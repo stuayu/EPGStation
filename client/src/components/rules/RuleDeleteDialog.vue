@@ -2,7 +2,7 @@
     <v-dialog v-if="isRemove === false" v-model="dialogModel" max-width="300" scrollable>
         <v-card>
             <v-card-text class="pa-4">
-                <div class="text--primary">{{ ruleItem.keyword }} を削除しますか?</div>
+                <div class="text--primary">{{ ruleItem.display.keyword }} を削除しますか?</div>
             </v-card-text>
             <v-card-actions>
                 <v-spacer></v-spacer>
@@ -16,7 +16,7 @@
 <script lang="ts">
 import IRuleApiModel from '@/model/api/rule/IRuleApiModel';
 import container from '@/model/ModelContainer';
-import { RuleStateDisplayData } from '@/model/state/rule/IRuleState';
+import { RuleStateData } from '@/model/state/rule/IRuleState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
@@ -25,7 +25,7 @@ import * as apid from '../../../../api';
 @Component({})
 export default class RuleDeleteDialog extends Vue {
     @Prop({ required: true })
-    public ruleItem!: RuleStateDisplayData;
+    public ruleItem!: RuleStateData;
 
     @Prop({ required: true })
     public isOpen!: boolean;
@@ -68,15 +68,15 @@ export default class RuleDeleteDialog extends Vue {
         this.dialogModel = false;
 
         try {
-            await this.ruleApiModel.delete(this.ruleItem.id);
+            await this.ruleApiModel.delete(this.ruleItem.display.id);
             this.snackbarState.open({
                 color: 'success',
-                text: `${this.ruleItem.keyword} を削除`,
+                text: `${this.ruleItem.display.keyword} を削除`,
             });
         } catch (err) {
             this.snackbarState.open({
                 color: 'error',
-                text: `${this.ruleItem.keyword} を削除に失敗`,
+                text: `${this.ruleItem.display.keyword} を削除に失敗`,
             });
             console.error(err);
         }
