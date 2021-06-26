@@ -16,7 +16,7 @@ export const post: Operation = async (_req, res) => {
 post.apiDoc = {
     summary: 'サムネイル再生成',
     tags: ['thumbnails'],
-    description: 'サムネイルの再生成を開始する',
+    description: 'サムネイルの追加で再生成を開始する',
     responses: {
         200: {
             description: 'サムネイルの再生成を開始しました',
