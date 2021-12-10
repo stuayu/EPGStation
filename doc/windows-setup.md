@@ -27,28 +27,35 @@
     ```
 
     FFmpeg/FFprobe については config.yml でファイルの場所を指定するので適切な場所に配置すること
+2. Mirakurun と接続
+    ```
+    # Mirakurun のディレクトリに移動して下さい
+    > npm link
+    ```
 
-2. EPGStation のインストール
+3. EPGStation のインストール
 
     ```
-    > git clone https://github.com/l3tnun/EPGStation.git
+    > git config --global core.autocrlf false
+    > git clone -b test https://github.com/stuayu/EPGStation.git
     > cd EPGStation
     > npm run all-install
+    > npm link mirakurun
     > npm run build
 
     ```
 
-3. 設定ファイルの作成
+4. 設定ファイルの作成
 
     ```
-    > copy .\config\config.yml.template .\config\config.yml
+    > copy .\config\config-win.yml.template .\config\config.yml
     > copy .\config\operatorLogConfig.sample.yml .\config\operatorLogConfig.yml
     > copy .\config\epgUpdaterLogConfig.sample.yml .\config\epgUpdaterLogConfig.yml
     > copy .\config\serviceLogConfig.sample.yml .\config\serviceLogConfig.yml
     > copy .\config\enc.js.template .\config\enc.js
     ```
 
-4. 設定ファイルの編集
+5. 設定ファイルの編集
 
     - 詳細な設定は [詳細マニュアル](conf-manual.md) を参照
     - 以下の最低限の動作に必須な項目について編集する
@@ -76,7 +83,7 @@
     -   以下のコマンドを管理者権限で実行するとサービス化できます
 
         ```
-        > npm install winser -g
+        > npm install winser-with-api -g
         > npm run install-win-service
         > net start epgstation
         ```

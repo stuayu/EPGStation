@@ -1,5 +1,5 @@
 port: 8888
-mirakurunPath: http+unix://%2Fvar%2Frun%2Fmirakurun.sock/
+mirakurunPath: http://localhost:40772
 
 # dbtype: sqlite
 # sqlite:
@@ -9,7 +9,7 @@ mirakurunPath: http+unix://%2Fvar%2Frun%2Fmirakurun.sock/
 
 dbtype: mysql
 mysql:
-    host: 192.168.xx.xx
+    host: localhost
     port: 3306
     user: epgstation
     password: epgstation
@@ -25,7 +25,7 @@ conflictPriority: 1
 recPriority: 2
 isEnabledDropCheck: true
 
-recordedFormat: '%YEAR%年%MONTH%月%DAY%日%HOUR%時%MIN%分%SEC%秒-%HALF_WIDTH_TITLE%-%HALF_WIDTH_CHNAME%'
+recordedFormat: '%YEAR%年%MONTH%月%DAY%日%HOUR%時%MIN%分%SEC%秒-%HALF_WIDTH_TITLE%_%HALF_WIDTH_CHNAME%'
 recordedFileExtension: .m2ts
 recorded:
     - name: recorded
@@ -35,8 +35,8 @@ thumbnail: '%ROOT%/thumbnail'
 thumbnailSize: 480x270
 thumbnailPosition: 5
 
-ffmpeg: /usr/local/bin/ffmpeg
-ffprobe: /usr/local/bin/ffprobe
+ffmpeg: 'C:\rec\ffmpeg\bin\ffmpeg.exe'
+ffprobe: 'C:\rec\ffmpeg\bin\ffprobe.exe'
 
 encodeProcessNum: 4
 concurrentEncodeNum: 1
