@@ -19,6 +19,10 @@ mysql:
 # 囲み文字を置換するか
 needToReplaceEnclosingCharacters: true
 
+apiServers:
+    - http://localhost:8888
+    - http://192.168.2.110:8888
+
 epgUpdateIntervalTime: 10
 
 conflictPriority: 1
@@ -41,10 +45,22 @@ ffprobe: 'C:\rec\ffmpeg\bin\ffprobe.exe'
 encodeProcessNum: 4
 concurrentEncodeNum: 1
 encode:
+    - name: HEVC_CMカット
+      cmd: 'C:\Windows\System32\cmd.exe /C %ROOT%/config/amatsukaze_addtask.bat 自動選択_qsv'
+      suffix: .mp4
+      rate: 4.0
+
+    - name: H264_CMカット
+      cmd: 'C:\Windows\System32\cmd.exe /C %ROOT%/config/amatsukaze_addtask.bat QSVEnc_H264'
+      suffix: .mp4
+      rate: 4.0
+
     - name: H.264
       cmd: '%NODE% %ROOT%/config/enc.js'
       suffix: .mp4
       rate: 4.0
+    
+encodingFinishCommand: 'C:\Windows\System32\cmd.exe /C node C:\rec\EPGStation\config\update_thumbnail.js'
 
 urlscheme:
     m2ts:
@@ -98,17 +114,17 @@ stream:
                 - name: 1080p
                   cmd:
                       '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -threads 3 -c:a libvorbis -ar 48000 -b:a 192k -ac
-                      2 -c:v libvpx-vp9 -vf yadif,scale=-2:1080 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y -f
+                      2 -c:v vp9_qsv -vf yadif,scale=-2:1080 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y -f
                       webm pipe:1'
                 - name: 720p
                   cmd:
                       '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -threads 3 -c:a libvorbis -ar 48000 -b:a 192k -ac
-                      2 -c:v libvpx-vp9 -vf yadif,scale=-2:720 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y -f
+                      2 -c:v vp9_qsv -vf yadif,scale=-2:720 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y -f
                       webm pipe:1'
                 - name: 480p
                   cmd:
                       '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -threads 2 -c:a libvorbis -ar 48000 -b:a 128k -ac
-                      2 -c:v libvpx-vp9 -vf yadif,scale=-2:480 -b:v 1500k -deadline realtime -speed 4 -cpu-used -8 -y -f
+                      2 -c:v vp9_qsv -vf yadif,scale=-2:480 -b:v 1500k -deadline realtime -speed 4 -cpu-used -8 -y -f
                       webm pipe:1'
 
             mp4:
@@ -168,17 +184,17 @@ stream:
                 - name: 1080p
                   cmd:
                       '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -threads 3 -c:a libvorbis -ar 48000 -b:a 192k -ac 2
-                      -c:v libvpx-vp9 -vf yadif,scale=-2:1080 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y -f
+                      -c:v vp9_qsv -vf yadif,scale=-2:1080 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y -f
                       webm pipe:1'
                 - name: 720p
                   cmd:
                       '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -threads 3 -c:a libvorbis -ar 48000 -b:a 192k -ac 2
-                      -c:v libvpx-vp9 -vf yadif,scale=-2:720 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y -f
+                      -c:v vp9_qsv -vf yadif,scale=-2:720 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y -f
                       webm pipe:1'
                 - name: 480p
                   cmd:
                       '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -threads 3 -c:a libvorbis -ar 48000 -b:a 128k -ac 2
-                      -c:v libvpx-vp9 -vf yadif,scale=-2:480 -b:v 1500k -deadline realtime -speed 4 -cpu-used -8 -y -f
+                      -c:v vp9_qsv -vf yadif,scale=-2:480 -b:v 1500k -deadline realtime -speed 4 -cpu-used -8 -y -f
                       webm pipe:1'
 
             mp4:
@@ -237,17 +253,17 @@ stream:
                 - name: 1080p
                   cmd:
                       '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 3 -c:a libvorbis -ar 48000 -b:a
-                      192k -ac 2 -c:v libvpx-vp9 -vf scale=-2:1080 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y
+                      192k -ac 2 -c:v vp9_qsv -vf scale=-2:1080 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y
                       -f webm pipe:1'
                 - name: 720p
                   cmd:
                       '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 3 -c:a libvorbis -ar 48000 -b:a
-                      192k -ac 2 -c:v libvpx-vp9 -vf scale=-2:720 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y
+                      192k -ac 2 -c:v vp9_qsv -vf scale=-2:720 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y
                       -f webm pipe:1'
                 - name: 480p
                   cmd:
                       '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 3 -c:a libvorbis -ar 48000 -b:a
-                      128k -ac 2 -c:v libvpx-vp9 -vf scale=-2:480 -b:v 1500k -deadline realtime -speed 4 -cpu-used -8 -y
+                      128k -ac 2 -c:v vp9_qsv -vf scale=-2:480 -b:v 1500k -deadline realtime -speed 4 -cpu-used -8 -y
                       -f webm pipe:1'
 
             mp4:
