@@ -34,3 +34,13 @@ jobs:
       
     - name: Build
       run: npm run build
+
+    - name: Compress Project
+      run: |
+        7z a -m0=LZMA2 -mx=9 -md=128m -mfb=128 -ms=16g -mmt=on -mf=BCJ ${{ matrix.os }}-${{ matrix.node-version }}.7z ../EPGStation
+
+    - name: Upload Project as Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.os }}-${{ matrix.node-version }}.7z
+        path: ${{ matrix.os }}-${{ matrix.node-version }}.7z
