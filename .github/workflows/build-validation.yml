@@ -11,9 +11,10 @@ jobs:
     name: build-${{matrix.os}}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
-        node-version: [14.x, 16.x]
+        node-version: [14.x, 16.x, 18.x]
 
     steps:
     - name: Checkout
@@ -41,7 +42,6 @@ jobs:
       run: |
         npm install
         npm run build
-        npm run postinstall -g
     
     - name: Install all
       working-directory: EPGStation
@@ -57,7 +57,7 @@ jobs:
       if: runner.os != 'Windows'
       working-directory: Mirakurun
       run: |
-        cp -R -F ./* ../EPGStation/node_modules/mirakurun
+        cp -rf ./* ../EPGStation/node_modules/mirakurun
       
     - name: Build
       working-directory: EPGStation
