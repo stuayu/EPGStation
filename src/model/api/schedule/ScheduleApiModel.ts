@@ -50,6 +50,66 @@ export default class ScheduleApiModel implements IScheduleApiModel {
         if (option.SKY === true) {
             types.push('SKY');
         }
+        if (option.NW1 === true) {
+            types.push('NW1');
+        }
+        if (option.NW2 === true) {
+            types.push('NW2');
+        }
+        if (option.NW3 === true) {
+            types.push('NW3');
+        }
+        if (option.NW4 === true) {
+            types.push('NW4');
+        }
+        if (option.NW5 === true) {
+            types.push('NW5');
+        }
+        if (option.NW6 === true) {
+            types.push('NW6');
+        }
+        if (option.NW7 === true) {
+            types.push('NW7');
+        }
+        if (option.NW8 === true) {
+            types.push('NW8');
+        }
+        if (option.NW9 === true) {
+            types.push('NW9');
+        }
+        if (option.NW10 === true) {
+            types.push('NW10');
+        }
+        if (option.NW11 === true) {
+            types.push('NW11');
+        }
+        if (option.NW12 === true) {
+            types.push('NW12');
+        }
+        if (option.NW13 === true) {
+            types.push('NW13');
+        }
+        if (option.NW14 === true) {
+            types.push('NW14');
+        }
+        if (option.NW15 === true) {
+            types.push('NW15');
+        }
+        if (option.NW16 === true) {
+            types.push('NW16');
+        }
+        if (option.NW17 === true) {
+            types.push('NW17');
+        }
+        if (option.NW18 === true) {
+            types.push('NW18');
+        }
+        if (option.NW19 === true) {
+            types.push('NW19');
+        }
+        if (option.NW20 === true) {
+            types.push('NW20');
+        }
 
         if (types.length === 0) {
             throw new Error('GetScheduleTypesError');

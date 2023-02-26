@@ -608,6 +608,66 @@ export default class ProgramDB implements IProgramDB {
             if (!!searchOption.SKY === true) {
                 channelTypes.push('SKY');
             }
+            if (!!searchOption.NW1 === true) {
+                channelTypes.push('NW1');
+            }
+            if (!!searchOption.NW2 === true) {
+                channelTypes.push('NW2');
+            }
+            if (!!searchOption.NW3 === true) {
+                channelTypes.push('NW3');
+            }
+            if (!!searchOption.NW4 === true) {
+                channelTypes.push('NW4');
+            }
+            if (!!searchOption.NW5 === true) {
+                channelTypes.push('NW5');
+            }
+            if (!!searchOption.NW6 === true) {
+                channelTypes.push('NW6');
+            }
+            if (!!searchOption.NW7 === true) {
+                channelTypes.push('NW7');
+            }
+            if (!!searchOption.NW8 === true) {
+                channelTypes.push('NW8');
+            }
+            if (!!searchOption.NW9 === true) {
+                channelTypes.push('NW9');
+            }
+            if (!!searchOption.NW10 === true) {
+                channelTypes.push('NW10');
+            }
+            if (!!searchOption.NW11 === true) {
+                channelTypes.push('NW11');
+            }
+            if (!!searchOption.NW12 === true) {
+                channelTypes.push('NW12');
+            }
+            if (!!searchOption.NW13 === true) {
+                channelTypes.push('NW13');
+            }
+            if (!!searchOption.NW14 === true) {
+                channelTypes.push('NW14');
+            }
+            if (!!searchOption.NW15 === true) {
+                channelTypes.push('NW15');
+            }
+            if (!!searchOption.NW16 === true) {
+                channelTypes.push('NW16');
+            }
+            if (!!searchOption.NW17 === true) {
+                channelTypes.push('NW17');
+            }
+            if (!!searchOption.NW18 === true) {
+                channelTypes.push('NW18');
+            }
+            if (!!searchOption.NW19 === true) {
+                channelTypes.push('NW19');
+            }
+            if (!!searchOption.NW20 === true) {
+                channelTypes.push('NW20');
+            }
             this.createInQuery(query, 'channelType', channelTypes);
         }
     }

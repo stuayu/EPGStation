@@ -94,7 +94,8 @@ export default class ReserveOptionChecker implements IReserveOptionChecker {
         // channel と 放送局
         if (typeof option.channelIds !== 'undefined') {
             // channleIds が有効な場合は false でないといけない
-            if (!!option.GR === true || !!option.BS === true || !!option.CS === true || !!option.SKY === true) {
+            // eslint-disable-next-line max-len
+            if (!!option.GR === true || !!option.BS === true || !!option.CS === true || !!option.SKY === true || !!option.NW1 === true || !!option.NW2 === true || !!option.NW3 === true || !!option.NW4 === true || !!option.NW5 === true || !!option.NW6 === true || !!option.NW7 === true || !!option.NW8 === true || !!option.NW9 === true || !!option.NW10 === true || !!option.NW11 === true || !!option.NW12 === true || !!option.NW13 === true || !!option.NW14 === true || !!option.NW15 === true || !!option.NW16 === true || !!option.NW17 === true || !!option.NW18 === true || !!option.NW19 === true || !!option.NW20 === true) {
                 return false;
             }
         }
