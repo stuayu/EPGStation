@@ -32,9 +32,9 @@ jobs:
       
     - name: Mirakurun Checkout
       uses: actions/checkout@v3
-        with:
-          repository: stuayu/Mirakurun
-          path: Mirakurun
+      with:
+        repository: stuayu/Mirakurun
+        path: Mirakurun
     
     - name: Mirakurun build and install
       working-directory: Mirakurun
