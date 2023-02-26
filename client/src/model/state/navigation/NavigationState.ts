@@ -60,6 +60,66 @@ export default class NavigationState implements INavigationState {
             if (config.broadcast.SKY === true) {
                 types.push('SKY');
             }
+            if (config.broadcast.NW1 === true) {
+                types.push('NW1');
+            }
+            if (config.broadcast.NW2 === true) {
+                types.push('NW2');
+            }
+            if (config.broadcast.NW3 === true) {
+                types.push('NW3');
+            }
+            if (config.broadcast.NW4 === true) {
+                types.push('NW4');
+            }
+            if (config.broadcast.NW5 === true) {
+                types.push('NW5');
+            }
+            if (config.broadcast.NW6 === true) {
+                types.push('NW6');
+            }
+            if (config.broadcast.NW7 === true) {
+                types.push('NW7');
+            }
+            if (config.broadcast.NW8 === true) {
+                types.push('NW8');
+            }
+            if (config.broadcast.NW9 === true) {
+                types.push('NW9');
+            }
+            if (config.broadcast.NW10 === true) {
+                types.push('NW10');
+            }
+            if (config.broadcast.NW11 === true) {
+                types.push('NW11');
+            }
+            if (config.broadcast.NW12 === true) {
+                types.push('NW12');
+            }
+            if (config.broadcast.NW13 === true) {
+                types.push('NW13');
+            }
+            if (config.broadcast.NW14 === true) {
+                types.push('NW14');
+            }
+            if (config.broadcast.NW15 === true) {
+                types.push('NW15');
+            }
+            if (config.broadcast.NW16 === true) {
+                types.push('NW16');
+            }
+            if (config.broadcast.NW17 === true) {
+                types.push('NW17');
+            }
+            if (config.broadcast.NW18 === true) {
+                types.push('NW18');
+            }
+            if (config.broadcast.NW19 === true) {
+                types.push('NW19');
+            }
+            if (config.broadcast.NW20 === true) {
+                types.push('NW20');
+            }
 
             for (const type of types) {
                 newItems.push({

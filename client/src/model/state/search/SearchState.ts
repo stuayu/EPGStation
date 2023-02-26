@@ -195,6 +195,86 @@ export default class SearchState implements ISearchState {
                     isEnable: true,
                     isShow: true,
                 },
+                NW1: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW2: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW3: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW4: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW5: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW6: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW7: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW8: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW9: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW10: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW11: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW12: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW13: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW14: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW15: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW16: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW17: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW18: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW19: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW20: {
+                    isEnable: true,
+                    isShow: true,
+                },
             },
             genres: {},
             isShowSubgenres: true,
@@ -234,6 +314,86 @@ export default class SearchState implements ISearchState {
             if (config.broadcast.SKY === false) {
                 this.searchOption.broadcastWave.SKY.isEnable = false;
                 this.searchOption.broadcastWave.SKY.isShow = false;
+            }
+            if (config.broadcast.NW1 === false) {
+                this.searchOption.broadcastWave.NW1.isEnable = false;
+                this.searchOption.broadcastWave.NW1.isShow = false;
+            }
+            if (config.broadcast.NW2 === false) {
+                this.searchOption.broadcastWave.NW2.isEnable = false;
+                this.searchOption.broadcastWave.NW2.isShow = false;
+            }
+            if (config.broadcast.NW3 === false) {
+                this.searchOption.broadcastWave.NW3.isEnable = false;
+                this.searchOption.broadcastWave.NW3.isShow = false;
+            }
+            if (config.broadcast.NW4 === false) {
+                this.searchOption.broadcastWave.NW4.isEnable = false;
+                this.searchOption.broadcastWave.NW4.isShow = false;
+            }
+            if (config.broadcast.NW5 === false) {
+                this.searchOption.broadcastWave.NW5.isEnable = false;
+                this.searchOption.broadcastWave.NW5.isShow = false;
+            }
+            if (config.broadcast.NW6 === false) {
+                this.searchOption.broadcastWave.NW6.isEnable = false;
+                this.searchOption.broadcastWave.NW6.isShow = false;
+            }
+            if (config.broadcast.NW7 === false) {
+                this.searchOption.broadcastWave.NW7.isEnable = false;
+                this.searchOption.broadcastWave.NW7.isShow = false;
+            }
+            if (config.broadcast.NW8 === false) {
+                this.searchOption.broadcastWave.NW8.isEnable = false;
+                this.searchOption.broadcastWave.NW8.isShow = false;
+            }
+            if (config.broadcast.NW9 === false) {
+                this.searchOption.broadcastWave.NW9.isEnable = false;
+                this.searchOption.broadcastWave.NW9.isShow = false;
+            }
+            if (config.broadcast.NW10 === false) {
+                this.searchOption.broadcastWave.NW10.isEnable = false;
+                this.searchOption.broadcastWave.NW10.isShow = false;
+            }
+            if (config.broadcast.NW11 === false) {
+                this.searchOption.broadcastWave.NW11.isEnable = false;
+                this.searchOption.broadcastWave.NW11.isShow = false;
+            }
+            if (config.broadcast.NW12 === false) {
+                this.searchOption.broadcastWave.NW12.isEnable = false;
+                this.searchOption.broadcastWave.NW12.isShow = false;
+            }
+            if (config.broadcast.NW13 === false) {
+                this.searchOption.broadcastWave.NW13.isEnable = false;
+                this.searchOption.broadcastWave.NW13.isShow = false;
+            }
+            if (config.broadcast.NW14 === false) {
+                this.searchOption.broadcastWave.NW14.isEnable = false;
+                this.searchOption.broadcastWave.NW14.isShow = false;
+            }
+            if (config.broadcast.NW15 === false) {
+                this.searchOption.broadcastWave.NW15.isEnable = false;
+                this.searchOption.broadcastWave.NW15.isShow = false;
+            }
+            if (config.broadcast.NW16 === false) {
+                this.searchOption.broadcastWave.NW16.isEnable = false;
+                this.searchOption.broadcastWave.NW16.isShow = false;
+            }
+            if (config.broadcast.NW17 === false) {
+                this.searchOption.broadcastWave.NW17.isEnable = false;
+                this.searchOption.broadcastWave.NW17.isShow = false;
+            }
+            if (config.broadcast.NW18 === false) {
+                this.searchOption.broadcastWave.NW18.isEnable = false;
+                this.searchOption.broadcastWave.NW18.isShow = false;
+            }
+            if (config.broadcast.NW19 === false) {
+                this.searchOption.broadcastWave.NW19.isEnable = false;
+                this.searchOption.broadcastWave.NW19.isShow = false;
+            }
+            if (config.broadcast.NW20 === false) {
+                this.searchOption.broadcastWave.NW20.isEnable = false;
+                this.searchOption.broadcastWave.NW20.isShow = false;
             }
         }
 
@@ -431,6 +591,26 @@ export default class SearchState implements ISearchState {
             this.searchOption.broadcastWave.BS.isEnable = !!searchOption.BS;
             this.searchOption.broadcastWave.CS.isEnable = !!searchOption.CS;
             this.searchOption.broadcastWave.SKY.isEnable = !!searchOption.SKY;
+            this.searchOption.broadcastWave.NW1.isEnable = !!searchOption.NW1;
+            this.searchOption.broadcastWave.NW2.isEnable = !!searchOption.NW2;
+            this.searchOption.broadcastWave.NW3.isEnable = !!searchOption.NW3;
+            this.searchOption.broadcastWave.NW4.isEnable = !!searchOption.NW4;
+            this.searchOption.broadcastWave.NW5.isEnable = !!searchOption.NW5;
+            this.searchOption.broadcastWave.NW6.isEnable = !!searchOption.NW6;
+            this.searchOption.broadcastWave.NW7.isEnable = !!searchOption.NW7;
+            this.searchOption.broadcastWave.NW8.isEnable = !!searchOption.NW8;
+            this.searchOption.broadcastWave.NW9.isEnable = !!searchOption.NW9;
+            this.searchOption.broadcastWave.NW10.isEnable = !!searchOption.NW10;
+            this.searchOption.broadcastWave.NW11.isEnable = !!searchOption.NW11;
+            this.searchOption.broadcastWave.NW12.isEnable = !!searchOption.NW12;
+            this.searchOption.broadcastWave.NW13.isEnable = !!searchOption.NW13;
+            this.searchOption.broadcastWave.NW14.isEnable = !!searchOption.NW14;
+            this.searchOption.broadcastWave.NW15.isEnable = !!searchOption.NW15;
+            this.searchOption.broadcastWave.NW16.isEnable = !!searchOption.NW16;
+            this.searchOption.broadcastWave.NW17.isEnable = !!searchOption.NW17;
+            this.searchOption.broadcastWave.NW18.isEnable = !!searchOption.NW18;
+            this.searchOption.broadcastWave.NW19.isEnable = !!searchOption.NW19;
+            this.searchOption.broadcastWave.NW20.isEnable = !!searchOption.NW20;
         }
 
         // ジャンル
@@ -778,11 +958,51 @@ export default class SearchState implements ISearchState {
             this.searchOption.broadcastWave.BS.isEnable = false;
             this.searchOption.broadcastWave.CS.isEnable = false;
             this.searchOption.broadcastWave.SKY.isEnable = false;
+            this.searchOption.broadcastWave.NW1.isEnable = false;
+            this.searchOption.broadcastWave.NW2.isEnable = false;
+            this.searchOption.broadcastWave.NW3.isEnable = false;
+            this.searchOption.broadcastWave.NW4.isEnable = false;
+            this.searchOption.broadcastWave.NW5.isEnable = false;
+            this.searchOption.broadcastWave.NW6.isEnable = false;
+            this.searchOption.broadcastWave.NW7.isEnable = false;
+            this.searchOption.broadcastWave.NW8.isEnable = false;
+            this.searchOption.broadcastWave.NW9.isEnable = false;
+            this.searchOption.broadcastWave.NW10.isEnable = false;
+            this.searchOption.broadcastWave.NW11.isEnable = false;
+            this.searchOption.broadcastWave.NW12.isEnable = false;
+            this.searchOption.broadcastWave.NW13.isEnable = false;
+            this.searchOption.broadcastWave.NW14.isEnable = false;
+            this.searchOption.broadcastWave.NW15.isEnable = false;
+            this.searchOption.broadcastWave.NW16.isEnable = false;
+            this.searchOption.broadcastWave.NW17.isEnable = false;
+            this.searchOption.broadcastWave.NW18.isEnable = false;
+            this.searchOption.broadcastWave.NW19.isEnable = false;
+            this.searchOption.broadcastWave.NW20.isEnable = false;
         } else if (this.isDisabledAllBroadcasWave(this.searchOption.broadcastWave)) {
             this.searchOption.broadcastWave.GR.isEnable = true;
             this.searchOption.broadcastWave.BS.isEnable = true;
             this.searchOption.broadcastWave.CS.isEnable = true;
             this.searchOption.broadcastWave.SKY.isEnable = true;
+            this.searchOption.broadcastWave.NW1.isEnable = true;
+            this.searchOption.broadcastWave.NW2.isEnable = true;
+            this.searchOption.broadcastWave.NW3.isEnable = true;
+            this.searchOption.broadcastWave.NW4.isEnable = true;
+            this.searchOption.broadcastWave.NW5.isEnable = true;
+            this.searchOption.broadcastWave.NW6.isEnable = true;
+            this.searchOption.broadcastWave.NW7.isEnable = true;
+            this.searchOption.broadcastWave.NW8.isEnable = true;
+            this.searchOption.broadcastWave.NW9.isEnable = true;
+            this.searchOption.broadcastWave.NW10.isEnable = true;
+            this.searchOption.broadcastWave.NW11.isEnable = true;
+            this.searchOption.broadcastWave.NW12.isEnable = true;
+            this.searchOption.broadcastWave.NW13.isEnable = true;
+            this.searchOption.broadcastWave.NW14.isEnable = true;
+            this.searchOption.broadcastWave.NW15.isEnable = true;
+            this.searchOption.broadcastWave.NW16.isEnable = true;
+            this.searchOption.broadcastWave.NW17.isEnable = true;
+            this.searchOption.broadcastWave.NW18.isEnable = true;
+            this.searchOption.broadcastWave.NW19.isEnable = true;
+            this.searchOption.broadcastWave.NW20.isEnable = true;
         }
 
         // time range
@@ -840,6 +1060,86 @@ export default class SearchState implements ISearchState {
         }
 
         if (broadcas.SKY.isShow === true && broadcas.SKY.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW1.isShow === true && broadcas.NW1.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW2.isShow === true && broadcas.NW2.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW3.isShow === true && broadcas.NW3.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW4.isShow === true && broadcas.NW4.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW5.isShow === true && broadcas.NW5.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW6.isShow === true && broadcas.NW6.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW7.isShow === true && broadcas.NW7.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW8.isShow === true && broadcas.NW8.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW9.isShow === true && broadcas.NW9.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW10.isShow === true && broadcas.NW10.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW11.isShow === true && broadcas.NW11.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW12.isShow === true && broadcas.NW12.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW13.isShow === true && broadcas.NW13.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW14.isShow === true && broadcas.NW14.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW15.isShow === true && broadcas.NW15.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW16.isShow === true && broadcas.NW16.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW17.isShow === true && broadcas.NW17.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW18.isShow === true && broadcas.NW18.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW19.isShow === true && broadcas.NW19.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.NW20.isShow === true && broadcas.NW20.isEnable === true) {
             return false;
         }
 
@@ -993,6 +1293,66 @@ export default class SearchState implements ISearchState {
             if (option.broadcastWave.SKY.isShow === true) {
                 ruleOption.SKY = option.broadcastWave.SKY.isEnable;
             }
+            if (option.broadcastWave.NW1.isShow === true) {
+                ruleOption.NW1 = option.broadcastWave.NW1.isEnable;
+            }
+            if (option.broadcastWave.NW2.isShow === true) {
+                ruleOption.NW2 = option.broadcastWave.NW2.isEnable;
+            }
+            if (option.broadcastWave.NW3.isShow === true) {
+                ruleOption.NW3 = option.broadcastWave.NW3.isEnable;
+            }
+            if (option.broadcastWave.NW4.isShow === true) {
+                ruleOption.NW4 = option.broadcastWave.NW4.isEnable;
+            }
+            if (option.broadcastWave.NW5.isShow === true) {
+                ruleOption.NW5 = option.broadcastWave.NW5.isEnable;
+            }
+            if (option.broadcastWave.NW6.isShow === true) {
+                ruleOption.NW6 = option.broadcastWave.NW6.isEnable;
+            }
+            if (option.broadcastWave.NW7.isShow === true) {
+                ruleOption.NW7 = option.broadcastWave.NW7.isEnable;
+            }
+            if (option.broadcastWave.NW8.isShow === true) {
+                ruleOption.NW8 = option.broadcastWave.NW8.isEnable;
+            }
+            if (option.broadcastWave.NW9.isShow === true) {
+                ruleOption.NW9 = option.broadcastWave.NW9.isEnable;
+            }
+            if (option.broadcastWave.NW10.isShow === true) {
+                ruleOption.NW10 = option.broadcastWave.NW10.isEnable;
+            }
+            if (option.broadcastWave.NW11.isShow === true) {
+                ruleOption.NW11 = option.broadcastWave.NW11.isEnable;
+            }
+            if (option.broadcastWave.NW12.isShow === true) {
+                ruleOption.NW12 = option.broadcastWave.NW12.isEnable;
+            }
+            if (option.broadcastWave.NW13.isShow === true) {
+                ruleOption.NW13 = option.broadcastWave.NW13.isEnable;
+            }
+            if (option.broadcastWave.NW14.isShow === true) {
+                ruleOption.NW14 = option.broadcastWave.NW14.isEnable;
+            }
+            if (option.broadcastWave.NW15.isShow === true) {
+                ruleOption.NW15 = option.broadcastWave.NW15.isEnable;
+            }
+            if (option.broadcastWave.NW16.isShow === true) {
+                ruleOption.NW16 = option.broadcastWave.NW16.isEnable;
+            }
+            if (option.broadcastWave.NW17.isShow === true) {
+                ruleOption.NW17 = option.broadcastWave.NW17.isEnable;
+            }
+            if (option.broadcastWave.NW18.isShow === true) {
+                ruleOption.NW18 = option.broadcastWave.NW18.isEnable;
+            }
+            if (option.broadcastWave.NW19.isShow === true) {
+                ruleOption.NW19 = option.broadcastWave.NW19.isEnable;
+            }
+            if (option.broadcastWave.NW20.isShow === true) {
+                ruleOption.NW20 = option.broadcastWave.NW20.isEnable;
+            }
         }
 
         // genres
@@ -1074,6 +1434,86 @@ export default class SearchState implements ISearchState {
         }
 
         if (broadcas.SKY.isShow === true && broadcas.SKY.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW1.isShow === true && broadcas.NW1.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW2.isShow === true && broadcas.NW2.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW3.isShow === true && broadcas.NW3.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW4.isShow === true && broadcas.NW4.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW5.isShow === true && broadcas.NW5.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW6.isShow === true && broadcas.NW6.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW7.isShow === true && broadcas.NW7.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW8.isShow === true && broadcas.NW8.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW9.isShow === true && broadcas.NW9.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW10.isShow === true && broadcas.NW10.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW11.isShow === true && broadcas.NW11.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW12.isShow === true && broadcas.NW12.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW13.isShow === true && broadcas.NW13.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW14.isShow === true && broadcas.NW14.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW15.isShow === true && broadcas.NW15.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW16.isShow === true && broadcas.NW16.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW17.isShow === true && broadcas.NW17.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW18.isShow === true && broadcas.NW18.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW19.isShow === true && broadcas.NW19.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.NW20.isShow === true && broadcas.NW20.isEnable !== true) {
             return false;
         }
 

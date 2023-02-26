@@ -100,6 +100,26 @@ class GuideState implements IGuideState {
                 BS: false,
                 CS: false,
                 SKY: false,
+                NW1: false,
+                NW2: false,
+                NW3: false,
+                NW4: false,
+                NW5: false,
+                NW6: false,
+                NW7: false,
+                NW8: false,
+                NW9: false,
+                NW10: false,
+                NW11: false,
+                NW12: false,
+                NW13: false,
+                NW14: false,
+                NW15: false,
+                NW16: false,
+                NW17: false,
+                NW18: false,
+                NW19: false,
+                NW20: false,
             };
 
             // 放送波設定
@@ -108,6 +128,26 @@ class GuideState implements IGuideState {
                 scheduleOption.BS = true;
                 scheduleOption.CS = true;
                 scheduleOption.SKY = true;
+                scheduleOption.NW1 = true;
+                scheduleOption.NW2 = true;
+                scheduleOption.NW3 = true;
+                scheduleOption.NW4 = true;
+                scheduleOption.NW5 = true;
+                scheduleOption.NW6 = true;
+                scheduleOption.NW7 = true;
+                scheduleOption.NW8 = true;
+                scheduleOption.NW9 = true;
+                scheduleOption.NW10 = true;
+                scheduleOption.NW11 = true;
+                scheduleOption.NW12 = true;
+                scheduleOption.NW13 = true;
+                scheduleOption.NW14 = true;
+                scheduleOption.NW15 = true;
+                scheduleOption.NW16 = true;
+                scheduleOption.NW17 = true;
+                scheduleOption.NW18 = true;
+                scheduleOption.NW19 = true;
+                scheduleOption.NW20 = true;
             } else {
                 scheduleOption[option.type] = true;
             }

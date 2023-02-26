@@ -143,6 +143,66 @@ export default class GuideTimeSelector extends Vue {
             if (config.broadcast.SKY === true) {
                 this.broadcastItems.push('SKY');
             }
+            if (config.broadcast.NW1 === true) {
+                this.broadcastItems.push('NW1');
+            }
+            if (config.broadcast.NW2 === true) {
+                this.broadcastItems.push('NW2');
+            }
+            if (config.broadcast.NW3 === true) {
+                this.broadcastItems.push('NW3');
+            }
+            if (config.broadcast.NW4 === true) {
+                this.broadcastItems.push('NW4');
+            }
+            if (config.broadcast.NW5 === true) {
+                this.broadcastItems.push('NW5');
+            }
+            if (config.broadcast.NW6 === true) {
+                this.broadcastItems.push('NW6');
+            }
+            if (config.broadcast.NW7 === true) {
+                this.broadcastItems.push('NW7');
+            }
+            if (config.broadcast.NW8 === true) {
+                this.broadcastItems.push('NW8');
+            }
+            if (config.broadcast.NW9 === true) {
+                this.broadcastItems.push('NW9');
+            }
+            if (config.broadcast.NW10 === true) {
+                this.broadcastItems.push('NW10');
+            }
+            if (config.broadcast.NW11 === true) {
+                this.broadcastItems.push('NW11');
+            }
+            if (config.broadcast.NW12 === true) {
+                this.broadcastItems.push('NW12');
+            }
+            if (config.broadcast.NW13 === true) {
+                this.broadcastItems.push('NW13');
+            }
+            if (config.broadcast.NW14 === true) {
+                this.broadcastItems.push('NW14');
+            }
+            if (config.broadcast.NW15 === true) {
+                this.broadcastItems.push('NW15');
+            }
+            if (config.broadcast.NW16 === true) {
+                this.broadcastItems.push('NW16');
+            }
+            if (config.broadcast.NW17 === true) {
+                this.broadcastItems.push('NW17');
+            }
+            if (config.broadcast.NW18 === true) {
+                this.broadcastItems.push('NW18');
+            }
+            if (config.broadcast.NW19 === true) {
+                this.broadcastItems.push('NW19');
+            }
+            if (config.broadcast.NW20 === true) {
+                this.broadcastItems.push('NW20');
+            }
         }
 
         // 日付

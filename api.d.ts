@@ -14,7 +14,7 @@ export type ThumbnailId = number;
 export type DropLogFileId = number;
 export type RecordedTagId = number;
 export type EncodeId = number;
-export type ChannelType = 'GR' | 'BS' | 'CS' | 'SKY';
+export type ChannelType = 'GR' | 'BS' | 'CS' | 'SKY' | 'NW1' | 'NW2' | 'NW3' | 'NW4' | 'NW5' | 'NW6' | 'NW7' | 'NW8' | 'NW9' | 'NW10' | 'NW11' | 'NW12' | 'NW13' | 'NW14' | 'NW15' | 'NW16' | 'NW17' | 'NW18' | 'NW19' | 'NW20';
 export type ProgramGenreLv1 = number;
 export type ProgramGenreLv2 = number;
 export type ProgramVideoType = 'mpeg2' | 'h.264' | 'h.265';
@@ -189,6 +189,26 @@ export interface BroadcastStatus {
     BS: boolean;
     CS: boolean;
     SKY: boolean;
+    NW1: boolean;
+    NW2: boolean;
+    NW3: boolean;
+    NW4: boolean;
+    NW5: boolean;
+    NW6: boolean;
+    NW7: boolean;
+    NW8: boolean;
+    NW9: boolean;
+    NW10: boolean;
+    NW11: boolean;
+    NW12: boolean;
+    NW13: boolean;
+    NW14: boolean;
+    NW15: boolean;
+    NW16: boolean;
+    NW17: boolean;
+    NW18: boolean;
+    NW19: boolean;
+    NW20: boolean;
 }
 
 /**
@@ -274,6 +294,26 @@ export interface RuleSearchOption {
     BS?: boolean; // BS
     CS?: boolean; // CS
     SKY?: boolean; // SKY
+    NW1?: boolean; // NW
+    NW2?: boolean; // NW
+    NW3?: boolean; // NW
+    NW4?: boolean; // NW
+    NW5?: boolean; // NW
+    NW6?: boolean; // NW
+    NW7?: boolean; // NW
+    NW8?: boolean; // NW
+    NW9?: boolean; // NW
+    NW10?: boolean; // NW
+    NW11?: boolean; // NW
+    NW12?: boolean; // NW
+    NW13?: boolean; // NW
+    NW14?: boolean; // NW
+    NW15?: boolean; // NW
+    NW16?: boolean; // NW
+    NW17?: boolean; // NW
+    NW18?: boolean; // NW
+    NW19?: boolean; // NW
+    NW20?: boolean; // NW
     channelIds?: ChannelId[]; // channels ids
     genres?: Genre[];
     times?: SearchTime[]; // 開始時間からの有効時間
@@ -531,6 +571,26 @@ export interface ScheduleOption {
     BS: boolean;
     CS: boolean;
     SKY: boolean;
+    NW1: boolean;
+    NW2: boolean;
+    NW3: boolean;
+    NW4: boolean;
+    NW5: boolean;
+    NW6: boolean;
+    NW7: boolean;
+    NW8: boolean;
+    NW9: boolean;
+    NW10: boolean;
+    NW11: boolean;
+    NW12: boolean;
+    NW13: boolean;
+    NW14: boolean;
+    NW15: boolean;
+    NW16: boolean;
+    NW17: boolean;
+    NW18: boolean;
+    NW19: boolean;
+    NW20: boolean;
 }
 
 /**
