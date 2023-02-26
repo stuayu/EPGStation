@@ -16,7 +16,11 @@ jobs:
         node-version: [14.x, 16.x]
 
     steps:
-    - uses: actions/checkout@v2
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        path: EPGStation
+
     - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v3
       with:
@@ -26,21 +30,52 @@ jobs:
       if: runner.os == 'Windows'
       run: npm install winser -g
       
-    - name: Mirakurun install
-      run: npm install mirakurun@latest -g --foreground-scripts --production
-
+    - name: Mirakurun Checkout
+      uses: actions/checkout@v3
+        with:
+          repository: stuayu/Mirakurun
+          path: Mirakurun
+    
+    - name: Mirakurun build and install
+      working-directory: Mirakurun
+      run: |
+        npm install
+        npm run build
+        npm run postinstall -g
+    
     - name: Install all
+      working-directory: EPGStation
       run: npm run all-install
+    
+    - name: Copy Mirakurun data on windows
+      if: runner.os == 'Windows'
+      working-directory: Mirakurun
+      run: |
+        Copy-Item ./* ../EPGStation/node_modules/mirakurun -Recurse -Force
+    
+    - name: Copy Mirakurun data on windows
+      if: runner.os != 'Windows'
+      working-directory: Mirakurun
+      run: |
+        cp -R -F ./* ../EPGStation/node_modules/mirakurun
       
     - name: Build
+      working-directory: EPGStation
       run: npm run build
 
     - name: Compress Project
       run: |
-        7z a -m0=LZMA2 -mx=9 -md=128m -mfb=128 -ms=16g -mmt=on -mf=BCJ ${{ matrix.os }}-${{ matrix.node-version }}.7z ../EPGStation
+        7z a -m0=LZMA2 -mx=9 -md=128m -mfb=128 -ms=16g -mmt=on -mf=BCJ EPGStation-${{ matrix.os }}-${{ matrix.node-version }}.7z ./EPGStation
+        7z a -m0=LZMA2 -mx=9 -md=128m -mfb=128 -ms=16g -mmt=on -mf=BCJ Mirakurun-${{ matrix.os }}-${{ matrix.node-version }}.7z ./Mirakurun
 
     - name: Upload Project as Artifact
       uses: actions/upload-artifact@v3
       with:
-        name: ${{ matrix.os }}-${{ matrix.node-version }}.7z
-        path: ${{ matrix.os }}-${{ matrix.node-version }}.7z
+        name: EPGStation-${{ matrix.os }}-${{ matrix.node-version }}.7z
+        path: EPGStation-${{ matrix.os }}-${{ matrix.node-version }}.7z
+    
+    - name: Upload Project as Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: Mirakurun-${{ matrix.os }}-${{ matrix.node-version }}.7z
+        path: Mirakurun-${{ matrix.os }}-${{ matrix.node-version }}.7z
