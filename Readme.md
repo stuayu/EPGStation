@@ -5,6 +5,11 @@
 |test|[![build](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml/badge.svg?branch=test)](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml)|
 |master|[![build](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml/badge.svg?branch=master)](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml)|
 
+フォーク版の機能詳細は[doc/stuayu-fork.md](doc/stuayu-fork.md)をご覧ください．
+
+以下オリジナル
+---
+
 [Mirakurun](https://github.com/Chinachu/Mirakurun) を使用した録画管理ソフトです  
 iOS・Android での閲覧に最適化されたモバイルフレンドリーな Web インターフェイスが特徴です  
 PC からの閲覧でもモダンな UI で操作可能です
