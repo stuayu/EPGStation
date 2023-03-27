@@ -47,6 +47,7 @@ jobs:
     
     - name: Install all
       working-directory: EPGStation
+      continue-on-error: true # npm audit fixでエラーになるのを回避
       run: |
         npm run all-install
         npm audit fix
