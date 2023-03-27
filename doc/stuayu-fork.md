@@ -13,7 +13,7 @@
 
 ## Mirakurunインストール編
 
-公式版と一部改変版のMirakrunの導入について解説します.  
+改変版のMirakrunの導入について解説します.  
 事前準備としてNodejs-LTSをインストールしてください．  
 おすすめは[chocolatey](https://chocolatey.org/)をインストールしてから以下のコマンドを実行する方法です．  
 
@@ -21,31 +21,12 @@
   choco install nodejs-lts --version=16.19.0
   ```
 
-- 公式版Mirakurunを導入する
-  
-  1. インストールを実行する．
-   `npm install mirakurun@latest -g --foreground-scripts --production`
-  2. 各種設定ファイルの編集
-   チューナー・サーバ・チャンネルの設定ファイル：`%USERPROFILE%\.Mirakurun`  
-   サービスの**LOGデータ**・Logoデータ・番組情報・チャンネル情報の保存先：`%localappdata%\Mirakurun`  
-   エクスプローラーのアドレスバーに上記をコピペすると一瞬で移動できます．  
-   チューナー・チャンネル設定は**必須**です．適宜，vscodeなどのテキストエディタで編集してください．  
-   なお，アクセスできない・起動しないなどのトラブルが発生した場合，**Logデータを確認すると問題が発生している箇所がわかります．**
-  3. ブラウザでアクセスする．
-   `http://127.0.0.1:40772`で起動しています．また，`http://localhost:40772`でアクセスした場合表示されない可能性があります．
-
 - フォーク版Mirakurunを導入する
-  1. ビルドの実行  
-    powershellで実行してください．
-
-        ```powershell
-        cd Mirakurun
-        npm install
-        npm run build
-        ```
+  1. ビルド済みファイルをダウンロードし，任意の場所へ展開する  
+   [Github Action](https://github.com/stuayu/EPGStation/actions) or [Release](https://github.com/stuayu/EPGStation/releases)からダウンロードする
 
   2. インストールの実行  
-    正常に動作するか確認する場合は，`npm run start.win32`を実行してください．
+    正常に動作するか確認する場合は，`npm run start.win32`を実行してください．(windowsの場合)，Linuxは`npm run start`
 
         ```powershell
         npm run postinstall -g # 管理者権限必須(windowsのサービスへ登録)
@@ -66,8 +47,11 @@
 GR,BS,CSの箇所をNW1~20のチャンネル空間を追加することで正常にリストアできます．  
 過去すでにMySQL(MariaDB)などを利用していた場合には，テーブルをドロップして再びテーブルを作成してください．
 
-  1. ビルドの実行
+  1. ビルド済みファイルをダウンロードし，任意の場所へ展開する  
+   [Github Action](https://github.com/stuayu/EPGStation/actions) or [Release](https://github.com/stuayu/EPGStation/releases)からダウンロードする  
+   <br>
 
+        自分でビルドする場合の手順
         ```powershell
         cd EPGStation
         npm run all-install
@@ -82,7 +66,8 @@ GR,BS,CSの箇所をNW1~20のチャンネル空間を追加することで正常
         ```powershell
         npm run install-win-service # 管理者権限必須
         ```
-        エラーが起きた場合は管理者権限で`SC stop epgstation`と`SC delete epgstation`を実行してください．
+        エラーが起きた場合は管理者権限で`SC stop epgstation`と`SC delete epgstation`を実行してください．  
+        存在してしまっているサービスを削除することができます．  
    4. MariaDBのインストール
       1. epgstationテーブルのセットアップ
             ```powershell
@@ -100,8 +85,10 @@ GR,BS,CSの箇所をNW1~20のチャンネル空間を追加することで正常
   - 県境でよくある複数の県外地上波を扱うことができるようにGR/BS/CS/SKYを拡張し，新たにNW1~NW20まで追加
   - Node.js LTS v18系でのインストールに暫定対応
   - 各フォーク版MirakurunとEPGStationのビルドが成功するかどうか確認するためのワークフローをActionsに追加
+  - 各種パッケージの更新
 - **Mirakurun**
   - Windowsでlocalhost:40772または，[::1]:40772でアクセスできない問題の修正
+  - `0.0.0.0`と`::`をリッスンするオプションの追加
 - **EPGStation**
   - 本家EPGStationへのプルリクエストとissueで報告されていたバグ修正のマージ
     - Hotfix: IPTV Simple Client is very slow. l3tnun/EPGStation#614
