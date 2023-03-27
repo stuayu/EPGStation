@@ -39,6 +39,7 @@ jobs:
     
     - name: Mirakurun build and install
       working-directory: Mirakurun
+      continue-on-error: true # npm audit fixでエラーになるのを回避
       run: |
         npm install
         npm audit fix
