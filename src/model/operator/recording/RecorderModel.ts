@@ -180,11 +180,16 @@ class RecorderModel implements IRecorderModel {
                 this.emitCancelEvent();
 
                 return;
-            } else if (retry < 3) {
-                // retry
+            } else if (retry < 10) {
+                // retry チューナーが開かなかったときの救済
                 setTimeout(() => {
                     this.prepRecord(retry + 1);
-                }, 1000 * 5);
+                }, 1000 * 5);   // 5s
+            } else if (retry < 30) {
+                // retry ここに来るのはチューナーが開けない or ソケットのハングアップとか？ //
+                setTimeout(() => {
+                    this.prepRecord(retry + 1);
+                }, 1000 * 60);  // 60s
             } else {
                 this.isPrepRecording = false;
                 // 録画準備失敗を通知
