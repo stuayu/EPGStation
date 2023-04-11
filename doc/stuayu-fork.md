@@ -18,7 +18,7 @@
 おすすめは[chocolatey](https://chocolatey.org/)をインストールしてから以下のコマンドを実行する方法です．  
 
   ```powershell
-  choco install nodejs-lts --version=16.19.0
+  choco install nodejs-lts
   ```
 
 - フォーク版Mirakurunを導入する
@@ -39,9 +39,7 @@
   4. ブラウザからアクセスする  
     `http://127.0.0.1:40772` or `http://localhost:40772`でアクセスできます．  
     アクセスできない場合はMirakurunのログを確認してください，起動できない理由が書いてあるはずです．
-
 ## EPGStationインストール編
-
 基本的には公式と一緒の手順です．一部Mirakurunを改変しているため，node_module内に再配置が必要になります．  
 改変前のEPGStationで実行したバックアップはルール予約のみ互換性がありません．手動でバックアップファイル内の予約データの箇所を削除するか，  
 GR,BS,CSの箇所をNW1~20のチャンネル空間を追加することで正常にリストアできます．  
@@ -83,13 +81,16 @@ GR,BS,CSの箇所をNW1~20のチャンネル空間を追加することで正常
 
 - **Mirakurun/EPGStation**
   - 県境でよくある複数の県外地上波を扱うことができるようにGR/BS/CS/SKYを拡張し，新たにNW1~NW20まで追加
-  - Node.js LTS v18系でのインストールに暫定対応
+  - Node.js LTS v18系でのインストール対応
   - 各フォーク版MirakurunとEPGStationのビルドが成功するかどうか確認するためのワークフローをActionsに追加
   - 各種パッケージの更新
 - **Mirakurun**
   - Windowsでlocalhost:40772または，[::1]:40772でアクセスできない問題の修正
   - `0.0.0.0`と`::`をリッスンするオプションの追加
+  - EPG取得間隔を放送波ごとに指定できるように変更
 - **EPGStation**
   - 本家EPGStationへのプルリクエストとissueで報告されていたバグ修正のマージ
     - Hotfix: IPTV Simple Client is very slow. l3tnun/EPGStation#614
     - ドロップログ上のパケット数が m2ts ファイル上での実際の数よりも少ない l3tnun/EPGStation#603
+
+
