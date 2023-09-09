@@ -44,7 +44,7 @@
         "lodash": "4.17.21",
         "log4js": "6.9.1",
         "minimist": "1.2.8",
-        "mirakurun": "github:stuayu/Mirakurun#stuayu-main",
+        "mirakurun": "github:stuayu/Mirakurun#d6febf60b56088b5bf1dcd14bd02248cc427cc17",
         "mkdirp": "1.0.4",
         "multer": "1.4.4",
         "mysql": "2.18.1",
