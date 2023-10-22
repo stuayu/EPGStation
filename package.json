@@ -1,6 +1,6 @@
 {
     "name": "epgstation",
-    "version": "2.7.2",
+    "version": "2.7.2-stuayu",
     "description": "DTV Software in Japan.",
     "main": "dist/index.js",
     "scripts": {
@@ -10,7 +10,7 @@
         "build-server": "npm run lint && npm run format && npm run compile",
         "build-client": "cd client && npm run build",
         "lint": "eslint --fix --ext .ts src/",
-        "format": "prettier --check --write 'src/**/*.ts'",
+        "format": "prettier --check --write src/**/*.ts",
         "compile": "tsc",
         "watch": "tsc --watch",
         "orm-gen": "typeorm migration:generate -n ",
@@ -46,7 +46,7 @@
         "lodash": "4.17.21",
         "log4js": "6.9.1",
         "minimist": "1.2.8",
-        "mirakurun": "3.9.0-rc.4",
+        "mirakurun": "github:stuayu/Mirakurun#d6febf60b56088b5bf1dcd14bd02248cc427cc17",
         "mkdirp": "3.0.1",
         "multer": "1.4.3",
         "mysql": "2.18.1",
