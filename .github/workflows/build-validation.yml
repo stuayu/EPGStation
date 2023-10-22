@@ -57,7 +57,7 @@ jobs:
     
     - name: Build EPGStation
       working-directory: EPGStation
-      if: runner.os == 'Windows' || runner.os == 'macOS'
+      if: runner.os == 'Linux' || runner.os == 'macOS'
       run: npm run build
 
     - name: Compress Project
