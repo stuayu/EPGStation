@@ -3,9 +3,12 @@
     "version": "2.7.2-stuayu",
     "private": true,
     "scripts": {
-        "build": "set NODE_OPTIONS='--openssl-legacy-provider' && vue-cli-service build",
-        "lint": "set NODE_OPTIONS='--openssl-legacy-provider' && vue-cli-service lint",
-        "watch": "set NODE_OPTIONS='--openssl-legacy-provider' && vue-cli-service build --watch --mode development"
+        "build": "export NODE_OPTIONS='--openssl-legacy-provider' && vue-cli-service build",
+        "build-win": "set NODE_OPTIONS='--openssl-legacy-provider' && vue-cli-service build",
+        "lint": "export NODE_OPTIONS='--openssl-legacy-provider' && vue-cli-service lint",
+        "lint-win": "set NODE_OPTIONS='--openssl-legacy-provider' && vue-cli-service lint",
+        "watch": "export NODE_OPTIONS='--openssl-legacy-provider' && vue-cli-service build --watch --mode development",
+        "watch-win": "set NODE_OPTIONS='--openssl-legacy-provider' && vue-cli-service build --watch --mode development"
     },
     "dependencies": {
         "@mdi/font": "7.3.67",

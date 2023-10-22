@@ -6,6 +6,12 @@
 |master|[![build](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml/badge.svg?branch=master)](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml)|
 
 フォーク版の機能詳細は[doc/stuayu-fork.md](doc/stuayu-fork.md)をご覧ください．
+### インストールとビルド方法
+- Windows
+  - npm run all-install && npm run build-win
+  - npm run install-win-service
+- Linux/Mac
+  - npm run all-install && npm run build
 
 以下オリジナル
 ---
