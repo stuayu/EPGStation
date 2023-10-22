@@ -184,12 +184,12 @@ class RecorderModel implements IRecorderModel {
                 // retry チューナーが開かなかったときの救済
                 setTimeout(() => {
                     this.prepRecord(retry + 1);
-                }, 1000 * 5);   // 5s
+                }, 1000 * 5); // 5s
             } else if (retry < 30) {
                 // retry ここに来るのはチューナーが開けない or ソケットのハングアップとか？ //
                 setTimeout(() => {
                     this.prepRecord(retry + 1);
-                }, 1000 * 60);  // 60s
+                }, 1000 * 60); // 60s
             } else {
                 this.isPrepRecording = false;
                 // 録画準備失敗を通知
@@ -346,7 +346,7 @@ class RecorderModel implements IRecorderModel {
                 }
             }
         }
-        
+
         this.stream.pipe(this.passThroughStreamForWrite);
 
         return new Promise<void>((resolve: () => void, reject: (error: Error) => void) => {
@@ -410,8 +410,6 @@ class RecorderModel implements IRecorderModel {
         }).catch(err => {
             // 予想外の録画失敗エラー
             this.destroyStream();
-            // 録画失敗を通知
-            this.recordingEvent.emitPrepRecordingFailed(this.reserve);
             throw err;
         });
     }

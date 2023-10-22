@@ -107,7 +107,7 @@ class EncoderModel implements IEncoderModel {
         // 放送局情報を取得する
         const channel = await this.channelDB.findId(recorded.channelId);
         if (channel === null) {
-            throw new Error('CannelIsNotFound');
+            throw new Error('ChannelIsNotFound');
         }
 
         // ソースビデオファイルのファイルパスを生成する
@@ -224,14 +224,18 @@ class EncoderModel implements IEncoderModel {
         });
 
         // タイムアウト設定
-        this.timerId = setTimeout(async () => {
-            if (this.encodeOption === null) {
-                return;
-            }
+        this.timerId = setTimeout(
+            async () => {
+                if (this.encodeOption === null) {
+                    return;
+                }
 
-            this.log.encode.error(`encode process is time out: ${this.encodeOption.encodeId} ${outputFilePath}`);
-            await this.cancel();
-        }, recorded.duration * (typeof encodeCmd.rate === 'undefined' ? EncoderModel.DEFAULT_TIMEOUT_RATE : encodeCmd.rate));
+                this.log.encode.error(`encode process is time out: ${this.encodeOption.encodeId} ${outputFilePath}`);
+                await this.cancel();
+            },
+            recorded.duration *
+                (typeof encodeCmd.rate === 'undefined' ? EncoderModel.DEFAULT_TIMEOUT_RATE : encodeCmd.rate),
+        );
 
         /**
          * プロセスの設定

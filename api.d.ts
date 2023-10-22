@@ -37,6 +37,7 @@ export interface ChannelItem {
     hasLogoData: boolean;
     channelType: ChannelType;
     channel: string;
+    type?: number;
 }
 
 /**
@@ -621,6 +622,7 @@ export interface ScheduleChannleItem {
     remoteControlKeyId?: number;
     hasLogoData: boolean;
     channelType: ChannelType;
+    type?: number;
 }
 
 /**
