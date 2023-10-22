@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify';
-import { FindConditions, LessThan, LessThanOrEqual, MoreThanOrEqual, ObjectLiteral } from 'typeorm';
+import { FindOptionsWhere, LessThan, LessThanOrEqual, MoreThan, MoreThanOrEqual, ObjectLiteral } from 'typeorm';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import * as apid from '../../../api';
 import * as mapid from '../../../node_modules/mirakurun/api';
@@ -914,10 +914,11 @@ export default class ProgramDB implements IProgramDB {
         const repository = connection.getRepository(Program);
         const result = await this.promieRetry.run(() => {
             return repository.find({
-                channelId: channelId,
-                // startAt <= time && endAt >= time
-                startAt: LessThanOrEqual(startAt),
-                endAt: MoreThanOrEqual(startAt),
+                where: {
+                    channelId: channelId,
+                    startAt: LessThanOrEqual(startAt),
+                    endAt: MoreThan(startAt),
+                },
             });
         });
 
@@ -949,7 +950,7 @@ export default class ProgramDB implements IProgramDB {
     public async findSchedule(option: FindScheduleOption | FindScheduleIdOption): Promise<Program[]> {
         const connection = await this.op.getConnection();
 
-        let queryOption: FindConditions<Program> | FindConditions<Program>[];
+        let queryOption: FindOptionsWhere<Program> | FindOptionsWhere<Program>[];
 
         if (typeof (<FindScheduleIdOption>option).channelId !== 'undefined') {
             queryOption = {
@@ -966,7 +967,7 @@ export default class ProgramDB implements IProgramDB {
         ) {
             queryOption = [];
             for (const type of (<FindScheduleOption>option).types) {
-                const op: FindConditions<Program> = {
+                const op: FindOptionsWhere<Program> = {
                     startAt: LessThanOrEqual(option.endAt),
                     endAt: MoreThanOrEqual(option.startAt),
                     channelType: type,
