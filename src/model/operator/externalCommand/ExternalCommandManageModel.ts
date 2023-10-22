@@ -228,7 +228,11 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
             } as any);
 
             child.on('exit', () => {
-                this.log.system.info(`finish: ${cmd}`);
+                if (child.exitCode == 0) {
+                    this.log.system.info(`finish: ${cmd}`);
+                } else {
+                    this.log.system.error(`failed: ${cmd}. exit: ${child.exitCode}`);
+                }
                 resolve();
             });
 
@@ -298,7 +302,11 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
             } as any);
 
             child.on('exit', () => {
-                this.log.system.info(`${cmd} process is fin`);
+                if (child.exitCode == 0) {
+                    this.log.system.info(`${cmd} process is fin`);
+                } else {
+                    this.log.system.error(`${cmd} process is error. exit: ${child.exitCode}`);
+                }
                 resolve();
             });
 
@@ -340,7 +348,7 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
         // 局を取得する
         const channel = await this.channelDB.findId(recorded.channelId);
         if (channel === null) {
-            throw new Error('CannelIsNotFound');
+            throw new Error('ChannelIsNotFound');
         }
 
         return new Promise<void>(async resolve => {
@@ -366,7 +374,11 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
             } as any);
 
             child.on('exit', () => {
-                this.log.system.info(`${cmd} process is fin`);
+                if (child.exitCode == 0) {
+                    this.log.system.info(`${cmd} process is fin`);
+                } else {
+                    this.log.system.error(`${cmd} process is error. exit: ${child.exitCode}`);
+                }
                 resolve();
             });
 
