@@ -7,6 +7,7 @@ import DateUtil from '../../../util/DateUtil';
 import IChannelDB from '../../db/IChannelDB';
 import IProgramDB from '../../db/IProgramDB';
 import IIPTVApiModel from './IIPTVApiModel';
+import ChannelUtil from '../../../util/ChannelUtil';
 
 @injectable()
 class IPTVApiModel implements IIPTVApiModel {
@@ -39,7 +40,7 @@ class IPTVApiModel implements IIPTVApiModel {
 
         let str = '#EXTM3U\n';
         for (const channel of channels) {
-            if (channel.type !== 1) {
+            if (!ChannelUtil.isMediaService(channel.type)) {
                 continue;
             }
 
@@ -78,7 +79,32 @@ class IPTVApiModel implements IIPTVApiModel {
             startAt: now,
             endAt: now + 1000 * 60 * 60 * 24 * days,
             isHalfWidth: isHalfWidth,
-            types: ['GR', 'BS', 'CS', 'SKY', 'NW1', 'NW2', 'NW3', 'NW4', 'NW5', 'NW6', 'NW7', 'NW8', 'NW9', 'NW10', 'NW11', 'NW12', 'NW13', 'NW14', 'NW15', 'NW16', 'NW17', 'NW18', 'NW19', 'NW20'],
+            types: [
+                'GR',
+                'BS',
+                'CS',
+                'SKY',
+                'NW1',
+                'NW2',
+                'NW3',
+                'NW4',
+                'NW5',
+                'NW6',
+                'NW7',
+                'NW8',
+                'NW9',
+                'NW10',
+                'NW11',
+                'NW12',
+                'NW13',
+                'NW14',
+                'NW15',
+                'NW16',
+                'NW17',
+                'NW18',
+                'NW19',
+                'NW20',
+            ],
         });
         const channels = await this.channelDB.findAll();
 

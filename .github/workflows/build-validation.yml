@@ -42,7 +42,6 @@ jobs:
       continue-on-error: true # npm audit fixでエラーになるのを回避
       run: |
         npm install
-        npm audit fix
         npm run build
     
     - name: Install all
@@ -50,23 +49,15 @@ jobs:
       continue-on-error: true # npm audit fixでエラーになるのを回避
       run: |
         npm run all-install
-        npm audit fix
-        cd ./client && npm audit fix
-    
-    - name: Copy Mirakurun data on windows
-      if: runner.os == 'Windows'
-      working-directory: Mirakurun
-      run: |
-        Copy-Item ./* ../EPGStation/node_modules/mirakurun -Recurse -Force
-    
-    - name: Copy Mirakurun data on windows
-      if: runner.os != 'Windows'
-      working-directory: Mirakurun
-      run: |
-        cp -rf ./* ../EPGStation/node_modules/mirakurun
       
-    - name: Build
+    - name: Build EPGStation
       working-directory: EPGStation
+      if: runner.os == 'Windows'
+      run: npm run build-win
+    
+    - name: Build EPGStation
+      working-directory: EPGStation
+      if: runner.os == 'Linux' || runner.os == 'macOS'
       run: npm run build
 
     - name: Compress Project
