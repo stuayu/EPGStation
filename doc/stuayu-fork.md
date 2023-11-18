@@ -1,5 +1,5 @@
 # このフォークプロジェクトについて
-このフォーク版EPGStationを利用するには[フォーク版Mirakurun](https://github.com/stuayu/Mirakurun)が必要です．．  
+このフォーク版EPGStationを利用するには[フォーク版Mirakurun](https://github.com/stuayu/Mirakurun)が必要です．  
 [フォーク版Mirakurun](https://github.com/stuayu/Mirakurun)は本家EPGStation環境下でも多分動作すると思いますが保証しません．
 変更点などはコミットログや[変更箇所](#変更箇所)をご覧ください．
 
@@ -22,39 +22,45 @@
   ```
 
 - フォーク版Mirakurunを導入する
-  1. ビルド済みファイルをダウンロードし，任意の場所へ展開する  
-   [Github Action](https://github.com/stuayu/EPGStation/actions) or [Release](https://github.com/stuayu/EPGStation/releases)からダウンロードする
-
-  2. インストールの実行  
-    正常に動作するか確認する場合は，`npm run start.win32`を実行してください．(windowsの場合)，Linuxは`npm run start`
-
+  1. [Github](https://github.com/stuayu/Mirakurun)からソースコードをクローンし、ビルドを行う。
         ```powershell
-        npm run postinstall -g # 管理者権限必須(windowsのサービスへ登録)
-        ```
-        もしサービスのインストールに失敗した場合は，管理者権限で`SC stop mirakurun`と`SC delete mirakurun`を実行してから再びサービスのインストールを行ってください．
-
-  3. 各種設定ファイルの編集  
+        git clone https://github.com/stuayu/Mirakurun.git
+        cd Mirakurun
+        npm install
+        npm run build
+        ``` 
+  2. 各種設定ファイルの編集  
     チューナー・サーバ・チャンネルの設定ファイル：`Mirakurun\local_config`  
     サービスの**LOGデータ**・Logoデータ・番組情報・チャンネル情報の保存先：`Mirakurun\local_data`  
+
+  3. サービスとして登録
+        ```powershell
+        npm run postinstall -g # 管理者権限で実行する
+        ```
+
   4. ブラウザからアクセスする  
     `http://127.0.0.1:40772` or `http://localhost:40772`でアクセスできます．  
     アクセスできない場合はMirakurunのログを確認してください，起動できない理由が書いてあるはずです．
+  5. Mirakurunの削除方法
+        ```powershell
+        npm run preuninstall -g # 管理者権限で実行する
+        ```
+        エクスプローラー等でフォルダを削除する。  
+
 ## EPGStationインストール編
 基本的には公式と一緒の手順です．一部Mirakurunを改変しているため，node_module内に再配置が必要になります．  
 改変前のEPGStationで実行したバックアップはルール予約のみ互換性がありません．手動でバックアップファイル内の予約データの箇所を削除するか，  
 GR,BS,CSの箇所をNW1~20のチャンネル空間を追加することで正常にリストアできます．  
 過去すでにMySQL(MariaDB)などを利用していた場合には，テーブルをドロップして再びテーブルを作成してください．
 
-  1. ビルド済みファイルをダウンロードし，任意の場所へ展開する  
-   [Github Action](https://github.com/stuayu/EPGStation/actions) or [Release](https://github.com/stuayu/EPGStation/releases)からダウンロードする  
-   <br>
+  1. [Github](https://github.com/stuayu/EPGStation)からソースコードをクローンし、ビルドを行う。
 
-        自分でビルドする場合の手順
         ```powershell
+        git clone https://github.com/stuayu/EPGStation.git
         cd EPGStation
         npm run all-install
-        cp ../Mirakurun ./node_modules/mirakurun -Recurse -Force #これをしないと一部機能が動作しません．
-        npm run build
+        npm run build-win # Windowsの場合のみ実行する
+        npm run build # Linux/Macの場合のみ実行する
         ```
 
   2. 設定ファイルの編集  
