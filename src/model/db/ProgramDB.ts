@@ -668,6 +668,66 @@ export default class ProgramDB implements IProgramDB {
             if (!!searchOption.NW20 === true) {
                 channelTypes.push('NW20');
             }
+            if (!!searchOption.NW21 === true) {
+                channelTypes.push('NW21');
+            }
+            if (!!searchOption.NW22 === true) {
+                channelTypes.push('NW22');
+            }
+            if (!!searchOption.NW23 === true) {
+                channelTypes.push('NW23');
+            }
+            if (!!searchOption.NW24 === true) {
+                channelTypes.push('NW24');
+            }
+            if (!!searchOption.NW25 === true) {
+                channelTypes.push('NW25');
+            }
+            if (!!searchOption.NW26 === true) {
+                channelTypes.push('NW26');
+            }
+            if (!!searchOption.NW27 === true) {
+                channelTypes.push('NW27');
+            }
+            if (!!searchOption.NW28 === true) {
+                channelTypes.push('NW28');
+            }
+            if (!!searchOption.NW29 === true) {
+                channelTypes.push('NW29');
+            }
+            if (!!searchOption.NW30 === true) {
+                channelTypes.push('NW30');
+            }
+            if (!!searchOption.NW31 === true) {
+                channelTypes.push('NW31');
+            }
+            if (!!searchOption.NW32 === true) {
+                channelTypes.push('NW32');
+            }
+            if (!!searchOption.NW33 === true) {
+                channelTypes.push('NW33');
+            }
+            if (!!searchOption.NW34 === true) {
+                channelTypes.push('NW34');
+            }
+            if (!!searchOption.NW35 === true) {
+                channelTypes.push('NW35');
+            }
+            if (!!searchOption.NW36 === true) {
+                channelTypes.push('NW36');
+            }
+            if (!!searchOption.NW37 === true) {
+                channelTypes.push('NW37');
+            }
+            if (!!searchOption.NW38 === true) {
+                channelTypes.push('NW38');
+            }
+            if (!!searchOption.NW39 === true) {
+                channelTypes.push('NW39');
+            }
+            if (!!searchOption.NW40 === true) {
+                channelTypes.push('NW40');
+            }
             this.createInQuery(query, 'channelType', channelTypes);
         }
     }

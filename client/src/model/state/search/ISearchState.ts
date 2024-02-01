@@ -41,6 +41,26 @@ export interface BroadcastWave {
     NW18: BroadcastWaveState;
     NW19: BroadcastWaveState;
     NW20: BroadcastWaveState;
+    NW21: BroadcastWaveState;
+    NW22: BroadcastWaveState;
+    NW23: BroadcastWaveState;
+    NW24: BroadcastWaveState;
+    NW25: BroadcastWaveState;
+    NW26: BroadcastWaveState;
+    NW27: BroadcastWaveState;
+    NW28: BroadcastWaveState;
+    NW29: BroadcastWaveState;
+    NW30: BroadcastWaveState;
+    NW31: BroadcastWaveState;
+    NW32: BroadcastWaveState;
+    NW33: BroadcastWaveState;
+    NW34: BroadcastWaveState;
+    NW35: BroadcastWaveState;
+    NW36: BroadcastWaveState;
+    NW37: BroadcastWaveState;
+    NW38: BroadcastWaveState;
+    NW39: BroadcastWaveState;
+    NW40: BroadcastWaveState;
 }
 
 export interface SubGenreIndex {

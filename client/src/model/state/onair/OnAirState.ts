@@ -99,6 +99,67 @@ export default class OnAirState implements IOnAirState {
             if (config.broadcast.NW20 === true) {
                 this.tabs.push('NW20');
             }
+            if (config.broadcast.NW21 === true) {
+                this.tabs.push('NW21');
+            }
+            if (config.broadcast.NW22 === true) {
+                this.tabs.push('NW22');
+            }
+            if (config.broadcast.NW23 === true) {
+                this.tabs.push('NW23');
+            }
+            if (config.broadcast.NW24 === true) {
+                this.tabs.push('NW24');
+            }
+            if (config.broadcast.NW25 === true) {
+                this.tabs.push('NW25');
+            }
+            if (config.broadcast.NW26 === true) {
+                this.tabs.push('NW26');
+            }
+            if (config.broadcast.NW27 === true) {
+                this.tabs.push('NW27');
+            }
+            if (config.broadcast.NW28 === true) {
+                this.tabs.push('NW28');
+            }
+            if (config.broadcast.NW29 === true) {
+                this.tabs.push('NW29');
+            }
+            if (config.broadcast.NW30 === true) {
+                this.tabs.push('NW30');
+            }
+            if (config.broadcast.NW31 === true) {
+                this.tabs.push('NW31');
+            }
+            if (config.broadcast.NW32 === true) {
+                this.tabs.push('NW32');
+            }
+            if (config.broadcast.NW33 === true) {
+                this.tabs.push('NW33');
+            }
+            if (config.broadcast.NW34 === true) {
+                this.tabs.push('NW34');
+            }
+            if (config.broadcast.NW35 === true) {
+                this.tabs.push('NW35');
+            }
+            if (config.broadcast.NW36 === true) {
+                this.tabs.push('NW36');
+            }
+            if (config.broadcast.NW37 === true) {
+                this.tabs.push('NW37');
+            }
+            if (config.broadcast.NW38 === true) {
+                this.tabs.push('NW38');
+            }
+            if (config.broadcast.NW39 === true) {
+                this.tabs.push('NW39');
+            }
+            if (config.broadcast.NW40 === true) {
+                this.tabs.push('NW40');
+            }
+
         }
     }
 
