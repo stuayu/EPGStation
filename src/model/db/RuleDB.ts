@@ -250,6 +250,27 @@ export default class RuleDB implements IRuleDB {
             NW18: !!rule.searchOption.NW18,
             NW19: !!rule.searchOption.NW19,
             NW20: !!rule.searchOption.NW20,
+            NW21: !!rule.searchOption.NW11,
+            NW22: !!rule.searchOption.NW12,
+            NW23: !!rule.searchOption.NW13,
+            NW24: !!rule.searchOption.NW14,
+            NW25: !!rule.searchOption.NW15,
+            NW26: !!rule.searchOption.NW16,
+            NW27: !!rule.searchOption.NW17,
+            NW28: !!rule.searchOption.NW18,
+            NW29: !!rule.searchOption.NW19,
+            NW30: !!rule.searchOption.NW20,
+            NW31: !!rule.searchOption.NW11,
+            NW32: !!rule.searchOption.NW12,
+            NW33: !!rule.searchOption.NW13,
+            NW34: !!rule.searchOption.NW14,
+            NW35: !!rule.searchOption.NW15,
+            NW36: !!rule.searchOption.NW16,
+            NW37: !!rule.searchOption.NW17,
+            NW38: !!rule.searchOption.NW18,
+            NW39: !!rule.searchOption.NW19,
+            NW40: !!rule.searchOption.NW20,
+
             channelIds:
                 typeof rule.searchOption.channelIds === 'undefined'
                     ? null

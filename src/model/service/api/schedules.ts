@@ -37,6 +37,26 @@ export const get: Operation = async (req, res) => {
             NW18: req.query.NW18 as any,
             NW19: req.query.NW19 as any,
             NW20: req.query.NW20 as any,
+            NW21: req.query.NW21 as any,
+            NW22: req.query.NW22 as any,
+            NW23: req.query.NW23 as any,
+            NW24: req.query.NW24 as any,
+            NW25: req.query.NW25 as any,
+            NW26: req.query.NW26 as any,
+            NW27: req.query.NW27 as any,
+            NW28: req.query.NW28 as any,
+            NW29: req.query.NW29 as any,
+            NW30: req.query.NW30 as any,
+            NW31: req.query.NW31 as any,
+            NW32: req.query.NW32 as any,
+            NW33: req.query.NW33 as any,
+            NW34: req.query.NW34 as any,
+            NW35: req.query.NW35 as any,
+            NW36: req.query.NW36 as any,
+            NW37: req.query.NW37 as any,
+            NW38: req.query.NW38 as any,
+            NW39: req.query.NW39 as any,
+            NW40: req.query.NW40 as any,
         };
         if (typeof req.query.isFree === 'boolean') {
             option.isFree = req.query.isFree;
@@ -138,6 +158,66 @@ get.apiDoc = {
         },
         {
             $ref: '#/components/parameters/requiredNW20',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW21',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW22',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW23',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW24',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW25',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW26',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW27',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW28',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW29',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW30',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW31',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW32',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW33',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW34',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW35',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW36',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW37',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW38',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW39',
+        },
+        {
+            $ref: '#/components/parameters/requiredNW40',
         },
     ],
     responses: {

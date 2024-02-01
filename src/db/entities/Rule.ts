@@ -222,6 +222,106 @@ export default class Rule extends BaseEntity {
     public NW20: boolean = false; // NW
 
     @Column({
+        default: false,
+    })
+    public NW21: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW22: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW23: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW24: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW25: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW26: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW27: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW28: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW29: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW30: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW31: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW32: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW33: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW34: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW35: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW36: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW37: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW38: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW39: boolean = false; // NW
+
+    @Column({
+        default: false,
+    })
+    public NW40: boolean = false; // NW
+
+    @Column({
         type: 'text',
         nullable: true,
     })

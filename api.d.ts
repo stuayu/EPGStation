@@ -14,7 +14,11 @@ export type ThumbnailId = number;
 export type DropLogFileId = number;
 export type RecordedTagId = number;
 export type EncodeId = number;
-export type ChannelType = 'GR' | 'BS' | 'CS' | 'SKY' | 'NW1' | 'NW2' | 'NW3' | 'NW4' | 'NW5' | 'NW6' | 'NW7' | 'NW8' | 'NW9' | 'NW10' | 'NW11' | 'NW12' | 'NW13' | 'NW14' | 'NW15' | 'NW16' | 'NW17' | 'NW18' | 'NW19' | 'NW20';
+export type ChannelType = "GR" | "BS" | "CS" | "SKY" |
+    "NW1" | "NW2" | "NW3" | "NW4" | "NW5" | "NW6" | "NW7" | "NW8" | "NW9" | "NW10" |
+    "NW11" | "NW12" | "NW13" | "NW14" | "NW15" | "NW16" | "NW17" | "NW18" | "NW19" | "NW20" |
+    "NW21" | "NW22" | "NW23" | "NW24" | "NW25" | "NW26" | "NW27" | "NW28" | "NW29" | "NW30" |
+    "NW31" | "NW32" | "NW33" | "NW34" | "NW35" | "NW36" | "NW37" | "NW38" | "NW39" | "NW40"; // NWを追加
 export type ProgramGenreLv1 = number;
 export type ProgramGenreLv2 = number;
 export type ProgramVideoType = 'mpeg2' | 'h.264' | 'h.265';
@@ -592,6 +596,26 @@ export interface ScheduleOption {
     NW18: boolean;
     NW19: boolean;
     NW20: boolean;
+    NW21: boolean;
+    NW22: boolean;
+    NW23: boolean;
+    NW24: boolean;
+    NW25: boolean;
+    NW26: boolean;
+    NW27: boolean;
+    NW28: boolean;
+    NW29: boolean;
+    NW30: boolean;
+    NW31: boolean;
+    NW32: boolean;
+    NW33: boolean;
+    NW34: boolean;
+    NW35: boolean;
+    NW36: boolean;
+    NW37: boolean;
+    NW38: boolean;
+    NW39: boolean;
+    NW40: boolean;
 }
 
 /**

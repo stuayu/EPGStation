@@ -110,6 +110,66 @@ export default class ScheduleApiModel implements IScheduleApiModel {
         if (option.NW20 === true) {
             types.push('NW20');
         }
+        if (option.NW21 === true) {
+            types.push('NW21');
+        }
+        if (option.NW22 === true) {
+            types.push('NW22');
+        }
+        if (option.NW23 === true) {
+            types.push('NW23');
+        }
+        if (option.NW24 === true) {
+            types.push('NW24');
+        }
+        if (option.NW25 === true) {
+            types.push('NW25');
+        }
+        if (option.NW26 === true) {
+            types.push('NW26');
+        }
+        if (option.NW27 === true) {
+            types.push('NW27');
+        }
+        if (option.NW28 === true) {
+            types.push('NW28');
+        }
+        if (option.NW29 === true) {
+            types.push('NW29');
+        }
+        if (option.NW30 === true) {
+            types.push('NW30');
+        }
+        if (option.NW31 === true) {
+            types.push('NW31');
+        }
+        if (option.NW32 === true) {
+            types.push('NW32');
+        }
+        if (option.NW33 === true) {
+            types.push('NW33');
+        }
+        if (option.NW34 === true) {
+            types.push('NW34');
+        }
+        if (option.NW35 === true) {
+            types.push('NW35');
+        }
+        if (option.NW36 === true) {
+            types.push('NW36');
+        }
+        if (option.NW37 === true) {
+            types.push('NW37');
+        }
+        if (option.NW38 === true) {
+            types.push('NW38');
+        }
+        if (option.NW39 === true) {
+            types.push('NW39');
+        }
+        if (option.NW40 === true) {
+            types.push('NW40');
+        }
 
         if (types.length === 0) {
             throw new Error('GetScheduleTypesError');
