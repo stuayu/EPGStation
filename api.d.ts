@@ -214,6 +214,26 @@ export interface BroadcastStatus {
     NW18: boolean;
     NW19: boolean;
     NW20: boolean;
+    NW21: boolean;
+    NW22: boolean;
+    NW23: boolean;
+    NW24: boolean;
+    NW25: boolean;
+    NW26: boolean;
+    NW27: boolean;
+    NW28: boolean;
+    NW29: boolean;
+    NW30: boolean;
+    NW31: boolean;
+    NW32: boolean;
+    NW33: boolean;
+    NW34: boolean;
+    NW35: boolean;
+    NW36: boolean;
+    NW37: boolean;
+    NW38: boolean;
+    NW39: boolean;
+    NW40: boolean;
 }
 
 /**
@@ -319,6 +339,26 @@ export interface RuleSearchOption {
     NW18?: boolean; // NW
     NW19?: boolean; // NW
     NW20?: boolean; // NW
+    NW21?: boolean; // NW
+    NW22?: boolean; // NW
+    NW23?: boolean; // NW
+    NW24?: boolean; // NW
+    NW25?: boolean; // NW
+    NW26?: boolean; // NW
+    NW27?: boolean; // NW
+    NW28?: boolean; // NW
+    NW29?: boolean; // NW
+    NW30?: boolean; // NW
+    NW31?: boolean; // NW
+    NW32?: boolean; // NW
+    NW33?: boolean; // NW
+    NW34?: boolean; // NW
+    NW35?: boolean; // NW
+    NW36?: boolean; // NW
+    NW37?: boolean; // NW
+    NW38?: boolean; // NW
+    NW39?: boolean; // NW
+    NW40?: boolean; // NW
     channelIds?: ChannelId[]; // channels ids
     genres?: Genre[];
     times?: SearchTime[]; // 開始時間からの有効時間

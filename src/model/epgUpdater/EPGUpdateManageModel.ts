@@ -185,8 +185,8 @@ class EPGUpdateManageModel implements IEPGUpdateManageModel {
             }
             this.channelIndex[service.networkId][service.serviceId] = {
                 id: service.id,
-                type: service.channel.type,
-                channel: service.channel.channel,
+                type: service.channel[0].type,
+                channel: service.channel[0].channel,
             };
         }
     }
