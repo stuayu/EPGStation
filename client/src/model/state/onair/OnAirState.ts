@@ -159,7 +159,6 @@ export default class OnAirState implements IOnAirState {
             if (config.broadcast.NW40 === true) {
                 this.tabs.push('NW40');
             }
-
         }
     }
 
