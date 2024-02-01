@@ -275,6 +275,86 @@ export default class SearchState implements ISearchState {
                     isEnable: true,
                     isShow: true,
                 },
+                NW21: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW22: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW23: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW24: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW25: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW26: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW27: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW28: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW29: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW30: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW31: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW32: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW33: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW34: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW35: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW36: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW37: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW38: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW39: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                NW40: {
+                    isEnable: true,
+                    isShow: true,
+                },
             },
             genres: {},
             isShowSubgenres: true,
@@ -1078,7 +1158,6 @@ export default class SearchState implements ISearchState {
             this.searchOption.broadcastWave.NW38.isEnable = false;
             this.searchOption.broadcastWave.NW39.isEnable = false;
             this.searchOption.broadcastWave.NW40.isEnable = false;
-
         } else if (this.isDisabledAllBroadcasWave(this.searchOption.broadcastWave)) {
             this.searchOption.broadcastWave.GR.isEnable = true;
             this.searchOption.broadcastWave.BS.isEnable = true;
@@ -1124,7 +1203,6 @@ export default class SearchState implements ISearchState {
             this.searchOption.broadcastWave.NW38.isEnable = true;
             this.searchOption.broadcastWave.NW39.isEnable = true;
             this.searchOption.broadcastWave.NW40.isEnable = true;
-
         }
 
         // time range
@@ -1344,7 +1422,6 @@ export default class SearchState implements ISearchState {
         if (broadcas.NW40.isShow === true && broadcas.NW40.isEnable === true) {
             return false;
         }
-
 
         return true;
     }
@@ -1859,7 +1936,6 @@ export default class SearchState implements ISearchState {
         if (broadcas.NW40.isShow === true && broadcas.NW40.isEnable !== true) {
             return false;
         }
-
 
         return true;
     }

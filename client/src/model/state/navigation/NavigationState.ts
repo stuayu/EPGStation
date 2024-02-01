@@ -181,7 +181,6 @@ export default class NavigationState implements INavigationState {
                 types.push('NW40');
             }
 
-
             for (const type of types) {
                 newItems.push({
                     icon: 'mdi-television-guide',

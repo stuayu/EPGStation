@@ -6,6 +6,11 @@
 |master|[![build](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml/badge.svg?branch=master)](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml)|
 
 フォーク版の機能詳細は[doc/stuayu-fork.md](doc/stuayu-fork.md)をご覧ください．
+> [!NOTE]
+> こちらはMirakurunのdevブランチ版でしか動作しない変更を加えています。  
+> ご利用の際は十分注意して利用してください。
+
+
 ### インストールとビルド方法
 - Windows
   - npm run all-install && npm run build-win
