@@ -203,6 +203,66 @@ export default class GuideTimeSelector extends Vue {
             if (config.broadcast.NW20 === true) {
                 this.broadcastItems.push('NW20');
             }
+            if (config.broadcast.NW21 === true) {
+                this.broadcastItems.push('NW21');
+            }
+            if (config.broadcast.NW22 === true) {
+                this.broadcastItems.push('NW22');
+            }
+            if (config.broadcast.NW23 === true) {
+                this.broadcastItems.push('NW23');
+            }
+            if (config.broadcast.NW24 === true) {
+                this.broadcastItems.push('NW24');
+            }
+            if (config.broadcast.NW25 === true) {
+                this.broadcastItems.push('NW25');
+            }
+            if (config.broadcast.NW26 === true) {
+                this.broadcastItems.push('NW26');
+            }
+            if (config.broadcast.NW27 === true) {
+                this.broadcastItems.push('NW27');
+            }
+            if (config.broadcast.NW28 === true) {
+                this.broadcastItems.push('NW28');
+            }
+            if (config.broadcast.NW29 === true) {
+                this.broadcastItems.push('NW29');
+            }
+            if (config.broadcast.NW30 === true) {
+                this.broadcastItems.push('NW30');
+            }
+            if (config.broadcast.NW31 === true) {
+                this.broadcastItems.push('NW31');
+            }
+            if (config.broadcast.NW32 === true) {
+                this.broadcastItems.push('NW32');
+            }
+            if (config.broadcast.NW33 === true) {
+                this.broadcastItems.push('NW33');
+            }
+            if (config.broadcast.NW34 === true) {
+                this.broadcastItems.push('NW34');
+            }
+            if (config.broadcast.NW35 === true) {
+                this.broadcastItems.push('NW35');
+            }
+            if (config.broadcast.NW36 === true) {
+                this.broadcastItems.push('NW36');
+            }
+            if (config.broadcast.NW37 === true) {
+                this.broadcastItems.push('NW37');
+            }
+            if (config.broadcast.NW38 === true) {
+                this.broadcastItems.push('NW38');
+            }
+            if (config.broadcast.NW39 === true) {
+                this.broadcastItems.push('NW39');
+            }
+            if (config.broadcast.NW40 === true) {
+                this.broadcastItems.push('NW40');
+            }
         }
 
         // 日付
