@@ -56,9 +56,9 @@ export default class ChannelDB implements IChannelDB {
                 remoteControlKeyId:
                     typeof channel.remoteControlKeyId === 'undefined' ? null : channel.remoteControlKeyId,
                 hasLogoData: !!channel.hasLogoData,
-                channelTypeId: this.getChannelTypeId(channel.channel[0].type),
-                channelType: channel.channel[0].type,
-                channel: channel.channel[0].channel,
+                channelTypeId: this.getChannelTypeId(channel.channel.type),
+                channelType: channel.channel.type,
+                channel: channel.channel.channel,
                 type: typeof (channel as any)['type'] !== 'number' ? null : (channel as any)['type'],
             });
         }
