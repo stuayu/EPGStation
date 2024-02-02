@@ -771,6 +771,26 @@ export default class SearchState implements ISearchState {
             this.searchOption.broadcastWave.NW18.isEnable = !!searchOption.NW18;
             this.searchOption.broadcastWave.NW19.isEnable = !!searchOption.NW19;
             this.searchOption.broadcastWave.NW20.isEnable = !!searchOption.NW20;
+            this.searchOption.broadcastWave.NW21.isEnable = !!searchOption.NW21;
+            this.searchOption.broadcastWave.NW22.isEnable = !!searchOption.NW22;
+            this.searchOption.broadcastWave.NW23.isEnable = !!searchOption.NW23;
+            this.searchOption.broadcastWave.NW24.isEnable = !!searchOption.NW24;
+            this.searchOption.broadcastWave.NW25.isEnable = !!searchOption.NW25;
+            this.searchOption.broadcastWave.NW26.isEnable = !!searchOption.NW26;
+            this.searchOption.broadcastWave.NW27.isEnable = !!searchOption.NW27;
+            this.searchOption.broadcastWave.NW28.isEnable = !!searchOption.NW28;
+            this.searchOption.broadcastWave.NW29.isEnable = !!searchOption.NW29;
+            this.searchOption.broadcastWave.NW30.isEnable = !!searchOption.NW30;
+            this.searchOption.broadcastWave.NW31.isEnable = !!searchOption.NW31;
+            this.searchOption.broadcastWave.NW32.isEnable = !!searchOption.NW32;
+            this.searchOption.broadcastWave.NW33.isEnable = !!searchOption.NW33;
+            this.searchOption.broadcastWave.NW34.isEnable = !!searchOption.NW34;
+            this.searchOption.broadcastWave.NW35.isEnable = !!searchOption.NW35;
+            this.searchOption.broadcastWave.NW36.isEnable = !!searchOption.NW36;
+            this.searchOption.broadcastWave.NW37.isEnable = !!searchOption.NW37;
+            this.searchOption.broadcastWave.NW38.isEnable = !!searchOption.NW38;
+            this.searchOption.broadcastWave.NW39.isEnable = !!searchOption.NW39;
+            this.searchOption.broadcastWave.NW40.isEnable = !!searchOption.NW40;
         }
 
         // ジャンル

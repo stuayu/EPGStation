@@ -107,6 +107,26 @@ components:
                 - NW18
                 - NW19
                 - NW20
+                - NW21
+                - NW22
+                - NW23
+                - NW24
+                - NW25
+                - NW26
+                - NW27
+                - NW28
+                - NW29
+                - NW30
+                - NW31
+                - NW32
+                - NW33
+                - NW34
+                - NW35
+                - NW36
+                - NW37
+                - NW38
+                - NW39
+                - NW40
 
         ProgramGenreLv1:
             description: ジャンル
@@ -280,6 +300,46 @@ components:
                         NW19:
                             type: boolean
                         NW20:
+                            type: boolean
+                        NW21:
+                            type: boolean
+                        NW22:
+                            type: boolean
+                        NW23:
+                            type: boolean
+                        NW24:
+                            type: boolean
+                        NW25:
+                            type: boolean
+                        NW26:
+                            type: boolean
+                        NW27:
+                            type: boolean
+                        NW28:
+                            type: boolean
+                        NW29:
+                            type: boolean
+                        NW30:
+                            type: boolean
+                        NW31:
+                            type: boolean
+                        NW32:
+                            type: boolean
+                        NW33:
+                            type: boolean
+                        NW34:
+                            type: boolean
+                        NW35:
+                            type: boolean
+                        NW36:
+                            type: boolean
+                        NW37:
+                            type: boolean
+                        NW38:
+                            type: boolean
+                        NW39:
+                            type: boolean
+                        NW40:
                             type: boolean
                 recorded:
                     description: 指定可能な録画ディレクトリ名
@@ -741,6 +801,66 @@ components:
                     description: NW
                     type: boolean
                 NW20:
+                    description: NW
+                    type: boolean
+                NW21:
+                    description: NW
+                    type: boolean
+                NW22:
+                    description: NW
+                    type: boolean
+                NW23:
+                    description: NW
+                    type: boolean
+                NW24:
+                    description: NW
+                    type: boolean
+                NW25:
+                    description: NW
+                    type: boolean
+                NW26:
+                    description: NW
+                    type: boolean
+                NW27:
+                    description: NW
+                    type: boolean
+                NW28:
+                    description: NW
+                    type: boolean
+                NW29:
+                    description: NW
+                    type: boolean
+                NW30:
+                    description: NW
+                    type: boolean
+                NW31:
+                    description: NW
+                    type: boolean
+                NW32:
+                    description: NW
+                    type: boolean
+                NW33:
+                    description: NW
+                    type: boolean
+                NW34:
+                    description: NW
+                    type: boolean
+                NW35:
+                    description: NW
+                    type: boolean
+                NW36:
+                    description: NW
+                    type: boolean
+                NW37:
+                    description: NW
+                    type: boolean
+                NW38:
+                    description: NW
+                    type: boolean
+                NW39:
+                    description: NW
+                    type: boolean
+                NW40:
                     description: NW
                     type: boolean
                 channelIds:
@@ -1995,6 +2115,146 @@ components:
             description: NW
             in: query
             name: NW20
+            required: true
+            schema:
+                type: boolean
+        requiredNW21:
+            description: NW
+            in: query
+            name: NW21
+            required: true
+            schema:
+                type: boolean
+        requiredNW22:
+            description: NW
+            in: query
+            name: NW22
+            required: true
+            schema:
+                type: boolean
+        requiredNW23:
+            description: NW
+            in: query
+            name: NW23
+            required: true
+            schema:
+                type: boolean
+        requiredNW24:
+            description: NW
+            in: query
+            name: NW24
+            required: true
+            schema:
+                type: boolean
+        requiredNW25:
+            description: NW
+            in: query
+            name: NW25
+            required: true
+            schema:
+                type: boolean
+        requiredNW26:
+            description: NW
+            in: query
+            name: NW26
+            required: true
+            schema:
+                type: boolean
+        requiredNW27:
+            description: NW
+            in: query
+            name: NW27
+            required: true
+            schema:
+                type: boolean
+        requiredNW28:
+            description: NW
+            in: query
+            name: NW28
+            required: true
+            schema:
+                type: boolean
+        requiredNW29:
+            description: NW
+            in: query
+            name: NW29
+            required: true
+            schema:
+                type: boolean
+        requiredNW30:
+            description: NW
+            in: query
+            name: NW30
+            required: true
+            schema:
+                type: boolean
+        requiredNW31:
+            description: NW
+            in: query
+            name: NW31
+            required: true
+            schema:
+                type: boolean
+        requiredNW32:
+            description: NW
+            in: query
+            name: NW32
+            required: true
+            schema:
+                type: boolean
+        requiredNW33:
+            description: NW
+            in: query
+            name: NW33
+            required: true
+            schema:
+                type: boolean
+        requiredNW34:
+            description: NW
+            in: query
+            name: NW34
+            required: true
+            schema:
+                type: boolean
+        requiredNW35:
+            description: NW
+            in: query
+            name: NW35
+            required: true
+            schema:
+                type: boolean
+        requiredNW36:
+            description: NW
+            in: query
+            name: NW36
+            required: true
+            schema:
+                type: boolean
+        requiredNW37:
+            description: NW
+            in: query
+            name: NW37
+            required: true
+            schema:
+                type: boolean
+        requiredNW38:
+            description: NW
+            in: query
+            name: NW38
+            required: true
+            schema:
+                type: boolean
+        requiredNW39:
+            description: NW
+            in: query
+            name: NW39
+            required: true
+            schema:
+                type: boolean
+        requiredNW40:
+            description: NW
+            in: query
+            name: NW40
             required: true
             schema:
                 type: boolean
