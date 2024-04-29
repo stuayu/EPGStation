@@ -14,5 +14,5 @@ export default interface IRecordingUtilModel {
     getRecPath(reserve: Reserve, isEnableTmp: boolean): Promise<RecFilePathInfo>;
     movingFromTmp(reserve: Reserve, videoFileId: apid.VideoFileId): Promise<string>;
     updateVideoFileSize(videoFileId: apid.VideoFileId): Promise<void>;
-    formatFilePathString(format: string | null | undefined, src: Recorded | Reserve): Promise<string>;
+    formatFilePathString(format: string, src: Recorded | Reserve): Promise<string>;
 }

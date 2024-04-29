@@ -289,10 +289,7 @@ class RecordingUtilModel implements IRecordingUtilModel {
         }
     }
 
-    public async formatFilePathString(format: string | null | undefined, src: Recorded | Reserve): Promise<string> {
-        if (format == null) {
-            return '';
-        }
+    public async formatFilePathString(format: string, src: Recorded | Reserve): Promise<string> {
         let id: string;
         let programName: string = src.name;
         let channelType: string = 'NULL';
