@@ -296,7 +296,7 @@ class RecordingUtilModel implements IRecordingUtilModel {
         let channel: string = 'NULL';
         if (src instanceof Reserve) {
             // Reserve
-            id = src.id.toString();
+            id = src.id.toString(10);
             channelType = src.channelType;
             channel = src.channel;
             // 時刻指定予約時の番組名取得
@@ -307,7 +307,7 @@ class RecordingUtilModel implements IRecordingUtilModel {
             }
         } else {
             // Recorded
-            id = src.reserveId?.toString() || 'NULL';
+            id = src.reserveId?.toString(10) || 'NULL';
         }
 
         // 局名
