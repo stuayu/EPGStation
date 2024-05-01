@@ -30,7 +30,6 @@ class EPGUpdater implements IEPGUpdater {
         this.updateManage = updateManage;
 
         this.updateManage.on(EPGUpdateEvent.PROGRAM_UPDATED, () => {
-            this.lastUpdatedTime = new Date().getTime();
             // NOTE this.config.epgUpdateIntervalTime の周期で予約情報を更新させるため無効化
             // this.notify();
         });
