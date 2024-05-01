@@ -69,21 +69,6 @@ class EPGUpdater implements IEPGUpdater {
         // event streamを開始
         this.startEventStreamAnalysis();
 
-        // 溜め込んだservice queueを設定ファイルで指定されたサイクルでDBへ保存
-        setInterval(async () => {
-            //event stream が死んでいたら何もしない
-            if (this.isEventStreamAlive === false) {
-                return;
-            }
-
-            try {
-                await this.updateManage.saveService();
-            } catch (err: any) {
-                this.log.system.error('service update error');
-                this.log.system.error(err);
-            }
-        }, updateInterval);
-
         // 放送中や放送開始時刻が間近の番組は短いサイクルでDBへ保存する
         // NOTE: DB負荷などを考慮しEvent受信と同時のDB反映は見合わせる
         setInterval(async () => {
@@ -94,9 +79,22 @@ class EPGUpdater implements IEPGUpdater {
 
             const now = new Date().getTime();
             try {
-                await this.updateManage.saveProgram(now + 5 * 60 * 1000);
-                if (this.lastUpdatedTime + updateInterval <= now) {
-                    await this.updateManage.saveProgram();
+                if (this.lastUpdatedTime + updateInterval > now) {
+                    // updateInterval 分だけ経過するまでは直近の5分間のデータのみ更新する
+                    await this.updateManage.saveProgram(now + 5 * 60 * 1000).catch(e => {
+                        this.log.system.error('program update error');
+                        throw e;
+                    });
+                } else {
+                    // updateInterval 分だけ経過したのですべてのデータを更新する
+                    await this.updateManage.saveService().catch(e => {
+                        this.log.system.error('service update error');
+                        throw e;
+                    });
+                    await this.updateManage.saveProgram().catch(e => {
+                        this.log.system.error('program update error');
+                        throw e;
+                    });
                     this.lastUpdatedTime = now;
                 }
             } catch (err: any) {
