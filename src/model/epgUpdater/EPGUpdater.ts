@@ -71,40 +71,46 @@ class EPGUpdater implements IEPGUpdater {
 
         // 溜め込んだservice queueを設定ファイルで指定されたサイクルでDBへ保存
         setInterval(async () => {
-            if (this.isEventStreamAlive === true) {
-                try {
-                    await this.updateManage.saveService();
-                } catch (err: any) {
-                    this.log.system.error('service update error');
-                    this.log.system.error(err);
-                }
+            //event stream が死んでいたら何もしない
+            if (this.isEventStreamAlive === false) {
+                return;
+            }
+
+            try {
+                await this.updateManage.saveService();
+            } catch (err: any) {
+                this.log.system.error('service update error');
+                this.log.system.error(err);
             }
         }, updateInterval);
 
         // 放送中や放送開始時刻が間近の番組は短いサイクルでDBへ保存する
         // NOTE: DB負荷などを考慮しEvent受信と同時のDB反映は見合わせる
         setInterval(async () => {
-            if (this.isEventStreamAlive === true) {
-                const now = new Date().getTime();
-                try {
-                    await this.updateManage.saveProgram(now + 5 * 60 * 1000);
-                    if (this.lastUpdatedTime + updateInterval <= now) {
-                        await this.updateManage.saveProgram();
-                        this.lastUpdatedTime = now;
-                    }
-                } catch (err: any) {
-                    this.log.system.error('EPG update error');
-                    this.log.system.error(err);
-                }
+            //event stream が死んでいたら何もしない
+            if (this.isEventStreamAlive === false) {
+                return;
+            }
 
-                if (this.lastDeletedTime + updateInterval <= now) {
-                    // 古い番組情報を削除
-                    await this.updateManage.deleteOldPrograms().catch(err => {
-                        this.log.system.error('delete old programs error');
-                        this.log.system.error(err);
-                    });
-                    this.lastDeletedTime = now;
+            const now = new Date().getTime();
+            try {
+                await this.updateManage.saveProgram(now + 5 * 60 * 1000);
+                if (this.lastUpdatedTime + updateInterval <= now) {
+                    await this.updateManage.saveProgram();
+                    this.lastUpdatedTime = now;
                 }
+            } catch (err: any) {
+                this.log.system.error('EPG update error');
+                this.log.system.error(err);
+            }
+
+            if (this.lastDeletedTime + updateInterval <= now) {
+                // 古い番組情報を削除
+                await this.updateManage.deleteOldPrograms().catch(err => {
+                    this.log.system.error('delete old programs error');
+                    this.log.system.error(err);
+                });
+                this.lastDeletedTime = now;
             }
         }, 10 * 1000);
     }
