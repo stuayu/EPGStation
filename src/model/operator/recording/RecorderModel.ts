@@ -791,8 +791,7 @@ class RecorderModel implements IRecorderModel {
         } else if (this.isRecording === true) {
             await this._cancel();
             this.isNeedDeleteReservation = false;
-        }
-        else {
+        } else {
             await this._cancel();
         }
     }
