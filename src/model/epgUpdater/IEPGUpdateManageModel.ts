@@ -39,6 +39,13 @@ export interface ServiceEvent extends mapid.Event {
     data: mapid.Service;
 }
 
+export namespace EPGUpdateEvent {
+    export const STREAM_STARTED = 'event stream started';
+    export const STREAM_ABORTED = 'event stream aborted';
+    export const PROGRAM_UPDATED = 'program updated';
+    export const SERVICE_UPDATED = 'service updated';
+}
+
 export default interface IEPGUpdateManageModel extends EventEmitter {
     updateAll(): Promise<void>;
     updateChannels(): Promise<void>;

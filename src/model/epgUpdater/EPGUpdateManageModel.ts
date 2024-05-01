@@ -17,6 +17,7 @@ import IEPGUpdateManageModel, {
     RemoveEvent,
     RedefineEvent,
     ServiceEvent,
+    EPGUpdateEvent,
 } from './IEPGUpdateManageModel';
 
 @injectable()
@@ -208,7 +209,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
             throw err;
         });
 
-        this.emit('event stream started');
+        this.emit(EPGUpdateEvent.STREAM_STARTED);
 
         return new Promise<void>(async (_resolve: () => void, reject: (err: Error) => void) => {
             // エラー処理
@@ -216,7 +217,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                 this.log.system.error('event stream error');
                 this.log.system.error(err);
                 this.stopStream(eventStream);
-                this.emit('event stream aborted');
+                this.emit(EPGUpdateEvent.STREAM_ABORTED);
                 reject(err);
             });
 
@@ -273,7 +274,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                     }
                     this.log.system.error(err);
                     this.stopStream(eventStream);
-                    this.emit('event stream aborted');
+                    this.emit(EPGUpdateEvent.STREAM_ABORTED);
                     reject(new Error('EventStreamParseError'));
                 }
                 tmp = Buffer.from([]);
@@ -389,7 +390,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                     });
                     this.log.system.info('update program db done');
 
-                    this.emit('program updated');
+                    this.emit(EPGUpdateEvent.PROGRAM_UPDATED);
                 }
             } else {
                 // 整理した結果のEventをキューへ戻す
@@ -492,7 +493,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
         this.updateChannelIndex(updateValues);
 
         this.log.system.info('update channel db done');
-        this.emit('service updated');
+        this.emit(EPGUpdateEvent.SERVICE_UPDATED);
     }
 }
 

@@ -3,7 +3,7 @@ import IConfigFile from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
-import IEPGUpdateManageModel from './IEPGUpdateManageModel';
+import IEPGUpdateManageModel, { EPGUpdateEvent } from './IEPGUpdateManageModel';
 import IEPGUpdater from './IEPGUpdater';
 import Util from '../../util/Util';
 
@@ -27,16 +27,16 @@ class EPGUpdater implements IEPGUpdater {
         this.config = configuration.getConfig();
         this.updateManage = updateManage;
 
-        this.updateManage.on('program updated', () => {
+        this.updateManage.on(EPGUpdateEvent.PROGRAM_UPDATED, () => {
             this.lastUpdatedTime = new Date().getTime();
             this.notify();
         });
 
-        this.updateManage.on('service updated', () => {
+        this.updateManage.on(EPGUpdateEvent.SERVICE_UPDATED, () => {
             this.notify();
         });
 
-        this.updateManage.on('event stream started', async () => {
+        this.updateManage.on(EPGUpdateEvent.STREAM_STARTED, async () => {
             this.log.system.info('event stream started');
             this.retryCount = 0;
             try {
@@ -50,7 +50,7 @@ class EPGUpdater implements IEPGUpdater {
             this.isEventStreamAlive = true;
         });
 
-        this.updateManage.on('event stream aborted', () => {
+        this.updateManage.on(EPGUpdateEvent.STREAM_ABORTED, () => {
             this.log.system.info('has disconnected from the mirakurun');
             this.isEventStreamAlive = false;
         });
