@@ -118,8 +118,12 @@ class EPGUpdater implements IEPGUpdater {
                 await this.updateManage.start();
             } catch (err: any) {
                 this.log.system.error('destroy event stream');
-                this.retryCount++;
-                const retryInterval = Math.min(this.retryCount * 5 * 1000, 60 * 1000);
+
+                // スリープ時間が 60 秒を超えないようにチェック
+                if (this.retryCount < 12) {
+                    this.retryCount++;
+                }
+                const retryInterval = this.retryCount * 5 * 1000;
                 await Util.sleep(retryInterval);
             }
         }
