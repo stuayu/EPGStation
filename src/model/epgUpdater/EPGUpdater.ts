@@ -18,6 +18,8 @@ class EPGUpdater implements IEPGUpdater {
     private lastDeletedTime: number = 0;
     private retryCount: number = 0;
 
+    private static readonly EVENT_STREAM_REONNECTION_MAX = 12;
+
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
         @inject('IConfiguration') configuration: IConfiguration,
@@ -120,7 +122,7 @@ class EPGUpdater implements IEPGUpdater {
                 this.log.system.error('destroy event stream');
 
                 // スリープ時間が 60 秒を超えないようにチェック
-                if (this.retryCount < 12) {
+                if (this.retryCount < EPGUpdater.EVENT_STREAM_REONNECTION_MAX) {
                     this.retryCount++;
                 }
                 const retryInterval = this.retryCount * 5 * 1000;
