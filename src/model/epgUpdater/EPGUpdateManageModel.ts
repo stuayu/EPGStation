@@ -325,7 +325,9 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
             const updateIndex: { [programId: number]: ProgramBaseEvent } = {}; // 追加用索引
             let needToSave = false;
 
-            if (timeThreshold === 0) needToSave = true;
+            if (timeThreshold === 0) {
+                needToSave = true;
+            }
 
             // eventを時系列を意識して整理
             for (const event of programs) {
@@ -333,7 +335,10 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                     const program = (<UpdateEvent>event).data;
                     if (typeof program.name !== 'undefined' && this.isMainProgram(program) === true) {
                         updateIndex[program.id] = event;
-                        if (program.startAt < timeThreshold) needToSave = true;
+                        if (program.startAt < timeThreshold) {
+                            needToSave = true;
+                        }
+
                         if (program.id in deleteIndex) {
                             // このEvent以前に受信した"remove" or "redefine" Eventは破棄する
                             delete deleteIndex[program.id];
