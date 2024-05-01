@@ -31,11 +31,13 @@ class EPGUpdater implements IEPGUpdater {
 
         this.updateManage.on(EPGUpdateEvent.PROGRAM_UPDATED, () => {
             this.lastUpdatedTime = new Date().getTime();
-            this.notify();
+            // NOTE this.config.epgUpdateIntervalTime の周期で予約情報を更新させるため無効化
+            // this.notify();
         });
 
         this.updateManage.on(EPGUpdateEvent.SERVICE_UPDATED, () => {
-            this.notify();
+            // NOTE this.config.epgUpdateIntervalTime の周期で予約情報を更新させるため無効化
+            // this.notify();
         });
 
         this.updateManage.on(EPGUpdateEvent.STREAM_STARTED, async () => {
@@ -49,6 +51,7 @@ class EPGUpdater implements IEPGUpdater {
             }
             // updateAllが完了して以降、queueフラッシュ処理を有効にするために
             // この位置でisEventStreamAliveをtrueにする
+            this.lastUpdatedTime = new Date().getTime();
             this.isEventStreamAlive = true;
         });
 
@@ -96,6 +99,9 @@ class EPGUpdater implements IEPGUpdater {
                         throw e;
                     });
                     this.lastUpdatedTime = now;
+
+                    // NOTE this.config.epgUpdateIntervalTime の周期で予約情報を更新させるため追加
+                    this.notify();
                 }
             } catch (err: any) {
                 this.log.system.error('EPG update error');
