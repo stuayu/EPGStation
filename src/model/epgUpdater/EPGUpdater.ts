@@ -74,32 +74,34 @@ class EPGUpdater implements IEPGUpdater {
         // 放送中や放送開始時刻が間近の番組は短いサイクルでDBへ保存する
         // NOTE: DB負荷などを考慮しEvent受信と同時のDB反映は見合わせる
         setInterval(async () => {
-            //event stream が死んでいたら何もしない
-            if (this.isEventStreamAlive === false) {
-                return;
-            }
-
             const now = new Date().getTime();
-            try {
-                if (this.lastUpdatedTime + updateInterval > now) {
-                    // updateInterval 分だけ経過するまでは直近の5分間のデータのみ更新する
-                    await this.updateManage.saveProgram(now + 5 * 60 * 1000).catch(e => {
-                        this.log.system.error('program update error');
-                        throw e;
-                    });
-                } else {
-                    // updateInterval 分だけ経過したのですべてのデータを更新する
-                    await this.updateManage.saveService().catch(e => {
-                        this.log.system.error('service update error');
-                        throw e;
-                    });
-                    await this.updateManage.saveProgram().catch(e => {
-                        this.log.system.error('program update error');
-                        throw e;
-                    });
-                    this.lastUpdatedTime = now;
 
-                    // NOTE this.config.epgUpdateIntervalTime の周期で予約情報を更新させるため追加
+            try {
+                if (this.isEventStreamAlive === true) {
+                    if (this.lastUpdatedTime + updateInterval > now) {
+                        // updateInterval 分だけ経過するまでは直近の5分間のデータのみ更新する
+                        await this.updateManage.saveProgram(now + 5 * 60 * 1000).catch(e => {
+                            this.log.system.error('program update error');
+                            throw e;
+                        });
+                    } else {
+                        // updateInterval 分だけ経過したのですべてのデータを更新する
+                        await this.updateManage.saveService().catch(e => {
+                            this.log.system.error('service update error');
+                            throw e;
+                        });
+                        await this.updateManage.saveProgram().catch(e => {
+                            this.log.system.error('program update error');
+                            throw e;
+                        });
+                        this.lastUpdatedTime = now;
+
+                        // NOTE this.config.epgUpdateIntervalTime の周期で予約情報を更新させるため追加
+                        this.notify();
+                    }
+                } else if (this.isEventStreamAlive === false && this.lastUpdatedTime + updateInterval * 1.5 <= now) {
+                    // NOTE mirakc 暫定対応。本来は Server-Sent Events への対応が必要
+                    await this.updateManage.updateAll();
                     this.notify();
                 }
             } catch (err: any) {
