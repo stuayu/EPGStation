@@ -196,8 +196,8 @@ class EncodeManageModel implements IEncodeManageModel {
                     outputFilePath === null || fileName === null
                         ? null
                         : typeof encodeOption.directory === 'undefined'
-                        ? fileName
-                        : path.join(encodeOption.directory, fileName),
+                          ? fileName
+                          : path.join(encodeOption.directory, fileName),
                 fullOutputPath: outputFilePath,
                 mode: encodeOption.mode,
                 removeOriginal: encodeOption.removeOriginal,
