@@ -2,6 +2,7 @@
 FROM --platform=$BUILDPLATFORM node:18-alpine AS client-builder
 COPY client/package*.json /app/client/
 WORKDIR /app/client
+RUN npm config set fetch-retries 5
 RUN npm install --no-save --loglevel=info
 COPY . /app/
 RUN npm run build --loglevel=info
@@ -11,6 +12,7 @@ RUN apk add --no-cache g++ make pkgconf python3
 WORKDIR /app
 COPY package*.json /app/
 ENV DOCKER="YES"
+RUN npm config set fetch-retries 5
 RUN npm install --no-save --loglevel=info
 COPY . .
 RUN rm -rf client
