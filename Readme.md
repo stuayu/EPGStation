@@ -41,8 +41,8 @@ PC からの閲覧でもモダンな UI で操作可能です
 ## 動作環境
 
 -   Linux / macOS / ~~Windows~~
--   [Node.js](http://nodejs.org/) : ^14.6.0 || ^16.6.1 || ^18.16.1
--   [Mirakurun](https://github.com/Chinachu/Mirakurun) : ^3.2.0
+-   [Node.js](http://nodejs.org/) : ^18.16.1
+-   [Mirakurun](https://github.com/Chinachu/Mirakurun) : ^3.8.0 or [mirakc](https://github.com/mirakc/mirakc) : ^3.1.10
 -   いずれかのデータベース
     -   [SQLite3](https://www.sqlite.org/)（設定不要だが検索機能に制限あり）[標準]
         -   [SQLite3 使用時の正規表現での検索の有効化について](doc/sqlite3-regexp.md)
