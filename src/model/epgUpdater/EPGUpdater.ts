@@ -3,7 +3,7 @@ import IConfigFile from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
-import IEPGUpdateManageModel, { EPGUpdateEvent } from './IEPGUpdateManageModel';
+import IEPGUpdateManageModel, { EPGUpdateEvent, TunerServerType } from './IEPGUpdateManageModel';
 import IEPGUpdater from './IEPGUpdater';
 import Util from '../../util/Util';
 
@@ -50,7 +50,10 @@ class EPGUpdater implements IEPGUpdater {
             }
             // updateAllが完了して以降、queueフラッシュ処理を有効にするために
             // この位置でisEventStreamAliveをtrueにする
-            this.lastUpdatedTime = new Date().getTime();
+            const now = new Date().getTime();
+            this.lastUpdatedTime = now;
+            // updateAll 後は全件数削除が行われるため削除時間も更新する
+            this.lastDeletedTime = now;
             this.isEventStreamAlive = true;
         });
 
@@ -68,6 +71,9 @@ class EPGUpdater implements IEPGUpdater {
 
         const updateInterval = this.config.epgUpdateIntervalTime * 60 * 1000;
 
+        // チューナーサーバの種別を確認
+        const tunerServerType = await this.updateManage.checkTunerServerType();
+
         // event streamを開始
         this.startEventStreamAnalysis();
 
@@ -78,30 +84,19 @@ class EPGUpdater implements IEPGUpdater {
 
             try {
                 if (this.isEventStreamAlive === true) {
-                    if (this.lastUpdatedTime + updateInterval > now) {
-                        // updateInterval 分だけ経過するまでは直近の5分間のデータのみ更新する
-                        await this.updateManage.saveProgram(now + 5 * 60 * 1000).catch(e => {
-                            this.log.system.error('program update error');
-                            throw e;
-                        });
+                    if (tunerServerType === TunerServerType.mirakurun) {
+                        // mirakurun の場合
+                        this.updateMirakurunEventStream(updateInterval, now);
                     } else {
-                        // updateInterval 分だけ経過したのですべてのデータを更新する
-                        await this.updateManage.saveService().catch(e => {
-                            this.log.system.error('service update error');
-                            throw e;
-                        });
-                        await this.updateManage.saveProgram().catch(e => {
-                            this.log.system.error('program update error');
-                            throw e;
-                        });
-                        this.lastUpdatedTime = now;
-
-                        // NOTE this.config.epgUpdateIntervalTime の周期で予約情報を更新させるため追加
-                        this.notify();
+                        // mirakc の場合
+                        this.updateMirakcEvent(updateInterval, now);
                     }
                 } else if (this.isEventStreamAlive === false && this.lastUpdatedTime + updateInterval * 1.5 <= now) {
                     // NOTE mirakc 暫定対応。本来は Server-Sent Events への対応が必要
                     await this.updateManage.updateAll();
+                    this.lastUpdatedTime = now;
+                    // updateAll 後は全件数削除が行われるため削除時間も更新する
+                    this.lastDeletedTime = now;
                     this.notify();
                 }
             } catch (err: any) {
@@ -139,6 +134,60 @@ class EPGUpdater implements IEPGUpdater {
                 const retryInterval = this.retryCount * 5 * 1000;
                 await Util.sleep(retryInterval);
             }
+        }
+    }
+
+    /**
+     * mirakurun の event stream の解析結果を保存する
+     * @param updateInterval: number 更新間隔 (ミリ秒)
+     * @param now: 現在時刻 エポックミリ秒
+     */
+    private async updateMirakurunEventStream(updateInterval: number, now: number): Promise<void> {
+        if (this.lastUpdatedTime + updateInterval > now) {
+            // updateInterval 分だけ経過するまでは直近の5分間のデータのみ更新する
+            await this.updateManage.saveProgram(now + 5 * 60 * 1000).catch(e => {
+                this.log.system.error('program update error');
+                throw e;
+            });
+        } else {
+            // updateInterval 分だけ経過したのですべてのデータを更新する
+            await this.updateManage.saveService().catch(e => {
+                this.log.system.error('service update error');
+                throw e;
+            });
+            await this.updateManage.saveProgram().catch(e => {
+                this.log.system.error('program update error');
+                throw e;
+            });
+            this.lastUpdatedTime = now;
+
+            // NOTE this.config.epgUpdateIntervalTime の周期で予約情報を更新させるため追加
+            this.notify();
+        }
+    }
+
+    /**
+     * mirakc の /events の解析結果を元に番組情報を更新する
+     * @param updateInterval
+     * @param now
+     */
+    private async updateMirakcEvent(updateInterval: number, now: number): Promise<void> {
+        // 放映中のものはすぐに更新する
+        await this.updateManage.saveOnAirServices().catch(e => {
+            this.log.system.error('failed to save onair services');
+            throw e;
+        });
+
+        // 放映中以外の者は updateInterval の間隔で更新する
+        if (this.lastUpdatedTime + updateInterval <= now) {
+            this.updateManage.saveUpdateServices().catch(e => {
+                this.log.system.error('failed to save update services');
+                throw e;
+            });
+            this.lastUpdatedTime = now;
+
+            // NOTE this.config.epgUpdateIntervalTime の周期で予約情報を更新させるため追加
+            this.notify();
         }
     }
 

@@ -46,13 +46,24 @@ export namespace EPGUpdateEvent {
     export const SERVICE_UPDATED = 'service updated';
 }
 
+/**
+ * チューナーサーバの種別
+ */
+export enum TunerServerType {
+    mirakurun,
+    mirakc,
+}
+
 export default interface IEPGUpdateManageModel extends EventEmitter {
     updateAll(): Promise<void>;
     updateChannels(): Promise<void>;
+    checkTunerServerType(): Promise<TunerServerType>;
     start(): Promise<void>;
     getProgramQueueSize(): number;
     getServiceQueueSize(): number;
     saveProgram(timeThreshold?: number): Promise<void>;
     deleteOldPrograms(): Promise<void>;
     saveService(): Promise<void>;
+    saveOnAirServices(): Promise<void>;
+    saveUpdateServices(): Promise<void>;
 }

@@ -1,4 +1,5 @@
 /* eslint-disable no-case-declarations */
+import EventSource from 'eventsource';
 import { EventEmitter } from 'events';
 import { IncomingMessage } from 'http';
 import { inject, injectable } from 'inversify';
@@ -18,6 +19,7 @@ import IEPGUpdateManageModel, {
     RedefineEvent,
     ServiceEvent,
     EPGUpdateEvent,
+    TunerServerType,
 } from './IEPGUpdateManageModel';
 
 @injectable()
@@ -36,6 +38,12 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
     // 除外放送局索引情報
     private excludeChannelIndex: { [channelId: number]: boolean } = {};
     private excludeSidIndex: { [serviceId: number]: boolean } = {};
+
+    // mirakurun or mirakc の識別
+    private tunerServerType: TunerServerType | null = null;
+    private updatedOnAirServiceIds: { [serviceId: mapid.ServiceId]: boolean } = {};
+    private updateServiceIds: { [serviceId: mapid.ServiceId]: boolean } = {};
+    private mirakurunPath: string;
 
     constructor(
         @inject('ILoggerModel') loggerModel: ILoggerModel,
@@ -64,6 +72,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                 this.excludeSidIndex[c] = true;
             }
         }
+        this.mirakurunPath = config.mirakurunPath;
     }
 
     /**
@@ -197,9 +206,46 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
     }
 
     /**
-     * mirakurun の event stream の受信を開始する
+     * チューナーサーバの種別のチェック
+     * @returns Promise<TunerServerType>
+     */
+    public async checkTunerServerType(): Promise<TunerServerType> {
+        if (this.tunerServerType !== null) {
+            return this.tunerServerType;
+        }
+
+        // getServerConfig() の実行の可否で判定を行う
+        try {
+            await this.mirakurunClient.getServerConfig();
+            this.tunerServerType = TunerServerType.mirakurun;
+        } catch (err) {
+            this.tunerServerType = TunerServerType.mirakc;
+        }
+
+        return this.tunerServerType;
+    }
+
+    /**
+     * event stream の解析を開始する
      */
     public async start(): Promise<void> {
+        if (this.tunerServerType === null) {
+            await this.checkTunerServerType();
+        }
+
+        if (this.tunerServerType === TunerServerType.mirakurun) {
+            // mirakurun event stream 解析開始
+            return this.startAnalayzingMirakurunEvents();
+        } else {
+            // mirakc イベント通知解析開始
+            return this.startAnalyzingMirakcEvents();
+        }
+    }
+
+    /**
+     * mirakurun の event stream の解析を開始する
+     */
+    private async startAnalayzingMirakurunEvents(): Promise<void> {
         this.log.system.info('start get stream');
 
         const eventStream = await this.mirakurunClient.getEventsStream().catch(err => {
@@ -279,6 +325,88 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                 }
                 tmp = Buffer.from([]);
             });
+        });
+    }
+
+    /**
+     * mirakc の /events の解析を開始する
+     */
+    private async startAnalyzingMirakcEvents(): Promise<void> {
+        this.log.system.info('start analyzing events');
+
+        let sse: EventSource;
+        try {
+            sse = new EventSource(new URL('/events', this.mirakurunPath).href);
+        } catch (err) {
+            this.log.system.error('failed to analyzing events');
+            this.log.system.error(err);
+            throw err;
+        }
+
+        // open 時の処理
+        let isEventsOpend = false;
+        sse.onopen = () => {
+            isEventsOpend = true;
+            this.emit(EPGUpdateEvent.STREAM_STARTED);
+        };
+
+        // 放映中プログラムの更新
+        sse.addEventListener('onair.program-changed', ev => {
+            const { serviceId } = JSON.parse(ev.data as string);
+            this.updatedOnAirServiceIds[serviceId] = true;
+            this.log.system.debug(`mirakc update onair services: ${serviceId}`);
+        });
+
+        // プログラム更新
+        let isFirst = true;
+        let startTime = 0;
+        sse.addEventListener('epg.programs-updated', ev => {
+            const now = new Date().getTime();
+            if (isFirst === true) {
+                isFirst = false;
+                startTime = now;
+            }
+
+            // 接続時に送信される更新情報を無視するため、開始1秒間は処理しない
+            if (now - startTime <= 1000) {
+                return;
+            }
+
+            const { serviceId } = JSON.parse(ev.data as string);
+            this.updateServiceIds[serviceId] = true;
+            this.log.system.debug(`mirakc update normal services: ${serviceId}`);
+        });
+
+        return new Promise<void>((_resolve, reject: (err: Error) => void) => {
+            // エラー発生時のエラー処理の定義
+            const finalize = (errorMessage: string) => {
+                clearInterval(timer);
+                try {
+                    sse.close();
+                } catch (err) {
+                    // close エラーは無視
+                }
+                reject(Error(errorMessage));
+            };
+
+            // エラー発生時
+            sse.addEventListener('error', () => {
+                this.log.system.error('disconnected mirakc event.');
+                finalize('MirakcEventsClosed');
+            });
+
+            // 定期的に接続を監視する
+            const timer = setInterval(() => {
+                if (isEventsOpend === false) {
+                    // events に接続できていない
+                    this.log.system.error('events is not opened.');
+                    finalize('MirakcEventsIsNotOpened');
+                } else if (sse.readyState !== 1) {
+                    // events が切断された
+                    this.log.system.error('events has been closed.');
+                    finalize('MirakcEventsClosed');
+                }
+            }, 1000);
         });
     }
 
@@ -494,6 +622,74 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
 
         this.log.system.info('update channel db done');
         this.emit(EPGUpdateEvent.SERVICE_UPDATED);
+    }
+
+    /**
+     * mirakc の /events で確認された放映中のサービスの番組情報の更新
+     */
+    public async saveOnAirServices(): Promise<void> {
+        const channelIds = Object.keys(this.updatedOnAirServiceIds).map(str => parseInt(str, 10));
+
+        // 更新対象が無ければ何もしない
+        if (channelIds.length === 0) {
+            return;
+        }
+
+        await this.saveMirakcServices(channelIds);
+
+        // 更新したサービスを this.updatedOnAirServiceIds から削除
+        for (const channelId of channelIds) {
+            delete this.updatedOnAirServiceIds[channelId];
+        }
+    }
+
+    /**
+     * mirakc の /events で確認された更新が必要なサービスの番組情報の更新
+     */
+    public async saveUpdateServices(): Promise<void> {
+        const channelIds = Object.keys(this.updateServiceIds).map(str => parseInt(str, 10));
+
+        // 更新対象が無ければ何もしない
+        if (channelIds.length === 0) {
+            return;
+        }
+
+        await this.saveMirakcServices(channelIds);
+
+        // 更新したサービスを this.updateServiceIds から削除
+        for (const channelId of channelIds) {
+            delete this.updateServiceIds[channelId];
+        }
+    }
+
+    /**
+     * 指定された channelId の番組情報を全件削除および全件更新する
+     * @param channelIds
+     */
+    private async saveMirakcServices(channelIds: mapid.ServiceId[]) {
+        // 更新対象の番組情報を取得する
+        this.log.system.info('get service programs');
+        const insertPrograms: mapid.Program[] = [];
+        for (const serviceId of channelIds) {
+            const response = await fetch(new URL(`/api/services/${serviceId}/programs`, this.mirakurunPath));
+            const servicePrograms: mapid.Program[] = await response.json();
+
+            // メインプログラムだけ取り出す
+            for (const p of servicePrograms) {
+                if (this.isMainProgram(p) === true) {
+                    insertPrograms.push(p);
+                }
+            }
+        }
+
+        // DB 更新
+        this.log.system.info('start update service programs');
+        await this.programDB.insert(this.channelIndex, insertPrograms, channelIds).catch(err => {
+            this.log.system.error('update service programs error');
+            this.log.system.error(err);
+            throw err;
+        });
+        this.log.system.info('done update service programs');
     }
 }
 

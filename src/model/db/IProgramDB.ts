@@ -47,7 +47,11 @@ export interface FindScheduleOption extends FindScheduleBaseOption {
 }
 
 export default interface IProgramDB {
-    insert(channelTypes: IChannelTypeIndex, programs: mapid.Program[]): Promise<void>;
+    insert(
+        channelTypes: IChannelTypeIndex,
+        programs: mapid.Program[],
+        deleteChannelIds?: mapid.ServiceId[],
+    ): Promise<void>;
     update(channelTypes: IChannelTypeIndex, values: ProgramUpdateValues): Promise<void>;
     deleteOld(time: apid.UnixtimeMS): Promise<void>;
     findId(programId: apid.ProgramId): Promise<Program | null>;
