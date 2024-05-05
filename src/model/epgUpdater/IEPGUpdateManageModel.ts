@@ -59,8 +59,6 @@ export default interface IEPGUpdateManageModel extends EventEmitter {
     updateChannels(): Promise<void>;
     checkTunerServerType(): Promise<TunerServerType>;
     start(): Promise<void>;
-    getProgramQueueSize(): number;
-    getServiceQueueSize(): number;
     saveProgram(timeThreshold?: number): Promise<void>;
     deleteOldPrograms(): Promise<void>;
     saveService(): Promise<void>;

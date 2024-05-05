@@ -423,22 +423,6 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
     }
 
     /**
-     * programQueue のサイズを返す
-     * @return number
-     */
-    public getProgramQueueSize(): number {
-        return this.programQueue.length;
-    }
-
-    /**
-     * serviceQueue のサイズを返す
-     * @return number
-     */
-    public getServiceQueueSize(): number {
-        return this.serviceQueue.length;
-    }
-
-    /**
      * programQueue の program を DB へ反映させる
      */
     public async saveProgram(timeThreshold: number = 0): Promise<void> {
