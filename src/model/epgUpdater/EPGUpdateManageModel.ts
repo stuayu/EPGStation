@@ -651,6 +651,9 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
      * @param channelIds
      */
     private async saveMirakcServices(channelIds: mapid.ServiceId[]) {
+        // 番組情報を更新する前にチャンネル情報を更新する (更新する契機が存在しないため)
+        await this.updateChannels();
+
         // 更新対象の番組情報を取得する
         this.log.system.info('get service programs');
         const insertPrograms: mapid.Program[] = [];
