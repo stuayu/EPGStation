@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify';
-import { FindOptionsWhere, LessThan, LessThanOrEqual, MoreThan, MoreThanOrEqual, ObjectLiteral } from 'typeorm';
+import { FindOptionsWhere, In, LessThan, LessThanOrEqual, MoreThan, MoreThanOrEqual, ObjectLiteral } from 'typeorm';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import * as apid from '../../../api';
 import * as mapid from '../../../node_modules/mirakurun/api';
@@ -58,8 +58,13 @@ export default class ProgramDB implements IProgramDB {
      * 全件削除 & 更新
      * @param channelTypes: IChannelTypeHash
      * @param programs: mapid.Program[]
+     * @param deleteChannelIds: mapid.ServiceId[] 削除対象の
      */
-    public async insert(channelTypes: IChannelTypeIndex, programs: mapid.Program[]): Promise<void> {
+    public async insert(
+        channelTypes: IChannelTypeIndex,
+        programs: mapid.Program[],
+        deleteChannelIds: mapid.ServiceId[] = [],
+    ): Promise<void> {
         const updateTime = new Date().getTime();
         const values: QueryDeepPartialEntity<Program>[] = [];
 
@@ -81,7 +86,8 @@ export default class ProgramDB implements IProgramDB {
         let hasError = false;
         try {
             // 削除
-            await queryRunner.manager.delete(Program, {});
+            const deleteOption = deleteChannelIds.length === 0 ? {} : { channelId: In(deleteChannelIds) };
+            await queryRunner.manager.delete(Program, deleteOption);
 
             // 挿入処理
             for (const value of values) {
