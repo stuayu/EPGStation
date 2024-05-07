@@ -1,5 +1,9 @@
+import { EventEmitter } from 'events';
 import * as mapid from '../../../node_modules/mirakurun/api';
 
+export interface RemoveProgram {
+    id: mapid.ProgramId;
+}
 export interface RedefineProgram {
     from: mapid.ProgramId;
     to: mapid.ProgramId;
@@ -7,7 +11,7 @@ export interface RedefineProgram {
 
 export interface ProgramBaseEvent extends mapid.Event {
     resource: 'program';
-    data: RedefineProgram | mapid.Program;
+    data: RedefineProgram | RemoveProgram | mapid.Program;
 }
 
 export interface CreateEvent extends ProgramBaseEvent {
@@ -20,6 +24,11 @@ export interface UpdateEvent extends ProgramBaseEvent {
     data: mapid.Program;
 }
 
+export interface RemoveEvent extends ProgramBaseEvent {
+    type: 'remove';
+    data: RemoveProgram;
+}
+
 export interface RedefineEvent extends ProgramBaseEvent {
     type: 'remove';
     data: RedefineProgram;
@@ -30,13 +39,29 @@ export interface ServiceEvent extends mapid.Event {
     data: mapid.Service;
 }
 
-export default interface IEPGUpdateManageModel {
+export namespace EPGUpdateEvent {
+    export const STREAM_STARTED = 'event stream started';
+    export const STREAM_ABORTED = 'event stream aborted';
+    export const PROGRAM_UPDATED = 'program updated';
+    export const SERVICE_UPDATED = 'service updated';
+}
+
+/**
+ * チューナーサーバの種別
+ */
+export enum TunerServerType {
+    mirakurun,
+    mirakc,
+}
+
+export default interface IEPGUpdateManageModel extends EventEmitter {
     updateAll(): Promise<void>;
     updateChannels(): Promise<void>;
+    checkTunerServerType(): Promise<TunerServerType>;
     start(): Promise<void>;
-    getProgramQueueSize(): number;
-    getServiceQueueSize(): number;
-    saveProgram(): Promise<void>;
+    saveProgram(timeThreshold?: number): Promise<void>;
     deleteOldPrograms(): Promise<void>;
-    saveSevice(): Promise<void>;
+    saveService(): Promise<void>;
+    saveOnAirServices(): Promise<void>;
+    saveUpdateServices(): Promise<void>;
 }

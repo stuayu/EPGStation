@@ -1,4 +1,6 @@
 /* eslint-disable no-case-declarations */
+import EventSource from 'eventsource';
+import { EventEmitter } from 'events';
 import { IncomingMessage } from 'http';
 import { inject, injectable } from 'inversify';
 import mirakurun from 'mirakurun';
@@ -11,14 +13,17 @@ import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import IMirakurunClientModel from '../IMirakurunClientModel';
 import IEPGUpdateManageModel, {
-    CreateEvent,
     ProgramBaseEvent,
+    UpdateEvent,
+    RemoveEvent,
     RedefineEvent,
     ServiceEvent,
+    EPGUpdateEvent,
+    TunerServerType,
 } from './IEPGUpdateManageModel';
 
 @injectable()
-class EPGUpdateManageModel implements IEPGUpdateManageModel {
+class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel {
     private log: ILogger;
     private mirakurunClient: mirakurun;
     private channelDB: IChannelDB;
@@ -34,6 +39,12 @@ class EPGUpdateManageModel implements IEPGUpdateManageModel {
     private excludeChannelIndex: { [channelId: number]: boolean } = {};
     private excludeSidIndex: { [serviceId: number]: boolean } = {};
 
+    // mirakurun or mirakc の識別
+    private tunerServerType: TunerServerType | null = null;
+    private updatedOnAirServiceIds: { [serviceId: mapid.ServiceId]: boolean } = {};
+    private updateServiceIds: { [serviceId: mapid.ServiceId]: boolean } = {};
+    private mirakurunPath: string;
+
     constructor(
         @inject('ILoggerModel') loggerModel: ILoggerModel,
         @inject('IConfiguration') configuration: IConfiguration,
@@ -42,6 +53,8 @@ class EPGUpdateManageModel implements IEPGUpdateManageModel {
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IProgramDB') programDB: IProgramDB,
     ) {
+        super();
+
         this.log = loggerModel.getLogger();
         this.mirakurunClient = mirakurunClientModel.getClient();
         this.channelDB = channelDB;
@@ -59,6 +72,7 @@ class EPGUpdateManageModel implements IEPGUpdateManageModel {
                 this.excludeSidIndex[c] = true;
             }
         }
+        this.mirakurunPath = config.mirakurunPath;
     }
 
     /**
@@ -192,9 +206,46 @@ class EPGUpdateManageModel implements IEPGUpdateManageModel {
     }
 
     /**
-     * mirakurun の event stream の受信を開始する
+     * チューナーサーバの種別のチェック
+     * @returns Promise<TunerServerType>
+     */
+    public async checkTunerServerType(): Promise<TunerServerType> {
+        if (this.tunerServerType !== null) {
+            return this.tunerServerType;
+        }
+
+        // getServerConfig() の実行の可否で判定を行う
+        try {
+            await this.mirakurunClient.getServerConfig();
+            this.tunerServerType = TunerServerType.mirakurun;
+        } catch (err) {
+            this.tunerServerType = TunerServerType.mirakc;
+        }
+
+        return this.tunerServerType;
+    }
+
+    /**
+     * event stream の解析を開始する
      */
     public async start(): Promise<void> {
+        if (this.tunerServerType === null) {
+            await this.checkTunerServerType();
+        }
+
+        if (this.tunerServerType === TunerServerType.mirakurun) {
+            // mirakurun event stream 解析開始
+            return this.startAnalayzingMirakurunEvents();
+        } else {
+            // mirakc イベント通知解析開始
+            return this.startAnalyzingMirakcEvents();
+        }
+    }
+
+    /**
+     * mirakurun の event stream の解析を開始する
+     */
+    private async startAnalayzingMirakurunEvents(): Promise<void> {
         this.log.system.info('start get stream');
 
         const eventStream = await this.mirakurunClient.getEventsStream().catch(err => {
@@ -204,12 +255,15 @@ class EPGUpdateManageModel implements IEPGUpdateManageModel {
             throw err;
         });
 
+        this.emit(EPGUpdateEvent.STREAM_STARTED);
+
         return new Promise<void>(async (_resolve: () => void, reject: (err: Error) => void) => {
             // エラー処理
             eventStream.once('error', err => {
                 this.log.system.error('event stream error');
                 this.log.system.error(err);
                 this.stopStream(eventStream);
+                this.emit(EPGUpdateEvent.STREAM_ABORTED);
                 reject(err);
             });
 
@@ -266,10 +320,93 @@ class EPGUpdateManageModel implements IEPGUpdateManageModel {
                     }
                     this.log.system.error(err);
                     this.stopStream(eventStream);
+                    this.emit(EPGUpdateEvent.STREAM_ABORTED);
                     reject(new Error('EventStreamParseError'));
                 }
                 tmp = Buffer.from([]);
             });
+        });
+    }
+
+    /**
+     * mirakc の /events の解析を開始する
+     */
+    private async startAnalyzingMirakcEvents(): Promise<void> {
+        this.log.system.info('start analyzing events');
+
+        let sse: EventSource;
+        try {
+            sse = new EventSource(new URL('/events', this.mirakurunPath).href);
+        } catch (err) {
+            this.log.system.error('failed to analyzing events');
+            this.log.system.error(err);
+            throw err;
+        }
+
+        // open 時の処理
+        let isEventsOpend = false;
+        sse.onopen = () => {
+            isEventsOpend = true;
+            this.emit(EPGUpdateEvent.STREAM_STARTED);
+        };
+
+        // 放映中プログラムの更新
+        sse.addEventListener('onair.program-changed', ev => {
+            const { serviceId } = JSON.parse(ev.data as string);
+            this.updatedOnAirServiceIds[serviceId] = true;
+            this.log.system.debug(`mirakc update onair services: ${serviceId}`);
+        });
+
+        // プログラム更新
+        let isFirst = true;
+        let startTime = 0;
+        sse.addEventListener('epg.programs-updated', ev => {
+            const now = new Date().getTime();
+            if (isFirst === true) {
+                isFirst = false;
+                startTime = now;
+            }
+
+            // 接続時に送信される更新情報を無視するため、開始1秒間は処理しない
+            if (now - startTime <= 1000) {
+                return;
+            }
+
+            const { serviceId } = JSON.parse(ev.data as string);
+            this.updateServiceIds[serviceId] = true;
+            this.log.system.debug(`mirakc update normal services: ${serviceId}`);
+        });
+
+        return new Promise<void>((_resolve, reject: (err: Error) => void) => {
+            // エラー発生時のエラー処理の定義
+            const finalize = (errorMessage: string) => {
+                clearInterval(timer);
+                try {
+                    sse.close();
+                } catch (err) {
+                    // close エラーは無視
+                }
+                reject(Error(errorMessage));
+            };
+
+            // エラー発生時
+            sse.addEventListener('error', () => {
+                this.log.system.error('disconnected mirakc event.');
+                finalize('MirakcEventsClosed');
+            });
+
+            // 定期的に接続を監視する
+            const timer = setInterval(() => {
+                if (isEventsOpend === false) {
+                    // events に接続できていない
+                    this.log.system.error('events is not opened.');
+                    finalize('MirakcEventsIsNotOpened');
+                } else if (sse.readyState !== 1) {
+                    // events が切断された
+                    this.log.system.error('events has been closed.');
+                    finalize('MirakcEventsClosed');
+                }
+            }, 1000);
         });
     }
 
@@ -286,87 +423,117 @@ class EPGUpdateManageModel implements IEPGUpdateManageModel {
     }
 
     /**
-     * programQueue のサイズを返す
-     * @return number
-     */
-    public getProgramQueueSize(): number {
-        return this.programQueue.length;
-    }
-
-    /**
-     * serviceQueue のサイズを返す
-     * @return number
-     */
-    public getServiceQueueSize(): number {
-        return this.serviceQueue.length;
-    }
-
-    /**
      * programQueue の program を DB へ反映させる
      */
-    public async saveProgram(): Promise<void> {
+    public async saveProgram(timeThreshold: number = 0): Promise<void> {
         // 取り出し
         const programs = this.programQueue.splice(0, this.programQueue.length);
-
         if (programs.length === 0) {
             return;
         }
+        this.log.system.debug('number of de-queued items: %d', programs.length);
 
-        this.log.system.info('start save program');
+        try {
+            const deleteIndex: { [programId: number]: ProgramBaseEvent } = {}; // 追加用索引
+            const updateIndex: { [programId: number]: ProgramBaseEvent } = {}; // 追加用索引
+            let needToSave = false;
 
-        const deleteIndex: { [programId: number]: mapid.ProgramId } = {}; // 削除用索引
-        const createIndex: { [programId: number]: mapid.Program } = {}; // 追加用索引
-        const updateIndex: { [programId: number]: mapid.Program } = {}; // 更新用索引
-
-        for (const program of programs) {
-            if (program.type === 'create') {
-                const createData = (<CreateEvent>program).data;
-                if (typeof createData.name !== 'undefined' && this.isMainProgram(createData) === true) {
-                    createIndex[createData.id] = createData;
-                }
-            } else if (program.type === 'update') {
-                const updateData = (<CreateEvent>program).data;
-                if (typeof updateData !== 'undefined' && this.isMainProgram(updateData) === true) {
-                    updateIndex[updateData.id] = updateData;
-                }
-            } else if (program.type === 'remove' || (program as any).type === 'redefine') {
-                // redefine は古いバージョンをサポートするため
-                const from = (<RedefineEvent>program).data.from;
-                deleteIndex[from] = from;
+            if (timeThreshold === 0) {
+                needToSave = true;
             }
+
+            // eventを時系列を意識して整理
+            for (const event of programs) {
+                if (event.type === 'create' || event.type === 'update') {
+                    const program = (<UpdateEvent>event).data;
+                    if (typeof program.name !== 'undefined' && this.isMainProgram(program) === true) {
+                        updateIndex[program.id] = event;
+                        if (program.startAt < timeThreshold) {
+                            needToSave = true;
+                        }
+
+                        if (program.id in deleteIndex) {
+                            // このEvent以前に受信した"remove" or "redefine" Eventは破棄する
+                            delete deleteIndex[program.id];
+                        }
+                    }
+                } else if (event.type === 'remove') {
+                    const removeData = (<RemoveEvent>event).data;
+                    deleteIndex[removeData.id] = event;
+                    if (removeData.id in updateIndex) {
+                        // このEvent以前に受信した"create" or "update" Eventは破棄する
+                        delete updateIndex[removeData.id];
+                    }
+                } else if ((event as any).type === 'redefine') {
+                    // redefine は古いバージョンをサポートするため
+                    const from = (<RedefineEvent>event).data.from;
+                    deleteIndex[from] = event;
+                    if (from in updateIndex) {
+                        // このEvent以前に受信した"create" or "update" Eventは破棄する
+                        delete updateIndex[from];
+                    }
+                }
+            }
+
+            if (needToSave) {
+                const deleteValues: Array<mapid.ProgramId> = [];
+                const insertValues: Array<mapid.Program> = [];
+                const updateValues: Array<mapid.Program> = [];
+
+                for (const [_id, event] of Object.entries(deleteIndex)) {
+                    deleteValues.push((<RemoveEvent>event).data.id);
+                }
+                for (const [_id, event] of Object.entries(updateIndex)) {
+                    updateValues.push((<UpdateEvent>event).data);
+                }
+
+                if (deleteValues.length > 0 || insertValues.length > 0 || updateValues.length > 0) {
+                    this.log.system.info('update program db start');
+                    this.log.system.info({
+                        deleteValues: deleteValues.length,
+                        insertValues: insertValues.length,
+                        updateValues: updateValues.length,
+                    });
+
+                    await this.programDB.update(this.channelIndex, {
+                        insert: insertValues,
+                        update: updateValues,
+                        delete: deleteValues,
+                    });
+                    this.log.system.info('update program db done');
+
+                    this.emit(EPGUpdateEvent.PROGRAM_UPDATED);
+                }
+            } else {
+                // 整理した結果のEventをキューへ戻す
+                // NOTE: "remove"イベントは先頭へ
+                this.log.system.debug(
+                    'number of re-queued items: %d',
+                    Object.keys(deleteIndex).length + Object.keys(updateIndex).length,
+                );
+                this.programQueue = Object.values(deleteIndex).concat(Object.values(updateIndex), this.programQueue);
+            }
+        } catch (err: any) {
+            // キューへ全て戻す
+            this.log.system.debug('number of re-queued items: %d', programs.length);
+            this.programQueue = programs.concat(this.programQueue);
+            throw err;
         }
-
-        const deleteValues = Object.values(deleteIndex);
-        const insertValues = Object.values(createIndex);
-        const updateValues = Object.values(updateIndex);
-
-        this.log.system.info({
-            deleteValues: deleteValues.length,
-            insertValues: insertValues.length,
-            updateValues: updateValues.length,
-        });
-
-        this.log.system.info('update db');
-        await this.programDB.update(this.channelIndex, {
-            insert: insertValues,
-            update: updateValues,
-            delete: deleteValues,
-        });
-
-        this.log.system.info('update db done');
     }
 
     /**
      * 現在時刻より古い番組情報を削除
      */
     public async deleteOldPrograms(): Promise<void> {
+        this.log.system.info('delete old program db start');
         await this.programDB.deleteOld(new Date().getTime());
+        this.log.system.info('delete old program db done');
     }
 
     /**
      * serviceQueue の program を DB へ反映させる
      */
-    public async saveSevice(): Promise<void> {
+    public async saveService(): Promise<void> {
         // 取り出し
         const services = this.serviceQueue.splice(0, this.serviceQueue.length);
 
@@ -387,8 +554,6 @@ class EPGUpdateManageModel implements IEPGUpdateManageModel {
 
         const createIndex: { [serviceId: number]: mapid.Service } = {}; // 追加用索引
         const updateIndex: { [serviceId: number]: mapid.Service } = {}; // 更新用索引
-
-        this.log.system.info('start save service');
 
         for (const service of services) {
             if (
@@ -424,12 +589,12 @@ class EPGUpdateManageModel implements IEPGUpdateManageModel {
         const insertValues = Object.values(createIndex);
         const updateValues = Object.values(updateIndex);
 
+        this.log.system.info('update channel db start');
         this.log.system.info({
             insertValues: insertValues.length,
             updateValues: updateValues.length,
         });
 
-        this.log.system.info('update db');
         await this.channelDB.update({
             insert: insertValues,
             update: updateValues,
@@ -439,7 +604,79 @@ class EPGUpdateManageModel implements IEPGUpdateManageModel {
         this.updateChannelIndex(insertValues);
         this.updateChannelIndex(updateValues);
 
-        this.log.system.info('update db done');
+        this.log.system.info('update channel db done');
+        this.emit(EPGUpdateEvent.SERVICE_UPDATED);
+    }
+
+    /**
+     * mirakc の /events で確認された放映中のサービスの番組情報の更新
+     */
+    public async saveOnAirServices(): Promise<void> {
+        const channelIds = Object.keys(this.updatedOnAirServiceIds).map(str => parseInt(str, 10));
+
+        // 更新対象が無ければ何もしない
+        if (channelIds.length === 0) {
+            return;
+        }
+
+        await this.saveMirakcServices(channelIds);
+
+        // 更新したサービスを this.updatedOnAirServiceIds から削除
+        for (const channelId of channelIds) {
+            delete this.updatedOnAirServiceIds[channelId];
+        }
+    }
+
+    /**
+     * mirakc の /events で確認された更新が必要なサービスの番組情報の更新
+     */
+    public async saveUpdateServices(): Promise<void> {
+        const channelIds = Object.keys(this.updateServiceIds).map(str => parseInt(str, 10));
+
+        // 更新対象が無ければ何もしない
+        if (channelIds.length === 0) {
+            return;
+        }
+
+        await this.saveMirakcServices(channelIds);
+
+        // 更新したサービスを this.updateServiceIds から削除
+        for (const channelId of channelIds) {
+            delete this.updateServiceIds[channelId];
+        }
+    }
+
+    /**
+     * 指定された channelId の番組情報を全件削除および全件更新する
+     * @param channelIds
+     */
+    private async saveMirakcServices(channelIds: mapid.ServiceId[]) {
+        // 番組情報を更新する前にチャンネル情報を更新する (更新する契機が存在しないため)
+        await this.updateChannels();
+
+        // 更新対象の番組情報を取得する
+        this.log.system.info('get service programs');
+        const insertPrograms: mapid.Program[] = [];
+        for (const serviceId of channelIds) {
+            const response = await fetch(new URL(`/api/services/${serviceId}/programs`, this.mirakurunPath));
+            const servicePrograms: mapid.Program[] = await response.json();
+
+            // メインプログラムだけ取り出す
+            for (const p of servicePrograms) {
+                if (this.isMainProgram(p) === true) {
+                    insertPrograms.push(p);
+                }
+            }
+        }
+
+        // DB 更新
+        this.log.system.info('start update service programs');
+        await this.programDB.insert(this.channelIndex, insertPrograms, channelIds).catch(err => {
+            this.log.system.error('update service programs error');
+            this.log.system.error(err);
+            throw err;
+        });
+        this.log.system.info('done update service programs');
     }
 }
 
