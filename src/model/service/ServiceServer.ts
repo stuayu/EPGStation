@@ -176,9 +176,9 @@ class ServiceServer implements IServiceServer {
         const indexContent = fs
             .readFileSync(path.join(pathToSwaggerUi, 'swagger-initializer.js'))
             .toString()
-            .replace('https://petstore.swagger.io/v2/swagger.json', '/api/docs');
+            .replace('https://petstore.swagger.io/v2/swagger.json', this.createUrl('/api/docs'));
 
-        this.app.get('/api-docs/swagger-initializer.js', (_req, res) => {
+        this.app.get(this.createUrl('/api-docs/swagger-initializer.js'), (_req, res) => {
             res.send(indexContent);
         });
 
