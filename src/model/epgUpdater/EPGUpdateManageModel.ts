@@ -127,6 +127,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
             return true;
         }
 
+        let isOnlyRelayType = true;
         for (const item of program.relatedItems) {
             // Mirakurun 3.8 以下では type が存在しない && relatedItems が機能していないので true を返す
             if (typeof item.type === 'undefined') {
@@ -143,10 +144,20 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                 continue;
             }
 
+            // issue #681
+            // shared が存在するなら false にする
+            isOnlyRelayType = false;
+
             // type が shared でメインの放送か？
             if (item.eventId === program.eventId && item.serviceId === program.serviceId) {
                 return true;
             }
+        }
+
+        // issue #681
+        // type が relay だけしか存在しないものは true とする
+        if (isOnlyRelayType === true) {
+            return true;
         }
 
         return false;
