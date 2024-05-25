@@ -1,5 +1,6 @@
+import * as path from 'path';
 import { inject, injectable } from 'inversify';
-import { Connection, createConnection, getConnectionOptions } from 'typeorm';
+import { DataSource } from 'typeorm';
 import IConfigFile from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
@@ -8,7 +9,7 @@ import IDBOperator from './IDBOperator';
 
 @injectable()
 export default class DBOperator implements IDBOperator {
-    private connection: Connection | null = null;
+    private connection: DataSource | null = null;
     private config: IConfigFile;
     private log: ILogger;
 
@@ -17,14 +18,68 @@ export default class DBOperator implements IDBOperator {
         this.config = conf.getConfig();
     }
 
-    public async getConnection(): Promise<Connection> {
+    public async getConnection(): Promise<DataSource> {
         if (this.connection === null) {
-            const option = await getConnectionOptions();
-            this.connection = await createConnection(option);
+            this.connection = await this.createConnection();
             await this.setSQLiteExtensions();
         }
 
         return this.connection;
+    }
+
+    /**
+     * DB へ接続を行い接続済みのDataSourceを返す
+     * @returns DataSource
+     */
+    private async createConnection(): Promise<DataSource> {
+        // アプリのルートディレクトリ
+        const appRootPath = path.join(__dirname, '..', '..', '..');
+
+        // dist 下のディレクトリ設定
+        const distDBBasePath = path.join(appRootPath, 'dist', 'db');
+        const entitie = path.join(distDBBasePath, 'entities', '**', '*.js');
+        const subscriber = path.join(distDBBasePath, 'subscribers', '**', '*.js');
+
+        // マイグレーションファイルの場所
+        const migrations = [path.join(distDBBasePath, 'migrations', this.config.dbtype, '**', '*.js')];
+
+        let connection: DataSource;
+        if (this.config.dbtype === 'sqlite') {
+            connection = new DataSource({
+                type: 'sqlite',
+                database: path.join(appRootPath, 'data', 'database.db'),
+                synchronize: false,
+                logging: false,
+                entities: [entitie],
+                subscribers: [subscriber],
+                migrationsRun: true,
+                migrations: migrations,
+            });
+        } else if (this.config.dbtype === 'mysql' && typeof this.config.mysql !== 'undefined') {
+            connection = new DataSource({
+                type: 'mysql',
+                host: this.config.mysql.host,
+                port: this.config.mysql.port,
+                username: this.config.mysql.user,
+                password: this.config.mysql.password,
+                database: this.config.mysql.database,
+                charset: typeof this.config.mysql.charset === 'undefined' ? 'utf8mb4' : this.config.mysql.charset,
+                bigNumberStrings: false,
+                synchronize: false,
+                logging: false,
+                entities: [entitie],
+                subscribers: [subscriber],
+                migrationsRun: true,
+                migrations: migrations,
+            });
+        } else {
+            throw new Error('DBTypeError');
+        }
+
+        // 接続処理実施
+        await connection.initialize();
+
+        return connection;
     }
 
     /**
@@ -45,7 +100,7 @@ export default class DBOperator implements IDBOperator {
             return;
         }
 
-        await this.connection.close();
+        await this.connection.destroy();
     }
 
     /**

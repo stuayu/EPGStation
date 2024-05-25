@@ -1,7 +1,7 @@
-import { Connection } from 'typeorm';
+import { DataSource } from 'typeorm';
 
 export default interface IDBOperator {
-    getConnection(): Promise<Connection>;
+    getConnection(): Promise<DataSource>;
     checkConnection(): Promise<void>;
     closeConnection(): Promise<void>;
     isEnabledRegexp(): boolean;
