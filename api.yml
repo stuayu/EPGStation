@@ -36,6 +36,11 @@ components:
             type: integer
             maximum: 655356553565535
 
+        EventId:
+            description: event id
+            type: integer
+            maximum: 655356553565535
+
         RuleId:
             description: ルール id
             type: integer

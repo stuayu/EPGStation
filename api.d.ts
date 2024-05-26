@@ -4,6 +4,7 @@ export type ChannelId = number;
 export type ServiceId = number;
 export type NetworkId = number;
 export type ProgramId = number;
+export type EventId = number;
 export type RuleId = number;
 export type ReserveId = number;
 export type RecordedId = number;
