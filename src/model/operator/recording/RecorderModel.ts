@@ -1035,7 +1035,7 @@ class RecorderModel implements IRecorderModel {
 namespace RecorderModel {
     export const CANCEL_EVENT = 'RecordingCancelEvent';
     export const START_RECORDING_EVENT = 'StartRecordingEvent';
-    export const EVENT_RELAY_CHECK_TIME = 20 * 1000; // 20秒
+    export const EVENT_RELAY_CHECK_TIME = 20 * 1000; // イベントリレーの確認時間 20秒
 }
 
 export default RecorderModel;
