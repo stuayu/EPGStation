@@ -20,6 +20,7 @@ import IRecordingEvent from './IRecordingEvent';
 import IReserveEvent from './IReserveEvent';
 import IRuleEvent from './IRuleEvent';
 import IThumbnailEvent from './IThumbnailEvent';
+import Reserve from '../../db/entities/Reserve';
 
 @injectable()
 export default class EventSetter implements IEventSetter {
@@ -263,6 +264,16 @@ export default class EventSetter implements IEventSetter {
             this.ipc.notifyClient();
         });
 
+        // イベントリレーによる予約依頼
+        this.recordingEvent.setEventRelay(async programs => {
+            for (const program of programs) {
+                const reserveOption = this.createEventRelayReserveOption(program.programId, program.parentReserve);
+
+                // TODO RuleId の保持
+                await this.reservationManage.add(reserveOption).catch(() => {});
+            }
+        });
+
         // サムネイル作成完了
         this.thumbnailEvent.setAdded((_videoFileId, _recordedId) => {
             this.ipc.notifyClient();
@@ -372,5 +383,74 @@ export default class EventSetter implements IEventSetter {
                 });
             }
         }
+    }
+
+    /**
+     * イベントリレーの予約情報を生成する
+     * @param programId: 予約対象の ProgramId
+     * @param parentReserve: イベントリレー元の予約情報
+     * @returns apid.ManualReserveOption 予約情報
+     */
+    private createEventRelayReserveOption(programId: apid.ProgramId, parentReserve: Reserve): apid.ManualReserveOption {
+        const reserveOption: apid.ManualReserveOption = {
+            programId: programId,
+            allowEndLack: parentReserve.allowEndLack,
+        };
+
+        // tags
+        if (parentReserve.tags !== null) {
+            reserveOption.tags = JSON.parse(parentReserve.tags);
+        }
+
+        // saveOption
+        const saveOption: apid.ReserveSaveOption = {};
+        if (parentReserve.parentDirectoryName !== null) {
+            saveOption.parentDirectoryName = parentReserve.parentDirectoryName;
+        }
+        if (parentReserve.directory !== null) {
+            saveOption.directory = parentReserve.directory;
+        }
+        if (parentReserve.recordedFormat !== null) {
+            saveOption.recordedFormat = parentReserve.recordedFormat;
+        }
+        reserveOption.saveOption = saveOption;
+
+        // encodeOption
+        const encodeOption: apid.ReserveEncodedOption = {
+            isDeleteOriginalAfterEncode: parentReserve.isDeleteOriginalAfterEncode,
+        };
+        // mode 1
+        if (parentReserve.encodeMode1 !== null) {
+            encodeOption.mode1 = parentReserve.encodeMode1;
+        }
+        if (parentReserve.encodeParentDirectoryName1 !== null) {
+            encodeOption.encodeParentDirectoryName1 = parentReserve.encodeParentDirectoryName1;
+        }
+        if (parentReserve.encodeDirectory1 !== null) {
+            encodeOption.directory1 = parentReserve.encodeDirectory1;
+        }
+        // mode 2
+        if (parentReserve.encodeMode2 !== null) {
+            encodeOption.mode2 = parentReserve.encodeMode2;
+        }
+        if (parentReserve.encodeParentDirectoryName2 !== null) {
+            encodeOption.encodeParentDirectoryName2 = parentReserve.encodeParentDirectoryName2;
+        }
+        if (parentReserve.encodeDirectory2 !== null) {
+            encodeOption.directory2 = parentReserve.encodeDirectory2;
+        }
+        // mode 3
+        if (parentReserve.encodeMode3 !== null) {
+            encodeOption.mode3 = parentReserve.encodeMode3;
+        }
+        if (parentReserve.encodeParentDirectoryName3 !== null) {
+            encodeOption.encodeParentDirectoryName3 = parentReserve.encodeParentDirectoryName3;
+        }
+        if (parentReserve.encodeDirectory3 !== null) {
+            encodeOption.directory3 = parentReserve.encodeDirectory3;
+        }
+        reserveOption.encodeOption = encodeOption;
+
+        return reserveOption;
     }
 }
