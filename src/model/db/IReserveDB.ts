@@ -21,6 +21,7 @@ export interface IFindTimeRangesOption extends IFindReserveOption {
 
 export interface IFindRuleOption extends IFindReserveOption {
     ruleId: apid.RuleId;
+    hasEventRelay: boolean; // イベントリレーによる予約情報を含むか
 }
 
 export interface IGetManualIdsOption {

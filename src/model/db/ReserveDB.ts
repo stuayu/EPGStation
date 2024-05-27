@@ -384,6 +384,9 @@ export default class ReserveDB implements IReserveDB {
         if (option.hasOverlap === false) {
             whereOption.push({ isOverlap: false });
         }
+        if (option.hasEventRelay === false) {
+            whereOption.push({ isEventRelay: false });
+        }
 
         const queryBuilder = connection.getRepository(Reserve);
 
