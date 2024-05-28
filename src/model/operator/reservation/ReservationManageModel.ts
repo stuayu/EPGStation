@@ -112,159 +112,34 @@ class ReservationManageModel implements IReservationManageModel {
             this.executeManagementModel.unLockExecution(exeId);
         };
 
-        // 予約情報生成
-        const newReserve = new Reserve();
-        newReserve.updateTime = new Date().getTime();
-
-        // 番組情報をセットする
-        if (typeof option.programId === 'undefined') {
-            // 時刻指定予約の場合
-            if (typeof option.timeSpecifiedOption === 'undefined') {
-                this.log.system.error('time specified option error');
-                finalize();
-                throw new Error('TimeSpecifiedOptionIsUndefined');
-            }
-
-            // name チェック
-            if (typeof option.timeSpecifiedOption.name === 'undefined') {
-                finalize();
-                this.log.system.error('name is undefined');
-                throw new Error('NameIsUndefinedError');
-            }
-
-            // 時刻チェック
-            if (option.timeSpecifiedOption.endAt <= new Date().getTime()) {
-                finalize();
-                this.log.system.error('timeSpecifiedOption error');
-                throw new Error('TimeSpecifiedOptionError');
-            }
-
-            // すでに同じ条件で予約済みでないかチェック
-            const oldReserve = await this.reserveDB.findTimeSpecification(option.timeSpecifiedOption).catch(err => {
-                finalize();
-                this.log.system.error('get old reservation error');
-                throw err;
-            });
-            if (oldReserve !== null) {
-                finalize();
-                this.log.system.error('conflict add reservation');
-                throw new Error('AddReservationConflictError');
-            }
-
-            // channel 情報取得
-            const channel = await this.channelDB.findId(option.timeSpecifiedOption.channelId).catch(err => {
-                finalize();
-                if (typeof option.timeSpecifiedOption !== 'undefined') {
-                    this.log.system.error(`channelId find error: ${option.timeSpecifiedOption.channelId}`);
-                }
-                this.log.system.error(err);
-                throw new Error('ReservationManageModelFindChannelError');
-            });
-            if (channel === null) {
-                finalize();
-                this.log.stream.error(`channelId is not found: ${option.timeSpecifiedOption.channelId}`);
-                throw new Error('eservationManageModelFindChannelIsNotFound');
-            }
-            newReserve.isTimeSpecified = true;
-            newReserve.name = StrUtil.toDBStr(option.timeSpecifiedOption.name);
-            newReserve.halfWidthName = StrUtil.toHalf(newReserve.name);
-            newReserve.startAt = option.timeSpecifiedOption.startAt;
-            newReserve.endAt = option.timeSpecifiedOption.endAt;
-            newReserve.channelId = channel.id;
-            newReserve.channel = channel.channel;
-            newReserve.channelType = channel.channelType;
-        } else {
-            // program ID 指定予約の場合
-            try {
-                // すでに予約済みでないかチェック
-                const r = await this.reserveDB.findProgramId(option.programId);
-                if (r.length > 0) {
-                    // すでに予約済み
-                    finalize();
-                    this.log.system.error(`program is reserved: ${option.programId}`);
-                    throw new Error('ReservationManageModelReservedError');
-                }
-            } catch (err: any) {
-                finalize();
-                this.log.system.error('check reserved programs error');
-                throw new Error('ReservationManageModelCheckReservedProgramError');
-            }
-
-            let program: Program | null = null;
-            try {
-                // 番組情報取得
-                program = await this.programDB.findId(option.programId);
-            } catch (err: any) {
-                this.log.system.error(`program is not found: ${option.programId}`);
-                finalize();
-                throw err;
-            }
-
-            if (program === null) {
-                // 指定された program id の番組情報が見つからなかった
-                finalize();
-                this.log.system.info(`program is not found: ${option.programId}`);
-                throw new Error('ProgramIsNotFound');
-            }
-
-            // 取得した番組情報をセットする
-            this.setProgramToReserve(newReserve, program);
-        }
-
-        // option から必要な情報をセットする
-        newReserve.allowEndLack = option.allowEndLack;
-        if (typeof option.tags !== 'undefined') {
-            newReserve.tags = JSON.stringify(option.tags);
-        }
-        if (typeof option.saveOption !== 'undefined') {
-            this.setSaveOptionToReserve(newReserve, option.saveOption);
-        }
-        if (typeof option.encodeOption !== 'undefined') {
-            this.setEncodeOptionToReserve(newReserve, option.encodeOption);
-        }
-
-        // 追加する予約情報と重複する予約情報を取得 (競合, 除外, 重複しているものは除く)
-        let reserves: Reserve[] = [];
+        // 予約情報の生成
+        let newReserve: Reserve;
         try {
-            reserves = await this.reserveDB.findTimeRanges({
-                times: [
-                    {
-                        startAt: newReserve.startAt,
-                        endAt: newReserve.endAt,
-                    },
-                ],
-                hasSkip: false,
-                hasConflict: false,
-                hasOverlap: false,
-            });
-        } catch (err: any) {
+            if (typeof option.programId === 'undefined') {
+                newReserve = await this.createManualReserveWithSpecifiedTime(option);
+            } else {
+                newReserve = await this.createManualReserveWithProgramId(option);
+            }
+        } catch (err) {
+            // 予約情報の生成失敗
             finalize();
-            this.log.system.error('reservation get error');
             throw err;
         }
 
-        reserves.push(newReserve);
-        const newReserves = this.createReserves(reserves);
-
-        // 競合したかチェック
-        for (const reserve of newReserves) {
-            if (reserve.isConflict) {
-                finalize();
-                this.log.system.error(`program is conflict: ${option.programId}`);
-                throw new Error('ReservationManageModelAddReserveConflict');
-            }
-        }
+        // 追加する予約情報が競合するかチェック
+        await this.checkSingleReserveConflict(newReserve).catch(err => {
+            finalize();
+            throw err;
+        });
 
         // 追加
-        let insertedId: number;
-        try {
-            insertedId = await this.reserveDB.insertOnce(newReserve);
-            newReserve.id = insertedId;
-        } catch (err: any) {
-            finalize();
+        const insertedId = await this.reserveDB.insertOnce(newReserve).catch(err => {
             this.log.system.info(`add reservation error: ${option.programId}`);
+            this.log.system.error(err);
+            finalize();
             throw new Error('ReservationManageModelAddReserveError');
-        }
+        });
+        newReserve.id = insertedId;
 
         // 完了したのでロック解除
         finalize();
@@ -340,6 +215,141 @@ class ReservationManageModel implements IReservationManageModel {
         });
 
         return insertedId;
+    }
+
+    /**
+     * Program Id 指定の手動予約の予約情報を生成する
+     * @param option: apid.ManualReserveOption 手動予約オプション
+     * @returns: Promise<Reserve> 予約情報
+     */
+    private async createManualReserveWithProgramId(option: apid.ManualReserveOption): Promise<Reserve> {
+        // program id 指定の手動予約じゃない
+        if (typeof option.programId === 'undefined') {
+            this.log.system.error('failed to create manual reserve. program id is undefined.');
+            throw new Error('FailedToCreateManualReserve');
+        }
+
+        // すでに予約済みでないかチェック
+        try {
+            const r = await this.reserveDB.findProgramId(option.programId);
+            if (r.length > 0) {
+                // すでに予約済み
+                this.log.system.error(`program is reserved: ${option.programId}`);
+                throw new Error('ReservationManageModelReservedError');
+            }
+        } catch (err: any) {
+            this.log.system.error('check reserved programs error');
+            throw new Error('ReservationManageModelCheckReservedProgramError');
+        }
+
+        // 予約対象の番組情報を取得する
+        let program: Program | null = null;
+        try {
+            // 番組情報取得
+            program = await this.programDB.findId(option.programId);
+        } catch (err: any) {
+            this.log.system.error(`program is not found: ${option.programId}`);
+            throw err;
+        }
+
+        if (program === null) {
+            // 指定された program id の番組情報が見つからなかった
+            this.log.system.info(`program is not found: ${option.programId}`);
+            throw new Error('ProgramIsNotFound');
+        }
+
+        // 予約情報生成
+        const newReserve = new Reserve();
+        newReserve.updateTime = new Date().getTime();
+        this.setProgramToReserve(newReserve, program);
+
+        this.setManualReserveOption(option, newReserve);
+
+        return newReserve;
+    }
+
+    /**
+     * 時刻指定の手動予約の予約情報を生成する
+     * @param option: apid.ManualReserveOption 手動予約オプション
+     * @returns: Promise<Reserve> 予約情報
+     */
+    private async createManualReserveWithSpecifiedTime(option: apid.ManualReserveOption): Promise<Reserve> {
+        // 時刻指定の手動予約ではない
+        if (typeof option.programId !== 'undefined' || typeof option.timeSpecifiedOption === 'undefined') {
+            this.log.system.error('time specified option error');
+            throw new Error('TimeSpecifiedOptionIsUndefined');
+        }
+
+        // name チェック
+        if (typeof option.timeSpecifiedOption.name === 'undefined') {
+            this.log.system.error('name is undefined');
+            throw new Error('NameIsUndefinedError');
+        }
+
+        // 時刻チェック
+        if (option.timeSpecifiedOption.endAt <= new Date().getTime()) {
+            this.log.system.error('timeSpecifiedOption error');
+            throw new Error('TimeSpecifiedOptionError');
+        }
+
+        // すでに同じ条件で予約済みでないかチェック
+        const oldReserve = await this.reserveDB.findTimeSpecification(option.timeSpecifiedOption).catch(err => {
+            this.log.system.error('get old reservation error');
+            throw err;
+        });
+        if (oldReserve !== null) {
+            this.log.system.error('conflict add reservation');
+            throw new Error('AddReservationConflictError');
+        }
+
+        // channel 情報取得
+        const channel = await this.channelDB.findId(option.timeSpecifiedOption.channelId).catch(err => {
+            if (typeof option.timeSpecifiedOption !== 'undefined') {
+                this.log.system.error(`channelId find error: ${option.timeSpecifiedOption.channelId}`);
+            }
+            this.log.system.error(err);
+            throw new Error('ReservationManageModelFindChannelError');
+        });
+        if (channel === null) {
+            this.log.stream.error(`channelId is not found: ${option.timeSpecifiedOption.channelId}`);
+            throw new Error('eservationManageModelFindChannelIsNotFound');
+        }
+
+        // 予約情報の作成
+        const newReserve = new Reserve();
+        newReserve.isEventRelay = true;
+        newReserve.updateTime = new Date().getTime();
+        newReserve.isTimeSpecified = true;
+        newReserve.name = StrUtil.toDBStr(option.timeSpecifiedOption.name);
+        newReserve.halfWidthName = StrUtil.toHalf(newReserve.name);
+        newReserve.startAt = option.timeSpecifiedOption.startAt;
+        newReserve.endAt = option.timeSpecifiedOption.endAt;
+        newReserve.channelId = channel.id;
+        newReserve.channel = channel.channel;
+        newReserve.channelType = channel.channelType;
+
+        this.setManualReserveOption(option, newReserve);
+
+        return newReserve;
+    }
+
+    /**
+     * 手動予約のオプション情報をセットする
+     * @param option: apid.ManualReserveOption 手動予約オプション
+     * @param newReserve: Reserve セット対象の予約情報
+     */
+    private setManualReserveOption(option: apid.ManualReserveOption, newReserve: Reserve): void {
+        // option から必要な情報をセットする
+        newReserve.allowEndLack = option.allowEndLack;
+        if (typeof option.tags !== 'undefined') {
+            newReserve.tags = JSON.stringify(option.tags);
+        }
+        if (typeof option.saveOption !== 'undefined') {
+            this.setSaveOptionToReserve(newReserve, option.saveOption);
+        }
+        if (typeof option.encodeOption !== 'undefined') {
+            this.setEncodeOptionToReserve(newReserve, option.encodeOption);
+        }
     }
 
     /**
