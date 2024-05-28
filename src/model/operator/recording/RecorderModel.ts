@@ -954,21 +954,28 @@ class RecorderModel implements IRecorderModel {
             return;
         }
 
+        this.log.system.debug(
+            `check event relay program. reserveId: ${this.reserve.id}, programId: ${this.reserve.programId}`,
+        );
         const mirakurun = this.mirakurunClientModel.getClient();
 
         // program 情報の取得
         let parentProgram: mapid.Program;
         try {
             parentProgram = await mirakurun.getProgram(this.reserve.programId);
+            this.log.system.debug(parentProgram);
         } catch (err: any) {
             this.log.system.error(
-                `failed to get event relay info. reserveId: ${this.reserve.id} programId: ${this.reserve.programId}`,
+                `failed to get event relay info. reserveId: ${this.reserve.id}, programId: ${this.reserve.programId}`,
             );
             return;
         }
 
         // event relay の設定の有無を調べる
         if (typeof parentProgram.relatedItems === 'undefined') {
+            this.log.system.debug(
+                `event relay porgram does not exist. reserveId: ${this.reserve.id}, programId: ${this.reserve.programId}`,
+            );
             return;
         }
 

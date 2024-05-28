@@ -167,12 +167,12 @@ class ReservationManageModel implements IReservationManageModel {
      *              null: すでに予約済み
      */
     public async addEventRelay(programId: apid.ProgramId, parentReserve: Reserve): Promise<apid.ReserveId | null> {
-        this.log.system.info(`add event relay. ${programId}`);
+        this.log.system.info(`add event relay. reserveId: ${parentReserve.id}, programId: ${programId}`);
 
         // すでに録画されていないか検索する
         const reservedPrograms = await this.reserveDB.findProgramId(programId);
         if (reservedPrograms.length > 0) {
-            this.log.system.warn(`already reserved program. ${programId}`);
+            this.log.system.warn(`already reserved program. reserveId: ${parentReserve.id}, programId: ${programId}`);
             return null;
         }
 
@@ -196,7 +196,7 @@ class ReservationManageModel implements IReservationManageModel {
 
         // 追加
         const insertedId = await this.reserveDB.insertOnce(newReserve).catch(err => {
-            this.log.system.info(`add reservation error: ${programId}`);
+            this.log.system.info(`add reservation error: reserveId: ${parentReserve.id}, programId: ${programId}`);
             this.log.system.error(err);
             finalize();
             throw new Error('ReservationManageModelAddReserveError');
@@ -206,7 +206,9 @@ class ReservationManageModel implements IReservationManageModel {
         // 完了したのでロック解除
         finalize();
 
-        this.log.system.info(`successful add event relay. ${programId}`);
+        this.log.system.info(
+            `successful add event relay. reserveId: ${parentReserve.id}, newReserveId: ${newReserve.id} programId: ${programId}`,
+        );
 
         // イベント発行
         this.reserveEvent.emitUpdated({
