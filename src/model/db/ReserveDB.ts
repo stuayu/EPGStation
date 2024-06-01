@@ -374,18 +374,18 @@ export default class ReserveDB implements IReserveDB {
     public async findRuleId(option: IFindRuleOption): Promise<Reserve[]> {
         const connection = await this.op.getConnection();
 
-        const whereOption: FindOptionsWhere<Reserve>[] = [{ ruleId: option.ruleId }];
+        const whereOption: FindOptionsWhere<Reserve> = { ruleId: option.ruleId };
         if (option.hasSkip === false) {
-            whereOption.push({ isSkip: false });
+            whereOption.isSkip = false;
         }
         if (option.hasConflict === false) {
-            whereOption.push({ isConflict: false });
+            whereOption.isConflict = false;
         }
         if (option.hasOverlap === false) {
-            whereOption.push({ isOverlap: false });
+            whereOption.isOverlap = false;
         }
         if (option.hasEventRelay === false) {
-            whereOption.push({ isEventRelay: false });
+            whereOption.isEventRelay = false;
         }
 
         const queryBuilder = connection.getRepository(Reserve);
