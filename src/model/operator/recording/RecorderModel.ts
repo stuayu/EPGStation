@@ -1003,7 +1003,7 @@ class RecorderModel implements IRecorderModel {
             );
             if (reserveProgram === null) {
                 this.log.system.warn(
-                    `event relay program is not found. networkId: networkId: ${networkId}, serviceId: ${relatedItem.serviceId}, eventId: ${relatedItem.eventId}`,
+                    `event relay program is not found. networkId: ${networkId}, serviceId: ${relatedItem.serviceId}, eventId: ${relatedItem.eventId}`,
                 );
                 continue;
             }
