@@ -53,5 +53,6 @@ export default interface IReserveDB {
     findOldTime(baseTime: apid.UnixtimeMS): Promise<Reserve[]>;
     findTimeSpecification(option: IFindTimeSpecificationOption): Promise<Reserve | null>;
     getManualIds(option: IGetManualIdsOption): Promise<apid.ReserveId[]>;
+    getRuleEventRelayIds(): Promise<apid.ReserveId[]>;
     countRuleIds(ruleIds: apid.RuleId[], type: apid.GetReserveType): Promise<RuleIdCountResult[]>;
 }

@@ -1149,6 +1149,12 @@ class ReservationManageModel implements IReservationManageModel {
             throw err;
         });
 
+        // ルール予約によってイベントリレーで予約された予約の id を取得
+        const ruleEventRelayIds = await this.reserveDB.getRuleEventRelayIds().catch(err => {
+            this.log.system.error('get rule event relay ids error');
+            throw err;
+        });
+
         // ルールの id を取得
         const ruleIds = await this.ruleDB.getIds().catch(err => {
             this.log.system.error('get rule ids error');
@@ -1157,6 +1163,14 @@ class ReservationManageModel implements IReservationManageModel {
 
         // 手動予約更新
         for (const manualId of manualIds) {
+            await this.update(manualId, isSuppressLog).catch(err => {
+                this.log.system.error(err);
+            });
+            await Util.sleep(10);
+        }
+
+        // ルール予約によってイベントリレーで予約された予約の更新
+        for (const manualId of ruleEventRelayIds) {
             await this.update(manualId, isSuppressLog).catch(err => {
                 this.log.system.error(err);
             });
