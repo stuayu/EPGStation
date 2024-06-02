@@ -670,6 +670,7 @@ class RecorderModel implements IRecorderModel {
             if (
                 this.reserve.isTimeSpecified === false &&
                 this.reserve.ruleId !== null &&
+                this.reserve.isEventRelay === false &&
                 this.isNeedDeleteReservation === true
             ) {
                 // ルール(Program Id 予約)の場合のみ記録する
