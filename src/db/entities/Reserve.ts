@@ -63,6 +63,11 @@ export default class Reserve extends BaseEntity {
     })
     public isTimeSpecified: boolean = false; // 時刻指定予約か
 
+    @Column({
+        default: false,
+    })
+    public isEventRelay: boolean = false; // イベントリレーによる予約か
+
     /**
      * 保存オプション
      */
