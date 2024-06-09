@@ -374,15 +374,18 @@ export default class ReserveDB implements IReserveDB {
     public async findRuleId(option: IFindRuleOption): Promise<Reserve[]> {
         const connection = await this.op.getConnection();
 
-        const whereOption: FindOptionsWhere<Reserve>[] = [{ ruleId: option.ruleId }];
+        const whereOption: FindOptionsWhere<Reserve> = { ruleId: option.ruleId };
         if (option.hasSkip === false) {
-            whereOption.push({ isSkip: false });
+            whereOption.isSkip = false;
         }
         if (option.hasConflict === false) {
-            whereOption.push({ isConflict: false });
+            whereOption.isConflict = false;
         }
         if (option.hasOverlap === false) {
-            whereOption.push({ isOverlap: false });
+            whereOption.isOverlap = false;
+        }
+        if (option.hasEventRelay === false) {
+            whereOption.isEventRelay = false;
         }
 
         const queryBuilder = connection.getRepository(Reserve);
@@ -449,13 +452,37 @@ export default class ReserveDB implements IReserveDB {
             .createQueryBuilder()
             .select('reserve.id')
             .from(Reserve, 'reserve')
-            .where('reserve.ruleId is null');
+            .where('reserve.ruleId is :ruleId', { ruleId: null });
 
         if (option.hasTimeReserve === false) {
             queryBuilder = queryBuilder.andWhere('reserve.programId is not null');
         }
 
         queryBuilder = queryBuilder.orderBy('reserve.id', 'ASC');
+        const result = await this.promieRetry.run(() => {
+            return queryBuilder.getMany();
+        });
+
+        return result.map(r => {
+            return r.id;
+        });
+    }
+
+    /**
+     * ルール予約によってイベントリレーで予約された reserve id を取得する
+     * @returns Promise<apid.ReserveId[]>
+     */
+    public async getRuleEventRelayIds(): Promise<apid.ReserveId[]> {
+        const connection = await this.op.getConnection();
+
+        const queryBuilder = connection
+            .createQueryBuilder()
+            .select('reserve.id')
+            .from(Reserve, 'reserve')
+            .andWhere('reserve.ruleId is not null')
+            .andWhere('reserve.isEventRelay is :isEventRelay', { isEventRelay: this.op.convertBoolean(true) })
+            .orderBy('reserve.id', 'ASC');
+
         const result = await this.promieRetry.run(() => {
             return queryBuilder.getMany();
         });

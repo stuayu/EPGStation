@@ -383,6 +383,36 @@ export default class ProgramDB implements IProgramDB {
     }
 
     /**
+     * networkId, serviceId, eventId を指定して検索
+     * @param networkId: network id
+     * @param serviceId: service id
+     * @param eventId: event id
+     * @return Promise<Program | null>
+     */
+    public async findEventRelayProgram(
+        networkId: apid.NetworkId,
+        serviceId: apid.ServiceId,
+        eventId: apid.EventId,
+    ): Promise<Program | null> {
+        const connection = await this.op.getConnection();
+
+        const repository = connection.getRepository(Program);
+        const result = await this.promieRetry.run(() => {
+            return repository.findOne({
+                where: [
+                    {
+                        networkId: networkId,
+                        serviceId: serviceId,
+                        eventId: eventId,
+                    },
+                ],
+            });
+        });
+
+        return typeof result === 'undefined' ? null : result;
+    }
+
+    /**
      * ルールにマッチする番組を検索
      * @param searchOption: apid.RuleSearchOption
      * @param reserveOption?: apid.RuleReserveOption
