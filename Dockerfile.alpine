@@ -9,8 +9,11 @@ RUN npm install --no-save --loglevel=info
 COPY . /app/
 RUN npm run build --loglevel=info
 
-FROM node:18-alpine AS server-builder
-RUN apk add --no-cache g++ make pkgconf python3
+FROM node:18-alpine3.19 AS server-builder
+RUN apk add --no-cache g++ make pkgconf python3 py3-pip
+# node-sqlite3 が依存する node-gyp が が依存する python3 の distutils 廃止に対応
+# node-sqlite3 が依存する node-gyp が v10 以上になれば不要になる
+RUN pip install --break-system-pack setuptools
 WORKDIR /app
 COPY package*.json /app/
 ENV DOCKER="YES"

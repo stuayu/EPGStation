@@ -21,6 +21,7 @@ export interface IFindTimeRangesOption extends IFindReserveOption {
 
 export interface IFindRuleOption extends IFindReserveOption {
     ruleId: apid.RuleId;
+    hasEventRelay: boolean; // イベントリレーによる予約情報を含むか
 }
 
 export interface IGetManualIdsOption {
@@ -52,5 +53,6 @@ export default interface IReserveDB {
     findOldTime(baseTime: apid.UnixtimeMS): Promise<Reserve[]>;
     findTimeSpecification(option: IFindTimeSpecificationOption): Promise<Reserve | null>;
     getManualIds(option: IGetManualIdsOption): Promise<apid.ReserveId[]>;
+    getRuleEventRelayIds(): Promise<apid.ReserveId[]>;
     countRuleIds(ruleIds: apid.RuleId[], type: apid.GetReserveType): Promise<RuleIdCountResult[]>;
 }

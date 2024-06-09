@@ -190,8 +190,8 @@ export default class EventSetter implements IEventSetter {
         // 録画完了
         this.recordingEvent.setFinishRecording(async (reserve, recorded, isNeedDeleteReservation) => {
             if (isNeedDeleteReservation === true) {
-                if (reserve.ruleId === null) {
-                    // 予約から削除
+                if (reserve.ruleId === null || (reserve.ruleId !== null && reserve.isEventRelay == true)) {
+                    // 手動予約 or ルール予約によるイベントリレー予約を削除
                     this.reservationManage.cancel(reserve.id).catch(() => {});
                 } else {
                     // 重複を更新するために予約更新
@@ -261,6 +261,13 @@ export default class EventSetter implements IEventSetter {
             this.externalCommandManage.addRecordingFinishCmd(recorded);
 
             this.ipc.notifyClient();
+        });
+
+        // イベントリレーによる予約依頼
+        this.recordingEvent.setEventRelay(async programs => {
+            for (const program of programs) {
+                await this.reservationManage.addEventRelay(program.programId, program.parentReserve).catch(() => {});
+            }
         });
 
         // サムネイル作成完了

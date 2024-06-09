@@ -1,5 +1,6 @@
 import * as events from 'events';
 import { inject, injectable } from 'inversify';
+import * as apid from '../../../api';
 import Recorded from '../../db/entities/Recorded';
 import Reserve from '../../db/entities/Reserve';
 import ILogger from '../ILogger';
@@ -72,6 +73,14 @@ class RecordingEvent implements IRecordingEvent {
      */
     public emitFinishRecording(reserve: Reserve, recorded: Recorded, isNeedDeleteReservation: boolean): void {
         this.emitter.emit(RecordingEvent.FINISH_RECORDING_EVENT, reserve, recorded, isNeedDeleteReservation);
+    }
+
+    /**
+     * イベントリレーによる予約依頼イベントの発行
+     * @param programs: { programId: apid.ProgramId; parentReserve: Reserve }[]
+     */
+    public emitEventRelay(programs: { programId: apid.ProgramId; parentReserve: Reserve }[]): void {
+        this.emitter.emit(RecordingEvent.EVENT_RELAY_EVENT, programs);
     }
 
     /**
@@ -176,6 +185,23 @@ class RecordingEvent implements IRecordingEvent {
             },
         );
     }
+
+    /**
+     * イベントリレーによる予約依頼イベントへの登録
+     * @param callback: (programs: { programId: apid.ProgramId; parentReserve: Reserve }[]) => void
+     */
+    public setEventRelay(callback: (programs: { programId: apid.ProgramId; parentReserve: Reserve }[]) => void): void {
+        this.emitter.on(
+            RecordingEvent.EVENT_RELAY_EVENT,
+            async (programs: { programId: apid.ProgramId; parentReserve: Reserve }[]) => {
+                try {
+                    await callback(programs);
+                } catch (err: any) {
+                    this.log.system.error(err);
+                }
+            },
+        );
+    }
 }
 
 namespace RecordingEvent {
@@ -186,6 +212,7 @@ namespace RecordingEvent {
     export const RECORDING_FAILED_EVENT = 'RecordingFailedEvent';
     export const RECORDING_RETRY_OVER_EVENT = 'RecordingRetryOverEvent';
     export const FINISH_RECORDING_EVENT = 'FinishRecordingEvent';
+    export const EVENT_RELAY_EVENT = 'EventRelayEvent';
 }
 
 export default RecordingEvent;

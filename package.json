@@ -1,6 +1,6 @@
 {
     "name": "epgstation",
-    "version": "2.9.0-stuayu",
+    "version": "2.10.0-stuayu",
     "description": "DTV Software in Japan.",
     "main": "dist/index.js",
     "scripts": {
@@ -15,7 +15,8 @@
         "format": "prettier --check --write src/**/*.ts",
         "compile": "tsc",
         "watch": "tsc --watch",
-        "orm-gen": "typeorm migration:generate -n ",
+        "orm-gen": "typeorm migration:generate src/db/migrations/${npm_config_db}/${npm_config_name} -d ./ormconfig.js",
+        "orm-run": "typeorm migration:run -d ./ormconfig.js",
         "backup": "node dist/DBTools.js -m backup -o",
         "restore": "node dist/DBTools.js -m restore -o",
         "v1migrate": "node dist/V1MigrationTool.js -i",
