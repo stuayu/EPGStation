@@ -14,7 +14,7 @@ export default class GuideScroller extends Vue {
     private isPushed: boolean = false; // 押されているか
     private baseClientX: number = 0;
     private baseClientY: number = 0;
-    private clickTimer: number | undefined;
+    private clickTimer: ReturnType<typeof setTimeout> | undefined;
 
     // 各種イベントリスナー
     private mousedownListener = ((e: MouseEvent): void => {

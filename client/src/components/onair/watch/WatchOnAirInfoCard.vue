@@ -39,7 +39,7 @@ export default class WatchOnAirInfoCard extends Vue {
     private onUpdateStatusCallback = (async (): Promise<void> => {
         await this.update();
     }).bind(this);
-    private updateTimer: number | null = null;
+    private updateTimer: ReturnType<typeof setTimeout> | null = null;
 
     public created(): void {
         // socket.io イベント

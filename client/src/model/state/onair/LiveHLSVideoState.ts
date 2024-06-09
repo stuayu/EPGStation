@@ -7,7 +7,7 @@ import ILiveHLSVideoState from './ILiveHLSVideoState';
 class LiveHLSVideoState implements ILiveHLSVideoState {
     private streamApiModel: IStreamApiModel;
     private streamId: apid.StreamId | null = null;
-    private keepTimerId: number | undefined;
+    private keepTimerId: ReturnType<typeof setTimeout> | undefined;
 
     constructor(@inject('IStreamApiModel') streamApiModel: IStreamApiModel) {
         this.streamApiModel = streamApiModel;

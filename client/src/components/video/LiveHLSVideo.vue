@@ -23,7 +23,7 @@ export default class LiveHLSVideo extends BaseVideo {
 
     private videoState: ILiveHLSVideoState = container.get<ILiveHLSVideoState>('ILiveHLSVideoState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
-    private checkEnabledTimerId: number | undefined;
+    private checkEnabledTimerId: ReturnType<typeof setTimeout> | undefined;
     private hls: Hls | null = null;
     private b24RenderState: IB24RenderState = container.get<IB24RenderState>('IB24RenderState');
 

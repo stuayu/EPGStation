@@ -11,7 +11,7 @@ class SnackbarState implements ISnackbarState {
     public mainText: string = '';
     public buttonText: string;
 
-    private timerId: number | null = null;
+    private timerId: ReturnType<typeof setTimeout> | null = null;
 
     constructor() {
         this.buttonText = this.getDefaultButtonText();
