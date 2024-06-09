@@ -11,7 +11,7 @@ import RecordedStreamingVideoState from './RecordedStreamingVideoState';
 class RecordedHLSStreamingVideoState extends RecordedStreamingVideoState implements IRecordedHLSStreamingVideoState {
     private streamApiModel: IStreamApiModel;
     private streamId: apid.StreamId | null = null;
-    private keepTimerId: number | undefined;
+    private keepTimerId: ReturnType<typeof setTimeout> | undefined;
 
     private isStarting: boolean = false;
 

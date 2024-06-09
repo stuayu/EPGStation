@@ -258,7 +258,7 @@ export default class VideoContainer extends Vue {
     private fullScreenListener = ((): void => {
         this.fullscreenChange();
     }).bind(this);
-    private hideControlTimer: number | undefined;
+    private hideControlTimer: ReturnType<typeof setTimeout> | undefined;
 
     // seek 時に使用する一時変数
     private needsReplay: boolean | null = null;

@@ -59,8 +59,8 @@ export default class OnAir extends Vue {
     private onUpdateStatusCallback = (async (): Promise<void> => {
         await this.fetchData();
     }).bind(this);
-    private updateTimer: number | null = null;
-    private updateDigestibilityTimer: number | null = null;
+    private updateTimer: ReturnType<typeof setTimeout> | null = null;
+    private updateDigestibilityTimer: ReturnType<typeof setTimeout> | null = null;
 
     get isTabView(): boolean {
         return this.settingValue.isOnAirTabListView;
