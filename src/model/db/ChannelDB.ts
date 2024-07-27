@@ -34,10 +34,9 @@ export default class ChannelDB implements IChannelDB {
     /**
      * Mirakurun から取得した channel 情報を DB へ全件挿入する
      * @param channels: Service[]
-     * @param needesDeleted: 更新前に全データ削除が必要か
      * @return Promise<void>
      */
-    public async insert(channels: mapid.Service[], needesDeleted: boolean = true): Promise<void> {
+    public async insert(channels: mapid.Service[]): Promise<void> {
         const values: QueryDeepPartialEntity<Channel>[] = [];
 
         // 挿入データ作成
@@ -68,33 +67,44 @@ export default class ChannelDB implements IChannelDB {
 
         await queryRunner.startTransaction();
 
-        let hasError = false;
+        const hasError = false;
         try {
-            if (needesDeleted === true) {
-                // 削除
-                await queryRunner.manager.delete(Channel, {});
-            }
-
-            // 挿入処理
             for (const value of values) {
-                await queryRunner.manager.insert(Channel, value).catch(async err => {
-                    await queryRunner.manager.update(Channel, value.id, value).catch(serr => {
-                        this.log.system.error('channel update error');
-                        this.log.system.error(err);
-                        this.log.system.error(serr);
-                    });
-                });
-            }
+                try {
+                    // DBに挿入処理を実行
+                    await queryRunner.manager.insert(Channel, value);
+                } catch (err) {
+                    try {
+                        // おそらくすでにデータが存在すため、IDを用いて更新処理を実施
+                        await queryRunner.manager.update(Channel, value.id, value);
+                    } catch (serr) {
+                        this.log.system
+                            .info(`Failed to insert Channel with ID: ${value.id} Name: ${value.halfWidthName} \
+                            ChannelType: ${value.channelType}. Attempting to update. Error: ${err}`);
+                        this.log.system
+                            .info(`Failed to update Channel with ID: ${value.id} Name: ${value.halfWidthName} \
+                            ChannelType: ${value.channelType}. Attempting to delete and re-insert. Error: ${serr}`);
 
+                        try {
+                            // IDを用いても更新処理が実施できない場合の苦肉の策として、削除と挿入を実施
+                            await queryRunner.manager.delete(Channel, value.id);
+                            await queryRunner.manager.insert(Channel, value);
+                        } catch (error) {
+                            this.log.system
+                                .error(`Failed to delete and re-insert Channel with ID: ${value.id} Name: ${value.halfWidthName} \
+                                ChannelType: ${value.channelType}. Error: ${error}`);
+                        }
+                    }
+                }
+            }
             await queryRunner.commitTransaction();
-        } catch (err: any) {
-            console.error(err);
-            hasError = true;
+        } catch (transactionErr) {
             await queryRunner.rollbackTransaction();
+            this.log.system.error('transaction error');
+            this.log.system.error(transactionErr);
         } finally {
             await queryRunner.release();
         }
-
         if (hasError) {
             throw new Error('insert error');
         }
@@ -210,7 +220,7 @@ export default class ChannelDB implements IChannelDB {
         Array.prototype.push.apply(channels, values.insert);
         Array.prototype.push.apply(channels, values.update);
 
-        await this.insert(channels, false);
+        await this.insert(channels);
     }
 
     /**
@@ -251,7 +261,11 @@ export default class ChannelDB implements IChannelDB {
             .getRepository(Channel)
             .createQueryBuilder('channel')
             .where(queryOption)
-            .orderBy('channel.channelTypeId, channel.remoteControlKeyId, channel.serviceId', 'ASC');
+            .orderBy(
+                'CASE WHEN channel.remoteControlKeyId IS NULL THEN 1 ELSE 0 END, channel.remoteControlKeyId',
+                'ASC',
+            )
+            .addOrderBy('channel.id', 'ASC');
 
         const result = await this.promieRetry.run(() => {
             return repository.getMany();
@@ -266,18 +280,39 @@ export default class ChannelDB implements IChannelDB {
      * @return Promise<Channel[]>
      */
     public async findAll(needSort: boolean = false): Promise<Channel[]> {
-        const connection = await this.op.getConnection();
+        let connection;
+        try {
+            connection = await this.op.getConnection();
+        } catch (connectionError) {
+            this.log.system.error('Failed to get database connection', connectionError);
+            throw new Error('Database connection error');
+        }
 
         const queryBuilder = connection
             .getRepository(Channel)
             .createQueryBuilder('channel')
-            .orderBy('channel.channelTypeId, channel.remoteControlKeyId, channel.serviceId', 'ASC');
+            .orderBy(
+                'CASE WHEN channel.remoteControlKeyId IS NULL THEN 1 ELSE 0 END, channel.remoteControlKeyId',
+                'ASC',
+            )
+            .addOrderBy('channel.id', 'ASC');
 
-        const result = await this.promieRetry.run(() => {
-            return queryBuilder.getMany();
-        });
+        let result: Channel[];
+        try {
+            result = await this.promieRetry.run(() => {
+                return queryBuilder.getMany();
+            });
+        } catch (queryError) {
+            this.log.system.error('Failed to execute query', queryError);
+            throw new Error('Query execution error');
+        }
 
-        return needSort === true ? this.sortChannels(result) : result;
+        try {
+            return needSort === true ? this.sortChannels(result) : result;
+        } catch (sortError) {
+            this.log.system.error('Failed to sort channels', sortError);
+            throw new Error('Sorting error');
+        }
     }
 
     /**
