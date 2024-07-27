@@ -56,9 +56,9 @@ export default class ChannelDB implements IChannelDB {
                 remoteControlKeyId:
                     typeof channel.remoteControlKeyId === 'undefined' ? null : channel.remoteControlKeyId,
                 hasLogoData: !!channel.hasLogoData,
-                channelTypeId: this.getChannelTypeId(channel.channel.type),
-                channelType: channel.channel.type,
-                channel: channel.channel.channel,
+                channelTypeId: this.getChannelTypeId(channel.channel[0].type),
+                channelType: channel.channel[0].type,
+                channel: channel.channel[0].channel,
                 type: typeof (channel as any)['type'] !== 'number' ? null : (channel as any)['type'],
             });
         }
@@ -114,8 +114,89 @@ export default class ChannelDB implements IChannelDB {
                 return 2;
             case 'SKY':
                 return 3;
-            default:
+            case 'NW1':
                 return 4;
+            case 'NW2':
+                return 5;
+            case 'NW3':
+                return 6;
+            case 'NW4':
+                return 7;
+            case 'NW5':
+                return 8;
+            case 'NW6':
+                return 9;
+            case 'NW7':
+                return 10;
+            case 'NW8':
+                return 11;
+            case 'NW9':
+                return 12;
+            case 'NW10':
+                return 13;
+            case 'NW11':
+                return 14;
+            case 'NW12':
+                return 15;
+            case 'NW13':
+                return 16;
+            case 'NW14':
+                return 17;
+            case 'NW15':
+                return 18;
+            case 'NW16':
+                return 19;
+            case 'NW17':
+                return 20;
+            case 'NW18':
+                return 21;
+            case 'NW19':
+                return 22;
+            case 'NW20':
+                return 23;
+            case 'NW21':
+                return 24;
+            case 'NW22':
+                return 25;
+            case 'NW23':
+                return 26;
+            case 'NW24':
+                return 27;
+            case 'NW25':
+                return 28;
+            case 'NW26':
+                return 29;
+            case 'NW27':
+                return 30;
+            case 'NW28':
+                return 31;
+            case 'NW29':
+                return 32;
+            case 'NW30':
+                return 33;
+            case 'NW31':
+                return 34;
+            case 'NW32':
+                return 35;
+            case 'NW33':
+                return 36;
+            case 'NW34':
+                return 37;
+            case 'NW35':
+                return 38;
+            case 'NW36':
+                return 39;
+            case 'NW37':
+                return 40;
+            case 'NW38':
+                return 41;
+            case 'NW39':
+                return 42;
+            case 'NW40':
+                return 43;
+
+            default:
+                return 44;
         }
     }
 

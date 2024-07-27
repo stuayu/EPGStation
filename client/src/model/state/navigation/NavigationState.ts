@@ -60,6 +60,126 @@ export default class NavigationState implements INavigationState {
             if (config.broadcast.SKY === true) {
                 types.push('SKY');
             }
+            if (config.broadcast.NW1 === true) {
+                types.push('NW1');
+            }
+            if (config.broadcast.NW2 === true) {
+                types.push('NW2');
+            }
+            if (config.broadcast.NW3 === true) {
+                types.push('NW3');
+            }
+            if (config.broadcast.NW4 === true) {
+                types.push('NW4');
+            }
+            if (config.broadcast.NW5 === true) {
+                types.push('NW5');
+            }
+            if (config.broadcast.NW6 === true) {
+                types.push('NW6');
+            }
+            if (config.broadcast.NW7 === true) {
+                types.push('NW7');
+            }
+            if (config.broadcast.NW8 === true) {
+                types.push('NW8');
+            }
+            if (config.broadcast.NW9 === true) {
+                types.push('NW9');
+            }
+            if (config.broadcast.NW10 === true) {
+                types.push('NW10');
+            }
+            if (config.broadcast.NW11 === true) {
+                types.push('NW11');
+            }
+            if (config.broadcast.NW12 === true) {
+                types.push('NW12');
+            }
+            if (config.broadcast.NW13 === true) {
+                types.push('NW13');
+            }
+            if (config.broadcast.NW14 === true) {
+                types.push('NW14');
+            }
+            if (config.broadcast.NW15 === true) {
+                types.push('NW15');
+            }
+            if (config.broadcast.NW16 === true) {
+                types.push('NW16');
+            }
+            if (config.broadcast.NW17 === true) {
+                types.push('NW17');
+            }
+            if (config.broadcast.NW18 === true) {
+                types.push('NW18');
+            }
+            if (config.broadcast.NW19 === true) {
+                types.push('NW19');
+            }
+            if (config.broadcast.NW20 === true) {
+                types.push('NW20');
+            }
+            if (config.broadcast.NW21 === true) {
+                types.push('NW21');
+            }
+            if (config.broadcast.NW22 === true) {
+                types.push('NW22');
+            }
+            if (config.broadcast.NW23 === true) {
+                types.push('NW23');
+            }
+            if (config.broadcast.NW24 === true) {
+                types.push('NW24');
+            }
+            if (config.broadcast.NW25 === true) {
+                types.push('NW25');
+            }
+            if (config.broadcast.NW26 === true) {
+                types.push('NW26');
+            }
+            if (config.broadcast.NW27 === true) {
+                types.push('NW27');
+            }
+            if (config.broadcast.NW28 === true) {
+                types.push('NW28');
+            }
+            if (config.broadcast.NW29 === true) {
+                types.push('NW29');
+            }
+            if (config.broadcast.NW30 === true) {
+                types.push('NW30');
+            }
+            if (config.broadcast.NW31 === true) {
+                types.push('NW31');
+            }
+            if (config.broadcast.NW32 === true) {
+                types.push('NW32');
+            }
+            if (config.broadcast.NW33 === true) {
+                types.push('NW33');
+            }
+            if (config.broadcast.NW34 === true) {
+                types.push('NW34');
+            }
+            if (config.broadcast.NW35 === true) {
+                types.push('NW35');
+            }
+            if (config.broadcast.NW36 === true) {
+                types.push('NW36');
+            }
+            if (config.broadcast.NW37 === true) {
+                types.push('NW37');
+            }
+            if (config.broadcast.NW38 === true) {
+                types.push('NW38');
+            }
+            if (config.broadcast.NW39 === true) {
+                types.push('NW39');
+            }
+            if (config.broadcast.NW40 === true) {
+                types.push('NW40');
+            }
 
             for (const type of types) {
                 newItems.push({

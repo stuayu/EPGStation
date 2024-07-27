@@ -16,7 +16,7 @@ export default class TimeScale extends Vue {
     }
 
     private guideState: IGuideState = container.get<IGuideState>('IGuideState');
-    private timerId: number | null = null;
+    private timerId: ReturnType<typeof setTimeout> | null = null;
     private position: number = -100;
 
     public mounted(): void {

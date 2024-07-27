@@ -1,4 +1,25 @@
-# EPGStation
+# EPGStation 
+
+|ブランチ|状態|
+|---|---|
+|test|[![build](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml/badge.svg?branch=test)](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml)|
+|master|[![build](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml/badge.svg?branch=master)](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml)|
+
+フォーク版の機能詳細は[doc/stuayu-fork.md](doc/stuayu-fork.md)をご覧ください．
+> [!NOTE]
+> こちらはMirakurunのdevブランチ版でしか動作しない変更を加えています。  
+> ご利用の際は十分注意して利用してください。
+
+
+### インストールとビルド方法
+- Windows
+  - npm run all-install && npm run build-win
+  - npm run install-win-service
+- Linux/Mac
+  - npm run all-install && npm run build
+
+以下オリジナル
+---
 
 [Mirakurun](https://github.com/Chinachu/Mirakurun) を使用した録画管理ソフトです  
 iOS・Android での閲覧に最適化されたモバイルフレンドリーな Web インターフェイスが特徴です  

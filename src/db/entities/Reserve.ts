@@ -179,7 +179,7 @@ export default class Reserve extends BaseEntity {
     @Column({
         type: 'text',
     })
-    public channelType!: string; // GR BS CS SKY
+    public channelType!: string; // GR BS CS SKY NW1 NW2 NW3 NW4 NW5 NW6
 
     @Column({
         type: 'bigint',

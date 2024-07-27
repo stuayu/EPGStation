@@ -92,6 +92,46 @@ components:
                 - BS
                 - CS
                 - SKY
+                - NW1
+                - NW2
+                - NW3
+                - NW4
+                - NW5
+                - NW6
+                - NW7
+                - NW8
+                - NW9
+                - NW10
+                - NW11
+                - NW12
+                - NW13
+                - NW14
+                - NW15
+                - NW16
+                - NW17
+                - NW18
+                - NW19
+                - NW20
+                - NW21
+                - NW22
+                - NW23
+                - NW24
+                - NW25
+                - NW26
+                - NW27
+                - NW28
+                - NW29
+                - NW30
+                - NW31
+                - NW32
+                - NW33
+                - NW34
+                - NW35
+                - NW36
+                - NW37
+                - NW38
+                - NW39
+                - NW40
 
         ProgramGenreLv1:
             description: ジャンル
@@ -197,6 +237,26 @@ components:
                         - BS
                         - CS
                         - SKY
+                        - NW1
+                        - NW2
+                        - NW3
+                        - NW4
+                        - NW5
+                        - NW6
+                        - NW7
+                        - NW8
+                        - NW9
+                        - NW10
+                        - NW11
+                        - NW12
+                        - NW13
+                        - NW14
+                        - NW15
+                        - NW16
+                        - NW17
+                        - NW18
+                        - NW19
+                        - NW20
                     properties:
                         GR:
                             type: boolean
@@ -205,6 +265,86 @@ components:
                         CS:
                             type: boolean
                         SKY:
+                            type: boolean
+                        NW1:
+                            type: boolean
+                        NW2:
+                            type: boolean
+                        NW3:
+                            type: boolean
+                        NW4:
+                            type: boolean
+                        NW5:
+                            type: boolean
+                        NW6:
+                            type: boolean
+                        NW7:
+                            type: boolean
+                        NW8:
+                            type: boolean
+                        NW9:
+                            type: boolean
+                        NW10:
+                            type: boolean
+                        NW11:
+                            type: boolean
+                        NW12:
+                            type: boolean
+                        NW13:
+                            type: boolean
+                        NW14:
+                            type: boolean
+                        NW15:
+                            type: boolean
+                        NW16:
+                            type: boolean
+                        NW17:
+                            type: boolean
+                        NW18:
+                            type: boolean
+                        NW19:
+                            type: boolean
+                        NW20:
+                            type: boolean
+                        NW21:
+                            type: boolean
+                        NW22:
+                            type: boolean
+                        NW23:
+                            type: boolean
+                        NW24:
+                            type: boolean
+                        NW25:
+                            type: boolean
+                        NW26:
+                            type: boolean
+                        NW27:
+                            type: boolean
+                        NW28:
+                            type: boolean
+                        NW29:
+                            type: boolean
+                        NW30:
+                            type: boolean
+                        NW31:
+                            type: boolean
+                        NW32:
+                            type: boolean
+                        NW33:
+                            type: boolean
+                        NW34:
+                            type: boolean
+                        NW35:
+                            type: boolean
+                        NW36:
+                            type: boolean
+                        NW37:
+                            type: boolean
+                        NW38:
+                            type: boolean
+                        NW39:
+                            type: boolean
+                        NW40:
                             type: boolean
                 recorded:
                     description: 指定可能な録画ディレクトリ名
@@ -607,6 +747,126 @@ components:
                     type: boolean
                 SKY:
                     description: SKY
+                    type: boolean
+                NW1:
+                    description: NW
+                    type: boolean
+                NW2:
+                    description: NW
+                    type: boolean
+                NW3:
+                    description: NW
+                    type: boolean
+                NW4:
+                    description: NW
+                    type: boolean
+                NW5:
+                    description: NW
+                    type: boolean
+                NW6:
+                    description: NW
+                    type: boolean
+                NW7:
+                    description: NW
+                    type: boolean
+                NW8:
+                    description: NW
+                    type: boolean
+                NW9:
+                    description: NW
+                    type: boolean
+                NW10:
+                    description: NW
+                    type: boolean
+                NW11:
+                    description: NW
+                    type: boolean
+                NW12:
+                    description: NW
+                    type: boolean
+                NW13:
+                    description: NW
+                    type: boolean
+                NW14:
+                    description: NW
+                    type: boolean
+                NW15:
+                    description: NW
+                    type: boolean
+                NW16:
+                    description: NW
+                    type: boolean
+                NW17:
+                    description: NW
+                    type: boolean
+                NW18:
+                    description: NW
+                    type: boolean
+                NW19:
+                    description: NW
+                    type: boolean
+                NW20:
+                    description: NW
+                    type: boolean
+                NW21:
+                    description: NW
+                    type: boolean
+                NW22:
+                    description: NW
+                    type: boolean
+                NW23:
+                    description: NW
+                    type: boolean
+                NW24:
+                    description: NW
+                    type: boolean
+                NW25:
+                    description: NW
+                    type: boolean
+                NW26:
+                    description: NW
+                    type: boolean
+                NW27:
+                    description: NW
+                    type: boolean
+                NW28:
+                    description: NW
+                    type: boolean
+                NW29:
+                    description: NW
+                    type: boolean
+                NW30:
+                    description: NW
+                    type: boolean
+                NW31:
+                    description: NW
+                    type: boolean
+                NW32:
+                    description: NW
+                    type: boolean
+                NW33:
+                    description: NW
+                    type: boolean
+                NW34:
+                    description: NW
+                    type: boolean
+                NW35:
+                    description: NW
+                    type: boolean
+                NW36:
+                    description: NW
+                    type: boolean
+                NW37:
+                    description: NW
+                    type: boolean
+                NW38:
+                    description: NW
+                    type: boolean
+                NW39:
+                    description: NW
+                    type: boolean
+                NW40:
+                    description: NW
                     type: boolean
                 channelIds:
                     description: 放送局
@@ -1723,6 +1983,286 @@ components:
             schema:
                 type: boolean
 
+        requiredNW1:
+            description: NW
+            in: query
+            name: NW1
+            required: true
+            schema:
+                type: boolean
+        requiredNW2:
+            description: NW
+            in: query
+            name: NW2
+            required: true
+            schema:
+                type: boolean
+        requiredNW3:
+            description: NW
+            in: query
+            name: NW3
+            required: true
+            schema:
+                type: boolean
+        requiredNW4:
+            description: NW
+            in: query
+            name: NW4
+            required: true
+            schema:
+                type: boolean
+        requiredNW5:
+            description: NW
+            in: query
+            name: NW5
+            required: true
+            schema:
+                type: boolean
+        requiredNW6:
+            description: NW
+            in: query
+            name: NW6
+            required: true
+            schema:
+                type: boolean
+        requiredNW7:
+            description: NW
+            in: query
+            name: NW7
+            required: true
+            schema:
+                type: boolean
+        requiredNW8:
+            description: NW
+            in: query
+            name: NW8
+            required: true
+            schema:
+                type: boolean
+        requiredNW9:
+            description: NW
+            in: query
+            name: NW9
+            required: true
+            schema:
+                type: boolean
+        requiredNW10:
+            description: NW
+            in: query
+            name: NW10
+            required: true
+            schema:
+                type: boolean
+        requiredNW11:
+            description: NW
+            in: query
+            name: NW11
+            required: true
+            schema:
+                type: boolean
+        requiredNW12:
+            description: NW
+            in: query
+            name: NW12
+            required: true
+            schema:
+                type: boolean
+        requiredNW13:
+            description: NW
+            in: query
+            name: NW13
+            required: true
+            schema:
+                type: boolean
+        requiredNW14:
+            description: NW
+            in: query
+            name: NW14
+            required: true
+            schema:
+                type: boolean
+        requiredNW15:
+            description: NW
+            in: query
+            name: NW15
+            required: true
+            schema:
+                type: boolean
+        requiredNW16:
+            description: NW
+            in: query
+            name: NW16
+            required: true
+            schema:
+                type: boolean
+        requiredNW17:
+            description: NW
+            in: query
+            name: NW17
+            required: true
+            schema:
+                type: boolean
+        requiredNW18:
+            description: NW
+            in: query
+            name: NW18
+            required: true
+            schema:
+                type: boolean
+        requiredNW19:
+            description: NW
+            in: query
+            name: NW19
+            required: true
+            schema:
+                type: boolean
+        requiredNW20:
+            description: NW
+            in: query
+            name: NW20
+            required: true
+            schema:
+                type: boolean
+        requiredNW21:
+            description: NW
+            in: query
+            name: NW21
+            required: true
+            schema:
+                type: boolean
+        requiredNW22:
+            description: NW
+            in: query
+            name: NW22
+            required: true
+            schema:
+                type: boolean
+        requiredNW23:
+            description: NW
+            in: query
+            name: NW23
+            required: true
+            schema:
+                type: boolean
+        requiredNW24:
+            description: NW
+            in: query
+            name: NW24
+            required: true
+            schema:
+                type: boolean
+        requiredNW25:
+            description: NW
+            in: query
+            name: NW25
+            required: true
+            schema:
+                type: boolean
+        requiredNW26:
+            description: NW
+            in: query
+            name: NW26
+            required: true
+            schema:
+                type: boolean
+        requiredNW27:
+            description: NW
+            in: query
+            name: NW27
+            required: true
+            schema:
+                type: boolean
+        requiredNW28:
+            description: NW
+            in: query
+            name: NW28
+            required: true
+            schema:
+                type: boolean
+        requiredNW29:
+            description: NW
+            in: query
+            name: NW29
+            required: true
+            schema:
+                type: boolean
+        requiredNW30:
+            description: NW
+            in: query
+            name: NW30
+            required: true
+            schema:
+                type: boolean
+        requiredNW31:
+            description: NW
+            in: query
+            name: NW31
+            required: true
+            schema:
+                type: boolean
+        requiredNW32:
+            description: NW
+            in: query
+            name: NW32
+            required: true
+            schema:
+                type: boolean
+        requiredNW33:
+            description: NW
+            in: query
+            name: NW33
+            required: true
+            schema:
+                type: boolean
+        requiredNW34:
+            description: NW
+            in: query
+            name: NW34
+            required: true
+            schema:
+                type: boolean
+        requiredNW35:
+            description: NW
+            in: query
+            name: NW35
+            required: true
+            schema:
+                type: boolean
+        requiredNW36:
+            description: NW
+            in: query
+            name: NW36
+            required: true
+            schema:
+                type: boolean
+        requiredNW37:
+            description: NW
+            in: query
+            name: NW37
+            required: true
+            schema:
+                type: boolean
+        requiredNW38:
+            description: NW
+            in: query
+            name: NW38
+            required: true
+            schema:
+                type: boolean
+        requiredNW39:
+            description: NW
+            in: query
+            name: NW39
+            required: true
+            schema:
+                type: boolean
+        requiredNW40:
+            description: NW
+            in: query
+            name: NW40
+            required: true
+            schema:
+                type: boolean
         GetReserveType:
             description: 予約情報取得タイプ
             in: query
