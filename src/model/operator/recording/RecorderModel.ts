@@ -55,6 +55,7 @@ class RecorderModel implements IRecorderModel {
     private videoFileFulPath: string | null = null;
     private timerId: NodeJS.Timeout | null = null;
     private stream: http.IncomingMessage | null = null;
+    private passThroughStreamForWrite: stream.PassThrough | null = null;
     private recFile: fs.WriteStream | null = null;
     private isStopPrepRec: boolean = false;
     private isNeedDeleteReservation: boolean = true;
@@ -207,7 +208,12 @@ class RecorderModel implements IRecorderModel {
                 // retry
                 setTimeout(() => {
                     this.prepRecord(retry + 1);
-                }, 1000 * 5);
+                }, 1000 * 5); // 5s
+            } else if (retry < 30) {
+                // retry ここに来るのはチューナーが開けない or ソケットのハングアップとか？ //
+                setTimeout(() => {
+                    this.prepRecord(retry + 1);
+                }, 1000 * 60); // 60s
             } else {
                 this.isPrepRecording = false;
                 // 録画準備失敗を通知
@@ -246,6 +252,19 @@ class RecorderModel implements IRecorderModel {
                 this.stream = null;
             } catch (err: any) {
                 this.log.system.error(`destroy stream error: ${this.reserve.id}`);
+                this.log.system.error(err);
+            }
+        }
+
+        if (this.passThroughStreamForWrite !== null) {
+            try {
+                if (needesUnpip === true) {
+                    this.passThroughStreamForWrite.unpipe();
+                }
+                this.passThroughStreamForWrite.destroy();
+                this.passThroughStreamForWrite = null;
+            } catch (err: any) {
+                this.log.system.error(`destroy pass through stream error: ${this.reserve.id}`);
                 this.log.system.error(err);
             }
         }
@@ -317,13 +336,15 @@ class RecorderModel implements IRecorderModel {
                 });
             }
         });
-        this.stream.pipe(this.recFile);
+
+        this.passThroughStreamForWrite = new stream.PassThrough();
+        this.passThroughStreamForWrite.pipe(this.recFile);
 
         // drop checker
         if (this.config.isEnabledDropCheck === true) {
             let dropFilePath: string | null = null;
             try {
-                await this.dropChecker.start(this.config.dropLog, recPath.fullPath, this.stream);
+                await this.dropChecker.start(this.config.dropLog, recPath.fullPath, this.passThroughStreamForWrite);
                 dropFilePath = this.dropChecker.getFilePath();
             } catch (err: any) {
                 this.log.system.error(`drop check error: ${recPath.fullPath}`);
@@ -348,6 +369,8 @@ class RecorderModel implements IRecorderModel {
                 }
             }
         }
+
+        this.stream.pipe(this.passThroughStreamForWrite);
 
         return new Promise<void>((resolve: () => void, reject: (error: Error) => void) => {
             if (this.stream === null) {

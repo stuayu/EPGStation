@@ -57,6 +57,246 @@
                             class="mx-1 my-0"
                             label="SKY"
                         ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW1.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW1.isEnable"
+                            class="mx-1 my-0"
+                            label="NW1"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW2.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW2.isEnable"
+                            class="mx-1 my-0"
+                            label="NW2"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW3.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW3.isEnable"
+                            class="mx-1 my-0"
+                            label="NW3"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW4.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW4.isEnable"
+                            class="mx-1 my-0"
+                            label="NW4"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW5.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW5.isEnable"
+                            class="mx-1 my-0"
+                            label="NW5"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW6.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW6.isEnable"
+                            class="mx-1 my-0"
+                            label="NW6"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW7.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW7.isEnable"
+                            class="mx-1 my-0"
+                            label="NW7"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW8.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW8.isEnable"
+                            class="mx-1 my-0"
+                            label="NW8"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW9.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW9.isEnable"
+                            class="mx-1 my-0"
+                            label="NW9"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW10.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW10.isEnable"
+                            class="mx-1 my-0"
+                            label="NW10"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW11.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW11.isEnable"
+                            class="mx-1 my-0"
+                            label="NW11"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW12.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW12.isEnable"
+                            class="mx-1 my-0"
+                            label="NW12"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW13.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW13.isEnable"
+                            class="mx-1 my-0"
+                            label="NW13"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW14.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW14.isEnable"
+                            class="mx-1 my-0"
+                            label="NW14"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW15.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW15.isEnable"
+                            class="mx-1 my-0"
+                            label="NW15"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW16.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW16.isEnable"
+                            class="mx-1 my-0"
+                            label="NW16"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW17.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW17.isEnable"
+                            class="mx-1 my-0"
+                            label="NW17"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW18.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW18.isEnable"
+                            class="mx-1 my-0"
+                            label="NW18"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW19.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW19.isEnable"
+                            class="mx-1 my-0"
+                            label="NW19"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW20.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW20.isEnable"
+                            class="mx-1 my-0"
+                            label="NW20"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW21.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW21.isEnable"
+                            class="mx-1 my-0"
+                            label="NW21"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW22.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW22.isEnable"
+                            class="mx-1 my-0"
+                            label="NW22"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW23.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW23.isEnable"
+                            class="mx-1 my-0"
+                            label="NW23"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW24.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW24.isEnable"
+                            class="mx-1 my-0"
+                            label="NW24"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW25.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW25.isEnable"
+                            class="mx-1 my-0"
+                            label="NW25"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW26.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW26.isEnable"
+                            class="mx-1 my-0"
+                            label="NW26"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW27.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW27.isEnable"
+                            class="mx-1 my-0"
+                            label="NW27"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW28.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW28.isEnable"
+                            class="mx-1 my-0"
+                            label="NW28"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW29.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW29.isEnable"
+                            class="mx-1 my-0"
+                            label="NW29"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW30.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW30.isEnable"
+                            class="mx-1 my-0"
+                            label="NW30"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW31.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW31.isEnable"
+                            class="mx-1 my-0"
+                            label="NW31"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW32.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW32.isEnable"
+                            class="mx-1 my-0"
+                            label="NW32"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW33.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW33.isEnable"
+                            class="mx-1 my-0"
+                            label="NW33"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW34.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW34.isEnable"
+                            class="mx-1 my-0"
+                            label="NW34"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW35.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW35.isEnable"
+                            class="mx-1 my-0"
+                            label="NW35"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW36.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW36.isEnable"
+                            class="mx-1 my-0"
+                            label="NW36"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW37.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW37.isEnable"
+                            class="mx-1 my-0"
+                            label="NW37"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW38.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW38.isEnable"
+                            class="mx-1 my-0"
+                            label="NW38"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW39.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW39.isEnable"
+                            class="mx-1 my-0"
+                            label="NW39"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchState.searchOption.broadcastWave.NW40.isShow"
+                            v-model="searchState.searchOption.broadcastWave.NW40.isEnable"
+                            class="mx-1 my-0"
+                            label="NW40"
+                        ></v-checkbox>
                     </div>
                 </SearchOptionRow>
                 <SearchOptionRow title="ジャンル">

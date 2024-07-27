@@ -1,0 +1,36 @@
+@echo off
+chcp 65001
+
+set ADDTASK_PATH=C:\rec\Amatsukaze\exe_files\AmatsukazeAddTask.exe
+rem 第一引数(amatsukazeプロファイル名)
+set profile=%1
+set ip=localhost
+set amatsukaze_root=C:\rec\Amatsukaze
+set IP=localhost
+set port=32768
+set LOG_F=logs/amatsukaze.log.txt
+rem EPGSTATIONの出力ファイルパスからディレクトリのみ抽出
+for %%a in ("%OUTPUT%") do (
+    set out_test=%%~dpa
+)
+rem パス中の最後に"\"があるとエラーが発生するため削除
+set output_dir=%out_test:~0,-1%
+echo %date% %time% > %LOG_F%
+set >> %LOG_F%
+
+echo "%ADDTASK_PATH%" -r "%amatsukaze_root%" -f "%INPUT%" -ip "%IP%" -p %port% -o "%output_dir%" -s "%profile%" --priority 3 --no-move >>%LOG_F%
+start "" /wait /B "%ADDTASK_PATH%" -r "%amatsukaze_root%" -f "%INPUT%" -ip "%IP%" -p %port% -o "%output_dir%" -s "%profile%" --priority 3 --no-move >>%LOG_F%
+
+:LOOP
+if exist "%OUTPUT%" (
+    goto FINAL
+)
+start /wait timeout /t 120 /nobreak
+goto LOOP
+
+:FINAL
+rem ファイルが作成されてからすぐに終了すると後続の処理に影響が生じるため30秒間まつ
+echo %date% %time% :FINAL >> %LOG_F%
+start /wait timeout /t 30 /nobreak >>%LOG_F%
+echo %date% %time% :FINISH >> %LOG_F%
+echo ERRORLEVEL=%ERRORLEVEL% >>%LOG_F%

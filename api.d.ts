@@ -15,7 +15,11 @@ export type ThumbnailId = number;
 export type DropLogFileId = number;
 export type RecordedTagId = number;
 export type EncodeId = number;
-export type ChannelType = 'GR' | 'BS' | 'CS' | 'SKY';
+export type ChannelType = "GR" | "BS" | "CS" | "SKY" |
+    "NW1" | "NW2" | "NW3" | "NW4" | "NW5" | "NW6" | "NW7" | "NW8" | "NW9" | "NW10" |
+    "NW11" | "NW12" | "NW13" | "NW14" | "NW15" | "NW16" | "NW17" | "NW18" | "NW19" | "NW20" |
+    "NW21" | "NW22" | "NW23" | "NW24" | "NW25" | "NW26" | "NW27" | "NW28" | "NW29" | "NW30" |
+    "NW31" | "NW32" | "NW33" | "NW34" | "NW35" | "NW36" | "NW37" | "NW38" | "NW39" | "NW40"; // NWを追加
 export type ProgramGenreLv1 = number;
 export type ProgramGenreLv2 = number;
 export type ProgramVideoType = 'mpeg2' | 'h.264' | 'h.265';
@@ -191,6 +195,46 @@ export interface BroadcastStatus {
     BS: boolean;
     CS: boolean;
     SKY: boolean;
+    NW1: boolean;
+    NW2: boolean;
+    NW3: boolean;
+    NW4: boolean;
+    NW5: boolean;
+    NW6: boolean;
+    NW7: boolean;
+    NW8: boolean;
+    NW9: boolean;
+    NW10: boolean;
+    NW11: boolean;
+    NW12: boolean;
+    NW13: boolean;
+    NW14: boolean;
+    NW15: boolean;
+    NW16: boolean;
+    NW17: boolean;
+    NW18: boolean;
+    NW19: boolean;
+    NW20: boolean;
+    NW21: boolean;
+    NW22: boolean;
+    NW23: boolean;
+    NW24: boolean;
+    NW25: boolean;
+    NW26: boolean;
+    NW27: boolean;
+    NW28: boolean;
+    NW29: boolean;
+    NW30: boolean;
+    NW31: boolean;
+    NW32: boolean;
+    NW33: boolean;
+    NW34: boolean;
+    NW35: boolean;
+    NW36: boolean;
+    NW37: boolean;
+    NW38: boolean;
+    NW39: boolean;
+    NW40: boolean;
 }
 
 /**
@@ -276,6 +320,46 @@ export interface RuleSearchOption {
     BS?: boolean; // BS
     CS?: boolean; // CS
     SKY?: boolean; // SKY
+    NW1?: boolean; // NW
+    NW2?: boolean; // NW
+    NW3?: boolean; // NW
+    NW4?: boolean; // NW
+    NW5?: boolean; // NW
+    NW6?: boolean; // NW
+    NW7?: boolean; // NW
+    NW8?: boolean; // NW
+    NW9?: boolean; // NW
+    NW10?: boolean; // NW
+    NW11?: boolean; // NW
+    NW12?: boolean; // NW
+    NW13?: boolean; // NW
+    NW14?: boolean; // NW
+    NW15?: boolean; // NW
+    NW16?: boolean; // NW
+    NW17?: boolean; // NW
+    NW18?: boolean; // NW
+    NW19?: boolean; // NW
+    NW20?: boolean; // NW
+    NW21?: boolean; // NW
+    NW22?: boolean; // NW
+    NW23?: boolean; // NW
+    NW24?: boolean; // NW
+    NW25?: boolean; // NW
+    NW26?: boolean; // NW
+    NW27?: boolean; // NW
+    NW28?: boolean; // NW
+    NW29?: boolean; // NW
+    NW30?: boolean; // NW
+    NW31?: boolean; // NW
+    NW32?: boolean; // NW
+    NW33?: boolean; // NW
+    NW34?: boolean; // NW
+    NW35?: boolean; // NW
+    NW36?: boolean; // NW
+    NW37?: boolean; // NW
+    NW38?: boolean; // NW
+    NW39?: boolean; // NW
+    NW40?: boolean; // NW
     channelIds?: ChannelId[]; // channels ids
     genres?: Genre[];
     times?: SearchTime[]; // 開始時間からの有効時間
@@ -533,6 +617,46 @@ export interface ScheduleOption {
     BS: boolean;
     CS: boolean;
     SKY: boolean;
+    NW1: boolean;
+    NW2: boolean;
+    NW3: boolean;
+    NW4: boolean;
+    NW5: boolean;
+    NW6: boolean;
+    NW7: boolean;
+    NW8: boolean;
+    NW9: boolean;
+    NW10: boolean;
+    NW11: boolean;
+    NW12: boolean;
+    NW13: boolean;
+    NW14: boolean;
+    NW15: boolean;
+    NW16: boolean;
+    NW17: boolean;
+    NW18: boolean;
+    NW19: boolean;
+    NW20: boolean;
+    NW21: boolean;
+    NW22: boolean;
+    NW23: boolean;
+    NW24: boolean;
+    NW25: boolean;
+    NW26: boolean;
+    NW27: boolean;
+    NW28: boolean;
+    NW29: boolean;
+    NW30: boolean;
+    NW31: boolean;
+    NW32: boolean;
+    NW33: boolean;
+    NW34: boolean;
+    NW35: boolean;
+    NW36: boolean;
+    NW37: boolean;
+    NW38: boolean;
+    NW39: boolean;
+    NW40: boolean;
 }
 
 /**
