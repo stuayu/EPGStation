@@ -1,6 +1,7 @@
 import { inject, injectable } from 'inversify';
 import mirakurun from 'mirakurun';
 import * as apid from '../../../../api';
+import Channel from '../../../db/entities/Channel';
 import IChannelDB from '../../db/IChannelDB';
 import IMirakurunClientModel from '../../IMirakurunClientModel';
 import IChannelApiModel, { IChannelApiModelError } from './IChannelApiModel';
@@ -20,10 +21,19 @@ class ChannelApiModel implements IChannelApiModel {
 
     /**
      * チャンネル情報取得
+     * @param channelId: apid.ChannelId
      * @return Promise<ChannelItem[]>
      */
-    public async getChannels(): Promise<apid.ChannelItem[]> {
-        const channels = await this.channelDB.findAll(true);
+    public async getChannels(channelId: apid.ChannelId): Promise<apid.ChannelItem[]> {
+        let channels: Channel[] = []
+        if (!channelId) {
+            channels = await this.channelDB.findAll(true);
+        } else {
+            const channel = await this.channelDB.findId(channelId);
+            if (channel) {
+                channels = [channel]
+            }
+        }
 
         return channels.map(c => {
             const result: apid.ChannelItem = {
