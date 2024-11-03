@@ -8,8 +8,8 @@ export const post: Operation = async (req, res) => {
     const recordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
 
     try {
-        if (typeof req.file === 'undefined') {
-            throw new Error('FileIsNotFound');
+        if (typeof req.file === 'undefined' && typeof req.body.localFilePath === 'undefined') {
+            throw new Error('FileIsNotFound OR localFilePathNotFound');
         }
 
         const option: UploadedVideoFileOption = {
@@ -17,8 +17,9 @@ export const post: Operation = async (req, res) => {
             parentDirectoryName: req.body.parentDirectoryName,
             viewName: req.body.viewName,
             fileType: req.body.fileType,
-            fileName: req.file.originalname,
-            filePath: req.file.path,
+            fileName: req.file ? req.file.originalname : undefined,
+            filePath: req.file ? req.file.path : undefined,
+            localFilePath: req.body.localFilePath,
         };
         if (typeof req.body.subDirectory !== 'undefined') {
             option.subDirectory = req.body.subDirectory;

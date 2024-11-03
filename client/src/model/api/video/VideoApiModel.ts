@@ -57,7 +57,12 @@ export default class VideoApiModel implements IVideoApiModel {
         }
         formData.append('viewName', option.viewName);
         formData.append('fileType', option.fileType);
-        formData.append('file', option.file);
+        if (typeof option.file !== 'undefined') {
+            formData.append('file', option.file);
+        }
+        if (typeof option.localFilePath !== 'undefined') {
+            formData.append('localFilePath', option.localFilePath);
+        }
 
         await this.repository.post('/videos/upload', formData, {
             headers: {
