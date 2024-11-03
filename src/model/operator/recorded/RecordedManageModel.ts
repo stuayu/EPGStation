@@ -267,7 +267,9 @@ export default class RecordedManageModel implements IRecordedManageModel {
         // 指定された番組情報を取得
         const recorded = await this.recordedDB.findId(option.recordedId);
         if (recorded === null) {
-            await FileUtil.unlink(option.filePath).catch(() => {});
+            if (typeof option.filePath !== 'undefined') {
+                await FileUtil.unlink(option.filePath).catch(() => {});
+            }
             throw new Error('RecordedIdIsNull');
         }
 
@@ -275,7 +277,9 @@ export default class RecordedManageModel implements IRecordedManageModel {
         const parentDirPath = this.videoUtil.getParentDirPath(option.parentDirectoryName);
         if (parentDirPath === null) {
             this.log.system.error(`parent directory is null: ${option.parentDirectoryName}`);
-            await FileUtil.unlink(option.filePath).catch(() => {});
+            if (typeof option.filePath !== 'undefined') {
+                await FileUtil.unlink(option.filePath).catch(() => {});
+            }
             throw new Error('ParentDirectoryIsNull');
         }
 
@@ -297,23 +301,56 @@ export default class RecordedManageModel implements IRecordedManageModel {
             }
         }
 
+        // アップロードファイルのローカスパスが指定されていれば、そちらのファイル名を使いパスを生成する
         // コピー先のファイルパスを生成する
-        const filePath = await this.getUploadedVideoFilePath(dirPath, option.fileName);
+        let filePath: string | undefined;
+        if (typeof option.localFilePath !== 'undefined') {
+            const fileName = path.basename(option.localFilePath);
+            filePath = await this.getUploadedVideoFilePath(dirPath, fileName);
+        } else if (typeof option.fileName !== 'undefined') {
+            filePath = await this.getUploadedVideoFilePath(dirPath, option.fileName);
+        }
 
-        // アップロードされたファイルを保存先へ移動する
-        try {
-            this.log.system.info(`move file ${option.filePath} -> ${filePath}`);
-            await FileUtil.rename(option.filePath, filePath);
-        } catch (err: any) {
-            // move を試す
+        if (typeof filePath === 'undefined') {
+            throw new Error('File path could not be determined');
+        }
+
+        if (typeof option.localFilePath !== 'undefined') {
+            // アップロードファイルのローカルデータを直接EPGStationファイル内の録画管理フォルダに移動
             try {
-                await FileUtil.move(option.filePath, filePath);
-            } catch (e: any) {
-                this.log.system.error('move file error');
-                this.log.system.error(e);
-                await FileUtil.unlink(option.filePath).catch(() => {});
+                this.log.system.info(`move file ${option.localFilePath} -> ${filePath}`);
+                await FileUtil.rename(option.localFilePath, filePath);
+            } catch (error) {
+                // move を試す
+                try {
+                    await FileUtil.move(option.localFilePath, filePath);
+                } catch (e: any) {
+                    this.log.system.error('move file error');
+                    this.log.system.error(e);
+                    await FileUtil.unlink(option.localFilePath).catch(() => {});
 
-                throw new Error('FileMoveError');
+                    throw new Error('FileMoveError');
+                }
+            }
+        } else {
+            // アップロードされたファイルを保存先へ移動する
+            if (typeof option.filePath === 'undefined') {
+                throw new Error('File path could not be determined');
+            }
+            try {
+                this.log.system.info(`move file ${option.filePath} -> ${filePath}`);
+                await FileUtil.rename(option.filePath, filePath);
+            } catch (err: any) {
+                // move を試す
+                try {
+                    await FileUtil.move(option.filePath, filePath);
+                } catch (e: any) {
+                    this.log.system.error('move file error');
+                    this.log.system.error(e);
+                    await FileUtil.unlink(option.filePath).catch(() => {});
+
+                    throw new Error('FileMoveError');
+                }
             }
         }
 

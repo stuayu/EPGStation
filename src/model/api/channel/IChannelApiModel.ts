@@ -5,6 +5,6 @@ export namespace IChannelApiModelError {
 }
 
 export default interface IChannelApiModel {
-    getChannels(): Promise<apid.ChannelItem[]>;
+    getChannels(channelId: apid.ChannelId): Promise<apid.ChannelItem[]>;
     getLogo(channelId: apid.ChannelId): Promise<Buffer>;
 }
