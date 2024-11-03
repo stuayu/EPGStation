@@ -7,7 +7,9 @@ export const get: Operation = async (req, res) => {
     const channelApiModel = container.get<IChannelApiModel>('IChannelApiModel');
 
     try {
-        api.responseJSON(res, 200, await channelApiModel.getChannels(req.params.channelId));
+        // クエリパラメータから channelId を取得
+        const channelId = parseInt(req.query.channelId as string, 10);
+        api.responseJSON(res, 200, await channelApiModel.getChannels(channelId));
     } catch (err: any) {
         api.responseServerError(res, err.message);
     }
@@ -19,7 +21,13 @@ get.apiDoc = {
     description: '放送局情報を取得する',
     parameters: [
         {
-            $ref: '#/components/parameters/PathChannelId',
+            name: 'channelId', // クエリパラメータの名前を指定
+            in: 'query', // パラメータの種類を指定
+            required: false, // 任意であることを指定
+            description: '放送局のID',
+            schema: {
+                type: 'integer', // データ型を指定
+            },
         },
     ],
     responses: {

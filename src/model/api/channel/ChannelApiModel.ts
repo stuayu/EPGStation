@@ -25,13 +25,13 @@ class ChannelApiModel implements IChannelApiModel {
      * @return Promise<ChannelItem[]>
      */
     public async getChannels(channelId: apid.ChannelId): Promise<apid.ChannelItem[]> {
-        let channels: Channel[] = []
+        let channels: Channel[] = [];
         if (!channelId) {
             channels = await this.channelDB.findAll(true);
         } else {
             const channel = await this.channelDB.findId(channelId);
             if (channel) {
-                channels = [channel]
+                channels = [channel];
             }
         }
 
