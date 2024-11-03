@@ -1574,7 +1574,6 @@ components:
                 - parentDirectoryName
                 - viewName
                 - fileType
-                - file
             properties:
                 recordedId:
                     $ref: '#/components/schemas/RecordedId'
@@ -1592,6 +1591,9 @@ components:
                 file:
                     type: string
                     format: binary
+                localFilePath:
+                    description: アップロードファイルのローカルパス
+                    type: string
 
         Version:
             description: バージョン情報
