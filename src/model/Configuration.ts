@@ -51,32 +51,44 @@ class Configuration implements IConfiguration {
     private readConfig(configPath: string, isWarning: boolean): IConfigFile {
         let str: string = '';
         try {
+            // 設定ファイルを読み込む
             str = fs.readFileSync(configPath, 'utf-8');
         } catch (e: any) {
             if (e.code === 'ENOENT') {
-                const errMsg = `${configPath} is not found`;
-                if (isWarning === true) {
+                // 設定ファイルが存在しない場合、テンプレートから生成
+                const errMsg = `${configPath} is not found. Generating from template.`;
+                if (isWarning) {
                     this.log.system.warn(errMsg);
                 } else {
                     this.log.system.fatal(errMsg);
                 }
+
+                // テンプレートから生成
+                try {
+                    fs.copyFileSync(Configuration.CONFIG_TEMPLATE_FILE_PATH, configPath);
+                    this.log.system.info(`Config file generated at ${configPath} from template.`);
+                    str = fs.readFileSync(configPath, 'utf-8'); // 再度設定ファイルを読み込み
+                } catch (copyError) {
+                    this.log.system.fatal(`Failed to generate config file from template: ${copyError}`);
+                    process.exit(1);
+                }
             } else {
-                if (isWarning === true) {
-                    this.log.stream.warn(e);
+                // 他のエラーが発生した場合
+                if (isWarning) {
+                    this.log.system.warn(e);
                 } else {
                     this.log.system.fatal(e);
                 }
-            }
 
-            // warning 扱いの場合はエラーを throw する
-            if (isWarning === true) {
-                throw e;
-            } else {
-                process.exit(1);
+                // warning 扱いの場合はエラーを throw する
+                if (isWarning) {
+                    throw e;
+                } else {
+                    process.exit(1);
+                }
             }
         }
-
-        // parse configFile
+        // 設定ファイルの内容をパース
         const newConfig: IConfigFile = <any>yaml.load(str);
 
         return this.formatConfig(newConfig);
@@ -212,7 +224,10 @@ class Configuration implements IConfiguration {
 
 namespace Configuration {
     export const CONFIG_FILE_PATH = path.join(__dirname, '..', '..', 'config', 'config.yml');
-    export const CONFIG_TEMPLATE_FILE_PATH = path.join(__dirname, '..', '..', 'config', 'config.yml.template');
+    export const CONFIG_TEMPLATE_FILE_PATH =
+        process.platform === 'win32'
+            ? path.join(__dirname, '..', '..', 'config', 'config-win.yml.template')
+            : path.join(__dirname, '..', '..', 'config', 'config.yml.template');
     export const ROOT_PATH = path.join(__dirname, '..', '..').replace(new RegExp(`\\${path.sep}$`), '');
 
     export const DEFAULT_VALUE: IConfigFile = {
