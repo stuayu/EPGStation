@@ -17,8 +17,9 @@ export interface UploadedVideoFileOption {
     subDirectory?: string; // 保存先サブディレクトリ
     viewName: string; // UI 上での表示名
     fileType: apid.VideoFileType; // ファイルタイプ
-    fileName: string; // ファイル名
-    filePath: string; // ファイルパス (アップロード先)
+    fileName?: string; // ファイル名
+    filePath?: string; // ファイルパス (アップロード先)
+    localFilePath?: string; // アップロードファイルのローカルパス
 }
 
 export default interface IRecordedManageModel {

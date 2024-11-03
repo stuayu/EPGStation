@@ -823,7 +823,8 @@ export interface UploadVideoFileOption {
     subDirectory?: string; // 保存先サブディレクトリ
     viewName: string; // UI 上での表示名
     fileType: VideoFileType; // ファイルタイプ
-    file: File; // ファイル
+    file?: File; // ファイル
+    localFilePath?: string; // アップロードファイルのローカルパス 
 }
 
 /**
