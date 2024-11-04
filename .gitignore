@@ -11,6 +11,8 @@ data/streamfiles/*
 config/*
 !config/*.template
 !config/*.sample.yml
+!config/*.ts
+!config/*.json
 data/*.json
 data/upload/*
 drop/*.log

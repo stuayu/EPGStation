@@ -1,49 +1,76 @@
-var request = require('request');
-const RECORDEDID = process.env.RECORDEDID;
-const VIDEOFILEID= process.env.VIDEOFILEID;
-const HOST = 'http://localhost:8888';
-
-async function request_all() {
-    const thumbnails_url = {
-        url: `${HOST}/api/recorded/${RECORDEDID}?isHalfWidth=true`
-    };
-    const data = await doRequest(thumbnails_url);
-    const thumbnails_number = JSON.parse(data).thumbnails[0];
-    const res = await request_2(thumbnails_number);
-    return res;
-}
-
-async function request_2(number) {
-    const delete_thumbnails = {
-        url: `${HOST}/api/thumbnails/${number}`,
-        method: 'DELETE'
-    };
-    const res1 = await doRequest(delete_thumbnails);
-
-    const create_thumbnails = {
-        url: `${HOST}/api/thumbnails/videos/${VIDEOFILEID}`,
-        method: 'POST'
-    };
-
-    const res2 = await doRequest(create_thumbnails);
-
-    return [res1,res2];
+"use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
 };
-
-function doRequest(options) {
-    return new Promise(function (resolve, reject) {
-        request(options, function (error, res, body) {
-            if (!error && res.statusCode == 200) {
-                resolve(body);
-            } else {
-                reject(error);
-            }
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const axios_1 = __importDefault(require("axios"));
+const log4js_1 = require("log4js");
+const RECORDEDID = Number(process.env.RECORDEDID);
+const VIDEOFILEID = Number(process.env.VIDEOFILEID);
+// const RECORDEDID: number = 4556;
+// const VIDEOFILEID: number = 8816;
+const HOST = 'http://[::1]:8888';
+(0, log4js_1.configure)({
+    appenders: {
+        console: {
+            type: 'console',
+        },
+        logfile: {
+            type: 'file',
+            filename: './logs/update_thumbnail.log',
+            pattern: 'yyyy-MM-dd', // 日付でログをローテーション
+            daysToKeep: 3, // 3日分のログを保持
+            compress: true // ログファイルを圧縮
+        },
+    },
+    categories: {
+        default: { appenders: ['console', 'logfile'], level: 'info' },
+    },
+});
+const logger = (0, log4js_1.getLogger)();
+logger.level = 'info';
+function main() {
+    return __awaiter(this, void 0, void 0, function* () {
+        logger.info("start thumbnail更新");
+        const thumbnails_number = yield get_thumbnail_number();
+        logger.info(thumbnails_number);
+        yield del_thumbnail(thumbnails_number);
+        yield create_thumbnail();
+        return 0;
+    });
+}
+function get_thumbnail_number() {
+    return __awaiter(this, void 0, void 0, function* () {
+        logger.info(`${HOST}/api/recorded/${RECORDEDID.toString()}?isHalfWidth=true`);
+        return yield axios_1.default.get(`${HOST}/api/recorded/${RECORDEDID.toString()}?isHalfWidth=true`).then(function (response) {
+            logger.debug(response);
+            logger.debug(response.data.thumbnails[0]);
+            return response.data.thumbnails[0];
         });
     });
 }
-
-(async () => {
-    const res = await request_all();
-    console.error(res);
-
-})();
+function del_thumbnail(thumbnails_number) {
+    return __awaiter(this, void 0, void 0, function* () {
+        return yield axios_1.default.delete(`${HOST}/api/thumbnails/${thumbnails_number.toString()}`).then(function (response) {
+            logger.info(`delete:${response.data}`);
+        });
+    });
+}
+function create_thumbnail() {
+    return __awaiter(this, void 0, void 0, function* () {
+        return yield axios_1.default.post(`${HOST}/api/thumbnails/videos/${VIDEOFILEID.toString()}`).then(function (response) {
+            logger.info(`create:${response.data}`);
+        });
+    });
+}
+main();
+//# sourceMappingURL=update_thumbnail.js.map
