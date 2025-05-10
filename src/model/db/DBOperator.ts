@@ -107,12 +107,17 @@ export default class DBOperator implements IDBOperator {
      * sqlite の外部拡張読み込み
      */
     private async setSQLiteExtensions(): Promise<void> {
-        if (
-            this.config.dbtype !== 'sqlite' ||
-            typeof this.config.sqlite === 'undefined' ||
-            typeof this.config.sqlite.extensions === 'undefined' ||
-            this.connection === null
-        ) {
+        try {
+            if (
+                this.config.dbtype !== 'sqlite' ||
+                typeof this.config.sqlite === 'undefined' ||
+                typeof this.config.sqlite.extensions === 'undefined' ||
+                this.connection === null
+            ) {
+                return;
+            }
+        } catch (error) {
+            this.log.system.error('sqlite extension load check error');
             return;
         }
 
