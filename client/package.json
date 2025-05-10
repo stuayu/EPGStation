@@ -1,6 +1,6 @@
 {
     "name": "epgstation-client",
-    "version": "2.10.0-stuayu",
+    "version": "2.10.1-stuayu",
     "private": true,
     "scripts": {
         "build": "NODE_OPTIONS='--openssl-legacy-provider' && vue-cli-service build",
