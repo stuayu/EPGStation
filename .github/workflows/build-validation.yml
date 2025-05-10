@@ -42,24 +42,23 @@ jobs:
       working-directory: Mirakurun
       continue-on-error: true # npm audit fixでエラーになるのを回避
       run: |
-        npm install -g yarn
-        yarn install
+        npm install
     
     - name: Install all
       working-directory: EPGStation
       continue-on-error: true # npm audit fixでエラーになるのを回避
       run: |
-        yarn run all-install
+        npm run all-install
       
     - name: Build EPGStation
       working-directory: EPGStation
       if: runner.os == 'Windows'
-      run: yarn run build-win
+      run: npm run build-win
     
     - name: Build EPGStation
       working-directory: EPGStation
       if: runner.os == 'Linux' || runner.os == 'macOS'
-      run: yarn run build
+      run: npm run build
 
     - name: Compress Project
       run: |
