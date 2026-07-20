@@ -9,7 +9,7 @@
 - サーバ: Express 5 + express-openapi, TypeORM 1.0 (SQLite / MySQL), inversify (DI), log4js, socket.io
 - クライアント: Vue 3 + Vuetify 4 (クラスコンポーネント + デコレータ, `vue-facing-decorator`), inversify による独自 State 管理 (Vuex 不使用)。ビルドは Vite
 - 動画再生: [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) に統一 (GitHub タグ固定)。HLS は hls.js、低遅延ライブは mpegts.js、ARIB 字幕は DPlayer 内蔵の aribb24.js を利用 (`client/src/components/video/`)
-- チューナーバックエンド: Mirakurun (`stuayu/Mirakurun` の `stuayu-main` ブランチ参照)
+- チューナーバックエンド: Mirakurun (`stuayu/Mirakurun` の stuayu-main 系コミットに固定)
 
 ## プロセス構成
 
@@ -120,7 +120,7 @@ npm run backup / restore   # DB バックアップ / リストア
 
 - `ormconfig.js` (CLI マイグレーション用) は `Configuration.ts` とは別に `config/config.yml` を独自に読む二重管理になっている
 - postgres のマイグレーションディレクトリは空。対応 DB は sqlite / mysql のみ
-- `mirakurun` 依存はフォーク版 (`stuayu/Mirakurun`) の `stuayu-main` ブランチ参照。むやみに更新しない
+- `mirakurun` 依存はフォーク版 (`stuayu/Mirakurun`) のコミット固定。ブランチ tarball 参照にすると Mirakurun 側の push で lockfile の integrity が壊れ CI が落ちるため、必ずコミット SHA の URL で固定する
 - Windows 対応が本フォークの柱。サーバ側変更時は Windows での動作 (パス区切り、named pipe など) を常に考慮すること
 - Express 5 では `req.query` がアクセスごとに再パースされる getter になったため、`ServiceServer.ts` でリクエスト受信時に一度だけ実体化するミドルウェアを挟んでいる
 - TypeORM 1.0 では criteria が空の `delete()` が禁止されているため、全件削除は `createQueryBuilder().delete()` を使う (既存コードは対応済み)

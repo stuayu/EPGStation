@@ -73,6 +73,6 @@ cd client && npm run lint   # クライアント側 lint
 
 - **Windows 対応が最重要**。パス処理は `path.join`、Mirakurun 接続は named pipe 対応を壊さないこと。CI は 3 OS × Node 24 で検証される
 - `ChannelType` に `NW1`〜`NW40` (県外地上波) が追加されている。チャンネル種別を扱うコードでは GR/BS/CS/SKY だけを前提にしない
-- `mirakurun` 依存は `stuayu/Mirakurun` の `stuayu-main` ブランチ参照。勝手に変更しない
+- `mirakurun` 依存は `stuayu/Mirakurun` のコミット固定 (ブランチ tarball 参照は push のたびに lockfile の integrity が壊れるため禁止)。更新時は package.json の URL のコミット SHA を差し替えて `npm install` で lockfile を更新する
 - 設定項目を追加したら `config/config.yml.template` と `config/config-win.yml.template` の**両方**を更新する
 - `ormconfig.js` は `Configuration.ts` と別実装で config.yml を読む (二重管理)。設定の読み方を変える場合は両方直す
