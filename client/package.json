@@ -43,5 +43,9 @@
         "vite": "8.1.5",
         "vue-tsc": "3.2.6",
         "@types/node": "24.10.1"
+    },
+    "allowScripts": {
+        "github:tsukumijima/DPlayer#32712e60a9eb1ae03963c224344b28f017b67f09": true,
+        "@parcel/watcher@2.5.6": true
     }
 }
