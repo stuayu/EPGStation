@@ -4,7 +4,7 @@
             aspect-ratio="1.7778"
             :min-width="width"
             :src="item.display.topThumbnailPath"
-            v-on:error="this.src = './img/noimg.png'"
+            v-on:error="onThumbnailError"
             v-on:click="gotoDetail"
             :eager="true"
         ></v-img>
@@ -46,6 +46,13 @@ import * as apid from '../../../../api';
     },
 })
 export default class RecordedLargeCard extends Vue {
+    public onThumbnailError(event: Event): void {
+        const image = event.target;
+        if (image instanceof HTMLImageElement) {
+            image.src = './img/noimg.png';
+        }
+    }
+
     @Prop({ required: true })
     public width!: number;
 
