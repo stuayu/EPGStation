@@ -2,7 +2,7 @@
     <div v-if="searchState.getSearchResult() !== null || searchState.isTimeSpecification === true" class="search-rule-option">
         <v-card class="mx-auto" max-width="800">
             <div class="pa-4">
-                <v-expansion-panels :value.sync="searchState.optionPanel" accordion multiple flat class="option-panels">
+                <v-expansion-panels v-model:value="searchState.optionPanel" accordion multiple flat class="option-panels">
                     <v-expansion-panel>
                         <v-expansion-panel-header>オプション</v-expansion-panel-header>
                         <v-expansion-panel-content>
@@ -144,7 +144,7 @@
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import ISearchState from '@/model/state/search/ISearchState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 
 @Component({
     components: {

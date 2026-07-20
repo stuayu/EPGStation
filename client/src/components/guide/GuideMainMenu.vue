@@ -34,7 +34,7 @@
                 </v-list-item>
             </v-list>
         </v-menu>
-        <GuideGenreSettingDialog :isOpen.sync="isOpenGenreSettingDialog" v-on:update="onUpdateGenreSetting"></GuideGenreSettingDialog>
+        <GuideGenreSettingDialog v-model:isOpen="isOpenGenreSettingDialog" v-on:update="onUpdateGenreSetting"></GuideGenreSettingDialog>
         <div v-if="isOpened === true" class="menu-background" v-on:click="onClickMenuBackground"></div>
     </div>
 </template>
@@ -45,7 +45,7 @@ import IReservesApiModel from '@/model/api/reserves/IReservesApiModel';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Vue } from 'vue-property-decorator';
+import { Component, Vue } from 'vue-facing-decorator';
 
 @Component({
     components: {

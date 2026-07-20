@@ -1,7 +1,7 @@
 <template>
     <div class="rules-wrap mb-1">
-        <RuleTableItems v-if="elementWidth >= 780 - 24" :items="rules" :isEditMode.sync="isEditMode" v-on:changeState="changeState" v-on:selected="selected"></RuleTableItems>
-        <RuleListItems v-else :items="rules" :isEditMode.sync="isEditMode" v-on:changeState="changeState" v-on:selected="selected"></RuleListItems>
+        <RuleTableItems v-if="elementWidth >= 780 - 24" :items="rules" v-model:isEditMode="isEditMode" v-on:changeState="changeState" v-on:selected="selected"></RuleTableItems>
+        <RuleListItems v-else :items="rules" v-model:isEditMode="isEditMode" v-on:changeState="changeState" v-on:selected="selected"></RuleListItems>
     </div>
 </template>
 
@@ -13,7 +13,7 @@ import container from '@/model/ModelContainer';
 import { RuleStateData } from '@/model/state/rule/IRuleState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import ResizeObserver from 'resize-observer-polyfill';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({
@@ -49,7 +49,7 @@ export default class RuleItems extends Vue {
         });
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // disconnect resize observer
         if (this.resizeObserver !== null) {
             this.resizeObserver.disconnect();

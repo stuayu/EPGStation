@@ -9,7 +9,7 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
 import { DPlayerType } from 'dplayer';
 import Mpegts from 'mpegts.js';
-import { Component, Prop } from 'vue-property-decorator';
+import { Component, Prop } from 'vue-facing-decorator';
 
 @Component({})
 export default class LiveMpegTsVideo extends BaseVideo {
@@ -22,8 +22,8 @@ export default class LiveMpegTsVideo extends BaseVideo {
         super.mounted();
     }
 
-    public async beforeDestroy(): Promise<void> {
-        super.beforeDestroy();
+    public async beforeUnmount(): Promise<void> {
+        super.beforeUnmount();
     }
 
     /**

@@ -1,8 +1,8 @@
 <template>
     <div>
-        <ReservesTableItems v-if="isTable === true" :reserves="reserves" :isEditMode.sync="isEditMode" v-on:selected="selected"></ReservesTableItems>
+        <ReservesTableItems v-if="isTable === true" :reserves="reserves" v-model:isEditMode="isEditMode" v-on:selected="selected"></ReservesTableItems>
         <v-card v-else class="mx-auto">
-            <ReservesCard :reserves="reserves" :flat="true" :isEditMode.sync="isEditMode" v-on:selected="selected"></ReservesCard>
+            <ReservesCard :reserves="reserves" :flat="true" v-model:isEditMode="isEditMode" v-on:selected="selected"></ReservesCard>
         </v-card>
     </div>
 </template>
@@ -12,7 +12,7 @@ import ReservesCard from '@/components/reserves/ReservesCard.vue';
 import ReservesTableItems from '@/components/reserves/ReservesTableItems.vue';
 import { ReserveStateData } from '@/model/state/reserve/IReserveStateUtil';
 import ResizeObserver from 'resize-observer-polyfill';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({
@@ -42,7 +42,7 @@ export default class ReserveItems extends Vue {
         }
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // disconnect resize observer
         if (this.resizeObserver !== null) {
             this.resizeObserver.disconnect();

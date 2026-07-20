@@ -14,7 +14,7 @@ import IGuideState from '@/model/state/guide/IGuideState';
 import IOnAirSelectStreamState from '@/model/state/onair/IOnAirSelectStreamState';
 import DateUtil from '@/util/DateUtil';
 import Util from '@/util/Util';
-import { Component, Vue } from 'vue-property-decorator';
+import { Component, Vue } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 interface DisplayChannelItem {

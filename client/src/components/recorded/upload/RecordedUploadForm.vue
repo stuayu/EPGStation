@@ -29,7 +29,7 @@
                     v-model="uploadState.programOption.ruleId"
                     :loading="ruleLoading"
                     :items="uploadState.ruleItems"
-                    :search-input.sync="ruleSearchInput"
+                    v-model:search-input="ruleSearchInput"
                     item-text="keyword"
                     item-value="id"
                     cache-items
@@ -60,8 +60,8 @@
                         color: 'success',
                     }"
                 >
-                    <template slot="actions" slot-scope="{ parent }">
-                        <v-btn text color="primary" @click.native="parent.clearHandler">クリア</v-btn>
+                    <template #actions="{ parent }">
+                        <v-btn text color="primary" @click="parent.clearHandler">クリア</v-btn>
                         <v-btn text color="primary" @click="parent.okHandler">設定</v-btn>
                     </template>
                 </v-datetime-picker>
@@ -108,7 +108,7 @@
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import IRecordedUploadState from '@/model/state/recorded/upload/IRecordedUploadState';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 
 @Component({
     components: {

@@ -41,7 +41,7 @@
                             </div>
                         </template>
                     </DashboardItem>
-                    <DashboardItem ref="reserveItem" :title="reserveTitle" :bage.sync="reserveConflictCnt" v-on:scroll="onReserveScroll" v-on:bage="gotoConflicts">
+                    <DashboardItem ref="reserveItem" :title="reserveTitle" v-model:bage="reserveConflictCnt" v-on:scroll="onReserveScroll" v-on:bage="gotoConflicts">
                         <template v-slot:items>
                             <div>
                                 <ReservesCard :reserves="reservesState.getReserves()" :flat="true" :isEditMode="false"></ReservesCard>
@@ -75,7 +75,7 @@ import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISe
 import UaUtil from '@/util/UaUtil';
 import Util from '@/util/Util';
 import ResizeObserver from 'resize-observer-polyfill';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 import { Route } from 'vue-router';
 import * as apid from '../../../api';
 
@@ -85,7 +85,6 @@ interface ScrollData {
     reserveScroll: number;
 }
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -202,7 +201,7 @@ class Dashboard extends Vue {
         element.style.overflow = '';
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
 

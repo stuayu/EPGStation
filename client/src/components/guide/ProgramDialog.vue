@@ -68,7 +68,7 @@ import { IGuideProgramDialogSettingStorageModel } from '@/model/storage/guide/IG
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
 import StrUtil from '@/util/StrUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
 
 @Component({})
 export default class ProgramDialog extends Vue {

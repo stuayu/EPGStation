@@ -11,7 +11,7 @@
 
 <script lang="ts">
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({})

@@ -3,7 +3,7 @@
         <EditTitleBar
             v-if="isEditMode === true"
             :title="selectedTitle"
-            :isEditMode.sync="isEditMode"
+            v-model:isEditMode="isEditMode"
             v-on:exit="onFinishEdit"
             v-on:selectall="onSelectAll"
             v-on:delete="onMultiplueDeletion"
@@ -21,7 +21,7 @@
                     :recorded="recordingState.getRecorded()"
                     :isRecording="true"
                     :isTableMode="true"
-                    :isEditMode.sync="isEditMode"
+                    v-model:isEditMode="isEditMode"
                     :isShowDropInfo="false"
                     v-on:detail="gotoDetail"
                     v-on:selected="selectItem"
@@ -32,7 +32,7 @@
         </transition>
         <RecordedMultipleDeletionDialog
             v-if="isEditMode === true"
-            :isOpen.sync="isOpenMultiplueDeletionDialog"
+            v-model:isOpen="isOpenMultiplueDeletionDialog"
             :total="recordingState.getSelectedCnt()"
             :disableOption="true"
             v-on:delete="onExecuteMultiplueDeletion"
@@ -54,11 +54,10 @@ import IRecordingState from '@/model/state/recording/IRecordingState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 import { Route } from 'vue-router';
 import * as apid from '../../../api';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -94,7 +93,7 @@ export default class Recording extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }

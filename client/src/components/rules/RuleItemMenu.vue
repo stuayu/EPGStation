@@ -33,7 +33,7 @@
                 </v-list-item>
             </v-list>
         </v-menu>
-        <RuleDeleteDialog :isOpen.sync="isOpenDeleteDialog" :ruleItem="ruleItem"></RuleDeleteDialog>
+        <RuleDeleteDialog v-model:isOpen="isOpenDeleteDialog" :ruleItem="ruleItem"></RuleDeleteDialog>
     </div>
 </template>
 
@@ -41,7 +41,7 @@
 import RuleDeleteDialog from '@/components/rules/RuleDeleteDialog.vue';
 import { RuleStateData } from '@/model/state/rule/IRuleState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 
 @Component({
     components: {

@@ -17,7 +17,7 @@ import IScrollPositionState from '@/model/state/IScrollPositionState';
 import IServerStatusState from '@/model/state/serverStatus/IServerStatusState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { Container } from 'inversify';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 import ISocketIOModel from '../model/socketio/ISocketIOModel';
 import IColorThemeState from '@/model/state/IColorThemeState';
 
@@ -116,7 +116,7 @@ export default class AppContent extends Vue {
         });
     }
 
-    public destroyed(): void {
+    public unmounted(): void {
         this.serverStatusState.stopPolling();
 
         const io = this.socketIoModel.getIO();

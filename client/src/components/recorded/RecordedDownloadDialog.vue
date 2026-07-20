@@ -22,7 +22,7 @@
 import container from '@/model/ModelContainer';
 import IRecordedUtil from '@/model/state/recorded/IRecordedUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 interface DwonloadVideoFileInfo {

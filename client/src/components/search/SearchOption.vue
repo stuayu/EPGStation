@@ -359,8 +359,8 @@
                                 color: 'success',
                             }"
                         >
-                            <template slot="actions" slot-scope="{ parent }">
-                                <v-btn text color="primary" @click.native="parent.clearHandler">クリア</v-btn>
+                            <template #actions="{ parent }">
+                                <v-btn text color="primary" @click="parent.clearHandler">クリア</v-btn>
                                 <v-btn text color="primary" @click="parent.okHandler">設定</v-btn>
                             </template>
                         </v-datetime-picker>
@@ -380,8 +380,8 @@
                                 'ampm-in-title': true,
                             }"
                         >
-                            <template slot="actions" slot-scope="{ parent }">
-                                <v-btn text color="primary" @click.native="parent.clearHandler">クリア</v-btn>
+                            <template #actions="{ parent }">
+                                <v-btn text color="primary" @click="parent.clearHandler">クリア</v-btn>
                                 <v-btn text color="primary" @click="parent.okHandler">設定</v-btn>
                             </template>
                         </v-datetime-picker>
@@ -416,7 +416,7 @@
                 </SearchOptionRow>
                 <SearchOptionRow title="時刻">
                     <div class="d-flex align-center">
-                        <v-dialog ref="dialog0" v-model="isOpenStartTimepicker" :return-value.sync="searchState.timeReserveOption.startTime" persistent width="300px">
+                        <v-dialog ref="dialog0" v-model="isOpenStartTimepicker" v-model:return-value="searchState.timeReserveOption.startTime" persistent width="300px">
                             <template v-slot:activator="{ on }">
                                 <v-text-field
                                     class="time-select"
@@ -434,7 +434,7 @@
                             </v-time-picker>
                         </v-dialog>
                         <span class="px-2">~</span>
-                        <v-dialog ref="dialog1" v-model="isOpenEndTimepicker" :return-value.sync="searchState.timeReserveOption.endTime" persistent width="300px">
+                        <v-dialog ref="dialog1" v-model="isOpenEndTimepicker" v-model:return-value="searchState.timeReserveOption.endTime" persistent width="300px">
                             <template v-slot:activator="{ on }">
                                 <v-text-field
                                     class="time-select"
@@ -473,7 +473,7 @@ import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import ISearchState from '@/model/state/search/ISearchState';
 import VuetifyUtil from '@/util/VuetifyUtil';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 
 @Component({
     components: {

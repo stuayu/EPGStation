@@ -40,7 +40,7 @@
                 </template>
             </v-simple-table>
         </v-card>
-        <ReserveDialog :isOpen.sync="isOpenDialog" :reserve="dialogReserve"></ReserveDialog>
+        <ReserveDialog v-model:isOpen="isOpenDialog" :reserve="dialogReserve"></ReserveDialog>
     </div>
 </template>
 
@@ -48,7 +48,7 @@
 import ReserveDialog from '@/components/reserves/ReserveDialog.vue';
 import ReserveMenu from '@/components/reserves/ReserveMenu.vue';
 import { ReserveStateData } from '@/model/state/reserve/IReserveStateUtil';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 
 @Component({
     components: {

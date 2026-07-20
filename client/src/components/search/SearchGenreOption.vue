@@ -38,7 +38,7 @@
 import container from '@/model/ModelContainer';
 import ISearchState, { GenreItem, SelectorItem } from '@/model/state/search/ISearchState';
 import { cloneDeep } from 'lodash';
-import { Component, Vue } from 'vue-property-decorator';
+import { Component, Vue } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
@@ -117,7 +117,7 @@ export default class SearchGenreOption extends Vue {
         }
 
         const newGenres = cloneDeep(this.searchState.searchOption.genres);
-        this.$set(this.searchState.searchOption, 'genres', newGenres);
+        (this.searchState.searchOption as any)['genres'] = newGenres;
     }
 }
 </script>

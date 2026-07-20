@@ -45,7 +45,7 @@ import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import IVersionState from '@/model/state/version/IVersionState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 import { Location } from 'vue-router';
 import Util from '../../util/Util';
 
@@ -75,7 +75,7 @@ export default class Navigation extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }

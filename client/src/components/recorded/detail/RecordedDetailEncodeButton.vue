@@ -4,7 +4,7 @@
             <v-icon left dark>mdi-plus-circle-outline</v-icon>
             encode
         </v-btn>
-        <AddEncodeDialog :isOpen.sync="isOpenEncodeDialog" :recordedItem="recordedItem"></AddEncodeDialog>
+        <AddEncodeDialog v-model:isOpen="isOpenEncodeDialog" :recordedItem="recordedItem"></AddEncodeDialog>
     </div>
 </template>
 
@@ -12,7 +12,7 @@
 import AddEncodeDialog from '@/components/encode/AddEncodeDialog.vue';
 import container from '@/model/ModelContainer';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({

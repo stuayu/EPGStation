@@ -66,8 +66,8 @@
             </v-list>
         </v-menu>
         <div v-if="isOpened === true" class="menu-background" v-on:click="onClickMenuBackground"></div>
-        <AddEncodeDialog :isOpen.sync="isOpenEncodeDialog" :recordedItem="recordedItem"></AddEncodeDialog>
-        <RecordedDeleteDialog :isOpen.sync="isOpenDeleteDialog" :recordedItem="recordedItem"></RecordedDeleteDialog>
+        <AddEncodeDialog v-model:isOpen="isOpenEncodeDialog" :recordedItem="recordedItem"></AddEncodeDialog>
+        <RecordedDeleteDialog v-model:isOpen="isOpenDeleteDialog" :recordedItem="recordedItem"></RecordedDeleteDialog>
     </div>
 </template>
 
@@ -80,7 +80,7 @@ import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import StrUtil from '@/util/StrUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({

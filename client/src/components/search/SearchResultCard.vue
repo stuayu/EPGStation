@@ -17,7 +17,7 @@
 import container from '@/model/ModelContainer';
 import IGuideProgramDialogState from '@/model/state/guide/IGuideProgramDialogState';
 import { SearchResultItem } from '@/model/state/search/ISearchState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})

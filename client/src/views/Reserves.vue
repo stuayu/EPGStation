@@ -3,7 +3,7 @@
         <EditTitleBar
             v-if="isEditMode === true"
             :title="selectedTitle"
-            :isEditMode.sync="isEditMode"
+            v-model:isEditMode="isEditMode"
             v-on:exit="onFinishEdit"
             v-on:selectall="onSelectAll"
             v-on:delete="onMultiplueDeletion"
@@ -16,14 +16,14 @@
         <transition name="page">
             <div v-if="reservesState.getReserves().length > 0" ref="appContent" class="app-content pa-2">
                 <div v-bind:style="contentWrapStyle">
-                    <ReserveItems :reserves="reservesState.getReserves()" :isEditMode.sync="isEditMode" v-on:selected="selectItem"></ReserveItems>
+                    <ReserveItems :reserves="reservesState.getReserves()" v-model:isEditMode="isEditMode" v-on:selected="selectItem"></ReserveItems>
                 </div>
                 <Pagination :total="reservesState.getTotal()" :pageSize="settingValue.reservesLength"></Pagination>
             </div>
         </transition>
         <div style="visibility: hidden">dummy</div>
         <ReserveMultipleDeletionDialog
-            :isOpen.sync="isOpenMultiplueDeletionDialog"
+            v-model:isOpen="isOpenMultiplueDeletionDialog"
             :total="reservesState.getSelectedCnt()"
             v-on:delete="onExecuteMultiplueDeletion"
         ></ReserveMultipleDeletionDialog>
@@ -45,11 +45,10 @@ import IReservesState from '@/model/state/reserve/IReservesState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 import { Route } from 'vue-router';
 import * as apid from '../../../api';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -113,7 +112,7 @@ export default class Reserves extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }

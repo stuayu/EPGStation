@@ -18,10 +18,9 @@ import VideoContainer from '@/components/video/VideoContainer.vue';
 import { BaseVideoParam, NormalVideoParam } from '@/components/video/ViedoParam';
 import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {

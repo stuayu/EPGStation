@@ -9,7 +9,7 @@
 <script lang="ts">
 import ReservesCard from '@/components/reserves/ReservesCard.vue';
 import { ReserveStateData } from '@/model/state/reserve/IReserveStateUtil';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 
 @Component({
     components: {

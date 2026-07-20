@@ -38,8 +38,8 @@
                                 color: 'success',
                             }"
                         >
-                            <template slot="actions" slot-scope="{ parent }">
-                                <v-btn text color="primary" @click.native="parent.clearHandler">クリア</v-btn>
+                            <template #actions="{ parent }">
+                                <v-btn text color="primary" @click="parent.clearHandler">クリア</v-btn>
                                 <v-btn text color="primary" @click="parent.okHandler">設定</v-btn>
                             </template>
                         </v-datetime-picker>
@@ -59,8 +59,8 @@
                                 'ampm-in-title': true,
                             }"
                         >
-                            <template slot="actions" slot-scope="{ parent }">
-                                <v-btn text color="primary" @click.native="parent.clearHandler">クリア</v-btn>
+                            <template #actions="{ parent }">
+                                <v-btn text color="primary" @click="parent.clearHandler">クリア</v-btn>
                                 <v-btn text color="primary" @click="parent.okHandler">設定</v-btn>
                             </template>
                         </v-datetime-picker>
@@ -75,7 +75,7 @@
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import IManualReserveState from '@/model/state/reserve/manual/IManualReserveState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 
 @Component({
     components: {

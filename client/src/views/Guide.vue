@@ -34,7 +34,7 @@
         </div>
         <ProgramDialog></ProgramDialog>
         <OnAirSelectStream :needsGotoGuideButton="true"></OnAirSelectStream>
-        <GuideDaySelectDialog :isOpen.sync="isOpenDaySelectDialog"></GuideDaySelectDialog>
+        <GuideDaySelectDialog v-model:isOpen="isOpenDaySelectDialog"></GuideDaySelectDialog>
     </v-main>
 </template>
 
@@ -60,10 +60,9 @@ import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISe
 import UaUtil from '@/util/UaUtil';
 import Util from '@/util/Util';
 import { debounce, throttle } from 'lodash';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 import { Route } from 'vue-router';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -148,7 +147,7 @@ export default class Guide extends Vue {
         }
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // リサイズイベント追加
         window.removeEventListener('resize', this.windowResizeCallback, false);
 

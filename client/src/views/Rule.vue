@@ -3,7 +3,7 @@
         <EditTitleBar
             v-if="isEditMode === true"
             :title="selectedTitle"
-            :isEditMode.sync="isEditMode"
+            v-model:isEditMode="isEditMode"
             v-on:exit="onFinishEdit"
             v-on:selectall="onSelectAll"
             v-on:delete="onMultiplueDeletion"
@@ -20,7 +20,7 @@
             <div ref="appContent" class="app-content">
                 <v-container>
                     <div v-if="ruleState.getRules().length > 0" v-bind:style="contentWrapStyle">
-                        <RuleItems :rules="ruleState.getRules()" :isEditMode.sync="isEditMode" v-on:selected="selectItem"></RuleItems>
+                        <RuleItems :rules="ruleState.getRules()" v-model:isEditMode="isEditMode" v-on:selected="selectItem"></RuleItems>
                         <Pagination :total="ruleState.getTotal()" :pageSize="settingValue.rulesLength"></Pagination>
                     </div>
                     <v-btn v-on:click="addRule" fab dark fixed bottom right color="pink">
@@ -31,7 +31,7 @@
             </div>
         </transition>
         <RuleMultipleDeletionDialog
-            :isOpen.sync="isOpenMultiplueDeletionDialog"
+            v-model:isOpen="isOpenMultiplueDeletionDialog"
             :total="ruleState.getSelectedCnt()"
             v-on:delete="onExecuteMultiplueDeletion"
         ></RuleMultipleDeletionDialog>
@@ -52,11 +52,10 @@ import IRuleState, { RuleFetchOption } from '@/model/state/rule/IRuleState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 import { Route } from 'vue-router';
 import * as apid from '../../../api';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -103,7 +102,7 @@ export default class Reserves extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }

@@ -11,7 +11,7 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
 import Util from '@/util/Util';
 import { DPlayerType } from 'dplayer';
-import { Component, Prop } from 'vue-property-decorator';
+import { Component, Prop } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
@@ -110,14 +110,14 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
         }
     }
 
-    public async beforeDestroy(): Promise<void> {
+    public async beforeUnmount(): Promise<void> {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
 
         clearInterval(this.updateDurationTimerId);
         clearTimeout(this.setCurrentTimeTimerId);
 
-        super.beforeDestroy();
+        super.beforeUnmount();
 
         await this.videoState.stop().catch(err => {
             this.snackbarState.open({

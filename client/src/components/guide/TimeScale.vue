@@ -10,7 +10,7 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import IGuideState from '@/model/state/guide/IGuideState';
-import { Component, Vue } from 'vue-property-decorator';
+import { Component, Vue } from 'vue-facing-decorator';
 
 @Component({})
 export default class TimeScale extends Vue {

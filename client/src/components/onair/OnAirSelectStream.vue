@@ -41,7 +41,7 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
 import Mpegts from 'mpegts.js';
 import IOnAirSelectStreamState from '../../model/state/onair/IOnAirSelectStreamState';
 import Util from '../../util/Util';
@@ -59,7 +59,7 @@ export default class OnAirSelectStream extends Vue {
 
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         this.dialogState.close();
     }
 

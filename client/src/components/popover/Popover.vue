@@ -20,7 +20,7 @@ import container from '@/model/ModelContainer';
 import UaUtil from '@/util/UaUtil';
 import Util from '@/util/Util';
 import { cloneDeep, debounce } from 'lodash';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
 
 type DisplayPosition = 'top' | 'bottom' | 'left' | 'right';
 
@@ -69,7 +69,7 @@ class Popover extends Vue {
         window.addEventListener('resize', this.windowResizeCallback, false);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // リサイズイベント追加
         window.removeEventListener('resize', this.windowResizeCallback, false);
     }
@@ -106,7 +106,7 @@ class Popover extends Vue {
                 }
 
                 // 要素を表示 (アニメーション付き)
-                this.$set(this.popoverWrapClass, 'is-showing', true);
+                (this.popoverWrapClass as any)['is-showing'] = true;
 
                 if (UaUtil.isiOS() === true) {
                     const html = document.getElementsByTagName('HTML')[0];
@@ -137,7 +137,7 @@ class Popover extends Vue {
         }
 
         // 非表示にする (アニメーション付き)
-        this.$set(this.popoverWrapClass, 'is-showing', false);
+        (this.popoverWrapClass as any)['is-showing'] = false;
 
         await Util.sleep(300);
 
@@ -483,9 +483,9 @@ class Popover extends Vue {
      * @param y
      */
     private setArrow(name: string, x: number, y: number): void {
-        this.$set(this.arrowClass, name, true);
-        this.$set(this.arrowStyle, 'left', `${x}px`);
-        this.$set(this.arrowStyle, 'top', `${y}px`);
+        (this.arrowClass as any)[name] = true;
+        (this.arrowStyle as any)['left'] = `${x}px`;
+        (this.arrowStyle as any)['top'] = `${y}px`;
     }
 }
 

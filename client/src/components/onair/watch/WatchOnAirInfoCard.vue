@@ -20,7 +20,7 @@ import container from '@/model/ModelContainer';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IWatchOnAirInfoState, { DsiplayWatchInfo } from '@/model/state/onair/watch/IWatchOnAirInfoState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({})
@@ -46,7 +46,7 @@ export default class WatchOnAirInfoCard extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
 
