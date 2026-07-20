@@ -1,81 +1,81 @@
-import UaUtil from '@/util/UaUtil';
+import DPlayer, { DPlayerType } from 'dplayer';
 import { Component, Vue } from 'vue-property-decorator';
 
-export default abstract class BaseVide extends Vue {
-    protected video: HTMLVideoElement | null = null;
-    protected lastSubtitleState: TextTrackMode = 'disabled';
+export default abstract class BaseVideo extends Vue {
+    protected dp: DPlayer | null = null;
+    protected containerElement: HTMLElement | null = null;
 
     public mounted(): void {
-        this.video = this.$refs.video as HTMLVideoElement;
-
-        // 時刻更新
-        this.video.addEventListener('timeupdate', this.onTimeupdate.bind(this));
-
-        // 読み込み中
-        this.video.addEventListener('waiting', this.onWaiting.bind(this));
-
-        // 読み込み完了
-        this.video.addEventListener('loadeddata', this.onLoadeddata.bind(this));
-
-        // 再生可能
-        this.video.addEventListener('canplay', this.onCanplay.bind(this));
-
-        // 終了
-        this.video.addEventListener('ended', this.onEnded.bind(this));
-
-        // 再生
-        this.video.addEventListener('play', this.onPlay.bind(this));
-
-        // 停止
-        this.video.addEventListener('pause', this.onPause.bind(this));
-
-        // 再生速度変化
-        this.video.addEventListener('ratechange', this.onRatechange.bind(this));
-
-        // 音量変化
-        this.video.addEventListener('volumechange', this.onVolumechange.bind(this));
+        this.containerElement = this.$refs.container as HTMLElement;
 
         this.initVideoSetting();
     }
 
     /**
-     * video 再生初期設定
+     * video (DPlayer) 再生初期設定
+     * サブクラスで DPlayer 生成用の Options を組み立て createPlayer() を呼び出す
      */
     protected abstract initVideoSetting(): void;
 
     /**
-     * video ソース設定
+     * DPlayer インスタンスを生成し各種イベントを紐付ける
+     * @param options: DPlayerType.Options
      */
-    protected setSrc(src: string): void {
-        if (this.video === null) {
-            return;
-        }
+    protected createPlayer(options: DPlayerType.Options): void {
+        this.destroyPlayer();
 
-        this.video.src = src;
+        this.dp = new DPlayer(options);
+        this.bindEvents();
     }
 
     /**
-     * video の 読み込み
+     * DPlayer インスタンスを破棄する
      */
-    protected load(): void {
-        if (this.video === null) {
+    protected destroyPlayer(): void {
+        if (this.dp === null) {
             return;
         }
 
-        this.video.load();
+        this.dp.destroy();
+        this.dp = null;
     }
 
     /**
-     * 読み込んだ video の破棄
+     * DPlayer のイベントを Vue イベントへ橋渡しする
      */
-    protected unload(): void {
-        if (this.video === null) {
+    private bindEvents(): void {
+        if (this.dp === null) {
             return;
         }
 
-        this.video.pause();
-        this.video.removeAttribute('src');
-        this.video.load();
+        const dp = this.dp;
+
+        // 時刻更新
+        dp.on('timeupdate', this.onTimeupdate.bind(this));
+
+        // 読み込み中
+        dp.on('waiting', this.onWaiting.bind(this));
+
+        // 読み込み完了
+        dp.on('loadeddata', this.onLoadeddata.bind(this));
+
+        // 再生可能
+        dp.on('canplay', this.onCanplay.bind(this));
+
+        // 終了
+        dp.on('ended', this.onEnded.bind(this));
+
+        // 再生
+        dp.on('play', this.onPlay.bind(this));
+
+        // 停止
+        dp.on('pause', this.onPause.bind(this));
+
+        // 再生速度変化
+        dp.on('ratechange', this.onRatechange.bind(this));
+
+        // 音量変化
+        dp.on('volumechange', this.onVolumechange.bind(this));
     }
 
     /**
@@ -142,54 +142,54 @@ export default abstract class BaseVide extends Vue {
     }
 
     public beforeDestroy(): void {
-        this.unload();
+        this.destroyPlayer();
     }
 
     /**
      * 動画再生
      */
     public async play(): Promise<void> {
-        if (this.video === null) {
+        if (this.dp === null) {
             return;
         }
 
-        await this.video.play();
+        this.dp.play();
     }
 
     /**
      * 動画停止
      */
     public pause(): void {
-        if (this.video === null) {
+        if (this.dp === null) {
             return;
         }
 
-        this.video.pause();
+        this.dp.pause();
     }
 
     /**
      * 停止中か
      */
     public paused(): boolean {
-        return this.video === null ? true : this.video.paused;
+        return this.dp === null ? true : this.dp.paused;
     }
 
     /**
      * 再生速度を返す
      */
     public getPlaybackRate(): number {
-        return this.video === null ? 1.0 : this.video.playbackRate;
+        return this.dp === null ? 1.0 : this.dp.video.playbackRate;
     }
 
     /**
      * 再生速度を設定する
      */
     public setPlaybackRate(rate: number): void {
-        if (this.video === null) {
+        if (this.dp === null) {
             return;
         }
 
-        this.video.playbackRate = rate;
+        this.dp.speed(rate);
     }
 
     /**
@@ -197,7 +197,13 @@ export default abstract class BaseVide extends Vue {
      * @return number
      */
     public getDuration(): number {
-        return this.video === null || this.video.duration === Infinity || isNaN(this.video.duration) ? 0 : this.video.duration;
+        if (this.dp === null) {
+            return 0;
+        }
+
+        const duration = this.dp.video.duration;
+
+        return duration === Infinity || isNaN(duration) ? 0 : duration;
     }
 
     /**
@@ -205,7 +211,13 @@ export default abstract class BaseVide extends Vue {
      * @return number
      */
     public getCurrentTime(): number {
-        return this.video === null || this.video.currentTime === Infinity || isNaN(this.video.currentTime) ? 0 : this.video.currentTime;
+        if (this.dp === null) {
+            return 0;
+        }
+
+        const currentTime = this.dp.video.currentTime;
+
+        return currentTime === Infinity || isNaN(currentTime) ? 0 : currentTime;
     }
 
     /**
@@ -213,13 +225,11 @@ export default abstract class BaseVide extends Vue {
      * @param time: number (秒)
      */
     public setCurrentTime(time: number): void {
-        if (this.video === null) {
+        if (this.dp === null) {
             return;
         }
 
-        this.video.currentTime = time;
-
-        this.fixSubtitleState();
+        this.dp.seek(time, true);
     }
 
     /**
@@ -227,18 +237,18 @@ export default abstract class BaseVide extends Vue {
      * @return number
      */
     public getVolume(): number {
-        return this.video === null || this.video.muted ? 0 : this.video.volume;
+        return this.dp === null || this.dp.video.muted ? 0 : this.dp.video.volume;
     }
 
     /**
      * mute 切り替え
      */
     public switchMute(): void {
-        if (this.video === null) {
+        if (this.dp === null) {
             return;
         }
 
-        this.video.muted = !this.video.muted;
+        this.dp.video.muted = !this.dp.video.muted;
     }
 
     /**
@@ -246,63 +256,24 @@ export default abstract class BaseVide extends Vue {
      * @param volume: number 0.0 ~ 1.0
      */
     public setVolume(volume: number): void {
-        if (this.video === null) {
+        if (this.dp === null) {
             return;
         }
 
-        this.video.volume = volume;
+        this.dp.volume(volume, false, true);
     }
 
     /**
-     * video 要素にフルスクリーンリクエスト
+     * フルスクリーンリクエスト (DPlayer 標準 UI に委譲する)
      */
     public requestFullscreen(): boolean {
-        if (this.video === null) {
+        if (this.dp === null) {
             return false;
         }
 
-        /* tslint:disable:newline-before-return */
-        if (UaUtil.isAndroid()) {
-            this.video.requestFullscreen({ navigationUI: 'hide' });
-            return true;
-        } else if (typeof this.video.requestFullscreen === 'function') {
-            this.video.requestFullscreen();
-            return true;
-        } else if ((this.video as any).mozRequestFullScreen) {
-            (this.video as any).mozRequestFullScreen();
-            return true;
-        } else if ((this.video as any).webkitRequestFullScreen) {
-            (this.video as any).webkitRequestFullScreen();
-            return true;
-        } else if ((this.video as any).webkitEnterFullscreen) {
-            (this.video as any).webkitEnterFullscreen();
-            return true;
-        } else if ((this.video as any).msRequestFullscreen) {
-            (this.video as any).msRequestFullscreen();
-            return true;
-        }
-        /* tslint:enable:newline-before-return */
+        this.dp.fullScreen.toggle('browser');
 
-        return false;
-    }
-
-    /**
-     * pip 切り替え
-     */
-    public requestPictureInPicture(): void {
-        if (this.video === null || typeof (this.video as any).requestPictureInPicture !== 'function') {
-            return;
-        }
-
-        try {
-            if (!(document as any).pictureInPictureElement) {
-                (this.$refs.video as any).requestPictureInPicture();
-            } else {
-                (this.video as any).requestPictureInPicture();
-            }
-        } catch (err) {
-            console.error(err);
-        }
+        return true;
     }
 
     /**
@@ -310,7 +281,7 @@ export default abstract class BaseVide extends Vue {
      * @return boolean true で有効
      */
     public isEnabledSubtitles(): boolean {
-        return this.video !== null && this.video.textTracks.length > 0;
+        return this.dp !== null && this.dp.subtitle !== null;
     }
 
     /**
@@ -318,47 +289,28 @@ export default abstract class BaseVide extends Vue {
      * @return boolean true で表示されている
      */
     public isShowingSubtitle(): boolean {
-        return this.video !== null && this.video.textTracks.length > 0 && this.video.textTracks[0].mode === 'showing';
+        return this.dp !== null && this.dp.subtitle !== null && this.dp.subtitle.container.classList.contains('dplayer-subtitle-hide') === false;
     }
 
     /**
      * 字幕を表示させる
      */
     public showSubtitle(): void {
-        if (this.video === null || this.video.textTracks.length === 0) {
+        if (this.dp === null || this.dp.subtitle === null) {
             return;
         }
 
-        this.video.textTracks[0].mode = 'showing';
-        this.lastSubtitleState = this.video.textTracks[0].mode;
+        this.dp.subtitle.show();
     }
 
     /**
      * 字幕を非表示にする
      */
     public disabledSubtitle(): void {
-        if (this.video === null || this.video.textTracks.length === 0) {
+        if (this.dp === null || this.dp.subtitle === null) {
             return;
         }
 
-        this.video.textTracks[0].mode = 'disabled';
-        this.lastSubtitleState = this.video.textTracks[0].mode;
-    }
-
-    /**
-     * ユーザが最後に指定した字幕の表示状態と実際の状態がずれている場合に修正する
-     */
-    public fixSubtitleState(): void {
-        if (this.video === null || this.video.textTracks.length === 0) {
-            return;
-        }
-
-        if (this.video.textTracks[0].mode !== this.lastSubtitleState) {
-            if (this.lastSubtitleState === 'showing') {
-                this.showSubtitle();
-            } else {
-                this.disabledSubtitle();
-            }
-        }
+        this.dp.subtitle.hide();
     }
 }

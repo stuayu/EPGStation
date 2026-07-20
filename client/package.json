@@ -12,8 +12,8 @@
     },
     "dependencies": {
         "@mdi/font": "7.4.47",
-        "aribb24.js": "1.11.2",
         "axios": "1.6.8",
+        "dplayer": "github:tsukumijima/DPlayer#v1.32.8",
         "eventemitter2": "6.4.9",
         "hls.js": "1.5.8",
         "inversify": "6.0.2",

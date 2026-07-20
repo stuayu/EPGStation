@@ -2,6 +2,7 @@
     <v-app class="app-content-root">
         <div v-if="isDisconnected === true" class="disconnected"></div>
         <Navigation></Navigation>
+        <ServerStatusBanner></ServerStatusBanner>
         <router-view></router-view>
         <Snackbar></Snackbar>
     </v-app>
@@ -9,9 +10,11 @@
 
 <script lang="ts">
 import Navigation from '@/components/navigation/Navigation.vue';
+import ServerStatusBanner from '@/components/serverStatus/ServerStatusBanner.vue';
 import Snackbar from '@/components/snackbar/Snackbar.vue';
 import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
+import IServerStatusState from '@/model/state/serverStatus/IServerStatusState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { Container } from 'inversify';
 import { Component, Vue, Watch } from 'vue-property-decorator';
@@ -22,6 +25,7 @@ import IColorThemeState from '@/model/state/IColorThemeState';
     components: {
         Navigation,
         Snackbar,
+        ServerStatusBanner,
     },
 })
 export default class AppContent extends Vue {
@@ -31,6 +35,7 @@ export default class AppContent extends Vue {
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private colorThemeState: IColorThemeState = container.get<IColorThemeState>('IColorThemeState');
+    private serverStatusState: IServerStatusState = container.get<IServerStatusState>('IServerStatusState');
 
     public async created(): Promise<void> {
         // theme 設定を反映
@@ -47,6 +52,10 @@ export default class AppContent extends Vue {
                 timeout: 5000,
             });
         }
+
+        // mirakurun 接続状態確認
+        this.serverStatusState.fetch();
+        this.serverStatusState.startPolling();
     }
 
     /**
@@ -108,6 +117,8 @@ export default class AppContent extends Vue {
     }
 
     public destroyed(): void {
+        this.serverStatusState.stopPolling();
+
         const io = this.socketIoModel.getIO();
         if (io === null) {
             return;

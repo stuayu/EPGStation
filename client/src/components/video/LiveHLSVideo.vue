@@ -1,16 +1,15 @@
 <template>
-    <video ref="video" autoplay playsinline></video>
+    <div ref="container" class="dplayer-wrap"></div>
 </template>
 
 <script lang="ts">
 import BaseVideo from '@/components/video/BaseVideo';
 import container from '@/model/ModelContainer';
 import ILiveHLSVideoState from '@/model/state/onair/ILiveHLSVideoState';
-import IB24RenderState from '@/model/state/recorded/streaming/IB24RenderState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import HLSUtil from '@/util/HLSUtil';
-import Hls from 'hls.js';
-import { Component, Prop, Watch } from 'vue-property-decorator';
+import DPlayerUtil from '@/util/DPlayerUtil';
+import { DPlayerType } from 'dplayer';
+import { Component, Prop } from 'vue-property-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
@@ -24,10 +23,10 @@ export default class LiveHLSVideo extends BaseVideo {
     private videoState: ILiveHLSVideoState = container.get<ILiveHLSVideoState>('ILiveHLSVideoState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private checkEnabledTimerId: ReturnType<typeof setTimeout> | undefined;
-    private hls: Hls | null = null;
-    private b24RenderState: IB24RenderState = container.get<IB24RenderState>('IB24RenderState');
 
     public async mounted(): Promise<void> {
+        this.containerElement = this.$refs.container as HTMLElement;
+
         // HLS stream 開始
         await this.videoState.start(this.channelId, this.mode).catch(err => {
             this.snackbarState.open({
@@ -43,14 +42,14 @@ export default class LiveHLSVideo extends BaseVideo {
             }
 
             clearInterval(this.checkEnabledTimerId);
-            super.mounted();
+            this.initVideoSetting();
         }, 1000);
     }
 
     public async beforeDestroy(): Promise<void> {
-        super.beforeDestroy();
+        clearInterval(this.checkEnabledTimerId);
 
-        this.destoryHls();
+        super.beforeDestroy();
 
         await this.videoState.stop().catch(err => {
             this.snackbarState.open({
@@ -64,7 +63,7 @@ export default class LiveHLSVideo extends BaseVideo {
      * video 再生初期設定
      */
     protected initVideoSetting(): void {
-        if (this.video === null) {
+        if (this.containerElement === null) {
             return;
         }
 
@@ -77,62 +76,27 @@ export default class LiveHLSVideo extends BaseVideo {
             throw new Error('StreamIdIsNull');
         }
 
+        DPlayerUtil.setupGlobals();
+
         const videoSrc = `./streamfiles/stream${streamId}.m3u8`;
-        if (HLSUtil.isSupportedHLSjs() === false) {
-            // hls.js 非対応
-            this.setSrc(videoSrc);
-            this.load();
-            this.b24RenderState.init(this.video);
-        } else {
-            // hls.js 対応
-            this.hls = new Hls();
-            this.hls.loadSource(videoSrc);
-            this.hls.attachMedia(this.video);
-            this.hls.on(Hls.Events.MANIFEST_PARSED, async () => {
-                if (this.video !== null) {
-                    await this.video.play().catch(err => {});
-                }
-            });
-            this.b24RenderState.init(this.video, this.hls);
-        }
-    }
+        const options: DPlayerType.Options = {
+            container: this.containerElement,
+            autoplay: true,
+            live: true,
+            hotkey: true,
+            video: {
+                url: videoSrc,
+                type: 'hls',
+            },
+            subtitle: {
+                type: 'aribb24',
+            },
+            pluginOptions: {
+                aribb24: DPlayerUtil.createAribb24Options(),
+            },
+        };
 
-    /**
-     * destory hls
-     */
-    private destoryHls(): void {
-        if (this.hls !== null) {
-            this.hls.stopLoad();
-            this.hls.detachMedia();
-            this.hls.destroy();
-            this.hls = null;
-        }
-
-        this.b24RenderState.destroy();
-    }
-
-    /**
-     * 字幕が有効か
-     * @return boolean true で有効
-     */
-    public isEnabledSubtitles(): boolean {
-        return this.b24RenderState.isInited() !== true ? true : super.isEnabledSubtitles();
-    }
-
-    /**
-     * 字幕を表示させる
-     */
-    public showSubtitle(): void {
-        super.showSubtitle();
-        this.b24RenderState.showSubtitle();
-    }
-
-    /**
-     * 字幕を非表示にする
-     */
-    public disabledSubtitle(): void {
-        super.disabledSubtitle();
-        this.b24RenderState.disabledSubtitle();
+        this.createPlayer(options);
     }
 }
 </script>
