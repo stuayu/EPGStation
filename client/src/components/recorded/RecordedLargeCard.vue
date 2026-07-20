@@ -86,6 +86,7 @@ export default toNative(RecordedLargeCard);
         overflow: hidden
         text-overflow: ellipsis
         white-space: nowrap
+        min-width: 0
 
     .droped
         color: red
