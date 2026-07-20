@@ -24,8 +24,8 @@ export const get: Operation = async (req, res) => {
             });
         }
         api.responseJSON(res, 200, await recordedTagApiModel.gets(option));
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 
@@ -81,8 +81,8 @@ export const post: Operation = async (req, res) => {
         api.responseJSON(res, 201, {
             tagId: tagId,
         });
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 

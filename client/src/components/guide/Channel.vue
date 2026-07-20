@@ -1,7 +1,7 @@
 <template>
-    <div class="channels d-flex" v-bind:class="{ isDark: $vuetify.theme.dark === true }">
+    <div class="channels d-flex" v-bind:class="{ isDark: $vuetify.theme.global.current.dark === true }">
         <div class="item dummy">dummy</div>
-        <div class="white--text item" v-for="channel in channelItems" v-bind:key="channel.index" v-on:click="onClick(channel.item)">
+        <div class="text-white item" v-for="channel in channelItems" v-bind:key="channel.index" v-on:click="onClick(channel.item)">
             {{ channel.name }}
         </div>
         <div class="item scrollbar">dummy</div>
@@ -14,7 +14,7 @@ import IGuideState from '@/model/state/guide/IGuideState';
 import IOnAirSelectStreamState from '@/model/state/onair/IOnAirSelectStreamState';
 import DateUtil from '@/util/DateUtil';
 import Util from '@/util/Util';
-import { Component, Vue } from 'vue-property-decorator';
+import { Component, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 interface DisplayChannelItem {
@@ -25,7 +25,7 @@ interface DisplayChannelItem {
 }
 
 @Component({})
-export default class Channel extends Vue {
+class Channel extends Vue {
     public guideState: IGuideState = container.get<IGuideState>('IGuideState');
 
     private streamSelectDialog: IOnAirSelectStreamState = container.get<IOnAirSelectStreamState>('IOnAirSelectStreamState');
@@ -66,6 +66,8 @@ export default class Channel extends Vue {
         this.streamSelectDialog.open(item);
     }
 }
+
+export default toNative(Channel);
 </script>
 
 <style lang="sass" scoped>

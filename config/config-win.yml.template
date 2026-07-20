@@ -1,5 +1,9 @@
 port: 8888
+# mirakurunPath は named pipe, http, https の URL が指定可能
+# https 例: mirakurunPath: https://mirakurun.example.com
 mirakurunPath: http://localhost:40772
+# mirakurun の API エンドポイントのベースパス (省略時 /api)
+# mirakurunAPIPath: /api
 
 # dbtype: sqlite
 # sqlite:

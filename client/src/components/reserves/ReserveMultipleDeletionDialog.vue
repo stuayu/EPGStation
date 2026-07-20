@@ -6,8 +6,8 @@
             </v-card-text>
             <v-card-actions>
                 <v-spacer></v-spacer>
-                <v-btn color="primary" text v-on:click="dialogModel = false">キャンセル</v-btn>
-                <v-btn color="primary" text v-on:click="deleteReserve">削除</v-btn>
+                <v-btn color="primary" variant="text" v-on:click="dialogModel = false">キャンセル</v-btn>
+                <v-btn color="primary" variant="text" v-on:click="deleteReserve">削除</v-btn>
             </v-card-actions>
         </v-card>
     </v-dialog>
@@ -17,10 +17,10 @@
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class ReserveMultipleDeletionDialog extends Vue {
+class ReserveMultipleDeletionDialog extends Vue {
     @Prop({ required: true })
     public isOpen!: boolean;
 
@@ -69,6 +69,8 @@ export default class ReserveMultipleDeletionDialog extends Vue {
         }
     }
 }
+
+export default toNative(ReserveMultipleDeletionDialog);
 </script>
 
 <style lang="sass">

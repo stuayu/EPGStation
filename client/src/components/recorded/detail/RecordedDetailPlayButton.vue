@@ -1,15 +1,15 @@
 <template>
     <div>
         <v-menu v-model="isOpened" offset-y :close-on-content-click="false">
-            <template v-slot:activator="{ on }">
-                <v-btn color="primary" v-on="on" class="ma-1">
-                    <v-icon left dark>{{ button }}</v-icon>
+            <template v-slot:activator="{ props }">
+                <v-btn color="primary" v-bind="props" class="ma-1">
+                    <v-icon start>{{ button }}</v-icon>
                     {{ title }}
                 </v-btn>
             </template>
             <v-card max-width="200">
                 <div class="pa-2 d-flex flex-wrap">
-                    <v-btn v-for="video in videoFiles" v-bind:key="video.id" color="success" dark class="ma-1" v-on:click="play(video)">
+                    <v-btn v-for="video in videoFiles" v-bind:key="video.id" color="success" class="ma-1" v-on:click="play(video)">
                         {{ video.name }}
                     </v-btn>
                 </div>
@@ -20,11 +20,11 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({})
-export default class RecordedDetailPlayButton extends Vue {
+class RecordedDetailPlayButton extends Vue {
     @Prop({ required: true })
     public title!: string;
 
@@ -46,4 +46,6 @@ export default class RecordedDetailPlayButton extends Vue {
         return false;
     }
 }
+
+export default toNative(RecordedDetailPlayButton);
 </script>

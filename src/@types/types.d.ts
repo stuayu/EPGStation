@@ -24,7 +24,7 @@ declare module 'aribts' {
         program_number: number;
         PCR_PID: number;
         program_info_length: number;
-        program_info: any;
+        program_info: unknown;
         streams: Stream[];
     }
 
@@ -32,7 +32,7 @@ declare module 'aribts' {
         stream_type: number;
         elementary_PID: number;
         ES_info_length: number;
-        ES_info: any;
+        ES_info: unknown;
     }
 
     export class TsBase extends EventEmitter {
@@ -46,9 +46,13 @@ declare module 'aribts' {
     export class TsSectionParser extends TsBase {}
     export class TsSectionAnalyzer extends TsBase {}
     export class TsSectionUpdater extends TsBase {}
+    export interface PacketSelectorOption {
+        pids: number[];
+        programNumbers: number[];
+    }
+
     export class TsPacketSelector extends TsBase {
-        // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-        constructor(option: any);
+        constructor(option: PacketSelectorOption);
         public onPmt(tsSection: TsSectionProgramMap): void;
     }
 }

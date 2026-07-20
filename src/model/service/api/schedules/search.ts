@@ -12,8 +12,8 @@ export const post: Operation = async (req, res) => {
             200,
             await scheduleApiModel.search(req.body.option, req.body.isHalfWidth, req.body.limit),
         );
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 

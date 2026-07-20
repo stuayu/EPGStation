@@ -4,13 +4,13 @@
             <v-card-text class="pa-4 pb-0">
                 <div>選択した {{ total }} 件の番組を削除しますか。</div>
                 <div v-if="!!disableOption === false">
-                    <v-select :items="optionItems" v-model="deleteOption" :menu-props="{ auto: true }"></v-select>
+                    <v-select :items="optionItems" v-model="deleteOption"></v-select>
                 </div>
             </v-card-text>
             <v-card-actions>
                 <v-spacer></v-spacer>
-                <v-btn color="primary" text v-on:click="dialogModel = false">キャンセル</v-btn>
-                <v-btn color="primary" text v-on:click="deleteRecorded">削除</v-btn>
+                <v-btn color="primary" variant="text" v-on:click="dialogModel = false">キャンセル</v-btn>
+                <v-btn color="primary" variant="text" v-on:click="deleteRecorded">削除</v-btn>
             </v-card-actions>
         </v-card>
     </v-dialog>
@@ -21,7 +21,7 @@ import container from '@/model/ModelContainer';
 import { MultipleDeletionOption } from '@/model/state/recorded/IRecordedState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 interface SelectItem {
     text: string;
@@ -29,7 +29,7 @@ interface SelectItem {
 }
 
 @Component({})
-export default class RecordedMultipleDeletionDialog extends Vue {
+class RecordedMultipleDeletionDialog extends Vue {
     @Prop({ required: true })
     public isOpen!: boolean;
 
@@ -46,8 +46,7 @@ export default class RecordedMultipleDeletionDialog extends Vue {
 
     private snackbarState = container.get<ISnackbarState>('ISnackbarState');
 
-    constructor() {
-        super();
+    public created(): void {
 
         this.optionItems.push({
             text: '全て',
@@ -101,6 +100,8 @@ export default class RecordedMultipleDeletionDialog extends Vue {
         }
     }
 }
+
+export default toNative(RecordedMultipleDeletionDialog);
 </script>
 
 <style lang="sass">

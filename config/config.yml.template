@@ -1,5 +1,9 @@
 port: 8888
+# mirakurunPath は unix socket, named pipe (Windows), http, https の URL が指定可能
+# https 例: mirakurunPath: https://mirakurun.example.com
 mirakurunPath: http+unix://%2Fvar%2Frun%2Fmirakurun.sock/
+# mirakurun の API エンドポイントのベースパス (省略時 /api)
+# mirakurunAPIPath: /api
 
 # dbtype: sqlite
 # sqlite:

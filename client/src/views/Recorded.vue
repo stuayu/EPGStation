@@ -3,7 +3,7 @@
         <EditTitleBar
             v-if="isEditMode === true"
             :title="selectedTitle"
-            :isEditMode.sync="isEditMode"
+            v-model:isEditMode="isEditMode"
             v-on:exit="onFinishEdit"
             v-on:selectall="onSelectAll"
             v-on:delete="onMultiplueDeletion"
@@ -23,7 +23,7 @@
                         v-on:stopEncode="stopEncode"
                         v-on:selected="selectItem"
                         :isTableMode="settingValue.isShowTableMode === true"
-                        :isEditMode.sync="isEditMode"
+                        v-model:isEditMode="isEditMode"
                         :isShowDropInfo="settingValue.isShowDropInfoInsteadOfDescription"
                     ></RecordedItems>
                     <Pagination v-if="isEditMode === false" :total="recordedState.getTotal()" :pageSize="settingValue.recordedLength"></Pagination>
@@ -33,11 +33,11 @@
         </transition>
         <RecordedMultipleDeletionDialog
             v-if="isEditMode === true"
-            :isOpen.sync="isOpenMultiplueDeletionDialog"
+            v-model:isOpen="isOpenMultiplueDeletionDialog"
             :total="recordedState.getSelectedCnt().cnt"
             v-on:delete="onExecuteMultiplueDeletion"
         ></RecordedMultipleDeletionDialog>
-        <RecordedCleanupDialog :isOpen.sync="isOpenCleanupDialog"></RecordedCleanupDialog>
+        <RecordedCleanupDialog v-model:isOpen="isOpenCleanupDialog"></RecordedCleanupDialog>
     </v-main>
 </template>
 
@@ -57,11 +57,10 @@ import IRecordedState, { MultipleDeletionOption } from '@/model/state/recorded/I
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
-import { Route } from 'vue-router';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -75,15 +74,15 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
         RecordedCleanupDialog,
     },
 })
-export default class Recorded extends Vue {
+class Recorded extends Vue {
     public isEditMode: boolean = false;
     public isOpenMultiplueDeletionDialog: boolean = false;
     public isOpenCleanupDialog: boolean = false;
 
     private isVisibilityHidden: boolean = false;
-    private recordedState: IRecordedState = container.get<IRecordedState>('IRecordedState');
+    public recordedState: IRecordedState = container.get<IRecordedState>('IRecordedState');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
-    private settingValue: ISettingValue | null = null;
+    public settingValue: ISettingValue | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
@@ -113,12 +112,12 @@ export default class Recorded extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {
         this.isVisibilityHidden = true;
 
         this.$nextTick(() => {
@@ -241,4 +240,10 @@ export default class Recorded extends Vue {
         return option;
     }
 }
+
+export default Object.assign(toNative(Recorded), {
+    beforeRouteUpdate(this: Recorded, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteUpdate(to, from, next);
+        },
+});
 </script>

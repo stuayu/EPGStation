@@ -15,11 +15,11 @@ export const post: Operation = async (req, res) => {
             req.headers.host,
             api.isSecureProtocol(req),
             req.body.kodiName,
-            parseInt(req.params.videoFileId, 10),
+            api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'),
         );
         api.responseJSON(res, 200, { code: 200 });
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 

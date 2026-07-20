@@ -2,12 +2,12 @@
     <v-dialog v-if="isRemove === false" v-model="dialogModel" max-width="300" scrollable>
         <v-card>
             <v-card-text class="pa-4">
-                <div class="text--primary">{{ ruleItem.display.keyword }} を削除しますか?</div>
+                <div class="text-high-emphasis">{{ ruleItem.display.keyword }} を削除しますか?</div>
             </v-card-text>
             <v-card-actions>
                 <v-spacer></v-spacer>
-                <v-btn color="primary" text v-on:click="dialogModel = false">キャンセル</v-btn>
-                <v-btn color="primary" text v-on:click="deleteRule">削除</v-btn>
+                <v-btn color="primary" variant="text" v-on:click="dialogModel = false">キャンセル</v-btn>
+                <v-btn color="primary" variant="text" v-on:click="deleteRule">削除</v-btn>
             </v-card-actions>
         </v-card>
     </v-dialog>
@@ -19,11 +19,11 @@ import container from '@/model/ModelContainer';
 import { RuleStateData } from '@/model/state/rule/IRuleState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
-export default class RuleDeleteDialog extends Vue {
+class RuleDeleteDialog extends Vue {
     @Prop({ required: true })
     public ruleItem!: RuleStateData;
 
@@ -82,4 +82,6 @@ export default class RuleDeleteDialog extends Vue {
         }
     }
 }
+
+export default toNative(RuleDeleteDialog);
 </script>

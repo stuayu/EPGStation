@@ -1,5 +1,5 @@
 import { cloneDeep } from 'lodash';
-import VueRouter, { Location, Route } from 'vue-router';
+import type { Router as VueRouter, RouteLocationRaw as Location, RouteLocationNormalized as Route } from 'vue-router';
 
 namespace Util {
     /**
@@ -27,7 +27,7 @@ namespace Util {
         }
 
         const strs = urls[1].split('&');
-        const result: any = {};
+        const result: Record<string, string> = {};
         for (const s of strs) {
             const query = s.split('=');
             if (query.length === 2) {
@@ -50,48 +50,51 @@ namespace Util {
         return typeof value === 'undefined' ? null : decodeURIComponent(value);
     };
 
+
+    /** Return one scalar value from a Vue Router param/query value. */
+    type RouteStringValue = string | null | undefined;
+
+    export const getRouteString = (value: RouteStringValue | readonly RouteStringValue[]): string | undefined => {
+        if (typeof value === 'string') {
+            return value;
+        }
+        if (value === null || typeof value === 'undefined') {
+            return undefined;
+        }
+        return value.find((item): item is string => typeof item === 'string');
+    };
+
     /**
      * query に timestamp を追加してページ移動する
      * @param router: VueRouter
      * @param location Location
      * @return Promise<Route>
      */
-    export const move = async (router: VueRouter, location: Location): Promise<Route | null> => {
-        location = cloneDeep(location);
-        if (typeof location.query === 'undefined') {
-            location.query = {};
+    export const move = async (router: VueRouter, location: Location): Promise<void> => {
+        const target = typeof location === 'string' ? { path: location } : cloneDeep(location);
+        const query = 'query' in target && typeof target.query !== 'undefined' ? target.query : {};
+        const path = 'path' in target && typeof target.path === 'string' ? target.path : undefined;
+
+        if (typeof path !== 'undefined') {
+            target.path = path.startsWith('/') ? path : `/${path}`;
         }
 
-        if (typeof location.path === 'undefined') {
-            location.path = '/';
-        } else if (location.path.slice(0, 1) !== '/') {
-            location.path = '/' + location.path;
-        }
-
-        // path が同じ場合 timestamp 以外の query が同じでないかチェックする
-        if (router.currentRoute.path === location.path) {
-            const oldQuery = cloneDeep(router.currentRoute.query);
+        if (typeof target.path !== 'undefined' && router.currentRoute.value.path === target.path) {
+            const oldQuery = cloneDeep(router.currentRoute.value.query);
             delete oldQuery.timestamp;
-            delete location.query.timestamp;
+            delete query.timestamp;
 
-            if (Object.keys(oldQuery).length === Object.keys(location.query).length) {
-                let isEqual = true;
-                for (const key in oldQuery) {
-                    if (location.query[key] !== oldQuery[key]) {
-                        isEqual = false;
-                        break;
-                    }
-                }
-
-                if (isEqual === true) {
-                    return null;
+            if (Object.keys(oldQuery).length === Object.keys(query).length) {
+                const isEqual = Object.keys(oldQuery).every(key => query[key] === oldQuery[key]);
+                if (isEqual) {
+                    return;
                 }
             }
         }
 
-        (location.query as any)['timestamp'] = new Date().getTime();
-
-        return router.push(location);
+        query.timestamp = new Date().getTime().toString(10);
+        target.query = query;
+        await router.push(target);
     };
 
     /**

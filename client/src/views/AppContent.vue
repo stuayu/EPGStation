@@ -17,7 +17,7 @@ import IScrollPositionState from '@/model/state/IScrollPositionState';
 import IServerStatusState from '@/model/state/serverStatus/IServerStatusState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { Container } from 'inversify';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import ISocketIOModel from '../model/socketio/ISocketIOModel';
 import IColorThemeState from '@/model/state/IColorThemeState';
 
@@ -28,7 +28,7 @@ import IColorThemeState from '@/model/state/IColorThemeState';
         ServerStatusBanner,
     },
 })
-export default class AppContent extends Vue {
+class AppContent extends Vue {
     public isDisconnected: boolean = false;
 
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
@@ -39,7 +39,7 @@ export default class AppContent extends Vue {
 
     public async created(): Promise<void> {
         // theme 設定を反映
-        this.$vuetify.theme.dark = this.colorThemeState.isDarkTheme();
+        this.$vuetify.theme.change((this.colorThemeState.isDarkTheme()) ? 'dark' : 'light');
 
         // socket.io 設定
         try {
@@ -116,7 +116,7 @@ export default class AppContent extends Vue {
         });
     }
 
-    public destroyed(): void {
+    public unmounted(): void {
         this.serverStatusState.stopPolling();
 
         const io = this.socketIoModel.getIO();
@@ -144,6 +144,8 @@ export default class AppContent extends Vue {
         this.scrollState.updateHistoryPosition();
     }
 }
+
+export default toNative(AppContent);
 </script>
 
 <style lang="sass" scoped>

@@ -19,7 +19,7 @@ let ormConfig;
 switch (config.dbtype) {
     case 'sqlite':
         ormConfig = new DataSource({
-            type: 'sqlite',
+            type: 'better-sqlite3',
             database: path.join(__dirname, 'data', 'database.db'),
             synchronize: false,
             logging: false,
@@ -27,6 +27,7 @@ switch (config.dbtype) {
             subscribers: [subscriber],
             migrationsRun: false,
             migrations: migrations,
+            invalidWhereValuesBehavior: { null: 'throw', undefined: 'throw' },
         });
         break;
 
@@ -46,6 +47,7 @@ switch (config.dbtype) {
             subscribers: [subscriber],
             migrationsRun: false,
             migrations: migrations,
+            invalidWhereValuesBehavior: { null: 'throw', undefined: 'throw' },
         });
         break;
 

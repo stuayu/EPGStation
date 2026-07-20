@@ -1,6 +1,6 @@
 <template>
     <div class="time-scale">
-        <div class="white--text item" v-bind:class="getItemClass(time)" v-for="time in guideState.getTimes()" v-bind:key="time">
+        <div class="text-white item" v-bind:class="getItemClass(time)" v-for="time in guideState.getTimes()" v-bind:key="time">
             {{ time }}
         </div>
         <div class="item dummy">dummy</div>
@@ -10,10 +10,10 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import IGuideState from '@/model/state/guide/IGuideState';
-import { Component, Vue } from 'vue-property-decorator';
+import { Component, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class TimeScale extends Vue {
+class TimeScale extends Vue {
     public guideState: IGuideState = container.get<IGuideState>('IGuideState');
 
     /**
@@ -27,6 +27,8 @@ export default class TimeScale extends Vue {
         return result;
     }
 }
+
+export default toNative(TimeScale);
 </script>
 
 <style lang="sass" scoped>

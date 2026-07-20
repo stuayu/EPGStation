@@ -3,17 +3,17 @@
         <v-card>
             <div class="pa-3 pt-4 pb-0 add-encode">
                 <div class="subtitle-1">{{ recordedItem.name }}</div>
-                <v-select :items="dialogState.getHosts()" v-model="dialogState.hostName" label="kodi host" :menu-props="{ auto: true }" class="preset"></v-select>
+                <v-select :items="dialogState.getHosts()" v-model="dialogState.hostName" label="kodi host" class="preset"></v-select>
 
                 <div class="d-flex flex-wrap">
-                    <v-btn v-for="video in videoFiles" v-bind:key="video.id" color="success" dark class="ma-1" v-on:click="send(video.id)">
+                    <v-btn v-for="video in videoFiles" v-bind:key="video.id" color="success" class="ma-1" v-on:click="send(video.id)">
                         {{ video.name }}
                     </v-btn>
                 </div>
             </div>
             <v-card-actions>
                 <v-spacer></v-spacer>
-                <v-btn v-on:click="close" text color="primary">閉じる</v-btn>
+                <v-btn v-on:click="close" variant="text" color="primary">閉じる</v-btn>
             </v-card-actions>
         </v-card>
     </v-dialog>
@@ -25,11 +25,11 @@ import ISendVideoFileToKodiState from '@/model/state/recorded/detail/ISendVideoF
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISendVideoFileSelectHostSettingStorageModel } from '@/model/storage/recorded/ISendVideoFileSelectHostSettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({})
-export default class SendVideoFileToKodiDialog extends Vue {
+class SendVideoFileToKodiDialog extends Vue {
     @Prop({ required: true })
     public recordedItem!: apid.RecordedItem;
 
@@ -96,4 +96,6 @@ export default class SendVideoFileToKodiDialog extends Vue {
         }
     }
 }
+
+export default toNative(SendVideoFileToKodiDialog);
 </script>

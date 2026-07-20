@@ -1,15 +1,15 @@
 <template>
     <div>
         <div v-for="item in items" v-bind:key="item.encodeItem.id">
-            <EncodeSmallCard :item="item" :isEditMode.sync="isEditMode" v-on:selected="selected"></EncodeSmallCard>
+            <EncodeSmallCard :item="item" v-model:isEditMode="isEditMode" v-on:selected="selected"></EncodeSmallCard>
         </div>
     </div>
 </template>
 
 <script lang="ts">
 import EncodeSmallCard from '@/components/encode/EncodeSmallCard.vue';
-import { EncodeInfoDisplayData } from '@/model/state/encode/IEncodeState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { EncodeInfoDisplayItem } from '@/model/state/encode/IEncodeState';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({
@@ -17,9 +17,9 @@ import * as apid from '../../../../api';
         EncodeSmallCard,
     },
 })
-export default class EncodeItems extends Vue {
+class EncodeItems extends Vue {
     @Prop({ required: true })
-    public items!: EncodeInfoDisplayData[];
+    public items!: EncodeInfoDisplayItem[];
 
     @Prop({ required: true })
     public isEditMode!: boolean;
@@ -28,4 +28,6 @@ export default class EncodeItems extends Vue {
         this.$emit('selected', encodeId);
     }
 }
+
+export default toNative(EncodeItems);
 </script>

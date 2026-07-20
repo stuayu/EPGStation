@@ -1,6 +1,6 @@
 <template>
     <v-card class="mx-auto recorded-table" max-width="1000px">
-        <v-simple-table>
+        <v-table>
             <template v-slot:default>
                 <thead>
                     <tr>
@@ -11,7 +11,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="item in items" v-bind:key="item.id" v-on:click="gotoDetail(item)" v-bind:class="{ 'selected-color': item.isSelected === true }">
+                    <tr v-for="item in items" v-bind:key="item.recordedItem.id" v-on:click="gotoDetail(item)" v-bind:class="{ 'selected-color': item.isSelected === true }">
                         <td>{{ item.display.name }}</td>
                         <td>{{ item.display.channelName }}</td>
                         <td>{{ item.display.shortTime }} ({{ item.display.duration }} m)</td>
@@ -21,14 +21,14 @@
                     </tr>
                 </tbody>
             </template>
-        </v-simple-table>
+        </v-table>
     </v-card>
 </template>
 
 <script lang="ts">
 import RecordedItemMenu from '@/components/recorded/RecordedItemMenu.vue';
 import { RecordedDisplayData } from '@/model/state/recorded/IRecordedUtil';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({
@@ -36,7 +36,7 @@ import * as apid from '../../../../api';
         RecordedItemMenu,
     },
 })
-export default class RecordedTableItems extends Vue {
+class RecordedTableItems extends Vue {
     @Prop({ required: true })
     public items!: RecordedDisplayData[];
 
@@ -59,6 +59,8 @@ export default class RecordedTableItems extends Vue {
         this.$emit('stopEncode', recordedId);
     }
 }
+
+export default toNative(RecordedTableItems);
 </script>
 
 <style lang="sass" scoped>

@@ -2,12 +2,12 @@
     <v-dialog v-if="isRemove === false" v-model="dialogModel" max-width="300" scrollable>
         <v-card>
             <div class="pa-4 pb-0">
-                <div class="text--primary">[{{ this.item.mode }}] {{ this.item.recorded.name }} を停止しますか?</div>
+                <div class="text-high-emphasis">[{{ item.mode }}] {{ item.recorded.name }} を停止しますか?</div>
             </div>
             <v-card-actions>
                 <v-spacer></v-spacer>
-                <v-btn color="error" text v-on:click="dialogModel = false">キャンセル</v-btn>
-                <v-btn color="primary" text v-on:click="cancel">停止</v-btn>
+                <v-btn color="error" variant="text" v-on:click="dialogModel = false">キャンセル</v-btn>
+                <v-btn color="primary" variant="text" v-on:click="cancel">停止</v-btn>
             </v-card-actions>
         </v-card>
     </v-dialog>
@@ -18,11 +18,11 @@ import IEncodeApiModel from '@/model/api/encode/IEncodeApiModel';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
-export default class EncodeCancelDialog extends Vue {
+class EncodeCancelDialog extends Vue {
     @Prop({ required: true })
     public item!: apid.EncodeProgramItem;
 
@@ -84,4 +84,6 @@ export default class EncodeCancelDialog extends Vue {
         }
     }
 }
+
+export default toNative(EncodeCancelDialog);
 </script>

@@ -9,11 +9,11 @@
         </TitleBar>
         <transition name="page">
             <div v-if="onAirState.getSchedules().length > 0">
-                <v-tabs-items v-if="isTabView === true" v-model="onAirState.selectedTab">
-                    <v-tab-item v-for="item in onAirState.getTabs()" :key="item" :value="`${item}`">
+                <v-window v-if="isTabView === true" v-model="onAirState.selectedTab">
+                    <v-window-item v-for="item in onAirState.getTabs()" :key="item" :value="`${item}`">
                         <OnAirCard :items="onAirState.getSchedules(item)" :reserveIndex="onAirState.getReserveIndex()"></OnAirCard>
-                    </v-tab-item>
-                </v-tabs-items>
+                    </v-window-item>
+                </v-window>
                 <div v-else>
                     <OnAirCard :items="onAirState.getSchedules()" :reserveIndex="onAirState.getReserveIndex()"></OnAirCard>
                 </div>
@@ -37,10 +37,9 @@ import IOnAirState from '@/model/state/onair/IOnAirState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
-import { Route } from 'vue-router';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -50,7 +49,7 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
         ProgramDialog,
     },
 })
-export default class OnAir extends Vue {
+class OnAir extends Vue {
     public onAirState: IOnAirState = container.get<IOnAirState>('IOnAirState');
     private settingValue: ISettingValue = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
@@ -71,7 +70,7 @@ export default class OnAir extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
 
@@ -136,9 +135,11 @@ export default class OnAir extends Vue {
         }, 10 * 1000);
     }
 }
+
+export default toNative(OnAir);
 </script>
 
 <style lang="sass" scoped>
-.theme--dark.v-tabs-items
+.v-theme--dark.v-window
     background-color: transparent !important
 </style>

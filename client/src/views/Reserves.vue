@@ -3,7 +3,7 @@
         <EditTitleBar
             v-if="isEditMode === true"
             :title="selectedTitle"
-            :isEditMode.sync="isEditMode"
+            v-model:isEditMode="isEditMode"
             v-on:exit="onFinishEdit"
             v-on:selectall="onSelectAll"
             v-on:delete="onMultiplueDeletion"
@@ -16,14 +16,14 @@
         <transition name="page">
             <div v-if="reservesState.getReserves().length > 0" ref="appContent" class="app-content pa-2">
                 <div v-bind:style="contentWrapStyle">
-                    <ReserveItems :reserves="reservesState.getReserves()" :isEditMode.sync="isEditMode" v-on:selected="selectItem"></ReserveItems>
+                    <ReserveItems :reserves="reservesState.getReserves()" v-model:isEditMode="isEditMode" v-on:selected="selectItem"></ReserveItems>
                 </div>
-                <Pagination :total="reservesState.getTotal()" :pageSize="settingValue.reservesLength"></Pagination>
+                <Pagination :total="reservesState.getTotal()" :pageSize="settingValue?.reservesLength ?? 0"></Pagination>
             </div>
         </transition>
         <div style="visibility: hidden">dummy</div>
         <ReserveMultipleDeletionDialog
-            :isOpen.sync="isOpenMultiplueDeletionDialog"
+            v-model:isOpen="isOpenMultiplueDeletionDialog"
             :total="reservesState.getSelectedCnt()"
             v-on:delete="onExecuteMultiplueDeletion"
         ></ReserveMultipleDeletionDialog>
@@ -45,11 +45,10 @@ import IReservesState from '@/model/state/reserve/IReservesState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
-import { Route } from 'vue-router';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -61,14 +60,14 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
         ReserveMultipleDeletionDialog,
     },
 })
-export default class Reserves extends Vue {
+class Reserves extends Vue {
     public isEditMode: boolean = false;
     public isOpenMultiplueDeletionDialog: boolean = false;
 
     private isVisibilityHidden: boolean = false;
-    private reservesState: IReservesState = container.get<IReservesState>('IReservesState');
+    public reservesState: IReservesState = container.get<IReservesState>('IReservesState');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
-    private settingValue: ISettingValue | null = null;
+    public settingValue: ISettingValue | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
@@ -113,12 +112,12 @@ export default class Reserves extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {
         this.isVisibilityHidden = true;
 
         this.$nextTick(() => {
@@ -201,4 +200,10 @@ export default class Reserves extends Vue {
         };
     }
 }
+
+export default Object.assign(toNative(Reserves), {
+    beforeRouteUpdate(this: Reserves, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteUpdate(to, from, next);
+        },
+});
 </script>

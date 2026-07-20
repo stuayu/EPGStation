@@ -8,15 +8,15 @@ export const get: Operation = async (req, res) => {
 
     try {
         const streamId = await streamApiModel.startRecordedHLSStream({
-            videoFileId: parseInt(req.params.videoFileId, 10),
+            videoFileId: api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'),
             playPosition: parseInt(req.query.ss as string, 10),
             mode: parseInt(req.query.mode as string, 10),
         });
         api.responseJSON(res, 200, {
             streamId: streamId,
         });
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 

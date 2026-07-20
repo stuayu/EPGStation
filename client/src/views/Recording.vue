@@ -3,7 +3,7 @@
         <EditTitleBar
             v-if="isEditMode === true"
             :title="selectedTitle"
-            :isEditMode.sync="isEditMode"
+            v-model:isEditMode="isEditMode"
             v-on:exit="onFinishEdit"
             v-on:selectall="onSelectAll"
             v-on:delete="onMultiplueDeletion"
@@ -21,18 +21,18 @@
                     :recorded="recordingState.getRecorded()"
                     :isRecording="true"
                     :isTableMode="true"
-                    :isEditMode.sync="isEditMode"
+                    v-model:isEditMode="isEditMode"
                     :isShowDropInfo="false"
                     v-on:detail="gotoDetail"
                     v-on:selected="selectItem"
                 ></RecordedItems>
-                <Pagination :total="recordingState.getTotal()" :pageSize="settingValue.recordingLength"></Pagination>
+                <Pagination :total="recordingState.getTotal()" :pageSize="settingValue?.recordingLength ?? 0"></Pagination>
                 <div style="visibility: hidden">dummy</div>
             </div>
         </transition>
         <RecordedMultipleDeletionDialog
             v-if="isEditMode === true"
-            :isOpen.sync="isOpenMultiplueDeletionDialog"
+            v-model:isOpen="isOpenMultiplueDeletionDialog"
             :total="recordingState.getSelectedCnt()"
             :disableOption="true"
             v-on:delete="onExecuteMultiplueDeletion"
@@ -54,11 +54,10 @@ import IRecordingState from '@/model/state/recording/IRecordingState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
-import { Route } from 'vue-router';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -69,13 +68,13 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
         RecordedMultipleDeletionDialog,
     },
 })
-export default class Recording extends Vue {
+class Recording extends Vue {
     public isEditMode: boolean = false;
     public isOpenMultiplueDeletionDialog: boolean = false;
 
-    private recordingState: IRecordingState = container.get<IRecordingState>('IRecordingState');
+    public recordingState: IRecordingState = container.get<IRecordingState>('IRecordingState');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
-    private settingValue: ISettingValue | null = null;
+    public settingValue: ISettingValue | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
@@ -94,7 +93,7 @@ export default class Recording extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }
@@ -174,4 +173,6 @@ export default class Recording extends Vue {
         };
     }
 }
+
+export default toNative(Recording);
 </script>

@@ -1,4 +1,4 @@
-import Vue from '*.vue';
+import type { ComponentPublicInstance } from 'vue';
 import Util from './Util';
 
 namespace VuetifyUtil {
@@ -7,7 +7,7 @@ namespace VuetifyUtil {
      * @param vueComponent: Vue
      * @return Promise<void>
      */
-    export const focusTextFiled = async (vueComponent: Vue): Promise<void> => {
+    export const focusTextFiled = async (vueComponent: ComponentPublicInstance): Promise<void> => {
         const inputs = vueComponent.$el.getElementsByTagName('input');
         if (typeof inputs[0] === 'undefined') {
             throw new Error('InputElementIsNotFound');

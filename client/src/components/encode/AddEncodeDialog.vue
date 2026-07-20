@@ -4,8 +4,8 @@
             <div class="pa-3 pt-4 pb-0 add-encode">
                 <div class="subtitle-1">{{ recordedItem.name }}</div>
                 <div class="d-flex">
-                    <v-select :items="addEncodeState.getVideoFiles()" v-model="addEncodeState.videoFileId" label="source" :menu-props="{ auto: true }" class="source"></v-select>
-                    <v-select :items="addEncodeState.getEncodeList()" v-model="addEncodeState.encodeMode" label="preset" :menu-props="{ auto: true }" class="preset"></v-select>
+                    <v-select :items="addEncodeState.getVideoFiles()" v-model="addEncodeState.videoFileId" label="source" class="source"></v-select>
+                    <v-select :items="addEncodeState.getEncodeList()" v-model="addEncodeState.encodeMode" label="preset" class="preset"></v-select>
                 </div>
 
                 <div class="directory">
@@ -13,15 +13,14 @@
                         :items="addEncodeState.getParentDirectoryList()"
                         v-model="addEncodeState.parentDirectory"
                         label="recorded"
-                        :menu-props="{ auto: true }"
-                        :disabled="addEncodeState.isSaveSameDirectory === true"
+                        :disabled="setting.tmp.isSaveSameDirectory === true"
                         class="parent"
                     ></v-select>
                     <v-text-field
                         v-model="addEncodeState.directory"
                         label="sub directory"
                         clearable
-                        :disabled="addEncodeState.isSaveSameDirectory === true"
+                        :disabled="setting.tmp.isSaveSameDirectory === true"
                         class="sub"
                     ></v-text-field>
                 </div>
@@ -31,8 +30,8 @@
             </div>
             <v-card-actions>
                 <v-spacer></v-spacer>
-                <v-btn v-on:click="cancel" text color="error">キャンセル</v-btn>
-                <v-btn v-on:click="add" text color="primary">追加</v-btn>
+                <v-btn v-on:click="cancel" variant="text" color="error">キャンセル</v-btn>
+                <v-btn v-on:click="add" variant="text" color="primary">追加</v-btn>
             </v-card-actions>
         </v-card>
     </v-dialog>
@@ -44,11 +43,11 @@ import IAddEncodeState from '@/model/state/encode/IAddEncodeState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { IAddEncodeSettingStorageModel } from '@/model/storage/encode/IAddEncodeSettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
-export default class AddEncodeDialog extends Vue {
+class AddEncodeDialog extends Vue {
     @Prop({ required: true })
     public recordedItem!: apid.RecordedItem;
 
@@ -121,6 +120,8 @@ export default class AddEncodeDialog extends Vue {
         }
     }
 }
+
+export default toNative(AddEncodeDialog);
 </script>
 
 <style lang="sass" scoped>

@@ -14,7 +14,6 @@
                             :items="manualReserveState.getChannelItems()"
                             label="channel"
                             clearable
-                            :menu-props="{ auto: true }"
                         ></v-select>
                     </div>
                 </SearchOptionRow>
@@ -28,7 +27,7 @@
                             :disabled="isEditMode"
                             :datePickerProps="{
                                 locale: 'jp-ja',
-                                'day-format': date => new Date(date).getDate(),
+                                'day-format': formatDay,
                                 'first-day-of-week': 1,
                             }"
                             :timePickerProps="{
@@ -38,9 +37,9 @@
                                 color: 'success',
                             }"
                         >
-                            <template slot="actions" slot-scope="{ parent }">
-                                <v-btn text color="primary" @click.native="parent.clearHandler">クリア</v-btn>
-                                <v-btn text color="primary" @click="parent.okHandler">設定</v-btn>
+                            <template #actions="{ parent }">
+                                <v-btn variant="text" color="primary" @click="parent.clearHandler">クリア</v-btn>
+                                <v-btn variant="text" color="primary" @click="parent.okHandler">設定</v-btn>
                             </template>
                         </v-datetime-picker>
                         <span class="px-1"></span>
@@ -52,16 +51,16 @@
                             :disabled="isEditMode"
                             :datePickerProps="{
                                 locale: 'jp-ja',
-                                'day-format': date => new Date(date).getDate(),
+                                'day-format': formatDay,
                                 'first-day-of-week': 1,
                             }"
                             :timePickerProps="{
                                 'ampm-in-title': true,
                             }"
                         >
-                            <template slot="actions" slot-scope="{ parent }">
-                                <v-btn text color="primary" @click.native="parent.clearHandler">クリア</v-btn>
-                                <v-btn text color="primary" @click="parent.okHandler">設定</v-btn>
+                            <template #actions="{ parent }">
+                                <v-btn variant="text" color="primary" @click="parent.clearHandler">クリア</v-btn>
+                                <v-btn variant="text" color="primary" @click="parent.okHandler">設定</v-btn>
                             </template>
                         </v-datetime-picker>
                     </div>
@@ -75,17 +74,23 @@
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import IManualReserveState from '@/model/state/reserve/manual/IManualReserveState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         SearchOptionRow,
     },
 })
-export default class ManualTimeReserveOption extends Vue {
+class ManualTimeReserveOption extends Vue {
     @Prop({ required: true })
     public isEditMode!: boolean;
 
-    private manualReserveState: IManualReserveState = container.get<IManualReserveState>('IManualReserveState');
+    public manualReserveState: IManualReserveState = container.get<IManualReserveState>('IManualReserveState');
+
+    public formatDay(date: string | number | Date): number {
+        return new Date(date).getDate();
+    }
 }
+
+export default toNative(ManualTimeReserveOption);
 </script>

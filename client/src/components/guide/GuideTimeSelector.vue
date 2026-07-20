@@ -1,23 +1,23 @@
 <template>
     <div>
-        <v-menu v-model="isOpen" bottom left :close-on-content-click="false">
-            <template v-slot:activator="{ on }">
-                <v-btn dark icon v-on="on">
+        <v-menu v-model="isOpen" location="bottom start" :close-on-content-click="false">
+            <template v-slot:activator="{ props }">
+                <v-btn icon v-bind="props">
                     <v-icon>mdi-clock-outline</v-icon>
                 </v-btn>
             </template>
             <v-card>
                 <div class="guide-time-selector pa-2">
                     <div class="d-flex">
-                        <v-select v-if="broadcastItems.length > 0" :items="broadcastItems" v-model="broadcastValue" :menu-props="{ auto: true }" class="broadcast"></v-select>
-                        <v-select :items="dayItems" v-model="dayValue" :menu-props="{ auto: true }" class="day"></v-select>
-                        <v-select :items="hourItems" v-model="hourValue" :menu-props="{ auto: true }" class="hour"></v-select>
+                        <v-select v-if="broadcastItems.length > 0" :items="broadcastItems" v-model="broadcastValue" class="broadcast"></v-select>
+                        <v-select :items="dayItems" v-model="dayValue" class="day"></v-select>
+                        <v-select :items="hourItems" v-model="hourValue" class="hour"></v-select>
                     </div>
                 </div>
                 <v-card-actions>
                     <v-spacer></v-spacer>
-                    <v-btn v-on:click="onCancel" text color="error">閉じる</v-btn>
-                    <v-btn v-on:click="onShow" text color="primary">表示</v-btn>
+                    <v-btn v-on:click="onCancel" variant="text" color="error">閉じる</v-btn>
+                    <v-btn v-on:click="onShow" variant="text" color="primary">表示</v-btn>
                 </v-card-actions>
             </v-card>
         </v-menu>
@@ -32,10 +32,10 @@ import IGuideState from '@/model/state/guide/IGuideState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import DateUtil from '@/util/DateUtil';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class GuideTimeSelector extends Vue {
+class GuideTimeSelector extends Vue {
     public broadcastItems: string[] = [];
     public broadcastValue: string | undefined = undefined;
     public dayItems: {
@@ -56,9 +56,7 @@ export default class GuideTimeSelector extends Vue {
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     private settingValue: ISettingValue | null = null;
 
-    constructor() {
-        super();
-
+    public created(): void {
         for (let i = 0; i < 24; i++) {
             this.hourItems.push({
                 text: `${i.toString(10)}時`,
@@ -292,6 +290,8 @@ export default class GuideTimeSelector extends Vue {
         this.hourValue = typeof this.$route.query.time === 'string' ? this.$route.query.time.substr(6, 2) : DateUtil.format(DateUtil.getJaDate(new Date()), 'hh');
     }
 }
+
+export default toNative(GuideTimeSelector);
 </script>
 
 <style lang="sass" scoped>

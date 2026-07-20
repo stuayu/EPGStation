@@ -138,8 +138,26 @@ https:
 | ------ | ------------ | ---- |
 | string | -            | yes  |
 
+-   unix socket、named pipe (Windows)、http、https の URL が指定可能
+
 ```yaml
 mirakurunPath: 'http://localhost:40772'
+```
+
+```yaml
+mirakurunPath: 'https://mirakurun.example.com'
+```
+
+### mirakurunAPIPath
+
+#### Mirakurun の API エンドポイントのベースパス
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| string | /api         | no   |
+
+```yaml
+mirakurunAPIPath: '/api'
 ```
 
 ### dbtype

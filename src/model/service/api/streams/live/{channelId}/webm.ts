@@ -8,7 +8,7 @@ export const get: Operation = async (req, res) => {
 
     let isClosed: boolean = false;
     let result: StreamResponse;
-    let keepTimer: NodeJS.Timer;
+    let keepTimer: ReturnType<typeof setTimeout>;
 
     const stop = async () => {
         clearInterval(keepTimer);
@@ -27,14 +27,14 @@ export const get: Operation = async (req, res) => {
 
     try {
         result = await streamApiModel.startLiveWebmStream({
-            channelId: parseInt(req.params.channelId, 10),
+            channelId: api.parseRequestParamInt(req.params.channelId, 'channelId'),
             mode: parseInt(req.query.mode as string, 10),
         });
         keepTimer = setInterval(() => {
             streamApiModel.keep(result.streamId);
         }, 10 * 1000);
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
 
         return;
     }

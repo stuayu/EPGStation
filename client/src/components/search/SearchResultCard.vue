@@ -1,14 +1,14 @@
 <template>
     <v-card class="my-2" :class="program.display.reserveType" v-on:click="openDetail">
         <v-list-item three-line>
-            <v-list-item-content>
+            <div class="v-list-item-content">
                 <div class="subtitle-1 font-weight-black">{{ program.display.name }}</div>
-                <div class="subtitle-2 font-weight-light">{{ program.display.channelName }}</div>
-                <div class="caption font-weight-light mb-2">
+                <div class="text-subtitle-2 font-weight-light">{{ program.display.channelName }}</div>
+                <div class="text-caption font-weight-light mb-2">
                     {{ program.display.day }}({{ program.display.dow }}) {{ program.display.startTime }} ~ {{ program.display.endTime }} ({{ program.display.duration }}分)
                 </div>
-                <div class="body-2 grey--text text--darken-2">{{ program.display.description }}</div>
-            </v-list-item-content>
+                <div class="text-body-2 text-grey-darken-2">{{ program.display.description }}</div>
+            </div>
         </v-list-item>
     </v-card>
 </template>
@@ -17,11 +17,11 @@
 import container from '@/model/ModelContainer';
 import IGuideProgramDialogState from '@/model/state/guide/IGuideProgramDialogState';
 import { SearchResultItem } from '@/model/state/search/ISearchState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
-export default class SearchResultCard extends Vue {
+class SearchResultCard extends Vue {
     @Prop({ required: true })
     public program!: SearchResultItem;
 
@@ -35,6 +35,8 @@ export default class SearchResultCard extends Vue {
         });
     }
 }
+
+export default toNative(SearchResultCard);
 </script>
 
 <style lang="sass" scoped>

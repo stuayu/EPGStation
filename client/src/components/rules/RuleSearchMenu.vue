@@ -1,8 +1,8 @@
 <template>
     <div>
-        <v-menu v-model="isOpen" bottom left :close-on-content-click="false">
-            <template v-slot:activator="{ on }">
-                <v-btn dark icon v-on="on">
+        <v-menu v-model="isOpen" location="bottom start" :close-on-content-click="false">
+            <template v-slot:activator="{ props }">
+                <v-btn icon v-bind="props">
                     <v-icon>mdi-magnify</v-icon>
                 </v-btn>
             </template>
@@ -13,8 +13,8 @@
                 <v-divider></v-divider>
                 <v-card-actions>
                     <v-spacer></v-spacer>
-                    <v-btn v-on:click="onCancel" text color="error">閉じる</v-btn>
-                    <v-btn v-on:click="onSearch" text color="primary">検索</v-btn>
+                    <v-btn v-on:click="onCancel" variant="text" color="error">閉じる</v-btn>
+                    <v-btn v-on:click="onSearch" variant="text" color="primary">検索</v-btn>
                 </v-card-actions>
             </v-card>
         </v-menu>
@@ -24,10 +24,10 @@
 
 <script lang="ts">
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class RuleSearchMenu extends Vue {
+class RuleSearchMenu extends Vue {
     public isOpen: boolean = false;
     public keyword: string | null = '';
 
@@ -75,6 +75,8 @@ export default class RuleSearchMenu extends Vue {
         }
     }
 }
+
+export default toNative(RuleSearchMenu);
 </script>
 
 <style lang="sass">

@@ -46,7 +46,7 @@ import RecordedsmallCard from '@/components/recorded/RecordedSmallCard.vue';
 import RecordedTableItems from '@/components/recorded/RecordedTableItems.vue';
 import { RecordedDisplayData } from '@/model/state/recorded/IRecordedUtil';
 import ResizeObserver from 'resize-observer-polyfill';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({
@@ -82,7 +82,7 @@ class RecordedItems extends Vue {
         return RecordedItems.CARD_WIDTH;
     }
 
-    private cardNum = 1;
+    public cardNum = 1;
     private resizeObserver: ResizeObserver | null = null;
 
     public mounted(): void {
@@ -95,7 +95,7 @@ class RecordedItems extends Vue {
         }
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // disconnect resize observer
         if (this.resizeObserver !== null) {
             this.resizeObserver.disconnect();
@@ -120,5 +120,5 @@ namespace RecordedItems {
     export const CARD_MARGIN = 8;
 }
 
-export default RecordedItems;
+export default toNative(RecordedItems);
 </script>

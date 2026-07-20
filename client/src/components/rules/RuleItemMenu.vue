@@ -1,39 +1,39 @@
 <template>
     <div>
-        <v-menu bottom left>
-            <template v-slot:activator="{ on }">
-                <v-btn icon class="menu-button" v-on="on">
+        <v-menu location="bottom start">
+            <template v-slot:activator="{ props }">
+                <v-btn icon class="menu-button" v-bind="props">
                     <v-icon>mdi-dots-vertical</v-icon>
                 </v-btn>
             </template>
             <v-list>
                 <v-list-item v-on:click="onRecorded">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-filmstrip-box-multiple</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>recorded</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-on:click="onEdit">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-pencil</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>edit</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-on:click="openDeleteDialog">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-delete</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>delete</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
             </v-list>
         </v-menu>
-        <RuleDeleteDialog :isOpen.sync="isOpenDeleteDialog" :ruleItem="ruleItem"></RuleDeleteDialog>
+        <RuleDeleteDialog v-model:isOpen="isOpenDeleteDialog" :ruleItem="ruleItem"></RuleDeleteDialog>
     </div>
 </template>
 
@@ -41,14 +41,14 @@
 import RuleDeleteDialog from '@/components/rules/RuleDeleteDialog.vue';
 import { RuleStateData } from '@/model/state/rule/IRuleState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         RuleDeleteDialog,
     },
 })
-export default class RuleItemMenu extends Vue {
+class RuleItemMenu extends Vue {
     @Prop({ required: true })
     public ruleItem!: RuleStateData;
 
@@ -77,4 +77,6 @@ export default class RuleItemMenu extends Vue {
         this.isOpenDeleteDialog = true;
     }
 }
+
+export default toNative(RuleItemMenu);
 </script>

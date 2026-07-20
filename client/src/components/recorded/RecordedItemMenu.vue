@@ -1,73 +1,73 @@
 <template>
     <div class="recorded-item-menu">
-        <v-menu class="menu" v-model="isOpened" bottom left>
-            <template v-slot:activator="{ on }">
-                <v-btn icon class="menu-button" v-on="on">
+        <v-menu class="menu" v-model="isOpened" location="bottom start">
+            <template v-slot:activator="{ props }">
+                <v-btn icon class="menu-button" v-bind="props">
                     <v-icon>mdi-dots-vertical</v-icon>
                 </v-btn>
             </template>
             <v-list>
                 <v-list-item v-if="typeof recordedItem.ruleId !== 'undefined'" v-on:click="gotoRule">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-calendar</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>rule</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-on:click="search">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-magnify</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>search</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-if="recordedItem.isProtected === true" v-on:click="unprotect">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-lock-open</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>unprotect</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-else v-on:click="protect">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-lock</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>protect</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-if="recordedItem.isRecording === false && serverConfig.isEnableEncode() === true" v-on:click="openEncodeDialog">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-plus-circle-outline</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>encode</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-if="recordedItem.isEncoding === true" v-on:click="stopEncode">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-stop</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>stop</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-on:click="openDeleteDialog">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-delete</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>delete</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
             </v-list>
         </v-menu>
         <div v-if="isOpened === true" class="menu-background" v-on:click="onClickMenuBackground"></div>
-        <AddEncodeDialog :isOpen.sync="isOpenEncodeDialog" :recordedItem="recordedItem"></AddEncodeDialog>
-        <RecordedDeleteDialog :isOpen.sync="isOpenDeleteDialog" :recordedItem="recordedItem"></RecordedDeleteDialog>
+        <AddEncodeDialog v-model:isOpen="isOpenEncodeDialog" :recordedItem="recordedItem"></AddEncodeDialog>
+        <RecordedDeleteDialog v-model:isOpen="isOpenDeleteDialog" :recordedItem="recordedItem"></RecordedDeleteDialog>
     </div>
 </template>
 
@@ -80,7 +80,7 @@ import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import StrUtil from '@/util/StrUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({
@@ -89,7 +89,7 @@ import * as apid from '../../../../api';
         RecordedDeleteDialog,
     },
 })
-export default class RecordedItemMenu extends Vue {
+class RecordedItemMenu extends Vue {
     @Prop({
         required: true,
     })
@@ -190,4 +190,6 @@ export default class RecordedItemMenu extends Vue {
         return false;
     }
 }
+
+export default toNative(RecordedItemMenu);
 </script>

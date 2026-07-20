@@ -1,27 +1,27 @@
 <template>
-    <v-card :ripple="false" flat tile class="d-flex my-1 recorded-small-card" v-bind:class="{ 'selected-color': item.isSelected === true }">
+    <v-card :ripple="false" variant="flat" rounded="0" class="d-flex my-1 recorded-small-card" v-bind:class="{ 'selected-color': item.isSelected === true }">
         <v-img
             v-if="!!noThumbnail === false"
             aspect-ratio="1.7778"
             :src="item.display.topThumbnailPath"
-            v-on:error="this.src = './img/noimg.png'"
+            v-on:error="onThumbnailError"
             v-on:click="gotoDetail"
             eager
             class="thumbnail"
         ></v-img>
         <div v-on:click="gotoDetail" class="content pa-2 my-auto">
             <div class="d-flex align-center">
-                <div class="text mt-1 subtitle-2 font-weight-bold">{{ item.display.name }}</div>
+                <div class="text mt-1 text-subtitle-2 font-weight-bold">{{ item.display.name }}</div>
                 <div v-if="isEditMode === false" class="menu-wrap">
                     <RecordedItemMenu :recordedItem="item.recordedItem" v-on:stopEncode="stopEncode"></RecordedItemMenu>
                 </div>
             </div>
-            <div class="text caption font-weight-light">{{ item.display.channelName }}</div>
-            <div class="text caption font-weight-light">{{ item.display.time }} ({{ item.display.duration }} m)</div>
+            <div class="text text-caption font-weight-light">{{ item.display.channelName }}</div>
+            <div class="text text-caption font-weight-light">{{ item.display.time }} ({{ item.display.duration }} m)</div>
 
             <div
                 v-if="isShowDropInfo === true && typeof item.display.drop !== 'undefined'"
-                class="text caption font-weight-light"
+                class="text text-caption font-weight-light"
                 v-bind:class="{ droped: item.display.hasDrop === true }"
             >
                 {{ item.display.dropSimple }}
@@ -29,11 +29,11 @@
 
             <div
                 v-else-if="typeof item.display.description === 'undefined' || item.display.description.replace(/\s+/g, '').length === 0"
-                class="text caption font-weight-light dummy"
+                class="text text-caption font-weight-light dummy"
             >
                 dummy
             </div>
-            <div v-else class="text caption font-regular">{{ item.display.description }}</div>
+            <div v-else class="text text-caption font-regular">{{ item.display.description }}</div>
         </div>
     </v-card>
 </template>
@@ -41,7 +41,7 @@
 <script lang="ts">
 import RecordedItemMenu from '@/components/recorded/RecordedItemMenu.vue';
 import { RecordedDisplayData } from '@/model/state/recorded/IRecordedUtil';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({
@@ -49,7 +49,11 @@ import * as apid from '../../../../api';
         RecordedItemMenu,
     },
 })
-export default class RecordedSmallCard extends Vue {
+class RecordedSmallCard extends Vue {
+    public onThumbnailError(_source: string | undefined): void {
+        this.item.display.topThumbnailPath = './img/noimg.png';
+    }
+
     @Prop({ required: true })
     public item!: RecordedDisplayData;
 
@@ -75,6 +79,8 @@ export default class RecordedSmallCard extends Vue {
         this.$emit('stopEncode', recordedId);
     }
 }
+
+export default toNative(RecordedSmallCard);
 </script>
 
 <style lang="sass" scoped>

@@ -18,10 +18,9 @@ import VideoContainer from '@/components/video/VideoContainer.vue';
 import { BaseVideoParam, NormalVideoParam } from '@/components/video/ViedoParam';
 import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -30,7 +29,7 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
         WatchOnRecordedInfoCard,
     },
 })
-export default class WatchRecorded extends Vue {
+class WatchRecorded extends Vue {
     public videoParam: BaseVideoParam | null = null;
     public recordedId: apid.RecordedId | null = null;
 
@@ -55,6 +54,8 @@ export default class WatchRecorded extends Vue {
         });
     }
 }
+
+export default toNative(WatchRecorded);
 </script>
 
 <style lang="sass" scoped>

@@ -8,30 +8,28 @@
         overflow
     >
         <v-list-item>
-            <v-list-item-content>
+            <div class="v-list-item-content">
                 <v-list-item-title class="title">{{ versionState.getVersionString() }}</v-list-item-title>
-            </v-list-item-content>
+            </div>
         </v-list-item>
 
-        <v-list dense>
-            <v-list-item-group multiple :max="0">
-                <v-list-item
-                    v-for="(item, index) in navigationState.items"
-                    :key="item.id"
-                    link
-                    :disabled="item.herf === null"
-                    v-on:click="route(item)"
-                    v-bind:class="getNavigationItemClass(index)"
-                >
-                    <v-list-item-icon>
-                        <v-icon>{{ item.icon }}</v-icon>
-                    </v-list-item-icon>
+        <v-list density="compact">
+            <v-list-item
+                v-for="(item, index) in navigationState.items"
+                :key="index"
+                link
+                :disabled="item.herf === null"
+                v-on:click="route(item)"
+                v-bind:class="getNavigationItemClass(index)"
+            >
+                <template #prepend>
+                    <v-icon>{{ item.icon }}</v-icon>
+                </template>
 
-                    <v-list-item-content>
-                        <v-list-item-title>{{ item.title }}</v-list-item-title>
-                    </v-list-item-content>
-                </v-list-item>
-            </v-list-item-group>
+                <div class="v-list-item-content">
+                    <v-list-item-title>{{ item.title }}</v-list-item-title>
+                </div>
+            </v-list-item>
         </v-list>
         <div class="list-dummy"></div>
     </v-navigation-drawer>
@@ -45,8 +43,8 @@ import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import IVersionState from '@/model/state/version/IVersionState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
-import { Component, Vue, Watch } from 'vue-property-decorator';
-import { Location } from 'vue-router';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { RouteLocationRaw as Location } from 'vue-router';
 import Util from '../../util/Util';
 
 interface NavigationItem {
@@ -56,14 +54,14 @@ interface NavigationItem {
 }
 
 @Component({})
-export default class Navigation extends Vue {
+class Navigation extends Vue {
     public navigationState: INavigationState = container.get<INavigationState>('INavigationState');
 
     private serverConfig: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
-    private versionState: IVersionState = container.get<IVersionState>('IVersionState');
+    public versionState: IVersionState = container.get<IVersionState>('IVersionState');
     private onUpdateStatusCallback = (async (): Promise<void> => {
         await this.versionState.fetchData();
     }).bind(this);
@@ -75,7 +73,7 @@ export default class Navigation extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }
@@ -132,6 +130,8 @@ export default class Navigation extends Vue {
         });
     }
 }
+
+export default toNative(Navigation);
 </script>
 
 <style lang="sass" scoped>

@@ -20,7 +20,7 @@
                 </v-radio-group>
 
                 <div class="mt-3">
-                    <div v-if="target === 'all'" v-bind:class="{ 'error--text': hasVideoFiles === true }">
+                    <div v-if="target === 'all'" v-bind:class="{ 'text-error': hasVideoFiles === true }">
                         録画フォルダ内の DB 未登録ファイル
                         <strong>{{ videoFileCount }} 件</strong>
                         <span v-if="videoFileTotalSize !== ''">({{ videoFileTotalSize }})</span>
@@ -28,7 +28,7 @@
                         <strong>完全に削除します (元に戻せません)</strong>
                         。
                     </div>
-                    <div v-if="videoFileSamples.length > 0" class="text-caption grey--text text--darken-1 mt-1">
+                    <div v-if="videoFileSamples.length > 0" class="text-caption text-grey-darken-1 mt-1">
                         例: {{ videoFileSamples.join(', ') }}
                         <span v-if="videoFileCount > videoFileSamples.length">, ...</span>
                     </div>
@@ -38,13 +38,13 @@
                         <strong>{{ dropLogCount }} 件</strong>
                         を削除します。
                     </div>
-                    <div v-if="dropLogSamples.length > 0" class="text-caption grey--text text--darken-1 mt-1">
+                    <div v-if="dropLogSamples.length > 0" class="text-caption text-grey-darken-1 mt-1">
                         例: {{ dropLogSamples.join(', ') }}
                         <span v-if="dropLogCount > dropLogSamples.length">, ...</span>
                     </div>
                 </div>
 
-                <div v-if="targetCandidateCount === 0" class="mt-4 text--secondary">削除対象はありません。</div>
+                <div v-if="targetCandidateCount === 0" class="mt-4 text-medium-emphasis">削除対象はありません。</div>
 
                 <div v-if="target === 'all' && hasVideoFiles === true" class="mt-4">
                     <v-checkbox v-model="isAgreed" color="error" hide-details class="mt-0 pt-0" label="実データが削除されることを理解しました"></v-checkbox>
@@ -52,8 +52,8 @@
             </v-card-text>
             <v-card-actions>
                 <v-spacer></v-spacer>
-                <v-btn color="primary" text v-on:click="dialogModel = false">キャンセル</v-btn>
-                <v-btn color="error" text v-on:click="execute" :disabled="canExecute === false">実行</v-btn>
+                <v-btn color="primary" variant="text" v-on:click="dialogModel = false">キャンセル</v-btn>
+                <v-btn color="error" variant="text" v-on:click="execute" :disabled="canExecute === false">実行</v-btn>
             </v-card-actions>
         </v-card>
     </v-dialog>
@@ -65,11 +65,11 @@ import IThumbnailApiModel from '@/model/api/thumbnail/IThumbnailApiModel';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
-export default class RecordedCleanupDialog extends Vue {
+class RecordedCleanupDialog extends Vue {
     @Prop({ required: true })
     public isOpen!: boolean;
 
@@ -233,4 +233,6 @@ export default class RecordedCleanupDialog extends Vue {
         this.isClearing = false;
     }
 }
+
+export default toNative(RecordedCleanupDialog);
 </script>

@@ -18,10 +18,10 @@ import VideoContainer from '@/components/video/VideoContainer.vue';
 import * as VideoParam from '@/components/video/ViedoParam';
 import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import Util from '@/util/Util';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -30,14 +30,14 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
         WatchOnRecordedInfoCard,
     },
 })
-export default class WatchRecordedStreaming extends Vue {
+class WatchRecordedStreaming extends Vue {
     public videoParam: VideoParam.RecordedStreamingParam | VideoParam.RecordedHLSParam | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
 
     @Watch('$route', { immediate: true, deep: true })
     public onUrlChange(): void {
         // 視聴パラメータセット
-        const videoFileId = parseInt(this.$route.params.id, 10);
+        const videoFileId = parseInt(Util.getRouteString(this.$route.params.id) ?? '', 10);
         const recordedId = typeof this.$route.query.recordedId !== 'string' ? null : parseInt(this.$route.query.recordedId, 10);
         const streamingType = typeof this.$route.query.streamingType !== 'string' ? null : this.$route.query.streamingType;
         const mode = typeof this.$route.query.mode !== 'string' ? null : parseInt(this.$route.query.mode, 10);
@@ -67,6 +67,8 @@ export default class WatchRecordedStreaming extends Vue {
         });
     }
 }
+
+export default toNative(WatchRecordedStreaming);
 </script>
 
 <style lang="sass" scoped>

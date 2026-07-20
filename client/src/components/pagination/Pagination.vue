@@ -1,6 +1,6 @@
 <template>
     <div>
-        <v-pagination v-if="total > pageSize" v-model="page" :circle="false" :length="totalPages" :total-visible="12" v-on:input="onMovePage" class="normal px-1"></v-pagination>
+        <v-pagination v-if="total > pageSize" v-model="page" :circle="false" :length="totalPages" :total-visible="12" @update:model-value="onMovePage" class="normal px-1"></v-pagination>
         <div class="mobile">
             <MobilePagination :pageSize="pageSize" :total="total"></MobilePagination>
         </div>
@@ -11,14 +11,14 @@
 import MobilePagination from '@/components/pagination/MobilePagination.vue';
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         MobilePagination,
     },
 })
-export default class Pagination extends Vue {
+class Pagination extends Vue {
     // 1 ページごとの最大表示件数
     @Prop({
         required: true,
@@ -64,6 +64,8 @@ export default class Pagination extends Vue {
         });
     }
 }
+
+export default toNative(Pagination);
 </script>
 
 <style lang="sass" scoped>

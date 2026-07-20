@@ -20,7 +20,7 @@
                                 width="100%"
                                 max-height="400"
                                 :src="recorded.display.topThumbnailPath"
-                                v-on:error="this.src = './img/noimg.png'"
+                                v-on:error="onThumbnailError"
                                 :eager="true"
                             ></v-img>
                         </div>
@@ -31,14 +31,14 @@
                             <div class="subtitle-1 my-1">
                                 {{ recorded.display.channelName }}
                             </div>
-                            <div class="subtitle-2 font-weight-light">
+                            <div class="text-subtitle-2 font-weight-light">
                                 {{ recorded.display.genre }}
                             </div>
-                            <div class="subtitle-2 font-weight-light">
+                            <div class="text-subtitle-2 font-weight-light">
                                 {{ recorded.display.time }} ({{ recorded.display.duration }}
                                 m)
                             </div>
-                            <div class="body-2 mt-2 font-weight-light drop" v-bind:class="{ droped: recorded.display.hasDrop === true }" v-on:click="showDropLog">
+                            <div class="text-body-2 mt-2 font-weight-light drop" v-bind:class="{ droped: recorded.display.hasDrop === true }" v-on:click="showDropLog">
                                 {{ recorded.display.drop }}
                             </div>
                             <div class="button-wrap mt-2 d-flex flex-wrap">
@@ -67,15 +67,15 @@
                         </div>
                     </div>
                     <div class="content-1 mt-6">
-                        <div class="body-2 description">
+                        <div class="text-body-2 description">
                             {{ recorded.display.description }}
                         </div>
-                        <div v-if="isHideExtend === false" ref="extend" class="mt-2 body-2 extended">
+                        <div v-if="isHideExtend === false" ref="extend" class="mt-2 text-body-2 extended">
                             {{ recorded.display.extended }}
                         </div>
                     </div>
                     <RecordedDetailSelectStreamDialog></RecordedDetailSelectStreamDialog>
-                    <DropLogDialog :isOpen.sync="isOpenDropLogDialog"></DropLogDialog>
+                    <DropLogDialog v-model:isOpen="isOpenDropLogDialog"></DropLogDialog>
                 </div>
             </transition>
         </v-container>
@@ -100,11 +100,10 @@ import { RecordedDisplayData } from '@/model/state/recorded/IRecordedUtil';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 import IRecordedDetailState from '../model/state/recorded/detail/IRecordedDetailState';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -118,7 +117,13 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
         DropLogDialog,
     },
 })
-export default class RecordedDetail extends Vue {
+class RecordedDetail extends Vue {
+    public onThumbnailError(_source: string | undefined): void {
+        if (this.recorded !== null) {
+            this.recorded.display.topThumbnailPath = './img/noimg.png';
+        }
+    }
+
     public isHideExtend = false;
     public isOpenDropLogDialog = false;
 
@@ -145,7 +150,7 @@ export default class RecordedDetail extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }
@@ -187,7 +192,7 @@ export default class RecordedDetail extends Vue {
     }
 
     public streaming(video: apid.VideoFile): void {
-        this.streamSelectDialogState.open(video, parseInt(this.$route.params.id, 10));
+        this.streamSelectDialogState.open(video, parseInt(Util.getRouteString(this.$route.params.id) ?? '', 10));
     }
 
     public downloadVideo(video: apid.VideoFile): void {
@@ -236,7 +241,7 @@ export default class RecordedDetail extends Vue {
      * データ取得
      */
     private async fetchData(): Promise<void> {
-        await this.recordedDetailState.fetchData(parseInt(this.$route.params.id, 10), this.settingValue === null ? true : this.settingValue.isHalfWidthDisplayed);
+        await this.recordedDetailState.fetchData(parseInt(Util.getRouteString(this.$route.params.id) ?? '', 10), this.settingValue === null ? true : this.settingValue.isHalfWidthDisplayed);
 
         // 番組詳細 URL 処理
         this.$nextTick(() => {
@@ -255,6 +260,8 @@ export default class RecordedDetail extends Vue {
         });
     }
 }
+
+export default toNative(RecordedDetail);
 </script>
 
 <style lang="sass" scoped>

@@ -1,71 +1,71 @@
 <template>
     <div>
-        <v-menu v-model="isOpened" bottom left>
-            <template v-slot:activator="{ on }">
-                <v-btn dark icon v-on="on">
+        <v-menu v-model="isOpened" location="bottom start">
+            <template v-slot:activator="{ props }">
+                <v-btn icon v-bind="props">
                     <v-icon>mdi-dots-vertical</v-icon>
                 </v-btn>
             </template>
             <v-list>
                 <v-list-item v-on:click="openDownloadDialog">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-download</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>download</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-if="typeof recordedItem.ruleId !== 'undefined'" v-on:click="gotoRule">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-calendar</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>rule</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-on:click="search">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-magnify</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>search</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-if="recordedItem.isProtected === true" v-on:click="unprotect">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-lock-open</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>unprotect</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-else v-on:click="protect">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-lock</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>protect</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-on:click="openDeleteDialog">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-delete</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>delete</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
             </v-list>
         </v-menu>
         <div v-if="isOpened === true" class="menu-background" v-on:click="onClickMenuBackground"></div>
         <RecordedDownloadDialog
-            :isOpen.sync="isOpenDownloadDialog"
+            v-model:isOpen="isOpenDownloadDialog"
             :recordedItem="recordedItem"
             v-on:download="downloadVideo"
             v-on:downloadPlayList="downloadPlayList"
         ></RecordedDownloadDialog>
         <RecordedDeleteDialog
-            :isOpen.sync="isOpenDeleteDialog"
+            v-model:isOpen="isOpenDeleteDialog"
             :recordedItem="recordedItem"
             :isDelaySnackbarViewNum="800"
             v-on:deleteSuccessful="deleteSuccessful"
@@ -81,7 +81,7 @@ import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import StrUtil from '@/util/StrUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({
@@ -90,7 +90,7 @@ import * as apid from '../../../../../api';
         RecordedDeleteDialog,
     },
 })
-export default class RecordedDetailMoreButton extends Vue {
+class RecordedDetailMoreButton extends Vue {
     @Prop({ required: true })
     public recordedItem!: apid.RecordedItem;
 
@@ -197,4 +197,6 @@ export default class RecordedDetailMoreButton extends Vue {
         this.$emit('downloadPlayList', video);
     }
 }
+
+export default toNative(RecordedDetailMoreButton);
 </script>

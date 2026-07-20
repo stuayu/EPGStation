@@ -1,7 +1,7 @@
 <template>
     <div class="wrap" v-bind:class="{ 'pt-4': typeof title !== 'undefined' }">
         <div
-            class="title subtitle-2 font-weight-regular"
+            class="title text-subtitle-2 font-weight-regular"
             v-bind:class="{
                 required: !!required,
                 'font-weight-bold': !!required,
@@ -16,16 +16,18 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class SearchOptionRow extends Vue {
+class SearchOptionRow extends Vue {
     @Prop({ required: false })
     public title!: string | undefined;
 
     @Prop({ required: false })
     public required!: boolean | undefined;
 }
+
+export default toNative(SearchOptionRow);
 </script>
 
 <style lang="sass">

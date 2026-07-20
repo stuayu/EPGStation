@@ -1,6 +1,6 @@
 export default interface IScrollPositionState {
     isNeedRestoreHistory: boolean;
-    saveScrollData(data: any): void;
+    saveScrollData(data: unknown): void;
     getScrollData<T>(): T | null;
     updateHistoryPosition(): void;
     emitDoneGetData(): Promise<void>;

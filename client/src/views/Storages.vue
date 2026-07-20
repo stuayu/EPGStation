@@ -5,9 +5,9 @@
             <div v-if="storageState.getInfos().length > 0" ref="appContent" class="app-content">
                 <v-container>
                     <div v-for="info in storageState.getInfos()" v-bind:key="info.name" class="pa-2">
-                        <h3 class="text--primary">{{ info.name }} - {{ info.total }}</h3>
+                        <h3 class="text-high-emphasis">{{ info.name }} - {{ info.total }}</h3>
                         <v-progress-linear :value="info.useRate" height="25"></v-progress-linear>
-                        <div class="d-flex body-2 text--secondary pt-1">
+                        <div class="d-flex text-body-2 text-medium-emphasis pt-1">
                             <div>{{ info.used }} 使用済み</div>
                             <v-spacer></v-spacer>
                             <div>{{ info.available }} 空き</div>
@@ -26,20 +26,19 @@ import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import IStorageState from '@/model/state/storage/IStorageState';
-import { Component, Vue, Watch } from 'vue-property-decorator';
-import { Route } from 'vue-router';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
         TitleBar,
     },
 })
-export default class Storages extends Vue {
+class Storages extends Vue {
     public knowledge = 33;
 
-    private storageState = container.get<IStorageState>('IStorageState');
+    public storageState = container.get<IStorageState>('IStorageState');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
@@ -52,7 +51,7 @@ export default class Storages extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }
@@ -74,4 +73,6 @@ export default class Storages extends Vue {
         });
     }
 }
+
+export default toNative(Storages);
 </script>

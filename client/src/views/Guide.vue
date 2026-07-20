@@ -1,7 +1,7 @@
 <template>
     <v-main>
         <TitleBar
-            :title="typeof $route.query.channelId === 'undefined' ? guideState.getTitle($route.query.type) : guideState.getSingleStationTitle()"
+            :title="typeof $route.query.channelId === 'undefined' ? guideState.getTitle(guideType) : guideState.getSingleStationTitle()"
             :needsTitleClickEvent="true"
             v-on:click="onTitle"
         >
@@ -34,7 +34,7 @@
         </div>
         <ProgramDialog></ProgramDialog>
         <OnAirSelectStream :needsGotoGuideButton="true"></OnAirSelectStream>
-        <GuideDaySelectDialog :isOpen.sync="isOpenDaySelectDialog"></GuideDaySelectDialog>
+        <GuideDaySelectDialog v-model:isOpen="isOpenDaySelectDialog"></GuideDaySelectDialog>
     </v-main>
 </template>
 
@@ -60,10 +60,9 @@ import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISe
 import UaUtil from '@/util/UaUtil';
 import Util from '@/util/Util';
 import { debounce, throttle } from 'lodash';
-import { Component, Vue, Watch } from 'vue-property-decorator';
-import { Route } from 'vue-router';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -80,9 +79,13 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
         GuideDaySelectDialog,
     },
 })
-export default class Guide extends Vue {
+class Guide extends Vue {
     public isLoading: boolean = true;
     public guideState: IGuideState = container.get<IGuideState>('IGuideState');
+
+    get guideType(): string | undefined {
+        return Util.getRouteString(this.$route.query.type);
+    }
     public isOpenDaySelectDialog: boolean = false;
 
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
@@ -113,7 +116,7 @@ export default class Guide extends Vue {
 
     get darkClassList(): any {
         return {
-            'is-dark': this.settingValue?.isForceDisableDarkThemeForGuide !== true && this.$vuetify.theme.dark === true,
+            'is-dark': this.settingValue?.isForceDisableDarkThemeForGuide !== true && this.$vuetify.theme.global.current.dark === true,
         };
     }
 
@@ -148,7 +151,7 @@ export default class Guide extends Vue {
         }
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // リサイズイベント追加
         window.removeEventListener('resize', this.windowResizeCallback, false);
 
@@ -211,7 +214,7 @@ export default class Guide extends Vue {
     /**
      * ページ更新時に呼ばれる
      */
-    public beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {
         this.saveScrollPosition();
         next();
     }
@@ -219,7 +222,7 @@ export default class Guide extends Vue {
     /**
      * ページ離脱時に呼ばれる
      */
-    public beforeRouteLeave(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteLeave(to: Route, from: Route, next: () => void): void {
         this.saveScrollPosition();
         next();
     }
@@ -234,8 +237,8 @@ export default class Guide extends Vue {
 
         try {
             this.scrollState.saveScrollData({
-                x: (this.$refs.programs as GuideScroller).$el.scrollLeft,
-                y: (this.$refs.programs as GuideScroller).$el.scrollTop,
+                x: (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollLeft,
+                y: (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollTop,
             });
         } catch (err) {
             console.error(err);
@@ -278,14 +281,14 @@ export default class Guide extends Vue {
                     if (this.scrollState.isNeedRestoreHistory === true) {
                         const position = this.scrollState.getScrollData<{ x: number; y: number }>();
                         if (position !== null) {
-                            (this.$refs.programs as GuideScroller).$el.scrollLeft = position.x;
-                            (this.$refs.programs as GuideScroller).$el.scrollTop = position.y;
+                            (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollLeft = position.x;
+                            (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollTop = position.y;
                         }
                         this.scrollState.isNeedRestoreHistory = false;
                     } else {
                         // スクロール位置初期化
-                        (this.$refs.programs as GuideScroller).$el.scrollLeft = 0;
-                        (this.$refs.programs as GuideScroller).$el.scrollTop = 0;
+                        (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollLeft = 0;
+                        (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollTop = 0;
                         if (typeof this.$refs.channels !== 'undefined' && typeof this.$refs.times !== 'undefined') {
                             (this.$refs.channels as HTMLElement).scrollLeft = 0;
                             (this.$refs.times as HTMLElement).scrollTop = 0;
@@ -320,7 +323,7 @@ export default class Guide extends Vue {
 
                     // 番組表を矢印キーで操作できるようにフォーカスする
                     if (UaUtil.isAndroid() === false && typeof this.$refs.programs !== 'undefined') {
-                        const el = (this.$refs.programs as GuideScroller).$el as HTMLElement;
+                        const el = (this.$refs.programs as InstanceType<typeof GuideScroller>).$el as HTMLElement;
                         el.tabIndex = -1; //tabIndex を設定することで forcus() が効くようにする
                         el.focus();
                         el.style.outline = 'none'; // tabIndex 設定時に forcus されると outline が表示されるので削除
@@ -427,13 +430,22 @@ export default class Guide extends Vue {
         this.guideState.setDisplayRange({
             baseWidth: this.programBaseWidth,
             baseHeight: this.programBaseHeight,
-            maxWidth: ((this.$refs.programs as GuideScroller).$el as HTMLElement).offsetWidth,
-            maxHeight: ((this.$refs.programs as GuideScroller).$el as HTMLElement).offsetHeight,
-            offsetWidth: (this.$refs.programs as GuideScroller).$el.scrollLeft,
-            offsetHeight: (this.$refs.programs as GuideScroller).$el.scrollTop,
+            maxWidth: ((this.$refs.programs as InstanceType<typeof GuideScroller>).$el as HTMLElement).offsetWidth,
+            maxHeight: ((this.$refs.programs as InstanceType<typeof GuideScroller>).$el as HTMLElement).offsetHeight,
+            offsetWidth: (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollLeft,
+            offsetHeight: (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollTop,
         });
     }
 }
+
+export default Object.assign(toNative(Guide), {
+    beforeRouteUpdate(this: Guide, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteUpdate(to, from, next);
+        },
+    beforeRouteLeave(this: Guide, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteLeave(to, from, next);
+        },
+});
 </script>
 
 <style lang="sass" scoped>

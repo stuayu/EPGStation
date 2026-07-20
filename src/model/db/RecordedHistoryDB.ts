@@ -31,7 +31,7 @@ export default class RecordedHistoryDB implements IRecordedHistoryDB {
         let hasError = false;
         try {
             // 削除
-            await queryRunner.manager.delete(RecordedHistory, {});
+            await queryRunner.manager.createQueryBuilder().delete().from(RecordedHistory).execute();
 
             // 挿入処理
             for (const item of items) {

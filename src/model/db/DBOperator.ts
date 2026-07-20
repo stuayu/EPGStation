@@ -7,6 +7,14 @@ import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import IDBOperator from './IDBOperator';
 
+interface BetterSqlite3Connection {
+    loadExtension(path: string): void;
+}
+
+interface BetterSqlite3Driver {
+    databaseConnection: BetterSqlite3Connection;
+}
+
 @injectable()
 export default class DBOperator implements IDBOperator {
     private connection: DataSource | null = null;
@@ -46,7 +54,7 @@ export default class DBOperator implements IDBOperator {
         let connection: DataSource;
         if (this.config.dbtype === 'sqlite') {
             connection = new DataSource({
-                type: 'sqlite',
+                type: 'better-sqlite3',
                 database: path.join(appRootPath, 'data', 'database.db'),
                 synchronize: false,
                 logging: false,
@@ -54,6 +62,7 @@ export default class DBOperator implements IDBOperator {
                 subscribers: [subscriber],
                 migrationsRun: true,
                 migrations: migrations,
+            invalidWhereValuesBehavior: { null: 'throw', undefined: 'throw' },
             });
         } else if (this.config.dbtype === 'mysql' && typeof this.config.mysql !== 'undefined') {
             connection = new DataSource({
@@ -71,6 +80,7 @@ export default class DBOperator implements IDBOperator {
                 subscribers: [subscriber],
                 migrationsRun: true,
                 migrations: migrations,
+            invalidWhereValuesBehavior: { null: 'throw', undefined: 'throw' },
             });
         } else {
             throw new Error('DBTypeError');
@@ -124,17 +134,13 @@ export default class DBOperator implements IDBOperator {
         // 外部拡張読み込み
         for (const extension of this.config.sqlite.extensions) {
             this.log.system.info(`load extension: ${extension}`);
-            await new Promise<void>((resolve: () => void, reject: (err: Error) => void) => {
-                (<any>this.connection).driver.databaseConnection.loadExtension(extension, (err: Error | null) => {
-                    if (err) {
-                        this.log.system.error(`failed to load extension: ${extension}`);
-                        reject(err);
-                    } else {
-                        this.log.system.info(`loaded extension success: ${extension}`);
-                        resolve();
-                    }
-                });
-            });
+            try {
+                (this.connection.driver as unknown as BetterSqlite3Driver).databaseConnection.loadExtension(extension);
+                this.log.system.info(`loaded extension success: ${extension}`);
+            } catch (error) {
+                this.log.system.error(`failed to load extension: ${extension}`);
+                throw error;
+            }
         }
     }
 

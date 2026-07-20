@@ -8,8 +8,8 @@ export const get: Operation = async (_req, res) => {
 
     try {
         api.responseJSON(res, 200, await reserveApiModel.getCnts());
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 
