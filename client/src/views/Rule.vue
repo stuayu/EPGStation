@@ -66,9 +66,6 @@ import * as apid from '../../../api';
         Pagination,
         RuleMultipleDeletionDialog,
     },
-    beforeRouteUpdate(this: Reserves, to: Route, from: Route, next: () => void): void {
-        this.handleBeforeRouteUpdate(to, from, next);
-    },
 })
 class Reserves extends Vue {
     public isEditMode: boolean = false;
@@ -206,7 +203,11 @@ class Reserves extends Vue {
     }
 }
 
-export default toNative(Reserves);
+export default Object.assign(toNative(Reserves), {
+    beforeRouteUpdate(this: Reserves, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteUpdate(to, from, next);
+        },
+});
 </script>
 
 <style lang="sass" scoped>

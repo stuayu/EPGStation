@@ -78,12 +78,6 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
         OnAirSelectStream,
         GuideDaySelectDialog,
     },
-    beforeRouteUpdate(this: Guide, to: Route, from: Route, next: () => void): void {
-        this.handleBeforeRouteUpdate(to, from, next);
-    },
-    beforeRouteLeave(this: Guide, to: Route, from: Route, next: () => void): void {
-        this.handleBeforeRouteLeave(to, from, next);
-    },
 })
 class Guide extends Vue {
     public isLoading: boolean = true;
@@ -440,7 +434,14 @@ class Guide extends Vue {
     }
 }
 
-export default toNative(Guide);
+export default Object.assign(toNative(Guide), {
+    beforeRouteUpdate(this: Guide, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteUpdate(to, from, next);
+        },
+    beforeRouteLeave(this: Guide, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteLeave(to, from, next);
+        },
+});
 </script>
 
 <style lang="sass" scoped>
