@@ -21,7 +21,7 @@
                         ></v-select>
                     </div>
                     <div class="d-flex">
-                        <v-switch value v-model="dialogState.useURLScheme" v-on:change="updateAllStreamConfig"></v-switch>
+                        <v-switch v-model="dialogState.useURLScheme" v-on:update:model-value="updateAllStreamConfig"></v-switch>
                         <v-list-item-title class="subtitle-1">外部アプリで開く</v-list-item-title>
                     </div>
                 </div>
