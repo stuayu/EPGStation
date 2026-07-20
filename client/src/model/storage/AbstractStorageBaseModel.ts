@@ -6,7 +6,7 @@ import IStorageOperationModel from './IStorageOperationModel';
  * IStorageBaseModel を実装する際に継承するベースクラス
  */
 @injectable()
-export default abstract class AbstractStorageBaseModel<T> implements IStorageBaseModel<T> {
+export default abstract class AbstractStorageBaseModel<T extends object> implements IStorageBaseModel<T> {
     public tmp: T;
 
     private op: IStorageOperationModel;
@@ -15,27 +15,17 @@ export default abstract class AbstractStorageBaseModel<T> implements IStorageBas
         this.op = op;
         const value = this.op.get<T>(this.getStorageKey());
 
-        // デフォルト値から欠けている物があれば追加 & save
-        let isNeedSave = false;
-        if (value !== null) {
-            const defaultValue = this.getDefaultValue();
-            for (const key in defaultValue) {
-                if (typeof value[key] === 'undefined') {
-                    value[key] = defaultValue[key];
-                    isNeedSave = true;
-                }
-            }
-        }
-
         if (value === null) {
-            // 何も保存されていなければデフォルト値を使用
             this.tmp = this.getDefaultValue();
             this.save();
-        } else {
-            this.tmp = value;
+            return;
         }
 
-        if (isNeedSave === true) {
+        const defaultValue = this.getDefaultValue();
+        const isNeedSave = Object.keys(defaultValue).some(key => !(key in value));
+        this.tmp = Object.assign(defaultValue, value);
+
+        if (isNeedSave) {
             this.save();
         }
     }

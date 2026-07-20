@@ -30,8 +30,8 @@ class TitleBar extends Vue {
     /**
      * title bar の色を返す
      */
-    get appBarColor(): string | null {
-        return this.$vuetify.theme.global.current.dark === true ? null : 'indigo';
+    get appBarColor(): string | undefined {
+        return this.$vuetify.theme.global.current.dark === true ? undefined : 'indigo';
     }
 
     public onTitle(): void {
