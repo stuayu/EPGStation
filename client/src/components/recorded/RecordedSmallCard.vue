@@ -1,5 +1,5 @@
 <template>
-    <v-card :ripple="false" flat tile class="d-flex my-1 recorded-small-card" v-bind:class="{ 'selected-color': item.isSelected === true }">
+    <v-card :ripple="false" variant="flat" rounded="0" class="d-flex my-1 recorded-small-card" v-bind:class="{ 'selected-color': item.isSelected === true }">
         <v-img
             v-if="!!noThumbnail === false"
             aspect-ratio="1.7778"

@@ -2,7 +2,7 @@
     <v-dialog v-if="isRemove === false" v-model="dialogModel" max-width="300" scrollable>
         <v-card>
             <v-card-text class="pa-4">
-                <div class="text--primary">{{ name }} を削除しますか?</div>
+                <div class="text-high-emphasis">{{ name }} を削除しますか?</div>
             </v-card-text>
             <v-card-actions>
                 <v-spacer></v-spacer>

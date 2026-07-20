@@ -78,6 +78,12 @@ import { Route } from 'vue-router';
         OnAirSelectStream,
         GuideDaySelectDialog,
     },
+    beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+        (this as any).handleBeforeRouteUpdate(to, from, next);
+    },
+    beforeRouteLeave(to: Route, from: Route, next: () => void): void {
+        (this as any).handleBeforeRouteLeave(to, from, next);
+    },
 })
 export default class Guide extends Vue {
     public isLoading: boolean = true;
@@ -210,7 +216,7 @@ export default class Guide extends Vue {
     /**
      * ページ更新時に呼ばれる
      */
-    public beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {
         this.saveScrollPosition();
         next();
     }
@@ -218,7 +224,7 @@ export default class Guide extends Vue {
     /**
      * ページ離脱時に呼ばれる
      */
-    public beforeRouteLeave(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteLeave(to: Route, from: Route, next: () => void): void {
         this.saveScrollPosition();
         next();
     }

@@ -138,6 +138,6 @@ export default class OnAir extends Vue {
 </script>
 
 <style lang="sass" scoped>
-.theme--dark.v-tabs-items
+.v-theme--dark.v-window
     background-color: transparent !important
 </style>

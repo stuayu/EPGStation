@@ -3,10 +3,10 @@
         <v-card>
             <div class="pa-3 pt-4 pb-0 add-encode">
                 <div class="subtitle-1">{{ recordedItem.name }}</div>
-                <v-select :items="dialogState.getHosts()" v-model="dialogState.hostName" label="kodi host" :menu-props="{ auto: true }" class="preset"></v-select>
+                <v-select :items="dialogState.getHosts()" v-model="dialogState.hostName" label="kodi host" class="preset"></v-select>
 
                 <div class="d-flex flex-wrap">
-                    <v-btn v-for="video in videoFiles" v-bind:key="video.id" color="success" dark class="ma-1" v-on:click="send(video.id)">
+                    <v-btn v-for="video in videoFiles" v-bind:key="video.id" color="success" class="ma-1" v-on:click="send(video.id)">
                         {{ video.name }}
                     </v-btn>
                 </div>

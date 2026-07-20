@@ -85,14 +85,14 @@
                                         <v-list-item-title class="subtitle-1">描画設定</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-select :items="guideModeItems" v-model="storageModel.tmp.guideMode" class="guide-mode" :menu-props="{ auto: true }"></v-select>
+                                    <v-select :items="guideModeItems" v-model="storageModel.tmp.guideMode" class="guide-mode"></v-select>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
                                         <v-list-item-title class="subtitle-1">表示時間</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-select :items="guideLengthItems" v-model="storageModel.tmp.guideLength" class="guide-time" :menu-props="{ auto: true }"></v-select>
+                                    <v-select :items="guideLengthItems" v-model="storageModel.tmp.guideLength" class="guide-time"></v-select>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -144,7 +144,7 @@
                                         <v-list-item-title class="subtitle-1">表示件数</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-select :items="reservesLengthItems" v-model="storageModel.tmp.reservesLength" class="guide-time" :menu-props="{ auto: true }"></v-select>
+                                    <v-select :items="reservesLengthItems" v-model="storageModel.tmp.reservesLength" class="guide-time"></v-select>
                                 </div>
                             </div>
                         </v-list-item>
@@ -158,7 +158,7 @@
                                         <v-list-item-title class="subtitle-1">表示件数</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-select :items="recordingLengthItems" v-model="storageModel.tmp.recordingLength" class="guide-time" :menu-props="{ auto: true }"></v-select>
+                                    <v-select :items="recordingLengthItems" v-model="storageModel.tmp.recordingLength" class="guide-time"></v-select>
                                 </div>
                             </div>
                         </v-list-item>
@@ -173,7 +173,7 @@
                                         <v-list-item-title class="subtitle-1">表示件数</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-select :items="recordedLengthItems" v-model="storageModel.tmp.recordedLength" class="guide-time" :menu-props="{ auto: true }"></v-select>
+                                    <v-select :items="recordedLengthItems" v-model="storageModel.tmp.recordedLength" class="guide-time"></v-select>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -239,7 +239,7 @@
                                         <v-list-item-title class="subtitle-1">最大表示件数</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-select :items="searchLengthItems" v-model="storageModel.tmp.searchLength" class="guide-time" :menu-props="{ auto: true }"></v-select>
+                                    <v-select :items="searchLengthItems" v-model="storageModel.tmp.searchLength" class="guide-time"></v-select>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -294,7 +294,7 @@
                                         <v-list-item-title class="subtitle-1">表示件数</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-select :items="rulesLengthItems" v-model="storageModel.tmp.rulesLength" class="guide-time" :menu-props="{ auto: true }"></v-select>
+                                    <v-select :items="rulesLengthItems" v-model="storageModel.tmp.rulesLength" class="guide-time"></v-select>
                                 </div>
                             </div>
                         </v-list-item>

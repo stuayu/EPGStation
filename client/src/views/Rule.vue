@@ -23,7 +23,7 @@
                         <RuleItems :rules="ruleState.getRules()" v-model:isEditMode="isEditMode" v-on:selected="selectItem"></RuleItems>
                         <Pagination :total="ruleState.getTotal()" :pageSize="settingValue.rulesLength"></Pagination>
                     </div>
-                    <v-btn v-on:click="addRule" fab dark fixed bottom right color="pink">
+                    <v-btn v-on:click="addRule" icon size="large" class="position-fixed right-0 bottom-0 ma-4" color="pink">
                         <v-icon>mdi-plus</v-icon>
                     </v-btn>
                     <div class="fab-space"></div>
@@ -66,6 +66,9 @@ import * as apid from '../../../api';
         Pagination,
         RuleMultipleDeletionDialog,
     },
+    beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+        (this as any).handleBeforeRouteUpdate(to, from, next);
+    },
 })
 export default class Reserves extends Vue {
     public isEditMode: boolean = false;
@@ -107,7 +110,7 @@ export default class Reserves extends Vue {
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {
         this.isVisibilityHidden = true;
 
         this.$nextTick(() => {

@@ -1,5 +1,5 @@
 <template>
-    <v-card :max-width="width" flat class="ma-1 recorded-large-card" v-bind:class="{ 'selected-color': item.isSelected === true }">
+    <v-card :max-width="width" variant="flat" class="ma-1 recorded-large-card" v-bind:class="{ 'selected-color': item.isSelected === true }">
         <v-img
             aspect-ratio="1.7778"
             :min-width="width"

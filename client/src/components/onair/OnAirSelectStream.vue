@@ -12,14 +12,12 @@
                             v-on:change="updateStreamConfig"
                             class="guide-time"
                             style="max-width: 120px"
-                            :menu-props="{ auto: true }"
                         ></v-select>
                         <v-select
                             v-if="isHiddenStreamConfig === false"
                             :items="dialogState.streamConfigItems"
                             v-model="dialogState.selectedStreamConfig"
                             class="guide-time"
-                            :menu-props="{ auto: true }"
                         ></v-select>
                     </div>
                     <div class="d-flex">

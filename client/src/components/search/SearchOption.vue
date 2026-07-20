@@ -30,7 +30,6 @@
                         label="channel"
                         multiple
                         clearable
-                        :menu-props="{ auto: true }"
                     ></v-select>
                     <div class="d-flex flex-wrap">
                         <v-checkbox
@@ -310,7 +309,6 @@
                             :items="searchState.getStartTimeItems()"
                             v-model="searchState.searchOption.startTime"
                             clearable
-                            :menu-props="{ auto: true }"
                         ></v-select>
                         <span class="px-2">~</span>
                         <v-select
@@ -319,7 +317,6 @@
                             :items="searchState.getRangeTimeItems()"
                             v-model="searchState.searchOption.rangeTime"
                             clearable
-                            :menu-props="{ auto: true }"
                         ></v-select>
                     </div>
                     <div class="d-flex flex-wrap">
@@ -411,7 +408,6 @@
                         v-model="searchState.timeReserveOption.channel"
                         label="channel"
                         clearable
-                        :menu-props="{ auto: false }"
                     ></v-select>
                 </SearchOptionRow>
                 <SearchOptionRow title="時刻">

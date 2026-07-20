@@ -2,7 +2,7 @@
     <v-card class="mx-auto" max-width="800">
         <div class="pa-4">
             <SearchOptionRow title="放送局※" :required="true">
-                <v-select label="channel" :items="uploadState.getChannelItems()" v-model="uploadState.programOption.channelId" clearable :menu-props="{ auto: true }"></v-select>
+                <v-select label="channel" :items="uploadState.getChannelItems()" v-model="uploadState.programOption.channelId" clearable></v-select>
             </SearchOptionRow>
             <SearchOptionRow title="ジャンル">
                 <div class="d-flex">
@@ -11,7 +11,6 @@
                         :items="uploadState.getGenreItems()"
                         v-model="uploadState.programOption.genre1"
                         clearable
-                        :menu-props="{ auto: true }"
                         style="width: 50%"
                     ></v-select>
                     <v-select
@@ -19,7 +18,6 @@
                         :items="uploadState.getSubGenreItems()"
                         v-model="uploadState.programOption.subGenre1"
                         clearable
-                        :menu-props="{ auto: true }"
                         style="width: 50%"
                     ></v-select>
                 </div>
@@ -29,7 +27,7 @@
                     v-model="uploadState.programOption.ruleId"
                     :loading="ruleLoading"
                     :items="uploadState.ruleItems"
-                    v-model:search-input="ruleSearchInput"
+                    v-model:search="ruleSearchInput"
                     item-title="keyword"
                     item-value="id"
                     cache-items
@@ -81,14 +79,13 @@
             <div v-for="video in uploadState.videoFileItems" v-bind:key="video.key">
                 <SearchOptionRow :title="`ビデオファイル${video.key + 1}`">
                     <v-text-field v-model="video.viewName" label="name" clearable class="view-name"></v-text-field>
-                    <v-select class="file-type" v-model="video.fileType" :items="uploadState.getFileTypeItems()" label="file type" :menu-props="{ auto: true }"></v-select>
+                    <v-select class="file-type" v-model="video.fileType" :items="uploadState.getFileTypeItems()" label="file type"></v-select>
 
                     <v-select
                         class="directory"
                         v-model="video.parentDirectoryName"
                         :items="uploadState.getPrentDirectoryItems()"
                         label="directory"
-                        :menu-props="{ auto: true }"
                     ></v-select>
                     <v-text-field v-model="video.subDirectory" label="sub directory" clearable></v-text-field>
                     <v-file-input v-model="video.file" label="video file"></v-file-input>

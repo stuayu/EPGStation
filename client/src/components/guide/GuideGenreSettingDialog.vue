@@ -116,12 +116,12 @@ export default class GuideGenreSettingDialog extends Vue {
 </script>
 
 <style lang="sass" scoped>
-.theme--light.v-card
+.v-theme--light.v-card
     .v-card__text
         color: rgba(0, 0, 0, 0.87)
     .sub-text
         color: rgba(0, 0, 0, 0.54)
-.theme--dark.v-card
+.v-theme--dark.v-card
     .v-card__text
         color: white
 

@@ -14,7 +14,6 @@
                             :items="manualReserveState.getChannelItems()"
                             label="channel"
                             clearable
-                            :menu-props="{ auto: true }"
                         ></v-select>
                     </div>
                 </SearchOptionRow>

@@ -46,6 +46,12 @@ interface PageInfo {
         ManualTimeReserveOption,
         ManualReserveOptionComponent,
     },
+    beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+        (this as any).handleBeforeRouteUpdate(to, from, next);
+    },
+    beforeRouteLeave(to: Route, from: Route, next: () => void): void {
+        (this as any).handleBeforeRouteLeave(to, from, next);
+    },
 })
 export default class ManualReserve extends Vue {
     public isEditMode: boolean = false;
@@ -136,7 +142,7 @@ export default class ManualReserve extends Vue {
     /**
      * ページ更新時に呼ばれる
      */
-    public beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {
         this.savePageInfo();
         next();
     }
@@ -144,7 +150,7 @@ export default class ManualReserve extends Vue {
     /**
      * ページ離脱時に呼ばれる
      */
-    public beforeRouteLeave(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteLeave(to: Route, from: Route, next: () => void): void {
         this.savePageInfo();
         next();
     }

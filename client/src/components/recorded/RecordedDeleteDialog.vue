@@ -2,7 +2,7 @@
     <v-dialog v-if="isRemove === false" v-model="dialogModel" max-width="300" scrollable>
         <v-card>
             <div class="pa-4 pb-0">
-                <div class="text--primary">{{ recordedItem.name }} を削除しますか?</div>
+                <div class="text-high-emphasis">{{ recordedItem.name }} を削除しますか?</div>
                 <div class="checkboxs py-2">
                     <v-checkbox v-for="v in videoFiles" v-bind:key="v.id" v-model="v.isDelete" :label="v.name" class="my-0"></v-checkbox>
                 </div>

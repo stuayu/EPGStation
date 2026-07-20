@@ -1,8 +1,8 @@
 <template>
     <div>
-        <v-menu v-model="isOpen" bottom left :close-on-content-click="false">
+        <v-menu v-model="isOpen" location="bottom start" :close-on-content-click="false">
             <template v-slot:activator="{ props }">
-                <v-btn dark icon v-bind="props">
+                <v-btn icon v-bind="props">
                     <v-icon>mdi-magnify</v-icon>
                 </v-btn>
             </template>
@@ -14,7 +14,7 @@
                         :disabled="isNoRule === true"
                         :loading="loading"
                         :items="searchState.ruleItems"
-                        v-model:search-input="search"
+                        v-model:search="search"
                         item-title="keyword"
                         item-value="id"
                         cache-items
@@ -25,8 +25,8 @@
                         label="ルール"
                         class="pb-2"
                     ></v-autocomplete>
-                    <v-select v-model="searchState.channelId" :items="searchState.channelItems" label="放送局" clearable :menu-props="{ auto: true }"></v-select>
-                    <v-select v-model="searchState.genre" :items="searchState.genreItems" label="ジャンル" clearable :menu-props="{ auto: true }"></v-select>
+                    <v-select v-model="searchState.channelId" :items="searchState.channelItems" label="放送局" clearable></v-select>
+                    <v-select v-model="searchState.genre" :items="searchState.genreItems" label="ジャンル" clearable></v-select>
                     <div class="check-boxes">
                         <v-checkbox v-model="searchState.hasOriginalFile" label="元ファイルを含む" class="mt-2"></v-checkbox>
                         <v-checkbox v-model="isNoRule" label="手動録画のみ" class="mt-2"></v-checkbox>

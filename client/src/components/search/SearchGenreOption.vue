@@ -3,7 +3,6 @@
         <v-select
             :items="genreSelectionItems"
             v-model="searchState.genreSelect"
-            :menu-props="{ auto: true }"
             :disabled="searchState.searchOption.isShowSubgenres === false"
             v-on:change="onChangeGenreSelector"
         ></v-select>

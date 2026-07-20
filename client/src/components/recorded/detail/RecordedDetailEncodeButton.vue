@@ -1,7 +1,7 @@
 <template>
     <div>
         <v-btn v-if="recordedItem.isRecording === false && serverConfig.isEnableEncode() === true" color="teal" v-on:click="openEncodeDialog" class="ma-1">
-            <v-icon left dark>mdi-plus-circle-outline</v-icon>
+            <v-icon start>mdi-plus-circle-outline</v-icon>
             encode
         </v-btn>
         <AddEncodeDialog v-model:isOpen="isOpenEncodeDialog" :recordedItem="recordedItem"></AddEncodeDialog>

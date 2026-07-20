@@ -4,8 +4,8 @@
             <div class="pa-3 pt-4 pb-0 add-encode">
                 <div class="subtitle-1">{{ recordedItem.name }}</div>
                 <div class="d-flex">
-                    <v-select :items="addEncodeState.getVideoFiles()" v-model="addEncodeState.videoFileId" label="source" :menu-props="{ auto: true }" class="source"></v-select>
-                    <v-select :items="addEncodeState.getEncodeList()" v-model="addEncodeState.encodeMode" label="preset" :menu-props="{ auto: true }" class="preset"></v-select>
+                    <v-select :items="addEncodeState.getVideoFiles()" v-model="addEncodeState.videoFileId" label="source" class="source"></v-select>
+                    <v-select :items="addEncodeState.getEncodeList()" v-model="addEncodeState.encodeMode" label="preset" class="preset"></v-select>
                 </div>
 
                 <div class="directory">
@@ -13,7 +13,6 @@
                         :items="addEncodeState.getParentDirectoryList()"
                         v-model="addEncodeState.parentDirectory"
                         label="recorded"
-                        :menu-props="{ auto: true }"
                         :disabled="addEncodeState.isSaveSameDirectory === true"
                         class="parent"
                     ></v-select>

@@ -1,8 +1,8 @@
 <template>
     <div>
-        <v-menu v-model="isOpen" bottom left :close-on-content-click="false">
+        <v-menu v-model="isOpen" location="bottom start" :close-on-content-click="false">
             <template v-slot:activator="{ props }">
-                <v-btn dark icon v-bind="props">
+                <v-btn icon v-bind="props">
                     <v-icon>mdi-magnify</v-icon>
                 </v-btn>
             </template>
