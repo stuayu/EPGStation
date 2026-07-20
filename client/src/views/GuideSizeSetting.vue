@@ -172,7 +172,7 @@
                                 </div>
                             </v-list-item>
                         </div>
-                        <v-card-actions right>
+                        <v-card-actions>
                             <v-spacer></v-spacer>
                             <v-btn variant="text" v-on:click="reset">リセット</v-btn>
                             <v-btn variant="text" color="primary" v-on:click="save">保存</v-btn>
