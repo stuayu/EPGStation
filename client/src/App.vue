@@ -5,7 +5,7 @@
 </template>
 
 <script>
-import AppContent from '@/views/AppContent';
+import AppContent from '@/views/AppContent.vue';
 
 export default {
     name: 'app',
