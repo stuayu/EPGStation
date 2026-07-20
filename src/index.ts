@@ -18,6 +18,11 @@ install();
 
 containerSetter.set(container);
 
+namespace IndexConstants {
+    // mirakurun 未接続時にチューナー情報取得をバックグラウンドで再試行する間隔 (ms)
+    export const TUNER_RETRY_INTERVAL = 30 * 1000;
+}
+
 /**
  * 初期処理
  */
@@ -62,28 +67,61 @@ const init = async () => {
 
     // 接続確認
     const connectionChecker = container.get<IConnectionCheckModel>('IConnectionCheckModel');
-    // wait mirakurun
+    // mirakurun への接続確認 (有限回のリトライで打ち切り、失敗しても起動は継続する)
     await connectionChecker.checkMirakurun();
 
-    // wait DB
+    // wait DB (DB は必須依存のため接続できるまで待ち続ける)
     await connectionChecker.checkDB();
+};
+
+/**
+ * mirakurun からチューナー情報を取得し、予約・録画管理へ反映する
+ * 取得に失敗した場合は IndexConstants.TUNER_RETRY_INTERVAL 間隔でバックグラウンドリトライを開始する
+ */
+const setTunersWithRetry = async (): Promise<void> => {
+    const client = container.get<IMirakurunClientModel>('IMirakurunClientModel').getClient();
+    const log = container.get<ILoggerModel>('ILoggerModel').getLogger();
+    const reservationManageModel = container.get<IReservationManageModel>('IReservationManageModel');
+    const recordingManager = container.get<IRecordingManageModel>('IRecordingManageModel');
+
+    try {
+        const tuners = await client.getTuners();
+        reservationManageModel.setTuners(tuners);
+        recordingManager.setTuner(tuners);
+    } catch (err: any) {
+        log.system.warn('mirakurun からチューナー情報を取得できませんでした');
+        log.system.warn(
+            'config.yml の mirakurunPath の設定と、Mirakurun サービスが起動しているかを確認してください',
+        );
+        log.system.warn('チューナー無しで起動を継続し、以後バックグラウンドで再接続を試みます');
+
+        // チューナー無しでいったん起動を継続する
+        reservationManageModel.setTuners([]);
+        recordingManager.setTuner([]);
+
+        // バックグラウンドで定期的に再接続を試みる
+        const timer = setInterval(async () => {
+            try {
+                const tuners = await client.getTuners();
+                reservationManageModel.setTuners(tuners);
+                recordingManager.setTuner(tuners);
+                log.system.info('mirakurun への接続が復旧しました');
+                clearInterval(timer);
+            } catch (retryErr: any) {
+                // 復旧するまでリトライを継続する
+            }
+        }, IndexConstants.TUNER_RETRY_INTERVAL);
+    }
 };
 
 /**
  * Operator 機能起動処理
  */
 const runOperator = async () => {
-    const client = container.get<IMirakurunClientModel>('IMirakurunClientModel').getClient();
-
     const eventSetter = container.get<IEventSetter>('IEventSetter');
     eventSetter.set();
 
-    const reservationManageModel = container.get<IReservationManageModel>('IReservationManageModel');
-    const recordingManager = container.get<IRecordingManageModel>('IRecordingManageModel');
-
-    const tuners = await client.getTuners();
-    reservationManageModel.setTuners(tuners);
-    recordingManager.setTuner(tuners);
+    await setTunersWithRetry();
 
     const storageManageModel = container.get<IStorageManageModel>('IStorageManageModel');
     storageManageModel.start();

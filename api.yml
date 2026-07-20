@@ -1604,6 +1604,25 @@ components:
                 version:
                     type: string
 
+        Status:
+            description: 外部サービスとの接続状態
+            type: object
+            required:
+                - mirakurun
+            properties:
+                mirakurun:
+                    type: object
+                    required:
+                        - isAlive
+                        - checkedAt
+                    properties:
+                        isAlive:
+                            description: mirakurun へ接続できているか
+                            type: boolean
+                        checkedAt:
+                            description: 接続確認を行った時刻 (UnixtimeMS)
+                            type: integer
+
         EncodeProgramItem:
             description: エンコードプログラム情報
             type: object

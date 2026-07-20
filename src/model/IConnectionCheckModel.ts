@@ -1,4 +1,4 @@
 export default interface IConnectionCheckModel {
-    checkMirakurun(): Promise<void>;
+    checkMirakurun(): Promise<boolean>;
     checkDB(): Promise<void>;
 }
