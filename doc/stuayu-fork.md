@@ -123,3 +123,10 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - ドロップログ上のパケット数が m2ts ファイル上での実際の数よりも少ない l3tnun/EPGStation#603
     - 定期的に本家の変更に追従
   - dev版Mirakurunとの接続に対応
+  - 動画プレイヤーを [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) に置き換え
+    - ライブ視聴 (HLS / MPEG-TS 低遅延)・録画再生・録画ストリーミングのすべてが DPlayer 標準 UI で再生される
+    - ARIB 字幕・文字スーパーは DPlayer 内蔵の aribb24.js で描画 (従来の手動 PES パース実装は削除)
+  - Mirakurun に接続できなくても EPGStation が起動できるように変更
+    - 起動時の Mirakurun 疎通確認は有限回リトライで打ち切り、未接続でも Web UI が利用可能
+    - チューナー情報はバックグラウンドで 30 秒間隔で再取得し、Mirakurun 復旧時に自動反映
+    - 接続状態を返す `GET /api/status` を追加。Web UI は未接続時に警告バナーと解決策 (サービス起動確認・mirakurunPath 確認) を表示
