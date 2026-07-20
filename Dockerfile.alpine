@@ -1,5 +1,5 @@
 # 詳細については、Dockerfile.debianのコメントを参照。
-FROM --platform=$BUILDPLATFORM node:18-alpine AS client-builder
+FROM --platform=$BUILDPLATFORM node:24-alpine3.24 AS client-builder
 COPY client/package*.json /app/client/
 WORKDIR /app/client
 RUN npm config set fetch-retries 10 \
@@ -9,11 +9,8 @@ RUN npm install --no-save --loglevel=info
 COPY . /app/
 RUN npm run build --loglevel=info
 
-FROM node:18-alpine3.19 AS server-builder
+FROM node:24-alpine3.24 AS server-builder
 RUN apk add --no-cache g++ make pkgconf python3 py3-pip
-# node-sqlite3 が依存する node-gyp が が依存する python3 の distutils 廃止に対応
-# node-sqlite3 が依存する node-gyp が v10 以上になれば不要になる
-RUN pip install --break-system-pack setuptools
 WORKDIR /app
 COPY package*.json /app/
 ENV DOCKER="YES"
@@ -25,7 +22,7 @@ COPY . .
 RUN rm -rf client
 RUN npm run build-server --loglevel=info
 
-FROM node:18-alpine
+FROM node:24-alpine3.24
 LABEL maintainer="l3tnun"
 COPY --from=server-builder /app /app/
 COPY --from=client-builder /app/client /app/client/
