@@ -7,6 +7,14 @@ import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import IDBOperator from './IDBOperator';
 
+interface BetterSqlite3Connection {
+    loadExtension(path: string): void;
+}
+
+interface BetterSqlite3Driver {
+    databaseConnection: BetterSqlite3Connection;
+}
+
 @injectable()
 export default class DBOperator implements IDBOperator {
     private connection: DataSource | null = null;
@@ -127,7 +135,7 @@ export default class DBOperator implements IDBOperator {
         for (const extension of this.config.sqlite.extensions) {
             this.log.system.info(`load extension: ${extension}`);
             try {
-                (<any>this.connection).driver.databaseConnection.loadExtension(extension);
+                (this.connection.driver as unknown as BetterSqlite3Driver).databaseConnection.loadExtension(extension);
                 this.log.system.info(`loaded extension success: ${extension}`);
             } catch (error) {
                 this.log.system.error(`failed to load extension: ${extension}`);

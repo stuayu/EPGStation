@@ -27,7 +27,7 @@ namespace Util {
         }
 
         const strs = urls[1].split('&');
-        const result: any = {};
+        const result: Record<string, string> = {};
         for (const s of strs) {
             const query = s.split('=');
             if (query.length === 2) {
@@ -89,7 +89,7 @@ namespace Util {
             }
         }
 
-        (location.query as any)['timestamp'] = new Date().getTime();
+        location.query.timestamp = new Date().getTime().toString(10);
 
         return router.push(location);
     };
