@@ -91,5 +91,9 @@
     "engines": {
         "node": ">=24 <25",
         "npm": ">=11 <12"
+    },
+    "allowScripts": {
+        "better-sqlite3@12.11.1": true,
+        "core-js": false
     }
 }
