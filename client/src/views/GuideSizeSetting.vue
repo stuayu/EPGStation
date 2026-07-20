@@ -218,8 +218,7 @@ class GuideSizeSetting extends Vue {
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
-    constructor() {
-        super();
+    public created(): void {
 
         for (let i = 0; i <= 600; i += 10) {
             this.channelWidthItems.push(i);

@@ -126,7 +126,7 @@
             <v-card-actions>
                 <v-spacer></v-spacer>
                 <v-btn v-on:click="onClickCancel" variant="text" color="error">キャンセル</v-btn>
-                <v-btn v-if="this.searchState.isEditingRule() === true" v-on:click="onClickUpdate" variant="text" color="primary">更新</v-btn>
+                <v-btn v-if="searchState.isEditingRule() === true" v-on:click="onClickUpdate" variant="text" color="primary">更新</v-btn>
                 <v-btn v-else v-on:click="onClickAdd" variant="text" color="primary">追加</v-btn>
             </v-card-actions>
         </v-card>

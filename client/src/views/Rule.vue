@@ -21,7 +21,7 @@
                 <v-container>
                     <div v-if="ruleState.getRules().length > 0" v-bind:style="contentWrapStyle">
                         <RuleItems :rules="ruleState.getRules()" v-model:isEditMode="isEditMode" v-on:selected="selectItem"></RuleItems>
-                        <Pagination :total="ruleState.getTotal()" :pageSize="settingValue.rulesLength"></Pagination>
+                        <Pagination :total="ruleState.getTotal()" :pageSize="settingValue?.rulesLength ?? 0"></Pagination>
                     </div>
                     <v-btn v-on:click="addRule" icon size="large" class="position-fixed right-0 bottom-0 ma-4" color="pink">
                         <v-icon>mdi-plus</v-icon>

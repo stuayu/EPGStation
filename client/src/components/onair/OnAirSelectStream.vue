@@ -1,9 +1,9 @@
 <template>
     <div class="on-ari-select-stream">
         <v-dialog v-if="isRemove === false" v-model="dialogState.isOpen" max-width="400" scrollable>
-            <v-card v-if="dialogState.getChannelItem() !== null">
+            <v-card v-if="channelItem !== null">
                 <div class="pa-4 pb-0">
-                    <div>{{ dialogState.getChannelItem().name }}</div>
+                    <div>{{ channelItem.name }}</div>
                     <div class="d-flex">
                         <v-select
                             v-if="isHiddenStreamTypes === false"
@@ -50,6 +50,11 @@ class OnAirSelectStream extends Vue {
     public needsGotoGuideButton: boolean | undefined;
 
     public dialogState: IOnAirSelectStreamState = container.get<IOnAirSelectStreamState>('IOnAirSelectStreamState');
+
+
+    get channelItem(): ReturnType<IOnAirSelectStreamState['getChannelItem']> {
+        return this.dialogState.getChannelItem();
+    }
     public isRemove: boolean = false;
     // ストリーム設定セレクタ再描画用
     public isHiddenStreamTypes: boolean = false;

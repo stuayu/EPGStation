@@ -26,7 +26,7 @@
                     v-on:detail="gotoDetail"
                     v-on:selected="selectItem"
                 ></RecordedItems>
-                <Pagination :total="recordingState.getTotal()" :pageSize="settingValue.recordingLength"></Pagination>
+                <Pagination :total="recordingState.getTotal()" :pageSize="settingValue?.recordingLength ?? 0"></Pagination>
                 <div style="visibility: hidden">dummy</div>
             </div>
         </transition>
