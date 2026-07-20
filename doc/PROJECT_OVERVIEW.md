@@ -114,7 +114,7 @@ npm run backup / restore   # DB バックアップ / リストア
 - 設定: `config/config.yml` (テンプレートから起動時自動コピー)。ログ設定は `config/{operator,service,epgUpdater}LogConfig.yml`
 - マイグレーションは起動時に自動実行 (`migrationsRun: true`)
 - Docker: `Dockerfile.alpine` / `Dockerfile.debian` (node:18 ベースのマルチステージ)
-- CI: `.github/workflows/build-validation.yml` (3 OS × Node 24 のビルド検証、Mirakurun `feature/4.0.0-windows` ブランチと組み合わせ)、`docker.yml` (マルチアーチイメージの Docker Hub push)
+- CI: `.github/workflows/build-validation.yml` (3 OS × Node 24 のビルド検証、Mirakurun `stuayu-main` ブランチと組み合わせ)、`docker.yml` (マルチアーチイメージの Docker Hub push)
 
 ## 注意点・ハマりどころ
 
