@@ -7,6 +7,23 @@ export const getErrorMessage = (error: unknown): string => {
     return error instanceof Error ? error.message : String(error);
 };
 
+export const parseRequestParamInt = (value: string | string[], name: string): number => {
+    if (Array.isArray(value)) {
+        throw new Error(`Invalid route parameter: ${name}`);
+    }
+
+    if (!/^-?\d+$/.test(value)) {
+        throw new Error(`Invalid route parameter: ${name}`);
+    }
+
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isSafeInteger(parsed)) {
+        throw new Error(`Route parameter is outside the safe integer range: ${name}`);
+    }
+
+    return parsed;
+};
+
 export interface IError {
     readonly code: number;
     readonly message: string;

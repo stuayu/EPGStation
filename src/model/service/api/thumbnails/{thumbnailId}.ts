@@ -7,7 +7,7 @@ export const get: Operation = async (req, res) => {
     const thumbnailApiModel = container.get<IThumbnailApiModel>('IThumbnailApiModel');
 
     try {
-        const filePath = await thumbnailApiModel.getIdFilePath(parseInt(req.params.thumbnailId, 10));
+        const filePath = await thumbnailApiModel.getIdFilePath(api.parseRequestParamInt(req.params.thumbnailId, 'thumbnailId'));
 
         if (filePath === null) {
             api.responseError(res, {
@@ -55,7 +55,7 @@ export const del: Operation = async (req, res) => {
     const thumbnailApiModel = container.get<IThumbnailApiModel>('IThumbnailApiModel');
 
     try {
-        await thumbnailApiModel.delete(parseInt(req.params.thumbnailId, 10));
+        await thumbnailApiModel.delete(api.parseRequestParamInt(req.params.thumbnailId, 'thumbnailId'));
 
         api.responseJSON(res, 200, { code: 200 });
     } catch (err: unknown) {

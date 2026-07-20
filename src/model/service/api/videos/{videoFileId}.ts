@@ -7,7 +7,7 @@ export const get: Operation = async (req, res) => {
     const videoFileApiModel = container.get<IVideoApiModel>('IVideoApiModel');
 
     try {
-        const fileInfo = await videoFileApiModel.getFullFilePath(parseInt(req.params.videoFileId, 10));
+        const fileInfo = await videoFileApiModel.getFullFilePath(api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'));
 
         if (fileInfo === null) {
             api.responseError(res, {
@@ -62,7 +62,7 @@ export const del: Operation = async (req, res) => {
     const videoFileApiModel = container.get<IVideoApiModel>('IVideoApiModel');
 
     try {
-        await videoFileApiModel.deleteVideoFile(parseInt(req.params.videoFileId, 10));
+        await videoFileApiModel.deleteVideoFile(api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'));
         api.responseJSON(res, 200, { code: 200 });
     } catch (err: unknown) {
         api.responseServerError(res, api.getErrorMessage(err));

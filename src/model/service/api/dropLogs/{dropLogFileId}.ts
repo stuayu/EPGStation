@@ -8,7 +8,7 @@ export const get: Operation = async (req, res) => {
 
     try {
         const filePath = await dropLogApiModel.getIdFilePath(
-            parseInt(req.params.dropLogFileId, 10),
+            api.parseRequestParamInt(req.params.dropLogFileId, 'dropLogFileId'),
             parseInt(<string>req.query.maxsize, 10),
         );
 

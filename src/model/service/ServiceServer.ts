@@ -11,6 +11,7 @@ import { mkdirp } from 'mkdirp';
 import multer from 'multer';
 import { OpenAPIV3 } from 'openapi-types';
 import * as path from 'path';
+import type { ServeStaticOptions } from 'serve-static';
 import urljoin from 'url-join';
 import FileUtil from '../../util/FileUtil';
 import IConfigFile from '../IConfigFile';
@@ -158,7 +159,7 @@ class ServiceServer implements IServiceServer {
     }
 
     /** Express 5 で必要な配信ファイルの MIME を明示する。 */
-    private getStaticOptions(): express.ServeStaticOptions {
+    private getStaticOptions(): ServeStaticOptions {
         return {
             setHeaders: (res, filePath): void => {
                 const mimeByExtension: Record<string, string> = {

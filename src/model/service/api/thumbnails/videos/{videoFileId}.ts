@@ -7,7 +7,7 @@ export const post: Operation = async (req, res) => {
     const thumbnailApiModel = container.get<IThumbnailApiModel>('IThumbnailApiModel');
 
     try {
-        await thumbnailApiModel.add(parseInt(req.params.videoFileId, 10));
+        await thumbnailApiModel.add(api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'));
         api.responseJSON(res, 200, { code: 200 });
     } catch (err: unknown) {
         api.responseServerError(res, api.getErrorMessage(err));
