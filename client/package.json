@@ -1,6 +1,6 @@
 {
     "name": "epgstation-client",
-    "version": "2.11.0-stuayu",
+    "version": "2.12.0-stuayu",
     "private": true,
     "scripts": {
         "build": "vue-tsc --noEmit && vite build",

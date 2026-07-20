@@ -1,6 +1,6 @@
 {
     "name": "epgstation",
-    "version": "2.11.0-stuayu",
+    "version": "2.12.0-stuayu",
     "description": "DTV Software in Japan.",
     "main": "dist/index.js",
     "scripts": {
