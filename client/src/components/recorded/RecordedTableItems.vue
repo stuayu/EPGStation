@@ -1,6 +1,6 @@
 <template>
     <v-card class="mx-auto recorded-table" max-width="1000px">
-        <v-simple-table>
+        <v-table>
             <template v-slot:default>
                 <thead>
                     <tr>
@@ -21,7 +21,7 @@
                     </tr>
                 </tbody>
             </template>
-        </v-simple-table>
+        </v-table>
     </v-card>
 </template>
 

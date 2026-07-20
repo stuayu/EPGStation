@@ -9,11 +9,11 @@
         </TitleBar>
         <transition name="page">
             <div v-if="onAirState.getSchedules().length > 0">
-                <v-tabs-items v-if="isTabView === true" v-model="onAirState.selectedTab">
-                    <v-tab-item v-for="item in onAirState.getTabs()" :key="item" :value="`${item}`">
+                <v-window v-if="isTabView === true" v-model="onAirState.selectedTab">
+                    <v-window-item v-for="item in onAirState.getTabs()" :key="item" :value="`${item}`">
                         <OnAirCard :items="onAirState.getSchedules(item)" :reserveIndex="onAirState.getReserveIndex()"></OnAirCard>
-                    </v-tab-item>
-                </v-tabs-items>
+                    </v-window-item>
+                </v-window>
                 <div v-else>
                     <OnAirCard :items="onAirState.getSchedules()" :reserveIndex="onAirState.getReserveIndex()"></OnAirCard>
                 </div>

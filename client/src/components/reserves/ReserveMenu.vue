@@ -1,35 +1,35 @@
 <template>
     <div>
         <v-menu v-model="isOpened" bottom left>
-            <template v-slot:activator="{ on }">
-                <v-btn icon class="menu-button" v-on="on">
+            <template v-slot:activator="{ props }">
+                <v-btn icon class="menu-button" v-bind="props">
                     <v-icon>mdi-dots-vertical</v-icon>
                 </v-btn>
             </template>
             <v-list>
                 <v-list-item v-if="typeof reserveItem.ruleId !== 'undefined'" v-on:click="goToRecorded">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-filmstrip-box-multiple</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>recorded</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-if="!!disableEdit === false" v-on:click="goToEdit">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-pencil</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>edit</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-if="reserveItem.isConflict !== true" v-on:click="onClickDelete">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>{{ getDeleteButtonIcon() }}</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>{{ getDeleteMenuText() }}</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
             </v-list>
         </v-menu>

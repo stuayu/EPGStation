@@ -30,7 +30,7 @@
                     :loading="ruleLoading"
                     :items="uploadState.ruleItems"
                     v-model:search-input="ruleSearchInput"
-                    item-text="keyword"
+                    item-title="keyword"
                     item-value="id"
                     cache-items
                     flat
@@ -61,8 +61,8 @@
                     }"
                 >
                     <template #actions="{ parent }">
-                        <v-btn text color="primary" @click="parent.clearHandler">クリア</v-btn>
-                        <v-btn text color="primary" @click="parent.okHandler">設定</v-btn>
+                        <v-btn variant="text" color="primary" @click="parent.clearHandler">クリア</v-btn>
+                        <v-btn variant="text" color="primary" @click="parent.okHandler">設定</v-btn>
                     </template>
                 </v-datetime-picker>
             </SearchOptionRow>
@@ -98,8 +98,8 @@
         <v-divider></v-divider>
         <v-card-actions>
             <v-spacer></v-spacer>
-            <v-btn v-on:click="reset" text color="error">リセット</v-btn>
-            <v-btn v-on:click="upload" text color="primary">アップロード</v-btn>
+            <v-btn v-on:click="reset" variant="text" color="error">リセット</v-btn>
+            <v-btn v-on:click="upload" variant="text" color="primary">アップロード</v-btn>
         </v-card-actions>
     </v-card>
 </template>

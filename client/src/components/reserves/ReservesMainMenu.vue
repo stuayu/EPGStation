@@ -1,28 +1,28 @@
 <template>
     <div class="reserves-main-menu">
         <v-menu class="menu" v-model="isOpened" bottom left>
-            <template v-slot:activator="{ on }">
-                <v-btn icon class="menu-button" v-on="on">
+            <template v-slot:activator="{ props }">
+                <v-btn icon class="menu-button" v-bind="props">
                     <v-icon>mdi-dots-vertical</v-icon>
                 </v-btn>
             </template>
             <v-list>
                 <v-list-item v-on:click="edit">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-pencil</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>編集</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
 
                 <v-list-item v-on:click="updateReserves">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-update</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>予約情報更新</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
             </v-list>
         </v-menu>

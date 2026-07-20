@@ -1,8 +1,8 @@
 <template>
     <div>
         <v-menu v-model="isOpened" offset-y :close-on-content-click="false">
-            <template v-slot:activator="{ on }">
-                <v-btn color="primary" v-on="on" class="ma-1">
+            <template v-slot:activator="{ props }">
+                <v-btn color="primary" v-bind="props" class="ma-1">
                     <v-icon left dark>{{ button }}</v-icon>
                     {{ title }}
                 </v-btn>

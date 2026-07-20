@@ -1,7 +1,7 @@
 <template>
     <div>
         <v-card class="mx-auto reserves-table" max-width="1600px">
-            <v-simple-table>
+            <v-table>
                 <template v-slot:default>
                     <thead>
                         <tr>
@@ -38,7 +38,7 @@
                         </tr>
                     </tbody>
                 </template>
-            </v-simple-table>
+            </v-table>
         </v-card>
         <ReserveDialog v-model:isOpen="isOpenDialog" :reserve="dialogReserve"></ReserveDialog>
     </div>

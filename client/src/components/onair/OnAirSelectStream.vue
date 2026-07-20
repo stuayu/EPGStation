@@ -28,10 +28,10 @@
                     </div>
                 </div>
                 <v-card-actions>
-                    <v-btn v-if="!!needsGotoGuideButton === true" color="primary" text v-on:click="gotoGuide">番組表</v-btn>
+                    <v-btn v-if="!!needsGotoGuideButton === true" color="primary" variant="text" v-on:click="gotoGuide">番組表</v-btn>
                     <v-spacer></v-spacer>
-                    <v-btn color="primary" text v-on:click="dialogState.isOpen = false">キャンセル</v-btn>
-                    <v-btn color="primary" text v-on:click="view">視聴</v-btn>
+                    <v-btn color="primary" variant="text" v-on:click="dialogState.isOpen = false">キャンセル</v-btn>
+                    <v-btn color="primary" variant="text" v-on:click="view">視聴</v-btn>
                 </v-card-actions>
             </v-card>
         </v-dialog>

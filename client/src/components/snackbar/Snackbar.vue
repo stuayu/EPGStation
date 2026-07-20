@@ -6,7 +6,7 @@
                     <div class="d-flex align-center snackbar" v-bind:class="snackbarClass">
                         <div class="text">{{ snackbarState.mainText }}</div>
                         <div class="ma-0 mr-2">
-                            <v-btn text small color="white" class="button" v-on:click="onClose">閉じる</v-btn>
+                            <v-btn variant="text" size="small" color="white" class="button" v-on:click="onClose">閉じる</v-btn>
                         </div>
                     </div>
                 </div>
