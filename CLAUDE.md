@@ -59,7 +59,7 @@ cd client && npm run lint   # クライアント側 lint
 - **DI (inversify)**: すべて `IXxx.ts` + `Xxx.ts` のペア。新規クラスは `src/model/ModelContainerSetter.ts` (クライアントは `client/src/model/ModelContainerSetter.ts`) への登録が**必須**
 - **API**: ルートの `api.yml` (OpenAPI) が正。`src/model/service/api/` はディレクトリ構造 = URL パス。共有型は `api.d.ts`
 - **DB**: TypeORM、対応は **sqlite / mysql のみ**。マイグレーションは両 DB 分を `npm run orm-gen --db=<mysql|sqlite> --name=<Name>` で生成
-- **クライアント**: Vue 2.7 + Vuetify 2 のクラスコンポーネント (`vue-property-decorator`)。状態管理は Vuex ではなく inversify + State クラス (`client/src/model/state/`)
+- **クライアント**: Vue 3 + Vuetify 4 のクラスコンポーネント (`vue-facing-decorator`)。状態管理は Vuex ではなく inversify + State クラス (`client/src/model/state/`)
 
 ## コーディング規約
 
@@ -71,9 +71,8 @@ cd client && npm run lint   # クライアント側 lint
 
 ## このフォーク特有の注意点
 
-- **Windows 対応が最重要**。パス処理は `path.join`、Mirakurun 接続は named pipe 対応を壊さないこと。CI は 3 OS × Node 18/20/22 で検証される
+- **Windows 対応が最重要**。パス処理は `path.join`、Mirakurun 接続は named pipe 対応を壊さないこと。CI は 3 OS × Node 24 で検証される
 - `ChannelType` に `NW1`〜`NW40` (県外地上波) が追加されている。チャンネル種別を扱うコードでは GR/BS/CS/SKY だけを前提にしない
-- `mirakurun` 依存は `stuayu/Mirakurun` のコミット固定。勝手にバージョンを動かさない
+- `mirakurun` 依存は `stuayu/Mirakurun` の `stuayu-main` ブランチ参照。勝手に変更しない
 - 設定項目を追加したら `config/config.yml.template` と `config/config-win.yml.template` の**両方**を更新する
 - `ormconfig.js` は `Configuration.ts` と別実装で config.yml を読む (二重管理)。設定の読み方を変える場合は両方直す
-- クライアントビルドには `NODE_OPTIONS='--openssl-legacy-provider'` が必要 (npm script に組み込み済み)

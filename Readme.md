@@ -18,6 +18,7 @@
 - **Mirakurun への HTTPS 接続対応** (`mirakurunPath: https://...` を指定可能。API エンドポイントのベースパスも `mirakurunAPIPath` で変更可能)
 - **依存関係のモダナイズ**
   - フロントエンドを Vue 3 + Vuetify 4 へ更新し、ビルドを Vue CLI から Vite へ移行
+  - 動画プレイヤーを [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) v1.32.8 へ更新
   - サーバ側を Node.js 24 / Express 5 / TypeORM 1.0 / better-sqlite3 へ更新
 
 ### インストールとビルド方法

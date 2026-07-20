@@ -6,10 +6,10 @@
 フォーク独自の変更点は [stuayu-fork.md](stuayu-fork.md) を参照。
 
 - 言語/ランタイム: TypeScript / Node.js 24 LTSのみ (CIでは24.xを検証)
-- サーバ: Express + express-openapi, TypeORM (SQLite / MySQL), inversify (DI), log4js, socket.io
-- クライアント: Vue 2.7 + Vuetify 2 (クラスコンポーネント + デコレータ), inversify による独自 State 管理 (Vuex 不使用)
+- サーバ: Express 5 + express-openapi, TypeORM 1.0 (SQLite / MySQL), inversify (DI), log4js, socket.io
+- クライアント: Vue 3 + Vuetify 4 (クラスコンポーネント + デコレータ, `vue-facing-decorator`), inversify による独自 State 管理 (Vuex 不使用)。ビルドは Vite
 - 動画再生: [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) に統一 (GitHub タグ固定)。HLS は hls.js、低遅延ライブは mpegts.js、ARIB 字幕は DPlayer 内蔵の aribb24.js を利用 (`client/src/components/video/`)
-- チューナーバックエンド: Mirakurun (`stuayu/Mirakurun` のコミット固定)
+- チューナーバックエンド: Mirakurun (`stuayu/Mirakurun` の `stuayu-main` ブランチ参照)
 
 ## プロセス構成
 
@@ -113,13 +113,14 @@ npm run backup / restore   # DB バックアップ / リストア
 - テストは未整備 (`npm test` はエラーを返すだけ)。動作確認はビルド + 手動確認
 - 設定: `config/config.yml` (テンプレートから起動時自動コピー)。ログ設定は `config/{operator,service,epgUpdater}LogConfig.yml`
 - マイグレーションは起動時に自動実行 (`migrationsRun: true`)
-- Docker: `Dockerfile.alpine` / `Dockerfile.debian` (node:18 ベースのマルチステージ)
+- Docker: `Dockerfile.alpine` (node:24-alpine3.24 ベース) / `Dockerfile.debian` (node:24-trixie ベース) のマルチステージ
 - CI: `.github/workflows/build-validation.yml` (3 OS × Node 24 のビルド検証、Mirakurun `stuayu-main` ブランチと組み合わせ)、`docker.yml` (マルチアーチイメージの Docker Hub push)
 
 ## 注意点・ハマりどころ
 
 - `ormconfig.js` (CLI マイグレーション用) は `Configuration.ts` とは別に `config/config.yml` を独自に読む二重管理になっている
 - postgres のマイグレーションディレクトリは空。対応 DB は sqlite / mysql のみ
-- クライアントのビルドは `NODE_OPTIONS='--openssl-legacy-provider'` が必要 (Vue CLI 5 + 古い依存のため)
-- `mirakurun` 依存はフォーク版 (`stuayu/Mirakurun`) のコミット固定。むやみに更新しない
+- `mirakurun` 依存はフォーク版 (`stuayu/Mirakurun`) の `stuayu-main` ブランチ参照。むやみに更新しない
 - Windows 対応が本フォークの柱。サーバ側変更時は Windows での動作 (パス区切り、named pipe など) を常に考慮すること
+- Express 5 では `req.query` がアクセスごとに再パースされる getter になったため、`ServiceServer.ts` でリクエスト受信時に一度だけ実体化するミドルウェアを挟んでいる
+- TypeORM 1.0 では criteria が空の `delete()` が禁止されているため、全件削除は `createQueryBuilder().delete()` を使う (既存コードは対応済み)
