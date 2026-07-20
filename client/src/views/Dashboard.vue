@@ -378,13 +378,13 @@ class Dashboard extends Vue {
                         const position = this.scrollState.getScrollData<ScrollData>();
                         if (position !== null) {
                             if (typeof this.$refs.recordingItem !== 'undefined') {
-                                (this.$refs.recordingItem as DashboardItem).setScrollTop(position.recordingScroll);
+                                (this.$refs.recordingItem as InstanceType<typeof DashboardItem>).setScrollTop(position.recordingScroll);
                             }
                             if (typeof this.$refs.recordedItem !== 'undefined') {
-                                (this.$refs.recordedItem as DashboardItem).setScrollTop(position.recordedScroll);
+                                (this.$refs.recordedItem as InstanceType<typeof DashboardItem>).setScrollTop(position.recordedScroll);
                             }
                             if (typeof this.$refs.reserveItem !== 'undefined') {
-                                (this.$refs.reserveItem as DashboardItem).setScrollTop(position.reserveScroll);
+                                (this.$refs.reserveItem as InstanceType<typeof DashboardItem>).setScrollTop(position.reserveScroll);
                             }
                         }
 

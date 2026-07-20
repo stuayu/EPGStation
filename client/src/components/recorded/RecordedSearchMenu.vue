@@ -50,6 +50,7 @@ import IRecordedSearchState from '@/model/state/recorded/search/IRecordedSearchS
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
 import VuetifyUtil from '@/util/VuetifyUtil';
+import type { ComponentPublicInstance } from 'vue';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
@@ -166,7 +167,7 @@ class RecordedSearchMenu extends Vue {
             // キーワードにフォーカスを当てる
             this.$nextTick(() => {
                 if (typeof this.$refs.keyword !== 'undefined') {
-                    VuetifyUtil.focusTextFiled(this.$refs.keyword as Vue);
+                    VuetifyUtil.focusTextFiled(this.$refs.keyword as ComponentPublicInstance);
                 }
             });
         }

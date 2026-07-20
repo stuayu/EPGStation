@@ -239,8 +239,8 @@ class Guide extends Vue {
 
         try {
             this.scrollState.saveScrollData({
-                x: (this.$refs.programs as GuideScroller).$el.scrollLeft,
-                y: (this.$refs.programs as GuideScroller).$el.scrollTop,
+                x: (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollLeft,
+                y: (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollTop,
             });
         } catch (err) {
             console.error(err);
@@ -283,14 +283,14 @@ class Guide extends Vue {
                     if (this.scrollState.isNeedRestoreHistory === true) {
                         const position = this.scrollState.getScrollData<{ x: number; y: number }>();
                         if (position !== null) {
-                            (this.$refs.programs as GuideScroller).$el.scrollLeft = position.x;
-                            (this.$refs.programs as GuideScroller).$el.scrollTop = position.y;
+                            (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollLeft = position.x;
+                            (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollTop = position.y;
                         }
                         this.scrollState.isNeedRestoreHistory = false;
                     } else {
                         // スクロール位置初期化
-                        (this.$refs.programs as GuideScroller).$el.scrollLeft = 0;
-                        (this.$refs.programs as GuideScroller).$el.scrollTop = 0;
+                        (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollLeft = 0;
+                        (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollTop = 0;
                         if (typeof this.$refs.channels !== 'undefined' && typeof this.$refs.times !== 'undefined') {
                             (this.$refs.channels as HTMLElement).scrollLeft = 0;
                             (this.$refs.times as HTMLElement).scrollTop = 0;
@@ -325,7 +325,7 @@ class Guide extends Vue {
 
                     // 番組表を矢印キーで操作できるようにフォーカスする
                     if (UaUtil.isAndroid() === false && typeof this.$refs.programs !== 'undefined') {
-                        const el = (this.$refs.programs as GuideScroller).$el as HTMLElement;
+                        const el = (this.$refs.programs as InstanceType<typeof GuideScroller>).$el as HTMLElement;
                         el.tabIndex = -1; //tabIndex を設定することで forcus() が効くようにする
                         el.focus();
                         el.style.outline = 'none'; // tabIndex 設定時に forcus されると outline が表示されるので削除
@@ -432,10 +432,10 @@ class Guide extends Vue {
         this.guideState.setDisplayRange({
             baseWidth: this.programBaseWidth,
             baseHeight: this.programBaseHeight,
-            maxWidth: ((this.$refs.programs as GuideScroller).$el as HTMLElement).offsetWidth,
-            maxHeight: ((this.$refs.programs as GuideScroller).$el as HTMLElement).offsetHeight,
-            offsetWidth: (this.$refs.programs as GuideScroller).$el.scrollLeft,
-            offsetHeight: (this.$refs.programs as GuideScroller).$el.scrollTop,
+            maxWidth: ((this.$refs.programs as InstanceType<typeof GuideScroller>).$el as HTMLElement).offsetWidth,
+            maxHeight: ((this.$refs.programs as InstanceType<typeof GuideScroller>).$el as HTMLElement).offsetHeight,
+            offsetWidth: (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollLeft,
+            offsetHeight: (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollTop,
         });
     }
 }
