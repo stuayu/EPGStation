@@ -112,8 +112,8 @@ export default class Guide extends Vue {
 
     get darkClassList(): any {
         return {
-            'is-dark': this.settingValue?.isForceDisableDarkThemeForGuide !== true && this.$vuetify.theme.global.name.value = (== true,
-        }) ? 'dark' : 'light';
+            'is-dark': this.settingValue?.isForceDisableDarkThemeForGuide !== true && this.$vuetify.theme.global.current.value.dark === true,
+        };
     }
 
     get programsStyle(): any {

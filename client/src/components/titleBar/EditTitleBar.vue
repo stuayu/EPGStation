@@ -44,7 +44,7 @@ export default class EditTitleBar extends Vue {
      * title bar の色を返す
      */
     get appBarColor(): string | null {
-        return this.$vuetify.theme.global.name.value = (== true ? null : 'white') ? 'dark' : 'light';
+        return this.$vuetify.theme.global.current.value.dark === true ? null : 'white';
     }
 
     /**

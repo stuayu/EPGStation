@@ -31,7 +31,7 @@ export default class TitleBar extends Vue {
      * title bar の色を返す
      */
     get appBarColor(): string | null {
-        return this.$vuetify.theme.global.name.value = (== true ? null : 'indigo') ? 'dark' : 'light';
+        return this.$vuetify.theme.global.current.value.dark === true ? null : 'indigo';
     }
 
     public onTitle(): void {
