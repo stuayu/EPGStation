@@ -45,6 +45,7 @@ export default interface IConfigFile {
     clientSocketioPort?: number;
     https?: HttpsConfig;
     mirakurunPath: string;
+    mirakurunAPIPath?: string; // mirakurun の API エンドポイントのベースパス (省略時 /api)
 
     subDirectory?: string;
 
