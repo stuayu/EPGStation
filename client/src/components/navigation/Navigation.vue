@@ -14,24 +14,22 @@
         </v-list-item>
 
         <v-list density="compact">
-            <template multiple :max="0">
-                <v-list-item
-                    v-for="(item, index) in navigationState.items"
-                    :key="index"
-                    link
-                    :disabled="item.herf === null"
-                    v-on:click="route(item)"
-                    v-bind:class="getNavigationItemClass(index)"
-                >
-                    <template #prepend>
-                        <v-icon>{{ item.icon }}</v-icon>
-                    </template>
+            <v-list-item
+                v-for="(item, index) in navigationState.items"
+                :key="index"
+                link
+                :disabled="item.herf === null"
+                v-on:click="route(item)"
+                v-bind:class="getNavigationItemClass(index)"
+            >
+                <template #prepend>
+                    <v-icon>{{ item.icon }}</v-icon>
+                </template>
 
-                    <div class="v-list-item-content">
-                        <v-list-item-title>{{ item.title }}</v-list-item-title>
-                    </div>
-                </v-list-item>
-            </template>
+                <div class="v-list-item-content">
+                    <v-list-item-title>{{ item.title }}</v-list-item-title>
+                </div>
+            </v-list-item>
         </v-list>
         <div class="list-dummy"></div>
     </v-navigation-drawer>
