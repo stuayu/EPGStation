@@ -2,7 +2,7 @@
     <v-dialog v-if="isRemove === false" v-model="dialogModel" max-width="300" scrollable>
         <v-card>
             <div class="pa-4 pb-0">
-                <div class="text-high-emphasis">[{{ this.item.mode }}] {{ this.item.recorded.name }} を停止しますか?</div>
+                <div class="text-high-emphasis">[{{ item.mode }}] {{ item.recorded.name }} を停止しますか?</div>
             </div>
             <v-card-actions>
                 <v-spacer></v-spacer>

@@ -346,7 +346,7 @@
                             v-model="searchState.searchOption.startPeriod"
                             :datePickerProps="{
                                 locale: 'jp-ja',
-                                'day-format': date => new Date(date).getDate(),
+                                'day-format': formatDay,
                                 'first-day-of-week': 1,
                             }"
                             :timePickerProps="{
@@ -370,7 +370,7 @@
                             v-model="searchState.searchOption.endPeriod"
                             :datePickerProps="{
                                 locale: 'jp-ja',
-                                'day-format': date => new Date(date).getDate(),
+                                'day-format': formatDay,
                                 'first-day-of-week': 1,
                             }"
                             :timePickerProps="{
@@ -458,6 +458,10 @@ import { Component, Prop, Vue } from 'vue-facing-decorator';
     },
 })
 export default class SearchOption extends Vue {
+    public formatDay(date: string | number | Date): number {
+        return new Date(date).getDate();
+    }
+
     public searchState: ISearchState = container.get<ISearchState>('ISearchState');
 
     public mounted(): void {
