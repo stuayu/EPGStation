@@ -34,7 +34,7 @@ export default class RecordedTagDB implements IRecordedTagDB {
         let hasError = false;
         try {
             // 削除
-            await queryRunner.manager.delete(RecordedTag, {});
+            await queryRunner.manager.createQueryBuilder().delete().from(RecordedTag).execute();
 
             // 挿入処理
             for (const item of items) {

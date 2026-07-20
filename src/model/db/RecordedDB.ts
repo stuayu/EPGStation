@@ -36,9 +36,9 @@ export default class RecordedDB implements IRecordedDB {
         let hasError = false;
         try {
             // 削除
-            await queryRunner.manager.delete(Thumbnail, {});
-            await queryRunner.manager.delete(VideoFile, {});
-            await queryRunner.manager.delete(Recorded, {});
+            await queryRunner.manager.createQueryBuilder().delete().from(Thumbnail).execute();
+            await queryRunner.manager.createQueryBuilder().delete().from(VideoFile).execute();
+            await queryRunner.manager.createQueryBuilder().delete().from(Recorded).execute();
 
             // 挿入処理
             for (const item of items) {

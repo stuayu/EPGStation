@@ -40,7 +40,7 @@ export default class ReserveDB implements IReserveDB {
         let hasError = false;
         try {
             // 削除
-            await queryRunner.manager.delete(Reserve, {});
+            await queryRunner.manager.createQueryBuilder().delete().from(Reserve).execute();
 
             // 挿入処理
             for (const item of items) {

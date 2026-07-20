@@ -86,8 +86,11 @@ export default class ProgramDB implements IProgramDB {
         let hasError = false;
         try {
             // 削除
-            const deleteOption = deleteChannelIds.length === 0 ? {} : { channelId: In(deleteChannelIds) };
-            await queryRunner.manager.delete(Program, deleteOption);
+            if (deleteChannelIds.length === 0) {
+                await queryRunner.manager.createQueryBuilder().delete().from(Program).execute();
+            } else {
+                await queryRunner.manager.delete(Program, { channelId: In(deleteChannelIds) });
+            }
 
             // 挿入処理
             for (const value of values) {
@@ -96,7 +99,7 @@ export default class ProgramDB implements IProgramDB {
 
             await queryRunner.commitTransaction();
         } catch (err: any) {
-            console.error(err);
+            this.log.system.error(err);
             hasError = true;
             await queryRunner.rollbackTransaction();
         } finally {
@@ -336,7 +339,7 @@ export default class ProgramDB implements IProgramDB {
 
             await queryRunner.commitTransaction();
         } catch (err: any) {
-            console.error(err);
+            this.log.system.error(err);
             hasError = true;
             await queryRunner.rollbackTransaction();
         } finally {
