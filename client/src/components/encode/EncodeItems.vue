@@ -8,7 +8,7 @@
 
 <script lang="ts">
 import EncodeSmallCard from '@/components/encode/EncodeSmallCard.vue';
-import { EncodeInfoDisplayData } from '@/model/state/encode/IEncodeState';
+import { EncodeInfoDisplayItem } from '@/model/state/encode/IEncodeState';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
@@ -19,7 +19,7 @@ import * as apid from '../../../../api';
 })
 class EncodeItems extends Vue {
     @Prop({ required: true })
-    public items!: EncodeInfoDisplayData[];
+    public items!: EncodeInfoDisplayItem[];
 
     @Prop({ required: true })
     public isEditMode!: boolean;
