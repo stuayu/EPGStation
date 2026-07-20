@@ -111,6 +111,19 @@ class ServiceServer implements IServiceServer {
      * @param api: OpenAPIV3.Document
      */
     private initOpenApi(api: OpenAPIV3.Document): void {
+        // Express 5 では req.query がアクセスごとに再パースされる getter となり、
+        // express-openapi の型変換 (coercion) 結果が保持されないため、自前プロパティとして実体化する
+        this.app.use((req, _res, next) => {
+            const query = req.query;
+            Object.defineProperty(req, 'query', {
+                value: query,
+                writable: true,
+                enumerable: true,
+                configurable: true,
+            });
+            next();
+        });
+
         openapi.initialize({
             apiDoc: api,
             app: this.app,

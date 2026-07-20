@@ -1572,7 +1572,8 @@ components:
             properties:
                 target:
                     description: クリーンアップ対象 (省略時は all)
-                    $ref: '#/components/schemas/RecordedCleanupTarget'
+                    allOf:
+                        - $ref: '#/components/schemas/RecordedCleanupTarget'
 
         RecordedCleanupFileCandidates:
             description: DB 未登録の動画実ファイルの削除候補情報
