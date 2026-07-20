@@ -16,7 +16,7 @@
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
 import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
-import { Route } from 'vue-router';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 
 @Component({})
 class MobilePagination extends Vue {

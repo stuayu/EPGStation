@@ -1,4 +1,5 @@
-import { createRouter, createWebHashHistory, RouterScrollBehavior } from 'vue-router';
+import { createRouter, createWebHashHistory } from 'vue-router';
+import type { RouterScrollBehavior } from 'vue-router';
 import container from './model/ModelContainer';
 import IScrollPositionState from './model/state/IScrollPositionState';
 import Dashboard from './views/Dashboard.vue';

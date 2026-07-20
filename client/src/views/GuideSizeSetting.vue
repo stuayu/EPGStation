@@ -192,7 +192,7 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { IGuideSizeSettingStorageModel } from '@/model/storage/guide/IGuideSizeSettingStorageModel';
 import { ISettingStorageModel, GuideViewMode } from '@/model/storage/setting/ISettingStorageModel';
 import { Component, Vue, Watch } from 'vue-facing-decorator';
-import { Route } from 'vue-router';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 
 
 interface SelectItem {

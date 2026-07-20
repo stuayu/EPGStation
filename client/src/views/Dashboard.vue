@@ -76,7 +76,7 @@ import UaUtil from '@/util/UaUtil';
 import Util from '@/util/Util';
 import ResizeObserver from 'resize-observer-polyfill';
 import { Component, Vue, Watch } from 'vue-facing-decorator';
-import { Route } from 'vue-router';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 
 interface ScrollData {

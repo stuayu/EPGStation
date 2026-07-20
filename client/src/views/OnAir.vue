@@ -38,7 +38,7 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
 import { Component, Vue, Watch } from 'vue-facing-decorator';
-import { Route } from 'vue-router';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 
 
 @Component({
