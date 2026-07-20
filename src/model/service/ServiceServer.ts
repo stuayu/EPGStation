@@ -1,5 +1,5 @@
 import cors from 'cors';
-import express, { NextFunction } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import * as openapi from 'express-openapi';
 import * as fs from 'fs';
 import * as http from 'http';
@@ -22,6 +22,20 @@ import ISocketIOManageModel from './socketio/ISocketIOManageModel';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const swaggerdist = require('swagger-ui-dist');
+
+interface PackageMetadata {
+    name: string;
+    version: string;
+}
+
+const isPackageMetadata = (value: unknown): value is PackageMetadata => {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        typeof (value as Record<string, unknown>).name === 'string' &&
+        typeof (value as Record<string, unknown>).version === 'string'
+    );
+};
 
 @injectable()
 class ServiceServer implements IServiceServer {
@@ -81,9 +95,12 @@ class ServiceServer implements IServiceServer {
         });
 
         // set title and version
-        const pkg = <any>JSON.parse(fs.readFileSync(ServiceServer.PACKAGE_JSON, 'utf-8'));
-        api.info.title = pkg.name;
-        api.info.version = pkg.version;
+        const packageJson: unknown = JSON.parse(fs.readFileSync(ServiceServer.PACKAGE_JSON, 'utf-8'));
+        if (!isPackageMetadata(packageJson)) {
+            throw new Error('InvalidPackageMetadata');
+        }
+        api.info.title = packageJson.name;
+        api.info.version = packageJson.version;
 
         return api;
     }
@@ -98,10 +115,10 @@ class ServiceServer implements IServiceServer {
             app: this.app,
             docsPath: '/docs',
             consumesMiddleware: {
-                'application/json': express.json() as any,
-                'text/text': express.text() as any,
+                'application/json': express.json(),
+                'text/text': express.text(),
                 'multipart/form-data': (req, res, next) => {
-                    this.uploadFile(req as any, res as any, next);
+                    this.uploadFile(req, res, next);
                 },
             },
             errorMiddleware: (err, _req, res, _next) => {
@@ -110,11 +127,13 @@ class ServiceServer implements IServiceServer {
                 res.json(err);
             },
             errorTransformer: openApi => {
-                this.log.system.error(<any>openApi);
+                this.log.system.error(openApi);
+                const message =
+                    typeof openApi === 'object' && openApi !== null && 'message' in openApi
+                        ? String(openApi.message)
+                        : 'OpenAPI validation error';
 
-                return {
-                    message: (<any>openApi).message,
-                };
+                return { message };
             },
             exposeApiDocs: true,
             paths: ServiceServer.API_DIR,
@@ -204,7 +223,7 @@ class ServiceServer implements IServiceServer {
      * @param res
      * @param next
      */
-    private uploadFile(req: any, res: any, next: NextFunction): void {
+    private uploadFile(req: Request, res: Response, next: NextFunction): void {
         // uploade 生成
         let fileName = '';
         const storage = multer.diskStorage({
@@ -219,7 +238,7 @@ class ServiceServer implements IServiceServer {
             },
         });
 
-        multer({ storage: storage }).single('file')(req as any, res as any, async (err: any) => {
+        multer({ storage: storage }).single('file')(req, res, async (err: unknown) => {
             if (err) {
                 // エラー時はファイルを削除
                 const filePath = path.join(this.config.uploadTempDir, fileName);
@@ -230,7 +249,7 @@ class ServiceServer implements IServiceServer {
                     this.log.access.error(`upload file delete error: ${filePath}`);
                     this.log.access.error(err.message);
                 }
-                return next(err.message);
+                return next(err instanceof Error ? err : new Error(String(err)));
             }
 
             if (typeof req.body.recordedId === 'string') {
