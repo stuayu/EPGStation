@@ -1,5 +1,5 @@
 namespace DateUtil {
-    const fmt = {
+    const fmt: Record<string, (date: Date) => string> = {
         yyyy: (date: Date): string => {
             return date.getFullYear() + '';
         },
@@ -37,7 +37,7 @@ namespace DateUtil {
      */
     export const format = (date: Date, formatStr: string): string => {
         for (const key in fmt) {
-            formatStr = formatStr.replace(key, (fmt as any)[key](date));
+            formatStr = formatStr.replace(key, fmt[key](date));
         }
 
         return formatStr;

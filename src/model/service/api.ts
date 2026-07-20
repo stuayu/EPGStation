@@ -38,7 +38,7 @@ export const responseServerError = (res: express.Response, err?: string): expres
 };
 
 // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-export const responseJSON = (res: express.Response, code: number, body?: any): express.Response => {
+export const responseJSON = (res: express.Response, code: number, body?: unknown): express.Response => {
     res.status(code);
     // non-cache
     res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
@@ -73,7 +73,7 @@ export const responseFile = (
         throw new Error('file path is derectory');
     }
 
-    const responseHeaders: any = {};
+    const responseHeaders: Record<string, string | number> = {};
     if (download) {
         responseHeaders['Content-Type'] = 'application/octet-stream';
         responseHeaders['Content-disposition'] = `attachment; filename*=utf-8'ja'${encodeURIComponent(
@@ -145,8 +145,7 @@ const sendResponse = (
     code: number,
     req: express.Request,
     res: express.Response,
-    // eslint-disable-next-line @typescript-eslint/ban-types
-    responseHeaders: {},
+    responseHeaders: Record<string, string | number>,
     readable: fs.ReadStream | null,
 ): void => {
     res.status(code);
