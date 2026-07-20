@@ -8,12 +8,12 @@ export const del: Operation = async (req, res) => {
     const recordedTagApiModel = container.get<IRecordedTagApiModel>('IRecordedTagApiModel');
 
     try {
-        const tagId: apid.RecordedTagId = parseInt(req.params.tagId, 10);
+        const tagId: apid.RecordedTagId = api.parseRequestParamInt(req.params.tagId, 'tagId');
         const recordedId: apid.RecordedId = parseInt(req.query.recordedId as any, 10);
         await recordedTagApiModel.deleteRelation(tagId, recordedId);
         api.responseJSON(res, 200, { code: 200 });
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 
@@ -50,12 +50,12 @@ export const put: Operation = async (req, res) => {
     const recordedTagApiModel = container.get<IRecordedTagApiModel>('IRecordedTagApiModel');
 
     try {
-        const tagId: apid.RecordedTagId = parseInt(req.params.tagId, 10);
+        const tagId: apid.RecordedTagId = api.parseRequestParamInt(req.params.tagId, 'tagId');
         const recordedId: apid.RecordedId = req.body.recordedId;
         await recordedTagApiModel.setRelation(tagId, recordedId);
         api.responseJSON(res, 200, { code: 200 });
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 

@@ -4,13 +4,13 @@
         <transition name="page">
             <v-container>
                 <RecordedUploadForm v-on:reset="reset" v-on:upload="upload"></RecordedUploadForm>
-                <v-btn v-on:click="addVideoFile" dark fixed bottom fab right color="pink">
+                <v-btn v-on:click="addVideoFile" icon size="large" class="position-fixed right-0 bottom-0 ma-4" color="pink">
                     <v-icon>mdi-plus</v-icon>
                 </v-btn>
                 <div style="visibility: hidden">dummy</div>
             </v-container>
         </transition>
-        <RecordedUploadingDialog :isOpen.sync="isUploading"></RecordedUploadingDialog>
+        <RecordedUploadingDialog v-model:isOpen="isUploading"></RecordedUploadingDialog>
     </v-main>
 </template>
 
@@ -22,10 +22,9 @@ import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import IRecordedUploadState from '@/model/state/recorded/upload/IRecordedUploadState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { Component, Vue, Watch } from 'vue-property-decorator';
-import { Route } from 'vue-router';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -34,7 +33,7 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
         RecordedUploadingDialog,
     },
 })
-export default class RecordedUpload extends Vue {
+class RecordedUpload extends Vue {
     public isUploading: boolean = false;
 
     private uploadState: IRecordedUploadState = container.get<IRecordedUploadState>('IRecordedUploadState');
@@ -98,4 +97,6 @@ export default class RecordedUpload extends Vue {
         });
     }
 }
+
+export default toNative(RecordedUpload);
 </script>

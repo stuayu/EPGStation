@@ -1,5 +1,5 @@
 import DPlayer, { DPlayerType } from 'dplayer';
-import { Component, Vue } from 'vue-property-decorator';
+import { Component, Vue } from 'vue-facing-decorator';
 
 export default abstract class BaseVideo extends Vue {
     protected dp: DPlayer | null = null;
@@ -141,7 +141,7 @@ export default abstract class BaseVideo extends Vue {
         this.$emit('volumechange');
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         this.destroyPlayer();
     }
 

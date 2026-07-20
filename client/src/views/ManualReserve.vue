@@ -26,8 +26,8 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
-import { Component, Vue, Watch } from 'vue-property-decorator';
-import { Route } from 'vue-router';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 
 interface PageInfo {
@@ -38,7 +38,6 @@ interface PageInfo {
     encodeOption: EncodedOption;
 }
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -48,10 +47,10 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
         ManualReserveOptionComponent,
     },
 })
-export default class ManualReserve extends Vue {
+class ManualReserve extends Vue {
     public isEditMode: boolean = false;
 
-    private manualReserveState: IManualReserveState = container.get<IManualReserveState>('IManualReserveState');
+    public manualReserveState: IManualReserveState = container.get<IManualReserveState>('IManualReserveState');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private settingValue: ISettingValue = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();
@@ -72,7 +71,7 @@ export default class ManualReserve extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }
@@ -137,7 +136,7 @@ export default class ManualReserve extends Vue {
     /**
      * ページ更新時に呼ばれる
      */
-    public beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {
         this.savePageInfo();
         next();
     }
@@ -145,7 +144,7 @@ export default class ManualReserve extends Vue {
     /**
      * ページ離脱時に呼ばれる
      */
-    public beforeRouteLeave(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteLeave(to: Route, from: Route, next: () => void): void {
         this.savePageInfo();
         next();
     }
@@ -257,6 +256,15 @@ export default class ManualReserve extends Vue {
         this.manualReserveState.setTimeSpecifiedOption();
     }
 }
+
+export default Object.assign(toNative(ManualReserve), {
+    beforeRouteUpdate(this: ManualReserve, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteUpdate(to, from, next);
+        },
+    beforeRouteLeave(this: ManualReserve, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteLeave(to, from, next);
+        },
+});
 </script>
 
 <style lang="sass" scoped>

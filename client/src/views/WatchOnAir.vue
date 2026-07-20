@@ -20,10 +20,9 @@ import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 interface WatchParam {
     type: string;
@@ -38,13 +37,13 @@ interface WatchParam {
         WatchOnAirInfoCard,
     },
 })
-export default class WatchOnAir extends Vue {
+class WatchOnAir extends Vue {
     public videoParam: BaseVideoParam | null = null;
 
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
-    private watchParam: WatchParam | null = null;
+    public watchParam: WatchParam | null = null;
 
     @Watch('$route', { immediate: true, deep: true })
     public onUrlChange(): void {
@@ -84,6 +83,8 @@ export default class WatchOnAir extends Vue {
         });
     }
 }
+
+export default toNative(WatchOnAir);
 </script>
 
 <style lang="sass" scoped>

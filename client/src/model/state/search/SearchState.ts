@@ -38,7 +38,7 @@ export default class SearchState implements ISearchState {
     public saveOption: SaveOption | null = null;
     public encodeOption: EncodedOption | null = null;
 
-    // vuetify-datetime-picker のリセットがうまくできないため一瞬 false にすることでクリアする
+    // 日時入力を再描画して期間の表示値を確実にクリアする
     public isShowPeriod: boolean = true;
     // ルールオプションのアコーディオンの開閉を行う
     public optionPanel: number[] = [];

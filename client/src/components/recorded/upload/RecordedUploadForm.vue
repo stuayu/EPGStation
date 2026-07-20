@@ -2,7 +2,7 @@
     <v-card class="mx-auto" max-width="800">
         <div class="pa-4">
             <SearchOptionRow title="放送局※" :required="true">
-                <v-select label="channel" :items="uploadState.getChannelItems()" v-model="uploadState.programOption.channelId" clearable :menu-props="{ auto: true }"></v-select>
+                <v-select label="channel" :items="uploadState.getChannelItems()" v-model="uploadState.programOption.channelId" clearable></v-select>
             </SearchOptionRow>
             <SearchOptionRow title="ジャンル">
                 <div class="d-flex">
@@ -11,7 +11,6 @@
                         :items="uploadState.getGenreItems()"
                         v-model="uploadState.programOption.genre1"
                         clearable
-                        :menu-props="{ auto: true }"
                         style="width: 50%"
                     ></v-select>
                     <v-select
@@ -19,7 +18,6 @@
                         :items="uploadState.getSubGenreItems()"
                         v-model="uploadState.programOption.subGenre1"
                         clearable
-                        :menu-props="{ auto: true }"
                         style="width: 50%"
                     ></v-select>
                 </div>
@@ -29,8 +27,8 @@
                     v-model="uploadState.programOption.ruleId"
                     :loading="ruleLoading"
                     :items="uploadState.ruleItems"
-                    :search-input.sync="ruleSearchInput"
-                    item-text="keyword"
+                    v-model:search="ruleSearchInput"
+                    item-title="keyword"
                     item-value="id"
                     cache-items
                     flat
@@ -50,7 +48,7 @@
                     v-model="uploadState.programOption.startAt"
                     :datePickerProps="{
                         locale: 'jp-ja',
-                        'day-format': date => new Date(date).getDate(),
+                        'day-format': formatDay,
                         'first-day-of-week': 1,
                     }"
                     :timePickerProps="{
@@ -60,9 +58,9 @@
                         color: 'success',
                     }"
                 >
-                    <template slot="actions" slot-scope="{ parent }">
-                        <v-btn text color="primary" @click.native="parent.clearHandler">クリア</v-btn>
-                        <v-btn text color="primary" @click="parent.okHandler">設定</v-btn>
+                    <template #actions="{ parent }">
+                        <v-btn variant="text" color="primary" @click="parent.clearHandler">クリア</v-btn>
+                        <v-btn variant="text" color="primary" @click="parent.okHandler">設定</v-btn>
                     </template>
                 </v-datetime-picker>
             </SearchOptionRow>
@@ -81,14 +79,13 @@
             <div v-for="video in uploadState.videoFileItems" v-bind:key="video.key">
                 <SearchOptionRow :title="`ビデオファイル${video.key + 1}`">
                     <v-text-field v-model="video.viewName" label="name" clearable class="view-name"></v-text-field>
-                    <v-select class="file-type" v-model="video.fileType" :items="uploadState.getFileTypeItems()" label="file type" :menu-props="{ auto: true }"></v-select>
+                    <v-select class="file-type" v-model="video.fileType" :items="uploadState.getFileTypeItems()" label="file type"></v-select>
 
                     <v-select
                         class="directory"
                         v-model="video.parentDirectoryName"
                         :items="uploadState.getPrentDirectoryItems()"
                         label="directory"
-                        :menu-props="{ auto: true }"
                     ></v-select>
                     <v-text-field v-model="video.subDirectory" label="sub directory" clearable></v-text-field>
                     <v-file-input v-model="video.file" label="video file"></v-file-input>
@@ -98,8 +95,8 @@
         <v-divider></v-divider>
         <v-card-actions>
             <v-spacer></v-spacer>
-            <v-btn v-on:click="reset" text color="error">リセット</v-btn>
-            <v-btn v-on:click="upload" text color="primary">アップロード</v-btn>
+            <v-btn v-on:click="reset" variant="text" color="error">リセット</v-btn>
+            <v-btn v-on:click="upload" variant="text" color="primary">アップロード</v-btn>
         </v-card-actions>
     </v-card>
 </template>
@@ -108,17 +105,21 @@
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import IRecordedUploadState from '@/model/state/recorded/upload/IRecordedUploadState';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         SearchOptionRow,
     },
 })
-export default class RecordedUploadForm extends Vue {
+class RecordedUploadForm extends Vue {
+    public formatDay(date: string | number | Date): number {
+        return new Date(date).getDate();
+    }
+
     public uploadState: IRecordedUploadState = container.get<IRecordedUploadState>('IRecordedUploadState');
     public ruleLoading: boolean = false;
-    public ruleSearchInput: string | null = null;
+    public ruleSearchInput: string | undefined;
 
     @Watch('ruleSearchInput', { immediate: true })
     public async onChangeSearch(newKeyword: string): Promise<void> {
@@ -138,6 +139,8 @@ export default class RecordedUploadForm extends Vue {
         this.$emit('upload');
     }
 }
+
+export default toNative(RecordedUploadForm);
 </script>
 
 <style lang="sass" scoped>

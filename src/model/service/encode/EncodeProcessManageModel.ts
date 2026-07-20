@@ -77,7 +77,7 @@ class EncodeProcessManageModel implements IEncodeProcessManageModel {
      */
     private killAndCreateProcess(planToKillProcessId: number, option: CreateProcessOption): Promise<ChildProcess> {
         return new Promise<ChildProcess>(async (resolve, reject) => {
-            let timeoutId: NodeJS.Timer | null = null;
+            let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
             /**
              * プロセスを生成

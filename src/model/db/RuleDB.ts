@@ -33,7 +33,7 @@ export default class RuleDB implements IRuleDB {
         let hasError = false;
         try {
             // 削除
-            await queryRunner.manager.delete(Rule, {});
+            await queryRunner.manager.createQueryBuilder().delete().from(Rule).execute();
 
             // 挿入処理
             for (const item of items) {

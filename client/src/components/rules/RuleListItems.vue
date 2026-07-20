@@ -2,9 +2,9 @@
     <v-card class="mx-auto" max-width="800">
         <v-list>
             <v-list-item v-for="item in items" v-bind:key="item.display.id" v-bind:class="{ 'selected-color': item.isSelected === true }">
-                <v-list-item-content>
+                <div class="v-list-item-content">
                     <div class="pl-2 d-flex flex-row flex-wrap align-center" v-on:click="selectItem(item)">
-                        <v-switch v-if="isEditMode === false" v-model="item.display.isEnable" hide-details dense value v-on:change="changeState(item)" class="toggle"></v-switch>
+                        <v-switch v-if="isEditMode === false" v-model="item.display.isEnable" hide-details density="compact" v-on:update:model-value="changeState(item)" class="toggle"></v-switch>
                         <div class="keyword">
                             <!--
                             {{ item.keyword }}
@@ -12,11 +12,11 @@
                             <v-list-item-title class="subtitle-1">{{ item.display.keyword }}</v-list-item-title>
                         </div>
                         <div class="menu d-flex align-center">
-                            <span class="mx-2 grey--text text--lighten-1">{{ item.display.reservationsCnt }}</span>
+                            <span class="mx-2 text-grey-lighten-1">{{ item.display.reservationsCnt }}</span>
                             <RuleItemMenu v-if="isEditMode === false" :ruleItem="item"></RuleItemMenu>
                         </div>
                     </div>
-                </v-list-item-content>
+                </div>
             </v-list-item>
         </v-list>
     </v-card>
@@ -25,14 +25,14 @@
 <script lang="ts">
 import RuleItemMenu from '@/components/rules/RuleItemMenu.vue';
 import { RuleStateData, RuleStateDisplayData } from '@/model/state/rule/IRuleState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         RuleItemMenu,
     },
 })
-export default class RuleListItems extends Vue {
+class RuleListItems extends Vue {
     @Prop({ required: true })
     public items!: RuleStateData[];
 
@@ -57,6 +57,8 @@ export default class RuleListItems extends Vue {
         this.$emit('selected', item.display.id);
     }
 }
+
+export default toNative(RuleListItems);
 </script>
 
 <style lang="sass" scoped>

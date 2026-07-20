@@ -4,7 +4,7 @@
             <div class="subtitle-1 pa-4 item-title">
                 <div v-on:click="onClickBage">
                     {{ title }}
-                    <v-badge v-if="bage > 0" bordered color="pink" :content="bage" class="pl-1"></v-badge>
+                    <v-badge v-if="bage !== undefined && bage > 0" bordered color="pink" :content="bage" class="pl-1"></v-badge>
                 </div>
             </div>
             <div class="content overflow-auto" ref="content" v-on:scroll="onScroll">
@@ -15,10 +15,10 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class DashboardItem extends Vue {
+class DashboardItem extends Vue {
     @Prop({ required: true })
     public title!: string;
 
@@ -47,6 +47,8 @@ export default class DashboardItem extends Vue {
         }
     }
 }
+
+export default toNative(DashboardItem);
 </script>
 
 <style lang="sass" scoped>

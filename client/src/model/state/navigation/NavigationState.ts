@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify';
-import { Route } from 'vue-router';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 import IServerConfigModel from '../../serverConfig/IServerConfigModel';
 import { ISettingStorageModel } from '../../storage/setting/ISettingStorageModel';
 import INavigationState, { NavigationItem, NavigationType } from './INavigationState';
@@ -276,7 +276,7 @@ export default class NavigationState implements INavigationState {
             },
         });
         newItems.push({
-            icon: 'settings',
+            icon: 'mdi-cog',
             title: '設定',
             herf: {
                 path: '/settings',
@@ -294,18 +294,22 @@ export default class NavigationState implements INavigationState {
      */
     public updateNavigationPosition(currentRoute: Route): void {
         this.navigationPosition = this.items.findIndex(item => {
-            if (item.herf === null || item.herf.path !== currentRoute.path) {
+            if (item.herf === null) {
                 return false;
             }
 
-            if (typeof item.herf.query === 'undefined') {
+            const path = typeof item.herf === 'string' ? item.herf : 'path' in item.herf ? item.herf.path : undefined;
+            if (path !== currentRoute.path) {
+                return false;
+            }
+
+            const query = typeof item.herf === 'string' || !('query' in item.herf) ? undefined : item.herf.query;
+            if (typeof query === 'undefined') {
                 return true;
-            } else if (typeof currentRoute.query === 'undefined') {
-                return false;
             }
 
-            for (const key in item.herf.query) {
-                if (item.herf.query[key] !== currentRoute.query[key]) {
+            for (const key in query) {
+                if (query[key] !== currentRoute.query[key]) {
                     return false;
                 }
             }

@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
-        node-version: [18.x, 20.x, 22.x]
+        node-version: [24.x]
 
     steps:
     - name: Checkout
@@ -34,19 +34,17 @@ jobs:
     - name: Mirakurun Checkout
       uses: actions/checkout@v4
       with:
-        ref: feature/4.0.0-windows
+        ref: stuayu-main
         repository: stuayu/Mirakurun
         path: Mirakurun
     
     - name: Mirakurun build and install
       working-directory: Mirakurun
-      continue-on-error: true # npm audit fixでエラーになるのを回避
       run: |
         npm install
     
     - name: Install all
       working-directory: EPGStation
-      continue-on-error: true # npm audit fixでエラーになるのを回避
       run: |
         npm run all-install
       

@@ -12,8 +12,8 @@
                 <v-divider></v-divider>
                 <v-card-actions>
                     <v-spacer></v-spacer>
-                    <v-btn color="error" text v-on:click="dialogModel = false">キャンセル</v-btn>
-                    <v-btn color="primary" text v-on:click="update">更新</v-btn>
+                    <v-btn color="error" variant="text" v-on:click="dialogModel = false">キャンセル</v-btn>
+                    <v-btn color="primary" variant="text" v-on:click="update">更新</v-btn>
                 </v-card-actions>
             </v-card>
         </v-dialog>
@@ -25,10 +25,10 @@ import container from '@/model/ModelContainer';
 import { IGuideGenreSettingStorageModel } from '@/model/storage/guide/IGuideGenreSettingStorageModel';
 import GenreUtil from '@/util/GenreUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class GuideGenreSettingDialog extends Vue {
+class GuideGenreSettingDialog extends Vue {
     @Prop({ required: true })
     public isOpen!: boolean;
 
@@ -113,15 +113,17 @@ export default class GuideGenreSettingDialog extends Vue {
         }
     }
 }
+
+export default toNative(GuideGenreSettingDialog);
 </script>
 
 <style lang="sass" scoped>
-.theme--light.v-card
+.v-theme--light.v-card
     .v-card__text
         color: rgba(0, 0, 0, 0.87)
     .sub-text
         color: rgba(0, 0, 0, 0.54)
-.theme--dark.v-card
+.v-theme--dark.v-card
     .v-card__text
         color: white
 

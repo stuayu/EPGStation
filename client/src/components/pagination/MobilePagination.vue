@@ -1,13 +1,13 @@
 <template>
     <div v-if="pages.length > 0" class="pagination d-flex justify-center">
         <v-btn v-bind:class="{ disabled: currentPage === pages[0] }" :color="color" v-on:click="onMovePage(currentPage - 1)" class="my-2 mx-2">
-            <v-icon dark>mdi-chevron-left</v-icon>
+            <v-icon>mdi-chevron-left</v-icon>
         </v-btn>
         <v-btn :color="page === currentPage ? 'primary' : color" v-for="page in pages" v-bind:key="page" v-on:click="onMovePage(page)" class="my-2 mx-1">
             {{ page }}
         </v-btn>
         <v-btn v-bind:class="{ disabled: currentPage === totalPages }" :color="color" v-on:click="onMovePage(currentPage + 1)" class="my-2 mx-2">
-            <v-icon dark>mdi-chevron-right</v-icon>
+            <v-icon>mdi-chevron-right</v-icon>
         </v-btn>
     </div>
 </template>
@@ -15,8 +15,8 @@
 <script lang="ts">
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
-import { Route } from 'vue-router';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 
 @Component({})
 class MobilePagination extends Vue {
@@ -44,7 +44,7 @@ class MobilePagination extends Vue {
     }
 
     get color(): string {
-        return this.$vuetify.theme.dark === true ? '' : 'white';
+        return this.$vuetify.theme.global.current.dark === true ? '' : 'white';
     }
 
     @Watch('$route', { immediate: true, deep: true })
@@ -101,7 +101,7 @@ namespace MobilePagination {
     export const PAGINATION_CENTER = Math.ceil(PAGINATION_MAX_SIZE / 2);
 }
 
-export default MobilePagination;
+export default toNative(MobilePagination);
 </script>
 
 <style lang="sass" scoped>

@@ -1,8 +1,8 @@
 <template>
     <div>
-        <v-menu v-model="isOpen" bottom left :close-on-content-click="false">
-            <template v-slot:activator="{ on }">
-                <v-btn dark icon v-on="on">
+        <v-menu v-model="isOpen" location="bottom start" :close-on-content-click="false">
+            <template v-slot:activator="{ props }">
+                <v-btn icon v-bind="props">
                     <v-icon>mdi-magnify</v-icon>
                 </v-btn>
             </template>
@@ -14,8 +14,8 @@
                         :disabled="isNoRule === true"
                         :loading="loading"
                         :items="searchState.ruleItems"
-                        :search-input.sync="search"
-                        item-text="keyword"
+                        v-model:search="search"
+                        item-title="keyword"
                         item-value="id"
                         cache-items
                         flat
@@ -25,8 +25,8 @@
                         label="ルール"
                         class="pb-2"
                     ></v-autocomplete>
-                    <v-select v-model="searchState.channelId" :items="searchState.channelItems" label="放送局" clearable :menu-props="{ auto: true }"></v-select>
-                    <v-select v-model="searchState.genre" :items="searchState.genreItems" label="ジャンル" clearable :menu-props="{ auto: true }"></v-select>
+                    <v-select v-model="searchState.channelId" :items="searchState.channelItems" label="放送局" clearable></v-select>
+                    <v-select v-model="searchState.genre" :items="searchState.genreItems" label="ジャンル" clearable></v-select>
                     <div class="check-boxes">
                         <v-checkbox v-model="searchState.hasOriginalFile" label="元ファイルを含む" class="mt-2"></v-checkbox>
                         <v-checkbox v-model="isNoRule" label="手動録画のみ" class="mt-2"></v-checkbox>
@@ -35,8 +35,8 @@
                 <v-divider></v-divider>
                 <v-card-actions>
                     <v-spacer></v-spacer>
-                    <v-btn v-on:click="onCancel" text color="error">閉じる</v-btn>
-                    <v-btn v-on:click="onSearch" text color="primary">検索</v-btn>
+                    <v-btn v-on:click="onCancel" variant="text" color="error">閉じる</v-btn>
+                    <v-btn v-on:click="onSearch" variant="text" color="primary">検索</v-btn>
                 </v-card-actions>
             </v-card>
         </v-menu>
@@ -50,18 +50,19 @@ import IRecordedSearchState from '@/model/state/recorded/search/IRecordedSearchS
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
 import VuetifyUtil from '@/util/VuetifyUtil';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import type { ComponentPublicInstance } from 'vue';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
-export default class RecordedSearchMenu extends Vue {
+class RecordedSearchMenu extends Vue {
     public loading: boolean = false;
-    public search: string | null = null;
+    public search: string | undefined;
     public isNoRule: boolean = false;
 
     @Watch('search', { immediate: true })
-    public async onChangeSearch(newKeyword: string): Promise<void> {
-        if (newKeyword === null || newKeyword === this.searchState.ruleKeyword) {
+    public async onChangeSearch(newKeyword: string | undefined): Promise<void> {
+        if (typeof newKeyword === 'undefined' || newKeyword === this.searchState.ruleKeyword) {
             return;
         }
 
@@ -166,12 +167,14 @@ export default class RecordedSearchMenu extends Vue {
             // キーワードにフォーカスを当てる
             this.$nextTick(() => {
                 if (typeof this.$refs.keyword !== 'undefined') {
-                    VuetifyUtil.focusTextFiled(this.$refs.keyword as Vue);
+                    VuetifyUtil.focusTextFiled(this.$refs.keyword as ComponentPublicInstance);
                 }
             });
         }
     }
 }
+
+export default toNative(RecordedSearchMenu);
 </script>
 
 <style lang="sass">

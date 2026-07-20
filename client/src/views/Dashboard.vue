@@ -18,7 +18,7 @@
                                     ></RecordedsmallCard>
                                 </div>
                                 <div v-if="recordingState.getTotal() > recordingState.getRecorded().length" class="my-2">
-                                    <v-btn text block color="primary mx-auto" v-on:click="gotoNextPage('/recording')">more</v-btn>
+                                    <v-btn variant="text" block color="primary" class="mx-auto" v-on:click="gotoNextPage('/recording')">more</v-btn>
                                 </div>
                             </div>
                         </template>
@@ -36,17 +36,17 @@
                                     ></RecordedsmallCard>
                                 </div>
                                 <div v-if="recordedState.getTotal() > recordedState.getRecorded().length" class="my-2">
-                                    <v-btn text block color="primary mx-auto" v-on:click="gotoNextPage('/recorded')">more</v-btn>
+                                    <v-btn variant="text" block color="primary" class="mx-auto" v-on:click="gotoNextPage('/recorded')">more</v-btn>
                                 </div>
                             </div>
                         </template>
                     </DashboardItem>
-                    <DashboardItem ref="reserveItem" :title="reserveTitle" :bage.sync="reserveConflictCnt" v-on:scroll="onReserveScroll" v-on:bage="gotoConflicts">
+                    <DashboardItem ref="reserveItem" :title="reserveTitle" v-model:bage="reserveConflictCnt" v-on:scroll="onReserveScroll" v-on:bage="gotoConflicts">
                         <template v-slot:items>
                             <div>
                                 <ReservesCard :reserves="reservesState.getReserves()" :flat="true" :isEditMode="false"></ReservesCard>
                                 <div v-if="reservesState.getTotal() > reservesState.getReserves().length" class="px-2 pb-2">
-                                    <v-btn text block color="primary mx-auto" v-on:click="gotoNextPage('/reserves')">more</v-btn>
+                                    <v-btn variant="text" block color="primary" class="mx-auto" v-on:click="gotoNextPage('/reserves')">more</v-btn>
                                 </div>
                             </div>
                         </template>
@@ -75,8 +75,8 @@ import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISe
 import UaUtil from '@/util/UaUtil';
 import Util from '@/util/Util';
 import ResizeObserver from 'resize-observer-polyfill';
-import { Component, Vue, Watch } from 'vue-property-decorator';
-import { Route } from 'vue-router';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 
 interface ScrollData {
@@ -85,7 +85,6 @@ interface ScrollData {
     reserveScroll: number;
 }
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -103,11 +102,11 @@ class Dashboard extends Vue {
     public reservesState: IReservesState = container.get<IReservesState>('IReservesState');
 
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
-    private settingValue: ISettingValue | null = null;
+    public settingValue: ISettingValue | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
-    private versionState: IVersionState = container.get<IVersionState>('IVersionState');
+    public versionState: IVersionState = container.get<IVersionState>('IVersionState');
     private onUpdateStatusCallback = (async (): Promise<void> => {
         await this.dashboardState.fetchData();
         await this.recordingState.fetchData(this.createFetchRecordingDataOption());
@@ -202,7 +201,7 @@ class Dashboard extends Vue {
         element.style.overflow = '';
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
 
@@ -296,7 +295,7 @@ class Dashboard extends Vue {
     /**
      * ページ更新時に呼ばれる
      */
-    public beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {
         this.saveScrollPosition();
         next();
     }
@@ -304,7 +303,7 @@ class Dashboard extends Vue {
     /**
      * ページ離脱時に呼ばれる
      */
-    public beforeRouteLeave(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteLeave(to: Route, from: Route, next: () => void): void {
         this.saveScrollPosition();
         next();
     }
@@ -373,13 +372,13 @@ class Dashboard extends Vue {
                         const position = this.scrollState.getScrollData<ScrollData>();
                         if (position !== null) {
                             if (typeof this.$refs.recordingItem !== 'undefined') {
-                                (this.$refs.recordingItem as DashboardItem).setScrollTop(position.recordingScroll);
+                                (this.$refs.recordingItem as InstanceType<typeof DashboardItem>).setScrollTop(position.recordingScroll);
                             }
                             if (typeof this.$refs.recordedItem !== 'undefined') {
-                                (this.$refs.recordedItem as DashboardItem).setScrollTop(position.recordedScroll);
+                                (this.$refs.recordedItem as InstanceType<typeof DashboardItem>).setScrollTop(position.recordedScroll);
                             }
                             if (typeof this.$refs.reserveItem !== 'undefined') {
-                                (this.$refs.reserveItem as DashboardItem).setScrollTop(position.reserveScroll);
+                                (this.$refs.reserveItem as InstanceType<typeof DashboardItem>).setScrollTop(position.reserveScroll);
                             }
                         }
 
@@ -463,7 +462,14 @@ namespace Dashboard {
     export const MIN_MIDTH_OF_SIDE_BY_SIDE = 1023;
 }
 
-export default Dashboard;
+export default Object.assign(toNative(Dashboard), {
+    beforeRouteUpdate(this: Dashboard, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteUpdate(to, from, next);
+        },
+    beforeRouteLeave(this: Dashboard, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteLeave(to, from, next);
+        },
+});
 </script>
 
 <style lang="sass" scoped>

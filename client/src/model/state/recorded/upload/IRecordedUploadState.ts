@@ -10,7 +10,7 @@ export interface VideoFileItem {
     parentDirectoryName: string | undefined;
     subDirectory: string | null;
     viewName: string | null;
-    fileType: string | undefined;
+    fileType: apid.VideoFileType | undefined;
     file: File | null | undefined;
 }
 

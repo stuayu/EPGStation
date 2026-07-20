@@ -2,32 +2,32 @@
     <div>
         <v-card :ripple="false" v-bind:class="{ 'selected-color': item.isSelected === true }">
             <div class="d-flex my-1 recorded-small-card" v-on:click="clickItem">
-                <v-img aspect-ratio="1.7778" :src="item.display.topThumbnailPath" v-on:error="this.src = './img/noimg.png'" eager class="thumbnail"></v-img>
+                <v-img aspect-ratio="1.7778" :src="item.display.topThumbnailPath" v-on:error="onThumbnailError" eager class="thumbnail"></v-img>
                 <div class="content pa-2 my-auto">
                     <div class="d-flex align-center">
-                        <div class="text mt-1 subtitle-2 font-weight-bold">{{ item.display.name }}</div>
+                        <div class="text mt-1 text-subtitle-2 font-weight-bold">{{ item.display.name }}</div>
                         <div v-if="isEditMode === false" class="menu-wrap">
                             <v-btn icon class="menu-button" v-on:click="openCancelDialog">
                                 <v-icon>mdi-close</v-icon>
                             </v-btn>
                         </div>
                     </div>
-                    <div class="text caption font-weight-light">{{ item.display.channelName }}</div>
-                    <div class="text caption font-weight-light">{{ item.display.time }} ({{ item.display.duration }} m)</div>
-                    <div class="text caption font-regular">{{ item.display.mode }}</div>
-                    <div class="text caption font-regular">{{ item.display.encodeInfo }}</div>
+                    <div class="text text-caption font-weight-light">{{ item.display.channelName }}</div>
+                    <div class="text text-caption font-weight-light">{{ item.display.time }} ({{ item.display.duration }} m)</div>
+                    <div class="text text-caption font-regular">{{ item.display.mode }}</div>
+                    <div class="text text-caption font-regular">{{ item.display.encodeInfo }}</div>
                     <v-progress-linear v-if="typeof item.display.percent !== 'undefined'" buffer-value="100" :value="item.display.percent"></v-progress-linear>
                 </div>
             </div>
         </v-card>
-        <EncodeCancelDialog :isOpen.sync="isOpenCancelDialog" :item="item.encodeItem"></EncodeCancelDialog>
+        <EncodeCancelDialog v-model:isOpen="isOpenCancelDialog" :item="item.encodeItem"></EncodeCancelDialog>
     </div>
 </template>
 
 <script lang="ts">
 import EncodeCancelDialog from '@/components/encode/EncodeCancelDialog.vue';
 import { EncodeInfoDisplayItem } from '@/model/state/encode/IEncodeState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({
@@ -35,7 +35,11 @@ import * as apid from '../../../../api';
         EncodeCancelDialog,
     },
 })
-export default class EncodeSmallCard extends Vue {
+class EncodeSmallCard extends Vue {
+    public onThumbnailError(_source: string | undefined): void {
+        this.item.display.topThumbnailPath = './img/noimg.png';
+    }
+
     @Prop({ required: true })
     public item!: EncodeInfoDisplayItem;
 
@@ -56,6 +60,8 @@ export default class EncodeSmallCard extends Vue {
         this.$emit('selected', this.item.encodeItem.id);
     }
 }
+
+export default toNative(EncodeSmallCard);
 </script>
 
 <style lang="sass" scoped>

@@ -1,6 +1,5 @@
-import * as bodyParser from 'body-parser';
 import cors from 'cors';
-import express, { NextFunction } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import * as openapi from 'express-openapi';
 import * as fs from 'fs';
 import * as http from 'http';
@@ -12,6 +11,7 @@ import { mkdirp } from 'mkdirp';
 import multer from 'multer';
 import { OpenAPIV3 } from 'openapi-types';
 import * as path from 'path';
+import type { ServeStaticOptions } from 'serve-static';
 import urljoin from 'url-join';
 import FileUtil from '../../util/FileUtil';
 import IConfigFile from '../IConfigFile';
@@ -23,6 +23,20 @@ import ISocketIOManageModel from './socketio/ISocketIOManageModel';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const swaggerdist = require('swagger-ui-dist');
+
+interface PackageMetadata {
+    name: string;
+    version: string;
+}
+
+const isPackageMetadata = (value: unknown): value is PackageMetadata => {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        typeof (value as Record<string, unknown>).name === 'string' &&
+        typeof (value as Record<string, unknown>).version === 'string'
+    );
+};
 
 @injectable()
 class ServiceServer implements IServiceServer {
@@ -56,7 +70,6 @@ class ServiceServer implements IServiceServer {
         this.setSwaggerUI();
         this.createUploadDir();
         this.initOpenApi(api);
-        this.setMime();
         this.setStaticFiles();
     }
 
@@ -83,9 +96,12 @@ class ServiceServer implements IServiceServer {
         });
 
         // set title and version
-        const pkg = <any>JSON.parse(fs.readFileSync(ServiceServer.PACKAGE_JSON, 'utf-8'));
-        api.info.title = pkg.name;
-        api.info.version = pkg.version;
+        const packageJson: unknown = JSON.parse(fs.readFileSync(ServiceServer.PACKAGE_JSON, 'utf-8'));
+        if (!isPackageMetadata(packageJson)) {
+            throw new Error('InvalidPackageMetadata');
+        }
+        api.info.title = packageJson.name;
+        api.info.version = packageJson.version;
 
         return api;
     }
@@ -95,15 +111,28 @@ class ServiceServer implements IServiceServer {
      * @param api: OpenAPIV3.Document
      */
     private initOpenApi(api: OpenAPIV3.Document): void {
+        // Express 5 では req.query がアクセスごとに再パースされる getter となり、
+        // express-openapi の型変換 (coercion) 結果が保持されないため、自前プロパティとして実体化する
+        this.app.use((req, _res, next) => {
+            const query = req.query;
+            Object.defineProperty(req, 'query', {
+                value: query,
+                writable: true,
+                enumerable: true,
+                configurable: true,
+            });
+            next();
+        });
+
         openapi.initialize({
             apiDoc: api,
             app: this.app,
             docsPath: '/docs',
             consumesMiddleware: {
-                'application/json': bodyParser.json() as any,
-                'text/text': bodyParser.text() as any,
+                'application/json': express.json(),
+                'text/text': express.text(),
                 'multipart/form-data': (req, res, next) => {
-                    this.uploadFile(req as any, res as any, next);
+                    this.uploadFile(req, res, next);
                 },
             },
             errorMiddleware: (err, _req, res, _next) => {
@@ -112,11 +141,13 @@ class ServiceServer implements IServiceServer {
                 res.json(err);
             },
             errorTransformer: openApi => {
-                this.log.system.error(<any>openApi);
+                this.log.system.error(openApi);
+                const message =
+                    typeof openApi === 'object' && openApi !== null && 'message' in openApi
+                        ? String(openApi.message)
+                        : 'OpenAPI validation error';
 
-                return {
-                    message: (<any>openApi).message,
-                };
+                return { message };
             },
             exposeApiDocs: true,
             paths: ServiceServer.API_DIR,
@@ -124,42 +155,38 @@ class ServiceServer implements IServiceServer {
     }
 
     /**
-     * mime 設定
-     */
-    private setMime(): void {
-        // static mime
-        express.static.mime.define({ 'text/css': ['css', 'min.css'] });
-        express.static.mime.define({ 'text/javascript': ['js', 'min.js'] });
-        express.static.mime.define({
-            'application/vnd.ms-fontobject': ['eot'],
-        });
-        express.static.mime.define({ 'application/font-ttf': ['ttf'] });
-        express.static.mime.define({ 'application/font-woff': ['woff'] });
-        express.static.mime.define({ 'application/font-woff2': ['woff2'] });
-        express.static.mime.define({ 'magnus-internal/imagemap': ['map'] });
-        express.static.mime.define({ 'image/png': ['png'] });
-        express.static.mime.define({ 'image/jpg': ['jpg'] });
-        express.static.mime.define({ 'video/mpeg': ['ts'] });
-        express.static.mime.define({ 'application/octet-stream': ['m4s'] });
-        express.static.mime.define({ 'video/MP2T': ['m3u8'] });
-        express.static.mime.define({ 'text/plain': ['log'] });
-    }
-
-    /**
      * ファイル読み込み url 設定
      */
     private setStaticFiles(): void {
         // static files
-        this.app.use(this.createUrl('/img'), express.static(path.join(__dirname, '..', '..', '..', 'img')));
+        this.app.use(this.createUrl('/img'), express.static(path.join(__dirname, '..', '..', '..', 'img'), this.getStaticOptions()));
 
         // thumbnail
-        this.app.use(this.createUrl('/thumbnail'), express.static(this.config.thumbnail));
+        this.app.use(this.createUrl('/thumbnail'), express.static(this.config.thumbnail, this.getStaticOptions()));
 
         // streamFile
-        this.app.use(this.createUrl('/streamfiles'), express.static(this.config.streamFilePath));
+        this.app.use(this.createUrl('/streamfiles'), express.static(this.config.streamFilePath, this.getStaticOptions()));
 
         // client
-        this.app.use(this.createUrl('/'), express.static(ServiceServer.CLIENT_DIR));
+        this.app.use(this.createUrl('/'), express.static(ServiceServer.CLIENT_DIR, this.getStaticOptions()));
+    }
+
+    /** Express 5 で必要な配信ファイルの MIME を明示する。 */
+    private getStaticOptions(): ServeStaticOptions {
+        return {
+            setHeaders: (res, filePath): void => {
+                const mimeByExtension: Record<string, string> = {
+                    '.ts': 'video/mp2t',
+                    '.m4s': 'video/iso.segment',
+                    '.m3u8': 'application/vnd.apple.mpegurl',
+                    '.log': 'text/plain; charset=utf-8',
+                };
+                const mime = mimeByExtension[path.extname(filePath).toLowerCase()];
+                if (typeof mime !== 'undefined') {
+                    res.setHeader('Content-Type', mime);
+                }
+            },
+        };
     }
 
     /**
@@ -210,7 +237,7 @@ class ServiceServer implements IServiceServer {
      * @param res
      * @param next
      */
-    private uploadFile(req: any, res: any, next: NextFunction): void {
+    private uploadFile(req: Request, res: Response, next: NextFunction): void {
         // uploade 生成
         let fileName = '';
         const storage = multer.diskStorage({
@@ -225,7 +252,7 @@ class ServiceServer implements IServiceServer {
             },
         });
 
-        multer({ storage: storage }).single('file')(req as any, res as any, async (err: any) => {
+        multer({ storage: storage }).single('file')(req, res, async (err: unknown) => {
             if (err) {
                 // エラー時はファイルを削除
                 const filePath = path.join(this.config.uploadTempDir, fileName);
@@ -236,7 +263,7 @@ class ServiceServer implements IServiceServer {
                     this.log.access.error(`upload file delete error: ${filePath}`);
                     this.log.access.error(err.message);
                 }
-                return next(err.message);
+                return next(err instanceof Error ? err : new Error(String(err)));
             }
 
             if (typeof req.body.recordedId === 'string') {

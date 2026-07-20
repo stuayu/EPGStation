@@ -2,14 +2,14 @@
     <div>
         <v-btn
             v-if="recordedItem.isRecording === false && serverConfig.isEnableSendVideoFileLinkToKodi() === true"
-            color="teal white--text"
+            color="teal"
             v-on:click="openKodiDialog"
             class="ma-1"
         >
-            <v-icon left dark>mdi-cast</v-icon>
+            <v-icon start>mdi-cast</v-icon>
             kodi
         </v-btn>
-        <SendVideoFileToKodiDialog :isOpen.sync="isOpenKodiDialog" :recordedItem="recordedItem" :videoFiles="videoFiles"></SendVideoFileToKodiDialog>
+        <SendVideoFileToKodiDialog v-model:isOpen="isOpenKodiDialog" :recordedItem="recordedItem" :videoFiles="videoFiles"></SendVideoFileToKodiDialog>
     </div>
 </template>
 
@@ -17,7 +17,7 @@
 import SendVideoFileToKodiDialog from '@/components/recorded/detail/SendVideoFileToKodiDialog.vue';
 import container from '@/model/ModelContainer';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({
@@ -25,7 +25,7 @@ import * as apid from '../../../../../api';
         SendVideoFileToKodiDialog,
     },
 })
-export default class RecordedDetailKodiButton extends Vue {
+class RecordedDetailKodiButton extends Vue {
     @Prop({ required: true })
     public recordedItem!: apid.RecordedItem;
 
@@ -39,4 +39,6 @@ export default class RecordedDetailKodiButton extends Vue {
         this.isOpenKodiDialog = true;
     }
 }
+
+export default toNative(RecordedDetailKodiButton);
 </script>

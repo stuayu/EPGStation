@@ -10,20 +10,18 @@
                             v-model="dialogState.selectedStreamType"
                             v-on:change="updateModeItems"
                             style="max-width: 120px"
-                            :menu-props="{ auto: true }"
                         ></v-select>
                         <v-select
                             v-if="isHiddenStreamMode === false"
                             :items="dialogState.streamModeItems"
                             v-model="dialogState.selectedStreamMode"
-                            :menu-props="{ auto: true }"
                         ></v-select>
                     </div>
                 </div>
                 <v-card-actions>
                     <v-spacer></v-spacer>
-                    <v-btn color="primary" text v-on:click="cancel">キャンセル</v-btn>
-                    <v-btn color="primary" text v-on:click="view">視聴</v-btn>
+                    <v-btn color="primary" variant="text" v-on:click="cancel">キャンセル</v-btn>
+                    <v-btn color="primary" variant="text" v-on:click="view">視聴</v-btn>
                 </v-card-actions>
             </v-card>
         </v-dialog>
@@ -35,11 +33,11 @@ import container from '@/model/ModelContainer';
 import IRecordedDetailSelectStreamState from '@/model/state/recorded/detail/IRecordedDetailSelectStreamState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({})
-export default class RecordedDetailSelectStreamDialog extends Vue {
+class RecordedDetailSelectStreamDialog extends Vue {
     public dialogState: IRecordedDetailSelectStreamState = container.get<IRecordedDetailSelectStreamState>('IRecordedDetailSelectStreamState');
     public isRemove: boolean = false;
     // ストリーム視聴設定セレクタ再描画用
@@ -47,7 +45,7 @@ export default class RecordedDetailSelectStreamDialog extends Vue {
 
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         this.dialogState.close();
     }
 
@@ -113,4 +111,6 @@ export default class RecordedDetailSelectStreamDialog extends Vue {
         }
     }
 }
+
+export default toNative(RecordedDetailSelectStreamDialog);
 </script>

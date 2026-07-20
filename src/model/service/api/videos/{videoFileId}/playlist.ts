@@ -14,7 +14,7 @@ export const get: Operation = async (req, res) => {
         const playlist = await videoFileApiModel.getM3u8(
             req.headers.host,
             api.isSecureProtocol(req),
-            parseInt(req.params.videoFileId, 10),
+            api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'),
         );
 
         if (playlist === null) {
@@ -25,8 +25,8 @@ export const get: Operation = async (req, res) => {
         } else {
             api.responsePlayList(req, res, playlist);
         }
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 

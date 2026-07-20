@@ -7,7 +7,7 @@
                     <v-card class="mx-auto" max-width="800">
                         <div class="guide-size-setting">
                             <v-list-item three-line>
-                                <v-list-item-content>
+                                <div class="v-list-item-content">
                                     <div class="title">通常表示</div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
@@ -18,7 +18,6 @@
                                             :items="channelHeightItems"
                                             v-model="storageModel.tmp.tablet.channelHeight"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -30,7 +29,6 @@
                                             :items="channelWidthItems"
                                             v-model="storageModel.tmp.tablet.channelWidth"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -42,7 +40,6 @@
                                             :items="fontSizeItems"
                                             v-model="storageModel.tmp.tablet.channelFontsize"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -54,7 +51,6 @@
                                             :items="timeHeightItems"
                                             v-model="storageModel.tmp.tablet.timescaleHeight"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -66,7 +62,6 @@
                                             :items="timeWidthItems"
                                             v-model="storageModel.tmp.tablet.timescaleWidth"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -78,7 +73,6 @@
                                             :items="fontSizeItems"
                                             v-model="storageModel.tmp.tablet.timescaleFontsize"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -90,14 +84,13 @@
                                             :items="fontSizeItems"
                                             v-model="storageModel.tmp.tablet.programFontSize"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
-                                </v-list-item-content>
+                                </div>
                             </v-list-item>
 
                             <v-list-item three-line>
-                                <v-list-item-content>
+                                <div class="v-list-item-content">
                                     <div class="title">モバイル表示</div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
@@ -108,7 +101,6 @@
                                             :items="channelHeightItems"
                                             v-model="storageModel.tmp.mobile.channelHeight"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -120,7 +112,6 @@
                                             :items="channelWidthItems"
                                             v-model="storageModel.tmp.mobile.channelWidth"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -132,7 +123,6 @@
                                             :items="fontSizeItems"
                                             v-model="storageModel.tmp.mobile.channelFontsize"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -144,7 +134,6 @@
                                             :items="timeHeightItems"
                                             v-model="storageModel.tmp.mobile.timescaleHeight"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -156,7 +145,6 @@
                                             :items="timeWidthItems"
                                             v-model="storageModel.tmp.mobile.timescaleWidth"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -168,7 +156,6 @@
                                             :items="fontSizeItems"
                                             v-model="storageModel.tmp.mobile.timescaleFontsize"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -180,16 +167,15 @@
                                             :items="fontSizeItems"
                                             v-model="storageModel.tmp.mobile.programFontSize"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
-                                </v-list-item-content>
+                                </div>
                             </v-list-item>
                         </div>
-                        <v-card-actions right>
+                        <v-card-actions>
                             <v-spacer></v-spacer>
-                            <v-btn text v-on:click="reset">リセット</v-btn>
-                            <v-btn text color="primary" v-on:click="save">保存</v-btn>
+                            <v-btn variant="text" v-on:click="reset">リセット</v-btn>
+                            <v-btn variant="text" color="primary" v-on:click="save">保存</v-btn>
                         </v-card-actions>
                     </v-card>
                 </v-container>
@@ -205,10 +191,9 @@ import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { IGuideSizeSettingStorageModel } from '@/model/storage/guide/IGuideSizeSettingStorageModel';
 import { ISettingStorageModel, GuideViewMode } from '@/model/storage/setting/ISettingStorageModel';
-import { Component, Vue, Watch } from 'vue-property-decorator';
-import { Route } from 'vue-router';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 interface SelectItem {
     text: string;
@@ -220,7 +205,7 @@ interface SelectItem {
         TitleBar,
     },
 })
-export default class GuideSizeSetting extends Vue {
+class GuideSizeSetting extends Vue {
     public isShow: boolean = false;
     public storageModel = container.get<IGuideSizeSettingStorageModel>('IGuideSizeSettingStorageModel');
 
@@ -233,8 +218,7 @@ export default class GuideSizeSetting extends Vue {
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
-    constructor() {
-        super();
+    public created(): void {
 
         for (let i = 0; i <= 600; i += 10) {
             this.channelWidthItems.push(i);
@@ -258,7 +242,7 @@ export default class GuideSizeSetting extends Vue {
         }
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         this.isShow = false;
     }
 
@@ -287,6 +271,8 @@ export default class GuideSizeSetting extends Vue {
         });
     }
 }
+
+export default toNative(GuideSizeSetting);
 </script>
 
 <style lang="sass" scoped>

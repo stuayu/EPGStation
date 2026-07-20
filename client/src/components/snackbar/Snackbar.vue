@@ -6,7 +6,7 @@
                     <div class="d-flex align-center snackbar" v-bind:class="snackbarClass">
                         <div class="text">{{ snackbarState.mainText }}</div>
                         <div class="ma-0 mr-2">
-                            <v-btn text small color="white" class="button" v-on:click="onClose">閉じる</v-btn>
+                            <v-btn variant="text" size="small" color="white" class="button" v-on:click="onClose">閉じる</v-btn>
                         </div>
                     </div>
                 </div>
@@ -18,10 +18,10 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class Snackbar extends Vue {
+class Snackbar extends Vue {
     public snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
     get snackbarClass(): any {
@@ -39,6 +39,8 @@ export default class Snackbar extends Vue {
         this.snackbarState.close();
     }
 }
+
+export default toNative(Snackbar);
 </script>
 
 <style lang="sass" scoped>

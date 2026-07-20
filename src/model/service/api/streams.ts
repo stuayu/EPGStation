@@ -9,8 +9,8 @@ export const get: Operation = async (req, res) => {
     try {
         const infos = await streamApiModel.getStreamInfos(req.query.isHalfWidth as any as boolean);
         api.responseJSON(res, 200, infos);
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 
@@ -55,8 +55,8 @@ export const del: Operation = async (_req, res) => {
         api.responseJSON(res, 200, {
             code: 200,
         });
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 

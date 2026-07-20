@@ -1,5 +1,5 @@
 <template>
-    <v-alert v-if="isShow" type="error" dismissible prominent border="left" class="server-status-banner" v-on:input="onClose">
+    <v-alert v-if="isShow" type="error" closable prominent border="start" class="server-status-banner" @click:close="onClose">
         <div class="text">Mirakurun (チューナーサーバ) に接続できません。ライブ視聴・番組表の更新・録画は利用できません。</div>
         <div class="text solution">
             ・Mirakurun サービスが起動しているか確認してください
@@ -12,10 +12,10 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import IServerStatusState from '@/model/state/serverStatus/IServerStatusState';
-import { Component, Vue } from 'vue-property-decorator';
+import { Component, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class ServerStatusBanner extends Vue {
+class ServerStatusBanner extends Vue {
     private serverStatusState: IServerStatusState = container.get<IServerStatusState>('IServerStatusState');
 
     get isShow(): boolean {
@@ -26,6 +26,8 @@ export default class ServerStatusBanner extends Vue {
         this.serverStatusState.closeBanner();
     }
 }
+
+export default toNative(ServerStatusBanner);
 </script>
 
 <style lang="sass" scoped>

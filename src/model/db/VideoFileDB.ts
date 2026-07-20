@@ -31,7 +31,7 @@ export default class VideoFileDB implements IVideoFileDB {
         let hasError = false;
         try {
             // 削除
-            await queryRunner.manager.delete(VideoFile, {});
+            await queryRunner.manager.createQueryBuilder().delete().from(VideoFile).execute();
 
             // 挿入処理
             for (const item of items) {

@@ -1,13 +1,13 @@
 <template>
     <v-main>
-        <TitleBar ref="title" :title="this.searchState.isEditingRule() === true ? 'ルール編集' : '検索'"></TitleBar>
+        <TitleBar ref="title" :title="searchState.isEditingRule() === true ? 'ルール編集' : '検索'"></TitleBar>
         <transition name="page">
             <div ref="appContent" class="app-content pa-3" v-bind:style="{ visibility: isVisible === true ? 'visible' : 'hidden' }" v-if="isShow === true">
                 <SearchOptionComponent ref="searchOption" v-if="searchState.searchOption !== null" v-on:search="search" v-on:clear="clear"></SearchOptionComponent>
                 <SearchReserves v-if="searchState.isTimeSpecification === true" :reserves="searchState.getRuleReservesResult()"></SearchReserves>
                 <SearchResult ref="searchResult" v-if="searchState.isTimeSpecification === false" v-on:ruleOption="scrollToRuleOption"></SearchResult>
                 <SearchRuleOption ref="ruleOption" v-on:cancel="cancel" v-on:add="add" v-on:update="update"></SearchRuleOption>
-                <v-btn v-on:click="scrollToTop" dark fixed bottom fab color="pink">
+                <v-btn v-on:click="scrollToTop" icon size="large" class="position-fixed right-0 bottom-0 ma-4" color="pink">
                     <v-icon>mdi-chevron-up</v-icon>
                 </v-btn>
                 <div class="fab-space"></div>
@@ -32,8 +32,9 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
-import { Component, Vue, Watch } from 'vue-property-decorator';
-import { Route } from 'vue-router';
+import type { ComponentPublicInstance } from 'vue';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 
 interface PageInfo {
@@ -47,7 +48,6 @@ interface PageInfo {
     genreSelect: number;
 }
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -59,11 +59,11 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
         ProgramDialog,
     },
 })
-export default class Search extends Vue {
+class Search extends Vue {
     public isShow: boolean = false;
     public isVisible: boolean = false;
 
-    private searchState: ISearchState = container.get<ISearchState>('ISearchState');
+    public searchState: ISearchState = container.get<ISearchState>('ISearchState');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
@@ -77,7 +77,7 @@ export default class Search extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
 
@@ -104,7 +104,7 @@ export default class Search extends Vue {
         // 検索後にスクロール
         if (needsScroll === true) {
             this.$nextTick(() => {
-                this.scrollToElementHead(this.$refs.searchResult as Vue);
+                this.scrollToElementHead(this.$refs.searchResult as ComponentPublicInstance);
             });
         }
     }
@@ -114,7 +114,7 @@ export default class Search extends Vue {
      * @param vue: Vue | undefined
      * @param offset: number default = 0
      */
-    private scrollToElementHead(vue: Vue | undefined, offset: number = 0): void {
+    private scrollToElementHead(vue: ComponentPublicInstance | undefined, offset: number = 0): void {
         if (typeof vue === 'undefined') {
             this.snackbarState.open({
                 color: 'error',
@@ -138,7 +138,7 @@ export default class Search extends Vue {
             throw new Error('TitleElementIsUndefined');
         }
 
-        return ((this.$refs.title as Vue).$el as HTMLElement).clientHeight;
+        return ((this.$refs.title as ComponentPublicInstance).$el as HTMLElement).clientHeight;
     }
 
     private clearPeriodState(): void {
@@ -203,7 +203,7 @@ export default class Search extends Vue {
     }
 
     public scrollToRuleOption(): void {
-        this.scrollToElementHead(this.$refs.ruleOption as Vue, 4);
+        this.scrollToElementHead(this.$refs.ruleOption as ComponentPublicInstance, 4);
     }
 
     /**
@@ -232,7 +232,7 @@ export default class Search extends Vue {
     /**
      * ページ更新時に呼ばれる
      */
-    public beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {
         this.savePageInfo();
         next();
     }
@@ -240,7 +240,7 @@ export default class Search extends Vue {
     /**
      * ページ離脱時に呼ばれる
      */
-    public beforeRouteLeave(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteLeave(to: Route, from: Route, next: () => void): void {
         this.savePageInfo();
         next();
     }
@@ -405,6 +405,15 @@ export default class Search extends Vue {
         });
     }
 }
+
+export default Object.assign(toNative(Search), {
+    beforeRouteUpdate(this: Search, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteUpdate(to, from, next);
+        },
+    beforeRouteLeave(this: Search, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteLeave(to, from, next);
+        },
+});
 </script>
 
 <style lang="sass" scoped>

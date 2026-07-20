@@ -8,7 +8,7 @@ export const get: Operation = async (req, res) => {
 
     try {
         const filePath = await dropLogApiModel.getIdFilePath(
-            parseInt(req.params.dropLogFileId, 10),
+            api.parseRequestParamInt(req.params.dropLogFileId, 'dropLogFileId'),
             parseInt(<string>req.query.maxsize, 10),
         );
 
@@ -20,14 +20,14 @@ export const get: Operation = async (req, res) => {
         } else {
             api.responseFile(req, res, filePath, 'text/plain', false);
         }
-    } catch (err: any) {
-        if (err.message === DropLogApiErrors.FILE_IS_TOO_LARGE) {
+    } catch (err: unknown) {
+        if (api.getErrorMessage(err) === DropLogApiErrors.FILE_IS_TOO_LARGE) {
             api.responseError(res, {
                 code: 416,
                 message: 'log file is too large',
             });
         } else {
-            api.responseServerError(res, err.message);
+            api.responseServerError(res, api.getErrorMessage(err));
         }
     }
 };

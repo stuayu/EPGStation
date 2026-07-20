@@ -1,5 +1,5 @@
 <template>
-    <v-app-bar app :color="appBarColor" :clipped-left="navigationState.isClipped">
+    <v-app-bar :color="appBarColor">
         <v-btn icon v-on:click="onClose">
             <v-icon>mdi-close</v-icon>
         </v-btn>
@@ -16,11 +16,11 @@
 
 <script lang="ts">
 import container from '@/model/ModelContainer';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import INavigationState from '../../model/state/navigation/INavigationState';
 
 @Component({})
-export default class EditTitleBar extends Vue {
+class EditTitleBar extends Vue {
     @Prop({ required: true })
     public title!: string;
 
@@ -43,8 +43,8 @@ export default class EditTitleBar extends Vue {
     /**
      * title bar の色を返す
      */
-    get appBarColor(): string | null {
-        return this.$vuetify.theme.dark === true ? null : 'white';
+    get appBarColor(): string | undefined {
+        return this.$vuetify.theme.global.current.dark === true ? undefined : 'white';
     }
 
     /**
@@ -69,4 +69,6 @@ export default class EditTitleBar extends Vue {
         this.$emit('delete');
     }
 }
+
+export default toNative(EditTitleBar);
 </script>

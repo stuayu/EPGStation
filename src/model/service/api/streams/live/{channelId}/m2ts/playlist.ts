@@ -12,7 +12,7 @@ export const get: Operation = async (req, res) => {
         }
 
         const playlist = await streamApiModel.getLiveM2TsStreamM3u8(req.headers.host, api.isSecureProtocol(req), {
-            channelId: parseInt(req.params.channelId, 10),
+            channelId: api.parseRequestParamInt(req.params.channelId, 'channelId'),
             mode: parseInt(req.query.mode as string, 10),
         });
 
@@ -24,8 +24,8 @@ export const get: Operation = async (req, res) => {
         } else {
             api.responsePlayList(req, res, playlist);
         }
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 

@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import { inject, injectable } from 'inversify';
 import mirakurun from 'mirakurun';
 import * as path from 'path';
-import * as url from 'url';
 import IConfigFile from './IConfigFile';
 import IConfiguration from './IConfiguration';
 import IMirakurunClientModel from './IMirakurunClientModel';
@@ -28,6 +27,8 @@ export default class MirakurunClientModel implements IMirakurunClientModel {
     private setClient(): void {
         const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json')).toString());
         const mirakurunPath = this.config.mirakurunPath;
+        // API エンドポイントのベースパス (未設定時はクライアントの従来デフォルト値をそのまま使う)
+        const apiPath = this.config.mirakurunAPIPath;
 
         /**
          * Copyright (c) 2016 Yuki KAN and Chinachu Project Contributors
@@ -36,6 +37,10 @@ export default class MirakurunClientModel implements IMirakurunClientModel {
          */
         if (/\\\\.\\pipe/.test(mirakurunPath)) {
             this.client.socketPath = mirakurunPath;
+            // named pipe は URL 由来の basePath を持たないため mirakurunAPIPath が明示設定されている場合のみ上書きする
+            if (typeof apiPath !== 'undefined') {
+                this.client.basePath = apiPath;
+            }
         } else if (/(?:\/|\+)unix:/.test(mirakurunPath) === true) {
             const standardFormat = /^http\+unix:\/\/([^\/]+)(\/?.*)$/;
             const legacyFormat = /^http:\/\/unix:([^:]+):?(.*)$/;
@@ -44,17 +49,21 @@ export default class MirakurunClientModel implements IMirakurunClientModel {
                 this.client.socketPath = mirakurunPath.replace(standardFormat, '$1').replace(/%2F/g, '/');
                 this.client.basePath = path.posix.join(
                     mirakurunPath.replace(standardFormat, '$2'),
-                    this.client.basePath,
+                    apiPath ?? this.client.basePath,
                 );
             } else {
                 this.client.socketPath = mirakurunPath.replace(legacyFormat, '$1');
-                this.client.basePath = path.posix.join(mirakurunPath.replace(legacyFormat, '$2'), this.client.basePath);
+                this.client.basePath = path.posix.join(
+                    mirakurunPath.replace(legacyFormat, '$2'),
+                    apiPath ?? this.client.basePath,
+                );
             }
         } else {
-            const urlObject = url.parse(mirakurunPath);
-            this.client.host = <string>urlObject.hostname;
-            this.client.port = Number(<string>urlObject.port);
-            this.client.basePath = path.posix.join(<string>urlObject.pathname, <string>this.client.basePath);
+            const urlObject = new URL(mirakurunPath);
+            this.client.https = urlObject.protocol === 'https:';
+            this.client.host = urlObject.hostname;
+            this.client.port = urlObject.port !== '' ? Number(urlObject.port) : this.client.https ? 443 : 80;
+            this.client.basePath = path.posix.join(urlObject.pathname, apiPath ?? this.client.basePath);
         }
 
         this.client.userAgent = `${pkg.name}/${pkg.version}`;

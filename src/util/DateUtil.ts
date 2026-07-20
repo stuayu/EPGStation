@@ -1,5 +1,5 @@
 namespace DateUtil {
-    const fmt: any = {
+    const fmt: Record<string, (date: Date) => string> = {
         yyyy: (date: Date): string => {
             return date.getFullYear() + '';
         },

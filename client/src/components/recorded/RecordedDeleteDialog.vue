@@ -2,15 +2,15 @@
     <v-dialog v-if="isRemove === false" v-model="dialogModel" max-width="300" scrollable>
         <v-card>
             <div class="pa-4 pb-0">
-                <div class="text--primary">{{ recordedItem.name }} を削除しますか?</div>
+                <div class="text-high-emphasis">{{ recordedItem.name }} を削除しますか?</div>
                 <div class="checkboxs py-2">
                     <v-checkbox v-for="v in videoFiles" v-bind:key="v.id" v-model="v.isDelete" :label="v.name" class="my-0"></v-checkbox>
                 </div>
             </div>
             <v-card-actions>
                 <v-spacer></v-spacer>
-                <v-btn color="primary" text v-on:click="dialogModel = false">キャンセル</v-btn>
-                <v-btn color="primary" text v-on:click="deleteRecorded">削除</v-btn>
+                <v-btn color="primary" variant="text" v-on:click="dialogModel = false">キャンセル</v-btn>
+                <v-btn color="primary" variant="text" v-on:click="deleteRecorded">削除</v-btn>
             </v-card-actions>
         </v-card>
     </v-dialog>
@@ -23,7 +23,7 @@ import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 interface VideoFileInfo {
@@ -33,7 +33,7 @@ interface VideoFileInfo {
 }
 
 @Component({})
-export default class RecordedDeleteDialog extends Vue {
+class RecordedDeleteDialog extends Vue {
     @Prop({ required: true })
     public recordedItem!: apid.RecordedItem;
 
@@ -168,6 +168,8 @@ export default class RecordedDeleteDialog extends Vue {
         return false;
     }
 }
+
+export default toNative(RecordedDeleteDialog);
 </script>
 
 <style lang="sass">

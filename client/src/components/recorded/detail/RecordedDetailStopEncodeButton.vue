@@ -1,16 +1,16 @@
 <template>
-    <v-btn v-if="recordedItem.isEncoding === true" color="teal white--text" v-on:click="stopEncode" class="ma-1">
-        <v-icon left dark>mdi-stop</v-icon>
+    <v-btn v-if="recordedItem.isEncoding === true" color="teal" v-on:click="stopEncode" class="ma-1">
+        <v-icon start>mdi-stop</v-icon>
         stop
     </v-btn>
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({})
-export default class RecordedDetailStopEncodeButton extends Vue {
+class RecordedDetailStopEncodeButton extends Vue {
     @Prop({ required: true })
     public recordedItem!: apid.RecordedItem;
 
@@ -18,4 +18,6 @@ export default class RecordedDetailStopEncodeButton extends Vue {
         this.$emit('stopEncode');
     }
 }
+
+export default toNative(RecordedDetailStopEncodeButton);
 </script>

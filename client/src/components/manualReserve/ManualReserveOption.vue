@@ -1,20 +1,20 @@
 <template>
     <v-card>
         <div class="pa-4 manual-reserve-option">
-            <v-expansion-panels :value.sync="manualReserveState.optionPanel" accordion multiple flat class="option-panels">
+            <v-expansion-panels v-model="manualReserveState.optionPanel" accordion multiple flat class="option-panels">
                 <v-expansion-panel>
-                    <v-expansion-panel-header>オプション</v-expansion-panel-header>
-                    <v-expansion-panel-content>
+                    <v-expansion-panel-title>オプション</v-expansion-panel-title>
+                    <v-expansion-panel-text>
                         <SearchOptionRow>
                             <div class="d-flex flex-wrap">
                                 <v-checkbox class="mx-1 my-0" v-model="manualReserveState.reserveOption.allowEndLack" label="状況に応じて末尾がかけることを許可"></v-checkbox>
                             </div>
                         </SearchOptionRow>
-                    </v-expansion-panel-content>
+                    </v-expansion-panel-text>
                 </v-expansion-panel>
                 <v-expansion-panel>
-                    <v-expansion-panel-header>ディレクトリ</v-expansion-panel-header>
-                    <v-expansion-panel-content>
+                    <v-expansion-panel-title>ディレクトリ</v-expansion-panel-title>
+                    <v-expansion-panel-text>
                         <SearchOptionRow>
                             <v-select
                                 class="directory"
@@ -22,23 +22,22 @@
                                 :items="manualReserveState.getPrentDirectoryItems()"
                                 label="directory"
                                 clearable
-                                :menu-props="{ auto: true }"
                             ></v-select>
                             <v-text-field v-model="manualReserveState.saveOption.directory" label="sub directory" clearable></v-text-field>
                         </SearchOptionRow>
-                    </v-expansion-panel-content>
+                    </v-expansion-panel-text>
                 </v-expansion-panel>
                 <v-expansion-panel>
-                    <v-expansion-panel-header>ファイル名形式</v-expansion-panel-header>
-                    <v-expansion-panel-content>
+                    <v-expansion-panel-title>ファイル名形式</v-expansion-panel-title>
+                    <v-expansion-panel-text>
                         <SearchOptionRow>
                             <v-text-field v-model="manualReserveState.saveOption.recordedFormat" label="file format" clearable></v-text-field>
                         </SearchOptionRow>
-                    </v-expansion-panel-content>
+                    </v-expansion-panel-text>
                 </v-expansion-panel>
                 <v-expansion-panel v-if="manualReserveState.isEnableEncodeMode() === true">
-                    <v-expansion-panel-header>エンコード1</v-expansion-panel-header>
-                    <v-expansion-panel-content>
+                    <v-expansion-panel-title>エンコード1</v-expansion-panel-title>
+                    <v-expansion-panel-text>
                         <SearchOptionRow>
                             <v-select
                                 class="encode-mode"
@@ -46,7 +45,6 @@
                                 :items="manualReserveState.getEncodeModeItems()"
                                 label="mode1"
                                 clearable
-                                :menu-props="{ auto: true }"
                             ></v-select>
                             <v-select
                                 class="directory"
@@ -54,15 +52,14 @@
                                 :items="manualReserveState.getPrentDirectoryItems()"
                                 label="directory1"
                                 clearable
-                                :menu-props="{ auto: true }"
                             ></v-select>
                             <v-text-field v-model="manualReserveState.encodeOption.directory1" label="sub directory1" clearable></v-text-field>
                         </SearchOptionRow>
-                    </v-expansion-panel-content>
+                    </v-expansion-panel-text>
                 </v-expansion-panel>
                 <v-expansion-panel v-if="manualReserveState.isEnableEncodeMode() === true">
-                    <v-expansion-panel-header>エンコード2</v-expansion-panel-header>
-                    <v-expansion-panel-content>
+                    <v-expansion-panel-title>エンコード2</v-expansion-panel-title>
+                    <v-expansion-panel-text>
                         <SearchOptionRow>
                             <v-select
                                 class="encode-mode"
@@ -70,7 +67,6 @@
                                 :items="manualReserveState.getEncodeModeItems()"
                                 label="mode2"
                                 clearable
-                                :menu-props="{ auto: true }"
                             ></v-select>
                             <v-select
                                 class="directory"
@@ -78,15 +74,14 @@
                                 :items="manualReserveState.getPrentDirectoryItems()"
                                 label="directory2"
                                 clearable
-                                :menu-props="{ auto: true }"
                             ></v-select>
                             <v-text-field v-model="manualReserveState.encodeOption.directory2" label="sub directory2" clearable></v-text-field>
                         </SearchOptionRow>
-                    </v-expansion-panel-content>
+                    </v-expansion-panel-text>
                 </v-expansion-panel>
                 <v-expansion-panel v-if="manualReserveState.isEnableEncodeMode() === true">
-                    <v-expansion-panel-header>エンコード3</v-expansion-panel-header>
-                    <v-expansion-panel-content>
+                    <v-expansion-panel-title>エンコード3</v-expansion-panel-title>
+                    <v-expansion-panel-text>
                         <SearchOptionRow>
                             <v-select
                                 class="encode-mode"
@@ -94,7 +89,6 @@
                                 :items="manualReserveState.getEncodeModeItems()"
                                 label="mode3"
                                 clearable
-                                :menu-props="{ auto: true }"
                             ></v-select>
                             <v-select
                                 class="directory"
@@ -102,28 +96,27 @@
                                 :items="manualReserveState.getPrentDirectoryItems()"
                                 label="directory3"
                                 clearable
-                                :menu-props="{ auto: true }"
                             ></v-select>
                             <v-text-field v-model="manualReserveState.encodeOption.directory3" label="sub directory3" clearable></v-text-field>
                         </SearchOptionRow>
-                    </v-expansion-panel-content>
+                    </v-expansion-panel-text>
                 </v-expansion-panel>
                 <v-expansion-panel v-if="manualReserveState.isEnableEncodeMode() === true">
-                    <v-expansion-panel-header>ファイル削除</v-expansion-panel-header>
-                    <v-expansion-panel-content>
+                    <v-expansion-panel-title>ファイル削除</v-expansion-panel-title>
+                    <v-expansion-panel-text>
                         <SearchOptionRow>
                             <v-checkbox class="mx-1 my-0" v-model="manualReserveState.encodeOption.isDeleteOriginalAfterEncode" label="元ファイルの自動削除"></v-checkbox>
                         </SearchOptionRow>
-                    </v-expansion-panel-content>
+                    </v-expansion-panel-text>
                 </v-expansion-panel>
             </v-expansion-panels>
         </div>
         <v-divider></v-divider>
         <v-card-actions>
             <v-spacer></v-spacer>
-            <v-btn text color="error" v-on:click="cancel">キャンセル</v-btn>
-            <v-btn v-if="isEditMode === false" text color="primary" v-on:click="add">追加</v-btn>
-            <v-btn v-else text color="primary" v-on:click="update">更新</v-btn>
+            <v-btn variant="text" color="error" v-on:click="cancel">キャンセル</v-btn>
+            <v-btn v-if="isEditMode === false" variant="text" color="primary" v-on:click="add">追加</v-btn>
+            <v-btn v-else variant="text" color="primary" v-on:click="update">更新</v-btn>
         </v-card-actions>
     </v-card>
 </template>
@@ -132,18 +125,18 @@
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import IManualReserveState from '@/model/state/reserve/manual/IManualReserveState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         SearchOptionRow,
     },
 })
-export default class ManualReserveOption extends Vue {
+class ManualReserveOption extends Vue {
     @Prop({ required: true })
     public isEditMode!: boolean;
 
-    private manualReserveState: IManualReserveState = container.get<IManualReserveState>('IManualReserveState');
+    public manualReserveState: IManualReserveState = container.get<IManualReserveState>('IManualReserveState');
 
     public cancel(): void {
         this.$emit('cancel');
@@ -157,6 +150,8 @@ export default class ManualReserveOption extends Vue {
         this.$emit('update');
     }
 }
+
+export default toNative(ManualReserveOption);
 </script>
 
 <style lang="sass" scoped>

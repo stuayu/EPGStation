@@ -3,7 +3,7 @@
         <EditTitleBar
             v-if="isEditMode === true"
             :title="selectedTitle"
-            :isEditMode.sync="isEditMode"
+            v-model:isEditMode="isEditMode"
             v-on:exit="onFinishEdit"
             v-on:selectall="onSelectAll"
             v-on:delete="onMultiplueDeletion"
@@ -20,10 +20,10 @@
             <div ref="appContent" class="app-content">
                 <v-container>
                     <div v-if="ruleState.getRules().length > 0" v-bind:style="contentWrapStyle">
-                        <RuleItems :rules="ruleState.getRules()" :isEditMode.sync="isEditMode" v-on:selected="selectItem"></RuleItems>
-                        <Pagination :total="ruleState.getTotal()" :pageSize="settingValue.rulesLength"></Pagination>
+                        <RuleItems :rules="ruleState.getRules()" v-model:isEditMode="isEditMode" v-on:selected="selectItem"></RuleItems>
+                        <Pagination :total="ruleState.getTotal()" :pageSize="settingValue?.rulesLength ?? 0"></Pagination>
                     </div>
-                    <v-btn v-on:click="addRule" fab dark fixed bottom right color="pink">
+                    <v-btn v-on:click="addRule" icon size="large" class="position-fixed right-0 bottom-0 ma-4" color="pink">
                         <v-icon>mdi-plus</v-icon>
                     </v-btn>
                     <div class="fab-space"></div>
@@ -31,7 +31,7 @@
             </div>
         </transition>
         <RuleMultipleDeletionDialog
-            :isOpen.sync="isOpenMultiplueDeletionDialog"
+            v-model:isOpen="isOpenMultiplueDeletionDialog"
             :total="ruleState.getSelectedCnt()"
             v-on:delete="onExecuteMultiplueDeletion"
         ></RuleMultipleDeletionDialog>
@@ -52,11 +52,10 @@ import IRuleState, { RuleFetchOption } from '@/model/state/rule/IRuleState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
-import { Route } from 'vue-router';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -68,14 +67,14 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
         RuleMultipleDeletionDialog,
     },
 })
-export default class Reserves extends Vue {
+class Reserves extends Vue {
     public isEditMode: boolean = false;
     public isOpenMultiplueDeletionDialog: boolean = false;
 
     private isVisibilityHidden: boolean = false;
-    private ruleState: IRuleState = container.get<IRuleState>('IRuleState');
+    public ruleState: IRuleState = container.get<IRuleState>('IRuleState');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
-    private settingValue: ISettingValue | null = null;
+    public settingValue: ISettingValue | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
@@ -103,12 +102,12 @@ export default class Reserves extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {
         this.isVisibilityHidden = true;
 
         this.$nextTick(() => {
@@ -203,6 +202,12 @@ export default class Reserves extends Vue {
         return option;
     }
 }
+
+export default Object.assign(toNative(Reserves), {
+    beforeRouteUpdate(this: Reserves, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteUpdate(to, from, next);
+        },
+});
 </script>
 
 <style lang="sass" scoped>

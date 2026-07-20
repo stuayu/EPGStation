@@ -5,10 +5,10 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import IGuideState from '@/model/state/guide/IGuideState';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class TimeScale extends Vue {
+class TimeScale extends Vue {
     get style(): any {
         return {
             top: this.position <= 0 ? '-100px' : `calc((${this.position} * (var(--timescale-height) / 60)) - ${this.position === 0 ? 0 : 1}px)`,
@@ -34,7 +34,7 @@ export default class TimeScale extends Vue {
         return (60 - new Date().getSeconds()) * 1000;
     }
 
-    public destroyed(): void {
+    public unmounted(): void {
         if (this.timerId !== null) {
             clearTimeout(this.timerId);
         }
@@ -54,6 +54,8 @@ export default class TimeScale extends Vue {
         this.updatePosition();
     }
 }
+
+export default toNative(TimeScale);
 </script>
 
 <style lang="sass" scoped>

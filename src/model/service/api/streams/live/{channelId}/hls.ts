@@ -8,14 +8,14 @@ export const get: Operation = async (req, res) => {
 
     try {
         const streamId = await streamApiModel.startLiveHLSStream({
-            channelId: parseInt(req.params.channelId, 10),
+            channelId: api.parseRequestParamInt(req.params.channelId, 'channelId'),
             mode: parseInt(req.query.mode as string, 10),
         });
         api.responseJSON(res, 200, {
             streamId: streamId,
         });
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 
