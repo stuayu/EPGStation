@@ -4,7 +4,7 @@
             v-if="!!noThumbnail === false"
             aspect-ratio="1.7778"
             :src="item.display.topThumbnailPath"
-            v-on:error="this.src = './img/noimg.png'"
+            v-on:error="onThumbnailError"
             v-on:click="gotoDetail"
             eager
             class="thumbnail"
@@ -50,6 +50,13 @@ import * as apid from '../../../../api';
     },
 })
 export default class RecordedSmallCard extends Vue {
+    public onThumbnailError(event: Event): void {
+        const image = event.target;
+        if (image instanceof HTMLImageElement) {
+            image.src = './img/noimg.png';
+        }
+    }
+
     @Prop({ required: true })
     public item!: RecordedDisplayData;
 
