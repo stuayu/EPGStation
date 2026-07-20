@@ -8,6 +8,7 @@
 - 言語/ランタイム: TypeScript / Node.js 18+ (CI では 18/20/22 を検証)
 - サーバ: Express + express-openapi, TypeORM (SQLite / MySQL), inversify (DI), log4js, socket.io
 - クライアント: Vue 2.7 + Vuetify 2 (クラスコンポーネント + デコレータ), inversify による独自 State 管理 (Vuex 不使用)
+- 動画再生: [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) に統一 (GitHub タグ固定)。HLS は hls.js、低遅延ライブは mpegts.js、ARIB 字幕は DPlayer 内蔵の aribb24.js を利用 (`client/src/components/video/`)
 - チューナーバックエンド: Mirakurun (`stuayu/Mirakurun` のコミット固定)
 
 ## プロセス構成
@@ -30,6 +31,7 @@
 ```
 
 - 親 → 子は [index.ts](../src/index.ts) の `runService()` が spawn し、落ちたら自動再起動
+- **Mirakurun 未接続でも起動する**: 起動時の疎通確認 (`ConnectionCheckModel`) は有限回で打ち切り、チューナー情報は 30 秒間隔のバックグラウンドリトライで復旧時に自動反映。接続状態は `GET /api/status` で取得でき、Web UI が警告バナーを表示する (DB 接続は従来通り必須)
 - プロセス間通信は `src/model/ipc/` (`IPCServer` = 親側, `IPCClient` = 子側, メッセージ定義は `IPCMessageDefine.ts`)
 
 ## ディレクトリ構成
