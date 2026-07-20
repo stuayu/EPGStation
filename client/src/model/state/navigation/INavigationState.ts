@@ -1,4 +1,4 @@
-import { Location, Route } from 'vue-router';
+import type { RouteLocationRaw as Location, RouteLocationNormalized as Route } from 'vue-router';
 
 export type NavigationType = 'permanent' | 'temporary' | 'default';
 

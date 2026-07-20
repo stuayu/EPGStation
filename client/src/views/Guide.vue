@@ -61,7 +61,7 @@ import UaUtil from '@/util/UaUtil';
 import Util from '@/util/Util';
 import { debounce, throttle } from 'lodash';
 import { Component, Vue, Watch } from 'vue-facing-decorator';
-import { Route } from 'vue-router';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 
 
 @Component({

@@ -27,7 +27,7 @@ import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import IStorageState from '@/model/state/storage/IStorageState';
 import { Component, Vue, Watch } from 'vue-facing-decorator';
-import { Route } from 'vue-router';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 
 
 @Component({

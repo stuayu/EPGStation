@@ -1,5 +1,5 @@
 import { cloneDeep } from 'lodash';
-import VueRouter, { Location, Route } from 'vue-router';
+import type { Router as VueRouter, RouteLocationRaw as Location, RouteLocationNormalized as Route } from 'vue-router';
 
 namespace Util {
     /**

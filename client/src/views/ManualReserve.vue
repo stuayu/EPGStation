@@ -27,7 +27,7 @@ import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISe
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
 import { Component, Vue, Watch } from 'vue-facing-decorator';
-import { Route } from 'vue-router';
+import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 
 interface PageInfo {
