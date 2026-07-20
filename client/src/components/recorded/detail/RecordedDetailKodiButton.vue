@@ -9,7 +9,7 @@
             <v-icon left dark>mdi-cast</v-icon>
             kodi
         </v-btn>
-        <SendVideoFileToKodiDialog :isOpen.sync="isOpenKodiDialog" :recordedItem="recordedItem" :videoFiles="videoFiles"></SendVideoFileToKodiDialog>
+        <SendVideoFileToKodiDialog v-model:isOpen="isOpenKodiDialog" :recordedItem="recordedItem" :videoFiles="videoFiles"></SendVideoFileToKodiDialog>
     </div>
 </template>
 
@@ -17,7 +17,7 @@
 import SendVideoFileToKodiDialog from '@/components/recorded/detail/SendVideoFileToKodiDialog.vue';
 import container from '@/model/ModelContainer';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({

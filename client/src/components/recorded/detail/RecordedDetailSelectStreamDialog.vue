@@ -35,7 +35,7 @@ import container from '@/model/ModelContainer';
 import IRecordedDetailSelectStreamState from '@/model/state/recorded/detail/IRecordedDetailSelectStreamState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({})
@@ -47,7 +47,7 @@ export default class RecordedDetailSelectStreamDialog extends Vue {
 
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         this.dialogState.close();
     }
 

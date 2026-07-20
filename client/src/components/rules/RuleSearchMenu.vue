@@ -24,7 +24,7 @@
 
 <script lang="ts">
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 
 @Component({})
 export default class RuleSearchMenu extends Vue {

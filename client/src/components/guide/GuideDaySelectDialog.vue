@@ -15,7 +15,7 @@
 <script lang="ts">
 import DateUtil from '@/util/DateUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
 
 @Component({})
 export default class GuideDaySelectDialog extends Vue {

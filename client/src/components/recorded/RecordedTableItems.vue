@@ -28,7 +28,7 @@
 <script lang="ts">
 import RecordedItemMenu from '@/components/recorded/RecordedItemMenu.vue';
 import { RecordedDisplayData } from '@/model/state/recorded/IRecordedUtil';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({

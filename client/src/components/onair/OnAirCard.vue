@@ -31,7 +31,7 @@ import IGuideProgramDialogState, { ProgramDialogOpenOption } from '@/model/state
 import { ReserveStateItemIndex } from '@/model/state/guide/IGuideReserveUtil';
 import IOnAirSelectStreamState from '@/model/state/onair/IOnAirSelectStreamState';
 import { OnAirDisplayData } from '@/model/state/onair/IOnAirState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})

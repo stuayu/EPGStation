@@ -36,7 +36,7 @@
 <script lang="ts">
 import RuleItemMenu from '@/components/rules/RuleItemMenu.vue';
 import { RuleStateData, RuleStateDisplayData } from '@/model/state/rule/IRuleState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 
 @Component({
     components: {

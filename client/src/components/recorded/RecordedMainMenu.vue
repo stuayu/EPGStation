@@ -41,7 +41,7 @@
 
 <script lang="ts">
 import Util from '@/util/Util';
-import { Component, Vue } from 'vue-property-decorator';
+import { Component, Vue } from 'vue-facing-decorator';
 
 @Component({})
 export default class RecordedMainMenu extends Vue {

@@ -59,13 +59,13 @@
         </v-menu>
         <div v-if="isOpened === true" class="menu-background" v-on:click="onClickMenuBackground"></div>
         <RecordedDownloadDialog
-            :isOpen.sync="isOpenDownloadDialog"
+            v-model:isOpen="isOpenDownloadDialog"
             :recordedItem="recordedItem"
             v-on:download="downloadVideo"
             v-on:downloadPlayList="downloadPlayList"
         ></RecordedDownloadDialog>
         <RecordedDeleteDialog
-            :isOpen.sync="isOpenDeleteDialog"
+            v-model:isOpen="isOpenDeleteDialog"
             :recordedItem="recordedItem"
             :isDelaySnackbarViewNum="800"
             v-on:deleteSuccessful="deleteSuccessful"
@@ -81,7 +81,7 @@ import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import StrUtil from '@/util/StrUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({

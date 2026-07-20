@@ -32,7 +32,7 @@ import IGuideState from '@/model/state/guide/IGuideState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import DateUtil from '@/util/DateUtil';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 
 @Component({})
 export default class GuideTimeSelector extends Vue {

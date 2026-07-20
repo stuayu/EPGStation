@@ -5,7 +5,7 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import IGuideState from '@/model/state/guide/IGuideState';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 
 @Component({})
 export default class TimeScale extends Vue {
@@ -34,7 +34,7 @@ export default class TimeScale extends Vue {
         return (60 - new Date().getSeconds()) * 1000;
     }
 
-    public destroyed(): void {
+    public unmounted(): void {
         if (this.timerId !== null) {
             clearTimeout(this.timerId);
         }

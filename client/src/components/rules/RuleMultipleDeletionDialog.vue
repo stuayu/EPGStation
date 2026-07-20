@@ -17,7 +17,7 @@
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
 
 @Component({})
 export default class RuleMultipleDeletionDialog extends Vue {

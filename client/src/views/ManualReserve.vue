@@ -26,7 +26,7 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 import { Route } from 'vue-router';
 import * as apid from '../../../api';
 
@@ -38,7 +38,6 @@ interface PageInfo {
     encodeOption: EncodedOption;
 }
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -72,7 +71,7 @@ export default class ManualReserve extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }

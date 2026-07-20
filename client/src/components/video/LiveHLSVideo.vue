@@ -9,7 +9,7 @@ import ILiveHLSVideoState from '@/model/state/onair/ILiveHLSVideoState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
 import { DPlayerType } from 'dplayer';
-import { Component, Prop } from 'vue-property-decorator';
+import { Component, Prop } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
@@ -46,10 +46,10 @@ export default class LiveHLSVideo extends BaseVideo {
         }, 1000);
     }
 
-    public async beforeDestroy(): Promise<void> {
+    public async beforeUnmount(): Promise<void> {
         clearInterval(this.checkEnabledTimerId);
 
-        super.beforeDestroy();
+        super.beforeUnmount();
 
         await this.videoState.stop().catch(err => {
             this.snackbarState.open({

@@ -75,7 +75,7 @@
                         </div>
                     </div>
                     <RecordedDetailSelectStreamDialog></RecordedDetailSelectStreamDialog>
-                    <DropLogDialog :isOpen.sync="isOpenDropLogDialog"></DropLogDialog>
+                    <DropLogDialog v-model:isOpen="isOpenDropLogDialog"></DropLogDialog>
                 </div>
             </transition>
         </v-container>
@@ -100,11 +100,10 @@ import { RecordedDisplayData } from '@/model/state/recorded/IRecordedUtil';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 import IRecordedDetailState from '../model/state/recorded/detail/IRecordedDetailState';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {
@@ -145,7 +144,7 @@ export default class RecordedDetail extends Vue {
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }

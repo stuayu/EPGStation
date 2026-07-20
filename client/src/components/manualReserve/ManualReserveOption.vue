@@ -1,7 +1,7 @@
 <template>
     <v-card>
         <div class="pa-4 manual-reserve-option">
-            <v-expansion-panels :value.sync="manualReserveState.optionPanel" accordion multiple flat class="option-panels">
+            <v-expansion-panels v-model:value="manualReserveState.optionPanel" accordion multiple flat class="option-panels">
                 <v-expansion-panel>
                     <v-expansion-panel-header>オプション</v-expansion-panel-header>
                     <v-expansion-panel-content>
@@ -132,7 +132,7 @@
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import IManualReserveState from '@/model/state/reserve/manual/IManualReserveState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 
 @Component({
     components: {

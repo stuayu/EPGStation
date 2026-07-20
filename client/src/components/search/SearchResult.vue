@@ -14,7 +14,7 @@
 import SearchResultCard from '@/components/search/SearchResultCard.vue';
 import container from '@/model/ModelContainer';
 import ISearchState from '@/model/state/search/ISearchState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 
 @Component({
     components: {

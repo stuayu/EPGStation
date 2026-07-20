@@ -10,7 +10,7 @@
                 <div style="visibility: hidden">dummy</div>
             </v-container>
         </transition>
-        <RecordedUploadingDialog :isOpen.sync="isUploading"></RecordedUploadingDialog>
+        <RecordedUploadingDialog v-model:isOpen="isUploading"></RecordedUploadingDialog>
     </v-main>
 </template>
 
@@ -22,10 +22,9 @@ import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import IRecordedUploadState from '@/model/state/recorded/upload/IRecordedUploadState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 import { Route } from 'vue-router';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 @Component({
     components: {

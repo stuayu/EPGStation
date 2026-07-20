@@ -34,7 +34,7 @@
             </v-list>
         </v-menu>
         <div v-if="isOpened === true" class="menu-background" v-on:click="onClickMenuBackground"></div>
-        <ReserveDeleteDialog :isOpen.sync="isOpenDeleteDialog" :reserveItem="reserveItem"></ReserveDeleteDialog>
+        <ReserveDeleteDialog v-model:isOpen="isOpenDeleteDialog" :reserveItem="reserveItem"></ReserveDeleteDialog>
     </div>
 </template>
 
@@ -43,7 +43,7 @@ import ReserveDeleteDialog from '@/components/reserves/ReserveDeleteDialog.vue';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 import IReservesApiModel from '../../model/api/reserves/IReservesApiModel';
 

@@ -34,7 +34,7 @@
 import IReservesApiModel from '@/model/api/reserves/IReservesApiModel';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { Component, Vue } from 'vue-property-decorator';
+import { Component, Vue } from 'vue-facing-decorator';
 
 @Component({})
 export default class ReservesMainMenu extends Vue {

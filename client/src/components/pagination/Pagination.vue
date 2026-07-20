@@ -11,7 +11,7 @@
 import MobilePagination from '@/components/pagination/MobilePagination.vue';
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 
 @Component({
     components: {

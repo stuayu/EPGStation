@@ -5,7 +5,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Vue } from 'vue-property-decorator';
+import { Component, Vue } from 'vue-facing-decorator';
 
 @Component({})
 export default class GuideScroller extends Vue {
@@ -33,7 +33,7 @@ export default class GuideScroller extends Vue {
         document.addEventListener('mousemove', this.mousemoveListener, false);
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         (this.$el as HTMLElement).removeEventListener('mousedown', this.mousedownListener, false);
         document.removeEventListener('mouseup', this.mouseupListener, false);
         document.removeEventListener('mousemove', this.mousemoveListener, false);

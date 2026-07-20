@@ -14,7 +14,7 @@
                         :disabled="isNoRule === true"
                         :loading="loading"
                         :items="searchState.ruleItems"
-                        :search-input.sync="search"
+                        v-model:search-input="search"
                         item-text="keyword"
                         item-value="id"
                         cache-items
@@ -50,7 +50,7 @@ import IRecordedSearchState from '@/model/state/recorded/search/IRecordedSearchS
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
 import VuetifyUtil from '@/util/VuetifyUtil';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})

@@ -335,11 +335,10 @@ import IScrollPositionState from '@/model/state/IScrollPositionState';
 import INavigationState from '@/model/state/navigation/INavigationState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, GuideViewMode } from '@/model/storage/setting/ISettingStorageModel';
-import { Component, Vue, Watch } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-facing-decorator';
 import IColorThemeState from '@/model/state/IColorThemeState';
 import Mpegts from 'mpegts.js';
 
-Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 
 interface GuideModeItem {
     text: string;
@@ -443,11 +442,11 @@ export default class Settings extends Vue {
         }
     }
 
-    public beforeDestroy(): void {
+    public beforeUnmount(): void {
         this.isShow = false;
     }
 
-    public destroyed(): void {
+    public unmounted(): void {
         // ページから移動するときに tmp をリセット
         this.storageModel.resetTmpValue();
         this.$vuetify.theme.dark = this.colorThemeState.isDarkTheme();

@@ -20,14 +20,14 @@
                 </div>
             </div>
         </v-card>
-        <EncodeCancelDialog :isOpen.sync="isOpenCancelDialog" :item="item.encodeItem"></EncodeCancelDialog>
+        <EncodeCancelDialog v-model:isOpen="isOpenCancelDialog" :item="item.encodeItem"></EncodeCancelDialog>
     </div>
 </template>
 
 <script lang="ts">
 import EncodeCancelDialog from '@/components/encode/EncodeCancelDialog.vue';
 import { EncodeInfoDisplayItem } from '@/model/state/encode/IEncodeState';
-import { Component, Prop, Vue } from 'vue-property-decorator';
+import { Component, Prop, Vue } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({

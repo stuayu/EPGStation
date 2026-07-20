@@ -23,7 +23,7 @@ import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 interface VideoFileInfo {

@@ -12,7 +12,7 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import IServerStatusState from '@/model/state/serverStatus/IServerStatusState';
-import { Component, Vue } from 'vue-property-decorator';
+import { Component, Vue } from 'vue-facing-decorator';
 
 @Component({})
 export default class ServerStatusBanner extends Vue {

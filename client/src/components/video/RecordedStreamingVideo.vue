@@ -9,7 +9,7 @@ import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IRecordedStreamingVideoState from '@/model/state/recorded/streaming/IRecordedStreamingVideoState';
 import DPlayerUtil from '@/util/DPlayerUtil';
 import { DPlayerType } from 'dplayer';
-import { Component, Prop } from 'vue-property-decorator';
+import { Component, Prop } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 interface VideoSrcInfo {
@@ -82,14 +82,14 @@ export default class RecordedStreamingVideo extends BaseVideo {
         }
     }
 
-    public async beforeDestroy(): Promise<void> {
+    public async beforeUnmount(): Promise<void> {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
 
         clearInterval(this.updateDurationTimerId);
         clearTimeout(this.setCurrentTimeTimerId);
 
-        super.beforeDestroy();
+        super.beforeUnmount();
     }
 
     /**

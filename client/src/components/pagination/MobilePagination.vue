@@ -15,7 +15,7 @@
 <script lang="ts">
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator';
+import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
 import { Route } from 'vue-router';
 
 @Component({})
