@@ -10,13 +10,11 @@
                             v-model="dialogState.selectedStreamType"
                             v-on:change="updateModeItems"
                             style="max-width: 120px"
-                            :menu-props="{ auto: true }"
                         ></v-select>
                         <v-select
                             v-if="isHiddenStreamMode === false"
                             :items="dialogState.streamModeItems"
                             v-model="dialogState.selectedStreamMode"
-                            :menu-props="{ auto: true }"
                         ></v-select>
                     </div>
                 </div>

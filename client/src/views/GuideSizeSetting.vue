@@ -18,7 +18,6 @@
                                             :items="channelHeightItems"
                                             v-model="storageModel.tmp.tablet.channelHeight"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -30,7 +29,6 @@
                                             :items="channelWidthItems"
                                             v-model="storageModel.tmp.tablet.channelWidth"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -42,7 +40,6 @@
                                             :items="fontSizeItems"
                                             v-model="storageModel.tmp.tablet.channelFontsize"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -54,7 +51,6 @@
                                             :items="timeHeightItems"
                                             v-model="storageModel.tmp.tablet.timescaleHeight"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -66,7 +62,6 @@
                                             :items="timeWidthItems"
                                             v-model="storageModel.tmp.tablet.timescaleWidth"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -78,7 +73,6 @@
                                             :items="fontSizeItems"
                                             v-model="storageModel.tmp.tablet.timescaleFontsize"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -90,7 +84,6 @@
                                             :items="fontSizeItems"
                                             v-model="storageModel.tmp.tablet.programFontSize"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                 </div>
@@ -108,7 +101,6 @@
                                             :items="channelHeightItems"
                                             v-model="storageModel.tmp.mobile.channelHeight"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -120,7 +112,6 @@
                                             :items="channelWidthItems"
                                             v-model="storageModel.tmp.mobile.channelWidth"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -132,7 +123,6 @@
                                             :items="fontSizeItems"
                                             v-model="storageModel.tmp.mobile.channelFontsize"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -144,7 +134,6 @@
                                             :items="timeHeightItems"
                                             v-model="storageModel.tmp.mobile.timescaleHeight"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -156,7 +145,6 @@
                                             :items="timeWidthItems"
                                             v-model="storageModel.tmp.mobile.timescaleWidth"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -168,7 +156,6 @@
                                             :items="fontSizeItems"
                                             v-model="storageModel.tmp.mobile.timescaleFontsize"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
@@ -180,7 +167,6 @@
                                             :items="fontSizeItems"
                                             v-model="storageModel.tmp.mobile.programFontSize"
                                             class="size-selector"
-                                            :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
                                 </div>

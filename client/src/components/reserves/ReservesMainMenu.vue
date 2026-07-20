@@ -1,6 +1,6 @@
 <template>
     <div class="reserves-main-menu">
-        <v-menu class="menu" v-model="isOpened" bottom left>
+        <v-menu class="menu" v-model="isOpened" location="bottom start">
             <template v-slot:activator="{ props }">
                 <v-btn icon class="menu-button" v-bind="props">
                     <v-icon>mdi-dots-vertical</v-icon>

@@ -1,8 +1,8 @@
 <template>
     <div>
-        <v-menu v-model="isOpened" bottom left>
+        <v-menu v-model="isOpened" location="bottom start">
             <template v-slot:activator="{ props }">
-                <v-btn dark icon v-bind="props">
+                <v-btn icon v-bind="props">
                     <v-icon>mdi-dots-vertical</v-icon>
                 </v-btn>
             </template>

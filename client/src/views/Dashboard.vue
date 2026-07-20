@@ -93,6 +93,12 @@ interface ScrollData {
         ReservesCard,
         RecordedsmallCard,
     },
+    beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+        (this as any).handleBeforeRouteUpdate(to, from, next);
+    },
+    beforeRouteLeave(to: Route, from: Route, next: () => void): void {
+        (this as any).handleBeforeRouteLeave(to, from, next);
+    },
 })
 class Dashboard extends Vue {
     public isShow: boolean = false;
@@ -295,7 +301,7 @@ class Dashboard extends Vue {
     /**
      * ページ更新時に呼ばれる
      */
-    public beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {
         this.saveScrollPosition();
         next();
     }
@@ -303,7 +309,7 @@ class Dashboard extends Vue {
     /**
      * ページ離脱時に呼ばれる
      */
-    public beforeRouteLeave(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteLeave(to: Route, from: Route, next: () => void): void {
         this.saveScrollPosition();
         next();
     }

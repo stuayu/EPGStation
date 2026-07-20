@@ -7,7 +7,7 @@
                 <SearchReserves v-if="searchState.isTimeSpecification === true" :reserves="searchState.getRuleReservesResult()"></SearchReserves>
                 <SearchResult ref="searchResult" v-if="searchState.isTimeSpecification === false" v-on:ruleOption="scrollToRuleOption"></SearchResult>
                 <SearchRuleOption ref="ruleOption" v-on:cancel="cancel" v-on:add="add" v-on:update="update"></SearchRuleOption>
-                <v-btn v-on:click="scrollToTop" dark fixed bottom fab color="pink">
+                <v-btn v-on:click="scrollToTop" icon size="large" class="position-fixed right-0 bottom-0 ma-4" color="pink">
                     <v-icon>mdi-chevron-up</v-icon>
                 </v-btn>
                 <div class="fab-space"></div>
@@ -56,6 +56,12 @@ interface PageInfo {
         SearchReserves,
         SearchRuleOption,
         ProgramDialog,
+    },
+    beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+        (this as any).handleBeforeRouteUpdate(to, from, next);
+    },
+    beforeRouteLeave(to: Route, from: Route, next: () => void): void {
+        (this as any).handleBeforeRouteLeave(to, from, next);
     },
 })
 export default class Search extends Vue {
@@ -231,7 +237,7 @@ export default class Search extends Vue {
     /**
      * ページ更新時に呼ばれる
      */
-    public beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {
         this.savePageInfo();
         next();
     }
@@ -239,7 +245,7 @@ export default class Search extends Vue {
     /**
      * ページ離脱時に呼ばれる
      */
-    public beforeRouteLeave(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteLeave(to: Route, from: Route, next: () => void): void {
         this.savePageInfo();
         next();
     }

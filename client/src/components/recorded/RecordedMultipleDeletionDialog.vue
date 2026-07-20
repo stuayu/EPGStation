@@ -4,7 +4,7 @@
             <v-card-text class="pa-4 pb-0">
                 <div>選択した {{ total }} 件の番組を削除しますか。</div>
                 <div v-if="!!disableOption === false">
-                    <v-select :items="optionItems" v-model="deleteOption" :menu-props="{ auto: true }"></v-select>
+                    <v-select :items="optionItems" v-model="deleteOption"></v-select>
                 </div>
             </v-card-text>
             <v-card-actions>

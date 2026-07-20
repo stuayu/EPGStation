@@ -1,13 +1,13 @@
 <template>
     <div v-if="pages.length > 0" class="pagination d-flex justify-center">
         <v-btn v-bind:class="{ disabled: currentPage === pages[0] }" :color="color" v-on:click="onMovePage(currentPage - 1)" class="my-2 mx-2">
-            <v-icon dark>mdi-chevron-left</v-icon>
+            <v-icon>mdi-chevron-left</v-icon>
         </v-btn>
         <v-btn :color="page === currentPage ? 'primary' : color" v-for="page in pages" v-bind:key="page" v-on:click="onMovePage(page)" class="my-2 mx-1">
             {{ page }}
         </v-btn>
         <v-btn v-bind:class="{ disabled: currentPage === totalPages }" :color="color" v-on:click="onMovePage(currentPage + 1)" class="my-2 mx-2">
-            <v-icon dark>mdi-chevron-right</v-icon>
+            <v-icon>mdi-chevron-right</v-icon>
         </v-btn>
     </div>
 </template>

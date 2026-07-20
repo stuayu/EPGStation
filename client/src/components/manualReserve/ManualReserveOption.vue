@@ -22,7 +22,6 @@
                                 :items="manualReserveState.getPrentDirectoryItems()"
                                 label="directory"
                                 clearable
-                                :menu-props="{ auto: true }"
                             ></v-select>
                             <v-text-field v-model="manualReserveState.saveOption.directory" label="sub directory" clearable></v-text-field>
                         </SearchOptionRow>
@@ -46,7 +45,6 @@
                                 :items="manualReserveState.getEncodeModeItems()"
                                 label="mode1"
                                 clearable
-                                :menu-props="{ auto: true }"
                             ></v-select>
                             <v-select
                                 class="directory"
@@ -54,7 +52,6 @@
                                 :items="manualReserveState.getPrentDirectoryItems()"
                                 label="directory1"
                                 clearable
-                                :menu-props="{ auto: true }"
                             ></v-select>
                             <v-text-field v-model="manualReserveState.encodeOption.directory1" label="sub directory1" clearable></v-text-field>
                         </SearchOptionRow>
@@ -70,7 +67,6 @@
                                 :items="manualReserveState.getEncodeModeItems()"
                                 label="mode2"
                                 clearable
-                                :menu-props="{ auto: true }"
                             ></v-select>
                             <v-select
                                 class="directory"
@@ -78,7 +74,6 @@
                                 :items="manualReserveState.getPrentDirectoryItems()"
                                 label="directory2"
                                 clearable
-                                :menu-props="{ auto: true }"
                             ></v-select>
                             <v-text-field v-model="manualReserveState.encodeOption.directory2" label="sub directory2" clearable></v-text-field>
                         </SearchOptionRow>
@@ -94,7 +89,6 @@
                                 :items="manualReserveState.getEncodeModeItems()"
                                 label="mode3"
                                 clearable
-                                :menu-props="{ auto: true }"
                             ></v-select>
                             <v-select
                                 class="directory"
@@ -102,7 +96,6 @@
                                 :items="manualReserveState.getPrentDirectoryItems()"
                                 label="directory3"
                                 clearable
-                                :menu-props="{ auto: true }"
                             ></v-select>
                             <v-text-field v-model="manualReserveState.encodeOption.directory3" label="sub directory3" clearable></v-text-field>
                         </SearchOptionRow>

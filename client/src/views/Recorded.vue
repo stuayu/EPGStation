@@ -73,6 +73,9 @@ import * as apid from '../../../api';
         RecordedMultipleDeletionDialog,
         RecordedCleanupDialog,
     },
+    beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+        (this as any).handleBeforeRouteUpdate(to, from, next);
+    },
 })
 export default class Recorded extends Vue {
     public isEditMode: boolean = false;
@@ -117,7 +120,7 @@ export default class Recorded extends Vue {
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {
         this.isVisibilityHidden = true;
 
         this.$nextTick(() => {

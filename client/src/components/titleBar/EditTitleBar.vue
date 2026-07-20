@@ -1,5 +1,5 @@
 <template>
-    <v-app-bar app :color="appBarColor" :clipped-left="navigationState.isClipped">
+    <v-app-bar :color="appBarColor">
         <v-btn icon v-on:click="onClose">
             <v-icon>mdi-close</v-icon>
         </v-btn>

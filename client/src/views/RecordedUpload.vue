@@ -4,7 +4,7 @@
         <transition name="page">
             <v-container>
                 <RecordedUploadForm v-on:reset="reset" v-on:upload="upload"></RecordedUploadForm>
-                <v-btn v-on:click="addVideoFile" dark fixed bottom fab right color="pink">
+                <v-btn v-on:click="addVideoFile" icon size="large" class="position-fixed right-0 bottom-0 ma-4" color="pink">
                     <v-icon>mdi-plus</v-icon>
                 </v-btn>
                 <div style="visibility: hidden">dummy</div>

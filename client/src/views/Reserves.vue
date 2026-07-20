@@ -59,6 +59,9 @@ import * as apid from '../../../api';
         Pagination,
         ReserveMultipleDeletionDialog,
     },
+    beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+        (this as any).handleBeforeRouteUpdate(to, from, next);
+    },
 })
 export default class Reserves extends Vue {
     public isEditMode: boolean = false;
@@ -117,7 +120,7 @@ export default class Reserves extends Vue {
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }
 
-    public beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
+    public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {
         this.isVisibilityHidden = true;
 
         this.$nextTick(() => {

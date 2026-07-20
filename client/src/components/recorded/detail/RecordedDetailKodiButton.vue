@@ -6,7 +6,7 @@
             v-on:click="openKodiDialog"
             class="ma-1"
         >
-            <v-icon left dark>mdi-cast</v-icon>
+            <v-icon start>mdi-cast</v-icon>
             kodi
         </v-btn>
         <SendVideoFileToKodiDialog v-model:isOpen="isOpenKodiDialog" :recordedItem="recordedItem" :videoFiles="videoFiles"></SendVideoFileToKodiDialog>

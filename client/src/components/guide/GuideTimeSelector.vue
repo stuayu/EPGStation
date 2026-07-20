@@ -1,17 +1,17 @@
 <template>
     <div>
-        <v-menu v-model="isOpen" bottom left :close-on-content-click="false">
+        <v-menu v-model="isOpen" location="bottom start" :close-on-content-click="false">
             <template v-slot:activator="{ props }">
-                <v-btn dark icon v-bind="props">
+                <v-btn icon v-bind="props">
                     <v-icon>mdi-clock-outline</v-icon>
                 </v-btn>
             </template>
             <v-card>
                 <div class="guide-time-selector pa-2">
                     <div class="d-flex">
-                        <v-select v-if="broadcastItems.length > 0" :items="broadcastItems" v-model="broadcastValue" :menu-props="{ auto: true }" class="broadcast"></v-select>
-                        <v-select :items="dayItems" v-model="dayValue" :menu-props="{ auto: true }" class="day"></v-select>
-                        <v-select :items="hourItems" v-model="hourValue" :menu-props="{ auto: true }" class="hour"></v-select>
+                        <v-select v-if="broadcastItems.length > 0" :items="broadcastItems" v-model="broadcastValue" class="broadcast"></v-select>
+                        <v-select :items="dayItems" v-model="dayValue" class="day"></v-select>
+                        <v-select :items="hourItems" v-model="hourValue" class="hour"></v-select>
                     </div>
                 </div>
                 <v-card-actions>

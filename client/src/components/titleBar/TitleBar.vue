@@ -1,5 +1,5 @@
 <template>
-    <v-app-bar app :dark="$vuetify.theme.global.current.value.dark === false" :color="appBarColor" :clipped-left="navigationState.isClipped">
+    <v-app-bar :dark="$vuetify.theme.global.current.value.dark === false" :color="appBarColor">
         <v-app-bar-nav-icon @click.stop="toggle"></v-app-bar-nav-icon>
         <v-toolbar-title class="title-content" v-bind:class="{ clickable: !!needsTitleClickEvent === true }" v-on:click="onTitle">
             {{ title }}
