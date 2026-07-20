@@ -126,16 +126,34 @@ class ServiceServer implements IServiceServer {
      */
     private setStaticFiles(): void {
         // static files
-        this.app.use(this.createUrl('/img'), express.static(path.join(__dirname, '..', '..', '..', 'img')));
+        this.app.use(this.createUrl('/img'), express.static(path.join(__dirname, '..', '..', '..', 'img'), this.getStaticOptions()));
 
         // thumbnail
-        this.app.use(this.createUrl('/thumbnail'), express.static(this.config.thumbnail));
+        this.app.use(this.createUrl('/thumbnail'), express.static(this.config.thumbnail, this.getStaticOptions()));
 
         // streamFile
-        this.app.use(this.createUrl('/streamfiles'), express.static(this.config.streamFilePath));
+        this.app.use(this.createUrl('/streamfiles'), express.static(this.config.streamFilePath, this.getStaticOptions()));
 
         // client
-        this.app.use(this.createUrl('/'), express.static(ServiceServer.CLIENT_DIR));
+        this.app.use(this.createUrl('/'), express.static(ServiceServer.CLIENT_DIR, this.getStaticOptions()));
+    }
+
+    /** Express 5 で必要な配信ファイルの MIME を明示する。 */
+    private getStaticOptions(): express.ServeStaticOptions {
+        return {
+            setHeaders: (res, filePath): void => {
+                const mimeByExtension: Record<string, string> = {
+                    '.ts': 'video/mp2t',
+                    '.m4s': 'video/iso.segment',
+                    '.m3u8': 'application/vnd.apple.mpegurl',
+                    '.log': 'text/plain; charset=utf-8',
+                };
+                const mime = mimeByExtension[path.extname(filePath).toLowerCase()];
+                if (typeof mime !== 'undefined') {
+                    res.setHeader('Content-Type', mime);
+                }
+            },
+        };
     }
 
     /**

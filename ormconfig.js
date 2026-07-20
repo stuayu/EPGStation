@@ -27,6 +27,7 @@ switch (config.dbtype) {
             subscribers: [subscriber],
             migrationsRun: false,
             migrations: migrations,
+            invalidWhereValuesBehavior: { null: 'throw', undefined: 'throw' },
         });
         break;
 
@@ -46,6 +47,7 @@ switch (config.dbtype) {
             subscribers: [subscriber],
             migrationsRun: false,
             migrations: migrations,
+            invalidWhereValuesBehavior: { null: 'throw', undefined: 'throw' },
         });
         break;
 

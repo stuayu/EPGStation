@@ -54,6 +54,7 @@ export default class DBOperator implements IDBOperator {
                 subscribers: [subscriber],
                 migrationsRun: true,
                 migrations: migrations,
+            invalidWhereValuesBehavior: { null: 'throw', undefined: 'throw' },
             });
         } else if (this.config.dbtype === 'mysql' && typeof this.config.mysql !== 'undefined') {
             connection = new DataSource({
@@ -71,6 +72,7 @@ export default class DBOperator implements IDBOperator {
                 subscribers: [subscriber],
                 migrationsRun: true,
                 migrations: migrations,
+            invalidWhereValuesBehavior: { null: 'throw', undefined: 'throw' },
             });
         } else {
             throw new Error('DBTypeError');
