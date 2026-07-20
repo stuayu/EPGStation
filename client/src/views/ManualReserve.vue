@@ -56,7 +56,7 @@ interface PageInfo {
 class ManualReserve extends Vue {
     public isEditMode: boolean = false;
 
-    private manualReserveState: IManualReserveState = container.get<IManualReserveState>('IManualReserveState');
+    public manualReserveState: IManualReserveState = container.get<IManualReserveState>('IManualReserveState');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private settingValue: ISettingValue = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();

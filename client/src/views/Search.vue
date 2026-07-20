@@ -68,7 +68,7 @@ class Search extends Vue {
     public isShow: boolean = false;
     public isVisible: boolean = false;
 
-    private searchState: ISearchState = container.get<ISearchState>('ISearchState');
+    public searchState: ISearchState = container.get<ISearchState>('ISearchState');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');

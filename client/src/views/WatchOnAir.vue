@@ -43,7 +43,7 @@ class WatchOnAir extends Vue {
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
-    private watchParam: WatchParam | null = null;
+    public watchParam: WatchParam | null = null;
 
     @Watch('$route', { immediate: true, deep: true })
     public onUrlChange(): void {

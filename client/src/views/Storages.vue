@@ -38,7 +38,7 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
 class Storages extends Vue {
     public knowledge = 33;
 
-    private storageState = container.get<IStorageState>('IStorageState');
+    public storageState = container.get<IStorageState>('IStorageState');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');

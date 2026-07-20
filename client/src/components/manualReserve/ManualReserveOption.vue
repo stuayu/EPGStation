@@ -136,7 +136,7 @@ class ManualReserveOption extends Vue {
     @Prop({ required: true })
     public isEditMode!: boolean;
 
-    private manualReserveState: IManualReserveState = container.get<IManualReserveState>('IManualReserveState');
+    public manualReserveState: IManualReserveState = container.get<IManualReserveState>('IManualReserveState');
 
     public cancel(): void {
         this.$emit('cancel');

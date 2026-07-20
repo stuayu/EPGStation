@@ -75,9 +75,9 @@ class Reserves extends Vue {
     public isOpenMultiplueDeletionDialog: boolean = false;
 
     private isVisibilityHidden: boolean = false;
-    private ruleState: IRuleState = container.get<IRuleState>('IRuleState');
+    public ruleState: IRuleState = container.get<IRuleState>('IRuleState');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
-    private settingValue: ISettingValue | null = null;
+    public settingValue: ISettingValue | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');

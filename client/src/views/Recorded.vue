@@ -83,9 +83,9 @@ class Recorded extends Vue {
     public isOpenCleanupDialog: boolean = false;
 
     private isVisibilityHidden: boolean = false;
-    private recordedState: IRecordedState = container.get<IRecordedState>('IRecordedState');
+    public recordedState: IRecordedState = container.get<IRecordedState>('IRecordedState');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
-    private settingValue: ISettingValue | null = null;
+    public settingValue: ISettingValue | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');

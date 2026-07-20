@@ -85,7 +85,7 @@ class ManualTimeReserveOption extends Vue {
     @Prop({ required: true })
     public isEditMode!: boolean;
 
-    private manualReserveState: IManualReserveState = container.get<IManualReserveState>('IManualReserveState');
+    public manualReserveState: IManualReserveState = container.get<IManualReserveState>('IManualReserveState');
 
     public formatDay(date: string | number | Date): number {
         return new Date(date).getDate();

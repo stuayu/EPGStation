@@ -63,7 +63,7 @@ class Navigation extends Vue {
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
-    private versionState: IVersionState = container.get<IVersionState>('IVersionState');
+    public versionState: IVersionState = container.get<IVersionState>('IVersionState');
     private onUpdateStatusCallback = (async (): Promise<void> => {
         await this.versionState.fetchData();
     }).bind(this);
