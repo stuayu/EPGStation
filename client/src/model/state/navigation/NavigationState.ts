@@ -276,7 +276,7 @@ export default class NavigationState implements INavigationState {
             },
         });
         newItems.push({
-            icon: 'settings',
+            icon: 'mdi-cog',
             title: '設定',
             herf: {
                 path: '/settings',
