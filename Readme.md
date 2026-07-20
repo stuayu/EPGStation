@@ -16,6 +16,9 @@
 - **Windows 完全対応** (named pipe 接続、Windows サービス化、セットアップマニュアル)
 - **県外地上波対応** (チャンネル種別 `NW1`〜`NW40` の追加)
 - **Mirakurun への HTTPS 接続対応** (`mirakurunPath: https://...` を指定可能。API エンドポイントのベースパスも `mirakurunAPIPath` で変更可能)
+- **依存関係のモダナイズ**
+  - フロントエンドを Vue 3 + Vuetify 4 へ更新し、ビルドを Vue CLI から Vite へ移行
+  - サーバ側を Node.js 24 / Express 5 / TypeORM 1.0 / better-sqlite3 へ更新
 
 ### インストールとビルド方法
 
