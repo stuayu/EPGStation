@@ -34,7 +34,7 @@ jobs:
     - name: Mirakurun Checkout
       uses: actions/checkout@v4
       with:
-        ref: feature/4.0.0-windows
+        ref: stuayu-main
         repository: stuayu/Mirakurun
         path: Mirakurun
     
