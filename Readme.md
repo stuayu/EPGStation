@@ -1,22 +1,29 @@
-# EPGStation 
+# EPGStation (stuayu フォーク版)
 
-|ブランチ|状態|
+| ブランチ | 状態 |
 |---|---|
-|test|[![build](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml/badge.svg?branch=test)](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml)|
-|master|[![build](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml/badge.svg?branch=master)](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml)|
+| main | [![build](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml/badge.svg?branch=main)](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml) |
+| test | [![build](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml/badge.svg?branch=test)](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml) |
 
-フォーク版の機能詳細は[doc/stuayu-fork.md](doc/stuayu-fork.md)をご覧ください．
+[l3tnun/EPGStation](https://github.com/l3tnun/EPGStation) のフォーク版です。フォーク版の機能詳細は [doc/stuayu-fork.md](doc/stuayu-fork.md) をご覧ください。
+
 > [!NOTE]
-> こちらはMirakurunのdevブランチ版でしか動作しない変更を加えています。  
-> ご利用の際は十分注意して利用してください。
+> 本フォークは[フォーク版 Mirakurun (stuayu/Mirakurun)](https://github.com/stuayu/Mirakurun) と組み合わせて動作させることを前提としています。
+> 本家 Mirakurun や mirakc での動作は保証しません。
 
+## フォーク版の主な拡張
+
+- **Windows 完全対応** (named pipe 接続、Windows サービス化、セットアップマニュアル)
+- **県外地上波対応** (チャンネル種別 `NW1`〜`NW40` の追加)
+- **Mirakurun への HTTPS 接続対応** (`mirakurunPath: https://...` を指定可能。API エンドポイントのベースパスも `mirakurunAPIPath` で変更可能)
 
 ### インストールとビルド方法
+
 - Windows
-  - npm run all-install && npm run build-win
-  - npm run install-win-service
-- Linux/Mac
-  - npm run all-install && npm run build
+  - `npm run all-install && npm run build-win`
+  - `npm run install-win-service` (Windows サービスとして登録する場合)
+- Linux / macOS
+  - `npm run all-install && npm run build`
 
 以下オリジナル
 ---
@@ -61,31 +68,26 @@ PC からの閲覧でもモダンな UI で操作可能です
 
 ## 動作環境
 
--   Linux / macOS / ~~Windows~~
--   [Node.js](http://nodejs.org/) : ^18.16.1
--   [Mirakurun](https://github.com/Chinachu/Mirakurun) : ^3.8.0 or [mirakc](https://github.com/mirakc/mirakc) : ^3.1.10
+-   Linux / macOS / Windows
+-   [Node.js](http://nodejs.org/) : 24.x (npm 11.x)
+-   [フォーク版 Mirakurun (stuayu/Mirakurun)](https://github.com/stuayu/Mirakurun)
+    -   HTTP / HTTPS / unix socket / named pipe (Windows) での接続に対応
+    -   本家 [Mirakurun](https://github.com/Chinachu/Mirakurun) や [mirakc](https://github.com/mirakc/mirakc) での動作は保証しません
 -   いずれかのデータベース
     -   [SQLite3](https://www.sqlite.org/)（設定不要だが検索機能に制限あり）[標準]
         -   [SQLite3 使用時の正規表現での検索の有効化について](doc/sqlite3-regexp.md)
     -   [MySQL](https://www.mysql.com/jp/) ([MariaDB](https://mariadb.org/))【推奨(要設定)】※文字コードは utf8mb4
         -   [Mirakurun 3.9.0-beta.24 以降の設定について](doc/mysql-mirakurun-3.9.0-beta.24.md)
-    -   ~~[PostgreSQL](https://www.postgresql.org/) (version 9.5 以上)~~
+    -   ~~[PostgreSQL](https://www.postgresql.org/)~~ (未対応)
 -   [FFmpeg](http://ffmpeg.org/)
 
-sqlite3 パッケージのインストール時にバイナリが存在しなかった場合は次の環境も必要
+SQLite ドライバ ([better-sqlite3](https://github.com/WiseLibs/better-sqlite3)) のインストール時にビルド済みバイナリが取得できなかった場合は次の環境も必要
 
 -   for Linux / macOS
     -   [Python v3.x](https://www.python.org/) node-gyp にて必要
     -   [GCC](https://gcc.gnu.org/) node-gyp にて必要
--   ~~for Windows~~
-    -   ~~[windows-build-tools](https://npmjs.com/package/windows-build-tools) node-gyp にて必要~~
-
-### 構築済み推奨環境
-
--   [docker-mirakurun-epgstation](https://github.com/l3tnun/docker-mirakurun-epgstation)
-
--   [nvenc + docker 環境での構築例](https://github.com/kazuki0824/EPGStation-nvenc-docker)
-    [(created by kazuki0824)](https://github.com/kazuki0824)
+-   for Windows
+    -   [Visual Studio Build Tools](https://visualstudio.microsoft.com/ja/downloads/) node-gyp にて必要
 
 ---
 
@@ -93,7 +95,7 @@ sqlite3 パッケージのインストール時にバイナリが存在しなか
 
 ### [Linux / macOS 用セットアップマニュアル](doc/linux-setup.md)
 
-### ~~[Windows 用セットアップマニュアル](doc/windows-setup.md)~~
+### [Windows 用セットアップマニュアル](doc/windows-setup.md)
 
 ### [字幕表示 / 低遅延配信用セットアップマニュアル](doc/caption-lowlatency-setup.md)
 
@@ -106,7 +108,7 @@ sqlite3 パッケージのインストール時にバイナリが存在しなか
     ```
     $ git pull
     $ npm run all-install
-    $ npm run build
+    $ npm run build        # Windows は npm run build-win
     ```
 
 ---
