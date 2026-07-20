@@ -78,11 +78,11 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
         OnAirSelectStream,
         GuideDaySelectDialog,
     },
-    beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
-        (this as any).handleBeforeRouteUpdate(to, from, next);
+    beforeRouteUpdate(this: Guide, to: Route, from: Route, next: () => void): void {
+        this.handleBeforeRouteUpdate(to, from, next);
     },
-    beforeRouteLeave(to: Route, from: Route, next: () => void): void {
-        (this as any).handleBeforeRouteLeave(to, from, next);
+    beforeRouteLeave(this: Guide, to: Route, from: Route, next: () => void): void {
+        this.handleBeforeRouteLeave(to, from, next);
     },
 })
 export default class Guide extends Vue {

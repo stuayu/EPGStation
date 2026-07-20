@@ -46,11 +46,11 @@ interface PageInfo {
         ManualTimeReserveOption,
         ManualReserveOptionComponent,
     },
-    beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
-        (this as any).handleBeforeRouteUpdate(to, from, next);
+    beforeRouteUpdate(this: ManualReserve, to: Route, from: Route, next: () => void): void {
+        this.handleBeforeRouteUpdate(to, from, next);
     },
-    beforeRouteLeave(to: Route, from: Route, next: () => void): void {
-        (this as any).handleBeforeRouteLeave(to, from, next);
+    beforeRouteLeave(this: ManualReserve, to: Route, from: Route, next: () => void): void {
+        this.handleBeforeRouteLeave(to, from, next);
     },
 })
 export default class ManualReserve extends Vue {

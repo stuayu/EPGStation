@@ -93,11 +93,11 @@ interface ScrollData {
         ReservesCard,
         RecordedsmallCard,
     },
-    beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
-        (this as any).handleBeforeRouteUpdate(to, from, next);
+    beforeRouteUpdate(this: Dashboard, to: Route, from: Route, next: () => void): void {
+        this.handleBeforeRouteUpdate(to, from, next);
     },
-    beforeRouteLeave(to: Route, from: Route, next: () => void): void {
-        (this as any).handleBeforeRouteLeave(to, from, next);
+    beforeRouteLeave(this: Dashboard, to: Route, from: Route, next: () => void): void {
+        this.handleBeforeRouteLeave(to, from, next);
     },
 })
 class Dashboard extends Vue {

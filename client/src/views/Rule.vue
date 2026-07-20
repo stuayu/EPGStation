@@ -66,8 +66,8 @@ import * as apid from '../../../api';
         Pagination,
         RuleMultipleDeletionDialog,
     },
-    beforeRouteUpdate(to: Route, from: Route, next: () => void): void {
-        (this as any).handleBeforeRouteUpdate(to, from, next);
+    beforeRouteUpdate(this: Reserves, to: Route, from: Route, next: () => void): void {
+        this.handleBeforeRouteUpdate(to, from, next);
     },
 })
 export default class Reserves extends Vue {
