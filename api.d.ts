@@ -563,6 +563,16 @@ export interface M2TSStreamParam {
 }
 
 /**
+ * 外部サービスとの接続状態
+ */
+export interface Status {
+    mirakurun: {
+        isAlive: boolean; // mirakurun へ接続できているか
+        checkedAt: UnixtimeMS; // 接続確認を行った時刻
+    };
+}
+
+/**
  * クライアントが受け取る設定情報
  */
 export interface Config {
