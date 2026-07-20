@@ -58,12 +58,6 @@ interface PageInfo {
         SearchRuleOption,
         ProgramDialog,
     },
-    beforeRouteUpdate(this: Search, to: Route, from: Route, next: () => void): void {
-        this.handleBeforeRouteUpdate(to, from, next);
-    },
-    beforeRouteLeave(this: Search, to: Route, from: Route, next: () => void): void {
-        this.handleBeforeRouteLeave(to, from, next);
-    },
 })
 class Search extends Vue {
     public isShow: boolean = false;
@@ -412,7 +406,14 @@ class Search extends Vue {
     }
 }
 
-export default toNative(Search);
+export default Object.assign(toNative(Search), {
+    beforeRouteUpdate(this: Search, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteUpdate(to, from, next);
+        },
+    beforeRouteLeave(this: Search, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteLeave(to, from, next);
+        },
+});
 </script>
 
 <style lang="sass" scoped>

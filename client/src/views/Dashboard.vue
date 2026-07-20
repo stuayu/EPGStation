@@ -93,12 +93,6 @@ interface ScrollData {
         ReservesCard,
         RecordedsmallCard,
     },
-    beforeRouteUpdate(this: Dashboard, to: Route, from: Route, next: () => void): void {
-        this.handleBeforeRouteUpdate(to, from, next);
-    },
-    beforeRouteLeave(this: Dashboard, to: Route, from: Route, next: () => void): void {
-        this.handleBeforeRouteLeave(to, from, next);
-    },
 })
 class Dashboard extends Vue {
     public isShow: boolean = false;
@@ -468,7 +462,14 @@ namespace Dashboard {
     export const MIN_MIDTH_OF_SIDE_BY_SIDE = 1023;
 }
 
-export default toNative(Dashboard);
+export default Object.assign(toNative(Dashboard), {
+    beforeRouteUpdate(this: Dashboard, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteUpdate(to, from, next);
+        },
+    beforeRouteLeave(this: Dashboard, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteLeave(to, from, next);
+        },
+});
 </script>
 
 <style lang="sass" scoped>

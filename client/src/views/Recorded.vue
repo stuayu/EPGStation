@@ -73,9 +73,6 @@ import * as apid from '../../../api';
         RecordedMultipleDeletionDialog,
         RecordedCleanupDialog,
     },
-    beforeRouteUpdate(this: Recorded, to: Route, from: Route, next: () => void): void {
-        this.handleBeforeRouteUpdate(to, from, next);
-    },
 })
 class Recorded extends Vue {
     public isEditMode: boolean = false;
@@ -244,5 +241,9 @@ class Recorded extends Vue {
     }
 }
 
-export default toNative(Recorded);
+export default Object.assign(toNative(Recorded), {
+    beforeRouteUpdate(this: Recorded, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteUpdate(to, from, next);
+        },
+});
 </script>

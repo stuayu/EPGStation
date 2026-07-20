@@ -46,12 +46,6 @@ interface PageInfo {
         ManualTimeReserveOption,
         ManualReserveOptionComponent,
     },
-    beforeRouteUpdate(this: ManualReserve, to: Route, from: Route, next: () => void): void {
-        this.handleBeforeRouteUpdate(to, from, next);
-    },
-    beforeRouteLeave(this: ManualReserve, to: Route, from: Route, next: () => void): void {
-        this.handleBeforeRouteLeave(to, from, next);
-    },
 })
 class ManualReserve extends Vue {
     public isEditMode: boolean = false;
@@ -263,7 +257,14 @@ class ManualReserve extends Vue {
     }
 }
 
-export default toNative(ManualReserve);
+export default Object.assign(toNative(ManualReserve), {
+    beforeRouteUpdate(this: ManualReserve, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteUpdate(to, from, next);
+        },
+    beforeRouteLeave(this: ManualReserve, to: Route, from: Route, next: () => void): void {
+            this.handleBeforeRouteLeave(to, from, next);
+        },
+});
 </script>
 
 <style lang="sass" scoped>
