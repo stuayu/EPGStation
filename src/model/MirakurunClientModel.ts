@@ -62,8 +62,7 @@ export default class MirakurunClientModel implements IMirakurunClientModel {
             const urlObject = new URL(mirakurunPath);
             this.client.https = urlObject.protocol === 'https:';
             this.client.host = urlObject.hostname;
-            this.client.port =
-                urlObject.port !== '' ? Number(urlObject.port) : this.client.https ? 443 : 80;
+            this.client.port = urlObject.port !== '' ? Number(urlObject.port) : this.client.https ? 443 : 80;
             this.client.basePath = path.posix.join(urlObject.pathname, apiPath ?? this.client.basePath);
         }
 
