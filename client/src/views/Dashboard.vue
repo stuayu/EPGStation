@@ -18,7 +18,7 @@
                                     ></RecordedsmallCard>
                                 </div>
                                 <div v-if="recordingState.getTotal() > recordingState.getRecorded().length" class="my-2">
-                                    <v-btn variant="text" block color="primary mx-auto" v-on:click="gotoNextPage('/recording')">more</v-btn>
+                                    <v-btn variant="text" block color="primary" class="mx-auto" v-on:click="gotoNextPage('/recording')">more</v-btn>
                                 </div>
                             </div>
                         </template>
@@ -36,7 +36,7 @@
                                     ></RecordedsmallCard>
                                 </div>
                                 <div v-if="recordedState.getTotal() > recordedState.getRecorded().length" class="my-2">
-                                    <v-btn variant="text" block color="primary mx-auto" v-on:click="gotoNextPage('/recorded')">more</v-btn>
+                                    <v-btn variant="text" block color="primary" class="mx-auto" v-on:click="gotoNextPage('/recorded')">more</v-btn>
                                 </div>
                             </div>
                         </template>
@@ -46,7 +46,7 @@
                             <div>
                                 <ReservesCard :reserves="reservesState.getReserves()" :flat="true" :isEditMode="false"></ReservesCard>
                                 <div v-if="reservesState.getTotal() > reservesState.getReserves().length" class="px-2 pb-2">
-                                    <v-btn variant="text" block color="primary mx-auto" v-on:click="gotoNextPage('/reserves')">more</v-btn>
+                                    <v-btn variant="text" block color="primary" class="mx-auto" v-on:click="gotoNextPage('/reserves')">more</v-btn>
                                 </div>
                             </div>
                         </template>

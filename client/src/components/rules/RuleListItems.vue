@@ -12,7 +12,7 @@
                             <v-list-item-title class="subtitle-1">{{ item.display.keyword }}</v-list-item-title>
                         </div>
                         <div class="menu d-flex align-center">
-                            <span class="mx-2 grey--text text--lighten-1">{{ item.display.reservationsCnt }}</span>
+                            <span class="mx-2 text-grey-lighten-1">{{ item.display.reservationsCnt }}</span>
                             <RuleItemMenu v-if="isEditMode === false" :ruleItem="item"></RuleItemMenu>
                         </div>
                     </div>

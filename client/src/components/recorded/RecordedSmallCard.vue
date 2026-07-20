@@ -11,17 +11,17 @@
         ></v-img>
         <div v-on:click="gotoDetail" class="content pa-2 my-auto">
             <div class="d-flex align-center">
-                <div class="text mt-1 subtitle-2 font-weight-bold">{{ item.display.name }}</div>
+                <div class="text mt-1 text-subtitle-2 font-weight-bold">{{ item.display.name }}</div>
                 <div v-if="isEditMode === false" class="menu-wrap">
                     <RecordedItemMenu :recordedItem="item.recordedItem" v-on:stopEncode="stopEncode"></RecordedItemMenu>
                 </div>
             </div>
-            <div class="text caption font-weight-light">{{ item.display.channelName }}</div>
-            <div class="text caption font-weight-light">{{ item.display.time }} ({{ item.display.duration }} m)</div>
+            <div class="text text-caption font-weight-light">{{ item.display.channelName }}</div>
+            <div class="text text-caption font-weight-light">{{ item.display.time }} ({{ item.display.duration }} m)</div>
 
             <div
                 v-if="isShowDropInfo === true && typeof item.display.drop !== 'undefined'"
-                class="text caption font-weight-light"
+                class="text text-caption font-weight-light"
                 v-bind:class="{ droped: item.display.hasDrop === true }"
             >
                 {{ item.display.dropSimple }}
@@ -29,11 +29,11 @@
 
             <div
                 v-else-if="typeof item.display.description === 'undefined' || item.display.description.replace(/\s+/g, '').length === 0"
-                class="text caption font-weight-light dummy"
+                class="text text-caption font-weight-light dummy"
             >
                 dummy
             </div>
-            <div v-else class="text caption font-regular">{{ item.display.description }}</div>
+            <div v-else class="text text-caption font-regular">{{ item.display.description }}</div>
         </div>
     </v-card>
 </template>

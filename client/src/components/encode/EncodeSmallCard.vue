@@ -5,17 +5,17 @@
                 <v-img aspect-ratio="1.7778" :src="item.display.topThumbnailPath" v-on:error="this.src = './img/noimg.png'" eager class="thumbnail"></v-img>
                 <div class="content pa-2 my-auto">
                     <div class="d-flex align-center">
-                        <div class="text mt-1 subtitle-2 font-weight-bold">{{ item.display.name }}</div>
+                        <div class="text mt-1 text-subtitle-2 font-weight-bold">{{ item.display.name }}</div>
                         <div v-if="isEditMode === false" class="menu-wrap">
                             <v-btn icon class="menu-button" v-on:click="openCancelDialog">
                                 <v-icon>mdi-close</v-icon>
                             </v-btn>
                         </div>
                     </div>
-                    <div class="text caption font-weight-light">{{ item.display.channelName }}</div>
-                    <div class="text caption font-weight-light">{{ item.display.time }} ({{ item.display.duration }} m)</div>
-                    <div class="text caption font-regular">{{ item.display.mode }}</div>
-                    <div class="text caption font-regular">{{ item.display.encodeInfo }}</div>
+                    <div class="text text-caption font-weight-light">{{ item.display.channelName }}</div>
+                    <div class="text text-caption font-weight-light">{{ item.display.time }} ({{ item.display.duration }} m)</div>
+                    <div class="text text-caption font-regular">{{ item.display.mode }}</div>
+                    <div class="text text-caption font-regular">{{ item.display.encodeInfo }}</div>
                     <v-progress-linear v-if="typeof item.display.percent !== 'undefined'" buffer-value="100" :value="item.display.percent"></v-progress-linear>
                 </div>
             </div>

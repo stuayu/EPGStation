@@ -1,5 +1,5 @@
 <template>
-    <v-app-bar app :dark="$vuetify.theme.dark === false" :color="appBarColor" :clipped-left="navigationState.isClipped">
+    <v-app-bar app :dark="$vuetify.theme.global.current.value.dark === false" :color="appBarColor" :clipped-left="navigationState.isClipped">
         <v-app-bar-nav-icon @click.stop="toggle"></v-app-bar-nav-icon>
         <v-toolbar-title class="title-content" v-bind:class="{ clickable: !!needsTitleClickEvent === true }" v-on:click="onTitle">
             {{ title }}
@@ -31,7 +31,7 @@ export default class TitleBar extends Vue {
      * title bar の色を返す
      */
     get appBarColor(): string | null {
-        return this.$vuetify.theme.dark === true ? null : 'indigo';
+        return this.$vuetify.theme.global.name.value = (== true ? null : 'indigo') ? 'dark' : 'light';
     }
 
     public onTitle(): void {

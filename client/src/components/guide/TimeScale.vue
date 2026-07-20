@@ -1,6 +1,6 @@
 <template>
     <div class="time-scale">
-        <div class="white--text item" v-bind:class="getItemClass(time)" v-for="time in guideState.getTimes()" v-bind:key="time">
+        <div class="text-white item" v-bind:class="getItemClass(time)" v-for="time in guideState.getTimes()" v-bind:key="time">
             {{ time }}
         </div>
         <div class="item dummy">dummy</div>

@@ -1,5 +1,5 @@
 <template>
-    <v-btn v-if="recordedItem.isEncoding === true" color="teal white--text" v-on:click="stopEncode" class="ma-1">
+    <v-btn v-if="recordedItem.isEncoding === true" color="teal" v-on:click="stopEncode" class="ma-1">
         <v-icon left dark>mdi-stop</v-icon>
         stop
     </v-btn>

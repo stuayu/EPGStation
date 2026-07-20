@@ -4,11 +4,11 @@
             <v-list-item three-line style="cursor: pointer">
                 <div class="v-list-item-content">
                     <div class="subtitle-1 font-weight-black">{{ displayInfo.channelName }}</div>
-                    <div class="caption font-weight-light">{{ displayInfo.time }}</div>
-                    <div class="subtitle-2">
+                    <div class="text-caption font-weight-light">{{ displayInfo.time }}</div>
+                    <div class="text-subtitle-2">
                         {{ displayInfo.name }}
                     </div>
-                    <div class="body-2 font-weight-light">{{ displayInfo.description }}</div>
+                    <div class="text-body-2 font-weight-light">{{ displayInfo.description }}</div>
                 </div>
             </v-list-item>
         </v-card>

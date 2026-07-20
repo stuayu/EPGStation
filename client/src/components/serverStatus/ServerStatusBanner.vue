@@ -1,5 +1,5 @@
 <template>
-    <v-alert v-if="isShow" type="error" dismissible prominent border="left" class="server-status-banner" v-on:input="onClose">
+    <v-alert v-if="isShow" type="error" closable prominent border="start" class="server-status-banner" @click:close="onClose">
         <div class="text">Mirakurun (チューナーサーバ) に接続できません。ライブ視聴・番組表の更新・録画は利用できません。</div>
         <div class="text solution">
             ・Mirakurun サービスが起動しているか確認してください

@@ -1,7 +1,7 @@
 <template>
     <div class="wrap" v-bind:class="{ 'pt-4': typeof title !== 'undefined' }">
         <div
-            class="title subtitle-2 font-weight-regular"
+            class="title text-subtitle-2 font-weight-regular"
             v-bind:class="{
                 required: !!required,
                 'font-weight-bold': !!required,

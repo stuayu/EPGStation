@@ -2,7 +2,7 @@
     <div>
         <v-btn
             v-if="recordedItem.isRecording === false && serverConfig.isEnableSendVideoFileLinkToKodi() === true"
-            color="teal white--text"
+            color="teal"
             v-on:click="openKodiDialog"
             class="ma-1"
         >

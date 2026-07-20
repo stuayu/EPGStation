@@ -44,7 +44,7 @@ class MobilePagination extends Vue {
     }
 
     get color(): string {
-        return this.$vuetify.theme.dark === true ? '' : 'white';
+        return this.$vuetify.theme.global.name.value = (== true ? '' : 'white') ? 'dark' : 'light';
     }
 
     @Watch('$route', { immediate: true, deep: true })

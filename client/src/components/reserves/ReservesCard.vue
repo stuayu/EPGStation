@@ -13,11 +13,11 @@
                             <v-spacer></v-spacer>
                             <ReserveMenu v-if="isEditMode === false" :reserveItem="reserve.reserveItem" :disableEdit="disableEdit"></ReserveMenu>
                         </div>
-                        <div class="subtitle-2 font-weight-light">{{ reserve.display.channelName }}</div>
-                        <div class="caption font-weight-light mb-2">
+                        <div class="text-subtitle-2 font-weight-light">{{ reserve.display.channelName }}</div>
+                        <div class="text-caption font-weight-light mb-2">
                             {{ reserve.display.day }}({{ reserve.display.dow }}) {{ reserve.display.startTime }} ~ {{ reserve.display.endTime }} ({{ reserve.display.duration }}分)
                         </div>
-                        <div class="body-2 font-weight-light">{{ reserve.display.description }}</div>
+                        <div class="text-body-2 font-weight-light">{{ reserve.display.description }}</div>
                     </div>
                 </div>
             </v-list-item>

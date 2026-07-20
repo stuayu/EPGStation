@@ -100,7 +100,7 @@
                                         <v-list-item-subtitle>ダークテーマ使用時でも通常時と同じ配色設定になります</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isForceDisableDarkThemeForGuide" value :disabled="$vuetify.theme.dark === false"></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isForceDisableDarkThemeForGuide" value :disabled="$vuetify.theme.global.current.value.dark === false"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -403,7 +403,7 @@ export default class Settings extends Vue {
 
     set isForceDarkTheme(value: boolean) {
         this.storageModel.tmp.isForceDarkTheme = value;
-        this.$vuetify.theme.dark = value;
+        this.$vuetify.theme.global.name.value = (value) ? 'dark' : 'light';
     }
 
     get isSupportedMpegts(): boolean {
@@ -449,7 +449,7 @@ export default class Settings extends Vue {
     public unmounted(): void {
         // ページから移動するときに tmp をリセット
         this.storageModel.resetTmpValue();
-        this.$vuetify.theme.dark = this.colorThemeState.isDarkTheme();
+        this.$vuetify.theme.global.name.value = (this.colorThemeState.isDarkTheme()) ? 'dark' : 'light';
     }
 
     /**
@@ -457,7 +457,7 @@ export default class Settings extends Vue {
      */
     public reset(): void {
         this.storageModel.tmp = this.storageModel.getDefaultValue();
-        this.$vuetify.theme.dark = this.colorThemeState.isDarkTheme();
+        this.$vuetify.theme.global.name.value = (this.colorThemeState.isDarkTheme()) ? 'dark' : 'light';
     }
 
     /**
