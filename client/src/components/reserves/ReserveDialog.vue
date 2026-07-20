@@ -18,7 +18,7 @@
                 </v-card-text>
                 <div class="pa-2">
                     <div class="d-flex justify-end">
-                        <v-btn color="blue darken-1" variant="text" v-on:click="dialogModel = false">閉じる</v-btn>
+                        <v-btn color="blue-darken-1" variant="text" v-on:click="dialogModel = false">閉じる</v-btn>
                     </div>
                 </div>
             </v-card>

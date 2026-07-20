@@ -31,14 +31,14 @@
                             <div class="subtitle-1 my-1">
                                 {{ recorded.display.channelName }}
                             </div>
-                            <div class="subtitle-2 font-weight-light">
+                            <div class="text-subtitle-2 font-weight-light">
                                 {{ recorded.display.genre }}
                             </div>
-                            <div class="subtitle-2 font-weight-light">
+                            <div class="text-subtitle-2 font-weight-light">
                                 {{ recorded.display.time }} ({{ recorded.display.duration }}
                                 m)
                             </div>
-                            <div class="body-2 mt-2 font-weight-light drop" v-bind:class="{ droped: recorded.display.hasDrop === true }" v-on:click="showDropLog">
+                            <div class="text-body-2 mt-2 font-weight-light drop" v-bind:class="{ droped: recorded.display.hasDrop === true }" v-on:click="showDropLog">
                                 {{ recorded.display.drop }}
                             </div>
                             <div class="button-wrap mt-2 d-flex flex-wrap">
@@ -67,10 +67,10 @@
                         </div>
                     </div>
                     <div class="content-1 mt-6">
-                        <div class="body-2 description">
+                        <div class="text-body-2 description">
                             {{ recorded.display.description }}
                         </div>
-                        <div v-if="isHideExtend === false" ref="extend" class="mt-2 body-2 extended">
+                        <div v-if="isHideExtend === false" ref="extend" class="mt-2 text-body-2 extended">
                             {{ recorded.display.extended }}
                         </div>
                     </div>

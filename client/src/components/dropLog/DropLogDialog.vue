@@ -1,10 +1,10 @@
 <template>
     <v-dialog v-if="isRemove === false" v-model="dialogModel" max-width="600" scrollable>
         <v-card>
-            <div class="subtitle-2 px-4 pt-4 pb-2">{{ name }}</div>
+            <div class="text-subtitle-2 px-4 pt-4 pb-2">{{ name }}</div>
             <v-card-text class="px-4 pb-4">
                 <div class="overflow-auto">
-                    <pre class="body-2">{{ content }}</pre>
+                    <pre class="text-body-2">{{ content }}</pre>
                 </div>
             </v-card-text>
         </v-card>

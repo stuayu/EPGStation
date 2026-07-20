@@ -10,11 +10,11 @@
                     <div v-else v-on:click="openGuideProgramDialog(item.schedule, $event)" class="mb-1 subtitle-1 font-weight-black">
                         {{ item.display.channelName }}
                     </div>
-                    <div class="caption font-weight-light">{{ item.display.time }}</div>
-                    <div class="mb-1 subtitle-2">
+                    <div class="text-caption font-weight-light">{{ item.display.time }}</div>
+                    <div class="mb-1 text-subtitle-2">
                         {{ item.display.name }}
                     </div>
-                    <div class="body-2 font-weight-light">{{ item.display.description }}</div>
+                    <div class="text-body-2 font-weight-light">{{ item.display.description }}</div>
 
                     <div class="pt-3">
                         <v-progress-linear buffer-value="100" :value="item.display.digestibility"></v-progress-linear>

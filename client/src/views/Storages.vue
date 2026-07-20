@@ -7,7 +7,7 @@
                     <div v-for="info in storageState.getInfos()" v-bind:key="info.name" class="pa-2">
                         <h3 class="text--primary">{{ info.name }} - {{ info.total }}</h3>
                         <v-progress-linear :value="info.useRate" height="25"></v-progress-linear>
-                        <div class="d-flex body-2 text--secondary pt-1">
+                        <div class="d-flex text-body-2 text--secondary pt-1">
                             <div>{{ info.used }} 使用済み</div>
                             <v-spacer></v-spacer>
                             <div>{{ info.available }} 空き</div>
