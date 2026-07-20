@@ -46,11 +46,8 @@ import * as apid from '../../../../api';
     },
 })
 class RecordedLargeCard extends Vue {
-    public onThumbnailError(event: Event): void {
-        const image = event.target;
-        if (image instanceof HTMLImageElement) {
-            image.src = './img/noimg.png';
-        }
+    public onThumbnailError(_source: string | undefined): void {
+        this.item.display.topThumbnailPath = './img/noimg.png';
     }
 
     @Prop({ required: true })

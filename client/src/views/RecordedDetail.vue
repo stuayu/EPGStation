@@ -118,10 +118,9 @@ import IRecordedDetailState from '../model/state/recorded/detail/IRecordedDetail
     },
 })
 class RecordedDetail extends Vue {
-    public onThumbnailError(event: Event): void {
-        const image = event.target;
-        if (image instanceof HTMLImageElement) {
-            image.src = './img/noimg.png';
+    public onThumbnailError(_source: string | undefined): void {
+        if (this.recorded !== null) {
+            this.recorded.display.topThumbnailPath = './img/noimg.png';
         }
     }
 

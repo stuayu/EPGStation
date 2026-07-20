@@ -57,12 +57,12 @@ import * as apid from '../../../../api';
 @Component({})
 class RecordedSearchMenu extends Vue {
     public loading: boolean = false;
-    public search: string | null = null;
+    public search: string | undefined;
     public isNoRule: boolean = false;
 
     @Watch('search', { immediate: true })
-    public async onChangeSearch(newKeyword: string): Promise<void> {
-        if (newKeyword === null || newKeyword === this.searchState.ruleKeyword) {
+    public async onChangeSearch(newKeyword: string | undefined): Promise<void> {
+        if (typeof newKeyword === 'undefined' || newKeyword === this.searchState.ruleKeyword) {
             return;
         }
 

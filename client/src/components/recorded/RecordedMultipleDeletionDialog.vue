@@ -46,8 +46,7 @@ class RecordedMultipleDeletionDialog extends Vue {
 
     private snackbarState = container.get<ISnackbarState>('ISnackbarState');
 
-    constructor() {
-        super();
+    public created(): void {
 
         this.optionItems.push({
             text: '全て',

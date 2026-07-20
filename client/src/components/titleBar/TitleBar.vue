@@ -6,7 +6,7 @@
         </v-toolbar-title>
         <v-spacer></v-spacer>
         <slot name="menu"></slot>
-        <template v-if="this.$slots.extension" v-slot:extension>
+        <template v-if="$slots.extension" v-slot:extension>
             <slot name="extension"></slot>
         </template>
     </v-app-bar>

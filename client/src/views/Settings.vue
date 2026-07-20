@@ -410,8 +410,7 @@ class Settings extends Vue {
         return Mpegts.isSupported();
     }
 
-    constructor() {
-        super();
+    public created(): void {
 
         this.isForceDarkTheme = this.colorThemeState.isTmpDarkTheme();
 

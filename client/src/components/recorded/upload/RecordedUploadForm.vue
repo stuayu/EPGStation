@@ -119,7 +119,7 @@ class RecordedUploadForm extends Vue {
 
     public uploadState: IRecordedUploadState = container.get<IRecordedUploadState>('IRecordedUploadState');
     public ruleLoading: boolean = false;
-    public ruleSearchInput: string | null = null;
+    public ruleSearchInput: string | undefined;
 
     @Watch('ruleSearchInput', { immediate: true })
     public async onChangeSearch(newKeyword: string): Promise<void> {

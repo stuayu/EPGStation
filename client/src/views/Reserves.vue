@@ -18,7 +18,7 @@
                 <div v-bind:style="contentWrapStyle">
                     <ReserveItems :reserves="reservesState.getReserves()" v-model:isEditMode="isEditMode" v-on:selected="selectItem"></ReserveItems>
                 </div>
-                <Pagination :total="reservesState.getTotal()" :pageSize="settingValue.reservesLength"></Pagination>
+                <Pagination :total="reservesState.getTotal()" :pageSize="settingValue?.reservesLength ?? 0"></Pagination>
             </div>
         </transition>
         <div style="visibility: hidden">dummy</div>
