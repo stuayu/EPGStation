@@ -39,8 +39,8 @@
                             }"
                         >
                             <template #actions="{ parent }">
-                                <v-btn text color="primary" @click="parent.clearHandler">クリア</v-btn>
-                                <v-btn text color="primary" @click="parent.okHandler">設定</v-btn>
+                                <v-btn variant="text" color="primary" @click="parent.clearHandler">クリア</v-btn>
+                                <v-btn variant="text" color="primary" @click="parent.okHandler">設定</v-btn>
                             </template>
                         </v-datetime-picker>
                         <span class="px-1"></span>
@@ -60,8 +60,8 @@
                             }"
                         >
                             <template #actions="{ parent }">
-                                <v-btn text color="primary" @click="parent.clearHandler">クリア</v-btn>
-                                <v-btn text color="primary" @click="parent.okHandler">設定</v-btn>
+                                <v-btn variant="text" color="primary" @click="parent.clearHandler">クリア</v-btn>
+                                <v-btn variant="text" color="primary" @click="parent.okHandler">設定</v-btn>
                             </template>
                         </v-datetime-picker>
                     </div>

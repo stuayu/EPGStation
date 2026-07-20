@@ -22,8 +22,8 @@
                 </div>
                 <v-card-actions>
                     <v-spacer></v-spacer>
-                    <v-btn color="primary" text v-on:click="cancel">キャンセル</v-btn>
-                    <v-btn color="primary" text v-on:click="view">視聴</v-btn>
+                    <v-btn color="primary" variant="text" v-on:click="cancel">キャンセル</v-btn>
+                    <v-btn color="primary" variant="text" v-on:click="view">視聴</v-btn>
                 </v-card-actions>
             </v-card>
         </v-dialog>

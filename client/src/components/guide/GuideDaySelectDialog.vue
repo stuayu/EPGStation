@@ -3,9 +3,9 @@
         <v-dialog v-if="isRemove === false" v-model="dialogModel" max-width="150" scrollable>
             <v-card class="py-2">
                 <v-list-item v-for="item in dayItems" :key="item.value" v-on:click="goto(item.value)" :disabled="item.disabled">
-                    <v-list-item-content>
+                    <div class="v-list-item-content">
                         <v-list-item-title v-text="item.text" style="text-align: center"></v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
             </v-card>
         </v-dialog>

@@ -13,7 +13,7 @@
             </div>
             <v-card-actions>
                 <v-spacer></v-spacer>
-                <v-btn v-on:click="close" text color="primary">閉じる</v-btn>
+                <v-btn v-on:click="close" variant="text" color="primary">閉じる</v-btn>
             </v-card-actions>
         </v-card>
     </v-dialog>

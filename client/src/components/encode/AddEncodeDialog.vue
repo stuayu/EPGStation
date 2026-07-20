@@ -31,8 +31,8 @@
             </div>
             <v-card-actions>
                 <v-spacer></v-spacer>
-                <v-btn v-on:click="cancel" text color="error">キャンセル</v-btn>
-                <v-btn v-on:click="add" text color="primary">追加</v-btn>
+                <v-btn v-on:click="cancel" variant="text" color="error">キャンセル</v-btn>
+                <v-btn v-on:click="add" variant="text" color="primary">追加</v-btn>
             </v-card-actions>
         </v-card>
     </v-dialog>

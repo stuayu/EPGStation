@@ -6,7 +6,7 @@
                 <v-container>
                     <v-card class="mx-auto" max-width="800">
                         <v-list-item three-line>
-                            <v-list-item-content>
+                            <div class="v-list-item-content">
                                 <div class="title">全般</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -40,13 +40,13 @@
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isHalfWidthDisplayed" value></v-switch>
                                 </div>
-                            </v-list-item-content>
+                            </div>
                         </v-list-item>
 
                         <v-divider></v-divider>
 
                         <v-list-item three-line>
-                            <v-list-item-content>
+                            <div class="v-list-item-content">
                                 <div class="title">放映中</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -72,13 +72,13 @@
                                     </div>
                                     <v-text-field v-model="storageModel.tmp.onAirM2TSViewURLScheme" label="URL" clearable></v-text-field>
                                 </div>
-                            </v-list-item-content>
+                            </div>
                         </v-list-item>
 
                         <v-divider></v-divider>
 
                         <v-list-item three-line>
-                            <v-list-item-content>
+                            <div class="v-list-item-content">
                                 <div class="title">番組表</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -131,13 +131,13 @@
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isIncludeGenreWhenSearching" value></v-switch>
                                 </div>
-                            </v-list-item-content>
+                            </div>
                         </v-list-item>
 
                         <v-divider></v-divider>
 
                         <v-list-item three-line>
-                            <v-list-item-content>
+                            <div class="v-list-item-content">
                                 <div class="title">予約</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -146,12 +146,12 @@
                                     <v-spacer></v-spacer>
                                     <v-select :items="reservesLengthItems" v-model="storageModel.tmp.reservesLength" class="guide-time" :menu-props="{ auto: true }"></v-select>
                                 </div>
-                            </v-list-item-content>
+                            </div>
                         </v-list-item>
 
                         <v-divider></v-divider>
                         <v-list-item three-line>
-                            <v-list-item-content>
+                            <div class="v-list-item-content">
                                 <div class="title">録画中</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -160,13 +160,13 @@
                                     <v-spacer></v-spacer>
                                     <v-select :items="recordingLengthItems" v-model="storageModel.tmp.recordingLength" class="guide-time" :menu-props="{ auto: true }"></v-select>
                                 </div>
-                            </v-list-item-content>
+                            </div>
                         </v-list-item>
 
                         <v-divider></v-divider>
 
                         <v-list-item three-line>
-                            <v-list-item-content>
+                            <div class="v-list-item-content">
                                 <div class="title">録画</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -226,13 +226,13 @@
                                     </div>
                                     <v-text-field v-model="storageModel.tmp.recordedDownloadURLScheme" label="URL" clearable></v-text-field>
                                 </div>
-                            </v-list-item-content>
+                            </div>
                         </v-list-item>
 
                         <v-divider></v-divider>
 
                         <v-list-item three-line>
-                            <v-list-item-content>
+                            <div class="v-list-item-content">
                                 <div class="title">検索</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -281,13 +281,13 @@
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isCheckDeleteOriginalAfterEncode" value></v-switch>
                                 </div>
-                            </v-list-item-content>
+                            </div>
                         </v-list-item>
 
                         <v-divider></v-divider>
 
                         <v-list-item three-line>
-                            <v-list-item-content>
+                            <div class="v-list-item-content">
                                 <div class="title">ルール</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -296,13 +296,13 @@
                                     <v-spacer></v-spacer>
                                     <v-select :items="rulesLengthItems" v-model="storageModel.tmp.rulesLength" class="guide-time" :menu-props="{ auto: true }"></v-select>
                                 </div>
-                            </v-list-item-content>
+                            </div>
                         </v-list-item>
 
                         <v-divider></v-divider>
 
                         <v-list-item three-line>
-                            <v-list-item-content>
+                            <div class="v-list-item-content">
                                 <div class="title">ビデオプレーヤ</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -312,13 +312,13 @@
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isForceEnableSubtitleStroke" value></v-switch>
                                 </div>
-                            </v-list-item-content>
+                            </div>
                         </v-list-item>
 
                         <v-card-actions right>
                             <v-spacer></v-spacer>
-                            <v-btn text v-on:click="reset">リセット</v-btn>
-                            <v-btn text color="primary" v-on:click="save">保存</v-btn>
+                            <v-btn variant="text" v-on:click="reset">リセット</v-btn>
+                            <v-btn variant="text" color="primary" v-on:click="save">保存</v-btn>
                         </v-card-actions>
                     </v-card>
                     <div style="visibility: hidden">dummy</div>

@@ -3,7 +3,7 @@
         <v-card v-for="reserve in reserves" v-bind:key="reserve.id" v-bind:class="getClass(reserve)" class="reserve-card mx-auto" :flat="!!flat" style="cursor: pointer">
             <v-list-item class="px-3" three-line>
                 <div style="width: 100%" v-on:click="clickItem(reserve)">
-                    <v-list-item-content>
+                    <div class="v-list-item-content">
                         <div class="d-flex">
                             <div class="subtitle-1 font-weight-black">
                                 <v-icon v-if="reserve.display.isRule === true" class="reserve-icon">mdi-calendar</v-icon>
@@ -18,7 +18,7 @@
                             {{ reserve.display.day }}({{ reserve.display.dow }}) {{ reserve.display.startTime }} ~ {{ reserve.display.endTime }} ({{ reserve.display.duration }}分)
                         </div>
                         <div class="body-2 font-weight-light">{{ reserve.display.description }}</div>
-                    </v-list-item-content>
+                    </div>
                 </div>
             </v-list-item>
         </v-card>

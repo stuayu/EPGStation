@@ -8,13 +8,13 @@
         overflow
     >
         <v-list-item>
-            <v-list-item-content>
+            <div class="v-list-item-content">
                 <v-list-item-title class="title">{{ versionState.getVersionString() }}</v-list-item-title>
-            </v-list-item-content>
+            </div>
         </v-list-item>
 
-        <v-list dense>
-            <v-list-item-group multiple :max="0">
+        <v-list density="compact">
+            <template multiple :max="0">
                 <v-list-item
                     v-for="(item, index) in navigationState.items"
                     :key="item.id"
@@ -23,15 +23,15 @@
                     v-on:click="route(item)"
                     v-bind:class="getNavigationItemClass(index)"
                 >
-                    <v-list-item-icon>
+                    <template #prepend>
                         <v-icon>{{ item.icon }}</v-icon>
-                    </v-list-item-icon>
+                    </template>
 
-                    <v-list-item-content>
+                    <div class="v-list-item-content">
                         <v-list-item-title>{{ item.title }}</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
-            </v-list-item-group>
+            </template>
         </v-list>
         <div class="list-dummy"></div>
     </v-navigation-drawer>

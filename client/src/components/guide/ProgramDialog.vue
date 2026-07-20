@@ -39,19 +39,19 @@
                     <div>
                         <div class="d-flex justify-end">
                             <!-- 閉じる -->
-                            <v-btn color="blue darken-1" text v-on:click="dialogState.isOpen = false">閉じる</v-btn>
+                            <v-btn color="blue darken-1" variant="text" v-on:click="dialogState.isOpen = false">閉じる</v-btn>
                             <!-- 詳細予約 or 手動予約編集 or ルール編集 -->
-                            <v-btn v-if="dialogState.reserve === null" color="blue darken-1" text v-on:click="manualReserve">詳細</v-btn>
-                            <v-btn v-else-if="typeof dialogState.reserve.ruleId !== 'undefined'" color="blue darken-1" text v-on:click="editRule">ルール</v-btn>
-                            <v-btn v-else color="blue darken-1" text v-on:click="editManualReserve">編集</v-btn>
+                            <v-btn v-if="dialogState.reserve === null" color="blue darken-1" variant="text" v-on:click="manualReserve">詳細</v-btn>
+                            <v-btn v-else-if="typeof dialogState.reserve.ruleId !== 'undefined'" color="blue darken-1" variant="text" v-on:click="editRule">ルール</v-btn>
+                            <v-btn v-else color="blue darken-1" variant="text" v-on:click="editManualReserve">編集</v-btn>
                             <!-- 検索 -->
-                            <v-btn color="blue darken-1" text v-on:click="search">検索</v-btn>
+                            <v-btn color="blue darken-1" variant="text" v-on:click="search">検索</v-btn>
                             <!-- 予約 or 削除 or 除外 or 除外解除 or 重複解除 -->
-                            <v-btn v-if="dialogState.reserve === null" v-on:click="addReserve" color="blue darken-1" text>予約</v-btn>
-                            <v-btn v-else-if="typeof dialogState.reserve.ruleId === 'undefined'" v-on:click="cancelReserve" color="blue darken-1" text>削除</v-btn>
-                            <v-btn v-else-if="dialogState.reserve.type === 'skip'" v-on:click="removeReserveSkip" color="blue darken-1" text>除外解除</v-btn>
-                            <v-btn v-else-if="dialogState.reserve.type === 'overlap'" v-on:click="removeReserveOverlap" color="blue darken-1" text>重複解除</v-btn>
-                            <v-btn v-else color="blue darken-1" text v-on:click="cancelReserve">除外</v-btn>
+                            <v-btn v-if="dialogState.reserve === null" v-on:click="addReserve" color="blue darken-1" variant="text">予約</v-btn>
+                            <v-btn v-else-if="typeof dialogState.reserve.ruleId === 'undefined'" v-on:click="cancelReserve" color="blue darken-1" variant="text">削除</v-btn>
+                            <v-btn v-else-if="dialogState.reserve.type === 'skip'" v-on:click="removeReserveSkip" color="blue darken-1" variant="text">除外解除</v-btn>
+                            <v-btn v-else-if="dialogState.reserve.type === 'overlap'" v-on:click="removeReserveOverlap" color="blue darken-1" variant="text">重複解除</v-btn>
+                            <v-btn v-else color="blue darken-1" variant="text" v-on:click="cancelReserve">除外</v-btn>
                         </div>
                     </div>
                 </div>

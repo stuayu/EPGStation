@@ -7,7 +7,7 @@
             :disabled="searchState.searchOption.isShowSubgenres === false"
             v-on:change="onChangeGenreSelector"
         ></v-select>
-        <v-card ref="card" class="overflow-auto pa-1 mt-4" width="100%" max-height="180px" overflow-scroll outlined>
+        <v-card ref="card" class="overflow-auto pa-1 mt-4" width="100%" max-height="180px" overflow-scroll variant="outlined">
             <div v-for="genre in genreItems" v-bind:key="genre.value">
                 <div class="item" v-bind:class="{ selected: searchState.searchOption.genres[genre.value].isEnable === true }" v-on:click="onClickGenre(genre.value)">
                     {{ genre.name }}

@@ -1,59 +1,59 @@
 <template>
     <div>
         <v-menu v-model="isOpened" bottom left>
-            <template v-slot:activator="{ on }">
-                <v-btn dark icon v-on="on">
+            <template v-slot:activator="{ props }">
+                <v-btn dark icon v-bind="props">
                     <v-icon>mdi-dots-vertical</v-icon>
                 </v-btn>
             </template>
             <v-list>
                 <v-list-item v-on:click="openDownloadDialog">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-download</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>download</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-if="typeof recordedItem.ruleId !== 'undefined'" v-on:click="gotoRule">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-calendar</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>rule</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-on:click="search">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-magnify</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>search</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-if="recordedItem.isProtected === true" v-on:click="unprotect">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-lock-open</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>unprotect</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-else v-on:click="protect">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-lock</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>protect</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
                 <v-list-item v-on:click="openDeleteDialog">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-delete</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>delete</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
             </v-list>
         </v-menu>

@@ -7,7 +7,7 @@
                     <v-card class="mx-auto" max-width="800">
                         <div class="guide-size-setting">
                             <v-list-item three-line>
-                                <v-list-item-content>
+                                <div class="v-list-item-content">
                                     <div class="title">通常表示</div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
@@ -93,11 +93,11 @@
                                             :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
-                                </v-list-item-content>
+                                </div>
                             </v-list-item>
 
                             <v-list-item three-line>
-                                <v-list-item-content>
+                                <div class="v-list-item-content">
                                     <div class="title">モバイル表示</div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
@@ -183,13 +183,13 @@
                                             :menu-props="{ auto: true }"
                                         ></v-select>
                                     </div>
-                                </v-list-item-content>
+                                </div>
                             </v-list-item>
                         </div>
                         <v-card-actions right>
                             <v-spacer></v-spacer>
-                            <v-btn text v-on:click="reset">リセット</v-btn>
-                            <v-btn text color="primary" v-on:click="save">保存</v-btn>
+                            <v-btn variant="text" v-on:click="reset">リセット</v-btn>
+                            <v-btn variant="text" color="primary" v-on:click="save">保存</v-btn>
                         </v-card-actions>
                     </v-card>
                 </v-container>

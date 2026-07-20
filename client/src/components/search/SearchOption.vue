@@ -360,8 +360,8 @@
                             }"
                         >
                             <template #actions="{ parent }">
-                                <v-btn text color="primary" @click="parent.clearHandler">クリア</v-btn>
-                                <v-btn text color="primary" @click="parent.okHandler">設定</v-btn>
+                                <v-btn variant="text" color="primary" @click="parent.clearHandler">クリア</v-btn>
+                                <v-btn variant="text" color="primary" @click="parent.okHandler">設定</v-btn>
                             </template>
                         </v-datetime-picker>
                         <span class="px-1"></span>
@@ -381,8 +381,8 @@
                             }"
                         >
                             <template #actions="{ parent }">
-                                <v-btn text color="primary" @click="parent.clearHandler">クリア</v-btn>
-                                <v-btn text color="primary" @click="parent.okHandler">設定</v-btn>
+                                <v-btn variant="text" color="primary" @click="parent.clearHandler">クリア</v-btn>
+                                <v-btn variant="text" color="primary" @click="parent.okHandler">設定</v-btn>
                             </template>
                         </v-datetime-picker>
                     </div>
@@ -396,8 +396,8 @@
             <v-divider></v-divider>
             <v-card-actions>
                 <v-spacer></v-spacer>
-                <v-btn v-on:click="onClickClear" text color="error">クリア</v-btn>
-                <v-btn v-on:click="onClickSearch" text color="primary">検索</v-btn>
+                <v-btn v-on:click="onClickClear" variant="text" color="error">クリア</v-btn>
+                <v-btn v-on:click="onClickSearch" variant="text" color="primary">検索</v-btn>
             </v-card-actions>
         </v-card>
         <v-card v-else>
@@ -417,38 +417,38 @@
                 <SearchOptionRow title="時刻">
                     <div class="d-flex align-center">
                         <v-dialog ref="dialog0" v-model="isOpenStartTimepicker" v-model:return-value="searchState.timeReserveOption.startTime" persistent width="300px">
-                            <template v-slot:activator="{ on }">
+                            <template v-slot:activator="{ props }">
                                 <v-text-field
                                     class="time-select"
                                     v-model="searchState.timeReserveOption.startTime"
                                     label="開始"
                                     prepend-icon="access_time"
                                     readonly
-                                    v-on="on"
+                                    v-bind="props"
                                 ></v-text-field>
                             </template>
                             <v-time-picker v-if="isOpenStartTimepicker" v-model="searchState.timeReserveOption.startTime" format="24hr" full-width>
                                 <v-spacer></v-spacer>
-                                <v-btn text color="primary" @click="isOpenStartTimepicker = false">Cancel</v-btn>
-                                <v-btn text color="primary" @click="$refs.dialog0.save(searchState.timeReserveOption.startTime)">OK</v-btn>
+                                <v-btn variant="text" color="primary" @click="isOpenStartTimepicker = false">Cancel</v-btn>
+                                <v-btn variant="text" color="primary" @click="$refs.dialog0.save(searchState.timeReserveOption.startTime)">OK</v-btn>
                             </v-time-picker>
                         </v-dialog>
                         <span class="px-2">~</span>
                         <v-dialog ref="dialog1" v-model="isOpenEndTimepicker" v-model:return-value="searchState.timeReserveOption.endTime" persistent width="300px">
-                            <template v-slot:activator="{ on }">
+                            <template v-slot:activator="{ props }">
                                 <v-text-field
                                     class="time-select"
                                     v-model="searchState.timeReserveOption.endTime"
                                     label="終了"
                                     prepend-icon="access_time"
                                     readonly
-                                    v-on="on"
+                                    v-bind="props"
                                 ></v-text-field>
                             </template>
                             <v-time-picker v-if="isOpenEndTimepicker" v-model="searchState.timeReserveOption.endTime" format="24hr" full-width>
                                 <v-spacer></v-spacer>
-                                <v-btn text color="primary" @click="isOpenEndTimepicker = false">Cancel</v-btn>
-                                <v-btn text color="primary" @click="$refs.dialog1.save(searchState.timeReserveOption.endTime)">OK</v-btn>
+                                <v-btn variant="text" color="primary" @click="isOpenEndTimepicker = false">Cancel</v-btn>
+                                <v-btn variant="text" color="primary" @click="$refs.dialog1.save(searchState.timeReserveOption.endTime)">OK</v-btn>
                             </v-time-picker>
                         </v-dialog>
                     </div>

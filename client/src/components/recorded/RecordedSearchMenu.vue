@@ -1,8 +1,8 @@
 <template>
     <div>
         <v-menu v-model="isOpen" bottom left :close-on-content-click="false">
-            <template v-slot:activator="{ on }">
-                <v-btn dark icon v-on="on">
+            <template v-slot:activator="{ props }">
+                <v-btn dark icon v-bind="props">
                     <v-icon>mdi-magnify</v-icon>
                 </v-btn>
             </template>
@@ -15,7 +15,7 @@
                         :loading="loading"
                         :items="searchState.ruleItems"
                         v-model:search-input="search"
-                        item-text="keyword"
+                        item-title="keyword"
                         item-value="id"
                         cache-items
                         flat
@@ -35,8 +35,8 @@
                 <v-divider></v-divider>
                 <v-card-actions>
                     <v-spacer></v-spacer>
-                    <v-btn v-on:click="onCancel" text color="error">閉じる</v-btn>
-                    <v-btn v-on:click="onSearch" text color="primary">検索</v-btn>
+                    <v-btn v-on:click="onCancel" variant="text" color="error">閉じる</v-btn>
+                    <v-btn v-on:click="onSearch" variant="text" color="primary">検索</v-btn>
                 </v-card-actions>
             </v-card>
         </v-menu>

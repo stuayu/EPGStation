@@ -1,8 +1,8 @@
 <template>
     <div>
         <v-menu v-model="isOpen" bottom left :close-on-content-click="false">
-            <template v-slot:activator="{ on }">
-                <v-btn dark icon v-on="on">
+            <template v-slot:activator="{ props }">
+                <v-btn dark icon v-bind="props">
                     <v-icon>mdi-clock-outline</v-icon>
                 </v-btn>
             </template>
@@ -16,8 +16,8 @@
                 </div>
                 <v-card-actions>
                     <v-spacer></v-spacer>
-                    <v-btn v-on:click="onCancel" text color="error">閉じる</v-btn>
-                    <v-btn v-on:click="onShow" text color="primary">表示</v-btn>
+                    <v-btn v-on:click="onCancel" variant="text" color="error">閉じる</v-btn>
+                    <v-btn v-on:click="onShow" variant="text" color="primary">表示</v-btn>
                 </v-card-actions>
             </v-card>
         </v-menu>

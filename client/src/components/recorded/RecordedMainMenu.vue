@@ -1,37 +1,37 @@
 <template>
     <div class="recorded-main-menu">
         <v-menu class="menu" v-model="isOpened" bottom left>
-            <template v-slot:activator="{ on }">
-                <v-btn icon class="menu-button" v-on="on">
+            <template v-slot:activator="{ props }">
+                <v-btn icon class="menu-button" v-bind="props">
                     <v-icon>mdi-dots-vertical</v-icon>
                 </v-btn>
             </template>
             <v-list>
                 <v-list-item v-on:click="edit">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-pencil</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>編集</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
 
                 <v-list-item v-on:click="cleanup">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-delete</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>クリーンアップ</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
 
                 <v-list-item v-on:click="upload">
-                    <v-list-item-icon class="mr-3">
+                    <template #prepend class="mr-3">
                         <v-icon>mdi-upload</v-icon>
-                    </v-list-item-icon>
-                    <v-list-item-content>
+                    </template>
+                    <div class="v-list-item-content">
                         <v-list-item-title>アップロード</v-list-item-title>
-                    </v-list-item-content>
+                    </div>
                 </v-list-item>
             </v-list>
         </v-menu>
