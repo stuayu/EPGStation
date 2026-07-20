@@ -25,6 +25,15 @@ class RecordedHLSStreamingVideo extends BaseVideo {
     @Prop({ required: true })
     public videoFileId!: apid.VideoFileId;
 
+    @Prop({ default: null })
+    public jikkyoChannelId!: string | null;
+
+    @Prop({ default: null })
+    public jikkyoStartAt!: number | null;
+
+    @Prop({ default: null })
+    public jikkyoEndAt!: number | null;
+
     protected videoState = container.get<IRecordedHLSStreamingVideoState>('IRecordedHLSStreamingVideoState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
@@ -38,6 +47,20 @@ class RecordedHLSStreamingVideo extends BaseVideo {
     private updateDurationTimerId: ReturnType<typeof setTimeout> | undefined; // 録画中の番組の動画長を更新するためのタイマー
     private setCurrentTimeTimerId: ReturnType<typeof setTimeout> | undefined; // setCurrentTime を大量に呼び出さないようにするためのタイマー
     private lastSeekTime: number = 0; // setCurrentTime 実行中に setCurrentTime が重ねて実行されたか確認するための変数
+
+    /**
+     * 録画再生時のニコニコ実況過去ログ取得情報を返す
+     */
+    protected getJikkyoKakologOption(): { jikkyoChannelId: string; startAt: number; endAt: number } | null {
+        if (this.jikkyoChannelId === null || this.jikkyoStartAt === null || this.jikkyoEndAt === null) {
+            return null;
+        }
+        return {
+            jikkyoChannelId: this.jikkyoChannelId,
+            startAt: this.jikkyoStartAt,
+            endAt: this.jikkyoEndAt,
+        };
+    }
 
     public created(): void {
         // socket.io イベント

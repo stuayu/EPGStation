@@ -8,6 +8,7 @@ import container from '@/model/ModelContainer';
 import ILiveHLSVideoState from '@/model/state/onair/ILiveHLSVideoState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
+import UaUtil from '@/util/UaUtil';
 import { DPlayerType } from 'dplayer';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
@@ -19,6 +20,16 @@ class LiveHLSVideo extends BaseVideo {
 
     @Prop({ required: true })
     public mode!: number;
+
+    @Prop({ default: null })
+    public jikkyoChannelId!: string | null;
+
+    /**
+     * ニコニコ実況の実況チャンネル ID を返す
+     */
+    protected getJikkyoChannelId(): string | null {
+        return this.jikkyoChannelId;
+    }
 
     private videoState: ILiveHLSVideoState = container.get<ILiveHLSVideoState>('ILiveHLSVideoState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
@@ -81,12 +92,16 @@ class LiveHLSVideo extends BaseVideo {
         const videoSrc = `./streamfiles/stream${streamId}.m3u8`;
         const options: DPlayerType.Options = {
             container: this.containerElement,
-            autoplay: true,
+            // Safari では非同期初期化後の音声付き自動再生がポリシーにより停止される。
+            // 再生ボタンの明示的な操作でのみ再生を開始する。
+            autoplay: UaUtil.isSafari() === false,
             live: true,
             hotkey: true,
             video: {
                 url: videoSrc,
-                type: 'hls',
+                // Safari は M3U8 をネイティブ再生できる。
+                // hls.js / MSE を経由せず標準 video 要素へ直接渡すことで安定性を優先する。
+                type: UaUtil.isSafari() === true ? 'normal' : 'hls',
             },
             subtitle: {
                 type: 'aribb24',
@@ -97,6 +112,15 @@ class LiveHLSVideo extends BaseVideo {
         };
 
         this.createPlayer(options);
+
+        // Safari のネイティブ HLS 再生ではインライン再生属性を明示する。
+        // autoplay を無効にしてから設定しているため、ユーザー操作による再生に引き継がれる。
+        if (UaUtil.isSafari() === true && this.dp !== null) {
+            const video = (this.dp as any).video as HTMLVideoElement;
+            video.playsInline = true;
+            video.setAttribute('playsinline', '');
+            video.setAttribute('webkit-playsinline', '');
+        }
     }
 }
 

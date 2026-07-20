@@ -5,6 +5,9 @@ export type VideoType = 'Normal' | 'RecordedStreaming' | 'LiveHLS' | 'RecordedHL
 
 interface VideoParamBase {
     type: VideoType;
+    jikkyoChannelId?: string; // ニコニコ実況の実況チャンネル ID (例: jk1)
+    jikkyoStartAt?: number; // 録画開始時刻 (UNIX 時刻・ミリ秒)
+    jikkyoEndAt?: number; // 録画終了時刻 (UNIX 時刻・ミリ秒)
 }
 
 export interface NormalVideoParam extends VideoParamBase {

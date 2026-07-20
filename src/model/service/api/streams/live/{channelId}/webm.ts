@@ -20,7 +20,12 @@ export const get: Operation = async (req, res) => {
         await streamApiModel.stop(result.streamId, true);
     };
 
-    req.on('close', async () => {
+    // req の close は GET リクエスト本文の受信完了でも発火し得るため使用しない。
+    // クライアントが実際に切断した場合だけ、出力レスポンス側でストリームを停止する。
+    res.on('close', async () => {
+        if (res.writableEnded === true) {
+            return;
+        }
         isClosed = true;
         await stop();
     });

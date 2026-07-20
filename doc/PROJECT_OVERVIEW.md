@@ -8,7 +8,7 @@
 - 言語/ランタイム: TypeScript / Node.js 24 LTSのみ (CIでは24.xを検証)
 - サーバ: Express 5 + express-openapi, TypeORM 1.0 (SQLite / MySQL), inversify (DI), log4js, socket.io
 - クライアント: Vue 3 + Vuetify 4 (クラスコンポーネント + デコレータ, `vue-facing-decorator`), inversify による独自 State 管理 (Vuex 不使用)。ビルドは Vite
-- 動画再生: [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) に統一 (GitHub タグ固定)。HLS は hls.js、低遅延ライブは mpegts.js、ARIB 字幕は DPlayer 内蔵の aribb24.js を利用 (`client/src/components/video/`)
+- 動画再生: [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) に統一 (GitHub タグ固定)。HLS は hls.js、低遅延ライブは mpegts.js、ARIB 字幕は DPlayer 内蔵の aribb24.js を利用 (`client/src/components/video/`)。ニコニコ実況コメントの弾幕表示に対応 (NX-Jikkyo / 過去ログ API, `client/src/util/Jikkyo*.ts`)
 - チューナーバックエンド: Mirakurun (`stuayu/Mirakurun` の stuayu-main 系コミットに固定)
 
 ## プロセス構成
