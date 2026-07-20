@@ -114,7 +114,7 @@ class Search extends Vue {
      * @param vue: Vue | undefined
      * @param offset: number default = 0
      */
-    private scrollToElementHead(vue: Vue | undefined, offset: number = 0): void {
+    private scrollToElementHead(vue: ComponentPublicInstance | undefined, offset: number = 0): void {
         if (typeof vue === 'undefined') {
             this.snackbarState.open({
                 color: 'error',

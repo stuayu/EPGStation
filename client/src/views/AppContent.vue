@@ -39,7 +39,7 @@ class AppContent extends Vue {
 
     public async created(): Promise<void> {
         // theme 設定を反映
-        this.$vuetify.theme.global.name = (this.colorThemeState.isDarkTheme()) ? 'dark' : 'light';
+        this.$vuetify.theme.change((this.colorThemeState.isDarkTheme()) ? 'dark' : 'light');
 
         // socket.io 設定
         try {
