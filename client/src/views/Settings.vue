@@ -14,7 +14,7 @@
                                         <v-list-item-subtitle>PWAを有効化する(※再読込後有効になります)</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isEnablePWA" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isEnablePWA"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -22,7 +22,7 @@
                                         <v-list-item-subtitle>OSのカラーテーマに連動させる</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="shouldUseOSColorTheme" value></v-switch>
+                                    <v-switch v-model="shouldUseOSColorTheme"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -30,7 +30,7 @@
                                         <v-list-item-subtitle>ダークテーマを有効化する</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="isForceDarkTheme" :disabled="shouldUseOSColorTheme" value></v-switch>
+                                    <v-switch v-model="isForceDarkTheme" :disabled="shouldUseOSColorTheme"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -38,7 +38,7 @@
                                         <v-list-item-subtitle>強制的に半角表示にする</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isHalfWidthDisplayed" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isHalfWidthDisplayed"></v-switch>
                                 </div>
                             </div>
                         </v-list-item>
@@ -54,14 +54,14 @@
                                         <v-list-item-subtitle>放送波毎にタブで分ける</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isOnAirTabListView" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isOnAirTabListView"></v-switch>
                                 </div>
                                 <div v-if="isSupportedMpegts" class="my-2 d-flex flex-row align-center">
                                     <div>
                                         <v-list-item-title class="subtitle-1">web での再生を優先する</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isPreferredPlayingLiveM2TSOnWeb" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isPreferredPlayingLiveM2TSOnWeb"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-column">
                                     <div class="d-flex">
@@ -100,14 +100,14 @@
                                         <v-list-item-subtitle>ダークテーマ使用時でも通常時と同じ配色設定になります</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isForceDisableDarkThemeForGuide" value :disabled="$vuetify.theme.global.current.dark === false"></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isForceDisableDarkThemeForGuide" :disabled="$vuetify.theme.global.current.dark === false"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
                                         <v-list-item-title class="subtitle-1">無料放送だけ表示する</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isShowOnlyFreePrograms" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isShowOnlyFreePrograms"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -115,21 +115,21 @@
                                         <v-list-item-subtitle>ナビゲーションの表示を放送波別に分ける</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isEnableDisplayForEachBroadcastWave" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isEnableDisplayForEachBroadcastWave"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
                                         <v-list-item-title class="subtitle-1">検索時に放送局情報を含むか</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isIncludeChannelIdWhenSearching" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isIncludeChannelIdWhenSearching"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
                                         <v-list-item-title class="subtitle-1">検索時にジャンル情報を含むか</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isIncludeGenreWhenSearching" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isIncludeGenreWhenSearching"></v-switch>
                                 </div>
                             </div>
                         </v-list-item>
@@ -180,7 +180,7 @@
                                         <v-list-item-title class="subtitle-1">テーブル表示</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isShowTableMode" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isShowTableMode"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -188,7 +188,7 @@
                                         <v-list-item-subtitle>概要の代わりにドロップとファイルサイズ情報を表示する</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isShowDropInfoInsteadOfDescription" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isShowDropInfoInsteadOfDescription"></v-switch>
                                 </div>
 
                                 <div class="my-2 d-flex flex-row align-center">
@@ -197,14 +197,14 @@
                                         <v-list-item-subtitle>有効にするとファイル削除のチェックが入れられた状態で録画削除ダイアログが開かれます</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.deleteRecordedDefaultValue" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.deleteRecordedDefaultValue"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
                                         <v-list-item-title class="subtitle-1">web での再生を優先する</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isPreferredPlayingOnWeb" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isPreferredPlayingOnWeb"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-column">
                                     <div class="d-flex">
@@ -212,7 +212,7 @@
                                             <v-list-item-title class="subtitle-1">視聴 URL Scheme</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
-                                        <v-switch v-model="storageModel.tmp.shouldUseRecordedViewURLScheme" value></v-switch>
+                                        <v-switch v-model="storageModel.tmp.shouldUseRecordedViewURLScheme"></v-switch>
                                     </div>
                                     <v-text-field v-model="storageModel.tmp.recordedViewURLScheme" label="URL" clearable></v-text-field>
                                 </div>
@@ -222,7 +222,7 @@
                                             <v-list-item-title class="subtitle-1">ダウンロード URL Scheme</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
-                                        <v-switch v-model="storageModel.tmp.shouldUseRecordedDownloadURLScheme" value></v-switch>
+                                        <v-switch v-model="storageModel.tmp.shouldUseRecordedDownloadURLScheme"></v-switch>
                                     </div>
                                     <v-text-field v-model="storageModel.tmp.recordedDownloadURLScheme" label="URL" clearable></v-text-field>
                                 </div>
@@ -247,7 +247,7 @@
                                         <v-list-item-subtitle>ルール編集時に検索結果へ自動スクロールする</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isEnableAutoScrollWhenEditingRule" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isEnableAutoScrollWhenEditingRule"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -255,7 +255,7 @@
                                         <v-list-item-subtitle>ルール作成時にキーワードをサブディレクトリにコピーする</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isEnableCopyKeywordToDirectory" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isEnableCopyKeywordToDirectory"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -263,7 +263,7 @@
                                         <v-list-item-subtitle>ルール作成時に録画済み番組を排除をチェックする</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isCheckAvoidDuplicate" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isCheckAvoidDuplicate"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -271,7 +271,7 @@
                                         <v-list-item-subtitle>ルール作成時にエンコード設定を自動で行う</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isEnableEncodingSettingWhenCreateRule" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isEnableEncodingSettingWhenCreateRule"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -279,7 +279,7 @@
                                         <v-list-item-subtitle>ルール作成時に元ファイルの自動削除をチェックする</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isCheckDeleteOriginalAfterEncode" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isCheckDeleteOriginalAfterEncode"></v-switch>
                                 </div>
                             </div>
                         </v-list-item>
@@ -310,7 +310,7 @@
                                         <v-list-item-subtitle>aribb24.js 使用時に有効になります</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isForceEnableSubtitleStroke" value></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isForceEnableSubtitleStroke"></v-switch>
                                 </div>
                             </div>
                         </v-list-item>
