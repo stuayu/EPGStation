@@ -1,6 +1,6 @@
 # クライアントはプラットフォーム依存のコードを含まないため、BUILDPLATFORMでビルドした結果を
 # 全てのTARGETPLATFORMで再利用できる。これによりビルド時間を短縮できる。
-FROM --platform=$BUILDPLATFORM node:18-bookworm AS client-builder
+FROM --platform=$BUILDPLATFORM node:24-trixie AS client-builder
 COPY client/package*.json /app/client/
 WORKDIR /app/client
 RUN npm config set fetch-retries 10 \
@@ -12,7 +12,7 @@ RUN npm install --no-save --loglevel=info
 COPY . /app/
 RUN npm run build --loglevel=info
 
-# サーバーはsqlite3のようなプラットフォーム依存のネイティブ・アドオンを含んでいる。そのため、各
+# サーバーはbetter-sqlite3のようなプラットフォーム依存のネイティブ・アドオンを含んでいる。そのため、各
 # TARGETPLATFORMごとにソースをビルドしなければならない。BUILDPLATFORM以外のTARGETPLATFORMでは、QEMU
 # 上でnpmコマンドを実行することになるため、どうしても時間が掛かる。
 #
@@ -21,7 +21,7 @@ RUN npm run build --loglevel=info
 #
 # `npm run build-server`はプラットフォーム依存処理を含まないため、これをBUILDPLATFORMで実行すること
 # でビルド時間をさらに短縮可能だが、手順が煩雑で面倒なので現時点では行っていない。
-FROM node:18-bookworm AS server-builder
+FROM node:24-trixie AS server-builder
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update
 RUN apt-get install -y build-essential python3
@@ -38,7 +38,7 @@ COPY . .
 RUN rm -rf client
 RUN npm run build-server --loglevel=info
 
-FROM node:18-bookworm-slim
+FROM node:24-trixie-slim
 LABEL maintainer="l3tnun"
 COPY --from=server-builder /app /app/
 COPY --from=client-builder /app/client /app/client/
