@@ -1,4 +1,3 @@
-import * as bodyParser from 'body-parser';
 import cors from 'cors';
 import express, { NextFunction } from 'express';
 import * as openapi from 'express-openapi';
@@ -56,7 +55,6 @@ class ServiceServer implements IServiceServer {
         this.setSwaggerUI();
         this.createUploadDir();
         this.initOpenApi(api);
-        this.setMime();
         this.setStaticFiles();
     }
 
@@ -100,8 +98,8 @@ class ServiceServer implements IServiceServer {
             app: this.app,
             docsPath: '/docs',
             consumesMiddleware: {
-                'application/json': bodyParser.json() as any,
-                'text/text': bodyParser.text() as any,
+                'application/json': express.json() as any,
+                'text/text': express.text() as any,
                 'multipart/form-data': (req, res, next) => {
                     this.uploadFile(req as any, res as any, next);
                 },
@@ -121,28 +119,6 @@ class ServiceServer implements IServiceServer {
             exposeApiDocs: true,
             paths: ServiceServer.API_DIR,
         });
-    }
-
-    /**
-     * mime 設定
-     */
-    private setMime(): void {
-        // static mime
-        express.static.mime.define({ 'text/css': ['css', 'min.css'] });
-        express.static.mime.define({ 'text/javascript': ['js', 'min.js'] });
-        express.static.mime.define({
-            'application/vnd.ms-fontobject': ['eot'],
-        });
-        express.static.mime.define({ 'application/font-ttf': ['ttf'] });
-        express.static.mime.define({ 'application/font-woff': ['woff'] });
-        express.static.mime.define({ 'application/font-woff2': ['woff2'] });
-        express.static.mime.define({ 'magnus-internal/imagemap': ['map'] });
-        express.static.mime.define({ 'image/png': ['png'] });
-        express.static.mime.define({ 'image/jpg': ['jpg'] });
-        express.static.mime.define({ 'video/mpeg': ['ts'] });
-        express.static.mime.define({ 'application/octet-stream': ['m4s'] });
-        express.static.mime.define({ 'video/MP2T': ['m3u8'] });
-        express.static.mime.define({ 'text/plain': ['log'] });
     }
 
     /**
