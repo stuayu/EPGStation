@@ -2,53 +2,53 @@
     <div>
         <v-menu v-model="isOpened" location="bottom start">
             <template v-slot:activator="{ props }">
-                <v-btn icon v-bind="props">
+                <v-btn icon size="small" v-bind="props">
                     <v-icon>mdi-dots-vertical</v-icon>
                 </v-btn>
             </template>
             <v-list>
-                <v-list-item v-on:click="openDownloadDialog">
-                    <template #prepend class="mr-3">
+                <v-list-item v-on:click="openDownloadDialog" slim>
+                    <template #prepend>
                         <v-icon>mdi-download</v-icon>
                     </template>
                     <div class="v-list-item-content">
                         <v-list-item-title>download</v-list-item-title>
                     </div>
                 </v-list-item>
-                <v-list-item v-if="typeof recordedItem.ruleId !== 'undefined'" v-on:click="gotoRule">
-                    <template #prepend class="mr-3">
+                <v-list-item v-if="typeof recordedItem.ruleId !== 'undefined'" v-on:click="gotoRule" slim>
+                    <template #prepend>
                         <v-icon>mdi-calendar</v-icon>
                     </template>
                     <div class="v-list-item-content">
                         <v-list-item-title>rule</v-list-item-title>
                     </div>
                 </v-list-item>
-                <v-list-item v-on:click="search">
-                    <template #prepend class="mr-3">
+                <v-list-item v-on:click="search" slim>
+                    <template #prepend>
                         <v-icon>mdi-magnify</v-icon>
                     </template>
                     <div class="v-list-item-content">
                         <v-list-item-title>search</v-list-item-title>
                     </div>
                 </v-list-item>
-                <v-list-item v-if="recordedItem.isProtected === true" v-on:click="unprotect">
-                    <template #prepend class="mr-3">
+                <v-list-item v-if="recordedItem.isProtected === true" v-on:click="unprotect" slim>
+                    <template #prepend>
                         <v-icon>mdi-lock-open</v-icon>
                     </template>
                     <div class="v-list-item-content">
                         <v-list-item-title>unprotect</v-list-item-title>
                     </div>
                 </v-list-item>
-                <v-list-item v-else v-on:click="protect">
-                    <template #prepend class="mr-3">
+                <v-list-item v-else v-on:click="protect" slim>
+                    <template #prepend>
                         <v-icon>mdi-lock</v-icon>
                     </template>
                     <div class="v-list-item-content">
                         <v-list-item-title>protect</v-list-item-title>
                     </div>
                 </v-list-item>
-                <v-list-item v-on:click="openDeleteDialog">
-                    <template #prepend class="mr-3">
+                <v-list-item v-on:click="openDeleteDialog" slim>
+                    <template #prepend>
                         <v-icon>mdi-delete</v-icon>
                     </template>
                     <div class="v-list-item-content">

@@ -2,21 +2,21 @@
     <div class="reserves-main-menu">
         <v-menu class="menu" v-model="isOpened" location="bottom start">
             <template v-slot:activator="{ props }">
-                <v-btn icon class="menu-button" v-bind="props">
+                <v-btn icon size="small" class="menu-button" v-bind="props">
                     <v-icon>mdi-dots-vertical</v-icon>
                 </v-btn>
             </template>
             <v-list>
-                <v-list-item v-on:click="updateReserves">
-                    <template #prepend class="mr-3">
+                <v-list-item v-on:click="updateReserves" slim>
+                    <template #prepend>
                         <v-icon>mdi-update</v-icon>
                     </template>
                     <div class="v-list-item-content">
                         <v-list-item-title>予約情報更新</v-list-item-title>
                     </div>
                 </v-list-item>
-                <v-list-item v-on:click="genreSetting">
-                    <template #prepend class="mr-3">
+                <v-list-item v-on:click="genreSetting" slim>
+                    <template #prepend>
                         <v-icon>mdi-bookmark</v-icon>
                     </template>
                     <div class="v-list-item-content">
@@ -24,8 +24,8 @@
                     </div>
                 </v-list-item>
 
-                <v-list-item v-on:click="gotoSetting">
-                    <template #prepend class="mr-3">
+                <v-list-item v-on:click="gotoSetting" slim>
+                    <template #prepend>
                         <v-icon>mdi-cog</v-icon>
                     </template>
                     <div class="v-list-item-content">

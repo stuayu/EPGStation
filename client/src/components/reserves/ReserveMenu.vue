@@ -2,29 +2,29 @@
     <div>
         <v-menu v-model="isOpened" location="bottom start">
             <template v-slot:activator="{ props }">
-                <v-btn icon class="menu-button" v-bind="props">
+                <v-btn icon size="small" class="menu-button" v-bind="props">
                     <v-icon>mdi-dots-vertical</v-icon>
                 </v-btn>
             </template>
             <v-list>
-                <v-list-item v-if="typeof reserveItem.ruleId !== 'undefined'" v-on:click="goToRecorded">
-                    <template #prepend class="mr-3">
+                <v-list-item v-if="typeof reserveItem.ruleId !== 'undefined'" v-on:click="goToRecorded" slim>
+                    <template #prepend>
                         <v-icon>mdi-filmstrip-box-multiple</v-icon>
                     </template>
                     <div class="v-list-item-content">
                         <v-list-item-title>recorded</v-list-item-title>
                     </div>
                 </v-list-item>
-                <v-list-item v-if="!!disableEdit === false" v-on:click="goToEdit">
-                    <template #prepend class="mr-3">
+                <v-list-item v-if="!!disableEdit === false" v-on:click="goToEdit" slim>
+                    <template #prepend>
                         <v-icon>mdi-pencil</v-icon>
                     </template>
                     <div class="v-list-item-content">
                         <v-list-item-title>edit</v-list-item-title>
                     </div>
                 </v-list-item>
-                <v-list-item v-if="reserveItem.isConflict !== true" v-on:click="onClickDelete">
-                    <template #prepend class="mr-3">
+                <v-list-item v-if="reserveItem.isConflict !== true" v-on:click="onClickDelete" slim>
+                    <template #prepend>
                         <v-icon>{{ getDeleteButtonIcon() }}</v-icon>
                     </template>
                     <div class="v-list-item-content">
