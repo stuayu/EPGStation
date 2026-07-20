@@ -75,7 +75,7 @@ import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISe
 import UaUtil from '@/util/UaUtil';
 import Util from '@/util/Util';
 import ResizeObserver from 'resize-observer-polyfill';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 
@@ -468,7 +468,7 @@ namespace Dashboard {
     export const MIN_MIDTH_OF_SIDE_BY_SIDE = 1023;
 }
 
-export default Dashboard;
+export default toNative(Dashboard);
 </script>
 
 <style lang="sass" scoped>

@@ -28,7 +28,7 @@
 <script lang="ts">
 import RecordedItemMenu from '@/components/recorded/RecordedItemMenu.vue';
 import { RecordedDisplayData } from '@/model/state/recorded/IRecordedUtil';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({
@@ -36,7 +36,7 @@ import * as apid from '../../../../api';
         RecordedItemMenu,
     },
 })
-export default class RecordedTableItems extends Vue {
+class RecordedTableItems extends Vue {
     @Prop({ required: true })
     public items!: RecordedDisplayData[];
 
@@ -59,6 +59,8 @@ export default class RecordedTableItems extends Vue {
         this.$emit('stopEncode', recordedId);
     }
 }
+
+export default toNative(RecordedTableItems);
 </script>
 
 <style lang="sass" scoped>

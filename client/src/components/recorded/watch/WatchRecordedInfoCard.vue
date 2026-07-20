@@ -20,11 +20,11 @@ import container from '@/model/ModelContainer';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IWatchRecordedInfoState, { DsiplayWatchInfo } from '@/model/state/recorded/watch/IWatchRecordedInfoState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({})
-export default class WatchOnRecordedInfoCard extends Vue {
+class WatchOnRecordedInfoCard extends Vue {
     @Prop({ required: true })
     public recordedId!: apid.RecordedId;
 
@@ -68,4 +68,6 @@ export default class WatchOnRecordedInfoCard extends Vue {
         this.displayInfo = this.infoState.getInfo();
     }
 }
+
+export default toNative(WatchOnRecordedInfoCard);
 </script>

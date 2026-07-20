@@ -12,10 +12,10 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import IServerStatusState from '@/model/state/serverStatus/IServerStatusState';
-import { Component, Vue } from 'vue-facing-decorator';
+import { Component, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class ServerStatusBanner extends Vue {
+class ServerStatusBanner extends Vue {
     private serverStatusState: IServerStatusState = container.get<IServerStatusState>('IServerStatusState');
 
     get isShow(): boolean {
@@ -26,6 +26,8 @@ export default class ServerStatusBanner extends Vue {
         this.serverStatusState.closeBanner();
     }
 }
+
+export default toNative(ServerStatusBanner);
 </script>
 
 <style lang="sass" scoped>

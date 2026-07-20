@@ -16,16 +16,18 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class SearchOptionRow extends Vue {
+class SearchOptionRow extends Vue {
     @Prop({ required: false })
     public title!: string | undefined;
 
     @Prop({ required: false })
     public required!: boolean | undefined;
 }
+
+export default toNative(SearchOptionRow);
 </script>
 
 <style lang="sass">

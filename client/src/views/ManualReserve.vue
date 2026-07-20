@@ -26,7 +26,7 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 
@@ -53,7 +53,7 @@ interface PageInfo {
         this.handleBeforeRouteLeave(to, from, next);
     },
 })
-export default class ManualReserve extends Vue {
+class ManualReserve extends Vue {
     public isEditMode: boolean = false;
 
     private manualReserveState: IManualReserveState = container.get<IManualReserveState>('IManualReserveState');
@@ -262,6 +262,8 @@ export default class ManualReserve extends Vue {
         this.manualReserveState.setTimeSpecifiedOption();
     }
 }
+
+export default toNative(ManualReserve);
 </script>
 
 <style lang="sass" scoped>

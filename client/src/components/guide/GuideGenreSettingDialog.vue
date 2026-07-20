@@ -25,10 +25,10 @@ import container from '@/model/ModelContainer';
 import { IGuideGenreSettingStorageModel } from '@/model/storage/guide/IGuideGenreSettingStorageModel';
 import GenreUtil from '@/util/GenreUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class GuideGenreSettingDialog extends Vue {
+class GuideGenreSettingDialog extends Vue {
     @Prop({ required: true })
     public isOpen!: boolean;
 
@@ -113,6 +113,8 @@ export default class GuideGenreSettingDialog extends Vue {
         }
     }
 }
+
+export default toNative(GuideGenreSettingDialog);
 </script>
 
 <style lang="sass" scoped>

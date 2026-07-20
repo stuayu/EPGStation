@@ -41,14 +41,14 @@
 import RuleDeleteDialog from '@/components/rules/RuleDeleteDialog.vue';
 import { RuleStateData } from '@/model/state/rule/IRuleState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         RuleDeleteDialog,
     },
 })
-export default class RuleItemMenu extends Vue {
+class RuleItemMenu extends Vue {
     @Prop({ required: true })
     public ruleItem!: RuleStateData;
 
@@ -77,4 +77,6 @@ export default class RuleItemMenu extends Vue {
         this.isOpenDeleteDialog = true;
     }
 }
+
+export default toNative(RuleItemMenu);
 </script>

@@ -12,7 +12,7 @@ import ReservesCard from '@/components/reserves/ReservesCard.vue';
 import ReservesTableItems from '@/components/reserves/ReservesTableItems.vue';
 import { ReserveStateData } from '@/model/state/reserve/IReserveStateUtil';
 import ResizeObserver from 'resize-observer-polyfill';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({
@@ -21,7 +21,7 @@ import * as apid from '../../../../api';
         ReservesTableItems,
     },
 })
-export default class ReserveItems extends Vue {
+class ReserveItems extends Vue {
     @Prop({ required: true })
     public reserves!: ReserveStateData[];
 
@@ -53,4 +53,6 @@ export default class ReserveItems extends Vue {
         this.$emit('selected', reserveId);
     }
 }
+
+export default toNative(ReserveItems);
 </script>

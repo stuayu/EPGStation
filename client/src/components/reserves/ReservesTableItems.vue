@@ -48,7 +48,7 @@
 import ReserveDialog from '@/components/reserves/ReserveDialog.vue';
 import ReserveMenu from '@/components/reserves/ReserveMenu.vue';
 import { ReserveStateData } from '@/model/state/reserve/IReserveStateUtil';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
@@ -56,7 +56,7 @@ import { Component, Prop, Vue } from 'vue-facing-decorator';
         ReserveDialog,
     },
 })
-export default class ReservesTableItems extends Vue {
+class ReservesTableItems extends Vue {
     @Prop({
         required: true,
     })
@@ -79,6 +79,8 @@ export default class ReservesTableItems extends Vue {
         this.isOpenDialog = true;
     }
 }
+
+export default toNative(ReservesTableItems);
 </script>
 
 <style lang="sass" scoped>

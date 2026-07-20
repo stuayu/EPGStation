@@ -20,11 +20,11 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({})
-export default class RecordedDetailPlayButton extends Vue {
+class RecordedDetailPlayButton extends Vue {
     @Prop({ required: true })
     public title!: string;
 
@@ -46,4 +46,6 @@ export default class RecordedDetailPlayButton extends Vue {
         return false;
     }
 }
+
+export default toNative(RecordedDetailPlayButton);
 </script>

@@ -6,10 +6,10 @@
 import BaseVideo from '@/components/video/BaseVideo';
 import DPlayerUtil from '@/util/DPlayerUtil';
 import { DPlayerType } from 'dplayer';
-import { Component, Prop } from 'vue-facing-decorator';
+import { Component, Prop, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class NormalVideo extends BaseVideo {
+class NormalVideo extends BaseVideo {
     @Prop({ required: true })
     public videoSrc!: string;
 
@@ -45,4 +45,6 @@ export default class NormalVideo extends BaseVideo {
         this.createPlayer(options);
     }
 }
+
+export default toNative(NormalVideo);
 </script>

@@ -65,11 +65,11 @@ import IThumbnailApiModel from '@/model/api/thumbnail/IThumbnailApiModel';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
-export default class RecordedCleanupDialog extends Vue {
+class RecordedCleanupDialog extends Vue {
     @Prop({ required: true })
     public isOpen!: boolean;
 
@@ -233,4 +233,6 @@ export default class RecordedCleanupDialog extends Vue {
         this.isClearing = false;
     }
 }
+
+export default toNative(RecordedCleanupDialog);
 </script>

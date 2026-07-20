@@ -18,11 +18,11 @@ import IEncodeApiModel from '@/model/api/encode/IEncodeApiModel';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
-export default class EncodeCancelDialog extends Vue {
+class EncodeCancelDialog extends Vue {
     @Prop({ required: true })
     public item!: apid.EncodeProgramItem;
 
@@ -84,4 +84,6 @@ export default class EncodeCancelDialog extends Vue {
         }
     }
 }
+
+export default toNative(EncodeCancelDialog);
 </script>

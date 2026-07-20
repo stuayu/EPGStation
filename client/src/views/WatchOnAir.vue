@@ -20,7 +20,7 @@ import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 
 
@@ -37,7 +37,7 @@ interface WatchParam {
         WatchOnAirInfoCard,
     },
 })
-export default class WatchOnAir extends Vue {
+class WatchOnAir extends Vue {
     public videoParam: BaseVideoParam | null = null;
 
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
@@ -83,6 +83,8 @@ export default class WatchOnAir extends Vue {
         });
     }
 }
+
+export default toNative(WatchOnAir);
 </script>
 
 <style lang="sass" scoped>

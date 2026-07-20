@@ -68,10 +68,10 @@ import { IGuideProgramDialogSettingStorageModel } from '@/model/storage/guide/IG
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
 import StrUtil from '@/util/StrUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class ProgramDialog extends Vue {
+class ProgramDialog extends Vue {
     public dialogState: IGuideProgramDialogState = container.get<IGuideProgramDialogState>('IGuideProgramDialogState');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     private dialogSetting = container.get<IGuideProgramDialogSettingStorageModel>('IGuideProgramDialogSettingStorageModel');
@@ -323,6 +323,8 @@ export default class ProgramDialog extends Vue {
         }
     }
 }
+
+export default toNative(ProgramDialog);
 </script>
 
 <style lang="sass" scoped>

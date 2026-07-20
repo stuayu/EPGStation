@@ -43,7 +43,7 @@ import ReserveDeleteDialog from '@/components/reserves/ReserveDeleteDialog.vue';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 import IReservesApiModel from '../../model/api/reserves/IReservesApiModel';
 
@@ -52,7 +52,7 @@ import IReservesApiModel from '../../model/api/reserves/IReservesApiModel';
         ReserveDeleteDialog,
     },
 })
-export default class ReserveMenu extends Vue {
+class ReserveMenu extends Vue {
     @Prop({
         required: true,
     })
@@ -149,4 +149,6 @@ export default class ReserveMenu extends Vue {
         return false;
     }
 }
+
+export default toNative(ReserveMenu);
 </script>

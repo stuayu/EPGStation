@@ -18,7 +18,7 @@ import VideoContainer from '@/components/video/VideoContainer.vue';
 import * as VideoParam from '@/components/video/ViedoParam';
 import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 
 
@@ -29,7 +29,7 @@ import * as apid from '../../../api';
         WatchOnRecordedInfoCard,
     },
 })
-export default class WatchRecordedStreaming extends Vue {
+class WatchRecordedStreaming extends Vue {
     public videoParam: VideoParam.RecordedStreamingParam | VideoParam.RecordedHLSParam | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
 
@@ -66,6 +66,8 @@ export default class WatchRecordedStreaming extends Vue {
         });
     }
 }
+
+export default toNative(WatchRecordedStreaming);
 </script>
 
 <style lang="sass" scoped>

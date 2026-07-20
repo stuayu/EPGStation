@@ -6,11 +6,11 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({})
-export default class RecordedDetailStopEncodeButton extends Vue {
+class RecordedDetailStopEncodeButton extends Vue {
     @Prop({ required: true })
     public recordedItem!: apid.RecordedItem;
 
@@ -18,4 +18,6 @@ export default class RecordedDetailStopEncodeButton extends Vue {
         this.$emit('stopEncode');
     }
 }
+
+export default toNative(RecordedDetailStopEncodeButton);
 </script>

@@ -64,7 +64,7 @@ import RecordedStreamingVideo from '@/components/video/RecordedStreamingVideo.vu
 import LiveMpegTsVideo from '@/components/video/LiveMpegTsVideo.vue';
 import * as VideoParam from '@/components/video/ViedoParam';
 import UaUtil from '@/util/UaUtil';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
@@ -75,7 +75,7 @@ import { Component, Prop, Vue } from 'vue-facing-decorator';
         LiveMpegTsVideo,
     },
 })
-export default class VideoContainer extends Vue {
+class VideoContainer extends Vue {
     @Prop({ required: true })
     public videoParam!: VideoParam.BaseVideoParam;
 
@@ -158,6 +158,8 @@ export default class VideoContainer extends Vue {
         this.isLoading = false;
     }
 }
+
+export default toNative(VideoContainer);
 </script>
 
 <style lang="sass" scoped>

@@ -81,7 +81,7 @@ import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import StrUtil from '@/util/StrUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({
@@ -90,7 +90,7 @@ import * as apid from '../../../../../api';
         RecordedDeleteDialog,
     },
 })
-export default class RecordedDetailMoreButton extends Vue {
+class RecordedDetailMoreButton extends Vue {
     @Prop({ required: true })
     public recordedItem!: apid.RecordedItem;
 
@@ -197,4 +197,6 @@ export default class RecordedDetailMoreButton extends Vue {
         this.$emit('downloadPlayList', video);
     }
 }
+
+export default toNative(RecordedDetailMoreButton);
 </script>

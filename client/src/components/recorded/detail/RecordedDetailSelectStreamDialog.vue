@@ -33,11 +33,11 @@ import container from '@/model/ModelContainer';
 import IRecordedDetailSelectStreamState from '@/model/state/recorded/detail/IRecordedDetailSelectStreamState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({})
-export default class RecordedDetailSelectStreamDialog extends Vue {
+class RecordedDetailSelectStreamDialog extends Vue {
     public dialogState: IRecordedDetailSelectStreamState = container.get<IRecordedDetailSelectStreamState>('IRecordedDetailSelectStreamState');
     public isRemove: boolean = false;
     // ストリーム視聴設定セレクタ再描画用
@@ -111,4 +111,6 @@ export default class RecordedDetailSelectStreamDialog extends Vue {
         }
     }
 }
+
+export default toNative(RecordedDetailSelectStreamDialog);
 </script>

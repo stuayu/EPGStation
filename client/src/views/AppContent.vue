@@ -17,7 +17,7 @@ import IScrollPositionState from '@/model/state/IScrollPositionState';
 import IServerStatusState from '@/model/state/serverStatus/IServerStatusState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { Container } from 'inversify';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import ISocketIOModel from '../model/socketio/ISocketIOModel';
 import IColorThemeState from '@/model/state/IColorThemeState';
 
@@ -28,7 +28,7 @@ import IColorThemeState from '@/model/state/IColorThemeState';
         ServerStatusBanner,
     },
 })
-export default class AppContent extends Vue {
+class AppContent extends Vue {
     public isDisconnected: boolean = false;
 
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
@@ -144,6 +144,8 @@ export default class AppContent extends Vue {
         this.scrollState.updateHistoryPosition();
     }
 }
+
+export default toNative(AppContent);
 </script>
 
 <style lang="sass" scoped>

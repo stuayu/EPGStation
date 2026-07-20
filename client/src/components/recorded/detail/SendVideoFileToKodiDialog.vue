@@ -25,11 +25,11 @@ import ISendVideoFileToKodiState from '@/model/state/recorded/detail/ISendVideoF
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISendVideoFileSelectHostSettingStorageModel } from '@/model/storage/recorded/ISendVideoFileSelectHostSettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({})
-export default class SendVideoFileToKodiDialog extends Vue {
+class SendVideoFileToKodiDialog extends Vue {
     @Prop({ required: true })
     public recordedItem!: apid.RecordedItem;
 
@@ -96,4 +96,6 @@ export default class SendVideoFileToKodiDialog extends Vue {
         }
     }
 }
+
+export default toNative(SendVideoFileToKodiDialog);
 </script>

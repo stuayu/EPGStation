@@ -39,13 +39,13 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import Mpegts from 'mpegts.js';
 import IOnAirSelectStreamState from '../../model/state/onair/IOnAirSelectStreamState';
 import Util from '../../util/Util';
 
 @Component({})
-export default class OnAirSelectStream extends Vue {
+class OnAirSelectStream extends Vue {
     @Prop({ required: false })
     public needsGotoGuideButton: boolean | undefined;
 
@@ -217,4 +217,6 @@ export default class OnAirSelectStream extends Vue {
         }
     }
 }
+
+export default toNative(OnAirSelectStream);
 </script>

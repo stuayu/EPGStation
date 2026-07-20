@@ -46,7 +46,7 @@ import RecordedsmallCard from '@/components/recorded/RecordedSmallCard.vue';
 import RecordedTableItems from '@/components/recorded/RecordedTableItems.vue';
 import { RecordedDisplayData } from '@/model/state/recorded/IRecordedUtil';
 import ResizeObserver from 'resize-observer-polyfill';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({
@@ -120,5 +120,5 @@ namespace RecordedItems {
     export const CARD_MARGIN = 8;
 }
 
-export default RecordedItems;
+export default toNative(RecordedItems);
 </script>

@@ -26,7 +26,7 @@ import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import IStorageState from '@/model/state/storage/IStorageState';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 
 
@@ -35,7 +35,7 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
         TitleBar,
     },
 })
-export default class Storages extends Vue {
+class Storages extends Vue {
     public knowledge = 33;
 
     private storageState = container.get<IStorageState>('IStorageState');
@@ -73,4 +73,6 @@ export default class Storages extends Vue {
         });
     }
 }
+
+export default toNative(Storages);
 </script>

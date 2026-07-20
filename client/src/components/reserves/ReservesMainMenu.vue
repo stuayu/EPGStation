@@ -34,10 +34,10 @@
 import IReservesApiModel from '@/model/api/reserves/IReservesApiModel';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { Component, Vue } from 'vue-facing-decorator';
+import { Component, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class ReservesMainMenu extends Vue {
+class ReservesMainMenu extends Vue {
     public isOpened: boolean = false;
 
     private reservesApiModel: IReservesApiModel = container.get<IReservesApiModel>('IReservesApiModel');
@@ -69,4 +69,6 @@ export default class ReservesMainMenu extends Vue {
         return false;
     }
 }
+
+export default toNative(ReservesMainMenu);
 </script>

@@ -9,11 +9,11 @@ import ILiveHLSVideoState from '@/model/state/onair/ILiveHLSVideoState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
 import { DPlayerType } from 'dplayer';
-import { Component, Prop } from 'vue-facing-decorator';
+import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
-export default class LiveHLSVideo extends BaseVideo {
+class LiveHLSVideo extends BaseVideo {
     @Prop({ required: true })
     public channelId!: apid.ChannelId;
 
@@ -99,4 +99,6 @@ export default class LiveHLSVideo extends BaseVideo {
         this.createPlayer(options);
     }
 }
+
+export default toNative(LiveHLSVideo);
 </script>

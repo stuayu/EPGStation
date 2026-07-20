@@ -43,11 +43,11 @@ import IAddEncodeState from '@/model/state/encode/IAddEncodeState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { IAddEncodeSettingStorageModel } from '@/model/storage/encode/IAddEncodeSettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
-export default class AddEncodeDialog extends Vue {
+class AddEncodeDialog extends Vue {
     @Prop({ required: true })
     public recordedItem!: apid.RecordedItem;
 
@@ -120,6 +120,8 @@ export default class AddEncodeDialog extends Vue {
         }
     }
 }
+
+export default toNative(AddEncodeDialog);
 </script>
 
 <style lang="sass" scoped>

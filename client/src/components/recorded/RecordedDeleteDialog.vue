@@ -23,7 +23,7 @@ import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 interface VideoFileInfo {
@@ -33,7 +33,7 @@ interface VideoFileInfo {
 }
 
 @Component({})
-export default class RecordedDeleteDialog extends Vue {
+class RecordedDeleteDialog extends Vue {
     @Prop({ required: true })
     public recordedItem!: apid.RecordedItem;
 
@@ -168,6 +168,8 @@ export default class RecordedDeleteDialog extends Vue {
         return false;
     }
 }
+
+export default toNative(RecordedDeleteDialog);
 </script>
 
 <style lang="sass">

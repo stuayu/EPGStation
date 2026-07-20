@@ -18,10 +18,10 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class Snackbar extends Vue {
+class Snackbar extends Vue {
     public snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
     get snackbarClass(): any {
@@ -39,6 +39,8 @@ export default class Snackbar extends Vue {
         this.snackbarState.close();
     }
 }
+
+export default toNative(Snackbar);
 </script>
 
 <style lang="sass" scoped>

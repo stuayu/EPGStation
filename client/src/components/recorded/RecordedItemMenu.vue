@@ -80,7 +80,7 @@ import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import StrUtil from '@/util/StrUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({
@@ -89,7 +89,7 @@ import * as apid from '../../../../api';
         RecordedDeleteDialog,
     },
 })
-export default class RecordedItemMenu extends Vue {
+class RecordedItemMenu extends Vue {
     @Prop({
         required: true,
     })
@@ -190,4 +190,6 @@ export default class RecordedItemMenu extends Vue {
         return false;
     }
 }
+
+export default toNative(RecordedItemMenu);
 </script>

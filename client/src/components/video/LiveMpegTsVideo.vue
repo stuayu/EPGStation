@@ -9,10 +9,10 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
 import { DPlayerType } from 'dplayer';
 import Mpegts from 'mpegts.js';
-import { Component, Prop } from 'vue-facing-decorator';
+import { Component, Prop, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class LiveMpegTsVideo extends BaseVideo {
+class LiveMpegTsVideo extends BaseVideo {
     @Prop({ required: true })
     public videoSrc!: string;
 
@@ -98,4 +98,6 @@ export default class LiveMpegTsVideo extends BaseVideo {
         return;
     }
 }
+
+export default toNative(LiveMpegTsVideo);
 </script>

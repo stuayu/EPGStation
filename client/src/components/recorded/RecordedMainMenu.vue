@@ -41,10 +41,10 @@
 
 <script lang="ts">
 import Util from '@/util/Util';
-import { Component, Vue } from 'vue-facing-decorator';
+import { Component, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class RecordedMainMenu extends Vue {
+class RecordedMainMenu extends Vue {
     public isOpened: boolean = false;
 
     public edit(): void {
@@ -68,4 +68,6 @@ export default class RecordedMainMenu extends Vue {
         return false;
     }
 }
+
+export default toNative(RecordedMainMenu);
 </script>
