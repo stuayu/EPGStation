@@ -19,7 +19,7 @@ let ormConfig;
 switch (config.dbtype) {
     case 'sqlite':
         ormConfig = new DataSource({
-            type: 'sqlite',
+            type: 'better-sqlite3',
             database: path.join(__dirname, 'data', 'database.db'),
             synchronize: false,
             logging: false,
