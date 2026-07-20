@@ -50,6 +50,15 @@ namespace Util {
         return typeof value === 'undefined' ? null : decodeURIComponent(value);
     };
 
+
+    /** Return one scalar value from a Vue Router param/query value. */
+    export const getRouteString = (value: string | string[] | null | undefined): string | undefined => {
+        if (Array.isArray(value)) {
+            return value[0];
+        }
+        return value === null ? undefined : value;
+    };
+
     /**
      * query に timestamp を追加してページ移動する
      * @param router: VueRouter

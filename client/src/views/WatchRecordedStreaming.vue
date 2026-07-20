@@ -36,7 +36,7 @@ class WatchRecordedStreaming extends Vue {
     @Watch('$route', { immediate: true, deep: true })
     public onUrlChange(): void {
         // 視聴パラメータセット
-        const videoFileId = parseInt(this.$route.params.id, 10);
+        const videoFileId = parseInt(Util.getRouteString(this.$route.params.id) ?? '', 10);
         const recordedId = typeof this.$route.query.recordedId !== 'string' ? null : parseInt(this.$route.query.recordedId, 10);
         const streamingType = typeof this.$route.query.streamingType !== 'string' ? null : this.$route.query.streamingType;
         const mode = typeof this.$route.query.mode !== 'string' ? null : parseInt(this.$route.query.mode, 10);
