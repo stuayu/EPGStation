@@ -17,7 +17,7 @@
             <template multiple :max="0">
                 <v-list-item
                     v-for="(item, index) in navigationState.items"
-                    :key="item.id"
+                    :key="index"
                     link
                     :disabled="item.herf === null"
                     v-on:click="route(item)"
