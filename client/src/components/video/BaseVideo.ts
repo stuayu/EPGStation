@@ -43,7 +43,6 @@ export default abstract class BaseVideo extends Vue {
                 id: jikkyoChannelId ?? jikkyoKakologOption?.jikkyoChannelId,
                 user: 'EPGStation',
                 api: '',
-                bottom: '10%',
                 unlimited: true,
             };
             (options as any).apiBackend = {
