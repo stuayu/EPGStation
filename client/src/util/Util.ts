@@ -55,10 +55,13 @@ namespace Util {
     type RouteStringValue = string | null | undefined;
 
     export const getRouteString = (value: RouteStringValue | readonly RouteStringValue[]): string | undefined => {
-        if (Array.isArray(value)) {
-            return value.find((item): item is string => typeof item === 'string');
+        if (typeof value === 'string') {
+            return value;
         }
-        return value ?? undefined;
+        if (value === null || typeof value === 'undefined') {
+            return undefined;
+        }
+        return value.find((item): item is string => typeof item === 'string');
     };
 
     /**
