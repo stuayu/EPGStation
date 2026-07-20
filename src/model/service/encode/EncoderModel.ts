@@ -36,7 +36,7 @@ class EncoderModel implements IEncoderModel {
 
     private encodeOption: EncodeOption | null = null; // エンコード情報
     private childProcess: ChildProcess | null = null; // エンコードプロセス
-    private timerId: NodeJS.Timer | null = null; // タイムアウト検知用タイマーid
+    private timerId: ReturnType<typeof setTimeout> | null = null; // タイムアウト検知用タイマーid
     private isCanceld: boolean = false; // キャンセルが呼び出されたか?
     private progressInfo: EncodeProgressInfo | null = null;
 

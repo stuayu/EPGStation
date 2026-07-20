@@ -7,7 +7,7 @@ export const put: Operation = async (req, res) => {
     const ruleApiModel = container.get<IRuleApiModel>('IRuleApiModel');
 
     try {
-        await ruleApiModel.disable(parseInt(req.params.ruleId, 10));
+        await ruleApiModel.disable(api.parseRequestParamInt(req.params.ruleId, 'ruleId'));
 
         api.responseJSON(res, 200, { code: 200 });
     } catch (err: unknown) {

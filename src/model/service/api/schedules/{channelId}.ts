@@ -13,7 +13,7 @@ export const get: Operation = async (req, res) => {
             days: parseInt(req.query.days as any, 10),
             isHalfWidth: req.query.isHalfWidth as any,
             needsRawExtended: req.query.needsRawExtended as any,
-            channelId: parseInt(req.params.channelId, 10),
+            channelId: api.parseRequestParamInt(req.params.channelId, 'channelId'),
         };
         if (typeof req.query.isFree === 'boolean') {
             option.isFree = req.query.isFree;

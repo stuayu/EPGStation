@@ -7,7 +7,7 @@ export const del: Operation = async (req, res) => {
     const streamApiModel = container.get<IStreamApiModel>('IStreamApiModel');
 
     try {
-        await streamApiModel.stop(parseInt(req.params.streamId, 10));
+        await streamApiModel.stop(api.parseRequestParamInt(req.params.streamId, 'streamId'));
         api.responseJSON(res, 200, {
             code: 200,
         });

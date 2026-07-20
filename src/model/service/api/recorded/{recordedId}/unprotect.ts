@@ -7,7 +7,7 @@ export const put: Operation = async (req, res) => {
     const recordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
 
     try {
-        await recordedApiModel.changeProtect(parseInt(req.params.recordedId, 10), false);
+        await recordedApiModel.changeProtect(api.parseRequestParamInt(req.params.recordedId, 'recordedId'), false);
         api.responseJSON(res, 200, { code: 200 });
     } catch (err: unknown) {
         api.responseServerError(res, api.getErrorMessage(err));
