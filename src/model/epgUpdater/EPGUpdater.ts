@@ -15,6 +15,7 @@ class EPGUpdater implements IEPGUpdater {
 
     private isEventStreamAlive: boolean = false;
     private lastUpdatedTime: number = 0;
+    private lastEventStreamUpdatedTime: number = 0;
     private lastDeletedTime: number = 0;
     private retryCount: number = 0;
 
@@ -30,11 +31,13 @@ class EPGUpdater implements IEPGUpdater {
         this.updateManage = updateManage;
 
         this.updateManage.on(EPGUpdateEvent.PROGRAM_UPDATED, () => {
+            this.lastEventStreamUpdatedTime = new Date().getTime();
             // NOTE this.config.epgUpdateIntervalTime の周期で予約情報を更新させるため無効化
             // this.notify();
         });
 
         this.updateManage.on(EPGUpdateEvent.SERVICE_UPDATED, () => {
+            this.lastEventStreamUpdatedTime = new Date().getTime();
             // NOTE this.config.epgUpdateIntervalTime の周期で予約情報を更新させるため無効化
             // this.notify();
         });
@@ -54,6 +57,7 @@ class EPGUpdater implements IEPGUpdater {
             this.lastUpdatedTime = now;
             // updateAll 後は全件数削除が行われるため削除時間も更新する
             this.lastDeletedTime = now;
+            this.lastEventStreamUpdatedTime = now;
             this.isEventStreamAlive = true;
         });
 
@@ -96,6 +100,22 @@ class EPGUpdater implements IEPGUpdater {
                     this.lastUpdatedTime = now;
                     // updateAll 後は全件数削除が行われるため削除時間も更新する
                     this.lastDeletedTime = now;
+                    this.lastEventStreamUpdatedTime = now;
+                    this.notify();
+                }
+
+                if (
+                    this.isEventStreamAlive === true &&
+                    this.lastEventStreamUpdatedTime !== 0 &&
+                    this.lastEventStreamUpdatedTime + updateInterval * 1.5 <= now
+                ) {
+                    // 長時間 event stream から更新が無い場合は全件更新を実施する
+                    this.log.system.warn('no epg event updates for a long time, running full refresh');
+                    await this.updateManage.updateAll();
+                    this.lastUpdatedTime = now;
+                    // updateAll 後は全件数削除が行われるため削除時間も更新する
+                    this.lastDeletedTime = now;
+                    this.lastEventStreamUpdatedTime = now;
                     this.notify();
                 }
             } catch (err: any) {
