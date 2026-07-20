@@ -2,7 +2,7 @@
     <div>
         <v-card :ripple="false" v-bind:class="{ 'selected-color': item.isSelected === true }">
             <div class="d-flex my-1 recorded-small-card" v-on:click="clickItem">
-                <v-img aspect-ratio="1.7778" :src="item.display.topThumbnailPath" v-on:error="this.src = './img/noimg.png'" eager class="thumbnail"></v-img>
+                <v-img aspect-ratio="1.7778" :src="item.display.topThumbnailPath" v-on:error="onThumbnailError" eager class="thumbnail"></v-img>
                 <div class="content pa-2 my-auto">
                     <div class="d-flex align-center">
                         <div class="text mt-1 text-subtitle-2 font-weight-bold">{{ item.display.name }}</div>
@@ -36,6 +36,13 @@ import * as apid from '../../../../api';
     },
 })
 export default class EncodeSmallCard extends Vue {
+    public onThumbnailError(event: Event): void {
+        const image = event.target;
+        if (image instanceof HTMLImageElement) {
+            image.src = './img/noimg.png';
+        }
+    }
+
     @Prop({ required: true })
     public item!: EncodeInfoDisplayItem;
 

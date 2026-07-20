@@ -20,7 +20,7 @@
                                 width="100%"
                                 max-height="400"
                                 :src="recorded.display.topThumbnailPath"
-                                v-on:error="this.src = './img/noimg.png'"
+                                v-on:error="onThumbnailError"
                                 :eager="true"
                             ></v-img>
                         </div>
@@ -118,6 +118,13 @@ import IRecordedDetailState from '../model/state/recorded/detail/IRecordedDetail
     },
 })
 export default class RecordedDetail extends Vue {
+    public onThumbnailError(event: Event): void {
+        const image = event.target;
+        if (image instanceof HTMLImageElement) {
+            image.src = './img/noimg.png';
+        }
+    }
+
     public isHideExtend = false;
     public isOpenDropLogDialog = false;
 

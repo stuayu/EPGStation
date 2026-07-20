@@ -48,7 +48,7 @@
                     v-model="uploadState.programOption.startAt"
                     :datePickerProps="{
                         locale: 'jp-ja',
-                        'day-format': date => new Date(date).getDate(),
+                        'day-format': formatDay,
                         'first-day-of-week': 1,
                     }"
                     :timePickerProps="{
@@ -113,6 +113,10 @@ import { Component, Vue, Watch } from 'vue-facing-decorator';
     },
 })
 export default class RecordedUploadForm extends Vue {
+    public formatDay(date: string | number | Date): number {
+        return new Date(date).getDate();
+    }
+
     public uploadState: IRecordedUploadState = container.get<IRecordedUploadState>('IRecordedUploadState');
     public ruleLoading: boolean = false;
     public ruleSearchInput: string | null = null;
