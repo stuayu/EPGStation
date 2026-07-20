@@ -297,6 +297,15 @@ export default class IPCClient implements IIPCClient {
                     },
                 });
             },
+            getCleanupInfo: () => {
+                return this.send<apid.RecordedCleanupInfo>(
+                    {
+                        model: ModelName.recorded,
+                        func: RecordedFunctions.getCleanupInfo,
+                    },
+                    0, // タイムアウトなし (ディレクトリ探索に時間がかかる場合がある)
+                );
+            },
             videoFileCleanup: () => {
                 return this.send(
                     {

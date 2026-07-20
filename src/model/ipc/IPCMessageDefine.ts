@@ -87,6 +87,7 @@ export enum RecordedFunctions {
     createNewRecorded = 'createNewRecorded',
     deleteVideoFile = 'deleteVideoFile',
     changeProtect = 'changeProtect',
+    getCleanupInfo = 'getCleanupInfo',
     videoFileCleanup = 'videoFileCleanup',
     dropLogFileCleanup = 'dropLogFileCleanup',
 }

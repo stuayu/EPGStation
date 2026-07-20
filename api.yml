@@ -1556,6 +1556,71 @@ components:
                     items:
                         $ref: '#/components/schemas/RecordedGenreListItem'
 
+        RecordedCleanupTarget:
+            description: |
+                クリーンアップ実行時の対象指定
+                all: 録画ファイル + ドロップログファイルの両方をクリーンアップする
+                dropLogOnly: ドロップログファイルのみをクリーンアップする (録画実ファイルは削除しない)
+            type: string
+            enum:
+                - 'all'
+                - 'dropLogOnly'
+
+        RecordedCleanupOption:
+            description: クリーンアップ実行オプション
+            type: object
+            properties:
+                target:
+                    description: クリーンアップ対象 (省略時は all)
+                    $ref: '#/components/schemas/RecordedCleanupTarget'
+
+        RecordedCleanupFileCandidates:
+            description: DB 未登録の動画実ファイルの削除候補情報
+            type: object
+            required:
+                - count
+                - sampleFilePaths
+            properties:
+                count:
+                    description: 削除候補件数
+                    type: integer
+                sampleFilePaths:
+                    description: 代表ファイルパス (先頭数件)
+                    type: array
+                    items:
+                        type: string
+                totalSize:
+                    description: 削除候補の合計サイズ (byte)
+                    type: integer
+
+        RecordedCleanupDropLogCandidates:
+            description: DB 未登録のドロップログファイルの削除候補情報
+            type: object
+            required:
+                - count
+                - sampleFilePaths
+            properties:
+                count:
+                    description: 削除候補件数
+                    type: integer
+                sampleFilePaths:
+                    description: 代表ファイルパス (先頭数件)
+                    type: array
+                    items:
+                        type: string
+
+        RecordedCleanupInfo:
+            description: クリーンアップ削除候補情報 (dry-run 結果)
+            type: object
+            required:
+                - videoFiles
+                - dropLogs
+            properties:
+                videoFiles:
+                    $ref: '#/components/schemas/RecordedCleanupFileCandidates'
+                dropLogs:
+                    $ref: '#/components/schemas/RecordedCleanupDropLogCandidates'
+
         SendVideoLinkToKodiOption:
             description: kodiへビデオリンクを送信するときのオプション
             type: object

@@ -31,6 +31,7 @@ export default interface IRecordedManageModel {
     deleteVideoFile(videoFileid: apid.VideoFileId, isIgnoreProtection?: boolean): Promise<void>;
     changeProtect(recordedId: apid.RecordedId, isProtect: boolean): Promise<void>;
     historyCleanup(): Promise<void>;
+    getCleanupInfo(): Promise<apid.RecordedCleanupInfo>;
     videoFileCleanup(): Promise<void>;
     dropLogFileCleanup(): Promise<void>;
     removeRuleId(ruleId: apid.RuleId): Promise<void>;
