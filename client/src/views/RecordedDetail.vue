@@ -192,7 +192,7 @@ class RecordedDetail extends Vue {
     }
 
     public streaming(video: apid.VideoFile): void {
-        this.streamSelectDialogState.open(video, parseInt(this.$route.params.id, 10));
+        this.streamSelectDialogState.open(video, parseInt(Util.getRouteString(this.$route.params.id) ?? '', 10));
     }
 
     public downloadVideo(video: apid.VideoFile): void {
@@ -241,7 +241,7 @@ class RecordedDetail extends Vue {
      * データ取得
      */
     private async fetchData(): Promise<void> {
-        await this.recordedDetailState.fetchData(parseInt(this.$route.params.id, 10), this.settingValue === null ? true : this.settingValue.isHalfWidthDisplayed);
+        await this.recordedDetailState.fetchData(parseInt(Util.getRouteString(this.$route.params.id) ?? '', 10), this.settingValue === null ? true : this.settingValue.isHalfWidthDisplayed);
 
         // 番組詳細 URL 処理
         this.$nextTick(() => {
