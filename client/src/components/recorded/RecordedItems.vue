@@ -82,7 +82,7 @@ class RecordedItems extends Vue {
         return RecordedItems.CARD_WIDTH;
     }
 
-    private cardNum = 1;
+    public cardNum = 1;
     private resizeObserver: ResizeObserver | null = null;
 
     public mounted(): void {

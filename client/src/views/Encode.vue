@@ -63,7 +63,7 @@ class Encode extends Vue {
     public isEditMode: boolean = false;
     public isOpenMultiplueDeletionDialog: boolean = false;
 
-    private encodeState: IEncodeState = container.get<IEncodeState>('IEncodeState');
+    public encodeState: IEncodeState = container.get<IEncodeState>('IEncodeState');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     private settingValue: ISettingValue | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');

@@ -8,8 +8,8 @@
                         <v-expansion-panel-text>
                             <SearchOptionRow>
                                 <div class="d-flex flex-wrap">
-                                    <v-checkbox class="mx-1 my-0" v-model="searchState.reserveOption.enable" label="有効"></v-checkbox>
-                                    <v-checkbox class="mx-1 my-0" v-model="searchState.reserveOption.allowEndLack" label="状況に応じて末尾がかけることを許可"></v-checkbox>
+                                    <v-checkbox class="mx-1 my-0" v-model="reserveOptionValue.enable" label="有効"></v-checkbox>
+                                    <v-checkbox class="mx-1 my-0" v-model="reserveOptionValue.allowEndLack" label="状況に応じて末尾がかけることを許可"></v-checkbox>
                                 </div>
                             </SearchOptionRow>
                         </v-expansion-panel-text>
@@ -18,8 +18,8 @@
                         <v-expansion-panel-title>重複</v-expansion-panel-title>
                         <v-expansion-panel-text>
                             <SearchOptionRow>
-                                <v-text-field class="period" v-model="searchState.reserveOption.periodToAvoidDuplicate" min="0" label="日数" type="number" clearable></v-text-field>
-                                <v-checkbox class="mx-1 my-0" v-model="searchState.reserveOption.avoidDuplicate" label="録画済み番組を排除"></v-checkbox>
+                                <v-text-field class="period" v-model="reserveOptionValue.periodToAvoidDuplicate" min="0" label="日数" type="number" clearable></v-text-field>
+                                <v-checkbox class="mx-1 my-0" v-model="reserveOptionValue.avoidDuplicate" label="録画済み番組を排除"></v-checkbox>
                             </SearchOptionRow>
                         </v-expansion-panel-text>
                     </v-expansion-panel>
@@ -29,12 +29,12 @@
                             <SearchOptionRow>
                                 <v-select
                                     class="directory"
-                                    v-model="searchState.saveOption.parentDirectoryName"
+                                    v-model="saveOptionValue.parentDirectoryName"
                                     :items="searchState.getPrentDirectoryItems()"
                                     label="directory"
                                     clearable
                                 ></v-select>
-                                <v-text-field v-model="searchState.saveOption.directory" label="sub directory" clearable></v-text-field>
+                                <v-text-field v-model="saveOptionValue.directory" label="sub directory" clearable></v-text-field>
                             </SearchOptionRow>
                         </v-expansion-panel-text>
                     </v-expansion-panel>
@@ -42,7 +42,7 @@
                         <v-expansion-panel-title>ファイル名形式</v-expansion-panel-title>
                         <v-expansion-panel-text>
                             <SearchOptionRow>
-                                <v-text-field v-model="searchState.saveOption.recordedFormat" label="file format" clearable></v-text-field>
+                                <v-text-field v-model="saveOptionValue.recordedFormat" label="file format" clearable></v-text-field>
                             </SearchOptionRow>
                         </v-expansion-panel-text>
                     </v-expansion-panel>
@@ -52,19 +52,19 @@
                             <SearchOptionRow>
                                 <v-select
                                     class="encode-mode"
-                                    v-model="searchState.encodeOption.mode1"
+                                    v-model="encodeOptionValue.mode1"
                                     :items="searchState.getEncodeModeItems()"
                                     label="mode1"
                                     clearable
                                 ></v-select>
                                 <v-select
                                     class="directory"
-                                    v-model="searchState.encodeOption.encodeParentDirectoryName1"
+                                    v-model="encodeOptionValue.encodeParentDirectoryName1"
                                     :items="searchState.getPrentDirectoryItems()"
                                     label="directory1"
                                     clearable
                                 ></v-select>
-                                <v-text-field v-model="searchState.encodeOption.directory1" label="sub directory1" clearable></v-text-field>
+                                <v-text-field v-model="encodeOptionValue.directory1" label="sub directory1" clearable></v-text-field>
                             </SearchOptionRow>
                         </v-expansion-panel-text>
                     </v-expansion-panel>
@@ -74,19 +74,19 @@
                             <SearchOptionRow>
                                 <v-select
                                     class="encode-mode"
-                                    v-model="searchState.encodeOption.mode2"
+                                    v-model="encodeOptionValue.mode2"
                                     :items="searchState.getEncodeModeItems()"
                                     label="mode2"
                                     clearable
                                 ></v-select>
                                 <v-select
                                     class="directory"
-                                    v-model="searchState.encodeOption.encodeParentDirectoryName2"
+                                    v-model="encodeOptionValue.encodeParentDirectoryName2"
                                     :items="searchState.getPrentDirectoryItems()"
                                     label="directory2"
                                     clearable
                                 ></v-select>
-                                <v-text-field v-model="searchState.encodeOption.directory2" label="sub directory2" clearable></v-text-field>
+                                <v-text-field v-model="encodeOptionValue.directory2" label="sub directory2" clearable></v-text-field>
                             </SearchOptionRow>
                         </v-expansion-panel-text>
                     </v-expansion-panel>
@@ -96,19 +96,19 @@
                             <SearchOptionRow>
                                 <v-select
                                     class="encode-mode"
-                                    v-model="searchState.encodeOption.mode3"
+                                    v-model="encodeOptionValue.mode3"
                                     :items="searchState.getEncodeModeItems()"
                                     label="mode3"
                                     clearable
                                 ></v-select>
                                 <v-select
                                     class="directory"
-                                    v-model="searchState.encodeOption.encodeParentDirectoryName3"
+                                    v-model="encodeOptionValue.encodeParentDirectoryName3"
                                     :items="searchState.getPrentDirectoryItems()"
                                     label="directory3"
                                     clearable
                                 ></v-select>
-                                <v-text-field v-model="searchState.encodeOption.directory3" label="sub directory3" clearable></v-text-field>
+                                <v-text-field v-model="encodeOptionValue.directory3" label="sub directory3" clearable></v-text-field>
                             </SearchOptionRow>
                         </v-expansion-panel-text>
                     </v-expansion-panel>
@@ -116,7 +116,7 @@
                         <v-expansion-panel-title>ファイル削除</v-expansion-panel-title>
                         <v-expansion-panel-text>
                             <SearchOptionRow>
-                                <v-checkbox class="mx-1 my-0" v-model="searchState.encodeOption.isDeleteOriginalAfterEncode" label="元ファイルの自動削除"></v-checkbox>
+                                <v-checkbox class="mx-1 my-0" v-model="encodeOptionValue.isDeleteOriginalAfterEncode" label="元ファイルの自動削除"></v-checkbox>
                             </SearchOptionRow>
                         </v-expansion-panel-text>
                     </v-expansion-panel>
@@ -136,7 +136,7 @@
 <script lang="ts">
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
-import ISearchState from '@/model/state/search/ISearchState';
+import ISearchState, { EncodedOption, ReserveOption, SaveOption } from '@/model/state/search/ISearchState';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
@@ -146,6 +146,28 @@ import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 })
 class SearchRuleOption extends Vue {
     public searchState: ISearchState = container.get<ISearchState>('ISearchState');
+
+
+    get reserveOptionValue(): ReserveOption {
+        if (this.searchState.reserveOption === null) {
+            throw new Error('ReserveOptionIsNotInitialized');
+        }
+        return this.searchState.reserveOption;
+    }
+
+    get saveOptionValue(): SaveOption {
+        if (this.searchState.saveOption === null) {
+            throw new Error('SaveOptionIsNotInitialized');
+        }
+        return this.searchState.saveOption;
+    }
+
+    get encodeOptionValue(): EncodedOption {
+        if (this.searchState.encodeOption === null) {
+            throw new Error('EncodeOptionIsNotInitialized');
+        }
+        return this.searchState.encodeOption;
+    }
 
     public onClickCancel(): void {
         this.$emit('cancel');

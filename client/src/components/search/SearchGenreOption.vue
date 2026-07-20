@@ -3,21 +3,21 @@
         <v-select
             :items="genreSelectionItems"
             v-model="searchState.genreSelect"
-            :disabled="searchState.searchOption.isShowSubgenres === false"
+            :disabled="searchOptionValue.isShowSubgenres === false"
             v-on:change="onChangeGenreSelector"
         ></v-select>
         <v-card ref="card" class="overflow-auto pa-1 mt-4" width="100%" max-height="180px" overflow-scroll variant="outlined">
             <div v-for="genre in genreItems" v-bind:key="genre.value">
-                <div class="item" v-bind:class="{ selected: searchState.searchOption.genres[genre.value].isEnable === true }" v-on:click="onClickGenre(genre.value)">
+                <div class="item" v-bind:class="{ selected: searchOptionValue.genres[genre.value].isEnable === true }" v-on:click="onClickGenre(genre.value)">
                     {{ genre.name }}
                 </div>
-                <div v-if="searchState.searchOption.isShowSubgenres === true">
+                <div v-if="searchOptionValue.isShowSubgenres === true">
                     <div
                         v-for="subGenre in genre.subGenres"
                         v-bind:key="subGenre.value"
                         class="sub-genre item"
                         v-bind:class="{
-                            selected: searchState.searchOption.genres[genre.value].subGenreIndex[subGenre.value] === true,
+                            selected: searchOptionValue.genres[genre.value].subGenreIndex[subGenre.value] === true,
                         }"
                         v-on:click="onClickSubGenre(genre.value, subGenre.value)"
                     >
@@ -27,7 +27,7 @@
             </div>
         </v-card>
         <div class="d-flex mt-2">
-            <v-checkbox class="mx-1 my-1" label="サブジャンル表示" v-model="searchState.searchOption.isShowSubgenres" :disabled="searchState.genreSelect !== -1"></v-checkbox>
+            <v-checkbox class="mx-1 my-1" label="サブジャンル表示" v-model="searchOptionValue.isShowSubgenres" :disabled="searchState.genreSelect !== -1"></v-checkbox>
             <v-btn v-on:click="cleatGenres" class="mx-1" color="primary">クリア</v-btn>
         </div>
     </div>
@@ -35,7 +35,7 @@
 
 <script lang="ts">
 import container from '@/model/ModelContainer';
-import ISearchState, { GenreItem, SelectorItem } from '@/model/state/search/ISearchState';
+import ISearchState, { GenreItem, SearchOption, SelectorItem } from '@/model/state/search/ISearchState';
 import { cloneDeep } from 'lodash';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
@@ -43,6 +43,14 @@ import * as apid from '../../../../api';
 @Component({})
 class SearchGenreOption extends Vue {
     public searchState: ISearchState = container.get<ISearchState>('ISearchState');
+
+
+    get searchOptionValue(): SearchOption {
+        if (this.searchState.searchOption === null) {
+            throw new Error('SearchOptionIsNotInitialized');
+        }
+        return this.searchState.searchOption;
+    }
 
     get genreSelectionItems(): SelectorItem[] {
         const result = this.searchState.getGenreItems().map(g => {

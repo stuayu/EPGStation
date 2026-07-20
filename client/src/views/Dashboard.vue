@@ -108,11 +108,11 @@ class Dashboard extends Vue {
     public reservesState: IReservesState = container.get<IReservesState>('IReservesState');
 
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
-    private settingValue: ISettingValue | null = null;
+    public settingValue: ISettingValue | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
-    private versionState: IVersionState = container.get<IVersionState>('IVersionState');
+    public versionState: IVersionState = container.get<IVersionState>('IVersionState');
     private onUpdateStatusCallback = (async (): Promise<void> => {
         await this.dashboardState.fetchData();
         await this.recordingState.fetchData(this.createFetchRecordingDataOption());

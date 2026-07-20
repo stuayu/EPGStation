@@ -74,7 +74,7 @@ import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 class ProgramDialog extends Vue {
     public dialogState: IGuideProgramDialogState = container.get<IGuideProgramDialogState>('IGuideProgramDialogState');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
-    private dialogSetting = container.get<IGuideProgramDialogSettingStorageModel>('IGuideProgramDialogSettingStorageModel');
+    public dialogSetting = container.get<IGuideProgramDialogSettingStorageModel>('IGuideProgramDialogSettingStorageModel');
     public isRemove: boolean = false;
 
     private snackbarState = container.get<ISnackbarState>('ISnackbarState');
