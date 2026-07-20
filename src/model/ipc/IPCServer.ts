@@ -274,6 +274,11 @@ export default class IPCServer implements IIPCServer {
             await this.recordedManage.changeProtect(recordedId, isProtect);
         };
 
+        // getCleanupInfo
+        index[RecordedFunctions.getCleanupInfo] = async () => {
+            return await this.recordedManage.getCleanupInfo();
+        };
+
         // videoFileCleanup
         index[RecordedFunctions.videoFileCleanup] = async () => {
             await this.recordedManage.videoFileCleanup();

@@ -538,6 +538,45 @@ export interface RecordedSearchOptions {
 }
 
 /**
+ * クリーンアップ実行時の対象指定 (省略時は 'all')
+ * all: 録画ファイル + ドロップログファイルの両方をクリーンアップする
+ * dropLogOnly: ドロップログファイルのみをクリーンアップする (録画実ファイルは削除しない)
+ */
+export type RecordedCleanupTarget = 'all' | 'dropLogOnly';
+
+/**
+ * クリーンアップ実行オプション
+ */
+export interface RecordedCleanupOption {
+    target?: RecordedCleanupTarget; // 省略時は 'all'
+}
+
+/**
+ * DB 未登録の動画実ファイルの削除候補情報
+ */
+export interface RecordedCleanupFileCandidates {
+    count: number; // 削除候補件数
+    sampleFilePaths: string[]; // 代表ファイルパス (先頭数件)
+    totalSize?: number; // 削除候補の合計サイズ (byte)
+}
+
+/**
+ * DB 未登録のドロップログファイルの削除候補情報
+ */
+export interface RecordedCleanupDropLogCandidates {
+    count: number; // 削除候補件数
+    sampleFilePaths: string[]; // 代表ファイルパス (先頭数件)
+}
+
+/**
+ * クリーンアップ削除候補情報 (dry-run 結果)
+ */
+export interface RecordedCleanupInfo {
+    videoFiles: RecordedCleanupFileCandidates;
+    dropLogs: RecordedCleanupDropLogCandidates;
+}
+
+/**
  * tag 取得オプション
  */
 export interface GetRecordedTagOption {

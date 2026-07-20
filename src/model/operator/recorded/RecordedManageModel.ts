@@ -24,7 +24,7 @@ import IRecordedManageModel, { AddVideoFileOption, UploadedVideoFileOption } fro
 import IRecordingUtilModel from '../recording/IRecordingUtilModel';
 
 @injectable()
-export default class RecordedManageModel implements IRecordedManageModel {
+class RecordedManageModel implements IRecordedManageModel {
     private log: ILogger;
     private config: IConfigFile;
     private recordedDB: IRecordedDB;
@@ -543,17 +543,21 @@ export default class RecordedManageModel implements IRecordedManageModel {
     }
 
     /**
-     * DB に登録されていない recorded 下のファイル削除 &  DB に登録されているが存在しない番組情報の削除
-     * @return Promise<void>
+     * DB 未登録の動画実ファイル・ディレクトリと、DB 上に存在するが実ファイルが存在しない video file を洗い出す
+     * 実削除は行わない (副作用なし)
+     * @return Promise<{ orphanFiles: string[]; orphanDirectories: string[]; missingDBVideoFiles: VideoFile[] }>
      */
-    public async videoFileCleanup(): Promise<void> {
-        this.log.system.info('start video files cleanup');
-
+    private async scanOrphanVideoFiles(): Promise<{
+        orphanFiles: string[];
+        orphanDirectories: string[];
+        missingDBVideoFiles: VideoFile[];
+    }> {
         const videoFiles = await this.videoFileDB.findAll();
 
-        // ファイル, ディレクトリ索引生成と DB 上に存在するが実ファイルが存在しないデータを削除する
+        // ファイル, ディレクトリ索引生成 & DB 上に存在するが実ファイルが存在しないデータの洗い出し
         const fileIndex: { [filePath: string]: boolean } = {}; // ファイル索引
         const dirIndex: { [dirPath: string]: boolean } = {}; // ディレクトリ索引
+        const missingDBVideoFiles: VideoFile[] = [];
         for (const video of videoFiles) {
             const videoFilePath = this.videoUtil.getFullFilePathFromVideoFile(video);
             if (videoFilePath === null) {
@@ -566,8 +570,8 @@ export default class RecordedManageModel implements IRecordedManageModel {
                 const parentDir = path.dirname(videoFilePath).replace(new RegExp(`\\${path.sep}$`), '');
                 dirIndex[parentDir] = true;
             } else {
-                // ファイルが存在しないなら削除
-                await this.deleteVideoFile(video.id).catch(() => {});
+                // ファイルが存在しないなら削除候補に追加
+                missingDBVideoFiles.push(video);
             }
         }
 
@@ -587,12 +591,90 @@ export default class RecordedManageModel implements IRecordedManageModel {
             return dir2.length - dir1.length;
         });
 
-        // ファイル索引上に存在しないファイルを削除する
-        for (const file of list.files) {
-            if (typeof fileIndex[file] !== 'undefined') {
-                continue;
-            }
+        // 索引上に存在しないファイル・ディレクトリ (= DB 未登録) を抽出する
+        const orphanFiles = list.files.filter(file => typeof fileIndex[file] === 'undefined');
+        const orphanDirectories = list.directories.filter(dir => typeof dirIndex[dir] === 'undefined');
 
+        return { orphanFiles, orphanDirectories, missingDBVideoFiles };
+    }
+
+    /**
+     * DB 未登録のドロップログ実ファイルと、DB 上に存在するが実ファイルが存在しない drop log を洗い出す
+     * 実削除は行わない (副作用なし)
+     * @return Promise<{ orphanFiles: string[]; missingDBDropLogs: DropLogFile[] }>
+     */
+    private async scanOrphanDropLogFiles(): Promise<{ orphanFiles: string[]; missingDBDropLogs: DropLogFile[] }> {
+        const dropLogs = await this.dropLogFileDB.findAll();
+
+        // ファイル索引生成 & DB 上に存在するが実ファイルが存在しないデータの洗い出し
+        const fileIndex: { [filePath: string]: boolean } = {}; // ファイル索引
+        const missingDBDropLogs: DropLogFile[] = [];
+        for (const dropLog of dropLogs) {
+            const filePath = this.getDropLogFilePath(dropLog);
+
+            if ((await this.checkFileExistence(filePath)) === true) {
+                // ファイルが存在するなら索引に追加
+                fileIndex[filePath] = true;
+            } else {
+                // ファイルが存在しないなら削除候補に追加
+                missingDBDropLogs.push(dropLog);
+            }
+        }
+
+        // 索引上に存在しないファイル (= DB 未登録) を抽出する
+        const list = await FileUtil.getFileList(this.config.dropLog);
+        const orphanFiles = list.files.filter(file => typeof fileIndex[file] === 'undefined');
+
+        return { orphanFiles, missingDBDropLogs };
+    }
+
+    /**
+     * クリーンアップ (削除) 対象の情報を実削除せずに取得する
+     * @return Promise<apid.RecordedCleanupInfo>
+     */
+    public async getCleanupInfo(): Promise<apid.RecordedCleanupInfo> {
+        const { orphanFiles: orphanVideoFiles } = await this.scanOrphanVideoFiles();
+        const { orphanFiles: orphanDropLogFiles } = await this.scanOrphanDropLogFiles();
+
+        // 削除候補の動画実ファイルの合計サイズを算出する
+        let totalSize = 0;
+        for (const file of orphanVideoFiles) {
+            try {
+                totalSize += await FileUtil.getFileSize(file);
+            } catch (err: any) {
+                // ファイルサイズが取得できなくても無視する
+            }
+        }
+
+        return {
+            videoFiles: {
+                count: orphanVideoFiles.length,
+                sampleFilePaths: orphanVideoFiles.slice(0, RecordedManageModel.CLEANUP_INFO_SAMPLE_COUNT),
+                totalSize: totalSize,
+            },
+            dropLogs: {
+                count: orphanDropLogFiles.length,
+                sampleFilePaths: orphanDropLogFiles.slice(0, RecordedManageModel.CLEANUP_INFO_SAMPLE_COUNT),
+            },
+        };
+    }
+
+    /**
+     * DB に登録されていない recorded 下のファイル削除 &  DB に登録されているが存在しない番組情報の削除
+     * @return Promise<void>
+     */
+    public async videoFileCleanup(): Promise<void> {
+        this.log.system.info('start video files cleanup');
+
+        const { orphanFiles, orphanDirectories, missingDBVideoFiles } = await this.scanOrphanVideoFiles();
+
+        // DB 上に存在するが実ファイルが存在しないデータを削除する
+        for (const video of missingDBVideoFiles) {
+            await this.deleteVideoFile(video.id).catch(() => {});
+        }
+
+        // ファイル索引上に存在しないファイルを削除する
+        for (const file of orphanFiles) {
             this.log.system.info(`delete file: ${file}`);
             await FileUtil.unlink(file).catch(err => {
                 this.log.system.error(`failed to delete file: ${file}`);
@@ -601,11 +683,7 @@ export default class RecordedManageModel implements IRecordedManageModel {
         }
 
         // ディレクトリ索引上に存在しないディレクトリを削除する
-        for (const dir of list.directories) {
-            if (typeof dirIndex[dir] !== 'undefined') {
-                continue;
-            }
-
+        for (const dir of orphanDirectories) {
             this.log.system.info(`delete directory: ${dir}`);
             try {
                 // ディレクトリが空かチェック
@@ -628,35 +706,22 @@ export default class RecordedManageModel implements IRecordedManageModel {
      */
     public async dropLogFileCleanup(): Promise<void> {
         this.log.system.info('start drop log files cleanup');
-        const dropLogs = await this.dropLogFileDB.findAll();
 
-        // ファイル, ディレクトリ索引生成と DB 上に存在するが実ファイルが存在しないデータを削除する
-        const fileIndex: { [filePath: string]: boolean } = {}; // ファイル索引
-        for (const dropLog of dropLogs) {
-            const filePath = this.getDropLogFilePath(dropLog);
+        const { orphanFiles, missingDBDropLogs } = await this.scanOrphanDropLogFiles();
 
-            if ((await this.checkFileExistence(filePath)) === true) {
-                // ファイルが存在するなら索引に追加
-                fileIndex[filePath] = true;
-            } else {
-                this.log.system.warn(`drop file is not exist: ${filePath}`);
-                // ファイルが存在しないなら削除
-                try {
-                    await this.recordedDB.removeDropLogFileId(dropLog.id);
-                    await this.dropLogFileDB.deleteOnce(dropLog.id);
-                } catch (err: any) {
-                    this.log.system.error(err);
-                }
+        // DB 上に存在するが実ファイルが存在しないデータを削除する
+        for (const dropLog of missingDBDropLogs) {
+            this.log.system.warn(`drop file is not exist: ${this.getDropLogFilePath(dropLog)}`);
+            try {
+                await this.recordedDB.removeDropLogFileId(dropLog.id);
+                await this.dropLogFileDB.deleteOnce(dropLog.id);
+            } catch (err: any) {
+                this.log.system.error(err);
             }
         }
 
         // ファイル索引上に存在しないファイルを削除する
-        const list = await FileUtil.getFileList(this.config.dropLog);
-        for (const file of list.files) {
-            if (typeof fileIndex[file] !== 'undefined') {
-                continue;
-            }
-
+        for (const file of orphanFiles) {
             this.log.system.info(`delete drop log file: ${file}`);
             await FileUtil.unlink(file).catch(err => {
                 this.log.system.error(`failed to drop log file: ${file}`);
@@ -690,3 +755,10 @@ export default class RecordedManageModel implements IRecordedManageModel {
         await this.recordedDB.removeRuleId(ruleId);
     }
 }
+
+namespace RecordedManageModel {
+    // getCleanupInfo で返す代表ファイルパスの最大件数
+    export const CLEANUP_INFO_SAMPLE_COUNT = 5;
+}
+
+export default RecordedManageModel;

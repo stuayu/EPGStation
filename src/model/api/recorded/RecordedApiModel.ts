@@ -111,10 +111,22 @@ export default class RecordedApiModel implements IRecordedApiModel {
     }
 
     /**
-     * ファイルのクリーンアップ
+     * クリーンアップ削除候補情報を取得する (実削除は行わない)
+     * @return Promise<apid.RecordedCleanupInfo>
      */
-    public async fileCleanup(): Promise<void> {
-        await this.ipc.recorded.videoFileCleanup();
+    public async getCleanupInfo(): Promise<apid.RecordedCleanupInfo> {
+        return await this.ipc.recorded.getCleanupInfo();
+    }
+
+    /**
+     * ファイルのクリーンアップ
+     * @param target: apid.RecordedCleanupTarget 省略時は 'all' (録画実ファイル + ドロップログファイル)
+     * dropLogOnly が指定された場合は録画実ファイルを削除せずドロップログファイルのみクリーンアップする
+     */
+    public async fileCleanup(target: apid.RecordedCleanupTarget = 'all'): Promise<void> {
+        if (target === 'all') {
+            await this.ipc.recorded.videoFileCleanup();
+        }
         await this.ipc.recorded.dropLogFileCleanup();
     }
 
