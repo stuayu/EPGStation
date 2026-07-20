@@ -3,6 +3,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import IPlayList from '../api/IPlayList';
 
+export const getErrorMessage = (error: unknown): string => {
+    return error instanceof Error ? error.message : String(error);
+};
+
 export interface IError {
     readonly code: number;
     readonly message: string;

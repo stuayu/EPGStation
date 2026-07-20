@@ -18,8 +18,8 @@ export const post: Operation = async (req, res) => {
             parseInt(req.params.videoFileId, 10),
         );
         api.responseJSON(res, 200, { code: 200 });
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 

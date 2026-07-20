@@ -25,8 +25,8 @@ export const get: Operation = async (req, res) => {
         } else {
             api.responsePlayList(req, res, playlist);
         }
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 

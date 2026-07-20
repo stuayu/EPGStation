@@ -8,8 +8,8 @@ export const del: Operation = async (req, res) => {
 
     try {
         api.responseJSON(res, 200, await reserveApiModel.removeSkip(parseInt(req.params.reserveId, 10)));
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 

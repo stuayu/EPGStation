@@ -8,8 +8,8 @@ export const post: Operation = async (_req, res) => {
     try {
         await thumbnailApiModel.fileCleanup();
         api.responseJSON(res, 200, { code: 200 });
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 
