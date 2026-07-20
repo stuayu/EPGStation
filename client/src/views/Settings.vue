@@ -100,7 +100,7 @@
                                         <v-list-item-subtitle>ダークテーマ使用時でも通常時と同じ配色設定になります</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
-                                    <v-switch v-model="storageModel.tmp.isForceDisableDarkThemeForGuide" value :disabled="$vuetify.theme.global.current.value.dark === false"></v-switch>
+                                    <v-switch v-model="storageModel.tmp.isForceDisableDarkThemeForGuide" value :disabled="$vuetify.theme.global.current.dark === false"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>

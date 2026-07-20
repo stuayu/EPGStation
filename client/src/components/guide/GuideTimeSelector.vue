@@ -56,9 +56,7 @@ export default class GuideTimeSelector extends Vue {
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     private settingValue: ISettingValue | null = null;
 
-    constructor() {
-        super();
-
+    public created(): void {
         for (let i = 0; i < 24; i++) {
             this.hourItems.push({
                 text: `${i.toString(10)}時`,
