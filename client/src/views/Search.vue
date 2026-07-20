@@ -32,6 +32,7 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
+import type { ComponentPublicInstance } from 'vue';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
@@ -109,7 +110,7 @@ class Search extends Vue {
         // 検索後にスクロール
         if (needsScroll === true) {
             this.$nextTick(() => {
-                this.scrollToElementHead(this.$refs.searchResult as Vue);
+                this.scrollToElementHead(this.$refs.searchResult as ComponentPublicInstance);
             });
         }
     }
@@ -143,7 +144,7 @@ class Search extends Vue {
             throw new Error('TitleElementIsUndefined');
         }
 
-        return ((this.$refs.title as Vue).$el as HTMLElement).clientHeight;
+        return ((this.$refs.title as ComponentPublicInstance).$el as HTMLElement).clientHeight;
     }
 
     private clearPeriodState(): void {
@@ -208,7 +209,7 @@ class Search extends Vue {
     }
 
     public scrollToRuleOption(): void {
-        this.scrollToElementHead(this.$refs.ruleOption as Vue, 4);
+        this.scrollToElementHead(this.$refs.ruleOption as ComponentPublicInstance, 4);
     }
 
     /**

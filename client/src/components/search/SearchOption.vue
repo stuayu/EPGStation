@@ -449,6 +449,7 @@ import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import ISearchState, { SearchOption as SearchOptionValue, TimeReserveOption } from '@/model/state/search/ISearchState';
 import VuetifyUtil from '@/util/VuetifyUtil';
+import type { ComponentPublicInstance } from 'vue';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
@@ -481,7 +482,7 @@ class SearchOption extends Vue {
 
     public mounted(): void {
         if (typeof this.$refs.keyword !== 'undefined') {
-            VuetifyUtil.focusTextFiled(this.$refs.keyword as Vue);
+            VuetifyUtil.focusTextFiled(this.$refs.keyword as ComponentPublicInstance);
         }
     }
 
