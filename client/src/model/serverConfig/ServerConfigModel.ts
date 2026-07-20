@@ -20,14 +20,16 @@ export default class ServerConfigModel implements IServerConfigModel {
     public async fetchConfig(): Promise<void> {
         this.config = await this.configApiModel.getConfig();
 
-        this.setStreamingSettingForiOS();
+        this.setStreamingSettingForSafari();
     }
 
     /**
-     * iOS で再生できないストリーミングの設定を削除する
+     * iOS / Safari (macOS 含む) で再生できないストリーミングの設定を削除する
+     * macOS 26 (Safari 26) 以降は mpegts.js によるライブ再生 (m2tsll) が
+     * 映像停止するため、iOS だけでなくデスクトップの Safari もネイティブ HLS へ誘導する
      */
-    private setStreamingSettingForiOS(): void {
-        if (UaUtil.isiOS() === false || this.config === null || typeof this.config.streamConfig === 'undefined') {
+    private setStreamingSettingForSafari(): void {
+        if ((UaUtil.isiOS() === false && UaUtil.isSafari() === false) || this.config === null || typeof this.config.streamConfig === 'undefined') {
             return;
         }
 
@@ -37,8 +39,8 @@ export default class ServerConfigModel implements IServerConfigModel {
                 delete this.config.streamConfig.live.ts.webm;
                 delete this.config.streamConfig.live.ts.mp4;
 
-                if (UaUtil.isiOS() === true && UaUtil.isiPadOS() === false) {
-                    // ios では mpegts.js 用設定を削除する
+                if (UaUtil.isSafari() === true) {
+                    // Safari では mpegts.js のライブ再生が不安定なため、ネイティブ HLS を使用する
                     delete this.config.streamConfig.live.ts.m2tsll;
                 }
 

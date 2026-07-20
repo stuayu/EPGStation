@@ -1,9 +1,15 @@
 import DPlayer, { DPlayerType } from 'dplayer';
 import { Component, Vue } from 'vue-facing-decorator';
+import container from '@/model/ModelContainer';
+import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
+import JikkyoCommentClient, { JikkyoComment } from '@/util/JikkyoCommentClient';
+import JikkyoKakologClient from '@/util/JikkyoKakologClient';
 
 export default abstract class BaseVideo extends Vue {
     protected dp: DPlayer | null = null;
     protected containerElement: HTMLElement | null = null;
+    private jikkyoCommentClient: JikkyoCommentClient | null = null;
+    private jikkyoKakologClient: JikkyoKakologClient | null = null;
 
     public mounted(): void {
         this.containerElement = this.$refs.container as HTMLElement;
@@ -24,14 +30,97 @@ export default abstract class BaseVideo extends Vue {
     protected createPlayer(options: DPlayerType.Options): void {
         this.destroyPlayer();
 
+        // ニコニコ実況 (NX-Jikkyo / 過去ログ API) のコメント弾幕表示設定
+        const jikkyoChannelId = this.getJikkyoChannelId();
+        const jikkyoKakologOption = this.getJikkyoKakologOption();
+        const setting = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();
+        const isLiveJikkyoEnabled = setting.isEnableJikkyoComment === true && jikkyoChannelId !== null;
+        const isKakologEnabled = setting.isEnableJikkyoComment === true && jikkyoKakologOption !== null;
+        if (isLiveJikkyoEnabled === true || isKakologEnabled === true) {
+            // DPlayer (tsukumijima フォーク) の弾幕描画を有効にする
+            // コメントの取得は各クライアントが行うため apiBackend はダミー
+            (options as any).danmaku = {
+                id: jikkyoChannelId ?? jikkyoKakologOption?.jikkyoChannelId,
+                user: 'EPGStation',
+                api: '',
+                bottom: '10%',
+                unlimited: true,
+            };
+            (options as any).apiBackend = {
+                read: (opt: any) => {
+                    opt.success([]);
+                },
+                send: (opt: any) => {
+                    opt.success();
+                },
+            };
+        }
+
         this.dp = new DPlayer(options);
         this.bindEvents();
+
+        // ライブコメントまたは録画の過去ログ取得を開始する
+        if (isLiveJikkyoEnabled === true && jikkyoChannelId !== null) {
+            this.jikkyoCommentClient = new JikkyoCommentClient({
+                serverUrl: setting.jikkyoServerUrl,
+                jikkyoChannelId: jikkyoChannelId,
+                onComment: comment => this.drawJikkyoComment(comment),
+            });
+            this.jikkyoCommentClient.start();
+        } else if (isKakologEnabled === true && jikkyoKakologOption !== null) {
+            this.jikkyoKakologClient = new JikkyoKakologClient({
+                ...jikkyoKakologOption,
+                getCurrentTime: () => this.getCurrentTime(),
+                onComment: comment => this.drawJikkyoComment(comment),
+            });
+            void this.jikkyoKakologClient.start();
+        }
+    }
+
+    /**
+     * ニコニコ実況の実況チャンネル ID (jk1 など) を返す
+     * 実況コメントを表示する場合はサブクラスでオーバーライドする
+     * @return string | null 実況コメントを表示しない場合は null
+     */
+    protected getJikkyoChannelId(): string | null {
+        return null;
+    }
+
+    /**
+     * 録画再生用のニコニコ実況過去ログ取得情報を返す
+     */
+    protected getJikkyoKakologOption(): { jikkyoChannelId: string; startAt: number; endAt: number } | null {
+        return null;
+    }
+
+    /**
+     * ニコニコ実況コメントを DPlayer の弾幕として描画する
+     */
+    private drawJikkyoComment(comment: JikkyoComment): void {
+        if (this.dp === null || typeof (this.dp as any).danmaku === 'undefined') {
+            return;
+        }
+        (this.dp as any).danmaku.draw({
+            text: comment.text,
+            color: comment.color,
+            type: comment.type,
+            size: comment.size,
+        });
     }
 
     /**
      * DPlayer インスタンスを破棄する
      */
     protected destroyPlayer(): void {
+        if (this.jikkyoCommentClient !== null) {
+            this.jikkyoCommentClient.destroy();
+            this.jikkyoCommentClient = null;
+        }
+        if (this.jikkyoKakologClient !== null) {
+            this.jikkyoKakologClient.destroy();
+            this.jikkyoKakologClient = null;
+        }
+
         if (this.dp === null) {
             return;
         }
@@ -82,6 +171,7 @@ export default abstract class BaseVideo extends Vue {
      * 時刻更新
      */
     protected onTimeupdate(): void {
+        this.jikkyoKakologClient?.tick();
         this.$emit('timeupdate');
     }
 

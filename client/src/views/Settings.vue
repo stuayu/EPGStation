@@ -312,6 +312,18 @@
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isForceEnableSubtitleStroke"></v-switch>
                                 </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="subtitle-1">ニコニコ実況コメントを表示する</v-list-item-title>
+                                        <v-list-item-subtitle>ライブ視聴時に NX-Jikkyo のコメントを弾幕表示します</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="storageModel.tmp.isEnableJikkyoComment"></v-switch>
+                                </div>
+                                <div class="my-2">
+                                    <v-list-item-title class="subtitle-1">実況コメントサーバー (NX-Jikkyo)</v-list-item-title>
+                                    <v-text-field v-model="storageModel.tmp.jikkyoServerUrl" label="URL"></v-text-field>
+                                </div>
                             </div>
                         </v-list-item>
 

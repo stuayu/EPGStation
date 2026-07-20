@@ -36,6 +36,8 @@ export interface ISettingValue {
     isCheckDeleteOriginalAfterEncode: boolean;
     rulesLength: number;
     isForceEnableSubtitleStroke: boolean; // 字幕縁取りを強制するか
+    isEnableJikkyoComment: boolean; // ニコニコ実況コメントを弾幕表示するか
+    jikkyoServerUrl: string; // NX-Jikkyo サーバーの URL
 }
 
 export type ISettingStorageModel = IStorageBaseModel<ISettingValue>;

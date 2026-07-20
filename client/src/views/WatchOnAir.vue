@@ -17,8 +17,10 @@ import TitleBar from '@/components/titleBar/TitleBar.vue';
 import VideoContainer from '@/components/video/VideoContainer.vue';
 import { BaseVideoParam, LiveHLSParam, LiveMpegTsVideoParam, NormalVideoParam } from '@/components/video/ViedoParam';
 import container from '@/model/ModelContainer';
+import IChannelModel from '@/model/channels/IChannelModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
+import JikkyoUtil from '@/util/JikkyoUtil';
 import Util from '@/util/Util';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
@@ -40,6 +42,7 @@ interface WatchParam {
 class WatchOnAir extends Vue {
     public videoParam: BaseVideoParam | null = null;
 
+    private channelModel: IChannelModel = container.get<IChannelModel>('IChannelModel');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
@@ -59,21 +62,27 @@ class WatchOnAir extends Vue {
 
         this.$nextTick(async () => {
             if (this.watchParam !== null) {
+                // ニコニコ実況の実況チャンネル ID (jk1 など) を解決する
+                const jikkyoChannelId = await this.findJikkyoChannelId(this.watchParam.channel);
+
                 if (this.watchParam.type === 'hls') {
                     (this.videoParam as LiveHLSParam) = {
                         type: 'LiveHLS',
                         channelId: this.watchParam.channel,
                         mode: this.watchParam.mode,
+                        jikkyoChannelId: jikkyoChannelId,
                     };
                 } else if (this.watchParam.type === 'm2tsll') {
                     (this.videoParam as LiveMpegTsVideoParam) = {
                         type: 'LiveMpegTs',
                         src: `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.watchParam.channel}/m2tsll?mode=${this.watchParam.mode}`,
+                        jikkyoChannelId: jikkyoChannelId,
                     };
                 } else {
                     (this.videoParam as NormalVideoParam) = {
                         type: 'Normal',
                         src: `./api/streams/live/${this.watchParam.channel}/${this.watchParam.type}?mode=${this.watchParam.mode}`,
+                        jikkyoChannelId: jikkyoChannelId,
                     };
                 }
             }
@@ -81,6 +90,33 @@ class WatchOnAir extends Vue {
             // データ取得完了を通知
             await this.scrollState.emitDoneGetData();
         });
+    }
+
+    /**
+     * 視聴チャンネルからニコニコ実況の実況チャンネル ID を解決する
+     * @param channelId: apid.ChannelId
+     * @return Promise<string | undefined> 解決できなかった場合は undefined
+     */
+    private async findJikkyoChannelId(channelId: apid.ChannelId): Promise<string | undefined> {
+        try {
+            let channel = this.channelModel.findChannel(channelId, true);
+            if (channel === null) {
+                await this.channelModel.fetchChannels();
+                channel = this.channelModel.findChannel(channelId, true);
+            }
+
+            if (channel === null) {
+                return undefined;
+            }
+
+            const jikkyoChannelId = JikkyoUtil.findJikkyoChannelId(channel);
+
+            return jikkyoChannelId === null ? undefined : jikkyoChannelId;
+        } catch (err) {
+            console.error(err);
+
+            return undefined;
+        }
     }
 }
 

@@ -16,10 +16,20 @@ class LiveMpegTsVideo extends BaseVideo {
     @Prop({ required: true })
     public videoSrc!: string;
 
+    @Prop({ default: null })
+    public jikkyoChannelId!: string | null;
+
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
     public mounted(): void {
         super.mounted();
+    }
+
+    /**
+     * ニコニコ実況の実況チャンネル ID を返す
+     */
+    protected getJikkyoChannelId(): string | null {
+        return this.jikkyoChannelId;
     }
 
     public async beforeUnmount(): Promise<void> {
