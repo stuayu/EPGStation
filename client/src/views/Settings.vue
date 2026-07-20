@@ -403,7 +403,7 @@ class Settings extends Vue {
 
     set isForceDarkTheme(value: boolean) {
         this.storageModel.tmp.isForceDarkTheme = value;
-        this.$vuetify.theme.global.name = (value) ? 'dark' : 'light';
+        this.$vuetify.theme.change((value) ? 'dark' : 'light');
     }
 
     get isSupportedMpegts(): boolean {
@@ -448,7 +448,7 @@ class Settings extends Vue {
     public unmounted(): void {
         // ページから移動するときに tmp をリセット
         this.storageModel.resetTmpValue();
-        this.$vuetify.theme.global.name = (this.colorThemeState.isDarkTheme()) ? 'dark' : 'light';
+        this.$vuetify.theme.change((this.colorThemeState.isDarkTheme()) ? 'dark' : 'light');
     }
 
     /**
@@ -456,7 +456,7 @@ class Settings extends Vue {
      */
     public reset(): void {
         this.storageModel.tmp = this.storageModel.getDefaultValue();
-        this.$vuetify.theme.global.name = (this.colorThemeState.isDarkTheme()) ? 'dark' : 'light';
+        this.$vuetify.theme.change((this.colorThemeState.isDarkTheme()) ? 'dark' : 'light');
     }
 
     /**

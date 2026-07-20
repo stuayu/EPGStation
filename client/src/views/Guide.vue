@@ -1,7 +1,7 @@
 <template>
     <v-main>
         <TitleBar
-            :title="typeof $route.query.channelId === 'undefined' ? guideState.getTitle($route.query.type) : guideState.getSingleStationTitle()"
+            :title="typeof $route.query.channelId === 'undefined' ? guideState.getTitle(guideType) : guideState.getSingleStationTitle()"
             :needsTitleClickEvent="true"
             v-on:click="onTitle"
         >
@@ -82,6 +82,10 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
 class Guide extends Vue {
     public isLoading: boolean = true;
     public guideState: IGuideState = container.get<IGuideState>('IGuideState');
+
+    get guideType(): string | undefined {
+        return Util.getRouteString(this.$route.query.type);
+    }
     public isOpenDaySelectDialog: boolean = false;
 
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');

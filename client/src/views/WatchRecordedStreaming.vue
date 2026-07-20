@@ -18,6 +18,7 @@ import VideoContainer from '@/components/video/VideoContainer.vue';
 import * as VideoParam from '@/components/video/ViedoParam';
 import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
+import Util from '@/util/Util';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 
