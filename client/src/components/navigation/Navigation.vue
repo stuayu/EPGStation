@@ -46,7 +46,7 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import IVersionState from '@/model/state/version/IVersionState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import { Component, Vue, Watch } from 'vue-facing-decorator';
-import { Location } from 'vue-router';
+import type { RouteLocationRaw as Location } from 'vue-router';
 import Util from '../../util/Util';
 
 interface NavigationItem {

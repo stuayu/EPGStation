@@ -5,7 +5,7 @@
 **Windows 完全対応**・**県外地上波対応 (NW1〜NW40 チャンネル型の追加)**・**Mirakurun dev 版 (stuayu/Mirakurun) との連携** を主軸に拡張している。
 フォーク独自の変更点は [stuayu-fork.md](stuayu-fork.md) を参照。
 
-- 言語/ランタイム: TypeScript / Node.js 18+ (CI では 18/20/22 を検証)
+- 言語/ランタイム: TypeScript / Node.js 24 LTSのみ (CIでは24.xを検証)
 - サーバ: Express + express-openapi, TypeORM (SQLite / MySQL), inversify (DI), log4js, socket.io
 - クライアント: Vue 2.7 + Vuetify 2 (クラスコンポーネント + デコレータ), inversify による独自 State 管理 (Vuex 不使用)
 - 動画再生: [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) に統一 (GitHub タグ固定)。HLS は hls.js、低遅延ライブは mpegts.js、ARIB 字幕は DPlayer 内蔵の aribb24.js を利用 (`client/src/components/video/`)
@@ -114,7 +114,7 @@ npm run backup / restore   # DB バックアップ / リストア
 - 設定: `config/config.yml` (テンプレートから起動時自動コピー)。ログ設定は `config/{operator,service,epgUpdater}LogConfig.yml`
 - マイグレーションは起動時に自動実行 (`migrationsRun: true`)
 - Docker: `Dockerfile.alpine` / `Dockerfile.debian` (node:18 ベースのマルチステージ)
-- CI: `.github/workflows/build-validation.yml` (3 OS × Node 18/20/22 のビルド検証、Mirakurun `feature/4.0.0-windows` ブランチと組み合わせ)、`docker.yml` (マルチアーチイメージの Docker Hub push)
+- CI: `.github/workflows/build-validation.yml` (3 OS × Node 24 のビルド検証、Mirakurun `feature/4.0.0-windows` ブランチと組み合わせ)、`docker.yml` (マルチアーチイメージの Docker Hub push)
 
 ## 注意点・ハマりどころ
 
