@@ -11,14 +11,14 @@ export const get: Operation = async (req, res) => {
         res.setHeader('Content-Type', 'image/png');
         res.status(200);
         res.end(result);
-    } catch (err: any) {
-        if (err.message === IChannelApiModelError.NOT_FOUND) {
+    } catch (err: unknown) {
+        if (api.getErrorMessage(err) === IChannelApiModelError.NOT_FOUND) {
             api.responseError(res, {
                 code: 404,
                 message: 'log file is not found',
             });
         } else {
-            api.responseServerError(res, err.message);
+            api.responseServerError(res, api.getErrorMessage(err));
         }
     }
 };

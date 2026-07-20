@@ -9,8 +9,8 @@ export const get: Operation = async (_req, res) => {
     try {
         const list = await recordedApiModel.getSearchOptionList();
         api.responseJSON(res, 200, list);
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 

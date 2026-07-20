@@ -19,8 +19,8 @@ export const get: Operation = async (req, res) => {
             option.isFree = req.query.isFree;
         }
         api.responseJSON(res, 200, await scheduleApiModel.getChannelSchedule(option));
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 

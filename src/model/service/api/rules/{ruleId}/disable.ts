@@ -10,8 +10,8 @@ export const put: Operation = async (req, res) => {
         await ruleApiModel.disable(parseInt(req.params.ruleId, 10));
 
         api.responseJSON(res, 200, { code: 200 });
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 

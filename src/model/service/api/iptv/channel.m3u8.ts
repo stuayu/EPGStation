@@ -23,8 +23,8 @@ export const get: Operation = async (req, res) => {
         res.setHeader('Content-Type', 'application/x-mpegURL; charset="UTF-8"');
         res.status(200);
         res.end(result);
-    } catch (err: any) {
-        api.responseServerError(res, err.message);
+    } catch (err: unknown) {
+        api.responseServerError(res, api.getErrorMessage(err));
     }
 };
 
