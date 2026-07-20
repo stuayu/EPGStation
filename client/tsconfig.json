@@ -1,9 +1,40 @@
 {
-  "compilerOptions": {
-    "target": "ES2023", "module": "ESNext", "moduleResolution": "Bundler", "strict": true,
-    "jsx": "preserve", "experimentalDecorators": true, "useDefineForClassFields": false,
-    "esModuleInterop": true, "allowSyntheticDefaultImports": true, "sourceMap": true, "skipLibCheck": true,
-    "baseUrl": ".", "types": ["vite/client"], "paths": { "@/*": ["src/*"] }, "lib": ["ES2023", "DOM", "DOM.Iterable"]
-  },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "vite.config.ts"], "exclude": ["node_modules", "dist"]
+    "compilerOptions": {
+        "target": "ES2023",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "jsx": "preserve",
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "sourceMap": true,
+        "skipLibCheck": true,
+        "baseUrl": ".",
+        "types": [
+            "vite/client",
+            "node"
+        ],
+        "paths": {
+            "@/*": [
+                "src/*"
+            ]
+        },
+        "lib": [
+            "ES2023",
+            "DOM",
+            "DOM.Iterable"
+        ]
+    },
+    "include": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.vue",
+        "vite.config.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
 }

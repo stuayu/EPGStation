@@ -41,6 +41,7 @@
         "typescript": "5.9.2",
         "@vitejs/plugin-vue": "6.0.7",
         "vite": "8.1.5",
-        "vue-tsc": "3.2.6"
+        "vue-tsc": "3.2.6",
+        "@types/node": "24.10.1"
     }
 }
