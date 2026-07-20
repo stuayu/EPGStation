@@ -1,5 +1,5 @@
 <template>
-    <div class="channels d-flex" v-bind:class="{ isDark: $vuetify.theme.global.current.value.dark === true }">
+    <div class="channels d-flex" v-bind:class="{ isDark: $vuetify.theme.global.current.dark === true }">
         <div class="item dummy">dummy</div>
         <div class="text-white item" v-for="channel in channelItems" v-bind:key="channel.index" v-on:click="onClick(channel.item)">
             {{ channel.name }}

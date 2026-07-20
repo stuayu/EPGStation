@@ -53,7 +53,7 @@ class Popover extends Vue {
 
     public isShow: boolean = false; // アニメーションを表示させるため isOpen から遅延させて動かす
     public popoverWrapClass: any = {
-        'is-dark': this.$vuetify.theme.global.current.value.dark,
+        'is-dark': this.$vuetify.theme.global.current.dark,
         'is-showing': false,
     };
     public popoverStyle: any = {};
