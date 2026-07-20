@@ -52,11 +52,13 @@ namespace Util {
 
 
     /** Return one scalar value from a Vue Router param/query value. */
-    export const getRouteString = (value: string | string[] | null | undefined): string | undefined => {
+    type RouteStringValue = string | null | undefined;
+
+    export const getRouteString = (value: RouteStringValue | readonly RouteStringValue[]): string | undefined => {
         if (Array.isArray(value)) {
-            return value[0];
+            return value.find((item): item is string => typeof item === 'string');
         }
-        return value === null ? undefined : value;
+        return value ?? undefined;
     };
 
     /**
