@@ -6,7 +6,7 @@ import IScrollPositionState from './IScrollPositionState';
 interface History {
     id: number | null; // timestamp query を格納する (timestamp query は一意のため)
     url: string;
-    data: any | null;
+    data: unknown | null;
 }
 
 @injectable()
@@ -23,9 +23,9 @@ class ScrollPositionState implements IScrollPositionState {
 
     /**
      * スクロール情報を格納する
-     * @param data: any
+     * @param data: unknown
      */
-    public saveScrollData(data: any): void {
+    public saveScrollData(data: unknown): void {
         if (this.history === null || typeof this.history[this.currentPosition] === 'undefined') {
             console.error('history save error');
             throw new Error('HistorySaveError');
@@ -43,7 +43,7 @@ class ScrollPositionState implements IScrollPositionState {
             ScrollPositionState.STORAGE_KEY,
             JSON.stringify({
                 history: this.history,
-                curentPosition: this.currentPosition,
+                currentPosition: this.currentPosition,
             }),
         );
     }
@@ -113,9 +113,17 @@ class ScrollPositionState implements IScrollPositionState {
             return;
         }
 
-        const data = JSON.parse(str) as any;
-        this.history = data.history;
-        this.currentPosition = data.position;
+        const data: unknown = JSON.parse(str);
+        if (typeof data !== 'object' || data === null || !('history' in data) || !Array.isArray(data.history)) {
+            throw new Error('InvalidHistoryData');
+        }
+        const record = data as Record<string, unknown>;
+        const position = record.currentPosition ?? record.curentPosition ?? record.position;
+        if (typeof position !== 'number') {
+            throw new Error('InvalidHistoryPosition');
+        }
+        this.history = data.history as History[];
+        this.currentPosition = position;
     }
 
     /**

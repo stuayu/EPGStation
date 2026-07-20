@@ -7,14 +7,14 @@ import IStorageOperationModel from './IStorageOperationModel';
  */
 @injectable()
 export default class StorageOperationModel implements IStorageOperationModel {
-    private dummySavedValue: any | null = null;
+    private dummySavedValue: unknown | null = null;
 
     /**
      * 値のセット
      * @param key: string key
      * @param value: 保存する値
      */
-    public set(key: string, value: any): void {
+    public set<T>(key: string, value: T): void {
         try {
             window.localStorage.setItem(key, JSON.stringify(value));
         } catch (err) {
@@ -26,17 +26,17 @@ export default class StorageOperationModel implements IStorageOperationModel {
     /**
      * key で指定した値の取得
      * @param key: string key
-     * @return any | null
+     * @return T | null
      */
-    public get(key: string): any | null {
-        let value: any | null = null;
+    public get<T>(key: string): T | null {
+        let value: string | null = null;
         try {
             value = window.localStorage.getItem(key);
         } catch (err) {
-            return this.dummySavedValue;
+            return this.dummySavedValue as T | null;
         }
 
-        return value === null ? null : JSON.parse(value);
+        return value === null ? null : (JSON.parse(value) as T);
     }
 
     /**

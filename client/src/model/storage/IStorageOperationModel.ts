@@ -1,5 +1,5 @@
 export default interface IStorageOperationModel {
-    set(key: string, value: any): void;
-    get(key: string): any | null;
+    set<T>(key: string, value: T): void;
+    get<T>(key: string): T | null;
     remove(key: string): void;
 }

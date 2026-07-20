@@ -13,7 +13,7 @@ export default abstract class AbstractStorageBaseModel<T> implements IStorageBas
 
     constructor(op: IStorageOperationModel) {
         this.op = op;
-        const value = this.op.get(this.getStorageKey());
+        const value = this.op.get<T>(this.getStorageKey());
 
         // デフォルト値から欠けている物があれば追加 & save
         let isNeedSave = false;
@@ -44,7 +44,7 @@ export default abstract class AbstractStorageBaseModel<T> implements IStorageBas
      * 保存された値を取得する
      */
     public getSavedValue(): T {
-        return this.op.get(this.getStorageKey());
+        return this.op.get<T>(this.getStorageKey()) ?? this.getDefaultValue();
     }
 
     /**
