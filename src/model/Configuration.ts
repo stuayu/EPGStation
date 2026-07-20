@@ -20,6 +20,7 @@ class Configuration implements IConfiguration {
 
     constructor(@inject('ILoggerModel') logger: ILoggerModel) {
         this.log = logger.getLogger();
+        this.ensureConfigFile();
 
         try {
             this.templateConfig = this.readConfig(Configuration.CONFIG_TEMPLATE_FILE_PATH, true);
@@ -43,55 +44,65 @@ class Configuration implements IConfiguration {
     }
 
     /**
+     * config.yml が存在しない場合はプラットフォーム別テンプレートから生成する。
+     * 既存ファイルは上書きせず、同時起動時の EEXIST も正常として扱う。
+     */
+    private ensureConfigFile(): void {
+        if (fs.existsSync(Configuration.CONFIG_FILE_PATH)) {
+            return;
+        }
+
+        this.log.system.warn(
+            `${Configuration.CONFIG_FILE_PATH} is not found. Generating from ${Configuration.CONFIG_TEMPLATE_FILE_PATH}.`,
+        );
+
+        try {
+            fs.mkdirSync(path.dirname(Configuration.CONFIG_FILE_PATH), { recursive: true });
+            fs.copyFileSync(
+                Configuration.CONFIG_TEMPLATE_FILE_PATH,
+                Configuration.CONFIG_FILE_PATH,
+                fs.constants.COPYFILE_EXCL,
+            );
+            this.log.system.info(
+                `Config file generated at ${Configuration.CONFIG_FILE_PATH} from ${Configuration.CONFIG_TEMPLATE_FILE_PATH}.`,
+            );
+        } catch (error: unknown) {
+            const code = (error as NodeJS.ErrnoException).code;
+            if (code === 'EEXIST' && fs.existsSync(Configuration.CONFIG_FILE_PATH)) {
+                this.log.system.info(`Config file already generated at ${Configuration.CONFIG_FILE_PATH}.`);
+                return;
+            }
+
+            this.log.system.fatal(`Failed to generate config file from template: ${String(error)}`);
+            throw error;
+        }
+    }
+
+    /**
      * read config
      * @param configPath: ファイルパス
      * @param isWarning エラーを warning でログに残すか
      * @return IConfigFile
      */
     private readConfig(configPath: string, isWarning: boolean): IConfigFile {
-        let str: string = '';
+        let str: string;
         try {
-            // 設定ファイルを読み込む
             str = fs.readFileSync(configPath, 'utf-8');
-        } catch (e: any) {
-            if (e.code === 'ENOENT') {
-                // 設定ファイルが存在しない場合、テンプレートから生成
-                const errMsg = `${configPath} is not found. Generating from template.`;
-                if (isWarning) {
-                    this.log.system.warn(errMsg);
-                } else {
-                    this.log.system.fatal(errMsg);
-                }
-
-                // テンプレートから生成
-                try {
-                    fs.copyFileSync(Configuration.CONFIG_TEMPLATE_FILE_PATH, configPath);
-                    this.log.system.info(`Config file generated at ${configPath} from template.`);
-                    str = fs.readFileSync(configPath, 'utf-8'); // 再度設定ファイルを読み込み
-                } catch (copyError) {
-                    this.log.system.fatal(`Failed to generate config file from template: ${copyError}`);
-                    process.exit(1);
-                }
+        } catch (error: unknown) {
+            if (isWarning) {
+                this.log.system.warn(error);
             } else {
-                // 他のエラーが発生した場合
-                if (isWarning) {
-                    this.log.system.warn(e);
-                } else {
-                    this.log.system.fatal(e);
-                }
-
-                // warning 扱いの場合はエラーを throw する
-                if (isWarning) {
-                    throw e;
-                } else {
-                    process.exit(1);
-                }
+                this.log.system.fatal(error);
             }
+            throw error;
         }
-        // 設定ファイルの内容をパース
-        const newConfig: IConfigFile = <any>yaml.load(str);
 
-        return this.formatConfig(newConfig);
+        const loadedConfig: unknown = yaml.load(str);
+        if (typeof loadedConfig !== 'object' || loadedConfig === null) {
+            throw new Error(`${configPath} does not contain a valid configuration object.`);
+        }
+
+        return this.formatConfig(loadedConfig as IConfigFile);
     }
 
     /**
