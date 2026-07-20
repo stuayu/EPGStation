@@ -22,7 +22,7 @@ import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import IRecordedUploadState from '@/model/state/recorded/upload/IRecordedUploadState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 
 
@@ -33,7 +33,7 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
         RecordedUploadingDialog,
     },
 })
-export default class RecordedUpload extends Vue {
+class RecordedUpload extends Vue {
     public isUploading: boolean = false;
 
     private uploadState: IRecordedUploadState = container.get<IRecordedUploadState>('IRecordedUploadState');
@@ -97,4 +97,6 @@ export default class RecordedUpload extends Vue {
         });
     }
 }
+
+export default toNative(RecordedUpload);
 </script>

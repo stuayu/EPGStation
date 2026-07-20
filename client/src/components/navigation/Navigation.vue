@@ -45,7 +45,7 @@ import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import IVersionState from '@/model/state/version/IVersionState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationRaw as Location } from 'vue-router';
 import Util from '../../util/Util';
 
@@ -56,7 +56,7 @@ interface NavigationItem {
 }
 
 @Component({})
-export default class Navigation extends Vue {
+class Navigation extends Vue {
     public navigationState: INavigationState = container.get<INavigationState>('INavigationState');
 
     private serverConfig: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
@@ -132,6 +132,8 @@ export default class Navigation extends Vue {
         });
     }
 }
+
+export default toNative(Navigation);
 </script>
 
 <style lang="sass" scoped>

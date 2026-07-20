@@ -12,7 +12,7 @@
 import AddEncodeDialog from '@/components/encode/AddEncodeDialog.vue';
 import container from '@/model/ModelContainer';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({
@@ -20,7 +20,7 @@ import * as apid from '../../../../../api';
         AddEncodeDialog,
     },
 })
-export default class RecordedDetailEncodeButton extends Vue {
+class RecordedDetailEncodeButton extends Vue {
     @Prop({ required: true })
     public recordedItem!: apid.RecordedItem;
 
@@ -34,4 +34,6 @@ export default class RecordedDetailEncodeButton extends Vue {
         this.isOpenEncodeDialog = true;
     }
 }
+
+export default toNative(RecordedDetailEncodeButton);
 </script>

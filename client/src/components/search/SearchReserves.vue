@@ -9,19 +9,21 @@
 <script lang="ts">
 import ReservesCard from '@/components/reserves/ReservesCard.vue';
 import { ReserveStateData } from '@/model/state/reserve/IReserveStateUtil';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         ReservesCard,
     },
 })
-export default class SearchReserves extends Vue {
+class SearchReserves extends Vue {
     @Prop({
         required: true,
     })
     public reserves!: ReserveStateData[];
 }
+
+export default toNative(SearchReserves);
 </script>
 
 <style lang="sass" scoped>

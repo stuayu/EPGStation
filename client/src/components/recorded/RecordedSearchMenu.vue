@@ -50,11 +50,11 @@ import IRecordedSearchState from '@/model/state/recorded/search/IRecordedSearchS
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
 import VuetifyUtil from '@/util/VuetifyUtil';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
-export default class RecordedSearchMenu extends Vue {
+class RecordedSearchMenu extends Vue {
     public loading: boolean = false;
     public search: string | null = null;
     public isNoRule: boolean = false;
@@ -172,6 +172,8 @@ export default class RecordedSearchMenu extends Vue {
         }
     }
 }
+
+export default toNative(RecordedSearchMenu);
 </script>
 
 <style lang="sass">

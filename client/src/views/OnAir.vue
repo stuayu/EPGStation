@@ -37,7 +37,7 @@ import IOnAirState from '@/model/state/onair/IOnAirState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 
 
@@ -49,7 +49,7 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
         ProgramDialog,
     },
 })
-export default class OnAir extends Vue {
+class OnAir extends Vue {
     public onAirState: IOnAirState = container.get<IOnAirState>('IOnAirState');
     private settingValue: ISettingValue = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
@@ -135,6 +135,8 @@ export default class OnAir extends Vue {
         }, 10 * 1000);
     }
 }
+
+export default toNative(OnAir);
 </script>
 
 <style lang="sass" scoped>

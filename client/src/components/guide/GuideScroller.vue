@@ -5,10 +5,10 @@
 </template>
 
 <script lang="ts">
-import { Component, Vue } from 'vue-facing-decorator';
+import { Component, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class GuideScroller extends Vue {
+class GuideScroller extends Vue {
     public isDraging: boolean = false;
 
     private isPushed: boolean = false; // 押されているか
@@ -71,6 +71,8 @@ export default class GuideScroller extends Vue {
         }, 100);
     }
 }
+
+export default toNative(GuideScroller);
 </script>
 
 <style lang="sass" scoped>

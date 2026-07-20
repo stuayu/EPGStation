@@ -17,11 +17,11 @@
 import container from '@/model/ModelContainer';
 import IGuideProgramDialogState from '@/model/state/guide/IGuideProgramDialogState';
 import { SearchResultItem } from '@/model/state/search/ISearchState';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
-export default class SearchResultCard extends Vue {
+class SearchResultCard extends Vue {
     @Prop({ required: true })
     public program!: SearchResultItem;
 
@@ -35,6 +35,8 @@ export default class SearchResultCard extends Vue {
         });
     }
 }
+
+export default toNative(SearchResultCard);
 </script>
 
 <style lang="sass" scoped>

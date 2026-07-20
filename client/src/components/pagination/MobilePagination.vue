@@ -15,7 +15,7 @@
 <script lang="ts">
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 
 @Component({})
@@ -101,7 +101,7 @@ namespace MobilePagination {
     export const PAGINATION_CENTER = Math.ceil(PAGINATION_MAX_SIZE / 2);
 }
 
-export default MobilePagination;
+export default toNative(MobilePagination);
 </script>
 
 <style lang="sass" scoped>

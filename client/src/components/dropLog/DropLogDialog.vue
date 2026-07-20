@@ -15,10 +15,10 @@
 import container from '@/model/ModelContainer';
 import IDropLogDialogState from '@/model/state/dropLog/IDropLogDialogState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class DropLogDialog extends Vue {
+class DropLogDialog extends Vue {
     @Prop({ required: true })
     public isOpen!: boolean;
 
@@ -62,4 +62,6 @@ export default class DropLogDialog extends Vue {
         }
     }
 }
+
+export default toNative(DropLogDialog);
 </script>

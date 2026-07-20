@@ -17,7 +17,7 @@
 import SendVideoFileToKodiDialog from '@/components/recorded/detail/SendVideoFileToKodiDialog.vue';
 import container from '@/model/ModelContainer';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({
@@ -25,7 +25,7 @@ import * as apid from '../../../../../api';
         SendVideoFileToKodiDialog,
     },
 })
-export default class RecordedDetailKodiButton extends Vue {
+class RecordedDetailKodiButton extends Vue {
     @Prop({ required: true })
     public recordedItem!: apid.RecordedItem;
 
@@ -39,4 +39,6 @@ export default class RecordedDetailKodiButton extends Vue {
         this.isOpenKodiDialog = true;
     }
 }
+
+export default toNative(RecordedDetailKodiButton);
 </script>

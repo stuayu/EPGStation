@@ -32,7 +32,7 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 
@@ -64,7 +64,7 @@ interface PageInfo {
         this.handleBeforeRouteLeave(to, from, next);
     },
 })
-export default class Search extends Vue {
+class Search extends Vue {
     public isShow: boolean = false;
     public isVisible: boolean = false;
 
@@ -410,6 +410,8 @@ export default class Search extends Vue {
         });
     }
 }
+
+export default toNative(Search);
 </script>
 
 <style lang="sass" scoped>

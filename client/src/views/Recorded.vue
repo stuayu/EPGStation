@@ -57,7 +57,7 @@ import IRecordedState, { MultipleDeletionOption } from '@/model/state/recorded/I
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 
@@ -77,7 +77,7 @@ import * as apid from '../../../api';
         this.handleBeforeRouteUpdate(to, from, next);
     },
 })
-export default class Recorded extends Vue {
+class Recorded extends Vue {
     public isEditMode: boolean = false;
     public isOpenMultiplueDeletionDialog: boolean = false;
     public isOpenCleanupDialog: boolean = false;
@@ -243,4 +243,6 @@ export default class Recorded extends Vue {
         return option;
     }
 }
+
+export default toNative(Recorded);
 </script>

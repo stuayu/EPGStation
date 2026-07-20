@@ -74,14 +74,14 @@
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import IManualReserveState from '@/model/state/reserve/manual/IManualReserveState';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         SearchOptionRow,
     },
 })
-export default class ManualTimeReserveOption extends Vue {
+class ManualTimeReserveOption extends Vue {
     @Prop({ required: true })
     public isEditMode!: boolean;
 
@@ -91,4 +91,6 @@ export default class ManualTimeReserveOption extends Vue {
         return new Date(date).getDate();
     }
 }
+
+export default toNative(ManualTimeReserveOption);
 </script>

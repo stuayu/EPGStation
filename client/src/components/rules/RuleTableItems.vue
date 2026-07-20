@@ -36,14 +36,14 @@
 <script lang="ts">
 import RuleItemMenu from '@/components/rules/RuleItemMenu.vue';
 import { RuleStateData, RuleStateDisplayData } from '@/model/state/rule/IRuleState';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         RuleItemMenu,
     },
 })
-export default class RuleTableItem extends Vue {
+class RuleTableItem extends Vue {
     @Prop({ required: true })
     public items!: RuleStateData[];
 
@@ -68,6 +68,8 @@ export default class RuleTableItem extends Vue {
         this.$emit('selected', item.display.id);
     }
 }
+
+export default toNative(RuleTableItem);
 </script>
 
 <style lang="sass" scoped>

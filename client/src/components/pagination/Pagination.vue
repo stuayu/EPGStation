@@ -11,14 +11,14 @@
 import MobilePagination from '@/components/pagination/MobilePagination.vue';
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         MobilePagination,
     },
 })
-export default class Pagination extends Vue {
+class Pagination extends Vue {
     // 1 ページごとの最大表示件数
     @Prop({
         required: true,
@@ -64,6 +64,8 @@ export default class Pagination extends Vue {
         });
     }
 }
+
+export default toNative(Pagination);
 </script>
 
 <style lang="sass" scoped>

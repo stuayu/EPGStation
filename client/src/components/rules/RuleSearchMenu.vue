@@ -24,10 +24,10 @@
 
 <script lang="ts">
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class RuleSearchMenu extends Vue {
+class RuleSearchMenu extends Vue {
     public isOpen: boolean = false;
     public keyword: string | null = '';
 
@@ -75,6 +75,8 @@ export default class RuleSearchMenu extends Vue {
         }
     }
 }
+
+export default toNative(RuleSearchMenu);
 </script>
 
 <style lang="sass">

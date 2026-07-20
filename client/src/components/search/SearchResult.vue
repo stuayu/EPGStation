@@ -14,20 +14,22 @@
 import SearchResultCard from '@/components/search/SearchResultCard.vue';
 import container from '@/model/ModelContainer';
 import ISearchState from '@/model/state/search/ISearchState';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         SearchResultCard,
     },
 })
-export default class SearchResult extends Vue {
+class SearchResult extends Vue {
     public searchState: ISearchState = container.get<ISearchState>('ISearchState');
 
     public jumpResultOption(): void {
         this.$emit('ruleOption');
     }
 }
+
+export default toNative(SearchResult);
 </script>
 
 <style lang="sass" scoped>

@@ -137,14 +137,14 @@
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import ISearchState from '@/model/state/search/ISearchState';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         SearchOptionRow,
     },
 })
-export default class SearchRuleOption extends Vue {
+class SearchRuleOption extends Vue {
     public searchState: ISearchState = container.get<ISearchState>('ISearchState');
 
     public onClickCancel(): void {
@@ -159,6 +159,8 @@ export default class SearchRuleOption extends Vue {
         this.$emit('update');
     }
 }
+
+export default toNative(SearchRuleOption);
 </script>
 
 <style lang="sass" scoped>

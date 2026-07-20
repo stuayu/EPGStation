@@ -14,7 +14,7 @@ import IGuideState from '@/model/state/guide/IGuideState';
 import IOnAirSelectStreamState from '@/model/state/onair/IOnAirSelectStreamState';
 import DateUtil from '@/util/DateUtil';
 import Util from '@/util/Util';
-import { Component, Vue } from 'vue-facing-decorator';
+import { Component, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 interface DisplayChannelItem {
@@ -25,7 +25,7 @@ interface DisplayChannelItem {
 }
 
 @Component({})
-export default class Channel extends Vue {
+class Channel extends Vue {
     public guideState: IGuideState = container.get<IGuideState>('IGuideState');
 
     private streamSelectDialog: IOnAirSelectStreamState = container.get<IOnAirSelectStreamState>('IOnAirSelectStreamState');
@@ -66,6 +66,8 @@ export default class Channel extends Vue {
         this.streamSelectDialog.open(item);
     }
 }
+
+export default toNative(Channel);
 </script>
 
 <style lang="sass" scoped>

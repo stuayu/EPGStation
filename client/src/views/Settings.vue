@@ -335,7 +335,7 @@ import IScrollPositionState from '@/model/state/IScrollPositionState';
 import INavigationState from '@/model/state/navigation/INavigationState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, GuideViewMode } from '@/model/storage/setting/ISettingStorageModel';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import IColorThemeState from '@/model/state/IColorThemeState';
 import Mpegts from 'mpegts.js';
 
@@ -355,7 +355,7 @@ interface SelectItem {
         TitleBar,
     },
 })
-export default class Settings extends Vue {
+class Settings extends Vue {
     public isShow: boolean = false;
     public storageModel: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
 
@@ -485,6 +485,8 @@ export default class Settings extends Vue {
         });
     }
 }
+
+export default toNative(Settings);
 </script>
 
 <style lang="sass" scoped>

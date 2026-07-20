@@ -37,11 +37,13 @@
 
 <script lang="ts">
 import { ProgramStateData } from '@/model/state/reserve/manual/IManualReserveState';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class ManualReserveProgramInfo extends Vue {
+class ManualReserveProgramInfo extends Vue {
     @Prop({ required: true })
     public program!: ProgramStateData | null;
 }
+
+export default toNative(ManualReserveProgramInfo);
 </script>

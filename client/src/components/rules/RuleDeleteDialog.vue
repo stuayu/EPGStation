@@ -19,11 +19,11 @@ import container from '@/model/ModelContainer';
 import { RuleStateData } from '@/model/state/rule/IRuleState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
-export default class RuleDeleteDialog extends Vue {
+class RuleDeleteDialog extends Vue {
     @Prop({ required: true })
     public ruleItem!: RuleStateData;
 
@@ -82,4 +82,6 @@ export default class RuleDeleteDialog extends Vue {
         }
     }
 }
+
+export default toNative(RuleDeleteDialog);
 </script>

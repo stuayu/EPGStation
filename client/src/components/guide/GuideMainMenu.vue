@@ -45,14 +45,14 @@ import IReservesApiModel from '@/model/api/reserves/IReservesApiModel';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
-import { Component, Vue } from 'vue-facing-decorator';
+import { Component, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         GuideGenreSettingDialog,
     },
 })
-export default class GuideMainMenu extends Vue {
+class GuideMainMenu extends Vue {
     public isOpened: boolean = false;
     public isOpenGenreSettingDialog: boolean = false;
 
@@ -97,4 +97,6 @@ export default class GuideMainMenu extends Vue {
         return false;
     }
 }
+
+export default toNative(GuideMainMenu);
 </script>

@@ -15,10 +15,10 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class DashboardItem extends Vue {
+class DashboardItem extends Vue {
     @Prop({ required: true })
     public title!: string;
 
@@ -47,6 +47,8 @@ export default class DashboardItem extends Vue {
         }
     }
 }
+
+export default toNative(DashboardItem);
 </script>
 
 <style lang="sass" scoped>

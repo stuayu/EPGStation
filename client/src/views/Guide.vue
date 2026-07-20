@@ -60,7 +60,7 @@ import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISe
 import UaUtil from '@/util/UaUtil';
 import Util from '@/util/Util';
 import { debounce, throttle } from 'lodash';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 
 
@@ -85,7 +85,7 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
         this.handleBeforeRouteLeave(to, from, next);
     },
 })
-export default class Guide extends Vue {
+class Guide extends Vue {
     public isLoading: boolean = true;
     public guideState: IGuideState = container.get<IGuideState>('IGuideState');
     public isOpenDaySelectDialog: boolean = false;
@@ -439,6 +439,8 @@ export default class Guide extends Vue {
         });
     }
 }
+
+export default toNative(Guide);
 </script>
 
 <style lang="sass" scoped>

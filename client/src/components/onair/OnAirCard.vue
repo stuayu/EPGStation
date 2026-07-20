@@ -31,11 +31,11 @@ import IGuideProgramDialogState, { ProgramDialogOpenOption } from '@/model/state
 import { ReserveStateItemIndex } from '@/model/state/guide/IGuideReserveUtil';
 import IOnAirSelectStreamState from '@/model/state/onair/IOnAirSelectStreamState';
 import { OnAirDisplayData } from '@/model/state/onair/IOnAirState';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({})
-export default class OnAirCard extends Vue {
+class OnAirCard extends Vue {
     @Prop({ required: true })
     public items!: OnAirDisplayData[];
 
@@ -71,4 +71,6 @@ export default class OnAirCard extends Vue {
         this.streamSelectDialog.open(channelItem);
     }
 }
+
+export default toNative(OnAirCard);
 </script>

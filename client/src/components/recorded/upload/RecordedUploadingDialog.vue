@@ -11,11 +11,11 @@
 
 <script lang="ts">
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({})
-export default class RecordedUploadingDialog extends Vue {
+class RecordedUploadingDialog extends Vue {
     @Prop({ required: true })
     public isOpen!: boolean;
 
@@ -47,4 +47,6 @@ export default class RecordedUploadingDialog extends Vue {
         }
     }
 }
+
+export default toNative(RecordedUploadingDialog);
 </script>

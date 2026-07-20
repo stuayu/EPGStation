@@ -20,7 +20,7 @@ import container from '@/model/ModelContainer';
 import UaUtil from '@/util/UaUtil';
 import Util from '@/util/Util';
 import { cloneDeep, debounce } from 'lodash';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 type DisplayPosition = 'top' | 'bottom' | 'left' | 'right';
 
@@ -493,7 +493,7 @@ namespace Popover {
     export const offset = 12;
 }
 
-export default Popover;
+export default toNative(Popover);
 </script>
 
 <style lang="sass" scoped>

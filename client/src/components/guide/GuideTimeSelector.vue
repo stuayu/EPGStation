@@ -32,10 +32,10 @@ import IGuideState from '@/model/state/guide/IGuideState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import DateUtil from '@/util/DateUtil';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class GuideTimeSelector extends Vue {
+class GuideTimeSelector extends Vue {
     public broadcastItems: string[] = [];
     public broadcastValue: string | undefined = undefined;
     public dayItems: {
@@ -290,6 +290,8 @@ export default class GuideTimeSelector extends Vue {
         this.hourValue = typeof this.$route.query.time === 'string' ? this.$route.query.time.substr(6, 2) : DateUtil.format(DateUtil.getJaDate(new Date()), 'hh');
     }
 }
+
+export default toNative(GuideTimeSelector);
 </script>
 
 <style lang="sass" scoped>

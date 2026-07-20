@@ -9,7 +9,7 @@ import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IRecordedStreamingVideoState from '@/model/state/recorded/streaming/IRecordedStreamingVideoState';
 import DPlayerUtil from '@/util/DPlayerUtil';
 import { DPlayerType } from 'dplayer';
-import { Component, Prop } from 'vue-facing-decorator';
+import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 interface VideoSrcInfo {
@@ -20,7 +20,7 @@ interface VideoSrcInfo {
 }
 
 @Component({})
-export default class RecordedStreamingVideo extends BaseVideo {
+class RecordedStreamingVideo extends BaseVideo {
     @Prop({ required: true })
     public recordedId!: apid.RecordedId;
 
@@ -211,4 +211,6 @@ export default class RecordedStreamingVideo extends BaseVideo {
         }, 200);
     }
 }
+
+export default toNative(RecordedStreamingVideo);
 </script>

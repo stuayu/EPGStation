@@ -47,7 +47,7 @@ import IEncodeState from '@/model/state/encode/IEncodeState';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 
 
@@ -59,7 +59,7 @@ import * as apid from '../../../api';
         EncodeMultipleDeletionDialog,
     },
 })
-export default class Encode extends Vue {
+class Encode extends Vue {
     public isEditMode: boolean = false;
     public isOpenMultiplueDeletionDialog: boolean = false;
 
@@ -155,6 +155,8 @@ export default class Encode extends Vue {
         return this.settingValue === null ? true : this.settingValue.isHalfWidthDisplayed;
     }
 }
+
+export default toNative(Encode);
 </script>
 
 <style lang="sass" scoped>

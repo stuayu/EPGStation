@@ -100,7 +100,7 @@ import { RecordedDisplayData } from '@/model/state/recorded/IRecordedUtil';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 import IRecordedDetailState from '../model/state/recorded/detail/IRecordedDetailState';
 
@@ -117,7 +117,7 @@ import IRecordedDetailState from '../model/state/recorded/detail/IRecordedDetail
         DropLogDialog,
     },
 })
-export default class RecordedDetail extends Vue {
+class RecordedDetail extends Vue {
     public onThumbnailError(event: Event): void {
         const image = event.target;
         if (image instanceof HTMLImageElement) {
@@ -261,6 +261,8 @@ export default class RecordedDetail extends Vue {
         });
     }
 }
+
+export default toNative(RecordedDetail);
 </script>
 
 <style lang="sass" scoped>

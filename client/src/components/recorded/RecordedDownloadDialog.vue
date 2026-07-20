@@ -22,7 +22,7 @@
 import container from '@/model/ModelContainer';
 import IRecordedUtil from '@/model/state/recorded/IRecordedUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 interface DwonloadVideoFileInfo {
@@ -31,7 +31,7 @@ interface DwonloadVideoFileInfo {
 }
 
 @Component({})
-export default class RecordedDownloadDialog extends Vue {
+class RecordedDownloadDialog extends Vue {
     @Prop({ required: true })
     public recordedItem!: apid.RecordedItem;
 
@@ -87,4 +87,6 @@ export default class RecordedDownloadDialog extends Vue {
         this.$emit('downloadPlayList', video);
     }
 }
+
+export default toNative(RecordedDownloadDialog);
 </script>

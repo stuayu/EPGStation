@@ -449,7 +449,7 @@ import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import ISearchState from '@/model/state/search/ISearchState';
 import VuetifyUtil from '@/util/VuetifyUtil';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
@@ -457,7 +457,7 @@ import { Component, Prop, Vue } from 'vue-facing-decorator';
         SearchGenreOption,
     },
 })
-export default class SearchOption extends Vue {
+class SearchOption extends Vue {
     public formatDay(date: string | number | Date): number {
         return new Date(date).getDate();
     }
@@ -487,6 +487,8 @@ export default class SearchOption extends Vue {
         this.$emit('clear');
     }
 }
+
+export default toNative(SearchOption);
 </script>
 
 <style lang="sass">

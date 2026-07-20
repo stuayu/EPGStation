@@ -20,11 +20,11 @@ import container from '@/model/ModelContainer';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IWatchOnAirInfoState, { DsiplayWatchInfo } from '@/model/state/onair/watch/IWatchOnAirInfoState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({})
-export default class WatchOnAirInfoCard extends Vue {
+class WatchOnAirInfoCard extends Vue {
     @Prop({ required: true })
     public channel!: apid.ChannelId;
 
@@ -83,4 +83,6 @@ export default class WatchOnAirInfoCard extends Vue {
         }, this.infoState.getUpdateTime());
     }
 }
+
+export default toNative(WatchOnAirInfoCard);
 </script>

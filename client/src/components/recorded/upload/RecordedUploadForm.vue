@@ -105,14 +105,14 @@
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import IRecordedUploadState from '@/model/state/recorded/upload/IRecordedUploadState';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({
     components: {
         SearchOptionRow,
     },
 })
-export default class RecordedUploadForm extends Vue {
+class RecordedUploadForm extends Vue {
     public formatDay(date: string | number | Date): number {
         return new Date(date).getDate();
     }
@@ -139,6 +139,8 @@ export default class RecordedUploadForm extends Vue {
         this.$emit('upload');
     }
 }
+
+export default toNative(RecordedUploadForm);
 </script>
 
 <style lang="sass" scoped>

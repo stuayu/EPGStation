@@ -15,10 +15,10 @@
 <script lang="ts">
 import DateUtil from '@/util/DateUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({})
-export default class GuideDaySelectDialog extends Vue {
+class GuideDaySelectDialog extends Vue {
     @Prop({ required: true })
     public isOpen!: boolean;
 
@@ -108,4 +108,6 @@ export default class GuideDaySelectDialog extends Vue {
         this.dialogModel = false;
     }
 }
+
+export default toNative(GuideDaySelectDialog);
 </script>

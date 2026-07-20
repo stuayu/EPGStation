@@ -14,11 +14,11 @@
 
 <script lang="ts">
 import container from '@/model/ModelContainer';
-import { Component, Prop, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import INavigationState from '../../model/state/navigation/INavigationState';
 
 @Component({})
-export default class TitleBar extends Vue {
+class TitleBar extends Vue {
     @Prop({ required: true })
     public title!: string;
 
@@ -47,6 +47,8 @@ export default class TitleBar extends Vue {
         document.title = newTitle;
     }
 }
+
+export default toNative(TitleBar);
 </script>
 
 <style lang="sass">

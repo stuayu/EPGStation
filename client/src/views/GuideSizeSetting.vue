@@ -191,7 +191,7 @@ import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { IGuideSizeSettingStorageModel } from '@/model/storage/guide/IGuideSizeSettingStorageModel';
 import { ISettingStorageModel, GuideViewMode } from '@/model/storage/setting/ISettingStorageModel';
-import { Component, Vue, Watch } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 
 
@@ -205,7 +205,7 @@ interface SelectItem {
         TitleBar,
     },
 })
-export default class GuideSizeSetting extends Vue {
+class GuideSizeSetting extends Vue {
     public isShow: boolean = false;
     public storageModel = container.get<IGuideSizeSettingStorageModel>('IGuideSizeSettingStorageModel');
 
@@ -272,6 +272,8 @@ export default class GuideSizeSetting extends Vue {
         });
     }
 }
+
+export default toNative(GuideSizeSetting);
 </script>
 
 <style lang="sass" scoped>

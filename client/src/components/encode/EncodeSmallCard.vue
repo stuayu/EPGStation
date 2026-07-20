@@ -27,7 +27,7 @@
 <script lang="ts">
 import EncodeCancelDialog from '@/components/encode/EncodeCancelDialog.vue';
 import { EncodeInfoDisplayItem } from '@/model/state/encode/IEncodeState';
-import { Component, Prop, Vue } from 'vue-facing-decorator';
+import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 
 @Component({
@@ -35,7 +35,7 @@ import * as apid from '../../../../api';
         EncodeCancelDialog,
     },
 })
-export default class EncodeSmallCard extends Vue {
+class EncodeSmallCard extends Vue {
     public onThumbnailError(event: Event): void {
         const image = event.target;
         if (image instanceof HTMLImageElement) {
@@ -63,6 +63,8 @@ export default class EncodeSmallCard extends Vue {
         this.$emit('selected', this.item.encodeItem.id);
     }
 }
+
+export default toNative(EncodeSmallCard);
 </script>
 
 <style lang="sass" scoped>
