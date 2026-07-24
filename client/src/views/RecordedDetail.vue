@@ -28,7 +28,7 @@
                             <div class="title font-weight-bold">
                                 {{ recorded.display.name }}
                             </div>
-                            <div class="subtitle-1 my-1">
+                            <div class="text-subtitle-1 my-1">
                                 {{ recorded.display.channelName }}
                             </div>
                             <div class="text-subtitle-2 font-weight-light">

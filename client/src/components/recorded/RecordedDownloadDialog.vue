@@ -2,7 +2,7 @@
     <v-dialog v-if="isRemove === false" v-model="dialogModel" max-width="500" scrollable>
         <v-card>
             <div class="pa-4">
-                <div class="subtitle-1">{{ recordedItem.name }}</div>
+                <div class="text-subtitle-1">{{ recordedItem.name }}</div>
                 <div class="body-1 mt-2">video files</div>
                 <div class="d-flex">
                     <v-btn v-for="v in videoFiles" v-on:click="downloadVideo(v.video)" v-bind:key="v.video.id" color="primary" class="ma-1">

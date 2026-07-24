@@ -1,7 +1,7 @@
 <template>
     <div v-if="searchResult !== null" class="search-result mx-auto my-8">
         <div class="d-flex align-center justify-end">
-            <v-btn icon v-on:click="jumpResultOption">
+            <v-btn icon variant="text" v-on:click="jumpResultOption">
                 <v-icon>mdi-link</v-icon>
             </v-btn>
             <div class="ml-1">{{ searchResult.length }} 件ヒット</div>

@@ -1,14 +1,14 @@
 <template>
     <v-app-bar :color="appBarColor">
-        <v-btn icon v-on:click="onClose">
+        <v-btn icon variant="text" v-on:click="onClose">
             <v-icon>mdi-close</v-icon>
         </v-btn>
         <v-toolbar-title>{{ title }}</v-toolbar-title>
         <v-spacer></v-spacer>
-        <v-btn icon v-on:click="onSelectAll">
+        <v-btn icon variant="text" v-on:click="onSelectAll">
             <v-icon>mdi-select-all</v-icon>
         </v-btn>
-        <v-btn icon v-on:click="onDelete">
+        <v-btn icon variant="text" v-on:click="onDelete">
             <v-icon>mdi-delete</v-icon>
         </v-btn>
     </v-app-bar>

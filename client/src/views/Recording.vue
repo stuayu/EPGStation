@@ -10,7 +10,7 @@
         ></EditTitleBar>
         <TitleBar v-else title="録画中">
             <template v-slot:menu>
-                <v-btn icon v-on:click="onEdit">
+                <v-btn icon variant="text" v-on:click="onEdit">
                     <v-icon>mdi-pencil</v-icon>
                 </v-btn>
             </template>

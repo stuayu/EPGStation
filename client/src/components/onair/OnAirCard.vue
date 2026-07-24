@@ -5,9 +5,9 @@
                 <div class="py-2" style="cursor: pointer">
                     <div v-if="typeof item.display.logoSrc !== 'undefined'" v-on:click="openGuideProgramDialog(item.schedule, $event)" class="d-flex align-center mb-1">
                         <img :src="item.display.logoSrc" height="24" class="pr-2" />
-                        <div class="pt-1 subtitle-1 font-weight-black">{{ item.display.channelName }}</div>
+                        <div class="pt-1 text-subtitle-1 font-weight-black">{{ item.display.channelName }}</div>
                     </div>
-                    <div v-else v-on:click="openGuideProgramDialog(item.schedule, $event)" class="mb-1 subtitle-1 font-weight-black">
+                    <div v-else v-on:click="openGuideProgramDialog(item.schedule, $event)" class="mb-1 text-subtitle-1 font-weight-black">
                         {{ item.display.channelName }}
                     </div>
                     <div class="text-caption font-weight-light">{{ item.display.time }}</div>
@@ -17,7 +17,7 @@
                     <div class="text-body-2 font-weight-light">{{ item.display.description }}</div>
 
                     <div class="pt-3">
-                        <v-progress-linear buffer-value="100" :value="item.display.digestibility"></v-progress-linear>
+                        <v-progress-linear buffer-value="100" :model-value="item.display.digestibility"></v-progress-linear>
                     </div>
                 </div>
             </div>

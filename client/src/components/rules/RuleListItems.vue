@@ -9,7 +9,7 @@
                             <!--
                             {{ item.keyword }}
                             -->
-                            <v-list-item-title class="subtitle-1">{{ item.display.keyword }}</v-list-item-title>
+                            <v-list-item-title class="text-subtitle-1">{{ item.display.keyword }}</v-list-item-title>
                         </div>
                         <div class="menu d-flex align-center">
                             <span class="mx-2 text-grey-lighten-1">{{ item.display.reservationsCnt }}</span>
@@ -69,7 +69,7 @@ export default toNative(RuleListItems);
 .keyword
     padding-left: 42px
     padding-right: 77px
-    .subtitle-1
+    .text-subtitle-1
         white-space: normal !important
         word-break: break-all
 .menu

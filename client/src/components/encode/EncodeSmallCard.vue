@@ -7,7 +7,7 @@
                     <div class="d-flex align-center">
                         <div class="text mt-1 text-subtitle-2 font-weight-bold">{{ item.display.name }}</div>
                         <div v-if="isEditMode === false" class="menu-wrap">
-                            <v-btn icon class="menu-button" v-on:click="openCancelDialog">
+                            <v-btn icon variant="text" class="menu-button" v-on:click="openCancelDialog">
                                 <v-icon>mdi-close</v-icon>
                             </v-btn>
                         </div>
@@ -16,7 +16,7 @@
                     <div class="text text-caption font-weight-light">{{ item.display.time }} ({{ item.display.duration }} m)</div>
                     <div class="text text-caption font-regular">{{ item.display.mode }}</div>
                     <div class="text text-caption font-regular">{{ item.display.encodeInfo }}</div>
-                    <v-progress-linear v-if="typeof item.display.percent !== 'undefined'" buffer-value="100" :value="item.display.percent"></v-progress-linear>
+                    <v-progress-linear v-if="typeof item.display.percent !== 'undefined'" buffer-value="100" :model-value="item.display.percent"></v-progress-linear>
                 </div>
             </div>
         </v-card>
@@ -84,7 +84,7 @@ export default toNative(EncodeSmallCard);
             overflow: hidden
             text-overflow: ellipsis
             white-space: nowrap
-        .subtitle-2
+        .text-subtitle-2
             padding-right: 30px
         .dummy
             visibility: hidden

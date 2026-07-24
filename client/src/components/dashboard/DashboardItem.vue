@@ -1,7 +1,7 @@
 <template>
     <div class="dash-board-item pa-1">
         <v-card class="item-content d-flex flex-column">
-            <div class="subtitle-1 pa-4 item-title">
+            <div class="text-subtitle-1 pa-4 item-title">
                 <div v-on:click="onClickBage">
                     {{ title }}
                     <v-badge v-if="bage !== undefined && bage > 0" bordered color="pink" :content="bage" class="pl-1"></v-badge>

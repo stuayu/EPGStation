@@ -3,7 +3,7 @@
         <v-dialog v-if="isRemove === false" v-model="dialogModel" max-width="500" scrollable>
             <v-card v-if="reserve !== null">
                 <v-card-text class="pa-4 pb-2">
-                    <div class="subtitle-1 font-weight-black mb-1">{{ reserve.display.name }}</div>
+                    <div class="text-subtitle-1 font-weight-black mb-1">{{ reserve.display.name }}</div>
                     <div class="sub-text">{{ reserve.display.channelName }}</div>
                     <div class="sub-text" style="cursor: pointer" v-on:click="gotoGuide">
                         {{ reserve.display.day }}({{ reserve.display.dow }}) {{ reserve.display.startTime }} ~ {{ reserve.display.endTime }} ({{ reserve.display.duration }}m)

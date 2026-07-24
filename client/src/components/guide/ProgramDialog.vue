@@ -3,7 +3,7 @@
         <v-dialog v-if="isRemove === false" v-model="dialogState.isOpen" max-width="500" scrollable>
             <v-card v-if="dialogState.displayData !== null">
                 <v-card-text class="pa-4">
-                    <div class="subtitle-1 font-weight-black mb-1">{{ dialogState.displayData.programName }}</div>
+                    <div class="text-subtitle-1 font-weight-black mb-1">{{ dialogState.displayData.programName }}</div>
                     <div class="sub-text">{{ dialogState.displayData.channelName }}</div>
                     <div class="sub-text">{{ dialogState.displayData.time }}</div>
                     <div class="genres sub-text my-1">
