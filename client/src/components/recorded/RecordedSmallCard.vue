@@ -105,7 +105,7 @@ export default toNative(RecordedSmallCard);
             text-overflow: ellipsis
             white-space: nowrap
             min-width: 0
-        .subtitle-2
+        .text-subtitle-2
             padding-right: 30px
         .dummy
             visibility: hidden

@@ -2,7 +2,7 @@
     <div v-if="program !== null" class="manual-reserve-program-info">
         <v-card>
             <div class="pa-4">
-                <div class="subtitle-1 font-weight-black mb-1">{{ program.display.name }}</div>
+                <div class="text-subtitle-1 font-weight-black mb-1">{{ program.display.name }}</div>
                 <div class="text-body-2 font-weight-light">{{ program.display.channelName }}</div>
                 <div class="text-body-2 font-weight-light">
                     {{ program.display.day }}({{ program.display.dow }}) {{ program.display.startTime }} ~ {{ program.display.endTime }} ({{ program.display.duration }}m)

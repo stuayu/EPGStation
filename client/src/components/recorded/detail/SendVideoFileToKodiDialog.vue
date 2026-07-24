@@ -2,7 +2,7 @@
     <v-dialog v-if="isRemove === false" v-model="dialogModel" max-width="400" scrollable>
         <v-card>
             <div class="pa-3 pt-4 pb-0 add-encode">
-                <div class="subtitle-1">{{ recordedItem.name }}</div>
+                <div class="text-subtitle-1">{{ recordedItem.name }}</div>
                 <v-select :items="dialogState.getHosts()" v-model="dialogState.hostName" label="kodi host" class="preset"></v-select>
 
                 <div class="d-flex flex-wrap">

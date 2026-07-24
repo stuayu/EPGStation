@@ -3,7 +3,7 @@
         <TitleBar title="放映中">
             <template v-slot:extension>
                 <v-tabs v-if="isTabView === true && onAirState.getSchedules().length > 0" v-model="onAirState.selectedTab" centered>
-                    <v-tab v-for="item in onAirState.getTabs()" :key="item" :href="`#${item}`">{{ item }}</v-tab>
+                    <v-tab v-for="item in onAirState.getTabs()" :key="item" :value="`${item}`">{{ item }}</v-tab>
                 </v-tabs>
             </template>
         </TitleBar>

@@ -2,7 +2,7 @@
     <div class="recorded-item-menu">
         <v-menu class="menu" v-model="isOpened" location="bottom start">
             <template v-slot:activator="{ props }">
-                <v-btn icon size="small" class="menu-button" v-bind="props">
+                <v-btn icon variant="text" size="small" class="menu-button" v-bind="props">
                     <v-icon>mdi-dots-vertical</v-icon>
                 </v-btn>
             </template>

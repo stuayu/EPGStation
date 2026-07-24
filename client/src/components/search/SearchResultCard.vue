@@ -2,7 +2,7 @@
     <v-card class="my-2" :class="program.display.reserveType" v-on:click="openDetail">
         <v-list-item three-line>
             <div class="v-list-item-content">
-                <div class="subtitle-1 font-weight-black">{{ program.display.name }}</div>
+                <div class="text-subtitle-1 font-weight-black">{{ program.display.name }}</div>
                 <div class="text-subtitle-2 font-weight-light">{{ program.display.channelName }}</div>
                 <div class="text-caption font-weight-light mb-2">
                     {{ program.display.day }}({{ program.display.dow }}) {{ program.display.startTime }} ~ {{ program.display.endTime }} ({{ program.display.duration }}分)

@@ -11,7 +11,7 @@
                                     <div class="title">通常表示</div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">チャンネル高さ</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">チャンネル高さ</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-select
@@ -22,7 +22,7 @@
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">チャンネル横幅</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">チャンネル横幅</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-select
@@ -33,7 +33,7 @@
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">チャンネルフォント</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">チャンネルフォント</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-select
@@ -44,7 +44,7 @@
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">時刻高さ</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">時刻高さ</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-select
@@ -55,7 +55,7 @@
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">時刻横幅</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">時刻横幅</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-select
@@ -66,7 +66,7 @@
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">時刻フォント</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">時刻フォント</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-select
@@ -77,7 +77,7 @@
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">番組フォント</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">番組フォント</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-select
@@ -94,7 +94,7 @@
                                     <div class="title">モバイル表示</div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">チャンネル高さ</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">チャンネル高さ</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-select
@@ -105,7 +105,7 @@
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">チャンネル横幅</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">チャンネル横幅</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-select
@@ -116,7 +116,7 @@
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">チャンネルフォント</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">チャンネルフォント</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-select
@@ -127,7 +127,7 @@
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">時刻高さ</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">時刻高さ</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-select
@@ -138,7 +138,7 @@
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">時刻横幅</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">時刻横幅</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-select
@@ -149,7 +149,7 @@
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">時刻フォント</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">時刻フォント</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-select
@@ -160,7 +160,7 @@
                                     </div>
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">番組フォント</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">番組フォント</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-select
@@ -282,7 +282,7 @@ export default toNative(GuideSizeSetting);
 .text
     max-width: 180px
 
-.subtitle-1
+.text-subtitle-1
     padding-right: 16px
 
 .size-selector

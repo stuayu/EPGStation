@@ -11,7 +11,7 @@
         <TitleBar v-else title="ルール">
             <template v-slot:menu>
                 <RuleSearchMenu></RuleSearchMenu>
-                <v-btn icon v-on:click="onEdit">
+                <v-btn icon variant="text" v-on:click="onEdit">
                     <v-icon>mdi-pencil</v-icon>
                 </v-btn>
             </template>

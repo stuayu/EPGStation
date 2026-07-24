@@ -10,7 +10,7 @@
                                 <div class="title">全般</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">PWA</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">PWA</v-list-item-title>
                                         <v-list-item-subtitle>PWAを有効化する(※再読込後有効になります)</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -18,7 +18,7 @@
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">OSカラーテーマ</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">OSカラーテーマ</v-list-item-title>
                                         <v-list-item-subtitle>OSのカラーテーマに連動させる</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -26,7 +26,7 @@
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">ダークテーマ</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">ダークテーマ</v-list-item-title>
                                         <v-list-item-subtitle>ダークテーマを有効化する</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -34,7 +34,7 @@
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">半角表示</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">半角表示</v-list-item-title>
                                         <v-list-item-subtitle>強制的に半角表示にする</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -50,7 +50,7 @@
                                 <div class="title">放映中</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">放送波種別表示</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">放送波種別表示</v-list-item-title>
                                         <v-list-item-subtitle>放送波毎にタブで分ける</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -58,7 +58,7 @@
                                 </div>
                                 <div v-if="isSupportedMpegts" class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">web での再生を優先する</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">web での再生を優先する</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isPreferredPlayingLiveM2TSOnWeb"></v-switch>
@@ -66,7 +66,7 @@
                                 <div class="my-2 d-flex flex-column">
                                     <div class="d-flex">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">視聴 URL Scheme</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">視聴 URL Scheme</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                     </div>
@@ -82,21 +82,21 @@
                                 <div class="title">番組表</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">描画設定</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">描画設定</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-select :items="guideModeItems" v-model="storageModel.tmp.guideMode" class="guide-mode"></v-select>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">表示時間</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">表示時間</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-select :items="guideLengthItems" v-model="storageModel.tmp.guideLength" class="guide-time"></v-select>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">ダークテーマの配色を無効化する</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">ダークテーマの配色を無効化する</v-list-item-title>
                                         <v-list-item-subtitle>ダークテーマ使用時でも通常時と同じ配色設定になります</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -104,14 +104,14 @@
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">無料放送だけ表示する</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">無料放送だけ表示する</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isShowOnlyFreePrograms"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">放送波種別表示</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">放送波種別表示</v-list-item-title>
                                         <v-list-item-subtitle>ナビゲーションの表示を放送波別に分ける</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -119,14 +119,14 @@
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">検索時に放送局情報を含むか</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">検索時に放送局情報を含むか</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isIncludeChannelIdWhenSearching"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">検索時にジャンル情報を含むか</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">検索時にジャンル情報を含むか</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isIncludeGenreWhenSearching"></v-switch>
@@ -141,7 +141,7 @@
                                 <div class="title">予約</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">表示件数</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">表示件数</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-select :items="reservesLengthItems" v-model="storageModel.tmp.reservesLength" class="guide-time"></v-select>
@@ -155,7 +155,7 @@
                                 <div class="title">録画中</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">表示件数</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">表示件数</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-select :items="recordingLengthItems" v-model="storageModel.tmp.recordingLength" class="guide-time"></v-select>
@@ -170,21 +170,21 @@
                                 <div class="title">録画</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">表示件数</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">表示件数</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-select :items="recordedLengthItems" v-model="storageModel.tmp.recordedLength" class="guide-time"></v-select>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">テーブル表示</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">テーブル表示</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isShowTableMode"></v-switch>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">ドロップ情報を表示する</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">ドロップ情報を表示する</v-list-item-title>
                                         <v-list-item-subtitle>概要の代わりにドロップとファイルサイズ情報を表示する</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -193,7 +193,7 @@
 
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">削除時のチェックを入れるか</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">削除時のチェックを入れるか</v-list-item-title>
                                         <v-list-item-subtitle>有効にするとファイル削除のチェックが入れられた状態で録画削除ダイアログが開かれます</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -201,7 +201,7 @@
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">web での再生を優先する</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">web での再生を優先する</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isPreferredPlayingOnWeb"></v-switch>
@@ -209,7 +209,7 @@
                                 <div class="my-2 d-flex flex-column">
                                     <div class="d-flex">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">視聴 URL Scheme</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">視聴 URL Scheme</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-switch v-model="storageModel.tmp.shouldUseRecordedViewURLScheme"></v-switch>
@@ -219,7 +219,7 @@
                                 <div class="my-2 d-flex flex-column">
                                     <div class="d-flex">
                                         <div>
-                                            <v-list-item-title class="subtitle-1">ダウンロード URL Scheme</v-list-item-title>
+                                            <v-list-item-title class="text-subtitle-1">ダウンロード URL Scheme</v-list-item-title>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-switch v-model="storageModel.tmp.shouldUseRecordedDownloadURLScheme"></v-switch>
@@ -236,14 +236,14 @@
                                 <div class="title">検索</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">最大表示件数</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">最大表示件数</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-select :items="searchLengthItems" v-model="storageModel.tmp.searchLength" class="guide-time"></v-select>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">自動スクロール</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">自動スクロール</v-list-item-title>
                                         <v-list-item-subtitle>ルール編集時に検索結果へ自動スクロールする</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -251,7 +251,7 @@
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">自動サブディレクトリ設定</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">自動サブディレクトリ設定</v-list-item-title>
                                         <v-list-item-subtitle>ルール作成時にキーワードをサブディレクトリにコピーする</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -259,7 +259,7 @@
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">録画済み番組を排除</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">録画済み番組を排除</v-list-item-title>
                                         <v-list-item-subtitle>ルール作成時に録画済み番組を排除をチェックする</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -267,7 +267,7 @@
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">エンコードの自動設定</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">エンコードの自動設定</v-list-item-title>
                                         <v-list-item-subtitle>ルール作成時にエンコード設定を自動で行う</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -275,7 +275,7 @@
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">元ファイルの自動削除</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">元ファイルの自動削除</v-list-item-title>
                                         <v-list-item-subtitle>ルール作成時に元ファイルの自動削除をチェックする</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -291,7 +291,7 @@
                                 <div class="title">ルール</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">表示件数</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">表示件数</v-list-item-title>
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-select :items="rulesLengthItems" v-model="storageModel.tmp.rulesLength" class="guide-time"></v-select>
@@ -306,7 +306,7 @@
                                 <div class="title">ビデオプレーヤ</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">字幕の縁取りを強制する</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">字幕の縁取りを強制する</v-list-item-title>
                                         <v-list-item-subtitle>aribb24.js 使用時に有効になります</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
@@ -314,14 +314,14 @@
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
-                                        <v-list-item-title class="subtitle-1">ニコニコ実況コメントを表示する</v-list-item-title>
+                                        <v-list-item-title class="text-subtitle-1">ニコニコ実況コメントを表示する</v-list-item-title>
                                         <v-list-item-subtitle>ライブ視聴時に NX-Jikkyo のコメントを弾幕表示します</v-list-item-subtitle>
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isEnableJikkyoComment"></v-switch>
                                 </div>
                                 <div class="my-2">
-                                    <v-list-item-title class="subtitle-1">実況コメントサーバー (NX-Jikkyo)</v-list-item-title>
+                                    <v-list-item-title class="text-subtitle-1">実況コメントサーバー (NX-Jikkyo)</v-list-item-title>
                                     <v-text-field v-model="storageModel.tmp.jikkyoServerUrl" label="URL"></v-text-field>
                                 </div>
                             </div>
