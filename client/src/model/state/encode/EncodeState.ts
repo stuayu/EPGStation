@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../api';
+import ChannelNameUtil from '../../../util/ChannelNameUtil';
 import DateUtil from '../../../util/DateUtil';
 import IEncodeApiModel from '../../api/encode/IEncodeApiModel';
 import IChannelModel from '../../channels/IChannelModel';
@@ -65,11 +66,9 @@ export default class EncodeState implements IEncodeState {
     private convertEncodeProgramItemToDiplayData(item: apid.EncodeProgramItem, isHalfWidth: boolean, isSelectedIndex: SelectedIndex): EncodeInfoDisplayItem {
         const startAt = DateUtil.getJaDate(new Date(item.recorded.startAt));
         const endAt = DateUtil.getJaDate(new Date(item.recorded.endAt));
-        const channel = this.channelModel.findChannel(item.recorded.channelId, isHalfWidth);
-
         const result: EncodeInfoDisplayItem = {
             display: {
-                channelName: channel === null ? item.recorded.channelId.toString(10) : channel.name,
+                channelName: ChannelNameUtil.getRecordedChannelName(this.channelModel, item.recorded, isHalfWidth),
                 name: item.recorded.name,
                 time: DateUtil.format(startAt, 'MM/dd(w) hh:mm ~ ') + DateUtil.format(endAt, 'hh:mm'),
                 duration: Math.floor((item.recorded.endAt - item.recorded.startAt) / 1000 / 60),

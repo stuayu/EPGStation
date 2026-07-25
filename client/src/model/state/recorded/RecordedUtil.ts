@@ -2,6 +2,7 @@ import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../api';
 import DateUtil from '../../../util/DateUtil';
 import GenreUtil from '../../../util/GenreUtil';
+import ChannelNameUtil from '../../../util/ChannelNameUtil';
 import IChannelModel from '../../channels/IChannelModel';
 import IServerConfigModel from '../../serverConfig/IServerConfigModel';
 import Util from '../../../util/Util';
@@ -20,11 +21,9 @@ export default class RecordedUtil implements IRecordedUtil {
     public convertRecordedItemToDisplayData(item: apid.RecordedItem, isHalfWidth: boolean): RecordedDisplayData {
         const startAt = DateUtil.getJaDate(new Date(item.startAt));
         const endAt = DateUtil.getJaDate(new Date(item.endAt));
-        const channel = this.channelModel.findChannel(item.channelId, isHalfWidth);
-
         const result: RecordedDisplayData = {
             display: {
-                channelName: channel === null ? item.channelId.toString(10) : channel.name,
+                channelName: ChannelNameUtil.getRecordedChannelName(this.channelModel, item, isHalfWidth),
                 name: item.name,
                 time: DateUtil.format(startAt, 'MM/dd(w) hh:mm ~ ') + DateUtil.format(endAt, 'hh:mm'),
                 shortTime: DateUtil.format(startAt, 'MM/dd(w) hh:mm'),

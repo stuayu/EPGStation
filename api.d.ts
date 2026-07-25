@@ -439,6 +439,7 @@ export interface RecordedItem {
     ruleId?: RuleId;
     programId?: ProgramId;
     channelId: ChannelId;
+    channelName?: string; // 録画時点の放送局名 (channel テーブルから放送局情報が失われた場合の表示用)
     startAt: UnixtimeMS;
     endAt: UnixtimeMS;
     name: string;

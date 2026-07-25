@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../../api';
+import ChannelNameUtil from '../../../../util/ChannelNameUtil';
 import DateUtil from '../../../../util/DateUtil';
 import IRecordedApiModel from '../../../api/recorded/IRecordedApiModel';
 import IChannelModel from '../../../channels/IChannelModel';
@@ -39,12 +40,11 @@ export default class WatchRecordedInfoState implements IWatchRecordedInfoState {
         const isHalfWidth = this.settingModel.getSavedValue().isHalfWidthDisplayed;
 
         const recordedInfo = await this.recordedApiModel.get(recordedId, isHalfWidth);
-        const channel = this.channelModel.findChannel(recordedInfo.channelId, isHalfWidth);
         const startAt = DateUtil.getJaDate(new Date(recordedInfo.startAt));
         const endAt = DateUtil.getJaDate(new Date(recordedInfo.endAt));
 
         this.displayInfo = {
-            channelName: channel === null ? recordedInfo.channelId.toString(10) : channel.name,
+            channelName: ChannelNameUtil.getRecordedChannelName(this.channelModel, recordedInfo, isHalfWidth),
             time: DateUtil.format(startAt, 'MM/dd(w) hh:mm ~ ') + DateUtil.format(endAt, 'hh:mm'),
             name: recordedInfo.name,
             description: recordedInfo.description,
