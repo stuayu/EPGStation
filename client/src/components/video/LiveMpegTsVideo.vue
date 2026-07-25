@@ -6,8 +6,8 @@
 import BaseVideo from '@/components/video/BaseVideo';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import DPlayerUtil from '@/util/DPlayerUtil';
+import StreamQualityUtil from '@/util/StreamQualityUtil';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
 import UaUtil from '@/util/UaUtil';
 import Util from '@/util/Util';
@@ -30,7 +30,6 @@ class LiveMpegTsVideo extends BaseVideo {
     public jikkyoChannelId!: string | null;
 
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
-    private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
 
     public mounted(): void {
         super.mounted();
@@ -118,19 +117,11 @@ class LiveMpegTsVideo extends BaseVideo {
      * @return DPlayerType.VideoQuality[]
      */
     private createQualityList(): DPlayerType.VideoQuality[] {
-        const config = this.serverConfigModel.getConfig();
-        if (
-            this.channelId === null ||
-            config === null ||
-            typeof config.streamConfig === 'undefined' ||
-            typeof config.streamConfig.live === 'undefined' ||
-            typeof config.streamConfig.live.ts === 'undefined' ||
-            typeof config.streamConfig.live.ts.m2tsll === 'undefined'
-        ) {
+        if (this.channelId === null) {
             return [];
         }
 
-        return config.streamConfig.live.ts.m2tsll.map((name, mode) => {
+        return StreamQualityUtil.getLiveModeNames('m2tsll').map((name, mode) => {
             return {
                 name: name,
                 url: `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.channelId}/m2tsll?mode=${mode}`,

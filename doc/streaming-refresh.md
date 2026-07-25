@@ -30,7 +30,7 @@
 
 - DPlayer の設定メニューに **画質 (quality) リスト**を表示し、再生を止めずに `config.yml` の `stream.live.ts.m2tsll` の各設定 (1080p / 720p / 480p など) を切り替え可能。
 - サーバー側は接続単位でエンコードプロセスを起動するため、切替時は旧ストリームが自動終了し新モードで再接続される。
-- HLS / 録画ストリーミングの動的切替はサーバー側のセッション管理と絡むため、別途「配信基盤刊新」設計 (Notion の設計依頼書参照) で対応する。
+- ライブ HLS / 録画ストリーミングの切替は後述の「全配信方式での画質切替」で対応済み。
 
 ### 4. MSE / hls.js チューニング
 
@@ -80,7 +80,8 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
 
 ## 既知の制限
 
-- 解像度切替は M2TS-LL のみ。HLS / 録画再生の切替、配信形式 (M2TS-LL ⇄ HLS) のシームレス切替は今後の配信基盤刊新で対応。
+- 配信形式 (M2TS-LL ⇄ HLS) のシームレス切替は未対応 (画質切替は同一配信形式内のみ)。
+- ライブ視聴の m2ts / mp4 / webm 直接再生 (`NormalVideo`) は画質切替の対象外。これらは `<video>` 要素へ無限長ストリームを直接渡しており、切替時の seek 動作が安定しないため。
 - 解像度切替しても URL の `?mode=` クエリは更新されない (リロード時は当初のモードに戻る)。
 - iOS 26 のホーム画面 Web App 制限は WebKit 側の修正で解除できる見込み。解除時は `StreamSupportUtil.checkM2TSLLSupport()` のバージョン判定を更新すること。
 
@@ -114,3 +115,42 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
 - HEVC (libx265) の例をコメントで同梱。`-tag:v hvc1` は Safari / iOS 再生に必須。`-x265-params scenecut=0:repeat-headers=1` で固定 GOP とセグメント単位のデコード開始を保証。ビットレートは H.264 の約半分。
 - `cmd` に `|` を含む場合はシェル経由（Windows: cmd.exe / その他: /bin/sh）で実行されるため、`%TSREADEX% ... - | %FFMPEG% ...` のような tsreadex 前処理パイプラインが使える。`%TSREADEX%` は config の `tsreadex`（省略時は PATH 上の `tsreadex`）に置換される。
 - シェル実行時の停止はシェルプロセスへの kill → パイプ閉じにより下流プロセスも連鎖終了する。
+
+## 全配信方式での画質切替 (DPlayer quality メニュー)
+
+M2TS-LL のみだった画質切替を、**ライブ HLS・録画 HLS・録画ストリーミング (mp4 / webm)** にも拡張した。
+DPlayer 標準の設定メニュー (歯車 → 画質) から `config.yml` の視聴設定 (mode) を切り替える。
+
+### 対応状況
+
+| 再生方式 | コンポーネント | 参照する config | 切替方式 |
+| --- | --- | --- | --- |
+| ライブ M2TS-LL | `LiveMpegTsVideo.vue` | `stream.live.ts.m2tsll` | URL に `?mode=` を含むだけなので DPlayer 標準の切替 |
+| ライブ HLS | `LiveHLSVideo.vue` | `stream.live.ts.hls` | ストリームセッションを停止 → 新 mode で再作成 → 新しい m3u8 へ差し替え |
+| 録画 HLS | `RecordedHLSStreamingVideo.vue` | `stream.recorded.{ts,encoded}.hls` | 現在の再生位置でセッションを作り直し、先頭 (= 切替前の再生位置) から再生 |
+| 録画 mp4 / webm | `RecordedStreamingVideo.vue` | `stream.recorded.{ts,encoded}.{mp4,webm}` | `?mode=` と `?ss=` (現在の再生位置) を付け直した URL へ差し替え |
+| ライブ m2ts / mp4 / webm 直接再生 | `NormalVideo.vue` | — | 非対応 (既知の制限を参照) |
+
+- 録画側は `videoFile.type` (`ts` / `encoded`) で参照する設定を切り替える。判定は `IRecordedStreamingVideoState.getVideoFileType()` (取得済みの `RecordedItem.videoFiles` から解決)。
+- 設定一覧の取得は `client/src/util/StreamQualityUtil.ts` に集約 (`getLiveModeNames()` / `getRecordedModeNames()` / `createQualityList()`)。Safari 用に設定を間引く `ServerConfigModel` の結果をそのまま使うため、再生できない設定は画質リストにも出ない。
+- 視聴設定が 1 件も無い (config 未設定) 場合は従来どおり `video.url` 単体で生成し、画質メニューは表示されない。
+
+### 非同期切替の仕組み (`BaseVideo.setupQualitySwitch()`)
+
+DPlayer の `switchQuality()` は「quality リストに事前登録された URL へ即座に差し替える」前提だが、HLS 配信は
+サーバー側でストリームセッションを作り直すまで m3u8 の URL (`stream{streamId}.m3u8`) が決まらない。
+そのため `BaseVideo` で `dp.switchQuality` をラップし、以下の順で処理する。
+
+1. 多重実行を防ぐフラグを立て、「画質を … に切り替えています…」を DPlayer の notice で表示
+2. `resolveUrl(mode)` で URL を解決 (HLS はここで stop → start → 有効化待ち)
+3. `options.video.quality[mode].url` を書き換えてから DPlayer 本来の `switchQuality()` を呼ぶ
+4. 失敗時は notice でエラー表示のみ (再生中の映像はそのまま継続)
+
+`resetCurrentTime: true` を指定した場合 (録画系) は、DPlayer が行う「切替前の再生位置への seek」を抑止し、
+新しいストリームの先頭から再生させる (ストリーム自体を再生位置から作り直しているため)。
+
+### 注意点
+
+- ストリームの有効化待ちには上限を設けている (ライブ 30 秒 / 録画 60 秒)。タイムアウト時は例外となり画質切替が失敗扱いになる (再生は継続)。
+- 切替中は旧 video 要素が残るため、停止済みストリームへのセグメント要求で 404 が数回発生する (DPlayer が新しい video の `canplay` で旧要素を破棄するまでの間)。
+- 字幕 (aribb24) と実況弾幕は DPlayer 側の `initVideo()` で再初期化されるため、切替後も表示設定が引き継がれる。

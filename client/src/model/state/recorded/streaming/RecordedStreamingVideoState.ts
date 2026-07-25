@@ -47,6 +47,22 @@ export default class RecordedStreamingVideoState implements IRecordedStreamingVi
     }
 
     /**
+     * ビデオファイルの種別 (ts | encoded) を返す
+     * 画質切替で使用する視聴設定 (mode) 一覧の判別に使用する
+     * @param videoFileId: apid.VideoFileId
+     * @return apid.VideoFileType | null 情報を取得していない場合は null
+     */
+    public getVideoFileType(videoFileId: apid.VideoFileId): apid.VideoFileType | null {
+        if (this.recordedItem === null || typeof this.recordedItem.videoFiles === 'undefined') {
+            return null;
+        }
+
+        const videoFile = this.recordedItem.videoFiles.find(file => file.id === videoFileId);
+
+        return typeof videoFile === 'undefined' ? null : videoFile.type;
+    }
+
+    /**
      * 動画の長さ(秒)を返す
      * @return number
      */

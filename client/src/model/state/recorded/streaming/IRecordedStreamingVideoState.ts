@@ -5,4 +5,5 @@ export default interface IRecordedStreamingVideoState {
     fetchInfo(recordedId: apid.RecordedId, videoFileId: apid.VideoFileId): Promise<void>;
     isRecording(): boolean;
     getDuration(): number;
+    getVideoFileType(videoFileId: apid.VideoFileId): apid.VideoFileType | null;
 }
