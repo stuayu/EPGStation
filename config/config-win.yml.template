@@ -49,7 +49,10 @@ ffprobe: 'C:\rec\ffmpeg\bin\ffprobe.exe'
 # tsreadex の実行ファイルパス (ライブ HLS の cmd で %TSREADEX% を使う場合に指定、省略時は PATH 上の tsreadex)
 # tsreadex: /usr/local/bin/tsreadex
 
+# 録画ファイルのバックグラウンドエンコード上限
 encodeProcessNum: 4
+# ライブ視聴・録画再生ストリーミングの上限（encodeProcessNum とは別枠）
+streamProcessNum: 4
 concurrentEncodeNum: 1
 encode:
     - name: HEVC_CMカット

@@ -850,14 +850,30 @@ encodingFinishCommand: '/bin/node /home/hoge/fuga.js finish'
 
 ### encodeProcessNum
 
-#### エンコードやストリーミングで使用されるプロセスの上限数
+#### 録画ファイルのバックグラウンドエンコードで使用されるプロセスの上限数
 
 | 種類   | デフォルト値 | 必須 |
 | ------ | ------------ | ---- |
-| number | 0            | no   |
+| number | 1            | no   |
 
 ```yaml
 encodeProcessNum: 3
+```
+
+### streamProcessNum
+
+#### ライブ視聴・録画再生ストリーミングで使用されるプロセスの上限数
+
+`encodeProcessNum` とは独立した上限です。ライブ視聴および録画再生（HLS・通常ストリーミング）の
+プロセス数を合計して制限します。録画ファイルのバックグラウンドエンコードが上限まで実行中でも、
+この値に空きがあれば視聴を開始できます。
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| number | 4            | no   |
+
+```yaml
+streamProcessNum: 4
 ```
 
 ### concurrentEncodeNum

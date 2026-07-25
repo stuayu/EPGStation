@@ -165,7 +165,8 @@ export default interface IConfigFile {
     tsreadex?: string; // tsreadex の実行ファイルパス (省略時は PATH 上の tsreadex を使用)
 
     // エンコード設定
-    encodeProcessNum: number; // エンコード、ストリーミング最大プロセス数
+    encodeProcessNum: number; // 録画ファイルエンコード最大プロセス数
+    streamProcessNum: number; // 視聴用ストリーミング最大プロセス数
     concurrentEncodeNum: number; // 同時エンコード数
     encode: {
         id?: string; // プリセット識別子。省略時は name を識別子とみなす (完全後方互換)

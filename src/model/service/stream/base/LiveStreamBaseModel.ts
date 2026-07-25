@@ -35,7 +35,7 @@ export default abstract class LiveStreamBaseModel
     constructor(
         @inject('IConfiguration') configure: IConfiguration,
         @inject('ILoggerModel') logger: ILoggerModel,
-        @inject('IEncodeProcessManageModel') processManager: IEncodeProcessManageModel,
+        @inject('IStreamProcessManageModel') processManager: IEncodeProcessManageModel,
         @inject('IHLSFileDeleterModel') fileDeleter: IHLSFileDeleterModel,
         @inject('IMirakurunClientModel') mirakurunClientModel: IMirakurunClientModel,
         @inject('ISocketIOManageModel') socketIO: ISocketIOManageModel,
