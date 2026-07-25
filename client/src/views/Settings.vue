@@ -349,7 +349,7 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, GuideViewMode } from '@/model/storage/setting/ISettingStorageModel';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import IColorThemeState from '@/model/state/IColorThemeState';
-import Mpegts from 'mpegts.js';
+import StreamSupportUtil from '@/util/StreamSupportUtil';
 
 
 interface GuideModeItem {
@@ -419,7 +419,7 @@ class Settings extends Vue {
     }
 
     get isSupportedMpegts(): boolean {
-        return Mpegts.isSupported();
+        return StreamSupportUtil.isM2TSLLSupported();
     }
 
     public created(): void {

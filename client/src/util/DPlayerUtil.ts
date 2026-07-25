@@ -9,6 +9,33 @@ namespace DPlayerUtil {
     let isInitedGlobals = false;
 
     /**
+     * DPlayer が参照する window.mpegts 用のオブジェクトを生成する
+     *
+     * DPlayer は window.mpegts.createPlayer() で直接プレイヤーを生成するため、
+     * createPlayer をラップしてメディア要素アタッチ前に
+     * disableRemotePlayback / playsinline を設定する。
+     * iOS / iPadOS Safari 17.1+ の ManagedMediaSource (MMS) は
+     * disableRemotePlayback が設定されていない video 要素では動作しないため必須。
+     */
+    const createMpegtsGlobal = (): typeof Mpegts => {
+        const wrapped: any = { ...Mpegts };
+        wrapped.createPlayer = (mediaDataSource: any, config?: any): any => {
+            const player = (Mpegts as any).createPlayer(mediaDataSource, config);
+            const originalAttach = player.attachMediaElement.bind(player);
+            player.attachMediaElement = (element: HTMLMediaElement): void => {
+                (element as any).disableRemotePlayback = true;
+                element.setAttribute('playsinline', '');
+                element.setAttribute('webkit-playsinline', '');
+                originalAttach(element);
+            };
+
+            return player;
+        };
+
+        return wrapped;
+    };
+
+    /**
      * DPlayer (tsukumijima フォーク) が参照する window.Hls / window.mpegts を設定する
      * DPlayer は hls.js / mpegts.js を import ではなく window 経由で参照するため、
      * DPlayer を生成する前に一度だけ呼び出す必要がある
@@ -19,7 +46,7 @@ namespace DPlayerUtil {
         }
 
         (window as any).Hls = Hls;
-        (window as any).mpegts = Mpegts;
+        (window as any).mpegts = createMpegtsGlobal();
         isInitedGlobals = true;
     };
 

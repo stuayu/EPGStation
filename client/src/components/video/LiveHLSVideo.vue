@@ -107,6 +107,14 @@ class LiveHLSVideo extends BaseVideo {
                 type: 'aribb24',
             },
             pluginOptions: {
+                // hls.js 使用時 (Safari 以外) の低遅延・バッファチューニング
+                hls: {
+                    // ライブエッジからの同期距離を短くして遅延を抑える
+                    liveSyncDurationCount: 2,
+                    liveMaxLatencyDurationCount: 6,
+                    // 長時間視聴でのメモリ増加対策
+                    backBufferLength: 30,
+                } as any,
                 aribb24: DPlayerUtil.createAribb24Options(),
             },
         };

@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
+import StreamSupportUtil from '../../util/StreamSupportUtil';
 import UaUtil from '../..//util/UaUtil';
 import IConfigApiModel from '../api/config/IConfigApiModel';
 import IServerConfigModel from './IServerConfigModel';
@@ -25,8 +26,8 @@ export default class ServerConfigModel implements IServerConfigModel {
 
     /**
      * iOS / Safari (macOS 含む) で再生できないストリーミングの設定を削除する
-     * macOS 26 (Safari 26) 以降は mpegts.js によるライブ再生 (m2tsll) が
-     * 映像停止するため、iOS だけでなくデスクトップの Safari もネイティブ HLS へ誘導する
+     * m2tsll (mpegts.js) の可否は StreamSupportUtil.checkM2TSLLSupport() で判定する
+     * (MMS 対応の可否・iOS 26 以降のホーム画面 Web App・macOS Safari 26 の既知不具合)
      */
     private setStreamingSettingForSafari(): void {
         if ((UaUtil.isiOS() === false && UaUtil.isSafari() === false) || this.config === null || typeof this.config.streamConfig === 'undefined') {
@@ -39,8 +40,8 @@ export default class ServerConfigModel implements IServerConfigModel {
                 delete this.config.streamConfig.live.ts.webm;
                 delete this.config.streamConfig.live.ts.mp4;
 
-                if (UaUtil.isSafari() === true) {
-                    // Safari では mpegts.js のライブ再生が不安定なため、ネイティブ HLS を使用する
+                if (StreamSupportUtil.isM2TSLLSupported() === false) {
+                    // mpegts.js による低遅延ライブ再生が利用できない環境ではネイティブ HLS へ誘導する
                     delete this.config.streamConfig.live.ts.m2tsll;
                 }
 
