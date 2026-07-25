@@ -16,12 +16,14 @@ import WatchOnRecordedInfoCard from '@/components/recorded/watch/WatchRecordedIn
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import VideoContainer from '@/components/video/VideoContainer.vue';
 import * as VideoParam from '@/components/video/ViedoParam';
+import IRecordedApiModel from '@/model/api/recorded/IRecordedApiModel';
+import IChannelModel from '@/model/channels/IChannelModel';
 import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
+import JikkyoUtil from '@/util/JikkyoUtil';
 import Util from '@/util/Util';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
-
 
 @Component({
     components: {
@@ -33,6 +35,8 @@ import * as apid from '../../../api';
 class WatchRecordedStreaming extends Vue {
     public videoParam: VideoParam.RecordedStreamingParam | VideoParam.RecordedHLSParam | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
+    private recordedApiModel: IRecordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
+    private channelModel: IChannelModel = container.get<IChannelModel>('IChannelModel');
 
     @Watch('$route', { immediate: true, deep: true })
     public onUrlChange(): void {
@@ -44,12 +48,16 @@ class WatchRecordedStreaming extends Vue {
 
         this.$nextTick(async () => {
             if (videoFileId !== null && recordedId !== null && streamingType !== null && mode !== null) {
+                // ニコニコ実況 過去ログ再生用パラメータ取得
+                const jikkyoKakologParam = await this.getJikkyoKakologParam(recordedId);
+
                 if (streamingType === 'hls') {
                     this.videoParam = {
                         type: 'RecordedHLS',
                         recordedId: recordedId,
                         videoFileId: videoFileId,
                         mode: mode,
+                        ...(jikkyoKakologParam ?? {}),
                     };
                 } else {
                     this.videoParam = {
@@ -58,6 +66,7 @@ class WatchRecordedStreaming extends Vue {
                         videoFileId: videoFileId,
                         streamingType: streamingType,
                         mode: mode,
+                        ...(jikkyoKakologParam ?? {}),
                     };
                 }
             }
@@ -65,6 +74,37 @@ class WatchRecordedStreaming extends Vue {
             // データ取得完了を通知
             await this.scrollState.emitDoneGetData();
         });
+    }
+
+    /**
+     * ニコニコ実況 過去ログ取得に必要なパラメータを生成する
+     * @param recordedId: apid.RecordedId
+     * @return Promise<{ jikkyoChannelId: string; jikkyoStartAt: number; jikkyoEndAt: number } | null>
+     */
+    private async getJikkyoKakologParam(recordedId: apid.RecordedId): Promise<{ jikkyoChannelId: string; jikkyoStartAt: number; jikkyoEndAt: number } | null> {
+        try {
+            const recorded = await this.recordedApiModel.get(recordedId, true);
+            let channel = this.channelModel.findChannel(recorded.channelId, true);
+            if (channel === null) {
+                await this.channelModel.fetchChannels();
+                channel = this.channelModel.findChannel(recorded.channelId, true);
+            }
+
+            const jikkyoChannelId = channel === null ? null : JikkyoUtil.findJikkyoChannelId(channel);
+            if (jikkyoChannelId === null) {
+                return null;
+            }
+
+            return {
+                jikkyoChannelId: jikkyoChannelId,
+                jikkyoStartAt: recorded.startAt,
+                jikkyoEndAt: recorded.endAt,
+            };
+        } catch (err) {
+            console.error(err);
+
+            return null;
+        }
     }
 }
 

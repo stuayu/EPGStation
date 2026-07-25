@@ -251,66 +251,104 @@ stream:
                 #       %streamFileDir%/stream%streamNum%-child.m3u8'
 
     recorded:
+        # 録画再生用のエンコード設定 (低遅延版)
+        # mp4 / hls は再生開始までの待ち時間とシーク応答を短縮するため、以下を設定している
+        #   - -fflags nobuffer / -flags low_delay / -analyzeduration 500000: 入力解析の待ちを最小化
+        #   - -g 30 -keyint_min 30 -sc_threshold 0: GOP を 1 秒に固定しシーク・セグメント境界を揃える
+        #   - -tune fastdecode,zerolatency: エンコーダ内部の先読み (B フレーム等) を無効化
+        #   - mp4: faststart を外し fragmented MP4 を即時出力 (-frag_duration 500000)
+        #   - hls: -hls_time 1 で 1 秒セグメント化し、初回再生開始を高速化
         ts:
             webm:
                 - name: 1080p
                   cmd:
-                      '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -threads 3 -c:a libvorbis -ar 48000 -b:a 192k -ac 2
-                      -c:v vp9_qsv -vf yadif,scale=-2:1080 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y -f
-                      webm pipe:1'
+                      '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -threads 3 -c:a libvorbis -ar 48000
+                      -b:a 192k -ac 2 -c:v vp9_qsv -vf yadif,scale=-2:1080 -b:v 3000k -deadline realtime -speed 4
+                      -cpu-used -8 -y -f webm pipe:1'
                 - name: 720p
                   cmd:
-                      '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -threads 3 -c:a libvorbis -ar 48000 -b:a 192k -ac 2
-                      -c:v vp9_qsv -vf yadif,scale=-2:720 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y -f
-                      webm pipe:1'
+                      '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -threads 3 -c:a libvorbis -ar 48000
+                      -b:a 192k -ac 2 -c:v vp9_qsv -vf yadif,scale=-2:720 -b:v 3000k -deadline realtime -speed 4
+                      -cpu-used -8 -y -f webm pipe:1'
                 - name: 480p
                   cmd:
-                      '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -threads 3 -c:a libvorbis -ar 48000 -b:a 128k -ac 2
-                      -c:v vp9_qsv -vf yadif,scale=-2:480 -b:v 1500k -deadline realtime -speed 4 -cpu-used -8 -y -f
-                      webm pipe:1'
+                      '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -threads 3 -c:a libvorbis -ar 48000
+                      -b:a 128k -ac 2 -c:v vp9_qsv -vf yadif,scale=-2:480 -b:v 1500k -deadline realtime -speed 4
+                      -cpu-used -8 -y -f webm pipe:1'
 
             mp4:
-                - name: 1080p
+                - name: 1080p(低遅延)
                   cmd:
-                      '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -threads 0 -c:a aac -ar 48000 -b:a 192k -ac 2 -c:v
-                      libx264 -vf yadif,scale=-2:1080 -b:v 3000k -profile:v baseline -preset veryfast -tune
-                      fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4
-                      pipe:1'
-                - name: 720p
+                      '%FFMPEG% -dual_mono_mode main -fflags nobuffer -flags low_delay
+                      -analyzeduration 500000 -probesize 5000000 -i pipe:0 -sn -threads 0
+                      -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      -c:a aac -ar 48000 -b:a 192k -ac 2
+                      -c:v libx264 -vf yadif,scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -profile:v high -level 4.1 -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000
+                      -y -f mp4 pipe:1'
+                - name: 720p(低遅延)
                   cmd:
-                      '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -threads 0 -c:a aac -ar 48000 -b:a 192k -ac 2 -c:v
-                      libx264 -vf yadif,scale=-2:720 -b:v 3000k -profile:v baseline -preset veryfast -tune
-                      fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4
-                      pipe:1'
-                - name: 480p
+                      '%FFMPEG% -dual_mono_mode main -fflags nobuffer -flags low_delay
+                      -analyzeduration 500000 -probesize 5000000 -i pipe:0 -sn -threads 0
+                      -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      -c:a aac -ar 48000 -b:a 192k -ac 2
+                      -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -profile:v high -level 4.0 -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000
+                      -y -f mp4 pipe:1'
+                - name: 480p(低遅延)
                   cmd:
-                      '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -threads 0 -c:a aac -ar 48000 -b:a 128k -ac 2 -c:v
-                      libx264 -vf yadif,scale=-2:480 -b:v 1500k -profile:v baseline -preset veryfast -tune
-                      fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4
-                      pipe:1'
+                      '%FFMPEG% -dual_mono_mode main -fflags nobuffer -flags low_delay
+                      -analyzeduration 500000 -probesize 5000000 -i pipe:0 -sn -threads 0
+                      -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      -c:a aac -ar 48000 -b:a 128k -ac 2
+                      -c:v libx264 -vf yadif,scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
+                      -profile:v main -level 3.1 -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000
+                      -y -f mp4 pipe:1'
 
             hls:
-                - name: 1080p
+                - name: 1080p(低遅延)
                   cmd:
                       '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -map 0 -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -f hls -hls_time 3 -hls_list_size 0 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments -c:a
-                      aac -ar 48000 -b:a 192k -ac 2 -c:v libx264 -vf yadif,scale=-2:1080 -b:v 3000k -preset veryfast
+                      -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
+                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
+                      -hls_flags delete_segments+independent_segments
+                      -c:a aac -ar 48000 -b:a 192k -ac 2
+                      -c:v libx264 -vf yadif,scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
                       -flags +loop-global_header %OUTPUT%'
-                - name: 720p
+                - name: 720p(低遅延)
                   cmd:
                       '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -map 0 -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -f hls -hls_time 3 -hls_list_size 0 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments -c:a
-                      aac -ar 48000 -b:a 192k -ac 2 -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -preset veryfast
+                      -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
+                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
+                      -hls_flags delete_segments+independent_segments
+                      -c:a aac -ar 48000 -b:a 192k -ac 2
+                      -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
                       -flags +loop-global_header %OUTPUT%'
-                - name: 480p
+                - name: 480p(低遅延)
                   cmd:
                       '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -map 0 -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -f hls -hls_time 3 -hls_list_size 0 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments -c:a
-                      aac -ar 48000 -b:a 128k -ac 2 -c:v libx264 -vf yadif,scale=-2:480 -b:v 1500k -preset veryfast
+                      -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
+                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
+                      -hls_flags delete_segments+independent_segments
+                      -c:a aac -ar 48000 -b:a 128k -ac 2
+                      -c:v libx264 -vf yadif,scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
+                      -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
                       -flags +loop-global_header %OUTPUT%'
+                # 字幕付き (arib) の従来設定を使う場合は以下を参照
                 # - name: 720p (arib)
                 #   cmd:
                 #       '%FFMPEG% -dual_mono_mode main -fix_sub_duration -i pipe:0 -threads 0 -ignore_unknown
@@ -324,62 +362,92 @@ stream:
             webm:
                 - name: 1080p
                   cmd:
-                      '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 3 -c:a libvorbis -ar 48000 -b:a
-                      192k -ac 2 -c:v vp9_qsv -vf scale=-2:1080 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y
-                      -f webm pipe:1'
+                      '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 3 -c:a libvorbis -ar 48000
+                      -b:a 192k -ac 2 -c:v vp9_qsv -vf scale=-2:1080 -b:v 3000k -deadline realtime -speed 4
+                      -cpu-used -8 -y -f webm pipe:1'
                 - name: 720p
                   cmd:
-                      '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 3 -c:a libvorbis -ar 48000 -b:a
-                      192k -ac 2 -c:v vp9_qsv -vf scale=-2:720 -b:v 3000k -deadline realtime -speed 4 -cpu-used -8 -y
-                      -f webm pipe:1'
+                      '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 3 -c:a libvorbis -ar 48000
+                      -b:a 192k -ac 2 -c:v vp9_qsv -vf scale=-2:720 -b:v 3000k -deadline realtime -speed 4
+                      -cpu-used -8 -y -f webm pipe:1'
                 - name: 480p
                   cmd:
-                      '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 3 -c:a libvorbis -ar 48000 -b:a
-                      128k -ac 2 -c:v vp9_qsv -vf scale=-2:480 -b:v 1500k -deadline realtime -speed 4 -cpu-used -8 -y
-                      -f webm pipe:1'
+                      '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 3 -c:a libvorbis -ar 48000
+                      -b:a 128k -ac 2 -c:v vp9_qsv -vf scale=-2:480 -b:v 1500k -deadline realtime -speed 4
+                      -cpu-used -8 -y -f webm pipe:1'
 
             mp4:
-                - name: 1080p
+                - name: 1080p(低遅延)
                   cmd:
-                      '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 0 -c:a aac -ar 48000 -b:a 192k -ac
-                      2 -c:v libx264 -vf scale=-2:1080 -b:v 3000k -profile:v baseline -preset veryfast -tune
-                      fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4
-                      pipe:1'
-                - name: 720p
+                      '%FFMPEG% -dual_mono_mode main -fflags nobuffer -flags low_delay
+                      -analyzeduration 500000 -probesize 5000000 -ss %SS% -i %INPUT% -sn -threads 0
+                      -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      -c:a aac -ar 48000 -b:a 192k -ac 2
+                      -c:v libx264 -vf scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -profile:v high -level 4.1 -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000
+                      -y -f mp4 pipe:1'
+                - name: 720p(低遅延)
                   cmd:
-                      '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 0 -c:a aac -ar 48000 -b:a 192k -ac
-                      2 -c:v libx264 -vf scale=-2:720 -b:v 3000k -profile:v baseline -preset veryfast -tune
-                      fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4
-                      pipe:1'
-                - name: 480p
+                      '%FFMPEG% -dual_mono_mode main -fflags nobuffer -flags low_delay
+                      -analyzeduration 500000 -probesize 5000000 -ss %SS% -i %INPUT% -sn -threads 0
+                      -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      -c:a aac -ar 48000 -b:a 192k -ac 2
+                      -c:v libx264 -vf scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -profile:v high -level 4.0 -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000
+                      -y -f mp4 pipe:1'
+                - name: 480p(低遅延)
                   cmd:
-                      '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 0 -c:a aac -ar 48000 -b:a 128k -ac
-                      2 -c:v libx264 -vf scale=-2:480 -b:v 1500k -profile:v baseline -preset veryfast -tune
-                      fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4
-                      pipe:1'
+                      '%FFMPEG% -dual_mono_mode main -fflags nobuffer -flags low_delay
+                      -analyzeduration 500000 -probesize 5000000 -ss %SS% -i %INPUT% -sn -threads 0
+                      -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      -c:a aac -ar 48000 -b:a 128k -ac 2
+                      -c:v libx264 -vf scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
+                      -profile:v main -level 3.1 -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000
+                      -y -f mp4 pipe:1'
 
             hls:
-                - name: 1080p
+                - name: 1080p(低遅延)
                   cmd:
                       '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -f hls -hls_time 3 -hls_list_size 0 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments -c:a
-                      aac -ar 48000 -b:a 192k -ac 2 -c:v libx264 -vf scale=-2:1080 -b:v 3000k -preset veryfast -flags
-                      +loop-global_header %OUTPUT%'
-                - name: 720p
+                      -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
+                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
+                      -hls_flags delete_segments+independent_segments
+                      -c:a aac -ar 48000 -b:a 192k -ac 2
+                      -c:v libx264 -vf scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
+                      -flags +loop-global_header %OUTPUT%'
+                - name: 720p(低遅延)
                   cmd:
                       '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -f hls -hls_time 3 -hls_list_size 0 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments -c:a
-                      aac -ar 48000 -b:a 192k -ac 2 -c:v libx264 -vf scale=-2:720 -b:v 3000k -preset veryfast -flags
-                      +loop-global_header %OUTPUT%'
-                - name: 480p
+                      -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
+                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
+                      -hls_flags delete_segments+independent_segments
+                      -c:a aac -ar 48000 -b:a 192k -ac 2
+                      -c:v libx264 -vf scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
+                      -flags +loop-global_header %OUTPUT%'
+                - name: 480p(低遅延)
                   cmd:
                       '%FFMPEG% -dual_mono_mode main -ss %SS% -i %INPUT% -sn -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -f hls -hls_time 3 -hls_list_size 0 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments -c:a
-                      aac -ar 48000 -b:a 128k -ac 2 -c:v libx264 -vf scale=-2:480 -b:v 3000k -preset veryfast -flags
-                      +loop-global_header %OUTPUT%'
+                      -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
+                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
+                      -hls_flags delete_segments+independent_segments
+                      -c:a aac -ar 48000 -b:a 128k -ac 2
+                      -c:v libx264 -vf scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
+                      -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
+                      -flags +loop-global_header %OUTPUT%'
 
 # stream.profiles: id ベースの配信プリセット設定 (新形式)。
 # 上記の stream.live / stream.recorded (旧形式) と併存でき、同じスコープ (live / recorded.ts / recorded.encoded) に

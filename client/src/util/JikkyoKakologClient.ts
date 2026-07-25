@@ -12,6 +12,7 @@ interface KakologResponse {
             content?: string;
         };
     }>;
+    error?: string;
 }
 
 interface KakologComment extends JikkyoComment {
@@ -31,7 +32,8 @@ export interface JikkyoKakologClientOption {
  * ニコニコ実況 過去ログ再生クライアント
  *
  * 過去ログ API から指定録画のコメントを取得し、動画の再生位置に同期して描画する。
- * API の一回あたりの取得上限 (3日) を超える録画では、先頭から3日分を取得する。
+ * API の一回あたりの取得上限 (3日) を超える録画では、期間を分割して順次取得する。
+ * 最初のチャンクを取得した時点で描画を開始し、残りはバックグラウンドで追加していく。
  */
 export default class JikkyoKakologClient {
     private option: JikkyoKakologClientOption;
@@ -42,6 +44,7 @@ export default class JikkyoKakologClient {
 
     private static readonly API_URL = 'https://jikkyo.tsukumijima.net/api/kakolog';
     private static readonly MAX_REQUEST_DURATION = 3 * 24 * 60 * 60 * 1000;
+    private static readonly MAX_REQUEST_COUNT = 16;
     private static readonly SEEK_THRESHOLD = 3;
 
     constructor(option: JikkyoKakologClientOption) {
@@ -52,44 +55,93 @@ export default class JikkyoKakologClient {
      * 過去ログを取得する
      */
     public async start(): Promise<void> {
-        const startAt = Math.floor(this.option.startAt / 1000);
-        const endAt = Math.floor(Math.min(this.option.endAt, this.option.startAt + JikkyoKakologClient.MAX_REQUEST_DURATION) / 1000);
-        if (startAt >= endAt) {
+        if (this.option.startAt >= this.option.endAt) {
             return;
         }
 
-        const url = new URL(`${JikkyoKakologClient.API_URL}/${encodeURIComponent(this.option.jikkyoChannelId)}`);
-        url.searchParams.set('starttime', startAt.toString(10));
-        url.searchParams.set('endtime', endAt.toString(10));
-        url.searchParams.set('format', 'json');
+        let hasComment = false;
+        let hasError = false;
+        let requestCount = 0;
+        let chunkStartAt = this.option.startAt;
 
-        try {
-            const response = await fetch(url.toString());
-            if (response.ok === false) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            const data = (await response.json()) as KakologResponse;
-            if (this.isDestroyed === true) {
+        while (chunkStartAt < this.option.endAt && requestCount < JikkyoKakologClient.MAX_REQUEST_COUNT) {
+            if (this.isDestroyedNow() === true) {
                 return;
             }
 
-            this.comments = this.parseComments(data);
-            this.seek(this.option.getCurrentTime());
-            this.tick();
-        } catch (err) {
-            if (this.isDestroyed === false) {
+            const chunkEndAt = Math.min(chunkStartAt + JikkyoKakologClient.MAX_REQUEST_DURATION, this.option.endAt);
+            requestCount++;
+
+            let chunkComments: KakologComment[] | null = null;
+            try {
+                chunkComments = await this.fetchComments(chunkStartAt, chunkEndAt);
+            } catch (err) {
+                if (this.isDestroyedNow() === true) {
+                    return;
+                }
                 console.error('JikkyoKakologClient: failed to load kakolog', err);
-                this.option.onError?.('ニコニコ実況の過去ログを取得できませんでした');
+                hasError = true;
+                break;
             }
+
+            if (this.isDestroyedNow() === true) {
+                return;
+            }
+
+            if (chunkComments.length > 0) {
+                hasComment = true;
+                this.addComments(chunkComments);
+            }
+
+            chunkStartAt = chunkEndAt;
         }
+
+        if (hasError === true && hasComment === false) {
+            this.option.onError?.('ニコニコ実況の過去ログを取得できませんでした');
+        } else if (hasComment === false) {
+            this.option.onError?.('この番組のニコニコ実況過去ログは見つかりませんでした');
+        }
+    }
+
+    /**
+     * 指定区間の過去ログを取得する
+     * @param startAt: number 取得開始時刻 (UNIX 時刻・ミリ秒)
+     * @param endAt: number 取得終了時刻 (UNIX 時刻・ミリ秒)
+     * @return Promise<KakologComment[]>
+     */
+    private async fetchComments(startAt: number, endAt: number): Promise<KakologComment[]> {
+        const url = new URL(`${JikkyoKakologClient.API_URL}/${encodeURIComponent(this.option.jikkyoChannelId)}`);
+        url.searchParams.set('starttime', Math.floor(startAt / 1000).toString(10));
+        url.searchParams.set('endtime', Math.floor(endAt / 1000).toString(10));
+        url.searchParams.set('format', 'json');
+
+        const response = await fetch(url.toString());
+        if (response.ok === false) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = (await response.json()) as KakologResponse;
+        if (typeof data.error === 'string' && data.error.length > 0) {
+            throw new Error(data.error);
+        }
+
+        return this.parseComments(data);
+    }
+
+    /**
+     * 取得済みコメントをマージし、現在の再生位置に同期させる
+     */
+    private addComments(comments: KakologComment[]): void {
+        this.comments = this.comments.concat(comments).sort((a, b) => a.timestamp - b.timestamp);
+        this.seek(this.option.getCurrentTime());
+        this.tick();
     }
 
     /**
      * 動画の再生位置が更新されたときに呼び出す
      */
     public tick(): void {
-        if (this.isDestroyed === true || this.comments.length === 0) {
+        if (this.isDestroyedNow() === true || this.comments.length === 0) {
             return;
         }
 
@@ -124,6 +176,13 @@ export default class JikkyoKakologClient {
         }
         this.nextCommentIndex = low;
         this.lastPlaybackTime = playbackTime;
+    }
+
+    /**
+     * 破棄済みかを返す (await を跨いだ判定で型の絞り込みを避けるためメソッド経由で参照する)
+     */
+    private isDestroyedNow(): boolean {
+        return this.isDestroyed;
     }
 
     /**

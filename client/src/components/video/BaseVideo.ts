@@ -10,7 +10,10 @@ export default abstract class BaseVideo extends Vue {
     protected containerElement: HTMLElement | null = null;
     private jikkyoCommentClient: JikkyoCommentClient | null = null;
     private jikkyoKakologClient: JikkyoKakologClient | null = null;
+    private jikkyoCommentQueue: JikkyoComment[] = []; // 弾幕インスタンス生成前に届いたコメント
     private isResolvingQuality: boolean = false; // 画質切替の url 解決中か
+
+    private static readonly JIKKYO_COMMENT_QUEUE_LIMIT = 100;
 
     public mounted(): void {
         this.containerElement = this.$refs.container as HTMLElement;
@@ -72,6 +75,9 @@ export default abstract class BaseVideo extends Vue {
                 ...jikkyoKakologOption,
                 getCurrentTime: () => this.getCurrentTime(),
                 onComment: comment => this.drawJikkyoComment(comment),
+                onError: message => {
+                    (this.dp as any)?.notice?.(message, 5000);
+                },
             });
             void this.jikkyoKakologClient.start();
         }
@@ -171,15 +177,42 @@ export default abstract class BaseVideo extends Vue {
      * ニコニコ実況コメントを DPlayer の弾幕として描画する
      */
     private drawJikkyoComment(comment: JikkyoComment): void {
-        if (this.dp === null || typeof (this.dp as any).danmaku === 'undefined') {
+        const danmaku = this.dp === null ? null : (this.dp as any).danmaku;
+        if (danmaku === null || typeof danmaku === 'undefined' || typeof danmaku.draw !== 'function') {
+            // DPlayer の弾幕インスタンス生成前に届いたコメントは一時的に保持しておく
+            if (this.jikkyoCommentQueue.length < BaseVideo.JIKKYO_COMMENT_QUEUE_LIMIT) {
+                this.jikkyoCommentQueue.push(comment);
+            }
+
             return;
         }
-        (this.dp as any).danmaku.draw({
-            text: comment.text,
-            color: comment.color,
-            type: comment.type,
-            size: comment.size,
-        });
+
+        // 保持していたコメントを先に描画する
+        if (this.jikkyoCommentQueue.length > 0) {
+            const queuedComments = this.jikkyoCommentQueue;
+            this.jikkyoCommentQueue = [];
+            for (const queuedComment of queuedComments) {
+                BaseVideo.drawDanmaku(danmaku, queuedComment);
+            }
+        }
+
+        BaseVideo.drawDanmaku(danmaku, comment);
+    }
+
+    /**
+     * DPlayer の弾幕インスタンスへコメントを描画する
+     */
+    private static drawDanmaku(danmaku: any, comment: JikkyoComment): void {
+        try {
+            danmaku.draw({
+                text: comment.text,
+                color: comment.color,
+                type: comment.type,
+                size: comment.size,
+            });
+        } catch (err) {
+            console.error(err);
+        }
     }
 
     /**
@@ -194,6 +227,7 @@ export default abstract class BaseVideo extends Vue {
             this.jikkyoKakologClient.destroy();
             this.jikkyoKakologClient = null;
         }
+        this.jikkyoCommentQueue = [];
 
         this.isResolvingQuality = false;
 
