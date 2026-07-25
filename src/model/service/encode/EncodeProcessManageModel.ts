@@ -26,6 +26,15 @@ class EncodeProcessManageModel implements IEncodeProcessManageModel {
     }
 
     /**
+     * 同時起動数の上限を設定する。
+     * 通常エンコードと視聴用ストリームは別インスタンスでこの値を持つ。
+     * @param maxProcessNum: number 同時起動数の上限
+     */
+    public setMaxProcessNum(maxProcessNum: number): void {
+        this.maxEncode = maxProcessNum;
+    }
+
+    /**
      * エンコードプロセスを生成する
      * プロセス数が上限に達しているときは、他のプロセスを kill して枠を空けることはせず、
      * 常に reject する (プリエンプションは行わない)。

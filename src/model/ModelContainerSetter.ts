@@ -331,6 +331,22 @@ export const set = (container: Container): void => {
         .to(EncodeProcessManageModel)
         .inSingletonScope();
 
+    // 視聴用ストリームはバックグラウンドの録画ファイルエンコードとは別の上限枠で管理する。
+    // 同じ EncodeProcessManageModel の実装を使いつつ、別インスタンスにすることで
+    // encodeProcessNum の消費状況にかかわらず streamProcessNum まで配信を開始できる。
+    container
+        .bind<IEncodeProcessManageModel>('IStreamProcessManageModel')
+        .toDynamicValue(context => {
+            const configure = context.container.get<IConfiguration>('IConfiguration');
+            const manager = new EncodeProcessManageModel(
+                context.container.get<ILoggerModel>('ILoggerModel'),
+                configure,
+            );
+            manager.setMaxProcessNum(configure.getConfig().streamProcessNum);
+            return manager;
+        })
+        .inSingletonScope();
+
     container.bind<IEncodeFileManageModel>('IEncodeFileManageModel').to(EncodeFileManageModel).inSingletonScope();
 
     container.bind<IEncoderModel>('IEncoderModel').to(EncoderModel);

@@ -32,7 +32,7 @@ abstract class StreamBaseModel<T> implements IStreamBaseModel<T> {
     constructor(
         @inject('IConfiguration') configure: IConfiguration,
         @inject('ILoggerModel') logger: ILoggerModel,
-        @inject('IEncodeProcessManageModel') processManager: IEncodeProcessManageModel,
+        @inject('IStreamProcessManageModel') processManager: IEncodeProcessManageModel,
         @inject('IHLSFileDeleterModel') fileDeleter: IHLSFileDeleterModel,
         @inject('ISocketIOManageModel') socketIO: ISocketIOManageModel,
     ) {

@@ -38,7 +38,7 @@ export default abstract class RecordedStreamBaseModel
     constructor(
         @inject('IConfiguration') configure: IConfiguration,
         @inject('ILoggerModel') logger: ILoggerModel,
-        @inject('IEncodeProcessManageModel') processManager: IEncodeProcessManageModel,
+        @inject('IStreamProcessManageModel') processManager: IEncodeProcessManageModel,
         @inject('IHLSFileDeleterModel') fileDeleter: IHLSFileDeleterModel,
         @inject('ISocketIOManageModel') socketIO: ISocketIOManageModel,
         @inject('IVideoFileDB') videoFileDB: IVideoFileDB,
