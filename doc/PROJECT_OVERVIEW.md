@@ -124,3 +124,6 @@ npm run backup / restore   # DB バックアップ / リストア
 - Windows 対応が本フォークの柱。サーバ側変更時は Windows での動作 (パス区切り、named pipe など) を常に考慮すること
 - Express 5 では `req.query` がアクセスごとに再パースされる getter になったため、`ServiceServer.ts` でリクエスト受信時に一度だけ実体化するミドルウェアを挟んでいる
 - TypeORM 1.0 では criteria が空の `delete()` が禁止されているため、全件削除は `createQueryBuilder().delete()` を使う (既存コードは対応済み)
+- ライブ HLS は 2 モード: cmd が `%streamFileDir%` を含まなければ in-memory 配信 (`HLSMemoryStoreModel`、ディスク書き込みなし・字幕非対応)、含めば従来のディスク方式。詳細は `doc/streaming-refresh.md`
+- エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換される
+- ストリーミング API の `req.query` は express-openapi が OpenAPI スキーマに従い数値へ型変換する。`mode` 等のクエリを文字列前提で扱わないこと
