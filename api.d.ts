@@ -650,6 +650,45 @@ export interface Status {
 }
 
 /**
+ * ログの出力元プロセス
+ */
+export type LogProcessType = 'Operator' | 'Service' | 'EPGUpdater';
+
+/**
+ * ログファイル情報
+ */
+export interface LogFileItem {
+    id: string;
+    process: LogProcessType;
+    category: string;
+    name: string;
+    size: number;
+    updatedAt: UnixtimeMS;
+    isRotated: boolean;
+}
+
+/**
+ * ログファイル一覧
+ */
+export interface LogFiles {
+    items: LogFileItem[];
+}
+
+/**
+ * ログファイルの内容
+ */
+export interface LogFileContent {
+    id: string;
+    process: LogProcessType;
+    category: string;
+    name: string;
+    size: number;
+    updatedAt: UnixtimeMS;
+    isTruncated: boolean;
+    lines: string[];
+}
+
+/**
  * クライアントが受け取る設定情報
  */
 export interface Config {

@@ -1792,6 +1792,95 @@ components:
                             description: 接続確認を行った時刻 (UnixtimeMS)
                             type: integer
 
+        LogProcessType:
+            description: ログの出力元プロセス
+            type: string
+            enum:
+                - Operator
+                - Service
+                - EPGUpdater
+
+        LogFileItem:
+            description: ログファイル情報
+            type: object
+            required:
+                - id
+                - process
+                - category
+                - name
+                - size
+                - updatedAt
+                - isRotated
+            properties:
+                id:
+                    description: ログファイル id
+                    type: string
+                process:
+                    $ref: '#/components/schemas/LogProcessType'
+                category:
+                    description: ログのカテゴリ (system, access, stream, encode など)
+                    type: string
+                name:
+                    description: ログファイル名
+                    type: string
+                size:
+                    description: ファイルサイズ (byte)
+                    type: integer
+                updatedAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                isRotated:
+                    description: ローテーション済みのファイルか
+                    type: boolean
+
+        LogFiles:
+            description: ログファイル一覧
+            type: object
+            required:
+                - items
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LogFileItem'
+
+        LogFileContent:
+            description: ログファイルの内容
+            type: object
+            required:
+                - id
+                - process
+                - category
+                - name
+                - size
+                - updatedAt
+                - isTruncated
+                - lines
+            properties:
+                id:
+                    description: ログファイル id
+                    type: string
+                process:
+                    $ref: '#/components/schemas/LogProcessType'
+                category:
+                    description: ログのカテゴリ
+                    type: string
+                name:
+                    description: ログファイル名
+                    type: string
+                size:
+                    description: ファイルサイズ (byte)
+                    type: integer
+                updatedAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                isTruncated:
+                    description: 先頭が省略されているか
+                    type: boolean
+                lines:
+                    description: ログの行
+                    type: array
+                    items:
+                        type: string
+
         EncodeProgramItem:
             description: エンコードプログラム情報
             type: object
@@ -2616,3 +2705,30 @@ components:
             schema:
                 type: integer
                 default: 3
+
+        PathLogFileId:
+            description: ログファイル id
+            in: path
+            name: logFileId
+            required: true
+            schema:
+                type: string
+
+        LogLines:
+            description: 末尾から取得する行数
+            in: query
+            name: lines
+            required: false
+            schema:
+                type: integer
+                minimum: 1
+                maximum: 5000
+                default: 500
+
+        LogKeyword:
+            description: 絞り込みキーワード
+            in: query
+            name: keyword
+            required: false
+            schema:
+                type: string

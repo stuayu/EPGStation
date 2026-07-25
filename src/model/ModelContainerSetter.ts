@@ -26,6 +26,8 @@ import IRuleApiModel from './api/rule/IRuleApiModel';
 import RuleApiModel from './api/rule/RuleApiModel';
 import IScheduleApiModel from './api/schedule/IScheduleApiModel';
 import ScheduleApiModel from './api/schedule/ScheduleApiModel';
+import ILogApiModel from './api/log/ILogApiModel';
+import LogApiModel from './api/log/LogApiModel';
 import IStatusApiModel from './api/status/IStatusApiModel';
 import StatusApiModel from './api/status/StatusApiModel';
 import IStorageApiModel from './api/storage/IStorageApiModel';
@@ -293,6 +295,8 @@ export const set = (container: Container): void => {
     container.bind<IConfigApiModel>('IConfigApiModel').to(ConfigApiModel).inSingletonScope();
 
     container.bind<IStatusApiModel>('IStatusApiModel').to(StatusApiModel).inSingletonScope();
+
+    container.bind<ILogApiModel>('ILogApiModel').to(LogApiModel).inSingletonScope();
 
     container.bind<IChannelApiModel>('IChannelApiModel').to(ChannelApiModel).inSingletonScope();
 
