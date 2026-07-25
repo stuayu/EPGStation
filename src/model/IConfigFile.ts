@@ -162,6 +162,7 @@ export default interface IConfigFile {
 
     ffmpeg: string;
     ffprobe: string;
+    tsreadex?: string; // tsreadex の実行ファイルパス (省略時は PATH 上の tsreadex を使用)
 
     // エンコード設定
     encodeProcessNum: number; // エンコード、ストリーミング最大プロセス数

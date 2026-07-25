@@ -95,30 +95,56 @@ class EncodeProcessManageModel implements IEncodeProcessManageModel {
      * @return ChildProcessInfo
      */
     private buildProcess(option: CreateProcessOption): ChildProcessInfo {
-        let cmds: ProcessUtil.Cmds;
-        try {
-            cmds = ProcessUtil.parseCmdStr(option.cmd);
-        } catch (err: any) {
-            this.log.encode.error(`build process error: ${option.cmd}`);
-            throw err;
+        // パイプライン (例: tsreadex | ffmpeg) を含むコマンドはシェル経由で実行する
+        // (Windows では cmd.exe、その他では /bin/sh が使われる)
+        const useShell = option.cmd.includes('|');
+
+        let cmds: ProcessUtil.Cmds | null = null;
+        if (useShell === false) {
+            try {
+                cmds = ProcessUtil.parseCmdStr(option.cmd);
+            } catch (err: any) {
+                this.log.encode.error(`build process error: ${option.cmd}`);
+                throw err;
+            }
         }
 
         // input, output を置換
-        for (let i = 0; i < cmds.args.length; i++) {
+        let shellCmd = option.cmd;
+        if (useShell === true) {
             if (option.input !== null) {
-                cmds.args[i] = cmds.args[i].replace(/%INPUT%/g, option.input);
+                shellCmd = shellCmd.replace(/%INPUT%/g, option.input);
             }
-
             if (option.output !== null) {
-                cmds.args[i] = cmds.args[i].replace(/%OUTPUT%/g, option.output);
+                shellCmd = shellCmd.replace(/%OUTPUT%/g, option.output);
+            }
+        } else if (cmds !== null) {
+            for (let i = 0; i < cmds.args.length; i++) {
+                if (option.input !== null) {
+                    cmds.args[i] = cmds.args[i].replace(/%INPUT%/g, option.input);
+                }
+
+                if (option.output !== null) {
+                    cmds.args[i] = cmds.args[i].replace(/%OUTPUT%/g, option.output);
+                }
             }
         }
 
         // プロセス生成
-        const child =
-            typeof option.spawnOption === 'undefined'
-                ? spawn(cmds.bin, cmds.args)
-                : spawn(cmds.bin, cmds.args, option.spawnOption);
+        let child: ChildProcess;
+        if (useShell === true) {
+            this.log.encode.info(`spawn with shell: ${shellCmd}`);
+            child =
+                typeof option.spawnOption === 'undefined'
+                    ? spawn(shellCmd, { shell: true })
+                    : spawn(shellCmd, { ...option.spawnOption, shell: true });
+        } else {
+            const parsedCmds = cmds as ProcessUtil.Cmds;
+            child =
+                typeof option.spawnOption === 'undefined'
+                    ? spawn(parsedCmds.bin, parsedCmds.args)
+                    : spawn(parsedCmds.bin, parsedCmds.args, option.spawnOption);
+        }
         const processId = new Date().getTime();
 
         // エラー発生時にプロセスを停止して this.childs から削除する
