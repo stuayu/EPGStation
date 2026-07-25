@@ -263,7 +263,13 @@ abstract class StreamBaseModel<T> implements IStreamBaseModel<T> {
 }
 
 namespace StreamBaseModel {
-    export const ENCODE_PROCESS_PRIORITY = 1;
+    // 視聴中の配信 (ライブ・録画済みストリーミング) は、バックグラウンドで行われる
+    // 録画済みファイルのエンコード (EncoderModel.ENCODE_PRIPORITY = 10) よりも優先されるべき、
+    // という考えから設定していた値。
+    // 現在 EncodeProcessManageModel はプリエンプション (kill による枠の奪い合い) を行わないため、
+    // この値と EncoderModel.ENCODE_PRIPORITY の大小関係は実際の比較には使用されない。
+    // 将来的にプリエンプションのようなポリシーを再導入する余地を残すため、値自体は変更していない。
+    export const ENCODE_PROCESS_PRIORITY = 100;
     export const EXIT_EVENT = 'exitEvent';
 }
 

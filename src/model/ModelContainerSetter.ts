@@ -160,6 +160,8 @@ import RecordedHLSStreamModel from './service/stream/RecordedHLSStreamModel';
 import RecordedStreamModel from './service/stream/RecordedStreamModel';
 import HLSFileDeleterModel from './service/stream/util/HLSFileDeleterModel';
 import IHLSFileDeleterModel from './service/stream/util/IHLSFileDeleterModel';
+import IStreamProfileManageModel from './stream/IStreamProfileManageModel';
+import StreamProfileManageModel from './stream/StreamProfileManageModel';
 
 /**
  * container に 各 Model を登録する
@@ -406,6 +408,11 @@ export const set = (container: Container): void => {
     });
 
     container.bind<IStreamManageModel>('IStreamManageModel').to(StreamManageModel).inSingletonScope();
+
+    container
+        .bind<IStreamProfileManageModel>('IStreamProfileManageModel')
+        .to(StreamProfileManageModel)
+        .inSingletonScope();
 
     container.bind<IStreamApiModel>('IStreamApiModel').to(StreamApiModel).inSingletonScope();
 

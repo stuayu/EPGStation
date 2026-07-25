@@ -24,6 +24,38 @@ export const parseRequestParamInt = (value: string | string[], name: string): nu
     return parsed;
 };
 
+export interface StreamModeOrProfile {
+    mode?: number;
+    profile?: string;
+}
+
+/**
+ * ストリーミング系 API の `mode` (旧形式 index) / `profile` (新形式 id) クエリパラメータを解決する
+ * どちらも未指定の場合は 400 応答を返し null を返す
+ * @param req: express.Request
+ * @param res: express.Response
+ * @return StreamModeOrProfile | null
+ */
+export const parseStreamModeOrProfile = (req: express.Request, res: express.Response): StreamModeOrProfile | null => {
+    const profile = typeof req.query.profile === 'string' ? req.query.profile : undefined;
+    const modeStr = typeof req.query.mode === 'string' ? req.query.mode : undefined;
+    const mode = typeof modeStr === 'undefined' ? undefined : parseInt(modeStr, 10);
+
+    if (typeof profile === 'undefined' && (typeof mode === 'undefined' || Number.isNaN(mode))) {
+        responseError(res, {
+            code: 400,
+            message: 'mode or profile is required',
+        });
+
+        return null;
+    }
+
+    return {
+        mode: typeof mode === 'number' && !Number.isNaN(mode) ? mode : undefined,
+        profile: profile,
+    };
+};
+
 export interface IError {
     readonly code: number;
     readonly message: string;
@@ -56,6 +88,26 @@ export const responseServerError = (res: express.Response, err?: string): expres
     res.json(error);
 
     return res;
+};
+
+/**
+ * ストリーム開始系 API のエラー応答を行う
+ * エンコードプロセスの枠不足 ('EncodeProcessManageModelCreateError') が原因の場合は
+ * 503 Service Unavailable として同時配信数の上限に達している旨を返す。
+ * それ以外の予期しないエラーは従来通り 500 Internal Server Error として返す。
+ * @param res: express.Response
+ * @param err: unknown
+ * @return express.Response
+ */
+export const responseStreamStartError = (res: express.Response, err: unknown): express.Response => {
+    if (err instanceof Error && err.message === 'EncodeProcessManageModelCreateError') {
+        return responseError(res, {
+            code: 503,
+            message: '同時配信数の上限に達しています',
+        });
+    }
+
+    return responseServerError(res, getErrorMessage(err));
 };
 
 // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types

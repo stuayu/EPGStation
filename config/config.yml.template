@@ -50,6 +50,25 @@ encode:
       suffix: .mp4
       rate: 4.0
 
+# encode[].id: プリセットの識別子 (省略時は name がそのまま識別子として使われる)。
+# name はプリセットの表示名であり、id を省略していると name のリネームが録画予約や
+# クライアントに保存済みの設定を無効にしてしまうため、運用中に name を変更する可能性がある場合は
+# id を明示的に指定することを推奨する。
+# video / audio はクライアント表示用の参考情報 (実際のエンコード処理は cmd が担う)。
+# encode:
+#     - id: h264-1080p
+#       name: H.264 (1080p)
+#       cmd: '%NODE% %ROOT%/config/enc.js'
+#       suffix: .mp4
+#       rate: 4.0
+#       video:
+#           codec: libx264
+#           height: 1080
+#           bitrate: 3000
+#       audio:
+#           codec: aac
+#           bitrate: 192
+
 urlscheme:
     m2ts:
         ios: vlc-x-callback://x-callback-url/stream?url=PROTOCOL%3A%2F%2FADDRESS
@@ -296,3 +315,40 @@ stream:
                       -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments -c:a
                       aac -ar 48000 -b:a 128k -ac 2 -c:v libx264 -vf scale=-2:480 -b:v 3000k -preset veryfast -flags
                       +loop-global_header %OUTPUT%'
+
+# stream.profiles: id ベースの配信プリセット設定 (新形式)。
+# 上記の stream.live / stream.recorded (旧形式) と併存でき、同じスコープ (live / recorded.ts / recorded.encoded) に
+# 新形式が定義されている場合はそちらが優先される (旧形式は無視される)。
+# cmd を省略した場合 container / video / audio から ffmpeg コマンドを自動生成する。
+# video / audio も省略した場合は無変換 (isUnconverted) 配信になる。
+# stream:
+#     profiles:
+#         live:
+#             - id: live-hls-1080p
+#               name: 1080p (HLS)
+#               container: hls
+#               video:
+#                   codec: libx264
+#                   height: 1080
+#                   bitrate: 3000
+#               audio:
+#                   codec: aac
+#                   bitrate: 192
+#             - id: live-hls-unconverted
+#               name: 無変換 (HLS)
+#               container: hls
+#         recorded:
+#             ts:
+#                 - id: recorded-ts-mp4-720p
+#                   name: 720p
+#                   container: mp4
+#                   video:
+#                       height: 720
+#                       bitrate: 3000
+#             encoded:
+#                 - id: recorded-encoded-mp4-720p
+#                   name: 720p
+#                   container: mp4
+#                   video:
+#                       height: 720
+#                       bitrate: 3000

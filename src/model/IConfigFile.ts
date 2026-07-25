@@ -29,6 +29,36 @@ export interface StreamingCmd {
     cmd?: string;
 }
 
+// 配信コンテナ種別 (LL-HLS は別フェーズで追加予定のためまだ含めない)
+export type StreamContainer = 'm2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls';
+
+export interface StreamVideoParam {
+    codec?: string;
+    width?: number;
+    height?: number;
+    bitrate?: number; // kbps
+}
+
+export interface StreamAudioParam {
+    codec?: string;
+    bitrate?: number; // kbps
+}
+
+/**
+ * id ベースの配信プリセット (新形式)
+ * cmd を省略した場合 container / video / audio から ffmpeg コマンドを自動生成する。
+ * video / audio も省略した場合は無変換 (isUnconverted) 扱いとなる。
+ */
+export interface StreamProfile {
+    id: string;
+    name: string;
+    container: StreamContainer;
+    video?: StreamVideoParam;
+    audio?: StreamAudioParam;
+    cmd?: string;
+    isUnconverted?: boolean;
+}
+
 export interface KodiInfo {
     name: string;
     host: string;
@@ -137,10 +167,13 @@ export default interface IConfigFile {
     encodeProcessNum: number; // エンコード、ストリーミング最大プロセス数
     concurrentEncodeNum: number; // 同時エンコード数
     encode: {
+        id?: string; // プリセット識別子。省略時は name を識別子とみなす (完全後方互換)
         name: string;
         cmd: string;
         suffix?: string; // 非エンコードコマンドの場合 undefined
         rate?: number;
+        video?: StreamVideoParam; // クライアント表示用の映像設定情報 (配信側の型を再利用)
+        audio?: StreamAudioParam; // クライアント表示用の音声設定情報 (配信側の型を再利用)
     }[];
 
     // 予約定期更新時のログ出力を抑えるか
@@ -185,6 +218,14 @@ export default interface IConfigFile {
                 webm?: StreamingCmd[];
                 mp4?: StreamingCmd[];
                 hls?: StreamingCmd[];
+            };
+        };
+        // id ベースの配信プリセット設定 (新形式)。指定された場合、対象スコープでは live/recorded 旧形式より優先される
+        profiles?: {
+            live?: StreamProfile[];
+            recorded?: {
+                ts?: StreamProfile[];
+                encoded?: StreamProfile[];
             };
         };
     };

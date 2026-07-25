@@ -6,17 +6,23 @@ import * as api from '../../../../api';
 export const get: Operation = async (req, res) => {
     const streamApiModel = container.get<IStreamApiModel>('IStreamApiModel');
 
+    const streamOption = api.parseStreamModeOrProfile(req, res);
+    if (streamOption === null) {
+        return;
+    }
+
     try {
         const streamId = await streamApiModel.startRecordedHLSStream({
             videoFileId: api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'),
             playPosition: parseInt(req.query.ss as string, 10),
-            mode: parseInt(req.query.mode as string, 10),
+            mode: streamOption.mode,
+            profile: streamOption.profile,
         });
         api.responseJSON(res, 200, {
             streamId: streamId,
         });
     } catch (err: unknown) {
-        api.responseServerError(res, api.getErrorMessage(err));
+        api.responseStreamStartError(res, err);
     }
 };
 
@@ -33,6 +39,9 @@ get.apiDoc = {
         },
         {
             $ref: '#/components/parameters/StreamMode',
+        },
+        {
+            $ref: '#/components/parameters/StreamProfile',
         },
     ],
     responses: {

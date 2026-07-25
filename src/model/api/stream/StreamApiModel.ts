@@ -1,36 +1,41 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
+import { StreamContainer, StreamProfile } from '../../IConfigFile';
 import IChannelDB from '../../db/IChannelDB';
 import IProgramDB from '../../db/IProgramDB';
 import IRecordedDB from '../../db/IRecordedDB';
 import IVideoFileDB from '../../db/IVideoFileDB';
-import IConfiguration from '../../IConfiguration';
 import { LiveHLSStreamModelProvider, LiveStreamModelProvider } from '../../service/stream/base/ILiveStreamBaseModel';
 import {
     RecordedHLSStreamModelProvider,
     RecordedStreamModelProvider,
 } from '../../service/stream/base/IRecordedStreamBaseModel';
 import IStreamManageModel from '../../service/stream/manager/IStreamManageModel';
+import IStreamProfileManageModel, { StreamProfileKind } from '../../stream/IStreamProfileManageModel';
 import IApiUtil from '../IApiUtil';
 import IPlayList from '../IPlayList';
 import IStreamApiModel, { StreamResponse } from './IStreamApiModel';
 
-interface StreamConfig {
-    cmd?: string;
-}
-
 interface RecordedStreamConfig {
     cmd: string;
+    displayMode: number;
+}
+
+// 旧形式 ?mode=N のみが指定された場合、そのまま stream.setOption() の第二引数 (表示用 mode) として利用する
+// profile が指定された場合はプロファイルの並び順を表示用 mode として代用する
+interface ResolvedStreamOption {
+    profile: StreamProfile;
+    displayMode: number;
 }
 
 @injectable()
 export default class StreamApiModel implements IStreamApiModel {
-    private configure: IConfiguration;
     private liveStreamProvider: LiveStreamModelProvider;
     private liveHLSStreamProvider: LiveHLSStreamModelProvider;
     private recordedStreamProvider: RecordedStreamModelProvider;
     private recordedHLSStreamProvider: RecordedHLSStreamModelProvider;
     private streamManageModel: IStreamManageModel;
+    private streamProfileManageModel: IStreamProfileManageModel;
     private programDB: IProgramDB;
     private videoFileDB: IVideoFileDB;
     private recordedDB: IRecordedDB;
@@ -38,24 +43,24 @@ export default class StreamApiModel implements IStreamApiModel {
     private apiUtil: IApiUtil;
 
     constructor(
-        @inject('IConfiguration') configure: IConfiguration,
         @inject('LiveStreamModelProvider') liveStreamProvider: LiveStreamModelProvider,
         @inject('LiveHLSStreamModelProvider') liveHLSStreamProvider: LiveHLSStreamModelProvider,
         @inject('RecordedStreamModelProvider') recordedStreamProvider: RecordedStreamModelProvider,
         @inject('RecordedHLSStreamModelProvider') recordedHLSStreamProvider: RecordedHLSStreamModelProvider,
         @inject('IStreamManageModel') streamManageModel: IStreamManageModel,
+        @inject('IStreamProfileManageModel') streamProfileManageModel: IStreamProfileManageModel,
         @inject('IProgramDB') programDB: IProgramDB,
         @inject('IVideoFileDB') videoFileDB: IVideoFileDB,
         @inject('IRecordedDB') recordedDB: IRecordedDB,
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IApiUtil') apiUtil: IApiUtil,
     ) {
-        this.configure = configure;
         this.liveStreamProvider = liveStreamProvider;
         this.liveHLSStreamProvider = liveHLSStreamProvider;
         this.recordedStreamProvider = recordedStreamProvider;
         this.recordedHLSStreamProvider = recordedHLSStreamProvider;
         this.streamManageModel = streamManageModel;
+        this.streamProfileManageModel = streamProfileManageModel;
         this.programDB = programDB;
         this.videoFileDB = videoFileDB;
         this.recordedDB = recordedDB;
@@ -69,16 +74,16 @@ export default class StreamApiModel implements IStreamApiModel {
      * @return Promise<StreamResponse>
      */
     public async startLiveM2TsStream(option: apid.LiveStreamOption): Promise<StreamResponse> {
-        const conf = this.getTsLiveConfig('m2ts', option.mode);
+        const resolved = this.resolveLiveProfile('m2ts', option);
 
         // stream 生成
         const stream = await this.liveStreamProvider();
         stream.setOption(
             {
                 channelId: option.channelId,
-                cmd: conf.cmd,
+                cmd: resolved.profile.cmd,
             },
-            option.mode,
+            resolved.displayMode,
         );
 
         // manager に登録
@@ -96,16 +101,16 @@ export default class StreamApiModel implements IStreamApiModel {
      * @return Promise<StreamResponse>
      */
     public async startLiveM2TsLLStream(option: apid.LiveStreamOption): Promise<StreamResponse> {
-        const conf = this.getTsLiveConfig('m2tsll', option.mode);
+        const resolved = this.resolveLiveProfile('m2tsll', option);
 
         // stream 生成
         const stream = await this.liveStreamProvider();
         stream.setOption(
             {
                 channelId: option.channelId,
-                cmd: conf.cmd,
+                cmd: resolved.profile.cmd,
             },
-            option.mode,
+            resolved.displayMode,
         );
 
         // manager に登録
@@ -123,16 +128,16 @@ export default class StreamApiModel implements IStreamApiModel {
      * @return Promise<StreamResponse>
      */
     public async startLiveWebmStream(option: apid.LiveStreamOption): Promise<StreamResponse> {
-        const conf = this.getTsLiveConfig('webm', option.mode);
+        const resolved = this.resolveLiveProfile('webm', option);
 
         // stream 生成
         const stream = await this.liveStreamProvider();
         stream.setOption(
             {
                 channelId: option.channelId,
-                cmd: conf.cmd,
+                cmd: resolved.profile.cmd,
             },
-            option.mode,
+            resolved.displayMode,
         );
 
         // manager に登録
@@ -150,16 +155,16 @@ export default class StreamApiModel implements IStreamApiModel {
      * @return Promise<StreamResponse>
      */
     public async startMp4Stream(option: apid.LiveStreamOption): Promise<StreamResponse> {
-        const conf = this.getTsLiveConfig('mp4', option.mode);
+        const resolved = this.resolveLiveProfile('mp4', option);
 
         // stream 生成
         const stream = await this.liveStreamProvider();
         stream.setOption(
             {
                 channelId: option.channelId,
-                cmd: conf.cmd,
+                cmd: resolved.profile.cmd,
             },
-            option.mode,
+            resolved.displayMode,
         );
 
         // manager に登録
@@ -177,16 +182,16 @@ export default class StreamApiModel implements IStreamApiModel {
      * @return Promise<apid.StreamId>
      */
     public async startLiveHLSStream(option: apid.LiveStreamOption): Promise<apid.StreamId> {
-        const conf = this.getTsLiveConfig('hls', option.mode);
+        const resolved = this.resolveLiveProfile('hls', option);
 
         // stream 生成
         const stream = await this.liveHLSStreamProvider();
         stream.setOption(
             {
                 channelId: option.channelId,
-                cmd: conf.cmd,
+                cmd: resolved.profile.cmd,
             },
-            option.mode,
+            resolved.displayMode,
         );
 
         // manager に登録
@@ -194,27 +199,72 @@ export default class StreamApiModel implements IStreamApiModel {
     }
 
     /**
-     * config から指定した live stream コマンドを取り出す
-     * @param type: 'm2ts' | 'm2tsll' | 'webm' | 'mp4' | 'hls'
-     * @param mode: number config stream index 番号
-     * @return Promise<StreamConfig>
+     * ライブ配信の配信プリセットを解決する
+     * option.profile (新形式 id) が指定されていればそれを使い、無ければ option.mode (旧形式 index) を解決する
+     * @param container: StreamContainer
+     * @param option: apid.LiveStreamOption
+     * @return ResolvedStreamOption
      */
-    private getTsLiveConfig(type: 'm2ts' | 'm2tsll' | 'webm' | 'mp4' | 'hls', mode: number): StreamConfig {
-        const config = this.configure.getConfig();
+    private resolveLiveProfile(container: StreamContainer, option: apid.LiveStreamOption): ResolvedStreamOption {
+        return this.resolveProfile('live', container, option);
+    }
 
-        if (
-            typeof config.stream === 'undefined' ||
-            typeof config.stream.live === 'undefined' ||
-            typeof config.stream.live.ts === 'undefined' ||
-            typeof config.stream.live.ts[type] === 'undefined' ||
-            typeof (config.stream.live.ts[type] as any)[mode] === 'undefined'
-        ) {
+    /**
+     * option (mode / profile) から配信プリセットを解決する
+     * profile が指定されていればそれを優先し、無ければ mode を旧形式 index として解決する
+     * どちらも解決できない場合は例外を投げる
+     * @param kind: StreamProfileKind
+     * @param container: StreamContainer
+     * @param option: { mode?: number; profile?: string }
+     * @return ResolvedStreamOption
+     */
+    private resolveProfile(
+        kind: StreamProfileKind,
+        container: StreamContainer,
+        option: { mode?: number; profile?: string },
+    ): ResolvedStreamOption {
+        let profile: StreamProfile | null = null;
+
+        if (typeof option.profile !== 'undefined') {
+            profile = this.streamProfileManageModel.getProfile(option.profile);
+        } else if (typeof option.mode === 'number') {
+            profile = this.streamProfileManageModel.resolveLegacyMode(kind, container, option.mode);
+        }
+
+        if (profile === null) {
             throw new Error('ConfigIsUndefined');
         }
 
+        // 表示用 mode: クライアントが数値 mode を指定した場合はそのまま使用し、
+        // profile 指定の場合はコンテナ内でのプロファイルの並び順を代用する
+        const displayMode =
+            typeof option.mode === 'number'
+                ? option.mode
+                : this.getProfileIndexInContainer(kind, container, profile);
+
         return {
-            cmd: (config.stream.live.ts[type] as any)[mode].cmd,
+            profile: profile,
+            displayMode: displayMode,
         };
+    }
+
+    /**
+     * 指定したプロファイルが同一 container 内で何番目か (旧形式 mode 相当) を返す
+     * @param kind: StreamProfileKind
+     * @param container: StreamContainer
+     * @param profile: StreamProfile
+     * @return number
+     */
+    private getProfileIndexInContainer(kind: StreamProfileKind, container: StreamContainer, profile: StreamProfile): number {
+        const profiles = (
+            kind === 'live'
+                ? this.streamProfileManageModel.getLiveProfiles()
+                : this.streamProfileManageModel.getRecordedProfiles(kind === 'recordedTs' ? 'ts' : 'encoded')
+        ).filter(p => p.container === container);
+
+        const index = profiles.findIndex(p => p.id === profile.id);
+
+        return index === -1 ? 0 : index;
     }
 
     /**
@@ -223,7 +273,7 @@ export default class StreamApiModel implements IStreamApiModel {
      * @return Promise<StreamResponse>
      */
     public async startRecordedWebMStream(option: apid.RecordedStreanOption): Promise<StreamResponse> {
-        const conf = await this.getRecordedVideoConfig('webm', option);
+        const resolved = await this.getRecordedVideoConfig('webm', option);
 
         // stream 生成
         const stream = await this.recordedStreamProvider();
@@ -231,9 +281,9 @@ export default class StreamApiModel implements IStreamApiModel {
             {
                 videoFileId: option.videoFileId,
                 playPosition: option.playPosition,
-                cmd: conf.cmd,
+                cmd: resolved.cmd,
             },
-            option.mode,
+            resolved.displayMode,
         );
 
         // manager に登録
@@ -251,7 +301,7 @@ export default class StreamApiModel implements IStreamApiModel {
      * @return Promise<StreamResponse>
      */
     public async startRecordedMp4Stream(option: apid.RecordedStreanOption): Promise<StreamResponse> {
-        const conf = await this.getRecordedVideoConfig('mp4', option);
+        const resolved = await this.getRecordedVideoConfig('mp4', option);
 
         // stream 生成
         const stream = await this.recordedStreamProvider();
@@ -259,9 +309,9 @@ export default class StreamApiModel implements IStreamApiModel {
             {
                 videoFileId: option.videoFileId,
                 playPosition: option.playPosition,
-                cmd: conf.cmd,
+                cmd: resolved.cmd,
             },
-            option.mode,
+            resolved.displayMode,
         );
 
         // manager に登録
@@ -279,7 +329,7 @@ export default class StreamApiModel implements IStreamApiModel {
      * @return Promise<apid.StreamId>
      */
     public async startRecordedHLSStream(option: apid.RecordedStreanOption): Promise<apid.StreamId> {
-        const conf = await this.getRecordedVideoConfig('hls', option);
+        const resolved = await this.getRecordedVideoConfig('hls', option);
 
         // stream 生成
         const stream = await this.recordedHLSStreamProvider();
@@ -287,9 +337,9 @@ export default class StreamApiModel implements IStreamApiModel {
             {
                 videoFileId: option.videoFileId,
                 playPosition: option.playPosition,
-                cmd: conf.cmd,
+                cmd: resolved.cmd,
             },
-            option.mode,
+            resolved.displayMode,
         );
 
         // manager に登録
@@ -297,52 +347,28 @@ export default class StreamApiModel implements IStreamApiModel {
     }
 
     /**
-     * config から指定した stream コマンドを取り出す
+     * 録画済みビデオの配信プリセットを解決し stream コマンドを取り出す
+     * ソースがエンコード済みか (recorded.encoded) 元 TS か (recorded.ts) で参照先を切り替える
      * @param type: 'webm' | 'mp4' | 'hls'
      * @param option apid.RecordedStreanOption
-     * @return Promise<StreamConfig>
+     * @return Promise<RecordedStreamConfig>
      */
     private async getRecordedVideoConfig(
         type: 'webm' | 'mp4' | 'hls',
         option: apid.RecordedStreanOption,
     ): Promise<RecordedStreamConfig> {
         const isEncodedVideo = await this.isEncodedVideo(option.videoFileId);
+        const kind: StreamProfileKind = isEncodedVideo === true ? 'recordedEncoded' : 'recordedTs';
 
-        // config が存在するか
-        const config = this.configure.getConfig();
-        if (typeof config.stream === 'undefined' || typeof config.stream.recorded === 'undefined') {
-            throw new Error('ConfigIsUndefined');
-        }
+        const resolved = this.resolveProfile(kind, type, option);
 
-        let cmd: string;
-        if (isEncodedVideo === true) {
-            if (
-                typeof config.stream.recorded.encoded === 'undefined' ||
-                typeof config.stream.recorded.encoded[type] === 'undefined' ||
-                typeof (config.stream.recorded.encoded[type] as any)[option.mode] === 'undefined'
-            ) {
-                throw new Error('ConfigIsUndefined');
-            }
-
-            cmd = (config.stream.recorded.encoded[type] as any)[option.mode].cmd;
-        } else {
-            if (
-                typeof config.stream.recorded.ts === 'undefined' ||
-                typeof config.stream.recorded.ts[type] === 'undefined' ||
-                typeof (config.stream.recorded.ts[type] as any)[option.mode] === 'undefined'
-            ) {
-                throw new Error('ConfigIsUndefined');
-            }
-
-            cmd = (config.stream.recorded.ts[type] as any)[option.mode].cmd;
-        }
-
-        if (typeof cmd === 'undefined') {
+        if (typeof resolved.profile.cmd === 'undefined') {
             throw new Error('CmdIsUndefined');
         }
 
         return {
-            cmd: cmd,
+            cmd: resolved.profile.cmd,
+            displayMode: resolved.displayMode,
         };
     }
 
@@ -377,6 +403,11 @@ export default class StreamApiModel implements IStreamApiModel {
             return null;
         }
 
+        const query =
+            typeof option.profile !== 'undefined'
+                ? `profile=${encodeURIComponent(option.profile)}`
+                : `mode=${option.mode}`;
+
         return {
             name: encodeURIComponent(channel.name + '.m3u8'),
             playList: this.apiUtil.createM3U8PlayListStr({
@@ -384,7 +415,7 @@ export default class StreamApiModel implements IStreamApiModel {
                 isSecure: isSecure,
                 name: channel.name,
                 duration: 0,
-                baseUrl: `/api/streams/live/${option.channelId.toString(10)}/m2ts?mode=${option.mode}`,
+                baseUrl: `/api/streams/live/${option.channelId.toString(10)}/m2ts?${query}`,
             }),
         };
     }
