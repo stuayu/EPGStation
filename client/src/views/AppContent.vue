@@ -2,7 +2,7 @@
     <v-app class="app-content-root">
         <div v-if="isDisconnected === true" class="disconnected"></div>
         <Navigation></Navigation>
-        <ServerStatusBanner></ServerStatusBanner>
+        <ServerStatusToast></ServerStatusToast>
         <router-view></router-view>
         <Snackbar></Snackbar>
     </v-app>
@@ -10,7 +10,7 @@
 
 <script lang="ts">
 import Navigation from '@/components/navigation/Navigation.vue';
-import ServerStatusBanner from '@/components/serverStatus/ServerStatusBanner.vue';
+import ServerStatusToast from '@/components/serverStatus/ServerStatusToast.vue';
 import Snackbar from '@/components/snackbar/Snackbar.vue';
 import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
@@ -25,7 +25,7 @@ import IColorThemeState from '@/model/state/IColorThemeState';
     components: {
         Navigation,
         Snackbar,
-        ServerStatusBanner,
+        ServerStatusToast,
     },
 })
 class AppContent extends Vue {

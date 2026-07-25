@@ -19,6 +19,8 @@ import IRuleApiModel from './api/rule/IRuleApiModel';
 import RuleApiModel from './api/rule/RuleApiModel';
 import IScheduleApiModel from './api/schedule/IScheduleApiModel';
 import ScheduleApiModel from './api/schedule/ScheduleApiModel';
+import ILogApiModel from './api/log/ILogApiModel';
+import LogApiModel from './api/log/LogApiModel';
 import IStatusApiModel from './api/status/IStatusApiModel';
 import StatusApiModel from './api/status/StatusApiModel';
 import IStorageApiModel from './api/storage/IStorageApiModel';
@@ -99,6 +101,8 @@ import IServerStatusState from './state/serverStatus/IServerStatusState';
 import ServerStatusState from './state/serverStatus/ServerStatusState';
 import ISnackbarState from './state/snackbar/ISnackbarState';
 import SnackbarState from './state/snackbar/SnackbarState';
+import ILogState from './state/log/ILogState';
+import LogState from './state/log/LogState';
 import IStorageState from './state/storage/IStorageState';
 import StorageState from './state/storage/StorageState';
 import AddEncodeSettingStorageModel from './storage/encode/AddEncodeSettingStorageModel';
@@ -159,6 +163,8 @@ export default (container: Container): void => {
     container.bind<IStorageApiModel>('IStorageApiModel').to(StorageApiModel).inSingletonScope();
 
     container.bind<IStatusApiModel>('IStatusApiModel').to(StatusApiModel).inSingletonScope();
+
+    container.bind<ILogApiModel>('ILogApiModel').to(LogApiModel).inSingletonScope();
 
     container.bind<IVersionApiModel>('IVersionApiModel').to(VersionApiModel).inSingletonScope();
 
@@ -251,6 +257,8 @@ export default (container: Container): void => {
     container.bind<IManualReserveState>('IManualReserveState').to(ManualReserveState).inSingletonScope();
 
     container.bind<IStorageState>('IStorageState').to(StorageState).inSingletonScope();
+
+    container.bind<ILogState>('ILogState').to(LogState).inSingletonScope();
 
     container.bind<IVersionState>('IVersionState').to(VersionState).inSingletonScope();
 

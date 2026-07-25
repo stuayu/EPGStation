@@ -7,7 +7,7 @@ import Encode from './views/Encode.vue'; import Guide from './views/Guide.vue'; 
 import ManualReserve from './views/ManualReserve.vue'; import OnAir from './views/OnAir.vue'; import Recorded from './views/Recorded.vue';
 import RecordedDetail from './views/RecordedDetail.vue'; import RecordedUpload from './views/RecordedUpload.vue'; import Recording from './views/Recording.vue';
 import Reserves from './views/Reserves.vue'; import Rule from './views/Rule.vue'; import Search from './views/Search.vue'; import Settings from './views/Settings.vue';
-import Storages from './views/Storages.vue'; import WatchOnAir from './views/WatchOnAir.vue'; import WatchRecorded from './views/WatchRecorded.vue'; import WatchRecordedStreaming from './views/WatchRecordedStreaming.vue';
+import Logs from './views/Logs.vue'; import Storages from './views/Storages.vue'; import WatchOnAir from './views/WatchOnAir.vue'; import WatchRecorded from './views/WatchRecorded.vue'; import WatchRecordedStreaming from './views/WatchRecordedStreaming.vue';
 const scrollBehavior: RouterScrollBehavior = async (_to, _from, savedPosition) => {
     await container.get<IScrollPositionState>('IScrollPositionState').onDoneGetData();
     return savedPosition ?? { left: 0, top: 0 };
@@ -22,4 +22,5 @@ export default createRouter({ history: createWebHashHistory(), routes: [
     { path: '/recorded/streaming/:id', name: 'recorded-streaming', component: WatchRecordedStreaming }, { path: '/encode', name: 'encode', component: Encode },
     { path: '/search', name: 'search', component: Search }, { path: '/rule', name: 'rule', component: Rule },
     { path: '/settings', name: 'settings', component: Settings }, { path: '/storages', name: 'storages', component: Storages },
+    { path: '/logs', name: 'logs', component: Logs },
 ], scrollBehavior });

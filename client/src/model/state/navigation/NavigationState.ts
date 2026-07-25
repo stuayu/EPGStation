@@ -276,6 +276,13 @@ export default class NavigationState implements INavigationState {
             },
         });
         newItems.push({
+            icon: 'mdi-text-box-search-outline',
+            title: 'ログ',
+            herf: {
+                path: '/logs',
+            },
+        });
+        newItems.push({
             icon: 'mdi-cog',
             title: '設定',
             herf: {
