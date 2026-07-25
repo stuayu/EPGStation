@@ -9,6 +9,7 @@ import VideoFile from '../../../db/entities/VideoFile';
 import FileUtil from '../../../util/FileUtil';
 import StrUtil from '../../../util/StrUtil';
 import IVideoUtil from '../../api/video/IVideoUtil';
+import IChannelDB from '../../db/IChannelDB';
 import IDropLogFileDB from '../../db/IDropLogFileDB';
 import IRecordedDB from '../../db/IRecordedDB';
 import IRecordedHistoryDB from '../../db/IRecordedHistoryDB';
@@ -28,6 +29,7 @@ class RecordedManageModel implements IRecordedManageModel {
     private log: ILogger;
     private config: IConfigFile;
     private recordedDB: IRecordedDB;
+    private channelDB: IChannelDB;
     private videoFileDB: IVideoFileDB;
     private thumbnailDB: IThumbnailDB;
     private dropLogFileDB: IDropLogFileDB;
@@ -41,6 +43,7 @@ class RecordedManageModel implements IRecordedManageModel {
         @inject('ILoggerModel') logger: ILoggerModel,
         @inject('IConfiguration') configuration: IConfiguration,
         @inject('IRecordedDB') recordedDB: IRecordedDB,
+        @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IVideoFileDB') videoFileDB: IVideoFileDB,
         @inject('IThumbnailDB') thumbnailDB: IThumbnailDB,
         @inject('IDropLogFileDB') dropLogFileDB: IDropLogFileDB,
@@ -54,6 +57,7 @@ class RecordedManageModel implements IRecordedManageModel {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
         this.recordedDB = recordedDB;
+        this.channelDB = channelDB;
         this.videoFileDB = videoFileDB;
         this.thumbnailDB = thumbnailDB;
         this.dropLogFileDB = dropLogFileDB;
@@ -419,6 +423,19 @@ class RecordedManageModel implements IRecordedManageModel {
             recorded.ruleId = option.ruleId;
         }
         recorded.channelId = option.channelId;
+
+        // 録画時点の放送局名を保持する (channel テーブルから放送局情報が失われた後の表示用)
+        try {
+            const channel = await this.channelDB.findId(option.channelId);
+            if (channel !== null) {
+                recorded.channelName = channel.name;
+                recorded.halfWidthChannelName = channel.halfWidthName;
+            }
+        } catch (err: any) {
+            this.log.system.warn(`get channel name error: ${option.channelId}`);
+            this.log.system.warn(err);
+        }
+
         recorded.startAt = option.startAt;
         recorded.endAt = option.endAt;
         if (option.startAt - option.endAt >= 0) {

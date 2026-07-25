@@ -43,7 +43,10 @@ export default class ChannelDB implements IChannelDB {
         try {
             for (const channel of channels) {
                 if (typeof channel.channel === 'undefined') {
-                    return;
+                    // 物理チャンネル情報が無いサービスは登録できないが、
+                    // return してしまうと以降の放送局がすべて未登録になるため skip する
+                    this.log.system.warn(`channel info is not found: ${channel.id} ${channel.name}`);
+                    continue;
                 }
 
                 const name = StrUtil.toDBStr(channel.name);

@@ -28,6 +28,12 @@ export default class RecordedItemUtil implements IRecordedItemUtil {
             isProtected: recorded.isProtected,
         };
 
+        // 録画時点の放送局名 (channel テーブルから放送局情報が失われた場合の表示用)
+        const channelName = isHalfWidth === true ? recorded.halfWidthChannelName : recorded.channelName;
+        if (typeof channelName === 'string' && channelName.length > 0) {
+            item.channelName = channelName;
+        }
+
         if (recorded.ruleId !== null) {
             item.ruleId = recorded.ruleId;
         }

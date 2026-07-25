@@ -108,6 +108,7 @@ npm run all-install   # サーバ + クライアントの依存インストー�
 npm run build         # Linux/Mac (build-win で Windows)
 npm start             # node dist/index.js
 npm run backup / restore   # DB バックアップ / リストア
+npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (既定は dry run, --apply で更新)
 ```
 
 - テストは未整備 (`npm test` はエラーを返すだけ)。動作確認はビルド + 手動確認

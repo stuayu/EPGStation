@@ -44,6 +44,22 @@ export default class Recorded extends BaseEntity {
     })
     public channelId!: number;
 
+    /**
+     * 録画時点の放送局名
+     * 転居などで channel テーブルから放送局情報が失われても表示名を復元できるようにするため保持する
+     */
+    @Column({
+        type: 'text',
+        nullable: true,
+    })
+    public channelName?: string | null;
+
+    @Column({
+        type: 'text',
+        nullable: true,
+    })
+    public halfWidthChannelName?: string | null;
+
     @Column({
         default: false,
     })

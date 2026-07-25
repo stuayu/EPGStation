@@ -13,6 +13,7 @@ import Reserve from '../../../db/entities/Reserve';
 import VideoFile from '../../../db/entities/VideoFile';
 import FileUtil from '../../../util/FileUtil';
 import StrUtil from '../../../util/StrUtil';
+import IChannelDB from '../../db/IChannelDB';
 import IDropLogFileDB from '../../db/IDropLogFileDB';
 import IProgramDB from '../../db/IProgramDB';
 import IRecordedDB from '../../db/IRecordedDB';
@@ -38,6 +39,7 @@ class RecorderModel implements IRecorderModel {
     private log: ILogger;
     private config: IConfigFile;
     private programDB: IProgramDB;
+    private channelDB: IChannelDB;
     private reserveDB: IReserveDB;
     private recordedDB: IRecordedDB;
     private recordedHistoryDB: IRecordedHistoryDB;
@@ -76,6 +78,7 @@ class RecorderModel implements IRecorderModel {
         @inject('ILoggerModel') logger: ILoggerModel,
         @inject('IConfiguration') configuration: IConfiguration,
         @inject('IProgramDB') programDB: IProgramDB,
+        @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IReserveDB') reserveDB: IReserveDB,
         @inject('IRecordedDB') recordedDB: IRecordedDB,
         @inject('IRecordedHistoryDB') recordedHistoryDB: IRecordedHistoryDB,
@@ -91,6 +94,7 @@ class RecorderModel implements IRecorderModel {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
         this.programDB = programDB;
+        this.channelDB = channelDB;
         this.reserveDB = reserveDB;
         this.recordedDB = recordedDB;
         this.recordedHistoryDB = recordedHistoryDB;
@@ -558,6 +562,22 @@ class RecorderModel implements IRecorderModel {
         recorded.ruleId = this.reserve.ruleId;
         recorded.programId = this.reserve.programId;
         recorded.channelId = this.reserve.channelId;
+
+        /**
+         * 録画時点の放送局名を保持する
+         * 転居などで channel テーブルから放送局情報が失われても表示名を復元できるようにするため
+         */
+        try {
+            const channel = await this.channelDB.findId(this.reserve.channelId);
+            if (channel !== null) {
+                recorded.channelName = channel.name;
+                recorded.halfWidthChannelName = channel.halfWidthName;
+            }
+        } catch (err: any) {
+            this.log.system.warn(`get channel name error: ${this.reserve.channelId}`);
+            this.log.system.warn(err);
+        }
+
         recorded.startAt = this.reserve.startAt;
         recorded.endAt = this.reserve.endAt;
         recorded.duration = this.reserve.endAt - this.reserve.startAt;
