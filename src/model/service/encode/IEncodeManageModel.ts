@@ -21,6 +21,7 @@ export interface EncodeInfoItem {
 }
 
 export default interface IEncodeManageModel {
+    restore(): Promise<void>;
     push(addOption: apid.AddEncodeProgramOption): Promise<apid.EncodeId>;
     cancel(encodeId: apid.EncodeId): Promise<void>;
     getRecordedIndex(): EncodeRecordedIdIndex;

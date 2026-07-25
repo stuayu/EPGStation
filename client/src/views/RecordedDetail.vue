@@ -17,6 +17,7 @@
                         <div class="thumbnail">
                             <v-img
                                 aspect-ratio="1.7778"
+                                cover
                                 width="100%"
                                 max-height="400"
                                 :src="recorded.display.topThumbnailPath"

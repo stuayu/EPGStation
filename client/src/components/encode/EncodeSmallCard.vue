@@ -2,7 +2,7 @@
     <div>
         <v-card :ripple="false" v-bind:class="{ 'selected-color': item.isSelected === true }">
             <div class="d-flex my-1 recorded-small-card" v-on:click="clickItem">
-                <v-img aspect-ratio="1.7778" :src="item.display.topThumbnailPath" v-on:error="onThumbnailError" eager class="thumbnail"></v-img>
+                <v-img aspect-ratio="1.7778" cover :src="item.display.topThumbnailPath" v-on:error="onThumbnailError" eager class="thumbnail"></v-img>
                 <div class="content pa-2 my-auto">
                     <div class="d-flex align-center">
                         <div class="text mt-1 text-subtitle-2 font-weight-bold">{{ item.display.name }}</div>

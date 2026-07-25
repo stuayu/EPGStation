@@ -2,6 +2,7 @@
     <v-card :max-width="width" variant="flat" class="ma-1 recorded-large-card" v-bind:class="{ 'selected-color': item.isSelected === true }">
         <v-img
             aspect-ratio="1.7778"
+            cover
             :min-width="width"
             :src="item.display.topThumbnailPath"
             v-on:error="onThumbnailError"

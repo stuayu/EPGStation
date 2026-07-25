@@ -3,6 +3,7 @@
         <v-img
             v-if="!!noThumbnail === false"
             aspect-ratio="1.7778"
+            cover
             :src="item.display.topThumbnailPath"
             v-on:error="onThumbnailError"
             v-on:click="gotoDetail"
@@ -86,7 +87,9 @@ export default toNative(RecordedSmallCard);
 <style lang="sass" scoped>
 .recorded-small-card
     width: 100%
-    height: 100px
+    // Vuetify 3 以降のタイポグラフィでは 4 行分が 100px に収まらないため、
+    // 高さ固定にすると説明文が上下で切れてカードからはみ出す
+    min-height: 100px
     cursor: pointer
 
     .thumbnail
