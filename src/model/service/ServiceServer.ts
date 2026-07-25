@@ -20,6 +20,7 @@ import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import IServiceServer from './IServiceServer';
 import ISocketIOManageModel from './socketio/ISocketIOManageModel';
+import IHLSMemoryStoreModel from './stream/util/IHLSMemoryStoreModel';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const swaggerdist = require('swagger-ui-dist');
@@ -43,6 +44,7 @@ class ServiceServer implements IServiceServer {
     private log: ILogger;
     private config: IConfigFile;
     private socketIoManageModel: ISocketIOManageModel;
+    private hlsMemoryStore: IHLSMemoryStoreModel;
     private app = express();
 
     constructor(
@@ -50,10 +52,12 @@ class ServiceServer implements IServiceServer {
         @inject('IConfiguration') configuration: IConfiguration,
         @inject('ISocketIOManageModel')
         socketIoManageModel: ISocketIOManageModel,
+        @inject('IHLSMemoryStoreModel') hlsMemoryStore: IHLSMemoryStoreModel,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
         this.socketIoManageModel = socketIoManageModel;
+        this.hlsMemoryStore = hlsMemoryStore;
 
         this.init();
     }
@@ -164,11 +168,99 @@ class ServiceServer implements IServiceServer {
         // thumbnail
         this.app.use(this.createUrl('/thumbnail'), express.static(this.config.thumbnail, this.getStaticOptions()));
 
+        // in-memory HLS (ディスクに書き出さないライブ HLS 配信)
+        // メモリストアに存在しないファイルは next() で従来のディスク配信 (express.static) へフォールバックする
+        this.app.get(this.createUrl('/streamfiles/:filename'), (req, res, next) => {
+            this.serveInMemoryHLSFile(req, res, next);
+        });
+
         // streamFile
         this.app.use(this.createUrl('/streamfiles'), express.static(this.config.streamFilePath, this.getStaticOptions()));
 
         // client
         this.app.use(this.createUrl('/'), express.static(ServiceServer.CLIENT_DIR, this.getStaticOptions()));
+    }
+
+    /**
+     * in-memory HLS のプレイリスト・セグメント配信
+     * メモリストアに存在しない場合は next() を呼び、従来のディスク配信へフォールバックする
+     */
+    private serveInMemoryHLSFile(req: Request, res: Response, next: NextFunction): void {
+        const filename = req.params.filename;
+        if (typeof filename !== 'string') {
+            next();
+
+            return;
+        }
+
+        // プレイリスト: stream{id}.m3u8
+        const playlistMatch = /^stream(\d+)\.m3u8$/.exec(filename);
+        if (playlistMatch !== null) {
+            const streamId = parseInt(playlistMatch[1], 10);
+            if (this.hlsMemoryStore.has(streamId) === false) {
+                next();
+
+                return;
+            }
+
+            const playlist = this.hlsMemoryStore.getPlaylist(streamId);
+            if (playlist === null) {
+                // ストリームは存在するがまだセグメントが揃っていない
+                res.status(404).end();
+
+                return;
+            }
+
+            res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+            res.setHeader('Cache-Control', 'no-store');
+            res.status(200).send(playlist);
+
+            return;
+        }
+
+        // init セグメント: stream{id}-init.mp4
+        const initMatch = /^stream(\d+)-init\.mp4$/.exec(filename);
+        if (initMatch !== null) {
+            const data = this.hlsMemoryStore.getInitSegment(parseInt(initMatch[1], 10));
+            if (data === null) {
+                next();
+
+                return;
+            }
+
+            res.setHeader('Content-Type', 'video/mp4');
+            res.setHeader('Cache-Control', 'no-store');
+            res.status(200).send(data);
+
+            return;
+        }
+
+        // メディアセグメント: stream{id}-{seq}.m4s
+        const segmentMatch = /^stream(\d+)-(\d+)\.m4s$/.exec(filename);
+        if (segmentMatch !== null) {
+            const streamId = parseInt(segmentMatch[1], 10);
+            if (this.hlsMemoryStore.has(streamId) === false) {
+                next();
+
+                return;
+            }
+
+            const data = this.hlsMemoryStore.getSegment(streamId, parseInt(segmentMatch[2], 10));
+            if (data === null) {
+                // 破棄済み or 未生成のセグメント
+                res.status(404).end();
+
+                return;
+            }
+
+            res.setHeader('Content-Type', 'video/iso.segment');
+            res.setHeader('Cache-Control', 'no-store');
+            res.status(200).send(data);
+
+            return;
+        }
+
+        next();
     }
 
     /** Express 5 で必要な配信ファイルの MIME を明示する。 */

@@ -239,6 +239,21 @@ abstract class StreamBaseModel<T> implements IStreamBaseModel<T> {
     }
 
     /**
+     * ストリームを有効状態にする
+     * in-memory HLS などファイル監視 (startCheckStreamEnable) を経由しない配信で使用する
+     * @param streamId: apid.StreamId
+     */
+    protected markEnable(streamId: apid.StreamId): void {
+        if (this.isEnableStream === true) {
+            return;
+        }
+
+        this.isEnableStream = true;
+        this.log.stream.info(`enable stream: ${streamId}`);
+        this.socketIO.notifyClient();
+    }
+
+    /**
      * 一定時間内に stream 保持要求が来なかったら停止するようにタイマーをセットする
      */
     protected setStopTimer(): void {

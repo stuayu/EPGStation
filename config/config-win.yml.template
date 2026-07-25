@@ -46,6 +46,9 @@ thumbnailPosition: 5
 ffmpeg: 'C:\rec\ffmpeg\bin\ffmpeg.exe'
 ffprobe: 'C:\rec\ffmpeg\bin\ffprobe.exe'
 
+# tsreadex の実行ファイルパス (ライブ HLS の cmd で %TSREADEX% を使う場合に指定、省略時は PATH 上の tsreadex)
+# tsreadex: /usr/local/bin/tsreadex
+
 encodeProcessNum: 4
 concurrentEncodeNum: 1
 encode:
@@ -171,27 +174,73 @@ stream:
                       pipe:1'
 
             hls:
-                - name: 1080p
+                # in-memory HLS (低遅延・ディスク書き込みなし)
+                # cmd が %streamFileDir% を含まない場合、fragmented MP4 を標準出力 (pipe:1) へ書き出す
+                # コマンドとみなされ、セグメントはメモリ上でのみ保持・配信される (Windows でも動作)
+                # cmd に | を含めるとシェル経由で実行される (tsreadex などの前処理に利用可)
+                # 従来の TS セグメント方式 (ディスク書き込み) に戻す場合は下部のコメント例を参照
+                - name: 1080p(低遅延)
                   cmd:
-                      '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -map 0 -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -f hls -hls_time 3 -hls_list_size 17 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments -c:a
-                      aac -ar 48000 -b:a 192k -ac 2 -c:v libx264 -vf yadif,scale=-2:1080 -b:v 3000k -preset veryfast
-                      -flags +loop-global_header %OUTPUT%'
-                - name: 720p
+                      '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024
+                      -c:a aac -ar 48000 -b:a 192k -ac 2
+                      -c:v libx264 -vf yadif,scale=-2:1080 -b:v 5000k -maxrate 5000k -bufsize 10000k
+                      -profile:v high -level 4.1 -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
+                - name: 720p(低遅延)
                   cmd:
-                      '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -map 0 -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -f hls -hls_time 3 -hls_list_size 17 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments -c:a
-                      aac -ar 48000 -b:a 192k -ac 2 -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -preset veryfast
-                      -flags +loop-global_header %OUTPUT%'
-                - name: 480p
+                      '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024
+                      -c:a aac -ar 48000 -b:a 192k -ac 2
+                      -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -profile:v high -level 4.0 -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
+                - name: 480p(低遅延)
                   cmd:
-                      '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -map 0 -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -f hls -hls_time 3 -hls_list_size 17 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments -c:a
-                      aac -ar 48000 -b:a 128k -ac 2 -c:v libx264 -vf yadif,scale=-2:480 -b:v 1500k -preset veryfast
-                      -flags +loop-global_header %OUTPUT%'
+                      '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024
+                      -c:a aac -ar 48000 -b:a 128k -ac 2
+                      -c:v libx264 -vf yadif,scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
+                      -profile:v main -level 3.1 -preset veryfast -tune fastdecode,zerolatency
+                      -g 30 -keyint_min 30 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
+                # HEVC (H.265) 版: 同画質で H.264 の約半分のビットレート
+                # -tag:v hvc1 は Safari / iOS での再生に必須
+                # 再生可否: Safari / iOS はネイティブ対応、その他のブラウザは端末の HW デコーダ依存
+                # - name: 1080p(HEVC低遅延)
+                #   cmd:
+                #       '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024
+                #       -c:a aac -ar 48000 -b:a 192k -ac 2
+                #       -c:v libx265 -vf yadif,scale=-2:1080 -b:v 2700k -maxrate 2700k -bufsize 5400k
+                #       -preset veryfast -tune zerolatency
+                #       -g 30 -keyint_min 30 -x265-params scenecut=0:repeat-headers=1
+                #       -tag:v hvc1 -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
+                # - name: 720p(HEVC低遅延)
+                #   cmd:
+                #       '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024
+                #       -c:a aac -ar 48000 -b:a 192k -ac 2
+                #       -c:v libx265 -vf yadif,scale=-2:720 -b:v 1600k -maxrate 1600k -bufsize 3200k
+                #       -preset veryfast -tune zerolatency
+                #       -g 30 -keyint_min 30 -x265-params scenecut=0:repeat-headers=1
+                #       -tag:v hvc1 -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
+                # tsreadex で TS を前処理する場合 (デュアルモノ分離・欠落音声の無音埋め・ワンセグ等の除去)
+                # tsreadex のパスは config の tsreadex で指定 (省略時は PATH 上の tsreadex)
+                # - name: 720p(tsreadex)
+                #   cmd:
+                #       '%TSREADEX% -x 18 -n -1 -a 13 -b 5 -c 1 -u 1 - | %FFMPEG% -re -f mpegts -analyzeduration 500000 -i pipe:0
+                #       -sn -threads 0 -max_muxing_queue_size 1024
+                #       -c:a aac -ar 48000 -b:a 192k -ac 2
+                #       -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                #       -profile:v high -level 4.0 -preset veryfast -tune fastdecode,zerolatency
+                #       -g 30 -keyint_min 30 -sc_threshold 0
+                #       -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
+                # 従来の TS セグメント方式 (ディスク書き込みあり・字幕対応)
+                # - name: 720p
+                #   cmd:
+                #       '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -map 0 -threads 0 -ignore_unknown
+                #       -max_muxing_queue_size 1024 -f hls -hls_time 3 -hls_list_size 17 -hls_allow_cache 1
+                #       -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments -c:a
+                #       aac -ar 48000 -b:a 192k -ac 2 -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -preset veryfast
+                #       -flags +loop-global_header %OUTPUT%'
                 # - name: 720p (arib)
                 #   cmd:
                 #       '%FFMPEG% -re -dual_mono_mode main -fix_sub_duration -i pipe:0 -threads 0 -ignore_unknown

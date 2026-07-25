@@ -83,3 +83,34 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
 - 解像度切替は M2TS-LL のみ。HLS / 録画再生の切替、配信形式 (M2TS-LL ⇄ HLS) のシームレス切替は今後の配信基盤刊新で対応。
 - 解像度切替しても URL の `?mode=` クエリは更新されない (リロード時は当初のモードに戻る)。
 - iOS 26 のホーム画面 Web App 制限は WebKit 側の修正で解除できる見込み。解除時は `StreamSupportUtil.checkM2TSLLSupport()` のバージョン判定を更新すること。
+
+## in-memory HLS（低遅延・ディスク書き込みなし）
+
+ライブ HLS をディスクに書き出さず、メモリ上でセグメント化・配信するモードを追加した。
+
+### 仕組み
+
+- `config.yml` の `stream.live.ts.hls` の `cmd` が `%streamFileDir%` を含まない場合、in-memory モードと判定される（設定スキーマの変更なし・従来のディスク方式もそのまま動作）。
+- in-memory モードの `cmd` は fragmented MP4 を標準出力（`pipe:1`）へ書き出すこと（`-movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`）。
+- サーバー側は `Fmp4Packager` で fMP4 を init セグメント / メディアセグメント（約 1 秒）に分解し、`HLSMemoryStoreModel`（singleton）に保持する。
+- `/streamfiles/stream{id}.m3u8` などのリクエストはまずメモリストアから応答し、存在しない場合は従来どおりディスク（`streamFilePath`）へフォールバックする。
+- tmpfs 等 OS 依存の仕組みを使わないため Windows でも動作する。
+
+### 低遅延化
+
+- セグメント長 約1秒（`-g 30` + `frag_keyframe`）× プレイリストウィンドウ 6 で、従来（`hls_time 3` × 17）より大幅に遅延短縮。
+- `-tune zerolatency` によりエンコーダ内部バッファ由来の遅延も削減。
+- クライアントの hls.js は `liveSyncDurationCount: 2` のため、実測遅延は 2〜4 秒程度を想定（従来は 10 秒以上）。
+
+### 制限事項
+
+- in-memory モードでは字幕（ARIB → ID3 timed metadata）非対応。字幕が必要な場合は従来のディスク方式 cmd を使用すること。
+- 録画済み HLS 配信は EVENT プレイリストで全編を保持する必要があるため、従来どおりディスク方式のまま。
+- メモリ保持は直近 12 セグメント（約 12 秒）のみで、ストリーム停止時に即時解放される。
+
+### エンコードオプションのチューニング / HEVC / tsreadex
+
+- H.264 は `-maxrate` + `-bufsize`（ビットレートの 2 倍）で VBV 制限をかけ、ライブ配信でのビットレートスパイクによるバッファリングを抑制。`-profile:v high` + `-level` 指定で圧縮効率を改善（1080p: 5000k / 720p: 3000k / 480p: 1500k）。
+- HEVC (libx265) の例をコメントで同梱。`-tag:v hvc1` は Safari / iOS 再生に必須。`-x265-params scenecut=0:repeat-headers=1` で固定 GOP とセグメント単位のデコード開始を保証。ビットレートは H.264 の約半分。
+- `cmd` に `|` を含む場合はシェル経由（Windows: cmd.exe / その他: /bin/sh）で実行されるため、`%TSREADEX% ... - | %FFMPEG% ...` のような tsreadex 前処理パイプラインが使える。`%TSREADEX%` は config の `tsreadex`（省略時は PATH 上の `tsreadex`）に置換される。
+- シェル実行時の停止はシェルプロセスへの kill → パイプ閉じにより下流プロセスも連鎖終了する。

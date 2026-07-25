@@ -11,7 +11,10 @@ import ILoggerModel from '../../../ILoggerModel';
 import IMirakurunClientModel from '../../../IMirakurunClientModel';
 import IEncodeProcessManageModel, { CreateProcessOption } from '../../encode/IEncodeProcessManageModel';
 import ISocketIOManageModel from '../../socketio/ISocketIOManageModel';
+import Fmp4Packager from '../llhls/Fmp4Packager';
+import IFmp4Packager from '../llhls/IFmp4Packager';
 import IHLSFileDeleterModel from '../util/IHLSFileDeleterModel';
+import IHLSMemoryStoreModel from '../util/IHLSMemoryStoreModel';
 import ILiveStreamBaseModel, { LiveStreamOption } from './ILiveStreamBaseModel';
 import { LiveStreamInfo } from './IStreamBaseModel';
 import StreamBaseModel from './StreamBaseModel';
@@ -25,6 +28,9 @@ export default abstract class LiveStreamBaseModel
     private streamProcess: ChildProcess | null = null;
     private mirakurunClientModel: IMirakurunClientModel;
     private id3MetadataTransoform: ID3MetadataTransform | null = null;
+    private hlsMemoryStore: IHLSMemoryStoreModel;
+    private fmp4Packager: IFmp4Packager | null = null;
+    private memoryStreamId: apid.StreamId | null = null;
 
     constructor(
         @inject('IConfiguration') configure: IConfiguration,
@@ -33,10 +39,26 @@ export default abstract class LiveStreamBaseModel
         @inject('IHLSFileDeleterModel') fileDeleter: IHLSFileDeleterModel,
         @inject('IMirakurunClientModel') mirakurunClientModel: IMirakurunClientModel,
         @inject('ISocketIOManageModel') socketIO: ISocketIOManageModel,
+        @inject('IHLSMemoryStoreModel') hlsMemoryStore: IHLSMemoryStoreModel,
     ) {
         super(configure, logger, processManager, fileDeleter, socketIO);
 
         this.mirakurunClientModel = mirakurunClientModel;
+        this.hlsMemoryStore = hlsMemoryStore;
+    }
+
+    /**
+     * in-memory HLS (ディスクに書き出さない fMP4 HLS 配信) モードか判定する
+     * cmd が %streamFileDir% を含まない LiveHLS プロファイルは、
+     * fragmented MP4 を標準出力 (pipe:1) へ書き出すコマンドとみなす
+     */
+    private isMemoryHLS(): boolean {
+        return (
+            this.getStreamType() === 'LiveHLS' &&
+            this.processOption !== null &&
+            typeof this.processOption.cmd !== 'undefined' &&
+            this.processOption.cmd.includes('%streamFileDir%') === false
+        );
     }
 
     /**
@@ -56,7 +78,9 @@ export default abstract class LiveStreamBaseModel
             return null;
         }
 
-        let cmd = this.processOption.cmd.replace(/%FFMPEG%/g, this.config.ffmpeg);
+        let cmd = this.processOption.cmd
+            .replace(/%FFMPEG%/g, this.config.ffmpeg)
+            .replace(/%TSREADEX%/g, typeof this.config.tsreadex === 'undefined' ? 'tsreadex' : this.config.tsreadex);
         if (this.getStreamType() === 'LiveHLS') {
             cmd = cmd
                 .replace(/%streamFileDir%/g, this.config.streamFilePath)
@@ -65,7 +89,10 @@ export default abstract class LiveStreamBaseModel
 
         return {
             input: null,
-            output: this.getStreamType() === 'LiveHLS' ? `${this.config.streamFilePath}\/stream${streamId}.m3u8` : null,
+            output:
+                this.getStreamType() === 'LiveHLS' && this.isMemoryHLS() === false
+                    ? `${this.config.streamFilePath}\/stream${streamId}.m3u8`
+                    : null,
             cmd: cmd,
             priority: LiveStreamBaseModel.ENCODE_PROCESS_PRIORITY,
         };
@@ -81,8 +108,8 @@ export default abstract class LiveStreamBaseModel
             throw new Error('ProcessOptionIsNull');
         }
 
-        // HLS stream ディレクトリ使用準備
-        if (this.getStreamType() === 'LiveHLS') {
+        // HLS stream ディレクトリ使用準備 (in-memory モードではディスクを一切使わない)
+        if (this.getStreamType() === 'LiveHLS' && this.isMemoryHLS() === false) {
             await this.prepStreamDir(streamId);
         }
 
@@ -124,8 +151,9 @@ export default abstract class LiveStreamBaseModel
 
             // パイプ処理
             if (this.streamProcess.stdin !== null) {
-                // HLS 配信の場合は arib-subtitle-timedmetadater を通す
-                if (this.getStreamType() === 'LiveHLS') {
+                // 従来の (TS セグメント) HLS 配信の場合は arib-subtitle-timedmetadater を通す
+                // in-memory (fMP4) モードでは mp4 出力に ID3 timed metadata を乗せられないため直結する
+                if (this.getStreamType() === 'LiveHLS' && this.isMemoryHLS() === false) {
                     this.log.stream.info('use arib-subtitle-timedmetadater');
                     this.id3MetadataTransoform = new ID3MetadataTransform();
                     this.stream.pipe(this.id3MetadataTransoform);
@@ -140,8 +168,13 @@ export default abstract class LiveStreamBaseModel
             }
 
             if (this.getStreamType() === 'LiveHLS') {
-                // stream 有効チェク開始
-                this.startCheckStreamEnable(streamId);
+                if (this.isMemoryHLS() === true) {
+                    // エンコードプロセスの fMP4 出力をメモリ上で HLS セグメント化する
+                    this.startMemoryHLSPackaging(streamId);
+                } else {
+                    // stream 有効チェク開始
+                    this.startCheckStreamEnable(streamId);
+                }
             }
 
             // プロセスが即時終了していた場合
@@ -164,6 +197,41 @@ export default abstract class LiveStreamBaseModel
 
         // stream 停止タイマーセット
         this.setStopTimer();
+    }
+
+    /**
+     * in-memory HLS のパッケージングを開始する
+     * エンコードプロセスが標準出力へ書き出す fragmented MP4 を Fmp4Packager で
+     * init / セグメントに分解し、HLSMemoryStoreModel へ蓄積する (ディスク書き込みなし)
+     * @param streamId: apid.StreamId
+     */
+    private startMemoryHLSPackaging(streamId: apid.StreamId): void {
+        if (this.streamProcess === null || this.streamProcess.stdout === null) {
+            throw new Error('StreamProcessStdoutIsNull');
+        }
+
+        this.log.stream.info(`start in-memory HLS packaging: ${streamId}`);
+        this.memoryStreamId = streamId;
+        this.hlsMemoryStore.create(streamId);
+
+        const packager = new Fmp4Packager({ partsPerSegment: 1 }, this.log);
+        this.fmp4Packager = packager;
+
+        packager.on('init', data => {
+            this.hlsMemoryStore.setInit(streamId, data);
+        });
+        packager.on('segment', segment => {
+            this.hlsMemoryStore.addSegment(streamId, segment.data, segment.duration);
+            if (this.isEnable() === false && this.hlsMemoryStore.isReady(streamId) === true) {
+                this.markEnable(streamId);
+            }
+        });
+        packager.on('halted', message => {
+            this.log.stream.error(`in-memory HLS packaging halted: ${streamId} ${message}`);
+            this.emitExitStream();
+        });
+
+        this.streamProcess.stdout.pipe(packager);
     }
 
     /**
@@ -208,12 +276,27 @@ export default abstract class LiveStreamBaseModel
             this.id3MetadataTransoform.destroy();
         }
 
+        if (this.fmp4Packager !== null) {
+            if (this.streamProcess !== null && this.streamProcess.stdout !== null) {
+                this.streamProcess.stdout.unpipe();
+            }
+            this.fmp4Packager.destroy();
+            this.fmp4Packager = null;
+        }
+
         if (this.streamProcess !== null) {
             await ProcessUtil.kill(this.streamProcess);
         }
 
         if (this.getStreamType() === 'LiveHLS') {
-            await this.fileDeleter.deleteAllFiles();
+            if (this.isMemoryHLS() === true) {
+                if (this.memoryStreamId !== null) {
+                    this.hlsMemoryStore.delete(this.memoryStreamId);
+                    this.memoryStreamId = null;
+                }
+            } else {
+                await this.fileDeleter.deleteAllFiles();
+            }
         }
     }
 
