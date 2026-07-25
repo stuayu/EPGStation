@@ -6,6 +6,11 @@ import * as api from '../../../../../api';
 export const get: Operation = async (req, res) => {
     const streamApiModel = container.get<IStreamApiModel>('IStreamApiModel');
 
+    const streamOption = api.parseStreamModeOrProfile(req, res);
+    if (streamOption === null) {
+        return;
+    }
+
     try {
         if (typeof req.headers.host === 'undefined') {
             throw new Error('HostIsUndefined');
@@ -13,7 +18,8 @@ export const get: Operation = async (req, res) => {
 
         const playlist = await streamApiModel.getLiveM2TsStreamM3u8(req.headers.host, api.isSecureProtocol(req), {
             channelId: api.parseRequestParamInt(req.params.channelId, 'channelId'),
-            mode: parseInt(req.query.mode as string, 10),
+            mode: streamOption.mode,
+            profile: streamOption.profile,
         });
 
         if (playlist === null) {
@@ -39,6 +45,9 @@ get.apiDoc = {
         },
         {
             $ref: '#/components/parameters/StreamMode',
+        },
+        {
+            $ref: '#/components/parameters/StreamProfile',
         },
     ],
     responses: {

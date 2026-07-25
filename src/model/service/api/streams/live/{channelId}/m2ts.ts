@@ -30,16 +30,22 @@ export const get: Operation = async (req, res) => {
         await stop();
     });
 
+    const streamOption = api.parseStreamModeOrProfile(req, res);
+    if (streamOption === null) {
+        return;
+    }
+
     try {
         result = await streamApiModel.startLiveM2TsStream({
             channelId: api.parseRequestParamInt(req.params.channelId, 'channelId'),
-            mode: parseInt(req.query.mode as string, 10),
+            mode: streamOption.mode,
+            profile: streamOption.profile,
         });
         keepTimer = setInterval(() => {
             streamApiModel.keep(result.streamId);
         }, 10 * 1000);
     } catch (err: unknown) {
-        api.responseServerError(res, api.getErrorMessage(err));
+        api.responseStreamStartError(res, err);
 
         return;
     }
@@ -76,6 +82,9 @@ get.apiDoc = {
         },
         {
             $ref: '#/components/parameters/StreamMode',
+        },
+        {
+            $ref: '#/components/parameters/StreamProfile',
         },
     ],
     responses: {

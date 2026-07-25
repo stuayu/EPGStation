@@ -213,6 +213,78 @@ components:
                     description: 無変換か
                     type: boolean
 
+        StreamContainer:
+            description: 配信コンテナ種別
+            type: string
+            enum:
+                - m2ts
+                - m2tsll
+                - mp4
+                - webm
+                - hls
+
+        StreamVideoParam:
+            description: 配信プリセットの映像設定
+            type: object
+            properties:
+                codec:
+                    type: string
+                width:
+                    type: integer
+                height:
+                    type: integer
+                bitrate:
+                    description: kbps
+                    type: integer
+
+        StreamAudioParam:
+            description: 配信プリセットの音声設定
+            type: object
+            properties:
+                codec:
+                    type: string
+                bitrate:
+                    description: kbps
+                    type: integer
+
+        ClientStreamProfile:
+            description: クライアントへ公開する id ベースの配信プリセット情報 (cmd は含まない)
+            type: object
+            required:
+                - id
+                - name
+                - container
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                container:
+                    $ref: '#/components/schemas/StreamContainer'
+                video:
+                    $ref: '#/components/schemas/StreamVideoParam'
+                audio:
+                    $ref: '#/components/schemas/StreamAudioParam'
+                isUnconverted:
+                    description: 無変換か
+                    type: boolean
+
+        ClientEncodePreset:
+            description: クライアントへ公開する id ベースのエンコードプリセット情報 (cmd は含まない)
+            type: object
+            required:
+                - id
+                - name
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                video:
+                    $ref: '#/components/schemas/StreamVideoParam'
+                audio:
+                    $ref: '#/components/schemas/StreamAudioParam'
+
         Config:
             description: コンフィグ
             type: object
@@ -222,7 +294,7 @@ components:
                 - recorded
                 - encode
                 - urlscheme
-                - isEnableLiveStream
+                - isEnableTSLiveStream
                 - isEnableTSRecordedStream
                 - isEnableEncodedRecordedStream
             properties:
@@ -370,7 +442,7 @@ components:
                             $ref: '#/components/schemas/URLSchemeInfo'
                         download:
                             $ref: '#/components/schemas/URLSchemeInfo'
-                isEnableLiveStream:
+                isEnableTSLiveStream:
                     description: ライブ視聴が有効か
                     type: boolean
                 isEnableTSRecordedStream:
@@ -454,6 +526,34 @@ components:
                                             type: array
                                             items:
                                                 type: string
+                streamProfiles:
+                    description: id ベースの配信プリセット情報 (新形式)。streamConfig と併存する
+                    type: object
+                    properties:
+                        live:
+                            description: ライブ配信の配信プリセット一覧
+                            type: array
+                            items:
+                                $ref: '#/components/schemas/ClientStreamProfile'
+                        recorded:
+                            description: 録画配信の配信プリセット一覧
+                            type: object
+                            properties:
+                                ts:
+                                    description: 録画済み TS ファイルの配信プリセット一覧
+                                    type: array
+                                    items:
+                                        $ref: '#/components/schemas/ClientStreamProfile'
+                                encoded:
+                                    description: 録画エンコード済みファイルの配信プリセット一覧
+                                    type: array
+                                    items:
+                                        $ref: '#/components/schemas/ClientStreamProfile'
+                encodePresets:
+                    description: id ベースのエンコードプリセット情報 (新形式)。encode と併存する
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ClientEncodePreset'
                 kodiHosts:
                     description: kodi hosts
                     type: array
@@ -2473,12 +2573,20 @@ components:
                 $ref: '#/components/schemas/StreamId'
 
         StreamMode:
-            description: ストリーミング設定
+            description: ストリーミング設定 (旧形式 index)。profile 未指定時は必須
             in: query
             name: mode
-            required: true
+            required: false
             schema:
                 type: integer
+
+        StreamProfile:
+            description: 配信プリセット id (新形式)。指定時は mode より優先される。mode / profile どちらも未指定の場合は 400
+            in: query
+            name: profile
+            required: false
+            schema:
+                type: string
 
         StreamPlayPosition:
             description: 再生位置

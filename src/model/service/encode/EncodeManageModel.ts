@@ -21,6 +21,8 @@ class EncodeManageModel implements IEncodeManageModel {
     private waitQueue: IEncoderModel[] = [];
     private runningQueue: IEncoderModel[] = [];
     private idCnt: number = 1;
+    // プロセス枠不足によるリトライ回数を encodeId 単位で保持する
+    private processShortageRetryCntMap: Map<apid.EncodeId, number> = new Map();
 
     private listener: events.EventEmitter = new events.EventEmitter();
 
@@ -141,30 +143,95 @@ class EncodeManageModel implements IEncodeManageModel {
         this.runningQueue.push(encoder);
 
         // エンコード終了時の処理をセット
-        encoder.setOnFinish((isError, outputFilePath) => {
-            this.onFinish(isError, outputFilePath, encodeOption);
-        });
+        // プロセス枠不足によるリトライ時は同一の encoder インスタンスを使い回すため、
+        // 初回起動時 (= リトライ回数を保持していない) のみセットする。
+        // encoder.setOnFinish() は内部で EventEmitter.once を使っており、
+        // 呼び出す度にリスナーが積み増されてしまうため、多重登録を避ける必要がある。
+        if (this.processShortageRetryCntMap.has(encodeOption.encodeId) === false) {
+            encoder.setOnFinish((isError, outputFilePath) => {
+                this.onFinish(isError, outputFilePath, encodeOption);
+            });
+        }
 
         // エンコードプロセス開始
         let needsFinalize = false;
+        let isProcessShortageError = false;
         try {
             await encoder.start();
         } catch (err: any) {
             this.log.encode.error(`create encode process error: ${encoder.getEncodeId()}`);
             this.log.encode.error(err);
 
-            needsFinalize = true;
+            if (typeof err?.message === 'string' && err.message === 'EncodeProcessManageModelCreateError') {
+                // エンコードプロセスの枠不足が原因のエラー
+                // (kill 可能な低優先度のプロセスが見つからなかった場合)
+                // 設定ミスなどの恒久的なエラーではないため、破棄せずリトライする
+                isProcessShortageError = true;
+            } else {
+                needsFinalize = true;
 
-            // エラー通知
-            this.encodeEvent.emitErrorEncode();
+                // エラー通知
+                this.encodeEvent.emitErrorEncode();
+            }
         }
 
         // 実行権開放
         this.executeManagementModel.unLockExecution(exeId);
 
-        if (needsFinalize === true) {
+        if (isProcessShortageError === true) {
+            this.retryEncodeByProcessShortage(encoder, encodeOption);
+        } else if (needsFinalize === true) {
             this.finalize(encodeOption.encodeId);
         }
+    }
+
+    /**
+     * プロセス枠不足でエンコード開始に失敗した encoder を waitQueue に戻し、
+     * 一定時間後に再度キューのチェックを行わせる
+     * リトライ回数が上限に達した場合は通常のエラーとして確定させる
+     * @param encoder: IEncoderModel
+     * @param encodeOption: EncodeOption
+     */
+    private retryEncodeByProcessShortage(encoder: IEncoderModel, encodeOption: EncodeOption): void {
+        // runningQueue から取り除く
+        this.runningQueue = this.runningQueue.filter(q => {
+            return q.getEncodeId() !== encodeOption.encodeId;
+        });
+
+        const retryCnt = (this.processShortageRetryCntMap.get(encodeOption.encodeId) || 0) + 1;
+
+        if (retryCnt > EncodeManageModel.MAX_PROCESS_SHORTAGE_RETRY_CNT) {
+            // リトライ上限に達したのでエラーとして確定させる
+            this.log.encode.error(
+                `encode process create error: process slot shortage retry limit exceeded, giving up. encodeId: ${encodeOption.encodeId}`,
+            );
+            this.log.encode.error(`枠不足でリトライ上限に達したため中止: ${encodeOption.encodeId}`);
+
+            this.processShortageRetryCntMap.delete(encodeOption.encodeId);
+
+            // エラー通知
+            this.encodeEvent.emitErrorEncode();
+
+            this.finalize(encodeOption.encodeId);
+
+            return;
+        }
+
+        this.processShortageRetryCntMap.set(encodeOption.encodeId, retryCnt);
+
+        this.log.encode.warn(
+            `encode process create error: 
+            process slot shortage. retry ${retryCnt}/${EncodeManageModel.MAX_PROCESS_SHORTAGE_RETRY_CNT} 
+            after ${EncodeManageModel.PROCESS_SHORTAGE_RETRY_INTERVAL}ms. encodeId: ${encodeOption.encodeId}`,
+        );
+
+        // waitQueue の先頭に戻す (他のジョブに順番を追い越されないようにするため unshift する)
+        this.waitQueue.unshift(encoder);
+
+        // 即時リトライするとプロセス枠が空くまでビジーループになるため、一定時間待ってから再チェックする
+        setTimeout(() => {
+            this.emitNeedsCheckQueue();
+        }, EncodeManageModel.PROCESS_SHORTAGE_RETRY_INTERVAL);
     }
 
     /**
@@ -249,6 +316,9 @@ class EncodeManageModel implements IEncodeManageModel {
             return q.getEncodeId() !== encodeId;
         });
 
+        // プロセス枠不足のリトライ回数情報をクリアする
+        this.processShortageRetryCntMap.delete(encodeId);
+
         // 実行権開放
         this.executeManagementModel.unLockExecution(exeId);
 
@@ -273,9 +343,14 @@ class EncodeManageModel implements IEncodeManageModel {
             await runningQueueItem.cancel();
         } else {
             // waitQueue から削除
+            // プロセス枠不足でリトライ待ちの状態で waitQueue に戻されているジョブも
+            // ここで削除されるため、キャンセル後に復活することはない
             this.waitQueue = this.waitQueue.filter(q => {
                 return q.getEncodeId() !== encodeId;
             });
+
+            // プロセス枠不足のリトライ回数情報をクリアする
+            this.processShortageRetryCntMap.delete(encodeId);
 
             process.nextTick(() => {
                 this.emitNeedsCheckQueue();
@@ -447,6 +522,10 @@ namespace EncodeManageModel {
     export const NEEDS_CHECK_QUEUE_EVENT = 'needsCheckQueue';
     export const ENCODE_PRIPORITY = 10;
     export const DEFAULT_TIMEOUT_RATE = 4.0;
+    // プロセス枠不足でエンコード開始に失敗した際のリトライ間隔 (ms)
+    export const PROCESS_SHORTAGE_RETRY_INTERVAL = 1000 * 30;
+    // プロセス枠不足でエンコード開始に失敗した際の最大リトライ回数
+    export const MAX_PROCESS_SHORTAGE_RETRY_CNT = 5;
 }
 
 export default EncodeManageModel;

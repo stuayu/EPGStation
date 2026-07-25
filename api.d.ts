@@ -601,6 +601,43 @@ export interface M2TSStreamParam {
     isUnconverted: boolean; // 無変換か
 }
 
+// 配信コンテナ種別 (LL-HLS は別フェーズで追加予定のためまだ含めない)
+export type StreamContainer = 'm2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls';
+
+export interface StreamVideoParam {
+    codec?: string;
+    width?: number;
+    height?: number;
+    bitrate?: number; // kbps
+}
+
+export interface StreamAudioParam {
+    codec?: string;
+    bitrate?: number; // kbps
+}
+
+/**
+ * クライアントへ公開する id ベースの配信プリセット情報 (cmd は含まない)
+ */
+export interface ClientStreamProfile {
+    id: string;
+    name: string;
+    container: StreamContainer;
+    video?: StreamVideoParam;
+    audio?: StreamAudioParam;
+    isUnconverted?: boolean;
+}
+
+/**
+ * クライアントへ公開する id ベースのエンコードプリセット情報 (cmd は含まない)
+ */
+export interface ClientEncodePreset {
+    id: string;
+    name: string;
+    video?: StreamVideoParam;
+    audio?: StreamAudioParam;
+}
+
 /**
  * 外部サービスとの接続状態
  */
@@ -650,6 +687,16 @@ export interface Config {
             };
         };
     };
+    // id ベースの配信プリセット情報 (新形式)。streamConfig と併存 (クライアント未移行のため streamConfig は維持)
+    streamProfiles?: {
+        live?: ClientStreamProfile[];
+        recorded?: {
+            ts?: ClientStreamProfile[];
+            encoded?: ClientStreamProfile[];
+        };
+    };
+    // id ベースのエンコードプリセット情報 (新形式)。encode と併存 (クライアント未移行のため encode は維持)
+    encodePresets?: ClientEncodePreset[];
     kodiHosts?: string[];
 }
 
@@ -830,13 +877,15 @@ export interface AddManualEncodeProgramOption {
  */
 export interface LiveStreamOption {
     channelId: ChannelId;
-    mode: number; // config 設定
+    mode?: number; // config 設定 (旧形式 index)。profile 未指定時は必須
+    profile?: string; // config 設定 (新形式 StreamProfile.id)。指定時は mode より優先される
 }
 
 export interface RecordedStreanOption {
     videoFileId: VideoFileId;
     playPosition: number; // 再生位置 (秒)
-    mode: number; // config 設定
+    mode?: number; // config 設定 (旧形式 index)。profile 未指定時は必須
+    profile?: string; // config 設定 (新形式 StreamProfile.id)。指定時は mode より優先される
 }
 /**
  * ライブストリーム情報

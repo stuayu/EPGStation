@@ -12,6 +12,7 @@ import IRecordedDB from '../../db/IRecordedDB';
 import IVideoFileDB from '../../db/IVideoFileDB';
 import IEncodeEvent from '../../event/IEncodeEvent';
 import IConfiguration from '../../IConfiguration';
+import IConfigFile from '../../IConfigFile';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IEncodeFileManageModel from './IEncodeFileManageModel';
@@ -128,10 +129,8 @@ class EncoderModel implements IEncoderModel {
             throw err;
         }
 
-        // エンコードコマンド設定を探す
-        const encodeCmd = this.configure.getConfig().encode.find(enc => {
-            return enc.name === this.encodeOption?.mode;
-        });
+        // エンコードコマンド設定を探す (id 優先、見つからなければ name にフォールバック)
+        const encodeCmd = this.findEncodeCmd(this.encodeOption.mode);
         if (typeof encodeCmd === 'undefined') {
             throw new Error('EncodeCommandIsNotFound');
         }
@@ -282,6 +281,27 @@ class EncoderModel implements IEncoderModel {
             this.childEndProcessing(this.childProcess.exitCode, this.childProcess.signalCode, outputFilePath);
             this.childProcess.removeAllListeners();
         }
+    }
+
+    /**
+     * mode で指定されたエンコードプリセット設定を探す
+     * まず id (省略時は name を id とみなす) の一致で探し、見つからなければ name の一致で探す
+     * @param mode: string プリセット識別子 (id または name)
+     * @return エンコードプリセット設定 | undefined
+     */
+    private findEncodeCmd(mode: string): IConfigFile['encode'][number] | undefined {
+        const encodeList = this.configure.getConfig().encode;
+
+        const byId = encodeList.find(enc => {
+            return (typeof enc.id === 'undefined' ? enc.name : enc.id) === mode;
+        });
+        if (typeof byId !== 'undefined') {
+            return byId;
+        }
+
+        return encodeList.find(enc => {
+            return enc.name === mode;
+        });
     }
 
     /**
