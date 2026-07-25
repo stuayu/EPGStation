@@ -13,6 +13,7 @@ EPGStation (stuayu フォーク) — 日本の DTV 録画管理ソフトウェ�
 - `doc/stuayu-fork.md` — フォーク独自の変更点の詳細。フォーク固有機能 (NW チャンネル、Windows 対応) を触るとき
 - `doc/conf-manual.md` — 設定項目の詳細マニュアル。config 関連の変更時
 - `doc/webapi.md` — WebAPI 仕様。API の挙動を確認するとき
+- `doc/streaming-refresh.md` — ストリーミング刷新 (in-memory HLS・低遅延配信・プレイヤー UI) の設計と制限。ライブ/録画配信・エンコード周りを触るとき
 - `api.yml` — OpenAPI 定義の正。API エンドポイント追加・変更時
 - `doc/windows-setup.md` / `doc/linux-setup.md` — セットアップ手順。環境構築の質問対応時
 
@@ -24,6 +25,7 @@ EPGStation (stuayu フォーク) — 日本の DTV 録画管理ソフトウェ�
 - API エンドポイント追加・変更 → `api.yml` (正) + `api.d.ts` (doc/webapi.md は Swagger UI 参照方式のため通常更新不要)
 - 設定項目の追加・変更 → `doc/conf-manual.md` + `config/config.yml.template` + `config/config-win.yml.template`
 - セットアップ手順に影響する変更 → `doc/windows-setup.md` / `doc/linux-setup.md`
+- ストリーミング (配信・エンコード・プレイヤー) の変更 → `doc/streaming-refresh.md` に追記
 - ドキュメント更新が不要と判断した場合も、最終報告でその判断理由を明示する
 
 ## エージェント運用方針 (指示役 = Fable 5)
@@ -66,7 +68,7 @@ cd client && npm run lint   # クライアント側 lint
 - インターフェース分離 (`IXxx` + `Xxx`) と文字列トークン DI を厳守。既存パターンから逸脱しない
 - クラス名 = ファイル名。役割サフィックス (`~ManageModel`, `~DB`, `~ApiModel`, `~State`) を踏襲
 - public メソッドには JSDoc 風の日本語コメント (`@param` / `@return`)
-- 定数はクラス直後の同名 `namespace` に定義
+- 定数はクラス直後の同名 `namespace` に定義 (`export default class` は namespace マージ不可のため `private static readonly` を使う)
 - コミットメッセージは日本語 (既存履歴の `Fix:` / `Add:` / `Update:` プレフィックス形式に従う)
 
 ## このフォーク特有の注意点
@@ -76,3 +78,6 @@ cd client && npm run lint   # クライアント側 lint
 - `mirakurun` 依存は `stuayu/Mirakurun` のコミット固定 (ブランチ tarball 参照は push のたびに lockfile の integrity が壊れるため禁止)。更新時は package.json の URL のコミット SHA を差し替えて `npm install` で lockfile を更新する
 - 設定項目を追加したら `config/config.yml.template` と `config/config-win.yml.template` の**両方**を更新する
 - `ormconfig.js` は `Configuration.ts` と別実装で config.yml を読む (二重管理)。設定の読み方を変える場合は両方直す
+- **ライブ HLS は 2 モード**: cmd が `%streamFileDir%` を含まない場合は in-memory 配信 (fMP4 を `Fmp4Packager` → `HLSMemoryStoreModel` でメモリ保持、ディスク書き込みなし・Windows 対応・字幕非対応)。含む場合は従来の TS セグメント方式 (字幕対応)。配信周りを触る前に `doc/streaming-refresh.md` を読むこと
+- エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換 (省略時は PATH 上の tsreadex)
+- ストリーミング API の `req.query` は express-openapi がスキーマに従い数値へ型変換する。`mode` 等を文字列前提で扱わないこと (過去に 400 エラーの原因になった)

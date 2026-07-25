@@ -12,6 +12,7 @@
     -   [SQLite3 の設定を変更したい](#sqlite)
     -   [利用する FFmpeg を明示的に指定したい](#ffmpeg)
     -   [利用する FFprobe を明示的に指定したい](#ffprobe)
+    -   [tsreadex で TS を前処理したい](#tsreadex)
 -   [詳細設定](#詳細設定)
     -   [番組情報の囲み文字の設定を変更したい](#needtoreplaceenclosingcharacters)
     -   [録画時の Mirakurun の優先度を変更したい](#recpriority)
@@ -234,6 +235,21 @@ ffmpeg: '/usr/bin/ffmpeg'
 
 ```yaml
 ffprobe: '/usr/bin/ffprobe'
+```
+
+### tsreadex
+
+#### ストリーミングの前処理に使用する tsreadex のパス
+
+| 種類   | デフォルト値                    | 必須 |
+| ------ | ------------------------------- | ---- |
+| string | tsreadex (PATH 上のものを使用) | no   |
+
+-   ストリーミング設定の `cmd` 内の `%TSREADEX%` がこの値で置換される
+-   `cmd` に `|` を含めるとシェル経由で実行されるため、`'%TSREADEX% -x 18 -n -1 -a 13 -b 5 -c 1 -u 1 - | %FFMPEG% ...'` のような前処理パイプラインが使える
+
+```yaml
+tsreadex: '/usr/local/bin/tsreadex'
 ```
 
 ---
@@ -1063,11 +1079,14 @@ urlscheme:
 | cmd                            | string | no   | -            | 変換コマンド                           |
 
 -   `cmd` が指定されない場合は無変換配信
+-   `cmd` に `|` を含めるとシェル経由 (Windows: cmd.exe / その他: /bin/sh) で実行される (tsreadex などの前処理用)
+-   ライブ HLS (`live.ts.hls`) の `cmd` が `%streamFileDir%` を含まない場合は、fragmented MP4 を標準出力へ書き出す in-memory 配信モードとなり、ディスクに一時ファイルを作成しない (低遅延・字幕非対応。詳細は `doc/streaming-refresh.md`)
 -   `cmd` で置換される変数は以下の通り
 
 | 変数名          | 説明                                    |
 | --------------- | --------------------------------------- |
 | %FFMPEG%        | EPGStation が利用している ffmpeg のパス |
+| %TSREADEX%      | config の `tsreadex` で指定した tsreadex のパス |
 | %streamFileDir% | `streamFilePath` で指定したパス名       |
 | %streamNum%     | 一時ファイルのストリーム番号            |
 | %SS%            | 読み取り位置(秒)                        |
