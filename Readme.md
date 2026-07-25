@@ -16,6 +16,8 @@
 - **Windows 完全対応** (named pipe 接続、Windows サービス化、セットアップマニュアル)
 - **県外地上波対応** (チャンネル種別 `NW1`〜`NW40` の追加)
 - **Mirakurun への HTTPS 接続対応** (`mirakurunPath: https://...` を指定可能。API エンドポイントのベースパスも `mirakurunAPIPath` で変更可能)
+- **ニコニコ実況コメントの弾幕表示** (ライブ視聴は [NX-Jikkyo](https://nx-jikkyo.tsukumijima.net)、録画再生は[過去ログ API](https://jikkyo.tsukumijima.net) から取得。設定ページの localStorage 保存でオン/オフ可能)
+- **ログファイルを Web UI 上から確認できる機能** (`/logs` ページ。プロセス/カテゴリ別のタブ切り替え、行数指定・キーワード絞り込み、ダウンロードに対応)
 - **依存関係のモダナイズ**
   - フロントエンドを Vue 3 + Vuetify 4 へ更新し、ビルドを Vue CLI から Vite へ移行
   - 動画プレイヤーを [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) v1.32.8 へ更新
@@ -133,6 +135,8 @@ SQLite ドライバ ([better-sqlite3](https://github.com/WiseLibs/better-sqlite3
     ```
 
 ### ログの確認
+
+Web UI の `/logs` ページからも各プロセスのログファイルを閲覧・ダウンロードできます (サーバへの SSH ログイン等が不要な場合はこちらが手軽です)。詳細は [doc/log-manual.md](doc/log-manual.md) を参照してください。
 
 #### [ログ出力の詳細設定](doc/log-manual.md)
 
