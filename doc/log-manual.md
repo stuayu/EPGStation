@@ -1,5 +1,16 @@
 # ログ出力設定のマニュアル
 
+## Web UI からのログ確認
+
+サーバにログインできない環境でも、Web UI の `/logs` ページからログファイルを確認できます。
+
+- Operator / Service / EPGUpdater の各プロセス × system / access / stream / encode のカテゴリごとにタブでログファイルを切り替え可能 (ローテーション済みの過去ログファイルも一覧に表示される)
+- 表示行数の指定 (末尾から取得) とキーワードによる絞り込みに対応
+- ログファイルそのもののダウンロードにも対応
+- サーバ側は API (`GET /api/logs` / `GET /api/logs/{logFileId}` / `GET /api/logs/{logFileId}/download`) で `config/{operator,service,epgUpdater}LogConfig.yml` を解析し、実際に出力されているログファイルを動的に列挙している (`src/model/api/log/LogApiModel.ts`)
+
+以降で説明する `config/*LogConfig.yml` の設定を変更すると、この Web UI 上の表示内容 (出力レベル・ファイル名・ローテーション設定) にも反映される。
+
 本マニュアルでは、EPGStation のログ出力設定ファイルである
 
 -   `config/epgUpdaterLogConfig.yml`

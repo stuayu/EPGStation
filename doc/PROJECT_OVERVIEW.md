@@ -62,7 +62,7 @@
 | パス | 役割 |
 |---|---|
 | `main.ts` | エントリ。DI コンテナ初期化 → サーバ config 取得 → Vue 生成 |
-| `router.ts` | vue-router ルート定義 (全 18 ページ) + スクロール位置復元 |
+| `router.ts` | vue-router ルート定義 (全 19 ページ) + スクロール位置復元 |
 | `views/` | ページコンポーネント |
 | `components/` | 機能別の再利用コンポーネント (guide, recorded, reserves, search, video など) |
 | `model/ModelContainerSetter.ts` | クライアント側 DI 登録 (サーバと同じパターン) |
