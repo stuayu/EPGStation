@@ -9,6 +9,7 @@ import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IRecordedHLSStreamingVideoState from '@/model/state/recorded/streaming/IRecordedHLSStreamingVideoState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
+import StreamQualityUtil from '@/util/StreamQualityUtil';
 import Util from '@/util/Util';
 import { DPlayerType } from 'dplayer';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
@@ -47,6 +48,8 @@ class RecordedHLSStreamingVideo extends BaseVideo {
     private updateDurationTimerId: ReturnType<typeof setTimeout> | undefined; // 録画中の番組の動画長を更新するためのタイマー
     private setCurrentTimeTimerId: ReturnType<typeof setTimeout> | undefined; // setCurrentTime を大量に呼び出さないようにするためのタイマー
     private lastSeekTime: number = 0; // setCurrentTime 実行中に setCurrentTime が重ねて実行されたか確認するための変数
+    private qualityNames: string[] = []; // config の hls 視聴設定名一覧
+    private currentMode: number = 0; // 再生中の視聴設定 (画質切替で更新される)
 
     /**
      * 録画再生時のニコニコ実況過去ログ取得情報を返す
@@ -74,6 +77,11 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             await this.videoState.clear();
             await this.updateVideoInfo();
 
+            // 画質切替用に視聴設定一覧を取得する
+            const videoFileType = this.videoState.getVideoFileType(this.videoFileId);
+            this.qualityNames = videoFileType === null ? [] : StreamQualityUtil.getRecordedModeNames(videoFileType, 'hls');
+            this.currentMode = StreamQualityUtil.normalizeMode(this.qualityNames, this.mode);
+
             // 録画中の場合は duration が変化するので定期的に timeupdate を発行する
             if (this.videoState.isRecording() === true) {
                 this.updateDurationTimerId = setInterval(() => {
@@ -87,7 +95,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             }
 
             // HLS stream 開始
-            await this.videoState.start(this.videoFileId, this.basePlayPosition, this.mode).catch(err => {
+            await this.videoState.start(this.videoFileId, this.basePlayPosition, this.currentMode).catch(err => {
                 this.snackbarState.open({
                     color: 'error',
                     text: 'ストリーム開始に失敗',
@@ -95,7 +103,18 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             });
 
             // ストリームが有効になるまで待つ
-            await this.waitForEnabled();
+            try {
+                await this.waitForEnabled();
+            } catch (err) {
+                console.error(err);
+                this.snackbarState.open({
+                    color: 'error',
+                    text: 'ストリーム開始に失敗',
+                });
+
+                return;
+            }
+
             this.initVideoSetting();
         });
     }
@@ -107,17 +126,26 @@ class RecordedHLSStreamingVideo extends BaseVideo {
     private waitForEnabled(): Promise<void> {
         return new Promise<void>((resolve, reject) => {
             if (this.videoState.getStreamId() === null) {
+                reject(new Error('StreamIdIsNull'));
+
                 return;
             }
 
             // ストリームが有効になるまで待つ
+            let count = 0;
             const checkEnabledTimerId = setInterval(async () => {
-                if ((await this.videoState.isEnabled()) === false) {
+                count++;
+                if ((await this.videoState.isEnabled()) === true) {
+                    clearInterval(checkEnabledTimerId);
+                    resolve();
+
                     return;
                 }
 
-                clearInterval(checkEnabledTimerId);
-                resolve();
+                if (count >= RecordedHLSStreamingVideo.WAIT_ENABLED_LIMIT) {
+                    clearInterval(checkEnabledTimerId);
+                    reject(new Error('StreamIsNotEnabled'));
+                }
             }, 1000);
         });
     }
@@ -173,15 +201,24 @@ class RecordedHLSStreamingVideo extends BaseVideo {
 
         if (this.dp === null) {
             // 初回生成
+            // プレイヤー上から画質 (エンコード設定) を切り替えられるよう quality リストを生成する
+            const qualities = StreamQualityUtil.createQualityList(this.qualityNames, videoSrc, 'hls');
+
             const options: DPlayerType.Options = {
                 container: this.containerElement,
                 autoplay: true,
                 live: false,
                 hotkey: true,
-                video: {
-                    url: videoSrc,
-                    type: 'hls',
-                },
+                video:
+                    qualities.length > 0
+                        ? ({
+                              quality: qualities,
+                              defaultQuality: this.currentMode,
+                          } as DPlayerType.Options['video'])
+                        : {
+                              url: videoSrc,
+                              type: 'hls',
+                          },
                 subtitle: {
                     type: 'aribb24',
                 },
@@ -191,6 +228,15 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             };
 
             this.createPlayer(options);
+
+            // 画質切替時は現在の再生位置からストリームを作り直してから url を差し替える
+            this.setupQualitySwitch({
+                resolveUrl: mode => this.restartStream(mode),
+                resetCurrentTime: true,
+                onSwitched: mode => {
+                    this.currentMode = mode;
+                },
+            });
         } else {
             // seek によるストリーム再生成
             this.dp.switchVideo({ url: videoSrc, type: 'hls' }, false, false);
@@ -209,6 +255,27 @@ class RecordedHLSStreamingVideo extends BaseVideo {
                 true,
             );
         }
+    }
+
+    /**
+     * 指定した mode で現在の再生位置からストリームを作り直し、新しい m3u8 の url を返す
+     * @param mode: number
+     * @return Promise<string> m3u8 の url
+     */
+    private async restartStream(mode: number): Promise<string> {
+        const playPosition = this.getCurrentTime();
+
+        await this.videoState.stop();
+        this.basePlayPosition = playPosition;
+        await this.videoState.start(this.videoFileId, this.basePlayPosition, mode);
+        await this.waitForEnabled();
+
+        const streamId = this.videoState.getStreamId();
+        if (streamId === null) {
+            throw new Error('StreamIdIsNull');
+        }
+
+        return `./streamfiles/stream${streamId}.m3u8`;
     }
 
     /**
@@ -281,7 +348,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
                 if (this.lastSeekTime !== beforeStartStream) {
                     return;
                 }
-                await this.videoState.start(this.videoFileId, this.basePlayPosition, this.mode);
+                await this.videoState.start(this.videoFileId, this.basePlayPosition, this.currentMode);
                 if (this.lastSeekTime !== beforeStartStream) {
                     return;
                 }
@@ -308,6 +375,10 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             this.dummyPlayPosition = null;
         }, 200);
     }
+}
+
+namespace RecordedHLSStreamingVideo {
+    export const WAIT_ENABLED_LIMIT = 60; // ストリームが有効になるまで待つ最大秒数
 }
 
 export default toNative(RecordedHLSStreamingVideo);

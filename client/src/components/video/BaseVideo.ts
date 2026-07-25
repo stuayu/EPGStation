@@ -10,6 +10,7 @@ export default abstract class BaseVideo extends Vue {
     protected containerElement: HTMLElement | null = null;
     private jikkyoCommentClient: JikkyoCommentClient | null = null;
     private jikkyoKakologClient: JikkyoKakologClient | null = null;
+    private isResolvingQuality: boolean = false; // 画質切替の url 解決中か
 
     public mounted(): void {
         this.containerElement = this.$refs.container as HTMLElement;
@@ -77,6 +78,80 @@ export default abstract class BaseVideo extends Vue {
     }
 
     /**
+     * DPlayer の画質切替に非同期の url 解決処理を挟む
+     *
+     * HLS 配信はサーバー側でストリームセッションを作り直さないと
+     * 新しい mode の m3u8 の url が決まらないため、
+     * DPlayer 標準の switchQuality (url 固定) をラップして
+     * 切替直前に url を解決してから元の処理へ渡す
+     * @param option.resolveUrl: 切替後の video url を解決する関数 (失敗時は例外を投げる)
+     * @param option.resetCurrentTime: true で切替後の再生位置を先頭に戻す (ストリームを再生位置から作り直す場合に使用)
+     * @param option.onSwitched: url 解決後に呼ばれるコールバック
+     */
+    protected setupQualitySwitch(option: { resolveUrl: (mode: number) => Promise<string>; resetCurrentTime?: boolean; onSwitched?: (mode: number) => void }): void {
+        if (this.dp === null) {
+            return;
+        }
+
+        const dp = this.dp as any;
+        if (typeof dp.options.video.quality === 'undefined') {
+            return;
+        }
+
+        const originalSwitchQuality = dp.switchQuality.bind(dp);
+        dp.switchQuality = (index: number | string): void => {
+            const mode = typeof index === 'string' ? parseInt(index, 10) : index;
+            const quality = dp.options.video.quality;
+            if (isNaN(mode) === true || typeof quality[mode] === 'undefined') {
+                return;
+            }
+
+            // 切替中の多重実行を防ぐ
+            if (this.isResolvingQuality === true || dp.switchingQuality === true || dp.qualityIndex === mode) {
+                return;
+            }
+
+            this.isResolvingQuality = true;
+            dp.notice(`画質を ${quality[mode].name} に切り替えています…`, -1);
+
+            (async (): Promise<void> => {
+                try {
+                    quality[mode].url = await option.resolveUrl(mode);
+                } catch (err) {
+                    console.error(err);
+                    this.isResolvingQuality = false;
+                    dp.notice('画質の切り替えに失敗しました', 3000);
+
+                    return;
+                }
+
+                this.isResolvingQuality = false;
+
+                // 切替処理中に破棄された場合は何もしない
+                if (this.dp === null) {
+                    return;
+                }
+
+                if (typeof option.onSwitched !== 'undefined') {
+                    option.onSwitched(mode);
+                }
+
+                if (option.resetCurrentTime === true) {
+                    // ストリームを再生位置から作り直しているため切替前の再生位置への seek を抑止し、
+                    // 先頭 (= 切替前の再生位置) から再生させる
+                    const isLive = dp.options.live;
+                    dp.options.live = true;
+                    originalSwitchQuality(mode);
+                    dp.options.live = isLive;
+                    dp.prevVideoCurrentTime = 0;
+                } else {
+                    originalSwitchQuality(mode);
+                }
+            })();
+        };
+    }
+
+    /**
      * ニコニコ実況の実況チャンネル ID (jk1 など) を返す
      * 実況コメントを表示する場合はサブクラスでオーバーライドする
      * @return string | null 実況コメントを表示しない場合は null
@@ -119,6 +194,8 @@ export default abstract class BaseVideo extends Vue {
             this.jikkyoKakologClient.destroy();
             this.jikkyoKakologClient = null;
         }
+
+        this.isResolvingQuality = false;
 
         if (this.dp === null) {
             return;

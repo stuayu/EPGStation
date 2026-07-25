@@ -8,6 +8,7 @@ import container from '@/model/ModelContainer';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IRecordedStreamingVideoState from '@/model/state/recorded/streaming/IRecordedStreamingVideoState';
 import DPlayerUtil from '@/util/DPlayerUtil';
+import StreamQualityUtil from '@/util/StreamQualityUtil';
 import { DPlayerType } from 'dplayer';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
@@ -53,6 +54,8 @@ class RecordedStreamingVideo extends BaseVideo {
     private lastUpdatePauseState: number = 0; // 最後に pauseStateBeforeCurrentTime を更新した時間
     private updateDurationTimerId: ReturnType<typeof setTimeout> | undefined; // 録画中の番組の動画長を更新するためのタイマー
     private setCurrentTimeTimerId: ReturnType<typeof setTimeout> | undefined; // setCurrentTime を大量に呼び出さないようにするためのタイマー
+    private qualityNames: string[] = []; // config の視聴設定名一覧
+    private currentMode: number = 0; // 再生中の視聴設定 (画質切替で更新される)
 
     /**
      * 録画再生時のニコニコ実況過去ログ取得情報を返す
@@ -78,6 +81,11 @@ class RecordedStreamingVideo extends BaseVideo {
 
         await this.videoState.clear();
         await this.updateVideoInfo();
+
+        // 画質切替用に視聴設定一覧を取得する
+        const videoFileType = this.videoState.getVideoFileType(this.videoFileId);
+        this.qualityNames = videoFileType === null ? [] : StreamQualityUtil.getRecordedModeNames(videoFileType, this.streamingType as StreamQualityUtil.RecordedStreamingType);
+        this.currentMode = StreamQualityUtil.normalizeMode(this.qualityNames, this.mode);
 
         this.initVideoSetting();
 
@@ -125,23 +133,52 @@ class RecordedStreamingVideo extends BaseVideo {
 
         DPlayerUtil.setupGlobals();
 
+        const videoSrc = this.createVideoSrc({
+            videoFileId: this.videoFileId,
+            streamingType: this.streamingType,
+            mode: this.currentMode,
+            playPosition: this.basePlayPosition,
+        });
+
+        // プレイヤー上から画質 (エンコード設定) を切り替えられるよう quality リストを生成する
+        const qualities = StreamQualityUtil.createQualityList(this.qualityNames, videoSrc, 'normal');
+
         const options: DPlayerType.Options = {
             container: this.containerElement,
             autoplay: true,
             live: false,
             hotkey: true,
-            video: {
-                url: this.createVideoSrc({
-                    videoFileId: this.videoFileId,
-                    streamingType: this.streamingType,
-                    mode: this.mode,
-                    playPosition: this.basePlayPosition,
-                }),
-                type: 'normal',
-            },
+            video:
+                qualities.length > 0
+                    ? ({
+                          quality: qualities,
+                          defaultQuality: this.currentMode,
+                      } as DPlayerType.Options['video'])
+                    : {
+                          url: videoSrc,
+                          type: 'normal',
+                      },
         };
 
         this.createPlayer(options);
+
+        // 画質切替時は現在の再生位置から配信し直す
+        this.setupQualitySwitch({
+            resolveUrl: async mode => {
+                this.basePlayPosition = this.getCurrentTime();
+
+                return this.createVideoSrc({
+                    videoFileId: this.videoFileId,
+                    streamingType: this.streamingType,
+                    mode: mode,
+                    playPosition: this.basePlayPosition,
+                });
+            },
+            resetCurrentTime: true,
+            onSwitched: mode => {
+                this.currentMode = mode;
+            },
+        });
     }
 
     /**
@@ -213,7 +250,7 @@ class RecordedStreamingVideo extends BaseVideo {
                     url: this.createVideoSrc({
                         videoFileId: this.videoFileId,
                         streamingType: this.streamingType,
-                        mode: this.mode,
+                        mode: this.currentMode,
                         playPosition: this.basePlayPosition,
                     }),
                     type: 'normal',

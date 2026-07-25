@@ -8,6 +8,7 @@ import container from '@/model/ModelContainer';
 import ILiveHLSVideoState from '@/model/state/onair/ILiveHLSVideoState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
+import StreamQualityUtil from '@/util/StreamQualityUtil';
 import UaUtil from '@/util/UaUtil';
 import { DPlayerType } from 'dplayer';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
@@ -34,12 +35,17 @@ class LiveHLSVideo extends BaseVideo {
     private videoState: ILiveHLSVideoState = container.get<ILiveHLSVideoState>('ILiveHLSVideoState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private checkEnabledTimerId: ReturnType<typeof setTimeout> | undefined;
+    private qualityNames: string[] = []; // config の hls 視聴設定名一覧
+    private currentMode: number = 0; // 再生中の視聴設定 (画質切替で更新される)
 
     public async mounted(): Promise<void> {
         this.containerElement = this.$refs.container as HTMLElement;
 
+        this.qualityNames = StreamQualityUtil.getLiveModeNames('hls');
+        this.currentMode = StreamQualityUtil.normalizeMode(this.qualityNames, this.mode);
+
         // HLS stream 開始
-        await this.videoState.start(this.channelId, this.mode).catch(err => {
+        await this.videoState.start(this.channelId, this.currentMode).catch(err => {
             this.snackbarState.open({
                 color: 'error',
                 text: 'ストリーム開始に失敗',
@@ -90,6 +96,14 @@ class LiveHLSVideo extends BaseVideo {
         DPlayerUtil.setupGlobals();
 
         const videoSrc = `./streamfiles/stream${streamId}.m3u8`;
+        // Safari は M3U8 をネイティブ再生できる。
+        // hls.js / MSE を経由せず標準 video 要素へ直接渡すことで安定性を優先する。
+        const videoType = UaUtil.isSafari() === true ? 'normal' : 'hls';
+
+        // プレイヤー上から画質 (エンコード設定) を切り替えられるよう
+        // config の hls 設定一覧から DPlayer の quality リストを生成する
+        const qualities = StreamQualityUtil.createQualityList(this.qualityNames, videoSrc, videoType);
+
         const options: DPlayerType.Options = {
             container: this.containerElement,
             // Safari では非同期初期化後の音声付き自動再生がポリシーにより停止される。
@@ -97,12 +111,16 @@ class LiveHLSVideo extends BaseVideo {
             autoplay: UaUtil.isSafari() === false,
             live: true,
             hotkey: true,
-            video: {
-                url: videoSrc,
-                // Safari は M3U8 をネイティブ再生できる。
-                // hls.js / MSE を経由せず標準 video 要素へ直接渡すことで安定性を優先する。
-                type: UaUtil.isSafari() === true ? 'normal' : 'hls',
-            },
+            video:
+                qualities.length > 0
+                    ? ({
+                          quality: qualities,
+                          defaultQuality: this.currentMode,
+                      } as DPlayerType.Options['video'])
+                    : {
+                          url: videoSrc,
+                          type: videoType,
+                      },
             subtitle: {
                 type: 'aribb24',
             },
@@ -121,15 +139,88 @@ class LiveHLSVideo extends BaseVideo {
 
         this.createPlayer(options);
 
-        // Safari のネイティブ HLS 再生ではインライン再生属性を明示する。
-        // autoplay を無効にしてから設定しているため、ユーザー操作による再生に引き継がれる。
-        if (UaUtil.isSafari() === true && this.dp !== null) {
-            const video = (this.dp as any).video as HTMLVideoElement;
-            video.playsInline = true;
-            video.setAttribute('playsinline', '');
-            video.setAttribute('webkit-playsinline', '');
+        // 画質切替時はサーバー側のストリームを作り直してから url を差し替える
+        this.setupQualitySwitch({
+            resolveUrl: mode => this.restartStream(mode),
+            onSwitched: mode => {
+                this.currentMode = mode;
+            },
+        });
+
+        if (this.dp !== null) {
+            const dp = this.dp as any;
+            this.setInlinePlaybackAttributes(dp.video);
+
+            // 画質切替では video 要素が作り直され、その直後に再生が開始される。
+            // 再生前に属性を設定する必要があるため initVideo をラップする
+            const originalInitVideo = dp.initVideo.bind(dp);
+            dp.initVideo = (video: HTMLVideoElement, type: string): void => {
+                this.setInlinePlaybackAttributes(video);
+                originalInitVideo(video, type);
+            };
         }
     }
+
+    /**
+     * Safari のネイティブ HLS 再生ではインライン再生属性を明示する
+     * autoplay を無効にしてから設定しているため、ユーザー操作による再生に引き継がれる
+     * @param video: HTMLVideoElement
+     */
+    private setInlinePlaybackAttributes(video: HTMLVideoElement): void {
+        if (UaUtil.isSafari() === false) {
+            return;
+        }
+
+        video.playsInline = true;
+        video.setAttribute('playsinline', '');
+        video.setAttribute('webkit-playsinline', '');
+    }
+
+    /**
+     * 指定した mode でサーバー側の HLS ストリームを作り直し、新しい m3u8 の url を返す
+     * @param mode: number
+     * @return Promise<string> m3u8 の url
+     */
+    private async restartStream(mode: number): Promise<string> {
+        await this.videoState.stop();
+        await this.videoState.start(this.channelId, mode);
+        await this.waitForEnabled();
+
+        const streamId = this.videoState.getStreamId();
+        if (streamId === null) {
+            throw new Error('StreamIdIsNull');
+        }
+
+        return `./streamfiles/stream${streamId}.m3u8`;
+    }
+
+    /**
+     * ストリームが有効になるまで待つ
+     * @return Promise<void>
+     */
+    private waitForEnabled(): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            let count = 0;
+            const timerId = setInterval(async () => {
+                count++;
+                if ((await this.videoState.isEnabled()) === true) {
+                    clearInterval(timerId);
+                    resolve();
+
+                    return;
+                }
+
+                if (count >= LiveHLSVideo.WAIT_ENABLED_LIMIT) {
+                    clearInterval(timerId);
+                    reject(new Error('StreamIsNotEnabled'));
+                }
+            }, 1000);
+        });
+    }
+}
+
+namespace LiveHLSVideo {
+    export const WAIT_ENABLED_LIMIT = 30; // ストリームが有効になるまで待つ最大秒数
 }
 
 export default toNative(LiveHLSVideo);
