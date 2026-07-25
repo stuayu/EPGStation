@@ -37,9 +37,19 @@ export interface StreamModeOrProfile {
  * @return StreamModeOrProfile | null
  */
 export const parseStreamModeOrProfile = (req: express.Request, res: express.Response): StreamModeOrProfile | null => {
-    const profile = typeof req.query.profile === 'string' ? req.query.profile : undefined;
-    const modeStr = typeof req.query.mode === 'string' ? req.query.mode : undefined;
-    const mode = typeof modeStr === 'undefined' ? undefined : parseInt(modeStr, 10);
+    const rawProfile = req.query.profile;
+    const profile = typeof rawProfile === 'string' && rawProfile.length > 0 ? rawProfile : undefined;
+
+    // express-openapi は apiDoc の parameter schema (integer) に基づいてクエリを型変換 (coercion) するため、
+    // 通常 req.query.mode は number として渡ってくる (ServiceServer.initOpenApi の Express 5 対策参照)。
+    // coercion を経ないリクエストに備えて string も受け付ける。
+    const rawMode = req.query.mode;
+    let mode: number | undefined;
+    if (typeof rawMode === 'number') {
+        mode = rawMode;
+    } else if (typeof rawMode === 'string' && rawMode.length > 0) {
+        mode = parseInt(rawMode, 10);
+    }
 
     if (typeof profile === 'undefined' && (typeof mode === 'undefined' || Number.isNaN(mode))) {
         responseError(res, {
