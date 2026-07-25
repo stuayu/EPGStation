@@ -100,6 +100,29 @@ namespace UaUtil {
     export const isWindows = (): boolean => {
         return /Windows|windows/.test(navigator.userAgent);
     };
+
+    /**
+     * Safari (WebKit) のメジャーバージョンを返す
+     * UA の Version/XX トークンから取得するため、「ホーム画面に追加」した
+     * Web App (UA に Safari トークンが含まれない) でも判定できる
+     * @return number | null 取得できない場合は null
+     */
+    export const safariMajorVersion = (): number | null => {
+        const match = navigator.userAgent.match(/Version\/(\d+)/);
+
+        return match === null ? null : parseInt(match[1], 10);
+    };
+
+    /**
+     * 「ホーム画面に追加」した Web App (standalone モード) として起動しているか判定
+     * @return boolean
+     */
+    export const isStandalonePWA = (): boolean => {
+        return (
+            (window.navigator as any).standalone === true ||
+            (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches === true)
+        );
+    };
 }
 
 export default UaUtil;

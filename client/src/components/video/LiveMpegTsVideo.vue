@@ -6,10 +6,14 @@
 import BaseVideo from '@/components/video/BaseVideo';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
+import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import DPlayerUtil from '@/util/DPlayerUtil';
+import StreamSupportUtil from '@/util/StreamSupportUtil';
+import UaUtil from '@/util/UaUtil';
+import Util from '@/util/Util';
 import { DPlayerType } from 'dplayer';
-import Mpegts from 'mpegts.js';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
+import * as apid from '../../../../api';
 
 @Component({})
 class LiveMpegTsVideo extends BaseVideo {
@@ -17,9 +21,16 @@ class LiveMpegTsVideo extends BaseVideo {
     public videoSrc!: string;
 
     @Prop({ default: null })
+    public channelId!: apid.ChannelId | null;
+
+    @Prop({ default: 0 })
+    public mode!: number;
+
+    @Prop({ default: null })
     public jikkyoChannelId!: string | null;
 
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
 
     public mounted(): void {
         super.mounted();
@@ -44,11 +55,12 @@ class LiveMpegTsVideo extends BaseVideo {
             return;
         }
 
-        // 対応しているか確認
-        if (Mpegts.isSupported() === false || Mpegts.getFeatureList().mseLivePlayback === false) {
+        // 対応しているか確認 (MMS 対応・iOS 26 以降のホーム画面 Web App 等の既知不具合も含む)
+        const m2tsllSupport = StreamSupportUtil.checkM2TSLLSupport();
+        if (m2tsllSupport.isSupported === false) {
             this.snackbarState.open({
                 color: 'error',
-                text: '非対応ブラウザーです。',
+                text: m2tsllSupport.reason ?? '非対応ブラウザーです。',
             });
 
             throw new Error('UnsupportedBrowser');
@@ -56,15 +68,27 @@ class LiveMpegTsVideo extends BaseVideo {
 
         DPlayerUtil.setupGlobals();
 
+        // プレイヤー上から解像度 (エンコード設定) を動的に切り替えられるよう
+        // config の m2tsll 設定一覧から DPlayer の quality リストを生成する
+        const qualities = this.createQualityList();
+
         const options: DPlayerType.Options = {
             container: this.containerElement,
-            autoplay: true,
+            // Safari / iOS では音声付き自動再生がポリシーにより停止されるため、
+            // 再生ボタンの明示的な操作でのみ再生を開始する
+            autoplay: UaUtil.isSafari() === false && UaUtil.isiOS() === false,
             live: true,
             hotkey: true,
-            video: {
-                url: this.videoSrc,
-                type: 'mpegts',
-            },
+            video:
+                qualities.length > 0
+                    ? ({
+                          quality: qualities,
+                          defaultQuality: this.mode < qualities.length ? this.mode : 0,
+                      } as DPlayerType.Options['video'])
+                    : {
+                          url: this.videoSrc,
+                          type: 'mpegts',
+                      },
             subtitle: {
                 type: 'aribb24',
             },
@@ -72,9 +96,14 @@ class LiveMpegTsVideo extends BaseVideo {
                 mpegts: {
                     config: {
                         enableWorker: true,
+                        // 低遅延: 再生位置が遅延したら自動で追いかける
                         liveBufferLatencyChasing: true,
-                        liveBufferLatencyMinRemain: 1.0,
+                        liveBufferLatencyMinRemain: 0.5,
                         liveBufferLatencyMaxLatency: 2.0,
+                        // 長時間視聴でのメモリ増加対策: 再生済みバッファを自動解放する
+                        autoCleanupSourceBuffer: true,
+                        autoCleanupMaxBackwardDuration: 30,
+                        autoCleanupMinBackwardDuration: 15,
                     },
                 },
                 aribb24: DPlayerUtil.createAribb24Options(),
@@ -82,6 +111,32 @@ class LiveMpegTsVideo extends BaseVideo {
         };
 
         this.createPlayer(options);
+    }
+
+    /**
+     * config の m2tsll 設定から DPlayer の quality リストを生成する
+     * @return DPlayerType.VideoQuality[]
+     */
+    private createQualityList(): DPlayerType.VideoQuality[] {
+        const config = this.serverConfigModel.getConfig();
+        if (
+            this.channelId === null ||
+            config === null ||
+            typeof config.streamConfig === 'undefined' ||
+            typeof config.streamConfig.live === 'undefined' ||
+            typeof config.streamConfig.live.ts === 'undefined' ||
+            typeof config.streamConfig.live.ts.m2tsll === 'undefined'
+        ) {
+            return [];
+        }
+
+        return config.streamConfig.live.ts.m2tsll.map((name, mode) => {
+            return {
+                name: name,
+                url: `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.channelId}/m2tsll?mode=${mode}`,
+                type: 'mpegts',
+            };
+        });
     }
 
     /**

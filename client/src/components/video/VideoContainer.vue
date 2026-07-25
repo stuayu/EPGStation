@@ -57,6 +57,8 @@
                     v-if="videoParam.type == 'LiveMpegTs'"
                     ref="video"
                     v-model:videoSrc="videoParam.src"
+                    v-bind:channelId="videoParam.channelId"
+                    v-bind:mode="videoParam.mode"
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"

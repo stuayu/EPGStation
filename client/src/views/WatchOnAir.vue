@@ -76,6 +76,8 @@ class WatchOnAir extends Vue {
                     (this.videoParam as LiveMpegTsVideoParam) = {
                         type: 'LiveMpegTs',
                         src: `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.watchParam.channel}/m2tsll?mode=${this.watchParam.mode}`,
+                        channelId: this.watchParam.channel,
+                        mode: this.watchParam.mode,
                         jikkyoChannelId: jikkyoChannelId,
                     };
                 } else {
