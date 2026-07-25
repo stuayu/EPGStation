@@ -45,6 +45,23 @@ class ExecutionManagementModel implements IExecutionManagementModel {
                 // listener から削除
                 this.exeEventEmitter.removeListener(ExecutionManagementModel.UNLOCK_EVENT, onDone);
 
+                /**
+                 * queue から自分の要素を取り除く
+                 * 残したままにすると、待ち受け側が存在しない id へ実行権が渡り
+                 * 誰も unLockExecution() を呼べずにロックが永久に解放されなくなる
+                 */
+                const position = this.exeQueue.findIndex(q => {
+                    return q.id === exeQueueData.id;
+                });
+                if (position !== -1) {
+                    this.exeQueue.splice(position, 1);
+                }
+
+                // 既に実行権が渡されていた場合は解放して次へ回す
+                if (this.lockId === exeQueueData.id) {
+                    this.unLockExecution(exeQueueData.id);
+                }
+
                 reject(new Error('GetExecutionTimeoutError'));
             }, timeout);
 

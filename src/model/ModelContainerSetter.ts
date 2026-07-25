@@ -134,11 +134,13 @@ import EncodeFileManageModel from './service/encode/EncodeFileManageModel';
 import EncodeFinishModel from './service/encode/EncodeFinishModel';
 import EncodeManageModel from './service/encode/EncodeManageModel';
 import EncodeProcessManageModel from './service/encode/EncodeProcessManageModel';
+import EncodeQueueStoreModel from './service/encode/EncodeQueueStoreModel';
 import EncoderModel from './service/encode/EncoderModel';
 import IEncodeFileManageModel from './service/encode/IEncodeFileManageModel';
 import IEncodeFinishModel from './service/encode/IEncodeFinishModel';
 import IEncodeManageModel from './service/encode/IEncodeManageModel';
 import IEncodeProcessManageModel from './service/encode/IEncodeProcessManageModel';
+import IEncodeQueueStoreModel from './service/encode/IEncodeQueueStoreModel';
 import { EncoderModelProvider, IEncoderModel } from './service/encode/IEncoderModel';
 import IServiceServer from './service/IServiceServer';
 import ServiceServer from './service/ServiceServer';
@@ -343,6 +345,8 @@ export const set = (container: Container): void => {
             );
         };
     });
+
+    container.bind<IEncodeQueueStoreModel>('IEncodeQueueStoreModel').to(EncodeQueueStoreModel).inSingletonScope();
 
     container.bind<IEncodeManageModel>('IEncodeManageModel').to(EncodeManageModel).inSingletonScope();
 

@@ -5,6 +5,7 @@ import ILoggerModel from '../ILoggerModel';
 import container from '../ModelContainer';
 import * as containerSetter from '../ModelContainerSetter';
 import IEncodeFinishModel from './encode/IEncodeFinishModel';
+import IEncodeManageModel from './encode/IEncodeManageModel';
 import IServiceServer from './IServiceServer';
 install();
 
@@ -26,9 +27,23 @@ const encodeFinishModel = container.get<IEncodeFinishModel>('IEncodeFinishModel'
 encodeFinishModel.set();
 
 const serviceServer = container.get<IServiceServer>('IServiceServer');
-try {
-    serviceServer.start();
-} catch (err: any) {
-    log.system.fatal(err);
-    process.exit(1);
-}
+
+/**
+ * 前回終了時に残っていたエンコードキューを復元してから待ち受けを開始する
+ * (復元前に push されると encodeId が衝突する恐れがあるため、復元完了後に start する)
+ */
+const encodeManageModel = container.get<IEncodeManageModel>('IEncodeManageModel');
+encodeManageModel
+    .restore()
+    .catch(err => {
+        log.system.error('restore encode queue error');
+        log.system.error(err);
+    })
+    .then(() => {
+        try {
+            serviceServer.start();
+        } catch (err: any) {
+            log.system.fatal(err);
+            process.exit(1);
+        }
+    });
