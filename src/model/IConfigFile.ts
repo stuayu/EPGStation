@@ -76,6 +76,21 @@ export const FEATURE_FLAG_KEYS = [
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[number];
 export type FeatureFlags = Partial<Record<FeatureFlagKey, boolean>>;
 
+export type NotificationEventType = 'recording.started' | 'recording.completed' | 'recording.failed';
+export interface NotificationTargetConfig {
+    name: string;
+    type: 'webhook' | 'discord';
+    url: string;
+    secret?: string;
+    events?: NotificationEventType[];
+}
+export interface NotificationConfig {
+    targets: NotificationTargetConfig[];
+    maxAttempts?: number;
+    baseDelayMs?: number;
+    timeoutMs?: number;
+}
+
 export interface KodiInfo {
     name: string;
     host: string;
@@ -200,6 +215,9 @@ export default interface IConfigFile {
 
     // 予約定期更新時のログ出力を抑えるか
     isSuppressReservesUpdateAllLog: boolean;
+
+    // Webhook / Discord 通知（featureFlags.notifications が true の場合のみ有効）
+    notifications?: NotificationConfig;
 
     // 各種フックコマンド
     reserveNewAddtionCommand?: string; // 予約新規追加

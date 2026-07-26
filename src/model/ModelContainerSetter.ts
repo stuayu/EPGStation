@@ -108,6 +108,8 @@ import { IPromiseQueue } from './IPromiseQueue';
 import IPromiseRetry from './IPromiseRetry';
 import LoggerModel from './LoggerModel';
 import MirakurunClientModel from './MirakurunClientModel';
+import INotificationDispatcher from './notification/INotificationDispatcher';
+import NotificationDispatcher from './notification/NotificationDispatcher';
 import ExternalCommandManageModel from './operator/externalCommand/ExternalCommandManageModel';
 import IExternalCommandManageModel from './operator/externalCommand/IExternalCommandManageModel';
 import IReserveOptionChecker from './operator/IReserveOptionChecker';
@@ -180,6 +182,8 @@ export const set = (container: Container): void => {
     container.bind<ILoggerModel>('ILoggerModel').to(LoggerModel).inSingletonScope();
 
     container.bind<IConfiguration>('IConfiguration').to(Configuration).inSingletonScope();
+
+    container.bind<INotificationDispatcher>('INotificationDispatcher').to(NotificationDispatcher).inSingletonScope();
 
     container.bind<IConnectionCheckModel>('IConnectionCheckModel').to(ConnectionCheckModel).inSingletonScope();
 

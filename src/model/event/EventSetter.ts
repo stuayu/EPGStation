@@ -4,6 +4,7 @@ import IConfigFile from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
+import INotificationDispatcher from '../notification/INotificationDispatcher';
 import IIPCServer from '../ipc/IIPCServer';
 import IExternalCommandManageModel from '../operator/externalCommand/IExternalCommandManageModel';
 import IRecordedManageModel from '../operator/recorded/IRecordedManageModel';
@@ -40,6 +41,7 @@ export default class EventSetter implements IEventSetter {
     private externalCommandManage: IExternalCommandManageModel;
     private ipc: IIPCServer;
     private config: IConfigFile;
+    private notification: INotificationDispatcher;
 
     private isFirstreserveationUpdate: boolean = true;
 
@@ -62,6 +64,7 @@ export default class EventSetter implements IEventSetter {
         @inject('IExternalCommandManageModel') externalCommandManage: IExternalCommandManageModel,
         @inject('IIPCServer') ipc: IIPCServer,
         @inject('IConfiguration') configure: IConfiguration,
+        @inject('INotificationDispatcher') notification: INotificationDispatcher,
     ) {
         this.log = logger.getLogger();
         this.epgUpdateEvent = epgUpdateEvent;
@@ -80,6 +83,7 @@ export default class EventSetter implements IEventSetter {
         this.externalCommandManage = externalCommandManage;
         this.ipc = ipc;
         this.config = configure.getConfig();
+        this.notification = notification;
     }
 
     /**
@@ -171,14 +175,26 @@ export default class EventSetter implements IEventSetter {
 
             this.ipc.notifyClient();
             this.externalCommandManage.addRecordingStartCmd(recorded);
+            void this.notification.dispatch('recording.started', {
+                recordedId: recorded.id,
+                reserveId: reserve.id,
+                name: recorded.name,
+                channelId: recorded.channelId,
+                startAt: recorded.startAt,
+            });
         });
 
         // 録画失敗イベント
-        this.recordingEvent.setRecordingFailed((_reserve, recorded) => {
+        this.recordingEvent.setRecordingFailed((reserve, recorded) => {
             this.ipc.notifyClient();
             if (recorded !== null) {
                 this.externalCommandManage.addRecordingFailedCmd(recorded);
             }
+            void this.notification.dispatch('recording.failed', {
+                reserveId: reserve.id,
+                recordedId: recorded?.id ?? null,
+                name: recorded?.name ?? reserve.name,
+            });
         });
 
         // 録画リトライオーバーイベント
@@ -259,6 +275,14 @@ export default class EventSetter implements IEventSetter {
 
             // コマンド実行
             this.externalCommandManage.addRecordingFinishCmd(recorded);
+            void this.notification.dispatch('recording.completed', {
+                recordedId: recorded.id,
+                reserveId: reserve.id,
+                name: recorded.name,
+                channelId: recorded.channelId,
+                startAt: recorded.startAt,
+                endAt: recorded.endAt,
+            });
 
             this.ipc.notifyClient();
         });

@@ -503,3 +503,18 @@ featureFlags:
     nextUpPanel: false
     externalFileImport: false
     advancedSearch: false
+
+# Webhook / Discord 通知（featureFlags.notifications: true の場合のみ有効）
+# notifications:
+#     maxAttempts: 5
+#     baseDelayMs: 1000
+#     timeoutMs: 10000
+#     targets:
+#         - name: discord
+#           type: discord
+#           url: https://discord.com/api/webhooks/...
+#           events: [recording.started, recording.completed, recording.failed]
+#         - name: automation
+#           type: webhook
+#           url: https://example.invalid/epgstation
+#           secret: change-me
