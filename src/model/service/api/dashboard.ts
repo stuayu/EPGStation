@@ -7,7 +7,10 @@ export const get: Operation = async (req, res) => {
         const model = container.get<IDashboardApiModel>('IDashboardApiModel');
         const limit =
             typeof req.query.limit === 'number' ? req.query.limit : parseInt(String(req.query.limit ?? 5), 10);
-        api.responseJSON(res, 200, await model.get(req.query.isHalfWidth === 'true', limit));
+        // isHalfWidth は省略可能 (既定 false)。express-openapi は schema に従い boolean へ型変換するため
+        // 文字列比較 ('true') ではなく boolean としてそのまま扱う (他の handler と同じ流儀)
+        const isHalfWidth = req.query.isHalfWidth as any as boolean | undefined;
+        api.responseJSON(res, 200, await model.get(isHalfWidth === true, limit));
     } catch (e) {
         const m = api.getErrorMessage(e);
         if (m === 'DashboardFeatureIsDisabled') {
@@ -20,7 +23,7 @@ export const get: Operation = async (req, res) => {
 get.apiDoc = {
     summary: 'ダッシュボード集約情報',
     tags: ['dashboard'],
-    parameters: [{ $ref: '#/components/parameters/IsHalfWidth' }, { $ref: '#/components/parameters/Limit' }],
+    parameters: [{ $ref: '#/components/parameters/IsHalfWidthOptional' }, { $ref: '#/components/parameters/Limit' }],
     responses: {
         200: {
             description: 'ダッシュボード情報',

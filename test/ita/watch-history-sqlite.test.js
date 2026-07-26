@@ -18,9 +18,37 @@ class MemoryRepository {
     async delete({ videoFileId }) { this.rows.delete(videoFileId); }
 }
 
+// WatchHistoryDB.upsert() は find→save の read-modify-write ではなく、レースを避けるために
+// createQueryBuilder().insert()...orUpdate() による DB 側の原子的な upsert を使う実装になっている。
+// そのため、テスト用の擬似コネクションでも createQueryBuilder チェーンを最小限再現する
+function makeConnection(repository) {
+    return {
+        getRepository: () => repository,
+        createQueryBuilder: () => {
+            let values = null;
+            const builder = {
+                insert: () => builder,
+                into: () => builder,
+                values: v => {
+                    values = v;
+                    return builder;
+                },
+                orUpdate: () => builder,
+                execute: async () => {
+                    const existing = repository.rows.get(values.videoFileId);
+                    const saved = { ...(existing ?? {}), ...values, id: existing?.id ?? repository.nextId++ };
+                    repository.rows.set(values.videoFileId, saved);
+                    return { raw: [], generatedMaps: [] };
+                },
+            };
+            return builder;
+        },
+    };
+}
+
 test('watch-history repository upsert is idempotent', async () => {
     const repository = new MemoryRepository();
-    const db = new WatchHistoryDB({ getConnection: async () => ({ getRepository: () => repository }) });
+    const db = new WatchHistoryDB({ getConnection: async () => makeConnection(repository) });
     await db.upsert({ videoFileId: 10, recordedId: 20, position: 30, duration: 100, status: 'watching', updatedAt: 1 });
     await db.upsert({ videoFileId: 10, recordedId: 20, position: 95, duration: 100, status: 'watched', updatedAt: 2 });
     const row = await db.findByVideoFileId(10);

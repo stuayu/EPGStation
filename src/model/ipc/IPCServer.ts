@@ -1,6 +1,7 @@
 import { ChildProcess } from 'child_process';
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../api';
+import IAppSettingChangeEvent from '../event/IAppSettingChangeEvent';
 import IOperatorEncodeEvent, { OperatorFinishEncodeInfo } from '../event/IOperatorEncodeEvent';
 import IImportJobManageModel, { ImportJobId } from '../operator/recorded/IImportJobManageModel';
 import IRecordedManageModel, {
@@ -16,6 +17,7 @@ import ISeriesBackfillManageModel, { SeriesBackfillOption } from '../operator/se
 import IThumbnailManageModel from '../operator/thumbnail/IThumbnailManageModel';
 import IIPCServer from './IIPCServer';
 import {
+    AppSettingFunctions,
     OperatorEncodeEventFunctions,
     ModelName,
     NotifyClientMessage,
@@ -46,6 +48,7 @@ export default class IPCServer implements IIPCServer {
     private thumbnailManage: IThumbnailManageModel;
     private encodeEvent: IOperatorEncodeEvent;
     private seriesBackfillManage: ISeriesBackfillManageModel;
+    private appSettingChangeEvent: IAppSettingChangeEvent;
     private child: ChildProcess | null = null;
     private functions: {
         [modelName: string]: IFunctionIndex;
@@ -62,6 +65,7 @@ export default class IPCServer implements IIPCServer {
         @inject('IThumbnailManageModel') thumbnailManage: IThumbnailManageModel,
         @inject('IOperatorEncodeEvent') encodeEvent: IOperatorEncodeEvent,
         @inject('ISeriesBackfillManageModel') seriesBackfillManage: ISeriesBackfillManageModel,
+        @inject('IAppSettingChangeEvent') appSettingChangeEvent: IAppSettingChangeEvent,
     ) {
         this.reservationManage = reservationManage;
         this.recordedManage = recordedManage;
@@ -72,6 +76,7 @@ export default class IPCServer implements IIPCServer {
         this.thumbnailManage = thumbnailManage;
         this.encodeEvent = encodeEvent;
         this.seriesBackfillManage = seriesBackfillManage;
+        this.appSettingChangeEvent = appSettingChangeEvent;
 
         this.init();
     }
@@ -158,6 +163,24 @@ export default class IPCServer implements IIPCServer {
         this.functions[ModelName.thumbnail] = this.getThumbnailFunctions();
         this.functions[ModelName.encodeEvent] = this.getOperatorEncodeEventFunctions();
         this.functions[ModelName.series] = this.getSeriesFunctions();
+        this.functions[ModelName.appSetting] = this.getAppSettingFunctions();
+    }
+
+    /**
+     * set app setting (hot reload) functions
+     */
+    private getAppSettingFunctions(): IFunctionIndex {
+        const index: IFunctionIndex = {};
+
+        // notifyChanged: システム設定が更新されたことを Operator 側へ伝える。
+        // 対象モジュールは DB を都度読み直す実装のため、ここでは録画中の処理に影響しない
+        // イベント発行のみを行う (fire-and-forget)
+        index[AppSettingFunctions.notifyChanged] = async msg => {
+            const keys = this.getArgsValue<string[]>(msg, 'keys');
+            this.appSettingChangeEvent.emitChanged(keys);
+        };
+
+        return index;
     }
 
     /**

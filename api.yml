@@ -1559,6 +1559,9 @@ components:
                 size:
                     description: ファイルサイズ
                     type: integer
+                watchHistory:
+                    description: 視聴履歴 (featureFlags.watchHistory が有効な場合のみ含まれる)
+                    $ref: '#/components/schemas/WatchHistory'
 
         DashboardData:
             type: object
@@ -3098,6 +3101,91 @@ components:
             required:
                 - proposals
 
+        AppSettingValue:
+            description: >-
+                システム設定 (トップレベルキーごとの値。metadata / notifications / series / dashboard)。
+                構造は src/model/api/config/AppSettingSchema.ts の JSON Schema が正であり、
+                ここでは詳細な形は規定しない (任意の JSON オブジェクト)
+            type: object
+            additionalProperties: true
+
+        AppSettingUpdateResult:
+            description: システム設定更新・ロールバック結果
+            type: object
+            required:
+                - settings
+                - requiresRestart
+                - requiresRestartKeys
+            properties:
+                settings:
+                    $ref: '#/components/schemas/AppSettingValue'
+                requiresRestart:
+                    description: 今回の更新に Operator の再初期化を要するキーが含まれていたか
+                    type: boolean
+                requiresRestartKeys:
+                    description: 再起動 (再初期化) を要すると判定されたキーの一覧
+                    type: array
+                    items:
+                        type: string
+
+        AppSettingHistoryItem:
+            description: システム設定の変更履歴 1 件分 (前の値そのものは含まない)
+            type: object
+            required:
+                - id
+                - key
+                - updatedAt
+            properties:
+                id:
+                    type: integer
+                key:
+                    type: string
+                updatedAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+
+        NotificationTestResult:
+            description: 通知テスト送信結果
+            type: object
+            required:
+                - delivered
+                - failed
+            properties:
+                delivered:
+                    description: 配信に成功した通知先名の一覧
+                    type: array
+                    items:
+                        type: string
+                failed:
+                    description: 配信に失敗した通知先名の一覧
+                    type: array
+                    items:
+                        type: string
+
+        NotificationFailureHistoryItem:
+            description: リトライ上限に達し送信を断念した通知の履歴
+            type: object
+            required:
+                - id
+                - targetName
+                - eventType
+                - attempts
+                - lastError
+                - updatedAt
+            properties:
+                id:
+                    type: integer
+                targetName:
+                    type: string
+                eventType:
+                    type: string
+                attempts:
+                    type: integer
+                lastError:
+                    type: string
+                    nullable: true
+                updatedAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+
     parameters:
         Offset:
             description: offset
@@ -3154,6 +3242,14 @@ components:
             in: query
             name: isHalfWidth
             required: true
+            schema:
+                type: boolean
+
+        IsHalfWidthOptional:
+            description: 半角文字で取得するか (省略時 false)
+            in: query
+            name: isHalfWidth
+            required: false
             schema:
                 type: boolean
 

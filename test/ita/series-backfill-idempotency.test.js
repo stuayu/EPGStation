@@ -142,7 +142,7 @@ test('running the backfill twice over the same recordings does not change the re
     const seriesDB = makeInMemorySeriesDB();
     const settingsDB = makeSettingsDB();
     const recordedDB = makeRecordedDB(rows);
-    const resolver = new SeriesResolver(config, settingsDB, seriesDB);
+    const resolver = new SeriesResolver(config, settingsDB, seriesDB, { dispatch: async () => {} });
 
     // 1 回目の実行
     const modelA = new SeriesBackfillManageModel(logger, recordedDB, seriesDB, settingsDB, resolver);
@@ -189,7 +189,7 @@ test('running the backfill independently over two identical empty datasets produ
         const seriesDB = makeInMemorySeriesDB();
         const settingsDB = makeSettingsDB();
         const recordedDB = makeRecordedDB(makeRows());
-        const resolver = new SeriesResolver(config, settingsDB, seriesDB);
+        const resolver = new SeriesResolver(config, settingsDB, seriesDB, { dispatch: async () => {} });
         const model = new SeriesBackfillManageModel(logger, recordedDB, seriesDB, settingsDB, resolver);
         await model.start({ chunkSize: 1, intervalMs: 0 });
         await waitUntil(async () => (await model.getStatus()).state === 'completed');

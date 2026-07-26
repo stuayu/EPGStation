@@ -75,6 +75,15 @@ export interface IPCSeriesManageModel {
     cancelBackfill(): Promise<void>;
 }
 
+export interface IPCAppSettingManageModel {
+    /**
+     * システム設定が更新されたことを Operator プロセスへ通知する (§6.3, fire-and-forget)。
+     * 録画中の処理には影響を与えない
+     * @param keys: 変更されたトップレベルキーの一覧
+     */
+    notifyChanged(keys: string[]): void;
+}
+
 export default interface IIPCClient {
     reserveation: IPCReservationManageModel;
     recorded: IPCRecordedManageModel;
@@ -84,4 +93,5 @@ export default interface IIPCClient {
     thumbnail: IPCThumbnailManageModel;
     encodeEvent: IPCOperatorEncodeEvent;
     series: IPCSeriesManageModel;
+    appSetting: IPCAppSettingManageModel;
 }

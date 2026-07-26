@@ -70,6 +70,10 @@ import Configuration from './Configuration';
 import ConnectionCheckModel from './ConnectionCheckModel';
 import AppSettingDB from './db/AppSettingDB';
 import IAppSettingDB from './db/IAppSettingDB';
+import AppSettingHistoryDB from './db/AppSettingHistoryDB';
+import IAppSettingHistoryDB from './db/IAppSettingHistoryDB';
+import NotificationQueueDB from './db/NotificationQueueDB';
+import INotificationQueueDB from './db/INotificationQueueDB';
 import ChannelDB from './db/ChannelDB';
 import DBOperator from './db/DBOperator';
 import DropLogFileDB from './db/DropLogFileDB';
@@ -110,6 +114,8 @@ import EPGUpdater from './epgUpdater/EPGUpdater';
 import IEPGUpdateExecutorManageModel from './epgUpdater/IEPGUpdateExecutorManageModel';
 import IEPGUpdateManageModel from './epgUpdater/IEPGUpdateManageModel';
 import IEPGUpdater from './epgUpdater/IEPGUpdater';
+import AppSettingChangeEvent from './event/AppSettingChangeEvent';
+import IAppSettingChangeEvent from './event/IAppSettingChangeEvent';
 import EncodeEvent from './event/EncodeEvent';
 import EPGUpdateEvent from './event/EPGUpdateEvent';
 import EventSetter from './event/EventSetter';
@@ -263,6 +269,8 @@ export const set = (container: Container): void => {
     container.bind<IDBOperator>('IDBOperator').to(DBOperator).inSingletonScope();
 
     container.bind<IAppSettingDB>('IAppSettingDB').to(AppSettingDB).inSingletonScope();
+    container.bind<IAppSettingHistoryDB>('IAppSettingHistoryDB').to(AppSettingHistoryDB).inSingletonScope();
+    container.bind<INotificationQueueDB>('INotificationQueueDB').to(NotificationQueueDB).inSingletonScope();
     container.bind<IMetadataProviderCacheDB>('IMetadataProviderCacheDB').to(MetadataProviderCacheDB).inSingletonScope();
     container.bind<ISyobocalChannelMap>('ISyobocalChannelMap').to(SyobocalChannelMap).inSingletonScope();
     container.bind<ISyobocalProvider>('ISyobocalProvider').to(SyobocalProvider).inSingletonScope();
@@ -306,6 +314,7 @@ export const set = (container: Container): void => {
     container.bind<IRuleEvent>('IRuleEvent').to(RuleEvent).inSingletonScope();
 
     container.bind<IThumbnailEvent>('IThumbnailEvent').to(ThumbnailEvent).inSingletonScope();
+    container.bind<IAppSettingChangeEvent>('IAppSettingChangeEvent').to(AppSettingChangeEvent).inSingletonScope();
 
     container.bind<IRecordedEvent>('IRecordedEvent').to(RecordedEvent).inSingletonScope();
 

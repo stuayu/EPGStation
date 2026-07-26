@@ -59,6 +59,7 @@ export enum ModelName {
     thumbnail = 'thumbnail',
     encodeEvent = 'encodeEvent',
     series = 'series',
+    appSetting = 'appSetting',
 }
 
 /**
@@ -150,4 +151,14 @@ export enum SeriesFunctions {
     startBackfill = 'startBackfill',
     getBackfillStatus = 'getBackfillStatus',
     cancelBackfill = 'cancelBackfill',
+}
+
+/**
+ * システム設定 (app_setting) のホットリロード通知関数定義 (§6.3)。
+ * Service プロセス (Web API) で設定が更新された際、Operator プロセス側の
+ * 対象モジュール (メタデータプロバイダー・通知) だけを再初期化するために使う。
+ * 録画中の処理には一切影響しないよう、単なる「変更があった」という通知に留める
+ */
+export enum AppSettingFunctions {
+    notifyChanged = 'notifyChanged',
 }

@@ -1,10 +1,12 @@
 import { inject, injectable } from 'inversify';
 import RecordedSeriesLink from '../../db/entities/RecordedSeriesLink';
 import Series from '../../db/entities/Series';
+import { resolveNumber } from '../AppSettingResolver';
 import { isFeatureEnabled } from '../FeatureFlags';
 import IConfiguration from '../IConfiguration';
 import IAppSettingDB from '../db/IAppSettingDB';
 import ISeriesDB from '../db/ISeriesDB';
+import INotificationDispatcher from '../notification/INotificationDispatcher';
 import ISeriesResolver, { SeriesRecordingInput } from './ISeriesResolver';
 import { parseSeriesInfo } from './SeriesNormalizer';
 export function titleSimilarity(a: string, b: string): number {
@@ -44,6 +46,7 @@ export default class SeriesResolver implements ISeriesResolver {
         @inject('IConfiguration') private config: IConfiguration,
         @inject('IAppSettingDB') private settings: IAppSettingDB,
         @inject('ISeriesDB') private db: ISeriesDB,
+        @inject('INotificationDispatcher') private notification: INotificationDispatcher,
     ) {}
     async resolve(recording: SeriesRecordingInput): Promise<RecordedSeriesLink | null> {
         if (!isFeatureEnabled(this.config.getConfig(), 'seriesLibrary')) return null;
@@ -151,9 +154,10 @@ export default class SeriesResolver implements ISeriesResolver {
         now: number,
     ): Promise<RecordedSeriesLink> {
         let episode = null;
+        let isNewEpisode = false;
         if (parsed.episodeNumber !== null) {
             episode = await this.db.findEpisode(series.id, parsed.seasonNumber, parsed.episodeNumber);
-            if (!episode)
+            if (!episode) {
                 episode = await this.db.createEpisode({
                     seriesId: series.id,
                     seasonNumber: parsed.seasonNumber,
@@ -164,11 +168,24 @@ export default class SeriesResolver implements ISeriesResolver {
                     createdAt: now,
                     updatedAt: now,
                 });
+                isNewEpisode = true;
+            }
         }
         let airType = parsed.airType;
         if (airType === 'unknown' && episode)
             airType =
                 (await this.db.countOtherLinksByEpisode(episode.id, recording.recordedId)) > 0 ? 'rerun' : 'first';
+
+        // シリーズ新話追加通知 (§7.3): 新規エピソード行が作られ、かつ再放送でないと判定できた場合のみ
+        if (isNewEpisode && airType === 'first') {
+            void this.notification.dispatch('series.newEpisode', {
+                seriesId: series.id,
+                seriesTitle: series.title,
+                recordedId: recording.recordedId,
+                episodeNumber: parsed.episodeNumber,
+                episodeLabel: parsed.episodeLabel,
+            });
+        }
         return await this.db.saveLink({
             recordedId: recording.recordedId,
             seriesId: series.id,
@@ -183,6 +200,8 @@ export default class SeriesResolver implements ISeriesResolver {
         });
     }
     private threshold(value: unknown): number {
-        return typeof value === 'number' && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0.8;
+        // 優先順位: DB (設定画面) > config.yml (seriesDefaults) > ハードコード既定値 (§6.3)
+        const resolved = resolveNumber(value, this.config.getConfig().seriesDefaults?.matchThreshold, 0.8);
+        return Math.min(1, Math.max(0, resolved));
     }
 }

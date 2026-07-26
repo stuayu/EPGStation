@@ -1521,3 +1521,32 @@ export interface MissingEpisodeProposal {
 export interface MissingEpisodeProposals {
     proposals: MissingEpisodeProposal[];
 }
+
+// システム設定 (トップレベルキーごとの値。詳細な形は src/model/api/config/AppSettingSchema.ts が正)
+export type AppSettingValue = Record<string, any>;
+
+export interface AppSettingUpdateResult {
+    settings: AppSettingValue;
+    requiresRestart: boolean;
+    requiresRestartKeys: string[];
+}
+
+export interface AppSettingHistoryItem {
+    id: number;
+    key: string;
+    updatedAt: UnixtimeMS;
+}
+
+export interface NotificationTestResult {
+    delivered: string[];
+    failed: string[];
+}
+
+export interface NotificationFailureHistoryItem {
+    id: number;
+    targetName: string;
+    eventType: string;
+    attempts: number;
+    lastError: string | null;
+    updatedAt: UnixtimeMS;
+}

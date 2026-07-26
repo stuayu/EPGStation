@@ -22,6 +22,7 @@ function buildModel({ config, videoFileDB, recordedDB, recordedEvent, videoUtil 
         { deleteRecordedId: async () => {} },
         { findAll: async () => [], deleteOnce: async () => {} },
         { delete: async () => {} },
+        { deleteByRecordedId: async () => {}, deleteByVideoFileId: async () => {} },
         { hasReserve: () => false, cancel: async () => {} },
         recordedEvent ?? {
             emitCreateNewRecorded: () => {},

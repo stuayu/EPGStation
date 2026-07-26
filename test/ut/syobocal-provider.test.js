@@ -4,10 +4,13 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const Provider = require('../../dist/model/metadata/syobocal/SyobocalProvider').default;
 const enabled = { getAll: async () => ({ metadata: { syobocal: { enabled: true } } }) };
+const config = { getConfig: () => ({}) };
+const noChannels = { findId: async () => null };
+const noChannelMap = { find: () => undefined };
 const title =
     '<TitleItems><TitleItem><TID>123</TID><Title><![CDATA[作品名]]></Title><TitleYomi>さくひんめい</TitleYomi><FirstYear>2024</FirstYear><Comment>説明</Comment></TitleItem></TitleItems>';
 test('Syobocal title search normalizes XML results', async () => {
-    const p = new Provider({ get: async () => ({ text: title }) }, enabled);
+    const p = new Provider({ get: async () => ({ text: title }) }, enabled, noChannels, noChannelMap, config);
     const x = await p.search('作品名');
     assert.equal(x[0].externalId, '123');
     assert.equal(x[0].score, 1);
@@ -16,14 +19,26 @@ test('Syobocal detail parses episodes and timestamps', async () => {
     const prog =
         '<ProgItems><ProgItem><TID>123</TID><Count>2</Count><SubTitle>二話</SubTitle><StTime>2024-01-02 01:00:00</StTime></ProgItem></ProgItems>';
     let n = 0;
-    const p = new Provider({ get: async () => ({ text: n++ === 0 ? title : prog }) }, enabled);
+    const p = new Provider(
+        { get: async () => ({ text: n++ === 0 ? title : prog }) },
+        enabled,
+        noChannels,
+        noChannelMap,
+        config,
+    );
     const x = await p.get('123');
     assert.equal(x.episodes[0].number, 2);
     assert.equal(x.raw.coverage, 'programs');
 });
 test('missing regional programme rows keeps title-only metadata', async () => {
     let n = 0;
-    const p = new Provider({ get: async () => ({ text: n++ === 0 ? title : '<ProgItems></ProgItems>' }) }, enabled);
+    const p = new Provider(
+        { get: async () => ({ text: n++ === 0 ? title : '<ProgItems></ProgItems>' }) },
+        enabled,
+        noChannels,
+        noChannelMap,
+        config,
+    );
     const x = await p.get('123');
     assert.equal(x.title, '作品名');
     assert.equal(x.raw.coverage, 'title-only');
@@ -44,7 +59,7 @@ test('confirmed match resolves TID via ChID + startAt and places it first', asyn
     };
     const channels = { findId: async () => ({ networkId: 32736, serviceId: 1024 }) };
     const channelMap = { find: () => ({ chId: 1, networkId: 32736, serviceId: 1024, syobocal: true }) };
-    const p = new Provider(http, enabled, channels, channelMap);
+    const p = new Provider(http, enabled, channels, channelMap, config);
     const startAt = new Date('2024-01-02T01:00:00+09:00').getTime();
     const x = await p.search('作品名', { channelId: 10, startAt });
     assert.equal(x[0].externalId, '555');
@@ -60,7 +75,7 @@ test('unregistered channel (syobocal: false) skips ProgLookup entirely', async (
             return { text: title };
         },
     };
-    const p = new Provider(http, enabled, channels, channelMap);
+    const p = new Provider(http, enabled, channels, channelMap, config);
     const x = await p.search('作品名', { channelId: 10, startAt: Date.now() });
     assert.equal(x[0].externalId, '123');
 });
@@ -73,7 +88,7 @@ test('unknown channel (no mapping entry) falls back to normal title matching', a
             return { text: title };
         },
     };
-    const p = new Provider(http, enabled, channels, channelMap);
+    const p = new Provider(http, enabled, channels, channelMap, config);
     const x = await p.search('作品名', { channelId: 10, startAt: Date.now() });
     assert.equal(x[0].externalId, '123');
 });
@@ -85,6 +100,9 @@ test('disabled provider performs no request', async () => {
             },
         },
         { getAll: async () => ({ metadata: { syobocal: { enabled: false } } }) },
+        noChannels,
+        noChannelMap,
+        config,
     );
     assert.deepEqual(await p.search('作品'), []);
 });

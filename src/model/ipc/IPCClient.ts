@@ -14,6 +14,7 @@ import { SeriesBackfillOption } from '../operator/series/ISeriesBackfillManageMo
 import IEncodeManageModel from '../service/encode/IEncodeManageModel';
 import ISocketIOManageModel from '../service/socketio/ISocketIOManageModel';
 import IIPCClient, {
+    IPCAppSettingManageModel,
     IPCOperatorEncodeEvent,
     IPCRecordedManageModel,
     IPCRecordedTagManageModel,
@@ -24,6 +25,7 @@ import IIPCClient, {
     IPCThumbnailManageModel,
 } from './IIPCClient';
 import {
+    AppSettingFunctions,
     ClientMessageOption,
     OperatorEncodeEventFunctions,
     ModelName,
@@ -52,6 +54,7 @@ export default class IPCClient implements IIPCClient {
     public thumbnail!: IPCThumbnailManageModel;
     public encodeEvent!: IPCOperatorEncodeEvent;
     public series!: IPCSeriesManageModel;
+    public appSetting!: IPCAppSettingManageModel;
 
     private log: ILogger;
     private listener: events.EventEmitter = new events.EventEmitter();
@@ -78,6 +81,7 @@ export default class IPCClient implements IIPCClient {
         this.setThumbnail();
         this.setEncodeEvent();
         this.setSeries();
+        this.setAppSetting();
     }
 
     /**
@@ -582,6 +586,28 @@ export default class IPCClient implements IIPCClient {
                 return this.send({
                     model: ModelName.series,
                     func: SeriesFunctions.cancelBackfill,
+                });
+            },
+        };
+    }
+
+    /**
+     * set app setting (hot reload) functions
+     */
+    private setAppSetting(): void {
+        this.appSetting = {
+            notifyChanged: (keys: string[]) => {
+                // fire-and-forget: 応答を待たず、失敗してもログに残すだけで呼び出し元には影響させない
+                this.send(
+                    {
+                        model: ModelName.appSetting,
+                        func: AppSettingFunctions.notifyChanged,
+                        args: { keys },
+                    },
+                    0,
+                ).catch(err => {
+                    this.log.system.error('failed to notify app setting change to operator process');
+                    this.log.system.error(err);
                 });
             },
         };
