@@ -32,6 +32,11 @@ export interface SeriesRecording {
 }
 export interface SeriesDetail extends SeriesListItem {
     channels: SeriesChannel[];
+    continuity: {
+        missingEpisodes: Array<{ seasonNumber: number; episodeNumber: number }>;
+        duplicateEpisodes: Array<{ seasonNumber: number; episodeNumber: number; recordedIds: number[]; channelIds: number[] }>;
+        unknownEpisodeRecordedIds: number[];
+    };
     recorded: SeriesRecording[];
     externalIds: { syobocalTid: number | null; annictId: string | null; tmdbId: number | null };
 }
