@@ -60,8 +60,8 @@ jobs:
 
     - name: Compress Project
       run: |
-        7z a -m0=LZMA2 -mx=9 -md=128m -mfb=128 -ms=16g -mmt=on -mf=BCJ EPGStation-${{ matrix.os }}-${{ matrix.node-version }}.7z ./EPGStation
-        7z a -m0=LZMA2 -mx=9 -md=128m -mfb=128 -ms=16g -mmt=on -mf=BCJ Mirakurun-${{ matrix.os }}-${{ matrix.node-version }}.7z ./Mirakurun
+        7z a -t7z -mx=9 -m0=lzma2 -md=256m -mfb=273 -ms=on EPGStation-${{ matrix.os }}-${{ matrix.node-version }}.7z ./EPGStation
+        7z a -t7z -mx=9 -m0=lzma2 -md=256m -mfb=273 -ms=on Mirakurun-${{ matrix.os }}-${{ matrix.node-version }}.7z ./Mirakurun
 
     - name: Upload Project as Artifact
       uses: actions/upload-artifact@v4
