@@ -21,6 +21,7 @@ import IRecordingEvent from './IRecordingEvent';
 import IReserveEvent from './IReserveEvent';
 import IRuleEvent from './IRuleEvent';
 import IThumbnailEvent from './IThumbnailEvent';
+import ISeriesResolver from '../series/ISeriesResolver';
 
 @injectable()
 export default class EventSetter implements IEventSetter {
@@ -42,6 +43,7 @@ export default class EventSetter implements IEventSetter {
     private ipc: IIPCServer;
     private config: IConfigFile;
     private notification: INotificationDispatcher;
+    private seriesResolver: ISeriesResolver;
 
     private isFirstreserveationUpdate: boolean = true;
 
@@ -65,6 +67,7 @@ export default class EventSetter implements IEventSetter {
         @inject('IIPCServer') ipc: IIPCServer,
         @inject('IConfiguration') configure: IConfiguration,
         @inject('INotificationDispatcher') notification: INotificationDispatcher,
+        @inject('ISeriesResolver') seriesResolver: ISeriesResolver,
     ) {
         this.log = logger.getLogger();
         this.epgUpdateEvent = epgUpdateEvent;
@@ -84,6 +87,7 @@ export default class EventSetter implements IEventSetter {
         this.ipc = ipc;
         this.config = configure.getConfig();
         this.notification = notification;
+        this.seriesResolver = seriesResolver;
     }
 
     /**
@@ -272,6 +276,19 @@ export default class EventSetter implements IEventSetter {
                     this.log.system.fatal(err);
                 });
             }
+
+            // シリーズ自動マッピング
+            void this.seriesResolver
+                .resolve({
+                    recordedId: recorded.id,
+                    title: recorded.name,
+                    channelId: recorded.channelId,
+                    startAt: recorded.startAt,
+                })
+                .catch(err => {
+                    this.log.system.error('series resolve failed');
+                    this.log.system.error(err);
+                });
 
             // コマンド実行
             this.externalCommandManage.addRecordingFinishCmd(recorded);
