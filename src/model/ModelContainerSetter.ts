@@ -138,6 +138,8 @@ import ReservationManageModel from './operator/reservation/ReservationManageMode
 import ReserveOptionChecker from './operator/ReserveOptionChecker';
 import IRuleManageModel from './operator/rule/IRuleManageModel';
 import RuleManageModel from './operator/rule/RuleManageModel';
+import ISecretCrypto from './security/ISecretCrypto';
+import SecretCrypto from './security/SecretCrypto';
 import IStorageManageModel from './operator/storage/IStorageManageModel';
 import StorageManageModel from './operator/storage/StorageManageModel';
 import IThumbnailManageModel from './operator/thumbnail/IThumbnailManageModel';
@@ -188,6 +190,7 @@ export const set = (container: Container): void => {
     container.bind<ILoggerModel>('ILoggerModel').to(LoggerModel).inSingletonScope();
 
     container.bind<IConfiguration>('IConfiguration').to(Configuration).inSingletonScope();
+    container.bind<ISecretCrypto>('ISecretCrypto').to(SecretCrypto).inSingletonScope();
 
     container.bind<INotificationDispatcher>('INotificationDispatcher').to(NotificationDispatcher).inSingletonScope();
 

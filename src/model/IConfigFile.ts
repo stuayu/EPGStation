@@ -108,6 +108,7 @@ export default interface IConfigFile {
     https?: HttpsConfig;
     // 段階導入用。未指定の機能は常に無効として扱う
     featureFlags?: FeatureFlags;
+    secretKey?: string; // ランタイム設定の秘密情報暗号化鍵（環境変数展開済みの十分長い値を推奨）
 
     mirakurunPath: string;
     mirakurunAPIPath?: string; // mirakurun の API エンドポイントのベースパス (省略時 /api)

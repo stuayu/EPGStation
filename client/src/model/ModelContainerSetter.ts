@@ -2,6 +2,8 @@ import { Container } from 'inversify';
 import ChannelsApiModel from './api/channels/ChannelsApiModel';
 import IChannelsApiModel from './api/channels/IChannelsApiModel';
 import ConfigApiModel from './api/config/ConfigApiModel';
+import ISystemSettingApiModel from './api/config/ISystemSettingApiModel';
+import SystemSettingApiModel from './api/config/SystemSettingApiModel';
 import IConfigApiModel from './api/config/IConfigApiModel';
 import DropLogApiModel from './api/dropLog/DropLogApiModel';
 import IDropLogApiModel from './api/dropLog/IDropLogApiModel';
@@ -139,6 +141,7 @@ export default (container: Container): void => {
     container.bind<IRepositoryModel>('IRepositoryModel').to(RepositoryModel).inSingletonScope();
 
     container.bind<IConfigApiModel>('IConfigApiModel').to(ConfigApiModel).inSingletonScope();
+    container.bind<ISystemSettingApiModel>('ISystemSettingApiModel').to(SystemSettingApiModel).inSingletonScope();
 
     container.bind<IChannelsApiModel>('IChannelsApiModel').to(ChannelsApiModel).inSingletonScope();
 
