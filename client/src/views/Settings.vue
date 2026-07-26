@@ -328,6 +328,26 @@
                             </div>
                         </v-list-item>
 
+                        <template v-if="isShowNextUpPanelSetting">
+                            <v-divider></v-divider>
+
+                            <v-list-item three-line>
+                                <div class="v-list-item-content">
+                                    <div class="title">Next Up パネル</div>
+                                    <div class="my-2 d-flex flex-row align-center">
+                                        <div>
+                                            <v-list-item-title class="text-subtitle-1">新着タブの連続再生</v-list-item-title>
+                                            <v-list-item-subtitle
+                                                >有効にすると新着タブ選択時も再生終了前にカウントダウンして自動で次を再生します (シリーズタブは常時有効)</v-list-item-subtitle
+                                            >
+                                        </div>
+                                        <v-spacer></v-spacer>
+                                        <v-switch v-model="storageModel.tmp.isEnableNextUpAutoPlayForLatestTab"></v-switch>
+                                    </div>
+                                </div>
+                            </v-list-item>
+                        </template>
+
                         <v-card-actions>
                             <v-spacer></v-spacer>
                             <v-btn variant="text" v-on:click="reset">リセット</v-btn>
@@ -344,10 +364,12 @@
 <script lang="ts">
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
+import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import INavigationState from '@/model/state/navigation/INavigationState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, GuideViewMode } from '@/model/storage/setting/ISettingStorageModel';
+import { isFeatureEnabled } from '@/util/FeatureFlags';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import IColorThemeState from '@/model/state/IColorThemeState';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
@@ -375,6 +397,14 @@ class Settings extends Vue {
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private colorThemeState: IColorThemeState = container.get<IColorThemeState>('IColorThemeState');
+    private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
+
+    /**
+     * Next Up パネル関連の設定項目を表示するか (featureFlags.nextUpPanel 連動)
+     */
+    get isShowNextUpPanelSetting(): boolean {
+        return isFeatureEnabled(this.serverConfigModel.getConfig(), 'nextUpPanel');
+    }
 
     public readonly guideModeItems: GuideModeItem[] = [
         {

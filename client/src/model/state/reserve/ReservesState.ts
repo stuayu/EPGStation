@@ -32,6 +32,16 @@ export default class ReservesState implements IReservesState {
      */
     public async fetchData(option: apid.GetReserveOption): Promise<void> {
         const reserves = await this.reserveApiModel.gets(option);
+        this.setData(reserves, option.isHalfWidth);
+    }
+
+    /**
+     * 他 (ダッシュボード集約 API 等) で取得済みの予約情報をそのまま反映する
+     * fetchData と異なり自身では API を呼び出さない (重複リクエストを避けるため)
+     * @param reserves: apid.Reserves
+     * @param isHalfWidth: boolean
+     */
+    public setData(reserves: apid.Reserves, isHalfWidth: boolean): void {
         this.total = reserves.total;
 
         const oldSelectedIndex: SelectedIndex = {};
@@ -40,7 +50,7 @@ export default class ReservesState implements IReservesState {
                 oldSelectedIndex[r.reserveItem.id] = r.isSelected;
             }
         }
-        this.reserves = this.reserveStateUtil.convertReserveItemsToStateDatas(reserves.reserves, option.isHalfWidth, oldSelectedIndex);
+        this.reserves = this.reserveStateUtil.convertReserveItemsToStateDatas(reserves.reserves, isHalfWidth, oldSelectedIndex);
     }
 
     /**

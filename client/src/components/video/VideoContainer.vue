@@ -109,6 +109,9 @@ class VideoContainer extends Vue {
     private videoApi = container.get<IVideoApiModel>('IVideoApiModel');
     private lastSavedAt = 0;
     private resumeApplied = false;
+    // レジューム適用 (GET 待ち) が完了するまで再生位置の保存を抑止し、
+    // 最初の timeupdate が position≈0 を PUT して履歴を上書きしてしまうレースを防ぐ
+    private resumeReady = false;
 
     // DPlayer のフルスクリーン時にモバイル端末で画面回転をロックするための状態
     private isEnabledRotation: boolean = typeof window.screen.orientation !== 'undefined' && UaUtil.isMobile();
@@ -116,11 +119,21 @@ class VideoContainer extends Vue {
         this.fullscreenChange();
     }).bind(this);
 
+    // タブを閉じる・リロード・バックグラウンド化した場合でも再生位置を beacon で送信する
+    private pageHideListener = ((): void => {
+        this.savePlaybackPositionWithBeacon();
+    }).bind(this);
+    private visibilityChangeListener = ((): void => {
+        if (document.visibilityState === 'hidden') this.savePlaybackPositionWithBeacon();
+    }).bind(this);
+
     public created(): void {
         document.addEventListener('webkitfullscreenchange', this.fullScreenListener, false);
         document.addEventListener('mozfullscreenchange', this.fullScreenListener, false);
         document.addEventListener('MSFullscreenChange', this.fullScreenListener, false);
         document.addEventListener('fullscreenchange', this.fullScreenListener, false);
+        window.addEventListener('pagehide', this.pageHideListener, false);
+        document.addEventListener('visibilitychange', this.visibilityChangeListener, false);
     }
 
     public beforeUnmount(): void {
@@ -129,6 +142,8 @@ class VideoContainer extends Vue {
         document.removeEventListener('mozfullscreenchange', this.fullScreenListener, false);
         document.removeEventListener('MSFullscreenChange', this.fullScreenListener, false);
         document.removeEventListener('fullscreenchange', this.fullScreenListener, false);
+        window.removeEventListener('pagehide', this.pageHideListener, false);
+        document.removeEventListener('visibilitychange', this.visibilityChangeListener, false);
     }
 
     /**
@@ -189,14 +204,30 @@ class VideoContainer extends Vue {
     }
 
     public onTimeupdate(): void {
+        this.emitRemainingTime();
+        if (this.resumeReady === false) return;
         if (Date.now() - this.lastSavedAt >= 10000) void this.savePlaybackPosition();
     }
 
     public onEnded(): void {
         void this.savePlaybackPosition();
+        this.$emit('ended');
+    }
+
+    /**
+     * 再生終了までの残り秒数を親コンポーネントへ通知する (連続再生のカウントダウン表示用)
+     */
+    private emitRemainingTime(): void {
+        const video = this.getVideo();
+        if (video === null) return;
+        const duration = video.getDuration();
+        if (duration <= 0) return;
+        this.$emit('remainingTime', Math.max(0, duration - video.getCurrentTime()));
     }
 
     public async savePlaybackPosition(): Promise<void> {
+        // レジューム適用が完了する前に保存すると position≈0 で履歴を上書きしてしまうため抑止する
+        if (this.resumeReady === false) return;
         const id = this.getVideoFileId();
         const video = this.getVideo();
         if (id === null || video === null) return;
@@ -215,12 +246,20 @@ class VideoContainer extends Vue {
 
     private async applyResumePosition(): Promise<void> {
         if (this.resumeApplied) return;
+        this.resumeApplied = true;
         const id = this.getVideoFileId();
         const video = this.getVideo();
-        if (id === null || video === null) return;
-        this.resumeApplied = true;
-        const history = await this.videoApi.getPlaybackPosition(id).catch(() => null);
-        if (history !== null && history.status !== 'watched' && history.position > 0) video.setCurrentTime(history.position);
+        if (id === null || video === null) {
+            this.resumeReady = true;
+
+            return;
+        }
+        try {
+            const history = await this.videoApi.getPlaybackPosition(id).catch(() => null);
+            if (history !== null && history.status !== 'watched' && history.position > 0) video.setCurrentTime(history.position);
+        } finally {
+            this.resumeReady = true;
+        }
     }
 
     private getVideo(): BaseVideo | null {
