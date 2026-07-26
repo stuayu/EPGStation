@@ -22,7 +22,11 @@ export default interface IRecordedDB {
     changeProtect(recordedId: apid.RecordedId, isProtect: boolean): Promise<void>;
     deleteOnce(recordedId: apid.RecordedId): Promise<void>;
     findId(recordedId: apid.RecordedId): Promise<Recorded | null>;
-    findIds(recordedIds: apid.RecordedId[]): Promise<Recorded[]>;
+    findIds(
+        recordedIds: apid.RecordedId[],
+        columnOption?: RecordedColumnOption,
+        isReverse?: boolean,
+    ): Promise<Recorded[]>;
     findAll(option: FindAllOption, columnOption: RecordedColumnOption): Promise<[Recorded[], number]>;
     findChannelList(): Promise<apid.RecordedChannelListItem[]>;
     findGenreList(): Promise<apid.RecordedGenreListItem[]>;

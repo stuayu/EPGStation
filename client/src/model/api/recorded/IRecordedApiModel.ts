@@ -9,6 +9,7 @@ export default interface IRecordedApiModel {
     protect(recordedId: apid.RecordedId): Promise<void>;
     unprotect(recordedId: apid.RecordedId): Promise<void>;
     createNewRecorded(option: apid.CreateNewRecordedOption): Promise<apid.RecordedId>;
+    getNextUp(recordedId: apid.RecordedId, isHalfWidth: boolean): Promise<{ currentSeriesId: number | null; latest: apid.RecordedItem[]; series: apid.RecordedItem[] } | null>;
     getCleanupInfo(): Promise<apid.RecordedCleanupInfo>;
     cleanup(target?: apid.RecordedCleanupTarget): Promise<void>;
 }

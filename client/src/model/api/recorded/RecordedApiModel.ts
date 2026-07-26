@@ -117,4 +117,15 @@ export default class RecordedApiModel implements IRecordedApiModel {
             target: target,
         });
     }
+    public async getNextUp(
+        recordedId: apid.RecordedId,
+        isHalfWidth: boolean,
+    ): Promise<{ currentSeriesId: number | null; latest: apid.RecordedItem[]; series: apid.RecordedItem[] } | null> {
+        try {
+            return (await this.repository.get(`/recorded/${recordedId}/next-up`, { params: { isHalfWidth } })).data;
+        } catch (error: any) {
+            if (error?.response?.status === 404) return null;
+            throw error;
+        }
+    }
 }

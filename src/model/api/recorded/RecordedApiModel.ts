@@ -2,13 +2,14 @@ import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
 import IRecordedDB, { FindAllOption } from '../../db/IRecordedDB';
 import IWatchHistoryDB from '../../db/IWatchHistoryDB';
+import ISeriesDB from '../../db/ISeriesDB';
 import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
 import IIPCClient from '../../ipc/IIPCClient';
 import { UploadedVideoFileOption } from '../../operator/recorded/IRecordedManageModel';
 import IEncodeManageModel from '../../service/encode/IEncodeManageModel';
 import IRecordedItemUtil from '../IRecordedItemUtil';
-import IRecordedApiModel from './IRecordedApiModel';
+import IRecordedApiModel, { NextUpResult } from './IRecordedApiModel';
 
 @injectable()
 export default class RecordedApiModel implements IRecordedApiModel {
@@ -18,6 +19,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
     private recordedItemUtil: IRecordedItemUtil;
     private configuration: IConfiguration;
     private watchHistoryDB: IWatchHistoryDB;
+    private seriesDB: ISeriesDB;
 
     constructor(
         @inject('IIPCClient') ipc: IIPCClient,
@@ -26,6 +28,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
         @inject('IRecordedItemUtil') recordedItemUtil: IRecordedItemUtil,
         @inject('IConfiguration') configuration: IConfiguration,
         @inject('IWatchHistoryDB') watchHistoryDB: IWatchHistoryDB,
+        @inject('ISeriesDB') seriesDB: ISeriesDB,
     ) {
         this.recordedDB = recordedDB;
         this.ipc = ipc;
@@ -33,6 +36,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
         this.recordedItemUtil = recordedItemUtil;
         this.configuration = configuration;
         this.watchHistoryDB = watchHistoryDB;
+        this.seriesDB = seriesDB;
     }
 
     /**
@@ -49,12 +53,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
             isNeedTags: false,
         });
 
-        const encodeIndex = this.encodeManage.getRecordedIndex();
-
-        const items = records.map(r =>
-            this.recordedItemUtil.convertRecordedToRecordedItem(r, option.isHalfWidth, encodeIndex),
-        );
-        await this.attachWatchHistories(items);
+        const items = await this.toRecordedItems(records, option.isHalfWidth);
         return { records: items, total };
     }
 
@@ -70,11 +69,63 @@ export default class RecordedApiModel implements IRecordedApiModel {
         const encodeIndex = this.encodeManage.getRecordedIndex();
 
         if (item === null) return null;
-        const result = this.recordedItemUtil.convertRecordedToRecordedItem(item, isHalfWidth, encodeIndex);
-        await this.attachWatchHistories([result]);
+        const [result] = await this.toRecordedItems([item], isHalfWidth, encodeIndex);
         return result;
     }
 
+    public async getNextUp(recordedId: apid.RecordedId, isHalfWidth: boolean): Promise<NextUpResult | null> {
+        if (!isFeatureEnabled(this.configuration.getConfig(), 'nextUpPanel'))
+            throw new Error('NextUpPanelFeatureIsDisabled');
+        const current = await this.recordedDB.findId(recordedId);
+        if (current === null) return null;
+        const recentOption = { isHalfWidth, offset: 0, limit: 9, isReverse: false } as FindAllOption;
+        recentOption.isRecording = false;
+        const [recentRecords] = await this.recordedDB.findAll(recentOption, {
+            isNeedVideoFiles: true,
+            isNeedThumbnails: false,
+            isNeedsDropLog: false,
+            isNeedTags: false,
+        });
+        const latest = (
+            await this.toRecordedItems(
+                recentRecords.filter(x => x.id !== recordedId),
+                isHalfWidth,
+            )
+        ).slice(0, 8);
+
+        const link = await this.seriesDB.findLink(recordedId);
+        let currentSeriesId: number | null = null;
+        let series: apid.RecordedItem[] = [];
+        if (link !== null) {
+            currentSeriesId = link.seriesId;
+            const rows = (await this.seriesDB.listRecorded(link.seriesId))
+                .filter(x => x.recordedId !== recordedId)
+                .slice(0, 8);
+            const seriesRecords = await this.recordedDB.findIds(
+                rows.map(x => x.recordedId),
+                { isNeedVideoFiles: true, isNeedThumbnails: false, isNeedsDropLog: false, isNeedTags: false },
+                true,
+            );
+            const index = new Map(seriesRecords.map(x => [x.id, x]));
+            series = await this.toRecordedItems(
+                rows.map(x => index.get(x.recordedId)).filter((x): x is NonNullable<typeof x> => x !== undefined),
+                isHalfWidth,
+            );
+        }
+        return { currentSeriesId, latest, series };
+    }
+
+    private async toRecordedItems(
+        records: any[],
+        isHalfWidth: boolean,
+        encodeIndex = this.encodeManage.getRecordedIndex(),
+    ): Promise<apid.RecordedItem[]> {
+        const items = records.map(r =>
+            this.recordedItemUtil.convertRecordedToRecordedItem(r, isHalfWidth, encodeIndex),
+        );
+        await this.attachWatchHistories(items);
+        return items;
+    }
     private async attachWatchHistories(items: apid.RecordedItem[]): Promise<void> {
         if (!isFeatureEnabled(this.configuration.getConfig(), 'watchHistory')) return;
         const videoFiles = items.flatMap(item => item.videoFiles ?? []);
