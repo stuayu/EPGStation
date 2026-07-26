@@ -1,9 +1,10 @@
-import RecordedSeriesLink from '../../db/entities/RecordedSeriesLink';
+import RecordedSeriesLink, { SeriesAirType } from '../../db/entities/RecordedSeriesLink';
 import Series from '../../db/entities/Series';
 import SeriesAlias from '../../db/entities/SeriesAlias';
 import SeriesChangeHistory, { SeriesChangeAction } from '../../db/entities/SeriesChangeHistory';
 import SeriesEpisode from '../../db/entities/SeriesEpisode';
 import SeriesPendingMatch from '../../db/entities/SeriesPendingMatch';
+import SeriesReservationHint from '../../db/entities/SeriesReservationHint';
 export interface NewSeries {
     title: string;
     normalizedTitle: string;
@@ -71,6 +72,13 @@ export interface NewHistory {
     previous: RecordedSeriesLink | null;
     createdAt: number;
 }
+export interface NewReservationHint {
+    reserveId: number;
+    seriesId: number;
+    episodeId: number;
+    airType: SeriesAirType;
+    createdAt: number;
+}
 export default interface ISeriesDB {
     findCandidates(normalizedTitle: string): Promise<Series[]>;
     createSeries(value: NewSeries): Promise<Series>;
@@ -132,4 +140,12 @@ export default interface ISeriesDB {
     restoreAliases(items: SeriesAlias[]): Promise<void>;
     restorePendingMatches(items: SeriesPendingMatch[]): Promise<void>;
     restoreHistories(items: SeriesChangeHistory[]): Promise<void>;
+
+    // --- 補完予約提案の airType ヒント (§4.7) ---
+    /**
+     * 欠番補完予約提案から予約を作成した際に、録画完了時点で使う airType のヒントを保存する
+     */
+    saveReservationHint(value: NewReservationHint): Promise<SeriesReservationHint>;
+    findReservationHintByReserveId(reserveId: number): Promise<SeriesReservationHint | null>;
+    deleteReservationHint(id: number): Promise<void>;
 }

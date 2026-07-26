@@ -49,6 +49,34 @@ export default class SeriesResolver implements ISeriesResolver {
         if (!isFeatureEnabled(this.config.getConfig(), 'seriesLibrary')) return null;
         const existing = await this.db.findLink(recording.recordedId);
         if (existing?.manualLock) return existing;
+        const now0 = Date.now();
+
+        // 欠番補完予約提案 (§4.7) 経由の予約であれば、ヒントを最優先で使用し、
+        // 通常のスコアリング・しきい値判定をバイパスして直接リンクする
+        if (typeof recording.reserveId === 'number') {
+            const hint = await this.db.findReservationHintByReserveId(recording.reserveId);
+            if (hint) {
+                await this.db.deleteReservationHint(hint.id);
+                const series = await this.db.getSeries(hint.seriesId);
+                const episode = await this.db.findEpisodeById(hint.episodeId);
+                if (series && episode) {
+                    await this.db.deletePendingMatchByRecordedId(recording.recordedId);
+                    return await this.db.saveLink({
+                        recordedId: recording.recordedId,
+                        seriesId: series.id,
+                        channelId: recording.channelId,
+                        episodeId: episode.id,
+                        airType: hint.airType,
+                        matchMethod: 'reservation-hint',
+                        confidence: 1,
+                        manualLock: false,
+                        createdAt: now0,
+                        updatedAt: now0,
+                    });
+                }
+            }
+        }
+
         const parsed = parseSeriesInfo(recording.title);
         if (!parsed.normalizedTitle) return null;
         const now = Date.now();

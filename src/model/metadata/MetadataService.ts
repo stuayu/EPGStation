@@ -4,7 +4,14 @@ import IConfiguration from '../IConfiguration';
 import IAppSettingDB from '../db/IAppSettingDB';
 import IMetadataProviderCacheDB from '../db/IMetadataProviderCacheDB';
 import IAnnictProvider from './annict/IAnnictProvider';
-import { METADATA_NOT_MODIFIED, MetadataSearchContext, MetadataSearchResult, MetadataWork } from './IMetadataProvider';
+import {
+    METADATA_NOT_MODIFIED,
+    MetadataSearchContext,
+    MetadataSearchResult,
+    MetadataWork,
+    PushWatchRecordResult,
+    WatchStatusForSync,
+} from './IMetadataProvider';
 import IMetadataProviderRegistry from './IMetadataProviderRegistry';
 import IMetadataService from './IMetadataService';
 import ISyobocalProvider from './syobocal/ISyobocalProvider';
@@ -115,6 +122,28 @@ export default class MetadataService implements IMetadataService {
         }
         if (value) await this.cache.put(providerName, externalId, value, value.etag ?? null, Date.now() + ttl);
         return value;
+    }
+
+    /**
+     * 書き込み対応プロバイダーへ視聴記録を送信する (§5.5)。キャッシュは経由しない (書き込み系のため)
+     * @param providerName string
+     * @param workExternalId string
+     * @param episodeNumber number
+     * @param watchStatus WatchStatusForSync
+     * @return Promise<PushWatchRecordResult | null>
+     */
+    public async pushWatchRecord(
+        providerName: string,
+        workExternalId: string,
+        episodeNumber: number,
+        watchStatus: WatchStatusForSync,
+    ): Promise<PushWatchRecordResult | null> {
+        this.enabled();
+        const provider = this.registry.get(providerName);
+        if (!provider || typeof provider.pushWatchRecord !== 'function') {
+            throw new Error('MetadataProviderDoesNotSupportPushWatchRecord');
+        }
+        return await provider.pushWatchRecord(workExternalId, episodeNumber, watchStatus);
     }
 
     /**

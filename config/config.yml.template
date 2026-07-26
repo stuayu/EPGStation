@@ -506,6 +506,14 @@ featureFlags:
 # 上書き/追加する (featureFlags.metadataProviders: true の場合のみ使用される)
 # metadataChannelMappingPath: '/path/to/syobocal-channel-map.json'
 
+# チャンネルマッピング表・エイリアス辞書等の共有静的データを GitHub 等から自動取得する URL (§5.1)。
+# 起動時 + metadataSharedDataUpdateIntervalMs 間隔で取得し、ローカル (data/metadataSharedData.json) に
+# キャッシュする。オフライン/取得失敗時は前回キャッシュ→同梱データの順にフォールバックする
+# (featureFlags.metadataProviders: true の場合のみ使用される)
+# metadataSharedDataUrl: 'https://raw.githubusercontent.com/<user>/<repo>/main/syobocal-shared-data.json'
+# 自動更新間隔 (ms)。省略時 24 時間。0 を指定すると起動時取得のみで定期更新を行わない
+# metadataSharedDataUpdateIntervalMs: 86400000
+
 # Webhook / Discord 通知（featureFlags.notifications: true の場合のみ有効）
 # notifications:
 #     maxAttempts: 5

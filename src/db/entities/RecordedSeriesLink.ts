@@ -1,6 +1,6 @@
 import { BaseEntity, Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 export type SeriesAirType = 'first' | 'rerun' | 'delayed' | 'unknown';
-export type SeriesMatchMethod = 'syobocal' | 'annict' | 'title' | 'manual' | 'alias';
+export type SeriesMatchMethod = 'syobocal' | 'annict' | 'title' | 'manual' | 'alias' | 'reservation-hint';
 @Entity({ name: 'recorded_series_link' })
 @Index('IDX_recorded_series_link_recorded', ['recordedId'], { unique: true })
 @Index('IDX_recorded_series_link_series', ['seriesId'])
