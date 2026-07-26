@@ -10,6 +10,7 @@ export interface MetadataSearchResult {
     year?: number;
     score: number;
     imageUrl?: string;
+    syobocalTid?: number;
 }
 export interface MetadataWork extends MetadataSearchResult {
     description?: string;

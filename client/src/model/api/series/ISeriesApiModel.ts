@@ -66,4 +66,5 @@ export default interface ISeriesApiModel {
     getMapping(recordedId: number): Promise<SeriesMapping | null>;
     updateMapping(recordedId: number, value: UpdateSeriesMapping): Promise<SeriesMapping>;
     removeMapping(recordedId: number): Promise<void>;
+    syncAnnict(seriesId: number): Promise<{ annictId: string; syobocalTid: number | null; title: string; score: number }>;
 }

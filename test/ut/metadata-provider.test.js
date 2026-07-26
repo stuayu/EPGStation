@@ -11,18 +11,24 @@ test('registry rejects duplicate provider names', () => {
 });
 test('service merges provider results by score and tolerates failures', async () => {
     const r = new Registry();
-    r.register({
-        name: 'a',
-        search: async () => [{ provider: 'a', externalId: '1', title: 'A', score: 0.7 }],
-        get: async () => null,
-    });
-    r.register({
-        name: 'b',
-        search: async () => {
-            throw Error('down');
+    r.register(
+        {
+            name: 'a',
+            search: async () => [{ provider: 'a', externalId: '1', title: 'A', score: 0.7 }],
+            get: async () => null,
         },
-        get: async () => null,
-    });
+        { name: 'annict', search: async () => [], get: async () => null },
+    );
+    r.register(
+        {
+            name: 'b',
+            search: async () => {
+                throw Error('down');
+            },
+            get: async () => null,
+        },
+        { name: 'annict', search: async () => [], get: async () => null },
+    );
     const s = new Service(
         { getConfig: () => ({ featureFlags: { metadataProviders: true } }) },
         r,
@@ -32,6 +38,7 @@ test('service merges provider results by score and tolerates failures', async ()
             deleteExpired: async () => {},
         },
         { name: 'syobocal', search: async () => [], get: async () => null },
+        { name: 'annict', search: async () => [], get: async () => null },
     );
     const x = await s.search('title');
     assert.equal(x.length, 1);
@@ -56,11 +63,17 @@ test('service caches provider detail', async () => {
         },
         deleteExpired: async () => {},
     };
-    const s = new Service({ getConfig: () => ({ featureFlags: { metadataProviders: true } }) }, r, cache, {
-        name: 'syobocal',
-        search: async () => [],
-        get: async () => null,
-    });
+    const s = new Service(
+        { getConfig: () => ({ featureFlags: { metadataProviders: true } }) },
+        r,
+        cache,
+        {
+            name: 'syobocal',
+            search: async () => [],
+            get: async () => null,
+        },
+        { name: 'annict', search: async () => [], get: async () => null },
+    );
     await s.get('a', '1');
     await s.get('a', '1');
     assert.equal(calls, 1);

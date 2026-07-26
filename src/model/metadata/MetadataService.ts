@@ -6,6 +6,7 @@ import IMetadataProviderRegistry from './IMetadataProviderRegistry';
 import IMetadataService from './IMetadataService';
 import { MetadataSearchContext, MetadataSearchResult, MetadataWork } from './IMetadataProvider';
 import ISyobocalProvider from './syobocal/ISyobocalProvider';
+import IAnnictProvider from './annict/IAnnictProvider';
 @injectable()
 export default class MetadataService implements IMetadataService {
     constructor(
@@ -13,8 +14,10 @@ export default class MetadataService implements IMetadataService {
         @inject('IMetadataProviderRegistry') private registry: IMetadataProviderRegistry,
         @inject('IMetadataProviderCacheDB') private cache: IMetadataProviderCacheDB,
         @inject('ISyobocalProvider') syobocal: ISyobocalProvider,
+        @inject('IAnnictProvider') annict: IAnnictProvider,
     ) {
         if (!this.registry.get(syobocal.name)) this.registry.register(syobocal);
+        if (!this.registry.get(annict.name)) this.registry.register(annict);
     }
     providers() {
         this.enabled();
