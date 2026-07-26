@@ -513,7 +513,9 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                     });
                     this.log.system.info('update program db done');
 
-                    this.emit(EPGUpdateEvent.PROGRAM_UPDATED);
+                    // 追加/更新された番組 id (§4.10 事前マッピングキャッシュのトリガーに利用)
+                    const updatedProgramIds = [...insertValues, ...updateValues].map(p => p.id);
+                    this.emit(EPGUpdateEvent.PROGRAM_UPDATED, updatedProgramIds);
                 }
             } else {
                 // 整理した結果のEventをキューへ戻す

@@ -517,6 +517,11 @@ featureFlags:
     externalFileImport: false
     advancedSearch: false
 
+# しょぼいカレンダー ChID ⇄ Mirakurun networkId/serviceId のマッピング表 (JSON) のパス。
+# 省略時は同梱の初期データ (主要地上波キー局のみ) を使う。指定したファイルの内容は同梱データを
+# 上書き/追加する (featureFlags.metadataProviders: true の場合のみ使用される)
+# metadataChannelMappingPath: 'C:\path\to\syobocal-channel-map.json'
+
 # Webhook / Discord 通知（featureFlags.notifications: true の場合のみ有効）
 # notifications:
 #     maxAttempts: 5

@@ -2962,6 +2962,85 @@ components:
                 previewTruncated:
                     type: boolean
 
+        MetadataProviderInfo:
+            type: object
+            properties:
+                name:
+                    type: string
+            required:
+                - name
+
+        MetadataProviders:
+            type: object
+            properties:
+                providers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MetadataProviderInfo'
+            required:
+                - providers
+
+        MetadataSearchResult:
+            type: object
+            properties:
+                provider:
+                    type: string
+                externalId:
+                    type: string
+                title:
+                    type: string
+                originalTitle:
+                    type: string
+                year:
+                    type: integer
+                score:
+                    type: number
+                imageUrl:
+                    type: string
+                syobocalTid:
+                    type: integer
+            required:
+                - provider
+                - externalId
+                - title
+                - score
+
+        MetadataSearchResults:
+            type: object
+            properties:
+                results:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MetadataSearchResult'
+            required:
+                - results
+
+        ProgramSeriesMetrics:
+            description: 番組⇄シリーズ事前マッピングの精度メトリクス (§4.10)
+            type: object
+            properties:
+                unmatchedRate:
+                    description: 直近バッチにおける未マッチ番組率 (0〜1)
+                    type: number
+                confidenceHistogram:
+                    description: confidence 分布 (0.0-0.2 / 0.2-0.4 / 0.4-0.6 / 0.6-0.8 / 0.8-1.0 の 5 バケット)
+                    type: array
+                    items:
+                        type: integer
+                totalPrograms:
+                    type: integer
+                matchedPrograms:
+                    type: integer
+                updatedAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                    nullable: true
+            required:
+                - unmatchedRate
+                - confidenceHistogram
+                - totalPrograms
+                - matchedPrograms
+                - updatedAt
+
     parameters:
         Offset:
             description: offset

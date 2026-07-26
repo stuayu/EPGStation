@@ -3,7 +3,13 @@ import { inject, injectable } from 'inversify';
 import IAppSettingDB from '../../db/IAppSettingDB';
 import ISecretCrypto from '../../security/ISecretCrypto';
 import { normalizeSeriesTitle } from '../../series/SeriesNormalizer';
-import { MetadataSearchContext, MetadataSearchResult, MetadataWork } from '../IMetadataProvider';
+import {
+    MetadataGetOption,
+    MetadataSearchContext,
+    MetadataSearchResult,
+    MetadataWork,
+    METADATA_NOT_MODIFIED,
+} from '../IMetadataProvider';
 import IProviderHttpClient from '../IProviderHttpClient';
 import IAnnictProvider from './IAnnictProvider';
 interface GraphQLResult<T> {
@@ -30,20 +36,29 @@ export default class AnnictProvider implements IAnnictProvider {
         @inject('IAppSettingDB') private settings: IAppSettingDB,
         @inject('ISecretCrypto') private crypto: ISecretCrypto,
     ) {}
-    public async search(query: string, _context?: MetadataSearchContext): Promise<MetadataSearchResult[]> {
+    public async search(query: string, context?: MetadataSearchContext): Promise<MetadataSearchResult[]> {
         const token = await this.token();
         if (token === null) return [];
+        // context.syobocalTid (前段 syobocal プロバイダーが確定させた TID) がある場合は
+        // 件数を増やして取得し、syobocalTid が一致する作品をタイトル一致より優先して一意確定する (§5.5)
+        const first = typeof context?.syobocalTid === 'number' ? 50 : 20;
         const data = await this.graphql<{ searchWorks: { nodes: AnnictWork[] } }>(
             token,
-            `query SearchWorks($titles: [String!]) { searchWorks(titles: $titles, first: 20) { nodes { annictId title titleKana seasonYear syobocalTid media image { facebookOgImageUrl } } } }`,
-            { titles: [query] },
+            `query SearchWorks($titles: [String!], $first: Int!) { searchWorks(titles: $titles, first: $first) { nodes { annictId title titleKana seasonYear syobocalTid media image { facebookOgImageUrl } } } }`,
+            { titles: [query], first },
         );
+        const nodes = data.searchWorks?.nodes ?? [];
+        if (typeof context?.syobocalTid === 'number') {
+            const exact = nodes.find(x => x.syobocalTid === context.syobocalTid);
+            if (exact) return [this.searchResult(exact, 1)];
+        }
         const normalized = normalizeSeriesTitle(query);
-        return (data.searchWorks?.nodes ?? []).map(x =>
-            this.searchResult(x, normalizeSeriesTitle(x.title) === normalized ? 1 : 0.8),
-        );
+        return nodes.map(x => this.searchResult(x, normalizeSeriesTitle(x.title) === normalized ? 1 : 0.8));
     }
-    public async get(externalId: string): Promise<MetadataWork | null> {
+    public async get(
+        externalId: string,
+        _option?: MetadataGetOption,
+    ): Promise<MetadataWork | null | typeof METADATA_NOT_MODIFIED> {
         const token = await this.token();
         if (token === null) return null;
         const id = Number(externalId);

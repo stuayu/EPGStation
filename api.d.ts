@@ -1472,3 +1472,34 @@ export interface SeriesBackfillResult {
     previewItems?: SeriesBackfillPreviewItem[];
     previewTruncated?: boolean;
 }
+
+export interface MetadataProviderInfo {
+    name: string;
+}
+
+export interface MetadataProviders {
+    providers: MetadataProviderInfo[];
+}
+
+export interface MetadataSearchResult {
+    provider: string;
+    externalId: string;
+    title: string;
+    originalTitle?: string;
+    year?: number;
+    score: number;
+    imageUrl?: string;
+    syobocalTid?: number;
+}
+
+export interface MetadataSearchResults {
+    results: MetadataSearchResult[];
+}
+
+export interface ProgramSeriesMetrics {
+    unmatchedRate: number;
+    confidenceHistogram: number[];
+    totalPrograms: number;
+    matchedPrograms: number;
+    updatedAt: UnixtimeMS | null;
+}

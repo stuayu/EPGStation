@@ -29,6 +29,27 @@ test('Annict provider rejects GraphQL errors', async () => {
     const http = { post: async () => ({ status: 200, json: () => ({ errors: [{ message: 'bad' }] }) }) };
     await assert.rejects(() => new Provider(http, settings, crypto).search('作品'), /AnnictGraphQLError/);
 });
+test('search bypasses title matching and uniquely resolves by syobocalTid when the chain provides it', async () => {
+    const http = {
+        post: async () => ({
+            status: 200,
+            json: () => ({
+                data: {
+                    searchWorks: {
+                        nodes: [
+                            { annictId: 1, title: '似た別作品', seasonYear: 2020, syobocalTid: 11 },
+                            { annictId: 42, title: '全然違う表記の作品', seasonYear: 2024, syobocalTid: 99 },
+                        ],
+                    },
+                },
+            }),
+        }),
+    };
+    const x = await new Provider(http, settings, crypto).search('作品', { syobocalTid: 99 });
+    assert.equal(x.length, 1);
+    assert.equal(x[0].externalId, '42');
+    assert.equal(x[0].score, 1);
+});
 test('disabled Annict performs no request', async () => {
     const p = new Provider(
         {

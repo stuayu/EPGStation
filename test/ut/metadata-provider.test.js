@@ -37,6 +37,7 @@ test('service merges provider results by score and tolerates failures', async ()
             put: async () => {},
             deleteExpired: async () => {},
         },
+        { getAll: async () => ({}) },
         { name: 'syobocal', search: async () => [], get: async () => null },
         { name: 'annict', search: async () => [], get: async () => null },
     );
@@ -67,6 +68,7 @@ test('service caches provider detail', async () => {
         { getConfig: () => ({ featureFlags: { metadataProviders: true } }) },
         r,
         cache,
+        { getAll: async () => ({}) },
         {
             name: 'syobocal',
             search: async () => [],
@@ -77,4 +79,48 @@ test('service caches provider detail', async () => {
     await s.get('a', '1');
     await s.get('a', '1');
     assert.equal(calls, 1);
+});
+test('service chains syobocal -> annict, passing syobocalTid forward and caching search results', async () => {
+    const r = new Registry();
+    let annictContext = null;
+    const syobocal = {
+        name: 'syobocal',
+        search: async () => [{ provider: 'syobocal', externalId: '1', title: 'A', score: 1, syobocalTid: 99 }],
+        get: async () => null,
+    };
+    const annict = {
+        name: 'annict',
+        search: async (_q, context) => {
+            annictContext = context;
+            return [{ provider: 'annict', externalId: '2', title: 'A', score: 1 }];
+        },
+        get: async () => null,
+    };
+    let searchCalls = 0;
+    const originalAnnictSearch = annict.search;
+    annict.search = async (...args) => {
+        searchCalls++;
+        return originalAnnictSearch(...args);
+    };
+    const cacheStore = new Map();
+    const cache = {
+        get: async (p, e) => cacheStore.get(`${p}:${e}`) ?? null,
+        put: async (p, e, v, etag, expiresAt) => {
+            cacheStore.set(`${p}:${e}`, { payload: JSON.stringify(v), etag, expiresAt });
+        },
+        deleteExpired: async () => {},
+    };
+    const s = new Service(
+        { getConfig: () => ({ featureFlags: { metadataProviders: true } }) },
+        r,
+        cache,
+        { getAll: async () => ({}) },
+        syobocal,
+        annict,
+    );
+    const x = await s.search('title');
+    assert.equal(annictContext.syobocalTid, 99);
+    assert.equal(x.length, 2);
+    await s.search('title');
+    assert.equal(searchCalls, 1, 'second search should be served from cache');
 });
