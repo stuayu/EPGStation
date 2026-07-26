@@ -5,8 +5,47 @@ on:
     # タグ push は release.yml が同等のビルドを行うため除外する
     tags-ignore: ['**']
   workflow_dispatch:
+  schedule:
+    - cron: '0 18 * * *' # 03:00 JST: ITB nightly
 
 jobs:
+  test:
+    name: test-${{ matrix.level }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        level: [ut, ita]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Use Node.js 24
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.x
+        cache: npm
+    - name: Install server dependencies
+      run: npm ci
+    - name: Run ${{ matrix.level }}
+      run: npm run test:${{ matrix.level }}
+
+  itb:
+    name: test-itb
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Use Node.js 24
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.x
+        cache: npm
+    - name: Install server dependencies
+      run: npm ci
+    - name: Run ITB
+      run: npm run test:itb
+
   build:
 
     name: build-${{matrix.os}}-${{matrix.node-version}}
