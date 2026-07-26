@@ -3,6 +3,8 @@ import { Container } from 'inversify';
 import ApiUtil from './api/ApiUtil';
 import ChannelApiModel from './api/channel/ChannelApiModel';
 import IChannelApiModel from './api/channel/IChannelApiModel';
+import AppSettingApiModel from './api/config/AppSettingApiModel';
+import IAppSettingApiModel from './api/config/IAppSettingApiModel';
 import ConfigApiModel from './api/config/ConfigApiModel';
 import IConfigApiModel from './api/config/IConfigApiModel';
 import DashboardApiModel from './api/dashboard/DashboardApiModel';
@@ -46,6 +48,8 @@ import VideoApiModel from './api/video/VideoApiModel';
 import VideoUtil from './api/video/VideoUtil';
 import Configuration from './Configuration';
 import ConnectionCheckModel from './ConnectionCheckModel';
+import AppSettingDB from './db/AppSettingDB';
+import IAppSettingDB from './db/IAppSettingDB';
 import ChannelDB from './db/ChannelDB';
 import DBOperator from './db/DBOperator';
 import DropLogFileDB from './db/DropLogFileDB';
@@ -201,6 +205,8 @@ export const set = (container: Container): void => {
 
     container.bind<IDBOperator>('IDBOperator').to(DBOperator).inSingletonScope();
 
+    container.bind<IAppSettingDB>('IAppSettingDB').to(AppSettingDB).inSingletonScope();
+
     container.bind<IChannelDB>('IChannelDB').to(ChannelDB).inSingletonScope();
 
     container.bind<IProgramDB>('IProgramDB').to(ProgramDB).inSingletonScope();
@@ -304,6 +310,7 @@ export const set = (container: Container): void => {
     container.bind<IRecordedItemUtil>('IRecordedItemUtil').to(RecordedItemUtil).inSingletonScope();
 
     container.bind<IConfigApiModel>('IConfigApiModel').to(ConfigApiModel).inSingletonScope();
+    container.bind<IAppSettingApiModel>('IAppSettingApiModel').to(AppSettingApiModel).inSingletonScope();
 
     container.bind<IDashboardApiModel>('IDashboardApiModel').to(DashboardApiModel).inSingletonScope();
 

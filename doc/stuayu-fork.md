@@ -107,6 +107,10 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
             復元作業中に、ruleの部分で失敗する場合は、手動でsqlファイルを修正してください。
 ## 変更箇所
 
+- DBベースのランタイム設定ストアを追加（S5）
+  - `AppSetting`、3 DBマイグレーション、`GET/PUT /api/settings/system`を追加
+  - 設定セクションを検証し、`featureFlags.systemSettings`で既定無効化
+
 - ホームダッシュボード集約APIを追加（S4）
   - 録画中・新着録画・今後の予約・競合件数を `GET /api/dashboard` で並列集約
   - 取得件数を1〜50件に制限し、`featureFlags.dashboard` で既定無効化

@@ -1,0 +1,2 @@
+require('reflect-metadata');
+'use strict';const assert=require('node:assert/strict');const test=require('node:test');const{validateAppSettings}=require('../../dist/model/api/config/AppSettingApiModel');test('settings accepts known sections',()=>assert.doesNotThrow(()=>validateAppSettings({notifications:{}})));test('settings rejects unknown sections',()=>assert.throws(()=>validateAppSettings({danger:true}),/UnknownAppSetting/));
