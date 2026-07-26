@@ -1,6 +1,11 @@
 import * as apid from '../../../api';
 import { OperatorFinishEncodeInfo } from '../event/IOperatorEncodeEvent';
-import { AddVideoFileOption, UploadedVideoFileOption } from '../operator/recorded/IRecordedManageModel';
+import { ImportJobId, ImportJobStatus } from '../operator/recorded/IImportJobManageModel';
+import {
+    AddVideoFileOption,
+    ImportedExternalRecordedFileOption,
+    UploadedVideoFileOption,
+} from '../operator/recorded/IRecordedManageModel';
 
 export interface IPCReservationManageModel {
     getBroadcastStatus(): Promise<apid.BroadcastStatus>;
@@ -26,6 +31,9 @@ export interface IPCRecordedManageModel {
     getCleanupInfo(): Promise<apid.RecordedCleanupInfo>;
     videoFileCleanup(): Promise<void>;
     dropLogFileCleanup(): Promise<void>;
+    startImportJob(items: ImportedExternalRecordedFileOption[]): Promise<ImportJobId>;
+    getImportJobStatus(jobId: ImportJobId): Promise<ImportJobStatus | null>;
+    retryImportJob(jobId: ImportJobId): Promise<ImportJobId | null>;
 }
 
 export interface IPCRecordedTagManageModel {

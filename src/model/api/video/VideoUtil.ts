@@ -49,6 +49,15 @@ export default class VideoUtil implements IVideoUtil {
             }
         }
 
+        // register モードで取り込んだ外部ファイルの実体は importDirs 配下にある
+        if (typeof this.config.importDirs !== 'undefined') {
+            for (const d of this.config.importDirs) {
+                if (d.name === name) {
+                    return d.path;
+                }
+            }
+        }
+
         return null;
     }
 

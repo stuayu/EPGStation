@@ -563,6 +563,40 @@ components:
                     type: array
                     items:
                         type: string
+                featureFlags:
+                    $ref: '#/components/schemas/FeatureFlags'
+                importDirs:
+                    description: 外部録画ファイル取り込みが許可されたディレクトリ名一覧 (featureFlags.externalFileImport が有効な場合のみ意味を持つ)
+                    type: array
+                    items:
+                        type: string
+
+        FeatureFlags:
+            description: 段階導入用の機能フラグ。クライアントはこれを見て機能の表示可否を判断する
+            type: object
+            properties:
+                watchHistory:
+                    type: boolean
+                notifications:
+                    type: boolean
+                dashboard:
+                    type: boolean
+                systemSettings:
+                    type: boolean
+                seriesLibrary:
+                    type: boolean
+                metadataProviders:
+                    type: boolean
+                programSeriesMapping:
+                    type: boolean
+                annictSync:
+                    type: boolean
+                nextUpPanel:
+                    type: boolean
+                externalFileImport:
+                    type: boolean
+                advancedSearch:
+                    type: boolean
 
         ChannelItems:
             type: array
@@ -1891,30 +1925,137 @@ components:
                     description: アップロードファイルのローカルパス
                     type: string
 
-        ImportExternalRecordedOption:
-            description: 外部録画ファイル一括追加オプション
+        ImportMode:
+            description: 外部録画ファイル取り込みモード。register は元ファイルを移動せず登録のみ行う。move は録画ディレクトリへ移動する
+            type: string
+            enum:
+                - register
+                - move
+
+        ImportDuplicateAction:
+            description: 重複する録画が見つかった場合の挙動。skip は取り込まない。add は既存録画に video file を追加する。newRecorded は別録画として新規登録する
+            type: string
+            enum:
+                - skip
+                - add
+                - newRecorded
+
+        ImportScanOption:
+            description: 外部録画ファイル取り込みのディレクトリスキャンオプション
             type: object
             required:
+                - importDirName
+            properties:
+                importDirName:
+                    description: config.importDirs で定義したディレクトリ名
+                    type: string
+                subPath:
+                    description: importDirName 配下のサブパス (省略時はルート)
+                    type: string
+                recursive:
+                    description: サブディレクトリも走査するか (既定 true)
+                    type: boolean
+
+        ImportScanResultItem:
+            description: スキャンで見つかった取り込み候補ファイル 1 件分
+            type: object
+            required:
+                - filePath
+                - fileName
+                - hasProgramTxt
+                - hasErr
+            properties:
+                filePath:
+                    description: 実ファイルパス (importDirs 配下であることを検証済み)
+                    type: string
+                fileName:
+                    description: ファイル名
+                    type: string
+                size:
+                    description: ファイルサイズ (byte)
+                    type: integer
+                estimatedName:
+                    description: ファイル名/program.txt から推定した番組名
+                    type: string
+                estimatedChannelName:
+                    description: 推定したチャンネル名
+                    type: string
+                estimatedChannelId:
+                    $ref: '#/components/schemas/ChannelId'
+                estimatedStartAt:
+                    description: 推定した開始時刻 (UnixTime ms)
+                    type: integer
+                estimatedEndAt:
+                    description: 推定した終了時刻 (UnixTime ms)
+                    type: integer
+                hasProgramTxt:
+                    description: 同名の .program.txt が存在するか
+                    type: boolean
+                hasErr:
+                    description: 同名の .err が存在するか
+                    type: boolean
+                dropCount:
+                    description: .err から解析したドロップ数
+                    type: integer
+                scramblingCount:
+                    description: .err から解析したスクランブル数
+                    type: integer
+                duplicateRecordedIds:
+                    description: 重複していると思われる既存録画の recordedId 一覧
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RecordedId'
+
+        ImportScanResult:
+            description: 取り込みディレクトリスキャン結果
+            type: object
+            required:
+                - items
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ImportScanResultItem'
+
+        ImportRegisterItem:
+            description: 取り込み登録 1 件分のオプション
+            type: object
+            required:
+                - filePath
                 - channelId
+                - name
+                - startAt
                 - parentDirectoryName
                 - fileType
-                - localFilePaths
             properties:
+                filePath:
+                    description: スキャン結果で取得した実ファイルパス
+                    type: string
                 channelId:
                     $ref: '#/components/schemas/ChannelId'
+                name:
+                    description: 番組名
+                    type: string
+                startAt:
+                    description: 開始時刻 (UnixTime ms)
+                    type: integer
+                endAt:
+                    description: 終了時刻 (UnixTime ms、省略時は動画長から算出)
+                    type: integer
                 parentDirectoryName:
-                    description: 親保存ディレクトリ
+                    description: 親保存ディレクトリ (move モードの場合のみ使用)
                     type: string
                 subDirectory:
-                    description: 保存ディレクトリ
+                    description: 保存先サブディレクトリ (move モードの場合のみ使用)
                     type: string
                 fileType:
                     $ref: '#/components/schemas/VideoFileType'
-                localFilePaths:
-                    description: 取り込み対象のローカルファイルパス
-                    type: array
-                    items:
-                        type: string
+                mode:
+                    $ref: '#/components/schemas/ImportMode'
+                duplicateAction:
+                    $ref: '#/components/schemas/ImportDuplicateAction'
+                duplicateRecordedId:
+                    $ref: '#/components/schemas/RecordedId'
                 ruleId:
                     $ref: '#/components/schemas/RuleId'
                 genre1:
@@ -1922,18 +2063,42 @@ components:
                 subGenre1:
                     $ref: '#/components/schemas/ProgramGenreLv2'
 
-        ImportExternalRecordedResultItem:
-            description: 外部録画ファイル 1 件あたりの取り込み結果
+        ImportRegisterOption:
+            description: 外部録画ファイル取り込み登録オプション
+            type: object
+            required:
+                - items
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ImportRegisterItem'
+
+        ImportJobStartResult:
+            description: 取り込みジョブ開始結果
+            type: object
+            required:
+                - jobId
+            properties:
+                jobId:
+                    description: ジョブ id
+                    type: string
+
+        ImportJobResultItem:
+            description: 取り込みジョブ内の 1 ファイル分の結果
             type: object
             required:
                 - localFilePath
                 - imported
             properties:
                 localFilePath:
-                    description: 取り込み対象のローカルファイルパス
+                    description: 取り込み対象のファイルパス
                     type: string
                 imported:
                     description: 取り込みに成功したか
+                    type: boolean
+                skipped:
+                    description: 重複によりスキップされたか
                     type: boolean
                 recordedId:
                     $ref: '#/components/schemas/RecordedId'
@@ -1944,16 +2109,39 @@ components:
                     description: 失敗理由
                     type: string
 
-        ImportExternalRecordedResult:
-            description: 外部録画ファイル一括追加結果
+        ImportJobStatus:
+            description: 取り込みジョブの進捗状況
             type: object
             required:
-                - items
+                - jobId
+                - total
+                - done
+                - successCount
+                - failedCount
+                - isRunning
+                - results
             properties:
-                items:
+                jobId:
+                    type: string
+                total:
+                    description: 対象ファイル総数
+                    type: integer
+                done:
+                    description: 処理済み件数
+                    type: integer
+                successCount:
+                    description: 成功件数
+                    type: integer
+                failedCount:
+                    description: 失敗件数
+                    type: integer
+                isRunning:
+                    description: 実行中かどうか
+                    type: boolean
+                results:
                     type: array
                     items:
-                        $ref: '#/components/schemas/ImportExternalRecordedResultItem'
+                        $ref: '#/components/schemas/ImportJobResultItem'
 
         Version:
             description: バージョン情報
@@ -2821,6 +3009,14 @@ components:
             required: true
             schema:
                 type: integer
+
+        PathImportJobId:
+            description: 外部録画ファイル取り込みジョブ id
+            in: path
+            name: jobId
+            required: true
+            schema:
+                type: string
 
         PathRecordedTagId:
             description: recorded tag id

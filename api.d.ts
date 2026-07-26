@@ -836,6 +836,28 @@ export interface Config {
     // id ベースのエンコードプリセット情報 (新形式)。encode と併存 (クライアント未移行のため encode は維持)
     encodePresets?: ClientEncodePreset[];
     kodiHosts?: string[];
+    // 段階導入用の機能フラグ。クライアントはこれを見て機能の表示可否を判断する
+    featureFlags?: FeatureFlags;
+    // 外部録画ファイル取り込みが許可されたディレクトリ名一覧 (featureFlags.externalFileImport が有効な場合のみ意味を持つ)
+    importDirs?: string[];
+}
+
+/**
+ * 段階導入用の機能フラグ
+ * サーバ側の FEATURE_FLAG_KEYS (src/model/IConfigFile.ts) と同期させること
+ */
+export interface FeatureFlags {
+    watchHistory?: boolean;
+    notifications?: boolean;
+    dashboard?: boolean;
+    systemSettings?: boolean;
+    seriesLibrary?: boolean;
+    metadataProviders?: boolean;
+    programSeriesMapping?: boolean;
+    annictSync?: boolean;
+    nextUpPanel?: boolean;
+    externalFileImport?: boolean;
+    advancedSearch?: boolean;
 }
 
 /**
@@ -1113,35 +1135,109 @@ export interface StorageInfo {
 }
 
 /**
- * 外部録画ファイル一括追加オプション
+ * 外部録画ファイル取り込みモード
+ * register: 元ファイルを移動せず登録のみ行う / move: 録画ディレクトリへ移動する
  */
-export interface ImportExternalRecordedOption {
+export type ImportMode = 'register' | 'move';
+
+/**
+ * 重複する録画が見つかった場合の挙動
+ * skip: 取り込まない / add: 既存録画に video file を追加する / newRecorded: 別録画として新規登録する
+ */
+export type ImportDuplicateAction = 'skip' | 'add' | 'newRecorded';
+
+/**
+ * 外部録画ファイル取り込みのディレクトリスキャンオプション
+ */
+export interface ImportScanOption {
+    importDirName: string; // config.importDirs で定義したディレクトリ名
+    subPath?: string; // importDirName 配下のサブパス (省略時はルート)
+    recursive?: boolean; // サブディレクトリも走査するか (既定 true)
+}
+
+/**
+ * スキャンで見つかった取り込み候補ファイル 1 件分
+ */
+export interface ImportScanResultItem {
+    filePath: string; // 実ファイルパス (importDirs 配下であることを検証済み)
+    fileName: string;
+    size?: number;
+    estimatedName?: string;
+    estimatedChannelName?: string;
+    estimatedChannelId?: ChannelId;
+    estimatedStartAt?: number;
+    estimatedEndAt?: number;
+    hasProgramTxt: boolean;
+    hasErr: boolean;
+    dropCount?: number;
+    scramblingCount?: number;
+    duplicateRecordedIds?: RecordedId[];
+}
+
+/**
+ * 取り込みディレクトリスキャン結果
+ */
+export interface ImportScanResult {
+    items: ImportScanResultItem[];
+}
+
+/**
+ * 取り込み登録 1 件分のオプション
+ */
+export interface ImportRegisterItem {
+    filePath: string; // スキャン結果で取得した実ファイルパス
     channelId: ChannelId;
-    parentDirectoryName: string; // 親保存ディレクトリ
-    subDirectory?: string; // 保存ディレクトリ
+    name: string;
+    startAt: number;
+    endAt?: number;
+    parentDirectoryName: string;
+    subDirectory?: string;
     fileType: VideoFileType;
-    localFilePaths: string[]; // 取り込み対象のローカルファイルパス
+    mode?: ImportMode;
+    duplicateAction?: ImportDuplicateAction;
+    duplicateRecordedId?: RecordedId;
     ruleId?: RuleId;
     genre1?: ProgramGenreLv1;
     subGenre1?: ProgramGenreLv2;
 }
 
 /**
- * 外部録画ファイル 1 件あたりの取り込み結果
+ * 外部録画ファイル取り込み登録オプション
  */
-export interface ImportExternalRecordedResultItem {
-    localFilePath: string; // 取り込み対象のローカルファイルパス
-    imported: boolean; // 取り込みに成功したか
-    recordedId?: RecordedId;
-    name?: string; // 作成された録画の番組名
-    error?: string; // 失敗理由
+export interface ImportRegisterOption {
+    items: ImportRegisterItem[];
 }
 
 /**
- * 外部録画ファイル一括追加結果
+ * 取り込みジョブ開始結果
  */
-export interface ImportExternalRecordedResult {
-    items: ImportExternalRecordedResultItem[];
+export interface ImportJobStartResult {
+    jobId: string;
+}
+
+/**
+ * 取り込みジョブ内の 1 ファイル分の結果
+ */
+export interface ImportJobResultItem {
+    localFilePath: string;
+    imported: boolean;
+    skipped?: boolean;
+    recordedId?: RecordedId;
+    name?: string;
+    error?: string;
+}
+
+/**
+ * 取り込みジョブの進捗状況
+ */
+export interface ImportJobStatus {
+    jobId: string;
+    total: number;
+    done: number;
+    successCount: number;
+    failedCount: number;
+    isRunning: boolean;
+    results: ImportJobResultItem[];
 }
 
 /**

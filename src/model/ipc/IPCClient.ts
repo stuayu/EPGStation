@@ -4,7 +4,12 @@ import * as apid from '../../../api';
 import { OperatorFinishEncodeInfo } from '../event/IOperatorEncodeEvent';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
-import { AddVideoFileOption, UploadedVideoFileOption } from '../operator/recorded/IRecordedManageModel';
+import { ImportJobId } from '../operator/recorded/IImportJobManageModel';
+import {
+    AddVideoFileOption,
+    ImportedExternalRecordedFileOption,
+    UploadedVideoFileOption,
+} from '../operator/recorded/IRecordedManageModel';
 import IEncodeManageModel from '../service/encode/IEncodeManageModel';
 import ISocketIOManageModel from '../service/socketio/ISocketIOManageModel';
 import IIPCClient, {
@@ -323,6 +328,33 @@ export default class IPCClient implements IIPCClient {
                     },
                     0, // タイムアウトなし
                 );
+            },
+            startImportJob: (items: ImportedExternalRecordedFileOption[]) => {
+                return this.send<ImportJobId>({
+                    model: ModelName.recorded,
+                    func: RecordedFunctions.startImportJob,
+                    args: {
+                        items: items,
+                    },
+                });
+            },
+            getImportJobStatus: (jobId: ImportJobId) => {
+                return this.send({
+                    model: ModelName.recorded,
+                    func: RecordedFunctions.getImportJobStatus,
+                    args: {
+                        jobId: jobId,
+                    },
+                });
+            },
+            retryImportJob: (jobId: ImportJobId) => {
+                return this.send<ImportJobId | null>({
+                    model: ModelName.recorded,
+                    func: RecordedFunctions.retryImportJob,
+                    args: {
+                        jobId: jobId,
+                    },
+                });
             },
         };
     }

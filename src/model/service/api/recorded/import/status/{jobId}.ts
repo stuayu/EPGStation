@@ -1,14 +1,17 @@
 import { Operation } from 'express-openapi';
-import * as apid from '../../../../../api';
-import IRecordedApiModel from '../../../api/recorded/IRecordedApiModel';
-import container from '../../../ModelContainer';
-import * as api from '../../api';
+import IRecordedApiModel from '../../../../../api/recorded/IRecordedApiModel';
+import container from '../../../../../ModelContainer';
+import * as api from '../../../../api';
 
-export const post: Operation = async (req, res) => {
+export const get: Operation = async (req, res) => {
     const recordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
     try {
-        const option = <apid.ImportExternalRecordedOption>req.body;
-        api.responseJSON(res, 200, await recordedApiModel.importExternalRecordedFiles(option));
+        const status = await recordedApiModel.getImportJobStatus(`${req.params.jobId}`);
+        if (status === null) {
+            api.responseError(res, { code: 404, message: 'import job is not found' });
+        } else {
+            api.responseJSON(res, 200, status);
+        }
     } catch (err: unknown) {
         const message = api.getErrorMessage(err);
         if (message === 'ExternalFileImportFeatureIsDisabled')
@@ -17,33 +20,23 @@ export const post: Operation = async (req, res) => {
     }
 };
 
-post.apiDoc = {
-    summary: '外部録画ファイルを一括追加',
+get.apiDoc = {
+    summary: '外部録画ファイル取り込みジョブの進捗を取得',
     tags: ['recorded'],
-    description: '既に存在するローカルの動画ファイルを録画情報として一括登録する',
-    requestBody: {
-        content: {
-            'application/json': {
-                schema: {
-                    $ref: '#/components/schemas/ImportExternalRecordedOption',
-                },
-            },
-        },
-        required: true,
-    },
+    parameters: [{ $ref: '#/components/parameters/PathImportJobId' }],
     responses: {
         200: {
-            description: '一括追加しました',
+            description: '取得しました',
             content: {
                 'application/json': {
                     schema: {
-                        $ref: '#/components/schemas/ImportExternalRecordedResult',
+                        $ref: '#/components/schemas/ImportJobStatus',
                     },
                 },
             },
         },
         404: {
-            description: '機能が無効',
+            description: 'ジョブが存在しない、または機能が無効',
             content: {
                 'application/json': {
                     schema: {

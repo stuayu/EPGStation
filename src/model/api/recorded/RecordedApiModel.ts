@@ -1,20 +1,23 @@
 import { inject, injectable } from 'inversify';
+import * as path from 'path';
 import * as apid from '../../../../api';
 import FileUtil from '../../../util/FileUtil';
+import IChannelDB from '../../db/IChannelDB';
 import IRecordedDB, { FindAllOption } from '../../db/IRecordedDB';
 import IWatchHistoryDB from '../../db/IWatchHistoryDB';
 import ISeriesDB from '../../db/ISeriesDB';
 import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
 import IIPCClient from '../../ipc/IIPCClient';
-import IRecordedManageModel, {
-    ImportedExternalRecordedFileOption,
-    UploadedVideoFileOption,
-} from '../../operator/recorded/IRecordedManageModel';
+import EDCBErrParser from '../../recorded/import/EDCBErrParser';
+import EDCBFileNameParser from '../../recorded/import/EDCBFileNameParser';
+import EDCBProgramTxtParser from '../../recorded/import/EDCBProgramTxtParser';
+import ImportDirectoryScanner from '../../recorded/import/ImportDirectoryScanner';
+import ImportPathValidator from '../../recorded/import/ImportPathValidator';
 import IEncodeManageModel from '../../service/encode/IEncodeManageModel';
+import { UploadedVideoFileOption } from '../../operator/recorded/IRecordedManageModel';
 import IRecordedItemUtil from '../IRecordedItemUtil';
-import IVideoUtil from '../video/IVideoUtil';
-import IRecordedApiModel, { ImportExternalRecordedFilesResult, NextUpResult } from './IRecordedApiModel';
+import IRecordedApiModel, { NextUpResult } from './IRecordedApiModel';
 
 @injectable()
 export default class RecordedApiModel implements IRecordedApiModel {
@@ -25,8 +28,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
     private configuration: IConfiguration;
     private watchHistoryDB: IWatchHistoryDB;
     private seriesDB: ISeriesDB;
-    private videoUtil: IVideoUtil;
-    private recordedManage: IRecordedManageModel;
+    private channelDB: IChannelDB;
 
     constructor(
         @inject('IIPCClient') ipc: IIPCClient,
@@ -36,8 +38,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
         @inject('IConfiguration') configuration: IConfiguration,
         @inject('IWatchHistoryDB') watchHistoryDB: IWatchHistoryDB,
         @inject('ISeriesDB') seriesDB: ISeriesDB,
-        @inject('IVideoUtil') videoUtil: IVideoUtil,
-        @inject('IRecordedManageModel') recordedManage: IRecordedManageModel,
+        @inject('IChannelDB') channelDB: IChannelDB,
     ) {
         this.recordedDB = recordedDB;
         this.ipc = ipc;
@@ -46,8 +47,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
         this.configuration = configuration;
         this.watchHistoryDB = watchHistoryDB;
         this.seriesDB = seriesDB;
-        this.videoUtil = videoUtil;
-        this.recordedManage = recordedManage;
+        this.channelDB = channelDB;
     }
 
     /**
@@ -138,36 +138,205 @@ export default class RecordedApiModel implements IRecordedApiModel {
         return items;
     }
 
-    public async importExternalRecordedFiles(option: {
-        channelId: apid.ChannelId;
-        parentDirectoryName: string;
-        subDirectory?: string;
-        fileType: apid.VideoFileType;
-        localFilePaths: string[];
-        ruleId?: apid.RuleId;
-        genre1?: apid.ProgramGenreLv1;
-        subGenre1?: apid.ProgramGenreLv2;
-    }): Promise<ImportExternalRecordedFilesResult> {
-        if (!isFeatureEnabled(this.configuration.getConfig(), 'externalFileImport'))
+    /**
+     * 外部録画ファイル取り込みディレクトリをスキャンし、取り込み候補を返す (読み取り専用、DB/実ファイルの変更は行わない)
+     * @param option: apid.ImportScanOption
+     * @return Promise<apid.ImportScanResult>
+     */
+    public async scanImportDirectory(option: apid.ImportScanOption): Promise<apid.ImportScanResult> {
+        if (!isFeatureEnabled(this.configuration.getConfig(), 'externalFileImport')) {
             throw new Error('ExternalFileImportFeatureIsDisabled');
-        const localFilePaths = option.localFilePaths.map(x => x.trim()).filter(x => x.length > 0);
-        if (localFilePaths.length === 0) throw new Error('ExternalFilePathsAreEmpty');
-        const items: ImportedExternalRecordedFileOption[] = [];
-        for (const localFilePath of localFilePaths) {
-            await FileUtil.stat(localFilePath);
-            await this.videoUtil.getInfo(localFilePath);
-            items.push({
-                localFilePath,
-                parentDirectoryName: option.parentDirectoryName,
-                subDirectory: option.subDirectory,
-                fileType: option.fileType,
-                channelId: option.channelId,
-                ruleId: option.ruleId,
-                genre1: option.genre1,
-                subGenre1: option.subGenre1,
-            });
         }
-        return { items: await this.recordedManage.importExternalRecordedFiles(items) };
+
+        const config = this.configuration.getConfig();
+        const importDirs = config.importDirs ?? [];
+        const dir = importDirs.find(d => d.name === option.importDirName);
+        if (typeof dir === 'undefined') {
+            throw new Error('ImportDirNotFound');
+        }
+
+        if (typeof option.subPath !== 'undefined') {
+            ImportPathValidator.validateSubDirectory(option.subPath);
+        }
+
+        const targetDirPath = typeof option.subPath === 'string' ? path.join(dir.path, option.subPath) : dir.path;
+
+        // importDirs 配下であることを再検証する (subPath によるトラバーサル対策の多層防御)
+        const resolvedDir = await ImportPathValidator.resolveImportTargetPath(targetDirPath, importDirs).catch(
+            () => null,
+        );
+        if (resolvedDir === null) {
+            throw new Error('ImportPathNotAllowed');
+        }
+
+        const candidates = await ImportDirectoryScanner.scan(resolvedDir.realPath, option.recursive ?? true);
+        const channels = await this.channelDB.findAll();
+
+        const items: apid.ImportScanResultItem[] = [];
+        for (const candidate of candidates) {
+            const item = await this.toScanResultItem(candidate, channels);
+            items.push(item);
+        }
+
+        return { items };
+    }
+
+    /**
+     * スキャン候補 1 件分を apid.ImportScanResultItem に変換する
+     */
+    private async toScanResultItem(
+        candidate: ImportDirectoryScanner.CandidateFile,
+        channels: { id: apid.ChannelId; name: string; halfWidthName: string }[],
+    ): Promise<apid.ImportScanResultItem> {
+        const parsedName = path.parse(candidate.fileName);
+        let name: string | undefined = parsedName.name;
+        let channelName: string | undefined;
+        let startAt: number | undefined;
+        let endAt: number | undefined;
+
+        const fileNameResult = EDCBFileNameParser.parse(
+            parsedName.name,
+            this.configuration.getConfig().importFileNamePatterns ?? [],
+        );
+        if (fileNameResult !== null) {
+            if (typeof fileNameResult.name === 'string') name = fileNameResult.name;
+            channelName = fileNameResult.channelName;
+            startAt = fileNameResult.startAt;
+        }
+
+        if (candidate.programTxtPath !== null) {
+            try {
+                const content = await FileUtil.readFile(candidate.programTxtPath);
+                const parsed = EDCBProgramTxtParser.parse(content);
+                if (typeof parsed.name === 'string') name = parsed.name;
+                if (typeof parsed.channelName === 'string') channelName = parsed.channelName;
+                if (typeof parsed.startAt === 'number') startAt = parsed.startAt;
+                if (typeof parsed.endAt === 'number') endAt = parsed.endAt;
+            } catch (err: any) {
+                // 読み取り失敗時は無視する
+            }
+        }
+
+        let dropCount: number | undefined;
+        let scramblingCount: number | undefined;
+        if (candidate.errPath !== null) {
+            try {
+                const content = await FileUtil.readFile(candidate.errPath);
+                const parsed = EDCBErrParser.parse(content);
+                dropCount = parsed.dropCount;
+                scramblingCount = parsed.scramblingCount;
+            } catch (err: any) {
+                // 読み取り失敗時は無視する
+            }
+        }
+
+        const channel =
+            typeof channelName === 'string'
+                ? channels.find(
+                      c => c.name === channelName || c.halfWidthName === channelName || c.name.includes(channelName as string),
+                  )
+                : undefined;
+
+        let duplicateRecordedIds: apid.RecordedId[] | undefined;
+        if (typeof channel !== 'undefined' && typeof startAt === 'number') {
+            const duplicates = await this.recordedDB.findDuplicateCandidates(
+                channel.id,
+                startAt,
+                RecordedApiModel.DUPLICATE_TOLERANCE_MS,
+            );
+            if (duplicates.length > 0) {
+                duplicateRecordedIds = duplicates.map(d => d.id);
+            }
+        }
+
+        let size: number | undefined;
+        try {
+            size = await FileUtil.getFileSize(candidate.filePath);
+        } catch (err: any) {
+            // 取得できなくても無視する
+        }
+
+        const item: apid.ImportScanResultItem = {
+            filePath: candidate.filePath,
+            fileName: candidate.fileName,
+            hasProgramTxt: candidate.programTxtPath !== null,
+            hasErr: candidate.errPath !== null,
+        };
+        if (typeof size === 'number') item.size = size;
+        if (typeof name === 'string') item.estimatedName = name;
+        if (typeof channelName === 'string') item.estimatedChannelName = channelName;
+        if (typeof channel !== 'undefined') item.estimatedChannelId = channel.id;
+        if (typeof startAt === 'number') item.estimatedStartAt = startAt;
+        if (typeof endAt === 'number') item.estimatedEndAt = endAt;
+        if (typeof dropCount === 'number') item.dropCount = dropCount;
+        if (typeof scramblingCount === 'number') item.scramblingCount = scramblingCount;
+        if (typeof duplicateRecordedIds !== 'undefined') item.duplicateRecordedIds = duplicateRecordedIds;
+
+        return item;
+    }
+
+    /**
+     * 外部録画ファイル取り込みジョブを開始する (実際の登録処理は IPC 経由で Operator が行う)
+     * @param option: apid.ImportRegisterOption
+     * @return Promise<apid.ImportJobStartResult>
+     */
+    public async startImportJob(option: apid.ImportRegisterOption): Promise<apid.ImportJobStartResult> {
+        if (!isFeatureEnabled(this.configuration.getConfig(), 'externalFileImport')) {
+            throw new Error('ExternalFileImportFeatureIsDisabled');
+        }
+
+        if (option.items.length === 0) {
+            throw new Error('ImportItemsAreEmpty');
+        }
+
+        const items = option.items.map(item => ({
+            localFilePath: item.filePath,
+            parentDirectoryName: item.parentDirectoryName,
+            subDirectory: item.subDirectory,
+            fileType: item.fileType,
+            channelId: item.channelId,
+            mode: item.mode,
+            name: item.name,
+            startAt: item.startAt,
+            endAt: item.endAt,
+            duplicateAction: item.duplicateAction,
+            duplicateRecordedId: item.duplicateRecordedId,
+            ruleId: item.ruleId,
+            genre1: item.genre1,
+            subGenre1: item.subGenre1,
+        }));
+
+        const jobId = await this.ipc.recorded.startImportJob(items);
+
+        return { jobId };
+    }
+
+    /**
+     * 取り込みジョブの進捗を取得する
+     * @param jobId: string
+     * @return Promise<apid.ImportJobStatus | null>
+     */
+    public async getImportJobStatus(jobId: string): Promise<apid.ImportJobStatus | null> {
+        if (!isFeatureEnabled(this.configuration.getConfig(), 'externalFileImport')) {
+            throw new Error('ExternalFileImportFeatureIsDisabled');
+        }
+
+        return this.ipc.recorded.getImportJobStatus(jobId);
+    }
+
+    /**
+     * 取り込みジョブの失敗ファイルのみを再実行する
+     * @param jobId: string
+     * @return Promise<apid.ImportJobStartResult | null>
+     */
+    public async retryImportJob(jobId: string): Promise<apid.ImportJobStartResult | null> {
+        if (!isFeatureEnabled(this.configuration.getConfig(), 'externalFileImport')) {
+            throw new Error('ExternalFileImportFeatureIsDisabled');
+        }
+
+        const newJobId = await this.ipc.recorded.retryImportJob(jobId);
+
+        return newJobId === null ? null : { jobId: newJobId };
     }
 
     private async attachWatchHistories(items: apid.RecordedItem[]): Promise<void> {
@@ -271,4 +440,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
     public async createNewRecorded(option: apid.CreateNewRecordedOption): Promise<apid.RecordedId> {
         return await this.ipc.recorded.createNewRecorded(option);
     }
+
+    // 外部録画ファイル取り込みの重複判定に使う時刻許容誤差 (ms)
+    private static readonly DUPLICATE_TOLERANCE_MS = 5 * 60 * 1000;
 }

@@ -17,6 +17,15 @@ export interface RecordedDirInfo {
     limitCmd?: string; // 空き容量限界値を超えたときに実行するコマンド
 }
 
+/**
+ * 外部録画ファイル取り込み (EDCB 等) を許可するディレクトリ
+ * 未設定 (空配列) の場合は取り込み機能自体が無効となる
+ */
+export interface ImportDirInfo {
+    name: string;
+    path: string;
+}
+
 export interface URLSchemeInfo {
     ios?: string;
     android?: string;
@@ -176,6 +185,17 @@ export default interface IConfigFile {
     recorded: RecordedDirInfo[];
     // 録画一時ディレクトリ
     recordedTmp?: string;
+
+    // 外部録画ファイル (EDCB 等) の取り込みを許可するディレクトリ。未設定 (既定 []) の場合は取り込み機能が無効
+    importDirs?: ImportDirInfo[];
+    // 取り込み時の既定モード。register: 元ファイルを移動せずそのまま登録する / move: 録画ディレクトリへ移動する
+    importDefaultMode?: 'register' | 'move';
+    // EDCB ファイル名推定用のカスタム正規表現 (named capture group: year, month, day, hour, min, sec, name, channel)
+    importFileNamePatterns?: string[];
+    // 取り込みディレクトリの自動監視を有効にするか (既定 false)
+    importWatch?: boolean;
+    // 自動監視の実行間隔 (秒)
+    importWatchIntervalSec?: number;
 
     // 録画履歴保存期間
     recordedHistoryRetentionPeriodDays: number;

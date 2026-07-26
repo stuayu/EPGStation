@@ -21,6 +21,7 @@ import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IRecordingManageModel from '../recording/IRecordingManageModel';
+import ImportPathValidator from '../../recorded/import/ImportPathValidator';
 import IRecordedManageModel, {
     AddVideoFileOption,
     ImportedExternalRecordedFileOption,
@@ -121,9 +122,14 @@ class RecordedManageModel implements IRecordedManageModel {
             }
         }
 
-        // 録画ファイル実ファイル削除
+        // 録画ファイル実ファイル削除 (register モードで取り込んだ外部ファイルは実ファイルを削除せず登録解除のみ行う)
         if (hasVideoFiles === true && typeof recorded.videoFiles !== 'undefined') {
             for (const v of recorded.videoFiles) {
+                if (v.isExternalFile === true) {
+                    this.log.system.info(`skip deleting external file (register mode): video file id ${v.id}`);
+                    continue;
+                }
+
                 let filePath: string | null;
                 try {
                     filePath = await this.videoUtil.getFullFilePathFromId(v.id);
@@ -253,6 +259,7 @@ class RecordedManageModel implements IRecordedManageModel {
         videoFile.name = option.name;
         videoFile.size = fileSize;
         videoFile.recordedId = option.recordedId;
+        videoFile.isExternalFile = option.isExternalFile === true;
 
         const newVideoFileId = await this.videoFileDB.insertOnce(videoFile).catch(err => {
             this.log.system.error(`failed to add video: ${option.parentDirectoryName}/${option.filePath}`);
@@ -413,40 +420,110 @@ class RecordedManageModel implements IRecordedManageModel {
         }
     }
 
+    /**
+     * 外部録画ファイル (EDCB 等) を取り込む
+     * localFilePath は必ず IConfigFile.importDirs 配下の実パス (シンボリックリンク解決後) であることを検証したうえで処理する
+     * @param options: ImportedExternalRecordedFileOption[]
+     * @return Promise<ImportedExternalRecordedFileResult[]>
+     */
     public async importExternalRecordedFiles(
         options: ImportedExternalRecordedFileOption[],
     ): Promise<ImportedExternalRecordedFileResult[]> {
+        const importDirs = this.config.importDirs ?? [];
         const results: ImportedExternalRecordedFileResult[] = [];
+
         for (const option of options) {
             let recordedId: apid.RecordedId | null = null;
+            let isNewRecorded = false;
+
             try {
-                const stats = await FileUtil.stat(option.localFilePath);
-                if (stats.isFile() === false) throw new Error('ExternalFileIsNotFile');
-                const info = await this.videoUtil.getInfo(option.localFilePath);
-                const parsed = path.parse(option.localFilePath);
-                const startAt = Math.floor(stats.mtimeMs);
-                const endAt = startAt + Math.max(1000, Math.round(info.duration * 1000));
-                const createOption: apid.CreateNewRecordedOption = {
-                    channelId: option.channelId,
-                    startAt,
-                    endAt,
-                    name: parsed.name,
-                };
-                if (typeof option.ruleId === 'number') createOption.ruleId = option.ruleId;
-                if (typeof option.genre1 === 'number') createOption.genre1 = option.genre1;
-                if (typeof option.subGenre1 === 'number') createOption.subGenre1 = option.subGenre1;
-                recordedId = await this.createNewRecorded(createOption);
-                await this.addUploadedVideoFile({
-                    recordedId,
-                    parentDirectoryName: option.parentDirectoryName,
-                    subDirectory: option.subDirectory,
-                    viewName: parsed.base,
-                    fileType: option.fileType,
-                    localFilePath: option.localFilePath,
-                });
-                results.push({ localFilePath: option.localFilePath, imported: true, recordedId, name: parsed.name });
+                // パス検証 (importDirs 外・シンボリックリンク経由の脱出・.. トラバーサルを拒否する)
+                const resolved = await ImportPathValidator.resolveImportTargetPath(option.localFilePath, importDirs);
+                if (typeof option.subDirectory !== 'undefined') {
+                    ImportPathValidator.validateSubDirectory(option.subDirectory);
+                }
+
+                const stats = await FileUtil.stat(resolved.realPath);
+                if (stats.isFile() === false) {
+                    throw new Error('ExternalFileIsNotFile');
+                }
+
+                const parsed = path.parse(resolved.realPath);
+                const startAt = typeof option.startAt === 'number' ? option.startAt : Math.floor(stats.mtimeMs);
+                const name = typeof option.name === 'string' && option.name.length > 0 ? option.name : parsed.name;
+                const duplicateAction = option.duplicateAction ?? 'newRecorded';
+
+                // 重複としてスキップする場合は動画情報の解析すら行わず早期リターンする (ffprobe のコスト削減)
+                if (duplicateAction === 'skip') {
+                    results.push({ localFilePath: option.localFilePath, imported: false, skipped: true });
+                    continue;
+                }
+
+                let endAt = option.endAt;
+                if (typeof endAt !== 'number') {
+                    const info = await this.videoUtil.getInfo(resolved.realPath);
+                    endAt = startAt + Math.max(1000, Math.round(info.duration * 1000));
+                }
+
+                if (duplicateAction === 'add' && typeof option.duplicateRecordedId === 'number') {
+                    recordedId = option.duplicateRecordedId;
+                } else {
+                    const createOption: apid.CreateNewRecordedOption = {
+                        channelId: option.channelId,
+                        startAt,
+                        endAt,
+                        name,
+                    };
+                    if (typeof option.ruleId === 'number') {
+                        createOption.ruleId = option.ruleId;
+                    }
+                    if (typeof option.genre1 === 'number') {
+                        createOption.genre1 = option.genre1;
+                    }
+                    if (typeof option.subGenre1 === 'number') {
+                        createOption.subGenre1 = option.subGenre1;
+                    }
+                    recordedId = await this.createNewRecorded(createOption);
+                    isNewRecorded = true;
+                }
+
+                const mode = option.mode ?? this.config.importDefaultMode ?? 'register';
+
+                if (mode === 'move') {
+                    // 録画ディレクトリへ移動する (既存のアップロード処理を再利用する)
+                    await this.addUploadedVideoFile({
+                        recordedId,
+                        parentDirectoryName: option.parentDirectoryName,
+                        subDirectory: option.subDirectory,
+                        viewName: parsed.base,
+                        fileType: option.fileType,
+                        localFilePath: resolved.realPath,
+                    });
+                } else {
+                    // register モード: 実ファイルには一切触れず、importDirs のエントリ名 + 相対パスで登録する
+                    const videoFileId = await this.addVideoFile({
+                        recordedId,
+                        parentDirectoryName: resolved.dirName,
+                        filePath: resolved.relativePath,
+                        type: option.fileType,
+                        name: parsed.base,
+                        isExternalFile: true,
+                    });
+
+                    const recorded = await this.recordedDB.findId(recordedId);
+                    const needsCreateThumbnail =
+                        recorded === null ||
+                        typeof recorded.thumbnails === 'undefined' ||
+                        recorded.thumbnails.length === 0;
+                    this.recordedEvent.emitAddUploadedVideoFile(videoFileId, needsCreateThumbnail);
+                }
+
+                results.push({ localFilePath: option.localFilePath, imported: true, recordedId, name });
             } catch (err: any) {
-                if (recordedId !== null) await this.delete(recordedId, true).catch(() => {});
+                // 新規作成した recorded がある場合のみロールバックする。register モードでは実ファイルは一切操作していないため安全
+                if (isNewRecorded === true && recordedId !== null) {
+                    await this.delete(recordedId, true).catch(() => {});
+                }
                 results.push({
                     localFilePath: option.localFilePath,
                     imported: false,
@@ -454,6 +531,7 @@ class RecordedManageModel implements IRecordedManageModel {
                 });
             }
         }
+
         return results;
     }
 
@@ -559,14 +637,18 @@ class RecordedManageModel implements IRecordedManageModel {
             return await this.delete(video.recordedId, false);
         }
 
-        // 実ファイル削除
-        const filePath = await this.videoUtil.getFullFilePathFromId(videoFileid);
-        if (filePath !== null) {
-            this.log.system.info(`delete: ${filePath}`);
-            await FileUtil.unlink(filePath).catch(err => {
-                this.log.system.error(`failed to delete ${filePath}`);
-                this.log.system.error(err);
-            });
+        // 実ファイル削除 (register モードで取り込んだ外部ファイルは削除せず登録解除のみ行う)
+        if (video.isExternalFile === true) {
+            this.log.system.info(`skip deleting external file (register mode): video file id ${videoFileid}`);
+        } else {
+            const filePath = await this.videoUtil.getFullFilePathFromId(videoFileid);
+            if (filePath !== null) {
+                this.log.system.info(`delete: ${filePath}`);
+                await FileUtil.unlink(filePath).catch(err => {
+                    this.log.system.error(`failed to delete ${filePath}`);
+                    this.log.system.error(err);
+                });
+            }
         }
 
         // DB から削除

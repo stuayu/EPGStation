@@ -90,6 +90,9 @@ export enum RecordedFunctions {
     getCleanupInfo = 'getCleanupInfo',
     videoFileCleanup = 'videoFileCleanup',
     dropLogFileCleanup = 'dropLogFileCleanup',
+    startImportJob = 'startImportJob',
+    getImportJobStatus = 'getImportJobStatus',
+    retryImportJob = 'retryImportJob',
 }
 
 /**

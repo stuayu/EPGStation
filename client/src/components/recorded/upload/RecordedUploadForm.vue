@@ -75,28 +75,66 @@
                 </SearchOptionRow>
             </div>
         </div>
-        <div class="pa-4">
+        <div class="pa-4" v-if="uploadState.isExternalImportEnabled() === true">
             <v-divider class="mb-4"></v-divider>
-            <div class="text-h6 mb-3">外部ファイル一括追加</div>
-            <SearchOptionRow title="保存先ディレクトリ※" :required="true">
-                <v-select v-model="uploadState.externalParentDirectoryName" :items="uploadState.getPrentDirectoryItems()" label="directory"></v-select>
+            <div class="text-h6 mb-3">外部録画ファイル取り込み (EDCB 等)</div>
+
+            <SearchOptionRow title="取り込み元ディレクトリ※" :required="true">
+                <v-select v-model="uploadState.importDirName" :items="uploadState.getImportDirItems()" label="import directory"></v-select>
             </SearchOptionRow>
-            <SearchOptionRow title="ファイル種別※" :required="true">
-                <v-select v-model="uploadState.externalFileType" :items="uploadState.getFileTypeItems()" label="file type"></v-select>
+            <SearchOptionRow title="サブパス">
+                <v-text-field v-model="uploadState.importSubPath" label="sub path" clearable></v-text-field>
             </SearchOptionRow>
-            <SearchOptionRow title="保存先サブディレクトリ">
-                <v-text-field v-model="uploadState.externalSubDirectory" label="sub directory" clearable></v-text-field>
+            <SearchOptionRow title="サブディレクトリも走査">
+                <v-checkbox v-model="uploadState.importRecursive"></v-checkbox>
             </SearchOptionRow>
-            <SearchOptionRow title="ローカルパス一覧※" :required="true">
-                <v-textarea v-model="uploadState.externalFilePaths" label="1行に1ファイル" rows="6"></v-textarea>
+            <SearchOptionRow title="登録先ディレクトリ (move モード用)">
+                <v-select v-model="uploadState.importParentDirectoryName" :items="uploadState.getPrentDirectoryItems()" label="directory"></v-select>
             </SearchOptionRow>
+
+            <v-card-actions>
+                <v-spacer></v-spacer>
+                <v-btn v-on:click="scanImport" :loading="uploadState.importIsScanning" variant="text" color="secondary">スキャン</v-btn>
+            </v-card-actions>
+
+            <div v-if="uploadState.importScanResults.length > 0">
+                <v-divider class="mb-2"></v-divider>
+                <div v-for="row in uploadState.importScanResults" v-bind:key="row.result.filePath" class="import-row pb-2 mb-2">
+                    <v-checkbox v-model="row.selected" :label="row.result.fileName" hide-details></v-checkbox>
+                    <div class="d-flex flex-wrap">
+                        <v-text-field v-model="row.editedName" label="番組名" class="import-field" clearable></v-text-field>
+                        <v-select v-model="row.editedChannelId" :items="uploadState.getChannelItems()" item-title="text" item-value="value" label="放送局" class="import-field" clearable></v-select>
+                        <v-select v-model="row.mode" :items="uploadState.getImportModeItems()" label="取り込みモード" class="import-field"></v-select>
+                        <v-select
+                            v-if="row.result.duplicateRecordedIds && row.result.duplicateRecordedIds.length > 0"
+                            v-model="row.duplicateAction"
+                            :items="uploadState.getImportDuplicateActionItems()"
+                            label="重複時の挙動"
+                            class="import-field"
+                        ></v-select>
+                        <span v-if="row.result.duplicateRecordedIds && row.result.duplicateRecordedIds.length > 0" class="text-warning ml-2 align-self-center">重複の可能性があります</span>
+                    </div>
+                </div>
+
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn v-on:click="startImportRegistration" variant="text" color="primary">選択したファイルを登録</v-btn>
+                </v-card-actions>
+            </div>
+
+            <div v-if="uploadState.importJobStatus !== null" class="pa-2">
+                <div>進捗: {{ uploadState.importJobStatus.done }} / {{ uploadState.importJobStatus.total }} (成功 {{ uploadState.importJobStatus.successCount }} / 失敗 {{ uploadState.importJobStatus.failedCount }})</div>
+                <v-progress-linear :model-value="(uploadState.importJobStatus.done / Math.max(1, uploadState.importJobStatus.total)) * 100"></v-progress-linear>
+                <v-btn v-if="uploadState.importJobStatus.isRunning === false && uploadState.importJobStatus.failedCount > 0" v-on:click="retryFailedImports" variant="text" color="error">
+                    失敗分を再実行
+                </v-btn>
+            </div>
         </div>
         <v-divider></v-divider>
         <v-card-actions>
             <v-spacer></v-spacer>
             <v-btn v-on:click="reset" variant="text" color="error">リセット</v-btn>
             <v-btn v-on:click="upload" variant="text" color="primary">アップロード</v-btn>
-            <v-btn v-on:click="importExternal" variant="text" color="secondary">外部ファイル一括追加</v-btn>
         </v-card-actions>
     </v-card>
 </template>
@@ -139,8 +177,16 @@ class RecordedUploadForm extends Vue {
         this.$emit('upload');
     }
 
-    public importExternal(): void {
-        this.$emit('importExternal');
+    public scanImport(): void {
+        this.$emit('scanImport');
+    }
+
+    public startImportRegistration(): void {
+        this.$emit('startImportRegistration');
+    }
+
+    public retryFailedImports(): void {
+        this.$emit('retryFailedImports');
     }
 }
 
@@ -150,4 +196,11 @@ export default toNative(RecordedUploadForm);
 <style lang="sass" scoped>
 .view-name, .file-type, .directory
     max-width: 150px
+
+.import-field
+    max-width: 200px
+    margin-right: 8px
+
+.import-row
+    border-bottom: 1px solid rgba(128, 128, 128, 0.3)
 </style>

@@ -263,6 +263,11 @@ namespace Configuration {
             },
         ],
         recordedHistoryRetentionPeriodDays: 90,
+        importDirs: [],
+        importDefaultMode: 'register',
+        importFileNamePatterns: [],
+        importWatch: false,
+        importWatchIntervalSec: 300,
         storageLimitCheckIntervalTime: 60,
         thumbnail: path.join(__dirname, '..', '..', 'thumbnail'),
         thumbnailCmd:
