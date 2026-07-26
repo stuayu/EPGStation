@@ -1,0 +1,101 @@
+name: Release
+
+# タグを push すると 3 OS 分のビルド成果物を作り、GitHub Release を自動作成する
+on:
+  push:
+    tags: ['*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: EPGStation
+
+      - name: Use Node.js 24.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+
+      - name: install winser on windows
+        if: runner.os == 'Windows'
+        run: npm install winser -g
+
+      - name: Mirakurun Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: stuayu-main
+          repository: stuayu/Mirakurun
+          path: Mirakurun
+
+      - name: Mirakurun build and install
+        working-directory: Mirakurun
+        run: npm install
+
+      - name: Install all
+        working-directory: EPGStation
+        run: npm run all-install
+
+      - name: Build EPGStation
+        working-directory: EPGStation
+        if: runner.os == 'Windows'
+        run: npm run build-win
+
+      - name: Build EPGStation
+        working-directory: EPGStation
+        if: runner.os != 'Windows'
+        run: npm run build
+
+      - name: Compress Project
+        shell: bash
+        run: |
+          # 配布物にリポジトリの .git を含めない
+          rm -rf EPGStation/.git Mirakurun/.git
+          7z a -t7z -mx=9 -m0=lzma2 -md=256m -mfb=273 -ms=on "EPGStation-${{ matrix.os }}.7z" ./EPGStation
+          7z a -t7z -mx=9 -m0=lzma2 -md=256m -mfb=273 -ms=on "Mirakurun-${{ matrix.os }}.7z" ./Mirakurun
+
+      - name: Upload build assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: |
+            EPGStation-${{ matrix.os }}.7z
+            Mirakurun-${{ matrix.os }}.7z
+          retention-days: 7
+
+  release:
+    name: create release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # workflow_dispatch でタグ以外から実行された場合に備えて明示指定する
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          # rc / beta / alpha を含むタグはプレリリース扱いにする
+          prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: assets/*.7z

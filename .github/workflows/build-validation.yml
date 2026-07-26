@@ -2,8 +2,9 @@ name: build
 
 on:
   push:
+    # タグ push は release.yml が同等のビルドを行うため除外する
+    tags-ignore: ['**']
   workflow_dispatch:
-    branches: [ main, master, test ]
 
 jobs:
   build:

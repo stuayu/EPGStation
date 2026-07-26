@@ -115,7 +115,7 @@ npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (
 - 設定: `config/config.yml` (テンプレートから起動時自動コピー)。ログ設定は `config/{operator,service,epgUpdater}LogConfig.yml`
 - マイグレーションは起動時に自動実行 (`migrationsRun: true`)
 - Docker: `Dockerfile.alpine` (node:24-alpine3.24 ベース) / `Dockerfile.debian` (node:24-trixie ベース) のマルチステージ
-- CI: `.github/workflows/build-validation.yml` (3 OS × Node 24 のビルド検証、Mirakurun `stuayu-main` ブランチと組み合わせ)、`docker.yml` (マルチアーチイメージの Docker Hub push)
+- CI: `.github/workflows/build-validation.yml` (3 OS × Node 24 のビルド検証、Mirakurun `stuayu-main` ブランチと組み合わせ。タグ push では走らない)、`docker.yml` (マルチアーチイメージの Docker Hub push)、`release.yml` (タグ push で 3 OS 分の 7z を作り GitHub Release を自動作成)
 
 ## 注意点・ハマりどころ
 
