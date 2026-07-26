@@ -111,6 +111,10 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
   - 県境でよくある複数の県外地上波を扱うことができるようにGR/BS/CS/SKYを拡張し、新たにNW1~NW40まで追加
   - Node.js 24 系 (LTS) でのインストール対応 (v18/v20 系のサポートは終了)
   - 各フォーク版MirakurunとEPGStationのビルドが成功するかどうか確認するためのワークフローをActionsに追加
+  - タグを push すると GitHub Release を自動作成するワークフローを追加 (`.github/workflows/release.yml`)
+    - 3 OS (ubuntu / windows / macOS) × Node 24 でビルドし、`EPGStation-<os>.7z` と `Mirakurun-<os>.7z` をリリースアセットとして添付する (`.git` は除外)
+    - リリースノートは `generate_release_notes` で前タグからのコミット/PR から自動生成。タグ名に `rc` / `beta` / `alpha` を含む場合はプレリリース扱い
+    - タグ push では `build-validation.yml` は走らないようにした (同一内容のビルドが二重に走るのを防ぐため `tags-ignore` を指定)
   - 各種パッケージの更新
 - **Mirakurun**
   - Windowsでlocalhost:40772または、[::1]:40772でアクセスできない問題の修正
