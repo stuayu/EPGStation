@@ -9,29 +9,37 @@ import IConfigFile, { RecordedDirInfo } from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
+import INotificationDispatcher from '../../notification/INotificationDispatcher';
 import IRecordedManageModel from '../recorded/IRecordedManageModel';
 import IStorageManageModel from './IStorageManageModel';
 
 @injectable()
 export default class StorageManageModel implements IStorageManageModel {
+    // 同一ディレクトリでの通知連投を防ぐための最短間隔
+    private static readonly NOTIFICATION_INTERVAL_MS = 30 * 60 * 1000;
+
     private log: ILogger;
     private config: IConfigFile;
     private recordedManage: IRecordedManageModel;
     private recordedDB: IRecordedDB;
+    private notification: INotificationDispatcher;
 
     private isRunning: boolean = false;
     private timerId: NodeJS.Timeout | null = null;
+    private lastNotifiedAt: { [name: string]: number } = {};
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
         @inject('IConfiguration') configuration: IConfiguration,
         @inject('IRecordedManageModel') recordedManage: IRecordedManageModel,
         @inject('IRecordedDB') recordedDB: IRecordedDB,
+        @inject('INotificationDispatcher') notification: INotificationDispatcher,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
         this.recordedManage = recordedManage;
         this.recordedDB = recordedDB;
+        this.notification = notification;
     }
 
     /**
@@ -88,6 +96,18 @@ export default class StorageManageModel implements IStorageManageModel {
             // 空き容量が閾値を超えたか
             if (free > l.limitThreshold) {
                 continue;
+            }
+
+            // ディスク残量低下通知 (§7.3, 連投防止のため一定間隔を空ける)
+            const now = Date.now();
+            if ((this.lastNotifiedAt[l.name] ?? 0) + StorageManageModel.NOTIFICATION_INTERVAL_MS < now) {
+                this.lastNotifiedAt[l.name] = now;
+                void this.notification.dispatch('storage.lowSpace', {
+                    name: l.name,
+                    path: l.path,
+                    freeMB: Math.floor(free),
+                    limitThresholdMB: l.limitThreshold,
+                });
             }
 
             if (typeof l.limitCmd !== 'undefined') {

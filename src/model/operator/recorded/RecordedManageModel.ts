@@ -15,6 +15,7 @@ import IRecordedDB from '../../db/IRecordedDB';
 import IRecordedHistoryDB from '../../db/IRecordedHistoryDB';
 import IThumbnailDB from '../../db/IThumbnailDB';
 import IVideoFileDB from '../../db/IVideoFileDB';
+import IWatchHistoryDB from '../../db/IWatchHistoryDB';
 import IRecordedEvent from '../../event/IRecordedEvent';
 import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
@@ -40,6 +41,7 @@ class RecordedManageModel implements IRecordedManageModel {
     private thumbnailDB: IThumbnailDB;
     private dropLogFileDB: IDropLogFileDB;
     private recordedHistoryDB: IRecordedHistoryDB;
+    private watchHistoryDB: IWatchHistoryDB;
     private recordingManageModel: IRecordingManageModel;
     private recordedEvent: IRecordedEvent;
     private videoUtil: IVideoUtil;
@@ -54,6 +56,7 @@ class RecordedManageModel implements IRecordedManageModel {
         @inject('IThumbnailDB') thumbnailDB: IThumbnailDB,
         @inject('IDropLogFileDB') dropLogFileDB: IDropLogFileDB,
         @inject('IRecordedHistoryDB') recordedHistoryDB: IRecordedHistoryDB,
+        @inject('IWatchHistoryDB') watchHistoryDB: IWatchHistoryDB,
         @inject('IRecordingManageModel')
         recordingManageModel: IRecordingManageModel,
         @inject('IRecordedEvent') recordedEvent: IRecordedEvent,
@@ -68,6 +71,7 @@ class RecordedManageModel implements IRecordedManageModel {
         this.thumbnailDB = thumbnailDB;
         this.dropLogFileDB = dropLogFileDB;
         this.recordedHistoryDB = recordedHistoryDB;
+        this.watchHistoryDB = watchHistoryDB;
         this.recordingManageModel = recordingManageModel;
         this.recordedEvent = recordedEvent;
         this.videoUtil = videoUtil;
@@ -176,6 +180,12 @@ class RecordedManageModel implements IRecordedManageModel {
                 this.log.system.error(err);
             });
         }
+
+        // DB から視聴履歴情報削除 (孤児レコード防止)
+        await this.watchHistoryDB.deleteByRecordedId(recordedId).catch(err => {
+            this.log.system.error(`falied to delete watch history data: ${recordedId}`);
+            this.log.system.error(err);
+        });
 
         // DB から録画情報削除
         await this.recordedDB.deleteOnce(recordedId).catch(err => {
@@ -653,6 +663,12 @@ class RecordedManageModel implements IRecordedManageModel {
 
         // DB から削除
         await this.videoFileDB.deleteOnce(videoFileid);
+
+        // DB から視聴履歴情報削除 (孤児レコード防止)
+        await this.watchHistoryDB.deleteByVideoFileId(videoFileid).catch(err => {
+            this.log.system.error(`falied to delete watch history data: ${videoFileid}`);
+            this.log.system.error(err);
+        });
 
         // video に紐付けられていた recorded が空かチェック
         recorded = await this.recordedDB.findId(video.recordedId);

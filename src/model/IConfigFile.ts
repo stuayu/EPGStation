@@ -85,7 +85,14 @@ export const FEATURE_FLAG_KEYS = [
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[number];
 export type FeatureFlags = Partial<Record<FeatureFlagKey, boolean>>;
 
-export type NotificationEventType = 'recording.started' | 'recording.completed' | 'recording.failed';
+export type NotificationEventType =
+    | 'recording.started'
+    | 'recording.completed'
+    | 'recording.failed'
+    | 'recording.dropped' // ドロップ検出 (§7.3)
+    | 'recording.missed' // 録り逃し検出 (リトライ上限に達し録画を断念)
+    | 'series.newEpisode' // シリーズ新話追加
+    | 'storage.lowSpace'; // ディスク残量低下
 export interface NotificationTargetConfig {
     name: string;
     type: 'webhook' | 'discord';
@@ -98,6 +105,9 @@ export interface NotificationConfig {
     maxAttempts?: number;
     baseDelayMs?: number;
     timeoutMs?: number;
+    // true の場合 SSRF ガードを無効にし、ローカル/プライベートアドレス宛の通知を許可する
+    // (社内ネットワークの Webhook 受け口を使う場合のみ明示的に有効化すること)
+    allowPrivateNetworkTargets?: boolean;
 }
 
 export interface KodiInfo {
@@ -250,6 +260,19 @@ export default interface IConfigFile {
 
     // Webhook / Discord 通知（featureFlags.notifications が true の場合のみ有効）
     notifications?: NotificationConfig;
+
+    // メタデータプロバイダーの既定値 (§6.3)。設定画面 (DB) で値が設定されていない場合のみ使用される。
+    // token 等の秘密情報はここに書かず設定画面から入力すること
+    metadataDefaults?: {
+        annict?: { enabled?: boolean };
+        syobocal?: { enabled?: boolean };
+        cacheTtlMs?: number;
+    };
+
+    // シリーズ自動マッピングの既定値 (§6.3)。設定画面 (DB) の値が優先される
+    seriesDefaults?: {
+        matchThreshold?: number;
+    };
 
     // 各種フックコマンド
     reserveNewAddtionCommand?: string; // 予約新規追加

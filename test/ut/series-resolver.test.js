@@ -44,11 +44,15 @@ function memory(candidates = []) {
         getSeries: async id => candidates.find(c => c.id === id) || null,
     };
 }
-function resolver(db, threshold = 0.8) {
+function stubNotification() {
+    return { dispatch: async () => {}, test: async () => ({ delivered: [], failed: [] }), processQueue: async () => ({ sent: 0, failed: 0 }), getFailureHistory: async () => [] };
+}
+function resolver(db, threshold = 0.8, notification = stubNotification()) {
     return new SeriesResolver(
         { getConfig: () => ({ featureFlags: { seriesLibrary: true } }) },
         { getAll: async () => ({ series: { matchThreshold: threshold } }) },
         db,
+        notification,
     );
 }
 test('title similarity handles exact and unrelated titles', () => {
@@ -84,7 +88,12 @@ test('manual links are never overwritten', async () => {
 });
 test('feature flag keeps resolver disabled', async () => {
     const db = memory();
-    const r = new SeriesResolver({ getConfig: () => ({ featureFlags: {} }) }, { getAll: async () => ({}) }, db);
+    const r = new SeriesResolver(
+        { getConfig: () => ({ featureFlags: {} }) },
+        { getAll: async () => ({}) },
+        db,
+        stubNotification(),
+    );
     assert.equal(await r.resolve({ recordedId: 1, title: 'x', channelId: 1, startAt: 1 }), null);
 });
 

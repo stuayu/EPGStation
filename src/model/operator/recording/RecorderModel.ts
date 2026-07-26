@@ -26,6 +26,7 @@ import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IMirakurunClientModel from '../../IMirakurunClientModel';
+import INotificationDispatcher from '../../notification/INotificationDispatcher';
 import IDropCheckerModel from './IDropCheckerModel';
 import IRecorderModel from './IRecorderModel';
 import IRecordingStreamCreator from './IRecordingStreamCreator';
@@ -50,6 +51,7 @@ class RecorderModel implements IRecorderModel {
     private recordingUtil: IRecordingUtilModel;
     private recordingEvent: IRecordingEvent;
     private mirakurunClientModel: IMirakurunClientModel;
+    private notification: INotificationDispatcher;
 
     private reserve!: Reserve;
     private recordedId: apid.RecordedId | null = null;
@@ -90,6 +92,7 @@ class RecorderModel implements IRecorderModel {
         @inject('IRecordingUtilModel') recordingUtil: IRecordingUtilModel,
         @inject('IRecordingEvent') recordingEvent: IRecordingEvent,
         @inject('IMirakurunClientModel') mirakurunClientModel: IMirakurunClientModel,
+        @inject('INotificationDispatcher') notification: INotificationDispatcher,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
@@ -105,6 +108,7 @@ class RecorderModel implements IRecorderModel {
         this.recordingUtil = recordingUtil;
         this.recordingEvent = recordingEvent;
         this.mirakurunClientModel = mirakurunClientModel;
+        this.notification = notification;
     }
 
     /**
@@ -796,6 +800,18 @@ class RecorderModel implements IRecorderModel {
                 this.log.system.error(`update drop cnt error: ${this.dropLogFileId}`);
                 this.log.system.error(err);
             });
+
+        // ドロップ検出通知 (§7.3)
+        if (drop > 0 && this.recordedId !== null) {
+            void this.notification.dispatch('recording.dropped', {
+                recordedId: this.recordedId,
+                reserveId: this.reserve.id,
+                name: this.reserve.name,
+                dropCnt: drop,
+                errorCnt: error,
+                scramblingCnt: scrambling,
+            });
+        }
     }
 
     /**

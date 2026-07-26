@@ -1,6 +1,8 @@
 import { inject, injectable } from 'inversify';
+import { resolveBoolean } from '../../AppSettingResolver';
 import IAppSettingDB from '../../db/IAppSettingDB';
 import IChannelDB from '../../db/IChannelDB';
+import IConfiguration from '../../IConfiguration';
 import { normalizeSeriesTitle } from '../../series/SeriesNormalizer';
 import {
     MetadataGetOption,
@@ -25,6 +27,7 @@ export default class SyobocalProvider implements ISyobocalProvider {
         @inject('IAppSettingDB') private settings: IAppSettingDB,
         @inject('IChannelDB') private channels: IChannelDB,
         @inject('ISyobocalChannelMap') private channelMap: ISyobocalChannelMap,
+        @inject('IConfiguration') private config: IConfiguration,
     ) {}
 
     /**
@@ -118,7 +121,12 @@ export default class SyobocalProvider implements ISyobocalProvider {
 
     private async enabled(): Promise<boolean> {
         const all = await this.settings.getAll();
-        return Boolean((all.metadata as any)?.syobocal?.enabled);
+        // 優先順位: DB (設定画面) > config.yml (metadataDefaults) > 既定 (無効) (§6.3)
+        return resolveBoolean(
+            (all.metadata as any)?.syobocal?.enabled,
+            this.config.getConfig().metadataDefaults?.syobocal?.enabled,
+            false,
+        );
     }
     private url(command: string, params: Record<string, string>): string {
         const query = new URLSearchParams({ Command: command, ...params });

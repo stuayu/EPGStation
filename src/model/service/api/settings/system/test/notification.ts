@@ -21,5 +21,11 @@ post.apiDoc = {
     requestBody: {
         content: { 'application/json': { schema: { type: 'object', properties: { targetName: { type: 'string' } } } } },
     },
-    responses: { 200: { description: '成功' }, default: { description: '失敗' } },
+    responses: {
+        200: {
+            description: '成功',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/NotificationTestResult' } } },
+        },
+        default: { description: '失敗' },
+    },
 };

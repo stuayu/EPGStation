@@ -1,4 +1,5 @@
 import { inject, injectable } from 'inversify';
+import { resolveNumber } from '../AppSettingResolver';
 import { isFeatureEnabled } from '../FeatureFlags';
 import IConfiguration from '../IConfiguration';
 import IAppSettingDB from '../db/IAppSettingDB';
@@ -172,7 +173,13 @@ export default class MetadataService implements IMetadataService {
     private async cacheTtlMs(): Promise<number> {
         const all = await this.settings.getAll();
         const value = (all.metadata as any)?.cacheTtlMs;
-        return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : MetadataService.DEFAULT_CACHE_TTL_MS;
+        // 優先順位: DB (設定画面) > config.yml (metadataDefaults) > ハードコード既定値 (§6.3)
+        const resolved = resolveNumber(
+            value,
+            this.config.getConfig().metadataDefaults?.cacheTtlMs,
+            MetadataService.DEFAULT_CACHE_TTL_MS,
+        );
+        return resolved > 0 ? resolved : MetadataService.DEFAULT_CACHE_TTL_MS;
     }
 
     /**

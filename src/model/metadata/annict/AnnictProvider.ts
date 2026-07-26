@@ -1,6 +1,8 @@
 /* eslint-disable max-len */
 import { inject, injectable } from 'inversify';
+import { resolveBoolean } from '../../AppSettingResolver';
 import IAppSettingDB from '../../db/IAppSettingDB';
+import IConfiguration from '../../IConfiguration';
 import ISecretCrypto from '../../security/ISecretCrypto';
 import { normalizeSeriesTitle } from '../../series/SeriesNormalizer';
 import {
@@ -37,6 +39,7 @@ export default class AnnictProvider implements IAnnictProvider {
         @inject('IProviderHttpClient') private http: IProviderHttpClient,
         @inject('IAppSettingDB') private settings: IAppSettingDB,
         @inject('ISecretCrypto') private crypto: ISecretCrypto,
+        @inject('IConfiguration') private config: IConfiguration,
     ) {}
     public async search(query: string, context?: MetadataSearchContext): Promise<MetadataSearchResult[]> {
         const token = await this.token();
@@ -139,8 +142,14 @@ export default class AnnictProvider implements IAnnictProvider {
     private async token(): Promise<string | null> {
         const all = await this.settings.getAll();
         const config = (all.metadata as any)?.annict;
-        if (!config?.enabled) return null;
-        const value = config.token;
+        // 優先順位: DB (設定画面) > config.yml (metadataDefaults) > 既定 (無効) (§6.3)
+        const enabled = resolveBoolean(
+            config?.enabled,
+            this.config.getConfig().metadataDefaults?.annict?.enabled,
+            false,
+        );
+        if (!enabled) return null;
+        const value = config?.token;
         if (typeof value !== 'string' || value.length === 0) throw new Error('AnnictTokenIsNotConfigured');
         return this.crypto.isEncrypted(value) ? this.crypto.decrypt(value) : value;
     }

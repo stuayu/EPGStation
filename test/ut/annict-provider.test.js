@@ -5,6 +5,7 @@ const test = require('node:test');
 const Provider = require('../../dist/model/metadata/annict/AnnictProvider').default;
 const settings = { getAll: async () => ({ metadata: { annict: { enabled: true, token: 'enc-token' } } }) };
 const crypto = { isEncrypted: v => v === 'enc-token', decrypt: () => 'plain-token' };
+const config = { getConfig: () => ({}) };
 test('Annict search sends decrypted bearer token and normalizes works', async () => {
     let request;
     const http = {
@@ -20,14 +21,14 @@ test('Annict search sends decrypted bearer token and normalizes works', async ()
             };
         },
     };
-    const x = await new Provider(http, settings, crypto).search('作品');
+    const x = await new Provider(http, settings, crypto, config).search('作品');
     assert.equal(x[0].externalId, '42');
     assert.equal(x[0].syobocalTid, 99);
     assert.equal(request.o.headers.authorization, 'Bearer plain-token');
 });
 test('Annict provider rejects GraphQL errors', async () => {
     const http = { post: async () => ({ status: 200, json: () => ({ errors: [{ message: 'bad' }] }) }) };
-    await assert.rejects(() => new Provider(http, settings, crypto).search('作品'), /AnnictGraphQLError/);
+    await assert.rejects(() => new Provider(http, settings, crypto, config).search('作品'), /AnnictGraphQLError/);
 });
 test('search bypasses title matching and uniquely resolves by syobocalTid when the chain provides it', async () => {
     const http = {
@@ -45,7 +46,7 @@ test('search bypasses title matching and uniquely resolves by syobocalTid when t
             }),
         }),
     };
-    const x = await new Provider(http, settings, crypto).search('作品', { syobocalTid: 99 });
+    const x = await new Provider(http, settings, crypto, config).search('作品', { syobocalTid: 99 });
     assert.equal(x.length, 1);
     assert.equal(x[0].externalId, '42');
     assert.equal(x[0].score, 1);
@@ -85,7 +86,7 @@ test('pushWatchRecord finds the episode by number, creates a record and syncs th
             throw new Error(`unexpected query: ${body.query}`);
         },
     };
-    const result = await new Provider(http, settings, crypto).pushWatchRecord('42', 2, 'watched');
+    const result = await new Provider(http, settings, crypto, config).pushWatchRecord('42', 2, 'watched');
     assert.equal(result.recordId, 'rec-1');
     assert.equal(calls.length, 3);
 });
@@ -97,7 +98,7 @@ test('pushWatchRecord throws when the episode number cannot be found (e.g. delay
         }),
     };
     await assert.rejects(
-        () => new Provider(http, settings, crypto).pushWatchRecord('42', 99, 'watched'),
+        () => new Provider(http, settings, crypto, config).pushWatchRecord('42', 99, 'watched'),
         /AnnictEpisodeIsNotFound/,
     );
 });
@@ -106,6 +107,7 @@ test('pushWatchRecord returns null when Annict is not configured (no token)', as
         { post: async () => { throw new Error('unexpected'); } },
         { getAll: async () => ({ metadata: { annict: { enabled: false } } }) },
         crypto,
+        config,
     );
     assert.equal(await p.pushWatchRecord('42', 1, 'watched'), null);
 });
@@ -118,6 +120,7 @@ test('disabled Annict performs no request', async () => {
         },
         { getAll: async () => ({ metadata: { annict: { enabled: false } } }) },
         crypto,
+        config,
     );
     assert.deepEqual(await p.search('作品'), []);
 });

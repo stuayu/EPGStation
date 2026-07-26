@@ -201,8 +201,12 @@ export default class EventSetter implements IEventSetter {
             });
         });
 
-        // 録画リトライオーバーイベント
+        // 録画リトライオーバーイベント (録り逃し検出)
         this.recordingEvent.setRecordingRetryOver(reserve => {
+            void this.notification.dispatch('recording.missed', {
+                reserveId: reserve.id,
+                name: reserve.name,
+            });
             // 予約から削除
             this.reservationManage.cancel(reserve.id).catch(() => {});
         });
