@@ -11,7 +11,7 @@ import IConfiguration from '../IConfiguration';
 import RecordedKeywordSearch, { buildRecordedKeywordSearchPlan } from '../recorded/RecordedKeywordSearch';
 import IPromiseRetry from '../IPromiseRetry';
 import IDBOperator from './IDBOperator';
-import IRecordedDB, { FindAllOption, RecordedColumnOption } from './IRecordedDB';
+import IRecordedDB, { FindAllOption, RecordedColumnOption, SeriesBackfillCandidateRow } from './IRecordedDB';
 import IRecordedTagDB from './IRecordedTagDB';
 
 @injectable()
@@ -575,6 +575,55 @@ export default class RecordedDB implements IRecordedDB {
 
         return await this.promieRetry.run(() => {
             return queryBuilder.getMany();
+        });
+    }
+
+    /**
+     * シリーズ化バックフィル用に録画を id 昇順でチャンク取得する (録画中のものは除く)
+     * @param afterId: number
+     * @param limit: number
+     * @return Promise<SeriesBackfillCandidateRow[]>
+     */
+    public async findForSeriesBackfill(afterId: number, limit: number): Promise<SeriesBackfillCandidateRow[]> {
+        const connection = await this.op.getConnection();
+
+        const queryBuilder = connection
+            .getRepository(Recorded)
+            .createQueryBuilder('recorded')
+            .select(['recorded.id', 'recorded.name', 'recorded.channelId', 'recorded.startAt'])
+            .where('recorded.id > :afterId', { afterId })
+            .andWhere('recorded.isRecording = :isRecording', { isRecording: false })
+            .orderBy('recorded.id', 'ASC')
+            .limit(limit);
+
+        const rows = await this.promieRetry.run(() => {
+            return queryBuilder.getMany();
+        });
+
+        return rows.map(row => ({
+            id: row.id,
+            name: row.name,
+            channelId: row.channelId,
+            startAt: row.startAt,
+        }));
+    }
+
+    /**
+     * シリーズ化バックフィルの残件数を取得する
+     * @param afterId: number
+     * @return Promise<number>
+     */
+    public async countForSeriesBackfill(afterId: number): Promise<number> {
+        const connection = await this.op.getConnection();
+
+        const queryBuilder = connection
+            .getRepository(Recorded)
+            .createQueryBuilder('recorded')
+            .where('recorded.id > :afterId', { afterId })
+            .andWhere('recorded.isRecording = :isRecording', { isRecording: false });
+
+        return await this.promieRetry.run(() => {
+            return queryBuilder.getCount();
         });
     }
 }

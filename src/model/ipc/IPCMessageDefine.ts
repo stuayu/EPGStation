@@ -58,6 +58,7 @@ export enum ModelName {
     rule = 'rule',
     thumbnail = 'thumbnail',
     encodeEvent = 'encodeEvent',
+    series = 'series',
 }
 
 /**
@@ -140,4 +141,13 @@ export enum ThumbnailFunctions {
  */
 export enum OperatorEncodeEventFunctions {
     emitFinishEncode = 'emitFinishEncode',
+}
+
+/**
+ * series (バックフィル) の関数定義
+ */
+export enum SeriesFunctions {
+    startBackfill = 'startBackfill',
+    getBackfillStatus = 'getBackfillStatus',
+    cancelBackfill = 'cancelBackfill',
 }

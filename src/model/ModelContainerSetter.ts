@@ -42,6 +42,8 @@ import ISeriesMaintenanceApiModel from './api/series/ISeriesMaintenanceApiModel'
 import SeriesMaintenanceApiModel from './api/series/SeriesMaintenanceApiModel';
 import ISeriesAliasApiModel from './api/series/ISeriesAliasApiModel';
 import SeriesAliasApiModel from './api/series/SeriesAliasApiModel';
+import ISeriesBackfillApiModel from './api/series/ISeriesBackfillApiModel';
+import SeriesBackfillApiModel from './api/series/SeriesBackfillApiModel';
 import IScheduleApiModel from './api/schedule/IScheduleApiModel';
 import ScheduleApiModel from './api/schedule/ScheduleApiModel';
 import IProgramSeriesApiModel from './api/schedule/IProgramSeriesApiModel';
@@ -155,6 +157,8 @@ import IExternalCommandManageModel from './operator/externalCommand/IExternalCom
 import IReserveOptionChecker from './operator/IReserveOptionChecker';
 import IImportJobManageModel from './operator/recorded/IImportJobManageModel';
 import ImportJobManageModel from './operator/recorded/ImportJobManageModel';
+import ISeriesBackfillManageModel from './operator/series/ISeriesBackfillManageModel';
+import SeriesBackfillManageModel from './operator/series/SeriesBackfillManageModel';
 import IImportWatchManageModel from './operator/recorded/IImportWatchManageModel';
 import ImportWatchManageModel from './operator/recorded/ImportWatchManageModel';
 import IRecordedManageModel from './operator/recorded/IRecordedManageModel';
@@ -343,6 +347,10 @@ export const set = (container: Container): void => {
 
     container.bind<IRecordedManageModel>('IRecordedManageModel').to(RecordedManageModel).inSingletonScope();
     container.bind<IImportJobManageModel>('IImportJobManageModel').to(ImportJobManageModel).inSingletonScope();
+    container
+        .bind<ISeriesBackfillManageModel>('ISeriesBackfillManageModel')
+        .to(SeriesBackfillManageModel)
+        .inSingletonScope();
     container.bind<IImportWatchManageModel>('IImportWatchManageModel').to(ImportWatchManageModel).inSingletonScope();
 
     container.bind<IRecordingManageModel>('IRecordingManageModel').to(RecordingManageModel).inSingletonScope();
@@ -394,6 +402,7 @@ export const set = (container: Container): void => {
         .to(SeriesMaintenanceApiModel)
         .inSingletonScope();
     container.bind<ISeriesAliasApiModel>('ISeriesAliasApiModel').to(SeriesAliasApiModel).inSingletonScope();
+    container.bind<ISeriesBackfillApiModel>('ISeriesBackfillApiModel').to(SeriesBackfillApiModel).inSingletonScope();
 
     container.bind<IRecordingApiModel>('IRecordingApiModel').to(RecordingApiModel).inSingletonScope();
 

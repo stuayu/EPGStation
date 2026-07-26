@@ -2838,6 +2838,130 @@ components:
                 createdAt:
                     $ref: '#/components/schemas/UnixtimeMS'
 
+        SeriesBackfillOption:
+            description: 既存録画のシリーズ化バックフィル開始オプション
+            type: object
+            properties:
+                dryRun:
+                    description: true の場合 DB を変更せずマッチ結果のプレビューのみ行う
+                    type: boolean
+                chunkSize:
+                    description: 1 回に処理する録画件数 (省略時はデフォルト値)
+                    type: integer
+
+        SeriesBackfillState:
+            description: バックフィルの実行状態
+            type: string
+            enum:
+                - idle
+                - running
+                - completed
+                - canceled
+                - failed
+
+        SeriesBackfillPreviewCandidate:
+            description: ドライラン時の候補シリーズ
+            type: object
+            required:
+                - seriesId
+                - seriesTitle
+                - score
+            properties:
+                seriesId:
+                    $ref: '#/components/schemas/SeriesId'
+                seriesTitle:
+                    type: string
+                score:
+                    type: number
+
+        SeriesBackfillPreviewItem:
+            description: ドライラン時の 1 録画分のプレビュー結果
+            type: object
+            required:
+                - recordedId
+                - title
+                - matched
+                - seriesId
+                - seriesTitle
+                - confidence
+                - candidates
+            properties:
+                recordedId:
+                    $ref: '#/components/schemas/RecordedId'
+                title:
+                    type: string
+                matched:
+                    description: 'true: 確定シリーズ (または新規作成予定) / false: 未確定 (候補のみ)'
+                    type: boolean
+                seriesId:
+                    $ref: '#/components/schemas/SeriesId'
+                    nullable: true
+                seriesTitle:
+                    type: string
+                    nullable: true
+                confidence:
+                    type: number
+                    nullable: true
+                candidates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SeriesBackfillPreviewCandidate'
+
+        SeriesBackfillResult:
+            description: バックフィルの進捗状況
+            type: object
+            required:
+                - state
+                - dryRun
+                - total
+                - processed
+                - linked
+                - pending
+                - skipped
+                - failed
+                - startedAt
+                - finishedAt
+                - lastRecordedId
+                - error
+            properties:
+                state:
+                    $ref: '#/components/schemas/SeriesBackfillState'
+                dryRun:
+                    type: boolean
+                total:
+                    description: 対象総数 (処理済み + 残件数。処理が進むごとに更新される)
+                    type: integer
+                processed:
+                    type: integer
+                linked:
+                    description: シリーズへリンクされた (または新規シリーズが作成された) 件数
+                    type: integer
+                pending:
+                    description: 未確定キューへ積まれた件数
+                    type: integer
+                skipped:
+                    description: manualLock 済み、またはタイトルが解決できず何もしなかった件数
+                    type: integer
+                failed:
+                    type: integer
+                startedAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                    nullable: true
+                finishedAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                    nullable: true
+                lastRecordedId:
+                    $ref: '#/components/schemas/RecordedId'
+                error:
+                    type: string
+                    nullable: true
+                previewItems:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SeriesBackfillPreviewItem'
+                previewTruncated:
+                    type: boolean
+
     parameters:
         Offset:
             description: offset

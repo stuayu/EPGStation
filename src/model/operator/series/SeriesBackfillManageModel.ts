@@ -1,0 +1,420 @@
+import { inject, injectable } from 'inversify';
+import Series from '../../../db/entities/Series';
+import IRecordedDB, { SeriesBackfillCandidateRow } from '../../db/IRecordedDB';
+import IAppSettingDB from '../../db/IAppSettingDB';
+import ISeriesDB from '../../db/ISeriesDB';
+import ILogger from '../../ILogger';
+import ILoggerModel from '../../ILoggerModel';
+import { scoreCandidate } from '../../series/SeriesResolver';
+import ISeriesResolver from '../../series/ISeriesResolver';
+import { parseSeriesInfo } from '../../series/SeriesNormalizer';
+import ISeriesBackfillManageModel, {
+    SeriesBackfillOption,
+    SeriesBackfillPreviewCandidate,
+    SeriesBackfillPreviewItem,
+    SeriesBackfillResult,
+    SeriesBackfillStatus,
+} from './ISeriesBackfillManageModel';
+
+interface DecideResult {
+    matched: boolean;
+    seriesId: number | null;
+    seriesTitle: string | null;
+    confidence: number | null;
+    candidates: SeriesBackfillPreviewCandidate[];
+}
+
+type BackfillMode = 'real' | 'dryRun';
+
+/**
+ * 既存録画のシリーズ化バックフィルを夜間の低優先バッチとしてチャンク分割しつつ実行する (提案書 §11.1)
+ * - 中断・再開が自由: 実行状態 (カーソル・件数) を IAppSettingDB へチャンク毎に永続化するため、
+ *   キャンセルや Operator プロセスの異常終了を挟んでも次回 start() で続きから再開できる
+ * - チャンク単位で await this.sleep() を挟むことで、SQLite への録画書き込みと継続的に競合しないよう低優先度で動作する
+ * - ドライラン (dryRun: true) は実バックフィルの進捗 (再開カーソル) に一切影響を与えないよう、
+ *   実行状態を完全に分離したメモリ上の状態で完結させ、DB への書き込み (シリーズ作成・リンク保存・未確定キューへの追加) は行わない
+ * - GET /api/series/backfill/status はグローバルに 1 つの実行スロットを見るだけなので、
+ *   このクラスも直近に start() された方 (実行 or ドライラン) の状態を返す単一スロットのモデルとして実装する
+ */
+@injectable()
+export default class SeriesBackfillManageModel implements ISeriesBackfillManageModel {
+    private log: ILogger;
+    private recordedDB: IRecordedDB;
+    private seriesDB: ISeriesDB;
+    private settingsDB: IAppSettingDB;
+    private seriesResolver: ISeriesResolver;
+
+    private running: boolean = false;
+    private cancelRequested: boolean = false;
+    private persistedLoaded: boolean = false;
+    // IAppSettingDB に永続化される実バックフィルの状態
+    private realStatus: SeriesBackfillStatus = SeriesBackfillManageModel.initialStatus(false);
+    // ドライラン専用の状態 (永続化しない)。start({dryRun:true}) の度に初期化される
+    private dryRunStatus: SeriesBackfillStatus | null = null;
+    private dryRunPreviewItems: SeriesBackfillPreviewItem[] = [];
+    private dryRunPreviewTruncated: boolean = false;
+    // getStatus() がどちらを返すか (直近に start() されたモード)
+    private lastMode: BackfillMode = 'real';
+
+    constructor(
+        @inject('ILoggerModel') logger: ILoggerModel,
+        @inject('IRecordedDB') recordedDB: IRecordedDB,
+        @inject('ISeriesDB') seriesDB: ISeriesDB,
+        @inject('IAppSettingDB') settingsDB: IAppSettingDB,
+        @inject('ISeriesResolver') seriesResolver: ISeriesResolver,
+    ) {
+        this.log = logger.getLogger();
+        this.recordedDB = recordedDB;
+        this.seriesDB = seriesDB;
+        this.settingsDB = settingsDB;
+        this.seriesResolver = seriesResolver;
+    }
+
+    /**
+     * バックフィルを開始する (既に実行中の場合は現在の状態を返すのみ)
+     * @param option: SeriesBackfillOption
+     * @return Promise<SeriesBackfillResult>
+     */
+    public async start(option: SeriesBackfillOption = {}): Promise<SeriesBackfillResult> {
+        await this.ensureRealStatusLoaded();
+
+        if (this.running) {
+            return this.publicStatus();
+        }
+
+        const dryRun = option.dryRun === true;
+        const chunkSize = this.normalizeChunkSize(option.chunkSize);
+        const intervalMs = this.normalizeIntervalMs(option.intervalMs);
+        this.lastMode = dryRun ? 'dryRun' : 'real';
+
+        if (dryRun) {
+            // ドライランは実バックフィルの進捗 (カーソル) に影響を与えないよう常に独立して 0 から実行する
+            this.dryRunStatus = SeriesBackfillManageModel.initialStatus(true);
+            this.dryRunPreviewItems = [];
+            this.dryRunPreviewTruncated = false;
+        }
+
+        const status = dryRun ? (this.dryRunStatus as SeriesBackfillStatus) : this.realStatus;
+        status.state = 'running';
+        status.startedAt = status.startedAt ?? Date.now();
+        status.finishedAt = null;
+        status.error = null;
+        this.cancelRequested = false;
+        this.running = true;
+
+        if (!dryRun) {
+            await this.persistReal();
+        }
+
+        this.runLoop(status, dryRun, chunkSize, intervalMs).catch(err => {
+            this.log.system.error('series backfill: unexpected error');
+            this.log.system.error(err);
+            status.state = 'failed';
+            status.error = err instanceof Error ? err.message : String(err);
+            status.finishedAt = Date.now();
+            this.running = false;
+        });
+
+        return this.publicStatus();
+    }
+
+    /**
+     * 現在の進捗状況を取得する (直近に start() されたモードの状態を返す)
+     * @return Promise<SeriesBackfillResult>
+     */
+    public async getStatus(): Promise<SeriesBackfillResult> {
+        await this.ensureRealStatusLoaded();
+
+        return this.publicStatus();
+    }
+
+    /**
+     * 実行中のバックフィルをキャンセルする
+     */
+    public async cancel(): Promise<void> {
+        if (this.running) {
+            this.cancelRequested = true;
+        }
+    }
+
+    /**
+     * バックフィル本体。チャンク単位で処理 → 進捗永続化 (実行時のみ) → 短い待機 を繰り返す
+     */
+    private async runLoop(
+        status: SeriesBackfillStatus,
+        dryRun: boolean,
+        chunkSize: number,
+        intervalMs: number,
+    ): Promise<void> {
+        try {
+            for (;;) {
+                if (this.cancelRequested) {
+                    status.state = 'canceled';
+                    status.finishedAt = Date.now();
+                    if (!dryRun) await this.persistReal();
+                    break;
+                }
+
+                const rows = await this.recordedDB.findForSeriesBackfill(status.lastRecordedId, chunkSize);
+                if (rows.length === 0) {
+                    status.state = 'completed';
+                    status.finishedAt = Date.now();
+                    status.total = status.processed;
+                    if (!dryRun) await this.persistReal();
+                    break;
+                }
+
+                const remaining = await this.recordedDB.countForSeriesBackfill(status.lastRecordedId);
+                status.total = status.processed + remaining;
+
+                if (dryRun) {
+                    await this.previewChunk(rows, status);
+                } else {
+                    await this.processChunk(rows, status);
+                }
+
+                status.lastRecordedId = rows[rows.length - 1].id;
+                if (!dryRun) await this.persistReal();
+
+                await this.sleep(intervalMs);
+            }
+        } catch (err) {
+            status.state = 'failed';
+            status.error = err instanceof Error ? err.message : String(err);
+            status.finishedAt = Date.now();
+            if (!dryRun) await this.persistReal();
+        } finally {
+            this.running = false;
+        }
+    }
+
+    /**
+     * 実行チャンク: manualLock はスキップし、それ以外は SeriesResolver.resolve() を通す (冪等)
+     */
+    private async processChunk(rows: SeriesBackfillCandidateRow[], status: SeriesBackfillStatus): Promise<void> {
+        for (const row of rows) {
+            try {
+                const existingLink = await this.seriesDB.findLink(row.id);
+                if (existingLink?.manualLock === true) {
+                    status.skipped++;
+                } else {
+                    const link = await this.seriesResolver.resolve({
+                        recordedId: row.id,
+                        title: row.name,
+                        channelId: row.channelId,
+                        startAt: row.startAt,
+                    });
+
+                    if (link !== null) {
+                        status.linked++;
+                    } else {
+                        const pending = await this.seriesDB.findPendingMatchByRecordedId(row.id);
+                        if (pending !== null) {
+                            status.pending++;
+                        } else {
+                            status.skipped++;
+                        }
+                    }
+                }
+            } catch (err) {
+                status.failed++;
+                this.log.system.error(`series backfill: failed to resolve recordedId=${row.id}`);
+                this.log.system.error(err);
+            }
+
+            status.processed++;
+        }
+    }
+
+    /**
+     * ドライランチャンク: DB を変更せずマッチ結果のみを判定してプレビューに積む
+     */
+    private async previewChunk(rows: SeriesBackfillCandidateRow[], status: SeriesBackfillStatus): Promise<void> {
+        for (const row of rows) {
+            try {
+                const existingLink = await this.seriesDB.findLink(row.id);
+                if (existingLink?.manualLock === true) {
+                    status.skipped++;
+                } else {
+                    const decision = await this.decide(row);
+                    if (decision.matched) {
+                        status.linked++;
+                    } else {
+                        status.pending++;
+                    }
+
+                    if (this.dryRunPreviewItems.length < SeriesBackfillManageModel.MAX_PREVIEW_ITEMS) {
+                        this.dryRunPreviewItems.push({
+                            recordedId: row.id,
+                            title: row.name,
+                            matched: decision.matched,
+                            seriesId: decision.seriesId,
+                            seriesTitle: decision.seriesTitle,
+                            confidence: decision.confidence,
+                            candidates: decision.candidates,
+                        });
+                    } else {
+                        this.dryRunPreviewTruncated = true;
+                    }
+                }
+            } catch (err) {
+                status.failed++;
+                this.log.system.error(`series backfill preview: failed to evaluate recordedId=${row.id}`);
+                this.log.system.error(err);
+            }
+
+            status.processed++;
+        }
+    }
+
+    /**
+     * DB を変更せずに SeriesResolver.resolve() 相当の判定のみ行う (エイリアス → 類似度スコアリング)
+     * 候補ゼロの場合は実行時には新規シリーズが自動作成される想定として matched: true (seriesId: null) を返す
+     */
+    private async decide(row: SeriesBackfillCandidateRow): Promise<DecideResult> {
+        const parsed = parseSeriesInfo(row.name);
+        if (!parsed.normalizedTitle) {
+            return { matched: false, seriesId: null, seriesTitle: null, confidence: null, candidates: [] };
+        }
+
+        const alias = await this.seriesDB.findAlias(parsed.normalizedTitle);
+        if (alias) {
+            const aliasSeries = await this.seriesDB.getSeries(alias.seriesId);
+            if (aliasSeries) {
+                return {
+                    matched: true,
+                    seriesId: aliasSeries.id,
+                    seriesTitle: aliasSeries.title,
+                    confidence: 1,
+                    candidates: [],
+                };
+            }
+        }
+
+        const candidates = await this.seriesDB.findCandidates(parsed.normalizedTitle);
+        const settings = await this.settingsDB.getAll();
+        const threshold = this.threshold((settings.series as any)?.matchThreshold);
+
+        let winner: Series | null = null;
+        let confidence = 0;
+        for (const candidate of candidates) {
+            const score = scoreCandidate(parsed.normalizedTitle, candidate, row.channelId);
+            if (score > confidence) {
+                winner = candidate;
+                confidence = score;
+            }
+        }
+
+        if (candidates.length === 0) {
+            return { matched: true, seriesId: null, seriesTitle: row.name, confidence: 1, candidates: [] };
+        }
+
+        if (!winner || confidence < threshold) {
+            const ranked = candidates
+                .map(candidate => ({
+                    seriesId: candidate.id,
+                    seriesTitle: candidate.title,
+                    score: scoreCandidate(parsed.normalizedTitle, candidate, row.channelId),
+                }))
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 3);
+
+            return { matched: false, seriesId: null, seriesTitle: null, confidence: null, candidates: ranked };
+        }
+
+        return { matched: true, seriesId: winner.id, seriesTitle: winner.title, confidence, candidates: [] };
+    }
+
+    private threshold(value: unknown): number {
+        return typeof value === 'number' && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0.8;
+    }
+
+    /**
+     * IAppSettingDB から永続化された実バックフィルの状態を読み込む (プロセス生存期間中 1 度だけ)
+     * 異常終了により 'running' のまま保存されていた場合は 'canceled' 扱いとし、次回 start() で再開できるようにする
+     */
+    private async ensureRealStatusLoaded(): Promise<void> {
+        if (this.persistedLoaded) {
+            return;
+        }
+        this.persistedLoaded = true;
+
+        const all = await this.settingsDB.getAll();
+        const saved = (all as Record<string, unknown>)[SeriesBackfillManageModel.SETTING_KEY];
+        if (saved && typeof saved === 'object') {
+            this.realStatus = {
+                ...SeriesBackfillManageModel.initialStatus(false),
+                ...(saved as SeriesBackfillStatus),
+                dryRun: false,
+            };
+            if (this.realStatus.state === 'running') {
+                this.realStatus.state = 'canceled';
+            }
+        }
+    }
+
+    /**
+     * 実バックフィルの状態を永続化する (ドライランは永続化しない)
+     */
+    private async persistReal(): Promise<void> {
+        await this.settingsDB.upsert({ [SeriesBackfillManageModel.SETTING_KEY]: this.realStatus });
+    }
+
+    private publicStatus(): SeriesBackfillResult {
+        if (this.lastMode === 'dryRun' && this.dryRunStatus !== null) {
+            return {
+                ...this.dryRunStatus,
+                previewItems: [...this.dryRunPreviewItems],
+                previewTruncated: this.dryRunPreviewTruncated,
+            };
+        }
+
+        return { ...this.realStatus };
+    }
+
+    private normalizeChunkSize(value: number | undefined): number {
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+            return SeriesBackfillManageModel.DEFAULT_CHUNK_SIZE;
+        }
+
+        return Math.min(500, Math.max(1, Math.floor(value)));
+    }
+
+    private normalizeIntervalMs(value: number | undefined): number {
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+            return SeriesBackfillManageModel.CHUNK_INTERVAL_MS;
+        }
+
+        return Math.min(60000, Math.max(0, Math.floor(value)));
+    }
+
+    private sleep(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    private static initialStatus(dryRun: boolean): SeriesBackfillStatus {
+        return {
+            state: 'idle',
+            dryRun,
+            total: 0,
+            processed: 0,
+            linked: 0,
+            pending: 0,
+            skipped: 0,
+            failed: 0,
+            startedAt: null,
+            finishedAt: null,
+            lastRecordedId: 0,
+            error: null,
+        };
+    }
+
+    // IAppSettingDB に永続化する際のキー
+    private static readonly SETTING_KEY = 'seriesBackfill';
+    // 1 チャンクあたりのデフォルト処理件数
+    private static readonly DEFAULT_CHUNK_SIZE = 50;
+    // チャンク間の待機時間 (ms)。SQLite への録画書き込みと競合しないよう低優先度で動作させる
+    private static readonly CHUNK_INTERVAL_MS = 500;
+    // ドライランのプレビュー結果として保持する最大件数 (メモリ肥大化防止)
+    private static readonly MAX_PREVIEW_ITEMS = 2000;
+}

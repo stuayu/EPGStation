@@ -91,6 +91,7 @@ export default interface ISeriesDB {
     upsertPendingMatch(value: NewPendingMatch): Promise<SeriesPendingMatch>;
     listPendingMatches(offset: number, limit: number): Promise<[SeriesPendingMatch[], number]>;
     getPendingMatch(id: number): Promise<SeriesPendingMatch | null>;
+    findPendingMatchByRecordedId(recordedId: number): Promise<SeriesPendingMatch | null>;
     deletePendingMatchByRecordedId(recordedId: number): Promise<void>;
     deletePendingMatch(id: number): Promise<void>;
 
