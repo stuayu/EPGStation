@@ -22,6 +22,8 @@ function memory(candidates = []) {
             return x;
         },
         findLink: async id => links.get(id) || null,
+        countOtherLinksByEpisode: async (episodeId, recordedId) =>
+            [...links.values()].filter(x => x.episodeId === episodeId && x.recordedId !== recordedId).length,
         saveLink: async v => {
             const x = { ...v, id: links.get(v.recordedId)?.id || 40 };
             links.set(v.recordedId, x);

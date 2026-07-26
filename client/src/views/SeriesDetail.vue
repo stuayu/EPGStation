@@ -2,6 +2,8 @@
     <v-main>
         <TitleBar :title="detail?.title || 'シリーズ詳細'"></TitleBar>
         <v-container v-if="detail">
+            <v-alert v-if="detail.continuity.missingEpisodes.length" type="warning" class="mb-3">欠番: {{ missingEpisodeText }}</v-alert>
+            <v-alert v-if="detail.continuity.duplicateEpisodes.length" type="info" class="mb-3">複数録画・再放送: {{ duplicateEpisodeText }}</v-alert>
             <v-select v-model="channelId" :items="channelItems" item-title="title" item-value="value" label="放送局で絞り込み" @update:model-value="load"></v-select>
             <v-list lines="three">
                 <v-list-item v-for="item in detail.recorded" :key="item.recordedId" :to="`/recorded/detail/${item.recordedId}`">
@@ -10,7 +12,10 @@
                     </template>
                     <v-list-item-title>{{ episodeTitle(item) }}</v-list-item-title>
                     <v-list-item-subtitle>{{ item.channelName || item.channelId }} · {{ formatDate(item.startAt) }}</v-list-item-subtitle>
-                    <template #append><v-chip v-if="item.airType === 'rerun'" color="orange" size="small">再放送</v-chip></template>
+                    <template #append>
+                        <v-chip v-if="item.airType === 'rerun'" color="orange" size="small">再放送</v-chip>
+                        <v-chip v-else-if="isDuplicate(item.recordedId)" color="blue" size="small">複数録画</v-chip>
+                    </template>
                 </v-list-item>
             </v-list>
             <v-alert v-if="detail.recorded.length === 0" type="info">この放送局の録画はありません</v-alert>
@@ -30,6 +35,15 @@ class SeriesDetailView extends Vue {
     get id() {
         return Number(this.$route.params.id);
     }
+    get missingEpisodeText(): string {
+        return this.detail?.continuity.missingEpisodes.map(x => `S${x.seasonNumber} 第${x.episodeNumber}話`).join('、') ?? '';
+    }
+    get duplicateEpisodeText(): string {
+        return this.detail?.continuity.duplicateEpisodes.map(x => `S${x.seasonNumber} 第${x.episodeNumber}話 (${x.recordedIds.length}件)`).join('、') ?? '';
+    }
+    isDuplicate(recordedId: number): boolean {
+        return this.detail?.continuity.duplicateEpisodes.some(x => x.recordedIds.includes(recordedId)) ?? false;
+    }
     get channelItems() {
         return [
             { title: 'すべての放送局', value: null },
@@ -43,7 +57,7 @@ class SeriesDetailView extends Vue {
         this.detail = await this.api.get(this.id, this.channelId ?? undefined);
     }
     episodeTitle(x: SeriesRecording) {
-        const label = x.episodeLabel || x.episodeNumber !== null ? `第${x.episodeNumber}話` : '';
+        const label = x.episodeLabel ?? (x.episodeNumber !== null ? `第${x.episodeNumber}話` : '');
         return `${label} ${x.episodeTitle || x.recordedTitle}`.trim();
     }
     formatDate(value: number) {

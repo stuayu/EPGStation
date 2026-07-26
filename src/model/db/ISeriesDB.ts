@@ -62,4 +62,5 @@ export default interface ISeriesDB {
     listRecorded(seriesId: number, channelId?: number): Promise<SeriesRecordedRow[]>;
     listChannels(seriesId: number): Promise<SeriesChannelRow[]>;
     deleteLink(recordedId: number): Promise<void>;
+    countOtherLinksByEpisode(episodeId: number, recordedId: number): Promise<number>;
 }

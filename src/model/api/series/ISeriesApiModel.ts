@@ -1,3 +1,13 @@
+export interface SeriesContinuityResult {
+    missingEpisodes: Array<{ seasonNumber: number; episodeNumber: number }>;
+    duplicateEpisodes: Array<{
+        seasonNumber: number;
+        episodeNumber: number;
+        recordedIds: number[];
+        channelIds: number[];
+    }>;
+    unknownEpisodeRecordedIds: number[];
+}
 export interface SeriesListItem {
     id: number;
     title: string;
@@ -13,6 +23,7 @@ export interface SeriesListResult {
 export interface SeriesDetail extends SeriesListItem {
     externalIds: { syobocalTid: number | null; annictId: string | null; tmdbId: number | null };
     channels: Array<{ channelId: number; channelName: string | null; count: number }>;
+    continuity: SeriesContinuityResult;
     recorded: Array<{
         recordedId: number;
         channelId: number;

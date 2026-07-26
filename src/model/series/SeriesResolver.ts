@@ -77,11 +77,15 @@ export default class SeriesResolver implements ISeriesResolver {
                     updatedAt: now,
                 });
         }
+        let airType = parsed.airType;
+        if (airType === 'unknown' && episode)
+            airType =
+                (await this.db.countOtherLinksByEpisode(episode.id, recording.recordedId)) > 0 ? 'rerun' : 'first';
         return await this.db.saveLink({
             recordedId: recording.recordedId,
             seriesId: winner.id,
             episodeId: episode?.id ?? null,
-            airType: parsed.airType,
+            airType,
             matchMethod: 'title',
             confidence,
             manualLock: false,

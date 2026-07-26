@@ -2,6 +2,7 @@ import { inject, injectable } from 'inversify';
 import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
 import ISeriesDB from '../../db/ISeriesDB';
+import { analyzeSeriesContinuity } from '../../series/SeriesContinuity';
 import ISeriesApiModel, { SeriesDetail, SeriesListResult } from './ISeriesApiModel';
 @injectable()
 export default class SeriesApiModel implements ISeriesApiModel {
@@ -30,7 +31,11 @@ export default class SeriesApiModel implements ISeriesApiModel {
         this.enabled();
         const series = await this.db.getSeries(id);
         if (!series) return null;
-        const [recorded, channels] = await Promise.all([this.db.listRecorded(id, channelId), this.db.listChannels(id)]);
+        const [recorded, channels, allRecorded] = await Promise.all([
+            this.db.listRecorded(id, channelId),
+            this.db.listChannels(id),
+            typeof channelId === 'number' ? this.db.listRecorded(id) : Promise.resolve(null),
+        ]);
         return {
             id: series.id,
             title: series.title,
@@ -40,6 +45,7 @@ export default class SeriesApiModel implements ISeriesApiModel {
             updatedAt: Number(series.updatedAt),
             externalIds: { syobocalTid: series.syobocalTid, annictId: series.annictId, tmdbId: series.tmdbId },
             channels: channels.map(x => ({ ...x, count: Number(x.count) })),
+            continuity: analyzeSeriesContinuity(allRecorded ?? recorded),
             recorded: recorded.map(x => ({
                 ...x,
                 recordedId: Number(x.recordedId),

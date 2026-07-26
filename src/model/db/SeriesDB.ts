@@ -1,6 +1,6 @@
 /* eslint-disable max-len */
 import { inject, injectable } from 'inversify';
-import { Like } from 'typeorm';
+import { Like, Not } from 'typeorm';
 import RecordedSeriesLink from '../../db/entities/RecordedSeriesLink';
 import Series from '../../db/entities/Series';
 import SeriesEpisode from '../../db/entities/SeriesEpisode';
@@ -82,5 +82,9 @@ export default class SeriesDB implements ISeriesDB {
     public async deleteLink(recordedId: number): Promise<void> {
         const c = await this.op.getConnection();
         await c.getRepository(RecordedSeriesLink).delete({ recordedId });
+    }
+    public async countOtherLinksByEpisode(episodeId: number, recordedId: number): Promise<number> {
+        const c = await this.op.getConnection();
+        return await c.getRepository(RecordedSeriesLink).count({ where: { episodeId, recordedId: Not(recordedId) } });
     }
 }
