@@ -120,7 +120,6 @@ export const responseStreamStartError = (res: express.Response, err: unknown): e
     return responseServerError(res, getErrorMessage(err));
 };
 
-// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
 export const responseJSON = (res: express.Response, code: number, body?: unknown): express.Response => {
     res.status(code);
     // non-cache
