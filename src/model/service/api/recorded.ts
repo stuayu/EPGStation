@@ -35,6 +35,9 @@ export const get: Operation = async (req, res) => {
         if (typeof req.query.hasOriginalFile !== 'undefined') {
             option.hasOriginalFile = req.query.hasOriginalFile as any;
         }
+        if (typeof req.query.tagId !== 'undefined') {
+            option.tagId = parseInt(req.query.tagId as any, 10);
+        }
 
         api.responseJSON(res, 200, await recordedApiModel.gets(option));
     } catch (err: unknown) {
@@ -73,6 +76,9 @@ get.apiDoc = {
         },
         {
             $ref: '#/components/parameters/QueryHasOriginalFile',
+        },
+        {
+            $ref: '#/components/parameters/QueryRecordedTagId',
         },
     ],
     responses: {

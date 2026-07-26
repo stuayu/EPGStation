@@ -28,13 +28,15 @@ export default class RecordedTagManadeModel implements IRecordedTagManadeModel {
      * 新しい tag の作成
      * @param name: tag 名
      * @param color: string
+     * @param parentId: number | null | undefined 親タグの id
      * @return Promise<apid.RecordedTagId>
      */
-    public async create(name: string, color: string): Promise<apid.RecordedTagId> {
+    public async create(name: string, color: string, parentId?: number | null): Promise<apid.RecordedTagId> {
         const newTag = new RecordedTag();
         newTag.name = name;
         newTag.color = color;
         newTag.halfWidthName = StrUtil.toHalf(name);
+        newTag.parentId = typeof parentId === 'number' ? parentId : null;
         const tagId = await this.recordedTagDB.insertOnce(newTag).catch(err => {
             this.log.system.error(`create tag error: ${name}`);
             throw err;
@@ -53,10 +55,16 @@ export default class RecordedTagManadeModel implements IRecordedTagManadeModel {
      * @param tagId: apid.RecordedTagId
      * @param name: name: string
      * @param color: string
+     * @param parentId: number | null | undefined 親タグの id (未指定なら変更しない)
      * @return Promise<void>
      */
-    public async update(tagId: apid.RecordedTagId, name: string, color: string): Promise<void> {
-        await this.recordedTagDB.updateOnce(tagId, name, color);
+    public async update(
+        tagId: apid.RecordedTagId,
+        name: string,
+        color: string,
+        parentId?: number | null,
+    ): Promise<void> {
+        await this.recordedTagDB.updateOnce(tagId, name, color, parentId);
         this.log.system.info(`update tag name tagId: ${tagId}, name: ${name}`);
 
         // notify

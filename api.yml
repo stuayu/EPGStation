@@ -80,6 +80,10 @@ components:
             description: 録画 tag id
             type: integer
 
+        SavedSearchId:
+            description: 保存検索 id
+            type: integer
+
         EncodeId:
             description: エンコード id
             type: integer
@@ -1599,6 +1603,10 @@ components:
                 color:
                     description: 色
                     type: string
+                parentId:
+                    description: 親タグの id (階層タグ用)
+                    type: integer
+                    nullable: true
 
         RecordedTags:
             description: 録画タグ情報
@@ -1628,6 +1636,10 @@ components:
                 color:
                     description: 色
                     type: string
+                parentId:
+                    description: 親タグの id (階層タグ用)
+                    type: integer
+                    nullable: true
 
         RelateRecordedTagOption:
             description: 録画番組とタグの関連付けオプション
@@ -1646,6 +1658,91 @@ components:
             properties:
                 tagId:
                     $ref: '#/components/schemas/RecordedTagId'
+
+        SavedSearchItem:
+            description: 保存検索情報 (advancedSearch 機能フラグ有効時のみ利用可能)
+            type: object
+            required:
+                - id
+                - name
+                - query
+                - isPinned
+                - createdAt
+                - updatedAt
+            properties:
+                id:
+                    $ref: '#/components/schemas/SavedSearchId'
+                name:
+                    description: 保存検索名
+                    type: string
+                query:
+                    description: 検索条件 (JSON 文字列)
+                    type: string
+                isPinned:
+                    description: ピン留めするか
+                    type: boolean
+                createdAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                updatedAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+
+        SavedSearchItems:
+            description: 保存検索情報一覧
+            type: object
+            required:
+                - items
+                - total
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SavedSearchItem'
+                total:
+                    description: 保存検索総件数
+                    type: integer
+
+        AddSavedSearchOption:
+            description: 保存検索追加オプション
+            type: object
+            required:
+                - name
+                - query
+            properties:
+                name:
+                    description: 保存検索名
+                    type: string
+                query:
+                    description: 検索条件 (JSON 文字列)
+                    type: string
+                isPinned:
+                    description: ピン留めするか
+                    type: boolean
+
+        UpdateSavedSearchOption:
+            description: 保存検索更新オプション
+            type: object
+            required:
+                - name
+                - query
+            properties:
+                name:
+                    description: 保存検索名
+                    type: string
+                query:
+                    description: 検索条件 (JSON 文字列)
+                    type: string
+                isPinned:
+                    description: ピン留めするか
+                    type: boolean
+
+        AddedSavedSearch:
+            description: 保存検索追加成功応答データ
+            type: object
+            required:
+                - searchId
+            properties:
+                searchId:
+                    $ref: '#/components/schemas/SavedSearchId'
 
         RecordedChannelListItem:
             description: recorded が持つ channelId のリスト
@@ -2324,6 +2421,13 @@ components:
                 items:
                     type: string
 
+        QueryRecordedTagId:
+            description: 絞り込む RecordedTagId (advancedSearch 有効時は子孫タグも含む)
+            name: tagId
+            in: query
+            schema:
+                $ref: '#/components/schemas/RecordedTagId'
+
         requiredGR:
             description: GR
             in: query
@@ -2722,6 +2826,14 @@ components:
             description: recorded tag id
             in: path
             name: tagId
+            required: true
+            schema:
+                type: integer
+
+        PathSavedSearchId:
+            description: saved search id
+            in: path
+            name: searchId
             required: true
             schema:
                 type: integer

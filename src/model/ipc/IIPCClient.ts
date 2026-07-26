@@ -29,8 +29,8 @@ export interface IPCRecordedManageModel {
 }
 
 export interface IPCRecordedTagManageModel {
-    create(name: string, color: string): Promise<apid.RecordedTagId>;
-    update(tagId: apid.RecordedTagId, name: string, color: string): Promise<void>;
+    create(name: string, color: string, parentId?: number | null): Promise<apid.RecordedTagId>;
+    update(tagId: apid.RecordedTagId, name: string, color: string, parentId?: number | null): Promise<void>;
     setRelation(tagId: apid.RecordedTagId, recordedId: apid.RecordedId): Promise<void>;
     delete(tagId: apid.RecordedTagId): Promise<void>;
     deleteRelation(tagId: apid.RecordedTagId, recordedId: apid.RecordedId): Promise<void>;

@@ -49,12 +49,18 @@ export const put: Operation = async (req, res) => {
         const tagId: apid.RecordedTagId = api.parseRequestParamInt(req.params.tagId, 'tagId');
         const name: string = req.body.name;
         const color: string = req.body.color;
-        await recordedTagApiModel.update(tagId, name, color);
+        const parentId: number | null | undefined = req.body.parentId;
+        await recordedTagApiModel.update(tagId, name, color, parentId);
         api.responseJSON(res, 200, {
             code: 200,
         });
     } catch (err: unknown) {
-        api.responseServerError(res, api.getErrorMessage(err));
+        const message = api.getErrorMessage(err);
+        if (message === 'RecordedTagCircularParent' || message === 'RecordedTagParentIsNull') {
+            api.responseError(res, { code: 400, message: message });
+        } else {
+            api.responseServerError(res, message);
+        }
     }
 };
 
