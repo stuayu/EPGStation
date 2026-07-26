@@ -1,15 +1,20 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
+import FileUtil from '../../../util/FileUtil';
 import IRecordedDB, { FindAllOption } from '../../db/IRecordedDB';
 import IWatchHistoryDB from '../../db/IWatchHistoryDB';
 import ISeriesDB from '../../db/ISeriesDB';
 import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
 import IIPCClient from '../../ipc/IIPCClient';
-import { UploadedVideoFileOption } from '../../operator/recorded/IRecordedManageModel';
+import IRecordedManageModel, {
+    ImportedExternalRecordedFileOption,
+    UploadedVideoFileOption,
+} from '../../operator/recorded/IRecordedManageModel';
 import IEncodeManageModel from '../../service/encode/IEncodeManageModel';
 import IRecordedItemUtil from '../IRecordedItemUtil';
-import IRecordedApiModel, { NextUpResult } from './IRecordedApiModel';
+import IVideoUtil from '../video/IVideoUtil';
+import IRecordedApiModel, { ImportExternalRecordedFilesResult, NextUpResult } from './IRecordedApiModel';
 
 @injectable()
 export default class RecordedApiModel implements IRecordedApiModel {
@@ -20,6 +25,8 @@ export default class RecordedApiModel implements IRecordedApiModel {
     private configuration: IConfiguration;
     private watchHistoryDB: IWatchHistoryDB;
     private seriesDB: ISeriesDB;
+    private videoUtil: IVideoUtil;
+    private recordedManage: IRecordedManageModel;
 
     constructor(
         @inject('IIPCClient') ipc: IIPCClient,
@@ -29,6 +36,8 @@ export default class RecordedApiModel implements IRecordedApiModel {
         @inject('IConfiguration') configuration: IConfiguration,
         @inject('IWatchHistoryDB') watchHistoryDB: IWatchHistoryDB,
         @inject('ISeriesDB') seriesDB: ISeriesDB,
+        @inject('IVideoUtil') videoUtil: IVideoUtil,
+        @inject('IRecordedManageModel') recordedManage: IRecordedManageModel,
     ) {
         this.recordedDB = recordedDB;
         this.ipc = ipc;
@@ -37,6 +46,8 @@ export default class RecordedApiModel implements IRecordedApiModel {
         this.configuration = configuration;
         this.watchHistoryDB = watchHistoryDB;
         this.seriesDB = seriesDB;
+        this.videoUtil = videoUtil;
+        this.recordedManage = recordedManage;
     }
 
     /**
@@ -126,6 +137,39 @@ export default class RecordedApiModel implements IRecordedApiModel {
         await this.attachWatchHistories(items);
         return items;
     }
+
+    public async importExternalRecordedFiles(option: {
+        channelId: apid.ChannelId;
+        parentDirectoryName: string;
+        subDirectory?: string;
+        fileType: apid.VideoFileType;
+        localFilePaths: string[];
+        ruleId?: apid.RuleId;
+        genre1?: apid.ProgramGenreLv1;
+        subGenre1?: apid.ProgramGenreLv2;
+    }): Promise<ImportExternalRecordedFilesResult> {
+        if (!isFeatureEnabled(this.configuration.getConfig(), 'externalFileImport'))
+            throw new Error('ExternalFileImportFeatureIsDisabled');
+        const localFilePaths = option.localFilePaths.map(x => x.trim()).filter(x => x.length > 0);
+        if (localFilePaths.length === 0) throw new Error('ExternalFilePathsAreEmpty');
+        const items: ImportedExternalRecordedFileOption[] = [];
+        for (const localFilePath of localFilePaths) {
+            await FileUtil.stat(localFilePath);
+            await this.videoUtil.getInfo(localFilePath);
+            items.push({
+                localFilePath,
+                parentDirectoryName: option.parentDirectoryName,
+                subDirectory: option.subDirectory,
+                fileType: option.fileType,
+                channelId: option.channelId,
+                ruleId: option.ruleId,
+                genre1: option.genre1,
+                subGenre1: option.subGenre1,
+            });
+        }
+        return { items: await this.recordedManage.importExternalRecordedFiles(items) };
+    }
+
     private async attachWatchHistories(items: apid.RecordedItem[]): Promise<void> {
         if (!isFeatureEnabled(this.configuration.getConfig(), 'watchHistory')) return;
         const videoFiles = items.flatMap(item => item.videoFiles ?? []);

@@ -3,7 +3,7 @@
         <TitleBar title="アップロード"></TitleBar>
         <transition name="page">
             <v-container>
-                <RecordedUploadForm v-on:reset="reset" v-on:upload="upload"></RecordedUploadForm>
+                <RecordedUploadForm v-on:reset="reset" v-on:upload="upload" v-on:importExternal="importExternal"></RecordedUploadForm>
                 <v-btn v-on:click="addVideoFile" icon size="large" class="position-fixed right-0 bottom-0 ma-4" color="pink">
                     <v-icon>mdi-plus</v-icon>
                 </v-btn>
@@ -24,7 +24,6 @@ import IRecordedUploadState from '@/model/state/recorded/upload/IRecordedUploadS
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
-
 
 @Component({
     components: {
@@ -78,6 +77,27 @@ class RecordedUpload extends Vue {
 
     public addVideoFile(): void {
         this.uploadState.addEmptyVideoFileItem();
+    }
+
+    public async importExternal(): Promise<void> {
+        if (this.uploadState.checkExternalImportInput() === false) {
+            this.snackbarState.open({ color: 'error', text: '外部ファイル入力に問題があります。' });
+            return;
+        }
+        this.isUploading = true;
+        try {
+            const items = await this.uploadState.importExternalFiles();
+            const success = items.filter(x => x.imported).length;
+            const failed = items.length - success;
+            this.snackbarState.open({
+                color: failed === 0 ? 'success' : 'error',
+                text: failed === 0 ? `${success}件を追加しました` : `${success}件追加 / ${failed}件失敗`,
+            });
+        } catch (err) {
+            this.snackbarState.open({ color: 'error', text: '外部ファイル追加に失敗' });
+            console.error(err);
+        }
+        this.isUploading = false;
     }
 
     @Watch('$route', { immediate: true, deep: true })

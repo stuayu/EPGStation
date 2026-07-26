@@ -12,4 +12,14 @@ export default interface IRecordedApiModel {
     getNextUp(recordedId: apid.RecordedId, isHalfWidth: boolean): Promise<{ currentSeriesId: number | null; latest: apid.RecordedItem[]; series: apid.RecordedItem[] } | null>;
     getCleanupInfo(): Promise<apid.RecordedCleanupInfo>;
     cleanup(target?: apid.RecordedCleanupTarget): Promise<void>;
+    importExternalRecordedFiles(option: {
+        channelId: apid.ChannelId;
+        parentDirectoryName: string;
+        subDirectory?: string;
+        fileType: apid.VideoFileType;
+        localFilePaths: string[];
+        ruleId?: apid.RuleId;
+        genre1?: apid.ProgramGenreLv1;
+        subGenre1?: apid.ProgramGenreLv2;
+    }): Promise<{ items: Array<{ localFilePath: string; imported: boolean; recordedId?: apid.RecordedId; name?: string; error?: string }> }>;
 }
