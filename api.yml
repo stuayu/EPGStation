@@ -1522,6 +1522,27 @@ components:
                     description: ファイルサイズ
                     type: integer
 
+        WatchStatus:
+            type: string
+            enum: [unwatched, watching, watched]
+        WatchHistory:
+            type: object
+            required: [videoFileId, recordedId, position, duration, status, updatedAt]
+            properties:
+                videoFileId: { $ref: '#/components/schemas/VideoFileId' }
+                recordedId: { $ref: '#/components/schemas/RecordedId' }
+                position: { type: integer, minimum: 0 }
+                duration: { type: integer, minimum: 1 }
+                status: { $ref: '#/components/schemas/WatchStatus' }
+                updatedAt: { $ref: '#/components/schemas/UnixtimeMS' }
+        UpdatePlaybackPositionOption:
+            type: object
+            required: [position, duration]
+            additionalProperties: false
+            properties:
+                position: { type: number, minimum: 0 }
+                duration: { type: number, exclusiveMinimum: 0 }
+
         VideoFileDuration:
             description: ビデオファイルの長さ
             type: object
@@ -2673,7 +2694,8 @@ components:
                 type: integer
 
         StreamProfile:
-            description: 配信プリセット id (新形式)。指定時は mode より優先される。mode / profile どちらも未指定の場合は 400
+            description:
+                配信プリセット id (新形式)。指定時は mode より優先される。mode / profile どちらも未指定の場合は 400
             in: query
             name: profile
             required: false
