@@ -12,4 +12,5 @@ export interface ProviderHttpResponse {
 }
 export default interface IProviderHttpClient {
     get(url: string, option?: ProviderHttpOption): Promise<ProviderHttpResponse>;
+    post(url: string, body: string, option?: ProviderHttpOption): Promise<ProviderHttpResponse>;
 }

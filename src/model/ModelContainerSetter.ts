@@ -30,6 +30,8 @@ import IRuleApiModel from './api/rule/IRuleApiModel';
 import RuleApiModel from './api/rule/RuleApiModel';
 import ISeriesApiModel from './api/series/ISeriesApiModel';
 import SeriesApiModel from './api/series/SeriesApiModel';
+import IAnnictSyncApiModel from './api/series/IAnnictSyncApiModel';
+import AnnictSyncApiModel from './api/series/AnnictSyncApiModel';
 import ISeriesMappingApiModel from './api/series/ISeriesMappingApiModel';
 import SeriesMappingApiModel from './api/series/SeriesMappingApiModel';
 import IScheduleApiModel from './api/schedule/IScheduleApiModel';
@@ -134,6 +136,8 @@ import IProviderHttpClient from './metadata/IProviderHttpClient';
 import ProviderHttpClient from './metadata/ProviderHttpClient';
 import ISyobocalProvider from './metadata/syobocal/ISyobocalProvider';
 import SyobocalProvider from './metadata/syobocal/SyobocalProvider';
+import IAnnictProvider from './metadata/annict/IAnnictProvider';
+import AnnictProvider from './metadata/annict/AnnictProvider';
 import INotificationDispatcher from './notification/INotificationDispatcher';
 import NotificationDispatcher from './notification/NotificationDispatcher';
 import ExternalCommandManageModel from './operator/externalCommand/ExternalCommandManageModel';
@@ -233,6 +237,7 @@ export const set = (container: Container): void => {
     container.bind<IAppSettingDB>('IAppSettingDB').to(AppSettingDB).inSingletonScope();
     container.bind<IMetadataProviderCacheDB>('IMetadataProviderCacheDB').to(MetadataProviderCacheDB).inSingletonScope();
     container.bind<ISyobocalProvider>('ISyobocalProvider').to(SyobocalProvider).inSingletonScope();
+    container.bind<IAnnictProvider>('IAnnictProvider').to(AnnictProvider).inSingletonScope();
     container
         .bind<IMetadataProviderRegistry>('IMetadataProviderRegistry')
         .to(MetadataProviderRegistry)
@@ -363,6 +368,7 @@ export const set = (container: Container): void => {
 
     container.bind<IRecordedApiModel>('IRecordedApiModel').to(RecordedApiModel).inSingletonScope();
     container.bind<ISeriesApiModel>('ISeriesApiModel').to(SeriesApiModel).inSingletonScope();
+    container.bind<IAnnictSyncApiModel>('IAnnictSyncApiModel').to(AnnictSyncApiModel).inSingletonScope();
     container.bind<ISeriesMappingApiModel>('ISeriesMappingApiModel').to(SeriesMappingApiModel).inSingletonScope();
 
     container.bind<IRecordingApiModel>('IRecordingApiModel').to(RecordingApiModel).inSingletonScope();

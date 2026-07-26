@@ -2,6 +2,11 @@
     <v-main>
         <TitleBar :title="detail?.title || 'シリーズ詳細'"></TitleBar>
         <v-container v-if="detail">
+            <div class="d-flex align-center mb-3">
+                <v-chip v-if="detail.externalIds.annictId" color="green">Annict: {{ detail.externalIds.annictId }}</v-chip>
+                <v-btn class="ml-2" variant="outlined" :loading="annictSyncing" @click="syncAnnict">Annict同期</v-btn>
+            </div>
+            <v-alert v-if="annictMessage" type="success" class="mb-3">{{ annictMessage }}</v-alert>
             <v-alert v-if="detail.continuity.missingEpisodes.length" type="warning" class="mb-3">欠番: {{ missingEpisodeText }}</v-alert>
             <v-alert v-if="detail.continuity.duplicateEpisodes.length" type="info" class="mb-3">複数録画・再放送: {{ duplicateEpisodeText }}</v-alert>
             <v-select v-model="channelId" :items="channelItems" item-title="title" item-value="value" label="放送局で絞り込み" @update:model-value="load"></v-select>
@@ -31,6 +36,8 @@ import { Component, Vue, toNative } from 'vue-facing-decorator';
 class SeriesDetailView extends Vue {
     detail: Detail | null = null;
     channelId: number | null = null;
+    annictSyncing = false;
+    annictMessage = '';
     private api = container.get<ISeriesApiModel>('ISeriesApiModel');
     get id() {
         return Number(this.$route.params.id);
@@ -52,6 +59,17 @@ class SeriesDetailView extends Vue {
     }
     mounted() {
         void this.load();
+    }
+    async syncAnnict(): Promise<void> {
+        this.annictSyncing = true;
+        this.annictMessage = '';
+        try {
+            const result = await this.api.syncAnnict(this.id);
+            this.annictMessage = `Annict「${result.title}」に同期しました`;
+            await this.load();
+        } finally {
+            this.annictSyncing = false;
+        }
     }
     async load() {
         this.detail = await this.api.get(this.id, this.channelId ?? undefined);

@@ -24,4 +24,7 @@ export default class SeriesApiModel implements ISeriesApiModel {
     public async removeMapping(recordedId: number): Promise<void> {
         await this.repository.delete(`/series/mappings/${recordedId}`);
     }
+    public async syncAnnict(seriesId: number): Promise<{ annictId: string; syobocalTid: number | null; title: string; score: number }> {
+        return (await this.repository.post(`/series/${seriesId}/metadata/annict`)).data;
+    }
 }

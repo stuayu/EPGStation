@@ -87,4 +87,11 @@ export default class SeriesDB implements ISeriesDB {
         const c = await this.op.getConnection();
         return await c.getRepository(RecordedSeriesLink).count({ where: { episodeId, recordedId: Not(recordedId) } });
     }
+    public async updateExternalMetadata(
+        id: number,
+        value: { annictId?: string | null; syobocalTid?: number | null },
+    ): Promise<void> {
+        const c = await this.op.getConnection();
+        await c.getRepository(Series).update({ id }, { ...value, updatedAt: Date.now() });
+    }
 }
