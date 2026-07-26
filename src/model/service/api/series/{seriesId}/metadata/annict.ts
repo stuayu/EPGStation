@@ -7,7 +7,11 @@ export const post: Operation = async (req, res) => {
         const id = api.parseRequestParamInt(String(req.params.seriesId), 'seriesId');
         api.responseJSON(res, 200, await container.get<IAnnictSyncApiModel>('IAnnictSyncApiModel').sync(id));
     } catch (e) {
-        api.responseServerError(res, api.getErrorMessage(e));
+        const message = api.getErrorMessage(e);
+        if (message === 'AnnictSyncFeatureIsDisabled') api.responseError(res, { code: 404, message });
+        else if (message === 'SeriesIsNotFound') api.responseError(res, { code: 404, message });
+        else if (message === 'AnnictWorkIsNotFound') api.responseError(res, { code: 404, message });
+        else api.responseServerError(res, message);
     }
 };
 post.apiDoc = {

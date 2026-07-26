@@ -19,13 +19,21 @@ function fixture() {
         deleteLink: async () => {
             link = null;
         },
+        addHistory: async v => ({ ...v, id: 5, undone: false }),
+        deletePendingMatchByRecordedId: async () => {},
+        upsertAlias: async (normalizedTitle, seriesId, createdAt) => ({ id: 6, normalizedTitle, seriesId, createdAt }),
+        getLatestHistoryForRecorded: async () => null,
+        markHistoryUndone: async () => {},
     };
+    const resolver = { resolve: async () => null };
     return {
         model: new Model(
             { getConfig: () => ({ featureFlags: { seriesLibrary: true } }) },
             { findId: async () => recorded },
             db,
+            resolver,
         ),
+        db,
     };
 }
 test('manual mapping locks selection with full confidence', async () => {
@@ -49,4 +57,30 @@ test('manual mapping validates episode values', async () => {
         () => model.update(1, { seriesId: 2, seasonNumber: 0, episodeNumber: -1 }),
         /InvalidseasonNumber/,
     );
+});
+test('undo restores the link to its pre-change state', async () => {
+    const { model, db } = fixture();
+    await model.update(1, { seriesId: 2, seasonNumber: 1, episodeNumber: 2, airType: 'rerun' });
+    // 割当前は未割当だったので、履歴の previousSeriesId は null
+    db.getLatestHistoryForRecorded = async () => ({
+        id: 9,
+        recordedId: 1,
+        previousSeriesId: null,
+        previousEpisodeId: null,
+        previousAirType: null,
+        previousMatchMethod: null,
+        previousConfidence: null,
+        previousManualLock: null,
+    });
+    let undone = false;
+    db.markHistoryUndone = async () => {
+        undone = true;
+    };
+    const result = await model.undo(1);
+    assert.equal(undone, true);
+    assert.equal(result, null);
+});
+test('undo throws when there is no history to restore', async () => {
+    const { model } = fixture();
+    await assert.rejects(() => model.undo(1), /SeriesChangeHistoryIsNotFound/);
 });

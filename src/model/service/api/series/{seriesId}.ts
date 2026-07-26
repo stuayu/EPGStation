@@ -11,7 +11,9 @@ export const get: Operation = async (req, res) => {
         if (result) api.responseJSON(res, 200, result);
         else api.responseError(res, { code: 404, message: 'series is not found' });
     } catch (e) {
-        api.responseServerError(res, api.getErrorMessage(e));
+        const message = api.getErrorMessage(e);
+        if (message === 'SeriesLibraryFeatureIsDisabled') api.responseError(res, { code: 404, message });
+        else api.responseServerError(res, message);
     }
 };
 get.apiDoc = {

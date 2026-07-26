@@ -2476,6 +2476,368 @@ components:
                     description: 'Error'
                     type: string
 
+        SeriesId:
+            description: シリーズ id
+            type: integer
+
+        SeriesAirType:
+            description: 放送種別
+            type: string
+            enum:
+                - first
+                - rerun
+                - delayed
+                - unknown
+
+        SeriesListItem:
+            description: シリーズ一覧項目
+            type: object
+            required:
+                - id
+                - title
+                - normalizedTitle
+                - mediaType
+                - preferredChannelId
+                - updatedAt
+            properties:
+                id:
+                    $ref: '#/components/schemas/SeriesId'
+                title:
+                    type: string
+                normalizedTitle:
+                    type: string
+                mediaType:
+                    type: string
+                preferredChannelId:
+                    $ref: '#/components/schemas/ChannelId'
+                    nullable: true
+                updatedAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+
+        SeriesListResult:
+            description: シリーズ一覧
+            type: object
+            required:
+                - items
+                - total
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SeriesListItem'
+                total:
+                    type: integer
+
+        SeriesRecordedRow:
+            description: シリーズに紐づく録画
+            type: object
+            required:
+                - recordedId
+                - channelId
+                - channelName
+                - recordedTitle
+                - startAt
+                - endAt
+                - episodeId
+                - seasonNumber
+                - episodeNumber
+                - episodeLabel
+                - episodeTitle
+                - airType
+                - confidence
+            properties:
+                recordedId:
+                    $ref: '#/components/schemas/RecordedId'
+                channelId:
+                    $ref: '#/components/schemas/ChannelId'
+                channelName:
+                    type: string
+                    nullable: true
+                recordedTitle:
+                    type: string
+                startAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                endAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                episodeId:
+                    type: integer
+                    nullable: true
+                seasonNumber:
+                    type: integer
+                    nullable: true
+                episodeNumber:
+                    type: integer
+                    nullable: true
+                episodeLabel:
+                    type: string
+                    nullable: true
+                episodeTitle:
+                    type: string
+                    nullable: true
+                airType:
+                    type: string
+                confidence:
+                    type: number
+
+        SeriesDetail:
+            description: シリーズ詳細
+            allOf:
+                - $ref: '#/components/schemas/SeriesListItem'
+                - type: object
+                  required:
+                      - externalIds
+                      - channels
+                      - continuity
+                      - recorded
+                  properties:
+                      externalIds:
+                          type: object
+                          properties:
+                              syobocalTid:
+                                  type: integer
+                                  nullable: true
+                              annictId:
+                                  type: string
+                                  nullable: true
+                              tmdbId:
+                                  type: integer
+                                  nullable: true
+                      channels:
+                          type: array
+                          items:
+                              type: object
+                              properties:
+                                  channelId:
+                                      $ref: '#/components/schemas/ChannelId'
+                                  channelName:
+                                      type: string
+                                      nullable: true
+                                  count:
+                                      type: integer
+                      continuity:
+                          type: object
+                          properties:
+                              missingEpisodes:
+                                  type: array
+                                  items:
+                                      type: object
+                                      properties:
+                                          seasonNumber:
+                                              type: integer
+                                          episodeNumber:
+                                              type: integer
+                              duplicateEpisodes:
+                                  type: array
+                                  items:
+                                      type: object
+                                      properties:
+                                          seasonNumber:
+                                              type: integer
+                                          episodeNumber:
+                                              type: integer
+                                          recordedIds:
+                                              type: array
+                                              items:
+                                                  type: integer
+                                          channelIds:
+                                              type: array
+                                              items:
+                                                  type: integer
+                              unknownEpisodeRecordedIds:
+                                  type: array
+                                  items:
+                                      type: integer
+                      recorded:
+                          type: array
+                          items:
+                              $ref: '#/components/schemas/SeriesRecordedRow'
+
+        SeriesMappingValue:
+            description: 録画のシリーズ割当情報
+            type: object
+            required:
+                - recordedId
+                - recordedTitle
+                - seriesId
+                - seriesTitle
+                - episodeId
+                - seasonNumber
+                - episodeNumber
+                - airType
+                - matchMethod
+                - confidence
+                - manualLock
+            properties:
+                recordedId:
+                    $ref: '#/components/schemas/RecordedId'
+                recordedTitle:
+                    type: string
+                seriesId:
+                    $ref: '#/components/schemas/SeriesId'
+                seriesTitle:
+                    type: string
+                episodeId:
+                    type: integer
+                    nullable: true
+                seasonNumber:
+                    type: integer
+                    nullable: true
+                episodeNumber:
+                    type: integer
+                    nullable: true
+                airType:
+                    type: string
+                matchMethod:
+                    type: string
+                confidence:
+                    type: number
+                manualLock:
+                    type: boolean
+
+        UpdateSeriesMappingOption:
+            description: シリーズ手動割当のリクエストボディ
+            type: object
+            properties:
+                seriesId:
+                    $ref: '#/components/schemas/SeriesId'
+                seriesTitle:
+                    type: string
+                seasonNumber:
+                    type: integer
+                episodeNumber:
+                    type: integer
+                    nullable: true
+                airType:
+                    $ref: '#/components/schemas/SeriesAirType'
+                learnAlias:
+                    type: boolean
+
+        SeriesPendingMatchCandidate:
+            description: 未確定候補
+            type: object
+            required:
+                - seriesId
+                - seriesTitle
+                - score
+            properties:
+                seriesId:
+                    $ref: '#/components/schemas/SeriesId'
+                seriesTitle:
+                    type: string
+                score:
+                    type: number
+
+        SeriesPendingMatchItem:
+            description: 未確定キューの1件
+            type: object
+            required:
+                - id
+                - recordedId
+                - recordedTitle
+                - normalizedTitle
+                - channelId
+                - candidates
+                - createdAt
+            properties:
+                id:
+                    type: integer
+                recordedId:
+                    $ref: '#/components/schemas/RecordedId'
+                recordedTitle:
+                    type: string
+                normalizedTitle:
+                    type: string
+                channelId:
+                    $ref: '#/components/schemas/ChannelId'
+                candidates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SeriesPendingMatchCandidate'
+                createdAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+
+        SeriesPendingListResult:
+            description: 未確定キュー一覧
+            type: object
+            required:
+                - items
+                - total
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SeriesPendingMatchItem'
+                total:
+                    type: integer
+
+        MergeSeriesOption:
+            description: シリーズマージのリクエストボディ
+            type: object
+            required:
+                - fromSeriesId
+                - toSeriesId
+            properties:
+                fromSeriesId:
+                    $ref: '#/components/schemas/SeriesId'
+                toSeriesId:
+                    $ref: '#/components/schemas/SeriesId'
+
+        MergeSeriesResult:
+            description: シリーズマージ結果
+            type: object
+            required:
+                - movedLinkCount
+            properties:
+                movedLinkCount:
+                    type: integer
+
+        SplitSeriesOption:
+            description: シリーズ分割のリクエストボディ
+            type: object
+            required:
+                - recordedIds
+                - newTitle
+            properties:
+                recordedIds:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RecordedId'
+                newTitle:
+                    type: string
+
+        SplitSeriesResult:
+            description: シリーズ分割結果
+            type: object
+            required:
+                - seriesId
+                - title
+            properties:
+                seriesId:
+                    $ref: '#/components/schemas/SeriesId'
+                title:
+                    type: string
+
+        SeriesAliasItem:
+            description: シリーズエイリアス辞書の1件
+            type: object
+            required:
+                - id
+                - normalizedTitle
+                - seriesId
+                - seriesTitle
+                - createdAt
+            properties:
+                id:
+                    type: integer
+                normalizedTitle:
+                    type: string
+                seriesId:
+                    $ref: '#/components/schemas/SeriesId'
+                seriesTitle:
+                    type: string
+                createdAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+
     parameters:
         Offset:
             description: offset
@@ -3135,3 +3497,27 @@ components:
             required: false
             schema:
                 type: string
+
+        QuerySeriesId:
+            description: シリーズ id (絞り込み用、任意)
+            name: seriesId
+            in: query
+            required: false
+            schema:
+                $ref: '#/components/schemas/SeriesId'
+
+        PathPendingId:
+            description: 未確定キュー id
+            in: path
+            name: pendingId
+            required: true
+            schema:
+                type: integer
+
+        PathAliasId:
+            description: エイリアス id
+            in: path
+            name: aliasId
+            required: true
+            schema:
+                type: integer

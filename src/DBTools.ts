@@ -7,6 +7,12 @@ import Recorded from './db/entities/Recorded';
 import RecordedHistory from './db/entities/RecordedHistory';
 import RecordedTag from './db/entities/RecordedTag';
 import Reserve from './db/entities/Reserve';
+import RecordedSeriesLink from './db/entities/RecordedSeriesLink';
+import Series from './db/entities/Series';
+import SeriesAlias from './db/entities/SeriesAlias';
+import SeriesChangeHistory from './db/entities/SeriesChangeHistory';
+import SeriesEpisode from './db/entities/SeriesEpisode';
+import SeriesPendingMatch from './db/entities/SeriesPendingMatch';
 import Thumbnail from './db/entities/Thumbnail';
 import VideoFile from './db/entities/VideoFile';
 import IDBOperator from './model/db/IDBOperator';
@@ -16,6 +22,7 @@ import IRecordedHistoryDB from './model/db/IRecordedHistoryDB';
 import IRecordedTagDB from './model/db/IRecordedTagDB';
 import IReserveDB from './model/db/IReserveDB';
 import IRuleDB, { RuleWithCnt } from './model/db/IRuleDB';
+import ISeriesDB from './model/db/ISeriesDB';
 import IThumbnailDB from './model/db/IThumbnailDB';
 import IVideoFileDB from './model/db/IVideoFileDB';
 import IConnectionCheckModel from './model/IConnectionCheckModel';
@@ -36,6 +43,12 @@ interface BackupData {
     dropLogFileItems: DropLogFile[];
     recordedHistoryItems: RecordedHistory[];
     recordedTagItems: RecordedTag[];
+    seriesItems: Series[];
+    seriesEpisodeItems: SeriesEpisode[];
+    recordedSeriesLinkItems: RecordedSeriesLink[];
+    seriesAliasItems: SeriesAlias[];
+    seriesPendingMatchItems: SeriesPendingMatch[];
+    seriesChangeHistoryItems: SeriesChangeHistory[];
 }
 
 class DBTools {
@@ -53,6 +66,7 @@ class DBTools {
     private ruleDB: IRuleDB;
     private thumbnailDB: IThumbnailDB;
     private videoFileDB: IVideoFileDB;
+    private seriesDB: ISeriesDB;
 
     constructor() {
         // 引数チェック
@@ -95,6 +109,7 @@ class DBTools {
         this.ruleDB = container.get<IRuleDB>('IRuleDB');
         this.thumbnailDB = container.get<IThumbnailDB>('IThumbnailDB');
         this.videoFileDB = container.get<IVideoFileDB>('IVideoFileDB');
+        this.seriesDB = container.get<ISeriesDB>('ISeriesDB');
     }
 
     /**
@@ -166,6 +181,14 @@ class DBTools {
         this.log.system.info('recorded tag');
         const [recordedTagItems] = await this.recordedTagDB.findAll({});
 
+        this.log.system.info('series');
+        const seriesItems = await this.seriesDB.findAllSeries();
+        const seriesEpisodeItems = await this.seriesDB.findAllEpisodes();
+        const recordedSeriesLinkItems = await this.seriesDB.findAllLinks();
+        const seriesAliasItems = await this.seriesDB.findAllAliases();
+        const seriesPendingMatchItems = await this.seriesDB.findAllPendingMatches();
+        const seriesChangeHistoryItems = await this.seriesDB.findAllHistories();
+
         const backup: BackupData = {
             ruleItems: ruleItems as RuleWithCnt[],
             reserveItems: reserveItems,
@@ -175,6 +198,12 @@ class DBTools {
             dropLogFileItems: dropLogFileItems,
             recordedHistoryItems: recordedHistoryItems,
             recordedTagItems: recordedTagItems,
+            seriesItems: seriesItems,
+            seriesEpisodeItems: seriesEpisodeItems,
+            recordedSeriesLinkItems: recordedSeriesLinkItems,
+            seriesAliasItems: seriesAliasItems,
+            seriesPendingMatchItems: seriesPendingMatchItems,
+            seriesChangeHistoryItems: seriesChangeHistoryItems,
         };
 
         this.log.system.info('--- writing ---');
@@ -236,6 +265,15 @@ class DBTools {
 
         this.log.system.info('recorded tag');
         await this.recordedTagDB.restore(backup.recordedTagItems);
+
+        // 旧バックアップ (シリーズ管理導入前) との互換のため未定義時は空配列扱いにする
+        this.log.system.info('series');
+        await this.seriesDB.restoreSeries(backup.seriesItems ?? []);
+        await this.seriesDB.restoreEpisodes(backup.seriesEpisodeItems ?? []);
+        await this.seriesDB.restoreLinks(backup.recordedSeriesLinkItems ?? []);
+        await this.seriesDB.restoreAliases(backup.seriesAliasItems ?? []);
+        await this.seriesDB.restorePendingMatches(backup.seriesPendingMatchItems ?? []);
+        await this.seriesDB.restoreHistories(backup.seriesChangeHistoryItems ?? []);
     }
 }
 

@@ -2,6 +2,8 @@ import { inject, injectable } from 'inversify';
 import { In, IsNull, Not } from 'typeorm';
 import * as apid from '../../../api';
 import Recorded from '../../db/entities/Recorded';
+import RecordedSeriesLink from '../../db/entities/RecordedSeriesLink';
+import SeriesPendingMatch from '../../db/entities/SeriesPendingMatch';
 import Thumbnail from '../../db/entities/Thumbnail';
 import VideoFile from '../../db/entities/VideoFile';
 import { isFeatureEnabled } from '../FeatureFlags';
@@ -49,6 +51,8 @@ export default class RecordedDB implements IRecordedDB {
             // 削除
             await queryRunner.manager.createQueryBuilder().delete().from(Thumbnail).execute();
             await queryRunner.manager.createQueryBuilder().delete().from(VideoFile).execute();
+            await queryRunner.manager.createQueryBuilder().delete().from(RecordedSeriesLink).execute();
+            await queryRunner.manager.createQueryBuilder().delete().from(SeriesPendingMatch).execute();
             await queryRunner.manager.createQueryBuilder().delete().from(Recorded).execute();
 
             // 挿入処理
@@ -201,6 +205,23 @@ export default class RecordedDB implements IRecordedDB {
      */
     public async deleteOnce(recordedId: apid.RecordedId): Promise<void> {
         const connection = await this.op.getConnection();
+        // シリーズ管理系の孤立行 (recorded_series_link / series_pending_match) を残さないよう先に削除する
+        await this.promieRetry.run(() => {
+            return connection
+                .createQueryBuilder()
+                .delete()
+                .from(RecordedSeriesLink)
+                .where({ recordedId })
+                .execute();
+        });
+        await this.promieRetry.run(() => {
+            return connection
+                .createQueryBuilder()
+                .delete()
+                .from(SeriesPendingMatch)
+                .where({ recordedId })
+                .execute();
+        });
         const queryBuilder = connection.createQueryBuilder().delete().from(Recorded).where({
             id: recordedId,
         });

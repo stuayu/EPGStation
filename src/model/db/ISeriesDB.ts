@@ -1,6 +1,9 @@
 import RecordedSeriesLink from '../../db/entities/RecordedSeriesLink';
 import Series from '../../db/entities/Series';
+import SeriesAlias from '../../db/entities/SeriesAlias';
+import SeriesChangeHistory, { SeriesChangeAction } from '../../db/entities/SeriesChangeHistory';
 import SeriesEpisode from '../../db/entities/SeriesEpisode';
+import SeriesPendingMatch from '../../db/entities/SeriesPendingMatch';
 export interface NewSeries {
     title: string;
     normalizedTitle: string;
@@ -21,6 +24,7 @@ export interface NewEpisode {
 export interface SaveSeriesLink {
     recordedId: number;
     seriesId: number;
+    channelId: number;
     episodeId: number | null;
     airType: RecordedSeriesLink['airType'];
     matchMethod: RecordedSeriesLink['matchMethod'];
@@ -49,6 +53,24 @@ export interface SeriesChannelRow {
     channelName: string | null;
     count: number;
 }
+export interface PendingCandidate {
+    seriesId: number;
+    seriesTitle: string;
+    score: number;
+}
+export interface NewPendingMatch {
+    recordedId: number;
+    normalizedTitle: string;
+    channelId: number;
+    candidates: PendingCandidate[];
+    createdAt: number;
+}
+export interface NewHistory {
+    recordedId: number;
+    action: SeriesChangeAction;
+    previous: RecordedSeriesLink | null;
+    createdAt: number;
+}
 export default interface ISeriesDB {
     findCandidates(normalizedTitle: string): Promise<Series[]>;
     createSeries(value: NewSeries): Promise<Series>;
@@ -64,4 +86,49 @@ export default interface ISeriesDB {
     deleteLink(recordedId: number): Promise<void>;
     countOtherLinksByEpisode(episodeId: number, recordedId: number): Promise<number>;
     updateExternalMetadata(id: number, value: { annictId?: string | null; syobocalTid?: number | null }): Promise<void>;
+
+    // --- 未確定キュー (S9 §4.5) ---
+    upsertPendingMatch(value: NewPendingMatch): Promise<SeriesPendingMatch>;
+    listPendingMatches(offset: number, limit: number): Promise<[SeriesPendingMatch[], number]>;
+    getPendingMatch(id: number): Promise<SeriesPendingMatch | null>;
+    deletePendingMatchByRecordedId(recordedId: number): Promise<void>;
+    deletePendingMatch(id: number): Promise<void>;
+
+    // --- エイリアス辞書 (S11 §4.8) ---
+    findAlias(normalizedTitle: string): Promise<SeriesAlias | null>;
+    upsertAlias(normalizedTitle: string, seriesId: number, createdAt: number): Promise<SeriesAlias>;
+    listAlias(seriesId?: number): Promise<SeriesAlias[]>;
+    deleteAlias(id: number): Promise<void>;
+
+    // --- 変更履歴 / Undo (S11 §4.8) ---
+    addHistory(value: NewHistory): Promise<SeriesChangeHistory>;
+    getHistory(id: number): Promise<SeriesChangeHistory | null>;
+    getLatestHistoryForRecorded(recordedId: number): Promise<SeriesChangeHistory | null>;
+    markHistoryUndone(id: number): Promise<void>;
+
+    // --- マージ / 分割 (S11 §4.8) ---
+    /**
+     * fromSeriesId のリンク・エピソード・エイリアスを toSeriesId へ付け替え、fromSeriesId を削除する
+     * @return 移動したリンク数
+     */
+    mergeSeries(fromSeriesId: number, toSeriesId: number): Promise<number>;
+    /**
+     * recordedIds のリンクを新しいシリーズへ分割する (episodeId は分割後クリアされる)
+     * @return 作成された新シリーズ
+     */
+    splitSeries(sourceSeriesId: number, recordedIds: number[], newTitle: string): Promise<Series>;
+
+    // --- バックアップ / リストア (DBTools 用) ---
+    findAllSeries(): Promise<Series[]>;
+    findAllEpisodes(): Promise<SeriesEpisode[]>;
+    findAllLinks(): Promise<RecordedSeriesLink[]>;
+    findAllAliases(): Promise<SeriesAlias[]>;
+    findAllPendingMatches(): Promise<SeriesPendingMatch[]>;
+    findAllHistories(): Promise<SeriesChangeHistory[]>;
+    restoreSeries(items: Series[]): Promise<void>;
+    restoreEpisodes(items: SeriesEpisode[]): Promise<void>;
+    restoreLinks(items: RecordedSeriesLink[]): Promise<void>;
+    restoreAliases(items: SeriesAlias[]): Promise<void>;
+    restorePendingMatches(items: SeriesPendingMatch[]): Promise<void>;
+    restoreHistories(items: SeriesChangeHistory[]): Promise<void>;
 }
