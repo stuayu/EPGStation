@@ -7,4 +7,5 @@ export interface NotificationEvent {
 }
 export default interface INotificationDispatcher {
     dispatch(type: NotificationEventType, payload: Record<string, unknown>): Promise<void>;
+    test(targetName?: string): Promise<{ delivered: string[]; failed: string[] }>;
 }
