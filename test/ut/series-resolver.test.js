@@ -22,6 +22,15 @@ function memory(candidates = []) {
             return x;
         },
         findLink: async id => links.get(id) || null,
+        findEpisodeById: async id => episodes.find(x => x.id === id) || null,
+        reservationHints: new Map(),
+        findReservationHintByReserveId: async function (reserveId) {
+            return this.reservationHints.get(reserveId) || null;
+        },
+        deleteReservationHint: async function (id) {
+            for (const [key, value] of this.reservationHints)
+                if (value.id === id) this.reservationHints.delete(key);
+        },
         countOtherLinksByEpisode: async (episodeId, recordedId) =>
             [...links.values()].filter(x => x.episodeId === episodeId && x.recordedId !== recordedId).length,
         saveLink: async v => {
@@ -77,4 +86,52 @@ test('feature flag keeps resolver disabled', async () => {
     const db = memory();
     const r = new SeriesResolver({ getConfig: () => ({ featureFlags: {} }) }, { getAll: async () => ({}) }, db);
     assert.equal(await r.resolve({ recordedId: 1, title: 'x', channelId: 1, startAt: 1 }), null);
+});
+
+// §4.7: 欠番補完予約提案から作成された予約は、録画完了時にヒントを最優先で使い、
+// (通常なら初回放送として first になってしまうはずの) 事前付与された rerun を必ず使う
+test('a reservation hint (from a missing-episode proposal) overrides normal scoring/airType detection', async () => {
+    const series = { id: 1, title: '作品名', normalizedTitle: '作品名', preferredChannelId: 10 };
+    const db = memory([series]);
+    // episode 2 は他に録画が無い = 通常ロジックなら 'first' になるはずのケース
+    const episode = await db.createEpisode({
+        seriesId: 1,
+        seasonNumber: 1,
+        episodeNumber: 2,
+        episodeLabel: null,
+        title: null,
+        airedAt: null,
+        createdAt: 1,
+        updatedAt: 1,
+    });
+    db.reservationHints.set(777, { id: 1, reserveId: 777, seriesId: 1, episodeId: episode.id, airType: 'rerun' });
+
+    const link = await resolver(db).resolve({
+        recordedId: 5,
+        title: '作品名 第2話', // タイトルからは 'unknown' (=> first) になるはずの表記
+        channelId: 20,
+        startAt: 100,
+        reserveId: 777,
+    });
+    assert.equal(link.seriesId, 1);
+    assert.equal(link.episodeId, episode.id);
+    assert.equal(link.airType, 'rerun');
+    assert.equal(link.matchMethod, 'reservation-hint');
+    assert.equal(link.confidence, 1);
+    // ヒントは使用後に削除される (二重適用防止)
+    assert.equal(await db.findReservationHintByReserveId(777), null);
+});
+
+test('resolve() falls back to normal scoring when reserveId has no matching hint', async () => {
+    const series = { id: 1, title: '作品名', normalizedTitle: '作品名', preferredChannelId: 10 };
+    const db = memory([series]);
+    const link = await resolver(db).resolve({
+        recordedId: 5,
+        title: '作品名 第4話',
+        channelId: 10,
+        startAt: 100,
+        reserveId: 999, // ヒント無し
+    });
+    assert.equal(link.seriesId, 1);
+    assert.equal(link.matchMethod, 'title');
 });

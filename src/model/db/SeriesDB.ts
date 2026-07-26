@@ -7,11 +7,13 @@ import SeriesAlias from '../../db/entities/SeriesAlias';
 import SeriesChangeHistory from '../../db/entities/SeriesChangeHistory';
 import SeriesEpisode from '../../db/entities/SeriesEpisode';
 import SeriesPendingMatch from '../../db/entities/SeriesPendingMatch';
+import SeriesReservationHint from '../../db/entities/SeriesReservationHint';
 import IDBOperator from './IDBOperator';
 import ISeriesDB, {
     NewEpisode,
     NewHistory,
     NewPendingMatch,
+    NewReservationHint,
     NewSeries,
     PendingCandidate,
     SaveSeriesLink,
@@ -434,5 +436,19 @@ export default class SeriesDB implements ISeriesDB {
         } finally {
             await queryRunner.release();
         }
+    }
+
+    async saveReservationHint(value: NewReservationHint): Promise<SeriesReservationHint> {
+        const c = await this.op.getConnection();
+        const repo = c.getRepository(SeriesReservationHint);
+        return await repo.save(repo.create(value));
+    }
+    async findReservationHintByReserveId(reserveId: number): Promise<SeriesReservationHint | null> {
+        const c = await this.op.getConnection();
+        return await c.getRepository(SeriesReservationHint).findOne({ where: { reserveId } });
+    }
+    async deleteReservationHint(id: number): Promise<void> {
+        const c = await this.op.getConnection();
+        await c.getRepository(SeriesReservationHint).delete({ id });
     }
 }

@@ -123,6 +123,13 @@ export default interface IConfigFile {
     // 省略時は同梱の初期データ (主要地上波キー局のみ) を使う。指定したファイルは同梱データを上書き/追加する
     metadataChannelMappingPath?: string;
 
+    // 共有静的データ (チャンネルマッピング表・エイリアス辞書) を GitHub 等から自動取得する URL (§5.1)。
+    // 起動時 + metadataSharedDataUpdateIntervalMs 間隔で取得し、ローカルにキャッシュする。
+    // オフライン/取得失敗時は前回キャッシュ → 同梱データの順にフォールバックする
+    metadataSharedDataUrl?: string;
+    // 自動更新間隔 (ms)。省略時 24 時間。0 を指定すると起動時取得のみで定期更新を行わない
+    metadataSharedDataUpdateIntervalMs?: number;
+
     mirakurunPath: string;
     mirakurunAPIPath?: string; // mirakurun の API エンドポイントのベースパス (省略時 /api)
 

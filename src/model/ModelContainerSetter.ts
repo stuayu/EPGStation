@@ -42,6 +42,8 @@ import ISeriesMaintenanceApiModel from './api/series/ISeriesMaintenanceApiModel'
 import SeriesMaintenanceApiModel from './api/series/SeriesMaintenanceApiModel';
 import ISeriesAliasApiModel from './api/series/ISeriesAliasApiModel';
 import SeriesAliasApiModel from './api/series/SeriesAliasApiModel';
+import IMissingEpisodeApiModel from './api/series/IMissingEpisodeApiModel';
+import MissingEpisodeApiModel from './api/series/MissingEpisodeApiModel';
 import ISeriesBackfillApiModel from './api/series/ISeriesBackfillApiModel';
 import SeriesBackfillApiModel from './api/series/SeriesBackfillApiModel';
 import IScheduleApiModel from './api/schedule/IScheduleApiModel';
@@ -88,6 +90,8 @@ import SeriesDB from './db/SeriesDB';
 import IThumbnailDB from './db/IThumbnailDB';
 import IVideoFileDB from './db/IVideoFileDB';
 import IWatchHistoryDB from './db/IWatchHistoryDB';
+import IAnnictWatchSyncDB from './db/IAnnictWatchSyncDB';
+import AnnictWatchSyncDB from './db/AnnictWatchSyncDB';
 import ProgramDB from './db/ProgramDB';
 import IProgramSeriesDB from './db/IProgramSeriesDB';
 import ProgramSeriesDB from './db/ProgramSeriesDB';
@@ -146,12 +150,16 @@ import IMetadataService from './metadata/IMetadataService';
 import MetadataService from './metadata/MetadataService';
 import IProviderHttpClient from './metadata/IProviderHttpClient';
 import ProviderHttpClient from './metadata/ProviderHttpClient';
+import ISharedDataFetcher from './metadata/ISharedDataFetcher';
+import SharedDataFetcher from './metadata/SharedDataFetcher';
 import ISyobocalProvider from './metadata/syobocal/ISyobocalProvider';
 import SyobocalProvider from './metadata/syobocal/SyobocalProvider';
 import ISyobocalChannelMap from './metadata/syobocal/ISyobocalChannelMap';
 import SyobocalChannelMap from './metadata/syobocal/SyobocalChannelMap';
 import IAnnictProvider from './metadata/annict/IAnnictProvider';
 import AnnictProvider from './metadata/annict/AnnictProvider';
+import IAnnictSyncQueueModel from './metadata/annict/IAnnictSyncQueueModel';
+import AnnictSyncQueueModel from './metadata/annict/AnnictSyncQueueModel';
 import INotificationDispatcher from './notification/INotificationDispatcher';
 import NotificationDispatcher from './notification/NotificationDispatcher';
 import ExternalCommandManageModel from './operator/externalCommand/ExternalCommandManageModel';
@@ -259,12 +267,14 @@ export const set = (container: Container): void => {
     container.bind<ISyobocalChannelMap>('ISyobocalChannelMap').to(SyobocalChannelMap).inSingletonScope();
     container.bind<ISyobocalProvider>('ISyobocalProvider').to(SyobocalProvider).inSingletonScope();
     container.bind<IAnnictProvider>('IAnnictProvider').to(AnnictProvider).inSingletonScope();
+    container.bind<IAnnictSyncQueueModel>('IAnnictSyncQueueModel').to(AnnictSyncQueueModel).inSingletonScope();
     container
         .bind<IMetadataProviderRegistry>('IMetadataProviderRegistry')
         .to(MetadataProviderRegistry)
         .inSingletonScope();
     container.bind<IMetadataService>('IMetadataService').to(MetadataService).inSingletonScope();
     container.bind<IProviderHttpClient>('IProviderHttpClient').to(ProviderHttpClient).inSingletonScope();
+    container.bind<ISharedDataFetcher>('ISharedDataFetcher').to(SharedDataFetcher).inSingletonScope();
 
     container.bind<IChannelDB>('IChannelDB').to(ChannelDB).inSingletonScope();
 
@@ -287,6 +297,7 @@ export const set = (container: Container): void => {
 
     container.bind<IVideoFileDB>('IVideoFileDB').to(VideoFileDB).inSingletonScope();
     container.bind<IWatchHistoryDB>('IWatchHistoryDB').to(WatchHistoryDB).inSingletonScope();
+    container.bind<IAnnictWatchSyncDB>('IAnnictWatchSyncDB').to(AnnictWatchSyncDB).inSingletonScope();
     container.bind<ISeriesDB>('ISeriesDB').to(SeriesDB).inSingletonScope();
     container.bind<ISeriesResolver>('ISeriesResolver').to(SeriesResolver).inSingletonScope();
 
@@ -405,6 +416,7 @@ export const set = (container: Container): void => {
         .to(SeriesMaintenanceApiModel)
         .inSingletonScope();
     container.bind<ISeriesAliasApiModel>('ISeriesAliasApiModel').to(SeriesAliasApiModel).inSingletonScope();
+    container.bind<IMissingEpisodeApiModel>('IMissingEpisodeApiModel').to(MissingEpisodeApiModel).inSingletonScope();
     container.bind<ISeriesBackfillApiModel>('ISeriesBackfillApiModel').to(SeriesBackfillApiModel).inSingletonScope();
 
     container.bind<IRecordingApiModel>('IRecordingApiModel').to(RecordingApiModel).inSingletonScope();

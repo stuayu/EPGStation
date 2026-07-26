@@ -29,6 +29,11 @@ export interface MetadataGetOption {
 // 304 (未変更) を示す番兵値。get() がこれを返した場合、呼び出し側はキャッシュ済みの
 // MetadataWork をそのまま使い続けてよい (有効期限のみ延長する)
 export const METADATA_NOT_MODIFIED = Symbol('MetadataNotModified');
+export type WatchStatusForSync = 'watching' | 'watched';
+export interface PushWatchRecordResult {
+    // 作成された視聴記録の外部 ID (プロバイダー依存の文字列)
+    recordId: string;
+}
 export default interface IMetadataProvider {
     readonly name: string;
     search(query: string, context?: MetadataSearchContext): Promise<MetadataSearchResult[]>;
@@ -36,4 +41,14 @@ export default interface IMetadataProvider {
         externalId: string,
         option?: MetadataGetOption,
     ): Promise<MetadataWork | null | typeof METADATA_NOT_MODIFIED>;
+    /**
+     * 視聴記録の書き込みに対応するプロバイダーのみが実装するオプショナルメソッド (§5.5)。
+     * workExternalId (作品) の episodeNumber 話目の視聴記録を作成し、作品の視聴ステータスも同期する。
+     * 未設定 (トークン未設定など) の場合は null を返す。エピソードが見つからない等は例外を投げる (呼び出し側でリトライする)
+     */
+    pushWatchRecord?(
+        workExternalId: string,
+        episodeNumber: number,
+        watchStatus: WatchStatusForSync,
+    ): Promise<PushWatchRecordResult | null>;
 }

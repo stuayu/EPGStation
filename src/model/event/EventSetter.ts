@@ -284,6 +284,7 @@ export default class EventSetter implements IEventSetter {
                     title: recorded.name,
                     channelId: recorded.channelId,
                     startAt: recorded.startAt,
+                    reserveId: reserve.id,
                 })
                 .catch(err => {
                     this.log.system.error('series resolve failed');

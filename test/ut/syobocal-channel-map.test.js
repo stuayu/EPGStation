@@ -6,9 +6,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const ChannelMap = require('../../dist/model/metadata/syobocal/SyobocalChannelMap').default;
+const noopSharedData = { startAutoUpdate: () => {} };
 
 test('falls back to the bundled data when no override path is configured', () => {
-    const map = new ChannelMap({ getConfig: () => ({}) }, { getLogger: () => ({ system: { warn: () => {} } }) });
+    const map = new ChannelMap(
+        { getConfig: () => ({}) },
+        { getLogger: () => ({ system: { warn: () => {} } }) },
+        noopSharedData,
+    );
     // NHK総合・東京 (同梱データ)
     const hit = map.find(32736, 1024);
     assert.ok(hit);
@@ -29,6 +34,7 @@ test('merges an external override file on top of the bundled data', () => {
     const map = new ChannelMap(
         { getConfig: () => ({ metadataChannelMappingPath: file }) },
         { getLogger: () => ({ system: { warn: () => {} } }) },
+        noopSharedData,
     );
     assert.equal(map.find(1, 2).syobocal, false);
     assert.equal(map.find(32736, 1024).syobocal, false);
@@ -41,7 +47,32 @@ test('falls back to bundled data when the override path cannot be read (graceful
     const map = new ChannelMap(
         { getConfig: () => ({ metadataChannelMappingPath: '/no/such/file.json' }) },
         { getLogger: () => ({ system: { warn: () => (warned = true) } }) },
+        noopSharedData,
     );
     assert.ok(map.find(32736, 1024));
     assert.equal(warned, true);
+});
+
+test('merges shared static data fetched via ISharedDataFetcher (§5.1) on top of bundled data', () => {
+    let updateCallback;
+    const sharedData = {
+        startAutoUpdate: cb => {
+            updateCallback = cb;
+        },
+    };
+    const map = new ChannelMap({ getConfig: () => ({}) }, { getLogger: () => ({ system: { warn: () => {} } }) }, sharedData);
+    // 取得前は同梱データのみ
+    assert.equal(map.find(1, 2), undefined);
+    updateCallback({ channelMap: [{ chId: 1, networkId: 1, serviceId: 2, syobocal: true }] });
+    assert.ok(map.find(1, 2));
+    assert.equal(map.find(1, 2).syobocal, true);
+});
+
+test('falls back to bundled data when shared data fetch never succeeds (offline)', () => {
+    const map = new ChannelMap(
+        { getConfig: () => ({}) },
+        { getLogger: () => ({ system: { warn: () => {} } }) },
+        { startAutoUpdate: () => {} }, // onUpdate は一度も呼ばれない (取得失敗を模擬)
+    );
+    assert.ok(map.find(32736, 1024));
 });

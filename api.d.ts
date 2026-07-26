@@ -1503,3 +1503,21 @@ export interface ProgramSeriesMetrics {
     matchedPrograms: number;
     updatedAt: UnixtimeMS | null;
 }
+export interface AnnictWatchSyncResult {
+    queued: number;
+}
+export interface MissingEpisodeProposalCandidate {
+    programId: ProgramId;
+    channelId: ChannelId;
+    name: string;
+    startAt: UnixtimeMS;
+    endAt: UnixtimeMS;
+}
+export interface MissingEpisodeProposal {
+    seasonNumber: number;
+    episodeNumber: number;
+    candidates: MissingEpisodeProposalCandidate[];
+}
+export interface MissingEpisodeProposals {
+    proposals: MissingEpisodeProposal[];
+}

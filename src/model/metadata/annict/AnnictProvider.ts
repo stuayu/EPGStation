@@ -9,6 +9,8 @@ import {
     MetadataSearchResult,
     MetadataWork,
     METADATA_NOT_MODIFIED,
+    PushWatchRecordResult,
+    WatchStatusForSync,
 } from '../IMetadataProvider';
 import IProviderHttpClient from '../IProviderHttpClient';
 import IAnnictProvider from './IAnnictProvider';
@@ -78,6 +80,49 @@ export default class AnnictProvider implements IAnnictProvider {
             })),
             raw: work,
         };
+    }
+    /**
+     * 視聴記録の双方向同期 (§5.5)。work (annictId) の episodeNumber 話目に対応する Annict の
+     * エピソードを引き当て、createRecord mutation で視聴記録を作成し、あわせて作品ステータス
+     * (見てる/見た) を updateStatus mutation で同期する。エピソードが未登録 (Annict 側にまだ
+     * 存在しない、遅延放送等) の場合は例外を投げるので、呼び出し側 (キュー) でリトライすること
+     */
+    public async pushWatchRecord(
+        workExternalId: string,
+        episodeNumber: number,
+        watchStatus: WatchStatusForSync,
+    ): Promise<PushWatchRecordResult | null> {
+        const token = await this.token();
+        if (token === null) return null;
+        const annictId = Number(workExternalId);
+        const data = await this.graphql<{
+            works: {
+                nodes: Array<{
+                    id: string;
+                    episodes?: { nodes?: Array<{ id: string; number?: number; sortNumber?: number }> };
+                }>;
+            };
+        }>(
+            token,
+            `query WorkEpisodes($annictIds: [Int!]) { works(annictIds: $annictIds, first: 1) { nodes { id episodes(first: 500) { nodes { id number sortNumber } } } } }`,
+            { annictIds: [annictId] },
+        );
+        const work = data.works?.nodes?.[0];
+        if (!work) throw new Error('AnnictWorkIsNotFound');
+        const episode = (work.episodes?.nodes ?? []).find(x => (x.number ?? x.sortNumber) === episodeNumber);
+        if (!episode) throw new Error('AnnictEpisodeIsNotFound');
+        const created = await this.graphql<{ createRecord: { record?: { id: string } | null } }>(
+            token,
+            `mutation CreateRecord($episodeId: ID!) { createRecord(input: { episodeId: $episodeId }) { record { id } } }`,
+            { episodeId: episode.id },
+        );
+        // ステータス同期の失敗は視聴記録作成の成功自体を無効にしない (障害分離)
+        await this.graphql(
+            token,
+            `mutation UpdateStatus($workId: ID!, $state: StatusState!) { updateStatus(input: { workId: $workId, state: $state }) { work { id } } }`,
+            { workId: work.id, state: watchStatus === 'watched' ? 'WATCHED' : 'WATCHING' },
+        ).catch(() => undefined);
+        return { recordId: created.createRecord?.record?.id ?? '' };
     }
     private searchResult(work: AnnictWork, score: number): MetadataSearchResult {
         return {

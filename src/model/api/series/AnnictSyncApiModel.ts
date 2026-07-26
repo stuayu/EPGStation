@@ -3,6 +3,7 @@ import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
 import ISeriesDB from '../../db/ISeriesDB';
 import IMetadataService from '../../metadata/IMetadataService';
+import IAnnictSyncQueueModel from '../../metadata/annict/IAnnictSyncQueueModel';
 import IAnnictSyncApiModel, { AnnictSyncResult } from './IAnnictSyncApiModel';
 @injectable()
 export default class AnnictSyncApiModel implements IAnnictSyncApiModel {
@@ -10,6 +11,7 @@ export default class AnnictSyncApiModel implements IAnnictSyncApiModel {
         @inject('IConfiguration') private config: IConfiguration,
         @inject('ISeriesDB') private db: ISeriesDB,
         @inject('IMetadataService') private metadata: IMetadataService,
+        @inject('IAnnictSyncQueueModel') private queue: IAnnictSyncQueueModel,
     ) {}
     async sync(seriesId: number): Promise<AnnictSyncResult> {
         const c = this.config.getConfig();
@@ -34,5 +36,11 @@ export default class AnnictSyncApiModel implements IAnnictSyncApiModel {
             title: best.title,
             score: best.score,
         };
+    }
+    async syncWatchRecords(seriesId: number): Promise<{ queued: number }> {
+        const c = this.config.getConfig();
+        if (!isFeatureEnabled(c, 'metadataProviders') || !isFeatureEnabled(c, 'annictSync'))
+            throw new Error('AnnictSyncFeatureIsDisabled');
+        return await this.queue.enqueueSeries(seriesId);
     }
 }

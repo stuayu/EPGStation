@@ -3041,6 +3041,63 @@ components:
                 - matchedPrograms
                 - updatedAt
 
+        AnnictWatchSyncResult:
+            description: Annict 視聴記録の手動再同期結果 (§5.5)
+            type: object
+            properties:
+                queued:
+                    description: 同期キューへ積んだ (積み直した) 件数
+                    type: integer
+            required:
+                - queued
+
+        MissingEpisodeProposalCandidate:
+            type: object
+            properties:
+                programId:
+                    type: integer
+                channelId:
+                    type: integer
+                name:
+                    type: string
+                startAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                endAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+            required:
+                - programId
+                - channelId
+                - name
+                - startAt
+                - endAt
+
+        MissingEpisodeProposal:
+            description: 欠番話数の補完予約提案 (§4.7)
+            type: object
+            properties:
+                seasonNumber:
+                    type: integer
+                episodeNumber:
+                    type: integer
+                candidates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MissingEpisodeProposalCandidate'
+            required:
+                - seasonNumber
+                - episodeNumber
+                - candidates
+
+        MissingEpisodeProposals:
+            type: object
+            properties:
+                proposals:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MissingEpisodeProposal'
+            required:
+                - proposals
+
     parameters:
         Offset:
             description: offset
