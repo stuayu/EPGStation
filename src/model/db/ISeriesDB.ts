@@ -53,6 +53,7 @@ export default interface ISeriesDB {
     findCandidates(normalizedTitle: string): Promise<Series[]>;
     createSeries(value: NewSeries): Promise<Series>;
     findEpisode(seriesId: number, seasonNumber: number, episodeNumber: number | null): Promise<SeriesEpisode | null>;
+    findEpisodeById(id: number): Promise<SeriesEpisode | null>;
     createEpisode(value: NewEpisode): Promise<SeriesEpisode>;
     findLink(recordedId: number): Promise<RecordedSeriesLink | null>;
     saveLink(value: SaveSeriesLink): Promise<RecordedSeriesLink>;
@@ -60,4 +61,5 @@ export default interface ISeriesDB {
     getSeries(id: number): Promise<Series | null>;
     listRecorded(seriesId: number, channelId?: number): Promise<SeriesRecordedRow[]>;
     listChannels(seriesId: number): Promise<SeriesChannelRow[]>;
+    deleteLink(recordedId: number): Promise<void>;
 }

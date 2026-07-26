@@ -27,6 +27,10 @@ export default class SeriesDB implements ISeriesDB {
         const c = await this.op.getConnection();
         return await c.getRepository(SeriesEpisode).findOne({ where: { seriesId, seasonNumber, episodeNumber } });
     }
+    public async findEpisodeById(id: number): Promise<SeriesEpisode | null> {
+        const c = await this.op.getConnection();
+        return await c.getRepository(SeriesEpisode).findOne({ where: { id } });
+    }
     async createEpisode(value: NewEpisode) {
         const c = await this.op.getConnection();
         const repo = c.getRepository(SeriesEpisode);
@@ -74,5 +78,9 @@ export default class SeriesDB implements ISeriesDB {
             'SELECT r.channelId, r.channelName, COUNT(*) AS count FROM recorded_series_link l JOIN recorded r ON r.id = l.recordedId WHERE l.seriesId = ? GROUP BY r.channelId, r.channelName ORDER BY r.channelName',
             [seriesId],
         );
+    }
+    public async deleteLink(recordedId: number): Promise<void> {
+        const c = await this.op.getConnection();
+        await c.getRepository(RecordedSeriesLink).delete({ recordedId });
     }
 }
