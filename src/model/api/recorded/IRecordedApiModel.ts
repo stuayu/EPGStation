@@ -7,6 +7,16 @@ export interface NextUpResult {
     series: apid.RecordedItem[];
 }
 
+export interface ImportExternalRecordedFilesResult {
+    items: Array<{
+        localFilePath: string;
+        imported: boolean;
+        recordedId?: apid.RecordedId;
+        name?: string;
+        error?: string;
+    }>;
+}
+
 export default interface IRecordedApiModel {
     gets(option: apid.GetRecordedOption): Promise<apid.Records>;
     get(recordedId: apid.RecordedId, isHalfWidth: boolean): Promise<apid.RecordedItem | null>;
@@ -19,4 +29,14 @@ export default interface IRecordedApiModel {
     addUploadedVideoFile(option: UploadedVideoFileOption): Promise<void>;
     createNewRecorded(option: apid.CreateNewRecordedOption): Promise<apid.RecordedId>;
     getNextUp(recordedId: apid.RecordedId, isHalfWidth: boolean): Promise<NextUpResult | null>;
+    importExternalRecordedFiles(option: {
+        channelId: apid.ChannelId;
+        parentDirectoryName: string;
+        subDirectory?: string;
+        fileType: apid.VideoFileType;
+        localFilePaths: string[];
+        ruleId?: apid.RuleId;
+        genre1?: apid.ProgramGenreLv1;
+        subGenre1?: apid.ProgramGenreLv2;
+    }): Promise<ImportExternalRecordedFilesResult>;
 }

@@ -21,7 +21,12 @@ import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IRecordingManageModel from '../recording/IRecordingManageModel';
-import IRecordedManageModel, { AddVideoFileOption, UploadedVideoFileOption } from './IRecordedManageModel';
+import IRecordedManageModel, {
+    AddVideoFileOption,
+    ImportedExternalRecordedFileOption,
+    ImportedExternalRecordedFileResult,
+    UploadedVideoFileOption,
+} from './IRecordedManageModel';
 import IRecordingUtilModel from '../recording/IRecordingUtilModel';
 
 @injectable()
@@ -406,6 +411,50 @@ class RecordedManageModel implements IRecordedManageModel {
         } catch (err: any) {
             return filePath;
         }
+    }
+
+    public async importExternalRecordedFiles(
+        options: ImportedExternalRecordedFileOption[],
+    ): Promise<ImportedExternalRecordedFileResult[]> {
+        const results: ImportedExternalRecordedFileResult[] = [];
+        for (const option of options) {
+            let recordedId: apid.RecordedId | null = null;
+            try {
+                const stats = await FileUtil.stat(option.localFilePath);
+                if (stats.isFile() === false) throw new Error('ExternalFileIsNotFile');
+                const info = await this.videoUtil.getInfo(option.localFilePath);
+                const parsed = path.parse(option.localFilePath);
+                const startAt = Math.floor(stats.mtimeMs);
+                const endAt = startAt + Math.max(1000, Math.round(info.duration * 1000));
+                const createOption: apid.CreateNewRecordedOption = {
+                    channelId: option.channelId,
+                    startAt,
+                    endAt,
+                    name: parsed.name,
+                };
+                if (typeof option.ruleId === 'number') createOption.ruleId = option.ruleId;
+                if (typeof option.genre1 === 'number') createOption.genre1 = option.genre1;
+                if (typeof option.subGenre1 === 'number') createOption.subGenre1 = option.subGenre1;
+                recordedId = await this.createNewRecorded(createOption);
+                await this.addUploadedVideoFile({
+                    recordedId,
+                    parentDirectoryName: option.parentDirectoryName,
+                    subDirectory: option.subDirectory,
+                    viewName: parsed.base,
+                    fileType: option.fileType,
+                    localFilePath: option.localFilePath,
+                });
+                results.push({ localFilePath: option.localFilePath, imported: true, recordedId, name: parsed.name });
+            } catch (err: any) {
+                if (recordedId !== null) await this.delete(recordedId, true).catch(() => {});
+                results.push({
+                    localFilePath: option.localFilePath,
+                    imported: false,
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
+        }
+        return results;
     }
 
     /**

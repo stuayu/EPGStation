@@ -1077,6 +1077,38 @@ export interface StorageInfo {
 }
 
 /**
+ * 外部録画ファイル一括追加オプション
+ */
+export interface ImportExternalRecordedOption {
+    channelId: ChannelId;
+    parentDirectoryName: string; // 親保存ディレクトリ
+    subDirectory?: string; // 保存ディレクトリ
+    fileType: VideoFileType;
+    localFilePaths: string[]; // 取り込み対象のローカルファイルパス
+    ruleId?: RuleId;
+    genre1?: ProgramGenreLv1;
+    subGenre1?: ProgramGenreLv2;
+}
+
+/**
+ * 外部録画ファイル 1 件あたりの取り込み結果
+ */
+export interface ImportExternalRecordedResultItem {
+    localFilePath: string; // 取り込み対象のローカルファイルパス
+    imported: boolean; // 取り込みに成功したか
+    recordedId?: RecordedId;
+    name?: string; // 作成された録画の番組名
+    error?: string; // 失敗理由
+}
+
+/**
+ * 外部録画ファイル一括追加結果
+ */
+export interface ImportExternalRecordedResult {
+    items: ImportExternalRecordedResultItem[];
+}
+
+/**
  * バージョン情報
  */
 export interface VersionInfo {

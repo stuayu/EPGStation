@@ -11,6 +11,28 @@ export interface AddVideoFileOption {
 /**
  * アップロードされたビデオファイル情報
  */
+export interface ImportedExternalRecordedFileOption {
+    localFilePath: string;
+    parentDirectoryName: string;
+    subDirectory?: string;
+    fileType: apid.VideoFileType;
+    channelId: apid.ChannelId;
+    ruleId?: apid.RuleId;
+    genre1?: apid.ProgramGenreLv1;
+    subGenre1?: apid.ProgramGenreLv2;
+}
+
+export interface ImportedExternalRecordedFileResult {
+    localFilePath: string;
+    imported: boolean;
+    recordedId?: apid.RecordedId;
+    name?: string;
+    error?: string;
+}
+
+/**
+ * アップロードされたビデオファイル情報
+ */
 export interface UploadedVideoFileOption {
     recordedId: apid.RecordedId; // 紐付ける recorded id
     parentDirectoryName: string; // 保存先ディレクトリ名
@@ -27,6 +49,9 @@ export default interface IRecordedManageModel {
     updateVideoFileSize(videoFileId: apid.VideoFileId): Promise<void>;
     addVideoFile(option: AddVideoFileOption): Promise<apid.VideoFileId>;
     addUploadedVideoFile(option: UploadedVideoFileOption): Promise<void>;
+    importExternalRecordedFiles(
+        option: ImportedExternalRecordedFileOption[],
+    ): Promise<ImportedExternalRecordedFileResult[]>;
     createNewRecorded(option: apid.CreateNewRecordedOption): Promise<apid.RecordedId>;
     deleteVideoFile(videoFileid: apid.VideoFileId, isIgnoreProtection?: boolean): Promise<void>;
     changeProtect(recordedId: apid.RecordedId, isProtect: boolean): Promise<void>;

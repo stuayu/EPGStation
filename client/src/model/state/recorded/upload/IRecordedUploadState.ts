@@ -14,6 +14,14 @@ export interface VideoFileItem {
     file: File | null | undefined;
 }
 
+export interface ExternalImportResult {
+    localFilePath: string;
+    imported: boolean;
+    recordedId?: apid.RecordedId;
+    name?: string;
+    error?: string;
+}
+
 export interface UploadProgramOption {
     ruleId: apid.RuleId | null | undefined;
     channelId: apid.ChannelId | undefined;
@@ -32,6 +40,10 @@ export default interface IRecordedUploadState {
     ruleKeyword: string | null;
     ruleItems: apid.RuleKeywordItem[];
     isShowPeriod: boolean;
+    externalFilePaths: string | null;
+    externalParentDirectoryName: string | undefined;
+    externalSubDirectory: string | null;
+    externalFileType: apid.VideoFileType | undefined;
     init(): void;
     fetchData(): Promise<void>;
     updateRuleItems(): Promise<void>;
@@ -42,5 +54,7 @@ export default interface IRecordedUploadState {
     getSubGenreItems(): SelectorItem[];
     addEmptyVideoFileItem(): void;
     checkInput(): boolean;
+    checkExternalImportInput(): boolean;
     upload(): Promise<void>;
+    importExternalFiles(): Promise<ExternalImportResult[]>;
 }

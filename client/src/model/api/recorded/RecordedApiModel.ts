@@ -128,4 +128,17 @@ export default class RecordedApiModel implements IRecordedApiModel {
             throw error;
         }
     }
+
+    public async importExternalRecordedFiles(option: {
+        channelId: apid.ChannelId;
+        parentDirectoryName: string;
+        subDirectory?: string;
+        fileType: apid.VideoFileType;
+        localFilePaths: string[];
+        ruleId?: apid.RuleId;
+        genre1?: apid.ProgramGenreLv1;
+        subGenre1?: apid.ProgramGenreLv2;
+    }): Promise<{ items: Array<{ localFilePath: string; imported: boolean; recordedId?: apid.RecordedId; name?: string; error?: string }> }> {
+        return (await this.repository.post('/recorded/import-external', option)).data;
+    }
 }

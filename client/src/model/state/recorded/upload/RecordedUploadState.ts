@@ -7,7 +7,7 @@ import IRecordedApiModel from '../../../api/recorded/IRecordedApiModel';
 import IChannelModel from '../../../channels/IChannelModel';
 import IServerConfigModel from '../../../serverConfig/IServerConfigModel';
 import { ISettingStorageModel } from '../../../storage/setting/ISettingStorageModel';
-import IRecordedUploadState, { SelectorItem, UploadProgramOption, VideoFileItem } from './IRecordedUploadState';
+import IRecordedUploadState, { ExternalImportResult, SelectorItem, UploadProgramOption, VideoFileItem } from './IRecordedUploadState';
 
 @injectable()
 class RecordedUploadState implements IRecordedUploadState {
@@ -27,6 +27,10 @@ class RecordedUploadState implements IRecordedUploadState {
     public ruleKeyword: string | null = null;
     public ruleItems: apid.RuleKeywordItem[] = [];
     public isShowPeriod: boolean = true;
+    public externalFilePaths: string | null = null;
+    public externalParentDirectoryName: string | undefined;
+    public externalSubDirectory: string | null = null;
+    public externalFileType: apid.VideoFileType | undefined = 'ts';
 
     private settingModel: ISettingStorageModel;
     private channelModel: IChannelModel;
@@ -80,6 +84,10 @@ class RecordedUploadState implements IRecordedUploadState {
         this.videoItemCnt = 0;
         this.videoFileItems = [];
         this.addEmptyVideoFileItem();
+        this.externalFilePaths = null;
+        this.externalParentDirectoryName = this.getPrentDirectoryItems()[0];
+        this.externalSubDirectory = null;
+        this.externalFileType = 'ts';
 
         if (this.channelItems.length === 0) {
             const channels = this.channelModel.getChannels(this.settingModel.getSavedValue().isHalfWidthDisplayed);
@@ -238,6 +246,35 @@ class RecordedUploadState implements IRecordedUploadState {
         }
 
         return true;
+    }
+
+    public checkExternalImportInput(): boolean {
+        if (typeof this.programOption.channelId !== 'number') return false;
+        if (typeof this.externalParentDirectoryName !== 'string') return false;
+        if (typeof this.externalFileType !== 'string') return false;
+        return this.getExternalFilePathList().length > 0;
+    }
+
+    public async importExternalFiles(): Promise<ExternalImportResult[]> {
+        if (this.checkExternalImportInput() === false) throw new Error('InputError');
+        const result = await this.recordedApiModel.importExternalRecordedFiles({
+            channelId: this.programOption.channelId as apid.ChannelId,
+            parentDirectoryName: this.externalParentDirectoryName as string,
+            fileType: this.externalFileType as apid.VideoFileType,
+            localFilePaths: this.getExternalFilePathList(),
+            ruleId: typeof this.programOption.ruleId === 'number' ? this.programOption.ruleId : undefined,
+            genre1: typeof this.programOption.genre1 === 'number' ? this.programOption.genre1 : undefined,
+            subGenre1: typeof this.programOption.subGenre1 === 'number' ? this.programOption.subGenre1 : undefined,
+            subDirectory: typeof this.externalSubDirectory === 'string' && this.externalSubDirectory.length > 0 ? this.externalSubDirectory : undefined,
+        });
+        return result.items;
+    }
+
+    private getExternalFilePathList(): string[] {
+        return (this.externalFilePaths ?? '')
+            .split(/\r?\n/)
+            .map(x => x.trim())
+            .filter(x => x.length > 0);
     }
 
     /**

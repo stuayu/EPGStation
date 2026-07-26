@@ -6,20 +6,8 @@
             </SearchOptionRow>
             <SearchOptionRow title="ジャンル">
                 <div class="d-flex">
-                    <v-select
-                        label="genre"
-                        :items="uploadState.getGenreItems()"
-                        v-model="uploadState.programOption.genre1"
-                        clearable
-                        style="width: 50%"
-                    ></v-select>
-                    <v-select
-                        label="sub genre"
-                        :items="uploadState.getSubGenreItems()"
-                        v-model="uploadState.programOption.subGenre1"
-                        clearable
-                        style="width: 50%"
-                    ></v-select>
+                    <v-select label="genre" :items="uploadState.getGenreItems()" v-model="uploadState.programOption.genre1" clearable style="width: 50%"></v-select>
+                    <v-select label="sub genre" :items="uploadState.getSubGenreItems()" v-model="uploadState.programOption.subGenre1" clearable style="width: 50%"></v-select>
                 </div>
             </SearchOptionRow>
             <SearchOptionRow title="ルール">
@@ -81,22 +69,34 @@
                     <v-text-field v-model="video.viewName" label="name" clearable class="view-name"></v-text-field>
                     <v-select class="file-type" v-model="video.fileType" :items="uploadState.getFileTypeItems()" label="file type"></v-select>
 
-                    <v-select
-                        class="directory"
-                        v-model="video.parentDirectoryName"
-                        :items="uploadState.getPrentDirectoryItems()"
-                        label="directory"
-                    ></v-select>
+                    <v-select class="directory" v-model="video.parentDirectoryName" :items="uploadState.getPrentDirectoryItems()" label="directory"></v-select>
                     <v-text-field v-model="video.subDirectory" label="sub directory" clearable></v-text-field>
                     <v-file-input v-model="video.file" label="video file"></v-file-input>
                 </SearchOptionRow>
             </div>
+        </div>
+        <div class="pa-4">
+            <v-divider class="mb-4"></v-divider>
+            <div class="text-h6 mb-3">外部ファイル一括追加</div>
+            <SearchOptionRow title="保存先ディレクトリ※" :required="true">
+                <v-select v-model="uploadState.externalParentDirectoryName" :items="uploadState.getPrentDirectoryItems()" label="directory"></v-select>
+            </SearchOptionRow>
+            <SearchOptionRow title="ファイル種別※" :required="true">
+                <v-select v-model="uploadState.externalFileType" :items="uploadState.getFileTypeItems()" label="file type"></v-select>
+            </SearchOptionRow>
+            <SearchOptionRow title="保存先サブディレクトリ">
+                <v-text-field v-model="uploadState.externalSubDirectory" label="sub directory" clearable></v-text-field>
+            </SearchOptionRow>
+            <SearchOptionRow title="ローカルパス一覧※" :required="true">
+                <v-textarea v-model="uploadState.externalFilePaths" label="1行に1ファイル" rows="6"></v-textarea>
+            </SearchOptionRow>
         </div>
         <v-divider></v-divider>
         <v-card-actions>
             <v-spacer></v-spacer>
             <v-btn v-on:click="reset" variant="text" color="error">リセット</v-btn>
             <v-btn v-on:click="upload" variant="text" color="primary">アップロード</v-btn>
+            <v-btn v-on:click="importExternal" variant="text" color="secondary">外部ファイル一括追加</v-btn>
         </v-card-actions>
     </v-card>
 </template>
@@ -137,6 +137,10 @@ class RecordedUploadForm extends Vue {
 
     public upload(): void {
         this.$emit('upload');
+    }
+
+    public importExternal(): void {
+        this.$emit('importExternal');
     }
 }
 

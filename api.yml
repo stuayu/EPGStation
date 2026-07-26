@@ -1794,6 +1794,70 @@ components:
                     description: アップロードファイルのローカルパス
                     type: string
 
+        ImportExternalRecordedOption:
+            description: 外部録画ファイル一括追加オプション
+            type: object
+            required:
+                - channelId
+                - parentDirectoryName
+                - fileType
+                - localFilePaths
+            properties:
+                channelId:
+                    $ref: '#/components/schemas/ChannelId'
+                parentDirectoryName:
+                    description: 親保存ディレクトリ
+                    type: string
+                subDirectory:
+                    description: 保存ディレクトリ
+                    type: string
+                fileType:
+                    $ref: '#/components/schemas/VideoFileType'
+                localFilePaths:
+                    description: 取り込み対象のローカルファイルパス
+                    type: array
+                    items:
+                        type: string
+                ruleId:
+                    $ref: '#/components/schemas/RuleId'
+                genre1:
+                    $ref: '#/components/schemas/ProgramGenreLv1'
+                subGenre1:
+                    $ref: '#/components/schemas/ProgramGenreLv2'
+
+        ImportExternalRecordedResultItem:
+            description: 外部録画ファイル 1 件あたりの取り込み結果
+            type: object
+            required:
+                - localFilePath
+                - imported
+            properties:
+                localFilePath:
+                    description: 取り込み対象のローカルファイルパス
+                    type: string
+                imported:
+                    description: 取り込みに成功したか
+                    type: boolean
+                recordedId:
+                    $ref: '#/components/schemas/RecordedId'
+                name:
+                    description: 作成された録画の番組名
+                    type: string
+                error:
+                    description: 失敗理由
+                    type: string
+
+        ImportExternalRecordedResult:
+            description: 外部録画ファイル一括追加結果
+            type: object
+            required:
+                - items
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ImportExternalRecordedResultItem'
+
         Version:
             description: バージョン情報
             type: object
