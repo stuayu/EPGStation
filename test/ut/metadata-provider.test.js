@@ -23,11 +23,16 @@ test('service merges provider results by score and tolerates failures', async ()
         },
         get: async () => null,
     });
-    const s = new Service({ getConfig: () => ({ featureFlags: { metadataProviders: true } }) }, r, {
-        get: async () => null,
-        put: async () => {},
-        deleteExpired: async () => {},
-    });
+    const s = new Service(
+        { getConfig: () => ({ featureFlags: { metadataProviders: true } }) },
+        r,
+        {
+            get: async () => null,
+            put: async () => {},
+            deleteExpired: async () => {},
+        },
+        { name: 'syobocal', search: async () => [], get: async () => null },
+    );
     const x = await s.search('title');
     assert.equal(x.length, 1);
     assert.equal(x[0].provider, 'a');
@@ -51,7 +56,11 @@ test('service caches provider detail', async () => {
         },
         deleteExpired: async () => {},
     };
-    const s = new Service({ getConfig: () => ({ featureFlags: { metadataProviders: true } }) }, r, cache);
+    const s = new Service({ getConfig: () => ({ featureFlags: { metadataProviders: true } }) }, r, cache, {
+        name: 'syobocal',
+        search: async () => [],
+        get: async () => null,
+    });
     await s.get('a', '1');
     await s.get('a', '1');
     assert.equal(calls, 1);

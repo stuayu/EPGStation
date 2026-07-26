@@ -5,13 +5,17 @@ import IMetadataProviderCacheDB from '../db/IMetadataProviderCacheDB';
 import IMetadataProviderRegistry from './IMetadataProviderRegistry';
 import IMetadataService from './IMetadataService';
 import { MetadataSearchContext, MetadataSearchResult, MetadataWork } from './IMetadataProvider';
+import ISyobocalProvider from './syobocal/ISyobocalProvider';
 @injectable()
 export default class MetadataService implements IMetadataService {
     constructor(
         @inject('IConfiguration') private config: IConfiguration,
         @inject('IMetadataProviderRegistry') private registry: IMetadataProviderRegistry,
         @inject('IMetadataProviderCacheDB') private cache: IMetadataProviderCacheDB,
-    ) {}
+        @inject('ISyobocalProvider') syobocal: ISyobocalProvider,
+    ) {
+        if (!this.registry.get(syobocal.name)) this.registry.register(syobocal);
+    }
     providers() {
         this.enabled();
         return this.registry.list().map(x => ({ name: x.name }));

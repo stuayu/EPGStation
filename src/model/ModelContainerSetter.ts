@@ -128,6 +128,8 @@ import IMetadataService from './metadata/IMetadataService';
 import MetadataService from './metadata/MetadataService';
 import IProviderHttpClient from './metadata/IProviderHttpClient';
 import ProviderHttpClient from './metadata/ProviderHttpClient';
+import ISyobocalProvider from './metadata/syobocal/ISyobocalProvider';
+import SyobocalProvider from './metadata/syobocal/SyobocalProvider';
 import INotificationDispatcher from './notification/INotificationDispatcher';
 import NotificationDispatcher from './notification/NotificationDispatcher';
 import ExternalCommandManageModel from './operator/externalCommand/ExternalCommandManageModel';
@@ -226,6 +228,7 @@ export const set = (container: Container): void => {
 
     container.bind<IAppSettingDB>('IAppSettingDB').to(AppSettingDB).inSingletonScope();
     container.bind<IMetadataProviderCacheDB>('IMetadataProviderCacheDB').to(MetadataProviderCacheDB).inSingletonScope();
+    container.bind<ISyobocalProvider>('ISyobocalProvider').to(SyobocalProvider).inSingletonScope();
     container
         .bind<IMetadataProviderRegistry>('IMetadataProviderRegistry')
         .to(MetadataProviderRegistry)
