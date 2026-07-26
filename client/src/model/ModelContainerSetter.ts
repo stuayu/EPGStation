@@ -12,6 +12,8 @@ import IEncodeApiModel from './api/encode/IEncodeApiModel';
 import IRepositoryModel from './api/IRepositoryModel';
 import IRecordedApiModel from './api/recorded/IRecordedApiModel';
 import RecordedApiModel from './api/recorded/RecordedApiModel';
+import ISeriesApiModel from './api/series/ISeriesApiModel';
+import SeriesApiModel from './api/series/SeriesApiModel';
 import IRecordingApiModel from './api/recording/IRecordingApiModel';
 import RecordingApiModel from './api/recording/RecordingApiModel';
 import RepositoryModel from './api/RepositoryModel';
@@ -152,6 +154,7 @@ export default (container: Container): void => {
     container.bind<IStreamApiModel>('IStreamApiModel').to(StreamApiModel).inSingletonScope();
 
     container.bind<IRecordedApiModel>('IRecordedApiModel').to(RecordedApiModel).inSingletonScope();
+    container.bind<ISeriesApiModel>('ISeriesApiModel').to(SeriesApiModel).inSingletonScope();
 
     container.bind<IRecordingApiModel>('IRecordingApiModel').to(RecordingApiModel).inSingletonScope();
 

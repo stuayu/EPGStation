@@ -17,6 +17,8 @@ import Rule from './views/Rule.vue';
 import Search from './views/Search.vue';
 import Settings from './views/Settings.vue';
 import SystemSetting from './views/SystemSetting.vue';
+import Series from './views/Series.vue';
+import SeriesDetail from './views/SeriesDetail.vue';
 import Logs from './views/Logs.vue';
 import Storages from './views/Storages.vue';
 import WatchOnAir from './views/WatchOnAir.vue';
@@ -38,6 +40,8 @@ export default createRouter({
         { path: '/reserves/manual', name: 'manual-reserve', component: ManualReserve },
         { path: '/recording', name: 'recording', component: Recording },
         { path: '/recorded', name: 'recorded', component: Recorded },
+        { path: '/series', name: 'series', component: Series },
+        { path: '/series/:id', name: 'series-detail', component: SeriesDetail },
         { path: '/recorded/upload', name: 'recorded-upload', component: RecordedUpload },
         { path: '/recorded/watch', name: 'recorded-watch', component: WatchRecorded },
         { path: '/recorded/detail/:id', name: 'recorded-detail', component: RecordedDetail },

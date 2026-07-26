@@ -28,6 +28,8 @@ import IReserveApiModel from './api/reserve/IReserveApiModel';
 import ReserveApiModel from './api/reserve/ReserveApiModel';
 import IRuleApiModel from './api/rule/IRuleApiModel';
 import RuleApiModel from './api/rule/RuleApiModel';
+import ISeriesApiModel from './api/series/ISeriesApiModel';
+import SeriesApiModel from './api/series/SeriesApiModel';
 import IScheduleApiModel from './api/schedule/IScheduleApiModel';
 import ScheduleApiModel from './api/schedule/ScheduleApiModel';
 import ILogApiModel from './api/log/ILogApiModel';
@@ -334,6 +336,7 @@ export const set = (container: Container): void => {
     container.bind<IReserveApiModel>('IReserveApiModel').to(ReserveApiModel).inSingletonScope();
 
     container.bind<IRecordedApiModel>('IRecordedApiModel').to(RecordedApiModel).inSingletonScope();
+    container.bind<ISeriesApiModel>('ISeriesApiModel').to(SeriesApiModel).inSingletonScope();
 
     container.bind<IRecordingApiModel>('IRecordingApiModel').to(RecordingApiModel).inSingletonScope();
 
