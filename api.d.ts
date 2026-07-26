@@ -517,6 +517,7 @@ export interface VideoFile {
     filename: string;
     type: VideoFileType;
     size: number;
+    watchHistory?: WatchHistory;
 }
 
 export interface WatchHistory {

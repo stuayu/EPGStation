@@ -1,14 +1,6 @@
 <template>
     <v-card :max-width="width" variant="flat" class="ma-1 recorded-large-card" v-bind:class="{ 'selected-color': item.isSelected === true }">
-        <v-img
-            aspect-ratio="1.7778"
-            cover
-            :min-width="width"
-            :src="item.display.topThumbnailPath"
-            v-on:error="onThumbnailError"
-            v-on:click="gotoDetail"
-            :eager="true"
-        ></v-img>
+        <v-img aspect-ratio="1.7778" cover :min-width="width" :src="item.display.topThumbnailPath" v-on:error="onThumbnailError" v-on:click="gotoDetail" :eager="true"></v-img>
         <div class="pa-2" v-on:click="gotoDetail">
             <div class="d-flex align-center">
                 <div class="text text-subtitle-2 font-weight-bold">{{ item.display.name }}</div>
@@ -17,6 +9,12 @@
             </div>
             <div class="text text-caption font-weight-light">{{ item.display.channelName }}</div>
             <div class="text text-caption font-weight-light">{{ item.display.time }} ({{ item.display.duration }} m)</div>
+            <div v-if="typeof item.display.watchProgress === 'number'" class="watch-progress">
+                <v-chip size="x-small" :color="item.display.watchStatus === 'watched' ? 'success' : 'primary'">
+                    {{ item.display.watchStatus === 'watched' ? '視聴済み' : '視聴中' }}
+                </v-chip>
+                <v-progress-linear :model-value="item.display.watchProgress" height="3"></v-progress-linear>
+            </div>
             <div
                 v-if="isShowDropInfo === true && typeof item.display.drop !== 'undefined'"
                 class="text text-caption font-weight-light"

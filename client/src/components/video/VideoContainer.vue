@@ -15,6 +15,9 @@
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
+                    v-on:timeupdate="onTimeupdate"
+                    v-on:pause="savePlaybackPosition"
+                    v-on:ended="onEnded"
                 ></NormalVideo>
                 <LiveHLSVideo
                     v-if="videoParam.type == 'LiveHLS'"
@@ -39,6 +42,9 @@
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
+                    v-on:timeupdate="onTimeupdate"
+                    v-on:pause="savePlaybackPosition"
+                    v-on:ended="onEnded"
                 ></RecordedStreamingVideo>
                 <RecordedHLSStreamingVideo
                     v-if="videoParam.type == 'RecordedHLS'"
@@ -52,6 +58,9 @@
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
+                    v-on:timeupdate="onTimeupdate"
+                    v-on:pause="savePlaybackPosition"
+                    v-on:ended="onEnded"
                 ></RecordedHLSStreamingVideo>
                 <LiveMpegTsVideo
                     v-if="videoParam.type == 'LiveMpegTs'"
@@ -77,6 +86,9 @@ import RecordedStreamingVideo from '@/components/video/RecordedStreamingVideo.vu
 import LiveMpegTsVideo from '@/components/video/LiveMpegTsVideo.vue';
 import * as VideoParam from '@/components/video/ViedoParam';
 import UaUtil from '@/util/UaUtil';
+import BaseVideo from '@/components/video/BaseVideo';
+import container from '@/model/ModelContainer';
+import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
@@ -94,6 +106,9 @@ class VideoContainer extends Vue {
 
     public isLoading: boolean = true;
     public isiPad: boolean = UaUtil.isiPadOS();
+    private videoApi = container.get<IVideoApiModel>('IVideoApiModel');
+    private lastSavedAt = 0;
+    private resumeApplied = false;
 
     // DPlayer のフルスクリーン時にモバイル端末で画面回転をロックするための状態
     private isEnabledRotation: boolean = typeof window.screen.orientation !== 'undefined' && UaUtil.isMobile();
@@ -109,6 +124,7 @@ class VideoContainer extends Vue {
     }
 
     public beforeUnmount(): void {
+        this.savePlaybackPositionWithBeacon();
         document.removeEventListener('webkitfullscreenchange', this.fullScreenListener, false);
         document.removeEventListener('mozfullscreenchange', this.fullScreenListener, false);
         document.removeEventListener('MSFullscreenChange', this.fullScreenListener, false);
@@ -169,6 +185,49 @@ class VideoContainer extends Vue {
     // 再生可能
     public onCanplay(): void {
         this.isLoading = false;
+        void this.applyResumePosition();
+    }
+
+    public onTimeupdate(): void {
+        if (Date.now() - this.lastSavedAt >= 10000) void this.savePlaybackPosition();
+    }
+
+    public onEnded(): void {
+        void this.savePlaybackPosition();
+    }
+
+    public async savePlaybackPosition(): Promise<void> {
+        const id = this.getVideoFileId();
+        const video = this.getVideo();
+        if (id === null || video === null) return;
+        const duration = video.getDuration();
+        if (duration <= 0) return;
+        this.lastSavedAt = Date.now();
+        await this.videoApi.savePlaybackPosition(id, { position: video.getCurrentTime(), duration }).catch(console.error);
+    }
+
+    private savePlaybackPositionWithBeacon(): void {
+        const id = this.getVideoFileId();
+        const video = this.getVideo();
+        if (id === null || video === null || video.getDuration() <= 0) return;
+        this.videoApi.savePlaybackPositionWithBeacon(id, { position: video.getCurrentTime(), duration: video.getDuration() });
+    }
+
+    private async applyResumePosition(): Promise<void> {
+        if (this.resumeApplied) return;
+        const id = this.getVideoFileId();
+        const video = this.getVideo();
+        if (id === null || video === null) return;
+        this.resumeApplied = true;
+        const history = await this.videoApi.getPlaybackPosition(id).catch(() => null);
+        if (history !== null && history.status !== 'watched' && history.position > 0) video.setCurrentTime(history.position);
+    }
+
+    private getVideo(): BaseVideo | null {
+        return (this.$refs.video as BaseVideo | undefined) ?? null;
+    }
+    private getVideoFileId(): number | null {
+        return 'videoFileId' in this.videoParam && typeof this.videoParam.videoFileId === 'number' ? this.videoParam.videoFileId : null;
     }
 }
 

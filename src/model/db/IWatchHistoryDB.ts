@@ -10,5 +10,6 @@ export interface UpsertWatchHistoryOption {
 export default interface IWatchHistoryDB {
     findByVideoFileId(id: number): Promise<WatchHistory | null>;
     upsert(o: UpsertWatchHistoryOption): Promise<WatchHistory>;
+    findByVideoFileIds(ids: number[]): Promise<WatchHistory[]>;
     deleteByVideoFileId(id: number): Promise<void>;
 }

@@ -1,6 +1,9 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
 import IRecordedDB, { FindAllOption } from '../../db/IRecordedDB';
+import IWatchHistoryDB from '../../db/IWatchHistoryDB';
+import { isFeatureEnabled } from '../../FeatureFlags';
+import IConfiguration from '../../IConfiguration';
 import IIPCClient from '../../ipc/IIPCClient';
 import { UploadedVideoFileOption } from '../../operator/recorded/IRecordedManageModel';
 import IEncodeManageModel from '../../service/encode/IEncodeManageModel';
@@ -13,17 +16,23 @@ export default class RecordedApiModel implements IRecordedApiModel {
     private recordedDB: IRecordedDB;
     private encodeManage: IEncodeManageModel;
     private recordedItemUtil: IRecordedItemUtil;
+    private configuration: IConfiguration;
+    private watchHistoryDB: IWatchHistoryDB;
 
     constructor(
         @inject('IIPCClient') ipc: IIPCClient,
         @inject('IRecordedDB') recordedDB: IRecordedDB,
         @inject('IEncodeManageModel') encodeManage: IEncodeManageModel,
         @inject('IRecordedItemUtil') recordedItemUtil: IRecordedItemUtil,
+        @inject('IConfiguration') configuration: IConfiguration,
+        @inject('IWatchHistoryDB') watchHistoryDB: IWatchHistoryDB,
     ) {
         this.recordedDB = recordedDB;
         this.ipc = ipc;
         this.encodeManage = encodeManage;
         this.recordedItemUtil = recordedItemUtil;
+        this.configuration = configuration;
+        this.watchHistoryDB = watchHistoryDB;
     }
 
     /**
@@ -42,12 +51,11 @@ export default class RecordedApiModel implements IRecordedApiModel {
 
         const encodeIndex = this.encodeManage.getRecordedIndex();
 
-        return {
-            records: records.map(r => {
-                return this.recordedItemUtil.convertRecordedToRecordedItem(r, option.isHalfWidth, encodeIndex);
-            }),
-            total,
-        };
+        const items = records.map(r =>
+            this.recordedItemUtil.convertRecordedToRecordedItem(r, option.isHalfWidth, encodeIndex),
+        );
+        await this.attachWatchHistories(items);
+        return { records: items, total };
     }
 
     /**
@@ -61,9 +69,30 @@ export default class RecordedApiModel implements IRecordedApiModel {
 
         const encodeIndex = this.encodeManage.getRecordedIndex();
 
-        return item === null
-            ? null
-            : this.recordedItemUtil.convertRecordedToRecordedItem(item, isHalfWidth, encodeIndex);
+        if (item === null) return null;
+        const result = this.recordedItemUtil.convertRecordedToRecordedItem(item, isHalfWidth, encodeIndex);
+        await this.attachWatchHistories([result]);
+        return result;
+    }
+
+    private async attachWatchHistories(items: apid.RecordedItem[]): Promise<void> {
+        if (!isFeatureEnabled(this.configuration.getConfig(), 'watchHistory')) return;
+        const videoFiles = items.flatMap(item => item.videoFiles ?? []);
+        const histories = await this.watchHistoryDB.findByVideoFileIds(videoFiles.map(video => video.id));
+        const index = new Map(histories.map(history => [history.videoFileId, history]));
+        for (const video of videoFiles) {
+            const history = index.get(video.id);
+            if (typeof history !== 'undefined') {
+                video.watchHistory = {
+                    videoFileId: history.videoFileId,
+                    recordedId: history.recordedId,
+                    position: history.position,
+                    duration: history.duration,
+                    status: history.status,
+                    updatedAt: Number(history.updatedAt),
+                };
+            }
+        }
     }
 
     /**

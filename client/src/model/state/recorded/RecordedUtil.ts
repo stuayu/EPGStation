@@ -39,6 +39,13 @@ export default class RecordedUtil implements IRecordedUtil {
             isSelected: false,
         };
 
+        const histories = item.videoFiles?.flatMap(video => video.watchHistory ?? []) ?? [];
+        if (histories.length > 0) {
+            const best = histories.sort((a, b) => b.position / b.duration - a.position / a.duration)[0];
+            result.display.watchStatus = best.status;
+            result.display.watchProgress = Math.min(100, Math.round((best.position / best.duration) * 100));
+        }
+
         // ストリーミング可能な videoFile を列挙する
         const config = this.serverConfigModel.getConfig();
         if (typeof result.display.videoFiles !== 'undefined' && config !== null) {
