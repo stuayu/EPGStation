@@ -3,6 +3,8 @@ import IConfigFile from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
+import { isFeatureEnabled } from '../FeatureFlags';
+import IProgramSeriesApiModel from '../api/schedule/IProgramSeriesApiModel';
 import IEPGUpdateManageModel, { EPGUpdateEvent, TunerServerType } from './IEPGUpdateManageModel';
 import IEPGUpdater from './IEPGUpdater';
 import Util from '../../util/Util';
@@ -25,15 +27,17 @@ class EPGUpdater implements IEPGUpdater {
         @inject('ILoggerModel') logger: ILoggerModel,
         @inject('IConfiguration') configuration: IConfiguration,
         @inject('IEPGUpdateManageModel') updateManage: IEPGUpdateManageModel,
+        @inject('IProgramSeriesApiModel') private programSeries: IProgramSeriesApiModel,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
         this.updateManage = updateManage;
 
-        this.updateManage.on(EPGUpdateEvent.PROGRAM_UPDATED, () => {
+        this.updateManage.on(EPGUpdateEvent.PROGRAM_UPDATED, (programIds?: number[]) => {
             this.lastEventStreamUpdatedTime = new Date().getTime();
             // NOTE this.config.epgUpdateIntervalTime の周期で予約情報を更新させるため無効化
             // this.notify();
+            if (programIds && programIds.length > 0) this.precomputeProgramSeries(programIds);
         });
 
         this.updateManage.on(EPGUpdateEvent.SERVICE_UPDATED, () => {
@@ -208,6 +212,19 @@ class EPGUpdater implements IEPGUpdater {
             // NOTE this.config.epgUpdateIntervalTime の周期で予約情報を更新させるため追加
             this.notify();
         }
+    }
+
+    /**
+     * EPG 更新で変更があった番組について、シリーズ対応の事前マッピングを計算する (§4.10)。
+     * feature flag が無効な場合や外部要因での失敗は EPG 更新自体に影響させない (graceful degradation)
+     */
+    private precomputeProgramSeries(programIds: number[]): void {
+        if (!isFeatureEnabled(this.config, 'seriesLibrary') || !isFeatureEnabled(this.config, 'programSeriesMapping'))
+            return;
+        this.programSeries.precompute(programIds).catch(err => {
+            this.log.system.warn('program series precompute error');
+            this.log.system.warn(err);
+        });
     }
 
     /**

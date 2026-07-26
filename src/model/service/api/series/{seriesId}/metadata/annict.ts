@@ -11,11 +11,17 @@ export const post: Operation = async (req, res) => {
         if (message === 'AnnictSyncFeatureIsDisabled') api.responseError(res, { code: 404, message });
         else if (message === 'SeriesIsNotFound') api.responseError(res, { code: 404, message });
         else if (message === 'AnnictWorkIsNotFound') api.responseError(res, { code: 404, message });
+        else if (message === 'AnnictTokenIsNotConfigured') api.responseError(res, { code: 400, message });
         else api.responseServerError(res, message);
     }
 };
 post.apiDoc = {
     summary: 'Annict作品同期',
     tags: ['series', 'metadata'],
-    responses: { 200: { description: '成功' }, default: { description: '失敗' } },
+    responses: {
+        200: { description: '成功' },
+        400: { description: 'Annictトークン未設定' },
+        404: { description: '機能無効 / シリーズ未検出 / 作品未検出' },
+        default: { description: '失敗' },
+    },
 };

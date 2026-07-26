@@ -1,22 +1,42 @@
 import { inject, injectable } from 'inversify';
 import IAppSettingDB from '../../db/IAppSettingDB';
+import IChannelDB from '../../db/IChannelDB';
 import { normalizeSeriesTitle } from '../../series/SeriesNormalizer';
-import { MetadataSearchContext, MetadataSearchResult, MetadataWork } from '../IMetadataProvider';
+import {
+    MetadataGetOption,
+    MetadataSearchContext,
+    MetadataSearchResult,
+    MetadataWork,
+    METADATA_NOT_MODIFIED,
+} from '../IMetadataProvider';
 import IProviderHttpClient from '../IProviderHttpClient';
+import ISyobocalChannelMap from './ISyobocalChannelMap';
 import ISyobocalProvider from './ISyobocalProvider';
 import { parseSyobocalDate, xmlItems } from './SyobocalXml';
+
 @injectable()
 export default class SyobocalProvider implements ISyobocalProvider {
+    // 確定系マッチで放送開始時刻の許容誤差 (ms)。EPG のタイムスタンプの丸め誤差を吸収する
+    private static readonly CONFIRMED_MATCH_TOLERANCE_MS = 5 * 60 * 1000;
+
     public readonly name = 'syobocal';
     constructor(
         @inject('IProviderHttpClient') private http: IProviderHttpClient,
         @inject('IAppSettingDB') private settings: IAppSettingDB,
+        @inject('IChannelDB') private channels: IChannelDB,
+        @inject('ISyobocalChannelMap') private channelMap: ISyobocalChannelMap,
     ) {}
-    public async search(query: string, _context?: MetadataSearchContext): Promise<MetadataSearchResult[]> {
+
+    /**
+     * タイトル文字列検索 + (context が放送局/時刻を含む場合) 確定系マッチを行う。
+     * 確定系マッチが成立した場合はその結果を score 1 で先頭に置く (§5.4)
+     */
+    public async search(query: string, context?: MetadataSearchContext): Promise<MetadataSearchResult[]> {
         if (!(await this.enabled())) return [];
+        const confirmed = await this.tryConfirmedMatch(context);
         const xml = (await this.http.get(this.url('TitleLookup', { Title: query }))).text;
         const normalized = normalizeSeriesTitle(query);
-        return xmlItems(xml, 'TitleItem')
+        const textResults = xmlItems(xml, 'TitleItem')
             .map(row => {
                 const title = row.Title ?? row.ShortTitle ?? '';
                 return {
@@ -29,8 +49,14 @@ export default class SyobocalProvider implements ISyobocalProvider {
                 };
             })
             .filter(x => Boolean(x.externalId && x.title));
+        if (!confirmed) return textResults;
+        return [confirmed, ...textResults.filter(x => x.externalId !== confirmed.externalId)];
     }
-    public async get(externalId: string): Promise<MetadataWork | null> {
+
+    public async get(
+        externalId: string,
+        _option?: MetadataGetOption,
+    ): Promise<MetadataWork | null | typeof METADATA_NOT_MODIFIED> {
         if (!(await this.enabled())) return null;
         const [titleXml, programXml] = await Promise.all([
             this.http.get(this.url('TitleLookup', { TID: externalId })).then(x => x.text),
@@ -55,6 +81,41 @@ export default class SyobocalProvider implements ISyobocalProvider {
             raw: { coverage: programs.length === 0 ? 'title-only' : 'programs', programCount: programs.length },
         };
     }
+
+    /**
+     * ChID + 放送開始時刻から ProgLookup で PID → TID を確定する確定系マッチ (§5.3・§5.4)。
+     * - context に channelId/startAt が無い、または局が同梱/外部マッピング表に無い場合は null
+     * - 未登録局フラグ (syobocal: false) の局は ProgLookup を最初から呼ばずスキップする
+     */
+    private async tryConfirmedMatch(context?: MetadataSearchContext): Promise<MetadataSearchResult | null> {
+        if (typeof context?.channelId !== 'number' || typeof context?.startAt !== 'number') return null;
+        const channel = await this.channels.findId(context.channelId);
+        if (!channel) return null;
+        const mapping = this.channelMap.find(channel.networkId, channel.serviceId);
+        if (!mapping || !mapping.syobocal) return null;
+        const progXml = (await this.http.get(this.url('ProgLookup', { ChID: String(mapping.chId) }))).text;
+        const items = xmlItems(progXml, 'ProgItem');
+        const hit = items.find(row => {
+            const startedAt = parseSyobocalDate(row.StTime);
+            return (
+                typeof startedAt === 'number' &&
+                Math.abs(startedAt - context.startAt!) <= SyobocalProvider.CONFIRMED_MATCH_TOLERANCE_MS
+            );
+        });
+        if (!hit?.TID) return null;
+        const titleXml = (await this.http.get(this.url('TitleLookup', { TID: hit.TID }))).text;
+        const row = xmlItems(titleXml, 'TitleItem')[0];
+        if (!row) return null;
+        return {
+            provider: this.name,
+            externalId: hit.TID,
+            title: row.Title ?? row.ShortTitle ?? '',
+            originalTitle: row.TitleYomi,
+            year: this.year(row.FirstYear),
+            score: 1,
+        };
+    }
+
     private async enabled(): Promise<boolean> {
         const all = await this.settings.getAll();
         return Boolean((all.metadata as any)?.syobocal?.enabled);

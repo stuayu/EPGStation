@@ -119,6 +119,10 @@ export default interface IConfigFile {
     featureFlags?: FeatureFlags;
     secretKey?: string; // ランタイム設定の秘密情報暗号化鍵（環境変数展開済みの十分長い値を推奨）
 
+    // しょぼいカレンダー ChID ⇄ Mirakurun networkId/serviceId のマッピング表 (JSON) のパス。
+    // 省略時は同梱の初期データ (主要地上波キー局のみ) を使う。指定したファイルは同梱データを上書き/追加する
+    metadataChannelMappingPath?: string;
+
     mirakurunPath: string;
     mirakurunAPIPath?: string; // mirakurun の API エンドポイントのベースパス (省略時 /api)
 

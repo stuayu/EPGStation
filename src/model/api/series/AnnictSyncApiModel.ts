@@ -17,9 +17,12 @@ export default class AnnictSyncApiModel implements IAnnictSyncApiModel {
             throw new Error('AnnictSyncFeatureIsDisabled');
         const series = await this.db.getSeries(seriesId);
         if (!series) throw new Error('SeriesIsNotFound');
-        const results = await this.metadata.search(series.title, undefined, ['annict']);
-        const best = results[0];
-        if (!best || best.score < 0.75) throw new Error('AnnictWorkIsNotFound');
+        // syobocalTid が既に確定していれば、それをキーに一意確定する (タイトル文字列一致より優先。§5.5)
+        const context = series.syobocalTid ? { syobocalTid: Number(series.syobocalTid) } : undefined;
+        const results = await this.metadata.search(series.title, context, ['annict']);
+        const exact = context ? results.find(x => x.syobocalTid === context.syobocalTid) : undefined;
+        const best = exact ?? results[0];
+        if (!best || (!exact && best.score < 0.75)) throw new Error('AnnictWorkIsNotFound');
         await this.db.updateExternalMetadata(seriesId, {
             annictId: best.externalId,
             syobocalTid: best.syobocalTid ?? series.syobocalTid,

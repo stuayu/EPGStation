@@ -148,6 +148,8 @@ import IProviderHttpClient from './metadata/IProviderHttpClient';
 import ProviderHttpClient from './metadata/ProviderHttpClient';
 import ISyobocalProvider from './metadata/syobocal/ISyobocalProvider';
 import SyobocalProvider from './metadata/syobocal/SyobocalProvider';
+import ISyobocalChannelMap from './metadata/syobocal/ISyobocalChannelMap';
+import SyobocalChannelMap from './metadata/syobocal/SyobocalChannelMap';
 import IAnnictProvider from './metadata/annict/IAnnictProvider';
 import AnnictProvider from './metadata/annict/AnnictProvider';
 import INotificationDispatcher from './notification/INotificationDispatcher';
@@ -254,6 +256,7 @@ export const set = (container: Container): void => {
 
     container.bind<IAppSettingDB>('IAppSettingDB').to(AppSettingDB).inSingletonScope();
     container.bind<IMetadataProviderCacheDB>('IMetadataProviderCacheDB').to(MetadataProviderCacheDB).inSingletonScope();
+    container.bind<ISyobocalChannelMap>('ISyobocalChannelMap').to(SyobocalChannelMap).inSingletonScope();
     container.bind<ISyobocalProvider>('ISyobocalProvider').to(SyobocalProvider).inSingletonScope();
     container.bind<IAnnictProvider>('IAnnictProvider').to(AnnictProvider).inSingletonScope();
     container
