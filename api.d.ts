@@ -1246,3 +1246,172 @@ export interface ImportJobStatus {
 export interface VersionInfo {
     version: string;
 }
+
+/**
+ * シリーズ id
+ */
+export type SeriesId = number;
+
+/**
+ * 放送種別
+ */
+export type SeriesAirType = 'first' | 'rerun' | 'delayed' | 'unknown';
+
+/**
+ * シリーズ一覧項目
+ */
+export interface SeriesListItem {
+    id: SeriesId;
+    title: string;
+    normalizedTitle: string;
+    mediaType: string;
+    preferredChannelId: ChannelId | null;
+    updatedAt: UnixtimeMS;
+}
+
+/**
+ * シリーズ一覧
+ */
+export interface SeriesListResult {
+    items: SeriesListItem[];
+    total: number;
+}
+
+/**
+ * シリーズに紐づく録画
+ */
+export interface SeriesRecordedRow {
+    recordedId: RecordedId;
+    channelId: ChannelId;
+    channelName: string | null;
+    recordedTitle: string;
+    startAt: UnixtimeMS;
+    endAt: UnixtimeMS;
+    episodeId: number | null;
+    seasonNumber: number | null;
+    episodeNumber: number | null;
+    episodeLabel: string | null;
+    episodeTitle: string | null;
+    airType: string;
+    confidence: number;
+}
+
+/**
+ * シリーズ詳細
+ */
+export interface SeriesDetail extends SeriesListItem {
+    externalIds: { syobocalTid: number | null; annictId: string | null; tmdbId: number | null };
+    channels: Array<{ channelId: ChannelId; channelName: string | null; count: number }>;
+    continuity: {
+        missingEpisodes: Array<{ seasonNumber: number; episodeNumber: number }>;
+        duplicateEpisodes: Array<{
+            seasonNumber: number;
+            episodeNumber: number;
+            recordedIds: number[];
+            channelIds: number[];
+        }>;
+        unknownEpisodeRecordedIds: number[];
+    };
+    recorded: SeriesRecordedRow[];
+}
+
+/**
+ * 録画のシリーズ割当情報
+ */
+export interface SeriesMappingValue {
+    recordedId: RecordedId;
+    recordedTitle: string;
+    seriesId: SeriesId;
+    seriesTitle: string;
+    episodeId: number | null;
+    seasonNumber: number | null;
+    episodeNumber: number | null;
+    airType: string;
+    matchMethod: string;
+    confidence: number;
+    manualLock: boolean;
+}
+
+/**
+ * シリーズ手動割当のリクエストボディ
+ */
+export interface UpdateSeriesMappingOption {
+    seriesId?: number;
+    seriesTitle?: string;
+    seasonNumber?: number;
+    episodeNumber?: number | null;
+    airType?: SeriesAirType;
+    learnAlias?: boolean;
+}
+
+/**
+ * 未確定候補
+ */
+export interface SeriesPendingMatchCandidate {
+    seriesId: SeriesId;
+    seriesTitle: string;
+    score: number;
+}
+
+/**
+ * 未確定キューの1件
+ */
+export interface SeriesPendingMatchItem {
+    id: number;
+    recordedId: RecordedId;
+    recordedTitle: string;
+    normalizedTitle: string;
+    channelId: ChannelId;
+    candidates: SeriesPendingMatchCandidate[];
+    createdAt: UnixtimeMS;
+}
+
+/**
+ * 未確定キュー一覧
+ */
+export interface SeriesPendingListResult {
+    items: SeriesPendingMatchItem[];
+    total: number;
+}
+
+/**
+ * シリーズマージのリクエストボディ
+ */
+export interface MergeSeriesOption {
+    fromSeriesId: SeriesId;
+    toSeriesId: SeriesId;
+}
+
+/**
+ * シリーズマージ結果
+ */
+export interface MergeSeriesResult {
+    movedLinkCount: number;
+}
+
+/**
+ * シリーズ分割のリクエストボディ
+ */
+export interface SplitSeriesOption {
+    recordedIds: RecordedId[];
+    newTitle: string;
+}
+
+/**
+ * シリーズ分割結果
+ */
+export interface SplitSeriesResult {
+    seriesId: SeriesId;
+    title: string;
+}
+
+/**
+ * シリーズエイリアス辞書の1件
+ */
+export interface SeriesAliasItem {
+    id: number;
+    normalizedTitle: string;
+    seriesId: SeriesId;
+    seriesTitle: string;
+    createdAt: UnixtimeMS;
+}

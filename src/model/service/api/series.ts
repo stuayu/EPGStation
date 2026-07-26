@@ -13,7 +13,9 @@ export const get: Operation = async (req, res) => {
             await model.list(typeof req.query.keyword === 'string' ? req.query.keyword : undefined, offset, limit),
         );
     } catch (e) {
-        api.responseServerError(res, api.getErrorMessage(e));
+        const message = api.getErrorMessage(e);
+        if (message === 'SeriesLibraryFeatureIsDisabled') api.responseError(res, { code: 404, message });
+        else api.responseServerError(res, message);
     }
 };
 get.apiDoc = {

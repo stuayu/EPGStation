@@ -44,7 +44,7 @@ class SeriesMappingView extends Vue {
     newTitle = '';
     seasonNumber = 1;
     episodeNumber: number | null = null;
-    airType = 'unknown';
+    airType: apid.SeriesAirType = 'unknown';
     saving = false;
     airTypes = [
         { title: '不明', value: 'unknown' },
@@ -65,7 +65,7 @@ class SeriesMappingView extends Vue {
             this.seriesId = this.current.seriesId;
             this.seasonNumber = this.current.seasonNumber ?? 1;
             this.episodeNumber = this.current.episodeNumber;
-            this.airType = this.current.airType;
+            this.airType = this.current.airType as apid.SeriesAirType;
         }
         await this.search();
     }

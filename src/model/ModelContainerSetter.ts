@@ -36,6 +36,12 @@ import IAnnictSyncApiModel from './api/series/IAnnictSyncApiModel';
 import AnnictSyncApiModel from './api/series/AnnictSyncApiModel';
 import ISeriesMappingApiModel from './api/series/ISeriesMappingApiModel';
 import SeriesMappingApiModel from './api/series/SeriesMappingApiModel';
+import ISeriesPendingApiModel from './api/series/ISeriesPendingApiModel';
+import SeriesPendingApiModel from './api/series/SeriesPendingApiModel';
+import ISeriesMaintenanceApiModel from './api/series/ISeriesMaintenanceApiModel';
+import SeriesMaintenanceApiModel from './api/series/SeriesMaintenanceApiModel';
+import ISeriesAliasApiModel from './api/series/ISeriesAliasApiModel';
+import SeriesAliasApiModel from './api/series/SeriesAliasApiModel';
 import IScheduleApiModel from './api/schedule/IScheduleApiModel';
 import ScheduleApiModel from './api/schedule/ScheduleApiModel';
 import IProgramSeriesApiModel from './api/schedule/IProgramSeriesApiModel';
@@ -382,6 +388,12 @@ export const set = (container: Container): void => {
     container.bind<ISeriesApiModel>('ISeriesApiModel').to(SeriesApiModel).inSingletonScope();
     container.bind<IAnnictSyncApiModel>('IAnnictSyncApiModel').to(AnnictSyncApiModel).inSingletonScope();
     container.bind<ISeriesMappingApiModel>('ISeriesMappingApiModel').to(SeriesMappingApiModel).inSingletonScope();
+    container.bind<ISeriesPendingApiModel>('ISeriesPendingApiModel').to(SeriesPendingApiModel).inSingletonScope();
+    container
+        .bind<ISeriesMaintenanceApiModel>('ISeriesMaintenanceApiModel')
+        .to(SeriesMaintenanceApiModel)
+        .inSingletonScope();
+    container.bind<ISeriesAliasApiModel>('ISeriesAliasApiModel').to(SeriesAliasApiModel).inSingletonScope();
 
     container.bind<IRecordingApiModel>('IRecordingApiModel').to(RecordingApiModel).inSingletonScope();
 

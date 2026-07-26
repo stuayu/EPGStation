@@ -29,6 +29,10 @@ function memory(candidates = []) {
             links.set(v.recordedId, x);
             return x;
         },
+        findAlias: async () => null,
+        upsertPendingMatch: async () => {},
+        deletePendingMatchByRecordedId: async () => {},
+        getSeries: async id => candidates.find(c => c.id === id) || null,
     };
 }
 function resolver(db, threshold = 0.8) {

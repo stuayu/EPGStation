@@ -1,45 +1,8 @@
-export interface SeriesContinuityResult {
-    missingEpisodes: Array<{ seasonNumber: number; episodeNumber: number }>;
-    duplicateEpisodes: Array<{
-        seasonNumber: number;
-        episodeNumber: number;
-        recordedIds: number[];
-        channelIds: number[];
-    }>;
-    unknownEpisodeRecordedIds: number[];
-}
-export interface SeriesListItem {
-    id: number;
-    title: string;
-    normalizedTitle: string;
-    mediaType: string;
-    preferredChannelId: number | null;
-    updatedAt: number;
-}
-export interface SeriesListResult {
-    items: SeriesListItem[];
-    total: number;
-}
-export interface SeriesDetail extends SeriesListItem {
-    externalIds: { syobocalTid: number | null; annictId: string | null; tmdbId: number | null };
-    channels: Array<{ channelId: number; channelName: string | null; count: number }>;
-    continuity: SeriesContinuityResult;
-    recorded: Array<{
-        recordedId: number;
-        channelId: number;
-        channelName: string | null;
-        recordedTitle: string;
-        startAt: number;
-        endAt: number;
-        episodeId: number | null;
-        seasonNumber: number | null;
-        episodeNumber: number | null;
-        episodeLabel: string | null;
-        episodeTitle: string | null;
-        airType: string;
-        confidence: number;
-    }>;
-}
+import * as apid from '../../../../api';
+export type SeriesContinuityResult = apid.SeriesDetail['continuity'];
+export type SeriesListItem = apid.SeriesListItem;
+export type SeriesListResult = apid.SeriesListResult;
+export type SeriesDetail = apid.SeriesDetail;
 export default interface ISeriesApiModel {
     list(keyword: string | undefined, offset: number, limit: number): Promise<SeriesListResult>;
     get(id: number, channelId?: number): Promise<SeriesDetail | null>;

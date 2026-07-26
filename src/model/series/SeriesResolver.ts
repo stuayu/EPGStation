@@ -22,6 +22,22 @@ export function titleSimilarity(a: string, b: string): number {
     }
     return (2 * hits) / (a.length + b.length - 2);
 }
+/**
+ * タイトル類似度と局一致からスコアを算出する
+ * 完全一致 (正規化タイトルが一致) は必ず 1.0 を返す (同一タイトルへの再解決が閾値未満になって
+ * 別シリーズへ分裂するのを防ぐ)。完全一致以外は 0.99 を上限とし、あいまい一致だけで
+ * しきい値 1.0 に到達してしまう (=無限にシリーズが増える) ことを防ぐ
+ * @param normalizedTitle: string
+ * @param candidate: Series
+ * @param channelId: number
+ * @return number 0〜1
+ */
+export function scoreCandidate(normalizedTitle: string, candidate: Series, channelId: number): number {
+    if (normalizedTitle === candidate.normalizedTitle) return 1;
+    const similarity = titleSimilarity(normalizedTitle, candidate.normalizedTitle);
+    const channelBonus = candidate.preferredChannelId === channelId ? 0.08 : 0;
+    return Math.min(0.99, similarity * 0.9 + channelBonus);
+}
 @injectable()
 export default class SeriesResolver implements ISeriesResolver {
     constructor(
@@ -35,24 +51,34 @@ export default class SeriesResolver implements ISeriesResolver {
         if (existing?.manualLock) return existing;
         const parsed = parseSeriesInfo(recording.title);
         if (!parsed.normalizedTitle) return null;
+        const now = Date.now();
+
+        // 1. エイリアス辞書 (手動修正から学習した「正規化タイトル→シリーズ」の対応) を最優先で参照する
+        const alias = await this.db.findAlias(parsed.normalizedTitle);
+        if (alias) {
+            const aliasSeries = await this.db.getSeries(alias.seriesId);
+            if (aliasSeries) {
+                await this.db.deletePendingMatchByRecordedId(recording.recordedId);
+                return await this.linkTo(recording, parsed, aliasSeries, 1, 'alias', now);
+            }
+        }
+
+        // 2. 既存シリーズとの類似度スコアリング
         const candidates = await this.db.findCandidates(parsed.normalizedTitle);
         const settings = await this.settings.getAll();
         const threshold = this.threshold((settings.series as any)?.matchThreshold);
         let winner: Series | null = null;
         let confidence = 0;
         for (const candidate of candidates) {
-            const score = Math.min(
-                1,
-                titleSimilarity(parsed.normalizedTitle, candidate.normalizedTitle) * 0.9 +
-                    (candidate.preferredChannelId === recording.channelId ? 0.08 : 0),
-            );
+            const score = scoreCandidate(parsed.normalizedTitle, candidate, recording.channelId);
             if (score > confidence) {
                 winner = candidate;
                 confidence = score;
             }
         }
-        const now = Date.now();
-        if (!winner || confidence < threshold) {
+
+        if (candidates.length === 0) {
+            // 類似候補が一件も無い = 誤リンクの恐れが無い明確な新規シリーズなので自動作成する
             winner = await this.db.createSeries({
                 title: recording.title,
                 normalizedTitle: parsed.normalizedTitle,
@@ -61,13 +87,47 @@ export default class SeriesResolver implements ISeriesResolver {
                 updatedAt: now,
             });
             confidence = 1;
+        } else if (!winner || confidence < threshold) {
+            // 候補はあるがしきい値未満 = 誤リンクの恐れがあるため自動確定させず未確定キューへ積む (§4.5)
+            const ranked = candidates
+                .map(candidate => ({
+                    seriesId: candidate.id,
+                    seriesTitle: candidate.title,
+                    score: scoreCandidate(parsed.normalizedTitle, candidate, recording.channelId),
+                }))
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 3);
+            await this.db.upsertPendingMatch({
+                recordedId: recording.recordedId,
+                normalizedTitle: parsed.normalizedTitle,
+                channelId: recording.channelId,
+                candidates: ranked,
+                createdAt: now,
+            });
+            return null;
         }
+
+        await this.db.deletePendingMatchByRecordedId(recording.recordedId);
+        return await this.linkTo(recording, parsed, winner, confidence, 'title', now);
+    }
+
+    /**
+     * 確定したシリーズへ録画をリンクする (エピソード解決 + 再放送判定を含む)
+     */
+    private async linkTo(
+        recording: SeriesRecordingInput,
+        parsed: ReturnType<typeof parseSeriesInfo>,
+        series: Series,
+        confidence: number,
+        matchMethod: RecordedSeriesLink['matchMethod'],
+        now: number,
+    ): Promise<RecordedSeriesLink> {
         let episode = null;
         if (parsed.episodeNumber !== null) {
-            episode = await this.db.findEpisode(winner.id, parsed.seasonNumber, parsed.episodeNumber);
+            episode = await this.db.findEpisode(series.id, parsed.seasonNumber, parsed.episodeNumber);
             if (!episode)
                 episode = await this.db.createEpisode({
-                    seriesId: winner.id,
+                    seriesId: series.id,
                     seasonNumber: parsed.seasonNumber,
                     episodeNumber: parsed.episodeNumber,
                     episodeLabel: parsed.episodeLabel,
@@ -83,10 +143,11 @@ export default class SeriesResolver implements ISeriesResolver {
                 (await this.db.countOtherLinksByEpisode(episode.id, recording.recordedId)) > 0 ? 'rerun' : 'first';
         return await this.db.saveLink({
             recordedId: recording.recordedId,
-            seriesId: winner.id,
+            seriesId: series.id,
+            channelId: recording.channelId,
             episodeId: episode?.id ?? null,
             airType,
-            matchMethod: 'title',
+            matchMethod,
             confidence,
             manualLock: false,
             createdAt: now,
