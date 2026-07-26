@@ -19,6 +19,12 @@
             </div>
             <div class="text text-caption font-weight-light">{{ item.display.channelName }}</div>
             <div class="text text-caption font-weight-light">{{ item.display.time }} ({{ item.display.duration }} m)</div>
+            <div v-if="typeof item.display.watchProgress === 'number'" class="watch-progress">
+                <v-chip size="x-small" :color="item.display.watchStatus === 'watched' ? 'success' : 'primary'">
+                    {{ item.display.watchStatus === 'watched' ? '視聴済み' : '視聴中' }}
+                </v-chip>
+                <v-progress-linear :model-value="item.display.watchProgress" height="3"></v-progress-linear>
+            </div>
 
             <div
                 v-if="isShowDropInfo === true && typeof item.display.drop !== 'undefined'"

@@ -31,6 +31,28 @@ export default class VideoApiModel implements IVideoApiModel {
         return result.data.duration;
     }
 
+    public async getPlaybackPosition(videoFileId: apid.VideoFileId): Promise<apid.WatchHistory | null> {
+        try {
+            return (await this.repository.get(`/videos/${videoFileId}/playback-position`)).data;
+        } catch (error: any) {
+            if (error?.response?.status === 404) return null;
+            throw error;
+        }
+    }
+
+    public async savePlaybackPosition(videoFileId: apid.VideoFileId, option: apid.UpdatePlaybackPositionOption): Promise<apid.WatchHistory> {
+        return (await this.repository.put(`/videos/${videoFileId}/playback-position`, option)).data;
+    }
+
+    public savePlaybackPositionWithBeacon(videoFileId: apid.VideoFileId, option: apid.UpdatePlaybackPositionOption): void {
+        void fetch(`./api/videos/${videoFileId}/playback-position`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(option),
+            keepalive: true,
+        });
+    }
+
     /**
      * kodi にビデオリンクを送信する
      * @param hostName: kodi host name

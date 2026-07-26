@@ -4,7 +4,7 @@
         <transition name="page">
             <div class="video-container-wrap mx-auto">
                 <VideoContainer v-if="videoParam !== null" v-bind:videoParam="videoParam"></VideoContainer>
-                <WatchOnRecordedInfoCard v-if="videoParam !== null" v-bind:recordedId="videoParam.recordedId"></WatchOnRecordedInfoCard>
+                <WatchOnRecordedInfoCard v-if="videoParam !== null" v-bind:recordedId="videoParam.recordedId" v-bind:videoFileId="videoParam.videoFileId"></WatchOnRecordedInfoCard>
                 <div style="visibility: hidden">dummy</div>
             </div>
         </transition>

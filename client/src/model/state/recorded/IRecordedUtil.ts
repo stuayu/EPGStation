@@ -17,6 +17,8 @@ export interface RecordedDisplayData {
         drop?: string;
         dropSimple?: string;
         hasDrop: boolean;
+        watchStatus?: apid.WatchStatus;
+        watchProgress?: number;
     };
     recordedItem: apid.RecordedItem;
     isSelected: boolean;

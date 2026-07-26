@@ -9,6 +9,9 @@
                         {{ displayInfo.name }}
                     </div>
                     <div class="text-body-2 font-weight-light">{{ displayInfo.description }}</div>
+                    <v-btn v-if="videoFileId !== null" class="mt-2" size="small" variant="outlined" v-on:click.stop="toggleWatched">
+                        {{ watchHistory?.status === 'watched' ? '未視聴に戻す' : '視聴済みにする' }}
+                    </v-btn>
                 </div>
             </v-list-item>
         </v-card>
@@ -18,6 +21,7 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
+import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import IWatchRecordedInfoState, { DsiplayWatchInfo } from '@/model/state/recorded/watch/IWatchRecordedInfoState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
@@ -28,8 +32,14 @@ class WatchOnRecordedInfoCard extends Vue {
     @Prop({ required: true })
     public recordedId!: apid.RecordedId;
 
+    @Prop({ default: null })
+    public videoFileId!: apid.VideoFileId | null;
+
+    public watchHistory: apid.WatchHistory | null = null;
+
     public displayInfo: DsiplayWatchInfo | null = null;
 
+    private videoApi = container.get<IVideoApiModel>('IVideoApiModel');
     private infoState: IWatchRecordedInfoState = container.get<IWatchRecordedInfoState>('IWatchRecordedInfoState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
@@ -66,6 +76,13 @@ class WatchOnRecordedInfoCard extends Vue {
         });
 
         this.displayInfo = this.infoState.getInfo();
+        if (this.videoFileId !== null) this.watchHistory = await this.videoApi.getPlaybackPosition(this.videoFileId);
+    }
+    public async toggleWatched(): Promise<void> {
+        if (this.videoFileId === null) return;
+        const duration = this.watchHistory?.duration ?? (await this.videoApi.getDuration(this.videoFileId));
+        const position = this.watchHistory?.status === 'watched' ? 0 : duration;
+        this.watchHistory = await this.videoApi.savePlaybackPosition(this.videoFileId, { position, duration });
     }
 }
 

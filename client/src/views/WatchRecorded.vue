@@ -4,7 +4,11 @@
         <transition name="page">
             <div class="video-container-wrap mx-auto">
                 <VideoContainer v-if="videoParam !== null" v-bind:videoParam="videoParam"></VideoContainer>
-                <WatchOnRecordedInfoCard v-if="recordedId !== null" v-bind:recordedId="recordedId"></WatchOnRecordedInfoCard>
+                <WatchOnRecordedInfoCard
+                    v-if="recordedId !== null"
+                    v-bind:recordedId="recordedId"
+                    v-bind:videoFileId="videoParam !== null && 'videoFileId' in videoParam ? (videoParam.videoFileId ?? null) : null"
+                ></WatchOnRecordedInfoCard>
                 <div style="visibility: hidden">dummy</div>
             </div>
         </transition>
@@ -23,7 +27,6 @@ import IScrollPositionState from '@/model/state/IScrollPositionState';
 import JikkyoUtil from '@/util/JikkyoUtil';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
-
 
 @Component({
     components: {
@@ -51,6 +54,7 @@ class WatchRecorded extends Vue {
             if (videoId !== null) {
                 (this.videoParam as NormalVideoParam) = {
                     type: 'Normal',
+                    videoFileId: videoId,
                     src: `./api/videos/${videoId}`,
                     ...(jikkyoKakologParam ?? {}),
                 };

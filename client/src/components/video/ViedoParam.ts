@@ -12,6 +12,7 @@ interface VideoParamBase {
 
 export interface NormalVideoParam extends VideoParamBase {
     type: 'Normal';
+    videoFileId?: apid.VideoFileId;
     src: string;
 }
 
