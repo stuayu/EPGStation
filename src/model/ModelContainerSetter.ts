@@ -61,6 +61,8 @@ import IChannelDB from './db/IChannelDB';
 import IDBOperator from './db/IDBOperator';
 import IDropLogFileDB from './db/IDropLogFileDB';
 import IProgramDB from './db/IProgramDB';
+import IMetadataProviderCacheDB from './db/IMetadataProviderCacheDB';
+import MetadataProviderCacheDB from './db/MetadataProviderCacheDB';
 import IRecordedDB from './db/IRecordedDB';
 import IRecordedHistoryDB from './db/IRecordedHistoryDB';
 import IRecordedTagDB from './db/IRecordedTagDB';
@@ -120,6 +122,12 @@ import { IPromiseQueue } from './IPromiseQueue';
 import IPromiseRetry from './IPromiseRetry';
 import LoggerModel from './LoggerModel';
 import MirakurunClientModel from './MirakurunClientModel';
+import IMetadataProviderRegistry from './metadata/IMetadataProviderRegistry';
+import MetadataProviderRegistry from './metadata/MetadataProviderRegistry';
+import IMetadataService from './metadata/IMetadataService';
+import MetadataService from './metadata/MetadataService';
+import IProviderHttpClient from './metadata/IProviderHttpClient';
+import ProviderHttpClient from './metadata/ProviderHttpClient';
 import INotificationDispatcher from './notification/INotificationDispatcher';
 import NotificationDispatcher from './notification/NotificationDispatcher';
 import ExternalCommandManageModel from './operator/externalCommand/ExternalCommandManageModel';
@@ -217,6 +225,13 @@ export const set = (container: Container): void => {
     container.bind<IDBOperator>('IDBOperator').to(DBOperator).inSingletonScope();
 
     container.bind<IAppSettingDB>('IAppSettingDB').to(AppSettingDB).inSingletonScope();
+    container.bind<IMetadataProviderCacheDB>('IMetadataProviderCacheDB').to(MetadataProviderCacheDB).inSingletonScope();
+    container
+        .bind<IMetadataProviderRegistry>('IMetadataProviderRegistry')
+        .to(MetadataProviderRegistry)
+        .inSingletonScope();
+    container.bind<IMetadataService>('IMetadataService').to(MetadataService).inSingletonScope();
+    container.bind<IProviderHttpClient>('IProviderHttpClient').to(ProviderHttpClient).inSingletonScope();
 
     container.bind<IChannelDB>('IChannelDB').to(ChannelDB).inSingletonScope();
 
