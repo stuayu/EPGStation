@@ -37,6 +37,8 @@ import StreamApiModel from './api/stream/StreamApiModel';
 import IThumbnailApiModel from './api/thumbnail/IThumbnailApiModel';
 import ThumbnailApiModel from './api/thumbnail/ThumbnailApiModel';
 import IVideoApiModel from './api/video/IVideoApiModel';
+import IWatchHistoryApiModel from './api/video/IWatchHistoryApiModel';
+import WatchHistoryApiModel from './api/video/WatchHistoryApiModel';
 import IVideoUtil from './api/video/IVideoUtil';
 import VideoApiModel from './api/video/VideoApiModel';
 import VideoUtil from './api/video/VideoUtil';
@@ -56,6 +58,7 @@ import IReserveDB from './db/IReserveDB';
 import IRuleDB from './db/IRuleDB';
 import IThumbnailDB from './db/IThumbnailDB';
 import IVideoFileDB from './db/IVideoFileDB';
+import IWatchHistoryDB from './db/IWatchHistoryDB';
 import ProgramDB from './db/ProgramDB';
 import RecordedDB from './db/RecordedDB';
 import RecordedHistoryDB from './db/RecordedHistoryDB';
@@ -64,6 +67,7 @@ import ReserveDB from './db/ReserveDB';
 import RuleDB from './db/RuleDB';
 import ThumbnailDB from './db/ThumbnailDB';
 import VideoFileDB from './db/VideoFileDB';
+import WatchHistoryDB from './db/WatchHistoryDB';
 import EPGUpdateExecutorManageModel from './epgUpdater/EPGUpdateExecutorManageModel';
 import EPGUpdateManageModel from './epgUpdater/EPGUpdateManageModel';
 import EPGUpdater from './epgUpdater/EPGUpdater';
@@ -208,6 +212,7 @@ export const set = (container: Container): void => {
     container.bind<IThumbnailDB>('IThumbnailDB').to(ThumbnailDB).inSingletonScope();
 
     container.bind<IVideoFileDB>('IVideoFileDB').to(VideoFileDB).inSingletonScope();
+    container.bind<IWatchHistoryDB>('IWatchHistoryDB').to(WatchHistoryDB).inSingletonScope();
 
     container.bind<IDropLogFileDB>('IDropLogFileDB').to(DropLogFileDB).inSingletonScope();
 
@@ -319,6 +324,7 @@ export const set = (container: Container): void => {
     container.bind<IVideoUtil>('IVideoUtil').to(VideoUtil).inSingletonScope();
 
     container.bind<IVideoApiModel>('IVideoApiModel').to(VideoApiModel).inSingletonScope();
+    container.bind<IWatchHistoryApiModel>('IWatchHistoryApiModel').to(WatchHistoryApiModel).inSingletonScope();
 
     container.bind<IEncodeApiModel>('IEncodeApiModel').to(EncodeApiModel).inSingletonScope();
 

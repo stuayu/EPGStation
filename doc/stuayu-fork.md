@@ -107,6 +107,11 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
             復元作業中に、ruleの部分で失敗する場合は、手動でsqlファイルを修正してください。
 ## 変更箇所
 
+- 視聴履歴のサーバー基盤を追加（S1）
+  - `WatchHistory` と SQLite / MySQL / PostgreSQL 用マイグレーションを追加
+  - `GET/PUT /api/videos/{videoFileId}/playback-position` を追加
+  - 90% 視聴済み判定、冪等 upsert、`featureFlags.watchHistory` による既定無効化
+
 - 段階導入向けの開発・テスト基盤を追加（S0）
   - 全新機能を既定無効にする `featureFlags` と型安全な判定ヘルパーを追加
   - UT / ITA / ITB の実行スクリプト、外部 API スタブ、CI ジョブを追加
