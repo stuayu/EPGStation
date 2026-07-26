@@ -4,6 +4,7 @@
         <transition name="page">
             <div v-if="isShow" ref="appContent" class="app-content">
                 <v-container>
+                    <v-btn block color="primary" class="mb-4" to="/settings/system">サーバー設定を開く</v-btn>
                     <v-card class="mx-auto" max-width="800">
                         <v-list-item three-line>
                             <div class="v-list-item-content">
@@ -351,7 +352,6 @@ import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import IColorThemeState from '@/model/state/IColorThemeState';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
 
-
 interface GuideModeItem {
     text: string;
     value: GuideViewMode;
@@ -415,7 +415,7 @@ class Settings extends Vue {
 
     set isForceDarkTheme(value: boolean) {
         this.storageModel.tmp.isForceDarkTheme = value;
-        this.$vuetify.theme.change((value) ? 'dark' : 'light');
+        this.$vuetify.theme.change(value ? 'dark' : 'light');
     }
 
     get isSupportedMpegts(): boolean {
@@ -423,7 +423,6 @@ class Settings extends Vue {
     }
 
     public created(): void {
-
         this.isForceDarkTheme = this.colorThemeState.isTmpDarkTheme();
 
         for (let i = 1; i <= 24; i++) {
@@ -460,7 +459,7 @@ class Settings extends Vue {
     public unmounted(): void {
         // ページから移動するときに tmp をリセット
         this.storageModel.resetTmpValue();
-        this.$vuetify.theme.change((this.colorThemeState.isDarkTheme()) ? 'dark' : 'light');
+        this.$vuetify.theme.change(this.colorThemeState.isDarkTheme() ? 'dark' : 'light');
     }
 
     /**
@@ -468,7 +467,7 @@ class Settings extends Vue {
      */
     public reset(): void {
         this.storageModel.tmp = this.storageModel.getDefaultValue();
-        this.$vuetify.theme.change((this.colorThemeState.isDarkTheme()) ? 'dark' : 'light');
+        this.$vuetify.theme.change(this.colorThemeState.isDarkTheme() ? 'dark' : 'light');
     }
 
     /**

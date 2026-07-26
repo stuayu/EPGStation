@@ -473,6 +473,9 @@ stream:
 #                       height: 720
 #                       bitrate: 3000
 
+# 秘密情報暗号化鍵。運用環境では十分長いランダム値へ変更してください。
+# secretKey: change-this-to-a-long-random-secret
+
 # 段階導入用機能フラグ。明示的に true にした機能だけが有効になります。
 # 未指定の項目は false として扱われます。
 featureFlags:

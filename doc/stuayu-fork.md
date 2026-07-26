@@ -107,6 +107,11 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
             復元作業中に、ruleの部分で失敗する場合は、手動でsqlファイルを修正してください。
 ## 変更箇所
 
+- サーバー設定GUIと秘密情報保護を追加（S6）
+  - Annict・しょぼいカレンダー・通知・シリーズ設定をWeb UIから編集
+  - token/apiKey/secret/passwordをAES-256-GCMで暗号化し、APIでは末尾4文字のみ表示
+  - `secretKey`を暗号鍵として使用し、マスク値の再保存では既存暗号文を維持
+
 - DBベースのランタイム設定ストアを追加（S5）
   - `AppSetting`、3 DBマイグレーション、`GET/PUT /api/settings/system`を追加
   - 設定セクションを検証し、`featureFlags.systemSettings`で既定無効化
