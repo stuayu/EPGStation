@@ -62,6 +62,8 @@ import IRecordedHistoryDB from './db/IRecordedHistoryDB';
 import IRecordedTagDB from './db/IRecordedTagDB';
 import IReserveDB from './db/IReserveDB';
 import IRuleDB from './db/IRuleDB';
+import ISeriesDB from './db/ISeriesDB';
+import SeriesDB from './db/SeriesDB';
 import IThumbnailDB from './db/IThumbnailDB';
 import IVideoFileDB from './db/IVideoFileDB';
 import IWatchHistoryDB from './db/IWatchHistoryDB';
@@ -140,6 +142,8 @@ import IRuleManageModel from './operator/rule/IRuleManageModel';
 import RuleManageModel from './operator/rule/RuleManageModel';
 import ISecretCrypto from './security/ISecretCrypto';
 import SecretCrypto from './security/SecretCrypto';
+import ISeriesResolver from './series/ISeriesResolver';
+import SeriesResolver from './series/SeriesResolver';
 import IStorageManageModel from './operator/storage/IStorageManageModel';
 import StorageManageModel from './operator/storage/StorageManageModel';
 import IThumbnailManageModel from './operator/thumbnail/IThumbnailManageModel';
@@ -228,6 +232,8 @@ export const set = (container: Container): void => {
 
     container.bind<IVideoFileDB>('IVideoFileDB').to(VideoFileDB).inSingletonScope();
     container.bind<IWatchHistoryDB>('IWatchHistoryDB').to(WatchHistoryDB).inSingletonScope();
+    container.bind<ISeriesDB>('ISeriesDB').to(SeriesDB).inSingletonScope();
+    container.bind<ISeriesResolver>('ISeriesResolver').to(SeriesResolver).inSingletonScope();
 
     container.bind<IDropLogFileDB>('IDropLogFileDB').to(DropLogFileDB).inSingletonScope();
 
