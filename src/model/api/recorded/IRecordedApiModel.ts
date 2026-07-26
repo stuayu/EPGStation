@@ -1,6 +1,12 @@
 import * as apid from '../../../../api';
 import { UploadedVideoFileOption } from '../../operator/recorded/IRecordedManageModel';
 
+export interface NextUpResult {
+    currentSeriesId: number | null;
+    latest: apid.RecordedItem[];
+    series: apid.RecordedItem[];
+}
+
 export default interface IRecordedApiModel {
     gets(option: apid.GetRecordedOption): Promise<apid.Records>;
     get(recordedId: apid.RecordedId, isHalfWidth: boolean): Promise<apid.RecordedItem | null>;
@@ -12,4 +18,5 @@ export default interface IRecordedApiModel {
     fileCleanup(target?: apid.RecordedCleanupTarget): Promise<void>;
     addUploadedVideoFile(option: UploadedVideoFileOption): Promise<void>;
     createNewRecorded(option: apid.CreateNewRecordedOption): Promise<apid.RecordedId>;
+    getNextUp(recordedId: apid.RecordedId, isHalfWidth: boolean): Promise<NextUpResult | null>;
 }

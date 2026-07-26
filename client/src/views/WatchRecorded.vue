@@ -2,14 +2,16 @@
     <v-main>
         <TitleBar title="視聴"></TitleBar>
         <transition name="page">
-            <div class="video-container-wrap mx-auto">
-                <VideoContainer v-if="videoParam !== null" v-bind:videoParam="videoParam"></VideoContainer>
-                <WatchOnRecordedInfoCard
-                    v-if="recordedId !== null"
-                    v-bind:recordedId="recordedId"
-                    v-bind:videoFileId="videoParam !== null && 'videoFileId' in videoParam ? (videoParam.videoFileId ?? null) : null"
-                ></WatchOnRecordedInfoCard>
-                <div style="visibility: hidden">dummy</div>
+            <div class="watch-layout mx-auto">
+                <div class="watch-main">
+                    <VideoContainer v-if="videoParam !== null" v-bind:videoParam="videoParam"></VideoContainer>
+                    <WatchOnRecordedInfoCard
+                        v-if="recordedId !== null"
+                        v-bind:recordedId="recordedId"
+                        v-bind:videoFileId="videoParam !== null && 'videoFileId' in videoParam ? (videoParam.videoFileId ?? null) : null"
+                    ></WatchOnRecordedInfoCard>
+                </div>
+                <NextUpPanel v-if="recordedId !== null" :recordedId="recordedId" :isHalfWidth="false"></NextUpPanel>
             </div>
         </transition>
     </v-main>
@@ -17,6 +19,7 @@
 
 <script lang="ts">
 import WatchOnRecordedInfoCard from '@/components/recorded/watch/WatchRecordedInfoCard.vue';
+import NextUpPanel from '@/components/recorded/watch/NextUpPanel.vue';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import VideoContainer from '@/components/video/VideoContainer.vue';
 import { BaseVideoParam, NormalVideoParam } from '@/components/video/ViedoParam';
@@ -33,6 +36,7 @@ import * as apid from '../../../api';
         TitleBar,
         VideoContainer,
         WatchOnRecordedInfoCard,
+        NextUpPanel,
     },
 })
 class WatchRecorded extends Vue {
@@ -98,6 +102,17 @@ export default toNative(WatchRecorded);
 </script>
 
 <style lang="sass" scoped>
-.video-container-wrap
-    max-width: 1200px
+.watch-layout
+    display: flex
+    gap: 16px
+    align-items: flex-start
+    max-width: 1600px
+
+.watch-main
+    flex: 1
+    min-width: 0
+
+@media (max-width: 1200px)
+    .watch-layout
+        flex-direction: column
 </style>
