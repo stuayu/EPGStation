@@ -217,6 +217,7 @@ export default class NavigationState implements INavigationState {
                 path: '/recorded',
             },
         });
+        newItems.push({ icon: 'mdi-folder-play', title: 'シリーズ', herf: { path: '/series' } });
         newItems.push({
             icon: 'mdi-sync',
             title: 'エンコード',

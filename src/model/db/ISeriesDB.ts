@@ -29,6 +29,26 @@ export interface SaveSeriesLink {
     createdAt: number;
     updatedAt: number;
 }
+export interface SeriesRecordedRow {
+    recordedId: number;
+    channelId: number;
+    channelName: string | null;
+    recordedTitle: string;
+    startAt: number;
+    endAt: number;
+    episodeId: number | null;
+    seasonNumber: number | null;
+    episodeNumber: number | null;
+    episodeLabel: string | null;
+    episodeTitle: string | null;
+    airType: string;
+    confidence: number;
+}
+export interface SeriesChannelRow {
+    channelId: number;
+    channelName: string | null;
+    count: number;
+}
 export default interface ISeriesDB {
     findCandidates(normalizedTitle: string): Promise<Series[]>;
     createSeries(value: NewSeries): Promise<Series>;
@@ -36,4 +56,8 @@ export default interface ISeriesDB {
     createEpisode(value: NewEpisode): Promise<SeriesEpisode>;
     findLink(recordedId: number): Promise<RecordedSeriesLink | null>;
     saveLink(value: SaveSeriesLink): Promise<RecordedSeriesLink>;
+    list(keyword: string | undefined, offset: number, limit: number): Promise<[Series[], number]>;
+    getSeries(id: number): Promise<Series | null>;
+    listRecorded(seriesId: number, channelId?: number): Promise<SeriesRecordedRow[]>;
+    listChannels(seriesId: number): Promise<SeriesChannelRow[]>;
 }
