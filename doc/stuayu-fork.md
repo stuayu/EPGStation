@@ -107,6 +107,13 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
             復元作業中に、ruleの部分で失敗する場合は、手動でsqlファイルを修正してください。
 ## 変更箇所
 
+- 高度タグ・全文検索・保存検索を追加（S19、サーバ側のみ）
+  - 録画全文検索エンジン `RecordedKeywordSearch` を追加。AND / OR (`OR` / `|`) / 除外 (`-` / `!`) / `title:` `desc:` `ext:` `tag:` `ch:` のフィールド指定 / `"フレーズ"` 検索に対応し、`featureFlags.advancedSearch` が無効なときは従来と完全に同一の where 句 (name/description の AND OR) を返す
+  - `RecordedTag` に `parentId` (階層タグ) を追加。`advancedSearch` 有効時は録画一覧のタグ絞り込み (`GET /api/recorded?tagId=`) で子孫タグの録画も含めるようにし、タグの親子付け替え時は自分自身・子孫を親にできないよう循環参照を防止 (`RecordedTagDB.getDescendantIds` / `updateOnce`)
+  - 保存検索 (`SavedSearch`) を追加。名前・検索条件 (JSON 文字列)・ピン留めを保持し、`GET/POST /api/searches`・`GET/PUT/DELETE /api/searches/{searchId}` で CRUD 可能。`featureFlags.advancedSearch` が無効なときは 404 を返して機能を無効化 (Dashboard/AppSetting と同じ流儀)
+  - DB マイグレーション (sqlite/mysql 両対応): `AddRecordedTagParent` (`recorded_tag.parentId` 列 + インデックス追加)、`AddSavedSearch` (`saved_search` テーブル新規追加)
+  - クライアント UI (検索バーの高度構文入力、階層タグ選択 UI、保存検索の一覧・保存操作) は別ステップで対応予定
+
 - 外部録画ファイル一括追加を追加（S18）
   - GUIからローカルファイルパスを複数行で指定し、既存録画ディレクトリへ一括取り込み可能
   - ffprobeで動画長を取得し、ファイル更新日時から録画時刻を補完してRecordedを自動生成

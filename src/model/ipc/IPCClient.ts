@@ -332,17 +332,18 @@ export default class IPCClient implements IIPCClient {
      */
     private setRecordedTag(): void {
         this.recordedTag = {
-            create: (name: string, color: string) => {
+            create: (name: string, color: string, parentId?: number | null) => {
                 return this.send({
                     model: ModelName.recordedTag,
                     func: RecordedTagFunctions.create,
                     args: {
                         name: name,
                         color: color,
+                        parentId: parentId,
                     },
                 });
             },
-            update: (tagId: apid.RecordedTagId, name: string, color: string) => {
+            update: (tagId: apid.RecordedTagId, name: string, color: string, parentId?: number | null) => {
                 return this.send({
                     model: ModelName.recordedTag,
                     func: RecordedTagFunctions.update,
@@ -350,6 +351,7 @@ export default class IPCClient implements IIPCClient {
                         tagId: tagId,
                         name: name,
                         color: color,
+                        parentId: parentId,
                     },
                 });
             },

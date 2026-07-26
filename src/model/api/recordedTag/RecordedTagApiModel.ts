@@ -20,8 +20,8 @@ export default class RecordedTagApiModel implements IRecordedTagApiModel {
      * @param color: string
      * @return Promise<apid.RecordedTagId>
      */
-    public async create(name: string, color: string): Promise<apid.RecordedTagId> {
-        const tagId = await this.ipc.recordedTag.create(name, color);
+    public async create(name: string, color: string, parentId?: number | null): Promise<apid.RecordedTagId> {
+        const tagId = await this.ipc.recordedTag.create(name, color, parentId);
 
         return tagId;
     }
@@ -31,10 +31,16 @@ export default class RecordedTagApiModel implements IRecordedTagApiModel {
      * @param tagId: apid.RecordedTagId
      * @param name: string
      * @param color: string
+     * @param parentId: number | null | undefined
      * @return Promise<void>
      */
-    public async update(tagId: apid.RecordedTagId, name: string, color: string): Promise<void> {
-        await this.ipc.recordedTag.update(tagId, name, color);
+    public async update(
+        tagId: apid.RecordedTagId,
+        name: string,
+        color: string,
+        parentId?: number | null,
+    ): Promise<void> {
+        await this.ipc.recordedTag.update(tagId, name, color, parentId);
     }
 
     /**
@@ -79,6 +85,7 @@ export default class RecordedTagApiModel implements IRecordedTagApiModel {
                     id: t.id,
                     name: t.name,
                     color: t.color,
+                    parentId: t.parentId,
                 };
             }),
             total: total,

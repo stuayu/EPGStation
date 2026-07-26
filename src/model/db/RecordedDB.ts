@@ -4,20 +4,31 @@ import * as apid from '../../../api';
 import Recorded from '../../db/entities/Recorded';
 import Thumbnail from '../../db/entities/Thumbnail';
 import VideoFile from '../../db/entities/VideoFile';
-import StrUtil from '../../util/StrUtil';
+import { isFeatureEnabled } from '../FeatureFlags';
+import IConfiguration from '../IConfiguration';
+import RecordedKeywordSearch, { buildRecordedKeywordSearchPlan } from '../recorded/RecordedKeywordSearch';
 import IPromiseRetry from '../IPromiseRetry';
-import DBUtil from './DBUtil';
 import IDBOperator from './IDBOperator';
 import IRecordedDB, { FindAllOption, RecordedColumnOption } from './IRecordedDB';
+import IRecordedTagDB from './IRecordedTagDB';
 
 @injectable()
 export default class RecordedDB implements IRecordedDB {
     private op: IDBOperator;
     private promieRetry: IPromiseRetry;
+    private config: IConfiguration;
+    private recordedTagDB: IRecordedTagDB;
 
-    constructor(@inject('IDBOperator') op: IDBOperator, @inject('IPromiseRetry') promieRetry: IPromiseRetry) {
+    constructor(
+        @inject('IDBOperator') op: IDBOperator,
+        @inject('IPromiseRetry') promieRetry: IPromiseRetry,
+        @inject('IConfiguration') config: IConfiguration,
+        @inject('IRecordedTagDB') recordedTagDB: IRecordedTagDB,
+    ) {
         this.op = op;
         this.promieRetry = promieRetry;
+        this.config = config;
+        this.recordedTagDB = recordedTagDB;
     }
 
     /**
@@ -335,40 +346,33 @@ export default class RecordedDB implements IRecordedDB {
             });
         }
 
-        // keyword
-        if (typeof option.keyword !== 'undefined') {
-            const keywords = StrUtil.toHalf(option.keyword).split(/ /);
-            const like = this.op.getLikeStr(false);
-            const valueBaseName = 'keyword';
-
-            const nameAnd: string[] = [];
-            const descriptionAnd: string[] = [];
-            const values: any = {};
-            keywords.forEach((str, i) => {
-                str = `%${str}%`;
-
-                // value
-                const valueName = `${valueBaseName}Name${i}`;
-                values[valueName] = str;
-
-                // name
-                nameAnd.push(`halfWidthName ${like} :${valueName}`);
-                // description
-                descriptionAnd.push(`halfWidthDescription ${like} :${valueName}`);
-            });
-
-            const or: string[] = [];
-            if (nameAnd.length > 0) {
-                or.push(`(${DBUtil.createAndQuery(nameAnd)})`);
-            }
-            if (descriptionAnd.length > 0) {
-                or.push(`(${DBUtil.createAndQuery(descriptionAnd)})`);
+        // tagId (advancedSearch 有効時は子孫タグの録画も含める)
+        if (typeof option.tagId !== 'undefined') {
+            let tagIds: number[] = [option.tagId];
+            if (isFeatureEnabled(this.config.getConfig(), 'advancedSearch')) {
+                const descendantIds = await this.recordedTagDB.getDescendantIds(option.tagId);
+                tagIds = [option.tagId, ...descendantIds];
             }
 
             querys.push({
-                query: DBUtil.createOrQuery(or),
-                values: values,
+                query:
+                    `exists (select 1 from ${RecordedKeywordSearch.TAG_RELATION_TABLE} tagFilter_rel` +
+                    ' where tagFilter_rel.recordedId = recorded.id' +
+                    ' and tagFilter_rel.recordedTagId in (:...tagFilterIds))',
+                values: {
+                    tagFilterIds: tagIds,
+                },
             });
+        }
+
+        // keyword
+        if (typeof option.keyword !== 'undefined') {
+            const searchPlan = buildRecordedKeywordSearchPlan(
+                option.keyword,
+                this.op.getLikeStr(false),
+                isFeatureEnabled(this.config.getConfig(), 'advancedSearch'),
+            );
+            querys.push(...searchPlan.conditions);
         }
 
         // オリジナルファイルだけを抽出する

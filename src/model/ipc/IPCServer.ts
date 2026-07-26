@@ -301,16 +301,18 @@ export default class IPCServer implements IIPCServer {
         index[RecordedTagFunctions.create] = async msg => {
             const name = this.getArgsValue<string>(msg, 'name');
             const color = this.getArgsValue<string>(msg, 'color');
+            const parentId = msg.args?.parentId as number | null | undefined;
 
-            return await this.recordedTagManage.create(name, color);
+            return await this.recordedTagManage.create(name, color, parentId);
         };
 
         index[RecordedTagFunctions.update] = async msg => {
             const tagId = this.getArgsValue<apid.RecordedTagId>(msg, 'tagId');
             const name = this.getArgsValue<string>(msg, 'name');
             const color = this.getArgsValue<string>(msg, 'color');
+            const parentId = msg.args?.parentId as number | null | undefined;
 
-            await this.recordedTagManage.update(tagId, name, color);
+            await this.recordedTagManage.update(tagId, name, color, parentId);
         };
 
         index[RecordedTagFunctions.setRelation] = async msg => {

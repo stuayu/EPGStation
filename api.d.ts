@@ -15,6 +15,7 @@ export type WatchStatus = 'unwatched' | 'watching' | 'watched';
 export type ThumbnailId = number;
 export type DropLogFileId = number;
 export type RecordedTagId = number;
+export type SavedSearchId = number;
 export type EncodeId = number;
 export type ChannelType =
     | 'GR'
@@ -554,6 +555,7 @@ export interface RecordedTag {
     id: RecordedTagId;
     name: string;
     color: string;
+    parentId?: number | null;
 }
 
 export interface RecordedTags {
@@ -574,6 +576,7 @@ export interface GetRecordedOption {
     genre?: ProgramGenreLv1;
     keyword?: string;
     hasOriginalFile?: boolean;
+    tagId?: RecordedTagId;
 }
 
 /**
@@ -647,6 +650,39 @@ export interface GetRecordedTagOption {
     limit?: number;
     name?: string;
     excludeTagId?: RecordedTagId[];
+}
+
+/**
+ * 保存検索 (advancedSearch 機能フラグ有効時のみ利用可能)
+ */
+export interface SavedSearchItem {
+    id: SavedSearchId;
+    name: string;
+    query: string;
+    isPinned: boolean;
+    createdAt: UnixtimeMS;
+    updatedAt: UnixtimeMS;
+}
+
+export interface SavedSearchItems {
+    items: SavedSearchItem[];
+    total: number;
+}
+
+export interface AddSavedSearchOption {
+    name: string;
+    query: string;
+    isPinned?: boolean;
+}
+
+export interface UpdateSavedSearchOption {
+    name: string;
+    query: string;
+    isPinned?: boolean;
+}
+
+export interface AddedSavedSearch {
+    searchId: SavedSearchId;
 }
 
 /**

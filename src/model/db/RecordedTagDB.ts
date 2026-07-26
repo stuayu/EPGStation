@@ -74,27 +74,82 @@ export default class RecordedTagDB implements IRecordedTagDB {
      * @param tagId: apid.RecordedTagId
      * @param name: string
      * @param color: string
+     * @param parentId: number | null | undefined 親タグの id (未指定なら変更しない)
      * @return Promise<void>
      */
-    public async updateOnce(tagId: apid.RecordedTagId, name: string, color: string): Promise<void> {
+    public async updateOnce(
+        tagId: apid.RecordedTagId,
+        name: string,
+        color: string,
+        parentId?: number | null,
+    ): Promise<void> {
         const tag = await this.findId(tagId);
         if (tag === null) {
             throw new Error('TagIsNull');
         }
 
+        if (typeof parentId === 'number') {
+            if (parentId === tagId) {
+                throw new Error('RecordedTagCircularParent');
+            }
+            const descendantIds = await this.getDescendantIds(tagId);
+            if (descendantIds.includes(parentId)) {
+                throw new Error('RecordedTagCircularParent');
+            }
+            const parent = await this.findId(parentId);
+            if (parent === null) {
+                throw new Error('RecordedTagParentIsNull');
+            }
+        }
+
+        const setValue: { name: string; color: string; halfWidthName: string; parentId?: number | null } = {
+            name: name,
+            color: color,
+            halfWidthName: StrUtil.toHalf(name),
+        };
+        if (typeof parentId !== 'undefined') {
+            setValue.parentId = parentId;
+        }
+
         const connection = await this.op.getConnection();
-        const queryBuilder = connection
-            .createQueryBuilder()
-            .update(RecordedTag)
-            .set({
-                name: name,
-                color: color,
-                halfWidthName: StrUtil.toHalf(name),
-            })
-            .where({ id: tagId });
+        const queryBuilder = connection.createQueryBuilder().update(RecordedTag).set(setValue).where({ id: tagId });
         await this.promieRetry.run(() => {
             return queryBuilder.execute();
         });
+    }
+
+    /**
+     * 指定した tag の子孫タグ id 一覧を取得する
+     * @param tagId: apid.RecordedTagId
+     * @return Promise<apid.RecordedTagId[]>
+     */
+    public async getDescendantIds(tagId: apid.RecordedTagId): Promise<apid.RecordedTagId[]> {
+        const connection = await this.op.getConnection();
+        const all = await this.promieRetry.run(() => {
+            return connection.getRepository(RecordedTag).createQueryBuilder('recorded_tag').getMany();
+        });
+
+        const childrenMap = new Map<number, number[]>();
+        for (const t of all) {
+            if (typeof t.parentId === 'number') {
+                const arr = childrenMap.get(t.parentId) ?? [];
+                arr.push(t.id);
+                childrenMap.set(t.parentId, arr);
+            }
+        }
+
+        const result: number[] = [];
+        const queue: number[] = [...(childrenMap.get(tagId) ?? [])];
+        while (queue.length > 0) {
+            const id = queue.shift();
+            if (typeof id === 'undefined' || result.includes(id)) {
+                continue;
+            }
+            result.push(id);
+            queue.push(...(childrenMap.get(id) ?? []));
+        }
+
+        return result;
     }
 
     /**

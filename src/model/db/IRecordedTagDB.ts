@@ -4,7 +4,8 @@ import RecordedTag from '../../db/entities/RecordedTag';
 export default interface IRecordedTagDB {
     restore(items: RecordedTag[]): Promise<void>;
     insertOnce(tag: RecordedTag): Promise<apid.RecordedTagId>;
-    updateOnce(tagId: apid.RecordedTagId, name: string, color: string): Promise<void>;
+    updateOnce(tagId: apid.RecordedTagId, name: string, color: string, parentId?: number | null): Promise<void>;
+    getDescendantIds(tagId: apid.RecordedTagId): Promise<apid.RecordedTagId[]>;
     setRelation(tagId: apid.RecordedTagId, recordedId: apid.RecordedId): Promise<void>;
     deleteRelation(tagId: apid.RecordedTagId, recordedId: apid.RecordedId): Promise<void>;
     deleteAllRelation(recordedId: apid.RecordedId): Promise<void>;

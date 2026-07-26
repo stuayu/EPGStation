@@ -1,4 +1,4 @@
-import { BaseEntity, Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { BaseEntity, Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity()
 export default class RecordedTag extends BaseEntity {
@@ -19,4 +19,11 @@ export default class RecordedTag extends BaseEntity {
 
     @Column()
     public color!: string; // 色
+
+    @Index()
+    @Column({
+        type: 'integer',
+        nullable: true,
+    })
+    public parentId!: number | null; // 親タグの id (階層タグ用)
 }
