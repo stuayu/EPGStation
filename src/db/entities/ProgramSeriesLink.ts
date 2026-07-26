@@ -9,6 +9,6 @@ export default class ProgramSeriesLink extends BaseEntity {
     @Column({ type: 'integer', nullable: true }) public episodeId!: number | null;
     @Column({ type: 'real', default: 0 }) public confidence = 0;
     @Column({ type: 'text', default: 'epg' }) public source = 'epg';
-    @Column({ default: false }) public manualLock = false;
+    @Column({ type: 'boolean', default: false }) public manualLock: boolean = false;
     @Column({ type: 'bigint' }) public updatedAt!: number;
 }
