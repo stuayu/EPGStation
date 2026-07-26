@@ -59,6 +59,23 @@ export interface StreamProfile {
     isUnconverted?: boolean;
 }
 
+export const FEATURE_FLAG_KEYS = [
+    'watchHistory',
+    'notifications',
+    'dashboard',
+    'systemSettings',
+    'seriesLibrary',
+    'metadataProviders',
+    'programSeriesMapping',
+    'annictSync',
+    'nextUpPanel',
+    'externalFileImport',
+    'advancedSearch',
+] as const;
+
+export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[number];
+export type FeatureFlags = Partial<Record<FeatureFlagKey, boolean>>;
+
 export interface KodiInfo {
     name: string;
     host: string;
@@ -74,6 +91,9 @@ export default interface IConfigFile {
     socketioPort?: number;
     clientSocketioPort?: number;
     https?: HttpsConfig;
+    // 段階導入用。未指定の機能は常に無効として扱う
+    featureFlags?: FeatureFlags;
+
     mirakurunPath: string;
     mirakurunAPIPath?: string; // mirakurun の API エンドポイントのベースパス (省略時 /api)
 

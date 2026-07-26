@@ -472,3 +472,18 @@ stream:
 #                   video:
 #                       height: 720
 #                       bitrate: 3000
+
+# 段階導入用機能フラグ。明示的に true にした機能だけが有効になります。
+# 未指定の項目は false として扱われます。
+featureFlags:
+    watchHistory: false
+    notifications: false
+    dashboard: false
+    systemSettings: false
+    seriesLibrary: false
+    metadataProviders: false
+    programSeriesMapping: false
+    annictSync: false
+    nextUpPanel: false
+    externalFileImport: false
+    advancedSearch: false
