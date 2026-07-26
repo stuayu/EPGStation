@@ -14,12 +14,16 @@ export interface VideoFileItem {
     file: File | null | undefined;
 }
 
-export interface ExternalImportResult {
-    localFilePath: string;
-    imported: boolean;
-    recordedId?: apid.RecordedId;
-    name?: string;
-    error?: string;
+/**
+ * スキャン結果 1 件 + UI 上での編集状態
+ */
+export interface ImportScanRowItem {
+    result: apid.ImportScanResultItem;
+    selected: boolean;
+    editedName: string;
+    editedChannelId: apid.ChannelId | undefined;
+    duplicateAction: apid.ImportDuplicateAction;
+    mode: apid.ImportMode;
 }
 
 export interface UploadProgramOption {
@@ -40,10 +44,16 @@ export default interface IRecordedUploadState {
     ruleKeyword: string | null;
     ruleItems: apid.RuleKeywordItem[];
     isShowPeriod: boolean;
-    externalFilePaths: string | null;
-    externalParentDirectoryName: string | undefined;
-    externalSubDirectory: string | null;
-    externalFileType: apid.VideoFileType | undefined;
+
+    // 外部録画ファイル取り込みウィザード用の状態 (featureFlags.externalFileImport が有効な場合のみ使用する)
+    importDirName: string | undefined;
+    importSubPath: string | null;
+    importRecursive: boolean;
+    importParentDirectoryName: string | undefined;
+    importScanResults: ImportScanRowItem[];
+    importJobStatus: apid.ImportJobStatus | null;
+    importIsScanning: boolean;
+
     init(): void;
     fetchData(): Promise<void>;
     updateRuleItems(): Promise<void>;
@@ -54,7 +64,14 @@ export default interface IRecordedUploadState {
     getSubGenreItems(): SelectorItem[];
     addEmptyVideoFileItem(): void;
     checkInput(): boolean;
-    checkExternalImportInput(): boolean;
     upload(): Promise<void>;
-    importExternalFiles(): Promise<ExternalImportResult[]>;
+
+    // 外部録画ファイル取り込み
+    isExternalImportEnabled(): boolean;
+    getImportDirItems(): string[];
+    getImportDuplicateActionItems(): apid.ImportDuplicateAction[];
+    getImportModeItems(): apid.ImportMode[];
+    scanImportDirectory(): Promise<void>;
+    startImportRegistration(): Promise<void>;
+    retryFailedImports(): Promise<void>;
 }

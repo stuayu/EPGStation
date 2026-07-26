@@ -28,6 +28,7 @@ export default interface IRecordedDB {
         isReverse?: boolean,
     ): Promise<Recorded[]>;
     findAll(option: FindAllOption, columnOption: RecordedColumnOption): Promise<[Recorded[], number]>;
+    findDuplicateCandidates(channelId: apid.ChannelId, startAt: number, toleranceMs: number): Promise<Recorded[]>;
     findChannelList(): Promise<apid.RecordedChannelListItem[]>;
     findGenreList(): Promise<apid.RecordedGenreListItem[]>;
     findOld(): Promise<Recorded | null>;

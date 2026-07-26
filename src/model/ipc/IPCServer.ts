@@ -2,8 +2,10 @@ import { ChildProcess } from 'child_process';
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../api';
 import IOperatorEncodeEvent, { OperatorFinishEncodeInfo } from '../event/IOperatorEncodeEvent';
+import IImportJobManageModel, { ImportJobId } from '../operator/recorded/IImportJobManageModel';
 import IRecordedManageModel, {
     AddVideoFileOption,
+    ImportedExternalRecordedFileOption,
     UploadedVideoFileOption,
 } from '../operator/recorded/IRecordedManageModel';
 import IRecordedTagManadeModel from '../operator/recordedTag/IRecordedTagManadeModel';
@@ -35,6 +37,7 @@ interface IFunctionIndex {
 export default class IPCServer implements IIPCServer {
     private reservationManage: IReservationManageModel;
     private recordedManage: IRecordedManageModel;
+    private importJobManage: IImportJobManageModel;
     private recordedTagManage: IRecordedTagManadeModel;
     private recordingManage: IRecordingManageModel;
     private ruleManage: IRuleManageModel;
@@ -49,6 +52,7 @@ export default class IPCServer implements IIPCServer {
         @inject('IReservationManageModel')
         reservationManage: IReservationManageModel,
         @inject('IRecordedManageModel') recordedManage: IRecordedManageModel,
+        @inject('IImportJobManageModel') importJobManage: IImportJobManageModel,
         @inject('IRecordedTagManadeModel') recordedTagManage: IRecordedTagManadeModel,
         @inject('IRecordingManageModel') recordingManage: IRecordingManageModel,
         @inject('IRuleManageModel') ruleManage: IRuleManageModel,
@@ -57,6 +61,7 @@ export default class IPCServer implements IIPCServer {
     ) {
         this.reservationManage = reservationManage;
         this.recordedManage = recordedManage;
+        this.importJobManage = importJobManage;
         this.recordedTagManage = recordedTagManage;
         this.recordingManage = recordingManage;
         this.ruleManage = ruleManage;
@@ -287,6 +292,27 @@ export default class IPCServer implements IIPCServer {
         // dropLogFileCleanup
         index[RecordedFunctions.dropLogFileCleanup] = async () => {
             await this.recordedManage.dropLogFileCleanup();
+        };
+
+        // startImportJob
+        index[RecordedFunctions.startImportJob] = async msg => {
+            const items = this.getArgsValue<ImportedExternalRecordedFileOption[]>(msg, 'items');
+
+            return this.importJobManage.start(items);
+        };
+
+        // getImportJobStatus
+        index[RecordedFunctions.getImportJobStatus] = async msg => {
+            const jobId = this.getArgsValue<ImportJobId>(msg, 'jobId');
+
+            return this.importJobManage.getStatus(jobId);
+        };
+
+        // retryImportJob
+        index[RecordedFunctions.retryImportJob] = async msg => {
+            const jobId = this.getArgsValue<ImportJobId>(msg, 'jobId');
+
+            return this.importJobManage.retryFailed(jobId);
         };
 
         return index;

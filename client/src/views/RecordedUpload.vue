@@ -3,7 +3,13 @@
         <TitleBar title="アップロード"></TitleBar>
         <transition name="page">
             <v-container>
-                <RecordedUploadForm v-on:reset="reset" v-on:upload="upload" v-on:importExternal="importExternal"></RecordedUploadForm>
+                <RecordedUploadForm
+                    v-on:reset="reset"
+                    v-on:upload="upload"
+                    v-on:scanImport="scanImport"
+                    v-on:startImportRegistration="startImportRegistration"
+                    v-on:retryFailedImports="retryFailedImports"
+                ></RecordedUploadForm>
                 <v-btn v-on:click="addVideoFile" icon size="large" class="position-fixed right-0 bottom-0 ma-4" color="pink">
                     <v-icon>mdi-plus</v-icon>
                 </v-btn>
@@ -79,25 +85,35 @@ class RecordedUpload extends Vue {
         this.uploadState.addEmptyVideoFileItem();
     }
 
-    public async importExternal(): Promise<void> {
-        if (this.uploadState.checkExternalImportInput() === false) {
-            this.snackbarState.open({ color: 'error', text: '外部ファイル入力に問題があります。' });
-            return;
-        }
-        this.isUploading = true;
+    public async scanImport(): Promise<void> {
         try {
-            const items = await this.uploadState.importExternalFiles();
-            const success = items.filter(x => x.imported).length;
-            const failed = items.length - success;
-            this.snackbarState.open({
-                color: failed === 0 ? 'success' : 'error',
-                text: failed === 0 ? `${success}件を追加しました` : `${success}件追加 / ${failed}件失敗`,
-            });
+            await this.uploadState.scanImportDirectory();
+            if (this.uploadState.importScanResults.length === 0) {
+                this.snackbarState.open({ color: 'info', text: '取り込み候補が見つかりませんでした' });
+            }
         } catch (err) {
-            this.snackbarState.open({ color: 'error', text: '外部ファイル追加に失敗' });
+            this.snackbarState.open({ color: 'error', text: 'スキャンに失敗' });
             console.error(err);
         }
-        this.isUploading = false;
+    }
+
+    public async startImportRegistration(): Promise<void> {
+        try {
+            await this.uploadState.startImportRegistration();
+            this.snackbarState.open({ color: 'success', text: '取り込みを開始しました' });
+        } catch (err) {
+            this.snackbarState.open({ color: 'error', text: '取り込みの開始に失敗' });
+            console.error(err);
+        }
+    }
+
+    public async retryFailedImports(): Promise<void> {
+        try {
+            await this.uploadState.retryFailedImports();
+        } catch (err) {
+            this.snackbarState.open({ color: 'error', text: '再実行に失敗' });
+            console.error(err);
+        }
     }
 
     @Watch('$route', { immediate: true, deep: true })

@@ -6,10 +6,19 @@ export interface AddVideoFileOption {
     filePath: string; // 親ディレクトリから下のファイルパス
     type: apid.VideoFileType;
     name: string;
+    // register モード (取り込み専用) で追加された、EPGStation 管理外の実ファイルかどうか
+    isExternalFile?: boolean;
 }
 
+// 取り込みモード。register: 元ファイルを移動せずそのまま登録する / move: 録画ディレクトリへ移動する
+export type ImportMode = 'register' | 'move';
+
+// 重複が見つかった場合の挙動。skip: 取り込まない / add: 既存 recorded に video file を追加 / newRecorded: 別の録画として新規登録する
+export type ImportDuplicateAction = 'skip' | 'add' | 'newRecorded';
+
 /**
- * アップロードされたビデオファイル情報
+ * 外部録画ファイル取り込み 1 件あたりのオプション
+ * localFilePath は必ず IConfigFile.importDirs 配下の実パスであることをサーバ側 (Operator) で検証する
  */
 export interface ImportedExternalRecordedFileOption {
     localFilePath: string;
@@ -17,6 +26,12 @@ export interface ImportedExternalRecordedFileOption {
     subDirectory?: string;
     fileType: apid.VideoFileType;
     channelId: apid.ChannelId;
+    mode?: ImportMode; // 省略時は config.importDefaultMode (既定 register)
+    name?: string; // 推定された番組名 (省略時はファイル名から生成)
+    startAt?: number; // 推定された開始時刻 (省略時はファイルの mtime を使用)
+    endAt?: number; // 推定された終了時刻 (省略時は動画長から算出)
+    duplicateAction?: ImportDuplicateAction; // 省略時は newRecorded
+    duplicateRecordedId?: apid.RecordedId; // duplicateAction: 'add' の場合に追加先となる recorded id
     ruleId?: apid.RuleId;
     genre1?: apid.ProgramGenreLv1;
     subGenre1?: apid.ProgramGenreLv2;
@@ -25,6 +40,7 @@ export interface ImportedExternalRecordedFileOption {
 export interface ImportedExternalRecordedFileResult {
     localFilePath: string;
     imported: boolean;
+    skipped?: boolean;
     recordedId?: apid.RecordedId;
     name?: string;
     error?: string;

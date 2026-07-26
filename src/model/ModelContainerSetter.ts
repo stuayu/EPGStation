@@ -147,6 +147,10 @@ import NotificationDispatcher from './notification/NotificationDispatcher';
 import ExternalCommandManageModel from './operator/externalCommand/ExternalCommandManageModel';
 import IExternalCommandManageModel from './operator/externalCommand/IExternalCommandManageModel';
 import IReserveOptionChecker from './operator/IReserveOptionChecker';
+import IImportJobManageModel from './operator/recorded/IImportJobManageModel';
+import ImportJobManageModel from './operator/recorded/ImportJobManageModel';
+import IImportWatchManageModel from './operator/recorded/IImportWatchManageModel';
+import ImportWatchManageModel from './operator/recorded/ImportWatchManageModel';
 import IRecordedManageModel from './operator/recorded/IRecordedManageModel';
 import RecordedManageModel from './operator/recorded/RecordedManageModel';
 import IRecordedTagManadeModel from './operator/recordedTag/IRecordedTagManadeModel';
@@ -332,6 +336,8 @@ export const set = (container: Container): void => {
     });
 
     container.bind<IRecordedManageModel>('IRecordedManageModel').to(RecordedManageModel).inSingletonScope();
+    container.bind<IImportJobManageModel>('IImportJobManageModel').to(ImportJobManageModel).inSingletonScope();
+    container.bind<IImportWatchManageModel>('IImportWatchManageModel').to(ImportWatchManageModel).inSingletonScope();
 
     container.bind<IRecordingManageModel>('IRecordingManageModel').to(RecordingManageModel).inSingletonScope();
 

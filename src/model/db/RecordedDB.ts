@@ -483,6 +483,33 @@ export default class RecordedDB implements IRecordedDB {
     }
 
     /**
+     * 外部録画ファイル取り込み時の重複検出用に、指定した channelId + 時刻 (許容誤差付き) に一致する recorded を探す
+     * @param channelId: apid.ChannelId
+     * @param startAt: number 開始時刻 (UnixTime ms)
+     * @param toleranceMs: number 許容する時刻差 (ms)
+     * @return Promise<Recorded[]>
+     */
+    public async findDuplicateCandidates(
+        channelId: apid.ChannelId,
+        startAt: number,
+        toleranceMs: number,
+    ): Promise<Recorded[]> {
+        const connection = await this.op.getConnection();
+
+        const queryBuilder = connection
+            .getRepository(Recorded)
+            .createQueryBuilder('recorded')
+            .where('recorded.channelId = :channelId', { channelId })
+            .andWhere('recorded.startAt >= :from', { from: startAt - toleranceMs })
+            .andWhere('recorded.startAt <= :to', { to: startAt + toleranceMs })
+            .leftJoinAndSelect('recorded.videoFiles', 'videoFiles');
+
+        return await this.promieRetry.run(() => {
+            return queryBuilder.getMany();
+        });
+    }
+
+    /**
      * 一番古い番組を返す
      * @return Promise<Recorded | null>
      */

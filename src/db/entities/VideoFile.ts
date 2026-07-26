@@ -34,6 +34,14 @@ export default class VideoFile extends BaseEntity {
     })
     public size: number = 0;
 
+    // 外部録画ファイル取り込み (register モード) で追加された、EPGStation 管理外の実ファイルかどうか
+    // true の場合、削除操作では DB レコードのみ削除し実ファイルには触れない
+    @Column({
+        type: 'boolean',
+        default: false,
+    })
+    public isExternalFile: boolean = false;
+
     @Column()
     public recordedId!: number;
 

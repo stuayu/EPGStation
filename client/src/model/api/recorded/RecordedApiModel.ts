@@ -129,16 +129,49 @@ export default class RecordedApiModel implements IRecordedApiModel {
         }
     }
 
-    public async importExternalRecordedFiles(option: {
-        channelId: apid.ChannelId;
-        parentDirectoryName: string;
-        subDirectory?: string;
-        fileType: apid.VideoFileType;
-        localFilePaths: string[];
-        ruleId?: apid.RuleId;
-        genre1?: apid.ProgramGenreLv1;
-        subGenre1?: apid.ProgramGenreLv2;
-    }): Promise<{ items: Array<{ localFilePath: string; imported: boolean; recordedId?: apid.RecordedId; name?: string; error?: string }> }> {
-        return (await this.repository.post('/recorded/import-external', option)).data;
+    /**
+     * 外部録画ファイル取り込みディレクトリをスキャンする
+     * @param option: apid.ImportScanOption
+     * @return Promise<apid.ImportScanResult>
+     */
+    public async scanImportDirectory(option: apid.ImportScanOption): Promise<apid.ImportScanResult> {
+        return (await this.repository.post('/recorded/import/scan', option)).data;
+    }
+
+    /**
+     * 外部録画ファイル取り込みジョブを開始する
+     * @param option: apid.ImportRegisterOption
+     * @return Promise<apid.ImportJobStartResult>
+     */
+    public async startImportJob(option: apid.ImportRegisterOption): Promise<apid.ImportJobStartResult> {
+        return (await this.repository.post('/recorded/import', option)).data;
+    }
+
+    /**
+     * 取り込みジョブの進捗を取得する
+     * @param jobId: string
+     * @return Promise<apid.ImportJobStatus | null>
+     */
+    public async getImportJobStatus(jobId: string): Promise<apid.ImportJobStatus | null> {
+        try {
+            return (await this.repository.get(`/recorded/import/status/${jobId}`)).data;
+        } catch (error: any) {
+            if (error?.response?.status === 404) return null;
+            throw error;
+        }
+    }
+
+    /**
+     * 取り込みジョブの失敗ファイルを再実行する
+     * @param jobId: string
+     * @return Promise<apid.ImportJobStartResult | null>
+     */
+    public async retryImportJob(jobId: string): Promise<apid.ImportJobStartResult | null> {
+        try {
+            return (await this.repository.post(`/recorded/import/status/${jobId}/retry`)).data;
+        } catch (error: any) {
+            if (error?.response?.status === 404) return null;
+            throw error;
+        }
     }
 }

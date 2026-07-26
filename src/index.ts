@@ -11,6 +11,7 @@ import IMirakurunClientModel from './model/IMirakurunClientModel';
 import IIPCServer from './model/ipc/IIPCServer';
 import container from './model/ModelContainer';
 import * as containerSetter from './model/ModelContainerSetter';
+import IImportWatchManageModel from './model/operator/recorded/IImportWatchManageModel';
 import IRecordingManageModel from './model/operator/recording/IRecordingManageModel';
 import IReservationManageModel from './model/operator/reservation/IReservationManageModel';
 import IStorageManageModel from './model/operator/storage/IStorageManageModel';
@@ -125,6 +126,10 @@ const runOperator = async () => {
 
     const storageManageModel = container.get<IStorageManageModel>('IStorageManageModel');
     storageManageModel.start();
+
+    // 外部録画ファイル取り込みディレクトリの自動監視 (config.importWatch: true の場合のみ動作する)
+    const importWatchManageModel = container.get<IImportWatchManageModel>('IImportWatchManageModel');
+    importWatchManageModel.start();
 };
 
 /**

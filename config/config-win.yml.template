@@ -39,6 +39,16 @@ recorded:
     - name: recorded
       path: '%ROOT%/recorded'
 
+# 外部録画ファイル (EDCB 等) の取り込みを許可するディレクトリ (featureFlags.externalFileImport: true の場合のみ有効)
+# 未設定 (コメントアウトのまま) だと取り込み機能自体が無効になる
+# importDirs:
+#     - name: edcb
+#       path: 'D:\EDCB\Recorded'
+# importDefaultMode: register # register: 元ファイルを移動せず登録のみ行う / move: 録画ディレクトリへ移動する
+# importFileNamePatterns: [] # EDCB ファイル名推定用のカスタム正規表現 (named capture group: year,month,day,hour,min,sec,name,channel)
+# importWatch: false # true にすると importDirs を定期的に監視し新規ファイルを自動取り込みする
+# importWatchIntervalSec: 300
+
 thumbnail: '%ROOT%/thumbnail'
 thumbnailSize: 480x270
 thumbnailPosition: 5

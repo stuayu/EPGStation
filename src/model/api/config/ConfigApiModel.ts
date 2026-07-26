@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
+import { resolveFeatureFlags } from '../../FeatureFlags';
 import IConfigFile, { StreamProfile } from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
 import IIPCClient from '../../ipc/IIPCClient';
@@ -249,6 +250,14 @@ export default class ConfigApiModel implements IConfigApiModel {
             result.kodiHosts = config.kodiHosts.map(k => {
                 return k.name;
             });
+        }
+
+        // 段階導入用機能フラグ。クライアントはこれを見て機能の表示可否を判断する
+        result.featureFlags = resolveFeatureFlags(config.featureFlags);
+
+        // 外部録画ファイル取り込みが許可されたディレクトリ名一覧
+        if (typeof config.importDirs !== 'undefined' && config.importDirs.length > 0) {
+            result.importDirs = config.importDirs.map(d => d.name);
         }
 
         return result;
