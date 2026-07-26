@@ -1522,6 +1522,15 @@ components:
                     description: ファイルサイズ
                     type: integer
 
+        DashboardData:
+            type: object
+            required: [recording, recentlyRecorded, upcomingReserves, reserveCounts]
+            properties:
+                recording: { $ref: '#/components/schemas/Records' }
+                recentlyRecorded: { $ref: '#/components/schemas/Records' }
+                upcomingReserves: { $ref: '#/components/schemas/Reserves' }
+                reserveCounts: { $ref: '#/components/schemas/ReserveCnts' }
+
         WatchStatus:
             type: string
             enum: [unwatched, watching, watched]

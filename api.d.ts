@@ -520,6 +520,13 @@ export interface VideoFile {
     watchHistory?: WatchHistory;
 }
 
+export interface DashboardData {
+    recording: Records;
+    recentlyRecorded: Records;
+    upcomingReserves: Reserves;
+    reserveCounts: ReserveCnts;
+}
+
 export interface WatchHistory {
     videoFileId: VideoFileId;
     recordedId: RecordedId;

@@ -5,6 +5,8 @@ import ChannelApiModel from './api/channel/ChannelApiModel';
 import IChannelApiModel from './api/channel/IChannelApiModel';
 import ConfigApiModel from './api/config/ConfigApiModel';
 import IConfigApiModel from './api/config/IConfigApiModel';
+import DashboardApiModel from './api/dashboard/DashboardApiModel';
+import IDashboardApiModel from './api/dashboard/IDashboardApiModel';
 import DropLogApiModel from './api/dropLog/DropLogApiModel';
 import IDropLogApiModel from './api/dropLog/IDropLogApiModel';
 import EncodeApiModel from './api/encode/EncodeApiModel';
@@ -302,6 +304,8 @@ export const set = (container: Container): void => {
     container.bind<IRecordedItemUtil>('IRecordedItemUtil').to(RecordedItemUtil).inSingletonScope();
 
     container.bind<IConfigApiModel>('IConfigApiModel').to(ConfigApiModel).inSingletonScope();
+
+    container.bind<IDashboardApiModel>('IDashboardApiModel').to(DashboardApiModel).inSingletonScope();
 
     container.bind<IStatusApiModel>('IStatusApiModel').to(StatusApiModel).inSingletonScope();
 
