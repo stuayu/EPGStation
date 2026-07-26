@@ -17,7 +17,11 @@
                         </v-window-item>
                         <v-window-item value="notification">
                             <v-switch v-model="settings.notifications.enabled" label="通知を有効化"></v-switch>
-                            <v-text-field v-model="settings.notifications.discordUrl" label="Discord Webhook URL"></v-text-field>
+                            <v-text-field v-model="settings.notifications.targets[0].name" label="配信先名"></v-text-field>
+                            <v-select v-model="settings.notifications.targets[0].type" :items="['discord', 'webhook']" label="種別"></v-select>
+                            <v-text-field v-model="settings.notifications.targets[0].url" label="Webhook URL"></v-text-field>
+                            <v-text-field v-model="settings.notifications.targets[0].secret" type="password" label="署名シークレット（汎用Webhook）"></v-text-field>
+                            <v-btn variant="outlined" :loading="testing" @click="testNotification">テスト通知</v-btn>
                         </v-window-item>
                         <v-window-item value="series">
                             <v-slider v-model="settings.series.matchThreshold" :min="0" :max="1" :step="0.05" label="自動マッチしきい値"></v-slider>
@@ -39,11 +43,18 @@ import { Component, Vue, toNative } from 'vue-facing-decorator';
 class SystemSetting extends Vue {
     tab = 'integration';
     saving = false;
+    testing = false;
     message = '';
     private api = container.get<ISystemSettingApiModel>('ISystemSettingApiModel');
     settings: any = {
         metadata: { annict: { enabled: false, token: '' }, syobocal: { enabled: false } },
-        notifications: { enabled: false, discordUrl: '' },
+        notifications: {
+            enabled: false,
+            maxAttempts: 5,
+            baseDelayMs: 1000,
+            timeoutMs: 10000,
+            targets: [{ name: 'default', type: 'discord', url: '', secret: '', events: ['recording.started', 'recording.completed', 'recording.failed'] }],
+        },
         series: { matchThreshold: 0.8 },
     };
     async mounted() {
@@ -60,6 +71,17 @@ class SystemSetting extends Vue {
             notifications: { ...this.settings.notifications, ...loaded.notifications },
             series: { ...this.settings.series, ...loaded.series },
         };
+    }
+    async testNotification() {
+        this.testing = true;
+        this.message = '';
+        try {
+            await this.save();
+            await this.api.testNotification(this.settings.notifications.targets[0]?.name);
+            this.message = 'テスト通知を送信しました';
+        } finally {
+            this.testing = false;
+        }
     }
     async save() {
         this.saving = true;

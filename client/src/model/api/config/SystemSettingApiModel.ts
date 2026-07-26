@@ -10,4 +10,7 @@ export default class SystemSettingApiModel implements ISystemSettingApiModel {
     async update(value: Record<string, any>) {
         return (await this.repository.put('/settings/system', value)).data;
     }
+    async testNotification(targetName?: string): Promise<void> {
+        await this.repository.post('/settings/system/test/notification', { targetName });
+    }
 }
