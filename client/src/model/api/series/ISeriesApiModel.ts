@@ -35,7 +35,30 @@ export interface SeriesDetail extends SeriesListItem {
     recorded: SeriesRecording[];
     externalIds: { syobocalTid: number | null; annictId: string | null; tmdbId: number | null };
 }
+export interface SeriesMapping {
+    recordedId: number;
+    recordedTitle: string;
+    seriesId: number;
+    seriesTitle: string;
+    episodeId: number | null;
+    seasonNumber: number | null;
+    episodeNumber: number | null;
+    airType: string;
+    matchMethod: string;
+    confidence: number;
+    manualLock: boolean;
+}
+export interface UpdateSeriesMapping {
+    seriesId?: number;
+    seriesTitle?: string;
+    seasonNumber?: number;
+    episodeNumber?: number | null;
+    airType?: string;
+}
 export default interface ISeriesApiModel {
     list(keyword?: string, offset?: number, limit?: number): Promise<SeriesListResult>;
     get(id: number, channelId?: number): Promise<SeriesDetail>;
+    getMapping(recordedId: number): Promise<SeriesMapping | null>;
+    updateMapping(recordedId: number, value: UpdateSeriesMapping): Promise<SeriesMapping>;
+    removeMapping(recordedId: number): Promise<void>;
 }

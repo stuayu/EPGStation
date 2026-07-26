@@ -23,6 +23,10 @@
                         <v-list-item-title>rule</v-list-item-title>
                     </div>
                 </v-list-item>
+                <v-list-item v-on:click="editSeriesMapping" slim>
+                    <template #prepend><v-icon>mdi-link-variant</v-icon></template>
+                    <div class="v-list-item-content"><v-list-item-title>シリーズ割当を修正</v-list-item-title></div>
+                </v-list-item>
                 <v-list-item v-on:click="search" slim>
                     <template #prepend>
                         <v-icon>mdi-magnify</v-icon>
@@ -149,6 +153,11 @@ class RecordedDetailMoreButton extends Vue {
                 text: '保護に失敗',
             });
         }
+    }
+
+    public async editSeriesMapping(): Promise<void> {
+        await Util.sleep(300);
+        await Util.move(this.$router, { path: `/recorded/${this.recordedItem.id}/series-mapping` });
     }
 
     public async search(): Promise<void> {

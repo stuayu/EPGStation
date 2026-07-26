@@ -19,6 +19,7 @@ import Settings from './views/Settings.vue';
 import SystemSetting from './views/SystemSetting.vue';
 import Series from './views/Series.vue';
 import SeriesDetail from './views/SeriesDetail.vue';
+import SeriesMapping from './views/SeriesMapping.vue';
 import Logs from './views/Logs.vue';
 import Storages from './views/Storages.vue';
 import WatchOnAir from './views/WatchOnAir.vue';
@@ -42,6 +43,7 @@ export default createRouter({
         { path: '/recorded', name: 'recorded', component: Recorded },
         { path: '/series', name: 'series', component: Series },
         { path: '/series/:id', name: 'series-detail', component: SeriesDetail },
+        { path: '/recorded/:id/series-mapping', name: 'series-mapping', component: SeriesMapping },
         { path: '/recorded/upload', name: 'recorded-upload', component: RecordedUpload },
         { path: '/recorded/watch', name: 'recorded-watch', component: WatchRecorded },
         { path: '/recorded/detail/:id', name: 'recorded-detail', component: RecordedDetail },
