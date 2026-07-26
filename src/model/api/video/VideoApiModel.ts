@@ -1,4 +1,4 @@
-import * as fileType from 'file-type';
+import { fileTypeFromFile } from 'file-type';
 import { inject, injectable } from 'inversify';
 import * as path from 'path';
 import * as apid from '../../../../api';
@@ -58,7 +58,7 @@ export default class VideoApiModel implements IVideoApiModel {
      * @return Promise<string>
      */
     private async createMime(filePath: string): Promise<string> {
-        const mime = await fileType.fromFile(filePath);
+        const mime = await fileTypeFromFile(filePath);
         if (typeof mime !== 'undefined') {
             return mime.mime;
         }
