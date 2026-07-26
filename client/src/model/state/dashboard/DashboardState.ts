@@ -1,14 +1,15 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../api';
-import IReservesApiModel from '../../api/reserves/IReservesApiModel';
+import IRepositoryModel from '../../api/IRepositoryModel';
 import IDashboardState from './IDashboardState';
 
 @injectable()
 export default class DashboardState implements IDashboardState {
-    private reserveApiModel: IReservesApiModel;
+    private repository: IRepositoryModel;
+    private data: apid.DashboardData | null = null;
 
-    constructor(@inject('IReservesApiModel') reserveApiModel: IReservesApiModel) {
-        this.reserveApiModel = reserveApiModel;
+    constructor(@inject('IRepositoryModel') repository: IRepositoryModel) {
+        this.repository = repository;
     }
 
     private cnts: apid.ReserveCnts = {
@@ -35,7 +36,9 @@ export default class DashboardState implements IDashboardState {
      * @return Promise<void>
      */
     public async fetchData(): Promise<void> {
-        this.cnts = await this.reserveApiModel.getCnts();
+        const result = await this.repository.get('/dashboard', { params: { limit: 5 } });
+        this.data = result.data;
+        this.cnts = this.data?.reserveCounts ?? this.cnts;
     }
 
     public getConflictCnt(): number {
