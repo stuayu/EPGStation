@@ -44,6 +44,7 @@
                             <v-btn v-if="dialogState.reserve === null" color="blue-darken-1" variant="text" v-on:click="manualReserve">詳細</v-btn>
                             <v-btn v-else-if="typeof dialogState.reserve.ruleId !== 'undefined'" color="blue-darken-1" variant="text" v-on:click="editRule">ルール</v-btn>
                             <v-btn v-else color="blue-darken-1" variant="text" v-on:click="editManualReserve">編集</v-btn>
+                            <v-btn color="blue-darken-1" variant="text" v-on:click="gotoSeries">シリーズ</v-btn>
                             <!-- 検索 -->
                             <v-btn color="blue-darken-1" variant="text" v-on:click="search">検索</v-btn>
                             <!-- 予約 or 削除 or 除外 or 除外解除 or 重複解除 -->
@@ -62,6 +63,7 @@
 
 <script lang="ts">
 import container from '@/model/ModelContainer';
+import IScheduleApiModel from '@/model/api/schedule/IScheduleApiModel';
 import IGuideProgramDialogState from '@/model/state/guide/IGuideProgramDialogState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { IGuideProgramDialogSettingStorageModel } from '@/model/storage/guide/IGuideProgramDialogSettingStorageModel';
@@ -78,6 +80,7 @@ class ProgramDialog extends Vue {
     public isRemove: boolean = false;
 
     private snackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private scheduleApi = container.get<IScheduleApiModel>('IScheduleApiModel');
 
     /**
      * 手動予約
@@ -139,6 +142,20 @@ class ProgramDialog extends Vue {
                 rule: ruleId.toString(10),
             },
         });
+    }
+
+    public async gotoSeries(): Promise<void> {
+        const program = this.dialogState.getProgram();
+        if (program === null) return;
+        try {
+            const mapping = await this.scheduleApi.getProgramSeries(program.id);
+            if (mapping !== null) {
+                this.dialogState.isOpen = false;
+                await Util.move(this.$router, { path: `/series/${mapping.seriesId}` });
+            } else this.snackbarState.open({ color: 'error', text: 'シリーズを特定できませんでした' });
+        } catch (err) {
+            this.snackbarState.open({ color: 'error', text: 'シリーズ取得に失敗' });
+        }
     }
 
     /**

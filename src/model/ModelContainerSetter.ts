@@ -34,6 +34,8 @@ import ISeriesMappingApiModel from './api/series/ISeriesMappingApiModel';
 import SeriesMappingApiModel from './api/series/SeriesMappingApiModel';
 import IScheduleApiModel from './api/schedule/IScheduleApiModel';
 import ScheduleApiModel from './api/schedule/ScheduleApiModel';
+import IProgramSeriesApiModel from './api/schedule/IProgramSeriesApiModel';
+import ProgramSeriesApiModel from './api/schedule/ProgramSeriesApiModel';
 import ILogApiModel from './api/log/ILogApiModel';
 import LogApiModel from './api/log/LogApiModel';
 import IStatusApiModel from './api/status/IStatusApiModel';
@@ -74,6 +76,8 @@ import IThumbnailDB from './db/IThumbnailDB';
 import IVideoFileDB from './db/IVideoFileDB';
 import IWatchHistoryDB from './db/IWatchHistoryDB';
 import ProgramDB from './db/ProgramDB';
+import IProgramSeriesDB from './db/IProgramSeriesDB';
+import ProgramSeriesDB from './db/ProgramSeriesDB';
 import RecordedDB from './db/RecordedDB';
 import RecordedHistoryDB from './db/RecordedHistoryDB';
 import RecordedTagDB from './db/RecordedTagDB';
@@ -239,6 +243,7 @@ export const set = (container: Container): void => {
     container.bind<IChannelDB>('IChannelDB').to(ChannelDB).inSingletonScope();
 
     container.bind<IProgramDB>('IProgramDB').to(ProgramDB).inSingletonScope();
+    container.bind<IProgramSeriesDB>('IProgramSeriesDB').to(ProgramSeriesDB).inSingletonScope();
 
     container.bind<IRecordedDB>('IRecordedDB').to(RecordedDB).inSingletonScope();
 
@@ -352,6 +357,7 @@ export const set = (container: Container): void => {
     container.bind<IChannelApiModel>('IChannelApiModel').to(ChannelApiModel).inSingletonScope();
 
     container.bind<IScheduleApiModel>('IScheduleApiModel').to(ScheduleApiModel).inSingletonScope();
+    container.bind<IProgramSeriesApiModel>('IProgramSeriesApiModel').to(ProgramSeriesApiModel).inSingletonScope();
 
     container.bind<IReserveApiModel>('IReserveApiModel').to(ReserveApiModel).inSingletonScope();
 
