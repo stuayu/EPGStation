@@ -156,6 +156,10 @@ export default class SeriesDB implements ISeriesDB {
         const c = await this.op.getConnection();
         return await c.getRepository(SeriesPendingMatch).findOne({ where: { id } });
     }
+    public async findPendingMatchByRecordedId(recordedId: number): Promise<SeriesPendingMatch | null> {
+        const c = await this.op.getConnection();
+        return await c.getRepository(SeriesPendingMatch).findOne({ where: { recordedId } });
+    }
     public async deletePendingMatchByRecordedId(recordedId: number): Promise<void> {
         const c = await this.op.getConnection();
         await c.getRepository(SeriesPendingMatch).delete({ recordedId });

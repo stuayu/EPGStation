@@ -1415,3 +1415,60 @@ export interface SeriesAliasItem {
     seriesTitle: string;
     createdAt: UnixtimeMS;
 }
+
+/**
+ * 既存録画のシリーズ化バックフィル開始オプション
+ */
+export interface SeriesBackfillOption {
+    // true の場合 DB を変更せずマッチ結果のプレビューのみ行う
+    dryRun?: boolean;
+    // 1 回に処理する録画件数 (省略時はデフォルト値)
+    chunkSize?: number;
+}
+
+/**
+ * バックフィルの実行状態
+ */
+export type SeriesBackfillState = 'idle' | 'running' | 'completed' | 'canceled' | 'failed';
+
+/**
+ * ドライラン時の候補シリーズ
+ */
+export interface SeriesBackfillPreviewCandidate {
+    seriesId: SeriesId;
+    seriesTitle: string;
+    score: number;
+}
+
+/**
+ * ドライラン時の 1 録画分のプレビュー結果
+ */
+export interface SeriesBackfillPreviewItem {
+    recordedId: RecordedId;
+    title: string;
+    matched: boolean;
+    seriesId: SeriesId | null;
+    seriesTitle: string | null;
+    confidence: number | null;
+    candidates: SeriesBackfillPreviewCandidate[];
+}
+
+/**
+ * バックフィルの進捗状況
+ */
+export interface SeriesBackfillResult {
+    state: SeriesBackfillState;
+    dryRun: boolean;
+    total: number;
+    processed: number;
+    linked: number;
+    pending: number;
+    skipped: number;
+    failed: number;
+    startedAt: UnixtimeMS | null;
+    finishedAt: UnixtimeMS | null;
+    lastRecordedId: RecordedId;
+    error: string | null;
+    previewItems?: SeriesBackfillPreviewItem[];
+    previewTruncated?: boolean;
+}

@@ -12,6 +12,14 @@ export interface FindAllOption extends apid.GetRecordedOption {
     isRecording?: boolean;
 }
 
+// シリーズ化バックフィル (S11 §11.1) 用の軽量な録画行
+export interface SeriesBackfillCandidateRow {
+    id: number;
+    name: string;
+    channelId: number;
+    startAt: number;
+}
+
 export default interface IRecordedDB {
     restore(items: Recorded[]): Promise<void>;
     insertOnce(recorded: Recorded): Promise<apid.RecordedId>;
@@ -33,4 +41,19 @@ export default interface IRecordedDB {
     findGenreList(): Promise<apid.RecordedGenreListItem[]>;
     findOld(): Promise<Recorded | null>;
     findReserveId(reserveId: apid.ReserveId): Promise<Recorded[]>;
+
+    /**
+     * シリーズ化バックフィル用に録画を id 昇順でチャンク取得する (録画中のものは除く)
+     * @param afterId: number この id より大きいものを対象とする
+     * @param limit: number
+     * @return Promise<SeriesBackfillCandidateRow[]>
+     */
+    findForSeriesBackfill(afterId: number, limit: number): Promise<SeriesBackfillCandidateRow[]>;
+
+    /**
+     * シリーズ化バックフィルの残件数を取得する
+     * @param afterId: number この id より大きいものを対象とする
+     * @return Promise<number>
+     */
+    countForSeriesBackfill(afterId: number): Promise<number>;
 }

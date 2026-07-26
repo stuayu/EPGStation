@@ -10,6 +10,7 @@ import {
     ImportedExternalRecordedFileOption,
     UploadedVideoFileOption,
 } from '../operator/recorded/IRecordedManageModel';
+import { SeriesBackfillOption } from '../operator/series/ISeriesBackfillManageModel';
 import IEncodeManageModel from '../service/encode/IEncodeManageModel';
 import ISocketIOManageModel from '../service/socketio/ISocketIOManageModel';
 import IIPCClient, {
@@ -19,6 +20,7 @@ import IIPCClient, {
     IPCRecordingManageModel,
     IPCReservationManageModel,
     IPCRuleManageModel,
+    IPCSeriesManageModel,
     IPCThumbnailManageModel,
 } from './IIPCClient';
 import {
@@ -34,6 +36,7 @@ import {
     ReserveationFunctions,
     RuleFuntions,
     SendMessage,
+    SeriesFunctions,
     ThumbnailFunctions,
 } from './IPCMessageDefine';
 
@@ -48,6 +51,7 @@ export default class IPCClient implements IIPCClient {
     public rule!: IPCRuleManageModel;
     public thumbnail!: IPCThumbnailManageModel;
     public encodeEvent!: IPCOperatorEncodeEvent;
+    public series!: IPCSeriesManageModel;
 
     private log: ILogger;
     private listener: events.EventEmitter = new events.EventEmitter();
@@ -73,6 +77,7 @@ export default class IPCClient implements IIPCClient {
         this.setRule();
         this.setThumbnail();
         this.setEncodeEvent();
+        this.setSeries();
     }
 
     /**
@@ -545,6 +550,38 @@ export default class IPCClient implements IIPCClient {
                     args: {
                         info: info,
                     },
+                });
+            },
+        };
+    }
+
+    /**
+     * set series (backfill)
+     */
+    private setSeries(): void {
+        this.series = {
+            startBackfill: (option: SeriesBackfillOption) => {
+                return this.send(
+                    {
+                        model: ModelName.series,
+                        func: SeriesFunctions.startBackfill,
+                        args: {
+                            option: option,
+                        },
+                    },
+                    0, // タイムアウトなし (バックグラウンドで開始するだけなので即座に返るが念のため)
+                );
+            },
+            getBackfillStatus: () => {
+                return this.send({
+                    model: ModelName.series,
+                    func: SeriesFunctions.getBackfillStatus,
+                });
+            },
+            cancelBackfill: () => {
+                return this.send({
+                    model: ModelName.series,
+                    func: SeriesFunctions.cancelBackfill,
                 });
             },
         };

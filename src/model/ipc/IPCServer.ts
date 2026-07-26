@@ -12,6 +12,7 @@ import IRecordedTagManadeModel from '../operator/recordedTag/IRecordedTagManadeM
 import IRecordingManageModel from '../operator/recording/IRecordingManageModel';
 import IReservationManageModel from '../operator/reservation/IReservationManageModel';
 import IRuleManageModel from '../operator/rule/IRuleManageModel';
+import ISeriesBackfillManageModel, { SeriesBackfillOption } from '../operator/series/ISeriesBackfillManageModel';
 import IThumbnailManageModel from '../operator/thumbnail/IThumbnailManageModel';
 import IIPCServer from './IIPCServer';
 import {
@@ -26,6 +27,7 @@ import {
     ReserveationFunctions,
     RuleFuntions,
     SendMessage,
+    SeriesFunctions,
     ThumbnailFunctions,
 } from './IPCMessageDefine';
 
@@ -43,6 +45,7 @@ export default class IPCServer implements IIPCServer {
     private ruleManage: IRuleManageModel;
     private thumbnailManage: IThumbnailManageModel;
     private encodeEvent: IOperatorEncodeEvent;
+    private seriesBackfillManage: ISeriesBackfillManageModel;
     private child: ChildProcess | null = null;
     private functions: {
         [modelName: string]: IFunctionIndex;
@@ -58,6 +61,7 @@ export default class IPCServer implements IIPCServer {
         @inject('IRuleManageModel') ruleManage: IRuleManageModel,
         @inject('IThumbnailManageModel') thumbnailManage: IThumbnailManageModel,
         @inject('IOperatorEncodeEvent') encodeEvent: IOperatorEncodeEvent,
+        @inject('ISeriesBackfillManageModel') seriesBackfillManage: ISeriesBackfillManageModel,
     ) {
         this.reservationManage = reservationManage;
         this.recordedManage = recordedManage;
@@ -67,6 +71,7 @@ export default class IPCServer implements IIPCServer {
         this.ruleManage = ruleManage;
         this.thumbnailManage = thumbnailManage;
         this.encodeEvent = encodeEvent;
+        this.seriesBackfillManage = seriesBackfillManage;
 
         this.init();
     }
@@ -152,6 +157,7 @@ export default class IPCServer implements IIPCServer {
         this.functions[ModelName.rule] = this.getRuleFunctions();
         this.functions[ModelName.thumbnail] = this.getThumbnailFunctions();
         this.functions[ModelName.encodeEvent] = this.getOperatorEncodeEventFunctions();
+        this.functions[ModelName.series] = this.getSeriesFunctions();
     }
 
     /**
@@ -473,6 +479,32 @@ export default class IPCServer implements IIPCServer {
             const info = this.getArgsValue<OperatorFinishEncodeInfo>(msg, 'info');
 
             this.encodeEvent.emitFinishEncode(info);
+        };
+
+        return index;
+    }
+
+    /**
+     * set series (backfill) functions
+     */
+    private getSeriesFunctions(): IFunctionIndex {
+        const index: IFunctionIndex = {};
+
+        // startBackfill
+        index[SeriesFunctions.startBackfill] = async msg => {
+            const option = this.getArgsValue<SeriesBackfillOption>(msg, 'option');
+
+            return await this.seriesBackfillManage.start(option);
+        };
+
+        // getBackfillStatus
+        index[SeriesFunctions.getBackfillStatus] = async () => {
+            return await this.seriesBackfillManage.getStatus();
+        };
+
+        // cancelBackfill
+        index[SeriesFunctions.cancelBackfill] = async () => {
+            await this.seriesBackfillManage.cancel();
         };
 
         return index;
