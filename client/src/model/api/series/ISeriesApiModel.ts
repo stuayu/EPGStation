@@ -9,8 +9,10 @@ export type UpdateSeriesMapping = apid.UpdateSeriesMappingOption;
 export type SeriesPendingMatchItem = apid.SeriesPendingMatchItem;
 export type SeriesPendingListResult = apid.SeriesPendingListResult;
 export type SeriesAliasItem = apid.SeriesAliasItem;
+export type MissingEpisodeProposal = apid.MissingEpisodeProposal;
 export default interface ISeriesApiModel {
     list(keyword?: string, offset?: number, limit?: number): Promise<SeriesListResult>;
+    getMissingEpisodeProposals(seriesId: number): Promise<MissingEpisodeProposal[]>;
     get(id: number, channelId?: number): Promise<SeriesDetail>;
     getMapping(recordedId: number): Promise<SeriesMapping | null>;
     updateMapping(recordedId: number, value: UpdateSeriesMapping): Promise<SeriesMapping>;

@@ -11,6 +11,7 @@ export interface SelectedInfo {
 export default interface IRecordedState {
     clearData(): void;
     fetchData(option: apid.GetRecordedOption): Promise<void>;
+    setData(records: apid.Records, isHalfWidth: boolean): void;
     getRecorded(): RecordedDisplayData[];
     getTotal(): number;
     stopEncode(recordedId: apid.RecordedId): Promise<void>;

@@ -39,7 +39,17 @@ export default class RecordingState implements IRecordingState {
      */
     public async fetchData(option: apid.GetRecordedOption): Promise<void> {
         const recrods = await this.recordingApiModel.gets(option);
-        this.total = recrods.total;
+        this.setData(recrods, option.isHalfWidth);
+    }
+
+    /**
+     * 他 (ダッシュボード集約 API 等) で取得済みの録画情報をそのまま反映する
+     * fetchData と異なり自身では API を呼び出さない (重複リクエストを避けるため)
+     * @param records: apid.Records
+     * @param isHalfWidth: boolean
+     */
+    public setData(records: apid.Records, isHalfWidth: boolean): void {
+        this.total = records.total;
 
         const oldSelectedIndex: { [recordedId: number]: boolean } = {};
         if (this.recorded !== null) {
@@ -48,8 +58,8 @@ export default class RecordingState implements IRecordingState {
             }
         }
 
-        this.recorded = recrods.records.map(r => {
-            const result = this.recordedUtil.convertRecordedItemToDisplayData(r, option.isHalfWidth);
+        this.recorded = records.records.map(r => {
+            const result = this.recordedUtil.convertRecordedItemToDisplayData(r, isHalfWidth);
             if (typeof oldSelectedIndex[result.recordedItem.id] !== 'undefined') {
                 result.isSelected = oldSelectedIndex[result.recordedItem.id];
             }

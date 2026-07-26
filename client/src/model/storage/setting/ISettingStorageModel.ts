@@ -38,6 +38,9 @@ export interface ISettingValue {
     isForceEnableSubtitleStroke: boolean; // 字幕縁取りを強制するか
     isEnableJikkyoComment: boolean; // ニコニコ実況コメントを弾幕表示するか
     jikkyoServerUrl: string; // NX-Jikkyo サーバーの URL
+    isNextUpPanelOpen: boolean; // Next Up パネルの開閉状態
+    nextUpPanelTab: 'latest' | 'series'; // Next Up パネルの選択タブ
+    isEnableNextUpAutoPlayForLatestTab: boolean; // 新着タブ選択時に連続再生を有効にするか (既定 OFF。シリーズタブは常時有効)
 }
 
 export type ISettingStorageModel = IStorageBaseModel<ISettingValue>;

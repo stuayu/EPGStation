@@ -80,9 +80,25 @@ class WatchOnRecordedInfoCard extends Vue {
     }
     public async toggleWatched(): Promise<void> {
         if (this.videoFileId === null) return;
-        const duration = this.watchHistory?.duration ?? (await this.videoApi.getDuration(this.videoFileId));
-        const position = this.watchHistory?.status === 'watched' ? 0 : duration;
-        this.watchHistory = await this.videoApi.savePlaybackPosition(this.videoFileId, { position, duration });
+        try {
+            const duration = this.watchHistory?.duration ?? (await this.videoApi.getDuration(this.videoFileId));
+            if (duration <= 0) {
+                this.snackbarState.open({
+                    color: 'error',
+                    text: '動画の長さを取得できないため視聴状態を変更できません',
+                });
+
+                return;
+            }
+            const position = this.watchHistory?.status === 'watched' ? 0 : duration;
+            this.watchHistory = await this.videoApi.savePlaybackPosition(this.videoFileId, { position, duration });
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({
+                color: 'error',
+                text: '視聴状態の更新に失敗',
+            });
+        }
     }
 }
 

@@ -4,6 +4,7 @@ import { ReserveStateData } from './IReserveStateUtil';
 export default interface IReservesState {
     clearDate(): void;
     fetchData(option: apid.GetReserveOption): Promise<void>;
+    setData(reserves: apid.Reserves, isHalfWidth: boolean): void;
     getReserves(): ReserveStateData[];
     getTotal(): number;
     getSelectedCnt(): number;

@@ -8,12 +8,16 @@ import ISeriesApiModel, {
     SeriesPendingListResult,
     SeriesAliasItem,
     UpdateSeriesMapping,
+    MissingEpisodeProposal,
 } from './ISeriesApiModel';
 @injectable()
 export default class SeriesApiModel implements ISeriesApiModel {
     constructor(@inject('IRepositoryModel') private repository: IRepositoryModel) {}
     async list(keyword?: string, offset = 0, limit = 30): Promise<SeriesListResult> {
         return (await this.repository.get('/series', { params: { keyword, offset, limit } })).data;
+    }
+    public async getMissingEpisodeProposals(seriesId: number): Promise<MissingEpisodeProposal[]> {
+        return (await this.repository.get(`/series/${seriesId}/missing-episodes/proposals`)).data.proposals;
     }
     async get(id: number, channelId?: number): Promise<SeriesDetail> {
         return (await this.repository.get(`/series/${id}`, { params: { channelId } })).data;

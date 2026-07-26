@@ -6,6 +6,7 @@ import ChannelNameUtil from '../../../util/ChannelNameUtil';
 import IChannelModel from '../../channels/IChannelModel';
 import IServerConfigModel from '../../serverConfig/IServerConfigModel';
 import Util from '../../../util/Util';
+import { isFeatureEnabled } from '../../../util/FeatureFlags';
 import IRecordedUtil, { RecordedDisplayData } from './IRecordedUtil';
 
 @injectable()
@@ -39,15 +40,23 @@ export default class RecordedUtil implements IRecordedUtil {
             isSelected: false,
         };
 
-        const histories = item.videoFiles?.flatMap(video => video.watchHistory ?? []) ?? [];
-        if (histories.length > 0) {
-            const best = histories.sort((a, b) => b.position / b.duration - a.position / a.duration)[0];
-            result.display.watchStatus = best.status;
-            result.display.watchProgress = Math.min(100, Math.round((best.position / best.duration) * 100));
+        // 視聴履歴機能が無効な場合、サーバは videoFiles に watchHistory を一切付与しないため
+        // ここでの分岐は既存挙動 (バッジ非表示) を変えない
+        const config = this.serverConfigModel.getConfig();
+        if (isFeatureEnabled(config, 'watchHistory')) {
+            const histories = item.videoFiles?.flatMap(video => video.watchHistory ?? []) ?? [];
+            if (histories.length > 0) {
+                // 進捗が最も進んでいる履歴を代表として採用する (status は 'unwatched' もありうる)
+                const best = histories.sort((a, b) => b.position / b.duration - a.position / a.duration)[0];
+                result.display.watchStatus = best.status;
+                result.display.watchProgress = Math.min(100, Math.round((best.position / best.duration) * 100));
+            } else if ((item.videoFiles?.length ?? 0) > 0) {
+                // 視聴可能なファイルはあるが履歴が無い = 未視聴
+                result.display.watchStatus = 'unwatched';
+            }
         }
 
         // ストリーミング可能な videoFile を列挙する
-        const config = this.serverConfigModel.getConfig();
         if (typeof result.display.videoFiles !== 'undefined' && config !== null) {
             result.display.canStremingVideoFiles = result.display.videoFiles.filter(v => {
                 return (v.type === 'ts' && config.isEnableTSRecordedStream === true) || (v.type === 'encoded' && config.isEnableEncodedRecordedStream === true);

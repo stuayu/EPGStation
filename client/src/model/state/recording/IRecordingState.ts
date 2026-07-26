@@ -4,6 +4,7 @@ import { RecordedDisplayData } from '../recorded/IRecordedUtil';
 export default interface IRecordingState {
     clearData(): void;
     fetchData(option: apid.GetRecordedOption): Promise<void>;
+    setData(records: apid.Records, isHalfWidth: boolean): void;
     getRecorded(): RecordedDisplayData[];
     getTotal(): number;
     getSelectedCnt(): number;

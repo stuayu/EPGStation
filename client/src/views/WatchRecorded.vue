@@ -4,14 +4,20 @@
         <transition name="page">
             <div class="watch-layout mx-auto">
                 <div class="watch-main">
-                    <VideoContainer v-if="videoParam !== null" v-bind:videoParam="videoParam"></VideoContainer>
+                    <VideoContainer
+                        v-if="videoParam !== null"
+                        ref="videoContainer"
+                        v-bind:videoParam="videoParam"
+                        v-on:ended="onVideoEnded"
+                        v-on:remainingTime="onVideoRemainingTime"
+                    ></VideoContainer>
                     <WatchOnRecordedInfoCard
                         v-if="recordedId !== null"
                         v-bind:recordedId="recordedId"
                         v-bind:videoFileId="videoParam !== null && 'videoFileId' in videoParam ? (videoParam.videoFileId ?? null) : null"
                     ></WatchOnRecordedInfoCard>
                 </div>
-                <NextUpPanel v-if="recordedId !== null" :recordedId="recordedId" :isHalfWidth="false"></NextUpPanel>
+                <NextUpPanel v-if="recordedId !== null && isEnabledNextUpPanel === true" ref="nextUpPanel" :recordedId="recordedId" :isHalfWidth="false"></NextUpPanel>
             </div>
         </transition>
     </v-main>
@@ -26,7 +32,9 @@ import { BaseVideoParam, NormalVideoParam } from '@/components/video/ViedoParam'
 import IRecordedApiModel from '@/model/api/recorded/IRecordedApiModel';
 import IChannelModel from '@/model/channels/IChannelModel';
 import container from '@/model/ModelContainer';
+import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
+import { isFeatureEnabled } from '@/util/FeatureFlags';
 import JikkyoUtil from '@/util/JikkyoUtil';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
@@ -46,6 +54,28 @@ class WatchRecorded extends Vue {
     private recordedApiModel: IRecordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
     private channelModel: IChannelModel = container.get<IChannelModel>('IChannelModel');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
+    private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
+
+    /**
+     * featureFlags.nextUpPanel が有効か (無効時はパネル自体を表示しない)
+     */
+    get isEnabledNextUpPanel(): boolean {
+        return isFeatureEnabled(this.serverConfigModel.getConfig(), 'nextUpPanel');
+    }
+
+    /**
+     * VideoContainer からの再生終了通知を Next Up パネルへ中継する
+     */
+    public onVideoEnded(): void {
+        (this.$refs.nextUpPanel as InstanceType<typeof NextUpPanel> | undefined)?.onVideoEnded();
+    }
+
+    /**
+     * VideoContainer からの残り再生時間通知を Next Up パネルへ中継する (連続再生カウントダウン用)
+     */
+    public onVideoRemainingTime(remainingSeconds: number): void {
+        (this.$refs.nextUpPanel as InstanceType<typeof NextUpPanel> | undefined)?.onVideoRemainingTime(remainingSeconds);
+    }
 
     @Watch('$route', { immediate: true, deep: true })
     public onUrlChange(): void {
