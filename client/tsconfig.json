@@ -11,14 +11,13 @@
         "allowSyntheticDefaultImports": true,
         "sourceMap": true,
         "skipLibCheck": true,
-        "baseUrl": ".",
         "types": [
             "vite/client",
             "node"
         ],
         "paths": {
             "@/*": [
-                "src/*"
+                "./src/*"
             ]
         },
         "lib": [

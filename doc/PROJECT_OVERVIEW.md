@@ -6,7 +6,7 @@
 フォーク独自の変更点は [stuayu-fork.md](stuayu-fork.md) を参照。
 
 - 言語/ランタイム: TypeScript / Node.js 24 LTSのみ (CIでは24.xを検証)
-- サーバ: Express 5 + express-openapi, TypeORM 1.0 (SQLite / MySQL), inversify (DI), log4js, socket.io
+- サーバ: Express 5 + express-openapi, TypeORM 1.1 (SQLite / MySQL), inversify (DI), log4js, socket.io
 - クライアント: Vue 3 + Vuetify 4 (クラスコンポーネント + デコレータ, `vue-facing-decorator`), inversify による独自 State 管理 (Vuex 不使用)。ビルドは Vite
 - 動画再生: [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) に統一 (GitHub タグ固定)。HLS は hls.js、低遅延ライブは mpegts.js、ARIB 字幕は DPlayer 内蔵の aribb24.js を利用 (`client/src/components/video/`)。ニコニコ実況コメントの弾幕表示に対応 (NX-Jikkyo / 過去ログ API, `client/src/util/Jikkyo*.ts`)
 - チューナーバックエンド: Mirakurun (`stuayu/Mirakurun` の stuayu-main 系コミットに固定)
@@ -99,7 +99,7 @@
 - **Provider パターン**: 複数インスタンスが必要なもの (Recorder, Encoder, Stream) は `toProvider()` でファクトリ注入
 - **JSDoc 風の日本語コメント** を public メソッドに付与
 - **エラーハンドリング**: サーバ API は try/catch → `api.responseServerError()`。クライアントは try/catch → `ISnackbarState.open()` + `console.error`
-- Lint/Format: ESLint + Prettier。`npm run build-server` に lint/format が組み込まれている
+- Lint/Format: ESLint (Flat Config: `eslint.config.mjs`) + Prettier。`npm run build-server` に lint/format が組み込まれている
 
 ## ビルド・運用
 
@@ -124,7 +124,7 @@ npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (
 - `mirakurun` 依存はフォーク版 (`stuayu/Mirakurun`) のコミット固定。ブランチ tarball 参照にすると Mirakurun 側の push で lockfile の integrity が壊れ CI が落ちるため、必ずコミット SHA の URL で固定する
 - Windows 対応が本フォークの柱。サーバ側変更時は Windows での動作 (パス区切り、named pipe など) を常に考慮すること
 - Express 5 では `req.query` がアクセスごとに再パースされる getter になったため、`ServiceServer.ts` でリクエスト受信時に一度だけ実体化するミドルウェアを挟んでいる
-- TypeORM 1.0 では criteria が空の `delete()` が禁止されているため、全件削除は `createQueryBuilder().delete()` を使う (既存コードは対応済み)
+- TypeORM 1.x では criteria が空の `delete()` が禁止されているため、全件削除は `createQueryBuilder().delete()` を使う (既存コードは対応済み)
 - エンコードキューは `data/encodeQueue.json` に永続化され、Service プロセス起動時に `EncodeManageModel.restore()` で復元される (Web API の待ち受け開始はこの復元後)。キューを変更するコードを追加したら保存 (`saveQueue()`) の呼び出し漏れに注意
 - `ExecutionManagementModel` は優先度付きの排他ロック。`getExecution()` の Promise は 60 秒でタイムアウトするため、呼び出し側は必ず reject を処理する (放置するとキュー処理が止まる)
 - ライブ HLS は 2 モード: cmd が `%streamFileDir%` を含まなければ in-memory 配信 (`HLSMemoryStoreModel`、ディスク書き込みなし・字幕非対応)、含めば従来のディスク方式。詳細は `doc/streaming-refresh.md`

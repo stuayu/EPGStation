@@ -22,7 +22,6 @@ import IServiceServer from './IServiceServer';
 import ISocketIOManageModel from './socketio/ISocketIOManageModel';
 import IHLSMemoryStoreModel from './stream/util/IHLSMemoryStoreModel';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const swaggerdist = require('swagger-ui-dist');
 
 interface PackageMetadata {
