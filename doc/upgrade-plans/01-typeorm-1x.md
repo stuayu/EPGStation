@@ -11,12 +11,12 @@
 
 1. TypeORM 公式の 1.0 リリースノート / 移行ガイド / CHANGELOG (typeorm.io と GitHub releases) を読む
 2. 特に以下の互換性を確認する:
-   - `DataSource` の設定形式・CLI (`typeorm migration:generate` / `migration:run`) の引数形式の変更
-   - 対応 Node.js バージョンの下限 (本リポジトリは Node 18/20/22 を CI で検証。下限が上がるなら CI・Dockerfile・engines も更新)
-   - `mysql` (2.18.1) ドライバの継続サポート。**TypeORM 1.x が mysql2 を要求する場合は mysql2 へ移行**し、接続オプションの差分 (`charset` 等) を吸収する
-   - `sqlite3` (5.1.7) の対応状況。better-sqlite3 が推奨になっている場合も、まずは既存ドライバ維持を優先し、変更する場合は理由を報告に書く
-   - マイグレーションテーブル (`migrations`) のスキーマ・記録形式が 0.3 と互換か
-   - `find` / `findOne` / `Repository` API、デコレータ (`@Entity`, `@Index` 等) の破壊的変更
+    - `DataSource` の設定形式・CLI (`typeorm migration:generate` / `migration:run`) の引数形式の変更
+    - 対応 Node.js バージョンの下限 (本リポジトリは Node 18/20/22 を CI で検証。下限が上がるなら CI・Dockerfile・engines も更新)
+    - `mysql` (2.18.1) ドライバの継続サポート。**TypeORM 1.x が mysql2 を要求する場合は mysql2 へ移行**し、接続オプションの差分 (`charset` 等) を吸収する
+    - `sqlite3` (5.1.7) の対応状況。better-sqlite3 が推奨になっている場合も、まずは既存ドライバ維持を優先し、変更する場合は理由を報告に書く
+    - マイグレーションテーブル (`migrations`) のスキーマ・記録形式が 0.3 と互換か
+    - `find` / `findOne` / `Repository` API、デコレータ (`@Entity`, `@Index` 等) の破壊的変更
 
 ## 1. このリポジトリ固有の変更対象
 

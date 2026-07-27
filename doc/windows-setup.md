@@ -7,12 +7,12 @@
 
 本マニュアル内では、以下のソフトウェアを利用したセットアップを行います
 
--   [TeraPad](http://www5f.biglobe.ne.jp/~t-susumu/), [VSCode](https://code.visualstudio.com/) など
-    -   config.yml 等のファイルを編集するため
-    -   Windows 標準のメモ帳では正しく改行されません
--   [Git for Windows](https://git-for-windows.github.io/)
-    -   EPGStation をアップデートするときに便利です
--   Windows PowerShell もしくは コマンドプロンプト
+- [TeraPad](http://www5f.biglobe.ne.jp/~t-susumu/), [VSCode](https://code.visualstudio.com/) など
+    - config.yml 等のファイルを編集するため
+    - Windows 標準のメモ帳では正しく改行されません
+- [Git for Windows](https://git-for-windows.github.io/)
+    - EPGStation をアップデートするときに便利です
+- Windows PowerShell もしくは コマンドプロンプト
 
 ## セットアップ
 
@@ -64,16 +64,16 @@
 
 ## EPGStation の起動/終了
 
--   手動で起動する場合
+- 手動で起動する場合
 
     ```
     > npm start
     ```
 
--   自動で起動する場合
+- 自動で起動する場合
 
-    -   [winser](https://github.com/jfromaniello/winser) を利用して自動起動設定が可能です
-    -   以下のコマンドを管理者権限で実行するとサービス化できます
+    - [winser](https://github.com/jfromaniello/winser) を利用して自動起動設定が可能です
+    - 以下のコマンドを管理者権限で実行するとサービス化できます
 
         ```
         > npm install winser -g
@@ -81,19 +81,19 @@
         > net start epgstation
         ```
 
--   手動で終了する場合
+- 手動で終了する場合
 
     ```
     > npm stop
     ```
 
--   自動起動した EPGStation を終了する場合
+- 自動起動した EPGStation を終了する場合
 
     ```
     > net stop epgstation
     ```
 
-    -   サービスから削除する場合は以下のコマンドを管理者権限で実行します
+    - サービスから削除する場合は以下のコマンドを管理者権限で実行します
 
     ```
     > npm run uninstall-win-service

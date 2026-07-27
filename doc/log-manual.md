@@ -13,9 +13,9 @@
 
 本マニュアルでは、EPGStation のログ出力設定ファイルである
 
--   `config/epgUpdaterLogConfig.yml`
--   `config/operatorLogConfig.yml`
--   `config/serviceLogConfig.yml`
+- `config/epgUpdaterLogConfig.yml`
+- `config/operatorLogConfig.yml`
+- `config/serviceLogConfig.yml`
 
 の設定について解説します
 

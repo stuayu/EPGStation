@@ -15,13 +15,13 @@
 
 `client/src/util/StreamSupportUtil.ts` の `checkM2TSLLSupport()` に判定を集約:
 
-| 環境 | M2TS-LL | 備考 |
-| --- | --- | --- |
-| Chrome / Edge / Firefox | ◯ | 従来通り MSE |
-| iOS / iPadOS Safari 17.1+ (タブ) | ◯ | MMS 経由 (要 mpegts.js 1.8.0) |
+| 環境                                  | M2TS-LL        | 備考                                                      |
+| ------------------------------------- | -------------- | --------------------------------------------------------- |
+| Chrome / Edge / Firefox               | ◯              | 従来通り MSE                                              |
+| iOS / iPadOS Safari 17.1+ (タブ)      | ◯              | MMS 経由 (要 mpegts.js 1.8.0)                             |
 | iOS / iPadOS 26+ のホーム画面 Web App | × → HLS へ誘導 | WebKit の不具合で再生開始不能 (KonomiTV でも 26.1 で報告) |
-| macOS Safari 26+ | × → HLS へ誘導 | mpegts.js ライブ再生で映像停止する既知不具合 |
-| 古い iOS (17.1 未満) | × → HLS へ誘導 | MSE/MMS 非対応 |
+| macOS Safari 26+                      | × → HLS へ誘導 | mpegts.js ライブ再生で映像停止する既知不具合              |
+| 古い iOS (17.1 未満)                  | × → HLS へ誘導 | MSE/MMS 非対応                                            |
 
 - 判定結果は `ServerConfigModel` (配信形式の出し分け)、`OnAirSelectStream` (視聴ダイアログ)、`LiveMpegTsVideo` (プレイヤー)、`Settings` で共通利用。
 - 非対応時は理由付きのエラーメッセージを表示し、ネイティブ HLS へ誘導する。
@@ -123,13 +123,13 @@ DPlayer 標準の設定メニュー (歯車 → 画質) から `config.yml` の�
 
 ### 対応状況
 
-| 再生方式 | コンポーネント | 参照する config | 切替方式 |
-| --- | --- | --- | --- |
-| ライブ M2TS-LL | `LiveMpegTsVideo.vue` | `stream.live.ts.m2tsll` | URL に `?mode=` を含むだけなので DPlayer 標準の切替 |
-| ライブ HLS | `LiveHLSVideo.vue` | `stream.live.ts.hls` | ストリームセッションを停止 → 新 mode で再作成 → 新しい m3u8 へ差し替え |
-| 録画 HLS | `RecordedHLSStreamingVideo.vue` | `stream.recorded.{ts,encoded}.hls` | 現在の再生位置でセッションを作り直し、先頭 (= 切替前の再生位置) から再生 |
-| 録画 mp4 / webm | `RecordedStreamingVideo.vue` | `stream.recorded.{ts,encoded}.{mp4,webm}` | `?mode=` と `?ss=` (現在の再生位置) を付け直した URL へ差し替え |
-| ライブ m2ts / mp4 / webm 直接再生 | `NormalVideo.vue` | — | 非対応 (既知の制限を参照) |
+| 再生方式                          | コンポーネント                  | 参照する config                           | 切替方式                                                                 |
+| --------------------------------- | ------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------ |
+| ライブ M2TS-LL                    | `LiveMpegTsVideo.vue`           | `stream.live.ts.m2tsll`                   | URL に `?mode=` を含むだけなので DPlayer 標準の切替                      |
+| ライブ HLS                        | `LiveHLSVideo.vue`              | `stream.live.ts.hls`                      | ストリームセッションを停止 → 新 mode で再作成 → 新しい m3u8 へ差し替え   |
+| 録画 HLS                          | `RecordedHLSStreamingVideo.vue` | `stream.recorded.{ts,encoded}.hls`        | 現在の再生位置でセッションを作り直し、先頭 (= 切替前の再生位置) から再生 |
+| 録画 mp4 / webm                   | `RecordedStreamingVideo.vue`    | `stream.recorded.{ts,encoded}.{mp4,webm}` | `?mode=` と `?ss=` (現在の再生位置) を付け直した URL へ差し替え          |
+| ライブ m2ts / mp4 / webm 直接再生 | `NormalVideo.vue`               | —                                         | 非対応 (既知の制限を参照)                                                |
 
 - 録画側は `videoFile.type` (`ts` / `encoded`) で参照する設定を切り替える。判定は `IRecordedStreamingVideoState.getVideoFileType()` (取得済みの `RecordedItem.videoFiles` から解決)。
 - 設定一覧の取得は `client/src/util/StreamQualityUtil.ts` に集約 (`getLiveModeNames()` / `getRecordedModeNames()` / `createQualityList()`)。Safari 用に設定を間引く `ServerConfigModel` の結果をそのまま使うため、再生できない設定は画質リストにも出ない。

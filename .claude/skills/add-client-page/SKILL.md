@@ -10,16 +10,16 @@ description: EPGStation の Web UI (Vue 2.7 + Vuetify 2) に新しいページ�
 ## 新規ページ追加
 
 1. **ページコンポーネント**: `client/src/views/NewPage.vue`
-   - `@Component({ components: {...} })` + `class NewPage extends Vue` のクラスコンポーネント形式
-   - ナビゲーションガードを使う場合は `Component.registerHooks([...])` を先に呼ぶ (例: `client/src/views/Dashboard.vue`)
+    - `@Component({ components: {...} })` + `class NewPage extends Vue` のクラスコンポーネント形式
+    - ナビゲーションガードを使う場合は `Component.registerHooks([...])` を先に呼ぶ (例: `client/src/views/Dashboard.vue`)
 
 2. **ルート登録**: `client/src/router.ts` に import + `routes` 配列へエントリ追加
 
 3. **State クラス** (画面状態・ロジック): `client/src/model/state/<機能名>/INewFeatureState.ts` + `NewFeatureState.ts` (`@injectable()`)
-   - コンポーネントからは `container.get<INewFeatureState>('INewFeatureState')` で取得しプロパティに保持
+    - コンポーネントからは `container.get<INewFeatureState>('INewFeatureState')` で取得しプロパティに保持
 
 4. **API モデル** (サーバ通信が必要なら): `client/src/model/api/<機能名>/` に `IXxxApiModel` + `XxxApiModel`
-   - axios 共通層 `IRepositoryModel` を注入して使う。型はルートの `api.d.ts` (`import * as apid`)
+    - axios 共通層 `IRepositoryModel` を注入して使う。型はルートの `api.d.ts` (`import * as apid`)
 
 5. **DI 登録**: `client/src/model/ModelContainerSetter.ts` に State / ApiModel を bind 追加 (**忘れると実行時エラー**)
 
