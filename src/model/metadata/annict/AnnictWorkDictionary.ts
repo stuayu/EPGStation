@@ -25,6 +25,7 @@ interface AnnictWorkNode {
     image?: {
         recommendedImageUrl?: string;
         facebookOgImageUrl?: string;
+        twitterBiggerAvatarUrl?: string;
         copyright?: string;
     };
 }
@@ -59,7 +60,7 @@ export default class AnnictWorkDictionary implements IAnnictWorkDictionary {
     pageInfo { hasNextPage endCursor }
     nodes {
       annictId title titleEn titleKana titleRo syobocalTid seasonYear seasonName episodesCount media
-      image { recommendedImageUrl facebookOgImageUrl copyright }
+      image { recommendedImageUrl facebookOgImageUrl twitterBiggerAvatarUrl copyright }
     }
   }
 }`;
@@ -218,12 +219,16 @@ export default class AnnictWorkDictionary implements IAnnictWorkDictionary {
 
     /**
      * アイキャッチに使う画像 URL を選ぶ。画質の良い順に見て最初に見つかったものを採用する。
-     * twitterBiggerAvatarUrl は充足率こそ高い (84%) ものの、実体は
-     * `twitter.com/{account}/profile_image?size=bigger` という現在は画像を返さない URL
-     * (認証が必要になり text/html が返る) なので候補に含めない
+     * twitterBiggerAvatarUrl (`twitter.com/{account}/profile_image?size=bigger`) はそのままでは
+     * 画像を返さない (認証必須になり text/html が返る) が、SeriesImageModel が取得時に
+     * fxtwitter 経由で実際のアバター画像へ解決するため候補に残す
      */
     private static pickImageUrl(node: AnnictWorkNode): string | null {
-        for (const value of [node.image?.recommendedImageUrl, node.image?.facebookOgImageUrl]) {
+        for (const value of [
+            node.image?.recommendedImageUrl,
+            node.image?.facebookOgImageUrl,
+            node.image?.twitterBiggerAvatarUrl,
+        ]) {
             const url = AnnictWorkDictionary.textOrNull(value);
             // http/https 以外 (data: など想定外のスキーム) は取得対象にしない
             if (url !== null && /^https?:\/\//iu.test(url)) return url;
