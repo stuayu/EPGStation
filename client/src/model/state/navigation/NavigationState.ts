@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import type { RouteLocationNormalized as Route } from 'vue-router';
+import { isFeatureEnabled } from '../../../util/FeatureFlags';
 import IServerConfigModel from '../../serverConfig/IServerConfigModel';
 import { ISettingStorageModel } from '../../storage/setting/ISettingStorageModel';
 import INavigationState, { NavigationItem, NavigationType } from './INavigationState';
@@ -217,7 +218,10 @@ export default class NavigationState implements INavigationState {
                 path: '/recorded',
             },
         });
-        newItems.push({ icon: 'mdi-folder-play', title: 'シリーズ', herf: { path: '/series' } });
+        // シリーズ機能は段階導入の機能フラグ (featureFlags.seriesLibrary) が有効な場合のみナビゲーションに表示する
+        if (isFeatureEnabled(config, 'seriesLibrary') === true) {
+            newItems.push({ icon: 'mdi-folder-play', title: 'シリーズ', herf: { path: '/series' } });
+        }
         newItems.push({
             icon: 'mdi-sync',
             title: 'エンコード',

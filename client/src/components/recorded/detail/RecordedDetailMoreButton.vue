@@ -23,7 +23,7 @@
                         <v-list-item-title>rule</v-list-item-title>
                     </div>
                 </v-list-item>
-                <v-list-item v-on:click="editSeriesMapping" slim>
+                <v-list-item v-if="isEnabledSeriesLibrary === true" v-on:click="editSeriesMapping" slim>
                     <template #prepend><v-icon>mdi-link-variant</v-icon></template>
                     <div class="v-list-item-content"><v-list-item-title>シリーズ割当を修正</v-list-item-title></div>
                 </v-list-item>
@@ -82,7 +82,9 @@ import RecordedDeleteDialog from '@/components/recorded/RecordedDeleteDialog.vue
 import RecordedDownloadDialog from '@/components/recorded/RecordedDownloadDialog.vue';
 import IRecordedApiModel from '@/model/api/recorded/IRecordedApiModel';
 import container from '@/model/ModelContainer';
+import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
+import { isFeatureEnabled } from '@/util/FeatureFlags';
 import StrUtil from '@/util/StrUtil';
 import Util from '@/util/Util';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
@@ -105,6 +107,14 @@ class RecordedDetailMoreButton extends Vue {
 
     public recordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
+
+    /**
+     * シリーズライブラリ機能が有効か (featureFlags.seriesLibrary)
+     */
+    public get isEnabledSeriesLibrary(): boolean {
+        return isFeatureEnabled(this.serverConfigModel.getConfig(), 'seriesLibrary');
+    }
 
     public async openDownloadDialog(): Promise<void> {
         await Util.sleep(300);

@@ -1,8 +1,12 @@
 import ChannelModel from '@/model/channels/ChannelModel';
+import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import { IGuideGenreSettingStorageModel, IGuideGenreSettingValue } from '@/model/storage/guide/IGuideGenreSettingStorageModel';
+import { isFeatureEnabled } from '@/util/FeatureFlags';
+import { normalizeSeriesTitleForGuide } from '@/util/SeriesTitleNormalizer';
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../api';
 import DateUtil from '../../../util/DateUtil';
+import ISeriesApiModel from '../../api/series/ISeriesApiModel';
 import IScheduleApiModel from '../../api/schedule/IScheduleApiModel';
 import { ISettingStorageModel } from '../../storage/setting/ISettingStorageModel';
 import IGuideProgramDialogState, { ProgramDialogOpenOption } from './IGuideProgramDialogState';
@@ -25,6 +29,11 @@ class GuideState implements IGuideState {
     private programDialogState: IGuideProgramDialogState;
     private reserveUtil: IGuideReserveUtil;
     private genreSetting: IGuideGenreSettingStorageModel;
+    private seriesApiModel: ISeriesApiModel;
+    private serverConfigModel: IServerConfigModel;
+
+    // 「追いかけ中」インジケータ (§4.10) 用。録画済みシリーズの正規化タイトル集合 (ベストエフォート判定・簡易実装)
+    private followingTitleSet: Set<string> | null = null;
 
     private displayRange: DisplayRange | null = null;
     private startAt: apid.UnixtimeMS = 0;
@@ -44,12 +53,60 @@ class GuideState implements IGuideState {
         @inject('IGuideProgramDialogState') programDialogState: IGuideProgramDialogState,
         @inject('IGuideReserveUtil') reserveUtil: IGuideReserveUtil,
         @inject('IGuideGenreSettingStorageModel') genreSetting: IGuideGenreSettingStorageModel,
+        @inject('ISeriesApiModel') seriesApiModel: ISeriesApiModel,
+        @inject('IServerConfigModel') serverConfigModel: IServerConfigModel,
     ) {
         this.scheduleApiModel = scheduleApiModel;
         this.settingModel = settingModel;
         this.programDialogState = programDialogState;
         this.reserveUtil = reserveUtil;
         this.genreSetting = genreSetting;
+        this.seriesApiModel = seriesApiModel;
+        this.serverConfigModel = serverConfigModel;
+    }
+
+    /**
+     * 「追いかけ中」インジケータの表示可否を判定する (機能フラグ + ユーザー設定)
+     * @return boolean
+     */
+    private isFollowingIndicatorEnabled(): boolean {
+        const config = this.serverConfigModel.getConfig();
+        return (
+            isFeatureEnabled(config, 'seriesLibrary') === true &&
+            isFeatureEnabled(config, 'programSeriesMapping') === true &&
+            this.settingModel.getSavedValue().isShowFollowingIndicatorInGuide === true
+        );
+    }
+
+    /**
+     * 追いかけ中判定用のシリーズタイトル集合を取得する (簡易実装のため取得失敗時は握りつぶす)
+     */
+    private async loadFollowingTitleSet(): Promise<void> {
+        if (this.isFollowingIndicatorEnabled() === false) {
+            this.followingTitleSet = null;
+            return;
+        }
+
+        try {
+            const result = await this.seriesApiModel.list(undefined, 0, GuideState.FOLLOWING_TITLE_FETCH_LIMIT);
+            this.followingTitleSet = new Set(result.items.map(item => item.normalizedTitle));
+        } catch (err) {
+            // インジケータはベストエフォート表示のため取得失敗時は非表示扱いにする
+            console.error(err);
+            this.followingTitleSet = null;
+        }
+    }
+
+    /**
+     * 番組が追いかけ中シリーズに該当するか (簡易判定)
+     * @param program: apid.ScheduleProgramItem
+     */
+    private isFollowingProgram(program: apid.ScheduleProgramItem): boolean {
+        if (this.followingTitleSet === null) {
+            return false;
+        }
+
+        return this.followingTitleSet.has(normalizeSeriesTitleForGuide(program.name));
     }
 
     /**
@@ -226,6 +283,9 @@ class GuideState implements IGuideState {
             startAt,
             endAt,
         });
+
+        // 追いかけ中インジケータ用のシリーズタイトル取得 (機能フラグ・設定 OFF なら何もしない)
+        await this.loadFollowingTitleSet();
     }
 
     /**
@@ -334,6 +394,11 @@ class GuideState implements IGuideState {
 
         if (option.isHidden === true) {
             classStr += ' hidden';
+        }
+
+        // 追いかけ中インジケータ (§4.10)
+        if (this.isFollowingProgram(option.program) === true) {
+            classStr += ' following';
         }
 
         const element = this.createParentElement(
@@ -648,6 +713,8 @@ class GuideState implements IGuideState {
 namespace GuideState {
     export const SINGLE_STATION_GET_DAYS = 8;
     export const SINGLE_STATION_LENGTH = 24;
+    // 追いかけ中インジケータ判定用に取得するシリーズ数の上限 (簡易実装のため全件走査はしない)
+    export const FOLLOWING_TITLE_FETCH_LIMIT = 500;
 }
 
 export default GuideState;

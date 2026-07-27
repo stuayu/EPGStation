@@ -242,10 +242,19 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
   - 上記追加に伴い `ISeriesPendingApiModel` / `ISeriesMaintenanceApiModel` / `ISeriesAliasApiModel` (+実装) を新規追加し `ModelContainerSetter.ts` に登録
   - `GET /api/series`・`GET /api/series/{seriesId}`・`POST /api/series/{seriesId}/metadata/annict` が機能フラグ無効時に例外を投げっぱなしで 500 になっていたのを他の series 系エンドポイントと同様に 404 へ統一
   - api.yml に `SeriesListItem` / `SeriesDetail` / `SeriesMappingValue` / `SeriesPendingMatchItem` / `MergeSeriesOption` / `SplitSeriesOption` / `SeriesAliasItem` 等のスキーマと `QuerySeriesId` / `PathPendingId` / `PathAliasId` パラメータを追加 (このリポジトリは `paths` を api.yml に静的定義せず express-openapi の fs-routes が各ルートファイルの `apiDoc` から動的に組み立てる方式のため、api.yml 側は components (schemas/parameters) のみを追加する)。同じ型を `api.d.ts` にも追加し、サーバ (`src/model/api/series/*`) とクライアント (`client/src/model/api/series/*`) の重複していたローカル型定義を `apid.*` の re-export に統一
-  - クライアント `SeriesApiModel` に `listPending` / `confirmPending` / `rejectPending` / `merge` / `split` / `undoMapping` / `listAliases` / `removeAlias` を追加 (対応する画面 UI は未実装、後続対応が必要)
+  - クライアント `SeriesApiModel` に `listPending` / `confirmPending` / `rejectPending` / `merge` / `split` / `undoMapping` / `listAliases` / `removeAlias` / `startBackfill` / `getBackfillStatus` / `cancelBackfill` / `reserveMissingEpisode` を追加
   - `RecordedDB.deleteOnce()` / `restore()` で `recorded_series_link` / `series_pending_match` の孤立行が残っていた問題を修正 (録画削除・バックアップ復元時にあわせて削除)
   - `DBTools.ts` のバックアップ/リストア対象に `Series` / `SeriesEpisode` / `RecordedSeriesLink` / `SeriesAlias` / `SeriesPendingMatch` / `SeriesChangeHistory` を追加 (`ISeriesDB` に `findAll*`/`restore*` を追加)。旧バックアップファイル (これらのキー未定義) からのリストアも空配列扱いで後方互換
-  - **未実装 (残作業)**: 未確定キュー/マージ/分割/Undo/録画一覧シリーズトグルのクライアント UI、機能フラグ OFF 時のナビゲーション導線非表示。既存録画の一括バックフィルバッチは S20 でサーバ側を実装済み (クライアント UI は別ステップ)。詳細はタスク引き継ぎメモを参照
+
+- シリーズ管理 (S10・S11・S14・S15) のクライアント UI を追加 (上記 API に対応する画面群、サーバ側は変更なし)
+  - **未確定キュー画面** (`client/src/views/SeriesPending.vue`, route `/series/pending`): confidence が低い/複数候補の録画をページング一覧表示し、候補上位 3 件からワンクリック割当 (`confirmPending`)・「このシリーズにしない」(`rejectPending`)・手動割当画面への導線を提供。「再マッチ」は専用の再判定 API がサーバに無いため一覧再読込として実装 (簡易対応)。`Series.vue` のタイトルバーからアイコンで遷移
+  - **マージ UI** (`Series.vue`): タイトルバーのアイコンからダイアログを開き、統合元/統合先シリーズを選択 → 確認ダイアログ (取り消せない旨を明記) → `merge` 実行
+  - **分割 UI** (`SeriesDetail.vue`): タイトルバーのアイコンで分割モードに入り、録画一覧をチェックボックス選択 → 新シリーズ名を入力 → 確認ダイアログ → `split` 実行
+  - **Undo 導線**: `ISnackbarState`/`SnackbarState`/`Snackbar.vue` にアクションボタン (`SnackbarActionOption`) を追加し、手動割当の保存・解除・未確定キューからの割当直後に「元に戻す」ボタン付きスナックバーを表示 (`undoMapping` を呼ぶ)。マージ・分割はサーバに undo API が無いため対象外 (確認ダイアログで代替)
+  - **録画一覧のシリーズ表示トグル** (`Recorded.vue`): タイトルバーのアイコンでシリーズ単位表示 (`ISeriesApiModel.list` によるシリーズカード一覧) ⇔ 従来のフラット表示を切り替え。既定は従来表示 (`ISettingValue.isShowRecordedAsSeries`, 既定 `false`) で、切替状態は次回表示にも反映される。`Settings.vue` にも同設定の直接切替を追加
+  - **バックフィル UI** (`SystemSetting.vue` シリーズ管理タブ): ドライラン/本実行の開始・2 秒間隔ポーリングでの進捗表示 (処理数/確定/未確定/スキップ/失敗)・キャンセル・ドライラン結果 (`previewItems`) のプレビュー表を追加。同タブにエイリアス辞書の一覧・削除も配置
+  - **番組表⇄シリーズ連携 UI**: `ProgramDialog.vue` の「シリーズ」ボタンを `featureFlags.programSeriesMapping` でゲート (OFF 環境で 404 エラートーストが出ていた回帰を修正)。番組表セルに簡易的な「追いかけ中」インジケータ (`GuideState.ts`) を追加: `featureFlags.seriesLibrary` + `programSeriesMapping` + 設定 (`isShowFollowingIndicatorInGuide`, 既定 ON) が揃った場合のみ、番組表読み込み時にシリーズ一覧 (最大 500 件) の `normalizedTitle` を取得し、番組名を簡易正規化 (`client/src/util/SeriesTitleNormalizer.ts`, サーバ `SeriesNormalizer.normalizeSeriesTitle` の軽量移植・非同期版) して一致すれば `.following` クラスを付与し「追」マークを表示するベストエフォート実装 (番組表 API に seriesId が同梱されておらず番組ごとの厳密判定は不可のため、正確な判定は各シリーズ詳細画面の API 呼び出し結果を参照すること)。`SeriesDetail.vue` に「今後の放送予定・欠番補完」欄を追加し、`missing-episodes/proposals` → `missing-episodes/reserve` で予約可能に
+  - **機能フラグゲート**: `NavigationState.ts` の「シリーズ」項目、`RecordedDetailMoreButton.vue` の「シリーズ割当を修正」、上記で追加した未確定キュー画面・録画一覧のシリーズ表示トグル・バックフィル UI・番組表インジケータをすべて `featureFlags.seriesLibrary` (番組表連携は追加で `programSeriesMapping`) でゲートし、OFF 時は改修前と同じ見た目・導線になることを確認済み
 
 - シリーズ手動オーバーライドを追加（S11）
   - 録画詳細メニューから既存シリーズへの再割当、新規シリーズ作成、シーズン・話数・放送種別修正が可能

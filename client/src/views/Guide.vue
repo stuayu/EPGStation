@@ -544,6 +544,11 @@ $window-width: 600px
                 font-weight: bold
             > div
                 pointer-events: none
+            &.following
+                .name::before
+                    content: "追 "
+                    color: #ff6f00
+                    font-weight: bold
             &.reserve
                 border: 4px solid red !important
             &.hide

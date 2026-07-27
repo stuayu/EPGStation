@@ -50,6 +50,8 @@ export default class SettingStorageModel extends AbstractStorageBaseModel<ISetti
             isNextUpPanelOpen: true,
             nextUpPanelTab: 'latest',
             isEnableNextUpAutoPlayForLatestTab: false,
+            isShowRecordedAsSeries: false,
+            isShowFollowingIndicatorInGuide: true,
         };
     }
 

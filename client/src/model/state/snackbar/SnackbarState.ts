@@ -1,5 +1,5 @@
 import { injectable } from 'inversify';
-import ISnackbarState, { SnackbarDipslayOption, SnackBarTextOption } from './ISnackbarState';
+import ISnackbarState, { SnackbarActionOption, SnackbarDipslayOption, SnackBarTextOption } from './ISnackbarState';
 
 @injectable()
 class SnackbarState implements ISnackbarState {
@@ -10,6 +10,7 @@ class SnackbarState implements ISnackbarState {
     };
     public mainText: string = '';
     public buttonText: string;
+    public action: SnackbarActionOption | null = null;
 
     private timerId: ReturnType<typeof setTimeout> | null = null;
 
@@ -32,7 +33,9 @@ class SnackbarState implements ISnackbarState {
     public open(option: SnackBarTextOption): void {
         this.mainText = option.text;
         this.displayOption.color = typeof option.color === 'undefined' || option.color === 'normal' ? SnackbarState.NROMAL_COLOR : option.color;
-        this.displayOption.timeout = typeof option.timeout === 'undefined' ? 1500 : option.timeout;
+        // アクション付きの場合は自動で消えると押す間もなく消えてしまうため表示時間を長めにする
+        this.displayOption.timeout = typeof option.timeout === 'undefined' ? (typeof option.action === 'undefined' ? 1500 : 6000) : option.timeout;
+        this.action = option.action ?? null;
         this.isOpen = true;
 
         if (this.timerId !== null) {
@@ -48,6 +51,8 @@ class SnackbarState implements ISnackbarState {
      * close snackbar
      */
     public close(): void {
+        this.action = null;
+
         if (this.timerId === null) {
             return;
         }

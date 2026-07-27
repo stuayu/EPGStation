@@ -10,6 +10,8 @@ export type SeriesPendingMatchItem = apid.SeriesPendingMatchItem;
 export type SeriesPendingListResult = apid.SeriesPendingListResult;
 export type SeriesAliasItem = apid.SeriesAliasItem;
 export type MissingEpisodeProposal = apid.MissingEpisodeProposal;
+export type SeriesBackfillOption = apid.SeriesBackfillOption;
+export type SeriesBackfillResult = apid.SeriesBackfillResult;
 export default interface ISeriesApiModel {
     list(keyword?: string, offset?: number, limit?: number): Promise<SeriesListResult>;
     getMissingEpisodeProposals(seriesId: number): Promise<MissingEpisodeProposal[]>;
@@ -26,4 +28,8 @@ export default interface ISeriesApiModel {
     split(seriesId: number, recordedIds: number[], newTitle: string): Promise<apid.SplitSeriesResult>;
     listAliases(seriesId?: number): Promise<SeriesAliasItem[]>;
     removeAlias(aliasId: number): Promise<void>;
+    startBackfill(option?: SeriesBackfillOption): Promise<SeriesBackfillResult>;
+    getBackfillStatus(): Promise<SeriesBackfillResult>;
+    cancelBackfill(): Promise<void>;
+    reserveMissingEpisode(seriesId: number, seasonNumber: number, episodeNumber: number, programId: number): Promise<{ reserveId: number }>;
 }

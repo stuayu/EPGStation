@@ -10,11 +10,41 @@
         ></EditTitleBar>
         <TitleBar v-else title="録画済み">
             <template v-slot:menu>
+                <v-btn
+                    v-if="isEnabledSeriesLibrary === true"
+                    icon
+                    variant="text"
+                    size="small"
+                    :title="isShowAsSeries === true ? '従来のフラット表示にする' : 'シリーズ表示にする'"
+                    v-on:click="toggleSeriesView"
+                >
+                    <v-icon>{{ isShowAsSeries === true ? 'mdi-view-list' : 'mdi-folder-play' }}</v-icon>
+                </v-btn>
                 <RecordedSearchMenu></RecordedSearchMenu>
                 <RecordedMainMenu v-on:edit="onEdit" v-on:cleanup="onCleanup"></RecordedMainMenu>
             </template>
         </TitleBar>
-        <transition name="page">
+        <template v-if="isShowAsSeries === true">
+            <v-container>
+                <v-alert type="info" class="mb-3">シリーズ表示 (試験的)。作品ごとにまとめて表示します。従来表示に戻すには右上のアイコンをクリックしてください。</v-alert>
+                <v-text-field v-model="seriesKeyword" label="シリーズを検索" clearable prepend-inner-icon="mdi-magnify" @keyup.enter="loadSeries"></v-text-field>
+                <v-row>
+                    <v-col v-for="item in seriesItems" :key="item.id" cols="12" sm="6" md="4">
+                        <v-card :to="`/series/${item.id}`" height="100%">
+                            <v-card-title>{{ item.title }}</v-card-title>
+                            <v-card-subtitle>{{ item.normalizedTitle }}</v-card-subtitle>
+                        </v-card>
+                    </v-col>
+                </v-row>
+                <v-alert v-if="seriesLoading === false && seriesItems.length === 0" type="info">シリーズがありません</v-alert>
+                <div class="d-flex justify-center mt-4">
+                    <v-btn :disabled="seriesOffset === 0" @click="previousSeriesPage">前へ</v-btn>
+                    <span class="pa-3">{{ seriesOffset + 1 }}–{{ Math.min(seriesOffset + seriesLimit, seriesTotal) }} / {{ seriesTotal }}</span>
+                    <v-btn :disabled="seriesOffset + seriesLimit >= seriesTotal" @click="nextSeriesPage">次へ</v-btn>
+                </div>
+            </v-container>
+        </template>
+        <transition v-else name="page">
             <div v-if="settingValue !== null && recordedState.getRecorded().length > 0" ref="appContent" class="app-content pa-1">
                 <div v-bind:style="contentWrapStyle">
                     <RecordedItems
@@ -51,11 +81,14 @@ import RecordedSearchMenu from '@/components/recorded/RecordedSearchMenu.vue';
 import EditTitleBar from '@/components/titleBar/EditTitleBar.vue';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
+import ISeriesApiModel, { SeriesListItem } from '@/model/api/series/ISeriesApiModel';
+import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import IRecordedState, { MultipleDeletionOption } from '@/model/state/recorded/IRecordedState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
+import { isFeatureEnabled } from '@/util/FeatureFlags';
 import Util from '@/util/Util';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
@@ -86,9 +119,27 @@ class Recorded extends Vue {
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
+    private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
+    private seriesApi: ISeriesApiModel = container.get<ISeriesApiModel>('ISeriesApiModel');
     private onUpdateStatusCallback = (async (): Promise<void> => {
         await this.recordedState.fetchData(this.createFetchDataOption());
     }).bind(this);
+
+    // シリーズ単位表示 (§4.4)。既定は従来のフラット表示 (isShowRecordedAsSeries の保存値に従う)
+    public isShowAsSeries: boolean = false;
+    public seriesItems: SeriesListItem[] = [];
+    public seriesTotal = 0;
+    public seriesOffset = 0;
+    public seriesLimit = 30;
+    public seriesLoading = false;
+    public seriesKeyword = '';
+
+    /**
+     * シリーズライブラリ機能が有効か (featureFlags.seriesLibrary)。無効な場合は表示切替自体を出さない
+     */
+    get isEnabledSeriesLibrary(): boolean {
+        return isFeatureEnabled(this.serverConfigModel.getConfig(), 'seriesLibrary');
+    }
 
     get selectedTitle(): string {
         const info = this.recordedState.getSelectedCnt();
@@ -107,9 +158,54 @@ class Recorded extends Vue {
 
     public created(): void {
         this.settingValue = this.setting.getSavedValue();
+        // 機能フラグが無効な場合は常に従来のフラット表示 (互換性維持)
+        this.isShowAsSeries = this.isEnabledSeriesLibrary === true && this.settingValue.isShowRecordedAsSeries === true;
+        if (this.isShowAsSeries === true) {
+            void this.loadSeries();
+        }
 
         // socket.io イベント
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
+    }
+
+    /**
+     * シリーズ表示 ⇔ フラット表示を切り替える
+     */
+    public toggleSeriesView(): void {
+        this.isShowAsSeries = !this.isShowAsSeries;
+
+        // 選択状態を次回以降の初期表示に反映する
+        this.setting.tmp = { ...this.setting.getSavedValue(), isShowRecordedAsSeries: this.isShowAsSeries };
+        this.setting.save();
+        this.settingValue = this.setting.getSavedValue();
+
+        if (this.isShowAsSeries === true) {
+            void this.loadSeries();
+        }
+    }
+
+    public async loadSeries(): Promise<void> {
+        this.seriesLoading = true;
+        try {
+            const x = await this.seriesApi.list(this.seriesKeyword, this.seriesOffset, this.seriesLimit);
+            this.seriesItems = x.items;
+            this.seriesTotal = x.total;
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: 'シリーズ一覧の取得に失敗しました' });
+        } finally {
+            this.seriesLoading = false;
+        }
+    }
+
+    public previousSeriesPage(): void {
+        this.seriesOffset = Math.max(0, this.seriesOffset - this.seriesLimit);
+        void this.loadSeries();
+    }
+
+    public nextSeriesPage(): void {
+        this.seriesOffset += this.seriesLimit;
+        void this.loadSeries();
     }
 
     public beforeUnmount(): void {

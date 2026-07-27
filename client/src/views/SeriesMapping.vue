@@ -31,6 +31,7 @@ import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import IRecordedApiModel from '@/model/api/recorded/IRecordedApiModel';
 import ISeriesApiModel, { SeriesListItem, SeriesMapping as Mapping } from '@/model/api/series/ISeriesApiModel';
+import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 @Component({ components: { TitleBar } })
@@ -54,6 +55,7 @@ class SeriesMappingView extends Vue {
     ];
     private seriesApi = container.get<ISeriesApiModel>('ISeriesApiModel');
     private recordedApi = container.get<IRecordedApiModel>('IRecordedApiModel');
+    private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     get id() {
         return Number(this.$route.params.id);
     }
@@ -83,15 +85,53 @@ class SeriesMappingView extends Vue {
                 episodeNumber: this.episodeNumber,
                 airType: this.airType,
             });
+            const recordedId = this.id;
+            this.snackbarState.open({
+                color: 'success',
+                text: 'シリーズ割当を保存しました',
+                action: {
+                    text: '元に戻す',
+                    onClick: async () => {
+                        try {
+                            await this.seriesApi.undoMapping(recordedId);
+                            this.snackbarState.open({ color: 'success', text: '割当を元に戻しました' });
+                        } catch (err) {
+                            this.snackbarState.open({ color: 'error', text: '元に戻す操作に失敗しました' });
+                        }
+                    },
+                },
+            });
             this.$router.push(`/series/${this.current.seriesId}`);
+        } catch (err) {
+            this.snackbarState.open({ color: 'error', text: 'シリーズ割当の保存に失敗しました' });
         } finally {
             this.saving = false;
         }
     }
     async remove() {
-        await this.seriesApi.removeMapping(this.id);
-        this.current = null;
-        this.$router.push(`/recorded/detail/${this.id}`);
+        const recordedId = this.id;
+        try {
+            await this.seriesApi.removeMapping(recordedId);
+            this.current = null;
+            this.snackbarState.open({
+                color: 'success',
+                text: '割当を解除しました',
+                action: {
+                    text: '元に戻す',
+                    onClick: async () => {
+                        try {
+                            await this.seriesApi.undoMapping(recordedId);
+                            this.snackbarState.open({ color: 'success', text: '割当を元に戻しました' });
+                        } catch (err) {
+                            this.snackbarState.open({ color: 'error', text: '元に戻す操作に失敗しました' });
+                        }
+                    },
+                },
+            });
+            this.$router.push(`/recorded/detail/${recordedId}`);
+        } catch (err) {
+            this.snackbarState.open({ color: 'error', text: '割当の解除に失敗しました' });
+        }
     }
 }
 export default toNative(SeriesMappingView);

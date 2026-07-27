@@ -5,6 +5,9 @@
                 <div class="d-flex justify-center" style="position: relative">
                     <div class="d-flex align-center snackbar" v-bind:class="snackbarClass">
                         <div class="text">{{ snackbarState.mainText }}</div>
+                        <div v-if="snackbarState.action !== null" class="ma-0 mr-2">
+                            <v-btn variant="text" size="small" color="white" class="button" v-on:click="onClickAction">{{ snackbarState.action.text }}</v-btn>
+                        </div>
                         <div class="ma-0 mr-2">
                             <v-btn variant="text" size="small" color="white" class="button" v-on:click="onClose">閉じる</v-btn>
                         </div>
@@ -37,6 +40,14 @@ class Snackbar extends Vue {
 
     public onClose(): void {
         this.snackbarState.close();
+    }
+
+    public async onClickAction(): Promise<void> {
+        const action = this.snackbarState.action;
+        this.snackbarState.close();
+        if (action !== null) {
+            await action.onClick();
+        }
     }
 }
 

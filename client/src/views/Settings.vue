@@ -132,6 +132,14 @@
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isIncludeGenreWhenSearching"></v-switch>
                                 </div>
+                                <div v-if="isShowFollowingIndicatorSetting === true" class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">追いかけ中インジケータ</v-list-item-title>
+                                        <v-list-item-subtitle>録画済みシリーズにつながる番組に印を表示する (簡易判定)</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="storageModel.tmp.isShowFollowingIndicatorInGuide"></v-switch>
+                                </div>
                             </div>
                         </v-list-item>
 
@@ -190,6 +198,14 @@
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isShowDropInfoInsteadOfDescription"></v-switch>
+                                </div>
+                                <div v-if="isShowSeriesLibrarySetting === true" class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">既定でシリーズ表示にする</v-list-item-title>
+                                        <v-list-item-subtitle>録画済み一覧を開いたときにシリーズ単位表示を初期表示にする</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="storageModel.tmp.isShowRecordedAsSeries"></v-switch>
                                 </div>
 
                                 <div class="my-2 d-flex flex-row align-center">
@@ -404,6 +420,21 @@ class Settings extends Vue {
      */
     get isShowNextUpPanelSetting(): boolean {
         return isFeatureEnabled(this.serverConfigModel.getConfig(), 'nextUpPanel');
+    }
+
+    /**
+     * シリーズライブラリ関連の設定項目を表示するか (featureFlags.seriesLibrary 連動)
+     */
+    get isShowSeriesLibrarySetting(): boolean {
+        return isFeatureEnabled(this.serverConfigModel.getConfig(), 'seriesLibrary');
+    }
+
+    /**
+     * 番組表の追いかけ中インジケータ設定を表示するか (featureFlags.seriesLibrary かつ programSeriesMapping 連動)
+     */
+    get isShowFollowingIndicatorSetting(): boolean {
+        const config = this.serverConfigModel.getConfig();
+        return isFeatureEnabled(config, 'seriesLibrary') === true && isFeatureEnabled(config, 'programSeriesMapping') === true;
     }
 
     public readonly guideModeItems: GuideModeItem[] = [

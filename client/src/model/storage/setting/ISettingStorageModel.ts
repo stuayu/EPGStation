@@ -41,6 +41,8 @@ export interface ISettingValue {
     isNextUpPanelOpen: boolean; // Next Up パネルの開閉状態
     nextUpPanelTab: 'latest' | 'series'; // Next Up パネルの選択タブ
     isEnableNextUpAutoPlayForLatestTab: boolean; // 新着タブ選択時に連続再生を有効にするか (既定 OFF。シリーズタブは常時有効)
+    isShowRecordedAsSeries: boolean; // 録画済み一覧をシリーズ単位表示にするか (既定 OFF。互換性維持のため従来のフラット表示が既定)
+    isShowFollowingIndicatorInGuide: boolean; // 番組表に「追いかけ中」インジケータを表示するか (featureFlags.seriesLibrary かつ programSeriesMapping が有効な場合のみ意味を持つ)
 }
 
 export type ISettingStorageModel = IStorageBaseModel<ISettingValue>;
