@@ -9,7 +9,9 @@ import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IProviderHttpClient from '../../metadata/IProviderHttpClient';
+import IRecordedDB from '../../db/IRecordedDB';
 import IThumbnailDB from '../../db/IThumbnailDB';
+import IIPCClient from '../../ipc/IIPCClient';
 import ISeriesImageModel, { SeriesImageFile, SeriesImageInfo } from './ISeriesImageModel';
 
 /**
@@ -42,12 +44,23 @@ export default class SeriesImageModel implements ISeriesImageModel {
     private static readonly MAX_BYTES = 8 * 1024 * 1024;
     // 取得に失敗した作品を再取得しに行くまでの間隔 (ms)。公式サイト消滅時に毎回叩かない
     private static readonly FAILURE_RETRY_MS = 24 * 60 * 60 * 1000;
+    // サムネイル生成を再依頼するまでの間隔 (ms)。生成は ffmpeg を回すので連打させない
+    private static readonly THUMBNAIL_REQUEST_INTERVAL_MS = 10 * 60 * 1000;
+    // 一覧 1 回の取得で発行するサムネイル生成依頼の上限
+    private static readonly THUMBNAIL_REQUEST_PER_CALL = 5;
     // サムネイル代替を探すときに見る録画の件数
     private static readonly THUMBNAIL_SCAN_LIMIT = 5;
+    // Annict が持つ Twitter アバター URL (`twitter.com/{account}/profile_image?size=...`)。
+    // x.com への移行で認証必須になり、この URL は画像ではなく HTML を返すようになった
+    private static readonly TWITTER_PROFILE_IMAGE = /^https?:\/\/(?:www\.)?(?:twitter|x)\.com\/([A-Za-z0-9_]{1,20})\/profile_image/iu;
+    // Twitter アバターを解決するための fxtwitter の JSON API
+    private static readonly FXTWITTER_API = 'https://api.fxtwitter.com/';
 
     private log: ILogger;
     // 直近に取得へ失敗した annictId → 失敗時刻
     private failures: Map<number, number> = new Map();
+    // サムネイル生成を依頼済みのシリーズ ID → 依頼時刻 (生成完了まで何度も依頼しない)
+    private thumbnailRequests: Map<number, number> = new Map();
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -56,6 +69,8 @@ export default class SeriesImageModel implements ISeriesImageModel {
         @inject('IAnnictWorkDB') private annictDB: IAnnictWorkDB,
         @inject('IProviderHttpClient') private http: IProviderHttpClient,
         @inject('IThumbnailDB') private thumbnailDB: IThumbnailDB,
+        @inject('IRecordedDB') private recordedDB: IRecordedDB,
+        @inject('IIPCClient') private ipc: IIPCClient,
     ) {
         this.log = logger.getLogger();
     }
@@ -81,10 +96,20 @@ export default class SeriesImageModel implements ISeriesImageModel {
         const rest = seriesIds.filter(x => result.has(x) === false);
         if (rest.length === 0) return result;
         const thumbnails = await this.seriesDB.findThumbnailPaths(rest).catch(() => new Map<number, string>());
+        const missing: number[] = [];
         for (const seriesId of rest) {
             if (thumbnails.has(seriesId) === true) {
                 result.set(seriesId, { source: 'thumbnail', url: null, copyright: null });
+            } else {
+                missing.push(seriesId);
             }
+        }
+
+        // 画像がまったく無いシリーズは録画ファイルからサムネイルを生成させる。
+        // 一覧を開くたびに大量の ffmpeg を起動しないよう 1 回の呼び出しあたりの依頼数を絞り、
+        // ページを開くたびに少しずつ埋まっていくようにする
+        for (const seriesId of missing.slice(0, SeriesImageModel.THUMBNAIL_REQUEST_PER_CALL)) {
+            void this.requestThumbnail(seriesId);
         }
         return result;
     }
@@ -102,7 +127,43 @@ export default class SeriesImageModel implements ISeriesImageModel {
             if (downloaded !== null) return downloaded;
         }
         // Annict 側の画像が無い/取得できない場合は録画サムネイルで代用する
-        return await this.findThumbnail(seriesId);
+        const thumbnail = await this.findThumbnail(seriesId);
+        if (thumbnail !== null) return thumbnail;
+
+        // どこからも画像が取れない場合は、録画ファイルからサムネイルを生成するよう依頼する。
+        // 生成は Operator プロセスのキューで非同期に走るため、この回は画像なし (404) を返し、
+        // 次回以降の表示で生成済みのサムネイルが使われる
+        void this.requestThumbnail(seriesId);
+        return null;
+    }
+
+    /**
+     * シリーズに紐づく録画の動画ファイルからサムネイル生成を依頼する (Operator へ IPC)。
+     * 生成は ffmpeg を回すため、同じシリーズへの依頼は一定間隔まで抑制する
+     */
+    private async requestThumbnail(seriesId: number): Promise<void> {
+        const requestedAt = this.thumbnailRequests.get(seriesId);
+        if (
+            typeof requestedAt === 'number' &&
+            Date.now() - requestedAt < SeriesImageModel.THUMBNAIL_REQUEST_INTERVAL_MS
+        ) {
+            return;
+        }
+        this.thumbnailRequests.set(seriesId, Date.now());
+        try {
+            const rows = await this.seriesDB.listRecorded(seriesId);
+            for (const row of rows.slice(0, SeriesImageModel.THUMBNAIL_SCAN_LIMIT)) {
+                const recorded = await this.recordedDB.findId(Number(row.recordedId));
+                const videoFile = (recorded?.videoFiles ?? []).find(x => x.type === 'ts') ?? recorded?.videoFiles?.[0];
+                if (typeof videoFile === 'undefined') continue;
+                this.log.system.info(`series image: request thumbnail generation seriesId=${seriesId} videoFileId=${videoFile.id}`);
+                await this.ipc.thumbnail.add(videoFile.id);
+                return;
+            }
+        } catch (err) {
+            this.log.system.warn(`series image: failed to request thumbnail for seriesId=${seriesId}`);
+            this.log.system.warn(err);
+        }
     }
 
     /**
@@ -177,8 +238,28 @@ export default class SeriesImageModel implements ISeriesImageModel {
      * 失敗しても例外は投げず null を返す (画像はあくまで装飾なので一覧表示を壊さない)
      */
     private async download(annictId: number, url: string): Promise<SeriesImageFile | null> {
+        // Twitter アバターはそのままでは取れないので候補 URL へ解決する。
+        // 解決できなければ元 URL は HTML しか返さないと分かっているので取得を試みない
+        const candidates = SeriesImageModel.TWITTER_PROFILE_IMAGE.test(url)
+            ? await this.resolveTwitterAvatar(url)
+            : [url];
+        if (candidates.length === 0) {
+            this.failures.set(annictId, Date.now());
+            return null;
+        }
+        for (const candidate of candidates) {
+            const file = await this.fetchInto(annictId, candidate);
+            if (file !== null) return file;
+        }
+        return null;
+    }
+
+    /**
+     * 1 つの URL から画像を取得してキャッシュへ保存する
+     */
+    private async fetchInto(annictId: number, target: string): Promise<SeriesImageFile | null> {
         try {
-            const response = await this.http.get(url, {
+            const response = await this.http.get(target, {
                 timeoutMs: SeriesImageModel.FETCH_TIMEOUT_MS,
                 responseType: 'buffer',
             });
@@ -203,9 +284,40 @@ export default class SeriesImageModel implements ISeriesImageModel {
             return { filePath, contentType };
         } catch (err) {
             this.failures.set(annictId, Date.now());
-            this.log.system.warn(`series image: failed to fetch annictId=${annictId} url=${url}`);
+            this.log.system.warn(`series image: failed to fetch annictId=${annictId} url=${target}`);
             this.log.system.warn(err);
             return null;
+        }
+    }
+
+    /**
+     * Twitter アバター URL (`twitter.com/{account}/profile_image`) を、実際に画像を返す
+     * URL の候補列へ解決する。x.com への移行でこの URL 自体は HTML しか返さなくなったため、
+     * fxtwitter の JSON API から `avatar_url` を得る。
+     * アカウント削除等で解決できない場合は空配列を返す
+     * @param url: string Annict が返した URL
+     * @return Promise<string[]> 取得を試す URL (画質の高い順)
+     */
+    private async resolveTwitterAvatar(url: string): Promise<string[]> {
+        const matched = url.match(SeriesImageModel.TWITTER_PROFILE_IMAGE);
+        if (matched === null) return [];
+        try {
+            const response = await this.http.get(`${SeriesImageModel.FXTWITTER_API}${matched[1]}`, {
+                timeoutMs: SeriesImageModel.FETCH_TIMEOUT_MS,
+            });
+            if (response.status >= 400) return [];
+            // アカウント削除時は HTTP 200 で { code: 404 } が返るため body 側も見る
+            const body = response.json<{ code?: number; user?: { avatar_url?: string } }>();
+            if (typeof body?.code === 'number' && body.code >= 400) return [];
+            const avatar = body?.user?.avatar_url;
+            if (typeof avatar !== 'string' || /^https?:\/\//iu.test(avatar) === false) return [];
+
+            // 既定の _normal は 48px でアイキャッチには小さすぎるため 400x400 を優先し、
+            // その版が無いアカウントに備えて元の URL もフォールバックとして残す
+            const larger = avatar.replace(/_normal(\.[a-z]+)$/iu, '_400x400$1');
+            return larger === avatar ? [avatar] : [larger, avatar];
+        } catch {
+            return [];
         }
     }
 
