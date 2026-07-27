@@ -1449,6 +1449,8 @@ export interface SeriesAliasItem {
     normalizedTitle: string;
     seriesId: SeriesId;
     seriesTitle: string;
+    // 学習元 ('manual': 手動修正 / 'llm': LLM 抽出を検証して自動学習)
+    source: string;
     createdAt: UnixtimeMS;
 }
 

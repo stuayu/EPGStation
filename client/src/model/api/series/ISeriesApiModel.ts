@@ -13,6 +13,17 @@ export type MissingEpisodeProposal = apid.MissingEpisodeProposal;
 export type SeriesBackfillOption = apid.SeriesBackfillOption;
 export type SeriesBackfillResult = apid.SeriesBackfillResult;
 export type ProgramSeriesMetrics = apid.ProgramSeriesMetrics;
+
+export interface RefreshSeriesMetadataResult {
+    // 走査したシリーズ数
+    scanned: number;
+    // 何らかの項目を更新したシリーズ数
+    updated: number;
+    // LLM フォールバックへ回したシリーズ数
+    llmAnalyzed: number;
+    // LLM 経由で外部 ID を確定できたシリーズ数
+    llmResolved: number;
+}
 export interface UpdateSeriesMetadata {
     titleKana?: string | null;
     seasonYear?: number | null;
@@ -45,10 +56,10 @@ export default interface ISeriesApiModel {
      */
     listSeasons(): Promise<apid.SeriesSeasonItem[]>;
     /**
-     * 既存シリーズのクール・読み仮名・総話数を作品辞書から埋め直す
-     * @return Promise<{ scanned: number; updated: number }>
+     * 既存シリーズのクール・読み仮名・総話数・外部 ID を作品辞書から埋め直す
+     * @return Promise<RefreshSeriesMetadataResult>
      */
-    refreshMetadata(): Promise<{ scanned: number; updated: number }>;
+    refreshMetadata(): Promise<RefreshSeriesMetadataResult>;
     /**
      * シリーズのクール・読み仮名・総話数を手動で設定する
      * @param seriesId: number

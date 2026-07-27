@@ -6,6 +6,10 @@ export interface RefreshSeriesMetadataResult {
     scanned: number;
     // 何らかの項目を更新したシリーズ数
     updated: number;
+    // LLM フォールバックへ回したシリーズ数
+    llmAnalyzed: number;
+    // LLM 経由で外部 ID を確定できたシリーズ数
+    llmResolved: number;
 }
 
 export interface UpdateSeriesMetadata {

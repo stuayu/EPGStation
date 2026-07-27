@@ -201,7 +201,15 @@ export default interface ISeriesDB {
 
     // --- エイリアス辞書 (S11 §4.8) ---
     findAlias(normalizedTitle: string): Promise<SeriesAlias | null>;
-    upsertAlias(normalizedTitle: string, seriesId: number, createdAt: number): Promise<SeriesAlias>;
+    /**
+     * エイリアス辞書へ「正規化タイトル → シリーズ」の対応を記録する
+     * @param normalizedTitle: string
+     * @param seriesId: number
+     * @param createdAt: number
+     * @param source: string 学習元 ('manual': 手動修正 / 'llm': LLM 抽出 + 検証済み)
+     * @return Promise<SeriesAlias>
+     */
+    upsertAlias(normalizedTitle: string, seriesId: number, createdAt: number, source?: string): Promise<SeriesAlias>;
     listAlias(seriesId?: number): Promise<SeriesAlias[]>;
     deleteAlias(id: number): Promise<void>;
 

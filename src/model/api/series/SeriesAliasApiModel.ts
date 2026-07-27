@@ -18,6 +18,8 @@ export default class SeriesAliasApiModel implements ISeriesAliasApiModel {
             normalizedTitle: a.normalizedTitle,
             seriesId: a.seriesId,
             seriesTitle: seriesItems[i]?.title ?? '',
+            // 学習元 ('manual' / 'llm')。source 列の追加前に作られた行は 'manual' として扱う
+            source: a.source ?? 'manual',
             createdAt: Number(a.createdAt),
         }));
     }

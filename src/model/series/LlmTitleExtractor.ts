@@ -18,10 +18,14 @@ import ILlmTitleExtractor from './ILlmTitleExtractor';
  * - 同一タイトルの再問い合わせを避けるため結果をメモリにキャッシュする
  * - LLM サーバーが落ちている場合に録画後処理を遅延させ続けないよう、
  *   連続失敗で一定時間呼び出しを休止する (サーキットブレーカー)
+ * - ローカル LLM だけでなく OpenRouter 等の従量/フリー枠のホスティング API も想定するため、
+ *   リクエスト間隔の下限 (minIntervalMs) と 429 の Retry-After に従う
  */
 @injectable()
 export default class LlmTitleExtractor implements ILlmTitleExtractor {
     private static readonly DEFAULT_TIMEOUT_MS = 30 * 1000;
+    // 応答の上限トークン数。思考過程を出すモデルはここを使い切ると JSON まで到達しないため設定で伸ばせるようにする
+    private static readonly DEFAULT_MAX_TOKENS = 200;
     // 抽出結果キャッシュの上限 (バックフィルで大量のタイトルを処理してもメモリを食いつぶさないように)
     private static readonly CACHE_MAX = 5000;
     // 抽出結果の永続キャッシュ (metadata_provider_cache) の provider 名と TTL。
@@ -31,19 +35,36 @@ export default class LlmTitleExtractor implements ILlmTitleExtractor {
     // この回数連続で失敗したら COOLDOWN_MS の間呼び出しを休止する
     private static readonly FAILURE_LIMIT = 5;
     private static readonly COOLDOWN_MS = 10 * 60 * 1000;
+    // 429 応答に Retry-After が無かった場合の待機時間
+    private static readonly DEFAULT_RETRY_AFTER_MS = 60 * 1000;
     // 抽出結果として受け入れる作品名の長さの範囲
     private static readonly MIN_TITLE_LENGTH = 2;
     private static readonly MAX_TITLE_LENGTH = 100;
 
     private static readonly SYSTEM_PROMPT = [
-        'あなたは日本のテレビ番組表 (EPG) の録画タイトルから、アニメの正式な作品名を 1 つ抽出するアシスタントです。',
+        'あなたは日本のテレビ番組表 (EPG) の録画タイトルから、その番組が属するシリーズ名を 1 つ抽出するアシスタントです。',
+        'アニメに限らず、ドラマ・バラエティ・情報番組・ニュース・スポーツなど全ジャンルを対象とします。',
         '以下のルールに従い、必ず JSON のみを出力してください。',
-        '- 出力形式: {"title":"作品名"} または {"title":null}',
-        '- 放送局の編成枠名 (「ノイタミナ」「アニメシャワー」「日5」など)・[字][新][終][再][デ] などのマーカー・話数 (第3話 / #12 / Episode 5 など)・各話サブタイトル・出演者情報は取り除く',
+        // 書式例のプレースホルダをそのまま複写してしまうモデルがあるため、書式は文章で説明し、
+        // 具体形は末尾の入出力例だけで示す
+        '- 出力は JSON オブジェクト 1 個だけ。キーは "title" のみ。値は抽出したシリーズ名の文字列、該当しなければ null',
+        '- 毎回変わる要素はすべて取り除く: 話数 (第3話 / #12 / Episode 5 など)・各話サブタイトル・回ごとのゲストや特集内容・放送日・「SP」「拡大版」などの回次情報',
+        '- 放送局の編成枠名 (「ノイタミナ」「アニメシャワー」「日5」など)・[字][新][終][再][デ] などのマーカー・出演者情報は取り除く',
         '- 「第2期」「2nd Season」のような続編表記は作品名の一部として残す',
         '- 読み仮名だけの括弧 (例: 「羅小黒戦記(ロシャオヘイセンキ)」の括弧内) は取り除く',
-        '- アニメ以外の番組 (ニュース・実写ドラマ・バラエティなど) の場合や、作品名を特定できない場合は {"title":null} を返す',
-        '- 説明文やマークダウンは一切出力しない',
+        '- 毎回同じ名前で放送される番組は、ジャンルを問わずその番組名を返す',
+        '- 単発の特番・番宣・イベント中継など、繰り返し放送されるシリーズに属さない番組や、番組名を特定できない場合は null にする',
+        '- 説明文・解説・マークダウン・思考過程は一切出力しない。JSON 以外の文字を出力してはいけない',
+        '',
+        '入力と出力の例:',
+        '入力: それいけ!アンパンマン「カレーパンマンとハロウィンマン・他」[多]',
+        '出力: {"title": "それいけ!アンパンマン"}',
+        '入力: バナナマンのせっかくグルメ★日村が秋田で新米&名物メシを食べまくる2時間SP',
+        '出力: {"title": "バナナマンのせっかくグルメ"}',
+        '入力: アニメ魔入りました!入間くん4 1問題児(アブノーマル)クラス、もう1人の悪魔',
+        '出力: {"title": "魔入りました!入間くん 第4シリーズ"}',
+        '入力: 4K クロージング',
+        '出力: {"title": null}',
     ].join('\n');
 
     private log: ILogger;
@@ -52,6 +73,9 @@ export default class LlmTitleExtractor implements ILlmTitleExtractor {
     private cache: Map<string, string | null> = new Map();
     private consecutiveFailures: number = 0;
     private suspendedUntil: number = 0;
+    private lastRequestAt: number = 0;
+    // minIntervalMs の待機を直列化するためのチェーン (並行呼び出しでも間隔を守る)
+    private throttleChain: Promise<void> = Promise.resolve();
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -73,9 +97,13 @@ export default class LlmTitleExtractor implements ILlmTitleExtractor {
         );
     }
 
+    public isSuspended(): boolean {
+        return Date.now() < this.suspendedUntil;
+    }
+
     public async extractWorkTitle(recordedTitle: string): Promise<string | null> {
         if (this.isEnabled() === false) return null;
-        if (Date.now() < this.suspendedUntil) return null;
+        if (this.isSuspended() === true) return null;
 
         const cached = this.cache.get(recordedTitle);
         if (typeof cached !== 'undefined') return cached;
@@ -95,6 +123,16 @@ export default class LlmTitleExtractor implements ILlmTitleExtractor {
             await this.putPersistentCache(recordedTitle, title);
             return title;
         } catch (err: any) {
+            // レート制限は「壊れている」わけではないので、失敗回数ではなく指示された時間だけ待つ
+            const retryAfterMs = LlmTitleExtractor.retryAfterMsOf(err);
+            if (retryAfterMs !== null) {
+                this.suspendedUntil = Date.now() + retryAfterMs;
+                this.consecutiveFailures = 0;
+                this.log.system.warn(`llm title extraction rate limited: retry after ${retryAfterMs / 1000} sec`);
+
+                return null;
+            }
+
             this.consecutiveFailures++;
             this.log.system.warn(`llm title extraction failed: ${err?.message ?? err}`);
             if (this.consecutiveFailures >= LlmTitleExtractor.FAILURE_LIMIT) {
@@ -117,6 +155,8 @@ export default class LlmTitleExtractor implements ILlmTitleExtractor {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (typeof llm.apiKey === 'string' && llm.apiKey !== '') headers.Authorization = `Bearer ${llm.apiKey}`;
 
+        await this.throttle(llm.minIntervalMs);
+
         const response = await axios.post(
             `${baseUrl}/chat/completions`,
             {
@@ -126,7 +166,7 @@ export default class LlmTitleExtractor implements ILlmTitleExtractor {
                     { role: 'user', content: recordedTitle },
                 ],
                 temperature: 0,
-                max_tokens: 200,
+                max_tokens: llm.maxTokens ?? LlmTitleExtractor.DEFAULT_MAX_TOKENS,
                 stream: false,
             },
             { headers, timeout: llm.timeoutMs ?? LlmTitleExtractor.DEFAULT_TIMEOUT_MS },
@@ -135,6 +175,42 @@ export default class LlmTitleExtractor implements ILlmTitleExtractor {
         const content = response.data?.choices?.[0]?.message?.content;
         if (typeof content !== 'string') throw new Error('unexpected llm response shape');
         return this.parseContent(content);
+    }
+
+    /**
+     * 直前のリクエストから minIntervalMs 経過するまで待つ。
+     * OpenRouter のフリーモデル (概ね 20 req/min) のような分あたり上限で 429 を連発させないために使う
+     */
+    private async throttle(minIntervalMs?: number): Promise<void> {
+        const interval = typeof minIntervalMs === 'number' && minIntervalMs > 0 ? minIntervalMs : 0;
+        if (interval === 0) {
+            this.lastRequestAt = Date.now();
+
+            return;
+        }
+
+        // 待機を直列につなぐことで、同時に走った呼び出しが同じ lastRequestAt を見て一斉送信するのを防ぐ
+        const wait = this.throttleChain.then(async () => {
+            const rest = this.lastRequestAt + interval - Date.now();
+            if (rest > 0) await new Promise<void>(resolve => setTimeout(resolve, rest));
+            this.lastRequestAt = Date.now();
+        });
+        this.throttleChain = wait.catch(() => {});
+
+        return await wait;
+    }
+
+    /**
+     * レート制限 (429) の応答なら待つべきミリ秒を返す。それ以外のエラーなら null
+     */
+    private static retryAfterMsOf(err: any): number | null {
+        if (err?.response?.status !== 429) return null;
+        // Retry-After は秒数指定 (HTTP-date 形式は LLM API では使われないため扱わない)
+        const header = err.response?.headers?.['retry-after'];
+        const sec = Number(header);
+        return Number.isFinite(sec) && sec > 0
+            ? Math.min(sec * 1000, LlmTitleExtractor.COOLDOWN_MS)
+            : LlmTitleExtractor.DEFAULT_RETRY_AFTER_MS;
     }
 
     /**
