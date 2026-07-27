@@ -1,6 +1,14 @@
 import { BaseEntity, Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 export type SeriesAirType = 'first' | 'rerun' | 'delayed' | 'unknown';
-export type SeriesMatchMethod = 'syobocal' | 'annict' | 'title' | 'manual' | 'alias' | 'reservation-hint';
+export type SeriesMatchMethod =
+    | 'syobocal'
+    | 'annict'
+    | 'title'
+    // LLM が抽出した作品名で既存シリーズへ束ねた (作品辞書に無いジャンル用)
+    | 'llm'
+    | 'manual'
+    | 'alias'
+    | 'reservation-hint';
 @Entity({ name: 'recorded_series_link' })
 @Index('IDX_recorded_series_link_recorded', ['recordedId'], { unique: true })
 @Index('IDX_recorded_series_link_series', ['seriesId'])

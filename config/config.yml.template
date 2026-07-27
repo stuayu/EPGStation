@@ -539,10 +539,12 @@ featureFlags:
 #         # 共有静的データ URL (metadataSharedDataUrl と同義、こちらが優先)
 #         sharedData: ''
 
-# シリーズ自動マッピングのローカル LLM フォールバック (featureFlags.seriesLibrary: true の場合のみ有効)。
-# 作品辞書 (しょぼいカレンダー + Annict) で確定できなかった録画タイトルだけを OpenAI 互換 API へ渡し、
+# シリーズ自動マッピングの LLM フォールバック (featureFlags.seriesLibrary: true の場合のみ有効)。
+# 作品辞書 (しょぼいカレンダー + Annict) で確定できなかったものだけを OpenAI 互換 API へ渡し、
 # 抽出された作品名で辞書を引き直す。url と model の両方を指定した場合のみ有効になる。
-# 抽出結果は必ず辞書で検証されるため、LLM の誤生成単体で誤リンクには至らない
+# 抽出結果は必ず辞書で検証されるため、LLM の誤生成単体で誤リンクには至らない。
+# 対象は (1) 録画単位: 辞書で引けなかった録画タイトル (2) シリーズ単位: 辞書で引けず
+# syobocalTid / annictId が両方とも空のシリーズ (メタデータ再取得の実行時)
 # seriesLlm:
 #     # OpenAI 互換 Chat Completions API のベース URL (Ollama: http://localhost:11434/v1)
 #     url: 'http://localhost:11434/v1'
@@ -552,6 +554,23 @@ featureFlags:
 #     # apiKey: ''
 #     # リクエストタイムアウト (ms)。省略時 30000
 #     # timeoutMs: 30000
+#     # リクエスト間隔の下限 (ms)。省略時 0 (無制限)
+#     # minIntervalMs: 0
+#     # 応答の上限トークン数。省略時 200。思考過程を本文へ出す reasoning 系モデルは
+#     # 200 では JSON へ到達せず失敗するため 2000 程度が必要
+#     # maxTokens: 200
+#
+# OpenRouter のフリーモデルを使う場合の例 (分あたり上限があるため minIntervalMs は必須と考えてよい)。
+# 思考過程を本文に混ぜる reasoning 系モデルは JSON 抽出に失敗しやすいので instruct 系を選ぶこと
+# seriesLlm:
+#     url: 'https://openrouter.ai/api/v1'
+#     model: 'inclusionai/ling-3.0-flash:free'
+#     apiKey: 'sk-or-v1-xxxxxxxx'
+#     minIntervalMs: 3500
+#
+# 動作確認済みの組み合わせ (2026-07 時点): inclusionai/ling-3.0-flash:free が
+# 応答 1.5〜3.5 秒・抽出精度ともに良好。openai/gpt-oss-20b:free も可 (5〜6 秒とやや遅い)。
+# nvidia/nemotron-3-ultra-550b-a55b:free のような reasoning 系は書式指示に従わないことがあり非推奨
 
 # サーバー起動時のシリーズ照合パイプライン (featureFlags.seriesLibrary: true の場合は既定で自動実行される)。
 # 起動 7 分後に作品辞書 (しょぼいカレンダー + Annict) の自動同期の完了を待ち、

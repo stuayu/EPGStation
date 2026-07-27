@@ -486,9 +486,11 @@ class SeriesView extends Vue {
         this.refreshing = true;
         try {
             const result = await this.api.refreshMetadata();
+            // LLM フォールバックを使った場合は、辞書で引けなかった分を何件救えたかも知らせる
+            const llm = result.llmAnalyzed > 0 ? ` (LLM 解析 ${result.llmAnalyzed} 件中 ${result.llmResolved} 件確定)` : '';
             this.snackbarState.open({
                 color: 'success',
-                text: `${result.scanned} 件中 ${result.updated} 件を更新しました`,
+                text: `${result.scanned} 件中 ${result.updated} 件を更新しました${llm}`,
             });
             await this.loadSeasons();
             await this.load();

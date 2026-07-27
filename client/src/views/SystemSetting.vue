@@ -358,24 +358,41 @@
                             </v-card>
 
                             <v-divider class="my-4"></v-divider>
-                            <div class="text-subtitle-1 mb-2">エイリアス辞書</div>
+                            <div class="text-subtitle-1 mb-2">エイリアス辞書 (マッチングルール)</div>
+                            <div class="text-caption mb-2">
+                                「正規化タイトル → シリーズ」の対応表。手動修正のほか、LLM が抽出した番組名を検証できたものを自動学習する。
+                                ここに載っている表記は以後 LLM を引かずに確定する
+                            </div>
+                            <v-btn-toggle v-model="aliasSourceFilter" density="compact" mandatory class="mb-2">
+                                <v-btn value="all" size="small">すべて ({{ aliases.length }})</v-btn>
+                                <v-btn value="llm" size="small">LLM 学習 ({{ llmAliasCount }})</v-btn>
+                                <v-btn value="manual" size="small">手動 ({{ aliases.length - llmAliasCount }})</v-btn>
+                            </v-btn-toggle>
                             <v-table density="compact">
                                 <thead>
                                     <tr>
                                         <th>正規化タイトル</th>
                                         <th>シリーズ</th>
+                                        <th>学習元</th>
+                                        <th>登録日時</th>
                                         <th></th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="a in aliases" :key="a.id">
+                                    <tr v-for="a in filteredAliases" :key="a.id">
                                         <td>{{ a.normalizedTitle }}</td>
                                         <td>{{ a.seriesTitle }}</td>
+                                        <td>
+                                            <v-chip size="x-small" :color="a.source === 'llm' ? 'primary' : undefined">
+                                                {{ a.source === 'llm' ? 'LLM 学習' : '手動' }}
+                                            </v-chip>
+                                        </td>
+                                        <td>{{ formatDate(a.createdAt) }}</td>
                                         <td><v-btn size="small" variant="text" color="error" @click="removeAlias(a.id)">削除</v-btn></td>
                                     </tr>
                                 </tbody>
                             </v-table>
-                            <v-alert v-if="aliases.length === 0" type="info" class="mt-2">エイリアスはありません</v-alert>
+                            <v-alert v-if="filteredAliases.length === 0" type="info" class="mt-2">エイリアスはありません</v-alert>
                             </template>
                             <v-alert v-else type="info" class="mt-4">シリーズライブラリ機能 (featureFlags.seriesLibrary) が無効なため、バックフィルとエイリアス管理は利用できません</v-alert>
                         </v-window-item>
@@ -462,6 +479,19 @@ class SystemSetting extends Vue {
     backfillStarting = false;
     private backfillPollTimer: ReturnType<typeof setInterval> | null = null;
     aliases: SeriesAliasItem[] = [];
+    aliasSourceFilter: 'all' | 'llm' | 'manual' = 'all';
+
+    get llmAliasCount(): number {
+        return this.aliases.filter(a => a.source === 'llm').length;
+    }
+
+    // 自動学習した対応だけを見たいことがあるので学習元で絞り込めるようにする
+    get filteredAliases(): SeriesAliasItem[] {
+        if (this.aliasSourceFilter === 'all') return this.aliases;
+        return this.aliases.filter(a =>
+            this.aliasSourceFilter === 'llm' ? a.source === 'llm' : a.source !== 'llm',
+        );
+    }
     metrics: ProgramSeriesMetrics | null = null;
 
     historyKey = 'notifications';

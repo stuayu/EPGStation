@@ -14,6 +14,7 @@ import ISeriesApiModel, {
     ProgramSeriesMetrics,
     SeriesListOption,
     UpdateSeriesMetadata,
+    RefreshSeriesMetadataResult,
 } from './ISeriesApiModel';
 @injectable()
 export default class SeriesApiModel implements ISeriesApiModel {
@@ -35,7 +36,7 @@ export default class SeriesApiModel implements ISeriesApiModel {
     async listSeasons(): Promise<apid.SeriesSeasonItem[]> {
         return (await this.repository.get('/series/seasons')).data;
     }
-    async refreshMetadata(): Promise<{ scanned: number; updated: number }> {
+    async refreshMetadata(): Promise<RefreshSeriesMetadataResult> {
         return (await this.repository.post('/series/refresh-metadata', {})).data;
     }
     async updateSeriesMetadata(seriesId: number, value: UpdateSeriesMetadata): Promise<void> {

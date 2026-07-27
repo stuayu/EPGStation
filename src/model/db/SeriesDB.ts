@@ -394,12 +394,23 @@ export default class SeriesDB implements ISeriesDB {
         const c = await this.op.getConnection();
         return await c.getRepository(SeriesAlias).findOne({ where: { normalizedTitle } });
     }
-    public async upsertAlias(normalizedTitle: string, seriesId: number, createdAt: number): Promise<SeriesAlias> {
+    public async upsertAlias(
+        normalizedTitle: string,
+        seriesId: number,
+        createdAt: number,
+        source: string = 'manual',
+    ): Promise<SeriesAlias> {
         const c = await this.op.getConnection();
         const repo = c.getRepository(SeriesAlias);
         const current = await repo.findOne({ where: { normalizedTitle } });
         return await repo.save(
-            repo.create({ id: current?.id, normalizedTitle, seriesId, createdAt: current?.createdAt ?? createdAt }),
+            repo.create({
+                id: current?.id,
+                normalizedTitle,
+                seriesId,
+                source,
+                createdAt: current?.createdAt ?? createdAt,
+            }),
         );
     }
     public async listAlias(seriesId?: number): Promise<SeriesAlias[]> {

@@ -133,6 +133,18 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
   - クール情報が空のときは一覧に理由と対処を示す案内を表示する (空のドロップダウンだけが出る状態にしない)
   - `SeriesListItem` に `titleKana` / `seasonYear` / `seasonName` / `recordedCount` / `totalFileSize` / `firstAiredAt` / `lastAiredAt` / `unwatchedCount` / `totalEpisodes` / `missingEpisodeCount` / `duplicateEpisodeCount` / `isOnAir` を追加。`GET /api/series` に `sort` / `order` / `seasonYear` / `seasonName` / `status` / `hasMissing` クエリを追加した
 
+- **シリーズ照合の LLM フォールバックをシリーズ単位へ拡張し、結果をマッチングルールとして蓄積するようにした**
+  - **背景**: LLM フォールバック (`LlmTitleExtractor`, `config.yml` の `seriesLlm`) は録画単位の `SeriesResolver` にしか入っておらず、`SeriesMetadataFiller` は `WorkDictionary.lookup(series.title)` を 1 回引いて外したら諦めていた。実データでは 983 シリーズ中 **169 件 (17%) が `syobocalTid` / `annictId` 両方とも空**で、そのうち 124 件は録画 1 件のみ。シリーズ単位なら呼び出し回数が録画単位より 2 桁少なく、1 件当たれば配下の全録画へ話数逆引き・クール・画像が波及する
+  - **シリーズ単位の LLM 照合**: `SeriesMetadataFiller.fill()` に、辞書で引けず外部 ID も空のシリーズだけを LLM へ回すステップを追加した (1 回の実行につき最大 200 件)。抽出結果は必ず作品辞書で引き直すため、LLM の誤生成だけで外部 ID が入ることはない。結果は `SeriesMetadataFillResult.llmAnalyzed` / `llmResolved` として API・シリーズ一覧のスナックバーに出る
+  - **マッチングルールの蓄積 (エイリアス辞書への自動学習)**: LLM 経由で確定した「正規化タイトル → シリーズ」の対応を `series_alias` へ書き込む。`SeriesResolver.resolve()` はエイリアス辞書を最優先で引くため、2 回目以降は LLM も作品辞書も引かずに確度 1.0 で確定する。誤った規則を固定しないよう、**LLM の抽出結果が辞書キーと完全一致 (`matchType: 'exact'`) した場合のみ**学習し、手動修正で作られた既存のエイリアスは上書きしない
+  - **アニメ以外のジャンルの束ね**: 作品辞書はアニメのみのため、ドラマ・バラエティ・情報番組は検証先が無い。そこで `SeriesResolver` に**既存シリーズを検証先に使う**ステップ (`resolveByLlmGrouping`、作品辞書フォールバックの後・類似度スコアリングの前) を追加した。LLM が抽出した番組名を正規化したキーが既存シリーズの `normalizedTitle` と完全一致したときだけ、確度 0.9・`matchMethod: 'llm'` でリンクし、同時にエイリアスを学習する。LLM のシステムプロンプトも「アニメの作品名」から「全ジャンルのシリーズ名 (毎回変わるゲスト・特集・SP 表記を除去)」へ広げた
+  - **DB / 画面**: `series_alias` に `source` 列 (`'manual'` / `'llm'`、既定 `'manual'`) を追加 (sqlite / mysql 両マイグレーションあり)。サーバー設定 > シリーズ管理タブのエイリアス辞書表に学習元バッジ・登録日時・学習元での絞り込み (すべて / LLM 学習 / 手動) を追加し、自動学習された規則を画面から確認・削除できるようにした
+  - **OpenRouter 等のホスティング API 対応**: `seriesLlm.minIntervalMs` (リクエスト間隔の下限) と `seriesLlm.maxTokens` (応答の上限トークン数、既定 200) を追加し、429 応答時は失敗回数ではなく `Retry-After` に従って休止するようにした。フリーモデルは分あたり上限があるため `minIntervalMs: 3500` 程度が必要
+  - **プロンプトの修正 (実 API で判明)**: 出力書式を `{"title":"シリーズ名"}` のように例示していたため、**プレースホルダの文字列をそのまま値として返すモデルがあった** (`nvidia/nemotron-3-ultra-550b-a55b:free` が `{"title":"シリーズ名"}` を返す)。書式は文章で説明し、具体形は末尾の入出力例 4 件だけで示す形に変更した。また reasoning 系モデルは思考過程で `max_tokens: 200` を使い切り JSON へ到達しないため `maxTokens` を設定可能にした
+  - **バッチ処理と休止の相互作用 (実測で判明)**: レート制限や連続失敗で休止 (`suspendedUntil`) に入ると `extractWorkTitle()` は問い合わせをせず即 null を返す。169 シリーズの一括解析で 24 件目に 429 を踏んだ結果、**残り 145 件が休止時間内に一瞬で「抽出できず」として消化された**。`ILlmTitleExtractor.isSuspended()` を追加し、`SeriesMetadataFiller` は休止を検知したら以降の LLM 呼び出しを止めて次回実行へ回すようにした (永続キャッシュがあるため次回は続きから進む)
+  - **モデル選定 (2026-07 時点の実測)**: `inclusionai/ling-3.0-flash:free` が応答 1.5〜3.5 秒・抽出精度ともに良好で推奨。`openai/gpt-oss-20b:free` も正しく動くが 5〜6 秒とやや遅い。reasoning 系 (`nvidia/nemotron-3-ultra-550b-a55b:free`) は書式指示に従わないことがあり非推奨
+  - **精度メトリクスとの関係**: サーバー設定 > シリーズ管理タブの「精度メトリクス」は**番組表 (EPG) ⇄ シリーズの事前マッピング (`ProgramSeriesApiModel.precompute`) の直近バッチ**の集計であり、録画のシリーズ照合率とは別物。詳細な注意点は下記の「精度メトリクスの読み方」を参照
+
 - **外部サービスのエンドポイント URL を設定画面から差し替え可能にした**
   - Cloudflare Workers などのキャッシュ/プロキシを手前に置いて運用できるようにするため、ハードコードしていた 4 つの外部 URL (しょぼいカレンダー DB API / Annict GraphQL API / fxtwitter JSON API / 共有静的データ URL) を設定値にした
   - 解決は `MetadataEndpointResolver` に一元化し、優先順位は他の設定と同じく **DB (設定画面) > config.yml (`metadataDefaults.endpoints`) > 同梱既定値**。従来の `metadataSharedDataUrl` は引き続き有効で、`endpoints.sharedData` があればそちらが優先される
@@ -323,6 +335,11 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
   - **HTTP クライアントの直列化・429 対応 (S12)**: `ProviderHttpClient` をホスト単位のキューで直列化し、同時リクエストが重ならないようにした。`429` は `Retry-After` (秒 / HTTP-date) を尊重してリトライする
   - **しょぼいカレンダー チャンネルマッピング表 (S13)**: `ISyobocalChannelMap` / `SyobocalChannelMap` を追加。同梱データ (`SyobocalChannelMapData.ts`、主要地上波キー局のみのスケルトン) をベースに、config.yml の `metadataChannelMappingPath` で外部 JSON を指定すると上書き/追加できる (オフライン/読み込み失敗時は同梱データにフォールバック)
   - **確定系マッチ・未登録局スキップ (S13)**: `SyobocalProvider.search()` が `context.channelId`/`context.startAt` を使い、ChID + 放送開始時刻 (±5分) から `ProgLookup` で PID→TID を確定するようにした。マッピング表に `syobocal: false` (未登録局) と登録されている局は `ProgLookup` を最初から呼ばずスキップする。`GET /api/metadata/search` に `channelId`/`startAt` クエリを追加しこの経路を呼び出せるようにした
+  - **精度メトリクスの読み方 (注意点)**: シリーズ管理タブの「精度メトリクス」は `ProgramSeriesApiModel.precompute()` が **EPG 更新の差分 programIds を処理した直近 1 バッチ**の集計を `app_setting.programSeriesMetrics` へ上書き保存したもの。以下の性質があるため、シリーズ照合の精度そのものとしては読めない
+    - 対象は**番組表 (EPG) の番組**であり、録画のシリーズ照合率 (`RecordedSeriesLink`) とは別物
+    - `matched` には「既にリンク済みの番組」と「類似候補が 0 件で新規シリーズを自動作成した番組 (confidence 1.0)」が含まれる。後者は照合できたわけではないので、**未マッチ率は構造的に低め・ヒストグラムは 0.8-1.0 に寄る**
+    - 累積ではなく毎バッチ上書きのため、数件しか更新されなかった回では `totalPrograms` が極端に小さくなる。時系列も残らない
+    - しきい値 (`settings.series.matchThreshold`、既定 0.8) が効くのは**類似度スコアリングの経路のみ**。作品辞書・エイリアス辞書で確定した分はしきい値を通らない
   - **番組表⇄シリーズの事前マッピングバッチ化 (S14)**: `ProgramSeriesApiModel.get()` を DB 書き込みの無い参照専用メソッドに変更 (番組ダイアログを開くだけではレコードが増えなくなった)。マッピングの確定は新設の `precompute(programIds)` が担い、EPG 更新 (`EPGUpdateManageModel.saveProgram` → `PROGRAM_UPDATED` イベント) をトリガーに実行される。判定は録画側の `SeriesResolver`/`scoreCandidate` と同じしきい値 (`settings.series.matchThreshold`、既定 0.8) を再利用し、しきい値未満は確定させない。`GET /api/schedules/series-metrics` を追加し、直近バッチの未マッチ番組率・confidence 分布 (5 バケット) を取得できるようにした。機能フラグ OFF 時は 500 ではなく 404 を返すよう統一
   - **Annict の syobocalTid 一意確定 (S16)**: `AnnictProvider.search()` が `context.syobocalTid` を受け取ると検索件数を増やし、`syobocalTid` が完全一致する作品を文字列一致より優先して一意確定する。`AnnictSyncApiModel.sync()` はシリーズに `syobocalTid` が既にあればそれを検索コンテキストへ渡し、一致した作品のみを採用する (タイトル類似度のしきい値をバイパス)。同期処理も `MetadataService.search()` 経由になったためキャッシュが効くようになった。`AnnictTokenIsNotConfigured` を 500 ではなく 400 で返すよう修正
   - api.yml / api.d.ts に `MetadataProviders` / `MetadataSearchResult(s)` / `ProgramSeriesMetrics` のレスポンススキーマを追加

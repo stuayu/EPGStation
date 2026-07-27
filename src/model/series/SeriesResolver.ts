@@ -112,7 +112,12 @@ export default class SeriesResolver implements ISeriesResolver {
         const dictionaryLink = await this.resolveByWorkDictionary(recording, parsed, now);
         if (dictionaryLink !== null) return dictionaryLink;
 
-        // 3. 既存シリーズとの類似度スコアリング
+        // 3. 作品辞書に載らないジャンル (ドラマ・バラエティ・情報番組など) を LLM の抽出結果で束ねる。
+        // 検証先の辞書が無いため、抽出した番組名が既存シリーズの正規化タイトルと完全一致した場合に限る
+        const llmLink = await this.resolveByLlmGrouping(recording, parsed, now);
+        if (llmLink !== null) return llmLink;
+
+        // 4. 既存シリーズとの類似度スコアリング
         const candidates = await this.db.findCandidates(parsed.normalizedTitle);
         const settings = await this.settings.getAll();
         const threshold = this.threshold((settings.series as any)?.matchThreshold);
@@ -182,11 +187,13 @@ export default class SeriesResolver implements ISeriesResolver {
             // 辞書の不調でシリーズ化そのものを止めないよう、失敗時は従来の類似度判定へ委ねる
             return null;
         }
+        let viaLlm = false;
         if (match === null) {
             // ローカル LLM フォールバック (seriesLlm 設定時のみ): 正規表現ベースの照合キーで辞書に
             // 当たらなかった場合のみ、LLM に作品名を抽出させて辞書を引き直す。
             // 抽出結果は必ず辞書で検証されるため、LLM の誤生成単体で誤リンクには至らない
             match = await this.lookupViaLlm(recording.title);
+            viaLlm = match !== null;
         }
         if (match === null) return null;
 
@@ -246,8 +253,94 @@ export default class SeriesResolver implements ISeriesResolver {
             if (episodeNumber !== null) resolved.episodeNumber = episodeNumber;
         }
 
+        // LLM を経由して確定した対応はエイリアス辞書へ学習させる。
+        // 次回以降は resolve() の先頭でこの辞書に当たるため、同じ表記の録画で LLM を引き直さずに済む
+        if (viaLlm === true) await this.learnAlias(parsed.normalizedTitle, series, match, now);
+
         await this.db.deletePendingMatchByRecordedId(recording.recordedId);
         return await this.linkTo(recording, resolved, series, match.confidence, matchMethodOf(match), now);
+    }
+
+    /**
+     * 作品辞書 (アニメのみ) に載らないジャンルの番組を、LLM が抽出した番組名で既存シリーズへ束ねる。
+     * 検証に使える外部辞書が無いぶん、抽出結果を正規化したキーが既存シリーズの正規化タイトルと
+     * 完全一致した場合だけ確定させる (前方一致・類似は 4. のスコアリングへ委ねる)。
+     * 確定した対応はエイリアス辞書へ学習させ、次回以降は LLM を引かずに済むようにする
+     * @param recording: SeriesRecordingInput
+     * @param parsed: parseSeriesInfo() の結果
+     * @param now: number
+     * @return Promise<RecordedSeriesLink | null>
+     */
+    private async resolveByLlmGrouping(
+        recording: SeriesRecordingInput,
+        parsed: ReturnType<typeof parseSeriesInfo>,
+        now: number,
+    ): Promise<RecordedSeriesLink | null> {
+        if (this.isLlmEnabled() === false) return null;
+        try {
+            // 直前の作品辞書フォールバックと同じタイトルなので、抽出結果はキャッシュから返る
+            const extracted = await this.llmTitleExtractor.extractWorkTitle(recording.title);
+            if (extracted === null) return null;
+
+            const key = normalizeSeriesTitle(extracted);
+            // 正規化キーが録画タイトルのものと同じなら、LLM は新しい情報を出せていない
+            if (key === '' || key === parsed.normalizedTitle) return null;
+
+            const candidates = await this.db.findCandidates(key);
+            const series = candidates.find(candidate => candidate.normalizedTitle === key) ?? null;
+            if (series === null) return null;
+
+            await this.learnAliasFor(parsed.normalizedTitle, series.id, now);
+            await this.db.deletePendingMatchByRecordedId(recording.recordedId);
+
+            // 外部辞書の裏付けが無いぶん、辞書経由 (最大 0.95) より低い確度で記録する
+            return await this.linkTo(recording, parsed, series, 0.9, 'llm', now);
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * LLM フォールバックが使えるか (未設定・DI 未注入なら無効)
+     * @return boolean
+     */
+    private isLlmEnabled(): boolean {
+        try {
+            return this.llmTitleExtractor?.isEnabled() === true;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * 「正規化タイトル → シリーズ」の対応をエイリアス辞書へ記録する (マッチングルールの学習)。
+     * エイリアスは確度 1.0 で確定させる強い規則なので、LLM が抽出した作品名が辞書キーと
+     * 完全一致した場合 (matchType: 'exact') のみ記録し、部分一致・前方一致の推測は学習しない
+     * @param normalizedTitle: string 録画タイトルの正規化キー
+     * @param series: Series 対応先シリーズ
+     * @param match: WorkMatch 辞書の照合結果
+     * @param now: number
+     */
+    private async learnAlias(normalizedTitle: string, series: Series, match: WorkMatch, now: number): Promise<void> {
+        if (match.matchType !== 'exact') return;
+        await this.learnAliasFor(normalizedTitle, series.id, now);
+    }
+
+    /**
+     * エイリアス辞書へ 1 件学習する。手動修正で作られた既存の対応は上書きしない
+     * @param normalizedTitle: string 録画タイトルの正規化キー
+     * @param seriesId: number 対応先シリーズ ID
+     * @param now: number
+     */
+    private async learnAliasFor(normalizedTitle: string, seriesId: number, now: number): Promise<void> {
+        if (normalizedTitle === '') return;
+        try {
+            const current = await this.db.findAlias(normalizedTitle);
+            if (current !== null) return;
+            await this.db.upsertAlias(normalizedTitle, seriesId, now, 'llm');
+        } catch {
+            // 学習に失敗してもリンク自体は成立しているので握りつぶす
+        }
     }
 
     /**
@@ -258,7 +351,7 @@ export default class SeriesResolver implements ISeriesResolver {
      * @return Promise<WorkMatch | null>
      */
     private async lookupViaLlm(recordedTitle: string): Promise<WorkMatch | null> {
-        if (this.llmTitleExtractor.isEnabled() === false) return null;
+        if (this.isLlmEnabled() === false) return null;
         try {
             const extracted = await this.llmTitleExtractor.extractWorkTitle(recordedTitle);
             if (extracted === null) return null;

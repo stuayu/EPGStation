@@ -301,10 +301,16 @@ export default interface IConfigFile {
         url?: string;
         // モデル名 (例: qwen2.5:7b-instruct)
         model?: string;
-        // API キー (ローカル LLM では通常不要)
+        // API キー (ローカル LLM では通常不要。OpenRouter 等のホスティング API では必須)
         apiKey?: string;
         // リクエストタイムアウト (ms)。既定 30000
         timeoutMs?: number;
+        // リクエスト間隔の下限 (ms)。既定 0 (無制限)。
+        // OpenRouter のフリーモデルのような分あたり上限がある API では 3500 程度を指定する
+        minIntervalMs?: number;
+        // 応答の上限トークン数。既定 200。
+        // 思考過程を本文へ出す reasoning 系モデルは 200 では JSON へ到達しないため 1000 以上が必要
+        maxTokens?: number;
     };
 
     // サーバー起動時のシリーズ照合パイプライン (featureFlags.seriesLibrary 有効時は既定で動作する)。
