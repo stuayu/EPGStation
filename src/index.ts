@@ -12,6 +12,7 @@ import IIPCServer from './model/ipc/IIPCServer';
 import container from './model/ModelContainer';
 import * as containerSetter from './model/ModelContainerSetter';
 import IAnnictWorkDictionary from './model/metadata/annict/IAnnictWorkDictionary';
+import IWikidataProgramDictionary from './model/metadata/wikidata/IWikidataProgramDictionary';
 import ISyobocalTitleDictionary from './model/metadata/syobocal/ISyobocalTitleDictionary';
 import IImportWatchManageModel from './model/operator/recorded/IImportWatchManageModel';
 import ISeriesStartupPipeline from './model/operator/series/ISeriesStartupPipeline';
@@ -142,6 +143,11 @@ const runOperator = async () => {
     // (featureFlags.metadataProviders + Annict 連携が有効かつトークン設定済みの場合のみ実際に取得する)
     const annictWorkDictionary = container.get<IAnnictWorkDictionary>('IAnnictWorkDictionary');
     annictWorkDictionary.startAutoSync();
+
+    // Wikidata の全ジャンル番組辞書 (ドラマ・バラエティ・情報番組・ローカル番組) を定期的に取り込む
+    // (featureFlags.metadataProviders + Wikidata 連携が有効な場合のみ実際に取得する)
+    const wikidataProgramDictionary = container.get<IWikidataProgramDictionary>('IWikidataProgramDictionary');
+    wikidataProgramDictionary.startAutoSync();
 
     // 作品辞書の導入前に作られたシリーズにはクール・読み仮名・総話数が入っていないため、
     // 辞書の同期が終わったころに一度だけ埋める (一覧の絞り込み・並べ替えに使う)

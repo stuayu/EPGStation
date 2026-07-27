@@ -3,6 +3,10 @@ export interface WorkMatch {
     syobocalTid: number | null;
     // Annict 作品 ID (辞書に無い作品では null)
     annictId: number | null;
+    // Wikidata 項目 ID (アニメ辞書だけで確定した作品では null)
+    wikidataQid: string | null;
+    // TMDb テレビシリーズ ID (Wikidata の P4983 由来。取得できない場合は null)
+    tmdbId: number | null;
     // シリーズ表示名に使う正式タイトル
     title: string;
     // 読み仮名 (あいうえお順の並べ替え用)。取得できない場合は null
@@ -18,8 +22,8 @@ export interface WorkMatch {
     matchType: 'exact' | 'contain' | 'prefix';
     // 0〜1 の確度
     confidence: number;
-    // どちらの辞書で確定したか
-    source: 'syobocal' | 'annict';
+    // どの辞書で確定したか
+    source: 'syobocal' | 'annict' | 'wikidata';
 }
 
 export default interface IWorkDictionary {

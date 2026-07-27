@@ -538,6 +538,13 @@ featureFlags:
 #         # しょぼいカレンダーのアニメ作品タイトル辞書 (シリーズ自動マッピングの照合辞書) の
 #         # 自動同期間隔 (ms)。省略時 24 時間。0 を指定すると自動同期を行わない
 #         titleSyncIntervalMs: 86400000
+#     wikidata:
+#         # 全ジャンルのテレビ番組辞書 (Wikidata) を取り込むか。
+#         # しょぼいカレンダー / Annict がアニメ専門なのに対し、ドラマ・バラエティ・情報番組・
+#         # ニュース、さらにローカル局の番組まで収録している (約 4 万件)。API キー不要
+#         enabled: false
+#         # 辞書の自動同期間隔 (ms)。省略時 7 日。0 を指定すると自動同期を行わない
+#         syncIntervalMs: 604800000
 #     annict:
 #         enabled: false
 #         # Annict の作品辞書 (英題・ローマ字・syobocalTid 対応表) の自動同期間隔 (ms)。
@@ -551,6 +558,7 @@ featureFlags:
 #     endpoints:
 #         syobocal: 'https://cal.syoboi.jp/db.php'
 #         annict: 'https://api.annict.com/graphql'
+#         wikidata: 'https://query.wikidata.org/sparql'
 #         fxtwitter: 'https://api.fxtwitter.com/'
 #         # 共有静的データ URL (metadataSharedDataUrl と同義、こちらが優先)
 #         sharedData: ''

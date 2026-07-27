@@ -45,6 +45,10 @@ export default class SeriesDB implements ISeriesDB {
         const c = await this.op.getConnection();
         return await c.getRepository(Series).findOne({ where: { annictId } });
     }
+    public async findByWikidataQid(wikidataQid: string): Promise<Series | null> {
+        const c = await this.op.getConnection();
+        return await c.getRepository(Series).findOne({ where: { wikidataQid } });
+    }
     async createSeries(value: NewSeries) {
         const c = await this.op.getConnection();
         const repo = c.getRepository(Series);
@@ -331,6 +335,8 @@ export default class SeriesDB implements ISeriesDB {
         value: {
             annictId?: string | null;
             syobocalTid?: number | null;
+            wikidataQid?: string | null;
+            tmdbId?: number | null;
             titleKana?: string | null;
             seasonYear?: number | null;
             seasonName?: string | null;

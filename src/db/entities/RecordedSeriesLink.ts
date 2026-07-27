@@ -3,6 +3,8 @@ export type SeriesAirType = 'first' | 'rerun' | 'delayed' | 'unknown';
 export type SeriesMatchMethod =
     | 'syobocal'
     | 'annict'
+    // Wikidata の全ジャンル番組辞書で確定
+    | 'wikidata'
     | 'title'
     // LLM が抽出した作品名で既存シリーズへ束ねた (作品辞書に無いジャンル用)
     | 'llm'

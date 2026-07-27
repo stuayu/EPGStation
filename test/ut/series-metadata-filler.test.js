@@ -30,6 +30,8 @@ function series(over = {}) {
         normalizedTitle: '作品',
         syobocalTid: null,
         annictId: null,
+        wikidataQid: null,
+        tmdbId: null,
         titleKana: null,
         seasonYear: null,
         seasonName: null,
@@ -45,6 +47,8 @@ test('fill() takes the season from the work dictionary when it matches', async (
         lookup: async () => ({
             syobocalTid: 10,
             annictId: 20,
+            wikidataQid: 'Q1',
+            tmdbId: 5,
             title: '作品',
             titleKana: 'さくひん',
             seasonYear: 2024,
@@ -59,6 +63,8 @@ test('fill() takes the season from the work dictionary when it matches', async (
     assert.deepEqual(db.updates[0].patch, {
         syobocalTid: 10,
         annictId: '20',
+        wikidataQid: 'Q1',
+        tmdbId: 5,
         titleKana: 'さくひん',
         totalEpisodes: 12,
         seasonYear: 2024,
