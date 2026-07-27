@@ -107,7 +107,22 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
             復元作業中に、ruleの部分で失敗する場合は、手動でsqlファイルを修正してください。
 ## 変更箇所
 
-- 視聴体験まわり (S2・S4・S17) の欠陥修正と未実装機能を追加（クライアント側のみ、サーバ変更なし）
+- サーバー設定画面 (S6・S7・§6.2) の欠陥修正・未実装機能の追加と、録画検索 UI (S19・§2.2) の高度化（クライアント側のみ、サーバ変更なし）
+  - **サーバー設定画面 (`client/src/views/SystemSetting.vue`) の重大バグ修正**: 通知タブが `targets[0]` へ直接 `v-model` していたため、DB に `targets: []` が保存されていると描画時に例外になり画面が開けなくなっていた。配信先を配列として一覧・追加・削除・編集できる UI に全面書き換え。配信先名を変更した場合、サーバー側はシークレットを名前で突き合わせる実装 (`AppSettingApiModel.matchArrayItems()`) のため URL・署名シークレットが引き継がれない旨を warning で表示する
+  - `testNotification()` が送信前に必ず `save()` していたため、テストしただけで未保存の設定が永続化される不具合を修正 (テストは配信先ごとに独立して実行、保存とは分離)。`save()` / `testNotification()` / 各 API 呼び出しは try/catch で `ISnackbarState` にエラーを通知するよう統一
+  - タブ構成を **基本 (変更履歴・ロールバック) / 録画・エンコード (現状 WebUI から設定可能な項目なし) / 連携 (Annict・しょぼいカレンダー・メタデータキャッシュ) / 通知 (Webhook・Discord) / シリーズ管理** に再編。シリーズ管理タブの既存機能 (バックフィル・エイリアス辞書) はそのまま維持
+  - 画面上部に `requiresRestartKeys` (更新・ロールバック API レスポンス) に基づく「再起動が必要」バナーを常駐表示 (セッション内)。現状 `AppSettingSchema.ts` で `requiresRestart: true` を宣言している項目は無いため、通常は表示されない
+  - `GET /api/settings/system/history` / `POST /api/settings/system/rollback` を使った変更履歴一覧・ロールバック UI (基本タブ) と、`GET /api/settings/system/notifications/failures` を使った通知失敗履歴一覧 (通知タブ) を追加
+  - Annict 連携: トークンはマスク表示のまま (サーバー側でマスク済み文字列が返るため平文は画面に出ない)、「接続テスト」ボタンを追加。**専用のテスト API が存在しないため** `GET /api/metadata/search?providers=annict` を用いた簡易疎通確認 (トークンが無効でも空の検索結果のみ返る場合がある旨を画面に明記)。視聴記録の自動同期は `featureFlags.annictSync` (config.yml) 制御のままで WebUI からは変更不可のため、現在の状態を読み取り専用表示するに留めた
+  - しょぼいカレンダー連携: 有効化トグルのみ実装。**チャンネルマッピング編集・共有静的データ自動更新間隔の DB 化 API が存在しない** (`metadataChannelMappingPath` / `metadataSharedDataUrl` / `metadataSharedDataUpdateIntervalMs` は config.yml 管理のまま) ため、編集 UI は追加せず設定方法を案内する説明文のみ表示
+  - `GET /api/schedules/series-metrics` を使った精度メトリクス (未マッチ番組率・confidence 分布) 表示をシリーズ管理タブに追加 (`client/src/model/api/series/ISeriesApiModel.ts` に `getMetrics()` を追加)
+  - `client/src/views/Settings.vue` の「サーバー設定を開く」ボタンを `featureFlags.systemSettings` でゲート (無効時は非表示)。`SystemSetting.vue` 側でも直接 URL アクセス時に同フラグを見て `/settings` へリダイレクトする防御を追加
+  - **録画検索の高度化 (`advancedSearch` フラグ有効時のみ表示。無効時は改修前と同じ見た目)**
+    - `client/src/components/recorded/RecordedSearchMenu.vue` にキーワード欄の高度検索構文ヒント (ツールチップ: AND/OR/除外/フレーズ/フィールド指定) を追加
+    - 階層タグ (`RecordedTag.parentId`) 対応: タグ選択 (子孫タグも含めて絞り込み、`GetRecordedOption.tagId` 経由でサーバーの子孫展開ロジックをそのまま利用) と、新規タグ管理ダイアログ `client/src/components/recorded/TagManageDialog.vue` (追加・編集・削除・親タグ選択・階層インデント表示) を追加。クライアント側にタグ関連 API を呼ぶコードが一切無かったため `client/src/model/api/recordedTag/{IRecordedTagApiModel,RecordedTagApiModel}.ts` を新規追加 (DI 登録は `ModelContainerSetter.ts`)
+    - 保存検索: 現在の検索条件を名前を付けて保存・一覧表示・実行・リネーム・ピン留め・削除できる UI を検索メニュー内に追加。`client/src/model/api/savedSearch/{ISavedSearchApiModel,SavedSearchApiModel}.ts` を新規追加 (`/api/searches` 系 CRUD)
+    - `client/src/model/state/recorded/search/{IRecordedSearchState,RecordedSearchState}.ts` に `tagId` / `tagItems` (親→子の順を保った階層表示用リスト) / `fetchTagItems()` を追加。`client/src/views/Recorded.vue` の `createFetchDataOption()` で route query の `tagId` を読み取るよう対応
+  - 視聴体験まわり (S2・S4・S17) の欠陥修正と未実装機能を追加（クライアント側のみ、サーバ変更なし）
   - **機能フラグ未ゲートの導線を全面ゲート**: ダッシュボードの新規カード (ストレージ使用状況・録り逃しアラート)、Next Up パネル、Settings の Next Up 関連設定を `isFeatureEnabled()` (`client/src/util/FeatureFlags.ts`) で判定して表示するよう統一。全フラグ既定 OFF の環境では追加した導線は一切表示されない
   - **S2 視聴履歴・未視聴バッジ**
     - `RecordedUtil.convertRecordedItemToDisplayData()` が `watchHistory` フラグ有効時に「未視聴 (履歴なし)/視聴中 (進捗バー付き)/視聴済み」の 3 状態を正しく出し分けるよう修正 (`display.watchStatus`)。`RecordedSmallCard.vue` / `RecordedLargeCard.vue` のバッジ表示・色分けは共通ユーティリティ `client/src/util/WatchStatusUtil.ts` に集約

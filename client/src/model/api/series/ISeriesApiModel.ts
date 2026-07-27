@@ -12,6 +12,7 @@ export type SeriesAliasItem = apid.SeriesAliasItem;
 export type MissingEpisodeProposal = apid.MissingEpisodeProposal;
 export type SeriesBackfillOption = apid.SeriesBackfillOption;
 export type SeriesBackfillResult = apid.SeriesBackfillResult;
+export type ProgramSeriesMetrics = apid.ProgramSeriesMetrics;
 export default interface ISeriesApiModel {
     list(keyword?: string, offset?: number, limit?: number): Promise<SeriesListResult>;
     getMissingEpisodeProposals(seriesId: number): Promise<MissingEpisodeProposal[]>;
@@ -32,4 +33,8 @@ export default interface ISeriesApiModel {
     getBackfillStatus(): Promise<SeriesBackfillResult>;
     cancelBackfill(): Promise<void>;
     reserveMissingEpisode(seriesId: number, seasonNumber: number, episodeNumber: number, programId: number): Promise<{ reserveId: number }>;
+    /**
+     * 番組⇄シリーズ事前マッピングの精度メトリクスを取得する (§4.10)
+     */
+    getMetrics(): Promise<ProgramSeriesMetrics>;
 }

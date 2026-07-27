@@ -11,6 +11,7 @@ import ISeriesApiModel, {
     MissingEpisodeProposal,
     SeriesBackfillOption,
     SeriesBackfillResult,
+    ProgramSeriesMetrics,
 } from './ISeriesApiModel';
 @injectable()
 export default class SeriesApiModel implements ISeriesApiModel {
@@ -76,5 +77,8 @@ export default class SeriesApiModel implements ISeriesApiModel {
     }
     public async reserveMissingEpisode(seriesId: number, seasonNumber: number, episodeNumber: number, programId: number): Promise<{ reserveId: number }> {
         return (await this.repository.post(`/series/${seriesId}/missing-episodes/reserve`, { seasonNumber, episodeNumber, programId })).data;
+    }
+    public async getMetrics(): Promise<ProgramSeriesMetrics> {
+        return (await this.repository.get('/schedules/series-metrics')).data;
     }
 }

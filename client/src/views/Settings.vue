@@ -4,7 +4,7 @@
         <transition name="page">
             <div v-if="isShow" ref="appContent" class="app-content">
                 <v-container>
-                    <v-btn block color="primary" class="mb-4" to="/settings/system">サーバー設定を開く</v-btn>
+                    <v-btn v-if="isShowSystemSettings === true" block color="primary" class="mb-4" to="/settings/system">サーバー設定を開く</v-btn>
                     <v-card class="mx-auto" max-width="800">
                         <v-list-item three-line>
                             <div class="v-list-item-content">
@@ -435,6 +435,13 @@ class Settings extends Vue {
     get isShowFollowingIndicatorSetting(): boolean {
         const config = this.serverConfigModel.getConfig();
         return isFeatureEnabled(config, 'seriesLibrary') === true && isFeatureEnabled(config, 'programSeriesMapping') === true;
+    }
+
+    /**
+     * サーバー設定 (システム設定) 画面への導線を表示するか (featureFlags.systemSettings 連動)
+     */
+    get isShowSystemSettings(): boolean {
+        return isFeatureEnabled(this.serverConfigModel.getConfig(), 'systemSettings');
     }
 
     public readonly guideModeItems: GuideModeItem[] = [
