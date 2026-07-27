@@ -564,9 +564,10 @@ stream:
 #     # timeoutMs: 30000
 #     # リクエスト間隔の下限 (ms)。省略時 0 (無制限)
 #     # minIntervalMs: 0
-#     # 応答の上限トークン数。省略時 200。思考過程を本文へ出す reasoning 系モデルは
-#     # 200 では JSON へ到達せず失敗するため 2000 程度が必要
-#     # maxTokens: 200
+#     # 応答の上限トークン数。省略時 2000。
+#     # OpenRouter のフリーモデルはほぼ reasoning 系で、本文の前に思考へ数百トークン使う。
+#     # 小さくすると content が空のまま finish_reason: length で切れて失敗する
+#     # maxTokens: 2000
 #
 # OpenRouter のフリーモデルを使う場合の例 (分あたり上限があるため minIntervalMs は必須と考えてよい)。
 # 思考過程を本文に混ぜる reasoning 系モデルは JSON 抽出に失敗しやすいので instruct 系を選ぶこと
@@ -577,8 +578,9 @@ stream:
 #     minIntervalMs: 3500
 #
 # 動作確認済みの組み合わせ (2026-07 時点): inclusionai/ling-3.0-flash:free が
-# 応答 1.5〜3.5 秒・抽出精度ともに良好。openai/gpt-oss-20b:free も可 (5〜6 秒とやや遅い)。
-# nvidia/nemotron-3-ultra-550b-a55b:free のような reasoning 系は書式指示に従わないことがあり非推奨
+# 抽出精度・応答速度 (2〜6 秒) ともに良好。openai/gpt-oss-20b:free も可。
+# nvidia/nemotron-3-ultra-550b-a55b:free は書式指示に従わないことがあり非推奨。
+# なお OpenRouter のフリーモデルはほぼ reasoning 系なので maxTokens は既定 (2000) のままにすること
 
 # サーバー起動時のシリーズ照合パイプライン (featureFlags.seriesLibrary: true の場合は既定で自動実行される)。
 # 起動 7 分後に作品辞書 (しょぼいカレンダー + Annict) の自動同期の完了を待ち、
