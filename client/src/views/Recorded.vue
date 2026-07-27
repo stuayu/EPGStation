@@ -332,6 +332,9 @@ class Recorded extends Vue {
         if (typeof this.$route.query.hasOriginalFile !== 'undefined') {
             option.hasOriginalFile = (this.$route.query.hasOriginalFile as any) === true || this.$route.query.hasOriginalFile === 'true';
         }
+        if (typeof this.$route.query.tagId !== 'undefined') {
+            option.tagId = parseInt(this.$route.query.tagId as string, 10);
+        }
 
         return option;
     }

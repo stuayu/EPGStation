@@ -1,11 +1,12 @@
 import IRuleApiModel from '@/model/api/rule/IRuleApiModel';
+import IRecordedTagApiModel from '@/model/api/recordedTag/IRecordedTagApiModel';
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../../api';
 import GenreUtil from '../../../../util/GenreUtil';
 import IRecordedApiModel from '../../../api/recorded/IRecordedApiModel';
 import IChannelModel from '../../../channels/IChannelModel';
 import { ISettingStorageModel } from '../../../storage/setting/ISettingStorageModel';
-import IRecordedSearchState, { SelectorItem } from './IRecordedSearchState';
+import IRecordedSearchState, { SelectorItem, TagTreeItem } from './IRecordedSearchState';
 
 @injectable()
 class RecordedSearchState implements IRecordedSearchState {
@@ -14,15 +15,18 @@ class RecordedSearchState implements IRecordedSearchState {
     public ruleId: apid.RuleId | null | undefined = null;
     public channelId: apid.ChannelId | undefined;
     public genre: apid.ProgramGenreLv1 | undefined;
+    public tagId: apid.RecordedTagId | undefined;
     public ruleKeyword: string | null = null;
     public ruleItems: apid.RuleKeywordItem[] = [];
     public channelItems: SelectorItem[] = [];
     public genreItems: SelectorItem[] = [];
+    public tagItems: TagTreeItem[] = [];
 
     private recordedApiModel: IRecordedApiModel;
     private ruleApiModel: IRuleApiModel;
     private channelModel: IChannelModel;
     private setting: ISettingStorageModel;
+    private tagApiModel: IRecordedTagApiModel;
     private searchOptions: apid.RecordedSearchOptions | null = null;
 
     constructor(
@@ -30,11 +34,46 @@ class RecordedSearchState implements IRecordedSearchState {
         @inject('IRuleApiModel') ruleApiModel: IRuleApiModel,
         @inject('IChannelModel') channelModel: IChannelModel,
         @inject('ISettingStorageModel') setting: ISettingStorageModel,
+        @inject('IRecordedTagApiModel') tagApiModel: IRecordedTagApiModel,
     ) {
         this.recordedApiModel = recordedApiModel;
         this.ruleApiModel = ruleApiModel;
         this.channelModel = channelModel;
         this.setting = setting;
+        this.tagApiModel = tagApiModel;
+    }
+
+    /**
+     * タグ一覧を取得し、親→子の順序を保った表示用ツリーへ変換する
+     * @return Promise<void>
+     */
+    public async fetchTagItems(): Promise<void> {
+        const result = await this.tagApiModel.gets();
+        const byParent = new Map<number | null, apid.RecordedTag[]>();
+        for (const tag of result.tags) {
+            const parentId = tag.parentId ?? null;
+            const list = byParent.get(parentId) ?? [];
+            list.push(tag);
+            byParent.set(parentId, list);
+        }
+
+        const items: TagTreeItem[] = [];
+        const appendChildren = (parentId: number | null, depth: number): void => {
+            const children = byParent.get(parentId) ?? [];
+            for (const tag of children) {
+                items.push({
+                    title: `${'　'.repeat(depth)}${depth > 0 ? '└ ' : ''}${tag.name}`,
+                    value: tag.id,
+                });
+                appendChildren(tag.id, depth + 1);
+            }
+        };
+        appendChildren(null, 0);
+
+        this.tagItems.splice(-this.tagItems.length);
+        for (const item of items) {
+            this.tagItems.push(item);
+        }
     }
 
     /**
@@ -106,6 +145,7 @@ class RecordedSearchState implements IRecordedSearchState {
         this.ruleId = null;
         this.channelId = undefined;
         this.genre = undefined;
+        this.tagId = undefined;
         this.ruleKeyword = null;
     }
 
