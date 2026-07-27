@@ -84,6 +84,10 @@ function removeMarkers(value: string, leadingBlock: RegExp): string {
 // 先頭ブロック除去を行わないことを表す、決して一致しないパターン
 const LEADING_BLOCK_NONE = /(?!)/u;
 
+// 照合キーの最大長。作品辞書テーブルの lookupKey は索引付きの varchar(255) (MySQL) なので、
+// これを超えるキーを作ると INSERT が ER_DATA_TOO_LONG で失敗する
+export const MAX_LOOKUP_KEY_LENGTH = 255;
+
 /**
  * 録画番組タイトルから先頭ノイズ・括弧マーカー・話数/放送種別表記・末尾サブタイトルを除去する (大文字小文字は保持)
  * NFKC 正規化 → マーカー除去 → 話数表記以降の除去 → 括弧付き作品名の展開 → 末尾ブロック除去 を行う
@@ -162,11 +166,17 @@ export function displaySeriesTitle(input: string): string {
  * ("ざつ旅-That's Journey-" と "ざつ旅―that’s journey―" が同じキーになる)。
  * ラテン文字の発音記号も畳むため "Übel Blatt" と "Ubel Blatt" が一致する
  * (日本語の濁点・半濁点は U+3099/U+309A で下記の範囲外なので影響しない)
+ *
+ * 生成したキーは MAX_LOOKUP_KEY_LENGTH で必ず切り詰める。
+ * 照合キーは DB 側が索引付きの varchar(255) (MySQL) なので、しょぼいカレンダーの
+ * サブタイトルに稀に入る曲目リストのような長文がそのまま来ると INSERT が
+ * ER_DATA_TOO_LONG で失敗し、辞書同期が丸ごと落ちる。
+ * 書き込み側・照合側の両方がこの関数を通るため、切り詰めても両者のキーは一致する
  * @param input: string 任意のタイトル文字列
  * @return string 照合キー (記号のみのタイトルでは空文字になりうる)
  */
 export function syobocalLookupKey(input: string): string {
-    return input
+    const key = input
         .normalize('NFKC')
         // ラテン文字の発音記号を落とす。分解 (NFD) したまま返すと日本語の濁点も
         // 分解形で残り比較がずれるため、除去後に必ず NFC へ戻す
@@ -175,6 +185,9 @@ export function syobocalLookupKey(input: string): string {
         .normalize('NFC')
         .toLocaleLowerCase('ja-JP')
         .replace(/[\s\u3000!-/:-@[-`{-~、。・～〜ー―－‐’‘′”“「」『』【】]/gu, '');
+
+    // サロゲートペアを割らないよう配列化してから切る
+    return key.length <= MAX_LOOKUP_KEY_LENGTH ? key : [...key].slice(0, MAX_LOOKUP_KEY_LENGTH).join('');
 }
 
 // タイトル中で 「」/『』 に囲まれた作品名。

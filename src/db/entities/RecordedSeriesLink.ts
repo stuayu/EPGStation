@@ -10,7 +10,8 @@ export default class RecordedSeriesLink extends BaseEntity {
     @Column({ type: 'integer' }) recordedId!: number;
     @Column({ type: 'integer' }) seriesId!: number;
     // recorded.channelId の非正規化カラム (§4.2)。listRecorded / listChannels での recorded への JOIN を避けるため保持する
-    @Column({ type: 'integer' }) channelId!: number;
+    // channelId は networkId * 100000 + serviceId で生成され int の上限 (2147483647) を超えるため bigint にする
+    @Column({ type: 'bigint' }) channelId!: number;
     @Column({ type: 'integer', nullable: true }) episodeId!: number | null;
     @Column({ type: 'text', default: 'unknown' }) airType: SeriesAirType = 'unknown';
     @Column({ type: 'text', default: 'title' }) matchMethod: SeriesMatchMethod = 'title';

@@ -6,7 +6,8 @@ export default class Series extends BaseEntity {
     @Column({ type: 'text' }) title!: string;
     @Column({ type: 'text' }) normalizedTitle!: string;
     @Column({ type: 'text', default: 'tv' }) mediaType: string = 'tv';
-    @Column({ type: 'integer', nullable: true }) preferredChannelId!: number | null;
+    // channelId は networkId * 100000 + serviceId で生成され int の上限 (2147483647) を超えるため bigint にする
+    @Column({ type: 'bigint', nullable: true }) preferredChannelId!: number | null;
     @Column({ type: 'integer', nullable: true }) syobocalTid!: number | null;
     @Column({ type: 'text', nullable: true }) annictId!: string | null;
     @Column({ type: 'integer', nullable: true }) tmdbId!: number | null;

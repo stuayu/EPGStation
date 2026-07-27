@@ -9,7 +9,8 @@ export default class SeriesPendingMatch extends BaseEntity {
     @PrimaryGeneratedColumn({ type: 'integer' }) id!: number;
     @Column({ type: 'integer' }) recordedId!: number;
     @Column({ type: 'text' }) normalizedTitle!: string;
-    @Column({ type: 'integer' }) channelId!: number;
+    // channelId は networkId * 100000 + serviceId で生成され int の上限 (2147483647) を超えるため bigint にする
+    @Column({ type: 'bigint' }) channelId!: number;
     // [{ seriesId: number, seriesTitle: string, score: number }] の JSON
     @Column({ type: 'text' }) candidatesJson!: string;
     @Column({ type: 'bigint' }) createdAt!: number;

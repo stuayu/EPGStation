@@ -88,8 +88,19 @@ class GuideState implements IGuideState {
         }
 
         try {
-            const result = await this.seriesApiModel.list({ offset: 0, limit: GuideState.FOLLOWING_TITLE_FETCH_LIMIT });
-            this.followingTitleSet = new Set(result.items.map(item => item.normalizedTitle));
+            // GET /api/series の limit には上限があるため、上限件数までページングして集める
+            const titles = new Set<string>();
+            for (let offset = 0; offset < GuideState.FOLLOWING_TITLE_FETCH_LIMIT; ) {
+                const limit = Math.min(
+                    GuideState.FOLLOWING_TITLE_PAGE_SIZE,
+                    GuideState.FOLLOWING_TITLE_FETCH_LIMIT - offset,
+                );
+                const result = await this.seriesApiModel.list({ offset: offset, limit: limit });
+                for (const item of result.items) titles.add(item.normalizedTitle);
+                offset += limit;
+                if (result.items.length < limit || offset >= result.total) break;
+            }
+            this.followingTitleSet = titles;
         } catch (err) {
             // インジケータはベストエフォート表示のため取得失敗時は非表示扱いにする
             console.error(err);
@@ -715,6 +726,8 @@ namespace GuideState {
     export const SINGLE_STATION_LENGTH = 24;
     // 追いかけ中インジケータ判定用に取得するシリーズ数の上限 (簡易実装のため全件走査はしない)
     export const FOLLOWING_TITLE_FETCH_LIMIT = 500;
+    // GET /api/series の limit 上限。これを超える limit は 400 になるため分割して取得する
+    export const FOLLOWING_TITLE_PAGE_SIZE = 100;
 }
 
 export default GuideState;
