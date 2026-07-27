@@ -2,10 +2,20 @@
 require('reflect-metadata');
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+// 鍵ファイルの保存先を一時ディレクトリに向け、テスト用の鍵を配置する
+// (KEY_FILE_PATH はモジュール読み込み時に確定するため require より前に設定する)
+const tmpKeyFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'epg-appsetting-')), 'secret.key');
+process.env.EPGSTATION_SECRET_KEY_FILE = tmpKeyFile;
+fs.writeFileSync(tmpKeyFile, 'test-key');
+
 const AppSettingApiModel = require('../../dist/model/api/config/AppSettingApiModel').default;
 const SecretCrypto = require('../../dist/model/security/SecretCrypto').default;
 
-const configuration = { getConfig: () => ({ featureFlags: { systemSettings: true }, secretKey: 'test-key' }) };
+const configuration = { getConfig: () => ({ featureFlags: { systemSettings: true } }) };
 
 function makeHistoryDB() {
     const rows = [];
@@ -62,7 +72,7 @@ test('system settings rejects access while feature is disabled', async () => {
     const model = new AppSettingApiModel(
         { getConfig: () => ({ featureFlags: {} }) },
         { getAll: async () => ({}) },
-        new SecretCrypto({ getConfig: () => ({ secretKey: 'x' }) }),
+        new SecretCrypto({ getConfig: () => ({}) }),
         makeHistoryDB(),
         makeIpc(),
     );
@@ -150,17 +160,24 @@ test('get() falls back to a placeholder for secrets that cannot be decrypted, in
     const model = new AppSettingApiModel(configuration, db, crypto, makeHistoryDB(), makeIpc());
     await model.update({ metadata: { annict: { token: 'token-1234' } } });
 
-    // secretKey が変わった (ローテーション) 状態を模したモデルで GET する
-    const rotatedCrypto = new SecretCrypto({ getConfig: () => ({ secretKey: 'different-key' }) });
+    // 鍵ファイルが変わった (ローテーション) 状態を模したモデルで GET する
+    fs.writeFileSync(tmpKeyFile, 'different-key');
+    const rotatedCrypto = new SecretCrypto({ getConfig: () => ({}) });
+    fs.writeFileSync(tmpKeyFile, 'test-key');
     const rotatedModel = new AppSettingApiModel(configuration, db, rotatedCrypto, makeHistoryDB(), makeIpc());
     const result = await rotatedModel.get();
     assert.equal(result.metadata.annict.token, '********(復号不可)');
 });
 
-// secretKey 未設定時の更新エラーは 500 でなく判別可能なメッセージにする
-test('update() throws a distinguishable error when secretKey is not configured', async () => {
+// 鍵ファイルが利用できない場合の更新エラーは 500 でなく判別可能なメッセージにする
+test('update() throws a distinguishable error when the key file is unusable', async () => {
     const db = makeDB();
+    // 鍵ファイルのパスをディレクトリにして読み書き不能な状態を模す
+    fs.rmSync(tmpKeyFile, { force: true });
+    fs.mkdirSync(tmpKeyFile);
     const crypto = new SecretCrypto({ getConfig: () => ({ featureFlags: { systemSettings: true } }) });
+    fs.rmdirSync(tmpKeyFile);
+    fs.writeFileSync(tmpKeyFile, 'test-key');
     const model = new AppSettingApiModel(
         { getConfig: () => ({ featureFlags: { systemSettings: true } }) },
         db,
