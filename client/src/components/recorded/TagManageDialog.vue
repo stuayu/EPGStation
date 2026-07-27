@@ -12,7 +12,7 @@
                         <v-text-field v-model="newColor" label="色" density="compact" hide-details placeholder="#FF0000"></v-text-field>
                     </v-col>
                     <v-col cols="4">
-                        <v-select v-model="newParentId" :items="parentSelectItems" label="親タグ" density="compact" clearable hide-details></v-select>
+                        <v-select v-model="newParentId" :items="parentSelectItems" item-title="title" label="親タグ" density="compact" clearable hide-details></v-select>
                     </v-col>
                 </v-row>
                 <v-btn class="mt-2" size="small" color="primary" variant="outlined" :disabled="newName.length === 0" :loading="adding" @click="addTag"
@@ -36,6 +36,7 @@
                                     <v-select
                                         v-model="editParentId"
                                         :items="parentSelectItemsExcluding(item.tag.id)"
+                                        item-title="title"
                                         density="compact"
                                         clearable
                                         hide-details
