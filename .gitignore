@@ -21,4 +21,6 @@ dist
 .cache
 data/upload/*
 data/key/*
+# シリーズのアイキャッチ画像キャッシュ (外部から取得した実行時データ)
+data/seriesImage/*
 !.gitkeep

@@ -14,11 +14,42 @@
             <v-text-field v-model="keyword" label="シリーズを検索" clearable prepend-inner-icon="mdi-magnify" @keyup.enter="load"></v-text-field>
             <v-row>
                 <v-col v-for="item in items" :key="item.id" cols="12" sm="6" md="4">
-                    <v-card :to="`/series/${item.id}`" height="100%">
+                    <v-card :to="`/series/${item.id}`" height="100%" class="d-flex flex-column">
+                        <!-- アイキャッチ画像 (Annict 作品辞書由来)。無い作品は代替表示にする -->
+                        <v-img
+                            v-if="item.hasImage"
+                            :src="`./api/series/${item.id}/image`"
+                            :alt="item.title"
+                            :aspect-ratio="16 / 9"
+                            cover
+                            class="bg-grey-lighten-3"
+                        >
+                            <template v-slot:placeholder>
+                                <div class="d-flex align-center justify-center fill-height">
+                                    <v-progress-circular indeterminate size="24" color="grey"></v-progress-circular>
+                                </div>
+                            </template>
+                            <template v-slot:error>
+                                <div class="d-flex align-center justify-center fill-height">
+                                    <v-icon size="40" color="grey">mdi-image-off-outline</v-icon>
+                                </div>
+                            </template>
+                        </v-img>
+                        <div v-else class="d-flex align-center justify-center bg-grey-lighten-3" :style="{ aspectRatio: '16 / 9' }">
+                            <v-icon size="40" color="grey">mdi-television-classic</v-icon>
+                        </div>
                         <v-card-title>{{ item.title }}</v-card-title>
                         <v-card-subtitle>{{ item.normalizedTitle }}</v-card-subtitle>
+                        <v-spacer></v-spacer>
                         <v-card-actions>
                             <v-chip size="small">{{ item.mediaType }}</v-chip>
+                            <v-spacer></v-spacer>
+                            <v-icon v-if="item.imageSource === 'thumbnail'" size="x-small" color="grey" title="録画サムネイルを表示しています">
+                                mdi-video-outline
+                            </v-icon>
+                            <span v-if="item.imageCopyright" class="text-caption text-grey text-truncate ml-1" :title="item.imageCopyright">
+                                {{ item.imageCopyright }}
+                            </span>
                         </v-card-actions>
                     </v-card>
                 </v-col>

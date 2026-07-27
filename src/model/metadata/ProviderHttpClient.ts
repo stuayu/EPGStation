@@ -87,7 +87,10 @@ export default class ProviderHttpClient implements IProviderHttpClient {
                 if (response.status === 304) {
                     return { status: response.status, headers: response.headers, text: '', json: <T>() => null as T };
                 }
-                const text = await response.text();
+                // バイナリ指定時は本文を Buffer で受け取る (画像などテキスト化できない応答用)
+                const isBuffer = option.responseType === 'buffer';
+                const buffer = isBuffer === true ? Buffer.from(await response.arrayBuffer()) : undefined;
+                const text = isBuffer === true ? '' : await response.text();
                 if (response.status === 429) {
                     if (i < attempts) {
                         await new Promise(r => setTimeout(r, this.retryAfterMs(response.headers, i)));
@@ -101,6 +104,7 @@ export default class ProviderHttpClient implements IProviderHttpClient {
                     headers: response.headers,
                     text,
                     json: <T>() => JSON.parse(text) as T,
+                    buffer,
                 };
             } catch (e) {
                 last = e;

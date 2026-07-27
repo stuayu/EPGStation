@@ -107,6 +107,13 @@ export default interface ISeriesDB {
     getSeries(id: number): Promise<Series | null>;
     listRecorded(seriesId: number, channelId?: number): Promise<SeriesRecordedRow[]>;
     listChannels(seriesId: number): Promise<SeriesChannelRow[]>;
+    /**
+     * 複数シリーズについて、代表となる録画サムネイルの相対パスを 1 クエリでまとめて引く
+     * (一覧表示でシリーズごとに問い合わせると N+1 になるため)
+     * @param seriesIds: number[]
+     * @return Promise<Map<number, string>> シリーズ ID → thumbnail.filePath
+     */
+    findThumbnailPaths(seriesIds: number[]): Promise<Map<number, string>>;
     deleteLink(recordedId: number): Promise<void>;
     countOtherLinksByEpisode(episodeId: number, recordedId: number): Promise<number>;
     updateExternalMetadata(id: number, value: { annictId?: string | null; syobocalTid?: number | null }): Promise<void>;

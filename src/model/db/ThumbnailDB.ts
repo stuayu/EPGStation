@@ -117,6 +117,16 @@ export default class ThumbnailDB implements IThumbnailDB {
     }
 
     /**
+     * 録画 ID からサムネイルを 1 件引く (シリーズのアイキャッチ代替に使う)
+     * @param recordedId: apid.RecordedId
+     * @return Promise<Thumbnail | null>
+     */
+    public async findByRecordedId(recordedId: apid.RecordedId): Promise<Thumbnail | null> {
+        const connection = await this.op.getConnection();
+        return await connection.getRepository(Thumbnail).findOne({ where: { recordedId }, order: { id: 'ASC' } });
+    }
+
+    /**
      * 全てのサムネイル情報を取得
      * @return Promise<Thumbnail[]>
      */

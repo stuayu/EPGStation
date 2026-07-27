@@ -41,7 +41,9 @@ const db = {
         ].filter(x => ch === undefined || Number(x.channelId) === ch),
     listChannels: async () => [{ channelId: 10, channelName: '局', count: '1' }],
 };
-const model = new SeriesApiModel({ getConfig: () => ({ featureFlags: { seriesLibrary: true } }) }, db);
+// アイキャッチ画像は装飾なので、既定では「画像なし」を返すスタブを渡す
+const imageModel = { getInfo: async () => null, getInfoMap: async () => new Map(), getFile: async () => null };
+const model = new SeriesApiModel({ getConfig: () => ({ featureFlags: { seriesLibrary: true } }) }, db, imageModel);
 test('series API clamps pagination and returns total', async () => {
     const x = await model.list('作品', -2, 500);
     assert.equal(x.total, 1);
@@ -53,6 +55,6 @@ test('series detail supports channel filtering and numeric conversion', async ()
     assert.equal(x.channels[0].count, 1);
 });
 test('series API is hidden while feature is disabled', async () => {
-    const m = new SeriesApiModel({ getConfig: () => ({ featureFlags: {} }) }, db);
+    const m = new SeriesApiModel({ getConfig: () => ({ featureFlags: {} }) }, db, imageModel);
     await assert.rejects(() => m.list(undefined, 0, 10), /SeriesLibraryFeatureIsDisabled/);
 });

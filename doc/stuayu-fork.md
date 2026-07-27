@@ -119,6 +119,14 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
   - **API / UI**: `GET`/`POST /api/settings/system/annict/works` (`AnnictWorkDictionaryStatus` / `AnnictWorkSyncResult`) を追加し、サーバー設定画面の連携タブに登録作品数・しょぼいカレンダーとの結合済件数の表示、「作品辞書を同期」ボタン、自動同期間隔の入力欄を追加した
   - **未検証事項**: `pushWatchRecord()` (視聴記録の書き込み) は実行すると Annict アカウントに実際の視聴記録が作成されるため、実 API での動作確認は行っていない。修正したのは参照クエリと同じ `works` → `searchWorks` の置換であり、読み取り側は実 API で確認済み
 
+- **シリーズ一覧にアイキャッチ画像を表示するようにした**
+  - **画像の出所**: 提供しているのは **Annict のみ**。しょぼいカレンダーは画像を持っていない (`TitleLookup` に画像フィールドが無く `/img/{TID}.jpg` も 404) ことを実 API で確認済み。Annict の `Work.image` から `recommendedImageUrl` → `facebookOgImageUrl` の順に採用し、`copyright` をクレジット表示用に保存する (`annict_work.imageUrl` / `imageCopyright`、sqlite/mysql 両方のマイグレーションあり)
+  - **`twitterBiggerAvatarUrl` は使わない**: 充足率は 84% と高いが、実体は `twitter.com/{account}/profile_image?size=bigger` という**現在は画像を返さない URL** (認証必須になり `text/html` が返る) なので候補から除外した
+  - **直リンクせずサーバ側でキャッシュして配信する**: Annict が返す URL は Annict の CDN ではなく**作品公式サイトの OGP 画像**を指す (`https://www.madoka-magica.com/tv/ogp.png` など)。そのままクライアントから直リンクすると (1) `http://` の URL が 1,375 件あり https 運用時に mixed content でブロックされる、(2) 公式サイトへの hotlink になる、(3) サイト改修で 404 になると表示が壊れる、という問題があるため、`SeriesImageModel` がサーバ側で一度だけ取得して `data/seriesImage/{annictId}.{ext}` にキャッシュし、`GET /api/series/{seriesId}/image` から配信する。Content-Type と最大サイズ (8MB) を検証し、取得失敗は 24 時間再取得しない
+  - **録画サムネイルへのフォールバック**: 実測で画像 URL を持つ作品は 34.2% (5,947/17,367)、さらに実際に取得できるのはその 78.8% (公式サイトが 404 になっているものが多い) と実効カバレッジが低いため、Annict 画像が無い/取れないシリーズは**既存の録画サムネイル**をアイキャッチとして代用する。一覧では N+1 を避けるため `SeriesDB.findThumbnailPaths()` が 1 クエリでまとめて解決する
+  - **API / UI**: `GET /api/series/{seriesId}/image` を追加し、`SeriesListItem` / `SeriesDetail` に `hasImage` / `imageSource` (`annict` | `thumbnail`) / `imageCopyright` を追加した。シリーズ一覧のカード上部に 16:9 で画像を表示し、画像が無いシリーズはアイコンのプレースホルダを出す。Annict 由来の画像にはカード下部に著作権表記を、サムネイル代替には録画アイコンを表示する
+  - **既存環境への反映**: `annict_work` に列を追加するだけのマイグレーションなので、既存の取り込み済み作品は `imageUrl` が NULL のまま。画像を出すには設定画面の「作品辞書を同期」を 1 度実行する (自動同期は 7 日間隔)
+
 - **Annict 接続テストのエラーメッセージが誤解を招く問題を修正**
   - `AnnictProvider.testConnection()` は Annict 連携が無効なときに `AnnictSyncFeatureIsDisabled` を返していたが、これは**視聴記録の自動同期** (`featureFlags.annictSync` / `metadata.annict.syncEnabled`) を指すコードで、実際の条件 (`metadata.annict.enabled` が false) とは別の設定を指していた。連携無効を表す `AnnictIsDisabled` を返すよう変更した
   - 設定画面がエラーコードをそのまま表示していたため、コードごとに「次に何をすればよいか」が分かる日本語へ変換するようにした (連携が無効 / トークン未設定 / トークンが無効 / 機能フラグが無効)。接続テストが**保存済みの設定**に対して行われる旨の注意書きも、保存が必要であることが分かる文面へ改めた

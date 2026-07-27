@@ -1267,6 +1267,12 @@ export interface SeriesListItem {
     mediaType: string;
     preferredChannelId: ChannelId | null;
     updatedAt: UnixtimeMS;
+    // アイキャッチ画像 (GET /api/series/{id}/image) が取得できるか
+    hasImage: boolean;
+    // 画像の出所 ('annict': 作品辞書の画像 / 'thumbnail': 録画から生成したサムネイル)
+    imageSource?: 'annict' | 'thumbnail' | null;
+    // 画像の著作権表記 (imageSource が 'annict' のときのみ入る)
+    imageCopyright?: string | null;
 }
 
 /**
