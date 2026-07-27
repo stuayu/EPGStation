@@ -12,7 +12,7 @@
                     ></WatchOnRecordedInfoCard>
                 </div>
                 <NextUpPanel
-                    v-if="videoParam !== null"
+                    v-if="videoParam !== null && isEnabledNextUpPanel === true"
                     :recordedId="videoParam.recordedId"
                     :isHalfWidth="false"
                     :streamingType="videoParam.type === 'RecordedStreaming' ? videoParam.streamingType : 'hls'"
@@ -32,7 +32,9 @@ import * as VideoParam from '@/components/video/ViedoParam';
 import IRecordedApiModel from '@/model/api/recorded/IRecordedApiModel';
 import IChannelModel from '@/model/channels/IChannelModel';
 import container from '@/model/ModelContainer';
+import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
+import { isFeatureEnabled } from '@/util/FeatureFlags';
 import JikkyoUtil from '@/util/JikkyoUtil';
 import Util from '@/util/Util';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
@@ -51,6 +53,14 @@ class WatchRecordedStreaming extends Vue {
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private recordedApiModel: IRecordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
     private channelModel: IChannelModel = container.get<IChannelModel>('IChannelModel');
+    private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
+
+    /**
+     * featureFlags.nextUpPanel が有効か (無効時はパネル自体を表示しない)
+     */
+    get isEnabledNextUpPanel(): boolean {
+        return isFeatureEnabled(this.serverConfigModel.getConfig(), 'nextUpPanel');
+    }
 
     @Watch('$route', { immediate: true, deep: true })
     public onUrlChange(): void {
