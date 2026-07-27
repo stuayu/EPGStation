@@ -10,7 +10,7 @@ import INotificationDispatcher from '../notification/INotificationDispatcher';
 import ILlmTitleExtractor from './ILlmTitleExtractor';
 import IWorkDictionary, { WorkMatch } from './IWorkDictionary';
 import ISeriesResolver, { SeriesRecordingInput } from './ISeriesResolver';
-import { displaySeriesTitle, normalizeSeriesTitle, parseSeriesInfo } from './SeriesNormalizer';
+import { displaySeriesTitle, isDerivedFromTitle, normalizeSeriesTitle, parseSeriesInfo } from './SeriesNormalizer';
 export function titleSimilarity(a: string, b: string): number {
     if (a === b) return 1;
     if (a.length < 2 || b.length < 2) return 0;
@@ -281,6 +281,8 @@ export default class SeriesResolver implements ISeriesResolver {
             // 直前の作品辞書フォールバックと同じタイトルなので、抽出結果はキャッシュから返る
             const extracted = await this.llmTitleExtractor.extractWorkTitle(recording.title);
             if (extracted === null) return null;
+            // 実在する別番組の名前を返す誤りを落とす (既存シリーズに当たってしまうため検証だけでは防げない)
+            if (isDerivedFromTitle(recording.title, extracted) === false) return null;
 
             const key = normalizeSeriesTitle(extracted);
             // 正規化キーが録画タイトルのものと同じなら、LLM は新しい情報を出せていない
@@ -355,6 +357,8 @@ export default class SeriesResolver implements ISeriesResolver {
         try {
             const extracted = await this.llmTitleExtractor.extractWorkTitle(recordedTitle);
             if (extracted === null) return null;
+            // 実在する別作品の名前を返す誤りを落とす (辞書で引けてしまうため辞書検証だけでは防げない)
+            if (isDerivedFromTitle(recordedTitle, extracted) === false) return null;
             const match = await this.workDictionary.lookup(extracted);
             if (match === null) return null;
             return { ...match, confidence: Math.min(match.confidence, 0.95) };

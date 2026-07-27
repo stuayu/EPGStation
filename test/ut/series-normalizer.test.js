@@ -9,3 +9,19 @@ test('falls back to the original title when normalization would otherwise produc
 test('detects (再) parenthesis rerun markers that the bracket-only regex previously missed',()=>{assert.equal(parseSeriesInfo('作品名(再)').airType,'rerun');assert.equal(parseSeriesInfo('作品名 再放送').airType,'rerun');assert.equal(parseSeriesInfo('作品名【再】').airType,'rerun');});
 
 test('displaySeriesTitle keeps original casing while removing episode markers',()=>{assert.equal(displaySeriesTitle('CLANNAD AFTER STORY(HDマスター版) #16'),'CLANNAD AFTER STORY(HDマスター版)');assert.equal(displaySeriesTitle('＜アニメギルド＞　作品名　第１２話「最終回」'),'作品名');assert.equal(normalizeSeriesTitle('CLANNAD AFTER STORY #16'),'clannad after story');});
+
+test('isDerivedFromTitle rejects a real-but-unrelated work name the llm hallucinated', () => {
+    const { isDerivedFromTitle } = require('../../dist/model/series/SeriesNormalizer');
+    // 装飾・話数・サブタイトルを取り除いただけの抽出は通す
+    assert.equal(isDerivedFromTitle('よわよわ先生 Lesson.1', 'よわよわ先生'), true);
+    assert.equal(isDerivedFromTitle('それいけ!アンパンマン「カレーパンマンとハロウィンマン・他」[多]', 'それいけ!アンパンマン'), true);
+    assert.equal(isDerivedFromTitle('MAO(15)「不知火」(16)', 'MAO'), true);
+    assert.equal(isDerivedFromTitle('第75回NHK紅白歌合戦 有吉・環奈・沙莉!', 'NHK紅白歌合戦'), true);
+
+    // 実在する別作品の名前 (辞書では引けてしまうので、ここで落とさないと誤リンクになる)
+    assert.equal(isDerivedFromTitle('あそビバ', 'あそびにいくヨ!'), false);
+    assert.equal(isDerivedFromTitle('TUF新春ロードショー', 'THE UNLIMITED -兵部京介-'), false);
+    assert.equal(isDerivedFromTitle('プロフェッショナルランキング★日曜劇場名場面ランキングBEST10', 'プロフェッショナル 仕事の流儀'), false);
+
+    assert.equal(isDerivedFromTitle('作品名', ''), false);
+});

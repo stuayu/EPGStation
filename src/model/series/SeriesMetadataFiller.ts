@@ -8,6 +8,7 @@ import ILoggerModel from '../ILoggerModel';
 import ILlmTitleExtractor from './ILlmTitleExtractor';
 import ISeriesMetadataFiller, { SeriesMetadataFillResult } from './ISeriesMetadataFiller';
 import IWorkDictionary, { WorkMatch } from './IWorkDictionary';
+import { isDerivedFromTitle } from './SeriesNormalizer';
 
 /**
  * 既存シリーズのクール (seasonYear/seasonName)・読み仮名・総話数・外部 ID を
@@ -161,6 +162,8 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
         try {
             const extracted = await this.llmExtractor.extractWorkTitle(seriesTitle);
             if (extracted === null) return null;
+            // 実在する別作品の名前を返す誤りを落とす (辞書で引けてしまうため辞書検証だけでは防げない)
+            if (isDerivedFromTitle(seriesTitle, extracted) === false) return null;
 
             return await this.workDictionary.lookup(extracted);
         } catch {
