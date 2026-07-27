@@ -87,6 +87,6 @@ test('series detail supports channel filtering and numeric conversion', async ()
     assert.equal(x.channels[0].count, 1);
 });
 test('series API is hidden while feature is disabled', async () => {
-    const m = new SeriesApiModel({ getConfig: () => ({ featureFlags: {} }) }, db, imageModel);
+    const m = new SeriesApiModel({ getConfig: () => ({ featureFlags: { seriesLibrary: false } }) }, db, imageModel);
     await assert.rejects(() => m.list({ offset: 0, limit: 10 }), /SeriesLibraryFeatureIsDisabled/);
 });

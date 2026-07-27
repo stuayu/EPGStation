@@ -1,7 +1,8 @@
 import { inject, injectable } from 'inversify';
 import IAnnictWorkDB from '../db/IAnnictWorkDB';
 import ISyobocalTitleDB from '../db/ISyobocalTitleDB';
-import { buildSeriesLookupKeys, syobocalLookupKey } from './SeriesNormalizer';
+import IWikidataProgramDB from '../db/IWikidataProgramDB';
+import { buildSeriesLookupKeys, strictProgramKey, syobocalLookupKey } from './SeriesNormalizer';
 import IWorkDictionary, { WorkMatch } from './IWorkDictionary';
 
 interface IndexEntry {
@@ -9,6 +10,8 @@ interface IndexEntry {
     syobocalTid: number | null;
     // Annict 作品 ID (しょぼいカレンダー単独作品では null)
     annictId: number | null;
+    // Wikidata 項目 ID (アニメ辞書単独の作品では null)
+    wikidataQid: string | null;
     // 0: 正式タイトル / 1: 略称・英題 / 2: 別名・かな・ローマ字
     rank: number;
 }
@@ -46,6 +49,9 @@ export default class WorkDictionary implements IWorkDictionary {
     private static readonly INDEX_REVALIDATE_MS = 5 * 60 * 1000;
 
     private index: Map<string, IndexEntry> | null = null;
+    // Wikidata 由来の厳密キー索引。一般番組は短く一般的なタイトルが多く含有一致で誤爆するため、
+    // 通常の索引とは分けて「完全一致でのみ引く」ようにする
+    private strictIndex: Map<string, IndexEntry> = new Map();
     // 含有・前方マッチ用に長さ降順で並べた照合キー
     private keysByLength: string[] = [];
     private indexBuiltAt: number = 0;
@@ -56,12 +62,14 @@ export default class WorkDictionary implements IWorkDictionary {
     constructor(
         @inject('ISyobocalTitleDB') private syobocalDB: ISyobocalTitleDB,
         @inject('IAnnictWorkDB') private annictDB: IAnnictWorkDB,
+        @inject('IWikidataProgramDB') private wikidataDB: IWikidataProgramDB,
     ) {}
 
     public async lookup(recordedTitle: string): Promise<WorkMatch | null> {
         const index = await this.ensureIndex();
-        if (index.size === 0) return null;
+        if (index.size === 0 && this.strictIndex.size === 0) return null;
 
+        // 1. アニメ辞書 (完全一致 → 含有 → 前方一致)
         for (const key of buildSeriesLookupKeys(recordedTitle)) {
             const hit = this.lookupKey(key, index);
             if (hit !== null) {
@@ -69,6 +77,12 @@ export default class WorkDictionary implements IWorkDictionary {
                 if (match !== null) return match;
             }
         }
+
+        // 2. Wikidata の全ジャンル辞書。誤爆を避けるため厳密キーの完全一致のみを見る
+        //    (装飾の除去は SeriesNormalizer / LLM 抽出の役目)
+        const strictHit = this.strictIndex.get(strictProgramKey(recordedTitle.normalize('NFKC')));
+        if (typeof strictHit !== 'undefined') return await this.toMatch(strictHit, 'exact');
+
         return null;
     }
 
@@ -96,12 +110,13 @@ export default class WorkDictionary implements IWorkDictionary {
      * しょぼいカレンダー側の正式タイトルを優先し、Annict 単独作品では Annict のタイトルを使う
      */
     private async toMatch(entry: IndexEntry, matchType: WorkMatch['matchType']): Promise<WorkMatch | null> {
-        const cacheKey = `${entry.syobocalTid ?? ''}:${entry.annictId ?? ''}:${matchType}`;
+        const cacheKey = `${entry.syobocalTid ?? ''}:${entry.annictId ?? ''}:${entry.wikidataQid ?? ''}:${matchType}`;
         const cached = this.matchCache.get(cacheKey);
         if (typeof cached !== 'undefined') return cached;
         const syobocal = entry.syobocalTid === null ? null : await this.syobocalDB.get(entry.syobocalTid);
         const annict = entry.annictId === null ? null : await this.annictDB.get(entry.annictId);
-        const title = syobocal?.title ?? annict?.title ?? null;
+        const wikidata = entry.wikidataQid === null ? null : await this.wikidataDB.get(entry.wikidataQid);
+        const title = syobocal?.title ?? annict?.title ?? wikidata?.title ?? null;
         if (title === null) {
             this.matchCache.set(cacheKey, null);
             return null;
@@ -110,6 +125,8 @@ export default class WorkDictionary implements IWorkDictionary {
         const match: WorkMatch = {
             syobocalTid: syobocal?.tid ?? null,
             annictId: annict?.annictId ?? null,
+            wikidataQid: wikidata?.qid ?? null,
+            tmdbId: wikidata?.tmdbId ?? null,
             title,
             // 読み仮名はしょぼいカレンダーの TitleYomi を優先し、無ければ Annict の titleKana を使う
             titleKana: syobocal?.titleYomi ?? annict?.titleKana ?? null,
@@ -128,7 +145,7 @@ export default class WorkDictionary implements IWorkDictionary {
                     : matchType === 'contain'
                       ? WorkDictionary.CONTAIN_CONFIDENCE
                       : WorkDictionary.PREFIX_CONFIDENCE,
-            source: syobocal !== null ? 'syobocal' : 'annict',
+            source: syobocal !== null ? 'syobocal' : annict !== null ? 'annict' : 'wikidata',
         };
         this.matchCache.set(cacheKey, match);
         return match;
@@ -226,7 +243,11 @@ export default class WorkDictionary implements IWorkDictionary {
             // 同じキーに複数作品が来た場合は rank の小さい方 (正式タイトル由来) を優先する。
             // 同順位なら既存を保ち、しょぼいカレンダー側の情報を Annict 側で補完する
             if (entry.rank < current.rank) {
-                index.set(key, { ...entry, syobocalTid: entry.syobocalTid ?? current.syobocalTid, annictId: entry.annictId ?? current.annictId });
+                index.set(key, {
+                    ...entry,
+                    syobocalTid: entry.syobocalTid ?? current.syobocalTid,
+                    annictId: entry.annictId ?? current.annictId,
+                });
             } else {
                 current.syobocalTid = current.syobocalTid ?? entry.syobocalTid;
                 current.annictId = current.annictId ?? entry.annictId;
@@ -235,15 +256,50 @@ export default class WorkDictionary implements IWorkDictionary {
 
         // 1. しょぼいカレンダー辞書
         for (const row of await this.syobocalDB.listAllAliases()) {
-            put(row.lookupKey, { syobocalTid: row.tid, annictId: null, rank: row.rank });
+            put(row.lookupKey, { syobocalTid: row.tid, annictId: null, wikidataQid: null, rank: row.rank });
         }
         // 2. Annict 辞書。syobocalTid を持つ作品は同じ作品として TID を併記する
         //    (これによりしょぼいカレンダー側の正式タイトルと Annict の英題が同一作品へ寄る)
         for (const row of await this.annictDB.listAllAliases()) {
-            put(row.lookupKey, { syobocalTid: row.syobocalTid, annictId: row.annictId, rank: row.rank });
+            put(row.lookupKey, {
+                syobocalTid: row.syobocalTid,
+                annictId: row.annictId,
+                wikidataQid: null,
+                rank: row.rank,
+            });
+        }
+
+        // 3. Wikidata 辞書 (全ジャンル)。P11648 で結び付く番組はアニメ辞書側の作品と同一視し、
+        //    新しい作品としては増やさない (既存エントリへ qid を併記するだけ)。
+        //    アニメ辞書に無い番組だけが Wikidata 単独エントリとして厳密キー索引へ入る
+        const strictIndex = new Map<string, IndexEntry>();
+        const tidToEntry = new Map<number, IndexEntry>();
+        for (const entry of index.values()) {
+            if (entry.syobocalTid !== null && tidToEntry.has(entry.syobocalTid) === false) {
+                tidToEntry.set(entry.syobocalTid, entry);
+            }
+        }
+        for (const row of await this.wikidataDB.listAllAliases()) {
+            if (row.strictKey.length < 2) continue;
+            const linked = row.syobocalTid === null ? undefined : tidToEntry.get(row.syobocalTid);
+            if (typeof linked !== 'undefined') {
+                // 既存 (しょぼいカレンダー / Annict) の作品と同一。qid を補うだけで作品は増やさない
+                linked.wikidataQid = linked.wikidataQid ?? row.qid;
+                continue;
+            }
+            const current = strictIndex.get(row.strictKey);
+            if (typeof current === 'undefined' || row.rank < current.rank) {
+                strictIndex.set(row.strictKey, {
+                    syobocalTid: row.syobocalTid,
+                    annictId: null,
+                    wikidataQid: row.qid,
+                    rank: row.rank,
+                });
+            }
         }
 
         this.index = index;
+        this.strictIndex = strictIndex;
         this.matchCache.clear();
         this.keysByLength = [...index.keys()]
             .filter(x => x.length >= WorkDictionary.MIN_KEY_LENGTH)
@@ -257,6 +313,6 @@ export default class WorkDictionary implements IWorkDictionary {
      * 索引の再構築要否を判断するための、辞書の内容を表す署名
      */
     private async signature(): Promise<string> {
-        return `${await this.syobocalDB.count()}:${await this.syobocalDB.getLatestLastUpdate()}:${await this.annictDB.count()}`;
+        return `${await this.syobocalDB.count()}:${await this.syobocalDB.getLatestLastUpdate()}:${await this.annictDB.count()}:${await this.wikidataDB.count()}`;
     }
 }

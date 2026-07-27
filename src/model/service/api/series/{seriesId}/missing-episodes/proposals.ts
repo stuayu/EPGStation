@@ -5,9 +5,7 @@ import * as api from '../../../../api';
 export const get: Operation = async (req, res) => {
     try {
         const seriesId = api.parseRequestParamInt(String(req.params.seriesId), 'seriesId');
-        const value = await container
-            .get<IMissingEpisodeApiModel>('IMissingEpisodeApiModel')
-            .listProposals(seriesId);
+        const value = await container.get<IMissingEpisodeApiModel>('IMissingEpisodeApiModel').listProposals(seriesId);
         api.responseJSON(res, 200, { proposals: value });
     } catch (e) {
         const message = api.getErrorMessage(e);

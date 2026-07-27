@@ -125,7 +125,7 @@ export default interface IConfigFile {
     socketioPort?: number;
     clientSocketioPort?: number;
     https?: HttpsConfig;
-    // 段階導入用。未指定の機能は常に無効として扱う
+    // 機能フラグ。**未指定の機能は有効**として扱うため、止めたいものだけ false を書く
     featureFlags?: FeatureFlags;
 
     // しょぼいカレンダー ChID ⇄ Mirakurun networkId/serviceId のマッピング表 (JSON) のパス。
@@ -268,6 +268,12 @@ export default interface IConfigFile {
             // 作品辞書の自動同期間隔 (ms)。省略時 7 日、0 以下で自動同期を停止する
             workSyncIntervalMs?: number;
         };
+        wikidata?: {
+            // 全ジャンルのテレビ番組辞書 (Wikidata) の取り込みを有効にするか (既定 true)
+            enabled?: boolean;
+            // 辞書の自動同期間隔 (ms)。省略時 7 日、0 以下で自動同期を停止する
+            syncIntervalMs?: number;
+        };
         syobocal?: {
             enabled?: boolean;
             // アニメ作品タイトル辞書の自動同期間隔 (ms)。省略時 24 時間、0 以下で自動同期を停止する
@@ -281,6 +287,8 @@ export default interface IConfigFile {
             syobocal?: string;
             // Annict GraphQL API (既定 https://api.annict.com/graphql)
             annict?: string;
+            // Wikidata SPARQL エンドポイント (既定 https://query.wikidata.org/sparql)
+            wikidata?: string;
             // Twitter アバター解決用 fxtwitter JSON API (既定 https://api.fxtwitter.com/)
             fxtwitter?: string;
             // 共有静的データ URL (既定なし。metadataSharedDataUrl と同義、こちらが優先)
@@ -301,10 +309,16 @@ export default interface IConfigFile {
         url?: string;
         // モデル名 (例: qwen2.5:7b-instruct)
         model?: string;
-        // API キー (ローカル LLM では通常不要)
+        // API キー (ローカル LLM では通常不要。OpenRouter 等のホスティング API では必須)
         apiKey?: string;
         // リクエストタイムアウト (ms)。既定 30000
         timeoutMs?: number;
+        // リクエスト間隔の下限 (ms)。既定 0 (無制限)。
+        // OpenRouter のフリーモデルのような分あたり上限がある API では 3500 程度を指定する
+        minIntervalMs?: number;
+        // 応答の上限トークン数。既定 200。
+        // 思考過程を本文へ出す reasoning 系モデルは 200 では JSON へ到達しないため 1000 以上が必要
+        maxTokens?: number;
     };
 
     // サーバー起動時のシリーズ照合パイプライン (featureFlags.seriesLibrary 有効時は既定で動作する)。

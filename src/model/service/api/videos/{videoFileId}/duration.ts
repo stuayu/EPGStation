@@ -7,7 +7,9 @@ export const get: Operation = async (req, res) => {
     const videoFileApiModel = container.get<IVideoApiModel>('IVideoApiModel');
 
     try {
-        const duration = await videoFileApiModel.getDuration(api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'));
+        const duration = await videoFileApiModel.getDuration(
+            api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'),
+        );
         api.responseJSON(res, 200, {
             duration: duration,
         });

@@ -37,6 +37,7 @@ EPGStation (stuayu フォーク) — 日本の DTV 録画管理ソフトウェ�
 - **Haiku に委譲**: 単純な列挙・検索、定型的な調査 (設定ファイル一覧、ログ確認など)、機械的な置換作業
 
 運用ルール:
+
 - 独立したタスクは並列で複数エージェントを起動する
 - 委譲時は「対象ディレクトリ」「読み取り専用か編集可か」「報告フォーマット (日本語 + 相対パス付き)」を明示する
 - サブエージェントの報告は鵜呑みにせず、重要な結論は Fable 5 がファイルを直接確認して検証してから統合する
@@ -89,7 +90,10 @@ npm run test:ci        # ut + ita + itb
 - **ライブ HLS は 2 モード**: cmd が `%streamFileDir%` を含まない場合は in-memory 配信 (fMP4 を `Fmp4Packager` → `HLSMemoryStoreModel` でメモリ保持、ディスク書き込みなし・Windows 対応・字幕非対応)。含む場合は従来の TS セグメント方式 (字幕対応)。配信周りを触る前に `doc/streaming-refresh.md` を読むこと
 - エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換 (省略時は PATH 上の tsreadex)
 - ストリーミング API の `req.query` は express-openapi がスキーマに従い数値へ型変換する。`mode` 等を文字列前提で扱わないこと (過去に 400 エラーの原因になった)
-- **シリーズ自動マッピングの主軸は外部の作品タイトル辞書**。しょぼいカレンダー (`SyobocalTitleDictionary`, `syobocal_title` 系 3 テーブル) と Annict (`AnnictWorkDictionary`, `annict_work` 系 2 テーブル) を `WorkDictionary` (`src/model/series/`) が 1 つのメモリ索引に統合し、`SeriesResolver` がそれを引く。録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバックなので、シリーズ判定を触るときは辞書側を先に疑うこと
+- **シリーズ自動マッピングの主軸は外部の作品タイトル辞書**。しょぼいカレンダー (`SyobocalTitleDictionary`, `syobocal_title` 系 3 テーブル)・Annict (`AnnictWorkDictionary`, `annict_work` 系 2 テーブル)・**Wikidata (`WikidataProgramDictionary`, `wikidata_program` 系 2 テーブル、全ジャンル)** の 3 つを `WorkDictionary` (`src/model/series/`) が 1 つのメモリ索引に統合し、`SeriesResolver` がそれを引く。録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバックなので、シリーズ判定を触るときは辞書側を先に疑うこと
+- **辞書間の重複はしょぼいカレンダー TID で結合して防ぐ**。Annict は `syobocalTid` フィールド、Wikidata は `P11648` を持つ。新しい辞書を足すときも同じキーで既存エントリへ合流させ、作品を二重に作らないこと
+- **Wikidata 由来のエントリは `strictProgramKey()` の完全一致のみで引く**。一般番組は短く一般的なタイトル (「パラダイス」等) が多く、アニメ辞書と同じ含有一致を許すと誤爆する。また `syobocalLookupKey()` は長音符を落とすため「あそビバ」と「あそビーバー」が衝突する
+- **機能フラグ (`featureFlags`) は opt-out**。未指定は有効として扱う (`isFeatureEnabled` は `!== false` 判定)。テストで「機能無効」を表現するときは `featureFlags: {}` ではなく該当キーに `false` を明示すること
 - **Annict GraphQL API のクエリを書くときは実 API のスキーマを introspection で確認すること**。`Query.works` は存在せず `searchWorks` のみ、`Episode` に `airedAt` は無い。存在しないフィールドを 1 つ含めるだけでクエリ全体が GraphQL エラーになる (過去にこれで `get()` / `pushWatchRecord()` が全く動いていなかった)。Annict は全クエリでアクセストークン必須 (未認証は 401)
 - 録画タイトルの正規化 (`SeriesNormalizer`) は実データの表記ゆれに合わせた正規表現の塊。**変更したら必ず `test/ut/series-normalizer.test.js` と `test/ita/series-backfill-idempotency.test.js` を通す**こと (「(HDマスター版) は版違いとして残す」「`アニメA 第1話` の `アニメA` は編成ブロック冠ではなく作品名」など、テストが意図を固定している)
 - 秘密情報の暗号化鍵は `data/key/secret.key` に自動生成される (config.yml の `secretKey` は廃止、旧値は初回起動時に鍵ファイルへ移行)。パスは環境変数 `EPGSTATION_SECRET_KEY_FILE` で上書き可能

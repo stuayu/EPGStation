@@ -57,13 +57,24 @@ function stubTitleDictionary(match = null) {
         getStatus: async () => ({ titleCount: 0, lastUpdate: null, lastSyncedAt: null, running: false, error: null }),
     };
 }
-function resolver(db, threshold = 0.8, notification = stubNotification(), titleDictionary = stubTitleDictionary()) {
+// LLM フォールバックは既定で無効 (設定しない限り呼ばれない)
+function stubLlm(extracted = null, enabled = extracted !== null) {
+    return { isEnabled: () => enabled, isSuspended: () => false, extractWorkTitle: async () => extracted };
+}
+function resolver(
+    db,
+    threshold = 0.8,
+    notification = stubNotification(),
+    titleDictionary = stubTitleDictionary(),
+    llm = stubLlm(),
+) {
     return new SeriesResolver(
         { getConfig: () => ({ featureFlags: { seriesLibrary: true } }) },
         { getAll: async () => ({ series: { matchThreshold: threshold } }) },
         db,
         notification,
         titleDictionary,
+        llm,
     );
 }
 test('title similarity handles exact and unrelated titles', () => {
@@ -100,7 +111,7 @@ test('manual links are never overwritten', async () => {
 test('feature flag keeps resolver disabled', async () => {
     const db = memory();
     const r = new SeriesResolver(
-        { getConfig: () => ({ featureFlags: {} }) },
+        { getConfig: () => ({ featureFlags: { seriesLibrary: false } }) },
         { getAll: async () => ({}) },
         db,
         stubNotification(),
@@ -169,4 +180,51 @@ test('a newly auto-created series gets a cleaned display title (no episode numbe
     assert.equal(created.length, 1);
     assert.equal(created[0].title, 'CLANNAD AFTER STORY(HDマスター版)');
     assert.equal(created[0].normalizedTitle, 'clannad after story(hdマスター版)');
+});
+
+test('llm groups a non-anime programme into an existing series and learns the rule', async () => {
+    // バラエティ番組。作品辞書 (アニメのみ) には載らないが、既存シリーズへ束ねたい
+    const series = { id: 7, title: 'バナナマンのせっかくグルメ', normalizedTitle: 'バナナマンのせっかくグルメ', preferredChannelId: 10 };
+    const db = memory([series]);
+    const aliases = [];
+    db.upsertAlias = async (normalizedTitle, seriesId, createdAt, source) =>
+        aliases.push({ normalizedTitle, seriesId, source });
+
+    const link = await resolver(
+        db,
+        0.8,
+        stubNotification(),
+        stubTitleDictionary(),
+        stubLlm('バナナマンのせっかくグルメ'),
+    ).resolve({
+        recordedId: 5,
+        title: 'バナナマンのせっかくグルメ★日村が秋田で新米&名物メシを食べまくる2時間SP',
+        channelId: 20,
+        startAt: 100,
+    });
+
+    assert.equal(link.seriesId, 7);
+    assert.equal(link.matchMethod, 'llm');
+    // 次回以降は LLM を引かずにエイリアスだけで確定できるようにする
+    assert.equal(aliases.length, 1);
+    assert.equal(aliases[0].seriesId, 7);
+    assert.equal(aliases[0].source, 'llm');
+});
+
+test('llm grouping does nothing when the extracted title has no existing series', async () => {
+    const series = { id: 7, title: '別番組', normalizedTitle: '別番組', preferredChannelId: 10 };
+    const db = memory([series]);
+    let learned = 0;
+    db.upsertAlias = async () => learned++;
+
+    const link = await resolver(db, 0.8, stubNotification(), stubTitleDictionary(), stubLlm('存在しない番組')).resolve({
+        recordedId: 5,
+        title: 'まったく別のタイトル',
+        channelId: 20,
+        startAt: 100,
+    });
+
+    // 既存シリーズと完全一致しないので LLM 経由では確定させない (通常のスコアリングへ委ねる)
+    assert.notEqual(link?.matchMethod, 'llm');
+    assert.equal(learned, 0);
 });

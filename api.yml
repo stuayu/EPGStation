@@ -2842,6 +2842,7 @@ components:
                 - normalizedTitle
                 - seriesId
                 - seriesTitle
+                - source
                 - createdAt
             properties:
                 id:
@@ -2850,6 +2851,12 @@ components:
                     type: string
                 seriesId:
                     $ref: '#/components/schemas/SeriesId'
+                source:
+                    description: 学習元 (manual = 手動修正 / llm = LLM 抽出を検証して自動学習)
+                    type: string
+                    enum:
+                        - manual
+                        - llm
                 seriesTitle:
                     type: string
                 createdAt:

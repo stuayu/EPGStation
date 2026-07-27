@@ -29,7 +29,11 @@ export default class StreamProfileManageModel implements IStreamProfileManageMod
      * @return StreamProfile | null
      */
     public getProfile(id: string): StreamProfile | null {
-        const all = [...this.getLiveProfiles(), ...this.getRecordedProfiles('ts'), ...this.getRecordedProfiles('encoded')];
+        const all = [
+            ...this.getLiveProfiles(),
+            ...this.getRecordedProfiles('ts'),
+            ...this.getRecordedProfiles('encoded'),
+        ];
 
         return all.find(profile => profile.id === id) ?? null;
     }
@@ -91,7 +95,9 @@ export default class StreamProfileManageModel implements IStreamProfileManageMod
      */
     public resolveLegacyMode(kind: StreamProfileKind, container: StreamContainer, mode: number): StreamProfile | null {
         const profiles = (
-            kind === 'live' ? this.getLiveProfiles() : this.getRecordedProfiles(kind === 'recordedTs' ? 'ts' : 'encoded')
+            kind === 'live'
+                ? this.getLiveProfiles()
+                : this.getRecordedProfiles(kind === 'recordedTs' ? 'ts' : 'encoded')
         ).filter(profile => profile.container === container);
 
         return profiles[mode] ?? null;
@@ -156,7 +162,12 @@ export default class StreamProfileManageModel implements IStreamProfileManageMod
      * @param audio?: StreamAudioParam
      * @return string
      */
-    private buildCmd(scope: ProfileScope, container: StreamContainer, video?: StreamVideoParam, audio?: StreamAudioParam): string {
+    private buildCmd(
+        scope: ProfileScope,
+        container: StreamContainer,
+        video?: StreamVideoParam,
+        audio?: StreamAudioParam,
+    ): string {
         const isLive = scope === 'live';
         const isEncodedSource = scope === 'recordedEncoded';
 

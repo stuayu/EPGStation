@@ -1,5 +1,13 @@
 export default interface ILlmTitleExtractor {
     /**
+     * レート制限・連続失敗で一時的に呼び出しを休止中か。
+     * 休止中は extractWorkTitle() が問い合わせを行わず即座に null を返すため、
+     * 大量のタイトルをまとめて処理する呼び出し側は、これを見て残りを次回へ回すこと
+     * (見ないと休止時間内に残り全件が「抽出できず」で消化されてしまう)
+     * @return boolean
+     */
+    isSuspended(): boolean;
+    /**
      * ローカル LLM フォールバックが利用可能か (config.yml の seriesLlm.url / model が設定されているか)
      */
     isEnabled(): boolean;

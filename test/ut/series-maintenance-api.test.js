@@ -6,7 +6,7 @@ const PendingModel = require('../../dist/model/api/series/SeriesPendingApiModel'
 const MaintenanceModel = require('../../dist/model/api/series/SeriesMaintenanceApiModel').default;
 const AliasModel = require('../../dist/model/api/series/SeriesAliasApiModel').default;
 const config = { getConfig: () => ({ featureFlags: { seriesLibrary: true } }) };
-const disabledConfig = { getConfig: () => ({ featureFlags: {} }) };
+const disabledConfig = { getConfig: () => ({ featureFlags: { seriesLibrary: false } }) };
 
 function pendingFixture() {
     const recorded = { id: 7, name: '作品 第1話', channelId: 10, startAt: 100 };

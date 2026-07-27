@@ -118,7 +118,8 @@ export default class MetadataService implements IMetadataService {
         const value = await provider.get(externalId, { etag: cached?.etag ?? null });
         if (value === METADATA_NOT_MODIFIED) {
             // 304: 内容は変わっていないのでキャッシュの有効期限だけ延長する
-            if (cachedWork) await this.cache.put(providerName, externalId, cachedWork, cached?.etag ?? null, Date.now() + ttl);
+            if (cachedWork)
+                await this.cache.put(providerName, externalId, cachedWork, cached?.etag ?? null, Date.now() + ttl);
             return cachedWork;
         }
         if (value) await this.cache.put(providerName, externalId, value, value.etag ?? null, Date.now() + ttl);
@@ -159,10 +160,17 @@ export default class MetadataService implements IMetadataService {
         if (!provider) return [];
         const cacheKey = this.searchCacheKey(query, context);
         const cached = await this.cache.get(MetadataService.SEARCH_CACHE_PROVIDER_PREFIX + providerName, cacheKey);
-        if (cached && Number(cached.expiresAt) > Date.now()) return JSON.parse(cached.payload) as MetadataSearchResult[];
+        if (cached && Number(cached.expiresAt) > Date.now())
+            return JSON.parse(cached.payload) as MetadataSearchResult[];
         const value = await provider.search(query, context);
         const ttl = await this.cacheTtlMs();
-        await this.cache.put(MetadataService.SEARCH_CACHE_PROVIDER_PREFIX + providerName, cacheKey, value, null, Date.now() + ttl);
+        await this.cache.put(
+            MetadataService.SEARCH_CACHE_PROVIDER_PREFIX + providerName,
+            cacheKey,
+            value,
+            null,
+            Date.now() + ttl,
+        );
         return value;
     }
 

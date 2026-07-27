@@ -205,7 +205,8 @@ export function validateAppSettingValue(key: string, value: unknown): void {
     const schema = APP_SETTING_SCHEMA[key];
     if (!schema) throw new Error(`UnknownAppSetting:${key}`);
     const size = Buffer.byteLength(JSON.stringify(value ?? null), 'utf8');
-    if (size > MAX_VALUE_BYTES) throw new Error(`AppSettingInvalid:${key}:value too large (max ${MAX_VALUE_BYTES} bytes)`);
+    if (size > MAX_VALUE_BYTES)
+        throw new Error(`AppSettingInvalid:${key}:value too large (max ${MAX_VALUE_BYTES} bytes)`);
     validateAgainst(schema, value, key);
 }
 

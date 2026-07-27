@@ -13,6 +13,10 @@ export interface NewSeries {
     syobocalTid?: number | null;
     // 作品辞書で確定した場合の Annict 作品 ID
     annictId?: string | null;
+    // 全ジャンル番組辞書 (Wikidata) で確定した場合の項目 ID
+    wikidataQid?: string | null;
+    // Wikidata 経由で判明した TMDb テレビシリーズ ID
+    tmdbId?: number | null;
     // 読み仮名 (あいうえお順の並べ替え用)
     titleKana?: string | null;
     // 放送クール
@@ -136,6 +140,12 @@ export default interface ISeriesDB {
      * @return Promise<Series | null>
      */
     findByAnnictId(annictId: string): Promise<Series | null>;
+    /**
+     * Wikidata 項目 ID からシリーズを引く (アニメ辞書に無い番組を同一シリーズへ寄せるために使う)
+     * @param wikidataQid: string
+     * @return Promise<Series | null>
+     */
+    findByWikidataQid(wikidataQid: string): Promise<Series | null>;
     createSeries(value: NewSeries): Promise<Series>;
     findEpisode(seriesId: number, seasonNumber: number, episodeNumber: number | null): Promise<SeriesEpisode | null>;
     findEpisodeById(id: number): Promise<SeriesEpisode | null>;
@@ -183,6 +193,8 @@ export default interface ISeriesDB {
         value: {
             annictId?: string | null;
             syobocalTid?: number | null;
+            wikidataQid?: string | null;
+            tmdbId?: number | null;
             titleKana?: string | null;
             seasonYear?: number | null;
             seasonName?: string | null;
@@ -201,7 +213,15 @@ export default interface ISeriesDB {
 
     // --- エイリアス辞書 (S11 §4.8) ---
     findAlias(normalizedTitle: string): Promise<SeriesAlias | null>;
-    upsertAlias(normalizedTitle: string, seriesId: number, createdAt: number): Promise<SeriesAlias>;
+    /**
+     * エイリアス辞書へ「正規化タイトル → シリーズ」の対応を記録する
+     * @param normalizedTitle: string
+     * @param seriesId: number
+     * @param createdAt: number
+     * @param source: string 学習元 ('manual': 手動修正 / 'llm': LLM 抽出 + 検証済み)
+     * @return Promise<SeriesAlias>
+     */
+    upsertAlias(normalizedTitle: string, seriesId: number, createdAt: number, source?: string): Promise<SeriesAlias>;
     listAlias(seriesId?: number): Promise<SeriesAlias[]>;
     deleteAlias(id: number): Promise<void>;
 

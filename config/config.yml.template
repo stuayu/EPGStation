@@ -486,20 +486,20 @@ stream:
 # 秘密情報暗号化鍵は data/key/secret.key へ自動生成・保存されます (config.yml での指定は廃止)。
 # 旧バージョンで secretKey を設定していた場合は、初回起動時にその値が鍵ファイルへ移行されます。
 
-# 段階導入用機能フラグ。明示的に true にした機能だけが有効になります。
-# 未指定の項目は false として扱われます。
-featureFlags:
-    watchHistory: false
-    notifications: false
-    dashboard: false
-    systemSettings: false
-    seriesLibrary: false
-    metadataProviders: false
-    programSeriesMapping: false
-    annictSync: false
-    nextUpPanel: false
-    externalFileImport: false
-    advancedSearch: false
+# 機能フラグ。**未指定の項目は有効**として扱われます。
+# 止めたい機能だけ false を書いてください (featureFlags 自体を省略すると全機能が有効)。
+# featureFlags:
+#     watchHistory: true
+#     notifications: true
+#     dashboard: true
+#     systemSettings: true
+#     seriesLibrary: true
+#     metadataProviders: true
+#     programSeriesMapping: true
+#     annictSync: true
+#     nextUpPanel: true
+#     externalFileImport: true
+#     advancedSearch: true
 
 # しょぼいカレンダー ChID ⇄ Mirakurun networkId/serviceId のマッピング表 (JSON) のパス。
 # 省略時は同梱の初期データ (主要地上波キー局のみ) を使う。指定したファイルの内容は同梱データを
@@ -522,6 +522,13 @@ featureFlags:
 #         # しょぼいカレンダーのアニメ作品タイトル辞書 (シリーズ自動マッピングの照合辞書) の
 #         # 自動同期間隔 (ms)。省略時 24 時間。0 を指定すると自動同期を行わない
 #         titleSyncIntervalMs: 86400000
+#     wikidata:
+#         # 全ジャンルのテレビ番組辞書 (Wikidata) を取り込むか (既定 true)。
+#         # しょぼいカレンダー / Annict がアニメ専門なのに対し、ドラマ・バラエティ・情報番組・
+#         # ニュース、さらにローカル局の番組まで収録している (約 4 万件)。API キー不要
+#         enabled: true
+#         # 辞書の自動同期間隔 (ms)。省略時 7 日。0 を指定すると自動同期を行わない
+#         syncIntervalMs: 604800000
 #     annict:
 #         enabled: false
 #         # Annict の作品辞書 (英題・ローマ字・syobocalTid 対応表) の自動同期間隔 (ms)。
@@ -535,14 +542,17 @@ featureFlags:
 #     endpoints:
 #         syobocal: 'https://cal.syoboi.jp/db.php'
 #         annict: 'https://api.annict.com/graphql'
+#         wikidata: 'https://query.wikidata.org/sparql'
 #         fxtwitter: 'https://api.fxtwitter.com/'
 #         # 共有静的データ URL (metadataSharedDataUrl と同義、こちらが優先)
 #         sharedData: ''
 
-# シリーズ自動マッピングのローカル LLM フォールバック (featureFlags.seriesLibrary: true の場合のみ有効)。
-# 作品辞書 (しょぼいカレンダー + Annict) で確定できなかった録画タイトルだけを OpenAI 互換 API へ渡し、
+# シリーズ自動マッピングの LLM フォールバック (featureFlags.seriesLibrary: true の場合のみ有効)。
+# 作品辞書 (しょぼいカレンダー + Annict) で確定できなかったものだけを OpenAI 互換 API へ渡し、
 # 抽出された作品名で辞書を引き直す。url と model の両方を指定した場合のみ有効になる。
-# 抽出結果は必ず辞書で検証されるため、LLM の誤生成単体で誤リンクには至らない
+# 抽出結果は必ず辞書で検証されるため、LLM の誤生成単体で誤リンクには至らない。
+# 対象は (1) 録画単位: 辞書で引けなかった録画タイトル (2) シリーズ単位: 辞書で引けず
+# syobocalTid / annictId が両方とも空のシリーズ (メタデータ再取得の実行時)
 # seriesLlm:
 #     # OpenAI 互換 Chat Completions API のベース URL (Ollama: http://localhost:11434/v1)
 #     url: 'http://localhost:11434/v1'
@@ -552,6 +562,23 @@ featureFlags:
 #     # apiKey: ''
 #     # リクエストタイムアウト (ms)。省略時 30000
 #     # timeoutMs: 30000
+#     # リクエスト間隔の下限 (ms)。省略時 0 (無制限)
+#     # minIntervalMs: 0
+#     # 応答の上限トークン数。省略時 200。思考過程を本文へ出す reasoning 系モデルは
+#     # 200 では JSON へ到達せず失敗するため 2000 程度が必要
+#     # maxTokens: 200
+#
+# OpenRouter のフリーモデルを使う場合の例 (分あたり上限があるため minIntervalMs は必須と考えてよい)。
+# 思考過程を本文に混ぜる reasoning 系モデルは JSON 抽出に失敗しやすいので instruct 系を選ぶこと
+# seriesLlm:
+#     url: 'https://openrouter.ai/api/v1'
+#     model: 'inclusionai/ling-3.0-flash:free'
+#     apiKey: 'sk-or-v1-xxxxxxxx'
+#     minIntervalMs: 3500
+#
+# 動作確認済みの組み合わせ (2026-07 時点): inclusionai/ling-3.0-flash:free が
+# 応答 1.5〜3.5 秒・抽出精度ともに良好。openai/gpt-oss-20b:free も可 (5〜6 秒とやや遅い)。
+# nvidia/nemotron-3-ultra-550b-a55b:free のような reasoning 系は書式指示に従わないことがあり非推奨
 
 # サーバー起動時のシリーズ照合パイプライン (featureFlags.seriesLibrary: true の場合は既定で自動実行される)。
 # 起動 7 分後に作品辞書 (しょぼいカレンダー + Annict) の自動同期の完了を待ち、

@@ -59,7 +59,11 @@ export default class AnnictWorkDB implements IAnnictWorkDB {
 
     public async countLinkedToSyobocal(): Promise<number> {
         const connection = await this.op.getConnection();
-        return await connection.getRepository(AnnictWork).createQueryBuilder('w').where('w.syobocalTid IS NOT NULL').getCount();
+        return await connection
+            .getRepository(AnnictWork)
+            .createQueryBuilder('w')
+            .where('w.syobocalTid IS NOT NULL')
+            .getCount();
     }
 
     public async listAllAliases(): Promise<AnnictWorkAliasWithLink[]> {
@@ -116,7 +120,11 @@ export default class AnnictWorkDB implements IAnnictWorkDB {
         const connection = await this.op.getConnection();
         for (let i = 0; i < rows.length; i += AnnictWorkDB.INSERT_CHUNK_SIZE) {
             const chunk = rows.slice(i, i + AnnictWorkDB.INSERT_CHUNK_SIZE);
-            const builder = connection.createQueryBuilder().insert().into(entity).values(chunk as any);
+            const builder = connection
+                .createQueryBuilder()
+                .insert()
+                .into(entity)
+                .values(chunk as any);
             if (updateColumns !== null && conflictColumns !== null) {
                 builder.orUpdate(updateColumns, conflictColumns);
             }

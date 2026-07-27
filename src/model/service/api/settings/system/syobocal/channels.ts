@@ -43,7 +43,8 @@ get.apiDoc = {
     tags: ['settings'],
     responses: {
         200: {
-            description: 'マッピング表 (設定画面 (DB) からの登録分のみ。同梱/共有静的データ/ローカルファイルは含まない)',
+            description:
+                'マッピング表 (設定画面 (DB) からの登録分のみ。同梱/共有静的データ/ローカルファイルは含まない)',
             content: {
                 'application/json': {
                     schema: { type: 'array', items: { $ref: '#/components/schemas/SyobocalChannelMapEntry' } },

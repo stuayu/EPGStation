@@ -26,7 +26,7 @@ test('recorded list does not query watch history while feature is off', async ()
     const recordedDB = { findAll: async () => [[{ id: 1 }], 1] };
     const itemUtil = { convertRecordedToRecordedItem: () => ({ id: 1, videoFiles: [{ id: 10 }] }) };
     let called = false;
-    const model = new RecordedApiModel({}, recordedDB, { getRecordedIndex: () => ({}) }, itemUtil, { getConfig: () => ({ featureFlags: {} }) }, { findByVideoFileIds: async () => { called = true; return []; } });
+    const model = new RecordedApiModel({}, recordedDB, { getRecordedIndex: () => ({}) }, itemUtil, { getConfig: () => ({ featureFlags: { watchHistory: false } }) }, { findByVideoFileIds: async () => { called = true; return []; } });
     await model.gets({ isHalfWidth: false });
     assert.equal(called, false);
 });

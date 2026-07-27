@@ -238,9 +238,7 @@ export default class StreamApiModel implements IStreamApiModel {
         // 表示用 mode: クライアントが数値 mode を指定した場合はそのまま使用し、
         // profile 指定の場合はコンテナ内でのプロファイルの並び順を代用する
         const displayMode =
-            typeof option.mode === 'number'
-                ? option.mode
-                : this.getProfileIndexInContainer(kind, container, profile);
+            typeof option.mode === 'number' ? option.mode : this.getProfileIndexInContainer(kind, container, profile);
 
         return {
             profile: profile,
@@ -255,7 +253,11 @@ export default class StreamApiModel implements IStreamApiModel {
      * @param profile: StreamProfile
      * @return number
      */
-    private getProfileIndexInContainer(kind: StreamProfileKind, container: StreamContainer, profile: StreamProfile): number {
+    private getProfileIndexInContainer(
+        kind: StreamProfileKind,
+        container: StreamContainer,
+        profile: StreamProfile,
+    ): number {
         const profiles = (
             kind === 'live'
                 ? this.streamProfileManageModel.getLiveProfiles()

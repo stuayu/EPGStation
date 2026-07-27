@@ -9,8 +9,26 @@ export interface SeriesParseResult {
 // 話数に使われる漢数字 (「第壱話」「漆話」など)
 const KANJI_NUMERALS = '一二三四五六七八九十壱弐参肆伍陸漆捌玖拾百';
 const KANJI_NUMERAL_VALUES: Readonly<Record<string, number>> = {
-    一: 1, 壱: 1, 二: 2, 弐: 2, 三: 3, 参: 3, 四: 4, 肆: 4, 五: 5, 伍: 5,
-    六: 6, 陸: 6, 七: 7, 漆: 7, 八: 8, 捌: 8, 九: 9, 玖: 9, 十: 10, 拾: 10,
+    一: 1,
+    壱: 1,
+    二: 2,
+    弐: 2,
+    三: 3,
+    参: 3,
+    四: 4,
+    肆: 4,
+    五: 5,
+    伍: 5,
+    六: 6,
+    陸: 6,
+    七: 7,
+    漆: 7,
+    八: 8,
+    捌: 8,
+    九: 9,
+    玖: 9,
+    十: 10,
+    拾: 10,
 };
 // 話数として扱う助数詞。放送局によって「話」以外 (第1幕・第2旅 等) が使われる
 const EPISODE_COUNTER = '(?:話|幕|旅|夜|章|回|羽|滑|品|球|杯)';
@@ -75,7 +93,10 @@ function removeMarkers(value: string, leadingBlock: RegExp): string {
     let result = value;
     for (;;) {
         const before = result;
-        result = result.replace(BRACKET_MARKERS, ' ').replace(/[\s\u3000]+/gu, ' ').trim();
+        result = result
+            .replace(BRACKET_MARKERS, ' ')
+            .replace(/[\s\u3000]+/gu, ' ')
+            .trim();
         while (leadingBlock.test(result)) result = result.replace(leadingBlock, '').trim();
         if (result === before) return result;
     }
@@ -120,7 +141,10 @@ function cleanWithLeadingBlock(input: string, leadingBlock: RegExp): string {
     // 「TVアニメ『作品名』」形式なら括弧の中身を作品名として採用する。
     // 前置きが空か枠名の場合に限定し、「作品名 「サブタイトル」」を誤って展開しないようにする
     const quoted = value.match(QUOTED_TITLE);
-    if (quoted !== null && (/アニメ|シリーズ|劇場版/u.test(quoted[1]) || (quoted[1].trim() === '' && quoted[2] === '『'))) {
+    if (
+        quoted !== null &&
+        (/アニメ|シリーズ|劇場版/u.test(quoted[1]) || (quoted[1].trim() === '' && quoted[2] === '『'))
+    ) {
         value = `${quoted[3]} ${quoted[4]}`.trim();
     }
 
@@ -175,6 +199,49 @@ export function displaySeriesTitle(input: string): string {
  * @param input: string 任意のタイトル文字列
  * @return string 照合キー (記号のみのタイトルでは空文字になりうる)
  */
+/**
+ * LLM が抽出した作品名が、元のタイトルから導けるものか検証する。
+ *
+ * 抽出結果を作品辞書で引き直すだけでは「実在する別作品の名前を返した」場合に素通りしてしまう
+ * (実データで「あそビバ」→「あそびにいくヨ!」、「TUF新春ロードショー」→「THE UNLIMITED -兵部京介-」
+ *  のような誤りが出た)。照合キーの含有を要求すると、これらを落としつつ
+ * 「装飾・話数・サブタイトルを取り除いただけ」の正しい抽出は通る
+ * @param sourceTitle: string 元の録画/シリーズタイトル
+ * @param extractedTitle: string LLM が抽出した作品名
+ * @return boolean
+ */
+export function isDerivedFromTitle(sourceTitle: string, extractedTitle: string): boolean {
+    const extracted = syobocalLookupKey(extractedTitle.normalize('NFKC'));
+    if (extracted === '') return false;
+
+    return syobocalLookupKey(sourceTitle.normalize('NFKC')).includes(extracted);
+}
+
+/**
+ * 一般番組辞書 (Wikidata) 用の厳密な照合キー。
+ *
+ * syobocalLookupKey() は長音符・波ダッシュ・記号をすべて落とすため、
+ * アニメ作品名では有効でも一般番組では別番組同士が衝突する
+ * (実データで「あそビバ」と「あそビーバー」が同じキーになった)。
+ * こちらは空白と一部の飾り記号だけを落とし、長音符・波ダッシュ・中黒は保持する
+ * @param input: string
+ * @return string
+ */
+export function strictProgramKey(input: string): string {
+    const key = input
+        .normalize('NFKC')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/gu, '')
+        .normalize('NFC')
+        .toLocaleLowerCase('ja-JP')
+        // 空白と、表記ゆれの多い引用符・括弧・感嘆符類のみ除去する
+        .replace(/[\s\u3000!?！？"'’‘”“「」『』【】]/gu, '')
+        // 波ダッシュと全角チルダは同一視する (「サンドのぼんやり〜ぬTV」/「~ぬTV」)
+        .replace(/[～〜~]/gu, '~');
+
+    return key.length <= MAX_LOOKUP_KEY_LENGTH ? key : [...key].slice(0, MAX_LOOKUP_KEY_LENGTH).join('');
+}
+
 export function syobocalLookupKey(input: string): string {
     const key = input
         .normalize('NFKC')
@@ -280,7 +347,9 @@ export function parseSeriesInfo(input: string): SeriesParseResult {
             break;
         }
     }
-    const seasonMatch = normalized.match(/(?:第\s*(\d+)\s*期|(\d+)\s*期|season\s*(\d+)|(\d+)(?:nd|rd|th|st)\s*season|\bs(\d+)\b)/iu);
+    const seasonMatch = normalized.match(
+        /(?:第\s*(\d+)\s*期|(\d+)\s*期|season\s*(\d+)|(\d+)(?:nd|rd|th|st)\s*season|\bs(\d+)\b)/iu,
+    );
     const seasonNumber = Number(
         seasonMatch?.[1] ?? seasonMatch?.[2] ?? seasonMatch?.[3] ?? seasonMatch?.[4] ?? seasonMatch?.[5] ?? 1,
     );

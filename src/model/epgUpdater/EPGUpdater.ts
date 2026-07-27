@@ -117,7 +117,10 @@ class EPGUpdater implements IEPGUpdater {
                             // mirakc の場合
                             await this.updateMirakcEvent(updateInterval, now);
                         }
-                    } else if (this.isEventStreamAlive === false && this.lastUpdatedTime + updateInterval * 1.5 <= now) {
+                    } else if (
+                        this.isEventStreamAlive === false &&
+                        this.lastUpdatedTime + updateInterval * 1.5 <= now
+                    ) {
                         await this.updateManage.updateAll();
                         this.lastUpdatedTime = now;
                         // updateAll 後は全件数削除が行われるため削除時間も更新する
