@@ -62,7 +62,7 @@ test('pushWatchRecord finds the episode by number, creates a record and syncs th
                     status: 200,
                     json: () => ({
                         data: {
-                            works: {
+                            searchWorks: {
                                 nodes: [
                                     {
                                         id: 'work-1',
@@ -94,7 +94,7 @@ test('pushWatchRecord throws when the episode number cannot be found (e.g. delay
     const http = {
         post: async () => ({
             status: 200,
-            json: () => ({ data: { works: { nodes: [{ id: 'work-1', episodes: { nodes: [{ id: 'ep-1', number: 1 }] } }] } } }),
+            json: () => ({ data: { searchWorks: { nodes: [{ id: 'work-1', episodes: { nodes: [{ id: 'ep-1', number: 1 }] } }] } } }),
         }),
     };
     await assert.rejects(

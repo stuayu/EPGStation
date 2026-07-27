@@ -30,7 +30,7 @@ interface AnnictWork {
     syobocalTid?: number;
     media?: string;
     image?: { facebookOgImageUrl?: string };
-    episodes?: { nodes?: Array<{ number?: number; sortNumber?: number; title?: string; airedAt?: string }> };
+    episodes?: { nodes?: Array<{ number?: number; sortNumber?: number; numberText?: string; title?: string }> };
 }
 @injectable()
 export default class AnnictProvider implements IAnnictProvider {
@@ -68,20 +68,24 @@ export default class AnnictProvider implements IAnnictProvider {
         const token = await this.token();
         if (token === null) return null;
         const id = Number(externalId);
-        const data = await this.graphql<{ works: { nodes: AnnictWork[] } }>(
+        const data = await this.graphql<{ searchWorks: { nodes: AnnictWork[] } }>(
             token,
-            `query Work($annictIds: [Int!]) { works(annictIds: $annictIds, first: 1) { nodes { annictId title titleKana seasonYear syobocalTid media image { facebookOgImageUrl } episodes(first: 500) { nodes { number sortNumber title airedAt } } } } }`,
+            `query Work($annictIds: [Int!]) { searchWorks(annictIds: $annictIds, first: 1) { nodes { annictId title titleKana seasonYear syobocalTid media image { facebookOgImageUrl } episodes(first: 500) { nodes { number sortNumber numberText title } } } } }`,
             { annictIds: [id] },
         );
-        const work = data.works?.nodes?.[0];
+        const work = data.searchWorks?.nodes?.[0];
         if (!work) return null;
         return {
             ...this.searchResult(work, 1),
-            episodes: (work.episodes?.nodes ?? []).map(x => ({
-                number: x.number ?? x.sortNumber ?? null,
-                title: x.title,
-                airedAt: x.airedAt ? Date.parse(x.airedAt) : undefined,
-            })),
+            // Annict の Episode は放送日時を持たないため airedAt は返さない。
+            // number は欠落していることがある (sortNumber は必ず入る) ので順に見る。
+            // 取得順は保証されないため話数昇順へ並べ替える
+            episodes: (work.episodes?.nodes ?? [])
+                .map(x => ({
+                    number: x.number ?? x.sortNumber ?? null,
+                    title: x.title,
+                }))
+                .sort((a, b) => (a.number ?? Number.MAX_SAFE_INTEGER) - (b.number ?? Number.MAX_SAFE_INTEGER)),
             raw: work,
         };
     }
@@ -100,7 +104,7 @@ export default class AnnictProvider implements IAnnictProvider {
         if (token === null) return null;
         const annictId = Number(workExternalId);
         const data = await this.graphql<{
-            works: {
+            searchWorks: {
                 nodes: Array<{
                     id: string;
                     episodes?: { nodes?: Array<{ id: string; number?: number; sortNumber?: number }> };
@@ -108,10 +112,10 @@ export default class AnnictProvider implements IAnnictProvider {
             };
         }>(
             token,
-            `query WorkEpisodes($annictIds: [Int!]) { works(annictIds: $annictIds, first: 1) { nodes { id episodes(first: 500) { nodes { id number sortNumber } } } } }`,
+            `query WorkEpisodes($annictIds: [Int!]) { searchWorks(annictIds: $annictIds, first: 1) { nodes { id episodes(first: 500) { nodes { id number sortNumber } } } } }`,
             { annictIds: [annictId] },
         );
-        const work = data.works?.nodes?.[0];
+        const work = data.searchWorks?.nodes?.[0];
         if (!work) throw new Error('AnnictWorkIsNotFound');
         const episode = (work.episodes?.nodes ?? []).find(x => (x.number ?? x.sortNumber) === episodeNumber);
         if (!episode) throw new Error('AnnictEpisodeIsNotFound');
