@@ -125,7 +125,7 @@ export default interface IConfigFile {
     socketioPort?: number;
     clientSocketioPort?: number;
     https?: HttpsConfig;
-    // 段階導入用。未指定の機能は常に無効として扱う
+    // 機能フラグ。**未指定の機能は有効**として扱うため、止めたいものだけ false を書く
     featureFlags?: FeatureFlags;
 
     // しょぼいカレンダー ChID ⇄ Mirakurun networkId/serviceId のマッピング表 (JSON) のパス。
@@ -269,7 +269,7 @@ export default interface IConfigFile {
             workSyncIntervalMs?: number;
         };
         wikidata?: {
-            // 全ジャンルのテレビ番組辞書 (Wikidata) の取り込みを有効にするか
+            // 全ジャンルのテレビ番組辞書 (Wikidata) の取り込みを有効にするか (既定 true)
             enabled?: boolean;
             // 辞書の自動同期間隔 (ms)。省略時 7 日、0 以下で自動同期を停止する
             syncIntervalMs?: number;

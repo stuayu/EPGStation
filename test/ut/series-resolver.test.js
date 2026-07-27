@@ -111,7 +111,7 @@ test('manual links are never overwritten', async () => {
 test('feature flag keeps resolver disabled', async () => {
     const db = memory();
     const r = new SeriesResolver(
-        { getConfig: () => ({ featureFlags: {} }) },
+        { getConfig: () => ({ featureFlags: { seriesLibrary: false } }) },
         { getAll: async () => ({}) },
         db,
         stubNotification(),

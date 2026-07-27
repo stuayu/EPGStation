@@ -1,13 +1,17 @@
 import * as apid from '../../../api';
 
 /**
- * サーバから配信される段階導入用の機能フラグを判定する共通ヘルパー
- * サーバ側の isFeatureEnabled (src/model/FeatureFlags.ts) と対になるクライアント実装
- * 新しく機能フラグを追加した場合もこのユーティリティを再利用すること
+ * サーバから配信される機能フラグを判定する共通ヘルパー
+ * サーバ側の isFeatureEnabled (src/model/FeatureFlags.ts) と対になるクライアント実装。
+ * サーバは resolveFeatureFlags() で全キーを解決済みの boolean にして配信するため、
+ * 通常はそのまま読むだけでよい。未設定のキーは有効扱い (opt-out) とし、
+ * 無効化は明示的な false でのみ行う
  * @param config: apid.Config | null (IServerConfigModel.getConfig() の戻り値)
  * @param key: keyof apid.FeatureFlags
- * @return boolean 未設定・config が null の場合は false (安全側)
+ * @return boolean config が未取得 (null) の場合のみ false
  */
 export function isFeatureEnabled(config: apid.Config | null, key: keyof apid.FeatureFlags): boolean {
-    return config?.featureFlags?.[key] === true;
+    if (config === null || typeof config === 'undefined') return false;
+
+    return config.featureFlags?.[key] !== false;
 }
