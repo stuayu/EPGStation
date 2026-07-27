@@ -9,8 +9,10 @@ export interface NewSeries {
     title: string;
     normalizedTitle: string;
     preferredChannelId: number | null;
-    // しょぼいカレンダー作品辞書で確定した場合の TID
+    // 作品辞書で確定した場合の しょぼいカレンダー TID
     syobocalTid?: number | null;
+    // 作品辞書で確定した場合の Annict 作品 ID
+    annictId?: string | null;
     createdAt: number;
     updatedAt: number;
 }
@@ -89,6 +91,12 @@ export default interface ISeriesDB {
      * @return Promise<Series | null>
      */
     findBySyobocalTid(syobocalTid: number): Promise<Series | null>;
+    /**
+     * Annict 作品 ID からシリーズを引く (しょぼいカレンダー未収録の作品を同一シリーズへ寄せるために使う)
+     * @param annictId: string
+     * @return Promise<Series | null>
+     */
+    findByAnnictId(annictId: string): Promise<Series | null>;
     createSeries(value: NewSeries): Promise<Series>;
     findEpisode(seriesId: number, seasonNumber: number, episodeNumber: number | null): Promise<SeriesEpisode | null>;
     findEpisodeById(id: number): Promise<SeriesEpisode | null>;

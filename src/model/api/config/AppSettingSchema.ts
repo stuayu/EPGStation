@@ -66,6 +66,8 @@ export const APP_SETTING_SCHEMA: Record<string, JsonSchema> = {
                     // 視聴記録の自動同期 (opt-in, §5.5)。featureFlags.annictSync (config.yml) が
                     // OFF の場合はこの値に関わらず同期は動作しない (二重ゲート)
                     syncEnabled: { type: 'boolean' },
+                    // 作品辞書の自動同期間隔 (ms)。0 で自動同期を停止する
+                    workSyncIntervalMs: { type: 'number', minimum: 0, maximum: 90 * 24 * 60 * 60 * 1000 },
                 },
             },
             syobocal: {

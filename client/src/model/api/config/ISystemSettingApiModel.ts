@@ -46,4 +46,14 @@ export default interface ISystemSettingApiModel {
      * @return Promise<apid.SyobocalTitleSyncResult>
      */
     syncSyobocalTitles(full: boolean): Promise<apid.SyobocalTitleSyncResult>;
+    /**
+     * Annict 作品辞書の状態を取得する
+     * @return Promise<apid.AnnictWorkDictionaryStatus>
+     */
+    getAnnictWorkStatus(): Promise<apid.AnnictWorkDictionaryStatus>;
+    /**
+     * Annict 作品辞書を同期する (常に全件取得)
+     * @return Promise<apid.AnnictWorkSyncResult>
+     */
+    syncAnnictWorks(): Promise<apid.AnnictWorkSyncResult>;
 }

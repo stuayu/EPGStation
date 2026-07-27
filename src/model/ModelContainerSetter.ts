@@ -46,6 +46,8 @@ import IMissingEpisodeApiModel from './api/series/IMissingEpisodeApiModel';
 import MissingEpisodeApiModel from './api/series/MissingEpisodeApiModel';
 import ISyobocalTitleApiModel from './api/series/ISyobocalTitleApiModel';
 import SyobocalTitleApiModel from './api/series/SyobocalTitleApiModel';
+import IAnnictWorkApiModel from './api/series/IAnnictWorkApiModel';
+import AnnictWorkApiModel from './api/series/AnnictWorkApiModel';
 import ISeriesBackfillApiModel from './api/series/ISeriesBackfillApiModel';
 import SeriesBackfillApiModel from './api/series/SeriesBackfillApiModel';
 import IScheduleApiModel from './api/schedule/IScheduleApiModel';
@@ -95,6 +97,8 @@ import ISeriesDB from './db/ISeriesDB';
 import SeriesDB from './db/SeriesDB';
 import ISyobocalTitleDB from './db/ISyobocalTitleDB';
 import SyobocalTitleDB from './db/SyobocalTitleDB';
+import IAnnictWorkDB from './db/IAnnictWorkDB';
+import AnnictWorkDB from './db/AnnictWorkDB';
 import IThumbnailDB from './db/IThumbnailDB';
 import IVideoFileDB from './db/IVideoFileDB';
 import IWatchHistoryDB from './db/IWatchHistoryDB';
@@ -168,6 +172,10 @@ import ISyobocalChannelMap from './metadata/syobocal/ISyobocalChannelMap';
 import SyobocalChannelMap from './metadata/syobocal/SyobocalChannelMap';
 import ISyobocalTitleDictionary from './metadata/syobocal/ISyobocalTitleDictionary';
 import SyobocalTitleDictionary from './metadata/syobocal/SyobocalTitleDictionary';
+import IAnnictWorkDictionary from './metadata/annict/IAnnictWorkDictionary';
+import AnnictWorkDictionary from './metadata/annict/AnnictWorkDictionary';
+import IWorkDictionary from './series/IWorkDictionary';
+import WorkDictionary from './series/WorkDictionary';
 import IAnnictProvider from './metadata/annict/IAnnictProvider';
 import AnnictProvider from './metadata/annict/AnnictProvider';
 import IAnnictSyncQueueModel from './metadata/annict/IAnnictSyncQueueModel';
@@ -281,6 +289,8 @@ export const set = (container: Container): void => {
     container.bind<ISyobocalChannelMap>('ISyobocalChannelMap').to(SyobocalChannelMap).inSingletonScope();
     container.bind<ISyobocalProvider>('ISyobocalProvider').to(SyobocalProvider).inSingletonScope();
     container.bind<ISyobocalTitleDictionary>('ISyobocalTitleDictionary').to(SyobocalTitleDictionary).inSingletonScope();
+    container.bind<IAnnictWorkDictionary>('IAnnictWorkDictionary').to(AnnictWorkDictionary).inSingletonScope();
+    container.bind<IWorkDictionary>('IWorkDictionary').to(WorkDictionary).inSingletonScope();
     container.bind<IAnnictProvider>('IAnnictProvider').to(AnnictProvider).inSingletonScope();
     container.bind<IAnnictSyncQueueModel>('IAnnictSyncQueueModel').to(AnnictSyncQueueModel).inSingletonScope();
     container
@@ -315,6 +325,7 @@ export const set = (container: Container): void => {
     container.bind<IAnnictWatchSyncDB>('IAnnictWatchSyncDB').to(AnnictWatchSyncDB).inSingletonScope();
     container.bind<ISeriesDB>('ISeriesDB').to(SeriesDB).inSingletonScope();
     container.bind<ISyobocalTitleDB>('ISyobocalTitleDB').to(SyobocalTitleDB).inSingletonScope();
+    container.bind<IAnnictWorkDB>('IAnnictWorkDB').to(AnnictWorkDB).inSingletonScope();
     container.bind<ISeriesResolver>('ISeriesResolver').to(SeriesResolver).inSingletonScope();
 
     container.bind<IDropLogFileDB>('IDropLogFileDB').to(DropLogFileDB).inSingletonScope();
@@ -435,6 +446,7 @@ export const set = (container: Container): void => {
     container.bind<ISeriesAliasApiModel>('ISeriesAliasApiModel').to(SeriesAliasApiModel).inSingletonScope();
     container.bind<IMissingEpisodeApiModel>('IMissingEpisodeApiModel').to(MissingEpisodeApiModel).inSingletonScope();
     container.bind<ISyobocalTitleApiModel>('ISyobocalTitleApiModel').to(SyobocalTitleApiModel).inSingletonScope();
+    container.bind<IAnnictWorkApiModel>('IAnnictWorkApiModel').to(AnnictWorkApiModel).inSingletonScope();
     container.bind<ISeriesBackfillApiModel>('ISeriesBackfillApiModel').to(SeriesBackfillApiModel).inSingletonScope();
 
     container.bind<IRecordingApiModel>('IRecordingApiModel').to(RecordingApiModel).inSingletonScope();

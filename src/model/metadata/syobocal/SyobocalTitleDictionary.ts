@@ -6,20 +6,14 @@ import ISyobocalTitleDB, { SyobocalTitleUpsert } from '../../db/ISyobocalTitleDB
 import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
-import { buildSeriesLookupKeys, syobocalLookupKey } from '../../series/SeriesNormalizer';
+import { syobocalLookupKey } from '../../series/SeriesNormalizer';
 import IProviderHttpClient from '../IProviderHttpClient';
 import ISyobocalTitleDictionary, {
     SyobocalTitleDictionaryStatus,
-    SyobocalTitleMatch,
     SyobocalTitleSyncOption,
     SyobocalTitleSyncResult,
 } from './ISyobocalTitleDictionary';
 import { xmlItems } from './SyobocalXml';
-
-interface AliasIndexEntry {
-    tid: number;
-    rank: number;
-}
 
 /**
  * しょぼいカレンダーの TitleLookup を一括で叩き、アニメ作品タイトルの辞書をローカル DB に構築する。
@@ -45,29 +39,12 @@ export default class SyobocalTitleDictionary implements ISyobocalTitleDictionary
     private static readonly DEFAULT_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
     // 起動直後は EPG 更新などと重なるため少し遅らせてから初回同期する
     private static readonly INITIAL_SYNC_DELAY_MS = 60 * 1000;
-    // 含有マッチで採用する最短の辞書キー長 (これ未満は偶然の一致が多すぎる)
-    private static readonly CONTAIN_MIN_KEY_LENGTH = 3;
-    // 含有マッチで要求する「辞書キー長 / 録画キー長」の下限
-    private static readonly CONTAIN_MIN_RATIO = 0.5;
-    private static readonly EXACT_CONFIDENCE = 1;
-    private static readonly CONTAIN_CONFIDENCE = 0.95;
-    // メモリ上の索引を DB と突き合わせ直す間隔 (ms)。
-    // 辞書は Operator の自動同期と Service の「今すぐ同期」の両方から更新されうるため、
-    // 自プロセスの sync() 以外による更新にもこの間隔で追随する
-    private static readonly INDEX_REVALIDATE_MS = 5 * 60 * 1000;
 
     private log: ILogger;
     private running: boolean = false;
     private autoSyncTimer: NodeJS.Timeout | null = null;
     private lastSyncedAt: number | null = null;
     private lastError: string | null = null;
-    // 照合キー → TID の索引 (DB から一度だけ読み込む)。sync() のたびに破棄して作り直す
-    private aliasIndex: Map<string, AliasIndexEntry> | null = null;
-    // 含有マッチ用に長さ降順で並べた照合キー
-    private keysByLength: string[] = [];
-    // 索引を構築した時刻と、その時点の DB の内容を表す署名 (件数:最終更新日時)
-    private indexBuiltAt: number = 0;
-    private indexSignature: string | null = null;
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -98,8 +75,6 @@ export default class SyobocalTitleDictionary implements ISyobocalTitleDictionary
             await this.db.bulkUpsert(values);
             imported = values.length;
             this.lastSyncedAt = Date.now();
-            // 辞書が変わったので索引を破棄する (次回 lookup 時に再構築される)
-            this.aliasIndex = null;
             this.log.system.info(
                 `syobocal title dictionary: synced ${imported} titles (${full === true ? 'full' : 'incremental'})`,
             );
@@ -136,50 +111,6 @@ export default class SyobocalTitleDictionary implements ISyobocalTitleDictionary
         if (typeof this.autoSyncTimer.unref === 'function') this.autoSyncTimer.unref();
     }
 
-    public async lookup(recordedTitle: string): Promise<SyobocalTitleMatch | null> {
-        if ((await this.enabled()) === false) return null;
-        const index = await this.ensureIndex();
-        if (index.size === 0) return null;
-
-        for (const key of buildSeriesLookupKeys(recordedTitle)) {
-            const hit = this.lookupKey(key, index);
-            if (hit !== null) {
-                const title = await this.db.get(hit.tid);
-                if (title === null) continue;
-                return {
-                    tid: title.tid,
-                    title: title.title,
-                    totalEpisodes: title.totalEpisodes,
-                    matchType: hit.matchType,
-                    confidence:
-                        hit.matchType === 'exact'
-                            ? SyobocalTitleDictionary.EXACT_CONFIDENCE
-                            : SyobocalTitleDictionary.CONTAIN_CONFIDENCE,
-                };
-            }
-        }
-        return null;
-    }
-
-    public async lookupEpisodeNumber(tid: number, recordedTitle: string): Promise<number | null> {
-        const episodes = await this.db.listEpisodes(tid);
-        if (episodes.length === 0) return null;
-        const key = syobocalLookupKey(recordedTitle.normalize('NFKC'));
-        if (key === '') return null;
-
-        // サブタイトルが録画タイトルに含まれていれば、その話数とみなす。
-        // 短いサブタイトルの偶然一致を避けるため最長のものを採用する
-        let best: { episodeNumber: number; length: number } | null = null;
-        for (const episode of episodes) {
-            if (episode.lookupKey.length < SyobocalTitleDictionary.CONTAIN_MIN_KEY_LENGTH) continue;
-            if (key.includes(episode.lookupKey) === false) continue;
-            if (best === null || episode.lookupKey.length > best.length) {
-                best = { episodeNumber: episode.episodeNumber, length: episode.lookupKey.length };
-            }
-        }
-        return best?.episodeNumber ?? null;
-    }
-
     public async getStatus(): Promise<SyobocalTitleDictionaryStatus> {
         return {
             titleCount: await this.db.count(),
@@ -188,62 +119,6 @@ export default class SyobocalTitleDictionary implements ISyobocalTitleDictionary
             running: this.running,
             error: this.lastError,
         };
-    }
-
-    /**
-     * 照合キー 1 件を辞書から引く (完全一致 → 含有マッチの順)
-     */
-    private lookupKey(
-        key: string,
-        index: Map<string, AliasIndexEntry>,
-    ): { tid: number; matchType: 'exact' | 'contain' } | null {
-        const exact = index.get(key);
-        if (typeof exact !== 'undefined') return { tid: exact.tid, matchType: 'exact' };
-
-        let best: { tid: number; rank: number; length: number } | null = null;
-        for (const candidate of this.keysByLength) {
-            // keysByLength は長さ降順。既に候補が見つかっていてそれより短いキーに入ったら打ち切る
-            if (best !== null && candidate.length < best.length) break;
-            if (key.includes(candidate) === false) continue;
-            const entry = index.get(candidate);
-            if (typeof entry === 'undefined') continue;
-            // 同じ長さで競合した場合は rank (正式タイトル > 略称/英題 > Keywords) の小さい方を採る
-            if (best === null || entry.rank < best.rank) {
-                best = { tid: entry.tid, rank: entry.rank, length: candidate.length };
-            }
-        }
-        if (best === null) return null;
-        if (best.length / key.length < SyobocalTitleDictionary.CONTAIN_MIN_RATIO) return null;
-        return { tid: best.tid, matchType: 'contain' };
-    }
-
-    /**
-     * DB から照合キー索引をメモリへ読み込む (作品数は 8000 程度なので全件保持して問題ない)
-     * 構築済みでも INDEX_REVALIDATE_MS 経過後は件数・更新日時を確認し、変化していれば作り直す
-     */
-    private async ensureIndex(): Promise<Map<string, AliasIndexEntry>> {
-        if (this.aliasIndex !== null) {
-            if (Date.now() - this.indexBuiltAt < SyobocalTitleDictionary.INDEX_REVALIDATE_MS) return this.aliasIndex;
-            const signature = `${await this.db.count()}:${await this.db.getLatestLastUpdate()}`;
-            this.indexBuiltAt = Date.now();
-            if (signature === this.indexSignature) return this.aliasIndex;
-        }
-
-        const index = new Map<string, AliasIndexEntry>();
-        for (const row of await this.db.listAllAliases()) {
-            if (row.lookupKey.length < 2) continue;
-            const current = index.get(row.lookupKey);
-            if (typeof current === 'undefined' || row.rank < current.rank) {
-                index.set(row.lookupKey, { tid: row.tid, rank: row.rank });
-            }
-        }
-        this.aliasIndex = index;
-        this.keysByLength = [...index.keys()]
-            .filter(x => x.length >= SyobocalTitleDictionary.CONTAIN_MIN_KEY_LENGTH)
-            .sort((a, b) => b.length - a.length);
-        this.indexBuiltAt = Date.now();
-        this.indexSignature = `${await this.db.count()}:${await this.db.getLatestLastUpdate()}`;
-        return index;
     }
 
     /**

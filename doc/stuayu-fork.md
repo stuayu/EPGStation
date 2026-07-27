@@ -107,6 +107,18 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
             復元作業中に、ruleの部分で失敗する場合は、手動でsqlファイルを修正してください。
 ## 変更箇所
 
+- **Annict 公式 API を作品辞書として取り込み、シリーズ照合の精度をさらに引き上げた (+ 既存 Annict 連携の実行時バグ 2 件を修正)**
+  - **既存実装のバグ修正 (実 API で確認済み)**: `AnnictProvider` が使っていた `Query.works` は**現行の Annict GraphQL API に存在しない** (`Field 'works' doesn't exist on type 'Query'`)。`get()` と `pushWatchRecord()` が常に失敗しており、Annict のメタデータ取得と視聴記録同期は実質まったく動いていなかった。`searchWorks(annictIds:)` へ修正した。あわせて `Episode.airedAt` も存在しない (要求するとクエリ全体がエラーになる) ため削除し、話数は `number` → `sortNumber` の順に解決して昇順へ並べ替えるようにした。ユニットテストのモックが壊れた API 形状 (`{ works: ... }`) を模していたためテストは通り続けていたので、モックも実 API と同じ `searchWorks` に修正した
+  - **作品辞書の一括取り込み**: `AnnictWorkDictionary` (`src/model/metadata/annict/`) が `searchWorks` のページング (1 ページ 500 件 × 約 35 ページ、実測 19 秒) で全 **17,437 作品**を取得し、`annict_work` / `annict_work_alias` へ保存する (sqlite/mysql 両方のマイグレーションあり)。Annict は差分取得の手段を提供していないため常に全件取得となる。既定の自動同期間隔は 7 日 (`metadataDefaults.annict.workSyncIntervalMs` / 設定画面で変更可、0 で停止)
+  - **しょぼいカレンダー辞書との補完関係**: Annict は収録作品数が多く (1.7 万件 vs しょぼいカレンダー 8 千件)、英題 (`titleEn`)・ローマ字 (`titleRo`)・かな (`titleKana`) を持ち、さらに **`syobocalTid` を保持している** (実測 6,378 作品、TV 作品では 5,139/7,945)。この `syobocalTid` が 2 つの辞書を結ぶ厳密な結合キーになる
+  - **統合辞書 `WorkDictionary` (`src/model/series/`)**: 2 つの辞書を**1 つのメモリ索引にまとめて**引く。片方ずつ引くのではなく統合するのは、含有マッチの「最長の辞書キーを採る」判定を辞書をまたいで正しく効かせるため。`syobocalTid` が一致する Annict 作品は同一エントリへ統合するので、「しょぼいカレンダーの正式タイトル + Annict の英題/ローマ字/かな」がすべて同じ作品の照合キーになる。`SeriesResolver` と `SeriesBackfillManageModel` の参照先を `ISyobocalTitleDictionary` からこの `IWorkDictionary` へ移した (しょぼいカレンダー側クラスは取り込み専用になった)
+  - **前方一致マッチを追加**: EPG の文字数制限で末尾が切れた録画タイトル (`SAKAMOTO` → `SAKAMOTO DAYS`、`ギルドの受付嬢ですが、残業は嫌なのでボスをソロ討伐` → `〜しようと思います`) を、録画キーが辞書キーの前方一致になるケースとして拾う (確度 0.9、長さ比 0.6 以上を要求)
+  - **末尾の放送枠名を除去**: 括弧で囲まれずタイトル末尾に連結される枠名 (`FRIDAY ANIME NIGHT` `ANiMAZiNG!!!` `スーパーアニメイズムTURBO` `アニメシャワー` `ノイタミナ` 等) を `SeriesNormalizer` で除去するようにした。実データでは `FRIDAY ANIME NIGHT` だけで約 210 件が枠ごとに別シリーズへ分裂していた。あわせてアポストロフィ・プライム記号のバリアント (`’` `‘` `′`) も照合キーから除去する
+  - **`Series` への外部 ID 自動補完**: 辞書で確定した作品の `syobocalTid` / `annictId` をシリーズへ書き込む。既存シリーズに片方しか無い場合は解決時に補完する。これにより Annict 視聴記録の同期がタイトル類似度検索 (`AnnictSyncQueueModel.resolveAnnictId`) に頼らず確実に作品を引き当てられる。しょぼいカレンダー未収録の作品は `annictId` をキーにシリーズを寄せる
+  - **実データでの効果**: 録画 16,049 件に対する作品確定率は **89.6% → 92.9% (14,916 件)**。内訳は完全一致 13,128 / 含有一致 1,723 / 前方一致 65、確定元はしょぼいカレンダー 14,775・Annict 単独 141。778 作品へ集約され、うち 677 作品が表記ゆれを吸収して 1 シリーズに統合された。照合は 16,049 件で約 1.3 秒
+  - **API / UI**: `GET`/`POST /api/settings/system/annict/works` (`AnnictWorkDictionaryStatus` / `AnnictWorkSyncResult`) を追加し、サーバー設定画面の連携タブに登録作品数・しょぼいカレンダーとの結合済件数の表示、「作品辞書を同期」ボタン、自動同期間隔の入力欄を追加した
+  - **未検証事項**: `pushWatchRecord()` (視聴記録の書き込み) は実行すると Annict アカウントに実際の視聴記録が作成されるため、実 API での動作確認は行っていない。修正したのは参照クエリと同じ `works` → `searchWorks` の置換であり、読み取り側は実 API で確認済み
+
 - **秘密情報の暗号化鍵を `data/key/secret.key` へ自動生成するようにした (config.yml の `secretKey` は廃止)**
   - 従来は config.yml の `secretKey` を手で設定しないと通知先 URL や Annict トークンの暗号化が一切機能しなかった (未設定のまま運用され、設定画面からの保存が `AppSettingSecretKeyIsNotConfigured` で失敗する事故につながっていた)。`SecretCrypto` が起動時に鍵ファイルを読み、無ければランダム鍵 (48 バイト base64url) を `mode 0o600` で生成して保存する
   - 旧バージョンで `secretKey` を設定していた環境では、鍵ファイルが無いときに限りその値を種として鍵ファイルを作成し、既存の暗号文をそのまま復号できるように移行する

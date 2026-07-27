@@ -7,7 +7,7 @@ import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import { scoreCandidate } from '../../series/SeriesResolver';
 import ISeriesResolver from '../../series/ISeriesResolver';
-import ISyobocalTitleDictionary from '../../metadata/syobocal/ISyobocalTitleDictionary';
+import IWorkDictionary from '../../series/IWorkDictionary';
 import { displaySeriesTitle, parseSeriesInfo } from '../../series/SeriesNormalizer';
 import ISeriesBackfillManageModel, {
     SeriesBackfillOption,
@@ -44,7 +44,7 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
     private seriesDB: ISeriesDB;
     private settingsDB: IAppSettingDB;
     private seriesResolver: ISeriesResolver;
-    private titleDictionary: ISyobocalTitleDictionary;
+    private workDictionary: IWorkDictionary;
 
     private running: boolean = false;
     private cancelRequested: boolean = false;
@@ -67,14 +67,14 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         @inject('ISeriesDB') seriesDB: ISeriesDB,
         @inject('IAppSettingDB') settingsDB: IAppSettingDB,
         @inject('ISeriesResolver') seriesResolver: ISeriesResolver,
-        @inject('ISyobocalTitleDictionary') titleDictionary: ISyobocalTitleDictionary,
+        @inject('IWorkDictionary') workDictionary: IWorkDictionary,
     ) {
         this.log = logger.getLogger();
         this.recordedDB = recordedDB;
         this.seriesDB = seriesDB;
         this.settingsDB = settingsDB;
         this.seriesResolver = seriesResolver;
-        this.titleDictionary = titleDictionary;
+        this.workDictionary = workDictionary;
     }
 
     /**
@@ -299,12 +299,17 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
             }
         }
 
-        // 実行時 (SeriesResolver) と同じく しょぼいカレンダー作品辞書を類似度スコアリングより先に引く
+        // 実行時 (SeriesResolver) と同じく作品辞書を類似度スコアリングより先に引く
         const dictionaryMatch = await Promise.resolve()
-            .then(async () => await this.titleDictionary.lookup(row.name))
+            .then(async () => await this.workDictionary.lookup(row.name))
             .catch(() => null);
         if (dictionaryMatch !== null) {
-            const existing = await this.seriesDB.findBySyobocalTid(dictionaryMatch.tid);
+            const existing =
+                dictionaryMatch.syobocalTid !== null
+                    ? await this.seriesDB.findBySyobocalTid(dictionaryMatch.syobocalTid)
+                    : dictionaryMatch.annictId !== null
+                      ? await this.seriesDB.findByAnnictId(String(dictionaryMatch.annictId))
+                      : null;
             return {
                 matched: true,
                 // 実行時に新規作成されるシリーズは seriesId: null で表す
