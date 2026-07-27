@@ -44,7 +44,7 @@
                             <v-btn v-if="dialogState.reserve === null" color="blue-darken-1" variant="text" v-on:click="manualReserve">詳細</v-btn>
                             <v-btn v-else-if="typeof dialogState.reserve.ruleId !== 'undefined'" color="blue-darken-1" variant="text" v-on:click="editRule">ルール</v-btn>
                             <v-btn v-else color="blue-darken-1" variant="text" v-on:click="editManualReserve">編集</v-btn>
-                            <v-btn color="blue-darken-1" variant="text" v-on:click="gotoSeries">シリーズ</v-btn>
+                            <v-btn v-if="isEnabledProgramSeriesMapping === true" color="blue-darken-1" variant="text" v-on:click="gotoSeries">シリーズ</v-btn>
                             <!-- 検索 -->
                             <v-btn color="blue-darken-1" variant="text" v-on:click="search">検索</v-btn>
                             <!-- 予約 or 削除 or 除外 or 除外解除 or 重複解除 -->
@@ -64,10 +64,12 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import IScheduleApiModel from '@/model/api/schedule/IScheduleApiModel';
+import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import IGuideProgramDialogState from '@/model/state/guide/IGuideProgramDialogState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { IGuideProgramDialogSettingStorageModel } from '@/model/storage/guide/IGuideProgramDialogSettingStorageModel';
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
+import { isFeatureEnabled } from '@/util/FeatureFlags';
 import StrUtil from '@/util/StrUtil';
 import Util from '@/util/Util';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
@@ -81,6 +83,14 @@ class ProgramDialog extends Vue {
 
     private snackbarState = container.get<ISnackbarState>('ISnackbarState');
     private scheduleApi = container.get<IScheduleApiModel>('IScheduleApiModel');
+    private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
+
+    /**
+     * 番組 ⇔ シリーズ連携機能が有効か (featureFlags.programSeriesMapping)
+     */
+    public get isEnabledProgramSeriesMapping(): boolean {
+        return isFeatureEnabled(this.serverConfigModel.getConfig(), 'programSeriesMapping');
+    }
 
     /**
      * 手動予約

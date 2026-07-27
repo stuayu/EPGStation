@@ -9,6 +9,8 @@ import ISeriesApiModel, {
     SeriesAliasItem,
     UpdateSeriesMapping,
     MissingEpisodeProposal,
+    SeriesBackfillOption,
+    SeriesBackfillResult,
 } from './ISeriesApiModel';
 @injectable()
 export default class SeriesApiModel implements ISeriesApiModel {
@@ -62,5 +64,17 @@ export default class SeriesApiModel implements ISeriesApiModel {
     }
     public async removeAlias(aliasId: number): Promise<void> {
         await this.repository.delete(`/series/aliases/${aliasId}`);
+    }
+    public async startBackfill(option?: SeriesBackfillOption): Promise<SeriesBackfillResult> {
+        return (await this.repository.post('/series/backfill', option ?? {})).data;
+    }
+    public async getBackfillStatus(): Promise<SeriesBackfillResult> {
+        return (await this.repository.get('/series/backfill/status')).data;
+    }
+    public async cancelBackfill(): Promise<void> {
+        await this.repository.delete('/series/backfill');
+    }
+    public async reserveMissingEpisode(seriesId: number, seasonNumber: number, episodeNumber: number, programId: number): Promise<{ reserveId: number }> {
+        return (await this.repository.post(`/series/${seriesId}/missing-episodes/reserve`, { seasonNumber, episodeNumber, programId })).data;
     }
 }
