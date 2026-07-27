@@ -175,6 +175,24 @@ export function displaySeriesTitle(input: string): string {
  * @param input: string 任意のタイトル文字列
  * @return string 照合キー (記号のみのタイトルでは空文字になりうる)
  */
+/**
+ * LLM が抽出した作品名が、元のタイトルから導けるものか検証する。
+ *
+ * 抽出結果を作品辞書で引き直すだけでは「実在する別作品の名前を返した」場合に素通りしてしまう
+ * (実データで「あそビバ」→「あそびにいくヨ!」、「TUF新春ロードショー」→「THE UNLIMITED -兵部京介-」
+ *  のような誤りが出た)。照合キーの含有を要求すると、これらを落としつつ
+ * 「装飾・話数・サブタイトルを取り除いただけ」の正しい抽出は通る
+ * @param sourceTitle: string 元の録画/シリーズタイトル
+ * @param extractedTitle: string LLM が抽出した作品名
+ * @return boolean
+ */
+export function isDerivedFromTitle(sourceTitle: string, extractedTitle: string): boolean {
+    const extracted = syobocalLookupKey(extractedTitle.normalize('NFKC'));
+    if (extracted === '') return false;
+
+    return syobocalLookupKey(sourceTitle.normalize('NFKC')).includes(extracted);
+}
+
 export function syobocalLookupKey(input: string): string {
     const key = input
         .normalize('NFKC')
