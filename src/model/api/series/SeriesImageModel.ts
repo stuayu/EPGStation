@@ -8,6 +8,7 @@ import ISeriesDB from '../../db/ISeriesDB';
 import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
+import IMetadataEndpointResolver from '../../metadata/IMetadataEndpointResolver';
 import IProviderHttpClient from '../../metadata/IProviderHttpClient';
 import IRecordedDB from '../../db/IRecordedDB';
 import IThumbnailDB from '../../db/IThumbnailDB';
@@ -53,8 +54,6 @@ export default class SeriesImageModel implements ISeriesImageModel {
     // Annict が持つ Twitter アバター URL (`twitter.com/{account}/profile_image?size=...`)。
     // x.com への移行で認証必須になり、この URL は画像ではなく HTML を返すようになった
     private static readonly TWITTER_PROFILE_IMAGE = /^https?:\/\/(?:www\.)?(?:twitter|x)\.com\/([A-Za-z0-9_]{1,20})\/profile_image/iu;
-    // Twitter アバターを解決するための fxtwitter の JSON API
-    private static readonly FXTWITTER_API = 'https://api.fxtwitter.com/';
 
     private log: ILogger;
     // 直近に取得へ失敗した annictId → 失敗時刻
@@ -71,6 +70,7 @@ export default class SeriesImageModel implements ISeriesImageModel {
         @inject('IThumbnailDB') private thumbnailDB: IThumbnailDB,
         @inject('IRecordedDB') private recordedDB: IRecordedDB,
         @inject('IIPCClient') private ipc: IIPCClient,
+        @inject('IMetadataEndpointResolver') private endpoints: IMetadataEndpointResolver,
     ) {
         this.log = logger.getLogger();
     }
@@ -302,7 +302,8 @@ export default class SeriesImageModel implements ISeriesImageModel {
         const matched = url.match(SeriesImageModel.TWITTER_PROFILE_IMAGE);
         if (matched === null) return [];
         try {
-            const response = await this.http.get(`${SeriesImageModel.FXTWITTER_API}${matched[1]}`, {
+            const api = await this.endpoints.resolve('fxtwitter');
+            const response = await this.http.get(`${api.endsWith('/') ? api : `${api}/`}${matched[1]}`, {
                 timeoutMs: SeriesImageModel.FETCH_TIMEOUT_MS,
             });
             if (response.status >= 400) return [];

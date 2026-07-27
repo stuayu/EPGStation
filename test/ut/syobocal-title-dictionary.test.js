@@ -4,6 +4,18 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const SyobocalTitleDictionary = require('../../dist/model/metadata/syobocal/SyobocalTitleDictionary').default;
 
+// 外部サービスのエンドポイントは設定で差し替え可能なため、既定値を返すスタブを渡す
+const endpoints = {
+    resolve: async name =>
+        ({
+            syobocal: 'https://cal.syoboi.jp/db.php',
+            annict: 'https://api.annict.com/graphql',
+            fxtwitter: 'https://api.fxtwitter.com/',
+            sharedData: '',
+        })[name],
+    getDefaults: () => ({}),
+};
+
 const logger = { getLogger: () => ({ system: { info: () => {}, error: () => {}, warn: () => {}, debug: () => {} } }) };
 
 function makeDB() {
@@ -60,7 +72,7 @@ function makeDictionary({ db = makeDB(), xml = makeXml([]), enabled = true, onRe
     };
     const settings = { getAll: async () => ({ metadata: { syobocal: { enabled } } }) };
     const config = { getConfig: () => ({ featureFlags: { metadataProviders: true }, metadataDefaults: {} }) };
-    return { dictionary: new SyobocalTitleDictionary(logger, http, db, settings, config), db };
+    return { dictionary: new SyobocalTitleDictionary(logger, http, db, settings, config, endpoints), db };
 }
 
 test('sync() imports titles, aliases and sub titles from the bulk TitleLookup response', async () => {

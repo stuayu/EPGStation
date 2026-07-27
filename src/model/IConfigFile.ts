@@ -274,6 +274,18 @@ export default interface IConfigFile {
             titleSyncIntervalMs?: number;
         };
         cacheTtlMs?: number;
+        // 外部サービスのエンドポイント URL。Cloudflare 等のキャッシュ/プロキシを手前に置く場合に差し替える。
+        // 設定画面 (DB) の値が優先される。プロキシは元サービスと同じインターフェースを保つこと
+        endpoints?: {
+            // しょぼいカレンダー DB API (既定 https://cal.syoboi.jp/db.php)
+            syobocal?: string;
+            // Annict GraphQL API (既定 https://api.annict.com/graphql)
+            annict?: string;
+            // Twitter アバター解決用 fxtwitter JSON API (既定 https://api.fxtwitter.com/)
+            fxtwitter?: string;
+            // 共有静的データ URL (既定なし。metadataSharedDataUrl と同義、こちらが優先)
+            sharedData?: string;
+        };
     };
 
     // シリーズ自動マッピングの既定値 (§6.3)。設定画面 (DB) の値が優先される

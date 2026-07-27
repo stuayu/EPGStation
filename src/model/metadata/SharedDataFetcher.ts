@@ -6,12 +6,13 @@ import IAppSettingDB from '../db/IAppSettingDB';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import IConfiguration from '../IConfiguration';
+import IMetadataEndpointResolver from './IMetadataEndpointResolver';
 import IProviderHttpClient from './IProviderHttpClient';
 import ISharedDataFetcher, { SharedMetadataPayload } from './ISharedDataFetcher';
 
 /**
  * チャンネルマッピング表・エイリアス辞書等の共有静的データを GitHub 等から自動取得する (§5.1)。
- * - 起動時 + 設定された間隔で `metadataSharedDataUrl` から JSON を取得しローカルへキャッシュする
+ * - 起動時 + 設定された間隔で共有静的データ URL (設定画面 > config.yml) から JSON を取得しローカルへキャッシュする
  * - オフライン・取得失敗時は前回のローカルキャッシュへフォールバックし、キャッシュも無ければ
  *   呼び出し側 (SyobocalChannelMap 等) が同梱データへフォールバックする
  * - 毎回ダウンロードせず、キャッシュファイル (data/metadataSharedData.json) を再利用する
@@ -32,14 +33,15 @@ export default class SharedDataFetcher implements ISharedDataFetcher {
         @inject('IProviderHttpClient') private http: IProviderHttpClient,
         @inject('ILoggerModel') logger: ILoggerModel,
         @inject('IAppSettingDB') private settingsDB: IAppSettingDB,
+        @inject('IMetadataEndpointResolver') private endpoints: IMetadataEndpointResolver,
     ) {
         this.log = logger.getLogger();
         this.cachePath = path.join(__dirname, '..', '..', '..', 'data', SharedDataFetcher.CACHE_FILE_NAME);
     }
 
     public async fetch(): Promise<SharedMetadataPayload | null> {
-        const url = this.config.getConfig().metadataSharedDataUrl;
-        if (typeof url === 'string' && url.length > 0) {
+        const url = await this.endpoints.resolve('sharedData');
+        if (url.length > 0) {
             try {
                 const response = await this.http.get(url, { timeoutMs: 10000 });
                 if (response.status >= 400) throw new Error(`SharedDataHttpStatus:${response.status}`);
@@ -62,8 +64,8 @@ export default class SharedDataFetcher implements ISharedDataFetcher {
 
     public startAutoUpdate(onUpdate: (payload: SharedMetadataPayload) => void): void {
         this.lastOnUpdate = onUpdate;
-        const url = this.config.getConfig().metadataSharedDataUrl;
-        if (typeof url !== 'string' || url.length === 0) return;
+        // URL は設定画面からも変更できるため起動時に判定して打ち切らず、
+        // 実行のたびに解決する (未設定なら fetch() が何もせず null を返す)
         const run = () => {
             this.isAutoUpdateEnabled()
                 .then(enabled => {

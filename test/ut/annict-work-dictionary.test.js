@@ -4,6 +4,18 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const AnnictWorkDictionary = require('../../dist/model/metadata/annict/AnnictWorkDictionary').default;
 
+// 外部サービスのエンドポイントは設定で差し替え可能なため、既定値を返すスタブを渡す
+const endpoints = {
+    resolve: async name =>
+        ({
+            syobocal: 'https://cal.syoboi.jp/db.php',
+            annict: 'https://api.annict.com/graphql',
+            fxtwitter: 'https://api.fxtwitter.com/',
+            sharedData: '',
+        })[name],
+    getDefaults: () => ({}),
+};
+
 const logger = { getLogger: () => ({ system: { info: () => {}, error: () => {}, warn: () => {}, debug: () => {} } }) };
 const crypto = { isEncrypted: () => false, decrypt: v => v, encrypt: v => v };
 
@@ -58,7 +70,7 @@ function makeDictionary({ pages = [[]], enabled = true, token = 'test-token', on
     const settings = { getAll: async () => ({ metadata: { annict: { enabled, token } } }) };
     const config = { getConfig: () => ({ featureFlags: { metadataProviders: true }, metadataDefaults: {} }) };
     const db = makeDB();
-    return { dictionary: new AnnictWorkDictionary(logger, http, db, settings, crypto, config), db };
+    return { dictionary: new AnnictWorkDictionary(logger, http, db, settings, crypto, config, endpoints), db };
 }
 
 test('sync() imports works and their english / romaji / kana titles as aliases', async () => {
@@ -143,7 +155,7 @@ test('sync() reports an error when Annict returns a GraphQL error', async () => 
     };
     const settings = { getAll: async () => ({ metadata: { annict: { enabled: true, token: 't' } } }) };
     const config = { getConfig: () => ({ featureFlags: { metadataProviders: true }, metadataDefaults: {} }) };
-    const dictionary = new AnnictWorkDictionary(logger, http, makeDB(), settings, crypto, config);
+    const dictionary = new AnnictWorkDictionary(logger, http, makeDB(), settings, crypto, config, endpoints);
 
     const result = await dictionary.sync();
 
@@ -158,7 +170,7 @@ test('sync() reports an authentication failure for a 401 response', async () => 
     };
     const settings = { getAll: async () => ({ metadata: { annict: { enabled: true, token: 't' } } }) };
     const config = { getConfig: () => ({ featureFlags: { metadataProviders: true }, metadataDefaults: {} }) };
-    const dictionary = new AnnictWorkDictionary(logger, http, makeDB(), settings, crypto, config);
+    const dictionary = new AnnictWorkDictionary(logger, http, makeDB(), settings, crypto, config, endpoints);
 
     assert.equal((await dictionary.sync()).error, 'AnnictAuthenticationFailed');
 });

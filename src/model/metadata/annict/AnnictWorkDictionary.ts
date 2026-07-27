@@ -8,6 +8,7 @@ import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import ISecretCrypto from '../../security/ISecretCrypto';
 import { syobocalLookupKey } from '../../series/SeriesNormalizer';
+import IMetadataEndpointResolver from '../IMetadataEndpointResolver';
 import IProviderHttpClient from '../IProviderHttpClient';
 import IAnnictWorkDictionary, { AnnictWorkDictionaryStatus, AnnictWorkSyncResult } from './IAnnictWorkDictionary';
 
@@ -45,7 +46,6 @@ interface AnnictWorkNode {
  */
 @injectable()
 export default class AnnictWorkDictionary implements IAnnictWorkDictionary {
-    private static readonly ENDPOINT = 'https://api.annict.com/graphql';
     // 1 ページあたりの取得件数 (500 まで受け付けることを実 API で確認済み)
     private static readonly PAGE_SIZE = 500;
     // 暴走時の保険。1 ページ 500 件なので 2 万件を大きく超えたら打ち切る
@@ -78,6 +78,7 @@ export default class AnnictWorkDictionary implements IAnnictWorkDictionary {
         @inject('IAppSettingDB') private settings: IAppSettingDB,
         @inject('ISecretCrypto') private crypto: ISecretCrypto,
         @inject('IConfiguration') private config: IConfiguration,
+        @inject('IMetadataEndpointResolver') private endpoints: IMetadataEndpointResolver,
     ) {
         this.log = logger.getLogger();
     }
@@ -156,7 +157,7 @@ export default class AnnictWorkDictionary implements IAnnictWorkDictionary {
         after: string | null,
     ): Promise<{ pageInfo?: { hasNextPage?: boolean; endCursor?: string }; nodes?: AnnictWorkNode[] }> {
         const response = await this.http.post(
-            AnnictWorkDictionary.ENDPOINT,
+            await this.endpoints.resolve('annict'),
             JSON.stringify({
                 query: AnnictWorkDictionary.QUERY,
                 variables: { first: AnnictWorkDictionary.PAGE_SIZE, after },

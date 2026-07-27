@@ -79,6 +79,18 @@ export const APP_SETTING_SCHEMA: Record<string, JsonSchema> = {
                     titleSyncIntervalMs: { type: 'number', minimum: 0, maximum: 30 * 24 * 60 * 60 * 1000 },
                 },
             },
+            // 外部サービスのエンドポイント URL (Cloudflare 等のキャッシュを経由させる場合に差し替える)。
+            // 空文字は「未設定」として扱い、config.yml → 同梱既定値へフォールバックする
+            endpoints: {
+                type: 'object',
+                additionalProperties: true,
+                properties: {
+                    syobocal: { type: 'string', maxLength: 2000 },
+                    annict: { type: 'string', maxLength: 2000 },
+                    fxtwitter: { type: 'string', maxLength: 2000 },
+                    sharedData: { type: 'string', maxLength: 2000 },
+                },
+            },
             // 共有静的データ (チャンネルマッピング表・エイリアス辞書, §5.1・§5.8) の自動更新設定
             sharedData: {
                 type: 'object',

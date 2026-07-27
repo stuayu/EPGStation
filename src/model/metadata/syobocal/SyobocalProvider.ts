@@ -11,6 +11,7 @@ import {
     MetadataWork,
     METADATA_NOT_MODIFIED,
 } from '../IMetadataProvider';
+import IMetadataEndpointResolver from '../IMetadataEndpointResolver';
 import IProviderHttpClient from '../IProviderHttpClient';
 import ISyobocalChannelMap from './ISyobocalChannelMap';
 import ISyobocalProvider from './ISyobocalProvider';
@@ -28,6 +29,7 @@ export default class SyobocalProvider implements ISyobocalProvider {
         @inject('IChannelDB') private channels: IChannelDB,
         @inject('ISyobocalChannelMap') private channelMap: ISyobocalChannelMap,
         @inject('IConfiguration') private config: IConfiguration,
+        @inject('IMetadataEndpointResolver') private endpoints: IMetadataEndpointResolver,
     ) {}
 
     /**
@@ -37,7 +39,7 @@ export default class SyobocalProvider implements ISyobocalProvider {
     public async search(query: string, context?: MetadataSearchContext): Promise<MetadataSearchResult[]> {
         if (!(await this.enabled())) return [];
         const confirmed = await this.tryConfirmedMatch(context);
-        const xml = (await this.http.get(this.url('TitleLookup', { Title: query }))).text;
+        const xml = (await this.http.get(await this.url('TitleLookup', { Title: query }))).text;
         const normalized = normalizeSeriesTitle(query);
         const textResults = xmlItems(xml, 'TitleItem')
             .map(row => {
@@ -62,8 +64,8 @@ export default class SyobocalProvider implements ISyobocalProvider {
     ): Promise<MetadataWork | null | typeof METADATA_NOT_MODIFIED> {
         if (!(await this.enabled())) return null;
         const [titleXml, programXml] = await Promise.all([
-            this.http.get(this.url('TitleLookup', { TID: externalId })).then(x => x.text),
-            this.http.get(this.url('ProgLookup', { TID: externalId })).then(x => x.text),
+            this.http.get(await this.url('TitleLookup', { TID: externalId })).then(x => x.text),
+            this.http.get(await this.url('ProgLookup', { TID: externalId })).then(x => x.text),
         ]);
         const row = xmlItems(titleXml, 'TitleItem')[0];
         if (!row) return null;
@@ -96,7 +98,7 @@ export default class SyobocalProvider implements ISyobocalProvider {
         if (!channel) return null;
         const mapping = this.channelMap.find(channel.networkId, channel.serviceId);
         if (!mapping || !mapping.syobocal) return null;
-        const progXml = (await this.http.get(this.url('ProgLookup', { ChID: String(mapping.chId) }))).text;
+        const progXml = (await this.http.get(await this.url('ProgLookup', { ChID: String(mapping.chId) }))).text;
         const items = xmlItems(progXml, 'ProgItem');
         const hit = items.find(row => {
             const startedAt = parseSyobocalDate(row.StTime);
@@ -106,7 +108,7 @@ export default class SyobocalProvider implements ISyobocalProvider {
             );
         });
         if (!hit?.TID) return null;
-        const titleXml = (await this.http.get(this.url('TitleLookup', { TID: hit.TID }))).text;
+        const titleXml = (await this.http.get(await this.url('TitleLookup', { TID: hit.TID }))).text;
         const row = xmlItems(titleXml, 'TitleItem')[0];
         if (!row) return null;
         return {
@@ -128,9 +130,9 @@ export default class SyobocalProvider implements ISyobocalProvider {
             false,
         );
     }
-    private url(command: string, params: Record<string, string>): string {
+    private async url(command: string, params: Record<string, string>): Promise<string> {
         const query = new URLSearchParams({ Command: command, ...params });
-        return `https://cal.syoboi.jp/db.php?${query.toString()}`;
+        return `${await this.endpoints.resolve('syobocal')}?${query.toString()}`;
     }
     private number(value?: string): number | null {
         const n = Number(value);

@@ -15,6 +15,7 @@ import {
     PushWatchRecordResult,
     WatchStatusForSync,
 } from '../IMetadataProvider';
+import IMetadataEndpointResolver from '../IMetadataEndpointResolver';
 import IProviderHttpClient from '../IProviderHttpClient';
 import IAnnictProvider from './IAnnictProvider';
 interface GraphQLResult<T> {
@@ -35,12 +36,12 @@ interface AnnictWork {
 @injectable()
 export default class AnnictProvider implements IAnnictProvider {
     public readonly name = 'annict';
-    private readonly endpoint = 'https://api.annict.com/graphql';
     constructor(
         @inject('IProviderHttpClient') private http: IProviderHttpClient,
         @inject('IAppSettingDB') private settings: IAppSettingDB,
         @inject('ISecretCrypto') private crypto: ISecretCrypto,
         @inject('IConfiguration') private config: IConfiguration,
+        @inject('IMetadataEndpointResolver') private endpoints: IMetadataEndpointResolver,
     ) {}
     public async search(query: string, context?: MetadataSearchContext): Promise<MetadataSearchResult[]> {
         const token = await this.token();
@@ -185,7 +186,8 @@ export default class AnnictProvider implements IAnnictProvider {
         return this.crypto.isEncrypted(value) ? this.crypto.decrypt(value) : value;
     }
     private async graphql<T>(token: string, query: string, variables: Record<string, unknown>): Promise<T> {
-        const response = await this.http.post(this.endpoint, JSON.stringify({ query, variables }), {
+        const endpoint = await this.endpoints.resolve('annict');
+        const response = await this.http.post(endpoint, JSON.stringify({ query, variables }), {
             headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
             minimumIntervalMs: 500,
         });

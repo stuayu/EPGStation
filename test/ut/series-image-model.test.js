@@ -7,6 +7,18 @@ const os = require('node:os');
 const path = require('node:path');
 const SeriesImageModel = require('../../dist/model/api/series/SeriesImageModel').default;
 
+// 外部サービスのエンドポイントは設定で差し替え可能なため、既定値を返すスタブを渡す
+const endpoints = {
+    resolve: async name =>
+        ({
+            syobocal: 'https://cal.syoboi.jp/db.php',
+            annict: 'https://api.annict.com/graphql',
+            fxtwitter: 'https://api.fxtwitter.com/',
+            sharedData: '',
+        })[name],
+    getDefaults: () => ({}),
+};
+
 const logger = { getLogger: () => ({ system: { info: () => {}, error: () => {}, warn: () => {}, debug: () => {} } }) };
 
 function makeConfig({ seriesLibrary = true, metadataProviders = true, thumbnail = '/tmp/thumb' } = {}) {
@@ -63,6 +75,7 @@ test('getInfo() returns the Annict image url and copyright', async () => {
         noThumbnailDB,
         noRecordedDB,
         makeIpc(),
+        endpoints,
     );
 
     assert.deepEqual(await model.getInfo(1), {
@@ -82,6 +95,7 @@ test('getInfo() resolves the work through syobocalTid when annictId is missing',
         noThumbnailDB,
         noRecordedDB,
         makeIpc(),
+        endpoints,
     );
 
     assert.equal((await model.getInfo(1)).url, 'https://example.test/b.png');
@@ -97,6 +111,7 @@ test('getInfo() returns null while the feature flags are off', async () => {
         noThumbnailDB,
         noRecordedDB,
         makeIpc(),
+        endpoints,
     );
 
     assert.equal(await model.getInfo(1), null);
@@ -115,6 +130,7 @@ test('getInfoMap() falls back to a recording thumbnail for works without an Anni
         noThumbnailDB,
         noRecordedDB,
         makeIpc(),
+        endpoints,
     );
 
     const map = await model.getInfoMap([1, 2, 3]);
@@ -153,6 +169,7 @@ test('getFile() downloads, caches and reuses the image without refetching', asyn
         noThumbnailDB,
         noRecordedDB,
         makeIpc(),
+        endpoints,
     );
 
     const first = await model.getFile(1);
@@ -185,6 +202,7 @@ test('getFile() rejects a non-image content type and falls back to the thumbnail
         { findByRecordedId: async () => ({ id: 1, recordedId: 7, filePath: 'a/b.jpg' }) },
         noRecordedDB,
         makeIpc(),
+        endpoints,
     );
 
     const file = await model.getFile(1);
@@ -219,6 +237,7 @@ test('getFile() resolves a Twitter avatar through the fxtwitter API', async () =
         noThumbnailDB,
         noRecordedDB,
         makeIpc(),
+        endpoints,
     );
 
     const file = await model.getFile(1);
@@ -250,6 +269,7 @@ test('getFile() falls back to the original avatar size when 400x400 does not exi
         noThumbnailDB,
         noRecordedDB,
         makeIpc(),
+        endpoints,
     );
 
     const file = await model.getFile(1);
@@ -284,6 +304,7 @@ test('getFile() does not request the dead profile_image url when the account is 
         noThumbnailDB,
         noRecordedDB,
         makeIpc(),
+        endpoints,
     );
 
     assert.equal(await model.getFile(1), null);
@@ -303,6 +324,7 @@ test('getFile() asks the operator to generate a thumbnail when no image exists a
         // ts の動画ファイルを優先してサムネイル生成を依頼する
         { findId: async () => ({ id: 7, videoFiles: [{ id: 71, type: 'encoded' }, { id: 70, type: 'ts' }] }) },
         makeIpc(calls),
+        endpoints,
     );
 
     assert.equal(await model.getFile(1), null);

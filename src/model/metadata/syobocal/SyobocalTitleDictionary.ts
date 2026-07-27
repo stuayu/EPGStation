@@ -7,6 +7,7 @@ import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import { syobocalLookupKey } from '../../series/SeriesNormalizer';
+import IMetadataEndpointResolver from '../IMetadataEndpointResolver';
 import IProviderHttpClient from '../IProviderHttpClient';
 import ISyobocalTitleDictionary, {
     SyobocalTitleDictionaryStatus,
@@ -30,7 +31,6 @@ import { xmlItems } from './SyobocalXml';
  */
 @injectable()
 export default class SyobocalTitleDictionary implements ISyobocalTitleDictionary {
-    private static readonly BASE_URL = 'https://cal.syoboi.jp/db.php';
     // 取得するフィールド。Comment (あらすじ・スタッフ) は巨大で用途が無いため取得しない (全件 24MB → 9.5MB)
     private static readonly FIELDS =
         'TID,Title,ShortTitle,TitleYomi,TitleEN,Keywords,Cat,FirstYear,FirstMonth,SubTitles,LastUpdate';
@@ -52,6 +52,7 @@ export default class SyobocalTitleDictionary implements ISyobocalTitleDictionary
         @inject('ISyobocalTitleDB') private db: ISyobocalTitleDB,
         @inject('IAppSettingDB') private settings: IAppSettingDB,
         @inject('IConfiguration') private config: IConfiguration,
+        @inject('IMetadataEndpointResolver') private endpoints: IMetadataEndpointResolver,
     ) {
         this.log = logger.getLogger();
     }
@@ -131,7 +132,8 @@ export default class SyobocalTitleDictionary implements ISyobocalTitleDictionary
             Fields: SyobocalTitleDictionary.FIELDS,
         });
         if (cursor !== null) params.set('LastUpdate', `${cursor.replace(/[-: ]/gu, '').replace(/^(\d{8})/u, '$1_')}-`);
-        const response = await this.http.get(`${SyobocalTitleDictionary.BASE_URL}?${params.toString()}`, {
+        const baseUrl = await this.endpoints.resolve('syobocal');
+        const response = await this.http.get(`${baseUrl}?${params.toString()}`, {
             timeoutMs: SyobocalTitleDictionary.FETCH_TIMEOUT_MS,
         });
         return response.text;
