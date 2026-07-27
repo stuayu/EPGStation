@@ -38,10 +38,11 @@
                     <v-select
                         v-model="mergeFromId"
                         :items="items.map(x => ({ title: x.title, value: x.id }))"
+                        item-title="title"
                         label="統合元シリーズ (このシリーズは消えます)"
                     ></v-select>
                     <v-text-field v-model="mergeToKeyword" label="統合先シリーズを検索" @keyup.enter="searchMergeTarget"></v-text-field>
-                    <v-select v-model="mergeToId" :items="mergeToItems.map(x => ({ title: x.title, value: x.id }))" label="統合先シリーズ"></v-select>
+                    <v-select v-model="mergeToId" :items="mergeToItems.map(x => ({ title: x.title, value: x.id }))" item-title="title" label="統合先シリーズ"></v-select>
                     <v-alert v-if="mergeFromId !== null && mergeFromId === mergeToId" type="warning">統合元と統合先が同じです</v-alert>
                 </v-card-text>
                 <v-card-actions>
