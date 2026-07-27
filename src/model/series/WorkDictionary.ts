@@ -111,6 +111,14 @@ export default class WorkDictionary implements IWorkDictionary {
             syobocalTid: syobocal?.tid ?? null,
             annictId: annict?.annictId ?? null,
             title,
+            // 読み仮名はしょぼいカレンダーの TitleYomi を優先し、無ければ Annict の titleKana を使う
+            titleKana: syobocal?.titleYomi ?? annict?.titleKana ?? null,
+            // クールは Annict の seasonYear/seasonName を優先し、
+            // 無ければしょぼいカレンダーの初回放送年月から導出する
+            seasonYear: annict?.seasonYear ?? syobocal?.firstYear ?? null,
+            seasonName:
+                WorkDictionary.normalizeSeasonName(annict?.seasonName) ??
+                WorkDictionary.seasonFromMonth(syobocal?.firstMonth ?? null),
             // 総話数はしょぼいカレンダーのサブタイトル数を優先し、無ければ Annict の episodesCount を使う
             totalEpisodes: syobocal?.totalEpisodes ?? annict?.episodesCount ?? null,
             matchType,
@@ -124,6 +132,26 @@ export default class WorkDictionary implements IWorkDictionary {
         };
         this.matchCache.set(cacheKey, match);
         return match;
+    }
+
+    /**
+     * Annict の seasonName を内部表現へ正規化する (想定外の値は null)
+     */
+    private static normalizeSeasonName(value: string | null | undefined): WorkMatch['seasonName'] {
+        const upper = (value ?? '').toUpperCase();
+        return upper === 'WINTER' || upper === 'SPRING' || upper === 'SUMMER' || upper === 'AUTUMN' ? upper : null;
+    }
+
+    /**
+     * 初回放送月からクールを導出する (1-3 冬 / 4-6 春 / 7-9 夏 / 10-12 秋)
+     */
+    private static seasonFromMonth(month: number | null): WorkMatch['seasonName'] {
+        if (month === null || Number.isFinite(month) === false) return null;
+        if (month >= 1 && month <= 3) return 'WINTER';
+        if (month >= 4 && month <= 6) return 'SPRING';
+        if (month >= 7 && month <= 9) return 'SUMMER';
+        if (month >= 10 && month <= 12) return 'AUTUMN';
+        return null;
     }
 
     /**

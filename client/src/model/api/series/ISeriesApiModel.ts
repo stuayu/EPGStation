@@ -13,8 +13,35 @@ export type MissingEpisodeProposal = apid.MissingEpisodeProposal;
 export type SeriesBackfillOption = apid.SeriesBackfillOption;
 export type SeriesBackfillResult = apid.SeriesBackfillResult;
 export type ProgramSeriesMetrics = apid.ProgramSeriesMetrics;
+export interface SeriesListOption {
+    keyword?: string;
+    offset?: number;
+    limit?: number;
+    sort?: apid.SeriesSortKey;
+    order?: 'asc' | 'desc';
+    seasonYear?: number;
+    seasonName?: string;
+    status?: 'onair' | 'finished';
+    hasMissing?: boolean;
+}
+
 export default interface ISeriesApiModel {
-    list(keyword?: string, offset?: number, limit?: number): Promise<SeriesListResult>;
+    /**
+     * シリーズ一覧を並べ替え・絞り込み付きで取得する
+     * @param option: SeriesListOption
+     * @return Promise<SeriesListResult>
+     */
+    list(option?: SeriesListOption): Promise<SeriesListResult>;
+    /**
+     * 絞り込み UI 用のクール一覧を取得する
+     * @return Promise<apid.SeriesSeasonItem[]>
+     */
+    listSeasons(): Promise<apid.SeriesSeasonItem[]>;
+    /**
+     * 既存シリーズのクール・読み仮名・総話数を作品辞書から埋め直す
+     * @return Promise<{ scanned: number; updated: number }>
+     */
+    refreshMetadata(): Promise<{ scanned: number; updated: number }>;
     getMissingEpisodeProposals(seriesId: number): Promise<MissingEpisodeProposal[]>;
     get(id: number, channelId?: number): Promise<SeriesDetail>;
     getMapping(recordedId: number): Promise<SeriesMapping | null>;

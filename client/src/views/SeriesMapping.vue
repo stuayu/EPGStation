@@ -72,7 +72,7 @@ class SeriesMappingView extends Vue {
         await this.search();
     }
     async search() {
-        const x = await this.seriesApi.list(this.keyword, 0, 100);
+        const x = await this.seriesApi.list({ keyword: this.keyword, offset: 0, limit: 100 });
         this.seriesItems = x.items;
     }
     async save() {

@@ -88,7 +88,7 @@ class GuideState implements IGuideState {
         }
 
         try {
-            const result = await this.seriesApiModel.list(undefined, 0, GuideState.FOLLOWING_TITLE_FETCH_LIMIT);
+            const result = await this.seriesApiModel.list({ offset: 0, limit: GuideState.FOLLOWING_TITLE_FETCH_LIMIT });
             this.followingTitleSet = new Set(result.items.map(item => item.normalizedTitle));
         } catch (err) {
             // インジケータはベストエフォート表示のため取得失敗時は非表示扱いにする

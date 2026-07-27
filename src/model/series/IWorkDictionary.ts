@@ -5,6 +5,11 @@ export interface WorkMatch {
     annictId: number | null;
     // シリーズ表示名に使う正式タイトル
     title: string;
+    // 読み仮名 (あいうえお順の並べ替え用)。取得できない場合は null
+    titleKana: string | null;
+    // 放送クール。取得できない場合は null
+    seasonYear: number | null;
+    seasonName: 'WINTER' | 'SPRING' | 'SUMMER' | 'AUTUMN' | null;
     // 放送予定総話数 (欠番検出の上限)。取得できない場合は null
     totalEpisodes: number | null;
     // 'exact': 照合キーが辞書キーと完全一致
