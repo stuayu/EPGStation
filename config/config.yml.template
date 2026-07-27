@@ -539,6 +539,33 @@ featureFlags:
 #         # 共有静的データ URL (metadataSharedDataUrl と同義、こちらが優先)
 #         sharedData: ''
 
+# シリーズ自動マッピングのローカル LLM フォールバック (featureFlags.seriesLibrary: true の場合のみ有効)。
+# 作品辞書 (しょぼいカレンダー + Annict) で確定できなかった録画タイトルだけを OpenAI 互換 API へ渡し、
+# 抽出された作品名で辞書を引き直す。url と model の両方を指定した場合のみ有効になる。
+# 抽出結果は必ず辞書で検証されるため、LLM の誤生成単体で誤リンクには至らない
+# seriesLlm:
+#     # OpenAI 互換 Chat Completions API のベース URL (Ollama: http://localhost:11434/v1)
+#     url: 'http://localhost:11434/v1'
+#     # モデル名 (日本語に強いモデルを推奨。例: qwen2.5:7b-instruct)
+#     model: 'qwen2.5:7b-instruct'
+#     # API キー (ローカル LLM では通常不要)
+#     # apiKey: ''
+#     # リクエストタイムアウト (ms)。省略時 30000
+#     # timeoutMs: 30000
+
+# サーバー起動時のシリーズ照合パイプライン (featureFlags.seriesLibrary: true の場合は既定で自動実行される)。
+# 起動 7 分後に作品辞書 (しょぼいカレンダー + Annict) の自動同期の完了を待ち、
+# シリーズ未リンクの録画だけを先頭から再照合する (リンク済み・手動ロック済みの録画には触れない)
+# seriesStartup:
+#     # false で起動時の自動実行を止める (既定 true)
+#     enable: true
+#     # true: 未リンク録画を毎回先頭から再照合 / false: 前回の続きから新規分のみ (既定 true)
+#     rescanUnlinked: true
+#     # 起動からパイプライン開始までの待機 (ms)。既定 420000 (7 分)
+#     delayMs: 420000
+#     # 辞書同期の完了待ちの上限 (ms)。既定 1800000 (30 分)
+#     dictionaryWaitMs: 1800000
+
 # Webhook / Discord 通知（featureFlags.notifications: true の場合のみ有効）
 # notifications:
 #     maxAttempts: 5

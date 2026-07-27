@@ -7,6 +7,7 @@ import IConfiguration from '../IConfiguration';
 import IAppSettingDB from '../db/IAppSettingDB';
 import ISeriesDB from '../db/ISeriesDB';
 import INotificationDispatcher from '../notification/INotificationDispatcher';
+import ILlmTitleExtractor from './ILlmTitleExtractor';
 import IWorkDictionary, { WorkMatch } from './IWorkDictionary';
 import ISeriesResolver, { SeriesRecordingInput } from './ISeriesResolver';
 import { displaySeriesTitle, normalizeSeriesTitle, parseSeriesInfo } from './SeriesNormalizer';
@@ -57,6 +58,7 @@ export default class SeriesResolver implements ISeriesResolver {
         @inject('ISeriesDB') private db: ISeriesDB,
         @inject('INotificationDispatcher') private notification: INotificationDispatcher,
         @inject('IWorkDictionary') private workDictionary: IWorkDictionary,
+        @inject('ILlmTitleExtractor') private llmTitleExtractor: ILlmTitleExtractor,
     ) {}
     async resolve(recording: SeriesRecordingInput): Promise<RecordedSeriesLink | null> {
         if (!isFeatureEnabled(this.config.getConfig(), 'seriesLibrary')) return null;
@@ -180,6 +182,12 @@ export default class SeriesResolver implements ISeriesResolver {
             // 辞書の不調でシリーズ化そのものを止めないよう、失敗時は従来の類似度判定へ委ねる
             return null;
         }
+        if (match === null) {
+            // ローカル LLM フォールバック (seriesLlm 設定時のみ): 正規表現ベースの照合キーで辞書に
+            // 当たらなかった場合のみ、LLM に作品名を抽出させて辞書を引き直す。
+            // 抽出結果は必ず辞書で検証されるため、LLM の誤生成単体で誤リンクには至らない
+            match = await this.lookupViaLlm(recording.title);
+        }
         if (match === null) return null;
 
         // しょぼいカレンダー TID を優先キーにし、無い作品 (Annict 単独) は annictId で引く
@@ -240,6 +248,26 @@ export default class SeriesResolver implements ISeriesResolver {
 
         await this.db.deletePendingMatchByRecordedId(recording.recordedId);
         return await this.linkTo(recording, resolved, series, match.confidence, matchMethodOf(match), now);
+    }
+
+    /**
+     * ローカル LLM に録画タイトルから作品名を抽出させ、その作品名で作品辞書を引き直す。
+     * LLM 未設定・抽出失敗・辞書に該当なしの場合は null を返し、従来の類似度判定へ委ねる。
+     * LLM を経由した分の不確かさを confidence に反映する (完全一致でも 1.0 にはしない)
+     * @param recordedTitle: string 録画番組タイトル
+     * @return Promise<WorkMatch | null>
+     */
+    private async lookupViaLlm(recordedTitle: string): Promise<WorkMatch | null> {
+        if (this.llmTitleExtractor.isEnabled() === false) return null;
+        try {
+            const extracted = await this.llmTitleExtractor.extractWorkTitle(recordedTitle);
+            if (extracted === null) return null;
+            const match = await this.workDictionary.lookup(extracted);
+            if (match === null) return null;
+            return { ...match, confidence: Math.min(match.confidence, 0.95) };
+        } catch {
+            return null;
+        }
     }
 
     /**

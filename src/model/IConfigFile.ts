@@ -293,6 +293,33 @@ export default interface IConfigFile {
         matchThreshold?: number;
     };
 
+    // シリーズ自動マッピングのローカル LLM フォールバック。url と model の両方を指定した場合のみ有効。
+    // 作品辞書 (しょぼいカレンダー + Annict) で確定できなかった録画タイトルに対してのみ呼び出され、
+    // 抽出された作品名で辞書を引き直す (抽出結果単体でリンクを確定させることはない)
+    seriesLlm?: {
+        // OpenAI 互換 Chat Completions API のベース URL (例: Ollama は http://localhost:11434/v1)
+        url?: string;
+        // モデル名 (例: qwen2.5:7b-instruct)
+        model?: string;
+        // API キー (ローカル LLM では通常不要)
+        apiKey?: string;
+        // リクエストタイムアウト (ms)。既定 30000
+        timeoutMs?: number;
+    };
+
+    // サーバー起動時のシリーズ照合パイプライン (featureFlags.seriesLibrary 有効時は既定で動作する)。
+    // 作品辞書の自動同期の完了を待ってから、未リンク録画のバックフィルを自動実行する
+    seriesStartup?: {
+        // false で起動時パイプラインを無効化する (既定 true)
+        enable?: boolean;
+        // true: シリーズ未リンクの録画を毎回先頭から再照合する / false: 前回の続きから新規録画のみ処理する (既定 true)
+        rescanUnlinked?: boolean;
+        // 起動からパイプライン開始までの待機 (ms)。既定 420000 (7 分。辞書の初回自動同期の開始後)
+        delayMs?: number;
+        // 辞書同期の完了待ちの上限 (ms)。既定 1800000 (30 分)
+        dictionaryWaitMs?: number;
+    };
+
     // 各種フックコマンド
     reserveNewAddtionCommand?: string; // 予約新規追加
     reserveUpdateCommand?: string; // 予約情報更新

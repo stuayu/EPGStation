@@ -182,6 +182,8 @@ import IWorkDictionary from './series/IWorkDictionary';
 import WorkDictionary from './series/WorkDictionary';
 import ISeriesMetadataFiller from './series/ISeriesMetadataFiller';
 import SeriesMetadataFiller from './series/SeriesMetadataFiller';
+import ILlmTitleExtractor from './series/ILlmTitleExtractor';
+import LlmTitleExtractor from './series/LlmTitleExtractor';
 import IAnnictProvider from './metadata/annict/IAnnictProvider';
 import AnnictProvider from './metadata/annict/AnnictProvider';
 import IAnnictSyncQueueModel from './metadata/annict/IAnnictSyncQueueModel';
@@ -195,6 +197,8 @@ import IImportJobManageModel from './operator/recorded/IImportJobManageModel';
 import ImportJobManageModel from './operator/recorded/ImportJobManageModel';
 import ISeriesBackfillManageModel from './operator/series/ISeriesBackfillManageModel';
 import SeriesBackfillManageModel from './operator/series/SeriesBackfillManageModel';
+import ISeriesStartupPipeline from './operator/series/ISeriesStartupPipeline';
+import SeriesStartupPipeline from './operator/series/SeriesStartupPipeline';
 import IImportWatchManageModel from './operator/recorded/IImportWatchManageModel';
 import ImportWatchManageModel from './operator/recorded/ImportWatchManageModel';
 import IRecordedManageModel from './operator/recorded/IRecordedManageModel';
@@ -298,6 +302,7 @@ export const set = (container: Container): void => {
     container.bind<IAnnictWorkDictionary>('IAnnictWorkDictionary').to(AnnictWorkDictionary).inSingletonScope();
     container.bind<IWorkDictionary>('IWorkDictionary').to(WorkDictionary).inSingletonScope();
     container.bind<ISeriesMetadataFiller>('ISeriesMetadataFiller').to(SeriesMetadataFiller).inSingletonScope();
+    container.bind<ILlmTitleExtractor>('ILlmTitleExtractor').to(LlmTitleExtractor).inSingletonScope();
     container.bind<IAnnictProvider>('IAnnictProvider').to(AnnictProvider).inSingletonScope();
     container.bind<IAnnictSyncQueueModel>('IAnnictSyncQueueModel').to(AnnictSyncQueueModel).inSingletonScope();
     container
@@ -404,6 +409,8 @@ export const set = (container: Container): void => {
         .bind<ISeriesBackfillManageModel>('ISeriesBackfillManageModel')
         .to(SeriesBackfillManageModel)
         .inSingletonScope();
+
+    container.bind<ISeriesStartupPipeline>('ISeriesStartupPipeline').to(SeriesStartupPipeline).inSingletonScope();
     container.bind<IImportWatchManageModel>('IImportWatchManageModel').to(ImportWatchManageModel).inSingletonScope();
 
     container.bind<IRecordingManageModel>('IRecordingManageModel').to(RecordingManageModel).inSingletonScope();
