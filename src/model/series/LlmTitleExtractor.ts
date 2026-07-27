@@ -24,8 +24,11 @@ import ILlmTitleExtractor from './ILlmTitleExtractor';
 @injectable()
 export default class LlmTitleExtractor implements ILlmTitleExtractor {
     private static readonly DEFAULT_TIMEOUT_MS = 30 * 1000;
-    // 応答の上限トークン数。思考過程を出すモデルはここを使い切ると JSON まで到達しないため設定で伸ばせるようにする
-    private static readonly DEFAULT_MAX_TOKENS = 200;
+    // 応答の上限トークン数。
+    // reasoning 系モデルは本文の前に思考へ数百トークン使うため、小さいと content が空のまま
+    // finish_reason: 'length' で切れる (OpenRouter のフリーモデルはほぼこれに該当する)。
+    // 非 reasoning モデルは JSON を出した時点で停止するので、大きくしても実コストは増えない
+    private static readonly DEFAULT_MAX_TOKENS = 2000;
     // 抽出結果キャッシュの上限 (バックフィルで大量のタイトルを処理してもメモリを食いつぶさないように)
     private static readonly CACHE_MAX = 5000;
     // 抽出結果の永続キャッシュ (metadata_provider_cache) の provider 名と TTL。
@@ -172,9 +175,18 @@ export default class LlmTitleExtractor implements ILlmTitleExtractor {
             { headers, timeout: llm.timeoutMs ?? LlmTitleExtractor.DEFAULT_TIMEOUT_MS },
         );
 
-        const content = response.data?.choices?.[0]?.message?.content;
-        if (typeof content !== 'string') throw new Error('unexpected llm response shape');
-        return this.parseContent(content);
+        const choice = response.data?.choices?.[0];
+        const content = choice?.message?.content;
+        if (typeof content !== 'string' || content === '') {
+            // 原因の切り分けができるよう、応答の形をそのままエラーに載せる。
+            // finish_reason が 'length' なら maxTokens 不足 (思考で使い切っている)
+            throw new Error(
+                `llm response has no content (finish_reason: ${choice?.finish_reason ?? 'unknown'}, ` +
+                    `completion_tokens: ${response.data?.usage?.completion_tokens ?? 'unknown'})`,
+            );
+        }
+
+        return this.parseContent(content, choice?.finish_reason);
     }
 
     /**
@@ -217,9 +229,15 @@ export default class LlmTitleExtractor implements ILlmTitleExtractor {
      * LLM の応答文字列から {"title": ...} を取り出す。
      * コードフェンスや前後の説明文が付いていても最初の JSON オブジェクトを拾う
      */
-    private parseContent(content: string): string | null {
+    private parseContent(content: string, finishReason?: string): string | null {
         const json = content.match(/\{[\s\S]*?\}/u);
-        if (json === null) throw new Error('llm response has no json');
+        if (json === null) {
+            // 応答の冒頭を載せる (プロンプト無視・途中切れのどちらかをログだけで判別できるように)
+            throw new Error(
+                `llm response has no json (finish_reason: ${finishReason ?? 'unknown'}, ` +
+                    `content: ${JSON.stringify(content.slice(0, 120))})`,
+            );
+        }
         const parsed = JSON.parse(json[0]);
         const title = parsed?.title;
         if (title === null || typeof title === 'undefined') return null;
