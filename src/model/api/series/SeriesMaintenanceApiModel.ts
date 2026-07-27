@@ -2,56 +2,78 @@ import { inject, injectable } from 'inversify';
 import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
 import ISeriesDB from '../../db/ISeriesDB';
-import IWorkDictionary from '../../series/IWorkDictionary';
+import ISeriesMetadataFiller from '../../series/ISeriesMetadataFiller';
 import ISeriesMaintenanceApiModel, {
-    RefreshSeriesMetadataResult, MergeSeriesResult, SplitSeriesResult } from './ISeriesMaintenanceApiModel';
+    RefreshSeriesMetadataResult,
+    UpdateSeriesMetadata, MergeSeriesResult, SplitSeriesResult } from './ISeriesMaintenanceApiModel';
 @injectable()
 export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiModel {
     constructor(
         @inject('IConfiguration') private config: IConfiguration,
         @inject('ISeriesDB') private db: ISeriesDB,
-        @inject('IWorkDictionary') private workDictionary: IWorkDictionary,
+        @inject('ISeriesMetadataFiller') private metadataFiller: ISeriesMetadataFiller,
     ) {}
+
+    private static readonly SEASON_NAMES: ReadonlySet<string> = new Set(['WINTER', 'SPRING', 'SUMMER', 'AUTUMN']);
+
+    public async updateMetadata(seriesId: number, value: UpdateSeriesMetadata): Promise<void> {
+        this.enabled();
+        const series = await this.db.getSeries(seriesId);
+        if (series === null) throw new Error('SeriesIsNotFound');
+
+        const patch: {
+            titleKana?: string | null;
+            seasonYear?: number | null;
+            seasonName?: string | null;
+            seasonSource?: string | null;
+            totalEpisodes?: number | null;
+        } = {};
+
+        if (typeof value.titleKana !== 'undefined') {
+            const kana = value.titleKana === null ? null : String(value.titleKana).trim();
+            patch.titleKana = kana === '' ? null : kana;
+        }
+        if (typeof value.totalEpisodes !== 'undefined') {
+            const total = value.totalEpisodes === null ? null : Number(value.totalEpisodes);
+            if (total !== null && (Number.isInteger(total) === false || total < 0 || total > 10000)) {
+                throw new Error('InvalidRequestBody');
+            }
+            patch.totalEpisodes = total;
+        }
+        // クールは年と季節をセットで扱う (片方だけ入っていても絞り込みに使えないため)
+        if (typeof value.seasonYear !== 'undefined' || typeof value.seasonName !== 'undefined') {
+            const year = value.seasonYear === null || typeof value.seasonYear === 'undefined' ? null : Number(value.seasonYear);
+            const name =
+                value.seasonName === null || typeof value.seasonName === 'undefined'
+                    ? null
+                    : String(value.seasonName).toUpperCase();
+            if (year === null && name === null) {
+                patch.seasonYear = null;
+                patch.seasonName = null;
+                patch.seasonSource = null;
+            } else {
+                if (year === null || Number.isInteger(year) === false || year < 1950 || year > 2200) {
+                    throw new Error('InvalidRequestBody');
+                }
+                if (name === null || SeriesMaintenanceApiModel.SEASON_NAMES.has(name) === false) {
+                    throw new Error('InvalidRequestBody');
+                }
+                patch.seasonYear = year;
+                patch.seasonName = name;
+                // 手動設定は自動補完で上書きさせない
+                patch.seasonSource = 'manual';
+            }
+        }
+
+        if (Object.keys(patch).length === 0) return;
+        await this.db.updateExternalMetadata(seriesId, patch);
+    }
 
     public async refreshMetadata(): Promise<RefreshSeriesMetadataResult> {
         this.enabled();
-        const all = await this.db.findAllSeries();
-        let updated = 0;
-        for (const series of all) {
-            // 既に全項目そろっているシリーズは辞書を引かない
-            if (
-                series.titleKana !== null &&
-                series.seasonYear !== null &&
-                series.seasonName !== null &&
-                series.totalEpisodes !== null
-            ) {
-                continue;
-            }
-            const match = await this.workDictionary.lookup(series.title).catch(() => null);
-            if (match === null) continue;
-
-            const patch: {
-                syobocalTid?: number | null;
-                annictId?: string | null;
-                titleKana?: string | null;
-                seasonYear?: number | null;
-                seasonName?: string | null;
-                totalEpisodes?: number | null;
-            } = {};
-            if (series.syobocalTid === null && match.syobocalTid !== null) patch.syobocalTid = match.syobocalTid;
-            if (series.annictId === null && match.annictId !== null) patch.annictId = String(match.annictId);
-            if (series.titleKana === null && match.titleKana !== null) patch.titleKana = match.titleKana;
-            if (series.seasonYear === null && match.seasonYear !== null) patch.seasonYear = match.seasonYear;
-            if (series.seasonName === null && match.seasonName !== null) patch.seasonName = match.seasonName;
-            if (series.totalEpisodes === null && match.totalEpisodes !== null) {
-                patch.totalEpisodes = match.totalEpisodes;
-            }
-            if (Object.keys(patch).length === 0) continue;
-            await this.db.updateExternalMetadata(series.id, patch);
-            updated++;
-        }
-        return { scanned: all.length, updated };
+        return await this.metadataFiller.fill();
     }
+
     async merge(fromSeriesId: number, toSeriesId: number): Promise<MergeSeriesResult> {
         this.enabled();
         if (typeof fromSeriesId !== 'number' || typeof toSeriesId !== 'number')

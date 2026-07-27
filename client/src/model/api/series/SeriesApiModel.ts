@@ -13,6 +13,7 @@ import ISeriesApiModel, {
     SeriesBackfillResult,
     ProgramSeriesMetrics,
     SeriesListOption,
+    UpdateSeriesMetadata,
 } from './ISeriesApiModel';
 @injectable()
 export default class SeriesApiModel implements ISeriesApiModel {
@@ -36,6 +37,9 @@ export default class SeriesApiModel implements ISeriesApiModel {
     }
     async refreshMetadata(): Promise<{ scanned: number; updated: number }> {
         return (await this.repository.post('/series/refresh-metadata', {})).data;
+    }
+    async updateSeriesMetadata(seriesId: number, value: UpdateSeriesMetadata): Promise<void> {
+        await this.repository.put(`/series/${seriesId}/metadata`, value);
     }
     public async getMissingEpisodeProposals(seriesId: number): Promise<MissingEpisodeProposal[]> {
         return (await this.repository.get(`/series/${seriesId}/missing-episodes/proposals`)).data.proposals;

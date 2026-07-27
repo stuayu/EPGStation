@@ -161,6 +161,11 @@ export default interface ISeriesDB {
      * @return Promise<SeriesSeasonRow[]>
      */
     listSeasons(): Promise<SeriesSeasonRow[]>;
+    /**
+     * シリーズごとの最古の録画開始日時を 1 クエリでまとめて引く (クール推測用)
+     * @return Promise<Map<number, number>> シリーズ ID → 最古の startAt
+     */
+    findFirstAiredAtMap(): Promise<Map<number, number>>;
     getSeries(id: number): Promise<Series | null>;
     listRecorded(seriesId: number, channelId?: number): Promise<SeriesRecordedRow[]>;
     listChannels(seriesId: number): Promise<SeriesChannelRow[]>;
@@ -181,6 +186,7 @@ export default interface ISeriesDB {
             titleKana?: string | null;
             seasonYear?: number | null;
             seasonName?: string | null;
+            seasonSource?: string | null;
             totalEpisodes?: number | null;
         },
     ): Promise<void>;

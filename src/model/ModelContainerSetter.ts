@@ -180,6 +180,8 @@ import IAnnictWorkDictionary from './metadata/annict/IAnnictWorkDictionary';
 import AnnictWorkDictionary from './metadata/annict/AnnictWorkDictionary';
 import IWorkDictionary from './series/IWorkDictionary';
 import WorkDictionary from './series/WorkDictionary';
+import ISeriesMetadataFiller from './series/ISeriesMetadataFiller';
+import SeriesMetadataFiller from './series/SeriesMetadataFiller';
 import IAnnictProvider from './metadata/annict/IAnnictProvider';
 import AnnictProvider from './metadata/annict/AnnictProvider';
 import IAnnictSyncQueueModel from './metadata/annict/IAnnictSyncQueueModel';
@@ -295,6 +297,7 @@ export const set = (container: Container): void => {
     container.bind<ISyobocalTitleDictionary>('ISyobocalTitleDictionary').to(SyobocalTitleDictionary).inSingletonScope();
     container.bind<IAnnictWorkDictionary>('IAnnictWorkDictionary').to(AnnictWorkDictionary).inSingletonScope();
     container.bind<IWorkDictionary>('IWorkDictionary').to(WorkDictionary).inSingletonScope();
+    container.bind<ISeriesMetadataFiller>('ISeriesMetadataFiller').to(SeriesMetadataFiller).inSingletonScope();
     container.bind<IAnnictProvider>('IAnnictProvider').to(AnnictProvider).inSingletonScope();
     container.bind<IAnnictSyncQueueModel>('IAnnictSyncQueueModel').to(AnnictSyncQueueModel).inSingletonScope();
     container

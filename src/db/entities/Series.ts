@@ -16,6 +16,9 @@ export default class Series extends BaseEntity {
     @Column({ type: 'integer', nullable: true }) seasonYear!: number | null;
     // 'WINTER' | 'SPRING' | 'SUMMER' | 'AUTUMN'
     @Column({ type: 'text', nullable: true }) seasonName!: string | null;
+    // クールの出所。'dictionary': 作品辞書 / 'estimated': 最古の録画日時からの推測 / 'manual': 手動設定。
+    // 'manual' は自動補完で上書きしない
+    @Column({ type: 'text', nullable: true }) seasonSource!: string | null;
     // 放送予定総話数 (完結判定・欠番検出の上限に使う)
     @Column({ type: 'integer', nullable: true }) totalEpisodes!: number | null;
     @Column({ type: 'bigint' }) createdAt!: number;

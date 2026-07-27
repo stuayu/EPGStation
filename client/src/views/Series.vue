@@ -16,6 +16,12 @@
         <v-container>
             <v-text-field v-model="keyword" label="シリーズを検索" clearable prepend-inner-icon="mdi-magnify" @keyup.enter="reload"></v-text-field>
 
+            <v-alert v-if="seasons.length === 0 && !loading" type="info" density="compact" class="mb-2">
+                クール情報がまだありません。右上の
+                <v-icon size="small">mdi-refresh</v-icon>
+                (メタデータ再取得) を実行すると、作品辞書からクール・読み仮名・総話数を取り込んでクール絞り込みとあいうえお順が使えるようになります。
+                <span class="text-caption">(サーバ起動から 10 分後にも自動で実行されます)</span>
+            </v-alert>
             <div class="d-flex align-center ga-2 flex-wrap mb-2">
                 <v-select
                     v-model="sort"
@@ -40,7 +46,9 @@
                     v-model="season"
                     :items="seasonItems"
                     item-title="title"
-                    label="クール"
+                    :label="seasons.length === 0 ? 'クール (未取得)' : 'クール'"
+                    :disabled="seasons.length === 0"
+                    :hint="seasons.length === 0 ? 'クール情報がありません' : undefined"
                     density="compact"
                     hide-details
                     clearable
@@ -95,7 +103,10 @@
                             <v-icon size="40" color="grey">mdi-television-classic</v-icon>
                         </div>
                         <v-card-title class="text-body-1">{{ item.title }}</v-card-title>
-                        <v-card-subtitle class="pb-1">{{ seasonText(item) }}</v-card-subtitle>
+                        <v-card-subtitle class="pb-1">
+                            {{ seasonText(item) }}
+                            <span v-if="item.seasonSource === 'estimated'" class="text-caption text-grey" title="録画日時からの推測値です">(推定)</span>
+                        </v-card-subtitle>
                         <v-card-text class="py-1">
                             <div class="d-flex align-center ga-1 flex-wrap mb-1">
                                 <v-chip v-if="item.isOnAir" size="x-small" color="primary" variant="flat">放送中</v-chip>
@@ -121,6 +132,9 @@
                         <v-spacer></v-spacer>
                         <v-card-actions class="pt-0">
                             <v-chip size="x-small">{{ item.mediaType }}</v-chip>
+                            <v-btn icon variant="text" size="x-small" title="クール・読み仮名を編集" @click.prevent="openEditDialog(item)">
+                                <v-icon size="small">mdi-pencil</v-icon>
+                            </v-btn>
                             <v-spacer></v-spacer>
                             <v-icon v-if="item.imageSource === 'thumbnail'" size="x-small" color="grey" title="録画サムネイルを表示しています">
                                 mdi-video-outline
@@ -155,6 +169,11 @@
                         <v-list-item-subtitle>
                             {{ seasonText(item) }} ・ {{ item.recordedCount }} 件 ・ {{ fileSizeText(item.totalFileSize) }}
                         </v-list-item-subtitle>
+                        <template v-slot:append>
+                            <v-btn icon variant="text" size="small" title="クール・読み仮名を編集" @click.prevent="openEditDialog(item)">
+                                <v-icon>mdi-pencil</v-icon>
+                            </v-btn>
+                        </template>
                         <div class="d-flex align-center ga-1 flex-wrap mt-1">
                             <v-chip v-if="item.isOnAir" size="x-small" color="primary" variant="flat">放送中</v-chip>
                             <v-chip v-if="item.unwatchedCount > 0" size="x-small" color="info" variant="flat">未視聴 {{ item.unwatchedCount }}</v-chip>
@@ -175,18 +194,27 @@
                         <th style="width: 90px">未視聴</th>
                         <th style="width: 90px">容量</th>
                         <th style="width: 120px">状態</th>
+                        <th style="width: 48px"></th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-for="item in items" :key="item.id" style="cursor: pointer" @click="$router.push(`/series/${item.id}`)">
                         <td class="text-truncate" style="max-width: 1px">{{ item.title }}</td>
-                        <td>{{ seasonText(item) }}</td>
+                        <td>
+                            {{ seasonText(item) }}
+                            <span v-if="item.seasonSource === 'estimated'" class="text-caption text-grey">(推定)</span>
+                        </td>
                         <td>{{ item.recordedCount }}</td>
                         <td>{{ item.unwatchedCount }}</td>
                         <td>{{ fileSizeText(item.totalFileSize) }}</td>
                         <td>
                             <v-chip v-if="item.isOnAir" size="x-small" color="primary" variant="flat">放送中</v-chip>
                             <v-chip v-if="item.missingEpisodeCount > 0" size="x-small" color="warning" variant="flat" class="ml-1">欠番</v-chip>
+                        </td>
+                        <td @click.stop>
+                            <v-btn icon variant="text" size="x-small" title="クール・読み仮名を編集" @click="openEditDialog(item)">
+                                <v-icon size="small">mdi-pencil</v-icon>
+                            </v-btn>
                         </td>
                     </tr>
                 </tbody>
@@ -198,6 +226,32 @@
                 <v-btn :disabled="offset + limit >= total" @click="next">次へ</v-btn>
             </div>
         </v-container>
+
+        <v-dialog v-model="isOpenEditDialog" max-width="520">
+            <v-card>
+                <v-card-title>シリーズ情報の編集</v-card-title>
+                <v-card-subtitle>{{ editTitle }}</v-card-subtitle>
+                <v-card-text>
+                    <v-alert v-if="editSeasonSource === 'estimated'" type="info" density="compact" class="mb-3">
+                        現在のクールは<b>最古の録画日時からの推測値</b>です。保存すると手動設定として固定され、以降の自動補完で上書きされなくなります。
+                    </v-alert>
+                    <div class="d-flex ga-2">
+                        <v-text-field v-model.number="editSeasonYear" type="number" label="年" density="compact" clearable></v-text-field>
+                        <v-select v-model="editSeasonName" :items="seasonNameItems" item-title="title" label="季節" density="compact" clearable></v-select>
+                    </div>
+                    <v-text-field v-model="editTitleKana" label="読み仮名 (あいうえお順の並べ替えに使用)" density="compact" clearable></v-text-field>
+                    <v-text-field v-model.number="editTotalEpisodes" type="number" label="総話数 (欠番検出に使用)" density="compact" clearable></v-text-field>
+                    <v-alert v-if="editSeasonYear !== null && editSeasonName === null" type="warning" density="compact">
+                        年と季節は両方指定してください (片方だけでは絞り込みに使えません)
+                    </v-alert>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn variant="text" @click="isOpenEditDialog = false">キャンセル</v-btn>
+                    <v-btn color="primary" variant="text" :loading="editSaving" @click="saveMetadata">保存</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
 
         <v-dialog v-model="isOpenMergeDialog" max-width="600">
             <v-card>
@@ -358,6 +412,23 @@ class SeriesView extends Vue {
     merging = false;
     refreshing = false;
 
+    isOpenEditDialog = false;
+    editSeriesId: number | null = null;
+    editTitle = '';
+    editSeasonYear: number | null = null;
+    editSeasonName: string | null = null;
+    editSeasonSource: string | null = null;
+    editTitleKana: string | null = null;
+    editTotalEpisodes: number | null = null;
+    editSaving = false;
+
+    readonly seasonNameItems = [
+        { title: '冬 (1-3月)', value: 'WINTER' },
+        { title: '春 (4-6月)', value: 'SPRING' },
+        { title: '夏 (7-9月)', value: 'SUMMER' },
+        { title: '秋 (10-12月)', value: 'AUTUMN' },
+    ];
+
     private api = container.get<ISeriesApiModel>('ISeriesApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
@@ -425,6 +496,52 @@ class SeriesView extends Vue {
             this.snackbarState.open({ color: 'error', text: 'メタデータの再取得に失敗しました' });
         } finally {
             this.refreshing = false;
+        }
+    }
+
+    /**
+     * クール・読み仮名・総話数の手動編集ダイアログを開く
+     */
+    openEditDialog(item: SeriesListItem): void {
+        this.editSeriesId = item.id;
+        this.editTitle = item.title;
+        this.editSeasonYear = item.seasonYear ?? null;
+        this.editSeasonName = item.seasonName ?? null;
+        this.editSeasonSource = item.seasonSource ?? null;
+        this.editTitleKana = item.titleKana ?? null;
+        this.editTotalEpisodes = item.totalEpisodes ?? null;
+        this.isOpenEditDialog = true;
+    }
+
+    async saveMetadata(): Promise<void> {
+        if (this.editSeriesId === null) return;
+        // 年と季節はセットでのみ意味を持つため、片方だけの指定は保存させない
+        const hasYear = typeof this.editSeasonYear === 'number' && this.editSeasonYear !== null;
+        const hasName = typeof this.editSeasonName === 'string' && this.editSeasonName !== null;
+        if (hasYear !== hasName) {
+            this.snackbarState.open({ color: 'error', text: '年と季節は両方指定してください' });
+            return;
+        }
+        this.editSaving = true;
+        try {
+            await this.api.updateSeriesMetadata(this.editSeriesId, {
+                seasonYear: hasYear ? this.editSeasonYear : null,
+                seasonName: hasName ? this.editSeasonName : null,
+                titleKana: this.editTitleKana === '' ? null : this.editTitleKana,
+                totalEpisodes:
+                    typeof this.editTotalEpisodes === 'number' && this.editTotalEpisodes !== null
+                        ? this.editTotalEpisodes
+                        : null,
+            });
+            this.snackbarState.open({ color: 'success', text: 'シリーズ情報を更新しました' });
+            this.isOpenEditDialog = false;
+            await this.loadSeasons();
+            await this.load();
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: 'シリーズ情報の更新に失敗しました' });
+        } finally {
+            this.editSaving = false;
         }
     }
 

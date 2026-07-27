@@ -232,6 +232,19 @@ export default class SeriesDB implements ISeriesDB {
             .getRawMany<SeriesSeasonRow>();
     }
 
+    public async findFirstAiredAtMap(): Promise<Map<number, number>> {
+        const c = await this.op.getConnection();
+        const rows = await c
+            .getRepository(RecordedSeriesLink)
+            .createQueryBuilder('l')
+            .innerJoin(Recorded, 'r', 'r.id = l.recordedId')
+            .select('l.seriesId', 'seriesId')
+            .addSelect('MIN(r.startAt)', 'firstAiredAt')
+            .groupBy('l.seriesId')
+            .getRawMany<{ seriesId: number; firstAiredAt: string }>();
+        return new Map(rows.map(x => [Number(x.seriesId), Number(x.firstAiredAt)]));
+    }
+
     public async getSeries(id: number): Promise<Series | null> {
         const c = await this.op.getConnection();
         return await c.getRepository(Series).findOne({ where: { id } });
@@ -321,6 +334,7 @@ export default class SeriesDB implements ISeriesDB {
             titleKana?: string | null;
             seasonYear?: number | null;
             seasonName?: string | null;
+            seasonSource?: string | null;
             totalEpisodes?: number | null;
         },
     ): Promise<void> {

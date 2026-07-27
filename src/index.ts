@@ -14,6 +14,7 @@ import * as containerSetter from './model/ModelContainerSetter';
 import IAnnictWorkDictionary from './model/metadata/annict/IAnnictWorkDictionary';
 import ISyobocalTitleDictionary from './model/metadata/syobocal/ISyobocalTitleDictionary';
 import IImportWatchManageModel from './model/operator/recorded/IImportWatchManageModel';
+import ISeriesMetadataFiller from './model/series/ISeriesMetadataFiller';
 import IRecordingManageModel from './model/operator/recording/IRecordingManageModel';
 import IReservationManageModel from './model/operator/reservation/IReservationManageModel';
 import IStorageManageModel from './model/operator/storage/IStorageManageModel';
@@ -142,6 +143,11 @@ const runOperator = async () => {
     // (featureFlags.metadataProviders + Annict 連携が有効かつトークン設定済みの場合のみ実際に取得する)
     const annictWorkDictionary = container.get<IAnnictWorkDictionary>('IAnnictWorkDictionary');
     annictWorkDictionary.startAutoSync();
+
+    // 作品辞書の導入前に作られたシリーズにはクール・読み仮名・総話数が入っていないため、
+    // 辞書の同期が終わったころに一度だけ埋める (一覧の絞り込み・並べ替えに使う)
+    const seriesMetadataFiller = container.get<ISeriesMetadataFiller>('ISeriesMetadataFiller');
+    seriesMetadataFiller.scheduleInitialFill();
 };
 
 /**

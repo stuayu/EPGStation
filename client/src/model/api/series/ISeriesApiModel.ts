@@ -13,6 +13,13 @@ export type MissingEpisodeProposal = apid.MissingEpisodeProposal;
 export type SeriesBackfillOption = apid.SeriesBackfillOption;
 export type SeriesBackfillResult = apid.SeriesBackfillResult;
 export type ProgramSeriesMetrics = apid.ProgramSeriesMetrics;
+export interface UpdateSeriesMetadata {
+    titleKana?: string | null;
+    seasonYear?: number | null;
+    seasonName?: string | null;
+    totalEpisodes?: number | null;
+}
+
 export interface SeriesListOption {
     keyword?: string;
     offset?: number;
@@ -42,6 +49,13 @@ export default interface ISeriesApiModel {
      * @return Promise<{ scanned: number; updated: number }>
      */
     refreshMetadata(): Promise<{ scanned: number; updated: number }>;
+    /**
+     * シリーズのクール・読み仮名・総話数を手動で設定する
+     * @param seriesId: number
+     * @param value: UpdateSeriesMetadata
+     * @return Promise<void>
+     */
+    updateSeriesMetadata(seriesId: number, value: UpdateSeriesMetadata): Promise<void>;
     getMissingEpisodeProposals(seriesId: number): Promise<MissingEpisodeProposal[]>;
     get(id: number, channelId?: number): Promise<SeriesDetail>;
     getMapping(recordedId: number): Promise<SeriesMapping | null>;
