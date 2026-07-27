@@ -14,6 +14,7 @@ import * as containerSetter from './model/ModelContainerSetter';
 import IAnnictWorkDictionary from './model/metadata/annict/IAnnictWorkDictionary';
 import ISyobocalTitleDictionary from './model/metadata/syobocal/ISyobocalTitleDictionary';
 import IImportWatchManageModel from './model/operator/recorded/IImportWatchManageModel';
+import ISeriesStartupPipeline from './model/operator/series/ISeriesStartupPipeline';
 import ISeriesMetadataFiller from './model/series/ISeriesMetadataFiller';
 import IRecordingManageModel from './model/operator/recording/IRecordingManageModel';
 import IReservationManageModel from './model/operator/reservation/IReservationManageModel';
@@ -94,9 +95,7 @@ const setTunersWithRetry = async (): Promise<void> => {
         recordingManager.setTuner(tuners);
     } catch (err: any) {
         log.system.warn('mirakurun からチューナー情報を取得できませんでした');
-        log.system.warn(
-            'config.yml の mirakurunPath の設定と、Mirakurun サービスが起動しているかを確認してください',
-        );
+        log.system.warn('config.yml の mirakurunPath の設定と、Mirakurun サービスが起動しているかを確認してください');
         log.system.warn('チューナー無しで起動を継続し、以後バックグラウンドで再接続を試みます');
 
         // チューナー無しでいったん起動を継続する
@@ -148,6 +147,11 @@ const runOperator = async () => {
     // 辞書の同期が終わったころに一度だけ埋める (一覧の絞り込み・並べ替えに使う)
     const seriesMetadataFiller = container.get<ISeriesMetadataFiller>('ISeriesMetadataFiller');
     seriesMetadataFiller.scheduleInitialFill();
+
+    // 作品辞書の同期完了を待ってから、シリーズ未リンクの録画の再照合 (バックフィル) までを全自動で実行する
+    // (featureFlags.seriesLibrary 有効時のみ。seriesStartup.enable: false で無効化できる)
+    const seriesStartupPipeline = container.get<ISeriesStartupPipeline>('ISeriesStartupPipeline');
+    seriesStartupPipeline.schedule();
 };
 
 /**

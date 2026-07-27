@@ -90,9 +90,15 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         }
 
         const dryRun = option.dryRun === true;
+        const onlyUnlinked = dryRun === false && option.onlyUnlinked === true;
         const chunkSize = this.normalizeChunkSize(option.chunkSize);
         const intervalMs = this.normalizeIntervalMs(option.intervalMs);
         this.lastMode = dryRun ? 'dryRun' : 'real';
+
+        if (dryRun === false && option.restart === true) {
+            // 前回の再開位置 (lastRecordedId) と件数を破棄して先頭から実行し直す
+            this.realStatus = SeriesBackfillManageModel.initialStatus(false);
+        }
 
         if (dryRun) {
             // ドライランは実バックフィルの進捗 (カーソル) に影響を与えないよう常に独立して 0 から実行する
@@ -114,7 +120,7 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
             await this.persistReal();
         }
 
-        this.runLoop(status, dryRun, chunkSize, intervalMs).catch(err => {
+        this.runLoop(status, dryRun, chunkSize, intervalMs, onlyUnlinked).catch(err => {
             this.log.system.error('series backfill: unexpected error');
             this.log.system.error(err);
             status.state = 'failed';
@@ -153,6 +159,7 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         dryRun: boolean,
         chunkSize: number,
         intervalMs: number,
+        onlyUnlinked: boolean,
     ): Promise<void> {
         try {
             for (;;) {
@@ -178,7 +185,7 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
                 if (dryRun) {
                     await this.previewChunk(rows, status);
                 } else {
-                    await this.processChunk(rows, status);
+                    await this.processChunk(rows, status, onlyUnlinked);
                 }
 
                 status.lastRecordedId = rows[rows.length - 1].id;
@@ -197,13 +204,17 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
     }
 
     /**
-     * 実行チャンク: manualLock はスキップし、それ以外は SeriesResolver.resolve() を通す (冪等)
+     * 実行チャンク: manualLock (と onlyUnlinked 時のリンク済み録画) はスキップし、それ以外は SeriesResolver.resolve() を通す (冪等)
      */
-    private async processChunk(rows: SeriesBackfillCandidateRow[], status: SeriesBackfillStatus): Promise<void> {
+    private async processChunk(
+        rows: SeriesBackfillCandidateRow[],
+        status: SeriesBackfillStatus,
+        onlyUnlinked: boolean,
+    ): Promise<void> {
         for (const row of rows) {
             try {
                 const existingLink = await this.seriesDB.findLink(row.id);
-                if (existingLink?.manualLock === true) {
+                if (existingLink?.manualLock === true || (onlyUnlinked === true && existingLink !== null)) {
                     status.skipped++;
                 } else {
                     const link = await this.seriesResolver.resolve({

@@ -10,6 +10,10 @@ export interface SeriesBackfillOption {
     chunkSize?: number;
     // チャンク間の待機時間 (ms)。テスト等での調整用途 (省略時はデフォルト値)
     intervalMs?: number;
+    // true の場合、前回の再開位置 (lastRecordedId) を破棄して先頭から実行し直す (dryRun 時は無視される)
+    restart?: boolean;
+    // true の場合、既にシリーズへリンク済みの録画はスキップし、未リンクの録画だけを照合する (dryRun 時は無視される)
+    onlyUnlinked?: boolean;
 }
 
 /**
