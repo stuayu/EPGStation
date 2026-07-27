@@ -193,6 +193,31 @@ export function isDerivedFromTitle(sourceTitle: string, extractedTitle: string):
     return syobocalLookupKey(sourceTitle.normalize('NFKC')).includes(extracted);
 }
 
+/**
+ * 一般番組辞書 (Wikidata) 用の厳密な照合キー。
+ *
+ * syobocalLookupKey() は長音符・波ダッシュ・記号をすべて落とすため、
+ * アニメ作品名では有効でも一般番組では別番組同士が衝突する
+ * (実データで「あそビバ」と「あそビーバー」が同じキーになった)。
+ * こちらは空白と一部の飾り記号だけを落とし、長音符・波ダッシュ・中黒は保持する
+ * @param input: string
+ * @return string
+ */
+export function strictProgramKey(input: string): string {
+    const key = input
+        .normalize('NFKC')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/gu, '')
+        .normalize('NFC')
+        .toLocaleLowerCase('ja-JP')
+        // 空白と、表記ゆれの多い引用符・括弧・感嘆符類のみ除去する
+        .replace(/[\s\u3000!?！？"'’‘”“「」『』【】]/gu, '')
+        // 波ダッシュと全角チルダは同一視する (「サンドのぼんやり〜ぬTV」/「~ぬTV」)
+        .replace(/[～〜~]/gu, '~');
+
+    return key.length <= MAX_LOOKUP_KEY_LENGTH ? key : [...key].slice(0, MAX_LOOKUP_KEY_LENGTH).join('');
+}
+
 export function syobocalLookupKey(input: string): string {
     const key = input
         .normalize('NFKC')

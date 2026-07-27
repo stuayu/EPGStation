@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const WorkDictionary = require('../../dist/model/series/WorkDictionary').default;
 // 照合キーは実装と同じ関数で作る (手書きするとゆれて実態と食い違うため)
-const { syobocalLookupKey } = require('../../dist/model/series/SeriesNormalizer');
+const { syobocalLookupKey, strictProgramKey } = require('../../dist/model/series/SeriesNormalizer');
 
 // --- しょぼいカレンダー辞書のインメモリスタブ ---
 function makeSyobocalDB(titles = [], episodesByTid = {}) {
@@ -23,6 +23,18 @@ function makeSyobocalDB(titles = [], episodesByTid = {}) {
 }
 
 // --- Annict 辞書のインメモリスタブ ---
+// Wikidata 辞書は既定で空 (アニメ辞書だけの従来挙動を検証できるようにする)
+function makeWikidataDB(programs = []) {
+    return {
+        count: async () => programs.length,
+        countLinkedToSyobocal: async () => programs.filter(x => x.syobocalTid != null).length,
+        listAllAliases: async () =>
+            programs.map(x => ({ strictKey: x.strictKey, qid: x.qid, rank: 0, syobocalTid: x.syobocalTid ?? null })),
+        get: async qid => programs.find(x => x.qid === qid) ?? null,
+        bulkUpsert: async () => {},
+        clear: async () => {},
+    };
+}
 function makeAnnictDB(works = []) {
     const map = new Map(works.map(w => [w.annictId, w]));
     return {
@@ -61,6 +73,7 @@ test('lookup() matches across punctuation, dash and quote variants', async () =>
     const dict = new WorkDictionary(
         makeSyobocalDB([syobocalTitle({ tid: 1, title: 'ざつ旅-That’s Journey-' })]),
         makeAnnictDB(),
+        makeWikidataDB(),
     );
 
     for (const recorded of [
@@ -84,6 +97,7 @@ test('lookup() strips broadcast block prefixes, frame names and episode markers'
             syobocalTitle({ tid: 13, title: 'ハイガクラ' }),
         ]),
         makeAnnictDB(),
+        makeWikidataDB(),
     );
 
     const cases = [
@@ -104,6 +118,7 @@ test('lookup() restores titles truncated by the EPG length limit via prefix matc
     const dict = new WorkDictionary(
         makeSyobocalDB([syobocalTitle({ tid: 1, title: 'SAKAMOTO DAYS' })]),
         makeAnnictDB(),
+        makeWikidataDB(),
     );
 
     const match = await dict.lookup('SAKAMOTO');
@@ -118,6 +133,7 @@ test('lookup() falls back to an Annict-only work when the title is missing from 
         makeAnnictDB([
             annictWork({ annictId: 500, title: '配信限定作品', episodesCount: 12 }),
         ]),
+        makeWikidataDB(),
     );
 
     const match = await dict.lookup('配信限定作品 第3話');
@@ -139,6 +155,7 @@ test('lookup() merges a syobocal title and an Annict work that share a syobocalT
                 syobocalTid: 7,
             }),
         ]),
+        makeWikidataDB(),
     );
 
     // Annict 側の英題キーで引いても、しょぼいカレンダーの TID と正式タイトルが返る
@@ -158,6 +175,7 @@ test('lookup() strips leading frame names that contain spaces or are followed by
             syobocalTitle({ tid: 3, title: '凍牌' }),
         ]),
         makeAnnictDB(),
+        makeWikidataDB(),
     );
 
     const cases = [
@@ -182,6 +200,7 @@ test('lookup() uses the quoted work name when the title is "frame name + 「work
             syobocalTitle({ tid: 2, title: '鬼滅の刃' }),
         ]),
         makeAnnictDB(),
+        makeWikidataDB(),
     );
 
     assert.equal((await dict.lookup('日５「ウィッチウォッチ」　♯２[字][デ]')).syobocalTid, 1);
@@ -193,13 +212,14 @@ test('lookup() does not take a quoted title that a drama marker precedes', async
     const dict = new WorkDictionary(
         makeSyobocalDB([syobocalTitle({ tid: 1, title: 'Gift ～ギフト～ eternal rainbow' })]),
         makeAnnictDB(),
+        makeWikidataDB(),
     );
 
     assert.equal(await dict.lookup('[新]和田琢磨・染谷俊之W主演ドラマ「gift」第１話「giftという名の能力」'), null);
 });
 
 test('lookup() ignores a trailing reading in parentheses', async () => {
-    const dict = new WorkDictionary(makeSyobocalDB([syobocalTitle({ tid: 1, title: '羅小黒戦記' })]), makeAnnictDB());
+    const dict = new WorkDictionary(makeSyobocalDB([syobocalTitle({ tid: 1, title: '羅小黒戦記' })]), makeAnnictDB(), makeWikidataDB());
 
     assert.equal((await dict.lookup('[新]羅小黒戦記（ロシャオヘイセンキ）　＃１')).syobocalTid, 1);
 });
@@ -208,6 +228,7 @@ test('lookup() folds latin diacritics but keeps Japanese voiced sound marks', as
     const dict = new WorkDictionary(
         makeSyobocalDB([syobocalTitle({ tid: 1, title: 'Übel Blatt' }), syobocalTitle({ tid: 2, title: 'ざつ旅' })]),
         makeAnnictDB(),
+        makeWikidataDB(),
     );
 
     assert.equal((await dict.lookup('[新]アニメ　Ubel Blatt～ユーベルブラット～　第01話')).syobocalTid, 1);
@@ -219,13 +240,14 @@ test('lookup() does not match an unrelated programme', async () => {
     const dict = new WorkDictionary(
         makeSyobocalDB([syobocalTitle({ tid: 1, title: '呪術廻戦' })]),
         makeAnnictDB(),
+        makeWikidataDB(),
     );
 
     assert.equal(await dict.lookup('バナナマンのせっかくグルメ★日村が秋田で新米を食べまくる２時間SP'), null);
 });
 
 test('lookup() returns null while both dictionaries are empty', async () => {
-    const dict = new WorkDictionary(makeSyobocalDB([]), makeAnnictDB([]));
+    const dict = new WorkDictionary(makeSyobocalDB([]), makeAnnictDB([]), makeWikidataDB());
     assert.equal(await dict.lookup('呪術廻戦 第1話'), null);
 });
 
@@ -238,6 +260,7 @@ test('lookupEpisodeNumber() recovers the episode number from a sub title', async
             ],
         }),
         makeAnnictDB(),
+        makeWikidataDB(),
     );
 
     assert.equal(await dict.lookupEpisodeNumber(1, '作品タイトル「ふたつめの夜」'), 2);
@@ -248,8 +271,47 @@ test('lookup() prefers the syobocal total episode count over the Annict one', as
     const dict = new WorkDictionary(
         makeSyobocalDB([syobocalTitle({ tid: 3, title: '作品', totalEpisodes: 24 })]),
         makeAnnictDB([annictWork({ annictId: 1, title: '作品', syobocalTid: 3, episodesCount: 12 })]),
+        makeWikidataDB(),
     );
 
     const match = await dict.lookup('作品 第1話');
     assert.equal(match.totalEpisodes, 24);
+});
+
+test('lookup() finds a non-anime programme through the wikidata dictionary (exact key only)', async () => {
+    const dict = new WorkDictionary(
+        makeSyobocalDB(),
+        makeAnnictDB(),
+        makeWikidataDB([{ qid: 'Q11269387', title: 'じゃじゃじゃTV', strictKey: strictProgramKey('じゃじゃじゃTV'), syobocalTid: null, tmdbId: null }]),
+    );
+    const match = await dict.lookup('じゃじゃじゃTV');
+
+    assert.equal(match.wikidataQid, 'Q11269387');
+    assert.equal(match.source, 'wikidata');
+    assert.equal(match.matchType, 'exact');
+    assert.equal(match.syobocalTid, null);
+});
+
+test('lookup() does not let the wikidata dictionary match by containment', async () => {
+    const dict = new WorkDictionary(
+        makeSyobocalDB(),
+        makeAnnictDB(),
+        makeWikidataDB([{ qid: 'Q1', title: 'パラダイス', strictKey: strictProgramKey('パラダイス'), syobocalTid: null, tmdbId: null }]),
+    );
+    // 一般番組は短く一般的なタイトルが多いため、含有一致を許すと別番組へ誤リンクする
+    assert.equal(await dict.lookup('ゲームパラダイス'), null);
+});
+
+test('lookup() does not duplicate a work that both syobocal and wikidata have (joined by P11648)', async () => {
+    const dict = new WorkDictionary(
+        makeSyobocalDB([syobocalTitle({ tid: 42, title: '作品名' })]),
+        makeAnnictDB(),
+        makeWikidataDB([{ qid: 'Q99', title: '作品名', strictKey: strictProgramKey('作品名'), syobocalTid: 42, tmdbId: 7 }]),
+    );
+    const match = await dict.lookup('作品名');
+
+    // しょぼいカレンダー側の作品として解決し、Wikidata の qid はそこへ併記される
+    assert.equal(match.syobocalTid, 42);
+    assert.equal(match.source, 'syobocal');
+    assert.equal(match.wikidataQid, 'Q99');
 });

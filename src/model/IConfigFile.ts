@@ -268,6 +268,12 @@ export default interface IConfigFile {
             // 作品辞書の自動同期間隔 (ms)。省略時 7 日、0 以下で自動同期を停止する
             workSyncIntervalMs?: number;
         };
+        wikidata?: {
+            // 全ジャンルのテレビ番組辞書 (Wikidata) の取り込みを有効にするか
+            enabled?: boolean;
+            // 辞書の自動同期間隔 (ms)。省略時 7 日、0 以下で自動同期を停止する
+            syncIntervalMs?: number;
+        };
         syobocal?: {
             enabled?: boolean;
             // アニメ作品タイトル辞書の自動同期間隔 (ms)。省略時 24 時間、0 以下で自動同期を停止する
@@ -281,6 +287,8 @@ export default interface IConfigFile {
             syobocal?: string;
             // Annict GraphQL API (既定 https://api.annict.com/graphql)
             annict?: string;
+            // Wikidata SPARQL エンドポイント (既定 https://query.wikidata.org/sparql)
+            wikidata?: string;
             // Twitter アバター解決用 fxtwitter JSON API (既定 https://api.fxtwitter.com/)
             fxtwitter?: string;
             // 共有静的データ URL (既定なし。metadataSharedDataUrl と同義、こちらが優先)

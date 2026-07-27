@@ -72,6 +72,8 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
             const patch: {
                 syobocalTid?: number | null;
                 annictId?: string | null;
+                wikidataQid?: string | null;
+                tmdbId?: number | null;
                 titleKana?: string | null;
                 seasonYear?: number | null;
                 seasonName?: string | null;
@@ -91,6 +93,7 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
                 llmSuspended === false &&
                 series.syobocalTid === null &&
                 series.annictId === null &&
+                series.wikidataQid === null &&
                 llmAnalyzed < SeriesMetadataFiller.LLM_MAX_PER_RUN
             ) {
                 // レート制限・連続失敗で休止に入ったら、残りのシリーズは次回の実行へ回す。
@@ -115,6 +118,8 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
             if (match !== null) {
                 if (series.syobocalTid === null && match.syobocalTid !== null) patch.syobocalTid = match.syobocalTid;
                 if (series.annictId === null && match.annictId !== null) patch.annictId = String(match.annictId);
+                if (series.wikidataQid === null && match.wikidataQid !== null) patch.wikidataQid = match.wikidataQid;
+                if (series.tmdbId === null && match.tmdbId !== null) patch.tmdbId = match.tmdbId;
                 if (series.titleKana === null && match.titleKana !== null) patch.titleKana = match.titleKana;
                 if (series.totalEpisodes === null && match.totalEpisodes !== null) {
                     patch.totalEpisodes = match.totalEpisodes;

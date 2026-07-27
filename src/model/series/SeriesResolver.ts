@@ -48,7 +48,7 @@ export function scoreCandidate(normalizedTitle: string, candidate: Series, chann
  * @return RecordedSeriesLink['matchMethod']
  */
 function matchMethodOf(match: WorkMatch): RecordedSeriesLink['matchMethod'] {
-    return match.source === 'syobocal' ? 'syobocal' : 'annict';
+    return match.source === 'syobocal' ? 'syobocal' : match.source === 'annict' ? 'annict' : 'wikidata';
 }
 @injectable()
 export default class SeriesResolver implements ISeriesResolver {
@@ -203,7 +203,9 @@ export default class SeriesResolver implements ISeriesResolver {
                 ? await this.db.findBySyobocalTid(match.syobocalTid)
                 : match.annictId !== null
                   ? await this.db.findByAnnictId(String(match.annictId))
-                  : null;
+                  : match.wikidataQid !== null
+                    ? await this.db.findByWikidataQid(match.wikidataQid)
+                    : null;
         if (series === null) {
             series = await this.db.createSeries({
                 // 録画タイトル由来のゆらいだ名前ではなく辞書の正式タイトルをシリーズ名にする
@@ -212,6 +214,8 @@ export default class SeriesResolver implements ISeriesResolver {
                 preferredChannelId: recording.channelId,
                 syobocalTid: match.syobocalTid,
                 annictId: match.annictId === null ? null : String(match.annictId),
+                wikidataQid: match.wikidataQid,
+                tmdbId: match.tmdbId,
                 titleKana: match.titleKana,
                 seasonYear: match.seasonYear,
                 seasonName: match.seasonName,
@@ -226,6 +230,8 @@ export default class SeriesResolver implements ISeriesResolver {
             const patch: {
                 syobocalTid?: number | null;
                 annictId?: string | null;
+                wikidataQid?: string | null;
+                tmdbId?: number | null;
                 titleKana?: string | null;
                 seasonYear?: number | null;
                 seasonName?: string | null;
@@ -233,6 +239,8 @@ export default class SeriesResolver implements ISeriesResolver {
             } = {};
             if (series.syobocalTid === null && match.syobocalTid !== null) patch.syobocalTid = match.syobocalTid;
             if (series.annictId === null && match.annictId !== null) patch.annictId = String(match.annictId);
+            if (series.wikidataQid === null && match.wikidataQid !== null) patch.wikidataQid = match.wikidataQid;
+            if (series.tmdbId === null && match.tmdbId !== null) patch.tmdbId = match.tmdbId;
             if (series.titleKana === null && match.titleKana !== null) patch.titleKana = match.titleKana;
             if (series.seasonYear === null && match.seasonYear !== null) patch.seasonYear = match.seasonYear;
             if (series.seasonName === null && match.seasonName !== null) patch.seasonName = match.seasonName;
