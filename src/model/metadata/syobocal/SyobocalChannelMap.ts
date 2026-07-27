@@ -38,8 +38,18 @@ export default class SyobocalChannelMap implements ISyobocalChannelMap {
         this.sharedData.startAutoUpdate(payload => {
             if (!Array.isArray(payload.channelMap)) return;
             this.remoteEntries = payload.channelMap
-                .filter(x => typeof x.networkId === 'number' && typeof x.serviceId === 'number' && typeof x.chId === 'number')
-                .map(x => ({ chId: x.chId, networkId: x.networkId, serviceId: x.serviceId, syobocal: x.syobocal !== false }));
+                .filter(
+                    x =>
+                        typeof x.networkId === 'number' &&
+                        typeof x.serviceId === 'number' &&
+                        typeof x.chId === 'number',
+                )
+                .map(x => ({
+                    chId: x.chId,
+                    networkId: x.networkId,
+                    serviceId: x.serviceId,
+                    syobocal: x.syobocal !== false,
+                }));
             // 次回参照時に再マージさせる
             this.entries = null;
         });
@@ -59,8 +69,16 @@ export default class SyobocalChannelMap implements ISyobocalChannelMap {
         const raw = (all as any).syobocalChannelMap;
         if (!Array.isArray(raw)) return;
         this.dbEntries = raw
-            .filter(x => typeof x?.networkId === 'number' && typeof x?.serviceId === 'number' && typeof x?.chId === 'number')
-            .map(x => ({ chId: x.chId, networkId: x.networkId, serviceId: x.serviceId, syobocal: x.syobocal !== false }));
+            .filter(
+                x =>
+                    typeof x?.networkId === 'number' && typeof x?.serviceId === 'number' && typeof x?.chId === 'number',
+            )
+            .map(x => ({
+                chId: x.chId,
+                networkId: x.networkId,
+                serviceId: x.serviceId,
+                syobocal: x.syobocal !== false,
+            }));
         // 次回参照時に再マージさせる
         this.entries = null;
     }

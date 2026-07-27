@@ -1,7 +1,4 @@
-import {
-    AnnictWorkDictionaryStatus,
-    AnnictWorkSyncResult,
-} from '../../metadata/annict/IAnnictWorkDictionary';
+import { AnnictWorkDictionaryStatus, AnnictWorkSyncResult } from '../../metadata/annict/IAnnictWorkDictionary';
 
 export default interface IAnnictWorkApiModel {
     /**

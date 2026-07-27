@@ -507,7 +507,10 @@ export default class SeriesDB implements ISeriesDB {
                         }
                     }
                 }
-                await linkRepo.update({ id: link.id }, { seriesId: toSeriesId, episodeId: newEpisodeId, updatedAt: Date.now() });
+                await linkRepo.update(
+                    { id: link.id },
+                    { seriesId: toSeriesId, episodeId: newEpisodeId, updatedAt: Date.now() },
+                );
             }
             await aliasRepo.update({ seriesId: fromSeriesId }, { seriesId: toSeriesId });
             await episodeRepo.delete({ seriesId: fromSeriesId });
@@ -542,7 +545,13 @@ export default class SeriesDB implements ISeriesDB {
             for (const recordedId of recordedIds) {
                 await linkRepo.update(
                     { recordedId, seriesId: sourceSeriesId },
-                    { seriesId: newSeries.id, episodeId: null, matchMethod: 'manual', manualLock: true, updatedAt: now },
+                    {
+                        seriesId: newSeries.id,
+                        episodeId: null,
+                        matchMethod: 'manual',
+                        manualLock: true,
+                        updatedAt: now,
+                    },
                 );
             }
             return newSeries;

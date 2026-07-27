@@ -68,15 +68,15 @@ export default class ImportJobManageModel implements IImportJobManageModel {
      */
     private async run(job: InternalJob): Promise<void> {
         for (const item of job.items) {
-            const [result] = await this.recordedManage.importExternalRecordedFiles([item]).catch(
-                (err: any): ImportedExternalRecordedFileResult[] => [
+            const [result] = await this.recordedManage
+                .importExternalRecordedFiles([item])
+                .catch((err: any): ImportedExternalRecordedFileResult[] => [
                     {
                         localFilePath: item.localFilePath,
                         imported: false,
                         error: err instanceof Error ? err.message : String(err),
                     },
-                ],
-            );
+                ]);
 
             job.results.push(result);
             job.done++;

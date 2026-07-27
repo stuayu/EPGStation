@@ -7,7 +7,9 @@ export const get: Operation = async (req, res) => {
     const videoFileApiModel = container.get<IVideoApiModel>('IVideoApiModel');
 
     try {
-        const fileInfo = await videoFileApiModel.getFullFilePath(api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'));
+        const fileInfo = await videoFileApiModel.getFullFilePath(
+            api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'),
+        );
 
         if (fileInfo === null) {
             api.responseError(res, {

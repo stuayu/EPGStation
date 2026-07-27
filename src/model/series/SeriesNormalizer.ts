@@ -9,8 +9,26 @@ export interface SeriesParseResult {
 // 話数に使われる漢数字 (「第壱話」「漆話」など)
 const KANJI_NUMERALS = '一二三四五六七八九十壱弐参肆伍陸漆捌玖拾百';
 const KANJI_NUMERAL_VALUES: Readonly<Record<string, number>> = {
-    一: 1, 壱: 1, 二: 2, 弐: 2, 三: 3, 参: 3, 四: 4, 肆: 4, 五: 5, 伍: 5,
-    六: 6, 陸: 6, 七: 7, 漆: 7, 八: 8, 捌: 8, 九: 9, 玖: 9, 十: 10, 拾: 10,
+    一: 1,
+    壱: 1,
+    二: 2,
+    弐: 2,
+    三: 3,
+    参: 3,
+    四: 4,
+    肆: 4,
+    五: 5,
+    伍: 5,
+    六: 6,
+    陸: 6,
+    七: 7,
+    漆: 7,
+    八: 8,
+    捌: 8,
+    九: 9,
+    玖: 9,
+    十: 10,
+    拾: 10,
 };
 // 話数として扱う助数詞。放送局によって「話」以外 (第1幕・第2旅 等) が使われる
 const EPISODE_COUNTER = '(?:話|幕|旅|夜|章|回|羽|滑|品|球|杯)';
@@ -75,7 +93,10 @@ function removeMarkers(value: string, leadingBlock: RegExp): string {
     let result = value;
     for (;;) {
         const before = result;
-        result = result.replace(BRACKET_MARKERS, ' ').replace(/[\s\u3000]+/gu, ' ').trim();
+        result = result
+            .replace(BRACKET_MARKERS, ' ')
+            .replace(/[\s\u3000]+/gu, ' ')
+            .trim();
         while (leadingBlock.test(result)) result = result.replace(leadingBlock, '').trim();
         if (result === before) return result;
     }
@@ -120,7 +141,10 @@ function cleanWithLeadingBlock(input: string, leadingBlock: RegExp): string {
     // 「TVアニメ『作品名』」形式なら括弧の中身を作品名として採用する。
     // 前置きが空か枠名の場合に限定し、「作品名 「サブタイトル」」を誤って展開しないようにする
     const quoted = value.match(QUOTED_TITLE);
-    if (quoted !== null && (/アニメ|シリーズ|劇場版/u.test(quoted[1]) || (quoted[1].trim() === '' && quoted[2] === '『'))) {
+    if (
+        quoted !== null &&
+        (/アニメ|シリーズ|劇場版/u.test(quoted[1]) || (quoted[1].trim() === '' && quoted[2] === '『'))
+    ) {
         value = `${quoted[3]} ${quoted[4]}`.trim();
     }
 
@@ -323,7 +347,9 @@ export function parseSeriesInfo(input: string): SeriesParseResult {
             break;
         }
     }
-    const seasonMatch = normalized.match(/(?:第\s*(\d+)\s*期|(\d+)\s*期|season\s*(\d+)|(\d+)(?:nd|rd|th|st)\s*season|\bs(\d+)\b)/iu);
+    const seasonMatch = normalized.match(
+        /(?:第\s*(\d+)\s*期|(\d+)\s*期|season\s*(\d+)|(\d+)(?:nd|rd|th|st)\s*season|\bs(\d+)\b)/iu,
+    );
     const seasonNumber = Number(
         seasonMatch?.[1] ?? seasonMatch?.[2] ?? seasonMatch?.[3] ?? seasonMatch?.[4] ?? seasonMatch?.[5] ?? 1,
     );

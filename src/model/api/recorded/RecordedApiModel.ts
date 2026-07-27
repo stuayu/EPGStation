@@ -233,7 +233,10 @@ export default class RecordedApiModel implements IRecordedApiModel {
         const channel =
             typeof channelName === 'string'
                 ? channels.find(
-                      c => c.name === channelName || c.halfWidthName === channelName || c.name.includes(channelName as string),
+                      c =>
+                          c.name === channelName ||
+                          c.halfWidthName === channelName ||
+                          c.name.includes(channelName as string),
                   )
                 : undefined;
 

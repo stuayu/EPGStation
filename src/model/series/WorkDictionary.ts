@@ -243,7 +243,11 @@ export default class WorkDictionary implements IWorkDictionary {
             // 同じキーに複数作品が来た場合は rank の小さい方 (正式タイトル由来) を優先する。
             // 同順位なら既存を保ち、しょぼいカレンダー側の情報を Annict 側で補完する
             if (entry.rank < current.rank) {
-                index.set(key, { ...entry, syobocalTid: entry.syobocalTid ?? current.syobocalTid, annictId: entry.annictId ?? current.annictId });
+                index.set(key, {
+                    ...entry,
+                    syobocalTid: entry.syobocalTid ?? current.syobocalTid,
+                    annictId: entry.annictId ?? current.annictId,
+                });
             } else {
                 current.syobocalTid = current.syobocalTid ?? entry.syobocalTid;
                 current.annictId = current.annictId ?? entry.annictId;

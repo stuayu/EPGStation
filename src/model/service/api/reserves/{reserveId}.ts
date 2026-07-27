@@ -7,7 +7,10 @@ export const get: Operation = async (req, res) => {
     const reserveApiModel = container.get<IReserveApiModel>('IReserveApiModel');
 
     try {
-        const reserve = await reserveApiModel.get(api.parseRequestParamInt(req.params.reserveId, 'reserveId'), req.query.isHalfWidth as any);
+        const reserve = await reserveApiModel.get(
+            api.parseRequestParamInt(req.params.reserveId, 'reserveId'),
+            req.query.isHalfWidth as any,
+        );
         if (reserve === null) {
             api.responseError(res, {
                 code: 404,
@@ -64,7 +67,11 @@ export const del: Operation = async (req, res) => {
     const reserveApiModel = container.get<IReserveApiModel>('IReserveApiModel');
 
     try {
-        api.responseJSON(res, 200, await reserveApiModel.cancel(api.parseRequestParamInt(req.params.reserveId, 'reserveId')));
+        api.responseJSON(
+            res,
+            200,
+            await reserveApiModel.cancel(api.parseRequestParamInt(req.params.reserveId, 'reserveId')),
+        );
     } catch (err: unknown) {
         api.responseServerError(res, api.getErrorMessage(err));
     }

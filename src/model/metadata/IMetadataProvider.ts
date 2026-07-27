@@ -43,10 +43,7 @@ export interface MetadataConnectionTestResult {
 export default interface IMetadataProvider {
     readonly name: string;
     search(query: string, context?: MetadataSearchContext): Promise<MetadataSearchResult[]>;
-    get(
-        externalId: string,
-        option?: MetadataGetOption,
-    ): Promise<MetadataWork | null | typeof METADATA_NOT_MODIFIED>;
+    get(externalId: string, option?: MetadataGetOption): Promise<MetadataWork | null | typeof METADATA_NOT_MODIFIED>;
     /**
      * 視聴記録の書き込みに対応するプロバイダーのみが実装するオプショナルメソッド (§5.5)。
      * workExternalId (作品) の episodeNumber 話目の視聴記録を作成し、作品の視聴ステータスも同期する。

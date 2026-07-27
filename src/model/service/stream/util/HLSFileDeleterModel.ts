@@ -87,9 +87,7 @@ export default class HLSFileDeleterModel implements IHLSFileDeleterModel {
                 }
                 // 掴んでいるハンドルが離れるまで待って再試行する
                 if (err?.code === 'EPERM' && retry < HLSFileDeleterModel.UNLINK_RETRY_COUNT) {
-                    await new Promise<void>(resolve =>
-                        setTimeout(resolve, HLSFileDeleterModel.UNLINK_RETRY_INTERVAL),
-                    );
+                    await new Promise<void>(resolve => setTimeout(resolve, HLSFileDeleterModel.UNLINK_RETRY_INTERVAL));
                     continue;
                 }
                 this.log.stream.warn(`failed to delete ${fileName}`);

@@ -10,7 +10,10 @@ import IMetadataService from '../../metadata/IMetadataService';
 import { analyzeSeriesContinuity } from '../../series/SeriesContinuity';
 import { parseSeriesInfo } from '../../series/SeriesNormalizer';
 import IReserveApiModel from '../reserve/IReserveApiModel';
-import IMissingEpisodeApiModel, { MissingEpisodeProposal, MissingEpisodeProposalCandidate } from './IMissingEpisodeApiModel';
+import IMissingEpisodeApiModel, {
+    MissingEpisodeProposal,
+    MissingEpisodeProposalCandidate,
+} from './IMissingEpisodeApiModel';
 
 /**
  * 欠番話数の補完予約提案 API (§4.7)。
@@ -162,6 +165,7 @@ export default class MissingEpisodeApiModel implements IMissingEpisodeApiModel {
     }
 
     private enabled(): void {
-        if (!isFeatureEnabled(this.config.getConfig(), 'seriesLibrary')) throw new Error('SeriesLibraryFeatureIsDisabled');
+        if (!isFeatureEnabled(this.config.getConfig(), 'seriesLibrary'))
+            throw new Error('SeriesLibraryFeatureIsDisabled');
     }
 }
