@@ -16,7 +16,7 @@ export default class SeriesChangeHistory extends BaseEntity {
     @Column({ type: 'text', nullable: true }) previousAirType!: string | null;
     @Column({ type: 'text', nullable: true }) previousMatchMethod!: string | null;
     @Column({ type: 'real', nullable: true }) previousConfidence!: number | null;
-    @Column({ nullable: true }) previousManualLock!: boolean | null;
+    @Column({ type: 'boolean', nullable: true }) previousManualLock!: boolean | null;
     @Column({ default: false }) undone: boolean = false;
     @Column({ type: 'bigint' }) createdAt!: number;
 }
