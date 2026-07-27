@@ -38,38 +38,38 @@
 
 ### サーバ (`src/`)
 
-| パス | 役割 |
-|---|---|
-| `src/index.ts` | エントリポイント (Operator)。init → runOperator → runService → cleanup → runEPGUpdater |
-| `src/@types/` | グローバル型定義 |
-| `src/db/entities/` | TypeORM エンティティ (Channel, Program, Recorded, Reserve, Rule, Thumbnail, VideoFile など) |
-| `src/db/migrations/{mysql,sqlite}/` | DB 種別ごとのマイグレーション (postgres は空 = 実質未対応) |
-| `src/lib/` `src/util/` | 汎用ライブラリ / 純粋関数ユーティリティ |
-| `src/model/ModelContainerSetter.ts` | **DI バインディングの中心 (約 400 行)。新規クラスは必ずここに登録** |
-| `src/model/db/` | TypeORM Repository をラップしたデータアクセス層 (`I*DB.ts` / `*DB.ts`) |
-| `src/model/operator/` | 録画エンジン本体: reservation / recording / recorded / rule / storage / thumbnail / externalCommand |
-| `src/model/epgUpdater/` | EPG 更新 (Mirakurun イベントストリーム購読 + 定期実行) |
-| `src/model/event/` | EventEmitter ベースの内部イベント |
-| `src/model/ipc/` | Operator ⇔ Service 間 IPC |
-| `src/model/api/` | API ビジネスロジック層 (express 非依存) |
-| `src/model/service/api/` | express-openapi ルートハンドラ。**ディレクトリ構造 = URL パス** (例: `api/reserves/{reserveId}.ts` → `/api/reserves/{reserveId}`) |
-| `src/model/service/encode/` | エンコードプロセス管理 |
-| `src/model/service/stream/` | ライブ/録画済み × 通常/HLS のストリーミング |
-| `src/model/Configuration.ts` | `config/config.yml` の読み込み (fs.watchFile によるホットリロード付き) |
+| パス                                | 役割                                                                                                                              |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                      | エントリポイント (Operator)。init → runOperator → runService → cleanup → runEPGUpdater                                            |
+| `src/@types/`                       | グローバル型定義                                                                                                                  |
+| `src/db/entities/`                  | TypeORM エンティティ (Channel, Program, Recorded, Reserve, Rule, Thumbnail, VideoFile など)                                       |
+| `src/db/migrations/{mysql,sqlite}/` | DB 種別ごとのマイグレーション (postgres は空 = 実質未対応)                                                                        |
+| `src/lib/` `src/util/`              | 汎用ライブラリ / 純粋関数ユーティリティ                                                                                           |
+| `src/model/ModelContainerSetter.ts` | **DI バインディングの中心 (約 400 行)。新規クラスは必ずここに登録**                                                               |
+| `src/model/db/`                     | TypeORM Repository をラップしたデータアクセス層 (`I*DB.ts` / `*DB.ts`)                                                            |
+| `src/model/operator/`               | 録画エンジン本体: reservation / recording / recorded / rule / storage / thumbnail / externalCommand                               |
+| `src/model/epgUpdater/`             | EPG 更新 (Mirakurun イベントストリーム購読 + 定期実行)                                                                            |
+| `src/model/event/`                  | EventEmitter ベースの内部イベント                                                                                                 |
+| `src/model/ipc/`                    | Operator ⇔ Service 間 IPC                                                                                                         |
+| `src/model/api/`                    | API ビジネスロジック層 (express 非依存)                                                                                           |
+| `src/model/service/api/`            | express-openapi ルートハンドラ。**ディレクトリ構造 = URL パス** (例: `api/reserves/{reserveId}.ts` → `/api/reserves/{reserveId}`) |
+| `src/model/service/encode/`         | エンコードプロセス管理                                                                                                            |
+| `src/model/service/stream/`         | ライブ/録画済み × 通常/HLS のストリーミング                                                                                       |
+| `src/model/Configuration.ts`        | `config/config.yml` の読み込み (fs.watchFile によるホットリロード付き)                                                            |
 
 ### クライアント (`client/src/`)
 
-| パス | 役割 |
-|---|---|
-| `main.ts` | エントリ。DI コンテナ初期化 → サーバ config 取得 → Vue 生成 |
-| `router.ts` | vue-router ルート定義 (全 19 ページ) + スクロール位置復元 |
-| `views/` | ページコンポーネント |
-| `components/` | 機能別の再利用コンポーネント (guide, recorded, reserves, search, video など) |
-| `model/ModelContainerSetter.ts` | クライアント側 DI 登録 (サーバと同じパターン) |
-| `model/api/` | REST API ラッパー (`RepositoryModel` = axios 共通層 + 機能別 `*ApiModel`) |
-| `model/state/` | 画面ごとの State クラス (Vuex の代わり) |
-| `model/storage/` | localStorage 永続化 |
-| `model/socketio/` | socket.io クライアント (`updateStatus` / `updateEncode` イベント購読) |
+| パス                            | 役割                                                                         |
+| ------------------------------- | ---------------------------------------------------------------------------- |
+| `main.ts`                       | エントリ。DI コンテナ初期化 → サーバ config 取得 → Vue 生成                  |
+| `router.ts`                     | vue-router ルート定義 (全 19 ページ) + スクロール位置復元                    |
+| `views/`                        | ページコンポーネント                                                         |
+| `components/`                   | 機能別の再利用コンポーネント (guide, recorded, reserves, search, video など) |
+| `model/ModelContainerSetter.ts` | クライアント側 DI 登録 (サーバと同じパターン)                                |
+| `model/api/`                    | REST API ラッパー (`RepositoryModel` = axios 共通層 + 機能別 `*ApiModel`)    |
+| `model/state/`                  | 画面ごとの State クラス (Vuex の代わり)                                      |
+| `model/storage/`                | localStorage 永続化                                                          |
+| `model/socketio/`               | socket.io クライアント (`updateStatus` / `updateEncode` イベント購読)        |
 
 ### API 仕様の共有
 
@@ -79,17 +79,17 @@
 
 ## 主要ワークフロー別・変更対象ファイル
 
-| やりたいこと | 触るファイル |
-|---|---|
-| API エンドポイント追加 | `api.yml` → `src/model/service/api/**` → `src/model/api/**` → `ModelContainerSetter.ts` → `api.d.ts` |
-| DB スキーマ変更 | `src/db/entities/` → `npm run orm-gen --db=<mysql\|sqlite> --name=<Name>` (**mysql/sqlite 両方**) → `src/model/db/**` |
-| 録画・予約ロジック | `src/model/operator/{reservation,recording,rule}/**` |
-| EPG 更新 | `src/model/epgUpdater/**` |
-| エンコード | `src/model/service/encode/**` |
-| ストリーミング | `src/model/service/stream/**` |
-| Operator⇔Service 通信追加 | `src/model/ipc/IPCMessageDefine.ts`, `IPCServer.ts`, `IPCClient.ts` |
-| 設定項目追加 | `src/model/IConfigFile.ts`, `Configuration.ts` (DEFAULT_VALUE), `config/config.yml.template` (+ `config-win.yml.template`) |
-| クライアント新ページ | `client/src/views/` → `router.ts` → `model/state/**` → `model/ModelContainerSetter.ts` → ナビゲーション |
+| やりたいこと              | 触るファイル                                                                                                               |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| API エンドポイント追加    | `api.yml` → `src/model/service/api/**` → `src/model/api/**` → `ModelContainerSetter.ts` → `api.d.ts`                       |
+| DB スキーマ変更           | `src/db/entities/` → `npm run orm-gen --db=<mysql\|sqlite> --name=<Name>` (**mysql/sqlite 両方**) → `src/model/db/**`      |
+| 録画・予約ロジック        | `src/model/operator/{reservation,recording,rule}/**`                                                                       |
+| EPG 更新                  | `src/model/epgUpdater/**`                                                                                                  |
+| エンコード                | `src/model/service/encode/**`                                                                                              |
+| ストリーミング            | `src/model/service/stream/**`                                                                                              |
+| Operator⇔Service 通信追加 | `src/model/ipc/IPCMessageDefine.ts`, `IPCServer.ts`, `IPCClient.ts`                                                        |
+| 設定項目追加              | `src/model/IConfigFile.ts`, `Configuration.ts` (DEFAULT_VALUE), `config/config.yml.template` (+ `config-win.yml.template`) |
+| クライアント新ページ      | `client/src/views/` → `router.ts` → `model/state/**` → `model/ModelContainerSetter.ts` → ナビゲーション                    |
 
 ## コーディング規約 (両側共通)
 
@@ -130,10 +130,10 @@ npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (
 - `ExecutionManagementModel` は優先度付きの排他ロック。`getExecution()` の Promise は 60 秒でタイムアウトするため、呼び出し側は必ず reject を処理する (放置するとキュー処理が止まる)
 - **機能フラグ (`featureFlags`) は opt-out**。未指定の機能は**有効**として扱われ、止めたいものだけ `config.yml` に `false` を書く (`src/model/FeatureFlags.ts` / `client/src/util/FeatureFlags.ts`)。`featureFlags: {}` は「全部無効」ではなく「全部有効」を意味する
 - シリーズ自動マッピングは **外部の作品タイトル辞書が主軸**。**3 つの辞書**をローカル DB へ取り込み、`WorkDictionary` (`src/model/series/`) が 1 つのメモリ索引に統合して引く
-  - `SyobocalTitleDictionary` (しょぼいカレンダー、約 8 千件・アニメ専門) / `AnnictWorkDictionary` (Annict `searchWorks`、約 1.7 万件・アニメ専門) — Annict 側が持つ `syobocalTid` で厳密に結合する
-  - `WikidataProgramDictionary` (Wikidata SPARQL、約 4 万件・**全ジャンル**) — ドラマ・バラエティ・情報番組・ローカル局番組を担当。Wikidata の `P11648` (しょぼいカレンダーのシリーズ ID) でアニメ辞書と厳密に結合し、重複を作らない。一般番組は短く一般的なタイトルが多いため、**厳密キー (`strictProgramKey`) の完全一致のみ**で引く (含有・前方一致には参加させない)
-  - `SeriesResolver` はこの統合辞書を使い、録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバック。さらに `seriesLlm` を設定すると LLM が装飾を剥がした番組名で辞書を引き直す
-  - 同期は Operator 起動時 + しょぼいカレンダー 24 時間 / Annict 7 日 / Wikidata 7 日間隔 (`featureFlags.metadataProviders` + 各連携が有効な場合のみ。Annict はアクセストークン必須、Wikidata は不要で既定 ON)。詳細は `doc/stuayu-fork.md`
+    - `SyobocalTitleDictionary` (しょぼいカレンダー、約 8 千件・アニメ専門) / `AnnictWorkDictionary` (Annict `searchWorks`、約 1.7 万件・アニメ専門) — Annict 側が持つ `syobocalTid` で厳密に結合する
+    - `WikidataProgramDictionary` (Wikidata SPARQL、約 4 万件・**全ジャンル**) — ドラマ・バラエティ・情報番組・ローカル局番組を担当。Wikidata の `P11648` (しょぼいカレンダーのシリーズ ID) でアニメ辞書と厳密に結合し、重複を作らない。一般番組は短く一般的なタイトルが多いため、**厳密キー (`strictProgramKey`) の完全一致のみ**で引く (含有・前方一致には参加させない)
+    - `SeriesResolver` はこの統合辞書を使い、録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバック。さらに `seriesLlm` を設定すると LLM が装飾を剥がした番組名で辞書を引き直す
+    - 同期は Operator 起動時 + しょぼいカレンダー 24 時間 / Annict 7 日 / Wikidata 7 日間隔 (`featureFlags.metadataProviders` + 各連携が有効な場合のみ。Annict はアクセストークン必須、Wikidata は不要で既定 ON)。詳細は `doc/stuayu-fork.md`
 - シリーズ一覧のアイキャッチ画像は Annict 由来 (しょぼいカレンダーは画像を提供しない)。Annict の URL は作品公式サイトの OGP 画像を指し http:// も混ざるため、直リンクせず `SeriesImageModel` がサーバ側で取得して `data/seriesImage/` にキャッシュし `GET /api/series/{seriesId}/image` で配信する。画像が取れない作品は録画サムネイルで代用する
 - **Annict GraphQL API に `Query.works` は存在しない** (`searchWorks` のみ)。`Episode` に `airedAt` も無い。存在しないフィールドを要求するとクエリ全体が GraphQL エラーになるため、クエリを書くときは実 API のスキーマ (introspection) で確認すること
 - ライブ HLS は 2 モード: cmd が `%streamFileDir%` を含まなければ in-memory 配信 (`HLSMemoryStoreModel`、ディスク書き込みなし・字幕非対応)、含めば従来のディスク方式。詳細は `doc/streaming-refresh.md`
