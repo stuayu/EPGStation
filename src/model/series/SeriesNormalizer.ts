@@ -35,17 +35,23 @@ const EPISODE_TAILS = [
 // 括弧で囲まれた語のみをマーカーとして除去する対象一覧 (裸の語は除去しない)
 // 例: "(再)" "[新]" "【字】" は除去するが、"再婚承認を要求します" の「再」は除去しない
 const BRACKET_MARKER_TOKEN =
-    '(?:再放送|再|新|新作|終|終了|完|字幕?|デジタル|デ|吹替|二カ国語|二か国語|解説|多重音声|ステレオ|ノーカット|ドラマ|アニメ|SS?|無)';
+    '(?:再放送|再|新|新作|終|終了|完|字幕?|デジタル|デ|吹替|二カ国語|二か国語|解説|解|多重音声|ステレオ|ノーカット|ドラマ|アニメ|SS?|無)';
 const BRACKET_MARKERS = new RegExp(`[\\(\\[【<]\\s*${BRACKET_MARKER_TOKEN}\\s*[\\)\\]】>]`, 'giu');
 // (再放送) / [再] / 【再】 のような「括弧で囲まれた再」表現を再放送判定に使う (裸の「再」は誤検知するため対象外)
 const RERUN_PATTERN = /(?:再放送|[\(\[【]\s*再\s*[\)\]】])/u;
+// 先頭の角括弧ブロック ([字] 【新】 <アニおび> など)
+const LEADING_BRACKET = '[\\[【<＜][^\\]】>＞]{1,16}[\\]】>＞]';
+// 「アニメ」を含む編成枠の冠。
+// 区切りは「・」「空白」のほか、直後が括弧の場合 (例: "水曜アニメ<水もん>" "テレビアニメ「作品名」") も許す。
+// 枠名自体に空白を含むもの ("SEIBU TRAIN アニメスペシャル・") を拾うため、アニメの前は空白を含んでよい
+const LEADING_ANIME_FRAME = '[^・\\[【<]{0,16}アニメ[^\\s\\u3000・\\[【<「『]{0,8}(?:[・\\s\\u3000]|(?=[\\[【<「『]))';
 // 先頭の編成ブロック名。[字] のような角括弧ブロックと「アニメ」「TVアニメ」「水曜アニメ・」等を除去する
-const LEADING_BLOCK_STRICT = /^(?:[\[【<＜][^\]】>＞]{1,16}[\]】>＞]|(?:[^\s\u3000・]{0,10}アニメ[A-Za-z]?)[・\s\u3000])+\s*/u;
+const LEADING_BLOCK_STRICT = new RegExp(`^(?:${LEADING_BRACKET}|${LEADING_ANIME_FRAME})+\\s*`, 'u');
 // STRICT に加えて「メディアβ・」「＋Ultra・」のような "短い語 + ・" の冠も除去する。
 // 「ライアー・ライアー」のような作品名を削ってしまう恐れがあるため、STRICT で辞書に当たらなかった場合の
 // 第 2 候補としてのみ使う (buildSeriesLookupKeys 参照)
 const LEADING_BLOCK_LOOSE = new RegExp(
-    `^(?:[\\[【<＜][^\\]】>＞]{1,16}[\\]】>＞]|(?:[^\\s\\u3000・]{0,10}アニメ[A-Za-z]?)[・\\s\\u3000]|[^\\s\\u3000・]{1,12}・(?=\\S))+\\s*`,
+    `^(?:${LEADING_BRACKET}|${LEADING_ANIME_FRAME}|[^\\s\\u3000・]{1,12}・(?=\\S))+\\s*`,
     'u',
 );
 // 末尾に付く枠名ブロック・サブタイトル。
@@ -126,7 +132,7 @@ function cleanWithLeadingBlock(input: string, leadingBlock: RegExp): string {
 
     return value
         .replace(/[\s\u3000]+/gu, ' ')
-        .replace(/[・:：\-〜~]+$/u, '')
+        .replace(/[・:：\-〜~★☆▼▽◆◇♪＊*＋+]+$/u, '')
         .trim();
 }
 
@@ -151,31 +157,72 @@ export function displaySeriesTitle(input: string): string {
 }
 
 /**
- * しょぼいカレンダー作品辞書との突き合わせに使う照合キーを生成する。
+ * 作品辞書との突き合わせに使う照合キーを生成する。
  * 記号・空白・長音/ダッシュ/引用符の表記ゆれをすべて落とし、小文字化した「骨格だけ」の文字列を返す
- * ("ざつ旅-That's Journey-" と "ざつ旅―that’s journey―" が同じキーになる)
+ * ("ざつ旅-That's Journey-" と "ざつ旅―that’s journey―" が同じキーになる)。
+ * ラテン文字の発音記号も畳むため "Übel Blatt" と "Ubel Blatt" が一致する
+ * (日本語の濁点・半濁点は U+3099/U+309A で下記の範囲外なので影響しない)
  * @param input: string 任意のタイトル文字列
  * @return string 照合キー (記号のみのタイトルでは空文字になりうる)
  */
 export function syobocalLookupKey(input: string): string {
     return input
         .normalize('NFKC')
+        // ラテン文字の発音記号を落とす。分解 (NFD) したまま返すと日本語の濁点も
+        // 分解形で残り比較がずれるため、除去後に必ず NFC へ戻す
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/gu, '')
+        .normalize('NFC')
         .toLocaleLowerCase('ja-JP')
         .replace(/[\s\u3000!-/:-@[-`{-~、。・～〜ー―－‐’‘′”“「」『』【】]/gu, '');
 }
 
+// タイトル中で 「」/『』 に囲まれた作品名。
+// 局が「枠名 + 「作品名」」の形で送出することがあり (例: 日5「ウィッチウォッチ」、
+// 映画「五等分の花嫁」、『はたらく細胞』実写映画公開記念)、この場合は括弧の中だけが作品名になる
+const EMBEDDED_QUOTED_TITLE = /(.*?)[「『]([^」』]{2,})[」』]/u;
+// ただし括弧の直前が実写ドラマを示す語の場合は作品名として採らない。
+// 同名のアニメ作品へ誤って寄せてしまうため (例: 実写ドラマ「gift」がアニメ「Gift ～ギフト～」に一致した)
+const NON_ANIME_QUOTE_PREFIX = /(?:ドラマ|主演|実写)[^「『]{0,8}$/u;
+// タイトル末尾に付く読み仮名の括弧 (例: 羅小黒戦記(ロシャオヘイセンキ))
+const TRAILING_READING = /[（(][^）)]{1,30}[）)]\s*$/u;
+
 /**
- * 録画番組タイトルから、しょぼいカレンダー作品辞書を引くための照合キー候補を優先度順に返す。
- * 先頭ブロック除去の強度違い (STRICT → LOOSE) で複数の候補を作り、呼び出し側が順に辞書を引く。
- * これにより "メディアβ・ぼさにまる" のような冠付きにも "ライアー・ライアー" のような作品名にも対応できる
+ * 録画番組タイトルから、作品辞書を引くための照合キー候補を優先度順に返す。
+ * 先に挙げた候補ほど確度が高く、呼び出し側は当たるまで順に辞書を引く。
+ *
+ *  1. 先頭ブロック除去 (STRICT) — 誤削除の少ない既定の解釈
+ *  2. 先頭ブロック除去 (LOOSE)  — "メディアβ・ぼさにまる" のような "短い語 + ・" の冠にも対応
+ *     (1 を先に試すので "ライアー・ライアー" のような作品名は削られない)
+ *  3. 末尾の読み仮名括弧を除いた形 — "羅小黒戦記(ロシャオヘイセンキ)"
+ *  4. 括弧内の作品名のみ — "日5「ウィッチウォッチ」" のように枠名と作品名が併記される形。
+ *     サブタイトルを誤って作品名と解釈しうるため、他の候補がすべて外れた場合の最終手段とする
  * @param input: string 録画番組タイトル
  * @return string[] 重複を除いた照合キー候補 (先頭ほど確度が高い)
  */
 export function buildSeriesLookupKeys(input: string): string[] {
     const keys: string[] = [];
-    for (const leadingBlock of [LEADING_BLOCK_STRICT, LEADING_BLOCK_LOOSE]) {
-        const key = syobocalLookupKey(cleanSeriesTitle(input, leadingBlock));
+    const push = (value: string): void => {
+        const key = syobocalLookupKey(value);
         if (key !== '' && keys.includes(key) === false) keys.push(key);
+    };
+
+    const cleaned: string[] = [];
+    for (const leadingBlock of [LEADING_BLOCK_STRICT, LEADING_BLOCK_LOOSE]) {
+        const value = cleanSeriesTitle(input, leadingBlock);
+        cleaned.push(value);
+        push(value);
+    }
+    for (const value of cleaned) {
+        const withoutReading = value.replace(TRAILING_READING, '').trim();
+        if (withoutReading !== '') push(withoutReading);
+    }
+    const quoted = input.normalize('NFKC').match(EMBEDDED_QUOTED_TITLE);
+    if (quoted !== null && NON_ANIME_QUOTE_PREFIX.test(quoted[1]) === false) {
+        const title = quoted[2].trim();
+        push(title);
+        const withoutReading = title.replace(TRAILING_READING, '').trim();
+        if (withoutReading !== '') push(withoutReading);
     }
     return keys;
 }
