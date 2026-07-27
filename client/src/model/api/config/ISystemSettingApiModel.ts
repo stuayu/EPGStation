@@ -35,4 +35,15 @@ export default interface ISystemSettingApiModel {
      * 共有静的データ (チャンネルマッピング表・エイリアス辞書) を今すぐ同期する
      */
     syncSharedData(): Promise<apid.SharedDataSyncResult>;
+    /**
+     * しょぼいカレンダー アニメ作品タイトル辞書の状態を取得する
+     * @return Promise<apid.SyobocalTitleDictionaryStatus>
+     */
+    getSyobocalTitleStatus(): Promise<apid.SyobocalTitleDictionaryStatus>;
+    /**
+     * しょぼいカレンダー アニメ作品タイトル辞書を同期する
+     * @param full: boolean true なら全件取り直す
+     * @return Promise<apid.SyobocalTitleSyncResult>
+     */
+    syncSyobocalTitles(full: boolean): Promise<apid.SyobocalTitleSyncResult>;
 }

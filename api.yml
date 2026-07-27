@@ -1561,7 +1561,8 @@ components:
                     type: integer
                 watchHistory:
                     description: 視聴履歴 (featureFlags.watchHistory が有効な場合のみ含まれる)
-                    $ref: '#/components/schemas/WatchHistory'
+                    allOf:
+                        - $ref: '#/components/schemas/WatchHistory'
 
         DashboardData:
             type: object
@@ -1862,7 +1863,7 @@ components:
                     type: integer
 
         RecordedCleanupDropLogCandidates:
-            description: DB 未登録のドロップログファイルの削除候補情報
+            description: DB 未登録のドロップログフ���イルの削除候補情報
             type: object
             required:
                 - count
@@ -2247,7 +2248,7 @@ components:
                     description: ログのカテゴリ
                     type: string
                 name:
-                    description: ログファイル名
+                    description: ロ��ファイル名
                     type: string
                 size:
                     description: ファイルサイズ (byte)
@@ -2512,8 +2513,9 @@ components:
                 mediaType:
                     type: string
                 preferredChannelId:
-                    $ref: '#/components/schemas/ChannelId'
                     nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/ChannelId'
                 updatedAt:
                     $ref: '#/components/schemas/UnixtimeMS'
 
@@ -2863,7 +2865,7 @@ components:
                 - failed
 
         SeriesBackfillPreviewCandidate:
-            description: ドライラン時の候補シリーズ
+            description: ドライラン時の候補シリーズ (seriesId が null の候補はドライラン中に新規作成予定の仮シリーズ)
             type: object
             required:
                 - seriesId
@@ -2871,7 +2873,9 @@ components:
                 - score
             properties:
                 seriesId:
-                    $ref: '#/components/schemas/SeriesId'
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/SeriesId'
                 seriesTitle:
                     type: string
                 score:
@@ -2897,8 +2901,9 @@ components:
                     description: 'true: 確定シリーズ (または新規作成予定) / false: 未確定 (候補のみ)'
                     type: boolean
                 seriesId:
-                    $ref: '#/components/schemas/SeriesId'
                     nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/SeriesId'
                 seriesTitle:
                     type: string
                     nullable: true
@@ -2948,11 +2953,13 @@ components:
                 failed:
                     type: integer
                 startedAt:
-                    $ref: '#/components/schemas/UnixtimeMS'
                     nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/UnixtimeMS'
                 finishedAt:
-                    $ref: '#/components/schemas/UnixtimeMS'
                     nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/UnixtimeMS'
                 lastRecordedId:
                     $ref: '#/components/schemas/RecordedId'
                 error:
@@ -3035,8 +3042,9 @@ components:
                 matchedPrograms:
                     type: integer
                 updatedAt:
-                    $ref: '#/components/schemas/UnixtimeMS'
                     nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/UnixtimeMS'
             required:
                 - unmatchedRate
                 - confidenceHistogram
@@ -3194,6 +3202,51 @@ components:
                 syobocal:
                     description: false の場合、この局はしょぼいカレンダーへ未登録として扱い問い合わせをスキップする
                     type: boolean
+
+        SyobocalTitleDictionaryStatus:
+            description: しょぼいカレンダー アニメ作品タイトル辞書の状態
+            type: object
+            required:
+                - titleCount
+                - lastUpdate
+                - lastSyncedAt
+                - running
+                - error
+            properties:
+                titleCount:
+                    description: 辞書に登録されている作品数
+                    type: integer
+                lastUpdate:
+                    description: しょぼいカレンダー側の最終更新日時 (差分取得カーソル)
+                    type: string
+                    nullable: true
+                lastSyncedAt:
+                    description: 直近の同期完了時刻 (UNIX time ms)
+                    type: integer
+                    nullable: true
+                running:
+                    description: 同期実行中か
+                    type: boolean
+                error:
+                    description: 直近の同期でのエラーメッセージ
+                    type: string
+                    nullable: true
+
+        SyobocalTitleSyncResult:
+            description: しょぼいカレンダー アニメ作品タイトル辞書の同期結果
+            allOf:
+                - $ref: '#/components/schemas/SyobocalTitleDictionaryStatus'
+                - type: object
+                  required:
+                      - imported
+                      - full
+                  properties:
+                      imported:
+                          description: 今回の同期で取り込んだ作品数
+                          type: integer
+                      full:
+                          description: 全件取得だったか
+                          type: boolean
 
         SharedDataSyncResult:
             description: 共有静的データの「今すぐ同期」結果 (§5.7・§6.2)

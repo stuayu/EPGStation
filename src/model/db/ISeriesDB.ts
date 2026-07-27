@@ -9,6 +9,8 @@ export interface NewSeries {
     title: string;
     normalizedTitle: string;
     preferredChannelId: number | null;
+    // しょぼいカレンダー作品辞書で確定した場合の TID
+    syobocalTid?: number | null;
     createdAt: number;
     updatedAt: number;
 }
@@ -81,6 +83,12 @@ export interface NewReservationHint {
 }
 export default interface ISeriesDB {
     findCandidates(normalizedTitle: string): Promise<Series[]>;
+    /**
+     * しょぼいカレンダーの TID からシリーズを引く (作品辞書で確定した録画を同一シリーズへ寄せるために使う)
+     * @param syobocalTid: number
+     * @return Promise<Series | null>
+     */
+    findBySyobocalTid(syobocalTid: number): Promise<Series | null>;
     createSeries(value: NewSeries): Promise<Series>;
     findEpisode(seriesId: number, seasonNumber: number, episodeNumber: number | null): Promise<SeriesEpisode | null>;
     findEpisodeById(id: number): Promise<SeriesEpisode | null>;

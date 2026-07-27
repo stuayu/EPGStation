@@ -35,4 +35,10 @@ export default class SystemSettingApiModel implements ISystemSettingApiModel {
     async syncSharedData(): Promise<apid.SharedDataSyncResult> {
         return (await this.repository.post('/settings/system/shared-data/sync', {})).data;
     }
+    async getSyobocalTitleStatus(): Promise<apid.SyobocalTitleDictionaryStatus> {
+        return (await this.repository.get('/settings/system/syobocal/titles')).data;
+    }
+    async syncSyobocalTitles(full: boolean): Promise<apid.SyobocalTitleSyncResult> {
+        return (await this.repository.post('/settings/system/syobocal/titles', { full })).data;
+    }
 }

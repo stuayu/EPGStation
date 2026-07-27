@@ -11,6 +11,7 @@ import IMirakurunClientModel from './model/IMirakurunClientModel';
 import IIPCServer from './model/ipc/IIPCServer';
 import container from './model/ModelContainer';
 import * as containerSetter from './model/ModelContainerSetter';
+import ISyobocalTitleDictionary from './model/metadata/syobocal/ISyobocalTitleDictionary';
 import IImportWatchManageModel from './model/operator/recorded/IImportWatchManageModel';
 import IRecordingManageModel from './model/operator/recording/IRecordingManageModel';
 import IReservationManageModel from './model/operator/reservation/IReservationManageModel';
@@ -130,6 +131,11 @@ const runOperator = async () => {
     // 外部録画ファイル取り込みディレクトリの自動監視 (config.importWatch: true の場合のみ動作する)
     const importWatchManageModel = container.get<IImportWatchManageModel>('IImportWatchManageModel');
     importWatchManageModel.start();
+
+    // しょぼいカレンダーのアニメ作品タイトル辞書を定期的に取り込む
+    // (featureFlags.metadataProviders + しょぼいカレンダー連携が有効な場合のみ実際に取得する)
+    const syobocalTitleDictionary = container.get<ISyobocalTitleDictionary>('ISyobocalTitleDictionary');
+    syobocalTitleDictionary.startAutoSync();
 };
 
 /**

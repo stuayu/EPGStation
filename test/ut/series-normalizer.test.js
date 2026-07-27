@@ -1,4 +1,4 @@
-'use strict';const assert=require('node:assert/strict');const test=require('node:test');const{normalizeSeriesTitle,parseSeriesInfo}=require('../../dist/model/series/SeriesNormalizer');
+'use strict';const assert=require('node:assert/strict');const test=require('node:test');const{normalizeSeriesTitle,parseSeriesInfo,displaySeriesTitle}=require('../../dist/model/series/SeriesNormalizer');
 test('normalizes Japanese broadcast noise and episode suffixes',()=>{assert.equal(normalizeSeriesTitle('＜アニメギルド＞　作品名　第１２話「最終回」'),'作品名');assert.equal(normalizeSeriesTitle('【再】アニメA・作品名 #03'),'作品名');});
 test('parses episode, season and rerun markers',()=>{assert.deepEqual(parseSeriesInfo('作品名 第2期 第12.5話【再】'),{normalizedTitle:'作品名 第2期',seasonNumber:2,episodeNumber:12.5,episodeLabel:'第12.5話',airType:'rerun'});});
 test('full-width and ASCII episode forms converge',()=>{assert.equal(parseSeriesInfo('作品名 ＃０３').episodeNumber,3);assert.equal(parseSeriesInfo('作品名 EP03').episodeNumber,3);});
@@ -7,3 +7,5 @@ test('removes only bracket-enclosed rerun markers, including full-width parenthe
 test('removes (新)(終)(字)(デ) style bracketed markers',()=>{assert.equal(normalizeSeriesTitle('作品名(新)'),'作品名');assert.equal(normalizeSeriesTitle('作品名(終)'),'作品名');assert.equal(normalizeSeriesTitle('作品名(字)'),'作品名');assert.equal(normalizeSeriesTitle('作品名(デ)'),'作品名');assert.equal(normalizeSeriesTitle('作品名(新)(終)'),'作品名');});
 test('falls back to the original title when normalization would otherwise produce an empty string',()=>{assert.equal(normalizeSeriesTitle('第1話'),'第1話'.toLocaleLowerCase('ja-JP'));assert.equal(normalizeSeriesTitle('「サブタイトル」'),'「サブタイトル」'.toLocaleLowerCase('ja-JP'));});
 test('detects (再) parenthesis rerun markers that the bracket-only regex previously missed',()=>{assert.equal(parseSeriesInfo('作品名(再)').airType,'rerun');assert.equal(parseSeriesInfo('作品名 再放送').airType,'rerun');assert.equal(parseSeriesInfo('作品名【再】').airType,'rerun');});
+
+test('displaySeriesTitle keeps original casing while removing episode markers',()=>{assert.equal(displaySeriesTitle('CLANNAD AFTER STORY(HDマスター版) #16'),'CLANNAD AFTER STORY(HDマスター版)');assert.equal(displaySeriesTitle('＜アニメギルド＞　作品名　第１２話「最終回」'),'作品名');assert.equal(normalizeSeriesTitle('CLANNAD AFTER STORY #16'),'clannad after story');});

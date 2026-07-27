@@ -1435,7 +1435,8 @@ export type SeriesBackfillState = 'idle' | 'running' | 'completed' | 'canceled' 
  * ドライラン時の候補シリーズ
  */
 export interface SeriesBackfillPreviewCandidate {
-    seriesId: SeriesId;
+    // null はこのドライラン実行中に新規作成される予定のシリーズ (まだ DB に存在しない)
+    seriesId: SeriesId | null;
     seriesTitle: string;
     score: number;
 }
@@ -1557,6 +1558,19 @@ export interface SyobocalChannelMapEntry {
 
 export interface SharedDataSyncResult {
     updated: boolean;
+}
+
+export interface SyobocalTitleDictionaryStatus {
+    titleCount: number;
+    lastUpdate: string | null;
+    lastSyncedAt: number | null;
+    running: boolean;
+    error: string | null;
+}
+
+export interface SyobocalTitleSyncResult extends SyobocalTitleDictionaryStatus {
+    imported: number;
+    full: boolean;
 }
 
 export interface NotificationFailureHistoryItem {

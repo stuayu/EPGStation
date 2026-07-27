@@ -17,7 +17,7 @@
                         <!-- 基本タブ: 変更履歴・ロールバック -->
                         <v-window-item value="basic">
                             <div class="text-subtitle-1 mb-2">変更履歴・ロールバック</div>
-                            <v-select v-model="historyKey" :items="historyKeyItems" label="対象キー" v-on:update:model-value="loadHistory"></v-select>
+                            <v-select v-model="historyKey" :items="historyKeyItems" item-title="title" label="対象キー" v-on:update:model-value="loadHistory"></v-select>
                             <v-alert v-if="historyItems.length === 0" type="info" class="mb-2">変更履歴はありません</v-alert>
                             <v-table v-else density="compact" class="mb-2">
                                 <thead>
@@ -71,6 +71,29 @@
                             <div class="text-subtitle-1 mb-2">しょぼいカレンダー連携</div>
                             <v-switch v-model="settings.metadata.syobocal.enabled" label="しょぼいカレンダー連携を有効化"></v-switch>
 
+                            <div class="text-subtitle-2 mt-2 mb-2">アニメ作品タイトル辞書</div>
+                            <v-alert type="info" density="compact" class="mb-2">
+                                しょぼいカレンダーからアニメ作品タイトルを一括取得し、シリーズ自動マッピングの照合辞書として使います。放送局ごとの表記ゆれ
+                                (「第壱話」「break1」「TVアニメ『◯◯』」「水曜アニメ・」など) があっても同じ作品としてまとめられます。
+                            </v-alert>
+                            <div class="text-body-2 mb-2">
+                                登録作品数: {{ syobocalTitleStatus === null ? '取得中…' : syobocalTitleStatus.titleCount.toLocaleString() }}
+                                <span v-if="syobocalTitleStatus !== null && syobocalTitleStatus.lastUpdate !== null">
+                                    / 最終更新: {{ syobocalTitleStatus.lastUpdate }}
+                                </span>
+                            </div>
+                            <div class="d-flex align-center ga-2 mb-2 flex-wrap">
+                                <v-btn variant="outlined" :loading="syobocalTitleSyncing" @click="syncSyobocalTitles(false)">差分同期</v-btn>
+                                <v-btn variant="outlined" :loading="syobocalTitleSyncing" @click="syncSyobocalTitles(true)">全件取り直し</v-btn>
+                                <span v-if="syobocalTitleSyncResult" class="text-body-2">{{ syobocalTitleSyncResult }}</span>
+                            </div>
+                            <v-text-field
+                                v-model.number="settings.metadata.syobocal.titleSyncIntervalMs"
+                                type="number"
+                                label="辞書の自動同期間隔 (ms, 0 で自動同期しない)"
+                                density="compact"
+                            ></v-text-field>
+
                             <div class="d-flex align-center mb-2 mt-2">
                                 <div class="text-subtitle-2">チャンネルマッピング表 (未登録局フラグ含む)</div>
                                 <v-spacer></v-spacer>
@@ -85,6 +108,7 @@
                                     <v-select
                                         v-model="entry.__channelId"
                                         :items="channelSelectItems"
+                                        item-title="title"
                                         label="チャンネルから選択"
                                         density="compact"
                                         hide-details
@@ -262,7 +286,9 @@
                                         <tr v-for="p in backfillStatus.previewItems" :key="p.recordedId">
                                             <td>{{ p.title }}</td>
                                             <td>
-                                                <v-chip v-if="p.matched === true" color="success" size="small">{{ p.seriesTitle }} ({{ Math.round((p.confidence ?? 0) * 100) }}%)</v-chip>
+                                                <v-chip v-if="p.matched === true" :color="p.seriesId === null ? 'info' : 'success'" size="small"
+                                                    >{{ p.seriesId === null ? '新規: ' : '' }}{{ p.seriesTitle }} ({{ Math.round((p.confidence ?? 0) * 100) }}%)</v-chip
+                                                >
                                                 <v-chip v-else color="warning" size="small">未確定</v-chip>
                                             </td>
                                             <td>{{ p.candidates.map(c => c.seriesTitle).join('、') }}</td>
@@ -410,6 +436,10 @@ class SystemSetting extends Vue {
     sharedDataSyncing = false;
     sharedDataSyncResult: string | null = null;
 
+    syobocalTitleStatus: apid.SyobocalTitleDictionaryStatus | null = null;
+    syobocalTitleSyncing = false;
+    syobocalTitleSyncResult: string | null = null;
+
     get backfillStateText(): string {
         const map: Record<string, string> = { idle: '未実行', running: '実行中', completed: '完了', canceled: 'キャンセル済み', failed: '失敗' };
         return this.backfillStatus ? (map[this.backfillStatus.state] ?? this.backfillStatus.state) : '';
@@ -429,7 +459,7 @@ class SystemSetting extends Vue {
     settings: any = {
         metadata: {
             annict: { enabled: false, token: '', syncEnabled: true },
-            syobocal: { enabled: false },
+            syobocal: { enabled: false, titleSyncIntervalMs: 24 * 60 * 60 * 1000 },
             sharedData: { autoUpdate: true },
             cacheTtlMs: 24 * 60 * 60 * 1000,
         },
@@ -489,6 +519,7 @@ class SystemSetting extends Vue {
             console.error(err);
         }
         await this.loadChannelMap();
+        await this.refreshSyobocalTitleStatus();
 
         if (this.isEnabledSeriesLibrary === true) {
             await this.refreshBackfillStatus();
@@ -659,6 +690,41 @@ class SystemSetting extends Vue {
             this.sharedDataSyncResult = '同期に失敗しました';
         } finally {
             this.sharedDataSyncing = false;
+        }
+    }
+
+    /**
+     * しょぼいカレンダー アニメ作品タイトル辞書の状態を取得する
+     */
+    async refreshSyobocalTitleStatus(): Promise<void> {
+        try {
+            this.syobocalTitleStatus = await this.api.getSyobocalTitleStatus();
+        } catch (err) {
+            // 機能フラグ (metadataProviders) が無効な場合は 404 になるため、エラー表示はせず未取得のままにする
+            console.error(err);
+        }
+    }
+
+    /**
+     * アニメ作品タイトル辞書を同期する
+     * @param full: boolean true なら差分ではなく全件取り直す
+     */
+    async syncSyobocalTitles(full: boolean): Promise<void> {
+        this.syobocalTitleSyncing = true;
+        this.syobocalTitleSyncResult = null;
+        try {
+            const result = await this.api.syncSyobocalTitles(full);
+            this.syobocalTitleStatus = result;
+            this.syobocalTitleSyncResult =
+                result.error === null
+                    ? `${result.imported.toLocaleString()} 件を取り込みました (登録作品数 ${result.titleCount.toLocaleString()})`
+                    : `同期に失敗しました: ${result.error}`;
+        } catch (err) {
+            console.error(err);
+            this.syobocalTitleSyncResult = '同期に失敗しました';
+            this.snackbarState.open({ color: 'error', text: 'アニメ作品タイトル辞書の同期に失敗しました' });
+        } finally {
+            this.syobocalTitleSyncing = false;
         }
     }
 

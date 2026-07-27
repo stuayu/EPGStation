@@ -127,7 +127,6 @@ export default interface IConfigFile {
     https?: HttpsConfig;
     // 段階導入用。未指定の機能は常に無効として扱う
     featureFlags?: FeatureFlags;
-    secretKey?: string; // ランタイム設定の秘密情報暗号化鍵（環境変数展開済みの十分長い値を推奨）
 
     // しょぼいカレンダー ChID ⇄ Mirakurun networkId/serviceId のマッピング表 (JSON) のパス。
     // 省略時は同梱の初期データ (主要地上波キー局のみ) を使う。指定したファイルは同梱データを上書き/追加する
@@ -265,7 +264,11 @@ export default interface IConfigFile {
     // token 等の秘密情報はここに書かず設定画面から入力すること
     metadataDefaults?: {
         annict?: { enabled?: boolean };
-        syobocal?: { enabled?: boolean };
+        syobocal?: {
+            enabled?: boolean;
+            // アニメ作品タイトル辞書の自動同期間隔 (ms)。省略時 24 時間、0 以下で自動同期を停止する
+            titleSyncIntervalMs?: number;
+        };
         cacheTtlMs?: number;
     };
 

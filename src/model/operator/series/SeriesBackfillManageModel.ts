@@ -7,7 +7,8 @@ import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import { scoreCandidate } from '../../series/SeriesResolver';
 import ISeriesResolver from '../../series/ISeriesResolver';
-import { parseSeriesInfo } from '../../series/SeriesNormalizer';
+import ISyobocalTitleDictionary from '../../metadata/syobocal/ISyobocalTitleDictionary';
+import { displaySeriesTitle, parseSeriesInfo } from '../../series/SeriesNormalizer';
 import ISeriesBackfillManageModel, {
     SeriesBackfillOption,
     SeriesBackfillPreviewCandidate,
@@ -43,6 +44,7 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
     private seriesDB: ISeriesDB;
     private settingsDB: IAppSettingDB;
     private seriesResolver: ISeriesResolver;
+    private titleDictionary: ISyobocalTitleDictionary;
 
     private running: boolean = false;
     private cancelRequested: boolean = false;
@@ -53,6 +55,9 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
     private dryRunStatus: SeriesBackfillStatus | null = null;
     private dryRunPreviewItems: SeriesBackfillPreviewItem[] = [];
     private dryRunPreviewTruncated: boolean = false;
+    // ドライラン中に「新規作成予定」と判定した仮シリーズ。
+    // 実行時は作成直後のシリーズが後続録画の照合候補になるため、ドライランでも同一実行内の作成予定シリーズを候補に含めて挙動を再現する
+    private dryRunVirtualSeries: Series[] = [];
     // getStatus() がどちらを返すか (直近に start() されたモード)
     private lastMode: BackfillMode = 'real';
 
@@ -62,12 +67,14 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         @inject('ISeriesDB') seriesDB: ISeriesDB,
         @inject('IAppSettingDB') settingsDB: IAppSettingDB,
         @inject('ISeriesResolver') seriesResolver: ISeriesResolver,
+        @inject('ISyobocalTitleDictionary') titleDictionary: ISyobocalTitleDictionary,
     ) {
         this.log = logger.getLogger();
         this.recordedDB = recordedDB;
         this.seriesDB = seriesDB;
         this.settingsDB = settingsDB;
         this.seriesResolver = seriesResolver;
+        this.titleDictionary = titleDictionary;
     }
 
     /**
@@ -92,6 +99,7 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
             this.dryRunStatus = SeriesBackfillManageModel.initialStatus(true);
             this.dryRunPreviewItems = [];
             this.dryRunPreviewTruncated = false;
+            this.dryRunVirtualSeries = [];
         }
 
         const status = dryRun ? (this.dryRunStatus as SeriesBackfillStatus) : this.realStatus;
@@ -291,7 +299,30 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
             }
         }
 
-        const candidates = await this.seriesDB.findCandidates(parsed.normalizedTitle);
+        // 実行時 (SeriesResolver) と同じく しょぼいカレンダー作品辞書を類似度スコアリングより先に引く
+        const dictionaryMatch = await Promise.resolve()
+            .then(async () => await this.titleDictionary.lookup(row.name))
+            .catch(() => null);
+        if (dictionaryMatch !== null) {
+            const existing = await this.seriesDB.findBySyobocalTid(dictionaryMatch.tid);
+            return {
+                matched: true,
+                // 実行時に新規作成されるシリーズは seriesId: null で表す
+                seriesId: existing?.id ?? null,
+                seriesTitle: existing?.title ?? dictionaryMatch.title,
+                confidence: dictionaryMatch.confidence,
+                candidates: [],
+            };
+        }
+
+        // 実行時 (SeriesResolver) は直前に作成されたシリーズも DB から候補として引けるため、
+        // ドライランでも同一実行内で「新規作成予定」とした仮シリーズを候補に加えて挙動を再現する
+        const dbCandidates = await this.seriesDB.findCandidates(parsed.normalizedTitle);
+        const virtualCandidates = this.findVirtualCandidates(parsed.normalizedTitle);
+        // SeriesDB.findCandidates() と同様に、完全一致があれば完全一致のみを候補とする
+        const merged = [...dbCandidates, ...virtualCandidates];
+        const exactMatches = merged.filter(candidate => candidate.normalizedTitle === parsed.normalizedTitle);
+        const candidates = exactMatches.length > 0 ? exactMatches : merged;
         const settings = await this.settingsDB.getAll();
         const threshold = this.threshold((settings.series as any)?.matchThreshold);
 
@@ -306,13 +337,24 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         }
 
         if (candidates.length === 0) {
-            return { matched: true, seriesId: null, seriesTitle: row.name, confidence: 1, candidates: [] };
+            // 実行時にはこの録画を起点に新規シリーズが自動作成されるため、
+            // 仮シリーズとして登録して同一ドライラン内の後続録画の判定に反映する
+            const title = displaySeriesTitle(row.name);
+            this.dryRunVirtualSeries.push({
+                id: SeriesBackfillManageModel.VIRTUAL_SERIES_ID,
+                title,
+                normalizedTitle: parsed.normalizedTitle,
+                preferredChannelId: row.channelId,
+            } as Series);
+
+            return { matched: true, seriesId: null, seriesTitle: title, confidence: 1, candidates: [] };
         }
 
         if (!winner || confidence < threshold) {
             const ranked = candidates
                 .map(candidate => ({
-                    seriesId: candidate.id,
+                    // 仮シリーズ (このドライラン中に新規作成予定) は seriesId: null で表す
+                    seriesId: candidate.id === SeriesBackfillManageModel.VIRTUAL_SERIES_ID ? null : candidate.id,
                     seriesTitle: candidate.title,
                     score: scoreCandidate(parsed.normalizedTitle, candidate, row.channelId),
                 }))
@@ -322,7 +364,32 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
             return { matched: false, seriesId: null, seriesTitle: null, confidence: null, candidates: ranked };
         }
 
-        return { matched: true, seriesId: winner.id, seriesTitle: winner.title, confidence, candidates: [] };
+        return {
+            matched: true,
+            // 仮シリーズ (このドライラン中に新規作成予定) への割当は seriesId: null で表す
+            seriesId: winner.id === SeriesBackfillManageModel.VIRTUAL_SERIES_ID ? null : winner.id,
+            seriesTitle: winner.title,
+            confidence,
+            candidates: [],
+        };
+    }
+
+    // ドライラン専用の仮シリーズ ID (実シリーズの id は 1 以上のため衝突しない)
+    private static readonly VIRTUAL_SERIES_ID = 0;
+
+    /**
+     * SeriesDB.findCandidates() と同じ規則 (完全一致 → 先頭 4 文字の部分一致) で仮シリーズから候補を探す
+     * @param normalizedTitle: string 正規化済みタイトル
+     * @return Series[]
+     */
+    private findVirtualCandidates(normalizedTitle: string): Series[] {
+        const exact = this.dryRunVirtualSeries.filter(series => series.normalizedTitle === normalizedTitle);
+        if (exact.length > 0) return exact;
+
+        const key = normalizedTitle.slice(0, Math.min(4, normalizedTitle.length));
+        if (key === '') return [];
+
+        return this.dryRunVirtualSeries.filter(series => series.normalizedTitle.includes(key));
     }
 
     private threshold(value: unknown): number {
