@@ -267,10 +267,11 @@ export default class WikidataProgramDictionary implements IWikidataProgramDictio
         if (isFeatureEnabled(config, 'metadataProviders') === false) return false;
         const all = await this.settings.getAll();
 
+        // 既定で有効。API キー不要・無料で、アニメ以外のジャンルを照合できる唯一の辞書のため
         return resolveBoolean(
             (all.metadata as any)?.wikidata?.enabled,
             config.metadataDefaults?.wikidata?.enabled,
-            false,
+            true,
         );
     }
 

@@ -128,7 +128,12 @@ npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (
 - TypeORM 1.x では criteria が空の `delete()` が禁止されているため、全件削除は `createQueryBuilder().delete()` を使う (既存コードは対応済み)
 - エンコードキューは `data/encodeQueue.json` に永続化され、Service プロセス起動時に `EncodeManageModel.restore()` で復元される (Web API の待ち受け開始はこの復元後)。キューを変更するコードを追加したら保存 (`saveQueue()`) の呼び出し漏れに注意
 - `ExecutionManagementModel` は優先度付きの排他ロック。`getExecution()` の Promise は 60 秒でタイムアウトするため、呼び出し側は必ず reject を処理する (放置するとキュー処理が止まる)
-- シリーズ自動マッピングは **外部の作品タイトル辞書が主軸**。`SyobocalTitleDictionary` (しょぼいカレンダー `TitleLookup&TID=*`、約 8 千件) と `AnnictWorkDictionary` (Annict `searchWorks` のページング、約 1.7 万件) が各々ローカル DB へ取り込み、`WorkDictionary` (`src/model/series/`) が両者を 1 つのメモリ索引に統合して引く。Annict 側が持つ `syobocalTid` で 2 辞書の作品を厳密に結合する。`SeriesResolver` はこの統合辞書を使い、録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバック。同期は Operator 起動時 + しょぼいカレンダー 24 時間 / Annict 7 日間隔 (`featureFlags.metadataProviders` + 各連携が有効な場合のみ。Annict はアクセストークン必須)。詳細は `doc/stuayu-fork.md`
+- **機能フラグ (`featureFlags`) は opt-out**。未指定の機能は**有効**として扱われ、止めたいものだけ `config.yml` に `false` を書く (`src/model/FeatureFlags.ts` / `client/src/util/FeatureFlags.ts`)。`featureFlags: {}` は「全部無効」ではなく「全部有効」を意味する
+- シリーズ自動マッピングは **外部の作品タイトル辞書が主軸**。**3 つの辞書**をローカル DB へ取り込み、`WorkDictionary` (`src/model/series/`) が 1 つのメモリ索引に統合して引く
+  - `SyobocalTitleDictionary` (しょぼいカレンダー、約 8 千件・アニメ専門) / `AnnictWorkDictionary` (Annict `searchWorks`、約 1.7 万件・アニメ専門) — Annict 側が持つ `syobocalTid` で厳密に結合する
+  - `WikidataProgramDictionary` (Wikidata SPARQL、約 4 万件・**全ジャンル**) — ドラマ・バラエティ・情報番組・ローカル局番組を担当。Wikidata の `P11648` (しょぼいカレンダーのシリーズ ID) でアニメ辞書と厳密に結合し、重複を作らない。一般番組は短く一般的なタイトルが多いため、**厳密キー (`strictProgramKey`) の完全一致のみ**で引く (含有・前方一致には参加させない)
+  - `SeriesResolver` はこの統合辞書を使い、録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバック。さらに `seriesLlm` を設定すると LLM が装飾を剥がした番組名で辞書を引き直す
+  - 同期は Operator 起動時 + しょぼいカレンダー 24 時間 / Annict 7 日 / Wikidata 7 日間隔 (`featureFlags.metadataProviders` + 各連携が有効な場合のみ。Annict はアクセストークン必須、Wikidata は不要で既定 ON)。詳細は `doc/stuayu-fork.md`
 - シリーズ一覧のアイキャッチ画像は Annict 由来 (しょぼいカレンダーは画像を提供しない)。Annict の URL は作品公式サイトの OGP 画像を指し http:// も混ざるため、直リンクせず `SeriesImageModel` がサーバ側で取得して `data/seriesImage/` にキャッシュし `GET /api/series/{seriesId}/image` で配信する。画像が取れない作品は録画サムネイルで代用する
 - **Annict GraphQL API に `Query.works` は存在しない** (`searchWorks` のみ)。`Episode` に `airedAt` も無い。存在しないフィールドを要求するとクエリ全体が GraphQL エラーになるため、クエリを書くときは実 API のスキーマ (introspection) で確認すること
 - ライブ HLS は 2 モード: cmd が `%streamFileDir%` を含まなければ in-memory 配信 (`HLSMemoryStoreModel`、ディスク書き込みなし・字幕非対応)、含めば従来のディスク方式。詳細は `doc/streaming-refresh.md`

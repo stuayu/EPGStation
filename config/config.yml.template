@@ -486,20 +486,20 @@ stream:
 # 秘密情報暗号化鍵は data/key/secret.key へ自動生成・保存されます (config.yml での指定は廃止)。
 # 旧バージョンで secretKey を設定していた場合は、初回起動時にその値が鍵ファイルへ移行されます。
 
-# 段階導入用機能フラグ。明示的に true にした機能だけが有効になります。
-# 未指定の項目は false として扱われます。
-featureFlags:
-    watchHistory: false
-    notifications: false
-    dashboard: false
-    systemSettings: false
-    seriesLibrary: false
-    metadataProviders: false
-    programSeriesMapping: false
-    annictSync: false
-    nextUpPanel: false
-    externalFileImport: false
-    advancedSearch: false
+# 機能フラグ。**未指定の項目は有効**として扱われます。
+# 止めたい機能だけ false を書いてください (featureFlags 自体を省略すると全機能が有効)。
+# featureFlags:
+#     watchHistory: true
+#     notifications: true
+#     dashboard: true
+#     systemSettings: true
+#     seriesLibrary: true
+#     metadataProviders: true
+#     programSeriesMapping: true
+#     annictSync: true
+#     nextUpPanel: true
+#     externalFileImport: true
+#     advancedSearch: true
 
 # しょぼいカレンダー ChID ⇄ Mirakurun networkId/serviceId のマッピング表 (JSON) のパス。
 # 省略時は同梱の初期データ (主要地上波キー局のみ) を使う。指定したファイルの内容は同梱データを
@@ -523,10 +523,10 @@ featureFlags:
 #         # 自動同期間隔 (ms)。省略時 24 時間。0 を指定すると自動同期を行わない
 #         titleSyncIntervalMs: 86400000
 #     wikidata:
-#         # 全ジャンルのテレビ番組辞書 (Wikidata) を取り込むか。
+#         # 全ジャンルのテレビ番組辞書 (Wikidata) を取り込むか (既定 true)。
 #         # しょぼいカレンダー / Annict がアニメ専門なのに対し、ドラマ・バラエティ・情報番組・
 #         # ニュース、さらにローカル局の番組まで収録している (約 4 万件)。API キー不要
-#         enabled: false
+#         enabled: true
 #         # 辞書の自動同期間隔 (ms)。省略時 7 日。0 を指定すると自動同期を行わない
 #         syncIntervalMs: 604800000
 #     annict:

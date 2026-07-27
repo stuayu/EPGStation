@@ -70,7 +70,7 @@ test('system settings encrypt secrets, mask responses, and preserve masked updat
 
 test('system settings rejects access while feature is disabled', async () => {
     const model = new AppSettingApiModel(
-        { getConfig: () => ({ featureFlags: {} }) },
+        { getConfig: () => ({ featureFlags: { systemSettings: false } }) },
         { getAll: async () => ({}) },
         new SecretCrypto({ getConfig: () => ({}) }),
         makeHistoryDB(),
