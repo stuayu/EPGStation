@@ -1,4 +1,5 @@
 import { inject, injectable } from 'inversify';
+import * as path from 'path';
 import FileUtil from '../../../../util/FileUtil';
 import ILogger from '../../../ILogger';
 import ILoggerModel from '../../../ILoggerModel';
@@ -6,6 +7,10 @@ import IHLSFileDeleterModel, { HLSFileDeleterOption } from './IHLSFileDeleterMod
 
 @injectable()
 export default class HLSFileDeleterModel implements IHLSFileDeleterModel {
+    // Windows で ffmpeg がまだファイルを掴んでいる場合 (EPERM) の再試行回数と間隔
+    private static readonly UNLINK_RETRY_COUNT = 2;
+    private static readonly UNLINK_RETRY_INTERVAL = 200;
+
     private log: ILogger;
     private option: HLSFileDeleterOption | null = null;
 
@@ -56,8 +61,40 @@ export default class HLSFileDeleterModel implements IHLSFileDeleterModel {
 
         for (let i = 0; i < targetFiles.length - fileNum; i++) {
             if (typeof targetFiles[i] !== 'undefined' && targetFiles[i] !== '.gitkeep') {
-                await FileUtil.unlink(`${this.option.streamFilePath}/${targetFiles[i]}`).catch();
-                this.log.stream.info(`deleted ${targetFiles[i]}`);
+                await this.unlink(path.join(this.option.streamFilePath, targetFiles[i]), targetFiles[i]);
+            }
+        }
+    }
+
+    /**
+     * ファイル 1 つを削除する。
+     * 削除失敗で配信の停止処理を中断させてはならないため、例外は投げずに warn ログへ落とす
+     * (既に消えている場合の ENOENT、Windows で ffmpeg がまだ掴んでいる場合の EPERM が起きうる)
+     * @param filePath: 削除するファイルのパス
+     * @param fileName: ログ表示用のファイル名
+     * @return Promise<void>
+     */
+    private async unlink(filePath: string, fileName: string): Promise<void> {
+        for (let retry = 0; retry <= HLSFileDeleterModel.UNLINK_RETRY_COUNT; retry++) {
+            try {
+                await FileUtil.unlink(filePath);
+                this.log.stream.info(`deleted ${fileName}`);
+                return;
+            } catch (err: any) {
+                // 既に消えているなら削除成功として扱う
+                if (err?.code === 'ENOENT') {
+                    return;
+                }
+                // 掴んでいるハンドルが離れるまで待って再試行する
+                if (err?.code === 'EPERM' && retry < HLSFileDeleterModel.UNLINK_RETRY_COUNT) {
+                    await new Promise<void>(resolve =>
+                        setTimeout(resolve, HLSFileDeleterModel.UNLINK_RETRY_INTERVAL),
+                    );
+                    continue;
+                }
+                this.log.stream.warn(`failed to delete ${fileName}`);
+                this.log.stream.warn(err);
+                return;
             }
         }
     }

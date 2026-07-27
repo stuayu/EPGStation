@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify';
-import { In } from 'typeorm';
+import { EntityManager, In } from 'typeorm';
 import SyobocalTitle from '../../db/entities/SyobocalTitle';
 import SyobocalTitleAlias from '../../db/entities/SyobocalTitleAlias';
 import SyobocalTitleEpisode from '../../db/entities/SyobocalTitleEpisode';
@@ -24,16 +24,20 @@ export default class SyobocalTitleDB implements ISyobocalTitleDB {
         const connection = await this.op.getConnection();
         const tids = values.map(x => x.title.tid);
 
-        // 同一 TID の別名・サブタイトルは差分更新ではなく都度置き換える (しょぼいカレンダー側での削除に追随するため)
-        for (let i = 0; i < tids.length; i += SyobocalTitleDB.DELETE_CHUNK_SIZE) {
-            const chunk = tids.slice(i, i + SyobocalTitleDB.DELETE_CHUNK_SIZE);
-            await connection.getRepository(SyobocalTitleAlias).delete({ tid: In(chunk) });
-            await connection.getRepository(SyobocalTitleEpisode).delete({ tid: In(chunk) });
-        }
+        // 途中で INSERT が失敗した場合に syobocal_title の lastUpdate カーソルだけが進み、
+        // 別名・サブタイトルが欠落したままにならないよう、全体を 1 トランザクションで置き換える
+        await connection.transaction(async manager => {
+            // 同一 TID の別名・サブタイトルは差分更新ではなく都度置き換える (しょぼいカレンダー側での削除に追随するため)
+            for (let i = 0; i < tids.length; i += SyobocalTitleDB.DELETE_CHUNK_SIZE) {
+                const chunk = tids.slice(i, i + SyobocalTitleDB.DELETE_CHUNK_SIZE);
+                await manager.getRepository(SyobocalTitleAlias).delete({ tid: In(chunk) });
+                await manager.getRepository(SyobocalTitleEpisode).delete({ tid: In(chunk) });
+            }
 
-        await this.insertChunked(SyobocalTitle, values.map(x => x.title), true);
-        await this.insertChunked(SyobocalTitleAlias, values.flatMap(x => x.aliases), false);
-        await this.insertChunked(SyobocalTitleEpisode, values.flatMap(x => x.episodes), false);
+            await this.insertChunked(manager, SyobocalTitle, values.map(x => x.title), true);
+            await this.insertChunked(manager, SyobocalTitleAlias, values.flatMap(x => x.aliases), false);
+            await this.insertChunked(manager, SyobocalTitleEpisode, values.flatMap(x => x.episodes), false);
+        });
     }
 
     public async count(): Promise<number> {
@@ -86,16 +90,16 @@ export default class SyobocalTitleDB implements ISyobocalTitleDB {
 
     /**
      * SQLite のバインド変数上限に掛からないよう分割して INSERT する
+     * @param manager: トランザクション内の EntityManager
      * @param entity: 対象エンティティ
      * @param rows: 挿入する行
      * @param orUpdate: 主キー衝突時に UPDATE するか (syobocal_title のみ true)
      */
-    private async insertChunked(entity: any, rows: unknown[], orUpdate: boolean): Promise<void> {
+    private async insertChunked(manager: EntityManager, entity: any, rows: unknown[], orUpdate: boolean): Promise<void> {
         if (rows.length === 0) return;
-        const connection = await this.op.getConnection();
         for (let i = 0; i < rows.length; i += SyobocalTitleDB.INSERT_CHUNK_SIZE) {
             const chunk = rows.slice(i, i + SyobocalTitleDB.INSERT_CHUNK_SIZE);
-            const builder = connection.createQueryBuilder().insert().into(entity).values(chunk as any);
+            const builder = manager.createQueryBuilder().insert().into(entity).values(chunk as any);
             if (orUpdate === true) {
                 builder.orUpdate(
                     [

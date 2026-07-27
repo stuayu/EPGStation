@@ -21,6 +21,12 @@ class EPGUpdater implements IEPGUpdater {
     private lastDeletedTime: number = 0;
     private retryCount: number = 0;
 
+    // EPG 更新系タスク (updateAll / saveProgram / deleteOldPrograms) の排他制御用ロック。
+    // updateAll は program の全削除 + 全挿入を行う重い処理のため、並行実行すると
+    // DELETE FROM program 同士が競合して MySQL の Lock wait timeout (ER_LOCK_WAIT_TIMEOUT) が発生する
+    private updateTaskLock: Promise<void> = Promise.resolve();
+    private isUpdateTaskRunning: boolean = false;
+
     private static readonly EVENT_STREAM_REONNECTION_MAX = 12;
 
     constructor(
@@ -49,20 +55,23 @@ class EPGUpdater implements IEPGUpdater {
         this.updateManage.on(EPGUpdateEvent.STREAM_STARTED, async () => {
             this.log.system.info('event stream started');
             this.retryCount = 0;
-            try {
-                await this.updateManage.updateAll();
-                this.notify();
-            } catch (err: any) {
-                this.log.system.error('updateAll error');
-            }
-            // updateAllが完了して以降、queueフラッシュ処理を有効にするために
-            // この位置でisEventStreamAliveをtrueにする
-            const now = new Date().getTime();
-            this.lastUpdatedTime = now;
-            // updateAll 後は全件数削除が行われるため削除時間も更新する
-            this.lastDeletedTime = now;
-            this.lastEventStreamUpdatedTime = now;
-            this.isEventStreamAlive = true;
+            // 定期実行タスクの updateAll と同時に走らないよう排他制御する
+            await this.runExclusiveUpdateTask(async () => {
+                try {
+                    await this.updateManage.updateAll();
+                    this.notify();
+                } catch (err: any) {
+                    this.log.system.error('updateAll error');
+                }
+                // updateAllが完了して以降、queueフラッシュ処理を有効にするために
+                // この位置でisEventStreamAliveをtrueにする
+                const now = new Date().getTime();
+                this.lastUpdatedTime = now;
+                // updateAll 後は全件数削除が行われるため削除時間も更新する
+                this.lastDeletedTime = now;
+                this.lastEventStreamUpdatedTime = now;
+                this.isEventStreamAlive = true;
+            });
         });
 
         this.updateManage.on(EPGUpdateEvent.STREAM_ABORTED, () => {
@@ -88,54 +97,84 @@ class EPGUpdater implements IEPGUpdater {
         // 放送中や放送開始時刻が間近の番組は短いサイクルでDBへ保存する
         // NOTE: DB負荷などを考慮しEvent受信と同時のDB反映は見合わせる
         setInterval(async () => {
-            const now = new Date().getTime();
+            // 前回の更新処理が実行中の間は tick をスキップする。
+            // スキップしないと、番組数が多く updateAll に時間がかかる環境では
+            // ウォッチドッグ判定 (lastEventStreamUpdatedTime) が更新される前に次の tick が発火し、
+            // updateAll が多重起動されて DELETE FROM program 同士が競合し Lock wait timeout となる
+            if (this.isUpdateTaskRunning === true) {
+                return;
+            }
 
-            try {
-                if (this.isEventStreamAlive === true) {
-                    if (tunerServerType === TunerServerType.mirakurun) {
-                        // mirakurun の場合
-                        this.updateMirakurunEventStream(updateInterval, now);
-                    } else {
-                        // mirakc の場合
-                        this.updateMirakcEvent(updateInterval, now);
+            await this.runExclusiveUpdateTask(async () => {
+                const now = new Date().getTime();
+
+                try {
+                    if (this.isEventStreamAlive === true) {
+                        if (tunerServerType === TunerServerType.mirakurun) {
+                            // mirakurun の場合
+                            await this.updateMirakurunEventStream(updateInterval, now);
+                        } else {
+                            // mirakc の場合
+                            await this.updateMirakcEvent(updateInterval, now);
+                        }
+                    } else if (this.isEventStreamAlive === false && this.lastUpdatedTime + updateInterval * 1.5 <= now) {
+                        await this.updateManage.updateAll();
+                        this.lastUpdatedTime = now;
+                        // updateAll 後は全件数削除が行われるため削除時間も更新する
+                        this.lastDeletedTime = now;
+                        this.lastEventStreamUpdatedTime = now;
+                        this.notify();
                     }
-                } else if (this.isEventStreamAlive === false && this.lastUpdatedTime + updateInterval * 1.5 <= now) {
-                    await this.updateManage.updateAll();
-                    this.lastUpdatedTime = now;
-                    // updateAll 後は全件数削除が行われるため削除時間も更新する
-                    this.lastDeletedTime = now;
-                    this.lastEventStreamUpdatedTime = now;
-                    this.notify();
-                }
 
-                if (
-                    this.isEventStreamAlive === true &&
-                    this.lastEventStreamUpdatedTime !== 0 &&
-                    this.lastEventStreamUpdatedTime + updateInterval * 1.5 <= now
-                ) {
-                    // 長時間 event stream から更新が無い場合は全件更新を実施する
-                    this.log.system.warn('no epg event updates for a long time, running full refresh');
-                    await this.updateManage.updateAll();
-                    this.lastUpdatedTime = now;
-                    // updateAll 後は全件数削除が行われるため削除時間も更新する
-                    this.lastDeletedTime = now;
-                    this.lastEventStreamUpdatedTime = now;
-                    this.notify();
-                }
-            } catch (err: any) {
-                this.log.system.error('EPG update error');
-                this.log.system.error(err);
-            }
-
-            if (this.lastDeletedTime + updateInterval <= now) {
-                // 古い番組情報を削除
-                await this.updateManage.deleteOldPrograms().catch(err => {
-                    this.log.system.error('delete old programs error');
+                    if (
+                        this.isEventStreamAlive === true &&
+                        this.lastEventStreamUpdatedTime !== 0 &&
+                        this.lastEventStreamUpdatedTime + updateInterval * 1.5 <= now
+                    ) {
+                        // 長時間 event stream から更新が無い場合は全件更新を実施する
+                        this.log.system.warn('no epg event updates for a long time, running full refresh');
+                        await this.updateManage.updateAll();
+                        this.lastUpdatedTime = now;
+                        // updateAll 後は全件数削除が行われるため削除時間も更新する
+                        this.lastDeletedTime = now;
+                        this.lastEventStreamUpdatedTime = now;
+                        this.notify();
+                    }
+                } catch (err: any) {
+                    this.log.system.error('EPG update error');
                     this.log.system.error(err);
-                });
-                this.lastDeletedTime = now;
-            }
+                }
+
+                if (this.lastDeletedTime + updateInterval <= now) {
+                    // 古い番組情報を削除
+                    await this.updateManage.deleteOldPrograms().catch(err => {
+                        this.log.system.error('delete old programs error');
+                        this.log.system.error(err);
+                    });
+                    this.lastDeletedTime = now;
+                }
+            });
         }, 10 * 1000);
+    }
+
+    /**
+     * EPG 更新系タスクを直列化して実行する
+     * event stream 開始時の updateAll と定期実行タスクが同時に走らないようにする
+     * @param task: 実行するタスク
+     * @return Promise<void> タスクの完了を待つ Promise
+     */
+    private runExclusiveUpdateTask(task: () => Promise<void>): Promise<void> {
+        const run = this.updateTaskLock.then(async () => {
+            this.isUpdateTaskRunning = true;
+            try {
+                await task();
+            } finally {
+                this.isUpdateTaskRunning = false;
+            }
+        });
+        this.updateTaskLock = run.catch(() => {});
+
+        return run;
     }
 
     /**
@@ -203,7 +242,8 @@ class EPGUpdater implements IEPGUpdater {
 
         // 放映中以外の者は updateInterval の間隔で更新する
         if (this.lastUpdatedTime + updateInterval <= now) {
-            this.updateManage.saveUpdateServices().catch(e => {
+            // NOTE await を付けないと失敗時に unhandledRejection になる
+            await this.updateManage.saveUpdateServices().catch(e => {
                 this.log.system.error('failed to save update services');
                 throw e;
             });

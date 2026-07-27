@@ -54,7 +54,12 @@ class StreamManageModel implements IStreamManageModel {
         // stream 停止時に停止させる
         stream.setExitStream(async () => {
             finalize();
-            await this.stop(streamId).catch();
+            // 引数なしの catch() は rejection を捕まえないため必ずハンドラを渡す
+            // (ここは呼び出し元が無いコールバックなので、握りつぶさないと unhandledRejection になる)
+            await this.stop(streamId).catch(err => {
+                this.log.stream.error(`stop stream error: ${streamId}`);
+                this.log.stream.error(err);
+            });
         });
 
         finalize();
