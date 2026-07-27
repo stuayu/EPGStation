@@ -7,6 +7,11 @@ const test = require('node:test');
 const { HttpStubServer } = require('../support/HttpStubServer');
 const ProviderHttpClient = require('../../dist/model/metadata/ProviderHttpClient').default;
 const SharedDataFetcher = require('../../dist/model/metadata/SharedDataFetcher').default;
+const MetadataEndpointResolver = require('../../dist/model/metadata/MetadataEndpointResolver').default;
+
+// 結合テストなのでエンドポイント解決も実物を使う (config の URL がそのまま使われることを含めて検証する)
+const makeEndpoints = (config, settingsDB = { getAll: async () => ({}) }) =>
+    new MetadataEndpointResolver(settingsDB, config);
 
 const cachePath = path.join(__dirname, '..', '..', 'data', 'metadataSharedData.json');
 const noopLogger = { getLogger: () => ({ system: { warn: () => {} } }) };
@@ -32,7 +37,7 @@ test('fetches shared static data over HTTP and caches it locally (does not re-do
     t.after(() => stub.stop());
 
     const config = { getConfig: () => ({ metadataSharedDataUrl: `${baseUrl}/map.json` }) };
-    const fetcher = new SharedDataFetcher(config, new ProviderHttpClient(), noopLogger, noopSettingsDB);
+    const fetcher = new SharedDataFetcher(config, new ProviderHttpClient(), noopLogger, noopSettingsDB, makeEndpoints(config, noopSettingsDB));
     const first = await fetcher.fetch();
     assert.equal(first.channelMap[0].chId, 1);
     assert.equal(requests, 1);
@@ -44,14 +49,14 @@ test('falls back to the last local cache when the remote host is unreachable (of
     fs.mkdirSync(path.dirname(cachePath), { recursive: true });
     fs.writeFileSync(cachePath, JSON.stringify({ channelMap: [{ chId: 9, networkId: 9, serviceId: 9 }] }));
 
-    const fetcher = new SharedDataFetcher(config, new ProviderHttpClient(), noopLogger, noopSettingsDB);
+    const fetcher = new SharedDataFetcher(config, new ProviderHttpClient(), noopLogger, noopSettingsDB, makeEndpoints(config, noopSettingsDB));
     const result = await fetcher.fetch();
     assert.equal(result.channelMap[0].chId, 9);
 });
 
 test('returns null (bundled-data fallback is the caller responsibility) when there is no URL and no cache', async () => {
     const config = { getConfig: () => ({}) };
-    const fetcher = new SharedDataFetcher(config, new ProviderHttpClient(), noopLogger, noopSettingsDB);
+    const fetcher = new SharedDataFetcher(config, new ProviderHttpClient(), noopLogger, noopSettingsDB, makeEndpoints(config, noopSettingsDB));
     assert.equal(await fetcher.fetch(), null);
 });
 
@@ -66,7 +71,7 @@ test('startAutoUpdate fetches immediately and invokes the callback on success', 
     const config = {
         getConfig: () => ({ metadataSharedDataUrl: `${baseUrl}/map.json`, metadataSharedDataUpdateIntervalMs: 0 }),
     };
-    const fetcher = new SharedDataFetcher(config, new ProviderHttpClient(), noopLogger, noopSettingsDB);
+    const fetcher = new SharedDataFetcher(config, new ProviderHttpClient(), noopLogger, noopSettingsDB, makeEndpoints(config, noopSettingsDB));
     const received = await new Promise(resolve => fetcher.startAutoUpdate(resolve));
     assert.equal(received.channelMap[0].chId, 5);
 });
@@ -88,7 +93,7 @@ test('startAutoUpdate skips the fetch when metadata.sharedData.autoUpdate is dis
         getConfig: () => ({ metadataSharedDataUrl: `${baseUrl}/map.json`, metadataSharedDataUpdateIntervalMs: 0 }),
     };
     const disabledSettingsDB = { getAll: async () => ({ metadata: { sharedData: { autoUpdate: false } } }) };
-    const fetcher = new SharedDataFetcher(config, new ProviderHttpClient(), noopLogger, disabledSettingsDB);
+    const fetcher = new SharedDataFetcher(config, new ProviderHttpClient(), noopLogger, disabledSettingsDB, makeEndpoints(config, disabledSettingsDB));
     let called = false;
     fetcher.startAutoUpdate(() => (called = true));
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -110,7 +115,7 @@ test('syncNow() fetches immediately and invokes the registered callback even whi
         getConfig: () => ({ metadataSharedDataUrl: `${baseUrl}/map.json`, metadataSharedDataUpdateIntervalMs: 0 }),
     };
     const disabledSettingsDB = { getAll: async () => ({ metadata: { sharedData: { autoUpdate: false } } }) };
-    const fetcher = new SharedDataFetcher(config, new ProviderHttpClient(), noopLogger, disabledSettingsDB);
+    const fetcher = new SharedDataFetcher(config, new ProviderHttpClient(), noopLogger, disabledSettingsDB, makeEndpoints(config, disabledSettingsDB));
     let received = null;
     fetcher.startAutoUpdate(payload => (received = payload));
     await new Promise(resolve => setTimeout(resolve, 50));

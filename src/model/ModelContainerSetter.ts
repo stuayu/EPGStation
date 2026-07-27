@@ -166,6 +166,8 @@ import IMetadataService from './metadata/IMetadataService';
 import MetadataService from './metadata/MetadataService';
 import IProviderHttpClient from './metadata/IProviderHttpClient';
 import ProviderHttpClient from './metadata/ProviderHttpClient';
+import IMetadataEndpointResolver from './metadata/IMetadataEndpointResolver';
+import MetadataEndpointResolver from './metadata/MetadataEndpointResolver';
 import ISharedDataFetcher from './metadata/ISharedDataFetcher';
 import SharedDataFetcher from './metadata/SharedDataFetcher';
 import ISyobocalProvider from './metadata/syobocal/ISyobocalProvider';
@@ -301,6 +303,10 @@ export const set = (container: Container): void => {
         .inSingletonScope();
     container.bind<IMetadataService>('IMetadataService').to(MetadataService).inSingletonScope();
     container.bind<IProviderHttpClient>('IProviderHttpClient').to(ProviderHttpClient).inSingletonScope();
+    container
+        .bind<IMetadataEndpointResolver>('IMetadataEndpointResolver')
+        .to(MetadataEndpointResolver)
+        .inSingletonScope();
     container.bind<ISharedDataFetcher>('ISharedDataFetcher').to(SharedDataFetcher).inSingletonScope();
 
     container.bind<IChannelDB>('IChannelDB').to(ChannelDB).inSingletonScope();

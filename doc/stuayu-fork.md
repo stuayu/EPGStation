@@ -119,6 +119,13 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
   - **API / UI**: `GET`/`POST /api/settings/system/annict/works` (`AnnictWorkDictionaryStatus` / `AnnictWorkSyncResult`) を追加し、サーバー設定画面の連携タブに登録作品数・しょぼいカレンダーとの結合済件数の表示、「作品辞書を同期」ボタン、自動同期間隔の入力欄を追加した
   - **未検証事項**: `pushWatchRecord()` (視聴記録の書き込み) は実行すると Annict アカウントに実際の視聴記録が作成されるため、実 API での動作確認は行っていない。修正したのは参照クエリと同じ `works` → `searchWorks` の置換であり、読み取り側は実 API で確認済み
 
+- **外部サービスのエンドポイント URL を設定画面から差し替え可能にした**
+  - Cloudflare Workers などのキャッシュ/プロキシを手前に置いて運用できるようにするため、ハードコードしていた 4 つの外部 URL (しょぼいカレンダー DB API / Annict GraphQL API / fxtwitter JSON API / 共有静的データ URL) を設定値にした
+  - 解決は `MetadataEndpointResolver` に一元化し、優先順位は他の設定と同じく **DB (設定画面) > config.yml (`metadataDefaults.endpoints`) > 同梱既定値**。従来の `metadataSharedDataUrl` は引き続き有効で、`endpoints.sharedData` があればそちらが優先される
+  - 値は http/https の URL としてのみ受け付け、不正な値 (`file://` や URL として解釈できない文字列) は無視して既定値へフォールバックする
+  - 利用側 (`SyobocalProvider` / `SyobocalTitleDictionary` / `AnnictProvider` / `AnnictWorkDictionary` / `SeriesImageModel` / `SharedDataFetcher`) はすべてこのリゾルバ経由に統一した。**プロキシ側は元サービスと同じパス・クエリ・レスポンス形式をそのまま返す必要がある** (呼び出し側の組み立て方は変えていないため)
+  - `SharedDataFetcher.startAutoUpdate()` は URL 未設定時に自動更新を開始しない実装だったが、設定画面から後で URL を入れられるようになったため、起動時に打ち切らず実行のたびに解決するよう変更した
+
 - **シリーズ一覧にアイキャッチ画像を表示するようにした**
   - **画像の出所**: 提供しているのは **Annict のみ**。しょぼいカレンダーは画像を持っていない (`TitleLookup` に画像フィールドが無く `/img/{TID}.jpg` も 404) ことを実 API で確認済み。Annict の `Work.image` から `recommendedImageUrl` → `facebookOgImageUrl` の順に採用し、`copyright` をクレジット表示用に保存する (`annict_work.imageUrl` / `imageCopyright`、sqlite/mysql 両方のマイグレーションあり)
   - **Twitter アバターは fxtwitter 経由で解決する**: `twitterBiggerAvatarUrl` は充足率 84% と高いが、実体は `twitter.com/{account}/profile_image?size=bigger` で、x.com への移行により**そのままでは画像を返さない** (認証必須になり `text/html` が返る)。`SeriesImageModel` が取得時に `https://api.fxtwitter.com/{account}` の JSON API から `avatar_url` を得て実画像へ解決する。既定の `_normal` は 48px 相当と小さいため `_400x400` を優先し、その版が無いアカウントには元サイズをフォールバックとして試す。削除済みアカウントは fxtwitter が **HTTP 200 + `{ code: 404 }`** を返すため body 側も判定し、解決できなかった場合は画像を返さないと分かっている元 URL を叩かない。これにより画像 URL を持つ作品が 34.2% → **40.6%**、実取得成功率が 78.8% → **93.8%** に向上した

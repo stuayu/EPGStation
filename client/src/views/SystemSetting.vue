@@ -157,6 +157,42 @@
                             </div>
 
                             <v-divider class="my-4"></v-divider>
+                            <div class="text-subtitle-1 mb-2">外部サービスのエンドポイント</div>
+                            <v-alert type="info" density="compact" class="mb-2">
+                                Cloudflare Workers などのキャッシュ/プロキシを手前に置く場合に差し替えます。空欄のままなら括弧内の既定値を使います。
+                                <b>プロキシは元サービスと同じパス・クエリ・レスポンス形式をそのまま返す必要があります。</b>
+                                http / https 以外の URL は無視され既定値にフォールバックします。
+                            </v-alert>
+                            <v-text-field
+                                v-model="settings.metadata.endpoints.syobocal"
+                                label="しょぼいカレンダー DB API"
+                                placeholder="https://cal.syoboi.jp/db.php"
+                                persistent-placeholder
+                                density="compact"
+                            ></v-text-field>
+                            <v-text-field
+                                v-model="settings.metadata.endpoints.annict"
+                                label="Annict GraphQL API"
+                                placeholder="https://api.annict.com/graphql"
+                                persistent-placeholder
+                                density="compact"
+                            ></v-text-field>
+                            <v-text-field
+                                v-model="settings.metadata.endpoints.fxtwitter"
+                                label="fxtwitter JSON API (Twitter アバター解決用)"
+                                placeholder="https://api.fxtwitter.com/"
+                                persistent-placeholder
+                                density="compact"
+                            ></v-text-field>
+                            <v-text-field
+                                v-model="settings.metadata.endpoints.sharedData"
+                                label="共有静的データ URL (チャンネルマッピング表等)"
+                                placeholder="未設定 (config.yml の metadataSharedDataUrl を使用)"
+                                persistent-placeholder
+                                density="compact"
+                            ></v-text-field>
+
+                            <v-divider class="my-4"></v-divider>
                             <div class="text-subtitle-1 mb-2">メタデータキャッシュ</div>
                             <v-text-field
                                 v-model.number="settings.metadata.cacheTtlMs"
@@ -489,6 +525,7 @@ class SystemSetting extends Vue {
             annict: { enabled: false, token: '', syncEnabled: true, workSyncIntervalMs: 7 * 24 * 60 * 60 * 1000 },
             syobocal: { enabled: false, titleSyncIntervalMs: 24 * 60 * 60 * 1000 },
             sharedData: { autoUpdate: true },
+            endpoints: { syobocal: '', annict: '', fxtwitter: '', sharedData: '' },
             cacheTtlMs: 24 * 60 * 60 * 1000,
         },
         notifications: {
@@ -524,6 +561,7 @@ class SystemSetting extends Vue {
                     annict: { ...this.settings.metadata.annict, ...loaded.metadata?.annict },
                     syobocal: { ...this.settings.metadata.syobocal, ...loaded.metadata?.syobocal },
                     sharedData: { ...this.settings.metadata.sharedData, ...loaded.metadata?.sharedData },
+                    endpoints: { ...this.settings.metadata.endpoints, ...loaded.metadata?.endpoints },
                 },
                 notifications: { ...this.settings.notifications, ...loaded.notifications },
                 series: { ...this.settings.series, ...loaded.series },
@@ -908,6 +946,7 @@ class SystemSetting extends Vue {
                 annict: { ...this.settings.metadata.annict, ...(loaded.metadata as any)?.annict },
                 syobocal: { ...this.settings.metadata.syobocal, ...(loaded.metadata as any)?.syobocal },
                 sharedData: { ...this.settings.metadata.sharedData, ...(loaded.metadata as any)?.sharedData },
+                endpoints: { ...this.settings.metadata.endpoints, ...(loaded.metadata as any)?.endpoints },
             },
             notifications: { ...this.settings.notifications, ...loaded.notifications },
             series: { ...this.settings.series, ...loaded.series },

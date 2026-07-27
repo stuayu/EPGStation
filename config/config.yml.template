@@ -529,6 +529,15 @@ featureFlags:
 #         # 設定画面でトークンを登録していない場合は取得されない
 #         workSyncIntervalMs: 604800000
 #     cacheTtlMs: 86400000
+#     # 外部サービスのエンドポイント URL。Cloudflare 等のキャッシュ/プロキシを手前に置く場合に差し替える。
+#     # 設定画面 (サーバー設定 > 連携) からも変更でき、そちらが優先される。
+#     # プロキシは元サービスと同じパス・クエリ・レスポンス形式をそのまま返すこと
+#     endpoints:
+#         syobocal: 'https://cal.syoboi.jp/db.php'
+#         annict: 'https://api.annict.com/graphql'
+#         fxtwitter: 'https://api.fxtwitter.com/'
+#         # 共有静的データ URL (metadataSharedDataUrl と同義、こちらが優先)
+#         sharedData: ''
 
 # Webhook / Discord 通知（featureFlags.notifications: true の場合のみ有効）
 # notifications:
