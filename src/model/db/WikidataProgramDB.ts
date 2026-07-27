@@ -102,7 +102,11 @@ export default class WikidataProgramDB implements IWikidataProgramDB {
         const connection = await this.op.getConnection();
         for (let i = 0; i < rows.length; i += WikidataProgramDB.INSERT_CHUNK_SIZE) {
             const chunk = rows.slice(i, i + WikidataProgramDB.INSERT_CHUNK_SIZE);
-            const builder = connection.createQueryBuilder().insert().into(entity).values(chunk as any);
+            const builder = connection
+                .createQueryBuilder()
+                .insert()
+                .into(entity)
+                .values(chunk as any);
             if (updateColumns !== null && conflictColumns !== null) {
                 builder.orUpdate(updateColumns, conflictColumns);
             }

@@ -170,7 +170,9 @@ export default class AnnictWorkDictionary implements IAnnictWorkDictionary {
         if (response.status === 401 || response.status === 403) throw new Error('AnnictAuthenticationFailed');
         if (response.status >= 400) throw new Error(`AnnictHttpStatus:${response.status}`);
         const result = response.json<{
-            data?: { searchWorks?: { pageInfo?: { hasNextPage?: boolean; endCursor?: string }; nodes?: AnnictWorkNode[] } };
+            data?: {
+                searchWorks?: { pageInfo?: { hasNextPage?: boolean; endCursor?: string }; nodes?: AnnictWorkNode[] };
+            };
             errors?: Array<{ message: string }>;
         }>();
         if (result.errors?.length) throw new Error(`AnnictGraphQLError:${result.errors.map(x => x.message).join(',')}`);
@@ -203,8 +205,7 @@ export default class AnnictWorkDictionary implements IAnnictWorkDictionary {
                 titleEn: AnnictWorkDictionary.textOrNull(node.titleEn),
                 titleKana: AnnictWorkDictionary.textOrNull(node.titleKana),
                 titleRo: AnnictWorkDictionary.textOrNull(node.titleRo),
-                syobocalTid:
-                    typeof node.syobocalTid === 'number' && node.syobocalTid > 0 ? node.syobocalTid : null,
+                syobocalTid: typeof node.syobocalTid === 'number' && node.syobocalTid > 0 ? node.syobocalTid : null,
                 seasonYear: typeof node.seasonYear === 'number' ? node.seasonYear : null,
                 seasonName: AnnictWorkDictionary.textOrNull(node.seasonName),
                 episodesCount:
@@ -249,11 +250,7 @@ export default class AnnictWorkDictionary implements IAnnictWorkDictionary {
         const config = this.config.getConfig();
         if (isFeatureEnabled(config, 'metadataProviders') === false) return false;
         const all = await this.settings.getAll();
-        return resolveBoolean(
-            (all.metadata as any)?.annict?.enabled,
-            config.metadataDefaults?.annict?.enabled,
-            false,
-        );
+        return resolveBoolean((all.metadata as any)?.annict?.enabled, config.metadataDefaults?.annict?.enabled, false);
     }
 
     private async token(): Promise<string | null> {

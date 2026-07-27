@@ -218,8 +218,7 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
         if (typeof startAt !== 'number' || Number.isFinite(startAt) === false || startAt <= 0) return null;
         const date = new Date(startAt);
         const month = date.getMonth() + 1;
-        const name =
-            month <= 3 ? 'WINTER' : month <= 6 ? 'SPRING' : month <= 9 ? 'SUMMER' : ('AUTUMN' as const);
+        const name = month <= 3 ? 'WINTER' : month <= 6 ? 'SPRING' : month <= 9 ? 'SUMMER' : ('AUTUMN' as const);
         return { year: date.getFullYear(), name };
     }
 

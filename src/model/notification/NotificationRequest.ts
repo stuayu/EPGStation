@@ -31,9 +31,7 @@ export function buildNotificationRequest(
                       {
                           title: eventTitle(event.type),
                           description: String(event.payload.name ?? ''),
-                          color: NotificationRequestConst.WARNING_EVENT_TYPES.has(event.type)
-                              ? 15158332
-                              : 5763719,
+                          color: NotificationRequestConst.WARNING_EVENT_TYPES.has(event.type) ? 15158332 : 5763719,
                           fields: Object.entries(event.payload)
                               .filter(([k]) => k !== 'name')
                               .slice(0, 10)

@@ -6,7 +6,11 @@ const m = () => container.get<IAppSettingApiModel>('IAppSettingApiModel');
 const fail = (res: any, e: unknown) => {
     const x = api.getErrorMessage(e);
     if (x === 'SystemSettingsFeatureIsDisabled') api.responseError(res, { code: 404, message: x });
-    else if (x.startsWith('UnknownAppSetting') || x === 'AppSettingHistoryIsNotFound' || x === 'AppSettingHistoryIsInvalid')
+    else if (
+        x.startsWith('UnknownAppSetting') ||
+        x === 'AppSettingHistoryIsNotFound' ||
+        x === 'AppSettingHistoryIsInvalid'
+    )
         api.responseError(res, { code: 400, message: x });
     else api.responseServerError(res, x);
 };

@@ -34,9 +34,24 @@ export default class SyobocalTitleDB implements ISyobocalTitleDB {
                 await manager.getRepository(SyobocalTitleEpisode).delete({ tid: In(chunk) });
             }
 
-            await this.insertChunked(manager, SyobocalTitle, values.map(x => x.title), true);
-            await this.insertChunked(manager, SyobocalTitleAlias, values.flatMap(x => x.aliases), false);
-            await this.insertChunked(manager, SyobocalTitleEpisode, values.flatMap(x => x.episodes), false);
+            await this.insertChunked(
+                manager,
+                SyobocalTitle,
+                values.map(x => x.title),
+                true,
+            );
+            await this.insertChunked(
+                manager,
+                SyobocalTitleAlias,
+                values.flatMap(x => x.aliases),
+                false,
+            );
+            await this.insertChunked(
+                manager,
+                SyobocalTitleEpisode,
+                values.flatMap(x => x.episodes),
+                false,
+            );
         });
     }
 
@@ -57,9 +72,7 @@ export default class SyobocalTitleDB implements ISyobocalTitleDB {
 
     public async listAllAliases(): Promise<SyobocalTitleAliasRecord[]> {
         const connection = await this.op.getConnection();
-        const titles = await connection
-            .getRepository(SyobocalTitle)
-            .find({ select: { tid: true, lookupKey: true } });
+        const titles = await connection.getRepository(SyobocalTitle).find({ select: { tid: true, lookupKey: true } });
         const aliases = await connection.getRepository(SyobocalTitleAlias).find();
         return [
             // 正式タイトル由来のキーは常に最優先 (rank 0)
@@ -95,11 +108,20 @@ export default class SyobocalTitleDB implements ISyobocalTitleDB {
      * @param rows: 挿入する行
      * @param orUpdate: 主キー衝突時に UPDATE するか (syobocal_title のみ true)
      */
-    private async insertChunked(manager: EntityManager, entity: any, rows: unknown[], orUpdate: boolean): Promise<void> {
+    private async insertChunked(
+        manager: EntityManager,
+        entity: any,
+        rows: unknown[],
+        orUpdate: boolean,
+    ): Promise<void> {
         if (rows.length === 0) return;
         for (let i = 0; i < rows.length; i += SyobocalTitleDB.INSERT_CHUNK_SIZE) {
             const chunk = rows.slice(i, i + SyobocalTitleDB.INSERT_CHUNK_SIZE);
-            const builder = manager.createQueryBuilder().insert().into(entity).values(chunk as any);
+            const builder = manager
+                .createQueryBuilder()
+                .insert()
+                .into(entity)
+                .values(chunk as any);
             if (orUpdate === true) {
                 builder.orUpdate(
                     [

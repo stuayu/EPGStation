@@ -20,9 +20,7 @@ export class AddAnnictWatchSync1785080000000 implements MigrationInterface {
         await q.query(
             `CREATE UNIQUE INDEX "IDX_annict_watch_sync_episode" ON "annict_watch_sync" ("seriesId", "seriesEpisodeId")`,
         );
-        await q.query(
-            `CREATE INDEX "IDX_annict_watch_sync_status" ON "annict_watch_sync" ("status", "nextAttemptAt")`,
-        );
+        await q.query(`CREATE INDEX "IDX_annict_watch_sync_status" ON "annict_watch_sync" ("status", "nextAttemptAt")`);
     }
     public async down(q: QueryRunner): Promise<void> {
         await q.query(`DROP TABLE "annict_watch_sync"`);

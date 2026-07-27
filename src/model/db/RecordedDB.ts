@@ -207,20 +207,10 @@ export default class RecordedDB implements IRecordedDB {
         const connection = await this.op.getConnection();
         // シリーズ管理系の孤立行 (recorded_series_link / series_pending_match) を残さないよう先に削除する
         await this.promieRetry.run(() => {
-            return connection
-                .createQueryBuilder()
-                .delete()
-                .from(RecordedSeriesLink)
-                .where({ recordedId })
-                .execute();
+            return connection.createQueryBuilder().delete().from(RecordedSeriesLink).where({ recordedId }).execute();
         });
         await this.promieRetry.run(() => {
-            return connection
-                .createQueryBuilder()
-                .delete()
-                .from(SeriesPendingMatch)
-                .where({ recordedId })
-                .execute();
+            return connection.createQueryBuilder().delete().from(SeriesPendingMatch).where({ recordedId }).execute();
         });
         const queryBuilder = connection.createQueryBuilder().delete().from(Recorded).where({
             id: recordedId,

@@ -89,7 +89,10 @@ namespace ImportPathValidator {
             // path.relative が '..' で始まる、または絶対パスになる場合は配下ではない
             // 大文字小文字・区切り文字に依存しないよう path.relative の結果のみで判定する (Windows は大文字小文字を区別しないが
             // realpath がドライブレター等を正規化してくれるため、ここでは追加の toLowerCase は行わない)
-            if (relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))) {
+            if (
+                relative === '' ||
+                (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+            ) {
                 return {
                     realPath,
                     dirName: dir.name,
