@@ -45,6 +45,10 @@ export default class SeriesDB implements ISeriesDB {
         const c = await this.op.getConnection();
         return await c.getRepository(Series).findOne({ where: { annictId } });
     }
+    public async findByWikidataQid(wikidataQid: string): Promise<Series | null> {
+        const c = await this.op.getConnection();
+        return await c.getRepository(Series).findOne({ where: { wikidataQid } });
+    }
     async createSeries(value: NewSeries) {
         const c = await this.op.getConnection();
         const repo = c.getRepository(Series);
@@ -331,6 +335,8 @@ export default class SeriesDB implements ISeriesDB {
         value: {
             annictId?: string | null;
             syobocalTid?: number | null;
+            wikidataQid?: string | null;
+            tmdbId?: number | null;
             titleKana?: string | null;
             seasonYear?: number | null;
             seasonName?: string | null;
@@ -394,12 +400,23 @@ export default class SeriesDB implements ISeriesDB {
         const c = await this.op.getConnection();
         return await c.getRepository(SeriesAlias).findOne({ where: { normalizedTitle } });
     }
-    public async upsertAlias(normalizedTitle: string, seriesId: number, createdAt: number): Promise<SeriesAlias> {
+    public async upsertAlias(
+        normalizedTitle: string,
+        seriesId: number,
+        createdAt: number,
+        source: string = 'manual',
+    ): Promise<SeriesAlias> {
         const c = await this.op.getConnection();
         const repo = c.getRepository(SeriesAlias);
         const current = await repo.findOne({ where: { normalizedTitle } });
         return await repo.save(
-            repo.create({ id: current?.id, normalizedTitle, seriesId, createdAt: current?.createdAt ?? createdAt }),
+            repo.create({
+                id: current?.id,
+                normalizedTitle,
+                seriesId,
+                source,
+                createdAt: current?.createdAt ?? createdAt,
+            }),
         );
     }
     public async listAlias(seriesId?: number): Promise<SeriesAlias[]> {
@@ -490,7 +507,10 @@ export default class SeriesDB implements ISeriesDB {
                         }
                     }
                 }
-                await linkRepo.update({ id: link.id }, { seriesId: toSeriesId, episodeId: newEpisodeId, updatedAt: Date.now() });
+                await linkRepo.update(
+                    { id: link.id },
+                    { seriesId: toSeriesId, episodeId: newEpisodeId, updatedAt: Date.now() },
+                );
             }
             await aliasRepo.update({ seriesId: fromSeriesId }, { seriesId: toSeriesId });
             await episodeRepo.delete({ seriesId: fromSeriesId });
@@ -525,7 +545,13 @@ export default class SeriesDB implements ISeriesDB {
             for (const recordedId of recordedIds) {
                 await linkRepo.update(
                     { recordedId, seriesId: sourceSeriesId },
-                    { seriesId: newSeries.id, episodeId: null, matchMethod: 'manual', manualLock: true, updatedAt: now },
+                    {
+                        seriesId: newSeries.id,
+                        episodeId: null,
+                        matchMethod: 'manual',
+                        manualLock: true,
+                        updatedAt: now,
+                    },
                 );
             }
             return newSeries;

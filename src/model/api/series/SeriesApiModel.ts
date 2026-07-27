@@ -36,14 +36,11 @@ export default class SeriesApiModel implements ISeriesApiModel {
         });
 
         // 欠番・重複は話数の連続性から判定する。ページ分の録画行を 1 クエリでまとめて取る
-        const recordedRows = await this.db
-            .listRecordedForSeriesIds(rows.map(x => x.series.id))
-            .catch(() => new Map());
+        const recordedRows = await this.db.listRecordedForSeriesIds(rows.map(x => x.series.id)).catch(() => new Map());
         const now = Date.now();
         let items = rows.map(row => {
             const continuity = analyzeSeriesContinuity(recordedRows.get(row.series.id) ?? [], {
-                totalEpisodesBySeason:
-                    row.series.totalEpisodes === null ? undefined : { 1: row.series.totalEpisodes },
+                totalEpisodesBySeason: row.series.totalEpisodes === null ? undefined : { 1: row.series.totalEpisodes },
                 now,
             });
             return {
@@ -84,8 +81,7 @@ export default class SeriesApiModel implements ISeriesApiModel {
                     totalEpisodes: series.totalEpisodes,
                     missingEpisodeCount,
                     duplicateEpisodeCount,
-                    isOnAir:
-                        row.lastAiredAt !== null && now - row.lastAiredAt <= SeriesApiModel.ON_AIR_WITHIN_MS,
+                    isOnAir: row.lastAiredAt !== null && now - row.lastAiredAt <= SeriesApiModel.ON_AIR_WITHIN_MS,
                     hasImage: typeof image !== 'undefined',
                     imageSource: image?.source ?? null,
                     imageCopyright: image?.copyright ?? null,

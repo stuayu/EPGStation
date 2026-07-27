@@ -53,7 +53,8 @@ export default class SeriesImageModel implements ISeriesImageModel {
     private static readonly THUMBNAIL_SCAN_LIMIT = 5;
     // Annict が持つ Twitter アバター URL (`twitter.com/{account}/profile_image?size=...`)。
     // x.com への移行で認証必須になり、この URL は画像ではなく HTML を返すようになった
-    private static readonly TWITTER_PROFILE_IMAGE = /^https?:\/\/(?:www\.)?(?:twitter|x)\.com\/([A-Za-z0-9_]{1,20})\/profile_image/iu;
+    private static readonly TWITTER_PROFILE_IMAGE =
+        /^https?:\/\/(?:www\.)?(?:twitter|x)\.com\/([A-Za-z0-9_]{1,20})\/profile_image/iu;
 
     private log: ILogger;
     // 直近に取得へ失敗した annictId → 失敗時刻
@@ -80,7 +81,9 @@ export default class SeriesImageModel implements ISeriesImageModel {
         if (info !== null) return info;
         // Annict に画像が無い/取得元が消えている作品も多いため、録画から生成済みの
         // サムネイルをアイキャッチとして代用する
-        return (await this.findThumbnail(seriesId)) === null ? null : { source: 'thumbnail', url: null, copyright: null };
+        return (await this.findThumbnail(seriesId)) === null
+            ? null
+            : { source: 'thumbnail', url: null, copyright: null };
     }
 
     public async getInfoMap(seriesIds: number[]): Promise<Map<number, SeriesImageInfo>> {
@@ -156,7 +159,9 @@ export default class SeriesImageModel implements ISeriesImageModel {
                 const recorded = await this.recordedDB.findId(Number(row.recordedId));
                 const videoFile = (recorded?.videoFiles ?? []).find(x => x.type === 'ts') ?? recorded?.videoFiles?.[0];
                 if (typeof videoFile === 'undefined') continue;
-                this.log.system.info(`series image: request thumbnail generation seriesId=${seriesId} videoFileId=${videoFile.id}`);
+                this.log.system.info(
+                    `series image: request thumbnail generation seriesId=${seriesId} videoFileId=${videoFile.id}`,
+                );
                 await this.ipc.thumbnail.add(videoFile.id);
                 return;
             }

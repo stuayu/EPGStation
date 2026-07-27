@@ -100,6 +100,8 @@ import SeriesDB from './db/SeriesDB';
 import ISyobocalTitleDB from './db/ISyobocalTitleDB';
 import SyobocalTitleDB from './db/SyobocalTitleDB';
 import IAnnictWorkDB from './db/IAnnictWorkDB';
+import IWikidataProgramDB from './db/IWikidataProgramDB';
+import WikidataProgramDB from './db/WikidataProgramDB';
 import AnnictWorkDB from './db/AnnictWorkDB';
 import IThumbnailDB from './db/IThumbnailDB';
 import IVideoFileDB from './db/IVideoFileDB';
@@ -177,6 +179,8 @@ import SyobocalChannelMap from './metadata/syobocal/SyobocalChannelMap';
 import ISyobocalTitleDictionary from './metadata/syobocal/ISyobocalTitleDictionary';
 import SyobocalTitleDictionary from './metadata/syobocal/SyobocalTitleDictionary';
 import IAnnictWorkDictionary from './metadata/annict/IAnnictWorkDictionary';
+import IWikidataProgramDictionary from './metadata/wikidata/IWikidataProgramDictionary';
+import WikidataProgramDictionary from './metadata/wikidata/WikidataProgramDictionary';
 import AnnictWorkDictionary from './metadata/annict/AnnictWorkDictionary';
 import IWorkDictionary from './series/IWorkDictionary';
 import WorkDictionary from './series/WorkDictionary';
@@ -300,6 +304,10 @@ export const set = (container: Container): void => {
     container.bind<ISyobocalProvider>('ISyobocalProvider').to(SyobocalProvider).inSingletonScope();
     container.bind<ISyobocalTitleDictionary>('ISyobocalTitleDictionary').to(SyobocalTitleDictionary).inSingletonScope();
     container.bind<IAnnictWorkDictionary>('IAnnictWorkDictionary').to(AnnictWorkDictionary).inSingletonScope();
+    container
+        .bind<IWikidataProgramDictionary>('IWikidataProgramDictionary')
+        .to(WikidataProgramDictionary)
+        .inSingletonScope();
     container.bind<IWorkDictionary>('IWorkDictionary').to(WorkDictionary).inSingletonScope();
     container.bind<ISeriesMetadataFiller>('ISeriesMetadataFiller').to(SeriesMetadataFiller).inSingletonScope();
     container.bind<ILlmTitleExtractor>('ILlmTitleExtractor').to(LlmTitleExtractor).inSingletonScope();
@@ -342,6 +350,7 @@ export const set = (container: Container): void => {
     container.bind<ISeriesDB>('ISeriesDB').to(SeriesDB).inSingletonScope();
     container.bind<ISyobocalTitleDB>('ISyobocalTitleDB').to(SyobocalTitleDB).inSingletonScope();
     container.bind<IAnnictWorkDB>('IAnnictWorkDB').to(AnnictWorkDB).inSingletonScope();
+    container.bind<IWikidataProgramDB>('IWikidataProgramDB').to(WikidataProgramDB).inSingletonScope();
     container.bind<ISeriesResolver>('ISeriesResolver').to(SeriesResolver).inSingletonScope();
 
     container.bind<IDropLogFileDB>('IDropLogFileDB').to(DropLogFileDB).inSingletonScope();

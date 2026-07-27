@@ -19,6 +19,8 @@ export default class MetadataEndpointResolver implements IMetadataEndpointResolv
         syobocal: 'https://cal.syoboi.jp/db.php',
         // Annict の GraphQL API
         annict: 'https://api.annict.com/graphql',
+        // Wikidata の SPARQL エンドポイント (全ジャンルのテレビ番組辞書)
+        wikidata: 'https://query.wikidata.org/sparql',
         // Twitter アバターを解決するための fxtwitter の JSON API (末尾にアカウント名を連結する)
         fxtwitter: 'https://api.fxtwitter.com/',
         // 共有静的データ (チャンネルマッピング表等)。既定は未設定 = 取得しない

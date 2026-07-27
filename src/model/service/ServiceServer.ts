@@ -162,7 +162,10 @@ class ServiceServer implements IServiceServer {
      */
     private setStaticFiles(): void {
         // static files
-        this.app.use(this.createUrl('/img'), express.static(path.join(__dirname, '..', '..', '..', 'img'), this.getStaticOptions()));
+        this.app.use(
+            this.createUrl('/img'),
+            express.static(path.join(__dirname, '..', '..', '..', 'img'), this.getStaticOptions()),
+        );
 
         // thumbnail
         this.app.use(this.createUrl('/thumbnail'), express.static(this.config.thumbnail, this.getStaticOptions()));
@@ -174,7 +177,10 @@ class ServiceServer implements IServiceServer {
         });
 
         // streamFile
-        this.app.use(this.createUrl('/streamfiles'), express.static(this.config.streamFilePath, this.getStaticOptions()));
+        this.app.use(
+            this.createUrl('/streamfiles'),
+            express.static(this.config.streamFilePath, this.getStaticOptions()),
+        );
 
         // client
         this.app.use(this.createUrl('/'), express.static(ServiceServer.CLIENT_DIR, this.getStaticOptions()));

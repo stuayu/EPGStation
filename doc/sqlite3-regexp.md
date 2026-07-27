@@ -21,19 +21,19 @@
 
 `sqlite-amalgamation-*` へ移動し以下のコマンドを実行する
 
--   Linux の場合
+- Linux の場合
 
 ```
 gcc -g -fPIC -shared regexp.c -o regexp.so
 ```
 
--   macOS の場合
+- macOS の場合
 
 ```
 gcc -g -fPIC -dynamiclib regexp.c -o regexp.dylib
 ```
 
--   Windows (64bit) の場合
+- Windows (64bit) の場合
 
 スタートメニュー -> Visual C++ Build Tools -> Visual C++ 2015 x64 Native Build Tools Command Prompt を開き
 `sqlite-amalgamation-*` へ移動し以下のコマンドを実行する

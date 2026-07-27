@@ -9,7 +9,8 @@ const fail = (res: any, e: unknown) => {
     if (message === 'SeriesLibraryFeatureIsDisabled') api.responseError(res, { code: 404, message });
     else if (message === 'RecordedIsNotFound' || message === 'SeriesIsNotFound')
         api.responseError(res, { code: 404, message });
-    else if (message === 'InvalidRequestBody' || message.startsWith('Invalid')) api.responseError(res, { code: 400, message });
+    else if (message === 'InvalidRequestBody' || message.startsWith('Invalid'))
+        api.responseError(res, { code: 400, message });
     else api.responseServerError(res, message);
 };
 export const get: Operation = async (req, res) => {

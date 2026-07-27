@@ -7,7 +7,11 @@ export const del: Operation = async (req, res) => {
     const reserveApiModel = container.get<IReserveApiModel>('IReserveApiModel');
 
     try {
-        api.responseJSON(res, 200, await reserveApiModel.removeOverlap(api.parseRequestParamInt(req.params.reserveId, 'reserveId')));
+        api.responseJSON(
+            res,
+            200,
+            await reserveApiModel.removeOverlap(api.parseRequestParamInt(req.params.reserveId, 'reserveId')),
+        );
     } catch (err: unknown) {
         api.responseServerError(res, api.getErrorMessage(err));
     }

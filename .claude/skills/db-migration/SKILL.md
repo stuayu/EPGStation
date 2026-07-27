@@ -10,24 +10,24 @@ description: EPGStation の DB スキーマ変更 (エンティティ追加・�
 ## 手順
 
 1. **エンティティを変更する**: `src/db/entities/*.ts`
-   - 既存エンティティ (Channel, Program, Recorded, Reserve, Rule など) のスタイルに合わせる
+    - 既存エンティティ (Channel, Program, Recorded, Reserve, Rule など) のスタイルに合わせる
 
 2. **コンパイルする**: マイグレーション生成は `dist/` の JS を参照するため、先に `npm run compile`
 
 3. **マイグレーションを生成する** (mysql / sqlite の両方):
 
-   ```bash
-   npm run orm-gen --db=mysql --name=<変更内容を表すPascalCase名>
-   npm run orm-gen --db=sqlite --name=<同じ名前>
-   ```
+    ```bash
+    npm run orm-gen --db=mysql --name=<変更内容を表すPascalCase名>
+    npm run orm-gen --db=sqlite --name=<同じ名前>
+    ```
 
-   - 出力先: `src/db/migrations/{mysql,sqlite}/<timestamp>-<Name>.ts`
-   - `ormconfig.js` が `config/config.yml` を読むため、対象 DB に接続できる状態が必要。接続できない場合は既存マイグレーションを参考に手書きする
-   - 生成された SQL は必ず目視レビューする (TypeORM の自動生成は意図しない DROP を含むことがある)
+    - 出力先: `src/db/migrations/{mysql,sqlite}/<timestamp>-<Name>.ts`
+    - `ormconfig.js` が `config/config.yml` を読むため、対象 DB に接続できる状態が必要。接続できない場合は既存マイグレーションを参考に手書きする
+    - 生成された SQL は必ず目視レビューする (TypeORM の自動生成は意図しない DROP を含むことがある)
 
 4. **データアクセス層を更新する**: `src/model/db/I*DB.ts` / `*DB.ts`
-   - DB 種別の差異 (LIKE / REGEXP / 大文字小文字 / boolean) は `DBOperator` の `getLikeStr` / `getRegexpStr` / `isEnableCS` / `convertBoolean` で吸収する。生 SQL に DB 依存構文を直接書かない
-   - 新規 DB クラスを作った場合は `src/model/ModelContainerSetter.ts` に登録
+    - DB 種別の差異 (LIKE / REGEXP / 大文字小文字 / boolean) は `DBOperator` の `getLikeStr` / `getRegexpStr` / `isEnableCS` / `convertBoolean` で吸収する。生 SQL に DB 依存構文を直接書かない
+    - 新規 DB クラスを作った場合は `src/model/ModelContainerSetter.ts` に登録
 
 5. **API に影響する場合**: `api.yml` と `api.d.ts` のスキーマも更新する
 

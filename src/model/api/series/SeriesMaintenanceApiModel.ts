@@ -5,7 +5,10 @@ import ISeriesDB from '../../db/ISeriesDB';
 import ISeriesMetadataFiller from '../../series/ISeriesMetadataFiller';
 import ISeriesMaintenanceApiModel, {
     RefreshSeriesMetadataResult,
-    UpdateSeriesMetadata, MergeSeriesResult, SplitSeriesResult } from './ISeriesMaintenanceApiModel';
+    UpdateSeriesMetadata,
+    MergeSeriesResult,
+    SplitSeriesResult,
+} from './ISeriesMaintenanceApiModel';
 @injectable()
 export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiModel {
     constructor(
@@ -42,7 +45,8 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
         }
         // クールは年と季節をセットで扱う (片方だけ入っていても絞り込みに使えないため)
         if (typeof value.seasonYear !== 'undefined' || typeof value.seasonName !== 'undefined') {
-            const year = value.seasonYear === null || typeof value.seasonYear === 'undefined' ? null : Number(value.seasonYear);
+            const year =
+                value.seasonYear === null || typeof value.seasonYear === 'undefined' ? null : Number(value.seasonYear);
             const name =
                 value.seasonName === null || typeof value.seasonName === 'undefined'
                     ? null
@@ -76,8 +80,7 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
 
     async merge(fromSeriesId: number, toSeriesId: number): Promise<MergeSeriesResult> {
         this.enabled();
-        if (typeof fromSeriesId !== 'number' || typeof toSeriesId !== 'number')
-            throw new Error('InvalidRequestBody');
+        if (typeof fromSeriesId !== 'number' || typeof toSeriesId !== 'number') throw new Error('InvalidRequestBody');
         if (fromSeriesId === toSeriesId) throw new Error('InvalidRequestBody');
         const [from, to] = await Promise.all([this.db.getSeries(fromSeriesId), this.db.getSeries(toSeriesId)]);
         if (!from || !to) throw new Error('SeriesIsNotFound');

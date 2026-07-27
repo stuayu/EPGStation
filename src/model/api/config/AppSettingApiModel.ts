@@ -158,7 +158,10 @@ export default class AppSettingApiModel implements IAppSettingApiModel {
         const lastDot = path.lastIndexOf('.');
         const key = lastDot === -1 ? path : path.slice(lastDot + 1);
         const parentPath = lastDot === -1 ? '' : path.slice(0, lastDot);
-        const secretKeys = parentPath === 'notifications.targets' ? AppSettingApiModel.TARGET_SECRET_KEYS : AppSettingApiModel.SECRET_KEYS;
+        const secretKeys =
+            parentPath === 'notifications.targets'
+                ? AppSettingApiModel.TARGET_SECRET_KEYS
+                : AppSettingApiModel.SECRET_KEYS;
         if (!secretKeys.has(key)) return value;
 
         if (mode === 'mask') {

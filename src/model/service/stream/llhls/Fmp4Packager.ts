@@ -336,7 +336,7 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
             stopIteration();
         });
 
-        const timescale = trackId !== null ? this.trackTimescale.get(trackId) ?? null : null;
+        const timescale = trackId !== null ? (this.trackTimescale.get(trackId) ?? null) : null;
         if (trackId === null || tfdt === null || timescale === null) {
             this.log?.stream.warn(
                 `moof から継続時間算出に必要な情報を取得できませんでした (trackId=${trackId}, tfdt=${tfdt}, timescale=${timescale})`,
@@ -597,7 +597,9 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
         // 最後の part の後に mfra 等の box が残っている場合、どの part にも属さないため
         // 個別イベントとして通知する (バイト取りこぼしがないことの検証用)
         if (this.streamingExtra.length > 0) {
-            this.log?.stream.info(`末尾に付随する box (${this.streamingExtra.length} byte) を trailer として通知します`);
+            this.log?.stream.info(
+                `末尾に付随する box (${this.streamingExtra.length} byte) を trailer として通知します`,
+            );
             this.emit('trailer', this.streamingExtra);
             this.streamingExtra = Buffer.alloc(0);
         }

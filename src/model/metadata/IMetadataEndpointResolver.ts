@@ -1,5 +1,5 @@
 // 差し替え可能な外部サービスのエンドポイント種別
-export type MetadataEndpointName = 'syobocal' | 'annict' | 'fxtwitter' | 'sharedData';
+export type MetadataEndpointName = 'syobocal' | 'annict' | 'wikidata' | 'fxtwitter' | 'sharedData';
 
 export default interface IMetadataEndpointResolver {
     /**

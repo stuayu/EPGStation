@@ -1,6 +1,7 @@
 import { BaseEntity, Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 @Entity({ name: 'series' })
 @Index('IDX_series_normalized_title', ['normalizedTitle'])
+@Index('IDX_series_wikidata_qid', ['wikidataQid'])
 export default class Series extends BaseEntity {
     @PrimaryGeneratedColumn({ type: 'integer' }) id!: number;
     @Column({ type: 'text' }) title!: string;
@@ -10,6 +11,8 @@ export default class Series extends BaseEntity {
     @Column({ type: 'bigint', nullable: true }) preferredChannelId!: number | null;
     @Column({ type: 'integer', nullable: true }) syobocalTid!: number | null;
     @Column({ type: 'text', nullable: true }) annictId!: string | null;
+    // Wikidata 項目 ID (全ジャンル番組辞書。ドラマ・バラエティ等はこれが主キーになる)
+    @Column({ type: 'text', nullable: true }) wikidataQid!: string | null;
     @Column({ type: 'integer', nullable: true }) tmdbId!: number | null;
     // 読み仮名 (しょぼいカレンダーの TitleYomi / Annict の titleKana 由来)。あいうえお順の並べ替えに使う
     @Column({ type: 'text', nullable: true }) titleKana!: string | null;

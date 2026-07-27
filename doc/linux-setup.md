@@ -49,16 +49,16 @@
 
 ## EPGStation の起動 / 終了
 
--   手動で起動する場合
+- 手動で起動する場合
 
     ```
     $ npm start
     ```
 
--   自動で起動する場合
+- 自動で起動する場合
 
-    -   [pm2](http://pm2.keymetrics.io/) を利用して自動起動設定が可能です
-    -   初回のみ以下の起動設定が必要です
+    - [pm2](http://pm2.keymetrics.io/) を利用して自動起動設定が可能です
+    - 初回のみ以下の起動設定が必要です
 
     ```
     $ sudo npm install pm2 -g
@@ -67,19 +67,19 @@
     $ pm2 save
     ```
 
--   手動で終了する場合
+- 手動で終了する場合
 
     ```
     $ npm stop
     ```
 
--   自動起動した EPGStation を終了する場合
+- 自動起動した EPGStation を終了する場合
 
     ```
     $ pm2 stop epgstation
     ```
 
--   自動起動登録した EPGStation を削除する場合
+- 自動起動登録した EPGStation を削除する場合
 
     ```
     $ pm2 delete epgstation

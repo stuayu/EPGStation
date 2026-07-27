@@ -8,7 +8,8 @@ export const get: Operation = async (req, res) => {
         const providers = typeof req.query.providers === 'string' ? req.query.providers.split(',') : undefined;
         const channelId = typeof req.query.channelId === 'number' ? req.query.channelId : undefined;
         const startAt = typeof req.query.startAt === 'number' ? req.query.startAt : undefined;
-        const context = typeof channelId === 'number' || typeof startAt === 'number' ? { channelId, startAt } : undefined;
+        const context =
+            typeof channelId === 'number' || typeof startAt === 'number' ? { channelId, startAt } : undefined;
         const results = await container.get<IMetadataService>('IMetadataService').search(query, context, providers);
         api.responseJSON(res, 200, { results });
     } catch (e) {
