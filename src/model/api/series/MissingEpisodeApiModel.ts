@@ -3,6 +3,7 @@ import * as apid from '../../../../api';
 import Series from '../../../db/entities/Series';
 import IProgramDB from '../../db/IProgramDB';
 import ISeriesDB from '../../db/ISeriesDB';
+import ISyobocalTitleDB from '../../db/ISyobocalTitleDB';
 import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
 import IMetadataService from '../../metadata/IMetadataService';
@@ -28,6 +29,7 @@ export default class MissingEpisodeApiModel implements IMissingEpisodeApiModel {
         @inject('IProgramDB') private programDB: IProgramDB,
         @inject('IReserveApiModel') private reserveApi: IReserveApiModel,
         @inject('IMetadataService') private metadata: IMetadataService,
+        @inject('ISyobocalTitleDB') private syobocalTitleDB: ISyobocalTitleDB,
     ) {}
 
     public async listProposals(seriesId: number): Promise<MissingEpisodeProposal[]> {
@@ -134,6 +136,15 @@ export default class MissingEpisodeApiModel implements IMissingEpisodeApiModel {
      */
     private async externalTotals(series: Series): Promise<Record<number, number> | undefined> {
         if (!isFeatureEnabled(this.config.getConfig(), 'metadataProviders')) return undefined;
+
+        // ローカルのしょぼいカレンダー作品辞書に総話数があれば、外部への問い合わせなしで済ませる
+        if (series.syobocalTid !== null) {
+            const dictionaryTitle = await this.syobocalTitleDB.get(series.syobocalTid).catch(() => null);
+            if (dictionaryTitle !== null && dictionaryTitle.totalEpisodes !== null) {
+                return { 1: dictionaryTitle.totalEpisodes };
+            }
+        }
+
         try {
             const work = series.annictId
                 ? await this.metadata.get('annict', series.annictId)

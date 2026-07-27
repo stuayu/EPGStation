@@ -49,10 +49,18 @@ npm run build          # Linux/Mac フルビルド (build-win: Windows)
 npm run compile        # サーバの tsc のみ (高速な型チェックに使う)
 npm run lint           # eslint --fix (src/)
 npm run format         # prettier (src/)
-cd client && npm run lint   # クライアント側 lint
+cd client && npm run build  # クライアントの型チェック + ビルド
+
+npm test               # ut + ita (コミット前に必ず実行する)
+npm run test:ut        # 単体 (test/ut/, 行カバレッジ 80% 未満で失敗)
+npm run test:ita       # 結合 A (test/ita/, 実 sqlite でのマイグレーション等)
+npm run test:itb       # 結合 B (test/itb/, ローカル HTTP スタブサーバを使う通信系)
+npm run test:ci        # ut + ita + itb
 ```
 
-- **テストは存在しない** (`npm test` は常に失敗する)。変更の検証は `npm run compile` (+ クライアントなら `cd client && npm run build`) の成功と手動確認で行う
+- **テストは存在する** (node:test ベース、`test/ut` `test/ita` `test/itb`)。コード変更後は `npm test` を必ず通すこと。`npm run test:ut` は**行カバレッジ 80% のゲート付き**なので、新規モジュールを追加したら対応するテストも追加する
+- テストは `dist/` を `require()` する (各スクリプトが先に `npm run compile` を実行する)。DI 対象クラスは**コンストラクタ引数を位置指定で組み立てているテストがある**ため、依存を追加するときは引数を末尾に足し、該当テストのスタブも更新する
+- クライアント側に lint スクリプトは無い。型チェックは `cd client && npm run build` (vue-tsc + vite build) で行う
 - `npm run build-server` は lint + format を含むためファイルを書き換える。型チェックだけなら `npm run compile`
 
 ## アーキテクチャ要点 (最低限)
@@ -81,3 +89,6 @@ cd client && npm run lint   # クライアント側 lint
 - **ライブ HLS は 2 モード**: cmd が `%streamFileDir%` を含まない場合は in-memory 配信 (fMP4 を `Fmp4Packager` → `HLSMemoryStoreModel` でメモリ保持、ディスク書き込みなし・Windows 対応・字幕非対応)。含む場合は従来の TS セグメント方式 (字幕対応)。配信周りを触る前に `doc/streaming-refresh.md` を読むこと
 - エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換 (省略時は PATH 上の tsreadex)
 - ストリーミング API の `req.query` は express-openapi がスキーマに従い数値へ型変換する。`mode` 等を文字列前提で扱わないこと (過去に 400 エラーの原因になった)
+- **シリーズ自動マッピングの主軸はしょぼいカレンダーの作品タイトル辞書** (`SyobocalTitleDictionary`)。`TitleLookup&TID=*` で全作品をローカル DB (`syobocal_title` 系 3 テーブル) へ取り込み、`SeriesResolver` が録画タイトルを TID へ寄せる。録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバックなので、シリーズ判定を触るときは辞書側を先に疑うこと
+- 録画タイトルの正規化 (`SeriesNormalizer`) は実データの表記ゆれに合わせた正規表現の塊。**変更したら必ず `test/ut/series-normalizer.test.js` と `test/ita/series-backfill-idempotency.test.js` を通す**こと (「(HDマスター版) は版違いとして残す」「`アニメA 第1話` の `アニメA` は編成ブロック冠ではなく作品名」など、テストが意図を固定している)
+- 秘密情報の暗号化鍵は `data/key/secret.key` に自動生成される (config.yml の `secretKey` は廃止、旧値は初回起動時に鍵ファイルへ移行)。パスは環境変数 `EPGSTATION_SECRET_KEY_FILE` で上書き可能

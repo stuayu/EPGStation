@@ -16,7 +16,8 @@ export interface SeriesBackfillOption {
  * ドライラン時の候補シリーズ (未確定候補の上位表示用)
  */
 export interface SeriesBackfillPreviewCandidate {
-    seriesId: number;
+    // null はこのドライラン実行中に新規作成される予定のシリーズ (まだ DB に存在しない)
+    seriesId: number | null;
     seriesTitle: string;
     score: number;
 }

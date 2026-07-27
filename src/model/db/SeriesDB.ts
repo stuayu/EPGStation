@@ -31,6 +31,10 @@ export default class SeriesDB implements ISeriesDB {
         const key = normalizedTitle.slice(0, Math.min(4, normalizedTitle.length));
         return key ? await repo.find({ where: { normalizedTitle: Like(`%${key}%`) }, take: 100 }) : [];
     }
+    public async findBySyobocalTid(syobocalTid: number): Promise<Series | null> {
+        const c = await this.op.getConnection();
+        return await c.getRepository(Series).findOne({ where: { syobocalTid } });
+    }
     async createSeries(value: NewSeries) {
         const c = await this.op.getConnection();
         const repo = c.getRepository(Series);

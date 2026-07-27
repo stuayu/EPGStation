@@ -483,8 +483,8 @@ stream:
 #                       height: 720
 #                       bitrate: 3000
 
-# 秘密情報暗号化鍵。運用環境では十分長いランダム値へ変更してください。
-# secretKey: change-this-to-a-long-random-secret
+# 秘密情報暗号化鍵は data/key/secret.key へ自動生成・保存されます (config.yml での指定は廃止)。
+# 旧バージョンで secretKey を設定していた場合は、初回起動時にその値が鍵ファイルへ移行されます。
 
 # 段階導入用機能フラグ。明示的に true にした機能だけが有効になります。
 # 未指定の項目は false として扱われます。
@@ -513,6 +513,18 @@ featureFlags:
 # metadataSharedDataUrl: 'https://raw.githubusercontent.com/<user>/<repo>/main/syobocal-shared-data.json'
 # 自動更新間隔 (ms)。省略時 24 時間。0 を指定すると起動時取得のみで定期更新を行わない
 # metadataSharedDataUpdateIntervalMs: 86400000
+
+# 外部メタデータプロバイダーの既定値 (設定画面 (DB) に値がある場合はそちらが優先される)
+# (featureFlags.metadataProviders: true の場合のみ使用される)
+# metadataDefaults:
+#     syobocal:
+#         enabled: true
+#         # しょぼいカレンダーのアニメ作品タイトル辞書 (シリーズ自動マッピングの照合辞書) の
+#         # 自動同期間隔 (ms)。省略時 24 時間。0 を指定すると自動同期を行わない
+#         titleSyncIntervalMs: 86400000
+#     annict:
+#         enabled: false
+#     cacheTtlMs: 86400000
 
 # Webhook / Discord 通知（featureFlags.notifications: true の場合のみ有効）
 # notifications:

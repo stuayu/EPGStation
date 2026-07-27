@@ -71,7 +71,11 @@ export const APP_SETTING_SCHEMA: Record<string, JsonSchema> = {
             syobocal: {
                 type: 'object',
                 additionalProperties: true,
-                properties: { enabled: { type: 'boolean' } },
+                properties: {
+                    enabled: { type: 'boolean' },
+                    // アニメ作品タイトル辞書の自動同期間隔 (ms)。0 で自動同期を停止する
+                    titleSyncIntervalMs: { type: 'number', minimum: 0, maximum: 30 * 24 * 60 * 60 * 1000 },
+                },
             },
             // 共有静的データ (チャンネルマッピング表・エイリアス辞書, §5.1・§5.8) の自動更新設定
             sharedData: {

@@ -47,12 +47,23 @@ function memory(candidates = []) {
 function stubNotification() {
     return { dispatch: async () => {}, test: async () => ({ delivered: [], failed: [] }), processQueue: async () => ({ sent: 0, failed: 0 }), getFailureHistory: async () => [] };
 }
-function resolver(db, threshold = 0.8, notification = stubNotification()) {
+// しょぼいカレンダー作品辞書は既定で「該当なし」を返し、従来の類似度判定の挙動を検証できるようにする
+function stubTitleDictionary(match = null) {
+    return {
+        sync: async () => ({ titleCount: 0, lastUpdate: null, lastSyncedAt: null, running: false, error: null, imported: 0, full: false }),
+        startAutoSync: () => {},
+        lookup: async () => match,
+        lookupEpisodeNumber: async () => null,
+        getStatus: async () => ({ titleCount: 0, lastUpdate: null, lastSyncedAt: null, running: false, error: null }),
+    };
+}
+function resolver(db, threshold = 0.8, notification = stubNotification(), titleDictionary = stubTitleDictionary()) {
     return new SeriesResolver(
         { getConfig: () => ({ featureFlags: { seriesLibrary: true } }) },
         { getAll: async () => ({ series: { matchThreshold: threshold } }) },
         db,
         notification,
+        titleDictionary,
     );
 }
 test('title similarity handles exact and unrelated titles', () => {
@@ -143,4 +154,19 @@ test('resolve() falls back to normal scoring when reserveId has no matching hint
     });
     assert.equal(link.seriesId, 1);
     assert.equal(link.matchMethod, 'title');
+});
+
+test('a newly auto-created series gets a cleaned display title (no episode number, casing kept)', async () => {
+    const db = memory();
+    const created = [];
+    const orig = db.createSeries;
+    db.createSeries = async v => {
+        const s = await orig(v);
+        created.push(s);
+        return s;
+    };
+    await resolver(db).resolve({ recordedId: 50, title: 'CLANNAD AFTER STORY(HDマスター版) #16', channelId: 1, startAt: 1 });
+    assert.equal(created.length, 1);
+    assert.equal(created[0].title, 'CLANNAD AFTER STORY(HDマスター版)');
+    assert.equal(created[0].normalizedTitle, 'clannad after story(hdマスター版)');
 });

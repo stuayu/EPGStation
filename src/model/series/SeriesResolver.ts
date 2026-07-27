@@ -6,9 +6,10 @@ import { isFeatureEnabled } from '../FeatureFlags';
 import IConfiguration from '../IConfiguration';
 import IAppSettingDB from '../db/IAppSettingDB';
 import ISeriesDB from '../db/ISeriesDB';
+import ISyobocalTitleDictionary from '../metadata/syobocal/ISyobocalTitleDictionary';
 import INotificationDispatcher from '../notification/INotificationDispatcher';
 import ISeriesResolver, { SeriesRecordingInput } from './ISeriesResolver';
-import { parseSeriesInfo } from './SeriesNormalizer';
+import { displaySeriesTitle, normalizeSeriesTitle, parseSeriesInfo } from './SeriesNormalizer';
 export function titleSimilarity(a: string, b: string): number {
     if (a === b) return 1;
     if (a.length < 2 || b.length < 2) return 0;
@@ -47,6 +48,7 @@ export default class SeriesResolver implements ISeriesResolver {
         @inject('IAppSettingDB') private settings: IAppSettingDB,
         @inject('ISeriesDB') private db: ISeriesDB,
         @inject('INotificationDispatcher') private notification: INotificationDispatcher,
+        @inject('ISyobocalTitleDictionary') private titleDictionary: ISyobocalTitleDictionary,
     ) {}
     async resolve(recording: SeriesRecordingInput): Promise<RecordedSeriesLink | null> {
         if (!isFeatureEnabled(this.config.getConfig(), 'seriesLibrary')) return null;
@@ -94,7 +96,13 @@ export default class SeriesResolver implements ISeriesResolver {
             }
         }
 
-        // 2. 既存シリーズとの類似度スコアリング
+        // 2. しょぼいカレンダー作品辞書 (§5.9) で作品を確定させる。
+        // 放送局ごとの表記ゆれ ("第壱話" / "break1" / "TVアニメ『X』" / "水曜アニメ・" 等) があっても
+        // 同一 TID へ寄せられるため、類似度スコアリングより先に試す
+        const dictionaryLink = await this.resolveBySyobocalDictionary(recording, parsed, now);
+        if (dictionaryLink !== null) return dictionaryLink;
+
+        // 3. 既存シリーズとの類似度スコアリング
         const candidates = await this.db.findCandidates(parsed.normalizedTitle);
         const settings = await this.settings.getAll();
         const threshold = this.threshold((settings.series as any)?.matchThreshold);
@@ -111,7 +119,8 @@ export default class SeriesResolver implements ISeriesResolver {
         if (candidates.length === 0) {
             // 類似候補が一件も無い = 誤リンクの恐れが無い明確な新規シリーズなので自動作成する
             winner = await this.db.createSeries({
-                title: recording.title,
+                // 生の録画タイトルではなく話数などを除いた表示用タイトルをシリーズ名にする ("作品名 #16" のような名前を防ぐ)
+                title: displaySeriesTitle(recording.title),
                 normalizedTitle: parsed.normalizedTitle,
                 preferredChannelId: recording.channelId,
                 createdAt: now,
@@ -140,6 +149,55 @@ export default class SeriesResolver implements ISeriesResolver {
 
         await this.db.deletePendingMatchByRecordedId(recording.recordedId);
         return await this.linkTo(recording, parsed, winner, confidence, 'title', now);
+    }
+
+    /**
+     * しょぼいカレンダー作品辞書で作品 (TID) を特定し、その TID のシリーズへリンクする。
+     * 同じ TID のシリーズが既にあればそれへ、無ければしょぼいカレンダーの正式タイトルで新規作成する。
+     * 辞書が未取得・機能無効・該当なしの場合は null を返し、呼び出し側は従来の類似度判定へ進む
+     * @param recording: SeriesRecordingInput
+     * @param parsed: parseSeriesInfo() の結果
+     * @param now: number
+     * @return Promise<RecordedSeriesLink | null>
+     */
+    private async resolveBySyobocalDictionary(
+        recording: SeriesRecordingInput,
+        parsed: ReturnType<typeof parseSeriesInfo>,
+        now: number,
+    ): Promise<RecordedSeriesLink | null> {
+        let match: Awaited<ReturnType<ISyobocalTitleDictionary['lookup']>> = null;
+        try {
+            match = await this.titleDictionary.lookup(recording.title);
+        } catch {
+            // 辞書の不調でシリーズ化そのものを止めないよう、失敗時は従来の類似度判定へ委ねる
+            return null;
+        }
+        if (match === null) return null;
+
+        let series = await this.db.findBySyobocalTid(match.tid);
+        if (series === null) {
+            series = await this.db.createSeries({
+                // 録画タイトル由来のゆらいだ名前ではなく しょぼいカレンダーの正式タイトルをシリーズ名にする
+                title: match.title,
+                normalizedTitle: normalizeSeriesTitle(match.title),
+                preferredChannelId: recording.channelId,
+                syobocalTid: match.tid,
+                createdAt: now,
+                updatedAt: now,
+            });
+        }
+
+        // 話数表記が無い録画は、しょぼいカレンダーのサブタイトルから話数を逆引きする
+        const resolved = { ...parsed };
+        if (resolved.episodeNumber === null) {
+            const episodeNumber = await this.titleDictionary
+                .lookupEpisodeNumber(match.tid, recording.title)
+                .catch(() => null);
+            if (episodeNumber !== null) resolved.episodeNumber = episodeNumber;
+        }
+
+        await this.db.deletePendingMatchByRecordedId(recording.recordedId);
+        return await this.linkTo(recording, resolved, series, match.confidence, 'syobocal', now);
     }
 
     /**

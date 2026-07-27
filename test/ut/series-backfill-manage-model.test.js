@@ -70,13 +70,24 @@ function makeResolver(resultByRecordedId = new Map(), throwFor = new Set()) {
     return resolver;
 }
 
-function makeModel({ rows, seriesDB, settingsDB, resolver }) {
+// しょぼいカレンダー作品辞書は既定で「該当なし」を返し、従来の類似度判定の挙動を検証できるようにする
+function makeTitleDictionary(match = null) {
+    return {
+        sync: async () => ({ titleCount: 0, lastUpdate: null, lastSyncedAt: null, running: false, error: null, imported: 0, full: false }),
+        startAutoSync: () => {},
+        lookup: async () => match,
+        lookupEpisodeNumber: async () => null,
+        getStatus: async () => ({ titleCount: 0, lastUpdate: null, lastSyncedAt: null, running: false, error: null }),
+    };
+}
+function makeModel({ rows, seriesDB, settingsDB, resolver, titleDictionary }) {
     return new SeriesBackfillManageModel(
         logger,
         makeRecordedDB(rows),
         seriesDB ?? makeSeriesDB(),
         settingsDB ?? makeSettingsDB(),
         resolver ?? makeResolver(),
+        titleDictionary ?? makeTitleDictionary(),
     );
 }
 
@@ -258,4 +269,46 @@ test('a persisted state left as running (simulating a crash) is treated as cance
     // recordedId=1 は既に処理済みの前提だったので再度 resolve() されない
     assert.deepEqual(resolver.calls, [2, 3]);
     assert.equal(finalStatus.processed, 1 + 2);
+});
+
+test('dry run simulates series that would be created earlier in the same run', async () => {
+    const rows = [
+        { id: 1, name: 'CLANNAD AFTER STORY(HDマスター版) #16', channelId: 10, startAt: 1000 },
+        { id: 2, name: 'CLANNAD AFTER STORY(HDマスター版) #17', channelId: 10, startAt: 2000 },
+    ];
+    const model = makeModel({ rows });
+
+    await model.start({ dryRun: true, chunkSize: 10, intervalMs: 0 });
+    await waitUntil(async () => (await model.getStatus()).state === 'completed');
+
+    const status = await model.getStatus();
+    assert.equal(status.linked, 2);
+    assert.equal(status.previewItems[0].matched, true);
+    assert.equal(status.previewItems[0].seriesId, null);
+    assert.equal(status.previewItems[0].seriesTitle, 'CLANNAD AFTER STORY(HDマスター版)');
+    assert.equal(status.previewItems[1].matched, true);
+    assert.equal(status.previewItems[1].seriesId, null);
+    assert.equal(status.previewItems[1].seriesTitle, 'CLANNAD AFTER STORY(HDマスター版)');
+    assert.equal(status.previewItems[1].confidence, 1);
+});
+
+test('dry run lists a would-be-created series as a pending candidate with seriesId null', async () => {
+    const rows = [
+        { id: 1, name: '作品タイトル 第1話', channelId: 10, startAt: 1000 },
+        { id: 2, name: '作品タイトル外伝 第1話', channelId: 10, startAt: 2000 },
+    ];
+    const settingsDB = makeSettingsDB({ matchThreshold: 0.99 });
+    const model = makeModel({ rows, settingsDB });
+
+    await model.start({ dryRun: true, chunkSize: 10, intervalMs: 0 });
+    await waitUntil(async () => (await model.getStatus()).state === 'completed');
+
+    const status = await model.getStatus();
+    assert.equal(status.linked, 1);
+    assert.equal(status.pending, 1);
+    const pendingItem = status.previewItems[1];
+    assert.equal(pendingItem.matched, false);
+    assert.equal(pendingItem.candidates.length, 1);
+    assert.equal(pendingItem.candidates[0].seriesId, null);
+    assert.equal(pendingItem.candidates[0].seriesTitle, '作品タイトル');
 });

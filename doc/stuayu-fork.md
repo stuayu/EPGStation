@@ -107,6 +107,27 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
             復元作業中に、ruleの部分で失敗する場合は、手動でsqlファイルを修正してください。
 ## 変更箇所
 
+- **秘密情報の暗号化鍵を `data/key/secret.key` へ自動生成するようにした (config.yml の `secretKey` は廃止)**
+  - 従来は config.yml の `secretKey` を手で設定しないと通知先 URL や Annict トークンの暗号化が一切機能しなかった (未設定のまま運用され、設定画面からの保存が `AppSettingSecretKeyIsNotConfigured` で失敗する事故につながっていた)。`SecretCrypto` が起動時に鍵ファイルを読み、無ければランダム鍵 (48 バイト base64url) を `mode 0o600` で生成して保存する
+  - 旧バージョンで `secretKey` を設定していた環境では、鍵ファイルが無いときに限りその値を種として鍵ファイルを作成し、既存の暗号文をそのまま復号できるように移行する
+  - Operator / Service / EPGUpdater が同時に初回起動しうるため、`fs.writeFileSync` の `wx` フラグによる排他作成 + `EEXIST` 時の再読み込みで競合を回避する
+  - 鍵ファイルのパスは環境変数 `EPGSTATION_SECRET_KEY_FILE` で上書きできる (Docker 等でボリュームを分けたい場合向け)
+
+- **タグ管理・シリーズ統合ダイアログのセレクトボックスが選択肢を表示できない不具合を修正**
+  - Vuetify 4 の `v-select` は `:items` にオブジェクト配列を渡す場合 `item-title` の明示が必要 (既定値が Vuetify 2 と異なる)。`TagManageDialog.vue` の親タグ選択と `Series.vue` の統合元/統合先シリーズ選択に `item-title="title"` を追加した
+
+- **しょぼいカレンダーのアニメ作品タイトルを一括取得し、シリーズ自動マッピングの「正解辞書」として使うようにした**
+  - **背景 (何が壊れていたか)**: 従来の `SeriesResolver` は「録画タイトル同士の類似度 (bigram) が しきい値 0.8 以上か」だけでシリーズを判定していたため、放送局ごとの表記ゆれで同一作品が大量に別シリーズへ分裂していた。実データ (録画 16,049 件) で確認できた分裂要因は、漢数字の話数 (`第壱話` `漆話`)、英字の話数 (`break1` `days.1` `Turn19` `request 1.` `EPISODE08`)、括弧付き作品名 (`TVアニメ『MFゴースト』2nd Season`)、編成ブロック冠 (`アニメ　` `水曜アニメ・水もん　` `メディアβ・` `＋Ultra・`)、ダッシュ/引用符の字種違い (`-` `―` `～` `'` `’`)、末尾の枠名ブロック (`【スーパーアニメイズムTURBO】`) など。`SeriesNormalizer` はこれらをほとんど除去できていなかった
+  - **一括取得**: `SyobocalTitleDictionary` (`src/model/metadata/syobocal/`) が しょぼいカレンダーの `TitleLookup&TID=*` を叩き、全アニメ作品 (約 8,000 件) のタイトル・略称・英題・別名 (Keywords)・サブタイトル一覧をローカル DB へ取り込む。`Fields` で必要な列だけ指定して転送量を 24MB → 9.5MB に削減し、2 回目以降は `LastUpdate` カーソルによる差分取得のみ行う。テーブルは `syobocal_title` / `syobocal_title_alias` / `syobocal_title_episode` の 3 つ (sqlite/mysql 両方のマイグレーションあり)
+  - **照合方式**: 記号・空白・長音/ダッシュ/引用符をすべて落とした「骨格キー」(`syobocalLookupKey()`) で突き合わせる。完全一致で引けない場合は「辞書キーが録画キーに含まれる最長のもの」を採用し、短い辞書キーが長いタイトルに偶然含まれる誤爆を防ぐため長さ比 0.5 以上を要求する。先頭ブロック除去は強度違いの 2 パターン (STRICT / LOOSE) でキーを作って順に引くため、`メディアβ・ぼさにまる` のような冠付きと `ライアー・ライアー` のような作品名を両立できる
+  - **シリーズ解決への接続**: `SeriesResolver.resolve()` にエイリアス辞書の次・類似度スコアリングの手前として辞書照合ステップを追加した。確定した TID は `Series.syobocalTid` をキーに既存シリーズへ寄せ、無ければ**しょぼいカレンダーの正式タイトル**でシリーズを新規作成する (録画タイトル由来のゆらいだ名前にならない)。`matchMethod` は既存の `'syobocal'` を使う。辞書が未取得・機能無効・該当なしの場合は従来どおり類似度判定へフォールバックするため、既存挙動は壊れない
+  - **話数の復元**: 話数表記が無い録画については、しょぼいカレンダーのサブタイトルが録画タイトルに含まれるかで話数を逆引きする (`lookupEpisodeNumber()`)。欠番検出の総話数も `syobocal_title.totalEpisodes` をローカル参照するようにし (`MissingEpisodeApiModel.externalTotals()`)、シリーズごとの外部 API 問い合わせを不要にした
+  - **実データでの効果**: 手元の録画 16,049 件に対し **89.1% (14,301 件) が作品として確定** (完全一致 12,642 / 含有一致 1,659)、728 作品に集約され、そのうち **647 作品が表記ゆれを吸収して 1 シリーズに統合**された。話数表記の無い録画 635 件でサブタイトルから話数を復元。未ヒットの大半はバラエティ・ドラマなどアニメ以外で、想定通り作品化されない。照合は 16,049 件で約 0.5 秒 (索引はメモリ常駐)
+  - **同期のタイミング**: Operator 起動 60 秒後 + 既定 24 時間間隔で自動同期する (`runOperator()` から `startAutoSync()`)。間隔は `metadataDefaults.syobocal.titleSyncIntervalMs` (config.yml) と設定画面 (`metadata.syobocal.titleSyncIntervalMs`) で変更でき、0 で自動同期を止められる。`featureFlags.metadataProviders` + しょぼいカレンダー連携が有効な場合のみ通信が発生する
+  - **API / UI**: `GET`/`POST /api/settings/system/syobocal/titles` (`SyobocalTitleDictionaryStatus` / `SyobocalTitleSyncResult`) を追加し、サーバー設定画面の連携タブに登録作品数・最終更新日時の表示と「差分同期」「全件取り直し」ボタン、自動同期間隔の入力欄を追加した
+  - **プロセス間の反映**: 辞書は Operator の自動同期と Service の「今すぐ同期」の双方から更新されうるため、メモリ上の照合索引は 5 分間隔で DB の署名 (件数:最終更新日時) を確認し、変化していれば作り直す (IPC は追加していない)
+  - **`SeriesNormalizer` の強化 (辞書と併せて単体でも効く)**: 漢数字話数のパース (`第壱話` → 1)、`話` 以外の助数詞 (`幕` `旅` `夜` `章` `回` 等)、英字話数語 (`ep` `turn` `break` `days` `mission` `request` `stage` 等)、`（8）` 形式、末尾の枠名ブロック・サブタイトル、括弧付き作品名の展開、`2nd Season` / `3期` からのシーズン番号抽出に対応した。バックフィルのドライラン (`SeriesBackfillManageModel.decide()`) も辞書照合を通すようにし、プレビューと実行結果が食い違わないようにした
+
 - サーバー設定画面 (S6・S7・§6.2) の欠陥修正・未実装機能の追加と、録画検索 UI (S19・§2.2) の高度化（クライアント側のみ、サーバ変更なし）
   - **サーバー設定画面 (`client/src/views/SystemSetting.vue`) の重大バグ修正**: 通知タブが `targets[0]` へ直接 `v-model` していたため、DB に `targets: []` が保存されていると描画時に例外になり画面が開けなくなっていた。配信先を配列として一覧・追加・削除・編集できる UI に全面書き換え。配信先名を変更した場合、サーバー側はシークレットを名前で突き合わせる実装 (`AppSettingApiModel.matchArrayItems()`) のため URL・署名シークレットが引き継がれない旨を warning で表示する
   - `testNotification()` が送信前に必ず `save()` していたため、テストしただけで未保存の設定が永続化される不具合を修正 (テストは配信先ごとに独立して実行、保存とは分離)。`save()` / `testNotification()` / 各 API 呼び出しは try/catch で `ISnackbarState` にエラーを通知するよう統一
