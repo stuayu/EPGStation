@@ -1280,6 +1280,8 @@ export interface SeriesListItem {
     // 放送クール
     seasonYear?: number | null;
     seasonName?: 'WINTER' | 'SPRING' | 'SUMMER' | 'AUTUMN' | null;
+    // クールの出所 (dictionary: 作品辞書 / estimated: 録画日時からの推測 / manual: 手動設定)
+    seasonSource?: 'dictionary' | 'estimated' | 'manual' | null;
     // 録画件数・合計ファイルサイズ (バイト)
     recordedCount: number;
     totalFileSize: number;
