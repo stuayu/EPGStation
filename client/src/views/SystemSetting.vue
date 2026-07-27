@@ -54,7 +54,9 @@
                                 <v-btn variant="outlined" :loading="annictTesting" @click="testAnnictConnection">接続テスト</v-btn>
                                 <span v-if="annictTestResult" class="text-body-2">{{ annictTestResult }}</span>
                             </div>
-                            <v-alert type="info" density="compact" class="mb-2">接続テストは保存済みの設定 (先に保存が必要な場合があります) に対して行われます。</v-alert>
+                            <v-alert type="info" density="compact" class="mb-2"
+                                >接続テストは<b>保存済みの設定</b>に対して行われます。スイッチやトークンを変更したら、先に画面下部の「保存」を押してください。</v-alert
+                            >
 
                             <v-switch
                                 v-model="settings.metadata.annict.syncEnabled"
@@ -620,6 +622,21 @@ class SystemSetting extends Vue {
         }
     }
 
+    /**
+     * 接続テストのエラーコードを、次に何をすればよいか分かる日本語へ変換する
+     * @param message: string | undefined サーバから返るエラーコード
+     * @return string 表示用メッセージ
+     */
+    private annictErrorText(message: string | undefined): string {
+        const map: Record<string, string> = {
+            AnnictIsDisabled: 'Annict 連携が無効です。上のスイッチを ON にして「保存」してから再度お試しください',
+            AnnictTokenIsNotConfigured: 'アクセストークンが未設定です。トークンを入力して「保存」してから再度お試しください',
+            AnnictAuthenticationFailed: 'アクセストークンが無効です。annict.com で発行し直してください',
+            MetadataProvidersFeatureIsDisabled: 'config.yml の featureFlags.metadataProviders が無効です',
+        };
+        return map[message ?? ''] ?? `疎通確認に失敗しました (${message ?? '不明なエラー'})`;
+    }
+
     async testAnnictConnection(): Promise<void> {
         this.annictTesting = true;
         this.annictTestResult = null;
@@ -627,7 +644,7 @@ class SystemSetting extends Vue {
             const result = await this.api.testAnnictConnection();
             this.annictTestResult = result.ok
                 ? `接続に成功しました (ユーザー: ${result.username ?? '-'})`
-                : `疎通確認に失敗しました (${result.message ?? '不明なエラー'})`;
+                : this.annictErrorText(result.message);
         } catch (err: any) {
             console.error(err);
             const status = err?.response?.status;

@@ -140,7 +140,10 @@ export default class AnnictProvider implements IAnnictProvider {
         try {
             const token = await this.token();
             if (token === null) {
-                return { ok: false, message: 'AnnictSyncFeatureIsDisabled' };
+                // token() が null を返すのは「Annict 連携が無効」の場合のみ。
+                // 視聴記録の自動同期 (featureFlags.annictSync / metadata.annict.syncEnabled) とは
+                // 別の設定なので、同期側のエラーコードを使い回さない
+                return { ok: false, message: 'AnnictIsDisabled' };
             }
             const data = await this.graphql<{ viewer: { username: string } | null }>(
                 token,

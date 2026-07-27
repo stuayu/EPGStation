@@ -133,7 +133,7 @@ test('testConnection reports failure on a network/HTTP error without throwing', 
     assert.equal(result.ok, false);
     assert.equal(result.message, 'network unreachable');
 });
-test('testConnection reports AnnictSyncFeatureIsDisabled when Annict is not configured (no token)', async () => {
+test('testConnection reports AnnictIsDisabled when the Annict integration is turned off', async () => {
     const p = new Provider(
         { post: async () => { throw new Error('unexpected'); } },
         { getAll: async () => ({ metadata: { annict: { enabled: false } } }) },
@@ -141,7 +141,7 @@ test('testConnection reports AnnictSyncFeatureIsDisabled when Annict is not conf
         config,
     );
     const result = await p.testConnection();
-    assert.deepEqual(result, { ok: false, message: 'AnnictSyncFeatureIsDisabled' });
+    assert.deepEqual(result, { ok: false, message: 'AnnictIsDisabled' });
 });
 test('testConnection reports AnnictAuthenticationFailed when viewer is null (revoked token)', async () => {
     const http = { post: async () => ({ status: 200, json: () => ({ data: { viewer: null } }) }) };
