@@ -61,6 +61,28 @@
                                 label="視聴記録の自動同期"
                                 :disabled="isEnabledAnnictSyncFeature === false"
                             ></v-switch>
+                            <div class="text-subtitle-2 mt-2 mb-2">作品辞書</div>
+                            <v-alert type="info" density="compact" class="mb-2">
+                                Annict から全作品を取得し、しょぼいカレンダー辞書と統合してシリーズ照合に使います。英題・ローマ字・かな表記を照合キーに加えられるほか、Annict が持つ
+                                <code>syobocalTid</code> でしょぼいカレンダー作品と厳密に結び付けられます。Annict 連携が有効かつトークンが設定されている場合のみ動作します。
+                            </v-alert>
+                            <div class="text-body-2 mb-2">
+                                登録作品数: {{ annictWorkStatus === null ? '未取得' : annictWorkStatus.workCount.toLocaleString() }}
+                                <span v-if="annictWorkStatus !== null">
+                                    / しょぼいカレンダーと結合済: {{ annictWorkStatus.linkedToSyobocalCount.toLocaleString() }}
+                                </span>
+                            </div>
+                            <div class="d-flex align-center ga-2 mb-2 flex-wrap">
+                                <v-btn variant="outlined" :loading="annictWorkSyncing" @click="syncAnnictWorks">作品辞書を同期</v-btn>
+                                <span v-if="annictWorkSyncResult" class="text-body-2">{{ annictWorkSyncResult }}</span>
+                            </div>
+                            <v-text-field
+                                v-model.number="settings.metadata.annict.workSyncIntervalMs"
+                                type="number"
+                                label="作品辞書の自動同期間隔 (ms, 0 で自動同期しない)"
+                                density="compact"
+                            ></v-text-field>
+
                             <v-alert type="info" density="compact" class="mb-4">
                                 視聴記録の自動同期には二重のゲートがあります。(1) サーバー設定 (featureFlags.annictSync, config.yml):
                                 現在 {{ isEnabledAnnictSyncFeature ? '有効' : '無効 (WebUI からは変更できません)' }}。(2)
@@ -440,6 +462,10 @@ class SystemSetting extends Vue {
     syobocalTitleSyncing = false;
     syobocalTitleSyncResult: string | null = null;
 
+    annictWorkStatus: apid.AnnictWorkDictionaryStatus | null = null;
+    annictWorkSyncing = false;
+    annictWorkSyncResult: string | null = null;
+
     get backfillStateText(): string {
         const map: Record<string, string> = { idle: '未実行', running: '実行中', completed: '完了', canceled: 'キャンセル済み', failed: '失敗' };
         return this.backfillStatus ? (map[this.backfillStatus.state] ?? this.backfillStatus.state) : '';
@@ -458,7 +484,7 @@ class SystemSetting extends Vue {
 
     settings: any = {
         metadata: {
-            annict: { enabled: false, token: '', syncEnabled: true },
+            annict: { enabled: false, token: '', syncEnabled: true, workSyncIntervalMs: 7 * 24 * 60 * 60 * 1000 },
             syobocal: { enabled: false, titleSyncIntervalMs: 24 * 60 * 60 * 1000 },
             sharedData: { autoUpdate: true },
             cacheTtlMs: 24 * 60 * 60 * 1000,
@@ -520,6 +546,7 @@ class SystemSetting extends Vue {
         }
         await this.loadChannelMap();
         await this.refreshSyobocalTitleStatus();
+        await this.refreshAnnictWorkStatus();
 
         if (this.isEnabledSeriesLibrary === true) {
             await this.refreshBackfillStatus();
@@ -725,6 +752,40 @@ class SystemSetting extends Vue {
             this.snackbarState.open({ color: 'error', text: 'アニメ作品タイトル辞書の同期に失敗しました' });
         } finally {
             this.syobocalTitleSyncing = false;
+        }
+    }
+
+    /**
+     * Annict 作品辞書の状態を取得する
+     */
+    async refreshAnnictWorkStatus(): Promise<void> {
+        try {
+            this.annictWorkStatus = await this.api.getAnnictWorkStatus();
+        } catch (err) {
+            // 機能フラグ (metadataProviders) が無効な場合は 404 になるため、エラー表示はせず未取得のままにする
+            console.error(err);
+        }
+    }
+
+    /**
+     * Annict 作品辞書を同期する (常に全件取得)
+     */
+    async syncAnnictWorks(): Promise<void> {
+        this.annictWorkSyncing = true;
+        this.annictWorkSyncResult = null;
+        try {
+            const result = await this.api.syncAnnictWorks();
+            this.annictWorkStatus = result;
+            this.annictWorkSyncResult =
+                result.error === null
+                    ? `${result.imported.toLocaleString()} 件を取り込みました (しょぼいカレンダーと結合済 ${result.linkedToSyobocalCount.toLocaleString()} 件)`
+                    : `同期に失敗しました: ${result.error}`;
+        } catch (err) {
+            console.error(err);
+            this.annictWorkSyncResult = '同期に失敗しました';
+            this.snackbarState.open({ color: 'error', text: 'Annict 作品辞書の同期に失敗しました' });
+        } finally {
+            this.annictWorkSyncing = false;
         }
     }
 

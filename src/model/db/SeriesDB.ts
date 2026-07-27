@@ -35,6 +35,10 @@ export default class SeriesDB implements ISeriesDB {
         const c = await this.op.getConnection();
         return await c.getRepository(Series).findOne({ where: { syobocalTid } });
     }
+    public async findByAnnictId(annictId: string): Promise<Series | null> {
+        const c = await this.op.getConnection();
+        return await c.getRepository(Series).findOne({ where: { annictId } });
+    }
     async createSeries(value: NewSeries) {
         const c = await this.op.getConnection();
         const repo = c.getRepository(Series);

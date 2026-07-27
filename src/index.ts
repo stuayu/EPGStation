@@ -11,6 +11,7 @@ import IMirakurunClientModel from './model/IMirakurunClientModel';
 import IIPCServer from './model/ipc/IIPCServer';
 import container from './model/ModelContainer';
 import * as containerSetter from './model/ModelContainerSetter';
+import IAnnictWorkDictionary from './model/metadata/annict/IAnnictWorkDictionary';
 import ISyobocalTitleDictionary from './model/metadata/syobocal/ISyobocalTitleDictionary';
 import IImportWatchManageModel from './model/operator/recorded/IImportWatchManageModel';
 import IRecordingManageModel from './model/operator/recording/IRecordingManageModel';
@@ -136,6 +137,11 @@ const runOperator = async () => {
     // (featureFlags.metadataProviders + しょぼいカレンダー連携が有効な場合のみ実際に取得する)
     const syobocalTitleDictionary = container.get<ISyobocalTitleDictionary>('ISyobocalTitleDictionary');
     syobocalTitleDictionary.startAutoSync();
+
+    // Annict の作品辞書 (英題・ローマ字・syobocalTid 対応表) を定期的に取り込む
+    // (featureFlags.metadataProviders + Annict 連携が有効かつトークン設定済みの場合のみ実際に取得する)
+    const annictWorkDictionary = container.get<IAnnictWorkDictionary>('IAnnictWorkDictionary');
+    annictWorkDictionary.startAutoSync();
 };
 
 /**

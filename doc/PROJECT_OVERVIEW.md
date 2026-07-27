@@ -111,7 +111,7 @@ npm run backup / restore   # DB バックアップ / リストア
 npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (既定は dry run, --apply で更新)
 ```
 
-- テストは未整備 (`npm test` はエラーを返すだけ)。動作確認はビルド + 手動確認
+- テストは node:test ベースで整備済み: `test/ut` (単体、行カバレッジ 80% のゲート付き) / `test/ita` (実 sqlite でのマイグレーション等) / `test/itb` (ローカル HTTP スタブサーバを使う通信系)。`npm test` = ut + ita、`npm run test:ci` = ut + ita + itb
 - 設定: `config/config.yml` (テンプレートから起動時自動コピー)。ログ設定は `config/{operator,service,epgUpdater}LogConfig.yml`
 - マイグレーションは起動時に自動実行 (`migrationsRun: true`)
 - Docker: `Dockerfile.alpine` (node:24-alpine3.24 ベース) / `Dockerfile.debian` (node:24-trixie ベース) のマルチステージ
@@ -128,7 +128,8 @@ npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (
 - TypeORM 1.x では criteria が空の `delete()` が禁止されているため、全件削除は `createQueryBuilder().delete()` を使う (既存コードは対応済み)
 - エンコードキューは `data/encodeQueue.json` に永続化され、Service プロセス起動時に `EncodeManageModel.restore()` で復元される (Web API の待ち受け開始はこの復元後)。キューを変更するコードを追加したら保存 (`saveQueue()`) の呼び出し漏れに注意
 - `ExecutionManagementModel` は優先度付きの排他ロック。`getExecution()` の Promise は 60 秒でタイムアウトするため、呼び出し側は必ず reject を処理する (放置するとキュー処理が止まる)
-- シリーズ自動マッピングは **しょぼいカレンダーのアニメ作品タイトル辞書が主軸**。`SyobocalTitleDictionary` が `TitleLookup&TID=*` で全作品 (約 8000 件) をローカル DB (`syobocal_title` / `syobocal_title_alias` / `syobocal_title_episode`) へ取り込み、`SeriesResolver` が録画タイトルを TID へ寄せる。録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバック。辞書の同期は Operator 起動時 + 24 時間間隔 (`featureFlags.metadataProviders` + しょぼいカレンダー連携が有効な場合のみ)。詳細は `doc/stuayu-fork.md`
+- シリーズ自動マッピングは **外部の作品タイトル辞書が主軸**。`SyobocalTitleDictionary` (しょぼいカレンダー `TitleLookup&TID=*`、約 8 千件) と `AnnictWorkDictionary` (Annict `searchWorks` のページング、約 1.7 万件) が各々ローカル DB へ取り込み、`WorkDictionary` (`src/model/series/`) が両者を 1 つのメモリ索引に統合して引く。Annict 側が持つ `syobocalTid` で 2 辞書の作品を厳密に結合する。`SeriesResolver` はこの統合辞書を使い、録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバック。同期は Operator 起動時 + しょぼいカレンダー 24 時間 / Annict 7 日間隔 (`featureFlags.metadataProviders` + 各連携が有効な場合のみ。Annict はアクセストークン必須)。詳細は `doc/stuayu-fork.md`
+- **Annict GraphQL API に `Query.works` は存在しない** (`searchWorks` のみ)。`Episode` に `airedAt` も無い。存在しないフィールドを要求するとクエリ全体が GraphQL エラーになるため、クエリを書くときは実 API のスキーマ (introspection) で確認すること
 - ライブ HLS は 2 モード: cmd が `%streamFileDir%` を含まなければ in-memory 配信 (`HLSMemoryStoreModel`、ディスク書き込みなし・字幕非対応)、含めば従来のディスク方式。詳細は `doc/streaming-refresh.md`
 - エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換される
 - ストリーミング API の `req.query` は express-openapi が OpenAPI スキーマに従い数値へ型変換する。`mode` 等のクエリを文字列前提で扱わないこと

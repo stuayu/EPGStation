@@ -6,8 +6,8 @@ import { isFeatureEnabled } from '../FeatureFlags';
 import IConfiguration from '../IConfiguration';
 import IAppSettingDB from '../db/IAppSettingDB';
 import ISeriesDB from '../db/ISeriesDB';
-import ISyobocalTitleDictionary from '../metadata/syobocal/ISyobocalTitleDictionary';
 import INotificationDispatcher from '../notification/INotificationDispatcher';
+import IWorkDictionary, { WorkMatch } from './IWorkDictionary';
 import ISeriesResolver, { SeriesRecordingInput } from './ISeriesResolver';
 import { displaySeriesTitle, normalizeSeriesTitle, parseSeriesInfo } from './SeriesNormalizer';
 export function titleSimilarity(a: string, b: string): number {
@@ -41,6 +41,14 @@ export function scoreCandidate(normalizedTitle: string, candidate: Series, chann
     const channelBonus = candidate.preferredChannelId === channelId ? 0.08 : 0;
     return Math.min(0.99, similarity * 0.9 + channelBonus);
 }
+/**
+ * 作品辞書のどちらで確定したかを RecordedSeriesLink.matchMethod へ写す
+ * @param match: WorkMatch
+ * @return RecordedSeriesLink['matchMethod']
+ */
+function matchMethodOf(match: WorkMatch): RecordedSeriesLink['matchMethod'] {
+    return match.source === 'syobocal' ? 'syobocal' : 'annict';
+}
 @injectable()
 export default class SeriesResolver implements ISeriesResolver {
     constructor(
@@ -48,7 +56,7 @@ export default class SeriesResolver implements ISeriesResolver {
         @inject('IAppSettingDB') private settings: IAppSettingDB,
         @inject('ISeriesDB') private db: ISeriesDB,
         @inject('INotificationDispatcher') private notification: INotificationDispatcher,
-        @inject('ISyobocalTitleDictionary') private titleDictionary: ISyobocalTitleDictionary,
+        @inject('IWorkDictionary') private workDictionary: IWorkDictionary,
     ) {}
     async resolve(recording: SeriesRecordingInput): Promise<RecordedSeriesLink | null> {
         if (!isFeatureEnabled(this.config.getConfig(), 'seriesLibrary')) return null;
@@ -96,10 +104,10 @@ export default class SeriesResolver implements ISeriesResolver {
             }
         }
 
-        // 2. しょぼいカレンダー作品辞書 (§5.9) で作品を確定させる。
+        // 2. 作品辞書 (しょぼいカレンダー + Annict) で作品を確定させる。
         // 放送局ごとの表記ゆれ ("第壱話" / "break1" / "TVアニメ『X』" / "水曜アニメ・" 等) があっても
-        // 同一 TID へ寄せられるため、類似度スコアリングより先に試す
-        const dictionaryLink = await this.resolveBySyobocalDictionary(recording, parsed, now);
+        // 同一作品へ寄せられるため、類似度スコアリングより先に試す
+        const dictionaryLink = await this.resolveByWorkDictionary(recording, parsed, now);
         if (dictionaryLink !== null) return dictionaryLink;
 
         // 3. 既存シリーズとの類似度スコアリング
@@ -152,52 +160,68 @@ export default class SeriesResolver implements ISeriesResolver {
     }
 
     /**
-     * しょぼいカレンダー作品辞書で作品 (TID) を特定し、その TID のシリーズへリンクする。
-     * 同じ TID のシリーズが既にあればそれへ、無ければしょぼいカレンダーの正式タイトルで新規作成する。
-     * 辞書が未取得・機能無効・該当なしの場合は null を返し、呼び出し側は従来の類似度判定へ進む
+     * 作品辞書 (しょぼいカレンダー + Annict) で作品を特定し、その作品のシリーズへリンクする。
+     * 同じ作品のシリーズが既にあればそれへ、無ければ辞書の正式タイトルで新規作成する。
+     * 辞書が未取得・該当なしの場合は null を返し、呼び出し側は従来の類似度判定へ進む
      * @param recording: SeriesRecordingInput
      * @param parsed: parseSeriesInfo() の結果
      * @param now: number
      * @return Promise<RecordedSeriesLink | null>
      */
-    private async resolveBySyobocalDictionary(
+    private async resolveByWorkDictionary(
         recording: SeriesRecordingInput,
         parsed: ReturnType<typeof parseSeriesInfo>,
         now: number,
     ): Promise<RecordedSeriesLink | null> {
-        let match: Awaited<ReturnType<ISyobocalTitleDictionary['lookup']>> = null;
+        let match: WorkMatch | null = null;
         try {
-            match = await this.titleDictionary.lookup(recording.title);
+            match = await this.workDictionary.lookup(recording.title);
         } catch {
             // 辞書の不調でシリーズ化そのものを止めないよう、失敗時は従来の類似度判定へ委ねる
             return null;
         }
         if (match === null) return null;
 
-        let series = await this.db.findBySyobocalTid(match.tid);
+        // しょぼいカレンダー TID を優先キーにし、無い作品 (Annict 単独) は annictId で引く
+        let series =
+            match.syobocalTid !== null
+                ? await this.db.findBySyobocalTid(match.syobocalTid)
+                : match.annictId !== null
+                  ? await this.db.findByAnnictId(String(match.annictId))
+                  : null;
         if (series === null) {
             series = await this.db.createSeries({
-                // 録画タイトル由来のゆらいだ名前ではなく しょぼいカレンダーの正式タイトルをシリーズ名にする
+                // 録画タイトル由来のゆらいだ名前ではなく辞書の正式タイトルをシリーズ名にする
                 title: match.title,
                 normalizedTitle: normalizeSeriesTitle(match.title),
                 preferredChannelId: recording.channelId,
-                syobocalTid: match.tid,
+                syobocalTid: match.syobocalTid,
+                annictId: match.annictId === null ? null : String(match.annictId),
                 createdAt: now,
                 updatedAt: now,
             });
+        } else if (series.syobocalTid === null || series.annictId === null) {
+            // 既存シリーズに片方の ID しか無い場合、辞書側で判明した ID を補完する
+            // (Annict 視聴記録の同期がタイトル検索に頼らず確実に引き当てられるようになる)
+            const patch: { syobocalTid?: number | null; annictId?: string | null } = {};
+            if (series.syobocalTid === null && match.syobocalTid !== null) patch.syobocalTid = match.syobocalTid;
+            if (series.annictId === null && match.annictId !== null) patch.annictId = String(match.annictId);
+            if (Object.keys(patch).length > 0) {
+                await this.db.updateExternalMetadata(series.id, patch);
+            }
         }
 
         // 話数表記が無い録画は、しょぼいカレンダーのサブタイトルから話数を逆引きする
         const resolved = { ...parsed };
-        if (resolved.episodeNumber === null) {
-            const episodeNumber = await this.titleDictionary
-                .lookupEpisodeNumber(match.tid, recording.title)
+        if (resolved.episodeNumber === null && match.syobocalTid !== null) {
+            const episodeNumber = await this.workDictionary
+                .lookupEpisodeNumber(match.syobocalTid, recording.title)
                 .catch(() => null);
             if (episodeNumber !== null) resolved.episodeNumber = episodeNumber;
         }
 
         await this.db.deletePendingMatchByRecordedId(recording.recordedId);
-        return await this.linkTo(recording, resolved, series, match.confidence, 'syobocal', now);
+        return await this.linkTo(recording, resolved, series, match.confidence, matchMethodOf(match), now);
     }
 
     /**

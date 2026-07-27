@@ -3248,6 +3248,46 @@ components:
                           description: 全件取得だったか
                           type: boolean
 
+        AnnictWorkDictionaryStatus:
+            description: Annict 作品辞書の状態
+            type: object
+            required:
+                - workCount
+                - linkedToSyobocalCount
+                - lastSyncedAt
+                - running
+                - error
+            properties:
+                workCount:
+                    description: 辞書に登録されている作品数
+                    type: integer
+                linkedToSyobocalCount:
+                    description: そのうち syobocalTid を持つ (しょぼいカレンダー作品と厳密に結合できる) 作品数
+                    type: integer
+                lastSyncedAt:
+                    description: 直近の同期完了時刻 (UNIX time ms)
+                    type: integer
+                    nullable: true
+                running:
+                    description: 同期実行中か
+                    type: boolean
+                error:
+                    description: 直近の同期でのエラーメッセージ
+                    type: string
+                    nullable: true
+
+        AnnictWorkSyncResult:
+            description: Annict 作品辞書の同期結果
+            allOf:
+                - $ref: '#/components/schemas/AnnictWorkDictionaryStatus'
+                - type: object
+                  required:
+                      - imported
+                  properties:
+                      imported:
+                          description: 今回の同期で取り込んだ作品数
+                          type: integer
+
         SharedDataSyncResult:
             description: 共有静的データの「今すぐ同期」結果 (§5.7・§6.2)
             type: object

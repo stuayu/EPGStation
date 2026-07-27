@@ -51,6 +51,11 @@ const LEADING_BLOCK_LOOSE = new RegExp(
 // 末尾に付く枠名ブロック・サブタイトル。
 // (HDマスター版) のような丸括弧は版の違いを表し作品の区別に使えるため、ここでは除去しない
 const TRAILING_BLOCKS = [/【[^】]{0,40}】\s*$/u, /[「『][^」』]*[」』]\s*$/u];
+// 括弧で囲まれずタイトル末尾に付く放送枠名。局が枠名を作品名に連結して送出するため、
+// これを残すと同一作品が枠ごとに別シリーズへ分裂する
+// (例: "薬屋のひとりごと FRIDAY ANIME NIGHT" と "薬屋のひとりごと")
+const TRAILING_FRAME_NAMES =
+    /[\s\u3000](?:FRIDAY ANIME NIGHT|ANiMAZiNG!*|ANIME NIGHT|アニメシャワー|スーパーアニメイズム(?:TURBO)?|アニメイズム|ノイタミナ|アガルアニメ|MANPA|日5|日曜劇場)[\s\u3000]*$/iu;
 // 「TVアニメ『作品名』2nd Season」のように作品名が括弧で囲まれている表記。
 // 前置きが枠名 (アニメ/シリーズ/劇場版) の場合と、二重かぎ括弧 (『』) で始まる場合のみ展開する。
 // 「」だけで始まるものはサブタイトル単体 (例: 「サブタイトル」) の可能性が高いため展開しない
@@ -109,10 +114,10 @@ function cleanWithLeadingBlock(input: string, leadingBlock: RegExp): string {
         value = `${quoted[3]} ${quoted[4]}`.trim();
     }
 
-    // 末尾の枠名ブロック・サブタイトルを落とす (全部落ちて空になる場合はその除去を行わない)
+    // 末尾の枠名ブロック・枠名・サブタイトルを落とす (全部落ちて空になる場合はその除去を行わない)
     for (;;) {
         const before = value;
-        for (const pattern of TRAILING_BLOCKS) {
+        for (const pattern of [...TRAILING_BLOCKS, TRAILING_FRAME_NAMES]) {
             const next = value.replace(pattern, ' ').trim();
             if (next !== '') value = next;
         }
@@ -156,7 +161,7 @@ export function syobocalLookupKey(input: string): string {
     return input
         .normalize('NFKC')
         .toLocaleLowerCase('ja-JP')
-        .replace(/[\s\u3000!-/:-@[-`{-~、。・～〜ー―－‐’”“「」『』【】]/gu, '');
+        .replace(/[\s\u3000!-/:-@[-`{-~、。・～〜ー―－‐’‘′”“「」『』【】]/gu, '');
 }
 
 /**

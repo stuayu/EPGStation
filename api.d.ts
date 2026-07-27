@@ -1573,6 +1573,18 @@ export interface SyobocalTitleSyncResult extends SyobocalTitleDictionaryStatus {
     full: boolean;
 }
 
+export interface AnnictWorkDictionaryStatus {
+    workCount: number;
+    linkedToSyobocalCount: number;
+    lastSyncedAt: number | null;
+    running: boolean;
+    error: string | null;
+}
+
+export interface AnnictWorkSyncResult extends AnnictWorkDictionaryStatus {
+    imported: number;
+}
+
 export interface NotificationFailureHistoryItem {
     id: number;
     targetName: string;

@@ -524,6 +524,10 @@ featureFlags:
 #         titleSyncIntervalMs: 86400000
 #     annict:
 #         enabled: false
+#         # Annict の作品辞書 (英題・ローマ字・syobocalTid 対応表) の自動同期間隔 (ms)。
+#         # 省略時 7 日。0 を指定すると自動同期を行わない。Annict はアクセストークンが必須のため、
+#         # 設定画面でトークンを登録していない場合は取得されない
+#         workSyncIntervalMs: 604800000
 #     cacheTtlMs: 86400000
 
 # Webhook / Discord 通知（featureFlags.notifications: true の場合のみ有効）

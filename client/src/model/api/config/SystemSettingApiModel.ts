@@ -41,4 +41,10 @@ export default class SystemSettingApiModel implements ISystemSettingApiModel {
     async syncSyobocalTitles(full: boolean): Promise<apid.SyobocalTitleSyncResult> {
         return (await this.repository.post('/settings/system/syobocal/titles', { full })).data;
     }
+    async getAnnictWorkStatus(): Promise<apid.AnnictWorkDictionaryStatus> {
+        return (await this.repository.get('/settings/system/annict/works')).data;
+    }
+    async syncAnnictWorks(): Promise<apid.AnnictWorkSyncResult> {
+        return (await this.repository.post('/settings/system/annict/works', {})).data;
+    }
 }

@@ -263,7 +263,11 @@ export default interface IConfigFile {
     // メタデータプロバイダーの既定値 (§6.3)。設定画面 (DB) で値が設定されていない場合のみ使用される。
     // token 等の秘密情報はここに書かず設定画面から入力すること
     metadataDefaults?: {
-        annict?: { enabled?: boolean };
+        annict?: {
+            enabled?: boolean;
+            // 作品辞書の自動同期間隔 (ms)。省略時 7 日、0 以下で自動同期を停止する
+            workSyncIntervalMs?: number;
+        };
         syobocal?: {
             enabled?: boolean;
             // アニメ作品タイトル辞書の自動同期間隔 (ms)。省略時 24 時間、0 以下で自動同期を停止する
