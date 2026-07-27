@@ -1542,6 +1542,23 @@ export interface NotificationTestResult {
     failed: string[];
 }
 
+export interface AnnictConnectionTestResult {
+    ok: boolean;
+    username?: string;
+    message?: string;
+}
+
+export interface SyobocalChannelMapEntry {
+    chId: number;
+    networkId: NetworkId;
+    serviceId: ServiceId;
+    syobocal?: boolean;
+}
+
+export interface SharedDataSyncResult {
+    updated: boolean;
+}
+
 export interface NotificationFailureHistoryItem {
     id: number;
     targetName: string;

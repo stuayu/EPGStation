@@ -1,6 +1,8 @@
 import { inject, injectable } from 'inversify';
 import Series from '../../../db/entities/Series';
+import { resolveBoolean } from '../../AppSettingResolver';
 import IAnnictWatchSyncDB from '../../db/IAnnictWatchSyncDB';
+import IAppSettingDB from '../../db/IAppSettingDB';
 import ISeriesDB from '../../db/ISeriesDB';
 import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
@@ -29,19 +31,22 @@ export default class AnnictSyncQueueModel implements IAnnictSyncQueueModel {
         @inject('ISeriesDB') private readonly seriesDB: ISeriesDB,
         @inject('IAnnictWatchSyncDB') private readonly queueDB: IAnnictWatchSyncDB,
         @inject('IMetadataService') private readonly metadata: IMetadataService,
+        @inject('IAppSettingDB') private readonly settingsDB: IAppSettingDB,
     ) {
         this.scheduleProcessing();
     }
 
     public enqueueFromWatchHistory(recordedId: number): void {
-        if (!this.enabled()) return;
-        this.resolveAndEnqueue(recordedId)
-            .then(() => this.processQueue())
+        this.enabled()
+            .then(enabled => {
+                if (!enabled) return;
+                return this.resolveAndEnqueue(recordedId).then(() => this.processQueue());
+            })
             .catch(() => undefined);
     }
 
     public async enqueueSeries(seriesId: number): Promise<{ queued: number }> {
-        if (!this.enabled()) throw new Error('AnnictSyncFeatureIsDisabled');
+        if (!(await this.enabled())) throw new Error('AnnictSyncFeatureIsDisabled');
         const series = await this.seriesDB.getSeries(seriesId);
         if (!series) throw new Error('SeriesIsNotFound');
         const annictId = series.annictId ?? (await this.resolveAnnictId(series));
@@ -67,7 +72,7 @@ export default class AnnictSyncQueueModel implements IAnnictSyncQueueModel {
     }
 
     public async processQueue(limit = AnnictSyncQueueModel.DEFAULT_LIMIT): Promise<AnnictSyncQueueProcessResult> {
-        if (!this.enabled()) return { processed: 0, sent: 0, failed: 0 };
+        if (!(await this.enabled())) return { processed: 0, sent: 0, failed: 0 };
         const due = await this.queueDB.findDue(Date.now(), limit);
         let sent = 0;
         let failed = 0;
@@ -153,8 +158,17 @@ export default class AnnictSyncQueueModel implements IAnnictSyncQueueModel {
         if (typeof this.timer.unref === 'function') this.timer.unref();
     }
 
-    private enabled(): boolean {
+    /**
+     * 視聴記録同期の二重ゲート判定 (§5.5・§6.2)。
+     * 1. featureFlags.metadataProviders / annictSync (config.yml) が両方 true であること (必須の opt-in)
+     * 2. 設定画面 (DB: metadata.annict.syncEnabled) が true であること
+     *    (未設定時は既定 true。feature flag を有効化した既存導入で急に同期が止まらないようにするため)
+     */
+    private async enabled(): Promise<boolean> {
         const c = this.config.getConfig();
-        return isFeatureEnabled(c, 'metadataProviders') && isFeatureEnabled(c, 'annictSync');
+        if (!isFeatureEnabled(c, 'metadataProviders') || !isFeatureEnabled(c, 'annictSync')) return false;
+        const all = await this.settingsDB.getAll();
+        const annictSettings = (all.metadata as any)?.annict;
+        return resolveBoolean(annictSettings?.syncEnabled, undefined, true);
     }
 }

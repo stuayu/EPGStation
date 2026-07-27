@@ -3161,6 +3161,50 @@ components:
                     items:
                         type: string
 
+        AnnictConnectionTestResult:
+            description: Annict 接続テスト結果 (viewer クエリでの疎通・トークンの有効性確認, §6.2)
+            type: object
+            required:
+                - ok
+            properties:
+                ok:
+                    type: boolean
+                username:
+                    description: 疎通に成功した場合の Annict ユーザー名
+                    type: string
+                message:
+                    description: 失敗時のエラー内容 (AnnictSyncFeatureIsDisabled / AnnictAuthenticationFailed 等)
+                    type: string
+
+        SyobocalChannelMapEntry:
+            description: しょぼいカレンダー ChID ⇄ Mirakurun networkId/serviceId のマッピング表 1 エントリ (§5.3・§6.2)
+            type: object
+            required:
+                - chId
+                - networkId
+                - serviceId
+            properties:
+                chId:
+                    description: しょぼいカレンダー ChID
+                    type: integer
+                networkId:
+                    $ref: '#/components/schemas/NetworkId'
+                serviceId:
+                    $ref: '#/components/schemas/ServiceId'
+                syobocal:
+                    description: false の場合、この局はしょぼいカレンダーへ未登録として扱い問い合わせをスキップする
+                    type: boolean
+
+        SharedDataSyncResult:
+            description: 共有静的データの「今すぐ同期」結果 (§5.7・§6.2)
+            type: object
+            required:
+                - updated
+            properties:
+                updated:
+                    description: 取得に成功し反映されたか (URL 未設定・取得失敗時は false)
+                    type: boolean
+
         NotificationFailureHistoryItem:
             description: リトライ上限に達し送信を断念した通知の履歴
             type: object

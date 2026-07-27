@@ -23,4 +23,16 @@ export default class SystemSettingApiModel implements ISystemSettingApiModel {
     async getNotificationFailures(limit?: number): Promise<apid.NotificationFailureHistoryItem[]> {
         return (await this.repository.get('/settings/system/notifications/failures', { params: { limit } })).data;
     }
+    async testAnnictConnection(): Promise<apid.AnnictConnectionTestResult> {
+        return (await this.repository.post('/settings/system/test/annict', {})).data;
+    }
+    async getSyobocalChannelMap(): Promise<apid.SyobocalChannelMapEntry[]> {
+        return (await this.repository.get('/settings/system/syobocal/channels')).data;
+    }
+    async updateSyobocalChannelMap(entries: apid.SyobocalChannelMapEntry[]): Promise<apid.SyobocalChannelMapEntry[]> {
+        return (await this.repository.put('/settings/system/syobocal/channels', entries)).data;
+    }
+    async syncSharedData(): Promise<apid.SharedDataSyncResult> {
+        return (await this.repository.post('/settings/system/shared-data/sync', {})).data;
+    }
 }

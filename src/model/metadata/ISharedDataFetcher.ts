@@ -20,7 +20,14 @@ export default interface ISharedDataFetcher {
     fetch(): Promise<SharedMetadataPayload | null>;
     /**
      * 起動時 + config.metadataSharedDataUpdateIntervalMs 間隔で自動更新する。
-     * URL が未設定の場合は何もしない。取得成功のたびに onUpdate を呼ぶ
+     * URL が未設定の場合は何もしない。取得成功のたびに onUpdate を呼ぶ。
+     * 定期実行の都度、設定画面 (DB: metadata.sharedData.autoUpdate、既定 true) を確認し、
+     * false の場合はその回の自動更新をスキップする (§5.8・§6.2)
      */
     startAutoUpdate(onUpdate: (payload: SharedMetadataPayload) => void): void;
+    /**
+     * 「今すぐ同期」用 (§5.7・§6.2)。自動更新の ON/OFF に関わらず即座に取得し、
+     * startAutoUpdate() に登録済みの onUpdate があれば呼び出す
+     */
+    syncNow(): Promise<SharedMetadataPayload | null>;
 }

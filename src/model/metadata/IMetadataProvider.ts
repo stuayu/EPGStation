@@ -34,6 +34,12 @@ export interface PushWatchRecordResult {
     // 作成された視聴記録の外部 ID (プロバイダー依存の文字列)
     recordId: string;
 }
+export interface MetadataConnectionTestResult {
+    ok: boolean;
+    // 疎通できた場合の識別情報 (プロバイダー依存。Annict ならユーザー名)
+    username?: string;
+    message?: string;
+}
 export default interface IMetadataProvider {
     readonly name: string;
     search(query: string, context?: MetadataSearchContext): Promise<MetadataSearchResult[]>;
@@ -51,4 +57,9 @@ export default interface IMetadataProvider {
         episodeNumber: number,
         watchStatus: WatchStatusForSync,
     ): Promise<PushWatchRecordResult | null>;
+    /**
+     * 接続テストに対応するプロバイダーのみが実装するオプショナルメソッド (§6.2)。
+     * 保存済みのトークン等を使って実際に疎通し、有効性を確認する
+     */
+    testConnection?(): Promise<MetadataConnectionTestResult>;
 }
