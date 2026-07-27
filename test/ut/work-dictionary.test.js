@@ -150,6 +150,71 @@ test('lookup() merges a syobocal title and an Annict work that share a syobocalT
     assert.equal(match.title, '銀河英雄伝説 Die Neue These');
 });
 
+test('lookup() strips leading frame names that contain spaces or are followed by a bracket', async () => {
+    const dict = new WorkDictionary(
+        makeSyobocalDB([
+            syobocalTitle({ tid: 1, title: '神様はじめました' }),
+            syobocalTitle({ tid: 2, title: 'よわよわ先生' }),
+            syobocalTitle({ tid: 3, title: '凍牌' }),
+        ]),
+        makeAnnictDB(),
+    );
+
+    const cases = [
+        // 冠の中に空白を含む ("SEIBU TRAIN アニメスペシャル・")
+        ['ＳＥＩＢＵ　ＴＲＡＩＮ　アニメスペシャル・神様はじめました[Ｓ][新]', 1],
+        // 「アニメ」の直後が括弧 ("水曜アニメ<水もん>")
+        ['[新]水曜アニメ＜水もん＞よわよわ先生 #1', 2],
+        // 話数表記を除いた後に残る装飾記号 (▼)
+        ['アニメ・凍牌▼第８話　決死', 3],
+    ];
+    for (const [recorded, tid] of cases) {
+        const match = await dict.lookup(recorded);
+        assert.notEqual(match, null, recorded);
+        assert.equal(match.syobocalTid, tid, recorded);
+    }
+});
+
+test('lookup() uses the quoted work name when the title is "frame name + 「work」"', async () => {
+    const dict = new WorkDictionary(
+        makeSyobocalDB([
+            syobocalTitle({ tid: 1, title: 'ウィッチウォッチ' }),
+            syobocalTitle({ tid: 2, title: '鬼滅の刃' }),
+        ]),
+        makeAnnictDB(),
+    );
+
+    assert.equal((await dict.lookup('日５「ウィッチウォッチ」　♯２[字][デ]')).syobocalTid, 1);
+    assert.equal((await dict.lookup('テレビアニメ「鬼滅の刃」シリーズ全編再放送＃２[字][解]')).syobocalTid, 2);
+});
+
+test('lookup() does not take a quoted title that a drama marker precedes', async () => {
+    // 同名のアニメ作品へ実写ドラマを誤って寄せない
+    const dict = new WorkDictionary(
+        makeSyobocalDB([syobocalTitle({ tid: 1, title: 'Gift ～ギフト～ eternal rainbow' })]),
+        makeAnnictDB(),
+    );
+
+    assert.equal(await dict.lookup('[新]和田琢磨・染谷俊之W主演ドラマ「gift」第１話「giftという名の能力」'), null);
+});
+
+test('lookup() ignores a trailing reading in parentheses', async () => {
+    const dict = new WorkDictionary(makeSyobocalDB([syobocalTitle({ tid: 1, title: '羅小黒戦記' })]), makeAnnictDB());
+
+    assert.equal((await dict.lookup('[新]羅小黒戦記（ロシャオヘイセンキ）　＃１')).syobocalTid, 1);
+});
+
+test('lookup() folds latin diacritics but keeps Japanese voiced sound marks', async () => {
+    const dict = new WorkDictionary(
+        makeSyobocalDB([syobocalTitle({ tid: 1, title: 'Übel Blatt' }), syobocalTitle({ tid: 2, title: 'ざつ旅' })]),
+        makeAnnictDB(),
+    );
+
+    assert.equal((await dict.lookup('[新]アニメ　Ubel Blatt～ユーベルブラット～　第01話')).syobocalTid, 1);
+    // 濁点は U+3099 で発音記号の範囲外なので、別作品に化けたりしない
+    assert.equal((await dict.lookup('ざつ旅 第1旅')).syobocalTid, 2);
+});
+
 test('lookup() does not match an unrelated programme', async () => {
     const dict = new WorkDictionary(
         makeSyobocalDB([syobocalTitle({ tid: 1, title: '呪術廻戦' })]),
