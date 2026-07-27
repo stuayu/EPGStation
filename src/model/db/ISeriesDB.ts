@@ -13,6 +13,13 @@ export interface NewSeries {
     syobocalTid?: number | null;
     // 作品辞書で確定した場合の Annict 作品 ID
     annictId?: string | null;
+    // 読み仮名 (あいうえお順の並べ替え用)
+    titleKana?: string | null;
+    // 放送クール
+    seasonYear?: number | null;
+    seasonName?: string | null;
+    // 放送予定総話数
+    totalEpisodes?: number | null;
     createdAt: number;
     updatedAt: number;
 }
@@ -53,6 +60,38 @@ export interface SeriesRecordedRow {
     airType: string;
     confidence: number;
 }
+export type SeriesSortKey = 'updatedAt' | 'title' | 'firstAiredAt' | 'lastAiredAt' | 'recordedCount' | 'totalFileSize';
+export type SeriesStatusFilter = 'onair' | 'finished';
+
+export interface SeriesListQuery {
+    keyword?: string;
+    offset: number;
+    limit: number;
+    sort: SeriesSortKey;
+    order: 'asc' | 'desc';
+    seasonYear?: number;
+    seasonName?: string;
+    // 'onair': 直近に録画があり完結していない / 'finished': 総話数に到達済み、または一定期間録画が無い
+    status?: SeriesStatusFilter;
+    // 放送中とみなす最終録画からの経過時間 (ms)。status の判定に使う
+    onairWithinMs: number;
+}
+
+export interface SeriesListRow {
+    series: Series;
+    recordedCount: number;
+    totalFileSize: number;
+    firstAiredAt: number | null;
+    lastAiredAt: number | null;
+    unwatchedCount: number;
+}
+
+export interface SeriesSeasonRow {
+    seasonYear: number;
+    seasonName: string;
+    count: number;
+}
+
 export interface SeriesChannelRow {
     channelId: number;
     channelName: string | null;
@@ -104,6 +143,24 @@ export default interface ISeriesDB {
     findLink(recordedId: number): Promise<RecordedSeriesLink | null>;
     saveLink(value: SaveSeriesLink): Promise<RecordedSeriesLink>;
     list(keyword: string | undefined, offset: number, limit: number): Promise<[Series[], number]>;
+    /**
+     * 並べ替え・絞り込み付きでシリーズ一覧を取得する。
+     * 録画件数・容量・初回/最終放送日時・未視聴数は 1 クエリで集計する (一覧で N+1 にしない)
+     * @param option: SeriesListQuery
+     * @return Promise<[SeriesListRow[], number]> 行と総件数
+     */
+    query(option: SeriesListQuery): Promise<[SeriesListRow[], number]>;
+    /**
+     * 一覧に出ているシリーズ群の録画行をまとめて取得する (欠番・重複判定用)
+     * @param seriesIds: number[]
+     * @return Promise<Map<number, SeriesRecordedRow[]>>
+     */
+    listRecordedForSeriesIds(seriesIds: number[]): Promise<Map<number, SeriesRecordedRow[]>>;
+    /**
+     * 登録されているクールの一覧を新しい順で返す (絞り込み UI の選択肢用)
+     * @return Promise<SeriesSeasonRow[]>
+     */
+    listSeasons(): Promise<SeriesSeasonRow[]>;
     getSeries(id: number): Promise<Series | null>;
     listRecorded(seriesId: number, channelId?: number): Promise<SeriesRecordedRow[]>;
     listChannels(seriesId: number): Promise<SeriesChannelRow[]>;
@@ -116,7 +173,17 @@ export default interface ISeriesDB {
     findThumbnailPaths(seriesIds: number[]): Promise<Map<number, string>>;
     deleteLink(recordedId: number): Promise<void>;
     countOtherLinksByEpisode(episodeId: number, recordedId: number): Promise<number>;
-    updateExternalMetadata(id: number, value: { annictId?: string | null; syobocalTid?: number | null }): Promise<void>;
+    updateExternalMetadata(
+        id: number,
+        value: {
+            annictId?: string | null;
+            syobocalTid?: number | null;
+            titleKana?: string | null;
+            seasonYear?: number | null;
+            seasonName?: string | null;
+            totalEpisodes?: number | null;
+        },
+    ): Promise<void>;
 
     // --- 未確定キュー (S9 §4.5) ---
     upsertPendingMatch(value: NewPendingMatch): Promise<SeriesPendingMatch>;

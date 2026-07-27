@@ -187,7 +187,7 @@ class Recorded extends Vue {
     public async loadSeries(): Promise<void> {
         this.seriesLoading = true;
         try {
-            const x = await this.seriesApi.list(this.seriesKeyword, this.seriesOffset, this.seriesLimit);
+            const x = await this.seriesApi.list({ keyword: this.seriesKeyword, offset: this.seriesOffset, limit: this.seriesLimit });
             this.seriesItems = x.items;
             this.seriesTotal = x.total;
         } catch (err) {

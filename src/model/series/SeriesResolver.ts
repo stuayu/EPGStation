@@ -197,15 +197,33 @@ export default class SeriesResolver implements ISeriesResolver {
                 preferredChannelId: recording.channelId,
                 syobocalTid: match.syobocalTid,
                 annictId: match.annictId === null ? null : String(match.annictId),
+                titleKana: match.titleKana,
+                seasonYear: match.seasonYear,
+                seasonName: match.seasonName,
+                totalEpisodes: match.totalEpisodes,
                 createdAt: now,
                 updatedAt: now,
             });
-        } else if (series.syobocalTid === null || series.annictId === null) {
-            // 既存シリーズに片方の ID しか無い場合、辞書側で判明した ID を補完する
-            // (Annict 視聴記録の同期がタイトル検索に頼らず確実に引き当てられるようになる)
-            const patch: { syobocalTid?: number | null; annictId?: string | null } = {};
+        } else {
+            // 既存シリーズに未設定の項目があれば、辞書側で判明した値を補完する
+            // (外部 ID は Annict 視聴記録の同期に、クール・読み仮名・総話数は一覧の並べ替えと
+            //  絞り込みに使う)
+            const patch: {
+                syobocalTid?: number | null;
+                annictId?: string | null;
+                titleKana?: string | null;
+                seasonYear?: number | null;
+                seasonName?: string | null;
+                totalEpisodes?: number | null;
+            } = {};
             if (series.syobocalTid === null && match.syobocalTid !== null) patch.syobocalTid = match.syobocalTid;
             if (series.annictId === null && match.annictId !== null) patch.annictId = String(match.annictId);
+            if (series.titleKana === null && match.titleKana !== null) patch.titleKana = match.titleKana;
+            if (series.seasonYear === null && match.seasonYear !== null) patch.seasonYear = match.seasonYear;
+            if (series.seasonName === null && match.seasonName !== null) patch.seasonName = match.seasonName;
+            if (series.totalEpisodes === null && match.totalEpisodes !== null) {
+                patch.totalEpisodes = match.totalEpisodes;
+            }
             if (Object.keys(patch).length > 0) {
                 await this.db.updateExternalMetadata(series.id, patch);
             }

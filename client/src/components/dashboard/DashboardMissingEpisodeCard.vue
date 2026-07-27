@@ -50,7 +50,7 @@ class DashboardMissingEpisodeCard extends Vue {
     public async fetchData(): Promise<void> {
         this.isLoading = true;
         try {
-            const list = await this.seriesApiModel.list(undefined, 0, DashboardMissingEpisodeCard.SCAN_SERIES_LIMIT);
+            const list = await this.seriesApiModel.list({ offset: 0, limit: DashboardMissingEpisodeCard.SCAN_SERIES_LIMIT });
             const results: MissingEpisodeAlert[] = [];
 
             for (const series of list.items) {

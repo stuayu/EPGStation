@@ -1257,6 +1257,14 @@ export type SeriesId = number;
  */
 export type SeriesAirType = 'first' | 'rerun' | 'delayed' | 'unknown';
 
+export type SeriesSortKey = 'updatedAt' | 'title' | 'firstAiredAt' | 'lastAiredAt' | 'recordedCount' | 'totalFileSize';
+
+export interface SeriesSeasonItem {
+    seasonYear: number;
+    seasonName: string;
+    count: number;
+}
+
 /**
  * シリーズ一覧項目
  */
@@ -1267,6 +1275,26 @@ export interface SeriesListItem {
     mediaType: string;
     preferredChannelId: ChannelId | null;
     updatedAt: UnixtimeMS;
+    // 読み仮名 (あいうえお順の並べ替えに使用)
+    titleKana?: string | null;
+    // 放送クール
+    seasonYear?: number | null;
+    seasonName?: 'WINTER' | 'SPRING' | 'SUMMER' | 'AUTUMN' | null;
+    // 録画件数・合計ファイルサイズ (バイト)
+    recordedCount: number;
+    totalFileSize: number;
+    // 初回 / 最終録画日時
+    firstAiredAt?: UnixtimeMS | null;
+    lastAiredAt?: UnixtimeMS | null;
+    // 未視聴の録画件数
+    unwatchedCount: number;
+    // 放送予定総話数 (不明なら null)
+    totalEpisodes?: number | null;
+    // 欠番の話数と、同一話数が複数録画されている件数
+    missingEpisodeCount: number;
+    duplicateEpisodeCount: number;
+    // 直近の録画から放送中と推定されるか
+    isOnAir: boolean;
     // アイキャッチ画像 (GET /api/series/{id}/image) が取得できるか
     hasImage: boolean;
     // 画像の出所 ('annict': 作品辞書の画像 / 'thumbnail': 録画から生成したサムネイル)

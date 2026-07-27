@@ -8,11 +8,67 @@
                 <v-btn icon variant="text" size="small" @click="openMergeDialog" title="マージ">
                     <v-icon>mdi-call-merge</v-icon>
                 </v-btn>
+                <v-btn icon variant="text" size="small" :loading="refreshing" @click="refreshMetadata" title="クール・読み仮名を作品辞書から再取得">
+                    <v-icon>mdi-refresh</v-icon>
+                </v-btn>
             </template>
         </TitleBar>
         <v-container>
-            <v-text-field v-model="keyword" label="シリーズを検索" clearable prepend-inner-icon="mdi-magnify" @keyup.enter="load"></v-text-field>
-            <v-row>
+            <v-text-field v-model="keyword" label="シリーズを検索" clearable prepend-inner-icon="mdi-magnify" @keyup.enter="reload"></v-text-field>
+
+            <div class="d-flex align-center ga-2 flex-wrap mb-2">
+                <v-select
+                    v-model="sort"
+                    :items="sortItems"
+                    item-title="title"
+                    label="並べ替え"
+                    density="compact"
+                    hide-details
+                    style="max-width: 200px"
+                    v-on:update:model-value="reload"
+                ></v-select>
+                <v-btn
+                    icon
+                    variant="text"
+                    size="small"
+                    :title="order === 'asc' ? '昇順' : '降順'"
+                    @click="toggleOrder"
+                >
+                    <v-icon>{{ order === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending' }}</v-icon>
+                </v-btn>
+                <v-select
+                    v-model="season"
+                    :items="seasonItems"
+                    item-title="title"
+                    label="クール"
+                    density="compact"
+                    hide-details
+                    clearable
+                    style="max-width: 220px"
+                    v-on:update:model-value="reload"
+                ></v-select>
+                <v-select
+                    v-model="status"
+                    :items="statusItems"
+                    item-title="title"
+                    label="放送状態"
+                    density="compact"
+                    hide-details
+                    clearable
+                    style="max-width: 160px"
+                    v-on:update:model-value="reload"
+                ></v-select>
+                <v-checkbox v-model="hasMissing" label="欠番あり" density="compact" hide-details v-on:update:model-value="reload"></v-checkbox>
+                <v-spacer></v-spacer>
+                <v-btn-toggle v-model="viewMode" density="compact" mandatory divided v-on:update:model-value="saveViewMode">
+                    <v-btn value="grid" title="グリッド表示"><v-icon>mdi-view-grid</v-icon></v-btn>
+                    <v-btn value="list" title="リスト表示"><v-icon>mdi-view-list</v-icon></v-btn>
+                    <v-btn value="compact" title="コンパクト表示"><v-icon>mdi-format-list-bulleted</v-icon></v-btn>
+                </v-btn-toggle>
+            </div>
+
+            <!-- グリッド表示 -->
+            <v-row v-if="viewMode === 'grid'">
                 <v-col v-for="item in items" :key="item.id" cols="12" sm="6" md="4">
                     <v-card :to="`/series/${item.id}`" height="100%" class="d-flex flex-column">
                         <!-- アイキャッチ画像 (Annict 作品辞書由来)。無い作品は代替表示にする -->
@@ -38,11 +94,33 @@
                         <div v-else class="d-flex align-center justify-center bg-grey-lighten-3" :style="{ aspectRatio: '16 / 9' }">
                             <v-icon size="40" color="grey">mdi-television-classic</v-icon>
                         </div>
-                        <v-card-title>{{ item.title }}</v-card-title>
-                        <v-card-subtitle>{{ item.normalizedTitle }}</v-card-subtitle>
+                        <v-card-title class="text-body-1">{{ item.title }}</v-card-title>
+                        <v-card-subtitle class="pb-1">{{ seasonText(item) }}</v-card-subtitle>
+                        <v-card-text class="py-1">
+                            <div class="d-flex align-center ga-1 flex-wrap mb-1">
+                                <v-chip v-if="item.isOnAir" size="x-small" color="primary" variant="flat">放送中</v-chip>
+                                <v-chip v-if="item.unwatchedCount > 0" size="x-small" color="info" variant="flat">未視聴 {{ item.unwatchedCount }}</v-chip>
+                                <v-chip v-if="item.missingEpisodeCount > 0" size="x-small" color="warning" variant="flat" :title="`欠番 ${item.missingEpisodeCount} 話`">
+                                    欠番 {{ item.missingEpisodeCount }}
+                                </v-chip>
+                                <v-chip v-if="item.duplicateEpisodeCount > 0" size="x-small" color="grey" variant="flat" title="同じ話数の録画が複数あります">
+                                    重複 {{ item.duplicateEpisodeCount }}
+                                </v-chip>
+                            </div>
+                            <v-progress-linear
+                                :model-value="watchedPercent(item)"
+                                height="4"
+                                color="info"
+                                bg-color="grey-lighten-2"
+                                rounded
+                            ></v-progress-linear>
+                            <div class="text-caption text-grey mt-1">
+                                {{ item.recordedCount - item.unwatchedCount }}/{{ item.recordedCount }} 視聴 ・ {{ fileSizeText(item.totalFileSize) }}
+                            </div>
+                        </v-card-text>
                         <v-spacer></v-spacer>
-                        <v-card-actions>
-                            <v-chip size="small">{{ item.mediaType }}</v-chip>
+                        <v-card-actions class="pt-0">
+                            <v-chip size="x-small">{{ item.mediaType }}</v-chip>
                             <v-spacer></v-spacer>
                             <v-icon v-if="item.imageSource === 'thumbnail'" size="x-small" color="grey" title="録画サムネイルを表示しています">
                                 mdi-video-outline
@@ -54,6 +132,65 @@
                     </v-card>
                 </v-col>
             </v-row>
+
+            <!-- リスト表示: 左にサムネイル、右に情報 -->
+            <v-card v-else-if="viewMode === 'list'" variant="flat">
+                <v-list lines="two">
+                    <v-list-item v-for="item in items" :key="item.id" :to="`/series/${item.id}`" class="px-2">
+                        <template v-slot:prepend>
+                            <v-img
+                                v-if="item.hasImage"
+                                :src="`./api/series/${item.id}/image`"
+                                :alt="item.title"
+                                width="120"
+                                :aspect-ratio="16 / 9"
+                                cover
+                                class="rounded mr-3 bg-grey-lighten-3"
+                            ></v-img>
+                            <div v-else class="rounded mr-3 bg-grey-lighten-3 d-flex align-center justify-center" style="width: 120px; aspect-ratio: 16 / 9">
+                                <v-icon color="grey">mdi-television-classic</v-icon>
+                            </div>
+                        </template>
+                        <v-list-item-title>{{ item.title }}</v-list-item-title>
+                        <v-list-item-subtitle>
+                            {{ seasonText(item) }} ・ {{ item.recordedCount }} 件 ・ {{ fileSizeText(item.totalFileSize) }}
+                        </v-list-item-subtitle>
+                        <div class="d-flex align-center ga-1 flex-wrap mt-1">
+                            <v-chip v-if="item.isOnAir" size="x-small" color="primary" variant="flat">放送中</v-chip>
+                            <v-chip v-if="item.unwatchedCount > 0" size="x-small" color="info" variant="flat">未視聴 {{ item.unwatchedCount }}</v-chip>
+                            <v-chip v-if="item.missingEpisodeCount > 0" size="x-small" color="warning" variant="flat">欠番 {{ item.missingEpisodeCount }}</v-chip>
+                            <v-chip v-if="item.duplicateEpisodeCount > 0" size="x-small" color="grey" variant="flat">重複 {{ item.duplicateEpisodeCount }}</v-chip>
+                        </div>
+                    </v-list-item>
+                </v-list>
+            </v-card>
+
+            <!-- コンパクト表示: 画像なしの高密度一覧 -->
+            <v-table v-else density="compact">
+                <thead>
+                    <tr>
+                        <th>タイトル</th>
+                        <th style="width: 110px">クール</th>
+                        <th style="width: 90px">録画</th>
+                        <th style="width: 90px">未視聴</th>
+                        <th style="width: 90px">容量</th>
+                        <th style="width: 120px">状態</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="item in items" :key="item.id" style="cursor: pointer" @click="$router.push(`/series/${item.id}`)">
+                        <td class="text-truncate" style="max-width: 1px">{{ item.title }}</td>
+                        <td>{{ seasonText(item) }}</td>
+                        <td>{{ item.recordedCount }}</td>
+                        <td>{{ item.unwatchedCount }}</td>
+                        <td>{{ fileSizeText(item.totalFileSize) }}</td>
+                        <td>
+                            <v-chip v-if="item.isOnAir" size="x-small" color="primary" variant="flat">放送中</v-chip>
+                            <v-chip v-if="item.missingEpisodeCount > 0" size="x-small" color="warning" variant="flat" class="ml-1">欠番</v-chip>
+                        </td>
+                    </tr>
+                </tbody>
+            </v-table>
             <v-alert v-if="!loading && items.length === 0" type="info">シリーズがありません</v-alert>
             <div class="d-flex justify-center mt-4">
                 <v-btn :disabled="offset === 0" @click="previous">前へ</v-btn>
@@ -109,17 +246,108 @@
 <script lang="ts">
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
+import * as apid from '../../../api';
 import ISeriesApiModel, { SeriesListItem } from '@/model/api/series/ISeriesApiModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 @Component({ components: { TitleBar } })
 class SeriesView extends Vue {
+    // 表示形式の選択を保存する localStorage キー
+    private static readonly VIEW_MODE_KEY = 'series-view-mode';
+
     keyword = '';
     items: SeriesListItem[] = [];
     total = 0;
     offset = 0;
     limit = 30;
     loading = false;
+
+    sort: apid.SeriesSortKey = 'updatedAt';
+    order: 'asc' | 'desc' = 'desc';
+    season: string | null = null;
+    status: 'onair' | 'finished' | null = null;
+    hasMissing = false;
+    viewMode: 'grid' | 'list' | 'compact' = 'grid';
+    seasons: apid.SeriesSeasonItem[] = [];
+
+    readonly sortItems = [
+        { title: '更新が新しい順', value: 'updatedAt' },
+        { title: 'あいうえお順', value: 'title' },
+        { title: '放送開始日', value: 'firstAiredAt' },
+        { title: '最終放送日', value: 'lastAiredAt' },
+        { title: '録画件数', value: 'recordedCount' },
+        { title: '保存容量', value: 'totalFileSize' },
+    ];
+    readonly statusItems = [
+        { title: '放送中', value: 'onair' },
+        { title: '完結', value: 'finished' },
+    ];
+
+    private static readonly SEASON_LABEL: Record<string, string> = {
+        WINTER: '冬',
+        SPRING: '春',
+        SUMMER: '夏',
+        AUTUMN: '秋',
+    };
+
+    /**
+     * クール絞り込みの選択肢 ("2025年春アニメ (12)" 形式)
+     */
+    get seasonItems(): Array<{ title: string; value: string }> {
+        return this.seasons.map(x => ({
+            title: `${x.seasonYear}年${SeriesView.SEASON_LABEL[x.seasonName] ?? x.seasonName}アニメ (${x.count})`,
+            value: `${x.seasonYear}:${x.seasonName}`,
+        }));
+    }
+
+    /**
+     * カード/リストに出すクール表記
+     */
+    seasonText(item: SeriesListItem): string {
+        if (typeof item.seasonYear !== 'number' || item.seasonYear === null) return '-';
+        const label = SeriesView.SEASON_LABEL[item.seasonName ?? ''] ?? '';
+        return `${item.seasonYear}年${label}`;
+    }
+
+    /**
+     * 視聴済みの割合 (進捗バー用)
+     */
+    watchedPercent(item: SeriesListItem): number {
+        if (item.recordedCount === 0) return 0;
+        return Math.round(((item.recordedCount - item.unwatchedCount) / item.recordedCount) * 100);
+    }
+
+    /**
+     * バイト数を人が読める表記にする
+     */
+    fileSizeText(size: number): string {
+        if (!size || size <= 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const index = Math.min(units.length - 1, Math.floor(Math.log(size) / Math.log(1024)));
+        return `${(size / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+    }
+
+    toggleOrder(): void {
+        this.order = this.order === 'asc' ? 'desc' : 'asc';
+        void this.reload();
+    }
+
+    saveViewMode(): void {
+        try {
+            window.localStorage.setItem(SeriesView.VIEW_MODE_KEY, this.viewMode);
+        } catch (err) {
+            // プライベートモード等で保存できなくても表示自体は動くので無視する
+            console.error(err);
+        }
+    }
+
+    /**
+     * 絞り込み・並べ替えを変えたときは 1 ページ目へ戻す
+     */
+    async reload(): Promise<void> {
+        this.offset = 0;
+        await this.load();
+    }
 
     isOpenMergeDialog = false;
     isOpenConfirmMergeDialog = false;
@@ -128,17 +356,42 @@ class SeriesView extends Vue {
     mergeToId: number | null = null;
     mergeToItems: SeriesListItem[] = [];
     merging = false;
+    refreshing = false;
 
     private api = container.get<ISeriesApiModel>('ISeriesApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
     mounted() {
+        const saved = window.localStorage.getItem(SeriesView.VIEW_MODE_KEY);
+        if (saved === 'grid' || saved === 'list' || saved === 'compact') this.viewMode = saved;
+        void this.loadSeasons();
         void this.load();
     }
+
+    async loadSeasons(): Promise<void> {
+        try {
+            this.seasons = await this.api.listSeasons();
+        } catch (err) {
+            // クール情報が無くても一覧自体は表示できるので握りつぶす
+            console.error(err);
+        }
+    }
+
     async load() {
         this.loading = true;
         try {
-            const x = await this.api.list(this.keyword, this.offset, this.limit);
+            const [seasonYear, seasonName] = (this.season ?? '').split(':');
+            const x = await this.api.list({
+                keyword: this.keyword,
+                offset: this.offset,
+                limit: this.limit,
+                sort: this.sort,
+                order: this.order,
+                seasonYear: seasonYear ? Number(seasonYear) : undefined,
+                seasonName: seasonName || undefined,
+                status: this.status ?? undefined,
+                hasMissing: this.hasMissing,
+            });
             this.items = x.items;
             this.total = x.total;
         } finally {
@@ -154,6 +407,27 @@ class SeriesView extends Vue {
         void this.load();
     }
 
+    /**
+     * 既存シリーズのクール・読み仮名・総話数を作品辞書から埋め直す
+     */
+    async refreshMetadata(): Promise<void> {
+        this.refreshing = true;
+        try {
+            const result = await this.api.refreshMetadata();
+            this.snackbarState.open({
+                color: 'success',
+                text: `${result.scanned} 件中 ${result.updated} 件を更新しました`,
+            });
+            await this.loadSeasons();
+            await this.load();
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: 'メタデータの再取得に失敗しました' });
+        } finally {
+            this.refreshing = false;
+        }
+    }
+
     openMergeDialog(): void {
         this.mergeFromId = null;
         this.mergeToId = null;
@@ -163,7 +437,7 @@ class SeriesView extends Vue {
     }
 
     async searchMergeTarget(): Promise<void> {
-        const x = await this.api.list(this.mergeToKeyword, 0, 100);
+        const x = await this.api.list({ keyword: this.mergeToKeyword, offset: 0, limit: 100 });
         this.mergeToItems = x.items;
     }
 

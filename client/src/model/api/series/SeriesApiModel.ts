@@ -12,12 +12,30 @@ import ISeriesApiModel, {
     SeriesBackfillOption,
     SeriesBackfillResult,
     ProgramSeriesMetrics,
+    SeriesListOption,
 } from './ISeriesApiModel';
 @injectable()
 export default class SeriesApiModel implements ISeriesApiModel {
     constructor(@inject('IRepositoryModel') private repository: IRepositoryModel) {}
-    async list(keyword?: string, offset = 0, limit = 30): Promise<SeriesListResult> {
-        return (await this.repository.get('/series', { params: { keyword, offset, limit } })).data;
+    async list(option: SeriesListOption = {}): Promise<SeriesListResult> {
+        const params = {
+            keyword: option.keyword || undefined,
+            offset: option.offset ?? 0,
+            limit: option.limit ?? 30,
+            sort: option.sort,
+            order: option.order,
+            seasonYear: option.seasonYear,
+            seasonName: option.seasonName,
+            status: option.status,
+            hasMissing: option.hasMissing === true ? true : undefined,
+        };
+        return (await this.repository.get('/series', { params })).data;
+    }
+    async listSeasons(): Promise<apid.SeriesSeasonItem[]> {
+        return (await this.repository.get('/series/seasons')).data;
+    }
+    async refreshMetadata(): Promise<{ scanned: number; updated: number }> {
+        return (await this.repository.post('/series/refresh-metadata', {})).data;
     }
     public async getMissingEpisodeProposals(seriesId: number): Promise<MissingEpisodeProposal[]> {
         return (await this.repository.get(`/series/${seriesId}/missing-episodes/proposals`)).data.proposals;
