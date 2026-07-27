@@ -24,5 +24,10 @@ export default class AnnictWork extends BaseEntity {
     @Column({ type: 'integer', nullable: true }) episodesCount!: number | null;
     // TV / OVA / MOVIE / WEB / OTHER
     @Column({ type: 'text', nullable: true }) media!: string | null;
+    // アイキャッチ画像の URL。Annict は自前で画像を保持せず作品公式サイトの OGP 画像等を指すため、
+    // 直リンクせずサーバ側で取得・キャッシュして配信する (SeriesImageModel 参照)
+    @Column({ type: 'text', nullable: true }) imageUrl!: string | null;
+    // 画像の著作権表記 (表示時のクレジットに使う)
+    @Column({ type: 'text', nullable: true }) imageCopyright!: string | null;
     @Column({ type: 'bigint' }) updatedAt!: number;
 }

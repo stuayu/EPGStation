@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify';
-import { IsNull, Like, Not } from 'typeorm';
+import { In, IsNull, Like, Not } from 'typeorm';
 import Recorded from '../../db/entities/Recorded';
 import RecordedSeriesLink from '../../db/entities/RecordedSeriesLink';
 import Series from '../../db/entities/Series';
@@ -8,6 +8,7 @@ import SeriesChangeHistory from '../../db/entities/SeriesChangeHistory';
 import SeriesEpisode from '../../db/entities/SeriesEpisode';
 import SeriesPendingMatch from '../../db/entities/SeriesPendingMatch';
 import SeriesReservationHint from '../../db/entities/SeriesReservationHint';
+import Thumbnail from '../../db/entities/Thumbnail';
 import IDBOperator from './IDBOperator';
 import ISeriesDB, {
     NewEpisode,
@@ -123,6 +124,32 @@ export default class SeriesDB implements ISeriesDB {
             .addGroupBy('r.channelName')
             .orderBy('r.channelName', 'ASC')
             .getRawMany<SeriesChannelRow>();
+    }
+    public async findThumbnailPaths(seriesIds: number[]): Promise<Map<number, string>> {
+        const result = new Map<number, string>();
+        if (seriesIds.length === 0) return result;
+        const c = await this.op.getConnection();
+        // シリーズごとに「最も小さい thumbnail.id」を代表として取る
+        const rows = await c
+            .getRepository(RecordedSeriesLink)
+            .createQueryBuilder('l')
+            .innerJoin(Thumbnail, 't', 't.recordedId = l.recordedId')
+            .where('l.seriesId IN (:...seriesIds)', { seriesIds })
+            .select('l.seriesId', 'seriesId')
+            .addSelect('MIN(t.id)', 'thumbnailId')
+            .groupBy('l.seriesId')
+            .getRawMany<{ seriesId: number; thumbnailId: number }>();
+        if (rows.length === 0) return result;
+
+        const thumbnails = await c
+            .getRepository(Thumbnail)
+            .find({ where: { id: In(rows.map(x => Number(x.thumbnailId))) } });
+        const byId = new Map(thumbnails.map(x => [x.id, x.filePath]));
+        for (const row of rows) {
+            const filePath = byId.get(Number(row.thumbnailId));
+            if (typeof filePath === 'string') result.set(Number(row.seriesId), filePath);
+        }
+        return result;
     }
     public async deleteLink(recordedId: number): Promise<void> {
         const c = await this.op.getConnection();

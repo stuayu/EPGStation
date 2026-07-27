@@ -48,6 +48,8 @@ import ISyobocalTitleApiModel from './api/series/ISyobocalTitleApiModel';
 import SyobocalTitleApiModel from './api/series/SyobocalTitleApiModel';
 import IAnnictWorkApiModel from './api/series/IAnnictWorkApiModel';
 import AnnictWorkApiModel from './api/series/AnnictWorkApiModel';
+import ISeriesImageModel from './api/series/ISeriesImageModel';
+import SeriesImageModel from './api/series/SeriesImageModel';
 import ISeriesBackfillApiModel from './api/series/ISeriesBackfillApiModel';
 import SeriesBackfillApiModel from './api/series/SeriesBackfillApiModel';
 import IScheduleApiModel from './api/schedule/IScheduleApiModel';
@@ -447,6 +449,7 @@ export const set = (container: Container): void => {
     container.bind<IMissingEpisodeApiModel>('IMissingEpisodeApiModel').to(MissingEpisodeApiModel).inSingletonScope();
     container.bind<ISyobocalTitleApiModel>('ISyobocalTitleApiModel').to(SyobocalTitleApiModel).inSingletonScope();
     container.bind<IAnnictWorkApiModel>('IAnnictWorkApiModel').to(AnnictWorkApiModel).inSingletonScope();
+    container.bind<ISeriesImageModel>('ISeriesImageModel').to(SeriesImageModel).inSingletonScope();
     container.bind<ISeriesBackfillApiModel>('ISeriesBackfillApiModel').to(SeriesBackfillApiModel).inSingletonScope();
 
     container.bind<IRecordingApiModel>('IRecordingApiModel').to(RecordingApiModel).inSingletonScope();

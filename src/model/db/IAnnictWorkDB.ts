@@ -12,6 +12,8 @@ export interface AnnictWorkRecord {
     seasonName: string | null;
     episodesCount: number | null;
     media: string | null;
+    imageUrl: string | null;
+    imageCopyright: string | null;
     updatedAt: number;
 }
 

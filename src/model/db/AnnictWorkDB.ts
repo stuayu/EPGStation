@@ -38,6 +38,8 @@ export default class AnnictWorkDB implements IAnnictWorkDB {
                 'seasonName',
                 'episodesCount',
                 'media',
+                'imageUrl',
+                'imageCopyright',
                 'updatedAt',
             ],
             ['annictId'],

@@ -22,6 +22,11 @@ interface AnnictWorkNode {
     seasonName?: string;
     episodesCount?: number;
     media?: string;
+    image?: {
+        recommendedImageUrl?: string;
+        facebookOgImageUrl?: string;
+        copyright?: string;
+    };
 }
 
 /**
@@ -52,7 +57,10 @@ export default class AnnictWorkDictionary implements IAnnictWorkDictionary {
     private static readonly QUERY = `query BulkWorks($first: Int!, $after: String) {
   searchWorks(first: $first, after: $after, orderBy: { field: CREATED_AT, direction: ASC }) {
     pageInfo { hasNextPage endCursor }
-    nodes { annictId title titleEn titleKana titleRo syobocalTid seasonYear seasonName episodesCount media }
+    nodes {
+      annictId title titleEn titleKana titleRo syobocalTid seasonYear seasonName episodesCount media
+      image { recommendedImageUrl facebookOgImageUrl copyright }
+    }
   }
 }`;
 
@@ -200,10 +208,27 @@ export default class AnnictWorkDictionary implements IAnnictWorkDictionary {
                 episodesCount:
                     typeof node.episodesCount === 'number' && node.episodesCount > 0 ? node.episodesCount : null,
                 media: AnnictWorkDictionary.textOrNull(node.media),
+                imageUrl: AnnictWorkDictionary.pickImageUrl(node),
+                imageCopyright: AnnictWorkDictionary.textOrNull(node.image?.copyright),
                 updatedAt: Date.now(),
             },
             aliases: [...aliases.entries()].map(([key, rank]) => ({ lookupKey: key, annictId, rank })),
         };
+    }
+
+    /**
+     * アイキャッチに使う画像 URL を選ぶ。画質の良い順に見て最初に見つかったものを採用する。
+     * twitterBiggerAvatarUrl は充足率こそ高い (84%) ものの、実体は
+     * `twitter.com/{account}/profile_image?size=bigger` という現在は画像を返さない URL
+     * (認証が必要になり text/html が返る) なので候補に含めない
+     */
+    private static pickImageUrl(node: AnnictWorkNode): string | null {
+        for (const value of [node.image?.recommendedImageUrl, node.image?.facebookOgImageUrl]) {
+            const url = AnnictWorkDictionary.textOrNull(value);
+            // http/https 以外 (data: など想定外のスキーム) は取得対象にしない
+            if (url !== null && /^https?:\/\//iu.test(url)) return url;
+        }
+        return null;
     }
 
     private static textOrNull(value: string | undefined): string | null {

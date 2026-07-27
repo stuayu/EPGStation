@@ -2503,6 +2503,7 @@ components:
                 - mediaType
                 - preferredChannelId
                 - updatedAt
+                - hasImage
             properties:
                 id:
                     $ref: '#/components/schemas/SeriesId'
@@ -2518,7 +2519,18 @@ components:
                         - $ref: '#/components/schemas/ChannelId'
                 updatedAt:
                     $ref: '#/components/schemas/UnixtimeMS'
-
+                hasImage:
+                    description: アイキャッチ画像 (GET /api/series/{seriesId}/image) が取得できるか
+                    type: boolean
+                imageSource:
+                    description: 画像の出所 (annict = 作品辞書の画像 / thumbnail = 録画から生成したサムネイル)
+                    type: string
+                    nullable: true
+                    enum: [annict, thumbnail]
+                imageCopyright:
+                    description: 画像の著作権表記 (imageSource が annict のときのみ)
+                    type: string
+                    nullable: true
         SeriesListResult:
             description: シリーズ一覧
             type: object

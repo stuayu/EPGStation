@@ -7,5 +7,11 @@ export default interface IThumbnailDB {
     deleteOnce(thumbnailId: apid.ThumbnailId): Promise<void>;
     deleteRecordedId(recordedId: apid.RecordedId): Promise<void>;
     findId(thumbnailId: apid.ThumbnailId): Promise<Thumbnail | null>;
+    /**
+     * 録画 ID からサムネイルを 1 件引く (シリーズのアイキャッチ代替に使う)
+     * @param recordedId: apid.RecordedId
+     * @return Promise<Thumbnail | null>
+     */
+    findByRecordedId(recordedId: apid.RecordedId): Promise<Thumbnail | null>;
     findAll(): Promise<Thumbnail[]>;
 }
