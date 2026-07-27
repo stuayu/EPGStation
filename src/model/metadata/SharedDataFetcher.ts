@@ -1,6 +1,8 @@
 import { inject, injectable } from 'inversify';
 import * as path from 'path';
 import FileUtil from '../../util/FileUtil';
+import { resolveBoolean } from '../AppSettingResolver';
+import IAppSettingDB from '../db/IAppSettingDB';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import IConfiguration from '../IConfiguration';
@@ -22,11 +24,14 @@ export default class SharedDataFetcher implements ISharedDataFetcher {
     private log: ILogger;
     private cachePath: string;
     private timer: NodeJS.Timeout | null = null;
+    // syncNow() から再利用するための、直近 startAutoUpdate() 登録済みコールバック
+    private lastOnUpdate: ((payload: SharedMetadataPayload) => void) | null = null;
 
     constructor(
         @inject('IConfiguration') private config: IConfiguration,
         @inject('IProviderHttpClient') private http: IProviderHttpClient,
         @inject('ILoggerModel') logger: ILoggerModel,
+        @inject('IAppSettingDB') private settingsDB: IAppSettingDB,
     ) {
         this.log = logger.getLogger();
         this.cachePath = path.join(__dirname, '..', '..', '..', 'data', SharedDataFetcher.CACHE_FILE_NAME);
@@ -56,12 +61,16 @@ export default class SharedDataFetcher implements ISharedDataFetcher {
     }
 
     public startAutoUpdate(onUpdate: (payload: SharedMetadataPayload) => void): void {
+        this.lastOnUpdate = onUpdate;
         const url = this.config.getConfig().metadataSharedDataUrl;
         if (typeof url !== 'string' || url.length === 0) return;
         const run = () => {
-            this.fetch()
-                .then(payload => {
-                    if (payload) onUpdate(payload);
+            this.isAutoUpdateEnabled()
+                .then(enabled => {
+                    if (!enabled) return undefined;
+                    return this.fetch().then(payload => {
+                        if (payload) onUpdate(payload);
+                    });
                 })
                 .catch(() => undefined);
         };
@@ -71,6 +80,30 @@ export default class SharedDataFetcher implements ISharedDataFetcher {
         if (intervalMs <= 0 || this.timer !== null) return;
         this.timer = setInterval(run, intervalMs);
         if (typeof this.timer.unref === 'function') this.timer.unref();
+    }
+
+    /**
+     * 「今すぐ同期」用 (§5.7・§6.2)。自動更新の ON/OFF (metadata.sharedData.autoUpdate) に
+     * 関わらず即座に取得し、startAutoUpdate() に登録済みの onUpdate があれば呼び出す
+     */
+    public async syncNow(): Promise<SharedMetadataPayload | null> {
+        const payload = await this.fetch();
+        if (payload && this.lastOnUpdate) this.lastOnUpdate(payload);
+        return payload;
+    }
+
+    /**
+     * 設定画面 (DB: metadata.sharedData.autoUpdate) の自動更新 ON/OFF を確認する。
+     * 未設定時は既定 true (既存導入で自動更新が急に止まらないようにするため)
+     */
+    private async isAutoUpdateEnabled(): Promise<boolean> {
+        try {
+            const all = await this.settingsDB.getAll();
+            const value = (all.metadata as any)?.sharedData?.autoUpdate;
+            return resolveBoolean(value, undefined, true);
+        } catch {
+            return true;
+        }
     }
 
     private parse(text: string): SharedMetadataPayload | null {

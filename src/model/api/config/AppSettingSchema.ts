@@ -37,6 +37,20 @@ const notificationTargetSchema: JsonSchema = {
     },
 };
 
+// しょぼいカレンダー ChID ⇄ Mirakurun networkId/serviceId のマッピング表 1 エントリ分 (§5.3・§6.2)
+const syobocalChannelMapEntrySchema: JsonSchema = {
+    type: 'object',
+    required: ['chId', 'networkId', 'serviceId'],
+    additionalProperties: false,
+    properties: {
+        chId: { type: 'number', minimum: 0, maximum: 1000000 },
+        networkId: { type: 'number', minimum: 0, maximum: 1000000 },
+        serviceId: { type: 'number', minimum: 0, maximum: 1000000 },
+        // 未登録局フラグ (false の場合、しょぼいカレンダーへの問い合わせ自体をスキップする)
+        syobocal: { type: 'boolean' },
+    },
+};
+
 export const APP_SETTING_SCHEMA: Record<string, JsonSchema> = {
     metadata: {
         type: 'object',
@@ -49,6 +63,9 @@ export const APP_SETTING_SCHEMA: Record<string, JsonSchema> = {
                 properties: {
                     enabled: { type: 'boolean' },
                     token: { type: 'string', maxLength: 500 },
+                    // 視聴記録の自動同期 (opt-in, §5.5)。featureFlags.annictSync (config.yml) が
+                    // OFF の場合はこの値に関わらず同期は動作しない (二重ゲート)
+                    syncEnabled: { type: 'boolean' },
                 },
             },
             syobocal: {
@@ -56,7 +73,22 @@ export const APP_SETTING_SCHEMA: Record<string, JsonSchema> = {
                 additionalProperties: true,
                 properties: { enabled: { type: 'boolean' } },
             },
+            // 共有静的データ (チャンネルマッピング表・エイリアス辞書, §5.1・§5.8) の自動更新設定
+            sharedData: {
+                type: 'object',
+                additionalProperties: true,
+                properties: {
+                    autoUpdate: { type: 'boolean' },
+                },
+            },
         },
+    },
+    // しょぼいカレンダー ChID ⇄ Mirakurun networkId/serviceId のマッピング表 (§5.3・§6.2)。
+    // 解決順は「同梱データ → 共有静的データ → ローカルファイル (metadataChannelMappingPath) →
+    // この DB 設定」の順で後勝ち (SyobocalChannelMap.load() 参照)
+    syobocalChannelMap: {
+        type: 'array',
+        items: syobocalChannelMapEntrySchema,
     },
     notifications: {
         type: 'object',

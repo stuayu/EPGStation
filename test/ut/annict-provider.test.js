@@ -111,6 +111,44 @@ test('pushWatchRecord returns null when Annict is not configured (no token)', as
     );
     assert.equal(await p.pushWatchRecord('42', 1, 'watched'), null);
 });
+// 接続テスト (§6.2): viewer クエリで疎通・トークンの有効性を確認する専用 API 用
+test('testConnection succeeds and returns the Annict username', async () => {
+    const http = { post: async () => ({ status: 200, json: () => ({ data: { viewer: { username: 'testuser' } } }) }) };
+    const result = await new Provider(http, settings, crypto, config).testConnection();
+    assert.deepEqual(result, { ok: true, username: 'testuser' });
+});
+test('testConnection reports failure when the token is invalid (401/403)', async () => {
+    const http = { post: async () => ({ status: 401, json: () => ({}) }) };
+    const result = await new Provider(http, settings, crypto, config).testConnection();
+    assert.equal(result.ok, false);
+    assert.equal(result.message, 'AnnictAuthenticationFailed');
+});
+test('testConnection reports failure on a network/HTTP error without throwing', async () => {
+    const http = {
+        post: async () => {
+            throw new Error('network unreachable');
+        },
+    };
+    const result = await new Provider(http, settings, crypto, config).testConnection();
+    assert.equal(result.ok, false);
+    assert.equal(result.message, 'network unreachable');
+});
+test('testConnection reports AnnictSyncFeatureIsDisabled when Annict is not configured (no token)', async () => {
+    const p = new Provider(
+        { post: async () => { throw new Error('unexpected'); } },
+        { getAll: async () => ({ metadata: { annict: { enabled: false } } }) },
+        crypto,
+        config,
+    );
+    const result = await p.testConnection();
+    assert.deepEqual(result, { ok: false, message: 'AnnictSyncFeatureIsDisabled' });
+});
+test('testConnection reports AnnictAuthenticationFailed when viewer is null (revoked token)', async () => {
+    const http = { post: async () => ({ status: 200, json: () => ({ data: { viewer: null } }) }) };
+    const result = await new Provider(http, settings, crypto, config).testConnection();
+    assert.deepEqual(result, { ok: false, message: 'AnnictAuthenticationFailed' });
+});
+
 test('disabled Annict performs no request', async () => {
     const p = new Provider(
         {

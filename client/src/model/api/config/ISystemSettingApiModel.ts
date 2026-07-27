@@ -19,4 +19,20 @@ export default interface ISystemSettingApiModel {
      * @param limit: 取得件数上限
      */
     getNotificationFailures(limit?: number): Promise<apid.NotificationFailureHistoryItem[]>;
+    /**
+     * Annict への接続テスト (viewer クエリでの疎通・トークンの有効性確認)
+     */
+    testAnnictConnection(): Promise<apid.AnnictConnectionTestResult>;
+    /**
+     * しょぼいカレンダー チャンネルマッピング表 (設定画面 (DB) からの登録分) を取得する
+     */
+    getSyobocalChannelMap(): Promise<apid.SyobocalChannelMapEntry[]>;
+    /**
+     * しょぼいカレンダー チャンネルマッピング表を全件置き換えで更新する
+     */
+    updateSyobocalChannelMap(entries: apid.SyobocalChannelMapEntry[]): Promise<apid.SyobocalChannelMapEntry[]>;
+    /**
+     * 共有静的データ (チャンネルマッピング表・エイリアス辞書) を今すぐ同期する
+     */
+    syncSharedData(): Promise<apid.SharedDataSyncResult>;
 }

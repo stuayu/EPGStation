@@ -8,7 +8,6 @@
             <v-card class="mx-auto" max-width="900">
                 <v-tabs v-model="tab">
                     <v-tab value="basic">基本</v-tab>
-                    <v-tab value="recording">録画・エンコード</v-tab>
                     <v-tab value="integration">連携</v-tab>
                     <v-tab value="notification">通知</v-tab>
                     <v-tab value="series">シリーズ管理</v-tab>
@@ -39,14 +38,6 @@
                             <v-alert type="info">現在、再起動 (Operator 再初期化) が必須の設定項目はありません。今後追加された場合、このタブと画面上部のバナーで通知されます。</v-alert>
                         </v-window-item>
 
-                        <!-- 録画・エンコードタブ -->
-                        <v-window-item value="recording">
-                            <v-alert type="info"
-                                >現在、WebUI から変更可能な録画・エンコード関連のシステム設定項目はありません。録画・エンコードの設定は <code>config/config.yml</code>
-                                で行ってください。</v-alert
-                            >
-                        </v-window-item>
-
                         <!-- 連携タブ -->
                         <v-window-item value="integration">
                             <div class="text-subtitle-1 mb-2">Annict 連携</div>
@@ -63,22 +54,59 @@
                                 <v-btn variant="outlined" :loading="annictTesting" @click="testAnnictConnection">接続テスト</v-btn>
                                 <span v-if="annictTestResult" class="text-body-2">{{ annictTestResult }}</span>
                             </div>
-                            <v-alert type="info" density="compact" class="mb-2"
-                                >注: 専用のテスト API が無いため Annict 検索 API を用いた簡易疎通確認です。トークンが無効でも空の検索結果のみ返る場合があります。</v-alert
-                            >
-                            <v-alert type="info" density="compact" class="mb-4"
-                                >視聴記録の自動同期はサーバー設定 (featureFlags.annictSync, config.yml) で制御されます。現在の状態:
-                                {{ isEnabledAnnictSync ? '有効' : '無効' }} (WebUI からは変更できません)</v-alert
-                            >
+                            <v-alert type="info" density="compact" class="mb-2">接続テストは保存済みの設定 (先に保存が必要な場合があります) に対して行われます。</v-alert>
+
+                            <v-switch
+                                v-model="settings.metadata.annict.syncEnabled"
+                                label="視聴記録の自動同期"
+                                :disabled="isEnabledAnnictSyncFeature === false"
+                            ></v-switch>
+                            <v-alert type="info" density="compact" class="mb-4">
+                                視聴記録の自動同期には二重のゲートがあります。(1) サーバー設定 (featureFlags.annictSync, config.yml):
+                                現在 {{ isEnabledAnnictSyncFeature ? '有効' : '無効 (WebUI からは変更できません)' }}。(2)
+                                上記のスイッチ (この画面から変更可能)。両方が有効な場合のみ同期が動作します。
+                            </v-alert>
 
                             <v-divider class="my-4"></v-divider>
                             <div class="text-subtitle-1 mb-2">しょぼいカレンダー連携</div>
                             <v-switch v-model="settings.metadata.syobocal.enabled" label="しょぼいカレンダー連携を有効化"></v-switch>
-                            <v-alert type="info" density="compact"
-                                >チャンネルマッピング表・共有静的データの自動更新間隔は現状 <code>config/config.yml</code> の
-                                <code>metadataChannelMappingPath</code> / <code>metadataSharedDataUrl</code> /
-                                <code>metadataSharedDataUpdateIntervalMs</code> でのみ設定可能です。編集用の Web API が未実装のため、この画面からは変更できません。</v-alert
+
+                            <div class="d-flex align-center mb-2 mt-2">
+                                <div class="text-subtitle-2">チャンネルマッピング表 (未登録局フラグ含む)</div>
+                                <v-spacer></v-spacer>
+                                <v-btn size="small" variant="outlined" color="primary" @click="addChannelMapEntry">追加</v-btn>
+                            </div>
+                            <v-alert type="info" density="compact" class="mb-2"
+                                >同梱データ・共有静的データ・<code>metadataChannelMappingPath</code> より、この一覧の設定が優先されます。</v-alert
                             >
+                            <v-alert v-if="channelMapEntries.length === 0" type="info" class="mb-2">追加登録されたマッピングはありません</v-alert>
+                            <v-card v-for="(entry, index) in channelMapEntries" :key="entry.__key" variant="outlined" class="mb-2 pa-2">
+                                <div class="d-flex align-center ga-2 flex-wrap">
+                                    <v-select
+                                        v-model="entry.__channelId"
+                                        :items="channelSelectItems"
+                                        label="チャンネルから選択"
+                                        density="compact"
+                                        hide-details
+                                        style="min-width: 220px"
+                                        v-on:update:model-value="onChannelSelected(entry, $event)"
+                                    ></v-select>
+                                    <v-text-field v-model.number="entry.chId" type="number" label="しょぼいカレンダー ChID" density="compact" hide-details style="max-width: 160px"></v-text-field>
+                                    <v-text-field v-model.number="entry.networkId" type="number" label="networkId" density="compact" hide-details style="max-width: 140px"></v-text-field>
+                                    <v-text-field v-model.number="entry.serviceId" type="number" label="serviceId" density="compact" hide-details style="max-width: 140px"></v-text-field>
+                                    <v-switch v-model="entry.syobocal" label="しょぼいカレンダー登録局" density="compact" hide-details></v-switch>
+                                    <v-btn icon variant="text" color="error" @click="removeChannelMapEntry(index)"><v-icon>mdi-delete</v-icon></v-btn>
+                                </div>
+                            </v-card>
+                            <v-btn size="small" variant="outlined" color="primary" :loading="channelMapSaving" @click="saveChannelMap">マッピング表を保存</v-btn>
+
+                            <v-divider class="my-4"></v-divider>
+                            <div class="text-subtitle-1 mb-2">共有静的データ</div>
+                            <v-switch v-model="settings.metadata.sharedData.autoUpdate" label="共有静的データの自動更新"></v-switch>
+                            <div class="d-flex align-center ga-2 mb-2">
+                                <v-btn variant="outlined" :loading="sharedDataSyncing" @click="syncSharedDataNow">今すぐ同期</v-btn>
+                                <span v-if="sharedDataSyncResult" class="text-body-2">{{ sharedDataSyncResult }}</span>
+                            </div>
 
                             <v-divider class="my-4"></v-divider>
                             <div class="text-subtitle-1 mb-2">メタデータキャッシュ</div>
@@ -275,7 +303,7 @@
 <script lang="ts">
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
-import IRepositoryModel from '@/model/api/IRepositoryModel';
+import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
 import ISystemSettingApiModel from '@/model/api/config/ISystemSettingApiModel';
 import ISeriesApiModel, { SeriesAliasItem, SeriesBackfillResult, ProgramSeriesMetrics } from '@/model/api/series/ISeriesApiModel';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
@@ -295,6 +323,16 @@ interface NotificationTargetForm {
     events: string[];
 }
 
+interface ChannelMapEntryForm {
+    __key: string;
+    // マッピング先チャンネルを選択したときに networkId/serviceId を補完するためだけに使う (保存対象外)
+    __channelId: number | null;
+    chId: number | null;
+    networkId: number | null;
+    serviceId: number | null;
+    syobocal: boolean;
+}
+
 @Component({ components: { TitleBar } })
 class SystemSetting extends Vue {
     tab = 'basic';
@@ -302,8 +340,8 @@ class SystemSetting extends Vue {
     testingTargetName: string | null = null;
 
     private api = container.get<ISystemSettingApiModel>('ISystemSettingApiModel');
-    private repository = container.get<IRepositoryModel>('IRepositoryModel');
     private seriesApi = container.get<ISeriesApiModel>('ISeriesApiModel');
+    private channelsApi = container.get<IChannelsApiModel>('IChannelsApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
 
@@ -325,7 +363,11 @@ class SystemSetting extends Vue {
         return isFeatureEnabled(this.serverConfigModel.getConfig(), 'seriesLibrary');
     }
 
-    get isEnabledAnnictSync(): boolean {
+    /**
+     * Annict 視聴記録同期の二重ゲートのうち、サーバー設定 (featureFlags) 側の状態。
+     * config.yml 側で無効な場合、この画面のスイッチを ON にしても同期は動作しない
+     */
+    get isEnabledAnnictSyncFeature(): boolean {
         const config = this.serverConfigModel.getConfig();
         return isFeatureEnabled(config, 'metadataProviders') === true && isFeatureEnabled(config, 'annictSync') === true;
     }
@@ -340,6 +382,7 @@ class SystemSetting extends Vue {
     readonly historyKeyItems = [
         { title: '通知 (notifications)', value: 'notifications' },
         { title: '連携 (metadata)', value: 'metadata' },
+        { title: 'しょぼいカレンダー チャンネルマッピング (syobocalChannelMap)', value: 'syobocalChannelMap' },
         { title: 'シリーズ (series)', value: 'series' },
         { title: 'ダッシュボード (dashboard)', value: 'dashboard' },
     ];
@@ -350,6 +393,22 @@ class SystemSetting extends Vue {
 
     annictTesting = false;
     annictTestResult: string | null = null;
+
+    channelMapEntries: ChannelMapEntryForm[] = [];
+    channelMapSaving = false;
+    channelItems: apid.ChannelItem[] = [];
+    private channelMapKeySeed = 0;
+    private nextChannelMapKey(): string {
+        this.channelMapKeySeed += 1;
+        return `channel-map-${Date.now()}-${this.channelMapKeySeed}`;
+    }
+
+    get channelSelectItems(): Array<{ title: string; value: number }> {
+        return this.channelItems.map(c => ({ title: c.name, value: c.id }));
+    }
+
+    sharedDataSyncing = false;
+    sharedDataSyncResult: string | null = null;
 
     get backfillStateText(): string {
         const map: Record<string, string> = { idle: '未実行', running: '実行中', completed: '完了', canceled: 'キャンセル済み', failed: '失敗' };
@@ -368,7 +427,12 @@ class SystemSetting extends Vue {
     }
 
     settings: any = {
-        metadata: { annict: { enabled: false, token: '' }, syobocal: { enabled: false }, cacheTtlMs: 24 * 60 * 60 * 1000 },
+        metadata: {
+            annict: { enabled: false, token: '', syncEnabled: true },
+            syobocal: { enabled: false },
+            sharedData: { autoUpdate: true },
+            cacheTtlMs: 24 * 60 * 60 * 1000,
+        },
         notifications: {
             enabled: false,
             maxAttempts: 5,
@@ -401,6 +465,7 @@ class SystemSetting extends Vue {
                     ...loaded.metadata,
                     annict: { ...this.settings.metadata.annict, ...loaded.metadata?.annict },
                     syobocal: { ...this.settings.metadata.syobocal, ...loaded.metadata?.syobocal },
+                    sharedData: { ...this.settings.metadata.sharedData, ...loaded.metadata?.sharedData },
                 },
                 notifications: { ...this.settings.notifications, ...loaded.notifications },
                 series: { ...this.settings.series, ...loaded.series },
@@ -417,6 +482,13 @@ class SystemSetting extends Vue {
             console.error(err);
             this.snackbarState.open({ color: 'error', text: 'システム設定の取得に失敗しました' });
         }
+
+        try {
+            this.channelItems = await this.channelsApi.getChannels();
+        } catch (err) {
+            console.error(err);
+        }
+        await this.loadChannelMap();
 
         if (this.isEnabledSeriesLibrary === true) {
             await this.refreshBackfillStatus();
@@ -494,16 +566,99 @@ class SystemSetting extends Vue {
         this.annictTesting = true;
         this.annictTestResult = null;
         try {
-            // 専用のテスト API が無いため、外部メタデータ検索 API (providers=annict) を使った簡易疎通確認
-            const res = await this.repository.get('/metadata/search', { params: { query: 'test', providers: 'annict' } });
-            const count = Array.isArray(res.data?.results) ? res.data.results.length : 0;
-            this.annictTestResult = count > 0 ? `応答あり (${count} 件の検索結果)` : '応答はありましたが検索結果は 0 件でした (トークンが正しいかご確認ください)';
+            const result = await this.api.testAnnictConnection();
+            this.annictTestResult = result.ok
+                ? `接続に成功しました (ユーザー: ${result.username ?? '-'})`
+                : `疎通確認に失敗しました (${result.message ?? '不明なエラー'})`;
         } catch (err: any) {
             console.error(err);
             const status = err?.response?.status;
             this.annictTestResult = typeof status === 'number' ? `疎通確認に失敗しました (HTTP ${status})` : '疎通確認に失敗しました (通信エラー)';
         } finally {
             this.annictTesting = false;
+        }
+    }
+
+    async loadChannelMap(): Promise<void> {
+        try {
+            const entries = await this.api.getSyobocalChannelMap();
+            this.channelMapEntries = entries.map(e => ({
+                __key: this.nextChannelMapKey(),
+                __channelId: null,
+                chId: e.chId,
+                networkId: e.networkId,
+                serviceId: e.serviceId,
+                syobocal: e.syobocal !== false,
+            }));
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    addChannelMapEntry(): void {
+        this.channelMapEntries.push({
+            __key: this.nextChannelMapKey(),
+            __channelId: null,
+            chId: null,
+            networkId: null,
+            serviceId: null,
+            syobocal: true,
+        });
+    }
+
+    removeChannelMapEntry(index: number): void {
+        this.channelMapEntries.splice(index, 1);
+    }
+
+    /**
+     * チャンネル一覧 (GET /api/channels) から選択した際、networkId/serviceId を自動補完する
+     */
+    onChannelSelected(entry: ChannelMapEntryForm, channelId: number): void {
+        const channel = this.channelItems.find(c => c.id === channelId);
+        if (channel) {
+            entry.networkId = channel.networkId;
+            entry.serviceId = channel.serviceId;
+        }
+    }
+
+    async saveChannelMap(): Promise<void> {
+        this.channelMapSaving = true;
+        try {
+            const payload = this.channelMapEntries.map(e => ({
+                chId: e.chId ?? 0,
+                networkId: e.networkId ?? 0,
+                serviceId: e.serviceId ?? 0,
+                syobocal: e.syobocal,
+            }));
+            const saved = await this.api.updateSyobocalChannelMap(payload);
+            this.channelMapEntries = saved.map(e => ({
+                __key: this.nextChannelMapKey(),
+                __channelId: null,
+                chId: e.chId,
+                networkId: e.networkId,
+                serviceId: e.serviceId,
+                syobocal: e.syobocal !== false,
+            }));
+            this.snackbarState.open({ color: 'success', text: 'チャンネルマッピング表を保存しました' });
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: 'チャンネルマッピング表の保存に失敗しました' });
+        } finally {
+            this.channelMapSaving = false;
+        }
+    }
+
+    async syncSharedDataNow(): Promise<void> {
+        this.sharedDataSyncing = true;
+        this.sharedDataSyncResult = null;
+        try {
+            const result = await this.api.syncSharedData();
+            this.sharedDataSyncResult = result.updated ? '同期が完了しました' : '取得できるデータがありませんでした (URL 未設定または取得失敗)';
+        } catch (err) {
+            console.error(err);
+            this.sharedDataSyncResult = '同期に失敗しました';
+        } finally {
+            this.sharedDataSyncing = false;
         }
     }
 
@@ -608,6 +763,7 @@ class SystemSetting extends Vue {
                 ...loaded.metadata,
                 annict: { ...this.settings.metadata.annict, ...(loaded.metadata as any)?.annict },
                 syobocal: { ...this.settings.metadata.syobocal, ...(loaded.metadata as any)?.syobocal },
+                sharedData: { ...this.settings.metadata.sharedData, ...(loaded.metadata as any)?.sharedData },
             },
             notifications: { ...this.settings.notifications, ...loaded.notifications },
             series: { ...this.settings.series, ...loaded.series },

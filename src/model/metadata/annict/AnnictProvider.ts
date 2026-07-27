@@ -6,6 +6,7 @@ import IConfiguration from '../../IConfiguration';
 import ISecretCrypto from '../../security/ISecretCrypto';
 import { normalizeSeriesTitle } from '../../series/SeriesNormalizer';
 import {
+    MetadataConnectionTestResult,
     MetadataGetOption,
     MetadataSearchContext,
     MetadataSearchResult,
@@ -126,6 +127,29 @@ export default class AnnictProvider implements IAnnictProvider {
             { workId: work.id, state: watchStatus === 'watched' ? 'WATCHED' : 'WATCHING' },
         ).catch(() => undefined);
         return { recordId: created.createRecord?.record?.id ?? '' };
+    }
+    /**
+     * Annict への接続テスト (§6.2)。設定画面「接続テスト」ボタンから呼ばれる専用 API 用。
+     * viewer クエリで疎通とトークンの有効性を確認する (検索 API の空応答による簡易確認を廃止)
+     */
+    public async testConnection(): Promise<MetadataConnectionTestResult> {
+        try {
+            const token = await this.token();
+            if (token === null) {
+                return { ok: false, message: 'AnnictSyncFeatureIsDisabled' };
+            }
+            const data = await this.graphql<{ viewer: { username: string } | null }>(
+                token,
+                `query Viewer { viewer { username } }`,
+                {},
+            );
+            if (!data.viewer) {
+                return { ok: false, message: 'AnnictAuthenticationFailed' };
+            }
+            return { ok: true, username: data.viewer.username };
+        } catch (e) {
+            return { ok: false, message: e instanceof Error ? e.message : String(e) };
+        }
     }
     private searchResult(work: AnnictWork, score: number): MetadataSearchResult {
         return {

@@ -74,6 +74,9 @@ function makeSeriesDB({ episodeNumber = 1 } = {}) {
 }
 
 const enabledConfig = { getConfig: () => ({ featureFlags: { metadataProviders: true, annictSync: true } }) };
+function makeSettingsDB(syncEnabled = true) {
+    return { getAll: async () => ({ metadata: { annict: { syncEnabled } } }) };
+}
 
 test('a pending row surviving a transient failure is persisted and picked up by a new model instance (simulated process restart)', async () => {
     const queueDB = makeInMemoryQueueDB();
@@ -84,7 +87,7 @@ test('a pending row surviving a transient failure is persisted and picked up by 
             throw new Error('AnnictHttpStatus:503');
         },
     };
-    const model1 = new AnnictSyncQueueModel(enabledConfig, seriesDB, queueDB, failingMetadata);
+    const model1 = new AnnictSyncQueueModel(enabledConfig, seriesDB, queueDB, failingMetadata, makeSettingsDB());
     model1.enqueueFromWatchHistory(1);
     await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal(queueDB.rows.size, 1);
@@ -94,9 +97,15 @@ test('a pending row surviving a transient failure is persisted and picked up by 
     row.nextAttemptAt = Date.now(); // バックオフ待ち時間の経過を模擬 (実時間は待たない)
 
     // 「プロセス再起動」を模擬: 同じ永続ストアを共有する新しいモデルインスタンスが引き継いで処理する
-    const model2 = new AnnictSyncQueueModel(enabledConfig, seriesDB, queueDB, {
-        pushWatchRecord: async () => ({ recordId: 'r1' }),
-    });
+    const model2 = new AnnictSyncQueueModel(
+        enabledConfig,
+        seriesDB,
+        queueDB,
+        {
+            pushWatchRecord: async () => ({ recordId: 'r1' }),
+        },
+        makeSettingsDB(),
+    );
     const result = await model2.processQueue();
     assert.equal(result.sent, 1);
     assert.equal([...queueDB.rows.values()][0].status, 'sent');
@@ -106,11 +115,17 @@ test('does not enqueue (no DB writes at all) when annictSync feature flag is dis
     const queueDB = makeInMemoryQueueDB();
     const seriesDB = makeSeriesDB();
     const disabledConfig = { getConfig: () => ({ featureFlags: { metadataProviders: true, annictSync: false } }) };
-    const model = new AnnictSyncQueueModel(disabledConfig, seriesDB, queueDB, {
-        pushWatchRecord: async () => {
-            throw new Error('must not be called');
+    const model = new AnnictSyncQueueModel(
+        disabledConfig,
+        seriesDB,
+        queueDB,
+        {
+            pushWatchRecord: async () => {
+                throw new Error('must not be called');
+            },
         },
-    });
+        makeSettingsDB(),
+    );
     model.enqueueFromWatchHistory(1);
     await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal(queueDB.rows.size, 0);
@@ -126,7 +141,7 @@ test('the same episode is never sent twice (dedupe via seriesId+seriesEpisodeId)
             return { recordId: `r${calls}` };
         },
     };
-    const model = new AnnictSyncQueueModel(enabledConfig, seriesDB, queueDB, metadata);
+    const model = new AnnictSyncQueueModel(enabledConfig, seriesDB, queueDB, metadata, makeSettingsDB());
     model.enqueueFromWatchHistory(1);
     await new Promise(resolve => setTimeout(resolve, 10));
     // 再度 watched に遷移 (再視聴等) しても、既に送信済みのエピソードは再送されない
@@ -144,7 +159,7 @@ test('failed attempts back off exponentially and eventually become terminal afte
             throw new Error('AnnictEpisodeIsNotFound');
         },
     };
-    const model = new AnnictSyncQueueModel(enabledConfig, seriesDB, queueDB, metadata);
+    const model = new AnnictSyncQueueModel(enabledConfig, seriesDB, queueDB, metadata, makeSettingsDB());
     await queueDB.enqueue({
         recordedId: 1,
         seriesId: 1,
@@ -172,11 +187,45 @@ test('failed attempts back off exponentially and eventually become terminal afte
     }
 });
 
+// 二重ゲート (§5.5・§6.2): featureFlags.annictSync が有効でも、設定画面 (DB) 側の
+// syncEnabled が false なら同期は一切動作しない
+test('double gate: does not enqueue when the feature flag is enabled but the DB syncEnabled toggle is off', async () => {
+    const queueDB = makeInMemoryQueueDB();
+    const seriesDB = makeSeriesDB();
+    const model = new AnnictSyncQueueModel(
+        enabledConfig,
+        seriesDB,
+        queueDB,
+        {
+            pushWatchRecord: async () => {
+                throw new Error('must not be called');
+            },
+        },
+        makeSettingsDB(false),
+    );
+    model.enqueueFromWatchHistory(1);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(queueDB.rows.size, 0);
+});
+
+// DB 側の値が未設定 (syncEnabled が undefined) の場合は、feature flag が有効な既存導入で
+// アップグレード後に同期が急に止まらないよう既定 true として扱う
+test('double gate: defaults to enabled when the DB syncEnabled value is not yet set', async () => {
+    const queueDB = makeInMemoryQueueDB();
+    const seriesDB = makeSeriesDB();
+    const metadata = { pushWatchRecord: async () => ({ recordId: 'r1' }) };
+    const model = new AnnictSyncQueueModel(enabledConfig, seriesDB, queueDB, metadata, { getAll: async () => ({}) });
+    model.enqueueFromWatchHistory(1);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(queueDB.rows.size, 1);
+    assert.equal([...queueDB.rows.values()][0].status, 'sent');
+});
+
 test('enqueueSeries queues all episode-linked recordings for manual re-sync and processes them', async () => {
     const queueDB = makeInMemoryQueueDB();
     const seriesDB = makeSeriesDB();
     const metadata = { pushWatchRecord: async () => ({ recordId: 'r1' }) };
-    const model = new AnnictSyncQueueModel(enabledConfig, seriesDB, queueDB, metadata);
+    const model = new AnnictSyncQueueModel(enabledConfig, seriesDB, queueDB, metadata, makeSettingsDB());
     const result = await model.enqueueSeries(1);
     assert.equal(result.queued, 1);
     await new Promise(resolve => setTimeout(resolve, 10));
