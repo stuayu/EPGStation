@@ -345,11 +345,12 @@ class SeriesView extends Vue {
     };
 
     /**
-     * クール絞り込みの選択肢 ("2025年春アニメ (12)" 形式)
+     * クール絞り込みの選択肢 ("2025年春 (12)" 形式)。
+     * シリーズにはアニメ以外 (ドラマ・バラエティ等) も含まれるためジャンル名は付けない
      */
     get seasonItems(): Array<{ title: string; value: string }> {
         return this.seasons.map(x => ({
-            title: `${x.seasonYear}年${SeriesView.SEASON_LABEL[x.seasonName] ?? x.seasonName}アニメ (${x.count})`,
+            title: `${x.seasonYear}年${SeriesView.SEASON_LABEL[x.seasonName] ?? x.seasonName} (${x.count})`,
             value: `${x.seasonYear}:${x.seasonName}`,
         }));
     }
