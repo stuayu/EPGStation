@@ -88,10 +88,24 @@ export const CONFIG_OVERLAY_FIELDS: readonly ConfigFieldDefinition[] = [
     { key: 'concurrentEncodeNum', requiresRestart: true },
     { key: 'encode', requiresRestart: false },
 
-    // --- 視聴 ---
+    // --- 視聴・配信 ---
     { key: 'urlscheme', requiresRestart: false },
     { key: 'streamFilePath', requiresRestart: true },
     { key: 'kodiHosts', requiresRestart: false },
+    // StreamProfileManageModel は呼び出しのたびに config を読むため再起動不要
+    { key: 'stream', requiresRestart: false },
+
+    // --- 外部コマンド実行 ---
+    // ExternalCommandManageModel がコンストラクタで config を読むため再起動が必要
+    { key: 'reserveNewAddtionCommand', requiresRestart: true },
+    { key: 'reserveUpdateCommand', requiresRestart: true },
+    { key: 'reservedeletedCommand', requiresRestart: true },
+    { key: 'recordingPreStartCommand', requiresRestart: true },
+    { key: 'recordingPrepRecFailedCommand', requiresRestart: true },
+    { key: 'recordingStartCommand', requiresRestart: true },
+    { key: 'recordingFinishCommand', requiresRestart: true },
+    { key: 'recordingFailedCommand', requiresRestart: true },
+    { key: 'encodingFinishCommand', requiresRestart: true },
 
     // --- 機能フラグ・付随設定 ---
     { key: 'featureFlags', requiresRestart: true },

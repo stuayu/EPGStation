@@ -132,6 +132,13 @@
                 </template>
             </v-expansion-panel>
 
+            <!-- 配信プロファイル -->
+            <v-expansion-panel v-if="keyword === '' || keyword === null" title="配信プロファイル (ライブ / 録画済み)">
+                <template v-slot:text>
+                    <StreamProfileEditor ref="streamEditor" :value="streamConfig"></StreamProfileEditor>
+                </template>
+            </v-expansion-panel>
+
             <!-- エンコード設定 -->
             <v-expansion-panel v-if="keyword === '' || keyword === null" title="エンコード設定">
                 <template v-slot:text>
@@ -169,6 +176,7 @@
 import container from '@/model/ModelContainer';
 import ISystemSettingApiModel from '@/model/api/config/ISystemSettingApiModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
+import StreamProfileEditor from '@/components/settings/StreamProfileEditor.vue';
 import { CONFIG_FORM_SECTIONS, ConfigFormField } from '@/util/ConfigFormFields';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
@@ -177,7 +185,7 @@ import * as apid from '../../../../api';
  * config.yml を画面から編集するパネル。
  * 保存は「config.yml との差分」として行い、ファイル自体は書き換えない
  */
-@Component({})
+@Component({ components: { StreamProfileEditor } })
 class ConfigFormPanel extends Vue {
     loaded = false;
     saving = false;
@@ -192,6 +200,8 @@ class ConfigFormPanel extends Vue {
     private fields: apid.ConfigFieldInfo[] = [];
 
     recordedDirs: Array<Record<string, any>> = [];
+    // 配信プロファイル (stream) の編集用。子コンポーネントが直接書き換える
+    streamConfig: Record<string, any> = {};
     encodePresets: Array<Record<string, any>> = [];
 
     readonly dirActionItems = [
@@ -226,6 +236,7 @@ class ConfigFormPanel extends Vue {
             // 配列項目は編集しやすいよう実効値から複製して持つ
             this.recordedDirs = JSON.parse(JSON.stringify(result.effective?.recorded ?? []));
             this.encodePresets = JSON.parse(JSON.stringify(result.effective?.encode ?? []));
+            this.streamConfig = JSON.parse(JSON.stringify(result.effective?.stream ?? {}));
             this.loaded = true;
         } catch (err) {
             console.error(err);
@@ -279,11 +290,25 @@ class ConfigFormPanel extends Vue {
         this.saving = true;
         try {
             const payload = JSON.parse(JSON.stringify(this.overlay));
-            // 配列項目は常に一覧そのものを送る (空なら差分を消す)
+
+            // 一覧で編集する項目は「config.yml と違うときだけ」差分として送る。
+            // 常に送ると、触っていなくても値が差分に固定され、以後 config.yml 側の
+            // 変更が反映されなくなってしまう
             const dirs = this.recordedDirs.filter(x => (x.name ?? '') !== '' && (x.path ?? '') !== '');
-            if (dirs.length > 0) payload.recorded = dirs;
+            if (dirs.length > 0 && ConfigFormPanel.differs(dirs, this.fileConfig.recorded)) payload.recorded = dirs;
+
             const presets = this.encodePresets.filter(x => (x.name ?? '') !== '' && (x.cmd ?? '') !== '');
-            if (presets.length > 0) payload.encode = presets;
+            if (presets.length > 0 && ConfigFormPanel.differs(presets, this.fileConfig.encode)) payload.encode = presets;
+
+            // 表示中のプロファイルも書き戻してから比較する
+            const editor = this.$refs.streamEditor as { flush?: () => void } | undefined;
+            editor?.flush?.();
+            if (
+                Object.keys(this.streamConfig).length > 0 &&
+                ConfigFormPanel.differs(this.streamConfig, this.fileConfig.stream)
+            ) {
+                payload.stream = this.streamConfig;
+            }
 
             const result = await this.api.update({ config: payload });
             this.restartKeys = result.requiresRestartKeys.filter(x => x.startsWith('config.'));
@@ -299,6 +324,13 @@ class ConfigFormPanel extends Vue {
         } finally {
             this.saving = false;
         }
+    }
+
+    /**
+     * config.yml の値と違うか (同じなら差分として保存しない)
+     */
+    private static differs(value: unknown, fileValue: unknown): boolean {
+        return JSON.stringify(value) !== JSON.stringify(fileValue ?? undefined);
     }
 
     /**
