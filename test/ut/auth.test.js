@@ -247,15 +247,16 @@ test('authentication is enabled unless config.yml turns it off', async () => {
     assert.equal(withEmptyAuth.isEnabled(), true);
 });
 
-test('anonymous access is off unless explicitly allowed', async () => {
-    assert.equal(authFixture().model.isAnonymousAllowed(), false);
-    assert.equal(authFixture({ allowAnonymous: true }).model.isAnonymousAllowed(), true);
+test('anonymous access is allowed unless config.yml turns it off', async () => {
+    // 未指定は許可 (opt-out)。日常操作はログイン不要のまま、管理者向け操作だけを保護する
+    assert.equal(authFixture().model.isAnonymousAllowed(), true);
+    assert.equal(authFixture({ allowAnonymous: false }).model.isAnonymousAllowed(), false);
     // 認証自体が無効なら「匿名許可」も false (画面側の分岐を単純にするため)
-    assert.equal(authFixture({ enabled: false, allowAnonymous: true }).model.isAnonymousAllowed(), false);
+    assert.equal(authFixture({ enabled: false }).model.isAnonymousAllowed(), false);
 });
 
 test('the anonymous setting is reported to the client', async () => {
-    const { model } = authFixture({ allowAnonymous: true });
+    const { model } = authFixture();
     await model.setup('admin', 'password123');
     const status = await model.getStatus(null);
     assert.equal(status.allowAnonymous, true);
