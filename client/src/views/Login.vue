@@ -113,9 +113,11 @@ class Login extends Vue {
     async mounted(): Promise<void> {
         try {
             const status = await this.api.getStatus();
-            // 認証が無効 / すでにログイン済みなら通常画面へ戻す
+            // 認証が無効 / すでにログイン済みなら通常画面へ戻す。
+            // この画面は router を持たない単独マウントなので、location で読み込み直す
             if (status.enabled === false || status.user !== null) {
-                void this.$router.replace('/');
+                window.location.replace(window.location.pathname);
+
                 return;
             }
             this.isSetup = status.initialized === false;

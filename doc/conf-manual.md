@@ -315,6 +315,21 @@ auth:
             clientSecret: 'xxxxxxxx'
 ```
 
+#### SSO (Google / GitHub) を使えるようにする手順
+
+1. **プロバイダ側でアプリを登録し、コールバック URL を設定する**
+    - Google: [Google Cloud Console](https://console.cloud.google.com/apis/credentials) で「OAuth クライアント ID」を作成 (種類: ウェブアプリケーション)。
+      「承認済みのリダイレクト URI」に `https://<EPGStation の URL>/api/auth/oauth/google/callback` を登録する
+    - GitHub: Settings > Developer settings > OAuth Apps で新規作成。
+      「Authorization callback URL」に `https://<EPGStation の URL>/api/auth/oauth/github/callback` を登録する
+2. **config.yml に `auth` を書く** (上の例を参照)。`enabled: true` と `providers` の両方が必要
+3. **EPGStation を再起動する** (`auth` は起動時に読まれるため)
+4. Web UI を開くとログイン画面に「Google ではじめる」ボタンが出る。
+   最初にサインアップした人が自動でシステム管理者になる
+
+> `auth` を書いていない、または `enabled: true` にしていない場合は**認証機能そのものが無効**なため、
+> ログイン画面もサインアップのボタンも表示されません。
+
 - SSO のクライアント ID / シークレットは**ログイン前に必要**なため、DB (設定画面) ではなく config.yml に置く
 - コールバック URL は `X-Forwarded-Proto` / `X-Forwarded-Host` を見てアクセス元から自動生成する。リバースプロキシ配下などで合わない場合のみ `redirectUri` を明示する
 - **インターネットに公開している場合は `allowSignUp: false` を推奨**。既定のままだと Google / GitHub アカウントを持つ誰でもサインアップできてしまう (1 人目だけは常に許可される。でないと管理者を作れないため)

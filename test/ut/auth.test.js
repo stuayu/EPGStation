@@ -69,6 +69,21 @@ test('only the login related endpoints are reachable without a session', () => {
     }
 });
 
+test('the SSO redirect and callback must be reachable without a session', () => {
+    // ここが 401 になると、ログイン前に通る経路が塞がれて SSO ログインが一切できない
+    for (const path of [
+        '/auth/oauth/google',
+        '/auth/oauth/google/callback',
+        '/auth/oauth/github',
+        '/auth/oauth/github/callback',
+    ]) {
+        assert.equal(isPublicApiPath(path), true, path);
+    }
+    // 接頭辞が似ているだけの管理 API を巻き込まないこと
+    assert.equal(isPublicApiPath('/auth/users'), false);
+    assert.equal(isPublicApiPath('/auth/oauthevil'), false);
+});
+
 test('api paths are extracted with the sub directory taken into account', () => {
     assert.equal(toApiPath('/api/recorded?limit=1', '/api'), '/recorded');
     assert.equal(toApiPath('/api', '/api'), '/');
