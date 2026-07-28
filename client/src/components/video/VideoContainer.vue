@@ -1,5 +1,4 @@
 <template>
-    <div class="video-area">
     <div class="video-container" ref="container">
         <div class="video-content" v-bind:class="{ 'is-ipad': isiPad === true }">
             <div v-if="isLoading === true" class="loading">
@@ -77,13 +76,6 @@
             </div>
         </div>
     </div>
-    <VideoSeekBar
-        v-if="isSeekableVideo === true"
-        v-bind:duration="videoDuration"
-        v-bind:currentTime="videoCurrentTime"
-        v-on:seek="onSeek"
-    ></VideoSeekBar>
-    </div>
 </template>
 
 <script lang="ts">
@@ -92,7 +84,6 @@ import NormalVideo from '@/components/video/NormalVideo.vue';
 import RecordedHLSStreamingVideo from '@/components/video/RecordedHLSStreamingVideo.vue';
 import RecordedStreamingVideo from '@/components/video/RecordedStreamingVideo.vue';
 import LiveMpegTsVideo from '@/components/video/LiveMpegTsVideo.vue';
-import VideoSeekBar from '@/components/video/VideoSeekBar.vue';
 import * as VideoParam from '@/components/video/ViedoParam';
 import UaUtil from '@/util/UaUtil';
 import BaseVideo from '@/components/video/BaseVideo';
@@ -107,7 +98,6 @@ import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
         RecordedStreamingVideo,
         RecordedHLSStreamingVideo,
         LiveMpegTsVideo,
-        VideoSeekBar,
     },
 })
 class VideoContainer extends Vue {
@@ -116,10 +106,6 @@ class VideoContainer extends Vue {
 
     public isLoading: boolean = true;
     public isiPad: boolean = UaUtil.isiPadOS();
-    // シークバー表示用 (全体の長さと現在位置)
-    public videoDuration: number = 0;
-    public videoCurrentTime: number = 0;
-    private seekBarTimerId: ReturnType<typeof setInterval> | undefined;
     private videoApi = container.get<IVideoApiModel>('IVideoApiModel');
     private lastSavedAt = 0;
     private resumeApplied = false;
@@ -141,13 +127,6 @@ class VideoContainer extends Vue {
         if (document.visibilityState === 'hidden') this.savePlaybackPositionWithBeacon();
     }).bind(this);
 
-    /**
-     * 録画再生 (シーク可能) な場合のみシークバーを表示する
-     */
-    get isSeekableVideo(): boolean {
-        return this.videoParam.type === 'Normal' || this.videoParam.type === 'RecordedStreaming' || this.videoParam.type === 'RecordedHLS';
-    }
-
     public created(): void {
         document.addEventListener('webkitfullscreenchange', this.fullScreenListener, false);
         document.addEventListener('mozfullscreenchange', this.fullScreenListener, false);
@@ -155,15 +134,9 @@ class VideoContainer extends Vue {
         document.addEventListener('fullscreenchange', this.fullScreenListener, false);
         window.addEventListener('pagehide', this.pageHideListener, false);
         document.addEventListener('visibilitychange', this.visibilityChangeListener, false);
-
-        // 録画中の番組など timeupdate が止まっている間も全体尺を追従させる
-        this.seekBarTimerId = setInterval(() => {
-            this.updateSeekBarState();
-        }, 1000);
     }
 
     public beforeUnmount(): void {
-        clearInterval(this.seekBarTimerId);
         this.savePlaybackPositionWithBeacon();
         document.removeEventListener('webkitfullscreenchange', this.fullScreenListener, false);
         document.removeEventListener('mozfullscreenchange', this.fullScreenListener, false);
@@ -227,39 +200,10 @@ class VideoContainer extends Vue {
     // 再生可能
     public onCanplay(): void {
         this.isLoading = false;
-        this.updateSeekBarState();
         void this.applyResumePosition();
     }
 
-    /**
-     * シークバーの表示値を更新する
-     */
-    private updateSeekBarState(): void {
-        const video = this.getVideo();
-        if (video === null) {
-            return;
-        }
-
-        this.videoDuration = video.getDuration();
-        this.videoCurrentTime = video.getCurrentTime();
-    }
-
-    /**
-     * シークバーからのシーク指示
-     * @param time: number 秒
-     */
-    public onSeek(time: number): void {
-        const video = this.getVideo();
-        if (video === null) {
-            return;
-        }
-
-        video.setCurrentTime(time);
-        this.videoCurrentTime = time;
-    }
-
     public onTimeupdate(): void {
-        this.updateSeekBarState();
         this.emitRemainingTime();
         if (this.resumeReady === false) return;
         if (Date.now() - this.lastSavedAt >= 10000) void this.savePlaybackPosition();
