@@ -127,13 +127,23 @@ class ServiceServer implements IServiceServer {
                     payload = await authModel.verifyMediaToken(query);
                 }
 
+                const isAdminRequest = apiPath !== null && isAdminApiPath(apiPath) === true;
+
                 if (payload === null) {
+                    // 未ログインでも一般ユーザーと同じ操作を許可する設定なら、
+                    // システム管理者向け以外はそのまま通す
+                    if (authModel.isAnonymousAllowed() === true && isAdminRequest === false) {
+                        next();
+
+                        return;
+                    }
+
                     res.status(401).json({ code: 401, message: 'Unauthorized' });
 
                     return;
                 }
                 // システム全体に影響する API はシステム管理者だけに許す
-                if (apiPath !== null && isAdminApiPath(apiPath) === true && payload.role !== 'admin') {
+                if (isAdminRequest === true && payload.role !== 'admin') {
                     res.status(403).json({ code: 403, message: 'Forbidden' });
 
                     return;

@@ -3619,6 +3619,7 @@ components:
                 - user
                 - providers
                 - allowSignUp
+                - allowAnonymous
             properties:
                 enabled:
                     description: config.yml の auth.enabled
@@ -3647,6 +3648,9 @@ components:
                         $ref: '#/components/schemas/AuthProviderItem'
                 allowSignUp:
                     description: 2 人目以降のサインアップを許可しているか
+                    type: boolean
+                allowAnonymous:
+                    description: 未ログインでも一般ユーザーと同じ操作を許可しているか
                     type: boolean
 
         AuthCredentialOption:

@@ -18,6 +18,12 @@ export default interface IAuthModel {
      */
     isEnabled(): boolean;
     /**
+     * ログインしていない利用者にも一般ユーザーと同じ操作を許可するか
+     * (システム管理者向けの操作は許可しない)
+     * @return boolean
+     */
+    isAnonymousAllowed(): boolean;
+    /**
      * 認証状態 (有効か / 初期ユーザー作成済みか / ログイン中のユーザー)
      * @param token: string | null Cookie から取り出したセッショントークン
      * @return Promise<AuthStatus>

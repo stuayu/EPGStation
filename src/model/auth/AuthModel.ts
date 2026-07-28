@@ -45,6 +45,11 @@ export default class AuthModel implements IAuthModel {
         return this.configuration.getConfig().auth?.enabled !== false;
     }
 
+    public isAnonymousAllowed(): boolean {
+        // 認証が無効ならそもそも全員が制限なしなので false を返す (画面側の分岐を単純にするため)
+        return this.isEnabled() === true && this.configuration.getConfig().auth?.allowAnonymous === true;
+    }
+
     public createMediaToken(payload: SessionPayload): string | null {
         const secret = this.crypto.getSigningKey(AuthModel.MEDIA_SIGNING_PURPOSE);
         if (secret === null) return null;
@@ -76,7 +81,14 @@ export default class AuthModel implements IAuthModel {
         const enabled = this.isEnabled();
         // providers は OAuthModel が持つ情報なので、ここでは空で返して呼び出し側 (ルート) が埋める
         if (enabled === false) {
-            return { enabled: false, initialized: true, user: null, providers: [], allowSignUp: false };
+            return {
+                enabled: false,
+                initialized: true,
+                user: null,
+                providers: [],
+                allowSignUp: false,
+                allowAnonymous: false,
+            };
         }
         const initialized = (await this.db.count()) > 0;
         const payload = initialized === true ? await this.verify(token) : null;
@@ -87,6 +99,7 @@ export default class AuthModel implements IAuthModel {
                 payload === null ? null : { id: payload.uid, name: payload.name, role: AuthModel.toRole(payload.role) },
             providers: [],
             allowSignUp: this.isSignUpAllowed(),
+            allowAnonymous: this.isAnonymousAllowed(),
         };
     }
 

@@ -5,6 +5,22 @@
             <div v-if="isShow" ref="appContent" class="app-content">
                 <v-container>
                     <v-btn v-if="isShowSystemSettings === true" block color="primary" class="mb-4" to="/settings/system">サーバー設定を開く</v-btn>
+                    <!-- 認証が有効なときだけログイン状態を出す -->
+                    <v-card v-if="isAuthEnabled === true" class="mx-auto mb-4" max-width="800">
+                        <v-card-text class="d-flex align-center ga-2 flex-wrap">
+                            <template v-if="loginUserName !== null">
+                                <span class="text-body-2">{{ loginUserName }} としてログイン中</span>
+                                <v-chip v-if="isAdmin === true" size="x-small" color="deep-purple" variant="flat">システム管理者</v-chip>
+                                <v-spacer></v-spacer>
+                                <v-btn size="small" variant="outlined" @click="logout">ログアウト</v-btn>
+                            </template>
+                            <template v-else>
+                                <span class="text-body-2">ログインしていません (閲覧・予約などは利用できます)</span>
+                                <v-spacer></v-spacer>
+                                <v-btn size="small" color="primary" variant="flat" @click="login">ログイン</v-btn>
+                            </template>
+                        </v-card-text>
+                    </v-card>
                     <v-card class="mx-auto" max-width="800">
                         <v-list-item three-line>
                             <div class="v-list-item-content">
@@ -449,14 +465,34 @@ class Settings extends Vue {
 
     // 認証が無効な場合は全員が管理者相当として扱う (従来どおりの動作)
     isAdmin = true;
+    isAuthEnabled = false;
+    loginUserName: string | null = null;
 
     async loadAuthRole(): Promise<void> {
         try {
             const status = await container.get<IAuthApiModel>('IAuthApiModel').getStatus();
+            this.isAuthEnabled = status.enabled;
+            this.loginUserName = status.user?.name ?? null;
             this.isAdmin = status.enabled === false || status.user?.role === 'admin';
         } catch (err) {
             console.error(err);
         }
+    }
+
+    /**
+     * ログイン画面へ移動する (匿名利用が許可されている場合はここからログインする)
+     */
+    public login(): void {
+        window.location.replace(`${window.location.pathname}?login=1`);
+    }
+
+    public async logout(): Promise<void> {
+        try {
+            await container.get<IAuthApiModel>('IAuthApiModel').logout();
+        } catch (err) {
+            console.error(err);
+        }
+        window.location.replace(window.location.pathname);
     }
 
     public readonly guideModeItems: GuideModeItem[] = [
