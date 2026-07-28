@@ -72,6 +72,43 @@ export const CONFIG_FORM_SECTIONS: ConfigFormSection[] = [
         ],
     },
     {
+        title: '録画開始のリトライ',
+        fields: [
+            {
+                path: 'recording.startWaitLimitMs',
+                label: '番組開始を待つ上限 (ms)',
+                hint: '前の番組の延長 (放送時刻未定) で開始が遅れている場合に待つ時間。既定 3 時間 (10800000)。0 で待たない',
+                type: 'number',
+            },
+            {
+                path: 'recording.startWaitIntervalMs',
+                label: '開始待ち中の再試行間隔 (ms)',
+                hint: '既定 60000',
+                type: 'number',
+            },
+            {
+                path: 'recording.firstDataTimeoutMs',
+                label: '最初のデータを待つ時間 (ms)',
+                hint: 'これを超えたら「まだ番組が始まっていない」と判断する。既定 5000',
+                type: 'number',
+            },
+            {
+                path: 'recording.errorFastRetryCount',
+                label: 'チューナー異常時の再試行回数 (短間隔)',
+                hint: '既定 3',
+                type: 'number',
+            },
+            { path: 'recording.errorFastRetryIntervalMs', label: '同・間隔 (ms)', hint: '既定 5000', type: 'number' },
+            {
+                path: 'recording.errorRetryCount',
+                label: 'チューナー異常時の再試行回数 (長間隔)',
+                hint: '既定 27',
+                type: 'number',
+            },
+            { path: 'recording.errorRetryIntervalMs', label: '同・間隔 (ms)', hint: '既定 60000', type: 'number' },
+        ],
+    },
+    {
         title: '外部録画ファイルの取り込み',
         fields: [
             { path: 'importDefaultMode', label: '取り込みの既定動作', type: 'select', items: [

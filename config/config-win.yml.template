@@ -518,6 +518,24 @@ stream:
 #     advancedSearch: true
 #     updateNotification: true
 
+# 録画開始のリトライ方針。
+# 前の番組が「放送時刻未定」(ARIB の duration = 0xFFFFFF) で延長していると、
+# 予約した番組の開始が遅れます。Mirakurun は EIT[p/f] で対象の番組が始まるまで
+# データを流さないため、EPGStation はその間待つ必要があります。
+# チューナー異常とは別枠で数えるので、延長待ちが異常時の再試行回数を食い潰しません。
+# recording:
+#     # 番組開始を待つ上限 (ms)。既定 3 時間。0 で待たない
+#     startWaitLimitMs: 10800000
+#     # 開始待ち中の再試行間隔 (ms)。既定 60000
+#     startWaitIntervalMs: 60000
+#     # ストリーム開始後、最初のデータを待つ時間 (ms)。既定 5000
+#     firstDataTimeoutMs: 5000
+#     # チューナー異常時の再試行 (短間隔 → 長間隔)
+#     errorFastRetryCount: 3
+#     errorFastRetryIntervalMs: 5000
+#     errorRetryCount: 27
+#     errorRetryIntervalMs: 60000
+
 # Web UI / API のログイン認証。既定は無効 (リバースプロキシ側で認証している構成を壊さないため)。
 # 有効にして初めてアクセスすると、管理ユーザーの作成画面が表示されます。
 # auth:

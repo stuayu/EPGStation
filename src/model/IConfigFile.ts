@@ -228,6 +228,24 @@ export default interface IConfigFile {
     // 自動監視の実行間隔 (秒)
     importWatchIntervalSec?: number;
 
+    // 録画開始のリトライ方針。
+    // 前番組の延長 (放送時刻未定) で開始が遅れている場合と、チューナー異常とを分けて扱う
+    recording?: {
+        // 番組開始を待つ上限 (ms)。既定 3 時間。0 で待たない
+        startWaitLimitMs?: number;
+        // 開始待ち中の再試行間隔 (ms)。既定 60000
+        startWaitIntervalMs?: number;
+        // ストリーム開始後、最初のデータを待つ時間 (ms)。既定 5000。
+        // これを超えたら「まだ番組が始まっていない」と判断する
+        firstDataTimeoutMs?: number;
+        // チューナー異常時に短い間隔で再試行する回数と間隔 (既定 3 回 / 5000ms)
+        errorFastRetryCount?: number;
+        errorFastRetryIntervalMs?: number;
+        // その後、長い間隔で再試行する回数と間隔 (既定 27 回 / 60000ms)
+        errorRetryCount?: number;
+        errorRetryIntervalMs?: number;
+    };
+
     // 録画履歴保存期間
     recordedHistoryRetentionPeriodDays: number;
 

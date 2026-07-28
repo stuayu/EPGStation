@@ -23,6 +23,7 @@ import IVideoFileDB from '../../db/IVideoFileDB';
 import IRecordingEvent from '../../event/IRecordingEvent';
 import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
+import { decideRecordingRetry, RecordingRetryReason, resolveRecordingRetryConfig } from './RecordingRetryPolicy';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IMirakurunClientModel from '../../IMirakurunClientModel';
@@ -58,6 +59,10 @@ class RecorderModel implements IRecorderModel {
     private videoFileId: apid.VideoFileId | null = null;
     private videoFileFulPath: string | null = null;
     private timerId: NodeJS.Timeout | null = null;
+    // 番組開始待ちの起点 (ms)。チューナー異常のリトライ回数とは別に数える
+    private waitingForEventSince: number | null = null;
+    // チューナー異常など、待っても直らない可能性がある失敗の回数
+    private errorRetryCount: number = 0;
     private stream: http.IncomingMessage | null = null;
     private passThroughStreamForWrite: stream.PassThrough | null = null;
     private recFile: fs.WriteStream | null = null;
@@ -159,6 +164,12 @@ class RecorderModel implements IRecorderModel {
      * 録画準備
      */
     private async prepRecord(retry: number = 0): Promise<void> {
+        // 番組開始待ちの起点。予定開始時刻とこの時点の遅い方から数える
+        // (EPG 更新で予約時刻が動いた場合に待ち直せるようにする)
+        if (this.waitingForEventSince === null) {
+            this.waitingForEventSince = Math.max(this.reserve.startAt, new Date().getTime());
+        }
+
         if (this.isStopPrepRec === true) {
             this.isPlanToDelete = false;
             this.emitCancelEvent();
@@ -210,20 +221,41 @@ class RecorderModel implements IRecorderModel {
                 return;
             }
 
-            this.log.system.error(`preprec failed: ${this.reserve.id}`);
-            this.log.system.error(err);
-            if (retry < 3) {
-                // retry
+            // 「番組がまだ始まっていない」のか「チューナー等の異常」なのかで待ち方を分ける。
+            // 前者は前番組の延長 (放送時刻未定) 中に起きる正常な状態なので長く待つ
+            const reason: RecordingRetryReason =
+                err?.message === RecorderModel.WAITING_FOR_EVENT_ERROR ? 'waitingForEvent' : 'error';
+            const retryConfig = resolveRecordingRetryConfig(this.config.recording);
+            const waitedMs = new Date().getTime() - (this.waitingForEventSince ?? new Date().getTime());
+            const decision = decideRecordingRetry({
+                reason,
+                errorRetryCount: this.errorRetryCount,
+                waitedMs,
+                config: retryConfig,
+            });
+
+            if (reason === 'waitingForEvent') {
+                this.log.system.info(
+                    `waiting for the program to start: reserveId: ${this.reserve.id},` +
+                        ` waited: ${Math.floor(waitedMs / 1000)}s / ${Math.floor(retryConfig.startWaitLimitMs / 1000)}s`,
+                );
+            } else {
+                this.errorRetryCount++;
+                this.log.system.error(`preprec failed: ${this.reserve.id}`);
+                this.log.system.error(err);
+            }
+
+            if (decision.retry === true) {
                 setTimeout(() => {
                     this.prepRecord(retry + 1);
-                }, 1000 * 5); // 5s
-            } else if (retry < 30) {
-                // retry ここに来るのはチューナーが開けない or ソケットのハングアップとか？ //
-                setTimeout(() => {
-                    this.prepRecord(retry + 1);
-                }, 1000 * 60); // 60s
+                }, decision.delayMs);
             } else {
                 this.isPrepRecording = false;
+                if (reason === 'waitingForEvent') {
+                    this.log.system.error(
+                        `the program did not start within the wait limit: reserveId: ${this.reserve.id}`,
+                    );
+                }
                 // 録画準備失敗を通知
                 this.recordingEvent.emitPrepRecordingFailed(this.reserve);
             }
@@ -404,8 +436,10 @@ class RecorderModel implements IRecorderModel {
                     });
                 }
 
-                reject(new Error('recordingStartError'));
-            }, 1000 * 5);
+                // 「まだ番組が始まっていない」ことを示す専用のエラーにして、
+                // チューナー異常と区別できるようにする
+                reject(new Error(RecorderModel.WAITING_FOR_EVENT_ERROR));
+            }, resolveRecordingRetryConfig(this.config.recording).firstDataTimeoutMs);
 
             // stream データ受診時のコールバック関数定義
             const onData = async () => {
@@ -1103,6 +1137,10 @@ namespace RecorderModel {
     export const CANCEL_EVENT = 'RecordingCancelEvent';
     export const START_RECORDING_EVENT = 'StartRecordingEvent';
     export const EVENT_RELAY_CHECK_TIME = 20 * 1000; // イベントリレーの確認時間 20秒
+    // 「番組がまだ始まっていない」ことを示すエラー。
+    // Mirakurun は EIT[p/f] で対象イベントが現在番組になるまでデータを流さないため、
+    // 前番組の延長 (放送時刻未定) 中はこの状態になる
+    export const WAITING_FOR_EVENT_ERROR = 'WaitingForEventStart';
 }
 
 export default RecorderModel;

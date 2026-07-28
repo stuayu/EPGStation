@@ -59,6 +59,8 @@ export const CONFIG_OVERLAY_FIELDS: readonly ConfigFieldDefinition[] = [
     { key: 'recorded', requiresRestart: true },
     { key: 'recordedTmp', requiresRestart: true },
     { key: 'recordedHistoryRetentionPeriodDays', requiresRestart: false },
+    // RecorderModel は予約ごとに生成され、そのたびに config を読むため再起動不要
+    { key: 'recording', requiresRestart: false },
     { key: 'storageLimitCheckIntervalTime', requiresRestart: true },
     { key: 'isEnabledDropCheck', requiresRestart: false },
     { key: 'dropLog', requiresRestart: true },
