@@ -505,6 +505,8 @@ class RecorderModel implements IRecorderModel {
             videoFile.type = 'ts';
             videoFile.name = 'TS';
             videoFile.recordedId = this.recordedId;
+            // 録画ファイル先頭 (再生位置 0 秒) に対応する実時刻。実況コメントの時刻合わせに使用する
+            videoFile.startAt = new Date().getTime();
             this.log.system.info(`create video file: ${videoFile.filePath}`);
             this.videoFileId = await this.videoFileDB.insertOnce(videoFile);
             this.videoFileFulPath = recPath.fullPath;

@@ -3,7 +3,7 @@ import * as apid from '../../../api';
 import VideoFile from '../../db/entities/VideoFile';
 import IPromiseRetry from '../IPromiseRetry';
 import IDBOperator from './IDBOperator';
-import IVideoFileDB, { UpdateFilePathOption } from './IVideoFileDB';
+import IVideoFileDB, { UpdateFilePathOption, VideoFileMetadata } from './IVideoFileDB';
 
 @injectable()
 export default class VideoFileDB implements IVideoFileDB {
@@ -120,6 +120,58 @@ export default class VideoFileDB implements IVideoFileDB {
     }
 
     /**
+     * ffprobe で実測した動画メタデータを更新する
+     * @param videoFileId: apid.VideoFileId
+     * @param metadata: VideoFileMetadata 実測値
+     * @return Promise<void>
+     */
+    public async updateMetadata(videoFileId: apid.VideoFileId, metadata: VideoFileMetadata): Promise<void> {
+        const connection = await this.op.getConnection();
+        const values: Record<string, unknown> = {
+            duration: metadata.duration,
+            startTime: metadata.startTime,
+            videoCodec: metadata.videoCodec,
+            audioCodec: metadata.audioCodec,
+            width: metadata.width,
+            height: metadata.height,
+            bitRate: metadata.bitRate,
+            analyzedAt: new Date().getTime(),
+        };
+
+        // ffprobe が返したファイルサイズも分かるのでついでに合わせておく
+        if (typeof metadata.size === 'number' && metadata.size > 0) {
+            values.size = metadata.size;
+        }
+
+        const queryBuilder = connection.createQueryBuilder().update(VideoFile).set(values).where({ id: videoFileId });
+
+        await this.promieRetry.run(() => {
+            return queryBuilder.execute();
+        });
+    }
+
+    /**
+     * 録画ファイルの先頭に対応する実時刻を更新する
+     * @param videoFileId: apid.VideoFileId
+     * @param startAt: number 録画開始時刻 (UNIX 時刻・ミリ秒)
+     * @return Promise<void>
+     */
+    public async updateStartAt(videoFileId: apid.VideoFileId, startAt: number): Promise<void> {
+        const connection = await this.op.getConnection();
+        const queryBuilder = connection
+            .createQueryBuilder()
+            .update(VideoFile)
+            .set({
+                startAt: startAt,
+            })
+            .where({ id: videoFileId });
+
+        await this.promieRetry.run(() => {
+            return queryBuilder.execute();
+        });
+    }
+
+    /**
      * 指定したビデオファイル情報を 1 件削除
      * @param VideoFileId: apid.VideoFileId
      * @return Promise<void>
@@ -178,6 +230,57 @@ export default class VideoFileDB implements IVideoFileDB {
 
         return await this.promieRetry.run(() => {
             return queryBuilder.getMany();
+        });
+    }
+
+    /**
+     * まだ ffprobe で解析していないビデオファイルを取得する
+     * @param limit: number 最大取得件数
+     * @return Promise<VideoFile[]>
+     */
+    public async findWithoutMetadata(limit: number): Promise<VideoFile[]> {
+        const connection = await this.op.getConnection();
+
+        const queryBuilder = connection
+            .getRepository(VideoFile)
+            .createQueryBuilder('video_file')
+            .where('video_file.analyzedAt IS NULL')
+            .orderBy('video_file.id', 'DESC')
+            .limit(limit);
+
+        return await this.promieRetry.run(() => {
+            return queryBuilder.getMany();
+        });
+    }
+
+    /**
+     * 登録されているビデオファイルの総件数を返す
+     * @return Promise<number>
+     */
+    public async countAll(): Promise<number> {
+        const connection = await this.op.getConnection();
+
+        const queryBuilder = connection.getRepository(VideoFile).createQueryBuilder('video_file');
+
+        return await this.promieRetry.run(() => {
+            return queryBuilder.getCount();
+        });
+    }
+
+    /**
+     * まだ ffprobe で解析していないビデオファイルの件数を返す
+     * @return Promise<number>
+     */
+    public async countWithoutMetadata(): Promise<number> {
+        const connection = await this.op.getConnection();
+
+        const queryBuilder = connection
+            .getRepository(VideoFile)
+            .createQueryBuilder('video_file')
+            .where('video_file.analyzedAt IS NULL');
+
+        return await this.promieRetry.run(() => {
+            return queryBuilder.getCount();
         });
     }
 }

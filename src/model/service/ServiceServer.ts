@@ -23,6 +23,7 @@ import IConfigFile from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
+import IVideoApiModel from '../api/video/IVideoApiModel';
 import IServiceServer from './IServiceServer';
 import ISocketIOManageModel from './socketio/ISocketIOManageModel';
 import IHLSMemoryStoreModel from './stream/util/IHLSMemoryStoreModel';
@@ -45,6 +46,9 @@ const isPackageMetadata = (value: unknown): value is PackageMetadata => {
 
 @injectable()
 class ServiceServer implements IServiceServer {
+    // 起動時のメタデータ一括解析の 1 回あたりの件数
+    private static readonly VIDEO_METADATA_ANALYZE_CHUNK = 20;
+
     private log: ILogger;
     private config: IConfigFile;
     private socketIoManageModel: ISocketIOManageModel;
@@ -466,9 +470,46 @@ class ServiceServer implements IServiceServer {
     }
 
     /**
+     * 未解析の録画ファイルメタデータをバックグラウンドで順次解析する
+     * @return Promise<void>
+     */
+    private async analyzeVideoFileMetadata(): Promise<void> {
+        const videoApiModel = container.get<IVideoApiModel>('IVideoApiModel');
+
+        try {
+            const status = await videoApiModel.getMetadataStatus();
+            if (status.unanalyzed === 0) {
+                return;
+            }
+            this.log.system.info(`start video file metadata analysis: ${status.unanalyzed} files`);
+
+            let analyzed = 0;
+            let failed = 0;
+            for (;;) {
+                const result = await videoApiModel.analyzeAllMetadata(ServiceServer.VIDEO_METADATA_ANALYZE_CHUNK);
+                analyzed += result.analyzed;
+                failed += result.failed;
+
+                // これ以上進まない (全件失敗 or 対象なし) 場合は打ち切る
+                if (result.analyzed === 0 || result.remaining === 0) {
+                    break;
+                }
+            }
+
+            this.log.system.info(`video file metadata analysis done: analyzed ${analyzed}, failed ${failed}`);
+        } catch (err: any) {
+            this.log.system.error('video file metadata analysis error');
+            this.log.system.error(err);
+        }
+    }
+
+    /**
      * http server 起動
      */
     public start(): void {
+        // 過去の録画ファイルのメタデータをバックグラウンドで埋める
+        void this.analyzeVideoFileMetadata();
+
         const sokcetioServers: http.Server[] = [];
 
         // http

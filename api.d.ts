@@ -519,6 +519,51 @@ export interface VideoFile {
     type: VideoFileType;
     size: number;
     watchHistory?: WatchHistory;
+    // ffprobe で実測したメタデータ (未解析の場合は undefined)
+    duration?: number; // 実測の動画長 (秒)
+    startTime?: number; // コンテナの開始オフセット (秒)
+    startAt?: UnixtimeMS; // 録画ファイル先頭に対応する実時刻
+    videoCodec?: string;
+    audioCodec?: string;
+    width?: number;
+    height?: number;
+    bitRate?: number;
+}
+
+/**
+ * 録画ファイルの実測メタデータ
+ */
+export interface VideoFileMetadataResult {
+    videoFileId: VideoFileId;
+    duration: number | null;
+    startTime: number | null;
+    startAt: UnixtimeMS | null;
+    videoCodec: string | null;
+    audioCodec: string | null;
+    width: number | null;
+    height: number | null;
+    bitRate: number | null;
+    size: number;
+}
+
+/**
+ * 録画ファイルのメタデータ解析状況
+ */
+export interface VideoFileMetadataStatus {
+    total: number;
+    analyzed: number;
+    unanalyzed: number;
+}
+
+export interface AnalyzeVideoFilesOption {
+    // 一度に解析する上限件数。省略時は 100 件
+    limit?: number;
+}
+
+export interface AnalyzeVideoFilesResult {
+    analyzed: number;
+    failed: number;
+    remaining: number;
 }
 
 export interface DashboardData {

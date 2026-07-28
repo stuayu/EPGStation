@@ -84,7 +84,7 @@ class WatchRecorded extends Vue {
         this.recordedId = typeof this.$route.query.recordedId !== 'string' ? null : parseInt(this.$route.query.recordedId, 10);
 
         this.$nextTick(async () => {
-            const jikkyoKakologParam = this.recordedId === null ? null : await this.getJikkyoKakologParam(this.recordedId);
+            const jikkyoKakologParam = this.recordedId === null ? null : await this.getJikkyoKakologParam(this.recordedId, videoId);
             if (videoId !== null) {
                 (this.videoParam as NormalVideoParam) = {
                     type: 'Normal',
@@ -102,7 +102,10 @@ class WatchRecorded extends Vue {
     /**
      * 録画情報からニコニコ実況過去ログの取得パラメータを解決する
      */
-    private async getJikkyoKakologParam(recordedId: apid.RecordedId): Promise<{ jikkyoChannelId: string; jikkyoStartAt: number; jikkyoEndAt: number } | null> {
+    private async getJikkyoKakologParam(
+        recordedId: apid.RecordedId,
+        videoFileId: apid.VideoFileId | null,
+    ): Promise<{ jikkyoChannelId: string; jikkyoStartAt: number; jikkyoEndAt: number } | null> {
         try {
             const recorded = await this.recordedApiModel.get(recordedId, true);
             let channel = this.channelModel.findChannel(recorded.channelId, true);
@@ -114,6 +117,26 @@ class WatchRecorded extends Vue {
             const jikkyoChannelId = channel === null ? null : JikkyoUtil.findJikkyoChannelId(channel);
             if (jikkyoChannelId === null) {
                 return null;
+            }
+
+            // 録画ファイルの実測メタデータがあればそちらを優先する (番組時刻とのずれを防ぐ)
+            const videoFile =
+                videoFileId === null || typeof recorded.videoFiles === 'undefined'
+                    ? undefined
+                    : recorded.videoFiles.find(file => file.id === videoFileId);
+
+            if (typeof videoFile !== 'undefined' && typeof videoFile.startAt === 'number') {
+                const startAt = videoFile.startAt;
+                const endAt =
+                    typeof videoFile.duration === 'number' && videoFile.duration > 0
+                        ? startAt + Math.round(videoFile.duration * 1000)
+                        : recorded.endAt;
+
+                return {
+                    jikkyoChannelId: jikkyoChannelId,
+                    jikkyoStartAt: startAt,
+                    jikkyoEndAt: endAt,
+                };
             }
 
             return {

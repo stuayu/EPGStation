@@ -1568,6 +1568,119 @@ components:
                     description: 視聴履歴 (featureFlags.watchHistory が有効な場合のみ含まれる)
                     allOf:
                         - $ref: '#/components/schemas/WatchHistory'
+                duration:
+                    description: ffprobe で実測した動画長 (秒)
+                    type: number
+                startTime:
+                    description: コンテナの開始オフセット (秒)
+                    type: number
+                startAt:
+                    description: 録画ファイル先頭 (再生位置 0 秒) に対応する実時刻
+                    allOf:
+                        - $ref: '#/components/schemas/UnixtimeMS'
+                videoCodec:
+                    description: 映像コーデック
+                    type: string
+                audioCodec:
+                    description: 音声コーデック
+                    type: string
+                width:
+                    description: 映像の横解像度
+                    type: integer
+                height:
+                    description: 映像の縦解像度
+                    type: integer
+                bitRate:
+                    description: ビットレート (bps)
+                    type: number
+
+        VideoFileMetadataResult:
+            description: 録画ファイルの実測メタデータ
+            type: object
+            required:
+                - videoFileId
+                - duration
+                - startTime
+                - startAt
+                - videoCodec
+                - audioCodec
+                - width
+                - height
+                - bitRate
+                - size
+            properties:
+                videoFileId:
+                    $ref: '#/components/schemas/VideoFileId'
+                duration:
+                    description: 実測した動画長 (秒)
+                    type: number
+                    nullable: true
+                startTime:
+                    description: コンテナの開始オフセット (秒)
+                    type: number
+                    nullable: true
+                startAt:
+                    description: 録画ファイル先頭に対応する実時刻
+                    type: integer
+                    nullable: true
+                videoCodec:
+                    type: string
+                    nullable: true
+                audioCodec:
+                    type: string
+                    nullable: true
+                width:
+                    type: integer
+                    nullable: true
+                height:
+                    type: integer
+                    nullable: true
+                bitRate:
+                    type: number
+                    nullable: true
+                size:
+                    description: ファイルサイズ
+                    type: integer
+
+        VideoFileMetadataStatus:
+            description: 録画ファイルのメタデータ解析状況
+            type: object
+            required: [total, analyzed, unanalyzed]
+            properties:
+                total:
+                    description: 録画ファイル総数
+                    type: integer
+                analyzed:
+                    description: 解析済み件数
+                    type: integer
+                unanalyzed:
+                    description: 未解析件数
+                    type: integer
+
+        AnalyzeVideoFilesOption:
+            description: 録画ファイルメタデータ一括解析オプション
+            type: object
+            properties:
+                limit:
+                    description: 一度に解析する上限件数 (省略時 100 件)
+                    type: integer
+                    minimum: 1
+                    maximum: 1000
+
+        AnalyzeVideoFilesResult:
+            description: 録画ファイルメタデータ一括解析結果
+            type: object
+            required: [analyzed, failed, remaining]
+            properties:
+                analyzed:
+                    description: 解析に成功した件数
+                    type: integer
+                failed:
+                    description: 解析に失敗した件数
+                    type: integer
+                remaining:
+                    description: 残りの未解析件数
+                    type: integer
 
         DashboardData:
             type: object
@@ -2245,7 +2358,7 @@ components:
                 - lines
             properties:
                 id:
-                    description: ログファ���ル id
+                    description: ログファ����ル id
                     type: string
                 process:
                     $ref: '#/components/schemas/LogProcessType'
@@ -4103,7 +4216,7 @@ components:
                 $ref: '#/components/schemas/UnixtimeMS'
 
         EndAt:
-            description: 終了時刻
+            description: 終了��刻
             in: query
             name: endAt
             required: true
