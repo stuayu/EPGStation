@@ -91,3 +91,41 @@ test('only the keys that actually differ from config.yml count as changed', () =
     assert.deepEqual(diffConfigOverlayKeys(baseConfig, { port: 9999 }), ['port']);
     assert.deepEqual(diffConfigOverlayKeys(baseConfig, { recorded: [{ name: 'recorded', path: '/mnt/recorded' }] }), []);
 });
+
+// --- 配信プロファイルと外部コマンド (追加でフォーム化した項目) ---
+
+test('streaming profiles and external commands are editable from the GUI', () => {
+    for (const key of [
+        'stream',
+        'reserveNewAddtionCommand',
+        'recordingStartCommand',
+        'recordingFinishCommand',
+        'encodingFinishCommand',
+    ]) {
+        assert.equal(CONFIG_OVERLAY_KEYS.has(key), true, key);
+    }
+});
+
+test('external commands require a restart but streaming profiles do not', () => {
+    // ExternalCommandManageModel はコンストラクタで config を読む
+    assert.deepEqual(configOverlayRequiresRestart(['recordingStartCommand']), ['recordingStartCommand']);
+    // StreamProfileManageModel は呼び出しのたびに config を読む
+    assert.deepEqual(configOverlayRequiresRestart(['stream']), []);
+});
+
+test('a streaming profile overlay merges per scope and keeps the other scopes', () => {
+    const base = {
+        ...baseConfig,
+        stream: {
+            live: { ts: { mp4: [{ name: '1080p', cmd: 'a' }], webm: [{ name: 'webm', cmd: 'b' }] } },
+            recorded: { ts: { mp4: [{ name: 'rec', cmd: 'c' }] } },
+        },
+    };
+    const merged = mergeConfigOverlay(base, {
+        stream: { live: { ts: { mp4: [{ name: '720p', cmd: 'z' }] } } },
+    });
+    // 差し替えたコンテナだけが変わる
+    assert.deepEqual(merged.stream.live.ts.mp4, [{ name: '720p', cmd: 'z' }]);
+    assert.deepEqual(merged.stream.live.ts.webm, [{ name: 'webm', cmd: 'b' }]);
+    assert.deepEqual(merged.stream.recorded.ts.mp4, [{ name: 'rec', cmd: 'c' }]);
+});

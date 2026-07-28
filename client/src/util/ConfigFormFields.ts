@@ -132,6 +132,20 @@ export const CONFIG_FORM_SECTIONS: ConfigFormSection[] = [
         ],
     },
     {
+        title: '外部コマンド実行',
+        fields: [
+            { path: 'reserveNewAddtionCommand', label: '予約が新規追加されたとき', type: 'string' },
+            { path: 'reserveUpdateCommand', label: '予約情報が更新されたとき', type: 'string' },
+            { path: 'reservedeletedCommand', label: '予約が削除されたとき', type: 'string' },
+            { path: 'recordingPreStartCommand', label: '録画準備を開始したとき', type: 'string' },
+            { path: 'recordingPrepRecFailedCommand', label: '録画準備に失敗したとき', type: 'string' },
+            { path: 'recordingStartCommand', label: '録画を開始したとき', type: 'string' },
+            { path: 'recordingFinishCommand', label: '録画が終了したとき', type: 'string' },
+            { path: 'recordingFailedCommand', label: '録画中にエラーが起きたとき', type: 'string' },
+            { path: 'encodingFinishCommand', label: 'エンコードが終了したとき', type: 'string' },
+        ],
+    },
+    {
         title: '機能フラグ',
         fields: [
             { path: 'featureFlags.watchHistory', label: '視聴履歴', type: 'boolean' },
