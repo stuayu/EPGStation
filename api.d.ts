@@ -348,7 +348,7 @@ export interface SearchPeriod {
 export interface RuleSearchOption {
     keyword?: string; // 検索キーワード
     ignoreKeyword?: string; // 除外検索キーワード
-    keyCS?: boolean; // 大文字小文字区別有効化 (検索キーワード)
+    keyCS?: boolean; // 大文字���文字区別有効化 (検索キーワード)
     keyRegExp?: boolean; // 正規表現 (検索キーワード)
     name?: boolean; // 番組名 (検索キーワード)
     description?: boolean; // 概要 (検索キーワード)
@@ -1518,6 +1518,51 @@ export interface SplitSeriesOption {
 export interface SplitSeriesResult {
     seriesId: SeriesId;
     title: string;
+}
+
+/**
+ * 録画が 0 件のシリーズ 1 件
+ */
+export interface EmptySeriesItem {
+    seriesId: SeriesId;
+    title: string;
+    normalizedTitle: string;
+    origin: SeriesOrigin;
+    // このシリーズを指しているエイリアス辞書の件数 (削除すると一緒に消える)
+    aliasCount: number;
+    // このシリーズに登録されているエピソード数 (削除すると一緒に消える)
+    episodeCount: number;
+    seasonYear?: number | null;
+    seasonName?: 'WINTER' | 'SPRING' | 'SUMMER' | 'AUTUMN' | null;
+    createdAt: UnixtimeMS;
+    updatedAt: UnixtimeMS;
+}
+
+/**
+ * 録画が 0 件のシリーズ一覧
+ */
+export interface EmptySeriesListResult {
+    total: number;
+    items: EmptySeriesItem[];
+}
+
+/**
+ * 録画が 0 件のシリーズ削除のリクエストボディ
+ */
+export interface DeleteEmptySeriesOption {
+    // 削除対象のシリーズ id。省略した場合は録画 0 件のシリーズをすべて削除する
+    seriesIds?: SeriesId[];
+}
+
+/**
+ * 録画が 0 件のシリーズ削除結果
+ */
+export interface DeleteEmptySeriesResult {
+    deletedSeriesCount: number;
+    // 一緒に削除したエイリアス辞書の件数
+    deletedAliasCount: number;
+    // 一緒に削除したエピソード数
+    deletedEpisodeCount: number;
 }
 
 /**

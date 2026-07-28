@@ -492,6 +492,70 @@
                                 <v-btn variant="text" :disabled="changedAliasItems.length === 0" @click="aliasEdits = {}">変更を破棄</v-btn>
                                 <span class="text-caption text-grey">保存した辞書は手動修正扱いになり、以後の自動学習で上書きされません</span>
                             </div>
+
+                            <v-divider class="my-4"></v-divider>
+                            <div class="text-subtitle-1 mb-2">録画 0 件のシリーズの掃除</div>
+                            <div class="text-caption mb-2">
+                                マージ・分割・録画削除の結果、録画が 1 件も紐づいていないシリーズ (自動生成の抜け殻) が残ることがある。
+                                削除すると、そのシリーズを指しているエイリアス辞書・エピソード・予約ヒントも一緒に消える (録画ファイルは削除されない)
+                            </div>
+                            <div class="d-flex align-center ga-2 flex-wrap mb-2">
+                                <v-btn size="small" variant="text" :loading="emptySeriesLoading" @click="loadEmptySeries">再読み込み</v-btn>
+                                <v-btn
+                                    size="small"
+                                    color="error"
+                                    variant="outlined"
+                                    :loading="emptySeriesDeleting"
+                                    :disabled="selectedEmptySeriesIds.length === 0"
+                                    @click="deleteEmptySeries(false)"
+                                    >選択した {{ selectedEmptySeriesIds.length }} 件を削除</v-btn
+                                >
+                                <v-btn
+                                    size="small"
+                                    color="error"
+                                    variant="text"
+                                    :loading="emptySeriesDeleting"
+                                    :disabled="emptySeries.length === 0"
+                                    @click="deleteEmptySeries(true)"
+                                    >すべて削除 ({{ emptySeries.length }} 件)</v-btn
+                                >
+                            </div>
+                            <v-table v-if="emptySeries.length > 0" density="compact">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 48px">
+                                            <v-checkbox-btn
+                                                :model-value="isAllEmptySeriesSelected"
+                                                :indeterminate="selectedEmptySeriesIds.length > 0 && isAllEmptySeriesSelected === false"
+                                                @update:model-value="toggleAllEmptySeries"
+                                            ></v-checkbox-btn>
+                                        </th>
+                                        <th>シリーズ</th>
+                                        <th style="width: 110px">出所</th>
+                                        <th style="width: 90px">辞書</th>
+                                        <th style="width: 90px">話数</th>
+                                        <th style="width: 150px">作成日時</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="s in emptySeries" :key="s.seriesId">
+                                        <td><v-checkbox-btn v-model="selectedEmptySeriesIds" :value="s.seriesId"></v-checkbox-btn></td>
+                                        <td>
+                                            {{ s.title }}
+                                            <div class="text-caption text-grey">{{ s.normalizedTitle }}</div>
+                                        </td>
+                                        <td>
+                                            <v-chip size="x-small" :color="s.origin === 'dictionary' ? 'primary' : undefined">
+                                                {{ s.origin === 'dictionary' ? '辞書' : '自動生成' }}
+                                            </v-chip>
+                                        </td>
+                                        <td>{{ s.aliasCount }}</td>
+                                        <td>{{ s.episodeCount }}</td>
+                                        <td class="text-caption">{{ formatDate(s.createdAt) }}</td>
+                                    </tr>
+                                </tbody>
+                            </v-table>
+                            <v-alert v-else type="info" class="mt-2">録画 0 件のシリーズはありません</v-alert>
                             </template>
                             <v-alert v-else type="info" class="mt-4">シリーズライブラリ機能 (featureFlags.seriesLibrary) が無効なため、バックフィルとエイリアス管理は利用できません</v-alert>
                         </v-window-item>
@@ -511,7 +575,7 @@
                             <div class="text-subtitle-1 mb-2">ログインユーザー</div>
                             <div class="text-caption mb-2">
                                 システム管理者は設定変更・ユーザー管理・バージョン更新ができます。最初にサインアップした人が自動でシステム管理者になり、以降は一般権限です。
-                                パスワードを変更すると、そのユーザーのログイン状態 (発行済みセッション) はすべて無効になります
+                                パスワードを変更すると、そのユーザ��のログイン状態 (発行済みセッション) はすべて無効になります
                             </div>
                             <v-table density="compact">
                                 <thead>
@@ -625,7 +689,7 @@ import IAuthApiModel, { AuthUserItem } from '@/model/api/auth/IAuthApiModel';
 import container from '@/model/ModelContainer';
 import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
 import ISystemSettingApiModel from '@/model/api/config/ISystemSettingApiModel';
-import ISeriesApiModel, { SeriesAliasItem, SeriesBackfillResult, SeriesListItem, ProgramSeriesMetrics } from '@/model/api/series/ISeriesApiModel';
+import ISeriesApiModel, { EmptySeriesItem, SeriesAliasItem, SeriesBackfillResult, SeriesListItem, ProgramSeriesMetrics } from '@/model/api/series/ISeriesApiModel';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
@@ -846,6 +910,12 @@ class SystemSetting extends Vue {
     backfillStarting = false;
     private backfillPollTimer: ReturnType<typeof setInterval> | null = null;
     private seriesSearchTimer: ReturnType<typeof setTimeout> | null = null;
+    // --- 録画 0 件のシリーズの掃除 ---
+    emptySeries: EmptySeriesItem[] = [];
+    selectedEmptySeriesIds: number[] = [];
+    emptySeriesLoading = false;
+    emptySeriesDeleting = false;
+
     aliases: SeriesAliasItem[] = [];
     aliasSourceFilter: 'all' | 'llm' | 'manual' = 'all';
     aliasKeyword = '';
@@ -1116,6 +1186,7 @@ class SystemSetting extends Vue {
         if (this.isEnabledSeriesLibrary === true) {
             await this.refreshBackfillStatus();
             await this.loadAliases();
+            await this.loadEmptySeries();
             await this.loadMetrics();
         }
         await this.loadHistory();
@@ -1429,6 +1500,64 @@ class SystemSetting extends Vue {
             this.aliases = await this.seriesApi.listAliases();
         } catch (err) {
             console.error(err);
+        }
+    }
+
+    get isAllEmptySeriesSelected(): boolean {
+        return this.emptySeries.length > 0 && this.selectedEmptySeriesIds.length === this.emptySeries.length;
+    }
+
+    /**
+     * 録画 0 件のシリーズを全件選択 / 選択解除する
+     * @param value: boolean | null チェック状態
+     */
+    toggleAllEmptySeries(value: boolean | null): void {
+        this.selectedEmptySeriesIds = value === true ? this.emptySeries.map(s => s.seriesId) : [];
+    }
+
+    /**
+     * 録画 0 件のシリーズ一覧を取得する
+     */
+    async loadEmptySeries(): Promise<void> {
+        this.emptySeriesLoading = true;
+        try {
+            const result = await this.seriesApi.listEmptySeries();
+            this.emptySeries = result.items;
+            // 削除済み / 録画が紐づいたシリーズを選択に残さない
+            const ids = new Set(result.items.map(s => s.seriesId));
+            this.selectedEmptySeriesIds = this.selectedEmptySeriesIds.filter(id => ids.has(id));
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: '録画 0 件のシリーズの取得に失敗しました' });
+        } finally {
+            this.emptySeriesLoading = false;
+        }
+    }
+
+    /**
+     * 録画 0 件のシリーズを削除する
+     * @param all: boolean true の場合は一覧にある空シリーズをすべて削除する
+     */
+    async deleteEmptySeries(all: boolean): Promise<void> {
+        const targets = all === true ? this.emptySeries.map(s => s.seriesId) : this.selectedEmptySeriesIds;
+        if (targets.length === 0) return;
+        if (window.confirm(`録画 0 件のシリーズ ${targets.length} 件を削除しますか? (録画ファイルは削除されません)`) === false) return;
+
+        this.emptySeriesDeleting = true;
+        try {
+            const result = await this.seriesApi.deleteEmptySeries(targets);
+            this.snackbarState.open({
+                color: 'success',
+                text: `シリーズ ${result.deletedSeriesCount} 件 / 辞書 ${result.deletedAliasCount} 件 / エピソード ${result.deletedEpisodeCount} 件を削除しました`,
+            });
+            this.selectedEmptySeriesIds = [];
+            await this.loadEmptySeries();
+            await this.loadAliases();
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: '録画 0 件のシリーズの削除に失敗しました' });
+        } finally {
+            this.emptySeriesDeleting = false;
         }
     }
 

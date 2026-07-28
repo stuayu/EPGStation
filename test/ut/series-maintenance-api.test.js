@@ -239,6 +239,74 @@ test('alias bulk edit rejects an invalid body', async () => {
     assert.deepEqual(await model.updateBulk({ items: [] }), { updated: 0, removed: 0, failed: [] });
 });
 
+function emptySeriesFixture() {
+    const rows = [
+        {
+            series: { id: 11, title: '抜け殻A', normalizedTitle: 'a', syobocalTid: null, annictId: null, wikidataQid: null, seasonYear: null, seasonName: null, createdAt: 100, updatedAt: 200 },
+            aliasCount: 2,
+            episodeCount: 3,
+        },
+        {
+            series: { id: 12, title: '抜け殻B', normalizedTitle: 'b', syobocalTid: 555, annictId: null, wikidataQid: null, seasonYear: 2025, seasonName: 'SPRING', createdAt: 110, updatedAt: 210 },
+            aliasCount: 0,
+            episodeCount: 0,
+        },
+    ];
+    const deleted = [];
+    const db = {
+        listEmptySeries: async () => rows,
+        deleteSeriesByIds: async ids => {
+            deleted.push(...ids);
+            return ids.length;
+        },
+    };
+    return { model: new MaintenanceModel(config, db), deleted };
+}
+
+test('empty series list reports alias / episode counts and origin', async () => {
+    const { model } = emptySeriesFixture();
+    const result = await model.listEmpty();
+    assert.equal(result.total, 2);
+    assert.equal(result.items[0].seriesId, 11);
+    assert.equal(result.items[0].origin, 'local');
+    assert.equal(result.items[0].aliasCount, 2);
+    assert.equal(result.items[1].origin, 'dictionary');
+});
+
+test('empty series delete removes every empty series when no ids are given', async () => {
+    const { model, deleted } = emptySeriesFixture();
+    const result = await model.deleteEmpty();
+    assert.equal(result.deletedSeriesCount, 2);
+    assert.equal(result.deletedAliasCount, 2);
+    assert.equal(result.deletedEpisodeCount, 3);
+    assert.deepEqual(deleted, [11, 12]);
+});
+
+test('empty series delete accepts a subset of ids', async () => {
+    const { model, deleted } = emptySeriesFixture();
+    const result = await model.deleteEmpty([12, 12]);
+    assert.equal(result.deletedSeriesCount, 1);
+    assert.deepEqual(deleted, [12]);
+});
+
+test('empty series delete refuses ids that still have recordings', async () => {
+    const { model, deleted } = emptySeriesFixture();
+    await assert.rejects(() => model.deleteEmpty([11, 99]), /SeriesIsNotEmpty/);
+    assert.deepEqual(deleted, []);
+});
+
+test('empty series delete rejects an invalid body', async () => {
+    const { model } = emptySeriesFixture();
+    await assert.rejects(() => model.deleteEmpty([]), /InvalidRequestBody/);
+    await assert.rejects(() => model.deleteEmpty(['x']), /InvalidRequestBody/);
+});
+
+test('empty series maintenance is hidden while the series library feature is disabled', async () => {
+    const model = new MaintenanceModel(disabledConfig, {});
+    await assert.rejects(() => model.listEmpty(), /SeriesLibraryFeatureIsDisabled/);
+    await assert.rejects(() => model.deleteEmpty(), /SeriesLibraryFeatureIsDisabled/);
+});
+
 test('alias editing is blocked while the series library feature is disabled', async () => {
     const model = new AliasModel(disabledConfig, {});
     await assert.rejects(() => model.update(1, { seriesId: 2 }), /SeriesLibraryFeatureIsDisabled/);
