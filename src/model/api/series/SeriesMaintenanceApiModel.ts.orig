@@ -3,9 +3,6 @@ import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
 import ISeriesDB from '../../db/ISeriesDB';
 import ISeriesMetadataFiller from '../../series/ISeriesMetadataFiller';
-import IWorkDictionary from '../../series/IWorkDictionary';
-import { normalizeSeriesTitle } from '../../series/SeriesNormalizer';
-import Series from '../../../db/entities/Series';
 import { rankMergeCandidates } from '../../series/SeriesMergeCandidates';
 import { getSeriesOrigin } from '../../series/SeriesOrigin';
 import * as apid from '../../../../api';
@@ -16,9 +13,6 @@ import ISeriesMaintenanceApiModel, {
     SplitSeriesResult,
     EmptySeriesListResult,
     DeleteEmptySeriesResult,
-    DictionaryWorkSearchResult,
-    CreateSeriesFromDictionaryOption,
-    CreateSeriesFromDictionaryResult,
 } from './ISeriesMaintenanceApiModel';
 @injectable()
 export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiModel {
@@ -26,7 +20,6 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
         @inject('IConfiguration') private config: IConfiguration,
         @inject('ISeriesDB') private db: ISeriesDB,
         @inject('ISeriesMetadataFiller') private metadataFiller: ISeriesMetadataFiller,
-        @inject('IWorkDictionary') private dictionary: IWorkDictionary,
     ) {}
 
     private static readonly SEASON_NAMES: ReadonlySet<string> = new Set(['WINTER', 'SPRING', 'SUMMER', 'AUTUMN']);
@@ -214,121 +207,6 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
             deletedAliasCount: deletedAliasCount,
             deletedEpisodeCount: deletedEpisodeCount,
         };
-    }
-
-    /**
-     * 作品辞書をキーワードで横断検索する
-     * @param keyword: string 検索キーワード
-     * @param limit: number | undefined 最大件数
-     * @return Promise<DictionaryWorkSearchResult>
-     */
-    public async searchDictionary(keyword: string, limit?: number): Promise<DictionaryWorkSearchResult> {
-        this.enabled();
-        const trimmed = typeof keyword === 'string' ? keyword.trim() : '';
-        if (trimmed === '') throw new Error('InvalidRequestBody');
-        const matches = await this.dictionary.search(trimmed, limit);
-        const items: apid.DictionaryWorkItem[] = [];
-        for (const match of matches) {
-            // すでにローカルにある作品は「登録済み」として見せたいのでシリーズ id を引く
-            const series = await this.findSeriesByExternalIds(match);
-            items.push({
-                title: match.title,
-                titleKana: match.titleKana,
-                syobocalTid: match.syobocalTid,
-                annictId: match.annictId,
-                wikidataQid: match.wikidataQid,
-                tmdbId: match.tmdbId,
-                seasonYear: match.seasonYear,
-                seasonName: match.seasonName,
-                totalEpisodes: match.totalEpisodes,
-                source: match.source,
-                matchType: match.matchType,
-                seriesId: series === null ? null : series.id,
-            });
-        }
-        return { total: items.length, items: items };
-    }
-
-    /**
-     * 辞書の作品からシリーズを作る
-     * @param option: CreateSeriesFromDictionaryOption 外部 ID (いずれか 1 つ以上)
-     * @return Promise<CreateSeriesFromDictionaryResult>
-     */
-    public async createFromDictionary(
-        option: CreateSeriesFromDictionaryOption,
-    ): Promise<CreateSeriesFromDictionaryResult> {
-        this.enabled();
-        const syobocalTid =
-            typeof option?.syobocalTid === 'number' && Number.isInteger(option.syobocalTid) ? option.syobocalTid : null;
-        const annictId =
-            typeof option?.annictId === 'number' && Number.isInteger(option.annictId) ? option.annictId : null;
-        const wikidataQid =
-            typeof option?.wikidataQid === 'string' && option.wikidataQid.trim() !== ''
-                ? option.wikidataQid.trim()
-                : null;
-        if (syobocalTid === null && annictId === null && wikidataQid === null) throw new Error('InvalidRequestBody');
-
-        // クライアントから来た ID をそのまま信用せず、辞書を引き直して作品情報を確定��せる
-        const work = await this.dictionary.findByIds({
-            syobocalTid: syobocalTid,
-            annictId: annictId,
-            wikidataQid: wikidataQid,
-        });
-        if (work === null) throw new Error('DictionaryWorkIsNotFound');
-
-        // 同じ外部 ID のシリーズがすでにあれば重複を作らない
-        const sameIds = await this.findSeriesByExternalIds(work);
-        if (sameIds !== null) return { seriesId: sameIds.id, title: sameIds.title, created: false };
-
-        // 外部 ID が未設定のまま自動生成されたシリーズと衝突しないよう、正規化タイトルでも見る
-        const normalizedTitle = normalizeSeriesTitle(work.title);
-        const sameTitle = (await this.db.findCandidates(normalizedTitle)).find(
-            x => x.normalizedTitle === normalizedTitle,
-        );
-        if (typeof sameTitle !== 'undefined') return { seriesId: sameTitle.id, title: sameTitle.title, created: false };
-
-        const now = Date.now();
-        const created = await this.db.createSeries({
-            title: work.title,
-            normalizedTitle: normalizedTitle,
-            preferredChannelId: null,
-            syobocalTid: work.syobocalTid,
-            annictId: work.annictId === null ? null : String(work.annictId),
-            wikidataQid: work.wikidataQid,
-            tmdbId: work.tmdbId,
-            titleKana: work.titleKana,
-            seasonYear: work.seasonYear,
-            seasonName: work.seasonName,
-            totalEpisodes: work.totalEpisodes,
-            createdAt: now,
-            updatedAt: now,
-        });
-        return { seriesId: created.id, title: created.title, created: true };
-    }
-
-    /**
-     * 辞書の外部 ID から既存シリーズを引く (しょぼいカレンダー → Annict → Wikidata の順)
-     * @param ids: 外部 ID を持つ作品情報
-     * @return Promise<Series | null>
-     */
-    private async findSeriesByExternalIds(ids: {
-        syobocalTid: number | null;
-        annictId: number | null;
-        wikidataQid: string | null;
-    }): Promise<Series | null> {
-        if (ids.syobocalTid !== null) {
-            const series = await this.db.findBySyobocalTid(ids.syobocalTid);
-            if (series !== null) return series;
-        }
-        if (ids.annictId !== null) {
-            const series = await this.db.findByAnnictId(String(ids.annictId));
-            if (series !== null) return series;
-        }
-        if (ids.wikidataQid !== null) {
-            const series = await this.db.findByWikidataQid(ids.wikidataQid);
-            if (series !== null) return series;
-        }
-        return null;
     }
 
     private enabled() {

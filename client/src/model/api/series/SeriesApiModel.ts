@@ -17,6 +17,9 @@ import ISeriesApiModel, {
     RefreshSeriesMetadataResult,
     EmptySeriesListResult,
     DeleteEmptySeriesResult,
+    DictionaryWorkItem,
+    DictionaryWorkSearchResult,
+    CreateSeriesFromDictionaryResult,
 } from './ISeriesApiModel';
 @injectable()
 export default class SeriesApiModel implements ISeriesApiModel {
@@ -108,6 +111,29 @@ export default class SeriesApiModel implements ISeriesApiModel {
      */
     public async deleteEmptySeries(seriesIds?: number[]): Promise<DeleteEmptySeriesResult> {
         return (await this.repository.delete('/series/empty', { data: typeof seriesIds === 'undefined' ? {} : { seriesIds } })).data;
+    }
+    /**
+     * 作品辞書をキーワードで横断検索する
+     * @param keyword: string 検索キーワード
+     * @param limit: number | undefined 最大件数
+     * @return Promise<DictionaryWorkSearchResult>
+     */
+    public async searchDictionary(keyword: string, limit?: number): Promise<DictionaryWorkSearchResult> {
+        return (await this.repository.get('/series/dictionary', { params: { keyword, limit } })).data;
+    }
+    /**
+     * 辞書の作品からシリーズを作る
+     * @param work: DictionaryWorkItem 検索結果 1 件
+     * @return Promise<CreateSeriesFromDictionaryResult>
+     */
+    public async createSeriesFromDictionary(work: DictionaryWorkItem): Promise<CreateSeriesFromDictionaryResult> {
+        return (
+            await this.repository.post('/series/dictionary', {
+                syobocalTid: work.syobocalTid ?? null,
+                annictId: work.annictId ?? null,
+                wikidataQid: work.wikidataQid ?? null,
+            })
+        ).data;
     }
     public async listAliases(seriesId?: number): Promise<SeriesAliasItem[]> {
         return (await this.repository.get('/series/aliases', { params: { seriesId } })).data;

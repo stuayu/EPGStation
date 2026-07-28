@@ -494,6 +494,68 @@
                             </div>
 
                             <v-divider class="my-4"></v-divider>
+                            <div class="text-subtitle-1 mb-2">作品辞書から探して登録</div>
+                            <div class="text-caption mb-2">
+                                付け替え先のシリーズがまだ無いときは、同期済みのマスタ (しょぼいカレンダー / Annict / Wikidata) を直接検索してシリーズを作れる。
+                                作成したシリーズには辞書の外部 ID・読み仮名・クール・総話数がそのまま入る
+                            </div>
+                            <div class="d-flex align-center ga-2 flex-wrap mb-2">
+                                <v-text-field
+                                    v-model="dictionaryKeyword"
+                                    label="作品名で辞書を検索"
+                                    density="compact"
+                                    hide-details
+                                    clearable
+                                    style="max-width: 360px"
+                                    @keyup.enter="searchDictionary"
+                                ></v-text-field>
+                                <v-btn
+                                    color="primary"
+                                    size="small"
+                                    :loading="dictionarySearching"
+                                    :disabled="(dictionaryKeyword || '').trim().length < 2"
+                                    @click="searchDictionary"
+                                    >検索</v-btn
+                                >
+                            </div>
+                            <v-table v-if="dictionaryWorks.length > 0" density="compact">
+                                <thead>
+                                    <tr>
+                                        <th>作品</th>
+                                        <th>辞書</th>
+                                        <th>クール</th>
+                                        <th>話数</th>
+                                        <th>外部 ID</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="w in dictionaryWorks" :key="dictionaryWorkKey(w)">
+                                        <td>
+                                            <div>{{ w.title }}</div>
+                                            <div v-if="w.titleKana" class="text-caption text-grey">{{ w.titleKana }}</div>
+                                        </td>
+                                        <td>{{ dictionarySourceLabel(w.source) }}</td>
+                                        <td>{{ dictionarySeasonLabel(w) }}</td>
+                                        <td>{{ w.totalEpisodes || '-' }}</td>
+                                        <td class="text-caption">{{ dictionaryIdsLabel(w) }}</td>
+                                        <td class="text-right">
+                                            <v-chip v-if="w.seriesId" size="small" color="success" variant="tonal">登録済み</v-chip>
+                                            <v-btn
+                                                v-else
+                                                size="small"
+                                                variant="outlined"
+                                                :loading="dictionaryCreatingKey === dictionaryWorkKey(w)"
+                                                @click="createSeriesFromDictionary(w)"
+                                                >シリーズを作成</v-btn
+                                            >
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </v-table>
+                            <v-alert v-else-if="dictionarySearched" type="info" class="mt-2">辞書に一致する作品がありません</v-alert>
+
+                            <v-divider class="my-4"></v-divider>
                             <div class="text-subtitle-1 mb-2">録画 0 件のシリーズの掃除</div>
                             <div class="text-caption mb-2">
                                 マージ・分割・録画削除の結果、録画が 1 件も紐づいていないシリーズ (自動生成の抜け殻) が残ることがある。
@@ -689,7 +751,7 @@ import IAuthApiModel, { AuthUserItem } from '@/model/api/auth/IAuthApiModel';
 import container from '@/model/ModelContainer';
 import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
 import ISystemSettingApiModel from '@/model/api/config/ISystemSettingApiModel';
-import ISeriesApiModel, { EmptySeriesItem, SeriesAliasItem, SeriesBackfillResult, SeriesListItem, ProgramSeriesMetrics } from '@/model/api/series/ISeriesApiModel';
+import ISeriesApiModel, { DictionaryWorkItem, EmptySeriesItem, SeriesAliasItem, SeriesBackfillResult, SeriesListItem, ProgramSeriesMetrics } from '@/model/api/series/ISeriesApiModel';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
@@ -915,6 +977,12 @@ class SystemSetting extends Vue {
     selectedEmptySeriesIds: number[] = [];
     emptySeriesLoading = false;
     emptySeriesDeleting = false;
+    dictionaryKeyword = '';
+    dictionaryWorks: DictionaryWorkItem[] = [];
+    dictionarySearching = false;
+    dictionarySearched = false;
+    // 作成ボタンを行単位で loading にするためのキー
+    dictionaryCreatingKey: string | null = null;
 
     aliases: SeriesAliasItem[] = [];
     aliasSourceFilter: 'all' | 'llm' | 'manual' = 'all';
@@ -981,7 +1049,7 @@ class SystemSetting extends Vue {
     }
 
     /**
-     * 1 行分の付け替え先を編集バッファに記録する (元の値へ戻したら編集を取り消す)
+     * 1 行分の付け替え先を編集バッファに記録する (元の値へ戻したら編集を取り���す)
      */
     setAliasSeries(alias: SeriesAliasItem, seriesId: number | null): void {
         if (seriesId === null || seriesId === alias.seriesId) {
@@ -992,7 +1060,7 @@ class SystemSetting extends Vue {
         this.aliasEdits = { ...this.aliasEdits, [alias.id]: { seriesId, seriesTitle: title } };
     }
     /**
-     * 選択した行をまとめて同じシリーズへ付け替える
+     * 選択した行をまとめて同じシリーズへ付け替え��
      */
     applyBulkAliasSeries(): void {
         if (this.bulkAliasSeriesId === null) return;
@@ -1558,6 +1626,90 @@ class SystemSetting extends Vue {
             this.snackbarState.open({ color: 'error', text: '録画 0 件のシリーズの削除に失敗しました' });
         } finally {
             this.emptySeriesDeleting = false;
+        }
+    }
+
+    /**
+     * 検索結果 1 件を一意に識別するキー (外部 ID の組)
+     */
+    dictionaryWorkKey(work: DictionaryWorkItem): string {
+        return `${work.syobocalTid ?? ''}:${work.annictId ?? ''}:${work.wikidataQid ?? ''}`;
+    }
+
+    /**
+     * 辞書の出所を日本語表記にする
+     */
+    dictionarySourceLabel(source: string): string {
+        if (source === 'syobocal') return 'しょぼいカレンダー';
+        if (source === 'annict') return 'Annict';
+        if (source === 'wikidata') return 'Wikidata';
+        return source;
+    }
+
+    /**
+     * クール表示 (例: 2025 春)。不明なら '-'
+     */
+    dictionarySeasonLabel(work: DictionaryWorkItem): string {
+        const names: { [key: string]: string } = { WINTER: '冬', SPRING: '春', SUMMER: '夏', AUTUMN: '秋' };
+        const season = typeof work.seasonName === 'string' ? (names[work.seasonName] ?? '') : '';
+        if (typeof work.seasonYear !== 'number') return season === '' ? '-' : season;
+        return season === '' ? `${work.seasonYear}` : `${work.seasonYear} 年 ${season}`;
+    }
+
+    /**
+     * 外部 ID を 1 行にまとめて表示する
+     */
+    dictionaryIdsLabel(work: DictionaryWorkItem): string {
+        const ids: string[] = [];
+        if (typeof work.syobocalTid === 'number') ids.push(`TID ${work.syobocalTid}`);
+        if (typeof work.annictId === 'number') ids.push(`Annict ${work.annictId}`);
+        if (typeof work.wikidataQid === 'string' && work.wikidataQid !== '') ids.push(work.wikidataQid);
+        return ids.length === 0 ? '-' : ids.join(' / ');
+    }
+
+    /**
+     * 同期済みの作品辞書をキーワードで横断検索する
+     */
+    async searchDictionary(): Promise<void> {
+        const keyword = (this.dictionaryKeyword ?? '').trim();
+        if (keyword.length < 2) return;
+        this.dictionarySearching = true;
+        try {
+            const result = await this.seriesApi.searchDictionary(keyword);
+            this.dictionaryWorks = result.items;
+            this.dictionarySearched = true;
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: '作品辞書の検索に失敗しました' });
+        } finally {
+            this.dictionarySearching = false;
+        }
+    }
+
+    /**
+     * 辞書の作品からシリーズを作る。
+     * 作成後は付け替え先の候補としてすぐに選べるようエイリアス一覧も読み直す
+     */
+    async createSeriesFromDictionary(work: DictionaryWorkItem): Promise<void> {
+        this.dictionaryCreatingKey = this.dictionaryWorkKey(work);
+        try {
+            const result = await this.seriesApi.createSeriesFromDictionary(work);
+            this.snackbarState.open({
+                color: 'success',
+                text:
+                    result.created === true
+                        ? `シリーズ「${result.title}」を作成しました`
+                        : `シリーズ「${result.title}」はすでに登録されています`,
+            });
+            this.dictionaryWorks = this.dictionaryWorks.map(x =>
+                this.dictionaryWorkKey(x) === this.dictionaryWorkKey(work) ? { ...x, seriesId: result.seriesId } : x,
+            );
+            await this.loadAliases();
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: '辞書からのシリーズ作成に失敗しました' });
+        } finally {
+            this.dictionaryCreatingKey = null;
         }
     }
 

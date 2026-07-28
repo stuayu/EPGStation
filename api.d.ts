@@ -1566,6 +1566,54 @@ export interface DeleteEmptySeriesResult {
 }
 
 /**
+ * 作品辞書 (しょぼいカレンダー / Annict / Wikidata) の検索結果 1 件
+ */
+export interface DictionaryWorkItem {
+    title: string;
+    titleKana?: string | null;
+    syobocalTid?: number | null;
+    annictId?: number | null;
+    wikidataQid?: string | null;
+    tmdbId?: number | null;
+    seasonYear?: number | null;
+    seasonName?: 'WINTER' | 'SPRING' | 'SUMMER' | 'AUTUMN' | null;
+    totalEpisodes?: number | null;
+    // どの辞書で確定したか
+    source: 'syobocal' | 'annict' | 'wikidata';
+    // 照合の種別
+    matchType: 'exact' | 'contain' | 'prefix';
+    // すでにローカルにあるシリーズの id (未登録なら null)
+    seriesId?: SeriesId | null;
+}
+
+/**
+ * 作品辞書の横断検索結果
+ */
+export interface DictionaryWorkSearchResult {
+    total: number;
+    items: DictionaryWorkItem[];
+}
+
+/**
+ * 辞書の作品からシリーズを作るリクエストボディ
+ */
+export interface CreateSeriesFromDictionaryOption {
+    syobocalTid?: number | null;
+    annictId?: number | null;
+    wikidataQid?: string | null;
+}
+
+/**
+ * 辞書からのシリーズ作成結果
+ */
+export interface CreateSeriesFromDictionaryResult {
+    seriesId: SeriesId;
+    title: string;
+    // 新規作成した場合 true。既存シリーズを再利用した場合 false
+    created: boolean;
+}
+
+/**
  * シリーズエイリアス辞書の1件
  */
 export interface SeriesAliasItem {
