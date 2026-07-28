@@ -13,6 +13,12 @@
     - [利用する FFmpeg を明示的に指定したい](#ffmpeg)
     - [利用する FFprobe を明示的に指定したい](#ffprobe)
     - [tsreadex で TS を前処理したい](#tsreadex)
+- [stuayu フォーク独自の設定](#stuayu-フォーク独自の設定)
+    - [ログイン認証・SSO を有効にしたい](#auth)
+    - [番組延長で録画開始が遅れる場合の待ち時間を変えたい](#recording)
+    - [機能ごとの有効・無効を切り替えたい](#featureflags)
+    - [シリーズ名の抽出に LLM を使いたい](#seriesllm)
+    - [新しいバージョンの公開を知りたい](#updatechecker)
 - [詳細設定](#詳細設定)
     - [番組情報の囲み文字の設定を変更したい](#needtoreplaceenclosingcharacters)
     - [録画時の Mirakurun の優先度を変更したい](#recpriority)
@@ -29,7 +35,7 @@
     - [自動起動時の GID を指定したい](#gid)
     - [自動起動時の UID を指定したい](#uid)
     - [録画時にドロップチェックを有効化したい](#isenableddropcheck)
-    - [ドロップログの保存先を変更したい](#dropLog)
+    - [ドロップログの保存先を変更したい](#droplog)
     - [アクセス URL の設定をルートではなくサブディレクトリ下に変更したい](#subdirectory)
     - [Swagger UI で使用するサーバリストを変更したい](#apiservers)
     - [CORS ヘッダーをすべて許可したい](#isallowallcors)
@@ -254,7 +260,174 @@ tsreadex: '/usr/local/bin/tsreadex'
 
 ---
 
-## 更新通知 (stuayu フォーク独自)
+## stuayu フォーク独自の設定
+
+> **画面からも編集できます。** ここに挙げた項目は `config.yml` を直接書くほか、
+> サーバー設定 > 「設定ファイル」タブからフォームで編集できます。
+> 画面での変更は config.yml へ書き戻さず**差分として DB に保存**し、起動時に config.yml へ重ねて適用します
+> (config.yml のコメントや書式は失われません)。
+> ただし **DB 接続設定 (`dbtype` / `mysql` / `sqlite`) と認証設定 (`auth`) は画面から編集できません**。
+> 前者は差分自体を DB から読むため誤設定で復旧できなくなるから、後者は画面へ入る手段そのものだからです。
+
+### auth
+
+#### Web UI / API のログイン認証
+
+有効にすると EPGStation へのアクセスにログインが必要になる。**既定は無効**なので、
+リバースプロキシ側で認証している既存構成には影響しない。
+有効にして最初にアクセスすると管理ユーザーの作成画面が表示される。
+
+**最初にサインアップした人が自動でシステム管理者**になり、以降にサインアップした人は一般権限になる。
+システム管理者は設定変更・ユーザー管理・バージョン更新ができ、他のユーザーへ随時管理者権限を付与できる。
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| object | -            | no   |
+
+- 子プロパティは以下の通り
+
+| 子プロパティ名 | 種類    | 必須 | 説明                                                                     |
+| -------------- | ------- | ---- | ------------------------------------------------------------------------ |
+| enabled        | boolean | no   | ログイン必須にするか。省略時 false                                       |
+| sessionTtlMs   | number  | no   | セッションの有効期間 (ms)。省略時 30 日                                  |
+| allowSignUp    | boolean | no   | 2 人目以降のサインアップを許可するか。省略時 true                        |
+| providers      | object  | no   | 外部 ID プロバイダ (SSO) の設定。`google` / `github`                     |
+
+- `providers.google` / `providers.github` の子プロパティ
+
+| 子プロパティ名 | 種類   | 必須 | 説明                                                                                        |
+| -------------- | ------ | ---- | ------------------------------------------------------------------------------------------- |
+| clientId       | string | yes  | OAuth クライアント ID                                                                       |
+| clientSecret   | string | yes  | OAuth クライアントシークレット                                                              |
+| redirectUri    | string | no   | コールバック URL。省略時は `<アクセス元 URL>/api/auth/oauth/<google\|github>/callback`       |
+
+```yaml
+auth:
+    enabled: true
+    sessionTtlMs: 2592000000
+    allowSignUp: true
+    providers:
+        google:
+            clientId: 'xxxxxxxx.apps.googleusercontent.com'
+            clientSecret: 'xxxxxxxx'
+        github:
+            clientId: 'Iv1.xxxxxxxx'
+            clientSecret: 'xxxxxxxx'
+```
+
+- SSO のクライアント ID / シークレットは**ログイン前に必要**なため、DB (設定画面) ではなく config.yml に置く
+- コールバック URL は `X-Forwarded-Proto` / `X-Forwarded-Host` を見てアクセス元から自動生成する。リバースプロキシ配下などで合わない場合のみ `redirectUri` を明示する
+- **インターネットに公開している場合は `allowSignUp: false` を推奨**。既定のままだと Google / GitHub アカウントを持つ誰でもサインアップできてしまう (1 人目だけは常に許可される。でないと管理者を作れないため)
+
+---
+
+### recording
+
+#### 録画開始のリトライ
+
+前の番組が「放送時刻未定」(ARIB の `duration` = 0xFFFFFF) で延長していると、予約した番組の開始が遅れる。
+Mirakurun は EIT[p/f] で対象の番組が現在番組になるまでデータを流さないため、EPGStation はその間待つ必要がある。
+
+**「番組がまだ始まっていない」と「チューナー異常」を別枠で数える**ので、
+延長待ちが異常時の再試行回数を食い潰すことはない。
+
+`RecorderModel` は予約ごとに生成され、そのたびに設定を読むため**変更に再起動は不要**。
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| object | -            | no   |
+
+- 子プロパティは以下の通り
+
+| 子プロパティ名           | 種類   | 必須 | 説明                                                                       |
+| ------------------------ | ------ | ---- | -------------------------------------------------------------------------- |
+| startWaitLimitMs         | number | no   | 番組開始を待つ上限 (ms)。省略時 3 時間。**0 で待たない**                   |
+| startWaitIntervalMs      | number | no   | 開始待ち中の再試行間隔 (ms)。省略時 60000                                  |
+| firstDataTimeoutMs       | number | no   | 最初のデータを待つ時間 (ms)。省略時 5000。超えたら「まだ始まっていない」と判断する |
+| errorFastRetryCount      | number | no   | チューナー異常時に短い間隔で再試行する回数。省略時 3                       |
+| errorFastRetryIntervalMs | number | no   | 同・間隔 (ms)。省略時 5000                                                 |
+| errorRetryCount          | number | no   | その後、長い間隔で再試行する回数。省略時 27                                |
+| errorRetryIntervalMs     | number | no   | 同・間隔 (ms)。省略時 60000                                                |
+
+```yaml
+recording:
+    startWaitLimitMs: 10800000
+    startWaitIntervalMs: 60000
+    firstDataTimeoutMs: 5000
+    errorFastRetryCount: 3
+    errorFastRetryIntervalMs: 5000
+    errorRetryCount: 27
+    errorRetryIntervalMs: 60000
+```
+
+- 値が範囲外・不正な場合は既定値へ丸めるため、設定ミスで録画が動かなくなることはない
+- 野球中継などの長い延長に備える場合は `startWaitLimitMs` を延ばす
+
+---
+
+### featureFlags
+
+#### 機能フラグ
+
+機能ごとの有効・無効を切り替える。**未指定の項目は有効**として扱うため、
+止めたい機能だけ `false` を書く (`featureFlags` 自体を省略すると全機能が有効)。
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| object | -            | no   |
+
+| 子プロパティ名        | 説明                                                       |
+| --------------------- | ---------------------------------------------------------- |
+| watchHistory          | 視聴履歴                                                   |
+| notifications         | 通知 (Webhook / Discord)                                   |
+| dashboard             | ダッシュボード                                             |
+| systemSettings        | サーバー設定画面                                           |
+| seriesLibrary         | シリーズライブラリ                                         |
+| metadataProviders     | メタデータ連携 (しょぼいカレンダー / Annict / Wikidata)   |
+| programSeriesMapping  | 番組⇄シリーズの事前マッピング                              |
+| annictSync            | Annict 視聴記録の同期                                      |
+| nextUpPanel           | 「次に見る」パネル                                         |
+| externalFileImport    | 外部録画ファイルの取り込み                                 |
+| advancedSearch        | 保存検索                                                   |
+| updateNotification    | 更新通知・ワンクリック更新                                 |
+
+```yaml
+featureFlags:
+    annictSync: false
+```
+
+---
+
+### seriesLlm
+
+#### シリーズ名の LLM 抽出
+
+作品辞書で確定できなかった録画タイトルから、LLM に番組名を抽出させる。
+抽出結果はそのまま信用せず必ず作品辞書で引き直して検証する。
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| object | -            | no   |
+
+| 子プロパティ名  | 種類   | 必須 | 説明                                                                                 |
+| --------------- | ------ | ---- | ------------------------------------------------------------------------------------ |
+| url             | string | yes  | OpenAI 互換 Chat Completions API のベース URL (Ollama: `http://localhost:11434/v1`)  |
+| model           | string | yes  | モデル名                                                                             |
+| apiKey          | string | no   | API キー (ローカル LLM では通常不要)                                                 |
+| timeoutMs       | number | no   | タイムアウト (ms)。省略時 30000                                                      |
+| minIntervalMs   | number | no   | リクエスト間隔の下限 (ms)。省略時 0                                                  |
+| maxTokens       | number | no   | 応答の上限トークン数。省略時 2000                                                    |
+| maxTokensLimit  | number | no   | 上限が足りず本文が空で切れた場合の自動引き上げの天井。省略時 16000                   |
+
+```yaml
+seriesLlm:
+    url: 'http://localhost:11434/v1'
+    model: 'qwen2.5:7b-instruct'
+```
+
+- reasoning 系モデルは思考にトークンを使うため、`maxTokens` が小さいと本文が空のまま切れる。その場合は**自動で 4 倍ずつ引き上げて再試行**し、成功した値を以後の既定として使うため通常は指定不要
+
+---
 
 ### updateChecker
 
