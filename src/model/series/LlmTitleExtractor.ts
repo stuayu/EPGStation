@@ -29,6 +29,12 @@ export default class LlmTitleExtractor implements ILlmTitleExtractor {
     // finish_reason: 'length' で切れる (OpenRouter のフリーモデルはほぼこれに該当する)。
     // 非 reasoning モデルは JSON を出した時点で停止するので、大きくしても実コストは増えない
     private static readonly DEFAULT_MAX_TOKENS = 2000;
+    // finish_reason: 'length' で本文が空だった場合に上限をこの倍率で引き上げて 1 度だけやり直す。
+    // reasoning モデルの思考量はモデル・入力ごとに大きく振れるため、固定値を上げ続けるより
+    // 「足りなければ増やして覚える」方が無駄が少ない
+    private static readonly MAX_TOKENS_ESCALATION_RATE = 4;
+    // 引き上げの上限 (これを超えても本文が出ないモデルは reasoning を止められない構成とみなす)
+    private static readonly DEFAULT_MAX_TOKENS_LIMIT = 16000;
     // 抽出結果キャッシュの上限 (バックフィルで大量のタイトルを処理してもメモリを食いつぶさないように)
     private static readonly CACHE_MAX = 5000;
     // 抽出結果の永続キャッシュ (metadata_provider_cache) の provider 名と TTL。
@@ -74,6 +80,8 @@ export default class LlmTitleExtractor implements ILlmTitleExtractor {
     private config: IConfigFile;
 
     private cache: Map<string, string | null> = new Map();
+    // 上限切れで引き上げた応答トークン数 (プロセス内で保持し、以後の問い合わせにも使う)
+    private maxTokens: number | null = null;
     private consecutiveFailures: number = 0;
     private suspendedUntil: number = 0;
     private lastRequestAt: number = 0;
@@ -153,6 +161,33 @@ export default class LlmTitleExtractor implements ILlmTitleExtractor {
      * OpenAI 互換 Chat Completions API へ問い合わせ、抽出された作品名を返す
      */
     private async request(recordedTitle: string): Promise<string | null> {
+        const result = await this.postCompletion(recordedTitle, this.currentMaxTokens());
+        if (result.ok === true) return result.title;
+
+        // 本文が空のまま上限で切れた = 思考にトークンを使い切っている。
+        // 上限を引き上げて 1 度だけやり直し、成功した値を以後の既定として覚える
+        // (同じモデルなら次のタイトルでも同じだけ思考するため、毎回 1 往復無駄にしないようにする)
+        const escalated = this.escalatedMaxTokens();
+        if (result.truncated === false || escalated === null) throw new Error(result.message);
+
+        this.log.system.info(
+            `llm response was truncated before the answer; retrying with max_tokens ${escalated} (${result.message})`,
+        );
+        const retried = await this.postCompletion(recordedTitle, escalated);
+        if (retried.ok === false) throw new Error(retried.message);
+        this.maxTokens = escalated;
+
+        return retried.title;
+    }
+
+    /**
+     * 1 回分の問い合わせ。
+     * 上限切れで本文が空だった場合は例外にせず truncated として返し、呼び出し側にやり直しを判断させる
+     */
+    private async postCompletion(
+        recordedTitle: string,
+        maxTokens: number,
+    ): Promise<{ ok: true; title: string | null } | { ok: false; truncated: boolean; message: string }> {
         const llm = this.config.seriesLlm as NonNullable<IConfigFile['seriesLlm']>;
         const baseUrl = (llm.url as string).replace(/\/+$/u, '');
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -169,24 +204,55 @@ export default class LlmTitleExtractor implements ILlmTitleExtractor {
                     { role: 'user', content: recordedTitle },
                 ],
                 temperature: 0,
-                max_tokens: llm.maxTokens ?? LlmTitleExtractor.DEFAULT_MAX_TOKENS,
+                max_tokens: maxTokens,
                 stream: false,
+                // 思考を切れるモデルでは切る (OpenRouter 等が解釈する。未知のキーは無視される)
+                reasoning: { enabled: false },
             },
             { headers, timeout: llm.timeoutMs ?? LlmTitleExtractor.DEFAULT_TIMEOUT_MS },
         );
 
         const choice = response.data?.choices?.[0];
+        const finishReason = choice?.finish_reason;
         const content = choice?.message?.content;
-        if (typeof content !== 'string' || content === '') {
-            // 原因の切り分けができるよう、応答の形をそのままエラーに載せる。
-            // finish_reason が 'length' なら maxTokens 不足 (思考で使い切っている)
-            throw new Error(
-                `llm response has no content (finish_reason: ${choice?.finish_reason ?? 'unknown'}, ` +
-                    `completion_tokens: ${response.data?.usage?.completion_tokens ?? 'unknown'})`,
-            );
+        if (typeof content === 'string' && content !== '') {
+            return { ok: true, title: this.parseContent(content, finishReason) };
         }
 
-        return this.parseContent(content, choice?.finish_reason);
+        // 本文を出さず思考欄にだけ答えを書くモデルがあるため、そこに JSON があれば拾う
+        const reasoning = choice?.message?.reasoning;
+        if (typeof reasoning === 'string' && /\{[\s\S]*?\}/u.test(reasoning) === true) {
+            return { ok: true, title: this.parseContent(reasoning, finishReason) };
+        }
+
+        // 原因の切り分けができるよう、応答の形をそのままエラーに載せる
+        return {
+            ok: false,
+            truncated: finishReason === 'length',
+            message:
+                `llm response has no content (finish_reason: ${finishReason ?? 'unknown'}, ` +
+                `completion_tokens: ${response.data?.usage?.completion_tokens ?? 'unknown'}, ` +
+                `max_tokens: ${maxTokens})`,
+        };
+    }
+
+    /**
+     * 現在の応答上限。引き上げに成功していればその値を使う
+     */
+    private currentMaxTokens(): number {
+        const llm = this.config.seriesLlm;
+        return this.maxTokens ?? llm?.maxTokens ?? LlmTitleExtractor.DEFAULT_MAX_TOKENS;
+    }
+
+    /**
+     * 引き上げ後の応答上限。すでに上限に達している場合は null
+     */
+    private escalatedMaxTokens(): number | null {
+        const limit = this.config.seriesLlm?.maxTokensLimit ?? LlmTitleExtractor.DEFAULT_MAX_TOKENS_LIMIT;
+        const current = this.currentMaxTokens();
+        if (current >= limit) return null;
+
+        return Math.min(current * LlmTitleExtractor.MAX_TOKENS_ESCALATION_RATE, limit);
     }
 
     /**

@@ -80,6 +80,7 @@ export const FEATURE_FLAG_KEYS = [
     'nextUpPanel',
     'externalFileImport',
     'advancedSearch',
+    'updateNotification',
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[number];
@@ -257,8 +258,29 @@ export default interface IConfigFile {
     // 予約定期更新時のログ出力を抑えるか
     isSuppressReservesUpdateAllLog: boolean;
 
+    // Web UI / API のログイン認証。既定は無効 (リバースプロキシ側で認証している構成を壊さないため)。
+    // 有効にすると初回アクセス時に管理ユーザーの作成を求められる
+    auth?: {
+        // true でログイン必須にする (既定 false)
+        enabled?: boolean;
+        // セッションの有効期間 (ms)。既定 30 日
+        sessionTtlMs?: number;
+    };
+
     // Webhook / Discord 通知（featureFlags.notifications が true の場合のみ有効）
     notifications?: NotificationConfig;
+
+    // 新しいバージョンの公開チェック (featureFlags.updateNotification が true の場合のみ有効)
+    updateChecker?: {
+        // 監視するリポジトリ ('owner/repo' 形式)。省略時 stuayu/EPGStation
+        repository?: string;
+        // 追従先ブランチ。設定画面から「最新の開発版へ更新」する際の対象。省略時 main
+        branch?: string;
+        // チェック間隔 (ms)。省略時 6 時間、0 以下でチェックを停止する
+        checkIntervalMs?: number;
+        // プレリリース (rc / beta / alpha) も通知対象に含めるか。省略時 true (UI では色を変えて区別する)
+        includePrerelease?: boolean;
+    };
 
     // メタデータプロバイダーの既定値 (§6.3)。設定画面 (DB) で値が設定されていない場合のみ使用される。
     // token 等の秘密情報はここに書かず設定画面から入力すること
@@ -316,9 +338,12 @@ export default interface IConfigFile {
         // リクエスト間隔の下限 (ms)。既定 0 (無制限)。
         // OpenRouter のフリーモデルのような分あたり上限がある API では 3500 程度を指定する
         minIntervalMs?: number;
-        // 応答の上限トークン数。既定 200。
-        // 思考過程を本文へ出す reasoning 系モデルは 200 では JSON へ到達しないため 1000 以上が必要
+        // 応答の上限トークン数。既定 2000。
+        // 思考過程にトークンを使う reasoning 系モデルは小さいと本文が空のまま切れる。
+        // 足りずに切れた場合は自動で 4 倍ずつ引き上げて再試行するため、通常は指定不要
         maxTokens?: number;
+        // 自動引き上げの上限。既定 16000。これを超えても本文が出ないモデルは諦めて失敗として扱う
+        maxTokensLimit?: number;
     };
 
     // サーバー起動時のシリーズ照合パイプライン (featureFlags.seriesLibrary 有効時は既定で動作する)。

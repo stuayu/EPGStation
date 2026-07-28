@@ -254,6 +254,39 @@ tsreadex: '/usr/local/bin/tsreadex'
 
 ---
 
+## 更新通知 (stuayu フォーク独自)
+
+### updateChecker
+
+#### 新しいバージョンの公開チェック
+
+GitHub Releases を定期的に確認し、新しいバージョンが公開されていれば Web UI で知らせる。
+`featureFlags.updateNotification` が有効な場合のみ動作する (既定は有効)。
+git clone した環境では、サーバー設定画面の「更新」タブから**リリース版**または**追従ブランチ (既定 main) の最新コミット**へワンクリックで更新できる (git checkout → 依存インストール → ビルド → 再起動)。
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| object | -            | no   |
+
+- 子プロパティは以下の通り
+
+| 子プロパティ名     | 種類    | 必須 | 説明                                                                       |
+| ------------------ | ------- | ---- | -------------------------------------------------------------------------- |
+| repository         | string  | no   | 監視するリポジトリ (`owner/repo` 形式)。省略時 `stuayu/EPGStation`         |
+| branch             | string  | no   | 「最新の開発版へ更新」で追従するブランチ。省略時 `main`                    |
+| checkIntervalMs    | number  | no   | チェック間隔 (ms)。省略時 6 時間。0 以下でチェックを停止する               |
+| includePrerelease  | boolean | no   | プレリリース (rc / beta / alpha) も通知するか。省略時 true (UI では色を変えて区別する) |
+
+```yaml
+updateChecker:
+    repository: 'stuayu/EPGStation'
+    branch: 'main'
+    checkIntervalMs: 21600000
+    includePrerelease: true
+```
+
+---
+
 ## 詳細設定
 
 ### needToReplaceEnclosingCharacters

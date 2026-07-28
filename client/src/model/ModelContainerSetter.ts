@@ -13,6 +13,10 @@ import IRepositoryModel from './api/IRepositoryModel';
 import IRecordedApiModel from './api/recorded/IRecordedApiModel';
 import RecordedApiModel from './api/recorded/RecordedApiModel';
 import ISeriesApiModel from './api/series/ISeriesApiModel';
+import IAuthApiModel from './api/auth/IAuthApiModel';
+import AuthApiModel from './api/auth/AuthApiModel';
+import IUpdateApiModel from './api/update/IUpdateApiModel';
+import UpdateApiModel from './api/update/UpdateApiModel';
 import SeriesApiModel from './api/series/SeriesApiModel';
 import IRecordedTagApiModel from './api/recordedTag/IRecordedTagApiModel';
 import RecordedTagApiModel from './api/recordedTag/RecordedTagApiModel';
@@ -159,6 +163,8 @@ export default (container: Container): void => {
 
     container.bind<IRecordedApiModel>('IRecordedApiModel').to(RecordedApiModel).inSingletonScope();
     container.bind<ISeriesApiModel>('ISeriesApiModel').to(SeriesApiModel).inSingletonScope();
+    container.bind<IUpdateApiModel>('IUpdateApiModel').to(UpdateApiModel).inSingletonScope();
+    container.bind<IAuthApiModel>('IAuthApiModel').to(AuthApiModel).inSingletonScope();
     container.bind<IRecordedTagApiModel>('IRecordedTagApiModel').to(RecordedTagApiModel).inSingletonScope();
     container.bind<ISavedSearchApiModel>('ISavedSearchApiModel').to(SavedSearchApiModel).inSingletonScope();
 

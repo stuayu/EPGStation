@@ -117,6 +117,54 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 ## 変更箇所
 
+- **新しいバージョンの公開を Web UI で知らせ、ワンクリックで更新できるようにした**
+    - **更新チェック**: Operator が GitHub Releases API (`https://api.github.com/repos/<owner>/<repo>/releases`) を起動 3 分後 + 既定 6 時間間隔で見に行き、最新の正式リリースとプレリリースをそれぞれ保持する (`UpdateManageModel`, `src/model/update/`)。取得に失敗しても前回のキャッシュを使い続け、理由だけを `checkError` で返す
+    - **バージョン比較 (フォーク特有の落とし穴)**: 本フォークのリリースタグは `2.14.0-stuayu-260727` だが `package.json` の version は `2.14.0-stuayu` で、素の semver 比較では**自分自身のリリースが常に「新しい」と判定されて更新案内が消えなくなる**。`src/util/VersionUtil.ts` で末尾 6 桁の日付サフィックスを識別子から切り離して扱い、片方に日付が無い場合は「同じリリースの別表記」として同値にする。加えて git 管理下では `git describe --tags` の結果を現在バージョンとして優先し、チェックアウト中のタグと正確に突き合わせる。この解決は `src/util/CurrentVersion.ts` に切り出し、**ナビゲーション左上の表記 (`GET /api/version`) も同じ値を返す**ようにした (更新タブの「現在のバージョン」と食い違わないようにするため)
+    - **プレリリースは色を変えて通知**: 正式リリースは青 (`primary`)、プレリリース (GitHub の prerelease フラグ) は紫 (`deep-purple`) のトーストで出し、ダイアログにも「プレリリース」チップと不安定な可能性がある旨の警告を出す。`updateChecker.includePrerelease: false` でプレリリースを通知対象から外せる (既定は通知する)
+    - **ワンクリック更新 (リリース版 / 開発版の 2 系統)**: `POST /api/update/run` で `git status --porcelain` (ローカル変更が無いことの確認) → `git fetch --tags` → チェックアウト → `npm run all-install` → `npm run compile` → クライアントビルド、の順で実行する。進捗とコマンド出力は `GET /api/update/job` で取れ、画面は 2 秒間隔でポーリングして表示する
+        - **リリース版**: `refType: 'tag'` (既定)。`git checkout --force <tag>` で detached HEAD にする
+        - **開発版 (main ブランチの最新)**: `refType: 'branch'`。`git checkout -B <branch> origin/<branch>` でローカルブランチをリモートの最新に合わせる。追従先は `updateChecker.branch` (既定 `main`) で変えられる。GitHub の `/repos/{repo}/commits/{branch}` から先頭コミットを取り、ローカル HEAD (`git rev-parse HEAD`) と比べて `upToDate` を返すので、追従済みかどうかが画面で分かる
+    - **UI の置き場所**: 実際の更新操作は共通コンポーネント `UpdatePanel.vue` にまとめ、**サーバー設定画面の「更新」タブ**と更新通知トーストのダイアログの両方から使う。設定画面ではリリース版カードと開発版カードが並び、それぞれのボタンから更新できる
+    - **`npm run build` を使わない理由**: `build` は `lint --fix` と `prettier --write` を含み作業ツリーを書き換えるため、次回の更新時に「ローカル変更あり」で止まってしまう。更新では `compile` + クライアントビルドのみを実行する
+    - **どのプラットフォーム・サービス管理下でも動く再起動**: Operator (親) を終了させれば Service (子) も落ちるので、サービス管理下ならそれだけで新しいコードで起動し直される。Docker (`/.dockerenv`) / systemd (`INVOCATION_ID`・`JOURNAL_STREAM`) / pm2 (`pm_id`・`PM2_HOME`) / Windows サービス (win32 かつ対話コンソールなし) を環境変数から判定し (`src/model/update/UpdateEnvironment.ts`)、**どれにも当てはまらない手動起動の場合のみ後継プロセスを detached で spawn してから終了する**。判定結果は `updateNote` として画面に出し、「更新したら上がってこない」事故を防ぐ
+    - **更新は Operator 側で実行する**: git 操作・ビルド・プロセス再起動は親プロセスの責務なので、Service (Web API) からは IPC (`ModelName.update`) 経由で呼ぶ
+    - **安全策**: タグは `^[A-Za-z0-9._-]{1,100}$`、ブランチ名は `/` のみ追加で許す書式に制限し、先頭が `-` のものは弾く (`git checkout --upload-pack=...` のようなオプション注入外部コマンドは `shell: false` で起動する。監視リポジトリの設定は `owner/repo` 形式、ブランチ設定も同じ書式検証を通したものだけ受け付ける。作業ツリーに未コミットの変更がある場合は更新を中断する
+    - **対応する導入形態**: git clone した環境のみワンクリック更新できる (`installationType: 'git'`)。配布アーカイブ (7z) を展開しただけの環境は `canUpdate: false` を返し、リリースページへの導線だけを出す
+    - **API**: `GET /api/update` (状況) / `POST /api/update/check` (再チェック) / `POST /api/update/run` (実行) / `GET /api/update/job` (進捗)。機能フラグ `updateNotification` (既定有効) と `config.yml` の `updateChecker` で制御する
+
+- **Web UI / API にログイン認証を追加した (既定は無効)**
+    - **背景**: EPGStation 自体は無認証で、リバースプロキシ側で認証する前提だった。設定を画面から書き換えられるようにするにあたり、まず認証の土台を用意した
+    - **有効化**: `config.yml` の `auth.enabled: true`。**既定は無効**なので、既存構成 (プロキシで認証している等) は何も変わらない。有効にして最初にアクセスすると管理ユーザーの作成画面が出る (ユーザーが 0 人のときだけ `POST /api/auth/setup` が通る)
+    - **パスワード**: 依存を増やさず Node 標準の `scrypt` でソルト付きハッシュにする (`src/model/auth/PasswordHash.ts`)。保存形式は `scrypt$N$r$p$salt$hash` と自己記述的にし、将来パラメータを変えても既存ハッシュを読める。照合は `timingSafeEqual`
+    - **セッション**: サーバー側にセッションストアを持たない HMAC 署名付きトークン (`src/model/auth/SessionToken.ts`) を **HttpOnly / SameSite=Lax の Cookie** に入れる。再起動でログアウトさせず、`<video>` や `<img>` からのリクエストにも自動で付くのでサムネイル・配信も保護できる。署名鍵は `data/key/secret.key` から用途別に導出する (`ISecretCrypto.getSigningKey()`)
+    - **失効**: `user.tokenVersion` をトークンに埋め、パスワード変更で加算することで発行済みセッションを一括無効化する。ユーザー削除も同様に即時失効する
+    - **保護範囲**: API・`/thumbnail`・`/streamfiles` は未認証で 401。クライアントの静的ファイルだけは素通しする (ログイン画面自体を出せなくなるため)。素通しする API は `/api/auth/*` と `/api/version` のみ (`src/model/auth/AuthGuard.ts`)。socket.io も handshake の Cookie を検証する
+    - **クライアント**: 未ログイン時は `main.ts` がログイン画面だけを mount し、config / channels の取得 (認証必須) を走らせない。セッション切れ (401) は `RepositoryModel` の共通インターセプタが検知して画面を読み込み直す。ユーザーの追加・削除・パスワード変更はサーバー設定の「アカウント」タブから行える
+    - DB は `user` テーブルを追加 (sqlite / mysql 両マイグレーションあり)
+
+- **ログレベルを GUI から変更できるようにした**
+    - **yml と DB のどちらを正にするか**: 既存の `app_setting` テーブル (JSON Schema 検証・変更履歴・ロールバック・秘密情報の暗号化・ホットリロード通知が実装済み) に相乗りする方式にした。**ログ設定ファイル (`config/*LogConfig.yml`) がベースで、DB の値はその上に被せる差分**として扱う。yml へ書き戻さないのでコメントや書式が壊れず、二重管理にもならない
+    - **設定キー**: `logging.levels.{system,access,stream,encode}`。未指定のカテゴリはファイルの設定をそのまま使う。値は log4js のレベル (`trace`〜`fatal` と `off`)
+    - **反映は再起動不要**: log4js のロガーは `level` を代入するだけで切り替わるため、`LogLevelApplier` が該当カテゴリだけを書き換える。Operator / Service / EPGUpdater の 3 プロセスすべてが起動時に適用し、Service は自身の API 経由の変更を即時反映、Operator は既存の設定変更 IPC (`appSetting.notifyChanged`) を受けて再適用する
+    - **壊れた設定でログを止めない**: 未知のカテゴリ・不正なレベルは黙って捨て、DB が読めない場合は何もしない (ファイル設定のまま動作を継続する)
+    - UI はサーバー設定の「基本」タブに追加した
+
+- **reasoning 系モデルで LLM の応答が空になる問題に、上限の自動引き上げで対処した**
+    - **症状**: `llm title extraction failed: llm response has no content (finish_reason: length, completion_tokens: 2000)`。思考 (reasoning) にトークンを使い切り、本文 (`content`) を 1 文字も出さないまま `max_tokens` で打ち切られる。以前 `maxTokens` の既定を 200 → 2000 に上げたが、モデル・入力によっては 2000 でも足りない
+    - **固定値を上げ続けない**: 思考量はモデルと入力で大きく振れるため、既定値を上げるだけでは追いつかない。`finish_reason: 'length'` かつ本文が空のときだけ **上限を 4 倍にして 1 度だけやり直し、成功した値をプロセス内で覚える** ようにした (`LlmTitleExtractor`)。2 本目以降のタイトルは最初から引き上げ後の上限で問い合わせるので、往復が無駄になるのは最初の 1 回だけ。引き上げの天井は `seriesLlm.maxTokensLimit` (既定 16000)
+    - **思考を切れるモデルでは切る**: リクエストに `reasoning: { enabled: false }` を付ける。OpenRouter 等はこれを解釈して思考を止め、解釈しないサーバーは未知のキーとして無視するため、ローカル LLM (Ollama / llama.cpp) でも害はない
+    - **思考欄に答えを書くモデルへの対応**: `message.content` が空でも `message.reasoning` に JSON があればそこから拾う (本文を出さず思考欄にだけ答えを書くモデルが実在する)。抽出結果は従来どおり作品辞書で引き直して検証するため、ここを緩めてもハルシネーションは通らない
+    - テストは `test/itb/llm-title-extractor.test.js` (ローカル HTTP スタブサーバで LLM API を模擬) に追加した
+
+- **LLM が誤学習したエイリアス辞書を設定画面から修正できるようにした**
+    - **背景**: `SeriesResolver` は LLM が抽出した番組名が作品辞書と完全一致したとき「正規化タイトル → シリーズ」を `series_alias` へ自動学習する。この規則は以後 LLM も作品辞書も引かずに確度 1.0 で確定させるため、**誤学習が 1 件あると以降の録画が延々と間違ったシリーズへ吸われる**。従来の設定画面では削除しかできず、正しいシリーズへ付け替える導線が無かった
+    - **API**: `PUT /api/series/aliases/{aliasId}` (1 件の付け替え) と `POST /api/series/aliases/bulk` (一括の付け替え / 削除) を追加した。付け替え先は `seriesId` 優先で、`seriesTitle` を渡した場合は正規化タイトルが一致する既存シリーズを再利用し、無ければ新規作成する
+    - **付け替えは手動修正扱いになる**: 更新した辞書は `source` を `'manual'` にするため、以後の LLM 自動学習で上書きされない (`SeriesResolver` の学習は既存エイリアスを上書きしない実装のため、これで固定される)
+    - **正規化タイトルは変更しない**: `normalizedTitle` は辞書の引き当てキーそのものなので、付け替え API では変更させない (別の表記を足したい場合は手動マッピングから新規学習させる)
+    - **UI (サーバー設定 > シリーズ管理タブ)**: エイリアス表を編集可能にした。行ごとのシリーズ選択はサーバ検索付きオートコンプリート (300ms デバウンス)、チェックボックスで複数選択して「まとめて付け替える先」を適用・「選択を削除対象にする」ができる。編集はバッファに溜めて「辞書の変更を保存」で一括送信し、変更した行は学習元バッジがその場で「手動」に変わる。学習元フィルタに加えてキーワード絞り込みも追加した
+    - **一括保存の挙動**: 1 件失敗しても残りは反映し、失敗分は `failed[]` に理由付きで返す (上限 500 件)
+    - **既存の録画は付け替わらない**: 辞書の修正は以後の判定に効くもので、すでに誤ったシリーズへ紐づいた録画はそのまま残る。溜まった分はシリーズ一覧の複数選択マージで正しいシリーズへ寄せる
+
 - **誤って作られたシリーズの掃除 (複数選択マージ・前方一致候補) と、話数・放送種別の一括編集を画面から行えるようにした**
     - **背景**: 作品辞書で引けなかった録画は録画タイトルからシリーズが作られるため、同じ作品が副題や話数付きで複数のシリーズに分裂することがある。従来のマージ UI は「統合元を 1 件選び、統合先をキーワードで探す」形で、分裂した数件をまとめる用途には手数が多すぎた
     - **シリーズの出所 (`origin`)**: `syobocalTid` / `annictId` / `wikidataQid` を 1 つでも持つシリーズを `dictionary` (辞書起点)、どれも無いものを `local` (録画タイトルから作られた) として `SeriesListItem` / `SeriesDetail` に載せた (`src/model/series/SeriesOrigin.ts`)。誤生成は `local` 側に偏るため、シリーズ一覧に「出所」の絞り込み (`GET /api/series?origin=dictionary|local`) とカード/リスト/表のバッジを追加した

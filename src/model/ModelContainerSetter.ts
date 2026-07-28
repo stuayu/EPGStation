@@ -5,6 +5,16 @@ import ChannelApiModel from './api/channel/ChannelApiModel';
 import IChannelApiModel from './api/channel/IChannelApiModel';
 import AppSettingApiModel from './api/config/AppSettingApiModel';
 import IAppSettingApiModel from './api/config/IAppSettingApiModel';
+import ILogLevelApplier from './log/ILogLevelApplier';
+import LogLevelApplier from './log/LogLevelApplier';
+import IAuthModel from './auth/IAuthModel';
+import AuthModel from './auth/AuthModel';
+import IUserDB from './db/IUserDB';
+import UserDB from './db/UserDB';
+import IUpdateApiModel from './api/update/IUpdateApiModel';
+import UpdateApiModel from './api/update/UpdateApiModel';
+import IUpdateManageModel from './update/IUpdateManageModel';
+import UpdateManageModel from './update/UpdateManageModel';
 import ConfigApiModel from './api/config/ConfigApiModel';
 import IConfigApiModel from './api/config/IConfigApiModel';
 import DashboardApiModel from './api/dashboard/DashboardApiModel';
@@ -419,6 +429,8 @@ export const set = (container: Container): void => {
         .to(SeriesBackfillManageModel)
         .inSingletonScope();
 
+    container.bind<IUpdateManageModel>('IUpdateManageModel').to(UpdateManageModel).inSingletonScope();
+
     container.bind<ISeriesStartupPipeline>('ISeriesStartupPipeline').to(SeriesStartupPipeline).inSingletonScope();
     container.bind<IImportWatchManageModel>('IImportWatchManageModel').to(ImportWatchManageModel).inSingletonScope();
 
@@ -447,6 +459,12 @@ export const set = (container: Container): void => {
 
     container.bind<IConfigApiModel>('IConfigApiModel').to(ConfigApiModel).inSingletonScope();
     container.bind<IAppSettingApiModel>('IAppSettingApiModel').to(AppSettingApiModel).inSingletonScope();
+    container.bind<IUpdateApiModel>('IUpdateApiModel').to(UpdateApiModel).inSingletonScope();
+
+    container.bind<ILogLevelApplier>('ILogLevelApplier').to(LogLevelApplier).inSingletonScope();
+
+    container.bind<IUserDB>('IUserDB').to(UserDB).inSingletonScope();
+    container.bind<IAuthModel>('IAuthModel').to(AuthModel).inSingletonScope();
 
     container.bind<IDashboardApiModel>('IDashboardApiModel').to(DashboardApiModel).inSingletonScope();
 

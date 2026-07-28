@@ -22,10 +22,12 @@ import IIPCClient, {
     IPCReservationManageModel,
     IPCRuleManageModel,
     IPCSeriesManageModel,
+    IPCUpdateManageModel,
     IPCThumbnailManageModel,
 } from './IIPCClient';
 import {
     AppSettingFunctions,
+    UpdateFunctions,
     ClientMessageOption,
     OperatorEncodeEventFunctions,
     ModelName,
@@ -55,6 +57,7 @@ export default class IPCClient implements IIPCClient {
     public encodeEvent!: IPCOperatorEncodeEvent;
     public series!: IPCSeriesManageModel;
     public appSetting!: IPCAppSettingManageModel;
+    public update!: IPCUpdateManageModel;
 
     private log: ILogger;
     private listener: events.EventEmitter = new events.EventEmitter();
@@ -82,6 +85,7 @@ export default class IPCClient implements IIPCClient {
         this.setEncodeEvent();
         this.setSeries();
         this.setAppSetting();
+        this.setUpdate();
     }
 
     /**
@@ -609,6 +613,28 @@ export default class IPCClient implements IIPCClient {
                     this.log.system.error('failed to notify app setting change to operator process');
                     this.log.system.error(err);
                 });
+            },
+        };
+    }
+
+    /**
+     * set update functions
+     * 更新は git 操作・ビルド・プロセス再起動を伴うため Operator 側で実行する
+     */
+    private setUpdate(): void {
+        this.update = {
+            getStatus: () => {
+                return this.send({ model: ModelName.update, func: UpdateFunctions.getStatus });
+            },
+            check: () => {
+                // GitHub への問い合わせを伴うため既定より長めに待つ
+                return this.send({ model: ModelName.update, func: UpdateFunctions.check }, 60 * 1000);
+            },
+            run: (option: apid.RunUpdateOption) => {
+                return this.send({ model: ModelName.update, func: UpdateFunctions.run, args: { option } });
+            },
+            getJob: () => {
+                return this.send({ model: ModelName.update, func: UpdateFunctions.getJob });
             },
         };
     }

@@ -84,6 +84,13 @@ export interface IPCAppSettingManageModel {
     notifyChanged(keys: string[]): void;
 }
 
+export interface IPCUpdateManageModel {
+    getStatus(): Promise<apid.UpdateStatus>;
+    check(): Promise<apid.UpdateStatus>;
+    run(option: apid.RunUpdateOption): Promise<apid.UpdateJob>;
+    getJob(): Promise<apid.UpdateJob>;
+}
+
 export default interface IIPCClient {
     reserveation: IPCReservationManageModel;
     recorded: IPCRecordedManageModel;
@@ -94,4 +101,5 @@ export default interface IIPCClient {
     encodeEvent: IPCOperatorEncodeEvent;
     series: IPCSeriesManageModel;
     appSetting: IPCAppSettingManageModel;
+    update: IPCUpdateManageModel;
 }

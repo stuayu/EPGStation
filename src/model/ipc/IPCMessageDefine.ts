@@ -60,6 +60,7 @@ export enum ModelName {
     encodeEvent = 'encodeEvent',
     series = 'series',
     appSetting = 'appSetting',
+    update = 'update',
 }
 
 /**
@@ -161,4 +162,16 @@ export enum SeriesFunctions {
  */
 export enum AppSettingFunctions {
     notifyChanged = 'notifyChanged',
+}
+
+/**
+ * バージョン更新の関数定義。
+ * 更新は git 操作・ビルド・プロセス再起動を伴うため、Service (子) ではなく
+ * Operator (親) 側で実行する必要がある
+ */
+export enum UpdateFunctions {
+    getStatus = 'getStatus',
+    check = 'check',
+    run = 'run',
+    getJob = 'getJob',
 }

@@ -118,6 +118,12 @@ export default class SecretCrypto implements ISecretCrypto {
         return this.aesGcmDecrypt(this.keyV1, iv, tag, data);
     }
 
+    public getSigningKey(purpose: string): string | null {
+        if (this.secret === null) return null;
+        // 用途ごとに異なる鍵になるよう purpose を混ぜる (暗号化鍵をそのまま署名に使わない)
+        return createHash('sha256').update(`${purpose}:${this.secret}`).digest('base64url');
+    }
+
     public mask(value: string): string {
         const plain = this.decrypt(value);
         return plain.length === 0 ? '' : `********${plain.slice(-4)}`;

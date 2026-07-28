@@ -95,6 +95,12 @@ export default class SeriesApiModel implements ISeriesApiModel {
     public async listAliases(seriesId?: number): Promise<SeriesAliasItem[]> {
         return (await this.repository.get('/series/aliases', { params: { seriesId } })).data;
     }
+    public async updateAlias(aliasId: number, value: apid.UpdateSeriesAliasOption): Promise<SeriesAliasItem> {
+        return (await this.repository.put(`/series/aliases/${aliasId}`, value)).data;
+    }
+    public async updateAliasBulk(items: apid.BulkSeriesAliasItem[]): Promise<apid.BulkUpdateSeriesAliasResult> {
+        return (await this.repository.post('/series/aliases/bulk', { items })).data;
+    }
     public async removeAlias(aliasId: number): Promise<void> {
         await this.repository.delete(`/series/aliases/${aliasId}`);
     }
