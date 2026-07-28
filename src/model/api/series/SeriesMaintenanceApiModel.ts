@@ -11,6 +11,8 @@ import ISeriesMaintenanceApiModel, {
     UpdateSeriesMetadata,
     MergeSeriesResult,
     SplitSeriesResult,
+    EmptySeriesListResult,
+    DeleteEmptySeriesResult,
 } from './ISeriesMaintenanceApiModel';
 @injectable()
 export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiModel {
@@ -149,6 +151,64 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
         const newSeries = await this.db.splitSeries(seriesId, recordedIds, newTitle.trim());
         return { seriesId: newSeries.id, title: newSeries.title };
     }
+    /**
+     * 録画が 0 件のシリーズを列挙する
+     * @return Promise<EmptySeriesListResult>
+     */
+    public async listEmpty(): Promise<EmptySeriesListResult> {
+        this.enabled();
+        const rows = await this.db.listEmptySeries();
+        return {
+            total: rows.length,
+            items: rows.map(row => {
+                return {
+                    seriesId: row.series.id,
+                    title: row.series.title,
+                    normalizedTitle: row.series.normalizedTitle,
+                    origin: getSeriesOrigin({
+                        syobocalTid: row.series.syobocalTid,
+                        annictId: row.series.annictId,
+                        wikidataQid: row.series.wikidataQid,
+                    }),
+                    seasonYear: row.series.seasonYear ?? undefined,
+                    seasonName: (row.series.seasonName as apid.EmptySeriesItem['seasonName']) ?? undefined,
+                    aliasCount: row.aliasCount,
+                    episodeCount: row.episodeCount,
+                    createdAt: row.series.createdAt,
+                    updatedAt: row.series.updatedAt,
+                };
+            }),
+        };
+    }
+
+    /**
+     * 録画が 0 件のシリーズを削除する
+     * @param seriesIds: number[] | undefined 削除対象。省略時は録画 0 件のシリーズをすべて削除する
+     * @return Promise<DeleteEmptySeriesResult>
+     */
+    public async deleteEmpty(seriesIds?: number[]): Promise<DeleteEmptySeriesResult> {
+        this.enabled();
+        const rows = await this.db.listEmptySeries();
+        let targets = rows;
+        if (typeof seriesIds !== 'undefined') {
+            if (Array.isArray(seriesIds) === false || seriesIds.length === 0) throw new Error('InvalidRequestBody');
+            if (seriesIds.some(id => Number.isInteger(id) === false)) throw new Error('InvalidRequestBody');
+            const emptyIds = new Set(rows.map(row => row.series.id));
+            // 録画が残っているシリーズが 1 つでも含まれていたら一切削除しない
+            if (seriesIds.some(id => emptyIds.has(id) === false)) throw new Error('SeriesIsNotEmpty');
+            const requested = new Set(seriesIds);
+            targets = rows.filter(row => requested.has(row.series.id));
+        }
+        const deletedAliasCount = targets.reduce((sum, row) => sum + row.aliasCount, 0);
+        const deletedEpisodeCount = targets.reduce((sum, row) => sum + row.episodeCount, 0);
+        const deletedSeriesCount = await this.db.deleteSeriesByIds(targets.map(row => row.series.id));
+        return {
+            deletedSeriesCount: deletedSeriesCount,
+            deletedAliasCount: deletedAliasCount,
+            deletedEpisodeCount: deletedEpisodeCount,
+        };
+    }
+
     private enabled() {
         if (!isFeatureEnabled(this.config.getConfig(), 'seriesLibrary'))
             throw new Error('SeriesLibraryFeatureIsDisabled');

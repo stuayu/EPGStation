@@ -2,6 +2,8 @@ import * as apid from '../../../../api';
 export type MergeSeriesResult = apid.MergeSeriesResult;
 export type SplitSeriesResult = apid.SplitSeriesResult;
 export type SeriesMergeCandidateResult = apid.SeriesMergeCandidateResult;
+export type EmptySeriesListResult = apid.EmptySeriesListResult;
+export type DeleteEmptySeriesResult = apid.DeleteEmptySeriesResult;
 export interface RefreshSeriesMetadataResult {
     // 走査したシリーズ数
     scanned: number;
@@ -52,4 +54,16 @@ export default interface ISeriesMaintenanceApiModel {
      * 指定した録画群を新しいシリーズへ分割する
      */
     split(seriesId: number, recordedIds: number[], newTitle: string): Promise<SplitSeriesResult>;
+    /**
+     * 録画が 0 件のシリーズ (マージ・分割・録画削除で取り残された自動生成シリーズ) を列挙する
+     * @return Promise<EmptySeriesListResult>
+     */
+    listEmpty(): Promise<EmptySeriesListResult>;
+    /**
+     * 録画が 0 件のシリーズを削除する。
+     * seriesIds を省略した場合は現時点で録画 0 件のシリーズをすべて削除する
+     * @param seriesIds: number[] | undefined 削除対象を限定する場合のシリーズ ID
+     * @return Promise<DeleteEmptySeriesResult>
+     */
+    deleteEmpty(seriesIds?: number[]): Promise<DeleteEmptySeriesResult>;
 }

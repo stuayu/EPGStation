@@ -15,6 +15,8 @@ import ISeriesApiModel, {
     SeriesListOption,
     UpdateSeriesMetadata,
     RefreshSeriesMetadataResult,
+    EmptySeriesListResult,
+    DeleteEmptySeriesResult,
 } from './ISeriesApiModel';
 @injectable()
 export default class SeriesApiModel implements ISeriesApiModel {
@@ -91,6 +93,21 @@ export default class SeriesApiModel implements ISeriesApiModel {
     }
     public async split(seriesId: number, recordedIds: number[], newTitle: string): Promise<apid.SplitSeriesResult> {
         return (await this.repository.post(`/series/${seriesId}/split`, { recordedIds, newTitle })).data;
+    }
+    /**
+     * 録画が 0 件のシリーズを取得する
+     * @return Promise<EmptySeriesListResult>
+     */
+    public async listEmptySeries(): Promise<EmptySeriesListResult> {
+        return (await this.repository.get('/series/empty')).data;
+    }
+    /**
+     * 録画が 0 件のシリーズを削除する
+     * @param seriesIds: number[] | undefined 省略時は録画 0 件のシリーズをすべて削除する
+     * @return Promise<DeleteEmptySeriesResult>
+     */
+    public async deleteEmptySeries(seriesIds?: number[]): Promise<DeleteEmptySeriesResult> {
+        return (await this.repository.delete('/series/empty', { data: typeof seriesIds === 'undefined' ? {} : { seriesIds } })).data;
     }
     public async listAliases(seriesId?: number): Promise<SeriesAliasItem[]> {
         return (await this.repository.get('/series/aliases', { params: { seriesId } })).data;

@@ -2245,7 +2245,7 @@ components:
                 - lines
             properties:
                 id:
-                    description: ログファイル id
+                    description: ログファ��ル id
                     type: string
                 process:
                     $ref: '#/components/schemas/LogProcessType'
@@ -2941,6 +2941,86 @@ components:
                     type: integer
                 mergedSeriesCount:
                     description: 統合して削除したシリーズ数
+                    type: integer
+
+        EmptySeriesItem:
+            description: 録画が 0 件のシリーズ 1 件
+            type: object
+            required:
+                - seriesId
+                - title
+                - normalizedTitle
+                - origin
+                - aliasCount
+                - episodeCount
+                - createdAt
+                - updatedAt
+            properties:
+                seriesId:
+                    $ref: '#/components/schemas/SeriesId'
+                title:
+                    type: string
+                normalizedTitle:
+                    type: string
+                origin:
+                    $ref: '#/components/schemas/SeriesOrigin'
+                aliasCount:
+                    description: このシリーズを指しているエイリアス辞書の件数 (削除すると一緒に消える)
+                    type: integer
+                episodeCount:
+                    description: このシリーズに登録されているエピソード数 (削除すると一緒に消える)
+                    type: integer
+                seasonYear:
+                    type: integer
+                    nullable: true
+                seasonName:
+                    type: string
+                    nullable: true
+                    enum: [WINTER, SPRING, SUMMER, AUTUMN]
+                createdAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                updatedAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+
+        EmptySeriesListResult:
+            description: 録画が 0 件のシリーズ一覧
+            type: object
+            required:
+                - total
+                - items
+            properties:
+                total:
+                    type: integer
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EmptySeriesItem'
+
+        DeleteEmptySeriesOption:
+            description: 録画が 0 件のシリーズ削除のリクエストボディ
+            type: object
+            properties:
+                seriesIds:
+                    description: 削除対象のシリーズ id。省略した場合は録画 0 件のシリーズをすべて削除する
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SeriesId'
+
+        DeleteEmptySeriesResult:
+            description: 録画が 0 件のシリーズ削除結果
+            type: object
+            required:
+                - deletedSeriesCount
+                - deletedAliasCount
+                - deletedEpisodeCount
+            properties:
+                deletedSeriesCount:
+                    type: integer
+                deletedAliasCount:
+                    description: 一緒に削除したエイリアス辞書の件数
+                    type: integer
+                deletedEpisodeCount:
+                    description: 一緒に削除したエピソード数
                     type: integer
 
         SplitSeriesOption:

@@ -100,6 +100,17 @@ export interface SeriesSeasonRow {
     count: number;
 }
 
+/**
+ * 録画が紐づいていないシリーズ 1 件 (削除候補)
+ */
+export interface EmptySeriesRow {
+    series: Series;
+    // このシリーズを指しているエイリアス辞書の件数 (シリーズと一緒に消える)
+    aliasCount: number;
+    // このシリーズに登録されているエピソード数 (シリーズと一緒に消える)
+    episodeCount: number;
+}
+
 export interface SeriesChannelRow {
     channelId: number;
     channelName: string | null;
@@ -268,6 +279,21 @@ export default interface ISeriesDB {
      * @return 作成された新シリーズ
      */
     splitSeries(sourceSeriesId: number, recordedIds: number[], newTitle: string): Promise<Series>;
+
+    // --- 空シリーズの掃除 ---
+    /**
+     * 録画が 1 件も紐づいていないシリーズを列挙する。
+     * マージ・分割・録画削除の結果取り残された自動生成シリーズを掛けるために使う
+     * @return Promise<EmptySeriesRow[]> 更新日時の新しい順
+     */
+    listEmptySeries(): Promise<EmptySeriesRow[]>;
+    /**
+     * シリーズをエピソード・エイリアス辞書・予約ヒントごと削除する。
+     * 録画が紐づいているシリーズは誤削除を防ぐためスキップする
+     * @param ids: number[] 削除対象のシリーズ ID
+     * @return Promise<number> 実際に削除したシリーズ数
+     */
+    deleteSeriesByIds(ids: number[]): Promise<number>;
 
     // --- バックアップ / リストア (DBTools 用) ---
     findAllSeries(): Promise<Series[]>;

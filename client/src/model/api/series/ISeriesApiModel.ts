@@ -16,6 +16,9 @@ export type ProgramSeriesMetrics = apid.ProgramSeriesMetrics;
 export type SeriesMergeCandidate = apid.SeriesMergeCandidate;
 export type SeriesMergeCandidateResult = apid.SeriesMergeCandidateResult;
 export type BulkSeriesMappingItem = apid.BulkSeriesMappingItem;
+export type EmptySeriesItem = apid.EmptySeriesItem;
+export type EmptySeriesListResult = apid.EmptySeriesListResult;
+export type DeleteEmptySeriesResult = apid.DeleteEmptySeriesResult;
 
 export interface RefreshSeriesMetadataResult {
     // 走査したシリーズ数
@@ -95,6 +98,17 @@ export default interface ISeriesApiModel {
      */
     updateMappingBulk(items: apid.BulkSeriesMappingItem[]): Promise<apid.BulkUpdateSeriesMappingResult>;
     split(seriesId: number, recordedIds: number[], newTitle: string): Promise<apid.SplitSeriesResult>;
+    /**
+     * 録画が 0 件のシリーズ (取り残された自動生成シリーズ) を取得する
+     * @return Promise<EmptySeriesListResult>
+     */
+    listEmptySeries(): Promise<EmptySeriesListResult>;
+    /**
+     * 録画が 0 件のシリーズを削除する (seriesIds 省略時はすべて削除)
+     * @param seriesIds: number[] | undefined
+     * @return Promise<DeleteEmptySeriesResult>
+     */
+    deleteEmptySeries(seriesIds?: number[]): Promise<DeleteEmptySeriesResult>;
     listAliases(seriesId?: number): Promise<SeriesAliasItem[]>;
     /**
      * エイリアス辞書の付け替え先シリーズを変更する (付け替え後は手動修正扱いになる)

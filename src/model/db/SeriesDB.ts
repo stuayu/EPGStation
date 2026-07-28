@@ -13,6 +13,7 @@ import VideoFile from '../../db/entities/VideoFile';
 import WatchHistory from '../../db/entities/WatchHistory';
 import IDBOperator from './IDBOperator';
 import ISeriesDB, {
+    EmptySeriesRow,
     SeriesListQuery,
     SeriesListRow,
     SeriesSeasonRow,
@@ -28,6 +29,9 @@ import ISeriesDB, {
 } from './ISeriesDB';
 @injectable()
 export default class SeriesDB implements ISeriesDB {
+    // IN 句のバインド変数上限 (SQLite は既定 999) を超えないように分割する単位
+    private static readonly DELETE_CHUNK_SIZE = 200;
+
     constructor(@inject('IDBOperator') private op: IDBOperator) {}
     async findCandidates(normalizedTitle: string): Promise<Series[]> {
         const c = await this.op.getConnection();
@@ -595,6 +599,89 @@ export default class SeriesDB implements ISeriesDB {
                 );
             }
             return newSeries;
+        });
+    }
+
+    /**
+     * 録画が 1 件も紐づいていないシリーズを列挙する
+     * @return Promise<EmptySeriesRow[]> 更新日時の新しい順
+     */
+    public async listEmptySeries(): Promise<EmptySeriesRow[]> {
+        const c = await this.op.getConnection();
+        const series = await c
+            .getRepository(Series)
+            .createQueryBuilder('s')
+            .leftJoin(RecordedSeriesLink, 'l', 'l.seriesId = s.id')
+            .where('l.id IS NULL')
+            .orderBy('s.updatedAt', 'DESC')
+            .getMany();
+        if (series.length === 0) return [];
+
+        const ids = series.map(s => s.id);
+        const aliasCounts = await this.countBySeriesId(SeriesAlias, ids);
+        const episodeCounts = await this.countBySeriesId(SeriesEpisode, ids);
+
+        return series.map(s => {
+            return {
+                series: s,
+                aliasCount: aliasCounts.get(s.id) ?? 0,
+                episodeCount: episodeCounts.get(s.id) ?? 0,
+            };
+        });
+    }
+
+    /**
+     * seriesId ごとの行数を数える (SQLite のバインド変数上限を避けるため分割して問い合わせる)
+     * @param entity: 対象エンティティ (seriesId 列を持つこと)
+     * @param ids: number[] シリーズ ID
+     * @return Promise<Map<number, number>> seriesId -> 件数
+     */
+    private async countBySeriesId(entity: any, ids: number[]): Promise<Map<number, number>> {
+        const c = await this.op.getConnection();
+        const result = new Map<number, number>();
+        for (let i = 0; i < ids.length; i += SeriesDB.DELETE_CHUNK_SIZE) {
+            const chunk = ids.slice(i, i + SeriesDB.DELETE_CHUNK_SIZE);
+            const rows = await c
+                .getRepository(entity)
+                .createQueryBuilder('t')
+                .select('t.seriesId', 'seriesId')
+                .addSelect('COUNT(*)', 'cnt')
+                .where('t.seriesId IN (:...ids)', { ids: chunk })
+                .groupBy('t.seriesId')
+                .getRawMany();
+            for (const row of rows) {
+                result.set(Number(row.seriesId), Number(row.cnt));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * シリーズを関連レコードごと削除する。録画が紐づいているシリーズは削除しない
+     * @param ids: number[] 削除対象のシリーズ ID
+     * @return Promise<number> 実際に削除したシリーズ数
+     */
+    public async deleteSeriesByIds(ids: number[]): Promise<number> {
+        if (ids.length === 0) return 0;
+        const c = await this.op.getConnection();
+        return await c.transaction(async manager => {
+            const linkRepo = manager.getRepository(RecordedSeriesLink);
+            const seriesRepo = manager.getRepository(Series);
+            let deleted = 0;
+            for (let i = 0; i < ids.length; i += SeriesDB.DELETE_CHUNK_SIZE) {
+                const chunk = ids.slice(i, i + SeriesDB.DELETE_CHUNK_SIZE);
+                // 並行して録画が紐づいたシリーズは対象外にする
+                const links = await linkRepo.find({ where: { seriesId: In(chunk) } });
+                const used = new Set(links.map(l => l.seriesId));
+                const targets = chunk.filter(id => used.has(id) === false);
+                if (targets.length === 0) continue;
+                await manager.getRepository(SeriesEpisode).delete({ seriesId: In(targets) });
+                await manager.getRepository(SeriesAlias).delete({ seriesId: In(targets) });
+                await manager.getRepository(SeriesReservationHint).delete({ seriesId: In(targets) });
+                const result = await seriesRepo.delete({ id: In(targets) });
+                deleted += typeof result.affected === 'number' ? result.affected : targets.length;
+            }
+            return deleted;
         });
     }
 
