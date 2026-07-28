@@ -1,11 +1,11 @@
 <template>
     <v-main>
         <TitleBar title="サーバー設定"></TitleBar>
-        <v-container>
-            <v-alert v-if="requiresRestartKeys.length > 0" type="warning" closable class="mx-auto mb-4" max-width="900" @click:close="requiresRestartKeys = []">
+        <v-container fluid>
+            <v-alert v-if="requiresRestartKeys.length > 0" type="warning" closable class="mb-4" @click:close="requiresRestartKeys = []">
                 再起動が必要です ({{ requiresRestartKeys.join('、') }})。変更を反映するには Operator プロセスの再起動が必要です。
             </v-alert>
-            <v-card class="mx-auto" max-width="900">
+            <v-card>
                 <v-tabs v-model="tab">
                     <v-tab value="basic">基本</v-tab>
                     <v-tab value="integration">連携</v-tab>
