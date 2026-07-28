@@ -2245,7 +2245,7 @@ components:
                 - lines
             properties:
                 id:
-                    description: ログファ��ル id
+                    description: ログファ���ル id
                     type: string
                 process:
                     $ref: '#/components/schemas/LogProcessType'
@@ -2943,6 +2943,99 @@ components:
                     description: 統合して削除したシリーズ数
                     type: integer
 
+        DictionaryWorkItem:
+            description: 作品辞書 (しょぼいカレンダー / Annict / Wikidata) の検索結果 1 件
+            type: object
+            required:
+                - title
+                - source
+                - matchType
+            properties:
+                title:
+                    type: string
+                titleKana:
+                    type: string
+                    nullable: true
+                syobocalTid:
+                    type: integer
+                    nullable: true
+                annictId:
+                    type: integer
+                    nullable: true
+                wikidataQid:
+                    type: string
+                    nullable: true
+                tmdbId:
+                    type: integer
+                    nullable: true
+                seasonYear:
+                    type: integer
+                    nullable: true
+                seasonName:
+                    type: string
+                    nullable: true
+                    enum: [WINTER, SPRING, SUMMER, AUTUMN]
+                totalEpisodes:
+                    type: integer
+                    nullable: true
+                source:
+                    description: どの辞書で確定したか
+                    type: string
+                    enum: [syobocal, annict, wikidata]
+                matchType:
+                    description: 照合の種別
+                    type: string
+                    enum: [exact, contain, prefix]
+                seriesId:
+                    description: すでにローカルにあるシリーズの id (未登録なら null)
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/SeriesId'
+
+        DictionaryWorkSearchResult:
+            description: 作品辞書の横断検索結果
+            type: object
+            required:
+                - total
+                - items
+            properties:
+                total:
+                    type: integer
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DictionaryWorkItem'
+
+        CreateSeriesFromDictionaryOption:
+            description: 辞書の作品からシリーズを作るリクエストボディ (いずれか 1 つ以上を指定する)
+            type: object
+            properties:
+                syobocalTid:
+                    type: integer
+                    nullable: true
+                annictId:
+                    type: integer
+                    nullable: true
+                wikidataQid:
+                    type: string
+                    nullable: true
+
+        CreateSeriesFromDictionaryResult:
+            description: 辞書からのシリーズ作成結果
+            type: object
+            required:
+                - seriesId
+                - title
+                - created
+            properties:
+                seriesId:
+                    $ref: '#/components/schemas/SeriesId'
+                title:
+                    type: string
+                created:
+                    description: 新規作成した場合 true。既存シリーズを再利用した場合 false
+                    type: boolean
+
         EmptySeriesItem:
             description: 録画が 0 件のシリーズ 1 件
             type: object
@@ -3322,7 +3415,7 @@ components:
                 - results
 
         ProgramSeriesMetrics:
-            description: 番組⇄シリーズ事前マッピングの精度メトリクス (§4.10)
+            description: 番組⇄シリーズ���前マッピングの精度メトリクス (§4.10)
             type: object
             properties:
                 unmatchedRate:
@@ -4525,7 +4618,7 @@ components:
                 type: integer
 
         PathImportJobId:
-            description: 外部録画ファイル取り込みジョブ id
+            description: 外部録画ファイル取り込み��ョブ id
             in: path
             name: jobId
             required: true

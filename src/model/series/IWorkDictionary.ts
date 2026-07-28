@@ -43,4 +43,24 @@ export default interface IWorkDictionary {
      * @return Promise<number | null>
      */
     lookupEpisodeNumber(syobocalTid: number, recordedTitle: string): Promise<number | null>;
+    /**
+     * キーワードで作品辞書 (しょぼいカレンダー / Annict / Wikidata) を横断検索する。
+     * エイリアス辞書の手動修正で、まだローカルに無い作品を探すために使う
+     * @param keyword: string 検索キーワード (生のまま渡してよい)
+     * @param limit: number | undefined 最大件数
+     * @return Promise<WorkMatch[]> 照合キーが短い (= キーワードに近い) 順
+     */
+    search(keyword: string, limit?: number): Promise<WorkMatch[]>;
+    /**
+     * 外部 ID から辞書の作品を引く。
+     * search() の結果からシリーズを作るときに、クライアントから受け取った ID を
+     * 信用せずサーバー側で作品情報を解決し直すために使う
+     * @param ids: しょぼいカレンダー TID / Annict 作品 ID / Wikidata 項目 ID
+     * @return Promise<WorkMatch | null> どの辞書にも無ければ null
+     */
+    findByIds(ids: {
+        syobocalTid?: number | null;
+        annictId?: number | null;
+        wikidataQid?: string | null;
+    }): Promise<WorkMatch | null>;
 }

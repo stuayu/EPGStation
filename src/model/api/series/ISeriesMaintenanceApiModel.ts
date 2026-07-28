@@ -4,6 +4,9 @@ export type SplitSeriesResult = apid.SplitSeriesResult;
 export type SeriesMergeCandidateResult = apid.SeriesMergeCandidateResult;
 export type EmptySeriesListResult = apid.EmptySeriesListResult;
 export type DeleteEmptySeriesResult = apid.DeleteEmptySeriesResult;
+export type DictionaryWorkSearchResult = apid.DictionaryWorkSearchResult;
+export type CreateSeriesFromDictionaryOption = apid.CreateSeriesFromDictionaryOption;
+export type CreateSeriesFromDictionaryResult = apid.CreateSeriesFromDictionaryResult;
 export interface RefreshSeriesMetadataResult {
     // 走査したシリーズ数
     scanned: number;
@@ -66,4 +69,19 @@ export default interface ISeriesMaintenanceApiModel {
      * @return Promise<DeleteEmptySeriesResult>
      */
     deleteEmpty(seriesIds?: number[]): Promise<DeleteEmptySeriesResult>;
+    /**
+     * 作品辞書 (しょぼいカレンダー / Annict / Wikidata) をキーワードで横断検索する。
+     * 各件には、すでにローカルにあるシリーズの id を付けて返す
+     * @param keyword: string 検索キーワード
+     * @param limit: number | undefined 最大件数
+     * @return Promise<DictionaryWorkSearchResult>
+     */
+    searchDictionary(keyword: string, limit?: number): Promise<DictionaryWorkSearchResult>;
+    /**
+     * 辞書の作品からシリーズを作る。
+     * 同じ外部 ID / 正規化タイトルのシリーズがあれば作らずにそれを返す
+     * @param option: CreateSeriesFromDictionaryOption 外部 ID (いずれか 1 つ以上)
+     * @return Promise<CreateSeriesFromDictionaryResult>
+     */
+    createFromDictionary(option: CreateSeriesFromDictionaryOption): Promise<CreateSeriesFromDictionaryResult>;
 }

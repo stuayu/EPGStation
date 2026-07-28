@@ -47,6 +47,10 @@ export default class WorkDictionary implements IWorkDictionary {
     // メモリ上の索引を DB と突き合わせ直す間隔 (ms)。
     // 辞書は Operator の自動同期と Service の「今すぐ同期」の双方から更新されうる
     private static readonly INDEX_REVALIDATE_MS = 5 * 60 * 1000;
+    // 辞書横断検索 (search) のキーワード最短長と件数上限
+    private static readonly SEARCH_MIN_KEYWORD_LENGTH = 2;
+    private static readonly SEARCH_DEFAULT_LIMIT = 20;
+    private static readonly SEARCH_MAX_LIMIT = 50;
 
     private index: Map<string, IndexEntry> | null = null;
     // Wikidata 由来の厳密キー索引。一般番組は短く一般的なタイトルが多く含有一致で誤爆するため、
@@ -84,6 +88,92 @@ export default class WorkDictionary implements IWorkDictionary {
         if (typeof strictHit !== 'undefined') return await this.toMatch(strictHit, 'exact');
 
         return null;
+    }
+
+    /**
+     * キーワードで統合索引を横断検索する
+     * @param keyword: string 検索キーワード
+     * @param limit: number | undefined 最大件数 (既定 SEARCH_DEFAULT_LIMIT / 上限 SEARCH_MAX_LIMIT)
+     * @return Promise<WorkMatch[]>
+     */
+    public async search(keyword: string, limit?: number): Promise<WorkMatch[]> {
+        const index = await this.ensureIndex();
+        const normalized = keyword.normalize('NFKC');
+        const key = syobocalLookupKey(normalized);
+        const strictKey = strictProgramKey(normalized);
+        if (key.length < WorkDictionary.SEARCH_MIN_KEYWORD_LENGTH) return [];
+
+        const max = Math.min(
+            Math.max(
+                typeof limit === 'number' && Number.isFinite(limit)
+                    ? Math.floor(limit)
+                    : WorkDictionary.SEARCH_DEFAULT_LIMIT,
+                1,
+            ),
+            WorkDictionary.SEARCH_MAX_LIMIT,
+        );
+        const seen = new Set<string>();
+        const hits: Array<{ entry: IndexEntry; matchType: WorkMatch['matchType']; length: number }> = [];
+        const push = (entry: IndexEntry, candidate: string, needle: string): void => {
+            // 同一作品が複数の照合キーで引っかかるので、外部 ID の組で重複を落とす
+            const signature = `${entry.syobocalTid ?? ''}:${entry.annictId ?? ''}:${entry.wikidataQid ?? ''}`;
+            if (seen.has(signature)) return;
+            seen.add(signature);
+            hits.push({
+                entry,
+                matchType: candidate === needle ? 'exact' : candidate.startsWith(needle) ? 'prefix' : 'contain',
+                length: candidate.length,
+            });
+        };
+
+        // 1. アニメ辞書 (しょぼいカレンダー + Annict) の統合索引
+        const exact = index.get(key);
+        if (typeof exact !== 'undefined') push(exact, key, key);
+        for (const candidate of this.keysByLength) {
+            if (hits.length >= max) break;
+            if (candidate.includes(key) === false) continue;
+            const entry = index.get(candidate);
+            if (typeof entry === 'undefined') continue;
+            push(entry, candidate, key);
+        }
+        // 2. Wikidata 単独の番組 (厳密キー索引)
+        if (strictKey.length >= WorkDictionary.SEARCH_MIN_KEYWORD_LENGTH) {
+            for (const [candidate, entry] of this.strictIndex) {
+                if (hits.length >= max) break;
+                if (candidate.includes(strictKey) === false) continue;
+                push(entry, candidate, strictKey);
+            }
+        }
+
+        // 照合キーが短いものほどキーワードに近いので上位へ出す
+        hits.sort((a, b) => a.length - b.length);
+        const results: WorkMatch[] = [];
+        for (const hit of hits.slice(0, max)) {
+            const match = await this.toMatch(hit.entry, hit.matchType);
+            if (match !== null) results.push(match);
+        }
+        return results;
+    }
+
+    /**
+     * 外部 ID から辞書の作品を引く
+     * @param ids: しょぼいカレンダー TID / Annict 作品 ID / Wikidata 項目 ID
+     * @return Promise<WorkMatch | null>
+     */
+    public async findByIds(ids: {
+        syobocalTid?: number | null;
+        annictId?: number | null;
+        wikidataQid?: string | null;
+    }): Promise<WorkMatch | null> {
+        return await this.toMatch(
+            {
+                syobocalTid: ids.syobocalTid ?? null,
+                annictId: ids.annictId ?? null,
+                wikidataQid: ids.wikidataQid ?? null,
+                rank: 0,
+            },
+            'exact',
+        );
     }
 
     public async lookupEpisodeNumber(syobocalTid: number, recordedTitle: string): Promise<number | null> {
@@ -128,7 +218,7 @@ export default class WorkDictionary implements IWorkDictionary {
             wikidataQid: wikidata?.qid ?? null,
             tmdbId: wikidata?.tmdbId ?? null,
             title,
-            // 読み仮名はしょぼいカレンダーの TitleYomi を優先し、無ければ Annict の titleKana を使う
+            // ��み仮名はしょぼいカレンダーの TitleYomi を優先し、無ければ Annict の titleKana を使う
             titleKana: syobocal?.titleYomi ?? annict?.titleKana ?? null,
             // クールは Annict の seasonYear/seasonName を優先し、
             // 無ければしょぼいカレンダーの初回放送年月から導出する
@@ -189,7 +279,7 @@ export default class WorkDictionary implements IWorkDictionary {
             if (key.includes(candidate) === false) continue;
             const entry = index.get(candidate);
             if (typeof entry === 'undefined') continue;
-            // 同じ長さで競合した場合は rank (正式タイトル > 略称/英題 > 別名) の小さい方を採る
+            // 同じ長さで競合した場合は rank (正式タイトル > 略称/英題 > 別名) の��さい方を採る
             if (best === null || entry.rank < best.rank) {
                 best = { entry, length: candidate.length, rank: entry.rank };
             }

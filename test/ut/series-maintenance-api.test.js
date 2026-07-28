@@ -239,6 +239,108 @@ test('alias bulk edit rejects an invalid body', async () => {
     assert.deepEqual(await model.updateBulk({ items: [] }), { updated: 0, removed: 0, failed: [] });
 });
 
+function dictionaryFixture() {
+    const works = [
+        {
+            syobocalTid: 555,
+            annictId: 777,
+            wikidataQid: null,
+            tmdbId: null,
+            title: '作品X',
+            titleKana: 'さくひんえっくす',
+            seasonYear: 2025,
+            seasonName: 'SPRING',
+            totalEpisodes: 12,
+            matchType: 'exact',
+            confidence: 1,
+            source: 'syobocal',
+        },
+        {
+            syobocalTid: null,
+            annictId: null,
+            wikidataQid: 'Q100',
+            tmdbId: 42,
+            title: '番組Y',
+            titleKana: null,
+            seasonYear: null,
+            seasonName: null,
+            totalEpisodes: null,
+            matchType: 'contain',
+            confidence: 0.95,
+            source: 'wikidata',
+        },
+    ];
+    // 作品X だけローカル登録済み
+    const bySyobocalTid = new Map([[555, { id: 5, title: '作品X' }]]);
+    const created = [];
+    const db = {
+        findBySyobocalTid: async tid => bySyobocalTid.get(tid) ?? null,
+        findByAnnictId: async () => null,
+        findByWikidataQid: async () => null,
+        findCandidates: async () => [],
+        createSeries: async value => {
+            created.push(value);
+            return { id: 900 + created.length, title: value.title };
+        },
+    };
+    const dictionary = {
+        search: async keyword => (keyword === 'ヒット無し' ? [] : works),
+        findByIds: async ids =>
+            works.find(
+                w =>
+                    (ids.syobocalTid !== null && w.syobocalTid === ids.syobocalTid) ||
+                    (ids.annictId !== null && w.annictId === ids.annictId) ||
+                    (ids.wikidataQid !== null && w.wikidataQid === ids.wikidataQid),
+            ) ?? null,
+    };
+    return { model: new MaintenanceModel(config, db, undefined, dictionary), created };
+}
+
+test('dictionary search marks works that already exist as local series', async () => {
+    const { model } = dictionaryFixture();
+    const result = await model.searchDictionary('作品');
+    assert.equal(result.total, 2);
+    assert.equal(result.items[0].title, '作品X');
+    assert.equal(result.items[0].source, 'syobocal');
+    assert.equal(result.items[0].seriesId, 5);
+    assert.equal(result.items[1].wikidataQid, 'Q100');
+    assert.equal(result.items[1].seriesId, null);
+});
+
+test('dictionary search rejects an empty keyword', async () => {
+    const { model } = dictionaryFixture();
+    await assert.rejects(() => model.searchDictionary('   '), /InvalidRequestBody/);
+});
+
+test('dictionary create makes a new series carrying the dictionary metadata', async () => {
+    const { model, created } = dictionaryFixture();
+    const result = await model.createFromDictionary({ wikidataQid: 'Q100' });
+    assert.equal(result.created, true);
+    assert.equal(result.title, '番組Y');
+    assert.equal(created.length, 1);
+    assert.equal(created[0].wikidataQid, 'Q100');
+    assert.equal(created[0].tmdbId, 42);
+});
+
+test('dictionary create reuses the series that already has the same external id', async () => {
+    const { model, created } = dictionaryFixture();
+    const result = await model.createFromDictionary({ syobocalTid: 555 });
+    assert.deepEqual(result, { seriesId: 5, title: '作品X', created: false });
+    assert.equal(created.length, 0);
+});
+
+test('dictionary create rejects an empty body and unknown works', async () => {
+    const { model } = dictionaryFixture();
+    await assert.rejects(() => model.createFromDictionary({}), /InvalidRequestBody/);
+    await assert.rejects(() => model.createFromDictionary({ syobocalTid: 999 }), /DictionaryWorkIsNotFound/);
+});
+
+test('dictionary search is hidden while the series library feature is disabled', async () => {
+    const model = new MaintenanceModel(disabledConfig, {}, undefined, {});
+    await assert.rejects(() => model.searchDictionary('作品'), /SeriesLibraryFeatureIsDisabled/);
+    await assert.rejects(() => model.createFromDictionary({ syobocalTid: 1 }), /SeriesLibraryFeatureIsDisabled/);
+});
+
 function emptySeriesFixture() {
     const rows = [
         {

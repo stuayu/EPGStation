@@ -19,6 +19,9 @@ export type BulkSeriesMappingItem = apid.BulkSeriesMappingItem;
 export type EmptySeriesItem = apid.EmptySeriesItem;
 export type EmptySeriesListResult = apid.EmptySeriesListResult;
 export type DeleteEmptySeriesResult = apid.DeleteEmptySeriesResult;
+export type DictionaryWorkItem = apid.DictionaryWorkItem;
+export type DictionaryWorkSearchResult = apid.DictionaryWorkSearchResult;
+export type CreateSeriesFromDictionaryResult = apid.CreateSeriesFromDictionaryResult;
 
 export interface RefreshSeriesMetadataResult {
     // 走査したシリーズ数
@@ -109,6 +112,19 @@ export default interface ISeriesApiModel {
      * @return Promise<DeleteEmptySeriesResult>
      */
     deleteEmptySeries(seriesIds?: number[]): Promise<DeleteEmptySeriesResult>;
+    /**
+     * 作品辞書 (しょぼいカレンダー / Annict / Wikidata) をキーワードで横断検索する
+     * @param keyword: string 検索キーワード
+     * @param limit: number | undefined 最大件数
+     * @return Promise<DictionaryWorkSearchResult>
+     */
+    searchDictionary(keyword: string, limit?: number): Promise<DictionaryWorkSearchResult>;
+    /**
+     * 辞書の作品からシリーズを作る (既存ならそれを返す)
+     * @param work: DictionaryWorkItem 検索結果 1 件
+     * @return Promise<CreateSeriesFromDictionaryResult>
+     */
+    createSeriesFromDictionary(work: DictionaryWorkItem): Promise<CreateSeriesFromDictionaryResult>;
     listAliases(seriesId?: number): Promise<SeriesAliasItem[]>;
     /**
      * エイリアス辞書の付け替え先シリーズを変更する (付け替え後は手動修正扱いになる)
