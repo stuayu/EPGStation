@@ -680,8 +680,14 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - 録画完了ファイルは「ファイル最終更新時刻 − 実測尺」をファイル先頭の実時刻 (`startAt`) として推定して保存する。新規録画は `RecorderModel.addRecorded()` で録画開始時刻をそのまま記録する。録画中は推定しない
         - 過去分はサーバー起動時にバックグラウンドで順次解析され (`ServiceServer.analyzeVideoFileMetadata()`、20 件ずつ)、サーバー設定 > 基本タブの「録画ファイルのメタデータ」から手動一括取得もできる。未解析のファイルは再生時にオンデマンドでも解析される
         - ニコニコ実況の過去ログは番組開始時刻ではなく `videoFile.startAt` を基準に取得するように変更し、録画マージン分のコメントズレを解消 (`client/src/views/WatchRecorded.vue`)
-    - 録画再生画面のシークは DPlayer 標準のコントローラ (プレーヤー内のシークバー) をそのまま使う
+    - 録画再生画面のシークは DPlayer 標準のコントローラ (プレーヤー内のシークバー) に一本化した
         - 一時的に独自の外付けシークバー (`VideoSeekBar.vue`) をプレーヤー下へ表示していたが、DPlayer 内蔵のシークバーと二重になるため撤去した。`VideoContainer.vue` 側の再生位置ポーリング (1 秒間隔) も不要になったため削除
+        - **ストリーミング再生 (mp4 / webm / HLS) は video 要素が「再生位置から作り直したストリームの断片」しか持たない**ため、そのままでは DPlayer のシークバーに断片の長さしか出ず、断片の外へシークできない。`client/src/components/video/VirtualTimeline.ts` を追加し、DPlayer の表示更新とシーク操作を動画全体の時間軸へ差し替えた
+            - 総尺 (`dplayer-dtime`)・再生位置 (`dplayer-ptime`)・再生位置バーは `BaseVideo.getDuration()` / `getCurrentTime()` の値で毎回上書きする (DPlayer 自身の `timeupdate` / `durationchange` / `progress` の後に走らせ、加えて 250ms 間隔でも更新してストリーム作り直し中も追従させる)
+            - 白い読み込み済みバーは新設の `BaseVideo.getEncodedTime()` (エンコード済み・バッファ済みの末尾) を動画全体に対する割合で描く
+            - シークバーのドラッグ / クリック / ホバー時刻は、DPlayer がリスナを張っている `.dplayer-bar-wrap` の**親要素のキャプチャフェーズで横取り**して独自処理へ振り替える (同一要素のキャプチャでは DPlayer 側のリスナを止められないため)
+            - `DPlayer.seek()` は差し替えるが、**現在のストリームの範囲内なら DPlayer 標準の処理をそのまま呼ぶ**。範囲外 (←→ キーの大きなスキップなど) のときだけストリームを作り直す仮想シークへ流す。画質切替時の再生位置復元など DPlayer 内部の `seek()` 呼び出しを壊さないための分岐
+            - 有効になるのは `isEnabledVirtualTimeline()` を true にした `RecordedStreamingVideo` / `RecordedHLSStreamingVideo` のみ。直接再生 (`NormalVideo`) とライブ視聴は DPlayer 標準の挙動のまま
         - 独自のシーク UI を足す場合はプレーヤー外に並べるのではなく DPlayer のコントローラを拡張すること
     - 番組表を放送波種別ではなく地域別に切り替えられるようにした
         - `src/model/channel/BroadcastRegion.ts` (`IBroadcastRegion`) を追加。serviceId の地域符号 (`serviceId / 1024`) を主判定として地上波の地域を決める (1 関東広域 〜 62 沖縄)

@@ -189,11 +189,31 @@ class RecordedStreamingVideo extends BaseVideo {
     }
 
     /**
+     * DPlayer のシークバーを動画全体の時間軸で扱う
+     * @return boolean
+     */
+    protected isEnabledVirtualTimeline(): boolean {
+        return true;
+    }
+
+    /**
      * 動画の長さを返す (秒)
      * @return number
      */
     public getDuration(): number {
         return this.videoState.getDuration();
+    }
+
+    /**
+     * エンコード済みの位置を動画全体の時間軸で返す (秒)
+     * mp4 / webm のストリーミングは尺が不明なためバッファ済みの末尾を使う
+     * @return number
+     */
+    public getEncodedTime(): number {
+        const streamDuration = super.getDuration();
+        const encoded = Math.max(isFinite(streamDuration) === true ? streamDuration : 0, super.getEncodedTime());
+
+        return Math.min(this.basePlayPosition + encoded, this.getDuration());
     }
 
     /**
