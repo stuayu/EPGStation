@@ -504,14 +504,16 @@
                         <v-window-item value="account">
                             <div class="text-subtitle-1 mb-2">ログインユーザー</div>
                             <div class="text-caption mb-2">
+                                システム管理者は設定変更・ユーザー管理・バージョン更新ができます。最初にサインアップした人が自動でシステム管理者になり、以降は一般権限です。
                                 パスワードを変更すると、そのユーザーのログイン状態 (発行済みセッション) はすべて無効になります
                             </div>
                             <v-table density="compact">
                                 <thead>
                                     <tr>
                                         <th>ユーザー名</th>
-                                        <th style="width: 160px">作成日時</th>
-                                        <th style="width: 200px"></th>
+                                        <th style="width: 130px">権限</th>
+                                        <th style="width: 150px">作成日時</th>
+                                        <th style="width: 260px"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -519,10 +521,24 @@
                                         <td>
                                             {{ u.name }}
                                             <v-chip v-if="u.name === currentUserName" size="x-small" color="primary" class="ml-1">ログイン中</v-chip>
+                                            <div class="d-flex ga-1 mt-1">
+                                                <v-chip v-for="p in u.providers" :key="p" size="x-small" variant="outlined">{{ p }}</v-chip>
+                                                <v-chip v-if="u.hasPassword === true" size="x-small" variant="outlined">パスワード</v-chip>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <v-chip size="x-small" :color="u.role === 'admin' ? 'deep-purple' : undefined" variant="flat">
+                                                {{ u.role === 'admin' ? 'システム管理者' : '一般' }}
+                                            </v-chip>
                                         </td>
                                         <td class="text-caption">{{ formatDate(u.createdAt) }}</td>
                                         <td>
-                                            <v-btn size="small" variant="text" @click="openPasswordDialog(u)">パスワード変更</v-btn>
+                                            <v-btn size="small" variant="text" @click="toggleRole(u)">
+                                                {{ u.role === 'admin' ? '一般にする' : '管理者にする' }}
+                                            </v-btn>
+                                            <v-btn v-if="u.hasPassword === true || u.name === currentUserName" size="small" variant="text" @click="openPasswordDialog(u)">
+                                                パスワード
+                                            </v-btn>
                                             <v-btn
                                                 size="small"
                                                 variant="text"
@@ -673,6 +689,8 @@ class SystemSetting extends Vue {
     authUsers: AuthUserItem[] = [];
     currentUserName = '';
     isAuthEnabled = false;
+    // 認証が無効な場合は全員が管理者相当 (従来どおりの動作)
+    isAdmin = true;
     newUserName = '';
     newUserPassword = '';
     authSaving = false;
@@ -693,6 +711,7 @@ class SystemSetting extends Vue {
             const status = await this.authApi.getStatus();
             this.isAuthEnabled = status.enabled;
             this.currentUserName = status.user?.name ?? '';
+            this.isAdmin = status.enabled === false || status.user?.role === 'admin';
             if (status.enabled === false) return;
             this.authUsers = await this.authApi.listUsers();
         } catch (err) {
@@ -713,6 +732,24 @@ class SystemSetting extends Vue {
             this.snackbarState.open({ color: 'error', text: SystemSetting.authErrorText(err) });
         } finally {
             this.authSaving = false;
+        }
+    }
+
+    /**
+     * システム管理者権限の付与 / 剥奪
+     */
+    async toggleRole(user: AuthUserItem): Promise<void> {
+        const role = user.role === 'admin' ? 'user' : 'admin';
+        try {
+            await this.authApi.setRole(user.id, role);
+            this.snackbarState.open({
+                color: 'success',
+                text: role === 'admin' ? `${user.name} をシステム管理者にしました` : `${user.name} を一般権限にしました`,
+            });
+            await this.loadAuth();
+        } catch (err: any) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: SystemSetting.authErrorText(err) });
         }
     }
 
@@ -773,6 +810,10 @@ class SystemSetting extends Vue {
                 return 'そのユーザー名はすでに使われています';
             case 'LastUserCanNotBeRemoved':
                 return '最後の 1 人は削除できません';
+            case 'LastAdminCanNotBeDemoted':
+                return '最後のシステム管理者は一般権限にできません';
+            case 'LastAdminCanNotBeRemoved':
+                return '最後のシステム管理者は削除できません';
             default:
                 return '操作に失敗しました';
         }
@@ -1014,6 +1055,13 @@ class SystemSetting extends Vue {
     }
 
     async mounted() {
+        // 認証有効時、一般ユーザーはこの画面を開けない (API 側も 403 で弾く)
+        await this.loadAuth();
+        if (this.isAdmin === false) {
+            this.snackbarState.open({ color: 'error', text: 'システム管理者のみが利用できます' });
+            await this.$router.replace('/settings');
+            return;
+        }
         if (isFeatureEnabled(this.serverConfigModel.getConfig(), 'systemSettings') === false) {
             this.snackbarState.open({ color: 'error', text: 'サーバー設定機能は無効化されています' });
             await this.$router.replace('/settings');
@@ -1055,7 +1103,6 @@ class SystemSetting extends Vue {
             console.error(err);
         }
         await this.loadChannelMap();
-        await this.loadAuth();
         await this.refreshSyobocalTitleStatus();
         await this.refreshAnnictWorkStatus();
 

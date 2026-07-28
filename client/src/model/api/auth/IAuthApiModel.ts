@@ -22,4 +22,8 @@ export default interface IAuthApiModel {
      */
     changePassword(userId: number, newPassword: string, currentPassword?: string): Promise<void>;
     removeUser(userId: number): Promise<void>;
+    /**
+     * 権限 (システム管理者 / 一般) を変更する
+     */
+    setRole(userId: number, role: apid.AuthRole): Promise<void>;
 }

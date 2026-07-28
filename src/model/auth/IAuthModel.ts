@@ -48,7 +48,26 @@ export default interface IAuthModel {
      * @return Promise<AuthUserItem[]>
      */
     listUsers(): Promise<AuthUserItem[]>;
-    addUser(name: string, password: string): Promise<AuthUserItem>;
+    addUser(name: string, password: string, role?: string): Promise<AuthUserItem>;
+    /**
+     * 権限を変更する ('admin' | 'user')。最後のシステム管理者は降格できない
+     * @param id: number
+     * @param role: string
+     * @return Promise<void>
+     */
+    setRole(id: number, role: string): Promise<void>;
+    /**
+     * 外部 ID プロバイダ経由でログインする。未登録なら新規ユーザーを作る
+     * (最初のユーザーのみシステム管理者、以降は一般権限)
+     * @param value: プロバイダから取得した識別情報
+     * @return Promise<LoginResult>
+     */
+    signInWithProvider(value: {
+        provider: string;
+        providerUserId: string;
+        email: string | null;
+        name: string;
+    }): Promise<LoginResult>;
     /**
      * パスワードを変更する。自分のパスワードを変える場合は現在のパスワードを要求する
      * @param id: number

@@ -380,6 +380,7 @@
 <script lang="ts">
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
+import IAuthApiModel from '@/model/api/auth/IAuthApiModel';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import INavigationState from '@/model/state/navigation/INavigationState';
@@ -438,10 +439,24 @@ class Settings extends Vue {
     }
 
     /**
-     * サーバー設定 (システム設定) 画面への導線を表示するか (featureFlags.systemSettings 連動)
+     * サーバー設定 (システム設定) 画面への導線を表示するか。
+     * featureFlags.systemSettings に加え、認証有効時はシステム管理者のみに見せる
      */
     get isShowSystemSettings(): boolean {
-        return isFeatureEnabled(this.serverConfigModel.getConfig(), 'systemSettings');
+        if (isFeatureEnabled(this.serverConfigModel.getConfig(), 'systemSettings') === false) return false;
+        return this.isAdmin;
+    }
+
+    // 認証が無効な場合は全員が管理者相当として扱う (従来どおりの動作)
+    isAdmin = true;
+
+    async loadAuthRole(): Promise<void> {
+        try {
+            const status = await container.get<IAuthApiModel>('IAuthApiModel').getStatus();
+            this.isAdmin = status.enabled === false || status.user?.role === 'admin';
+        } catch (err) {
+            console.error(err);
+        }
     }
 
     public readonly guideModeItems: GuideModeItem[] = [
@@ -518,6 +533,10 @@ class Settings extends Vue {
             };
             this.searchLengthItems.push(item);
         }
+    }
+
+    public mounted(): void {
+        void this.loadAuthRole();
     }
 
     public beforeUnmount(): void {

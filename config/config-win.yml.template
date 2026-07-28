@@ -524,6 +524,23 @@ stream:
 #     enabled: true
 #     # セッションの有効期間 (ms)。既定 30 日
 #     sessionTtlMs: 2592000000
+#     # 2 人目以降のサインアップ (SSO での新規ユーザー作成) を許可するか。既定 true。
+#     # 最初にサインアップした人が自動でシステム管理者になり、以降は一般権限になります。
+#     # インターネットに公開している場合、false にして管理者が招待する運用を推奨します
+#     allowSignUp: true
+#     # Google / GitHub の SSO。ログイン前に必要なため config.yml に書きます。
+#     # コールバック URL (プロバイダ側に登録する値) の既定は
+#     #   <アクセス元 URL>/api/auth/oauth/<google|github>/callback
+#     # です。リバースプロキシ配下などで自動判定が合わない場合のみ redirectUri を明示してください。
+#     providers:
+#         google:
+#             clientId: 'xxxxxxxx.apps.googleusercontent.com'
+#             clientSecret: 'xxxxxxxx'
+#             # redirectUri: 'https://epg.example.com/api/auth/oauth/google/callback'
+#         github:
+#             clientId: 'Iv1.xxxxxxxx'
+#             clientSecret: 'xxxxxxxx'
+#             # redirectUri: 'https://epg.example.com/api/auth/oauth/github/callback'
 
 # 新しいバージョンが公開されたときに Web UI で知らせる (featureFlags.updateNotification 有効時のみ)。
 # updateChecker:

@@ -14,6 +14,8 @@ export interface SessionPayload {
     uid: number;
     // ユーザー名 (表示用)
     name: string;
+    // 'admin' | 'user'。検証時に DB の現在値で上書きされる (権限変更を再ログインなしで反映するため)
+    role: string;
     // 有効期限 (UnixtimeMS)
     exp: number;
     // 発行時点の User.tokenVersion。パスワード変更で加算され、既存トークンが失効する
@@ -63,6 +65,7 @@ export const verifySessionToken = (
         const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
         if (typeof payload?.uid !== 'number' || typeof payload?.exp !== 'number') return null;
         if (typeof payload?.ver !== 'number' || typeof payload?.name !== 'string') return null;
+        if (typeof payload?.role !== 'string') return null;
         if (payload.exp <= now) return null;
         return payload as SessionPayload;
     } catch (err) {

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { hashPassword, verifyPassword, assertValidPassword } = require('../../dist/model/auth/PasswordHash');
 const { createSessionToken, verifySessionToken, readCookie } = require('../../dist/model/auth/SessionToken');
-const { isPublicApiPath, toApiPath } = require('../../dist/model/auth/AuthGuard');
+const { isAdminApiPath, isPublicApiPath, toApiPath } = require('../../dist/model/auth/AuthGuard');
 const AuthModel = require('../../dist/model/auth/AuthModel').default;
 
 test('password hashing is salted (the same password produces different hashes)', () => {
@@ -32,22 +32,22 @@ test('password length is validated', () => {
 });
 
 test('session tokens round trip and carry the identity', () => {
-    const payload = { uid: 1, name: 'admin', exp: Date.now() + 1000, ver: 3 };
+    const payload = { uid: 1, name: 'admin', role: 'admin', exp: Date.now() + 1000, ver: 3 };
     const token = createSessionToken(payload, 'secret');
     assert.deepEqual(verifySessionToken(token, 'secret'), payload);
 });
 
 test('session tokens are rejected when tampered with, expired or signed by another key', () => {
-    const token = createSessionToken({ uid: 1, name: 'admin', exp: Date.now() + 1000, ver: 1 }, 'secret');
+    const token = createSessionToken({ uid: 1, name: 'admin', role: 'admin', exp: Date.now() + 1000, ver: 1 }, 'secret');
     assert.equal(verifySessionToken(token, 'another-secret'), null);
     // 署名を 1 文字書き換える
     const tampered = `${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`;
     assert.equal(verifySessionToken(tampered, 'secret'), null);
     // 本文だけ差し替えても署名が合わない
-    const forged = `${Buffer.from(JSON.stringify({ uid: 2, name: 'x', exp: Date.now() + 1000, ver: 1 })).toString('base64url')}.${token.split('.')[1]}`;
+    const forged = `${Buffer.from(JSON.stringify({ uid: 2, name: 'x', role: 'admin', exp: Date.now() + 1000, ver: 1 })).toString('base64url')}.${token.split('.')[1]}`;
     assert.equal(verifySessionToken(forged, 'secret'), null);
 
-    const expired = createSessionToken({ uid: 1, name: 'admin', exp: Date.now() - 1, ver: 1 }, 'secret');
+    const expired = createSessionToken({ uid: 1, name: 'admin', role: 'admin', exp: Date.now() - 1, ver: 1 }, 'secret');
     assert.equal(verifySessionToken(expired, 'secret'), null);
     assert.equal(verifySessionToken(undefined, 'secret'), null);
     assert.equal(verifySessionToken('garbage', 'secret'), null);
@@ -83,7 +83,9 @@ test('api paths are extracted with the sub directory taken into account', () => 
  */
 function authFixture(options = {}) {
     const users = new Map();
+    const identities = [];
     let nextId = 1;
+    let nextIdentityId = 1;
     const db = {
         count: async () => users.size,
         findAll: async () => [...users.values()],
@@ -102,24 +104,54 @@ function authFixture(options = {}) {
         },
         delete: async id => {
             users.delete(id);
+            for (let i = identities.length - 1; i >= 0; i--) {
+                if (identities[i].userId === id) identities.splice(i, 1);
+            }
+        },
+        updateRole: async (id, role, updatedAt) => {
+            const updated = { ...users.get(id), role, updatedAt };
+            users.set(id, updated);
+            return updated;
+        },
+        countByRole: async role => [...users.values()].filter(u => u.role === role).length,
+        findIdentity: async (provider, providerUserId) =>
+            identities.find(x => x.provider === provider && x.providerUserId === providerUserId) ?? null,
+        listIdentities: async userId => identities.filter(x => x.userId === userId),
+        upsertIdentity: async value => {
+            const current = identities.find(
+                x => x.provider === value.provider && x.providerUserId === value.providerUserId,
+            );
+            if (typeof current !== 'undefined') {
+                Object.assign(current, value);
+                return current;
+            }
+            const created = { ...value, id: nextIdentityId++ };
+            identities.push(created);
+            return created;
         },
     };
-    const configuration = { getConfig: () => ({ auth: { enabled: options.enabled !== false } }) };
+    const configuration = {
+        getConfig: () => ({ auth: { enabled: options.enabled !== false, allowSignUp: options.allowSignUp } }),
+    };
     // 鍵ファイルが読めない状況を再現できるよう、null も明示的に渡せるようにする
     const crypto = { getSigningKey: () => ('signingKey' in options ? options.signingKey : 'test-signing-key') };
-    return { model: new AuthModel(configuration, db, crypto), users };
+    return { model: new AuthModel(configuration, db, crypto), users, identities };
 }
 
 test('the first user can be created and is logged in immediately', async () => {
     const { model } = authFixture();
     const before = await model.getStatus(null);
-    assert.deepEqual(before, { enabled: true, initialized: false, user: null });
+    assert.equal(before.initialized, false);
+    assert.equal(before.user, null);
 
     const result = await model.setup('admin', 'password123');
     assert.equal(result.user.name, 'admin');
+    // 最初のユーザーは必ずシステム管理者になる
+    assert.equal(result.user.role, 'admin');
     const status = await model.getStatus(result.token);
     assert.equal(status.initialized, true);
     assert.equal(status.user.name, 'admin');
+    assert.equal(status.user.role, 'admin');
 });
 
 test('setup is refused once a user exists (it is reachable without a session)', async () => {
@@ -164,6 +196,8 @@ test('user names must be unique and the last user can not be removed', async () 
     await assert.rejects(() => model.removeUser(1), /LastUserCanNotBeRemoved/);
 
     const second = await model.addUser('viewer', 'password123');
+    // 管理者が作ったユーザーは一般権限
+    assert.equal(second.role, 'user');
     await model.removeUser(second.id);
     assert.equal((await model.listUsers()).length, 1);
 });
@@ -182,7 +216,9 @@ test('a deleted user can no longer use their session', async () => {
 test('everything is inert while auth is disabled in config.yml', async () => {
     const { model } = authFixture({ enabled: false });
     assert.equal(model.isEnabled(), false);
-    assert.deepEqual(await model.getStatus(null), { enabled: false, initialized: true, user: null });
+    const status = await model.getStatus(null);
+    assert.equal(status.enabled, false);
+    assert.equal(status.user, null);
     await assert.rejects(() => model.login('admin', 'password123'), /AuthIsDisabled/);
     await assert.rejects(() => model.setup('admin', 'password123'), /AuthIsDisabled/);
 });
@@ -191,4 +227,113 @@ test('sessions can not be issued or verified without a signing key', async () =>
     const { model } = authFixture({ signingKey: null });
     await assert.rejects(() => model.setup('admin', 'password123'), /SigningKeyIsNotAvailable/);
     assert.equal(await model.verify('anything'), null);
+});
+
+// --- 権限 (システム管理者 / 一般) ---
+
+test('admin only endpoints are separated from the ones every user may call', () => {
+    for (const path of ['/settings', '/settings/system', '/auth/users', '/auth/users/1/role', '/update', '/update/run', '/logs']) {
+        assert.equal(isAdminApiPath(path), true, path);
+    }
+    // 視聴・録画閲覧など一般ユーザーが使う API は管理者限定にしない
+    for (const path of ['/recorded', '/reserves', '/schedules', '/auth', '/auth/login', '/streams', ''] ) {
+        assert.equal(isAdminApiPath(path), false, path);
+    }
+});
+
+test('an admin can promote and demote others but not remove the last admin', async () => {
+    const { model } = authFixture();
+    await model.setup('admin', 'password123');
+    const viewer = await model.addUser('viewer', 'password123');
+    assert.equal(viewer.role, 'user');
+
+    await model.setRole(viewer.id, 'admin');
+    assert.equal((await model.listUsers()).find(u => u.id === viewer.id).role, 'admin');
+
+    await model.setRole(viewer.id, 'user');
+    assert.equal((await model.listUsers()).find(u => u.id === viewer.id).role, 'user');
+
+    // 管理者が居なくなる操作は止める
+    await assert.rejects(() => model.setRole(1, 'user'), /LastAdminCanNotBeDemoted/);
+    await assert.rejects(() => model.removeUser(1), /LastAdminCanNotBeRemoved/);
+    await assert.rejects(() => model.setRole(1, 'superuser'), /InvalidRole/);
+});
+
+test('a role change takes effect without re-login', async () => {
+    const { model } = authFixture();
+    await model.setup('admin', 'password123');
+    const viewer = await model.addUser('viewer', 'password123');
+    const login = await model.login('viewer', 'password123');
+    assert.equal((await model.verify(login.token)).role, 'user');
+
+    await model.setRole(viewer.id, 'admin');
+    // トークンは古い権限を持ったままだが、検証時に DB の現在値で上書きされる
+    assert.equal((await model.verify(login.token)).role, 'admin');
+});
+
+// --- SSO (Google / GitHub) ---
+
+const googleProfile = { provider: 'google', providerUserId: '1001', email: 'owner@example.com', name: 'Owner' };
+
+test('the first SSO sign up becomes the system administrator', async () => {
+    const { model } = authFixture();
+    const result = await model.signInWithProvider(googleProfile);
+    assert.equal(result.user.role, 'admin');
+    assert.equal(result.user.name, 'Owner');
+});
+
+test('later SSO sign ups get the general role', async () => {
+    const { model } = authFixture();
+    await model.signInWithProvider(googleProfile);
+    const second = await model.signInWithProvider({
+        provider: 'github',
+        providerUserId: '2002',
+        email: 'member@example.com',
+        name: 'member',
+    });
+    assert.equal(second.user.role, 'user');
+    assert.equal((await model.listUsers()).length, 2);
+});
+
+test('signing in again with the same provider account reuses the user', async () => {
+    const { model } = authFixture();
+    const first = await model.signInWithProvider(googleProfile);
+    const again = await model.signInWithProvider({ ...googleProfile, email: 'changed@example.com' });
+    assert.equal(again.user.id, first.user.id);
+    assert.equal((await model.listUsers()).length, 1);
+});
+
+test('SSO users can not log in with a password', async () => {
+    const { model } = authFixture();
+    await model.signInWithProvider(googleProfile);
+    await assert.rejects(() => model.login('Owner', ''), /InvalidCredentials/);
+    await assert.rejects(() => model.login('Owner', 'password123'), /InvalidCredentials/);
+});
+
+test('a display name collision is resolved instead of failing the sign in', async () => {
+    const { model } = authFixture();
+    await model.setup('Owner', 'password123');
+    const sso = await model.signInWithProvider(googleProfile);
+    assert.equal(sso.user.name, 'Owner (google)');
+});
+
+test('sign up can be closed to everyone but the existing users', async () => {
+    const { model } = authFixture({ allowSignUp: false });
+    // 1 人目は許可される (誰も居ないと管理者を作れないため)
+    await model.signInWithProvider(googleProfile);
+    await assert.rejects(
+        () => model.signInWithProvider({ provider: 'github', providerUserId: '2', email: null, name: 'x' }),
+        /SignUpIsNotAllowed/,
+    );
+    // すでに紐付いているアカウントはログインできる
+    await model.signInWithProvider(googleProfile);
+});
+
+test('the linked providers are visible in the user list', async () => {
+    const { model } = authFixture();
+    await model.signInWithProvider(googleProfile);
+    const users = await model.listUsers();
+    assert.deepEqual(users[0].providers, ['google']);
+    // SSO だけのユーザーはパスワードを持たない
+    assert.equal(users[0].hasPassword, false);
 });

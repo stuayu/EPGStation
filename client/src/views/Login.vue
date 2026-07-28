@@ -10,6 +10,29 @@
                         最初のログインユーザーを作成します
                     </v-card-subtitle>
                     <v-card-text>
+                        <!-- SSO でのログイン / サインアップ -->
+                        <template v-if="providers.length > 0">
+                            <v-btn
+                                v-for="p in providers"
+                                :key="p.id"
+                                block
+                                variant="outlined"
+                                class="mb-2"
+                                :prepend-icon="providerIcon(p.id)"
+                                :href="p.authorizeUrl"
+                            >
+                                {{ p.label }} で{{ isSetup === true ? 'はじめる' : 'ログイン' }}
+                            </v-btn>
+                            <div v-if="isSetup === true" class="text-caption text-grey mb-2">
+                                最初にサインアップした人がシステム管理者になります
+                            </div>
+                            <div class="d-flex align-center my-3">
+                                <v-divider></v-divider>
+                                <span class="text-caption text-grey mx-2">または</span>
+                                <v-divider></v-divider>
+                            </div>
+                        </template>
+
                         <v-form @submit.prevent="submit">
                             <v-text-field
                                 v-model="name"
@@ -59,6 +82,9 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import IAuthApiModel from '@/model/api/auth/IAuthApiModel';
+import * as apid from '../../../api';
+
+type AuthProviderItem = apid.AuthProviderItem;
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
@@ -68,10 +94,15 @@ class Login extends Vue {
     passwordConfirm = '';
     // 初期ユーザーが未作成なら「作成」モードで表示する
     isSetup = false;
+    providers: AuthProviderItem[] = [];
     submitting = false;
     errorMessage = '';
 
     private api = container.get<IAuthApiModel>('IAuthApiModel');
+
+    providerIcon(id: string): string {
+        return id === 'google' ? 'mdi-google' : id === 'github' ? 'mdi-github' : 'mdi-login-variant';
+    }
 
     get canSubmit(): boolean {
         if (this.name.trim() === '' || this.password === '') return false;
@@ -88,9 +119,13 @@ class Login extends Vue {
                 return;
             }
             this.isSetup = status.initialized === false;
+            this.providers = status.providers;
         } catch (err) {
             console.error(err);
         }
+        // SSO のコールバックで失敗した場合はクエリで理由が渡ってくる
+        const error = new URLSearchParams(window.location.search).get('authError');
+        if (error !== null) this.errorMessage = Login.toMessage({ response: { data: { message: error } } });
     }
 
     async submit(): Promise<void> {
@@ -130,6 +165,16 @@ class Login extends Vue {
                 return 'すでに初期設定が済んでいます。画面を再読み込みしてください';
             case 'SigningKeyIsNotAvailable':
                 return '暗号化鍵を読み込めませんでした (data/key/secret.key を確認してください)';
+            case 'SignUpIsNotAllowed':
+                return '新規サインアップは許可されていません。管理者にユーザーの作成を依頼してください';
+            case 'InvalidOAuthState':
+                return 'ログインの有効期限が切れました。もう一度お試しください';
+            case 'OAuthProviderIsNotConfigured':
+                return 'この連携は設定されていません (config.yml の auth.providers を確認してください)';
+            case 'OAuthTokenExchangeFailed':
+            case 'OAuthRequestFailed':
+            case 'OAuthProfileIsNotAvailable':
+                return '外部サービスとの連携に失敗しました';
             default:
                 return err?.response?.status === 401 ? 'ユーザー名またはパスワードが違います' : 'ログインに失敗しました';
         }

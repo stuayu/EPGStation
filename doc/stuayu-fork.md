@@ -142,6 +142,17 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **クライアント**: 未ログイン時は `main.ts` がログイン画面だけを mount し、config / channels の取得 (認証必須) を走らせない。セッション切れ (401) は `RepositoryModel` の共通インターセプタが検知して画面を読み込み直す。ユーザーの追加・削除・パスワード変更はサーバー設定の「アカウント」タブから行える
     - DB は `user` テーブルを追加 (sqlite / mysql 両マイグレーションあり)
 
+- **SSO (Google / GitHub) ログインと権限管理を追加した**
+    - **サインアップの流れ**: **最初にサインアップした人が自動でシステム管理者 (`admin`)** になり、以降にサインアップした人は一般権限 (`user`) になる。管理者は「アカウント」タブから他の人へ随時管理者権限を付与・剥奪できる。管理者が 0 人になる降格・削除は拒否する
+    - **OAuth 2.0 認可コードフロー**: `GET /api/auth/oauth/{provider}` で認可画面へ 302、`GET /api/auth/oauth/{provider}/callback` でコードをトークンに交換してログインする。依存ライブラリは足さず、URL 組み立てと state の署名だけ自前で持つ (`src/model/auth/OAuthProviders.ts`)、通信は `fetch`
+    - **CSRF 対策**: state は HMAC 署名 + 有効期限 10 分 + **発行時のプロバイダを埋め込んで**検証する (別プロバイダのコールバックへ持ち込めない)。署名鍵は `data/key/secret.key` からセッションとは別用途として導出する
+    - **プロバイダ差の吸収**: Google は OpenID Connect の `sub`/`email`/`name`、GitHub は `id`/`login`/`email`。GitHub はメール非公開設定だとプロフィールに載らないため `/user/emails` の primary を追加取得する。メールが取れなくてもログインは可能 (識別子はあくまでプロバイダ側のユーザー ID)
+    - **設定場所**: クライアント ID / シークレットは**ログイン前に必要**なので `config.yml` の `auth.providers.google` / `auth.providers.github` に置く (DB は認証後でないと読めないため)。コールバック URL は `X-Forwarded-Proto`/`X-Forwarded-Host` を見てアクセス元から自動生成し、合わない構成では `redirectUri` で明示できる
+    - **サインアップの開放/制限**: `auth.allowSignUp` (既定 true) で 2 人目以降のサインアップを止められる。インターネットに公開している場合は false にして管理者が招待する運用を推奨。**1 人目だけは許可する** (誰も居ないと管理者を作れないため)
+    - **権限の反映**: 権限はトークンに載せるが、検証時に DB の現在値で上書きする。付与・剥奪が**再ログインなしで最大 30 秒 (権限キャッシュの保持時間) で反映**される
+    - **管理者限定 API**: `/api/settings`・`/api/auth/users`・`/api/update`・`/api/logs` は一般ユーザーには 403 を返す (`isAdminApiPath`)。画面側もサーバー設定への導線を隠し、URL 直打ちでも弾く
+    - **パスワードと SSO の併存**: SSO だけで作られたユーザーは `passwordHash` が空でパスワードログインできない。既存のパスワードユーザーはそのまま使える。DB は `user.role` 列と `user_identity` テーブルを追加 (sqlite / mysql 両マイグレーションあり。**移行時、既存ユーザーは管理者に引き上げる**)
+
 - **ログレベルを GUI から変更できるようにした**
     - **yml と DB のどちらを正にするか**: 既存の `app_setting` テーブル (JSON Schema 検証・変更履歴・ロールバック・秘密情報の暗号化・ホットリロード通知が実装済み) に相乗りする方式にした。**ログ設定ファイル (`config/*LogConfig.yml`) がベースで、DB の値はその上に被せる差分**として扱う。yml へ書き戻さないのでコメントや書式が壊れず、二重管理にもならない
     - **設定キー**: `logging.levels.{system,access,stream,encode}`。未指定のカテゴリはファイルの設定をそのまま使う。値は log4js のレベル (`trace`〜`fatal` と `off`)

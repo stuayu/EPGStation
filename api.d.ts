@@ -1873,7 +1873,28 @@ export interface RunUpdateOption {
 export interface AuthUserItem {
     id: number;
     name: string;
+    // 'admin': システム管理者 (設定変更・ユーザー管理が可能) / 'user': 一般
+    role: AuthRole;
+    // パスワードでログインできるか (SSO のみのユーザーは false)
+    hasPassword: boolean;
+    // 紐付いている外部 ID プロバイダ ('google' / 'github')
+    providers: string[];
     createdAt: UnixtimeMS;
+}
+
+/**
+ * ログインユーザーの権限
+ */
+export type AuthRole = 'admin' | 'user';
+
+/**
+ * 利用できる外部 ID プロバイダ (認証状態と一緒に返す。秘密情報は含まない)
+ */
+export interface AuthProviderItem {
+    id: string;
+    label: string;
+    // 認可エンドポイントへ飛ばす URL
+    authorizeUrl: string;
 }
 
 /**
@@ -1885,7 +1906,11 @@ export interface AuthStatus {
     // 初期ユーザーが作成済みか (false の場合は初期セットアップが必要)
     initialized: boolean;
     // ログイン中のユーザー (未ログインなら null)
-    user: { id: number; name: string } | null;
+    user: { id: number; name: string; role: AuthRole } | null;
+    // 設定済みの外部 ID プロバイダ (ログイン画面のボタン用)
+    providers: AuthProviderItem[];
+    // 2 人目以降のサインアップを許可しているか
+    allowSignUp: boolean;
 }
 
 /**
@@ -1894,6 +1919,13 @@ export interface AuthStatus {
 export interface AuthCredentialOption {
     name: string;
     password: string;
+}
+
+/**
+ * パスワード変更のリクエストボディ
+ */
+export interface UpdateUserRoleOption {
+    role: AuthRole;
 }
 
 /**
