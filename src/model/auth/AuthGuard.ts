@@ -36,6 +36,22 @@ export const isPublicApiPath = (pathname: string): boolean => {
     return PUBLIC_API_PREFIXES.some(prefix => target === prefix || target.startsWith(`${prefix}/`));
 };
 
+// 外部プレイヤー (VLC / Infuse) や IPTV クライアントが直接開く API。
+// これらは Cookie を送れないため、クエリのアクセストークンでも認証できるようにする
+const MEDIA_API_PREFIXES: readonly string[] = ['/videos', '/iptv', '/streams', '/recorded'];
+
+/**
+ * クエリのアクセストークンでも認証を通してよいパスか
+ * @param pathname: string API のベース (/api) を除いたパス
+ * @return boolean
+ */
+export const isMediaApiPath = (pathname: string): boolean => {
+    if (typeof pathname !== 'string' || pathname === '') return false;
+    const normalized = pathname.split('?')[0].replace(/\/+$/u, '');
+
+    return MEDIA_API_PREFIXES.some(prefix => normalized === prefix || normalized.startsWith(`${prefix}/`));
+};
+
 /**
  * システム管理者 (role: 'admin') だけが呼べる API のパス接頭辞。
  * 設定変更・ユーザー管理・バージョン更新など、システム全体に影響する操作を対象にする

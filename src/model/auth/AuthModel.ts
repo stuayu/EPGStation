@@ -15,6 +15,10 @@ export default class AuthModel implements IAuthModel {
     private static readonly MAX_SESSION_TTL_MS = 365 * 24 * 60 * 60 * 1000;
     // セッション署名鍵の用途分離子 (暗号化鍵をそのまま署名に使わない)
     private static readonly SIGNING_PURPOSE = 'session';
+    // 外部プレイヤー・IPTV クライアント向けトークンの署名用途 (セッションとは鍵を分ける)
+    private static readonly MEDIA_SIGNING_PURPOSE = 'media';
+    // 外部プレイヤー用トークンの既定有効期間 (URL に埋めて使い回されるため長めに取る)
+    private static readonly DEFAULT_MEDIA_TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000;
     // tokenVersion の照合で毎リクエスト DB を引かないためのキャッシュ保持時間
     private static readonly VERSION_CACHE_MS = 30 * 1000;
     private static readonly MAX_NAME_LENGTH = 64;
@@ -37,7 +41,35 @@ export default class AuthModel implements IAuthModel {
     ) {}
 
     public isEnabled(): boolean {
-        return this.configuration.getConfig().auth?.enabled === true;
+        // 未指定は有効として扱う (opt-out)。無効にしたい場合のみ config.yml に false を書く
+        return this.configuration.getConfig().auth?.enabled !== false;
+    }
+
+    public createMediaToken(payload: SessionPayload): string | null {
+        const secret = this.crypto.getSigningKey(AuthModel.MEDIA_SIGNING_PURPOSE);
+        if (secret === null) return null;
+
+        return createSessionToken({ ...payload, exp: Date.now() + this.getMediaTokenTtlMs() }, secret);
+    }
+
+    public async verifyMediaToken(token: string | null): Promise<SessionPayload | null> {
+        const secret = this.crypto.getSigningKey(AuthModel.MEDIA_SIGNING_PURPOSE);
+        if (secret === null) return null;
+        const payload = verifySessionToken(token, secret);
+        if (payload === null) return null;
+
+        // セッションと同じくパスワード変更・ユーザー削除で失効させる
+        const current = await this.getCurrentUser(payload.uid);
+        if (current === null || current.version !== payload.ver) return null;
+
+        return { ...payload, role: current.role };
+    }
+
+    private getMediaTokenTtlMs(): number {
+        const value = this.configuration.getConfig().auth?.mediaTokenTtlMs;
+        if (typeof value !== 'number' || Number.isFinite(value) === false) return AuthModel.DEFAULT_MEDIA_TOKEN_TTL_MS;
+
+        return Math.min(Math.max(value, AuthModel.MIN_SESSION_TTL_MS), AuthModel.MAX_SESSION_TTL_MS);
     }
 
     public async getStatus(token: string | null): Promise<AuthStatus> {

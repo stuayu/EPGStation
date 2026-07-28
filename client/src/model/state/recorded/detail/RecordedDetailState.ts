@@ -2,6 +2,7 @@ import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../../api';
 import UaUtil from '../../../../util/UaUtil';
 import Util from '../../../../util/Util';
+import { withMediaToken } from '../../../../util/MediaToken';
 import IRecordedApiModel from '../../../api/recorded/IRecordedApiModel';
 import IServerConfigModel from '../../../serverConfig/IServerConfigModel';
 import { ISettingStorageModel } from '../../../storage/setting/ISettingStorageModel';
@@ -98,7 +99,8 @@ export default class RecordedDetailState implements IRecordedDetailState {
      * @return string
      */
     public getVideoRawURL(video: apid.VideoFile): string {
-        return Util.getSubDirectory() + `/api/videos/${video.id}`;
+        // 外部プレイヤーやダウンロードは Cookie を送れないため、認証有効時はトークンを付ける
+        return withMediaToken(Util.getSubDirectory() + `/api/videos/${video.id}`);
     }
 
     /**
@@ -148,7 +150,7 @@ export default class RecordedDetailState implements IRecordedDetailState {
      * @return sting
      */
     public getVideoDownloadRawURL(video: apid.VideoFile): string {
-        return this.getVideoRawURL(video) + '?isDownload=true';
+        return withMediaToken(Util.getSubDirectory() + `/api/videos/${video.id}?isDownload=true`);
     }
 
     /**
@@ -157,7 +159,7 @@ export default class RecordedDetailState implements IRecordedDetailState {
      * @return string
      */
     public getVideoPlayListURL(video: apid.VideoFile): string {
-        return this.getVideoRawURL(video) + '/playlist';
+        return withMediaToken(Util.getSubDirectory() + `/api/videos/${video.id}/playlist`);
     }
 
     /**
