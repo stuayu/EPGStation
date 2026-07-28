@@ -128,13 +128,41 @@ export default class RecordedItemUtil implements IRecordedItemUtil {
 
         if (typeof recorded.videoFiles !== 'undefined') {
             item.videoFiles = recorded.videoFiles.map(v => {
-                return {
+                const videoFile: apid.VideoFile = {
                     id: v.id,
                     name: v.name,
                     filename: path.basename(v.filePath),
                     type: v.type as apid.VideoFileType,
                     size: v.size,
                 };
+
+                // ffprobe で実測済みのメタデータがあれば返す (シークバー・実況補正用)
+                if (v.duration !== null && typeof v.duration !== 'undefined') {
+                    videoFile.duration = v.duration;
+                }
+                if (v.startTime !== null && typeof v.startTime !== 'undefined') {
+                    videoFile.startTime = v.startTime;
+                }
+                if (v.startAt !== null && typeof v.startAt !== 'undefined') {
+                    videoFile.startAt = typeof v.startAt === 'string' ? parseInt(v.startAt, 10) : v.startAt;
+                }
+                if (v.videoCodec !== null && typeof v.videoCodec !== 'undefined') {
+                    videoFile.videoCodec = v.videoCodec;
+                }
+                if (v.audioCodec !== null && typeof v.audioCodec !== 'undefined') {
+                    videoFile.audioCodec = v.audioCodec;
+                }
+                if (v.width !== null && typeof v.width !== 'undefined') {
+                    videoFile.width = v.width;
+                }
+                if (v.height !== null && typeof v.height !== 'undefined') {
+                    videoFile.height = v.height;
+                }
+                if (v.bitRate !== null && typeof v.bitRate !== 'undefined') {
+                    videoFile.bitRate = v.bitRate;
+                }
+
+                return videoFile;
             });
         }
 

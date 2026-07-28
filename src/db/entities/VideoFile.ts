@@ -42,6 +42,66 @@ export default class VideoFile extends BaseEntity {
     })
     public isExternalFile: boolean = false;
 
+    // --- ffprobe で実測した動画メタデータ (未解析なら null) ---
+
+    // 実測の動画長 (秒)
+    @Column({
+        type: 'float',
+        nullable: true,
+    })
+    public duration: number | null = null;
+
+    // コンテナの開始オフセット (秒)。TS の先頭ズレ補正に使う
+    @Column({
+        type: 'float',
+        nullable: true,
+    })
+    public startTime: number | null = null;
+
+    // 録画ファイルの先頭 (再生位置 0 秒) に対応する実時刻 (UNIX 時刻・ミリ秒)
+    @Column({
+        type: 'bigint',
+        nullable: true,
+    })
+    public startAt: number | null = null;
+
+    @Column({
+        type: 'text',
+        nullable: true,
+    })
+    public videoCodec: string | null = null;
+
+    @Column({
+        type: 'text',
+        nullable: true,
+    })
+    public audioCodec: string | null = null;
+
+    @Column({
+        type: 'integer',
+        nullable: true,
+    })
+    public width: number | null = null;
+
+    @Column({
+        type: 'integer',
+        nullable: true,
+    })
+    public height: number | null = null;
+
+    @Column({
+        type: 'float',
+        nullable: true,
+    })
+    public bitRate: number | null = null;
+
+    // メタデータを解析した時刻 (UNIX 時刻・ミリ秒)
+    @Column({
+        type: 'bigint',
+        nullable: true,
+    })
+    public analyzedAt: number | null = null;
+
     @Column()
     public recordedId!: number;
 

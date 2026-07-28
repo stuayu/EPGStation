@@ -31,6 +31,41 @@ export default class VideoApiModel implements IVideoApiModel {
         return result.data.duration;
     }
 
+    /**
+     * 指定したビデオファイルの実測メタデータを取得する
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<apid.VideoFileMetadataResult>
+     */
+    public async getMetadata(videoFileId: apid.VideoFileId): Promise<apid.VideoFileMetadataResult> {
+        return (await this.repository.get(`/videos/${videoFileId}/metadata`)).data;
+    }
+
+    /**
+     * 指定したビデオファイルを解析し直す
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<apid.VideoFileMetadataResult>
+     */
+    public async analyzeMetadata(videoFileId: apid.VideoFileId): Promise<apid.VideoFileMetadataResult> {
+        return (await this.repository.post(`/videos/${videoFileId}/metadata`, {})).data;
+    }
+
+    /**
+     * 録画ファイルメタデータの解析状況を取得する
+     * @return Promise<apid.VideoFileMetadataStatus>
+     */
+    public async getMetadataStatus(): Promise<apid.VideoFileMetadataStatus> {
+        return (await this.repository.get('/videos/metadata')).data;
+    }
+
+    /**
+     * 未解析の録画ファイルを一括解析する
+     * @param option: apid.AnalyzeVideoFilesOption
+     * @return Promise<apid.AnalyzeVideoFilesResult>
+     */
+    public async analyzeAllMetadata(option?: apid.AnalyzeVideoFilesOption): Promise<apid.AnalyzeVideoFilesResult> {
+        return (await this.repository.post('/videos/metadata', option ?? {})).data;
+    }
+
     public async getPlaybackPosition(videoFileId: apid.VideoFileId): Promise<apid.WatchHistory | null> {
         try {
             return (await this.repository.get(`/videos/${videoFileId}/playback-position`)).data;

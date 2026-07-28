@@ -60,6 +60,17 @@
                             </div>
 
                             <v-divider class="my-4"></v-divider>
+                            <div class="text-subtitle-1 mb-2">録画ファイルのメタデータ</div>
+                            <div class="text-caption mb-2">
+                                ffprobe で録画ファイルの実尺・開始位置・コーデック・解像度を取得して DB に保存します。シークバーの全体長表示とニコニコ実況コメントの時刻合わせに利用されます (サーバー起動時にもバックグラウンドで実行されます)。
+                            </div>
+                            <div class="text-body-2 mb-2">総数 {{ videoMetadataStatus.total }} 件 / 解析済み {{ videoMetadataStatus.analyzed }} 件 / 未解析 {{ videoMetadataStatus.unanalyzed }} 件</div>
+                            <div class="d-flex ga-2 flex-wrap">
+                                <v-btn variant="outlined" :loading="videoMetadataLoading" @click="loadVideoMetadataStatus">再読み込み</v-btn>
+                                <v-btn color="primary" :loading="videoMetadataAnalyzing" :disabled="videoMetadataStatus.unanalyzed === 0" @click="analyzeVideoMetadata">未解析ファイルを一括取得</v-btn>
+                            </div>
+
+                            <v-divider class="my-4"></v-divider>
                             <v-alert type="info">現在、再起動 (Operator 再初期化) が必須の設定項目はありません。今後追加された場合、このタブと画面上部のバナーで通知されます。</v-alert>
                         </v-window-item>
 
@@ -100,7 +111,7 @@
                                 </span>
                             </div>
                             <div class="d-flex align-center ga-2 mb-2 flex-wrap">
-                                <v-btn variant="outlined" :loading="annictWorkSyncing" @click="syncAnnictWorks">作品辞書を同期</v-btn>
+                                <v-btn variant="outlined" :loading="annictWorkSyncing" @click="syncAnnictWorks">作品辞書を同���</v-btn>
                                 <span v-if="annictWorkSyncResult" class="text-body-2">{{ annictWorkSyncResult }}</span>
                             </div>
                             <v-text-field
@@ -356,7 +367,7 @@
 
                             <v-card v-if="backfillStatus?.previewItems && backfillStatus.previewItems.length > 0" variant="outlined" class="mb-4">
                                 <v-card-title class="text-subtitle-1">
-                                    ドライラン結果プレビュー
+                                    ドライラン結果プレ��ュー
                                     <span v-if="backfillStatus.previewTruncated === true">(一部のみ表示)</span>
                                 </v-card-title>
                                 <v-table density="compact">
@@ -636,7 +647,7 @@
                         <v-window-item value="account">
                             <div class="text-subtitle-1 mb-2">ログインユーザー</div>
                             <div class="text-caption mb-2">
-                                システム管理者は設定変更・ユーザー管理・バージョン更新ができます。最初にサインアップした人が自動でシステム管理者になり、以降は一般権限です。
+                                システム管理者は設定変更・��ーザ��管理・バージョン更新ができます。最初にサインアップした人が自動でシステム管理者になり、以降は一般権限です。
                                 パスワードを変更すると、そのユーザ��のログイン状態 (発行済みセッション) はすべて無効になります
                             </div>
                             <v-table density="compact">
@@ -752,6 +763,7 @@ import container from '@/model/ModelContainer';
 import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
 import ISystemSettingApiModel from '@/model/api/config/ISystemSettingApiModel';
 import ISeriesApiModel, { DictionaryWorkItem, EmptySeriesItem, SeriesAliasItem, SeriesBackfillResult, SeriesListItem, ProgramSeriesMetrics } from '@/model/api/series/ISeriesApiModel';
+import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
@@ -799,6 +811,12 @@ class SystemSetting extends Vue {
     private channelsApi = container.get<IChannelsApiModel>('IChannelsApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
+    private videoApi = container.get<IVideoApiModel>('IVideoApiModel');
+
+    // --- 録画ファイルのメタデータ取得 ---
+    videoMetadataStatus: apid.VideoFileMetadataStatus = { total: 0, analyzed: 0, unanalyzed: 0 };
+    videoMetadataLoading = false;
+    videoMetadataAnalyzing = false;
 
     requiresRestartKeys: string[] = [];
 
@@ -953,7 +971,7 @@ class SystemSetting extends Vue {
     }
 
     /**
-     * 更新通知・ワンクリック更新が有効か (featureFlags.updateNotification)
+     * 更新通知・ワンク���ック更新が有効か (featureFlags.updateNotification)
      */
     get isUpdateEnabled(): boolean {
         return isFeatureEnabled(this.serverConfigModel.getConfig(), 'updateNotification');
@@ -961,7 +979,7 @@ class SystemSetting extends Vue {
 
     /**
      * Annict 視聴記録同期の二重ゲートのうち、サーバー設定 (featureFlags) 側の状態。
-     * config.yml 側で無効な場合、この画面のスイッチを ON にしても同期は動作しない
+     * config.yml 側で無効な場合、この���面のスイッチを ON にしても同期は動作しない
      */
     get isEnabledAnnictSyncFeature(): boolean {
         const config = this.serverConfigModel.getConfig();
@@ -1002,7 +1020,7 @@ class SystemSetting extends Vue {
         return this.aliases.filter(a => a.source === 'llm').length;
     }
 
-    // 自動学習した対応だけを見たいことがあるので学習元とキーワードで絞り込めるようにする
+    // 自動学習した対応だけを見たいことがあるので学習元とキーワードで絞り��めるようにする
     get filteredAliases(): SeriesAliasItem[] {
         const keyword = (this.aliasKeyword ?? '').trim();
         return this.aliases.filter(a => {
@@ -1259,6 +1277,41 @@ class SystemSetting extends Vue {
         }
         await this.loadHistory();
         await this.loadNotificationFailures();
+        await this.loadVideoMetadataStatus();
+    }
+
+    /**
+     * 録画ファイルメタデータの解析状況を取得する
+     */
+    async loadVideoMetadataStatus(): Promise<void> {
+        this.videoMetadataLoading = true;
+        try {
+            this.videoMetadataStatus = await this.videoApi.getMetadataStatus();
+        } catch (err) {
+            console.error(err);
+        } finally {
+            this.videoMetadataLoading = false;
+        }
+    }
+
+    /**
+     * 未解析の録画ファイルを一括で解析する
+     */
+    async analyzeVideoMetadata(): Promise<void> {
+        this.videoMetadataAnalyzing = true;
+        try {
+            const result = await this.videoApi.analyzeAllMetadata({ limit: 100 });
+            this.snackbarState.open({
+                color: result.failed === 0 ? 'success' : 'error',
+                text: `解析 ${result.analyzed} 件 / 失敗 ${result.failed} 件 / 残り ${result.remaining} 件`,
+            });
+            await this.loadVideoMetadataStatus();
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: 'メタデータの一括取得に失敗しました' });
+        } finally {
+            this.videoMetadataAnalyzing = false;
+        }
     }
 
     beforeUnmount() {
@@ -1740,7 +1793,7 @@ class SystemSetting extends Vue {
     }
 
     /**
-     * 編集した辞書 (付け替え / 削除) をまとめて保存する。
+     * 編集した辞書 (付け替�� / 削除) をまとめて保存する。
      * 付け替えたものはサーバ側で手動修正扱い (source: 'manual') になる
      */
     async saveAliases(): Promise<void> {
@@ -1789,7 +1842,7 @@ class SystemSetting extends Vue {
             if (result.failed.length > 0) {
                 this.snackbarState.open({ color: 'error', text: `テスト通知に失敗しました: ${result.failed.join('、')}` });
             } else {
-                this.snackbarState.open({ color: 'success', text: 'テスト通知を送信しました' });
+                this.snackbarState.open({ color: 'success', text: 'テスト��知を送信しました' });
             }
         } catch (err) {
             console.error(err);

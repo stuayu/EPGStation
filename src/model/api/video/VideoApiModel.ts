@@ -1,4 +1,5 @@
 import { fileTypeFromFile } from 'file-type';
+import { promises as fs } from 'fs';
 import { inject, injectable } from 'inversify';
 import * as path from 'path';
 import * as apid from '../../../../api';
@@ -8,11 +9,21 @@ import IConfiguration from '../../IConfiguration';
 import IIPCClient from '../../ipc/IIPCClient';
 import IApiUtil from '../IApiUtil';
 import IPlayList from '../IPlayList';
-import IVideoApiModel, { VideoFilePathInfo } from './IVideoApiModel';
+import VideoFile from '../../../db/entities/VideoFile';
+import IVideoApiModel, {
+    AnalyzeVideoFilesResult,
+    VideoFileMetadataResult,
+    VideoFileMetadataStatus,
+    VideoFilePathInfo,
+} from './IVideoApiModel';
 import IVideoUtil from './IVideoUtil';
 
 @injectable()
 export default class VideoApiModel implements IVideoApiModel {
+    // 一括解析の既定件数 / 上限件数
+    private static readonly ANALYZE_DEFAULT_LIMIT = 100;
+    private static readonly ANALYZE_MAX_LIMIT = 1000;
+
     private configuration: IConfiguration;
     private videoFileDB: IVideoFileDB;
     private recordedDB: IRecordedDB;
@@ -117,14 +128,181 @@ export default class VideoApiModel implements IVideoApiModel {
      * @return Promise<number> 秒
      */
     public async getDuration(videoFileId: apid.VideoFileId): Promise<number> {
-        const filePath = await this.videoUtil.getFullFilePathFromId(videoFileId);
-        if (filePath === null) {
+        const video = await this.videoFileDB.findId(videoFileId);
+        if (video === null) {
             throw new Error('VideoFileIsUndefined');
         }
 
-        const videoInfo = await this.videoUtil.getInfo(filePath);
+        // 解析済みなら DB の実測値を使う (ffprobe を毎回走らせない)
+        if (video.analyzedAt !== null && typeof video.duration === 'number' && video.duration > 0) {
+            return video.duration;
+        }
 
-        return videoInfo.duration;
+        const metadata = await this.analyzeMetadata(videoFileId);
+
+        return metadata.duration === null ? 0 : metadata.duration;
+    }
+
+    /**
+     * 指定した video file id のメタデータを返す。未解析ならその場で解析する
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<VideoFileMetadataResult>
+     */
+    public async getMetadata(videoFileId: apid.VideoFileId): Promise<VideoFileMetadataResult> {
+        const video = await this.videoFileDB.findId(videoFileId);
+        if (video === null) {
+            throw new Error('VideoFileIsUndefined');
+        }
+
+        return video.analyzedAt === null ? await this.analyzeMetadata(videoFileId) : this.toMetadataResult(video);
+    }
+
+    /**
+     * 指定した video file id の実ファイルを ffprobe で解析して DB に保存する
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<VideoFileMetadataResult>
+     */
+    public async analyzeMetadata(videoFileId: apid.VideoFileId): Promise<VideoFileMetadataResult> {
+        const video = await this.videoFileDB.findId(videoFileId);
+        if (video === null) {
+            throw new Error('VideoFileIsUndefined');
+        }
+
+        const filePath = this.videoUtil.getFullFilePathFromVideoFile(video);
+        if (filePath === null) {
+            throw new Error('VideoFilePathIsUndefined');
+        }
+
+        const info = await this.videoUtil.getDetailedInfo(filePath);
+
+        await this.videoFileDB.updateMetadata(videoFileId, {
+            duration: info.duration > 0 ? info.duration : null,
+            startTime: info.startTime,
+            videoCodec: info.videoCodec,
+            audioCodec: info.audioCodec,
+            width: info.width,
+            height: info.height,
+            bitRate: info.bitRate > 0 ? info.bitRate : null,
+            size: info.size,
+        });
+
+        // 録画ファイル先頭の実時刻が未記録なら推定して埋める
+        let startAt = video.startAt === null || typeof video.startAt === 'undefined' ? null : Number(video.startAt);
+        if (startAt === null) {
+            startAt = await this.estimateStartAt(video, filePath, info.duration);
+            if (startAt !== null) {
+                await this.videoFileDB.updateStartAt(videoFileId, startAt);
+            }
+        }
+
+        return {
+            videoFileId: videoFileId,
+            duration: info.duration > 0 ? info.duration : null,
+            startTime: info.startTime,
+            startAt: startAt,
+            videoCodec: info.videoCodec,
+            audioCodec: info.audioCodec,
+            width: info.width,
+            height: info.height,
+            bitRate: info.bitRate > 0 ? info.bitRate : null,
+            size: info.size > 0 ? info.size : video.size,
+        };
+    }
+
+    /**
+     * 未解析の録画ファイルをまとめて解析する
+     * @param limit: number | undefined 一度に解析する上限件数
+     * @return Promise<AnalyzeVideoFilesResult>
+     */
+    public async analyzeAllMetadata(limit?: number): Promise<AnalyzeVideoFilesResult> {
+        const max = Math.min(
+            typeof limit === 'number' && limit > 0 ? Math.floor(limit) : VideoApiModel.ANALYZE_DEFAULT_LIMIT,
+            VideoApiModel.ANALYZE_MAX_LIMIT,
+        );
+
+        const targets = await this.videoFileDB.findWithoutMetadata(max);
+
+        let analyzed = 0;
+        let failed = 0;
+        for (const target of targets) {
+            try {
+                await this.analyzeMetadata(target.id);
+                analyzed++;
+            } catch (err: any) {
+                // 1 件失敗しても残りは続行する (ファイル欠損・壊れた TS など)
+                failed++;
+            }
+        }
+
+        return {
+            analyzed: analyzed,
+            failed: failed,
+            remaining: await this.videoFileDB.countWithoutMetadata(),
+        };
+    }
+
+    /**
+     * 録画ファイルのメタデータ解析状況を返す
+     * @return Promise<VideoFileMetadataStatus>
+     */
+    public async getMetadataStatus(): Promise<VideoFileMetadataStatus> {
+        const total = await this.videoFileDB.countAll();
+        const unanalyzed = await this.videoFileDB.countWithoutMetadata();
+
+        return {
+            total: total,
+            analyzed: total - unanalyzed,
+            unanalyzed: unanalyzed,
+        };
+    }
+
+    /**
+     * 録画ファイル先頭 (再生位置 0 秒) に対応する実時刻を推定する
+     * 録画完了ファイルは「最終更新時刻 - 実測尺」が録画開始時刻に相当する
+     * @param video: VideoFile
+     * @param filePath: string 実ファイルパス
+     * @param duration: number 実測尺 (秒)
+     * @return Promise<number | null> 推定できなければ null
+     */
+    private async estimateStartAt(video: VideoFile, filePath: string, duration: number): Promise<number | null> {
+        const recorded = await this.recordedDB.findId(video.recordedId);
+
+        // 録画中はファイル末尾が録画終了時刻にならないので推定しない
+        if (recorded !== null && recorded.isRecording === true) {
+            return null;
+        }
+
+        if (duration > 0) {
+            try {
+                const stats = await fs.stat(filePath);
+
+                return Math.round(stats.mtimeMs - duration * 1000);
+            } catch (err: any) {
+                // stat に失敗した場合は番組開始時刻へフォールバックする
+            }
+        }
+
+        return recorded === null ? null : Number(recorded.startAt);
+    }
+
+    /**
+     * DB のビデオファイル情報を API のメタデータ形式に変換する
+     * @param video: VideoFile
+     * @return VideoFileMetadataResult
+     */
+    private toMetadataResult(video: VideoFile): VideoFileMetadataResult {
+        return {
+            videoFileId: video.id,
+            duration: video.duration ?? null,
+            startTime: video.startTime ?? null,
+            startAt: video.startAt === null || typeof video.startAt === 'undefined' ? null : Number(video.startAt),
+            videoCodec: video.videoCodec ?? null,
+            audioCodec: video.audioCodec ?? null,
+            width: video.width ?? null,
+            height: video.height ?? null,
+            bitRate: video.bitRate ?? null,
+            size: video.size,
+        };
     }
 
     public async sendToKodi(
