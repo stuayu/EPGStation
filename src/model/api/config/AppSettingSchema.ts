@@ -8,6 +8,8 @@
  * サポートする機能: type / properties / required / additionalProperties / enum /
  * minimum / maximum / maxLength / items / const な同等の範囲のみ
  */
+import { LOG_LEVELS } from '../../log/LogLevel';
+
 export type SchemaType = 'object' | 'array' | 'string' | 'number' | 'boolean';
 
 export interface JsonSchema {
@@ -133,6 +135,25 @@ export const APP_SETTING_SCHEMA: Record<string, JsonSchema> = {
         type: 'object',
         additionalProperties: true,
         properties: {},
+    },
+    // ログレベル (config/*LogConfig.yml がベースで、ここで指定したカテゴリだけを上書きする)。
+    // log4js のロガーへ即時反映できるため再起動は不要
+    logging: {
+        type: 'object',
+        additionalProperties: false,
+        requiresRestart: false,
+        properties: {
+            levels: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                    system: { type: 'string', enum: [...LOG_LEVELS] },
+                    access: { type: 'string', enum: [...LOG_LEVELS] },
+                    stream: { type: 'string', enum: [...LOG_LEVELS] },
+                    encode: { type: 'string', enum: [...LOG_LEVELS] },
+                },
+            },
+        },
     },
 };
 

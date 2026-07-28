@@ -134,3 +134,113 @@ test('alias list enriches entries with series title and can be removed', async (
     assert.equal(items[0].seriesTitle, '作品名');
     await model.remove(1);
 });
+
+/**
+ * LLM が誤学習した「正規化タイトル → シリーズ」を設定画面から直せるようにしたときのふるまい
+ */
+function aliasFixture() {
+    const aliases = {
+        1: { id: 1, normalizedTitle: 'あそビバ', seriesId: 2, source: 'llm', createdAt: 1 },
+        2: { id: 2, normalizedTitle: 'てれびちゃん', seriesId: 2, source: 'llm', createdAt: 2 },
+    };
+    const series = {
+        2: { id: 2, title: 'あそびにいくヨ!', normalizedTitle: 'あそびにいくよ' },
+        3: { id: 3, title: 'あそビバ', normalizedTitle: 'あそビバ' },
+    };
+    const updated = [];
+    const removed = [];
+    let nextSeriesId = 10;
+    const db = {
+        listAlias: async () => Object.values(aliases),
+        getAlias: async id => aliases[id] ?? null,
+        getSeries: async id => series[id] ?? null,
+        findCandidates: async normalizedTitle => Object.values(series).filter(s => s.normalizedTitle === normalizedTitle),
+        createSeries: async v => {
+            const created = { ...v, id: nextSeriesId++ };
+            series[created.id] = created;
+            return created;
+        },
+        updateAlias: async (id, seriesId, source) => {
+            updated.push({ id, seriesId, source });
+            aliases[id] = { ...aliases[id], seriesId, source };
+            return aliases[id];
+        },
+        deleteAlias: async id => {
+            removed.push(id);
+            delete aliases[id];
+        },
+    };
+    return { model: new AliasModel(config, db), updated, removed };
+}
+
+test('alias update repoints the rule and marks it as manual', async () => {
+    const { model, updated } = aliasFixture();
+    const item = await model.update(1, { seriesId: 3 });
+    assert.equal(item.seriesId, 3);
+    assert.equal(item.seriesTitle, 'あそビバ');
+    // 誤学習の修正なので、以後の自動学習で上書きされないよう手動扱いにする
+    assert.equal(item.source, 'manual');
+    // 引き当てキーである正規化タイトルは変えない
+    assert.equal(item.normalizedTitle, 'あそビバ');
+    assert.deepEqual(updated, [{ id: 1, seriesId: 3, source: 'manual' }]);
+});
+
+test('alias update can create the destination series from a title', async () => {
+    const { model } = aliasFixture();
+    const item = await model.update(1, { seriesTitle: '新しい番組' });
+    assert.equal(item.seriesTitle, '新しい番組');
+    assert.equal(item.source, 'manual');
+});
+
+test('alias update reuses an existing series when the normalized title matches', async () => {
+    const { model } = aliasFixture();
+    const item = await model.update(1, { seriesTitle: 'あそビバ' });
+    assert.equal(item.seriesId, 3);
+});
+
+test('alias update rejects unknown ids and empty destinations', async () => {
+    const { model } = aliasFixture();
+    await assert.rejects(() => model.update(999, { seriesId: 3 }), /SeriesAliasIsNotFound/);
+    await assert.rejects(() => model.update(1, { seriesId: 999 }), /SeriesIsNotFound/);
+    await assert.rejects(() => model.update(1, { seriesTitle: '   ' }), /InvalidRequestBody/);
+});
+
+test('alias bulk edit repoints and removes in one request', async () => {
+    const { model, removed } = aliasFixture();
+    const result = await model.updateBulk({
+        items: [
+            { aliasId: 1, seriesId: 3 },
+            { aliasId: 2, remove: true },
+        ],
+    });
+    assert.equal(result.updated, 1);
+    assert.equal(result.removed, 1);
+    assert.equal(result.failed.length, 0);
+    assert.deepEqual(removed, [2]);
+});
+
+test('alias bulk edit reports per-row failures without aborting the rest', async () => {
+    const { model } = aliasFixture();
+    const result = await model.updateBulk({
+        items: [
+            { aliasId: 999, seriesId: 3 },
+            { aliasId: 1, seriesId: 3 },
+        ],
+    });
+    assert.equal(result.updated, 1);
+    assert.equal(result.failed.length, 1);
+    assert.equal(result.failed[0].aliasId, 999);
+    assert.match(result.failed[0].message, /SeriesAliasIsNotFound/);
+});
+
+test('alias bulk edit rejects an invalid body', async () => {
+    const { model } = aliasFixture();
+    await assert.rejects(() => model.updateBulk({}), /InvalidRequestBody/);
+    assert.deepEqual(await model.updateBulk({ items: [] }), { updated: 0, removed: 0, failed: [] });
+});
+
+test('alias editing is blocked while the series library feature is disabled', async () => {
+    const model = new AliasModel(disabledConfig, {});
+    await assert.rejects(() => model.update(1, { seriesId: 2 }), /SeriesLibraryFeatureIsDisabled/);
+    await assert.rejects(() => model.updateBulk({ items: [] }), /SeriesLibraryFeatureIsDisabled/);
+});

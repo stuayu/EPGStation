@@ -235,6 +235,20 @@ export default interface ISeriesDB {
      */
     upsertAlias(normalizedTitle: string, seriesId: number, createdAt: number, source?: string): Promise<SeriesAlias>;
     listAlias(seriesId?: number): Promise<SeriesAlias[]>;
+    /**
+     * ID を指定してエイリアス 1 件を取得する
+     * @param id: number
+     * @return Promise<SeriesAlias | null>
+     */
+    getAlias(id: number): Promise<SeriesAlias | null>;
+    /**
+     * エイリアスの付け替え先シリーズと学習元を更新する (正規化タイトルは変えない)
+     * @param id: number
+     * @param seriesId: number 付け替え先
+     * @param source: string 学習元 ('manual' / 'llm')
+     * @return Promise<SeriesAlias>
+     */
+    updateAlias(id: number, seriesId: number, source: string): Promise<SeriesAlias>;
     deleteAlias(id: number): Promise<void>;
 
     // --- 変更履歴 / Undo (S11 §4.8) ---

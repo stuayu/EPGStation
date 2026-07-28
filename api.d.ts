@@ -858,6 +858,7 @@ export interface FeatureFlags {
     nextUpPanel?: boolean;
     externalFileImport?: boolean;
     advancedSearch?: boolean;
+    updateNotification?: boolean;
 }
 
 /**
@@ -1529,6 +1530,41 @@ export interface SeriesAliasItem {
 }
 
 /**
+ * エイリアス辞書の付け替えリクエストボディ。
+ * seriesId を優先し、無ければ seriesTitle でシリーズを検索/作成する。
+ * 付け替えた辞書は手動修正扱い (source: 'manual') になる
+ */
+export interface UpdateSeriesAliasOption {
+    seriesId?: SeriesId;
+    seriesTitle?: string;
+}
+
+/**
+ * エイリアス辞書の一括編集 1 件分
+ */
+export interface BulkSeriesAliasItem extends UpdateSeriesAliasOption {
+    aliasId: number;
+    // true の場合は付け替えではなく辞書から削除する
+    remove?: boolean;
+}
+
+/**
+ * エイリアス辞書の一括編集リクエストボディ
+ */
+export interface BulkUpdateSeriesAliasOption {
+    items: BulkSeriesAliasItem[];
+}
+
+/**
+ * エイリアス辞書の一括編集結果
+ */
+export interface BulkUpdateSeriesAliasResult {
+    updated: number;
+    removed: number;
+    failed: Array<{ aliasId: number; message: string }>;
+}
+
+/**
  * 既存録画のシリーズ化バックフィル開始オプション
  */
 export interface SeriesBackfillOption {
@@ -1704,4 +1740,167 @@ export interface NotificationFailureHistoryItem {
     attempts: number;
     lastError: string | null;
     updatedAt: UnixtimeMS;
+}
+
+/**
+ * 公開されているリリース 1 件分
+ */
+export interface UpdateReleaseInfo {
+    // リリースタグ (例: 2.14.0-stuayu-260727)
+    tag: string;
+    name: string;
+    // GitHub の prerelease フラグ (rc / beta / alpha 等)
+    prerelease: boolean;
+    publishedAt: UnixtimeMS | null;
+    htmlUrl: string;
+    // リリースノート (先頭のみ。UI で折りたたんで表示する)
+    body: string;
+}
+
+/**
+ * 更新チャンネル ('stable': 正式リリース / 'prerelease': プレリリース・ベータ)
+ */
+export type UpdateChannel = 'stable' | 'prerelease';
+
+/**
+ * EPGStation の導入形態 ('git': リポジトリを clone したもの / 'archive': 配布アーカイブ)
+ */
+export type UpdateInstallationType = 'git' | 'archive';
+
+/**
+ * EPGStation を監視・自動再起動している仕組み
+ */
+export type UpdateSupervisorType = 'docker' | 'systemd' | 'pm2' | 'windows-service' | 'none';
+
+/**
+ * 更新ジョブの状態
+ */
+export type UpdateJobStatus = 'idle' | 'running' | 'succeeded' | 'failed' | 'restarting';
+
+/**
+ * 更新ジョブの 1 行分のログ
+ */
+export interface UpdateJobLogLine {
+    at: UnixtimeMS;
+    // 'info' | 'command' | 'error'
+    level: 'info' | 'command' | 'error';
+    message: string;
+}
+
+/**
+ * 更新ジョブ
+ */
+export interface UpdateJob {
+    status: UpdateJobStatus;
+    // 更新先のタグ (実行中・完了時のみ)
+    tag: string | null;
+    // 実行中のステップ名 (例: 'git fetch')
+    step: string | null;
+    startedAt: UnixtimeMS | null;
+    finishedAt: UnixtimeMS | null;
+    error: string | null;
+    logs: UpdateJobLogLine[];
+}
+
+/**
+ * 追従先ブランチ (main 等) の最新コミット
+ */
+export interface UpdateBranchInfo {
+    // ブランチ名
+    name: string;
+    sha: string;
+    shortSha: string;
+    // コミットメッセージの 1 行目
+    message: string;
+    committedAt: UnixtimeMS | null;
+    htmlUrl: string;
+    // ローカルの HEAD がこのコミットと同じか
+    upToDate: boolean;
+}
+
+/**
+ * 更新状況
+ */
+export interface UpdateStatus {
+    // 現在のバージョン (git 管理下ならチェックアウト中のタグ、無ければ package.json の version)
+    currentVersion: string;
+    // 現在のバージョンがプレリリースか
+    currentIsPrerelease: boolean;
+    // 最新の正式リリース / プレリリース (取得できなければ null)
+    latestStable: UpdateReleaseInfo | null;
+    latestPrerelease: UpdateReleaseInfo | null;
+    // 通知対象となる更新 (設定で決まるチャンネルを考慮した結果。無ければ null)
+    availableRelease: UpdateReleaseInfo | null;
+    // availableRelease のチャンネル
+    availableChannel: UpdateChannel | null;
+    // 最後にリリース情報を取得できた時刻
+    checkedAt: UnixtimeMS | null;
+    // リリース情報の取得に失敗した場合の理由
+    checkError: string | null;
+    // 追従先ブランチの最新コミット (取得できなければ null)
+    branch: UpdateBranchInfo | null;
+    // ローカルの HEAD コミット (git 管理下のときのみ)
+    currentCommit: string | null;
+    // 導入形態と再起動方法
+    installationType: UpdateInstallationType;
+    supervisor: UpdateSupervisorType;
+    // ワンクリック更新を実行できるか
+    canUpdate: boolean;
+    // canUpdate が false のときの理由 / true のときの再起動方法の説明
+    updateNote: string;
+    // リリース一覧ページ
+    releasesUrl: string;
+    job: UpdateJob;
+}
+
+/**
+ * 更新実行のリクエストボディ
+ */
+export interface RunUpdateOption {
+    // 更新先のタグ。省略時は availableRelease のタグ
+    tag?: string;
+    // 更新先の指定方法。'branch' の場合はブランチの最新コミットへ追従する (既定 'tag')
+    refType?: 'tag' | 'branch';
+    // refType が 'branch' のときの対象ブランチ。省略時は設定のブランチ (既定 main)
+    ref?: string;
+    // 更新完了後に再起動するか (既定 true)
+    restart?: boolean;
+}
+
+/**
+ * ログインユーザー
+ */
+export interface AuthUserItem {
+    id: number;
+    name: string;
+    createdAt: UnixtimeMS;
+}
+
+/**
+ * 認証状態
+ */
+export interface AuthStatus {
+    // config.yml の auth.enabled
+    enabled: boolean;
+    // 初期ユーザーが作成済みか (false の場合は初期セットアップが必要)
+    initialized: boolean;
+    // ログイン中のユーザー (未ログインなら null)
+    user: { id: number; name: string } | null;
+}
+
+/**
+ * ログイン / 初期セットアップのリクエストボディ
+ */
+export interface AuthCredentialOption {
+    name: string;
+    password: string;
+}
+
+/**
+ * パスワード変更のリクエストボディ
+ */
+export interface ChangePasswordOption {
+    newPassword: string;
+    // 自分のパスワードを変更する場合に必要
+    currentPassword?: string;
 }

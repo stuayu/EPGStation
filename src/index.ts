@@ -5,6 +5,10 @@ import { install } from 'source-map-support';
 import IEPGUpdateExecutorManageModel from './model/epgUpdater/IEPGUpdateExecutorManageModel';
 import IEventSetter from './model/event/IEventSetter';
 import IConfiguration from './model/IConfiguration';
+import { isFeatureEnabled } from './model/FeatureFlags';
+import IUpdateManageModel from './model/update/IUpdateManageModel';
+import ILogLevelApplier from './model/log/ILogLevelApplier';
+import IAppSettingChangeEvent from './model/event/IAppSettingChangeEvent';
 import IConnectionCheckModel from './model/IConnectionCheckModel';
 import ILoggerModel from './model/ILoggerModel';
 import IMirakurunClientModel from './model/IMirakurunClientModel';
@@ -158,6 +162,18 @@ const runOperator = async () => {
     // (featureFlags.seriesLibrary 有効時のみ。seriesStartup.enable: false で無効化できる)
     const seriesStartupPipeline = container.get<ISeriesStartupPipeline>('ISeriesStartupPipeline');
     seriesStartupPipeline.schedule();
+
+    // 画面から変更されたログレベルを反映する (ログ設定ファイルの内容を上書きする)
+    const logLevelApplier = container.get<ILogLevelApplier>('ILogLevelApplier');
+    await logLevelApplier.apply();
+    container.get<IAppSettingChangeEvent>('IAppSettingChangeEvent').setChanged(keys => {
+        if (keys.includes('logging') === true) void logLevelApplier.apply();
+    });
+
+    // 新しいバージョンの公開を定期的に確認する (featureFlags.updateNotification 有効時のみ)
+    if (isFeatureEnabled(container.get<IConfiguration>('IConfiguration').getConfig(), 'updateNotification')) {
+        container.get<IUpdateManageModel>('IUpdateManageModel').startAutoCheck();
+    }
 };
 
 /**

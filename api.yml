@@ -597,6 +597,8 @@ components:
                     type: boolean
                 advancedSearch:
                     type: boolean
+                updateNotification:
+                    type: boolean
 
         ChannelItems:
             type: array
@@ -2961,6 +2963,68 @@ components:
                 title:
                     type: string
 
+        UpdateSeriesAliasOption:
+            description: エイリアス辞書の付け替え (付け替えた辞書は手動修正扱いになる)
+            type: object
+            properties:
+                seriesId:
+                    $ref: '#/components/schemas/SeriesId'
+                seriesTitle:
+                    description: seriesId 未指定時の付け替え先シリーズ名 (存在しなければ新規作成)
+                    type: string
+
+        BulkSeriesAliasItem:
+            description: エイリアス辞書の一括編集 1 件分
+            type: object
+            required:
+                - aliasId
+            properties:
+                aliasId:
+                    type: integer
+                seriesId:
+                    $ref: '#/components/schemas/SeriesId'
+                seriesTitle:
+                    type: string
+                remove:
+                    description: true の場合は付け替えではなく削除する
+                    type: boolean
+
+        BulkUpdateSeriesAliasOption:
+            description: エイリアス辞書の一括編集リクエストボディ
+            type: object
+            required:
+                - items
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BulkSeriesAliasItem'
+
+        BulkUpdateSeriesAliasResult:
+            description: エイリアス辞書の一括編集結果
+            type: object
+            required:
+                - updated
+                - removed
+                - failed
+            properties:
+                updated:
+                    type: integer
+                removed:
+                    type: integer
+                failed:
+                    type: array
+                    items:
+                        type: object
+                        required:
+                            - aliasId
+                            - message
+                        properties:
+                            aliasId:
+                                type: integer
+                            message:
+                                type: string
+
         SeriesAliasItem:
             description: シリーズエイリアス辞書の1件
             type: object
@@ -3257,7 +3321,7 @@ components:
 
         AppSettingValue:
             description: >-
-                システム設定 (トップレベルキーごとの値。metadata / notifications / series / dashboard)。
+                システム設定 (トップレベルキーごとの値。metadata / notifications / series / dashboard / logging)。
                 構造は src/model/api/config/AppSettingSchema.ts の JSON Schema が正であり、
                 ここでは詳細な形は規定しない (任意の JSON オブジェクト)
             type: object
@@ -3442,6 +3506,271 @@ components:
             properties:
                 updated:
                     description: 取得に成功し反映されたか (URL 未設定・取得失敗時は false)
+                    type: boolean
+
+        AuthUserItem:
+            description: ログインユーザー
+            type: object
+            required:
+                - id
+                - name
+                - createdAt
+            properties:
+                id:
+                    type: integer
+                name:
+                    type: string
+                createdAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+
+        AuthStatus:
+            description: 認証状態
+            type: object
+            required:
+                - enabled
+                - initialized
+                - user
+            properties:
+                enabled:
+                    description: config.yml の auth.enabled
+                    type: boolean
+                initialized:
+                    description: 初期ユーザーが作成済みか
+                    type: boolean
+                user:
+                    nullable: true
+                    type: object
+                    required:
+                        - id
+                        - name
+                    properties:
+                        id:
+                            type: integer
+                        name:
+                            type: string
+
+        AuthCredentialOption:
+            description: ログイン / 初期セットアップのリクエストボディ
+            type: object
+            required:
+                - name
+                - password
+            properties:
+                name:
+                    type: string
+                    maxLength: 64
+                password:
+                    type: string
+                    maxLength: 200
+
+        ChangePasswordOption:
+            description: パスワード変更のリクエストボディ
+            type: object
+            required:
+                - newPassword
+            properties:
+                newPassword:
+                    type: string
+                    maxLength: 200
+                currentPassword:
+                    description: 自分のパスワードを変更する場合に必要
+                    type: string
+                    maxLength: 200
+
+        UpdateReleaseInfo:
+            description: 公開されているリリース 1 件分
+            type: object
+            required:
+                - tag
+                - name
+                - prerelease
+                - publishedAt
+                - htmlUrl
+                - body
+            properties:
+                tag:
+                    type: string
+                name:
+                    type: string
+                prerelease:
+                    type: boolean
+                publishedAt:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/UnixtimeMS'
+                htmlUrl:
+                    type: string
+                body:
+                    type: string
+
+        UpdateJobLogLine:
+            description: 更新ジョブのログ 1 行
+            type: object
+            required:
+                - at
+                - level
+                - message
+            properties:
+                at:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                level:
+                    type: string
+                    enum: [info, command, error]
+                message:
+                    type: string
+
+        UpdateJob:
+            description: 更新ジョブ
+            type: object
+            required:
+                - status
+                - tag
+                - step
+                - startedAt
+                - finishedAt
+                - error
+                - logs
+            properties:
+                status:
+                    type: string
+                    enum: [idle, running, succeeded, failed, restarting]
+                tag:
+                    type: string
+                    nullable: true
+                step:
+                    type: string
+                    nullable: true
+                startedAt:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/UnixtimeMS'
+                finishedAt:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/UnixtimeMS'
+                error:
+                    type: string
+                    nullable: true
+                logs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UpdateJobLogLine'
+
+        UpdateBranchInfo:
+            description: 追従先ブランチ (main 等) の最新コミット
+            type: object
+            required:
+                - name
+                - sha
+                - shortSha
+                - message
+                - committedAt
+                - htmlUrl
+                - upToDate
+            properties:
+                name:
+                    type: string
+                sha:
+                    type: string
+                shortSha:
+                    type: string
+                message:
+                    type: string
+                committedAt:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/UnixtimeMS'
+                htmlUrl:
+                    type: string
+                upToDate:
+                    type: boolean
+
+        UpdateStatus:
+            description: 更新状況
+            type: object
+            required:
+                - currentVersion
+                - currentIsPrerelease
+                - latestStable
+                - latestPrerelease
+                - availableRelease
+                - availableChannel
+                - checkedAt
+                - checkError
+                - branch
+                - currentCommit
+                - installationType
+                - supervisor
+                - canUpdate
+                - updateNote
+                - releasesUrl
+                - job
+            properties:
+                currentVersion:
+                    type: string
+                currentIsPrerelease:
+                    type: boolean
+                latestStable:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/UpdateReleaseInfo'
+                latestPrerelease:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/UpdateReleaseInfo'
+                availableRelease:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/UpdateReleaseInfo'
+                availableChannel:
+                    type: string
+                    nullable: true
+                    enum: [stable, prerelease]
+                checkedAt:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/UnixtimeMS'
+                checkError:
+                    type: string
+                    nullable: true
+                branch:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/UpdateBranchInfo'
+                currentCommit:
+                    type: string
+                    nullable: true
+                installationType:
+                    type: string
+                    enum: [git, archive]
+                supervisor:
+                    type: string
+                    enum: [docker, systemd, pm2, windows-service, none]
+                canUpdate:
+                    type: boolean
+                updateNote:
+                    type: string
+                releasesUrl:
+                    type: string
+                job:
+                    $ref: '#/components/schemas/UpdateJob'
+
+        RunUpdateOption:
+            description: 更新実行のリクエストボディ
+            type: object
+            properties:
+                tag:
+                    description: 更新先のタグ (省略時は最新リリース)
+                    type: string
+                refType:
+                    description: 更新先の指定方法。branch はブランチの最新コミットへ追従する (既定 tag)
+                    type: string
+                    enum: [tag, branch]
+                ref:
+                    description: refType が branch のときの対象ブランチ (省略時は設定のブランチ)
+                    type: string
+                restart:
+                    description: 更新完了後に再起動するか (既定 true)
                     type: boolean
 
         NotificationFailureHistoryItem:

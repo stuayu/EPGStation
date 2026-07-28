@@ -453,6 +453,18 @@ export default class SeriesDB implements ISeriesDB {
             .getRepository(SeriesAlias)
             .find({ where: typeof seriesId === 'number' ? { seriesId } : undefined, order: { createdAt: 'DESC' } });
     }
+    public async getAlias(id: number): Promise<SeriesAlias | null> {
+        const c = await this.op.getConnection();
+        return await c.getRepository(SeriesAlias).findOne({ where: { id } });
+    }
+    public async updateAlias(id: number, seriesId: number, source: string): Promise<SeriesAlias> {
+        const c = await this.op.getConnection();
+        const repo = c.getRepository(SeriesAlias);
+        const current = await repo.findOne({ where: { id } });
+        if (current === null) throw new Error('SeriesAliasIsNotFound');
+        // 正規化タイトルは辞書の引き当てキーなので変更しない (別の表記を足したい場合は新規登録する)
+        return await repo.save(repo.create({ ...current, seriesId, source }));
+    }
     public async deleteAlias(id: number): Promise<void> {
         const c = await this.op.getConnection();
         await c.getRepository(SeriesAlias).delete({ id });

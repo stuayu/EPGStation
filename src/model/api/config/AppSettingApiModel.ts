@@ -4,6 +4,7 @@ import IAppSettingHistoryDB from '../../db/IAppSettingHistoryDB';
 import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
 import IIPCClient from '../../ipc/IIPCClient';
+import ILogLevelApplier from '../../log/ILogLevelApplier';
 import ISecretCrypto from '../../security/ISecretCrypto';
 import { appSettingRequiresRestart, APP_SETTING_ALLOWED_KEYS, validateAppSettingValue } from './AppSettingSchema';
 import IAppSettingApiModel, { AppSettingHistoryItem, AppSettingUpdateResult } from './IAppSettingApiModel';
@@ -35,6 +36,7 @@ export default class AppSettingApiModel implements IAppSettingApiModel {
         @inject('ISecretCrypto') private readonly crypto: ISecretCrypto,
         @inject('IAppSettingHistoryDB') private readonly history: IAppSettingHistoryDB,
         @inject('IIPCClient') private readonly ipc: IIPCClient,
+        @inject('ILogLevelApplier') private readonly logLevelApplier: ILogLevelApplier,
     ) {}
 
     /**
@@ -79,6 +81,12 @@ export default class AppSettingApiModel implements IAppSettingApiModel {
 
         // Operator プロセスへホットリロードを通知する (§6.3)。録画中の処理には影響させない
         this.ipc.appSetting.notifyChanged(Object.keys(protectedValues));
+
+        // ログレベルはこの (Service) プロセスにも即時反映する。
+        // Operator / EPGUpdater 側は上の通知と各プロセスの起動時に反映される
+        if (Object.keys(protectedValues).includes('logging') === true) {
+            await this.logLevelApplier.apply().catch(() => {});
+        }
 
         return this.buildUpdateResult(Object.keys(value));
     }

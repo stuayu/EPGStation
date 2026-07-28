@@ -3,6 +3,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 import IPlayList from '../api/IPlayList';
 
+/**
+ * セッション Cookie の Path。subDirectory 運用時にその配下だけへ送るようにする
+ * @param configuration: IConfiguration
+ * @return string
+ */
+export const getCookiePath = (configuration: { getConfig(): { subDirectory?: string } }): string => {
+    const sub = configuration.getConfig().subDirectory;
+    if (typeof sub !== 'string' || sub === '') return '/';
+    return sub.startsWith('/') ? sub : `/${sub}`;
+};
+
 export const getErrorMessage = (error: unknown): string => {
     return error instanceof Error ? error.message : String(error);
 };

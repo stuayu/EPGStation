@@ -516,6 +516,25 @@ stream:
 #     nextUpPanel: true
 #     externalFileImport: true
 #     advancedSearch: true
+#     updateNotification: true
+
+# Web UI / API のログイン認証。既定は無効 (リバースプロキシ側で認証している構成を壊さないため)。
+# 有効にして初めてアクセスすると、管理ユーザーの作成画面が表示されます。
+# auth:
+#     enabled: true
+#     # セッションの有効期間 (ms)。既定 30 日
+#     sessionTtlMs: 2592000000
+
+# 新しいバージョンが公開されたときに Web UI で知らせる (featureFlags.updateNotification 有効時のみ)。
+# updateChecker:
+#     # 監視するリポジトリ ('owner/repo' 形式、既定 stuayu/EPGStation)
+#     repository: 'stuayu/EPGStation'
+#     # 「最新の開発版へ更新」で追従するブランチ (既定 main)
+#     branch: 'main'
+#     # チェック間隔 (ms、既定 6 時間)。0 以下でチェックを止める
+#     checkIntervalMs: 21600000
+#     # プレリリース (rc / beta / alpha) も通知するか (既定 true。UI では色を変えて区別する)
+#     includePrerelease: true
 
 # しょぼいカレンダー ChID ⇄ Mirakurun networkId/serviceId のマッピング表 (JSON) のパス。
 # 省略時は同梱の初期データ (主要地上波キー局のみ) を使う。指定したファイルの内容は同梱データを
@@ -581,9 +600,12 @@ stream:
 #     # リクエスト間隔の下限 (ms)。省略時 0 (無制限)
 #     # minIntervalMs: 0
 #     # 応答の上限トークン数。省略時 2000。
-#     # OpenRouter のフリーモデルはほぼ reasoning 系で、本文の前に思考へ数百トークン使う。
-#     # 小さくすると content が空のまま finish_reason: length で切れて失敗する
+#     # OpenRouter のフリーモデルはほぼ reasoning 系で、本文の前に思考へトークンを使う。
+#     # 小さすぎると content が空のまま finish_reason: length で切れるが、その場合は
+#     # 自動で 4 倍ずつ引き上げて再試行する (成功した値は以後の既定として使われる) ため通常は指定不要
 #     # maxTokens: 2000
+#     # 自動引き上げの上限。省略時 16000。これを超えても本文が出ない場合は失敗として扱う
+#     # maxTokensLimit: 16000
 #
 # OpenRouter のフリーモデルを使う場合の例 (分あたり上限があるため minIntervalMs は必須と考えてよい)。
 # 思考過程を本文に混ぜる reasoning 系モデルは JSON 抽出に失敗しやすいので instruct 系を選ぶこと

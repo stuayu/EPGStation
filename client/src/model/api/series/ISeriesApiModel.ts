@@ -96,6 +96,14 @@ export default interface ISeriesApiModel {
     updateMappingBulk(items: apid.BulkSeriesMappingItem[]): Promise<apid.BulkUpdateSeriesMappingResult>;
     split(seriesId: number, recordedIds: number[], newTitle: string): Promise<apid.SplitSeriesResult>;
     listAliases(seriesId?: number): Promise<SeriesAliasItem[]>;
+    /**
+     * エイリアス辞書の付け替え先シリーズを変更する (付け替え後は手動修正扱いになる)
+     */
+    updateAlias(aliasId: number, value: apid.UpdateSeriesAliasOption): Promise<SeriesAliasItem>;
+    /**
+     * エイリアス辞書の付け替え・削除をまとめて行う
+     */
+    updateAliasBulk(items: apid.BulkSeriesAliasItem[]): Promise<apid.BulkUpdateSeriesAliasResult>;
     removeAlias(aliasId: number): Promise<void>;
     startBackfill(option?: SeriesBackfillOption): Promise<SeriesBackfillResult>;
     getBackfillStatus(): Promise<SeriesBackfillResult>;

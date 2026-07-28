@@ -6,6 +6,10 @@ import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
+import IAuthModel from '../../auth/IAuthModel';
+import { SESSION_COOKIE_NAME } from '../../auth/SessionCookie';
+import { readCookie } from '../../auth/SessionToken';
+import container from '../../ModelContainer';
 import ISocketIOManageModel from './ISocketIOManageModel';
 
 @injectable()
@@ -38,6 +42,28 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
                     },
                 }),
             );
+        }
+
+        // 認証有効時は、未ログインのクライアントから接続 (通知の受信) をできなくする
+        const authModel = container.get<IAuthModel>('IAuthModel');
+        for (const io of this.ios) {
+            io.use((socket, next) => {
+                if (authModel.isEnabled() === false) {
+                    next();
+
+                    return;
+                }
+                const token = readCookie(socket.handshake.headers.cookie, SESSION_COOKIE_NAME);
+                authModel
+                    .verify(token)
+                    .then(payload => {
+                        next(payload === null ? new Error('Unauthorized') : undefined);
+                    })
+                    .catch(err => {
+                        this.log.system.error(err);
+                        next(new Error('Unauthorized'));
+                    });
+            });
         }
 
         this.log.system.info('SocketIO Server has started.');

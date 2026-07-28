@@ -15,6 +15,7 @@ import IReservationManageModel from '../operator/reservation/IReservationManageM
 import IRuleManageModel from '../operator/rule/IRuleManageModel';
 import ISeriesBackfillManageModel, { SeriesBackfillOption } from '../operator/series/ISeriesBackfillManageModel';
 import IThumbnailManageModel from '../operator/thumbnail/IThumbnailManageModel';
+import IUpdateManageModel from '../update/IUpdateManageModel';
 import IIPCServer from './IIPCServer';
 import {
     AppSettingFunctions,
@@ -31,6 +32,7 @@ import {
     SendMessage,
     SeriesFunctions,
     ThumbnailFunctions,
+    UpdateFunctions,
 } from './IPCMessageDefine';
 
 interface IFunctionIndex {
@@ -49,6 +51,7 @@ export default class IPCServer implements IIPCServer {
     private encodeEvent: IOperatorEncodeEvent;
     private seriesBackfillManage: ISeriesBackfillManageModel;
     private appSettingChangeEvent: IAppSettingChangeEvent;
+    private updateManage: IUpdateManageModel;
     private child: ChildProcess | null = null;
     private functions: {
         [modelName: string]: IFunctionIndex;
@@ -66,6 +69,7 @@ export default class IPCServer implements IIPCServer {
         @inject('IOperatorEncodeEvent') encodeEvent: IOperatorEncodeEvent,
         @inject('ISeriesBackfillManageModel') seriesBackfillManage: ISeriesBackfillManageModel,
         @inject('IAppSettingChangeEvent') appSettingChangeEvent: IAppSettingChangeEvent,
+        @inject('IUpdateManageModel') updateManage: IUpdateManageModel,
     ) {
         this.reservationManage = reservationManage;
         this.recordedManage = recordedManage;
@@ -77,6 +81,7 @@ export default class IPCServer implements IIPCServer {
         this.encodeEvent = encodeEvent;
         this.seriesBackfillManage = seriesBackfillManage;
         this.appSettingChangeEvent = appSettingChangeEvent;
+        this.updateManage = updateManage;
 
         this.init();
     }
@@ -164,6 +169,31 @@ export default class IPCServer implements IIPCServer {
         this.functions[ModelName.encodeEvent] = this.getOperatorEncodeEventFunctions();
         this.functions[ModelName.series] = this.getSeriesFunctions();
         this.functions[ModelName.appSetting] = this.getAppSettingFunctions();
+        this.functions[ModelName.update] = this.getUpdateFunctions();
+    }
+
+    /**
+     * set update functions
+     * 更新は git 操作・ビルド・プロセス再起動を伴うため Operator (親) 側で実行する
+     */
+    private getUpdateFunctions(): IFunctionIndex {
+        const index: IFunctionIndex = {};
+
+        index[UpdateFunctions.getStatus] = async () => {
+            return await this.updateManage.getStatus();
+        };
+        index[UpdateFunctions.check] = async () => {
+            return await this.updateManage.check();
+        };
+        index[UpdateFunctions.run] = async msg => {
+            const option = this.getArgsValue<any>(msg, 'option');
+            return await this.updateManage.run(option ?? {});
+        };
+        index[UpdateFunctions.getJob] = async () => {
+            return this.updateManage.getJob();
+        };
+
+        return index;
     }
 
     /**

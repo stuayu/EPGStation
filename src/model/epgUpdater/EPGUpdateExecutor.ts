@@ -3,6 +3,7 @@ import 'reflect-metadata';
 import ILoggerModel from '../ILoggerModel';
 import container from '../ModelContainer';
 import * as containerSetter from '../ModelContainerSetter';
+import ILogLevelApplier from '../log/ILogLevelApplier';
 import IEPGUpdater from './IEPGUpdater';
 
 containerSetter.set(container);
@@ -18,6 +19,12 @@ process.on('uncaughtException', err => {
 process.on('unhandledRejection', err => {
     log.system.fatal(`unhandledRejection: ${err}`);
 });
+
+// 画面から変更されたログレベルを反映する (ログ設定ファイルの内容を上書きする)
+container
+    .get<ILogLevelApplier>('ILogLevelApplier')
+    .apply()
+    .catch(err => log.system.error(err));
 
 const updater = container.get<IEPGUpdater>('IEPGUpdater');
 

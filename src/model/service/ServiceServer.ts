@@ -14,6 +14,11 @@ import * as path from 'path';
 import type { ServeStaticOptions } from 'serve-static';
 import urljoin from 'url-join';
 import FileUtil from '../../util/FileUtil';
+import IAuthModel from '../auth/IAuthModel';
+import { isPublicApiPath, toApiPath } from '../auth/AuthGuard';
+import { SESSION_COOKIE_NAME } from '../auth/SessionCookie';
+import { readCookie } from '../auth/SessionToken';
+import container from '../ModelContainer';
 import IConfigFile from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
@@ -72,8 +77,61 @@ class ServiceServer implements IServiceServer {
         }
         this.setSwaggerUI();
         this.createUploadDir();
+        this.setAuthGuard();
         this.initOpenApi(api);
         this.setStaticFiles();
+    }
+
+    /**
+     * 認証ガードの設定。
+     * config.yml で auth.enabled が true のときだけ有効になり、
+     * API・サムネイル・配信ファイルへの未認証アクセスを 401 で弾く。
+     * クライアントの静的ファイルはログイン画面を表示するために素通しする
+     */
+    private setAuthGuard(): void {
+        const authModel = container.get<IAuthModel>('IAuthModel');
+        const apiBase = this.createUrl('/api');
+        const protectedPrefixes = [this.createUrl('/thumbnail'), this.createUrl('/streamfiles')];
+
+        this.app.use(async (req, res, next) => {
+            if (authModel.isEnabled() === false) {
+                next();
+
+                return;
+            }
+
+            const apiPath = toApiPath(req.url, apiBase);
+            const isProtectedFile = protectedPrefixes.some(
+                prefix => req.url === prefix || req.url.startsWith(`${prefix}/`),
+            );
+            // API でもサムネイル/配信でもない = クライアントの静的ファイルなので認証不要
+            if (apiPath === null && isProtectedFile === false) {
+                next();
+
+                return;
+            }
+            if (apiPath !== null && isPublicApiPath(apiPath) === true) {
+                next();
+
+                return;
+            }
+
+            try {
+                const token = readCookie(req.headers.cookie, SESSION_COOKIE_NAME);
+                const payload = await authModel.verify(token);
+                if (payload === null) {
+                    res.status(401).json({ code: 401, message: 'Unauthorized' });
+
+                    return;
+                }
+            } catch (err) {
+                this.log.system.error(err);
+                res.status(500).json({ code: 500, message: 'AuthCheckFailed' });
+
+                return;
+            }
+            next();
+        });
     }
 
     /**

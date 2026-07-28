@@ -11,6 +11,8 @@
                     <v-tab value="integration">連携</v-tab>
                     <v-tab value="notification">通知</v-tab>
                     <v-tab value="series">シリーズ管理</v-tab>
+                    <v-tab v-if="isUpdateEnabled === true" value="update">更新</v-tab>
+                    <v-tab v-if="isAuthEnabled === true" value="account">アカウント</v-tab>
                 </v-tabs>
                 <v-card-text>
                     <v-window v-model="tab">
@@ -34,6 +36,28 @@
                             <v-btn variant="outlined" color="error" :disabled="historyItems.length === 0" :loading="rollbacking" @click="rollback"
                                 >直前の状態へロールバック</v-btn
                             >
+                            <v-divider class="my-4"></v-divider>
+                            <div class="text-subtitle-1 mb-2">ログレベル</div>
+                            <div class="text-caption mb-2">
+                                config/*LogConfig.yml の設定を上書きします。保存すると再起動なしで即座に反映されます
+                                (指定しなかったカテゴリはファイルの設定のまま)
+                            </div>
+                            <div class="d-flex ga-2 flex-wrap">
+                                <v-select
+                                    v-for="c in logCategories"
+                                    :key="c.value"
+                                    v-model="settings.logging.levels[c.value]"
+                                    :items="logLevelItems"
+                                    item-title="title"
+                                    item-value="value"
+                                    :label="c.title"
+                                    density="compact"
+                                    hide-details
+                                    clearable
+                                    style="max-width: 180px"
+                                ></v-select>
+                            </div>
+
                             <v-divider class="my-4"></v-divider>
                             <v-alert type="info">現在、再起動 (Operator 再初期化) が必須の設定項目はありません。今後追加された場合、このタブと画面上部のバナーで通知されます。</v-alert>
                         </v-window-item>
@@ -363,58 +387,237 @@
                                 「正規化タイトル → シリーズ」の対応表。手動修正のほか、LLM が抽出した番組名を検証できたものを自動学習する。
                                 ここに載っている表記は以後 LLM を引かずに確定する
                             </div>
-                            <v-btn-toggle v-model="aliasSourceFilter" density="compact" mandatory class="mb-2">
-                                <v-btn value="all" size="small">すべて ({{ aliases.length }})</v-btn>
-                                <v-btn value="llm" size="small">LLM 学習 ({{ llmAliasCount }})</v-btn>
-                                <v-btn value="manual" size="small">手動 ({{ aliases.length - llmAliasCount }})</v-btn>
-                            </v-btn-toggle>
+                            <div class="d-flex align-center ga-2 flex-wrap mb-2">
+                                <v-btn-toggle v-model="aliasSourceFilter" density="compact" mandatory>
+                                    <v-btn value="all" size="small">すべて ({{ aliases.length }})</v-btn>
+                                    <v-btn value="llm" size="small">LLM 学習 ({{ llmAliasCount }})</v-btn>
+                                    <v-btn value="manual" size="small">手動 ({{ aliases.length - llmAliasCount }})</v-btn>
+                                </v-btn-toggle>
+                                <v-text-field
+                                    v-model="aliasKeyword"
+                                    label="正規化タイトル / シリーズで絞り込み"
+                                    density="compact"
+                                    hide-details
+                                    clearable
+                                    prepend-inner-icon="mdi-magnify"
+                                    style="max-width: 280px"
+                                ></v-text-field>
+                            </div>
+
+                            <!-- 誤学習の一括修正バー。選択した行をまとめて同じシリーズへ付け替える / 削除する -->
+                            <v-card v-if="selectedAliasIds.length > 0" variant="tonal" class="mb-2">
+                                <v-card-text class="py-2">
+                                    <div class="d-flex align-center ga-2 flex-wrap">
+                                        <span class="text-body-2">{{ selectedAliasIds.length }} 件選択中</span>
+                                        <v-autocomplete
+                                            v-model="bulkAliasSeriesId"
+                                            v-model:search="bulkAliasKeyword"
+                                            :items="seriesCandidateItems"
+                                            item-title="title"
+                                            item-value="value"
+                                            label="まとめて付け替える先"
+                                            density="compact"
+                                            hide-details
+                                            hide-no-data
+                                            :loading="seriesSearching"
+                                            style="min-width: 260px"
+                                        ></v-autocomplete>
+                                        <v-btn size="small" variant="flat" color="primary" :disabled="bulkAliasSeriesId === null" @click="applyBulkAliasSeries">
+                                            選択に適用
+                                        </v-btn>
+                                        <v-btn size="small" variant="text" color="error" @click="markAliasRemove">選択を削除対象にする</v-btn>
+                                        <v-btn size="small" variant="text" @click="selectedAliasIds = []">選択解除</v-btn>
+                                    </div>
+                                </v-card-text>
+                            </v-card>
+
                             <v-table density="compact">
                                 <thead>
                                     <tr>
+                                        <th style="width: 48px">
+                                            <v-checkbox-btn
+                                                :model-value="isAllAliasSelected"
+                                                @update:model-value="toggleAllAlias"
+                                            ></v-checkbox-btn>
+                                        </th>
                                         <th>正規化タイトル</th>
-                                        <th>シリーズ</th>
-                                        <th>学習元</th>
-                                        <th>登録日時</th>
-                                        <th></th>
+                                        <th style="min-width: 260px">シリーズ</th>
+                                        <th style="width: 90px">学習元</th>
+                                        <th style="width: 140px">登録日時</th>
+                                        <th style="width: 60px"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="a in filteredAliases" :key="a.id">
-                                        <td>{{ a.normalizedTitle }}</td>
-                                        <td>{{ a.seriesTitle }}</td>
+                                    <tr v-for="a in filteredAliases" :key="a.id" :class="{ 'alias-removed': aliasEdits[a.id]?.remove === true }">
                                         <td>
-                                            <v-chip size="x-small" :color="a.source === 'llm' ? 'primary' : undefined">
-                                                {{ a.source === 'llm' ? 'LLM 学習' : '手動' }}
+                                            <v-checkbox-btn v-model="selectedAliasIds" :value="a.id"></v-checkbox-btn>
+                                        </td>
+                                        <td class="text-truncate" style="max-width: 1px">{{ a.normalizedTitle }}</td>
+                                        <td>
+                                            <span v-if="aliasEdits[a.id]?.remove === true" class="text-error text-body-2">削除します</span>
+                                            <v-autocomplete
+                                                v-else
+                                                :model-value="aliasEdits[a.id]?.seriesId ?? a.seriesId"
+                                                :items="aliasSeriesItems(a)"
+                                                item-title="title"
+                                                item-value="value"
+                                                v-model:search="aliasSearchKeyword"
+                                                density="compact"
+                                                variant="outlined"
+                                                hide-details
+                                                hide-no-data
+                                                :loading="seriesSearching"
+                                                @update:model-value="value => setAliasSeries(a, value)"
+                                            ></v-autocomplete>
+                                        </td>
+                                        <td>
+                                            <v-chip size="x-small" :color="aliasSourceOf(a) === 'llm' ? 'primary' : undefined">
+                                                {{ aliasSourceOf(a) === 'llm' ? 'LLM 学習' : '手動' }}
                                             </v-chip>
                                         </td>
-                                        <td>{{ formatDate(a.createdAt) }}</td>
-                                        <td><v-btn size="small" variant="text" color="error" @click="removeAlias(a.id)">削除</v-btn></td>
+                                        <td class="text-caption">{{ formatDate(a.createdAt) }}</td>
+                                        <td>
+                                            <v-btn v-if="isAliasEdited(a.id)" size="small" variant="text" @click="resetAliasEdit(a.id)">戻す</v-btn>
+                                            <v-btn v-else size="small" variant="text" color="error" @click="markAliasRemove(a.id)">削除</v-btn>
+                                        </td>
                                     </tr>
                                 </tbody>
                             </v-table>
                             <v-alert v-if="filteredAliases.length === 0" type="info" class="mt-2">エイリアスはありません</v-alert>
+                            <div class="d-flex align-center ga-2 mt-3">
+                                <v-btn color="primary" :loading="aliasSaving" :disabled="changedAliasItems.length === 0" @click="saveAliases">
+                                    辞書の変更を保存 ({{ changedAliasItems.length }} 件)
+                                </v-btn>
+                                <v-btn variant="text" :disabled="changedAliasItems.length === 0" @click="aliasEdits = {}">変更を破棄</v-btn>
+                                <span class="text-caption text-grey">保存した辞書は手動修正扱いになり、以後の自動学習で上書きされません</span>
+                            </div>
                             </template>
                             <v-alert v-else type="info" class="mt-4">シリーズライブラリ機能 (featureFlags.seriesLibrary) が無効なため、バックフィルとエイリアス管理は利用できません</v-alert>
                         </v-window-item>
+
+                        <!-- 更新タブ: リリース版 / main ブランチの最新へのワンクリック更新 -->
+                        <v-window-item value="update">
+                            <UpdatePanel></UpdatePanel>
+                        </v-window-item>
+
+                        <!-- アカウントタブ: ログインユーザーの管理 (config.yml の auth.enabled が有効なときのみ) -->
+                        <v-window-item value="account">
+                            <div class="text-subtitle-1 mb-2">ログインユーザー</div>
+                            <div class="text-caption mb-2">
+                                パスワードを変更すると、そのユーザーのログイン状態 (発行済みセッション) はすべて無効になります
+                            </div>
+                            <v-table density="compact">
+                                <thead>
+                                    <tr>
+                                        <th>ユーザー名</th>
+                                        <th style="width: 160px">作成日時</th>
+                                        <th style="width: 200px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="u in authUsers" :key="u.id">
+                                        <td>
+                                            {{ u.name }}
+                                            <v-chip v-if="u.name === currentUserName" size="x-small" color="primary" class="ml-1">ログイン中</v-chip>
+                                        </td>
+                                        <td class="text-caption">{{ formatDate(u.createdAt) }}</td>
+                                        <td>
+                                            <v-btn size="small" variant="text" @click="openPasswordDialog(u)">パスワード変更</v-btn>
+                                            <v-btn
+                                                size="small"
+                                                variant="text"
+                                                color="error"
+                                                :disabled="authUsers.length <= 1"
+                                                @click="removeAuthUser(u)"
+                                                >削除</v-btn
+                                            >
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </v-table>
+
+                            <v-divider class="my-4"></v-divider>
+                            <div class="text-subtitle-1 mb-2">ユーザーの追加</div>
+                            <div class="d-flex ga-2 flex-wrap align-start">
+                                <v-text-field v-model="newUserName" label="ユーザー名" density="compact" hide-details style="max-width: 220px"></v-text-field>
+                                <v-text-field
+                                    v-model="newUserPassword"
+                                    label="パスワード (8 文字以上)"
+                                    type="password"
+                                    autocomplete="new-password"
+                                    density="compact"
+                                    hide-details
+                                    style="max-width: 240px"
+                                ></v-text-field>
+                                <v-btn color="primary" :loading="authSaving" :disabled="newUserName.trim() === '' || newUserPassword === ''" @click="addAuthUser">
+                                    追加
+                                </v-btn>
+                            </div>
+                        </v-window-item>
                     </v-window>
-                    <v-btn color="primary" :loading="saving" @click="save">保存</v-btn>
+                    <v-btn v-if="tab !== 'update' && tab !== 'account'" color="primary" :loading="saving" @click="save">保存</v-btn>
                 </v-card-text>
             </v-card>
         </v-container>
+
+        <v-dialog v-model="isOpenPasswordDialog" max-width="460">
+            <v-card>
+                <v-card-title>パスワードの変更</v-card-title>
+                <v-card-subtitle>{{ passwordTargetName }}</v-card-subtitle>
+                <v-card-text>
+                    <v-text-field
+                        v-if="passwordTargetName === currentUserName"
+                        v-model="currentPassword"
+                        label="現在のパスワード"
+                        type="password"
+                        autocomplete="current-password"
+                        density="compact"
+                    ></v-text-field>
+                    <v-text-field v-model="newPassword" label="新しいパスワード (8 文字以上)" type="password" autocomplete="new-password" density="compact"></v-text-field>
+                    <v-text-field v-model="newPasswordConfirm" label="新しいパスワード (確認)" type="password" autocomplete="new-password" density="compact"></v-text-field>
+                    <v-alert v-if="newPassword !== '' && newPassword !== newPasswordConfirm" type="error" density="compact">
+                        確認用のパスワードが一致しません
+                    </v-alert>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn variant="text" @click="isOpenPasswordDialog = false">キャンセル</v-btn>
+                    <v-btn
+                        color="primary"
+                        variant="text"
+                        :loading="authSaving"
+                        :disabled="newPassword === '' || newPassword !== newPasswordConfirm"
+                        @click="saveNewPassword"
+                        >変更する</v-btn
+                    >
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </v-main>
 </template>
 <script lang="ts">
 import TitleBar from '@/components/titleBar/TitleBar.vue';
+import UpdatePanel from '@/components/update/UpdatePanel.vue';
+import IAuthApiModel, { AuthUserItem } from '@/model/api/auth/IAuthApiModel';
 import container from '@/model/ModelContainer';
 import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
 import ISystemSettingApiModel from '@/model/api/config/ISystemSettingApiModel';
-import ISeriesApiModel, { SeriesAliasItem, SeriesBackfillResult, ProgramSeriesMetrics } from '@/model/api/series/ISeriesApiModel';
+import ISeriesApiModel, { SeriesAliasItem, SeriesBackfillResult, SeriesListItem, ProgramSeriesMetrics } from '@/model/api/series/ISeriesApiModel';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
 import DateUtil from '@/util/DateUtil';
-import { Component, Vue, toNative } from 'vue-facing-decorator';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
+
+/**
+ * エイリアス辞書の編集内容 (保存するまでサーバへは送らない)
+ */
+interface AliasEdit {
+    seriesId?: number;
+    seriesTitle?: string;
+    remove?: boolean;
+}
 
 interface NotificationTargetForm {
     __key: string;
@@ -436,7 +639,7 @@ interface ChannelMapEntryForm {
     syobocal: boolean;
 }
 
-@Component({ components: { TitleBar } })
+@Component({ components: { TitleBar, UpdatePanel } })
 class SystemSetting extends Vue {
     tab = 'basic';
     saving = false;
@@ -466,6 +669,122 @@ class SystemSetting extends Vue {
         return isFeatureEnabled(this.serverConfigModel.getConfig(), 'seriesLibrary');
     }
 
+    // --- アカウント (ログインユーザー管理) ---
+    authUsers: AuthUserItem[] = [];
+    currentUserName = '';
+    isAuthEnabled = false;
+    newUserName = '';
+    newUserPassword = '';
+    authSaving = false;
+    isOpenPasswordDialog = false;
+    passwordTargetId: number | null = null;
+    passwordTargetName = '';
+    currentPassword = '';
+    newPassword = '';
+    newPasswordConfirm = '';
+
+    private authApi = container.get<IAuthApiModel>('IAuthApiModel');
+
+    /**
+     * ログインユーザー一覧を読み込む (認証が無効なら何もしない)
+     */
+    async loadAuth(): Promise<void> {
+        try {
+            const status = await this.authApi.getStatus();
+            this.isAuthEnabled = status.enabled;
+            this.currentUserName = status.user?.name ?? '';
+            if (status.enabled === false) return;
+            this.authUsers = await this.authApi.listUsers();
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    async addAuthUser(): Promise<void> {
+        this.authSaving = true;
+        try {
+            await this.authApi.addUser(this.newUserName.trim(), this.newUserPassword);
+            this.newUserName = '';
+            this.newUserPassword = '';
+            this.snackbarState.open({ color: 'success', text: 'ユーザーを追加しました' });
+            await this.loadAuth();
+        } catch (err: any) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: SystemSetting.authErrorText(err) });
+        } finally {
+            this.authSaving = false;
+        }
+    }
+
+    async removeAuthUser(user: AuthUserItem): Promise<void> {
+        try {
+            await this.authApi.removeUser(user.id);
+            this.snackbarState.open({ color: 'success', text: `${user.name} を削除しました` });
+            await this.loadAuth();
+        } catch (err: any) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: SystemSetting.authErrorText(err) });
+        }
+    }
+
+    openPasswordDialog(user: AuthUserItem): void {
+        this.passwordTargetId = user.id;
+        this.passwordTargetName = user.name;
+        this.currentPassword = '';
+        this.newPassword = '';
+        this.newPasswordConfirm = '';
+        this.isOpenPasswordDialog = true;
+    }
+
+    async saveNewPassword(): Promise<void> {
+        if (this.passwordTargetId === null) return;
+        this.authSaving = true;
+        try {
+            // 自分のパスワードを変えるときだけ現在のパスワードを送る
+            const current = this.passwordTargetName === this.currentUserName ? this.currentPassword : undefined;
+            await this.authApi.changePassword(this.passwordTargetId, this.newPassword, current);
+            this.isOpenPasswordDialog = false;
+            if (this.passwordTargetName === this.currentUserName) {
+                // 自分のセッションも無効になるのでログインし直してもらう
+                this.snackbarState.open({ color: 'success', text: 'パスワードを変更しました。再ログインしてください' });
+                window.setTimeout(() => window.location.replace(window.location.pathname), 1500);
+            } else {
+                this.snackbarState.open({ color: 'success', text: 'パスワードを変更しました' });
+            }
+        } catch (err: any) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: SystemSetting.authErrorText(err) });
+        } finally {
+            this.authSaving = false;
+        }
+    }
+
+    private static authErrorText(err: any): string {
+        switch (err?.response?.data?.message ?? '') {
+            case 'InvalidCredentials':
+                return '現在のパスワードが違います';
+            case 'PasswordIsTooShort':
+                return 'パスワードは 8 文字以上にしてください';
+            case 'PasswordIsTooLong':
+                return 'パスワードが長すぎます';
+            case 'InvalidUserName':
+                return 'ユーザー名を入力してください';
+            case 'UserNameIsAlreadyUsed':
+                return 'そのユーザー名はすでに使われています';
+            case 'LastUserCanNotBeRemoved':
+                return '最後の 1 人は削除できません';
+            default:
+                return '操作に失敗しました';
+        }
+    }
+
+    /**
+     * 更新通知・ワンクリック更新が有効か (featureFlags.updateNotification)
+     */
+    get isUpdateEnabled(): boolean {
+        return isFeatureEnabled(this.serverConfigModel.getConfig(), 'updateNotification');
+    }
+
     /**
      * Annict 視聴記録同期の二重ゲートのうち、サーバー設定 (featureFlags) 側の状態。
      * config.yml 側で無効な場合、この画面のスイッチを ON にしても同期は動作しない
@@ -478,18 +797,120 @@ class SystemSetting extends Vue {
     backfillStatus: SeriesBackfillResult | null = null;
     backfillStarting = false;
     private backfillPollTimer: ReturnType<typeof setInterval> | null = null;
+    private seriesSearchTimer: ReturnType<typeof setTimeout> | null = null;
     aliases: SeriesAliasItem[] = [];
     aliasSourceFilter: 'all' | 'llm' | 'manual' = 'all';
+    aliasKeyword = '';
+    // 保存前の編集内容 (aliasId → 付け替え先 / 削除フラグ)
+    aliasEdits: Record<number, AliasEdit> = {};
+    selectedAliasIds: number[] = [];
+    aliasSaving = false;
+    // 付け替え先を選ぶオートコンプリートの候補
+    seriesCandidates: SeriesListItem[] = [];
+    seriesSearching = false;
+    aliasSearchKeyword = '';
+    bulkAliasKeyword = '';
+    bulkAliasSeriesId: number | null = null;
 
     get llmAliasCount(): number {
         return this.aliases.filter(a => a.source === 'llm').length;
     }
 
-    // 自動学習した対応だけを見たいことがあるので学習元で絞り込めるようにする
+    // 自動学習した対応だけを見たいことがあるので学習元とキーワードで絞り込めるようにする
     get filteredAliases(): SeriesAliasItem[] {
-        if (this.aliasSourceFilter === 'all') return this.aliases;
-        return this.aliases.filter(a =>
-            this.aliasSourceFilter === 'llm' ? a.source === 'llm' : a.source !== 'llm',
+        const keyword = (this.aliasKeyword ?? '').trim();
+        return this.aliases.filter(a => {
+            if (this.aliasSourceFilter !== 'all') {
+                const isLlm = this.aliasSourceFilter === 'llm';
+                if (isLlm ? a.source !== 'llm' : a.source === 'llm') return false;
+            }
+            if (keyword === '') return true;
+            return a.normalizedTitle.includes(keyword) || a.seriesTitle.includes(keyword);
+        });
+    }
+
+    /**
+     * 編集後の学習元。付け替えたものは保存すると手動修正扱いになるので、その場で表示も切り替える
+     */
+    aliasSourceOf(alias: SeriesAliasItem): string {
+        return this.isAliasEdited(alias.id) ? 'manual' : alias.source;
+    }
+    isAliasEdited(aliasId: number): boolean {
+        return typeof this.aliasEdits[aliasId] !== 'undefined';
+    }
+    get isAllAliasSelected(): boolean {
+        return this.filteredAliases.length > 0 && this.selectedAliasIds.length === this.filteredAliases.length;
+    }
+    toggleAllAlias(value: boolean | null): void {
+        this.selectedAliasIds = value === true ? this.filteredAliases.map(a => a.id) : [];
+    }
+
+    /**
+     * 行ごとのオートコンプリート候補。検索結果に加えて現在の付け替え先も必ず含める
+     * (候補に無いと選択中の値が表示されないため)
+     */
+    aliasSeriesItems(alias: SeriesAliasItem): Array<{ title: string; value: number }> {
+        const edit = this.aliasEdits[alias.id];
+        const current = {
+            title: edit?.seriesTitle ?? alias.seriesTitle,
+            value: edit?.seriesId ?? alias.seriesId,
+        };
+        const items = this.seriesCandidateItems.filter(x => x.value !== current.value);
+        return [current, ...items];
+    }
+    get seriesCandidateItems(): Array<{ title: string; value: number }> {
+        return this.seriesCandidates.map(x => ({ title: x.title, value: x.id }));
+    }
+
+    /**
+     * 1 行分の付け替え先を編集バッファに記録する (元の値へ戻したら編集を取り消す)
+     */
+    setAliasSeries(alias: SeriesAliasItem, seriesId: number | null): void {
+        if (seriesId === null || seriesId === alias.seriesId) {
+            this.resetAliasEdit(alias.id);
+            return;
+        }
+        const title = this.seriesCandidates.find(x => x.id === seriesId)?.title ?? '';
+        this.aliasEdits = { ...this.aliasEdits, [alias.id]: { seriesId, seriesTitle: title } };
+    }
+    /**
+     * 選択した行をまとめて同じシリーズへ付け替える
+     */
+    applyBulkAliasSeries(): void {
+        if (this.bulkAliasSeriesId === null) return;
+        const seriesId = this.bulkAliasSeriesId;
+        const title = this.seriesCandidates.find(x => x.id === seriesId)?.title ?? '';
+        const edits = { ...this.aliasEdits };
+        for (const id of this.selectedAliasIds) {
+            const alias = this.aliases.find(a => a.id === id);
+            if (typeof alias === 'undefined') continue;
+            if (alias.seriesId === seriesId) delete edits[id];
+            else edits[id] = { seriesId, seriesTitle: title };
+        }
+        this.aliasEdits = edits;
+        this.selectedAliasIds = [];
+        this.bulkAliasSeriesId = null;
+    }
+    /**
+     * 削除対象としてマークする (実際の削除は保存時)
+     */
+    markAliasRemove(aliasId?: number): void {
+        const targets = typeof aliasId === 'number' ? [aliasId] : this.selectedAliasIds;
+        const edits = { ...this.aliasEdits };
+        for (const id of targets) edits[id] = { remove: true };
+        this.aliasEdits = edits;
+        if (typeof aliasId !== 'number') this.selectedAliasIds = [];
+    }
+    resetAliasEdit(aliasId: number): void {
+        const edits = { ...this.aliasEdits };
+        delete edits[aliasId];
+        this.aliasEdits = edits;
+    }
+    get changedAliasItems(): apid.BulkSeriesAliasItem[] {
+        return Object.entries(this.aliasEdits).map(([aliasId, edit]) =>
+            edit.remove === true
+                ? { aliasId: Number(aliasId), remove: true }
+                : { aliasId: Number(aliasId), seriesId: edit.seriesId },
         );
     }
     metrics: ProgramSeriesMetrics | null = null;
@@ -566,7 +987,25 @@ class SystemSetting extends Vue {
             targets: [] as NotificationTargetForm[],
         },
         series: { matchThreshold: 0.8 },
+        // ログレベル。未指定 (null) のカテゴリはログ設定ファイルの値をそのまま使う
+        logging: { levels: {} as Record<string, string | null> },
     };
+
+    readonly logCategories = [
+        { title: 'システム', value: 'system' },
+        { title: 'アクセス', value: 'access' },
+        { title: 'ストリーム', value: 'stream' },
+        { title: 'エンコード', value: 'encode' },
+    ];
+    readonly logLevelItems = [
+        { title: 'trace (最も詳細)', value: 'trace' },
+        { title: 'debug', value: 'debug' },
+        { title: 'info', value: 'info' },
+        { title: 'warn', value: 'warn' },
+        { title: 'error', value: 'error' },
+        { title: 'fatal', value: 'fatal' },
+        { title: 'off (出力しない)', value: 'off' },
+    ];
 
     private targetKeySeed = 0;
     private nextTargetKey(): string {
@@ -595,6 +1034,7 @@ class SystemSetting extends Vue {
                 },
                 notifications: { ...this.settings.notifications, ...loaded.notifications },
                 series: { ...this.settings.series, ...loaded.series },
+                logging: { levels: { ...((loaded as any).logging?.levels ?? {}) } },
             };
             this.settings.notifications.targets = (loaded.notifications?.targets ?? []).map((t: any) => ({
                 __key: this.nextTargetKey(),
@@ -615,6 +1055,7 @@ class SystemSetting extends Vue {
             console.error(err);
         }
         await this.loadChannelMap();
+        await this.loadAuth();
         await this.refreshSyobocalTitleStatus();
         await this.refreshAnnictWorkStatus();
 
@@ -937,6 +1378,65 @@ class SystemSetting extends Vue {
         }
     }
 
+    /**
+     * 付け替え先の候補をサーバから検索する (オートコンプリートの入力に追従)
+     */
+    @Watch('aliasSearchKeyword')
+    @Watch('bulkAliasKeyword')
+    onSeriesSearchKeywordChanged(): void {
+        const keyword = (this.aliasSearchKeyword || this.bulkAliasKeyword || '').trim();
+        if (this.seriesSearchTimer !== null) clearTimeout(this.seriesSearchTimer);
+        // 1 文字打つたびに問い合わせないよう少し待つ
+        this.seriesSearchTimer = setTimeout(() => {
+            void this.searchSeriesCandidates(keyword);
+        }, 300);
+    }
+
+    async searchSeriesCandidates(keyword: string): Promise<void> {
+        this.seriesSearching = true;
+        try {
+            const result = await this.seriesApi.list({ keyword: keyword || undefined, offset: 0, limit: 50 });
+            this.seriesCandidates = result.items;
+        } catch (err) {
+            console.error(err);
+        } finally {
+            this.seriesSearching = false;
+        }
+    }
+
+    /**
+     * 編集した辞書 (付け替え / 削除) をまとめて保存する。
+     * 付け替えたものはサーバ側で手動修正扱い (source: 'manual') になる
+     */
+    async saveAliases(): Promise<void> {
+        const items = this.changedAliasItems;
+        if (items.length === 0) return;
+        this.aliasSaving = true;
+        try {
+            const result = await this.seriesApi.updateAliasBulk(items);
+            if (result.failed.length > 0) {
+                this.snackbarState.open({
+                    color: 'error',
+                    text: `付け替え ${result.updated} 件 / 削除 ${result.removed} 件を保存しましたが ${result.failed.length} 件失敗しました`,
+                });
+                console.error(result.failed);
+            } else {
+                this.snackbarState.open({
+                    color: 'success',
+                    text: `付け替え ${result.updated} 件 / 削除 ${result.removed} 件を保存しました`,
+                });
+            }
+            this.aliasEdits = {};
+            this.selectedAliasIds = [];
+            await this.loadAliases();
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: 'エイリアス辞書の保存に失敗しました' });
+        } finally {
+            this.aliasSaving = false;
+        }
+    }
+
     async removeAlias(aliasId: number): Promise<void> {
         try {
             await this.seriesApi.removeAlias(aliasId);
@@ -980,6 +1480,7 @@ class SystemSetting extends Vue {
             },
             notifications: { ...this.settings.notifications, ...loaded.notifications },
             series: { ...this.settings.series, ...loaded.series },
+            logging: { levels: { ...((loaded as any).logging?.levels ?? {}) } },
         };
         this.settings.notifications.targets = ((loaded.notifications as any)?.targets ?? []).map((t: any) => ({
             __key: this.nextTargetKey(),
@@ -989,6 +1490,18 @@ class SystemSetting extends Vue {
             secret: t.secret ?? '',
             events: t.events ?? [],
         }));
+    }
+
+    /**
+     * 未指定 (クリアした) カテゴリは送らず、ログ設定ファイルの値をそのまま使わせる
+     */
+    private buildLogLevels(): Record<string, string> {
+        const levels: Record<string, string> = {};
+        for (const category of this.logCategories) {
+            const value = this.settings.logging.levels[category.value];
+            if (typeof value === 'string' && value !== '') levels[category.value] = value;
+        }
+        return levels;
     }
 
     async save() {
@@ -1007,6 +1520,7 @@ class SystemSetting extends Vue {
                     })),
                 },
                 series: this.settings.series,
+                logging: { levels: this.buildLogLevels() },
             };
             const result = await this.api.update(payload);
             this.applyUpdateResult(result);
