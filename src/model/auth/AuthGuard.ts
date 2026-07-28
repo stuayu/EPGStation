@@ -15,6 +15,12 @@ const PUBLIC_API_PATHS: ReadonlySet<string> = new Set([
     '/version',
 ]);
 
+// 配下すべてを認証なしで通すパス接頭辞。
+// 外部 ID プロバイダ (SSO) の認可リダイレクトとコールバックは、
+// ログイン前 = セッションが無い状態で必ず通るためここに含める必要がある
+// (`/auth/users` などの管理 API は接頭辞が異なるので巻き込まれない)
+const PUBLIC_API_PREFIXES: readonly string[] = ['/auth/oauth'];
+
 /**
  * 認証なしで通してよいリクエストか
  * @param pathname: string API のベース (/api) を除いたパス。例: '/auth/login'
@@ -24,7 +30,10 @@ export const isPublicApiPath = (pathname: string): boolean => {
     if (typeof pathname !== 'string' || pathname === '') return false;
     // 末尾スラッシュとクエリの揺れを吸収する
     const normalized = pathname.split('?')[0].replace(/\/+$/u, '');
-    return PUBLIC_API_PATHS.has(normalized === '' ? '/' : normalized);
+    const target = normalized === '' ? '/' : normalized;
+    if (PUBLIC_API_PATHS.has(target) === true) return true;
+
+    return PUBLIC_API_PREFIXES.some(prefix => target === prefix || target.startsWith(`${prefix}/`));
 };
 
 /**
