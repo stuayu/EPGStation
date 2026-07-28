@@ -295,6 +295,10 @@ export default interface IConfigFile {
         mediaTokenTtlMs?: number;
         // セッションの有効期間 (ms)。既定 30 日
         sessionTtlMs?: number;
+        // ログインしていない利用者にも一般ユーザーと同じ操作を許可するか。既定 false。
+        // true にすると視聴・予約・録画閲覧などはログイン不要で行える一方、
+        // 設定変更・ユーザー管理・バージョン更新はシステム管理者としてのログインが必要なままになる
+        allowAnonymous?: boolean;
         // 2 人目以降のサインアップ (SSO での新規ユーザー作成) を許可するか。既定 true。
         // 最初にサインアップしたユーザーは自動でシステム管理者になり、以降は一般権限になる
         allowSignUp?: boolean;

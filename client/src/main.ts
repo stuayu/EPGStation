@@ -17,12 +17,19 @@ setter(container);
 smoothscroll.polyfill();
 (async (): Promise<void> => {
     // 認証が有効で未ログインの場合は、他の API を叩かずログイン画面だけを表示する
-    // (config / channels の取得は認証必須のため、先に 401 で失敗してしまう)
+    // (config / channels の取得は認証必須のため、先に 401 で失敗してしまう)。
+    // ただし匿名利用が許可されている場合は通常画面を出し、
+    // ログインが要る操作をしたとき (?login=1) だけログイン画面へ切り替える
     const authStatus = await container
         .get<IAuthApiModel>('IAuthApiModel')
         .getStatus()
-        .catch(() => ({ enabled: false, initialized: true, user: null }));
-    if (authStatus.enabled === true && authStatus.user === null) {
+        .catch(() => ({ enabled: false, initialized: true, user: null, allowAnonymous: false }));
+    const isLoginRequested = new URLSearchParams(window.location.search).has('login');
+    const needsLogin =
+        authStatus.enabled === true &&
+        authStatus.user === null &&
+        (authStatus.allowAnonymous !== true || isLoginRequested === true);
+    if (needsLogin === true) {
         createApp(Login).use(vuetify).mount('#app');
 
         return;

@@ -56,6 +56,12 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
 
                     return;
                 }
+                // 未ログインでも一般ユーザーと同じ操作を許可する設定なら通知も受け取れるようにする
+                if (authModel.isAnonymousAllowed() === true) {
+                    next();
+
+                    return;
+                }
                 const token = readCookie(socket.handshake.headers.cookie, SESSION_COOKIE_NAME);
                 authModel
                     .verify(token)

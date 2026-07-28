@@ -1915,6 +1915,8 @@ export interface AuthStatus {
     providers: AuthProviderItem[];
     // 2 人目以降のサインアップを許可しているか
     allowSignUp: boolean;
+    // 未ログインでも一般ユーザーと同じ操作を許可しているか
+    allowAnonymous: boolean;
 }
 
 /**

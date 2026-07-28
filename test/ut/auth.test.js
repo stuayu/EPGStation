@@ -146,7 +146,13 @@ function authFixture(options = {}) {
         },
     };
     const configuration = {
-        getConfig: () => ({ auth: { enabled: options.enabled !== false, allowSignUp: options.allowSignUp } }),
+        getConfig: () => ({
+            auth: {
+                enabled: options.enabled !== false,
+                allowSignUp: options.allowSignUp,
+                allowAnonymous: options.allowAnonymous,
+            },
+        }),
     };
     // 実装と同じく用途ごとに違う鍵を返す (セッションとメディア用トークンを取り違えないため)。
     // 鍵ファイルが読めない状況を再現できるよう、null も明示的に渡せるようにする
@@ -239,6 +245,33 @@ test('authentication is enabled unless config.yml turns it off', async () => {
 
     const withEmptyAuth = new AuthModel({ getConfig: () => ({ auth: {} }) }, { count: async () => 0 }, { getSigningKey: () => 'k' });
     assert.equal(withEmptyAuth.isEnabled(), true);
+});
+
+test('anonymous access is off unless explicitly allowed', async () => {
+    assert.equal(authFixture().model.isAnonymousAllowed(), false);
+    assert.equal(authFixture({ allowAnonymous: true }).model.isAnonymousAllowed(), true);
+    // 認証自体が無効なら「匿名許可」も false (画面側の分岐を単純にするため)
+    assert.equal(authFixture({ enabled: false, allowAnonymous: true }).model.isAnonymousAllowed(), false);
+});
+
+test('the anonymous setting is reported to the client', async () => {
+    const { model } = authFixture({ allowAnonymous: true });
+    await model.setup('admin', 'password123');
+    const status = await model.getStatus(null);
+    assert.equal(status.allowAnonymous, true);
+    // 未ログインなので user は null のまま
+    assert.equal(status.user, null);
+});
+
+test('anonymous users must never reach the admin only endpoints', () => {
+    // 匿名許可でも、この一覧に載っているパスはログイン + 管理者権限が要る
+    for (const path of ['/settings/system', '/settings/config', '/auth/users', '/update/run', '/logs']) {
+        assert.equal(isAdminApiPath(path), true, path);
+    }
+    // 閲覧・予約などは匿名でも通す対象
+    for (const path of ['/recorded', '/reserves', '/schedules', '/videos/1', '/streams/live/1/m2ts']) {
+        assert.equal(isAdminApiPath(path), false, path);
+    }
 });
 
 test('media tokens let external players through without a cookie', async () => {
