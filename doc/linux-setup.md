@@ -28,6 +28,10 @@
 
 3. 設定ファイルの作成
 
+    **この手順は省略できます。** 用意されていない場合は初回起動時に
+    テンプレート (`*.template` / `*.sample.yml`) から自動生成されます。
+    先に内容を確認・編集しておきたい場合のみ実行してください。
+
     ```bash
     $ cp config/config.yml.template config/config.yml
     $ cp config/operatorLogConfig.sample.yml config/operatorLogConfig.yml

@@ -27,6 +27,7 @@ class Configuration implements IConfiguration {
     constructor(@inject('ILoggerModel') logger: ILoggerModel) {
         this.log = logger.getLogger();
         this.ensureConfigFile();
+        this.ensureEncodeScript();
 
         try {
             this.templateConfig = this.readConfig(Configuration.CONFIG_TEMPLATE_FILE_PATH, true);
@@ -84,6 +85,35 @@ class Configuration implements IConfiguration {
 
             this.log.system.fatal(`Failed to generate config file from template: ${String(error)}`);
             throw error;
+        }
+    }
+
+    /**
+     * 生成した config.yml の既定のエンコード設定は config/enc.js を参照しているため、
+     * これも同梱のテンプレートから用意しておく。
+     * 無くても起動はできる (エンコードを実行したときに失敗する) ので、失敗しても警告に留める
+     */
+    private ensureEncodeScript(): void {
+        const target = Configuration.ENCODE_SCRIPT_PATH;
+        if (fs.existsSync(target) === true) {
+            return;
+        }
+
+        const template = `${target}.template`;
+        if (fs.existsSync(template) === false) {
+            return;
+        }
+
+        try {
+            fs.copyFileSync(template, target, fs.constants.COPYFILE_EXCL);
+            this.log.system.info(`encode script generated at ${target} from ${template}.`);
+        } catch (error: unknown) {
+            if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+                // 他プロセスが先に作成した (正常)
+                return;
+            }
+            this.log.system.warn(`failed to generate encode script from ${template}`);
+            this.log.system.warn(error);
         }
     }
 
@@ -290,6 +320,7 @@ class Configuration implements IConfiguration {
 
 namespace Configuration {
     export const CONFIG_FILE_PATH = path.join(__dirname, '..', '..', 'config', 'config.yml');
+    export const ENCODE_SCRIPT_PATH = path.join(__dirname, '..', '..', 'config', 'enc.js');
     export const CONFIG_TEMPLATE_FILE_PATH =
         process.platform === 'win32'
             ? path.join(__dirname, '..', '..', 'config', 'config-win.yml.template')
