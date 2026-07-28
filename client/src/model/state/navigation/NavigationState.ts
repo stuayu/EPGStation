@@ -1,12 +1,17 @@
 import { inject, injectable } from 'inversify';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 import { isFeatureEnabled } from '../../../util/FeatureFlags';
+import * as apid from '../../../../../api';
+import IChannelModel from '../../channels/IChannelModel';
 import IServerConfigModel from '../../serverConfig/IServerConfigModel';
 import { ISettingStorageModel } from '../../storage/setting/ISettingStorageModel';
 import INavigationState, { NavigationItem, NavigationType } from './INavigationState';
 
 @injectable()
 export default class NavigationState implements INavigationState {
+    // 地域不明 (CATV 等) の地域 id
+    private static readonly OTHER_REGION_ID = 'other';
+
     public openState: null | boolean = null;
     public isClipped: boolean = false;
     public type: NavigationType = 'default';
@@ -15,10 +20,61 @@ export default class NavigationState implements INavigationState {
 
     private serverConfig: IServerConfigModel;
     private setting: ISettingStorageModel;
+    private channelModel: IChannelModel;
 
-    constructor(@inject('IServerConfigModel') serverConfig: IServerConfigModel, @inject('ISettingStorageModel') setting: ISettingStorageModel) {
+    constructor(
+        @inject('IServerConfigModel') serverConfig: IServerConfigModel,
+        @inject('ISettingStorageModel') setting: ISettingStorageModel,
+        @inject('IChannelModel') channelModel: IChannelModel,
+    ) {
         this.serverConfig = serverConfig;
         this.setting = setting;
+        this.channelModel = channelModel;
+    }
+
+    /**
+     * 地上波系 (GR / NWxx) の放送波種別か
+     * @param type: string
+     * @return boolean
+     */
+    private static isRegionalType(type: string): boolean {
+        return type === 'GR' || /^NW\d+$/.test(type) === true;
+    }
+
+    /**
+     * 取得済みの放送局情報から地域一覧を作成する
+     * 地域不明の放送局 (CATV 等) は末尾にまとめられる
+     * @param regionalTypes: string[] 対象の放送波種別
+     * @return apid.BroadcastRegionItem[]
+     */
+    private getRegions(regionalTypes: string[]): apid.BroadcastRegionItem[] {
+        const isHalfWidth = this.setting.getSavedValue().isHalfWidthDisplayed;
+        const regions: apid.BroadcastRegionItem[] = [];
+        const addedIds: { [regionId: string]: boolean } = {};
+
+        for (const channel of this.channelModel.getChannels(isHalfWidth)) {
+            if (regionalTypes.indexOf(channel.channelType) === -1 || typeof channel.region === 'undefined') {
+                continue;
+            }
+
+            if (addedIds[channel.region.id] === true) {
+                continue;
+            }
+            addedIds[channel.region.id] = true;
+            regions.push({ id: channel.region.id, name: channel.region.name });
+        }
+
+        // 「その他」は常に末尾にする
+        return regions.sort((a, b) => {
+            if (a.id === NavigationState.OTHER_REGION_ID) {
+                return 1;
+            }
+            if (b.id === NavigationState.OTHER_REGION_ID) {
+                return -1;
+            }
+
+            return 0;
+        });
     }
 
     /**
@@ -182,7 +238,41 @@ export default class NavigationState implements INavigationState {
                 types.push('NW40');
             }
 
-            for (const type of types) {
+            // 地上波系は地域別、BS / CS / SKY は従来通り放送波種別で表示する
+            const regionalTypes = types.filter(type => NavigationState.isRegionalType(type) === true);
+            const otherTypes = types.filter(type => NavigationState.isRegionalType(type) === false);
+            const regions = regionalTypes.length === 0 ? [] : this.getRegions(regionalTypes);
+
+            if (regions.length === 0) {
+                // 放送局情報が未取得などで地域を判定できない場合は放送波種別で表示する
+                for (const type of regionalTypes) {
+                    newItems.push({
+                        icon: 'mdi-television-guide',
+                        title: `番組表${type}`,
+                        herf: {
+                            path: '/guide',
+                            query: {
+                                type: type,
+                            },
+                        },
+                    });
+                }
+            } else {
+                for (const region of regions) {
+                    newItems.push({
+                        icon: 'mdi-television-guide',
+                        title: `番組表${region.name}`,
+                        herf: {
+                            path: '/guide',
+                            query: {
+                                region: region.id,
+                            },
+                        },
+                    });
+                }
+            }
+
+            for (const type of otherTypes) {
                 newItems.push({
                     icon: 'mdi-television-guide',
                     title: `番組表${type}`,

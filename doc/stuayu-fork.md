@@ -683,6 +683,15 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - 録画再生画面のシークは DPlayer 標準のコントローラ (プレーヤー内のシークバー) をそのまま使う
         - 一時的に独自の外付けシークバー (`VideoSeekBar.vue`) をプレーヤー下へ表示していたが、DPlayer 内蔵のシークバーと二重になるため撤去した。`VideoContainer.vue` 側の再生位置ポーリング (1 秒間隔) も不要になったため削除
         - 独自のシーク UI を足す場合はプレーヤー外に並べるのではなく DPlayer のコントローラを拡張すること
+    - 番組表を放送波種別ではなく地域別に切り替えられるようにした
+        - `src/model/channel/BroadcastRegion.ts` (`IBroadcastRegion`) を追加。serviceId の地域符号 (`serviceId / 1024`) を主判定として地上波の地域を決める (1 関東広域 〜 62 沖縄)
+        - 地域符号が効かない CATV パススルー等 (TOKYO MX / tvk / テレ玉 / J:COM / Baycom など) は networkId のテーブルで補正し、どちらでも判定できない場合は「その他 (CATV 等)」へ集約する
+        - 広域圏と域内の独立局は同じグループへマージする (関東 = 関東広域 + 東京 + 神奈川 + 埼玉 + 千葉 + 群馬 + 栃木 + 茨城、近畿 = 近畿広域 + 大阪〜滋賀、中京 = 中京広域 + 愛知 / 三重 / 岐阜、北海道 = 道域 + 札幌〜室蘭)。鳥取・島根 / 岡山・香川は 2 県合同
+        - 対象は `GR` と `NW1`〜`NW40`。BS / CS / SKY は地域を持たない (従来どおり放送波種別で表示)
+        - `ChannelItem` / `ScheduleChannleItem` に `region` (`id` / 表示名) を追加し、`ChannelApiModel` / `ScheduleApiModel` が付与する (`api.yml` の `BroadcastRegionItem`)
+        - クライアントのサイドバーは GR / NWxx の項目を廃し、地域名のフラットな一覧 (「番組表関東」「番組表北海道」…) + 末尾の「番組表その他 (CATV 等)」にする。放送局情報が未取得のときは従来の放送波種別表示にフォールバックする (`NavigationState.ts`)
+        - `/guide?region=<地域 id>` で番組表を地域で絞り込み、ヘッダタイトルにも地域名を出す (`GuideState.ts` / `Guide.vue`)。絞り込みは取得済みの番組表をクライアント側でフィルタする実装のため、サーバへの問い合わせ量は「全ての放送波」と同じになる
+        - 地域符号の対応表は実チャンネルの serviceId で検証し、`test/ut/broadcast-region.test.js` に固定した (特に九州は 56 熊本 / 57 長崎 / 58 鹿児島 / 59 宮崎 / 60 大分 / 61 佐賀 と並びが直感に反するので取り違えに注意)
     - 依存パッケージを更新 (サーバ / クライアント両方)
         - TypeScript 5.9 → 6.0 系。あわせてクライアントの `tsconfig.json` から TypeScript 7.0 で廃止予定の `baseUrl` を削除し、`paths` を tsconfig 相対 (`./src/*`) に変更
         - ESLint 8 → 10 系へ移行。旧 `.eslintrc.json` を廃止し Flat Config (`eslint.config.mjs`) に移行、`@typescript-eslint/*` は統合パッケージ `typescript-eslint` 8 系に置き換え。lint スクリプトも v9 以降で廃止された `--ext` を削除 (`eslint --fix src/`)

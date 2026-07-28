@@ -2,6 +2,7 @@ import * as apid from '../../../../../api';
 
 export interface FetchGuideOption {
     type?: apid.ChannelType;
+    region?: apid.BroadcastRegionId; // 地域別番組表の地域 id
     channelId?: apid.ChannelId;
     time?: string; // YYMMddhh
     length: number;

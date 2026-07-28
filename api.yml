@@ -639,6 +639,22 @@ components:
                     type: string
                 type:
                     type: number
+                region:
+                    $ref: '#/components/schemas/BroadcastRegionItem'
+
+        BroadcastRegionItem:
+            description: 地上デジタル放送の地域
+            type: object
+            required:
+                - id
+                - name
+            properties:
+                id:
+                    description: 地域 id
+                    type: string
+                name:
+                    description: 地域表示名
+                    type: string
 
         ScheduleChannleItem:
             description: 番組表の放送局データ
@@ -669,6 +685,8 @@ components:
                     $ref: '#/components/schemas/ChannelType'
                 type:
                     type: number
+                region:
+                    $ref: '#/components/schemas/BroadcastRegionItem'
 
         ScheduleProgramItem:
             description: 番組表の番組データ

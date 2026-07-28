@@ -37,6 +37,7 @@ class GuideState implements IGuideState {
 
     private displayRange: DisplayRange | null = null;
     private startAt: apid.UnixtimeMS = 0;
+    private regionName: string | null = null; // 地域別番組表の地域表示名
     private endAt: apid.UnixtimeMS = 0;
     private programDoms: ProgramDomItem[] = [];
     // 番組情報を programId 索引するための変数
@@ -149,6 +150,8 @@ class GuideState implements IGuideState {
      * @param option
      */
     public async fetchGuide(option: FetchGuideOption): Promise<void> {
+        this.regionName = null;
+
         // 開始時刻設定
         this.startTime = typeof option.time !== 'undefined' ? option.time : DateUtil.format(DateUtil.getJaDate(new Date()), 'YYMMddhh');
         const startAt = this.getStartTime(this.startTime);
@@ -267,6 +270,12 @@ class GuideState implements IGuideState {
 
             this.schedules = await this.scheduleApiModel.getSchedules(scheduleOption);
             this.schedules = this.schedules.filter(s => ChannelModel.isAudioVideoService(s.channel.type));
+
+            // 地域別番組表のときは地上波系を地域で絞り込む
+            if (typeof option.region !== 'undefined') {
+                this.schedules = this.schedules.filter(s => typeof s.channel.region !== 'undefined' && s.channel.region.id === option.region);
+                this.regionName = this.schedules.length === 0 ? null : (this.schedules[0].channel.region?.name ?? null);
+            }
         } else {
             // 放送局指定
             this.timeLength = GuideState.SINGLE_STATION_LENGTH;
@@ -703,6 +712,10 @@ class GuideState implements IGuideState {
 
         if (typeof type !== 'undefined') {
             title += type;
+        }
+
+        if (this.regionName !== null) {
+            title += this.regionName;
         }
 
         if (this.startAt > 0) {

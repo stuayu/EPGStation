@@ -1,6 +1,8 @@
 import { Container } from 'inversify';
 
 import ApiUtil from './api/ApiUtil';
+import BroadcastRegion from './channel/BroadcastRegion';
+import IBroadcastRegion from './channel/IBroadcastRegion';
 import ChannelApiModel from './api/channel/ChannelApiModel';
 import IChannelApiModel from './api/channel/IChannelApiModel';
 import AppSettingApiModel from './api/config/AppSettingApiModel';
@@ -477,6 +479,8 @@ export const set = (container: Container): void => {
     container.bind<IStatusApiModel>('IStatusApiModel').to(StatusApiModel).inSingletonScope();
 
     container.bind<ILogApiModel>('ILogApiModel').to(LogApiModel).inSingletonScope();
+
+    container.bind<IBroadcastRegion>('IBroadcastRegion').to(BroadcastRegion).inSingletonScope();
 
     container.bind<IChannelApiModel>('IChannelApiModel').to(ChannelApiModel).inSingletonScope();
 
