@@ -28,6 +28,32 @@ export const isPublicApiPath = (pathname: string): boolean => {
 };
 
 /**
+ * システム管理者 (role: 'admin') だけが呼べる API のパス接頭辞。
+ * 設定変更・ユーザー管理・バージョン更新など、システム全体に影響する操作を対象にする
+ */
+const ADMIN_API_PREFIXES: readonly string[] = [
+    // システム設定 (連携トークン・通知先・ログレベルなど)
+    '/settings',
+    // ログインユーザーの管理
+    '/auth/users',
+    // バージョン更新の実行
+    '/update',
+    // ログ閲覧 (設定値や環境情報が出るため管理者限定にする)
+    '/logs',
+];
+
+/**
+ * システム管理者権限が必要な API か
+ * @param pathname: string API のベース (/api) を除いたパス
+ * @return boolean
+ */
+export const isAdminApiPath = (pathname: string): boolean => {
+    if (typeof pathname !== 'string' || pathname === '') return false;
+    const normalized = pathname.split('?')[0].replace(/\/+$/u, '');
+    return ADMIN_API_PREFIXES.some(prefix => normalized === prefix || normalized.startsWith(`${prefix}/`));
+};
+
+/**
  * リクエスト URL から API のパス部分を取り出す。API 以外のリクエストなら null
  * @param url: string リクエストの URL (subDirectory を含む)
  * @param apiBase: string API のベースパス (例: '/api' / '/epg/api')

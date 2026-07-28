@@ -15,7 +15,7 @@ import type { ServeStaticOptions } from 'serve-static';
 import urljoin from 'url-join';
 import FileUtil from '../../util/FileUtil';
 import IAuthModel from '../auth/IAuthModel';
-import { isPublicApiPath, toApiPath } from '../auth/AuthGuard';
+import { isAdminApiPath, isPublicApiPath, toApiPath } from '../auth/AuthGuard';
 import { SESSION_COOKIE_NAME } from '../auth/SessionCookie';
 import { readCookie } from '../auth/SessionToken';
 import container from '../ModelContainer';
@@ -121,6 +121,12 @@ class ServiceServer implements IServiceServer {
                 const payload = await authModel.verify(token);
                 if (payload === null) {
                     res.status(401).json({ code: 401, message: 'Unauthorized' });
+
+                    return;
+                }
+                // システム全体に影響する API はシステム管理者だけに許す
+                if (apiPath !== null && isAdminApiPath(apiPath) === true && payload.role !== 'admin') {
+                    res.status(403).json({ code: 403, message: 'Forbidden' });
 
                     return;
                 }

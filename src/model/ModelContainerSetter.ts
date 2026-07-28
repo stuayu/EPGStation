@@ -9,6 +9,8 @@ import ILogLevelApplier from './log/ILogLevelApplier';
 import LogLevelApplier from './log/LogLevelApplier';
 import IAuthModel from './auth/IAuthModel';
 import AuthModel from './auth/AuthModel';
+import IOAuthModel from './auth/IOAuthModel';
+import OAuthModel from './auth/OAuthModel';
 import IUserDB from './db/IUserDB';
 import UserDB from './db/UserDB';
 import IUpdateApiModel from './api/update/IUpdateApiModel';
@@ -465,6 +467,7 @@ export const set = (container: Container): void => {
 
     container.bind<IUserDB>('IUserDB').to(UserDB).inSingletonScope();
     container.bind<IAuthModel>('IAuthModel').to(AuthModel).inSingletonScope();
+    container.bind<IOAuthModel>('IOAuthModel').to(OAuthModel).inSingletonScope();
 
     container.bind<IDashboardApiModel>('IDashboardApiModel').to(DashboardApiModel).inSingletonScope();
 

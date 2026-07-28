@@ -1,4 +1,5 @@
 import { inject, injectable } from 'inversify';
+import * as apid from '../../../../../api';
 import IRepositoryModel from '../IRepositoryModel';
 import IAuthApiModel, { AuthStatus, AuthUserItem } from './IAuthApiModel';
 
@@ -29,5 +30,8 @@ export default class AuthApiModel implements IAuthApiModel {
     }
     public async removeUser(userId: number): Promise<void> {
         await this.repository.delete(`/auth/users/${userId}`);
+    }
+    public async setRole(userId: number, role: apid.AuthRole): Promise<void> {
+        await this.repository.put(`/auth/users/${userId}/role`, { role });
     }
 }

@@ -3508,18 +3508,60 @@ components:
                     description: 取得に成功し反映されたか (URL 未設定・取得失敗時は false)
                     type: boolean
 
+        AuthRole:
+            description: ログインユーザーの権限 (admin = システム管理者 / user = 一般)
+            type: string
+            enum: [admin, user]
+
+        AuthProviderItem:
+            description: 設定済みの外部 ID プロバイダ (秘密情報は含まない)
+            type: object
+            required:
+                - id
+                - label
+                - authorizeUrl
+            properties:
+                id:
+                    type: string
+                label:
+                    type: string
+                authorizeUrl:
+                    type: string
+
+        UpdateUserRoleOption:
+            description: 権限変更のリクエストボディ
+            type: object
+            required:
+                - role
+            properties:
+                role:
+                    $ref: '#/components/schemas/AuthRole'
+
         AuthUserItem:
             description: ログインユーザー
             type: object
             required:
                 - id
                 - name
+                - role
+                - hasPassword
+                - providers
                 - createdAt
             properties:
                 id:
                     type: integer
                 name:
                     type: string
+                role:
+                    $ref: '#/components/schemas/AuthRole'
+                hasPassword:
+                    description: パスワードでログインできるか (SSO のみのユーザーは false)
+                    type: boolean
+                providers:
+                    description: 紐付いている外部 ID プロバイダ
+                    type: array
+                    items:
+                        type: string
                 createdAt:
                     $ref: '#/components/schemas/UnixtimeMS'
 
@@ -3530,6 +3572,8 @@ components:
                 - enabled
                 - initialized
                 - user
+                - providers
+                - allowSignUp
             properties:
                 enabled:
                     description: config.yml の auth.enabled
@@ -3543,11 +3587,22 @@ components:
                     required:
                         - id
                         - name
+                        - role
                     properties:
                         id:
                             type: integer
                         name:
                             type: string
+                        role:
+                            $ref: '#/components/schemas/AuthRole'
+                providers:
+                    description: 設定済みの外部 ID プロバイダ (ログイン画面のボタン用)
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AuthProviderItem'
+                allowSignUp:
+                    description: 2 人目以降のサインアップを許可しているか
+                    type: boolean
 
         AuthCredentialOption:
             description: ログイン / 初期セットアップのリクエストボディ

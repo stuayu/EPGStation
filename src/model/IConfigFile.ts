@@ -111,6 +111,16 @@ export interface NotificationConfig {
     allowPrivateNetworkTargets?: boolean;
 }
 
+/**
+ * 外部 ID プロバイダ (Google / GitHub) の OAuth 設定
+ */
+export interface OAuthProviderConfig {
+    clientId?: string;
+    clientSecret?: string;
+    // コールバック URL。省略時は「アクセス元の URL + /api/auth/oauth/<provider>/callback」
+    redirectUri?: string;
+}
+
 export interface KodiInfo {
     name: string;
     host: string;
@@ -265,6 +275,14 @@ export default interface IConfigFile {
         enabled?: boolean;
         // セッションの有効期間 (ms)。既定 30 日
         sessionTtlMs?: number;
+        // 2 人目以降のサインアップ (SSO での新規ユーザー作成) を許可するか。既定 true。
+        // 最初にサインアップしたユーザーは自動でシステム管理者になり、以降は一般権限になる
+        allowSignUp?: boolean;
+        // 外部 ID プロバイダ (SSO)。ログイン前に必要なため DB ではなくこちらに書く
+        providers?: {
+            google?: OAuthProviderConfig;
+            github?: OAuthProviderConfig;
+        };
     };
 
     // Webhook / Discord 通知（featureFlags.notifications が true の場合のみ有効）
