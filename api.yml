@@ -2504,7 +2504,10 @@ components:
                 - preferredChannelId
                 - updatedAt
                 - hasImage
+                - origin
             properties:
+                origin:
+                    $ref: '#/components/schemas/SeriesOrigin'
                 id:
                     $ref: '#/components/schemas/SeriesId'
                 title:
@@ -2729,6 +2732,58 @@ components:
                 learnAlias:
                     type: boolean
 
+        BulkSeriesMappingItem:
+            description: シリーズ割当の一括更新 1 件分 (省略した項目は現在の値を維持する)
+            type: object
+            required:
+                - recordedId
+            properties:
+                recordedId:
+                    $ref: '#/components/schemas/RecordedId'
+                seasonNumber:
+                    type: integer
+                episodeNumber:
+                    type: number
+                    nullable: true
+                airType:
+                    $ref: '#/components/schemas/SeriesAirType'
+
+        BulkUpdateSeriesMappingOption:
+            description: シリーズ割当の一括更新リクエストボディ
+            type: object
+            required:
+                - items
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BulkSeriesMappingItem'
+                learnAlias:
+                    description: 正規化タイトル → シリーズの対応を辞書に学習させるか (既定 false)
+                    type: boolean
+
+        BulkUpdateSeriesMappingResult:
+            description: シリーズ割当の一括更新結果
+            type: object
+            required:
+                - updated
+                - failed
+            properties:
+                updated:
+                    type: integer
+                failed:
+                    type: array
+                    items:
+                        type: object
+                        required:
+                            - recordedId
+                            - message
+                        properties:
+                            recordedId:
+                                $ref: '#/components/schemas/RecordedId'
+                            message:
+                                type: string
+
         SeriesPendingMatchCandidate:
             description: 未確定候補
             type: object
@@ -2787,15 +2842,83 @@ components:
                 total:
                     type: integer
 
-        MergeSeriesOption:
-            description: シリーズマージのリクエストボディ
+        SeriesOrigin:
+            description: シリーズの出所 (dictionary = しょぼいカレンダー/Annict/Wikidata の ID を持つ, local = 録画タイトルから作られた)
+            type: string
+            enum: [dictionary, local]
+
+        SeriesMergeCandidate:
+            description: マージ候補
             type: object
             required:
-                - fromSeriesId
+                - seriesId
+                - title
+                - normalizedTitle
+                - origin
+                - recordedCount
+                - matchType
+                - commonPrefixLength
+            properties:
+                seriesId:
+                    $ref: '#/components/schemas/SeriesId'
+                title:
+                    type: string
+                normalizedTitle:
+                    type: string
+                origin:
+                    $ref: '#/components/schemas/SeriesOrigin'
+                recordedCount:
+                    type: integer
+                seasonYear:
+                    type: integer
+                    nullable: true
+                seasonName:
+                    type: string
+                    nullable: true
+                    enum: [WINTER, SPRING, SUMMER, AUTUMN]
+                matchType:
+                    description: exact = 完全一致, prefix = 候補が対象で始まる, contained = 対象が候補で始まる, partial = 先頭の一部だけ一致
+                    type: string
+                    enum: [exact, prefix, contained, partial]
+                commonPrefixLength:
+                    description: 正規化タイトルの共通接頭辞の文字数
+                    type: integer
+
+        SeriesMergeCandidateResult:
+            description: マージ候補一覧
+            type: object
+            required:
+                - seriesId
+                - title
+                - normalizedTitle
+                - origin
+                - candidates
+            properties:
+                seriesId:
+                    $ref: '#/components/schemas/SeriesId'
+                title:
+                    type: string
+                normalizedTitle:
+                    type: string
+                origin:
+                    $ref: '#/components/schemas/SeriesOrigin'
+                candidates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SeriesMergeCandidate'
+
+        MergeSeriesOption:
+            description: シリーズマージのリクエストボディ (統合元は fromSeriesId または fromSeriesIds のどちらかで指定する)
+            type: object
+            required:
                 - toSeriesId
             properties:
                 fromSeriesId:
                     $ref: '#/components/schemas/SeriesId'
+                fromSeriesIds:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SeriesId'
                 toSeriesId:
                     $ref: '#/components/schemas/SeriesId'
 
@@ -2804,8 +2927,12 @@ components:
             type: object
             required:
                 - movedLinkCount
+                - mergedSeriesCount
             properties:
                 movedLinkCount:
+                    type: integer
+                mergedSeriesCount:
+                    description: 統合して削除したシリーズ数
                     type: integer
 
         SplitSeriesOption:

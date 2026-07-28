@@ -5,8 +5,15 @@
                 <v-btn icon variant="text" size="small" :to="'/series/pending'" title="未確定キュー">
                     <v-icon>mdi-help-box-outline</v-icon>
                 </v-btn>
-                <v-btn icon variant="text" size="small" @click="openMergeDialog" title="マージ">
-                    <v-icon>mdi-call-merge</v-icon>
+                <v-btn
+                    icon
+                    variant="text"
+                    size="small"
+                    :color="selectionMode === true ? 'primary' : undefined"
+                    @click="toggleSelectionMode"
+                    title="選択モード (チェックしたシリーズをまとめてマージ)"
+                >
+                    <v-icon>mdi-checkbox-multiple-marked-outline</v-icon>
                 </v-btn>
                 <v-btn icon variant="text" size="small" :loading="refreshing" @click="refreshMetadata" title="クール・読み仮名を作品辞書から再取得">
                     <v-icon>mdi-refresh</v-icon>
@@ -66,6 +73,17 @@
                     style="max-width: 160px"
                     v-on:update:model-value="reload"
                 ></v-select>
+                <v-select
+                    v-model="origin"
+                    :items="originItems"
+                    item-title="title"
+                    label="出所"
+                    density="compact"
+                    hide-details
+                    clearable
+                    style="max-width: 190px"
+                    v-on:update:model-value="reload"
+                ></v-select>
                 <v-checkbox v-model="hasMissing" label="欠番あり" density="compact" hide-details v-on:update:model-value="reload"></v-checkbox>
                 <v-spacer></v-spacer>
                 <v-btn-toggle v-model="viewMode" density="compact" mandatory divided v-on:update:model-value="saveViewMode">
@@ -75,10 +93,32 @@
                 </v-btn-toggle>
             </div>
 
+            <!-- 選択モードのツールバー。チェックしたシリーズをまとめて 1 つへ統合する -->
+            <v-toolbar v-if="selectionMode === true" density="compact" color="primary" class="rounded mb-2">
+                <v-btn icon variant="text" size="small" @click="toggleSelectionMode" title="選択モードを終了">
+                    <v-icon>mdi-close</v-icon>
+                </v-btn>
+                <v-toolbar-title class="text-body-2">{{ selectedIds.length }} 件選択中</v-toolbar-title>
+                <v-btn variant="text" size="small" @click="selectAllInPage">表示中をすべて選択</v-btn>
+                <v-btn variant="text" size="small" :disabled="selectedIds.length === 0" @click="clearSelection">選択解除</v-btn>
+                <v-btn variant="text" size="small" prepend-icon="mdi-call-merge" :disabled="selectedIds.length === 0" @click="openMergeDialog">
+                    マージ
+                </v-btn>
+            </v-toolbar>
+
             <!-- グリッド表示 -->
             <v-row v-if="viewMode === 'grid'">
                 <v-col v-for="item in items" :key="item.id" cols="12" sm="6" md="4">
-                    <v-card :to="`/series/${item.id}`" height="100%" class="d-flex flex-column">
+                    <v-card
+                        :to="selectionMode === true ? undefined : `/series/${item.id}`"
+                        height="100%"
+                        class="d-flex flex-column"
+                        :color="isSelected(item.id) ? 'blue-lighten-5' : undefined"
+                        @click="selectionMode === true ? toggleSelect(item.id) : undefined"
+                    >
+                        <div v-if="selectionMode === true" class="series-select-overlay">
+                            <v-checkbox-btn :model-value="isSelected(item.id)" @click.stop="toggleSelect(item.id)"></v-checkbox-btn>
+                        </div>
                         <!-- アイキャッチ画像 (Annict 作品辞書由来)。無い作品は代替表示にする -->
                         <v-img
                             v-if="item.hasImage"
@@ -132,6 +172,9 @@
                         <v-spacer></v-spacer>
                         <v-card-actions class="pt-0">
                             <v-chip size="x-small">{{ item.mediaType }}</v-chip>
+                            <v-chip size="x-small" :color="originColor(item)" variant="flat" class="ml-1" :title="originTitle(item)">
+                                {{ originText(item) }}
+                            </v-chip>
                             <v-btn icon variant="text" size="x-small" title="クール・読み仮名を編集" @click.prevent="openEditDialog(item)">
                                 <v-icon size="small">mdi-pencil</v-icon>
                             </v-btn>
@@ -150,8 +193,21 @@
             <!-- リスト表示: 左にサムネイル、右に情報 -->
             <v-card v-else-if="viewMode === 'list'" variant="flat">
                 <v-list lines="two">
-                    <v-list-item v-for="item in items" :key="item.id" :to="`/series/${item.id}`" class="px-2">
+                    <v-list-item
+                        v-for="item in items"
+                        :key="item.id"
+                        :to="selectionMode === true ? undefined : `/series/${item.id}`"
+                        :active="isSelected(item.id)"
+                        class="px-2"
+                        @click="selectionMode === true ? toggleSelect(item.id) : undefined"
+                    >
                         <template v-slot:prepend>
+                            <v-checkbox-btn
+                                v-if="selectionMode === true"
+                                :model-value="isSelected(item.id)"
+                                class="flex-grow-0 mr-1"
+                                @click.stop="toggleSelect(item.id)"
+                            ></v-checkbox-btn>
                             <v-img
                                 v-if="item.hasImage"
                                 :src="`./api/series/${item.id}/image`"
@@ -179,6 +235,7 @@
                             <v-chip v-if="item.unwatchedCount > 0" size="x-small" color="info" variant="flat">未視聴 {{ item.unwatchedCount }}</v-chip>
                             <v-chip v-if="item.missingEpisodeCount > 0" size="x-small" color="warning" variant="flat">欠番 {{ item.missingEpisodeCount }}</v-chip>
                             <v-chip v-if="item.duplicateEpisodeCount > 0" size="x-small" color="grey" variant="flat">重複 {{ item.duplicateEpisodeCount }}</v-chip>
+                            <v-chip size="x-small" :color="originColor(item)" variant="flat" :title="originTitle(item)">{{ originText(item) }}</v-chip>
                         </div>
                     </v-list-item>
                 </v-list>
@@ -188,7 +245,9 @@
             <v-table v-else density="compact">
                 <thead>
                     <tr>
+                        <th v-if="selectionMode === true" style="width: 48px"></th>
                         <th>タイトル</th>
+                        <th style="width: 90px">出所</th>
                         <th style="width: 110px">クール</th>
                         <th style="width: 90px">録画</th>
                         <th style="width: 90px">未視聴</th>
@@ -198,8 +257,20 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="item in items" :key="item.id" style="cursor: pointer" @click="$router.push(`/series/${item.id}`)">
+                    <tr
+                        v-for="item in items"
+                        :key="item.id"
+                        style="cursor: pointer"
+                        :class="{ 'bg-blue-lighten-5': isSelected(item.id) }"
+                        @click="selectionMode === true ? toggleSelect(item.id) : $router.push(`/series/${item.id}`)"
+                    >
+                        <td v-if="selectionMode === true" @click.stop>
+                            <v-checkbox-btn :model-value="isSelected(item.id)" @click="toggleSelect(item.id)"></v-checkbox-btn>
+                        </td>
                         <td class="text-truncate" style="max-width: 1px">{{ item.title }}</td>
+                        <td>
+                            <v-chip size="x-small" :color="originColor(item)" variant="flat" :title="originTitle(item)">{{ originText(item) }}</v-chip>
+                        </td>
                         <td>
                             {{ seasonText(item) }}
                             <span v-if="item.seasonSource === 'estimated'" class="text-caption text-grey">(推定)</span>
@@ -253,19 +324,48 @@
             </v-card>
         </v-dialog>
 
-        <v-dialog v-model="isOpenMergeDialog" max-width="600">
+        <v-dialog v-model="isOpenMergeDialog" max-width="720">
             <v-card>
                 <v-card-title>シリーズのマージ</v-card-title>
+                <v-card-subtitle>選択した {{ selectedIds.length }} 件を 1 つのシリーズへ統合します</v-card-subtitle>
                 <v-card-text>
+                    <!-- 統合先はしょぼいカレンダー / Annict などの辞書起点シリーズを既定にする (自動判定がそこへ寄るため) -->
                     <v-select
-                        v-model="mergeFromId"
-                        :items="items.map(x => ({ title: x.title, value: x.id }))"
+                        v-model="mergeToId"
+                        :items="mergeTargetItems"
                         item-title="title"
-                        label="統合元シリーズ (このシリーズは消えます)"
+                        item-value="value"
+                        label="統合先シリーズ (このシリーズが残ります)"
+                        :loading="loadingMergeCandidates"
+                        density="compact"
                     ></v-select>
-                    <v-text-field v-model="mergeToKeyword" label="統合先シリーズを検索" @keyup.enter="searchMergeTarget"></v-text-field>
-                    <v-select v-model="mergeToId" :items="mergeToItems.map(x => ({ title: x.title, value: x.id }))" item-title="title" label="統合先シリーズ"></v-select>
-                    <v-alert v-if="mergeFromId !== null && mergeFromId === mergeToId" type="warning">統合元と統合先が同じです</v-alert>
+                    <v-alert v-if="mergeToOrigin === 'local'" type="warning" density="compact" class="mb-3">
+                        統合先が辞書起点のシリーズではありません。しょぼいカレンダー / Annict / Wikidata に紐づくシリーズを統合先にすると、以降の自動判定もそのシリーズへ寄ります。
+                    </v-alert>
+                    <v-text-field
+                        v-model="mergeToKeyword"
+                        label="統合先を検索して候補に追加"
+                        density="compact"
+                        append-inner-icon="mdi-magnify"
+                        hide-details
+                        class="mb-3"
+                        @keyup.enter="searchMergeTarget"
+                        @click:append-inner="searchMergeTarget"
+                    ></v-text-field>
+
+                    <div class="text-caption text-grey">統合されて削除されるシリーズ ({{ mergeSources.length }} 件)</div>
+                    <v-list density="compact" class="py-0">
+                        <v-list-item v-for="s in mergeSources" :key="s.id">
+                            <v-list-item-title class="text-body-2">{{ s.title }}</v-list-item-title>
+                            <v-list-item-subtitle>録画 {{ s.recordedCount }} 件</v-list-item-subtitle>
+                            <template v-slot:append>
+                                <v-chip size="x-small" :color="originColor(s)" variant="flat">{{ originText(s) }}</v-chip>
+                            </template>
+                        </v-list-item>
+                    </v-list>
+                    <v-alert v-if="mergeSources.length === 0" type="warning" density="compact">
+                        統合元がありません (選択したシリーズが統合先と同じです)
+                    </v-alert>
                 </v-card-text>
                 <v-card-actions>
                     <v-spacer></v-spacer>
@@ -273,8 +373,7 @@
                     <v-btn
                         color="primary"
                         variant="text"
-                        :disabled="mergeFromId === null || mergeToId === null || mergeFromId === mergeToId"
-                        :loading="isOpenConfirmMergeDialog === false && merging"
+                        :disabled="mergeToId === null || mergeSources.length === 0"
                         @click="isOpenConfirmMergeDialog = true"
                         >マージ</v-btn
                     >
@@ -286,7 +385,7 @@
             <v-card>
                 <v-card-title>マージの確認</v-card-title>
                 <v-card-text>
-                    統合元シリーズを統合先シリーズへ統合します。統合元シリーズに紐づく録画はすべて統合先シリーズに移動し、統合元シリーズは削除されます。この操作は取り消せません。よろしいですか？
+                    {{ mergeSources.length }} 件のシリーズを「{{ mergeToTitle }}」へ統合します。統合元に紐づく録画はすべて統合先へ移動し、統合元のシリーズは削除されます。この操作は取り消せません。よろしいですか？
                 </v-card-text>
                 <v-card-actions>
                     <v-spacer></v-spacer>
@@ -304,10 +403,23 @@ import * as apid from '../../../api';
 import ISeriesApiModel, { SeriesListItem } from '@/model/api/series/ISeriesApiModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
+
+/**
+ * マージダイアログの統合先候補
+ */
+interface MergeTargetOption {
+    id: number;
+    title: string;
+    origin: apid.SeriesOrigin;
+    recordedCount: number;
+}
+
 @Component({ components: { TitleBar } })
 class SeriesView extends Vue {
     // 表示形式の選択を保存する localStorage キー
     private static readonly VIEW_MODE_KEY = 'series-view-mode';
+    // マージ候補を問い合わせる選択シリーズの上限 (選択が多いときに API を叩きすぎないため)
+    private static readonly MERGE_LOOKUP_LIMIT = 5;
 
     keyword = '';
     items: SeriesListItem[] = [];
@@ -320,6 +432,7 @@ class SeriesView extends Vue {
     order: 'asc' | 'desc' = 'desc';
     season: string | null = null;
     status: 'onair' | 'finished' | null = null;
+    origin: apid.SeriesOrigin | null = null;
     hasMissing = false;
     viewMode: 'grid' | 'list' | 'compact' = 'grid';
     seasons: apid.SeriesSeasonItem[] = [];
@@ -335,6 +448,11 @@ class SeriesView extends Vue {
     readonly statusItems = [
         { title: '放送中', value: 'onair' },
         { title: '完結', value: 'finished' },
+    ];
+    // 出所での絞り込み。誤生成されたシリーズは辞書で引けなかった 'local' 側に偏るため、掃除のときはこれで絞る
+    readonly originItems = [
+        { title: '辞書起点', value: 'dictionary' },
+        { title: 'ローカル生成', value: 'local' },
     ];
 
     private static readonly SEASON_LABEL: Record<string, string> = {
@@ -404,12 +522,16 @@ class SeriesView extends Vue {
         await this.load();
     }
 
+    selectionMode = false;
+    selectedIds: number[] = [];
+
     isOpenMergeDialog = false;
     isOpenConfirmMergeDialog = false;
-    mergeFromId: number | null = null;
     mergeToKeyword = '';
     mergeToId: number | null = null;
-    mergeToItems: SeriesListItem[] = [];
+    // 統合先の選択肢。選択したシリーズ + 前方一致候補 + キーワード検索結果をまとめたもの
+    mergeCandidates: MergeTargetOption[] = [];
+    loadingMergeCandidates = false;
     merging = false;
     refreshing = false;
 
@@ -462,6 +584,7 @@ class SeriesView extends Vue {
                 seasonYear: seasonYear ? Number(seasonYear) : undefined,
                 seasonName: seasonName || undefined,
                 status: this.status ?? undefined,
+                origin: this.origin ?? undefined,
                 hasMissing: this.hasMissing,
             });
             this.items = x.items;
@@ -548,29 +671,151 @@ class SeriesView extends Vue {
         }
     }
 
-    openMergeDialog(): void {
-        this.mergeFromId = null;
-        this.mergeToId = null;
-        this.mergeToKeyword = '';
-        this.mergeToItems = this.items;
-        this.isOpenMergeDialog = true;
+    /**
+     * シリーズの出所 (辞書起点 / ローカル生成) の表示テキスト
+     */
+    originText(item: { origin?: apid.SeriesOrigin }): string {
+        return item.origin === 'dictionary' ? '辞書' : 'ローカル';
+    }
+    originColor(item: { origin?: apid.SeriesOrigin }): string {
+        return item.origin === 'dictionary' ? 'teal' : 'grey';
+    }
+    originTitle(item: { origin?: apid.SeriesOrigin }): string {
+        return item.origin === 'dictionary'
+            ? 'しょぼいカレンダー / Annict / Wikidata の作品辞書に紐づくシリーズ'
+            : '録画タイトルから作られたシリーズ (誤生成の可能性あり)';
     }
 
+    toggleSelectionMode(): void {
+        this.selectionMode = !this.selectionMode;
+        if (this.selectionMode === false) this.selectedIds = [];
+    }
+    isSelected(id: number): boolean {
+        return this.selectedIds.includes(id);
+    }
+    toggleSelect(id: number): void {
+        this.selectedIds = this.isSelected(id) ? this.selectedIds.filter(x => x !== id) : [...this.selectedIds, id];
+    }
+    selectAllInPage(): void {
+        this.selectedIds = [...new Set([...this.selectedIds, ...this.items.map(x => x.id)])];
+    }
+    clearSelection(): void {
+        this.selectedIds = [];
+    }
+
+    get mergeTargetItems(): Array<{ title: string; value: number }> {
+        return this.mergeCandidates.map(x => ({
+            title: `${x.title} [${this.originText(x)}] (録画 ${x.recordedCount} 件)`,
+            value: x.id,
+        }));
+    }
+    /**
+     * 統合されて消える側 (選択したシリーズから統合先を除いたもの)
+     */
+    get mergeSources(): MergeTargetOption[] {
+        return this.mergeCandidates.filter(x => x.id !== this.mergeToId && this.selectedIds.includes(x.id));
+    }
+    get mergeToOrigin(): apid.SeriesOrigin | null {
+        return this.mergeCandidates.find(x => x.id === this.mergeToId)?.origin ?? null;
+    }
+    get mergeToTitle(): string {
+        return this.mergeCandidates.find(x => x.id === this.mergeToId)?.title ?? '';
+    }
+
+    /**
+     * マージダイアログを開き、統合先の候補を組み立てる。
+     * 候補は「選択したシリーズ」＋「選択したシリーズと正規化タイトルが前方一致するシリーズ」で、
+     * 既定の統合先には辞書起点 (しょぼいカレンダー / Annict / Wikidata) のシリーズを優先して選ぶ
+     */
+    async openMergeDialog(): Promise<void> {
+        if (this.selectedIds.length === 0) return;
+        this.mergeToKeyword = '';
+        this.mergeToId = null;
+        this.mergeCandidates = this.items
+            .filter(x => this.selectedIds.includes(x.id))
+            .map(x => ({ id: x.id, title: x.title, origin: x.origin, recordedCount: x.recordedCount }));
+        this.isOpenMergeDialog = true;
+
+        this.loadingMergeCandidates = true;
+        try {
+            // 選択が多いときに問い合わせが増えすぎないよう、候補検索は先頭数件のシリーズに限る
+            const lookupIds = this.selectedIds.slice(0, SeriesView.MERGE_LOOKUP_LIMIT);
+            const results = await Promise.all(
+                lookupIds.map(id => this.api.getMergeCandidates(id).catch(() => null)),
+            );
+            for (const result of results) {
+                if (result === null) continue;
+                for (const c of result.candidates) {
+                    this.addMergeCandidate({
+                        id: c.seriesId,
+                        title: c.title,
+                        origin: c.origin,
+                        recordedCount: c.recordedCount,
+                    });
+                }
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            this.loadingMergeCandidates = false;
+            this.mergeToId = this.pickDefaultMergeTarget();
+        }
+    }
+
+    /**
+     * 統合先の既定値。辞書起点のシリーズを優先し、同条件なら録画件数が多いものを選ぶ
+     */
+    private pickDefaultMergeTarget(): number | null {
+        const score = (x: MergeTargetOption): number => (x.origin === 'dictionary' ? 1 : 0);
+        const sorted = [...this.mergeCandidates].sort((a, b) => {
+            if (score(a) !== score(b)) return score(b) - score(a);
+            return b.recordedCount - a.recordedCount;
+        });
+        return sorted[0]?.id ?? null;
+    }
+
+    private addMergeCandidate(value: MergeTargetOption): void {
+        if (this.mergeCandidates.some(x => x.id === value.id)) return;
+        this.mergeCandidates.push(value);
+    }
+
+    /**
+     * キーワード検索した結果を統合先の候補に足す (前方一致で出てこないシリーズへ寄せたいとき用)
+     */
     async searchMergeTarget(): Promise<void> {
-        const x = await this.api.list({ keyword: this.mergeToKeyword, offset: 0, limit: 100 });
-        this.mergeToItems = x.items;
+        if (this.mergeToKeyword.trim() === '') return;
+        this.loadingMergeCandidates = true;
+        try {
+            const x = await this.api.list({ keyword: this.mergeToKeyword, offset: 0, limit: 50 });
+            for (const item of x.items) {
+                this.addMergeCandidate({
+                    id: item.id,
+                    title: item.title,
+                    origin: item.origin,
+                    recordedCount: item.recordedCount,
+                });
+            }
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: 'シリーズの検索に失敗しました' });
+        } finally {
+            this.loadingMergeCandidates = false;
+        }
     }
 
     async executeMerge(): Promise<void> {
-        if (this.mergeFromId === null || this.mergeToId === null) {
-            return;
-        }
+        const sources = this.mergeSources.map(x => x.id);
+        if (this.mergeToId === null || sources.length === 0) return;
         this.merging = true;
         try {
-            await this.api.merge(this.mergeFromId, this.mergeToId);
-            this.snackbarState.open({ color: 'success', text: 'シリーズをマージしました' });
+            const result = await this.api.merge(sources, this.mergeToId);
+            this.snackbarState.open({
+                color: 'success',
+                text: `${result.mergedSeriesCount} 件のシリーズを統合しました (録画 ${result.movedLinkCount} 件を移動)`,
+            });
             this.isOpenConfirmMergeDialog = false;
             this.isOpenMergeDialog = false;
+            this.selectedIds = [];
             await this.load();
         } catch (err) {
             console.error(err);
@@ -582,3 +827,14 @@ class SeriesView extends Vue {
 }
 export default toNative(SeriesView);
 </script>
+
+<style lang="sass" scoped>
+// グリッド表示のチェックボックスはサムネイルに重ねる
+.series-select-overlay
+    position: absolute
+    top: 4px
+    left: 4px
+    z-index: 2
+    border-radius: 50%
+    background: rgba(255, 255, 255, 0.85)
+</style>

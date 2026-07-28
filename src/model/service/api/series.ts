@@ -34,6 +34,8 @@ export const get: Operation = async (req, res) => {
                 seasonYear: num(req.query.seasonYear),
                 seasonName: typeof req.query.seasonName === 'string' ? req.query.seasonName : undefined,
                 status: req.query.status === 'onair' || req.query.status === 'finished' ? req.query.status : undefined,
+                origin:
+                    req.query.origin === 'dictionary' || req.query.origin === 'local' ? req.query.origin : undefined,
                 // express-openapi がスキーマに従い boolean へ変換するが、素の文字列で来る場合にも備える
                 hasMissing: (req.query.hasMissing as unknown) === true || req.query.hasMissing === 'true',
             }),
@@ -77,6 +79,13 @@ get.apiDoc = {
             required: false,
             description: 'onair: 直近に録画がある / finished: 一定期間録画が無い',
             schema: { type: 'string', enum: ['onair', 'finished'] },
+        },
+        {
+            name: 'origin',
+            in: 'query',
+            required: false,
+            description: 'dictionary: 外部の作品辞書起点のシリーズのみ / local: 録画タイトルから作られたシリーズのみ',
+            schema: { type: 'string', enum: ['dictionary', 'local'] },
         },
         {
             name: 'hasMissing',

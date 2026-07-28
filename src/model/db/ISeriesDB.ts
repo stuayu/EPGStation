@@ -66,6 +66,8 @@ export interface SeriesRecordedRow {
 }
 export type SeriesSortKey = 'updatedAt' | 'title' | 'firstAiredAt' | 'lastAiredAt' | 'recordedCount' | 'totalFileSize';
 export type SeriesStatusFilter = 'onair' | 'finished';
+// シリーズの出所。'dictionary': 作品辞書 (しょぼいカレンダー / Annict / Wikidata) 由来の外部 ID を持つ / 'local': 録画タイトルから作られた
+export type SeriesOriginFilter = 'dictionary' | 'local';
 
 export interface SeriesListQuery {
     keyword?: string;
@@ -77,6 +79,8 @@ export interface SeriesListQuery {
     seasonName?: string;
     // 'onair': 直近に録画があり完結していない / 'finished': 総話数に到達済み、または一定期間録画が無い
     status?: SeriesStatusFilter;
+    // 'dictionary': 外部辞書起点のシリーズのみ / 'local': 録画タイトルから作られたシリーズのみ
+    origin?: SeriesOriginFilter;
     // 放送中とみなす最終録画からの経過時間 (ms)。status の判定に使う
     onairWithinMs: number;
 }
@@ -160,6 +164,14 @@ export default interface ISeriesDB {
      * @return Promise<[SeriesListRow[], number]> 行と総件数
      */
     query(option: SeriesListQuery): Promise<[SeriesListRow[], number]>;
+    /**
+     * 正規化タイトルが指定の接頭辞で始まるシリーズを返す (マージ候補の前方一致検索用)
+     * @param prefix: string 正規化済みの接頭辞。空文字の場合は空配列を返す
+     * @param limit: number 最大件数
+     * @param excludeSeriesId?: number 除外するシリーズ ID (マージ元自身)
+     * @return Promise<Series[]>
+     */
+    findByNormalizedTitlePrefix(prefix: string, limit: number, excludeSeriesId?: number): Promise<Series[]>;
     /**
      * 一覧に出ているシリーズ群の録画行をまとめて取得する (欠番・重複判定用)
      * @param seriesIds: number[]

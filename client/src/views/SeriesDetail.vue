@@ -2,10 +2,23 @@
     <v-main>
         <TitleBar :title="detail?.title || 'シリーズ詳細'">
             <template v-slot:menu>
-                <v-btn v-if="isSplitMode === false" icon variant="text" size="small" @click="isSplitMode = true" title="分割">
+                <v-btn
+                    v-if="isBulkMode === false && isSplitMode === false"
+                    icon
+                    variant="text"
+                    size="small"
+                    @click="startBulkEdit"
+                    title="話数・放送種別の一括編集"
+                >
+                    <v-icon>mdi-playlist-edit</v-icon>
+                </v-btn>
+                <v-btn v-if="isBulkMode === true" icon variant="text" size="small" @click="cancelBulkEdit" title="一括編集をやめる">
+                    <v-icon>mdi-close</v-icon>
+                </v-btn>
+                <v-btn v-if="isSplitMode === false && isBulkMode === false" icon variant="text" size="small" @click="isSplitMode = true" title="分割">
                     <v-icon>mdi-call-split</v-icon>
                 </v-btn>
-                <v-btn v-else icon variant="text" size="small" @click="cancelSplit" title="分割をやめる">
+                <v-btn v-if="isSplitMode === true" icon variant="text" size="small" @click="cancelSplit" title="分割をやめる">
                     <v-icon>mdi-close</v-icon>
                 </v-btn>
             </template>
@@ -35,7 +48,95 @@
             </v-card>
 
             <v-select v-model="channelId" :items="channelItems" item-title="title" item-value="value" label="放送局で絞り込み" @update:model-value="load"></v-select>
-            <v-list lines="three">
+
+            <!-- 話数・放送種別の一括編集 -->
+            <template v-if="isBulkMode === true">
+                <v-card variant="outlined" class="mb-3">
+                    <v-card-text class="pb-2">
+                        <div class="d-flex align-center ga-2 flex-wrap mb-2">
+                            <v-btn size="small" variant="text" @click="selectAllRecorded">すべて選択</v-btn>
+                            <v-btn size="small" variant="text" :disabled="selectedRecordedIds.length === 0" @click="selectedRecordedIds = []">選択解除</v-btn>
+                            <span class="text-caption text-grey">{{ selectedRecordedIds.length }} 件選択中</span>
+                        </div>
+                        <div class="d-flex align-center ga-2 flex-wrap">
+                            <v-text-field
+                                v-model.number="sequenceStart"
+                                type="number"
+                                label="開始話数"
+                                density="compact"
+                                hide-details
+                                style="max-width: 120px"
+                            ></v-text-field>
+                            <v-btn size="small" variant="tonal" :disabled="selectedRecordedIds.length === 0" @click="applySequence">
+                                選択に連番を振る (放送日時順)
+                            </v-btn>
+                            <v-divider vertical></v-divider>
+                            <v-select
+                                v-model="bulkAirType"
+                                :items="airTypeItems"
+                                item-title="title"
+                                item-value="value"
+                                label="放送種別"
+                                density="compact"
+                                hide-details
+                                style="max-width: 160px"
+                            ></v-select>
+                            <v-btn size="small" variant="tonal" :disabled="selectedRecordedIds.length === 0" @click="applyAirType">選択に適用</v-btn>
+                        </div>
+                    </v-card-text>
+                </v-card>
+
+                <v-table density="compact">
+                    <thead>
+                        <tr>
+                            <th style="width: 48px"></th>
+                            <th style="width: 110px">話数</th>
+                            <th>タイトル</th>
+                            <th style="width: 200px">放送局・放送日時</th>
+                            <th style="width: 150px">放送種別</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="item in detail.recorded" :key="item.recordedId">
+                            <td>
+                                <v-checkbox-btn v-model="selectedRecordedIds" :value="item.recordedId"></v-checkbox-btn>
+                            </td>
+                            <td>
+                                <v-text-field
+                                    v-model.number="edits[item.recordedId].episodeNumber"
+                                    type="number"
+                                    density="compact"
+                                    variant="outlined"
+                                    hide-details
+                                    clearable
+                                    :class="{ 'text-primary': isEdited(item) }"
+                                ></v-text-field>
+                            </td>
+                            <td class="text-truncate" style="max-width: 1px">{{ item.episodeTitle || item.recordedTitle }}</td>
+                            <td class="text-caption">{{ item.channelName || item.channelId }}<br />{{ formatDate(item.startAt) }}</td>
+                            <td>
+                                <v-select
+                                    v-model="edits[item.recordedId].airType"
+                                    :items="airTypeItems"
+                                    item-title="title"
+                                    item-value="value"
+                                    density="compact"
+                                    variant="outlined"
+                                    hide-details
+                                ></v-select>
+                            </td>
+                        </tr>
+                    </tbody>
+                </v-table>
+                <div class="d-flex align-center ga-2 mt-3">
+                    <v-btn color="primary" :loading="bulkSaving" :disabled="changedItems.length === 0" @click="saveBulk">
+                        変更を保存 ({{ changedItems.length }} 件)
+                    </v-btn>
+                    <v-btn variant="text" @click="cancelBulkEdit">キャンセル</v-btn>
+                </div>
+            </template>
+
+            <v-list v-else lines="three">
                 <v-list-item v-for="item in detail.recorded" :key="item.recordedId" :to="isSplitMode === true ? undefined : `/recorded/detail/${item.recordedId}`">
                     <template #prepend>
                         <v-checkbox v-if="isSplitMode === true" v-model="selectedRecordedIds" :value="item.recordedId" hide-details density="compact"></v-checkbox>
@@ -45,6 +146,7 @@
                     <v-list-item-subtitle>{{ item.channelName || item.channelId }} · {{ formatDate(item.startAt) }}</v-list-item-subtitle>
                     <template #append>
                         <v-chip v-if="item.airType === 'rerun'" color="orange" size="small">再放送</v-chip>
+                        <v-chip v-else-if="item.airType === 'delayed'" color="purple" size="small">遅れ放送</v-chip>
                         <v-chip v-else-if="isDuplicate(item.recordedId)" color="blue" size="small">複数録画</v-chip>
                     </template>
                 </v-list-item>
@@ -79,7 +181,17 @@ import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import ISeriesApiModel, { SeriesDetail as Detail, SeriesRecording, MissingEpisodeProposal } from '@/model/api/series/ISeriesApiModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
+import * as apid from '../../../api';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
+
+/**
+ * 一括編集中の 1 行分の値
+ */
+interface BulkEdit {
+    episodeNumber: number | null;
+    airType: apid.SeriesAirType;
+}
+
 @Component({ components: { TitleBar } })
 class SeriesDetailView extends Vue {
     detail: Detail | null = null;
@@ -94,6 +206,20 @@ class SeriesDetailView extends Vue {
     splitNewTitle = '';
     splitting = false;
     isOpenConfirmSplitDialog = false;
+
+    isBulkMode = false;
+    // 録画 ID → 編集中の話数・放送種別。保存時に元の値と比べて差分だけ送る
+    edits: Record<number, BulkEdit> = {};
+    sequenceStart = 1;
+    bulkAirType: apid.SeriesAirType = 'delayed';
+    bulkSaving = false;
+
+    readonly airTypeItems = [
+        { title: '初回', value: 'first' },
+        { title: '再放送', value: 'rerun' },
+        { title: '遅れ放送', value: 'delayed' },
+        { title: '不明', value: 'unknown' },
+    ];
 
     private api = container.get<ISeriesApiModel>('ISeriesApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
@@ -161,6 +287,105 @@ class SeriesDetailView extends Vue {
     }
     formatDate(value: number) {
         return new Date(value).toLocaleString();
+    }
+    /**
+     * 話数・放送種別の一括編集を開始する。現在の値を編集用のバッファへ写す
+     */
+    startBulkEdit(): void {
+        this.isBulkMode = true;
+        this.selectedRecordedIds = [];
+        this.resetEdits();
+    }
+    cancelBulkEdit(): void {
+        this.isBulkMode = false;
+        this.selectedRecordedIds = [];
+        this.edits = {};
+    }
+    private resetEdits(): void {
+        const edits: Record<number, BulkEdit> = {};
+        for (const item of this.detail?.recorded ?? []) {
+            edits[item.recordedId] = {
+                episodeNumber: item.episodeNumber,
+                airType: (item.airType || 'unknown') as apid.SeriesAirType,
+            };
+        }
+        this.edits = edits;
+    }
+    selectAllRecorded(): void {
+        this.selectedRecordedIds = (this.detail?.recorded ?? []).map(x => x.recordedId);
+    }
+    /**
+     * 選択した録画を放送日時の古い順に並べ、開始話数から連番を振る
+     */
+    applySequence(): void {
+        const start = Number(this.sequenceStart);
+        if (Number.isFinite(start) === false) {
+            this.snackbarState.open({ color: 'error', text: '開始話数を入力してください' });
+            return;
+        }
+        const targets = (this.detail?.recorded ?? [])
+            .filter(x => this.selectedRecordedIds.includes(x.recordedId))
+            .sort((a, b) => a.startAt - b.startAt);
+        targets.forEach((x, index) => {
+            this.edits[x.recordedId].episodeNumber = start + index;
+        });
+    }
+    /**
+     * 選択した録画の放送種別 (遅れ放送・再放送など) をまとめて設定する
+     */
+    applyAirType(): void {
+        for (const id of this.selectedRecordedIds) {
+            if (typeof this.edits[id] !== 'undefined') this.edits[id].airType = this.bulkAirType;
+        }
+    }
+    isEdited(item: SeriesRecording): boolean {
+        const edit = this.edits[item.recordedId];
+        if (typeof edit === 'undefined') return false;
+        return edit.episodeNumber !== item.episodeNumber || edit.airType !== (item.airType || 'unknown');
+    }
+    /**
+     * 元の値から変わった行だけを送信対象にする
+     */
+    get changedItems(): apid.BulkSeriesMappingItem[] {
+        return (this.detail?.recorded ?? []).filter(x => this.isEdited(x)).map(x => {
+            const edit = this.edits[x.recordedId];
+            // 空欄 (NaN や空文字) は「話数なし」として null で送る
+            const episodeNumber =
+                typeof edit.episodeNumber === 'number' && Number.isFinite(edit.episodeNumber)
+                    ? edit.episodeNumber
+                    : null;
+            return {
+                recordedId: x.recordedId,
+                seasonNumber: x.seasonNumber ?? 1,
+                episodeNumber,
+                airType: edit.airType,
+            };
+        });
+    }
+    async saveBulk(): Promise<void> {
+        const items = this.changedItems;
+        if (items.length === 0) return;
+        this.bulkSaving = true;
+        try {
+            const result = await this.api.updateMappingBulk(items);
+            if (result.failed.length > 0) {
+                this.snackbarState.open({
+                    color: 'error',
+                    text: `${result.updated} 件を更新しましたが ${result.failed.length} 件失敗しました`,
+                });
+                console.error(result.failed);
+            } else {
+                this.snackbarState.open({ color: 'success', text: `${result.updated} 件を更新しました` });
+            }
+            await this.load();
+            this.resetEdits();
+            this.selectedRecordedIds = [];
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: '一括更新に失敗しました' });
+        } finally {
+            this.bulkSaving = false;
+        }
     }
     cancelSplit(): void {
         this.isSplitMode = false;

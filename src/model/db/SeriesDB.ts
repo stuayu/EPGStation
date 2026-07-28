@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify';
-import { In, IsNull, Like, Not } from 'typeorm';
+import { In, IsNull, Like, Not, SelectQueryBuilder } from 'typeorm';
 import Recorded from '../../db/entities/Recorded';
 import RecordedSeriesLink from '../../db/entities/RecordedSeriesLink';
 import Series from '../../db/entities/Series';
@@ -87,6 +87,54 @@ export default class SeriesDB implements ISeriesDB {
             .getRepository(Series)
             .findAndCount({ where, order: { updatedAt: 'DESC' }, skip: offset, take: limit });
     }
+    public async findByNormalizedTitlePrefix(
+        prefix: string,
+        limit: number,
+        excludeSeriesId?: number,
+    ): Promise<Series[]> {
+        if (prefix === '') return [];
+        const c = await this.op.getConnection();
+        const qb = c
+            .getRepository(Series)
+            .createQueryBuilder('s')
+            // LIKE のワイルドカードはタイトルに含まれうるためエスケープする
+            .where("s.normalizedTitle LIKE :prefix ESCAPE '\\\\'", { prefix: `${SeriesDB.escapeLike(prefix)}%` });
+        if (typeof excludeSeriesId === 'number') qb.andWhere('s.id <> :excludeSeriesId', { excludeSeriesId });
+        return await qb.orderBy('s.normalizedTitle', 'ASC').limit(limit).getMany();
+    }
+
+    /**
+     * LIKE のパターン文字 (% _ \) をエスケープする
+     */
+    private static escapeLike(value: string): string {
+        return value.replace(/[\\%_]/g, x => `\\${x}`);
+    }
+
+    /**
+     * 一覧と総件数で共通の絞り込み条件 (集計を伴わないもの) を適用する。
+     * 一覧側と件数側で条件がずれると total が合わなくなるため 1 箇所にまとめている
+     */
+    private static applyListWhere(qb: SelectQueryBuilder<Series>, option: SeriesListQuery): void {
+        if (option.keyword) {
+            qb.andWhere('(s.title LIKE :kw OR s.normalizedTitle LIKE :kw OR s.titleKana LIKE :kw)', {
+                kw: `%${option.keyword}%`,
+            });
+        }
+        if (typeof option.seasonYear === 'number') {
+            qb.andWhere('s.seasonYear = :seasonYear', { seasonYear: option.seasonYear });
+        }
+        if (typeof option.seasonName === 'string' && option.seasonName !== '') {
+            qb.andWhere('s.seasonName = :seasonName', { seasonName: option.seasonName });
+        }
+        // 外部の作品辞書 (しょぼいカレンダー / Annict / Wikidata) の ID を 1 つでも持つものを「辞書起点」とみなす
+        const externalIds = '(s.syobocalTid IS NOT NULL OR s.annictId IS NOT NULL OR s.wikidataQid IS NOT NULL)';
+        if (option.origin === 'dictionary') {
+            qb.andWhere(externalIds);
+        } else if (option.origin === 'local') {
+            qb.andWhere(`NOT ${externalIds}`);
+        }
+    }
+
     public async query(option: SeriesListQuery): Promise<[SeriesListRow[], number]> {
         const c = await this.op.getConnection();
         // 録画件数・容量・初回/最終放送日時・未視聴数を 1 クエリで集計する。
@@ -107,17 +155,7 @@ export default class SeriesDB implements ISeriesDB {
             .addSelect('COUNT(DISTINCT w.recordedId)', 'watchedCount')
             .groupBy('s.id');
 
-        if (option.keyword) {
-            base.andWhere('(s.title LIKE :kw OR s.normalizedTitle LIKE :kw OR s.titleKana LIKE :kw)', {
-                kw: `%${option.keyword}%`,
-            });
-        }
-        if (typeof option.seasonYear === 'number') {
-            base.andWhere('s.seasonYear = :seasonYear', { seasonYear: option.seasonYear });
-        }
-        if (typeof option.seasonName === 'string' && option.seasonName !== '') {
-            base.andWhere('s.seasonName = :seasonName', { seasonName: option.seasonName });
-        }
+        SeriesDB.applyListWhere(base, option);
         // 放送中/完結は「最終録画からの経過時間」と「総話数への到達」で判定する。
         // 総話数が不明な作品は経過時間だけで判断する
         if (option.status === 'onair') {
@@ -159,17 +197,7 @@ export default class SeriesDB implements ISeriesDB {
         let total: number;
         if (typeof option.status === 'undefined') {
             const counter = c.getRepository(Series).createQueryBuilder('s');
-            if (option.keyword) {
-                counter.andWhere('(s.title LIKE :kw OR s.normalizedTitle LIKE :kw OR s.titleKana LIKE :kw)', {
-                    kw: `%${option.keyword}%`,
-                });
-            }
-            if (typeof option.seasonYear === 'number') {
-                counter.andWhere('s.seasonYear = :seasonYear', { seasonYear: option.seasonYear });
-            }
-            if (typeof option.seasonName === 'string' && option.seasonName !== '') {
-                counter.andWhere('s.seasonName = :seasonName', { seasonName: option.seasonName });
-            }
+            SeriesDB.applyListWhere(counter, option);
             total = await counter.getCount();
         } else {
             total = (await base.clone().getRawMany()).length;

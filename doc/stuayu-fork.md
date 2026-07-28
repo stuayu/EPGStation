@@ -117,6 +117,16 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 ## 変更箇所
 
+- **誤って作られたシリーズの掃除 (複数選択マージ・前方一致候補) と、話数・放送種別の一括編集を画面から行えるようにした**
+    - **背景**: 作品辞書で引けなかった録画は録画タイトルからシリーズが作られるため、同じ作品が副題や話数付きで複数のシリーズに分裂することがある。従来のマージ UI は「統合元を 1 件選び、統合先をキーワードで探す」形で、分裂した数件をまとめる用途には手数が多すぎた
+    - **シリーズの出所 (`origin`)**: `syobocalTid` / `annictId` / `wikidataQid` を 1 つでも持つシリーズを `dictionary` (辞書起点)、どれも無いものを `local` (録画タイトルから作られた) として `SeriesListItem` / `SeriesDetail` に載せた (`src/model/series/SeriesOrigin.ts`)。誤生成は `local` 側に偏るため、シリーズ一覧に「出所」の絞り込み (`GET /api/series?origin=dictionary|local`) とカード/リスト/表のバッジを追加した
+    - **チェックボックスでの複数選択マージ**: シリーズ一覧に選択モード (ツールバーの ☑ ボタン) を追加し、グリッド/リスト/コンパクトのいずれの表示形式でもチェックして複数選択できるようにした。`POST /api/series/merge` は `fromSeriesIds` (配列) を受けるようにし、統合元をまとめて 1 つのシリーズへ寄せる (旧来の `fromSeriesId` 単体指定も引き続き受け付ける)。結果は `movedLinkCount` に加えて `mergedSeriesCount` を返す。統合先が統合元リストに混ざっていても、サーバ側で取り除いてから処理する
+    - **統合先の自動セット**: マージダイアログを開くと、選択したシリーズと**その前方一致候補**の中から**辞書起点 (しょぼいカレンダー / Annict / Wikidata) のシリーズを既定の統合先に選ぶ** (同条件なら録画件数が多い方)。辞書起点へ寄せておくと以降の自動判定もそのシリーズへ集まるため。既定が `local` のときは警告を出す。統合先はセレクトボックスで変更でき、候補に無いシリーズはダイアログ内のキーワード検索で追加できる
+    - **前方一致でのマージ候補**: `GET /api/series/{seriesId}/merge-candidates` を追加。正規化タイトルの先頭 2 文字で DB を引き、`rankMergeCandidates()` (`src/model/series/SeriesMergeCandidates.ts`) が一致種別 (`exact` 完全一致 → `prefix` 候補が対象で始まる → `contained` 対象が候補で始まる → `partial` 先頭の一部のみ) と共通接頭辞長で並べ替える。先頭 1 文字しか共通しない組は候補から落とす。DB 側は `SeriesDB.findByNormalizedTitlePrefix()` (LIKE のワイルドカードはエスケープ済み)
+    - **話数・放送種別の一括編集**: シリーズ詳細に一括編集モード (ツールバーの ✎ ボタン) を追加した。録画を表形式で並べ、行ごとに話数を直接入力できるほか、選択した録画へ「放送日時順に開始話数からの連番を振る」「放送種別 (初回 / 再放送 / **遅れ放送** / 不明) をまとめて設定する」操作ができる。変更した行だけを `POST /api/series/mappings/bulk` へ送る
+    - **一括更新 API の挙動**: 既存の割当シリーズを引き継ぎ、**省略した項目は現在値を維持する** (放送種別だけ変えても話数が消えない)。1 件失敗しても残りは反映し、失敗分は `failed[]` に理由付きで返す。手動更新扱いなので `matchMethod: 'manual'` / `manualLock: true` になるが、話数の付け直しでタイトル辞書を汚さないよう**エイリアス学習は既定で行わない** (`learnAlias: true` を明示したときのみ)。1 リクエストの上限は 500 件
+    - シリーズ詳細の通常表示にも「遅れ放送」バッジを追加した
+
 - **Annict 公式 API を作品辞書として取り込み、シリーズ照合の精度をさらに引き上げた (+ 既存 Annict 連携の実行時バグ 2 件を修正)**
     - **既存実装のバグ修正 (実 API で確認済み)**: `AnnictProvider` が使っていた `Query.works` は**現行の Annict GraphQL API に存在しない** (`Field 'works' doesn't exist on type 'Query'`)。`get()` と `pushWatchRecord()` が常に失敗しており、Annict のメタデータ取得と視聴記録同期は実質まったく動いていなかった。`searchWorks(annictIds:)` へ修正した。あわせて `Episode.airedAt` も存在しない (要求するとクエリ全体がエラーになる) ため削除し、話数は `number` → `sortNumber` の順に解決して昇順へ並べ替えるようにした。ユニットテストのモックが壊れた API 形状 (`{ works: ... }`) を模していたためテストは通り続けていたので、モックも実 API と同じ `searchWorks` に修正した
     - **作品辞書の一括取り込み**: `AnnictWorkDictionary` (`src/model/metadata/annict/`) が `searchWorks` のページング (1 ページ 500 件 × 約 35 ページ、実測 19 秒) で全 **17,437 作品**を取得し、`annict_work` / `annict_work_alias` へ保存する (sqlite/mysql 両方のマイグレーションあり)。Annict は差分取得の手段を提供していないため常に全件取得となる。既定の自動同期間隔は 7 日 (`metadataDefaults.annict.workSyncIntervalMs` / 設定画面で変更可、0 で停止)

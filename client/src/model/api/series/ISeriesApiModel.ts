@@ -13,6 +13,9 @@ export type MissingEpisodeProposal = apid.MissingEpisodeProposal;
 export type SeriesBackfillOption = apid.SeriesBackfillOption;
 export type SeriesBackfillResult = apid.SeriesBackfillResult;
 export type ProgramSeriesMetrics = apid.ProgramSeriesMetrics;
+export type SeriesMergeCandidate = apid.SeriesMergeCandidate;
+export type SeriesMergeCandidateResult = apid.SeriesMergeCandidateResult;
+export type BulkSeriesMappingItem = apid.BulkSeriesMappingItem;
 
 export interface RefreshSeriesMetadataResult {
     // 走査したシリーズ数
@@ -40,6 +43,8 @@ export interface SeriesListOption {
     seasonYear?: number;
     seasonName?: string;
     status?: 'onair' | 'finished';
+    // 'dictionary': 外部の作品辞書起点のシリーズのみ / 'local': 録画タイトルから作られたシリーズのみ
+    origin?: apid.SeriesOrigin;
     hasMissing?: boolean;
 }
 
@@ -77,7 +82,18 @@ export default interface ISeriesApiModel {
     listPending(offset?: number, limit?: number): Promise<SeriesPendingListResult>;
     confirmPending(pendingId: number, value: UpdateSeriesMapping): Promise<SeriesMapping>;
     rejectPending(pendingId: number): Promise<void>;
-    merge(fromSeriesId: number, toSeriesId: number): Promise<apid.MergeSeriesResult>;
+    /**
+     * 複数のシリーズを 1 つのシリーズへ統合する (統合元は削除される)
+     */
+    merge(fromSeriesIds: number[], toSeriesId: number): Promise<apid.MergeSeriesResult>;
+    /**
+     * 正規化タイトルの前方一致でマージ候補を取得する
+     */
+    getMergeCandidates(seriesId: number): Promise<apid.SeriesMergeCandidateResult>;
+    /**
+     * 話数・放送種別をまとめて更新する (省略した項目は現在値を維持)
+     */
+    updateMappingBulk(items: apid.BulkSeriesMappingItem[]): Promise<apid.BulkUpdateSeriesMappingResult>;
     split(seriesId: number, recordedIds: number[], newTitle: string): Promise<apid.SplitSeriesResult>;
     listAliases(seriesId?: number): Promise<SeriesAliasItem[]>;
     removeAlias(aliasId: number): Promise<void>;
