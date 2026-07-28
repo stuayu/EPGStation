@@ -3,6 +3,7 @@ import * as apid from '../../../../api';
 import { clampUndefinedDuration, isDurationUndefined } from '../../../util/ProgramDuration';
 import Channel from '../../../db/entities/Channel';
 import Program from '../../../db/entities/Program';
+import IBroadcastRegion from '../../channel/IBroadcastRegion';
 import IChannelDB from '../../db/IChannelDB';
 import IProgramDB, { ProgramWithOverlap } from '../../db/IProgramDB';
 import IScheduleApiModel from './IScheduleApiModel';
@@ -11,10 +12,16 @@ import IScheduleApiModel from './IScheduleApiModel';
 export default class ScheduleApiModel implements IScheduleApiModel {
     private channelDB: IChannelDB;
     private programDB: IProgramDB;
+    private broadcastRegion: IBroadcastRegion;
 
-    constructor(@inject('IChannelDB') channelDB: IChannelDB, @inject('IProgramDB') programDB: IProgramDB) {
+    constructor(
+        @inject('IChannelDB') channelDB: IChannelDB,
+        @inject('IProgramDB') programDB: IProgramDB,
+        @inject('IBroadcastRegion') broadcastRegion: IBroadcastRegion,
+    ) {
         this.channelDB = channelDB;
         this.programDB = programDB;
+        this.broadcastRegion = broadcastRegion;
     }
 
     /**
@@ -435,6 +442,16 @@ export default class ScheduleApiModel implements IScheduleApiModel {
 
         if (channel.remoteControlKeyId !== null) {
             result.remoteControlKeyId = channel.remoteControlKeyId;
+        }
+
+        // 地上波系は地域情報を付与する
+        const region = this.broadcastRegion.getRegion({
+            networkId: channel.networkId,
+            serviceId: channel.serviceId,
+            channelType: channel.channelType,
+        });
+        if (region !== null) {
+            result.region = region;
         }
 
         return result;

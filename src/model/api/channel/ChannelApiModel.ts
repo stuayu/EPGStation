@@ -2,6 +2,7 @@ import { inject, injectable } from 'inversify';
 import mirakurun from 'mirakurun';
 import * as apid from '../../../../api';
 import Channel from '../../../db/entities/Channel';
+import IBroadcastRegion from '../../channel/IBroadcastRegion';
 import IChannelDB from '../../db/IChannelDB';
 import IMirakurunClientModel from '../../IMirakurunClientModel';
 import IChannelApiModel, { IChannelApiModelError } from './IChannelApiModel';
@@ -10,13 +11,16 @@ import IChannelApiModel, { IChannelApiModelError } from './IChannelApiModel';
 class ChannelApiModel implements IChannelApiModel {
     private channelDB: IChannelDB;
     private mirakurunClient: mirakurun;
+    private broadcastRegion: IBroadcastRegion;
 
     constructor(
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IMirakurunClientModel') mirakurunClientModel: IMirakurunClientModel,
+        @inject('IBroadcastRegion') broadcastRegion: IBroadcastRegion,
     ) {
         this.channelDB = channelDB;
         this.mirakurunClient = mirakurunClientModel.getClient();
+        this.broadcastRegion = broadcastRegion;
     }
 
     /**
@@ -50,6 +54,16 @@ class ChannelApiModel implements IChannelApiModel {
 
             if (c.remoteControlKeyId !== null) {
                 result.remoteControlKeyId = c.remoteControlKeyId;
+            }
+
+            // 地上波系は地域情報を付与する
+            const region = this.broadcastRegion.getRegion({
+                networkId: c.networkId,
+                serviceId: c.serviceId,
+                channelType: c.channelType,
+            });
+            if (region !== null) {
+                result.region = region;
             }
 
             return result;

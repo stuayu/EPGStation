@@ -77,6 +77,7 @@ export default class ChannelModel implements IChannelModel {
             channelType: item.channelType,
             channel: item.channelType,
             type: item.type,
+            region: item.region,
         };
     }
 

@@ -457,6 +457,10 @@ class Guide extends Vue {
             result.type = this.$route.query.type as any;
         }
 
+        if (typeof this.$route.query.region !== 'undefined') {
+            result.region = Util.getRouteString(this.$route.query.region);
+        }
+
         if (typeof this.$route.query.time !== 'undefined') {
             result.time = this.$route.query.time as any;
         }

@@ -62,6 +62,16 @@ export type ChannelType =
     | 'NW38'
     | 'NW39'
     | 'NW40'; // NWを追加
+export type BroadcastRegionId = string;
+
+/**
+ * 地上デジタル放送の地域 (地域符号ベース)
+ */
+export interface BroadcastRegionItem {
+    id: BroadcastRegionId; // 地域 id (例: kanto)
+    name: string; // 表示名 (例: 関東)
+}
+
 export type ProgramGenreLv1 = number;
 export type ProgramGenreLv2 = number;
 export type ProgramVideoType = 'mpeg2' | 'h.264' | 'h.265';
@@ -85,6 +95,7 @@ export interface ChannelItem {
     channelType: ChannelType;
     channel: string;
     type?: number;
+    region?: BroadcastRegionItem; // 地上波系のみ。BS / CS / SKY は undefined
 }
 
 /**
@@ -990,6 +1001,7 @@ export interface ScheduleChannleItem {
     hasLogoData: boolean;
     channelType: ChannelType;
     type?: number;
+    region?: BroadcastRegionItem; // 地上波系のみ。BS / CS / SKY は undefined
 }
 
 /**
