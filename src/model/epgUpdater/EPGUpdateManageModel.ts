@@ -11,6 +11,7 @@ import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import IMirakurunClientModel from '../IMirakurunClientModel';
+import { detectOnAirChannelIds } from './OnAirProgramDetector';
 import IEPGUpdateManageModel, {
     ProgramBaseEvent,
     UpdateEvent,
@@ -514,8 +515,25 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                     this.log.system.info('update program db done');
 
                     // 追加/更新された番組 id (§4.10 事前マッピングキャッシュのトリガーに利用)
-                    const updatedProgramIds = [...insertValues, ...updateValues].map(p => p.id);
-                    this.emit(EPGUpdateEvent.PROGRAM_UPDATED, updatedProgramIds);
+                    const changed = [...insertValues, ...updateValues];
+                    this.emit(
+                        EPGUpdateEvent.PROGRAM_UPDATED,
+                        changed.map(p => p.id),
+                    );
+
+                    // EIT[p/f] 相当 (現在放送中 / 直後に始まる) の変更があった放送局を通知する。
+                    // 視聴画面の番組情報や番組表を即時更新するために使う
+                    const onAirChannelIds = detectOnAirChannelIds(
+                        changed.map(p => ({
+                            channelId: this.channelIndex[p.networkId]?.[p.serviceId]?.id ?? 0,
+                            startAt: p.startAt,
+                            duration: p.duration,
+                        })),
+                        { now: new Date().getTime() },
+                    ).filter(id => id !== 0);
+                    if (onAirChannelIds.length > 0) {
+                        this.emit(EPGUpdateEvent.ON_AIR_PROGRAM_UPDATED, onAirChannelIds);
+                    }
                 }
             } else {
                 // 整理した結果のEventをキューへ戻す

@@ -5,6 +5,7 @@ import * as apid from '../../../api';
 import * as mapid from '../../../node_modules/mirakurun/api';
 import Program from '../../db/entities/Program';
 import DateUtil from '../../util/DateUtil';
+import { resolveEndAt } from '../../util/ProgramDuration';
 import StrUtil from '../../util/StrUtil';
 import IConfigFile from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
@@ -182,7 +183,9 @@ export default class ProgramDB implements IProgramDB {
             serviceId: program.serviceId,
             networkId: program.networkId,
             startAt: program.startAt,
-            endAt: program.startAt + program.duration,
+            // 放送時間未定 (duration が 1) の番組は暫定の終了時刻を入れる。
+            // そのまま startAt + 1 にすると放送開始直後に「終了済み」となり一覧から消えるため
+            endAt: resolveEndAt(program.startAt, program.duration),
             startHour: jaDate.getHours(),
             week: jaDate.getDay(),
             duration: program.duration,

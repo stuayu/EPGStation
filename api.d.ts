@@ -955,6 +955,8 @@ export interface ScheduleProgramItem {
     channelId: ChannelId;
     startAt: UnixtimeMS;
     endAt: UnixtimeMS;
+    // 放送時間未定 (ARIB の duration = 0xFFFFFF) の番組か。true の場合 endAt は暫定値
+    isDurationUndefined?: boolean;
     isFree: boolean;
     name: string;
     description?: string;
@@ -1060,6 +1062,8 @@ export interface LiveStreamInfoItem {
     name: string;
     startAt: UnixtimeMS;
     endAt: UnixtimeMS;
+    // 放送時間未定 (ARIB の duration = 0xFFFFFF) の番組か。true の場合 endAt は暫定値
+    isDurationUndefined?: boolean;
     description?: string;
     extended?: string;
     rawExtended?: RawExtended;

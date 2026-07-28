@@ -59,6 +59,31 @@ class SocketIOModel implements ISocketIOModel {
     }
 
     /**
+     * EIT[p/f] 更新イベントへのコールバック追加。
+     * 更新があった放送局 id が渡ってくるので、関係する画面だけが反応できる
+     * @param callback: (payload: { channelIds: number[] }) => void
+     */
+    public onUpdateOnAirProgram(callback: (payload: { channelIds: number[] }) => void): void {
+        if (this.io === null) {
+            throw new Error('IOIsNull');
+        }
+
+        this.io.on(SocketIOModel.UPDATE_ON_AIR_PROGRAM_EVENT, callback);
+    }
+
+    /**
+     * EIT[p/f] 更新イベントへのコールバック削除
+     * @param callback: (payload: { channelIds: number[] }) => void
+     */
+    public offUpdateOnAirProgram(callback: (payload: { channelIds: number[] }) => void): void {
+        if (this.io === null) {
+            throw new Error('IOIsNull');
+        }
+
+        this.io.off(SocketIOModel.UPDATE_ON_AIR_PROGRAM_EVENT, callback);
+    }
+
+    /**
      * update encode status イベントへのコールバック追加
      * @param callback: () => void
      */
@@ -86,6 +111,7 @@ class SocketIOModel implements ISocketIOModel {
 namespace SocketIOModel {
     export const UPDATE_STATUS_EVENT = 'updateStatus';
     export const UPDATE_ENCODE_STATUS_EVENT = 'updateEncode';
+    export const UPDATE_ON_AIR_PROGRAM_EVENT = 'updateOnAirProgram';
 }
 
 export default SocketIOModel;

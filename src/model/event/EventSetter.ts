@@ -95,6 +95,11 @@ export default class EventSetter implements IEventSetter {
      */
     public set(): void {
         // EPG 更新完了イベント
+        // EIT[p/f] 相当の更新を視聴画面・番組表へ即時反映させる
+        this.epgUpdateEvent.setOnAirProgramUpdated(channelIds => {
+            this.ipc.notifyOnAirProgramClient(channelIds);
+        });
+
         this.epgUpdateEvent.setUpdated(async () => {
             await this.recordedManage.historyCleanup().catch(() => {});
 

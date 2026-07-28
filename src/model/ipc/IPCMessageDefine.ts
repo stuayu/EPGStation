@@ -6,8 +6,17 @@ export type MessageId = number;
  * 親プロセスから子プロセスへのメッセージ
  */
 export interface ParentMessage {
-    type: 'pushEncode' | 'notifyClient';
+    type: 'pushEncode' | 'notifyClient' | 'notifyOnAirProgram';
     value?: any;
+}
+
+/**
+ * EIT[p/f] 相当の更新通知。視聴画面・番組表を即時更新させるため、
+ * 対象の放送局 id を添えて socket.io で配る
+ */
+export interface NotifyOnAirProgramMessage extends ParentMessage {
+    type: 'notifyOnAirProgram';
+    value: { channelIds: number[] };
 }
 
 /**

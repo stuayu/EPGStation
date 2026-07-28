@@ -35,6 +35,12 @@ export default class EPGUpdateExecutorManageModel implements IEPGUpdateExecutorM
             if ((<any>msg).msg === 'updated') {
                 // epg 更新完了イベントを発行
                 this.epgUpdateEvent.emitUpdated();
+            } else if ((<any>msg).msg === 'onAirProgramUpdated') {
+                // EIT[p/f] 相当の更新 (視聴画面・番組表へ即時反映させる)
+                const channelIds = (<any>msg).channelIds;
+                if (Array.isArray(channelIds) === true && channelIds.length > 0) {
+                    this.epgUpdateEvent.emitOnAirProgramUpdated(channelIds);
+                }
             }
         });
         /**

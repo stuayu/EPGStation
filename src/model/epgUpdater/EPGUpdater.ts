@@ -46,6 +46,13 @@ class EPGUpdater implements IEPGUpdater {
             if (programIds && programIds.length > 0) this.precomputeProgramSeries(programIds);
         });
 
+        // EIT[p/f] 相当の更新は 10 秒周期の短サイクルでも即座にクライアントへ伝える
+        // (視聴中の番組情報・番組表をその場で書き換えるため)
+        this.updateManage.on(EPGUpdateEvent.ON_AIR_PROGRAM_UPDATED, (channelIds?: number[]) => {
+            if (typeof process.send === 'undefined' || !channelIds || channelIds.length === 0) return;
+            process.send({ msg: 'onAirProgramUpdated', channelIds });
+        });
+
         this.updateManage.on(EPGUpdateEvent.SERVICE_UPDATED, () => {
             this.lastEventStreamUpdatedTime = new Date().getTime();
             // NOTE this.config.epgUpdateIntervalTime の周期で予約情報を更新させるため無効化

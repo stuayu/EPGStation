@@ -14,6 +14,9 @@ import ISocketIOManageModel from './ISocketIOManageModel';
 
 @injectable()
 export default class SocketIOManageModel implements ISocketIOManageModel {
+    // EIT[p/f] 相当の更新通知に使う socket.io イベント名 (クライアントと合わせること)
+    private static readonly ON_AIR_PROGRAM_EVENT = 'updateOnAirProgram';
+
     private log: ILogger;
     private config: IConfigFile;
     private ios: SocketIO.Server[] = [];
@@ -85,6 +88,22 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
                     io.sockets.emit('updateStatus');
                 }
             }, 200);
+        }
+    }
+
+    /**
+     * EIT[p/f] 相当の更新を通知する。
+     * 10 秒周期で来る可能性があるため、全体更新 (updateStatus) とは別イベントにして
+     * 視聴画面・番組表など関係する画面だけが反応できるようにする
+     * @param channelIds: number[]
+     */
+    public notifyOnAirProgramUpdated(channelIds: number[]): void {
+        if (this.ios.length === 0) {
+            throw new Error('must call SocketIoManageModel initialize');
+        }
+
+        for (const io of this.ios) {
+            io.sockets.emit(SocketIOManageModel.ON_AIR_PROGRAM_EVENT, { channelIds });
         }
     }
 
