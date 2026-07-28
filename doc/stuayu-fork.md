@@ -142,6 +142,16 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **クライアント**: 未ログイン時は `main.ts` がログイン画面だけを mount し、config / channels の取得 (認証必須) を走らせない。セッション切れ (401) は `RepositoryModel` の共通インターセプタが検知して画面を読み込み直す。ユーザーの追加・削除・パスワード変更はサーバー設定の「アカウント」タブから行える
     - DB は `user` テーブルを追加 (sqlite / mysql 両マイグレーションあり)
 
+- **放送時刻未定・番組延長で開始が遅れた場合の録画開始待ちを延ばし、設定可能にした**
+    - **前提 (調査結果)**: programId 予約は `mirakurun.getProgramStream()` を使い、Mirakurun は `eventId` + `parseEIT` で TSFilter を作る。TSFilter は **EIT[p/f] actual (`table_id` 0x4E, `section_number` 0 = present)** を監視し、対象の `event_id` が現在番組になるまでデータを流さず、別の `event_id` が present になったら閉じる。つまり**開始・終了ともイベント単位で追従する ARIB 準拠の仕組みが Mirakurun 側にある**。EPGStation は `stream.finished` で録画を終えるため、programId 予約では `reserve.endAt` を録画停止に使っていない
+    - **問題**: EPGStation はストリーム開始後 5 秒データが来ないと失敗扱いにし、リトライは「5 秒 × 3 回 → 60 秒 × 27 回」の**共通枠**だった。前番組が放送時刻未定で延長している間は Mirakurun が正常にデータを流さないだけなのに、**約 27 分で諦めてしまう**。野球中継の延長では足りない
+    - **失敗理由を 2 つに分けた** (`src/model/operator/recording/RecordingRetryPolicy.ts`):
+        - `waitingForEvent` (最初のデータが来ない = まだ番組が始まっていない) → **既定 3 時間**まで 60 秒間隔で待ち続ける
+        - `error` (チューナーが開けない・ソケット断など) → 従来どおり回数で見切る (5 秒 × 3 回 → 60 秒 × 27 回)
+      分けたことで、**延長待ちがチューナー異常用の再試行回数を食い潰さない**
+    - **設定で外出し**: `config.yml` の `recording` (`startWaitLimitMs` / `startWaitIntervalMs` / `firstDataTimeoutMs` / `errorFastRetryCount` / `errorFastRetryIntervalMs` / `errorRetryCount` / `errorRetryIntervalMs`)。サーバー設定 > 設定ファイルタブの「録画開始のリトライ」からも編集できる。`RecorderModel` は予約ごとに生成され都度 config を読むため**再起動不要**。`startWaitLimitMs: 0` で従来相当の挙動に戻せる
+    - **あわせて判明した既存不具合 (修正済み)**: 放送時刻未定の番組**自体を予約**した場合、`endAt = startAt + 1ms` のため `setTimer()` の `now >= reserve.endAt` が成立し、**タイマーを張らずに録画されなかった**。`resolveEndAt` の導入 (暫定 3 時間) で解消済み
+
 - **設定ファイルが無い場合に自動生成するようにした (ログ設定・enc.js)**
     - **これまでの状態**: `config.yml` は `Configuration.ensureConfigFile()` がテンプレートから自動生成していたが、**ログ設定 (`operatorLogConfig.yml` / `serviceLogConfig.yml` / `epgUpdaterLogConfig.yml`) は自動生成されず、無いと `process.exit(1)` で起動できなかった** (`log file is not found`)。手順書の `cp` を 1 つ忘れただけで起動しない、非対称な状態だった
     - **ログ設定の自動生成**: `LoggerModel` が `<name>.yml` を探し、無ければ同梱の `<name>.sample.yml` からコピーする。Operator / Service / EPGUpdater が同時に起動しても壊れないよう、`config.yml` と同じく排他作成 (`COPYFILE_EXCL`) を使い `EEXIST` は正常として扱う
