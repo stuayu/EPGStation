@@ -65,14 +65,21 @@ class OnAir extends Vue {
         return this.settingValue.isOnAirTabListView;
     }
 
+    // EIT[p/f] が流れてきたら放送中一覧を取り直す (どの局でも一覧に影響するため絞り込まない)
+    private onUpdateOnAirProgramCallback = ((): void => {
+        void this.fetchData().catch(() => {});
+    }).bind(this);
+
     public created(): void {
         // socket.io イベント
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.onUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
     }
 
     public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.offUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
 
         if (this.updateTimer !== null) {
             clearTimeout(this.updateTimer);

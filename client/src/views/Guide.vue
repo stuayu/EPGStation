@@ -80,6 +80,9 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
     },
 })
 class Guide extends Vue {
+    // EIT[p/f] 更新による番組表の取り直しの最小間隔 (10 秒周期の通知で再取得を繰り返さないため)
+    private static readonly ON_AIR_REFRESH_INTERVAL = 30 * 1000;
+
     public isLoading: boolean = true;
     public guideState: IGuideState = container.get<IGuideState>('IGuideState');
 
@@ -96,6 +99,13 @@ class Guide extends Vue {
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private onUpdateStatusCallback = ((): void => {
         this.guideState.updateReserves();
+    }).bind(this);
+
+    // EIT[p/f] の更新通知。現在時刻を含む表示のときだけ番組表を取り直す。
+    // 10 秒周期で流れてくる可能性があるため間引き、スクロール位置は維持する
+    private lastOnAirRefreshAt = 0;
+    private onUpdateOnAirProgramCallback = ((): void => {
+        void this.refreshByOnAirUpdate();
     }).bind(this);
 
     private programBaseWidth: number = 140;
@@ -143,6 +153,7 @@ class Guide extends Vue {
 
         // socket.io イベント
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.onUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
 
         if (UaUtil.isiOS() === true) {
             // html の class に guide を追加
@@ -157,6 +168,7 @@ class Guide extends Vue {
 
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.offUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
 
         if (UaUtil.isiOS() === true) {
             // html の class から guide を削除
@@ -241,6 +253,36 @@ class Guide extends Vue {
                 y: (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollTop,
             });
         } catch (err) {
+            console.error(err);
+        }
+    }
+
+    /**
+     * EIT[p/f] の更新を番組表へ反映する。
+     * 過去・未来の時間帯を表示しているときは無関係なので何もしない
+     */
+    private async refreshByOnAirUpdate(): Promise<void> {
+        // 時刻指定で過去/未来を見ている場合は現在放送中の変更と無関係
+        if (typeof this.$route.query.time === 'string') return;
+        const now = new Date().getTime();
+        if (now - this.lastOnAirRefreshAt < Guide.ON_AIR_REFRESH_INTERVAL) return;
+        this.lastOnAirRefreshAt = now;
+
+        // 取り直しでスクロール位置が飛ばないように退避しておく
+        const scroller = this.$refs.programs as InstanceType<typeof GuideScroller> | undefined;
+        const left = scroller?.$el.scrollLeft ?? 0;
+        const top = scroller?.$el.scrollTop ?? 0;
+        try {
+            await this.guideState.fetchGuide(this.createFetchGuideOption());
+            this.guideState.createProgramDoms(typeof this.$route.query.channelId !== 'undefined');
+            this.$nextTick(() => {
+                const target = this.$refs.programs as InstanceType<typeof GuideScroller> | undefined;
+                if (typeof target === 'undefined') return;
+                target.$el.scrollLeft = left;
+                target.$el.scrollTop = top;
+            });
+        } catch (err) {
+            // 番組表の自動更新に失敗しても、表示中の内容はそのまま使えるので黙って諦める
             console.error(err);
         }
     }

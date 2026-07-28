@@ -63,10 +63,13 @@ export default class GuideProgramDialogState implements IGuideProgramDialogState
         const result: DisplayProgramData = {
             channelName: dialogData.channel === null ? dialogData.program.channelId.toString(10) : dialogData.channel.name,
             programName: dialogData.program.name,
+            // 放送時間未定 (ARIB の duration = 0xFFFFFF) の番組は endAt が暫定値なので終了時刻を出さない
             time:
-                DateUtil.format(DateUtil.getJaDate(new Date(startAt)), 'MM/dd hh:mm ~ ') +
-                DateUtil.format(DateUtil.getJaDate(new Date(endAt)), ' hh:mm') +
-                `(${duration.toString(10)}分)`,
+                (dialogData.program as { isDurationUndefined?: boolean }).isDurationUndefined === true
+                    ? `${DateUtil.format(DateUtil.getJaDate(new Date(startAt)), 'MM/dd hh:mm ~ ')}(終了時刻未定)`
+                    : DateUtil.format(DateUtil.getJaDate(new Date(startAt)), 'MM/dd hh:mm ~ ') +
+                      DateUtil.format(DateUtil.getJaDate(new Date(endAt)), ' hh:mm') +
+                      `(${duration.toString(10)}分)`,
             isFree: dialogData.program.isFree,
         };
 

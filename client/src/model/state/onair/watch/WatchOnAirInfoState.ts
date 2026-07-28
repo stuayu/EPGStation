@@ -48,7 +48,11 @@ export default class WatchOnAirInfoState implements IWatchOnAirInfoState {
             if (item.channelId === channelId && item.mode === mode) {
                 this.displayInfo = {
                     channelName: channel === null ? channelId.toString(10) : channel.name,
-                    time: DateUtil.format(startAt, 'MM/dd(w) hh:mm ~ ') + DateUtil.format(endAt, 'hh:mm'),
+                    // 放送時間未定 (ARIB の duration = 0xFFFFFF) の番組は endAt が暫定値なので終了時刻を出さない
+                    time:
+                        item.isDurationUndefined === true
+                            ? `${DateUtil.format(startAt, 'MM/dd(w) hh:mm ~ ')}(終了時刻未定)`
+                            : DateUtil.format(startAt, 'MM/dd(w) hh:mm ~ ') + DateUtil.format(endAt, 'hh:mm'),
                     name: item.name,
                     description: item.description,
                 };

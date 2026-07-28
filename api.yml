@@ -688,6 +688,9 @@ components:
                     $ref: '#/components/schemas/UnixtimeMS'
                 endAt:
                     $ref: '#/components/schemas/UnixtimeMS'
+                isDurationUndefined:
+                    description: 放送時間未定 (ARIB の duration = 0xFFFFFF) の番組か。true の場合 endAt は暫定値
+                    type: boolean
                 isFree:
                     description: 無料放送か
                     type: boolean
@@ -2405,6 +2408,9 @@ components:
                     $ref: '#/components/schemas/UnixtimeMS'
                 endAt:
                     $ref: '#/components/schemas/UnixtimeMS'
+                isDurationUndefined:
+                    description: 放送時間未定 (ARIB の duration = 0xFFFFFF) の番組か。true の場合 endAt は暫定値
+                    type: boolean
                 description:
                     description: ストリーミング番組詳細
                     type: string

@@ -40,15 +40,23 @@ class WatchOnAirInfoCard extends Vue {
         await this.update();
     }).bind(this);
     private updateTimer: ReturnType<typeof setTimeout> | null = null;
+    // EIT[p/f] が流れてきたら、視聴中の放送局のときだけ番組情報を取り直す
+    private onUpdateOnAirProgramCallback = ((payload: { channelIds: number[] }): void => {
+        if (Array.isArray(payload?.channelIds) === false) return;
+        if (payload.channelIds.includes(this.channel) === false) return;
+        void this.update();
+    }).bind(this);
 
     public created(): void {
         // socket.io イベント
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.onUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
     }
 
     public beforeUnmount(): void {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.offUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
 
         if (this.updateTimer !== null) {
             clearTimeout(this.updateTimer);

@@ -22,6 +22,7 @@ import {
     OperatorEncodeEventFunctions,
     ModelName,
     NotifyClientMessage,
+    NotifyOnAirProgramMessage,
     PushEncodeMessage,
     RecordedFunctions,
     RecordedTagFunctions,
@@ -126,6 +127,21 @@ export default class IPCServer implements IIPCServer {
 
         this.child.send(<any>(<NotifyClientMessage>{
             type: 'notifyClient',
+        }));
+    }
+
+    /**
+     * EIT[p/f] 相当の更新をクライアントへ通知する
+     * @param channelIds: number[] 対象の放送局
+     */
+    public notifyOnAirProgramClient(channelIds: number[]): void {
+        if (this.child === null) {
+            return;
+        }
+
+        this.child.send(<any>(<NotifyOnAirProgramMessage>{
+            type: 'notifyOnAirProgram',
+            value: { channelIds },
         }));
     }
 

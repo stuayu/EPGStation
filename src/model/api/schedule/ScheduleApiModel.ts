@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
+import { clampUndefinedDuration, isDurationUndefined } from '../../../util/ProgramDuration';
 import Channel from '../../../db/entities/Channel';
 import Program from '../../../db/entities/Program';
 import IChannelDB from '../../db/IChannelDB';
@@ -220,7 +221,8 @@ export default class ScheduleApiModel implements IScheduleApiModel {
 
             result.push({
                 channel: this.toScheduleChannleItem(channel, isHalfWidth),
-                programs: programsIndex[channel.id],
+                // 放送時間未定の番組は暫定の終了時刻を持つため、次の番組に食い込まないよう切り詰める
+                programs: clampUndefinedDuration(programsIndex[channel.id]),
             });
         }
 
@@ -327,6 +329,11 @@ export default class ScheduleApiModel implements IScheduleApiModel {
             isFree: program.isFree,
             name: isHalfWidth ? program.halfWidthName : program.name,
         };
+
+        // 放送時間未定の番組は endAt が暫定値であることをクライアントへ伝える
+        if (isDurationUndefined(program.duration) === true) {
+            result.isDurationUndefined = true;
+        }
 
         if (program.description !== null) {
             if (isHalfWidth === true) {

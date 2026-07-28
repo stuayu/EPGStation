@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
+import { isDurationUndefined } from '../../../util/ProgramDuration';
 import { StreamContainer, StreamProfile } from '../../IConfigFile';
 import IChannelDB from '../../db/IChannelDB';
 import IProgramDB from '../../db/IProgramDB';
@@ -476,6 +477,8 @@ export default class StreamApiModel implements IStreamApiModel {
                     item.name = isHalfWidth === true ? program.halfWidthName : program.name;
                     item.startAt = program.startAt;
                     item.endAt = program.endAt;
+                    // 放送時間未定の番組は endAt が暫定値なので、その旨をクライアントへ伝える
+                    item.isDurationUndefined = isDurationUndefined(program.duration);
                     if (program.description !== null && program.halfWidthDescription !== null) {
                         item.description = isHalfWidth === true ? program.halfWidthDescription : program.description;
                     }

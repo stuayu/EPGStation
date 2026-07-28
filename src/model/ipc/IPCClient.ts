@@ -99,6 +99,10 @@ export default class IPCClient implements IIPCClient {
             } else if ((<ParentMessage>msg).type === 'notifyClient') {
                 // socket.io によるクライアントへの状態更新通知
                 this.socketIO.notifyClient();
+            } else if ((<ParentMessage>msg).type === 'notifyOnAirProgram') {
+                // EIT[p/f] 相当の更新通知 (視聴画面・番組表の即時更新用)
+                const channelIds = (<any>msg).value?.channelIds;
+                if (Array.isArray(channelIds) === true) this.socketIO.notifyOnAirProgramUpdated(channelIds);
             } else if ((<ParentMessage>msg).type === 'pushEncode') {
                 // エンコード依頼
                 this.encodeManage.push((<PushEncodeMessage>msg).value);
