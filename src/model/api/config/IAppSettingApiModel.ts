@@ -1,3 +1,4 @@
+import * as apid from '../../../../api';
 export interface AppSettingUpdateResult {
     // マスク・復号適用済みの設定値一式
     settings: Record<string, unknown>;
@@ -13,7 +14,14 @@ export interface AppSettingHistoryItem {
     updatedAt: number;
 }
 
+export type EditableConfig = apid.EditableConfig;
+
 export default interface IAppSettingApiModel {
+    /**
+     * config.yml 編集画面用の情報 (実効値 / ファイルの値 / 差分 / 編集可能キー) を返す
+     * @return Promise<EditableConfig>
+     */
+    getEditableConfig(): Promise<EditableConfig>;
     get(): Promise<Record<string, unknown>>;
     update(values: Record<string, unknown>): Promise<AppSettingUpdateResult>;
     /**

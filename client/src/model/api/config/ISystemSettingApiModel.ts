@@ -2,6 +2,10 @@ import * as apid from '../../../../../api';
 
 export default interface ISystemSettingApiModel {
     get(): Promise<apid.AppSettingValue>;
+    /**
+     * config.yml 編集画面用の情報 (実効値 / ファイルの値 / 差分 / 編集可能キー) を取得する
+     */
+    getEditableConfig(): Promise<apid.EditableConfig>;
     update(value: Record<string, any>): Promise<apid.AppSettingUpdateResult>;
     testNotification(targetName?: string): Promise<apid.NotificationTestResult>;
     /**

@@ -5,6 +5,8 @@ import ChannelApiModel from './api/channel/ChannelApiModel';
 import IChannelApiModel from './api/channel/IChannelApiModel';
 import AppSettingApiModel from './api/config/AppSettingApiModel';
 import IAppSettingApiModel from './api/config/IAppSettingApiModel';
+import IConfigOverlayLoader from './config/IConfigOverlayLoader';
+import ConfigOverlayLoader from './config/ConfigOverlayLoader';
 import ILogLevelApplier from './log/ILogLevelApplier';
 import LogLevelApplier from './log/LogLevelApplier';
 import IAuthModel from './auth/IAuthModel';
@@ -464,6 +466,7 @@ export const set = (container: Container): void => {
     container.bind<IUpdateApiModel>('IUpdateApiModel').to(UpdateApiModel).inSingletonScope();
 
     container.bind<ILogLevelApplier>('ILogLevelApplier').to(LogLevelApplier).inSingletonScope();
+    container.bind<IConfigOverlayLoader>('IConfigOverlayLoader').to(ConfigOverlayLoader).inSingletonScope();
 
     container.bind<IUserDB>('IUserDB').to(UserDB).inSingletonScope();
     container.bind<IAuthModel>('IAuthModel').to(AuthModel).inSingletonScope();

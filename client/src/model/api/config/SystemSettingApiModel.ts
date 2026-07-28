@@ -8,6 +8,9 @@ export default class SystemSettingApiModel implements ISystemSettingApiModel {
     async get(): Promise<apid.AppSettingValue> {
         return (await this.repository.get('/settings/system')).data;
     }
+    async getEditableConfig(): Promise<apid.EditableConfig> {
+        return (await this.repository.get('/settings/config')).data;
+    }
     async update(value: Record<string, any>): Promise<apid.AppSettingUpdateResult> {
         return (await this.repository.put('/settings/system', value)).data;
     }

@@ -1940,3 +1940,26 @@ export interface ChangePasswordOption {
     // 自分のパスワードを変更する場合に必要
     currentPassword?: string;
 }
+
+/**
+ * config.yml の編集可能なキーの定義
+ */
+export interface ConfigFieldInfo {
+    key: string;
+    // 変更に EPGStation の再起動が必要か
+    requiresRestart: boolean;
+}
+
+/**
+ * config.yml 編集画面用の情報
+ */
+export interface EditableConfig {
+    // config.yml + GUI の差分を重ねた実効値 (秘密情報はマスク済み)
+    effective: { [key: string]: any };
+    // config.yml をそのまま読んだ値 (「ファイルの値に戻す」の表示に使う)
+    file: { [key: string]: any };
+    // GUI で保存されている差分
+    overlay: { [key: string]: any };
+    // 編集できるキーと再起動要否
+    fields: ConfigFieldInfo[];
+}

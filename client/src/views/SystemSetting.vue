@@ -11,6 +11,7 @@
                     <v-tab value="integration">連携</v-tab>
                     <v-tab value="notification">通知</v-tab>
                     <v-tab value="series">シリーズ管理</v-tab>
+                    <v-tab value="config">設定ファイル</v-tab>
                     <v-tab v-if="isUpdateEnabled === true" value="update">更新</v-tab>
                     <v-tab v-if="isAuthEnabled === true" value="account">アカウント</v-tab>
                 </v-tabs>
@@ -495,6 +496,11 @@
                             <v-alert v-else type="info" class="mt-4">シリーズライブラリ機能 (featureFlags.seriesLibrary) が無効なため、バックフィルとエイリアス管理は利用できません</v-alert>
                         </v-window-item>
 
+                        <!-- 設定ファイルタブ: config.yml をフォームから編集する -->
+                        <v-window-item value="config">
+                            <ConfigFormPanel></ConfigFormPanel>
+                        </v-window-item>
+
                         <!-- 更新タブ: リリース版 / main ブランチの最新へのワンクリック更新 -->
                         <v-window-item value="update">
                             <UpdatePanel></UpdatePanel>
@@ -571,7 +577,7 @@
                             </div>
                         </v-window-item>
                     </v-window>
-                    <v-btn v-if="tab !== 'update' && tab !== 'account'" color="primary" :loading="saving" @click="save">保存</v-btn>
+                    <v-btn v-if="tab !== 'update' && tab !== 'account' && tab !== 'config'" color="primary" :loading="saving" @click="save">保存</v-btn>
                 </v-card-text>
             </v-card>
         </v-container>
@@ -614,6 +620,7 @@
 <script lang="ts">
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import UpdatePanel from '@/components/update/UpdatePanel.vue';
+import ConfigFormPanel from '@/components/settings/ConfigFormPanel.vue';
 import IAuthApiModel, { AuthUserItem } from '@/model/api/auth/IAuthApiModel';
 import container from '@/model/ModelContainer';
 import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
@@ -655,7 +662,7 @@ interface ChannelMapEntryForm {
     syobocal: boolean;
 }
 
-@Component({ components: { TitleBar, UpdatePanel } })
+@Component({ components: { TitleBar, UpdatePanel, ConfigFormPanel } })
 class SystemSetting extends Vue {
     tab = 'basic';
     saving = false;

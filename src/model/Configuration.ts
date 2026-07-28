@@ -3,6 +3,7 @@ import { inject, injectable } from 'inversify';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
 import urljoin from 'url-join';
+import { mergeConfigOverlay, sanitizeConfigOverlay } from './config/ConfigOverlay';
 import IConfigFile from './IConfigFile';
 import IConfiguration from './IConfiguration';
 import ILogger from './ILogger';
@@ -15,7 +16,12 @@ import ILoggerModel from './ILoggerModel';
 @injectable()
 class Configuration implements IConfiguration {
     private templateConfig: IConfigFile | null = null;
+    // config.yml をそのまま読んだ値 (ファイルが正)
+    private fileConfig!: IConfigFile;
+    // GUI から編集された差分を重ねた実効値
     private config!: IConfigFile;
+    // DB (app_setting の config キー) から読み込んだ差分
+    private overlay: Record<string, unknown> = {};
     private log: ILogger;
 
     constructor(@inject('ILoggerModel') logger: ILoggerModel) {
@@ -28,14 +34,17 @@ class Configuration implements IConfiguration {
             this.templateConfig = null;
         }
 
-        this.config = this.readConfig(Configuration.CONFIG_FILE_PATH, false);
+        this.fileConfig = this.readConfig(Configuration.CONFIG_FILE_PATH, false);
+        this.config = this.fileConfig;
         this.log.system.info('config.yml read success');
 
         fs.watchFile(Configuration.CONFIG_FILE_PATH, async () => {
             this.log.system.info('updated config file');
             try {
                 const newConfig = <any>yaml.load(await fs.promises.readFile(Configuration.CONFIG_FILE_PATH, 'utf-8'));
-                this.config = this.formatConfig(newConfig);
+                this.fileConfig = this.formatConfig(newConfig);
+                // 手編集で config.yml が変わっても GUI の差分は維持する
+                this.applyOverlay();
             } catch (err: any) {
                 this.log.system.error('read config error');
                 this.log.system.error(err);
@@ -230,6 +239,52 @@ class Configuration implements IConfiguration {
      */
     public getConfig(): IConfigFile {
         return JSON.parse(JSON.stringify(this.config));
+    }
+
+    /**
+     * config.yml をそのまま読んだ値を返す (GUI で「ファイルの値」を見せるために使う)
+     * @return IConfigFile
+     */
+    public getFileConfig(): IConfigFile {
+        return JSON.parse(JSON.stringify(this.fileConfig));
+    }
+
+    /**
+     * 現在適用している差分を返す
+     * @return Record<string, unknown>
+     */
+    public getOverlay(): Record<string, unknown> {
+        return JSON.parse(JSON.stringify(this.overlay));
+    }
+
+    /**
+     * GUI から編集された差分を適用する。
+     * DB から読み込んだ直後と、設定が更新されたときに呼ばれる
+     * @param overlay: unknown
+     */
+    public setOverlay(overlay: unknown): void {
+        this.overlay = sanitizeConfigOverlay(overlay);
+        this.applyOverlay();
+    }
+
+    /**
+     * config.yml + 差分から実効値を組み立て直す。
+     * 差分にはテンプレート由来の既定値補完も効かせるため formatConfig を通す
+     */
+    private applyOverlay(): void {
+        if (Object.keys(this.overlay).length === 0) {
+            this.config = this.fileConfig;
+
+            return;
+        }
+        try {
+            this.config = this.formatConfig(mergeConfigOverlay(this.fileConfig, this.overlay));
+        } catch (err: any) {
+            // 差分が壊れていても config.yml だけで動作を続ける (画面から設定を直せる状態を保つ)
+            this.log.system.error('failed to apply config overlay');
+            this.log.system.error(err);
+            this.config = this.fileConfig;
+        }
     }
 }
 

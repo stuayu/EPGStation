@@ -142,6 +142,15 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **クライアント**: 未ログイン時は `main.ts` がログイン画面だけを mount し、config / channels の取得 (認証必須) を走らせない。セッション切れ (401) は `RepositoryModel` の共通インターセプタが検知して画面を読み込み直す。ユーザーの追加・削除・パスワード変更はサーバー設定の「アカウント」タブから行える
     - DB は `user` テーブルを追加 (sqlite / mysql 両マイグレーションあり)
 
+- **config.yml を画面から編集できるようにした (DB オーバーレイ方式)**
+    - **yml へは書き戻さない**: 書き戻すとコメントや書式が失われ、さらに `Configuration` が `fs.watchFile` で監視しているため書き込みがリロードを誘発する。代わりに **GUI で変更した値だけを DB (`app_setting` の `config` キー) に持ち、読み込み時に「config.yml → DB の差分」の順で重ねて実効値を作る**。手編集派の config.yml はそのまま残り、GUI 派は画面だけで完結できる
+    - **マージ規則** (`src/model/config/ConfigOverlay.ts`): オブジェクトはキー単位で再帰マージ、**配列は丸ごと置き換え** (録画ディレクトリやエンコード設定は「一覧そのもの」を編集するため)。値を `null` にすると差分が消えて config.yml の値に戻る
+    - **DB 接続設定は編集させない**: `dbtype` / `mysql` / `sqlite` / `postgres` はオーバーレイ対象外。**オーバーレイ自体を DB から読むため、誤った接続設定を保存すると次回起動時に値を読み出せず復旧できなくなる** (自己参照の詰み)。認証設定 (`auth`) も画面へ入る手段そのものなので config.yml 専用にしている
+    - **適用タイミング**: 多くのモデルはコンストラクタで config を読むため、Operator / Service / EPGUpdater の**各プロセスで DB 接続直後・モデル構築前**に `ConfigOverlayLoader` が差分を適用する。設定変更時は既存の設定変更 IPC (`appSetting.notifyChanged`) を受けて再読み込みする
+    - **再起動要否をキーごとに判定**: 起動時にしか読まれない項目 (`port` / `recorded` / `thumbnail` など) は `requiresRestart: true` として定義し、**「実際に config.yml と値が変わったキー」だけ**を対象に再起動案内を出す (同じ値を送り直しても案内は出ない)
+    - **API / UI**: `GET /api/settings/config` が「実効値 / config.yml の値 / 差分 / 編集可能キーと再起動要否」を返す。保存は既存の `PUT /api/settings/system` の `config` キーで行い、変更履歴・ロールバックの仕組みにそのまま乗る。サーバー設定画面に「設定ファイル」タブを追加し、項目名での検索、画面で変更した項目のバッジ表示、「config.yml の値に戻す」ボタン、録画ディレクトリとエンコード設定の一覧編集に対応した
+    - **未対応**: ストリーミングプロファイル (`stream` の live/recorded × 4 コンテナ) と外部コマンド実行系 (`recordingStartCommand` 等) はフォーム化していない。config.yml を直接編集すること
+
 - **EIT[p/f] を視聴画面・番組表へ即時反映するようにした (+ 放送時間未定の番組の扱いを修正)**
     - **背景**: 現在放送中/次の番組 (EIT[p/f]) は 10 秒周期の短サイクルで DB へ保存されているが、クライアントへの通知は `epgUpdateIntervalTime` (既定 10 分) の長サイクルでしか飛んでいなかった。そのため延長・繰り上げが起きても視聴中の番組情報や番組表が最大 10 分古いままだった
     - **専用の通知イベント**: 全体更新 (`updateStatus`) とは別に socket.io の `updateOnAirProgram` を追加し、**更新があった放送局 id を添えて**配る。10 秒周期で飛びうるため、視聴画面は「自分が見ている局のときだけ」番組情報を取り直す。経路は EPGUpdater (子) → Operator → IPC → Service → socket.io
