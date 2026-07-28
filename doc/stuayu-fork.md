@@ -680,9 +680,9 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - 録画完了ファイルは「ファイル最終更新時刻 − 実測尺」をファイル先頭の実時刻 (`startAt`) として推定して保存する。新規録画は `RecorderModel.addRecorded()` で録画開始時刻をそのまま記録する。録画中は推定しない
         - 過去分はサーバー起動時にバックグラウンドで順次解析され (`ServiceServer.analyzeVideoFileMetadata()`、20 件ずつ)、サーバー設定 > 基本タブの「録画ファイルのメタデータ」から手動一括取得もできる。未解析のファイルは再生時にオンデマンドでも解析される
         - ニコニコ実況の過去ログは番組開始時刻ではなく `videoFile.startAt` を基準に取得するように変更し、録画マージン分のコメントズレを解消 (`client/src/views/WatchRecorded.vue`)
-    - 録画再生画面にシークバーを追加 (`client/src/components/video/VideoSeekBar.vue`)
-        - プレーヤー下に「現在位置 / 総尺 (全 N 分)」を常時表示し、スライダーをドラッグして任意の位置へシークできる (`VideoContainer.vue` から 1 秒間隔で再生位置を取得し、`setCurrentTime()` でシーク)
-        - 対象は録画再生 (直接再生 / mp4・webm ストリーミング / HLS)。ライブ視聴では非表示
+    - 録画再生画面のシークは DPlayer 標準のコントローラ (プレーヤー内のシークバー) をそのまま使う
+        - 一時的に独自の外付けシークバー (`VideoSeekBar.vue`) をプレーヤー下へ表示していたが、DPlayer 内蔵のシークバーと二重になるため撤去した。`VideoContainer.vue` 側の再生位置ポーリング (1 秒間隔) も不要になったため削除
+        - 独自のシーク UI を足す場合はプレーヤー外に並べるのではなく DPlayer のコントローラを拡張すること
     - 依存パッケージを更新 (サーバ / クライアント両方)
         - TypeScript 5.9 → 6.0 系。あわせてクライアントの `tsconfig.json` から TypeScript 7.0 で廃止予定の `baseUrl` を削除し、`paths` を tsconfig 相対 (`./src/*`) に変更
         - ESLint 8 → 10 系へ移行。旧 `.eslintrc.json` を廃止し Flat Config (`eslint.config.mjs`) に移行、`@typescript-eslint/*` は統合パッケージ `typescript-eslint` 8 系に置き換え。lint スクリプトも v9 以降で廃止された `--ext` を削除 (`eslint --fix src/`)
