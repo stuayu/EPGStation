@@ -1,6 +1,7 @@
 import * as apid from '../../../../api';
 export type MergeSeriesResult = apid.MergeSeriesResult;
 export type SplitSeriesResult = apid.SplitSeriesResult;
+export type SeriesMergeCandidateResult = apid.SeriesMergeCandidateResult;
 export interface RefreshSeriesMetadataResult {
     // 走査したシリーズ数
     scanned: number;
@@ -35,9 +36,18 @@ export default interface ISeriesMaintenanceApiModel {
      */
     refreshMetadata(): Promise<RefreshSeriesMetadataResult>;
     /**
-     * fromSeriesId のリンク・エピソード・エイリアスを toSeriesId へ統合し、fromSeriesId を削除する
+     * fromSeriesIds のリンク・エピソード・エイリアスを toSeriesId へ統合し、統合元のシリーズを削除する
+     * @param fromSeriesIds: number[] 統合元。toSeriesId が混ざっていても無視する
+     * @param toSeriesId: number 統合先
+     * @return Promise<MergeSeriesResult>
      */
-    merge(fromSeriesId: number, toSeriesId: number): Promise<MergeSeriesResult>;
+    merge(fromSeriesIds: number[], toSeriesId: number): Promise<MergeSeriesResult>;
+    /**
+     * 指定シリーズのマージ候補を正規化タイトルの前方一致で探す
+     * @param seriesId: number マージ元 (統合される側)
+     * @return Promise<SeriesMergeCandidateResult>
+     */
+    listMergeCandidates(seriesId: number): Promise<SeriesMergeCandidateResult>;
     /**
      * 指定した録画群を新しいシリーズへ分割する
      */

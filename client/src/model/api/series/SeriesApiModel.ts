@@ -29,6 +29,7 @@ export default class SeriesApiModel implements ISeriesApiModel {
             seasonYear: option.seasonYear,
             seasonName: option.seasonName,
             status: option.status,
+            origin: option.origin,
             hasMissing: option.hasMissing === true ? true : undefined,
         };
         return (await this.repository.get('/series', { params })).data;
@@ -77,8 +78,16 @@ export default class SeriesApiModel implements ISeriesApiModel {
     public async rejectPending(pendingId: number): Promise<void> {
         await this.repository.delete(`/series/pending/${pendingId}`);
     }
-    public async merge(fromSeriesId: number, toSeriesId: number): Promise<apid.MergeSeriesResult> {
-        return (await this.repository.post('/series/merge', { fromSeriesId, toSeriesId })).data;
+    public async merge(fromSeriesIds: number[], toSeriesId: number): Promise<apid.MergeSeriesResult> {
+        return (await this.repository.post('/series/merge', { fromSeriesIds, toSeriesId })).data;
+    }
+    public async getMergeCandidates(seriesId: number): Promise<apid.SeriesMergeCandidateResult> {
+        return (await this.repository.get(`/series/${seriesId}/merge-candidates`)).data;
+    }
+    public async updateMappingBulk(
+        items: apid.BulkSeriesMappingItem[],
+    ): Promise<apid.BulkUpdateSeriesMappingResult> {
+        return (await this.repository.post('/series/mappings/bulk', { items })).data;
     }
     public async split(seriesId: number, recordedIds: number[], newTitle: string): Promise<apid.SplitSeriesResult> {
         return (await this.repository.post(`/series/${seriesId}/split`, { recordedIds, newTitle })).data;

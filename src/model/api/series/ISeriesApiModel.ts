@@ -13,6 +13,8 @@ export interface SeriesListOption {
     seasonYear?: number;
     seasonName?: string;
     status?: 'onair' | 'finished';
+    // 'dictionary': 外部の作品辞書起点のシリーズのみ / 'local': 録画タイトルから作られたシリーズのみ
+    origin?: apid.SeriesOrigin;
     // true の場合、欠番のあるシリーズのみに絞り込む
     hasMissing?: boolean;
 }

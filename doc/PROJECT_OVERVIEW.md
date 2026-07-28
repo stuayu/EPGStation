@@ -134,6 +134,8 @@ npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (
     - `WikidataProgramDictionary` (Wikidata SPARQL、約 4 万件・**全ジャンル**) — ドラマ・バラエティ・情報番組・ローカル局番組を担当。Wikidata の `P11648` (しょぼいカレンダーのシリーズ ID) でアニメ辞書と厳密に結合し、重複を作らない。一般番組は短く一般的なタイトルが多いため、**厳密キー (`strictProgramKey`) の完全一致のみ**で引く (含有・前方一致には参加させない)
     - `SeriesResolver` はこの統合辞書を使い、録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバック。さらに `seriesLlm` を設定すると LLM が装飾を剥がした番組名で辞書を引き直す
     - 同期は Operator 起動時 + しょぼいカレンダー 24 時間 / Annict 7 日 / Wikidata 7 日間隔 (`featureFlags.metadataProviders` + 各連携が有効な場合のみ。Annict はアクセストークン必須、Wikidata は不要で既定 ON)。詳細は `doc/stuayu-fork.md`
+- シリーズの誤生成を掃除する導線が画面にある。**シリーズの出所** (`SeriesListItem.origin`) は外部 ID (`syobocalTid` / `annictId` / `wikidataQid`) の有無で `dictionary` / `local` を判定する (`src/model/series/SeriesOrigin.ts`)。一覧はチェックボックスで複数選択して `POST /api/series/merge` (`fromSeriesIds`) にまとめて流し、統合先は**辞書起点のシリーズを既定**にする (自動判定がそこへ寄るため)。マージ候補は `GET /api/series/{seriesId}/merge-candidates` が正規化タイトルの前方一致で返す (`src/model/series/SeriesMergeCandidates.ts`)
+- 話数・放送種別 (初回 / 再放送 / 遅れ放送 / 不明) はシリーズ詳細の一括編集モードから `POST /api/series/mappings/bulk` でまとめて更新する。**省略した項目は現在値を維持**し、エイリアス学習は既定で行わない (話数の付け直しでタイトル辞書を汚さないため)
 - シリーズ一覧のアイキャッチ画像は Annict 由来 (しょぼいカレンダーは画像を提供しない)。Annict の URL は作品公式サイトの OGP 画像を指し http:// も混ざるため、直リンクせず `SeriesImageModel` がサーバ側で取得して `data/seriesImage/` にキャッシュし `GET /api/series/{seriesId}/image` で配信する。画像が取れない作品は録画サムネイルで代用する
 - **Annict GraphQL API に `Query.works` は存在しない** (`searchWorks` のみ)。`Episode` に `airedAt` も無い。存在しないフィールドを要求するとクエリ全体が GraphQL エラーになるため、クエリを書くときは実 API のスキーマ (introspection) で確認すること
 - ライブ HLS は 2 モード: cmd が `%streamFileDir%` を含まなければ in-memory 配信 (`HLSMemoryStoreModel`、ディスク書き込みなし・字幕非対応)、含めば従来のディスク方式。詳細は `doc/streaming-refresh.md`

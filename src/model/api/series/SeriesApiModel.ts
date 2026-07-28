@@ -3,6 +3,7 @@ import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
 import ISeriesDB from '../../db/ISeriesDB';
 import { analyzeSeriesContinuity } from '../../series/SeriesContinuity';
+import { getSeriesOrigin } from '../../series/SeriesOrigin';
 import * as apid from '../../../../api';
 import ISeriesApiModel, { SeriesDetail, SeriesListOption, SeriesListResult } from './ISeriesApiModel';
 import ISeriesImageModel from './ISeriesImageModel';
@@ -32,6 +33,7 @@ export default class SeriesApiModel implements ISeriesApiModel {
             seasonYear: option.seasonYear,
             seasonName: option.seasonName,
             status: option.status,
+            origin: option.origin,
             onairWithinMs: SeriesApiModel.ON_AIR_WITHIN_MS,
         });
 
@@ -85,6 +87,7 @@ export default class SeriesApiModel implements ISeriesApiModel {
                     hasImage: typeof image !== 'undefined',
                     imageSource: image?.source ?? null,
                     imageCopyright: image?.copyright ?? null,
+                    origin: getSeriesOrigin(series),
                 };
             }),
             total: filteredTotal,
@@ -139,6 +142,7 @@ export default class SeriesApiModel implements ISeriesApiModel {
             hasImage: image !== null,
             imageSource: image?.source ?? null,
             imageCopyright: image?.copyright ?? null,
+            origin: getSeriesOrigin(series),
             externalIds: { syobocalTid: series.syobocalTid, annictId: series.annictId, tmdbId: series.tmdbId },
             channels: channels.map(x => ({ ...x, count: Number(x.count) })),
             continuity: analyzeSeriesContinuity(allRecorded ?? recorded),

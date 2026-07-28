@@ -6,9 +6,18 @@ import IRecordedDB from '../../db/IRecordedDB';
 import ISeriesDB from '../../db/ISeriesDB';
 import ISeriesResolver from '../../series/ISeriesResolver';
 import { normalizeSeriesTitle } from '../../series/SeriesNormalizer';
-import ISeriesMappingApiModel, { SeriesMappingValue, UpdateSeriesMappingOption } from './ISeriesMappingApiModel';
+import * as apid from '../../../../api';
+import ISeriesMappingApiModel, {
+    BulkUpdateSeriesMappingOption,
+    BulkUpdateSeriesMappingResult,
+    SeriesMappingValue,
+    UpdateSeriesMappingOption,
+} from './ISeriesMappingApiModel';
 @injectable()
 export default class SeriesMappingApiModel implements ISeriesMappingApiModel {
+    // 一括更新の 1 リクエストあたりの上限 (シリーズ 1 本の録画数を大きく上回る値)
+    private static readonly BULK_LIMIT = 500;
+
     constructor(
         @inject('IConfiguration') private config: IConfiguration,
         @inject('IRecordedDB') private recordedDB: IRecordedDB,
@@ -98,6 +107,43 @@ export default class SeriesMappingApiModel implements ISeriesMappingApiModel {
         if (!result) throw new Error('SeriesMappingSaveFailed');
         return result;
     }
+    public async updateBulk(option: BulkUpdateSeriesMappingOption): Promise<BulkUpdateSeriesMappingResult> {
+        this.enabled();
+        if (typeof option !== 'object' || option === null || Array.isArray(option.items) === false)
+            throw new Error('InvalidRequestBody');
+        if (option.items.length === 0) return { updated: 0, failed: [] };
+        if (option.items.length > SeriesMappingApiModel.BULK_LIMIT) throw new Error('TooManyItems');
+
+        const failed: BulkUpdateSeriesMappingResult['failed'] = [];
+        let updated = 0;
+        // 1 件失敗しても残りは反映したいので、録画ごとに独立して処理する
+        for (const item of option.items) {
+            const recordedId = Number(item?.recordedId);
+            try {
+                if (Number.isInteger(recordedId) === false) throw new Error('InvalidRecordedId');
+                const link = await this.seriesDB.findLink(recordedId);
+                if (link === null) throw new Error('SeriesMappingIsNotFound');
+                const current = link.episodeId === null ? null : await this.seriesDB.findEpisodeById(link.episodeId);
+                // 指定の無い項目は現在値を維持する (話数だけ・放送種別だけの一括更新を可能にするため)
+                await this.update(recordedId, {
+                    seriesId: link.seriesId,
+                    seasonNumber: item.seasonNumber ?? current?.seasonNumber ?? 1,
+                    episodeNumber:
+                        typeof item.episodeNumber === 'undefined'
+                            ? (current?.episodeNumber ?? null)
+                            : item.episodeNumber,
+                    airType: item.airType ?? (link.airType as apid.SeriesAirType),
+                    // 話数の付け直しでタイトル辞書を汚さないよう、学習は明示指定時のみ行う
+                    learnAlias: option.learnAlias === true,
+                });
+                updated++;
+            } catch (err) {
+                failed.push({ recordedId, message: err instanceof Error ? err.message : String(err) });
+            }
+        }
+        return { updated, failed };
+    }
+
     async remove(recordedId: number): Promise<void> {
         this.enabled();
         const previous = await this.seriesDB.findLink(recordedId);

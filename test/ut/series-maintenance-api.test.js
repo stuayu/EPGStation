@@ -54,27 +54,63 @@ test('pending queue is hidden while feature is disabled', async () => {
 });
 
 function maintenanceFixture() {
-    const seriesA = { id: 1, title: 'A' };
-    const seriesB = { id: 2, title: 'B' };
+    const seriesA = { id: 1, title: 'A', normalizedTitle: 'よふかしのうた', syobocalTid: null };
+    const seriesB = { id: 2, title: 'B', normalizedTitle: 'よふかしのうた2期', syobocalTid: 5678 };
+    const seriesC = { id: 3, title: 'C', normalizedTitle: 'よるのばけもの', syobocalTid: null };
+    const merged = [];
     const db = {
-        getSeries: async id => ({ 1: seriesA, 2: seriesB }[id] ?? null),
-        mergeSeries: async () => 3,
+        getSeries: async id => ({ 1: seriesA, 2: seriesB, 3: seriesC }[id] ?? null),
+        mergeSeries: async (from, to) => {
+            merged.push([from, to]);
+            return 3;
+        },
         splitSeries: async (sourceId, recordedIds, newTitle) => ({ id: 9, title: newTitle }),
+        findByNormalizedTitlePrefix: async () => [seriesB, seriesC],
+        listRecordedForSeriesIds: async ids => new Map(ids.map(id => [id, [{ recordedId: id * 10 }]])),
     };
-    return { model: new MaintenanceModel(config, db) };
+    return { model: new MaintenanceModel(config, db), merged };
 }
 test('merge moves links from source to target series', async () => {
     const { model } = maintenanceFixture();
-    const result = await model.merge(1, 2);
+    const result = await model.merge([1], 2);
     assert.equal(result.movedLinkCount, 3);
+    assert.equal(result.mergedSeriesCount, 1);
+});
+test('merge accepts multiple source series at once', async () => {
+    const { model, merged } = maintenanceFixture();
+    const result = await model.merge([1, 3], 2);
+    assert.equal(result.mergedSeriesCount, 2);
+    assert.equal(result.movedLinkCount, 6);
+    assert.deepEqual(merged, [
+        [1, 2],
+        [3, 2],
+    ]);
+});
+test('merge ignores the target and duplicates in the source list', async () => {
+    const { model, merged } = maintenanceFixture();
+    const result = await model.merge([1, 1, 2], 2);
+    assert.equal(result.mergedSeriesCount, 1);
+    assert.deepEqual(merged, [[1, 2]]);
 });
 test('merge rejects merging a series into itself', async () => {
     const { model } = maintenanceFixture();
-    await assert.rejects(() => model.merge(1, 1), /InvalidRequestBody/);
+    await assert.rejects(() => model.merge([1], 1), /InvalidRequestBody/);
 });
 test('merge rejects unknown series ids', async () => {
     const { model } = maintenanceFixture();
-    await assert.rejects(() => model.merge(1, 999), /SeriesIsNotFound/);
+    await assert.rejects(() => model.merge([1], 999), /SeriesIsNotFound/);
+});
+test('merge candidates rank prefix matches above partial ones and expose the origin', async () => {
+    const { model } = maintenanceFixture();
+    const result = await model.listMergeCandidates(1);
+    assert.equal(result.seriesId, 1);
+    assert.equal(result.origin, 'local');
+    // 「よふかしのうた2期」は前方一致、「よるのばけもの」は先頭 1 文字だけの部分一致
+    assert.equal(result.candidates[0].seriesId, 2);
+    assert.equal(result.candidates[0].matchType, 'prefix');
+    // しょぼいカレンダーの TID を持つ側は辞書起点として返る (統合先の既定に使う)
+    assert.equal(result.candidates[0].origin, 'dictionary');
+    assert.equal(result.candidates[0].recordedCount, 1);
 });
 test('split creates a new series from the given recordings', async () => {
     const { model } = maintenanceFixture();

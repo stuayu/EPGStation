@@ -1303,6 +1303,48 @@ export interface SeriesListItem {
     imageSource?: 'annict' | 'thumbnail' | null;
     // 画像の著作権表記 (imageSource が 'annict' のときのみ入る)
     imageCopyright?: string | null;
+    // シリーズの出所 ('dictionary': 外部の作品辞書由来 / 'local': 録画タイトルから作られた)
+    origin: SeriesOrigin;
+}
+
+/**
+ * シリーズの出所 ('dictionary': しょぼいカレンダー / Annict / Wikidata の ID を持つ / 'local': 録画タイトルから作られた)
+ */
+export type SeriesOrigin = 'dictionary' | 'local';
+
+/**
+ * マージ候補の一致種別
+ * 'exact': 正規化タイトルが完全一致 / 'prefix': 候補が対象タイトルで始まる /
+ * 'contained': 対象が候補タイトルで始まる / 'partial': 先頭の一部だけ一致
+ */
+export type SeriesMergeMatchType = 'exact' | 'prefix' | 'contained' | 'partial';
+
+/**
+ * マージ候補
+ */
+export interface SeriesMergeCandidate {
+    seriesId: SeriesId;
+    title: string;
+    normalizedTitle: string;
+    origin: SeriesOrigin;
+    recordedCount: number;
+    seasonYear?: number | null;
+    seasonName?: 'WINTER' | 'SPRING' | 'SUMMER' | 'AUTUMN' | null;
+    matchType: SeriesMergeMatchType;
+    // 正規化タイトルの共通接頭辞の文字数
+    commonPrefixLength: number;
+}
+
+/**
+ * マージ候補一覧
+ */
+export interface SeriesMergeCandidateResult {
+    // マージ元 (統合される側) のシリーズ
+    seriesId: SeriesId;
+    title: string;
+    normalizedTitle: string;
+    origin: SeriesOrigin;
+    candidates: SeriesMergeCandidate[];
 }
 
 /**
@@ -1381,6 +1423,34 @@ export interface UpdateSeriesMappingOption {
 }
 
 /**
+ * シリーズ割当の一括更新 1 件分。
+ * 省略した項目は現在の値を維持する (話数だけ・放送種別だけの更新ができる)
+ */
+export interface BulkSeriesMappingItem {
+    recordedId: RecordedId;
+    seasonNumber?: number;
+    episodeNumber?: number | null;
+    airType?: SeriesAirType;
+}
+
+/**
+ * シリーズ割当の一括更新リクエストボディ
+ */
+export interface BulkUpdateSeriesMappingOption {
+    items: BulkSeriesMappingItem[];
+    // 正規化タイトル → シリーズの対応を辞書に学習させるか (既定 false)
+    learnAlias?: boolean;
+}
+
+/**
+ * シリーズ割当の一括更新結果
+ */
+export interface BulkUpdateSeriesMappingResult {
+    updated: number;
+    failed: Array<{ recordedId: RecordedId; message: string }>;
+}
+
+/**
  * 未確定候補
  */
 export interface SeriesPendingMatchCandidate {
@@ -1414,7 +1484,9 @@ export interface SeriesPendingListResult {
  * シリーズマージのリクエストボディ
  */
 export interface MergeSeriesOption {
-    fromSeriesId: SeriesId;
+    // 統合元。単体指定 (fromSeriesId) と複数指定 (fromSeriesIds) のどちらでもよい
+    fromSeriesId?: SeriesId;
+    fromSeriesIds?: SeriesId[];
     toSeriesId: SeriesId;
 }
 
@@ -1423,6 +1495,8 @@ export interface MergeSeriesOption {
  */
 export interface MergeSeriesResult {
     movedLinkCount: number;
+    // 統合して削除したシリーズ数
+    mergedSeriesCount: number;
 }
 
 /**
