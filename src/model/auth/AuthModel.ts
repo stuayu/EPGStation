@@ -46,8 +46,9 @@ export default class AuthModel implements IAuthModel {
     }
 
     public isAnonymousAllowed(): boolean {
-        // 認証が無効ならそもそも全員が制限なしなので false を返す (画面側の分岐を単純にするため)
-        return this.isEnabled() === true && this.configuration.getConfig().auth?.allowAnonymous === true;
+        // 認証が無効ならそもそも全員が制限なしなので false を返す (画面側の分岐を単純にするため)。
+        // 未指定は許可 (opt-out)。日常操作はログイン不要のまま、管理者向け操作だけを保護する
+        return this.isEnabled() === true && this.configuration.getConfig().auth?.allowAnonymous !== false;
     }
 
     public createMediaToken(payload: SessionPayload): string | null {
