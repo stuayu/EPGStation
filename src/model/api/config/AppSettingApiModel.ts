@@ -4,10 +4,21 @@ import IAppSettingHistoryDB from '../../db/IAppSettingHistoryDB';
 import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
 import IIPCClient from '../../ipc/IIPCClient';
+import IConfigOverlayLoader from '../../config/IConfigOverlayLoader';
+import {
+    CONFIG_OVERLAY_FIELDS,
+    configOverlayRequiresRestart,
+    diffConfigOverlayKeys,
+    sanitizeConfigOverlay,
+} from '../../config/ConfigOverlay';
 import ILogLevelApplier from '../../log/ILogLevelApplier';
 import ISecretCrypto from '../../security/ISecretCrypto';
 import { appSettingRequiresRestart, APP_SETTING_ALLOWED_KEYS, validateAppSettingValue } from './AppSettingSchema';
-import IAppSettingApiModel, { AppSettingHistoryItem, AppSettingUpdateResult } from './IAppSettingApiModel';
+import IAppSettingApiModel, {
+    AppSettingHistoryItem,
+    AppSettingUpdateResult,
+    EditableConfig,
+} from './IAppSettingApiModel';
 
 export function validateAppSettings(value: unknown): asserts value is Record<string, unknown> {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -29,6 +40,8 @@ export default class AppSettingApiModel implements IAppSettingApiModel {
     // 復号できなかった値 (secretKey 未設定・鍵ローテーション後など) を示すプレースホルダ。
     // 実際の暗号文はそのまま DB に残るため、これを再度 PUT しても上書きされない限りデータは失われない
     private static readonly UNDECRYPTABLE_PLACEHOLDER = '********(復号不可)';
+    // config.yml 側の秘密情報を画面へ出すときの伏せ字。この値のまま保存されたら変更なしとして扱う
+    public static readonly CONFIG_SECRET_PLACEHOLDER = '********';
 
     constructor(
         @inject('IConfiguration') private readonly configuration: IConfiguration,
@@ -37,6 +50,7 @@ export default class AppSettingApiModel implements IAppSettingApiModel {
         @inject('IAppSettingHistoryDB') private readonly history: IAppSettingHistoryDB,
         @inject('IIPCClient') private readonly ipc: IIPCClient,
         @inject('ILogLevelApplier') private readonly logLevelApplier: ILogLevelApplier,
+        @inject('IConfigOverlayLoader') private readonly configOverlayLoader: IConfigOverlayLoader,
     ) {}
 
     /**
@@ -50,6 +64,33 @@ export default class AppSettingApiModel implements IAppSettingApiModel {
     }
 
     /**
+     * config.yml 編集画面用の情報を返す。
+     * 秘密情報 (トークン・パスワード等) は含めない形にマスクしてから返す
+     */
+    public async getEditableConfig(): Promise<EditableConfig> {
+        this.ensureEnabled();
+        return {
+            effective: this.maskConfig(this.configuration.getConfig() as unknown as Record<string, unknown>),
+            file: this.maskConfig(this.configuration.getFileConfig() as unknown as Record<string, unknown>),
+            overlay: this.maskConfig(this.configuration.getOverlay()),
+            fields: CONFIG_OVERLAY_FIELDS.map(x => ({ key: x.key as string, requiresRestart: x.requiresRestart })),
+        };
+    }
+
+    /**
+     * config の中の秘密情報を伏せる。
+     * config.yml は管理者が直接読めるファイルだが、画面へ出す以上は不要な露出を避ける
+     */
+    private maskConfig(value: Record<string, unknown>): Record<string, unknown> {
+        const cloned = JSON.parse(JSON.stringify(value ?? {}));
+        // LLM の API キーなど、config.yml 側に書かれる秘密情報
+        if (typeof cloned?.seriesLlm?.apiKey === 'string' && cloned.seriesLlm.apiKey !== '') {
+            cloned.seriesLlm.apiKey = AppSettingApiModel.CONFIG_SECRET_PLACEHOLDER;
+        }
+        return cloned;
+    }
+
+    /**
      * 設定値を更新する。JSON Schema 検証・シークレットの暗号化・変更履歴の記録・
      * requiresRestart 判定をまとめて行う
      * @param value: トップレベルキーごとの更新内容 (部分更新可)
@@ -59,6 +100,16 @@ export default class AppSettingApiModel implements IAppSettingApiModel {
         validateAppSettings(value);
         for (const [key, v] of Object.entries(value)) {
             validateAppSettingValue(key, v);
+        }
+        // config.yml への重ね書きは編集を許可したキーだけに絞る
+        if (typeof value.config !== 'undefined') {
+            const overlay = sanitizeConfigOverlay(value.config);
+            // 伏せ字のまま送り返されたら「変更なし」とみなして既存値を消さない
+            const llm = overlay.seriesLlm as { apiKey?: string } | undefined;
+            if (llm?.apiKey === AppSettingApiModel.CONFIG_SECRET_PLACEHOLDER) {
+                delete llm.apiKey;
+            }
+            value.config = overlay;
         }
 
         const current = await this.db.getAll();
@@ -88,7 +139,19 @@ export default class AppSettingApiModel implements IAppSettingApiModel {
             await this.logLevelApplier.apply().catch(() => {});
         }
 
-        return this.buildUpdateResult(Object.keys(value));
+        // config は「実際に config.yml と違う値になったキー」で再起動要否を判定する
+        const changedConfigKeys =
+            typeof value.config === 'undefined'
+                ? []
+                : diffConfigOverlayKeys(this.configuration.getFileConfig(), value.config);
+
+        // 再起動が不要な項目はこのプロセスへ即時反映する
+        // (Operator / EPGUpdater 側は notifyChanged を受けて各自で読み直す)
+        if (typeof value.config !== 'undefined') {
+            await this.configOverlayLoader.load().catch(() => {});
+        }
+
+        return this.buildUpdateResult(Object.keys(value), changedConfigKeys);
     }
 
     /**
@@ -120,8 +183,15 @@ export default class AppSettingApiModel implements IAppSettingApiModel {
         return this.buildUpdateResult([key]);
     }
 
-    private async buildUpdateResult(changedKeys: string[]): Promise<AppSettingUpdateResult> {
-        const requiresRestartKeys = changedKeys.filter(key => appSettingRequiresRestart(key));
+    private async buildUpdateResult(
+        changedKeys: string[],
+        changedConfigKeys: string[] = [],
+    ): Promise<AppSettingUpdateResult> {
+        const requiresRestartKeys = [
+            ...changedKeys.filter(key => appSettingRequiresRestart(key)),
+            // config は個々のキーごとに再起動要否が違う
+            ...configOverlayRequiresRestart(changedConfigKeys).map(key => `config.${key}`),
+        ];
         return {
             settings: this.transformSecrets(await this.db.getAll(), null, 'mask') as Record<string, unknown>,
             requiresRestart: requiresRestartKeys.length > 0,

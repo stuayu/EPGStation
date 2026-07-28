@@ -3325,6 +3325,45 @@ components:
             required:
                 - proposals
 
+        ConfigFieldInfo:
+            description: config.yml の編集可能なキー
+            type: object
+            required:
+                - key
+                - requiresRestart
+            properties:
+                key:
+                    type: string
+                requiresRestart:
+                    description: 変更に EPGStation の再起動が必要か
+                    type: boolean
+
+        EditableConfig:
+            description: config.yml 編集画面用の情報
+            type: object
+            required:
+                - effective
+                - file
+                - overlay
+                - fields
+            properties:
+                effective:
+                    description: config.yml + GUI の差分を重ねた実効値 (秘密情報はマスク済み)
+                    type: object
+                    additionalProperties: true
+                file:
+                    description: config.yml をそのまま読んだ値
+                    type: object
+                    additionalProperties: true
+                overlay:
+                    description: GUI で保存されている差分
+                    type: object
+                    additionalProperties: true
+                fields:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ConfigFieldInfo'
+
         AppSettingValue:
             description: >-
                 システム設定 (トップレベルキーごとの値。metadata / notifications / series / dashboard / logging)。

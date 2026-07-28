@@ -136,6 +136,18 @@ export const APP_SETTING_SCHEMA: Record<string, JsonSchema> = {
         additionalProperties: true,
         properties: {},
     },
+    // config.yml への重ね書き (GUI から編集した設定)。
+    // 構造は config.yml と同じで、編集を許可するトップレベルキーは
+    // CONFIG_OVERLAY_FIELDS (src/model/config/ConfigOverlay.ts) が持つ。
+    // 個々の値の検証は ConfigOverlay 側で行うためここでは型だけを見る
+    config: {
+        type: 'object',
+        additionalProperties: true,
+        // 再起動要否はキーごとに変わるため、ここでは false 固定にして
+        // AppSettingApiModel が configOverlayRequiresRestart() で判定する
+        requiresRestart: false,
+        properties: {},
+    },
     // ログレベル (config/*LogConfig.yml がベースで、ここで指定したカテゴリだけを上書きする)。
     // log4js のロガーへ即時反映できるため再起動は不要
     logging: {
