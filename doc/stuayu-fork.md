@@ -134,7 +134,8 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 - **Web UI / API にログイン認証を追加した (既定は無効)**
     - **背景**: EPGStation 自体は無認証で、リバースプロキシ側で認証する前提だった。設定を画面から書き換えられるようにするにあたり、まず認証の土台を用意した
-    - **有効化**: `config.yml` の `auth.enabled: true`。**既定は無効**なので、既存構成 (プロキシで認証している等) は何も変わらない。有効にして最初にアクセスすると管理ユーザーの作成画面が出る (ユーザーが 0 人のときだけ `POST /api/auth/setup` が通る)
+    - **有効化**: **既定で有効** (`auth.enabled` 未指定 = 有効の opt-out)。初回アクセス時に管理ユーザーの作成画面が出る (ユーザーが 0 人のときだけ `POST /api/auth/setup` が通る)。リバースプロキシ側で認証している等で不要なら `auth.enabled: false` を書く
+    - **外部プレイヤー・IPTV 対応 (認証を既定 ON にするための必須対応)**: 動画配信 URL は `/api` 配下にあるため、認証を必須にすると **VLC / Infuse などの外部プレイヤーと IPTV クライアントが Cookie を送れず 401 になる**。そこで `/videos` `/streams` `/iptv` `/recorded` 配下に限り、クエリの `?token=` でも認証できるようにした (`isMediaApiPath`)。トークンは `GET /api/auth/media-token` が発行し、**セッションとは別の署名鍵**を使うので取り違えられない。既定の有効期間は 365 日で、パスワード変更・ユーザー削除で失効する。Web UI は起動時に取得して URL 組み立て時に自動付与する (`client/src/util/MediaToken.ts`)
     - **パスワード**: 依存を増やさず Node 標準の `scrypt` でソルト付きハッシュにする (`src/model/auth/PasswordHash.ts`)。保存形式は `scrypt$N$r$p$salt$hash` と自己記述的にし、将来パラメータを変えても既存ハッシュを読める。照合は `timingSafeEqual`
     - **セッション**: サーバー側にセッションストアを持たない HMAC 署名付きトークン (`src/model/auth/SessionToken.ts`) を **HttpOnly / SameSite=Lax の Cookie** に入れる。再起動でログアウトさせず、`<video>` や `<img>` からのリクエストにも自動で付くのでサムネイル・配信も保護できる。署名鍵は `data/key/secret.key` から用途別に導出する (`ISecretCrypto.getSigningKey()`)
     - **失効**: `user.tokenVersion` をトークンに埋め、パスワード変更で加算することで発行済みセッションを一括無効化する。ユーザー削除も同様に即時失効する

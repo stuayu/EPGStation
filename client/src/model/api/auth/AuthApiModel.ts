@@ -19,6 +19,9 @@ export default class AuthApiModel implements IAuthApiModel {
     public async logout(): Promise<void> {
         await this.repository.post('/auth/logout', {});
     }
+    public async getMediaToken(): Promise<string | null> {
+        return (await this.repository.get('/auth/media-token')).data?.token ?? null;
+    }
     public async listUsers(): Promise<AuthUserItem[]> {
         return (await this.repository.get('/auth/users')).data;
     }

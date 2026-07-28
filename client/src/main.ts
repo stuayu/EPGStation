@@ -10,6 +10,7 @@ import IPWAConfigModel from './model/pwa/IPWAConfigModel';
 import IServerConfigModel from './model/serverConfig/IServerConfigModel';
 import IAuthApiModel from './model/api/auth/IAuthApiModel';
 import Login from './views/Login.vue';
+import { setMediaToken } from './util/MediaToken';
 import vuetify from './plugins/vuetify';
 import router from './router';
 setter(container);
@@ -26,6 +27,13 @@ smoothscroll.polyfill();
 
         return;
     }
+
+    // 外部プレイヤー・IPTV 用のアクセストークンを取っておく (認証無効なら null)
+    await container
+        .get<IAuthApiModel>('IAuthApiModel')
+        .getMediaToken()
+        .then(setMediaToken)
+        .catch(err => console.error('get media token error', err));
 
     const serverConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
     await serverConfigModel.fetchConfig().catch(err => console.error('get server config error', err));

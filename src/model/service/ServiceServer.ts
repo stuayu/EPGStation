@@ -15,7 +15,7 @@ import type { ServeStaticOptions } from 'serve-static';
 import urljoin from 'url-join';
 import FileUtil from '../../util/FileUtil';
 import IAuthModel from '../auth/IAuthModel';
-import { isAdminApiPath, isPublicApiPath, toApiPath } from '../auth/AuthGuard';
+import { isAdminApiPath, isMediaApiPath, isPublicApiPath, toApiPath } from '../auth/AuthGuard';
 import { SESSION_COOKIE_NAME } from '../auth/SessionCookie';
 import { readCookie } from '../auth/SessionToken';
 import container from '../ModelContainer';
@@ -118,7 +118,15 @@ class ServiceServer implements IServiceServer {
 
             try {
                 const token = readCookie(req.headers.cookie, SESSION_COOKIE_NAME);
-                const payload = await authModel.verify(token);
+                let payload = await authModel.verify(token);
+
+                // 外部プレイヤー・IPTV クライアントは Cookie を送れないため、
+                // 動画配信系に限りクエリのアクセストークンでも認証を通す
+                if (payload === null && apiPath !== null && isMediaApiPath(apiPath) === true) {
+                    const query = new URL(req.url, 'http://localhost').searchParams.get('token');
+                    payload = await authModel.verifyMediaToken(query);
+                }
+
                 if (payload === null) {
                     res.status(401).json({ code: 401, message: 'Unauthorized' });
 

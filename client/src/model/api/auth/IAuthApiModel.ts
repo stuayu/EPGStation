@@ -15,6 +15,10 @@ export default interface IAuthApiModel {
     setup(name: string, password: string): Promise<void>;
     login(name: string, password: string): Promise<void>;
     logout(): Promise<void>;
+    /**
+     * 外部プレイヤー・IPTV 用のアクセストークンを取得する (認証無効時は null)
+     */
+    getMediaToken(): Promise<string | null>;
     listUsers(): Promise<AuthUserItem[]>;
     addUser(name: string, password: string): Promise<AuthUserItem>;
     /**

@@ -273,9 +273,9 @@ tsreadex: '/usr/local/bin/tsreadex'
 
 #### Web UI / API のログイン認証
 
-有効にすると EPGStation へのアクセスにログインが必要になる。**既定は無効**なので、
-リバースプロキシ側で認証している既存構成には影響しない。
-有効にして最初にアクセスすると管理ユーザーの作成画面が表示される。
+EPGStation へのアクセスにログインを必要にする。**既定で有効**。
+初回アクセス時に管理ユーザーの作成画面が表示される。
+リバースプロキシ側で認証している等で不要な場合は `enabled: false` を書く。
 
 **最初にサインアップした人が自動でシステム管理者**になり、以降にサインアップした人は一般権限になる。
 システム管理者は設定変更・ユーザー管理・バージョン更新ができ、他のユーザーへ随時管理者権限を付与できる。
@@ -288,8 +288,9 @@ tsreadex: '/usr/local/bin/tsreadex'
 
 | 子プロパティ名 | 種類    | 必須 | 説明                                                                     |
 | -------------- | ------- | ---- | ------------------------------------------------------------------------ |
-| enabled        | boolean | no   | ログイン必須にするか。省略時 false                                       |
+| enabled        | boolean | no   | ログイン必須にするか。**省略時 true**。無効にするには false を書く       |
 | sessionTtlMs   | number  | no   | セッションの有効期間 (ms)。省略時 30 日                                  |
+| mediaTokenTtlMs| number  | no   | 外部プレイヤー用アクセストークンの有効期間 (ms)。省略時 365 日           |
 | allowSignUp    | boolean | no   | 2 人目以降のサインアップを許可するか。省略時 true                        |
 | providers      | object  | no   | 外部 ID プロバイダ (SSO) の設定。`google` / `github`                     |
 
@@ -303,7 +304,8 @@ tsreadex: '/usr/local/bin/tsreadex'
 
 ```yaml
 auth:
-    enabled: true
+    # 認証そのものを止める場合のみ false を書く (既定は有効)
+    # enabled: false
     sessionTtlMs: 2592000000
     allowSignUp: true
     providers:
@@ -322,13 +324,23 @@ auth:
       「承認済みのリダイレクト URI」に `https://<EPGStation の URL>/api/auth/oauth/google/callback` を登録する
     - GitHub: Settings > Developer settings > OAuth Apps で新規作成。
       「Authorization callback URL」に `https://<EPGStation の URL>/api/auth/oauth/github/callback` を登録する
-2. **config.yml に `auth` を書く** (上の例を参照)。`enabled: true` と `providers` の両方が必要
+2. **config.yml に `auth.providers` を書く** (上の例を参照)。認証自体は既定で有効なので `enabled` は不要
 3. **EPGStation を再起動する** (`auth` は起動時に読まれるため)
 4. Web UI を開くとログイン画面に「Google ではじめる」ボタンが出る。
    最初にサインアップした人が自動でシステム管理者になる
 
-> `auth` を書いていない、または `enabled: true` にしていない場合は**認証機能そのものが無効**なため、
-> ログイン画面もサインアップのボタンも表示されません。
+> `providers` を書いていない場合、ログイン画面にはユーザー名・パスワードの欄だけが出ます
+> (SSO のボタンは設定済みのプロバイダの分だけ表示されます)。
+
+#### 外部プレイヤー・IPTV クライアントについて
+
+VLC / Infuse などの外部プレイヤーや IPTV クライアントは Cookie を送れないため、
+動画配信 URL (`/api/videos/...`, `/api/streams/...`, `/api/iptv/...`) には
+**アクセストークンをクエリで付けて認証**する。Web UI が URL を組み立てる際に自動で付与するので、
+画面から「外部プレイヤーで開く」「ダウンロード」を使う分には設定は要らない。
+
+IPTV クライアントなどに URL を手で登録する場合は、`GET /api/auth/media-token` で取得したトークンを
+`?token=...` として付ける。トークンはパスワード変更・ユーザー削除で失効する。
 
 - SSO のクライアント ID / シークレットは**ログイン前に必要**なため、DB (設定画面) ではなく config.yml に置く
 - コールバック URL は `X-Forwarded-Proto` / `X-Forwarded-Host` を見てアクセス元から自動生成する。リバースプロキシ配下などで合わない場合のみ `redirectUri` を明示する

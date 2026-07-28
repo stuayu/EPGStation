@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { hashPassword, verifyPassword, assertValidPassword } = require('../../dist/model/auth/PasswordHash');
 const { createSessionToken, verifySessionToken, readCookie } = require('../../dist/model/auth/SessionToken');
-const { isAdminApiPath, isPublicApiPath, toApiPath } = require('../../dist/model/auth/AuthGuard');
+const { isAdminApiPath, isMediaApiPath, isPublicApiPath, toApiPath } = require('../../dist/model/auth/AuthGuard');
 const AuthModel = require('../../dist/model/auth/AuthModel').default;
 
 test('password hashing is salted (the same password produces different hashes)', () => {
@@ -148,8 +148,11 @@ function authFixture(options = {}) {
     const configuration = {
         getConfig: () => ({ auth: { enabled: options.enabled !== false, allowSignUp: options.allowSignUp } }),
     };
+    // 実装と同じく用途ごとに違う鍵を返す (セッションとメディア用トークンを取り違えないため)。
     // 鍵ファイルが読めない状況を再現できるよう、null も明示的に渡せるようにする
-    const crypto = { getSigningKey: () => ('signingKey' in options ? options.signingKey : 'test-signing-key') };
+    const crypto = {
+        getSigningKey: purpose => ('signingKey' in options ? options.signingKey : `test-signing-key:${purpose}`),
+    };
     return { model: new AuthModel(configuration, db, crypto), users, identities };
 }
 
@@ -226,6 +229,51 @@ test('a deleted user can no longer use their session', async () => {
 
     await model.removeUser(viewer.id);
     assert.equal(await model.verify(login.token), null);
+});
+
+test('authentication is enabled unless config.yml turns it off', async () => {
+    // 未指定は有効 (opt-out)
+    const configuration = { getConfig: () => ({}) };
+    const enabled = new AuthModel(configuration, { count: async () => 0 }, { getSigningKey: () => 'k' });
+    assert.equal(enabled.isEnabled(), true);
+
+    const withEmptyAuth = new AuthModel({ getConfig: () => ({ auth: {} }) }, { count: async () => 0 }, { getSigningKey: () => 'k' });
+    assert.equal(withEmptyAuth.isEnabled(), true);
+});
+
+test('media tokens let external players through without a cookie', async () => {
+    const { model } = authFixture();
+    const login = await model.setup('admin', 'password123');
+    const session = await model.verify(login.token);
+
+    const mediaToken = model.createMediaToken(session);
+    assert.notEqual(mediaToken, null);
+    // メディア用トークンとして検証できる
+    assert.equal((await model.verifyMediaToken(mediaToken)).uid, session.uid);
+    // セッションとは鍵が違うので取り違えられない
+    assert.equal(await model.verify(mediaToken), null);
+    assert.equal(await model.verifyMediaToken(login.token), null);
+});
+
+test('media tokens are invalidated by a password change', async () => {
+    const { model } = authFixture();
+    const login = await model.setup('admin', 'password123');
+    const mediaToken = model.createMediaToken(await model.verify(login.token));
+    assert.notEqual(await model.verifyMediaToken(mediaToken), null);
+
+    await model.changePassword(1, 'newpassword123', 'password123');
+    assert.equal(await model.verifyMediaToken(mediaToken), null);
+});
+
+test('only the media endpoints accept a token in the query', () => {
+    // 外部プレイヤー・IPTV クライアントは Cookie を送れない
+    for (const path of ['/videos/1', '/videos/1/playlist', '/iptv/channel.m3u8', '/streams/live/1/m2ts', '/recorded/1/thumbnail']) {
+        assert.equal(isMediaApiPath(path), true, path);
+    }
+    // 設定変更などをトークンで叩けてしまわないこと
+    for (const path of ['/settings/system', '/auth/users', '/reserves', '/rules', '/videosxyz']) {
+        assert.equal(isMediaApiPath(path), false, path);
+    }
 });
 
 test('everything is inert while auth is disabled in config.yml', async () => {

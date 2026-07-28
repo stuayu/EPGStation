@@ -44,6 +44,19 @@ export default interface IAuthModel {
      */
     verify(token: string | null): Promise<SessionPayload | null>;
     /**
+     * 外部プレイヤー・IPTV クライアント向けのアクセストークンを発行する。
+     * これらは Cookie を送れないため、URL のクエリに載せて認証する
+     * @param payload: SessionPayload ログイン中のユーザー
+     * @return string | null 署名鍵が無ければ null
+     */
+    createMediaToken(payload: SessionPayload): string | null;
+    /**
+     * 外部プレイヤー向けトークンを検証する
+     * @param token: string | null
+     * @return Promise<SessionPayload | null>
+     */
+    verifyMediaToken(token: string | null): Promise<SessionPayload | null>;
+    /**
      * ユーザー一覧 (パスワード情報は含まない)
      * @return Promise<AuthUserItem[]>
      */

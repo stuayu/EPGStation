@@ -2,6 +2,7 @@ import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../api';
 import UaUtil from '../../../util/UaUtil';
 import Util from '../../../util/Util';
+import { withMediaToken } from '../../../util/MediaToken';
 import IServerConfigModel from '../../serverConfig/IServerConfigModel';
 import { IOnAirSelectStreamSettingStorageModel } from '../../storage/onair/IOnAirSelectStreamSettingStorageModel';
 import { ISettingStorageModel } from '../../storage/setting/ISettingStorageModel';
@@ -191,7 +192,12 @@ export default class OnAirSelectStreamState implements IOnAirSelectStreamState {
         }
 
         // URL Schemeの準備
-        let viewURL = location.host + Util.getSubDirectory() + `/api/streams/live/${channel.id.toString(10)}/m2ts?mode=${this.selectedStreamConfig}`;
+        // 外部プレイヤーは Cookie を送れないため、認証有効時はトークンを付ける
+        let viewURL =
+            location.host +
+            withMediaToken(
+                Util.getSubDirectory() + `/api/streams/live/${channel.id.toString(10)}/m2ts?mode=${this.selectedStreamConfig}`,
+            );
         if (urlScheme.match(/vlc-x-callback/)) {
             viewURL = encodeURIComponent(viewURL);
         }
@@ -209,6 +215,6 @@ export default class OnAirSelectStreamState implements IOnAirSelectStreamState {
             return null;
         }
 
-        return `/api/streams/live/${channel.id.toString(10)}/m2ts/playlist?mode=${this.selectedStreamConfig}`;
+        return withMediaToken(`/api/streams/live/${channel.id.toString(10)}/m2ts/playlist?mode=${this.selectedStreamConfig}`);
     }
 }
