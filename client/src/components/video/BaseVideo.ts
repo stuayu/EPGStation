@@ -4,10 +4,12 @@ import container from '@/model/ModelContainer';
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
 import JikkyoCommentClient, { JikkyoComment } from '@/util/JikkyoCommentClient';
 import JikkyoKakologClient from '@/util/JikkyoKakologClient';
+import VirtualTimeline from '@/components/video/VirtualTimeline';
 
 export default abstract class BaseVideo extends Vue {
     protected dp: DPlayer | null = null;
     protected containerElement: HTMLElement | null = null;
+    private virtualTimeline: VirtualTimeline | null = null;
     private jikkyoCommentClient: JikkyoCommentClient | null = null;
     private jikkyoKakologClient: JikkyoKakologClient | null = null;
     private jikkyoCommentQueue: JikkyoComment[] = []; // 弾幕インスタンス生成前に届いたコメント
@@ -61,6 +63,17 @@ export default abstract class BaseVideo extends Vue {
 
         this.dp = new DPlayer(options);
         this.bindEvents();
+
+        // ストリーミング再生は video 要素が動画の一部しか持たないため、
+        // DPlayer のシークバーを動画全体の時間軸で動かすアダプタを噛ませる
+        if (this.isEnabledVirtualTimeline() === true) {
+            this.virtualTimeline = new VirtualTimeline(this.dp, {
+                getDuration: () => this.getDuration(),
+                getCurrentTime: () => this.getCurrentTime(),
+                setCurrentTime: (time: number) => this.setCurrentTime(time),
+                getEncodedTime: () => this.getEncodedTime(),
+            });
+        }
 
         // ライブコメントまたは録画の過去ログ取得を開始する
         if (isLiveJikkyoEnabled === true && jikkyoChannelId !== null) {
@@ -231,12 +244,40 @@ export default abstract class BaseVideo extends Vue {
 
         this.isResolvingQuality = false;
 
+        if (this.virtualTimeline !== null) {
+            this.virtualTimeline.destroy();
+            this.virtualTimeline = null;
+        }
+
         if (this.dp === null) {
             return;
         }
 
         this.dp.destroy();
         this.dp = null;
+    }
+
+    /**
+     * DPlayer のシークバーを動画全体の時間軸で扱うか
+     * 再生位置からエンコードし直すストリーミング再生用。サブクラスでオーバーライドする
+     * @return boolean
+     */
+    protected isEnabledVirtualTimeline(): boolean {
+        return false;
+    }
+
+    /**
+     * シーク無しで再生できる位置 (エンコード済み・バッファ済みの末尾) を返す (秒)
+     * @return number
+     */
+    public getEncodedTime(): number {
+        if (this.dp === null) {
+            return 0;
+        }
+
+        const buffered = this.dp.video.buffered;
+
+        return buffered.length === 0 ? 0 : buffered.end(buffered.length - 1);
     }
 
     /**
