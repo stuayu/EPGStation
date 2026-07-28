@@ -142,6 +142,14 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **クライアント**: 未ログイン時は `main.ts` がログイン画面だけを mount し、config / channels の取得 (認証必須) を走らせない。セッション切れ (401) は `RepositoryModel` の共通インターセプタが検知して画面を読み込み直す。ユーザーの追加・削除・パスワード変更はサーバー設定の「アカウント」タブから行える
     - DB は `user` テーブルを追加 (sqlite / mysql 両マイグレーションあり)
 
+- **設定ファイルが無い場合に自動生成するようにした (ログ設定・enc.js)**
+    - **これまでの状態**: `config.yml` は `Configuration.ensureConfigFile()` がテンプレートから自動生成していたが、**ログ設定 (`operatorLogConfig.yml` / `serviceLogConfig.yml` / `epgUpdaterLogConfig.yml`) は自動生成されず、無いと `process.exit(1)` で起動できなかった** (`log file is not found`)。手順書の `cp` を 1 つ忘れただけで起動しない、非対称な状態だった
+    - **ログ設定の自動生成**: `LoggerModel` が `<name>.yml` を探し、無ければ同梱の `<name>.sample.yml` からコピーする。Operator / Service / EPGUpdater が同時に起動しても壊れないよう、`config.yml` と同じく排他作成 (`COPYFILE_EXCL`) を使い `EEXIST` は正常として扱う
+    - **sample も無い場合は落とさない**: 従来は `process.exit(1)` だったが、**コンソール出力にフォールバックして起動を続ける**ようにした (ログ設定が無いだけで EPGStation 全体が起動できないのは割に合わない)。YAML の構文エラーは従来どおり終了させる (書き間違いは気づけたほうがよい)
+    - **enc.js も自動生成**: 自動生成した `config.yml` の既定のエンコード設定が `config/enc.js` を参照しているため、これも `enc.js.template` から用意する。無くても起動はできる (エンコード実行時に失敗する) ので、生成に失敗しても警告に留める
+    - **ログ出力先ディレクトリ**: log4js の file appender が自動で作るため追加対応は不要 (実機で確認済み)
+    - セットアップ手順書の設定ファイル作成は「省略可能」と明記した
+
 - **config.yml を画面から編集できるようにした (DB オーバーレイ方式)**
     - **yml へは書き戻さない**: 書き戻すとコメントや書式が失われ、さらに `Configuration` が `fs.watchFile` で監視しているため書き込みがリロードを誘発する。代わりに **GUI で変更した値だけを DB (`app_setting` の `config` キー) に持ち、読み込み時に「config.yml → DB の差分」の順で重ねて実効値を作る**。手編集派の config.yml はそのまま残り、GUI 派は画面だけで完結できる
     - **マージ規則** (`src/model/config/ConfigOverlay.ts`): オブジェクトはキー単位で再帰マージ、**配列は丸ごと置き換え** (録画ディレクトリやエンコード設定は「一覧そのもの」を編集するため)。値を `null` にすると差分が消えて config.yml の値に戻る
