@@ -190,6 +190,10 @@ class EncoderModel implements IEncoderModel {
                     SUBDIR: this.encodeOption.directory || '',
                     FFMPEG: config.ffmpeg,
                     FFPROBE: config.ffprobe,
+                    // rigaya 系エンコーダ (config/enc.js の qsvencc_*/nvencc_*/vceencc_* プリセットが参照する)
+                    QSVENCC: config.qsvencc || '',
+                    NVENCC: config.nvencc || '',
+                    VCEENCC: config.vceencc || '',
                     NAME: recorded.name,
                     HALF_WIDTH_NAME: recorded.halfWidthName,
                     DESCRIPTION: recorded.description || '',

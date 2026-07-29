@@ -84,6 +84,10 @@ export const CONFIG_OVERLAY_FIELDS: readonly ConfigFieldDefinition[] = [
     { key: 'ffmpeg', requiresRestart: false },
     { key: 'ffprobe', requiresRestart: false },
     { key: 'tsreadex', requiresRestart: false },
+    // rigaya 系エンコーダ (encodePresets.hwaccel が qsvencc/nvencc/vceencc のときに使う実行ファイルパス)
+    { key: 'qsvencc', requiresRestart: false },
+    { key: 'nvencc', requiresRestart: false },
+    { key: 'vceencc', requiresRestart: false },
     { key: 'uploadTempDir', requiresRestart: true },
 
     // --- エンコード ---
@@ -91,6 +95,8 @@ export const CONFIG_OVERLAY_FIELDS: readonly ConfigFieldDefinition[] = [
     { key: 'streamProcessNum', requiresRestart: true },
     { key: 'concurrentEncodeNum', requiresRestart: true },
     { key: 'encode', requiresRestart: false },
+    // EncodePresets.applyToConfig が formatConfig の都度 encode/stream.profiles を組み立て直すため再起動不要
+    { key: 'encodePresets', requiresRestart: false },
 
     // --- 視聴・配信 ---
     { key: 'urlscheme', requiresRestart: false },

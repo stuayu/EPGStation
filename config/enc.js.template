@@ -5,14 +5,123 @@ const input = process.env.INPUT;
 const output = process.env.OUTPUT;
 const analyzedurationSize = '10M'; // Mirakurun の設定に応じて変更すること
 const probesizeSize = '32M'; // Mirakurun の設定に応じて変更すること
-const maxMuxingQueueSize = 1024;
 const dualMonoMode = 'main';
 const videoHeight = parseInt(process.env.VIDEORESOLUTION, 10);
 const isDualMono = parseInt(process.env.AUDIOCOMPONENTTYPE, 10) == 2;
 const audioBitrate = videoHeight > 720 ? '192k' : '128k';
-const preset = 'veryfast';
-const codec = 'libx264';
-const crf = 23;
+
+/**
+ * エンコードプリセット定義
+ *
+ * config.yml の encode[].cmd から引数でエンコーダを切り替える。
+ *   例: cmd: '%NODE% %ROOT%/config/enc.js hevc_nvenc 1080'
+ * 第 1 引数: プリセット名 (省略時 h264)
+ * 第 2 引数: 出力の最大高さ (省略時 720。0 を指定すると元解像度のまま)
+ *
+ * config.yml の encodePresets (§ ハードウェア × コーデック × 画質 × 用途の
+ * 一括有効化フラグ) を使う場合、このプリセット名は自動的に選択されるため
+ * 通常は意識しなくてよい。
+ *
+ * このプリセット表は「録画ファイルのバックグラウンドエンコード」用。リアルタイム性が
+ * 不要 (時間をかけてよい) なので、速度より画質・圧縮効率を優先した速度プリセットにしている
+ * (ライブ HLS・録画ストリーミングの低遅延チューニングは src/util/EncodePresets.ts 側)。
+ * エンコードが遅すぎる場合は各プリセットの速度指定を速い側へ倒すこと
+ * (libx264/libx265: -preset を medium/fast へ、NVENC: -preset p7 → p4、
+ *  QSV: -preset slower → medium、rigaya 系: --quality / --preset を速い側へ)。
+ *
+ * 品質パラメータの目安:
+ *   libx264/libx265 の -crf、NVENC の -cq、QSV の -global_quality、
+ *   rigaya 系の --cqp は「小さいほど高画質・大きいほど高圧縮」。VAAPI の -qp も同様。
+ *
+ * ハードウェアデコードも使いたい場合は、-i の前に挿入するオプションを
+ * 各自追加すること (NVENC: -hwaccel cuda / QSV: -hwaccel qsv)。
+ * フィルタ構成 (yadif 等) の変更が必要になる場合がある。
+ */
+const PRESETS = {
+    // AVC (H.264) ソフトウェアエンコード。-preset slow は veryfast より時間がかかる代わりに
+    // 同じ -crf でもファイルサイズが小さくなる (圧縮効率が上がる)
+    h264: {
+        codec: 'libx264',
+        quality: ['-preset', 'slow', '-crf', '23'],
+    },
+    // HEVC (H.265) ソフトウェアエンコード。同画質で H.264 の約半分のサイズだが CPU 負荷は高い
+    // -tag:v hvc1 は Safari / iOS / Apple 系プレイヤーでの再生に必須
+    // libx265 の medium は libx264 の slow と同程度の負荷なので、ここは medium で止めている
+    hevc: {
+        codec: 'libx265',
+        quality: ['-preset', 'medium', '-crf', '25', '-tag:v', 'hvc1'],
+    },
+    // AVC (NVIDIA NVENC)。-cq は -rc vbr かつ -b:v 0 のときに CRF 相当として機能する。
+    // -preset p7 は NVENC で最も画質優先 (最も遅い) プリセット、-tune hq は画質重視のチューニング
+    h264_nvenc: {
+        codec: 'h264_nvenc',
+        quality: ['-preset', 'p7', '-tune', 'hq', '-rc', 'vbr', '-cq', '26', '-b:v', '0'],
+    },
+    // HEVC (NVIDIA NVENC)
+    hevc_nvenc: {
+        codec: 'hevc_nvenc',
+        quality: ['-preset', 'p7', '-tune', 'hq', '-rc', 'vbr', '-cq', '28', '-b:v', '0', '-tag:v', 'hvc1'],
+    },
+    // AVC (Intel QSV)。-global_quality は ICQ モード。-preset slower は veryslow の 1 段手前
+    // (veryslow は環境によって極端に遅くなることがあるため slower を採用)
+    h264_qsv: {
+        codec: 'h264_qsv',
+        quality: ['-preset', 'slower', '-global_quality', '26'],
+        needsNv12: true, // QSV はシステムメモリ入力の場合 nv12 を要求する
+    },
+    // HEVC (Intel QSV)
+    hevc_qsv: {
+        codec: 'hevc_qsv',
+        quality: ['-preset', 'slower', '-global_quality', '28', '-tag:v', 'hvc1'],
+        needsNv12: true,
+    },
+    // AVC (AMD/Intel VAAPI)。-qp は固定量子化 (小さいほど高画質)
+    // Linux + /dev/dri のアクセス権限が必要 (Docker では --device /dev/dri を渡すこと)
+    h264_vaapi: {
+        codec: 'h264_vaapi',
+        quality: ['-qp', '24'],
+        vaapi: true,
+    },
+    // HEVC (AMD/Intel VAAPI)
+    hevc_vaapi: {
+        codec: 'hevc_vaapi',
+        quality: ['-qp', '26', '-tag:v', 'hvc1'],
+        vaapi: true,
+    },
+
+    // --- rigaya 系エンコーダ (QSVEncC / NVEncC / VCEEncC) ---
+    // ffmpeg を経由せず rigaya 製エンコーダ単体でデコード〜エンコード〜mp4 出力まで行う。
+    // 実行ファイルパスは config.yml の qsvencc / nvencc / vceencc を EncoderModel が
+    // 環境変数 QSVENCC / NVENCC / VCEENCC として渡す (未設定時は PATH 上のコマンド名)。
+    // 引数の大半は 3 ツール共通だが、速度プリセットの**オプション名と選べる値は異なる**:
+    //   QSVEncC: --quality best|higher|high|balanced|fast|faster|fastest
+    //   NVEncC:  --preset P1〜P7 (P7 = quality)
+    //   VCEEncC: --preset balanced|fast|slow|slower  (quality という値は存在しない)
+    // レート制御は背景エンコード向けに --cqp <I:P:B> (固定量子化 = 画質基準) を使う。
+    qsvencc_h264: { rigaya: 'qsvencc', rigayaCodec: 'h264', quality: ['--quality', 'best', '--cqp', '20:22:24'] },
+    qsvencc_hevc: { rigaya: 'qsvencc', rigayaCodec: 'hevc', quality: ['--quality', 'best', '--cqp', '22:24:26'] },
+    nvencc_h264: { rigaya: 'nvencc', rigayaCodec: 'h264', quality: ['--preset', 'P7', '--cqp', '20:22:24'] },
+    nvencc_hevc: { rigaya: 'nvencc', rigayaCodec: 'hevc', quality: ['--preset', 'P7', '--cqp', '22:24:26'] },
+    vceencc_h264: { rigaya: 'vceencc', rigayaCodec: 'h264', quality: ['--preset', 'slower', '--cqp', '20:22:24'] },
+    vceencc_hevc: { rigaya: 'vceencc', rigayaCodec: 'hevc', quality: ['--preset', 'slower', '--cqp', '22:24:26'] },
+};
+
+// rigaya 系エンコーダの既定コマンド名 (config.yml で実行ファイルパス未指定の場合に使う)
+const RIGAYA_DEFAULT_BIN = {
+    qsvencc: 'QSVEncC',
+    nvencc: 'NVEncC',
+    vceencc: 'VCEEncC',
+};
+
+const presetName = typeof process.argv[2] === 'undefined' ? 'h264' : process.argv[2];
+const preset = PRESETS[presetName];
+if (typeof preset === 'undefined') {
+    console.error(`unknown encode preset: ${presetName} (available: ${Object.keys(PRESETS).join(', ')})`);
+    process.exit(1);
+}
+
+const maxHeight = typeof process.argv[3] === 'undefined' ? 720 : parseInt(process.argv[3], 10);
+const needsResize = maxHeight > 0 && isNaN(videoHeight) === false && videoHeight > maxHeight;
 
 const args = ['-y', '-analyzeduration', analyzedurationSize, '-probesize', probesizeSize];
 
@@ -21,43 +130,103 @@ if (isDualMono) {
     Array.prototype.push.apply(args, ['-dual_mono_mode', dualMonoMode]);
 }
 
+// VAAPI はデバイス初期化 (-vaapi_device) を -i より前に指定する必要がある
+if (preset.vaapi === true) {
+    Array.prototype.push.apply(args, ['-vaapi_device', '/dev/dri/renderD128']);
+}
+
 // input 設定
-Array.prototype.push.apply(args,['-i', input]);
+Array.prototype.push.apply(args, ['-i', input]);
 
 // メタ情報を先頭に置く
-Array.prototype.push.apply(args,['-movflags', 'faststart']);
+Array.prototype.push.apply(args, ['-movflags', 'faststart']);
 
 // 字幕データを含めたストリームをすべてマップ
-// Array.prototype.push.apply(args, ['-map', '0', '-ignore_unknown', '-max_muxing_queue_size', maxMuxingQueueSize, '-sn']);
+// Array.prototype.push.apply(args, ['-map', '0', '-ignore_unknown', '-max_muxing_queue_size', 1024, '-sn']);
 
-// video filter 設定
-let videoFilter = 'yadif';
-if (videoHeight > 720) {
-    videoFilter += ',scale=-2:720'
+// video filter 設定 (インターレース解除 + 必要ならリサイズ)
+let videoFilter;
+if (preset.vaapi === true) {
+    // ハードウェアフレームでのフィルタ処理: システムメモリ→VAAPI サーフェスへ転送してからデインターレース・リサイズする
+    videoFilter = `format=nv12,hwupload,deinterlace_vaapi${needsResize ? `,scale_vaapi=-2:${maxHeight}` : ''}`;
+} else {
+    videoFilter = 'yadif';
+    if (needsResize) {
+        videoFilter += `,scale=-2:${maxHeight}`;
+    }
+    if (preset.needsNv12 === true) {
+        videoFilter += ',format=nv12';
+    }
 }
 Array.prototype.push.apply(args, ['-vf', videoFilter]);
 
-// その他設定
-Array.prototype.push.apply(args,[
-    '-preset', preset,
-    '-aspect', '16:9',
-    '-c:v', codec,
-    '-crf', crf,
-    '-f', 'mp4',
-    '-c:a', 'aac',
-    '-ar', '48000',
-    '-ab', audioBitrate,
-    '-ac', '2',
-    output
-]);
+// video 設定
+Array.prototype.push.apply(args, ['-aspect', '16:9', '-c:v', preset.codec]);
+Array.prototype.push.apply(args, preset.quality);
 
-let str = '';
-for (let i of args) {
+// audio・出力設定
+Array.prototype.push.apply(args, ['-f', 'mp4', '-c:a', 'aac', '-ar', '48000', '-ab', audioBitrate, '-ac', '2', output]);
+
+/**
+ * rigaya 系エンコーダ (QSVEncC / NVEncC / VCEEncC) の引数を組み立てる
+ * @param preset プリセット定義 (rigaya / rigayaCodec を持つもの)
+ * @return string[] エンコーダに渡す引数
+ */
+const buildRigayaArgs = (preset) => {
+    const rigayaArgs = [
+        // ハードウェアデコード + ハードウェアエンコード
+        '--avhw',
+        '-i', input,
+        '-c', preset.rigayaCodec,
+        // 録画済みファイルの保存用途なので GOP は 2 秒 (@30fps) にして圧縮効率を優先する
+        '--gop-len', '60',
+        // 放送波はインタレース (地上波・BS/CS はすべて tff)
+        '--interlace', 'tff',
+    ];
+
+    // 速度プリセット + レート制御 (ツールごとにオプション名・値が違うため PRESETS 側で持つ)
+    Array.prototype.push.apply(rigayaArgs, preset.quality);
+
+    // デインタレース
+    // --vpp-deinterlace (ハードウェアデインタレーサ) は QSVEncC / NVEncC のみのオプションで、
+    // かつ --interlace tff/bff の指定が前提。VCEEncC には無いため共通オプションの --vpp-yadif を使う
+    if (preset.rigaya === 'vceencc') {
+        rigayaArgs.push('--vpp-yadif');
+    } else {
+        Array.prototype.push.apply(rigayaArgs, ['--vpp-deinterlace', 'normal']);
+    }
+
+    // リサイズ (幅は -2 = アスペクト比を保ったまま 2 の倍数へ丸める)
+    if (needsResize) {
+        Array.prototype.push.apply(rigayaArgs, ['--output-res', `-2x${maxHeight}`]);
+    }
+
+    // 音声設定
+    Array.prototype.push.apply(rigayaArgs, ['--audio-codec', 'aac', '--audio-bitrate', audioBitrate.replace('k', '')]);
+    if (isDualMono) {
+        // dual mono は主音声 (左チャンネル) を両チャンネルへ複製する (ffmpeg の -dual_mono_mode main 相当)。
+        // `:stereo` だと単にステレオ化されるだけで左右に主音声・副音声が残ってしまう
+        Array.prototype.push.apply(rigayaArgs, ['--audio-stream', 'FL:stereo']);
+    }
+
+    // 出力設定
+    Array.prototype.push.apply(rigayaArgs, ['--output-format', 'mp4', '-o', output]);
+
+    return rigayaArgs;
+};
+
+// rigaya 系プリセットの場合は ffmpeg ではなく rigaya 製エンコーダを実行する
+const isRigaya = typeof preset.rigaya !== 'undefined';
+const bin = isRigaya ? (process.env[preset.rigaya.toUpperCase()] || RIGAYA_DEFAULT_BIN[preset.rigaya]) : ffmpeg;
+const execArgs = isRigaya ? buildRigayaArgs(preset) : args;
+
+let str = bin;
+for (let i of execArgs) {
     str += ` ${ i }`
 }
 console.error(str);
 
-const child = spawn(ffmpeg, args);
+const child = spawn(bin, execArgs);
 
 child.stderr.on('data', (data) => { console.error(String(data)); });
 

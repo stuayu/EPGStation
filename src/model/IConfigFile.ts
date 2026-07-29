@@ -68,6 +68,44 @@ export interface StreamProfile {
     isUnconverted?: boolean;
 }
 
+/**
+ * エンコードプリセット表 (§ encodePresets) の軸定義
+ *
+ * ハードウェア (software / qsv (Intel) / vaapi (AMD) / nvenc (NVIDIA)) ×
+ * コーデック (h264 / hevc) × 画質 (1080p / 720p / 480p / 240p) × 用途の
+ * 組み合わせから、録画エンコード (encode) / ライブ HLS・録画ストリーミング
+ * (stream.profiles) の設定を自動生成するための一括有効化フラグ。
+ *
+ * 注意: `api.d.ts` の `Config.encodePresets` (`ClientEncodePreset[]`) とは別物。
+ * そちらは `ConfigApiModel` が `config.encode` から作るクライアント表示用の
+ * 解決済みプリセット一覧 (配列) で、こちらは config.yml 側の入力フラグ (オブジェクト)
+ */
+export type EncodeHwAccel = 'software' | 'qsv' | 'vaapi' | 'nvenc' | 'qsvencc' | 'nvencc' | 'vceencc';
+export type EncodeCodec = 'h264' | 'hevc';
+export type EncodeQuality = '1080p' | '720p' | '480p' | '240p';
+
+/**
+ * プリセットの適用先。
+ * - recorded: 録画ファイルのバックグラウンドエンコード (config.encode 相当、config/enc.js 経由)
+ * - liveHLS: ライブ視聴の HLS 配信 (stream.profiles.live、container: hls、in-memory 低遅延配信)
+ * - recordedStreaming: 録画再生の mp4 / HLS 配信 (stream.profiles.recorded.ts / encoded)
+ *   (webm は vp9 系のためこのプリセット表の対象外。従来通り手書きで管理する)
+ */
+export type EncodePresetTarget = 'recorded' | 'liveHLS' | 'recordedStreaming';
+
+export interface EncodePresetsConfig {
+    // 使用するハードウェアアクセラレーション。省略時 software
+    // qsvencc / nvencc / vceencc は rigaya 氏の QSVEncC / NVEncC / VCEEncC を ffmpeg と
+    // パイプ連結して使う方式 (実行ファイルパスは config.yml の qsvencc / nvencc / vceencc で指定)
+    hwaccel?: EncodeHwAccel;
+    // 有効化するコーデック。省略時 [h264]
+    codecs?: EncodeCodec[];
+    // 有効化する画質。省略時 [1080p, 720p, 480p]
+    qualities?: EncodeQuality[];
+    // 生成対象。省略時 [recorded, liveHLS, recordedStreaming]
+    targets?: EncodePresetTarget[];
+}
+
 export const FEATURE_FLAG_KEYS = [
     'watchHistory',
     'notifications',
@@ -275,11 +313,23 @@ export default interface IConfigFile {
     ffmpeg: string;
     ffprobe: string;
     tsreadex?: string; // tsreadex の実行ファイルパス (省略時は PATH 上の tsreadex を使用)
+    // rigaya 氏のハードウェアエンコーダの実行ファイルパス (省略時は PATH 上のコマンド名 (QSVEncC/NVEncC/VCEEncC) を使用)
+    // encodePresets.hwaccel や encode[].cmd / stream.profiles の cmd 内で明示的に呼び出す場合に使用する
+    qsvencc?: string;
+    nvencc?: string;
+    vceencc?: string;
 
     // エンコード設定
     encodeProcessNum: number; // 録画ファイルエンコード最大プロセス数
     streamProcessNum: number; // 視聴用ストリーミング最大プロセス数
     concurrentEncodeNum: number; // 同時エンコード数
+
+    // 組み込みエンコードプリセット表の一括有効化フラグ。
+    // 指定した軸の組み合わせから encode / stream.profiles を自動生成する (詳細は EncodePresetsConfig を参照)。
+    // 対象セクション (encode / stream.profiles.live / stream.profiles.recorded.{ts,encoded}) に
+    // 手書きの設定が既にある場合はそちらを優先し、自動生成では上書きしない
+    encodePresets?: EncodePresetsConfig;
+
     encode: {
         id?: string; // プリセット識別子。省略時は name を識別子とみなす (完全後方互換)
         name: string;
