@@ -82,6 +82,8 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
 class Guide extends Vue {
     // EIT[p/f] 更新による番組表の取り直しの最小間隔 (10 秒周期の通知で再取得を繰り返さないため)
     private static readonly ON_AIR_REFRESH_INTERVAL = 30 * 1000;
+    // 無限スクロールで次の時間帯を読み込み始める、末尾からの距離 (px)
+    private static readonly LOAD_MORE_THRESHOLD = 600;
 
     public isLoading: boolean = true;
     public guideState: IGuideState = container.get<IGuideState>('IGuideState');
@@ -123,6 +125,7 @@ class Guide extends Vue {
     }, 100);
 
     private isiOS: boolean = false;
+    private isLoadingMore: boolean = false;
 
     get darkClassList(): any {
         return {
@@ -220,6 +223,11 @@ class Guide extends Vue {
                 element.scrollTop <= this.programBaseHeight * this.guideState.getTimesLength() - element.offsetHeight + scrollBarTop)
         ) {
             this.scrollCallback();
+        }
+
+        // 末尾付近まで来たら次の時間帯を読み込む
+        if (element.scrollTop + element.clientHeight >= element.scrollHeight - Guide.LOAD_MORE_THRESHOLD) {
+            void this.loadMore();
         }
     }
 
@@ -337,31 +345,7 @@ class Guide extends Vue {
                         }
                     }
 
-                    // 時刻線要素を退避
-                    const timeline = (this.$refs.content as HTMLElement).getElementsByClassName('time-line')[0];
-
-                    // 追加する前に前回の子要素を削除
-                    while ((this.$refs.content as HTMLElement).firstChild) {
-                        const firstChild = (this.$refs.content as HTMLElement).firstChild;
-                        if (firstChild !== null) {
-                            (this.$refs.content as HTMLElement).removeChild(firstChild);
-                        }
-                    }
-
-                    // 時刻線要素を元に戻す
-                    (this.$refs.content as HTMLElement).appendChild(timeline);
-
-                    await Util.sleep(100);
-                    const programDoms = this.guideState.getProgramDoms();
-                    const domsLength = programDoms.length;
-                    for (let i = 0; i < domsLength; i++) {
-                        (this.$refs.content as HTMLElement).appendChild(programDoms[i].element);
-                        if (i % 500 === 0) {
-                            await Util.sleep(1);
-                        }
-                    }
-
-                    this.guideState.updateVisible();
+                    await this.renderProgramDoms(100);
 
                     // 番組表を矢印キーで操作できるようにフォーカスする
                     if (UaUtil.isAndroid() === false && typeof this.$refs.programs !== 'undefined') {
@@ -377,6 +361,83 @@ class Guide extends Vue {
                 this.isLoading = false;
             });
         });
+    }
+
+    /**
+     * 生成済みの番組 DOM を描画領域へ流し込む
+     * @param waitTime: number 描画開始前の待ち時間 (ms)
+     */
+    private async renderProgramDoms(waitTime: number = 0): Promise<void> {
+        if (typeof this.$refs.content === 'undefined') {
+            return;
+        }
+
+        const content = this.$refs.content as HTMLElement;
+
+        // 時刻線要素を退避
+        const timeline = content.getElementsByClassName('time-line')[0];
+
+        // 追加する前に前回の子要素を削除
+        while (content.firstChild) {
+            const firstChild = content.firstChild;
+            if (firstChild !== null) {
+                content.removeChild(firstChild);
+            }
+        }
+
+        // 時刻線要素を元に戻す
+        if (typeof timeline !== 'undefined') {
+            content.appendChild(timeline);
+        }
+
+        if (waitTime > 0) {
+            await Util.sleep(waitTime);
+        }
+
+        const programDoms = this.guideState.getProgramDoms();
+        const domsLength = programDoms.length;
+        for (let i = 0; i < domsLength; i++) {
+            content.appendChild(programDoms[i].element);
+            if (i % 500 === 0) {
+                await Util.sleep(1);
+            }
+        }
+
+        this.guideState.updateVisible();
+    }
+
+    /**
+     * 番組表の末尾までスクロールしたら次の時間帯を読み込む (無限スクロール)
+     */
+    private async loadMore(): Promise<void> {
+        // 単局表示 (週間番組表) は 8 日分固定なので追加読み込みしない
+        if (this.isLoadingMore === true || typeof this.$route.query.channelId !== 'undefined' || typeof this.$refs.programs === 'undefined') {
+            return;
+        }
+
+        this.isLoadingMore = true;
+        const scroller = (this.$refs.programs as InstanceType<typeof GuideScroller>).$el as HTMLElement;
+        const left = scroller.scrollLeft;
+        const top = scroller.scrollTop;
+
+        try {
+            const isAppended = await this.guideState.appendGuide(this.createFetchGuideOption());
+            if (isAppended === true) {
+                this.setDisplayRange();
+                this.guideState.createProgramDoms(false);
+                await this.$nextTick();
+                await this.renderProgramDoms();
+                scroller.scrollLeft = left;
+                scroller.scrollTop = top;
+                this.setDisplayRange();
+                this.guideState.updateVisible();
+            }
+        } catch (err) {
+            // 追加読み込みの失敗は表示中の内容に影響しないため通知しない
+            console.error(err);
+        }
+
+        this.isLoadingMore = false;
     }
 
     /**

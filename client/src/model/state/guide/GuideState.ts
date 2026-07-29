@@ -164,118 +164,11 @@ class GuideState implements IGuideState {
             // 表示時刻長を記録
             this.timeLength = option.length;
 
-            const scheduleOption: apid.ScheduleOption = {
-                startAt,
-                endAt,
-                isHalfWidth: option.isHalfWidth,
-                GR: false,
-                BS: false,
-                CS: false,
-                SKY: false,
-                NW1: false,
-                NW2: false,
-                NW3: false,
-                NW4: false,
-                NW5: false,
-                NW6: false,
-                NW7: false,
-                NW8: false,
-                NW9: false,
-                NW10: false,
-                NW11: false,
-                NW12: false,
-                NW13: false,
-                NW14: false,
-                NW15: false,
-                NW16: false,
-                NW17: false,
-                NW18: false,
-                NW19: false,
-                NW20: false,
-                NW21: false,
-                NW22: false,
-                NW23: false,
-                NW24: false,
-                NW25: false,
-                NW26: false,
-                NW27: false,
-                NW28: false,
-                NW29: false,
-                NW30: false,
-                NW31: false,
-                NW32: false,
-                NW33: false,
-                NW34: false,
-                NW35: false,
-                NW36: false,
-                NW37: false,
-                NW38: false,
-                NW39: false,
-                NW40: false,
-            };
+            this.schedules = this.filterSchedules(await this.scheduleApiModel.getSchedules(this.createScheduleOption(option, startAt, endAt)), option);
 
-            // 放送波設定
-            if (typeof option.type === 'undefined') {
-                scheduleOption.GR = true;
-                scheduleOption.BS = true;
-                scheduleOption.CS = true;
-                scheduleOption.SKY = true;
-                scheduleOption.NW1 = true;
-                scheduleOption.NW2 = true;
-                scheduleOption.NW3 = true;
-                scheduleOption.NW4 = true;
-                scheduleOption.NW5 = true;
-                scheduleOption.NW6 = true;
-                scheduleOption.NW7 = true;
-                scheduleOption.NW8 = true;
-                scheduleOption.NW9 = true;
-                scheduleOption.NW10 = true;
-                scheduleOption.NW11 = true;
-                scheduleOption.NW12 = true;
-                scheduleOption.NW13 = true;
-                scheduleOption.NW14 = true;
-                scheduleOption.NW15 = true;
-                scheduleOption.NW16 = true;
-                scheduleOption.NW17 = true;
-                scheduleOption.NW18 = true;
-                scheduleOption.NW19 = true;
-                scheduleOption.NW20 = true;
-                scheduleOption.NW21 = true;
-                scheduleOption.NW22 = true;
-                scheduleOption.NW23 = true;
-                scheduleOption.NW24 = true;
-                scheduleOption.NW25 = true;
-                scheduleOption.NW26 = true;
-                scheduleOption.NW27 = true;
-                scheduleOption.NW28 = true;
-                scheduleOption.NW29 = true;
-                scheduleOption.NW30 = true;
-                scheduleOption.NW31 = true;
-                scheduleOption.NW32 = true;
-                scheduleOption.NW33 = true;
-                scheduleOption.NW34 = true;
-                scheduleOption.NW35 = true;
-                scheduleOption.NW36 = true;
-                scheduleOption.NW37 = true;
-                scheduleOption.NW38 = true;
-                scheduleOption.NW39 = true;
-                scheduleOption.NW40 = true;
-            } else {
-                scheduleOption[option.type] = true;
-            }
-
-            if (this.settingModel.getSavedValue().isShowOnlyFreePrograms === true) {
-                scheduleOption.isFree = true;
-            }
-
-            this.schedules = await this.scheduleApiModel.getSchedules(scheduleOption);
-            this.schedules = this.schedules.filter(s => ChannelModel.isAudioVideoService(s.channel.type));
-
-            // 地域別番組表のときは地上波系を地域で絞り込む
-            if (typeof option.region !== 'undefined') {
-                this.schedules = this.schedules.filter(s => typeof s.channel.region !== 'undefined' && s.channel.region.id === option.region);
-                this.regionName = this.schedules.length === 0 ? null : (this.schedules[0].channel.region?.name ?? null);
-            }
+            // 地域別番組表のときは地域名をタイトルに出す
+            this.regionName =
+                typeof option.region === 'undefined' || this.schedules.length === 0 ? null : (this.schedules[0].channel.region?.name ?? null);
         } else {
             // 放送局指定
             this.timeLength = GuideState.SINGLE_STATION_LENGTH;
@@ -306,6 +199,103 @@ class GuideState implements IGuideState {
 
         // 追いかけ中インジケータ用のシリーズタイトル取得 (機能フラグ・設定 OFF なら何もしない)
         await this.loadFollowingTitleSet();
+    }
+
+    /**
+     * 番組表の取得条件から ScheduleOption を組み立てる
+     * @param option: FetchGuideOption
+     * @param startAt: apid.UnixtimeMS
+     * @param endAt: apid.UnixtimeMS
+     * @return apid.ScheduleOption
+     */
+    private createScheduleOption(option: FetchGuideOption, startAt: apid.UnixtimeMS, endAt: apid.UnixtimeMS): apid.ScheduleOption {
+        const scheduleOption = {
+            startAt: startAt,
+            endAt: endAt,
+            isHalfWidth: option.isHalfWidth,
+        } as apid.ScheduleOption;
+
+        // 放送波設定
+        // 放送波指定が無い場合 (全放送波・地域別番組表) はすべての放送波を対象にする
+        for (const type of GuideState.BROADCAST_TYPES) {
+            (scheduleOption as any)[type] = typeof option.type === 'undefined' ? true : type === option.type;
+        }
+
+        if (this.settingModel.getSavedValue().isShowOnlyFreePrograms === true) {
+            scheduleOption.isFree = true;
+        }
+
+        return scheduleOption;
+    }
+
+    /**
+     * 取得した番組表を表示対象だけに絞る
+     * @param schedules: apid.Schedule[]
+     * @param option: FetchGuideOption
+     * @return apid.Schedule[]
+     */
+    private filterSchedules(schedules: apid.Schedule[], option: FetchGuideOption): apid.Schedule[] {
+        const result = schedules.filter(s => ChannelModel.isAudioVideoService(s.channel.type));
+
+        // 地域別番組表のときは地上波系を地域で絞り込む
+        return typeof option.region === 'undefined' ? result : result.filter(s => typeof s.channel.region !== 'undefined' && s.channel.region.id === option.region);
+    }
+
+    /**
+     * 表示中の番組表の後ろに次の時間帯を追加する (無限スクロール用)
+     * @param option: FetchGuideOption
+     * @return Promise<boolean> 追加できた場合は true
+     */
+    public async appendGuide(option: FetchGuideOption): Promise<boolean> {
+        // 単局表示は横軸が日付 (8 日分固定) なので追加読み込みはしない
+        if (typeof option.channelId !== 'undefined' || this.endAt === 0 || this.schedules.length === 0) {
+            return false;
+        }
+
+        // 上限を超えたら打ち切る (EPG は 8 日程度先までしか無いため無制限には伸ばさない)
+        if (this.timeLength >= GuideState.MAX_TIME_LENGTH) {
+            return false;
+        }
+
+        const startAt = this.endAt;
+        const endAt = startAt + option.length * 60 * 60 * 1000;
+
+        const schedules = this.filterSchedules(await this.scheduleApiModel.getSchedules(this.createScheduleOption(option, startAt, endAt)), option);
+
+        // 表示中の放送局へ番組を追加する (並び順を変えないため新しい放送局は追加しない)
+        const index: { [channelId: number]: apid.Schedule } = {};
+        for (const schedule of this.schedules) {
+            index[schedule.channel.id] = schedule;
+        }
+
+        let addedCnt = 0;
+        for (const schedule of schedules) {
+            const target = index[schedule.channel.id];
+            if (typeof target === 'undefined') {
+                continue;
+            }
+
+            const programIds = new Set(target.programs.map(p => p.id));
+            for (const program of schedule.programs) {
+                // 境界をまたぐ番組は両方の取得結果に含まれるため重複を除く
+                if (programIds.has(program.id) === true) {
+                    continue;
+                }
+                target.programs.push(program);
+                addedCnt++;
+            }
+        }
+
+        this.endAt = endAt;
+        this.timeLength += option.length;
+
+        // 予約情報は表示範囲全体で取り直す
+        this.reserveIndex = await this.reserveUtil.getReserveIndex({
+            startAt: this.startAt,
+            endAt: this.endAt,
+        });
+
+        return addedCnt > 0;
     }
 
     /**
@@ -737,6 +727,12 @@ class GuideState implements IGuideState {
 namespace GuideState {
     export const SINGLE_STATION_GET_DAYS = 8;
     export const SINGLE_STATION_LENGTH = 24;
+    // 無限スクロールで伸ばせる表示時間の上限 (時間)。EPG は 8 日程度先までしか無い
+    export const MAX_TIME_LENGTH = 24 * 8;
+    // ScheduleOption の放送波キー
+    export const BROADCAST_TYPES: string[] = ['GR', 'BS', 'CS', 'SKY'].concat(
+        Array.from({ length: 40 }, (_, i) => `NW${i + 1}`),
+    );
     // 追いかけ中インジケータ判定用に取得するシリーズ数の上限 (簡易実装のため全件走査はしない)
     export const FOLLOWING_TITLE_FETCH_LIMIT = 500;
     // GET /api/series の limit 上限。これを超える limit は 400 になるため分割して取得する
