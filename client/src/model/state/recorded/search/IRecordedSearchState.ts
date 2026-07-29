@@ -1,7 +1,7 @@
 import * as apid from '../../../../../../api';
 
 export interface SelectorItem {
-    text: string;
+    title: string;
     value: number;
 }
 

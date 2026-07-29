@@ -115,7 +115,7 @@ export default class RecordedDetailSelectStreamState implements IRecordedDetailS
     public updateModeItems(isInit: boolean = false): void {
         this.streamModeItems = this.getModeItems().map((text, i) => {
             return {
-                text: text,
+                title: text,
                 value: i,
             };
         });

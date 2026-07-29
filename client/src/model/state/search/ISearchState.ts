@@ -116,7 +116,7 @@ export interface TimeReserveOption {
 }
 
 export interface SelectorItem {
-    text: string;
+    title: string;
     value: number;
 }
 

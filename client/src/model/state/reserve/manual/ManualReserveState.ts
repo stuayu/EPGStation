@@ -331,7 +331,7 @@ export default class ManualReserveState implements IManualReserveState {
     public getChannelItems(): SelectorItem[] {
         return this.channelModel.getChannels(this.settingModel.getSavedValue().isHalfWidthDisplayed).map(c => {
             return {
-                text: c.name,
+                title: c.name,
                 value: c.id,
             };
         });

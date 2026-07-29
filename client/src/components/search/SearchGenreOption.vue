@@ -4,7 +4,7 @@
             :items="genreSelectionItems"
             v-model="searchState.genreSelect"
             :disabled="searchOptionValue.isShowSubgenres === false"
-            v-on:change="onChangeGenreSelector"
+            v-on:update:model-value="onChangeGenreSelector"
         ></v-select>
         <v-card ref="card" class="overflow-auto pa-1 mt-4" width="100%" max-height="180px" overflow-scroll variant="outlined">
             <div v-for="genre in genreItems" v-bind:key="genre.value">
@@ -55,13 +55,13 @@ class SearchGenreOption extends Vue {
     get genreSelectionItems(): SelectorItem[] {
         const result = this.searchState.getGenreItems().map(g => {
             return {
-                text: g.name,
+                title: g.name,
                 value: g.value,
             };
         });
 
         result.unshift({
-            text: 'すべて',
+            title: 'すべて',
             value: -1,
         });
 

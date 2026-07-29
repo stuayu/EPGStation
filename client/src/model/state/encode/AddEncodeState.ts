@@ -79,17 +79,17 @@ export default class AddEncodeState implements IAddEncodeState {
     /**
      * ビデオファイルリストを返す
      * @return {
-     *     text: string;
+     *     title: string;
      *     value: apid.VideoFileId;
      * }[]
      */
     public getVideoFiles(): {
-        text: string;
+        title: string;
         value: apid.VideoFileId;
     }[] {
         return this.videoFiles.map(v => {
             return {
-                text: v.name,
+                title: v.name,
                 value: v.id,
             };
         });

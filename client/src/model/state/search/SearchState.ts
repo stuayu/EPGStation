@@ -112,7 +112,7 @@ export default class SearchState implements ISearchState {
         // set startTimeItems
         for (let i = 0; i <= 23; i++) {
             this.startTimeItems.push({
-                text: `${i.toString(10)}時`,
+                title: `${i.toString(10)}時`,
                 value: i,
             });
         }
@@ -120,7 +120,7 @@ export default class SearchState implements ISearchState {
         // set rangeTimeItems
         for (let i = 1; i <= 23; i++) {
             this.rangeTimeItems.push({
-                text: `${i.toString(10)}時間`,
+                title: `${i.toString(10)}時間`,
                 value: i,
             });
         }
@@ -961,7 +961,7 @@ export default class SearchState implements ISearchState {
     public getChannelItems(): SelectorItem[] {
         return this.channelModel.getChannels(this.settingModel.getSavedValue().isHalfWidthDisplayed).map(c => {
             return {
-                text: c.name,
+                title: c.name,
                 value: c.id,
             };
         });

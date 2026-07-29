@@ -104,7 +104,7 @@ class RecordedUploadState implements IRecordedUploadState {
             const channels = this.channelModel.getChannels(this.settingModel.getSavedValue().isHalfWidthDisplayed);
             for (const c of channels) {
                 this.channelItems.push({
-                    text: c.name,
+                    title: c.name,
                     value: c.id,
                 });
             }

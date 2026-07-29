@@ -9,7 +9,7 @@
                             v-if="isHiddenStreamTypes === false"
                             :items="dialogState.streamTypes"
                             v-model="dialogState.selectedStreamType"
-                            v-on:change="updateStreamConfig"
+                            v-on:update:model-value="updateStreamConfig"
                             class="guide-time"
                             style="max-width: 120px"
                         ></v-select>

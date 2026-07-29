@@ -408,12 +408,12 @@ import IColorThemeState from '@/model/state/IColorThemeState';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
 
 interface GuideModeItem {
-    text: string;
+    title: string;
     value: GuideViewMode;
 }
 
 interface SelectItem {
-    text: string;
+    title: string;
     value: number;
 }
 
@@ -497,15 +497,15 @@ class Settings extends Vue {
 
     public readonly guideModeItems: GuideModeItem[] = [
         {
-            text: '逐次',
+            title: '逐次',
             value: 'sequential',
         },
         {
-            text: '最小',
+            title: '最小',
             value: 'minimum',
         },
         {
-            text: 'すべて',
+            title: 'すべて',
             value: 'all',
         },
     ];
@@ -546,14 +546,14 @@ class Settings extends Vue {
 
         for (let i = 1; i <= 24; i++) {
             this.guideLengthItems.push({
-                text: i.toString(10),
+                title: i.toString(10),
                 value: i,
             });
         }
 
         for (let i = 1; i <= 100; i++) {
             const item: SelectItem = {
-                text: i.toString(10),
+                title: i.toString(10),
                 value: i,
             };
             this.reservesLengthItems.push(item);
@@ -564,7 +564,7 @@ class Settings extends Vue {
 
         for (let i = 50; i <= 600; i += 50) {
             const item: SelectItem = {
-                text: i.toString(10),
+                title: i.toString(10),
                 value: i,
             };
             this.searchLengthItems.push(item);
