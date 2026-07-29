@@ -335,6 +335,7 @@ namespace Configuration {
         dbtype: 'sqlite',
         needToReplaceEnclosingCharacters: true,
         epgUpdateIntervalTime: 10,
+        epgRetentionTime: 0,
         conflictPriority: 1,
         recPriority: 2,
         streamingPriority: 0,

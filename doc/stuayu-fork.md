@@ -713,6 +713,10 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - **時刻移動をカレンダー UI に変更**: `GuideTimeSelector.vue` (ヘッダのカレンダーアイコン) と `GuideDaySelectDialog.vue` (タイトルクリック) を `v-date-picker` + 時刻選択に置き換えた。旧実装は `v-select` の項目を `{ text, value }` で渡していたため **Vuetify 3 以降では項目名が空欄になって選べなかった** (Vuetify 3 の既定の item-title は `title`)
         - **表示条件を落とさないようにした**: 時刻移動・単局表示への遷移で `type` / `region` / `channelId` が消えていた (地域別番組表で日付を変えると全放送波に戻る等)。`client/src/util/GuideRouteUtil.ts` にクエリ組み立てを集約し、各遷移で引き継ぐ
         - **特定局の週間番組表**: 番組表の放送局名をクリック → ダイアログの「週間番組表」ボタンで `/guide?channelId=<id>` (8 日分) を開く。従来からある機能だが「番組表」という名前で分かりにくかったため改名し、時刻・地域の条件も引き継ぐようにした
+    - 過去の番組表データの保存期間を設定できるようにした (`epgRetentionTime` / `epgDeleteIntervalTime`)
+        - `epgRetentionTime` は終了した番組を残す時間 (時間単位)。`0` で従来どおり順次削除、**`-1` で無期限保存**。`epgDeleteIntervalTime` は削除の実行間隔 (分、省略時は `epgUpdateIntervalTime` と同じ)
+        - **EPG の全件更新は番組テーブルを全削除してから入れ直す**ため、保存期間を設定した場合は全件更新時の削除条件も変える必要がある (`ProgramDB.insert()` の `ProgramKeepOption`)。「現在時刻以降に終了する番組 (入れ直す分)」と「保存期間を過ぎた番組」だけを消し、保存期間内に終了した過去番組は残す
+        - Mirakurun は終了した番組を返さないため、無期限保存にしても過去に遡って埋まるわけではない (設定した時点以降に溜まっていく)
     - 依存パッケージを更新 (サーバ / クライアント両方)
         - TypeScript 5.9 → 6.0 系。あわせてクライアントの `tsconfig.json` から TypeScript 7.0 で廃止予定の `baseUrl` を削除し、`paths` を tsconfig 相対 (`./src/*`) に変更
         - ESLint 8 → 10 系へ移行。旧 `.eslintrc.json` を廃止し Flat Config (`eslint.config.mjs`) に移行、`@typescript-eslint/*` は統合パッケージ `typescript-eslint` 8 系に置き換え。lint スクリプトも v9 以降で廃止された `--ext` を削除 (`eslint --fix src/`)

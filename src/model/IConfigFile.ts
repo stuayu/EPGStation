@@ -189,6 +189,13 @@ export default interface IConfigFile {
     // epg 更新時間間隔 (分)
     epgUpdateIntervalTime: number;
 
+    // 過去の番組表データの保存期間 (時間)。
+    // 0 なら終了した番組を即座に削除する (従来動作)、-1 なら削除しない (無期限)
+    epgRetentionTime: number;
+
+    // 過去の番組表データを削除する間隔 (分)。省略時は epgUpdateIntervalTime と同じ
+    epgDeleteIntervalTime?: number;
+
     // 放送局並び順
     channelOrder?: apid.ChannelId[];
     sidOrder?: apid.ServiceId[];

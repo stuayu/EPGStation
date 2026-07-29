@@ -37,6 +37,8 @@ export const CONFIG_OVERLAY_FIELDS: readonly ConfigFieldDefinition[] = [
     { key: 'mirakurunPath', requiresRestart: true },
     { key: 'mirakurunAPIPath', requiresRestart: true },
     { key: 'epgUpdateIntervalTime', requiresRestart: false },
+    { key: 'epgRetentionTime', requiresRestart: true },
+    { key: 'epgDeleteIntervalTime', requiresRestart: true },
     { key: 'needToReplaceEnclosingCharacters', requiresRestart: false },
     { key: 'isSuppressReservesUpdateAllLog', requiresRestart: false },
 

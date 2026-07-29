@@ -6,7 +6,7 @@ import mirakurun from 'mirakurun';
 import * as mapid from '../../../node_modules/mirakurun/api';
 import IChannelDB from '../db/IChannelDB';
 import IChannelTypeIndex from '../db/IChannelTypeHash';
-import IProgramDB from '../db/IProgramDB';
+import IProgramDB, { ProgramKeepOption } from '../db/IProgramDB';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
@@ -44,6 +44,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
     private updatedOnAirServiceIds: { [serviceId: mapid.ServiceId]: boolean } = {};
     private updateServiceIds: { [serviceId: mapid.ServiceId]: boolean } = {};
     private mirakurunPath: string;
+    private configuration: IConfiguration;
 
     constructor(
         @inject('ILoggerModel') loggerModel: ILoggerModel,
@@ -59,6 +60,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
         this.mirakurunClient = mirakurunClientModel.getClient();
         this.channelDB = channelDB;
         this.programDB = programDB;
+        this.configuration = configuration;
 
         // 除外放送局索引情報のセット
         const config = configuration.getConfig();
@@ -107,7 +109,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
 
         this.log.system.debug(`Filtered and retrieved ${insertPrograms.length} program(s).`);
         this.log.system.info('start update programs');
-        await this.programDB.insert(this.channelIndex, insertPrograms).catch(err => {
+        await this.programDB.insert(this.channelIndex, insertPrograms, [], this.createProgramKeepOption()).catch(err => {
             this.log.system.error('update programs error');
             this.log.system.error(err);
             clearTimeout(timeout);
@@ -553,11 +555,38 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
     }
 
     /**
-     * 現在時刻より古い番組情報を削除
+     * 全件更新時に残す過去番組の条件を作る
+     * @return ProgramKeepOption
+     */
+    private createProgramKeepOption(): ProgramKeepOption {
+        const config = this.configuration.getConfig();
+        const retentionTime = typeof config.epgRetentionTime === 'number' ? config.epgRetentionTime : 0;
+        const now = new Date().getTime();
+
+        return {
+            now: now,
+            retentionThreshold: retentionTime < 0 ? null : now - retentionTime * 60 * 60 * 1000,
+        };
+    }
+
+    /**
+     * 保存期間を過ぎた過去の番組情報を削除する
+     * config.yml の epgRetentionTime (時間) より前に終了した番組が対象。
+     * epgRetentionTime が負数の場合は無期限保存として何もしない
      */
     public async deleteOldPrograms(): Promise<void> {
+        // 設定はホットリロードされるため実行時に読み直す
+        const config = this.configuration.getConfig();
+        const retentionTime = typeof config.epgRetentionTime === 'number' ? config.epgRetentionTime : 0;
+        if (retentionTime < 0) {
+            this.log.system.debug('skip delete old program db (epgRetentionTime is unlimited)');
+
+            return;
+        }
+
+        const threshold = new Date().getTime() - retentionTime * 60 * 60 * 1000;
         this.log.system.info('delete old program db start');
-        await this.programDB.deleteOld(new Date().getTime());
+        await this.programDB.deleteOld(threshold);
         this.log.system.info('delete old program db done');
     }
 

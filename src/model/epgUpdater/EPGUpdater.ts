@@ -94,6 +94,11 @@ class EPGUpdater implements IEPGUpdater {
         this.log.system.info('start EPG update');
 
         const updateInterval = this.config.epgUpdateIntervalTime * 60 * 1000;
+        // 過去の番組表データの削除間隔 (省略時は EPG 更新間隔と同じ)
+        const deleteInterval =
+            typeof this.config.epgDeleteIntervalTime === 'number' && this.config.epgDeleteIntervalTime > 0
+                ? this.config.epgDeleteIntervalTime * 60 * 1000
+                : updateInterval;
 
         // チューナーサーバの種別を確認
         const tunerServerType = await this.updateManage.checkTunerServerType();
@@ -155,7 +160,7 @@ class EPGUpdater implements IEPGUpdater {
                     this.log.system.error(err);
                 }
 
-                if (this.lastDeletedTime + updateInterval <= now) {
+                if (this.lastDeletedTime + deleteInterval <= now) {
                     // 古い番組情報を削除
                     await this.updateManage.deleteOldPrograms().catch(err => {
                         this.log.system.error('delete old programs error');

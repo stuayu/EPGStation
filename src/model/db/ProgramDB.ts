@@ -21,6 +21,7 @@ import IProgramDB, {
     FindScheduleOption,
     ProgramUpdateValues,
     ProgramWithOverlap,
+    ProgramKeepOption,
 } from './IProgramDB';
 
 interface FindQuery {
@@ -65,6 +66,7 @@ export default class ProgramDB implements IProgramDB {
         channelTypes: IChannelTypeIndex,
         programs: mapid.Program[],
         deleteChannelIds: mapid.ServiceId[] = [],
+        keepOption?: ProgramKeepOption,
     ): Promise<void> {
         const updateTime = new Date().getTime();
         const values: QueryDeepPartialEntity<Program>[] = [];
@@ -88,7 +90,21 @@ export default class ProgramDB implements IProgramDB {
         try {
             // 削除
             if (deleteChannelIds.length === 0) {
-                await queryRunner.manager.createQueryBuilder().delete().from(Program).execute();
+                if (typeof keepOption === 'undefined') {
+                    await queryRunner.manager.createQueryBuilder().delete().from(Program).execute();
+                } else {
+                    // 過去の番組表データを残す設定の場合、保存期間内に終了した番組は削除しない
+                    // (Mirakurun は終了した番組を返さないため、全件削除すると保存期間の指定が意味を持たなくなる)
+                    const builder = queryRunner.manager
+                        .createQueryBuilder()
+                        .delete()
+                        .from(Program)
+                        .where('endAt >= :now', { now: keepOption.now });
+                    if (keepOption.retentionThreshold !== null) {
+                        builder.orWhere('endAt < :threshold', { threshold: keepOption.retentionThreshold });
+                    }
+                    await builder.execute();
+                }
             } else {
                 await queryRunner.manager.delete(Program, { channelId: In(deleteChannelIds) });
             }
