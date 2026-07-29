@@ -26,7 +26,7 @@
                     </div>
                 </div>
                 <v-card-actions>
-                    <v-btn v-if="!!needsGotoGuideButton === true" color="primary" variant="text" v-on:click="gotoGuide">番組表</v-btn>
+                    <v-btn v-if="!!needsGotoGuideButton === true" color="primary" variant="text" v-on:click="gotoGuide">週間番組表</v-btn>
                     <v-spacer></v-spacer>
                     <v-btn color="primary" variant="text" v-on:click="dialogState.isOpen = false">キャンセル</v-btn>
                     <v-btn color="primary" variant="text" v-on:click="view">視聴</v-btn>
@@ -42,6 +42,7 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
 import IOnAirSelectStreamState from '../../model/state/onair/IOnAirSelectStreamState';
+import GuideRouteUtil from '../../util/GuideRouteUtil';
 import Util from '../../util/Util';
 
 @Component({})
@@ -98,12 +99,8 @@ class OnAirSelectStream extends Vue {
             return;
         }
 
-        const query: any = {
-            channelId: channel.id,
-        };
-        if (typeof this.$route.query.time !== 'undefined') {
-            query.time = this.$route.query.time;
-        }
+        // 単局表示 (8 日分の週間番組表)。表示中の時刻・地域などの条件は引き継ぐ
+        const query = GuideRouteUtil.createQuery(this.$route, { channelId: channel.id, keepTime: true });
 
         this.dialogState.isOpen = false;
         await Util.sleep(300);

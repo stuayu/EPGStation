@@ -1,20 +1,27 @@
 <template>
     <div>
-        <v-menu v-model="isOpen" location="bottom start" :close-on-content-click="false">
+        <v-menu v-model="isOpen" location="bottom end" :close-on-content-click="false">
             <template v-slot:activator="{ props }">
                 <v-btn icon variant="text" v-bind="props">
-                    <v-icon>mdi-clock-outline</v-icon>
+                    <v-icon>mdi-calendar-clock</v-icon>
                 </v-btn>
             </template>
-            <v-card>
-                <div class="guide-time-selector pa-2">
-                    <div class="d-flex">
-                        <v-select v-if="broadcastItems.length > 0" :items="broadcastItems" v-model="broadcastValue" class="broadcast"></v-select>
-                        <v-select :items="dayItems" v-model="dayValue" class="day"></v-select>
-                        <v-select :items="hourItems" v-model="hourValue" class="hour"></v-select>
-                    </div>
+            <v-card class="guide-time-selector">
+                <v-date-picker v-model="dateValue" :min="minDate" :max="maxDate" show-adjacent-months hide-header color="primary"></v-date-picker>
+                <div class="d-flex ga-2 px-4 pb-2">
+                    <v-select
+                        v-if="broadcastItems.length > 0"
+                        :items="broadcastItems"
+                        v-model="broadcastValue"
+                        label="放送波"
+                        density="compact"
+                        variant="outlined"
+                        hide-details
+                    ></v-select>
+                    <v-select :items="hourItems" v-model="hourValue" label="時刻" density="compact" variant="outlined" hide-details></v-select>
                 </div>
                 <v-card-actions>
+                    <v-btn v-on:click="onNow" variant="text">現在時刻</v-btn>
                     <v-spacer></v-spacer>
                     <v-btn v-on:click="onCancel" variant="text" color="error">閉じる</v-btn>
                     <v-btn v-on:click="onShow" variant="text" color="primary">表示</v-btn>
@@ -28,38 +35,45 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
-import IGuideState from '@/model/state/guide/IGuideState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import DateUtil from '@/util/DateUtil';
+import GuideRouteUtil from '@/util/GuideRouteUtil';
 import Util from '@/util/Util';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({})
 class GuideTimeSelector extends Vue {
+    // カレンダーで選べる範囲 (EPG は 8 日程度先まで。過去は保存期間の設定次第で残っている)
+    private static readonly SELECTABLE_PAST_DAYS = 30;
+    private static readonly SELECTABLE_FUTURE_DAYS = 8;
+
     public broadcastItems: string[] = [];
     public broadcastValue: string | undefined = undefined;
-    public dayItems: {
-        text: string;
-        value: string;
-    }[] = [];
-    public dayValue: string | undefined;
     public hourItems: {
-        text: string;
+        title: string;
         value: string;
     }[] = [];
     public hourValue: string | undefined;
+    public dateValue: Date = new Date();
 
     public isOpen: boolean = false;
 
-    private guideState: IGuideState = container.get<IGuideState>('IGuideState');
     private serverConfig: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     private settingValue: ISettingValue | null = null;
 
+    get minDate(): Date {
+        return GuideTimeSelector.addDays(GuideTimeSelector.getToday(), -GuideTimeSelector.SELECTABLE_PAST_DAYS);
+    }
+
+    get maxDate(): Date {
+        return GuideTimeSelector.addDays(GuideTimeSelector.getToday(), GuideTimeSelector.SELECTABLE_FUTURE_DAYS);
+    }
+
     public created(): void {
         for (let i = 0; i < 24; i++) {
             this.hourItems.push({
-                text: `${i.toString(10)}時`,
+                title: `${i.toString(10)}時`,
                 value: ('00' + i.toString(10)).slice(-2),
             });
         }
@@ -69,25 +83,29 @@ class GuideTimeSelector extends Vue {
         this.isOpen = false;
     }
 
+    /**
+     * 現在時刻の番組表へ移動する (time クエリを外す)
+     */
+    public async onNow(): Promise<void> {
+        this.isOpen = false;
+        await Util.move(this.$router, {
+            path: '/guide',
+            query: GuideRouteUtil.createQuery(this.$route, { type: this.broadcastValue }),
+        });
+    }
+
     public async onShow(): Promise<void> {
         this.isOpen = false;
-        if (typeof this.dayValue === 'undefined' || typeof this.hourValue === 'undefined') {
+        if (typeof this.hourValue === 'undefined') {
             return;
-        }
-
-        const query: any = {
-            time: this.dayValue + this.hourValue,
-        };
-        if (typeof this.broadcastValue !== 'undefined') {
-            query.type = this.broadcastValue;
-        }
-        if (typeof this.$route.query.channelId !== 'undefined') {
-            query.channelId = this.$route.query.channelId;
         }
 
         await Util.move(this.$router, {
             path: '/guide',
-            query: query,
+            query: GuideRouteUtil.createQuery(this.$route, {
+                type: this.broadcastValue,
+                time: DateUtil.format(this.dateValue, 'YYMMdd') + this.hourValue,
+            }),
         });
     }
 
@@ -126,168 +144,53 @@ class GuideTimeSelector extends Vue {
             throw new Error('ConfigIsNull');
         }
 
-        // 放送波 item 設定
-        this.broadcastItems = [];
-        if (this.settingValue.isEnableDisplayForEachBroadcastWave === true) {
-            if (config.broadcast.GR === true) {
-                this.broadcastItems.push('GR');
-            }
-            if (config.broadcast.BS === true) {
-                this.broadcastItems.push('BS');
-            }
-            if (config.broadcast.CS === true) {
-                this.broadcastItems.push('CS');
-            }
-            if (config.broadcast.SKY === true) {
-                this.broadcastItems.push('SKY');
-            }
-            if (config.broadcast.NW1 === true) {
-                this.broadcastItems.push('NW1');
-            }
-            if (config.broadcast.NW2 === true) {
-                this.broadcastItems.push('NW2');
-            }
-            if (config.broadcast.NW3 === true) {
-                this.broadcastItems.push('NW3');
-            }
-            if (config.broadcast.NW4 === true) {
-                this.broadcastItems.push('NW4');
-            }
-            if (config.broadcast.NW5 === true) {
-                this.broadcastItems.push('NW5');
-            }
-            if (config.broadcast.NW6 === true) {
-                this.broadcastItems.push('NW6');
-            }
-            if (config.broadcast.NW7 === true) {
-                this.broadcastItems.push('NW7');
-            }
-            if (config.broadcast.NW8 === true) {
-                this.broadcastItems.push('NW8');
-            }
-            if (config.broadcast.NW9 === true) {
-                this.broadcastItems.push('NW9');
-            }
-            if (config.broadcast.NW10 === true) {
-                this.broadcastItems.push('NW10');
-            }
-            if (config.broadcast.NW11 === true) {
-                this.broadcastItems.push('NW11');
-            }
-            if (config.broadcast.NW12 === true) {
-                this.broadcastItems.push('NW12');
-            }
-            if (config.broadcast.NW13 === true) {
-                this.broadcastItems.push('NW13');
-            }
-            if (config.broadcast.NW14 === true) {
-                this.broadcastItems.push('NW14');
-            }
-            if (config.broadcast.NW15 === true) {
-                this.broadcastItems.push('NW15');
-            }
-            if (config.broadcast.NW16 === true) {
-                this.broadcastItems.push('NW16');
-            }
-            if (config.broadcast.NW17 === true) {
-                this.broadcastItems.push('NW17');
-            }
-            if (config.broadcast.NW18 === true) {
-                this.broadcastItems.push('NW18');
-            }
-            if (config.broadcast.NW19 === true) {
-                this.broadcastItems.push('NW19');
-            }
-            if (config.broadcast.NW20 === true) {
-                this.broadcastItems.push('NW20');
-            }
-            if (config.broadcast.NW21 === true) {
-                this.broadcastItems.push('NW21');
-            }
-            if (config.broadcast.NW22 === true) {
-                this.broadcastItems.push('NW22');
-            }
-            if (config.broadcast.NW23 === true) {
-                this.broadcastItems.push('NW23');
-            }
-            if (config.broadcast.NW24 === true) {
-                this.broadcastItems.push('NW24');
-            }
-            if (config.broadcast.NW25 === true) {
-                this.broadcastItems.push('NW25');
-            }
-            if (config.broadcast.NW26 === true) {
-                this.broadcastItems.push('NW26');
-            }
-            if (config.broadcast.NW27 === true) {
-                this.broadcastItems.push('NW27');
-            }
-            if (config.broadcast.NW28 === true) {
-                this.broadcastItems.push('NW28');
-            }
-            if (config.broadcast.NW29 === true) {
-                this.broadcastItems.push('NW29');
-            }
-            if (config.broadcast.NW30 === true) {
-                this.broadcastItems.push('NW30');
-            }
-            if (config.broadcast.NW31 === true) {
-                this.broadcastItems.push('NW31');
-            }
-            if (config.broadcast.NW32 === true) {
-                this.broadcastItems.push('NW32');
-            }
-            if (config.broadcast.NW33 === true) {
-                this.broadcastItems.push('NW33');
-            }
-            if (config.broadcast.NW34 === true) {
-                this.broadcastItems.push('NW34');
-            }
-            if (config.broadcast.NW35 === true) {
-                this.broadcastItems.push('NW35');
-            }
-            if (config.broadcast.NW36 === true) {
-                this.broadcastItems.push('NW36');
-            }
-            if (config.broadcast.NW37 === true) {
-                this.broadcastItems.push('NW37');
-            }
-            if (config.broadcast.NW38 === true) {
-                this.broadcastItems.push('NW38');
-            }
-            if (config.broadcast.NW39 === true) {
-                this.broadcastItems.push('NW39');
-            }
-            if (config.broadcast.NW40 === true) {
-                this.broadcastItems.push('NW40');
-            }
-        }
-
-        // 日付
-        this.dayItems = [];
-        const now = DateUtil.getJaDate(new Date());
-        let baseTime = new Date(DateUtil.format(now, 'yyyy/MM/dd 00:00:00 +0900')).getTime();
-        for (let i = 0; i < 8; i++) {
-            const date = new Date(baseTime);
-            this.dayItems.push({
-                text: DateUtil.format(date, 'MM/dd(w)'),
-                value: DateUtil.format(date, 'YYMMdd'),
-            });
-            baseTime += 1000 * 60 * 60 * 24;
-        }
+        // 放送波 item 設定 (地域別番組表のときは放送波での絞り込みは行わない)
+        this.broadcastItems =
+            this.settingValue.isEnableDisplayForEachBroadcastWave === true && typeof this.$route.query.region === 'undefined'
+                ? Object.keys(config.broadcast).filter(type => (config.broadcast as any)[type] === true)
+                : [];
     }
 
     /**
      * selector value 初期化
      */
     private initValue(): void {
-        if (this.settingValue !== null && this.settingValue.isEnableDisplayForEachBroadcastWave === true && typeof this.$route.query.type === 'string') {
-            this.broadcastValue = this.$route.query.type;
-        }
+        this.broadcastValue =
+            this.settingValue !== null && this.settingValue.isEnableDisplayForEachBroadcastWave === true && typeof this.$route.query.type === 'string'
+                ? this.$route.query.type
+                : undefined;
 
-        this.dayValue = typeof this.$route.query.time === 'string' ? this.$route.query.time.substr(0, 6) : this.dayItems[0].value;
+        const time = typeof this.$route.query.time === 'string' ? this.$route.query.time : null;
+        this.dateValue = time === null ? GuideTimeSelector.getToday() : GuideTimeSelector.parseDate(time);
+        this.hourValue = time === null ? DateUtil.format(DateUtil.getJaDate(new Date()), 'hh') : time.slice(6, 8);
+    }
 
-        this.hourValue = typeof this.$route.query.time === 'string' ? this.$route.query.time.substr(6, 2) : DateUtil.format(DateUtil.getJaDate(new Date()), 'hh');
+    /**
+     * 日本時間での本日 0 時を返す
+     * @return Date
+     */
+    private static getToday(): Date {
+        const now = DateUtil.getJaDate(new Date());
+
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    }
+
+    /**
+     * YYMMddhh 形式から Date を作る
+     * @param time: string
+     * @return Date
+     */
+    private static parseDate(time: string): Date {
+        const year = 2000 + parseInt(time.slice(0, 2), 10);
+        const month = parseInt(time.slice(2, 4), 10) - 1;
+        const day = parseInt(time.slice(4, 6), 10);
+        const date = new Date(year, month, day);
+
+        return isNaN(date.getTime()) === true ? GuideTimeSelector.getToday() : date;
+    }
+
+    private static addDays(date: Date, days: number): Date {
+        return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
     }
 }
 
@@ -296,19 +199,6 @@ export default toNative(GuideTimeSelector);
 
 <style lang="sass" scoped>
 .guide-time-selector
-    .broadcast
-        width: 70px
-    .day
-        width: 110px
-    .hour
-        width: 70px
-</style>
-
-<style lang="sass">
-.guide-time-selector
-    .v-input__control
-        .v-input__slot
-            margin: 0 !important
-        .v-messages, .v-text-field__details
-            display: none
+    .v-date-picker
+        box-shadow: none
 </style>
