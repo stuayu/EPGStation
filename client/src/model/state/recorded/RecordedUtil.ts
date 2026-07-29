@@ -86,6 +86,36 @@ export default class RecordedUtil implements IRecordedUtil {
             result.display.genre = genres;
         }
 
+        // ジャンルチップ表示用に genre1 ~ genre3 をすべて集約する (重複は除く)
+        const genreItems: string[] = [];
+        for (const [lv1, lv2] of [
+            [item.genre1, item.subGenre1],
+            [item.genre2, item.subGenre2],
+            [item.genre3, item.subGenre3],
+        ] as const) {
+            if (typeof lv1 === 'undefined') {
+                continue;
+            }
+            const text = GenreUtil.getGenres(lv1, lv2);
+            if (text !== null && genreItems.includes(text) === false) {
+                genreItems.push(text);
+            }
+        }
+        if (genreItems.length > 0) {
+            result.display.genreItems = genreItems;
+        }
+
+        // 録画タグ (色付きチップ表示用)
+        if (typeof item.tags !== 'undefined' && item.tags.length > 0) {
+            result.display.tags = item.tags;
+        }
+
+        // 放送局ロゴ
+        const channel = this.channelModel.findChannel(item.channelId, isHalfWidth);
+        if (channel !== null && channel.hasLogoData === true) {
+            result.display.logoSrc = `./api/channels/${channel.id.toString(10)}/logo`;
+        }
+
         if (item.isRecording !== true && typeof item.dropLogFile !== 'undefined') {
             let fileSize = 0;
             if (typeof item.videoFiles !== 'undefined') {
