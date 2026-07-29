@@ -679,7 +679,12 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - ffprobe を `-show_format -show_streams` で実行する `IVideoUtil.getDetailedInfo()` を追加し、`VideoApiModel` に `getMetadata()` / `analyzeMetadata()` / `analyzeAllMetadata()` / `getMetadataStatus()` を実装 (`GET|POST /api/videos/{videoFileId}/metadata`、`GET|POST /api/videos/metadata`)
         - 録画完了ファイルは「ファイル最終更新時刻 − 実測尺」をファイル先頭の実時刻 (`startAt`) として推定して保存する。新規録画は `RecorderModel.addRecorded()` で録画開始時刻をそのまま記録する。録画中は推定しない
         - 過去分はサーバー起動時にバックグラウンドで順次解析され (`ServiceServer.analyzeVideoFileMetadata()`、20 件ずつ)、サーバー設定 > 基本タブの「録画ファイルのメタデータ」から手動一括取得もできる。未解析のファイルは再生時にオンデマンドでも解析される
-        - ニコニコ実況の過去ログは番組開始時刻ではなく `videoFile.startAt` を基準に取得するように変更し、録画マージン分のコメントズレを解消 (`client/src/views/WatchRecorded.vue`)
+        - ニコニコ実況の過去ログは番組開始時刻ではなく `videoFile.startAt` を基準に取得するように変更し、録画マージン分のコメントズレを解消
+            - 解決処理は `client/src/util/JikkyoKakologParam.ts` に集約し、**直接再生 (`WatchRecorded.vue`) とストリーミング再生 (`WatchRecordedStreaming.vue`) の両方**が同じ基準時刻を使う (以前はストリーミング側が番組開始時刻のままだった)
+            - 録画ファイルが未解析で `startAt` を持たない場合は `GET /api/videos/{videoFileId}/metadata` を叩いてその場で解析させ、それでも取れないときだけ番組開始時刻へフォールバックする
+            - 取得範囲の終端は実尺 (`videoFile.duration`) から求め、実尺が無い場合は番組の長さで代用する
+            - コメントの表示時刻は `jikkyoStartAt + 再生位置` で決まる (`JikkyoKakologClient`)。基準時刻を変えるときはこの前提を壊さないこと
+        - 一括解析の失敗理由をログに出すようにした (`VideoApiModel.analyzeAllMetadata()` は例外を握り潰して件数だけ数えていたため、`ffprobe` のパス誤りや **config.yml の `recorded` に無いディレクトリ名を DB が指している**ケースで全件失敗しても原因が分からなかった)。ログ量を抑えるため先頭 3 件のみ warn で出す
     - 録画再生画面のシークは DPlayer 標準のコントローラ (プレーヤー内のシークバー) に一本化した
         - 一時的に独自の外付けシークバー (`VideoSeekBar.vue`) をプレーヤー下へ表示していたが、DPlayer 内蔵のシークバーと二重になるため撤去した。`VideoContainer.vue` 側の再生位置ポーリング (1 秒間隔) も不要になったため削除
         - **ストリーミング再生 (mp4 / webm / HLS) は video 要素が「再生位置から作り直したストリームの断片」しか持たない**ため、そのままでは DPlayer のシークバーに断片の長さしか出ず、断片の外へシークできない。`client/src/components/video/VirtualTimeline.ts` を追加し、DPlayer の表示更新とシーク操作を動画全体の時間軸へ差し替えた

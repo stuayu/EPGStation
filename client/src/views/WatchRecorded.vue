@@ -30,12 +30,13 @@ import TitleBar from '@/components/titleBar/TitleBar.vue';
 import VideoContainer from '@/components/video/VideoContainer.vue';
 import { BaseVideoParam, NormalVideoParam } from '@/components/video/ViedoParam';
 import IRecordedApiModel from '@/model/api/recorded/IRecordedApiModel';
+import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import IChannelModel from '@/model/channels/IChannelModel';
 import container from '@/model/ModelContainer';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
-import JikkyoUtil from '@/util/JikkyoUtil';
+import { JikkyoKakologParam, resolveJikkyoKakologParam } from '@/util/JikkyoKakologParam';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 
@@ -53,6 +54,7 @@ class WatchRecorded extends Vue {
 
     private recordedApiModel: IRecordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
     private channelModel: IChannelModel = container.get<IChannelModel>('IChannelModel');
+    private videoApiModel: IVideoApiModel = container.get<IVideoApiModel>('IVideoApiModel');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
 
@@ -101,53 +103,19 @@ class WatchRecorded extends Vue {
 
     /**
      * 録画情報からニコニコ実況過去ログの取得パラメータを解決する
+     * 基準時刻は録画ファイルの先頭に対応する実時刻 (`videoFile.startAt`) を使う
+     * @param recordedId: apid.RecordedId
+     * @param videoFileId: apid.VideoFileId | null
+     * @return Promise<JikkyoKakologParam | null>
      */
-    private async getJikkyoKakologParam(
-        recordedId: apid.RecordedId,
-        videoFileId: apid.VideoFileId | null,
-    ): Promise<{ jikkyoChannelId: string; jikkyoStartAt: number; jikkyoEndAt: number } | null> {
-        try {
-            const recorded = await this.recordedApiModel.get(recordedId, true);
-            let channel = this.channelModel.findChannel(recorded.channelId, true);
-            if (channel === null) {
-                await this.channelModel.fetchChannels();
-                channel = this.channelModel.findChannel(recorded.channelId, true);
-            }
-
-            const jikkyoChannelId = channel === null ? null : JikkyoUtil.findJikkyoChannelId(channel);
-            if (jikkyoChannelId === null) {
-                return null;
-            }
-
-            // 録画ファイルの実測メタデータがあればそちらを優先する (番組時刻とのずれを防ぐ)
-            const videoFile =
-                videoFileId === null || typeof recorded.videoFiles === 'undefined'
-                    ? undefined
-                    : recorded.videoFiles.find(file => file.id === videoFileId);
-
-            if (typeof videoFile !== 'undefined' && typeof videoFile.startAt === 'number') {
-                const startAt = videoFile.startAt;
-                const endAt =
-                    typeof videoFile.duration === 'number' && videoFile.duration > 0
-                        ? startAt + Math.round(videoFile.duration * 1000)
-                        : recorded.endAt;
-
-                return {
-                    jikkyoChannelId: jikkyoChannelId,
-                    jikkyoStartAt: startAt,
-                    jikkyoEndAt: endAt,
-                };
-            }
-
-            return {
-                jikkyoChannelId: jikkyoChannelId,
-                jikkyoStartAt: recorded.startAt,
-                jikkyoEndAt: recorded.endAt,
-            };
-        } catch (err) {
-            console.error(err);
-            return null;
-        }
+    private async getJikkyoKakologParam(recordedId: apid.RecordedId, videoFileId: apid.VideoFileId | null): Promise<JikkyoKakologParam | null> {
+        return resolveJikkyoKakologParam({
+            recordedApiModel: this.recordedApiModel,
+            channelModel: this.channelModel,
+            videoApiModel: this.videoApiModel,
+            recordedId: recordedId,
+            videoFileId: videoFileId,
+        });
     }
 }
 

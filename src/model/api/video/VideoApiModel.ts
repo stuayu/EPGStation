@@ -6,6 +6,8 @@ import * as apid from '../../../../api';
 import IRecordedDB from '../../db/IRecordedDB';
 import IVideoFileDB from '../../db/IVideoFileDB';
 import IConfiguration from '../../IConfiguration';
+import ILogger from '../../ILogger';
+import ILoggerModel from '../../ILoggerModel';
 import IIPCClient from '../../ipc/IIPCClient';
 import IApiUtil from '../IApiUtil';
 import IPlayList from '../IPlayList';
@@ -23,6 +25,8 @@ export default class VideoApiModel implements IVideoApiModel {
     // 一括解析の既定件数 / 上限件数
     private static readonly ANALYZE_DEFAULT_LIMIT = 100;
     private static readonly ANALYZE_MAX_LIMIT = 1000;
+    // 一括解析で失敗理由をログに残す件数 (16000 件規模でログを埋めないため)
+    private static readonly ANALYZE_LOG_LIMIT = 3;
 
     private configuration: IConfiguration;
     private videoFileDB: IVideoFileDB;
@@ -30,6 +34,7 @@ export default class VideoApiModel implements IVideoApiModel {
     private apiUtil: IApiUtil;
     private videoUtil: IVideoUtil;
     private ipc: IIPCClient;
+    private log: ILogger | null;
 
     constructor(
         @inject('IConfiguration') configuration: IConfiguration,
@@ -38,6 +43,7 @@ export default class VideoApiModel implements IVideoApiModel {
         @inject('IApiUtil') apiUtil: IApiUtil,
         @inject('IVideoUtil') videoUtil: IVideoUtil,
         @inject('IIPCClient') ipc: IIPCClient,
+        @inject('ILoggerModel') logger?: ILoggerModel,
     ) {
         this.configuration = configuration;
         this.videoFileDB = videoFileDB;
@@ -45,6 +51,7 @@ export default class VideoApiModel implements IVideoApiModel {
         this.apiUtil = apiUtil;
         this.videoUtil = videoUtil;
         this.ipc = ipc;
+        this.log = typeof logger === 'undefined' ? null : logger.getLogger();
     }
 
     /**
@@ -170,7 +177,8 @@ export default class VideoApiModel implements IVideoApiModel {
 
         const filePath = this.videoUtil.getFullFilePathFromVideoFile(video);
         if (filePath === null) {
-            throw new Error('VideoFilePathIsUndefined');
+            // config.yml の recorded に無いディレクトリ名を DB が指している場合に起きる
+            throw new Error(`VideoFilePathIsUndefined (parentDirectoryName: ${video.parentDirectoryName}, filePath: ${video.filePath})`);
         }
 
         const info = await this.videoUtil.getDetailedInfo(filePath);
@@ -230,7 +238,12 @@ export default class VideoApiModel implements IVideoApiModel {
                 analyzed++;
             } catch (err: any) {
                 // 1 件失敗しても残りは続行する (ファイル欠損・壊れた TS など)
+                // 全件失敗する設定不備 (ffprobe のパス誤り・録画ディレクトリ名の不一致) に気付けるよう
+                // 先頭数件だけ理由を残す
                 failed++;
+                if (failed <= VideoApiModel.ANALYZE_LOG_LIMIT) {
+                    this.log?.system.warn(`video file metadata analysis failed: videoFileId ${target.id}: ${err?.message ?? err}`);
+                }
             }
         }
 
