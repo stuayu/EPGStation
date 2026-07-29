@@ -443,20 +443,29 @@
                                 </v-card-text>
                             </v-card>
 
-                            <v-table density="compact">
+                            <v-table density="compact" class="alias-table">
+                                <!-- 列幅はビューポートに対する割合 (%) で指定し、正規化タイトルとシリーズを同程度の幅に保つ -->
+                                <colgroup>
+                                    <col class="alias-col-check" />
+                                    <col class="alias-col-normalized" />
+                                    <col class="alias-col-series" />
+                                    <col class="alias-col-source" />
+                                    <col class="alias-col-date" />
+                                    <col class="alias-col-action" />
+                                </colgroup>
                                 <thead>
                                     <tr>
-                                        <th style="width: 48px">
+                                        <th>
                                             <v-checkbox-btn
                                                 :model-value="isAllAliasSelected"
                                                 @update:model-value="toggleAllAlias"
                                             ></v-checkbox-btn>
                                         </th>
                                         <th>正規化タイトル</th>
-                                        <th style="min-width: 260px">シリーズ</th>
-                                        <th style="width: 90px">学習元</th>
-                                        <th style="width: 140px">登録日時</th>
-                                        <th style="width: 60px"></th>
+                                        <th>シリーズ</th>
+                                        <th>学習元</th>
+                                        <th class="alias-date-cell">登録日時</th>
+                                        <th></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -464,7 +473,7 @@
                                         <td>
                                             <v-checkbox-btn v-model="selectedAliasIds" :value="a.id"></v-checkbox-btn>
                                         </td>
-                                        <td class="text-truncate" style="max-width: 1px">{{ a.normalizedTitle }}</td>
+                                        <td class="alias-normalized-cell">{{ a.normalizedTitle }}</td>
                                         <td>
                                             <span v-if="aliasEdits[a.id]?.remove === true" class="text-error text-body-2">削除します</span>
                                             <v-autocomplete
@@ -487,7 +496,7 @@
                                                 {{ aliasSourceOf(a) === 'llm' ? 'LLM 学習' : '手動' }}
                                             </v-chip>
                                         </td>
-                                        <td class="text-caption">{{ formatDate(a.createdAt) }}</td>
+                                        <td class="text-caption alias-date-cell">{{ formatDate(a.createdAt) }}</td>
                                         <td>
                                             <v-btn v-if="isAliasEdited(a.id)" size="small" variant="text" @click="resetAliasEdit(a.id)">戻す</v-btn>
                                             <v-btn v-else size="small" variant="text" color="error" @click="markAliasRemove(a.id)">削除</v-btn>
@@ -1924,3 +1933,61 @@ class SystemSetting extends Vue {
 }
 export default toNative(SystemSetting);
 </script>
+
+<style lang="sass" scoped>
+// エイリアス辞書の表
+// 列幅を px ではなく割合 (%) で指定し、ビューポート幅に応じて伸縮させる
+.alias-table
+    :deep(table)
+        table-layout: fixed
+        width: 100%
+
+    :deep(th), :deep(td)
+        overflow: hidden
+
+    .alias-col-check
+        width: 4%
+        min-width: 40px
+
+    .alias-col-normalized
+        width: 33%
+
+    .alias-col-series
+        width: 35%
+
+    .alias-col-source
+        width: 10%
+
+    .alias-col-date
+        width: 12%
+
+    .alias-col-action
+        width: 6%
+
+// 長い正規化タイトルは列幅に収めて末尾を省略する
+.alias-normalized-cell
+    white-space: nowrap
+    overflow: hidden
+    text-overflow: ellipsis
+
+.alias-removed
+    opacity: 0.6
+
+// 狭いビューポートでは登録日時を隠し、その分をタイトルとシリーズに配分する
+@media screen and (max-width: 960px)
+    .alias-table
+        .alias-col-normalized
+            width: 38%
+
+        .alias-col-series
+            width: 40%
+
+        .alias-col-source
+            width: 12%
+
+        .alias-col-action
+            width: 6%
+
+    .alias-date-cell
+        display: none
+</style>
