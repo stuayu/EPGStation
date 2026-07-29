@@ -14,7 +14,7 @@
                     <tr v-for="item in items" v-bind:key="item.recordedItem.id" v-on:click="gotoDetail(item)" v-bind:class="{ 'selected-color': item.isSelected === true }">
                         <td>{{ item.display.name }}</td>
                         <td>{{ item.display.channelName }}</td>
-                        <td>{{ item.display.shortTime }} ({{ item.display.duration }} m)</td>
+                        <td>{{ item.display.shortTime }} ({{ item.display.durationText }})</td>
                         <td class="menu">
                             <RecordedItemMenu v-if="isEditMode === false" :recordedItem="item.recordedItem" v-on:stopEncode="stopEncode"></RecordedItemMenu>
                         </td>

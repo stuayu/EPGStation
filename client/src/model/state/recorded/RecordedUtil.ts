@@ -22,13 +22,16 @@ export default class RecordedUtil implements IRecordedUtil {
     public convertRecordedItemToDisplayData(item: apid.RecordedItem, isHalfWidth: boolean): RecordedDisplayData {
         const startAt = DateUtil.getJaDate(new Date(item.startAt));
         const endAt = DateUtil.getJaDate(new Date(item.endAt));
+        const duration = Math.floor((item.endAt - item.startAt) / 1000 / 60);
+        const fileDuration = RecordedUtil.getFileDuration(item);
         const result: RecordedDisplayData = {
             display: {
                 channelName: ChannelNameUtil.getRecordedChannelName(this.channelModel, item, isHalfWidth),
                 name: item.name,
                 time: DateUtil.format(startAt, 'MM/dd(w) hh:mm ~ ') + DateUtil.format(endAt, 'hh:mm'),
                 shortTime: DateUtil.format(startAt, 'MM/dd(w) hh:mm'),
-                duration: Math.floor((item.endAt - item.startAt) / 1000 / 60),
+                duration: duration,
+                durationText: RecordedUtil.createDurationText(duration, fileDuration),
                 description: item.description,
                 extended: item.extended,
                 topThumbnailPath: typeof item.thumbnails === 'undefined' || item.thumbnails.length === 0 ? './img/noimg.png' : `./api/thumbnails/${item.thumbnails[0]}`,
@@ -39,6 +42,10 @@ export default class RecordedUtil implements IRecordedUtil {
             recordedItem: item,
             isSelected: false,
         };
+
+        if (fileDuration !== null) {
+            result.display.fileDuration = fileDuration;
+        }
 
         // 視聴履歴機能が無効な場合、サーバは videoFiles に watchHistory を一切付与しないため
         // ここでの分岐は既存挙動 (バッジ非表示) を変えない
@@ -94,5 +101,36 @@ export default class RecordedUtil implements IRecordedUtil {
         }
 
         return result;
+    }
+
+    /**
+     * 録画ファイルの実測の長さ (分) を返す
+     * 複数ファイルがある場合は最も長いものを採用する (TS と エンコード済みで尺が異なることがあるため)
+     * @param item: apid.RecordedItem
+     * @return number | null 未解析でメタデータが無い場合は null
+     */
+    private static getFileDuration(item: apid.RecordedItem): number | null {
+        if (typeof item.videoFiles === 'undefined') {
+            return null;
+        }
+
+        const durations = item.videoFiles.filter(video => typeof video.duration === 'number' && video.duration > 0).map(video => video.duration as number);
+
+        return durations.length === 0 ? null : Math.round(Math.max(...durations) / 60);
+    }
+
+    /**
+     * 一覧表示用の長さ文字列を作る
+     * 実測の長さが番組の長さと異なる場合のみ併記する
+     * @param duration: number 番組の長さ (分)
+     * @param fileDuration: number | null 録画ファイルの実測の長さ (分)
+     * @return string
+     */
+    private static createDurationText(duration: number, fileDuration: number | null): string {
+        if (fileDuration === null || fileDuration === duration) {
+            return `${duration} m`;
+        }
+
+        return `${duration} m → 実 ${fileDuration} m`;
     }
 }
