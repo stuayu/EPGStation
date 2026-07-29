@@ -18,7 +18,7 @@
                 </div>
             </div>
             <div class="text text-caption font-weight-light">{{ item.display.channelName }}</div>
-            <div class="text text-caption font-weight-light">{{ item.display.time }} ({{ item.display.duration }} m)</div>
+            <div class="text text-caption font-weight-light">{{ item.display.time }} ({{ item.display.durationText }})</div>
             <div v-if="typeof item.display.watchStatus !== 'undefined'" class="watch-progress">
                 <v-chip size="x-small" :color="watchStatusColor(item.display.watchStatus)">
                     {{ watchStatusLabel(item.display.watchStatus) }}
