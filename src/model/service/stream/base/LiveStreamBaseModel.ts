@@ -11,7 +11,9 @@ import ILoggerModel from '../../../ILoggerModel';
 import IMirakurunClientModel from '../../../IMirakurunClientModel';
 import IEncodeProcessManageModel, { CreateProcessOption } from '../../encode/IEncodeProcessManageModel';
 import ISocketIOManageModel from '../../socketio/ISocketIOManageModel';
+import AribId3Extractor from '../llhls/AribId3Extractor';
 import Fmp4Packager from '../llhls/Fmp4Packager';
+import IAribId3Extractor from '../llhls/IAribId3Extractor';
 import IFmp4Packager from '../llhls/IFmp4Packager';
 import IHLSFileDeleterModel from '../util/IHLSFileDeleterModel';
 import IHLSMemoryStoreModel from '../util/IHLSMemoryStoreModel';
@@ -30,6 +32,8 @@ export default abstract class LiveStreamBaseModel
     private id3MetadataTransoform: ID3MetadataTransform | null = null;
     private hlsMemoryStore: IHLSMemoryStoreModel;
     private fmp4Packager: IFmp4Packager | null = null;
+    // in-memory HLS で ARIB 字幕 (ID3 timed metadata) を取り出すための Transform
+    private aribId3Extractor: IAribId3Extractor | null = null;
     private memoryStreamId: apid.StreamId | null = null;
 
     constructor(
@@ -151,13 +155,22 @@ export default abstract class LiveStreamBaseModel
 
             // パイプ処理
             if (this.streamProcess.stdin !== null) {
-                // 従来の (TS セグメント) HLS 配信の場合は arib-subtitle-timedmetadater を通す
-                // in-memory (fMP4) モードでは mp4 出力に ID3 timed metadata を乗せられないため直結する
-                if (this.getStreamType() === 'LiveHLS' && this.isMemoryHLS() === false) {
+                // HLS 配信の場合は ARIB 字幕を ID3 timed metadata へ変換する
+                // arib-subtitle-timedmetadater を通す
+                if (this.getStreamType() === 'LiveHLS') {
                     this.log.stream.info('use arib-subtitle-timedmetadater');
                     this.id3MetadataTransoform = new ID3MetadataTransform();
                     this.stream.pipe(this.id3MetadataTransoform);
-                    this.id3MetadataTransoform.pipe(this.streamProcess.stdin);
+
+                    if (this.isMemoryHLS() === true) {
+                        // in-memory (fMP4) モードでは mp4 出力に ID3 timed metadata を乗せられないため、
+                        // エンコード前の TS から ID3 を抜き取り、セグメントの emsg box として再多重化する
+                        this.aribId3Extractor = new AribId3Extractor(this.log);
+                        this.id3MetadataTransoform.pipe(this.aribId3Extractor);
+                        this.aribId3Extractor.pipe(this.streamProcess.stdin);
+                    } else {
+                        this.id3MetadataTransoform.pipe(this.streamProcess.stdin);
+                    }
                 } else {
                     this.stream.pipe(this.streamProcess.stdin);
                 }
@@ -231,6 +244,13 @@ export default abstract class LiveStreamBaseModel
             this.emitExitStream();
         });
 
+        // エンコード前の TS から抜き取った ID3 timed metadata (ARIB 字幕) をセグメントへ乗せる
+        if (this.aribId3Extractor !== null) {
+            this.aribId3Extractor.on('id3', metadata => {
+                packager.pushId3(metadata);
+            });
+        }
+
         this.streamProcess.stdout.pipe(packager);
     }
 
@@ -269,6 +289,13 @@ export default abstract class LiveStreamBaseModel
         if (this.stream !== null) {
             this.stream.unpipe();
             this.stream.destroy();
+        }
+
+        if (this.aribId3Extractor !== null) {
+            this.aribId3Extractor.unpipe();
+            this.aribId3Extractor.removeAllListeners();
+            this.aribId3Extractor.destroy();
+            this.aribId3Extractor = null;
         }
 
         if (this.id3MetadataTransoform !== null) {

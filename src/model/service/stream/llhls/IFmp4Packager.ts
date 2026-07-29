@@ -1,4 +1,5 @@
 import * as stream from 'stream';
+import { AribId3Metadata } from './IAribId3Extractor';
 
 /**
  * Fmp4Packager が扱うパート (moof + mdat の組) 情報
@@ -33,6 +34,13 @@ export interface Fmp4PackagerOption {
 }
 
 export default interface IFmp4Packager extends stream.Writable {
+    /**
+     * エンコード前の TS から抜き取った ID3 timed metadata (ARIB 字幕) を登録する
+     * 登録された metadata は次に出力するセグメント先頭の emsg box として多重化される
+     * @param metadata: AribId3Metadata
+     */
+    pushId3(metadata: AribId3Metadata): void;
+
     on(event: 'init', listener: (data: Buffer) => void): this;
     on(event: 'part', listener: (part: Fmp4PackagerPart) => void): this;
     on(event: 'segment', listener: (segment: Fmp4PackagerSegment) => void): this;
