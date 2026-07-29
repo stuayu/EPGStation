@@ -13,65 +13,85 @@
         <v-container>
             <transition name="page">
                 <div v-if="recorded !== null" ref="appContent" class="app-content mx-auto">
-                    <div class="content-0 mx-auto">
-                        <div class="thumbnail">
-                            <v-img
-                                aspect-ratio="1.7778"
-                                cover
-                                width="100%"
-                                max-height="400"
-                                :src="recorded.display.topThumbnailPath"
-                                v-on:error="onThumbnailError"
-                                :eager="true"
-                            ></v-img>
-                        </div>
-                        <div class="content-description">
-                            <div class="title font-weight-bold">
-                                {{ recorded.display.name }}
-                            </div>
-                            <div class="text-subtitle-1 my-1">
-                                {{ recorded.display.channelName }}
-                            </div>
-                            <div class="text-subtitle-2 font-weight-light">
-                                {{ recorded.display.genre }}
-                            </div>
-                            <div class="text-subtitle-2 font-weight-light">
-                                {{ recorded.display.time }} ({{ recorded.display.durationText }})
-                            </div>
-                            <div class="text-body-2 mt-2 font-weight-light drop" v-bind:class="{ droped: recorded.display.hasDrop === true }" v-on:click="showDropLog">
-                                {{ recorded.display.drop }}
-                            </div>
-                            <div class="button-wrap mt-2 d-flex flex-wrap">
-                                <div class="d-flex flex-wrap">
-                                    <RecordedDetailPlayButton
-                                        v-if="typeof recorded.display.videoFiles !== 'undefined'"
-                                        title="play"
-                                        button="mdi-play"
-                                        :videoFiles="recorded.display.videoFiles"
-                                        v-on:play="play"
-                                    ></RecordedDetailPlayButton>
-                                    <RecordedDetailPlayButton
-                                        v-if="typeof recorded.display.canStremingVideoFiles !== 'undefined'"
-                                        title="streaming"
-                                        button="mdi-play-circle"
-                                        :videoFiles="recorded.display.canStremingVideoFiles"
-                                        v-on:play="streaming"
-                                    ></RecordedDetailPlayButton>
+                    <div class="detail-layout">
+                        <div class="detail-main">
+                            <div class="content-0 mx-auto">
+                                <div class="thumbnail">
+                                    <v-img
+                                        aspect-ratio="1.7778"
+                                        cover
+                                        width="100%"
+                                        max-height="400"
+                                        :src="recorded.display.topThumbnailPath"
+                                        v-on:error="onThumbnailError"
+                                        :eager="true"
+                                    ></v-img>
                                 </div>
-                                <div class="d-flex flex-wrap">
-                                    <RecordedDetailEncodeButton :recordedItem="recorded.recordedItem" :videoFiles="recorded.display.videoFiles"></RecordedDetailEncodeButton>
-                                    <RecordedDetailStopEncodeButton :recordedItem="recorded.recordedItem" v-on:stopEncode="stopEncode"></RecordedDetailStopEncodeButton>
+                                <div class="content-description">
+                                    <div class="title font-weight-bold">
+                                        {{ recorded.display.name }}
+                                    </div>
+                                    <div class="text-subtitle-1 my-1 d-flex align-center channel-line">
+                                        <v-img
+                                            v-if="typeof recorded.display.logoSrc !== 'undefined'"
+                                            :src="recorded.display.logoSrc"
+                                            v-on:error="onLogoError"
+                                            class="channel-logo mr-1 flex-grow-0"
+                                            height="20"
+                                            width="36"
+                                        ></v-img>
+                                        <span>{{ recorded.display.channelName }}</span>
+                                    </div>
+                                    <div v-if="typeof recorded.display.genreItems !== 'undefined' || typeof recorded.display.tags !== 'undefined'" class="d-flex flex-wrap ga-1 my-1">
+                                        <v-chip v-for="genre in recorded.display.genreItems" :key="genre" size="small" variant="tonal" color="primary">
+                                            {{ genre }}
+                                        </v-chip>
+                                        <v-chip v-for="tag in recorded.display.tags" :key="tag.id" size="small" variant="flat" :color="tag.color">
+                                            {{ tag.name }}
+                                        </v-chip>
+                                    </div>
+                                    <div class="text-subtitle-2 font-weight-light">
+                                        {{ recorded.display.time }} ({{ recorded.display.durationText }})
+                                    </div>
+                                    <div class="text-body-2 mt-2 font-weight-light drop" v-bind:class="{ droped: recorded.display.hasDrop === true }" v-on:click="showDropLog">
+                                        {{ recorded.display.drop }}
+                                    </div>
+                                    <div class="button-wrap mt-2 d-flex flex-wrap">
+                                        <div class="d-flex flex-wrap">
+                                            <RecordedDetailPlayButton
+                                                v-if="typeof recorded.display.videoFiles !== 'undefined'"
+                                                title="play"
+                                                button="mdi-play"
+                                                :videoFiles="recorded.display.videoFiles"
+                                                v-on:play="play"
+                                            ></RecordedDetailPlayButton>
+                                            <RecordedDetailPlayButton
+                                                v-if="typeof recorded.display.canStremingVideoFiles !== 'undefined'"
+                                                title="streaming"
+                                                button="mdi-play-circle"
+                                                :videoFiles="recorded.display.canStremingVideoFiles"
+                                                v-on:play="streaming"
+                                            ></RecordedDetailPlayButton>
+                                        </div>
+                                        <div class="d-flex flex-wrap">
+                                            <RecordedDetailEncodeButton :recordedItem="recorded.recordedItem" :videoFiles="recorded.display.videoFiles"></RecordedDetailEncodeButton>
+                                            <RecordedDetailStopEncodeButton :recordedItem="recorded.recordedItem" v-on:stopEncode="stopEncode"></RecordedDetailStopEncodeButton>
+                                        </div>
+                                        <RecordedDetailKodiButton :recordedItem="recorded.recordedItem" :videoFiles="recorded.display.videoFiles"></RecordedDetailKodiButton>
+                                    </div>
                                 </div>
-                                <RecordedDetailKodiButton :recordedItem="recorded.recordedItem" :videoFiles="recorded.display.videoFiles"></RecordedDetailKodiButton>
+                            </div>
+                            <div class="content-1 mt-6">
+                                <div class="text-body-2 description">
+                                    {{ recorded.display.description }}
+                                </div>
+                                <div v-if="isHideExtend === false" ref="extend" class="mt-2 text-body-2 extended">
+                                    {{ recorded.display.extended }}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="content-1 mt-6">
-                        <div class="text-body-2 description">
-                            {{ recorded.display.description }}
-                        </div>
-                        <div v-if="isHideExtend === false" ref="extend" class="mt-2 text-body-2 extended">
-                            {{ recorded.display.extended }}
+                        <div class="detail-side">
+                            <RecordedDetailSeries :recordedId="recorded.recordedItem.id"></RecordedDetailSeries>
                         </div>
                     </div>
                     <RecordedDetailSelectStreamDialog></RecordedDetailSelectStreamDialog>
@@ -89,6 +109,7 @@ import RecordedDetailKodiButton from '@/components/recorded/detail/RecordedDetai
 import RecordedDetailMoreButton from '@/components/recorded/detail/RecordedDetailMoreButton.vue';
 import RecordedDetailPlayButton from '@/components/recorded/detail/RecordedDetailPlayButton.vue';
 import RecordedDetailSelectStreamDialog from '@/components/recorded/detail/RecordedDetailSelectStreamDialog.vue';
+import RecordedDetailSeries from '@/components/recorded/detail/RecordedDetailSeries.vue';
 import RecordedDetailStopEncodeButton from '@/components/recorded/detail/RecordedDetailStopEncodeButton.vue';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
@@ -114,6 +135,7 @@ import IRecordedDetailState from '../model/state/recorded/detail/IRecordedDetail
         RecordedDetailMoreButton,
         RecordedDetailSelectStreamDialog,
         RecordedDetailKodiButton,
+        RecordedDetailSeries,
         DropLogDialog,
     },
 })
@@ -121,6 +143,13 @@ class RecordedDetail extends Vue {
     public onThumbnailError(_source: string | undefined): void {
         if (this.recorded !== null) {
             this.recorded.display.topThumbnailPath = './img/noimg.png';
+        }
+    }
+
+    // ロゴ画像の取得に失敗した場合は局名だけの表示にフォールバックする
+    public onLogoError(_source: string | undefined): void {
+        if (this.recorded !== null) {
+            this.recorded.display.logoSrc = undefined;
         }
     }
 
@@ -266,9 +295,25 @@ export default toNative(RecordedDetail);
 
 <style lang="sass" scoped>
 $switch-display-width: 800px
+// この幅以上でシリーズ情報を右サイドバー表示に切り替える
+$sidebar-switch-width: 1100px
+$sidebar-width: 320px
 
 .app-content
     width: 100%
+
+// 狭いビューポートでは 1 カラムとし、シリーズ情報を本文より上部に表示する
+.detail-layout
+    display: flex
+    flex-direction: column
+    gap: 24px
+
+.detail-main
+    min-width: 0
+
+.detail-side
+    order: -1
+    min-width: 0
 
 .thumbnail
     margin-top: auto
@@ -281,6 +326,10 @@ $switch-display-width: 800px
 .content-description
     margin-top: 8px
 
+.channel-logo
+    border-radius: 2px
+    flex-shrink: 0
+
 .drop
     cursor: pointer
 .droped
@@ -291,6 +340,23 @@ $switch-display-width: 800px
 
 .description, .extended
     white-space: pre-wrap
+
+// 広いビューポートでは 2 カラムにし、シリーズ情報を右サイドバー (追従表示) にする
+@media screen and (min-width: $sidebar-switch-width)
+    .detail-layout
+        flex-direction: row
+        align-items: flex-start
+
+    .detail-main
+        flex: 1 1 auto
+
+    .detail-side
+        order: 0
+        flex: 0 0 $sidebar-width
+        width: $sidebar-width
+        position: sticky
+        top: 80px
+        align-self: flex-start
 
 @media screen and (min-width: $switch-display-width)
     .content-0
