@@ -85,6 +85,25 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
 - 解像度切替しても URL の `?mode=` クエリは更新されない (リロード時は当初のモードに戻る)。
 - iOS 26 のホーム画面 Web App 制限は WebKit 側の修正で解除できる見込み。解除時は `StreamSupportUtil.checkM2TSLLSupport()` のバージョン判定を更新すること。
 
+## rigaya 系エンコーダ (QSVEncC / NVEncC / VCEEncC) を使う配信プリセット
+
+`config.yml` の `encodePresets.hwaccel` に `qsvencc` / `nvencc` / `vceencc` を指定すると、
+配信プリセットの `cmd` が「rigaya 系エンコーダ → パイプ → ffmpeg で remux」の 2 段構成になる
+(`src/util/EncodePresets.ts` の `buildRigayaPipelinePrefix`)。デコード・デインタレース・リサイズ・
+エンコードは rigaya 側が担い、fMP4 / HLS セグメントのコンテナ処理は ffmpeg 側に残す
+(rigaya 側では `-movflags empty_moov+default_base_moof+frag_keyframe` 等の指定ができないため)。
+
+コマンドを触るときの注意 (3 ツールで CLI が完全に共通ではない):
+
+- コンテナ指定は `--output-format` (別名 `-f`)。`--format` というオプションは存在しない
+- `--closed-gop` は 3 ツールいずれにも無い。GOP 長固定は `--strict-gop` (VCEEncC には無い)
+- `--vpp-deinterlace` は QSVEncC / NVEncC のみ、かつ `--interlace tff`/`bff` の指定が前提。
+  VCEEncC は共通オプションの `--vpp-yadif` を使う
+- アスペクト比追従リサイズは `--output-res -2x<height>` (`preserve_aspect_ratio` に `input` という値は無い)
+- デュアルモノの主音声選択は rigaya 側では `--audio-copy` のままにし、remux 側の ffmpeg の
+  `-dual_mono_mode main` で行う (録画エンコードの `config/enc.js` 側は `--audio-stream FL:stereo`)
+- `cmd` に `|` を含むためシェル経由で実行される (Windows は `cmd.exe`)
+
 ## in-memory HLS（低遅延・ディスク書き込みなし）
 
 ライブ HLS をディスクに書き出さず、メモリ上でセグメント化・配信するモードを追加した。
@@ -96,6 +115,10 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
 - サーバー側は `Fmp4Packager` で fMP4 を init セグメント / メディアセグメント（約 1 秒）に分解し、`HLSMemoryStoreModel`（singleton）に保持する。
 - `/streamfiles/stream{id}.m3u8` などのリクエストはまずメモリストアから応答し、存在しない場合は従来どおりディスク（`streamFilePath`）へフォールバックする。
 - tmpfs 等 OS 依存の仕組みを使わないため Windows でも動作する。
+- **録画済み HLS 配信 (`RecordedHLS`) も同じ判定・同じ `HLSMemoryStoreModel` / `Fmp4Packager` / `/streamfiles/*` エンドポイントを共用して in-memory 化に対応済み** (`stream.recorded.{ts,encoded}.hls` の `cmd` が `%streamFileDir%` を含まなければ in-memory)。判定・パイプライン組み立ては `RecordedStreamBaseModel.isMemoryHLS()` / `startMemoryHLSPackaging()` に実装している (`LiveStreamBaseModel` と同名・同構造)。
+  - 録画側はクライアントが再生位置 (`playPosition`) 付きでストリームセッションを作り直す方式 (シーク = ストリーム再生成) のため、ディスク方式の既存 cmd も `hls_list_size 0` + `delete_segments` のスライディングウィンドウであり、そもそも全編を保持する EVENT プレイリストではない。したがって in-memory 化してもシーク時の挙動 (再生位置からの作り直し) は変わらない。
+  - in-memory モードでも ARIB 字幕に対応する (ライブと同じ仕組み)。`ts` 録画の場合、エンコード前の TS を `arib-subtitle-timedmetadater` へ通し、`AribId3Extractor` が ID3 timed metadata を抜き取り、`Fmp4Packager` がセグメント先頭の `emsg` box として再多重化する。エンコード済みファイル (`encoded`) には ARIB 字幕が含まれないため対象外。
+  - メモリ保持・破棄・タイムアウト・`keep()` によるセッション延長は `StreamBaseModel` / `StreamManageModel` を共通で通るため、ライブ HLS と同じ経路でクリーンアップされる (ストリーム停止時に `HLSMemoryStoreModel.delete()` が呼ばれ、ゴミは残らない)。
 
 ### 低遅延化
 
@@ -105,9 +128,10 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
 
 ### 制限事項
 
-- in-memory モードでは字幕（ARIB → ID3 timed metadata）非対応。字幕が必要な場合は従来のディスク方式 cmd を使用すること。
-- 録画済み HLS 配信は EVENT プレイリストで全編を保持する必要があるため、従来どおりディスク方式のまま。
-- メモリ保持は直近 12 セグメント（約 12 秒）のみで、ストリーム停止時に即時解放される。
+- in-memory モードの字幕は `emsg` box (`scheme_id_uri = https://aomedia.org/emsg/ID3`) で運ぶ。fMP4 には ARIB 字幕 ES / ID3 ES をそのまま多重化できないため、エンコード前の TS から ID3 timed metadata を抜き取り、セグメント先頭へ `emsg` として付け直す方式を採っている (`AribId3Extractor` → `Fmp4Packager.pushId3()`)。hls.js は `emsg` を ID3 として通知するため、クライアント側 (aribb24) の実装はディスク方式と共通。
+- 上記の性質上、字幕の絶対時刻はエンコードパイプラインの遅延分 (おおむね 1 秒程度) だけずれることがある。フレーム単位の同期が必要な場合は従来のディスク方式 cmd を使用すること。
+- 字幕を正しく扱うため、入力 TS は `tsreadex` を通すこと (ワンセグ/字幕の PID 整合やドロップ耐性のため実質必須)。cmd の先頭に `%TSREADEX% ... |` を置く形を推奨する。
+- メモリ保持は直近 12 セグメント（約 12 秒）のみで、ストリーム停止時に即時解放される (ライブ・録画共通、`HLSMemoryStoreModel` の保持数は共通設定)。
 
 ### エンコードオプションのチューニング / HEVC / tsreadex
 

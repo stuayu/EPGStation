@@ -1,5 +1,6 @@
 import * as stream from 'stream';
 import ILogger from '../../../ILogger';
+import { AribId3Metadata } from './IAribId3Extractor';
 import IFmp4Packager, { Fmp4PackagerOption, Fmp4PackagerPart, Fmp4PackagerSegment } from './IFmp4Packager';
 
 /**
@@ -53,6 +54,12 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
     // 現在組み立て中のセグメントを構成する part
     private currentSegmentParts: Fmp4PackagerPart[] = [];
 
+    // 次のセグメントへ乗せる ID3 timed metadata (ARIB 字幕)
+    private pendingId3: AribId3Metadata[] = [];
+
+    // emsg box の id (セグメントをまたいでユニークな値を使う)
+    private emsgId = 0;
+
     // 統計 (検証用): 入力バイト数
     private totalInputBytes = 0;
 
@@ -72,6 +79,78 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
      */
     public getTotalInputBytes(): number {
         return this.totalInputBytes;
+    }
+
+    /**
+     * エンコード前の TS から抜き取った ID3 timed metadata (ARIB 字幕) を登録する
+     * 登録された metadata は次に出力するセグメント先頭の emsg box として多重化される
+     * @param metadata: AribId3Metadata
+     */
+    public pushId3(metadata: AribId3Metadata): void {
+        if (this.halted === true) {
+            return;
+        }
+
+        this.pendingId3.push(metadata);
+
+        // セグメントが出力されない状況でメモリを食い潰さないようにする
+        while (this.pendingId3.length > Fmp4Packager.MAX_PENDING_ID3) {
+            this.pendingId3.shift();
+        }
+    }
+
+    /**
+     * 保留中の ID3 timed metadata を emsg box 列として組み立てる
+     * @return Buffer 保留がない場合は空の Buffer
+     */
+    private buildPendingEmsgBoxes(): Buffer {
+        if (this.pendingId3.length === 0) {
+            return Buffer.alloc(0);
+        }
+
+        const pending = this.pendingId3;
+        this.pendingId3 = [];
+
+        // セグメント先頭 (= 最初の metadata) を基準にした相対時刻とする
+        const base = pending[0].pts;
+        const boxes: Buffer[] = [];
+        for (const metadata of pending) {
+            const diff = metadata.pts - base;
+            const delta = diff > 0 && diff < Fmp4Packager.MAX_EMSG_DELTA ? diff : 0;
+            boxes.push(this.buildEmsgBox(delta, metadata.payload));
+        }
+
+        return Buffer.concat(boxes);
+    }
+
+    /**
+     * emsg box (version 0) を組み立てる
+     * @param presentationTimeDelta: number 90kHz 単位の相対時刻
+     * @param messageData: Buffer ID3 タグ本体
+     * @return Buffer
+     */
+    private buildEmsgBox(presentationTimeDelta: number, messageData: Buffer): Buffer {
+        const schemeIdUri = Buffer.from(`${Fmp4Packager.EMSG_SCHEME_ID_URI}\0`, 'utf8');
+        // value は空文字列 (null 終端のみ)
+        const value = Buffer.from('\0', 'utf8');
+
+        // version(1) + flags(3)
+        const versionAndFlags = Buffer.alloc(4);
+
+        const fields = Buffer.alloc(16);
+        fields.writeUInt32BE(Fmp4Packager.PTS_TIMESCALE, 0);
+        fields.writeUInt32BE(presentationTimeDelta >>> 0, 4);
+        // event_duration 不明
+        fields.writeUInt32BE(0xffffffff, 8);
+        this.emsgId = (this.emsgId + 1) % 0xffffffff;
+        fields.writeUInt32BE(this.emsgId, 12);
+
+        const body = Buffer.concat([versionAndFlags, schemeIdUri, value, fields, messageData]);
+        const header = Buffer.alloc(8);
+        header.writeUInt32BE(header.length + body.length, 0);
+        header.write('emsg', 4, 'ascii');
+
+        return Buffer.concat([header, body]);
     }
 
     /**
@@ -535,8 +614,11 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
         const parts = this.currentSegmentParts;
         this.currentSegmentParts = [];
 
+        // ARIB 字幕 (ID3 timed metadata) をセグメント先頭の emsg box として多重化する
+        const emsg = this.buildPendingEmsgBoxes();
+
         const segment: Fmp4PackagerSegment = {
-            data: Buffer.concat(parts.map(p => p.data)),
+            data: Buffer.concat(emsg.length > 0 ? [emsg, ...parts.map(p => p.data)] : parts.map(p => p.data)),
             duration: parts.reduce((sum, p) => sum + p.duration, 0),
             parts,
         };
@@ -626,6 +708,14 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
 namespace Fmp4Packager {
     // 1 セグメントを構成するパート数の既定値
     export const DEFAULT_PARTS_PER_SEGMENT = 3;
+    // hls.js が ID3 として解釈する emsg の scheme_id_uri
+    export const EMSG_SCHEME_ID_URI = 'https://aomedia.org/emsg/ID3';
+    // MPEG-2 TS の PTS の周波数
+    export const PTS_TIMESCALE = 90000;
+    // これ以上離れた相対時刻は不正な PTS と見なして 0 に丸める (90kHz で 30 秒)
+    export const MAX_EMSG_DELTA = PTS_TIMESCALE * 30;
+    // 保留できる ID3 timed metadata の上限
+    export const MAX_PENDING_ID3 = 100;
     // box ヘッダの基本サイズ (size(4) + type(4))
     export const BASIC_HEADER_SIZE = 8;
     // largesize を含む box ヘッダのサイズ (size(4) + type(4) + largesize(8))
