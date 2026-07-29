@@ -25,6 +25,13 @@ needToReplaceEnclosingCharacters: true
 
 epgUpdateIntervalTime: 10
 
+# 過去の番組表データを残す時間 (時間)
+# 0: 終了した番組を順次削除する (既定) / -1: 削除せず無期限に残す
+epgRetentionTime: 0
+
+# 過去の番組表データを削除する間隔 (分)。省略時は epgUpdateIntervalTime と同じ
+#epgDeleteIntervalTime: 60
+
 conflictPriority: 1
 recPriority: 2
 isEnabledDropCheck: true

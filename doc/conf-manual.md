@@ -603,6 +603,43 @@ recordedHistoryRetentionPeriodDays: 180
 epgUpdateIntervalTime: 15
 ```
 
+### epgRetentionTime
+
+#### 過去の番組表データを残す時間 (時間)
+
+終了した番組の情報をどれだけ残すかを指定する。`0` なら終了した番組を順次削除する (従来の動作)。
+`-1` を指定すると削除せず**無期限に保存**する (過去の番組表を遡って見られるが DB は増え続ける)。
+
+保存期間内の番組は EPG の全件更新時にも削除されない。
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| number | 0            | no   |
+
+```yaml
+# 過去 30 日分を残す
+epgRetentionTime: 720
+```
+
+```yaml
+# 無期限に残す
+epgRetentionTime: -1
+```
+
+### epgDeleteIntervalTime
+
+#### 過去の番組表データを削除する間隔 (分)
+
+省略時は `epgUpdateIntervalTime` と同じ間隔で削除する。`epgRetentionTime` が `-1` (無期限) の場合は削除自体が行われない。
+
+| 種類   | デフォルト値              | 必須 |
+| ------ | ------------------------- | ---- |
+| number | epgUpdateIntervalTime と同じ | no   |
+
+```yaml
+epgDeleteIntervalTime: 60
+```
+
 ### isSuppressReservesUpdateAllLog
 
 #### 予約定期更新時のログ出力を抑えるか

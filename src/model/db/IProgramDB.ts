@@ -46,11 +46,20 @@ export interface FindScheduleOption extends FindScheduleBaseOption {
     types: apid.ChannelType[];
 }
 
+/**
+ * 番組情報の全件更新時に「残す」番組を指定するオプション
+ */
+export interface ProgramKeepOption {
+    now: apid.UnixtimeMS; // 現在時刻。これ以降に終了する番組は入れ直すため削除する
+    retentionThreshold: apid.UnixtimeMS | null; // これより前に終了した番組は削除する。null で無期限保存
+}
+
 export default interface IProgramDB {
     insert(
         channelTypes: IChannelTypeIndex,
         programs: mapid.Program[],
         deleteChannelIds?: mapid.ServiceId[],
+        keepOption?: ProgramKeepOption,
     ): Promise<void>;
     update(channelTypes: IChannelTypeIndex, values: ProgramUpdateValues): Promise<void>;
     deleteOld(time: apid.UnixtimeMS): Promise<void>;
