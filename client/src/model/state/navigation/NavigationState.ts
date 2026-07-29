@@ -9,9 +9,6 @@ import INavigationState, { NavigationItem, NavigationType } from './INavigationS
 
 @injectable()
 export default class NavigationState implements INavigationState {
-    // 地域不明 (CATV 等) の地域 id
-    private static readonly OTHER_REGION_ID = 'other';
-
     public openState: null | boolean = null;
     public isClipped: boolean = false;
     public type: NavigationType = 'default';
@@ -61,20 +58,11 @@ export default class NavigationState implements INavigationState {
                 continue;
             }
             addedIds[channel.region.id] = true;
-            regions.push({ id: channel.region.id, name: channel.region.name });
+            regions.push({ id: channel.region.id, name: channel.region.name, order: channel.region.order });
         }
 
-        // 「その他」は常に末尾にする
-        return regions.sort((a, b) => {
-            if (a.id === NavigationState.OTHER_REGION_ID) {
-                return 1;
-            }
-            if (b.id === NavigationState.OTHER_REGION_ID) {
-                return -1;
-            }
-
-            return 0;
-        });
+        // 都道府県コード順に並べる (判定不能な「その他」は order 99 なので必ず末尾になる)
+        return regions.sort((a, b) => a.order - b.order);
     }
 
     /**

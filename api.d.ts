@@ -70,6 +70,7 @@ export type BroadcastRegionId = string;
 export interface BroadcastRegionItem {
     id: BroadcastRegionId; // 地域 id (例: kanto)
     name: string; // 表示名 (例: 関東)
+    order: number; // 表示順 (都道府県コード。判定不能な「その他」は 99)
 }
 
 export type ProgramGenreLv1 = number;

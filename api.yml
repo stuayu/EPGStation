@@ -648,6 +648,7 @@ components:
             required:
                 - id
                 - name
+                - order
             properties:
                 id:
                     description: 地域 id
@@ -655,6 +656,9 @@ components:
                 name:
                     description: 地域表示名
                     type: string
+                order:
+                    description: 表示順 (都道府県コード。判定不能な「その他」は 99)
+                    type: number
 
         ScheduleChannleItem:
             description: 番組表の放送局データ
