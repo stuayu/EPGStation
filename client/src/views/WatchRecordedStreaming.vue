@@ -34,8 +34,9 @@ import IChannelModel from '@/model/channels/IChannelModel';
 import container from '@/model/ModelContainer';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
+import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
-import JikkyoUtil from '@/util/JikkyoUtil';
+import { JikkyoKakologParam, resolveJikkyoKakologParam } from '@/util/JikkyoKakologParam';
 import Util from '@/util/Util';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
@@ -53,6 +54,7 @@ class WatchRecordedStreaming extends Vue {
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private recordedApiModel: IRecordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
     private channelModel: IChannelModel = container.get<IChannelModel>('IChannelModel');
+    private videoApiModel: IVideoApiModel = container.get<IVideoApiModel>('IVideoApiModel');
     private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
 
     /**
@@ -73,7 +75,7 @@ class WatchRecordedStreaming extends Vue {
         this.$nextTick(async () => {
             if (videoFileId !== null && recordedId !== null && streamingType !== null && mode !== null) {
                 // ニコニコ実況 過去ログ再生用パラメータ取得
-                const jikkyoKakologParam = await this.getJikkyoKakologParam(recordedId);
+                const jikkyoKakologParam = await this.getJikkyoKakologParam(recordedId, videoFileId);
 
                 if (streamingType === 'hls') {
                     this.videoParam = {
@@ -102,33 +104,19 @@ class WatchRecordedStreaming extends Vue {
 
     /**
      * ニコニコ実況 過去ログ取得に必要なパラメータを生成する
+     * 基準時刻は録画ファイルの先頭に対応する実時刻 (`videoFile.startAt`) を使う
      * @param recordedId: apid.RecordedId
-     * @return Promise<{ jikkyoChannelId: string; jikkyoStartAt: number; jikkyoEndAt: number } | null>
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<JikkyoKakologParam | null>
      */
-    private async getJikkyoKakologParam(recordedId: apid.RecordedId): Promise<{ jikkyoChannelId: string; jikkyoStartAt: number; jikkyoEndAt: number } | null> {
-        try {
-            const recorded = await this.recordedApiModel.get(recordedId, true);
-            let channel = this.channelModel.findChannel(recorded.channelId, true);
-            if (channel === null) {
-                await this.channelModel.fetchChannels();
-                channel = this.channelModel.findChannel(recorded.channelId, true);
-            }
-
-            const jikkyoChannelId = channel === null ? null : JikkyoUtil.findJikkyoChannelId(channel);
-            if (jikkyoChannelId === null) {
-                return null;
-            }
-
-            return {
-                jikkyoChannelId: jikkyoChannelId,
-                jikkyoStartAt: recorded.startAt,
-                jikkyoEndAt: recorded.endAt,
-            };
-        } catch (err) {
-            console.error(err);
-
-            return null;
-        }
+    private async getJikkyoKakologParam(recordedId: apid.RecordedId, videoFileId: apid.VideoFileId): Promise<JikkyoKakologParam | null> {
+        return resolveJikkyoKakologParam({
+            recordedApiModel: this.recordedApiModel,
+            channelModel: this.channelModel,
+            videoApiModel: this.videoApiModel,
+            recordedId: recordedId,
+            videoFileId: videoFileId,
+        });
     }
 }
 
