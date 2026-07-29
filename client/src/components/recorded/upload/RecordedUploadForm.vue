@@ -103,7 +103,7 @@
                     <v-checkbox v-model="row.selected" :label="row.result.fileName" hide-details></v-checkbox>
                     <div class="d-flex flex-wrap">
                         <v-text-field v-model="row.editedName" label="番組名" class="import-field" clearable></v-text-field>
-                        <v-select v-model="row.editedChannelId" :items="uploadState.getChannelItems()" item-title="text" item-value="value" label="放送局" class="import-field" clearable></v-select>
+                        <v-select v-model="row.editedChannelId" :items="uploadState.getChannelItems()" item-title="title" item-value="value" label="放送局" class="import-field" clearable></v-select>
                         <v-select v-model="row.mode" :items="uploadState.getImportModeItems()" label="取り込みモード" class="import-field"></v-select>
                         <v-select
                             v-if="row.result.duplicateRecordedIds && row.result.duplicateRecordedIds.length > 0"

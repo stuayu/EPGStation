@@ -9,12 +9,12 @@ namespace GenreUtil {
     export const GENRE_MAX_NUM = 15;
 
     export interface GenreListItem {
-        text: string;
+        title: string;
         value: apid.ProgramGenreLv1;
     }
 
     export interface SubGenreListItem {
-        text: string;
+        title: string;
         value: apid.ProgramGenreLv2;
     }
 
@@ -27,7 +27,7 @@ namespace GenreUtil {
 
         for (let i = 0; i <= GENRE_MAX_NUM; i++) {
             items.push({
-                text: (Genre as any)[i],
+                title: (Genre as any)[i],
                 value: i,
             });
         }
@@ -50,7 +50,7 @@ namespace GenreUtil {
             }
 
             items.push({
-                text: text,
+                title: text,
                 value: i,
             });
         }

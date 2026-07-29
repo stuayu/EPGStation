@@ -8,7 +8,7 @@
                         <v-select
                             :items="dialogState.streamTypeItems"
                             v-model="dialogState.selectedStreamType"
-                            v-on:change="updateModeItems"
+                            v-on:update:model-value="updateModeItems"
                             style="max-width: 120px"
                         ></v-select>
                         <v-select

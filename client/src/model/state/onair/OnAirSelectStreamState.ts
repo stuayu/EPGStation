@@ -133,7 +133,7 @@ export default class OnAirSelectStreamState implements IOnAirSelectStreamState {
     public updateStreamConfig(isInit: boolean = false): void {
         this.streamConfigItems = this.getStreamConfig().map((c, i) => {
             return {
-                text: c,
+                title: c,
                 value: i,
             };
         });

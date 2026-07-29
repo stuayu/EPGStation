@@ -196,7 +196,7 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
 
 
 interface SelectItem {
-    text: string;
+    title: string;
     value: number;
 }
 
@@ -236,7 +236,7 @@ class GuideSizeSetting extends Vue {
         for (let i = 5; i <= 400; i += 5) {
             const value = i / 10;
             this.fontSizeItems.push({
-                text: value.toFixed(1),
+                title: value.toFixed(1),
                 value: value,
             });
         }

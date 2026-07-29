@@ -3,7 +3,7 @@ import * as apid from '../../../../../../api';
 export type RecordedStreamType = 'WebM' | 'MP4' | 'HLS';
 
 export interface StreamConfigItem {
-    text: string;
+    title: string;
     value: number;
 }
 

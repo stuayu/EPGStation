@@ -168,7 +168,7 @@ class RecordedSearchState implements IRecordedSearchState {
             const channelName = c === null ? channel.channelId.toString(10) : c.name;
 
             this.channelItems.push({
-                text: `${channelName}(${channel.cnt.toString(10)})`,
+                title: `${channelName}(${channel.cnt.toString(10)})`,
                 value: channel.channelId,
             });
         }
@@ -177,7 +177,7 @@ class RecordedSearchState implements IRecordedSearchState {
             const genreStr = g === null ? genre.genre.toString(10) : g;
 
             this.genreItems.push({
-                text: `${genreStr}(${genre.cnt.toString(10)})`,
+                title: `${genreStr}(${genre.cnt.toString(10)})`,
                 value: genre.genre,
             });
         }

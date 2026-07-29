@@ -7,7 +7,7 @@ export default interface IAddEncodeState {
     directory: string | null;
     init(recordedId: apid.RecordedId, videoFiles: apid.VideoFile[], encodeMode: string | null, parentDirectory: string | null): void;
     getVideoFiles(): {
-        text: string;
+        title: string;
         value: apid.VideoFileId;
     }[];
     getEncodeList(): string[];

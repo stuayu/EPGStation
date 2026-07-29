@@ -24,7 +24,7 @@ import Util from '@/util/Util';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 interface SelectItem {
-    text: string;
+    title: string;
     value: MultipleDeletionOption;
 }
 
@@ -49,15 +49,15 @@ class RecordedMultipleDeletionDialog extends Vue {
     public created(): void {
 
         this.optionItems.push({
-            text: '全て',
+            title: '全て',
             value: 'All',
         });
         this.optionItems.push({
-            text: 'オリジナルファイルだけ',
+            title: 'オリジナルファイルだけ',
             value: 'OnlyOriginalFile',
         });
         this.optionItems.push({
-            text: 'エンコードファイルだけ',
+            title: 'エンコードファイルだけ',
             value: 'OnlyEncodedFile',
         });
     }
