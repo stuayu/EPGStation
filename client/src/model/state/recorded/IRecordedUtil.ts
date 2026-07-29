@@ -12,6 +12,10 @@ export interface RecordedDisplayData {
         description?: string;
         extended?: string;
         genre?: string;
+        // ジャンル / サブジャンルをチップ表示するための一覧 (genre1 ~ genre3 由来、重複なし)
+        genreItems?: string[];
+        // 録画タグ (色付きチップ表示用)。未設定・空の場合は undefined
+        tags?: apid.RecordedTag[];
         topThumbnailPath: string;
         thumbnails?: apid.ThumbnailId[];
         videoFiles?: apid.VideoFile[];
@@ -21,6 +25,8 @@ export interface RecordedDisplayData {
         hasDrop: boolean;
         watchStatus?: apid.WatchStatus;
         watchProgress?: number;
+        // 放送局ロゴの URL (放送局が現在ロゴを保持している場合のみ設定)
+        logoSrc?: string;
     };
     recordedItem: apid.RecordedItem;
     isSelected: boolean;

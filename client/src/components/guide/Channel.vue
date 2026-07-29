@@ -2,7 +2,14 @@
     <div class="channels d-flex" v-bind:class="{ isDark: $vuetify.theme.global.current.dark === true }">
         <div class="item dummy">dummy</div>
         <div class="text-white item" v-for="channel in channelItems" v-bind:key="channel.index" v-on:click="onClick(channel.item)">
-            {{ channel.name }}
+            <img
+                v-if="typeof channel.logoSrc !== 'undefined'"
+                :src="channel.logoSrc"
+                loading="lazy"
+                class="channel-logo"
+                v-on:error="onLogoError(channel)"
+            />
+            <span class="channel-name">{{ channel.name }}</span>
         </div>
         <div class="item scrollbar">dummy</div>
     </div>
@@ -22,6 +29,8 @@ interface DisplayChannelItem {
     id: apid.ChannelId;
     index: number | string;
     item: apid.ScheduleChannleItem;
+    // 放送局が現在ロゴを保持している場合のみ設定 (単局表示時の日付見出しでは表示しない)
+    logoSrc?: string;
 }
 
 @Component({})
@@ -29,6 +38,9 @@ class Channel extends Vue {
     public guideState: IGuideState = container.get<IGuideState>('IGuideState');
 
     private streamSelectDialog: IOnAirSelectStreamState = container.get<IOnAirSelectStreamState>('IOnAirSelectStreamState');
+
+    // ロゴ画像の取得に失敗した放送局 id (取得済み結果は channelItems の再計算で失われるため component 側で保持する)
+    private failedLogoIds = new Set<apid.ChannelId>();
 
     get channelItems(): DisplayChannelItem[] {
         if (typeof this.$route.query.channelId === 'undefined') {
@@ -38,6 +50,7 @@ class Channel extends Vue {
                     id: c.id,
                     index: c.id,
                     item: c,
+                    logoSrc: c.hasLogoData === true && this.failedLogoIds.has(c.id) === false ? `./api/channels/${c.id.toString(10)}/logo` : undefined,
                 };
             });
         } else {
@@ -55,6 +68,12 @@ class Channel extends Vue {
                 };
             });
         }
+    }
+
+    // ロゴ画像の取得に失敗した場合は局名だけの表示にフォールバックする
+    public onLogoError(channel: DisplayChannelItem): void {
+        this.failedLogoIds.add(channel.id);
+        channel.logoSrc = undefined;
     }
 
     public async onClick(item: apid.ScheduleChannleItem): Promise<void> {
@@ -88,12 +107,35 @@ $board-line-dark: 1px solid #888888
         overflow: hidden
         white-space: nowrap
         display: flex
+        flex-direction: row
         justify-content: center
         align-items: center
         background: #999
         box-sizing: border-box
         border-left: $board-line
         border-right: $board-line
+        gap: 3px
+        padding: 2px 3px
+        line-height: 1.2
+
+        // ロゴと局名を横 1 行に並べる。ロゴは行の高さに収まるサイズまで縮める
+        .channel-logo
+            flex: 0 0 auto
+            min-width: 0
+            max-width: 40%
+            max-height: calc(var(--channel-height) - 6px)
+            object-fit: contain
+            border-radius: 2px
+
+        // 局名は残り幅を使い、溢れる場合は末尾を省略する
+        .channel-name
+            flex: 1 1 auto
+            min-width: 0
+            text-align: center
+            line-height: 1.2
+            overflow: hidden
+            text-overflow: ellipsis
+            white-space: nowrap
 
     .item.dummy
         min-width: var(--timescale-width)

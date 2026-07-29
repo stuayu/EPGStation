@@ -17,7 +17,17 @@
                     <RecordedItemMenu :recordedItem="item.recordedItem" v-on:stopEncode="stopEncode"></RecordedItemMenu>
                 </div>
             </div>
-            <div class="text text-caption font-weight-light">{{ item.display.channelName }}</div>
+            <div class="text text-caption font-weight-light d-flex align-center channel-line">
+                <v-img
+                    v-if="typeof item.display.logoSrc !== 'undefined'"
+                    :src="item.display.logoSrc"
+                    v-on:error="onLogoError"
+                    class="channel-logo mr-1 flex-grow-0"
+                    height="16"
+                    width="28"
+                ></v-img>
+                <span>{{ item.display.channelName }}</span>
+            </div>
             <div class="text text-caption font-weight-light">{{ item.display.time }} ({{ item.display.durationText }})</div>
             <div v-if="typeof item.display.watchStatus !== 'undefined'" class="watch-progress">
                 <v-chip size="x-small" :color="watchStatusColor(item.display.watchStatus)">
@@ -60,6 +70,11 @@ import * as apid from '../../../../api';
 class RecordedSmallCard extends Vue {
     public onThumbnailError(_source: string | undefined): void {
         this.item.display.topThumbnailPath = './img/noimg.png';
+    }
+
+    // ロゴ画像の取得に失敗した場合は局名だけの表示にフォールバックする
+    public onLogoError(_source: string | undefined): void {
+        this.item.display.logoSrc = undefined;
     }
 
     @Prop({ required: true })
@@ -127,6 +142,17 @@ export default toNative(RecordedSmallCard);
             padding-right: 30px
         .dummy
             visibility: hidden
+
+        .channel-line
+            span
+                overflow: hidden
+                text-overflow: ellipsis
+                white-space: nowrap
+                min-width: 0
+
+        .channel-logo
+            border-radius: 2px
+            flex-shrink: 0
 
         .droped
             color: red
