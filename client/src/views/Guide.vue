@@ -511,7 +511,10 @@ export default Object.assign(toNative(Guide), {
         width: 100%
 
         .program-wrap
-            overflow: hidden
+            // Vuetify 4 のユーティリティ (.overflow-auto) は @layer 内で定義されており、
+            // レイヤ外のこのスコープ付き CSS に必ず負ける。
+            // overflow: hidden を書くと番組表がスクロールできなくなるため auto を明示する
+            overflow: auto
             width: calc(100% - var(--timescale-width))
 </style>
 
