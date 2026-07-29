@@ -10,41 +10,49 @@ import IBroadcastRegion, { BroadcastRegionItem, BroadcastRegionTarget } from './
  */
 @injectable()
 export default class BroadcastRegion implements IBroadcastRegion {
-    // 地域グループ定義 (番組表サイドバーの表示順)
+    // 地域判定できなかった場合のグループ id
+    private static readonly OTHER_REGION_ID = 'other';
+
+    // 「その他」を必ず末尾にするための order (都道府県コードより大きい値)
+    private static readonly OTHER_REGION_ORDER = 99;
+
+    // 地域グループ定義
+    // order は都道府県コード (JIS X 0401)。複数県をまとめたグループは最小の県コードを使う
+    // (例: 関東 = 茨城 8、中京 = 岐阜 21、近畿 = 滋賀 25)。判定不能の「その他」は必ず末尾
     private static readonly REGION_DEFINITIONS: BroadcastRegionItem[] = [
-        { id: 'hokkaido', name: '北海道' },
-        { id: 'aomori', name: '青森' },
-        { id: 'iwate', name: '岩手' },
-        { id: 'miyagi', name: '宮城' },
-        { id: 'akita', name: '秋田' },
-        { id: 'yamagata', name: '山形' },
-        { id: 'fukushima', name: '福島' },
-        { id: 'kanto', name: '関東' },
-        { id: 'niigata', name: '新潟' },
-        { id: 'yamanashi', name: '山梨' },
-        { id: 'nagano', name: '長野' },
-        { id: 'shizuoka', name: '静岡' },
-        { id: 'chukyo', name: '中京' },
-        { id: 'toyama', name: '富山' },
-        { id: 'ishikawa', name: '石川' },
-        { id: 'fukui', name: '福井' },
-        { id: 'kinki', name: '近畿' },
-        { id: 'tottori_shimane', name: '鳥取・島根' },
-        { id: 'okayama_kagawa', name: '岡山・香川' },
-        { id: 'hiroshima', name: '広島' },
-        { id: 'yamaguchi', name: '山口' },
-        { id: 'tokushima', name: '徳島' },
-        { id: 'ehime', name: '愛媛' },
-        { id: 'kochi', name: '高知' },
-        { id: 'fukuoka', name: '福岡' },
-        { id: 'saga', name: '佐賀' },
-        { id: 'nagasaki', name: '長崎' },
-        { id: 'kumamoto', name: '熊本' },
-        { id: 'oita', name: '大分' },
-        { id: 'miyazaki', name: '宮崎' },
-        { id: 'kagoshima', name: '鹿児島' },
-        { id: 'okinawa', name: '沖縄' },
-        { id: 'other', name: 'その他 (CATV 等)' },
+        { id: 'hokkaido', name: '北海道', order: 1 },
+        { id: 'aomori', name: '青森', order: 2 },
+        { id: 'iwate', name: '岩手', order: 3 },
+        { id: 'miyagi', name: '宮城', order: 4 },
+        { id: 'akita', name: '秋田', order: 5 },
+        { id: 'yamagata', name: '山形', order: 6 },
+        { id: 'fukushima', name: '福島', order: 7 },
+        { id: 'kanto', name: '関東', order: 8 },
+        { id: 'niigata', name: '新潟', order: 15 },
+        { id: 'toyama', name: '富山', order: 16 },
+        { id: 'ishikawa', name: '石川', order: 17 },
+        { id: 'fukui', name: '福井', order: 18 },
+        { id: 'yamanashi', name: '山梨', order: 19 },
+        { id: 'nagano', name: '長野', order: 20 },
+        { id: 'chukyo', name: '中京', order: 21 },
+        { id: 'shizuoka', name: '静岡', order: 22 },
+        { id: 'kinki', name: '近畿', order: 25 },
+        { id: 'tottori_shimane', name: '鳥取・島根', order: 31 },
+        { id: 'okayama_kagawa', name: '岡山・香川', order: 33 },
+        { id: 'hiroshima', name: '広島', order: 34 },
+        { id: 'yamaguchi', name: '山口', order: 35 },
+        { id: 'tokushima', name: '徳島', order: 36 },
+        { id: 'ehime', name: '愛媛', order: 38 },
+        { id: 'kochi', name: '高知', order: 39 },
+        { id: 'fukuoka', name: '福岡', order: 40 },
+        { id: 'saga', name: '佐賀', order: 41 },
+        { id: 'nagasaki', name: '長崎', order: 42 },
+        { id: 'kumamoto', name: '熊本', order: 43 },
+        { id: 'oita', name: '大分', order: 44 },
+        { id: 'miyazaki', name: '宮崎', order: 45 },
+        { id: 'kagoshima', name: '鹿児島', order: 46 },
+        { id: 'okinawa', name: '沖縄', order: 47 },
+        { id: 'other', name: 'その他 (CATV 等)', order: BroadcastRegion.OTHER_REGION_ORDER },
     ];
 
     // 地域符号 (serviceId / 1024) → 地域グループ id
@@ -124,9 +132,6 @@ export default class BroadcastRegion implements IBroadcastRegion {
         32127: 'kinki', // Baycom
     };
 
-    // 地域判定できなかった場合のグループ id
-    private static readonly OTHER_REGION_ID = 'other';
-
     // 地域符号の算出に使う除数
     private static readonly AREA_CODE_DIVISOR = 1024;
 
@@ -167,8 +172,8 @@ export default class BroadcastRegion implements IBroadcastRegion {
      */
     public getRegions(): BroadcastRegionItem[] {
         return BroadcastRegion.REGION_DEFINITIONS.map(r => {
-            return { id: r.id, name: r.name };
-        });
+            return { id: r.id, name: r.name, order: r.order };
+        }).sort((a, b) => a.order - b.order);
     }
 
     /**
@@ -179,6 +184,8 @@ export default class BroadcastRegion implements IBroadcastRegion {
     private static findRegion(id: string): BroadcastRegionItem {
         const region = BroadcastRegion.REGION_DEFINITIONS.find(r => r.id === id);
 
-        return typeof region === 'undefined' ? { id: BroadcastRegion.OTHER_REGION_ID, name: 'その他 (CATV 等)' } : { id: region.id, name: region.name };
+        return typeof region === 'undefined'
+            ? { id: BroadcastRegion.OTHER_REGION_ID, name: 'その他 (CATV 等)', order: BroadcastRegion.OTHER_REGION_ORDER }
+            : { id: region.id, name: region.name, order: region.order };
     }
 }

@@ -10,7 +10,7 @@ const createRegion = () => new BroadcastRegion();
 
 test('関東広域の serviceId から関東と判定される', () => {
     const region = createRegion().getRegion({ networkId: 32736, serviceId: 1024, channelType: 'GR' });
-    assert.deepEqual(region, { id: 'kanto', name: '関東' });
+    assert.deepEqual(region, { id: 'kanto', name: '関東', order: 8 });
 });
 
 test('東京の独立局 (TOKYO MX) は関東にマージされる', () => {
@@ -98,4 +98,21 @@ test('getRegions() は重複なしでその他を含む一覧を返す', () => {
     assert.equal(regions.length > 0, true);
     assert.equal(regions[regions.length - 1].id, 'other');
     assert.equal(new Set(regions.map(r => r.id)).size, regions.length);
+});
+
+test('getRegions() は都道府県コード順に並び、その他が末尾になる', () => {
+    const regions = createRegion().getRegions();
+    const orders = regions.map(r => r.order);
+    assert.deepEqual(orders, [...orders].sort((a, b) => a - b));
+    assert.equal(regions[0].id, 'hokkaido');
+    assert.equal(regions[regions.length - 1].order, 99);
+
+    // 広域圏は域内で最小の県コードを持つ (関東 = 茨城 8 / 中京 = 岐阜 21 / 近畿 = 滋賀 25)
+    const index = {};
+    for (const r of regions) index[r.id] = r.order;
+    assert.equal(index.kanto, 8);
+    assert.equal(index.chukyo, 21);
+    assert.equal(index.shizuoka, 22);
+    assert.equal(index.kinki, 25);
+    assert.equal(index.okinawa, 47);
 });

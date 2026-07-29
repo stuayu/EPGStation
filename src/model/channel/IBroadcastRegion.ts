@@ -4,6 +4,7 @@
 export interface BroadcastRegionItem {
     id: string; // 地域 id (例: kanto)
     name: string; // 表示名 (例: 関東)
+    order: number; // 表示順 (都道府県コード。複数県のグループは最小の県コード、判定不能は 99)
 }
 
 /**
