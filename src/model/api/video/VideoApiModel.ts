@@ -178,7 +178,9 @@ export default class VideoApiModel implements IVideoApiModel {
         const filePath = this.videoUtil.getFullFilePathFromVideoFile(video);
         if (filePath === null) {
             // config.yml の recorded に無いディレクトリ名を DB が指している場合に起きる
-            throw new Error(`VideoFilePathIsUndefined (parentDirectoryName: ${video.parentDirectoryName}, filePath: ${video.filePath})`);
+            throw new Error(
+                `VideoFilePathIsUndefined (parentDirectoryName: ${video.parentDirectoryName}, filePath: ${video.filePath})`,
+            );
         }
 
         const info = await this.videoUtil.getDetailedInfo(filePath);
@@ -242,7 +244,9 @@ export default class VideoApiModel implements IVideoApiModel {
                 // 先頭数件だけ理由を残す
                 failed++;
                 if (failed <= VideoApiModel.ANALYZE_LOG_LIMIT) {
-                    this.log?.system.warn(`video file metadata analysis failed: videoFileId ${target.id}: ${err?.message ?? err}`);
+                    this.log?.system.warn(
+                        `video file metadata analysis failed: videoFileId ${target.id}: ${err?.message ?? err}`,
+                    );
                 }
             }
         }

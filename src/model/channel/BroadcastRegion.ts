@@ -163,7 +163,9 @@ export default class BroadcastRegion implements IBroadcastRegion {
         const areaCode = Math.floor(target.serviceId / BroadcastRegion.AREA_CODE_DIVISOR);
         const byAreaCode = BroadcastRegion.AREA_CODE_MAP[areaCode];
 
-        return BroadcastRegion.findRegion(typeof byAreaCode === 'undefined' ? BroadcastRegion.OTHER_REGION_ID : byAreaCode);
+        return BroadcastRegion.findRegion(
+            typeof byAreaCode === 'undefined' ? BroadcastRegion.OTHER_REGION_ID : byAreaCode,
+        );
     }
 
     /**
@@ -185,7 +187,11 @@ export default class BroadcastRegion implements IBroadcastRegion {
         const region = BroadcastRegion.REGION_DEFINITIONS.find(r => r.id === id);
 
         return typeof region === 'undefined'
-            ? { id: BroadcastRegion.OTHER_REGION_ID, name: 'その他 (CATV 等)', order: BroadcastRegion.OTHER_REGION_ORDER }
+            ? {
+                  id: BroadcastRegion.OTHER_REGION_ID,
+                  name: 'その他 (CATV 等)',
+                  order: BroadcastRegion.OTHER_REGION_ORDER,
+              }
             : { id: region.id, name: region.name, order: region.order };
     }
 }

@@ -109,12 +109,14 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
 
         this.log.system.debug(`Filtered and retrieved ${insertPrograms.length} program(s).`);
         this.log.system.info('start update programs');
-        await this.programDB.insert(this.channelIndex, insertPrograms, [], this.createProgramKeepOption()).catch(err => {
-            this.log.system.error('update programs error');
-            this.log.system.error(err);
-            clearTimeout(timeout);
-            throw err;
-        });
+        await this.programDB
+            .insert(this.channelIndex, insertPrograms, [], this.createProgramKeepOption())
+            .catch(err => {
+                this.log.system.error('update programs error');
+                this.log.system.error(err);
+                clearTimeout(timeout);
+                throw err;
+            });
         this.log.system.info('done update programs');
 
         clearTimeout(timeout);
