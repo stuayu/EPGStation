@@ -13,6 +13,7 @@
     - [利用する FFmpeg を明示的に指定したい](#ffmpeg)
     - [利用する FFprobe を明示的に指定したい](#ffprobe)
     - [tsreadex で TS を前処理したい](#tsreadex)
+    - [QSVEncC / NVEncC / VCEEncC のパスを指定したい](#qsvencc)
 - [stuayu フォーク独自の設定](#stuayu-フォーク独自の設定)
     - [ログイン認証・SSO を有効にしたい](#auth)
     - [番組延長で録画開始が遅れる場合の待ち時間を変えたい](#recording)
@@ -62,6 +63,7 @@
     - [エンコード終了時にコマンドを実行したい](#encodingfinishcommand)
     - [エンコードやストリーミングで使用するプロセス数の上限を変更したい](#encodeprocessnum)
     - [同時にエンコードするプロセス数の上限を更新したい](#concurrentencodenum)
+    - [ハードウェアエンコーダ (QSV/VAAPI/NVENC) やコーデック・画質をまとめて有効化したい](#encodepresets)
     - [録画ファイルを自動でエンコードしたい](#encode)
 - [視聴設定](#視聴設定)
     - [ライブ視聴時の Mirakurun の優先度を変更したい](#streamingpriority)
@@ -256,6 +258,25 @@ ffprobe: '/usr/bin/ffprobe'
 
 ```yaml
 tsreadex: '/usr/local/bin/tsreadex'
+```
+
+<a id="qsvencc"></a>
+
+### qsvencc / nvencc / vceencc
+
+#### rigaya 氏製ハードウェアエンコーダ (QSVEncC / NVEncC / VCEEncC) のパス
+
+| 種類   | デフォルト値                                     | 必須 |
+| ------ | ------------------------------------------------ | ---- |
+| string | `QSVEncC` / `NVEncC` / `VCEEncC` (PATH 上のもの) | no   |
+
+- [encodePresets](#encodepresets) の `hwaccel` に `qsvencc` / `nvencc` / `vceencc` を指定したときに使われる
+- `config/enc.js` には環境変数 `QSVENCC` / `NVENCC` / `VCEENCC` として渡される (録画エンコード時)
+
+```yaml
+qsvencc: '/usr/local/bin/QSVEncC'
+nvencc: '/usr/local/bin/NVEncC'
+vceencc: '/usr/local/bin/VCEEncC'
 ```
 
 ---
@@ -1186,6 +1207,61 @@ streamProcessNum: 4
 concurrentEncodeNum: 1
 ```
 
+### encodePresets
+
+#### エンコードプリセット表の一括有効化フラグ
+
+「ハードウェア × コーデック × 画質 × 用途」の組み合わせから、録画エンコード (`encode`) と
+配信プリセット (`stream.profiles.live` / `stream.profiles.recorded.ts` / `stream.profiles.recorded.encoded`)
+を自動生成する。1 つずつ手書きしてコメントアウトで管理する代わりに、使いたい軸をフラグで
+指定するだけで該当する組み合わせがまとめて有効になる。
+
+> 注意: `GET /api/config` のレスポンスにも `encodePresets` というフィールドがあるが、
+> これは `encode` から作られるクライアント表示用の解決済み一覧 (配列) であり、
+> ここで説明する config.yml の一括有効化フラグ (オブジェクト) とは別物である。
+
+| 子プロパティ名 | 種類     | デフォルト値                                   | 必須 | 説明                       |
+| -------------- | -------- | ---------------------------------------------- | ---- | -------------------------- |
+| hwaccel        | string   | `software`                                     | no   | `software` \| `qsv` \| `vaapi` \| `nvenc` \| `qsvencc` \| `nvencc` \| `vceencc` |
+| codecs         | string[] | `[h264]`                                       | no   | `h264` \| `hevc` の配列    |
+| qualities      | string[] | `[1080p, 720p, 480p]`                          | no   | `1080p` \| `720p` \| `480p` \| `240p` の配列 |
+| targets        | string[] | `[recorded, liveHLS, recordedStreaming]`       | no   | 生成対象の配列 (下記参照)  |
+
+- `hwaccel`
+    - `software`: libx264 / libx265 (CPU エンコード)
+    - `qsv`: Intel Quick Sync Video (`h264_qsv` / `hevc_qsv`)
+    - `vaapi`: AMD/Intel VAAPI (`h264_vaapi` / `hevc_vaapi`)。**Linux 専用**、`/dev/dri/renderD128` への
+      アクセス権限が必要 (Docker では `--device /dev/dri` を渡す)。ffmpeg が対応エンコーダ付きで
+      ビルドされている必要がある
+    - `nvenc`: NVIDIA NVENC (`h264_nvenc` / `hevc_nvenc`)
+    - `qsvencc` / `nvencc` / `vceencc`: rigaya 氏製の QSVEncC / NVEncC / VCEEncC を使う。
+      実行ファイルパスは [qsvencc / nvencc / vceencc](#qsvencc) で指定する (省略時は PATH 上のコマンド名)。
+      録画エンコードは `config/enc.js` が直接呼び出し、配信は「rigaya 系エンコーダ →
+      パイプ → ffmpeg で remux」の 2 段構成になる (デコード・デインタレース・リサイズ・
+      エンコードは rigaya 側、fMP4 / HLS のコンテナ処理は ffmpeg 側)
+    - 未対応の値を書いた場合は `software` として扱われる (`codecs` / `qualities` / `targets` の
+      未対応要素も同様に無視され、すべて無効なときは既定値が使われる)
+- `targets`
+    - `recorded`: 録画ファイルのバックグラウンドエンコード (`config/enc.js` 経由、`encode` 相当)
+    - `liveHLS`: ライブ視聴の HLS 配信 (in-memory 低遅延、`stream.profiles.live` の container: hls 相当)
+    - `recordedStreaming`: 録画再生の mp4 / HLS 配信 (`stream.profiles.recorded.{ts,encoded}` 相当)
+    - webm (vp9) はこのプリセット表の対象外。従来通り `stream.profiles` に手書きする
+
+**優先順位 (手書き優先)**: `encode` 配列、`stream.profiles.live`、`stream.profiles.recorded.ts`、
+`stream.profiles.recorded.encoded` はそれぞれ独立した単位で判定され、1 件でも手書きの設定が
+既にあるセクションには自動生成を行わない (上書きしない)。旧形式 (`stream.live` / `stream.recorded`)
+に手書きの設定がある場合も、対応する新形式セクションへは生成しない (新形式が優先されて
+旧形式の設定が無視されてしまうのを防ぐため)。
+
+```yaml
+# Intel QSV で H.264 / HEVC の 1080p / 720p をすべての用途に対して有効化する例
+encodePresets:
+    hwaccel: qsv
+    codecs: [h264, hevc]
+    qualities: [1080p, 720p]
+    targets: [recorded, liveHLS, recordedStreaming]
+```
+
 ### encode
 
 #### エンコード設定
@@ -1464,6 +1540,10 @@ stream:
 旧形式と併存可能で、同じスコープ (`live` / `recorded.ts` / `recorded.encoded` 単位) に新形式が定義されている場合は
 そちらが優先され、旧形式は無視される (スコープ単位の切り替えのため、live だけ新形式にして recorded は旧形式のまま、
 という混在も可能)
+
+`live` / `recorded.ts` / `recorded.encoded` を手書きせず、`encodePresets` (前述) の一括有効化フラグから
+自動生成することもできる。各セクションに手書きの設定 (この新形式・旧形式のいずれか) が既にある場合は
+そちらが優先され、自動生成は行われない
 
 | 子プロパティ名 | 種類                         | 必須 | 説明                           |
 | -------------- | ---------------------------- | ---- | ------------------------------ |

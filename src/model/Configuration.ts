@@ -3,6 +3,7 @@ import { inject, injectable } from 'inversify';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
 import urljoin from 'url-join';
+import EncodePresets from '../util/EncodePresets';
 import { mergeConfigOverlay, sanitizeConfigOverlay } from './config/ConfigOverlay';
 import IConfigFile from './IConfigFile';
 import IConfiguration from './IConfiguration';
@@ -194,6 +195,9 @@ class Configuration implements IConfiguration {
 
         // streamfiles のパス整形
         newConfig.streamFilePath = this.directoryFormatting(newConfig.streamFilePath);
+
+        // encodePresets からの encode / stream.profiles 自動生成 (手書きの設定があればそちらを優先する)
+        EncodePresets.applyToConfig(newConfig);
 
         return newConfig;
     }
