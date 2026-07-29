@@ -334,7 +334,7 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - 鍵ファイルのパスは環境変数 `EPGSTATION_SECRET_KEY_FILE` で上書きできる (Docker 等でボリュームを分けたい場合向け)
 
 - **タグ管理・シリーズ統合ダイアログのセレクトボックスが選択肢を表示できない不具合を修正**
-    - Vuetify 4 の `v-select` は `:items` にオブジェクト配��を渡す場合 `item-title` の明示が必要 (既定値が Vuetify 2 と異なる)。`TagManageDialog.vue` の親タグ選択と `Series.vue` の統合元/統合先シリーズ選択に `item-title="title"` を追加した
+    - Vuetify 4 の `v-select` は `:items` にオブジェクト配列を渡す場合 `item-title` の明示が必要 (既定値が Vuetify 2 と異なる)。`TagManageDialog.vue` の親タグ選択と `Series.vue` の統合元/統合先シリーズ選択に `item-title="title"` を追加した (当時は `plugins/vuetify.ts` が `itemTitle: 'text'` を全体既定にしていたための明示。後にその既定を削除したので、以後は `item-title` を書かなくても `title` が使われる)
 
 - **しょぼいカレンダーのアニメ作品タイトルを一括取得し、シリーズ自動マッピングの「正解辞書」として使うようにした**
     - **背景 (何が壊れていたか)**: 従来の `SeriesResolver` は「録画タイトル同士の類似度 (bigram) が しきい値 0.8 以上か」だけでシリーズを判定していたため、放送局ごとの表記ゆれで同一作品が大量に別シリーズへ分裂していた。実データ (録画 16,049 件) で確認できた分裂要因は、漢数字の話数 (`第壱話` `漆話`)、英字の話数 (`break1` `days.1` `Turn19` `request 1.` `EPISODE08`)、括弧付き作品名 (`TVアニメ『MFゴースト』2nd Season`)、編成ブロック冠 (`アニメ　` `水曜アニメ・水もん　` `メディアβ・` `＋Ultra・`)、ダッシュ/引用符の字種違い (`-` `―` `～` `'` `’`)、末尾の枠名ブロック (`【スーパーアニメイズムTURBO】`) など。`SeriesNormalizer` はこれらをほとんど除去できていなかった
@@ -717,6 +717,30 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - `epgRetentionTime` は終了した番組を残す時間 (時間単位)。`0` で従来どおり順次削除、**`-1` で無期限保存**。`epgDeleteIntervalTime` は削除の実行間隔 (分、省略時は `epgUpdateIntervalTime` と同じ)
         - **EPG の全件更新は番組テーブルを全削除してから入れ直す**ため、保存期間を設定した場合は全件更新時の削除条件も変える必要がある (`ProgramDB.insert()` の `ProgramKeepOption`)。「現在時刻以降に終了する番組 (入れ直す分)」と「保存期間を過ぎた番組」だけを消し、保存期間内に終了した過去番組は残す
         - Mirakurun は終了した番組を返さないため、無期限保存にしても過去に遡って埋まるわけではない (設定した時点以降に溜まっていく)
+    - Vuetify 4 移行で壊れていた選択リスト (`v-select`) をまとめて修正した
+        - Vuetify 4 の `v-select` は `:items` の各要素の **`title`** を表示ラベルに使う (既定 `item-title="title"`)。Vuetify 2 時代の `{ text, value }` のままだと `title` が無いためアイテムオブジェクト自体が文字列化され、**全選択肢が同じ表示 (`[object Object]`) になって「同じ行が二重に並ぶ」ように見える**
+        - あわせて Vuetify 3 以降で発火しない `v-on:change` を `v-on:update:model-value` へ置き換えた。「放映中」「番組表」の視聴ダイアログでは、これが原因で配信方式を変えても画質リストが更新されていなかった
+        - 影響範囲は視聴ストリーム選択 (放映中 / 番組表 / 録画詳細)・録画検索フィルタ・ルール検索・手動予約・アップロード・エンコード追加。**新しく選択肢を作るときは必ず `{ title, value }` で書くこと**
+        - **`plugins/vuetify.ts` の `defaults` で `itemTitle: 'text'` を全 `v-select` / `v-autocomplete` / `v-combobox` に効かせていたのを削除した**。移行初期に Vuetify 2 の `{ text, value }` を延命するために入れた設定で、選択肢を `{ title, value }` に直したあとも残っていたため、`item-title="title"` を明示していない箇所 (視聴ストリーム選択ダイアログの画質リスト等) が `[object Object]` 表示のままだった。既定値 (`'title'`) に戻したので **`item-title` は原則書かなくてよい**
+    - 録画詳細画面にシリーズ情報と関連録画を表示するようにした (`client/src/components/recorded/detail/RecordedDetailSeries.vue`)
+        - `GET /api/series/mappings/{recordedId}` でシリーズ紐付けを引き、`GET /api/series/{seriesId}` の詳細 (クール・話数・放送種別・外部辞書 ID) をチップで表示する。アイキャッチは `GET /api/series/{seriesId}/image` (Annict 由来)
+        - 同じシリーズの録画済み一覧を「関連リスト」として並べ、件数が多い場合はシリーズ詳細画面へ誘導する
+        - ジャンルと録画タグもチップ表示にした (`RecordedDisplayData.display.genreItems` / `tags`)。表示は `featureFlags.seriesLibrary` でゲート (opt-out) し、シリーズ未紐付けの録画では何も出さない
+        - サーバ側 API の追加は無し (既存エンドポイントの再利用のみ)
+    - 放送局ロゴを表示するようにした
+        - 録画一覧 (小 / 大カード・テーブル)・録画詳細・番組表の放送局ヘッダで、局名の横にロゴを出す (`GET /api/channels/{channelId}/logo`)
+        - 番組表のヘッダは**ロゴと局名を横 1 行**に並べる (`client/src/components/guide/Channel.vue`)。ロゴは `max-width: 40%` + ヘッダ高までに収め、局名は残り幅で `text-overflow: ellipsis`
+        - `hasLogoData` が false の局と、画像取得に失敗した局は**従来どおり局名のみ**にフォールバックする。番組表は局数が多いため `loading="lazy"` で遅延読み込みし、失敗した局 id をコンポーネント側で覚えて再要求しない
+    - エンコード設定を「プリセット表 + 一括有効化フラグ」方式にした (`src/util/EncodePresets.ts`)
+        - 軸は **ハードウェア (software / qsv / vaapi / nvenc / qsvencc / nvencc / vceencc) × コーデック (h264 / hevc) × 画質 (1080p / 720p / 480p / 240p) × 用途 (録画エンコード / ライブ HLS / 録画ストリーミング)**。`config.yml` に `encodePresets` を書くと該当する組み合わせの `encode` / `stream.profiles.*` が自動生成される
+        - `qsvencc` / `nvencc` / `vceencc` は **rigaya 氏製の QSVEncC / NVEncC / VCEEncC** を使う。実行ファイルパスは `config.yml` の `qsvencc` / `nvencc` / `vceencc` (省略時は PATH 上のコマンド名、`EncoderModel` が環境変数 `QSVENCC` / `NVENCC` / `VCEENCC` として `config/enc.js` へ渡す)。配信は「rigaya 系エンコーダ → パイプ → ffmpeg で remux」の 2 段構成 (`cmd` に `|` を含むためシェル経由で実行される)
+        - **rigaya 系 CLI は 3 ツールで完全に共通ではない**ので分岐が必要。`--vpp-deinterlace` は QSVEncC/NVEncC のみ (かつ `--interlace tff`/`bff` の指定が前提) で VCEEncC には無い → VCEEncC は共通オプションの `--vpp-yadif` を使う。`--strict-gop` も VCEEncC には無い。`--closed-gop` というオプションは 3 ツールいずれにも存在しない。コンテナ指定は `--output-format` (`--format` は無い)。アスペクト比追従リサイズは `--output-res -2x<height>` (`preserve_aspect_ratio` に `input` という値は無い)
+        - 不正な `hwaccel` / `codecs` / `qualities` / `targets` はテーブル引きが `undefined` になって起動時に落ちるため、`expand()` で未知の値を捨てて既定値へフォールバックする
+        - **完全に opt-in**。`encodePresets` を書かなければ挙動は一切変わらない。優先順位は「手書き優先」で、`encode` / `stream.profiles.live` / `recorded.ts` / `recorded.encoded` の**セクション単位**に判定する (旧形式 `stream.live` / `stream.recorded` の手書きも尊重する)
+        - ライブ HLS のプリセットは `%streamFileDir%` を含まない (in-memory 配信のまま)、録画ストリーミングの HLS はディスク方式 (字幕対応) を維持する。`doc/streaming-refresh.md` の 2 モードの区別を壊さないこと
+        - `config/enc.js.template` に VAAPI (AMD / Intel) プリセットを追加。テンプレートの HW 別コメントアウトの塊はプリセットで置き換えられる分を削除した (有効な設定値は変更していない)
+        - **`config.yml` の `encodePresets` (入力フラグ) と API 応答の `Config.encodePresets` (クライアント向けの解決済み一覧) は同名だが別物**なので混同しないこと
+        - 詳細は `doc/conf-manual.md` の `encodePresets` の項、テストは `test/ut/encode-presets.test.js`
     - 依存パッケージを更新 (サーバ / クライアント両方)
         - TypeScript 5.9 → 6.0 系。あわせてクライアントの `tsconfig.json` から TypeScript 7.0 で廃止予定の `baseUrl` を削除し、`paths` を tsconfig 相対 (`./src/*`) に変更
         - ESLint 8 → 10 系へ移行。旧 `.eslintrc.json` を廃止し Flat Config (`eslint.config.mjs`) に移行、`@typescript-eslint/*` は統合パッケージ `typescript-eslint` 8 系に置き換え。lint スクリプトも v9 以降で廃止された `--ext` を削除 (`eslint --fix src/`)
