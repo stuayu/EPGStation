@@ -50,8 +50,12 @@
                                             {{ tag.name }}
                                         </v-chip>
                                     </div>
+                                    <!-- 1 行目: EPG 上の放送時間 / 2 行目: 実際に録画された時間 (実測メタデータがある場合のみ) -->
                                     <div class="text-subtitle-2 font-weight-light">
-                                        {{ recorded.display.time }} ({{ recorded.display.durationText }})
+                                        {{ recorded.display.epgTimeText }}
+                                    </div>
+                                    <div v-if="typeof recorded.display.recordedTimeText !== 'undefined'" class="text-subtitle-2 font-weight-light text-medium-emphasis">
+                                        録画 {{ recorded.display.recordedTimeText }}
                                     </div>
                                     <div class="text-body-2 mt-2 font-weight-light drop" v-bind:class="{ droped: recorded.display.hasDrop === true }" v-on:click="showDropLog">
                                         {{ recorded.display.drop }}
