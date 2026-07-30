@@ -16,6 +16,7 @@ import ImportDirectoryScanner from '../../recorded/import/ImportDirectoryScanner
 import ImportPathValidator from '../../recorded/import/ImportPathValidator';
 import IEncodeManageModel from '../../service/encode/IEncodeManageModel';
 import { UploadedVideoFileOption } from '../../operator/recorded/IRecordedManageModel';
+import ITsInfoAnalyzer, { TsInfo } from '../../recorded/ts/ITsInfoAnalyzer';
 import IRecordedItemUtil from '../IRecordedItemUtil';
 import IRecordedApiModel, { NextUpResult } from './IRecordedApiModel';
 
@@ -29,6 +30,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
     private watchHistoryDB: IWatchHistoryDB;
     private seriesDB: ISeriesDB;
     private channelDB: IChannelDB;
+    private tsInfoAnalyzer: ITsInfoAnalyzer;
 
     constructor(
         @inject('IIPCClient') ipc: IIPCClient,
@@ -39,6 +41,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
         @inject('IWatchHistoryDB') watchHistoryDB: IWatchHistoryDB,
         @inject('ISeriesDB') seriesDB: ISeriesDB,
         @inject('IChannelDB') channelDB: IChannelDB,
+        @inject('ITsInfoAnalyzer') tsInfoAnalyzer: ITsInfoAnalyzer,
     ) {
         this.recordedDB = recordedDB;
         this.ipc = ipc;
@@ -48,6 +51,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
         this.watchHistoryDB = watchHistoryDB;
         this.seriesDB = seriesDB;
         this.channelDB = channelDB;
+        this.tsInfoAnalyzer = tsInfoAnalyzer;
     }
 
     /**
@@ -182,6 +186,28 @@ export default class RecordedApiModel implements IRecordedApiModel {
     }
 
     /**
+     * スキャン候補の TS を解析する
+     * スキャンは一覧表示のための下準備なので、失敗しても候補自体は返す
+     * @param filePath: string 実ファイルパス
+     * @return Promise<TsInfo | null>
+     */
+    private async analyzeTsInfoForScan(filePath: string): Promise<TsInfo | null> {
+        // TS 以外の拡張子には PSI/SI が無い
+        if (RecordedApiModel.TS_EXTENSIONS.includes(path.extname(filePath).toLowerCase()) === false) {
+            return null;
+        }
+
+        try {
+            return await this.tsInfoAnalyzer.analyze(filePath, {
+                timeoutMs: RecordedApiModel.SCAN_TS_ANALYZE_TIMEOUT_MS,
+            });
+        } catch (err: any) {
+            // 壊れたファイルでも一覧には出す
+            return null;
+        }
+    }
+
+    /**
      * スキャン候補 1 件分を apid.ImportScanResultItem に変換する
      */
     private async toScanResultItem(
@@ -217,6 +243,30 @@ export default class RecordedApiModel implements IRecordedApiModel {
             }
         }
 
+        // 情報源の優先順位は TS > program.txt > ファイル名。
+        // TS の PSI/SI は実体そのものなので、取れた項目はすべて上書きする
+        let estimatedSource: apid.ImportEstimatedSource = 'fileName';
+        if (candidate.programTxtPath !== null) {
+            estimatedSource = 'programTxt';
+        }
+
+        const tsInfo = await this.analyzeTsInfoForScan(candidate.filePath);
+        if (tsInfo !== null) {
+            if (tsInfo.eventName !== null) {
+                name = tsInfo.eventName;
+                estimatedSource = 'ts';
+            }
+            if (tsInfo.serviceName !== null) {
+                channelName = tsInfo.serviceName;
+                estimatedSource = 'ts';
+            }
+            if (tsInfo.eventStartAt !== null) {
+                startAt = tsInfo.eventStartAt;
+                endAt = tsInfo.eventDuration === null ? endAt : tsInfo.eventStartAt + tsInfo.eventDuration * 1000;
+                estimatedSource = 'ts';
+            }
+        }
+
         let dropCount: number | undefined;
         let scramblingCount: number | undefined;
         if (candidate.errPath !== null) {
@@ -230,15 +280,25 @@ export default class RecordedApiModel implements IRecordedApiModel {
             }
         }
 
-        const channel =
-            typeof channelName === 'string'
-                ? channels.find(
-                      c =>
-                          c.name === channelName ||
-                          c.halfWidthName === channelName ||
-                          c.name.includes(channelName as string),
-                  )
-                : undefined;
+        // 放送局は TS の network id + service id での厳密な引き当てを最優先し、
+        // 取れない場合のみ従来どおり放送局名の曖昧一致で探す
+        let channel: { id: apid.ChannelId } | undefined;
+        if (tsInfo !== null && tsInfo.networkId !== null && tsInfo.serviceId !== null) {
+            const found = await this.channelDB
+                .findNetworkIdAndServiceId(tsInfo.networkId, tsInfo.serviceId)
+                .catch(() => null);
+            if (found !== null) {
+                channel = found;
+            }
+        }
+        if (typeof channel === 'undefined' && typeof channelName === 'string') {
+            channel = channels.find(
+                c =>
+                    c.name === channelName ||
+                    c.halfWidthName === channelName ||
+                    c.name.includes(channelName as string),
+            );
+        }
 
         let duplicateRecordedIds: apid.RecordedId[] | undefined;
         if (typeof channel !== 'undefined' && typeof startAt === 'number') {
@@ -271,6 +331,13 @@ export default class RecordedApiModel implements IRecordedApiModel {
         if (typeof channel !== 'undefined') item.estimatedChannelId = channel.id;
         if (typeof startAt === 'number') item.estimatedStartAt = startAt;
         if (typeof endAt === 'number') item.estimatedEndAt = endAt;
+        item.estimatedSource = estimatedSource;
+        if (tsInfo !== null) {
+            if (tsInfo.serviceName !== null) item.tsServiceName = tsInfo.serviceName;
+            if (tsInfo.eventName !== null) item.tsEventName = tsInfo.eventName;
+            if (tsInfo.networkId !== null) item.tsNetworkId = tsInfo.networkId;
+            if (tsInfo.serviceId !== null) item.tsServiceId = tsInfo.serviceId;
+        }
         if (typeof dropCount === 'number') item.dropCount = dropCount;
         if (typeof scramblingCount === 'number') item.scramblingCount = scramblingCount;
         if (typeof duplicateRecordedIds !== 'undefined') item.duplicateRecordedIds = duplicateRecordedIds;
@@ -446,4 +513,8 @@ export default class RecordedApiModel implements IRecordedApiModel {
 
     // 外部録画ファイル取り込みの重複判定に使う時刻許容誤差 (ms)
     private static readonly DUPLICATE_TOLERANCE_MS = 5 * 60 * 1000;
+    // スキャンでは候補が多いこともあるため、1 件あたりの TS 解析は短めで打ち切る
+    private static readonly SCAN_TS_ANALYZE_TIMEOUT_MS = 10 * 1000;
+    // TS の PSI/SI を持ちうる拡張子
+    private static readonly TS_EXTENSIONS = ['.ts', '.m2ts', '.mts', '.m2t'];
 }

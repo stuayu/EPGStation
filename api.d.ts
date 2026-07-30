@@ -1230,12 +1230,24 @@ export interface ImportScanResultItem {
     estimatedChannelId?: ChannelId;
     estimatedStartAt?: number;
     estimatedEndAt?: number;
+    // 推定に使った情報源 (ts = TS の PSI/SI, programTxt = .program.txt, fileName = ファイル名)
+    estimatedSource?: ImportEstimatedSource;
+    // TS の PSI/SI から取れた値
+    tsServiceName?: string;
+    tsEventName?: string;
+    tsNetworkId?: number;
+    tsServiceId?: number;
     hasProgramTxt: boolean;
     hasErr: boolean;
     dropCount?: number;
     scramblingCount?: number;
     duplicateRecordedIds?: RecordedId[];
 }
+
+/**
+ * 取り込み候補の推定に使った情報源
+ */
+export type ImportEstimatedSource = 'ts' | 'programTxt' | 'fileName';
 
 /**
  * 取り込みディレクトリスキャン結果

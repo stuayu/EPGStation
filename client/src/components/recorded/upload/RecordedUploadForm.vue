@@ -101,6 +101,15 @@
                 <v-divider class="mb-2"></v-divider>
                 <div v-for="row in uploadState.importScanResults" v-bind:key="row.result.filePath" class="import-row pb-2 mb-2">
                     <v-checkbox v-model="row.selected" :label="row.result.fileName" hide-details></v-checkbox>
+                    <!-- 番組名・放送局・時刻を何から推定したか。TS を解析できたものが最も確実 -->
+                    <div class="d-flex align-center ga-1 flex-wrap mb-1">
+                        <v-chip size="x-small" :color="estimatedSourceColor(row.result)" variant="flat" :title="estimatedSourceTitle(row.result)">
+                            {{ estimatedSourceText(row.result) }}
+                        </v-chip>
+                        <span v-if="row.result.tsServiceName" class="text-caption text-grey">
+                            TS: {{ row.result.tsServiceName }}<span v-if="row.result.tsServiceId"> (service id {{ row.result.tsServiceId }})</span>
+                        </span>
+                    </div>
                     <div class="d-flex flex-wrap">
                         <v-text-field v-model="row.editedName" label="番組名" class="import-field" clearable></v-text-field>
                         <v-select v-model="row.editedChannelId" :items="uploadState.getChannelItems()" item-title="title" item-value="value" label="放送局" class="import-field" clearable></v-select>
@@ -143,6 +152,7 @@
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import IRecordedUploadState from '@/model/state/recorded/upload/IRecordedUploadState';
+import * as apid from '../../../../../api';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({
@@ -175,6 +185,42 @@ class RecordedUploadForm extends Vue {
 
     public upload(): void {
         this.$emit('upload');
+    }
+
+    /**
+     * 推定に使った情報源の表示テキスト
+     */
+    public estimatedSourceText(result: apid.ImportScanResultItem): string {
+        switch (result.estimatedSource) {
+            case 'ts':
+                return 'TS 解析';
+            case 'programTxt':
+                return 'program.txt';
+            default:
+                return 'ファイル名';
+        }
+    }
+
+    public estimatedSourceColor(result: apid.ImportScanResultItem): string {
+        switch (result.estimatedSource) {
+            case 'ts':
+                return 'teal';
+            case 'programTxt':
+                return 'blue-grey';
+            default:
+                return 'grey';
+        }
+    }
+
+    public estimatedSourceTitle(result: apid.ImportScanResultItem): string {
+        switch (result.estimatedSource) {
+            case 'ts':
+                return 'TS の PSI/SI (SDT / EIT) から取得しました。最も確実です';
+            case 'programTxt':
+                return '同名の .program.txt から推定しました';
+            default:
+                return 'ファイル名から推定しました。誤っている場合は修正してください';
+        }
     }
 
     public scanImport(): void {

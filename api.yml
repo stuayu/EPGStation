@@ -2132,6 +2132,25 @@ components:
                 estimatedEndAt:
                     description: 推定した終了時刻 (UnixTime ms)
                     type: integer
+                estimatedSource:
+                    description: 推定に使った情報源
+                    type: string
+                    enum:
+                        - ts
+                        - programTxt
+                        - fileName
+                tsServiceName:
+                    description: TS の SDT から取得した放送局名
+                    type: string
+                tsEventName:
+                    description: TS の EIT から取得した番組名
+                    type: string
+                tsNetworkId:
+                    description: TS から取得した network id
+                    type: integer
+                tsServiceId:
+                    description: TS から取得した service id
+                    type: integer
                 hasProgramTxt:
                     description: 同名の .program.txt が存在するか
                     type: boolean
