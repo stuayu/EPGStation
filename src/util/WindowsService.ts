@@ -99,6 +99,49 @@ export const buildServiceEnvironment = (input: ServiceEnvironmentInput): Service
     { name: 'EPGSTATION_WIN_SERVICE_NAME', value: input.serviceName },
 ];
 
+export interface ServiceAccount {
+    domain: string;
+    account: string;
+}
+
+/**
+ * サービスの実行アカウント指定を domain / account へ分解する。
+ * `DOMAIN\user` / `.\user` / `user` の 3 形式を受け付け、ドメイン名の無い指定 (`.` を含む)
+ * はローカルコンピュータ名を使う
+ * @param input: string 入力された指定
+ * @param computerName: string ローカルコンピュータ名
+ * @return ServiceAccount | null 空文字列の場合は null
+ */
+export const parseServiceAccount = (input: string, computerName: string): ServiceAccount | null => {
+    const trimmed = (input ?? '').trim();
+    if (trimmed === '') return null;
+
+    const separator = trimmed.lastIndexOf('\\');
+    if (separator === -1) return { domain: computerName, account: trimmed };
+
+    const domain = trimmed.slice(0, separator);
+    const account = trimmed.slice(separator + 1);
+    if (account === '') return null;
+
+    return { domain: domain === '' || domain === '.' ? computerName : domain, account: account };
+};
+
+/**
+ * 既定の実行アカウント (サービスを登録しようとしているユーザー) を求める。
+ * EPGStation は録画先ディレクトリやチューナーへユーザー権限でアクセスできる方が扱いやすいため、
+ * LocalSystem ではなくログオン中のユーザーを既定にする
+ * @param env: Record<string, string | undefined>
+ * @return string `DOMAIN\user` 形式。求められない場合は空文字列
+ */
+export const defaultServiceAccountName = (env: Record<string, string | undefined>): string => {
+    const account = env.USERNAME ?? '';
+    if (account === '') return '';
+
+    const domain = env.USERDOMAIN ?? env.COMPUTERNAME ?? '';
+
+    return domain === '' ? account : `${domain}\\${account}`;
+};
+
 /**
  * `sc.exe qc <service>` の出力から、winser (nssm) が登録したサービスかどうかを判定する。
  * node-windows へ移行する際は先に旧サービスを削除してもらう必要があるため、
