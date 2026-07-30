@@ -96,9 +96,11 @@ class LiveHLSVideo extends BaseVideo {
         DPlayerUtil.setupGlobals();
 
         const videoSrc = `./streamfiles/stream${streamId}.m3u8`;
-        // Safari は M3U8 をネイティブ再生できる。
-        // hls.js / MSE を経由せず標準 video 要素へ直接渡すことで安定性を優先する。
-        const videoType = UaUtil.isSafari() === true ? 'normal' : 'hls';
+        // Safari も含めて 'hls' を指定する。
+        // Safari では DPlayerUtil.setupGlobals() が window.Hls.isSupported() を false にしているため、
+        // DPlayer は hls.js / MSE を経由せず標準 video 要素へ直接渡すネイティブ HLS 再生を選ぶ。
+        // type に 'normal' を渡すと DPlayer が ARIB 字幕 (aribb24.js) を初期化しないため使わない。
+        const videoType = 'hls';
 
         // プレイヤー上から画質 (エンコード設定) を切り替えられるよう
         // config の hls 設定一覧から DPlayer の quality リストを生成する
