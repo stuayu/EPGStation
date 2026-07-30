@@ -27,7 +27,7 @@
         <template v-if="isShowAsSeries === true">
             <v-container>
                 <v-alert type="info" class="mb-3">シリーズ表示 (試験的)。作品ごとにまとめて表示します。従来表示に戻すには右上のアイコンをクリックしてください。</v-alert>
-                <v-text-field v-model="seriesKeyword" label="シリーズを検索" clearable prepend-inner-icon="mdi-magnify" @keyup.enter="loadSeries"></v-text-field>
+                <v-text-field v-model="seriesKeyword" label="シリーズを検索" clearable prepend-inner-icon="mdi-magnify" @keyup.enter="searchSeries"></v-text-field>
                 <v-row>
                     <v-col v-for="item in seriesItems" :key="item.id" cols="12" sm="6" md="4">
                         <v-card :to="`/series/${item.id}`" height="100%">
@@ -37,10 +37,18 @@
                     </v-col>
                 </v-row>
                 <v-alert v-if="seriesLoading === false && seriesItems.length === 0" type="info">シリーズがありません</v-alert>
-                <div class="d-flex justify-center mt-4">
-                    <v-btn :disabled="seriesOffset === 0" @click="previousSeriesPage">前へ</v-btn>
-                    <span class="pa-3">{{ seriesOffset + 1 }}–{{ Math.min(seriesOffset + seriesLimit, seriesTotal) }} / {{ seriesTotal }}</span>
-                    <v-btn :disabled="seriesOffset + seriesLimit >= seriesTotal" @click="nextSeriesPage">次へ</v-btn>
+                <div class="mt-4">
+                    <div class="text-center text-caption text-grey mb-1" v-if="seriesTotal > 0">
+                        {{ seriesOffset + 1 }}–{{ Math.min(seriesOffset + seriesLimit, seriesTotal) }} / {{ seriesTotal }}
+                    </div>
+                    <v-pagination
+                        v-if="seriesTotalPages > 1"
+                        v-model="seriesPage"
+                        :circle="false"
+                        :length="seriesTotalPages"
+                        :total-visible="7"
+                        @update:model-value="loadSeries"
+                    ></v-pagination>
                 </div>
             </v-container>
         </template>
@@ -198,13 +206,25 @@ class Recorded extends Vue {
         }
     }
 
-    public previousSeriesPage(): void {
-        this.seriesOffset = Math.max(0, this.seriesOffset - this.seriesLimit);
-        void this.loadSeries();
+    /**
+     * シリーズ表示のページャ現在ページ (1 始まり)
+     */
+    get seriesPage(): number {
+        return Math.floor(this.seriesOffset / this.seriesLimit) + 1;
+    }
+    set seriesPage(value: number) {
+        this.seriesOffset = Math.max(0, (value - 1) * this.seriesLimit);
     }
 
-    public nextSeriesPage(): void {
-        this.seriesOffset += this.seriesLimit;
+    get seriesTotalPages(): number {
+        return this.seriesTotal === 0 ? 1 : Math.ceil(this.seriesTotal / this.seriesLimit);
+    }
+
+    /**
+     * キーワード検索し直すときは 1 ページ目へ戻す
+     */
+    public searchSeries(): void {
+        this.seriesOffset = 0;
         void this.loadSeries();
     }
 

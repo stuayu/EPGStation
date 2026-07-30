@@ -291,10 +291,11 @@
                 </tbody>
             </v-table>
             <v-alert v-if="!loading && items.length === 0" type="info">シリーズがありません</v-alert>
-            <div class="d-flex justify-center mt-4">
-                <v-btn :disabled="offset === 0" @click="previous">前へ</v-btn>
-                <span class="pa-3">{{ offset + 1 }}–{{ Math.min(offset + limit, total) }} / {{ total }}</span>
-                <v-btn :disabled="offset + limit >= total" @click="next">次へ</v-btn>
+            <div class="mt-4">
+                <div class="text-center text-caption text-grey mb-1" v-if="total > 0">
+                    {{ offset + 1 }}–{{ Math.min(offset + limit, total) }} / {{ total }}
+                </div>
+                <Pagination :total="total" :pageSize="limit"></Pagination>
             </div>
         </v-container>
 
@@ -397,12 +398,16 @@
     </v-main>
 </template>
 <script lang="ts">
+import Pagination from '@/components/pagination/Pagination.vue';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import * as apid from '../../../api';
 import ISeriesApiModel, { SeriesListItem } from '@/model/api/series/ISeriesApiModel';
+import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { Component, Vue, toNative } from 'vue-facing-decorator';
+import Util from '@/util/Util';
+import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import type { LocationQueryRaw } from 'vue-router';
 
 /**
  * マージダイアログの統合先候補
@@ -414,12 +419,15 @@ interface MergeTargetOption {
     recordedCount: number;
 }
 
-@Component({ components: { TitleBar } })
+@Component({ components: { TitleBar, Pagination } })
 class SeriesView extends Vue {
     // 表示形式の選択を保存する localStorage キー
     private static readonly VIEW_MODE_KEY = 'series-view-mode';
     // マージ候補を問い合わせる選択シリーズの上限 (選択が多いときに API を叩きすぎないため)
     private static readonly MERGE_LOOKUP_LIMIT = 5;
+    // URL query に載せない既定の並べ替え条件
+    private static readonly DEFAULT_SORT: apid.SeriesSortKey = 'updatedAt';
+    private static readonly DEFAULT_ORDER: 'asc' | 'desc' = 'desc';
 
     keyword = '';
     items: SeriesListItem[] = [];
@@ -515,11 +523,61 @@ class SeriesView extends Vue {
     }
 
     /**
-     * 絞り込み・並べ替えを変えたときは 1 ページ目へ戻す
+     * 絞り込み・並べ替えを変えたときは 1 ページ目へ戻す。
+     * 検索条件は URL query に載せるため、実際の再取得は $route の変化を受けて行う
+     * (これにより戻る操作で検索結果とページ位置が復元される)
      */
     async reload(): Promise<void> {
-        this.offset = 0;
-        await this.load();
+        await this.pushQuery(1);
+    }
+
+    /**
+     * 現在の検索条件を URL query に反映する
+     * @param page: 遷移先のページ番号
+     */
+    private async pushQuery(page: number): Promise<void> {
+        const query: LocationQueryRaw = {};
+        if (this.keyword !== null && this.keyword !== '') query.keyword = this.keyword;
+        if (this.sort !== SeriesView.DEFAULT_SORT) query.sort = this.sort;
+        if (this.order !== SeriesView.DEFAULT_ORDER) query.order = this.order;
+        if (this.season !== null && this.season !== '') query.season = this.season;
+        if (this.status !== null) query.status = this.status;
+        if (this.origin !== null) query.origin = this.origin;
+        if (this.hasMissing === true) query.hasMissing = '1';
+        if (page > 1) query.page = page.toString(10);
+
+        // query に変化が無いと router が動かず再取得もされないため、その場合は直接取得する
+        const current = { ...this.$route.query };
+        delete current.timestamp;
+        const isSame =
+            Object.keys(current).length === Object.keys(query).length &&
+            Object.keys(current).every(key => current[key] === query[key]);
+        if (isSame === true) {
+            await this.load();
+            return;
+        }
+
+        await Util.move(this.$router, { path: '/series', query: query });
+    }
+
+    /**
+     * URL query から検索条件・ページ位置を復元する
+     */
+    private applyQuery(): void {
+        const query = this.$route.query;
+        const sort = Util.getRouteString(query.sort);
+        const order = Util.getRouteString(query.order);
+        const status = Util.getRouteString(query.status);
+        const origin = Util.getRouteString(query.origin);
+
+        this.keyword = Util.getRouteString(query.keyword) ?? '';
+        this.sort = (this.sortItems.some(x => x.value === sort) ? sort : SeriesView.DEFAULT_SORT) as apid.SeriesSortKey;
+        this.order = order === 'asc' || order === 'desc' ? order : SeriesView.DEFAULT_ORDER;
+        this.season = Util.getRouteString(query.season) ?? null;
+        this.status = status === 'onair' || status === 'finished' ? status : null;
+        this.origin = origin === 'dictionary' || origin === 'local' ? origin : null;
+        this.hasMissing = Util.getRouteString(query.hasMissing) === '1';
+        this.offset = (Util.getPageNum(this.$route) - 1) * this.limit;
     }
 
     selectionMode = false;
@@ -554,12 +612,25 @@ class SeriesView extends Vue {
 
     private api = container.get<ISeriesApiModel>('ISeriesApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
 
     mounted() {
         const saved = window.localStorage.getItem(SeriesView.VIEW_MODE_KEY);
         if (saved === 'grid' || saved === 'list' || saved === 'compact') this.viewMode = saved;
         void this.loadSeasons();
-        void this.load();
+    }
+
+    /**
+     * URL query の変化 (検索条件変更・ページ移動・ブラウザバック) で一覧を取り直す
+     */
+    @Watch('$route', { immediate: true, deep: true })
+    public onUrlChange(): void {
+        this.applyQuery();
+        this.$nextTick(async () => {
+            await this.load();
+            // スクロール位置復元のためデータ取得完了を通知する
+            await this.scrollState.emitDoneGetData();
+        });
     }
 
     async loadSeasons(): Promise<void> {
@@ -589,17 +660,12 @@ class SeriesView extends Vue {
             });
             this.items = x.items;
             this.total = x.total;
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: 'シリーズ一覧の取得に失敗しました' });
         } finally {
             this.loading = false;
         }
-    }
-    previous() {
-        this.offset = Math.max(0, this.offset - this.limit);
-        void this.load();
-    }
-    next() {
-        this.offset += this.limit;
-        void this.load();
     }
 
     /**
