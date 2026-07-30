@@ -250,6 +250,26 @@ export default class ChannelDB implements IChannelDB {
     }
 
     /**
+     * network id と service id を指定して検索する
+     * TS 解析で得た放送の識別子から放送局を特定するのに使う
+     * @param networkId: number
+     * @param serviceId: number
+     * @return Promise<Channel | null>
+     */
+    public async findNetworkIdAndServiceId(networkId: number, serviceId: number): Promise<Channel | null> {
+        const connection = await this.op.getConnection();
+
+        const repository = connection.getRepository(Channel);
+        const result = await this.promieRetry.run(() => {
+            return repository.findOne({
+                where: [{ networkId: networkId, serviceId: serviceId }],
+            });
+        });
+
+        return typeof result === 'undefined' ? null : result;
+    }
+
+    /**
      * channelType を指定して検索
      * @param types: apid.ChannelType[]
      * @param needSort: boolean ソートが必要か default: false

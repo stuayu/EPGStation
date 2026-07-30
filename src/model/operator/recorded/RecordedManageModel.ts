@@ -30,6 +30,8 @@ import IRecordedManageModel, {
     UploadedVideoFileOption,
 } from './IRecordedManageModel';
 import IRecordingUtilModel from '../recording/IRecordingUtilModel';
+import ITsInfoAnalyzer, { TsInfo } from '../../recorded/ts/ITsInfoAnalyzer';
+import IVideoFileAnalyzeModel from '../../video/IVideoFileAnalyzeModel';
 
 @injectable()
 class RecordedManageModel implements IRecordedManageModel {
@@ -46,6 +48,8 @@ class RecordedManageModel implements IRecordedManageModel {
     private recordedEvent: IRecordedEvent;
     private videoUtil: IVideoUtil;
     private recordingUtilModel: IRecordingUtilModel;
+    private tsInfoAnalyzer: ITsInfoAnalyzer;
+    private videoFileAnalyzeModel: IVideoFileAnalyzeModel;
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -62,6 +66,8 @@ class RecordedManageModel implements IRecordedManageModel {
         @inject('IRecordedEvent') recordedEvent: IRecordedEvent,
         @inject('IVideoUtil') videoUtil: IVideoUtil,
         @inject('IRecordingUtilModel') recordingUtilModel: IRecordingUtilModel,
+        @inject('ITsInfoAnalyzer') tsInfoAnalyzer: ITsInfoAnalyzer,
+        @inject('IVideoFileAnalyzeModel') videoFileAnalyzeModel: IVideoFileAnalyzeModel,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
@@ -76,6 +82,8 @@ class RecordedManageModel implements IRecordedManageModel {
         this.recordedEvent = recordedEvent;
         this.videoUtil = videoUtil;
         this.recordingUtilModel = recordingUtilModel;
+        this.tsInfoAnalyzer = tsInfoAnalyzer;
+        this.videoFileAnalyzeModel = videoFileAnalyzeModel;
     }
 
     /**
@@ -397,6 +405,9 @@ class RecordedManageModel implements IRecordedManageModel {
                 name: option.viewName,
             });
 
+            // TS の PSI/SI 解析 + ffprobe による実測メタデータの取得 (失敗しても登録は成功のまま)
+            await this.videoFileAnalyzeModel.analyzeAll(videoFileId);
+
             // 通知
             const needsCreateThumbnail = typeof recorded.thumbnails === 'undefined' || recorded.thumbnails.length === 0;
             this.recordedEvent.emitAddUploadedVideoFile(videoFileId, needsCreateThumbnail);
@@ -459,8 +470,6 @@ class RecordedManageModel implements IRecordedManageModel {
                 }
 
                 const parsed = path.parse(resolved.realPath);
-                const startAt = typeof option.startAt === 'number' ? option.startAt : Math.floor(stats.mtimeMs);
-                const name = typeof option.name === 'string' && option.name.length > 0 ? option.name : parsed.name;
                 const duplicateAction = option.duplicateAction ?? 'newRecorded';
 
                 // 重複としてスキップする場合は動画情報の解析すら行わず早期リターンする (ffprobe のコスト削減)
@@ -469,17 +478,33 @@ class RecordedManageModel implements IRecordedManageModel {
                     continue;
                 }
 
+                // TS の PSI/SI から放送局・番組情報を取り出す (ファイル名や program.txt の推定より正確)
+                const tsInfo = await this.analyzeTsInfoForImport(option, resolved.realPath);
+
+                const startAt =
+                    typeof option.startAt === 'number'
+                        ? option.startAt
+                        : (tsInfo?.eventStartAt ?? Math.floor(stats.mtimeMs));
+                const name =
+                    typeof option.name === 'string' && option.name.length > 0
+                        ? option.name
+                        : (tsInfo?.eventName ?? parsed.name);
+
                 let endAt = option.endAt;
                 if (typeof endAt !== 'number') {
-                    const info = await this.videoUtil.getInfo(resolved.realPath);
-                    endAt = startAt + Math.max(1000, Math.round(info.duration * 1000));
+                    if (tsInfo !== null && tsInfo.eventDuration !== null) {
+                        endAt = startAt + tsInfo.eventDuration * 1000;
+                    } else {
+                        const info = await this.videoUtil.getInfo(resolved.realPath);
+                        endAt = startAt + Math.max(1000, Math.round(info.duration * 1000));
+                    }
                 }
 
                 if (duplicateAction === 'add' && typeof option.duplicateRecordedId === 'number') {
                     recordedId = option.duplicateRecordedId;
                 } else {
                     const createOption: apid.CreateNewRecordedOption = {
-                        channelId: option.channelId,
+                        channelId: await this.resolveImportChannelId(option, tsInfo),
                         startAt,
                         endAt,
                         name,
@@ -487,11 +512,20 @@ class RecordedManageModel implements IRecordedManageModel {
                     if (typeof option.ruleId === 'number') {
                         createOption.ruleId = option.ruleId;
                     }
-                    if (typeof option.genre1 === 'number') {
-                        createOption.genre1 = option.genre1;
+                    // 番組の概要・詳細・ジャンルは画面から指定できないため、TS から取れた値をそのまま使う
+                    if (tsInfo !== null && tsInfo.eventDescription !== null) {
+                        createOption.description = tsInfo.eventDescription;
                     }
-                    if (typeof option.subGenre1 === 'number') {
-                        createOption.subGenre1 = option.subGenre1;
+                    if (tsInfo !== null && tsInfo.eventExtended !== null) {
+                        createOption.extended = tsInfo.eventExtended;
+                    }
+                    const genre1 = option.genre1 ?? tsInfo?.genres[0]?.lv1;
+                    const subGenre1 = option.subGenre1 ?? tsInfo?.genres[0]?.lv2;
+                    if (typeof genre1 === 'number') {
+                        createOption.genre1 = genre1;
+                    }
+                    if (typeof subGenre1 === 'number') {
+                        createOption.subGenre1 = subGenre1;
                     }
                     recordedId = await this.createNewRecorded(createOption);
                     isNewRecorded = true;
@@ -520,6 +554,9 @@ class RecordedManageModel implements IRecordedManageModel {
                         isExternalFile: true,
                     });
 
+                    // 解析済みの TS 情報を保存し、続けて ffprobe で実測メタデータを取る
+                    await this.saveAnalyzedInfo(videoFileId, tsInfo);
+
                     const recorded = await this.recordedDB.findId(recordedId);
                     const needsCreateThumbnail =
                         recorded === null ||
@@ -543,6 +580,77 @@ class RecordedManageModel implements IRecordedManageModel {
         }
 
         return results;
+    }
+
+    /**
+     * 取り込み対象ファイルの TS を解析する
+     * 解析に失敗しても取り込み自体は続行させたいので、失敗時は null を返す
+     * @param option: ImportedExternalRecordedFileOption
+     * @param filePath: string 実ファイルパス
+     * @return Promise<TsInfo | null>
+     */
+    private async analyzeTsInfoForImport(
+        option: ImportedExternalRecordedFileOption,
+        filePath: string,
+    ): Promise<TsInfo | null> {
+        // エンコード済みファイルには PSI/SI が無い
+        if (option.fileType !== 'ts') {
+            return null;
+        }
+
+        try {
+            return await this.tsInfoAnalyzer.analyze(filePath);
+        } catch (err: any) {
+            this.log.system.warn(`ts info analyze failed: ${filePath}`);
+            this.log.system.warn(err instanceof Error ? err.message : String(err));
+
+            return null;
+        }
+    }
+
+    /**
+     * 取り込み先の放送局を決める
+     * TS から network id / service id が取れた場合はそちらを優先する
+     * (ファイル名の放送局名からの推定より確実なため)
+     * @param option: ImportedExternalRecordedFileOption
+     * @param tsInfo: TsInfo | null
+     * @return Promise<apid.ChannelId>
+     */
+    private async resolveImportChannelId(
+        option: ImportedExternalRecordedFileOption,
+        tsInfo: TsInfo | null,
+    ): Promise<apid.ChannelId> {
+        if (tsInfo === null || tsInfo.networkId === null || tsInfo.serviceId === null) {
+            return option.channelId;
+        }
+
+        const channel = await this.channelDB
+            .findNetworkIdAndServiceId(tsInfo.networkId, tsInfo.serviceId)
+            .catch(() => null);
+
+        return channel === null ? option.channelId : channel.id;
+    }
+
+    /**
+     * 取り込んだビデオファイルの解析結果を保存する
+     * 解析済みの TS 情報があればそれを保存し、続けて ffprobe による実測メタデータを取る
+     * 取り込み自体は成功しているので、失敗しても例外は投げない
+     * @param videoFileId: apid.VideoFileId
+     * @param tsInfo: TsInfo | null
+     * @return Promise<void>
+     */
+    private async saveAnalyzedInfo(videoFileId: apid.VideoFileId, tsInfo: TsInfo | null): Promise<void> {
+        if (tsInfo !== null) {
+            await this.videoFileAnalyzeModel.saveTsInfo(videoFileId, tsInfo).catch(err => {
+                this.log.system.warn(`save ts info failed: videoFileId ${videoFileId}`);
+                this.log.system.warn(err instanceof Error ? err.message : String(err));
+            });
+        }
+
+        await this.videoFileAnalyzeModel.analyzeMetadata(videoFileId).catch(err => {
+            this.log.system.warn(`video metadata analyze failed: videoFileId ${videoFileId}`);
+            this.log.system.warn(err instanceof Error ? err.message : String(err));
+        });
     }
 
     /**

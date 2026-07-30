@@ -229,6 +229,8 @@ import IRecordedTagManadeModel from './operator/recordedTag/IRecordedTagManadeMo
 import RecordedTagManadeModel from './operator/recordedTag/RecordedTagManadeModel';
 import DropCheckerModel from './operator/recording/DropCheckerModel';
 import IDropCheckerModel from './operator/recording/IDropCheckerModel';
+import IVideoFileAnalyzeModel from './video/IVideoFileAnalyzeModel';
+import VideoFileAnalyzeModel from './video/VideoFileAnalyzeModel';
 import ITsInfoAnalyzer from './recorded/ts/ITsInfoAnalyzer';
 import TsInfoAnalyzer from './recorded/ts/TsInfoAnalyzer';
 import IRecorderModel, { RecorderModelProvider } from './operator/recording/IRecorderModel';
@@ -416,6 +418,7 @@ export const set = (container: Container): void => {
 
     container.bind<IDropCheckerModel>('IDropCheckerModel').to(DropCheckerModel);
     container.bind<ITsInfoAnalyzer>('ITsInfoAnalyzer').to(TsInfoAnalyzer).inSingletonScope();
+    container.bind<IVideoFileAnalyzeModel>('IVideoFileAnalyzeModel').to(VideoFileAnalyzeModel).inSingletonScope();
 
     container.bind<IRecorderModel>('IRecorderModel').to(RecorderModel);
 
