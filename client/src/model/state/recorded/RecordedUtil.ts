@@ -32,6 +32,7 @@ export default class RecordedUtil implements IRecordedUtil {
                 shortTime: DateUtil.format(startAt, 'MM/dd(w) hh:mm'),
                 duration: duration,
                 durationText: RecordedUtil.createDurationText(duration, fileDuration),
+                epgTimeText: `${DateUtil.format(startAt, 'MM/dd(w) hh:mm')} ~ ${DateUtil.format(endAt, 'hh:mm')} (${duration} 分)`,
                 description: item.description,
                 extended: item.extended,
                 topThumbnailPath: typeof item.thumbnails === 'undefined' || item.thumbnails.length === 0 ? './img/noimg.png' : `./api/thumbnails/${item.thumbnails[0]}`,
@@ -45,6 +46,11 @@ export default class RecordedUtil implements IRecordedUtil {
 
         if (fileDuration !== null) {
             result.display.fileDuration = fileDuration;
+        }
+
+        const recordedTimeText = RecordedUtil.createRecordedTimeText(item, startAt);
+        if (recordedTimeText !== null) {
+            result.display.recordedTimeText = recordedTimeText;
         }
 
         // 視聴履歴機能が無効な場合、サーバは videoFiles に watchHistory を一切付与しないため
@@ -134,19 +140,80 @@ export default class RecordedUtil implements IRecordedUtil {
     }
 
     /**
-     * 録画ファイルの実測の長さ (分) を返す
-     * 複数ファイルがある場合は最も長いものを採用する (TS と エンコード済みで尺が異なることがあるため)
+     * 実測の長さが最も長い録画ファイルを返す
+     * 複数ファイルがある場合に最長を採るのは、TS とエンコード済みで尺が異なることがあるため
      * @param item: apid.RecordedItem
-     * @return number | null 未解析でメタデータが無い場合は null
+     * @return apid.VideoFile | null 実測メタデータを持つファイルが無い場合は null
      */
-    private static getFileDuration(item: apid.RecordedItem): number | null {
+    private static getLongestVideoFile(item: apid.RecordedItem): apid.VideoFile | null {
         if (typeof item.videoFiles === 'undefined') {
             return null;
         }
 
-        const durations = item.videoFiles.filter(video => typeof video.duration === 'number' && video.duration > 0).map(video => video.duration as number);
+        const videos = item.videoFiles.filter(video => typeof video.duration === 'number' && video.duration > 0);
 
-        return durations.length === 0 ? null : Math.round(Math.max(...durations) / 60);
+        return videos.length === 0 ? null : videos.reduce((a, b) => ((a.duration as number) >= (b.duration as number) ? a : b));
+    }
+
+    /**
+     * 録画ファイルの実測の長さ (分) を返す
+     * @param item: apid.RecordedItem
+     * @return number | null 未解析でメタデータが無い場合は null
+     */
+    private static getFileDuration(item: apid.RecordedItem): number | null {
+        const video = RecordedUtil.getLongestVideoFile(item);
+
+        return video === null ? null : Math.round((video.duration as number) / 60);
+    }
+
+    /**
+     * 詳細画面用に「実際に録画された時間」の文字列を作る
+     * ファイル先頭の実時刻 (ffprobe 解析時に記録) がある場合は録画開始〜終了時刻も添える
+     * @param item: apid.RecordedItem
+     * @param programStartAt: Date 番組の開始日時 (日付を省略できるかの判定に使う)
+     * @return string | null 実測メタデータが無い場合は null
+     */
+    private static createRecordedTimeText(item: apid.RecordedItem, programStartAt: Date): string | null {
+        const video = RecordedUtil.getLongestVideoFile(item);
+        if (video === null) {
+            return null;
+        }
+
+        const durationSec = video.duration as number;
+        const lengthText = RecordedUtil.createHmsText(durationSec);
+        if (typeof video.startAt !== 'number') {
+            // 録画開始時刻が分からない場合は長さだけ返す
+            return lengthText;
+        }
+
+        const start = DateUtil.getJaDate(new Date(video.startAt));
+        const end = DateUtil.getJaDate(new Date(video.startAt + Math.round(durationSec * 1000)));
+        // 番組の放送日と同じ日なら日付は省略する (1 行目に出ているため)
+        const startText = DateUtil.format(start, RecordedUtil.isSameDate(start, programStartAt) ? 'hh:mm:ss' : 'MM/dd(w) hh:mm:ss');
+        const endText = DateUtil.format(end, RecordedUtil.isSameDate(end, start) ? 'hh:mm:ss' : 'MM/dd(w) hh:mm:ss');
+
+        return `${startText} ~ ${endText} (${lengthText})`;
+    }
+
+    /**
+     * 秒を h:mm:ss 表記にする
+     * @param sec: number 秒
+     * @return string
+     */
+    private static createHmsText(sec: number): string {
+        const total = Math.round(sec);
+        const hours = Math.floor(total / 3600);
+        const minutes = Math.floor((total % 3600) / 60);
+        const seconds = total % 60;
+
+        return `${hours}:${`0${minutes}`.slice(-2)}:${`0${seconds}`.slice(-2)}`;
+    }
+
+    /**
+     * 2 つの日時が同じ日か
+     */
+    private static isSameDate(a: Date, b: Date): boolean {
+        return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
     }
 
     /**
