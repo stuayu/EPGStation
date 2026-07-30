@@ -23,9 +23,9 @@
         "v1migrate": "node dist/V1MigrationTool.js -i",
         "recover-channel-name": "node dist/RecoverChannelNameTool.js",
         "analyze-series": "node dist/SeriesAnalyzeTool.js",
-        "install-win-service": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-win-service.ps1",
-        "uninstall-win-service": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/uninstall-win-service.ps1",
-        "setup-win-service": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-win-service.ps1 -SkipWinser",
+        "install-win-service": "node scripts/win-service.js install",
+        "uninstall-win-service": "node scripts/win-service.js uninstall",
+        "status-win-service": "node scripts/win-service.js status",
         "test": "npm run test:ut && npm run test:ita",
         "test:ut": "npm run compile && node --experimental-test-coverage --test --test-coverage-lines=80 test/ut/*.test.js",
         "test:ita": "npm run compile && node --test test/ita/*.test.js",
@@ -102,5 +102,8 @@
         "better-sqlite3@12.11.1": true,
         "core-js": false,
         "@scarf/scarf": false
+    },
+    "optionalDependencies": {
+        "node-windows": "1.0.0-beta.8"
     }
 }

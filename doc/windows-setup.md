@@ -76,31 +76,36 @@
 
 - 自動で起動する場合
 
-    - [winser](https://github.com/jfromaniello/winser) を利用して自動起動設定が可能です
+    - [node-windows](https://github.com/coreybutler/node-windows) を利用して自動起動設定が可能です (依存に含まれているため追加のインストールは不要です)
     - 以下のコマンドを**管理者権限**で実行するとサービス化できます
 
         ```
-        > npm install winser -g
         > npm run install-win-service
         > net start epgstation
         ```
 
-    - `npm run install-win-service` は winser でサービスを登録した後、サービスとして動かすために必要な設定を追加します (`scripts/install-win-service.ps1`)
-    - 追加される設定は次の 4 つです
+    - `npm run install-win-service` はサービスの登録に加えて、サービスとして動かすために必要な設定を行います (`scripts/win-service.js`)
         1. サービス専用の環境変数 `Path` に node / git と、`config.yml` に絶対パスで書かれた ffmpeg / ffprobe / tsreadex 等のディレクトリを追加 (サービスは**ユーザーの PATH を参照できない**ため、これが無いと git やエンコーダが見つかりません)
         2. `git config --system --add safe.directory <EPGStation のパス>` の登録 (サービスは既定で LocalSystem として動くため、リポジトリの所有者と一致せず `dubious ownership` で git が全て失敗します)
-        3. サービスの回復設定 (失敗時に自動再起動) と遅延自動起動
+        3. プロセスが終了したときの自動再起動 (ワンクリック更新はプロセスを終了して入れ替わる方式のため必須です)
         4. ワンクリック更新が参照する環境変数 (`EPGSTATION_SERVICE_MANAGER` / `EPGSTATION_WIN_SERVICE_NAME`)
-    - **ユーザーアカウントでサービスを動かす場合**は `-User` を付けて実行します。ネットワーク共有 (UNC パス) に録画する場合や、ユーザー環境の設定をそのまま使いたい場合はこちらを使ってください。指定するアカウントには「サービスとしてログオン」権限と、録画先・ログ出力先への書き込み権限が必要です
+    - **ユーザーアカウントでサービスを動かす場合**は `--user` を付けて実行します。ネットワーク共有 (UNC パス) に録画する場合や、ユーザー環境の設定をそのまま使いたい場合はこちらを使ってください (パスワードは対話で入力できます)
 
         ```
-        > powershell -ExecutionPolicy Bypass -File .\scripts\install-win-service.ps1 -User ".\<ユーザー名>"
+        > node scripts/win-service.js install --user=".\<ユーザー名>"
         ```
 
-    - 既にサービスを登録済みで、上記の設定だけを後から追加したい場合は次のコマンドを実行します
+    - 登録状況と、サービスから見える node / git / PATH を確認できます (管理者権限は不要です)
 
         ```
-        > npm run setup-win-service
+        > npm run status-win-service
+        ```
+
+    - **winser を使って登録していた場合は先に解除してください**。サービス名が同じ (`epgstation`) ため、残っていると登録に失敗します
+
+        ```
+        > npm install winser -g
+        > winser -r -x
         ```
 
 - 手動で終了する場合
@@ -125,13 +130,12 @@
 
 ### サービスとして動かしているときにワンクリック更新が失敗する
 
-Web UI の「更新」タブからの更新は git と npm を実行します。サービスとして動かしている場合は
-`npm run setup-win-service` を実行して、サービス専用の環境変数と `safe.directory` を設定してください。
-症状ごとの原因は次のとおりです。
+Web UI の「更新」タブからの更新は git と npm を実行します。まず `npm run status-win-service` で
+サービスから git が見えているかを確認してください。症状ごとの原因は次のとおりです。
 
-- `CommandFailed: git (spawn git ENOENT)` — サービスの PATH に git がありません。Git for Windows を「すべてのユーザー」向けに入れ直すか `npm run setup-win-service` を実行してください
-- `detected dubious ownership in repository` — リポジトリの所有者とサービスの実行アカウントが違います。`npm run setup-win-service` で `safe.directory` を登録してください
-- 更新後にサービスが起き上がらない — サービスの回復設定が入っていません。`npm run setup-win-service` を実行してください (`sc.exe qfailure epgstation` で現在の設定を確認できます)
+- `CommandFailed: git (spawn git ENOENT)` — サービスの PATH に git がありません。Git for Windows を「すべてのユーザー」向けに入れ直してから、サービスを登録し直してください
+- `detected dubious ownership in repository` — リポジトリの所有者とサービスの実行アカウントが違います。`git config --system --add safe.directory <EPGStation のパス (区切りは /)>` を管理者権限で実行してください
+- 更新後にサービスが起き上がらない — winser で登録したままの可能性があります。`npm run status-win-service` に `(winser / nssm 由来)` と出る場合は `winser -r -x` で解除し、`npm run install-win-service` で登録し直してください
 
 ### ファイアウォールの設定
 

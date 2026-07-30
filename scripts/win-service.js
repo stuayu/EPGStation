@@ -1,0 +1,300 @@
+#!/usr/bin/env node
+'use strict';
+
+/**
+ * EPGStation を Windows サービスとして登録 / 解除するスクリプト。
+ *
+ *   node scripts/win-service.js install    サービスを登録する
+ *   node scripts/win-service.js uninstall  サービスを削除する
+ *   node scripts/win-service.js status     登録状況と、サービスから見た実行環境を表示する
+ *
+ * オプション (install のみ):
+ *   --user=<アカウント>      サービスの実行アカウント (例: --user=.\epgstation)
+ *   --password=<パスワード>  --user と併用する。省略時は対話で入力を求める
+ *
+ * サービスは既定で LocalSystem・セッション 0 で動くため、そのままでは
+ * ユーザースコープの PATH を参照できず、git / ffmpeg / tsreadex が見つからない。
+ * また EPGStation のディレクトリの所有者と実行アカウントが異なるため、
+ * git が dubious ownership で失敗しワンクリック更新が動かない。
+ * そこで登録時に次を設定する。
+ *
+ *   1. サービス専用の環境変数 Path (node / git / config.yml のツールのディレクトリを追加)
+ *   2. git config --system --add safe.directory <EPGStation のパス>
+ *   3. 更新後の再起動方法を確定させる環境変数
+ *
+ * node-windows は winsw (サービスラッパ) + wrapper.js (node の親プロセス) 構成で、
+ * 子プロセスが終了すると自動で起動し直す。このためワンクリック更新の
+ * 「プロセスを終了して入れ替わる」方式がそのまま機能する
+ */
+
+const { execFileSync, spawnSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const readline = require('readline');
+
+const root = path.join(__dirname, '..');
+const distPath = path.join(root, 'dist', 'index.js');
+
+// ビルド済みの純粋関数を使う (テストは test/ut/windows-service.test.js)
+const {
+    SERVICE_DISPLAY_NAME,
+    buildServiceEnvironment,
+    collectToolDirectories,
+    isNssmService,
+    toServiceId,
+} = require(path.join(root, 'dist', 'util', 'WindowsService'));
+
+const serviceName = toServiceId(SERVICE_DISPLAY_NAME);
+
+const log = message => console.log(message);
+const warn = message => console.warn(`[warn] ${message}`);
+
+/**
+ * 引数を { command, options } に分解する
+ */
+const parseArgs = argv => {
+    const options = {};
+    let command = null;
+    for (const arg of argv) {
+        const matched = arg.match(/^--([^=]+)(?:=(.*))?$/);
+        if (matched === null) {
+            if (command === null) command = arg;
+            continue;
+        }
+        options[matched[1]] = matched[2] ?? true;
+    }
+    return { command, options };
+};
+
+/**
+ * 管理者権限で動いているか (net session は管理者以外では失敗する)
+ */
+const isAdministrator = () => {
+    const result = spawnSync('net', ['session'], { windowsHide: true, stdio: 'ignore' });
+    return result.error === undefined && result.status === 0;
+};
+
+/**
+ * コマンドの実体があるディレクトリ (見つからない場合は null)
+ */
+const findCommandDirectory = name => {
+    const result = spawnSync('where', [name], { encoding: 'utf8', windowsHide: true });
+    if (result.error !== undefined || result.status !== 0 || typeof result.stdout !== 'string') return null;
+    const first = result.stdout.split(/\r?\n/).find(line => line.trim() !== '');
+    return typeof first === 'string' ? path.dirname(first.trim()) : null;
+};
+
+/**
+ * サービスへ渡す環境変数を組み立てる
+ */
+const createEnvironment = () => {
+    const extraDirectories = [];
+    // node と git はユーザースコープの PATH にしか入っていないことがある
+    for (const command of ['node', 'git']) {
+        const directory = findCommandDirectory(command);
+        if (directory !== null) extraDirectories.push(directory);
+        else if (command === 'git') {
+            warn('git が見つかりません。ワンクリック更新を使う場合は Git for Windows を「すべてのユーザー」向けにインストールしてください');
+        }
+    }
+    // config.yml に絶対パスで書かれた ffmpeg / tsreadex 等
+    const configPath = path.join(root, 'config', 'config.yml');
+    if (fs.existsSync(configPath) === true) {
+        extraDirectories.push(...collectToolDirectories(fs.readFileSync(configPath, 'utf8')));
+    }
+
+    return buildServiceEnvironment({
+        machinePath: process.env.Path ?? process.env.PATH ?? '',
+        extraDirectories,
+        serviceName,
+    });
+};
+
+/**
+ * git の safe.directory をシステム全体に登録する。
+ * リポジトリの所有者とサービスの実行アカウントが異なると git が全コマンド失敗するため
+ */
+const registerSafeDirectory = () => {
+    // git の設定値はパス区切りに / を使う
+    const gitRoot = root.replace(/\\/g, '/');
+    try {
+        const registered = execFileSync('git', ['config', '--system', '--get-all', 'safe.directory'], {
+            encoding: 'utf8',
+            windowsHide: true,
+            stdio: ['ignore', 'pipe', 'ignore'],
+        });
+        if (registered.split(/\r?\n/).includes(gitRoot) === true) {
+            log(`git の safe.directory は既に登録済みです: ${gitRoot}`);
+            return;
+        }
+    } catch (err) {
+        // 1 件も登録されていない場合は exit 1 になるため、この失敗は無視して追加へ進む
+    }
+
+    try {
+        execFileSync('git', ['config', '--system', '--add', 'safe.directory', gitRoot], { windowsHide: true });
+        log(`git の safe.directory に追加しました: ${gitRoot}`);
+    } catch (err) {
+        warn(`git の safe.directory を登録できませんでした: ${err.message}`);
+    }
+};
+
+const unregisterSafeDirectory = () => {
+    const gitRoot = root.replace(/\\/g, '/');
+    try {
+        // 値を正規表現として解釈させないため --fixed-value を使う
+        execFileSync('git', ['config', '--system', '--unset-all', '--fixed-value', 'safe.directory', gitRoot], {
+            windowsHide: true,
+            stdio: 'ignore',
+        });
+        log(`git の safe.directory から削除しました: ${gitRoot}`);
+    } catch (err) {
+        // 未登録の場合も exit 5 になるため無視する
+    }
+};
+
+/**
+ * sc.exe qc の出力を取る (サービスが無い場合は null)
+ */
+const queryService = () => {
+    const result = spawnSync('sc.exe', ['qc', serviceName], { encoding: 'utf8', windowsHide: true });
+    if (result.error !== undefined || result.status !== 0) return null;
+    return typeof result.stdout === 'string' ? result.stdout : null;
+};
+
+const readPassword = async account => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    try {
+        return await new Promise(resolve => rl.question(`${account} のパスワードを入力してください: `, resolve));
+    } finally {
+        rl.close();
+    }
+};
+
+/**
+ * サービスの定義を作る
+ */
+const createService = options => {
+    // node-windows は Windows 以外では読み込めないためここで require する
+    const { Service } = require('node-windows');
+
+    const svc = new Service({
+        name: SERVICE_DISPLAY_NAME,
+        description: 'EPGStation (DTV recording manager)',
+        script: distPath,
+        workingDirectory: root,
+        env: createEnvironment(),
+        // 落ちたときに起こし直す。1 回目は 2 秒待ち、以降 1.5 倍ずつ延ばす
+        wait: 2,
+        grow: 0.5,
+        maxRestarts: 10,
+        // 意図的な終了 (ワンクリック更新) でも起こし直させるため中断させない
+        abortOnError: false,
+    });
+
+    if (typeof options.user === 'string' && options.user !== '') {
+        const separator = options.user.indexOf('\\');
+        svc.logOnAs.domain = separator === -1 ? '.' : options.user.slice(0, separator);
+        svc.logOnAs.account = separator === -1 ? options.user : options.user.slice(separator + 1);
+        svc.logOnAs.password = options.password;
+        svc.allowServiceLogon = true;
+    }
+
+    return svc;
+};
+
+const install = async options => {
+    if (fs.existsSync(distPath) === false) {
+        throw new Error('dist/index.js がありません。先に "npm run build-win" を実行してください');
+    }
+
+    const existing = queryService();
+    if (existing !== null) {
+        if (isNssmService(existing) === true) {
+            throw new Error(
+                `winser (nssm) で登録されたサービス ${serviceName} が残っています。` +
+                    '"npm install winser -g" した環境で "winser -r -x" を実行して削除してから、もう一度実行してください',
+            );
+        }
+        throw new Error(`サービス ${serviceName} は既に登録されています。先に "npm run uninstall-win-service" を実行してください`);
+    }
+
+    if (typeof options.user === 'string' && options.user !== '' && typeof options.password !== 'string') {
+        options.password = await readPassword(options.user);
+    }
+
+    const svc = createService(options);
+    svc.on('install', () => {
+        log(`サービスを登録しました: ${serviceName}`);
+        registerSafeDirectory();
+        log('');
+        log('次のコマンドで起動できます:');
+        log(`  net start ${serviceName}`);
+    });
+    svc.on('alreadyinstalled', () => warn(`サービス ${serviceName} は既に登録されています`));
+    svc.on('invalidinstallation', () => warn('サービスの登録に失敗しました (インストールが不完全です)'));
+
+    for (const entry of createEnvironment()) {
+        if (entry.name === 'Path') continue;
+        log(`サービスの環境変数: ${entry.name}=${entry.value}`);
+    }
+    svc.install();
+};
+
+const uninstall = () => {
+    const svc = createService({});
+    svc.on('uninstall', () => {
+        log(`サービスを削除しました: ${serviceName}`);
+        unregisterSafeDirectory();
+    });
+    svc.on('doesnotexist', () => warn(`サービス ${serviceName} は登録されていません`));
+    svc.uninstall();
+};
+
+const status = () => {
+    const existing = queryService();
+    log(`EPGStation のディレクトリ: ${root}`);
+    log(`サービス名: ${serviceName}`);
+    if (existing === null) {
+        log('登録状況: 未登録');
+    } else {
+        log(`登録状況: 登録済み${isNssmService(existing) === true ? ' (winser / nssm 由来)' : ' (node-windows)'}`);
+    }
+    for (const command of ['node', 'git']) {
+        const directory = findCommandDirectory(command);
+        log(`${command}: ${directory === null ? '見つかりません' : path.join(directory, command)}`);
+    }
+    for (const entry of createEnvironment()) {
+        log(`${entry.name}=${entry.value}`);
+    }
+};
+
+const main = async () => {
+    if (process.platform !== 'win32') {
+        throw new Error('このスクリプトは Windows でのみ使用できます');
+    }
+
+    const { command, options } = parseArgs(process.argv.slice(2));
+    if (command !== 'status' && isAdministrator() === false) {
+        throw new Error('管理者権限で実行してください (コマンドプロンプトを「管理者として実行」)');
+    }
+
+    switch (command) {
+        case 'install':
+            await install(options);
+            break;
+        case 'uninstall':
+            uninstall();
+            break;
+        case 'status':
+            status();
+            break;
+        default:
+            throw new Error('使い方: node scripts/win-service.js <install|uninstall|status>');
+    }
+};
+
+main().catch(err => {
+    console.error(`[error] ${err.message}`);
+    process.exitCode = 1;
+});
