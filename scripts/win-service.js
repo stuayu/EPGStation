@@ -322,7 +322,8 @@ const uninstall = () => {
         log(`サービスを削除しました: ${serviceName}`);
         unregisterSafeDirectory();
     });
-    svc.on('doesnotexist', () => warn(`サービス ${serviceName} は登録されていません`));
+    // node-windows が未登録時に出すイベント名は alreadyuninstalled
+    svc.on('alreadyuninstalled', () => warn(`サービス ${serviceName} は登録されていません`));
     svc.uninstall();
 };
 
