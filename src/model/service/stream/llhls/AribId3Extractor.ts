@@ -14,7 +14,10 @@ class AribId3Extractor extends stream.Transform implements IAribId3Extractor {
     private buffer: Buffer = Buffer.alloc(0);
     private pmtPids: Set<number> = new Set();
     private metadataPids: Set<number> = new Set();
-    private pesBuffers: Map<number, Buffer[]> = new Map();
+    // 組み立て中の PSI セクション (PMT は複数 TS パケットに分割されることがある)
+    private sectionBuffers: Map<number, AribId3Extractor.AssembleBuffer> = new Map();
+    // 組み立て中の ID3 timed metadata PES
+    private pesBuffers: Map<number, AribId3Extractor.AssembleBuffer> = new Map();
 
     constructor(logger: ILogger | null = null) {
         super();
@@ -94,7 +97,7 @@ class AribId3Extractor extends stream.Transform implements IAribId3Extractor {
         const payload = packet.subarray(payloadOffset);
 
         if (pid === AribId3Extractor.PAT_PID) {
-            const section = this.getSection(payload, payloadUnitStartIndicator);
+            const section = this.getSection(pid, payload, payloadUnitStartIndicator);
             if (section !== null) {
                 this.parsePat(section);
             }
@@ -103,7 +106,7 @@ class AribId3Extractor extends stream.Transform implements IAribId3Extractor {
         }
 
         if (this.pmtPids.has(pid) === true) {
-            const section = this.getSection(payload, payloadUnitStartIndicator);
+            const section = this.getSection(pid, payload, payloadUnitStartIndicator);
             if (section !== null) {
                 this.parsePmt(section);
             }
@@ -117,24 +120,68 @@ class AribId3Extractor extends stream.Transform implements IAribId3Extractor {
     }
 
     /**
-     * payload から PSI セクションを取り出す
+     * payload から PSI セクションを取り出す。
+     * arib-subtitle-timedmetadater は PMT に metadata 用の記述子と ES を書き足すため、
+     * 元の PMT が大きい放送局では 1 TS パケット (184 byte) に収まらず分割される。
+     * 先頭パケットだけを見ていると metadata の PID を検出できず、字幕が 1 つも出なくなる
+     * @param pid: number
      * @param payload: Buffer
      * @param payloadUnitStartIndicator: boolean
-     * @return Buffer | null
+     * @return Buffer | null 完成したセクション。組み立て中は null
      */
-    private getSection(payload: Buffer, payloadUnitStartIndicator: boolean): Buffer | null {
-        if (payloadUnitStartIndicator === false) {
-            // セクション分割には対応しない (PAT / PMT は 1 パケットに収まる前提)
+    private getSection(pid: number, payload: Buffer, payloadUnitStartIndicator: boolean): Buffer | null {
+        if (payloadUnitStartIndicator === true) {
+            const pointerField = payload[0];
+            const start = 1 + pointerField;
+            if (start >= payload.length) {
+                this.sectionBuffers.delete(pid);
+
+                return null;
+            }
+
+            this.sectionBuffers.set(pid, {
+                chunks: [Buffer.from(payload.subarray(start))],
+                length: payload.length - start,
+                expected: AribId3Extractor.LENGTH_UNKNOWN,
+            });
+        } else {
+            const assembling = this.sectionBuffers.get(pid);
+            if (typeof assembling === 'undefined') {
+                // セクションの途中から受信した場合は次の先頭まで待つ
+                return null;
+            }
+            assembling.chunks.push(Buffer.from(payload));
+            assembling.length += payload.length;
+        }
+
+        const entry = this.sectionBuffers.get(pid) as AribId3Extractor.AssembleBuffer;
+
+        // section_length はセクション先頭 3 byte で決まる
+        if (entry.expected === AribId3Extractor.LENGTH_UNKNOWN && entry.length >= 3) {
+            const head = AribId3Extractor.mergeChunks(entry);
+            entry.expected = AribId3Extractor.SECTION_LENGTH_OFFSET + (((head[1] & 0x0f) << 8) | head[2]);
+        }
+
+        if (entry.expected < 0 || entry.length < entry.expected) {
             return null;
         }
 
-        const pointerField = payload[0];
-        const start = 1 + pointerField;
-        if (start >= payload.length) {
-            return null;
+        this.sectionBuffers.delete(pid);
+
+        return AribId3Extractor.mergeChunks(entry).subarray(0, entry.expected);
+    }
+
+    /**
+     * 組み立て中のバッファを 1 つの Buffer にまとめる (以後の結合を避けるため詰め直す)
+     * @param entry: AribId3Extractor.AssembleBuffer
+     * @return Buffer
+     */
+    private static mergeChunks(entry: AribId3Extractor.AssembleBuffer): Buffer {
+        if (entry.chunks.length > 1) {
+            entry.chunks = [Buffer.concat(entry.chunks)];
         }
 
-        return payload.subarray(start);
+        return entry.chunks[0];
     }
 
     /**
@@ -199,19 +246,39 @@ class AribId3Extractor extends stream.Transform implements IAribId3Extractor {
      */
     private parseMetadataPes(pid: number, payload: Buffer, payloadUnitStartIndicator: boolean): void {
         if (payloadUnitStartIndicator === true) {
-            // 前の PES を確定させる
+            // 前の PES が長さ不定のまま残っていた場合はここで確定させる
             this.flushPes(pid);
-            this.pesBuffers.set(pid, [Buffer.from(payload)]);
-
-            return;
+            this.pesBuffers.set(pid, {
+                chunks: [Buffer.from(payload)],
+                length: payload.length,
+                expected: AribId3Extractor.LENGTH_UNKNOWN,
+            });
+        } else {
+            const assembling = this.pesBuffers.get(pid);
+            if (typeof assembling === 'undefined') {
+                return;
+            }
+            assembling.chunks.push(Buffer.from(payload));
+            assembling.length += payload.length;
         }
 
-        const buffers = this.pesBuffers.get(pid);
-        if (buffers === undefined) {
-            return;
+        const entry = this.pesBuffers.get(pid) as AribId3Extractor.AssembleBuffer;
+
+        // PES_packet_length が判れば、そこまで揃った時点で確定できる。
+        // 次の字幕が来るまで待つと表示が 1 つ遅れる (字幕の間隔は数秒〜数十秒あるため実質出ない)
+        if (entry.expected === AribId3Extractor.LENGTH_UNKNOWN && entry.length >= AribId3Extractor.PES_HEADER_SIZE) {
+            const head = AribId3Extractor.mergeChunks(entry);
+            const packetLength = (head[4] << 8) | head[5];
+            // 0 は長さ不定 (映像 PES 等)。その場合は次の PES 開始まで待つ
+            entry.expected =
+                packetLength === 0
+                    ? AribId3Extractor.LENGTH_UNDEFINED
+                    : AribId3Extractor.PES_HEADER_SIZE + packetLength;
         }
 
-        buffers.push(Buffer.from(payload));
+        if (entry.expected > 0 && entry.length >= entry.expected) {
+            this.flushPes(pid);
+        }
     }
 
     /**
@@ -219,13 +286,14 @@ class AribId3Extractor extends stream.Transform implements IAribId3Extractor {
      * @param pid: number
      */
     private flushPes(pid: number): void {
-        const buffers = this.pesBuffers.get(pid);
+        const entry = this.pesBuffers.get(pid);
         this.pesBuffers.delete(pid);
-        if (buffers === undefined || buffers.length === 0) {
+        if (typeof entry === 'undefined' || entry.length === 0) {
             return;
         }
 
-        const metadata = parsePes(Buffer.concat(buffers));
+        const merged = AribId3Extractor.mergeChunks(entry);
+        const metadata = parsePes(entry.expected > 0 ? merged.subarray(0, entry.expected) : merged);
         if (metadata === null) {
             return;
         }
@@ -316,12 +384,28 @@ const isId3Header = (buf: Buffer, offset: number): boolean => {
 };
 
 namespace AribId3Extractor {
+    /**
+     * 組み立て中の PSI セクション / PES
+     */
+    export interface AssembleBuffer {
+        chunks: Buffer[];
+        // chunks の合計バイト数
+        length: number;
+        // 完成に必要なバイト数。LENGTH_UNKNOWN = 未判定、LENGTH_UNDEFINED = 長さ不定
+        expected: number;
+    }
+
+    export const LENGTH_UNKNOWN = -1;
+    export const LENGTH_UNDEFINED = -2;
     export const PACKET_SIZE = 188;
     export const HEADER_SIZE = 4;
     export const SYNC_BYTE = 0x47;
     export const PAT_PID = 0x0000;
     export const STREAM_TYPE_METADATA = 0x15;
     export const SECTION_HEADER_SIZE = 8;
+    // section_length は table_id(1) + section_length を含む 2 byte の後ろから数える
+    export const SECTION_LENGTH_OFFSET = 3;
+    export const PES_HEADER_SIZE = 6;
     export const STREAM_ID_PRIVATE_STREAM_1 = 0xbd;
     export const MAX_BUFFER_SIZE = PACKET_SIZE * 1000;
     export const FFMPEG_METADATA_PADDING_SIZE = 5;

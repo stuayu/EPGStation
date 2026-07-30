@@ -132,6 +132,8 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
 - 上記の性質上、字幕の絶対時刻はエンコードパイプラインの遅延分 (おおむね 1 秒程度) だけずれることがある。フレーム単位の同期が必要な場合は従来のディスク方式 cmd を使用すること。
 - 字幕を正しく扱うため、入力 TS は `tsreadex` を通すこと (ワンセグ/字幕の PID 整合やドロップ耐性のため実質必須)。cmd の先頭に `%TSREADEX% ... |` を置く形を推奨する。
 - メモリ保持は直近 12 セグメント（約 12 秒）のみで、ストリーム停止時に即時解放される (ライブ・録画共通、`HLSMemoryStoreModel` の保持数は共通設定)。
+- **PMT は 1 TS パケットに収まるとは限らない**。`arib-subtitle-timedmetadater` は PMT に metadata の記述子と ES を書き足すため、元の PMT が大きい放送局 (NHK 等) では 184 byte を超えて分割される。`AribId3Extractor` は PSI セクションを `section_length` まで組み立ててから解釈する。ここを先頭パケットだけで済ませると **metadata の PID を検出できず字幕が 1 つも出ない**。
+- **ID3 の PES は `PES_packet_length` で確定させる**。次の PES 到着を待つ実装にすると、字幕の間隔 (数秒〜数十秒) だけ表示が遅れて実質出ないのと同じになる。
 - **PES ヘッダの 33bit PTS はビット演算で組み立てられない** (JavaScript のビット演算は 32bit に丸められる)。`AribId3Extractor.parsePes()` は各フィールドを重み `2^30 / 2^22 / 2^15 / 2^7 / 2^0` で足し合わせて復元する。ここを間違えると字幕の表示タイミングだけがずれる (映像・音声は ffmpeg 側が扱うため気づきにくい)。テストは `test/ut/arib-id3-extractor.test.js`。
 - `Fmp4Packager` の emsg box は `scheme_id_uri` に `https://aomedia.org/emsg/ID3` を使う。この文字列自体に `emsg` が含まれるため、**バイト列を文字列検索して emsg の数を数えてはいけない** (box を辿って数えること)。
 
