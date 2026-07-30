@@ -17,10 +17,12 @@ interface HLSMemoryStreamEntry {
 @injectable()
 export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
     // プレイリストに載せるセグメント数 (ライブウィンドウ)
-    private static readonly PLAYLIST_WINDOW_NUM = 6;
+    // セグメントは約 0.5 秒なので、8 本で約 4 秒分のウィンドウになる
+    private static readonly PLAYLIST_WINDOW_NUM = 8;
     // メモリ上に保持するセグメント数 (取得が遅れたプレイヤー向けにウィンドウより多めに残す)
-    private static readonly RETAIN_SEGMENT_NUM = 12;
+    private static readonly RETAIN_SEGMENT_NUM = 16;
     // 再生開始可能と判定する最低セグメント数
+    // 少ないほど再生開始が早い。1 本ではプレイヤーがライブエッジに張り付けないため 2 本を最低とする
     private static readonly READY_SEGMENT_NUM = 2;
 
     private log: ILogger;

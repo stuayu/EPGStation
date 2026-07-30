@@ -136,10 +136,19 @@ class LiveHLSVideo extends BaseVideo {
             },
             pluginOptions: {
                 // hls.js 使用時 (Safari 以外) の低遅延・バッファチューニング
+                // サーバー側のセグメントは約 0.5 秒なので、本数指定はそのまま秒数の半分になる
                 hls: {
-                    // ライブエッジからの同期距離を短くして遅延を抑える
-                    liveSyncDurationCount: 2,
-                    liveMaxLatencyDurationCount: 6,
+                    lowLatencyMode: true,
+                    // ライブエッジからの同期距離。0.5 秒 × 3 = 約 1.5 秒
+                    liveSyncDurationCount: 3,
+                    liveMaxLatencyDurationCount: 10,
+                    // 遅れた場合は再生速度を少し上げてライブエッジへ追いつく
+                    maxLiveSyncPlaybackRate: 1.5,
+                    // セグメントが短いぶんリクエスト間隔が詰まるため、失敗時の再試行を短くする
+                    fragLoadingMaxRetry: 2,
+                    fragLoadingRetryDelay: 200,
+                    manifestLoadingMaxRetry: 2,
+                    manifestLoadingRetryDelay: 200,
                     // 長時間視聴でのメモリ増加対策
                     backBufferLength: 30,
                 } as any,
