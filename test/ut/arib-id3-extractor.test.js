@@ -73,6 +73,56 @@ function makePmt(streamType, elementaryPid) {
 }
 
 /**
+ * PSI セクションを複数の TS パケットに分割する
+ * (arib-subtitle-timedmetadater は PMT に記述子と ES を書き足すため、実放送では分割されうる)
+ */
+function packetizeSection(pid, section) {
+    const payload = toSectionPayload(section);
+    const packets = [];
+    let offset = 0;
+    while (offset < payload.length) {
+        const chunk = payload.subarray(offset, offset + (PACKET_SIZE - 4));
+        packets.push(makePacket(pid, offset === 0, chunk));
+        offset += PACKET_SIZE - 4;
+    }
+
+    return packets;
+}
+
+/**
+ * ES を大量に持つ PMT (1 TS パケットに収まらない大きさになる)
+ */
+function makeLargePmt(streamType, elementaryPid, dummyStreamCount) {
+    // header(12) + dummy streams(5 each) + target stream(5) + CRC(4)
+    const section = Buffer.alloc(12 + 5 * dummyStreamCount + 5 + 4, 0x00);
+    section[0] = 0x02;
+    const sectionLength = section.length - 3;
+    section[1] = 0xb0 | ((sectionLength >> 8) & 0x0f);
+    section[2] = sectionLength & 0xff;
+    section[10] = 0xf0;
+    section[11] = 0x00;
+
+    let offset = 12;
+    for (let i = 0; i < dummyStreamCount; i++) {
+        section[offset] = 0x02; // MPEG-2 video
+        section[offset + 1] = 0xe0 | (((0x200 + i) >> 8) & 0x1f);
+        section[offset + 2] = (0x200 + i) & 0xff;
+        section[offset + 3] = 0xf0;
+        section[offset + 4] = 0x00;
+        offset += 5;
+    }
+
+    // 末尾に metadata ES を置く (分割された 2 パケット目に載る)
+    section[offset] = streamType;
+    section[offset + 1] = 0xe0 | ((elementaryPid >> 8) & 0x1f);
+    section[offset + 2] = elementaryPid & 0xff;
+    section[offset + 3] = 0xf0;
+    section[offset + 4] = 0x00;
+
+    return section;
+}
+
+/**
  * ID3v2 タグを作る (ヘッダ 10 byte + 本体)
  */
 function makeId3Tag(body) {
@@ -247,6 +297,51 @@ test('同期バイトから外れたゴミが混ざっても落ちない', async
 
     assert.equal(detected.length, 0);
     assert.deepEqual(passedThrough, Buffer.from('this-is-not-a-ts-stream'));
+});
+
+test('1 TS パケットに収まらない PMT でも metadata の PID を検出する', async () => {
+    // 実際の放送では PMT が 184 byte に収まらず分割される。
+    // 先頭パケットしか見ていないと metadata ES を取りこぼし、字幕が 1 つも出なくなる
+    const pmt = makeLargePmt(STREAM_TYPE_METADATA, METADATA_PID, 40);
+    const pmtPackets = packetizeSection(PMT_PID, pmt);
+    assert.ok(pmtPackets.length > 1);
+
+    const tag = makeId3Tag(Buffer.from('split-pmt'));
+    const packets = [
+        makePacket(0x0000, true, toSectionPayload(makePat(PMT_PID))),
+        ...pmtPackets,
+        makePacket(METADATA_PID, true, makePes(500, tag)),
+    ];
+
+    const { detected } = await run(packets);
+
+    assert.equal(detected.length, 1);
+    assert.deepEqual(detected[0].payload, tag);
+});
+
+test('PES_packet_length で確定するので次の字幕を待たない', async () => {
+    // 字幕の間隔は数秒〜数十秒あるため、次の PES 到着まで待つと実質表示されない
+    const tag = makeId3Tag(Buffer.from('immediate'));
+    const packets = [
+        makePacket(0x0000, true, toSectionPayload(makePat(PMT_PID))),
+        makePacket(PMT_PID, true, toSectionPayload(makePmt(STREAM_TYPE_METADATA, METADATA_PID))),
+        makePacket(METADATA_PID, true, makePes(600, tag)),
+    ];
+
+    const extractor = new AribId3Extractor(null);
+    const detected = [];
+    extractor.on('id3', metadata => detected.push(metadata));
+    extractor.on('data', () => {});
+    for (const packet of packets) {
+        extractor.write(packet);
+    }
+
+    // end() を待たずに (= 次の PES を待たずに) 検出できている
+    assert.equal(detected.length, 1);
+    assert.equal(detected[0].pts, 600);
+
+    await new Promise(resolve => extractor.end(resolve));
+    assert.equal(detected.length, 1);
 });
 
 test('PES として成立しない入力は取り出さない', () => {
