@@ -314,6 +314,11 @@ const createService = (logOnAccount = null) => {
         allowServiceLogon: logOnAccount !== null,
     });
 
+    // winsw の実行ファイルと設定の置き場所。
+    // 既定では script のディレクトリ (dist) の下に daemon が作られるが、そこへ置くと
+    // ビルド時の dist 削除が実行中のサービス本体に当たって EPERM になる
+    svc.directory(root);
+
     if (logOnAccount !== null) {
         svc.logOnAs.domain = logOnAccount.domain;
         svc.logOnAs.account = logOnAccount.account;
@@ -339,6 +344,14 @@ const install = async options => {
             );
         }
         throw new Error(`サービス ${serviceName} は既に登録されています。先に "npm run uninstall-win-service" を実行してください`);
+    }
+
+    // 以前のバージョンは dist/daemon にサービス本体を置いていた。
+    // 残っているとビルド時の dist 削除で EPERM になるため案内する
+    const legacyDaemonPath = path.join(root, 'dist', 'daemon');
+    if (fs.existsSync(legacyDaemonPath) === true) {
+        warn(`古いサービスの残骸が残っています: ${legacyDaemonPath}`);
+        warn('サービスを削除した後もこのディレクトリが残る場合は手動で削除してください');
     }
 
     const logOnAccount = await resolveLogOnAccount(options);
