@@ -21,7 +21,7 @@
                     <v-icon>{{ isShowAsSeries === true ? 'mdi-view-list' : 'mdi-folder-play' }}</v-icon>
                 </v-btn>
                 <RecordedSearchMenu></RecordedSearchMenu>
-                <RecordedMainMenu v-on:edit="onEdit" v-on:cleanup="onCleanup"></RecordedMainMenu>
+                <RecordedMainMenu v-on:edit="onEdit" v-on:cleanup="onCleanup" v-on:import="onImport"></RecordedMainMenu>
             </template>
         </TitleBar>
         <template v-if="isShowAsSeries === true">
@@ -76,12 +76,14 @@
             v-on:delete="onExecuteMultiplueDeletion"
         ></RecordedMultipleDeletionDialog>
         <RecordedCleanupDialog v-model:isOpen="isOpenCleanupDialog"></RecordedCleanupDialog>
+        <RecordedImportDialog v-model:isOpen="isOpenImportDialog"></RecordedImportDialog>
     </v-main>
 </template>
 
 <script lang="ts">
 import Pagination from '@/components/pagination/Pagination.vue';
 import RecordedCleanupDialog from '@/components/recorded/RecordedCleanupDialog.vue';
+import RecordedImportDialog from '@/components/recorded/RecordedImportDialog.vue';
 import RecordedItems from '@/components/recorded/RecordedItems.vue';
 import RecordedMainMenu from '@/components/recorded/RecordedMainMenu.vue';
 import RecordedMultipleDeletionDialog from '@/components/recorded/RecordedMultipleDeletionDialog.vue';
@@ -113,12 +115,14 @@ import * as apid from '../../../api';
         Pagination,
         RecordedMultipleDeletionDialog,
         RecordedCleanupDialog,
+        RecordedImportDialog,
     },
 })
 class Recorded extends Vue {
     public isEditMode: boolean = false;
     public isOpenMultiplueDeletionDialog: boolean = false;
     public isOpenCleanupDialog: boolean = false;
+    public isOpenImportDialog: boolean = false;
 
     private isVisibilityHidden: boolean = false;
     public recordedState: IRecordedState = container.get<IRecordedState>('IRecordedState');
@@ -300,6 +304,10 @@ class Recorded extends Vue {
 
     public onCleanup(): void {
         this.isOpenCleanupDialog = true;
+    }
+
+    public onImport(): void {
+        this.isOpenImportDialog = true;
     }
 
     @Watch('$route', { immediate: true, deep: true })

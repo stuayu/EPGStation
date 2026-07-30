@@ -25,12 +25,21 @@
                     </div>
                 </v-list-item>
 
+                <v-list-item v-on:click="importFile" slim>
+                    <template #prepend>
+                        <v-icon>mdi-file-import</v-icon>
+                    </template>
+                    <div class="v-list-item-content">
+                        <v-list-item-title>ファイルを取り込む</v-list-item-title>
+                    </div>
+                </v-list-item>
+
                 <v-list-item v-on:click="upload" slim>
                     <template #prepend>
                         <v-icon>mdi-upload</v-icon>
                     </template>
                     <div class="v-list-item-content">
-                        <v-list-item-title>アップロード</v-list-item-title>
+                        <v-list-item-title>アップロード画面へ</v-list-item-title>
                     </div>
                 </v-list-item>
             </v-list>
@@ -53,6 +62,13 @@ class RecordedMainMenu extends Vue {
 
     public cleanup(): void {
         this.$emit('cleanup');
+    }
+
+    /**
+     * その場で取り込みダイアログを開く (画面遷移しない)
+     */
+    public importFile(): void {
+        this.$emit('import');
     }
 
     public async upload(): Promise<void> {
