@@ -357,6 +357,19 @@
                                     <v-list-item-title class="text-subtitle-1">実況コメントサーバー (NX-Jikkyo)</v-list-item-title>
                                     <v-text-field v-model="storageModel.tmp.jikkyoServerUrl" label="URL"></v-text-field>
                                 </div>
+                                <div class="my-2">
+                                    <v-list-item-title class="text-subtitle-1">実況コメントの表示タイミング微調整</v-list-item-title>
+                                    <v-list-item-subtitle>
+                                        ライブ視聴時のコメントは、放送波の時刻 (TDT/TOT) と再生バッファから配信遅延を自動で補正します。それでもずれる場合に秒数で微調整します (正の値でコメントを遅らせ、負の値で早めます)
+                                    </v-list-item-subtitle>
+                                    <v-text-field
+                                        v-model.number="storageModel.tmp.jikkyoLiveOffsetSec"
+                                        type="number"
+                                        step="0.5"
+                                        label="オフセット (秒)"
+                                        style="max-width: 200px"
+                                    ></v-text-field>
+                                </div>
                             </div>
                         </v-list-item>
 

@@ -16,6 +16,8 @@ export interface BaseStreamInfo {
 export interface LiveStreamInfo extends BaseStreamInfo {
     type: 'LiveStream' | 'LiveHLS';
     channelId: apid.ChannelId;
+    // 配信中の映像の放送時刻 (TDT / TOT)。まだ受信していない場合は undefined
+    broadcastTime?: { time: number; receivedAt: number };
 }
 
 /**

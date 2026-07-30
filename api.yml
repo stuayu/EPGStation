@@ -2571,6 +2571,22 @@ components:
                 extended:
                     description: ストリーミング番組拡張
                     type: string
+                broadcastTime:
+                    $ref: '#/components/schemas/StreamBroadcastTime'
+
+        StreamBroadcastTime:
+            description: 配信中の映像の放送時刻 (TS の TDT / TOT 由来)。実況コメントの遅延補正に使う
+            type: object
+            required:
+                - time
+                - receivedAt
+            properties:
+                time:
+                    description: TDT / TOT が示す放送時刻 (UnixTime ms)
+                    type: integer
+                receivedAt:
+                    description: その TDT / TOT をサーバが受信した時刻 (UnixTime ms)
+                    type: integer
 
         StreamInfo:
             type: object

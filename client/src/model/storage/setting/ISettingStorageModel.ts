@@ -38,6 +38,10 @@ export interface ISettingValue {
     isForceEnableSubtitleStroke: boolean; // 字幕縁取りを強制するか
     isEnableJikkyoComment: boolean; // ニコニコ実況コメントを弾幕表示するか
     jikkyoServerUrl: string; // NX-Jikkyo サーバーの URL
+    // ライブ視聴時のコメント表示を追加で遅らせる秒数 (負の値で早める)。
+    // 配信遅延はサーバの放送時刻 (TDT/TOT) と再生バッファから自動で補正するが、
+    // 環境ごとのずれを手で詰めるための微調整値
+    jikkyoLiveOffsetSec: number;
     isNextUpPanelOpen: boolean; // Next Up パネルの開閉状態
     nextUpPanelTab: 'latest' | 'series'; // Next Up パネルの選択タブ
     isEnableNextUpAutoPlayForLatestTab: boolean; // 新着タブ選択時に連続再生を有効にするか (既定 OFF。シリーズタブは常時有効)
