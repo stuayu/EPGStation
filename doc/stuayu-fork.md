@@ -117,6 +117,21 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 ## 変更箇所
 
+- **録画ファイルの TS (PSI/SI) を解析し、放送局・番組情報を DB に持つようにした**
+    - **背景**: 外部ファイルの取り込みは、放送局や番組名をファイル名のパターンと `program.txt` から**推定**していた。ファイル名に放送局名が入っていない・表記が違うと放送局を特定できず、番組名も装飾付きのファイル名がそのまま入っていた。また取り込み時に ffprobe 解析すら行っておらず、尺・コーデック・解像度は再生時まで DB に入らなかった
+    - **TS 解析器 (`src/model/recorded/ts/TsInfoAnalyzer.ts`)**: 既存の `DropCheckerModel` と同じ `aribts` のパイプライン (`TsReadableConnector` → `TsPacketParser` → `TsSectionParser`) で **PAT / SDT / NIT / PMT / EIT[p/f] / TDT / TOT** を解析する。[recisdb-proxy-rs](https://github.com/stuayu/recisdb-proxy-rs) の `ts_analyzer` に相当する。取得するのは以下
+        - `original_network_id` / `transport_stream_id` / `service_id` / `service_type` / **放送局名 (service_descriptor)** / 事業者名 / ネットワーク名
+        - `event_id` / 番組名 / 概要 (short_event) / 詳細 (extended_event) / 開始時刻 / 長さ / ジャンル (content_descriptor)
+        - 映像・音声の `stream_type` と PID (PMT)
+        - **ファイル先頭の TDT / TOT の放送時刻** = 録画開始時刻
+    - **対象サービスの判定**: EIT[p/f] は同一 TS の全サービス分が流れてくるため、**PAT に載っているサービス以外の EIT は採用しない**。これが無いと、NHK 総合 1 を録画したファイルから NHK 総合 2 の番組情報を拾ってしまう (実データで再現した)
+    - **時刻の扱い**: TS 上の時刻 (MJD + BCD) は日本標準時なので、サーバのタイムゾーンに関係なく JST として解釈して UNIX 時刻に直す。放送時間未定 (全ビット 1) は null にする
+    - **読み込みは途中で打ち切る**: 局名・番組・時刻・ストリーム構成がそろった時点で読み込みを止める (実測で先頭 20ms 程度)。そろわない場合の上限は既定 64MB / 60 秒
+    - **保存先 (`video_file_ts_info` テーブル)**: `video_file` と 1:1 の別テーブルにした (`video_file` の列が 30 近くになるのを避けるため)。sqlite / mysql 両方のマイグレーションあり。`video_file` 削除時は ON DELETE CASCADE で消える
+    - **取り込みへの反映**: 登録前に TS を解析し、**放送局を network id + service id で `channel` テーブルから厳密に引く**。番組名・開始時刻・長さは EIT[p/f] present から、概要・詳細・ジャンルは画面から入力できないため TS の値をそのまま使う。**画面で明示指定された値がある場合はそちらを優先する** (ユーザーがスキャン結果を確認・修正できる導線を潰さないため)
+    - **ffprobe 解析も取り込み時に実行する**: 解析処理は `VideoFileAnalyzeModel` (`src/model/video/`) にまとめ、Operator (取り込み時) と Service (API 経由) の双方から使う。`VideoApiModel` の解析ロジックはこのモデルへ移して委譲にした
+    - **録画開始時刻の精度**: `video_file.startAt` (ファイル先頭 = 再生位置 0 秒に対応する実時刻) は、これまで「ファイルの更新時刻 - 実測尺」で推定していた。**TDT / TOT が取れた場合はそちらを優先する**ため、ニコニコ実況の過去ログ再生の時刻合わせのズレが小さくなる
+
 - **シリーズ周りの UI を改善した (外部サイトへのリンク・戻る操作での検索結果復元・ページ番号指定)**
     - **録画詳細のシリーズタグから外部サイトへ飛べるようにした**: 録画詳細のシリーズ情報欄にある「Annict」「しょぼいカレンダー」のタグを、それぞれ `https://annict.com/works/{annictId}` / `https://cal.syoboi.jp/tid/{syobocalTid}` へのリンクにした (別タブで開く、`rel="noopener noreferrer"`)。外部 ID を持たないシリーズではこれまで通りタグ自体を出さない (`client/src/components/recorded/detail/RecordedDetailSeries.vue`)
     - **シリーズ一覧の検索条件・ページ位置を URL query に載せた**: シリーズ一覧 (`client/src/views/Series.vue`) はキーワード・並べ替え・クール・放送状態・出所・欠番絞り込み・ページをコンポーネントのローカル状態で持っていたため、シリーズ詳細へ遷移してブラウザバックすると検索結果もページ位置も失われていた。録画済み一覧と同じ方式に揃え、これらを `?keyword=&sort=&order=&season=&status=&origin=&hasMissing=&page=` として URL に持たせ、`$route` の変化 (条件変更・ページ移動・ブラウザバック) を watch して取得し直すようにした。既定値の項目は query に載せない
