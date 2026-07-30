@@ -102,8 +102,5 @@
         "better-sqlite3@12.11.1": true,
         "core-js": false,
         "@scarf/scarf": false
-    },
-    "optionalDependencies": {
-        "node-windows": "1.0.0-beta.8"
     }
 }
