@@ -147,6 +147,6 @@ npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (
 - 話数・放送種別 (初回 / 再放送 / 遅れ放送 / 不明) はシリーズ詳細の一括編集モードから `POST /api/series/mappings/bulk` でまとめて更新する。**省略した項目は現在値を維持**し、エイリアス学習は既定で行わない (話数の付け直しでタイトル辞書を汚さないため)
 - シリーズ一覧のアイキャッチ画像は Annict 由来 (しょぼいカレンダーは画像を提供しない)。Annict の URL は作品公式サイトの OGP 画像を指し http:// も混ざるため、直リンクせず `SeriesImageModel` がサーバ側で取得して `data/seriesImage/` にキャッシュし `GET /api/series/{seriesId}/image` で配信する。画像が取れない作品は録画サムネイルで代用する
 - **Annict GraphQL API に `Query.works` は存在しない** (`searchWorks` のみ)。`Episode` に `airedAt` も無い。存在しないフィールドを要求するとクエリ全体が GraphQL エラーになるため、クエリを書くときは実 API のスキーマ (introspection) で確認すること
-- ライブ HLS は 2 モード: cmd が `%streamFileDir%` を含まなければ in-memory 配信 (`HLSMemoryStoreModel`、ディスク書き込みなし・字幕非対応)、含めば従来のディスク方式。詳細は `doc/streaming-refresh.md`
+- ライブ HLS は 2 モード: cmd が `%streamFileDir%` を含まなければ in-memory 配信 (`HLSMemoryStoreModel`、ディスク書き込みなし)、含めば従来のディスク方式。**どちらも ARIB 字幕に対応**し、in-memory 側は ID3 を `emsg` box (version 1 必須) で運ぶ。詳細は `doc/streaming-refresh.md`
 - エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換される
 - ストリーミング API の `req.query` は express-openapi が OpenAPI スキーマに従い数値へ型変換する。`mode` 等のクエリを文字列前提で扱わないこと

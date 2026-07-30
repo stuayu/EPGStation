@@ -136,6 +136,8 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
 - **ID3 の PES は `PES_packet_length` で確定させる**。次の PES 到着を待つ実装にすると、字幕の間隔 (数秒〜数十秒) だけ表示が遅れて実質出ないのと同じになる。
 - **PES ヘッダの 33bit PTS はビット演算で組み立てられない** (JavaScript のビット演算は 32bit に丸められる)。`AribId3Extractor.parsePes()` は各フィールドを重み `2^30 / 2^22 / 2^15 / 2^7 / 2^0` で足し合わせて復元する。ここを間違えると字幕の表示タイミングだけがずれる (映像・音声は ffmpeg 側が扱うため気づきにくい)。テストは `test/ut/arib-id3-extractor.test.js`。
 - `Fmp4Packager` の emsg box は `scheme_id_uri` に `https://aomedia.org/emsg/ID3` を使う。この文字列自体に `emsg` が含まれるため、**バイト列を文字列検索して emsg の数を数えてはいけない** (box を辿って数えること)。
+- **emsg box は必ず version 1 で出力する**。hls.js の `parseEmsg()` は version 0 のとき `version + flags` の 4 byte を読み飛ばさずに `scheme_id_uri` の読み取りを始めるため、先頭が必ず `0x00` になる version 0 の emsg は `scheme_id_uri` が空と解釈され、ID3 スキーム判定 (`/\/emsg[-/]ID3/i`) を通らない。結果として `FRAG_PARSING_METADATA` が 1 度も発火せず、**セグメントに emsg を正しく載せていても字幕が一切表示されない**。version 1 のパスのみ 4 byte を読み飛ばす実装になっている (hls.js 1.6.16 で確認)。
+- version 1 の emsg は相対時刻 (`presentation_time_delta`) ではなく**メディアタイムライン上の絶対時刻 (`presentation_time`, 64bit)** を持つ。`Fmp4Packager` はセグメント先頭パートの `tfdt` (baseMediaDecodeTime) を基準に、ID3 の PTS (90kHz) の差分をトラックの timescale へ換算して載せる。ID3 の PTS はエンコード前の TS のものでメディアタイムラインとは基準が異なるため、絶対値をそのまま入れてはいけない。
 
 ### エンコードオプションのチューニング / HEVC / tsreadex
 

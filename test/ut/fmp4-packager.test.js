@@ -90,6 +90,51 @@ function countBoxes(data, type) {
 }
 
 /**
+ * トップレベルの emsg box を hls.js と同じ解釈で取り出す
+ * (version 1: timescale / presentation_time(64bit) / event_duration / id / scheme_id_uri / value / message_data)
+ */
+function parseEmsgBoxes(data) {
+    const results = [];
+    let offset = 0;
+    while (offset + 8 <= data.length) {
+        const size = data.readUInt32BE(offset);
+        if (size < 8) break;
+        if (data.toString('latin1', offset + 4, offset + 8) === 'emsg') {
+            const body = data.subarray(offset + 8, offset + size);
+            const version = body.readUInt8(0);
+            let p = 4;
+            const timescale = body.readUInt32BE(p);
+            p += 4;
+            const presentationTime = Number(body.readBigUInt64BE(p));
+            p += 8;
+            const eventDuration = body.readUInt32BE(p);
+            p += 4;
+            const id = body.readUInt32BE(p);
+            p += 4;
+            let end = body.indexOf(0, p);
+            const schemeIdUri = body.toString('utf8', p, end);
+            p = end + 1;
+            end = body.indexOf(0, p);
+            const value = body.toString('utf8', p, end);
+            p = end + 1;
+            results.push({
+                version,
+                timescale,
+                presentationTime,
+                eventDuration,
+                id,
+                schemeIdUri,
+                value,
+                payload: body.subarray(p),
+            });
+        }
+        offset += size;
+    }
+
+    return results;
+}
+
+/**
  * packager にバイト列を書き込み、発生したイベントを集める
  */
 async function run(chunks, option = {}, logger = null) {
@@ -189,6 +234,39 @@ test('pushId3 した ARIB 字幕をセグメント先頭の emsg box として�
     assert.equal(segments[0].data.toString('latin1', 4, 8), 'emsg');
     assert.equal(countBoxes(segments[0].data, 'emsg'), 2);
     assert.ok(segments[0].data.length > Buffer.concat(segments[0].parts.map(p => p.data)).length);
+});
+
+test('emsg は hls.js が解釈できる version 1 形式で、セグメントの tfdt を基準にした絶対時刻を持つ', async () => {
+    const packager = new Fmp4Packager({ partsPerSegment: 1 });
+    const segments = [];
+    packager.on('segment', segment => segments.push(segment));
+
+    packager.write(makeFtyp());
+    packager.write(makeMoov());
+    // 1 秒後に 2 件目の字幕が来る想定 (ID3 の PTS は 90kHz)
+    packager.pushId3(makeMetadata(9000, 'first'));
+    packager.pushId3(makeMetadata(99000, 'second'));
+    // 先頭パートの tfdt を 2 秒 (= 180000) にして、0 起点でないことを確かめる
+    for (const chunk of [makeMoof(2 * TIMESCALE), makeMdat(16), makeMoof(4 * TIMESCALE), makeMdat(17)]) {
+        packager.write(chunk);
+    }
+    await new Promise(resolve => packager.end(resolve));
+
+    const emsgs = parseEmsgBoxes(segments[0].data);
+    assert.equal(emsgs.length, 2);
+    for (const emsg of emsgs) {
+        assert.equal(emsg.version, 1);
+        assert.equal(emsg.schemeIdUri, 'https://aomedia.org/emsg/ID3');
+        assert.equal(emsg.value, '');
+        assert.equal(emsg.timescale, TIMESCALE);
+        assert.equal(emsg.eventDuration, 0xffffffff);
+        assert.equal(emsg.payload.toString('latin1', 0, 3), 'ID3');
+    }
+    // 1 件目はセグメント先頭の tfdt そのもの、2 件目はそこから 1 秒後
+    assert.equal(emsgs[0].presentationTime, 2 * TIMESCALE);
+    assert.equal(emsgs[1].presentationTime, 3 * TIMESCALE);
+    // id はセグメントをまたいでユニークになる
+    assert.notEqual(emsgs[0].id, emsgs[1].id);
 });
 
 test('セグメントが出力されないまま溜まった ID3 は上限で捨てる', async () => {

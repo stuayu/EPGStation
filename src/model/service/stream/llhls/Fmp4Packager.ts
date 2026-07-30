@@ -54,6 +54,9 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
     // 現在組み立て中のセグメントを構成する part
     private currentSegmentParts: Fmp4PackagerPart[] = [];
 
+    // 組み立て中セグメントの先頭パートの時刻情報 (emsg の絶対時刻の基準に使う)
+    private currentSegmentBase: { tfdt: number | null; timescale: number | null } | null = null;
+
     // 次のセグメントへ乗せる ID3 timed metadata (ARIB 字幕)
     private pendingId3: AribId3Metadata[] = [];
 
@@ -101,9 +104,11 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
 
     /**
      * 保留中の ID3 timed metadata を emsg box 列として組み立てる
+     * @param baseMediaDecodeTime: number | null セグメント先頭パートの tfdt
+     * @param timescale: number | null セグメント先頭パートのトラックの timescale
      * @return Buffer 保留がない場合は空の Buffer
      */
-    private buildPendingEmsgBoxes(): Buffer {
+    private buildPendingEmsgBoxes(baseMediaDecodeTime: number | null, timescale: number | null): Buffer {
         if (this.pendingId3.length === 0) {
             return Buffer.alloc(0);
         }
@@ -111,41 +116,58 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
         const pending = this.pendingId3;
         this.pendingId3 = [];
 
-        // セグメント先頭 (= 最初の metadata) を基準にした相対時刻とする
+        // emsg の時刻はメディアタイムライン上の絶対値 (version 1) で表す必要があるため、
+        // セグメント先頭パートの tfdt を基準にする。tfdt が取れない場合は 0 起点とする
+        const scale = timescale !== null && timescale > 0 ? timescale : Fmp4Packager.PTS_TIMESCALE;
+        const segmentBase = baseMediaDecodeTime !== null && baseMediaDecodeTime >= 0 ? baseMediaDecodeTime : 0;
+
+        // ID3 の PTS (90kHz) はエンコード前の TS のものでメディアタイムラインと基準が異なるため、
+        // セグメント先頭 (= 最初の metadata) からの相対時刻に変換して載せ替える
         const base = pending[0].pts;
         const boxes: Buffer[] = [];
         for (const metadata of pending) {
             const diff = metadata.pts - base;
             const delta = diff > 0 && diff < Fmp4Packager.MAX_EMSG_DELTA ? diff : 0;
-            boxes.push(this.buildEmsgBox(delta, metadata.payload));
+            const presentationTime = segmentBase + Math.round((delta / Fmp4Packager.PTS_TIMESCALE) * scale);
+            boxes.push(this.buildEmsgBox(scale, presentationTime, metadata.payload));
         }
 
         return Buffer.concat(boxes);
     }
 
     /**
-     * emsg box (version 0) を組み立てる
-     * @param presentationTimeDelta: number 90kHz 単位の相対時刻
+     * emsg box (version 1) を組み立てる
+     *
+     * hls.js の parseEmsg は version 0 のとき version + flags の 4 byte を読み飛ばさずに
+     * scheme_id_uri の読み取りを始めるため、先頭が必ず 0x00 になる version 0 の emsg は
+     * scheme_id_uri が空と解釈され ID3 として認識されない。version 1 のみ正しく解析されるため、
+     * 相対時刻 (version 0) ではなくメディアタイムライン上の絶対時刻 (version 1) で出力する。
+     *
+     * @param timescale: number presentationTime の時間単位
+     * @param presentationTime: number メディアタイムライン上の絶対時刻 (timescale 単位)
      * @param messageData: Buffer ID3 タグ本体
      * @return Buffer
      */
-    private buildEmsgBox(presentationTimeDelta: number, messageData: Buffer): Buffer {
+    private buildEmsgBox(timescale: number, presentationTime: number, messageData: Buffer): Buffer {
         const schemeIdUri = Buffer.from(`${Fmp4Packager.EMSG_SCHEME_ID_URI}\0`, 'utf8');
         // value は空文字列 (null 終端のみ)
         const value = Buffer.from('\0', 'utf8');
 
         // version(1) + flags(3)
         const versionAndFlags = Buffer.alloc(4);
+        versionAndFlags.writeUInt8(1, 0);
 
-        const fields = Buffer.alloc(16);
-        fields.writeUInt32BE(Fmp4Packager.PTS_TIMESCALE, 0);
-        fields.writeUInt32BE(presentationTimeDelta >>> 0, 4);
+        // version 1 は timescale / presentation_time(64bit) / event_duration / id の順で、
+        // scheme_id_uri と value はその後ろに置く
+        const fields = Buffer.alloc(20);
+        fields.writeUInt32BE(timescale, 0);
+        fields.writeBigUInt64BE(BigInt(Math.max(0, Math.round(presentationTime))), 4);
         // event_duration 不明
-        fields.writeUInt32BE(0xffffffff, 8);
+        fields.writeUInt32BE(0xffffffff, 12);
         this.emsgId = (this.emsgId + 1) % 0xffffffff;
-        fields.writeUInt32BE(this.emsgId, 12);
+        fields.writeUInt32BE(this.emsgId, 16);
 
-        const body = Buffer.concat([versionAndFlags, schemeIdUri, value, fields, messageData]);
+        const body = Buffer.concat([versionAndFlags, fields, schemeIdUri, value, messageData]);
         const header = Buffer.alloc(8);
         header.writeUInt32BE(header.length + body.length, 0);
         header.write('emsg', 4, 'ascii');
@@ -581,19 +603,24 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
     private drainReadySlots(): void {
         while (this.slotQueue.length > 0 && this.slotQueue[0].duration !== null) {
             const slot = this.slotQueue.shift() as Fmp4Packager.PartSlot;
-            this.emitPart(slot.buf, slot.duration as number);
+            this.emitPart(slot);
         }
     }
 
     /**
      * 確定した 1 パートを emit し、partsPerSegment 個貯まったらセグメントとして emit する
      */
-    private emitPart(data: Buffer, duration: number): void {
+    private emitPart(slot: Fmp4Packager.PartSlot): void {
         const part: Fmp4PackagerPart = {
-            data,
-            duration,
+            data: slot.buf,
+            duration: slot.duration as number,
             isIndependent: this.currentSegmentParts.length === 0,
         };
+
+        if (this.currentSegmentParts.length === 0) {
+            // emsg の絶対時刻の基準にするためセグメント先頭パートの時刻情報を控えておく
+            this.currentSegmentBase = { tfdt: slot.tfdt, timescale: slot.timescale };
+        }
 
         this.currentSegmentParts.push(part);
         this.emit('part', part);
@@ -613,9 +640,11 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
 
         const parts = this.currentSegmentParts;
         this.currentSegmentParts = [];
+        const segmentBase = this.currentSegmentBase;
+        this.currentSegmentBase = null;
 
         // ARIB 字幕 (ID3 timed metadata) をセグメント先頭の emsg box として多重化する
-        const emsg = this.buildPendingEmsgBoxes();
+        const emsg = this.buildPendingEmsgBoxes(segmentBase?.tfdt ?? null, segmentBase?.timescale ?? null);
 
         const segment: Fmp4PackagerSegment = {
             data: Buffer.concat(emsg.length > 0 ? [emsg, ...parts.map(p => p.data)] : parts.map(p => p.data)),
@@ -670,7 +699,7 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
 
         while (this.slotQueue.length > 0) {
             const slot = this.slotQueue.shift() as Fmp4Packager.PartSlot;
-            this.emitPart(slot.buf, slot.duration as number);
+            this.emitPart(slot);
         }
 
         // 端数のセグメントも確定させて出力する

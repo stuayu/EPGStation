@@ -87,7 +87,8 @@ npm run test:ci        # ut + ita + itb
 - `mirakurun` 依存は `stuayu/Mirakurun` のコミット固定 (ブランチ tarball 参照は push のたびに lockfile の integrity が壊れるため禁止)。更新時は package.json の URL のコミット SHA を差し替えて `npm install` で lockfile を更新する
 - 設定項目を追加したら `config/config.yml.template` と `config/config-win.yml.template` の**両方**を更新する
 - `ormconfig.js` は `Configuration.ts` と別実装で config.yml を読む (二重管理)。設定の読み方を変える場合は両方直す
-- **ライブ HLS は 2 モード**: cmd が `%streamFileDir%` を含まない場合は in-memory 配信 (fMP4 を `Fmp4Packager` → `HLSMemoryStoreModel` でメモリ保持、ディスク書き込みなし・Windows 対応・字幕非対応)。含む場合は従来の TS セグメント方式 (字幕対応)。配信周りを触る前に `doc/streaming-refresh.md` を読むこと
+- **ライブ HLS は 2 モード**: cmd が `%streamFileDir%` を含まない場合は in-memory 配信 (fMP4 を `Fmp4Packager` → `HLSMemoryStoreModel` でメモリ保持、ディスク書き込みなし・Windows 対応)。含む場合は従来の TS セグメント方式。**どちらも ARIB 字幕に対応**する (in-memory 側は ID3 を `emsg` box で運ぶ)。配信周りを触る前に `doc/streaming-refresh.md` を読むこと
+- **in-memory HLS の字幕 (`emsg`) は必ず version 1 で出す**。hls.js の `parseEmsg()` は version 0 で `version + flags` の 4 byte を読み飛ばさないため、version 0 だと `scheme_id_uri` が空と解釈され `FRAG_PARSING_METADATA` が一度も発火しない (= 字幕が一切出ない)。version 1 は相対時刻ではなく**絶対時刻**なので、セグメント先頭パートの `tfdt` を基準に載せ替えること (`Fmp4Packager.buildEmsgBox()`)
 - エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換 (省略時は PATH 上の tsreadex)
 - ストリーミング API の `req.query` は express-openapi がスキーマに従い数値へ型変換する。`mode` 等を文字列前提で扱わないこと (過去に 400 エラーの原因になった)
 - **シリーズ自動マッピングの主軸は外部の作品タイトル辞書**。しょぼいカレンダー (`SyobocalTitleDictionary`, `syobocal_title` 系 3 テーブル)・Annict (`AnnictWorkDictionary`, `annict_work` 系 2 テーブル)・**Wikidata (`WikidataProgramDictionary`, `wikidata_program` 系 2 テーブル、全ジャンル)** の 3 つを `WorkDictionary` (`src/model/series/`) が 1 つのメモリ索引に統合し、`SeriesResolver` がそれを引く。録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバックなので、シリーズ判定を触るときは辞書側を先に疑うこと
