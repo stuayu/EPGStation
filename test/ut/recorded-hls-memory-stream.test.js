@@ -202,14 +202,13 @@ test('cmd に %streamFileDir% を含む場合は従来どおりディスク方�
     });
 });
 
-test('in-memory モードでは ts 入力でも arib-subtitle-timedmetadater を通さず生データがそのまま流れる', async () => {
+test('in-memory モードの ts 入力は ID3 変換と AribId3Extractor を経由する (字幕を emsg で配信するため)', async () => {
     await withStubbedFfprobe(async () => {
         const streamFilePath = fs.mkdtempSync(path.join(os.tmpdir(), 'epg-recorded-hls-'));
         const videoFilePath = path.join(streamFilePath, 'dummy.ts');
-        const rawData = Buffer.from('hello-ts-data-without-id3-header');
-        fs.writeFileSync(videoFilePath, rawData);
+        fs.writeFileSync(videoFilePath, Buffer.from('hello-ts-data-without-id3-header'));
 
-        const { model, processManager } = makeModel({
+        const { model } = makeModel({
             streamFilePath,
             videoFileType: 'ts',
             videoFilePath,
@@ -226,14 +225,56 @@ test('in-memory モードでは ts 入力でも arib-subtitle-timedmetadater を
 
         await model.start(3);
 
+        // mp4 出力には ID3 timed metadata を乗せられないため、エンコード前の TS から ID3 を抜き取り
+        // セグメントの emsg box として乗せ直す。そのため 2 つの Transform を経由する
+        assert.notEqual(model.id3MetadataTransoform, null);
+        assert.notEqual(model.aribId3Extractor, null);
+
+        await model.stop();
+
+        // stop で両方とも破棄する (配信ごとに作り直す)
+        assert.equal(model.aribId3Extractor, null);
+        assert.equal(model.id3MetadataTransoform, null);
+
+        fs.rmSync(streamFilePath, { recursive: true, force: true });
+    });
+});
+
+test('エンコード済みファイル (mp4) は変換を通さず生データがそのまま流れる', async () => {
+    await withStubbedFfprobe(async () => {
+        const streamFilePath = fs.mkdtempSync(path.join(os.tmpdir(), 'epg-recorded-hls-'));
+        const videoFilePath = path.join(streamFilePath, 'dummy.mp4');
+        const rawData = Buffer.from('hello-mp4-data');
+        fs.writeFileSync(videoFilePath, rawData);
+
+        const { model, processManager } = makeModel({
+            streamFilePath,
+            videoFileType: 'mp4',
+            videoFilePath,
+        });
+
+        model.setOption(
+            {
+                videoFileId: 1,
+                playPosition: 0,
+                cmd: '%FFMPEG% -i pipe:0 -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1',
+            },
+            0,
+        );
+
+        await model.start(4);
+
+        // ARIB 字幕を含まないので変換は挟まない
+        assert.equal(model.id3MetadataTransoform, null);
+        assert.equal(model.aribId3Extractor, null);
+
         const proc = processManager.processes[0];
         const received = [];
         proc.stdin.on('data', chunk => received.push(chunk));
 
         await new Promise(resolve => setTimeout(resolve, 50));
 
-        const receivedBuf = Buffer.concat(received);
-        assert.equal(receivedBuf.toString(), rawData.toString());
+        assert.equal(Buffer.concat(received).toString(), rawData.toString());
 
         await model.stop();
         fs.rmSync(streamFilePath, { recursive: true, force: true });

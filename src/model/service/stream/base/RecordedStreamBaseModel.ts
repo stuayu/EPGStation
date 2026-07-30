@@ -373,6 +373,7 @@ export default abstract class RecordedStreamBaseModel
         if (this.id3MetadataTransoform !== null) {
             this.id3MetadataTransoform.unpipe();
             this.id3MetadataTransoform.destroy();
+            this.id3MetadataTransoform = null;
         }
 
         if (this.fmp4Packager !== null) {
