@@ -13,6 +13,16 @@
  *   --password=<パスワード>  省略時は対話で入力を求める (入力は伏せ字になる)
  *   --system                 LocalSystem として動かす (パスワードを持たないアカウント向け)
  *
+ * 全サブコマンド共通:
+ *   --name=<表示名>          サービスの表示名 (既定は EPGStation)。1 台で複数の
+ *                            EPGStation を動かす場合に使う。uninstall / status でも
+ *                            同じ --name を渡すこと
+ *
+ * node-windows は「グローバルインストール + npm link」で使う。
+ *   > npm install -g node-windows
+ *   > npm link node-windows
+ * link していない場合はグローバルの node_modules から読み込む (それも無ければ案内して終了する)
+ *
  * 既定ではログオン中のユーザーアカウントでサービスを動かす。LocalSystem だと
  * 録画先のネットワーク共有 (UNC パス) や、ユーザー環境に置いた設定・実行ファイルへ
  * 手が届かず、git もリポジトリの所有者と一致しないため扱いづらい。
@@ -51,7 +61,49 @@ const {
     toServiceId,
 } = require(path.join(root, 'dist', 'util', 'WindowsService'));
 
-const serviceName = toServiceId(SERVICE_DISPLAY_NAME);
+// --name で上書きできるようにするため、実行時に決める (既定は EPGStation)
+let displayName = SERVICE_DISPLAY_NAME;
+let serviceName = toServiceId(displayName);
+
+/**
+ * --name の指定を反映する
+ */
+const applyServiceName = options => {
+    if (typeof options.name !== 'string' || options.name.trim() === '') return;
+    displayName = options.name.trim();
+    serviceName = toServiceId(displayName);
+    if (serviceName === '') {
+        throw new Error('--name には英数字を含む名前を指定してください');
+    }
+};
+
+/**
+ * node-windows を読み込む。
+ * ローカルに無い場合はグローバルインストール (npm install -g node-windows) を探す。
+ * node-windows は winsw の実行ファイルを同梱するため、環境によっては
+ * グローバルへ入れて npm link したものでないと動かない
+ */
+const requireNodeWindows = () => {
+    try {
+        return require('node-windows');
+    } catch (err) {
+        // グローバルの node_modules を探す
+        const result = spawnSync('npm', ['root', '-g'], { encoding: 'utf8', windowsHide: true, shell: true });
+        const globalRoot = typeof result.stdout === 'string' ? result.stdout.trim() : '';
+        if (globalRoot !== '') {
+            try {
+                return require(path.join(globalRoot, 'node-windows'));
+            } catch (globalErr) {
+                // 見つからなかった場合は下の案内へ
+            }
+        }
+        throw new Error(
+            'node-windows を読み込めませんでした。次のコマンドを実行してから再度お試しください:\n' +
+                '  npm install -g node-windows\n' +
+                '  npm link node-windows',
+        );
+    }
+};
 
 const log = message => console.log(message);
 const warn = message => console.warn(`[warn] ${message}`);
@@ -244,10 +296,10 @@ const resolveLogOnAccount = async options => {
  */
 const createService = (logOnAccount = null) => {
     // node-windows は Windows 以外では読み込めないためここで require する
-    const { Service } = require('node-windows');
+    const { Service } = requireNodeWindows();
 
     const svc = new Service({
-        name: SERVICE_DISPLAY_NAME,
+        name: displayName,
         description: 'EPGStation (DTV recording manager)',
         script: distPath,
         workingDirectory: root,
@@ -330,6 +382,7 @@ const uninstall = () => {
 const status = () => {
     const existing = queryService();
     log(`EPGStation のディレクトリ: ${root}`);
+    log(`表示名: ${displayName}`);
     log(`サービス名: ${serviceName}`);
     if (existing === null) {
         log('登録状況: 未登録');
@@ -354,6 +407,8 @@ const main = async () => {
     }
 
     const { command, options } = parseArgs(process.argv.slice(2));
+    // --name は全サブコマンド共通 (別名で登録したサービスを解除・確認できるようにする)
+    applyServiceName(options);
     if (command !== 'status' && isAdministrator() === false) {
         throw new Error('管理者権限で実行してください (コマンドプロンプトを「管理者として実行」)');
     }
@@ -369,7 +424,7 @@ const main = async () => {
             status();
             break;
         default:
-            throw new Error('使い方: node scripts/win-service.js <install|uninstall|status>');
+            throw new Error('使い方: node scripts/win-service.js <install|uninstall|status> [--name=<表示名>]');
     }
 };
 

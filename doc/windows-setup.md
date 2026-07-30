@@ -76,8 +76,15 @@
 
 - 自動で起動する場合
 
-    - [node-windows](https://github.com/coreybutler/node-windows) を利用して自動起動設定が可能です (依存に含まれているため追加のインストールは不要です)
-    - 以下のコマンドを**管理者権限**で実行するとサービス化できます
+    - [node-windows](https://github.com/coreybutler/node-windows) を利用して自動起動設定が可能です
+    - **node-windows はグローバルインストールしたものを link して使います**
+
+        ```
+        > npm install -g node-windows
+        > npm link node-windows
+        ```
+
+    - その上で、以下のコマンドを**管理者権限**で実行するとサービス化できます
 
         ```
         > npm run install-win-service
@@ -104,6 +111,14 @@
 
         ```
         > npm run status-win-service
+        ```
+
+    - 1 台で複数の EPGStation を動かす場合は `--name` でサービスの表示名を変えられます。アンインストール・状況確認でも同じ `--name` を渡してください
+
+        ```
+        > node scripts/win-service.js install --name="EPGStation Sub"
+        > node scripts/win-service.js uninstall --name="EPGStation Sub"
+        > node scripts/win-service.js status --name="EPGStation Sub"
         ```
 
     - **winser を使って登録していた場合は先に解除してください**。サービス名が同じ (`epgstation`) ため、残っていると登録に失敗します
