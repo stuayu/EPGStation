@@ -24,3 +24,6 @@ data/key/*
 # シリーズのアイキャッチ画像キャッシュ (外部から取得した実行時データ)
 data/seriesImage/*
 !.gitkeep
+
+# node-windows が作る Windows サービスの実体 (winsw の exe / 設定 / ログ)
+/daemon

@@ -153,6 +153,7 @@
 Web UI の「更新」タブからの更新は git と npm を実行します。まず `npm run status-win-service` で
 サービスから git が見えているかを確認してください。症状ごとの原因は次のとおりです。
 
+- `EPERM, Permission denied: ...\dist` (`npm run clean` で失敗する) — 実行中のサービス本体を消そうとしています。以前のバージョンはサービスの実体を `dist\daemon` に置いていたためで、`npm run uninstall-win-service` → `npm run install-win-service` で登録し直すと `daemon` がリポジトリ直下へ移り解消します (残った `dist\daemon` は手動で削除してください)
 - `CommandFailed: git (spawn git ENOENT)` — サービスの PATH に git がありません。Git for Windows を「すべてのユーザー」向けに入れ直してから、サービスを登録し直してください
 - `detected dubious ownership in repository` — リポジトリの所有者とサービスの実行アカウントが違います。`git config --system --add safe.directory <EPGStation のパス (区切りは /)>` を管理者権限で実行してください
 - 更新後にサービスが起き上がらない — winser で登録したままの可能性があります。`npm run status-win-service` に `(winser / nssm 由来)` と出る場合は `winser -r -x` で解除し、`npm run install-win-service` で登録し直してください
