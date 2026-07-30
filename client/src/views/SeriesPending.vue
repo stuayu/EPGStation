@@ -27,10 +27,18 @@
                 </v-list-item>
             </v-list>
             <v-alert v-if="!loading && items.length === 0" type="success">未確定の録画はありません</v-alert>
-            <div class="d-flex justify-center mt-4">
-                <v-btn :disabled="offset === 0" @click="previous">前へ</v-btn>
-                <span class="pa-3">{{ items.length === 0 ? 0 : offset + 1 }}–{{ Math.min(offset + limit, total) }} / {{ total }}</span>
-                <v-btn :disabled="offset + limit >= total" @click="next">次へ</v-btn>
+            <div class="mt-4">
+                <div class="text-center text-caption text-grey mb-1" v-if="total > 0">
+                    {{ items.length === 0 ? 0 : offset + 1 }}–{{ Math.min(offset + limit, total) }} / {{ total }}
+                </div>
+                <v-pagination
+                    v-if="totalPages > 1"
+                    v-model="page"
+                    :circle="false"
+                    :length="totalPages"
+                    :total-visible="7"
+                    @update:model-value="onMovePage"
+                ></v-pagination>
             </div>
         </v-container>
     </v-main>
@@ -120,13 +128,21 @@ class SeriesPendingView extends Vue {
         }
     }
 
-    previous() {
-        this.offset = Math.max(0, this.offset - this.limit);
-        void this.load();
+    /**
+     * ページャの現在ページ (1 始まり)
+     */
+    get page(): number {
+        return Math.floor(this.offset / this.limit) + 1;
+    }
+    set page(value: number) {
+        this.offset = Math.max(0, (value - 1) * this.limit);
     }
 
-    next() {
-        this.offset += this.limit;
+    get totalPages(): number {
+        return this.total === 0 ? 1 : Math.ceil(this.total / this.limit);
+    }
+
+    onMovePage(): void {
         void this.load();
     }
 }

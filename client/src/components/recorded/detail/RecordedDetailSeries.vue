@@ -27,8 +27,33 @@
                     <v-chip v-if="mapping.airType !== 'first' && mapping.airType !== 'unknown'" size="small" variant="tonal" :color="airTypeColor(mapping.airType)">
                         {{ airTypeLabel(mapping.airType) }}
                     </v-chip>
-                    <v-chip v-if="detail.externalIds.annictId" size="small" variant="outlined" color="green">Annict</v-chip>
-                    <v-chip v-if="detail.externalIds.syobocalTid" size="small" variant="outlined" color="orange">しょぼいカレンダー</v-chip>
+                    <!-- 外部辞書のタグは元サイトの作品ページへ遷移する (別タブ) -->
+                    <v-chip
+                        v-if="annictUrl !== null"
+                        size="small"
+                        variant="outlined"
+                        color="green"
+                        :href="annictUrl"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        append-icon="mdi-open-in-new"
+                        title="Annict の作品ページを開く"
+                    >
+                        Annict
+                    </v-chip>
+                    <v-chip
+                        v-if="syobocalUrl !== null"
+                        size="small"
+                        variant="outlined"
+                        color="orange"
+                        :href="syobocalUrl"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        append-icon="mdi-open-in-new"
+                        title="しょぼいカレンダーの作品ページを開く"
+                    >
+                        しょぼいカレンダー
+                    </v-chip>
                 </div>
             </div>
         </div>
@@ -95,6 +120,22 @@ class RecordedDetailSeries extends Vue {
         const seasonNameText: { [key: string]: string } = { WINTER: '冬', SPRING: '春', SUMMER: '夏', AUTUMN: '秋' };
         const name = this.detail.seasonName ? (seasonNameText[this.detail.seasonName] ?? '') : '';
         return `${this.detail.seasonYear}年${name}クール`;
+    }
+
+    /**
+     * Annict の作品ページ URL (annictId が無ければ null)
+     */
+    get annictUrl(): string | null {
+        const id = this.detail?.externalIds?.annictId;
+        return typeof id === 'string' && id !== '' ? `https://annict.com/works/${encodeURIComponent(id)}` : null;
+    }
+
+    /**
+     * しょぼいカレンダーの作品ページ URL (syobocalTid が無ければ null)
+     */
+    get syobocalUrl(): string | null {
+        const tid = this.detail?.externalIds?.syobocalTid;
+        return typeof tid === 'number' && tid > 0 ? `https://cal.syoboi.jp/tid/${tid}` : null;
     }
 
     get episodeText(): string | null {
