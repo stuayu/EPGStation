@@ -19,5 +19,7 @@ export default interface IVideoApiModel {
     analyzeMetadata(videoFileId: apid.VideoFileId): Promise<VideoFileMetadataResult>;
     analyzeAllMetadata(limit?: number): Promise<AnalyzeVideoFilesResult>;
     getMetadataStatus(): Promise<VideoFileMetadataStatus>;
+    getTsInfoStatus(): Promise<VideoFileMetadataStatus>;
+    analyzeAllTsInfo(limit?: number): Promise<AnalyzeVideoFilesResult>;
     sendToKodi(host: string, isSecure: boolean, kodiName: string, videoFileId: apid.VideoFileId): Promise<void>;
 }

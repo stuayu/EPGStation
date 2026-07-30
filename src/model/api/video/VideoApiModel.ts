@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as apid from '../../../../api';
 import IRecordedDB from '../../db/IRecordedDB';
 import IVideoFileDB from '../../db/IVideoFileDB';
+import IVideoFileTsInfoDB from '../../db/IVideoFileTsInfoDB';
 import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
@@ -29,6 +30,7 @@ export default class VideoApiModel implements IVideoApiModel {
 
     private configuration: IConfiguration;
     private videoFileDB: IVideoFileDB;
+    private videoFileTsInfoDB: IVideoFileTsInfoDB;
     private recordedDB: IRecordedDB;
     private apiUtil: IApiUtil;
     private videoUtil: IVideoUtil;
@@ -39,6 +41,7 @@ export default class VideoApiModel implements IVideoApiModel {
     constructor(
         @inject('IConfiguration') configuration: IConfiguration,
         @inject('IVideoFileDB') videoFileDB: IVideoFileDB,
+        @inject('IVideoFileTsInfoDB') videoFileTsInfoDB: IVideoFileTsInfoDB,
         @inject('IRecordedDB') recordedDB: IRecordedDB,
         @inject('IApiUtil') apiUtil: IApiUtil,
         @inject('IVideoUtil') videoUtil: IVideoUtil,
@@ -48,6 +51,7 @@ export default class VideoApiModel implements IVideoApiModel {
     ) {
         this.configuration = configuration;
         this.videoFileDB = videoFileDB;
+        this.videoFileTsInfoDB = videoFileTsInfoDB;
         this.recordedDB = recordedDB;
         this.apiUtil = apiUtil;
         this.videoUtil = videoUtil;
@@ -214,6 +218,57 @@ export default class VideoApiModel implements IVideoApiModel {
             analyzed: analyzed,
             failed: failed,
             remaining: await this.videoFileDB.countWithoutMetadata(),
+        };
+    }
+
+    /**
+     * TS (PSI/SI) の解析状況を返す
+     * エンコード済みファイルには PSI/SI が無いため、TS ファイルのみを母数にする
+     * @return Promise<VideoFileMetadataStatus>
+     */
+    public async getTsInfoStatus(): Promise<VideoFileMetadataStatus> {
+        const total = await this.videoFileTsInfoDB.countAnalyzableVideoFiles();
+        const unanalyzed = await this.videoFileTsInfoDB.countWithoutTsInfo();
+
+        return {
+            total: total,
+            analyzed: total - unanalyzed,
+            unanalyzed: unanalyzed,
+        };
+    }
+
+    /**
+     * まだ TS 解析していない録画ファイルをまとめて解析する
+     * @param limit: number | undefined 一度に解析する上限件数
+     * @return Promise<AnalyzeVideoFilesResult>
+     */
+    public async analyzeAllTsInfo(limit?: number): Promise<AnalyzeVideoFilesResult> {
+        const max = Math.min(
+            typeof limit === 'number' && limit > 0 ? Math.floor(limit) : VideoApiModel.ANALYZE_DEFAULT_LIMIT,
+            VideoApiModel.ANALYZE_MAX_LIMIT,
+        );
+
+        const targets = await this.videoFileTsInfoDB.findWithoutTsInfo(max);
+
+        let analyzed = 0;
+        let failed = 0;
+        for (const target of targets) {
+            try {
+                await this.analyzeModel.analyzeTsInfo(target.id);
+                analyzed++;
+            } catch (err: any) {
+                // 1 件失敗しても残りは続行する (ファイル欠損・壊れた TS など)
+                failed++;
+                if (failed <= VideoApiModel.ANALYZE_LOG_LIMIT) {
+                    this.log?.system.warn(`ts info analysis failed: videoFileId ${target.id}: ${err?.message ?? err}`);
+                }
+            }
+        }
+
+        return {
+            analyzed: analyzed,
+            failed: failed,
+            remaining: await this.videoFileTsInfoDB.countWithoutTsInfo(),
         };
     }
 

@@ -62,6 +62,9 @@ function createModel(options) {
     const videoFileTsInfoDB = {
         findId: async () => opt.tsInfo ?? null,
         upsert: async () => {},
+        countAnalyzableVideoFiles: async () => videos.filter(v => v.type === 'ts').length,
+        countWithoutTsInfo: async () => videos.filter(v => v.type === 'ts' && v.hasTsInfo !== true).length,
+        findWithoutTsInfo: async limit => videos.filter(v => v.type === 'ts' && v.hasTsInfo !== true).slice(0, limit),
     };
     const tsInfoAnalyzer = {
         analyze: async () => opt.tsAnalyzeResult ?? { firstTdtAt: null, genres: [] },
@@ -75,7 +78,16 @@ function createModel(options) {
     );
 
     return {
-        model: new VideoApiModel(configuration, videoFileDB, recordedDB, {}, videoUtil, {}, analyzeModel),
+        model: new VideoApiModel(
+            configuration,
+            videoFileDB,
+            videoFileTsInfoDB,
+            recordedDB,
+            {},
+            videoUtil,
+            {},
+            analyzeModel,
+        ),
         updated: updated,
         startAtUpdated: startAtUpdated,
     };
@@ -173,4 +185,53 @@ test('getMetadataStatus returns total / analyzed / unanalyzed counts', async () 
     const { model } = createModel({ videos: [video(1, { analyzedAt: 5 }), video(2), video(3)] });
     const status = await model.getMetadataStatus();
     assert.deepEqual(status, { total: 3, analyzed: 1, unanalyzed: 2 });
+});
+
+
+test('getTsInfoStatus は TS ファイルだけを母数にする', async () => {
+    const { model } = createModel({
+        videos: [
+            video(1, { type: 'ts', hasTsInfo: true }),
+            video(2, { type: 'ts' }),
+            // エンコード済みファイルは PSI/SI を持たないので母数に入らない
+            video(3, { type: 'encoded' }),
+        ],
+    });
+
+    const status = await model.getTsInfoStatus();
+
+    assert.deepEqual(status, { total: 2, analyzed: 1, unanalyzed: 1 });
+});
+
+test('analyzeAllTsInfo は未解析の TS ファイルを上限件数まで解析する', async () => {
+    const { model } = createModel({
+        videos: [video(1, { type: 'ts' }), video(2, { type: 'ts' }), video(3, { type: 'ts' })],
+    });
+
+    const analyzedIds = [];
+    model.analyzeModel = { analyzeTsInfo: async id => analyzedIds.push(id) };
+
+    const result = await model.analyzeAllTsInfo(2);
+
+    assert.equal(result.analyzed, 2);
+    assert.equal(result.failed, 0);
+    assert.deepEqual(analyzedIds.length, 2);
+});
+
+test('analyzeAllTsInfo は 1 件失敗しても残りを続行する', async () => {
+    const { model } = createModel({
+        videos: [video(1, { type: 'ts' }), video(2, { type: 'ts' })],
+    });
+
+    model.analyzeModel = {
+        analyzeTsInfo: async () => {
+            throw new Error('TsAnalyzeError');
+        },
+    };
+
+    const result = await model.analyzeAllTsInfo(10);
+
+    assert.equal(result.analyzed, 0);
+    assert.equal(result.failed, 2);
+    assert.equal(result.remaining, 2);
 });
