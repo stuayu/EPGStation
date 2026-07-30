@@ -3,6 +3,7 @@ require('reflect-metadata');
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const VideoApiModel = require('../../dist/model/api/video/VideoApiModel').default;
+const VideoFileAnalyzeModel = require('../../dist/model/video/VideoFileAnalyzeModel').default;
 
 const configuration = { getConfig: () => ({}) };
 
@@ -57,8 +58,24 @@ function createModel(options) {
         },
     };
 
+    // ffprobe 解析の実処理は VideoFileAnalyzeModel にあり、VideoApiModel はそこへ委譲する
+    const videoFileTsInfoDB = {
+        findId: async () => opt.tsInfo ?? null,
+        upsert: async () => {},
+    };
+    const tsInfoAnalyzer = {
+        analyze: async () => opt.tsAnalyzeResult ?? { firstTdtAt: null, genres: [] },
+    };
+    const analyzeModel = new VideoFileAnalyzeModel(
+        videoFileDB,
+        videoFileTsInfoDB,
+        recordedDB,
+        videoUtil,
+        tsInfoAnalyzer,
+    );
+
     return {
-        model: new VideoApiModel(configuration, videoFileDB, recordedDB, {}, videoUtil, {}),
+        model: new VideoApiModel(configuration, videoFileDB, recordedDB, {}, videoUtil, {}, analyzeModel),
         updated: updated,
         startAtUpdated: startAtUpdated,
     };
