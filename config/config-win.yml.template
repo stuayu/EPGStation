@@ -188,11 +188,11 @@ stream:
                   codec: aac
                   bitrate: 192
               cmd:
-                  '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024
+                  '%FFMPEG% -dual_mono_mode main -fflags nobuffer -flags low_delay -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024
                   -c:a aac -ar 48000 -b:a 192k -ac 2
                   -c:v libx264 -vf yadif,scale=-2:1080 -b:v 5000k -maxrate 5000k -bufsize 10000k
                   -profile:v high -level 4.1 -preset veryfast -tune fastdecode,zerolatency
-                  -g 30 -keyint_min 30 -sc_threshold 0
+                  -g 15 -keyint_min 15 -sc_threshold 0
                   -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
             - id: live-hls-720p-avc
               name: 720p(低遅延)
@@ -205,11 +205,11 @@ stream:
                   codec: aac
                   bitrate: 192
               cmd:
-                  '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024
+                  '%FFMPEG% -dual_mono_mode main -fflags nobuffer -flags low_delay -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024
                   -c:a aac -ar 48000 -b:a 192k -ac 2
                   -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
                   -profile:v high -level 4.0 -preset veryfast -tune fastdecode,zerolatency
-                  -g 30 -keyint_min 30 -sc_threshold 0
+                  -g 15 -keyint_min 15 -sc_threshold 0
                   -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
             - id: live-hls-480p-avc
               name: 480p(低遅延)
@@ -226,7 +226,7 @@ stream:
                   -c:a aac -ar 48000 -b:a 128k -ac 2
                   -c:v libx264 -vf yadif,scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
                   -profile:v main -level 3.1 -preset veryfast -tune fastdecode,zerolatency
-                  -g 30 -keyint_min 30 -sc_threshold 0
+                  -g 15 -keyint_min 15 -sc_threshold 0
                   -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
 
             # ------------- HLS 追加プリセット (HEVC / NVENC / QSV / VAAPI) -------------

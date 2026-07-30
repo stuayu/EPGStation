@@ -143,9 +143,18 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
 
 ### 低遅延化
 
-- セグメント長 約1秒（`-g 30` + `frag_keyframe`）× プレイリストウィンドウ 6 で、従来（`hls_time 3` × 17）より大幅に遅延短縮。
+- **セグメント長 = GOP 長**。fMP4 のフラグメント境界はキーフレーム (`frag_keyframe`) であり、`Fmp4Packager` は `partsPerSegment: 1` で 1 フラグメント = 1 セグメントにしているため、`-g` がそのままセグメント長になる。実測: `-g 30` → 1.00 秒 / `-g 15` → 0.50 秒 (29.97fps)。**遅延を詰めたいときはここを短くする**
+- **ライブ入力に `-re` を付けない**。`-re` は入力をリアルタイム速度に制限するオプションで、Mirakurun から流れてくる TS は元々リアルタイムなので二重の律速になり、遅延だけが増える (低遅延の m2ts-ll 側には元から付いていない)。代わりに `-fflags nobuffer -flags low_delay` で ffmpeg 内部のバッファリングを抑える
 - `-tune zerolatency` によりエンコーダ内部バッファ由来の遅延も削減。
-- クライアントの hls.js は `liveSyncDurationCount: 2` のため、実測遅延は 2〜4 秒程度を想定（従来は 10 秒以上）。
+- プレイリストウィンドウは 8 セグメント (約 4 秒)、メモリ保持は 16 セグメント、再生開始は 2 セグメント貯まった時点。
+- クライアントの hls.js は `lowLatencyMode: true` / `liveSyncDurationCount: 3` (0.5 秒 × 3 = 約 1.5 秒) / `maxLiveSyncPlaybackRate: 1.5` (遅れたら再生速度を上げて追いつく)。実測遅延は 2 秒前後を想定。
+- **さらに詰めるなら EXT-X-PART (本来の LL-HLS)** が必要。`Fmp4Packager` は既にパート単位でデータを持っているため、`HLSMemoryStoreModel` に部分セグメントの配信とブロッキングなプレイリスト更新 (`_HLS_msn` / `_HLS_part`) を実装すれば 1 秒未満も狙える (未実装)。
+
+### mpegts 配信 (m2ts / m2ts-ll) の ARIB 字幕
+
+- **DPlayer は mpegts.js の `TIMED_ID3_METADATA_ARRIVED` からしか aribb24 へ字幕を渡さない**。TS に ARIB 字幕 ES (PID 0x130 等) がそのまま入っていても字幕は表示されない。そのため mpegts 配信でも HLS と同じく `arib-subtitle-timedmetadater` を通し、ID3 timed metadata ES (PID 0x1ffe) を足したうえでエンコーダへ渡す (`LiveStreamBaseModel`)
+- **エンコード後も ID3 ES を残す必要がある**。m2ts-ll の自動生成コマンドは `-map 0 -c:s copy -c:d copy -ignore_unknown` を持つため ID3 ES が出力に残る (実測で `Data: timed_id3` が出力側にも存在することを確認済み)。`-map` を持たない従来の m2ts コマンドは映像・音声しか選択しないため、ID3 は出力されず字幕も出ない
+- ID3 変換は PMT を書き換えるため、`-map 0` を使う設定では出力の PID 構成も変わる
 
 ### 制限事項
 

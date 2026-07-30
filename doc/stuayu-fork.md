@@ -117,6 +117,16 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 ## 変更箇所
 
+- **ライブ HLS の遅延を詰め、m2ts-ll (mpegts 配信) の ARIB 字幕が出ない問題を修正した**
+    - **m2ts-ll で字幕が出なかった原因**: DPlayer は mpegts.js の `TIMED_ID3_METADATA_ARRIVED` イベント経由でしか aribb24 へ字幕を渡さない。TS に ARIB 字幕 ES が入っていてもそれだけでは表示されない。HLS 配信でのみ `arib-subtitle-timedmetadater` を通していたため、mpegts 配信には ID3 timed metadata が無く字幕が 1 つも出なかった
+    - **修正**: `LiveStreamBaseModel` で配信種別によらず `arib-subtitle-timedmetadater` を通すようにした。m2ts-ll の自動生成コマンドは `-map 0 -c:s copy -c:d copy -ignore_unknown` を持つため、エンコード後も ID3 ES (`Data: timed_id3`) が残ることを実データで確認済み。in-memory HLS だけは従来どおり `AribId3Extractor` で ID3 を抜いて `emsg` box に載せ替える
+    - **ライブ HLS の遅延短縮**: 遅延の主因は 2 つあった
+        - **`-re`**: 入力をリアルタイム速度に制限するオプション。Mirakurun からの TS は元々リアルタイムなので二重の律速になり遅延だけが増える (m2ts-ll 側には元から付いていない)。ライブ HLS の cmd (テンプレート・自動生成プリセットの両方) から外し、代わりに `-fflags nobuffer -flags low_delay` を付けた
+        - **セグメント長**: fMP4 のフラグメント境界はキーフレームなので、**セグメント長 = GOP 長**になる。`-g 30` (1 秒) から `-g 15` (0.5 秒) へ短縮した。実測でセグメントが 1.00 秒 → 0.50 秒になることを確認済み
+    - **クライアント側**: hls.js に `lowLatencyMode: true` / `liveSyncDurationCount: 3` (0.5 秒 × 3 = 約 1.5 秒) / `maxLiveSyncPlaybackRate: 1.5` (遅れたら再生速度を上げて追いつく) を設定。プレイリストウィンドウは 8 セグメント (約 4 秒)、メモリ保持は 16 セグメントに調整した
+    - **既存環境への反映**: `config/config.yml` は git 管理外のため、テンプレートを更新しても既存の設定ファイルには反映されない。既に運用している環境で遅延を詰めるには、`stream.profiles.live` の HLS プロファイルの cmd から `-re` を外し、`-g 30 -keyint_min 30` を `-g 15 -keyint_min 15` に変更する
+    - **さらに詰めるなら**: 本来の LL-HLS (EXT-X-PART + ブロッキングなプレイリスト更新) が必要。`Fmp4Packager` は既にパート単位でデータを保持しているため実装の土台はある (未実装)
+
 - **ライブ視聴のニコニコ実況コメントを放送波の時刻 (TDT / TOT) で遅延補正するようにした**
     - **背景**: 実況コメントは実時間で届くのに対し、ライブ視聴の映像はチューナー → Mirakurun → エンコード → 配信 → 再生の分だけ遅れている。補正が無いとコメントが映像より先に流れ、実況として成立しなかった
     - **放送時刻の取得 (`src/model/service/stream/util/BroadcastTimeExtractor.ts`)**: エンコード前の TS から TDT / TOT (PID 0x14) を読み取る pass-through Transform。入力の TS は加工せず下流へ流すので配信自体には影響しない。`LiveStreamBaseModel` のパイプライン先頭 (ARIB 字幕変換の前) に挿入している

@@ -164,24 +164,22 @@ export default abstract class LiveStreamBaseModel
                 this.stream.pipe(this.broadcastTimeExtractor);
                 const tsSource = this.broadcastTimeExtractor;
 
-                // HLS 配信の場合は ARIB 字幕を ID3 timed metadata へ変換する
-                // arib-subtitle-timedmetadater を通す
-                if (this.getStreamType() === 'LiveHLS') {
-                    this.log.stream.info('use arib-subtitle-timedmetadater');
-                    this.id3MetadataTransoform = new ID3MetadataTransform();
-                    tsSource.pipe(this.id3MetadataTransoform);
+                // ARIB 字幕を ID3 timed metadata へ変換する (arib-subtitle-timedmetadater)。
+                // HLS だけでなく mpegts 配信 (m2ts / m2tsll) でも必要:
+                // DPlayer は mpegts.js の TIMED_ID3_METADATA_ARRIVED からしか aribb24 へ字幕を渡さないため、
+                // ARIB 字幕 ES をそのまま流しても字幕は表示されない
+                this.log.stream.info('use arib-subtitle-timedmetadater');
+                this.id3MetadataTransoform = new ID3MetadataTransform();
+                tsSource.pipe(this.id3MetadataTransoform);
 
-                    if (this.isMemoryHLS() === true) {
-                        // in-memory (fMP4) モードでは mp4 出力に ID3 timed metadata を乗せられないため、
-                        // エンコード前の TS から ID3 を抜き取り、セグメントの emsg box として再多重化する
-                        this.aribId3Extractor = new AribId3Extractor(this.log);
-                        this.id3MetadataTransoform.pipe(this.aribId3Extractor);
-                        this.aribId3Extractor.pipe(this.streamProcess.stdin);
-                    } else {
-                        this.id3MetadataTransoform.pipe(this.streamProcess.stdin);
-                    }
+                if (this.getStreamType() === 'LiveHLS' && this.isMemoryHLS() === true) {
+                    // in-memory (fMP4) モードでは mp4 出力に ID3 timed metadata を乗せられないため、
+                    // エンコード前の TS から ID3 を抜き取り、セグメントの emsg box として再多重化する
+                    this.aribId3Extractor = new AribId3Extractor(this.log);
+                    this.id3MetadataTransoform.pipe(this.aribId3Extractor);
+                    this.aribId3Extractor.pipe(this.streamProcess.stdin);
                 } else {
-                    tsSource.pipe(this.streamProcess.stdin);
+                    this.id3MetadataTransoform.pipe(this.streamProcess.stdin);
                 }
             } else {
                 await this.stop();
