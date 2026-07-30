@@ -5,6 +5,7 @@ const {
     canSupervisorRestart,
     describeRestart,
     detectSupervisor,
+    getWindowsServiceName,
 } = require('../../dist/model/update/UpdateEnvironment');
 
 const input = (override = {}) => ({
@@ -49,6 +50,34 @@ test('only an unsupervised process needs to spawn its own successor', () => {
     for (const supervisor of ['docker', 'systemd', 'pm2', 'windows-service']) {
         assert.equal(canSupervisorRestart(supervisor), true);
     }
+});
+
+test('EPGSTATION_SERVICE_MANAGER overrides the heuristics', () => {
+    // サービス登録スクリプトが書き込む値。自動判定より優先する
+    assert.equal(
+        detectSupervisor(input({ platform: 'win32', env: { EPGSTATION_SERVICE_MANAGER: 'windows-service' } })),
+        'windows-service',
+    );
+    // docker のマーカーがあっても明示指定が勝つ
+    assert.equal(
+        detectSupervisor(input({ hasDockerEnvFile: true, env: { EPGSTATION_SERVICE_MANAGER: 'systemd' } })),
+        'systemd',
+    );
+    // 明示的に none にすれば自前で後継プロセスを起動する動作を選べる
+    assert.equal(
+        detectSupervisor(input({ platform: 'win32', isWindowsService: true, env: { EPGSTATION_SERVICE_MANAGER: 'none' } })),
+        'none',
+    );
+    // 未知の値は無視して自動判定へ落とす
+    assert.equal(detectSupervisor(input({ hasDockerEnvFile: true, env: { EPGSTATION_SERVICE_MANAGER: 'foo' } })), 'docker');
+});
+
+test('windows service name falls back to the default', () => {
+    assert.equal(getWindowsServiceName({}), 'epgstation');
+    assert.equal(getWindowsServiceName({ EPGSTATION_WIN_SERVICE_NAME: 'epgstation-sub' }), 'epgstation-sub');
+    // sc start に渡すためシェルへ影響する文字は受け付けない
+    assert.equal(getWindowsServiceName({ EPGSTATION_WIN_SERVICE_NAME: 'a & calc' }), 'epgstation');
+    assert.equal(getWindowsServiceName({ EPGSTATION_WIN_SERVICE_NAME: '' }), 'epgstation');
 });
 
 test('every supervisor has an explanation for the UI', () => {
