@@ -56,6 +56,27 @@ backBufferLength: 30,            // メモリ増加対策
 
 - Safari / iOS では自動再生ポリシーによる停止を避けるため、M2TS-LL でも自動再生を無効化し再生ボタン操作で開始するように変更。
 
+### Safari のライブ HLS は「ネイティブ再生 + aribb24 の in-band metadata 自動検出」
+
+Safari では hls.js / MSE を経由せず標準 video 要素へ m3u8 を直接渡す (ネイティブ HLS) 方針だが、
+**DPlayer に `type: 'normal'` を渡してはいけない**。DPlayer の `initMSE()` の `switch` には
+`case 'normal'` も `default` も無く、ARIB 字幕 (aribb24.js) の CanvasRenderer を生成するのは
+`case 'hls'` / `case 'mpegts'` の中だけなので、レンダラが 1 つも作られず**字幕が一切表示されない**。
+
+そのため `LiveHLSVideo` は Safari でも `type: 'hls'` を渡し、代わりに
+`DPlayerUtil.setupGlobals()` が **Safari のみ `window.Hls.isSupported()` が `false` を返すラッパー**を
+`window.Hls` に設定する。DPlayer は `case 'hls'` の中でさらに
+
+1. `window.Hls.isSupported()` が true → hls.js (MSE) 経路
+2. false かつ `canPlayType('application/x-mpegURL')` → **ネイティブ HLS + `enableAutoInBandMetadataTextTrackDetection = true` で CanvasRenderer を attach**
+
+と分岐するため、2 を選ばせることで「再生方式は `'normal'` と同じ (video へ m3u8 直渡し) ままで字幕だけ有効」にできる。
+
+WebKit は fMP4 の `emsg` を metadata text track (`inBandMetadataTrackDispatchType = com.apple.streaming`) として
+通知し、cue は `type = org.id3` / `info = aribb24.js` (PRIV フレームの owner) を持つ。
+aribb24.js の自動検出がこれを拾うため、in-memory HLS の字幕が Safari でも表示される
+(WebKit 26 / playwright webkit で実機確認済み)。
+
 ## 運用: ディスクにデータを残さない HLS 配信 (tmpfs)
 
 M2TS-LL はパイプ配信のためディスク書き込みなし。HLS はセグメントを `streamFilePath` に書き出すため、tmpfs を指定すると完全メモリ配信になる:
