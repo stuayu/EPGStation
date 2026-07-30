@@ -1,6 +1,7 @@
 import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { buildGitArgs, resolveGitCommand } from './GitCommand';
 
 /**
  * 動作中の EPGStation のバージョンを求める。
@@ -42,9 +43,12 @@ export const getCurrentVersion = (): string => {
 
     let version: string | null = null;
     if (fs.existsSync(path.join(ROOT_PATH, '.git'))) {
-        version = run('git', ['describe', '--tags', '--exact-match', 'HEAD']);
+        // Windows サービス (LocalSystem) から起動された場合でも git を引けるようにする
+        // (PATH に git が無い / リポジトリの所有者が異なる環境への対処)
+        const git = resolveGitCommand();
+        version = run(git, buildGitArgs(ROOT_PATH, ['describe', '--tags', '--exact-match', 'HEAD']));
         // タグから進んでいる場合は直近のタグ + 差分
-        if (version === null) version = run('git', ['describe', '--tags', '--abbrev=7']);
+        if (version === null) version = run(git, buildGitArgs(ROOT_PATH, ['describe', '--tags', '--abbrev=7']));
     }
     if (version === null) {
         try {

@@ -4,6 +4,7 @@ import { inject, injectable } from 'inversify';
 import * as path from 'path';
 import * as apid from '../../../api';
 import { clearCurrentVersionCache, getCurrentVersion } from '../../util/CurrentVersion';
+import { buildGitArgs, resolveGitCommand, resolveNpmCommand } from '../../util/GitCommand';
 import { compareVersions, isNewerVersion, isPrereleaseVersion } from '../../util/VersionUtil';
 import IConfiguration from '../IConfiguration';
 import ILoggerModel from '../ILoggerModel';
@@ -14,6 +15,7 @@ import {
     canSupervisorRestart,
     describeRestart,
     detectSupervisor,
+    getWindowsServiceName,
     InstallationType,
     SupervisorType,
 } from './UpdateEnvironment';
@@ -56,6 +58,8 @@ export default class UpdateManageModel implements IUpdateManageModel {
     private static readonly COMMAND_TIMEOUT_MS = 30 * 60 * 1000;
     // 終了前に応答を返しきるための待ち時間
     private static readonly RESTART_DELAY_MS = 2000;
+    // Windows サービスの停止完了を待ってから sc start する秒数 (ping の回数)
+    private static readonly SERVICE_START_WAIT_SEC = 10;
 
     private log: ILogger;
     private job: UpdateJob = UpdateManageModel.emptyJob();
@@ -175,7 +179,7 @@ export default class UpdateManageModel implements IUpdateManageModel {
 
             // ローカル変更があると checkout が失敗する / 変更を失う恐れがあるため先に止める
             this.job.step = 'ローカル変更の確認';
-            const dirty = await this.runCommand('git', ['status', '--porcelain'], root);
+            const dirty = await this.runGit(['status', '--porcelain'], root);
             if (dirty.trim() !== '') {
                 throw new Error(
                     'LocalChangesExist: 作業ツリーに未コミットの変更があります。手動で退避してから再実行してください',
@@ -183,15 +187,15 @@ export default class UpdateManageModel implements IUpdateManageModel {
             }
 
             this.job.step = 'リリース情報の取得 (git fetch)';
-            await this.runCommand('git', ['fetch', '--tags', '--prune', '--force'], root);
+            await this.runGit(['fetch', '--tags', '--prune', '--force'], root);
 
             if (isBranch === true) {
                 // ローカルブランチをリモートの最新に強制的に合わせる (追従なので独自コミットは持たない前提)
                 this.job.step = `更新の適用 (git checkout ${target})`;
-                await this.runCommand('git', ['checkout', '-B', target, `origin/${target}`], root);
+                await this.runGit(['checkout', '-B', target, `origin/${target}`], root);
             } else {
                 this.job.step = `更新の適用 (git checkout ${target})`;
-                await this.runCommand('git', ['-c', 'advice.detachedHead=false', 'checkout', '--force', target], root);
+                await this.runGit(['-c', 'advice.detachedHead=false', 'checkout', '--force', target], root);
             }
 
             this.job.step = '依存パッケージのインストール';
@@ -241,7 +245,12 @@ export default class UpdateManageModel implements IUpdateManageModel {
     private restart(supervisor: SupervisorType): void {
         setTimeout(() => {
             try {
-                if (canSupervisorRestart(supervisor) === false) {
+                if (supervisor === 'windows-service') {
+                    // nssm 配下ならプロセスの終了で再起動されるが、sc.exe から直接登録された環境や
+                    // 回復設定が入っていない環境では上がってこない。プロセスから切り離した cmd.exe に
+                    // 遅延起動を任せ、既に起動していれば何もしない (error 1056 を無視する) 形にしておく
+                    this.startWindowsService();
+                } else if (canSupervisorRestart(supervisor) === false) {
                     const child = spawn(
                         process.execPath,
                         [path.join(UpdateManageModel.ROOT_PATH, 'dist', 'index.js')],
@@ -261,6 +270,24 @@ export default class UpdateManageModel implements IUpdateManageModel {
             // Operator (親) が終了すると Service (子) も落ちるため、ここで全体が入れ替わる
             process.exit(0);
         }, UpdateManageModel.RESTART_DELAY_MS).unref();
+    }
+
+    /**
+     * Windows サービスを起こし直す。
+     * 自分が終了したあとに実行される必要があるため、プロセスから切り離した cmd.exe に
+     * 待ち時間つきで `sc start` を投げさせる (停止処理が終わる前に呼ぶと 1056 で失敗する)
+     */
+    private startWindowsService(): void {
+        const name = getWindowsServiceName(process.env);
+        // ping による待ち合わせ (サービス環境では timeout コマンドが使えないため)
+        const command = `ping -n ${UpdateManageModel.SERVICE_START_WAIT_SEC} 127.0.0.1 > nul & sc start "${name}"`;
+        this.log.system.info(`schedule windows service restart: ${name}`);
+        const child = spawn('cmd.exe', ['/c', command], {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true,
+        });
+        child.unref();
     }
 
     /**
@@ -429,7 +456,10 @@ export default class UpdateManageModel implements IUpdateManageModel {
     private getCurrentCommit(): string | null {
         if (this.currentCommit !== null) return this.currentCommit;
         if (this.getInstallationType() !== 'git') return null;
-        this.currentCommit = this.runCommandSync('git', ['rev-parse', 'HEAD']);
+        this.currentCommit = this.runCommandSync(
+            resolveGitCommand(),
+            buildGitArgs(UpdateManageModel.ROOT_PATH, ['rev-parse', 'HEAD']),
+        );
         return this.currentCommit;
     }
 
@@ -487,21 +517,33 @@ export default class UpdateManageModel implements IUpdateManageModel {
     }
 
     private async runNpm(args: string[], cwd: string): Promise<string> {
-        // Windows では npm は npm.cmd なので shell 経由で起動する必要がある
-        return await this.runCommand(process.platform === 'win32' ? 'npm.cmd' : 'npm', args, cwd);
+        // Windows の npm は npm.cmd で、Node 20 以降は shell を介さないと spawn できない (EINVAL)。
+        // 渡す引数は固定文字列だけなのでシェル経由でも解釈の余地は無い
+        const npm = resolveNpmCommand();
+        return await this.runCommand(npm.command, args, cwd, npm.shell);
+    }
+
+    /**
+     * git を実行する。
+     * Windows サービス (LocalSystem) から起動された場合に備え、実行ファイルの場所を解決し、
+     * リポジトリの所有者チェック (dubious ownership) を回避する設定を都度渡す
+     */
+    private async runGit(args: string[], cwd: string): Promise<string> {
+        return await this.runCommand(resolveGitCommand(), buildGitArgs(cwd, args), cwd);
     }
 
     /**
      * 外部コマンドを実行し、標準出力を返す。出力はジョブのログにも積む
      */
-    private runCommand(command: string, args: string[], cwd: string): Promise<string> {
+    private runCommand(command: string, args: string[], cwd: string, shell: boolean = false): Promise<string> {
         this.appendLog('command', `$ ${command} ${args.join(' ')}`);
         return new Promise<string>((resolve, reject) => {
             const child = spawn(command, args, {
                 cwd,
                 windowsHide: true,
-                // シェルを介さないことで、タグ名などがシェルに解釈される余地を無くす
-                shell: false,
+                // 既定ではシェルを介さないことで、タグ名などがシェルに解釈される余地を無くす
+                // (npm.cmd のようにシェルが必須なコマンドだけ呼び出し側で true を指定する)
+                shell,
                 env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
             });
             let stdout = '';
