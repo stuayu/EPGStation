@@ -268,7 +268,7 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
                 : null;
         if (syobocalTid === null && annictId === null && wikidataQid === null) throw new Error('InvalidRequestBody');
 
-        // クライアントから来た ID をそのまま信用せず、辞書を引き直して作品情報を確定��せる
+        // クライアントから来た ID をそのまま信用せず、辞書を引き直して作品情報を確定させる
         const work = await this.dictionary.findByIds({
             syobocalTid: syobocalTid,
             annictId: annictId,
