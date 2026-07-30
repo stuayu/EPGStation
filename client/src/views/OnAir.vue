@@ -3,15 +3,15 @@
         <TitleBar title="放映中">
             <template v-slot:extension>
                 <v-tabs v-if="isTabView === true && onAirState.getSchedules().length > 0" v-model="onAirState.selectedTab" centered>
-                    <v-tab v-for="item in onAirState.getTabs()" :key="item" :value="`${item}`">{{ item }}</v-tab>
+                    <v-tab v-for="item in onAirState.getTabs()" :key="item.id" :value="item.id">{{ item.name }}</v-tab>
                 </v-tabs>
             </template>
         </TitleBar>
         <transition name="page">
             <div v-if="onAirState.getSchedules().length > 0">
                 <v-window v-if="isTabView === true" v-model="onAirState.selectedTab">
-                    <v-window-item v-for="item in onAirState.getTabs()" :key="item" :value="`${item}`">
-                        <OnAirCard :items="onAirState.getSchedules(item)" :reserveIndex="onAirState.getReserveIndex()"></OnAirCard>
+                    <v-window-item v-for="item in onAirState.getTabs()" :key="item.id" :value="item.id">
+                        <OnAirCard :items="onAirState.getSchedules(item.id)" :reserveIndex="onAirState.getReserveIndex()"></OnAirCard>
                     </v-window-item>
                 </v-window>
                 <div v-else>

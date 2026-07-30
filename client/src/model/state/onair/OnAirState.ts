@@ -4,11 +4,15 @@ import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../api';
 import IScheduleApiModel from '../../api/schedule/IScheduleApiModel';
 import IGuideReserveUtil, { ReserveStateItemIndex } from '../guide/IGuideReserveUtil';
-import IOnAirState, { OnAirDisplayData } from './IOnAirState';
+import IOnAirState, { OnAirDisplayData, OnAirTabItem } from './IOnAirState';
 
 @injectable()
 export default class OnAirState implements IOnAirState {
-    public selectedTab: apid.ChannelType | undefined;
+    // タブ識別子の接頭辞 (地域タブと放送波種別タブを区別する)
+    private static readonly REGION_TAB_PREFIX = 'region:';
+    private static readonly TYPE_TAB_PREFIX = 'type:';
+
+    public selectedTab: string | undefined;
 
     private scheduleApiModel: IScheduleApiModel;
     private reserveUtil: IGuideReserveUtil;
@@ -247,12 +251,28 @@ export default class OnAirState implements IOnAirState {
      * 取得した番組情報を返す
      * @return OnAirDisplayData[]
      */
-    public getSchedules(type?: apid.ChannelType): OnAirDisplayData[] {
-        return typeof type === 'undefined'
-            ? this.schedules
-            : this.schedules.filter(s => {
-                  return s.schedule.channel.channelType === type;
-              });
+    public getSchedules(tabId?: string): OnAirDisplayData[] {
+        if (typeof tabId === 'undefined') {
+            return this.schedules;
+        }
+
+        // 地域タブは地上波系 (GR / NWxx) をまとめて表示する
+        if (tabId.startsWith(OnAirState.REGION_TAB_PREFIX) === true) {
+            const regionId = tabId.slice(OnAirState.REGION_TAB_PREFIX.length);
+
+            return this.schedules.filter(s => {
+                return (
+                    OnAirState.isRegionalType(s.schedule.channel.channelType) === true &&
+                    OnAirState.getRegionId(s.schedule.channel) === regionId
+                );
+            });
+        }
+
+        const type = tabId.startsWith(OnAirState.TYPE_TAB_PREFIX) === true ? tabId.slice(OnAirState.TYPE_TAB_PREFIX.length) : tabId;
+
+        return this.schedules.filter(s => {
+            return s.schedule.channel.channelType === type;
+        });
     }
 
     /**
@@ -264,11 +284,77 @@ export default class OnAirState implements IOnAirState {
     }
 
     /**
-     * 放送波名の配列を返す
-     * @return string[]
+     * タブの一覧を返す。
+     * 地上波系 (GR / NWxx) は番組表と同じ地域名でまとめ、BS / CS / SKY は放送波種別で分ける
+     * @return OnAirTabItem[]
      */
-    public getTabs(): apid.ChannelType[] {
-        return this.tabs;
+    public getTabs(): OnAirTabItem[] {
+        const regionalTypes = this.tabs.filter(type => OnAirState.isRegionalType(type) === true);
+        const otherTypes = this.tabs.filter(type => OnAirState.isRegionalType(type) === false);
+
+        const result: OnAirTabItem[] = [];
+        const regions = regionalTypes.length === 0 ? [] : this.getRegions(regionalTypes);
+        if (regions.length === 0) {
+            // 番組情報が未取得などで地域を判定できない場合は放送波種別で表示する
+            for (const type of regionalTypes) {
+                result.push({ id: `${OnAirState.TYPE_TAB_PREFIX}${type}`, name: type });
+            }
+        } else {
+            for (const region of regions) {
+                result.push({ id: `${OnAirState.REGION_TAB_PREFIX}${region.id}`, name: region.name });
+            }
+        }
+
+        for (const type of otherTypes) {
+            result.push({ id: `${OnAirState.TYPE_TAB_PREFIX}${type}`, name: type });
+        }
+
+        return result;
+    }
+
+    /**
+     * 地上波系 (GR / NWxx) の放送波種別か
+     * @param type: string
+     * @return boolean
+     */
+    private static isRegionalType(type: string): boolean {
+        return type === 'GR' || /^NW\d+$/.test(type) === true;
+    }
+
+    /**
+     * 放送局の地域 id を返す (地域不明の場合は 'other')
+     * @param channel: apid.ScheduleChannleItem
+     * @return string
+     */
+    private static getRegionId(channel: apid.ScheduleChannleItem): string {
+        return typeof channel.region === 'undefined' ? 'other' : channel.region.id;
+    }
+
+    /**
+     * 取得済みの番組情報から地域一覧を作成する
+     * 地域不明の放送局 (CATV 等) は末尾にまとめられる
+     * @param regionalTypes: apid.ChannelType[] 対象の放送波種別
+     * @return apid.BroadcastRegionItem[]
+     */
+    private getRegions(regionalTypes: apid.ChannelType[]): apid.BroadcastRegionItem[] {
+        const regions: apid.BroadcastRegionItem[] = [];
+        const addedIds: { [regionId: string]: boolean } = {};
+
+        for (const s of this.schedules) {
+            const channel = s.schedule.channel;
+            if (regionalTypes.indexOf(channel.channelType) === -1 || typeof channel.region === 'undefined') {
+                continue;
+            }
+
+            if (addedIds[channel.region.id] === true) {
+                continue;
+            }
+            addedIds[channel.region.id] = true;
+            regions.push({ id: channel.region.id, name: channel.region.name, order: channel.region.order });
+        }
+
+        // 都道府県コード順に並べる (判定不能な「その他」は order 99 なので必ず末尾になる)
+        return regions.sort((a, b) => a.order - b.order);
     }
 
     /**
