@@ -71,6 +71,20 @@
                             </div>
 
                             <v-divider class="my-4"></v-divider>
+                            <div class="text-subtitle-1 mb-2">録画ファイルの TS 解析</div>
+                            <div class="text-caption mb-2">
+                                TS の PSI/SI (SDT / EIT / TDT) から放送局名・番組名・概要・ジャンル・録画開始時刻を取得して DB
+                                に保存します。取り込んだ外部ファイルの放送局特定や、ニコニコ実況コメントの時刻合わせに利用されます (取り込み時には自動で実行されます)。
+                            </div>
+                            <div class="text-body-2 mb-2">
+                                TS ファイル {{ tsInfoStatus.total }} 件 / 解析済み {{ tsInfoStatus.analyzed }} 件 / 未解析 {{ tsInfoStatus.unanalyzed }} 件
+                            </div>
+                            <div class="d-flex ga-2 flex-wrap">
+                                <v-btn variant="outlined" :loading="tsInfoLoading" @click="loadTsInfoStatus">再読み込み</v-btn>
+                                <v-btn color="primary" :loading="tsInfoAnalyzing" :disabled="tsInfoStatus.unanalyzed === 0" @click="analyzeTsInfo">未解析ファイルを一括解析</v-btn>
+                            </div>
+
+                            <v-divider class="my-4"></v-divider>
                             <v-alert type="info">現在、再起動 (Operator 再初期化) が必須の設定項目はありません。今後追加された場合、このタブと画面上部のバナーで通知されます。</v-alert>
                         </v-window-item>
 
@@ -827,6 +841,11 @@ class SystemSetting extends Vue {
     videoMetadataLoading = false;
     videoMetadataAnalyzing = false;
 
+    // --- 録画ファイルの TS (PSI/SI) 解析 ---
+    tsInfoStatus: apid.VideoFileMetadataStatus = { total: 0, analyzed: 0, unanalyzed: 0 };
+    tsInfoLoading = false;
+    tsInfoAnalyzing = false;
+
     requiresRestartKeys: string[] = [];
 
     readonly notificationEventItems: string[] = [
@@ -1287,6 +1306,7 @@ class SystemSetting extends Vue {
         await this.loadHistory();
         await this.loadNotificationFailures();
         await this.loadVideoMetadataStatus();
+        await this.loadTsInfoStatus();
     }
 
     /**
@@ -1320,6 +1340,40 @@ class SystemSetting extends Vue {
             this.snackbarState.open({ color: 'error', text: 'メタデータの一括取得に失敗しました' });
         } finally {
             this.videoMetadataAnalyzing = false;
+        }
+    }
+
+    /**
+     * 録画ファイルの TS 解析状況を取得する
+     */
+    async loadTsInfoStatus(): Promise<void> {
+        this.tsInfoLoading = true;
+        try {
+            this.tsInfoStatus = await this.videoApi.getTsInfoStatus();
+        } catch (err) {
+            console.error(err);
+        } finally {
+            this.tsInfoLoading = false;
+        }
+    }
+
+    /**
+     * 未解析の TS ファイルを一括で解析する
+     */
+    async analyzeTsInfo(): Promise<void> {
+        this.tsInfoAnalyzing = true;
+        try {
+            const result = await this.videoApi.analyzeAllTsInfo({ limit: 100 });
+            this.snackbarState.open({
+                color: result.failed === 0 ? 'success' : 'error',
+                text: `解析 ${result.analyzed} 件 / 失敗 ${result.failed} 件 / 残り ${result.remaining} 件`,
+            });
+            await this.loadTsInfoStatus();
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: 'TS の一括解析に失敗しました' });
+        } finally {
+            this.tsInfoAnalyzing = false;
         }
     }
 

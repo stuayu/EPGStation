@@ -66,6 +66,23 @@ export default class VideoApiModel implements IVideoApiModel {
         return (await this.repository.post('/videos/metadata', option ?? {})).data;
     }
 
+    /**
+     * 録画ファイルの TS 解析状況を取得する
+     * @return Promise<apid.VideoFileMetadataStatus>
+     */
+    public async getTsInfoStatus(): Promise<apid.VideoFileMetadataStatus> {
+        return (await this.repository.get('/videos/tsinfo')).data;
+    }
+
+    /**
+     * 未解析の TS ファイルを一括解析する
+     * @param option: apid.AnalyzeVideoFilesOption
+     * @return Promise<apid.AnalyzeVideoFilesResult>
+     */
+    public async analyzeAllTsInfo(option?: apid.AnalyzeVideoFilesOption): Promise<apid.AnalyzeVideoFilesResult> {
+        return (await this.repository.post('/videos/tsinfo', option ?? {})).data;
+    }
+
     public async getPlaybackPosition(videoFileId: apid.VideoFileId): Promise<apid.WatchHistory | null> {
         try {
             return (await this.repository.get(`/videos/${videoFileId}/playback-position`)).data;
