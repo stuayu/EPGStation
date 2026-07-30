@@ -5,6 +5,8 @@ import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageMod
 import JikkyoCommentClient, { JikkyoComment } from '@/util/JikkyoCommentClient';
 import JikkyoKakologClient from '@/util/JikkyoKakologClient';
 import VirtualTimeline from '@/components/video/VirtualTimeline';
+import IStreamApiModel from '@/model/api/streams/IStreamApiModel';
+import * as apid from '../../../../api';
 
 export default abstract class BaseVideo extends Vue {
     protected dp: DPlayer | null = null;
@@ -15,7 +17,17 @@ export default abstract class BaseVideo extends Vue {
     private jikkyoCommentQueue: JikkyoComment[] = []; // 弾幕インスタンス生成前に届いたコメント
     private isResolvingQuality: boolean = false; // 画質切替の url 解決中か
 
+    // ライブ配信の放送時刻 (TDT / TOT)。実況コメントの遅延補正に使う
+    private broadcastTime: apid.StreamBroadcastTime | null = null;
+    private broadcastTimeTimerId: number | null = null;
+    // 遅延表示待ちのコメント。破棄時にまとめてキャンセルする
+    private jikkyoDelayTimerIds: number[] = [];
+
     private static readonly JIKKYO_COMMENT_QUEUE_LIMIT = 100;
+    // 放送時刻の取り直し間隔
+    private static readonly BROADCAST_TIME_INTERVAL = 15 * 1000;
+    // 補正しすぎて明らかにおかしくなるのを防ぐための遅延上限
+    private static readonly JIKKYO_MAX_DELAY_MS = 60 * 1000;
 
     public mounted(): void {
         this.containerElement = this.$refs.container as HTMLElement;
@@ -80,9 +92,10 @@ export default abstract class BaseVideo extends Vue {
             this.jikkyoCommentClient = new JikkyoCommentClient({
                 serverUrl: setting.jikkyoServerUrl,
                 jikkyoChannelId: jikkyoChannelId,
-                onComment: comment => this.drawJikkyoComment(comment),
+                onComment: comment => this.drawJikkyoCommentWithDelay(comment),
             });
             this.jikkyoCommentClient.start();
+            this.startBroadcastTimePolling();
         } else if (isKakologEnabled === true && jikkyoKakologOption !== null) {
             this.jikkyoKakologClient = new JikkyoKakologClient({
                 ...jikkyoKakologOption,
@@ -187,6 +200,129 @@ export default abstract class BaseVideo extends Vue {
     }
 
     /**
+     * ライブ実況のコメントを配信遅延の分だけ遅らせて描画する
+     * コメントは実時間で届くのに対し、映像はチューナー → エンコード → 配信 → 再生の分だけ
+     * 遅れているため、そのまま描画すると映像より先にコメントが流れてしまう
+     */
+    private drawJikkyoCommentWithDelay(comment: JikkyoComment): void {
+        const delay = this.getJikkyoDelayMs();
+        if (delay <= 0) {
+            this.drawJikkyoComment(comment);
+
+            return;
+        }
+
+        const timerId = window.setTimeout(() => {
+            this.jikkyoDelayTimerIds = this.jikkyoDelayTimerIds.filter(id => id !== timerId);
+            this.drawJikkyoComment(comment);
+        }, delay);
+        this.jikkyoDelayTimerIds.push(timerId);
+    }
+
+    /**
+     * ライブ実況コメントを遅らせる時間 (ミリ秒) を求める
+     *   サーバ遅延  : TDT / TOT の放送時刻とサーバがそれを受け取った時刻の差
+     *                 (チューナー → Mirakurun → EPGStation の遅れ)
+     *   再生側の遅延: 受信済みバッファの末尾と再生位置の差
+     *   手動補正    : 設定値 (環境ごとのずれを詰めるため)
+     */
+    private getJikkyoDelayMs(): number {
+        let delay = 0;
+
+        if (this.broadcastTime !== null) {
+            // チューナー → Mirakurun → EPGStation までの遅れ
+            delay += this.broadcastTime.receivedAt - this.broadcastTime.time;
+        }
+
+        delay += this.getPlaybackBufferDelayMs();
+
+        const setting = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();
+        const offset = typeof setting.jikkyoLiveOffsetSec === 'number' ? setting.jikkyoLiveOffsetSec : 0;
+        delay += offset * 1000;
+
+        if (delay < 0) {
+            return 0;
+        }
+
+        return Math.min(delay, BaseVideo.JIKKYO_MAX_DELAY_MS);
+    }
+
+    /**
+     * 受信済みバッファの末尾と再生位置の差 (ミリ秒)
+     * ライブ再生ではこれがそのまま「映像が実時間からどれだけ遅れて表示されているか」に近い
+     */
+    private getPlaybackBufferDelayMs(): number {
+        const video = this.dp === null ? null : (this.dp as any).video;
+        if (video === null || typeof video === 'undefined' || typeof video.buffered === 'undefined') {
+            return 0;
+        }
+
+        try {
+            if (video.buffered.length === 0) {
+                return 0;
+            }
+            const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+            const delay = (bufferedEnd - video.currentTime) * 1000;
+
+            return delay > 0 ? delay : 0;
+        } catch (err) {
+            // buffered へのアクセスは状態によっては例外になる
+            return 0;
+        }
+    }
+
+    /**
+     * 配信中の映像の放送時刻を定期的に取り直す
+     */
+    private startBroadcastTimePolling(): void {
+        const channelId = this.getChannelId();
+        if (channelId === null) {
+            return;
+        }
+
+        const update = async (): Promise<void> => {
+            try {
+                const streamApiModel = container.get<IStreamApiModel>('IStreamApiModel');
+                const info = await streamApiModel.getStreamInfo(false);
+                const item = info.items.find(
+                    x => x.channelId === channelId && typeof x.broadcastTime !== 'undefined',
+                );
+                this.broadcastTime = item?.broadcastTime ?? null;
+            } catch (err) {
+                // 取得できなくてもコメント表示自体は続ける (補正が効かなくなるだけ)
+                console.error(err);
+            }
+        };
+
+        void update();
+        this.broadcastTimeTimerId = window.setInterval(() => {
+            void update();
+        }, BaseVideo.BROADCAST_TIME_INTERVAL);
+    }
+
+    /**
+     * 放送時刻の取得を止め、遅延待ちのコメントを破棄する
+     */
+    private stopJikkyoDelay(): void {
+        if (this.broadcastTimeTimerId !== null) {
+            window.clearInterval(this.broadcastTimeTimerId);
+            this.broadcastTimeTimerId = null;
+        }
+        for (const timerId of this.jikkyoDelayTimerIds) {
+            window.clearTimeout(timerId);
+        }
+        this.jikkyoDelayTimerIds = [];
+        this.broadcastTime = null;
+    }
+
+    /**
+     * 視聴中の放送局 id を返す (ライブ視聴のコンポーネントで override する)
+     */
+    protected getChannelId(): apid.ChannelId | null {
+        return null;
+    }
+
+    /**
      * ニコニコ実況コメントを DPlayer の弾幕として描画する
      */
     private drawJikkyoComment(comment: JikkyoComment): void {
@@ -232,6 +368,7 @@ export default abstract class BaseVideo extends Vue {
      * DPlayer インスタンスを破棄する
      */
     protected destroyPlayer(): void {
+        this.stopJikkyoDelay();
         if (this.jikkyoCommentClient !== null) {
             this.jikkyoCommentClient.destroy();
             this.jikkyoCommentClient = null;

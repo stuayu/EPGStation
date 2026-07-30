@@ -47,6 +47,7 @@ export default class SettingStorageModel extends AbstractStorageBaseModel<ISetti
             isForceEnableSubtitleStroke: true,
             isEnableJikkyoComment: true,
             jikkyoServerUrl: 'https://nx-jikkyo.tsukumijima.net',
+            jikkyoLiveOffsetSec: 0,
             isNextUpPanelOpen: true,
             nextUpPanelTab: 'latest',
             isEnableNextUpAutoPlayForLatestTab: false,

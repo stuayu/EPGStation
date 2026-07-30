@@ -493,6 +493,11 @@ export default class StreamApiModel implements IStreamApiModel {
                     }
                 }
 
+                // 実況コメントの遅延補正用。TDT / TOT をまだ受信していない場合は付けない
+                if (typeof info.info.broadcastTime !== 'undefined') {
+                    item.broadcastTime = info.info.broadcastTime;
+                }
+
                 items.push(item);
             } else if (info.info.type === 'RecordedStream' || info.info.type === 'RecordedHLS') {
                 // ビデオストリーミング

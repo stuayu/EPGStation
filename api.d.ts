@@ -1125,6 +1125,18 @@ export interface LiveStreamInfoItem {
     description?: string;
     extended?: string;
     rawExtended?: RawExtended;
+    // 配信中の映像の放送時刻 (TS の TDT / TOT 由来)。実況コメントの遅延補正に使う
+    broadcastTime?: StreamBroadcastTime;
+}
+
+/**
+ * 配信中の映像の放送時刻
+ */
+export interface StreamBroadcastTime {
+    // TDT / TOT が示す放送時刻 (UnixTime ms)
+    time: UnixtimeMS;
+    // その TDT / TOT をサーバが受信した時刻 (UnixTime ms)
+    receivedAt: UnixtimeMS;
 }
 
 /**

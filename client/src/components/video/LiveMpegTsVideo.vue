@@ -42,6 +42,14 @@ class LiveMpegTsVideo extends BaseVideo {
         return this.jikkyoChannelId;
     }
 
+    /**
+     * 視聴中の放送局 id を返す
+     * 実況コメントの遅延補正で、配信中の映像の放送時刻を引くのに使う
+     */
+    protected getChannelId(): apid.ChannelId | null {
+        return this.channelId;
+    }
+
     public async beforeUnmount(): Promise<void> {
         super.beforeUnmount();
     }
