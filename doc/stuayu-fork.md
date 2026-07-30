@@ -117,6 +117,14 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 ## 変更箇所
 
+- **ライブ視聴のニコニコ実況コメントを放送波の時刻 (TDT / TOT) で遅延補正するようにした**
+    - **背景**: 実況コメントは実時間で届くのに対し、ライブ視聴の映像はチューナー → Mirakurun → エンコード → 配信 → 再生の分だけ遅れている。補正が無いとコメントが映像より先に流れ、実況として成立しなかった
+    - **放送時刻の取得 (`src/model/service/stream/util/BroadcastTimeExtractor.ts`)**: エンコード前の TS から TDT / TOT (PID 0x14) を読み取る pass-through Transform。入力の TS は加工せず下流へ流すので配信自体には影響しない。`LiveStreamBaseModel` のパイプライン先頭 (ARIB 字幕変換の前) に挿入している
+    - **配布**: `GET /api/streams` の `LiveStreamInfoItem` に `broadcastTime { time, receivedAt }` を追加した。`time` が放送時刻、`receivedAt` がサーバがそれを受け取った時刻で、差がチューナー → EPGStation の遅れにあたる
+    - **クライアント側の補正 (`client/src/components/video/BaseVideo.ts`)**: ライブ実況が有効な間 15 秒間隔で放送時刻を取り直し、**サーバ遅延 (receivedAt − time) + 再生側の遅延 (受信済みバッファ末尾 − 再生位置) + 手動オフセット**の合計だけコメント描画を遅らせる。補正しすぎを防ぐため上限は 60 秒、プレイヤー破棄時には待機中のコメントを破棄する
+    - **手動微調整**: 設定 > 「実況コメントの表示タイミング微調整」で ±秒を指定できる (`jikkyoLiveOffsetSec`)。環境ごとの配信遅延の差を詰めるためのもの
+    - **過去ログ再生は対象外**: 録画の過去ログ実況は元から再生位置に同期しているため補正しない。ただし基準となる `video_file.startAt` は TS 解析で TDT / TOT が取れた場合そちらを使うようになったので、こちらも精度が上がっている
+
 - **録画ファイルの TS (PSI/SI) を解析し、放送局・番組情報を DB に持つようにした**
     - **背景**: 外部ファイルの取り込みは、放送局や番組名をファイル名のパターンと `program.txt` から**推定**していた。ファイル名に放送局名が入っていない・表記が違うと放送局を特定できず、番組名も装飾付きのファイル名がそのまま入っていた。また取り込み時に ffprobe 解析すら行っておらず、尺・コーデック・解像度は再生時まで DB に入らなかった
     - **TS 解析器 (`src/model/recorded/ts/TsInfoAnalyzer.ts`)**: 既存の `DropCheckerModel` と同じ `aribts` のパイプライン (`TsReadableConnector` → `TsPacketParser` → `TsSectionParser`) で **PAT / SDT / NIT / PMT / EIT[p/f] / TDT / TOT** を解析する。[recisdb-proxy-rs](https://github.com/stuayu/recisdb-proxy-rs) の `ts_analyzer` に相当する。取得するのは以下

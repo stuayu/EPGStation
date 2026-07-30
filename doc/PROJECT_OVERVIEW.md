@@ -126,6 +126,7 @@ npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (
 - Windows 対応が本フォークの柱。サーバ側変更時は Windows での動作 (パス区切り、named pipe など) を常に考慮すること
 - Express 5 では `req.query` がアクセスごとに再パースされる getter になったため、`ServiceServer.ts` でリクエスト受信時に一度だけ実体化するミドルウェアを挟んでいる
 - TypeORM 1.x では criteria が空の `delete()` が禁止されているため、全件削除は `createQueryBuilder().delete()` を使う (既存コードは対応済み)
+- **ライブ実況の遅延補正**: ライブ配信は `BroadcastTimeExtractor` (`src/model/service/stream/util/`) が TS の TDT / TOT を読んで放送時刻を保持し、`GET /api/streams` の `broadcastTime` で配る。クライアント (`BaseVideo.ts`) は「サーバ遅延 + 再生バッファ + 手動オフセット」の分だけ実況コメントの描画を遅らせる
 - **録画ファイルの TS 解析**: 取り込み・アップロードしたファイルは `TsInfoAnalyzer` (`src/model/recorded/ts/`) が `aribts` で PAT / SDT / NIT / PMT / EIT[p/f] / TDT / TOT を解析し、放送局・番組・ストリーム構成を `video_file_ts_info` テーブルへ保存する。取り込み時の放送局特定は**ファイル名の推定ではなく network id + service id での厳密な引き当て**を優先する。ffprobe 解析と合わせて `VideoFileAnalyzeModel` (`src/model/video/`) が入口になり、Operator (取り込み時) と Service (API 経由) の双方から使う。`video_file.startAt` (ファイル先頭に対応する実時刻) は TDT / TOT が取れればそれを使う (実況コメントの時刻合わせに効く)
 - エンコードキューは `data/encodeQueue.json` に永続化され、Service プロセス起動時に `EncodeManageModel.restore()` で復元される (Web API の待ち受け開始はこの復元後)。キューを変更するコードを追加したら保存 (`saveQueue()`) の呼び出し漏れに注意
 - `ExecutionManagementModel` は優先度付きの排他ロック。`getExecution()` の Promise は 60 秒でタイムアウトするため、呼び出し側は必ず reject を処理する (放置するとキュー処理が止まる)
