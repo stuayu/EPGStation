@@ -121,6 +121,7 @@ import WikidataProgramDB from './db/WikidataProgramDB';
 import AnnictWorkDB from './db/AnnictWorkDB';
 import IThumbnailDB from './db/IThumbnailDB';
 import IVideoFileDB from './db/IVideoFileDB';
+import IVideoFileTsInfoDB from './db/IVideoFileTsInfoDB';
 import IWatchHistoryDB from './db/IWatchHistoryDB';
 import IAnnictWatchSyncDB from './db/IAnnictWatchSyncDB';
 import AnnictWatchSyncDB from './db/AnnictWatchSyncDB';
@@ -135,6 +136,7 @@ import ReserveDB from './db/ReserveDB';
 import RuleDB from './db/RuleDB';
 import ThumbnailDB from './db/ThumbnailDB';
 import VideoFileDB from './db/VideoFileDB';
+import VideoFileTsInfoDB from './db/VideoFileTsInfoDB';
 import WatchHistoryDB from './db/WatchHistoryDB';
 import EPGUpdateExecutorManageModel from './epgUpdater/EPGUpdateExecutorManageModel';
 import EPGUpdateManageModel from './epgUpdater/EPGUpdateManageModel';
@@ -227,6 +229,8 @@ import IRecordedTagManadeModel from './operator/recordedTag/IRecordedTagManadeMo
 import RecordedTagManadeModel from './operator/recordedTag/RecordedTagManadeModel';
 import DropCheckerModel from './operator/recording/DropCheckerModel';
 import IDropCheckerModel from './operator/recording/IDropCheckerModel';
+import ITsInfoAnalyzer from './recorded/ts/ITsInfoAnalyzer';
+import TsInfoAnalyzer from './recorded/ts/TsInfoAnalyzer';
 import IRecorderModel, { RecorderModelProvider } from './operator/recording/IRecorderModel';
 import IRecordingManageModel from './operator/recording/IRecordingManageModel';
 import IRecordingStreamCreator from './operator/recording/IRecordingStreamCreator';
@@ -361,6 +365,7 @@ export const set = (container: Container): void => {
     container.bind<IThumbnailDB>('IThumbnailDB').to(ThumbnailDB).inSingletonScope();
 
     container.bind<IVideoFileDB>('IVideoFileDB').to(VideoFileDB).inSingletonScope();
+    container.bind<IVideoFileTsInfoDB>('IVideoFileTsInfoDB').to(VideoFileTsInfoDB).inSingletonScope();
     container.bind<IWatchHistoryDB>('IWatchHistoryDB').to(WatchHistoryDB).inSingletonScope();
     container.bind<IAnnictWatchSyncDB>('IAnnictWatchSyncDB').to(AnnictWatchSyncDB).inSingletonScope();
     container.bind<ISeriesDB>('ISeriesDB').to(SeriesDB).inSingletonScope();
@@ -410,6 +415,7 @@ export const set = (container: Container): void => {
     container.bind<IRecordingUtilModel>('IRecordingUtilModel').to(RecordingUtilModel).inSingletonScope();
 
     container.bind<IDropCheckerModel>('IDropCheckerModel').to(DropCheckerModel);
+    container.bind<ITsInfoAnalyzer>('ITsInfoAnalyzer').to(TsInfoAnalyzer).inSingletonScope();
 
     container.bind<IRecorderModel>('IRecorderModel').to(RecorderModel);
 

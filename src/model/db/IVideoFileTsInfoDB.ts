@@ -1,0 +1,13 @@
+import * as apid from '../../../api';
+import VideoFile from '../../db/entities/VideoFile';
+import VideoFileTsInfo from '../../db/entities/VideoFileTsInfo';
+
+export default interface IVideoFileTsInfoDB {
+    upsert(info: VideoFileTsInfo): Promise<void>;
+    findId(videoFileId: apid.VideoFileId): Promise<VideoFileTsInfo | null>;
+    findRecordedId(recordedId: apid.RecordedId): Promise<VideoFileTsInfo | null>;
+    findWithoutTsInfo(limit: number): Promise<VideoFile[]>;
+    countWithoutTsInfo(): Promise<number>;
+    countAnalyzableVideoFiles(): Promise<number>;
+    deleteVideoFileId(videoFileId: apid.VideoFileId): Promise<void>;
+}
