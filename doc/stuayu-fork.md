@@ -131,6 +131,13 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **安全策**: タグは `^[A-Za-z0-9._-]{1,100}$`、ブランチ名は `/` のみ追加で許す書式に制限し、先頭が `-` のものは弾く (`git checkout --upload-pack=...` のようなオプション注入外部コマンドは `shell: false` で起動する。監視リポジトリの設定は `owner/repo` 形式、ブランチ設定も同じ書式検証を通したものだけ受け付ける。作業ツリーに未コミットの変更がある場合は更新を中断する
     - **対応する導入形態**: git clone した環境のみワンクリック更新できる (`installationType: 'git'`)。配布アーカイブ (7z) を展開しただけの環境は `canUpdate: false` を返し、リリースページへの導線だけを出す
     - **API**: `GET /api/update` (状況) / `POST /api/update/check` (再チェック) / `POST /api/update/run` (実行) / `GET /api/update/job` (進捗)。機能フラグ `updateNotification` (既定有効) と `config.yml` の `updateChecker` で制御する
+    - **Windows サービスとして動かしている場合の対応 (実機で全く動いていなかった)**: winser (nssm) が作るサービスは既定で **LocalSystem・セッション 0** で動くため、git も npm も実行できていなかった。原因は 3 つあり、いずれも `src/util/GitCommand.ts` と `scripts/install-win-service.ps1` で手当てした
+        - **git が PATH に無い**: Git for Windows を「現在のユーザーのみ」でインストールするとユーザースコープの PATH にしか入らず、サービスからは見えない (`spawn git ENOENT`)。`findGitExecutable()` が `%ProgramFiles%\Git\cmd\git.exe` 等の既定インストール先を探し、サービス登録スクリプトはサービス専用の環境変数 `Path` に node / git / (config.yml に絶対パスで書かれた) ffmpeg・tsreadex のディレクトリを追加する
+        - **git の所有者チェックで全コマンドが失敗する**: リポジトリの所有者 (インストールしたユーザー) と実行アカウント (SYSTEM) が違うため Git 2.35.2 以降が `fatal: detected dubious ownership in repository` を返す。`buildGitArgs()` が **コマンド単位で `-c safe.directory=<repo>`** を渡す (設定ファイルを書き換えないので実行アカウントを変えても副作用が残らない)。登録スクリプトは `git config --system --add safe.directory` も入れる
+        - **`npm.cmd` が起動できない**: Node 20 以降は `shell: false` で `.cmd` を spawn できない (EINVAL、CVE-2024-27980 の対策)。コメントには「shell 経由で起動する必要がある」と書かれていたのに `shell: false` のままだったため、`npm run all-install` が必ず失敗していた。`resolveNpmCommand()` が Windows のみ `shell: true` を返す (渡す引数は固定文字列だけなのでシェル解釈の余地は無い)
+        - **更新後にサービスが起き上がらない**: 回復設定が既定のままだと停止したままになる。登録スクリプトが `sc.exe failure` (自動再起動) と遅延自動起動を設定し、`UpdateManageModel` 側でも保険としてプロセスから切り離した `cmd.exe` に遅延させた `sc start` を投げる (既に起動していれば何もしない)
+        - **サービス管理の判定を明示できるようにした**: Windows サービスの自動判定は「win32 かつ対話コンソールなし」というヒューリスティックで、`npm start > log.txt` のようなリダイレクト起動でも真になる。登録スクリプトがサービスの環境変数へ `EPGSTATION_SERVICE_MANAGER=windows-service` / `EPGSTATION_WIN_SERVICE_NAME=<サービス名>` を書き込み、`detectSupervisor()` はこれを自動判定より優先する
+        - **`npm run install-win-service` の中身を差し替えた**: `winser -i -a` 直呼びから `scripts/install-win-service.ps1` 経由に変更 (winser の登録自体は従来どおり内部で呼ぶ)。既に登録済みのサービスへ設定だけ足す `npm run setup-win-service` と、ユーザーアカウントで動かす `-User` オプションも用意した。手順は `doc/windows-setup.md` を参照
 
 - **Web UI / API にログイン認証を追加した (既定は無効)**
     - **背景**: EPGStation 自体は無認証で、リバースプロキシ側で認証する前提だった。設定を画面から書き換えられるようにするにあたり、まず認証の土台を用意した
