@@ -360,7 +360,7 @@ export interface SearchPeriod {
 export interface RuleSearchOption {
     keyword?: string; // 検索キーワード
     ignoreKeyword?: string; // 除外検索キーワード
-    keyCS?: boolean; // 大文字���文字区別有効化 (検索キーワード)
+    keyCS?: boolean; // 大文字小文字区別有効化 (検索キーワード)
     keyRegExp?: boolean; // 正規表現 (検索キーワード)
     name?: boolean; // 番組名 (検索キーワード)
     description?: boolean; // 概要 (検索キーワード)

@@ -111,7 +111,7 @@
                                 </span>
                             </div>
                             <div class="d-flex align-center ga-2 mb-2 flex-wrap">
-                                <v-btn variant="outlined" :loading="annictWorkSyncing" @click="syncAnnictWorks">作品辞書を同���</v-btn>
+                                <v-btn variant="outlined" :loading="annictWorkSyncing" @click="syncAnnictWorks">作品辞書を同期</v-btn>
                                 <span v-if="annictWorkSyncResult" class="text-body-2">{{ annictWorkSyncResult }}</span>
                             </div>
                             <v-text-field
@@ -367,7 +367,7 @@
 
                             <v-card v-if="backfillStatus?.previewItems && backfillStatus.previewItems.length > 0" variant="outlined" class="mb-4">
                                 <v-card-title class="text-subtitle-1">
-                                    ドライラン結果プレ��ュー
+                                    ドライラン結果プレビュー
                                     <span v-if="backfillStatus.previewTruncated === true">(一部のみ表示)</span>
                                 </v-card-title>
                                 <v-table density="compact">
@@ -656,8 +656,8 @@
                         <v-window-item value="account">
                             <div class="text-subtitle-1 mb-2">ログインユーザー</div>
                             <div class="text-caption mb-2">
-                                システム管理者は設定変更・��ーザ��管理・バージョン更新ができます。最初にサインアップした人が自動でシステム管理者になり、以降は一般権限です。
-                                パスワードを変更すると、そのユーザ��のログイン状態 (発行済みセッション) はすべて無効になります
+                                システム管理者は設定変更・ユーザー管理・バージョン更新ができます。最初にサインアップした人が自動でシステム管理者になり、以降は一般権限です。
+                                パスワードを変更すると、そのユーザーのログイン状態 (発行済みセッション) はすべて無効になります
                             </div>
                             <v-table density="compact">
                                 <thead>
@@ -980,7 +980,7 @@ class SystemSetting extends Vue {
     }
 
     /**
-     * 更新通知・ワンク���ック更新が有効か (featureFlags.updateNotification)
+     * 更新通知・ワンクリック更新が有効か (featureFlags.updateNotification)
      */
     get isUpdateEnabled(): boolean {
         return isFeatureEnabled(this.serverConfigModel.getConfig(), 'updateNotification');
@@ -988,7 +988,7 @@ class SystemSetting extends Vue {
 
     /**
      * Annict 視聴記録同期の二重ゲートのうち、サーバー設定 (featureFlags) 側の状態。
-     * config.yml 側で無効な場合、この���面のスイッチを ON にしても同期は動作しない
+     * config.yml 側で無効な場合、この画面のスイッチを ON にしても同期は動作しない
      */
     get isEnabledAnnictSyncFeature(): boolean {
         const config = this.serverConfigModel.getConfig();
@@ -1029,7 +1029,7 @@ class SystemSetting extends Vue {
         return this.aliases.filter(a => a.source === 'llm').length;
     }
 
-    // 自動学習した対応だけを見たいことがあるので学習元とキーワードで絞り��めるようにする
+    // 自動学習した対応だけを見たいことがあるので学習元とキーワードで絞り込めるようにする
     get filteredAliases(): SeriesAliasItem[] {
         const keyword = (this.aliasKeyword ?? '').trim();
         return this.aliases.filter(a => {
@@ -1076,7 +1076,7 @@ class SystemSetting extends Vue {
     }
 
     /**
-     * 1 行分の付け替え先を編集バッファに記録する (元の値へ戻したら編集を取り���す)
+     * 1 行分の付け替え先を編集バッファに記録する (元の値へ戻したら編集を取り消す)
      */
     setAliasSeries(alias: SeriesAliasItem, seriesId: number | null): void {
         if (seriesId === null || seriesId === alias.seriesId) {
@@ -1087,7 +1087,7 @@ class SystemSetting extends Vue {
         this.aliasEdits = { ...this.aliasEdits, [alias.id]: { seriesId, seriesTitle: title } };
     }
     /**
-     * 選択した行をまとめて同じシリーズへ付け替え��
+     * 選択した行をまとめて同じシリーズへ付け替える
      */
     applyBulkAliasSeries(): void {
         if (this.bulkAliasSeriesId === null) return;
@@ -1802,7 +1802,7 @@ class SystemSetting extends Vue {
     }
 
     /**
-     * 編集した辞書 (付け替�� / 削除) をまとめて保存する。
+     * 編集した辞書 (付け替え / 削除) をまとめて保存する。
      * 付け替えたものはサーバ側で手動修正扱い (source: 'manual') になる
      */
     async saveAliases(): Promise<void> {
@@ -1851,7 +1851,7 @@ class SystemSetting extends Vue {
             if (result.failed.length > 0) {
                 this.snackbarState.open({ color: 'error', text: `テスト通知に失敗しました: ${result.failed.join('、')}` });
             } else {
-                this.snackbarState.open({ color: 'success', text: 'テスト��知を送信しました' });
+                this.snackbarState.open({ color: 'success', text: 'テスト通知を送信しました' });
             }
         } catch (err) {
             console.error(err);

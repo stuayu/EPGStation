@@ -107,7 +107,7 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     3. バックアップしたデータの復元
 
         > [!IMPORTANT]
-        > バックアップファイルからの復元は、EPGStationがWebから正常にアクセスできることを確認した後��行ってください。
+        > バックアップファイルからの復元は、EPGStationがWebから正常にアクセスできることを確認した後に行ってください。
 
         ```powershell
         npm run restore {今日の日付など}.sql
@@ -149,7 +149,7 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **問題**: EPGStation はストリーム開始後 5 秒データが来ないと失敗扱いにし、リトライは「5 秒 × 3 回 → 60 秒 × 27 回」の**共通枠**だった。前番組が放送時刻未定で延長している間は Mirakurun が正常にデータを流さないだけなのに、**約 27 分で諦めてしまう**。野球中継の延長では足りない
     - **失敗理由を 2 つに分けた** (`src/model/operator/recording/RecordingRetryPolicy.ts`):
         - `waitingForEvent` (最初のデータが来ない = まだ番組が始まっていない) → **既定 3 時間**まで 60 秒間隔で待ち続ける
-        - `error` (チューナーが開けな��・ソケット断など) → 従来どおり回数で見切る (5 秒 × 3 回 → 60 秒 × 27 回)
+        - `error` (チューナーが開けない・ソケット断など) → 従来どおり回数で見切る (5 秒 × 3 回 → 60 秒 × 27 回)
       分けたことで、**延長待ちがチューナー異常用の再試行回数を食い潰さない**
     - **設定で外出し**: `config.yml` の `recording` (`startWaitLimitMs` / `startWaitIntervalMs` / `firstDataTimeoutMs` / `errorFastRetryCount` / `errorFastRetryIntervalMs` / `errorRetryCount` / `errorRetryIntervalMs`)。サーバー設定 > 設定ファイルタブの「録画開始のリトライ」からも編集できる。`RecorderModel` は予約ごとに生成され都度 config を読むため**再起動不要**。`startWaitLimitMs: 0` で従来相当の挙動に戻せる
     - **あわせて判明した既存不具合 (修正済み)**: 放送時刻未定の番組**自体を予約**した場合、`endAt = startAt + 1ms` のため `setTimer()` の `now >= reserve.endAt` が成立し、**タイマーを張らずに録画されなかった**。`resolveEndAt` の導入 (暫定 3 時間) で解消済み
@@ -172,7 +172,7 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **配信プロファイル**: `stream` も画面から編集できる。スコープ (ライブ / 録画済み TS / 録画済みエンコード済み) とコンテナを選んで一覧を編集し、**新形式 (`stream.profiles`) と旧形式 (`stream.live.ts.<container>` 等) の両方**に対応する。新形式では id・コンテナ・無変換フラグ・映像/音声パラメータも指定でき、cmd を省略すると自動生成される。`StreamProfileManageModel` は呼び出しのたびに config を読むため**再起動不要**
     - **外部コマンド実行**: `recordingStartCommand` などの 9 個も編集できる。`ExternalCommandManageModel` はコンストラクタで config を読むため**要再起動**として扱う
     - **一覧項目は差分になるときだけ保存する**: 録画ディレクトリ・エンコード設定・配信プロファイルは実効値を読み込んで編集するため、そのまま保存すると触っていなくても差分として固定され、以後 config.yml 側の変更が反映されなくなる。**config.yml と値が違うときだけ**差分へ入れる
-    - **未対応**: DB 接続設定と認証設定のみ (上記の理由���より意図的に対象外)
+    - **未対応**: DB 接続設定と認証設定のみ (上記の理由により意図的に対象外)
 
 - **EIT[p/f] を視聴画面・番組表へ即時反映するようにした (+ 放送時間未定の番組の扱いを修正)**
     - **背景**: 現在放送中/次の番組 (EIT[p/f]) は 10 秒周期の短サイクルで DB へ保存されているが、クライアントへの通知は `epgUpdateIntervalTime` (既定 10 分) の長サイクルでしか飛んでいなかった。そのため延長・繰り上げが起きても視聴中の番組情報や番組表が最大 10 分古いままだった
@@ -203,8 +203,8 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 - **reasoning 系モデルで LLM の応答が空になる問題に、上限の自動引き上げで対処した**
     - **症状**: `llm title extraction failed: llm response has no content (finish_reason: length, completion_tokens: 2000)`。思考 (reasoning) にトークンを使い切り、本文 (`content`) を 1 文字も出さないまま `max_tokens` で打ち切られる。以前 `maxTokens` の既定を 200 → 2000 に上げたが、モデル・入力によっては 2000 でも足りない
     - **固定値を上げ続けない**: 思考量はモデルと入力で大きく振れるため、既定値を上げるだけでは追いつかない。`finish_reason: 'length'` かつ本文が空のときだけ **上限を 4 倍にして 1 度だけやり直し、成功した値をプロセス内で覚える** ようにした (`LlmTitleExtractor`)。2 本目以降のタイトルは最初から引き上げ後の上限で問い合わせるので、往復が無駄になるのは最初の 1 回だけ。引き上げの天井は `seriesLlm.maxTokensLimit` (既定 16000)
-    - **思考を切れるモデルでは切る**: ��クエストに `reasoning: { enabled: false }` を付ける。OpenRouter 等はこれを解釈して思考を止め、解釈しないサーバーは未知のキーとして無視するため、ローカル LLM (Ollama / llama.cpp) でも害はない
-    - **思考欄に答えを書くモデルへの対応**: `message.content` が空でも `message.reasoning` に JSON があればそこから拾う (本文を出さず思考欄にだけ答えを書くモデルが実在する)。抽出������従来どおり作品辞書で引き直して検証するため、ここを緩めてもハルシネーションは通らない
+    - **思考を切れるモデルでは切る**: リクエストに `reasoning: { enabled: false }` を付ける。OpenRouter 等はこれを解釈して思考を止め、解釈しないサーバーは未知のキーとして無視するため、ローカル LLM (Ollama / llama.cpp) でも害はない
+    - **思考欄に答えを書くモデルへの対応**: `message.content` が空でも `message.reasoning` に JSON があればそこから拾う (本文を出さず思考欄にだけ答えを書くモデルが実在する)。抽出結果は従来どおり作品辞書で引き直して検証するため、ここを緩めてもハルシネーションは通らない
     - テストは `test/itb/llm-title-extractor.test.js` (ローカル HTTP スタブサーバで LLM API を模擬) に追加した
 
 - **LLM が誤学習したエイリアス辞書を設定画面から修正できるようにした**
@@ -255,15 +255,15 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 - **シリーズ一覧に並べ替え・クール絞り込み・3 種の表示形式・各種バッジを追加した**
     - **並べ替え**: 更新順 (既定) / あいうえお順 / 放送開始日 / 最終放送日 / 録画件数 / 保存容量。昇順・降順を切り替えられる。あいうえお順は しょぼいカレンダーの `TitleYomi` (無ければ Annict の `titleKana`) を `series.titleKana` へ保持して並べる
-    - **クール絞り込み**: Annict の `seasonYear`/`seasonName` を、無ければ しょぼいカレンダーの初回放送年月 (1-3 冬 / 4-6 春 / 7-9 夏 / 10-12 秋) から導出して `series.seasonYear`/`seasonName` に保持し、「2025年春 (12)」形式で選択できるようにした (シリーズ���はアニメ以外も含まれるためジャンル名は付けない) (`GET /api/series/seasons`)
+    - **クール絞り込み**: Annict の `seasonYear`/`seasonName` を、無ければ しょぼいカレンダーの初回放送年月 (1-3 冬 / 4-6 春 / 7-9 夏 / 10-12 秋) から導出して `series.seasonYear`/`seasonName` に保持し、「2025年春 (12)」形式で選択できるようにした (シリーズにはアニメ以外も含まれるためジャンル名は付けない) (`GET /api/series/seasons`)
     - **放送状態の絞り込み**: 最終録画から 45 日以内なら「放送中」、それ以外を「完結」として扱う
     - **欠番での絞り込み**: 話数の連続性判定 (`SeriesContinuity`) は SQL で表現できないため、この絞り込み指定時のみ全件を取得してから JS 側で絞り込みページングし直す
-    - **表示形式 3 種**: ��リッド (16:9 カード) / リスト (左サムネイル + 右情報) / コンパクト (画像無しの高密度テーブル)。選択は localStorage に保存する
+    - **表示形式 3 種**: グリッド (16:9 カード) / リスト (左サムネイル + 右情報) / コンパクト (画像無しの高密度テーブル)。選択は localStorage に保存する
     - **バッジ**: 放送中 / 未視聴件数 / 欠番数 / 重複数 と、視聴進捗バー・録画件数・保存容量。未視聴数は `watch_history` の `status='watched'` を録画 ID 単位で DISTINCT 集計して差し引く
     - **集計は 1 クエリ**: 録画件数・合計サイズ・初回/最終放送日時・視聴済み件数を LEFT JOIN + GROUP BY でまとめて取得し、一覧で N+1 にしない。総件数は放送状態の絞り込みが無い場合に限り集計を伴わない COUNT で求める (実データ 983 シリーズで約 620ms → 数 ms)
     - **クールの決定は 3 段構え**: (1) 作品辞書 (`seasonSource: 'dictionary'`) → (2) **最古の録画日時からの推測** (`'estimated'`、1-3 冬 / 4-6 春 / 7-9 夏 / 10-12 秋) → (3) **手動設定** (`'manual'`)。実データ 983 シリーズで辞書が 814 件 (82.8%)、残り 169 件を録画から推測して **100% にクールが入る**ことを確認済み。手動設定したクールは自動補完で上書きしない
     - **手動編集**: `PUT /api/series/{seriesId}/metadata` でクール・読み仮名・総話数を設定できる。一覧の各カード/行の鉛筆アイコンからダイアログを開く。推測値の場合は「保存すると手動設定として固定される」旨をダイアログに表示する。年と季節は片方だけでは絞り込みに使えないためセットでのみ受け付ける
-    - **自動実行**: クール等は辞書の導入前に作られたシリーズには入っていないため、`SeriesMetadataFiller` が Operator 起動 10 分後 (作品辞書の同期完了後) に一度だけ自動で埋める。`POST /api/series/refresh-metadata` と一覧ツールバーの更新ボタンからも手動実行できる。全項目そろっているシリーズは辞書��引かないため繰り返し実行しても安い
+    - **自動実行**: クール等は辞書の導入前に作られたシリーズには入っていないため、`SeriesMetadataFiller` が Operator 起動 10 分後 (作品辞書の同期完了後) に一度だけ自動で埋める。`POST /api/series/refresh-metadata` と一覧ツールバーの更新ボタンからも手動実行できる。全項目そろっているシリーズは辞書を引かないため繰り返し実行しても安い
     - クール情報が空のときは一覧に理由と対処を示す案内を表示する (空のドロップダウンだけが出る状態にしない)
     - `SeriesListItem` に `titleKana` / `seasonYear` / `seasonName` / `recordedCount` / `totalFileSize` / `firstAiredAt` / `lastAiredAt` / `unwatchedCount` / `totalEpisodes` / `missingEpisodeCount` / `duplicateEpisodeCount` / `isOnAir` を追加。`GET /api/series` に `sort` / `order` / `seasonYear` / `seasonName` / `status` / `hasMissing` クエリを追加した
 
@@ -274,13 +274,13 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - クライアント側の `isFeatureEnabled()` (`client/src/util/FeatureFlags.ts`) も同じ判定に揃えた。サーバは `resolveFeatureFlags()` で全キーを解決済みの boolean にして配信するため、通常はそのまま読むだけになる (config 未取得時のみ false)
     - Wikidata 辞書 (`metadataDefaults.wikidata.enabled`) も既定 ON にした。API キー不要・無料で、アニメ以外のジャンルを照合できる唯一の辞書のため
 
-- **Wikidata を 3 つ目の作品辞書と���て統合し、アニメ以外のジャンルを照合できるようにした**
-    - **背景**: しょぼいカレンダー・Annict はどちらも**アニメ専���**のため、ドラマ・バラエティ・情報番組・ニュースには束ね先が存在しなかった。実データでは外部 ID の空いた 169 シリーズのうち 102 件が「番組名は抽出できたが束ね先が無い」状態で、その主成分は福島・岩手などのローカル情報番組だった
+- **Wikidata を 3 つ目の作品辞書として統合し、アニメ以外のジャンルを照合できるようにした**
+    - **背景**: しょぼいカレンダー・Annict はどちらも**アニメ専門**のため、ドラマ・バラエティ・情報番組・ニュースには束ね先が存在しなかった。実データでは外部 ID の空いた 169 シリーズのうち 102 件が「番組名は抽出できたが束ね先が無い」状態で、その主成分は福島・岩手などのローカル情報番組だった
     - **Wikidata の採用理由 (実測)**: 日本語ラベルを持つテレビ番組が **53,577 件** (原産国=日本 31,698 件)、日本語別名 16,844 件。API キー不要・無料。`ふくしまSHOW` `じゃじゃじゃTV` `イチモニ!` のような**ローカル局の番組まで収録されている**のが決め手。TMDB はバラエティ/ローカルが弱く、TVDB は API が有料化、Gガイド/Yahoo!テレビ/TVer は公開 API 無し。自前の EPG (`program` テーブル) は直近 1 週間のローリングウィンドウなので週次番組が 1 回しか出てこず辞書にならない
     - **既存辞書との重複排除**: Wikidata の **P11648「しょぼいカレンダーのシリーズID」**を取り込み、これを厳密な結合キーにする。索引構築時 (`WorkDictionary.ensureIndex()`) に P11648 が既存エントリの `syobocalTid` と一致した項目は**新しい作品として増やさず、既存エントリへ `wikidataQid` を併記するだけ**にする。投入順は しょぼいカレンダー → Annict → Wikidata なので、アニメの照合品質は現状から劣化しない。実データでの照合キーの重複はわずか 2.3% (1,095 / 48,096) で、残りは純増
     - **照合は厳密キーの完全一致のみ**: 一般番組は「パラダイス」「わっち!!」のような短く一般的なタイトルが多く、アニメ辞書と同じ含有一致を許すと誤爆する (実測で「ゲームパラダイス」→「パラダイス」)。さらに既存の `syobocalLookupKey()` は長音符を落とすため「あそビバ」と「あそビーバー」が同じキーになる。そこで長音符・波ダッシュ・中黒を保持する `strictProgramKey()` を追加し、Wikidata 由来のエントリは**この厳密キーの完全一致でのみ**引く (`strictIndex`)。実データの未マッチ 169 シリーズに対し、緩い照合では 29 件ヒットするが 3 件が誤り、厳密キー + 完全一致では **17 件ヒットで誤り 0**。装飾の除去は `SeriesNormalizer` / LLM 抽出の役目とし、辞書は「正解の集合」に徹する
     - **構成**: `WikidataProgramDictionary` (`src/model/metadata/wikidata/`) が SPARQL エンドポイントから一括取得し、`wikidata_program` / `wikidata_program_alias` の 2 テーブルへ保存する (sqlite / mysql 両マイグレーションあり)。`WorkDictionary` が 3 辞書を 1 つの索引へ統合する構造は既存のまま。同期は Operator 起動 8 分後 + 7 日間隔 (`metadataDefaults.wikidata` で設定、**既定 ON**。API キー不要で費用も発生しないため)
-    - **SPARQL の実装上の注意**: `?item wdt:P31/wdt:P279* wd:Q15416` のようなサブクラス再帰は公開エンドポイントでタイムアウトする (実測で 504)。主要クラス (`Q15416` テレビ番組 / `Q5398426` テレビシリーズ / `Q506240` テレビ映画 / `Q1261214` テレビスペシャル) を直接指定して `LIMIT`/`OFFSET` でページングする (1 ページ 5,000 件��約 2.4 秒)。エピソード単位の `Q21191270` は辞書に入れない
+    - **SPARQL の実装上の注意**: `?item wdt:P31/wdt:P279* wd:Q15416` のようなサブクラス再帰は公開エンドポイントでタイムアウトする (実測で 504)。主要クラス (`Q15416` テレビ番組 / `Q5398426` テレビシリーズ / `Q506240` テレビ映画 / `Q1261214` テレビスペシャル) を直接指定して `LIMIT`/`OFFSET` でページングする (1 ページ 5,000 件で約 2.4 秒)。エピソード単位の `Q21191270` は辞書に入れない
     - **`Series` への反映**: `wikidataQid` 列を追加し、Wikidata 単独の番組はこれをキーにシリーズを寄せる。あわせて**これまで一度も書かれていなかった `tmdbId` 列**を Wikidata の P4983 経由で初めて埋められるようになった。`matchMethod` に `'wikidata'` を追加
 
 - **シリーズ照合の LLM フォールバックをシリーズ単位へ拡張し、結果をマッチングルールとして蓄積するようにした**
@@ -290,15 +290,15 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **アニメ以外のジャンルの束ね**: 作品辞書はアニメのみのため、ドラマ・バラエティ・情報番組は検証先が無い。そこで `SeriesResolver` に**既存シリーズを検証先に使う**ステップ (`resolveByLlmGrouping`、作品辞書フォールバックの後・類似度スコアリングの前) を追加した。LLM が抽出した番組名を正規化したキーが既存シリーズの `normalizedTitle` と完全一致したときだけ、確度 0.9・`matchMethod: 'llm'` でリンクし、同時にエイリアスを学習する。LLM のシステムプロンプトも「アニメの作品名」から「全ジャンルのシリーズ名 (毎回変わるゲスト・特集・SP 表記を除去)」へ広げた
     - **DB / 画面**: `series_alias` に `source` 列 (`'manual'` / `'llm'`、既定 `'manual'`) を追加 (sqlite / mysql 両マイグレーションあり)。サーバー設定 > シリーズ管理タブのエイリアス辞書表に学習元バッジ・登録日時・学習元での絞り込み (すべて / LLM 学習 / 手動) を追加し、自動学習された規則を画面から確認・削除できるようにした
     - **OpenRouter 等のホスティング API 対応**: `seriesLlm.minIntervalMs` (リクエスト間隔の下限) と `seriesLlm.maxTokens` (応答の上限トークン数、既定 2000) を追加し、429 応答時は失敗回数ではなく `Retry-After` に従って休止するようにした。フリーモデルは分あたり上限があるため `minIntervalMs: 3500` 程度が必要
-    - **プロンプトの修正 (実 API で判明)**: 出力書式を `{"title":"シリーズ名"}` のように例示していたため、**プレースホルダの文字列をそのまま値として返すモデルがあった** (`nvidia/nemotron-3-ultra-550b-a55b:free` が `{"title":"シリーズ名"}` を返す)。書式は文章で説明し、具体形は末尾の入出力例 4 件だけで示す形に変更した。また **OpenRouter のフリーモデルはほぼ reasoning 系**で、本文の前に思考へ 200〜250 トークン使うため、当初の `max_tokens: 200` では `content` が空のまま `finish_reason: 'length'` で切れて必ず失敗する。`maxTokens` を設定可能にした���えで既定を 2000 に引き上げた (非 reasoning モデルは JSON を出した時点で停止するので実コストは増えない)。失敗時のログには `finish_reason` と応答冒頭を載せ、「プロンプト無視」と「途中切れ」をログだけで切り分けられるようにした
+    - **プロンプトの修正 (実 API で判明)**: 出力書式を `{"title":"シリーズ名"}` のように例示していたため、**プレースホルダの文字列をそのまま値として返すモデルがあった** (`nvidia/nemotron-3-ultra-550b-a55b:free` が `{"title":"シリーズ名"}` を返す)。書式は文章で説明し、具体形は末尾の入出力例 4 件だけで示す形に変更した。また **OpenRouter のフリーモデルはほぼ reasoning 系**で、本文の前に思考へ 200〜250 トークン使うため、当初の `max_tokens: 200` では `content` が空のまま `finish_reason: 'length'` で切れて必ず失敗する。`maxTokens` を設定可能にしたうえで既定を 2000 に引き上げた (非 reasoning モデルは JSON を出した時点で停止するので実コストは増えない)。失敗時のログには `finish_reason` と応答冒頭を載せ、「プロンプト無視」と「途中切れ」をログだけで切り分けられるようにした
     - **抽出結果の妥当性検証 (実測で判明した誤リンク対策)**: 「抽出結果を作品辞書で引き直す」だけでは、**実在する別作品の名前を返した場合に素通りしてしまう**。169 シリーズの実解析で「あそビバ (福島の情報番組)」→「あそびにいくヨ!」(録画 6 件)、「TUF新春ロードショー」→「THE UNLIMITED -兵部京介-」、「プロフェッショナルランキング★日曜劇場名場面ランキングBEST10」→「プロフェッショナル 仕事の流儀」の 3 件が誤って辞書に当たっていた。`isDerivedFromTitle()` (`SeriesNormalizer`) を追加し、**元タイトルの照合キーが抽出結果の照合キーを含むこと**を要求する。実データでは誤り 3 件を全て阻止し、正しい 18 件を維持、取りこぼしは 1 件 (「アニメ魔入りました!入間くん4 …」→「魔入りました!入間くん 第4シリーズ」、LLM が「第4シリーズ」を補ったため含有にならない) のみ。なお類似度は判別に使えない (誤り 0.36 > 正しい 0.16〜0.17)
     - **バッチ処理と休止の相互作用 (実測で判明)**: レート制限や連続失敗で休止 (`suspendedUntil`) に入ると `extractWorkTitle()` は問い合わせをせず即 null を返す。169 シリーズの一括解析で 24 件目に 429 を踏んだ結果、**残り 145 件が休止時間内に一瞬で「抽出できず」として消化された**。`ILlmTitleExtractor.isSuspended()` を追加し、`SeriesMetadataFiller` は休止を検知したら以降の LLM 呼び出しを止めて次回実行へ回すようにした (永続キャッシュがあるため次回は続きから進む)
-    - **モデル選定 (2026-07 時点の実測)**: `inclusionai/ling-3.0-flash:free` が抽出精度��応答速度 (2〜6 秒) ともに良好で推奨。`openai/gpt-oss-20b:free` も正しく動く。`nvidia/nemotron-3-ultra-550b-a55b:free` は書式指示に従わないことがあり非推奨。**推奨モデルを含め OpenRouter のフリーモデルはほぼ reasoning 系**なので、`maxTokens` は既定 (2000) のままにすること
+    - **モデル選定 (2026-07 時点の実測)**: `inclusionai/ling-3.0-flash:free` が抽出精度と応答速度 (2〜6 秒) ともに良好で推奨。`openai/gpt-oss-20b:free` も正しく動く。`nvidia/nemotron-3-ultra-550b-a55b:free` は書式指示に従わないことがあり非推奨。**推奨モデルを含め OpenRouter のフリーモデルはほぼ reasoning 系**なので、`maxTokens` は既定 (2000) のままにすること
     - **精度メトリクスとの関係**: サーバー設定 > シリーズ管理タブの「精度メトリクス」は**番組表 (EPG) ⇄ シリーズの事前マッピング (`ProgramSeriesApiModel.precompute`) の直近バッチ**の集計であり、録画のシリーズ照合率とは別物。詳細な注意点は下記の「精度メトリクスの読み方」を参照
 
 - **外部サービスのエンドポイント URL を設定画面から差し替え可能にした**
     - Cloudflare Workers などのキャッシュ/プロキシを手前に置いて運用できるようにするため、ハードコードしていた 4 つの外部 URL (しょぼいカレンダー DB API / Annict GraphQL API / fxtwitter JSON API / 共有静的データ URL) を設定値にした
-    - 解決は `MetadataEndpointResolver` に一元化し、優先順位は他の設定と同じく **DB (設定画面) > config.yml (`metadataDefaults.endpoints`) > 同梱既定値**。従来の `metadataSharedDataUrl` は引き続き有効で、`endpoints.sharedData` があればそちらが優先���れる
+    - 解決は `MetadataEndpointResolver` に一元化し、優先順位は他の設定と同じく **DB (設定画面) > config.yml (`metadataDefaults.endpoints`) > 同梱既定値**。従来の `metadataSharedDataUrl` は引き続き有効で、`endpoints.sharedData` があればそちらが優先される
     - 値は http/https の URL としてのみ受け付け、不正な値 (`file://` や URL として解釈できない文字列) は無視して既定値へフォールバックする
     - 利用側 (`SyobocalProvider` / `SyobocalTitleDictionary` / `AnnictProvider` / `AnnictWorkDictionary` / `SeriesImageModel` / `SharedDataFetcher`) はすべてこのリゾルバ経由に統一した。**プロキシ側は元サービスと同じパス・クエリ・レスポンス形式をそのまま返す必要がある** (呼び出し側の組み立て方は変えていないため)
     - `SharedDataFetcher.startAutoUpdate()` は URL 未設定時に自動更新を開始しない実装だったが、設定画面から後で URL を入れられるようになったため、起動時に打ち切らず実行のたびに解決するよう変更した
@@ -319,7 +319,7 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 - **放送枠の冠 (先頭ブロック) の除去規則を一般化し、確定率を 92.9% → 94.9% に改善**
     - 局ごとの枠名を列挙するのではなく、未ヒット録画から**一般化できる規則**に落とした
     - **「アニメ」を含む冠の条件を緩和**: 従来は「空白を含まない 10 文字以内 + アニメ + 区切り」しか除去できず、`SEIBU TRAIN アニメスペシャル・` (冠の中に空白がある) や `水曜アニメ<水もん>` (区切りが括弧) を落とせなかった。冠の前半は空白を含んでよく、区切りは「・」「空白」に加えて**直後が括弧の場合**も許すようにした
-    - **括弧内の作品名を��補キーに追加**: `日5「ウィッチウォッチ」` `映画「五等分の花嫁」` `テレビアニメ「鬼滅の刃」シリーズ全編再放送` のように枠名と作品名が併記される形では、括弧の中だけが作品名になる。サブタイトルを作品名と誤認しうるため**他の候補がすべて外れた場合の最終手段**として引く (`精霊幻想記「祭りの夜」` は先に `精霊幻想記` で当たるのでこの候補まで到達しない)
+    - **括弧内の作品名を候補キーに追加**: `日5「ウィッチウォッチ」` `映画「五等分の花嫁」` `テレビアニメ「鬼滅の刃」シリーズ全編再放送` のように枠名と作品名が併記される形では、括弧の中だけが作品名になる。サブタイトルを作品名と誤認しうるため**他の候補がすべて外れた場合の最終手段**として引く (`精霊幻想記「祭りの夜」` は先に `精霊幻想記` で当たるのでこの候補まで到達しない)
     - **実写ドラマのガード**: 括弧の直前が `ドラマ` / `主演` / `実写` の場合はこの候補を使わない。実データで実写ドラマ「gift」がアニメ『Gift ～ギフト～ eternal rainbow』へ誤って寄る例が 1 件確認できたため
     - **末尾の読み仮名括弧を除いた候補を追加**: `羅小黒戦記(ロシャオヘイセンキ)`。丸括弧は `(HDマスター版)` のような版の区別に使うため本体からは除去せず、別候補として持つ
     - **ラテン文字の発音記号を畳む**: `Übel Blatt` と `Ubel Blatt` を同一視する。NFD で分解して U+0300〜U+036F のみ除去し **NFC へ戻す** (戻さないと日本語の濁点が分解形のまま残り、`ざつ旅` のようなキーが一致しなくなる。濁点・半濁点は U+3099/U+309A で除去範囲の外)
@@ -328,7 +328,7 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - 残る未ヒット 815 件は `ふくしまSHOW` `日曜劇場` `仙台市青葉区かのおが便利軒` などアニメ以外が大半
 
 - **秘密情報の暗号化鍵を `data/key/secret.key` へ自動生成するようにした (config.yml の `secretKey` は廃止)**
-    - 従来は config.yml の `secretKey` を手で��定しないと通知先 URL や Annict トークンの暗号化が一切機能しなかった (未設定のまま運用され、設定画面からの保存が `AppSettingSecretKeyIsNotConfigured` で失敗する事故につながっていた)。`SecretCrypto` が起動時に鍵ファイルを読み、無ければランダム鍵 (48 バイト base64url) を `mode 0o600` で生成して保存する
+    - 従来は config.yml の `secretKey` を手で設定しないと通知先 URL や Annict トークンの暗号化が一切機能しなかった (未設定のまま運用され、設定画面からの保存が `AppSettingSecretKeyIsNotConfigured` で失敗する事故につながっていた)。`SecretCrypto` が起動時に鍵ファイルを読み、無ければランダム鍵 (48 バイト base64url) を `mode 0o600` で生成して保存する
     - 旧バージョンで `secretKey` を設定していた環境では、鍵ファイルが無いときに限りその値を種として鍵ファイルを作成し、既存の暗号文をそのまま復号できるように移行する
     - Operator / Service / EPGUpdater が同時に初回起動しうるため、`fs.writeFileSync` の `wx` フラグによる排他作成 + `EEXIST` 時の再読み込みで競合を回避する
     - 鍵ファイルのパスは環境変数 `EPGSTATION_SECRET_KEY_FILE` で上書きできる (Docker 等でボリュームを分けたい場合向け)
@@ -354,9 +354,9 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - タブ構成を **基本 (変更履歴・ロールバック) / 連携 (Annict・しょぼいカレンダー・共有静的データ・メタデータキャッシュ) / 通知 (Webhook・Discord) / シリーズ管理** に再編。シリーズ管理タブの既存機能 (バックフィル・エイリアス辞書) はそのまま維持。「録画・エンコード」タブは WebUI から変更可能な設定項目が無いまま空タブとして残っていたため撤去した (エンコード関連の実行時設定は現状 config.yml 以外に持たせる予定がないため)
     - 画面上部に `requiresRestartKeys` (更新・ロールバック API レスポンス) に基づく「再起動が必要」バナーを常駐表示 (セッション内)。現状 `AppSettingSchema.ts` で `requiresRestart: true` を宣言している項目は無いため、通常は表示されない
     - `GET /api/settings/system/history` / `POST /api/settings/system/rollback` を使った変更履歴一覧・ロールバック UI (基本タブ) と、`GET /api/settings/system/notifications/failures` を使った通知失敗履歴一覧 (通知タブ) を追加
-    - **Annict 接続テスト専用 API を追加 (§6.2)**: `POST /api/settings/system/test/annict` (`src/model/service/api/settings/system/test/annict.ts`)。`IMetadataProvider` にオプショナルな `testConnection()` を追加し、`AnnictProvider.testConnection()` が `viewer { username }` クエリで疎通とトークンの有効性を確認する (`AnnictConnectionTestResult`)。従来の「専用 API が無いため��索 API を流用する簡易確認」を廃止し、画面の注意書きも削除した
+    - **Annict 接続テスト専用 API を追加 (§6.2)**: `POST /api/settings/system/test/annict` (`src/model/service/api/settings/system/test/annict.ts`)。`IMetadataProvider` にオプショナルな `testConnection()` を追加し、`AnnictProvider.testConnection()` が `viewer { username }` クエリで疎通とトークンの有効性を確認する (`AnnictConnectionTestResult`)。従来の「専用 API が無いため検索 API を流用する簡易確認」を廃止し、画面の注意書きも削除した
     - **Annict 視聴記録の自動同期を設定画面 (DB) から ON/OFF できるようにした (§5.5・§6.2、二重ゲート)**: `AppSettingSchema.ts` に `metadata.annict.syncEnabled` を追加し、`AnnictSyncQueueModel.enabled()` が `featureFlags.annictSync` (config.yml, 必須の opt-in) と `metadata.annict.syncEnabled` (DB, 設定画面から変更可能・未設定時は既定 `true`) の両方を満たす場合のみ同期する。`featureFlags.annictSync` が OFF の場合は画面のスイッチを ON にしても動作しないことを画面上に明記する
-    - **しょぼいカレンダー チャンネルマッピング表の編集 UI を追加 (§5.3・§6.2)**: `GET`/`PUT /api/settings/system/syobocal/channels` (`src/model/service/api/settings/system/syobocal/channels.ts`、実体は `IAppSettingApiModel` の `syobocalChannelMap` キーの薄いラッ��ー) を追加し、`AppSettingSchema.ts` に `syobocalChannelMap` (chId/networkId/serviceId/`syobocal` 未登録局フラグの配列) を追加した。`SyobocalChannelMap` の解決順を「同梱データ → 共有静的データ → ローカルファイル (`metadataChannelMappingPath`) → **DB 設定 (最優先)**」に変更し、起動時 + 60 秒間隔で DB 設定を読み直す (`refreshFromDb()`、保存直後の反映は IPC 等での即時通知はせず最大 60 秒の遅延を許容する eventual consistency)。画面では `GET /api/channels` から放送局を選択すると networkId/serviceId を自動補完できる
+    - **しょぼいカレンダー チャンネルマッピング表の編集 UI を追加 (§5.3・§6.2)**: `GET`/`PUT /api/settings/system/syobocal/channels` (`src/model/service/api/settings/system/syobocal/channels.ts`、実体は `IAppSettingApiModel` の `syobocalChannelMap` キーの薄いラッパー) を追加し、`AppSettingSchema.ts` に `syobocalChannelMap` (chId/networkId/serviceId/`syobocal` 未登録局フラグの配列) を追加した。`SyobocalChannelMap` の解決順を「同梱データ → 共有静的データ → ローカルファイル (`metadataChannelMappingPath`) → **DB 設定 (最優先)**」に変更し、起動時 + 60 秒間隔で DB 設定を読み直す (`refreshFromDb()`、保存直後の反映は IPC 等での即時通知はせず最大 60 秒の遅延を許容する eventual consistency)。画面では `GET /api/channels` から放送局を選択すると networkId/serviceId を自動補完できる
     - **共有静的データの自動更新 ON/OFF と「今すぐ同期」ボタンを追加 (§5.7・§5.8・§6.2)**: `AppSettingSchema.ts` に `metadata.sharedData.autoUpdate` を追加し、`SharedDataFetcher.startAutoUpdate()` が定期実行の都度 DB 設定 (未設定時は既定 `true`) を確認してスキップ可否を判定するようにした。`ISharedDataFetcher.syncNow()` を追加し、自動更新の ON/OFF に関わらず即座に取得して `startAutoUpdate()` 登録済みコールバックへ反映する。専用 API `POST /api/settings/system/shared-data/sync` (`SharedDataSyncResult`) を追加
     - `GET /api/schedules/series-metrics` を使った精度メトリクス (未マッチ番組率・confidence 分布) 表示をシリーズ管理タブに追加 (`client/src/model/api/series/ISeriesApiModel.ts` に `getMetrics()` を追加)
     - `client/src/views/Settings.vue` の「サーバー設定を開く」ボタンを `featureFlags.systemSettings` でゲート (無効時は非表示)。`SystemSetting.vue` 側でも直接 URL アクセス時に同フラグを見て `/settings` へリダイレクトする防御を追加
@@ -381,7 +381,7 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - 連続再生を実装: `VideoContainer.vue` が残り再生時間 (`remainingTime`) と再生終了 (`ended`) を親へ emit し、`WatchRecorded.vue` が `NextUpPanel` へ中継。シリーズタブ選択時は常時、新着タブ選択時は設定 (`isEnableNextUpAutoPlayForLatestTab`, 既定 OFF、`Settings.vue` の Next Up パネル欄で ON 可) で有効な場合、再生終了 8 秒前に「次: 第 n 話」カウントダウンカードを表示し (キャンセルボタンあり)、カウント 0 で自動的に次話を再生する。次に再生する録画はシリーズタブでは話数昇順で現在より後の最小話数、無ければ未視聴優先、新着タブでは未視聴優先で解決
         - パネルにも視聴進捗バー・未視聴/視聴中/視聴済みバッジを表示 (`WatchStatusUtil` を再利用)
         - パネルの開閉状態・選択タブを `ISettingStorageModel` (`isNextUpPanelOpen` / `nextUpPanelTab`) に保存し次回視聴時に復元。既定タブが録画 ID 変更のたびにシリーズタブへ強制切替されていた不具合を修正 (ユーザー選択を尊重し、上書きしない)
-        - キーボードショートカット `N` キーで次��録画を再生 (`document` レベルの keydown リスナー、input/textarea/contenteditable にフォーカス中は無視。将来のリモコン操作を見据えた設計)
+        - キーボードショートカット `N` キーで次の録画を再生 (`document` レベルの keydown リスナー、input/textarea/contenteditable にフォーカス中は無視。将来のリモコン操作を見据えた設計)
         - `data === null` (ロード中/404) のとき「シリーズへ」ボタンが誤って表示される不具合を修正 (`data !== null && data.currentSeriesId !== null`)
         - `WatchRecorded.vue` が `featureFlags.nextUpPanel` を見ずにパネルを常時表示していた回帰を修正 (無効時はパネル自体を描画しない)
         - 録画詳細レスポンス自体には `seriesId`/`episodeNo` が無いため、シリーズタブ選択時に `ISeriesApiModel.get(seriesId)` (既存 API) から話数マップを解決して表示・連続再生の順序判定に使用 (サーバ側変更なし)
@@ -400,14 +400,14 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - `AppSettingDB.getAll()` は行の JSON が壊れていても例外を投げず、その行だけ無視してログに残すよう修正 (壊れた 1 行で設定画面・ダッシュボード・通知が全滅するのを防ぐ)
     - **設定のホットリロード IPC (§6.3)**: 設定更新・ロールバック成功時に Service プロセスから Operator プロセスへ IPC で通知する仕組みを追加 (`ModelName.appSetting` / `AppSettingFunctions.notifyChanged`、`IAppSettingChangeEvent` / `AppSettingChangeEvent`)。対象モジュール (メタデータプロバイダー・通知) はいずれも DB 設定を都度読み直す実装のため、現時点では明示的な再初期化処理は不要だが、将来キャッシュを持つモジュールが増えた場合のフック地点として用意した。録画中の処理には一切影響しない fire-and-forget 通知
     - **通知イベント種別を追加し、実際に発火**: `recording.dropped` (ドロップ検出、`RecorderModel.updateDropFileLog()` でドロップ数 > 0 のとき)・`recording.missed` (録り逃し検出、`EventSetter` の録画リトライオーバー時)・`series.newEpisode` (シリーズ新話追加、`SeriesResolver.linkTo()` で新規エピソード行かつ初回放送と判定できた場合)・`storage.lowSpace` (ディスク残量低下、`StorageManageModel` で閾値を下回った時、同一ディレクトリへの連投を 30 分間隔で抑制)
-    - **視聴履歴の孤児レコード対策**: `WatchHistoryDB.deleteByVideoFileId` / `deleteByRecordedId` を、録画削除・ビデオ���ァイル個別削除の両方 (`RecordedManageModel.delete` / `deleteVideoFile`) から呼び出すようにした
+    - **視聴履歴の孤児レコード対策**: `WatchHistoryDB.deleteByVideoFileId` / `deleteByRecordedId` を、録画削除・ビデオファイル個別削除の両方 (`RecordedManageModel.delete` / `deleteVideoFile`) から呼び出すようにした
     - **WatchHistory の status カラム整合**: mysql 用マイグレーション (`FixWatchHistoryStatusColumn`, varchar(20) 化) に対応する sqlite 側マイグレーションが無かったため追加 (テーブル再作成による移行、既存データは保持)
     - `api.yml` に `AppSettingValue` / `AppSettingUpdateResult` / `AppSettingHistoryItem` / `NotificationTestResult` / `NotificationFailureHistoryItem` のスキーマを追加し、同じ型を `api.d.ts` にも追加。`GET /api/settings/system/notifications/failures` (通知の失敗履歴取得、`INotificationDispatcher.getFailureHistory()` を公開) を新規追加
     - クライアント UI (変更履歴・ロールバック・requiresRestart の表示、失敗履歴一覧) は別ステップで対応予定
 
 - 既存録画のシリーズ化バックフィルバッチを追加（S20、サーバ側のみ）
     - 提案書 §11.1 に対応。`seriesLibrary` 機能導入前から存在する既存録画に対し、`SeriesResolver.resolve()` を録画 id 昇順でチャンク分割しながら順次適用し、シリーズへのリンク付け・未確定キューへの積み込みを行うバックグラウンドジョブ (`ISeriesBackfillManageModel` / `SeriesBackfillManageModel`, `src/model/operator/series/`)。ジョブは Operator プロセスで実行し、他の recorded 系ジョブ (S18 の `ImportJobManageModel`) と同様に Service プロセスからは IPC (`ModelName.series` / `SeriesFunctions.startBackfill` / `getBackfillStatus` / `cancelBackfill`) 経由で操作する
-    - **チャンク分割・低優先度**: 1 チャンクあたり既定 50 件 (`chunkSize` で変更可、1〜500 にクランプ) を `IRecordedDB.findForSeriesBackfill(afterId, limit)` (id 昇順・録画中を除く) で取得して処理し、チャンク間に既定 500ms (`intervalMs` で調整可、テスト用) の待機を挟むこ��で SQLite への録画書き込みと継続的に競合しないようにする。各チャンクは独立した小さな DB 呼び出しの集合であり、バックフィル全体を単一の長時間トランザクションにはしない
+    - **チャンク分割・低優先度**: 1 チャンクあたり既定 50 件 (`chunkSize` で変更可、1〜500 にクランプ) を `IRecordedDB.findForSeriesBackfill(afterId, limit)` (id 昇順・録画中を除く) で取得して処理し、チャンク間に既定 500ms (`intervalMs` で調整可、テスト用) の待機を挟むことで SQLite への録画書き込みと継続的に競合しないようにする。各チャンクは独立した小さな DB 呼び出しの集合であり、バックフィル全体を単一の長時間トランザクションにはしない
     - **中断・再開が自由**: 進捗 (状態・カウンタ・再開カーソル `lastRecordedId`) を `IAppSettingDB` (キー `seriesBackfill`) へチャンク完了毎に永続化する。`DELETE /api/series/backfill` でのキャンセルはもちろん、Operator プロセスが異常終了して `state: 'running'` のまま保存されていた場合も次回起動時に読み込むタイミングで `canceled` 扱いへ補正し、次の `start()` 呼び出しで `lastRecordedId` の続きから再開する (処理は `SeriesResolver.resolve()` 側が manualLock を除き冪等なため、万一同じ録画を再処理しても結果は変わらない)
     - **manualLock はスキップ**: 録画に既存の手動確定リンク (`manualLock: true`) がある場合は `SeriesResolver.resolve()` を呼ばずスキップ件数としてカウントする
     - **進捗取得**: 総件数 (処理済み + 残件数として都度再計算)・処理済み・リンク作成数・未確定キュー行き数・スキップ数・失敗数・状態 (`idle`/`running`/`completed`/`canceled`/`failed`) を返す
@@ -494,7 +494,7 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **番組表⇄シリーズの事前マッピングバッチ化 (S14)**: `ProgramSeriesApiModel.get()` を DB 書き込みの無い参照専用メソッドに変更 (番組ダイアログを開くだけではレコードが増えなくなった)。マッピングの確定は新設の `precompute(programIds)` が担い、EPG 更新 (`EPGUpdateManageModel.saveProgram` → `PROGRAM_UPDATED` イベント) をトリガーに実行される。判定は録画側の `SeriesResolver`/`scoreCandidate` と同じしきい値 (`settings.series.matchThreshold`、既定 0.8) を再利用し、しきい値未満は確定させない。`GET /api/schedules/series-metrics` を追加し、直近バッチの未マッチ番組率・confidence 分布 (5 バケット) を取得できるようにした。機能フラグ OFF 時は 500 ではなく 404 を返すよう統一
     - **Annict の syobocalTid 一意確定 (S16)**: `AnnictProvider.search()` が `context.syobocalTid` を受け取ると検索件数を増やし、`syobocalTid` が完全一致する作品を文字列一致より優先して一意確定する。`AnnictSyncApiModel.sync()` はシリーズに `syobocalTid` が既にあればそれを検索コンテキストへ渡し、一致した作品のみを採用する (タイトル類似度のしきい値をバイパス)。同期処理も `MetadataService.search()` 経由になったためキャッシュが効くようになった。`AnnictTokenIsNotConfigured` を 500 ではなく 400 で返すよう修正
     - api.yml / api.d.ts に `MetadataProviders` / `MetadataSearchResult(s)` / `ProgramSeriesMetrics` のレスポンススキーマを追加
-    - **既知の未実装 (継続課題)**: `IMetadataProvider` のメソッド名は `search`/`get` のまま (`resolveSeries`/`getSeriesInfo`/`listEpisodes`/`pushWatchRecord` への全面改名は見送り、動作的に同等なチェーン/キャッシュ機構のみ追加)。Annict の視聴記録双方向同期 (`pushWatchRecord`、`WatchHistory` 連動) は未着手。GitHub 上の共有静的データ (チャンネルマッピング/エイリアス辞書) のオンライン取得は未実装 (同梱データ + config 上書きのみ)。しょぼいカレンダー XML パーサーの堅牢化 (非正規表現ベース化) は未着手。未登録局向けの話数マスタ突合・遅延放送対応 (§5.4 補完策) は未着手。欠番の「放送予定総話数」ベース検出・補完予約提案 (S15 §4.7) は未��手。すべて feature flag でゲートされており、無効化すれば既存動作に影響しない (フラグの既定値は後に ON へ変更した)
+    - **既知の未実装 (継続課題)**: `IMetadataProvider` のメソッド名は `search`/`get` のまま (`resolveSeries`/`getSeriesInfo`/`listEpisodes`/`pushWatchRecord` への全面改名は見送り、動作的に同等なチェーン/キャッシュ機構のみ追加)。Annict の視聴記録双方向同期 (`pushWatchRecord`、`WatchHistory` 連動) は未着手。GitHub 上の共有静的データ (チャンネルマッピング/エイリアス辞書) のオンライン取得は未実装 (同梱データ + config 上書きのみ)。しょぼいカレンダー XML パーサーの堅牢化 (非正規表現ベース化) は未着手。未登録局向けの話数マスタ突合・遅延放送対応 (§5.4 補完策) は未着手。欠番の「放送予定総話数」ベース検出・補完予約提案 (S15 §4.7) は未着手。すべて feature flag でゲートされており、無効化すれば既存動作に影響しない (フラグの既定値は後に ON へ変更した)
 
 - シリーズ管理 (S8〜S11) の未確定キュー・マージ/分割・エイリアス・Undo API を追加
     - 未確定キュー: `GET /api/series/pending` (一覧)・`PUT /api/series/pending/{pendingId}` (候補から確定、既存の手動割当ロジックを再利用)・`DELETE /api/series/pending/{pendingId}` (この録画はシリーズ化しない、キューから除外のみで再発防止フラグは持たない)
@@ -531,7 +531,7 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 - シリーズ自動マッピングエンジンを追加（S9）
     - 正規化タイトル類似度、放送局、しきい値を使って既存シリーズを選択
-    - 複数局放送を同一シリーズへ集約し、再放送は既存���ピソードへ再利用
+    - 複数局放送を同一シリーズへ集約し、再放送は既存エピソードへ再利用
     - 録画完了時に自動実行し、手動ロック済み対応は変更しない
 
 - シリーズ管理のデータ基盤を追加（S8）
@@ -637,7 +637,7 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - エンコード設定のチューニングと HEVC 対応例の追加
         - テンプレートのライブ HLS コマンドを VBV 制約 (`-maxrate` / `-bufsize`) + profile/level 指定付きの低遅延 fMP4 版に刷新 (1080p/720p/480p)
         - HEVC (libx265, `-tag:v hvc1`) のコマンド例をコメントで同梱 (`-tag:v hvc1` は Safari / iOS 再生に必須)
-    - エンコードコマンドのシェルパイプライン対�� (tsreadex 前処理)
+    - エンコードコマンドのシェルパイプライン対応 (tsreadex 前処理)
         - cmd に `|` を含む場合はシェル経由 (Windows: cmd.exe / その他: /bin/sh) で実行される (`src/model/service/encode/EncodeProcessManageModel.ts`)
         - `%TSREADEX%` 変数を追加。config の `tsreadex` で実行パスを指定 (省略時は PATH 上の tsreadex)
     - 転居などで放送局情報が失われた過去の録画番組の表示名が壊れる問題を修正
@@ -649,13 +649,13 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - Mirakurun のサービス一覧に物理チャンネル情報を持たないサービスが含まれると、それ以降の放送局が DB に登録されない不具合を修正 (`ChannelDB.insert()` の `return` → `continue`)
     - エンコードキューを永続化し、Service プロセスの再起動でキューが消えないように変更
         - 未完了のエンコード情報 (実行中 + 待機中) を `data/encodeQueue.json` に保存する `EncodeQueueStoreModel` を追加。一時ファイルへ書いてから rename するため書き込み途中のファイルが残らない
-        - Service プロセス���動時に `EncodeManageModel.restore()` で復元する (`ServiceExecutor.ts`)。実行中だったエンコードはプロセスごと失われているため待機中として積み直し、`encodeId` を引き継いだうえで払い出しカウンタを衝突しない値まで進める
+        - Service プロセス起動時に `EncodeManageModel.restore()` で復元する (`ServiceExecutor.ts`)。実行中だったエンコードはプロセスごと失われているため待機中として積み直し、`encodeId` を引き継いだうえで払い出しカウンタを衝突しない値まで進める
         - 復元完了後に Web API の待ち受けを開始する (復元前に push されると encodeId が衝突するため)
         - 保存タイミングは push / 完了 / キャンセル時。保存に失敗してもエンコード自体は継続する (ログのみ)
     - エンコードが空き枠を残したまま開始されない不具合を修正
         - `ExecutionManagementModel.getExecution()` がタイムアウトした際、実行権待ちキューに自分の要素を残していたため、その要素へ実行権が渡ると誰も `unLockExecution()` を呼べず**ロックが永久に解放されなくなっていた**。以降のエンコード追加・キューチェック・終了処理がすべてタイムアウトし続けるため、「並列実行されるはずのエンコードが動かない」状態になる。タイムアウト時にキューから確実に取り除くよう修正
         - `EncodeManageModel.checkQueue()` は 1 回の呼び出しで 1 件しか起動しないため、同時実行枠が複数空いていても次の終了通知まで次のエンコードが始まらなかった。起動に成功したら続けてキューをチェックするよう変更 (復元時に複数件を一度に起動できるようになる)
-        - `checkQueue()` の実行権取得失敗を捕捉し、一定時間後に再チェックするよう変更 (従来は unhandledRejection となりキューが���置されていた)
+        - `checkQueue()` の実行権取得失敗を捕捉し、一定時間後に再チェックするよう変更 (従来は unhandledRejection となりキューが放置されていた)
     - ダッシュボードの録画済みカードの表示崩れを修正
         - Vuetify 3 以降で `v-img` の既定が `cover` から `contain` に変わったため、サムネイルが上下に余白の付いた縮小表示になっていた。`cover` を明示 (`RecordedSmallCard.vue` / `RecordedLargeCard.vue` / `EncodeSmallCard.vue` / `RecordedDetail.vue`)
         - `RecordedSmallCard` の高さが `100px` 固定だったが、Vuetify 3 以降のタイポグラフィでは 4 行分が収まらず説明文が上下で切れてカードからはみ出していた (実測 116px)。`min-height` に変更
@@ -745,7 +745,7 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - TypeScript 5.9 → 6.0 系。あわせてクライアントの `tsconfig.json` から TypeScript 7.0 で廃止予定の `baseUrl` を削除し、`paths` を tsconfig 相対 (`./src/*`) に変更
         - ESLint 8 → 10 系へ移行。旧 `.eslintrc.json` を廃止し Flat Config (`eslint.config.mjs`) に移行、`@typescript-eslint/*` は統合パッケージ `typescript-eslint` 8 系に置き換え。lint スクリプトも v9 以降で廃止された `--ext` を削除 (`eslint --fix src/`)
             - ESLint 10 の recommended で追加された `no-useless-assignment` / `preserve-caught-error` は既存コードの記述を維持するため無効化。`@typescript-eslint/no-require-imports` も `swagger-ui-dist` の `require()` を許可するため無効化
-        - `eventsource` 2 → 4 系 (default export が廃止されたため `import { EventSource } from 'eventsource'` に変更、`@types/eventsource` は���体同梱の型定義に置き換え)、`js-yaml` 4 → 5 系、`typeorm` 1.0 → 1.1、その他 axios / socket.io / vuetify / vue-router / hls.js / sass / vite 系などをマイナー更新
+        - `eventsource` 2 → 4 系 (default export が廃止されたため `import { EventSource } from 'eventsource'` に変更、`@types/eventsource` は本体同梱の型定義に置き換え)、`js-yaml` 4 → 5 系、`typeorm` 1.0 → 1.1、その他 axios / socket.io / vuetify / vue-router / hls.js / sass / vite 系などをマイナー更新
         - `better-sqlite3` は package.json のみ 13.0.1 表記で lockfile と typeorm の peer (`^12`) に矛盾していたため 12.11.1 に揃えた (npm install が ERESOLVE で失敗する状態だった)
         - 本体が型定義を同梱するようになった `@types/{js-yaml,mkdirp,file-type,socket.io,hls.js,socket.io-client}` を削除
         - `file-type` 16 → 22 系 (ASF パーサの無限ループ脆弱性 GHSA-5v7r-6r5c-r473 の修正が 22 系のみのため)。22 系は ESM 専用だが Node.js 22.12 以降の `require(ESM)` により CommonJS ビルドのままロードできる。API 名変更に伴い `fileType.fromFile()` → `fileTypeFromFile()` に修正 (`src/model/api/video/VideoApiModel.ts`)

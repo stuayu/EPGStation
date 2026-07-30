@@ -2003,7 +2003,7 @@ components:
                     type: integer
 
         RecordedCleanupDropLogCandidates:
-            description: DB 未登録のドロップログフ���イルの削除候補情報
+            description: DB 未登録のドロップログファイルの削除候補情報
             type: object
             required:
                 - count
@@ -2380,7 +2380,7 @@ components:
                 - lines
             properties:
                 id:
-                    description: ログファ����ル id
+                    description: ログファイル id
                     type: string
                 process:
                     $ref: '#/components/schemas/LogProcessType'
@@ -2388,7 +2388,7 @@ components:
                     description: ログのカテゴリ
                     type: string
                 name:
-                    description: ロ��ファイル名
+                    description: ログファイル名
                     type: string
                 size:
                     description: ファイルサイズ (byte)
@@ -3550,7 +3550,7 @@ components:
                 - results
 
         ProgramSeriesMetrics:
-            description: 番組⇄シリーズ���前マッピングの精度メトリクス (§4.10)
+            description: 番組⇄シリーズ名前マッピングの精度メトリクス (§4.10)
             type: object
             properties:
                 unmatchedRate:
@@ -4238,7 +4238,7 @@ components:
                 $ref: '#/components/schemas/UnixtimeMS'
 
         EndAt:
-            description: 終了��刻
+            description: 終了時刻
             in: query
             name: endAt
             required: true
@@ -4753,7 +4753,7 @@ components:
                 type: integer
 
         PathImportJobId:
-            description: 外部録画ファイル取り込み��ョブ id
+            description: 外部録画ファイル取り込みジョブ id
             in: path
             name: jobId
             required: true

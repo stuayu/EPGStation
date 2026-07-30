@@ -218,7 +218,7 @@ export default class WorkDictionary implements IWorkDictionary {
             wikidataQid: wikidata?.qid ?? null,
             tmdbId: wikidata?.tmdbId ?? null,
             title,
-            // ��み仮名はしょぼいカレンダーの TitleYomi を優先し、無ければ Annict の titleKana を使う
+            // 読み仮名はしょぼいカレンダーの TitleYomi を優先し、無ければ Annict の titleKana を使う
             titleKana: syobocal?.titleYomi ?? annict?.titleKana ?? null,
             // クールは Annict の seasonYear/seasonName を優先し、
             // 無ければしょぼいカレンダーの初回放送年月から導出する
@@ -279,7 +279,7 @@ export default class WorkDictionary implements IWorkDictionary {
             if (key.includes(candidate) === false) continue;
             const entry = index.get(candidate);
             if (typeof entry === 'undefined') continue;
-            // 同じ長さで競合した場合は rank (正式タイトル > 略称/英題 > 別名) の��さい方を採る
+            // 同じ長さで競合した場合は rank (正式タイトル > 略称/英題 > 別名) の小さい方を採る
             if (best === null || entry.rank < best.rank) {
                 best = { entry, length: candidate.length, rank: entry.rank };
             }
