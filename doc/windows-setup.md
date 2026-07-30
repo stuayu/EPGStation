@@ -84,16 +84,21 @@
         > net start epgstation
         ```
 
-    - `npm run install-win-service` はサービスの登録に加えて、サービスとして動かすために必要な設定を行います (`scripts/win-service.js`)
-        1. サービス専用の環境変数 `Path` に node / git と、`config.yml` に絶対パスで書かれた ffmpeg / ffprobe / tsreadex 等のディレクトリを追加 (サービスは**ユーザーの PATH を参照できない**ため、これが無いと git やエンコーダが見つかりません)
-        2. `git config --system --add safe.directory <EPGStation のパス>` の登録 (サービスは既定で LocalSystem として動くため、リポジトリの所有者と一致せず `dubious ownership` で git が全て失敗します)
-        3. プロセスが終了したときの自動再起動 (ワンクリック更新はプロセスを終了して入れ替わる方式のため必須です)
-        4. ワンクリック更新が参照する環境変数 (`EPGSTATION_SERVICE_MANAGER` / `EPGSTATION_WIN_SERVICE_NAME`)
-    - **ユーザーアカウントでサービスを動かす場合**は `--user` を付けて実行します。ネットワーク共有 (UNC パス) に録画する場合や、ユーザー環境の設定をそのまま使いたい場合はこちらを使ってください (パスワードは対話で入力できます)
+    - 実行中に**サービスを動かすユーザー名とパスワード**を聞かれます。既定はログオン中のユーザーで、そのまま Enter を押せば構いません (パスワードの入力は伏せ字になり、Windows のサービス設定へ渡す以外の用途には使いません)
+        - **ログインしているユーザーの権限でサービスを動かします**。LocalSystem では録画先のネットワーク共有 (UNC パス) やユーザー環境に置いた設定・実行ファイルへ手が届かず、`git` もリポジトリの所有者と一致しないためです
+        - Microsoft アカウントでサインインしていてパスワードを持たない場合は、ローカルアカウントに切り替えてパスワードを設定してから実行してください。どうしても LocalSystem で動かす場合は `--system` を付けます
+        - 指定したアカウントには**録画先・ログ出力先への書き込み権限**が必要です (「サービスとしてログオン」権限は登録時に自動で付与されます)
 
         ```
         > node scripts/win-service.js install --user=".\<ユーザー名>"
+        > node scripts/win-service.js install --system
         ```
+
+    - サービスの登録に加えて、サービスとして動かすために必要な設定を行います (`scripts/win-service.js`)
+        1. サービス専用の環境変数 `Path` に node / git と、`config.yml` に絶対パスで書かれた ffmpeg / ffprobe / tsreadex 等のディレクトリを追加 (サービスは**ユーザースコープの PATH を参照できない**ため、これが無いと git やエンコーダが見つかりません)
+        2. `git config --system --add safe.directory <EPGStation のパス>` の登録 (リポジトリの所有者と実行アカウントが違うと `dubious ownership` で git が全て失敗します)
+        3. プロセスが終了したときの自動再起動 (ワンクリック更新はプロセスを終了して入れ替わる方式のため必須です)
+        4. ワンクリック更新が参照する環境変数 (`EPGSTATION_SERVICE_MANAGER` / `EPGSTATION_WIN_SERVICE_NAME`)
 
     - 登録状況と、サービスから見える node / git / PATH を確認できます (管理者権限は不要です)
 

@@ -9,8 +9,13 @@
  *   node scripts/win-service.js status     登録状況と、サービスから見た実行環境を表示する
  *
  * オプション (install のみ):
- *   --user=<アカウント>      サービスの実行アカウント (例: --user=.\epgstation)
- *   --password=<パスワード>  --user と併用する。省略時は対話で入力を求める
+ *   --user=<アカウント>      サービスの実行アカウント (既定はログオン中のユーザー)
+ *   --password=<パスワード>  省略時は対話で入力を求める (入力は伏せ字になる)
+ *   --system                 LocalSystem として動かす (パスワードを持たないアカウント向け)
+ *
+ * 既定ではログオン中のユーザーアカウントでサービスを動かす。LocalSystem だと
+ * 録画先のネットワーク共有 (UNC パス) や、ユーザー環境に置いた設定・実行ファイルへ
+ * 手が届かず、git もリポジトリの所有者と一致しないため扱いづらい。
  *
  * サービスは既定で LocalSystem・セッション 0 で動くため、そのままでは
  * ユーザースコープの PATH を参照できず、git / ffmpeg / tsreadex が見つからない。
@@ -40,7 +45,9 @@ const {
     SERVICE_DISPLAY_NAME,
     buildServiceEnvironment,
     collectToolDirectories,
+    defaultServiceAccountName,
     isNssmService,
+    parseServiceAccount,
     toServiceId,
 } = require(path.join(root, 'dist', 'util', 'WindowsService'));
 
@@ -162,19 +169,80 @@ const queryService = () => {
     return typeof result.stdout === 'string' ? result.stdout : null;
 };
 
+/**
+ * 文字を伏せ字にしてパスワードを読み取る。
+ * 入力されたパスワードは Windows のサービス設定へ渡す以外の用途には使わない
+ */
 const readPassword = async account => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+    const query = `${account} のパスワードを入力してください: `;
+
+    // readline が入力をそのまま表示しないよう差し替える
+    rl._writeToOutput = value => {
+        if (value.includes(query) === true) rl.output.write(query);
+        else if (value === '\r\n' || value === '\n') rl.output.write(value);
+        else rl.output.write('*');
+    };
+
+    try {
+        const password = await new Promise(resolve => rl.question(query, resolve));
+        process.stdout.write('\n');
+
+        return password;
+    } finally {
+        rl.close();
+    }
+};
+
+const readLine = async query => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     try {
-        return await new Promise(resolve => rl.question(`${account} のパスワードを入力してください: `, resolve));
+        return await new Promise(resolve => rl.question(query, resolve));
     } finally {
         rl.close();
     }
 };
 
 /**
- * サービスの定義を作る
+ * サービスの実行アカウントを決める。
+ * 既定はログオン中のユーザー。--system が指定された場合のみ LocalSystem にする
  */
-const createService = options => {
+const resolveLogOnAccount = async options => {
+    if (options.system === true) return null;
+
+    const computerName = process.env.COMPUTERNAME ?? '.';
+    const specified = typeof options.user === 'string' && options.user !== '' ? options.user : null;
+    const fallback = defaultServiceAccountName(process.env);
+
+    let input = specified;
+    if (input === null) {
+        // 既定を提示しつつ、別アカウントで動かしたい場合は入力してもらう
+        const answer = await readLine(`サービスの実行ユーザー名 [${fallback}]: `);
+        input = answer.trim() === '' ? fallback : answer;
+    }
+
+    const account = parseServiceAccount(input, computerName);
+    if (account === null) {
+        throw new Error('サービスの実行ユーザー名を判別できませんでした。--user で指定するか --system を使用してください');
+    }
+
+    const password =
+        typeof options.password === 'string' ? options.password : await readPassword(`${account.domain}\\${account.account}`);
+    if (password === '') {
+        throw new Error(
+            'パスワードが空です。Microsoft アカウントでサインインしている場合は、ローカルアカウントに切り替えてパスワードを設定してから実行してください ' +
+                '(LocalSystem で動かす場合は --system を付けてください)',
+        );
+    }
+
+    return { domain: account.domain, account: account.account, password: password };
+};
+
+/**
+ * サービスの定義を作る
+ * @param logOnAccount 実行アカウント (null なら LocalSystem)
+ */
+const createService = (logOnAccount = null) => {
     // node-windows は Windows 以外では読み込めないためここで require する
     const { Service } = require('node-windows');
 
@@ -190,14 +258,16 @@ const createService = options => {
         maxRestarts: 10,
         // 意図的な終了 (ワンクリック更新) でも起こし直させるため中断させない
         abortOnError: false,
+        // 指定したアカウントに「サービスとしてログオン」権限を付与させる
+        allowServiceLogon: logOnAccount !== null,
     });
 
-    if (typeof options.user === 'string' && options.user !== '') {
-        const separator = options.user.indexOf('\\');
-        svc.logOnAs.domain = separator === -1 ? '.' : options.user.slice(0, separator);
-        svc.logOnAs.account = separator === -1 ? options.user : options.user.slice(separator + 1);
-        svc.logOnAs.password = options.password;
-        svc.allowServiceLogon = true;
+    if (logOnAccount !== null) {
+        svc.logOnAs.domain = logOnAccount.domain;
+        svc.logOnAs.account = logOnAccount.account;
+        svc.logOnAs.password = logOnAccount.password;
+        // 登録後に設定ファイルからパスワードを消す (node-windows の既定動作)
+        svc.logOnAs.mungeCredentialsAfterInstall = true;
     }
 
     return svc;
@@ -219,14 +289,19 @@ const install = async options => {
         throw new Error(`サービス ${serviceName} は既に登録されています。先に "npm run uninstall-win-service" を実行してください`);
     }
 
-    if (typeof options.user === 'string' && options.user !== '' && typeof options.password !== 'string') {
-        options.password = await readPassword(options.user);
-    }
+    const logOnAccount = await resolveLogOnAccount(options);
 
-    const svc = createService(options);
+    const svc = createService(logOnAccount);
     svc.on('install', () => {
-        log(`サービスを登録しました: ${serviceName}`);
+        log(
+            logOnAccount === null
+                ? `サービスを登録しました: ${serviceName} (LocalSystem)`
+                : `サービスを登録しました: ${serviceName} (${logOnAccount.domain}\\${logOnAccount.account})`,
+        );
         registerSafeDirectory();
+        if (logOnAccount !== null) {
+            log('録画先・ログ出力先のディレクトリに、このアカウントの書き込み権限があることを確認してください');
+        }
         log('');
         log('次のコマンドで起動できます:');
         log(`  net start ${serviceName}`);
@@ -242,7 +317,7 @@ const install = async options => {
 };
 
 const uninstall = () => {
-    const svc = createService({});
+    const svc = createService();
     svc.on('uninstall', () => {
         log(`サービスを削除しました: ${serviceName}`);
         unregisterSafeDirectory();
@@ -259,6 +334,9 @@ const status = () => {
         log('登録状況: 未登録');
     } else {
         log(`登録状況: 登録済み${isNssmService(existing) === true ? ' (winser / nssm 由来)' : ' (node-windows)'}`);
+        // 実行アカウントは sc.exe qc の SERVICE_START_NAME に出る
+        const startName = existing.split(/\r?\n/).find(line => line.includes('SERVICE_START_NAME'));
+        if (typeof startName === 'string') log(`実行アカウント: ${startName.split(':').slice(1).join(':').trim()}`);
     }
     for (const command of ['node', 'git']) {
         const directory = findCommandDirectory(command);

@@ -6,7 +6,9 @@ const {
     buildServiceEnvironment,
     buildServicePath,
     collectToolDirectories,
+    defaultServiceAccountName,
     isNssmService,
+    parseServiceAccount,
     toServiceId,
 } = require('../../dist/util/WindowsService');
 
@@ -73,6 +75,33 @@ test('サービスの環境変数には更新後の再起動方法を確定さ�
         { name: 'EPGSTATION_SERVICE_MANAGER', value: 'windows-service' },
         { name: 'EPGSTATION_WIN_SERVICE_NAME', value: 'epgstation' },
     ]);
+});
+
+test('実行アカウントの指定を domain と account に分ける', () => {
+    // ドメイン省略・.\ 付き・ドメイン指定の 3 形式
+    assert.deepEqual(parseServiceAccount('epgstation', 'MY-PC'), { domain: 'MY-PC', account: 'epgstation' });
+    assert.deepEqual(parseServiceAccount('.\\epgstation', 'MY-PC'), { domain: 'MY-PC', account: 'epgstation' });
+    assert.deepEqual(parseServiceAccount('MY-PC\\epgstation', 'OTHER'), { domain: 'MY-PC', account: 'epgstation' });
+    assert.deepEqual(parseServiceAccount('corp.local\\epg', 'MY-PC'), { domain: 'corp.local', account: 'epg' });
+    // 前後の空白は落とす
+    assert.deepEqual(parseServiceAccount('  epgstation  ', 'MY-PC'), { domain: 'MY-PC', account: 'epgstation' });
+});
+
+test('アカウント名を判別できない指定は null にする', () => {
+    assert.equal(parseServiceAccount('', 'MY-PC'), null);
+    assert.equal(parseServiceAccount('   ', 'MY-PC'), null);
+    // 区切り文字だけでアカウント名が無い
+    assert.equal(parseServiceAccount('MY-PC\\', 'MY-PC'), null);
+});
+
+test('既定の実行アカウントはログオン中のユーザー (LocalSystem ではない)', () => {
+    assert.equal(defaultServiceAccountName({ USERDOMAIN: 'MY-PC', USERNAME: 'epgstation' }), 'MY-PC\\epgstation');
+    // USERDOMAIN が無ければ COMPUTERNAME を使う
+    assert.equal(defaultServiceAccountName({ COMPUTERNAME: 'MY-PC', USERNAME: 'epgstation' }), 'MY-PC\\epgstation');
+    // どちらも無ければユーザー名のみ
+    assert.equal(defaultServiceAccountName({ USERNAME: 'epgstation' }), 'epgstation');
+    // ユーザー名が取れない場合は空文字列 (呼び出し側で入力を求める)
+    assert.equal(defaultServiceAccountName({}), '');
 });
 
 test('winser (nssm) 由来のサービスを sc.exe qc の出力から見分ける', () => {
