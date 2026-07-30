@@ -259,12 +259,14 @@ export const parsePes = (pes: Buffer): AribId3Metadata | null => {
         return null;
     }
 
-    // 33 bit PTS
+    // 33 bit PTS (3 bit + 15 bit + 15 bit をマーカービットを挟んで格納している)
+    // 32 bit を超えるためビット演算は使えない。各フィールドの重みは
+    // 2^30 / 2^22 / 2^15 / 2^7 / 2^0
     const pts =
         ((pes[9] & 0x0e) / 2) * 0x40000000 +
         (pes[10] & 0xff) * 0x400000 +
         ((pes[11] & 0xfe) / 2) * 0x8000 +
-        (pes[12] & 0xff) * 0x100 +
+        (pes[12] & 0xff) * 0x80 +
         (pes[13] & 0xfe) / 2;
 
     const headerDataLength = pes[8];
