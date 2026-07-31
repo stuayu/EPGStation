@@ -578,6 +578,21 @@ export interface AnalyzeVideoFilesResult {
     remaining: number;
 }
 
+export interface ReanalyzeTsInfoOption {
+    // 開始位置 (id 昇順、省略時 0)。前回の結果の nextOffset をそのまま渡す
+    offset?: number;
+    // 一度に解析する上限件数。省略時は 100 件
+    limit?: number;
+}
+
+export interface ReanalyzeTsInfoResult {
+    analyzed: number;
+    failed: number;
+    // 次回に渡す offset。すべて処理し終えた場合は null
+    nextOffset: number | null;
+    total: number;
+}
+
 export interface DashboardData {
     recording: Records;
     recentlyRecorded: Records;

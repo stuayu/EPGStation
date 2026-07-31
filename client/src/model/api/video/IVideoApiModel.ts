@@ -9,6 +9,7 @@ export default interface IVideoApiModel {
     analyzeAllMetadata(option?: apid.AnalyzeVideoFilesOption): Promise<apid.AnalyzeVideoFilesResult>;
     getTsInfoStatus(): Promise<apid.VideoFileMetadataStatus>;
     analyzeAllTsInfo(option?: apid.AnalyzeVideoFilesOption): Promise<apid.AnalyzeVideoFilesResult>;
+    reanalyzeAllTsInfo(option?: apid.ReanalyzeTsInfoOption): Promise<apid.ReanalyzeTsInfoResult>;
     getPlaybackPosition(videoFileId: apid.VideoFileId): Promise<apid.WatchHistory | null>;
     savePlaybackPosition(videoFileId: apid.VideoFileId, option: apid.UpdatePlaybackPositionOption): Promise<apid.WatchHistory>;
     savePlaybackPositionWithBeacon(videoFileId: apid.VideoFileId, option: apid.UpdatePlaybackPositionOption): void;

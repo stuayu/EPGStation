@@ -14,6 +14,7 @@ import IPlayList from '../IPlayList';
 import IVideoFileAnalyzeModel from '../../video/IVideoFileAnalyzeModel';
 import IVideoApiModel, {
     AnalyzeVideoFilesResult,
+    ReanalyzeTsInfoResult,
     VideoFileMetadataResult,
     VideoFileMetadataStatus,
     VideoFilePathInfo,
@@ -269,6 +270,51 @@ export default class VideoApiModel implements IVideoApiModel {
             analyzed: analyzed,
             failed: failed,
             remaining: await this.videoFileTsInfoDB.countWithoutTsInfo(),
+        };
+    }
+
+    /**
+     * TS ファイルを、解析済みかどうかに関わらず offset から順に強制的に再解析する。
+     * 解析ロジック (例: PCR による録画開始時刻の補正) を更新した後、既存ファイルへ
+     * 反映させたい場合に使う。呼び出し側は nextOffset が null になるまで呼び続ける
+     * @param offset: number | undefined 開始位置 (省略時 0)
+     * @param limit: number | undefined 一度に解析する上限件数
+     * @return Promise<ReanalyzeTsInfoResult>
+     */
+    public async reanalyzeAllTsInfo(offset?: number, limit?: number): Promise<ReanalyzeTsInfoResult> {
+        const max = Math.min(
+            typeof limit === 'number' && limit > 0 ? Math.floor(limit) : VideoApiModel.ANALYZE_DEFAULT_LIMIT,
+            VideoApiModel.ANALYZE_MAX_LIMIT,
+        );
+        const start = typeof offset === 'number' && offset > 0 ? Math.floor(offset) : 0;
+
+        const targets = await this.videoFileTsInfoDB.findAllAnalyzable(max, start);
+
+        let analyzed = 0;
+        let failed = 0;
+        for (const target of targets) {
+            try {
+                await this.analyzeModel.analyzeTsInfo(target.id);
+                analyzed++;
+            } catch (err: any) {
+                // 1 件失敗しても残りは続行する (ファイル欠損・壊れた TS など)
+                failed++;
+                if (failed <= VideoApiModel.ANALYZE_LOG_LIMIT) {
+                    this.log?.system.warn(
+                        `ts info reanalysis failed: videoFileId ${target.id}: ${err?.message ?? err}`,
+                    );
+                }
+            }
+        }
+
+        const total = await this.videoFileTsInfoDB.countAnalyzableVideoFiles();
+        const nextOffset = start + targets.length;
+
+        return {
+            analyzed: analyzed,
+            failed: failed,
+            nextOffset: targets.length < max || nextOffset >= total ? null : nextOffset,
+            total: total,
         };
     }
 

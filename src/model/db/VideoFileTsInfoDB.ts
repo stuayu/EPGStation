@@ -8,8 +8,11 @@ import IVideoFileTsInfoDB from './IVideoFileTsInfoDB';
 
 @injectable()
 export default class VideoFileTsInfoDB implements IVideoFileTsInfoDB {
-    // TS 解析の対象にするファイル種別 (エンコード済みファイルには PSI/SI が無い)
-    private static readonly ANALYZABLE_TYPE = 'ts';
+    // TS 解析の対象にする拡張子 (これ以外の完全な再マルチプレクスには PSI/SI が無い)。
+    // video_file.type ('ts' | 'encoded') はストリーミングパイプラインの選択にも使われており、
+    // tsreplace 系 (type: 'encoded' だが出力が .ts のまま PSI/SI を保持) も対象に含めたいため、
+    // type ではなく拡張子で判定する (詳細は VideoFileAnalyzeModel.analyzeTsInfo() のコメント参照)
+    private static readonly ANALYZABLE_EXTENSION_LIKE = '%.ts';
 
     private op: IDBOperator;
     private promieRetry: IPromiseRetry;
@@ -89,7 +92,7 @@ export default class VideoFileTsInfoDB implements IVideoFileTsInfoDB {
 
                 return `video_file.id NOT IN ${sub}`;
             })
-            .andWhere('video_file.type = :type', { type: VideoFileTsInfoDB.ANALYZABLE_TYPE })
+            .andWhere('LOWER(video_file.filePath) LIKE :ext', { ext: VideoFileTsInfoDB.ANALYZABLE_EXTENSION_LIKE })
             .orderBy('video_file.id', 'DESC')
             .limit(limit);
 
@@ -113,7 +116,7 @@ export default class VideoFileTsInfoDB implements IVideoFileTsInfoDB {
 
                 return `video_file.id NOT IN ${sub}`;
             })
-            .andWhere('video_file.type = :type', { type: VideoFileTsInfoDB.ANALYZABLE_TYPE });
+            .andWhere('LOWER(video_file.filePath) LIKE :ext', { ext: VideoFileTsInfoDB.ANALYZABLE_EXTENSION_LIKE });
 
         return await this.promieRetry.run(() => {
             return queryBuilder.getCount();
@@ -121,7 +124,7 @@ export default class VideoFileTsInfoDB implements IVideoFileTsInfoDB {
     }
 
     /**
-     * TS 解析の対象になりうるファイル (TS ファイル) の総件数を返す
+     * TS 解析の対象になりうるファイル (拡張子が .ts のファイル) の総件数を返す
      * @return Promise<number>
      */
     public async countAnalyzableVideoFiles(): Promise<number> {
@@ -130,10 +133,34 @@ export default class VideoFileTsInfoDB implements IVideoFileTsInfoDB {
         const queryBuilder = connection
             .getRepository(VideoFile)
             .createQueryBuilder('video_file')
-            .where('video_file.type = :type', { type: VideoFileTsInfoDB.ANALYZABLE_TYPE });
+            .where('LOWER(video_file.filePath) LIKE :ext', { ext: VideoFileTsInfoDB.ANALYZABLE_EXTENSION_LIKE });
 
         return await this.promieRetry.run(() => {
             return queryBuilder.getCount();
+        });
+    }
+
+    /**
+     * TS 解析済みかどうかに関わらず、対象になりうるファイル (拡張子が .ts のファイル) を
+     * id 昇順ですべて取得する。解析ロジックの更新後に既存ファイルを強制的に
+     * 再解析する用途 (offset によるページング前提)
+     * @param limit: number 最大取得件数
+     * @param offset: number 開始位置
+     * @return Promise<VideoFile[]>
+     */
+    public async findAllAnalyzable(limit: number, offset: number): Promise<VideoFile[]> {
+        const connection = await this.op.getConnection();
+
+        const queryBuilder = connection
+            .getRepository(VideoFile)
+            .createQueryBuilder('video_file')
+            .where('LOWER(video_file.filePath) LIKE :ext', { ext: VideoFileTsInfoDB.ANALYZABLE_EXTENSION_LIKE })
+            .orderBy('video_file.id', 'ASC')
+            .offset(offset)
+            .limit(limit);
+
+        return await this.promieRetry.run(() => {
+            return queryBuilder.getMany();
         });
     }
 

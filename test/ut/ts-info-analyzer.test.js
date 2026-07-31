@@ -175,6 +175,29 @@ function buildTdt(jstTime) {
 }
 
 /**
+ * PCR (Program Clock Reference) だけを積んだ adaptation_field-only パケット (ペイロードなし)
+ * @param pid: number PMT が示す PCR_PID と一致させること
+ * @param pcr27M: number 27MHz 換算の PCR 値 (base * 300 + extension)
+ */
+function buildPcrPacket(pid, pcr27M) {
+    const packet = Buffer.alloc(188, 0xff);
+    packet[0] = 0x47;
+    packet[1] = (pid >> 8) & 0x1f; // payload_unit_start_indicator = 0
+    packet[2] = pid & 0xff;
+    packet[3] = 0x20; // adaptation_field_control = 10 (adaptation field only, ペイロード無し)
+    packet[4] = 7; // adaptation_field_length (flags 1 byte + PCR 6 byte)
+    packet[5] = 0x10; // PCR_flag = 1, 他は 0
+
+    const pcrBase = Math.floor(pcr27M / 300);
+    const pcrExt = pcr27M % 300;
+    // 33bit base + 6bit reserved (すべて 1) + 9bit extension = 48bit (6 byte)
+    const combined = pcrBase * Math.pow(2, 15) + (0x3f << 9) + pcrExt;
+    packet.writeUIntBE(combined, 6, 6);
+
+    return packet;
+}
+
+/**
  * MJD + BCD の日時バイト列を作る
  */
 function jstTimeBuffer(year, month, day, hour, minute, second) {
@@ -367,4 +390,118 @@ test('存在しないファイルでも例外を投げない', async () => {
 
     assert.equal(info.serviceId, null);
     assert.equal(info.eventId, null);
+});
+
+/**
+ * PCR による firstTdtAt 補正のテスト用に、PAT/PMT/SDT/EIT + 任意の PCR/TDT パケットを組み立てる
+ */
+function buildPcrTestPackets(videoPid, audioPid, serviceId, transportStreamId, extraPackets) {
+    const psiPackets = [
+        toPacket(PID_PAT, buildPat(transportStreamId, serviceId, PID_PMT), 0),
+        toPacket(PID_PMT, buildPmt(serviceId, videoPid, audioPid), 0), // PCR_PID = videoPid
+        toPacket(PID_SDT, buildSdt(transportStreamId, transportStreamId, serviceId, 'NHK', 'TEST TV'), 0),
+        toPacket(
+            PID_EIT,
+            buildEit({
+                serviceId,
+                transportStreamId,
+                originalNetworkId: transportStreamId,
+                eventId: 12345,
+                eventName: 'TEST PROGRAM',
+                eventText: 'TEST TEXT',
+                genre1: 0x7,
+                subGenre1: 0x0,
+                startTime: jstTimeBuffer(2026, 7, 31, 22, 0, 0),
+                duration: bcdDuration(0, 30, 0),
+            }),
+            0,
+        ),
+    ];
+
+    return [...psiPackets, ...extraPackets];
+}
+
+test('PCR で TDT が見つかった位置までの経過時間を測り、ファイル先頭の時刻へ補正する', async () => {
+    const videoPid = 0x0100;
+    const audioPid = 0x0110;
+    const serviceId = 1024;
+    const transportStreamId = 0x7e87;
+    const tdtTime = jstTimeBuffer(2026, 7, 31, 22, 0, 0);
+
+    const PCR_START = 2_000_000_000; // 起点 (絶対値自体に意味はない)
+    const FIVE_SECONDS_TICKS = 5 * 27_000_000;
+
+    const packets = buildPcrTestPackets(videoPid, audioPid, serviceId, transportStreamId, [
+        buildPcrPacket(videoPid, PCR_START), // ファイル先頭付近の PCR
+        buildPcrPacket(videoPid, PCR_START + FIVE_SECONDS_TICKS), // 5 秒後、TDT より前の PCR
+        toPacket(PID_TDT, buildTdt(tdtTime), 0), // ファイル先頭から 5 秒後の位置で見つかる
+    ]);
+
+    // buildPcrTestPackets は PAT/PMT/SDT/EIT を先頭に置くため、
+    // 実際の「ファイル先頭」は PSI/SI パケットの後になるが、
+    // 補正で使うのは PCR 同士の相対的な経過時間 (5 秒) だけなので影響しない
+    const filePath = createTsFile('pcr-correction', packets);
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    const rawTdtAt = Date.UTC(2026, 6, 31, 22, 0, 0) - 9 * 3600 * 1000;
+    assert.equal(info.firstTdtAt, rawTdtAt - 5000);
+});
+
+test('PCR サンプルが 1 つしかない場合は補正せず、TDT の時刻をそのまま使う', async () => {
+    const videoPid = 0x0100;
+    const audioPid = 0x0110;
+    const serviceId = 1024;
+    const transportStreamId = 0x7e87;
+    const tdtTime = jstTimeBuffer(2026, 7, 31, 22, 0, 0);
+
+    const packets = buildPcrTestPackets(videoPid, audioPid, serviceId, transportStreamId, [
+        buildPcrPacket(videoPid, 2_000_000_000), // 基準点になれるサンプルが 1 つしか無い
+        toPacket(PID_TDT, buildTdt(tdtTime), 0),
+    ]);
+
+    const filePath = createTsFile('pcr-single-sample', packets);
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    const rawTdtAt = Date.UTC(2026, 6, 31, 22, 0, 0) - 9 * 3600 * 1000;
+    assert.equal(info.firstTdtAt, rawTdtAt);
+});
+
+test('対象サービスの PCR_PID が無い (0x1fff) 場合は補正せず、TDT の時刻をそのまま使う', async () => {
+    const videoPid = 0x0100;
+    const audioPid = 0x0110;
+    const serviceId = 1024;
+    const transportStreamId = 0x7e87;
+    const tdtTime = jstTimeBuffer(2026, 7, 31, 22, 0, 0);
+
+    // PMT の PCR_PID をあえて videoPid と違う PID にして、PCR サンプルとマッチしないようにする
+    const packets = [
+        toPacket(PID_PAT, buildPat(transportStreamId, serviceId, PID_PMT), 0),
+        toPacket(PID_PMT, buildPmt(serviceId, 0x0200, audioPid), 0),
+        toPacket(PID_SDT, buildSdt(transportStreamId, transportStreamId, serviceId, 'NHK', 'TEST TV'), 0),
+        toPacket(
+            PID_EIT,
+            buildEit({
+                serviceId,
+                transportStreamId,
+                originalNetworkId: transportStreamId,
+                eventId: 12345,
+                eventName: 'TEST PROGRAM',
+                eventText: 'TEST TEXT',
+                genre1: 0x7,
+                subGenre1: 0x0,
+                startTime: jstTimeBuffer(2026, 7, 31, 22, 0, 0),
+                duration: bcdDuration(0, 30, 0),
+            }),
+            0,
+        ),
+        buildPcrPacket(videoPid, 2_000_000_000),
+        buildPcrPacket(videoPid, 2_000_000_000 + 5 * 27_000_000),
+        toPacket(PID_TDT, buildTdt(tdtTime), 0),
+    ];
+
+    const filePath = createTsFile('pcr-pid-mismatch', packets);
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    const rawTdtAt = Date.UTC(2026, 6, 31, 22, 0, 0) - 9 * 3600 * 1000;
+    assert.equal(info.firstTdtAt, rawTdtAt);
 });

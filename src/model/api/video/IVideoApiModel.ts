@@ -9,6 +9,7 @@ export interface VideoFilePathInfo {
 export type VideoFileMetadataResult = apid.VideoFileMetadataResult;
 export type VideoFileMetadataStatus = apid.VideoFileMetadataStatus;
 export type AnalyzeVideoFilesResult = apid.AnalyzeVideoFilesResult;
+export type ReanalyzeTsInfoResult = apid.ReanalyzeTsInfoResult;
 
 export default interface IVideoApiModel {
     getFullFilePath(videoFileId: apid.VideoFileId): Promise<VideoFilePathInfo | null>;
@@ -21,5 +22,6 @@ export default interface IVideoApiModel {
     getMetadataStatus(): Promise<VideoFileMetadataStatus>;
     getTsInfoStatus(): Promise<VideoFileMetadataStatus>;
     analyzeAllTsInfo(limit?: number): Promise<AnalyzeVideoFilesResult>;
+    reanalyzeAllTsInfo(offset?: number, limit?: number): Promise<ReanalyzeTsInfoResult>;
     sendToKodi(host: string, isSecure: boolean, kodiName: string, videoFileId: apid.VideoFileId): Promise<void>;
 }

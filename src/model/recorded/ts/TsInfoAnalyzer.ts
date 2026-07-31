@@ -20,6 +20,18 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
     private static readonly DEFAULT_TIMEOUT_MS = 60 * 1000;
     private static readonly JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
+    // PCR (Program Clock Reference) の刻み (27MHz)
+    private static readonly PCR_TICK_HZ = 27_000_000;
+    // PCR (33bit base * 300 + 9bit extension) が一周してラップアラウンドするまでの周期
+    private static readonly PCR_WRAP_TICKS = Math.pow(2, 33) * 300;
+    // PCR_PID が未割り当てであることを示す予約値
+    private static readonly PCR_PID_NONE = 0x1fff;
+    // 保持する PCR サンプル数の安全上限 (メモリ保護。通常の解析範囲では遠く及ばない)
+    private static readonly MAX_PCR_SAMPLES = 5000;
+    // PCR による補正量の上限。TDT/TOT は通常数秒以内に見つかるため、
+    // これを超える補正は壊れたストリーム等による誤検出とみなして適用しない
+    private static readonly MAX_PCR_CORRECTION_MS = 2 * 60 * 1000;
+
     private static readonly TABLE_ID_NIT_ACTUAL = 0x40;
     private static readonly TABLE_ID_SDT_ACTUAL = 0x42;
     private static readonly TABLE_ID_EIT_PF_ACTUAL = 0x4e;
@@ -62,8 +74,17 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                 { serviceType: number | null; name: string | null; provider: string | null }
             >();
             const pmtStreams = new Map<number, aribts.Stream[]>();
+            // program_number -> PCR_PID (TDT/TOT のファイル先頭時刻補正に使う)
+            const pmtPcrPids = new Map<number, number>();
             let patServiceIds: number[] = [];
             let isFinished = false;
+
+            // PCR による TDT/TOT 時刻の補正用: 受信したパケット数 (= ファイル先頭からの相対位置) と、
+            // PID ごとの PCR サンプル (ファイル先頭からの経過時間を測るための基準点)
+            let packetIndex = 0;
+            const pcrSamples: Array<{ pid: number; pcr: number; packetIndex: number }> = [];
+            // 最初に確定した TDT/TOT が見つかった時点でのパケット位置
+            let firstTdtPacketIndex: number | null = null;
 
             const readableStream = fs.createReadStream(filePath, { start: 0, end: Math.max(0, maxReadBytes - 1) });
             const tsReadableConnector = new aribts.TsReadableConnector();
@@ -94,6 +115,24 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                     const streams = pmtStreams.get(info.serviceId);
                     if (typeof streams !== 'undefined') {
                         TsInfoAnalyzer.setStreamInfo(info, streams);
+                    }
+
+                    // TDT/TOT で得た時刻を、実際に見つかった位置 (ファイル先頭からの経過時間) の分だけ
+                    // 遡って補正する。対象サービスの PCR_PID が分からない・PCR サンプルが
+                    // 足りない等で補正できない場合は無補正の値のまま使う
+                    if (info.firstTdtAt !== null && firstTdtPacketIndex !== null) {
+                        const pcrPid = pmtPcrPids.get(info.serviceId);
+                        if (typeof pcrPid === 'number' && pcrPid !== TsInfoAnalyzer.PCR_PID_NONE) {
+                            const corrected = TsInfoAnalyzer.correctStartAtByPcr(
+                                info.firstTdtAt,
+                                firstTdtPacketIndex,
+                                pcrPid,
+                                pcrSamples,
+                            );
+                            if (corrected !== null) {
+                                info.firstTdtAt = corrected;
+                            }
+                        }
                     }
                 }
 
@@ -179,6 +218,7 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                 try {
                     const pmt = section.decode();
                     pmtStreams.set(pmt.program_number, pmt.streams);
+                    pmtPcrPids.set(pmt.program_number, pmt.PCR_PID);
                 } catch (err: any) {
                     // 壊れたセクションは無視して読み進める
                 }
@@ -226,11 +266,18 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                 checkFinish();
             });
 
-            // TDT / TOT: ファイル先頭付近の放送時刻 = 録画開始時刻
+            // TDT / TOT: 放送時刻。ただし TDT/TOT はファイル先頭からある程度離れた位置で
+            // 初めて出現することがあるため、ここで得た時刻は「見つかった瞬間の放送時刻」であって
+            // 「ファイル先頭の時刻」そのものではない。実際の経過時間は finish() 側で PCR を使って
+            // 補正する (firstTdtPacketIndex にこの時点でのパケット位置を控えておく)。
             // TOT は TDT と同じ PID (0x14) で流れ、日本の放送では両方送出される
             const onTimeTable = (jstTime: unknown): void => {
                 if (info.firstTdtAt === null) {
-                    info.firstTdtAt = TsInfoAnalyzer.decodeJstDate(jstTime);
+                    const decoded = TsInfoAnalyzer.decodeJstDate(jstTime);
+                    if (decoded !== null) {
+                        info.firstTdtAt = decoded;
+                        firstTdtPacketIndex = packetIndex;
+                    }
                 }
 
                 checkFinish();
@@ -249,6 +296,42 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                     onTimeTable(section.decode().JST_time);
                 } catch (err: any) {
                     // 壊れたセクションは無視して読み進める
+                }
+            });
+
+            // PCR (Program Clock Reference) サンプリング。
+            // tsSectionParser とは別に生パケットを直接覗き見る (pipe の消費とは独立に動く追加の
+            // 'data' リスナーとして安全に併存できる。ストリームの分岐・消費はしない)
+            tsPacketParser.on('data', (packet: aribts.TsPacket) => {
+                const currentIndex = packetIndex++;
+
+                if (pcrSamples.length >= TsInfoAnalyzer.MAX_PCR_SAMPLES) {
+                    return;
+                }
+
+                try {
+                    if (packet.getPcrFlag() !== 1) {
+                        return;
+                    }
+
+                    const decoded = packet.decode();
+                    const af = decoded.adaptation_field;
+                    if (
+                        typeof af === 'undefined' ||
+                        af === null ||
+                        typeof af.program_clock_reference_base !== 'number' ||
+                        typeof af.program_clock_reference_extension !== 'number'
+                    ) {
+                        return;
+                    }
+
+                    pcrSamples.push({
+                        pid: packet.getPid(),
+                        pcr: af.program_clock_reference_base * 300 + af.program_clock_reference_extension,
+                        packetIndex: currentIndex,
+                    });
+                } catch (err: any) {
+                    // 壊れたパケットは無視して読み進める
                 }
             });
 
@@ -346,6 +429,72 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                 info.audioPid = s.elementary_PID;
             }
         }
+    }
+
+    /**
+     * TDT/TOT で得た時刻を、PCR (27MHz) で測った実経過時間を使って
+     * 「ファイル先頭 (最初に PCR が現れた位置) の時刻」へ補正する。
+     *
+     * TDT/TOT は必ずしもファイル先頭にあるとは限らず、数百 ms 〜 数秒後に初めて
+     * 出現することがある。その分を無補正のまま採用すると、その分だけ startAt が
+     * 実際の録画開始より遅れて記録されてしまう。PCR は TDT/TOT よりずっと高頻度に
+     * 送出されるため、対象 PID (PMT の PCR_PID) の PCR サンプルを使い、
+     * 「ファイル先頭付近の PCR」と「TDT/TOT が見つかった位置以前で最も近い PCR」の
+     * 差分から実経過時間を求め、TDT/TOT の時刻から差し引く。
+     *
+     * @param tdtAt: number 補正前の TDT/TOT 由来の時刻 (UNIX 時刻・ミリ秒)
+     * @param tdtPacketIndex: number その TDT/TOT が見つかった時点でのパケット位置
+     * @param pcrPid: number 対象サービスの PCR_PID
+     * @param pcrSamples: 収集した PCR サンプル (PID 混在)
+     * @return number | null 補正できない場合は null (呼び出し側は無補正の値を使う)
+     */
+    private static correctStartAtByPcr(
+        tdtAt: number,
+        tdtPacketIndex: number,
+        pcrPid: number,
+        pcrSamples: Array<{ pid: number; pcr: number; packetIndex: number }>,
+    ): number | null {
+        const samples = pcrSamples.filter(s => s.pid === pcrPid);
+        if (samples.length < 2) {
+            // 基準点 (ファイル先頭付近) と終点 (TDT/TOT 付近) の 2 点がそろわないと測れない
+            return null;
+        }
+
+        // ファイル先頭に最も近い (最小 packetIndex) サンプルを起点とする
+        let first = samples[0];
+        for (const s of samples) {
+            if (s.packetIndex < first.packetIndex) {
+                first = s;
+            }
+        }
+
+        // TDT/TOT が見つかった位置以前で、最も近いサンプルを終点とする
+        let nearest: { pid: number; pcr: number; packetIndex: number } | null = null;
+        for (const s of samples) {
+            if (s.packetIndex <= tdtPacketIndex && (nearest === null || s.packetIndex > nearest.packetIndex)) {
+                nearest = s;
+            }
+        }
+        if (nearest === null || nearest.packetIndex === first.packetIndex) {
+            // TDT/TOT より前に (起点と別の) PCR サンプルが無く、経過時間を測れない
+            return null;
+        }
+
+        let deltaTicks = nearest.pcr - first.pcr;
+        if (deltaTicks < 0) {
+            // PCR は約 26.5 時間周期でラップアラウンドする
+            deltaTicks += TsInfoAnalyzer.PCR_WRAP_TICKS;
+        }
+
+        const elapsedMs = (deltaTicks / TsInfoAnalyzer.PCR_TICK_HZ) * 1000;
+
+        // 通常 TDT/TOT は数秒以内に見つかる。あり得ない補正量は壊れたストリーム等による
+        // 誤検出とみなし、無補正のままにする
+        if (Number.isFinite(elapsedMs) === false || elapsedMs < 0 || elapsedMs > TsInfoAnalyzer.MAX_PCR_CORRECTION_MS) {
+            return null;
+        }
+
+        return tdtAt - elapsedMs;
     }
 
     /**

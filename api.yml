@@ -1704,6 +1704,39 @@ components:
                     description: 残りの未解析件数
                     type: integer
 
+        ReanalyzeTsInfoOption:
+            description: 録画ファイル TS 情報の強制再解析オプション (解析済みファイルも対象に含める)
+            type: object
+            properties:
+                offset:
+                    description: 開始位置 (id 昇順、省略時 0)。前回の結果の nextOffset をそのまま渡す
+                    type: integer
+                    minimum: 0
+                limit:
+                    description: 一度に解析する上限件数 (省略時 100 件)
+                    type: integer
+                    minimum: 1
+                    maximum: 1000
+
+        ReanalyzeTsInfoResult:
+            description: 録画ファイル TS 情報の強制再解析結果
+            type: object
+            required: [analyzed, failed, nextOffset, total]
+            properties:
+                analyzed:
+                    description: 解析に成功した件数
+                    type: integer
+                failed:
+                    description: 解析に失敗した件数
+                    type: integer
+                nextOffset:
+                    description: 次回に渡す offset。すべて処理し終えた場合は null
+                    type: integer
+                    nullable: true
+                total:
+                    description: 対象となる TS ファイルの総数
+                    type: integer
+
         DashboardData:
             type: object
             required: [recording, recentlyRecorded, upcomingReserves, reserveCounts]

@@ -174,6 +174,31 @@ declare module 'aribts' {
         public decodeTimeInSeconds(): number;
     }
 
+    /**
+     * TS パケット (188 byte) 1 つ分。adaptation_field は PCR (Program Clock Reference) の
+     * 取得にのみ使っており、他フィールドはここでは型を付けていない
+     */
+    export interface AdaptationField {
+        PCR_flag: number;
+        program_clock_reference_base?: number;
+        program_clock_reference_extension?: number;
+        [key: string]: unknown;
+    }
+
+    export interface DecodedPacket {
+        header: { PID: number; [key: string]: unknown };
+        adaptation_field?: AdaptationField;
+        [key: string]: unknown;
+    }
+
+    export class TsPacket {
+        constructor(buffer: Buffer);
+        public decode(): DecodedPacket;
+        public getPid(): number;
+        // adaptation_field が無い場合は -1
+        public getPcrFlag(): number;
+    }
+
     export class TsBase extends EventEmitter {
         public pipe: (pipe: TsBase) => boolean;
     }

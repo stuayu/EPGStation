@@ -83,6 +83,15 @@ export default class VideoApiModel implements IVideoApiModel {
         return (await this.repository.post('/videos/tsinfo', option ?? {})).data;
     }
 
+    /**
+     * 解析済みかどうかに関わらず TS ファイルを強制的に再解析する
+     * @param option: apid.ReanalyzeTsInfoOption
+     * @return Promise<apid.ReanalyzeTsInfoResult>
+     */
+    public async reanalyzeAllTsInfo(option?: apid.ReanalyzeTsInfoOption): Promise<apid.ReanalyzeTsInfoResult> {
+        return (await this.repository.post('/videos/tsinfo/reanalyze', option ?? {})).data;
+    }
+
     public async getPlaybackPosition(videoFileId: apid.VideoFileId): Promise<apid.WatchHistory | null> {
         try {
             return (await this.repository.get(`/videos/${videoFileId}/playback-position`)).data;
