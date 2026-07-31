@@ -81,7 +81,7 @@ export default class VideoFileTsInfoDB implements IVideoFileTsInfoDB {
      * @param limit: number 最大取得件数
      * @return Promise<VideoFile[]>
      */
-    public async findWithoutTsInfo(limit: number): Promise<VideoFile[]> {
+    public async findWithoutTsInfo(limit: number, offset: number = 0): Promise<VideoFile[]> {
         const connection = await this.op.getConnection();
 
         const queryBuilder = connection
@@ -94,6 +94,7 @@ export default class VideoFileTsInfoDB implements IVideoFileTsInfoDB {
             })
             .andWhere('LOWER(video_file.filePath) LIKE :ext', { ext: VideoFileTsInfoDB.ANALYZABLE_EXTENSION_LIKE })
             .orderBy('video_file.id', 'DESC')
+            .offset(offset)
             .limit(limit);
 
         return await this.promieRetry.run(() => {

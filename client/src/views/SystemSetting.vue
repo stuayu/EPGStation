@@ -34,14 +34,11 @@
                                     </tr>
                                 </tbody>
                             </v-table>
-                            <v-btn variant="outlined" color="error" :disabled="historyItems.length === 0" :loading="rollbacking" @click="rollback"
-                                >直前の状態へロールバック</v-btn
-                            >
+                            <v-btn variant="outlined" color="error" :disabled="historyItems.length === 0" :loading="rollbacking" @click="rollback">直前の状態へロールバック</v-btn>
                             <v-divider class="my-4"></v-divider>
                             <div class="text-subtitle-1 mb-2">ログレベル</div>
                             <div class="text-caption mb-2">
-                                config/*LogConfig.yml の設定を上書きします。保存すると再起動なしで即座に反映されます
-                                (指定しなかったカテゴリはファイルの設定のまま)
+                                config/*LogConfig.yml の設定を上書きします。保存すると再起動なしで即座に反映されます (指定しなかったカテゴリはファイルの設定のまま)
                             </div>
                             <div class="d-flex ga-2 flex-wrap">
                                 <v-select
@@ -62,12 +59,34 @@
                             <v-divider class="my-4"></v-divider>
                             <div class="text-subtitle-1 mb-2">録画ファイルのメタデータ</div>
                             <div class="text-caption mb-2">
-                                ffprobe で録画ファイルの実尺・開始位置・コーデック・解像度を取得して DB に保存します。シークバーの全体長表示とニコニコ実況コメントの時刻合わせに利用されます (サーバー起動時にもバックグラウンドで実行されます)。
+                                ffprobe で録画ファイルの実尺・開始位置・コーデック・解像度を取得して DB
+                                に保存します。シークバーの全体長表示とニコニコ実況コメントの時刻合わせに利用されます (サーバー起動時にもバックグラウンドで実行されます)。
                             </div>
-                            <div class="text-body-2 mb-2">総数 {{ videoMetadataStatus.total }} 件 / 解析済み {{ videoMetadataStatus.analyzed }} 件 / 未解析 {{ videoMetadataStatus.unanalyzed }} 件</div>
+                            <div class="text-body-2 mb-2">
+                                総数 {{ videoMetadataStatus.total }} 件 / 解析済み {{ videoMetadataStatus.analyzed }} 件 / 未解析 {{ videoMetadataStatus.unanalyzed }} 件
+                            </div>
                             <div class="d-flex ga-2 flex-wrap">
                                 <v-btn variant="outlined" :loading="videoMetadataLoading" @click="loadVideoMetadataStatus">再読み込み</v-btn>
-                                <v-btn color="primary" :loading="videoMetadataAnalyzing" :disabled="videoMetadataStatus.unanalyzed === 0" @click="analyzeVideoMetadata">未解析ファイルを一括取得</v-btn>
+                                <v-btn
+                                    color="primary"
+                                    :disabled="isAnalyzeJobRunning === true || videoMetadataStatus.unanalyzed === 0"
+                                    @click="startAnalyzeJob('metadata', 'unanalyzed')"
+                                >
+                                    未解析ファイルを一括取得
+                                </v-btn>
+                                <v-btn color="secondary" variant="outlined" :disabled="isAnalyzeJobRunning === true" @click="startAnalyzeJob('metadata', 'all')">
+                                    全件を強制再解析
+                                </v-btn>
+                            </div>
+                            <div class="text-caption text-medium-emphasis mt-1">
+                                「全件を強制再解析」は解析済みのファイルも含めてすべて取得し直します (件数が多いと時間がかかります)。
+                            </div>
+                            <div v-if="analyzeJobOf('metadata') !== null" class="mt-2">
+                                <v-progress-linear :model-value="analyzeJobPercent" color="primary" height="6" rounded class="mb-1"></v-progress-linear>
+                                <div class="d-flex align-center ga-2 flex-wrap">
+                                    <span class="text-body-2">{{ analyzeJobText }}</span>
+                                    <v-btn v-if="isAnalyzeJobRunning === true" size="small" variant="text" color="error" @click="cancelAnalyzeJob">中断</v-btn>
+                                </div>
                             </div>
 
                             <v-divider class="my-4"></v-divider>
@@ -81,16 +100,30 @@
                             </div>
                             <div class="d-flex ga-2 flex-wrap align-center">
                                 <v-btn variant="outlined" :loading="tsInfoLoading" @click="loadTsInfoStatus">再読み込み</v-btn>
-                                <v-btn color="primary" :loading="tsInfoAnalyzing" :disabled="tsInfoStatus.unanalyzed === 0" @click="analyzeTsInfo">未解析ファイルを一括解析</v-btn>
-                                <v-btn color="secondary" variant="outlined" :loading="tsInfoReanalyzing" @click="reanalyzeAllTsInfo">全件を強制再解析</v-btn>
-                                <span v-if="tsInfoReanalyzeProgress !== null" class="text-caption">{{ tsInfoReanalyzeProgress }}</span>
+                                <v-btn color="primary" :disabled="isAnalyzeJobRunning === true || tsInfoStatus.unanalyzed === 0" @click="startAnalyzeJob('tsInfo', 'unanalyzed')">
+                                    未解析ファイルを一括解析
+                                </v-btn>
+                                <v-btn color="secondary" variant="outlined" :disabled="isAnalyzeJobRunning === true" @click="startAnalyzeJob('tsInfo', 'all')">
+                                    全件を強制再解析
+                                </v-btn>
                             </div>
                             <div class="text-caption text-medium-emphasis mt-1">
-                                「全件を強制再解析」は解析済みのファイルも含めてすべて解析し直します。TS 解析ロジックの更新を既存ファイルへ反映したい場合に使ってください (件数が多いと時間がかかります)。
+                                「全件を強制再解析」は解析済みのファイルも含めてすべて解析し直します。TS 解析ロジックの更新を既存ファイルへ反映したい場合に使ってください
+                                (件数が多いと時間がかかります)。
                             </div>
+                            <div v-if="analyzeJobOf('tsInfo') !== null" class="mt-2">
+                                <v-progress-linear :model-value="analyzeJobPercent" color="primary" height="6" rounded class="mb-1"></v-progress-linear>
+                                <div class="d-flex align-center ga-2 flex-wrap">
+                                    <span class="text-body-2">{{ analyzeJobText }}</span>
+                                    <v-btn v-if="isAnalyzeJobRunning === true" size="small" variant="text" color="error" @click="cancelAnalyzeJob">中断</v-btn>
+                                </div>
+                            </div>
+                            <div class="text-caption text-medium-emphasis mt-1">解析はサーバー側で進みます。この画面を閉じても処理は続き、開き直せば進捗の続きが表示されます。</div>
 
                             <v-divider class="my-4"></v-divider>
-                            <v-alert type="info">現在、再起動 (Operator 再初期化) が必須の設定項目はありません。今後追加された場合、このタブと画面上部のバナーで通知されます。</v-alert>
+                            <v-alert type="info">
+                                現在、再起動 (Operator 再初期化) が必須の設定項目はありません。今後追加された場合、このタブと画面上部のバナーで通知されます。
+                            </v-alert>
                         </v-window-item>
 
                         <!-- 連携タブ -->
@@ -109,25 +142,22 @@
                                 <v-btn variant="outlined" :loading="annictTesting" @click="testAnnictConnection">接続テスト</v-btn>
                                 <span v-if="annictTestResult" class="text-body-2">{{ annictTestResult }}</span>
                             </div>
-                            <v-alert type="info" density="compact" class="mb-2"
-                                >接続テストは<b>保存済みの設定</b>に対して行われます。スイッチやトークンを変更したら、先に画面下部の「保存」を押してください。</v-alert
-                            >
+                            <v-alert type="info" density="compact" class="mb-2">
+                                接続テストは
+                                <b>保存済みの設定</b>
+                                に対して行われます。スイッチやトークンを変更したら、先に画面下部の「保存」を押してください。
+                            </v-alert>
 
-                            <v-switch
-                                v-model="settings.metadata.annict.syncEnabled"
-                                label="視聴記録の自動同期"
-                                :disabled="isEnabledAnnictSyncFeature === false"
-                            ></v-switch>
+                            <v-switch v-model="settings.metadata.annict.syncEnabled" label="視聴記録の自動同期" :disabled="isEnabledAnnictSyncFeature === false"></v-switch>
                             <div class="text-subtitle-2 mt-2 mb-2">作品辞書</div>
                             <v-alert type="info" density="compact" class="mb-2">
                                 Annict から全作品を取得し、しょぼいカレンダー辞書と統合してシリーズ照合に使います。英題・ローマ字・かな表記を照合キーに加えられるほか、Annict が持つ
-                                <code>syobocalTid</code> でしょぼいカレンダー作品と厳密に結び付けられます。Annict 連携が有効かつトークンが設定されている場合のみ動作します。
+                                <code>syobocalTid</code>
+                                でしょぼいカレンダー作品と厳密に結び付けられます。Annict 連携が有効かつトークンが設定されている場合のみ動作します。
                             </v-alert>
                             <div class="text-body-2 mb-2">
                                 登録作品数: {{ annictWorkStatus === null ? '未取得' : annictWorkStatus.workCount.toLocaleString() }}
-                                <span v-if="annictWorkStatus !== null">
-                                    / しょぼいカレンダーと結合済: {{ annictWorkStatus.linkedToSyobocalCount.toLocaleString() }}
-                                </span>
+                                <span v-if="annictWorkStatus !== null">/ しょぼいカレンダーと結合済: {{ annictWorkStatus.linkedToSyobocalCount.toLocaleString() }}</span>
                             </div>
                             <div class="d-flex align-center ga-2 mb-2 flex-wrap">
                                 <v-btn variant="outlined" :loading="annictWorkSyncing" @click="syncAnnictWorks">作品辞書を同期</v-btn>
@@ -141,9 +171,9 @@
                             ></v-text-field>
 
                             <v-alert type="info" density="compact" class="mb-4">
-                                視聴記録の自動同期には二重のゲートがあります。(1) サーバー設定 (featureFlags.annictSync, config.yml):
-                                現在 {{ isEnabledAnnictSyncFeature ? '有効' : '無効 (WebUI からは変更できません)' }}。(2)
-                                上記のスイッチ (この画面から変更可能)。両方が有効な場合のみ同期が動作します。
+                                視聴記録の自動同期には二重のゲートがあります。(1) サーバー設定 (featureFlags.annictSync, config.yml): 現在
+                                {{ isEnabledAnnictSyncFeature ? '有効' : '無効 (WebUI からは変更できません)' }}。(2) 上記のスイッチ
+                                (この画面から変更可能)。両方が有効な場合のみ同期が動作します。
                             </v-alert>
 
                             <v-divider class="my-4"></v-divider>
@@ -157,9 +187,7 @@
                             </v-alert>
                             <div class="text-body-2 mb-2">
                                 登録作品数: {{ syobocalTitleStatus === null ? '取得中…' : syobocalTitleStatus.titleCount.toLocaleString() }}
-                                <span v-if="syobocalTitleStatus !== null && syobocalTitleStatus.lastUpdate !== null">
-                                    / 最終更新: {{ syobocalTitleStatus.lastUpdate }}
-                                </span>
+                                <span v-if="syobocalTitleStatus !== null && syobocalTitleStatus.lastUpdate !== null">/ 最終更新: {{ syobocalTitleStatus.lastUpdate }}</span>
                             </div>
                             <div class="d-flex align-center ga-2 mb-2 flex-wrap">
                                 <v-btn variant="outlined" :loading="syobocalTitleSyncing" @click="syncSyobocalTitles(false)">差分同期</v-btn>
@@ -178,9 +206,11 @@
                                 <v-spacer></v-spacer>
                                 <v-btn size="small" variant="outlined" color="primary" @click="addChannelMapEntry">追加</v-btn>
                             </div>
-                            <v-alert type="info" density="compact" class="mb-2"
-                                >同梱データ・共有静的データ・<code>metadataChannelMappingPath</code> より、この一覧の設定が優先されます。</v-alert
-                            >
+                            <v-alert type="info" density="compact" class="mb-2">
+                                同梱データ・共有静的データ・
+                                <code>metadataChannelMappingPath</code>
+                                より、この一覧の設定が優先されます。
+                            </v-alert>
                             <v-alert v-if="channelMapEntries.length === 0" type="info" class="mb-2">追加登録されたマッピングはありません</v-alert>
                             <v-card v-for="(entry, index) in channelMapEntries" :key="entry.__key" variant="outlined" class="mb-2 pa-2">
                                 <div class="d-flex align-center ga-2 flex-wrap">
@@ -194,9 +224,30 @@
                                         style="min-width: 220px"
                                         v-on:update:model-value="onChannelSelected(entry, $event)"
                                     ></v-select>
-                                    <v-text-field v-model.number="entry.chId" type="number" label="しょぼいカレンダー ChID" density="compact" hide-details style="max-width: 160px"></v-text-field>
-                                    <v-text-field v-model.number="entry.networkId" type="number" label="networkId" density="compact" hide-details style="max-width: 140px"></v-text-field>
-                                    <v-text-field v-model.number="entry.serviceId" type="number" label="serviceId" density="compact" hide-details style="max-width: 140px"></v-text-field>
+                                    <v-text-field
+                                        v-model.number="entry.chId"
+                                        type="number"
+                                        label="しょぼいカレンダー ChID"
+                                        density="compact"
+                                        hide-details
+                                        style="max-width: 160px"
+                                    ></v-text-field>
+                                    <v-text-field
+                                        v-model.number="entry.networkId"
+                                        type="number"
+                                        label="networkId"
+                                        density="compact"
+                                        hide-details
+                                        style="max-width: 140px"
+                                    ></v-text-field>
+                                    <v-text-field
+                                        v-model.number="entry.serviceId"
+                                        type="number"
+                                        label="serviceId"
+                                        density="compact"
+                                        hide-details
+                                        style="max-width: 140px"
+                                    ></v-text-field>
                                     <v-switch v-model="entry.syobocal" label="しょぼいカレンダー登録局" density="compact" hide-details></v-switch>
                                     <v-btn icon variant="text" color="error" @click="removeChannelMapEntry(index)"><v-icon>mdi-delete</v-icon></v-btn>
                                 </div>
@@ -281,12 +332,19 @@
                             <v-alert v-if="settings.notifications.targets.length === 0" type="info" class="mb-2">配信先がありません。「配信先を追加」から追加してください</v-alert>
                             <v-card v-for="(target, index) in settings.notifications.targets" :key="target.__key" variant="outlined" class="mb-3 pa-3">
                                 <div class="d-flex align-center ga-2">
-                                    <v-text-field v-model="target.name" label="配信先名" density="compact" hide-details class="flex-grow-1" v-on:blur="onTargetNameChanged(target)"></v-text-field>
+                                    <v-text-field
+                                        v-model="target.name"
+                                        label="配信先名"
+                                        density="compact"
+                                        hide-details
+                                        class="flex-grow-1"
+                                        v-on:blur="onTargetNameChanged(target)"
+                                    ></v-text-field>
                                     <v-btn icon variant="text" color="error" @click="removeNotificationTarget(index)"><v-icon>mdi-delete</v-icon></v-btn>
                                 </div>
-                                <v-alert v-if="target.__renamed === true" type="warning" density="compact" class="my-2"
-                                    >配信先名を変更すると、保存済みのシークレット (URL・署名シークレット) は引き継がれません。URL・シークレットを再入力してください</v-alert
-                                >
+                                <v-alert v-if="target.__renamed === true" type="warning" density="compact" class="my-2">
+                                    配信先名を変更すると、保存済みのシークレット (URL・署名シークレット) は引き継がれません。URL・シークレットを再入力してください
+                                </v-alert>
                                 <v-select v-model="target.type" :items="['discord', 'webhook']" label="種別" density="compact"></v-select>
                                 <v-text-field v-model="target.url" label="Webhook URL" density="compact"></v-text-field>
                                 <v-text-field
@@ -297,17 +355,10 @@
                                     density="compact"
                                     autocomplete="new-password"
                                 ></v-text-field>
-                                <v-select
-                                    v-model="target.events"
-                                    :items="notificationEventItems"
-                                    label="通知イベント"
-                                    multiple
-                                    chips
-                                    density="compact"
-                                ></v-select>
-                                <v-btn size="small" variant="outlined" :loading="testingTargetName === target.name" @click="testNotification(target.name)"
-                                    >この配信先へテスト通知</v-btn
-                                >
+                                <v-select v-model="target.events" :items="notificationEventItems" label="通知イベント" multiple chips density="compact"></v-select>
+                                <v-btn size="small" variant="outlined" :loading="testingTargetName === target.name" @click="testNotification(target.name)">
+                                    この配信先へテスト通知
+                                </v-btn>
                             </v-card>
 
                             <v-divider class="my-4"></v-divider>
@@ -341,324 +392,327 @@
                             <v-slider v-model="settings.series.matchThreshold" :min="0" :max="1" :step="0.05" label="自動マッチしきい値"></v-slider>
 
                             <template v-if="isEnabledSeriesLibrary === true">
-                            <v-divider class="my-4"></v-divider>
-                            <div class="text-subtitle-1 mb-2">精度メトリクス (§4.10)</div>
-                            <v-btn size="small" variant="text" @click="loadMetrics">再読み込み</v-btn>
-                            <div v-if="metrics !== null" class="mt-2">
-                                <div>対象番組数: {{ metrics.totalPrograms }} / マッチ済み: {{ metrics.matchedPrograms }}</div>
-                                <div>未マッチ番組率: {{ (metrics.unmatchedRate * 100).toFixed(1) }}%</div>
-                                <div class="mt-2">confidence 分布 (0-0.2 / 0.2-0.4 / 0.4-0.6 / 0.6-0.8 / 0.8-1.0)</div>
-                                <div class="d-flex ga-2">
-                                    <v-chip v-for="(c, i) in metrics.confidenceHistogram" :key="i" size="small">{{ c }}</v-chip>
-                                </div>
-                                <div v-if="metrics.updatedAt !== null" class="text-caption mt-1">最終更新: {{ formatDate(metrics.updatedAt) }}</div>
-                            </div>
-                            <v-alert v-else type="info" class="mt-2">メトリクスは未取得です</v-alert>
-
-                            <v-divider class="my-4"></v-divider>
-                            <div class="text-subtitle-1 mb-2">既存録画の一括シリーズ化 (バックフィル)</div>
-                            <div v-if="backfillStatus" class="mb-2">
-                                <div>状態: {{ backfillStateText }}</div>
-                                <v-progress-linear
-                                    v-if="backfillStatus.state === 'running'"
-                                    :model-value="backfillProgressPercent"
-                                    height="20"
-                                    color="primary"
-                                    striped
-                                >
-                                    <template #default>{{ backfillStatus.processed }} / {{ backfillStatus.total }}</template>
-                                </v-progress-linear>
-                                <div v-if="backfillStatus.state !== 'idle'" class="mt-1">
-                                    確定: {{ backfillStatus.linked }} / 未確定: {{ backfillStatus.pending }} / スキップ: {{ backfillStatus.skipped }} / 失敗:
-                                    {{ backfillStatus.failed }}
-                                </div>
-                                <v-alert v-if="backfillStatus.error" type="error" class="mt-2">{{ backfillStatus.error }}</v-alert>
-                            </div>
-                            <div class="d-flex flex-wrap ga-2 mb-3">
-                                <v-btn variant="outlined" :loading="backfillStarting" :disabled="backfillStatus?.state === 'running'" @click="startBackfill(true)"
-                                    >ドライラン実行</v-btn
-                                >
-                                <v-btn color="primary" variant="outlined" :loading="backfillStarting" :disabled="backfillStatus?.state === 'running'" @click="startBackfill(false)"
-                                    >本実行 (確定適用)</v-btn
-                                >
-                                <v-btn color="error" variant="outlined" :disabled="backfillStatus?.state !== 'running'" @click="cancelBackfill">キャンセル</v-btn>
-                            </div>
-
-                            <v-card v-if="backfillStatus?.previewItems && backfillStatus.previewItems.length > 0" variant="outlined" class="mb-4">
-                                <v-card-title class="text-subtitle-1">
-                                    ドライラン結果プレビュー
-                                    <span v-if="backfillStatus.previewTruncated === true">(一部のみ表示)</span>
-                                </v-card-title>
-                                <v-table density="compact">
-                                    <thead>
-                                        <tr>
-                                            <th>録画</th>
-                                            <th>判定</th>
-                                            <th>候補</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr v-for="p in backfillStatus.previewItems" :key="p.recordedId">
-                                            <td>{{ p.title }}</td>
-                                            <td>
-                                                <v-chip v-if="p.matched === true" :color="p.seriesId === null ? 'info' : 'success'" size="small"
-                                                    >{{ p.seriesId === null ? '新規: ' : '' }}{{ p.seriesTitle }} ({{ Math.round((p.confidence ?? 0) * 100) }}%)</v-chip
-                                                >
-                                                <v-chip v-else color="warning" size="small">未確定</v-chip>
-                                            </td>
-                                            <td>{{ p.candidates.map(c => c.seriesTitle).join('、') }}</td>
-                                        </tr>
-                                    </tbody>
-                                </v-table>
-                            </v-card>
-
-                            <v-divider class="my-4"></v-divider>
-                            <div class="text-subtitle-1 mb-2">エイリアス辞書 (マッチングルール)</div>
-                            <div class="text-caption mb-2">
-                                「正規化タイトル → シリーズ」の対応表。手動修正のほか、LLM が抽出した番組名を検証できたものを自動学習する。
-                                ここに載っている表記は以後 LLM を引かずに確定する
-                            </div>
-                            <div class="d-flex align-center ga-2 flex-wrap mb-2">
-                                <v-btn-toggle v-model="aliasSourceFilter" density="compact" mandatory>
-                                    <v-btn value="all" size="small">すべて ({{ aliases.length }})</v-btn>
-                                    <v-btn value="llm" size="small">LLM 学習 ({{ llmAliasCount }})</v-btn>
-                                    <v-btn value="manual" size="small">手動 ({{ aliases.length - llmAliasCount }})</v-btn>
-                                </v-btn-toggle>
-                                <v-text-field
-                                    v-model="aliasKeyword"
-                                    label="正規化タイトル / シリーズで絞り込み"
-                                    density="compact"
-                                    hide-details
-                                    clearable
-                                    prepend-inner-icon="mdi-magnify"
-                                    style="max-width: 280px"
-                                ></v-text-field>
-                            </div>
-
-                            <!-- 誤学習の一括修正バー。選択した行をまとめて同じシリーズへ付け替える / 削除する -->
-                            <v-card v-if="selectedAliasIds.length > 0" variant="tonal" class="mb-2">
-                                <v-card-text class="py-2">
-                                    <div class="d-flex align-center ga-2 flex-wrap">
-                                        <span class="text-body-2">{{ selectedAliasIds.length }} 件選択中</span>
-                                        <v-autocomplete
-                                            v-model="bulkAliasSeriesId"
-                                            v-model:search="bulkAliasKeyword"
-                                            :items="seriesCandidateItems"
-                                            item-title="title"
-                                            item-value="value"
-                                            label="まとめて付け替える先"
-                                            density="compact"
-                                            hide-details
-                                            hide-no-data
-                                            :loading="seriesSearching"
-                                            style="min-width: 260px"
-                                        ></v-autocomplete>
-                                        <v-btn size="small" variant="flat" color="primary" :disabled="bulkAliasSeriesId === null" @click="applyBulkAliasSeries">
-                                            選択に適用
-                                        </v-btn>
-                                        <v-btn size="small" variant="text" color="error" @click="markAliasRemove">選択を削除対象にする</v-btn>
-                                        <v-btn size="small" variant="text" @click="selectedAliasIds = []">選択解除</v-btn>
+                                <v-divider class="my-4"></v-divider>
+                                <div class="text-subtitle-1 mb-2">精度メトリクス (§4.10)</div>
+                                <v-btn size="small" variant="text" @click="loadMetrics">再読み込み</v-btn>
+                                <div v-if="metrics !== null" class="mt-2">
+                                    <div>対象番組数: {{ metrics.totalPrograms }} / マッチ済み: {{ metrics.matchedPrograms }}</div>
+                                    <div>未マッチ番組率: {{ (metrics.unmatchedRate * 100).toFixed(1) }}%</div>
+                                    <div class="mt-2">confidence 分布 (0-0.2 / 0.2-0.4 / 0.4-0.6 / 0.6-0.8 / 0.8-1.0)</div>
+                                    <div class="d-flex ga-2">
+                                        <v-chip v-for="(c, i) in metrics.confidenceHistogram" :key="i" size="small">{{ c }}</v-chip>
                                     </div>
-                                </v-card-text>
-                            </v-card>
+                                    <div v-if="metrics.updatedAt !== null" class="text-caption mt-1">最終更新: {{ formatDate(metrics.updatedAt) }}</div>
+                                </div>
+                                <v-alert v-else type="info" class="mt-2">メトリクスは未取得です</v-alert>
 
-                            <v-table density="compact" class="alias-table">
-                                <!-- 列幅はビューポートに対する割合 (%) で指定し、正規化タイトルとシリーズを同程度の幅に保つ -->
-                                <colgroup>
-                                    <col class="alias-col-check" />
-                                    <col class="alias-col-normalized" />
-                                    <col class="alias-col-series" />
-                                    <col class="alias-col-source" />
-                                    <col class="alias-col-date" />
-                                    <col class="alias-col-action" />
-                                </colgroup>
-                                <thead>
-                                    <tr>
-                                        <th>
-                                            <v-checkbox-btn
-                                                :model-value="isAllAliasSelected"
-                                                @update:model-value="toggleAllAlias"
-                                            ></v-checkbox-btn>
-                                        </th>
-                                        <th>正規化タイトル</th>
-                                        <th>シリーズ</th>
-                                        <th>学習元</th>
-                                        <th class="alias-date-cell">登録日時</th>
-                                        <th></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="a in filteredAliases" :key="a.id" :class="{ 'alias-removed': aliasEdits[a.id]?.remove === true }">
-                                        <td>
-                                            <v-checkbox-btn v-model="selectedAliasIds" :value="a.id"></v-checkbox-btn>
-                                        </td>
-                                        <td class="alias-normalized-cell">{{ a.normalizedTitle }}</td>
-                                        <td>
-                                            <span v-if="aliasEdits[a.id]?.remove === true" class="text-error text-body-2">削除します</span>
+                                <v-divider class="my-4"></v-divider>
+                                <div class="text-subtitle-1 mb-2">既存録画の一括シリーズ化 (バックフィル)</div>
+                                <div v-if="backfillStatus" class="mb-2">
+                                    <div>状態: {{ backfillStateText }}</div>
+                                    <v-progress-linear v-if="backfillStatus.state === 'running'" :model-value="backfillProgressPercent" height="20" color="primary" striped>
+                                        <template #default>{{ backfillStatus.processed }} / {{ backfillStatus.total }}</template>
+                                    </v-progress-linear>
+                                    <div v-if="backfillStatus.state !== 'idle'" class="mt-1">
+                                        確定: {{ backfillStatus.linked }} / 未確定: {{ backfillStatus.pending }} / スキップ: {{ backfillStatus.skipped }} / 失敗:
+                                        {{ backfillStatus.failed }}
+                                    </div>
+                                    <v-alert v-if="backfillStatus.error" type="error" class="mt-2">{{ backfillStatus.error }}</v-alert>
+                                </div>
+                                <div class="d-flex flex-wrap ga-2 mb-3">
+                                    <v-btn variant="outlined" :loading="backfillStarting" :disabled="backfillStatus?.state === 'running'" @click="startBackfill(true)">
+                                        ドライラン実行
+                                    </v-btn>
+                                    <v-btn
+                                        color="primary"
+                                        variant="outlined"
+                                        :loading="backfillStarting"
+                                        :disabled="backfillStatus?.state === 'running'"
+                                        @click="startBackfill(false)"
+                                    >
+                                        本実行 (確定適用)
+                                    </v-btn>
+                                    <v-btn color="error" variant="outlined" :disabled="backfillStatus?.state !== 'running'" @click="cancelBackfill">キャンセル</v-btn>
+                                </div>
+
+                                <v-card v-if="backfillStatus?.previewItems && backfillStatus.previewItems.length > 0" variant="outlined" class="mb-4">
+                                    <v-card-title class="text-subtitle-1">
+                                        ドライラン結果プレビュー
+                                        <span v-if="backfillStatus.previewTruncated === true">(一部のみ表示)</span>
+                                    </v-card-title>
+                                    <v-table density="compact">
+                                        <thead>
+                                            <tr>
+                                                <th>録画</th>
+                                                <th>判定</th>
+                                                <th>候補</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="p in backfillStatus.previewItems" :key="p.recordedId">
+                                                <td>{{ p.title }}</td>
+                                                <td>
+                                                    <v-chip v-if="p.matched === true" :color="p.seriesId === null ? 'info' : 'success'" size="small">
+                                                        {{ p.seriesId === null ? '新規: ' : '' }}{{ p.seriesTitle }} ({{ Math.round((p.confidence ?? 0) * 100) }}%)
+                                                    </v-chip>
+                                                    <v-chip v-else color="warning" size="small">未確定</v-chip>
+                                                </td>
+                                                <td>{{ p.candidates.map(c => c.seriesTitle).join('、') }}</td>
+                                            </tr>
+                                        </tbody>
+                                    </v-table>
+                                </v-card>
+
+                                <v-divider class="my-4"></v-divider>
+                                <div class="text-subtitle-1 mb-2">エイリアス辞書 (マッチングルール)</div>
+                                <div class="text-caption mb-2">
+                                    「正規化タイトル → シリーズ」の対応表。手動修正のほか、LLM が抽出した番組名を検証できたものを自動学習する。 ここに載っている表記は以後 LLM
+                                    を引かずに確定する
+                                </div>
+                                <div class="d-flex align-center ga-2 flex-wrap mb-2">
+                                    <v-btn-toggle v-model="aliasSourceFilter" density="compact" mandatory>
+                                        <v-btn value="all" size="small">すべて ({{ aliases.length }})</v-btn>
+                                        <v-btn value="llm" size="small">LLM 学習 ({{ llmAliasCount }})</v-btn>
+                                        <v-btn value="manual" size="small">手動 ({{ aliases.length - llmAliasCount }})</v-btn>
+                                    </v-btn-toggle>
+                                    <v-text-field
+                                        v-model="aliasKeyword"
+                                        label="正規化タイトル / シリーズで絞り込み"
+                                        density="compact"
+                                        hide-details
+                                        clearable
+                                        prepend-inner-icon="mdi-magnify"
+                                        style="max-width: 280px"
+                                    ></v-text-field>
+                                </div>
+
+                                <!-- 誤学習の一括修正バー。選択した行をまとめて同じシリーズへ付け替える / 削除する -->
+                                <v-card v-if="selectedAliasIds.length > 0" variant="tonal" class="mb-2">
+                                    <v-card-text class="py-2">
+                                        <div class="d-flex align-center ga-2 flex-wrap">
+                                            <span class="text-body-2">{{ selectedAliasIds.length }} 件選択中</span>
                                             <v-autocomplete
-                                                v-else
-                                                :model-value="aliasEdits[a.id]?.seriesId ?? a.seriesId"
-                                                :items="aliasSeriesItems(a)"
+                                                v-model="bulkAliasSeriesId"
+                                                v-model:search="bulkAliasKeyword"
+                                                :items="seriesCandidateItems"
                                                 item-title="title"
                                                 item-value="value"
-                                                v-model:search="aliasSearchKeyword"
+                                                label="まとめて付け替える先"
                                                 density="compact"
-                                                variant="outlined"
                                                 hide-details
                                                 hide-no-data
                                                 :loading="seriesSearching"
-                                                @update:model-value="value => setAliasSeries(a, value)"
+                                                style="min-width: 260px"
                                             ></v-autocomplete>
-                                        </td>
-                                        <td>
-                                            <v-chip size="x-small" :color="aliasSourceOf(a) === 'llm' ? 'primary' : undefined">
-                                                {{ aliasSourceOf(a) === 'llm' ? 'LLM 学習' : '手動' }}
-                                            </v-chip>
-                                        </td>
-                                        <td class="text-caption alias-date-cell">{{ formatDate(a.createdAt) }}</td>
-                                        <td>
-                                            <v-btn v-if="isAliasEdited(a.id)" size="small" variant="text" @click="resetAliasEdit(a.id)">戻す</v-btn>
-                                            <v-btn v-else size="small" variant="text" color="error" @click="markAliasRemove(a.id)">削除</v-btn>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </v-table>
-                            <v-alert v-if="filteredAliases.length === 0" type="info" class="mt-2">エイリアスはありません</v-alert>
-                            <div class="d-flex align-center ga-2 mt-3">
-                                <v-btn color="primary" :loading="aliasSaving" :disabled="changedAliasItems.length === 0" @click="saveAliases">
-                                    辞書の変更を保存 ({{ changedAliasItems.length }} 件)
-                                </v-btn>
-                                <v-btn variant="text" :disabled="changedAliasItems.length === 0" @click="aliasEdits = {}">変更を破棄</v-btn>
-                                <span class="text-caption text-grey">保存した辞書は手動修正扱いになり、以後の自動学習で上書きされません</span>
-                            </div>
+                                            <v-btn size="small" variant="flat" color="primary" :disabled="bulkAliasSeriesId === null" @click="applyBulkAliasSeries">
+                                                選択に適用
+                                            </v-btn>
+                                            <v-btn size="small" variant="text" color="error" @click="markAliasRemove">選択を削除対象にする</v-btn>
+                                            <v-btn size="small" variant="text" @click="selectedAliasIds = []">選択解除</v-btn>
+                                        </div>
+                                    </v-card-text>
+                                </v-card>
 
-                            <v-divider class="my-4"></v-divider>
-                            <div class="text-subtitle-1 mb-2">作品辞書から探して登録</div>
-                            <div class="text-caption mb-2">
-                                付け替え先のシリーズがまだ無いときは、同期済みのマスタ (しょぼいカレンダー / Annict / Wikidata) を直接検索してシリーズを作れる。
-                                作成したシリーズには辞書の外部 ID・読み仮名・クール・総話数がそのまま入る
-                            </div>
-                            <div class="d-flex align-center ga-2 flex-wrap mb-2">
-                                <v-text-field
-                                    v-model="dictionaryKeyword"
-                                    label="作品名で辞書を検索"
-                                    density="compact"
-                                    hide-details
-                                    clearable
-                                    style="max-width: 360px"
-                                    @keyup.enter="searchDictionary"
-                                ></v-text-field>
-                                <v-btn
-                                    color="primary"
-                                    size="small"
-                                    :loading="dictionarySearching"
-                                    :disabled="(dictionaryKeyword || '').trim().length < 2"
-                                    @click="searchDictionary"
-                                    >検索</v-btn
-                                >
-                            </div>
-                            <v-table v-if="dictionaryWorks.length > 0" density="compact">
-                                <thead>
-                                    <tr>
-                                        <th>作品</th>
-                                        <th>辞書</th>
-                                        <th>クール</th>
-                                        <th>話数</th>
-                                        <th>外部 ID</th>
-                                        <th></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="w in dictionaryWorks" :key="dictionaryWorkKey(w)">
-                                        <td>
-                                            <div>{{ w.title }}</div>
-                                            <div v-if="w.titleKana" class="text-caption text-grey">{{ w.titleKana }}</div>
-                                        </td>
-                                        <td>{{ dictionarySourceLabel(w.source) }}</td>
-                                        <td>{{ dictionarySeasonLabel(w) }}</td>
-                                        <td>{{ w.totalEpisodes || '-' }}</td>
-                                        <td class="text-caption">{{ dictionaryIdsLabel(w) }}</td>
-                                        <td class="text-right">
-                                            <v-chip v-if="w.seriesId" size="small" color="success" variant="tonal">登録済み</v-chip>
-                                            <v-btn
-                                                v-else
-                                                size="small"
-                                                variant="outlined"
-                                                :loading="dictionaryCreatingKey === dictionaryWorkKey(w)"
-                                                @click="createSeriesFromDictionary(w)"
-                                                >シリーズを作成</v-btn
-                                            >
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </v-table>
-                            <v-alert v-else-if="dictionarySearched" type="info" class="mt-2">辞書に一致する作品がありません</v-alert>
+                                <v-table density="compact" class="alias-table">
+                                    <!-- 列幅はビューポートに対する割合 (%) で指定し、正規化タイトルとシリーズを同程度の幅に保つ -->
+                                    <colgroup>
+                                        <col class="alias-col-check" />
+                                        <col class="alias-col-normalized" />
+                                        <col class="alias-col-series" />
+                                        <col class="alias-col-source" />
+                                        <col class="alias-col-date" />
+                                        <col class="alias-col-action" />
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th>
+                                                <v-checkbox-btn :model-value="isAllAliasSelected" @update:model-value="toggleAllAlias"></v-checkbox-btn>
+                                            </th>
+                                            <th>正規化タイトル</th>
+                                            <th>シリーズ</th>
+                                            <th>学習元</th>
+                                            <th class="alias-date-cell">登録日時</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="a in filteredAliases" :key="a.id" :class="{ 'alias-removed': aliasEdits[a.id]?.remove === true }">
+                                            <td>
+                                                <v-checkbox-btn v-model="selectedAliasIds" :value="a.id"></v-checkbox-btn>
+                                            </td>
+                                            <td class="alias-normalized-cell">{{ a.normalizedTitle }}</td>
+                                            <td>
+                                                <span v-if="aliasEdits[a.id]?.remove === true" class="text-error text-body-2">削除します</span>
+                                                <v-autocomplete
+                                                    v-else
+                                                    :model-value="aliasEdits[a.id]?.seriesId ?? a.seriesId"
+                                                    :items="aliasSeriesItems(a)"
+                                                    item-title="title"
+                                                    item-value="value"
+                                                    v-model:search="aliasSearchKeyword"
+                                                    density="compact"
+                                                    variant="outlined"
+                                                    hide-details
+                                                    hide-no-data
+                                                    :loading="seriesSearching"
+                                                    @update:model-value="value => setAliasSeries(a, value)"
+                                                ></v-autocomplete>
+                                            </td>
+                                            <td>
+                                                <v-chip size="x-small" :color="aliasSourceOf(a) === 'llm' ? 'primary' : undefined">
+                                                    {{ aliasSourceOf(a) === 'llm' ? 'LLM 学習' : '手動' }}
+                                                </v-chip>
+                                            </td>
+                                            <td class="text-caption alias-date-cell">{{ formatDate(a.createdAt) }}</td>
+                                            <td>
+                                                <v-btn v-if="isAliasEdited(a.id)" size="small" variant="text" @click="resetAliasEdit(a.id)">戻す</v-btn>
+                                                <v-btn v-else size="small" variant="text" color="error" @click="markAliasRemove(a.id)">削除</v-btn>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </v-table>
+                                <v-alert v-if="filteredAliases.length === 0" type="info" class="mt-2">エイリアスはありません</v-alert>
+                                <div class="d-flex align-center ga-2 mt-3">
+                                    <v-btn color="primary" :loading="aliasSaving" :disabled="changedAliasItems.length === 0" @click="saveAliases">
+                                        辞書の変更を保存 ({{ changedAliasItems.length }} 件)
+                                    </v-btn>
+                                    <v-btn variant="text" :disabled="changedAliasItems.length === 0" @click="aliasEdits = {}">変更を破棄</v-btn>
+                                    <span class="text-caption text-grey">保存した辞書は手動修正扱いになり、以後の自動学習で上書きされません</span>
+                                </div>
 
-                            <v-divider class="my-4"></v-divider>
-                            <div class="text-subtitle-1 mb-2">録画 0 件のシリーズの掃除</div>
-                            <div class="text-caption mb-2">
-                                マージ・分割・録画削除の結果、録画が 1 件も紐づいていないシリーズ (自動生成の抜け殻) が残ることがある。
-                                削除すると、そのシリーズを指しているエイリアス辞書・エピソード・予約ヒントも一緒に消える (録画ファイルは削除されない)
-                            </div>
-                            <div class="d-flex align-center ga-2 flex-wrap mb-2">
-                                <v-btn size="small" variant="text" :loading="emptySeriesLoading" @click="loadEmptySeries">再読み込み</v-btn>
-                                <v-btn
-                                    size="small"
-                                    color="error"
-                                    variant="outlined"
-                                    :loading="emptySeriesDeleting"
-                                    :disabled="selectedEmptySeriesIds.length === 0"
-                                    @click="deleteEmptySeries(false)"
-                                    >選択した {{ selectedEmptySeriesIds.length }} 件を削除</v-btn
-                                >
-                                <v-btn
-                                    size="small"
-                                    color="error"
-                                    variant="text"
-                                    :loading="emptySeriesDeleting"
-                                    :disabled="emptySeries.length === 0"
-                                    @click="deleteEmptySeries(true)"
-                                    >すべて削除 ({{ emptySeries.length }} 件)</v-btn
-                                >
-                            </div>
-                            <v-table v-if="emptySeries.length > 0" density="compact">
-                                <thead>
-                                    <tr>
-                                        <th style="width: 48px">
-                                            <v-checkbox-btn
-                                                :model-value="isAllEmptySeriesSelected"
-                                                :indeterminate="selectedEmptySeriesIds.length > 0 && isAllEmptySeriesSelected === false"
-                                                @update:model-value="toggleAllEmptySeries"
-                                            ></v-checkbox-btn>
-                                        </th>
-                                        <th>シリーズ</th>
-                                        <th style="width: 110px">出所</th>
-                                        <th style="width: 90px">辞書</th>
-                                        <th style="width: 90px">話数</th>
-                                        <th style="width: 150px">作成日時</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="s in emptySeries" :key="s.seriesId">
-                                        <td><v-checkbox-btn v-model="selectedEmptySeriesIds" :value="s.seriesId"></v-checkbox-btn></td>
-                                        <td>
-                                            {{ s.title }}
-                                            <div class="text-caption text-grey">{{ s.normalizedTitle }}</div>
-                                        </td>
-                                        <td>
-                                            <v-chip size="x-small" :color="s.origin === 'dictionary' ? 'primary' : undefined">
-                                                {{ s.origin === 'dictionary' ? '辞書' : '自動生成' }}
-                                            </v-chip>
-                                        </td>
-                                        <td>{{ s.aliasCount }}</td>
-                                        <td>{{ s.episodeCount }}</td>
-                                        <td class="text-caption">{{ formatDate(s.createdAt) }}</td>
-                                    </tr>
-                                </tbody>
-                            </v-table>
-                            <v-alert v-else type="info" class="mt-2">録画 0 件のシリーズはありません</v-alert>
+                                <v-divider class="my-4"></v-divider>
+                                <div class="text-subtitle-1 mb-2">作品辞書から探して登録</div>
+                                <div class="text-caption mb-2">
+                                    付け替え先のシリーズがまだ無いときは、同期済みのマスタ (しょぼいカレンダー / Annict / Wikidata) を直接検索してシリーズを作れる。
+                                    作成したシリーズには辞書の外部 ID・読み仮名・クール・総話数がそのまま入る
+                                </div>
+                                <div class="d-flex align-center ga-2 flex-wrap mb-2">
+                                    <v-text-field
+                                        v-model="dictionaryKeyword"
+                                        label="作品名で辞書を検索"
+                                        density="compact"
+                                        hide-details
+                                        clearable
+                                        style="max-width: 360px"
+                                        @keyup.enter="searchDictionary"
+                                    ></v-text-field>
+                                    <v-btn
+                                        color="primary"
+                                        size="small"
+                                        :loading="dictionarySearching"
+                                        :disabled="(dictionaryKeyword || '').trim().length < 2"
+                                        @click="searchDictionary"
+                                    >
+                                        検索
+                                    </v-btn>
+                                </div>
+                                <v-table v-if="dictionaryWorks.length > 0" density="compact">
+                                    <thead>
+                                        <tr>
+                                            <th>作品</th>
+                                            <th>辞書</th>
+                                            <th>クール</th>
+                                            <th>話数</th>
+                                            <th>外部 ID</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="w in dictionaryWorks" :key="dictionaryWorkKey(w)">
+                                            <td>
+                                                <div>{{ w.title }}</div>
+                                                <div v-if="w.titleKana" class="text-caption text-grey">{{ w.titleKana }}</div>
+                                            </td>
+                                            <td>{{ dictionarySourceLabel(w.source) }}</td>
+                                            <td>{{ dictionarySeasonLabel(w) }}</td>
+                                            <td>{{ w.totalEpisodes || '-' }}</td>
+                                            <td class="text-caption">{{ dictionaryIdsLabel(w) }}</td>
+                                            <td class="text-right">
+                                                <v-chip v-if="w.seriesId" size="small" color="success" variant="tonal">登録済み</v-chip>
+                                                <v-btn
+                                                    v-else
+                                                    size="small"
+                                                    variant="outlined"
+                                                    :loading="dictionaryCreatingKey === dictionaryWorkKey(w)"
+                                                    @click="createSeriesFromDictionary(w)"
+                                                >
+                                                    シリーズを作成
+                                                </v-btn>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </v-table>
+                                <v-alert v-else-if="dictionarySearched" type="info" class="mt-2">辞書に一致する作品がありません</v-alert>
+
+                                <v-divider class="my-4"></v-divider>
+                                <div class="text-subtitle-1 mb-2">録画 0 件のシリーズの掃除</div>
+                                <div class="text-caption mb-2">
+                                    マージ・分割・録画削除の結果、録画が 1 件も紐づいていないシリーズ (自動生成の抜け殻) が残ることがある。
+                                    削除すると、そのシリーズを指しているエイリアス辞書・エピソード・予約ヒントも一緒に消える (録画ファイルは削除されない)
+                                </div>
+                                <div class="d-flex align-center ga-2 flex-wrap mb-2">
+                                    <v-btn size="small" variant="text" :loading="emptySeriesLoading" @click="loadEmptySeries">再読み込み</v-btn>
+                                    <v-btn
+                                        size="small"
+                                        color="error"
+                                        variant="outlined"
+                                        :loading="emptySeriesDeleting"
+                                        :disabled="selectedEmptySeriesIds.length === 0"
+                                        @click="deleteEmptySeries(false)"
+                                    >
+                                        選択した {{ selectedEmptySeriesIds.length }} 件を削除
+                                    </v-btn>
+                                    <v-btn
+                                        size="small"
+                                        color="error"
+                                        variant="text"
+                                        :loading="emptySeriesDeleting"
+                                        :disabled="emptySeries.length === 0"
+                                        @click="deleteEmptySeries(true)"
+                                    >
+                                        すべて削除 ({{ emptySeries.length }} 件)
+                                    </v-btn>
+                                </div>
+                                <v-table v-if="emptySeries.length > 0" density="compact">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 48px">
+                                                <v-checkbox-btn
+                                                    :model-value="isAllEmptySeriesSelected"
+                                                    :indeterminate="selectedEmptySeriesIds.length > 0 && isAllEmptySeriesSelected === false"
+                                                    @update:model-value="toggleAllEmptySeries"
+                                                ></v-checkbox-btn>
+                                            </th>
+                                            <th>シリーズ</th>
+                                            <th style="width: 110px">出所</th>
+                                            <th style="width: 90px">辞書</th>
+                                            <th style="width: 90px">話数</th>
+                                            <th style="width: 150px">作成日時</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="s in emptySeries" :key="s.seriesId">
+                                            <td><v-checkbox-btn v-model="selectedEmptySeriesIds" :value="s.seriesId"></v-checkbox-btn></td>
+                                            <td>
+                                                {{ s.title }}
+                                                <div class="text-caption text-grey">{{ s.normalizedTitle }}</div>
+                                            </td>
+                                            <td>
+                                                <v-chip size="x-small" :color="s.origin === 'dictionary' ? 'primary' : undefined">
+                                                    {{ s.origin === 'dictionary' ? '辞書' : '自動生成' }}
+                                                </v-chip>
+                                            </td>
+                                            <td>{{ s.aliasCount }}</td>
+                                            <td>{{ s.episodeCount }}</td>
+                                            <td class="text-caption">{{ formatDate(s.createdAt) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </v-table>
+                                <v-alert v-else type="info" class="mt-2">録画 0 件のシリーズはありません</v-alert>
                             </template>
-                            <v-alert v-else type="info" class="mt-4">シリーズライブラリ機能 (featureFlags.seriesLibrary) が無効なため、バックフィルとエイリアス管理は利用できません</v-alert>
+                            <v-alert v-else type="info" class="mt-4">
+                                シリーズライブラリ機能 (featureFlags.seriesLibrary) が無効なため、バックフィルとエイリアス管理は利用できません
+                            </v-alert>
                         </v-window-item>
 
                         <!-- 設定ファイルタブ: config.yml をフォームから編集する -->
@@ -710,14 +764,7 @@
                                             <v-btn v-if="u.hasPassword === true || u.name === currentUserName" size="small" variant="text" @click="openPasswordDialog(u)">
                                                 パスワード
                                             </v-btn>
-                                            <v-btn
-                                                size="small"
-                                                variant="text"
-                                                color="error"
-                                                :disabled="authUsers.length <= 1"
-                                                @click="removeAuthUser(u)"
-                                                >削除</v-btn
-                                            >
+                                            <v-btn size="small" variant="text" color="error" :disabled="authUsers.length <= 1" @click="removeAuthUser(u)">削除</v-btn>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -736,9 +783,7 @@
                                     hide-details
                                     style="max-width: 240px"
                                 ></v-text-field>
-                                <v-btn color="primary" :loading="authSaving" :disabled="newUserName.trim() === '' || newUserPassword === ''" @click="addAuthUser">
-                                    追加
-                                </v-btn>
+                                <v-btn color="primary" :loading="authSaving" :disabled="newUserName.trim() === '' || newUserPassword === ''" @click="addAuthUser">追加</v-btn>
                             </div>
                         </v-window-item>
                     </v-window>
@@ -762,21 +807,14 @@
                     ></v-text-field>
                     <v-text-field v-model="newPassword" label="新しいパスワード (8 文字以上)" type="password" autocomplete="new-password" density="compact"></v-text-field>
                     <v-text-field v-model="newPasswordConfirm" label="新しいパスワード (確認)" type="password" autocomplete="new-password" density="compact"></v-text-field>
-                    <v-alert v-if="newPassword !== '' && newPassword !== newPasswordConfirm" type="error" density="compact">
-                        確認用のパスワードが一致しません
-                    </v-alert>
+                    <v-alert v-if="newPassword !== '' && newPassword !== newPasswordConfirm" type="error" density="compact">確認用のパスワードが一致しません</v-alert>
                 </v-card-text>
                 <v-card-actions>
                     <v-spacer></v-spacer>
                     <v-btn variant="text" @click="isOpenPasswordDialog = false">キャンセル</v-btn>
-                    <v-btn
-                        color="primary"
-                        variant="text"
-                        :loading="authSaving"
-                        :disabled="newPassword === '' || newPassword !== newPasswordConfirm"
-                        @click="saveNewPassword"
-                        >変更する</v-btn
-                    >
+                    <v-btn color="primary" variant="text" :loading="authSaving" :disabled="newPassword === '' || newPassword !== newPasswordConfirm" @click="saveNewPassword">
+                        変更する
+                    </v-btn>
                 </v-card-actions>
             </v-card>
         </v-dialog>
@@ -790,7 +828,14 @@ import IAuthApiModel, { AuthUserItem } from '@/model/api/auth/IAuthApiModel';
 import container from '@/model/ModelContainer';
 import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
 import ISystemSettingApiModel from '@/model/api/config/ISystemSettingApiModel';
-import ISeriesApiModel, { DictionaryWorkItem, EmptySeriesItem, SeriesAliasItem, SeriesBackfillResult, SeriesListItem, ProgramSeriesMetrics } from '@/model/api/series/ISeriesApiModel';
+import ISeriesApiModel, {
+    DictionaryWorkItem,
+    EmptySeriesItem,
+    SeriesAliasItem,
+    SeriesBackfillResult,
+    SeriesListItem,
+    ProgramSeriesMetrics,
+} from '@/model/api/series/ISeriesApiModel';
 import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
@@ -830,6 +875,9 @@ interface ChannelMapEntryForm {
 
 @Component({ components: { TitleBar, UpdatePanel, ConfigFormPanel } })
 class SystemSetting extends Vue {
+    // 一括解析ジョブの進捗ポーリング間隔
+    private static readonly ANALYZE_JOB_POLLING_INTERVAL = 2000;
+
     tab = 'basic';
     saving = false;
     testingTargetName: string | null = null;
@@ -844,27 +892,54 @@ class SystemSetting extends Vue {
     // --- 録画ファイルのメタデータ取得 ---
     videoMetadataStatus: apid.VideoFileMetadataStatus = { total: 0, analyzed: 0, unanalyzed: 0 };
     videoMetadataLoading = false;
-    videoMetadataAnalyzing = false;
 
     // --- 録画ファイルの TS (PSI/SI) 解析 ---
     tsInfoStatus: apid.VideoFileMetadataStatus = { total: 0, analyzed: 0, unanalyzed: 0 };
     tsInfoLoading = false;
-    tsInfoAnalyzing = false;
-    // 解析済みも含めた全件の強制再解析 (解析ロジック更新後の反映用)
-    tsInfoReanalyzing = false;
-    tsInfoReanalyzeProgress: string | null = null;
-    private tsInfoReanalyzeCancelled: boolean = false;
+
+    // --- 一括解析ジョブ (サーバー側で進むため、画面を閉じても継続する) ---
+    analyzeJob: apid.VideoAnalyzeJob | null = null;
+    private analyzeJobTimer: number | null = null;
+
+    /**
+     * 指定した種別のジョブなら返す (メタデータ欄と TS 欄で進捗の出し分けに使う)
+     */
+    analyzeJobOf(type: apid.VideoAnalyzeJobType): apid.VideoAnalyzeJob | null {
+        return this.analyzeJob !== null && this.analyzeJob.type === type && this.analyzeJob.status !== 'idle' ? this.analyzeJob : null;
+    }
+
+    get isAnalyzeJobRunning(): boolean {
+        return this.analyzeJob?.status === 'running';
+    }
+
+    get analyzeJobPercent(): number {
+        if (this.analyzeJob === null || this.analyzeJob.total === 0) return 0;
+
+        return Math.min(100, Math.round((this.analyzeJob.processed / this.analyzeJob.total) * 100));
+    }
+
+    get analyzeJobText(): string {
+        const job = this.analyzeJob;
+        if (job === null) return '';
+
+        const counts = `${job.processed} / ${job.total} 件 (成功 ${job.analyzed} / 失敗 ${job.failed})`;
+        switch (job.status) {
+            case 'running':
+                return `解析中... ${counts}`;
+            case 'succeeded':
+                return `解析完了: ${counts}`;
+            case 'canceled':
+                return `中断しました: ${counts}`;
+            case 'failed':
+                return `解析ジョブが中断しました (${job.error ?? 'unknown error'}): ${counts}`;
+            default:
+                return counts;
+        }
+    }
 
     requiresRestartKeys: string[] = [];
 
-    readonly notificationEventItems: string[] = [
-        'recording.started',
-        'recording.completed',
-        'recording.failed',
-        'reserve.added',
-        'reserve.updated',
-        'reserve.deleted',
-    ];
+    readonly notificationEventItems: string[] = ['recording.started', 'recording.completed', 'recording.failed', 'reserve.added', 'reserve.updated', 'reserve.deleted'];
 
     /**
      * シリーズライブラリ機能が有効か (featureFlags.seriesLibrary)。無効な場合はバックフィル/エイリアス管理 UI を隠す
@@ -1149,9 +1224,7 @@ class SystemSetting extends Vue {
     }
     get changedAliasItems(): apid.BulkSeriesAliasItem[] {
         return Object.entries(this.aliasEdits).map(([aliasId, edit]) =>
-            edit.remove === true
-                ? { aliasId: Number(aliasId), remove: true }
-                : { aliasId: Number(aliasId), seriesId: edit.seriesId },
+            edit.remove === true ? { aliasId: Number(aliasId), remove: true } : { aliasId: Number(aliasId), seriesId: edit.seriesId },
         );
     }
     metrics: ProgramSeriesMetrics | null = null;
@@ -1316,6 +1389,8 @@ class SystemSetting extends Vue {
         await this.loadNotificationFailures();
         await this.loadVideoMetadataStatus();
         await this.loadTsInfoStatus();
+        // 画面を開き直したときに、実行中のジョブがあれば進捗の続きを表示する
+        await this.loadAnalyzeJob();
     }
 
     /**
@@ -1329,26 +1404,6 @@ class SystemSetting extends Vue {
             console.error(err);
         } finally {
             this.videoMetadataLoading = false;
-        }
-    }
-
-    /**
-     * 未解析の録画ファイルを一括で解析する
-     */
-    async analyzeVideoMetadata(): Promise<void> {
-        this.videoMetadataAnalyzing = true;
-        try {
-            const result = await this.videoApi.analyzeAllMetadata({ limit: 100 });
-            this.snackbarState.open({
-                color: result.failed === 0 ? 'success' : 'error',
-                text: `解析 ${result.analyzed} 件 / 失敗 ${result.failed} 件 / 残り ${result.remaining} 件`,
-            });
-            await this.loadVideoMetadataStatus();
-        } catch (err) {
-            console.error(err);
-            this.snackbarState.open({ color: 'error', text: 'メタデータの一括取得に失敗しました' });
-        } finally {
-            this.videoMetadataAnalyzing = false;
         }
     }
 
@@ -1367,71 +1422,82 @@ class SystemSetting extends Vue {
     }
 
     /**
-     * 未解析の TS ファイルを一括で解析する
+     * 一括解析ジョブを開始する。
+     * 処理はサーバー側で進むため、画面を閉じても止まらない
+     * @param type: 解析の種別
+     * @param mode: 対象 (未解析のみ / 全件強制)
      */
-    async analyzeTsInfo(): Promise<void> {
-        this.tsInfoAnalyzing = true;
+    async startAnalyzeJob(type: apid.VideoAnalyzeJobType, mode: apid.VideoAnalyzeJobMode): Promise<void> {
         try {
-            const result = await this.videoApi.analyzeAllTsInfo({ limit: 100 });
-            this.snackbarState.open({
-                color: result.failed === 0 ? 'success' : 'error',
-                text: `解析 ${result.analyzed} 件 / 失敗 ${result.failed} 件 / 残り ${result.remaining} 件`,
-            });
-            await this.loadTsInfoStatus();
-        } catch (err) {
+            this.analyzeJob = await this.videoApi.startAnalyzeJob({ type: type, mode: mode });
+            this.startAnalyzeJobPolling();
+        } catch (err: any) {
             console.error(err);
-            this.snackbarState.open({ color: 'error', text: 'TS の一括解析に失敗しました' });
-        } finally {
-            this.tsInfoAnalyzing = false;
+            const message = err?.response?.status === 409 ? 'すでに解析ジョブが実行中です' : '解析ジョブの開始に失敗しました';
+            this.snackbarState.open({ color: 'error', text: message });
         }
     }
 
     /**
-     * 解析済みかどうかに関わらず、すべての TS ファイルを強制的に再解析する。
-     * 画面を離れる (beforeUnmount) までポーリング的に呼び続け、進捗を表示する
+     * 実行中の一括解析ジョブに中断を要求する
      */
-    async reanalyzeAllTsInfo(): Promise<void> {
-        this.tsInfoReanalyzing = true;
-        this.tsInfoReanalyzeCancelled = false;
-        let offset = 0;
-        let analyzed = 0;
-        let failed = 0;
+    async cancelAnalyzeJob(): Promise<void> {
         try {
-            for (;;) {
-                if (this.tsInfoReanalyzeCancelled) {
-                    break;
-                }
-
-                const result = await this.videoApi.reanalyzeAllTsInfo({ offset: offset, limit: 100 });
-                analyzed += result.analyzed;
-                failed += result.failed;
-                this.tsInfoReanalyzeProgress = `${Math.min(offset + result.analyzed + result.failed, result.total)} / ${result.total} 件`;
-
-                if (result.nextOffset === null) {
-                    break;
-                }
-                offset = result.nextOffset;
-            }
-
-            if (!this.tsInfoReanalyzeCancelled) {
-                this.snackbarState.open({
-                    color: failed === 0 ? 'success' : 'error',
-                    text: `再解析完了: 成功 ${analyzed} 件 / 失敗 ${failed} 件`,
-                });
-            }
-            await this.loadTsInfoStatus();
+            this.analyzeJob = await this.videoApi.cancelAnalyzeJob();
         } catch (err) {
             console.error(err);
-            this.snackbarState.open({ color: 'error', text: 'TS の強制再解析に失敗しました' });
-        } finally {
-            this.tsInfoReanalyzing = false;
-            this.tsInfoReanalyzeProgress = null;
+            this.snackbarState.open({ color: 'error', text: '解析ジョブの中断に失敗しました' });
+        }
+    }
+
+    /**
+     * 画面を開いたときに、実行中・直近のジョブを取得して表示に反映する
+     */
+    async loadAnalyzeJob(): Promise<void> {
+        try {
+            this.analyzeJob = await this.videoApi.getAnalyzeJob();
+            if (this.isAnalyzeJobRunning === true) this.startAnalyzeJobPolling();
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    private startAnalyzeJobPolling(): void {
+        this.stopAnalyzeJobPolling();
+        this.analyzeJobTimer = window.setInterval(async () => {
+            try {
+                this.analyzeJob = await this.videoApi.getAnalyzeJob();
+                if (this.isAnalyzeJobRunning === true) return;
+
+                this.stopAnalyzeJobPolling();
+                // 終了時は件数表示も取り直す
+                await this.loadVideoMetadataStatus();
+                await this.loadTsInfoStatus();
+                if (this.analyzeJob.status === 'succeeded') {
+                    this.snackbarState.open({
+                        color: this.analyzeJob.failed === 0 ? 'success' : 'error',
+                        text: `解析が完了しました: 成功 ${this.analyzeJob.analyzed} 件 / 失敗 ${this.analyzeJob.failed} 件`,
+                    });
+                } else if (this.analyzeJob.status === 'failed') {
+                    this.snackbarState.open({ color: 'error', text: '解析ジョブが中断しました' });
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }, SystemSetting.ANALYZE_JOB_POLLING_INTERVAL);
+    }
+
+    private stopAnalyzeJobPolling(): void {
+        if (this.analyzeJobTimer !== null) {
+            window.clearInterval(this.analyzeJobTimer);
+            this.analyzeJobTimer = null;
         }
     }
 
     beforeUnmount() {
         this.stopBackfillPolling();
-        this.tsInfoReanalyzeCancelled = true;
+        // ジョブ自体はサーバー側で進み続けるので、ここでは進捗の取得だけをやめる
+        this.stopAnalyzeJobPolling();
     }
 
     addNotificationTarget(): void {
@@ -1513,9 +1579,7 @@ class SystemSetting extends Vue {
         this.annictTestResult = null;
         try {
             const result = await this.api.testAnnictConnection();
-            this.annictTestResult = result.ok
-                ? `接続に成功しました (ユーザー: ${result.username ?? '-'})`
-                : this.annictErrorText(result.message);
+            this.annictTestResult = result.ok ? `接続に成功しました (ユーザー: ${result.username ?? '-'})` : this.annictErrorText(result.message);
         } catch (err: any) {
             console.error(err);
             const status = err?.response?.status;
@@ -1865,14 +1929,9 @@ class SystemSetting extends Vue {
             const result = await this.seriesApi.createSeriesFromDictionary(work);
             this.snackbarState.open({
                 color: 'success',
-                text:
-                    result.created === true
-                        ? `シリーズ「${result.title}」を作成しました`
-                        : `シリーズ「${result.title}」はすでに登録されています`,
+                text: result.created === true ? `シリーズ「${result.title}」を作成しました` : `シリーズ「${result.title}」はすでに登録されています`,
             });
-            this.dictionaryWorks = this.dictionaryWorks.map(x =>
-                this.dictionaryWorkKey(x) === this.dictionaryWorkKey(work) ? { ...x, seriesId: result.seriesId } : x,
-            );
+            this.dictionaryWorks = this.dictionaryWorks.map(x => (this.dictionaryWorkKey(x) === this.dictionaryWorkKey(work) ? { ...x, seriesId: result.seriesId } : x));
             await this.loadAliases();
         } catch (err) {
             console.error(err);

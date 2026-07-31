@@ -1737,6 +1737,61 @@ components:
                     description: 対象となる TS ファイルの総数
                     type: integer
 
+        StartVideoAnalyzeJobOption:
+            description: 録画ファイル一括解析ジョブの開始オプション
+            type: object
+            required: [type]
+            properties:
+                type:
+                    description: 解析の種別 (metadata = ffprobe / tsInfo = TS の PSI/SI)
+                    type: string
+                    enum: [metadata, tsInfo]
+                mode:
+                    description: 対象 (unanalyzed = 未解析のみ / all = 解析済みを含む全件。省略時 unanalyzed)
+                    type: string
+                    enum: [unanalyzed, all]
+
+        VideoAnalyzeJob:
+            description: 録画ファイル一括解析ジョブの状況
+            type: object
+            required: [status, type, mode, total, processed, analyzed, failed, startedAt, finishedAt, error]
+            properties:
+                status:
+                    type: string
+                    enum: [idle, running, succeeded, failed, canceled]
+                type:
+                    type: string
+                    nullable: true
+                    enum: [metadata, tsInfo]
+                mode:
+                    type: string
+                    nullable: true
+                    enum: [unanalyzed, all]
+                total:
+                    description: 開始時点の対象件数
+                    type: integer
+                processed:
+                    description: 処理済み件数 (成功 + 失敗)
+                    type: integer
+                analyzed:
+                    description: 解析に成功した件数
+                    type: integer
+                failed:
+                    description: 解析に失敗した件数
+                    type: integer
+                startedAt:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/UnixtimeMS'
+                finishedAt:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/UnixtimeMS'
+                error:
+                    description: ジョブ自体が中断した場合の理由
+                    type: string
+                    nullable: true
+
         DashboardData:
             type: object
             required: [recording, recentlyRecorded, upcomingReserves, reserveCounts]

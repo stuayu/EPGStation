@@ -593,6 +593,45 @@ export interface ReanalyzeTsInfoResult {
     total: number;
 }
 
+/**
+ * 一括解析ジョブの種別。'metadata': ffprobe / 'tsInfo': TS (PSI/SI)
+ */
+export type VideoAnalyzeJobType = 'metadata' | 'tsInfo';
+
+/**
+ * 一括解析ジョブの対象。'unanalyzed': 未解析のみ / 'all': 解析済みも含めて全件を再解析
+ */
+export type VideoAnalyzeJobMode = 'unanalyzed' | 'all';
+
+export type VideoAnalyzeJobStatus = 'idle' | 'running' | 'succeeded' | 'failed' | 'canceled';
+
+export interface StartVideoAnalyzeJobOption {
+    type: VideoAnalyzeJobType;
+    // 省略時は 'unanalyzed'
+    mode?: VideoAnalyzeJobMode;
+}
+
+/**
+ * 一括解析ジョブの状況。
+ * サーバ側で進行するため、画面を閉じても件数を取得し続けられる
+ */
+export interface VideoAnalyzeJob {
+    status: VideoAnalyzeJobStatus;
+    // 実行中・直近のジョブの種別 (一度も実行していなければ null)
+    type: VideoAnalyzeJobType | null;
+    mode: VideoAnalyzeJobMode | null;
+    // 開始時点の対象件数
+    total: number;
+    // 処理済み件数 (成功 + 失敗)
+    processed: number;
+    analyzed: number;
+    failed: number;
+    startedAt: UnixtimeMS | null;
+    finishedAt: UnixtimeMS | null;
+    // ジョブ自体が中断した場合の理由
+    error: string | null;
+}
+
 export interface DashboardData {
     recording: Records;
     recentlyRecorded: Records;
