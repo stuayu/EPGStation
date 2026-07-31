@@ -12,9 +12,7 @@
             <v-btn size="small" variant="text" :loading="checking" prepend-icon="mdi-refresh" @click="check">再チェック</v-btn>
         </div>
 
-        <v-alert v-if="status.checkError !== null" type="error" density="compact" class="mb-3">
-            リリース情報の取得に失敗しました: {{ status.checkError }}
-        </v-alert>
+        <v-alert v-if="status.checkError !== null" type="error" density="compact" class="mb-3">リリース情報の取得に失敗しました: {{ status.checkError }}</v-alert>
         <v-alert v-if="status.canUpdate === false" type="info" density="compact" class="mb-3">
             {{ status.updateNote }}
         </v-alert>
@@ -28,14 +26,10 @@
                 </v-chip>
             </v-card-title>
             <v-card-text>
-                <v-alert v-if="release === null" type="success" density="compact" variant="tonal">
-                    お使いのバージョンは最新です
-                </v-alert>
+                <v-alert v-if="release === null" type="success" density="compact" variant="tonal">お使いのバージョンは最新です</v-alert>
                 <template v-else>
                     <div class="text-body-1">{{ status.currentVersion }} → {{ release.tag }}</div>
-                    <div v-if="release.publishedAt !== null" class="text-caption text-grey">
-                        公開: {{ formatDate(release.publishedAt) }}
-                    </div>
+                    <div v-if="release.publishedAt !== null" class="text-caption text-grey">公開: {{ formatDate(release.publishedAt) }}</div>
                     <v-expansion-panels v-if="release.body !== ''" class="mt-2">
                         <v-expansion-panel title="リリースノート">
                             <template v-slot:text>
@@ -48,15 +42,9 @@
             <v-card-actions>
                 <v-btn variant="text" size="small" :href="status.releasesUrl" target="_blank" rel="noopener">リリース一覧</v-btn>
                 <v-spacer></v-spacer>
-                <v-btn
-                    v-if="release !== null"
-                    color="primary"
-                    variant="flat"
-                    size="small"
-                    :disabled="status.canUpdate === false || isRunning === true"
-                    @click="confirm('release')"
-                    >{{ release.tag }} に更新</v-btn
-                >
+                <v-btn v-if="release !== null" color="primary" variant="flat" size="small" :disabled="status.canUpdate === false || isRunning === true" @click="confirm('release')">
+                    {{ release.tag }} に更新
+                </v-btn>
             </v-card-actions>
         </v-card>
 
@@ -93,8 +81,9 @@
                     size="small"
                     :disabled="status.canUpdate === false || isRunning === true || branch.upToDate === true"
                     @click="confirm('branch')"
-                    >{{ branch.name }} の最新に更新</v-btn
                 >
+                    {{ branch.name }} の最新に更新
+                </v-btn>
             </v-card-actions>
         </v-card>
 
@@ -108,6 +97,19 @@
             class="mb-1"
         ></v-checkbox>
         <div v-if="status.canUpdate === true" class="text-caption text-grey mb-2">{{ status.updateNote }}</div>
+
+        <!-- 更新を伴わない再起動 (設定変更の反映やプロセスの詰まりの解消に使う) -->
+        <v-card variant="outlined" class="mb-3">
+            <v-card-title class="text-subtitle-1">再起動</v-card-title>
+            <v-card-text>
+                <div class="text-body-2">更新せずに EPGStation を再起動します。</div>
+                <div class="text-caption text-grey mt-1">{{ restartNote }}</div>
+            </v-card-text>
+            <v-card-actions>
+                <v-spacer></v-spacer>
+                <v-btn color="error" variant="flat" size="small" :loading="restarting" :disabled="isRunning === true" @click="isOpenRestartConfirm = true">再起動する</v-btn>
+            </v-card-actions>
+        </v-card>
 
         <!-- 進捗とログ -->
         <template v-if="job !== null && job.status !== 'idle'">
@@ -138,6 +140,22 @@
                 </v-card-actions>
             </v-card>
         </v-dialog>
+
+        <v-dialog v-model="isOpenRestartConfirm" max-width="520">
+            <v-card>
+                <v-card-title>再起動の確認</v-card-title>
+                <v-card-text>
+                    <p>EPGStation を再起動します。</p>
+                    <p class="mt-2 text-body-2">実行中の録画・配信・エンコードは中断されます。再起動が終わるまで Web UI は操作できません。</p>
+                    <p class="mt-2 text-body-2">{{ restartNote }}</p>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn variant="text" @click="isOpenRestartConfirm = false">キャンセル</v-btn>
+                    <v-btn color="error" variant="text" @click="restart">再起動する</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </div>
     <div v-else class="d-flex justify-center py-4">
         <v-progress-circular indeterminate size="24"></v-progress-circular>
@@ -147,12 +165,7 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import IUpdateApiModel, {
-    UpdateBranchInfo,
-    UpdateJob,
-    UpdateReleaseInfo,
-    UpdateStatus,
-} from '@/model/api/update/IUpdateApiModel';
+import IUpdateApiModel, { UpdateBranchInfo, UpdateJob, UpdateReleaseInfo, UpdateStatus } from '@/model/api/update/IUpdateApiModel';
 import DateUtil from '@/util/DateUtil';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 
@@ -164,12 +177,19 @@ import { Component, Vue, toNative } from 'vue-facing-decorator';
 class UpdatePanel extends Vue {
     // 更新中の進捗ポーリング間隔
     private static readonly JOB_POLLING_INTERVAL = 2000;
+    // 再起動後の復帰確認の間隔と上限 (3 秒 × 60 = 最大 3 分待つ)
+    private static readonly RESTART_POLLING_INTERVAL = 3000;
+    private static readonly RESTART_WAIT_MAX_COUNT = 60;
+    // プロセスが落ちきるまでの猶予 (サーバの終了待ち時間より長く取る)
+    private static readonly RESTART_WAIT_MARGIN = 5000;
 
     status: UpdateStatus | null = null;
     job: UpdateJob | null = null;
     restartAfterUpdate = true;
     checking = false;
+    restarting = false;
     isOpenConfirm = false;
+    isOpenRestartConfirm = false;
     confirmTarget: 'release' | 'branch' = 'release';
 
     private timer: number | null = null;
@@ -196,6 +216,12 @@ class UpdatePanel extends Vue {
      */
     get releaseColor(): string {
         return this.isPrerelease === true ? 'deep-purple' : 'primary';
+    }
+    /**
+     * 再起動したあとに誰が起こし直すのかの説明 (サービス管理が無い環境では自前で後継を起動する)
+     */
+    get restartNote(): string {
+        return this.status?.restartNote ?? '';
     }
     get isRunning(): boolean {
         return this.job?.status === 'running' || this.job?.status === 'restarting';
@@ -273,6 +299,56 @@ class UpdatePanel extends Vue {
             const message = err?.response?.status === 409 ? 'すでに更新が実行中です' : '更新の開始に失敗しました';
             this.snackbarState.open({ color: 'error', text: message });
         }
+    }
+
+    /**
+     * 更新を伴わない再起動。
+     * サーバは応答を返してからプロセスを終了するため、応答後に復帰を待って画面を読み込み直す
+     */
+    async restart(): Promise<void> {
+        this.isOpenRestartConfirm = false;
+        this.restarting = true;
+        try {
+            const result = await this.api.restart();
+            this.snackbarState.open({ color: 'info', text: `再起動しています: ${result.note}` });
+            this.waitForRestart(result.restartAt);
+        } catch (err: any) {
+            console.error(err);
+            const message = err?.response?.status === 409 ? '更新が実行中のため再起動できません' : '再起動の開始に失敗しました';
+            this.snackbarState.open({ color: 'error', text: message });
+            this.restarting = false;
+        }
+    }
+
+    /**
+     * 再起動後にサーバが応答するようになったら画面を読み込み直す。
+     * 落ちている間の通信エラーは想定内なので握りつぶし、上限まで待っても戻らなければ手動での確認を促す
+     */
+    private waitForRestart(restartAt: number): void {
+        let count = 0;
+        // プロセスが落ちる前に確認すると「まだ生きている」応答を復帰と誤認するため、終了予定時刻を過ぎてから始める
+        const delay = Math.max(0, restartAt - Date.now()) + UpdatePanel.RESTART_WAIT_MARGIN;
+        window.setTimeout(() => {
+            const timer = window.setInterval(async () => {
+                count += 1;
+                try {
+                    await this.api.getStatus();
+                    window.clearInterval(timer);
+                    this.restarting = false;
+                    this.snackbarState.open({ color: 'success', text: '再起動が完了しました' });
+                    await this.load();
+                } catch (err) {
+                    if (count >= UpdatePanel.RESTART_WAIT_MAX_COUNT) {
+                        window.clearInterval(timer);
+                        this.restarting = false;
+                        this.snackbarState.open({
+                            color: 'error',
+                            text: '再起動後の応答を確認できませんでした。サーバの状態を確認してください',
+                        });
+                    }
+                }
+            }, UpdatePanel.RESTART_POLLING_INTERVAL);
+        }, delay);
     }
 
     private startPolling(): void {

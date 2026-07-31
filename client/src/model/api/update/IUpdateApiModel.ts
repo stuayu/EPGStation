@@ -4,6 +4,7 @@ export type UpdateStatus = apid.UpdateStatus;
 export type UpdateJob = apid.UpdateJob;
 export type UpdateReleaseInfo = apid.UpdateReleaseInfo;
 export type UpdateBranchInfo = apid.UpdateBranchInfo;
+export type UpdateRestartResult = apid.UpdateRestartResult;
 
 export default interface IUpdateApiModel {
     /**
@@ -35,4 +36,9 @@ export default interface IUpdateApiModel {
      * @return Promise<UpdateJob>
      */
     getJob(): Promise<UpdateJob>;
+    /**
+     * 更新を伴わずに EPGStation を再起動する
+     * @return Promise<UpdateRestartResult>
+     */
+    restart(): Promise<UpdateRestartResult>;
 }

@@ -183,4 +183,5 @@ export enum UpdateFunctions {
     check = 'check',
     run = 'run',
     getJob = 'getJob',
+    restart = 'restart',
 }

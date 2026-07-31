@@ -89,6 +89,7 @@ export interface IPCUpdateManageModel {
     check(): Promise<apid.UpdateStatus>;
     run(option: apid.RunUpdateOption): Promise<apid.UpdateJob>;
     getJob(): Promise<apid.UpdateJob>;
+    restart(): Promise<apid.UpdateRestartResult>;
 }
 
 export default interface IIPCClient {

@@ -4,6 +4,7 @@ export type UpdateReleaseInfo = apid.UpdateReleaseInfo;
 export type UpdateStatus = apid.UpdateStatus;
 export type UpdateJob = apid.UpdateJob;
 export type RunUpdateOption = apid.RunUpdateOption;
+export type UpdateRestartResult = apid.UpdateRestartResult;
 
 export default interface IUpdateManageModel {
     /**
@@ -28,6 +29,12 @@ export default interface IUpdateManageModel {
      * @return UpdateJob
      */
     getJob(): UpdateJob;
+    /**
+     * 更新を伴わずに EPGStation を再起動する。
+     * 応答を返しきってから終了するため、戻り値は「再起動を予約した」時点のもの
+     * @return UpdateRestartResult
+     */
+    restartApplication(): UpdateRestartResult;
     /**
      * 定期的な更新チェックを開始する (Operator 起動時に呼ぶ)
      */

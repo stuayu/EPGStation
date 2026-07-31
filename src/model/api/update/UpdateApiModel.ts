@@ -2,7 +2,7 @@ import { inject, injectable } from 'inversify';
 import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
 import IIPCClient from '../../ipc/IIPCClient';
-import IUpdateApiModel, { RunUpdateOption, UpdateJob, UpdateStatus } from './IUpdateApiModel';
+import IUpdateApiModel, { RunUpdateOption, UpdateJob, UpdateRestartResult, UpdateStatus } from './IUpdateApiModel';
 
 @injectable()
 export default class UpdateApiModel implements IUpdateApiModel {
@@ -29,6 +29,11 @@ export default class UpdateApiModel implements IUpdateApiModel {
     public async getJob(): Promise<UpdateJob> {
         this.enabled();
         return await this.ipc.update.getJob();
+    }
+
+    public async restart(): Promise<UpdateRestartResult> {
+        this.enabled();
+        return await this.ipc.update.restart();
     }
 
     private enabled(): void {

@@ -138,6 +138,12 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 ## 変更箇所
 
+- **サーバー設定の「更新」タブから EPGStation を再起動できるようにした (更新を伴わない再起動 + 子プロセスの取り残し修正)**
+    - **API**: `POST /api/update/restart`。応答 (`UpdateRestartResult`) は再起動を担う仕組み (`supervisor`)・その説明 (`note`)・プロセスを終了する予定時刻 (`restartAt`) を返す。処理自体は更新後の再起動と同じ `UpdateManageModel.restart()` を使うため、Docker / systemd / pm2 / Windows サービスの配下ならそれが起こし直し、検出できない環境では後継プロセスを detached で spawn してから終了する。実行は Operator (親) 側 (IPC `ModelName.update` の `restart`)
+    - **更新との関係**: 更新が実行中 (`running` / `restarting`) のときは 409 を返して拒否する (checkout 済み・ビルド前のような中途半端な状態で上がってしまうため)。**git 管理下かどうかは問わない**ので、配布アーカイブ環境 (`canUpdate: false`) でも再起動だけは使える。再起動方法の説明は `UpdateStatus.restartNote` として常に返す (`updateNote` は更新可否に依存するため別項目にした)
+    - **UI**: `UpdatePanel.vue` に「再起動」カードを追加。確認ダイアログで「実行中の録画・配信・エンコードは中断される」ことを明示し、実行後はプロセスの終了予定時刻 + 5 秒待ってから 3 秒間隔で `GET /api/update` を叩き、応答が戻ったら画面を読み込み直す (最大 3 分)。落ちている間の通信エラーは想定内なので無視する
+    - **あわせて修正: 再起動で子プロセスが取り残される問題**: Operator (親) が `process.exit()` しても Service / EPGUpdater は道連れにならない。サービス管理下ではプロセスツリーごと止められるので表面化しないが、**手動起動 (`supervisor: 'none'`) では旧 Service が 8888 を握ったまま残り、後継プロセスの Service が待ち受けられなくなる** (実機で再現。更新後の再起動でも同じ事象が起きていた)。`src/util/ChildProcessRegistry.ts` に子プロセスの登録簿を作り、終了前に `killAllChildProcesses()` でまとめて止める。登録簿は「自分から止めた」フラグ (`isShuttingDown()`) も持ち、`index.ts` の Service 再起動と `EPGUpdateExecutorManageModel.restart()` がこれを見て**自分で止めた子を再起動し直さない**ようにしている
+
 - **ライブ HLS の遅延を詰め、m2ts-ll (mpegts 配信) の ARIB 字幕が出ない問題を修正した**
     - **m2ts-ll で字幕が出なかった原因**: DPlayer は mpegts.js の `TIMED_ID3_METADATA_ARRIVED` イベント経由でしか aribb24 へ字幕を渡さない。TS に ARIB 字幕 ES が入っていてもそれだけでは表示されない。HLS 配信でのみ `arib-subtitle-timedmetadater` を通していたため、mpegts 配信には ID3 timed metadata が無く字幕が 1 つも出なかった
     - **修正**: `LiveStreamBaseModel` で配信種別によらず `arib-subtitle-timedmetadater` を通すようにした。m2ts-ll の自動生成コマンドは `-map 0 -c:s copy -c:d copy -ignore_unknown` を持つため、エンコード後も ID3 ES (`Data: timed_id3`) が残ることを実データで確認済み。in-memory HLS だけは従来どおり `AribId3Extractor` で ID3 を抜いて `emsg` box に載せ替える
@@ -222,7 +228,7 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **更新は Operator 側で実行する**: git 操作・ビルド・プロセス再起動は親プロセスの責務なので、Service (Web API) からは IPC (`ModelName.update`) 経由で呼ぶ
     - **安全策**: タグは `^[A-Za-z0-9._-]{1,100}$`、ブランチ名は `/` のみ追加で許す書式に制限し、先頭が `-` のものは弾く (`git checkout --upload-pack=...` のようなオプション注入外部コマンドは `shell: false` で起動する。監視リポジトリの設定は `owner/repo` 形式、ブランチ設定も同じ書式検証を通したものだけ受け付ける。作業ツリーに未コミットの変更がある場合は更新を中断する
     - **対応する導入形態**: git clone した環境のみワンクリック更新できる (`installationType: 'git'`)。配布アーカイブ (7z) を展開しただけの環境は `canUpdate: false` を返し、リリースページへの導線だけを出す
-    - **API**: `GET /api/update` (状況) / `POST /api/update/check` (再チェック) / `POST /api/update/run` (実行) / `GET /api/update/job` (進捗)。機能フラグ `updateNotification` (既定有効) と `config.yml` の `updateChecker` で制御する
+    - **API**: `GET /api/update` (状況) / `POST /api/update/check` (再チェック) / `POST /api/update/run` (実行) / `GET /api/update/job` (進捗) / `POST /api/update/restart` (更新を伴わない再起動)。機能フラグ `updateNotification` (既定有効) と `config.yml` の `updateChecker` で制御する
     - **Windows サービスとして動かしている場合の対応 (実機で全く動いていなかった)**: winser (nssm) が作るサービスは既定で **LocalSystem・セッション 0** で動くため、git も npm も実行できていなかった。原因は 3 つあり、いずれも `src/util/GitCommand.ts` と `scripts/win-service.js` で手当てした
         - **git が PATH に無い**: Git for Windows を「現在のユーザーのみ」でインストールするとユーザースコープの PATH にしか入らず、サービスからは見えない (`spawn git ENOENT`)。`findGitExecutable()` が `%ProgramFiles%\Git\cmd\git.exe` 等の既定インストール先を探し、サービス登録スクリプトはサービス専用の環境変数 `Path` に node / git / (config.yml に絶対パスで書かれた) ffmpeg・tsreadex のディレクトリを追加する
         - **git の所有者チェックで全コマンドが失敗する**: リポジトリの所有者 (インストールしたユーザー) と実行アカウント (SYSTEM) が違うため Git 2.35.2 以降が `fatal: detected dubious ownership in repository` を返す。`buildGitArgs()` が **コマンド単位で `-c safe.directory=<repo>`** を渡す (設定ファイルを書き換えないので実行アカウントを変えても副作用が残らない)。登録スクリプトは `git config --system --add safe.directory` も入れる

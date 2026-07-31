@@ -1,6 +1,6 @@
 import { inject, injectable } from 'inversify';
 import IRepositoryModel from '../IRepositoryModel';
-import IUpdateApiModel, { UpdateJob, UpdateStatus } from './IUpdateApiModel';
+import IUpdateApiModel, { UpdateJob, UpdateRestartResult, UpdateStatus } from './IUpdateApiModel';
 
 @injectable()
 export default class UpdateApiModel implements IUpdateApiModel {
@@ -20,5 +20,8 @@ export default class UpdateApiModel implements IUpdateApiModel {
     }
     public async getJob(): Promise<UpdateJob> {
         return (await this.repository.get('/update/job')).data;
+    }
+    public async restart(): Promise<UpdateRestartResult> {
+        return (await this.repository.post('/update/restart', {})).data;
     }
 }

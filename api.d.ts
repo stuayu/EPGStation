@@ -2042,6 +2042,8 @@ export interface UpdateStatus {
     canUpdate: boolean;
     // canUpdate が false のときの理由 / true のときの再起動方法の説明
     updateNote: string;
+    // 更新を伴わない再起動の挙動の説明
+    restartNote: string;
     // リリース一覧ページ
     releasesUrl: string;
     job: UpdateJob;
@@ -2059,6 +2061,18 @@ export interface RunUpdateOption {
     ref?: string;
     // 更新完了後に再起動するか (既定 true)
     restart?: boolean;
+}
+
+/**
+ * 再起動の受付結果
+ */
+export interface UpdateRestartResult {
+    // 再起動を担う仕組み
+    supervisor: UpdateSupervisorType;
+    // 再起動の挙動の説明
+    note: string;
+    // プロセスを終了する予定時刻
+    restartAt: UnixtimeMS;
 }
 
 /**

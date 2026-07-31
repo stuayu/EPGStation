@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { inject, injectable } from 'inversify';
 import * as path from 'path';
 import * as apid from '../../../api';
+import { killAllChildProcesses } from '../../util/ChildProcessRegistry';
 import { clearCurrentVersionCache, getCurrentVersion } from '../../util/CurrentVersion';
 import { buildGitArgs, resolveGitCommand, resolveNpmCommand } from '../../util/GitCommand';
 import { compareVersions, isNewerVersion, isPrereleaseVersion } from '../../util/VersionUtil';
@@ -164,6 +165,23 @@ export default class UpdateManageModel implements IUpdateManageModel {
         return this.getJob();
     }
 
+    public restartApplication(): apid.UpdateRestartResult {
+        // 更新中に落とすと中途半端な状態 (checkout 済みでビルド前など) で上がってしまうため止める
+        if (this.job.status === 'running' || this.job.status === 'restarting')
+            throw new Error('UpdateIsAlreadyRunning');
+
+        const supervisor = this.detectSupervisorType();
+        const note = describeRestart(supervisor);
+        this.log.system.info(`restart requested: ${note}`);
+        this.restart(supervisor);
+
+        return {
+            supervisor,
+            note,
+            restartAt: Date.now() + UpdateManageModel.RESTART_DELAY_MS,
+        };
+    }
+
     /**
      * 更新の本体。git で対象タグ / ブランチへ切り替え、依存インストールとビルドを行う
      */
@@ -267,7 +285,9 @@ export default class UpdateManageModel implements IUpdateManageModel {
                 this.log.system.error('failed to spawn successor process');
                 this.log.system.error(err);
             }
-            // Operator (親) が終了すると Service (子) も落ちるため、ここで全体が入れ替わる
+            // 子プロセス (Service / EPGUpdater) は親の終了では落ちない。
+            // 残ると Service がポートを握ったままになり後継プロセスが待ち受けられないため、明示的に止める
+            killAllChildProcesses();
             process.exit(0);
         }, UpdateManageModel.RESTART_DELAY_MS).unref();
     }
@@ -416,6 +436,8 @@ export default class UpdateManageModel implements IUpdateManageModel {
             supervisor,
             canUpdate,
             updateNote,
+            // 更新を伴わない再起動は導入形態に依らず実行できるため、canUpdate とは別に説明を持たせる
+            restartNote: describeRestart(supervisor),
             releasesUrl: `https://github.com/${this.getRepository()}/releases`,
             job: this.getJob(),
         };
