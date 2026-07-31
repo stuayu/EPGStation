@@ -17,11 +17,27 @@
 - **県外地上波対応** (チャンネル種別 `NW1`〜`NW40` の追加)
 - **Mirakurun への HTTPS 接続対応** (`mirakurunPath: https://...` を指定可能。API エンドポイントのベースパスも `mirakurunAPIPath` で変更可能)
 - **ニコニコ実況コメントの弾幕表示** (ライブ視聴は [NX-Jikkyo](https://nx-jikkyo.tsukumijima.net)、録画再生は[過去ログ API](https://jikkyo.tsukumijima.net) から取得。設定ページの localStorage 保存でオン/オフ可能)
+- **シリーズ管理** (録画をシリーズ単位でまとめ、しょぼいカレンダー / Annict / Wikidata の作品辞書で自動マッピング。欠番・重複・未視聴のバッジ表示、アイキャッチ画像、未確定キューからの手動割り当てに対応)
+- **サーバー設定画面** (`config.yml` の主要項目を Web UI から変更。外部サービス連携、ログレベル、録画ファイルの一括解析、シリーズ照合ルールの管理を含む)
+- **更新通知とワンクリック更新** (GitHub Releases を定期確認し、リリース版・開発版のどちらへも画面から更新できる)
 - **ログファイルを Web UI 上から確認できる機能** (`/logs` ページ。プロセス/カテゴリ別のタブ切り替え、行数指定・キーワード絞り込み、ダウンロードに対応)
+- **ログイン認証と権限管理** (パスワード認証と SSO (Google / GitHub) に対応。既定は無効)
 - **依存関係のモダナイズ**
     - フロントエンドを Vue 3 + Vuetify 4 へ更新し、ビルドを Vue CLI から Vite へ移行
     - 動画プレイヤーを [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) v1.32.8 へ更新
     - サーバ側を Node.js 24 / Express 5 / TypeORM 1.0 / better-sqlite3 へ更新
+
+### フォーク版の画面
+
+| シリーズ一覧                                                                        | シリーズ詳細                                                                            | シリーズ未確定キュー                                                                              |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [![シリーズ一覧](img/screenshots/series-list.png)](img/screenshots/series-list.png) | [![シリーズ詳細](img/screenshots/series-detail.png)](img/screenshots/series-detail.png) | [![シリーズ未確定キュー](img/screenshots/series-pending.png)](img/screenshots/series-pending.png) |
+
+| サーバー設定 (基本)                                                                                            | サーバー設定 (連携)                                                                                                        | サーバー設定 (シリーズ管理)                                                                                              | サーバー設定 (更新)                                                                                              |
+| -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| [![サーバー設定 (基本)](img/screenshots/system-settings-basic.png)](img/screenshots/system-settings-basic.png) | [![サーバー設定 (連携)](img/screenshots/system-settings-integration.png)](img/screenshots/system-settings-integration.png) | [![サーバー設定 (シリーズ管理)](img/screenshots/system-settings-series.png)](img/screenshots/system-settings-series.png) | [![サーバー設定 (更新)](img/screenshots/system-settings-update.png)](img/screenshots/system-settings-update.png) |
+
+各画面の詳細は [doc/stuayu-fork.md](doc/stuayu-fork.md) を参照してください。
 
 ### インストールとビルド方法
 
