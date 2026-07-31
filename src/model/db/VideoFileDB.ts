@@ -238,7 +238,7 @@ export default class VideoFileDB implements IVideoFileDB {
      * @param limit: number 最大取得件数
      * @return Promise<VideoFile[]>
      */
-    public async findWithoutMetadata(limit: number): Promise<VideoFile[]> {
+    public async findWithoutMetadata(limit: number, offset: number = 0): Promise<VideoFile[]> {
         const connection = await this.op.getConnection();
 
         const queryBuilder = connection
@@ -246,6 +246,29 @@ export default class VideoFileDB implements IVideoFileDB {
             .createQueryBuilder('video_file')
             .where('video_file.analyzedAt IS NULL')
             .orderBy('video_file.id', 'DESC')
+            .offset(offset)
+            .limit(limit);
+
+        return await this.promieRetry.run(() => {
+            return queryBuilder.getMany();
+        });
+    }
+
+    /**
+     * 解析済みかどうかに関わらず、ビデオファイルを id 昇順で取得する。
+     * 全件を強制的に再解析する用途 (offset によるページング前提)
+     * @param limit: number 最大取得件数
+     * @param offset: number 開始位置
+     * @return Promise<VideoFile[]>
+     */
+    public async findAllPaged(limit: number, offset: number): Promise<VideoFile[]> {
+        const connection = await this.op.getConnection();
+
+        const queryBuilder = connection
+            .getRepository(VideoFile)
+            .createQueryBuilder('video_file')
+            .orderBy('video_file.id', 'ASC')
+            .offset(offset)
             .limit(limit);
 
         return await this.promieRetry.run(() => {

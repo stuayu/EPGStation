@@ -138,6 +138,14 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 ## 変更箇所
 
+- **録画ファイルの一括解析をサーバー常駐ジョブにし、ffprobe メタデータも全件を強制再解析できるようにした**
+    - **背景**: 一括解析はクライアントが 100 件ずつ API を呼び続ける方式だったため、**画面を閉じる・再読み込みするだけで処理が止まり、進捗も失われていた**。TS 解析の「全件を強制再解析」は 16000 件規模で数時間かかるので、実質最後まで流せなかった
+    - **ジョブモデル (`src/model/video/VideoAnalyzeJobModel.ts`)**: Service プロセスに常駐する解析ジョブ。種別 (`metadata` = ffprobe / `tsInfo` = TS の PSI/SI) × 対象 (`unanalyzed` = 未解析のみ / `all` = 解析済みを含む全件) の 4 通りを扱い、進捗 (`total` / `processed` / `analyzed` / `failed`) を保持する。同時に走るジョブは 1 つだけ (実行中の開始要求は 409)。ジョブはプロセスが生きている間だけ保持し、EPGStation の再起動では失われる
+    - **ffprobe メタデータの全件強制再解析を追加**: これまで「未解析ファイルのみ」しか対象にできず、解析ロジックを更新しても既存の録画ファイルへ反映できなかった。TS 解析と同じ「全件を強制再解析」をメタデータ側にも用意した (`IVideoFileDB.findAllPaged()` を追加)
+    - **失敗し続けるファイルで無限ループしない**: 未解析のみのモードは「解析すると対象から外れる」前提で同じクエリを繰り返す。ファイル欠損などで失敗するとその行は残り続けるため、**失敗した件数だけ offset を進める** (`findWithoutMetadata` / `findWithoutTsInfo` に offset を追加)
+    - **API**: `POST /api/videos/analyze` (開始) / `GET /api/videos/analyze` (進捗) / `DELETE /api/videos/analyze` (中断)。従来の `POST /api/videos/metadata`・`/api/videos/tsinfo`・`/api/videos/tsinfo/reanalyze` は単発バッチとしてそのまま残している
+    - **UI**: サーバー設定 > 基本タブの 2 セクション (録画ファイルのメタデータ / TS 解析) を書き換え、進捗バーと「処理済み / 総数 (成功・失敗)」を表示して 2 秒間隔でポーリングする。画面を開き直したときは `GET /api/videos/analyze` でジョブ状態を復元するため、**別のブラウザ・別セッションからでも進捗の続きが見える**。中断ボタンは解析中の 1 件を終えてから止める
+
 - **サーバー設定の「更新」タブから EPGStation を再起動できるようにした (更新を伴わない再起動 + 子プロセスの取り残し修正)**
     - **API**: `POST /api/update/restart`。応答 (`UpdateRestartResult`) は再起動を担う仕組み (`supervisor`)・その説明 (`note`)・プロセスを終了する予定時刻 (`restartAt`) を返す。処理自体は更新後の再起動と同じ `UpdateManageModel.restart()` を使うため、Docker / systemd / pm2 / Windows サービスの配下ならそれが起こし直し、検出できない環境では後継プロセスを detached で spawn してから終了する。実行は Operator (親) 側 (IPC `ModelName.update` の `restart`)
     - **更新との関係**: 更新が実行中 (`running` / `restarting`) のときは 409 を返して拒否する (checkout 済み・ビルド前のような中途半端な状態で上がってしまうため)。**git 管理下かどうかは問わない**ので、配布アーカイブ環境 (`canUpdate: false`) でも再起動だけは使える。再起動方法の説明は `UpdateStatus.restartNote` として常に返す (`updateNote` は更新可否に依存するため別項目にした)

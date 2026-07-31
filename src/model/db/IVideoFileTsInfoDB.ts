@@ -6,7 +6,7 @@ export default interface IVideoFileTsInfoDB {
     upsert(info: VideoFileTsInfo): Promise<void>;
     findId(videoFileId: apid.VideoFileId): Promise<VideoFileTsInfo | null>;
     findRecordedId(recordedId: apid.RecordedId): Promise<VideoFileTsInfo | null>;
-    findWithoutTsInfo(limit: number): Promise<VideoFile[]>;
+    findWithoutTsInfo(limit: number, offset?: number): Promise<VideoFile[]>;
     countWithoutTsInfo(): Promise<number>;
     countAnalyzableVideoFiles(): Promise<number>;
     findAllAnalyzable(limit: number, offset: number): Promise<VideoFile[]>;

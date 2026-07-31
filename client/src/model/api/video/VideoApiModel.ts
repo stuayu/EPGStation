@@ -92,6 +92,31 @@ export default class VideoApiModel implements IVideoApiModel {
         return (await this.repository.post('/videos/tsinfo/reanalyze', option ?? {})).data;
     }
 
+    /**
+     * 実行中・直近の一括解析ジョブを取得する
+     * @return Promise<apid.VideoAnalyzeJob>
+     */
+    public async getAnalyzeJob(): Promise<apid.VideoAnalyzeJob> {
+        return (await this.repository.get('/videos/analyze')).data;
+    }
+
+    /**
+     * 一括解析ジョブを開始する (処理はサーバ側で進む)
+     * @param option: apid.StartVideoAnalyzeJobOption
+     * @return Promise<apid.VideoAnalyzeJob>
+     */
+    public async startAnalyzeJob(option: apid.StartVideoAnalyzeJobOption): Promise<apid.VideoAnalyzeJob> {
+        return (await this.repository.post('/videos/analyze', option)).data;
+    }
+
+    /**
+     * 実行中の一括解析ジョブに中断を要求する
+     * @return Promise<apid.VideoAnalyzeJob>
+     */
+    public async cancelAnalyzeJob(): Promise<apid.VideoAnalyzeJob> {
+        return (await this.repository.delete('/videos/analyze')).data;
+    }
+
     public async getPlaybackPosition(videoFileId: apid.VideoFileId): Promise<apid.WatchHistory | null> {
         try {
             return (await this.repository.get(`/videos/${videoFileId}/playback-position`)).data;

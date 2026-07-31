@@ -32,7 +32,8 @@ export default interface IVideoFileDB {
     updateStartAt(videoFileId: apid.VideoFileId, startAt: number): Promise<void>;
     findId(videoFileId: apid.VideoFileId): Promise<VideoFile | null>;
     findAll(): Promise<VideoFile[]>;
-    findWithoutMetadata(limit: number): Promise<VideoFile[]>;
+    findWithoutMetadata(limit: number, offset?: number): Promise<VideoFile[]>;
+    findAllPaged(limit: number, offset: number): Promise<VideoFile[]>;
     countWithoutMetadata(): Promise<number>;
     countAll(): Promise<number>;
 }
