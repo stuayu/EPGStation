@@ -214,3 +214,9 @@ test('only owner/repo is accepted as the repository to watch', async () => {
     await custom.model.check();
     assert.ok(custom.requests[0].url.startsWith('https://api.github.com/repos/l3tnun/EPGStation/releases'));
 });
+
+test('restartApplication is refused while an update job is running', async () => {
+    const { model } = fixture([]);
+    model.job = { ...model.getJob(), status: 'running' };
+    assert.throws(() => model.restartApplication(), /UpdateIsAlreadyRunning/);
+});

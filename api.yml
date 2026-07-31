@@ -4183,6 +4183,7 @@ components:
                 - supervisor
                 - canUpdate
                 - updateNote
+                - restartNote
                 - releasesUrl
                 - job
             properties:
@@ -4230,6 +4231,9 @@ components:
                     type: boolean
                 updateNote:
                     type: string
+                restartNote:
+                    description: 更新を伴わない再起動の挙動の説明
+                    type: string
                 releasesUrl:
                     type: string
                 job:
@@ -4252,6 +4256,26 @@ components:
                 restart:
                     description: 更新完了後に再起動するか (既定 true)
                     type: boolean
+
+        UpdateRestartResult:
+            description: 再起動の受付結果
+            type: object
+            required:
+                - supervisor
+                - note
+                - restartAt
+            properties:
+                supervisor:
+                    description: 再起動を担う仕組み
+                    type: string
+                    enum: [docker, systemd, pm2, windows-service, none]
+                note:
+                    description: 再起動の挙動の説明
+                    type: string
+                restartAt:
+                    description: プロセスを終了する予定時刻
+                    allOf:
+                        - $ref: '#/components/schemas/UnixtimeMS'
 
         NotificationFailureHistoryItem:
             description: リトライ上限に達し送信を断念した通知の履歴

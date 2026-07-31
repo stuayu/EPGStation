@@ -208,6 +208,9 @@ export default class IPCServer implements IIPCServer {
         index[UpdateFunctions.getJob] = async () => {
             return this.updateManage.getJob();
         };
+        index[UpdateFunctions.restart] = async () => {
+            return this.updateManage.restartApplication();
+        };
 
         return index;
     }

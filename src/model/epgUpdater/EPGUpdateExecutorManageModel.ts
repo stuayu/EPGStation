@@ -1,6 +1,7 @@
 import * as child_process from 'child_process';
 import { inject, injectable } from 'inversify';
 import * as path from 'path';
+import { isShuttingDown, registerChildProcess } from '../../util/ChildProcessRegistry';
 import IEPGUpdateEvent from '../event/IEPGUpdateEvent';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
@@ -27,6 +28,9 @@ export default class EPGUpdateExecutorManageModel implements IEPGUpdateExecutorM
         const executor = child_process.spawn(process.argv[0], [path.join(__dirname, 'EPGUpdateExecutor.js')], {
             stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
         });
+
+        // Operator が自分で終了するとき (再起動・更新) にまとめて止められるようにする
+        registerChildProcess(executor);
 
         this.log.system.info(`start epg updater pid: ${executor.pid}`);
 
@@ -86,6 +90,11 @@ export default class EPGUpdateExecutorManageModel implements IEPGUpdateExecutorM
      */
     private restart(executor: child_process.ChildProcess): void {
         if (this.isRestarting === true) {
+            return;
+        }
+
+        // Operator 自身の終了処理で止めた場合は落ちたわけではないので起こし直さない
+        if (isShuttingDown() === true) {
             return;
         }
 

@@ -640,6 +640,9 @@ export default class IPCClient implements IIPCClient {
             getJob: () => {
                 return this.send({ model: ModelName.update, func: UpdateFunctions.getJob });
             },
+            restart: () => {
+                return this.send({ model: ModelName.update, func: UpdateFunctions.restart });
+            },
         };
     }
 }

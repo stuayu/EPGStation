@@ -25,6 +25,7 @@ import ISeriesMetadataFiller from './model/series/ISeriesMetadataFiller';
 import IRecordingManageModel from './model/operator/recording/IRecordingManageModel';
 import IReservationManageModel from './model/operator/reservation/IReservationManageModel';
 import IStorageManageModel from './model/operator/storage/IStorageManageModel';
+import { isShuttingDown, registerChildProcess } from './util/ChildProcessRegistry';
 install();
 
 containerSetter.set(container);
@@ -195,14 +196,22 @@ const runService = async () => {
         },
     );
 
+    // Operator が自分で終了するとき (再起動・更新) にまとめて止められるようにする
+    registerChildProcess(child);
+
     // 終了したら再起動
     const log = container.get<ILoggerModel>('ILoggerModel').getLogger();
     child.once('exit', () => {
+        // 自分から止めた場合は再起動しない (後継プロセスの Service とポートを取り合ってしまう)
+        if (isShuttingDown() === true) return;
+
         log.system.fatal('service process is down');
         log.system.fatal('restart service');
         runService();
     });
     child.once('error', () => {
+        if (isShuttingDown() === true) return;
+
         runService();
     });
 
