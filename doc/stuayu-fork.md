@@ -157,6 +157,31 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **ffprobe 解析も取り込み時に実行する**: 解析処理は `VideoFileAnalyzeModel` (`src/model/video/`) にまとめ、Operator (取り込み時) と Service (API 経由) の双方から使う。`VideoApiModel` の解析ロジックはこのモデルへ移して委譲にした
     - **録画開始時刻の精度**: `video_file.startAt` (ファイル先頭 = 再生位置 0 秒に対応する実時刻) は、これまで「ファイルの更新時刻 - 実測尺」で推定していた。**TDT / TOT が取れた場合はそちらを優先する**ため、ニコニコ実況の過去ログ再生の時刻合わせのズレが小さくなる
 
+- **`video_file.startAt` (TDT/TOT 由来) を PCR で補正し、録画詳細画面の開始・終了時刻のズレを解消した**
+    - **報告された症状**: 録画詳細画面の開始・終了時刻が実際の録画内容とズレて見える。調査の結果、画面には2行の時刻表示があり (1行目 = 予約時点の EPG 値 `recorded.startAt`/`endAt`、2行目 = 実測値 `videoFiles[].startAt` + `duration`)、実測値の方の基準である `video_file.startAt` (TDT/TOT ベース) 自体の計算に誤差があった
+    - **原因**: `TsInfoAnalyzer.ts` は「ファイル先頭から順に読んで最初に見つかった1個の TDT/TOT の時刻を、そのままファイル先頭の時刻とみなす」実装だった。TDT/TOT (PID 0x14) は必ずしもファイル先頭にあるとは限らず、数百 ms 〜 数秒後に初めて出現することがあり、その分がそのまま `video_file.startAt` の誤差になっていた
+    - **修正**: PCR (Program Clock Reference、PMT が示す `PCR_PID` の adaptation field に乗る 27MHz クロック) で「ファイル先頭付近の PCR」と「TDT/TOT が見つかった位置以前で最も近い PCR」の差分から実経過時間を測り、TDT/TOT の時刻からその分を差し引いてファイル先頭の時刻を逆算するようにした (`TsInfoAnalyzer.correctStartAtByPcr()`)。PCR は TDT/TOT よりずっと高頻度に送出されるため、これでファイル先頭からの誤差を数百 ms 未満まで縮められる
+    - **PCR サンプリングの実装**: `tsPacketParser` の生パケットを (`tsSectionParser` へのパイプとは別に) 追加の `data` リスナーで覗き見て、`getPcrFlag() === 1` のパケットだけ `decode()` して PCR (33bit base × 300 + 9bit extension) を拾う。全パケットを毎回フルデコードすると遅いため、軽量な `getPcrFlag()` でまず絞り込んでから必要な分だけ `decode()` する
+    - **ラップアラウンド対策**: PCR は約 26.5 時間周期でラップアラウンドするため、差分が負になった場合は周期分 (`2^33 * 300`) を足す
+    - **安全弁**: 対象 PID の PCR サンプルが 2 点そろわない・`PCR_PID` が未割り当て (`0x1fff`)・補正量が 2 分を超える (壊れたストリーム等の誤検出とみなす) 場合は補正せず、従来どおり無補正の TDT/TOT 時刻を使う
+    - **`aribts` の型定義追加**: `src/@types/types.d.ts` (手書きの最小限の型定義) に `TsPacket` / `AdaptationField` / `DecodedPacket` を追加した。33bit の PCR base は `aribts` の `TsReader.readBits()` が内部で `Math.pow` を使った桁上げで安全に読んでいる (32bit ビット演算に丸められる心配は無い) ことをソースで確認済み
+    - **テスト**: `test/ut/ts-info-analyzer.test.js` に PCR 補正が効くケース (5 秒ズレを正しく補正)・PCR サンプル不足で補正しないケース・`PCR_PID` 不一致で補正しないケースを追加した
+    - **既存録画への反映**: 既存の「TS 一括解析」機能 (サーバー設定 > 基本タブ) で再解析すれば、この補正が適用された `video_file.startAt` に更新できる
+
+- **tsreplace 系のエンコード出力を TS 解析の対象に含め、解析済みファイルも含めた強制再解析機能を追加した**
+    - **背景**: `hevc_tsreplace` (Amatsukaze の tsreplace モード) のような、映像ストリームだけを差し替えて PSI/SI (TDT/TOT/PCR 等) やコンテナ構造をそのまま維持するエンコードプリセットがある。しかし `VideoFileAnalyzeModel`/`VideoFileTsInfoDB` は `video_file.type === 'ts'` のみを TS 解析の対象にしており、エンコード出力は (拡張子が `.ts` のままでも) 常に `type: 'encoded'` で登録されるため、tsreplace 出力は実際には PSI/SI を保持しているにもかかわらず解析対象から除外されていた
+    - **`video_file.type` を書き換える案は却下**: 当初 `EncodeFinishModel.finishEncode()` で出力拡張子が `.ts` なら `type: 'ts'` として登録する案を実装したが、**`video_file.type` はストリーミングパイプラインの選択 (`StreamProfileManageModel.getRecordedProfiles('ts'|'encoded')`, `StreamApiModel.ts`) にも使われている**ことを見落としていた。`'ts'` は「生の放送 TS を前提にしたパイプ入力 + yadif 有りの変換経路」を意味するため、実体は既にエンコード済み・シーク可能なファイルである tsreplace 出力を `'ts'` にしてしまうと、誤ったストリーミングパイプラインが選ばれる (二重エンコードや不要な yadif 適用の恐れ) うえ、「TS ファイル ○件」の集計にも tsreplace 出力が二重に乗ってきて件数がおかしく見える不具合になった。**`type` は本来の意味 (ストリーミングパイプライン選択) のまま変更せず**、TS 解析の対象判定だけを別軸で行うよう修正した
+    - **修正後の判定**: `video_file.type` ではなく**拡張子** (`.ts` かどうか) で TS 解析の対象を判定するようにした
+        - `VideoFileAnalyzeModel.analyzeTsInfo()`: ゲート条件を `video.type !== 'ts'` から `path.extname(video.filePath).toLowerCase() !== '.ts'` に変更
+        - `VideoFileTsInfoDB.ts` (`findWithoutTsInfo` / `countWithoutTsInfo` / `countAnalyzableVideoFiles` / `findAllAnalyzable`): SQL の絞り込みを `video_file.type = 'ts'` から `LOWER(video_file.filePath) LIKE '%.ts'` に変更
+        - `EncodeFinishModel.finishEncode()` は元通り無条件で `type: 'encoded'` を登録する (変更なし)
+    - **既存の解析済みファイルの再解析**: 前述の PCR 補正のように TS 解析ロジックを更新しても、既存の「TS 一括解析」(`POST /api/videos/tsinfo`) は `video_file_ts_info` が **まだ無い** ファイルしか対象にしないため、既に解析済みのファイルには新しいロジックが反映されない。解析済みかどうかに関わらず全件を id 昇順で強制的に再解析する `POST /api/videos/tsinfo/reanalyze` (`offset`/`limit` を受け取り `nextOffset` を返す、`null` になるまで呼び続けるページング方式) を追加した
+        - サーバー: `IVideoFileTsInfoDB.findAllAnalyzable(limit, offset)` (拡張子が `.ts` のファイルを id 昇順・無条件で取得) → `VideoApiModel.reanalyzeAllTsInfo()` → ルート `src/model/service/api/videos/tsinfo/reanalyze.ts`
+        - クライアント: サーバー設定 > 基本タブの「録画ファイルの TS 解析」に「全件を強制再解析」ボタンを追加 (`SystemSetting.vue`)。`nextOffset` が `null` になるまでクライアント側でループしてポーリング的に呼び続け、進捗 (`n / total 件`) を表示する。画面を離れた場合はループを止める
+        - `analyzeTsInfo()`/`saveTsInfo()` (`VideoFileAnalyzeModel.ts`) はもともと UPSERT + 無条件の `startAt` 上書きなので、再解析ロジック自体に変更は不要だった
+    - **教訓**: `video_file.type` のように複数の目的で参照されているフィールドを変更するときは、`grep` で全参照箇所を洗い出してから着手すること。今回は「PSI/SI 解析対象かどうか」だけを見て変更し、「ストリーミングパイプライン選択」という別の用途を見落としたため手戻りになった
+    - **テスト**: `test/ut/encode-finish-model.test.js` (拡張子に関わらず `type: 'encoded'` のまま)、`test/ut/video-file-analyze-model.test.js` (拡張子ベースの対象判定)、`test/ut/video-metadata-api.test.js` (`reanalyzeAllTsInfo`)
+
 - **シリーズ周りの UI を改善した (外部サイトへのリンク・戻る操作での検索結果復元・ページ番号指定)**
     - **録画詳細のシリーズタグから外部サイトへ飛べるようにした**: 録画詳細のシリーズ情報欄にある「Annict」「しょぼいカレンダー」のタグを、それぞれ `https://annict.com/works/{annictId}` / `https://cal.syoboi.jp/tid/{syobocalTid}` へのリンクにした (別タブで開く、`rel="noopener noreferrer"`)。外部 ID を持たないシリーズではこれまで通りタグ自体を出さない (`client/src/components/recorded/detail/RecordedDetailSeries.vue`)
     - **シリーズ一覧の検索条件・ページ位置を URL query に載せた**: シリーズ一覧 (`client/src/views/Series.vue`) はキーワード・並べ替え・クール・放送状態・出所・欠番絞り込み・ページをコンポーネントのローカル状態で持っていたため、シリーズ詳細へ遷移してブラウザバックすると検索結果もページ位置も失われていた。録画済み一覧と同じ方式に揃え、これらを `?keyword=&sort=&order=&season=&status=&origin=&hasMissing=&page=` として URL に持たせ、`$route` の変化 (条件変更・ページ移動・ブラウザバック) を watch して取得し直すようにした。既定値の項目は query に載せない

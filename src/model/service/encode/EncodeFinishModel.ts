@@ -62,6 +62,11 @@ export default class EncodeFinishModel implements IEncodeFinishModel {
                 await this.ipc.recorded.updateVideoFileSize(info.videoFileId);
             } else {
                 // add encode file
+                // video_file.type はストリーミングパイプラインの選択にも使われる ('ts' = 生の
+                // 放送 TS を前提にしたパイプ入力・yadif 有りの変換経路、'encoded' = 既に処理済みで
+                // シーク可能なファイルの経路)。tsreplace 系 (出力が .ts のまま PSI/SI を保持) も
+                // 実体は「エンコード済みで seek 可能なファイル」なので、拡張子に関わらず
+                // 常に 'encoded' として登録する (TS 解析の対象判定は拡張子で別途行う)
                 const id = await this.ipc.recorded.addVideoFile({
                     recordedId: info.recordedId,
                     parentDirectoryName: info.parentDirName,

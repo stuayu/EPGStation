@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import { inject, injectable } from 'inversify';
+import * as path from 'path';
 import * as apid from '../../../api';
 import VideoFile from '../../db/entities/VideoFile';
 import VideoFileTsInfo from '../../db/entities/VideoFileTsInfo';
@@ -23,8 +24,8 @@ import IVideoFileAnalyzeModel from './IVideoFileAnalyzeModel';
  */
 @injectable()
 export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
-    // TS 解析の対象にするファイル種別 (エンコード済みファイルには PSI/SI が無い)
-    private static readonly TS_FILE_TYPE = 'ts';
+    // TS 解析の対象にする拡張子 (これ以外の完全な再マルチプレクスには PSI/SI が無い)
+    private static readonly TS_FILE_EXTENSION = '.ts';
 
     private videoFileDB: IVideoFileDB;
     private videoFileTsInfoDB: IVideoFileTsInfoDB;
@@ -127,8 +128,15 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
 
     /**
      * 指定した video file id の TS を解析して放送情報を DB に保存する
+     *
+     * 対象判定は video_file.type ではなく拡張子で行う。type はストリーミングパイプラインの
+     * 選択 (StreamProfileManageModel.getRecordedProfiles) にも使われており、'ts' は
+     * 「生の放送 TS を前提にしたパイプ入力・yadif 有りの変換経路」を意味するため、
+     * tsreplace 系 (映像だけ差し替え済みでシーク可能、出力拡張子は .ts のまま) のような
+     * type: 'encoded' でも PSI/SI を保持しているファイルを解析対象に含めるには、
+     * type を書き換えるのではなく拡張子で別軸に判定する必要がある
      * @param videoFileId: apid.VideoFileId
-     * @return Promise<boolean> 解析して保存した場合 true (TS ファイルでない場合は false)
+     * @return Promise<boolean> 解析して保存した場合 true (TS を含まない拡張子の場合は false)
      */
     public async analyzeTsInfo(videoFileId: apid.VideoFileId): Promise<boolean> {
         const video = await this.videoFileDB.findId(videoFileId);
@@ -136,8 +144,9 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
             throw new Error('VideoFileIsUndefined');
         }
 
-        // エンコード済みファイルには PSI/SI が無い
-        if (video.type !== VideoFileAnalyzeModel.TS_FILE_TYPE) {
+        // 完全な再マルチプレクス (.mp4/.mkv 等) には PSI/SI が無い。拡張子が .ts の場合のみ解析する
+        // (tsreplace 系のように type: 'encoded' でも .ts 拡張子なら対象に含む)
+        if (path.extname(video.filePath).toLowerCase() !== VideoFileAnalyzeModel.TS_FILE_EXTENSION) {
             return false;
         }
 

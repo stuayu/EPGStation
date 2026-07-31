@@ -65,6 +65,7 @@ function createModel(options) {
         countAnalyzableVideoFiles: async () => videos.filter(v => v.type === 'ts').length,
         countWithoutTsInfo: async () => videos.filter(v => v.type === 'ts' && v.hasTsInfo !== true).length,
         findWithoutTsInfo: async limit => videos.filter(v => v.type === 'ts' && v.hasTsInfo !== true).slice(0, limit),
+        findAllAnalyzable: async (limit, offset) => videos.filter(v => v.type === 'ts').slice(offset, offset + limit),
     };
     const tsInfoAnalyzer = {
         analyze: async () => opt.tsAnalyzeResult ?? { firstTdtAt: null, genres: [] },
@@ -234,4 +235,56 @@ test('analyzeAllTsInfo は 1 件失敗しても残りを続行する', async () 
     assert.equal(result.analyzed, 0);
     assert.equal(result.failed, 2);
     assert.equal(result.remaining, 2);
+});
+
+test('reanalyzeAllTsInfo は解析済みファイルも含めて offset から順に再解析する', async () => {
+    const { model } = createModel({
+        videos: [
+            video(1, { type: 'ts', hasTsInfo: true }),
+            video(2, { type: 'ts', hasTsInfo: true }),
+            video(3, { type: 'ts' }),
+        ],
+    });
+
+    const analyzedIds = [];
+    model.analyzeModel = { analyzeTsInfo: async id => analyzedIds.push(id) };
+
+    const result = await model.reanalyzeAllTsInfo(0, 2);
+
+    assert.equal(result.analyzed, 2);
+    assert.equal(result.failed, 0);
+    assert.deepEqual(analyzedIds, [1, 2]);
+    assert.equal(result.total, 3);
+    assert.equal(result.nextOffset, 2);
+});
+
+test('reanalyzeAllTsInfo はすべて処理し終えると nextOffset が null になる', async () => {
+    const { model } = createModel({
+        videos: [video(1, { type: 'ts', hasTsInfo: true }), video(2, { type: 'ts', hasTsInfo: true })],
+    });
+
+    model.analyzeModel = { analyzeTsInfo: async () => {} };
+
+    const result = await model.reanalyzeAllTsInfo(0, 100);
+
+    assert.equal(result.analyzed, 2);
+    assert.equal(result.nextOffset, null);
+});
+
+test('reanalyzeAllTsInfo は 1 件失敗しても残りを続行する', async () => {
+    const { model } = createModel({
+        videos: [video(1, { type: 'ts', hasTsInfo: true }), video(2, { type: 'ts', hasTsInfo: true })],
+    });
+
+    model.analyzeModel = {
+        analyzeTsInfo: async () => {
+            throw new Error('TsAnalyzeError');
+        },
+    };
+
+    const result = await model.reanalyzeAllTsInfo(0, 100);
+
+    assert.equal(result.analyzed, 0);
+    assert.equal(result.failed, 2);
+    assert.equal(result.nextOffset, null);
 });

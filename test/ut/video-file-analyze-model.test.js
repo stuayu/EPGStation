@@ -41,7 +41,10 @@ function createModel(options) {
     const opt = options || {};
     const upserted = [];
     const startAtUpdated = [];
-    const video = Object.assign({ id: 1, recordedId: 10, type: 'ts', size: 100, startAt: null }, opt.video);
+    const video = Object.assign(
+        { id: 1, recordedId: 10, type: 'ts', filePath: 'recorded.ts', size: 100, startAt: null },
+        opt.video,
+    );
 
     const videoFileDB = {
         findId: async id => (id === video.id ? video : null),
@@ -128,13 +131,37 @@ test('TDT / TOT が取れなかった場合は録画開始時刻を書き換え�
     assert.equal(startAtUpdated.length, 0);
 });
 
-test('エンコード済みファイルは TS 解析の対象外', async () => {
-    const { model, upserted } = createModel({ video: { type: 'encoded' } });
+test('完全な再マルチプレクス (.mp4 等) は拡張子で TS 解析の対象外にする', async () => {
+    // video_file.type はストリーミングパイプラインの選択にも使うため対象判定には使わない。
+    // 拡張子が .ts 以外 (= 完全な再マルチプレクスで PSI/SI が無い) ものだけを除外する
+    const { model, upserted } = createModel({ video: { type: 'encoded', filePath: 'output.mp4' } });
 
     const analyzed = await model.analyzeTsInfo(1);
 
     assert.equal(analyzed, false);
     assert.equal(upserted.length, 0);
+});
+
+test('tsreplace 系 (type: encoded だが拡張子が .ts) は TS 解析の対象に含める', async () => {
+    const { model, upserted } = createModel({
+        video: { type: 'encoded', filePath: 'output.hevc.ts' },
+        tsInfo: emptyTsInfo({ serviceName: 'ＮＨＫ総合１・福島' }),
+    });
+
+    const analyzed = await model.analyzeTsInfo(1);
+
+    assert.equal(analyzed, true);
+    assert.equal(upserted.length, 1);
+    assert.equal(upserted[0].serviceName, 'ＮＨＫ総合１・福島');
+});
+
+test('拡張子の大文字小文字を区別しない (.TS も対象に含める)', async () => {
+    const { model, upserted } = createModel({ video: { type: 'encoded', filePath: 'output.HEVC.TS' } });
+
+    const analyzed = await model.analyzeTsInfo(1);
+
+    assert.equal(analyzed, true);
+    assert.equal(upserted.length, 1);
 });
 
 test('ffprobe 解析では TS の放送時刻を推定値より優先して startAt に使う', async () => {

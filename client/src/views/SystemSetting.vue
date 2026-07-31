@@ -79,9 +79,14 @@
                             <div class="text-body-2 mb-2">
                                 TS ファイル {{ tsInfoStatus.total }} 件 / 解析済み {{ tsInfoStatus.analyzed }} 件 / 未解析 {{ tsInfoStatus.unanalyzed }} 件
                             </div>
-                            <div class="d-flex ga-2 flex-wrap">
+                            <div class="d-flex ga-2 flex-wrap align-center">
                                 <v-btn variant="outlined" :loading="tsInfoLoading" @click="loadTsInfoStatus">再読み込み</v-btn>
                                 <v-btn color="primary" :loading="tsInfoAnalyzing" :disabled="tsInfoStatus.unanalyzed === 0" @click="analyzeTsInfo">未解析ファイルを一括解析</v-btn>
+                                <v-btn color="secondary" variant="outlined" :loading="tsInfoReanalyzing" @click="reanalyzeAllTsInfo">全件を強制再解析</v-btn>
+                                <span v-if="tsInfoReanalyzeProgress !== null" class="text-caption">{{ tsInfoReanalyzeProgress }}</span>
+                            </div>
+                            <div class="text-caption text-medium-emphasis mt-1">
+                                「全件を強制再解析」は解析済みのファイルも含めてすべて解析し直します。TS 解析ロジックの更新を既存ファイルへ反映したい場合に使ってください (件数が多いと時間がかかります)。
                             </div>
 
                             <v-divider class="my-4"></v-divider>
@@ -845,6 +850,10 @@ class SystemSetting extends Vue {
     tsInfoStatus: apid.VideoFileMetadataStatus = { total: 0, analyzed: 0, unanalyzed: 0 };
     tsInfoLoading = false;
     tsInfoAnalyzing = false;
+    // 解析済みも含めた全件の強制再解析 (解析ロジック更新後の反映用)
+    tsInfoReanalyzing = false;
+    tsInfoReanalyzeProgress: string | null = null;
+    private tsInfoReanalyzeCancelled: boolean = false;
 
     requiresRestartKeys: string[] = [];
 
@@ -1377,8 +1386,52 @@ class SystemSetting extends Vue {
         }
     }
 
+    /**
+     * 解析済みかどうかに関わらず、すべての TS ファイルを強制的に再解析する。
+     * 画面を離れる (beforeUnmount) までポーリング的に呼び続け、進捗を表示する
+     */
+    async reanalyzeAllTsInfo(): Promise<void> {
+        this.tsInfoReanalyzing = true;
+        this.tsInfoReanalyzeCancelled = false;
+        let offset = 0;
+        let analyzed = 0;
+        let failed = 0;
+        try {
+            for (;;) {
+                if (this.tsInfoReanalyzeCancelled) {
+                    break;
+                }
+
+                const result = await this.videoApi.reanalyzeAllTsInfo({ offset: offset, limit: 100 });
+                analyzed += result.analyzed;
+                failed += result.failed;
+                this.tsInfoReanalyzeProgress = `${Math.min(offset + result.analyzed + result.failed, result.total)} / ${result.total} 件`;
+
+                if (result.nextOffset === null) {
+                    break;
+                }
+                offset = result.nextOffset;
+            }
+
+            if (!this.tsInfoReanalyzeCancelled) {
+                this.snackbarState.open({
+                    color: failed === 0 ? 'success' : 'error',
+                    text: `再解析完了: 成功 ${analyzed} 件 / 失敗 ${failed} 件`,
+                });
+            }
+            await this.loadTsInfoStatus();
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: 'TS の強制再解析に失敗しました' });
+        } finally {
+            this.tsInfoReanalyzing = false;
+            this.tsInfoReanalyzeProgress = null;
+        }
+    }
+
     beforeUnmount() {
         this.stopBackfillPolling();
+        this.tsInfoReanalyzeCancelled = true;
     }
 
     addNotificationTarget(): void {
