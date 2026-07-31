@@ -136,14 +136,28 @@ class LiveHLSVideo extends BaseVideo {
             },
             pluginOptions: {
                 // hls.js 使用時 (Safari 以外) の低遅延・バッファチューニング
-                // サーバー側のセグメントは約 0.5 秒なので、本数指定はそのまま秒数の半分になる
+                // セグメント長は config.yml の cmd の -g (GOP) で決まる (QSV は現在 24 フレーム
+                // ≒ 0.8 秒。QSV エンコードが 15 フレーム ≒ 0.5 秒だと負荷が厳しかったため延長した)
+                //
+                // lowLatencyMode は意図的に false にしている。true にすると hls.js の
+                // LatencyController が video の timeupdate イベントのたびに
+                // (ライブエッジとの距離 - targetLatency) を計算し、50ms を超えて乖離すると
+                // media.playbackRate を書き換えて追いつき再生を試みる。この判定は非常に高頻度
+                // (timeupdate は数百ms〜毎フレーム相当で発火) かつ閾値が極端に狭いため、
+                // 通常のセグメント配信ジッタだけで常時発火し、体感できるレベルの再生速度の
+                // 微振動 = 「ずっとかくつく」症状の原因になっていた
+                // (mpdecimate による実測: 189 秒の録画中に 80〜200ms の一時停止が 138 回、
+                // ほぼ均等に分布して発生していたことを確認済み)。
+                // このサーバーは真の LL-HLS (#EXT-X-PART) を実装していないため、
+                // lowLatencyMode を有効にする本来のメリットも元々存在しない。
                 hls: {
-                    lowLatencyMode: true,
-                    // ライブエッジからの同期距離。0.5 秒 × 3 = 約 1.5 秒
-                    liveSyncDurationCount: 3,
-                    liveMaxLatencyDurationCount: 10,
-                    // 遅れた場合は再生速度を少し上げてライブエッジへ追いつく
-                    maxLiveSyncPlaybackRate: 1.5,
+                    lowLatencyMode: false,
+                    // ライブエッジからの同期距離。0.8 秒 × 4 ≒ 3.2 秒
+                    liveSyncDurationCount: 4,
+                    liveMaxLatencyDurationCount: 12,
+                    // lowLatencyMode: false の場合 LatencyController の追いつき再生ロジック自体が
+                    // 丸ごと無効化されるため実質無意味だが、意図を明示するため 1 (無効) にしておく
+                    maxLiveSyncPlaybackRate: 1,
                     // セグメントが短いぶんリクエスト間隔が詰まるため、失敗時の再試行を短くする
                     fragLoadingMaxRetry: 2,
                     fragLoadingRetryDelay: 200,

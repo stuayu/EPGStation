@@ -127,6 +127,13 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **既存環境への反映**: `config/config.yml` は git 管理外のため、テンプレートを更新しても既存の設定ファイルには反映されない。既に運用している環境で遅延を詰めるには、`stream.profiles.live` の HLS プロファイルの cmd から `-re` を外し、`-g 30 -keyint_min 30` を `-g 15 -keyint_min 15` に変更する
     - **さらに詰めるなら**: 本来の LL-HLS (EXT-X-PART + ブロッキングなプレイリスト更新) が必要。`Fmp4Packager` は既にパート単位でデータを保持しているため実装の土台はある (未実装)
 
+- **上記の低遅延化 (`-flags low_delay`) が QSV 実運用で「ずっとかくつく」不具合の原因だったため、`-flags low_delay` を除去した**
+    - 実機 (Intel QSV, `hevc_qsv`) でこの設定を運用したところ、視聴中ずっと映像がかくつく不具合が発生した。サーバー側のエンコード速度・セグメントの `tfdt`/`trun` 連続性はいずれも問題なく、クライアント側の自動計測 (フレームドロップ数・画面録画のフリーズ検出) も食い違う結果になり長時間切り分けに苦戦した (詳細な調査経緯は `doc/streaming-refresh.md` の「実運用で発生した『ずっとかくつく』問題の調査経緯と真因」を参照)
+    - 最終的にユーザーによる実機確認で特定できた真因は `-flags low_delay`。ffmpeg 入力側でデコーダの内部バッファ/フレーム並べ替え遅延を無効化するオプションで、放送波の MPEG-2 (インターレース) との相性が悪く再生タイミングが不安定になっていた。`-fflags nobuffer` のみを残し `-flags low_delay` を外すことで解消した
+    - 併せて、これが原因で「QSV は 0.5 秒 GOP だと負荷が厳しい」と誤診断して `-g 24` まで戻していたが、`-flags low_delay` 除去後は `-g 8` (≒0.27 秒) まで詰めても安定して実時間に追いつくことを実機で確認した。QSV 自体の負荷が問題だったことは一度もなかった
+    - クライアント側の `lowLatencyMode: true` (`LiveHLSVideo.vue`) も当初の有力な仮説だったが、実際には無関係だった。ただしこのサーバーは真の LL-HLS (`#EXT-X-PART`) を実装しておらず有効にする意味が無いため `lowLatencyMode: false` のまま残している
+    - **既存環境への反映**: `stream.profiles.live` の HLS プロファイルの cmd から `-flags low_delay` を外し (`-fflags nobuffer` のみ残す)、`-g`/`-keyint_min` は環境の実測次第でさらに詰めてよい
+
 - **ライブ視聴のニコニコ実況コメントを放送波の時刻 (TDT / TOT) で遅延補正するようにした**
     - **背景**: 実況コメントは実時間で届くのに対し、ライブ視聴の映像はチューナー → Mirakurun → エンコード → 配信 → 再生の分だけ遅れている。補正が無いとコメントが映像より先に流れ、実況として成立しなかった
     - **放送時刻の取得 (`src/model/service/stream/util/BroadcastTimeExtractor.ts`)**: エンコード前の TS から TDT / TOT (PID 0x14) を読み取る pass-through Transform。入力の TS は加工せず下流へ流すので配信自体には影響しない。`LiveStreamBaseModel` のパイプライン先頭 (ARIB 字幕変換の前) に挿入している
