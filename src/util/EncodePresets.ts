@@ -381,7 +381,7 @@ namespace EncodePresets {
 
             return (
                 `${prefix} %FFMPEG% -dual_mono_mode main -f mpegts -analyzeduration 500000 -probesize 500000 ` +
-                `-fflags nobuffer -flags low_delay -i pipe:0 -sn -threads 0 ` +
+                `-fflags nobuffer -i pipe:0 -sn -threads 0 ` +
                 `-max_muxing_queue_size 1024 -c:v copy -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
                 `-movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`
             );
@@ -392,7 +392,7 @@ namespace EncodePresets {
         const codecOpts = buildVideoCodecOptions(hwaccel, codec, height, videoBitrate);
 
         return (
-            `%FFMPEG% -dual_mono_mode main -fflags nobuffer -flags low_delay ${vaapiDeviceOption(hwaccel)}-i pipe:0 ` +
+            `%FFMPEG% -dual_mono_mode main -fflags nobuffer ${vaapiDeviceOption(hwaccel)}-i pipe:0 ` +
             `-sn -threads 0 -max_muxing_queue_size 1024 -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
             `-vf ${vf} -c:v ${ffCodec} ${codecOpts} -flags +cgop ` +
             // セグメント長 = GOP 長になるため、ライブ HLS では 0.5 秒 GOP まで詰める
