@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 import type { RouterScrollBehavior } from 'vue-router';
 import container from './model/ModelContainer';
 import IScrollPositionState from './model/state/IScrollPositionState';
+import Affiliations from './views/Affiliations.vue';
 import Dashboard from './views/Dashboard.vue';
 import Encode from './views/Encode.vue';
 import Guide from './views/Guide.vue';
@@ -39,6 +40,7 @@ export default createRouter({
         { path: '/onair/watch', name: 'watch-onair', component: WatchOnAir },
         { path: '/guide', name: 'guide', component: Guide },
         { path: '/guide/setting', name: 'guide-setting', component: GuideSizeSetting },
+        { path: '/affiliations', name: 'affiliations', component: Affiliations },
         { path: '/reserves', name: 'reserves', component: Reserves },
         { path: '/reserves/manual', name: 'manual-reserve', component: ManualReserve },
         { path: '/recording', name: 'recording', component: Recording },

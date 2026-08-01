@@ -277,3 +277,28 @@ test('民放の系列は局名で決め直さない', async () => {
         'tbs',
     );
 });
+
+// 関東の独立局 (全国独立放送協議会) はひとまとまりで扱えないと、
+// 同じ番組を別々の局で録っている環境で系列別の一覧がばらける
+test('関東の独立局 (東京MX・群馬・とちぎ・テレ玉・tvk) は同じ系列にまとまる', async () => {
+    const affiliation = new BroadcastAffiliation(createDBStub([]));
+    await affiliation.updateCache();
+
+    // networkId は実測値 (同梱データ) から。県外地上波 (NWxx) でも同じ系列になる
+    const targets = [
+        { networkId: 32391, channelType: 'NW22', name: 'TOKYO MX1' },
+        { networkId: 32359, channelType: 'NW22', name: 'ぐんまテレビ' },
+        { networkId: 32295, channelType: 'NW22', name: 'テレ玉1' },
+        { networkId: 32375, channelType: 'NW22', name: 'tvk1' },
+        { networkId: 32327, channelType: 'GR', name: 'チバテレ1' },
+    ];
+    for (const target of targets) {
+        assert.equal(affiliation.getAffiliation(target).id, 'independent', `${target.name} が独立系にならない`);
+    }
+
+    // とちぎテレビは networkId の実測値が同梱データに無いので局名から引く
+    assert.equal(
+        affiliation.getAffiliation({ networkId: 99999, channelType: 'NW22', name: 'とちぎテレビ' }).id,
+        'independent',
+    );
+});

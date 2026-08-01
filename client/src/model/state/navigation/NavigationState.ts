@@ -287,6 +287,14 @@ export default class NavigationState implements INavigationState {
             });
         }
 
+        // 系列一覧 (選ぶと系列別の番組表へ遷移する)
+        newItems.push({
+            icon: 'mdi-television-classic',
+            title: '系列局',
+            herf: {
+                path: '/affiliations',
+            },
+        });
         newItems.push({
             icon: 'mdi-radiobox-marked',
             title: '録画中',
