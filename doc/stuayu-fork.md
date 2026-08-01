@@ -138,6 +138,11 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 ## 変更箇所
 
+- **系列局の一覧画面を追加した (選ぶと系列別の番組表へ遷移する)**
+    - **背景**: 系列別のまとめ方は番組表・放映中の 3 点リーダーとサイドメニューにしか無く、「どの系列にどの局があるか」を見る画面が無かった
+    - **UI**: `/affiliations` (`client/src/views/Affiliations.vue`) を追加し、ナビゲーションに「系列局」を出す。系列ごとにカードで並べ、カードを選ぶと `/guide?affiliation={id}` (系列別の番組表) へ、局のチップを選ぶとその局の番組表へ移動する。系列の判定はサーバが `GET /api/channels` に付ける `channel.affiliation` をそのまま使うため、新しい API は増やしていない
+    - **関東の独立局**: 東京MX・群馬テレビ・とちぎテレビ・テレビ埼玉・千葉テレビ・tvk は同梱データ (`BroadcastAffiliationData`) で系列識別 0x07 (独立系) にまとまる。県外地上波 (`NWxx`) でも同じ扱いになることを `test/ut/broadcast-affiliation.test.js` で固定した
+
 - **視聴履歴の一覧画面を追加した**
     - **背景**: 視聴履歴 (`watch_history`) は再生位置と視聴状態を持っていたが、録画一覧のバッジと再生時の続き再生に使うだけで、「最近見た番組」を一覧する画面が無かった
     - **API**: `GET /api/watch-history` (最後に見た順・`offset` / `limit` / `status` / `isHalfWidth`) と `DELETE /api/watch-history/{videoFileId}` を追加した。1 件ずつは `WatchHistoryRecord` (履歴 + 対象の `RecordedItem`) で返し、**録画が削除済みの履歴は `recorded: null` にして行だけ残す** (画面から履歴を消せるようにするため)。機能フラグ `watchHistory` が無効なら 404
