@@ -365,6 +365,15 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **番組表のレイアウト崩れ対策**: 暫定 3 時間のままだと次の番組に食い込むため、番組表 API (`ScheduleApiModel`) で**同じ放送局の次の番組の開始時刻まで切り詰める** (`clampUndefinedDuration`)。実データ (NHK Eテレ1福島) で 16:37:31 開始の未定番組が次の 17:00 番組の直前まで正しく詰まり、重なり 0 件を確認済み
     - **表示**: `LiveStreamInfoItem` / `ScheduleProgramItem` に `isDurationUndefined` を追加し、視聴画面の番組情報カードと番組表のダイアログでは終了時刻の代わりに「(終了時刻未定)」と出す (暫定値を本当の終了時刻のように見せない)
 
+- **EPG 追従 (EIT[p/f]) の経過を info ログに出し、予約画面にも状態を表示するようにした**
+    - **背景**: 番組の延長・繰り上げが起きたとき、何がどう動いたのかがログから追えなかった (`update program db done` のような件数だけ)。時刻がずれた録画を後から検証できるよう、**変更前 → 変更後の時刻を併記**して残す
+    - **EIT[p/f] の受信ログ**: `EPGUpdateManageModel.saveProgram()` が、更新された番組のうち現在放送中 (present) / 直後に始まる (following) ものを `detectOnAirPrograms()` で抽出し、**DB 更新前に旧値を引いてから** 1 行ずつ info で出す。内容は `EIT[p/f] present: channel: <局名> (<channelId>) programId: ... eventId: ... name: ... start: <旧> -> <新> (+Ns) end: <旧> -> <新> duration: ...`。放送時間未定になった / 確定したときは `end time became pending` / `end time has been fixed` を末尾に添える。全件更新直後などで対象が 30 件 (`ON_AIR_LOG_LIMIT`) を超える場合は件数だけに落とす
+    - **予約の再スケジュールログ**: `ReservationManageModel.update()` が予約時刻の変化を `reschedule reservation: <id> ... start: <旧> -> <新> end: <旧> -> <新>` で出す。`RecorderModel.update()` も `reschedule recording:` を出し、そのとき録画中 / 準備中 / 待機中のどれだったかを添える
+    - **開始待ちのログ**: 前番組の延長で EIT[p/f] がまだ present にならない間に出る `waiting for the program to start` に、予定開始・終了時刻を追加した
+    - **整形の共通化**: 時刻と番組長の表記は `src/util/ProgramTimeLog.ts` (`formatTimeChange` / `formatLogDuration` / `formatDurationUndefinedChange`) に集約している
+    - **画面表示**: `reserve` テーブルに `isTimeUndefined` (放送終了時刻が未定) と `isFollowingSchedule` (前番組の延長などで開始待ち) を追加し、`ReserveItem` で配る。予約一覧 (カード / テーブル) とダッシュボードで、終了時刻を赤字にし「終了時刻未定」「前番組延長のため追従中」のチップを出す (`client/src/components/reserves/ReserveScheduleStatus.vue`)
+    - **状態の更新経路**: `RecorderModel` が開始待ちに入った時点で `IReserveDB.updateFollowingSchedule()` を呼び、`IReserveEvent` 経由で `notifyClient()` が飛ぶため画面はすぐ追随する。録画開始・キャンセル・待機打ち切りで解除する
+
 - **SSO (Google / GitHub) ログインと権限管理を追加した**
     - **サインアップの流れ**: **最初にサインアップした人が自動でシステム管理者 (`admin`)** になり、以降にサインアップした人は一般権限 (`user`) になる。管理者は「アカウント」タブから他の人へ随時管理者権限を付与・剥奪できる。管理者が 0 人になる降格・削除は拒否する
     - **OAuth 2.0 認可コードフロー**: `GET /api/auth/oauth/{provider}` で認可画面へ 302、`GET /api/auth/oauth/{provider}/callback` でコードをトークンに交換してログインする。依存ライブラリは足さず、URL 組み立てと state の署名だけ自前で持つ (`src/model/auth/OAuthProviders.ts`)、通信は `fetch`

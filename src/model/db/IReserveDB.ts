@@ -43,6 +43,7 @@ export default interface IReserveDB {
     restore(items: Reserve[]): Promise<void>;
     insertOnce(reserve: Reserve): Promise<apid.ReserveId>;
     updateOnce(reserve: Reserve): Promise<void>;
+    updateFollowingSchedule(reserveId: apid.ReserveId, isFollowingSchedule: boolean): Promise<void>;
     updateMany(values: IReserveUpdateValues): Promise<void>;
     findId(reserveId: apid.ReserveId): Promise<Reserve | null>;
     findAll(option: apid.GetReserveOption): Promise<[Reserve[], number]>;

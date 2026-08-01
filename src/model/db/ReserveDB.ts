@@ -92,6 +92,24 @@ export default class ReserveDB implements IReserveDB {
     }
 
     /**
+     * EIT[p/f] 追従中 (前番組の延長などで開始待ち) かを更新する
+     * @param reserveId: apid.ReserveId
+     * @param isFollowingSchedule: boolean 追従中か
+     * @return Promise<void>
+     */
+    public async updateFollowingSchedule(reserveId: apid.ReserveId, isFollowingSchedule: boolean): Promise<void> {
+        const connection = await this.op.getConnection();
+        const queryBuilder = connection
+            .createQueryBuilder()
+            .update(Reserve)
+            .set({ isFollowingSchedule: isFollowingSchedule })
+            .where('id = :id', { id: reserveId });
+        await this.promieRetry.run(() => {
+            return queryBuilder.execute();
+        });
+    }
+
+    /**
      * delete, insert, update をまとめて行う
      * @param values: IReserveUpdateValues
      */

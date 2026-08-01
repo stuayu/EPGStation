@@ -12,6 +12,7 @@ import RecordedHistory from '../../../db/entities/RecordedHistory';
 import Reserve from '../../../db/entities/Reserve';
 import VideoFile from '../../../db/entities/VideoFile';
 import FileUtil from '../../../util/FileUtil';
+import { formatLogTime, formatTimeChange } from '../../../util/ProgramTimeLog';
 import StrUtil from '../../../util/StrUtil';
 import IChannelDB from '../../db/IChannelDB';
 import IDropLogFileDB from '../../db/IDropLogFileDB';
@@ -21,6 +22,7 @@ import IRecordedHistoryDB from '../../db/IRecordedHistoryDB';
 import IReserveDB from '../../db/IReserveDB';
 import IVideoFileDB from '../../db/IVideoFileDB';
 import IRecordingEvent from '../../event/IRecordingEvent';
+import IReserveEvent from '../../event/IReserveEvent';
 import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
 import { decideRecordingRetry, RecordingRetryReason, resolveRecordingRetryConfig } from './RecordingRetryPolicy';
@@ -53,6 +55,7 @@ class RecorderModel implements IRecorderModel {
     private recordingEvent: IRecordingEvent;
     private mirakurunClientModel: IMirakurunClientModel;
     private notification: INotificationDispatcher;
+    private reserveEvent: IReserveEvent;
 
     private reserve!: Reserve;
     private recordedId: apid.RecordedId | null = null;
@@ -98,6 +101,7 @@ class RecorderModel implements IRecorderModel {
         @inject('IRecordingEvent') recordingEvent: IRecordingEvent,
         @inject('IMirakurunClientModel') mirakurunClientModel: IMirakurunClientModel,
         @inject('INotificationDispatcher') notification: INotificationDispatcher,
+        @inject('IReserveEvent') reserveEvent: IReserveEvent,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
@@ -114,6 +118,26 @@ class RecorderModel implements IRecorderModel {
         this.recordingEvent = recordingEvent;
         this.mirakurunClientModel = mirakurunClientModel;
         this.notification = notification;
+        this.reserveEvent = reserveEvent;
+    }
+
+    /**
+     * EIT[p/f] 追従中 (前番組の延長などで番組開始を待っている) 状態を更新し、画面へ通知する
+     * @param isFollowingSchedule: boolean 追従中か
+     */
+    private async setFollowingSchedule(isFollowingSchedule: boolean): Promise<void> {
+        if (this.reserve.isFollowingSchedule === isFollowingSchedule) {
+            return;
+        }
+
+        this.reserve.isFollowingSchedule = isFollowingSchedule;
+        try {
+            await this.reserveDB.updateFollowingSchedule(this.reserve.id, isFollowingSchedule);
+            this.reserveEvent.emitUpdated({ update: [this.reserve], isSuppressLog: true });
+        } catch (err: any) {
+            this.log.system.error(`update following schedule state error: ${this.reserve.id}`);
+            this.log.system.error(err);
+        }
     }
 
     /**
@@ -235,8 +259,14 @@ class RecorderModel implements IRecorderModel {
             });
 
             if (reason === 'waitingForEvent') {
+                // 前番組の延長などで EIT[p/f] がまだ present になっていない状態。
+                // 画面に「追従中」と出せるように予約へ記録する
+                await this.setFollowingSchedule(true);
                 this.log.system.info(
                     `waiting for the program to start: reserveId: ${this.reserve.id},` +
+                        ` programId: ${this.reserve.programId},` +
+                        ` scheduled start: ${formatLogTime(this.reserve.startAt)},` +
+                        ` scheduled end: ${formatLogTime(this.reserve.endAt)},` +
                         ` waited: ${Math.floor(waitedMs / 1000)}s / ${Math.floor(retryConfig.startWaitLimitMs / 1000)}s`,
                 );
             } else {
@@ -256,6 +286,8 @@ class RecorderModel implements IRecorderModel {
                         `the program did not start within the wait limit: reserveId: ${this.reserve.id}`,
                     );
                 }
+                // 待機を打ち切ったので追従中の表示も解除する
+                await this.setFollowingSchedule(false);
                 // 録画準備失敗を通知
                 this.recordingEvent.emitPrepRecordingFailed(this.reserve);
             }
@@ -271,6 +303,11 @@ class RecorderModel implements IRecorderModel {
         this.isStopPrepRec = false;
         this.isPrepRecording = false;
         this.isRecording = false;
+
+        // 追従中の表示を残さない
+        this.setFollowingSchedule(false).catch(err => {
+            this.log.system.error(err);
+        });
 
         this.eventEmitter.emit(RecorderModel.CANCEL_EVENT);
     }
@@ -348,6 +385,9 @@ class RecorderModel implements IRecorderModel {
 
         this.isPrepRecording = false;
         this.isRecording = true;
+
+        // 番組が始まったので追従中の表示を解除する
+        await this.setFollowingSchedule(false);
 
         // 録画開始内部イベント発行
         // 時刻指定予約で録画準備中に endAt を変えようとした場合にこのイベントを受信してから変える
@@ -930,6 +970,14 @@ class RecorderModel implements IRecorderModel {
             });
         } else if (this.reserve.startAt !== newReserve.startAt || this.reserve.endAt !== newReserve.endAt) {
             // 時刻に変更がないか確認
+            // EPG 追従で予約時刻が動いたことを変更前後の時刻付きで記録する
+            this.log.system.info(
+                `reschedule recording: reserveId: ${newReserve.id}, programId: ${newReserve.programId},` +
+                    ` start: ${formatTimeChange(this.reserve.startAt, newReserve.startAt)},` +
+                    ` end: ${formatTimeChange(this.reserve.endAt, newReserve.endAt)},` +
+                    ` state: ${this.isRecording === true ? 'recording' : this.isPrepRecording === true ? 'preparing' : 'waiting'}`,
+            );
+
             // 録画処理が実行されていない場合
             if (this.isPrepRecording === false && this.isRecording === false) {
                 this.setTimer(newReserve, isSuppressLog);
@@ -941,7 +989,10 @@ class RecorderModel implements IRecorderModel {
                     // TODO 録画中 or 録画準備中の開始時刻変更にも対応していない
                     if (this.reserve.endAt !== newReserve.endAt) {
                         // 時間指定予約で終了時刻に変更があった
-                        this.log.system.info(`change recording endAt: ${newReserve.id}`);
+                        this.log.system.info(
+                            `change recording endAt: ${newReserve.id},` +
+                                ` end: ${formatTimeChange(this.reserve.endAt, newReserve.endAt)}`,
+                        );
 
                         if (this.isPrepRecording === true) {
                             // 録画準備中なら録画中になるまで待つ
@@ -980,7 +1031,8 @@ class RecorderModel implements IRecorderModel {
                             // まだ録画準備中なのでキャンセルしてタイマーを再セット
                             this.log.system.info(
                                 `cancel prepare recording.`,
-                                `(reserveId: ${this.reserve.id}, programId: ${this.reserve.programId}, recordedId: ${this.recordedId})`,
+                                `(reserveId: ${this.reserve.id}, programId: ${this.reserve.programId}, recordedId: ${this.recordedId},` +
+                                    ` start: ${formatTimeChange(this.reserve.startAt, newReserve.startAt)})`,
                             );
                             await this._cancel().catch(err => {
                                 this.log.system.error(
@@ -997,7 +1049,8 @@ class RecorderModel implements IRecorderModel {
                             //  一度ストリームを開始した番組の開始時刻が変更されることはないのでここでは何もしない
                             this.log.system.info(
                                 `Ignores schedule changes because this program is already recording.`,
-                                ` (reserveId: ${this.reserve.id}, programId: ${this.reserve.programId}, recordedId: ${this.recordedId})`,
+                                ` (reserveId: ${this.reserve.id}, programId: ${this.reserve.programId}, recordedId: ${this.recordedId},` +
+                                    ` start: ${formatTimeChange(this.reserve.startAt, newReserve.startAt)})`,
                             );
                         }
                     }

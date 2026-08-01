@@ -172,6 +172,14 @@ export interface ReserveItem {
     isOverlap: boolean;
     allowEndLack: boolean;
     isTimeSpecified: boolean;
+    /**
+     * 放送終了時刻が未定か (ARIB の duration = 0xFFFFFF)。true なら endAt は暫定値
+     */
+    isTimeUndefined?: boolean;
+    /**
+     * 前番組の延長などで番組開始を待っている (EIT[p/f] 追従中) か
+     */
+    isFollowingSchedule?: boolean;
     tags?: RecordedTagId[];
     /**
      * 保存オプション

@@ -30,19 +30,30 @@ export interface DetectOnAirOption {
 // EIT[p/f] の f (following) として扱う先読み時間
 const DEFAULT_FOLLOWING_WINDOW_MS = 10 * 60 * 1000;
 
+// EIT[p/f] のどちらに相当するか
+export type OnAirSection = 'present' | 'following';
+
+export interface OnAirDetectResult<T extends OnAirCandidate> {
+    program: T;
+    section: OnAirSection;
+}
+
 /**
- * 更新された番組のうち、現在放送中 (present) か直後に始まる (following) ものの
- * 放送局 id を重複なしで返す
- * @param programs: OnAirCandidate[] 追加・更新された番組
+ * 更新された番組のうち、現在放送中 (present) か直後に始まる (following) ものを
+ * 区分付きで返す。ログ出力で「どちらの更新なのか」を示すために使う
+ * @param programs: T[] 追加・更新された番組
  * @param option: DetectOnAirOption
- * @return number[] 対象の channelId (昇順)
+ * @return OnAirDetectResult<T>[] 入力順を保った検出結果
  */
-export const detectOnAirChannelIds = (programs: OnAirCandidate[], option: DetectOnAirOption): number[] => {
+export const detectOnAirPrograms = <T extends OnAirCandidate>(
+    programs: T[],
+    option: DetectOnAirOption,
+): OnAirDetectResult<T>[] => {
     if (Array.isArray(programs) === false || programs.length === 0) return [];
     const now = option.now;
     const window = option.followingWindowMs ?? DEFAULT_FOLLOWING_WINDOW_MS;
 
-    const channelIds = new Set<number>();
+    const results: OnAirDetectResult<T>[] = [];
     for (const program of programs) {
         if (typeof program?.channelId !== 'number') continue;
         if (typeof program.startAt !== 'number') continue;
@@ -51,12 +62,29 @@ export const detectOnAirChannelIds = (programs: OnAirCandidate[], option: Detect
         // 放送時間未定 (duration が 1) の番組は終了時刻が分からないため、
         // 始まっていれば放送中とみなす (暫定の終了時刻で早々に切り捨てない)
         if (isDurationUndefined(program.duration) === true) {
-            channelIds.add(program.channelId);
+            results.push({ program: program, section: program.startAt <= now ? 'present' : 'following' });
             continue;
         }
         // すでに終わった番組は p/f のどちらでもない
         if (program.startAt + program.duration <= now) continue;
-        channelIds.add(program.channelId);
+        results.push({ program: program, section: program.startAt <= now ? 'present' : 'following' });
     }
+
+    return results;
+};
+
+/**
+ * 更新された番組のうち、現在放送中 (present) か直後に始まる (following) ものの
+ * 放送局 id を重複なしで返す
+ * @param programs: OnAirCandidate[] 追加・更新された番組
+ * @param option: DetectOnAirOption
+ * @return number[] 対象の channelId (昇順)
+ */
+export const detectOnAirChannelIds = (programs: OnAirCandidate[], option: DetectOnAirOption): number[] => {
+    const channelIds = new Set<number>();
+    for (const result of detectOnAirPrograms(programs, option)) {
+        channelIds.add(result.program.channelId);
+    }
+
     return [...channelIds].sort((a, b) => a - b);
 };

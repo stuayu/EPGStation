@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { detectOnAirChannelIds } = require('../../dist/model/epgUpdater/OnAirProgramDetector');
+const { detectOnAirChannelIds, detectOnAirPrograms } = require('../../dist/model/epgUpdater/OnAirProgramDetector');
 const {
     clampUndefinedDuration,
     isDurationUndefined,
@@ -124,4 +124,34 @@ test('an undefined duration program with no following program keeps the provisio
     const clamp = clampUndefinedDuration;
     const programs = [{ id: 1, startAt: NOW, endAt: NOW + 3 * 60 * MINUTE, isDurationUndefined: true }];
     assert.equal(clamp(programs)[0].endAt, NOW + 3 * 60 * MINUTE);
+});
+
+// --- EIT[p/f] の区分検出 (ログ出力用) ---
+
+test('detectOnAirPrograms marks a running program as present', () => {
+    const programs = [{ channelId: 1, startAt: NOW - MINUTE, duration: 30 * MINUTE }];
+    const result = detectOnAirPrograms(programs, { now: NOW });
+    assert.equal(result.length, 1);
+    assert.equal(result[0].section, 'present');
+    assert.equal(result[0].program.channelId, 1);
+});
+
+test('detectOnAirPrograms marks an upcoming program as following', () => {
+    const programs = [{ channelId: 1, startAt: NOW + 5 * MINUTE, duration: 30 * MINUTE }];
+    const result = detectOnAirPrograms(programs, { now: NOW });
+    assert.equal(result.length, 1);
+    assert.equal(result[0].section, 'following');
+});
+
+test('detectOnAirPrograms keeps an undefined duration program that has already started', () => {
+    const programs = [{ channelId: 1, startAt: NOW - 4 * 60 * MINUTE, duration: 1 }];
+    const result = detectOnAirPrograms(programs, { now: NOW });
+    assert.equal(result.length, 1);
+    assert.equal(result[0].section, 'present');
+});
+
+test('detectOnAirPrograms keeps extra fields of the given program', () => {
+    const programs = [{ channelId: 1, startAt: NOW, duration: MINUTE, source: { id: 42 } }];
+    const result = detectOnAirPrograms(programs, { now: NOW });
+    assert.equal(result[0].program.source.id, 42);
 });
