@@ -138,6 +138,15 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 ## 変更箇所
 
+- **前番組の延長中に録画が始まって前番組が録れてしまうのを防いだ (EIT[p/f] による録画開始ゲート)**
+    - **背景**: programId 予約は Mirakurun が EIT[p/f] で対象イベントが present になるまでデータを流さないため問題にならないが、**時刻指定予約はチャンネルストリームを使う**ので予定時刻から即データが流れる。前番組が「放送時間未定」(ARIB の duration = 0xFFFFFF) で延長していると、その前番組が録画ファイルとして残り、録画詳細も作られてしまっていた
+    - **EIT[p/f] を録画側でも読む**: `EitPresentParser` (`src/model/operator/recording/`) が録画ストリームから EIT[p/f] present (PID 0x12 / table_id 0x4E / section 0) を取り出し、放送中の番組の `eventId` / 開始時刻 / 番組長を返す。`BitParser` と同じくパケット分解とセクション組み立てだけを自前で行う (aribts の TsSectionParser は録画経路に挟むには重い)
+    - **開始判定**: `RecordingStartGate` (`decideRecordingStart()`) が「いま流れているのが予約した番組か」を判断する。programId 予約は `eventId` の一致、時刻指定予約は present の開始時刻が予約開始時刻 (既定 2 分のマージン込み) 以降かで見る。**放送時間未定の番組が流れている間は延長中とみなして待つ**
+    - **待っている間のデータは捨てる**: `RecorderModel.doRecord()` はゲートを通るまで録画ファイルを作らず pipe もしない (ゲート通過までストリームは `pause()` しておく)。そのため前番組は録画ファイルにも録画一覧にも残らない
+    - **録り逃さないための安全弁**: EIT[p/f] を読めないまま `startGateTimeoutMs` (既定 60 秒) を過ぎたら録画を開始する。予約終了時刻を過ぎても始まらない場合は `WaitingForEventStart` として従来の再試行 (最大 3 時間待ち) へ回す。待機中は予約の「追従中」表示が点く
+    - **設定**: `config.yml` の `recording` に `startGateEnabled` (既定 true) / `startGateTimeoutMs` / `startGateStartMarginMs` を追加した
+    - **テスト**: `test/ut/recording-start-gate.test.js` (判定の分岐、設定の丸め、EIT[p/f] セクションの解析)
+
 - **録画の再生速度がライブ視聴にも波及していたのを直した**
     - **原因**: DPlayer は再生速度を localStorage (`dplayer-speed`) に保存し、次に生成したプレイヤーへ自動で適用する。録画とライブで同じ localStorage を共有しているため、録画を倍速で見た後にライブ視聴を開くとライブまで倍速で始まっていた
     - **対処**: `BaseVideo.createDPlayer()` を追加し、**ライブ (`options.live === true`) のときだけ**生成中に保存値を等速に見せ、生成後に元の値へ戻す。さらにライブ中に速度を変えても `user.set('speed')` を保存へ通さない (画面内では効くが録画側の設定を書き換えない)。録画側の速度設定は従来通り保持される

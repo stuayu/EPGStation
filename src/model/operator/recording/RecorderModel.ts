@@ -25,7 +25,9 @@ import IRecordingEvent from '../../event/IRecordingEvent';
 import IReserveEvent from '../../event/IReserveEvent';
 import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
+import EitPresentParser, { EitPresentEvent } from './EitPresentParser';
 import { decideRecordingRetry, RecordingRetryReason, resolveRecordingRetryConfig } from './RecordingRetryPolicy';
+import { decideRecordingStart, resolveRecordingStartGateConfig } from './RecordingStartGate';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IMirakurunClientModel from '../../IMirakurunClientModel';
@@ -383,6 +385,24 @@ class RecorderModel implements IRecorderModel {
             return;
         }
 
+        // 予約した番組が実際に始まるまで待つ (前番組の延長対策)。
+        // 待っている間のデータは捨てるので、前番組が録画ファイルに入らない
+        try {
+            await this.waitForProgramStart();
+        } catch (err: any) {
+            this.destroyStream();
+            throw err;
+        }
+
+        // 録画開始待ちの間にキャンセルされていないか
+        if ((this.isStopPrepRec as boolean) === true) {
+            this.log.system.error(`cancel recording: ${this.reserve.id}`);
+            this.destroyStream();
+            this.emitCancelEvent();
+
+            return;
+        }
+
         this.isPrepRecording = false;
         this.isRecording = true;
 
@@ -522,6 +542,114 @@ class RecorderModel implements IRecorderModel {
             // 予想外の録画失敗エラー
             this.destroyStream();
             throw err;
+        });
+    }
+
+    /**
+     * 予約した番組が実際に始まる (EIT[p/f] present が目的の番組になる) まで待つ。
+     *
+     * 時刻指定予約は Mirakurun のチャンネルストリームを使うため、予定時刻になった瞬間から
+     * データが流れる。前番組が「放送時間未定」で延長している間はまだ前番組なので、
+     * そのまま録り始めると前番組が録画ファイルとして残ってしまう。
+     * ここで EIT[p/f] を読み、目的の番組になるまでデータを捨てて待つ。
+     *
+     * - データ自体が来ない場合は従来どおり `WaitingForEventStart` で再試行へ回す
+     * - EIT[p/f] を読めないまま上限を過ぎた場合は録り逃さないよう開始する (安全側)
+     * - 予約終了時刻を過ぎても始まらない場合は再試行へ回す
+     * @return Promise<void>
+     */
+    private async waitForProgramStart(): Promise<void> {
+        const stream = this.stream;
+        if (stream === null) {
+            throw new Error('StreamIsNull');
+        }
+
+        const gateConfig = resolveRecordingStartGateConfig(this.config.recording);
+        const retryConfig = resolveRecordingRetryConfig(this.config.recording);
+        // Mirakurun の program id は (networkId * 65536 + serviceId) * 65536 + eventId、
+        // channel id は networkId * 100000 + serviceId で作られている
+        const eventId = this.reserve.programId === null ? null : this.reserve.programId % 0x10000;
+        const serviceId = this.reserve.channelId % 100000;
+
+        return new Promise<void>((resolve, reject) => {
+            const parser = new EitPresentParser();
+            let present: EitPresentEvent | null = null;
+            let hasData = false;
+            let lastLoggedReason: string | null = null;
+            const startedAt = new Date().getTime();
+
+            // データが 1 バイトも来ない場合は従来どおり「まだ始まっていない」として再試行へ回す
+            const firstDataTimerId = setTimeout(() => {
+                cleanup();
+                reject(new Error(RecorderModel.WAITING_FOR_EVENT_ERROR));
+            }, retryConfig.firstDataTimeoutMs);
+
+            const cleanup = (): void => {
+                clearTimeout(firstDataTimerId);
+                stream.removeListener('data', onData);
+                // リスナーを外しただけでは流れ続けてデータを取りこぼすため、
+                // 録画の書き込み (pipe) を始めるまで止めておく
+                stream.pause();
+            };
+
+            const onData = (chunk: Buffer): void => {
+                if (hasData === false) {
+                    hasData = true;
+                    clearTimeout(firstDataTimerId);
+                }
+
+                if (gateConfig.enabled === true) {
+                    for (const event of parser.write(chunk)) {
+                        // 同一 TS には複数サービスの EIT が流れるため、対象サービスのものだけ見る
+                        if (event.serviceId !== serviceId) {
+                            continue;
+                        }
+                        present = event;
+                    }
+                }
+
+                const decision = decideRecordingStart({
+                    eventId: eventId,
+                    reserveStartAt: this.reserve.startAt,
+                    present: present,
+                    elapsedMs: new Date().getTime() - startedAt,
+                    config: gateConfig,
+                });
+
+                if (decision.canStart === true) {
+                    this.log.system.info(
+                        `program start detected: reserveId: ${this.reserve.id}, reason: ${decision.reason}`,
+                    );
+                    cleanup();
+                    resolve();
+
+                    return;
+                }
+
+                // 待ちに入ったことは 1 度だけ出す (データ受信のたびに出さない)
+                if (lastLoggedReason !== decision.reason) {
+                    lastLoggedReason = decision.reason;
+                    this.log.system.info(
+                        `waiting for the reserved program to start on air: reserveId: ${this.reserve.id},` +
+                            ` reason: ${decision.reason},` +
+                            ` scheduled start: ${formatLogTime(this.reserve.startAt)},` +
+                            ` on air eventId: ${present === null ? 'unknown' : present.eventId},` +
+                            ` on air start: ${present?.startAt == null ? 'unknown' : formatLogTime(present.startAt)}`,
+                    );
+                    // 画面に「開始待ち」と出す
+                    this.setFollowingSchedule(true).catch(err => {
+                        this.log.system.error(err);
+                    });
+                }
+
+                // 予約終了時刻を過ぎても始まらない場合は再試行へ回す (ストリームを掴んだままにしない)
+                if (new Date().getTime() > this.reserve.endAt) {
+                    cleanup();
+                    reject(new Error(RecorderModel.WAITING_FOR_EVENT_ERROR));
+                }
+            };
+
+            stream.on('data', onData);
         });
     }
 
