@@ -93,6 +93,7 @@ npm run test:ci        # ut + ita + itb
 - エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換 (省略時は PATH 上の tsreadex)
 - ストリーミング API の `req.query` は express-openapi がスキーマに従い数値へ型変換する。`mode` 等を文字列前提で扱わないこと (過去に 400 エラーの原因になった)
 - **シリーズ自動マッピングの主軸は外部の作品タイトル辞書**。しょぼいカレンダー (`SyobocalTitleDictionary`, `syobocal_title` 系 3 テーブル)・Annict (`AnnictWorkDictionary`, `annict_work` 系 2 テーブル)・**Wikidata (`WikidataProgramDictionary`, `wikidata_program` 系 2 テーブル、全ジャンル)** の 3 つを `WorkDictionary` (`src/model/series/`) が 1 つのメモリ索引に統合し、`SeriesResolver` がそれを引く。録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバックなので、シリーズ判定を触るときは辞書側を先に疑うこと
+- **話数は辞書だけでなく「放送局 + 放送開始時刻」でも確定する**。`SyobocalProgramLookup` (`src/model/metadata/syobocal/`) がしょぼいカレンダーの放送予定 (`ProgLookup`) を引き、TID・通し話数・サブタイトルを返す (rigaya/SCRenamePy と同じ考え方)。タイトルに明示的な話数表記があるときは引かない (外部への問い合わせを増やさない)。総集編・一挙放送は `SeriesParseResult.isSpecial` で逆引きの対象外にする
 - **辞書間の重複はしょぼいカレンダー TID で結合して防ぐ**。Annict は `syobocalTid` フィールド、Wikidata は `P11648` を持つ。新しい辞書を足すときも同じキーで既存エントリへ合流させ、作品を二重に作らないこと
 - **Wikidata 由来のエントリは `strictProgramKey()` の完全一致のみで引く**。一般番組は短く一般的なタイトル (「パラダイス」等) が多く、アニメ辞書と同じ含有一致を許すと誤爆する。また `syobocalLookupKey()` は長音符を落とすため「あそビバ」と「あそビーバー」が衝突する
 - **機能フラグ (`featureFlags`) は opt-out**。未指定は有効として扱う (`isFeatureEnabled` は `!== false` 判定)。テストで「機能無効」を表現するときは `featureFlags: {}` ではなく該当キーに `false` を明示すること

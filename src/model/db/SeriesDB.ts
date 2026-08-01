@@ -72,6 +72,17 @@ export default class SeriesDB implements ISeriesDB {
         const repo = c.getRepository(SeriesEpisode);
         return await repo.save(repo.create(value));
     }
+    public async fillEpisodeTitle(episodeId: number, title: string, updatedAt: number): Promise<void> {
+        const c = await this.op.getConnection();
+        // 手動で付け直したサブタイトルを自動補完で上書きしないため、未設定の行だけを対象にする
+        await c
+            .createQueryBuilder()
+            .update(SeriesEpisode)
+            .set({ title, updatedAt })
+            .where('id = :id', { id: episodeId })
+            .andWhere('title IS NULL')
+            .execute();
+    }
     async findLink(recordedId: number) {
         const c = await this.op.getConnection();
         return await c.getRepository(RecordedSeriesLink).findOne({ where: { recordedId } });

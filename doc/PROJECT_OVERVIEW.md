@@ -136,6 +136,7 @@ npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (
     - `SyobocalTitleDictionary` (しょぼいカレンダー、約 8 千件・アニメ専門) / `AnnictWorkDictionary` (Annict `searchWorks`、約 1.7 万件・アニメ専門) — Annict 側が持つ `syobocalTid` で厳密に結合する
     - `WikidataProgramDictionary` (Wikidata SPARQL、約 4 万件・**全ジャンル**) — ドラマ・バラエティ・情報番組・ローカル局番組を担当。Wikidata の `P11648` (しょぼいカレンダーのシリーズ ID) でアニメ辞書と厳密に結合し、重複を作らない。一般番組は短く一般的なタイトルが多いため、**厳密キー (`strictProgramKey`) の完全一致のみ**で引く (含有・前方一致には参加させない)
     - `SeriesResolver` はこの統合辞書を使い、録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバック。さらに `seriesLlm` を設定すると LLM が装飾を剥がした番組名で辞書を引き直す
+    - **話数は「放送局 + 放送開始時刻」でも確定できる**: `SyobocalProgramLookup` (`src/model/metadata/syobocal/`) がしょぼいカレンダーの放送予定 (`ProgLookup`) を引き、`TID` / 通し話数 / サブタイトルを返す。タイトルの表記に依存しないため、話数表記もサブタイトルも無い録画で効く。取得は放送日 1 日分をまとめて行いキャッシュする。**タイトルに明示的な話数表記がある録画では引かない**。総集編・一挙放送 (`SeriesParseResult.isSpecial`) も通し話数を持たないため逆引きの対象外
     - 同期は Operator 起動時 + しょぼいカレンダー 24 時間 / Annict 7 日 / Wikidata 7 日間隔 (`featureFlags.metadataProviders` + 各連携が有効な場合のみ。Annict はアクセストークン必須、Wikidata は不要で既定 ON)。詳細は `doc/stuayu-fork.md`
 - **config.yml は「ファイルがベース + DB の差分」**: GUI で変更した値は `app_setting` の `config` キーに差分として入り、`Configuration` が読み込み時に重ねて実効値を作る (`src/model/config/ConfigOverlay.ts`)。**yml へは書き戻さない** (コメント破壊と watchFile ループの回避)。`dbtype` / `mysql` / `sqlite` / `postgres` / `auth` は編集対象外。差分は各プロセスで **DB 接続直後・モデル構築前**に適用する必要がある (多くのモデルがコンストラクタで config を読むため)
 - **EIT[p/f] の即時反映**: 現在放送中/次の番組の更新は socket.io の `updateOnAirProgram` (更新のあった放送局 id 付き) で配り、視聴画面・放送中一覧・番組表がその場で追随する。全体更新 (`updateStatus`) とは別イベントなのは 10 秒周期で飛びうるため

@@ -237,6 +237,22 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **教訓**: `video_file.type` のように複数の目的で参照されているフィールドを変更するときは、`grep` で全参照箇所を洗い出してから着手すること。今回は「PSI/SI 解析対象かどうか」だけを見て変更し、「ストリーミングパイプライン選択」という別の用途を見落としたため手戻りになった
     - **テスト**: `test/ut/encode-finish-model.test.js` (拡張子に関わらず `type: 'encoded'` のまま)、`test/ut/video-file-analyze-model.test.js` (拡張子ベースの対象判定)、`test/ut/video-metadata-api.test.js` (`reanalyzeAllTsInfo`)
 
+- **話数マッピングの精度を上げた (しょぼいカレンダーの放送予定照会・話数表記の拡充・特番の除外) + エピソード名の表示切り替えを追加した**
+    - **背景**: 話数の判定は「録画タイトルの表記 (第 1 話 / #1 / break1 …)」と「しょぼいカレンダーのサブタイトル一覧との照合」の 2 本だけで、**どちらも持たないタイトル** (局が話数もサブタイトルも送出せず作品名だけを流す番組) では話数が付かなかった。[rigaya/SCRenamePy](https://github.com/rigaya/SCRenamePy) が「放送局 + 放送日時」でしょぼいカレンダーの放送予定を引いて話数・サブタイトルを確定させているのを参考に、同じ経路を追加した
+    - **放送予定照会 (`SyobocalProgramLookup`, `src/model/metadata/syobocal/`)**: 録画の `channelId` / `startAt` から `Command=ProgLookup&ChID=&Range=` を引き、`TID` / `Count` (通し話数) / `SubTitle` を得る。**タイトルの表記に一切依存しない**ため、話数表記もサブタイトルも無い録画で話数が確定し、辞書キーに当たらないタイトルでも作品自体を特定できる
+        - 局の対応付けは既存の `SyobocalChannelMap` (networkId + serviceId → ChID) を使う。未登録局 (`syobocal: false`) とマッピングの無い局は問い合わせない
+        - 取得は**放送日 1 日分をまとめて** (境界は JST 5 時、深夜番組を前日扱いにするため) 行い、`ChID + 放送日` 単位でメモリキャッシュする (TTL 6 時間・最大 256 件)。同じ局・同じ日の録画が続いても外部への問い合わせは 1 回で済む
+        - 一致判定は開始時刻の差 5 分以内を最優先し、外れた場合のみ「放送時間帯に含まれる番組」を採る (録画開始が番組途中になっている場合の救済)
+        - 失敗・連携無効・該当なしはすべて `null` を返し、従来の経路へ委ねる (放送予定が引けなくてもシリーズ化自体は成立する)
+    - **`SeriesResolver` での使いどころ**: ①作品辞書がタイトルで引けなかった場合に放送予定の `TID` から作品を確定する (確度は 0.95 に抑える。放送予定側の時刻ずれで隣の番組を拾う余地があるため)、②話数が取れなかった場合に `Count` を採る (サブタイトル照合より優先)、③`SubTitle` をエピソード名として保存する。**タイトルに明示的な話数表記がある録画では放送予定を引かない** (外部への問い合わせを増やさないため)
+    - **エピソード名 (`series_episode.title`) を埋めるようにした**: これまで常に `null` で作られていた。放送予定から取れたサブタイトルを優先し、無ければローカルの `syobocal_title_episode` から話数で引く (`IWorkDictionary.lookupEpisodeTitle()`、外部通信なし)。既存のエピソード行にも後から補完するが、**手動で付け直した値は上書きしない** (`SeriesDB.fillEpisodeTitle()` は `title IS NULL` の行のみ更新する)
+    - **話数表記の拡充 (`SeriesNormalizer`)**: `Part2` / `vol.3` / `No.5` / `その 7` / `その十二` を話数として認識するようにした
+    - **話数は括弧の外を優先して探す**: 従来はタイトル全体を走査していたため、サブタイトル中の数字を話数と誤読しうる。`「」『』` の中を潰した文字列を先に走査し、見つからない場合だけ全文へフォールバックする (SCRename が話数走査を括弧の手前で打ち切るのと同じ考え方)
+    - **特番の除外 (`SeriesParseResult.isSpecial`)**: 総集編・傑作選・一挙放送・放送直前特番などは通し話数を持たないため、**タイトルに明示的な話数表記が無い場合の逆引き (放送予定・サブタイトル照合) を行わない**。明示表記があるときはそちらを尊重する
+    - **エピソード名の表示切り替え (クライアント)**: シリーズ詳細 (`/series/{id}`) の 3 点リーダー (`client/src/components/series/SeriesTitleDisplayMenu.vue`) から「辞書のエピソード名を使う」/「録画タイトルを使う」を切り替えられるようにした。設定は localStorage の共通設定 (`ISettingValue.useDictionaryEpisodeTitle`、既定 有効) なので、一度切り替えればどの画面でも同じ値になる
+        - 設定の保存は `ISettingStorageModel.tmp` を書き換えてから `save()` を呼ぶこと。`save()` が書き出すのは `tmp` で、`getSavedValue()` は localStorage を読み直した**別オブジェクト**を返すため、そちらを書き換えても保存されない (既存の `ChannelGroupingMenu.vue` / `GuideMainMenu.vue` はこの書き方になっており、設定がリロードで元に戻る)
+    - **テスト**: `test/ut/syobocal-program-lookup.test.js` (放送予定照会。一致判定・日付境界・キャッシュ・無効時の挙動)、`test/ut/series-resolver.test.js` (放送予定経由の確定・特番の除外・明示話数があるときに問い合わせない)、`test/ut/series-normalizer.test.js` (新しい話数表記・括弧外優先・特番判定)
+
 - **シリーズ周りの UI を改善した (外部サイトへのリンク・戻る操作での検索結果復元・ページ番号指定)**
     - **録画詳細のシリーズタグから外部サイトへ飛べるようにした**: 録画詳細のシリーズ情報欄にある「Annict」「しょぼいカレンダー」のタグを、それぞれ `https://annict.com/works/{annictId}` / `https://cal.syoboi.jp/tid/{syobocalTid}` へのリンクにした (別タブで開く、`rel="noopener noreferrer"`)。外部 ID を持たないシリーズではこれまで通りタグ自体を出さない (`client/src/components/recorded/detail/RecordedDetailSeries.vue`)
     - **シリーズ一覧の検索条件・ページ位置を URL query に載せた**: シリーズ一覧 (`client/src/views/Series.vue`) はキーワード・並べ替え・クール・放送状態・出所・欠番絞り込み・ページをコンポーネントのローカル状態で持っていたため、シリーズ詳細へ遷移してブラウザバックすると検索結果もページ位置も失われていた。録画済み一覧と同じ方式に揃え、これらを `?keyword=&sort=&order=&season=&status=&origin=&hasMissing=&page=` として URL に持たせ、`$route` の変化 (条件変更・ページ移動・ブラウザバック) を watch して取得し直すようにした。既定値の項目は query に載せない

@@ -202,6 +202,8 @@ import ISyobocalChannelMap from './metadata/syobocal/ISyobocalChannelMap';
 import SyobocalChannelMap from './metadata/syobocal/SyobocalChannelMap';
 import ISyobocalTitleDictionary from './metadata/syobocal/ISyobocalTitleDictionary';
 import SyobocalTitleDictionary from './metadata/syobocal/SyobocalTitleDictionary';
+import ISyobocalProgramLookup from './metadata/syobocal/ISyobocalProgramLookup';
+import SyobocalProgramLookup from './metadata/syobocal/SyobocalProgramLookup';
 import IAnnictWorkDictionary from './metadata/annict/IAnnictWorkDictionary';
 import IWikidataProgramDictionary from './metadata/wikidata/IWikidataProgramDictionary';
 import WikidataProgramDictionary from './metadata/wikidata/WikidataProgramDictionary';
@@ -333,6 +335,7 @@ export const set = (container: Container): void => {
     container.bind<ISyobocalChannelMap>('ISyobocalChannelMap').to(SyobocalChannelMap).inSingletonScope();
     container.bind<ISyobocalProvider>('ISyobocalProvider').to(SyobocalProvider).inSingletonScope();
     container.bind<ISyobocalTitleDictionary>('ISyobocalTitleDictionary').to(SyobocalTitleDictionary).inSingletonScope();
+    container.bind<ISyobocalProgramLookup>('ISyobocalProgramLookup').to(SyobocalProgramLookup).inSingletonScope();
     container.bind<IAnnictWorkDictionary>('IAnnictWorkDictionary').to(AnnictWorkDictionary).inSingletonScope();
     container
         .bind<IWikidataProgramDictionary>('IWikidataProgramDictionary')

@@ -6,6 +6,7 @@ import { isFeatureEnabled } from '../FeatureFlags';
 import IConfiguration from '../IConfiguration';
 import IAppSettingDB from '../db/IAppSettingDB';
 import ISeriesDB from '../db/ISeriesDB';
+import ISyobocalProgramLookup, { SyobocalProgramMatch } from '../metadata/syobocal/ISyobocalProgramLookup';
 import INotificationDispatcher from '../notification/INotificationDispatcher';
 import ILlmTitleExtractor from './ILlmTitleExtractor';
 import IWorkDictionary, { WorkMatch } from './IWorkDictionary';
@@ -59,6 +60,7 @@ export default class SeriesResolver implements ISeriesResolver {
         @inject('INotificationDispatcher') private notification: INotificationDispatcher,
         @inject('IWorkDictionary') private workDictionary: IWorkDictionary,
         @inject('ILlmTitleExtractor') private llmTitleExtractor: ILlmTitleExtractor,
+        @inject('ISyobocalProgramLookup') private programLookup: ISyobocalProgramLookup,
     ) {}
     async resolve(recording: SeriesRecordingInput): Promise<RecordedSeriesLink | null> {
         if (!isFeatureEnabled(this.config.getConfig(), 'seriesLibrary')) return null;
@@ -195,6 +197,20 @@ export default class SeriesResolver implements ISeriesResolver {
             match = await this.lookupViaLlm(recording.title);
             viaLlm = match !== null;
         }
+
+        // しょぼいカレンダーの放送予定 (放送局 + 放送開始時刻) から確定させる。
+        // タイトルの表記に一切依存しないため、局が作品名を独自表記で送出していて
+        // 辞書キーに当たらない録画でも作品を特定できる
+        let program: SyobocalProgramMatch | null = null;
+        if (match === null) {
+            program = await this.lookupProgram(recording);
+            if (program !== null) {
+                const byProgram = await this.workDictionary.findByIds({ syobocalTid: program.tid }).catch(() => null);
+                // 局と時刻の一致は強い根拠だが、放送予定側の時刻ずれで隣の番組を拾う余地があるため
+                // タイトル照合で確定した場合 (最大 1.0) より低い確度で記録する
+                if (byProgram !== null) match = { ...byProgram, confidence: Math.min(byProgram.confidence, 0.95) };
+            }
+        }
         if (match === null) return null;
 
         // しょぼいカレンダー TID を優先キーにし、無い作品 (Annict 単独) は annictId で引く
@@ -252,21 +268,54 @@ export default class SeriesResolver implements ISeriesResolver {
             }
         }
 
-        // 話数表記が無い録画は、しょぼいカレンダーのサブタイトルから話数を逆引きする
+        // 話数表記が無い録画の話数を復元する。
+        // 総集編・一挙放送と判定した録画は通し話数を持たないため、逆引きの対象から外す
         const resolved = { ...parsed };
-        if (resolved.episodeNumber === null && match.syobocalTid !== null) {
-            const episodeNumber = await this.workDictionary
-                .lookupEpisodeNumber(match.syobocalTid, recording.title)
-                .catch(() => null);
-            if (episodeNumber !== null) resolved.episodeNumber = episodeNumber;
+        if (resolved.episodeNumber === null && match.syobocalTid !== null && parsed.isSpecial === false) {
+            // 1. 放送予定の話数 (放送局 + 放送開始時刻で引くためタイトル表記に依存しない。最も確度が高い)
+            if (program === null) program = await this.lookupProgram(recording);
+            if (program !== null && program.tid === match.syobocalTid && program.count !== null) {
+                resolved.episodeNumber = program.count;
+            }
+            // 2. サブタイトル一覧との照合による逆引き
+            if (resolved.episodeNumber === null) {
+                const episodeNumber = await this.workDictionary
+                    .lookupEpisodeNumber(match.syobocalTid, recording.title)
+                    .catch(() => null);
+                if (episodeNumber !== null) resolved.episodeNumber = episodeNumber;
+            }
         }
+        // 放送予定から取れたサブタイトルはその回の実際の放送内容なので、話数からの逆引きより優先する
+        const episodeTitle = program !== null && program.tid === match.syobocalTid ? program.subTitle : null;
 
         // LLM を経由して確定した対応はエイリアス辞書へ学習させる。
         // 次回以降は resolve() の先頭でこの辞書に当たるため、同じ表記の録画で LLM を引き直さずに済む
         if (viaLlm === true) await this.learnAlias(parsed.normalizedTitle, series, match, now);
 
         await this.db.deletePendingMatchByRecordedId(recording.recordedId);
-        return await this.linkTo(recording, resolved, series, match.confidence, matchMethodOf(match), now);
+        return await this.linkTo(
+            recording,
+            resolved,
+            series,
+            match.confidence,
+            matchMethodOf(match),
+            now,
+            episodeTitle,
+        );
+    }
+
+    /**
+     * しょぼいカレンダーの放送予定を放送局 + 放送開始時刻で引く。
+     * 連携が無効・局が未対応・該当放送なしの場合は null を返す (シリーズ化自体は従来経路で成立する)
+     * @param recording: SeriesRecordingInput
+     * @return Promise<SyobocalProgramMatch | null>
+     */
+    private async lookupProgram(recording: SeriesRecordingInput): Promise<SyobocalProgramMatch | null> {
+        try {
+            return await this.programLookup.lookup(recording.channelId, recording.startAt);
+        } catch {
+            return null;
+        }
     }
 
     /**
@@ -377,6 +426,8 @@ export default class SeriesResolver implements ISeriesResolver {
 
     /**
      * 確定したシリーズへ録画をリンクする (エピソード解決 + 再放送判定を含む)
+     * @param episodeTitle: string | null 放送予定から取れたサブタイトル。null の場合は
+     *                      シリーズの しょぼいカレンダー TID からサブタイトル一覧を引いて補う
      */
     private async linkTo(
         recording: SeriesRecordingInput,
@@ -385,10 +436,12 @@ export default class SeriesResolver implements ISeriesResolver {
         confidence: number,
         matchMethod: RecordedSeriesLink['matchMethod'],
         now: number,
+        episodeTitle: string | null = null,
     ): Promise<RecordedSeriesLink> {
         let episode = null;
         let isNewEpisode = false;
         if (parsed.episodeNumber !== null) {
+            const subTitle = episodeTitle ?? (await this.lookupEpisodeTitle(series, parsed.episodeNumber));
             episode = await this.db.findEpisode(series.id, parsed.seasonNumber, parsed.episodeNumber);
             if (!episode) {
                 episode = await this.db.createEpisode({
@@ -396,12 +449,16 @@ export default class SeriesResolver implements ISeriesResolver {
                     seasonNumber: parsed.seasonNumber,
                     episodeNumber: parsed.episodeNumber,
                     episodeLabel: parsed.episodeLabel,
-                    title: null,
+                    title: subTitle,
                     airedAt: recording.startAt,
                     createdAt: now,
                     updatedAt: now,
                 });
                 isNewEpisode = true;
+            } else if (episode.title === null && subTitle !== null) {
+                // 辞書の同期前に作られたエピソードにも、後から引けたサブタイトルを埋める
+                await this.db.fillEpisodeTitle(episode.id, subTitle, now).catch(() => {});
+                episode = { ...episode, title: subTitle };
             }
         }
         let airType = parsed.airType;
@@ -432,6 +489,22 @@ export default class SeriesResolver implements ISeriesResolver {
             updatedAt: now,
         });
     }
+    /**
+     * シリーズの しょぼいカレンダー TID から、その話数のサブタイトルを引く。
+     * ローカルの辞書だけを使うため外部通信は伴わない
+     * @param series: Series
+     * @param episodeNumber: number
+     * @return Promise<string | null>
+     */
+    private async lookupEpisodeTitle(series: Series, episodeNumber: number): Promise<string | null> {
+        if (typeof series.syobocalTid !== 'number') return null;
+        try {
+            return await this.workDictionary.lookupEpisodeTitle(series.syobocalTid, episodeNumber);
+        } catch {
+            return null;
+        }
+    }
+
     private threshold(value: unknown): number {
         // 優先順位: DB (設定画面) > config.yml (seriesDefaults) > ハードコード既定値 (§6.3)
         const resolved = resolveNumber(value, this.config.getConfig().seriesDefaults?.matchThreshold, 0.8);

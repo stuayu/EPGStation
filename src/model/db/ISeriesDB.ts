@@ -32,7 +32,8 @@ export interface NewEpisode {
     seasonNumber: number;
     episodeNumber: number | null;
     episodeLabel: string | null;
-    title: null;
+    // 作品辞書 (しょぼいカレンダー) から引けたサブタイトル。引けなければ null
+    title: string | null;
     airedAt: number | null;
     createdAt: number;
     updatedAt: number;
@@ -165,6 +166,15 @@ export default interface ISeriesDB {
     findEpisode(seriesId: number, seasonNumber: number, episodeNumber: number | null): Promise<SeriesEpisode | null>;
     findEpisodeById(id: number): Promise<SeriesEpisode | null>;
     createEpisode(value: NewEpisode): Promise<SeriesEpisode>;
+    /**
+     * エピソードのサブタイトルを補完する。手動編集で入った値を消さないよう、
+     * 現在 null のエピソードにのみ書き込む
+     * @param episodeId: number
+     * @param title: string
+     * @param updatedAt: number
+     * @return Promise<void>
+     */
+    fillEpisodeTitle(episodeId: number, title: string, updatedAt: number): Promise<void>;
     findLink(recordedId: number): Promise<RecordedSeriesLink | null>;
     saveLink(value: SaveSeriesLink): Promise<RecordedSeriesLink>;
     list(keyword: string | undefined, offset: number, limit: number): Promise<[Series[], number]>;
