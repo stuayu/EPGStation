@@ -41,7 +41,65 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
     private static readonly DESCRIPTOR_TAG_SERVICE = 0x48;
     private static readonly DESCRIPTOR_TAG_SHORT_EVENT = 0x4d;
     private static readonly DESCRIPTOR_TAG_EXTENDED_EVENT = 0x4e;
+    private static readonly DESCRIPTOR_TAG_COMPONENT = 0x50;
     private static readonly DESCRIPTOR_TAG_CONTENT = 0x54;
+    private static readonly DESCRIPTOR_TAG_AUDIO_COMPONENT = 0xc4;
+
+    // component_descriptor の stream_content → 映像符号化方式 (Mirakurun の program.video.type と同じ表記)
+    private static readonly STREAM_CONTENT: { [key: number]: string } = {
+        0x01: 'mpeg2',
+        0x05: 'h.264',
+        0x09: 'h.265',
+    };
+
+    // component_descriptor の component_type → 映像解像度 (Mirakurun の program.video.resolution と同じ表記)
+    private static readonly COMPONENT_TYPE_RESOLUTION: { [key: number]: string } = {
+        0x01: '480i',
+        0x02: '480i',
+        0x03: '480i',
+        0x04: '480i',
+        0x83: '4320p',
+        0x91: '2160p',
+        0x92: '2160p',
+        0x93: '2160p',
+        0x94: '2160p',
+        0xa1: '480p',
+        0xa2: '480p',
+        0xa3: '480p',
+        0xa4: '480p',
+        0xb1: '1080i',
+        0xb2: '1080i',
+        0xb3: '1080i',
+        0xb4: '1080i',
+        0xc1: '720p',
+        0xc2: '720p',
+        0xc3: '720p',
+        0xc4: '720p',
+        0xd1: '240p',
+        0xd2: '240p',
+        0xd3: '240p',
+        0xd4: '240p',
+        0xe1: '1080p',
+        0xe2: '1080p',
+        0xe3: '1080p',
+        0xe4: '1080p',
+        0xf1: '180p',
+        0xf2: '180p',
+        0xf3: '180p',
+        0xf4: '180p',
+    };
+
+    // audio_component_descriptor の sampling_rate → サンプリング周波数 (Hz)。-1 は予約値
+    private static readonly SAMPLING_RATE: { [key: number]: number } = {
+        0: -1,
+        1: 16000,
+        2: 22050,
+        3: 24000,
+        4: -1,
+        5: 32000,
+        6: 44100,
+        7: 48000,
+    };
 
     // ジャンル未定義 (content_nibble_level_1 = 0xF)
     private static readonly GENRE_NIBBLE_UNDEFINED = 0x0f;
@@ -422,6 +480,22 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                         }))
                         .filter((g: TsGenre) => g.lv1 !== TsInfoAnalyzer.GENRE_NIBBLE_UNDEFINED);
                     break;
+                case TsInfoAnalyzer.DESCRIPTOR_TAG_COMPONENT:
+                    // 映像は複数流れることがあるが、EPGStation が持つのは代表 1 本なので最初のものを採用する
+                    if (info.videoComponentType === null) {
+                        info.videoStreamContent = d.stream_content ?? null;
+                        info.videoComponentType = d.component_type ?? null;
+                        info.videoType = TsInfoAnalyzer.STREAM_CONTENT[d.stream_content] ?? null;
+                        info.videoResolution = TsInfoAnalyzer.COMPONENT_TYPE_RESOLUTION[d.component_type] ?? null;
+                    }
+                    break;
+                case TsInfoAnalyzer.DESCRIPTOR_TAG_AUDIO_COMPONENT:
+                    if (info.audioComponentType === null) {
+                        info.audioComponentType = d.component_type ?? null;
+                        const samplingRate = TsInfoAnalyzer.SAMPLING_RATE[d.sampling_rate] ?? -1;
+                        info.audioSamplingRate = samplingRate > 0 ? samplingRate : null;
+                    }
+                    break;
                 default:
                     break;
             }
@@ -596,6 +670,12 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
             eventStartAt: null,
             eventDuration: null,
             genres: [],
+            videoType: null,
+            videoResolution: null,
+            videoStreamContent: null,
+            videoComponentType: null,
+            audioSamplingRate: null,
+            audioComponentType: null,
             videoStreamType: null,
             videoPid: null,
             audioStreamType: null,

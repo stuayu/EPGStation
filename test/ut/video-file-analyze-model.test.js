@@ -27,6 +27,12 @@ function emptyTsInfo(override) {
             eventStartAt: null,
             eventDuration: null,
             genres: [],
+            videoType: null,
+            videoResolution: null,
+            videoStreamContent: null,
+            videoComponentType: null,
+            audioSamplingRate: null,
+            audioComponentType: null,
             videoStreamType: null,
             videoPid: null,
             audioStreamType: null,
@@ -56,9 +62,11 @@ function createModel(options) {
         findId: async () => opt.storedTsInfo ?? null,
     };
     const channelUpdates = [];
+    const programUpdates = [];
     const recordedDB = {
         findId: async () => opt.recorded ?? null,
         updateChannel: async (recordedId, values) => channelUpdates.push({ recordedId, values }),
+        updateProgramInfo: async (recordedId, values) => programUpdates.push({ recordedId, values }),
     };
     const channelDB = {
         findId: async id => (opt.channels ?? []).find(c => c.id === id) ?? null,
@@ -93,6 +101,7 @@ function createModel(options) {
         upserted: upserted,
         startAtUpdated: startAtUpdated,
         channelUpdates: channelUpdates,
+        programUpdates: programUpdates,
     };
 }
 
@@ -292,4 +301,68 @@ test('局名の書き戻しに失敗しても TS 解析自体は成功扱いに�
 
     assert.equal(await model.analyzeTsInfo(1), true);
     assert.equal(upserted.length, 1);
+});
+
+test('番組情報が空の録画は EIT[p/f] の内容 (概要・詳細・ジャンル・映像音声) で補完する', async () => {
+    // API 経由で録画情報だけ先に作り、後から TS を追加した録画 (外部連携での登録) を想定する
+    const { model, programUpdates } = createModel({
+        recorded: { id: 10, isRecording: false, startAt: 1700000000000, channelId: 1 },
+        channels: [{ id: 1, networkId: 32416, serviceId: 21504, name: 'ＮＨＫ総合１', halfWidthName: 'NHK総合1' }],
+        tsInfo: emptyTsInfo({
+            networkId: 32416,
+            serviceId: 21504,
+            eventDescription: '番組の概要',
+            eventExtended: '出演者\n誰か',
+            genres: [
+                { lv1: 7, lv2: 0 },
+                { lv1: 1, lv2: 2 },
+            ],
+            videoType: 'mpeg2',
+            videoResolution: '1080i',
+            videoStreamContent: 1,
+            videoComponentType: 0xb1,
+            audioSamplingRate: 48000,
+            audioComponentType: 3,
+        }),
+    });
+
+    await model.analyzeTsInfo(1);
+
+    assert.equal(programUpdates.length, 1);
+    assert.equal(programUpdates[0].recordedId, 10);
+    assert.equal(programUpdates[0].values.description, '番組の概要');
+    assert.equal(programUpdates[0].values.genre1, 7);
+    assert.equal(programUpdates[0].values.subGenre1, 0);
+    assert.equal(programUpdates[0].values.genre2, 1);
+    assert.equal(programUpdates[0].values.videoType, 'mpeg2');
+    assert.equal(programUpdates[0].values.videoResolution, '1080i');
+    assert.equal(programUpdates[0].values.audioSamplingRate, 48000);
+});
+
+test('すでに入っている番組情報は TS の内容で上書きしない', async () => {
+    const { model, programUpdates } = createModel({
+        recorded: {
+            id: 10,
+            isRecording: false,
+            startAt: 1700000000000,
+            channelId: 1,
+            description: '画面から入力した概要',
+            genre1: 6,
+            videoType: 'h.264',
+        },
+        channels: [{ id: 1, networkId: 32416, serviceId: 21504, name: 'ＮＨＫ総合１', halfWidthName: 'NHK総合1' }],
+        tsInfo: emptyTsInfo({
+            networkId: 32416,
+            serviceId: 21504,
+            eventDescription: '番組の概要',
+            genres: [{ lv1: 7, lv2: 0 }],
+            videoType: 'mpeg2',
+            audioSamplingRate: 48000,
+        }),
+    });
+
+    await model.analyzeTsInfo(1);
+
+    // 空だった audioSamplingRate だけが補完される
+    assert.deepEqual(programUpdates[0].values, { audioSamplingRate: 48000 });
 });

@@ -23,6 +23,16 @@ export interface TsInfo {
     eventDuration: number | null; // 秒
     genres: TsGenre[];
 
+    // --- EIT[p/f] の component_descriptor / audio_component_descriptor ---
+    // Mirakurun の program.video / program.audio と同じ形式に変換した値。
+    // EPGStation で録画した番組と同じ項目を、取り込み・アップロードした TS からも埋められるようにする
+    videoType: string | null; // 'mpeg2' / 'h.264' / 'h.265'
+    videoResolution: string | null; // '1080i' など
+    videoStreamContent: number | null;
+    videoComponentType: number | null;
+    audioSamplingRate: number | null; // Hz
+    audioComponentType: number | null;
+
     // --- PMT のストリーム構成 ---
     videoStreamType: number | null;
     videoPid: number | null;

@@ -37,11 +37,36 @@ export interface RecordedChannelUpdateValues {
     halfWidthChannelName?: string;
 }
 
+/**
+ * TS 解析から補完する番組情報 (未設定の項目だけを埋める用途)
+ */
+export interface RecordedProgramUpdateValues {
+    name?: string;
+    halfWidthName?: string;
+    description?: string;
+    halfWidthDescription?: string;
+    extended?: string;
+    halfWidthExtended?: string;
+    genre1?: number;
+    subGenre1?: number;
+    genre2?: number;
+    subGenre2?: number;
+    genre3?: number;
+    subGenre3?: number;
+    videoType?: string;
+    videoResolution?: string;
+    videoStreamContent?: number;
+    videoComponentType?: number;
+    audioSamplingRate?: number;
+    audioComponentType?: number;
+}
+
 export default interface IRecordedDB {
     restore(items: Recorded[]): Promise<void>;
     insertOnce(recorded: Recorded): Promise<apid.RecordedId>;
     updateOnce(recorded: Recorded): Promise<void>;
     updateChannel(recordedId: apid.RecordedId, values: RecordedChannelUpdateValues): Promise<void>;
+    updateProgramInfo(recordedId: apid.RecordedId, values: RecordedProgramUpdateValues): Promise<void>;
     removeRecording(recordedId: apid.RecordedId): Promise<void>;
     removeDropLogFileId(dropLogFileId: apid.DropLogFileId): Promise<void>;
     removeRuleId(ruleId: apid.RuleId): Promise<void>;

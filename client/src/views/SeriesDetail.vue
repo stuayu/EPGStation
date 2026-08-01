@@ -25,9 +25,16 @@
             </template>
         </TitleBar>
         <v-container v-if="detail">
-            <div class="d-flex align-center mb-3">
-                <v-chip v-if="detail.externalIds.annictId" color="green">Annict: {{ detail.externalIds.annictId }}</v-chip>
-                <v-btn class="ml-2" variant="outlined" :loading="annictSyncing" @click="syncAnnict">Annict同期</v-btn>
+            <div class="d-flex align-center flex-wrap ga-2 mb-3">
+                <!-- 外部辞書のタグ。クリックで元サイトの作品ページを開く -->
+                <SeriesExternalLinks :externalIds="detail.externalIds"></SeriesExternalLinks>
+                <v-chip v-if="detail.titleSource === 'manual'" size="small" color="primary" variant="tonal">シリーズ名は手動設定</v-chip>
+                <v-spacer></v-spacer>
+                <!-- 表示名・クール・読み仮名・総話数を作品辞書から取り直す (このシリーズだけ) -->
+                <v-btn variant="outlined" size="small" prepend-icon="mdi-sync" :loading="metadataSyncing" @click="refreshMetadata">
+                    辞書から再取得
+                </v-btn>
+                <v-btn variant="outlined" size="small" :loading="annictSyncing" @click="syncAnnict">Annict同期</v-btn>
             </div>
             <v-alert v-if="annictMessage" type="success" class="mb-3">{{ annictMessage }}</v-alert>
             <v-alert v-if="detail.continuity.missingEpisodes.length" type="warning" class="mb-3">欠番: {{ missingEpisodeText }}</v-alert>
@@ -63,10 +70,7 @@
                     </v-btn>
                 </v-card-title>
                 <v-card-text v-if="detail.comment">
-                    <div class="series-comment" :class="{ 'is-collapsed': isCommentCollapsed === true }">{{ detail.comment }}</div>
-                    <v-btn variant="text" size="small" @click="isCommentCollapsed = !isCommentCollapsed">
-                        {{ isCommentCollapsed === true ? 'もっと見る' : '折りたたむ' }}
-                    </v-btn>
+                    <SyobocalComment :comment="detail.comment" :collapsible="true"></SyobocalComment>
                 </v-card-text>
                 <v-card-text v-else class="text-grey">コメントはありません</v-card-text>
             </v-card>
@@ -170,7 +174,7 @@
                     <v-list-item-subtitle>{{ item.channelName || item.channelId }} · {{ formatDate(item.startAt) }}</v-list-item-subtitle>
                     <v-list-item-subtitle v-if="item.episodeComment" class="episode-comment">
                         <v-icon size="x-small">mdi-comment-text-outline</v-icon>
-                        {{ item.episodeComment }}
+                        <SyobocalComment :comment="item.episodeComment" class="d-inline-block"></SyobocalComment>
                         <v-chip v-if="item.episodeCommentSource === 'manual'" class="ml-1" size="x-small" color="primary">手動</v-chip>
                     </v-list-item-subtitle>
                     <template #append>
@@ -261,7 +265,9 @@
     </v-main>
 </template>
 <script lang="ts">
+import SeriesExternalLinks from '@/components/series/SeriesExternalLinks.vue';
 import SeriesTitleDisplayMenu from '@/components/series/SeriesTitleDisplayMenu.vue';
+import SyobocalComment from '@/components/series/SyobocalComment.vue';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import ISeriesApiModel, { SeriesDetail as Detail, SeriesRecording, MissingEpisodeProposal } from '@/model/api/series/ISeriesApiModel';
@@ -278,17 +284,16 @@ interface BulkEdit {
     airType: apid.SeriesAirType;
 }
 
-@Component({ components: { TitleBar, SeriesTitleDisplayMenu } })
+@Component({ components: { TitleBar, SeriesTitleDisplayMenu, SeriesExternalLinks, SyobocalComment } })
 class SeriesDetailView extends Vue {
     detail: Detail | null = null;
     channelId: number | null = null;
     annictSyncing = false;
+    metadataSyncing = false;
     annictMessage = '';
     futureProposals: MissingEpisodeProposal[] = [];
     reservingKey: string | null = null;
 
-    // 作品コメント。長文なので既定では折りたたんで表示する
-    isCommentCollapsed = true;
     isOpenCommentDialog = false;
     isOpenDeleteCommentDialog = false;
     commentInput = '';
@@ -359,6 +364,28 @@ class SeriesDetailView extends Vue {
             await this.load();
         } finally {
             this.annictSyncing = false;
+        }
+    }
+    /**
+     * このシリーズだけ作品辞書からメタデータ (表示名・クール・読み仮名・総話数・外部 ID・コメント) を取り直す
+     */
+    async refreshMetadata(): Promise<void> {
+        this.metadataSyncing = true;
+        try {
+            const result = await this.api.refreshMetadata(this.id);
+            await this.load();
+            const detail =
+                result.updated === 0
+                    ? '更新はありません'
+                    : result.titleSynced > 0
+                      ? 'シリーズ名を辞書名へ同期しました'
+                      : 'メタデータを更新しました';
+            this.snackbarState.open({ color: 'success', text: `辞書から再取得しました (${detail})` });
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: '辞書からの再取得に失敗しました' });
+        } finally {
+            this.metadataSyncing = false;
         }
     }
     async load() {
@@ -597,19 +624,6 @@ class SeriesDetailView extends Vue {
 export default toNative(SeriesDetailView);
 </script>
 <style lang="scss" scoped>
-// 作品コメントは Wiki 記法の長文 (改行あり) なので、改行を活かしつつ既定では高さを抑える
-.series-comment {
-    white-space: pre-wrap;
-    word-break: break-word;
-
-    &.is-collapsed {
-        display: -webkit-box;
-        -webkit-line-clamp: 5;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-    }
-}
-
 .episode-comment {
     white-space: pre-wrap;
 }

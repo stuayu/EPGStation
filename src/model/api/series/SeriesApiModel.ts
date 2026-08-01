@@ -147,7 +147,12 @@ export default class SeriesApiModel implements ISeriesApiModel {
             origin: getSeriesOrigin(series),
             comment: series.comment ?? null,
             commentSource: (series.commentSource ?? null) as apid.SeriesDetail['commentSource'],
-            externalIds: { syobocalTid: series.syobocalTid, annictId: series.annictId, tmdbId: series.tmdbId },
+            externalIds: {
+                syobocalTid: series.syobocalTid,
+                annictId: series.annictId,
+                wikidataQid: series.wikidataQid ?? null,
+                tmdbId: series.tmdbId,
+            },
             channels: channels.map(x => ({ ...x, count: Number(x.count) })),
             continuity: analyzeSeriesContinuity(allRecorded ?? recorded),
             recorded: recorded.map(x => ({

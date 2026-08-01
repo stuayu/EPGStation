@@ -138,6 +138,24 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 ## 変更箇所
 
+- **しょぼいカレンダーのコメントを Wiki 記法として描画し、シリーズ画面の導線を整理した**
+    - **背景**: しょぼいカレンダー由来のコメントは独自の Wiki 記法 (`*見出し` / `-箇条書き` / `:項目:内容` / `[[ラベル URL]]` / `!注記`) で書かれているが、画面ではそのまま文字列として出していたため「\*リンク」「:監督:○○」のような生の記法が並んでいた
+    - **レンダラ**: `client/src/util/SyobocalWiki.ts` が記法を解析してブロック (見出し・箇条書き・定義リスト・注記・段落) とインライン要素 (テキスト・リンク) の構造にする。描画は `client/src/components/series/SyobocalComment.vue` + `WikiInlineText.vue` が行い、**`v-html` は使わない** (解析済みの構造をテンプレートで描画するため、コメント本文から HTML が混入しない)。リンクは `http(s)` のみ許可し、別タブで開く (`rel="noopener noreferrer"`)
+    - **適用箇所**: シリーズ詳細の作品コメント・放送回コメント、録画詳細のシリーズ情報欄の両方。長い作品コメントは既定で折りたたみ、「もっと見る」で展開する (従来の `-webkit-line-clamp` から、末尾をフェードさせる表示に変更)
+    - **Wikidata のタグを表示・リンクした**: `SeriesDetail.externalIds` に `wikidataQid` を追加し (`api.d.ts` / `SeriesApiModel`)、外部辞書のタグを共通コンポーネント `client/src/components/series/SeriesExternalLinks.vue` に集約した。しょぼいカレンダー (`https://cal.syoboi.jp/tid/{tid}`)・Annict (`https://annict.com/works/{id}`)・**Wikidata (`https://www.wikidata.org/wiki/{QID}`)** の 3 つを、シリーズ詳細と録画詳細の両方で同じ見た目のリンク付きタグとして出す
+    - **シリーズ詳細に「辞書から再取得」ボタンを追加した**: `POST /api/series/refresh-metadata` に `seriesId` を渡せるようにし (`ISeriesMetadataFiller.fill({ seriesIds, force })`)、そのシリーズだけメタデータを取り直せるようにした。1 件指定のときは `force` 扱いで**すでに埋まっている項目も辞書の値で引き直す** (表示名・クール・コメントの**手動設定は対象外**のまま)。従来はシリーズ一覧の全件再取得しか無く、1 作品だけ直す手段が無かった
+    - **録画詳細からシリーズ詳細への導線**: シリーズ名リンクをリンク色 + 下線 + `chevron-right` にしたうえで、チップ列に埋もれない位置に「シリーズ詳細を開く」ボタンを独立して置いた
+    - **スマホでのポップアップ崩れ**: シリーズ判定結果ダイアログ (`SeriesAnalyzeDialog.vue`) が「照会 / 入力 / 戻り値」の 3 列テーブル (セル幅 380px 固定) で横スクロールしていたため、**カードを縦に積むレイアウト**へ変更し、幅 600px 以下では項目名と値も縦積みにした。あわせて `smAndDown` では全画面ダイアログにする
+    - **テスト**: `test/ut/series-metadata-filler.test.js` に `fill({ seriesIds })` の絞り込みと `force` の上書き / 手動設定の保護を追加
+
+- **取り込み・アップロードした TS でも、EPGStation で録画した番組と同じ項目を表示できるようにした**
+    - **背景**: EPGStation の録画は Mirakurun の番組情報から概要・詳細・ジャンル 3 組・映像音声情報まで入るのに対し、アップロードや API 経由で登録した録画は概要・ジャンル 1 組までしか入らず、映像音声情報は空のままだった。同じ TS を持っていても画面の情報量が大きく違っていた
+    - **TS 解析の拡張**: `TsInfoAnalyzer` が EIT[p/f] の **component_descriptor (0x50)** と **audio_component_descriptor (0xC4)** を読むようにし、`TsInfo` に `videoType` / `videoResolution` / `videoStreamContent` / `videoComponentType` / `audioSamplingRate` / `audioComponentType` を追加した。`stream_content` → `mpeg2` / `h.264` / `h.265`、`component_type` → `1080i` 等の対応表は Mirakurun (`EPG.ts`) と同じ値を使う
+    - **登録時に反映**: `CreateNewRecordedOption` に映像音声の項目を追加し、アップロード (`createRecordedFromUploadedTsFile`) と外部取り込み (`importExternalRecordedFiles`) の両方が同じ `applyTsInfoToCreateOption()` を通るようにした。**ジャンルも 1 組だけでなく EIT に載る 3 組すべて**を入れる (従来は `genre1` のみ)。画面から指定されたジャンルは TS 由来の値より優先する
+    - **後から追加した動画ファイルでも補完**: API で録画情報だけ先に作り、後から動画ファイルを足す経路 (外部連携) では上の処理を通らないため、`VideoFileAnalyzeModel.saveTsInfo()` から `applyProgramInfo()` を呼び、**空の項目だけ** EIT の値で埋めるようにした (`IRecordedDB.updateProgramInfo()`)。すでに値が入っている項目は上書きしない。番組名は利用者が付けた名前を尊重して触らない
+    - **既存の録画も直せる**: サーバー設定の解析ジョブ (`tsInfo`) を実行すると、既存の録画ファイルにも同じ補完が走る
+    - **テスト**: `test/ut/video-file-analyze-model.test.js` に「空の番組情報を EIT で補完する」「入っている項目は上書きしない」を追加
+
 - **録画ファイルのアップロードで、TS ならファイルだけ上げれば番組情報をサーバー側で自動作成するようにした**
     - **背景**: アップロード画面は放送局・日付・長さ・番組名の入力が必須だった。放送 TS の PSI/SI にはこれらがすべて入っているため、TS を上げるときにまで手入力させる必要が無い
     - **API**: `POST /api/videos/upload` の `recordedId` を任意にした。**省略しかつ拡張子が `.ts` の場合**、アップロードされたファイルを解析して番組情報を新規作成し、そこへ紐付ける。応答は `{ recordedId }` (自動作成した場合は新しい id)

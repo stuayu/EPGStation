@@ -43,8 +43,9 @@ export default class SeriesApiModel implements ISeriesApiModel {
     async listSeasons(): Promise<apid.SeriesSeasonItem[]> {
         return (await this.repository.get('/series/seasons')).data;
     }
-    async refreshMetadata(): Promise<RefreshSeriesMetadataResult> {
-        return (await this.repository.post('/series/refresh-metadata', {})).data;
+    async refreshMetadata(seriesId?: number): Promise<RefreshSeriesMetadataResult> {
+        return (await this.repository.post('/series/refresh-metadata', typeof seriesId === 'number' ? { seriesId } : {}))
+            .data;
     }
     async updateSeriesMetadata(seriesId: number, value: UpdateSeriesMetadata): Promise<void> {
         await this.repository.put(`/series/${seriesId}/metadata`, value);

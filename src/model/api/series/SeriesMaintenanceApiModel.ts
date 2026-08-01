@@ -131,9 +131,17 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
         if (updated === false) throw new Error('SeriesEpisodeIsNotFound');
     }
 
-    public async refreshMetadata(): Promise<RefreshSeriesMetadataResult> {
+    public async refreshMetadata(seriesId?: number): Promise<RefreshSeriesMetadataResult> {
         this.enabled();
-        return await this.metadataFiller.fill();
+        if (typeof seriesId === 'undefined') {
+            return await this.metadataFiller.fill();
+        }
+
+        const series = await this.db.getSeries(seriesId);
+        if (series === null) throw new Error('SeriesIsNotFound');
+
+        // 1 件だけの再取得は画面からの明示的な操作なので、埋まっている項目も辞書で引き直す
+        return await this.metadataFiller.fill({ seriesIds: [seriesId], force: true });
     }
 
     async merge(fromSeriesIds: number[], toSeriesId: number): Promise<MergeSeriesResult> {

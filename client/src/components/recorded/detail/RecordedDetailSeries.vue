@@ -26,8 +26,10 @@
                 </template>
             </v-img>
             <div class="series-meta">
+                <!-- タイトル自体もシリーズ詳細へのリンクだが、リンクと分かるよう下線とアイコンを付ける -->
                 <router-link :to="`/series/${detail.id}`" class="series-title text-subtitle-1 font-weight-bold">
                     {{ detail.title }}
+                    <v-icon size="small">mdi-chevron-right</v-icon>
                 </router-link>
                 <div class="d-flex flex-wrap ga-1 mt-1">
                     <v-chip size="small" variant="tonal" :color="detail.origin === 'dictionary' ? 'teal' : 'grey'">
@@ -39,33 +41,19 @@
                         {{ airTypeLabel(mapping.airType) }}
                     </v-chip>
                     <!-- 外部辞書のタグは元サイトの作品ページへ遷移する (別タブ) -->
-                    <v-chip
-                        v-if="annictUrl !== null"
-                        size="small"
-                        variant="outlined"
-                        color="green"
-                        :href="annictUrl"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        append-icon="mdi-open-in-new"
-                        title="Annict の作品ページを開く"
-                    >
-                        Annict
-                    </v-chip>
-                    <v-chip
-                        v-if="syobocalUrl !== null"
-                        size="small"
-                        variant="outlined"
-                        color="orange"
-                        :href="syobocalUrl"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        append-icon="mdi-open-in-new"
-                        title="しょぼいカレンダーの作品ページを開く"
-                    >
-                        しょぼいカレンダー
-                    </v-chip>
+                    <SeriesExternalLinks :externalIds="detail.externalIds"></SeriesExternalLinks>
                 </div>
+                <!-- シリーズ詳細への導線。チップ列に埋もれないようボタンとして独立させる -->
+                <v-btn
+                    class="mt-2"
+                    size="small"
+                    variant="tonal"
+                    color="primary"
+                    prepend-icon="mdi-video-box"
+                    :to="`/series/${detail.id}`"
+                >
+                    シリーズ詳細を開く
+                </v-btn>
             </div>
         </div>
 
@@ -75,7 +63,7 @@
                 この回のコメント
                 <v-chip v-if="mapping.episodeCommentSource === 'manual'" size="x-small" color="primary">手動</v-chip>
             </div>
-            <div class="series-comment text-body-2">{{ mapping.episodeComment }}</div>
+            <SyobocalComment :comment="mapping.episodeComment"></SyobocalComment>
         </div>
 
         <!-- 作品コメント。長文なので既定では折りたたむ -->
@@ -84,10 +72,7 @@
                 作品コメント
                 <v-chip v-if="detail.commentSource === 'manual'" size="x-small" color="primary">手動</v-chip>
             </div>
-            <div class="series-comment text-body-2" :class="{ 'is-collapsed': isCommentCollapsed === true }">{{ detail.comment }}</div>
-            <v-btn variant="text" size="small" @click="isCommentCollapsed = !isCommentCollapsed">
-                {{ isCommentCollapsed === true ? 'もっと見る' : '折りたたむ' }}
-            </v-btn>
+            <SyobocalComment :comment="detail.comment" :collapsible="true"></SyobocalComment>
         </div>
 
         <div v-if="relatedRecorded.length > 0" class="mt-3">
@@ -125,6 +110,8 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import ISeriesApiModel, { SeriesAnalyzeResult, SeriesDetail, SeriesMapping, SeriesRecording } from '@/model/api/series/ISeriesApiModel';
+import SeriesExternalLinks from '@/components/series/SeriesExternalLinks.vue';
+import SyobocalComment from '@/components/series/SyobocalComment.vue';
 import SeriesAnalyzeDialog from './SeriesAnalyzeDialog.vue';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
@@ -139,7 +126,7 @@ import * as apid from '../../../../../api';
  * ボタンは表示する (判定過程は SeriesAnalyzeDialog で確認できる)
  */
 @Component({
-    components: { SeriesAnalyzeDialog },
+    components: { SeriesAnalyzeDialog, SeriesExternalLinks, SyobocalComment },
 })
 class RecordedDetailSeries extends Vue {
     @Prop({ required: true })
@@ -150,8 +137,6 @@ class RecordedDetailSeries extends Vue {
 
     public mapping: SeriesMapping | null = null;
     public detail: SeriesDetail | null = null;
-    // 作品コメントは数 KB の長文なので既定では折りたたんで表示する
-    public isCommentCollapsed: boolean = true;
 
     // シリーズ判定 (単発実行) の状態
     public isAnalyzeDialogOpen: boolean = false;
@@ -172,22 +157,6 @@ class RecordedDetailSeries extends Vue {
         const seasonNameText: { [key: string]: string } = { WINTER: '冬', SPRING: '春', SUMMER: '夏', AUTUMN: '秋' };
         const name = this.detail.seasonName ? (seasonNameText[this.detail.seasonName] ?? '') : '';
         return `${this.detail.seasonYear}年${name}クール`;
-    }
-
-    /**
-     * Annict の作品ページ URL (annictId が無ければ null)
-     */
-    get annictUrl(): string | null {
-        const id = this.detail?.externalIds?.annictId;
-        return typeof id === 'string' && id !== '' ? `https://annict.com/works/${encodeURIComponent(id)}` : null;
-    }
-
-    /**
-     * しょぼいカレンダーの作品ページ URL (syobocalTid が無ければ null)
-     */
-    get syobocalUrl(): string | null {
-        const tid = this.detail?.externalIds?.syobocalTid;
-        return typeof tid === 'number' && tid > 0 ? `https://cal.syoboi.jp/tid/${tid}` : null;
     }
 
     get episodeText(): string | null {
@@ -320,24 +289,18 @@ export default toNative(RecordedDetailSeries);
         flex: 1 1 auto
         min-width: 0
 
+    // シリーズ詳細への遷移だと分かるようリンク色 + 下線にする
     .series-title
-        text-decoration: none
-        color: inherit
+        display: inline-flex
+        align-items: center
+        gap: 2px
+        text-decoration: underline
+        text-underline-offset: 2px
+        color: rgb(var(--v-theme-primary))
 
     .related-list
         max-height: 320px
         overflow-y: auto
-
-    // コメントは Wiki 記法の長文 (改行あり) なので、改行を活かしつつ既定では高さを抑える
-    .series-comment
-        white-space: pre-wrap
-        word-break: break-word
-
-        &.is-collapsed
-            display: -webkit-box
-            -webkit-line-clamp: 5
-            -webkit-box-orient: vertical
-            overflow: hidden
 
     // サイドバー幅など狭いときは画像を上に回して横幅一杯に伸ばす
     @container (max-width: 360px)
