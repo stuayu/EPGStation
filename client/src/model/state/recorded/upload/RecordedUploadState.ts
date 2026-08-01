@@ -24,6 +24,8 @@ class RecordedUploadState implements IRecordedUploadState {
         subGenre1: undefined,
     };
     public videoFileItems: VideoFileItem[] = [];
+    // TS の PSI/SI から番組情報をサーバー側で自動取得するか (放送 TS を上げる場合の既定)
+    public isAutoDetect: boolean = true;
 
     public ruleKeyword: string | null = null;
     public ruleItems: apid.RuleKeywordItem[] = [];
@@ -88,6 +90,7 @@ class RecordedUploadState implements IRecordedUploadState {
             subGenre1: undefined,
         };
 
+        this.isAutoDetect = true;
         this.videoItemCnt = 0;
         this.videoFileItems = [];
         this.addEmptyVideoFileItem();
@@ -199,7 +202,8 @@ class RecordedUploadState implements IRecordedUploadState {
             parentDirectoryName: this.getPrentDirectoryItems()[0],
             subDirectory: null,
             viewName: null,
-            fileType: undefined,
+            // 自動取得モードは放送 TS 前提なので ts を既定にする
+            fileType: this.isAutoDetect === true ? 'ts' : undefined,
             file: null,
         });
 
@@ -210,7 +214,26 @@ class RecordedUploadState implements IRecordedUploadState {
      * 入力値のチェック
      * @return true 入力値に問題なければ true を返す
      */
+    /**
+     * 番組情報の自動取得モードを切り替える。
+     * 自動取得は放送 TS 前提なので、ファイルタイプも合わせて揃える
+     * @param isAutoDetect: boolean
+     */
+    public setAutoDetect(isAutoDetect: boolean): void {
+        this.isAutoDetect = isAutoDetect;
+        if (isAutoDetect === false) return;
+
+        for (const video of this.videoFileItems) {
+            video.fileType = 'ts';
+        }
+    }
+
     public checkInput(): boolean {
+        // 番組情報をサーバー側で補完する場合はビデオファイルの指定だけ確認する
+        if (this.isAutoDetect === true) {
+            return this.videoFileItems.length > 0 && this.checkVideoFileItemInput(this.videoFileItems[0]);
+        }
+
         if (typeof this.programOption.channelId !== 'number') {
             return false;
         }
@@ -316,10 +339,7 @@ class RecordedUploadState implements IRecordedUploadState {
                     selected: typeof item.duplicateRecordedIds === 'undefined' || item.duplicateRecordedIds.length === 0,
                     editedName: item.estimatedName ?? item.fileName,
                     editedChannelId: item.estimatedChannelId,
-                    duplicateAction:
-                        typeof item.duplicateRecordedIds !== 'undefined' && item.duplicateRecordedIds.length > 0
-                            ? 'skip'
-                            : 'newRecorded',
+                    duplicateAction: typeof item.duplicateRecordedIds !== 'undefined' && item.duplicateRecordedIds.length > 0 ? 'skip' : 'newRecorded',
                     mode: 'register',
                 };
             });
@@ -410,7 +430,8 @@ class RecordedUploadState implements IRecordedUploadState {
             throw new Error('InputError');
         }
 
-        const recordedId = await this.recordedApiModel.createNewRecorded(this.createProgramOption());
+        // 自動取得モードでは番組情報を作らず、サーバーに TS を解析させて紐付けてもらう
+        const recordedId = this.isAutoDetect === true ? null : await this.recordedApiModel.createNewRecorded(this.createProgramOption());
 
         for (const video of this.videoFileItems) {
             if (
@@ -425,12 +446,14 @@ class RecordedUploadState implements IRecordedUploadState {
             }
 
             const uploadVideoOption: apid.UploadVideoFileOption = {
-                recordedId: recordedId,
                 parentDirectoryName: video.parentDirectoryName,
                 viewName: video.viewName,
                 fileType: video.fileType as apid.VideoFileType,
                 file: video.file,
             };
+            if (recordedId !== null) {
+                uploadVideoOption.recordedId = recordedId;
+            }
             if (typeof video.subDirectory === 'string' && video.subDirectory.length > 0) {
                 uploadVideoOption.subDirectory = video.subDirectory;
             }
@@ -438,10 +461,13 @@ class RecordedUploadState implements IRecordedUploadState {
             try {
                 await this.videoApiModel.uploadedVideoFile(uploadVideoOption);
             } catch (err) {
-                // アップロードに失敗したら番組情報を削除する
-                await this.recordedApiModel.delete(recordedId).catch(e => {
-                    console.error(e);
-                });
+                // 自分で作った番組情報がある場合のみ後始末する
+                // (自動取得モードはサーバー側でロールバックされる)
+                if (recordedId !== null) {
+                    await this.recordedApiModel.delete(recordedId).catch(e => {
+                        console.error(e);
+                    });
+                }
 
                 throw err;
             }

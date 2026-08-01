@@ -1207,13 +1207,19 @@ export interface VideoFileStreamInfoItem extends LiveStreamInfoItem {
  * アップロードするビデオ情報
  */
 export interface UploadVideoFileOption {
-    recordedId: RecordedId; // 紐付ける recorded id
+    // 紐付ける recorded id。省略した場合は TS を解析して番組情報を自動作成する (fileType が ts のときのみ)
+    recordedId?: RecordedId;
     parentDirectoryName: string; // 保存先ディレクトリ名
     subDirectory?: string; // 保存先サブディレクトリ
     viewName: string; // UI 上での表示名
     fileType: VideoFileType; // ファイルタイプ
     file?: File; // ファイル
     localFilePath?: string; // アップロードファイルのローカルパス
+}
+
+export interface UploadVideoFileResult {
+    // 紐付けた録画番組 (自動作成した場合は新しい id)
+    recordedId: RecordedId;
 }
 
 /**

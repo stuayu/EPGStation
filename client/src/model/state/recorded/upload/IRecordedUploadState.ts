@@ -41,6 +41,8 @@ export interface UploadProgramOption {
 export default interface IRecordedUploadState {
     programOption: UploadProgramOption;
     videoFileItems: VideoFileItem[];
+    // TS の PSI/SI から番組情報をサーバー側で自動取得するか
+    isAutoDetect: boolean;
     ruleKeyword: string | null;
     ruleItems: apid.RuleKeywordItem[];
     isShowPeriod: boolean;
@@ -63,6 +65,7 @@ export default interface IRecordedUploadState {
     getGenreItems(): SelectorItem[];
     getSubGenreItems(): SelectorItem[];
     addEmptyVideoFileItem(): void;
+    setAutoDetect(isAutoDetect: boolean): void;
     checkInput(): boolean;
     upload(): Promise<void>;
 

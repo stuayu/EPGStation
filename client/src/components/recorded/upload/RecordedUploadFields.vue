@@ -1,5 +1,13 @@
 <template>
-        <div class="pa-4">
+    <div class="pa-4">
+        <v-radio-group :model-value="uploadState.isAutoDetect" v-on:update:model-value="changeAutoDetect" hide-details class="mb-2">
+            <v-radio :value="true" label="TS ファイル (番組情報をサーバーで自動取得)"></v-radio>
+            <v-radio :value="false" label="エンコード済みファイル (番組情報を入力する)"></v-radio>
+        </v-radio-group>
+        <div v-if="uploadState.isAutoDetect === true" class="text-caption text-medium-emphasis mb-3">
+            放送 TS の PSI/SI から放送局・番組名・開始時刻・ジャンルを取り出して番組情報を作ります。放送局が特定できない TS や、PSI/SI を持たないファイルは登録できません。
+        </div>
+        <template v-if="uploadState.isAutoDetect === false">
             <SearchOptionRow title="放送局※" :required="true">
                 <v-select label="channel" :items="uploadState.getChannelItems()" v-model="uploadState.programOption.channelId" clearable></v-select>
             </SearchOptionRow>
@@ -63,23 +71,24 @@
             <SearchOptionRow title="詳細">
                 <v-textarea label="extended" v-model="uploadState.programOption.extended"></v-textarea>
             </SearchOptionRow>
-            <div v-for="video in uploadState.videoFileItems" v-bind:key="video.key">
-                <SearchOptionRow :title="`ビデオファイル${video.key + 1}`">
-                    <v-text-field v-model="video.viewName" label="name" clearable class="view-name"></v-text-field>
-                    <v-select class="file-type" v-model="video.fileType" :items="uploadState.getFileTypeItems()" label="file type"></v-select>
+        </template>
+        <div v-for="video in uploadState.videoFileItems" v-bind:key="video.key">
+            <SearchOptionRow :title="`ビデオファイル${video.key + 1}`">
+                <v-text-field v-model="video.viewName" label="name" clearable class="view-name"></v-text-field>
+                <v-select v-if="uploadState.isAutoDetect === false" class="file-type" v-model="video.fileType" :items="uploadState.getFileTypeItems()" label="file type"></v-select>
 
-                    <v-select class="directory" v-model="video.parentDirectoryName" :items="uploadState.getPrentDirectoryItems()" label="directory"></v-select>
-                    <v-text-field v-model="video.subDirectory" label="sub directory" clearable></v-text-field>
-                    <v-file-input v-model="video.file" label="video file"></v-file-input>
-                </SearchOptionRow>
-            </div>
+                <v-select class="directory" v-model="video.parentDirectoryName" :items="uploadState.getPrentDirectoryItems()" label="directory"></v-select>
+                <v-text-field v-model="video.subDirectory" label="sub directory" clearable></v-text-field>
+                <v-file-input v-model="video.file" label="video file" v-on:update:model-value="setViewName(video)"></v-file-input>
+            </SearchOptionRow>
         </div>
+    </div>
 </template>
 
 <script lang="ts">
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
-import IRecordedUploadState from '@/model/state/recorded/upload/IRecordedUploadState';
+import IRecordedUploadState, { VideoFileItem } from '@/model/state/recorded/upload/IRecordedUploadState';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 /**
@@ -96,8 +105,26 @@ class RecordedUploadFields extends Vue {
     public ruleLoading: boolean = false;
     public ruleSearchInput: string | undefined;
 
+    /**
+     * 番組情報の自動取得モードを切り替える
+     */
+    public changeAutoDetect(value: boolean | null): void {
+        this.uploadState.setAutoDetect(value === true);
+    }
+
     public formatDay(date: string | number | Date): number {
         return new Date(date).getDate();
+    }
+
+    /**
+     * 表示名が未入力ならファイル名で埋める
+     * (番組情報を自動取得する場合、入力させたいのはファイルだけなので手間を減らす)
+     */
+    public setViewName(video: VideoFileItem): void {
+        if (typeof video.viewName === 'string' && video.viewName.length > 0) return;
+        if (typeof video.file === 'undefined' || video.file === null) return;
+
+        video.viewName = video.file.name;
     }
 
     @Watch('ruleSearchInput', { immediate: true })

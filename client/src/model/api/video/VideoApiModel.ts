@@ -153,12 +153,15 @@ export default class VideoApiModel implements IVideoApiModel {
 
     /**
      * ビデオファイルををアップロードする
+     * recordedId を省略した場合、サーバーが TS を解析して番組情報を作る
      * @param option: apid.UploadVideoFileOption
-     * @return Promise<void>
+     * @return Promise<apid.RecordedId> 紐付いた録画番組
      */
-    public async uploadedVideoFile(option: apid.UploadVideoFileOption): Promise<void> {
+    public async uploadedVideoFile(option: apid.UploadVideoFileOption): Promise<apid.RecordedId> {
         const formData = new FormData();
-        formData.append('recordedId', option.recordedId.toString(10));
+        if (typeof option.recordedId !== 'undefined') {
+            formData.append('recordedId', option.recordedId.toString(10));
+        }
         formData.append('parentDirectoryName', option.parentDirectoryName);
         if (typeof option.subDirectory !== 'undefined') {
             formData.append('subDirectory', option.subDirectory);
@@ -172,10 +175,12 @@ export default class VideoApiModel implements IVideoApiModel {
             formData.append('localFilePath', option.localFilePath);
         }
 
-        await this.repository.post('/videos/upload', formData, {
+        const result = await this.repository.post('/videos/upload', formData, {
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
         });
+
+        return result.data.recordedId;
     }
 }

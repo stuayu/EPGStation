@@ -50,7 +50,8 @@ export interface ImportedExternalRecordedFileResult {
  * アップロードされたビデオファイル情報
  */
 export interface UploadedVideoFileOption {
-    recordedId: apid.RecordedId; // 紐付ける recorded id
+    // 紐付ける recorded id。省略した場合は TS を解析して番組情報を新規作成する (fileType が ts のときのみ)
+    recordedId?: apid.RecordedId;
     parentDirectoryName: string; // 保存先ディレクトリ名
     subDirectory?: string; // 保存先サブディレクトリ
     viewName: string; // UI 上での表示名
@@ -64,7 +65,7 @@ export default interface IRecordedManageModel {
     delete(recordedId: apid.RecordedId): Promise<void>;
     updateVideoFileSize(videoFileId: apid.VideoFileId): Promise<void>;
     addVideoFile(option: AddVideoFileOption): Promise<apid.VideoFileId>;
-    addUploadedVideoFile(option: UploadedVideoFileOption): Promise<void>;
+    addUploadedVideoFile(option: UploadedVideoFileOption): Promise<apid.RecordedId>;
     importExternalRecordedFiles(
         option: ImportedExternalRecordedFileOption[],
     ): Promise<ImportedExternalRecordedFileResult[]>;

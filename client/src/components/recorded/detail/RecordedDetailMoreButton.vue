@@ -23,6 +23,14 @@
                         <v-list-item-title>rule</v-list-item-title>
                     </div>
                 </v-list-item>
+                <v-list-item v-on:click="openUploadDialog" slim>
+                    <template #prepend>
+                        <v-icon>mdi-upload</v-icon>
+                    </template>
+                    <div class="v-list-item-content">
+                        <v-list-item-title>ビデオファイルを追加</v-list-item-title>
+                    </div>
+                </v-list-item>
                 <v-list-item v-if="isEnabledSeriesLibrary === true" v-on:click="editSeriesMapping" slim>
                     <template #prepend><v-icon>mdi-link-variant</v-icon></template>
                     <div class="v-list-item-content"><v-list-item-title>シリーズ割当を修正</v-list-item-title></div>
@@ -68,6 +76,7 @@
             v-on:download="downloadVideo"
             v-on:downloadPlayList="downloadPlayList"
         ></RecordedDownloadDialog>
+        <RecordedUploadVideoDialog v-model:isOpen="isOpenUploadDialog" :recordedItem="recordedItem" v-on:uploaded="uploaded"></RecordedUploadVideoDialog>
         <RecordedDeleteDialog
             v-model:isOpen="isOpenDeleteDialog"
             :recordedItem="recordedItem"
@@ -80,6 +89,7 @@
 <script lang="ts">
 import RecordedDeleteDialog from '@/components/recorded/RecordedDeleteDialog.vue';
 import RecordedDownloadDialog from '@/components/recorded/RecordedDownloadDialog.vue';
+import RecordedUploadVideoDialog from '@/components/recorded/detail/RecordedUploadVideoDialog.vue';
 import IRecordedApiModel from '@/model/api/recorded/IRecordedApiModel';
 import container from '@/model/ModelContainer';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
@@ -94,6 +104,7 @@ import * as apid from '../../../../../api';
     components: {
         RecordedDownloadDialog,
         RecordedDeleteDialog,
+        RecordedUploadVideoDialog,
     },
 })
 class RecordedDetailMoreButton extends Vue {
@@ -104,6 +115,7 @@ class RecordedDetailMoreButton extends Vue {
 
     public isOpenDeleteDialog: boolean = false;
     public isOpenDownloadDialog: boolean = false;
+    public isOpenUploadDialog: boolean = false;
 
     public recordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
@@ -114,6 +126,18 @@ class RecordedDetailMoreButton extends Vue {
      */
     public get isEnabledSeriesLibrary(): boolean {
         return isFeatureEnabled(this.serverConfigModel.getConfig(), 'seriesLibrary');
+    }
+
+    public async openUploadDialog(): Promise<void> {
+        await Util.sleep(300);
+        this.isOpenUploadDialog = true;
+    }
+
+    /**
+     * ビデオファイルの追加後は一覧を取り直す (親側で再取得させる)
+     */
+    public uploaded(): void {
+        this.$emit('uploaded');
     }
 
     public async openDownloadDialog(): Promise<void> {
