@@ -55,6 +55,14 @@ declare module 'aribts' {
     }
 
     /**
+     * CRC32 (セクションの誤り検出)
+     */
+    export class TsCrc32 {
+        public static calc(buffer: Buffer): number;
+        public static calcToBuffer(buffer: Buffer): Buffer;
+    }
+
+    /**
      * PAT (Program Association Table)
      */
     export interface ProgramAssociation {

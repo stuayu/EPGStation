@@ -39,30 +39,36 @@ export default class NavigationState implements INavigationState {
     }
 
     /**
-     * 取得済みの放送局情報から地域一覧を作成する
-     * 地域不明の放送局 (CATV 等) は末尾にまとめられる
+     * 取得済みの放送局情報からグループ (地域 or 系列) の一覧を作成する
+     * 判定不能な放送局 (CATV 等 / BIT 未受信) は末尾にまとめられる
      * @param regionalTypes: string[] 対象の放送波種別
+     * @param isAffiliationMode: boolean 系列別にまとめるか
      * @return apid.BroadcastRegionItem[]
      */
-    private getRegions(regionalTypes: string[]): apid.BroadcastRegionItem[] {
+    private getChannelGroups(regionalTypes: string[], isAffiliationMode: boolean): apid.BroadcastRegionItem[] {
         const isHalfWidth = this.setting.getSavedValue().isHalfWidthDisplayed;
-        const regions: apid.BroadcastRegionItem[] = [];
-        const addedIds: { [regionId: string]: boolean } = {};
+        const groups: apid.BroadcastRegionItem[] = [];
+        const addedIds: { [groupId: string]: boolean } = {};
 
         for (const channel of this.channelModel.getChannels(isHalfWidth)) {
-            if (regionalTypes.indexOf(channel.channelType) === -1 || typeof channel.region === 'undefined') {
+            if (regionalTypes.indexOf(channel.channelType) === -1) {
                 continue;
             }
 
-            if (addedIds[channel.region.id] === true) {
+            const group = isAffiliationMode ? channel.affiliation : channel.region;
+            if (typeof group === 'undefined') {
                 continue;
             }
-            addedIds[channel.region.id] = true;
-            regions.push({ id: channel.region.id, name: channel.region.name, order: channel.region.order });
+
+            if (addedIds[group.id] === true) {
+                continue;
+            }
+            addedIds[group.id] = true;
+            groups.push({ id: group.id, name: group.name, order: group.order });
         }
 
-        // 都道府県コード順に並べる (判定不能な「その他」は order 99 なので必ず末尾になる)
-        return regions.sort((a, b) => a.order - b.order);
+        // 表示順に並べる (判定不能なものは order が大きいので必ず末尾になる)
+        return groups.sort((a, b) => a.order - b.order);
     }
 
     /**
@@ -226,13 +232,14 @@ export default class NavigationState implements INavigationState {
                 types.push('NW40');
             }
 
-            // 地上波系は地域別、BS / CS / SKY は従来通り放送波種別で表示する
+            // 地上波系は地域別 (設定によっては系列別)、BS / CS / SKY は従来通り放送波種別で表示する
             const regionalTypes = types.filter(type => NavigationState.isRegionalType(type) === true);
             const otherTypes = types.filter(type => NavigationState.isRegionalType(type) === false);
-            const regions = regionalTypes.length === 0 ? [] : this.getRegions(regionalTypes);
+            const isAffiliationMode = (this.setting.getSavedValue().channelGroupingType ?? 'region') === 'affiliation';
+            const groups = regionalTypes.length === 0 ? [] : this.getChannelGroups(regionalTypes, isAffiliationMode);
 
-            if (regions.length === 0) {
-                // 放送局情報が未取得などで地域を判定できない場合は放送波種別で表示する
+            if (groups.length === 0) {
+                // 放送局情報が未取得などでグループを判定できない場合は放送波種別で表示する
                 for (const type of regionalTypes) {
                     newItems.push({
                         icon: 'mdi-television-guide',
@@ -246,15 +253,13 @@ export default class NavigationState implements INavigationState {
                     });
                 }
             } else {
-                for (const region of regions) {
+                for (const group of groups) {
                     newItems.push({
                         icon: 'mdi-television-guide',
-                        title: `番組表${region.name}`,
+                        title: `番組表${group.name}`,
                         herf: {
                             path: '/guide',
-                            query: {
-                                region: region.id,
-                            },
+                            query: isAffiliationMode ? { affiliation: group.id } : { region: group.id },
                         },
                     });
                 }

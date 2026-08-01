@@ -3,6 +3,7 @@ import * as apid from '../../../../api';
 import { clampUndefinedDuration, isDurationUndefined } from '../../../util/ProgramDuration';
 import Channel from '../../../db/entities/Channel';
 import Program from '../../../db/entities/Program';
+import IBroadcastAffiliation from '../../channel/IBroadcastAffiliation';
 import IBroadcastRegion from '../../channel/IBroadcastRegion';
 import IChannelDB from '../../db/IChannelDB';
 import IProgramDB, { ProgramWithOverlap } from '../../db/IProgramDB';
@@ -13,15 +14,18 @@ export default class ScheduleApiModel implements IScheduleApiModel {
     private channelDB: IChannelDB;
     private programDB: IProgramDB;
     private broadcastRegion: IBroadcastRegion;
+    private broadcastAffiliation: IBroadcastAffiliation;
 
     constructor(
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IProgramDB') programDB: IProgramDB,
         @inject('IBroadcastRegion') broadcastRegion: IBroadcastRegion,
+        @inject('IBroadcastAffiliation') broadcastAffiliation: IBroadcastAffiliation,
     ) {
         this.channelDB = channelDB;
         this.programDB = programDB;
         this.broadcastRegion = broadcastRegion;
+        this.broadcastAffiliation = broadcastAffiliation;
     }
 
     /**
@@ -45,6 +49,8 @@ export default class ScheduleApiModel implements IScheduleApiModel {
      * @return Promise<apid.Schedule[]>
      */
     public async getSchedules(option: apid.ScheduleOption): Promise<apid.Schedule[]> {
+        await this.broadcastAffiliation.updateCache();
+
         const types: apid.ChannelType[] = [];
         if (option.GR === true) {
             types.push('GR');
@@ -242,6 +248,8 @@ export default class ScheduleApiModel implements IScheduleApiModel {
      * @return Promise<apid.Schedule[]>
      */
     public async getChannelSchedule(option: apid.ChannelScheduleOption): Promise<apid.Schedule[]> {
+        await this.broadcastAffiliation.updateCache();
+
         const channel = await this.channelDB.findId(option.channelId);
         if (channel === null) {
             throw new Error('ChannelIsNotFound');
@@ -282,6 +290,8 @@ export default class ScheduleApiModel implements IScheduleApiModel {
      * @return Promise<apid.Schedule[]>
      */
     public async getBroadcastingSchedule(option: apid.BroadcastingScheduleOption): Promise<apid.Schedule[]> {
+        await this.broadcastAffiliation.updateCache();
+
         const channels = await this.channelDB.findAll(true);
         const programs = await this.programDB.findBroadcasting(option);
 
@@ -452,6 +462,15 @@ export default class ScheduleApiModel implements IScheduleApiModel {
         });
         if (region !== null) {
             result.region = region;
+        }
+
+        // 地上波系は BIT から収集した系列情報を付与する
+        const affiliation = this.broadcastAffiliation.getAffiliation({
+            networkId: channel.networkId,
+            channelType: channel.channelType,
+        });
+        if (affiliation !== null) {
+            result.affiliation = affiliation;
         }
 
         return result;

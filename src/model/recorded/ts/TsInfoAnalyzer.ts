@@ -2,6 +2,7 @@ import * as aribts from 'aribts';
 import * as fs from 'fs';
 import { inject, injectable } from 'inversify';
 import * as stream from 'stream';
+import BitParser from '../../channel/BitParser';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import ITsInfoAnalyzer, { TsGenre, TsInfo, TsInfoAnalyzeOption } from './ITsInfoAnalyzer';
@@ -90,6 +91,7 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
             const tsReadableConnector = new aribts.TsReadableConnector();
             const tsPacketParser = new aribts.TsPacketParser();
             const tsSectionParser = new aribts.TsSectionParser();
+            const bitParser = new BitParser();
 
             const finish = (): void => {
                 if (isFinished === true) {
@@ -339,6 +341,20 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
             tsReadableConnector.pipe(tsPacketParser as any);
             tsPacketParser.pipe(tsSectionParser);
 
+            // BIT (PID 0x0024) は aribts の TsSectionParser が扱わないため、
+            // 生のチャンクを追加の 'data' リスナーで覗いて自前で解析する
+            // (pipe の消費とは独立に動くため、ストリームの分岐・消費はしない)
+            readableStream.on('data', chunk => {
+                try {
+                    const sections = bitParser.write(chunk as Buffer);
+                    if (sections.length > 0) {
+                        info.bitSections = info.bitSections.concat(sections);
+                    }
+                } catch (err: any) {
+                    // 壊れたパケットは無視して読み進める
+                }
+            });
+
             readableStream.on('error', err => {
                 this.log.system.error(`ts info analyze read error: ${filePath}`);
                 this.log.system.error(err.message);
@@ -585,6 +601,7 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
             audioStreamType: null,
             audioPid: null,
             firstTdtAt: null,
+            bitSections: [],
         };
     }
 }

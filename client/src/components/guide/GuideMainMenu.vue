@@ -24,6 +24,26 @@
                     </div>
                 </v-list-item>
 
+                <v-divider></v-divider>
+                <v-list-subheader>放送局のまとめ方</v-list-subheader>
+                <v-list-item v-on:click="setGroupingType('region')" slim>
+                    <template #prepend>
+                        <v-icon>{{ groupingType === 'region' ? 'mdi-check' : 'mdi-map-marker' }}</v-icon>
+                    </template>
+                    <div class="v-list-item-content">
+                        <v-list-item-title>地域別</v-list-item-title>
+                    </div>
+                </v-list-item>
+                <v-list-item v-on:click="setGroupingType('affiliation')" slim>
+                    <template #prepend>
+                        <v-icon>{{ groupingType === 'affiliation' ? 'mdi-check' : 'mdi-television-classic' }}</v-icon>
+                    </template>
+                    <div class="v-list-item-content">
+                        <v-list-item-title>系列別</v-list-item-title>
+                    </div>
+                </v-list-item>
+                <v-divider></v-divider>
+
                 <v-list-item v-on:click="gotoSetting" slim>
                     <template #prepend>
                         <v-icon>mdi-cog</v-icon>
@@ -44,6 +64,7 @@ import GuideGenreSettingDialog from '@/components/guide/GuideGenreSettingDialog.
 import IReservesApiModel from '@/model/api/reserves/IReservesApiModel';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
+import { ChannelGroupingType, ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 
@@ -58,6 +79,27 @@ class GuideMainMenu extends Vue {
 
     private reservesApiModel: IReservesApiModel = container.get<IReservesApiModel>('IReservesApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private settingStorageModel: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
+    private settingValue: ISettingValue = this.settingStorageModel.getSavedValue();
+
+    get groupingType(): ChannelGroupingType {
+        return this.settingValue.channelGroupingType ?? 'region';
+    }
+
+    /**
+     * 地上波系のまとめ方 (地域別 / 系列別) を切り替える
+     * @param type: ChannelGroupingType
+     */
+    public setGroupingType(type: ChannelGroupingType): void {
+        this.isOpened = false;
+        if (this.groupingType === type) {
+            return;
+        }
+
+        this.settingValue.channelGroupingType = type;
+        this.settingStorageModel.save();
+        this.$emit('changedgrouping');
+    }
 
     public async updateReserves(): Promise<void> {
         this.isOpened = false;

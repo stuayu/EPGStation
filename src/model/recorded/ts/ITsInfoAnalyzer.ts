@@ -1,3 +1,5 @@
+import { BitSectionInfo } from '../../channel/BitParser';
+
 /**
  * TS ファイルの PSI/SI から取り出した放送情報
  * 取得できなかった項目は null になる
@@ -34,6 +36,10 @@ export interface TsInfo {
     // (PCR による補正ができなかった場合は、TDT/TOT がその時点で示していた時刻をそのまま使う)
     // ファイルの更新時刻からの推定より正確
     firstTdtAt: number | null;
+
+    // --- BIT ---
+    // 放送局の系列情報 (BIT を受信できなかった場合は空配列)
+    bitSections: BitSectionInfo[];
 }
 
 /**

@@ -3,19 +3,22 @@ import DateUtil from '@/util/DateUtil';
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../api';
 import IScheduleApiModel from '../../api/schedule/IScheduleApiModel';
+import { ChannelGroupingType, ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
 import IGuideReserveUtil, { ReserveStateItemIndex } from '../guide/IGuideReserveUtil';
 import IOnAirState, { OnAirDisplayData, OnAirTabItem } from './IOnAirState';
 
 @injectable()
 export default class OnAirState implements IOnAirState {
-    // タブ識別子の接頭辞 (地域タブと放送波種別タブを区別する)
+    // タブ識別子の接頭辞 (地域タブ・系列タブと放送波種別タブを区別する)
     private static readonly REGION_TAB_PREFIX = 'region:';
+    private static readonly AFFILIATION_TAB_PREFIX = 'affiliation:';
     private static readonly TYPE_TAB_PREFIX = 'type:';
 
     public selectedTab: string | undefined;
 
     private scheduleApiModel: IScheduleApiModel;
     private reserveUtil: IGuideReserveUtil;
+    private settingStorage: ISettingStorageModel;
     private schedules: OnAirDisplayData[] = [];
     private reserveIndex: ReserveStateItemIndex = {};
     private tabs: apid.ChannelType[] = [];
@@ -24,9 +27,11 @@ export default class OnAirState implements IOnAirState {
         @inject('IServerConfigModel') serverConfigModel: IServerConfigModel,
         @inject('IScheduleApiModel') scheduleApiModel: IScheduleApiModel,
         @inject('IGuideReserveUtil') reserveUtil: IGuideReserveUtil,
+        @inject('ISettingStorageModel') settingStorage: ISettingStorageModel,
     ) {
         this.scheduleApiModel = scheduleApiModel;
         this.reserveUtil = reserveUtil;
+        this.settingStorage = settingStorage;
 
         // tab 設定
         const config = serverConfigModel.getConfig();
@@ -268,6 +273,18 @@ export default class OnAirState implements IOnAirState {
             });
         }
 
+        // 系列タブも同様に地上波系をまとめて表示する
+        if (tabId.startsWith(OnAirState.AFFILIATION_TAB_PREFIX) === true) {
+            const affiliationId = tabId.slice(OnAirState.AFFILIATION_TAB_PREFIX.length);
+
+            return this.schedules.filter(s => {
+                return (
+                    OnAirState.isRegionalType(s.schedule.channel.channelType) === true &&
+                    OnAirState.getAffiliationId(s.schedule.channel) === affiliationId
+                );
+            });
+        }
+
         const type = tabId.startsWith(OnAirState.TYPE_TAB_PREFIX) === true ? tabId.slice(OnAirState.TYPE_TAB_PREFIX.length) : tabId;
 
         return this.schedules.filter(s => {
@@ -293,15 +310,17 @@ export default class OnAirState implements IOnAirState {
         const otherTypes = this.tabs.filter(type => OnAirState.isRegionalType(type) === false);
 
         const result: OnAirTabItem[] = [];
-        const regions = regionalTypes.length === 0 ? [] : this.getRegions(regionalTypes);
-        if (regions.length === 0) {
-            // 番組情報が未取得などで地域を判定できない場合は放送波種別で表示する
+        const isAffiliationMode = this.getGroupingType() === 'affiliation';
+        const groups = regionalTypes.length === 0 ? [] : this.getChannelGroups(regionalTypes, isAffiliationMode);
+        if (groups.length === 0) {
+            // 番組情報が未取得などでグループを判定できない場合は放送波種別で表示する
             for (const type of regionalTypes) {
                 result.push({ id: `${OnAirState.TYPE_TAB_PREFIX}${type}`, name: type });
             }
         } else {
-            for (const region of regions) {
-                result.push({ id: `${OnAirState.REGION_TAB_PREFIX}${region.id}`, name: region.name });
+            const prefix = isAffiliationMode ? OnAirState.AFFILIATION_TAB_PREFIX : OnAirState.REGION_TAB_PREFIX;
+            for (const group of groups) {
+                result.push({ id: `${prefix}${group.id}`, name: group.name });
             }
         }
 
@@ -331,30 +350,56 @@ export default class OnAirState implements IOnAirState {
     }
 
     /**
-     * 取得済みの番組情報から地域一覧を作成する
-     * 地域不明の放送局 (CATV 等) は末尾にまとめられる
+     * 放送局の系列 id を返す (BIT 未受信の場合は 'unknown')
+     * @param channel: apid.ScheduleChannleItem
+     * @return string
+     */
+    private static getAffiliationId(channel: apid.ScheduleChannleItem): string {
+        return typeof channel.affiliation === 'undefined' ? 'unknown' : channel.affiliation.id;
+    }
+
+    /**
+     * 地上波系をまとめる軸 (地域別 / 系列別) を返す
+     * @return ChannelGroupingType
+     */
+    private getGroupingType(): ChannelGroupingType {
+        return this.settingStorage.getSavedValue().channelGroupingType ?? 'region';
+    }
+
+    /**
+     * 取得済みの番組情報からグループ (地域 or 系列) の一覧を作成する
+     * 判定不能な放送局 (CATV 等 / BIT 未受信) は末尾にまとめられる
      * @param regionalTypes: apid.ChannelType[] 対象の放送波種別
+     * @param isAffiliationMode: boolean 系列別にまとめるか
      * @return apid.BroadcastRegionItem[]
      */
-    private getRegions(regionalTypes: apid.ChannelType[]): apid.BroadcastRegionItem[] {
-        const regions: apid.BroadcastRegionItem[] = [];
-        const addedIds: { [regionId: string]: boolean } = {};
+    private getChannelGroups(
+        regionalTypes: apid.ChannelType[],
+        isAffiliationMode: boolean,
+    ): apid.BroadcastRegionItem[] {
+        const groups: apid.BroadcastRegionItem[] = [];
+        const addedIds: { [groupId: string]: boolean } = {};
 
         for (const s of this.schedules) {
             const channel = s.schedule.channel;
-            if (regionalTypes.indexOf(channel.channelType) === -1 || typeof channel.region === 'undefined') {
+            if (regionalTypes.indexOf(channel.channelType) === -1) {
                 continue;
             }
 
-            if (addedIds[channel.region.id] === true) {
+            const group = isAffiliationMode ? channel.affiliation : channel.region;
+            if (typeof group === 'undefined') {
                 continue;
             }
-            addedIds[channel.region.id] = true;
-            regions.push({ id: channel.region.id, name: channel.region.name, order: channel.region.order });
+
+            if (addedIds[group.id] === true) {
+                continue;
+            }
+            addedIds[group.id] = true;
+            groups.push({ id: group.id, name: group.name, order: group.order });
         }
 
-        // 都道府県コード順に並べる (判定不能な「その他」は order 99 なので必ず末尾になる)
-        return regions.sort((a, b) => a.order - b.order);
+        // 表示順に並べる (判定不能なものは order が大きいので必ず末尾になる)
+        return groups.sort((a, b) => a.order - b.order);
     }
 
     /**

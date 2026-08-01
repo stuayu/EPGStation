@@ -73,6 +73,17 @@ export interface BroadcastRegionItem {
     order: number; // 表示順 (都道府県コード。判定不能な「その他」は 99)
 }
 
+export type BroadcastAffiliationId = string;
+
+/**
+ * 地上デジタル放送の系列 (BIT の系列識別ベース)
+ */
+export interface BroadcastAffiliationItem {
+    id: BroadcastAffiliationId; // 系列 id (例: ntv)
+    name: string; // 表示名 (例: 日テレ系 (NNN))
+    order: number; // 表示順 (独立系は 90、未分類は 99)
+}
+
 export type ProgramGenreLv1 = number;
 export type ProgramGenreLv2 = number;
 export type ProgramVideoType = 'mpeg2' | 'h.264' | 'h.265';
@@ -97,6 +108,7 @@ export interface ChannelItem {
     channel: string;
     type?: number;
     region?: BroadcastRegionItem; // 地上波系のみ。BS / CS / SKY は undefined
+    affiliation?: BroadcastAffiliationItem; // 地上波系のみ。BIT 未受信の局は「未分類」になる
 }
 
 /**
@@ -1059,6 +1071,7 @@ export interface ScheduleChannleItem {
     channelType: ChannelType;
     type?: number;
     region?: BroadcastRegionItem; // 地上波系のみ。BS / CS / SKY は undefined
+    affiliation?: BroadcastAffiliationItem; // 地上波系のみ。BIT 未受信の局は「未分類」になる
 }
 
 /**

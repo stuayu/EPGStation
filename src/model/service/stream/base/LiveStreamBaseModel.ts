@@ -9,6 +9,8 @@ import IConfigFile from '../../../IConfigFile';
 import IConfiguration from '../../../IConfiguration';
 import ILoggerModel from '../../../ILoggerModel';
 import IMirakurunClientModel from '../../../IMirakurunClientModel';
+import BitCollectTransform from '../../../channel/BitCollectTransform';
+import IBroadcastAffiliationCollector from '../../../channel/IBroadcastAffiliationCollector';
 import IEncodeProcessManageModel, { CreateProcessOption } from '../../encode/IEncodeProcessManageModel';
 import ISocketIOManageModel from '../../socketio/ISocketIOManageModel';
 import AribId3Extractor from '../llhls/AribId3Extractor';
@@ -38,6 +40,9 @@ export default abstract class LiveStreamBaseModel
     private aribId3Extractor: IAribId3Extractor | null = null;
     // 配信中の映像の放送時刻 (TDT / TOT) を読み取る。実況コメントの遅延補正に使う
     private broadcastTimeExtractor: IBroadcastTimeExtractor | null = null;
+    // 配信中の TS から BIT (放送局の系列情報) を収集する
+    private affiliationCollector: IBroadcastAffiliationCollector;
+    private bitCollectTransform: BitCollectTransform | null = null;
     private memoryStreamId: apid.StreamId | null = null;
 
     constructor(
@@ -48,11 +53,13 @@ export default abstract class LiveStreamBaseModel
         @inject('IMirakurunClientModel') mirakurunClientModel: IMirakurunClientModel,
         @inject('ISocketIOManageModel') socketIO: ISocketIOManageModel,
         @inject('IHLSMemoryStoreModel') hlsMemoryStore: IHLSMemoryStoreModel,
+        @inject('IBroadcastAffiliationCollector') affiliationCollector: IBroadcastAffiliationCollector,
     ) {
         super(configure, logger, processManager, fileDeleter, socketIO);
 
         this.mirakurunClientModel = mirakurunClientModel;
         this.hlsMemoryStore = hlsMemoryStore;
+        this.affiliationCollector = affiliationCollector;
     }
 
     /**
@@ -162,7 +169,11 @@ export default abstract class LiveStreamBaseModel
                 // 実況コメントの遅延補正のため、エンコード前の TS から放送時刻 (TDT / TOT) を読む
                 this.broadcastTimeExtractor = new BroadcastTimeExtractor(this.log);
                 this.stream.pipe(this.broadcastTimeExtractor);
-                const tsSource = this.broadcastTimeExtractor;
+
+                // 放送局の系列情報 (BIT) を配信のついでに収集する
+                this.bitCollectTransform = new BitCollectTransform(this.affiliationCollector, this.log);
+                this.broadcastTimeExtractor.pipe(this.bitCollectTransform);
+                const tsSource = this.bitCollectTransform;
 
                 // ARIB 字幕を ID3 timed metadata へ変換する (arib-subtitle-timedmetadater)。
                 // HLS だけでなく mpegts 配信 (m2ts / m2tsll) でも必要:
@@ -309,6 +320,12 @@ export default abstract class LiveStreamBaseModel
             this.id3MetadataTransoform.unpipe();
             this.id3MetadataTransoform.destroy();
             this.id3MetadataTransoform = null;
+        }
+
+        if (this.bitCollectTransform !== null) {
+            this.bitCollectTransform.unpipe();
+            this.bitCollectTransform.destroy();
+            this.bitCollectTransform = null;
         }
 
         if (this.fmp4Packager !== null) {

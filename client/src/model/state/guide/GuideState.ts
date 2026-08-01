@@ -37,7 +37,7 @@ class GuideState implements IGuideState {
 
     private displayRange: DisplayRange | null = null;
     private startAt: apid.UnixtimeMS = 0;
-    private regionName: string | null = null; // 地域別番組表の地域表示名
+    private regionName: string | null = null; // 地域別・系列別番組表のグループ表示名
     private endAt: apid.UnixtimeMS = 0;
     private programDoms: ProgramDomItem[] = [];
     // 番組情報を programId 索引するための変数
@@ -166,9 +166,15 @@ class GuideState implements IGuideState {
 
             this.schedules = this.filterSchedules(await this.scheduleApiModel.getSchedules(this.createScheduleOption(option, startAt, endAt)), option);
 
-            // 地域別番組表のときは地域名をタイトルに出す
+            // 地域別・系列別番組表のときはグループ名をタイトルに出す
             this.regionName =
-                typeof option.region === 'undefined' || this.schedules.length === 0 ? null : (this.schedules[0].channel.region?.name ?? null);
+                this.schedules.length === 0
+                    ? null
+                    : typeof option.affiliation !== 'undefined'
+                      ? (this.schedules[0].channel.affiliation?.name ?? null)
+                      : typeof option.region !== 'undefined'
+                        ? (this.schedules[0].channel.region?.name ?? null)
+                        : null;
         } else {
             // 放送局指定
             this.timeLength = GuideState.SINGLE_STATION_LENGTH;
@@ -236,6 +242,11 @@ class GuideState implements IGuideState {
      */
     private filterSchedules(schedules: apid.Schedule[], option: FetchGuideOption): apid.Schedule[] {
         const result = schedules.filter(s => ChannelModel.isAudioVideoService(s.channel.type));
+
+        // 系列別番組表のときは地上波系を系列で絞り込む
+        if (typeof option.affiliation !== 'undefined') {
+            return result.filter(s => typeof s.channel.affiliation !== 'undefined' && s.channel.affiliation.id === option.affiliation);
+        }
 
         // 地域別番組表のときは地上波系を地域で絞り込む
         return typeof option.region === 'undefined' ? result : result.filter(s => typeof s.channel.region !== 'undefined' && s.channel.region.id === option.region);
