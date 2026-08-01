@@ -11,7 +11,12 @@ import IConfiguration from '../IConfiguration';
 import RecordedKeywordSearch, { buildRecordedKeywordSearchPlan } from '../recorded/RecordedKeywordSearch';
 import IPromiseRetry from '../IPromiseRetry';
 import IDBOperator from './IDBOperator';
-import IRecordedDB, { FindAllOption, RecordedColumnOption, SeriesBackfillCandidateRow } from './IRecordedDB';
+import IRecordedDB, {
+    FindAllOption,
+    RecordedChannelUpdateValues,
+    RecordedColumnOption,
+    SeriesBackfillCandidateRow,
+} from './IRecordedDB';
 import IRecordedTagDB from './IRecordedTagDB';
 
 @injectable()
@@ -96,6 +101,21 @@ export default class RecordedDB implements IRecordedDB {
     public async updateOnce(recorded: Recorded): Promise<void> {
         const connection = await this.op.getConnection();
         const queryBuilder = connection.createQueryBuilder().update(Recorded).set(recorded).where({ id: recorded.id });
+        await this.promieRetry.run(() => {
+            return queryBuilder.execute();
+        });
+    }
+
+    /**
+     * 放送局の情報 (channelId と表示名) を更新する。
+     * TS 解析で放送局が特定できた録画に対して使う
+     * @param recordedId: apid.RecordedId
+     * @param values: RecordedChannelUpdateValues
+     * @return Promise<void>
+     */
+    public async updateChannel(recordedId: apid.RecordedId, values: RecordedChannelUpdateValues): Promise<void> {
+        const connection = await this.op.getConnection();
+        const queryBuilder = connection.createQueryBuilder().update(Recorded).set(values).where({ id: recordedId });
         await this.promieRetry.run(() => {
             return queryBuilder.execute();
         });

@@ -59,7 +59,8 @@ export default class VideoAnalyzeJobModel implements IVideoAnalyzeJobModel {
 
         const type = option?.type;
         const mode = option?.mode ?? 'unanalyzed';
-        if (type !== 'metadata' && type !== 'tsInfo') throw new Error('InvalidVideoAnalyzeJobType');
+        if (type !== 'metadata' && type !== 'tsInfo' && type !== 'channel')
+            throw new Error('InvalidVideoAnalyzeJobType');
         if (mode !== 'unanalyzed' && mode !== 'all') throw new Error('InvalidVideoAnalyzeJobMode');
 
         const total = await this.countTargets(type, mode);
@@ -96,6 +97,11 @@ export default class VideoAnalyzeJobModel implements IVideoAnalyzeJobModel {
      * 解析対象の総件数を返す
      */
     private async countTargets(type: apid.VideoAnalyzeJobType, mode: apid.VideoAnalyzeJobMode): Promise<number> {
+        if (type === 'channel') {
+            // 保存済みの TS 解析結果を持つファイルが対象 (mode は見ない)
+            return await this.videoFileTsInfoDB.countAnalyzed();
+        }
+
         if (type === 'metadata') {
             return mode === 'all' ? await this.videoFileDB.countAll() : await this.videoFileDB.countWithoutMetadata();
         }
@@ -124,6 +130,7 @@ export default class VideoAnalyzeJobModel implements IVideoAnalyzeJobModel {
 
                     try {
                         if (type === 'metadata') await this.analyzeModel.analyzeMetadata(target);
+                        else if (type === 'channel') await this.analyzeModel.applyStoredChannelInfo(target);
                         else await this.analyzeModel.analyzeTsInfo(target);
                         this.job.analyzed++;
                     } catch (err: any) {
@@ -138,10 +145,10 @@ export default class VideoAnalyzeJobModel implements IVideoAnalyzeJobModel {
                     this.job.processed++;
                 }
 
-                // 全件モードは同じ行を引き続けないよう読み進める。
+                // 全件を舐めるモード (all / channel) は同じ行を引き続けないよう読み進める。
                 // 未解析のみのモードは解析に成功したぶんが対象から外れるので、
                 // 「失敗して残ったまま」の件数だけ読み飛ばす (失敗ファイルで無限ループしないようにする)
-                offset = mode === 'all' ? offset + targets.length : this.job.failed;
+                offset = mode === 'all' || type === 'channel' ? offset + targets.length : this.job.failed;
             }
 
             this.finish('succeeded');
@@ -162,6 +169,10 @@ export default class VideoAnalyzeJobModel implements IVideoAnalyzeJobModel {
         offset: number,
     ): Promise<apid.VideoFileId[]> {
         const size = VideoAnalyzeJobModel.CHUNK_SIZE;
+        if (type === 'channel') {
+            return await this.videoFileTsInfoDB.findAnalyzedVideoFileIds(size, offset);
+        }
+
         if (type === 'metadata') {
             const videos =
                 mode === 'all'

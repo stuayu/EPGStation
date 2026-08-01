@@ -166,6 +166,44 @@ export default class VideoFileTsInfoDB implements IVideoFileTsInfoDB {
     }
 
     /**
+     * TS 解析済みの video file id を id 昇順で取得する。
+     * 保存済みの解析結果から放送局を反映し直す用途 (ファイルは読まない)
+     * @param limit: number 最大取得件数
+     * @param offset: number 開始位置
+     * @return Promise<apid.VideoFileId[]>
+     */
+    public async findAnalyzedVideoFileIds(limit: number, offset: number): Promise<apid.VideoFileId[]> {
+        const connection = await this.op.getConnection();
+
+        const queryBuilder = connection
+            .getRepository(VideoFileTsInfo)
+            .createQueryBuilder('ts_info')
+            .orderBy('ts_info.videoFileId', 'ASC')
+            .offset(offset)
+            .limit(limit);
+
+        const rows = await this.promieRetry.run(() => {
+            return queryBuilder.getMany();
+        });
+
+        return rows.map(row => row.videoFileId);
+    }
+
+    /**
+     * TS 解析済みの件数を返す
+     * @return Promise<number>
+     */
+    public async countAnalyzed(): Promise<number> {
+        const connection = await this.op.getConnection();
+
+        const queryBuilder = connection.getRepository(VideoFileTsInfo).createQueryBuilder('ts_info');
+
+        return await this.promieRetry.run(() => {
+            return queryBuilder.getCount();
+        });
+    }
+
+    /**
      * 指定した video file id の TS 解析結果を削除する
      * @param videoFileId: apid.VideoFileId
      * @return Promise<void>

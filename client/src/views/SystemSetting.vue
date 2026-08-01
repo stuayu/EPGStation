@@ -106,12 +106,17 @@
                                 <v-btn color="secondary" variant="outlined" :disabled="isAnalyzeJobRunning === true" @click="startAnalyzeJob('tsInfo', 'all')">
                                     全件を強制再解析
                                 </v-btn>
+                                <v-btn variant="outlined" :disabled="isAnalyzeJobRunning === true" @click="startAnalyzeJob('channel', 'all')">解析結果から放送局を反映</v-btn>
                             </div>
                             <div class="text-caption text-medium-emphasis mt-1">
                                 「全件を強制再解析」は解析済みのファイルも含めてすべて解析し直します。TS 解析ロジックの更新を既存ファイルへ反映したい場合に使ってください
                                 (件数が多いと時間がかかります)。
                             </div>
-                            <div v-if="analyzeJobOf('tsInfo') !== null" class="mt-2">
+                            <div class="text-caption text-medium-emphasis mt-1">
+                                「解析結果から放送局を反映」は、保存済みの TS 解析結果 (SDT)
+                                から放送局が不明な録画の局名を埋め直します。ファイルは読み直さないため短時間で終わります。
+                            </div>
+                            <div v-if="analyzeJobOf('tsInfo') !== null || analyzeJobOf('channel') !== null" class="mt-2">
                                 <v-progress-linear :model-value="analyzeJobPercent" color="primary" height="6" rounded class="mb-1"></v-progress-linear>
                                 <div class="d-flex align-center ga-2 flex-wrap">
                                     <span class="text-body-2">{{ analyzeJobText }}</span>

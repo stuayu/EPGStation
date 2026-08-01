@@ -20,10 +20,20 @@ export interface SeriesBackfillCandidateRow {
     startAt: number;
 }
 
+/**
+ * TS 解析で放送局が特定できたときに書き戻す値
+ */
+export interface RecordedChannelUpdateValues {
+    channelId?: apid.ChannelId;
+    channelName?: string;
+    halfWidthChannelName?: string;
+}
+
 export default interface IRecordedDB {
     restore(items: Recorded[]): Promise<void>;
     insertOnce(recorded: Recorded): Promise<apid.RecordedId>;
     updateOnce(recorded: Recorded): Promise<void>;
+    updateChannel(recordedId: apid.RecordedId, values: RecordedChannelUpdateValues): Promise<void>;
     removeRecording(recordedId: apid.RecordedId): Promise<void>;
     removeDropLogFileId(dropLogFileId: apid.DropLogFileId): Promise<void>;
     removeRuleId(ruleId: apid.RuleId): Promise<void>;

@@ -594,9 +594,11 @@ export interface ReanalyzeTsInfoResult {
 }
 
 /**
- * 一括解析ジョブの種別。'metadata': ffprobe / 'tsInfo': TS (PSI/SI)
+ * 一括解析ジョブの種別。
+ * 'metadata': ffprobe / 'tsInfo': TS (PSI/SI) /
+ * 'channel': 保存済みの TS 解析結果から放送局を録画情報へ反映する (ファイルは読み直さない)
  */
-export type VideoAnalyzeJobType = 'metadata' | 'tsInfo';
+export type VideoAnalyzeJobType = 'metadata' | 'tsInfo' | 'channel';
 
 /**
  * 一括解析ジョブの対象。'unanalyzed': 未解析のみ / 'all': 解析済みも含めて全件を再解析

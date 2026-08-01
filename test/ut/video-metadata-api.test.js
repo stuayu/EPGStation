@@ -76,6 +76,7 @@ function createModel(options) {
         recordedDB,
         videoUtil,
         tsInfoAnalyzer,
+        { findId: async () => null, findNetworkIdAndServiceId: async () => null },
     );
 
     return {
@@ -115,7 +116,10 @@ function video(id, override) {
 }
 
 test('analyzeMetadata stores ffprobe results into the video file table', async () => {
-    const { model, updated } = createModel({ videos: [video(1)], recorded: { id: 101, isRecording: false, startAt: 1700000000000 } });
+    const { model, updated } = createModel({
+        videos: [video(1)],
+        recorded: { id: 101, isRecording: false, startAt: 1700000000000 },
+    });
     const result = await model.analyzeMetadata(1);
     assert.equal(result.duration, 1800);
     assert.equal(result.videoCodec, 'h264');
@@ -187,7 +191,6 @@ test('getMetadataStatus returns total / analyzed / unanalyzed counts', async () 
     const status = await model.getMetadataStatus();
     assert.deepEqual(status, { total: 3, analyzed: 1, unanalyzed: 2 });
 });
-
 
 test('getTsInfoStatus は TS ファイルだけを母数にする', async () => {
     const { model } = createModel({

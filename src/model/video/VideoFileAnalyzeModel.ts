@@ -5,6 +5,7 @@ import * as apid from '../../../api';
 import VideoFile from '../../db/entities/VideoFile';
 import VideoFileTsInfo from '../../db/entities/VideoFileTsInfo';
 import IVideoUtil from '../api/video/IVideoUtil';
+import IChannelDB from '../db/IChannelDB';
 import IRecordedDB from '../db/IRecordedDB';
 import IVideoFileDB from '../db/IVideoFileDB';
 import IVideoFileTsInfoDB from '../db/IVideoFileTsInfoDB';
@@ -12,6 +13,15 @@ import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import ITsInfoAnalyzer, { TsInfo } from '../recorded/ts/ITsInfoAnalyzer';
 import IVideoFileAnalyzeModel from './IVideoFileAnalyzeModel';
+
+/**
+ * 放送局の解決に必要な最小限の情報 (TS 解析結果 / 保存済みの ts_info のどちらからでも作れる)
+ */
+interface ChannelSource {
+    networkId: number | null;
+    serviceId: number | null;
+    serviceName: string | null;
+}
 
 /**
  * 録画ファイルの解析をまとめて行う
@@ -32,6 +42,7 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
     private recordedDB: IRecordedDB;
     private videoUtil: IVideoUtil;
     private tsInfoAnalyzer: ITsInfoAnalyzer;
+    private channelDB: IChannelDB;
     private log: ILogger | null;
 
     constructor(
@@ -40,6 +51,7 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
         @inject('IRecordedDB') recordedDB: IRecordedDB,
         @inject('IVideoUtil') videoUtil: IVideoUtil,
         @inject('ITsInfoAnalyzer') tsInfoAnalyzer: ITsInfoAnalyzer,
+        @inject('IChannelDB') channelDB: IChannelDB,
         @inject('ILoggerModel') logger?: ILoggerModel,
     ) {
         this.videoFileDB = videoFileDB;
@@ -47,6 +59,7 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
         this.recordedDB = recordedDB;
         this.videoUtil = videoUtil;
         this.tsInfoAnalyzer = tsInfoAnalyzer;
+        this.channelDB = channelDB;
         this.log = typeof logger === 'undefined' ? null : logger.getLogger();
     }
 
@@ -177,6 +190,92 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
         if (info.firstTdtAt !== null) {
             await this.videoFileDB.updateStartAt(videoFileId, info.firstTdtAt);
         }
+
+        // 放送局が引けていない録画は「不明な放送局」と表示されるため、TS から分かった局名で補う
+        await this.applyChannelInfo(videoFileId, info).catch(err => {
+            this.log?.system.warn(`failed to apply channel info: videoFileId ${videoFileId}: ${err?.message ?? err}`);
+        });
+    }
+
+    /**
+     * TS から分かった放送局を録画情報へ反映する。
+     *
+     * 取り込み時に放送局を特定できなかった録画は channel テーブルを引けず、
+     * 画面に「不明な放送局」と出てしまう。TS の SDT には局名 (service_descriptor) が
+     * 入っているため、次の順で補う
+     * 1. network id + service id で channel を引けたら、その放送局へ紐付け直す (実況の解決も直る)
+     * 2. 引けない場合は、表示名が空のときに限り SDT の局名を入れる
+     *
+     * すでに channel を引けている録画には触らない (正しく表示できているものを書き換えない)
+     * @param videoFileId: apid.VideoFileId
+     * @param info: TsInfo
+     * @return Promise<void>
+     */
+    public async applyStoredChannelInfo(videoFileId: apid.VideoFileId): Promise<boolean> {
+        const stored = await this.videoFileTsInfoDB.findId(videoFileId);
+        if (stored === null) return false;
+
+        return await this.applyChannelInfo(videoFileId, {
+            networkId: stored.networkId ?? null,
+            serviceId: stored.serviceId ?? null,
+            serviceName: stored.serviceName ?? null,
+        });
+    }
+
+    private async applyChannelInfo(videoFileId: apid.VideoFileId, info: ChannelSource): Promise<boolean> {
+        const video = await this.videoFileDB.findId(videoFileId);
+        if (video === null) return false;
+
+        const recorded = await this.recordedDB.findId(video.recordedId);
+        if (recorded === null) return false;
+
+        // 現在の channelId で放送局を引けているなら表示は壊れていないので何もしない
+        const current = await this.channelDB.findId(recorded.channelId).catch(() => null);
+        if (current !== null) return false;
+
+        const channel =
+            info.networkId === null || info.serviceId === null
+                ? null
+                : await this.channelDB.findNetworkIdAndServiceId(info.networkId, info.serviceId).catch(() => null);
+
+        if (channel !== null) {
+            await this.recordedDB.updateChannel(recorded.id, {
+                channelId: channel.id,
+                channelName: channel.name,
+                halfWidthChannelName: channel.halfWidthName,
+            });
+            this.log?.system.info(
+                `apply channel from ts: recordedId ${recorded.id}: ${recorded.channelId} -> ${channel.id} (${channel.name})`,
+            );
+
+            return true;
+        }
+
+        // channel テーブルに無い放送局 (受信できなくなった局・他地域の局など) は
+        // 少なくとも局名だけでも出せるようにする
+        if (info.serviceName === null || info.serviceName === '') return false;
+        if (VideoFileAnalyzeModel.hasChannelName(recorded) === true) return false;
+
+        await this.recordedDB.updateChannel(recorded.id, {
+            channelName: info.serviceName,
+            halfWidthChannelName: info.serviceName,
+        });
+        this.log?.system.info(`apply channel name from ts: recordedId ${recorded.id}: ${info.serviceName}`);
+
+        return true;
+    }
+
+    /**
+     * 録画情報に表示できる放送局名が入っているか
+     */
+    private static hasChannelName(recorded: {
+        channelName?: string | null;
+        halfWidthChannelName?: string | null;
+    }): boolean {
+        return (
+            (typeof recorded.channelName === 'string' && recorded.channelName.length > 0) ||
+            (typeof recorded.halfWidthChannelName === 'string' && recorded.halfWidthChannelName.length > 0)
+        );
     }
 
     /**

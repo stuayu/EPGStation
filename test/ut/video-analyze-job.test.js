@@ -45,12 +45,19 @@ function fixture(ids, options = {}) {
         findWithoutMetadata: async (limit, offset = 0) => page(unanalyzed(), limit, offset).map(id => ({ id })),
     };
     const videoFileTsInfoDB = {
+        countAnalyzed: async () => ids.length,
+        findAnalyzedVideoFileIds: async (limit, offset) => page(ids, limit, offset),
         countAnalyzableVideoFiles: async () => ids.length,
         countWithoutTsInfo: async () => unanalyzed().length,
         findAllAnalyzable: async (limit, offset) => page(ids, limit, offset).map(id => ({ id })),
         findWithoutTsInfo: async (limit, offset = 0) => page(unanalyzed(), limit, offset).map(id => ({ id })),
     };
     const analyzeModel = {
+        applyStoredChannelInfo: async id => {
+            calls.push(['channel', id]);
+            if (failIds.has(id) === true) throw new Error('boom');
+            return true;
+        },
         analyzeMetadata: async id => {
             calls.push(['metadata', id]);
             if (failIds.has(id) === true) throw new Error('boom');
@@ -160,4 +167,19 @@ test('a database failure marks the job as failed instead of leaving it running',
 
     assert.equal(finished.status, 'failed');
     assert.equal(finished.error, 'db is down');
+});
+
+test('the channel type reapplies stored ts info without touching the files', async () => {
+    const { model, calls } = fixture([1, 2, 3]);
+
+    const started = await model.start({ type: 'channel' });
+    assert.equal(started.total, 3);
+
+    const finished = await waitFinish(model);
+    assert.equal(finished.status, 'succeeded');
+    assert.equal(finished.analyzed, 3);
+    assert.deepEqual(
+        calls.map(c => c[0]),
+        ['channel', 'channel', 'channel'],
+    );
 });
