@@ -236,3 +236,44 @@ test('BS / CS は局名が一致しても系列を付けない', async () => {
 
     assert.equal(affiliation.getAffiliation({ networkId: 4, channelType: 'BS', name: 'BS日テレ' }), null);
 });
+
+// ARIB 上は 0x00 = NHK総合 / 0x01 = NHK Eテレ だが、実際の送出では Eテレの BIT にも
+// 0x00 が入っている環境がある。総合と Eテレは編成が別物なので局名の方を信用する
+test('BIT が NHK総合と言っていても局名が Eテレなら Eテレとして扱う', async () => {
+    const affiliation = new BroadcastAffiliation(createDBStub([{ networkId: 32417, affiliationId: 0x00 }]));
+    await affiliation.updateCache();
+
+    const result = affiliation.getAffiliation({
+        networkId: 32417,
+        channelType: 'GR',
+        name: 'NHKEテレ1福島',
+    });
+    assert.equal(result.id, 'nhk_e');
+});
+
+test('逆に BIT が Eテレと言っていても局名が総合なら総合として扱う', async () => {
+    const affiliation = new BroadcastAffiliation(createDBStub([{ networkId: 32416, affiliationId: 0x01 }]));
+    await affiliation.updateCache();
+
+    assert.equal(
+        affiliation.getAffiliation({ networkId: 32416, channelType: 'GR', name: 'NHK総合1・福島' }).id,
+        'nhk_g',
+    );
+    // 「NHK教育」表記も Eテレ扱い
+    assert.equal(
+        affiliation.getAffiliation({ networkId: 32417, channelType: 'GR', name: 'NHK教育・福島' }).id,
+        'nhk_e',
+    );
+});
+
+// 民放は BIT の系列識別が正しく入っているので局名で上書きしない
+test('民放の系列は局名で決め直さない', async () => {
+    const affiliation = new BroadcastAffiliation(createDBStub([{ networkId: 32419, affiliationId: 0x03 }]));
+    await affiliation.updateCache();
+
+    // BIT が TBS 系と言っているならそれに従う (同梱データは日テレ系)
+    assert.equal(
+        affiliation.getAffiliation({ networkId: 32419, channelType: 'GR', name: '福島中央テレビ1' }).id,
+        'tbs',
+    );
+});

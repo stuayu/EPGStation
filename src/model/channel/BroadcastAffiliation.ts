@@ -17,6 +17,9 @@ import IBroadcastAffiliation, { BroadcastAffiliationItem, BroadcastAffiliationTa
 export default class BroadcastAffiliation implements IBroadcastAffiliation {
     // BIT をまだ受信していない放送局のグループ id
     private static readonly UNKNOWN_AFFILIATION_ID = 'unknown';
+    // NHK の系列識別 (総合 / Eテレ)。局名から決め直すときに使う
+    private static readonly NHK_G_AFFILIATION_ID = 0x00;
+    private static readonly NHK_E_AFFILIATION_ID = 0x01;
 
     // 系列識別 (affiliation_id) → 系列定義
     // 出典: ARIB TR-B14 第五編 (地上デジタルテレビジョン放送の系列識別)
@@ -117,7 +120,34 @@ export default class BroadcastAffiliation implements IBroadcastAffiliation {
             .map(id => BroadcastAffiliation.findAffiliation(id))
             .sort((a, b) => a.order - b.order);
 
-        return affiliations[0];
+        return BroadcastAffiliation.correctNhk(affiliations[0], target.name);
+    }
+
+    /**
+     * NHK と判定された局について、総合 / Eテレを放送局名で決め直す。
+     *
+     * ARIB 上は 0x00 = NHK総合 / 0x01 = NHK Eテレ だが、**実際の送出では Eテレの BIT にも
+     * 0x00 (NHK総合) が入っている環境がある** (NHK を 1 事業者として扱っているため)。
+     * 総合と Eテレは編成がまったく別物で、しょぼいカレンダーの問い合わせ先 (ChID 1 / 2) も
+     * 変わってしまうため、NHK に限っては局名の方を信用する。
+     * NHK 以外の系列には手を触れない (民放は BIT の系列識別が正しく入っている)
+     * @param item: BroadcastAffiliationItem BIT / 同梱データから引いた系列
+     * @param name: string | undefined 放送局名
+     * @return BroadcastAffiliationItem
+     */
+    private static correctNhk(item: BroadcastAffiliationItem, name: string | undefined): BroadcastAffiliationItem {
+        if (item.id !== 'nhk_g' && item.id !== 'nhk_e') return item;
+        const normalized = BroadcastAffiliation.normalizeName(name);
+        if (normalized === '') return item;
+        // 「NHKEテレ1福島」「NHK教育」など
+        if (/ETV|Eテレ|教育/u.test(normalized) === true) {
+            return BroadcastAffiliation.findAffiliation(BroadcastAffiliation.NHK_E_AFFILIATION_ID);
+        }
+        if (normalized.includes('総合') === true) {
+            return BroadcastAffiliation.findAffiliation(BroadcastAffiliation.NHK_G_AFFILIATION_ID);
+        }
+
+        return item;
     }
 
     /**
