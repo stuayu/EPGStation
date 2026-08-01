@@ -3,6 +3,8 @@ export interface SeriesMetadataFillResult {
     scanned: number;
     // 何らかの項目を更新したシリーズ数
     updated: number;
+    // 表示名を作品辞書の正式タイトルへ合わせたシリーズ数
+    titleSynced: number;
     // LLM フォールバックへ回したシリーズ数 (辞書で引けず外部 ID も未設定のもの)
     llmAnalyzed: number;
     // LLM が抽出した作品名で辞書を引き直し、外部 ID を確定できたシリーズ数

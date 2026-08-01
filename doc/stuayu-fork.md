@@ -259,6 +259,16 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **DB**: `series` と `series_episode` に `comment` / `commentSource` を追加 (マイグレーションは mysql / sqlite 両方)。**`typeorm migration:generate` の出力は使えなかった** — 既存 DB との差分を全て拾って無関係なテーブルまで作り直し、`IDX_series_season` を復元しないなど破壊的だったため、`ALTER TABLE ... ADD COLUMN` だけの手書きに差し替えている
     - **テスト**: `test/ut/series-metadata-filler.test.js` (コメント取得・手動編集の保護・コメントだけ未取得のときに辞書を引かない)、`test/ut/series-resolver.test.js` (放送回コメントの保存・既存エピソードへの補完・手動編集の保護)
 
+- **シリーズ名を外部辞書の正式タイトルへ同期するようにした (手動編集・解除つき)**
+    - **背景**: シリーズは録画タイトルから作られることがあり (辞書に当たらなかった場合)、その後に外部 ID が埋まっても表示名は録画由来のゆらいだ名前のまま残っていた。しょぼいカレンダー / Annict / Wikidata 側の表示名と食い違うため、一覧で同じ作品と分かりづらい
+    - **再取得で直す**: `SeriesMetadataFiller.fill()` (Operator 起動 10 分後 + 設定画面の「メタデータ再取得」) が作品辞書を引き、`WorkMatch.title` と表示名が違えば上書きする。結果は `titleSynced` として返し、画面のスナックバーと Operator ログ (`series title synced: seriesId=... "旧" -> "新"`) に出す
+    - **引き当てキーは変えない**: 更新するのは表示名 (`series.title`) だけで、自動判定に使う `normalizedTitle` は録画タイトル由来のまま残す。既存の紐付け・エイリアス・マージ候補の前方一致を壊さないため
+    - **出所で保護する**: `series.titleSource` を追加 (`dictionary` / `manual` / null)。手動で付けた名前 (`manual`) は再取得で上書きしない。辞書名と一致しているものは `dictionary` を記録する。辞書経由で新規作成したシリーズ (`SeriesResolver`) は最初から `dictionary`
+    - **手動編集 UI**: シリーズ一覧の編集ダイアログに「シリーズ名 (表示名)」欄を追加した。手動設定済みの場合は「辞書名に戻す」ボタンが出て、押して保存すると `titleSource` が消えて次回の再取得で辞書名へ戻る
+    - **API**: `PUT /api/series/{seriesId}/metadata` に `title` を追加 (文字列で手動設定 = `manual`、`null` で手動設定の解除)。`SeriesListItem` に `titleSource` を追加
+    - **DB**: `series.titleSource` を追加 (mysql / sqlite 両マイグレーション。`ALTER TABLE ... ADD COLUMN` の手書き)
+    - **テスト**: `test/ut/series-metadata-filler.test.js` (辞書名への上書き・手動設定の保護)、`test/ut/series-maintenance-api.test.js` (手動設定・解除・空文字の拒否)
+
 - **話数マッピングの精度を上げた (しょぼいカレンダーの放送予定照会・話数表記の拡充・特番の除外) + エピソード名の表示切り替えを追加した**
     - **背景**: 話数の判定は「録画タイトルの表記 (第 1 話 / #1 / break1 …)」と「しょぼいカレンダーのサブタイトル一覧との照合」の 2 本だけで、**どちらも持たないタイトル** (局が話数もサブタイトルも送出せず作品名だけを流す番組) では話数が付かなかった。[rigaya/SCRenamePy](https://github.com/rigaya/SCRenamePy) が「放送局 + 放送日時」でしょぼいカレンダーの放送予定を引いて話数・サブタイトルを確定させているのを参考に、同じ経路を追加した
     - **放送予定照会 (`SyobocalProgramLookup`, `src/model/metadata/syobocal/`)**: 録画の `channelId` / `startAt` から `Command=ProgLookup&ChID=&Range=` を引き、`TID` / `Count` (通し話数) / `SubTitle` を得る。**タイトルの表記に一切依存しない**ため、話数表記もサブタイトルも無い録画で話数が確定し、辞書キーに当たらないタイトルでも作品自体を特定できる

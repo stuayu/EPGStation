@@ -302,11 +302,27 @@
         <v-dialog v-model="isOpenEditDialog" max-width="520">
             <v-card>
                 <v-card-title>シリーズ情報の編集</v-card-title>
-                <v-card-subtitle>{{ editTitle }}</v-card-subtitle>
+                <v-card-subtitle>{{ editOriginalTitle }}</v-card-subtitle>
                 <v-card-text>
                     <v-alert v-if="editSeasonSource === 'estimated'" type="info" density="compact" class="mb-3">
                         現在のクールは<b>最古の録画日時からの推測値</b>です。保存すると手動設定として固定され、以降の自動補完で上書きされなくなります。
                     </v-alert>
+                    <v-text-field
+                        v-model="editTitle"
+                        label="シリーズ名 (表示名)"
+                        density="compact"
+                        :disabled="editResetTitle"
+                        persistent-hint
+                        hint="変更すると手動設定になり、メタデータ再取得で作品辞書の名前に戻されなくなります (自動判定に使う正規化タイトルは変わりません)"
+                    ></v-text-field>
+                    <v-alert v-if="editResetTitle === true" type="info" density="compact" class="my-3">
+                        保存すると手動設定を解除します。次回のメタデータ再取得で<b>作品辞書の正式タイトル</b>へ戻ります。
+                    </v-alert>
+                    <div v-else-if="editTitleSource === 'manual'" class="d-flex align-center my-3">
+                        <span class="text-caption">シリーズ名は手動設定です (自動同期の対象外)</span>
+                        <v-spacer></v-spacer>
+                        <v-btn size="small" variant="text" color="primary" @click="resetTitleToDictionary">辞書名に戻す</v-btn>
+                    </div>
                     <div class="d-flex ga-2">
                         <v-text-field v-model.number="editSeasonYear" type="number" label="年" density="compact" clearable></v-text-field>
                         <v-select v-model="editSeasonName" :items="seasonNameItems" item-title="title" label="季節" density="compact" clearable></v-select>
@@ -596,6 +612,11 @@ class SeriesView extends Vue {
     isOpenEditDialog = false;
     editSeriesId: number | null = null;
     editTitle = '';
+    // 編集前のシリーズ名 (ダイアログの見出し用)
+    editOriginalTitle = '';
+    editTitleSource: string | null = null;
+    // 「辞書名に戻す」を押したか (保存時に手動設定を解除する)
+    editResetTitle = false;
     editSeasonYear: number | null = null;
     editSeasonName: string | null = null;
     editSeasonSource: string | null = null;
@@ -684,9 +705,11 @@ class SeriesView extends Vue {
                     ? ` / コメント ${result.commentFilled} 件取得` +
                       (result.commentPending > 0 ? `、残り ${result.commentPending} 件` : '')
                     : '';
+            // 外部辞書の正式タイトルへ合わせた件数 (シリーズ名が変わるため明示する)
+            const title = result.titleSynced > 0 ? ` / シリーズ名 ${result.titleSynced} 件を辞書名へ同期` : '';
             this.snackbarState.open({
                 color: 'success',
-                text: `${result.scanned} 件中 ${result.updated} 件を更新しました${llm}${comment}`,
+                text: `${result.scanned} 件中 ${result.updated} 件を更新しました${llm}${title}${comment}`,
             });
             await this.loadSeasons();
             await this.load();
@@ -704,6 +727,9 @@ class SeriesView extends Vue {
     openEditDialog(item: SeriesListItem): void {
         this.editSeriesId = item.id;
         this.editTitle = item.title;
+        this.editOriginalTitle = item.title;
+        this.editTitleSource = item.titleSource ?? null;
+        this.editResetTitle = false;
         this.editSeasonYear = item.seasonYear ?? null;
         this.editSeasonName = item.seasonName ?? null;
         this.editSeasonSource = item.seasonSource ?? null;
@@ -721,9 +747,17 @@ class SeriesView extends Vue {
             this.snackbarState.open({ color: 'error', text: '年と季節は両方指定してください' });
             return;
         }
+        const title = this.editTitle.trim();
+        if (this.editResetTitle === false && title === '') {
+            this.snackbarState.open({ color: 'error', text: 'シリーズ名を入力してください' });
+            return;
+        }
         this.editSaving = true;
         try {
             await this.api.updateSeriesMetadata(this.editSeriesId, {
+                // 「辞書名に戻す」を押した場合は null を送って手動設定を解除する。
+                // 変更していない場合は送らない (出所を manual にしてしまわないため)
+                title: this.editResetTitle === true ? null : title === this.editOriginalTitle ? undefined : title,
                 seasonYear: hasYear ? this.editSeasonYear : null,
                 seasonName: hasName ? this.editSeasonName : null,
                 titleKana: this.editTitleKana === '' ? null : this.editTitleKana,
@@ -742,6 +776,14 @@ class SeriesView extends Vue {
         } finally {
             this.editSaving = false;
         }
+    }
+
+    /**
+     * シリーズ名の手動設定を解除する (保存時に反映され、次回のメタデータ再取得で辞書名へ戻る)
+     */
+    resetTitleToDictionary(): void {
+        this.editResetTitle = true;
+        this.editTitleSource = null;
     }
 
     /**

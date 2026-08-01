@@ -441,6 +441,7 @@ export default class SeriesResolver implements ISeriesResolver {
             series = await this.db.createSeries({
                 // 録画タイトル由来のゆらいだ名前ではなく辞書の正式タイトルをシリーズ名にする
                 title: match.title,
+                titleSource: 'dictionary',
                 normalizedTitle: normalizeSeriesTitle(match.title),
                 preferredChannelId: channelId,
                 syobocalTid: match.syobocalTid,

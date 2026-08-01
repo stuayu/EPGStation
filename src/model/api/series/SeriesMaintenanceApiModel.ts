@@ -36,6 +36,8 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
     private static readonly CANDIDATE_LIMIT = 30;
     // コメントの最大文字数。しょぼいカレンダーの作品コメントは実測で 3KB 前後あるため余裕を持たせる
     private static readonly MAX_COMMENT_LENGTH = 20000;
+    // シリーズ表示名の最大文字数
+    private static readonly MAX_TITLE_LENGTH = 500;
 
     public async updateMetadata(seriesId: number, value: UpdateSeriesMetadata): Promise<void> {
         this.enabled();
@@ -43,6 +45,8 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
         if (series === null) throw new Error('SeriesIsNotFound');
 
         const patch: {
+            title?: string;
+            titleSource?: string | null;
             titleKana?: string | null;
             seasonYear?: number | null;
             seasonName?: string | null;
@@ -50,6 +54,19 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
             totalEpisodes?: number | null;
         } = {};
 
+        // 表示名の手動設定。出所を 'manual' にして辞書の再取得で戻されないようにする。
+        // 引き当てキー (normalizedTitle) は録画タイトル由来のまま変えない
+        if (value.title === null) {
+            // 手動設定の解除。表示名はそのまま残し、次回のメタデータ再取得で辞書名へ同期させる
+            patch.titleSource = null;
+        } else if (typeof value.title !== 'undefined') {
+            const title = String(value.title).trim();
+            if (title === '' || title.length > SeriesMaintenanceApiModel.MAX_TITLE_LENGTH) {
+                throw new Error('InvalidRequestBody');
+            }
+            patch.title = title;
+            patch.titleSource = 'manual';
+        }
         if (typeof value.titleKana !== 'undefined') {
             const kana = value.titleKana === null ? null : String(value.titleKana).trim();
             patch.titleKana = kana === '' ? null : kana;

@@ -5,6 +5,10 @@ import { BaseEntity, Column, Entity, Index, PrimaryGeneratedColumn } from 'typeo
 export default class Series extends BaseEntity {
     @PrimaryGeneratedColumn({ type: 'integer' }) id!: number;
     @Column({ type: 'text' }) title!: string;
+    // 表示名の出所。'dictionary': 作品辞書の正式タイトルへ同期済み / 'manual': 画面から編集。
+    // 'manual' は辞書の再取得で上書きしない (null は録画タイトル由来のまま = 同期対象)
+    @Column({ type: 'text', nullable: true }) titleSource!: string | null;
+    // 引き当てキー。表示名を辞書名へ差し替えても、録画タイトル由来のこの値は変えない
     @Column({ type: 'text' }) normalizedTitle!: string;
     @Column({ type: 'text', default: 'tv' }) mediaType: string = 'tv';
     // channelId は networkId * 100000 + serviceId で生成され int の上限 (2147483647) を超えるため bigint にする

@@ -34,6 +34,7 @@ function series(over = {}) {
     return {
         id: 1,
         title: '作品',
+        titleSource: null,
         normalizedTitle: '作品',
         syobocalTid: null,
         annictId: null,
@@ -70,6 +71,8 @@ test('fill() takes the season from the work dictionary when it matches', async (
 
     assert.equal(result.updated, 1);
     assert.deepEqual(db.updates[0].patch, {
+        // 表示名は辞書名と同じなので、以後引き直さないよう出所だけ記録する
+        titleSource: 'dictionary',
         syobocalTid: 10,
         annictId: '20',
         wikidataQid: 'Q1',
@@ -110,7 +113,7 @@ test('fill() maps each month to the right season', async () => {
 
 test('fill() never overwrites a manually set season', async () => {
     const db = makeDB(
-        [series({ seasonYear: 2020, seasonName: 'SPRING', seasonSource: 'manual', titleKana: 'x', totalEpisodes: 1, syobocalTid: 1, annictId: '1' })],
+        [series({ seasonYear: 2020, seasonName: 'SPRING', seasonSource: 'manual', titleKana: 'x', totalEpisodes: 1, syobocalTid: 1, annictId: '1', titleSource: 'dictionary' })],
         new Map([[1, Date.parse('2024-11-05T21:00:00+09:00')]]),
     );
     const dict = {
@@ -129,6 +132,7 @@ test('fill() never overwrites a manually set season', async () => {
     };
     const result = await new SeriesMetadataFiller(logger, config, db, dict, noLlm, noComment).fill();
 
+    // 手動設定のクールは辞書の値で上書きしない (タイトル同期以外の変更が無い)
     assert.equal(result.updated, 0);
     assert.equal(db.updates.length, 0);
 });
@@ -142,15 +146,22 @@ test('fill() leaves the season unset when there is neither a match nor a recordi
 
 test('fill() skips series that already have everything', async () => {
     const db = makeDB([
-        series({ titleKana: 'x', seasonYear: 2024, seasonName: 'AUTUMN', seasonSource: 'dictionary', totalEpisodes: 12, syobocalTid: 1, annictId: '2' }),
+        series({ titleKana: 'x', seasonYear: 2024, seasonName: 'AUTUMN', seasonSource: 'dictionary', totalEpisodes: 12, syobocalTid: 1, annictId: '2', titleSource: 'dictionary' }),
     ]);
     let looked = 0;
-    const dict = { lookup: async () => { looked++; return null; }, lookupEpisodeNumber: async () => null };
+    // 表示名を辞書名へ合わせ続けるため辞書 (メモリ索引) だけは引くが、同じ名前なら何も更新しない
+    const dict = {
+        lookup: async () => {
+            looked++;
+            return { syobocalTid: 1, annictId: 2, wikidataQid: null, tmdbId: null, title: '作品', titleKana: 'x', seasonYear: 2024, seasonName: 'AUTUMN', totalEpisodes: 12 };
+        },
+        lookupEpisodeNumber: async () => null,
+    };
     const result = await new SeriesMetadataFiller(logger, config, db, dict, noLlm, noComment).fill();
 
     assert.equal(result.updated, 0);
-    // 辞書も引かない (繰り返し実行しても安い)
-    assert.equal(looked, 0);
+    assert.equal(db.updates.length, 0);
+    assert.equal(looked, 1);
 });
 
 test('fill() falls back to the llm only for series the dictionary missed and that have no external id', async () => {
@@ -262,12 +273,15 @@ test('fill() never overwrites a manually edited comment', async () => {
 
 // コメントだけが未取得のシリーズでは作品辞書を引き直さない (コメントは辞書本体に無いため)
 test('fill() does not re-query the work dictionary when only the comment is missing', async () => {
-    const db = makeDB([series({ syobocalTid: 42, titleKana: 'x', seasonYear: 2024, seasonName: 'AUTUMN', seasonSource: 'dictionary', totalEpisodes: 12, annictId: '2' })]);
+    const db = makeDB([
+        series({ syobocalTid: 42, titleKana: 'x', seasonYear: 2024, seasonName: 'AUTUMN', seasonSource: 'dictionary', totalEpisodes: 12, annictId: '2', titleSource: 'dictionary' }),
+    ]);
     let looked = 0;
     const dict = { lookup: async () => { looked++; return null; }, lookupEpisodeNumber: async () => null };
     await new SeriesMetadataFiller(logger, config, db, dict, noLlm, { fetchComment: async () => 'コメント' }).fill();
 
-    assert.equal(looked, 0);
+    // 表示名の同期のために 1 度だけ引く (外部通信は伴わない)。コメントは別経路で取得される
+    assert.equal(looked, 1);
     assert.equal(db.comments.length, 1);
 });
 
@@ -317,4 +331,50 @@ test('fill() does not fetch a comment that was edited by hand', async () => {
     assert.equal(called, 0);
     assert.equal(result.commentFetched, 0);
     assert.equal(db.comments.length, 0);
+});
+
+test('fill() overwrites the series title with the official one from the work dictionary', async () => {
+    const db = makeDB([series({ title: '作品 (再放送)' })]);
+    const dict = {
+        lookup: async () => ({
+            syobocalTid: 10,
+            annictId: null,
+            wikidataQid: null,
+            tmdbId: null,
+            title: '作品',
+            titleKana: null,
+            seasonYear: null,
+            seasonName: null,
+            totalEpisodes: null,
+        }),
+        lookupEpisodeNumber: async () => null,
+    };
+    const result = await new SeriesMetadataFiller(logger, config, db, dict, noLlm, noComment).fill();
+
+    assert.equal(result.titleSynced, 1);
+    assert.equal(db.updates[0].patch.title, '作品');
+    assert.equal(db.updates[0].patch.titleSource, 'dictionary');
+});
+
+test('fill() keeps a manually edited title', async () => {
+    const db = makeDB([series({ title: '手動で付けた名前', titleSource: 'manual' })]);
+    const dict = {
+        lookup: async () => ({
+            syobocalTid: 10,
+            annictId: null,
+            wikidataQid: null,
+            tmdbId: null,
+            title: '作品',
+            titleKana: null,
+            seasonYear: null,
+            seasonName: null,
+            totalEpisodes: null,
+        }),
+        lookupEpisodeNumber: async () => null,
+    };
+    const result = await new SeriesMetadataFiller(logger, config, db, dict, noLlm, noComment).fill();
+
+    assert.equal(result.titleSynced, 0);
+    assert.equal(typeof db.updates[0]?.patch.title, 'undefined');
+    assert.equal(typeof db.updates[0]?.patch.titleSource, 'undefined');
 });
