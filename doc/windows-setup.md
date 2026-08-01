@@ -38,6 +38,16 @@
 
     ```
 
+    `mirakurun` は GitHub リポジトリを git 参照 (`git+https://...#<タグ>`) で固定しているため、npm の依存元制限
+    (`allow-git`) が許可されていないと `npm run all-install` が失敗します。
+    リポジトリの `.npmrc` で `allow-git=all` を設定済みですが、それでも失敗する場合は
+    環境変数で明示してください
+
+    ```
+    > $env:NPM_CONFIG_ALLOW_GIT="all"
+    > npm run all-install
+    ```
+
 3. 設定ファイルの作成
 
     **この手順は省略できます。** 用意されていない場合は初回起動時に

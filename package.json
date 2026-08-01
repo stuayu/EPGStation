@@ -59,7 +59,7 @@
         "lodash": "4.18.1",
         "log4js": "6.9.1",
         "minimist": "1.2.8",
-        "mirakurun": "https://codeload.github.com/stuayu/Mirakurun/tar.gz/dc9548a25ff4c755d678e63784300d1447afa890",
+        "mirakurun": "git+https://github.com/stuayu/Mirakurun.git#4.2.0-stuayu",
         "mkdirp": "3.0.1",
         "multer": "2.2.0",
         "mysql2": "3.23.1",
