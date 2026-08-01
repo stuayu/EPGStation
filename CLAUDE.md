@@ -94,7 +94,12 @@ npm run test:ci        # ut + ita + itb
 - エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換 (省略時は PATH 上の tsreadex)
 - ストリーミング API の `req.query` は express-openapi がスキーマに従い数値へ型変換する。`mode` 等を文字列前提で扱わないこと (過去に 400 エラーの原因になった)
 - **シリーズ自動マッピングの主軸は外部の作品タイトル辞書**。しょぼいカレンダー (`SyobocalTitleDictionary`, `syobocal_title` 系 3 テーブル)・Annict (`AnnictWorkDictionary`, `annict_work` 系 2 テーブル)・**Wikidata (`WikidataProgramDictionary`, `wikidata_program` 系 2 テーブル、全ジャンル)** の 3 つを `WorkDictionary` (`src/model/series/`) が 1 つのメモリ索引に統合し、`SeriesResolver` がそれを引く。録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバックなので、シリーズ判定を触るときは辞書側を先に疑うこと
-- **話数は辞書だけでなく「放送局 + 放送開始時刻」でも確定する**。`SyobocalProgramLookup` (`src/model/metadata/syobocal/`) がしょぼいカレンダーの放送予定 (`ProgLookup`) を引き、TID・通し話数・サブタイトルを返す (rigaya/SCRenamePy と同じ考え方)。**タイトルに話数表記があっても必ず引き、TID が一致すれば放送予定の話数を優先する** (局が振った通し番号よりこちらが確実。問い合わせは放送日 1 日分をキャッシュ)。しょぼいカレンダー未登録の地方局は系列のキー局の ChID で代用するが、その結果 (`viaKeyStation: true`) は遅れ放送で別番組を指しうるため**作品の確定には使わない**。総集編・一挙放送は `SeriesParseResult.isSpecial` でサブタイトル逆引きの対象外にする
+- **シリーズ判定は「放送局 + 放送開始時刻」の照会を最優先で引く**。`SyobocalProgramLookup` (`src/model/metadata/syobocal/`) がしょぼいカレンダーの放送予定 (`ProgLookup`) を引き、TID・通し話数・サブタイトル・放送回コメントを返す (rigaya/SCRenamePy と同じ考え方)。**その時間に何が放送されていたかは事実なので、タイトル照合より確度が高い**
+    - 判定順は ①放送予定 → ②エイリアス辞書 → ③作品辞書 (タイトル照合) → ④LLM → ⑤類似度スコアリング。**エイリアスより放送予定が優先される**が、**手動確定 (`manualLock`) だけは放送予定より強い**
+    - 確度は `exactStart` (番組の頭から録画) が 0.98、放送時間帯の包含で拾った場合が 0.92、未登録の地方局を系列キー局で代用した場合 (`viaKeyStation`) が 0.9。代用時は開始時刻がほぼ一致した放送しか拾わない
+    - **返ってきた作品名が録画タイトルと共通部分を持たない場合はスキップする** (`isPlausibleProgramTitle()`)。時刻ずれ・キー局代用で別番組を拾ったときの安全弁。完全一致は求めず、含有か 2-gram 類似度 0.25 以上で通す
+    - 話数はタイトルに表記があっても放送予定の `Count` を優先する。総集編・一挙放送は `SeriesParseResult.isSpecial` でサブタイトル逆引きの対象外
+    - **`SeriesBackfillManageModel.decide()` (バックフィルのドライラン) は `resolve()` とは別実装**。判定順を変えたら必ず両方直す (揃っていないとプレビューと実行結果が食い違う)
 - **録画の放送局名は TS 解析 (SDT) の局名を最優先で表示する**。`ChannelNameUtil.getRecordedChannelName()` の順は「TS 解析の局名 (`RecordedItem.tsChannelName`) → 現在の channel 情報 → 録画時点の局名 → networkId/serviceId 表記」。一覧用に `IVideoFileTsInfoDB.findServiceNamesByRecordedIds()` で 1 クエリにまとめて引いている
 - **一覧の録画タイトル表示は `RecordedUtil.convertRecordedItemToDisplayData()` の 1 箇所で決まる**。`useDictionaryEpisodeTitle` (localStorage の共通設定) が有効なら `RecordedItem.series` から「作品名 第N話 サブタイトル」を組み立てる。録画済み一覧・ダッシュボード・検索結果はすべてここを通るため、切り替えは 3 点リーダー 1 箇所で全画面に効く
 - **しょぼいカレンダーのコメントは 2 種類**。作品コメント (`TitleItem.Comment`) は `series.comment` へ、放送回コメント (`ProgItem.ProgComment`) は `series_episode.comment` へ入る。**作品コメントは辞書の全件同期に含めない** (1 件数 KB で XML が 9.5MB → 24MB になるため)。シリーズになっている作品だけ `ISyobocalTitleDictionary.fetchComment(tid)` で個別に引き、`SeriesMetadataFiller` が埋める。画面から編集・削除すると `commentSource` が `manual` になり自動同期の対象外になる

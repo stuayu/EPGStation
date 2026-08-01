@@ -11,7 +11,13 @@ import INotificationDispatcher from '../notification/INotificationDispatcher';
 import ILlmTitleExtractor from './ILlmTitleExtractor';
 import IWorkDictionary, { WorkMatch } from './IWorkDictionary';
 import ISeriesResolver, { SeriesRecordingInput } from './ISeriesResolver';
-import { displaySeriesTitle, isDerivedFromTitle, normalizeSeriesTitle, parseSeriesInfo } from './SeriesNormalizer';
+import {
+    displaySeriesTitle,
+    isDerivedFromTitle,
+    normalizeSeriesTitle,
+    parseSeriesInfo,
+    syobocalLookupKey,
+} from './SeriesNormalizer';
 export function titleSimilarity(a: string, b: string): number {
     if (a === b) return 1;
     if (a.length < 2 || b.length < 2) return 0;
@@ -50,6 +56,46 @@ export function scoreCandidate(normalizedTitle: string, candidate: Series, chann
  */
 function matchMethodOf(match: WorkMatch): RecordedSeriesLink['matchMethod'] {
     return match.source === 'syobocal' ? 'syobocal' : match.source === 'annict' ? 'annict' : 'wikidata';
+}
+// 放送予定から引けた作品名が録画タイトルと「明らかに別物」と判定するしきい値。
+// 局が独自表記で送出している録画も救うのが放送予定照会の目的なので、完全一致は求めず
+// 「共通する部分が皆無」なものだけを弾く緩い値にしている
+const PROGRAM_TITLE_MIN_SIMILARITY = 0.25;
+
+/**
+ * 放送予定から引けた作品名が、録画のタイトルとして妥当かを判定する。
+ *
+ * 放送予定は局と時刻だけで引くため、放送予定側の時刻ずれ・録画マージン・キー局の代用によって
+ * 隣の番組や別番組を拾うことがある。作品名と録画タイトルに共通部分が皆無な場合は
+ * その取り違えとみなしてスキップし、後続の判定 (エイリアス → 作品辞書 → …) へ委ねる
+ * @param recordedTitle: string 録画番組タイトル
+ * @param workTitle: string 放送予定から引けた作品名
+ * @return boolean 妥当なら true
+ */
+export function isPlausibleProgramTitle(recordedTitle: string, workTitle: string): boolean {
+    const recorded = syobocalLookupKey(recordedTitle.normalize('NFKC'));
+    const work = syobocalLookupKey(workTitle);
+    // 記号だけのタイトルなどで照合キーを作れない場合は判定材料が無いので通す
+    if (recorded === '' || work === '') return true;
+    // 作品名が録画タイトルに含まれる (通常) / 録画タイトルが略称になっている、のどちらかなら妥当
+    if (recorded.includes(work) || work.includes(recorded)) return true;
+
+    return titleSimilarity(recorded, work) >= PROGRAM_TITLE_MIN_SIMILARITY;
+}
+
+/**
+ * 放送予定の照会結果から作品確定の確度を決める。
+ * 取り違えの余地が小さい順に「番組の頭から録画できている」>「放送時間帯の包含で拾った」
+ * >「未登録局を系列キー局で代用した」となる
+ * @param program: SyobocalProgramMatch
+ * @return number 0〜1
+ */
+export function programConfidence(program: SyobocalProgramMatch): number {
+    // キー局の代用は同時ネットを前提にした推定なので、遅れ放送・番組差し替えのぶん最も低くする
+    // (代用時は開始時刻がほぼ一致した放送しか拾わないため exactStart は必ず true になる)
+    if (program.viaKeyStation === true) return 0.9;
+
+    return program.exactStart === true ? 0.98 : 0.92;
 }
 @injectable()
 export default class SeriesResolver implements ISeriesResolver {
@@ -98,7 +144,14 @@ export default class SeriesResolver implements ISeriesResolver {
         if (!parsed.normalizedTitle) return null;
         const now = Date.now();
 
-        // 1. エイリアス辞書 (手動修正から学習した「正規化タイトル→シリーズ」の対応) を最優先で参照する
+        // 1. しょぼいカレンダーの放送予定 (放送局 + 放送開始時刻) を最優先で引く。
+        // 局と時刻は「実際にその時間に何が放送されていたか」という事実なので、
+        // タイトル文字列の照合 (含有・前方一致を許すため誤爆しうる) より確度が高い
+        const program = await this.lookupProgram(recording);
+        const programLink = await this.resolveByProgram(recording, parsed, program, now);
+        if (programLink !== null) return programLink;
+
+        // 2. エイリアス辞書 (手動修正から学習した「正規化タイトル→シリーズ」の対応) を参照する
         const alias = await this.db.findAlias(parsed.normalizedTitle);
         if (alias) {
             const aliasSeries = await this.db.getSeries(alias.seriesId);
@@ -108,18 +161,18 @@ export default class SeriesResolver implements ISeriesResolver {
             }
         }
 
-        // 2. 作品辞書 (しょぼいカレンダー + Annict) で作品を確定させる。
+        // 3. 作品辞書 (しょぼいカレンダー + Annict) で作品を確定させる。
         // 放送局ごとの表記ゆれ ("第壱話" / "break1" / "TVアニメ『X』" / "水曜アニメ・" 等) があっても
         // 同一作品へ寄せられるため、類似度スコアリングより先に試す
-        const dictionaryLink = await this.resolveByWorkDictionary(recording, parsed, now);
+        const dictionaryLink = await this.resolveByWorkDictionary(recording, parsed, program, now);
         if (dictionaryLink !== null) return dictionaryLink;
 
-        // 3. 作品辞書に載らないジャンル (ドラマ・バラエティ・情報番組など) を LLM の抽出結果で束ねる。
+        // 4. 作品辞書に載らないジャンル (ドラマ・バラエティ・情報番組など) を LLM の抽出結果で束ねる。
         // 検証先の辞書が無いため、抽出した番組名が既存シリーズの正規化タイトルと完全一致した場合に限る
         const llmLink = await this.resolveByLlmGrouping(recording, parsed, now);
         if (llmLink !== null) return llmLink;
 
-        // 4. 既存シリーズとの類似度スコアリング
+        // 5. 既存シリーズとの類似度スコアリング
         const candidates = await this.db.findCandidates(parsed.normalizedTitle);
         const settings = await this.settings.getAll();
         const threshold = this.threshold((settings.series as any)?.matchThreshold);
@@ -180,6 +233,7 @@ export default class SeriesResolver implements ISeriesResolver {
     private async resolveByWorkDictionary(
         recording: SeriesRecordingInput,
         parsed: ReturnType<typeof parseSeriesInfo>,
+        program: SyobocalProgramMatch | null,
         now: number,
     ): Promise<RecordedSeriesLink | null> {
         let match: WorkMatch | null = null;
@@ -197,24 +251,70 @@ export default class SeriesResolver implements ISeriesResolver {
             match = await this.lookupViaLlm(recording.title);
             viaLlm = match !== null;
         }
-
-        // しょぼいカレンダーの放送予定 (放送局 + 放送開始時刻) を引く。
-        // 放送予定は局と時刻だけで決まりタイトルの表記に依存しないため、話数の情報源として
-        // 録画タイトルの表記より確実。タイトルに話数表記があっても必ず引く
-        // (問い合わせは放送日 1 日分がキャッシュされるので局・日ごとに 1 回で済む)
-        const program = await this.lookupProgram(recording);
-
-        // 辞書がタイトルで引けなかった場合は、放送予定の TID から作品を特定する。
-        // ただしキー局の放送予定で代用した結果 (viaKeyStation) は遅れ放送で別番組を
-        // 指しうるため、作品の確定には使わない
-        if (match === null && program !== null && program.viaKeyStation === false) {
-            const byProgram = await this.workDictionary.findByIds({ syobocalTid: program.tid }).catch(() => null);
-            // 局と時刻の一致は強い根拠だが、放送予定側の時刻ずれで隣の番組を拾う余地があるため
-            // タイトル照合で確定した場合 (最大 1.0) より低い確度で記録する
-            if (byProgram !== null) match = { ...byProgram, confidence: Math.min(byProgram.confidence, 0.95) };
-        }
         if (match === null) return null;
 
+        // LLM を経由して確定した対応はエイリアス辞書へ学習させる。
+        // 次回以降は resolve() でこの辞書に当たるため、同じ表記の録画で LLM を引き直さずに済む
+        const series = await this.resolveSeriesFor(match, recording.channelId, now);
+        if (viaLlm === true) await this.learnAlias(parsed.normalizedTitle, series, match, now);
+
+        await this.db.deletePendingMatchByRecordedId(recording.recordedId);
+        return await this.linkToWork(recording, parsed, match, series, program, matchMethodOf(match), now);
+    }
+
+    /**
+     * しょぼいカレンダーの放送予定 (放送局 + 放送開始時刻) から作品を確定し、そのシリーズへリンクする。
+     *
+     * 「その時間にその局で何が放送されていたか」は事実なので、タイトル文字列の照合
+     * (含有・前方一致を許すため誤爆しうる) より確度が高い。このため resolve() の先頭で試す。
+     *
+     * しょぼいカレンダー未登録の地方局は系列キー局の放送予定で代用した結果も使う。
+     * 同時ネットなら同じ時刻に同じ作品が並ぶため地方局の録画でも作品を特定できるが、
+     * 遅れ放送だと別番組を指しうるぶん確度は下げる (代用時は開始時刻がほぼ一致した場合しか拾わない)
+     * @param recording: SeriesRecordingInput
+     * @param parsed: parseSeriesInfo() の結果
+     * @param program: SyobocalProgramMatch | null 放送予定の照会結果
+     * @param now: number
+     * @return Promise<RecordedSeriesLink | null> 確定できなかった場合は null
+     */
+    private async resolveByProgram(
+        recording: SeriesRecordingInput,
+        parsed: ReturnType<typeof parseSeriesInfo>,
+        program: SyobocalProgramMatch | null,
+        now: number,
+    ): Promise<RecordedSeriesLink | null> {
+        if (program === null) return null;
+
+        const match = await this.workDictionary.findByIds({ syobocalTid: program.tid }).catch(() => null);
+        if (match === null) return null;
+        // 時刻ずれ・キー局の代用で別番組を拾った場合を弾く。
+        // 録画タイトルと共通部分が皆無な作品名は取り違えとみなし、後続の判定へ委ねる
+        if (isPlausibleProgramTitle(recording.title, match.title) === false) return null;
+
+        const confidence = programConfidence(program);
+        const series = await this.resolveSeriesFor(match, recording.channelId, now);
+
+        await this.db.deletePendingMatchByRecordedId(recording.recordedId);
+        return await this.linkToWork(
+            recording,
+            parsed,
+            { ...match, confidence },
+            series,
+            program,
+            matchMethodOf(match),
+            now,
+        );
+    }
+
+    /**
+     * 作品辞書の照合結果に対応するシリーズを返す (無ければ辞書の正式タイトルで新規作成する)。
+     * 既存シリーズに未設定の項目があれば辞書側で判明した値を補完する
+     * @param match: WorkMatch
+     * @param channelId: number
+     * @param now: number
+     * @return Promise<Series>
+     */
+    private async resolveSeriesFor(match: WorkMatch, channelId: number, now: number): Promise<Series> {
         // しょぼいカレンダー TID を優先キーにし、無い作品 (Annict 単独) は annictId で引く
         let series =
             match.syobocalTid !== null
@@ -229,7 +329,7 @@ export default class SeriesResolver implements ISeriesResolver {
                 // 録画タイトル由来のゆらいだ名前ではなく辞書の正式タイトルをシリーズ名にする
                 title: match.title,
                 normalizedTitle: normalizeSeriesTitle(match.title),
-                preferredChannelId: recording.channelId,
+                preferredChannelId: channelId,
                 syobocalTid: match.syobocalTid,
                 annictId: match.annictId === null ? null : String(match.annictId),
                 wikidataQid: match.wikidataQid,
@@ -270,6 +370,29 @@ export default class SeriesResolver implements ISeriesResolver {
             }
         }
 
+        return series;
+    }
+
+    /**
+     * 確定した作品のシリーズへ録画をリンクする (話数・サブタイトル・放送回コメントの解決を含む)
+     * @param recording: SeriesRecordingInput
+     * @param parsed: parseSeriesInfo() の結果
+     * @param match: WorkMatch 作品辞書の照合結果
+     * @param series: Series リンク先シリーズ
+     * @param program: SyobocalProgramMatch | null 放送予定の照会結果
+     * @param matchMethod: RecordedSeriesLink['matchMethod']
+     * @param now: number
+     * @return Promise<RecordedSeriesLink>
+     */
+    private async linkToWork(
+        recording: SeriesRecordingInput,
+        parsed: ReturnType<typeof parseSeriesInfo>,
+        match: WorkMatch,
+        series: Series,
+        program: SyobocalProgramMatch | null,
+        matchMethod: RecordedSeriesLink['matchMethod'],
+        now: number,
+    ): Promise<RecordedSeriesLink> {
         // 放送予定が確定した作品と同じ作品を指している場合のみ、その内容を採用する。
         // TID の一致を条件にすることで、時刻ずれで隣の番組を拾った場合や、キー局で代用した局が
         // 遅れ放送だった場合に別作品の話数を持ち込むことを防ぐ
@@ -291,17 +414,12 @@ export default class SeriesResolver implements ISeriesResolver {
         const episodeTitle = confirmed?.subTitle ?? null;
         const episodeComment = confirmed?.comment ?? null;
 
-        // LLM を経由して確定した対応はエイリアス辞書へ学習させる。
-        // 次回以降は resolve() の先頭でこの辞書に当たるため、同じ表記の録画で LLM を引き直さずに済む
-        if (viaLlm === true) await this.learnAlias(parsed.normalizedTitle, series, match, now);
-
-        await this.db.deletePendingMatchByRecordedId(recording.recordedId);
         return await this.linkTo(
             recording,
             resolved,
             series,
             match.confidence,
-            matchMethodOf(match),
+            matchMethod,
             now,
             episodeTitle,
             episodeComment,

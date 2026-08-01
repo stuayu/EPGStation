@@ -116,13 +116,14 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
             if (diff > SyobocalProgramLookup.START_TOLERANCE_MS) continue;
             if (nearest === null || diff < nearest.diff) nearest = { program, diff };
         }
-        if (nearest !== null) return nearest.program;
+        if (nearest !== null) return { ...nearest.program, exactStart: true };
         if (viaKeyStation === true) return null;
 
-        return (
+        const contained =
             programs.find(program => program.endAt !== null && program.startAt <= startAt && startAt < program.endAt) ??
-            null
-        );
+            null;
+
+        return contained === null ? null : { ...contained, exactStart: false };
     }
 
     /**
@@ -167,7 +168,8 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
             comment: comment === '' ? null : comment,
             startAt,
             endAt: parseSyobocalDate(row.EdTime ?? '') ?? null,
-            // 実際にどの ChID へ問い合わせたかは lookup() が知っているのでそちらで上書きする
+            // 開始時刻の一致は pick()、問い合わせ先の ChID は lookup() が知っているのでそちらで上書きする
+            exactStart: false,
             viaKeyStation: false,
         };
     }
