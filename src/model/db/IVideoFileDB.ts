@@ -34,6 +34,7 @@ export default interface IVideoFileDB {
     findAll(): Promise<VideoFile[]>;
     findWithoutMetadata(limit: number, offset?: number): Promise<VideoFile[]>;
     findAllPaged(limit: number, offset: number): Promise<VideoFile[]>;
+    findRecordedId(recordedId: apid.RecordedId): Promise<VideoFile[]>;
     countWithoutMetadata(): Promise<number>;
     countAll(): Promise<number>;
 }

@@ -92,8 +92,9 @@
                             <v-divider class="my-4"></v-divider>
                             <div class="text-subtitle-1 mb-2">録画ファイルの TS 解析</div>
                             <div class="text-caption mb-2">
-                                TS の PSI/SI (SDT / EIT / TDT) から放送局名・番組名・概要・ジャンル・録画開始時刻を取得して DB
+                                TS の PSI/SI (SDT / EIT / TDT) から放送局名・番組名・概要・ジャンル・映像音声情報・録画開始時刻を取得して DB
                                 に保存します。取り込んだ外部ファイルの放送局特定や、ニコニコ実況コメントの時刻合わせに利用されます (取り込み時には自動で実行されます)。
+                                過去に取り込んだ録画で番組情報が空のままのものは「全件を強制再解析」で埋められます (すでに値がある項目は上書きしません)。録画 1 件だけなら録画詳細のメニューから再解析できます。
                             </div>
                             <div class="text-body-2 mb-2">
                                 TS ファイル {{ tsInfoStatus.total }} 件 / 解析済み {{ tsInfoStatus.analyzed }} 件 / 未解析 {{ tsInfoStatus.unanalyzed }} 件

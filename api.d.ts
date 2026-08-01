@@ -654,6 +654,9 @@ export interface StartVideoAnalyzeJobOption {
     type: VideoAnalyzeJobType;
     // 省略時は 'unanalyzed'
     mode?: VideoAnalyzeJobMode;
+    // 指定するとその録画のファイルだけを対象にする (省略時は全件)。
+    // 解析済みかどうかに関わらず必ず解析し直す
+    recordedId?: RecordedId;
 }
 
 /**
@@ -662,6 +665,8 @@ export interface StartVideoAnalyzeJobOption {
  */
 export interface VideoAnalyzeJob {
     status: VideoAnalyzeJobStatus;
+    // 対象を 1 録画に絞っている場合の録画 id
+    recordedId?: RecordedId | null;
     // 実行中・直近のジョブの種別 (一度も実行していなければ null)
     type: VideoAnalyzeJobType | null;
     mode: VideoAnalyzeJobMode | null;

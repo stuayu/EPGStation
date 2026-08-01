@@ -261,6 +261,25 @@ export default class VideoFileDB implements IVideoFileDB {
      * @param offset: number 開始位置
      * @return Promise<VideoFile[]>
      */
+    /**
+     * 指定した録画に紐づくビデオファイルを取得する
+     * @param recordedId: apid.RecordedId
+     * @return Promise<VideoFile[]>
+     */
+    public async findRecordedId(recordedId: apid.RecordedId): Promise<VideoFile[]> {
+        const connection = await this.op.getConnection();
+
+        const queryBuilder = connection
+            .getRepository(VideoFile)
+            .createQueryBuilder('video_file')
+            .where({ recordedId: recordedId })
+            .orderBy('video_file.id', 'ASC');
+
+        return await this.promieRetry.run(() => {
+            return queryBuilder.getMany();
+        });
+    }
+
     public async findAllPaged(limit: number, offset: number): Promise<VideoFile[]> {
         const connection = await this.op.getConnection();
 
