@@ -12,6 +12,8 @@ export type SeriesAliasItem = apid.SeriesAliasItem;
 export type MissingEpisodeProposal = apid.MissingEpisodeProposal;
 export type SeriesBackfillOption = apid.SeriesBackfillOption;
 export type SeriesBackfillResult = apid.SeriesBackfillResult;
+export type SeriesAnalyzeResult = apid.SeriesAnalyzeResult;
+export type SeriesAnalyzeStep = apid.SeriesAnalyzeStep;
 export type ProgramSeriesMetrics = apid.ProgramSeriesMetrics;
 export type SeriesMergeCandidate = apid.SeriesMergeCandidate;
 export type SeriesMergeCandidateResult = apid.SeriesMergeCandidateResult;
@@ -32,6 +34,14 @@ export interface RefreshSeriesMetadataResult {
     llmAnalyzed: number;
     // LLM 経由で外部 ID を確定できたシリーズ数
     llmResolved: number;
+    // しょぼいカレンダーへ作品コメントを取りに行った件数
+    commentFetched: number;
+    // 実際に作品コメントを埋められた件数
+    commentFilled: number;
+    // 1 回あたりの上限に達して次回へ繰り越したコメント取得の件数
+    commentPending: number;
+    // しょぼいカレンダー TID が無くコメントを引けなかったシリーズ数
+    commentSkippedNoTid: number;
 }
 export interface UpdateSeriesMetadata {
     titleKana?: string | null;
@@ -146,6 +156,7 @@ export default interface ISeriesApiModel {
     startBackfill(option?: SeriesBackfillOption): Promise<SeriesBackfillResult>;
     getBackfillStatus(): Promise<SeriesBackfillResult>;
     cancelBackfill(): Promise<void>;
+    analyze(recordedId: apid.RecordedId): Promise<SeriesAnalyzeResult>;
     reserveMissingEpisode(seriesId: number, seasonNumber: number, episodeNumber: number, programId: number): Promise<{ reserveId: number }>;
     /**
      * 番組⇄シリーズ事前マッピングの精度メトリクスを取得する (§4.10)

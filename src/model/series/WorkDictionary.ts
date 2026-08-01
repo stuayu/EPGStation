@@ -1,9 +1,18 @@
 import { inject, injectable } from 'inversify';
 import IAnnictWorkDB from '../db/IAnnictWorkDB';
-import ISyobocalTitleDB from '../db/ISyobocalTitleDB';
+import ISyobocalTitleDB, { SyobocalTitleSeasonRecord } from '../db/ISyobocalTitleDB';
 import IWikidataProgramDB from '../db/IWikidataProgramDB';
-import { buildSeriesLookupKeys, strictProgramKey, syobocalLookupKey } from './SeriesNormalizer';
+import { buildSeriesLookupKeys, seasonBaseKey, strictProgramKey, syobocalLookupKey } from './SeriesNormalizer';
 import IWorkDictionary, { WorkMatch } from './IWorkDictionary';
+
+// 同じ作品の期 (第 1 期 / 第 2 期 …) 1 件分。放送時期から期を選び直すために使う
+interface SeasonEntry {
+    tid: number;
+    // 放送開始時刻 (firstYear/firstMonth の月初)。年が取れない作品は null
+    startedAt: number | null;
+    // 放送終了の目安 (開始 + 総話数分の週 + 余裕)。null は不明
+    endedAt: number | null;
+}
 
 interface IndexEntry {
     // しょぼいカレンダー TID (Annict 単独作品では null)
@@ -47,6 +56,10 @@ export default class WorkDictionary implements IWorkDictionary {
     // メモリ上の索引を DB と突き合わせ直す間隔 (ms)。
     // 辞書は Operator の自動同期と Service の「今すぐ同期」の双方から更新されうる
     private static readonly INDEX_REVALIDATE_MS = 5 * 60 * 1000;
+    // 総話数が分からない作品の放送期間を見積もるときの話数 (1 クール)
+    private static readonly DEFAULT_SEASON_EPISODES = 13;
+    // 放送休止・特番による延びを見込んで放送期間に足す週数
+    private static readonly SEASON_SLACK_WEEKS = 6;
     // 辞書横断検索 (search) のキーワード最短長と件数上限
     private static readonly SEARCH_MIN_KEYWORD_LENGTH = 2;
     private static readonly SEARCH_DEFAULT_LIMIT = 20;
@@ -62,6 +75,10 @@ export default class WorkDictionary implements IWorkDictionary {
     private indexSignature: string | null = null;
     // 作品情報の解決結果キャッシュ (バックフィルで同じ作品を何度も引くため)。索引再構築時に破棄する
     private matchCache: Map<string, WorkMatch | null> = new Map();
+    // 「期表記を落とした基本キー」→ その作品の全期。2 件以上のグループだけを保持する
+    private seasonGroups: Map<string, SeasonEntry[]> = new Map();
+    // TID → 基本キー (引き当てた作品がどのグループに属するかを引く)
+    private tidToSeasonBaseKey: Map<number, string> = new Map();
 
     constructor(
         @inject('ISyobocalTitleDB') private syobocalDB: ISyobocalTitleDB,
@@ -69,7 +86,7 @@ export default class WorkDictionary implements IWorkDictionary {
         @inject('IWikidataProgramDB') private wikidataDB: IWikidataProgramDB,
     ) {}
 
-    public async lookup(recordedTitle: string): Promise<WorkMatch | null> {
+    public async lookup(recordedTitle: string, airedAt?: number): Promise<WorkMatch | null> {
         const index = await this.ensureIndex();
         if (index.size === 0 && this.strictIndex.size === 0) return null;
 
@@ -77,7 +94,8 @@ export default class WorkDictionary implements IWorkDictionary {
         for (const key of buildSeriesLookupKeys(recordedTitle)) {
             const hit = this.lookupKey(key, index);
             if (hit !== null) {
-                const match = await this.toMatch(hit.entry, hit.matchType);
+                const entry = this.resolveSeason(hit.entry, airedAt);
+                const match = await this.toMatch(entry, hit.matchType);
                 if (match !== null) return match;
             }
         }
@@ -199,6 +217,46 @@ export default class WorkDictionary implements IWorkDictionary {
         if (Number.isFinite(episodeNumber) === false) return null;
         const episodes = await this.syobocalDB.listEpisodes(syobocalTid);
         return episodes.find(x => x.episodeNumber === episodeNumber)?.subTitle ?? null;
+    }
+
+    /**
+     * 引き当てた作品に続編 (第 2 期など) がある場合、録画の放送日時に合う期へ差し替える。
+     *
+     * 局によっては「株式会社マジルミエ[字]」のように期の表記を送出しないため、
+     * タイトル照合だけでは常に第 1 期 (期表記の無い作品) に当たってしまう。
+     * しょぼいカレンダーは期ごとに別 TID + 初回放送年月を持つので、
+     * 録画の放送日時がどの期の放送期間に入るかで選び直す。
+     *
+     * 放送予定照会 (SyobocalProgramLookup) が引ける局ではそちらが優先されるため、
+     * これはしょぼいカレンダー未登録の局を救うための後段の判定になる。
+     * 該当する期が 1 つに定まらない場合・放送日時が不明な場合は元のエントリをそのまま返す
+     * @param entry: IndexEntry タイトル照合で引き当てたエントリ
+     * @param airedAt: number | undefined 録画の放送開始時刻
+     * @return IndexEntry
+     */
+    private resolveSeason(entry: IndexEntry, airedAt?: number): IndexEntry {
+        if (typeof airedAt !== 'number' || Number.isFinite(airedAt) === false || entry.syobocalTid === null) {
+            return entry;
+        }
+        const baseKey = this.tidToSeasonBaseKey.get(entry.syobocalTid);
+        if (typeof baseKey === 'undefined') return entry;
+        const group = this.seasonGroups.get(baseKey);
+        if (typeof group === 'undefined') return entry;
+
+        // 放送期間に入る期だけを候補にする。複数に当たる (期間が重なっている) 場合は
+        // どれか 1 つに決められないので元のままにする
+        const hits = group.filter(
+            season =>
+                season.startedAt !== null &&
+                season.endedAt !== null &&
+                season.startedAt <= airedAt &&
+                airedAt <= season.endedAt,
+        );
+        if (hits.length !== 1) return entry;
+        if (hits[0].tid === entry.syobocalTid) return entry;
+
+        // 期を差し替えるので、別作品の Annict / Wikidata の ID は引き継がない
+        return { syobocalTid: hits[0].tid, annictId: null, wikidataQid: null, rank: entry.rank };
     }
 
     /**
@@ -394,6 +452,10 @@ export default class WorkDictionary implements IWorkDictionary {
             }
         }
 
+        // 4. 続編 (期) のグループ。「株式会社マジルミエ」と「株式会社マジルミエ(第2期)」のように
+        //    基本キーが同じ作品をまとめ、放送時期から期を選び直せるようにする
+        this.buildSeasonGroups(await this.syobocalDB.listSeasons());
+
         this.index = index;
         this.strictIndex = strictIndex;
         this.matchCache.clear();
@@ -403,6 +465,65 @@ export default class WorkDictionary implements IWorkDictionary {
         this.indexBuiltAt = Date.now();
         this.indexSignature = await this.signature();
         return index;
+    }
+
+    /**
+     * 続編 (期) のグループを構築する。
+     * 期表記を落とした基本キーが同じ作品を 1 グループにまとめ、各期の放送期間を推定して持つ。
+     * 期が 1 つしか無い作品は選び直す余地が無いのでグループに含めない
+     * @param seasons: しょぼいカレンダー辞書の作品一覧 (照合キー + 初回放送年月 + 総話数)
+     */
+    private buildSeasonGroups(seasons: SyobocalTitleSeasonRecord[]): void {
+        const groups = new Map<string, SeasonEntry[]>();
+        const tidToBaseKey = new Map<number, string>();
+        for (const row of seasons) {
+            if (typeof row.lookupKey !== 'string' || row.lookupKey.length < 2) continue;
+            const baseKey = seasonBaseKey(row.lookupKey);
+            if (baseKey.length < WorkDictionary.MIN_KEY_LENGTH) continue;
+            const startedAt = WorkDictionary.seasonStartedAt(row.firstYear, row.firstMonth);
+            const entry: SeasonEntry = {
+                tid: row.tid,
+                startedAt,
+                endedAt: WorkDictionary.seasonEndedAt(startedAt, row.totalEpisodes),
+            };
+            const current = groups.get(baseKey);
+            if (typeof current === 'undefined') groups.set(baseKey, [entry]);
+            else current.push(entry);
+            tidToBaseKey.set(row.tid, baseKey);
+        }
+
+        this.seasonGroups = new Map([...groups].filter(([, entries]) => entries.length > 1));
+        this.tidToSeasonBaseKey = new Map([...tidToBaseKey].filter(([, baseKey]) => this.seasonGroups.has(baseKey)));
+    }
+
+    /**
+     * 初回放送年月から放送開始時刻 (その月の 1 日) を作る
+     * @param year: number | null
+     * @param month: number | null
+     * @return number | null 年が取れない場合は null
+     */
+    private static seasonStartedAt(year: number | null, month: number | null): number | null {
+        if (typeof year !== 'number' || Number.isFinite(year) === false || year < 1950) return null;
+        const m = typeof month === 'number' && month >= 1 && month <= 12 ? month : 1;
+
+        return new Date(year, m - 1, 1).getTime();
+    }
+
+    /**
+     * 放送終了の目安を作る。総話数分の週数に、放送休止・特番による延びを見込んだ余裕を足す。
+     * 総話数が不明な作品は 1 クール放送とみなす
+     * @param startedAt: number | null
+     * @param totalEpisodes: number | null
+     * @return number | null
+     */
+    private static seasonEndedAt(startedAt: number | null, totalEpisodes: number | null): number | null {
+        if (startedAt === null) return null;
+        const episodes =
+            typeof totalEpisodes === 'number' && totalEpisodes > 0
+                ? totalEpisodes
+                : WorkDictionary.DEFAULT_SEASON_EPISODES;
+
+        return startedAt + (episodes + WorkDictionary.SEASON_SLACK_WEEKS) * 7 * 24 * 60 * 60 * 1000;
     }
 
     /**

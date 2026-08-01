@@ -16,6 +16,14 @@ export interface RefreshSeriesMetadataResult {
     llmAnalyzed: number;
     // LLM 経由で外部 ID を確定できたシリーズ数
     llmResolved: number;
+    // しょぼいカレンダーへ作品コメントを取りに行った件数
+    commentFetched: number;
+    // 実際に作品コメントを埋められた件数
+    commentFilled: number;
+    // 1 回あたりの上限に達して次回へ繰り越したコメント取得の件数
+    commentPending: number;
+    // しょぼいカレンダー TID が無くコメントを引けなかったシリーズ数
+    commentSkippedNoTid: number;
 }
 
 export interface UpdateSeriesMetadata {

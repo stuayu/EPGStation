@@ -10,7 +10,7 @@ import ISyobocalProgramLookup, { SyobocalProgramMatch } from '../metadata/syoboc
 import INotificationDispatcher from '../notification/INotificationDispatcher';
 import ILlmTitleExtractor from './ILlmTitleExtractor';
 import IWorkDictionary, { WorkMatch } from './IWorkDictionary';
-import ISeriesResolver, { SeriesRecordingInput } from './ISeriesResolver';
+import ISeriesResolver, { SeriesRecordingInput, SeriesResolveTrace } from './ISeriesResolver';
 import {
     displaySeriesTitle,
     isDerivedFromTitle,
@@ -108,10 +108,29 @@ export default class SeriesResolver implements ISeriesResolver {
         @inject('ILlmTitleExtractor') private llmTitleExtractor: ILlmTitleExtractor,
         @inject('ISyobocalProgramLookup') private programLookup: ISyobocalProgramLookup,
     ) {}
-    async resolve(recording: SeriesRecordingInput): Promise<RecordedSeriesLink | null> {
-        if (!isFeatureEnabled(this.config.getConfig(), 'seriesLibrary')) return null;
+    async resolve(recording: SeriesRecordingInput, trace?: SeriesResolveTrace): Promise<RecordedSeriesLink | null> {
+        if (!isFeatureEnabled(this.config.getConfig(), 'seriesLibrary')) {
+            this.trace(trace, {
+                step: 'featureFlag',
+                label: '機能フラグ',
+                input: 'featureFlags.seriesLibrary',
+                output: '無効のため判定しない',
+                matched: false,
+            });
+            return null;
+        }
         const existing = await this.db.findLink(recording.recordedId);
-        if (existing?.manualLock) return existing;
+        if (existing?.manualLock) {
+            this.trace(trace, {
+                step: 'manualLock',
+                label: '手動確定の確認',
+                input: `recordedId=${recording.recordedId}`,
+                output: `手動確定済み (seriesId=${existing.seriesId}) のため判定しない`,
+                matched: true,
+                detail: JSON.stringify(existing),
+            });
+            return existing;
+        }
         const now0 = Date.now();
 
         // 欠番補完予約提案 (§4.7) 経由の予約であれば、ヒントを最優先で使用し、
@@ -123,6 +142,14 @@ export default class SeriesResolver implements ISeriesResolver {
                 const series = await this.db.getSeries(hint.seriesId);
                 const episode = await this.db.findEpisodeById(hint.episodeId);
                 if (series && episode) {
+                    this.trace(trace, {
+                        step: 'reservationHint',
+                        label: '欠番補完予約のヒント',
+                        input: `reserveId=${recording.reserveId}`,
+                        output: `${series.title} (episodeId=${episode.id}) で確定`,
+                        matched: true,
+                        detail: JSON.stringify(hint),
+                    });
                     await this.db.deletePendingMatchByRecordedId(recording.recordedId);
                     return await this.db.saveLink({
                         recordedId: recording.recordedId,
@@ -141,35 +168,57 @@ export default class SeriesResolver implements ISeriesResolver {
         }
 
         const parsed = parseSeriesInfo(recording.title);
+        this.trace(trace, {
+            step: 'parse',
+            label: 'タイトル正規化',
+            input: recording.title,
+            output:
+                parsed.normalizedTitle === ''
+                    ? '正規化キーを作れず判定終了'
+                    : `正規化キー: ${parsed.normalizedTitle} / 話数: ${parsed.episodeNumber ?? '不明'}`,
+            matched: parsed.normalizedTitle !== '',
+            detail: JSON.stringify(parsed),
+        });
         if (!parsed.normalizedTitle) return null;
         const now = Date.now();
 
         // 1. しょぼいカレンダーの放送予定 (放送局 + 放送開始時刻) を最優先で引く。
         // 局と時刻は「実際にその時間に何が放送されていたか」という事実なので、
         // タイトル文字列の照合 (含有・前方一致を許すため誤爆しうる) より確度が高い
-        const program = await this.lookupProgram(recording);
-        const programLink = await this.resolveByProgram(recording, parsed, program, now);
+        const program = await this.lookupProgram(recording, trace);
+        const programLink = await this.resolveByProgram(recording, parsed, program, now, trace);
         if (programLink !== null) return programLink;
 
         // 2. エイリアス辞書 (手動修正から学習した「正規化タイトル→シリーズ」の対応) を参照する
         const alias = await this.db.findAlias(parsed.normalizedTitle);
-        if (alias) {
-            const aliasSeries = await this.db.getSeries(alias.seriesId);
-            if (aliasSeries) {
-                await this.db.deletePendingMatchByRecordedId(recording.recordedId);
-                return await this.linkTo(recording, parsed, aliasSeries, 1, 'alias', now);
-            }
+        const aliasSeries = alias === null ? null : await this.db.getSeries(alias.seriesId);
+        this.trace(trace, {
+            step: 'alias',
+            label: 'エイリアス辞書',
+            input: parsed.normalizedTitle,
+            output:
+                aliasSeries === null
+                    ? alias === null
+                        ? '該当なし'
+                        : `該当あり (seriesId=${alias.seriesId}) だがシリーズが存在しない`
+                    : `${aliasSeries.title} (seriesId=${aliasSeries.id}) で確定`,
+            matched: aliasSeries !== null,
+            detail: alias === null ? undefined : JSON.stringify(alias),
+        });
+        if (aliasSeries !== null) {
+            await this.db.deletePendingMatchByRecordedId(recording.recordedId);
+            return await this.linkTo(recording, parsed, aliasSeries, 1, 'alias', now);
         }
 
         // 3. 作品辞書 (しょぼいカレンダー + Annict) で作品を確定させる。
         // 放送局ごとの表記ゆれ ("第壱話" / "break1" / "TVアニメ『X』" / "水曜アニメ・" 等) があっても
         // 同一作品へ寄せられるため、類似度スコアリングより先に試す
-        const dictionaryLink = await this.resolveByWorkDictionary(recording, parsed, program, now);
+        const dictionaryLink = await this.resolveByWorkDictionary(recording, parsed, program, now, trace);
         if (dictionaryLink !== null) return dictionaryLink;
 
         // 4. 作品辞書に載らないジャンル (ドラマ・バラエティ・情報番組など) を LLM の抽出結果で束ねる。
         // 検証先の辞書が無いため、抽出した番組名が既存シリーズの正規化タイトルと完全一致した場合に限る
-        const llmLink = await this.resolveByLlmGrouping(recording, parsed, now);
+        const llmLink = await this.resolveByLlmGrouping(recording, parsed, now, trace);
         if (llmLink !== null) return llmLink;
 
         // 5. 既存シリーズとの類似度スコアリング
@@ -185,6 +234,26 @@ export default class SeriesResolver implements ISeriesResolver {
                 confidence = score;
             }
         }
+
+        this.trace(trace, {
+            step: 'titleScoring',
+            label: '既存シリーズとの類似度',
+            input: `${parsed.normalizedTitle} (しきい値 ${threshold})`,
+            output:
+                candidates.length === 0
+                    ? '候補なし → 新規シリーズを作成'
+                    : winner === null || confidence < threshold
+                      ? `最高スコア ${confidence.toFixed(3)} がしきい値未満 → 未確定キューへ`
+                      : `${winner.title} (seriesId=${winner.id}, スコア ${confidence.toFixed(3)}) で確定`,
+            matched: candidates.length === 0 || (winner !== null && confidence >= threshold),
+            detail: JSON.stringify(
+                candidates.map(candidate => ({
+                    seriesId: candidate.id,
+                    title: candidate.title,
+                    score: scoreCandidate(parsed.normalizedTitle, candidate, recording.channelId),
+                })),
+            ),
+        });
 
         if (candidates.length === 0) {
             // 類似候補が一件も無い = 誤リンクの恐れが無い明確な新規シリーズなので自動作成する
@@ -235,21 +304,51 @@ export default class SeriesResolver implements ISeriesResolver {
         parsed: ReturnType<typeof parseSeriesInfo>,
         program: SyobocalProgramMatch | null,
         now: number,
+        trace?: SeriesResolveTrace,
     ): Promise<RecordedSeriesLink | null> {
         let match: WorkMatch | null = null;
+        // 再放送は放送日時から期を決められない (第 1 期の再放送が第 2 期の放送期間に入りうる) ため、
+        // 放送日時を渡すのは初回放送・不明のときだけにする
+        const airedAt = parsed.airType === 'rerun' ? undefined : recording.startAt;
         try {
-            match = await this.workDictionary.lookup(recording.title);
-        } catch {
+            match = await this.workDictionary.lookup(recording.title, airedAt);
+        } catch (err) {
             // 辞書の不調でシリーズ化そのものを止めないよう、失敗時は従来の類似度判定へ委ねる
+            this.trace(trace, {
+                step: 'workDictionary',
+                label: '作品辞書 (しょぼいカレンダー / Annict / Wikidata)',
+                input: recording.title,
+                output: `照会に失敗: ${err instanceof Error ? err.message : String(err)}`,
+                matched: false,
+            });
             return null;
         }
+        this.trace(trace, {
+            step: 'workDictionary',
+            label: '作品辞書 (しょぼいカレンダー / Annict / Wikidata)',
+            input: recording.title,
+            output:
+                match === null
+                    ? '該当なし'
+                    : `${match.title} (${match.source}, ${match.matchType}, 確度 ${match.confidence})`,
+            matched: match !== null,
+            detail: match === null ? undefined : JSON.stringify(match),
+        });
         let viaLlm = false;
         if (match === null) {
             // ローカル LLM フォールバック (seriesLlm 設定時のみ): 正規表現ベースの照合キーで辞書に
             // 当たらなかった場合のみ、LLM に作品名を抽出させて辞書を引き直す。
             // 抽出結果は必ず辞書で検証されるため、LLM の誤生成単体で誤リンクには至らない
-            match = await this.lookupViaLlm(recording.title);
+            match = await this.lookupViaLlm(recording.title, airedAt);
             viaLlm = match !== null;
+            this.trace(trace, {
+                step: 'llmDictionary',
+                label: 'LLM で作品名を抽出して辞書を引き直し',
+                input: this.isLlmEnabled() === false ? 'LLM 未設定のためスキップ' : recording.title,
+                output: match === null ? '該当なし' : `${match.title} (${match.source}, 確度 ${match.confidence})`,
+                matched: match !== null,
+                detail: match === null ? undefined : JSON.stringify(match),
+            });
         }
         if (match === null) return null;
 
@@ -282,14 +381,28 @@ export default class SeriesResolver implements ISeriesResolver {
         parsed: ReturnType<typeof parseSeriesInfo>,
         program: SyobocalProgramMatch | null,
         now: number,
+        trace?: SeriesResolveTrace,
     ): Promise<RecordedSeriesLink | null> {
         if (program === null) return null;
 
         const match = await this.workDictionary.findByIds({ syobocalTid: program.tid }).catch(() => null);
-        if (match === null) return null;
         // 時刻ずれ・キー局の代用で別番組を拾った場合を弾く。
         // 録画タイトルと共通部分が皆無な作品名は取り違えとみなし、後続の判定へ委ねる
-        if (isPlausibleProgramTitle(recording.title, match.title) === false) return null;
+        const plausible = match === null ? false : isPlausibleProgramTitle(recording.title, match.title);
+        this.trace(trace, {
+            step: 'programMatch',
+            label: '放送予定の TID を作品辞書で引く',
+            input: `syobocalTid=${program.tid}`,
+            output:
+                match === null
+                    ? '作品辞書に該当なし'
+                    : plausible === false
+                      ? `${match.title} は録画タイトルと共通部分が無いためスキップ`
+                      : `${match.title} で確定 (確度 ${programConfidence(program)})`,
+            matched: match !== null && plausible === true,
+            detail: match === null ? undefined : JSON.stringify(match),
+        });
+        if (match === null || plausible === false) return null;
 
         const confidence = programConfidence(program);
         const series = await this.resolveSeriesFor(match, recording.channelId, now);
@@ -410,8 +523,20 @@ export default class SeriesResolver implements ISeriesResolver {
                 .catch(() => null);
             if (episodeNumber !== null) resolved.episodeNumber = episodeNumber;
         }
+        // 3. それでも決まらない場合は遅れ放送とみなし、系列キー局の「同じ作品の放送」を遡って対応付ける。
+        //    しょぼいカレンダー未登録の県域局はキー局の数日後に流すため同時刻の照合では拾えないが、
+        //    作品が確定していればキー局の放送予定をその作品に絞って追える
+        const delayed =
+            resolved.episodeNumber === null && match.syobocalTid !== null && parsed.isSpecial === false
+                ? await this.lookupDelayedProgram(recording, match.syobocalTid)
+                : null;
+        if (delayed !== null && delayed.count !== null) {
+            resolved.episodeNumber = delayed.count;
+            // キー局より後に流れている = 遅れ放送と分かるので、放送種別も確定させる
+            if (resolved.airType === 'unknown') resolved.airType = 'delayed';
+        }
         // 放送予定から取れたサブタイトルはその回の実際の放送内容なので、話数からの逆引きより優先する
-        const episodeTitle = confirmed?.subTitle ?? null;
+        const episodeTitle = confirmed?.subTitle ?? delayed?.subTitle ?? null;
         const episodeComment = confirmed?.comment ?? null;
 
         return await this.linkTo(
@@ -432,12 +557,67 @@ export default class SeriesResolver implements ISeriesResolver {
      * @param recording: SeriesRecordingInput
      * @return Promise<SyobocalProgramMatch | null>
      */
-    private async lookupProgram(recording: SeriesRecordingInput): Promise<SyobocalProgramMatch | null> {
+    private async lookupProgram(
+        recording: SeriesRecordingInput,
+        trace?: SeriesResolveTrace,
+    ): Promise<SyobocalProgramMatch | null> {
+        const input = `channelId=${recording.channelId}, startAt=${new Date(recording.startAt).toLocaleString()}`;
         try {
-            return await this.programLookup.lookup(recording.channelId, recording.startAt);
+            const program = await this.programLookup.lookup(recording.channelId, recording.startAt);
+            this.trace(trace, {
+                step: 'programLookup',
+                label: 'しょぼいカレンダーの放送予定照会 (局 + 開始時刻)',
+                input: input,
+                output:
+                    program === null
+                        ? '該当する放送予定なし'
+                        : `TID=${program.tid} 第${program.count ?? '?'}話 ${program.subTitle ?? ''}` +
+                          ` (${program.exactStart === true ? '開始時刻一致' : '時間帯包含'}` +
+                          `${program.viaKeyStation === true ? ', キー局代用' : ''})`,
+                matched: program !== null,
+                detail: program === null ? undefined : JSON.stringify(program),
+            });
+
+            return program;
+        } catch (err) {
+            this.trace(trace, {
+                step: 'programLookup',
+                label: 'しょぼいカレンダーの放送予定照会 (局 + 開始時刻)',
+                input: input,
+                output: `照会に失敗: ${err instanceof Error ? err.message : String(err)}`,
+                matched: false,
+            });
+
+            return null;
+        }
+    }
+
+    /**
+     * 系列キー局の放送予定から、この録画に対応する遅れ放送を引く。
+     * 連携が無効・キー局が分からない・該当放送が無い場合は null を返す (話数が付かないだけ)
+     * @param recording: SeriesRecordingInput
+     * @param syobocalTid: number 確定済みの作品 ID
+     * @return Promise<SyobocalProgramMatch | null>
+     */
+    private async lookupDelayedProgram(
+        recording: SeriesRecordingInput,
+        syobocalTid: number,
+    ): Promise<SyobocalProgramMatch | null> {
+        try {
+            return await this.programLookup.lookupDelayed(recording.channelId, recording.startAt, syobocalTid);
         } catch {
             return null;
         }
+    }
+
+    /**
+     * トレース収集器が渡されている場合のみ 1 ステップ分を記録する
+     * @param trace: SeriesResolveTrace | undefined
+     * @param step: SeriesResolveTrace[number]
+     */
+    private trace(trace: SeriesResolveTrace | undefined, step: SeriesResolveTrace[number]): void {
+        if (typeof trace === 'undefined') return;
+        trace.push(step);
     }
 
     /**
@@ -454,21 +634,46 @@ export default class SeriesResolver implements ISeriesResolver {
         recording: SeriesRecordingInput,
         parsed: ReturnType<typeof parseSeriesInfo>,
         now: number,
+        trace?: SeriesResolveTrace,
     ): Promise<RecordedSeriesLink | null> {
-        if (this.isLlmEnabled() === false) return null;
+        if (this.isLlmEnabled() === false) {
+            this.trace(trace, {
+                step: 'llmGrouping',
+                label: 'LLM 抽出名で既存シリーズへ束ねる',
+                input: recording.title,
+                output: 'LLM 未設定のためスキップ',
+                matched: false,
+            });
+
+            return null;
+        }
         try {
             // 直前の作品辞書フォールバックと同じタイトルなので、抽出結果はキャッシュから返る
             const extracted = await this.llmTitleExtractor.extractWorkTitle(recording.title);
-            if (extracted === null) return null;
-            // 実在する別番組の名前を返す誤りを落とす (既存シリーズに当たってしまうため検証だけでは防げない)
-            if (isDerivedFromTitle(recording.title, extracted) === false) return null;
-
-            const key = normalizeSeriesTitle(extracted);
+            const key = extracted === null ? '' : normalizeSeriesTitle(extracted);
+            const derived = extracted !== null && isDerivedFromTitle(recording.title, extracted);
+            const candidates = derived === true && key !== '' ? await this.db.findCandidates(key) : [];
+            const series = candidates.find(candidate => candidate.normalizedTitle === key) ?? null;
+            this.trace(trace, {
+                step: 'llmGrouping',
+                label: 'LLM 抽出名で既存シリーズへ束ねる',
+                input: recording.title,
+                output:
+                    extracted === null
+                        ? '抽出できず'
+                        : derived === false
+                          ? `抽出結果「${extracted}」は録画タイトル由来でないため破棄`
+                          : key === '' || key === parsed.normalizedTitle
+                            ? `抽出結果「${extracted}」は録画タイトルと同じ正規化キーのため情報なし`
+                            : series === null
+                              ? `抽出結果「${extracted}」に完全一致する既存シリーズなし`
+                              : `${series.title} (seriesId=${series.id}) で確定`,
+                matched: series !== null,
+                detail: extracted === null ? undefined : JSON.stringify({ extracted: extracted, key: key }),
+            });
+            if (extracted === null || derived === false) return null;
             // 正規化キーが録画タイトルのものと同じなら、LLM は新しい情報を出せていない
             if (key === '' || key === parsed.normalizedTitle) return null;
-
-            const candidates = await this.db.findCandidates(key);
-            const series = candidates.find(candidate => candidate.normalizedTitle === key) ?? null;
             if (series === null) return null;
 
             await this.learnAliasFor(parsed.normalizedTitle, series.id, now);
@@ -476,7 +681,15 @@ export default class SeriesResolver implements ISeriesResolver {
 
             // 外部辞書の裏付けが無いぶん、辞書経由 (最大 0.95) より低い確度で記録する
             return await this.linkTo(recording, parsed, series, 0.9, 'llm', now);
-        } catch {
+        } catch (err) {
+            this.trace(trace, {
+                step: 'llmGrouping',
+                label: 'LLM 抽出名で既存シリーズへ束ねる',
+                input: recording.title,
+                output: `失敗: ${err instanceof Error ? err.message : String(err)}`,
+                matched: false,
+            });
+
             return null;
         }
     }
@@ -529,16 +742,17 @@ export default class SeriesResolver implements ISeriesResolver {
      * LLM 未設定・抽出失敗・辞書に該当なしの場合は null を返し、従来の類似度判定へ委ねる。
      * LLM を経由した分の不確かさを confidence に反映する (完全一致でも 1.0 にはしない)
      * @param recordedTitle: string 録画番組タイトル
+     * @param airedAt: number | undefined 録画の放送開始時刻 (続編の期を選び分けるのに使う)
      * @return Promise<WorkMatch | null>
      */
-    private async lookupViaLlm(recordedTitle: string): Promise<WorkMatch | null> {
+    private async lookupViaLlm(recordedTitle: string, airedAt?: number): Promise<WorkMatch | null> {
         if (this.isLlmEnabled() === false) return null;
         try {
             const extracted = await this.llmTitleExtractor.extractWorkTitle(recordedTitle);
             if (extracted === null) return null;
             // 実在する別作品の名前を返す誤りを落とす (辞書で引けてしまうため辞書検証だけでは防げない)
             if (isDerivedFromTitle(recordedTitle, extracted) === false) return null;
-            const match = await this.workDictionary.lookup(extracted);
+            const match = await this.workDictionary.lookup(extracted, airedAt);
             if (match === null) return null;
             return { ...match, confidence: Math.min(match.confidence, 0.95) };
         } catch {

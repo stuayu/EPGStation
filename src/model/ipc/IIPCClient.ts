@@ -6,7 +6,11 @@ import {
     ImportedExternalRecordedFileOption,
     UploadedVideoFileOption,
 } from '../operator/recorded/IRecordedManageModel';
-import { SeriesBackfillOption, SeriesBackfillResult } from '../operator/series/ISeriesBackfillManageModel';
+import {
+    SeriesAnalyzeResult,
+    SeriesBackfillOption,
+    SeriesBackfillResult,
+} from '../operator/series/ISeriesBackfillManageModel';
 
 export interface IPCReservationManageModel {
     getBroadcastStatus(): Promise<apid.BroadcastStatus>;
@@ -73,6 +77,7 @@ export interface IPCSeriesManageModel {
     startBackfill(option: SeriesBackfillOption): Promise<SeriesBackfillResult>;
     getBackfillStatus(): Promise<SeriesBackfillResult>;
     cancelBackfill(): Promise<void>;
+    analyze(recordedId: apid.RecordedId): Promise<SeriesAnalyzeResult>;
 }
 
 export interface IPCAppSettingManageModel {

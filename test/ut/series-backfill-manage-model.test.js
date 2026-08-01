@@ -15,14 +15,22 @@ const waitUntil = async predicate => {
     throw new Error('timeout waiting for condition');
 };
 
-function makeRecordedDB(rows) {
+function makeRecordedDB(rows, linkedIds = new Set()) {
+    const filtered = (afterId, filter = {}) =>
+        rows
+            .filter(r => r.id > afterId)
+            .filter(r => (typeof filter.minId === 'number' && filter.minId > 0 ? r.id >= filter.minId : true))
+            .filter(r => (filter.onlyUnlinked === true ? linkedIds.has(r.id) === false : true))
+            .sort((a, b) => a.id - b.id);
+
     return {
-        findForSeriesBackfill: async (afterId, limit) =>
-            rows
-                .filter(r => r.id > afterId)
-                .sort((a, b) => a.id - b.id)
-                .slice(0, limit),
-        countForSeriesBackfill: async afterId => rows.filter(r => r.id > afterId).length,
+        findForSeriesBackfill: async (afterId, limit, filter) => filtered(afterId, filter).slice(0, limit),
+        countForSeriesBackfill: async (afterId, filter) => filtered(afterId, filter).length,
+        findSeriesBackfillFloorId: async count => {
+            const sorted = [...rows].sort((a, b) => b.id - a.id).slice(0, count);
+            return sorted.length === 0 ? 0 : sorted[sorted.length - 1].id;
+        },
+        findId: async recordedId => rows.find(r => r.id === recordedId) ?? null,
     };
 }
 
@@ -80,10 +88,10 @@ function makeTitleDictionary(match = null) {
         getStatus: async () => ({ titleCount: 0, lastUpdate: null, lastSyncedAt: null, running: false, error: null }),
     };
 }
-function makeModel({ rows, seriesDB, settingsDB, resolver, titleDictionary }) {
+function makeModel({ rows, seriesDB, settingsDB, resolver, titleDictionary, linkedIds }) {
     return new SeriesBackfillManageModel(
         logger,
-        makeRecordedDB(rows),
+        makeRecordedDB(rows, linkedIds),
         seriesDB ?? makeSeriesDB(),
         settingsDB ?? makeSettingsDB(),
         resolver ?? makeResolver(),
@@ -311,4 +319,76 @@ test('dry run lists a would-be-created series as a pending candidate with series
     assert.equal(pendingItem.candidates.length, 1);
     assert.equal(pendingItem.candidates[0].seriesId, null);
     assert.equal(pendingItem.candidates[0].seriesTitle, '作品タイトル');
+});
+
+test('onlyUnlinked filters out recordings that are already linked to a series', async () => {
+    const rows = [1, 2, 3].map(id => ({ id, name: `title${id}`, channelId: 10, startAt: id * 1000 }));
+    const resolver = makeResolver(new Map(rows.map(r => [r.id, { seriesId: 1, recordedId: r.id }])));
+    const model = makeModel({ rows, resolver, linkedIds: new Set([2]) });
+
+    await model.start({ onlyUnlinked: true, chunkSize: 10, intervalMs: 0 });
+    await waitUntil(async () => (await model.getStatus()).state === 'completed');
+
+    const status = await model.getStatus();
+    assert.deepEqual(resolver.calls, [1, 3]);
+    assert.equal(status.processed, 2);
+    assert.equal(status.onlyUnlinked, true);
+});
+
+test('latest limits the run to the newest N recordings without moving the persisted cursor', async () => {
+    const rows = [1, 2, 3, 4, 5].map(id => ({ id, name: `title${id}`, channelId: 10, startAt: id * 1000 }));
+    const settingsDB = makeSettingsDB();
+    const resolver = makeResolver(new Map(rows.map(r => [r.id, { seriesId: 1, recordedId: r.id }])));
+    const model = makeModel({ rows, settingsDB, resolver });
+
+    await model.start({ latest: 2, chunkSize: 10, intervalMs: 0 });
+    await waitUntil(async () => (await model.getStatus()).state === 'completed');
+
+    const status = await model.getStatus();
+    assert.deepEqual(resolver.calls, [4, 5]);
+    assert.equal(status.processed, 2);
+    assert.equal(status.latest, 2);
+    // 部分実行なので全件バックフィルの再開位置 (永続化された状態) は据え置き
+    assert.equal(settingsDB._store.seriesBackfill, undefined);
+});
+
+test('analyze() resolves a single recording and returns the trace collected by the resolver', async () => {
+    const rows = [{ id: 7, name: 'アニメA 第3話', channelId: 10, startAt: 7000 }];
+    const seriesDB = makeSeriesDB({
+        getSeries: async id => ({ id, title: 'アニメA' }),
+        findEpisodeById: async id => ({ id, episodeNumber: 3, title: 'サブタイトル' }),
+    });
+    const resolver = {
+        calls: [],
+        resolve: async (input, trace) => {
+            resolver.calls.push(input.recordedId);
+            trace.push({ step: 'programLookup', label: '放送予定照会', input: 'ch=10', output: 'TID=1', matched: true });
+            return {
+                recordedId: input.recordedId,
+                seriesId: 5,
+                episodeId: 9,
+                airType: 'first',
+                matchMethod: 'syobocal',
+                confidence: 0.98,
+                manualLock: false,
+            };
+        },
+    };
+    const model = makeModel({ rows, seriesDB, resolver });
+
+    const result = await model.analyze(7);
+    assert.equal(result.recordedId, 7);
+    assert.equal(result.linked, true);
+    assert.equal(result.seriesId, 5);
+    assert.equal(result.seriesTitle, 'アニメA');
+    assert.equal(result.episodeNumber, 3);
+    assert.equal(result.episodeTitle, 'サブタイトル');
+    assert.equal(result.matchMethod, 'syobocal');
+    assert.equal(result.steps.length, 1);
+    assert.equal(result.steps[0].step, 'programLookup');
+});
+
+test('analyze() throws for an unknown recordedId', async () => {
+    const model = makeModel({ rows: [] });
+    await assert.rejects(() => model.analyze(999), /RecordedIsNotFound/);
 });

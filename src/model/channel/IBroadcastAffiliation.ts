@@ -13,6 +13,8 @@ export interface BroadcastAffiliationItem {
 export interface BroadcastAffiliationTarget {
     networkId: number;
     channelType: string;
+    // 放送局名 (省略可)。networkId が同梱データに無い局を局名で引き当てるために使う
+    name?: string;
 }
 
 export default interface IBroadcastAffiliation {

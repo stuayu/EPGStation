@@ -161,6 +161,7 @@ export enum SeriesFunctions {
     startBackfill = 'startBackfill',
     getBackfillStatus = 'getBackfillStatus',
     cancelBackfill = 'cancelBackfill',
+    analyze = 'analyze',
 }
 
 /**

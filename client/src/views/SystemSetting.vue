@@ -424,6 +424,26 @@
                                     </div>
                                     <v-alert v-if="backfillStatus.error" type="error" class="mt-2">{{ backfillStatus.error }}</v-alert>
                                 </div>
+                                <div class="d-flex flex-wrap align-center ga-4 mb-2">
+                                    <v-checkbox
+                                        v-model="backfillOnlyUnlinked"
+                                        label="まだシリーズ化されていない録画だけを対象にする"
+                                        density="compact"
+                                        hide-details
+                                    ></v-checkbox>
+                                    <v-text-field
+                                        v-model="backfillLatest"
+                                        label="直近の件数だけ実行 (空欄で全件)"
+                                        type="number"
+                                        min="1"
+                                        density="compact"
+                                        hide-details
+                                        style="max-width: 260px"
+                                    ></v-text-field>
+                                </div>
+                                <div class="text-caption mb-2">
+                                    直近の件数を指定した実行は一時的な部分実行として扱い、全件バックフィルの再開位置には影響しない
+                                </div>
                                 <div class="d-flex flex-wrap ga-2 mb-3">
                                     <v-btn variant="outlined" :loading="backfillStarting" :disabled="backfillStatus?.state === 'running'" @click="startBackfill(true)">
                                         ドライラン実行
@@ -1105,6 +1125,9 @@ class SystemSetting extends Vue {
 
     backfillStatus: SeriesBackfillResult | null = null;
     backfillStarting = false;
+    // バックフィルの対象絞り込み
+    backfillOnlyUnlinked = false;
+    backfillLatest: string = '';
     private backfillPollTimer: ReturnType<typeof setInterval> | null = null;
     private seriesSearchTimer: ReturnType<typeof setTimeout> | null = null;
     // --- 録画 0 件のシリーズの掃除 ---
@@ -1779,7 +1802,12 @@ class SystemSetting extends Vue {
     async startBackfill(dryRun: boolean): Promise<void> {
         this.backfillStarting = true;
         try {
-            this.backfillStatus = await this.seriesApi.startBackfill({ dryRun });
+            const latest = parseInt(this.backfillLatest, 10);
+            this.backfillStatus = await this.seriesApi.startBackfill({
+                dryRun,
+                onlyUnlinked: this.backfillOnlyUnlinked,
+                latest: isNaN(latest) === true || latest < 1 ? undefined : latest,
+            });
             this.snackbarState.open({ color: 'success', text: dryRun ? 'ドライランを開始しました' : 'バックフィルを開始しました' });
             this.startBackfillPolling();
         } catch (err) {

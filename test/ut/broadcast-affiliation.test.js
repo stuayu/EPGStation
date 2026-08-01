@@ -40,13 +40,32 @@ test('BIT を受信済みの放送局は系列に分類される', async () => {
     assert.equal(result.order, 3);
 });
 
-test('BIT 未受信の放送局は未分類になる', async () => {
+// BIT も同梱データも無い放送局 (ケーブル局など) だけが未分類になる
+test('BIT 未受信かつ同梱データにも無い放送局は未分類になる', async () => {
     const affiliation = new BroadcastAffiliation(createDBStub([]));
     await affiliation.updateCache();
 
-    const result = affiliation.getAffiliation({ networkId: 0x7fe0, channelType: 'GR' });
+    const result = affiliation.getAffiliation({ networkId: 12345, channelType: 'GR' });
     assert.equal(result.id, 'unknown');
     assert.equal(result.order, 99);
+});
+
+// BIT はその局を実際に受信するまで集まらないため、公知の系列を同梱データで補う
+test('BIT 未受信の放送局は同梱データの系列で補完される', async () => {
+    const affiliation = new BroadcastAffiliation(createDBStub([]));
+    await affiliation.updateCache();
+
+    // 福島中央テレビ (日テレ系) / NHK総合・東京
+    assert.equal(affiliation.getAffiliation({ networkId: 32419, channelType: 'GR' }).id, 'ntv');
+    assert.equal(affiliation.getAffiliation({ networkId: 32736, channelType: 'GR' }).id, 'nhk_g');
+});
+
+// 実際の送出が唯一の正なので、BIT を受信済みの局は同梱データより BIT を優先する
+test('BIT を受信済みの放送局は同梱データより BIT を優先する', async () => {
+    const affiliation = new BroadcastAffiliation(createDBStub([{ networkId: 32419, affiliationId: 0x03 }]));
+    await affiliation.updateCache();
+
+    assert.equal(affiliation.getAffiliation({ networkId: 32419, channelType: 'GR' }).id, 'tbs');
 });
 
 test('BS / CS / SKY は系列別に分けない', async () => {
@@ -151,4 +170,69 @@ test('放送事業者が 1 つだけならセクションの original_network_id
     ]);
 
     assert.deepEqual(db.replaced, [{ networkId: 0x7fe9, affiliationIds: [0x07] }]);
+});
+
+// networkId が同梱データに無い局は放送局名から系列を引く (全国の民放を Wikipedia の
+// 各ニュースネットワーク加盟局一覧から収録している)
+test('同梱データに無い networkId でも放送局名から系列を引ける', async () => {
+    const affiliation = new BroadcastAffiliation(createDBStub([]));
+    await affiliation.updateCache();
+    const of = name => affiliation.getAffiliation({ networkId: 99999, channelType: 'GR', name }).id;
+
+    // 実機に無い地域の局 (この環境の channel テーブルには入っていない)
+    assert.equal(of('MRT宮崎放送'), 'tbs');
+    assert.equal(of('KKB鹿児島放送'), 'ex');
+    assert.equal(of('沖縄テレビ'), 'cx');
+    assert.equal(of('高知放送1'), 'ntv');
+    assert.equal(of('テレビ大阪1'), 'tx');
+    assert.equal(of('サンテレビ'), 'independent');
+    assert.equal(of('NHK総合1・鳥取'), 'nhk_g');
+    assert.equal(of('NHKEテレ1鳥取'), 'nhk_e');
+});
+
+// 「大分放送」と「大分朝日放送」のように一方が他方を含む組み合わせがあるため、
+// 局名の照合は必ず長い名前から行う
+test('紛らわしい放送局名を取り違えない', async () => {
+    const affiliation = new BroadcastAffiliation(createDBStub([]));
+    await affiliation.updateCache();
+    const of = name => affiliation.getAffiliation({ networkId: 99999, channelType: 'GR', name }).id;
+
+    assert.equal(of('OBS大分放送'), 'tbs');
+    assert.equal(of('OAB大分朝日放送1'), 'ex');
+    assert.equal(of('TOSテレビ大分1'), 'ntv');
+    assert.equal(of('青森放送'), 'ntv');
+    assert.equal(of('青森朝日放送'), 'ex');
+    assert.equal(of('青森テレビ'), 'tbs');
+    assert.equal(of('北海道テレビ'), 'ex');
+    assert.equal(of('テレビ北海道'), 'tx');
+    assert.equal(of('広島テレビ1'), 'ntv');
+    assert.equal(of('テレビ新広島1'), 'cx');
+    assert.equal(of('広島ホームテレビ1'), 'ex');
+    assert.equal(of('鹿児島テレビ'), 'cx');
+    assert.equal(of('鹿児島讀賣テレビ'), 'ntv');
+    assert.equal(of('長崎放送'), 'tbs');
+    assert.equal(of('NCC長崎文化放送1'), 'ex');
+});
+
+// 略称は 3 文字程度で偶然一致しやすいため完全一致でのみ引く
+// (サブチャンネル番号は落としてから比較する)
+test('略称は完全一致でのみ系列を引く', async () => {
+    const affiliation = new BroadcastAffiliation(createDBStub([]));
+    await affiliation.updateCache();
+    const of = name => affiliation.getAffiliation({ networkId: 99999, channelType: 'GR', name }).id;
+
+    assert.equal(of('HBC'), 'tbs');
+    assert.equal(of('HTB1'), 'ex');
+    assert.equal(of('TVh1'), 'tx');
+    assert.equal(of('OHK'), 'cx');
+    // 略称を含むだけの別名は引かない (未分類のまま)
+    assert.equal(of('HBCラジオ第2'), 'unknown');
+});
+
+// BS / CS は系列という概念が無いので、局名が一致しても系列を付けない
+test('BS / CS は局名が一致しても系列を付けない', async () => {
+    const affiliation = new BroadcastAffiliation(createDBStub([]));
+    await affiliation.updateCache();
+
+    assert.equal(affiliation.getAffiliation({ networkId: 4, channelType: 'BS', name: 'BS日テレ' }), null);
 });

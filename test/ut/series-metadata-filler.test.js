@@ -280,3 +280,41 @@ test('fill() skips the comment fetch for series without a syobocal tid', async (
 
     assert.equal(asked, 0);
 });
+
+// 作品コメントは 1 作品ごとに外部へ問い合わせるため 1 回では取り切れない。
+// 「取れた / 引けない / 次回へ繰り越し」の内訳を返し、画面とログで進捗を追えるようにする
+test('fill() reports the breakdown of comment fetching', async () => {
+    // TID 付き 2 件 (コメント取得対象) と TID 無し 1 件 (引けない)
+    const list = [
+        series({ id: 1, syobocalTid: 100, annictId: 'a', titleKana: 'か', totalEpisodes: 1, seasonYear: 2024, seasonName: 'AUTUMN' }),
+        series({ id: 2, syobocalTid: 200, annictId: 'a', titleKana: 'か', totalEpisodes: 1, seasonYear: 2024, seasonName: 'AUTUMN' }),
+        series({ id: 3, syobocalTid: null, annictId: 'a', titleKana: 'か', totalEpisodes: 1, seasonYear: 2024, seasonName: 'AUTUMN' }),
+    ];
+    const db = makeDB(list);
+    const comment = { fetchComment: async tid => (tid === 100 ? 'コメント本文' : null) };
+    const result = await new SeriesMetadataFiller(logger, config, db, emptyDict, noLlm, comment).fill();
+
+    assert.equal(result.commentFetched, 2);
+    assert.equal(result.commentFilled, 1);
+    assert.equal(result.commentSkippedNoTid, 1);
+    assert.equal(result.commentPending, 0);
+    assert.deepEqual(db.comments, [{ id: 1, comment: 'コメント本文', source: 'dictionary' }]);
+});
+
+test('fill() does not fetch a comment that was edited by hand', async () => {
+    const db = makeDB([
+        series({ syobocalTid: 100, annictId: 'a', titleKana: 'か', totalEpisodes: 1, seasonYear: 2024, seasonName: 'AUTUMN', comment: null, commentSource: 'manual' }),
+    ]);
+    let called = 0;
+    const comment = {
+        fetchComment: async () => {
+            called++;
+            return 'コメント本文';
+        },
+    };
+    const result = await new SeriesMetadataFiller(logger, config, db, emptyDict, noLlm, comment).fill();
+
+    assert.equal(called, 0);
+    assert.equal(result.commentFetched, 0);
+    assert.equal(db.comments.length, 0);
+});

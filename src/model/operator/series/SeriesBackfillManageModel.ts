@@ -1,6 +1,6 @@
 import { inject, injectable } from 'inversify';
 import Series from '../../../db/entities/Series';
-import IRecordedDB, { SeriesBackfillCandidateRow } from '../../db/IRecordedDB';
+import IRecordedDB, { SeriesBackfillCandidateRow, SeriesBackfillFilter } from '../../db/IRecordedDB';
 import IAppSettingDB from '../../db/IAppSettingDB';
 import ISeriesDB from '../../db/ISeriesDB';
 import ILogger from '../../ILogger';
@@ -10,7 +10,9 @@ import ISeriesResolver from '../../series/ISeriesResolver';
 import ISyobocalProgramLookup from '../../metadata/syobocal/ISyobocalProgramLookup';
 import IWorkDictionary, { WorkMatch } from '../../series/IWorkDictionary';
 import { displaySeriesTitle, parseSeriesInfo } from '../../series/SeriesNormalizer';
+import { SeriesResolveTrace } from '../../series/ISeriesResolver';
 import ISeriesBackfillManageModel, {
+    SeriesAnalyzeResult,
     SeriesBackfillOption,
     SeriesBackfillPreviewCandidate,
     SeriesBackfillPreviewItem,
@@ -26,7 +28,7 @@ interface DecideResult {
     candidates: SeriesBackfillPreviewCandidate[];
 }
 
-type BackfillMode = 'real' | 'dryRun';
+type BackfillMode = 'real' | 'transient';
 
 /**
  * 既存録画のシリーズ化バックフィルを夜間の低優先バッチとしてチャンク分割しつつ実行する (提案書 §11.1)
@@ -53,10 +55,10 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
     private persistedLoaded: boolean = false;
     // IAppSettingDB に永続化される実バックフィルの状態
     private realStatus: SeriesBackfillStatus = SeriesBackfillManageModel.initialStatus(false);
-    // ドライラン専用の状態 (永続化しない)。start({dryRun:true}) の度に初期化される
-    private dryRunStatus: SeriesBackfillStatus | null = null;
-    private dryRunPreviewItems: SeriesBackfillPreviewItem[] = [];
-    private dryRunPreviewTruncated: boolean = false;
+    // ドライラン・部分実行 (直近 N 件) 専用の状態 (永続化しない)。start() の度に初期化される
+    private transientStatus: SeriesBackfillStatus | null = null;
+    private previewItems: SeriesBackfillPreviewItem[] = [];
+    private previewTruncated: boolean = false;
     // ドライラン中に「新規作成予定」と判定した仮シリーズ。
     // 実行時は作成直後のシリーズが後続録画の照合候補になるため、ドライランでも同一実行内の作成予定シリーズを候補に含めて挙動を再現する
     private dryRunVirtualSeries: Series[] = [];
@@ -94,25 +96,39 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         }
 
         const dryRun = option.dryRun === true;
-        const onlyUnlinked = dryRun === false && option.onlyUnlinked === true;
+        const onlyUnlinked = option.onlyUnlinked === true;
+        const latest = this.normalizeLatest(option.latest);
         const chunkSize = this.normalizeChunkSize(option.chunkSize);
         const intervalMs = this.normalizeIntervalMs(option.intervalMs);
-        this.lastMode = dryRun ? 'dryRun' : 'real';
+        // 直近 N 件だけの部分実行は一時的な用途なので、ドライランと同じく永続カーソルを汚さない
+        const persist = dryRun === false && latest === null;
+        this.lastMode = persist ? 'real' : 'transient';
 
-        if (dryRun === false && option.restart === true) {
+        // 直近 N 件だけを対象にする場合の下限 id (0 = 制限なし)
+        const minId = latest === null ? 0 : await this.recordedDB.findSeriesBackfillFloorId(latest);
+        const filter: SeriesBackfillFilter = { onlyUnlinked: onlyUnlinked, minId: minId };
+
+        if (persist === true && option.restart === true) {
             // 前回の再開位置 (lastRecordedId) と件数を破棄して先頭から実行し直す
             this.realStatus = SeriesBackfillManageModel.initialStatus(false);
         }
 
-        if (dryRun) {
-            // ドライランは実バックフィルの進捗 (カーソル) に影響を与えないよう常に独立して 0 から実行する
-            this.dryRunStatus = SeriesBackfillManageModel.initialStatus(true);
-            this.dryRunPreviewItems = [];
-            this.dryRunPreviewTruncated = false;
+        if (persist === false) {
+            // ドライラン・部分実行は実バックフィルの進捗 (カーソル) に影響を与えないよう独立した状態で実行する
+            this.transientStatus = SeriesBackfillManageModel.initialStatus(dryRun);
+            // 直近 N 件だけを対象にする場合は、その下限の 1 つ手前からスキャンする
+            this.transientStatus.lastRecordedId = minId > 0 ? minId - 1 : 0;
+            this.previewItems = [];
+            this.previewTruncated = false;
             this.dryRunVirtualSeries = [];
         }
 
-        const status = dryRun ? (this.dryRunStatus as SeriesBackfillStatus) : this.realStatus;
+        const status = persist === false ? (this.transientStatus as SeriesBackfillStatus) : this.realStatus;
+        status.onlyUnlinked = onlyUnlinked;
+        status.latest = latest;
+        this.log.system.info(
+            `series backfill: start (dryRun=${dryRun}, onlyUnlinked=${onlyUnlinked}, latest=${latest ?? 'なし'}, minId=${minId}, chunkSize=${chunkSize})`,
+        );
         status.state = 'running';
         status.startedAt = status.startedAt ?? Date.now();
         status.finishedAt = null;
@@ -120,11 +136,11 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         this.cancelRequested = false;
         this.running = true;
 
-        if (!dryRun) {
+        if (persist === true) {
             await this.persistReal();
         }
 
-        this.runLoop(status, dryRun, chunkSize, intervalMs, onlyUnlinked).catch(err => {
+        this.runLoop(status, dryRun, persist, chunkSize, intervalMs, filter).catch(err => {
             this.log.system.error('series backfill: unexpected error');
             this.log.system.error(err);
             status.state = 'failed';
@@ -156,44 +172,119 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
     }
 
     /**
+     * 録画 1 件だけシリーズ判定を実行し、判定過程のトレース付きで結果を返す。
+     * バックフィルの進捗 (カーソル) には影響しない
+     * @param recordedId: number
+     * @return Promise<SeriesAnalyzeResult>
+     */
+    public async analyze(recordedId: number): Promise<SeriesAnalyzeResult> {
+        const recorded = await this.recordedDB.findId(recordedId);
+        if (recorded === null) {
+            throw new Error('RecordedIsNotFound');
+        }
+
+        const trace: SeriesResolveTrace = [];
+        this.log.system.info(`series analyze: start recordedId=${recordedId} title=${recorded.name}`);
+
+        let link = null;
+        try {
+            link = await this.seriesResolver.resolve(
+                {
+                    recordedId: recorded.id,
+                    title: recorded.name,
+                    channelId: recorded.channelId,
+                    startAt: recorded.startAt,
+                },
+                trace,
+            );
+        } catch (err) {
+            this.log.system.error(`series analyze: failed recordedId=${recordedId}`);
+            this.log.system.error(err);
+            trace.push({
+                step: 'error',
+                label: '判定中のエラー',
+                input: recorded.name,
+                output: err instanceof Error ? err.message : String(err),
+                matched: false,
+            });
+        }
+
+        // 判定過程はログにも残す (外部照会の入出力を運用ログから追えるようにする)
+        for (const step of trace) {
+            this.log.system.info(
+                `series analyze: recordedId=${recordedId} [${step.step}] ${step.label} <- ${step.input} => ${step.output}`,
+            );
+        }
+
+        const series = link === null ? null : await this.seriesDB.getSeries(link.seriesId);
+        const episode =
+            link === null || link.episodeId === null ? null : await this.seriesDB.findEpisodeById(link.episodeId);
+        const pending = link === null ? (await this.seriesDB.findPendingMatchByRecordedId(recordedId)) !== null : false;
+
+        return {
+            recordedId: recorded.id,
+            title: recorded.name,
+            channelId: recorded.channelId,
+            startAt: recorded.startAt,
+            linked: link !== null,
+            pending: pending,
+            seriesId: link?.seriesId ?? null,
+            seriesTitle: series?.title ?? null,
+            episodeNumber: episode?.episodeNumber ?? null,
+            episodeTitle: episode?.title ?? null,
+            airType: link?.airType ?? null,
+            matchMethod: link?.matchMethod ?? null,
+            confidence: link?.confidence ?? null,
+            manualLock: link?.manualLock === true,
+            steps: trace,
+        };
+    }
+
+    /**
      * バックフィル本体。チャンク単位で処理 → 進捗永続化 (実行時のみ) → 短い待機 を繰り返す
      */
     private async runLoop(
         status: SeriesBackfillStatus,
         dryRun: boolean,
+        persist: boolean,
         chunkSize: number,
         intervalMs: number,
-        onlyUnlinked: boolean,
+        filter: SeriesBackfillFilter,
     ): Promise<void> {
         try {
             for (;;) {
                 if (this.cancelRequested) {
                     status.state = 'canceled';
                     status.finishedAt = Date.now();
-                    if (!dryRun) await this.persistReal();
+                    if (persist) await this.persistReal();
+                    this.log.system.info(`series backfill: canceled (processed=${status.processed})`);
                     break;
                 }
 
-                const rows = await this.recordedDB.findForSeriesBackfill(status.lastRecordedId, chunkSize);
+                const rows = await this.recordedDB.findForSeriesBackfill(status.lastRecordedId, chunkSize, filter);
                 if (rows.length === 0) {
                     status.state = 'completed';
                     status.finishedAt = Date.now();
                     status.total = status.processed;
-                    if (!dryRun) await this.persistReal();
+                    if (persist) await this.persistReal();
+                    this.log.system.info(
+                        `series backfill: completed (processed=${status.processed}, linked=${status.linked}, ` +
+                            `pending=${status.pending}, skipped=${status.skipped}, failed=${status.failed})`,
+                    );
                     break;
                 }
 
-                const remaining = await this.recordedDB.countForSeriesBackfill(status.lastRecordedId);
+                const remaining = await this.recordedDB.countForSeriesBackfill(status.lastRecordedId, filter);
                 status.total = status.processed + remaining;
 
                 if (dryRun) {
                     await this.previewChunk(rows, status);
                 } else {
-                    await this.processChunk(rows, status, onlyUnlinked);
+                    await this.processChunk(rows, status, filter.onlyUnlinked === true);
                 }
 
                 status.lastRecordedId = rows[rows.length - 1].id;
-                if (!dryRun) await this.persistReal();
+                if (persist) await this.persistReal();
 
                 await this.sleep(intervalMs);
             }
@@ -201,7 +292,9 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
             status.state = 'failed';
             status.error = err instanceof Error ? err.message : String(err);
             status.finishedAt = Date.now();
-            if (!dryRun) await this.persistReal();
+            if (persist) await this.persistReal();
+            this.log.system.error('series backfill: failed');
+            this.log.system.error(err);
         } finally {
             this.running = false;
         }
@@ -266,8 +359,8 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
                         status.pending++;
                     }
 
-                    if (this.dryRunPreviewItems.length < SeriesBackfillManageModel.MAX_PREVIEW_ITEMS) {
-                        this.dryRunPreviewItems.push({
+                    if (this.previewItems.length < SeriesBackfillManageModel.MAX_PREVIEW_ITEMS) {
+                        this.previewItems.push({
                             recordedId: row.id,
                             title: row.name,
                             matched: decision.matched,
@@ -277,7 +370,7 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
                             candidates: decision.candidates,
                         });
                     } else {
-                        this.dryRunPreviewTruncated = true;
+                        this.previewTruncated = true;
                     }
                 }
             } catch (err) {
@@ -334,7 +427,11 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
 
         // 実行時 (SeriesResolver) と同じく作品辞書を類似度スコアリングより先に引く
         const dictionaryMatch = await Promise.resolve()
-            .then(async () => await this.workDictionary.lookup(row.name))
+            // resolve() と同じく、再放送でなければ放送日時を渡して続編の期を選び分ける
+            .then(
+                async () =>
+                    await this.workDictionary.lookup(row.name, parsed.airType === 'rerun' ? undefined : row.startAt),
+            )
             .catch(() => null);
         if (dictionaryMatch !== null) {
             const existing =
@@ -487,11 +584,11 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
     }
 
     private publicStatus(): SeriesBackfillResult {
-        if (this.lastMode === 'dryRun' && this.dryRunStatus !== null) {
+        if (this.lastMode === 'transient' && this.transientStatus !== null) {
             return {
-                ...this.dryRunStatus,
-                previewItems: [...this.dryRunPreviewItems],
-                previewTruncated: this.dryRunPreviewTruncated,
+                ...this.transientStatus,
+                previewItems: [...this.previewItems],
+                previewTruncated: this.previewTruncated,
             };
         }
 
@@ -504,6 +601,19 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         }
 
         return Math.min(500, Math.max(1, Math.floor(value)));
+    }
+
+    /**
+     * 「直近 N 件」の指定を正規化する (未指定・不正値は null = 制限なし)
+     * @param value: number | undefined
+     * @return number | null
+     */
+    private normalizeLatest(value: number | undefined): number | null {
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 1) {
+            return null;
+        }
+
+        return Math.min(SeriesBackfillManageModel.MAX_LATEST, Math.floor(value));
     }
 
     private normalizeIntervalMs(value: number | undefined): number {
@@ -543,4 +653,6 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
     private static readonly CHUNK_INTERVAL_MS = 500;
     // ドライランのプレビュー結果として保持する最大件数 (メモリ肥大化防止)
     private static readonly MAX_PREVIEW_ITEMS = 2000;
+    // 「直近 N 件」で指定できる上限
+    private static readonly MAX_LATEST = 10000;
 }

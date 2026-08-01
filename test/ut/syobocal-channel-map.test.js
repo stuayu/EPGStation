@@ -41,8 +41,8 @@ test('merges an external override file on top of the bundled data', () => {
     );
     assert.equal(map.find(1, 2).syobocal, false);
     assert.equal(map.find(32736, 1024).syobocal, false);
-    // 上書きされていない同梱データは残る
-    assert.ok(map.find(32736, 1040));
+    // 上書きされていない同梱データは残る (日本テレビ)
+    assert.ok(map.find(32738, 1040));
 });
 
 test('falls back to bundled data when the override path cannot be read (graceful degradation)', () => {
@@ -117,4 +117,48 @@ test('DB-stored channel map overrides even an explicit local override file (high
     );
     await map.refreshFromDb();
     assert.equal(map.find(5, 6).syobocal, false);
+});
+
+// 同梱データは しょぼいカレンダーの ChLookup と Mirakurun の networkId/serviceId の実データから起こしている。
+// 番号を取り違えると別局の番組表を引いてしまうため、キー局の対応と一意性をテストで固定する
+test('the bundled data maps the key stations to their real syobocal ChIDs', () => {
+    const map = new ChannelMap(
+        { getConfig: () => ({}) },
+        { getLogger: () => ({ system: { warn: () => {} } }) },
+        noopSharedData,
+        noopSettingsDB,
+    );
+    const expected = [
+        // [networkId, serviceId, ChID]
+        [32736, 1024, 1], // NHK総合・東京
+        [32737, 1032, 2], // NHK Eテレ・東京
+        [32740, 1056, 3], // フジテレビ
+        [32738, 1040, 4], // 日本テレビ
+        [32739, 1048, 5], // TBS
+        [32741, 1064, 6], // テレビ朝日
+        [32742, 1072, 7], // テレビ東京
+        [32391, 23608, 19], // TOKYO MX
+        [32722, 2064, 48], // MBS毎日放送
+        [4, 211, 128], // BS11イレブン
+        [7, 333, 20], // AT-X
+    ];
+    for (const [networkId, serviceId, chId] of expected) {
+        const hit = map.find(networkId, serviceId);
+        assert.ok(hit, `${networkId}/${serviceId} が同梱データに無い`);
+        assert.equal(hit.chId, chId, `${networkId}/${serviceId} の ChID`);
+    }
+});
+
+test('the bundled data has no duplicated ChID or networkId/serviceId pair', () => {
+    const data = require('../../dist/model/metadata/syobocal/SyobocalChannelMapData').default;
+    assert.ok(data.length > 100);
+    const chIds = data.map(x => x.chId);
+    const keys = data.map(x => `${x.networkId}:${x.serviceId}`);
+    assert.equal(new Set(chIds).size, chIds.length, 'ChID が重複している');
+    assert.equal(new Set(keys).size, keys.length, 'networkId/serviceId が重複している');
+    // しょぼいカレンダー未登録として載せているものは無い (未登録局は同梱しない方針)
+    assert.equal(
+        data.every(x => x.syobocal === true),
+        true,
+    );
 });

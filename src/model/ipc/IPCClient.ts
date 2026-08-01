@@ -596,6 +596,15 @@ export default class IPCClient implements IIPCClient {
                     func: SeriesFunctions.cancelBackfill,
                 });
             },
+            analyze: (recordedId: apid.RecordedId) => {
+                return this.send({
+                    model: ModelName.series,
+                    func: SeriesFunctions.analyze,
+                    args: {
+                        recordedId: recordedId,
+                    },
+                });
+            },
         };
     }
 

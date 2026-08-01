@@ -34,4 +34,18 @@ export default interface ISyobocalProgramLookup {
      * @return Promise<SyobocalProgramMatch | null>
      */
     lookup(channelId: number, startAt: number): Promise<SyobocalProgramMatch | null>;
+
+    /**
+     * 遅れ放送の話数を、系列キー局の放送予定から引く。
+     *
+     * しょぼいカレンダー未登録の県域局は、キー局の数日後に同じ作品を流す (遅れネット) ことが多い。
+     * その場合キー局の「同時刻」の放送予定は別番組なので lookup() では拾えないが、
+     * **作品 (TID) が既に確定していれば**キー局の放送予定をその TID に絞って追える。
+     * 録画時刻より前で最も近い放送を、その録画に対応する回とみなす
+     * @param channelId: number EPGStation の放送局 ID
+     * @param startAt: number 録画の放送開始時刻 (ms)
+     * @param tid: number 確定済みの しょぼいカレンダー作品 ID
+     * @return Promise<SyobocalProgramMatch | null> キー局が分からない・該当放送が無い場合は null
+     */
+    lookupDelayed(channelId: number, startAt: number, tid: number): Promise<SyobocalProgramMatch | null>;
 }
