@@ -88,8 +88,17 @@
                                 <div v-if="logState.lines.length === 0" class="pa-4 text-medium-emphasis">
                                     表示するログがありません。
                                 </div>
-                                <div v-for="(line, index) in logState.lines" v-bind:key="index" class="log-line" v-bind:class="getLineClass(line)">
-                                    {{ line }}
+                                <!-- 時刻・レベル・カテゴリ・本文に分けて表示する (パターンに合わない行は本文のみ) -->
+                                <div v-for="(line, index) in parsedLines" v-bind:key="index" class="log-line" v-bind:class="`level-${line.level.toLowerCase()}`">
+                                    <span v-if="line.timestamp !== null" class="log-timestamp">{{ line.timestamp }}</span>
+                                    <span v-if="line.level !== 'UNKNOWN'" class="log-level">{{ line.level }}</span>
+                                    <span v-if="line.category !== null" class="log-category">{{ line.category }}</span>
+                                    <span class="log-message">
+                                        <template v-for="(part, i) in highlight(line.message)" v-bind:key="i">
+                                            <mark v-if="part.matched === true" class="log-keyword">{{ part.text }}</mark>
+                                            <template v-else>{{ part.text }}</template>
+                                        </template>
+                                    </span>
                                 </div>
                             </div>
                         </v-card>
@@ -107,6 +116,7 @@ import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ILogState from '@/model/state/log/ILogState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DateUtil from '@/util/DateUtil';
+import { HighlightedPart, ParsedLogLine, parseLogLine, splitByKeyword } from '@/util/LogLineParser';
 import Util from '@/util/Util';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
@@ -249,19 +259,19 @@ class Logs extends Vue {
     }
 
     /**
-     * ログレベルに応じた行のクラスを返す
-     * @param line: ログの 1 行
+     * 表示中のログを構造 (時刻・レベル・カテゴリ・本文) へ分解したもの
      */
-    public getLineClass(line: string): any {
-        if (/\[(ERROR|FATAL)\]/.test(line) === true) {
-            return { error: true };
-        } else if (/\[WARN\]/.test(line) === true) {
-            return { warn: true };
-        } else if (/\[DEBUG|TRACE\]/.test(line) === true) {
-            return { debug: true };
-        }
+    get parsedLines(): ParsedLogLine[] {
+        return this.logState.lines.map(line => parseLogLine(line));
+    }
 
-        return {};
+    /**
+     * 本文を絞り込みキーワードで分割する (強調表示用)
+     * @param message: string
+     * @return HighlightedPart[]
+     */
+    public highlight(message: string): HighlightedPart[] {
+        return splitByKeyword(message, this.logState.keyword);
     }
 
     /**
@@ -408,15 +418,60 @@ export default toNative(Logs);
     line-height: 1.6
 
     .log-line
+        display: flex
+        flex-wrap: wrap
+        align-items: baseline
+        gap: 0 8px
         white-space: pre-wrap
         overflow-wrap: anywhere
+        padding: 1px 0
 
-        &.error
+        // レベルごとに行の色分けと左のライン (一覧の中でエラーを見つけやすくする)
+        &.level-error, &.level-fatal
             color: #ff5252
+            background: rgba(255, 82, 82, 0.08)
+            border-left: 3px solid #ff5252
+            padding-left: 5px
 
-        &.warn
+        &.level-warn
             color: #fb8c00
+            background: rgba(251, 140, 0, 0.08)
+            border-left: 3px solid #fb8c00
+            padding-left: 5px
 
-        &.debug
+        &.level-debug, &.level-trace
             opacity: 0.7
+
+        // パターンに合わない行 (スタックトレースの続きなど) は本文をぶら下げる
+        &.level-unknown
+            padding-left: 8px
+
+    .log-timestamp
+        flex: 0 0 auto
+        opacity: 0.6
+        font-variant-numeric: tabular-nums
+
+    .log-level
+        flex: 0 0 auto
+        min-width: 3.5em
+        font-weight: bold
+        text-align: center
+        border-radius: 3px
+        padding: 0 4px
+        background: rgba(127, 127, 127, 0.15)
+
+    .log-category
+        flex: 0 0 auto
+        opacity: 0.75
+
+    .log-message
+        flex: 1 1 240px
+        min-width: 0
+        white-space: pre-wrap
+
+    .log-keyword
+        background: rgba(255, 235, 59, 0.45)
+        color: inherit
+        border-radius: 2px
+        padding: 0 1px
 </style>

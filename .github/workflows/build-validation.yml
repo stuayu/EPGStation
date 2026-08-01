@@ -25,7 +25,7 @@ jobs:
         node-version: 24.x
         cache: npm
     - name: Install server dependencies
-      run: npm ci
+      run: npm install
     - name: Run ${{ matrix.level }}
       run: npm run test:${{ matrix.level }}
 
@@ -42,7 +42,7 @@ jobs:
         node-version: 24.x
         cache: npm
     - name: Install server dependencies
-      run: npm ci
+      run: npm install
     - name: Run ITB
       run: npm run test:itb
 
