@@ -517,7 +517,7 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
      */
     private async lookupByProgram(row: SeriesBackfillCandidateRow): Promise<WorkMatch | null> {
         try {
-            const program = await this.programLookup.lookup(row.channelId, row.startAt);
+            const program = (await this.programLookup.lookup(row.channelId, row.startAt)).match;
             if (program === null) return null;
             const match = await this.workDictionary.findByIds({ syobocalTid: program.tid });
             if (match === null) return null;

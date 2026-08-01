@@ -21,6 +21,16 @@ export interface SyobocalProgramMatch {
     viaKeyStation: boolean;
 }
 
+/**
+ * 放送予定照会の結果。引けなかった場合でも「なぜ引けなかったか」を返す
+ * (どの ChID を引いたのか、何件返ったのかが分からないと切り分けができないため)
+ */
+export interface SyobocalProgramLookupResult {
+    match: SyobocalProgramMatch | null;
+    // 画面・ログ表示用の説明
+    detail: string;
+}
+
 export default interface ISyobocalProgramLookup {
     /**
      * 録画の放送局と放送開始時刻から、しょぼいカレンダーの放送予定 (ProgLookup) を引いて
@@ -31,9 +41,9 @@ export default interface ISyobocalProgramLookup {
      * しょぼいカレンダー連携が無効、局がマッピング表に無い、該当する放送が無い場合は null を返す
      * @param channelId: number EPGStation の放送局 ID
      * @param startAt: number 放送開始時刻 (ms)
-     * @return Promise<SyobocalProgramMatch | null>
+     * @return Promise<SyobocalProgramLookupResult> 引けなかった場合も理由を含めて返す
      */
-    lookup(channelId: number, startAt: number): Promise<SyobocalProgramMatch | null>;
+    lookup(channelId: number, startAt: number): Promise<SyobocalProgramLookupResult>;
 
     /**
      * 遅れ放送の話数を、系列キー局の放送予定から引く。

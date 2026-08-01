@@ -47,7 +47,7 @@ test('resolves tid / episode number / subtitle from the channel and start time',
             { pid: 2, tid: 200, stTime: '2026-08-01 23:00:00', edTime: '2026-08-01 23:30:00', count: 16, subTitle: '猫猫の推理' },
         ]),
     );
-    const match = await lookup(http).lookup(1, START_AT);
+    const match = (await lookup(http).lookup(1, START_AT)).match;
     assert.equal(match.tid, 200);
     assert.equal(match.count, 16);
     assert.equal(match.subTitle, '猫猫の推理');
@@ -62,7 +62,7 @@ test('falls back to the programme that contains the start time when it does not 
     const http = stubHttp(
         progXml([{ pid: 1, tid: 300, stTime: '2026-08-01 22:40:00', edTime: '2026-08-01 23:10:00', count: 7, subTitle: '途中から' }]),
     );
-    const match = await lookup(http).lookup(1, START_AT);
+    const match = (await lookup(http).lookup(1, START_AT)).match;
     assert.equal(match.tid, 300);
     assert.equal(match.count, 7);
 });
@@ -74,7 +74,7 @@ test('picks the nearest programme within the tolerance', async () => {
             { pid: 2, tid: 500, stTime: '2026-08-01 23:01:00', edTime: '2026-08-01 23:31:00', count: 2 },
         ]),
     );
-    const match = await lookup(http).lookup(1, START_AT);
+    const match = (await lookup(http).lookup(1, START_AT)).match;
     assert.equal(match.tid, 500);
 });
 
@@ -82,7 +82,7 @@ test('returns null when no programme matches the start time', async () => {
     const http = stubHttp(
         progXml([{ pid: 1, tid: 600, stTime: '2026-08-01 10:00:00', edTime: '2026-08-01 10:30:00', count: 1 }]),
     );
-    assert.equal(await lookup(http).lookup(1, START_AT), null);
+    assert.equal((await lookup(http).lookup(1, START_AT)).match, null);
 });
 
 test('caches the day of programmes so repeated recordings hit the network once', async () => {
@@ -97,15 +97,15 @@ test('caches the day of programmes so repeated recordings hit the network once',
 
 test('does nothing when the syobocal integration is disabled', async () => {
     const http = stubHttp(progXml([]));
-    assert.equal(await lookup(http, { enabled: false }).lookup(1, START_AT), null);
+    assert.equal((await lookup(http, { enabled: false }).lookup(1, START_AT)).match, null);
     assert.equal(http.urls.length, 0);
 });
 
 test('skips channels that are neither mapped nor resolvable to a key station', async () => {
     const http = stubHttp(progXml([]));
-    assert.equal(await lookup(http, { mapping: undefined }).lookup(1, START_AT), null);
+    assert.equal((await lookup(http, { mapping: undefined }).lookup(1, START_AT)).match, null);
     // 未登録局 (syobocal: false) も、系列が分からなければ問い合わせ先が無い
-    assert.equal(await lookup(http, { mapping: { chId: 19, syobocal: false } }).lookup(1, START_AT), null);
+    assert.equal((await lookup(http, { mapping: { chId: 19, syobocal: false } }).lookup(1, START_AT)).match, null);
     assert.equal(http.urls.length, 0);
 });
 
@@ -114,7 +114,7 @@ test('falls back to the key station of the affiliation for unregistered local ch
     const http = stubHttp(
         progXml([{ pid: 1, tid: 800, stTime: '2026-08-01 23:00:00', edTime: '2026-08-01 23:30:00', count: 9, subTitle: '同時ネット' }]),
     );
-    const match = await lookup(http, { mapping: undefined, affiliation: { id: 'ntv', name: '日テレ系', order: 3 } }).lookup(1, START_AT);
+    const match = (await lookup(http, { mapping: undefined, affiliation: { id: 'ntv', name: '日テレ系', order: 3 } }).lookup(1, START_AT)).match;
     assert.equal(match.tid, 800);
     assert.equal(match.count, 9);
     // 呼び出し側が「作品の確定には使えない」と判断できるよう印を付ける
@@ -128,14 +128,14 @@ test('a key station fallback only accepts programmes that start at the same time
     const http = stubHttp(
         progXml([{ pid: 1, tid: 900, stTime: '2026-08-01 22:40:00', edTime: '2026-08-01 23:10:00', count: 5 }]),
     );
-    const match = await lookup(http, { mapping: undefined, affiliation: { id: 'tbs', name: 'TBS系', order: 5 } }).lookup(1, START_AT);
+    const match = (await lookup(http, { mapping: undefined, affiliation: { id: 'tbs', name: 'TBS系', order: 5 } }).lookup(1, START_AT)).match;
     assert.equal(match, null);
 });
 
 // 独立系にキー局は無い
 test('an independent station has no key station to fall back to', async () => {
     const http = stubHttp(progXml([]));
-    const match = await lookup(http, { mapping: undefined, affiliation: { id: 'independent', name: '独立系', order: 90 } }).lookup(1, START_AT);
+    const match = (await lookup(http, { mapping: undefined, affiliation: { id: 'independent', name: '独立系', order: 90 } }).lookup(1, START_AT)).match;
     assert.equal(match, null);
     assert.equal(http.urls.length, 0);
 });
@@ -145,19 +145,19 @@ test('a directly mapped channel is not flagged as a key station fallback', async
     const http = stubHttp(
         progXml([{ pid: 1, tid: 1000, stTime: '2026-08-01 23:00:00', edTime: '2026-08-01 23:30:00', count: 1 }]),
     );
-    const match = await lookup(http).lookup(1, START_AT);
+    const match = (await lookup(http).lookup(1, START_AT)).match;
     assert.equal(match.viaKeyStation, false);
 });
 
 test('returns null instead of throwing when the request fails', async () => {
     const http = { urls: [], get: async () => { throw new Error('network error'); }, post: async () => ({ text: '' }) };
-    assert.equal(await lookup(http).lookup(1, START_AT), null);
+    assert.equal((await lookup(http).lookup(1, START_AT)).match, null);
 });
 
 test('rejects invalid start times without touching the network', async () => {
     const http = stubHttp(progXml([]));
-    assert.equal(await lookup(http).lookup(1, 0), null);
-    assert.equal(await lookup(http).lookup(1, Number.NaN), null);
+    assert.equal((await lookup(http).lookup(1, 0)).match, null);
+    assert.equal((await lookup(http).lookup(1, Number.NaN)).match, null);
     assert.equal(http.urls.length, 0);
 });
 
@@ -207,4 +207,46 @@ test('lookupDelayed() does nothing when the affiliation is unknown', async () =>
 
     assert.equal(await model.lookupDelayed(1, START_AT, 100), null);
     assert.equal(http.urls.length, 0);
+});
+
+// 一時的な取得失敗で空になったのか、本当にその日は放送が無いのかを完全には見分けられないので、
+// 0 件はキャッシュせず次回引き直す (空を数時間持ち回って復旧を遅らせない)
+test('an empty result is not cached so the next lookup retries', async () => {
+    const http = stubHttp(progXml([]));
+    const model = lookup(http);
+    await model.lookup(1, START_AT);
+    await model.lookup(1, START_AT);
+    assert.equal(http.urls.length, 2);
+});
+
+// Cloudflare のレート制限などで XML 以外が返った場合は「該当なし」ではなく取得失敗として扱う
+test('a non-XML response is treated as a failure, not as "no programme"', async () => {
+    const http = stubHttp('<!doctype html><html><title>Access denied | cal.syoboi.jp</title></html>');
+    const model = lookup(http);
+    assert.equal((await model.lookup(1, START_AT)).match, null);
+    // 失敗はキャッシュされないので次回また取りに行く
+    assert.equal((await model.lookup(1, START_AT)).match, null);
+    assert.equal(http.urls.length, 2);
+});
+
+// 引けなかったときに「どの ChID を引いて何件返ったか」を返す (画面とログで切り分けるため)
+test('lookup() explains why a programme could not be resolved', async () => {
+    const notMapped = await lookup(stubHttp(progXml([])), { mapping: undefined }).lookup(1, START_AT);
+    assert.equal(notMapped.match, null);
+    assert.match(notMapped.detail, /しょぼいカレンダー未対応/);
+
+    const keyStation = await lookup(stubHttp(progXml([])), {
+        mapping: undefined,
+        affiliation: { id: 'ntv', name: '日テレ系', order: 3 },
+    }).lookup(1, START_AT);
+    assert.equal(keyStation.match, null);
+    // 代用したキー局の ChID (日本テレビ = 4) と件数が分かる
+    assert.match(keyStation.detail, /ChID 4/);
+    assert.match(keyStation.detail, /0 件/);
+
+    const disabled = await lookup(stubHttp(progXml([])), { enabled: false }).lookup(1, START_AT);
+    assert.match(disabled.detail, /無効/);
+
+    const failed = await lookup(stubHttp('<!doctype html><html></html>')).lookup(1, START_AT);
+    assert.match(failed.detail, /取得に失敗/);
 });

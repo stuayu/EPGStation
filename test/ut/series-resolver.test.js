@@ -83,7 +83,8 @@ function stubProgramLookup(program = null, delayed = null) {
     return {
         calls: [],
         delayedCalls: [],
-        lookup: async function (channelId, startAt) { this.calls.push({ channelId, startAt }); return program; },
+        // 引けなかった理由も返す ({ match, detail}) 形になっている
+        lookup: async function (channelId, startAt) { this.calls.push({ channelId, startAt }); return { match: program, detail: 'テスト' }; },
         // 遅れ放送の照会 (系列キー局の放送予定を作品で絞って引く)。既定は「該当なし」
         lookupDelayed: async function (channelId, startAt, tid) { this.delayedCalls.push({ channelId, startAt, tid }); return delayed; },
     };
