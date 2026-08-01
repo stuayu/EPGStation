@@ -289,6 +289,13 @@ export default interface IConfigFile {
         // その後、長い間隔で再試行する回数と間隔 (既定 27 回 / 60000ms)
         errorRetryCount?: number;
         errorRetryIntervalMs?: number;
+        // 予約した番組が EIT[p/f] present になるまで録画を始めない (既定 true)。
+        // false にすると従来どおりストリームの最初のデータで録画を開始する
+        startGateEnabled?: boolean;
+        // EIT[p/f] を読めないまま録画を開始するまでの時間 (ms)。既定 60000
+        startGateTimeoutMs?: number;
+        // 放送中の番組の開始時刻が予約開始時刻よりこれ以上前なら「前の番組」とみなす (ms)。既定 120000
+        startGateStartMarginMs?: number;
     };
 
     // 録画履歴保存期間

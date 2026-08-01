@@ -782,6 +782,14 @@ stream:
 #     errorFastRetryIntervalMs: 5000
 #     errorRetryCount: 27
 #     errorRetryIntervalMs: 60000
+#     # 予約した番組が EIT[p/f] present になるまで録画を始めない (既定 true)。
+#     # 前番組の延長中に録画が始まって前番組が録れてしまうのを防ぎます。
+#     # false にすると従来どおりストリームの最初のデータで録画を開始します
+#     startGateEnabled: true
+#     # EIT[p/f] を読めないまま録画を開始するまでの時間 (ms)。既定 60000
+#     startGateTimeoutMs: 60000
+#     # 放送中の番組の開始時刻が予約開始時刻よりこれ以上前なら「前の番組」とみなす (ms)。既定 120000
+#     startGateStartMarginMs: 120000
 
 # Web UI / API のログイン認証。**既定で有効**です。
 # 初回アクセス時に管理ユーザーの作成画面が表示され、最初に登録した人が
