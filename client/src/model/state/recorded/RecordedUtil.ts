@@ -5,6 +5,7 @@ import GenreUtil from '../../../util/GenreUtil';
 import ChannelNameUtil from '../../../util/ChannelNameUtil';
 import IChannelModel from '../../channels/IChannelModel';
 import IServerConfigModel from '../../serverConfig/IServerConfigModel';
+import { ISettingStorageModel } from '../../storage/setting/ISettingStorageModel';
 import Util from '../../../util/Util';
 import { isFeatureEnabled } from '../../../util/FeatureFlags';
 import IRecordedUtil, { RecordedDisplayData } from './IRecordedUtil';
@@ -13,10 +14,35 @@ import IRecordedUtil, { RecordedDisplayData } from './IRecordedUtil';
 export default class RecordedUtil implements IRecordedUtil {
     private serverConfigModel: IServerConfigModel;
     private channelModel: IChannelModel;
+    private settingStorageModel: ISettingStorageModel;
 
-    constructor(@inject('IServerConfigModel') serverConfigModel: IServerConfigModel, @inject('IChannelModel') channelModel: IChannelModel) {
+    constructor(
+        @inject('IServerConfigModel') serverConfigModel: IServerConfigModel,
+        @inject('IChannelModel') channelModel: IChannelModel,
+        @inject('ISettingStorageModel') settingStorageModel: ISettingStorageModel,
+    ) {
         this.serverConfigModel = serverConfigModel;
         this.channelModel = channelModel;
+        this.settingStorageModel = settingStorageModel;
+    }
+
+    /**
+     * 一覧に表示するタイトルを作る。
+     * 「辞書のエピソード名を使う」設定が有効で、シリーズ・話数が確定している録画は
+     * 「作品名 第N話 サブタイトル」の形にする (録画タイトルに局独自の装飾が入っていても揃う)。
+     * 設定が無効な場合と、シリーズが確定していない録画は録画タイトルをそのまま返す
+     * @param item: apid.RecordedItem
+     * @return string
+     */
+    private getDisplayName(item: apid.RecordedItem): string {
+        if (this.settingStorageModel.tmp.useDictionaryEpisodeTitle === false) return item.name;
+        const series = item.series;
+        if (typeof series === 'undefined') return item.name;
+
+        const label = series.episodeLabel ?? (series.episodeNumber === null ? '' : `第${series.episodeNumber}話`);
+        const title = [series.seriesTitle, label, series.episodeTitle ?? ''].filter(x => x !== '').join(' ');
+
+        return title === '' ? item.name : title;
     }
 
     public convertRecordedItemToDisplayData(item: apid.RecordedItem, isHalfWidth: boolean): RecordedDisplayData {
@@ -27,7 +53,7 @@ export default class RecordedUtil implements IRecordedUtil {
         const result: RecordedDisplayData = {
             display: {
                 channelName: ChannelNameUtil.getRecordedChannelName(this.channelModel, item, isHalfWidth),
-                name: item.name,
+                name: this.getDisplayName(item),
                 time: DateUtil.format(startAt, 'MM/dd(w) hh:mm ~ ') + DateUtil.format(endAt, 'hh:mm'),
                 shortTime: DateUtil.format(startAt, 'MM/dd(w) hh:mm'),
                 duration: duration,

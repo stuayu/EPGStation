@@ -6,6 +6,7 @@ import IChannelDB from '../../db/IChannelDB';
 import IRecordedDB, { FindAllOption } from '../../db/IRecordedDB';
 import IWatchHistoryDB from '../../db/IWatchHistoryDB';
 import ISeriesDB from '../../db/ISeriesDB';
+import IVideoFileTsInfoDB from '../../db/IVideoFileTsInfoDB';
 import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
 import IIPCClient from '../../ipc/IIPCClient';
@@ -31,6 +32,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
     private seriesDB: ISeriesDB;
     private channelDB: IChannelDB;
     private tsInfoAnalyzer: ITsInfoAnalyzer;
+    private videoFileTsInfoDB: IVideoFileTsInfoDB;
 
     constructor(
         @inject('IIPCClient') ipc: IIPCClient,
@@ -42,6 +44,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
         @inject('ISeriesDB') seriesDB: ISeriesDB,
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('ITsInfoAnalyzer') tsInfoAnalyzer: ITsInfoAnalyzer,
+        @inject('IVideoFileTsInfoDB') videoFileTsInfoDB: IVideoFileTsInfoDB,
     ) {
         this.recordedDB = recordedDB;
         this.ipc = ipc;
@@ -52,6 +55,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
         this.seriesDB = seriesDB;
         this.channelDB = channelDB;
         this.tsInfoAnalyzer = tsInfoAnalyzer;
+        this.videoFileTsInfoDB = videoFileTsInfoDB;
     }
 
     /**
@@ -139,7 +143,56 @@ export default class RecordedApiModel implements IRecordedApiModel {
             this.recordedItemUtil.convertRecordedToRecordedItem(r, isHalfWidth, encodeIndex),
         );
         await this.attachWatchHistories(items);
+        await this.attachSeriesInfo(items);
+        await this.attachTsChannelNames(items);
         return items;
+    }
+
+    /**
+     * 録画一覧へ TS 解析 (SDT) で読み取った放送局名をまとめて付与する。
+     * 実際に録画されたストリームに入っていた名前なので、表示ではこれを最優先で使う。
+     * 1 クエリでまとめて引くので件数が増えても N+1 にならない
+     * @param items: apid.RecordedItem[]
+     */
+    private async attachTsChannelNames(items: apid.RecordedItem[]): Promise<void> {
+        if (items.length === 0) return;
+        try {
+            const index = await this.videoFileTsInfoDB.findServiceNamesByRecordedIds(items.map(item => item.id));
+            if (index.size === 0) return;
+            for (const item of items) {
+                const name = index.get(item.id);
+                if (typeof name === 'string') item.tsChannelName = name;
+            }
+        } catch (err) {
+            // 解析結果が引けなくても従来の放送局名で表示できるため、付与を諦めるだけにする
+            console.error(err);
+        }
+    }
+
+    /**
+     * 録画一覧へシリーズ・エピソード情報 (話数・サブタイトル・放送回コメント) をまとめて付与する。
+     * 一覧のタイトル表示を「辞書のエピソード名」に切り替えられるようにするために使う。
+     * 1 クエリでまとめて引くので件数が増えても N+1 にならない
+     * @param items: apid.RecordedItem[]
+     */
+    private async attachSeriesInfo(items: apid.RecordedItem[]): Promise<void> {
+        if (!isFeatureEnabled(this.configuration.getConfig(), 'seriesLibrary')) return;
+        if (items.length === 0) return;
+        try {
+            const index = await this.seriesDB.findSeriesInfoByRecordedIds(items.map(item => item.id));
+            if (index.size === 0) return;
+            for (const item of items) {
+                const info = index.get(item.id);
+                if (typeof info === 'undefined') continue;
+                item.series = {
+                    ...info,
+                    episodeCommentSource: info.episodeCommentSource as apid.RecordedSeriesInfo['episodeCommentSource'],
+                };
+            }
+        } catch (err) {
+            // シリーズ情報が引けなくても録画一覧そのものは返せるため、付与を諦めるだけにする
+            console.error(err);
+        }
     }
 
     /**

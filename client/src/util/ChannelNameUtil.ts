@@ -12,22 +12,29 @@ namespace ChannelNameUtil {
     export interface ChannelNameSource {
         channelId: apid.ChannelId;
         channelName?: string; // 録画時点の放送局名
+        tsChannelName?: string; // TS 解析 (SDT) で読み取った放送局名
     }
 
     /**
      * 録画番組の放送局名を返す
      *
+     * 実際に録画されたストリームに入っていた名前 (TS の SDT) を最優先で使う。
      * 転居などで現在の channel 情報から放送局が引けなくなっても表示名が壊れないように、
      * 以下の順で解決する
-     * 1. 現在の放送局情報 (半角表示設定が反映される)
-     * 2. 録画時点に保存された放送局名
-     * 3. networkId / serviceId 表記 (最後の手段)
+     * 1. TS 解析で読み取った放送局名 (録画されたストリーム自身が名乗っている名前)
+     * 2. 現在の放送局情報 (半角表示設定が反映される)
+     * 3. 録画時点に保存された放送局名
+     * 4. networkId / serviceId 表記 (最後の手段)
      * @param channelModel: IChannelModel
      * @param item: ChannelNameSource
      * @param isHalfWidth: boolean 半角文字で取得するか
      * @return string
      */
     export const getRecordedChannelName = (channelModel: IChannelModel, item: ChannelNameSource, isHalfWidth: boolean): string => {
+        if (typeof item.tsChannelName === 'string' && item.tsChannelName.length > 0) {
+            return item.tsChannelName;
+        }
+
         const channel = channelModel.findChannel(item.channelId, isHalfWidth);
         if (channel !== null) {
             return channel.name;

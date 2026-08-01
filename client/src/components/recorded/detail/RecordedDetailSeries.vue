@@ -58,6 +58,27 @@
             </div>
         </div>
 
+        <!-- 放送回コメント (しょぼいカレンダーの ProgComment 由来 / 手動編集) -->
+        <div v-if="mapping.episodeComment" class="mt-3">
+            <div class="text-caption text-grey mb-1">
+                この回のコメント
+                <v-chip v-if="mapping.episodeCommentSource === 'manual'" size="x-small" color="primary">手動</v-chip>
+            </div>
+            <div class="series-comment text-body-2">{{ mapping.episodeComment }}</div>
+        </div>
+
+        <!-- 作品コメント。長文なので既定では折りたたむ -->
+        <div v-if="detail.comment" class="mt-3">
+            <div class="text-caption text-grey mb-1">
+                作品コメント
+                <v-chip v-if="detail.commentSource === 'manual'" size="x-small" color="primary">手動</v-chip>
+            </div>
+            <div class="series-comment text-body-2" :class="{ 'is-collapsed': isCommentCollapsed === true }">{{ detail.comment }}</div>
+            <v-btn variant="text" size="small" @click="isCommentCollapsed = !isCommentCollapsed">
+                {{ isCommentCollapsed === true ? 'もっと見る' : '折りたたむ' }}
+            </v-btn>
+        </div>
+
         <div v-if="relatedRecorded.length > 0" class="mt-3">
             <div class="text-caption text-grey mb-1">同じシリーズの録画 ({{ detail.recordedCount }} 件)</div>
             <v-list density="compact" class="related-list">
@@ -106,6 +127,8 @@ class RecordedDetailSeries extends Vue {
 
     public mapping: SeriesMapping | null = null;
     public detail: SeriesDetail | null = null;
+    // 作品コメントは数 KB の長文なので既定では折りたたんで表示する
+    public isCommentCollapsed: boolean = true;
 
     private static readonly RELATED_MAX = 8;
 
@@ -255,6 +278,17 @@ export default toNative(RecordedDetailSeries);
     .related-list
         max-height: 320px
         overflow-y: auto
+
+    // コメントは Wiki 記法の長文 (改行あり) なので、改行を活かしつつ既定では高さを抑える
+    .series-comment
+        white-space: pre-wrap
+        word-break: break-word
+
+        &.is-collapsed
+            display: -webkit-box
+            -webkit-line-clamp: 5
+            -webkit-box-orient: vertical
+            overflow: hidden
 
     // サイドバー幅など狭いときは画像を上に回して横幅一杯に伸ばす
     @container (max-width: 360px)

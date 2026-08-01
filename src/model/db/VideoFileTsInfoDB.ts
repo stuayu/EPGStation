@@ -13,6 +13,8 @@ export default class VideoFileTsInfoDB implements IVideoFileTsInfoDB {
     // tsreplace 系 (type: 'encoded' だが出力が .ts のまま PSI/SI を保持) も対象に含めたいため、
     // type ではなく拡張子で判定する (詳細は VideoFileAnalyzeModel.analyzeTsInfo() のコメント参照)
     private static readonly ANALYZABLE_EXTENSION_LIKE = '%.ts';
+    // IN 句のバインド変数上限 (SQLite は既定 999) を超えないように分割する単位
+    private static readonly LOOKUP_CHUNK_SIZE = 200;
 
     private op: IDBOperator;
     private promieRetry: IPromiseRetry;
@@ -74,6 +76,40 @@ export default class VideoFileTsInfoDB implements IVideoFileTsInfoDB {
         return await this.promieRetry.run(() => {
             return queryBuilder.getOne();
         });
+    }
+
+    public async findServiceNamesByRecordedIds(recordedIds: apid.RecordedId[]): Promise<Map<apid.RecordedId, string>> {
+        const result = new Map<apid.RecordedId, string>();
+        if (recordedIds.length === 0) return result;
+        const connection = await this.op.getConnection();
+
+        // IN 句のバインド変数上限 (SQLite は既定 999) を超えないよう分割して引く
+        for (let i = 0; i < recordedIds.length; i += VideoFileTsInfoDB.LOOKUP_CHUNK_SIZE) {
+            const chunk = recordedIds.slice(i, i + VideoFileTsInfoDB.LOOKUP_CHUNK_SIZE);
+            const rows = await this.promieRetry.run(() => {
+                return (
+                    connection
+                        .getRepository(VideoFileTsInfo)
+                        .createQueryBuilder('ts_info')
+                        .innerJoin(VideoFile, 'video_file', 'video_file.id = ts_info.videoFileId')
+                        .where('video_file.recordedId IN (:...recordedIds)', { recordedIds: chunk })
+                        .andWhere('ts_info.serviceName IS NOT NULL')
+                        .select('video_file.recordedId', 'recordedId')
+                        .addSelect('ts_info.serviceName', 'serviceName')
+                        // 同じ録画に複数のファイルがある場合は先頭 (最初に解析されたもの) を採る
+                        .orderBy('ts_info.videoFileId', 'ASC')
+                        .getRawMany<{ recordedId: number; serviceName: string | null }>()
+                );
+            });
+            for (const row of rows) {
+                const recordedId = Number(row.recordedId);
+                const serviceName = (row.serviceName ?? '').trim();
+                if (serviceName === '' || result.has(recordedId) === true) continue;
+                result.set(recordedId, serviceName);
+            }
+        }
+
+        return result;
     }
 
     /**
