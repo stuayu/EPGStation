@@ -32,3 +32,29 @@ test('isDerivedFromTitle rejects a real-but-unrelated work name the llm hallucin
 
     assert.equal(isDerivedFromTitle('作品名', ''), false);
 });
+
+// NHK 系は「番組名（17）」のように括弧だけで話数を表す
+test('parses the NHK style parenthesized episode number', () => {
+    const parsed = parseSeriesInfo('アニメ　アオアシ（１７）東京都リーグ第７節　多摩体育大学附属高校戦[字]');
+    assert.equal(parsed.episodeNumber, 17);
+    // 話数以降 (サブタイトル) はシリーズ名から落とす
+    assert.equal(parsed.normalizedTitle, 'アオアシ');
+
+    const withSpace = parseSeriesInfo('作品名 （８）サブタイトル');
+    assert.equal(withSpace.episodeNumber, 8);
+    assert.equal(withSpace.normalizedTitle, '作品名');
+});
+
+// 括弧数字は年号・版数とも紛らわしいので、他の話数表記があればそちらを優先する
+test('prefers an explicit episode marker over a parenthesized number', () => {
+    const parsed = parseSeriesInfo('魔入りました！入間くん４（１８）第3話 サブタイトル');
+    assert.equal(parsed.episodeNumber, 3);
+});
+
+// 「(2024)」のような年号を話数と取り違えない
+test('does not read a year in parentheses as an episode number', () => {
+    assert.equal(parseSeriesInfo('劇場版 作品名(2024)').episodeNumber, null);
+    assert.equal(parseSeriesInfo('作品名（1999）').episodeNumber, null);
+    // 版の違いを表す括弧はシリーズ名に残す (話数ではない)
+    assert.equal(parseSeriesInfo('CLANNAD AFTER STORY(HDマスター版)').episodeNumber, null);
+});
