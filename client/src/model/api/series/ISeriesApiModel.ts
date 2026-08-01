@@ -84,9 +84,10 @@ export default interface ISeriesApiModel {
     listSeasons(): Promise<apid.SeriesSeasonItem[]>;
     /**
      * 既存シリーズのクール・読み仮名・総話数・外部 ID を作品辞書から埋め直す
+     * @param seriesId: number | undefined 指定するとそのシリーズだけを対象にし、埋まっている項目も引き直す
      * @return Promise<RefreshSeriesMetadataResult>
      */
-    refreshMetadata(): Promise<RefreshSeriesMetadataResult>;
+    refreshMetadata(seriesId?: number): Promise<RefreshSeriesMetadataResult>;
     /**
      * シリーズのクール・読み仮名・総話数を手動で設定する
      * @param seriesId: number

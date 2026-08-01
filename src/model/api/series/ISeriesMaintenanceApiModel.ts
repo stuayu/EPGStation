@@ -60,9 +60,11 @@ export default interface ISeriesMaintenanceApiModel {
     /**
      * 既存シリーズのクール・読み仮名・総話数・外部 ID を作品辞書から埋め直す。
      * 辞書の導入前に作られたシリーズや、辞書が更新された後の追随に使う
+     * @param seriesId: number | undefined 指定した場合はそのシリーズだけを対象にし、
+     *                  すでに埋まっている項目も辞書の値で引き直す (手動設定は除く)
      * @return Promise<RefreshSeriesMetadataResult>
      */
-    refreshMetadata(): Promise<RefreshSeriesMetadataResult>;
+    refreshMetadata(seriesId?: number): Promise<RefreshSeriesMetadataResult>;
     /**
      * fromSeriesIds のリンク・エピソード・エイリアスを toSeriesId へ統合し、統合元のシリーズを削除する
      * @param fromSeriesIds: number[] 統合元。toSeriesId が混ざっていても無視する

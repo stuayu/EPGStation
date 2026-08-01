@@ -502,22 +502,62 @@ class RecordedManageModel implements IRecordedManageModel {
             endAt: endAt,
             name: tsInfo.eventName ?? baseName,
         };
+        RecordedManageModel.applyTsInfoToCreateOption(createOption, tsInfo);
+
+        this.log.system.info(`create recorded from ts: ${createOption.name} (${channel.name})`);
+
+        return await this.createNewRecorded(createOption);
+    }
+
+    /**
+     * TS 解析結果 (EIT[p/f]) の番組情報を新規録画作成オプションへ写す。
+     *
+     * EPGStation で録画した番組は Mirakurun の番組情報から概要・詳細・ジャンル 3 組・
+     * 映像音声情報まで入るため、取り込み・アップロードでも同じ項目を埋めて表示差を無くす
+     * @param createOption: apid.CreateNewRecordedOption 書き込み先
+     * @param tsInfo: TsInfo TS 解析結果
+     */
+    private static applyTsInfoToCreateOption(createOption: apid.CreateNewRecordedOption, tsInfo: TsInfo): void {
         if (tsInfo.eventDescription !== null) {
             createOption.description = tsInfo.eventDescription;
         }
         if (tsInfo.eventExtended !== null) {
             createOption.extended = tsInfo.eventExtended;
         }
-        if (typeof tsInfo.genres[0]?.lv1 === 'number') {
-            createOption.genre1 = tsInfo.genres[0].lv1;
-        }
-        if (typeof tsInfo.genres[0]?.lv2 === 'number') {
-            createOption.subGenre1 = tsInfo.genres[0].lv2;
-        }
 
-        this.log.system.info(`create recorded from ts: ${createOption.name} (${channel.name})`);
+        // ジャンルは EIT の content_descriptor に最大 3 組載る
+        const genreKeys: Array<['genre1' | 'genre2' | 'genre3', 'subGenre1' | 'subGenre2' | 'subGenre3']> = [
+            ['genre1', 'subGenre1'],
+            ['genre2', 'subGenre2'],
+            ['genre3', 'subGenre3'],
+        ];
+        genreKeys.forEach(([genreKey, subGenreKey], i) => {
+            const genre = tsInfo.genres[i];
+            if (typeof genre === 'undefined') {
+                return;
+            }
+            createOption[genreKey] = genre.lv1;
+            createOption[subGenreKey] = genre.lv2;
+        });
 
-        return await this.createNewRecorded(createOption);
+        if (tsInfo.videoType !== null) {
+            createOption.videoType = tsInfo.videoType as apid.ProgramVideoType;
+        }
+        if (tsInfo.videoResolution !== null) {
+            createOption.videoResolution = tsInfo.videoResolution as apid.ProgramVideoResolution;
+        }
+        if (tsInfo.videoStreamContent !== null) {
+            createOption.videoStreamContent = tsInfo.videoStreamContent;
+        }
+        if (tsInfo.videoComponentType !== null) {
+            createOption.videoComponentType = tsInfo.videoComponentType;
+        }
+        if (tsInfo.audioSamplingRate !== null) {
+            createOption.audioSamplingRate = tsInfo.audioSamplingRate as apid.ProgramAudioSamplingRate;
+        }
+        if (tsInfo.audioComponentType !== null) {
+            createOption.audioComponentType = tsInfo.audioComponentType;
+        }
     }
 
     /**
@@ -624,20 +664,16 @@ class RecordedManageModel implements IRecordedManageModel {
                     if (typeof option.ruleId === 'number') {
                         createOption.ruleId = option.ruleId;
                     }
-                    // 番組の概要・詳細・ジャンルは画面から指定できないため、TS から取れた値をそのまま使う
-                    if (tsInfo !== null && tsInfo.eventDescription !== null) {
-                        createOption.description = tsInfo.eventDescription;
+                    // 番組の概要・詳細・ジャンル・映像音声情報は画面から指定できないため、TS から取れた値をそのまま使う
+                    if (tsInfo !== null) {
+                        RecordedManageModel.applyTsInfoToCreateOption(createOption, tsInfo);
                     }
-                    if (tsInfo !== null && tsInfo.eventExtended !== null) {
-                        createOption.extended = tsInfo.eventExtended;
+                    // 画面から指定されたジャンルは TS 由来の値より優先する
+                    if (typeof option.genre1 === 'number') {
+                        createOption.genre1 = option.genre1;
                     }
-                    const genre1 = option.genre1 ?? tsInfo?.genres[0]?.lv1;
-                    const subGenre1 = option.subGenre1 ?? tsInfo?.genres[0]?.lv2;
-                    if (typeof genre1 === 'number') {
-                        createOption.genre1 = genre1;
-                    }
-                    if (typeof subGenre1 === 'number') {
-                        createOption.subGenre1 = subGenre1;
+                    if (typeof option.subGenre1 === 'number') {
+                        createOption.subGenre1 = option.subGenre1;
                     }
                     recordedId = await this.createNewRecorded(createOption);
                     isNewRecorded = true;
@@ -826,6 +862,25 @@ class RecordedManageModel implements IRecordedManageModel {
         }
         if (typeof option.subGenre3 !== 'undefined') {
             recorded.subGenre3 = option.subGenre3;
+        }
+        // 映像・音声情報 (EPGStation で録画した番組と同じ項目を TS 解析からも埋める)
+        if (typeof option.videoType !== 'undefined') {
+            recorded.videoType = option.videoType;
+        }
+        if (typeof option.videoResolution !== 'undefined') {
+            recorded.videoResolution = option.videoResolution;
+        }
+        if (typeof option.videoStreamContent !== 'undefined') {
+            recorded.videoStreamContent = option.videoStreamContent;
+        }
+        if (typeof option.videoComponentType !== 'undefined') {
+            recorded.videoComponentType = option.videoComponentType;
+        }
+        if (typeof option.audioSamplingRate !== 'undefined') {
+            recorded.audioSamplingRate = option.audioSamplingRate;
+        }
+        if (typeof option.audioComponentType !== 'undefined') {
+            recorded.audioComponentType = option.audioComponentType;
         }
 
         const recordedId = await this.recordedDB.insertOnce(recorded).catch(err => {

@@ -7,7 +7,7 @@ import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import ISyobocalTitleDictionary from '../metadata/syobocal/ISyobocalTitleDictionary';
 import ILlmTitleExtractor from './ILlmTitleExtractor';
-import ISeriesMetadataFiller, { SeriesMetadataFillResult } from './ISeriesMetadataFiller';
+import ISeriesMetadataFiller, { SeriesMetadataFillOption, SeriesMetadataFillResult } from './ISeriesMetadataFiller';
 import IWorkDictionary, { WorkMatch } from './IWorkDictionary';
 import { isDerivedFromTitle } from './SeriesNormalizer';
 
@@ -54,8 +54,11 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
         this.log = logger.getLogger();
     }
 
-    public async fill(): Promise<SeriesMetadataFillResult> {
-        const all = await this.db.findAllSeries();
+    public async fill(option?: SeriesMetadataFillOption): Promise<SeriesMetadataFillResult> {
+        const targetIds = Array.isArray(option?.seriesIds) ? new Set(option.seriesIds) : null;
+        // 1 件だけの再取得 (シリーズ詳細画面) では、すでに埋まっている項目も引き直したい
+        const force = option?.force === true;
+        const all = (await this.db.findAllSeries()).filter(s => targetIds === null || targetIds.has(s.id));
         // クールを録画から推測するための最古録画日時 (1 クエリでまとめて引く)
         const firstAiredAt = await this.db.findFirstAiredAtMap().catch(() => new Map<number, number>());
         let updated = 0;
@@ -74,15 +77,19 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
         for (const series of all) {
             // 手動設定済みのクールは自動補完で上書きしない
             const seasonIsLocked = series.seasonSource === 'manual';
-            const needsSeason = seasonIsLocked === false && (series.seasonYear === null || series.seasonName === null);
+            const needsSeason =
+                seasonIsLocked === false &&
+                (force === true || series.seasonYear === null || series.seasonName === null);
             // 手動で編集・削除したコメントは自動取得で書き戻さない
-            const needsComment = series.commentSource !== 'manual' && typeof series.comment !== 'string';
+            const needsComment =
+                series.commentSource !== 'manual' && (force === true || typeof series.comment !== 'string');
             // 表示名を作品辞書の正式タイトルへ合わせる。手動で付けた名前は上書きしない。
             // すでに辞書名へ同期済みでも、辞書側の表記が変わることがあるため引き直す
             const needsTitle = series.titleSource !== 'manual';
             // 作品辞書から埋めるものが残っているか。コメントは辞書本体には無く TID 指定で個別に引くため、
             // ここには含めない (コメントだけが未取得のシリーズで辞書を引き直さない)
             const needsDictionary =
+                force === true ||
                 series.titleKana === null ||
                 series.totalEpisodes === null ||
                 needsSeason === true ||
@@ -155,12 +162,21 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
                     // すでに辞書名と一致しているものは、以後引き直さなくて済むよう出所だけ記録する
                     patch.titleSource = 'dictionary';
                 }
-                if (series.syobocalTid === null && match.syobocalTid !== null) patch.syobocalTid = match.syobocalTid;
-                if (series.annictId === null && match.annictId !== null) patch.annictId = String(match.annictId);
-                if (series.wikidataQid === null && match.wikidataQid !== null) patch.wikidataQid = match.wikidataQid;
-                if (series.tmdbId === null && match.tmdbId !== null) patch.tmdbId = match.tmdbId;
-                if (series.titleKana === null && match.titleKana !== null) patch.titleKana = match.titleKana;
-                if (series.totalEpisodes === null && match.totalEpisodes !== null) {
+                // force 指定 (画面からの明示的な再取得) では、すでに入っている値も辞書の値で上書きする
+                if ((force === true || series.syobocalTid === null) && match.syobocalTid !== null) {
+                    patch.syobocalTid = match.syobocalTid;
+                }
+                if ((force === true || series.annictId === null) && match.annictId !== null) {
+                    patch.annictId = String(match.annictId);
+                }
+                if ((force === true || series.wikidataQid === null) && match.wikidataQid !== null) {
+                    patch.wikidataQid = match.wikidataQid;
+                }
+                if ((force === true || series.tmdbId === null) && match.tmdbId !== null) patch.tmdbId = match.tmdbId;
+                if ((force === true || series.titleKana === null) && match.titleKana !== null) {
+                    patch.titleKana = match.titleKana;
+                }
+                if ((force === true || series.totalEpisodes === null) && match.totalEpisodes !== null) {
                     patch.totalEpisodes = match.totalEpisodes;
                 }
                 if (needsSeason === true && match.seasonYear !== null && match.seasonName !== null) {

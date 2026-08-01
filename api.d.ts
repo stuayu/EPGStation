@@ -1283,6 +1283,13 @@ export interface CreateNewRecordedOption {
     subGenre2?: ProgramGenreLv2;
     genre3?: ProgramGenreLv1;
     subGenre3?: ProgramGenreLv2;
+    // 映像・音声情報 (TS の component_descriptor / audio_component_descriptor 由来)
+    videoType?: ProgramVideoType;
+    videoResolution?: ProgramVideoResolution;
+    videoStreamContent?: number;
+    videoComponentType?: number;
+    audioSamplingRate?: ProgramAudioSamplingRate;
+    audioComponentType?: number;
 }
 
 /**
@@ -1581,7 +1588,12 @@ export interface SeriesDetail extends SeriesListItem {
     comment?: string | null;
     // 作品コメントの出所 (dictionary: 作品辞書から取得 / manual: 画面から編集)
     commentSource?: 'dictionary' | 'manual' | null;
-    externalIds: { syobocalTid: number | null; annictId: string | null; tmdbId: number | null };
+    externalIds: {
+        syobocalTid: number | null;
+        annictId: string | null;
+        wikidataQid: string | null;
+        tmdbId: number | null;
+    };
     channels: Array<{ channelId: ChannelId; channelName: string | null; count: number }>;
     continuity: {
         missingEpisodes: Array<{ seasonNumber: number; episodeNumber: number }>;

@@ -378,3 +378,97 @@ test('fill() keeps a manually edited title', async () => {
     assert.equal(typeof db.updates[0]?.patch.title, 'undefined');
     assert.equal(typeof db.updates[0]?.patch.titleSource, 'undefined');
 });
+
+test('fill() with seriesIds only touches the specified series', async () => {
+    const db = makeDB([series({ id: 1 }), series({ id: 2, title: '別作品', normalizedTitle: '別作品' })]);
+    const dict = {
+        lookup: async () => ({
+            syobocalTid: 10,
+            annictId: null,
+            wikidataQid: null,
+            tmdbId: null,
+            title: '作品',
+            titleKana: null,
+            seasonYear: null,
+            seasonName: null,
+            totalEpisodes: null,
+        }),
+        lookupEpisodeNumber: async () => null,
+    };
+    const result = await new SeriesMetadataFiller(logger, config, db, dict, noLlm, noComment).fill({ seriesIds: [2] });
+
+    assert.equal(result.scanned, 1);
+    assert.deepEqual(
+        db.updates.map(x => x.id),
+        [2],
+    );
+});
+
+test('fill() with force overwrites values that are already filled in', async () => {
+    const db = makeDB([
+        series({
+            syobocalTid: 1,
+            annictId: '2',
+            titleKana: 'ふるいよみ',
+            totalEpisodes: 1,
+            seasonYear: 2000,
+            seasonName: 'WINTER',
+            seasonSource: 'estimated',
+        }),
+    ]);
+    const dict = {
+        lookup: async () => ({
+            syobocalTid: 10,
+            annictId: 20,
+            wikidataQid: 'Q1',
+            tmdbId: 5,
+            title: '作品',
+            titleKana: 'さくひん',
+            seasonYear: 2024,
+            seasonName: 'AUTUMN',
+            totalEpisodes: 12,
+        }),
+        lookupEpisodeNumber: async () => null,
+    };
+    const result = await new SeriesMetadataFiller(logger, config, db, dict, noLlm, noComment).fill({
+        seriesIds: [1],
+        force: true,
+    });
+
+    assert.equal(result.updated, 1);
+    assert.equal(db.updates[0].patch.syobocalTid, 10);
+    assert.equal(db.updates[0].patch.annictId, '20');
+    assert.equal(db.updates[0].patch.titleKana, 'さくひん');
+    assert.equal(db.updates[0].patch.totalEpisodes, 12);
+    assert.equal(db.updates[0].patch.seasonYear, 2024);
+});
+
+test('fill() with force still keeps a manually set season and title', async () => {
+    const db = makeDB([
+        series({
+            title: '手動で付けた名前',
+            titleSource: 'manual',
+            seasonYear: 2000,
+            seasonName: 'WINTER',
+            seasonSource: 'manual',
+        }),
+    ]);
+    const dict = {
+        lookup: async () => ({
+            syobocalTid: 10,
+            annictId: null,
+            wikidataQid: null,
+            tmdbId: null,
+            title: '作品',
+            titleKana: null,
+            seasonYear: 2024,
+            seasonName: 'AUTUMN',
+            totalEpisodes: null,
+        }),
+        lookupEpisodeNumber: async () => null,
+    };
+    await new SeriesMetadataFiller(logger, config, db, dict, noLlm, noComment).fill({ seriesIds: [1], force: true });
+
+    assert.equal(typeof db.updates[0]?.patch.title, 'undefined');
+    assert.equal(typeof db.updates[0]?.patch.seasonYear, 'undefined');
+});

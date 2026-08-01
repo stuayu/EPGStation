@@ -15,6 +15,7 @@ import IRecordedDB, {
     FindAllOption,
     RecordedChannelUpdateValues,
     RecordedColumnOption,
+    RecordedProgramUpdateValues,
     SeriesBackfillCandidateRow,
     SeriesBackfillFilter,
 } from './IRecordedDB';
@@ -115,6 +116,25 @@ export default class RecordedDB implements IRecordedDB {
      * @return Promise<void>
      */
     public async updateChannel(recordedId: apid.RecordedId, values: RecordedChannelUpdateValues): Promise<void> {
+        const connection = await this.op.getConnection();
+        const queryBuilder = connection.createQueryBuilder().update(Recorded).set(values).where({ id: recordedId });
+        await this.promieRetry.run(() => {
+            return queryBuilder.execute();
+        });
+    }
+
+    /**
+     * 指定した録画情報の番組情報 (概要・詳細・ジャンル・映像音声情報) を更新する。
+     * TS 解析から未設定の項目を補完する用途で使う
+     * @param recordedId: apid.RecordedId
+     * @param values: RecordedProgramUpdateValues 更新する項目だけを持つオブジェクト
+     * @return Promise<void>
+     */
+    public async updateProgramInfo(recordedId: apid.RecordedId, values: RecordedProgramUpdateValues): Promise<void> {
+        if (Object.keys(values).length === 0) {
+            return;
+        }
+
         const connection = await this.op.getConnection();
         const queryBuilder = connection.createQueryBuilder().update(Recorded).set(values).where({ id: recordedId });
         await this.promieRetry.run(() => {

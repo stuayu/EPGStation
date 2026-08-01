@@ -4,10 +4,11 @@ import * as path from 'path';
 import * as apid from '../../../api';
 import VideoFile from '../../db/entities/VideoFile';
 import VideoFileTsInfo from '../../db/entities/VideoFileTsInfo';
+import StrUtil from '../../util/StrUtil';
 import IVideoUtil from '../api/video/IVideoUtil';
 import IBroadcastAffiliationCollector from '../channel/IBroadcastAffiliationCollector';
 import IChannelDB from '../db/IChannelDB';
-import IRecordedDB from '../db/IRecordedDB';
+import IRecordedDB, { RecordedProgramUpdateValues } from '../db/IRecordedDB';
 import IVideoFileDB from '../db/IVideoFileDB';
 import IVideoFileTsInfoDB from '../db/IVideoFileTsInfoDB';
 import ILogger from '../ILogger';
@@ -207,6 +208,97 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
         await this.applyChannelInfo(videoFileId, info).catch(err => {
             this.log?.system.warn(`failed to apply channel info: videoFileId ${videoFileId}: ${err?.message ?? err}`);
         });
+
+        // 番組情報 (概要・詳細・ジャンル・映像音声情報) が空の録画を EIT[p/f] の内容で補う
+        await this.applyProgramInfo(videoFileId, info).catch(err => {
+            this.log?.system.warn(`failed to apply program info: videoFileId ${videoFileId}: ${err?.message ?? err}`);
+        });
+    }
+
+    /**
+     * TS の EIT[p/f] から分かった番組情報を録画情報へ反映する。
+     *
+     * API 経由で録画情報だけ先に作り、後から動画ファイルを追加した録画 (外部連携での登録) は
+     * 番組の概要・詳細・ジャンル・映像音声情報が空のままで、EPGStation が録画した番組と
+     * 表示内容が大きく変わってしまう。TS を解析した時点でこれらを補う。
+     *
+     * すでに値が入っている項目は上書きしない (画面から入力した内容・EPG 由来の値を壊さない)
+     * @param videoFileId: apid.VideoFileId
+     * @param info: TsInfo
+     * @return Promise<boolean> 何らかの項目を補完した場合 true
+     */
+    private async applyProgramInfo(videoFileId: apid.VideoFileId, info: TsInfo): Promise<boolean> {
+        const video = await this.videoFileDB.findId(videoFileId);
+        if (video === null) return false;
+
+        const recorded = await this.recordedDB.findId(video.recordedId);
+        if (recorded === null) return false;
+
+        const values: RecordedProgramUpdateValues = {};
+
+        // 番組名は「ファイル名のまま」の場合があるが、利用者が付けた名前を勝手に変えないため触らない
+        if (VideoFileAnalyzeModel.isEmpty(recorded.description) === true && info.eventDescription !== null) {
+            values.description = StrUtil.toDBStr(info.eventDescription);
+            values.halfWidthDescription = StrUtil.toHalf(values.description);
+        }
+        if (VideoFileAnalyzeModel.isEmpty(recorded.extended) === true && info.eventExtended !== null) {
+            values.extended = StrUtil.toDBStr(info.eventExtended);
+            values.halfWidthExtended = StrUtil.toHalf(values.extended);
+        }
+
+        // ジャンルは 3 組そろって初めて EPG 由来と同じ表示になる。1 つでも入っていれば触らない
+        const hasGenre =
+            typeof recorded.genre1 === 'number' ||
+            typeof recorded.genre2 === 'number' ||
+            typeof recorded.genre3 === 'number';
+        if (hasGenre === false && info.genres.length > 0) {
+            const genreKeys: Array<['genre1' | 'genre2' | 'genre3', 'subGenre1' | 'subGenre2' | 'subGenre3']> = [
+                ['genre1', 'subGenre1'],
+                ['genre2', 'subGenre2'],
+                ['genre3', 'subGenre3'],
+            ];
+            genreKeys.forEach(([genreKey, subGenreKey], i) => {
+                const genre = info.genres[i];
+                if (typeof genre === 'undefined') return;
+                values[genreKey] = genre.lv1;
+                values[subGenreKey] = genre.lv2;
+            });
+        }
+
+        if (VideoFileAnalyzeModel.isEmpty(recorded.videoType) === true && info.videoType !== null) {
+            values.videoType = info.videoType;
+        }
+        if (VideoFileAnalyzeModel.isEmpty(recorded.videoResolution) === true && info.videoResolution !== null) {
+            values.videoResolution = info.videoResolution;
+        }
+        if (typeof recorded.videoStreamContent !== 'number' && info.videoStreamContent !== null) {
+            values.videoStreamContent = info.videoStreamContent;
+        }
+        if (typeof recorded.videoComponentType !== 'number' && info.videoComponentType !== null) {
+            values.videoComponentType = info.videoComponentType;
+        }
+        if (typeof recorded.audioSamplingRate !== 'number' && info.audioSamplingRate !== null) {
+            values.audioSamplingRate = info.audioSamplingRate;
+        }
+        if (typeof recorded.audioComponentType !== 'number' && info.audioComponentType !== null) {
+            values.audioComponentType = info.audioComponentType;
+        }
+
+        if (Object.keys(values).length === 0) return false;
+
+        await this.recordedDB.updateProgramInfo(recorded.id, values);
+        this.log?.system.info(
+            `apply program info from ts: recordedId ${recorded.id}: ${Object.keys(values).join(', ')}`,
+        );
+
+        return true;
+    }
+
+    /**
+     * 値が未設定 (null / undefined / 空文字) か
+     */
+    private static isEmpty(value: string | null | undefined): boolean {
+        return typeof value !== 'string' || value.length === 0;
     }
 
     /**
