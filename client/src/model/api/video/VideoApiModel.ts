@@ -117,6 +117,24 @@ export default class VideoApiModel implements IVideoApiModel {
         return (await this.repository.delete('/videos/analyze')).data;
     }
 
+    /**
+     * 視聴履歴を最後に見た順で取得する
+     * @param option: apid.GetWatchHistoryOption
+     * @return Promise<apid.WatchHistoryRecords>
+     */
+    public async getWatchHistories(option: apid.GetWatchHistoryOption): Promise<apid.WatchHistoryRecords> {
+        return (await this.repository.get('/watch-history', { params: option })).data;
+    }
+
+    /**
+     * 視聴履歴を 1 件削除する
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<void>
+     */
+    public async deleteWatchHistory(videoFileId: apid.VideoFileId): Promise<void> {
+        await this.repository.delete(`/watch-history/${videoFileId}`);
+    }
+
     public async getPlaybackPosition(videoFileId: apid.VideoFileId): Promise<apid.WatchHistory | null> {
         try {
             return (await this.repository.get(`/videos/${videoFileId}/playback-position`)).data;

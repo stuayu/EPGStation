@@ -23,6 +23,7 @@ import SeriesMapping from './views/SeriesMapping.vue';
 import SeriesPending from './views/SeriesPending.vue';
 import Logs from './views/Logs.vue';
 import Storages from './views/Storages.vue';
+import WatchHistory from './views/WatchHistory.vue';
 import WatchOnAir from './views/WatchOnAir.vue';
 import WatchRecorded from './views/WatchRecorded.vue';
 import WatchRecordedStreaming from './views/WatchRecordedStreaming.vue';
@@ -50,6 +51,7 @@ export default createRouter({
         { path: '/recorded/watch', name: 'recorded-watch', component: WatchRecorded },
         { path: '/recorded/detail/:id', name: 'recorded-detail', component: RecordedDetail },
         { path: '/recorded/streaming/:id', name: 'recorded-streaming', component: WatchRecordedStreaming },
+        { path: '/watch-history', name: 'watch-history', component: WatchHistory },
         { path: '/encode', name: 'encode', component: Encode },
         { path: '/search', name: 'search', component: Search },
         { path: '/rule', name: 'rule', component: Rule },

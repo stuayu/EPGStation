@@ -697,6 +697,26 @@ export interface WatchHistory {
     status: WatchStatus;
     updatedAt: UnixtimeMS;
 }
+/**
+ * 視聴履歴一覧の 1 件 (履歴 + 対象の録画情報)
+ */
+export interface WatchHistoryRecord extends WatchHistory {
+    // 録画情報 (録画が削除済みの場合は null)
+    recorded: RecordedItem | null;
+}
+
+export interface WatchHistoryRecords {
+    records: WatchHistoryRecord[];
+    total: number;
+}
+
+export interface GetWatchHistoryOption {
+    offset?: number;
+    limit?: number;
+    status?: WatchStatus;
+    isHalfWidth: boolean;
+}
+
 export interface UpdatePlaybackPositionOption {
     position: number;
     duration: number;
