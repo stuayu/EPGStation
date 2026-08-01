@@ -35,6 +35,9 @@ import IVideoFileAnalyzeModel from '../../video/IVideoFileAnalyzeModel';
 
 @injectable()
 class RecordedManageModel implements IRecordedManageModel {
+    // PSI/SI を保持しうる拡張子 (tsreplace 出力のように fileType が encoded でも .ts なら解析できる)
+    private static readonly TS_FILE_EXTENSION = '.ts';
+
     private log: ILogger;
     private config: IConfigFile;
     private recordedDB: IRecordedDB;
@@ -445,14 +448,18 @@ class RecordedManageModel implements IRecordedManageModel {
      * @return Promise<apid.RecordedId>
      */
     private async createRecordedFromUploadedTsFile(option: UploadedVideoFileOption): Promise<apid.RecordedId> {
-        if (option.fileType !== 'ts') {
-            // エンコード済みファイルには PSI/SI が無いため、番組情報は画面から入力してもらう
-            throw new Error('RecordedIdIsRequired');
-        }
-
         const filePath = option.localFilePath ?? option.filePath;
         if (typeof filePath === 'undefined') {
             throw new Error('File path could not be determined');
+        }
+
+        // 対象判定は fileType ではなく拡張子で行う。
+        // tsreplace 系 (映像だけ差し替え済みで出力拡張子は .ts のまま) は fileType が encoded でも
+        // PSI/SI を保持しているため、番組情報を取り出せる。
+        // 完全な再マルチプレクス (.mp4/.mkv 等) には PSI/SI が無いので画面から入力してもらう
+        const name = option.fileName ?? path.basename(filePath);
+        if (path.extname(name).toLowerCase() !== RecordedManageModel.TS_FILE_EXTENSION) {
+            throw new Error('RecordedIdIsRequired');
         }
 
         const tsInfo = await this.tsInfoAnalyzer.analyze(filePath).catch(err => {
@@ -474,7 +481,7 @@ class RecordedManageModel implements IRecordedManageModel {
             throw new Error('ChannelIsNotFound');
         }
 
-        const baseName = path.parse(option.fileName ?? path.basename(filePath)).name;
+        const baseName = path.parse(name).name;
         const startAt = tsInfo.eventStartAt ?? tsInfo.firstTdtAt;
         if (startAt === null) {
             throw new Error('StartAtIsNotFound');

@@ -5,7 +5,8 @@
             <v-radio :value="false" label="エンコード済みファイル (番組情報を入力する)"></v-radio>
         </v-radio-group>
         <div v-if="uploadState.isAutoDetect === true" class="text-caption text-medium-emphasis mb-3">
-            放送 TS の PSI/SI から放送局・番組名・開始時刻・ジャンルを取り出して番組情報を作ります。放送局が特定できない TS や、PSI/SI を持たないファイルは登録できません。
+            拡張子が .ts のファイルから PSI/SI (放送局・番組名・開始時刻・ジャンル) を読み取って番組情報を作ります。tsreplace のように映像だけ差し替えたファイル (file type が
+            encoded) も対象です。放送局が特定できない TS や、PSI/SI を持たない ファイル (.mp4 など) は登録できません。
         </div>
         <template v-if="uploadState.isAutoDetect === false">
             <SearchOptionRow title="放送局※" :required="true">
@@ -75,7 +76,7 @@
         <div v-for="video in uploadState.videoFileItems" v-bind:key="video.key">
             <SearchOptionRow :title="`ビデオファイル${video.key + 1}`">
                 <v-text-field v-model="video.viewName" label="name" clearable class="view-name"></v-text-field>
-                <v-select v-if="uploadState.isAutoDetect === false" class="file-type" v-model="video.fileType" :items="uploadState.getFileTypeItems()" label="file type"></v-select>
+                <v-select class="file-type" v-model="video.fileType" :items="uploadState.getFileTypeItems()" label="file type"></v-select>
 
                 <v-select class="directory" v-model="video.parentDirectoryName" :items="uploadState.getPrentDirectoryItems()" label="directory"></v-select>
                 <v-text-field v-model="video.subDirectory" label="sub directory" clearable></v-text-field>

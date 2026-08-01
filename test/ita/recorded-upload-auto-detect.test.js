@@ -140,6 +140,28 @@ test('a TS upload without recordedId builds the program info from the broadcast 
     assert.equal(state.insertedVideoFiles[0].recordedId, 500);
 });
 
+test('a tsreplace output (fileType encoded, .ts extension) is accepted because it still has PSI/SI', async () => {
+    const dir = mkTmpDir();
+    const uploaded = path.join(dir, 'uploaded.ts');
+    fs.writeFileSync(uploaded, 'x');
+
+    const { model, state } = buildModel({ dir });
+
+    // tsreplace は映像だけ差し替えるので出力の拡張子は .ts のまま。
+    // シークできるよう fileType は encoded で登録されるが PSI/SI は残っている
+    const recordedId = await model.addUploadedVideoFile({
+        parentDirectoryName: 'recorded',
+        viewName: 'sample.ts',
+        fileType: 'encoded',
+        fileName: 'sample.ts',
+        filePath: uploaded,
+    });
+
+    assert.equal(recordedId, 500);
+    assert.equal(state.inserted[0].name, '被災地からの声');
+    assert.equal(state.insertedVideoFiles[0].type, 'encoded');
+});
+
 test('an encoded upload without recordedId is refused and the temporary file is removed', async () => {
     const dir = mkTmpDir();
     const uploaded = path.join(dir, 'uploaded.mp4');
