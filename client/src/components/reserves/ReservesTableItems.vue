@@ -23,13 +23,14 @@
                             <td>{{ reserve.display.channelName }}</td>
                             <td>{{ reserve.display.day }}({{ reserve.display.dow }})</td>
                             <td>
-                                {{ reserve.display.startTime }}~{{ reserve.display.endTime }}
+                                {{ reserve.display.startTime }}~<span v-bind:class="{ 'text-error font-weight-bold': reserve.reserveItem.isTimeUndefined === true }">{{ reserve.display.endTime }}</span>
                                 <div>({{ reserve.display.duration }}m)</div>
                             </td>
                             <td>
                                 <v-icon v-if="reserve.display.isRule === true" class="reserve-icon">mdi-calendar</v-icon>
                                 <v-icon v-else class="reserve-icon">mdi-timer-outline</v-icon>
                                 {{ reserve.display.name }}
+                                <ReserveScheduleStatus :reserveItem="reserve.reserveItem" class="d-block mt-1"></ReserveScheduleStatus>
                             </td>
                             <td>{{ reserve.display.description }}</td>
                             <td>
@@ -47,6 +48,7 @@
 <script lang="ts">
 import ReserveDialog from '@/components/reserves/ReserveDialog.vue';
 import ReserveMenu from '@/components/reserves/ReserveMenu.vue';
+import ReserveScheduleStatus from '@/components/reserves/ReserveScheduleStatus.vue';
 import { ReserveStateData } from '@/model/state/reserve/IReserveStateUtil';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
@@ -54,6 +56,7 @@ import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
     components: {
         ReserveMenu,
         ReserveDialog,
+        ReserveScheduleStatus,
     },
 })
 class ReservesTableItems extends Vue {

@@ -68,6 +68,16 @@ export default class Reserve extends BaseEntity {
     })
     public isEventRelay: boolean = false; // イベントリレーによる予約か
 
+    @Column({
+        default: false,
+    })
+    public isTimeUndefined: boolean = false; // 放送終了時刻が未定か (ARIB の duration = 0xFFFFFF)
+
+    @Column({
+        default: false,
+    })
+    public isFollowingSchedule: boolean = false; // 前番組の延長などで開始待ち (EIT[p/f] 追従中) か
+
     /**
      * 保存オプション
      */

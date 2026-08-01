@@ -15,8 +15,11 @@
                         </div>
                         <div class="text-subtitle-2 font-weight-light">{{ reserve.display.channelName }}</div>
                         <div class="text-caption font-weight-light mb-2">
-                            {{ reserve.display.day }}({{ reserve.display.dow }}) {{ reserve.display.startTime }} ~ {{ reserve.display.endTime }} ({{ reserve.display.duration }}分)
+                            {{ reserve.display.day }}({{ reserve.display.dow }}) {{ reserve.display.startTime }} ~
+                            <span v-bind:class="{ 'text-error font-weight-bold': reserve.reserveItem.isTimeUndefined === true }">{{ reserve.display.endTime }}</span>
+                            ({{ reserve.display.duration }}分)
                         </div>
+                        <ReserveScheduleStatus :reserveItem="reserve.reserveItem" class="d-block mb-2"></ReserveScheduleStatus>
                         <div class="text-body-2 font-weight-light">{{ reserve.display.description }}</div>
                     </div>
                 </div>
@@ -29,6 +32,7 @@
 <script lang="ts">
 import ReserveDialog from '@/components/reserves/ReserveDialog.vue';
 import ReserveMenu from '@/components/reserves/ReserveMenu.vue';
+import ReserveScheduleStatus from '@/components/reserves/ReserveScheduleStatus.vue';
 import { ReserveStateData } from '@/model/state/reserve/IReserveStateUtil';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
@@ -36,6 +40,7 @@ import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
     components: {
         ReserveMenu,
         ReserveDialog,
+        ReserveScheduleStatus,
     },
 })
 class ReservesCard extends Vue {

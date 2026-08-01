@@ -1297,6 +1297,12 @@ components:
                     type: boolean
                 isTimeSpecified:
                     type: boolean
+                isTimeUndefined:
+                    type: boolean
+                    description: 放送終了時刻が未定か (true なら endAt は暫定値)
+                isFollowingSchedule:
+                    type: boolean
+                    description: 前番組の延長などで番組開始を待っている (EIT[p/f] 追従中) か
                 tags:
                     type: array
                     items:

@@ -5,6 +5,8 @@ import Channel from '../../../db/entities/Channel';
 import Program from '../../../db/entities/Program';
 import Reserve from '../../../db/entities/Reserve';
 import DateUtil from '../../../util/DateUtil';
+import { isDurationUndefined } from '../../../util/ProgramDuration';
+import { formatDurationUndefinedChange, formatLogDuration, formatTimeChange } from '../../../util/ProgramTimeLog';
 import StrUtil from '../../../util/StrUtil';
 import Util from '../../../util/Util';
 import IChannelDB from '../../db/IChannelDB';
@@ -515,6 +517,8 @@ class ReservationManageModel implements IReservationManageModel {
         reserve.channelType = program.channelType;
         reserve.startAt = program.startAt;
         reserve.endAt = program.endAt;
+        // 放送終了時刻が未定なら endAt は暫定値。画面で注意喚起するために保持する
+        reserve.isTimeUndefined = isDurationUndefined(program.duration);
         reserve.name = program.name;
         reserve.shortName = program.shortName;
         reserve.halfWidthName = program.halfWidthName;
@@ -670,6 +674,23 @@ class ReservationManageModel implements IReservationManageModel {
         newReserve.updateTime = oldReserve.updateTime;
         newReserve.isConflict = false;
         newReserve.isEventRelay = oldReserve.isEventRelay;
+
+        // EPG 追従による再スケジュールを記録する (変更前後の時刻を併記する)
+        if (oldReserve.startAt !== newReserve.startAt || oldReserve.endAt !== newReserve.endAt) {
+            const messages = [
+                `reschedule reservation: ${reserveId}`,
+                `programId: ${oldReserve.programId}`,
+                `name: ${newReserve.name}`,
+                `start: ${formatTimeChange(oldReserve.startAt, newReserve.startAt)}`,
+                `end: ${formatTimeChange(oldReserve.endAt, newReserve.endAt)}`,
+                `duration: ${formatLogDuration(newProgram.duration)}`,
+            ];
+            const durationNote = formatDurationUndefinedChange(null, newProgram.duration);
+            if (durationNote !== null) {
+                messages.push(durationNote);
+            }
+            this.log.system.info(messages.join(' '));
+        }
 
         // 新旧の予約での差分を生成
         const diff = await this.createDiff(
