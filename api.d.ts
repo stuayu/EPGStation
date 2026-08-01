@@ -1475,6 +1475,8 @@ export interface SeriesListItem {
     seasonName?: 'WINTER' | 'SPRING' | 'SUMMER' | 'AUTUMN' | null;
     // クールの出所 (dictionary: 作品辞書 / estimated: 録画日時からの推測 / manual: 手動設定)
     seasonSource?: 'dictionary' | 'estimated' | 'manual' | null;
+    // 表示名の出所 (dictionary: 作品辞書の正式タイトルへ同期済み / manual: 手動設定で自動同期の対象外)
+    titleSource?: 'dictionary' | 'manual' | null;
     // 録画件数・合計ファイルサイズ (バイト)
     recordedCount: number;
     totalFileSize: number;

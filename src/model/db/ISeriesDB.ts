@@ -7,6 +7,8 @@ import SeriesPendingMatch from '../../db/entities/SeriesPendingMatch';
 import SeriesReservationHint from '../../db/entities/SeriesReservationHint';
 export interface NewSeries {
     title: string;
+    // 表示名の出所 ('dictionary': 作品辞書の正式タイトル / 'manual': 手動設定)
+    titleSource?: string | null;
     normalizedTitle: string;
     preferredChannelId: number | null;
     // 作品辞書で確定した場合の しょぼいカレンダー TID
@@ -280,6 +282,8 @@ export default interface ISeriesDB {
     updateExternalMetadata(
         id: number,
         value: {
+            title?: string;
+            titleSource?: string | null;
             annictId?: string | null;
             syobocalTid?: number | null;
             wikidataQid?: string | null;

@@ -59,6 +59,7 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
         // クールを録画から推測するための最古録画日時 (1 クエリでまとめて引く)
         const firstAiredAt = await this.db.findFirstAiredAtMap().catch(() => new Map<number, number>());
         let updated = 0;
+        let titleSynced = 0;
         let estimated = 0;
         let llmAnalyzed = 0;
         let llmResolved = 0;
@@ -76,6 +77,9 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
             const needsSeason = seasonIsLocked === false && (series.seasonYear === null || series.seasonName === null);
             // 手動で編集・削除したコメントは自動取得で書き戻さない
             const needsComment = series.commentSource !== 'manual' && typeof series.comment !== 'string';
+            // 表示名を作品辞書の正式タイトルへ合わせる。手動で付けた名前は上書きしない。
+            // すでに辞書名へ同期済みでも、辞書側の表記が変わることがあるため引き直す
+            const needsTitle = series.titleSource !== 'manual';
             // 作品辞書から埋めるものが残っているか。コメントは辞書本体には無く TID 指定で個別に引くため、
             // ここには含めない (コメントだけが未取得のシリーズで辞書を引き直さない)
             const needsDictionary =
@@ -83,10 +87,13 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
                 series.totalEpisodes === null ||
                 needsSeason === true ||
                 series.syobocalTid === null ||
-                series.annictId === null;
+                series.annictId === null ||
+                needsTitle === true;
             if (needsDictionary === false && needsComment === false) continue;
 
             const patch: {
+                title?: string;
+                titleSource?: string | null;
                 syobocalTid?: number | null;
                 annictId?: string | null;
                 wikidataQid?: string | null;
@@ -135,6 +142,19 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
             }
 
             if (match !== null) {
+                // 表示名を外部辞書の正式タイトルへ合わせる。
+                // 引き当てキー (normalizedTitle) は録画タイトル由来のまま残す (既存の紐付けを壊さないため)
+                if (needsTitle === true && match.title !== '' && match.title !== series.title) {
+                    patch.title = match.title;
+                    patch.titleSource = 'dictionary';
+                    titleSynced++;
+                    this.log.system.info(
+                        `series title synced: seriesId=${series.id} "${series.title}" -> "${match.title}" (${match.source})`,
+                    );
+                } else if (needsTitle === true && match.title === series.title && series.titleSource === null) {
+                    // すでに辞書名と一致しているものは、以後引き直さなくて済むよう出所だけ記録する
+                    patch.titleSource = 'dictionary';
+                }
                 if (series.syobocalTid === null && match.syobocalTid !== null) patch.syobocalTid = match.syobocalTid;
                 if (series.annictId === null && match.annictId !== null) patch.annictId = String(match.annictId);
                 if (series.wikidataQid === null && match.wikidataQid !== null) patch.wikidataQid = match.wikidataQid;
@@ -205,9 +225,14 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
             );
         }
 
+        if (titleSynced > 0) {
+            this.log.system.info(`series metadata: synced ${titleSynced} series title(s) with the work dictionary`);
+        }
+
         return {
             scanned: all.length,
             updated,
+            titleSynced,
             llmAnalyzed,
             llmResolved,
             commentFetched,

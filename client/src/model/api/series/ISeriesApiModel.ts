@@ -30,6 +30,8 @@ export interface RefreshSeriesMetadataResult {
     scanned: number;
     // 何らかの項目を更新したシリーズ数
     updated: number;
+    // 表示名を作品辞書の正式タイトルへ合わせたシリーズ数
+    titleSynced: number;
     // LLM フォールバックへ回したシリーズ数
     llmAnalyzed: number;
     // LLM 経由で外部 ID を確定できたシリーズ数
@@ -44,6 +46,9 @@ export interface RefreshSeriesMetadataResult {
     commentSkippedNoTid: number;
 }
 export interface UpdateSeriesMetadata {
+    // シリーズ表示名。設定すると出所が 'manual' になり、辞書の再取得で上書きされない。
+    // null を渡すと手動設定を解除し、次回の再取得で作品辞書の正式タイトルへ戻す
+    title?: string | null;
     titleKana?: string | null;
     seasonYear?: number | null;
     seasonName?: string | null;

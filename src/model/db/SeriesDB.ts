@@ -464,6 +464,8 @@ export default class SeriesDB implements ISeriesDB {
     public async updateExternalMetadata(
         id: number,
         value: {
+            title?: string;
+            titleSource?: string | null;
             annictId?: string | null;
             syobocalTid?: number | null;
             wikidataQid?: string | null;

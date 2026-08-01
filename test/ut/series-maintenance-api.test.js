@@ -414,3 +414,32 @@ test('alias editing is blocked while the series library feature is disabled', as
     await assert.rejects(() => model.update(1, { seriesId: 2 }), /SeriesLibraryFeatureIsDisabled/);
     await assert.rejects(() => model.updateBulk({ items: [] }), /SeriesLibraryFeatureIsDisabled/);
 });
+
+test('updateMetadata saves a manually edited series title as manual', async () => {
+    const patches = [];
+    const db = {
+        getSeries: async () => ({ id: 1, title: '作品', titleSource: null }),
+        updateExternalMetadata: async (id, patch) => patches.push({ id, patch }),
+    };
+    const model = new MaintenanceModel(config, db);
+    await model.updateMetadata(1, { title: '  正しい作品名  ' });
+    assert.deepEqual(patches[0], { id: 1, patch: { title: '正しい作品名', titleSource: 'manual' } });
+});
+
+test('updateMetadata clears the manual flag when the title is set to null', async () => {
+    const patches = [];
+    const db = {
+        getSeries: async () => ({ id: 1, title: '手動名', titleSource: 'manual' }),
+        updateExternalMetadata: async (id, patch) => patches.push({ id, patch }),
+    };
+    const model = new MaintenanceModel(config, db);
+    await model.updateMetadata(1, { title: null });
+    // 表示名はそのまま。次のメタデータ再取得で辞書名へ戻せるように出所だけ消す
+    assert.deepEqual(patches[0], { id: 1, patch: { titleSource: null } });
+});
+
+test('updateMetadata rejects an empty series title', async () => {
+    const db = { getSeries: async () => ({ id: 1, title: '作品' }), updateExternalMetadata: async () => {} };
+    const model = new MaintenanceModel(config, db);
+    await assert.rejects(() => model.updateMetadata(1, { title: '   ' }), /InvalidRequestBody/);
+});
