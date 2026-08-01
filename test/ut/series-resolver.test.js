@@ -69,6 +69,8 @@ function stubTitleDictionary(match = null) {
         startAutoSync: () => {},
         lookup: async () => match,
         lookupEpisodeNumber: async () => null,
+        // 放送予定 (局 + 時刻) からの引き当ては既定で「該当なし」にし、テストごとに差し替える
+        findByIds: async () => null,
         getStatus: async () => ({ titleCount: 0, lastUpdate: null, lastSyncedAt: null, running: false, error: null }),
     };
 }
@@ -257,18 +259,18 @@ test('a syobocal programme lookup (channel + start time) resolves the work when 
     const dictionary = stubTitleDictionary(); // タイトルでは引けない
     dictionary.findByIds = async ids => (ids.syobocalTid === 100 ? workMatch() : null);
     dictionary.lookupEpisodeTitle = async () => null;
-    const programLookup = stubProgramLookup({ tid: 100, count: 16, subTitle: '猫猫の推理', comment: null, startAt: 1000, endAt: 2000, viaKeyStation: false });
+    const programLookup = stubProgramLookup({ tid: 100, count: 16, subTitle: '猫猫の推理', comment: null, startAt: 1000, endAt: 2000, exactStart: true, viaKeyStation: false });
 
     const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
         recordedId: 5,
-        title: '局独自の表記だけのタイトル', // 話数表記もサブタイトルも無い
+        title: '★作品名★', // 話数表記もサブタイトルも無く、局の装飾だけが付いている
         channelId: 20,
         startAt: 1000,
     });
 
     assert.equal(link.matchMethod, 'syobocal');
-    // 放送予定は時刻ずれで隣の番組を拾う余地があるため、確度はタイトル照合より低く抑える
-    assert.equal(link.confidence, 0.95);
+    // 番組の頭から録画できている場合は取り違えの余地がほとんど無いので高い確度を与える
+    assert.equal(link.confidence, 0.98);
     // タイトルから取れなかった話数とサブタイトルが放送予定から埋まる
     assert.equal(db.episodes.length, 1);
     assert.equal(db.episodes[0].episodeNumber, 16);
@@ -283,7 +285,7 @@ test('special programmes (recap / marathon) do not get an episode number from th
     const dictionary = stubTitleDictionary(workMatch());
     dictionary.lookupEpisodeNumber = async () => 3;
     dictionary.lookupEpisodeTitle = async () => null;
-    const programLookup = stubProgramLookup({ tid: 100, count: null, subTitle: null, comment: null, startAt: 1000, endAt: 2000, viaKeyStation: false });
+    const programLookup = stubProgramLookup({ tid: 100, count: null, subTitle: null, comment: null, startAt: 1000, endAt: 2000, exactStart: true, viaKeyStation: false });
 
     const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
         recordedId: 6,
@@ -302,7 +304,7 @@ test('the programme lookup runs even when the title already has an episode numbe
     const db = memory();
     const dictionary = stubTitleDictionary(workMatch());
     dictionary.lookupEpisodeTitle = async () => null;
-    const programLookup = stubProgramLookup({ tid: 100, count: 16, subTitle: '猫猫の推理', comment: null, startAt: 1000, endAt: 2000, viaKeyStation: false });
+    const programLookup = stubProgramLookup({ tid: 100, count: 16, subTitle: '猫猫の推理', comment: null, startAt: 1000, endAt: 2000, exactStart: true, viaKeyStation: false });
 
     await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
         recordedId: 7,
@@ -321,7 +323,7 @@ test('a programme lookup pointing at a different work does not override the titl
     const db = memory();
     const dictionary = stubTitleDictionary(workMatch());
     dictionary.lookupEpisodeTitle = async (tid, episodeNumber) => (tid === 100 && episodeNumber === 3 ? '第三話のサブタイトル' : null);
-    const programLookup = stubProgramLookup({ tid: 999, count: 99, subTitle: '別作品のサブタイトル', comment: null, startAt: 1000, endAt: 2000, viaKeyStation: true });
+    const programLookup = stubProgramLookup({ tid: 999, count: 99, subTitle: '別作品のサブタイトル', comment: null, startAt: 1000, endAt: 2000, exactStart: true, viaKeyStation: true });
 
     await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
         recordedId: 8,
@@ -335,22 +337,25 @@ test('a programme lookup pointing at a different work does not override the titl
     assert.equal(db.episodes[0].title, '第三話のサブタイトル');
 });
 
-// キー局の放送予定で代用した結果は、遅れ放送で別番組を指しうるため作品の確定には使わない
-test('a key station fallback never establishes the work by itself', async () => {
+// しょぼいカレンダー未登録の地方局は系列キー局の放送予定で代用する (同時ネットなら同じ作品が並ぶ)。
+// 遅れ放送では別番組を指しうるぶん、確度は直接引けた場合より低くする
+test('a key station fallback establishes the work with a lower confidence', async () => {
     const db = memory();
     const dictionary = stubTitleDictionary(); // タイトルでは引けない
     dictionary.findByIds = async () => workMatch();
     dictionary.lookupEpisodeTitle = async () => null;
-    const programLookup = stubProgramLookup({ tid: 100, count: 16, subTitle: '猫猫の推理', comment: null, startAt: 1000, endAt: 2000, viaKeyStation: true });
+    const programLookup = stubProgramLookup({ tid: 100, count: 16, subTitle: '猫猫の推理', comment: null, startAt: 1000, endAt: 2000, exactStart: true, viaKeyStation: true });
 
     const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
         recordedId: 9,
-        title: '局独自の表記だけのタイトル',
+        title: '［字］作品名',
         channelId: 20,
         startAt: 1000,
     });
 
-    assert.notEqual(link?.matchMethod, 'syobocal');
+    assert.equal(link.matchMethod, 'syobocal');
+    assert.equal(link.confidence, 0.9);
+    assert.equal(db.episodes[0].episodeNumber, 16);
 });
 
 test('llm grouping does nothing when the extracted title has no existing series', async () => {
@@ -376,7 +381,7 @@ test('the programme comment from the broadcast schedule is stored on the episode
     const db = memory();
     const dictionary = stubTitleDictionary(workMatch());
     dictionary.lookupEpisodeTitle = async () => null;
-    const programLookup = stubProgramLookup({ tid: 100, count: 5, subTitle: 'サブタイトル', comment: '30分繰り下げ', startAt: 1000, endAt: 2000, viaKeyStation: false });
+    const programLookup = stubProgramLookup({ tid: 100, count: 5, subTitle: 'サブタイトル', comment: '30分繰り下げ', startAt: 1000, endAt: 2000, exactStart: true, viaKeyStation: false });
 
     await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
         recordedId: 11,
@@ -394,7 +399,7 @@ test('a comment is filled into an existing episode only while it is unset', asyn
     const db = memory();
     const dictionary = stubTitleDictionary(workMatch());
     dictionary.lookupEpisodeTitle = async () => null;
-    const first = stubProgramLookup({ tid: 100, count: 5, subTitle: null, comment: null, startAt: 1000, endAt: 2000, viaKeyStation: false });
+    const first = stubProgramLookup({ tid: 100, count: 5, subTitle: null, comment: null, startAt: 1000, endAt: 2000, exactStart: true, viaKeyStation: false });
     await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), first).resolve({
         recordedId: 12,
         title: '作品名',
@@ -403,7 +408,7 @@ test('a comment is filled into an existing episode only while it is unset', asyn
     });
     assert.equal(db.episodes[0].comment, null);
 
-    const second = stubProgramLookup({ tid: 100, count: 5, subTitle: null, comment: '定刻放送', startAt: 1000, endAt: 2000, viaKeyStation: false });
+    const second = stubProgramLookup({ tid: 100, count: 5, subTitle: null, comment: '定刻放送', startAt: 1000, endAt: 2000, exactStart: true, viaKeyStation: false });
     await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), second).resolve({
         recordedId: 13,
         title: '作品名',
@@ -414,7 +419,7 @@ test('a comment is filled into an existing episode only while it is unset', asyn
 
     // 手動で書き換えた値は自動補完で戻らない
     db.episodes[0].comment = '手動で書いたメモ';
-    const third = stubProgramLookup({ tid: 100, count: 5, subTitle: null, comment: '辞書のコメント', startAt: 1000, endAt: 2000, viaKeyStation: false });
+    const third = stubProgramLookup({ tid: 100, count: 5, subTitle: null, comment: '辞書のコメント', startAt: 1000, endAt: 2000, exactStart: true, viaKeyStation: false });
     await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), third).resolve({
         recordedId: 14,
         title: '作品名',
@@ -422,4 +427,123 @@ test('a comment is filled into an existing episode only while it is unset', asyn
         startAt: 1000,
     });
     assert.equal(db.episodes[0].comment, '手動で書いたメモ');
+});
+
+// 局と時刻は「その時間に何が放送されていたか」という事実なので、タイトル文字列の照合よりも優先する
+test('the programme lookup wins over a conflicting title dictionary match', async () => {
+    const db = memory();
+    // タイトル照合では TV シリーズ (tid 555) に当たってしまうが、実際に放送されたのは劇場版 (tid 100)
+    const dictionary = stubTitleDictionary(workMatch({ syobocalTid: 555, title: '作品名' }));
+    dictionary.findByIds = async ids => (ids.syobocalTid === 100 ? workMatch({ title: '劇場版 作品名' }) : null);
+    dictionary.lookupEpisodeTitle = async () => null;
+    const programLookup = stubProgramLookup({ tid: 100, count: 4, subTitle: null, comment: null, startAt: 1000, endAt: 2000, exactStart: true, viaKeyStation: false });
+
+    const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
+        recordedId: 20,
+        title: '劇場版 作品名',
+        channelId: 20,
+        startAt: 1000,
+    });
+
+    const series = await db.getSeries(link.seriesId);
+    assert.equal(series.title, '劇場版 作品名');
+    assert.equal(link.confidence, 0.98);
+});
+
+// エイリアス (手動修正から学習した対応) よりも放送予定を優先する
+test('the programme lookup takes precedence over the alias dictionary', async () => {
+    const aliasSeries = { id: 3, title: 'エイリアス先の作品', normalizedTitle: 'えいりあす先の作品', preferredChannelId: 10 };
+    const db = memory([aliasSeries]);
+    db.findAlias = async () => ({ id: 1, normalizedTitle: '作品名', seriesId: 3, source: 'manual' });
+    const dictionary = stubTitleDictionary();
+    dictionary.findByIds = async () => workMatch({ title: '作品名' });
+    dictionary.lookupEpisodeTitle = async () => null;
+    const programLookup = stubProgramLookup({ tid: 100, count: 4, subTitle: null, comment: null, startAt: 1000, endAt: 2000, exactStart: true, viaKeyStation: false });
+
+    const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
+        recordedId: 21,
+        title: '作品名',
+        channelId: 20,
+        startAt: 1000,
+    });
+
+    assert.notEqual(link.seriesId, 3);
+    assert.equal(link.matchMethod, 'syobocal');
+});
+
+// 手動確定 (manualLock) は放送予定より強い。ユーザーが直した割当を自動判定で覆さない
+test('a manually locked link is never replaced by the programme lookup', async () => {
+    const db = memory();
+    db.links.set(22, { id: 1, recordedId: 22, seriesId: 99, manualLock: true });
+    const dictionary = stubTitleDictionary();
+    dictionary.findByIds = async () => workMatch();
+    const programLookup = stubProgramLookup({ tid: 100, count: 4, subTitle: null, comment: null, startAt: 1000, endAt: 2000, exactStart: true, viaKeyStation: false });
+
+    const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
+        recordedId: 22,
+        title: '作品名',
+        channelId: 20,
+        startAt: 1000,
+    });
+
+    assert.equal(link.seriesId, 99);
+    assert.equal(programLookup.calls.length, 0);
+});
+
+// 放送時間帯の包含で拾った場合 (録画開始が番組途中) は隣の番組を指す可能性が残るぶん確度を下げる
+test('a programme picked by time range containment gets a lower confidence', async () => {
+    const db = memory();
+    const dictionary = stubTitleDictionary();
+    dictionary.findByIds = async () => workMatch();
+    dictionary.lookupEpisodeTitle = async () => null;
+    const programLookup = stubProgramLookup({ tid: 100, count: 4, subTitle: null, comment: null, startAt: 1000, endAt: 2000, exactStart: false, viaKeyStation: false });
+
+    const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
+        recordedId: 23,
+        title: '作品名',
+        channelId: 20,
+        startAt: 1000,
+    });
+
+    assert.equal(link.matchMethod, 'syobocal');
+    assert.equal(link.confidence, 0.92);
+});
+
+// 時刻ずれ・キー局の代用で別番組を拾った場合を弾く (録画タイトルと共通部分が皆無な作品名)
+test('a programme whose title shares nothing with the recording is skipped', async () => {
+    const series = { id: 5, title: '作品名', normalizedTitle: '作品名', preferredChannelId: 20 };
+    const db = memory([series]);
+    const dictionary = stubTitleDictionary();
+    // 放送予定は隣の番組 (まったく別のタイトル) を指してしまっている
+    dictionary.findByIds = async () => workMatch({ title: 'ぜんぜん違う別番組' });
+    const programLookup = stubProgramLookup({ tid: 100, count: 4, subTitle: null, comment: null, startAt: 1000, endAt: 2000, exactStart: true, viaKeyStation: false });
+
+    const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
+        recordedId: 24,
+        title: '作品名 第4話',
+        channelId: 20,
+        startAt: 1000,
+    });
+
+    // 放送予定は採用せず、従来の判定 (既存シリーズとの照合) へ委ねる
+    assert.equal(link.seriesId, 5);
+    assert.equal(link.matchMethod, 'title');
+});
+
+// 局が独自表記で送出していても、作品名を含んでいれば放送予定を採用する
+test('a programme title contained in the recording title is accepted', async () => {
+    const db = memory();
+    const dictionary = stubTitleDictionary();
+    dictionary.findByIds = async () => workMatch({ title: '薬屋のひとりごと' });
+    dictionary.lookupEpisodeTitle = async () => null;
+    const programLookup = stubProgramLookup({ tid: 100, count: 4, subTitle: null, comment: null, startAt: 1000, endAt: 2000, exactStart: true, viaKeyStation: false });
+
+    const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
+        recordedId: 25,
+        title: '【日5】薬屋のひとりごと 第4話「牽牛と織女」',
+        channelId: 20,
+        startAt: 1000,
+    });
+
+    assert.equal(link.matchMethod, 'syobocal');
 });

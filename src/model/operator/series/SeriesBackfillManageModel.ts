@@ -5,9 +5,10 @@ import IAppSettingDB from '../../db/IAppSettingDB';
 import ISeriesDB from '../../db/ISeriesDB';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
-import { scoreCandidate } from '../../series/SeriesResolver';
+import { isPlausibleProgramTitle, programConfidence, scoreCandidate } from '../../series/SeriesResolver';
 import ISeriesResolver from '../../series/ISeriesResolver';
-import IWorkDictionary from '../../series/IWorkDictionary';
+import ISyobocalProgramLookup from '../../metadata/syobocal/ISyobocalProgramLookup';
+import IWorkDictionary, { WorkMatch } from '../../series/IWorkDictionary';
 import { displaySeriesTitle, parseSeriesInfo } from '../../series/SeriesNormalizer';
 import ISeriesBackfillManageModel, {
     SeriesBackfillOption,
@@ -45,6 +46,7 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
     private settingsDB: IAppSettingDB;
     private seriesResolver: ISeriesResolver;
     private workDictionary: IWorkDictionary;
+    private programLookup: ISyobocalProgramLookup;
 
     private running: boolean = false;
     private cancelRequested: boolean = false;
@@ -68,6 +70,7 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         @inject('IAppSettingDB') settingsDB: IAppSettingDB,
         @inject('ISeriesResolver') seriesResolver: ISeriesResolver,
         @inject('IWorkDictionary') workDictionary: IWorkDictionary,
+        @inject('ISyobocalProgramLookup') programLookup: ISyobocalProgramLookup,
     ) {
         this.log = logger.getLogger();
         this.recordedDB = recordedDB;
@@ -75,6 +78,7 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         this.settingsDB = settingsDB;
         this.seriesResolver = seriesResolver;
         this.workDictionary = workDictionary;
+        this.programLookup = programLookup;
     }
 
     /**
@@ -296,6 +300,24 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
             return { matched: false, seriesId: null, seriesTitle: null, confidence: null, candidates: [] };
         }
 
+        // 実行時 (SeriesResolver) と同じく、しょぼいカレンダーの放送予定を最優先で引く。
+        // これを省くとプレビューの「未確定」が実行では確定してしまい、結果が食い違う
+        const programMatch = await this.lookupByProgram(row);
+        if (programMatch !== null) {
+            const existing =
+                programMatch.syobocalTid === null
+                    ? null
+                    : await this.seriesDB.findBySyobocalTid(programMatch.syobocalTid);
+            return {
+                matched: true,
+                // 実行時に新規作成されるシリーズは seriesId: null で表す
+                seriesId: existing?.id ?? null,
+                seriesTitle: existing?.title ?? programMatch.title,
+                confidence: programMatch.confidence,
+                candidates: [],
+            };
+        }
+
         const alias = await this.seriesDB.findAlias(parsed.normalizedTitle);
         if (alias) {
             const aliasSeries = await this.seriesDB.getSeries(alias.seriesId);
@@ -388,6 +410,27 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
             confidence,
             candidates: [],
         };
+    }
+
+    /**
+     * しょぼいカレンダーの放送予定 (放送局 + 放送開始時刻) から作品を引く (ドライラン用)。
+     * SeriesResolver.resolveByProgram() と同じ条件・同じ確度で判定する
+     * @param row: SeriesBackfillCandidateRow
+     * @return Promise<WorkMatch | null>
+     */
+    private async lookupByProgram(row: SeriesBackfillCandidateRow): Promise<WorkMatch | null> {
+        try {
+            const program = await this.programLookup.lookup(row.channelId, row.startAt);
+            if (program === null) return null;
+            const match = await this.workDictionary.findByIds({ syobocalTid: program.tid });
+            if (match === null) return null;
+            // 時刻ずれ・キー局の代用で別番組を拾った場合を弾く (SeriesResolver と同じ判定)
+            if (isPlausibleProgramTitle(row.name, match.title) === false) return null;
+
+            return { ...match, confidence: programConfidence(program) };
+        } catch {
+            return null;
+        }
     }
 
     // ドライラン専用の仮シリーズ ID (実シリーズの id は 1 以上のため衝突しない)
