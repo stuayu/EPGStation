@@ -215,16 +215,17 @@ class RecordedUploadState implements IRecordedUploadState {
      * @return true 入力値に問題なければ true を返す
      */
     /**
-     * 番組情報の自動取得モードを切り替える。
-     * 自動取得は放送 TS 前提なので、ファイルタイプも合わせて揃える
+     * 番組情報の自動取得モードを切り替える
      * @param isAutoDetect: boolean
      */
     public setAutoDetect(isAutoDetect: boolean): void {
         this.isAutoDetect = isAutoDetect;
         if (isAutoDetect === false) return;
 
+        // 自動取得は拡張子 .ts のファイルが対象なので ts を既定にする。
+        // tsreplace 出力のように encoded で登録したい場合もあるため、選択済みの値は変えない
         for (const video of this.videoFileItems) {
-            video.fileType = 'ts';
+            if (typeof video.fileType === 'undefined') video.fileType = 'ts';
         }
     }
 
