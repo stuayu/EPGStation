@@ -21,6 +21,7 @@
                 <v-btn v-if="isSplitMode === true" icon variant="text" size="small" @click="cancelSplit" title="分割をやめる">
                     <v-icon>mdi-close</v-icon>
                 </v-btn>
+                <SeriesTitleDisplayMenu v-on:changed="onChangedTitleDisplay"></SeriesTitleDisplayMenu>
             </template>
         </TitleBar>
         <v-container v-if="detail">
@@ -177,10 +178,12 @@
     </v-main>
 </template>
 <script lang="ts">
+import SeriesTitleDisplayMenu from '@/components/series/SeriesTitleDisplayMenu.vue';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import ISeriesApiModel, { SeriesDetail as Detail, SeriesRecording, MissingEpisodeProposal } from '@/model/api/series/ISeriesApiModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
+import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import * as apid from '../../../api';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 
@@ -192,7 +195,7 @@ interface BulkEdit {
     airType: apid.SeriesAirType;
 }
 
-@Component({ components: { TitleBar } })
+@Component({ components: { TitleBar, SeriesTitleDisplayMenu } })
 class SeriesDetailView extends Vue {
     detail: Detail | null = null;
     channelId: number | null = null;
@@ -223,6 +226,11 @@ class SeriesDetailView extends Vue {
 
     private api = container.get<ISeriesApiModel>('ISeriesApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private settingStorageModel: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
+    // メニュー側と同じ実体 (tmp) を参照し、変更が即座に見えるようにする
+    private settingValue: ISettingValue = this.settingStorageModel.tmp;
+    // 作品辞書由来のエピソード名を使うか (false の場合は録画タイトルをそのまま表示する)
+    useDictionaryEpisodeTitle: boolean = this.settingValue.useDictionaryEpisodeTitle ?? true;
     get id() {
         return Number(this.$route.params.id);
     }
@@ -282,8 +290,17 @@ class SeriesDetailView extends Vue {
         }
     }
     episodeTitle(x: SeriesRecording) {
+        if (this.useDictionaryEpisodeTitle === false) {
+            return x.recordedTitle;
+        }
         const label = x.episodeLabel ?? (x.episodeNumber !== null ? `第${x.episodeNumber}話` : '');
         return `${label} ${x.episodeTitle || x.recordedTitle}`.trim();
+    }
+    /**
+     * エピソード名の表示方法 (辞書名 / 録画タイトル) が変わったときに反映する
+     */
+    onChangedTitleDisplay(): void {
+        this.useDictionaryEpisodeTitle = this.settingValue.useDictionaryEpisodeTitle ?? true;
     }
     formatDate(value: number) {
         return new Date(value).toLocaleString();

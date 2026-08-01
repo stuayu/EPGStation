@@ -54,6 +54,7 @@ export default class SettingStorageModel extends AbstractStorageBaseModel<ISetti
             isEnableNextUpAutoPlayForLatestTab: false,
             isShowRecordedAsSeries: false,
             isShowFollowingIndicatorInGuide: true,
+            useDictionaryEpisodeTitle: true,
         };
     }
 

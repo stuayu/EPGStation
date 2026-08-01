@@ -5,6 +5,9 @@ export interface SeriesParseResult {
     episodeNumber: number | null;
     episodeLabel: string | null;
     airType: AirType;
+    // 総集編・傑作選・一挙放送など「通し話数を持たない放送」と判定した場合 true。
+    // タイトルに話数表記が無いときの逆引き (サブタイトル照合 / 放送予定照会) を抑止する
+    isSpecial: boolean;
 }
 // 話数に使われる漢数字 (「第壱話」「漆話」など)
 const KANJI_NUMERALS = '一二三四五六七八九十壱弐参肆伍陸漆捌玖拾百';
@@ -32,15 +35,23 @@ const KANJI_NUMERAL_VALUES: Readonly<Record<string, number>> = {
 };
 // 話数として扱う助数詞。放送局によって「話」以外 (第1幕・第2旅 等) が使われる
 const EPISODE_COUNTER = '(?:話|幕|旅|夜|章|回|羽|滑|品|球|杯)';
-// 英字の話数表記 (Episode08 / Turn19 / break1 / days.1 / Mission:39 / request 1. など)
+// 英字の話数表記 (Episode08 / Turn19 / break1 / days.1 / Mission:39 / request 1. / Part2 / vol.3 / No.5 など)
 const EPISODE_WORD =
-    '(?:ep|episode|turn|break|days?|mission|request|stage|case|act|file|track|scene|phase|round|step|lap|note|link|chapter)';
+    '(?:ep|episode|turn|break|days?|mission|request|stage|case|act|file|track|scene|phase|round|step|lap|note|link|chapter|part|vol|volume|story|number|no)';
 const EPISODE_PATTERNS = [
     new RegExp(`(?:第\\s*)?(\\d+(?:\\.\\d+)?)\\s*${EPISODE_COUNTER}`, 'u'),
     new RegExp(`(?:第\\s*)?([${KANJI_NUMERALS}]+)\\s*${EPISODE_COUNTER}`, 'u'),
     /[#＃♯]\s*(\d+(?:\.\d+)?)/u,
     new RegExp(`\\b${EPISODE_WORD}[ .:_-]*(\\d+(?:\\.\\d+)?)`, 'iu'),
+    // 「その1」「その二」形式 (助数詞を持たない和風の話数表記)
+    /その\s*(\d+(?:\.\d+)?)/u,
+    new RegExp(`その\\s*([${KANJI_NUMERALS}]+)(?![${KANJI_NUMERALS}])`, 'u'),
 ];
+// 総集編・一挙放送など、通し話数を持たない放送を表す語。
+// SCRename の除外定義 (SCRename.exc) と同じ考え方で、話数の逆引きを抑止するために使う。
+// 明示的な話数表記がタイトルにある場合はそちらを優先するため、ここでは判定のみ行う
+const SPECIAL_PROGRAM_PATTERN =
+    /(?:総集編|傑作選|振り?返り|ふりかえり|ダイジェスト|一挙(?:放送|配信)?|イッキ見|一気見|放送直前|直前(?:特番|スペシャル|SP)|完全版総集|特別編集版|名場面)/u;
 // タイトル末尾から「話数表記以降」をまるごと落とすためのパターン (サブタイトルも一緒に落ちる)
 const EPISODE_TAILS = [
     new RegExp(`(?:第\\s*)?\\d+(?:\\.\\d+)?\\s*${EPISODE_COUNTER}[\\s\\S]*$`, 'u'),
@@ -333,20 +344,36 @@ function parseEpisodeNumber(value: string): number | null {
     return result > 0 ? result : null;
 }
 
+/**
+ * 括弧 (「」『』) で囲まれた部分を空白へ潰した文字列を返す。
+ * サブタイトルは括弧の中に入ることが多く、その中の数字を話数と誤読しないための前処理に使う
+ * (SCRename が話数走査を括弧の手前で打ち切るのと同じ考え方)
+ */
+function withoutQuotedParts(value: string): string {
+    return value.replace(/[「『][^」』]*[」』]/gu, ' ');
+}
+
+/**
+ * 話数表記を 1 件抽出する。EPISODE_PATTERNS を優先度順に試し、最初に数値化できたものを返す
+ */
+function matchEpisode(value: string): { episodeNumber: number; episodeLabel: string } | null {
+    for (const pattern of EPISODE_PATTERNS) {
+        const match = value.match(pattern);
+        if (match === null) continue;
+        const parsed = parseEpisodeNumber(match[1]);
+        if (parsed === null) continue;
+        return { episodeNumber: parsed, episodeLabel: match[0] };
+    }
+    return null;
+}
+
 export function parseSeriesInfo(input: string): SeriesParseResult {
     const normalized = input.normalize('NFKC');
-    let episodeNumber: null | number = null;
-    let episodeLabel: null | string = null;
-    for (const pattern of EPISODE_PATTERNS) {
-        const match = normalized.match(pattern);
-        if (match) {
-            const parsed = parseEpisodeNumber(match[1]);
-            if (parsed === null) continue;
-            episodeNumber = parsed;
-            episodeLabel = match[0];
-            break;
-        }
-    }
+    // 括弧の外 (= 作品名 + 話数表記が置かれる部分) を先に走査し、
+    // 見つからない場合だけ「作品名 「#5 サブタイトル」」のような表記を救うため全文へフォールバックする
+    const episode = matchEpisode(withoutQuotedParts(normalized)) ?? matchEpisode(normalized);
+    const episodeNumber: null | number = episode?.episodeNumber ?? null;
+    const episodeLabel: null | string = episode?.episodeLabel ?? null;
     const seasonMatch = normalized.match(
         /(?:第\s*(\d+)\s*期|(\d+)\s*期|season\s*(\d+)|(\d+)(?:nd|rd|th|st)\s*season|\bs(\d+)\b)/iu,
     );
@@ -358,5 +385,12 @@ export function parseSeriesInfo(input: string): SeriesParseResult {
         : /(?:遅れ|先行)/u.test(normalized)
           ? 'delayed'
           : 'unknown';
-    return { normalizedTitle: normalizeSeriesTitle(input), seasonNumber, episodeNumber, episodeLabel, airType };
+    return {
+        normalizedTitle: normalizeSeriesTitle(input),
+        seasonNumber,
+        episodeNumber,
+        episodeLabel,
+        airType,
+        isSpecial: SPECIAL_PROGRAM_PATTERN.test(normalized),
+    };
 }

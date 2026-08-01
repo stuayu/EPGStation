@@ -195,6 +195,12 @@ export default class WorkDictionary implements IWorkDictionary {
         return best?.episodeNumber ?? null;
     }
 
+    public async lookupEpisodeTitle(syobocalTid: number, episodeNumber: number): Promise<string | null> {
+        if (Number.isFinite(episodeNumber) === false) return null;
+        const episodes = await this.syobocalDB.listEpisodes(syobocalTid);
+        return episodes.find(x => x.episodeNumber === episodeNumber)?.subTitle ?? null;
+    }
+
     /**
      * 索引のエントリから、表示用タイトル・総話数を解決して WorkMatch を組み立てる。
      * しょぼいカレンダー側の正式タイトルを優先し、Annict 単独作品では Annict のタイトルを使う

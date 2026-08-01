@@ -39,6 +39,14 @@ function memory(candidates = []) {
             return x;
         },
         findAlias: async () => null,
+        findBySyobocalTid: async tid => candidates.find(c => c.syobocalTid === tid) || null,
+        findByAnnictId: async id => candidates.find(c => c.annictId === id) || null,
+        findByWikidataQid: async qid => candidates.find(c => c.wikidataQid === qid) || null,
+        updateExternalMetadata: async () => {},
+        fillEpisodeTitle: async (episodeId, title) => {
+            const episode = episodes.find(x => x.id === episodeId);
+            if (episode && episode.title === null) episode.title = title;
+        },
         upsertPendingMatch: async () => {},
         deletePendingMatchByRecordedId: async () => {},
         getSeries: async id => candidates.find(c => c.id === id) || null,
@@ -61,12 +69,17 @@ function stubTitleDictionary(match = null) {
 function stubLlm(extracted = null, enabled = extracted !== null) {
     return { isEnabled: () => enabled, isSuspended: () => false, extractWorkTitle: async () => extracted };
 }
+// しょぼいカレンダーの放送予定照会。既定では「該当なし」を返す (連携無効の環境と同じ挙動)
+function stubProgramLookup(program = null) {
+    return { calls: [], lookup: async function (channelId, startAt) { this.calls.push({ channelId, startAt }); return program; } };
+}
 function resolver(
     db,
     threshold = 0.8,
     notification = stubNotification(),
     titleDictionary = stubTitleDictionary(),
     llm = stubLlm(),
+    programLookup = stubProgramLookup(),
 ) {
     return new SeriesResolver(
         { getConfig: () => ({ featureFlags: { seriesLibrary: true } }) },
@@ -75,7 +88,26 @@ function resolver(
         notification,
         titleDictionary,
         llm,
+        programLookup,
     );
+}
+// 作品辞書の照合結果 (WorkMatch)
+function workMatch(overrides = {}) {
+    return {
+        syobocalTid: 100,
+        annictId: null,
+        wikidataQid: null,
+        tmdbId: null,
+        title: '作品名',
+        titleKana: null,
+        seasonYear: null,
+        seasonName: null,
+        totalEpisodes: null,
+        matchType: 'exact',
+        confidence: 1,
+        source: 'syobocal',
+        ...overrides,
+    };
 }
 test('title similarity handles exact and unrelated titles', () => {
     assert.equal(titleSimilarity('作品名', '作品名'), 1);
@@ -209,6 +241,71 @@ test('llm groups a non-anime programme into an existing series and learns the ru
     assert.equal(aliases.length, 1);
     assert.equal(aliases[0].seriesId, 7);
     assert.equal(aliases[0].source, 'llm');
+});
+
+// SCRename と同じ「放送局 + 放送開始時刻」で放送予定を引く経路。
+// タイトルの表記に一切依存しないため、辞書キーに当たらないタイトルでも作品と話数が確定する
+test('a syobocal programme lookup (channel + start time) resolves the work when the title dictionary misses', async () => {
+    const db = memory();
+    const dictionary = stubTitleDictionary(); // タイトルでは引けない
+    dictionary.findByIds = async ids => (ids.syobocalTid === 100 ? workMatch() : null);
+    dictionary.lookupEpisodeTitle = async () => null;
+    const programLookup = stubProgramLookup({ tid: 100, count: 16, subTitle: '猫猫の推理', startAt: 1000, endAt: 2000 });
+
+    const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
+        recordedId: 5,
+        title: '局独自の表記だけのタイトル', // 話数表記もサブタイトルも無い
+        channelId: 20,
+        startAt: 1000,
+    });
+
+    assert.equal(link.matchMethod, 'syobocal');
+    // 放送予定は時刻ずれで隣の番組を拾う余地があるため、確度はタイトル照合より低く抑える
+    assert.equal(link.confidence, 0.95);
+    // タイトルから取れなかった話数とサブタイトルが放送予定から埋まる
+    assert.equal(db.episodes.length, 1);
+    assert.equal(db.episodes[0].episodeNumber, 16);
+    assert.equal(db.episodes[0].title, '猫猫の推理');
+    assert.deepEqual(programLookup.calls[0], { channelId: 20, startAt: 1000 });
+});
+
+// 総集編・一挙放送は通し話数を持たないので、放送予定やサブタイトル照合で話数を付けない
+test('special programmes (recap / marathon) do not get an episode number from the fallbacks', async () => {
+    const db = memory();
+    const dictionary = stubTitleDictionary(workMatch());
+    dictionary.lookupEpisodeNumber = async () => 3;
+    dictionary.lookupEpisodeTitle = async () => null;
+    const programLookup = stubProgramLookup({ tid: 100, count: 3, subTitle: null, startAt: 1000, endAt: 2000 });
+
+    const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
+        recordedId: 6,
+        title: '作品名 総集編',
+        channelId: 20,
+        startAt: 1000,
+    });
+
+    assert.equal(link.episodeId, null);
+    assert.equal(db.episodes.length, 0);
+});
+
+// 明示的な話数表記がある録画では、話数のためだけに外部へ問い合わせない
+test('an explicit episode number in the title skips the programme lookup', async () => {
+    const db = memory();
+    const dictionary = stubTitleDictionary(workMatch());
+    dictionary.lookupEpisodeTitle = async (tid, episodeNumber) => (tid === 100 && episodeNumber === 3 ? '第三話のサブタイトル' : null);
+    const programLookup = stubProgramLookup({ tid: 100, count: 99, subTitle: null, startAt: 1000, endAt: 2000 });
+
+    await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
+        recordedId: 7,
+        title: '作品名 第3話',
+        channelId: 20,
+        startAt: 1000,
+    });
+
+    assert.equal(programLookup.calls.length, 0);
+    assert.equal(db.episodes[0].episodeNumber, 3);
+    // サブタイトルはローカルの辞書から補完される (外部通信は伴わない)
+    assert.equal(db.episodes[0].title, '第三話のサブタイトル');
 });
 
 test('llm grouping does nothing when the extracted title has no existing series', async () => {

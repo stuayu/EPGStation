@@ -1,12 +1,19 @@
 'use strict';const assert=require('node:assert/strict');const test=require('node:test');const{normalizeSeriesTitle,parseSeriesInfo,displaySeriesTitle}=require('../../dist/model/series/SeriesNormalizer');
 test('normalizes Japanese broadcast noise and episode suffixes',()=>{assert.equal(normalizeSeriesTitle('＜アニメギルド＞　作品名　第１２話「最終回」'),'作品名');assert.equal(normalizeSeriesTitle('【再】アニメA・作品名 #03'),'作品名');});
-test('parses episode, season and rerun markers',()=>{assert.deepEqual(parseSeriesInfo('作品名 第2期 第12.5話【再】'),{normalizedTitle:'作品名 第2期',seasonNumber:2,episodeNumber:12.5,episodeLabel:'第12.5話',airType:'rerun'});});
+test('parses episode, season and rerun markers',()=>{assert.deepEqual(parseSeriesInfo('作品名 第2期 第12.5話【再】'),{normalizedTitle:'作品名 第2期',seasonNumber:2,episodeNumber:12.5,episodeLabel:'第12.5話',airType:'rerun',isSpecial:false});});
 test('full-width and ASCII episode forms converge',()=>{assert.equal(parseSeriesInfo('作品名 ＃０３').episodeNumber,3);assert.equal(parseSeriesInfo('作品名 EP03').episodeNumber,3);});
 test('does not strip bare "再" occurring inside a real title (regression for over-eager bare match)',()=>{assert.equal(normalizeSeriesTitle('再婚承認を要求します'),'再婚承認を要求します');assert.equal(normalizeSeriesTitle('再会の街で'),'再会の街で');});
 test('removes only bracket-enclosed rerun markers, including full-width parentheses folded by NFKC',()=>{assert.equal(normalizeSeriesTitle('作品名（再）'),'作品名');assert.equal(normalizeSeriesTitle('作品名(再放送)'),'作品名');});
 test('removes (新)(終)(字)(デ) style bracketed markers',()=>{assert.equal(normalizeSeriesTitle('作品名(新)'),'作品名');assert.equal(normalizeSeriesTitle('作品名(終)'),'作品名');assert.equal(normalizeSeriesTitle('作品名(字)'),'作品名');assert.equal(normalizeSeriesTitle('作品名(デ)'),'作品名');assert.equal(normalizeSeriesTitle('作品名(新)(終)'),'作品名');});
 test('falls back to the original title when normalization would otherwise produce an empty string',()=>{assert.equal(normalizeSeriesTitle('第1話'),'第1話'.toLocaleLowerCase('ja-JP'));assert.equal(normalizeSeriesTitle('「サブタイトル」'),'「サブタイトル」'.toLocaleLowerCase('ja-JP'));});
 test('detects (再) parenthesis rerun markers that the bracket-only regex previously missed',()=>{assert.equal(parseSeriesInfo('作品名(再)').airType,'rerun');assert.equal(parseSeriesInfo('作品名 再放送').airType,'rerun');assert.equal(parseSeriesInfo('作品名【再】').airType,'rerun');});
+
+// SCRename (rigaya/SCRenamePy) の話数抽出を参考にした表記への対応
+test('parses Part / vol. / No. / その N episode forms',()=>{assert.equal(parseSeriesInfo('作品名 Part2').episodeNumber,2);assert.equal(parseSeriesInfo('作品名 vol.3').episodeNumber,3);assert.equal(parseSeriesInfo('作品名 No.5').episodeNumber,5);assert.equal(parseSeriesInfo('作品名 その7').episodeNumber,7);assert.equal(parseSeriesInfo('作品名 その十二').episodeNumber,12);});
+// 話数は括弧の外 (作品名 + 話数表記) を優先して探す。サブタイトル中の数字を話数と誤読しないため
+test('prefers episode numbers outside quoted subtitles',()=>{assert.equal(parseSeriesInfo('作品名 第5話「3年目の第9話」').episodeNumber,5);assert.equal(parseSeriesInfo('作品名 「#12 サブタイトル」').episodeNumber,12);});
+// 総集編・一挙放送は通し話数を持たないため、逆引きを抑止するフラグを立てる
+test('flags special programmes that have no sequential episode number',()=>{assert.equal(parseSeriesInfo('作品名 総集編').isSpecial,true);assert.equal(parseSeriesInfo('作品名 一挙放送').isSpecial,true);assert.equal(parseSeriesInfo('作品名 放送直前スペシャル').isSpecial,true);assert.equal(parseSeriesInfo('作品名 第3話').isSpecial,false);});
 
 test('displaySeriesTitle keeps original casing while removing episode markers',()=>{assert.equal(displaySeriesTitle('CLANNAD AFTER STORY(HDマスター版) #16'),'CLANNAD AFTER STORY(HDマスター版)');assert.equal(displaySeriesTitle('＜アニメギルド＞　作品名　第１２話「最終回」'),'作品名');assert.equal(normalizeSeriesTitle('CLANNAD AFTER STORY #16'),'clannad after story');});
 

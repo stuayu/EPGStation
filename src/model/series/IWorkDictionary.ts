@@ -44,6 +44,14 @@ export default interface IWorkDictionary {
      */
     lookupEpisodeNumber(syobocalTid: number, recordedTitle: string): Promise<number | null>;
     /**
+     * 話数からサブタイトルを引く (エピソード名の補完用)。
+     * ローカルに取り込み済みのしょぼいカレンダーのサブタイトル一覧のみを使うため外部通信は伴わない
+     * @param syobocalTid: number
+     * @param episodeNumber: number
+     * @return Promise<string | null> 該当する話数が無ければ null
+     */
+    lookupEpisodeTitle(syobocalTid: number, episodeNumber: number): Promise<string | null>;
+    /**
      * キーワードで作品辞書 (しょぼいカレンダー / Annict / Wikidata) を横断検索する。
      * エイリアス辞書の手動修正で、まだローカルに無い作品を探すために使う
      * @param keyword: string 検索キーワード (生のまま渡してよい)

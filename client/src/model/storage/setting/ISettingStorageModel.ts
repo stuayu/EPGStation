@@ -51,6 +51,9 @@ export interface ISettingValue {
     isShowRecordedAsSeries: boolean; // 録画済み一覧をシリーズ単位表示にするか (既定 OFF。互換性維持のため従来のフラット表示が既定)
     channelGroupingType: ChannelGroupingType; // 番組表・放映中で地上波系をまとめる軸 (既定 地域別)
     isShowFollowingIndicatorInGuide: boolean; // 番組表に「追いかけ中」インジケータを表示するか (featureFlags.seriesLibrary かつ programSeriesMapping が有効な場合のみ意味を持つ)
+    // シリーズ詳細のエピソード名を作品辞書 (しょぼいカレンダー) 由来の「第N話 サブタイトル」で表示するか。
+    // false の場合は録画タイトルをそのまま表示する (既定 true)
+    useDictionaryEpisodeTitle: boolean;
 }
 
 export type ISettingStorageModel = IStorageBaseModel<ISettingValue>;
