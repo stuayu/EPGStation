@@ -506,6 +506,9 @@ export interface RecordedItem {
     programId?: ProgramId;
     channelId: ChannelId;
     channelName?: string; // 録画時点の放送局名 (channel テーブルから放送局情報が失われた場合の表示用)
+    // TS 解析 (SDT) で読み取った放送局名。実際に録画されたストリームに入っていた名前なので
+    // 表示ではこれを最優先で使う (解析していない録画・局名を取れなかった録画では入らない)
+    tsChannelName?: string;
     startAt: UnixtimeMS;
     endAt: UnixtimeMS;
     name: string;
@@ -531,6 +534,26 @@ export interface RecordedItem {
     tags?: RecordedTag[];
     isEncoding: boolean;
     isProtected: boolean;
+    // シリーズに紐づいている場合の作品・話数情報 (一覧のタイトル表示に使う)。
+    // featureFlags.seriesLibrary が無効な場合と、シリーズ未確定の録画では入らない
+    series?: RecordedSeriesInfo;
+}
+
+/**
+ * 録画に紐づくシリーズ・エピソード情報
+ */
+export interface RecordedSeriesInfo {
+    seriesId: SeriesId;
+    seriesTitle: string;
+    seasonNumber: number | null;
+    episodeNumber: number | null;
+    episodeLabel: string | null;
+    // 作品辞書から引けたサブタイトル
+    episodeTitle: string | null;
+    // 放送回コメント (しょぼいカレンダーの ProgComment 由来、または画面から編集したもの)
+    episodeComment: string | null;
+    episodeCommentSource: 'dictionary' | 'manual' | null;
+    airType: string;
 }
 
 /**
@@ -1574,6 +1597,12 @@ export interface SeriesMappingValue {
     episodeId: number | null;
     seasonNumber: number | null;
     episodeNumber: number | null;
+    // 作品辞書から引けたサブタイトル
+    episodeTitle?: string | null;
+    // 放送回コメント (しょぼいカレンダーの ProgComment 由来、または画面から編集したもの)
+    episodeComment?: string | null;
+    // 放送回コメントの出所 (dictionary: 放送予定から取得 / manual: 画面から編集)
+    episodeCommentSource?: 'dictionary' | 'manual' | null;
     airType: string;
     matchMethod: string;
     confidence: number;

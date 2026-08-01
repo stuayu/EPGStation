@@ -73,6 +73,21 @@ export interface SeriesRecordedRow {
     airType: string;
     confidence: number;
 }
+/**
+ * 録画 1 件に紐づくシリーズ・エピソードの表示用情報 (一覧のタイトル表示に使う)
+ */
+export interface RecordedSeriesInfo {
+    seriesId: number;
+    seriesTitle: string;
+    seasonNumber: number | null;
+    episodeNumber: number | null;
+    episodeLabel: string | null;
+    episodeTitle: string | null;
+    episodeComment: string | null;
+    episodeCommentSource: string | null;
+    airType: string;
+}
+
 export type SeriesSortKey = 'updatedAt' | 'title' | 'firstAiredAt' | 'lastAiredAt' | 'recordedCount' | 'totalFileSize';
 export type SeriesStatusFilter = 'onair' | 'finished';
 // シリーズの出所。'dictionary': 作品辞書 (しょぼいカレンダー / Annict / Wikidata) 由来の外部 ID を持つ / 'local': 録画タイトルから作られた
@@ -173,6 +188,12 @@ export default interface ISeriesDB {
     createSeries(value: NewSeries): Promise<Series>;
     findEpisode(seriesId: number, seasonNumber: number, episodeNumber: number | null): Promise<SeriesEpisode | null>;
     findEpisodeById(id: number): Promise<SeriesEpisode | null>;
+    /**
+     * 録画 ID の一覧に対応するシリーズ・エピソード情報をまとめて引く (一覧表示で N+1 にしない)
+     * @param recordedIds: number[]
+     * @return Promise<Map<number, RecordedSeriesInfo>> シリーズに紐づいていない録画はキーごと含まれない
+     */
+    findSeriesInfoByRecordedIds(recordedIds: number[]): Promise<Map<number, RecordedSeriesInfo>>;
     createEpisode(value: NewEpisode): Promise<SeriesEpisode>;
     /**
      * エピソードのサブタイトル・放送回コメントを作品辞書の値で補完する。

@@ -42,6 +42,25 @@
                         <v-list-item-title>アップロード画面へ</v-list-item-title>
                     </div>
                 </v-list-item>
+
+                <v-divider></v-divider>
+                <v-list-subheader>タイトルの表示</v-list-subheader>
+                <v-list-item v-on:click="setUseDictionaryEpisodeTitle(true)" slim>
+                    <template #prepend>
+                        <v-icon>{{ useDictionaryEpisodeTitle === true ? 'mdi-check' : 'mdi-book-open-variant' }}</v-icon>
+                    </template>
+                    <div class="v-list-item-content">
+                        <v-list-item-title>作品名 + 話数で表示</v-list-item-title>
+                    </div>
+                </v-list-item>
+                <v-list-item v-on:click="setUseDictionaryEpisodeTitle(false)" slim>
+                    <template #prepend>
+                        <v-icon>{{ useDictionaryEpisodeTitle === false ? 'mdi-check' : 'mdi-file-document-outline' }}</v-icon>
+                    </template>
+                    <div class="v-list-item-content">
+                        <v-list-item-title>録画タイトルで表示</v-list-item-title>
+                    </div>
+                </v-list-item>
             </v-list>
         </v-menu>
         <div v-if="isOpened === true" class="menu-background" v-on:click="onClickMenuBackground"></div>
@@ -49,12 +68,42 @@
 </template>
 
 <script lang="ts">
+import container from '@/model/ModelContainer';
+import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
-import { Component, Vue, toNative } from 'vue-facing-decorator';
+import { Component, Emit, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({})
 class RecordedMainMenu extends Vue {
     public isOpened: boolean = false;
+
+    private settingStorageModel: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
+    // save() が書き出すのは tmp なので、getSavedValue() の戻り値ではなく tmp を直接書き換える
+    private settingValue: ISettingValue = this.settingStorageModel.tmp;
+
+    get useDictionaryEpisodeTitle(): boolean {
+        return this.settingValue.useDictionaryEpisodeTitle ?? true;
+    }
+
+    /**
+     * 一覧のタイトル表示を「作品名 + 話数」/「録画タイトル」で切り替える。
+     * 設定はシリーズ詳細と共通なので、どちらから変更しても全画面に反映される
+     * @param value: boolean
+     */
+    public setUseDictionaryEpisodeTitle(value: boolean): void {
+        this.isOpened = false;
+        if (this.useDictionaryEpisodeTitle === value) {
+            return;
+        }
+
+        this.settingValue.useDictionaryEpisodeTitle = value;
+        this.settingStorageModel.save();
+
+        this.onChangedTitleDisplay();
+    }
+
+    @Emit('changedTitleDisplay')
+    public onChangedTitleDisplay(): void {}
 
     public edit(): void {
         this.$emit('edit');

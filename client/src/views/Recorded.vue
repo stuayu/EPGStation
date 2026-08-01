@@ -21,7 +21,12 @@
                     <v-icon>{{ isShowAsSeries === true ? 'mdi-view-list' : 'mdi-folder-play' }}</v-icon>
                 </v-btn>
                 <RecordedSearchMenu></RecordedSearchMenu>
-                <RecordedMainMenu v-on:edit="onEdit" v-on:cleanup="onCleanup" v-on:import="onImport"></RecordedMainMenu>
+                <RecordedMainMenu
+                    v-on:edit="onEdit"
+                    v-on:cleanup="onCleanup"
+                    v-on:import="onImport"
+                    v-on:changedTitleDisplay="onChangedTitleDisplay"
+                ></RecordedMainMenu>
             </template>
         </TitleBar>
         <template v-if="isShowAsSeries === true">
@@ -308,6 +313,16 @@ class Recorded extends Vue {
 
     public onImport(): void {
         this.isOpenImportDialog = true;
+    }
+
+    /**
+     * タイトルの表示方法が変わったので一覧を取得し直す
+     * (表示名は RecordedUtil が設定を見て組み立てるため、再取得すれば反映される)
+     */
+    public async onChangedTitleDisplay(): Promise<void> {
+        await this.recordedState.fetchData(this.createFetchDataOption()).catch(err => {
+            console.error(err);
+        });
     }
 
     @Watch('$route', { immediate: true, deep: true })

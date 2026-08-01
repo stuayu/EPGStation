@@ -237,6 +237,15 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **教訓**: `video_file.type` のように複数の目的で参照されているフィールドを変更するときは、`grep` で全参照箇所を洗い出してから着手すること。今回は「PSI/SI 解析対象かどうか」だけを見て変更し、「ストリーミングパイプライン選択」という別の用途を見落としたため手戻りになった
     - **テスト**: `test/ut/encode-finish-model.test.js` (拡張子に関わらず `type: 'encoded'` のまま)、`test/ut/video-file-analyze-model.test.js` (拡張子ベースの対象判定)、`test/ut/video-metadata-api.test.js` (`reanalyzeAllTsInfo`)
 
+- **録画の放送局名を TS 解析結果 (SDT) 優先で表示し、一覧のタイトル表示を切り替えられるようにした + 録画詳細にコメントを表示した**
+    - **放送局名は TS 解析の局名を最優先にした**: `ChannelNameUtil.getRecordedChannelName()` の解決順を「TS 解析 (SDT) の局名 → 現在の channel 情報 → 録画時点の局名 → networkId/serviceId 表記」に変更した。実際に録画されたストリーム自身が名乗っている名前なので、チャンネル情報の変更・引っ越し・NW 局の取り違えがあっても録画の実体と一致する
+        - 一覧に載せるため `RecordedItem.tsChannelName` を追加した。`IVideoFileTsInfoDB.findServiceNamesByRecordedIds()` で **1 クエリ**にまとめて引く (件数が増えても N+1 にならない)。同じ録画に複数ファイルがある場合は最初に解析されたものを採る
+    - **一覧のタイトル表示を 3 点リーダーで切り替えられるようにした**: 録画済み一覧の 3 点リーダー (`RecordedMainMenu.vue`) に「作品名 + 話数で表示」/「録画タイトルで表示」を追加した。設定はシリーズ詳細の切り替えと**同じ `useDictionaryEpisodeTitle`** なので、どこで変えても全画面に反映される (ダッシュボードの録画カードも同じ表示名を使うため連動する)
+        - 表示名の組み立ては `RecordedUtil.convertRecordedItemToDisplayData()` の 1 箇所に集約した。ここが `display.name` を作るため、録画済み一覧・ダッシュボード・検索結果など経由するすべての画面に効く
+        - そのため `RecordedItem.series` (作品名・話数・サブタイトル・放送回コメント) を API に追加した。こちらも `ISeriesDB.findSeriesInfoByRecordedIds()` で 1 クエリにまとめている。`featureFlags.seriesLibrary` が無効なら問い合わせ自体を行わない
+    - **録画詳細にコメントを表示した**: 録画詳細のシリーズ情報欄 (`RecordedDetailSeries.vue`) に「この回のコメント」(放送回コメント) と「作品コメント」(既定 5 行で折りたたみ) を追加した。放送回コメントを載せるため `SeriesMappingValue` に `episodeTitle` / `episodeComment` / `episodeCommentSource` を追加している (編集はシリーズ詳細から行う)
+    - **テスト**: `test/ita/recorded-watch-history.test.js` (シリーズ情報・TS 局名の一括付与、機能フラグ無効時に問い合わせない)
+
 - **しょぼいカレンダーのコメントを同期し、画面から編集・削除できるようにした**
     - **2 種類のコメントを扱う**
         - **作品コメント** (`TitleItem.Comment`) — シリーズ単位。公式リンク・スタッフ・主題歌などが Wiki 記法で書かれた数 KB の長文。`series.comment` / `series.commentSource` に保存する

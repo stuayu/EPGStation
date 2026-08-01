@@ -23,6 +23,7 @@ import ISeriesDB, {
     NewReservationHint,
     NewSeries,
     PendingCandidate,
+    RecordedSeriesInfo,
     SaveSeriesLink,
     SeriesChannelRow,
     SeriesRecordedRow,
@@ -71,6 +72,47 @@ export default class SeriesDB implements ISeriesDB {
         const c = await this.op.getConnection();
         const repo = c.getRepository(SeriesEpisode);
         return await repo.save(repo.create(value));
+    }
+    public async findSeriesInfoByRecordedIds(recordedIds: number[]): Promise<Map<number, RecordedSeriesInfo>> {
+        const result = new Map<number, RecordedSeriesInfo>();
+        if (recordedIds.length === 0) return result;
+        const c = await this.op.getConnection();
+
+        // IN 句のバインド変数上限 (SQLite は既定 999) を超えないように分割して引く
+        for (let i = 0; i < recordedIds.length; i += SeriesDB.DELETE_CHUNK_SIZE) {
+            const chunk = recordedIds.slice(i, i + SeriesDB.DELETE_CHUNK_SIZE);
+            const rows = await c
+                .getRepository(RecordedSeriesLink)
+                .createQueryBuilder('l')
+                .innerJoin(Series, 's', 's.id = l.seriesId')
+                .leftJoin(SeriesEpisode, 'e', 'e.id = l.episodeId')
+                .where('l.recordedId IN (:...recordedIds)', { recordedIds: chunk })
+                .select('l.recordedId', 'recordedId')
+                .addSelect('l.seriesId', 'seriesId')
+                .addSelect('s.title', 'seriesTitle')
+                .addSelect('e.seasonNumber', 'seasonNumber')
+                .addSelect('e.episodeNumber', 'episodeNumber')
+                .addSelect('e.episodeLabel', 'episodeLabel')
+                .addSelect('e.title', 'episodeTitle')
+                .addSelect('e.comment', 'episodeComment')
+                .addSelect('e.commentSource', 'episodeCommentSource')
+                .addSelect('l.airType', 'airType')
+                .getRawMany<RecordedSeriesInfo & { recordedId: number }>();
+            for (const row of rows) {
+                result.set(Number(row.recordedId), {
+                    seriesId: Number(row.seriesId),
+                    seriesTitle: row.seriesTitle,
+                    seasonNumber: row.seasonNumber === null ? null : Number(row.seasonNumber),
+                    episodeNumber: row.episodeNumber === null ? null : Number(row.episodeNumber),
+                    episodeLabel: row.episodeLabel ?? null,
+                    episodeTitle: row.episodeTitle ?? null,
+                    episodeComment: row.episodeComment ?? null,
+                    episodeCommentSource: row.episodeCommentSource ?? null,
+                    airType: row.airType,
+                });
+            }
+        }
+        return result;
     }
     public async fillEpisodeMetadata(
         episodeId: number,
