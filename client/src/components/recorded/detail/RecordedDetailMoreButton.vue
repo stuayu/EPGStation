@@ -35,6 +35,15 @@
                     <template #prepend><v-icon>mdi-link-variant</v-icon></template>
                     <div class="v-list-item-content"><v-list-item-title>シリーズ割当を修正</v-list-item-title></div>
                 </v-list-item>
+                <!-- 取り込み済みの TS を再解析して番組情報 (概要・ジャンル・映像音声・放送局) を取り直す -->
+                <v-list-item v-on:click="reanalyze" slim>
+                    <template #prepend>
+                        <v-icon>mdi-file-search</v-icon>
+                    </template>
+                    <div class="v-list-item-content">
+                        <v-list-item-title>TS を再解析</v-list-item-title>
+                    </div>
+                </v-list-item>
                 <v-list-item v-on:click="search" slim>
                     <template #prepend>
                         <v-icon>mdi-magnify</v-icon>
@@ -91,6 +100,7 @@ import RecordedDeleteDialog from '@/components/recorded/RecordedDeleteDialog.vue
 import RecordedDownloadDialog from '@/components/recorded/RecordedDownloadDialog.vue';
 import RecordedUploadVideoDialog from '@/components/recorded/detail/RecordedUploadVideoDialog.vue';
 import IRecordedApiModel from '@/model/api/recorded/IRecordedApiModel';
+import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import container from '@/model/ModelContainer';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
@@ -118,6 +128,7 @@ class RecordedDetailMoreButton extends Vue {
     public isOpenUploadDialog: boolean = false;
 
     public recordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
+    private videoApiModel = container.get<IVideoApiModel>('IVideoApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
 
@@ -185,6 +196,30 @@ class RecordedDetailMoreButton extends Vue {
             this.snackbarState.open({
                 color: 'error',
                 text: '保護に失敗',
+            });
+        }
+    }
+
+    /**
+     * この録画のビデオファイルだけ TS を解析し直す。
+     * 解析ロジックの更新後や、取り込み時に番組情報が入らなかった録画の補完に使う
+     */
+    public async reanalyze(): Promise<void> {
+        await Util.sleep(300);
+        try {
+            await this.videoApiModel.startAnalyzeJob({ type: 'tsInfo', recordedId: this.recordedItem.id });
+            this.snackbarState.open({ color: 'success', text: 'TS の再解析を開始しました' });
+        } catch (err: any) {
+            console.error(err);
+            const status = err?.response?.status;
+            this.snackbarState.open({
+                color: 'error',
+                text:
+                    status === 409
+                        ? '他の解析ジョブが実行中です'
+                        : status === 404
+                          ? '解析できるビデオファイルがありません'
+                          : 'TS の再解析に失敗しました',
             });
         }
     }

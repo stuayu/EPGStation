@@ -1778,6 +1778,9 @@ components:
                     description: 対象 (unanalyzed = 未解析のみ / all = 解析済みを含む全件。省略時 unanalyzed)
                     type: string
                     enum: [unanalyzed, all]
+                recordedId:
+                    description: 指定するとその録画のファイルだけを対象にする (省略時は全件。解析済みでも必ずやり直す)
+                    type: integer
 
         VideoAnalyzeJob:
             description: 録画ファイル一括解析ジョブの状況
@@ -1795,6 +1798,10 @@ components:
                     type: string
                     nullable: true
                     enum: [unanalyzed, all]
+                recordedId:
+                    description: 対象を 1 録画に絞っている場合の録画 id
+                    type: integer
+                    nullable: true
                 total:
                     description: 開始時点の対象件数
                     type: integer

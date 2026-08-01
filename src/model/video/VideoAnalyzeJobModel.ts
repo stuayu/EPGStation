@@ -40,6 +40,7 @@ export default class VideoAnalyzeJobModel implements IVideoAnalyzeJobModel {
             status: 'idle',
             type: null,
             mode: null,
+            recordedId: null,
             total: 0,
             processed: 0,
             analyzed: 0,
@@ -58,18 +59,25 @@ export default class VideoAnalyzeJobModel implements IVideoAnalyzeJobModel {
         if (this.job.status === 'running') throw new Error('VideoAnalyzeJobIsAlreadyRunning');
 
         const type = option?.type;
-        const mode = option?.mode ?? 'unanalyzed';
+        // 録画 1 件だけを対象にする場合は、解析済みでも必ずやり直す (画面から明示的に実行するため)
+        const recordedId = typeof option?.recordedId === 'number' ? option.recordedId : null;
+        const mode = recordedId !== null ? 'all' : (option?.mode ?? 'unanalyzed');
         if (type !== 'metadata' && type !== 'tsInfo' && type !== 'channel')
             throw new Error('InvalidVideoAnalyzeJobType');
         if (mode !== 'unanalyzed' && mode !== 'all') throw new Error('InvalidVideoAnalyzeJobMode');
 
-        const total = await this.countTargets(type, mode);
+        // 対象を 1 録画に絞る場合は先に対象ファイルを確定させる (件数の数え直しをしない)
+        const singleTargets = recordedId === null ? null : await this.findRecordedTargets(recordedId);
+        if (singleTargets !== null && singleTargets.length === 0) throw new Error('VideoFileIsNotFound');
+
+        const total = singleTargets !== null ? singleTargets.length : await this.countTargets(type, mode);
 
         this.cancelRequested = false;
         this.job = {
             status: 'running',
             type: type,
             mode: mode,
+            recordedId: recordedId,
             total: total,
             processed: 0,
             analyzed: 0,
@@ -80,7 +88,7 @@ export default class VideoAnalyzeJobModel implements IVideoAnalyzeJobModel {
         };
 
         // 応答を待たせないようジョブは非同期で進める
-        this.execute(type, mode).catch(err => {
+        this.execute(type, mode, singleTargets).catch(err => {
             this.log?.system.error(err);
         });
 
@@ -114,11 +122,21 @@ export default class VideoAnalyzeJobModel implements IVideoAnalyzeJobModel {
     /**
      * ジョブ本体。CHUNK_SIZE 件ずつ取り出して解析する
      */
-    private async execute(type: apid.VideoAnalyzeJobType, mode: apid.VideoAnalyzeJobMode): Promise<void> {
+    private async execute(
+        type: apid.VideoAnalyzeJobType,
+        mode: apid.VideoAnalyzeJobMode,
+        singleTargets: apid.VideoFileId[] | null = null,
+    ): Promise<void> {
         try {
             let offset = 0;
             for (;;) {
-                const targets = await this.findTargets(type, mode, offset);
+                // 1 録画だけを対象にする場合は最初の 1 周で全ファイルを処理して終わる
+                const targets =
+                    singleTargets === null
+                        ? await this.findTargets(type, mode, offset)
+                        : offset === 0
+                          ? singleTargets
+                          : [];
                 if (targets.length === 0) break;
 
                 for (const target of targets) {
@@ -148,7 +166,10 @@ export default class VideoAnalyzeJobModel implements IVideoAnalyzeJobModel {
                 // 全件を舐めるモード (all / channel) は同じ行を引き続けないよう読み進める。
                 // 未解析のみのモードは解析に成功したぶんが対象から外れるので、
                 // 「失敗して残ったまま」の件数だけ読み飛ばす (失敗ファイルで無限ループしないようにする)
-                offset = mode === 'all' || type === 'channel' ? offset + targets.length : this.job.failed;
+                offset =
+                    singleTargets !== null || mode === 'all' || type === 'channel'
+                        ? offset + targets.length
+                        : this.job.failed;
             }
 
             this.finish('succeeded');
@@ -158,6 +179,17 @@ export default class VideoAnalyzeJobModel implements IVideoAnalyzeJobModel {
             this.log?.system.error('video analyze job aborted');
             this.log?.system.error(err);
         }
+    }
+
+    /**
+     * 指定した録画に紐づく video file id を取り出す
+     * @param recordedId: apid.RecordedId
+     * @return Promise<apid.VideoFileId[]>
+     */
+    private async findRecordedTargets(recordedId: apid.RecordedId): Promise<apid.VideoFileId[]> {
+        const videos = await this.videoFileDB.findRecordedId(recordedId);
+
+        return videos.map(v => v.id);
     }
 
     /**
@@ -199,6 +231,7 @@ export default class VideoAnalyzeJobModel implements IVideoAnalyzeJobModel {
         this.cancelRequested = false;
         this.log?.system.info(
             `video analyze job ${status}: type ${this.job.type} mode ${this.job.mode} ` +
+                (typeof this.job.recordedId === 'number' ? `recordedId ${this.job.recordedId} ` : '') +
                 `analyzed ${this.job.analyzed} failed ${this.job.failed}`,
         );
     }

@@ -36,6 +36,7 @@ export const post: Operation = async (req, res) => {
     } catch (err: unknown) {
         const message = api.getErrorMessage(err);
         if (message === 'VideoAnalyzeJobIsAlreadyRunning') api.responseError(res, { code: 409, message: message });
+        else if (message === 'VideoFileIsNotFound') api.responseError(res, { code: 404, message: message });
         else if (message === 'InvalidVideoAnalyzeJobType' || message === 'InvalidVideoAnalyzeJobMode')
             api.responseError(res, { code: 400, message: message });
         else api.responseServerError(res, message);
@@ -48,6 +49,7 @@ post.apiDoc = {
     description:
         'ffprobe メタデータ / TS (PSI/SI) の一括解析をサーバ側で開始する。' +
         'mode が unanalyzed なら未解析ファイルのみ、all なら解析済みを含む全件を強制的に解析し直す。' +
+        'recordedId を指定した場合はその録画のファイルだけを対象にし、解析済みでも必ずやり直す (単一番組の再解析)。' +
         '進捗は GET /api/videos/analyze で取得する',
     requestBody: {
         content: {
@@ -61,6 +63,7 @@ post.apiDoc = {
             content: { 'application/json': { schema: { $ref: '#/components/schemas/VideoAnalyzeJob' } } },
         },
         400: { description: '指定が不正' },
+        404: { description: '指定した録画のビデオファイルが無い' },
         409: { description: 'すでに解析ジョブが実行中' },
         default: {
             description: '予期しないエラー',
