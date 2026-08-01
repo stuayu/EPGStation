@@ -38,6 +38,9 @@ const EPISODE_COUNTER = '(?:話|幕|旅|夜|章|回|羽|滑|品|球|杯)';
 // 英字の話数表記 (Episode08 / Turn19 / break1 / days.1 / Mission:39 / request 1. / Part2 / vol.3 / No.5 など)
 const EPISODE_WORD =
     '(?:ep|episode|turn|break|days?|mission|request|stage|case|act|file|track|scene|phase|round|step|lap|note|link|chapter|part|vol|volume|story|number|no)';
+// 「番組名（17）」のように括弧だけで話数を表す表記 (NHK 系が使う)。
+// 「(2024)」のような年号を話数と取り違えないよう、19xx / 20xx の 4 桁は除外する
+const PARENTHESIZED_EPISODE = '[（(](?!(?:19|20)\\d{2}[)）])(\\d{1,4})[)）]';
 const EPISODE_PATTERNS = [
     new RegExp(`(?:第\\s*)?(\\d+(?:\\.\\d+)?)\\s*${EPISODE_COUNTER}`, 'u'),
     new RegExp(`(?:第\\s*)?([${KANJI_NUMERALS}]+)\\s*${EPISODE_COUNTER}`, 'u'),
@@ -46,6 +49,8 @@ const EPISODE_PATTERNS = [
     // 「その1」「その二」形式 (助数詞を持たない和風の話数表記)
     /その\s*(\d+(?:\.\d+)?)/u,
     new RegExp(`その\\s*([${KANJI_NUMERALS}]+)(?![${KANJI_NUMERALS}])`, 'u'),
+    // 他の表記で取れなかった場合の最後の候補 (括弧数字は年号・版数とも紛らわしいため優先度を最も低くする)
+    new RegExp(PARENTHESIZED_EPISODE, 'u'),
 ];
 // 総集編・一挙放送など、通し話数を持たない放送を表す語。
 // SCRename の除外定義 (SCRename.exc) と同じ考え方で、話数の逆引きを抑止するために使う。
@@ -58,8 +63,8 @@ const EPISODE_TAILS = [
     new RegExp(`(?:第\\s*)?[${KANJI_NUMERALS}]+\\s*${EPISODE_COUNTER}[\\s\\S]*$`, 'u'),
     /[#＃♯]\s*\d+(?:\.\d+)?[\s\S]*$/u,
     new RegExp(`\\b${EPISODE_WORD}[ .:_-]*\\d+(?:\\.\\d+)?[\\s\\S]*$`, 'iu'),
-    // 「作品名 （８）」のような括弧付き話数
-    /\s[（(]\s*\d+\s*[)）][\s\S]*$/u,
+    // 「作品名 （８）」「アオアシ（１７）」のような括弧付き話数 (前の空白は無くてもよい)
+    new RegExp(`${PARENTHESIZED_EPISODE}[\\s\\S]*$`, 'u'),
 ];
 // 括弧で囲まれた語のみをマーカーとして除去する対象一覧 (裸の語は除去しない)
 // 例: "(再)" "[新]" "【字】" は除去するが、"再婚承認を要求します" の「再」は除去しない
