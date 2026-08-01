@@ -237,21 +237,39 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **教訓**: `video_file.type` のように複数の目的で参照されているフィールドを変更するときは、`grep` で全参照箇所を洗い出してから着手すること。今回は「PSI/SI 解析対象かどうか」だけを見て変更し、「ストリーミングパイプライン選択」という別の用途を見落としたため手戻りになった
     - **テスト**: `test/ut/encode-finish-model.test.js` (拡張子に関わらず `type: 'encoded'` のまま)、`test/ut/video-file-analyze-model.test.js` (拡張子ベースの対象判定)、`test/ut/video-metadata-api.test.js` (`reanalyzeAllTsInfo`)
 
+- **しょぼいカレンダーのコメントを同期し、画面から編集・削除できるようにした**
+    - **2 種類のコメントを扱う**
+        - **作品コメント** (`TitleItem.Comment`) — シリーズ単位。公式リンク・スタッフ・主題歌などが Wiki 記法で書かれた数 KB の長文。`series.comment` / `series.commentSource` に保存する
+        - **放送回コメント** (`ProgItem.ProgComment`) — エピソード単位。「定刻放送」「30 分繰り下げ」等の短いメモ。`series_episode.comment` / `commentSource` に保存する
+    - **作品コメントは辞書の全件同期に含めない**: 1 作品あたり数 KB あり、`TitleLookup` の `Fields` に `Comment` を足すと同期する XML が 9.5MB → 24MB に膨らむ。代わりに `ISyobocalTitleDictionary.fetchComment(tid)` で**シリーズになっている作品だけを TID 指定で個別に取得**し、`SeriesMetadataFiller.fill()` (Operator 起動 10 分後 + 設定画面の「メタデータ再取得」) で埋める。1 回の実行あたり 100 件までに制限し、溢れた分は次回へ回す
+    - **コメントだけが未取得のシリーズでは作品辞書を引き直さない**: コメントは辞書本体に無いため、`SeriesMetadataFiller` の「辞書から埋めるものが残っているか」の判定 (`needsDictionary`) にコメントを含めていない
+    - **放送回コメントは追加の通信を伴わない**: 話数・サブタイトルと同じ `ProgLookup` のレスポンスに含まれるため、`SyobocalProgramLookup` が一緒に返し `SeriesResolver` がエピソードへ保存する
+    - **手動編集は自動同期で上書きしない**: 画面から編集・削除すると出所が `manual` になり、以降の自動取得の対象から外れる (削除した場合も `manual` が残るので辞書の値が戻ってこない)。辞書由来の値は `dictionary`
+    - **API**: 作品コメントは既存の `PUT /api/series/{seriesId}/metadata` に `comment` を追加した (null / 空文字で削除)。放送回コメントは `PUT /api/series/episodes/{episodeId}/comment` を新設した。取得は `GET /api/series/{seriesId}` のレスポンスに `comment` / `commentSource` と、各録画行の `episodeComment` / `episodeCommentSource` として載る
+    - **UI (シリーズ詳細)**: 作品コメントはカードで表示し、長文なので既定は 5 行で折りたたむ (「もっと見る」で展開)。鉛筆アイコンから編集ダイアログ、ゴミ箱アイコンから削除 (確認あり)。放送回コメントは各録画行の下に小さく表示し、行のコメントアイコンから編集する (話数が未確定で `episodeId` が無い行にはボタンを出さない)。出所が `manual` の場合はバッジで示す
+    - **DB**: `series` と `series_episode` に `comment` / `commentSource` を追加 (マイグレーションは mysql / sqlite 両方)。**`typeorm migration:generate` の出力は使えなかった** — 既存 DB との差分を全て拾って無関係なテーブルまで作り直し、`IDX_series_season` を復元しないなど破壊的だったため、`ALTER TABLE ... ADD COLUMN` だけの手書きに差し替えている
+    - **テスト**: `test/ut/series-metadata-filler.test.js` (コメント取得・手動編集の保護・コメントだけ未取得のときに辞書を引かない)、`test/ut/series-resolver.test.js` (放送回コメントの保存・既存エピソードへの補完・手動編集の保護)
+
 - **話数マッピングの精度を上げた (しょぼいカレンダーの放送予定照会・話数表記の拡充・特番の除外) + エピソード名の表示切り替えを追加した**
     - **背景**: 話数の判定は「録画タイトルの表記 (第 1 話 / #1 / break1 …)」と「しょぼいカレンダーのサブタイトル一覧との照合」の 2 本だけで、**どちらも持たないタイトル** (局が話数もサブタイトルも送出せず作品名だけを流す番組) では話数が付かなかった。[rigaya/SCRenamePy](https://github.com/rigaya/SCRenamePy) が「放送局 + 放送日時」でしょぼいカレンダーの放送予定を引いて話数・サブタイトルを確定させているのを参考に、同じ経路を追加した
     - **放送予定照会 (`SyobocalProgramLookup`, `src/model/metadata/syobocal/`)**: 録画の `channelId` / `startAt` から `Command=ProgLookup&ChID=&Range=` を引き、`TID` / `Count` (通し話数) / `SubTitle` を得る。**タイトルの表記に一切依存しない**ため、話数表記もサブタイトルも無い録画で話数が確定し、辞書キーに当たらないタイトルでも作品自体を特定できる
-        - 局の対応付けは既存の `SyobocalChannelMap` (networkId + serviceId → ChID) を使う。未登録局 (`syobocal: false`) とマッピングの無い局は問い合わせない
+        - 局の対応付けは既存の `SyobocalChannelMap` (networkId + serviceId → ChID) を使う
+        - **未登録局は系列のキー局で代用する**: しょぼいカレンダーに放送データが無い地方局は、その局が属する系列 (`BroadcastAffiliation`、BIT の系列識別) のキー局の ChID へフォールバックして引く (日テレ系 → 日本テレビ ChID 3 など)。同時ネットの番組であれば同じ時刻に同じ作品が並ぶため、地方局の録画でも作品・話数が引ける。系列が分からない局 (BIT 未受信) と独立系はキー局が無いので問い合わせない
+        - **キー局で代用した結果には `viaKeyStation: true` を付ける**: 遅れ放送では同時刻に別番組が並ぶため、この結果は**作品の確定には使わず**、作品が既に確定していて `TID` が一致する場合の話数・サブタイトルにのみ使う。一致判定も「開始時刻がほぼ一致 (= 同時ネットとみなせる)」に限り、時間帯の包含では拾わない
         - 取得は**放送日 1 日分をまとめて** (境界は JST 5 時、深夜番組を前日扱いにするため) 行い、`ChID + 放送日` 単位でメモリキャッシュする (TTL 6 時間・最大 256 件)。同じ局・同じ日の録画が続いても外部への問い合わせは 1 回で済む
-        - 一致判定は開始時刻の差 5 分以内を最優先し、外れた場合のみ「放送時間帯に含まれる番組」を採る (録画開始が番組途中になっている場合の救済)
+        - 一致判定は開始時刻の差 5 分以内を最優先し、外れた場合のみ「放送時間帯に含まれる番組」を採る (録画開始が番組途中になっている場合の救済。キー局で代用した場合は行わない)
         - 失敗・連携無効・該当なしはすべて `null` を返し、従来の経路へ委ねる (放送予定が引けなくてもシリーズ化自体は成立する)
-    - **`SeriesResolver` での使いどころ**: ①作品辞書がタイトルで引けなかった場合に放送予定の `TID` から作品を確定する (確度は 0.95 に抑える。放送予定側の時刻ずれで隣の番組を拾う余地があるため)、②話数が取れなかった場合に `Count` を採る (サブタイトル照合より優先)、③`SubTitle` をエピソード名として保存する。**タイトルに明示的な話数表記がある録画では放送予定を引かない** (外部への問い合わせを増やさないため)
+    - **`SeriesResolver` での使いどころ**: **話数表記の有無にかかわらず必ず放送予定を引く**。放送予定は局と時刻だけで決まりタイトルの表記に依存しないため、話数の情報源として録画タイトルより確実 (局が振った通し番号がずれている場合がある)。問い合わせは放送日 1 日分がキャッシュされるので局・日ごとに 1 回で済む
+        - 放送予定が**確定した作品と同じ `TID` を指している場合のみ**その内容を採用する。この検証があるので、時刻ずれで隣の番組を拾った場合やキー局で代用した局が遅れ放送だった場合に、別作品の話数を持ち込むことがない
+        - 話数の優先順位: ①放送予定の `Count` (タイトルの話数表記より優先) → ②タイトルの話数表記 → ③サブタイトル一覧との照合による逆引き (総集編・一挙放送では行わない)
+        - 作品辞書がタイトルで引けなかった場合は放送予定の `TID` から作品を確定する (確度は 0.95 に抑える。放送予定側の時刻ずれで隣の番組を拾う余地があるため)。ただし**キー局で代用した結果 (`viaKeyStation`) はこの用途には使わない**
     - **エピソード名 (`series_episode.title`) を埋めるようにした**: これまで常に `null` で作られていた。放送予定から取れたサブタイトルを優先し、無ければローカルの `syobocal_title_episode` から話数で引く (`IWorkDictionary.lookupEpisodeTitle()`、外部通信なし)。既存のエピソード行にも後から補完するが、**手動で付け直した値は上書きしない** (`SeriesDB.fillEpisodeTitle()` は `title IS NULL` の行のみ更新する)
     - **話数表記の拡充 (`SeriesNormalizer`)**: `Part2` / `vol.3` / `No.5` / `その 7` / `その十二` を話数として認識するようにした
     - **話数は括弧の外を優先して探す**: 従来はタイトル全体を走査していたため、サブタイトル中の数字を話数と誤読しうる。`「」『』` の中を潰した文字列を先に走査し、見つからない場合だけ全文へフォールバックする (SCRename が話数走査を括弧の手前で打ち切るのと同じ考え方)
     - **特番の除外 (`SeriesParseResult.isSpecial`)**: 総集編・傑作選・一挙放送・放送直前特番などは通し話数を持たないため、**タイトルに明示的な話数表記が無い場合の逆引き (放送予定・サブタイトル照合) を行わない**。明示表記があるときはそちらを尊重する
     - **エピソード名の表示切り替え (クライアント)**: シリーズ詳細 (`/series/{id}`) の 3 点リーダー (`client/src/components/series/SeriesTitleDisplayMenu.vue`) から「辞書のエピソード名を使う」/「録画タイトルを使う」を切り替えられるようにした。設定は localStorage の共通設定 (`ISettingValue.useDictionaryEpisodeTitle`、既定 有効) なので、一度切り替えればどの画面でも同じ値になる
         - 設定の保存は `ISettingStorageModel.tmp` を書き換えてから `save()` を呼ぶこと。`save()` が書き出すのは `tmp` で、`getSavedValue()` は localStorage を読み直した**別オブジェクト**を返すため、そちらを書き換えても保存されない (既存の `ChannelGroupingMenu.vue` / `GuideMainMenu.vue` はこの書き方になっており、設定がリロードで元に戻る)
-    - **テスト**: `test/ut/syobocal-program-lookup.test.js` (放送予定照会。一致判定・日付境界・キャッシュ・無効時の挙動)、`test/ut/series-resolver.test.js` (放送予定経由の確定・特番の除外・明示話数があるときに問い合わせない)、`test/ut/series-normalizer.test.js` (新しい話数表記・括弧外優先・特番判定)
+    - **テスト**: `test/ut/syobocal-program-lookup.test.js` (放送予定照会。一致判定・日付境界・キャッシュ・キー局フォールバック・無効時の挙動)、`test/ut/series-resolver.test.js` (放送予定経由の確定・話数表記があっても放送予定を優先する・別作品を指す放送予定を無視する・キー局代用では作品を確定しない・特番の除外)、`test/ut/series-normalizer.test.js` (新しい話数表記・括弧外優先・特番判定)
 
 - **シリーズ周りの UI を改善した (外部サイトへのリンク・戻る操作での検索結果復元・ページ番号指定)**
     - **録画詳細のシリーズタグから外部サイトへ飛べるようにした**: 録画詳細のシリーズ情報欄にある「Annict」「しょぼいカレンダー」のタグを、それぞれ `https://annict.com/works/{annictId}` / `https://cal.syoboi.jp/tid/{syobocalTid}` へのリンクにした (別タブで開く、`rel="noopener noreferrer"`)。外部 ID を持たないシリーズではこれまで通りタグ自体を出さない (`client/src/components/recorded/detail/RecordedDetailSeries.vue`)

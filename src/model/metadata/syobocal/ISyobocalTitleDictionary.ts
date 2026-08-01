@@ -40,4 +40,13 @@ export default interface ISyobocalTitleDictionary {
      * @return Promise<SyobocalTitleDictionaryStatus>
      */
     getStatus(): Promise<SyobocalTitleDictionaryStatus>;
+    /**
+     * 作品コメント (TitleItem.Comment。公式リンク・スタッフ・主題歌などの覚え書き) を 1 件だけ取得する。
+     *
+     * コメントは 1 作品あたり数 KB あり、全件同期に含めると XML が 9.5MB → 24MB に膨らむため
+     * 辞書本体には取り込まない。シリーズになっている作品だけを TID 指定で個別に引く
+     * @param tid: number しょぼいカレンダー TID
+     * @return Promise<string | null> 連携が無効・取得失敗・コメント無しの場合は null
+     */
+    fetchComment(tid: number): Promise<string | null>;
 }

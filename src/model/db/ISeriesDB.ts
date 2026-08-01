@@ -34,6 +34,10 @@ export interface NewEpisode {
     episodeLabel: string | null;
     // 作品辞書 (しょぼいカレンダー) から引けたサブタイトル。引けなければ null
     title: string | null;
+    // 放送予定から引けた放送回コメント (省略可)
+    comment?: string | null;
+    // コメントの出所 ('dictionary' | 'manual')。コメントが無ければ null
+    commentSource?: string | null;
     airedAt: number | null;
     createdAt: number;
     updatedAt: number;
@@ -62,6 +66,10 @@ export interface SeriesRecordedRow {
     episodeNumber: number | null;
     episodeLabel: string | null;
     episodeTitle: string | null;
+    // 放送回コメント (しょぼいカレンダーの ProgComment 由来、または手動編集)
+    episodeComment: string | null;
+    // 放送回コメントの出所 ('dictionary' | 'manual')
+    episodeCommentSource: string | null;
     airType: string;
     confidence: number;
 }
@@ -167,14 +175,41 @@ export default interface ISeriesDB {
     findEpisodeById(id: number): Promise<SeriesEpisode | null>;
     createEpisode(value: NewEpisode): Promise<SeriesEpisode>;
     /**
-     * エピソードのサブタイトルを補完する。手動編集で入った値を消さないよう、
-     * 現在 null のエピソードにのみ書き込む
+     * エピソードのサブタイトル・放送回コメントを作品辞書の値で補完する。
+     * 手動編集で入った値を消さないよう、現在 null の項目にのみ書き込む
      * @param episodeId: number
-     * @param title: string
+     * @param value: 補完する項目 (省略した項目は触らない)
      * @param updatedAt: number
      * @return Promise<void>
      */
-    fillEpisodeTitle(episodeId: number, title: string, updatedAt: number): Promise<void>;
+    fillEpisodeMetadata(
+        episodeId: number,
+        value: { title?: string | null; comment?: string | null },
+        updatedAt: number,
+    ): Promise<void>;
+    /**
+     * エピソードの放送回コメントを手動で設定する (null で削除)。
+     * 手動設定した値は以後の自動補完で上書きされない
+     * @param episodeId: number
+     * @param comment: string | null
+     * @param updatedAt: number
+     * @return Promise<boolean> 対象のエピソードが無ければ false
+     */
+    updateEpisodeComment(episodeId: number, comment: string | null, updatedAt: number): Promise<boolean>;
+    /**
+     * シリーズの作品コメントを設定する
+     * @param seriesId: number
+     * @param comment: string | null
+     * @param source: 'dictionary' | 'manual' 出所 ('manual' は自動補完で上書きされない)
+     * @param updatedAt: number
+     * @return Promise<boolean> 対象のシリーズが無ければ false
+     */
+    updateSeriesComment(
+        seriesId: number,
+        comment: string | null,
+        source: 'dictionary' | 'manual',
+        updatedAt: number,
+    ): Promise<boolean>;
     findLink(recordedId: number): Promise<RecordedSeriesLink | null>;
     saveLink(value: SaveSeriesLink): Promise<RecordedSeriesLink>;
     list(keyword: string | undefined, offset: number, limit: number): Promise<[Series[], number]>;

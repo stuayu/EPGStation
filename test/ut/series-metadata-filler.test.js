@@ -18,10 +18,17 @@ function makeDB(series, firstAiredAt = new Map()) {
         upsertAlias: async (normalizedTitle, seriesId, createdAt, source) => aliases.push({ normalizedTitle, seriesId, source }),
         findFirstAiredAtMap: async () => firstAiredAt,
         updateExternalMetadata: async (id, patch) => updates.push({ id, patch }),
+        comments: [],
+        updateSeriesComment: async function (id, comment, source) {
+            this.comments.push({ id, comment, source });
+            return true;
+        },
     };
 }
 const emptyDict = { lookup: async () => null, lookupEpisodeNumber: async () => null };
 const noLlm = { isEnabled: () => false, isSuspended: () => false, extractWorkTitle: async () => null };
+// 作品コメントは既定で「取得できない」ことにし、コメント取得は専用のテストでのみ検証する
+const noComment = { fetchComment: async () => null };
 
 function series(over = {}) {
     return {
@@ -37,6 +44,8 @@ function series(over = {}) {
         seasonName: null,
         seasonSource: null,
         totalEpisodes: null,
+        comment: null,
+        commentSource: null,
         ...over,
     };
 }
@@ -57,7 +66,7 @@ test('fill() takes the season from the work dictionary when it matches', async (
         }),
         lookupEpisodeNumber: async () => null,
     };
-    const result = await new SeriesMetadataFiller(logger, config, db, dict, noLlm).fill();
+    const result = await new SeriesMetadataFiller(logger, config, db, dict, noLlm, noComment).fill();
 
     assert.equal(result.updated, 1);
     assert.deepEqual(db.updates[0].patch, {
@@ -76,7 +85,7 @@ test('fill() takes the season from the work dictionary when it matches', async (
 test('fill() estimates the season from the earliest recording when the dictionary has none', async () => {
     // 2024-11-05 の録画 → 2024 年秋
     const db = makeDB([series()], new Map([[1, Date.parse('2024-11-05T21:00:00+09:00')]]));
-    const result = await new SeriesMetadataFiller(logger, config, db, emptyDict, noLlm).fill();
+    const result = await new SeriesMetadataFiller(logger, config, db, emptyDict, noLlm, noComment).fill();
 
     assert.equal(result.updated, 1);
     assert.equal(db.updates[0].patch.seasonYear, 2024);
@@ -94,7 +103,7 @@ test('fill() maps each month to the right season', async () => {
     ];
     for (const [iso, expected] of cases) {
         const db = makeDB([series()], new Map([[1, Date.parse(iso)]]));
-        await new SeriesMetadataFiller(logger, config, db, emptyDict, noLlm).fill();
+        await new SeriesMetadataFiller(logger, config, db, emptyDict, noLlm, noComment).fill();
         assert.equal(db.updates[0].patch.seasonName, expected, iso);
     }
 });
@@ -108,6 +117,8 @@ test('fill() never overwrites a manually set season', async () => {
         lookup: async () => ({
             syobocalTid: 10,
             annictId: 20,
+            wikidataQid: null,
+            tmdbId: null,
             title: '作品',
             titleKana: 'さくひん',
             seasonYear: 2024,
@@ -116,7 +127,7 @@ test('fill() never overwrites a manually set season', async () => {
         }),
         lookupEpisodeNumber: async () => null,
     };
-    const result = await new SeriesMetadataFiller(logger, config, db, dict, noLlm).fill();
+    const result = await new SeriesMetadataFiller(logger, config, db, dict, noLlm, noComment).fill();
 
     assert.equal(result.updated, 0);
     assert.equal(db.updates.length, 0);
@@ -124,7 +135,7 @@ test('fill() never overwrites a manually set season', async () => {
 
 test('fill() leaves the season unset when there is neither a match nor a recording', async () => {
     const db = makeDB([series()], new Map());
-    const result = await new SeriesMetadataFiller(logger, config, db, emptyDict, noLlm).fill();
+    const result = await new SeriesMetadataFiller(logger, config, db, emptyDict, noLlm, noComment).fill();
 
     assert.equal(result.updated, 0);
 });
@@ -135,7 +146,7 @@ test('fill() skips series that already have everything', async () => {
     ]);
     let looked = 0;
     const dict = { lookup: async () => { looked++; return null; }, lookupEpisodeNumber: async () => null };
-    const result = await new SeriesMetadataFiller(logger, config, db, dict, noLlm).fill();
+    const result = await new SeriesMetadataFiller(logger, config, db, dict, noLlm, noComment).fill();
 
     assert.equal(result.updated, 0);
     // 辞書も引かない (繰り返し実行しても安い)
@@ -168,7 +179,7 @@ test('fill() falls back to the llm only for series the dictionary missed and tha
             return title === 'アニメ 作品B 第3話 サブタイトル' ? '作品B' : null;
         },
     };
-    const result = await new SeriesMetadataFiller(logger, config, db, dict, llm).fill();
+    const result = await new SeriesMetadataFiller(logger, config, db, dict, llm, noComment).fill();
 
     // 辞書で引けず外部 ID も空だったシリーズだけが LLM へ回る
     // 外部 ID が既に入っているシリーズ (id: 3) は LLM へ回さない
@@ -186,7 +197,7 @@ test('fill() falls back to the llm only for series the dictionary missed and tha
 test('fill() does not set an external id when the llm output is not in the dictionary', async () => {
     const db = makeDB([series({ title: '架空アニメ' })]);
     const llm = { isEnabled: () => true, isSuspended: () => false, extractWorkTitle: async () => '存在しない作品' };
-    const result = await new SeriesMetadataFiller(logger, config, db, emptyDict, llm).fill();
+    const result = await new SeriesMetadataFiller(logger, config, db, emptyDict, llm, noComment).fill();
 
     // ハルシネーションは辞書で弾かれるので外部 ID は入らない
     assert.equal(result.llmAnalyzed, 1);
@@ -197,7 +208,7 @@ test('fill() does not set an external id when the llm output is not in the dicti
 test('fill() keeps going when the llm throws', async () => {
     const db = makeDB([series()]);
     const llm = { isEnabled: () => true, isSuspended: () => false, extractWorkTitle: async () => { throw new Error('boom'); } };
-    const result = await new SeriesMetadataFiller(logger, config, db, emptyDict, llm).fill();
+    const result = await new SeriesMetadataFiller(logger, config, db, emptyDict, llm, noComment).fill();
 
     assert.equal(result.llmResolved, 0);
     assert.equal(result.scanned, 1);
@@ -217,10 +228,55 @@ test('fill() stops asking the llm once it is suspended (rate limited) and leaves
             return null;
         },
     };
-    const result = await new SeriesMetadataFiller(logger, config, db, emptyDict, llm).fill();
+    const result = await new SeriesMetadataFiller(logger, config, db, emptyDict, llm, noComment).fill();
 
     // 休止中に残り 2 件を「抽出できなかった」として消化しない
     assert.equal(asked, 1);
     assert.equal(result.llmAnalyzed, 1);
     assert.equal(result.scanned, 3);
+});
+
+// 作品コメントは辞書本体に含めず TID 指定で個別に引く (1 作品あたり数 KB あるため)
+test('fill() fetches the work comment for series that have a syobocal tid', async () => {
+    const db = makeDB([series({ syobocalTid: 42, titleKana: 'x', seasonYear: 2024, seasonName: 'AUTUMN', seasonSource: 'dictionary', totalEpisodes: 12, annictId: '2' })]);
+    const asked = [];
+    const comment = { fetchComment: async tid => { asked.push(tid); return '*リンク\n-[[公式 https://example.com/]]'; } };
+    await new SeriesMetadataFiller(logger, config, db, emptyDict, noLlm, comment).fill();
+
+    assert.deepEqual(asked, [42]);
+    assert.equal(db.comments.length, 1);
+    assert.equal(db.comments[0].id, 1);
+    assert.equal(db.comments[0].source, 'dictionary');
+});
+
+// 手動で編集・削除したコメントは自動取得で書き戻さない
+test('fill() never overwrites a manually edited comment', async () => {
+    const db = makeDB([series({ syobocalTid: 42, commentSource: 'manual', titleKana: 'x', seasonYear: 2024, seasonName: 'AUTUMN', seasonSource: 'dictionary', totalEpisodes: 12, annictId: '2' })]);
+    let asked = 0;
+    const comment = { fetchComment: async () => { asked++; return 'コメント'; } };
+    await new SeriesMetadataFiller(logger, config, db, emptyDict, noLlm, comment).fill();
+
+    assert.equal(asked, 0);
+    assert.equal(db.comments.length, 0);
+});
+
+// コメントだけが未取得のシリーズでは作品辞書を引き直さない (コメントは辞書本体に無いため)
+test('fill() does not re-query the work dictionary when only the comment is missing', async () => {
+    const db = makeDB([series({ syobocalTid: 42, titleKana: 'x', seasonYear: 2024, seasonName: 'AUTUMN', seasonSource: 'dictionary', totalEpisodes: 12, annictId: '2' })]);
+    let looked = 0;
+    const dict = { lookup: async () => { looked++; return null; }, lookupEpisodeNumber: async () => null };
+    await new SeriesMetadataFiller(logger, config, db, dict, noLlm, { fetchComment: async () => 'コメント' }).fill();
+
+    assert.equal(looked, 0);
+    assert.equal(db.comments.length, 1);
+});
+
+// TID が無いシリーズはコメントを引けない
+test('fill() skips the comment fetch for series without a syobocal tid', async () => {
+    const db = makeDB([series({ titleKana: 'x', seasonYear: 2024, seasonName: 'AUTUMN', seasonSource: 'dictionary', totalEpisodes: 12, syobocalTid: null, annictId: '2' })]);
+    let asked = 0;
+    const comment = { fetchComment: async () => { asked++; return 'コメント'; } };
+    await new SeriesMetadataFiller(logger, config, db, emptyDict, noLlm, comment).fill();
+
+    assert.equal(asked, 0);
 });

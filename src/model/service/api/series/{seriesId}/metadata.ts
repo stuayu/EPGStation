@@ -21,8 +21,8 @@ put.apiDoc = {
     summary: 'シリーズのメタデータ手動設定',
     tags: ['series'],
     description:
-        'クール・読み仮名・総話数を手動で設定する。作品辞書にも録画からの推測にも頼れない作品向け。' +
-        'クールを設定した場合は以降の自動補完で上書きされない',
+        'クール・読み仮名・総話数・作品コメントを手動で設定する。作品辞書にも録画からの推測にも頼れない作品向け。' +
+        'クール・コメントを設定した場合は以降の自動補完で上書きされない (コメントは null / 空文字で削除)',
     parameters: [{ name: 'seriesId', in: 'path', required: true, schema: { type: 'integer' } }],
     requestBody: {
         required: true,
@@ -40,6 +40,7 @@ put.apiDoc = {
                             enum: ['WINTER', 'SPRING', 'SUMMER', 'AUTUMN'],
                         },
                         totalEpisodes: { type: 'integer', nullable: true, minimum: 0, maximum: 10000 },
+                        comment: { type: 'string', nullable: true, maxLength: 20000 },
                     },
                 },
             },

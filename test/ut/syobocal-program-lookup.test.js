@@ -31,6 +31,12 @@ function lookup(http, option = {}) {
         { find: () => ('mapping' in option ? option.mapping : { chId: 19, syobocal: true }) },
         { getConfig: () => ({ featureFlags: {} }) },
         { resolve: async () => 'http://cal.syoboi.jp/db.php' },
+        {
+            updateCache: async () => {},
+            getAffiliation: () => ('affiliation' in option ? option.affiliation : null),
+            getAffiliations: () => [],
+            isAffiliationChannelType: () => true,
+        },
     );
 }
 
@@ -95,12 +101,52 @@ test('does nothing when the syobocal integration is disabled', async () => {
     assert.equal(http.urls.length, 0);
 });
 
-test('skips channels that are not mapped to a syobocal ChID', async () => {
+test('skips channels that are neither mapped nor resolvable to a key station', async () => {
     const http = stubHttp(progXml([]));
     assert.equal(await lookup(http, { mapping: undefined }).lookup(1, START_AT), null);
-    // 未登録局 (syobocal: false) も放送予定を持たないので問い合わせない
+    // 未登録局 (syobocal: false) も、系列が分からなければ問い合わせ先が無い
     assert.equal(await lookup(http, { mapping: { chId: 19, syobocal: false } }).lookup(1, START_AT), null);
     assert.equal(http.urls.length, 0);
+});
+
+// しょぼいカレンダーに放送データが無い地方局は、系列のキー局の放送予定で代用する
+test('falls back to the key station of the affiliation for unregistered local channels', async () => {
+    const http = stubHttp(
+        progXml([{ pid: 1, tid: 800, stTime: '2026-08-01 23:00:00', edTime: '2026-08-01 23:30:00', count: 9, subTitle: '同時ネット' }]),
+    );
+    const match = await lookup(http, { mapping: undefined, affiliation: { id: 'ntv', name: '日テレ系', order: 3 } }).lookup(1, START_AT);
+    assert.equal(match.tid, 800);
+    assert.equal(match.count, 9);
+    // 呼び出し側が「作品の確定には使えない」と判断できるよう印を付ける
+    assert.equal(match.viaKeyStation, true);
+    // 日本テレビの ChID で問い合わせる
+    assert.ok(http.urls[0].includes('ChID=3'));
+});
+
+// 遅れ放送ではキー局の同時刻に別番組が並ぶため、時間帯の包含では拾わない
+test('a key station fallback only accepts programmes that start at the same time', async () => {
+    const http = stubHttp(
+        progXml([{ pid: 1, tid: 900, stTime: '2026-08-01 22:40:00', edTime: '2026-08-01 23:10:00', count: 5 }]),
+    );
+    const match = await lookup(http, { mapping: undefined, affiliation: { id: 'tbs', name: 'TBS系', order: 5 } }).lookup(1, START_AT);
+    assert.equal(match, null);
+});
+
+// 独立系にキー局は無い
+test('an independent station has no key station to fall back to', async () => {
+    const http = stubHttp(progXml([]));
+    const match = await lookup(http, { mapping: undefined, affiliation: { id: 'independent', name: '独立系', order: 90 } }).lookup(1, START_AT);
+    assert.equal(match, null);
+    assert.equal(http.urls.length, 0);
+});
+
+// 直接マッピングがある局はキー局を経由しない
+test('a directly mapped channel is not flagged as a key station fallback', async () => {
+    const http = stubHttp(
+        progXml([{ pid: 1, tid: 1000, stTime: '2026-08-01 23:00:00', edTime: '2026-08-01 23:30:00', count: 1 }]),
+    );
+    const match = await lookup(http).lookup(1, START_AT);
+    assert.equal(match.viaKeyStation, false);
 });
 
 test('returns null instead of throwing when the request fails', async () => {

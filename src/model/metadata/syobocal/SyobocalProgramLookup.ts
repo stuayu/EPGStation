@@ -6,6 +6,7 @@ import IChannelDB from '../../db/IChannelDB';
 import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
+import IBroadcastAffiliation from '../../channel/IBroadcastAffiliation';
 import IMetadataEndpointResolver from '../IMetadataEndpointResolver';
 import IProviderHttpClient from '../IProviderHttpClient';
 import ISyobocalChannelMap from './ISyobocalChannelMap';
@@ -42,6 +43,18 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
     // 保持するキャッシュ数の上限 (局数 × 日数)。取り込み時に古い録画を大量に処理しても膨らませない
     private static readonly CACHE_MAX_ENTRIES = 256;
     private static readonly FETCH_TIMEOUT_MS = 30 * 1000;
+    // 系列 (BroadcastAffiliation の id) → キー局の しょぼいカレンダー ChID。
+    // しょぼいカレンダーに放送データが無い地方局を、系列のキー局の放送予定で代用するために使う
+    // (ChID の値は SyobocalChannelMapData の同梱データと対応する)。独立系にキー局は無い
+    private static readonly KEY_STATION_CH_ID: Readonly<Record<string, number>> = {
+        nhk_g: 1,
+        nhk_e: 2,
+        ntv: 3,
+        ex: 5,
+        tbs: 6,
+        tx: 7,
+        cx: 8,
+    };
 
     private log: ILogger;
     private cache: Map<string, CacheEntry> = new Map();
@@ -54,6 +67,7 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
         @inject('ISyobocalChannelMap') private channelMap: ISyobocalChannelMap,
         @inject('IConfiguration') private config: IConfiguration,
         @inject('IMetadataEndpointResolver') private endpoints: IMetadataEndpointResolver,
+        @inject('IBroadcastAffiliation') private affiliation: IBroadcastAffiliation,
     ) {
         this.log = logger.getLogger();
     }
@@ -62,31 +76,40 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
         if (Number.isFinite(startAt) === false || startAt <= 0) return null;
         if ((await this.enabled()) === false) return null;
 
-        const chId = await this.findChId(channelId);
-        if (chId === null) return null;
+        const target = await this.findChId(channelId);
+        if (target === null) return null;
 
         let programs: SyobocalProgramMatch[];
         try {
-            programs = await this.getPrograms(chId, startAt);
+            programs = await this.getPrograms(target.chId, startAt);
         } catch (err) {
             // 放送予定が引けなくてもシリーズ化そのものは従来経路で成立するため、警告に留める
-            this.log.system.warn(`syobocal program lookup: failed to fetch programs for ChID ${chId}`);
+            this.log.system.warn(`syobocal program lookup: failed to fetch programs for ChID ${target.chId}`);
             this.log.system.warn(err);
             return null;
         }
 
-        return SyobocalProgramLookup.pick(programs, startAt);
+        const picked = SyobocalProgramLookup.pick(programs, startAt, target.viaKeyStation);
+        return picked === null ? null : { ...picked, viaKeyStation: target.viaKeyStation };
     }
 
     /**
      * 放送予定の一覧から、指定した開始時刻に対応する 1 件を選ぶ。
      * 開始時刻がほぼ一致するものを最優先し、無ければ放送時間帯に含まれるものを採用する
-     * (録画開始が番組途中になっている場合を救う)
+     * (録画開始が番組途中になっている場合を救う)。
+     *
+     * キー局で代用した場合は放送そのものが別物 (遅れ放送・番組差し替え) でありうるため、
+     * 時間帯の包含では拾わず、開始時刻がほぼ一致する = 同時ネットとみなせる場合だけ採る
      * @param programs: SyobocalProgramMatch[]
      * @param startAt: number
+     * @param viaKeyStation: boolean キー局の放送予定で代用しているか
      * @return SyobocalProgramMatch | null
      */
-    private static pick(programs: SyobocalProgramMatch[], startAt: number): SyobocalProgramMatch | null {
+    private static pick(
+        programs: SyobocalProgramMatch[],
+        startAt: number,
+        viaKeyStation: boolean,
+    ): SyobocalProgramMatch | null {
         let nearest: { program: SyobocalProgramMatch; diff: number } | null = null;
         for (const program of programs) {
             const diff = Math.abs(program.startAt - startAt);
@@ -94,6 +117,7 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
             if (nearest === null || diff < nearest.diff) nearest = { program, diff };
         }
         if (nearest !== null) return nearest.program;
+        if (viaKeyStation === true) return null;
 
         return (
             programs.find(program => program.endAt !== null && program.startAt <= startAt && startAt < program.endAt) ??
@@ -135,12 +159,16 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
 
         const count = Number(row.Count);
         const subTitle = (row.SubTitle ?? '').trim();
+        const comment = (row.ProgComment ?? '').trim();
         return {
             tid,
             count: row.Count && Number.isFinite(count) && count > 0 ? count : null,
             subTitle: subTitle === '' ? null : subTitle,
+            comment: comment === '' ? null : comment,
             startAt,
             endAt: parseSyobocalDate(row.EdTime ?? '') ?? null,
+            // 実際にどの ChID へ問い合わせたかは lookup() が知っているのでそちらで上書きする
+            viaKeyStation: false,
         };
     }
 
@@ -162,17 +190,43 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
     }
 
     /**
-     * EPGStation の放送局 ID から しょぼいカレンダーの ChID を引く。
-     * 未登録局 (syobocal: false) はそもそも放送予定が無いので null を返す
+     * EPGStation の放送局 ID から問い合わせ先の ChID を決める。
+     *
+     * しょぼいカレンダーに放送データが無い局 (地方局など) は、その局が属する系列の
+     * キー局の ChID で代用する。同時ネットの番組であれば同じ時刻に同じ作品が並ぶため、
+     * 地方局の録画でも作品・話数を引ける。系列が分からない局 (BIT 未受信・独立系) は null
      * @param channelId: number
-     * @return Promise<number | null>
+     * @return Promise<{ chId: number; viaKeyStation: boolean } | null>
      */
-    private async findChId(channelId: number): Promise<number | null> {
+    private async findChId(channelId: number): Promise<{ chId: number; viaKeyStation: boolean } | null> {
         const channel = await this.channels.findId(channelId).catch(() => null);
         if (channel === null) return null;
+
         const mapping = this.channelMap.find(channel.networkId, channel.serviceId);
-        if (typeof mapping === 'undefined' || mapping.syobocal !== true) return null;
-        return mapping.chId;
+        if (typeof mapping !== 'undefined' && mapping.syobocal === true) {
+            return { chId: mapping.chId, viaKeyStation: false };
+        }
+
+        const keyStation = await this.findKeyStationChId(channel.networkId, channel.channelType);
+        return keyStation === null ? null : { chId: keyStation, viaKeyStation: true };
+    }
+
+    /**
+     * 放送局が属する系列のキー局の ChID を返す。
+     * 系列は BIT (受動収集) から判定するため、まだ受信していない局・独立系は null になる
+     * @param networkId: number
+     * @param channelType: string
+     * @return Promise<number | null>
+     */
+    private async findKeyStationChId(networkId: number, channelType: string): Promise<number | null> {
+        try {
+            await this.affiliation.updateCache();
+            const item = this.affiliation.getAffiliation({ networkId, channelType });
+            if (item === null) return null;
+            return SyobocalProgramLookup.KEY_STATION_CH_ID[item.id] ?? null;
+        } catch {
+            return null;
+        }
     }
 
     /**

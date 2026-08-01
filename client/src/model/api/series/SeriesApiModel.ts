@@ -48,6 +48,9 @@ export default class SeriesApiModel implements ISeriesApiModel {
     async updateSeriesMetadata(seriesId: number, value: UpdateSeriesMetadata): Promise<void> {
         await this.repository.put(`/series/${seriesId}/metadata`, value);
     }
+    public async updateEpisodeComment(episodeId: number, comment: string | null): Promise<void> {
+        await this.repository.put(`/series/episodes/${episodeId}/comment`, { comment });
+    }
     public async getMissingEpisodeProposals(seriesId: number): Promise<MissingEpisodeProposal[]> {
         return (await this.repository.get(`/series/${seriesId}/missing-episodes/proposals`)).data.proposals;
     }

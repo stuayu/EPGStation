@@ -5,6 +5,7 @@ import ISeriesDB from '../db/ISeriesDB';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
+import ISyobocalTitleDictionary from '../metadata/syobocal/ISyobocalTitleDictionary';
 import ILlmTitleExtractor from './ILlmTitleExtractor';
 import ISeriesMetadataFiller, { SeriesMetadataFillResult } from './ISeriesMetadataFiller';
 import IWorkDictionary, { WorkMatch } from './IWorkDictionary';
@@ -30,6 +31,9 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
     // 1 回の fill() で LLM へ問い合わせるシリーズ数の上限。
     // 抽出結果は永続キャッシュされるため、初回で溢れても次回以降の実行で続きが進む
     private static readonly LLM_MAX_PER_RUN = 200;
+    // 1 回の fill() で作品コメントを取りに行くシリーズ数の上限。
+    // TID ごとに 1 リクエスト必要なので、初回で溢れても次回以降の実行で続きが進む
+    private static readonly COMMENT_MAX_PER_RUN = 100;
 
     private log: ILogger;
     private scheduled: boolean = false;
@@ -40,6 +44,7 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
         @inject('ISeriesDB') private db: ISeriesDB,
         @inject('IWorkDictionary') private workDictionary: IWorkDictionary,
         @inject('ILlmTitleExtractor') private llmExtractor: ILlmTitleExtractor,
+        @inject('ISyobocalTitleDictionary') private syobocalDictionary: ISyobocalTitleDictionary,
     ) {
         this.log = logger.getLogger();
     }
@@ -52,6 +57,8 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
         let estimated = 0;
         let llmAnalyzed = 0;
         let llmResolved = 0;
+        let commentFetched = 0;
+        let commentFilled = 0;
         const llmEnabled = this.isLlmEnabled();
         let llmSuspended = false;
 
@@ -59,15 +66,17 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
             // 手動設定済みのクールは自動補完で上書きしない
             const seasonIsLocked = series.seasonSource === 'manual';
             const needsSeason = seasonIsLocked === false && (series.seasonYear === null || series.seasonName === null);
-            if (
-                series.titleKana !== null &&
-                series.totalEpisodes !== null &&
-                needsSeason === false &&
-                series.syobocalTid !== null &&
-                series.annictId !== null
-            ) {
-                continue;
-            }
+            // 手動で編集・削除したコメントは自動取得で書き戻さない
+            const needsComment = series.commentSource !== 'manual' && typeof series.comment !== 'string';
+            // 作品辞書から埋めるものが残っているか。コメントは辞書本体には無く TID 指定で個別に引くため、
+            // ここには含めない (コメントだけが未取得のシリーズで辞書を引き直さない)
+            const needsDictionary =
+                series.titleKana === null ||
+                series.totalEpisodes === null ||
+                needsSeason === true ||
+                series.syobocalTid === null ||
+                series.annictId === null;
+            if (needsDictionary === false && needsComment === false) continue;
 
             const patch: {
                 syobocalTid?: number | null;
@@ -82,13 +91,15 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
             } = {};
 
             // 1. 作品辞書から埋める (最も確度が高い)
-            let match = await this.workDictionary.lookup(series.title).catch(() => null);
+            let match =
+                needsDictionary === false ? null : await this.workDictionary.lookup(series.title).catch(() => null);
 
             // 1-2. 辞書で引けず外部 ID も未設定のシリーズだけ LLM フォールバックへ回す。
             //      シリーズ名に編成枠名・サブタイトル・話数が残っていて辞書キーに当たらない場合を救う。
             //      抽出結果は必ず辞書で引き直すため、LLM の誤生成だけで外部 ID が入ることはない
             if (
                 match === null &&
+                needsDictionary === true &&
                 llmEnabled === true &&
                 llmSuspended === false &&
                 series.syobocalTid === null &&
@@ -143,9 +154,28 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
                 }
             }
 
+            // 3. 作品コメントを取得する。1 作品あたり数 KB あり全件同期には含めていないため、
+            //    シリーズになっている作品だけを TID 指定で個別に引く
+            const syobocalTid = patch.syobocalTid ?? series.syobocalTid;
+            if (
+                needsComment === true &&
+                typeof syobocalTid === 'number' &&
+                commentFetched < SeriesMetadataFiller.COMMENT_MAX_PER_RUN
+            ) {
+                commentFetched++;
+                const comment = await this.fetchComment(syobocalTid);
+                if (comment !== null) {
+                    await this.db.updateSeriesComment(series.id, comment, 'dictionary', Date.now()).catch(() => {});
+                    commentFilled++;
+                }
+            }
+
             if (Object.keys(patch).length === 0) continue;
             await this.db.updateExternalMetadata(series.id, patch);
             updated++;
+        }
+        if (commentFilled > 0) {
+            this.log.system.info(`series metadata: fetched comments for ${commentFilled}/${commentFetched} series`);
         }
         this.log.system.debug(`series metadata: estimated season for ${estimated} series`);
         if (llmAnalyzed > 0) {
@@ -155,6 +185,20 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
         }
 
         return { scanned: all.length, updated, llmAnalyzed, llmResolved };
+    }
+
+    /**
+     * しょぼいカレンダーから作品コメントを取得する。
+     * 連携が無効・取得失敗・DI 未注入 (古い呼び出し) の場合は null を返す
+     * @param syobocalTid: number
+     * @return Promise<string | null>
+     */
+    private async fetchComment(syobocalTid: number): Promise<string | null> {
+        try {
+            return (await this.syobocalDictionary?.fetchComment(syobocalTid)) ?? null;
+        } catch {
+            return null;
+        }
     }
 
     /**

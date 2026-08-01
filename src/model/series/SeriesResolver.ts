@@ -198,18 +198,20 @@ export default class SeriesResolver implements ISeriesResolver {
             viaLlm = match !== null;
         }
 
-        // しょぼいカレンダーの放送予定 (放送局 + 放送開始時刻) から確定させる。
-        // タイトルの表記に一切依存しないため、局が作品名を独自表記で送出していて
-        // 辞書キーに当たらない録画でも作品を特定できる
-        let program: SyobocalProgramMatch | null = null;
-        if (match === null) {
-            program = await this.lookupProgram(recording);
-            if (program !== null) {
-                const byProgram = await this.workDictionary.findByIds({ syobocalTid: program.tid }).catch(() => null);
-                // 局と時刻の一致は強い根拠だが、放送予定側の時刻ずれで隣の番組を拾う余地があるため
-                // タイトル照合で確定した場合 (最大 1.0) より低い確度で記録する
-                if (byProgram !== null) match = { ...byProgram, confidence: Math.min(byProgram.confidence, 0.95) };
-            }
+        // しょぼいカレンダーの放送予定 (放送局 + 放送開始時刻) を引く。
+        // 放送予定は局と時刻だけで決まりタイトルの表記に依存しないため、話数の情報源として
+        // 録画タイトルの表記より確実。タイトルに話数表記があっても必ず引く
+        // (問い合わせは放送日 1 日分がキャッシュされるので局・日ごとに 1 回で済む)
+        const program = await this.lookupProgram(recording);
+
+        // 辞書がタイトルで引けなかった場合は、放送予定の TID から作品を特定する。
+        // ただしキー局の放送予定で代用した結果 (viaKeyStation) は遅れ放送で別番組を
+        // 指しうるため、作品の確定には使わない
+        if (match === null && program !== null && program.viaKeyStation === false) {
+            const byProgram = await this.workDictionary.findByIds({ syobocalTid: program.tid }).catch(() => null);
+            // 局と時刻の一致は強い根拠だが、放送予定側の時刻ずれで隣の番組を拾う余地があるため
+            // タイトル照合で確定した場合 (最大 1.0) より低い確度で記録する
+            if (byProgram !== null) match = { ...byProgram, confidence: Math.min(byProgram.confidence, 0.95) };
         }
         if (match === null) return null;
 
@@ -268,25 +270,26 @@ export default class SeriesResolver implements ISeriesResolver {
             }
         }
 
-        // 話数表記が無い録画の話数を復元する。
-        // 総集編・一挙放送と判定した録画は通し話数を持たないため、逆引きの対象から外す
+        // 放送予定が確定した作品と同じ作品を指している場合のみ、その内容を採用する。
+        // TID の一致を条件にすることで、時刻ずれで隣の番組を拾った場合や、キー局で代用した局が
+        // 遅れ放送だった場合に別作品の話数を持ち込むことを防ぐ
+        const confirmed = program !== null && program.tid === match.syobocalTid ? program : null;
+
         const resolved = { ...parsed };
+        // 1. 放送予定の話数。局と時刻だけで決まるため録画タイトルの表記より確実で、
+        //    タイトルに話数表記がある場合もこちらを優先する
+        if (confirmed !== null && confirmed.count !== null) resolved.episodeNumber = confirmed.count;
+        // 2. 話数がまだ決まらない録画は、サブタイトル一覧との照合で逆引きする。
+        //    総集編・一挙放送と判定した録画は通し話数を持たないため対象から外す
         if (resolved.episodeNumber === null && match.syobocalTid !== null && parsed.isSpecial === false) {
-            // 1. 放送予定の話数 (放送局 + 放送開始時刻で引くためタイトル表記に依存しない。最も確度が高い)
-            if (program === null) program = await this.lookupProgram(recording);
-            if (program !== null && program.tid === match.syobocalTid && program.count !== null) {
-                resolved.episodeNumber = program.count;
-            }
-            // 2. サブタイトル一覧との照合による逆引き
-            if (resolved.episodeNumber === null) {
-                const episodeNumber = await this.workDictionary
-                    .lookupEpisodeNumber(match.syobocalTid, recording.title)
-                    .catch(() => null);
-                if (episodeNumber !== null) resolved.episodeNumber = episodeNumber;
-            }
+            const episodeNumber = await this.workDictionary
+                .lookupEpisodeNumber(match.syobocalTid, recording.title)
+                .catch(() => null);
+            if (episodeNumber !== null) resolved.episodeNumber = episodeNumber;
         }
         // 放送予定から取れたサブタイトルはその回の実際の放送内容なので、話数からの逆引きより優先する
-        const episodeTitle = program !== null && program.tid === match.syobocalTid ? program.subTitle : null;
+        const episodeTitle = confirmed?.subTitle ?? null;
+        const episodeComment = confirmed?.comment ?? null;
 
         // LLM を経由して確定した対応はエイリアス辞書へ学習させる。
         // 次回以降は resolve() の先頭でこの辞書に当たるため、同じ表記の録画で LLM を引き直さずに済む
@@ -301,6 +304,7 @@ export default class SeriesResolver implements ISeriesResolver {
             matchMethodOf(match),
             now,
             episodeTitle,
+            episodeComment,
         );
     }
 
@@ -437,6 +441,7 @@ export default class SeriesResolver implements ISeriesResolver {
         matchMethod: RecordedSeriesLink['matchMethod'],
         now: number,
         episodeTitle: string | null = null,
+        episodeComment: string | null = null,
     ): Promise<RecordedSeriesLink> {
         let episode = null;
         let isNewEpisode = false;
@@ -450,15 +455,27 @@ export default class SeriesResolver implements ISeriesResolver {
                     episodeNumber: parsed.episodeNumber,
                     episodeLabel: parsed.episodeLabel,
                     title: subTitle,
+                    comment: episodeComment,
+                    commentSource: episodeComment === null ? null : 'dictionary',
                     airedAt: recording.startAt,
                     createdAt: now,
                     updatedAt: now,
                 });
                 isNewEpisode = true;
-            } else if (episode.title === null && subTitle !== null) {
-                // 辞書の同期前に作られたエピソードにも、後から引けたサブタイトルを埋める
-                await this.db.fillEpisodeTitle(episode.id, subTitle, now).catch(() => {});
-                episode = { ...episode, title: subTitle };
+            } else {
+                // 辞書の同期前に作られたエピソードにも、後から引けたサブタイトル・コメントを埋める
+                const fill = {
+                    title: episode.title === null ? subTitle : null,
+                    comment: episode.comment === null ? episodeComment : null,
+                };
+                if (fill.title !== null || fill.comment !== null) {
+                    await this.db.fillEpisodeMetadata(episode.id, fill, now).catch(() => {});
+                    episode = {
+                        ...episode,
+                        title: fill.title ?? episode.title,
+                        comment: fill.comment ?? episode.comment,
+                    };
+                }
             }
         }
         let airType = parsed.airType;

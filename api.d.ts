@@ -1532,6 +1532,10 @@ export interface SeriesRecordedRow {
     episodeNumber: number | null;
     episodeLabel: string | null;
     episodeTitle: string | null;
+    // 放送回コメント (しょぼいカレンダーの ProgComment 由来、または画面から編集したもの)
+    episodeComment?: string | null;
+    // 放送回コメントの出所 (dictionary: 放送予定から取得 / manual: 画面から編集)
+    episodeCommentSource?: 'dictionary' | 'manual' | null;
     airType: string;
     confidence: number;
 }
@@ -1540,6 +1544,10 @@ export interface SeriesRecordedRow {
  * シリーズ詳細
  */
 export interface SeriesDetail extends SeriesListItem {
+    // 作品コメント (しょぼいカレンダーの TitleItem.Comment 由来、または画面から編集したもの)
+    comment?: string | null;
+    // 作品コメントの出所 (dictionary: 作品辞書から取得 / manual: 画面から編集)
+    commentSource?: 'dictionary' | 'manual' | null;
     externalIds: { syobocalTid: number | null; annictId: string | null; tmdbId: number | null };
     channels: Array<{ channelId: ChannelId; channelName: string | null; count: number }>;
     continuity: {

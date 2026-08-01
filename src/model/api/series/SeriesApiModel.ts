@@ -143,6 +143,8 @@ export default class SeriesApiModel implements ISeriesApiModel {
             imageSource: image?.source ?? null,
             imageCopyright: image?.copyright ?? null,
             origin: getSeriesOrigin(series),
+            comment: series.comment ?? null,
+            commentSource: (series.commentSource ?? null) as apid.SeriesDetail['commentSource'],
             externalIds: { syobocalTid: series.syobocalTid, annictId: series.annictId, tmdbId: series.tmdbId },
             channels: channels.map(x => ({ ...x, count: Number(x.count) })),
             continuity: analyzeSeriesContinuity(allRecorded ?? recorded),
@@ -155,6 +157,8 @@ export default class SeriesApiModel implements ISeriesApiModel {
                 episodeId: x.episodeId === null ? null : Number(x.episodeId),
                 seasonNumber: x.seasonNumber === null ? null : Number(x.seasonNumber),
                 episodeNumber: x.episodeNumber === null ? null : Number(x.episodeNumber),
+                episodeCommentSource: (x.episodeCommentSource ??
+                    null) as apid.SeriesRecordedRow['episodeCommentSource'],
                 confidence: Number(x.confidence),
             })),
         };

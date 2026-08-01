@@ -5,10 +5,16 @@ export interface SyobocalProgramMatch {
     count: number | null;
     // サブタイトル (放送予定に無ければ null)
     subTitle: string | null;
+    // 放送回コメント (ProgComment。「定刻放送」「30分繰り下げ」等の覚え書き。無ければ null)
+    comment: string | null;
     // 放送開始時刻 (ms)
     startAt: number;
     // 放送終了時刻 (ms)。取得できない場合は null
     endAt: number | null;
+    // しょぼいカレンダー未登録局のため、系列のキー局の放送予定で代用した場合 true。
+    // 遅れ放送では別番組を拾いうるため、呼び出し側は作品の確定には使わず
+    // 「作品が既に確定していて TID が一致する場合の話数・サブタイトル」にのみ使うこと
+    viaKeyStation: boolean;
 }
 
 export default interface ISyobocalProgramLookup {

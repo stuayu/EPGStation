@@ -38,6 +38,7 @@ export interface UpdateSeriesMetadata {
     seasonYear?: number | null;
     seasonName?: string | null;
     totalEpisodes?: number | null;
+    comment?: string | null;
 }
 
 export interface SeriesListOption {
@@ -78,6 +79,13 @@ export default interface ISeriesApiModel {
      * @return Promise<void>
      */
     updateSeriesMetadata(seriesId: number, value: UpdateSeriesMetadata): Promise<void>;
+    /**
+     * 放送回コメントを更新する (null または空文字で削除)
+     * @param episodeId: number
+     * @param comment: string | null
+     * @return Promise<void>
+     */
+    updateEpisodeComment(episodeId: number, comment: string | null): Promise<void>;
     getMissingEpisodeProposals(seriesId: number): Promise<MissingEpisodeProposal[]>;
     get(id: number, channelId?: number): Promise<SeriesDetail>;
     getMapping(recordedId: number): Promise<SeriesMapping | null>;

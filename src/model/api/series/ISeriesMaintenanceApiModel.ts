@@ -23,6 +23,8 @@ export interface UpdateSeriesMetadata {
     seasonYear?: number | null;
     seasonName?: string | null;
     totalEpisodes?: number | null;
+    // 作品コメント。null または空文字で削除する
+    comment?: string | null;
 }
 
 export default interface ISeriesMaintenanceApiModel {
@@ -34,6 +36,14 @@ export default interface ISeriesMaintenanceApiModel {
      * @return Promise<void>
      */
     updateMetadata(seriesId: number, value: UpdateSeriesMetadata): Promise<void>;
+    /**
+     * エピソードの放送回コメントを手動で設定する (null / 空文字で削除)。
+     * 手動設定した値は出所が 'manual' になり、以降の自動取得で上書きされない
+     * @param episodeId: number
+     * @param comment: string | null
+     * @return Promise<void>
+     */
+    updateEpisodeComment(episodeId: number, comment: string | null): Promise<void>;
     /**
      * 既存シリーズのクール・読み仮名・総話数・外部 ID を作品辞書から埋め直す。
      * 辞書の導入前に作られたシリーズや、辞書が更新された後の追随に使う

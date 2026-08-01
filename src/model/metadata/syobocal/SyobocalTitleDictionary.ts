@@ -122,6 +122,23 @@ export default class SyobocalTitleDictionary implements ISyobocalTitleDictionary
         };
     }
 
+    public async fetchComment(tid: number): Promise<string | null> {
+        if (Number.isFinite(tid) === false || tid <= 0) return null;
+        if ((await this.enabled()) === false) return null;
+
+        try {
+            const params = new URLSearchParams({ Command: 'TitleLookup', TID: String(tid), Fields: 'TID,Comment' });
+            const baseUrl = await this.endpoints.resolve('syobocal');
+            const xml = (await this.http.get(`${baseUrl}?${params.toString()}`)).text;
+            const row = xmlItems(xml, 'TitleItem')[0];
+            return SyobocalTitleDictionary.textOrNull(row?.Comment);
+        } catch (err) {
+            this.log.system.warn(`syobocal title dictionary: failed to fetch the comment of TID ${tid}`);
+            this.log.system.warn(err);
+            return null;
+        }
+    }
+
     /**
      * TitleLookup を叩く。cursor が指定されていればその日時以降の差分のみ取得する
      */
