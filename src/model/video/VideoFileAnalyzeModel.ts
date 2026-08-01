@@ -5,6 +5,7 @@ import * as apid from '../../../api';
 import VideoFile from '../../db/entities/VideoFile';
 import VideoFileTsInfo from '../../db/entities/VideoFileTsInfo';
 import IVideoUtil from '../api/video/IVideoUtil';
+import IBroadcastAffiliationCollector from '../channel/IBroadcastAffiliationCollector';
 import IChannelDB from '../db/IChannelDB';
 import IRecordedDB from '../db/IRecordedDB';
 import IVideoFileDB from '../db/IVideoFileDB';
@@ -44,6 +45,7 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
     private tsInfoAnalyzer: ITsInfoAnalyzer;
     private channelDB: IChannelDB;
     private log: ILogger | null;
+    private affiliationCollector: IBroadcastAffiliationCollector | null;
 
     constructor(
         @inject('IVideoFileDB') videoFileDB: IVideoFileDB,
@@ -53,6 +55,7 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
         @inject('ITsInfoAnalyzer') tsInfoAnalyzer: ITsInfoAnalyzer,
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('ILoggerModel') logger?: ILoggerModel,
+        @inject('IBroadcastAffiliationCollector') affiliationCollector?: IBroadcastAffiliationCollector,
     ) {
         this.videoFileDB = videoFileDB;
         this.videoFileTsInfoDB = videoFileTsInfoDB;
@@ -61,6 +64,7 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
         this.tsInfoAnalyzer = tsInfoAnalyzer;
         this.channelDB = channelDB;
         this.log = typeof logger === 'undefined' ? null : logger.getLogger();
+        this.affiliationCollector = typeof affiliationCollector === 'undefined' ? null : affiliationCollector;
     }
 
     /**
@@ -185,6 +189,14 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
      */
     public async saveTsInfo(videoFileId: apid.VideoFileId, info: TsInfo): Promise<void> {
         await this.videoFileTsInfoDB.upsert(VideoFileAnalyzeModel.toEntity(videoFileId, info));
+
+        // BIT が取れていれば放送局の系列情報を更新する (受動収集)
+        if (this.affiliationCollector !== null && info.bitSections.length > 0) {
+            await this.affiliationCollector.collect(info.bitSections).catch(err => {
+                this.log?.system.error('collect broadcast affiliation error');
+                this.log?.system.error(err.message);
+            });
+        }
 
         // TDT / TOT から録画開始時刻が分かった場合は、推定値より優先して記録する
         if (info.firstTdtAt !== null) {

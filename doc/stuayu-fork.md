@@ -844,6 +844,23 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - 地域符号の対応表は実チャンネルの serviceId で検証し、`test/ut/broadcast-region.test.js` に固定した (特に九州は 56 熊本 / 57 長崎 / 58 鹿児島 / 59 宮崎 / 60 大分 / 61 佐賀 と並びが直感に反するので取り違えに注意)
         - サイドバーの地域は**都道府県コード (JIS X 0401) 順**に並べる。`BroadcastRegionItem.order` として API で返し、複数県をまとめたグループは域内で最小の県コードを使う (関東 = 茨城 8 / 中京 = 岐阜 21 / 近畿 = 滋賀 25)。「その他」は order 99 で必ず末尾
         - **放映中一覧 (`/onair`) のタブも同じ地域名にした**: 従来は放送波種別をそのまま出していたため NW1〜NW40 が「NW1」「NW2」… と並んで判別できなかった。地上波系 (GR / NWxx) を地域名タブ (都道府県コード順) にまとめ、BS / CS / SKY は従来どおり種別で分ける (`OnAirState.getTabs()`)。タブの識別子は `region:<地域 id>` / `type:<ChannelType>` で、地域は `ScheduleChannleItem.region` から求める (放送局一覧の取得を待たずに済む)。番組情報が空で地域を判定できない間は従来どおり放送波種別で表示する
+    - 放送局を**系列別**にもまとめられるようにした (日テレ系・TBS 系… / 独立系)
+        - 判定は放送波の **BIT (Broadcaster Information Table, PID `0x0024` / table_id `0xC4`)** に載る **系列識別 (`affiliation_id`)** を使う。局名の推測やリモコンキー ID からの推定はしない
+        - `aribts` の `TsSectionParser` は BIT に対応していないため、TS パケットの分解とセクション組み立てだけ自前で行う (`src/model/channel/BitParser.ts`)。記述子の解析は `aribts` の `TsDescriptors` に任せ、`extended_broadcaster_descriptor` (tag `0xCE`, `broadcaster_type = 1`) から `affiliation_id` と、その事業者が送出する `original_network_id` の一覧を取り出す。CRC_32 が合わないセクション・`current_next_indicator` が 0 のセクションは捨てる
+        - **収集は受動収集のみ**。Mirakurun の API には系列情報が無く、BIT は TS を実際に受信しないと得られないため、以下の 2 経路で「録画・視聴のついで」に集める。チューナーを占有する能動スキャンは行わない
+            - 録画・アップロードファイルの TS 解析 (`TsInfoAnalyzer` → `TsInfo.bitSections` → `VideoFileAnalyzeModel.saveTsInfo()`)
+            - ライブ視聴の配信経路に挟んだ pass-through Transform (`BitCollectTransform`。`LiveStreamBaseModel` が `BroadcastTimeExtractor` の下流に接続する)
+        - 収集結果は `channel_affiliation` テーブル (`networkId` + `affiliationId` の複合主キー) に保存する。クロスネット局のように複数系列に属する放送局があるため 1 対多で持ち、表示は**表示順が先の系列**にまとめる
+        - `extended_broadcaster_descriptor` の `broadcasters[]` (= その事業者が送出する `original_network_id` の一覧) を対象に割り当てるため、**1 局分の受信で同一ネットワークの他局の系列も埋まる**ことがある。`broadcasters[]` が空の場合は、そのセクションに事業者が 1 つしか無いときのみセクションの `original_network_id` へ割り当てる (誤った割り当てを避けるため)
+        - **BIT をまだ受信していない放送局は「未分類」** (`unknown`, order 99) になる。「独立系」(BIT が系列なしと明示した局) とは別扱いにして、収集済みかどうかが画面から分かるようにしている
+        - `ChannelItem` / `ScheduleChannleItem` に `affiliation` を追加し、`ChannelApiModel` / `ScheduleApiModel` が付与する (`api.yml` の `BroadcastAffiliationItem`)。判定は `BroadcastAffiliation` (`IBroadcastAffiliation`) が DB から読んだ索引を引く。Operator (録画解析) が書いた結果を Service (API) へ反映するため、索引は **60 秒の TTL 付きキャッシュ**にして API の入口で `updateCache()` を呼ぶ
+        - 系列識別 → 系列名の対応表は ARIB TR-B14 第五編に基づく (`0x00` NHK総合 / `0x01` NHK Eテレ / `0x02` 日テレ系 / `0x03` TBS 系 / `0x04` フジテレビ系 / `0x05` テレビ朝日系 / `0x06` テレビ東京系 / `0x07` 独立系)。表に無い値は「その他 (系列 ID: n)」として値ごと表示するので、実データで想定外の値が出たらここに追記する
+        - UI は**番組表・放映中それぞれの 3 点リーダーから「地域別 / 系列別」を切り替える** (既定は地域別)。設定は共通 (`ISettingValue.channelGroupingType`) なので、どちらの画面で変えても両方に反映される
+            - 番組表: `GuideMainMenu.vue` に切り替え項目を追加。切り替えると表示中の放送局が属する新しいグループ (`/guide?affiliation=<系列 id>`) へ移動する。絞り込みは地域別と同じくクライアント側フィルタ (`GuideState.filterSchedules()`)
+            - 放映中: `ChannelGroupingMenu.vue` (共通コンポーネント) を `TitleBar` の menu スロットに置く。タブ識別子は `affiliation:<系列 id>` (地域別は従来どおり `region:<地域 id>`)
+            - サイドバーの番組表リンクも軸に追従する (`NavigationState.getChannelGroups()`)。`GuideRouteUtil` は `affiliation` も引き継ぐので、時刻移動や単局表示への遷移で絞り込みが外れない
+        - テストは `test/ut/bit-parser.test.js` (合成した BIT セクションの解析) と `test/ut/broadcast-affiliation.test.js` (系列判定・収集の割り当て規則) に固定した
+
     - 番組表 (`/guide`) の操作性を修正・強化した
         - **スクロールできなくなっていた回帰を修正**: Vuetify 4 のユーティリティ (`.overflow-auto` 等) は `@layer vuetify-utilities.helpers` の中で定義されており、**レイヤ外の scoped CSS に必ず負ける**。`Guide.vue` の `.program-wrap` が `overflow: hidden` を指定していたため番組表がまったくスクロールしなくなっていた (Vuetify 2 時代はユーティリティ側が `!important` だったので勝てていた)。同じ書き方をしている箇所を足すときは注意する
         - **無限スクロール**: 番組表の末尾付近まで縦スクロールすると次の時間帯を追加読み込みする (`GuideState.appendGuide()` / `Guide.vue` の `loadMore()`)。表示中の放送局にだけ番組を追加し、境界をまたぐ番組は programId で重複排除する。上限は 8 日分 (`MAX_TIME_LENGTH`)、単局表示 (週間番組表) は 8 日固定なので対象外

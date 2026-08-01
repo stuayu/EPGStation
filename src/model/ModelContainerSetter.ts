@@ -1,7 +1,11 @@
 import { Container } from 'inversify';
 
 import ApiUtil from './api/ApiUtil';
+import BroadcastAffiliation from './channel/BroadcastAffiliation';
+import BroadcastAffiliationCollector from './channel/BroadcastAffiliationCollector';
 import BroadcastRegion from './channel/BroadcastRegion';
+import IBroadcastAffiliation from './channel/IBroadcastAffiliation';
+import IBroadcastAffiliationCollector from './channel/IBroadcastAffiliationCollector';
 import IBroadcastRegion from './channel/IBroadcastRegion';
 import ChannelApiModel from './api/channel/ChannelApiModel';
 import IChannelApiModel from './api/channel/IChannelApiModel';
@@ -96,9 +100,11 @@ import AppSettingHistoryDB from './db/AppSettingHistoryDB';
 import IAppSettingHistoryDB from './db/IAppSettingHistoryDB';
 import NotificationQueueDB from './db/NotificationQueueDB';
 import INotificationQueueDB from './db/INotificationQueueDB';
+import ChannelAffiliationDB from './db/ChannelAffiliationDB';
 import ChannelDB from './db/ChannelDB';
 import DBOperator from './db/DBOperator';
 import DropLogFileDB from './db/DropLogFileDB';
+import IChannelAffiliationDB from './db/IChannelAffiliationDB';
 import IChannelDB from './db/IChannelDB';
 import IDBOperator from './db/IDBOperator';
 import IDropLogFileDB from './db/IDropLogFileDB';
@@ -370,6 +376,7 @@ export const set = (container: Container): void => {
 
     container.bind<IVideoFileDB>('IVideoFileDB').to(VideoFileDB).inSingletonScope();
     container.bind<IVideoFileTsInfoDB>('IVideoFileTsInfoDB').to(VideoFileTsInfoDB).inSingletonScope();
+    container.bind<IChannelAffiliationDB>('IChannelAffiliationDB').to(ChannelAffiliationDB).inSingletonScope();
     container.bind<IWatchHistoryDB>('IWatchHistoryDB').to(WatchHistoryDB).inSingletonScope();
     container.bind<IAnnictWatchSyncDB>('IAnnictWatchSyncDB').to(AnnictWatchSyncDB).inSingletonScope();
     container.bind<ISeriesDB>('ISeriesDB').to(SeriesDB).inSingletonScope();
@@ -494,6 +501,13 @@ export const set = (container: Container): void => {
     container.bind<ILogApiModel>('ILogApiModel').to(LogApiModel).inSingletonScope();
 
     container.bind<IBroadcastRegion>('IBroadcastRegion').to(BroadcastRegion).inSingletonScope();
+
+    container.bind<IBroadcastAffiliation>('IBroadcastAffiliation').to(BroadcastAffiliation).inSingletonScope();
+
+    container
+        .bind<IBroadcastAffiliationCollector>('IBroadcastAffiliationCollector')
+        .to(BroadcastAffiliationCollector)
+        .inSingletonScope();
 
     container.bind<IChannelApiModel>('IChannelApiModel').to(ChannelApiModel).inSingletonScope();
 

@@ -2,6 +2,7 @@ import { inject, injectable } from 'inversify';
 import mirakurun from 'mirakurun';
 import * as apid from '../../../../api';
 import Channel from '../../../db/entities/Channel';
+import IBroadcastAffiliation from '../../channel/IBroadcastAffiliation';
 import IBroadcastRegion from '../../channel/IBroadcastRegion';
 import IChannelDB from '../../db/IChannelDB';
 import IMirakurunClientModel from '../../IMirakurunClientModel';
@@ -12,15 +13,18 @@ class ChannelApiModel implements IChannelApiModel {
     private channelDB: IChannelDB;
     private mirakurunClient: mirakurun;
     private broadcastRegion: IBroadcastRegion;
+    private broadcastAffiliation: IBroadcastAffiliation;
 
     constructor(
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IMirakurunClientModel') mirakurunClientModel: IMirakurunClientModel,
         @inject('IBroadcastRegion') broadcastRegion: IBroadcastRegion,
+        @inject('IBroadcastAffiliation') broadcastAffiliation: IBroadcastAffiliation,
     ) {
         this.channelDB = channelDB;
         this.mirakurunClient = mirakurunClientModel.getClient();
         this.broadcastRegion = broadcastRegion;
+        this.broadcastAffiliation = broadcastAffiliation;
     }
 
     /**
@@ -29,6 +33,8 @@ class ChannelApiModel implements IChannelApiModel {
      * @return Promise<ChannelItem[]>
      */
     public async getChannels(channelId: apid.ChannelId): Promise<apid.ChannelItem[]> {
+        await this.broadcastAffiliation.updateCache();
+
         let channels: Channel[] = [];
         if (!channelId) {
             channels = await this.channelDB.findAll(true);
@@ -64,6 +70,15 @@ class ChannelApiModel implements IChannelApiModel {
             });
             if (region !== null) {
                 result.region = region;
+            }
+
+            // 地上波系は BIT から収集した系列情報を付与する
+            const affiliation = this.broadcastAffiliation.getAffiliation({
+                networkId: c.networkId,
+                channelType: c.channelType,
+            });
+            if (affiliation !== null) {
+                result.affiliation = affiliation;
             }
 
             return result;

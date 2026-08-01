@@ -641,6 +641,8 @@ components:
                     type: number
                 region:
                     $ref: '#/components/schemas/BroadcastRegionItem'
+                affiliation:
+                    $ref: '#/components/schemas/BroadcastAffiliationItem'
 
         BroadcastRegionItem:
             description: 地上デジタル放送の地域
@@ -658,6 +660,24 @@ components:
                     type: string
                 order:
                     description: 表示順 (都道府県コード。判定不能な「その他」は 99)
+                    type: number
+
+        BroadcastAffiliationItem:
+            description: 地上デジタル放送の系列 (BIT の系列識別ベース)
+            type: object
+            required:
+                - id
+                - name
+                - order
+            properties:
+                id:
+                    description: 系列 id
+                    type: string
+                name:
+                    description: 系列表示名
+                    type: string
+                order:
+                    description: 表示順 (独立系は 90、未分類は 99)
                     type: number
 
         ScheduleChannleItem:
@@ -691,6 +711,8 @@ components:
                     type: number
                 region:
                     $ref: '#/components/schemas/BroadcastRegionItem'
+                affiliation:
+                    $ref: '#/components/schemas/BroadcastAffiliationItem'
 
         ScheduleProgramItem:
             description: 番組表の番組データ

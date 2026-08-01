@@ -4,8 +4,8 @@ import Util from '@/util/Util';
 /**
  * 番組表 (/guide) のクエリを組み立てるユーティリティ
  *
- * 番組表の表示条件は放送波 (`type`)・地域 (`region`)・単局 (`channelId`)・時刻 (`time`) の
- * 4 つで、時刻移動やダイアログからの遷移で**表示条件を落とさない**ことが重要。
+ * 番組表の表示条件は放送波 (`type`)・地域 (`region`)・系列 (`affiliation`)・単局 (`channelId`)・時刻 (`time`) の
+ * 5 つで、時刻移動やダイアログからの遷移で**表示条件を落とさない**ことが重要。
  * (地域別番組表で日付を変えたら全放送波に戻る、といった不具合を防ぐ)
  */
 namespace GuideRouteUtil {
@@ -41,6 +41,11 @@ namespace GuideRouteUtil {
         const region = Util.getRouteString(route.query.region);
         if (typeof region !== 'undefined') {
             query.region = region;
+        }
+
+        const affiliation = Util.getRouteString(route.query.affiliation);
+        if (typeof affiliation !== 'undefined') {
+            query.affiliation = affiliation;
         }
 
         if (typeof option.channelId !== 'undefined') {
