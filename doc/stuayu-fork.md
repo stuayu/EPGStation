@@ -138,6 +138,12 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 ## 変更箇所
 
+- **視聴履歴の一覧画面を追加した**
+    - **背景**: 視聴履歴 (`watch_history`) は再生位置と視聴状態を持っていたが、録画一覧のバッジと再生時の続き再生に使うだけで、「最近見た番組」を一覧する画面が無かった
+    - **API**: `GET /api/watch-history` (最後に見た順・`offset` / `limit` / `status` / `isHalfWidth`) と `DELETE /api/watch-history/{videoFileId}` を追加した。1 件ずつは `WatchHistoryRecord` (履歴 + 対象の `RecordedItem`) で返し、**録画が削除済みの履歴は `recorded: null` にして行だけ残す** (画面から履歴を消せるようにするため)。機能フラグ `watchHistory` が無効なら 404
+    - **UI**: `/watch-history` (`client/src/views/WatchHistory.vue`) を追加し、ナビゲーションに「視聴履歴」を出す (機能フラグ有効時のみ)。サムネイル・放送局・最終視聴日時・再生位置の進捗バー・視聴状態を並べ、行をクリックすると続きから再生する。「すべて / 視聴中 / 視聴済み」で絞り込める
+    - **テスト**: `test/ut/watch-history-api.test.js`
+
 - **録画 1 件だけ TS を再解析できるようにした (過去に取り込んだ録画の番組情報の補完)**
     - **背景**: 取り込み時に番組情報が入らなかった録画や、解析ロジックを更新した後の録画を直す手段が「全件を強制再解析」しか無かった。件数が多い環境では 1 件直すために全件を舐めることになる
     - **API**: `POST /api/videos/analyze` の `StartVideoAnalyzeJobOption` に `recordedId` を追加した (省略時は従来通り全件)。指定した場合はその録画のビデオファイルだけを対象にし、**解析済みでも必ずやり直す** (`mode` は `all` 扱い)。対象ファイルが無ければ `VideoFileIsNotFound` (404)。`VideoAnalyzeJob` にも `recordedId` を載せ、進捗表示から対象が分かるようにした

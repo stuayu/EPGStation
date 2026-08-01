@@ -13,6 +13,8 @@ export default interface IVideoApiModel {
     getAnalyzeJob(): Promise<apid.VideoAnalyzeJob>;
     startAnalyzeJob(option: apid.StartVideoAnalyzeJobOption): Promise<apid.VideoAnalyzeJob>;
     cancelAnalyzeJob(): Promise<apid.VideoAnalyzeJob>;
+    getWatchHistories(option: apid.GetWatchHistoryOption): Promise<apid.WatchHistoryRecords>;
+    deleteWatchHistory(videoFileId: apid.VideoFileId): Promise<void>;
     getPlaybackPosition(videoFileId: apid.VideoFileId): Promise<apid.WatchHistory | null>;
     savePlaybackPosition(videoFileId: apid.VideoFileId, option: apid.UpdatePlaybackPositionOption): Promise<apid.WatchHistory>;
     savePlaybackPositionWithBeacon(videoFileId: apid.VideoFileId, option: apid.UpdatePlaybackPositionOption): void;

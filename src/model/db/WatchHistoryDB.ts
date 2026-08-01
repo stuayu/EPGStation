@@ -2,7 +2,7 @@ import { inject, injectable } from 'inversify';
 import { In } from 'typeorm';
 import WatchHistory from '../../db/entities/WatchHistory';
 import IDBOperator from './IDBOperator';
-import IWatchHistoryDB, { UpsertWatchHistoryOption } from './IWatchHistoryDB';
+import IWatchHistoryDB, { FindWatchHistoryOption, UpsertWatchHistoryOption } from './IWatchHistoryDB';
 @injectable()
 export default class WatchHistoryDB implements IWatchHistoryDB {
     constructor(@inject('IDBOperator') private readonly op: IDBOperator) {}
@@ -36,6 +36,27 @@ export default class WatchHistoryDB implements IWatchHistoryDB {
         if (ids.length === 0) return [];
         const c = await this.op.getConnection();
         return await c.getRepository(WatchHistory).find({ where: { videoFileId: In(ids) } });
+    }
+
+    /**
+     * 最後に視聴した順で視聴履歴を取得する
+     * @param option: FindWatchHistoryOption
+     * @return Promise<[WatchHistory[], number]> 履歴と総件数
+     */
+    public async findRecent(option: FindWatchHistoryOption): Promise<[WatchHistory[], number]> {
+        const c = await this.op.getConnection();
+        const queryBuilder = c
+            .getRepository(WatchHistory)
+            .createQueryBuilder('watch_history')
+            .orderBy('watch_history.updatedAt', 'DESC')
+            .offset(option.offset)
+            .limit(option.limit);
+
+        if (typeof option.status !== 'undefined') {
+            queryBuilder.where('watch_history.status = :status', { status: option.status });
+        }
+
+        return await queryBuilder.getManyAndCount();
     }
 
     public async deleteByVideoFileId(videoFileId: number): Promise<void> {

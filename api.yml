@@ -1849,6 +1849,33 @@ components:
                 duration: { type: integer, minimum: 1 }
                 status: { $ref: '#/components/schemas/WatchStatus' }
                 updatedAt: { $ref: '#/components/schemas/UnixtimeMS' }
+        WatchHistoryRecord:
+            description: 視聴履歴 1 件 (対象の録画情報付き)
+            type: object
+            required: [videoFileId, recordedId, position, duration, status, updatedAt, recorded]
+            properties:
+                videoFileId: { $ref: '#/components/schemas/VideoFileId' }
+                recordedId: { $ref: '#/components/schemas/RecordedId' }
+                position: { type: integer, minimum: 0 }
+                duration: { type: integer, minimum: 0 }
+                status: { $ref: '#/components/schemas/WatchStatus' }
+                updatedAt: { $ref: '#/components/schemas/UnixtimeMS' }
+                recorded:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/RecordedItem'
+
+        WatchHistoryRecords:
+            description: 視聴履歴一覧
+            type: object
+            required: [records, total]
+            properties:
+                records:
+                    type: array
+                    items: { $ref: '#/components/schemas/WatchHistoryRecord' }
+                total:
+                    type: integer
+
         UpdatePlaybackPositionOption:
             type: object
             required: [position, duration]
