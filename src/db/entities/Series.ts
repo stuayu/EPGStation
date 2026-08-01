@@ -25,6 +25,11 @@ export default class Series extends BaseEntity {
     @Column({ type: 'text', nullable: true }) seasonSource!: string | null;
     // 放送予定総話数 (完結判定・欠番検出の上限に使う)
     @Column({ type: 'integer', nullable: true }) totalEpisodes!: number | null;
+    // 作品コメント (しょぼいカレンダーの TitleItem.Comment。公式リンク・スタッフ・主題歌などの覚え書き)
+    @Column({ type: 'text', nullable: true }) comment!: string | null;
+    // コメントの出所。'dictionary': 作品辞書から取得 / 'manual': 画面から編集。
+    // 'manual' は自動同期で上書きしない
+    @Column({ type: 'text', nullable: true }) commentSource!: string | null;
     @Column({ type: 'bigint' }) createdAt!: number;
     @Column({ type: 'bigint' }) updatedAt!: number;
 }

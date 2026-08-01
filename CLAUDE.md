@@ -84,7 +84,8 @@ npm run test:ci        # ut + ita + itb
 
 - **Windows 対応が最重要**。パス処理は `path.join`、Mirakurun 接続は named pipe 対応を壊さないこと。CI は 3 OS × Node 24 で検証される
 - `ChannelType` に `NW1`〜`NW40` (県外地上波) が追加されている。チャンネル種別を扱うコードでは GR/BS/CS/SKY だけを前提にしない
-- `mirakurun` 依存は `stuayu/Mirakurun` のコミット固定 (ブランチ tarball 参照は push のたびに lockfile の integrity が壊れるため禁止)。更新時は package.json の URL のコミット SHA を差し替えて `npm install` で lockfile を更新する
+- `mirakurun` 依存は `stuayu/Mirakurun` の**タグで固定**する (現在は `git+https://github.com/stuayu/Mirakurun.git#4.2.0-stuayu`)。**ブランチ参照は禁止** (`#stuayu-main` のようなブランチ指定は Mirakurun 側の push のたびに解決先が変わり lockfile が壊れて CI が落ちる)。更新時は package.json のタグを差し替えて `npm install` で lockfile を更新する
+- `git+https` 形式は npm の依存元制限 (`allow-git`) の対象。リポジトリの `.npmrc` に `allow-git=all` を置いてあり、無い環境では `npm run all-install` が mirakurun のインストールで失敗する (PowerShell なら `$env:NPM_CONFIG_ALLOW_GIT="all"` で回避)
 - 設定項目を追加したら `config/config.yml.template` と `config/config-win.yml.template` の**両方**を更新する
 - `ormconfig.js` は `Configuration.ts` と別実装で config.yml を読む (二重管理)。設定の読み方を変える場合は両方直す
 - **ライブ HLS は 2 モード**: cmd が `%streamFileDir%` を含まない場合は in-memory 配信 (fMP4 を `Fmp4Packager` → `HLSMemoryStoreModel` でメモリ保持、ディスク書き込みなし・Windows 対応)。含む場合は従来の TS セグメント方式。**どちらも ARIB 字幕に対応**する (in-memory 側は ID3 を `emsg` box で運ぶ)。配信周りを触る前に `doc/streaming-refresh.md` を読むこと
@@ -93,7 +94,8 @@ npm run test:ci        # ut + ita + itb
 - エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換 (省略時は PATH 上の tsreadex)
 - ストリーミング API の `req.query` は express-openapi がスキーマに従い数値へ型変換する。`mode` 等を文字列前提で扱わないこと (過去に 400 エラーの原因になった)
 - **シリーズ自動マッピングの主軸は外部の作品タイトル辞書**。しょぼいカレンダー (`SyobocalTitleDictionary`, `syobocal_title` 系 3 テーブル)・Annict (`AnnictWorkDictionary`, `annict_work` 系 2 テーブル)・**Wikidata (`WikidataProgramDictionary`, `wikidata_program` 系 2 テーブル、全ジャンル)** の 3 つを `WorkDictionary` (`src/model/series/`) が 1 つのメモリ索引に統合し、`SeriesResolver` がそれを引く。録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバックなので、シリーズ判定を触るときは辞書側を先に疑うこと
-- **話数は辞書だけでなく「放送局 + 放送開始時刻」でも確定する**。`SyobocalProgramLookup` (`src/model/metadata/syobocal/`) がしょぼいカレンダーの放送予定 (`ProgLookup`) を引き、TID・通し話数・サブタイトルを返す (rigaya/SCRenamePy と同じ考え方)。タイトルに明示的な話数表記があるときは引かない (外部への問い合わせを増やさない)。総集編・一挙放送は `SeriesParseResult.isSpecial` で逆引きの対象外にする
+- **話数は辞書だけでなく「放送局 + 放送開始時刻」でも確定する**。`SyobocalProgramLookup` (`src/model/metadata/syobocal/`) がしょぼいカレンダーの放送予定 (`ProgLookup`) を引き、TID・通し話数・サブタイトルを返す (rigaya/SCRenamePy と同じ考え方)。**タイトルに話数表記があっても必ず引き、TID が一致すれば放送予定の話数を優先する** (局が振った通し番号よりこちらが確実。問い合わせは放送日 1 日分をキャッシュ)。しょぼいカレンダー未登録の地方局は系列のキー局の ChID で代用するが、その結果 (`viaKeyStation: true`) は遅れ放送で別番組を指しうるため**作品の確定には使わない**。総集編・一挙放送は `SeriesParseResult.isSpecial` でサブタイトル逆引きの対象外にする
+- **しょぼいカレンダーのコメントは 2 種類**。作品コメント (`TitleItem.Comment`) は `series.comment` へ、放送回コメント (`ProgItem.ProgComment`) は `series_episode.comment` へ入る。**作品コメントは辞書の全件同期に含めない** (1 件数 KB で XML が 9.5MB → 24MB になるため)。シリーズになっている作品だけ `ISyobocalTitleDictionary.fetchComment(tid)` で個別に引き、`SeriesMetadataFiller` が埋める。画面から編集・削除すると `commentSource` が `manual` になり自動同期の対象外になる
 - **辞書間の重複はしょぼいカレンダー TID で結合して防ぐ**。Annict は `syobocalTid` フィールド、Wikidata は `P11648` を持つ。新しい辞書を足すときも同じキーで既存エントリへ合流させ、作品を二重に作らないこと
 - **Wikidata 由来のエントリは `strictProgramKey()` の完全一致のみで引く**。一般番組は短く一般的なタイトル (「パラダイス」等) が多く、アニメ辞書と同じ含有一致を許すと誤爆する。また `syobocalLookupKey()` は長音符を落とすため「あそビバ」と「あそビーバー」が衝突する
 - **機能フラグ (`featureFlags`) は opt-out**。未指定は有効として扱う (`isFeatureEnabled` は `!== false` 判定)。テストで「機能無効」を表現するときは `featureFlags: {}` ではなく該当キーに `false` を明示すること

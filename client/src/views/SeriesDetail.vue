@@ -48,6 +48,29 @@
                 </v-list>
             </v-card>
 
+            <!-- 作品コメント (しょぼいカレンダー由来 / 手動編集) -->
+            <v-card v-if="detail.comment || isBulkMode === false" class="mb-3" variant="outlined">
+                <v-card-title class="d-flex align-center text-subtitle-1">
+                    <span>作品コメント</span>
+                    <v-chip v-if="detail.commentSource === 'manual'" class="ml-2" size="x-small" color="primary">手動</v-chip>
+                    <v-chip v-else-if="detail.commentSource === 'dictionary'" class="ml-2" size="x-small">しょぼいカレンダー</v-chip>
+                    <v-spacer></v-spacer>
+                    <v-btn icon variant="text" size="small" title="コメントを編集" @click="openCommentDialog">
+                        <v-icon>mdi-pencil</v-icon>
+                    </v-btn>
+                    <v-btn v-if="detail.comment" icon variant="text" size="small" title="コメントを削除" @click="isOpenDeleteCommentDialog = true">
+                        <v-icon>mdi-delete</v-icon>
+                    </v-btn>
+                </v-card-title>
+                <v-card-text v-if="detail.comment">
+                    <div class="series-comment" :class="{ 'is-collapsed': isCommentCollapsed === true }">{{ detail.comment }}</div>
+                    <v-btn variant="text" size="small" @click="isCommentCollapsed = !isCommentCollapsed">
+                        {{ isCommentCollapsed === true ? 'もっと見る' : '折りたたむ' }}
+                    </v-btn>
+                </v-card-text>
+                <v-card-text v-else class="text-grey">コメントはありません</v-card-text>
+            </v-card>
+
             <v-select v-model="channelId" :items="channelItems" item-title="title" item-value="value" label="放送局で絞り込み" @update:model-value="load"></v-select>
 
             <!-- 話数・放送種別の一括編集 -->
@@ -145,10 +168,26 @@
                     </template>
                     <v-list-item-title>{{ episodeTitle(item) }}</v-list-item-title>
                     <v-list-item-subtitle>{{ item.channelName || item.channelId }} · {{ formatDate(item.startAt) }}</v-list-item-subtitle>
+                    <v-list-item-subtitle v-if="item.episodeComment" class="episode-comment">
+                        <v-icon size="x-small">mdi-comment-text-outline</v-icon>
+                        {{ item.episodeComment }}
+                        <v-chip v-if="item.episodeCommentSource === 'manual'" class="ml-1" size="x-small" color="primary">手動</v-chip>
+                    </v-list-item-subtitle>
                     <template #append>
                         <v-chip v-if="item.airType === 'rerun'" color="orange" size="small">再放送</v-chip>
                         <v-chip v-else-if="item.airType === 'delayed'" color="purple" size="small">遅れ放送</v-chip>
                         <v-chip v-else-if="isDuplicate(item.recordedId)" color="blue" size="small">複数録画</v-chip>
+                        <!-- 話数が未確定の録画はエピソード行が無いのでコメントを付けられない -->
+                        <v-btn
+                            v-if="isSplitMode === false && item.episodeId !== null"
+                            icon
+                            variant="text"
+                            size="small"
+                            title="放送回コメントを編集"
+                            @click.prevent.stop="openEpisodeCommentDialog(item)"
+                        >
+                            <v-icon size="small">mdi-comment-edit-outline</v-icon>
+                        </v-btn>
                     </template>
                 </v-list-item>
             </v-list>
@@ -163,6 +202,50 @@
                 </v-card-text>
             </v-card>
         </v-container>
+
+        <!-- 作品コメントの編集 -->
+        <v-dialog v-model="isOpenCommentDialog" max-width="700">
+            <v-card>
+                <v-card-title>作品コメントの編集</v-card-title>
+                <v-card-text>
+                    <v-textarea v-model="commentInput" rows="12" auto-grow hide-details label="コメント"></v-textarea>
+                    <div class="text-caption text-grey mt-2">保存すると出所が「手動」になり、以降しょぼいカレンダーの値で上書きされなくなります</div>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn variant="text" @click="isOpenCommentDialog = false">キャンセル</v-btn>
+                    <v-btn color="primary" variant="text" :loading="commentSaving" @click="saveComment">保存</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <v-dialog v-model="isOpenDeleteCommentDialog" max-width="500">
+            <v-card>
+                <v-card-title>作品コメントの削除</v-card-title>
+                <v-card-text>作品コメントを削除します。以降しょぼいカレンダーから自動で取得し直すこともありません。よろしいですか？</v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn variant="text" @click="isOpenDeleteCommentDialog = false">キャンセル</v-btn>
+                    <v-btn color="error" variant="text" :loading="commentSaving" @click="deleteComment">削除する</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- 放送回コメントの編集 -->
+        <v-dialog v-model="isOpenEpisodeCommentDialog" max-width="600">
+            <v-card>
+                <v-card-title>放送回コメントの編集</v-card-title>
+                <v-card-text>
+                    <div class="text-subtitle-2 mb-2">{{ episodeCommentTargetTitle }}</div>
+                    <v-textarea v-model="episodeCommentInput" rows="4" auto-grow hide-details label="コメント (空にすると削除)"></v-textarea>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn variant="text" @click="isOpenEpisodeCommentDialog = false">キャンセル</v-btn>
+                    <v-btn color="primary" variant="text" :loading="episodeCommentSaving" @click="saveEpisodeComment">保存</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
 
         <v-dialog v-model="isOpenConfirmSplitDialog" max-width="500">
             <v-card>
@@ -203,6 +286,20 @@ class SeriesDetailView extends Vue {
     annictMessage = '';
     futureProposals: MissingEpisodeProposal[] = [];
     reservingKey: string | null = null;
+
+    // 作品コメント。長文なので既定では折りたたんで表示する
+    isCommentCollapsed = true;
+    isOpenCommentDialog = false;
+    isOpenDeleteCommentDialog = false;
+    commentInput = '';
+    commentSaving = false;
+
+    // 放送回コメント
+    isOpenEpisodeCommentDialog = false;
+    episodeCommentInput = '';
+    episodeCommentSaving = false;
+    episodeCommentTargetId: number | null = null;
+    episodeCommentTargetTitle = '';
 
     isSplitMode = false;
     selectedRecordedIds: number[] = [];
@@ -266,6 +363,78 @@ class SeriesDetailView extends Vue {
     }
     async load() {
         this.detail = await this.api.get(this.id, this.channelId ?? undefined);
+    }
+    /**
+     * 作品コメントの編集ダイアログを開く
+     */
+    openCommentDialog(): void {
+        this.commentInput = this.detail?.comment ?? '';
+        this.isOpenCommentDialog = true;
+    }
+    /**
+     * 作品コメントを保存する (空文字の場合は削除される)
+     */
+    async saveComment(): Promise<void> {
+        this.commentSaving = true;
+        try {
+            const comment = this.commentInput.trim();
+            await this.api.updateSeriesMetadata(this.id, { comment: comment === '' ? null : comment });
+            this.isOpenCommentDialog = false;
+            await this.load();
+            this.snackbarState.open({ color: 'success', text: '作品コメントを保存しました' });
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: '作品コメントの保存に失敗しました' });
+        } finally {
+            this.commentSaving = false;
+        }
+    }
+    /**
+     * 作品コメントを削除する
+     */
+    async deleteComment(): Promise<void> {
+        this.commentSaving = true;
+        try {
+            await this.api.updateSeriesMetadata(this.id, { comment: null });
+            this.isOpenDeleteCommentDialog = false;
+            await this.load();
+            this.snackbarState.open({ color: 'success', text: '作品コメントを削除しました' });
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: '作品コメントの削除に失敗しました' });
+        } finally {
+            this.commentSaving = false;
+        }
+    }
+    /**
+     * 放送回コメントの編集ダイアログを開く
+     * @param item: SeriesRecording 対象の録画行
+     */
+    openEpisodeCommentDialog(item: SeriesRecording): void {
+        if (item.episodeId === null) return;
+        this.episodeCommentTargetId = item.episodeId;
+        this.episodeCommentTargetTitle = this.episodeTitle(item);
+        this.episodeCommentInput = item.episodeComment ?? '';
+        this.isOpenEpisodeCommentDialog = true;
+    }
+    /**
+     * 放送回コメントを保存する (空文字の場合は削除される)
+     */
+    async saveEpisodeComment(): Promise<void> {
+        if (this.episodeCommentTargetId === null) return;
+        this.episodeCommentSaving = true;
+        try {
+            const comment = this.episodeCommentInput.trim();
+            await this.api.updateEpisodeComment(this.episodeCommentTargetId, comment === '' ? null : comment);
+            this.isOpenEpisodeCommentDialog = false;
+            await this.load();
+            this.snackbarState.open({ color: 'success', text: '放送回コメントを保存しました' });
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: '放送回コメントの保存に失敗しました' });
+        } finally {
+            this.episodeCommentSaving = false;
+        }
     }
     async loadFutureProposals(): Promise<void> {
         try {
@@ -427,3 +596,21 @@ class SeriesDetailView extends Vue {
 }
 export default toNative(SeriesDetailView);
 </script>
+<style lang="scss" scoped>
+// 作品コメントは Wiki 記法の長文 (改行あり) なので、改行を活かしつつ既定では高さを抑える
+.series-comment {
+    white-space: pre-wrap;
+    word-break: break-word;
+
+    &.is-collapsed {
+        display: -webkit-box;
+        -webkit-line-clamp: 5;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+}
+
+.episode-comment {
+    white-space: pre-wrap;
+}
+</style>

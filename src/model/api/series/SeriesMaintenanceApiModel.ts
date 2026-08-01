@@ -34,6 +34,8 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
     private static readonly LOOKUP_PREFIX_LENGTH = 2;
     private static readonly LOOKUP_LIMIT = 500;
     private static readonly CANDIDATE_LIMIT = 30;
+    // コメントの最大文字数。しょぼいカレンダーの作品コメントは実測で 3KB 前後あるため余裕を持たせる
+    private static readonly MAX_COMMENT_LENGTH = 20000;
 
     public async updateMetadata(seriesId: number, value: UpdateSeriesMetadata): Promise<void> {
         this.enabled();
@@ -85,8 +87,31 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
             }
         }
 
+        // 作品コメントは series 本体の列なので別経路で更新する。
+        // 手動設定・削除のどちらも出所を 'manual' にして、以降の自動取得で書き戻されないようにする
+        if (typeof value.comment !== 'undefined') {
+            const comment = value.comment === null ? null : String(value.comment).trim();
+            if (comment !== null && comment.length > SeriesMaintenanceApiModel.MAX_COMMENT_LENGTH) {
+                throw new Error('InvalidRequestBody');
+            }
+            await this.db.updateSeriesComment(seriesId, comment === '' ? null : comment, 'manual', Date.now());
+        }
+
         if (Object.keys(patch).length === 0) return;
         await this.db.updateExternalMetadata(seriesId, patch);
+    }
+
+    public async updateEpisodeComment(episodeId: number, comment: string | null): Promise<void> {
+        this.enabled();
+        if (typeof episodeId !== 'number' || Number.isInteger(episodeId) === false) {
+            throw new Error('InvalidRequestBody');
+        }
+        const value = comment === null ? null : String(comment).trim();
+        if (value !== null && value.length > SeriesMaintenanceApiModel.MAX_COMMENT_LENGTH) {
+            throw new Error('InvalidRequestBody');
+        }
+        const updated = await this.db.updateEpisodeComment(episodeId, value === '' ? null : value, Date.now());
+        if (updated === false) throw new Error('SeriesEpisodeIsNotFound');
     }
 
     public async refreshMetadata(): Promise<RefreshSeriesMetadataResult> {

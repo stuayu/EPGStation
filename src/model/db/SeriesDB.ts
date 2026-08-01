@@ -72,16 +72,60 @@ export default class SeriesDB implements ISeriesDB {
         const repo = c.getRepository(SeriesEpisode);
         return await repo.save(repo.create(value));
     }
-    public async fillEpisodeTitle(episodeId: number, title: string, updatedAt: number): Promise<void> {
+    public async fillEpisodeMetadata(
+        episodeId: number,
+        value: { title?: string | null; comment?: string | null },
+        updatedAt: number,
+    ): Promise<void> {
         const c = await this.op.getConnection();
-        // 手動で付け直したサブタイトルを自動補完で上書きしないため、未設定の行だけを対象にする
-        await c
+        // 手動で付け直した値を自動補完で上書きしないため、未設定の項目だけを対象にする
+        if (typeof value.title === 'string') {
+            await c
+                .createQueryBuilder()
+                .update(SeriesEpisode)
+                .set({ title: value.title, updatedAt })
+                .where('id = :id', { id: episodeId })
+                .andWhere('title IS NULL')
+                .execute();
+        }
+        if (typeof value.comment === 'string') {
+            await c
+                .createQueryBuilder()
+                .update(SeriesEpisode)
+                .set({ comment: value.comment, commentSource: 'dictionary', updatedAt })
+                .where('id = :id', { id: episodeId })
+                .andWhere('comment IS NULL')
+                .execute();
+        }
+    }
+    public async updateEpisodeComment(episodeId: number, comment: string | null, updatedAt: number): Promise<boolean> {
+        const c = await this.op.getConnection();
+        const result = await c
             .createQueryBuilder()
             .update(SeriesEpisode)
-            .set({ title, updatedAt })
+            // 手動設定は出所を manual にして以後の自動補完から守る。削除 (null) の場合も同様に
+            // manual を残し、次の同期で辞書の値が戻ってこないようにする
+            .set({ comment, commentSource: 'manual', updatedAt })
             .where('id = :id', { id: episodeId })
-            .andWhere('title IS NULL')
             .execute();
+
+        return (result.affected ?? 0) > 0;
+    }
+    public async updateSeriesComment(
+        seriesId: number,
+        comment: string | null,
+        source: 'dictionary' | 'manual',
+        updatedAt: number,
+    ): Promise<boolean> {
+        const c = await this.op.getConnection();
+        const result = await c
+            .createQueryBuilder()
+            .update(Series)
+            .set({ comment, commentSource: source, updatedAt })
+            .where('id = :id', { id: seriesId })
+            .execute();
+
+        return (result.affected ?? 0) > 0;
     }
     async findLink(recordedId: number) {
         const c = await this.op.getConnection();
@@ -315,6 +359,8 @@ export default class SeriesDB implements ISeriesDB {
             .addSelect('e.episodeNumber', 'episodeNumber')
             .addSelect('e.episodeLabel', 'episodeLabel')
             .addSelect('e.title', 'episodeTitle')
+            .addSelect('e.comment', 'episodeComment')
+            .addSelect('e.commentSource', 'episodeCommentSource')
             .addSelect('l.airType', 'airType')
             .addSelect('l.confidence', 'confidence')
             .orderBy('COALESCE(e.seasonNumber, 1)', 'ASC')
