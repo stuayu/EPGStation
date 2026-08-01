@@ -61,3 +61,31 @@ export function parseSyobocalDate(value: string): number | undefined {
     const time = Date.parse(value.replace(' ', 'T') + (/[+-]\d\d:\d\d$|Z$/.test(value) ? '' : '+09:00'));
     return Number.isFinite(time) ? time : undefined;
 }
+
+// しょぼいカレンダーの正常な応答コード。200 = 該当あり / 404 = 条件に一致するデータなし。
+// どちらも「通信としては成功」なので、これ以外は取得失敗として扱う
+const OK_RESULT_CODES = new Set([200, 404]);
+
+/**
+ * しょぼいカレンダーの応答が期待した形式かを検証する。妥当でなければ例外を投げる。
+ *
+ * Cloudflare のレート制限 (error 1015) やメンテナンス時は XML ではなく HTML が返るが、
+ * `xmlItems()` はそれを黙って空配列にしてしまうため、**正常な「該当なし」と区別が付かない**。
+ * 区別できないまま結果をキャッシュすると、一時的な失敗を数時間引きずることになる。
+ * ルート要素と Result/Code を確認して、失敗は失敗として上位へ伝える
+ * @param xml: string 応答本文
+ * @param rootTag: string 期待するルート要素名 (例: 'ProgLookupResponse')
+ * @throws Error 応答が XML でない・別の内容・エラーコードの場合
+ */
+export function assertSyobocalResponse(xml: string, rootTag: string): void {
+    if (xml.includes(`<${rootTag}`) === false) {
+        // 先頭だけをエラーメッセージに載せる (HTML が丸ごとログに出るのを防ぐ)
+        const head = xml.replace(/\s+/gu, ' ').slice(0, 120);
+        throw new Error(`SyobocalInvalidResponse: <${rootTag}> not found (${xml.length} bytes): ${head}`);
+    }
+
+    const code = Number(xmlItems(xml, 'Result')[0]?.Code);
+    if (Number.isFinite(code) && OK_RESULT_CODES.has(code) === false) {
+        throw new Error(`SyobocalResultCode:${code}`);
+    }
+}

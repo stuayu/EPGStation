@@ -563,17 +563,19 @@ export default class SeriesResolver implements ISeriesResolver {
     ): Promise<SyobocalProgramMatch | null> {
         const input = `channelId=${recording.channelId}, startAt=${new Date(recording.startAt).toLocaleString()}`;
         try {
-            const program = await this.programLookup.lookup(recording.channelId, recording.startAt);
+            const result = await this.programLookup.lookup(recording.channelId, recording.startAt);
+            const program = result.match;
             this.trace(trace, {
                 step: 'programLookup',
                 label: 'しょぼいカレンダーの放送予定照会 (局 + 開始時刻)',
                 input: input,
+                // 引けなかった場合も「どの ChID を引いて何件返ったか」を出す (切り分け用)
                 output:
                     program === null
-                        ? '該当する放送予定なし'
+                        ? `該当する放送予定なし — ${result.detail}`
                         : `TID=${program.tid} 第${program.count ?? '?'}話 ${program.subTitle ?? ''}` +
                           ` (${program.exactStart === true ? '開始時刻一致' : '時間帯包含'}` +
-                          `${program.viaKeyStation === true ? ', キー局代用' : ''})`,
+                          `${program.viaKeyStation === true ? ', キー局代用' : ''}) — ${result.detail}`,
                 matched: program !== null,
                 detail: program === null ? undefined : JSON.stringify(program),
             });

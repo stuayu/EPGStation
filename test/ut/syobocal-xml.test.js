@@ -1,7 +1,11 @@
 'use strict';
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { xmlItems, parseSyobocalDate } = require('../../dist/model/metadata/syobocal/SyobocalXml');
+const {
+    xmlItems,
+    parseSyobocalDate,
+    assertSyobocalResponse,
+} = require('../../dist/model/metadata/syobocal/SyobocalXml');
 
 test('parses flat items (baseline TitleLookup/ProgLookup shape)', () => {
     const xml = `<TitleLookupResponse><TitleItems><TitleItem><TID>100</TID><Title>作品名</Title></TitleItem></TitleItems></TitleLookupResponse>`;
@@ -59,4 +63,30 @@ test('parseSyobocalDate parses JST-naive timestamps', () => {
 
 test('parseSyobocalDate returns undefined for unparsable input', () => {
     assert.equal(parseSyobocalDate('not-a-date'), undefined);
+});
+
+// Cloudflare のレート制限 (error 1015) やメンテナンス時は XML ではなく HTML が返る。
+// これを黙って空配列にすると正常な「該当なし」と区別できず、失敗をキャッシュしてしまう
+test('assertSyobocalResponse() rejects a non-XML response', () => {
+    const html = '<!doctype html><html><head><title>Access denied | cal.syoboi.jp</title></head></html>';
+    assert.throws(() => assertSyobocalResponse(html, 'ProgLookupResponse'), /SyobocalInvalidResponse/);
+});
+
+test('assertSyobocalResponse() accepts data and no-data responses', () => {
+    const ok = '<?xml version="1.0"?><ProgLookupResponse><Result><Code>200</Code></Result><ProgItems></ProgItems></ProgLookupResponse>';
+    const notFound =
+        '<?xml version="1.0"?><ProgLookupResponse><Result><Code>404</Code><Message>条件に一致するデータは存在しません</Message></Result></ProgLookupResponse>';
+    assert.doesNotThrow(() => assertSyobocalResponse(ok, 'ProgLookupResponse'));
+    // 404 は「その条件の放送が無い」という正常な応答なので通す
+    assert.doesNotThrow(() => assertSyobocalResponse(notFound, 'ProgLookupResponse'));
+});
+
+test('assertSyobocalResponse() rejects an error result code', () => {
+    const error = '<?xml version="1.0"?><ProgLookupResponse><Result><Code>500</Code></Result></ProgLookupResponse>';
+    assert.throws(() => assertSyobocalResponse(error, 'ProgLookupResponse'), /SyobocalResultCode:500/);
+});
+
+test('assertSyobocalResponse() rejects a response for a different command', () => {
+    const other = '<?xml version="1.0"?><TitleLookupResponse><Result><Code>200</Code></Result></TitleLookupResponse>';
+    assert.throws(() => assertSyobocalResponse(other, 'ProgLookupResponse'), /SyobocalInvalidResponse/);
 });

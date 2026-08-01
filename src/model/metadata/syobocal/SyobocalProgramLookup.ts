@@ -10,8 +10,8 @@ import IBroadcastAffiliation, { BroadcastAffiliationTarget } from '../../channel
 import IMetadataEndpointResolver from '../IMetadataEndpointResolver';
 import IProviderHttpClient from '../IProviderHttpClient';
 import ISyobocalChannelMap from './ISyobocalChannelMap';
-import ISyobocalProgramLookup, { SyobocalProgramMatch } from './ISyobocalProgramLookup';
-import { parseSyobocalDate, xmlItems } from './SyobocalXml';
+import ISyobocalProgramLookup, { SyobocalProgramLookupResult, SyobocalProgramMatch } from './ISyobocalProgramLookup';
+import { assertSyobocalResponse, parseSyobocalDate, xmlItems } from './SyobocalXml';
 
 interface CacheEntry {
     programs: SyobocalProgramMatch[];
@@ -82,12 +82,14 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
         this.log = logger.getLogger();
     }
 
-    public async lookup(channelId: number, startAt: number): Promise<SyobocalProgramMatch | null> {
-        if (Number.isFinite(startAt) === false || startAt <= 0) return null;
+    public async lookup(channelId: number, startAt: number): Promise<SyobocalProgramLookupResult> {
+        if (Number.isFinite(startAt) === false || startAt <= 0) {
+            return { match: null, detail: '放送開始時刻が不正' };
+        }
         if ((await this.enabled()) === false) {
             this.log.system.debug('syobocal program lookup: skipped (syobocal integration is disabled)');
 
-            return null;
+            return { match: null, detail: 'しょぼいカレンダー連携が無効' };
         }
 
         const target = await this.findChId(channelId);
@@ -96,17 +98,24 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
                 `syobocal program lookup: no ChID for channelId=${channelId} (しょぼいカレンダー未対応かつ系列も不明)`,
             );
 
-            return null;
+            return {
+                match: null,
+                detail: 'この放送局はしょぼいカレンダー未対応で、代用できる系列キー局も不明',
+            };
         }
+        // 引き当てた問い合わせ先を必ず添える (どの ChID を引いたか分からないと切り分けができない)
+        const via = target.viaKeyStation === true ? `系列キー局 ChID ${target.chId} で代用` : `ChID ${target.chId}`;
 
         let programs: SyobocalProgramMatch[];
         try {
             programs = await this.getPrograms(target.chId, startAt);
         } catch (err) {
             // 放送予定が引けなくてもシリーズ化そのものは従来経路で成立するため、警告に留める
+            const message = err instanceof Error ? err.message : String(err);
             this.log.system.warn(`syobocal program lookup: failed to fetch programs for ChID ${target.chId}`);
             this.log.system.warn(err);
-            return null;
+
+            return { match: null, detail: `${via} の放送予定の取得に失敗: ${message}` };
         }
 
         const picked = SyobocalProgramLookup.pick(programs, startAt, target.viaKeyStation);
@@ -116,7 +125,12 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
                     ` (ChID ${target.chId}, その日の放送予定 ${programs.length} 件, viaKeyStation=${target.viaKeyStation})`,
             );
 
-            return null;
+            return {
+                match: null,
+                detail:
+                    `${via}、その日の放送予定 ${programs.length} 件に開始時刻の一致なし` +
+                    (target.viaKeyStation === true ? ' (キー局代用時は開始時刻がほぼ一致する放送のみ採用)' : ''),
+            };
         }
         this.log.system.debug(
             `syobocal program lookup: ChID ${target.chId} ${new Date(startAt).toLocaleString()}` +
@@ -124,7 +138,10 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
                 ` comment=${picked.comment === null ? 'なし' : `${picked.comment.length}文字`}`,
         );
 
-        return { ...picked, viaKeyStation: target.viaKeyStation };
+        return {
+            match: { ...picked, viaKeyStation: target.viaKeyStation },
+            detail: `${via}、その日の放送予定 ${programs.length} 件から特定`,
+        };
     }
 
     /**
@@ -231,6 +248,8 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
 
         const url = await this.url({ ChID: String(chId), Range: `${range.from}-${range.to}` });
         const xml = (await this.http.get(url, { timeoutMs: SyobocalProgramLookup.FETCH_TIMEOUT_MS })).text;
+        // Cloudflare のレート制限などで XML 以外が返った場合は、正常な「該当なし」と区別して失敗させる
+        assertSyobocalResponse(xml, 'ProgLookupResponse');
         const programs = xmlItems(xml, 'ProgItem')
             .map(row => SyobocalProgramLookup.toMatch(row))
             .filter((x): x is SyobocalProgramMatch => x !== null);
@@ -239,8 +258,8 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
             `syobocal program lookup: fetched ${programs.length} programs (ChID ${chId}, ${range.from}-${range.to}, ${xml.length} bytes)`,
         );
 
-        this.cache.set(cacheKey, { programs, expiresAt: now + SyobocalProgramLookup.CACHE_TTL_MS });
-        this.evictCache(now);
+        this.cacheResult(cacheKey, programs, now);
+
         return programs;
     }
 
@@ -264,6 +283,7 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
 
         const url = await this.url({ ChID: String(chId), TID: String(tid), Range: `${from}-${range.to}` });
         const xml = (await this.http.get(url, { timeoutMs: SyobocalProgramLookup.FETCH_TIMEOUT_MS })).text;
+        assertSyobocalResponse(xml, 'ProgLookupResponse');
         const programs = xmlItems(xml, 'ProgItem')
             .map(row => SyobocalProgramLookup.toMatch(row))
             .filter((x): x is SyobocalProgramMatch => x !== null);
@@ -273,10 +293,24 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
                 ` (ChID ${chId}, TID ${tid}, ${from}-${range.to}, ${xml.length} bytes)`,
         );
 
-        this.cache.set(cacheKey, { programs, expiresAt: now + SyobocalProgramLookup.CACHE_TTL_MS });
-        this.evictCache(now);
+        this.cacheResult(cacheKey, programs, now);
 
         return programs;
+    }
+
+    /**
+     * 取得結果をキャッシュする。
+     * **0 件はキャッシュしない**: 正常な「その日は該当なし」と、一時的な取得失敗で空になった
+     * ケースを完全には見分けられないため、空を数時間持ち回って復旧を遅らせるより
+     * 次回引き直す方が安全 (1 件でも取れていれば通信は成立している)
+     * @param cacheKey: string
+     * @param programs: SyobocalProgramMatch[]
+     * @param now: number
+     */
+    private cacheResult(cacheKey: string, programs: SyobocalProgramMatch[], now: number): void {
+        if (programs.length === 0) return;
+        this.cache.set(cacheKey, { programs, expiresAt: now + SyobocalProgramLookup.CACHE_TTL_MS });
+        this.evictCache(now);
     }
 
     /**

@@ -14,7 +14,7 @@ import ISyobocalTitleDictionary, {
     SyobocalTitleSyncOption,
     SyobocalTitleSyncResult,
 } from './ISyobocalTitleDictionary';
-import { xmlItems } from './SyobocalXml';
+import { assertSyobocalResponse, xmlItems } from './SyobocalXml';
 
 /**
  * しょぼいカレンダーの TitleLookup を一括で叩き、アニメ作品タイトルの辞書をローカル DB に構築する。
@@ -141,6 +141,8 @@ export default class SyobocalTitleDictionary implements ISyobocalTitleDictionary
             const baseUrl = await this.endpoints.resolve('syobocal');
             const url = `${baseUrl}?${params.toString()}`;
             const xml = (await this.http.get(url)).text;
+            // Cloudflare のレート制限などで XML 以外が返った場合は「コメント無し」と誤認しない
+            assertSyobocalResponse(xml, 'TitleLookupResponse');
             const items = xmlItems(xml, 'TitleItem');
             const comment = SyobocalTitleDictionary.textOrNull(items[0]?.Comment);
             if (comment === null) {
@@ -177,6 +179,9 @@ export default class SyobocalTitleDictionary implements ISyobocalTitleDictionary
         const response = await this.http.get(`${baseUrl}?${params.toString()}`, {
             timeoutMs: SyobocalTitleDictionary.FETCH_TIMEOUT_MS,
         });
+        // XML 以外が返っていた場合に「0 件同期」で成功扱いにしないよう、ここで弾く
+        assertSyobocalResponse(response.text, 'TitleLookupResponse');
+
         return response.text;
     }
 
