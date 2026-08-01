@@ -7,6 +7,7 @@ import IDBOperator from './IDBOperator';
 import ISyobocalTitleDB, {
     SyobocalTitleAliasRecord,
     SyobocalTitleEpisodeRecord,
+    SyobocalTitleSeasonRecord,
     SyobocalTitleUpsert,
 } from './ISyobocalTitleDB';
 
@@ -79,6 +80,14 @@ export default class SyobocalTitleDB implements ISyobocalTitleDB {
             ...titles.map(x => ({ lookupKey: x.lookupKey, tid: x.tid, rank: 0 })),
             ...aliases.map(x => ({ lookupKey: x.lookupKey, tid: x.tid, rank: x.rank })),
         ];
+    }
+
+    public async listSeasons(): Promise<SyobocalTitleSeasonRecord[]> {
+        const connection = await this.op.getConnection();
+
+        return await connection.getRepository(SyobocalTitle).find({
+            select: { tid: true, lookupKey: true, firstYear: true, firstMonth: true, totalEpisodes: true },
+        });
     }
 
     public async get(tid: number): Promise<SyobocalTitle | null> {

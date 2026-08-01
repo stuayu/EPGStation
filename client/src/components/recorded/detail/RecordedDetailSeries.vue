@@ -1,6 +1,17 @@
 <template>
-    <v-card v-if="isEnabled === true && mapping !== null && detail !== null" variant="outlined" class="recorded-detail-series pa-3">
-        <div class="text-caption text-grey mb-2">シリーズ情報</div>
+    <v-card v-if="isEnabled === true" variant="outlined" class="recorded-detail-series pa-3">
+        <div class="d-flex align-center justify-space-between mb-2">
+            <div class="text-caption text-grey">シリーズ情報</div>
+            <v-btn size="small" variant="text" :loading="isAnalyzing === true" @click="analyze">
+                シリーズ判定を実行
+            </v-btn>
+        </div>
+
+        <div v-if="mapping === null || detail === null" class="text-body-2 text-grey">
+            この録画はまだシリーズに紐づいていません
+        </div>
+
+        <template v-else>
         <div class="series-head">
             <v-img
                 v-if="detail.hasImage === true"
@@ -100,12 +111,21 @@
                 すべて見る ({{ detail.recordedCount }} 件)
             </v-btn>
         </div>
+        </template>
+
+        <SeriesAnalyzeDialog
+            v-model="isAnalyzeDialogOpen"
+            :result="analyzeResult"
+            :isRunning="isAnalyzing"
+            :errorMessage="analyzeError"
+        ></SeriesAnalyzeDialog>
     </v-card>
 </template>
 
 <script lang="ts">
 import container from '@/model/ModelContainer';
-import ISeriesApiModel, { SeriesDetail, SeriesMapping, SeriesRecording } from '@/model/api/series/ISeriesApiModel';
+import ISeriesApiModel, { SeriesAnalyzeResult, SeriesDetail, SeriesMapping, SeriesRecording } from '@/model/api/series/ISeriesApiModel';
+import SeriesAnalyzeDialog from './SeriesAnalyzeDialog.vue';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
@@ -113,11 +133,14 @@ import * as apid from '../../../../../api';
 
 /**
  * 録画詳細画面にシリーズ情報 (辞書由来のクール・外部 ID・話数) と
- * 同一シリーズの関連録画一覧を表示する
- * シリーズ機能 (featureFlags.seriesLibrary) が無効な場合、および
- * 当該録画がどのシリーズにも紐づいていない場合は何も表示しない
+ * 同一シリーズの関連録画一覧を表示する。
+ * シリーズ機能 (featureFlags.seriesLibrary) が無効な場合は何も表示しない。
+ * どのシリーズにも紐づいていない録画でも、この録画 1 件だけシリーズ判定を実行する
+ * ボタンは表示する (判定過程は SeriesAnalyzeDialog で確認できる)
  */
-@Component({})
+@Component({
+    components: { SeriesAnalyzeDialog },
+})
 class RecordedDetailSeries extends Vue {
     @Prop({ required: true })
     public recordedId!: apid.RecordedId;
@@ -129,6 +152,12 @@ class RecordedDetailSeries extends Vue {
     public detail: SeriesDetail | null = null;
     // 作品コメントは数 KB の長文なので既定では折りたたんで表示する
     public isCommentCollapsed: boolean = true;
+
+    // シリーズ判定 (単発実行) の状態
+    public isAnalyzeDialogOpen: boolean = false;
+    public isAnalyzing: boolean = false;
+    public analyzeResult: SeriesAnalyzeResult | null = null;
+    public analyzeError: string | null = null;
 
     private static readonly RELATED_MAX = 8;
 
@@ -215,6 +244,26 @@ class RecordedDetailSeries extends Vue {
 
     public formatDate(value: number): string {
         return new Date(value).toLocaleString();
+    }
+
+    /**
+     * この録画 1 件だけシリーズ判定を実行し、判定過程を含む結果をダイアログに表示する
+     */
+    public async analyze(): Promise<void> {
+        this.analyzeResult = null;
+        this.analyzeError = null;
+        this.isAnalyzing = true;
+        this.isAnalyzeDialogOpen = true;
+        try {
+            this.analyzeResult = await this.api.analyze(this.recordedId);
+            // 判定結果をその場で画面へ反映する
+            await this.fetchData();
+        } catch (err) {
+            console.error(err);
+            this.analyzeError = 'シリーズ判定に失敗しました';
+        } finally {
+            this.isAnalyzing = false;
+        }
     }
 
     public created(): void {

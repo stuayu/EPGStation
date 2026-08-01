@@ -1863,6 +1863,12 @@ export interface SeriesBackfillOption {
     dryRun?: boolean;
     // 1 回に処理する録画件数 (省略時はデフォルト値)
     chunkSize?: number;
+    // true の場合、前回の再開位置を破棄して先頭から実行し直す
+    restart?: boolean;
+    // true の場合、まだシリーズへリンクされていない録画だけを対象にする
+    onlyUnlinked?: boolean;
+    // 指定した場合、直近 (id の新しい方から) この件数の録画だけを対象にする
+    latest?: number;
 }
 
 /**
@@ -1911,6 +1917,51 @@ export interface SeriesBackfillResult {
     error: string | null;
     previewItems?: SeriesBackfillPreviewItem[];
     previewTruncated?: boolean;
+    // 実行時に指定された絞り込み条件 (画面での確認用)
+    onlyUnlinked?: boolean;
+    latest?: number | null;
+}
+
+/**
+ * シリーズ判定 1 ステップ分のトレース (どの照会に何を投げて何が返ったか)
+ */
+export interface SeriesAnalyzeStep {
+    // 判定ステップの識別子 (parse / programLookup / alias / workDictionary / llm / titleScoring / result など)
+    step: string;
+    // 画面表示用のステップ名
+    label: string;
+    // このステップへの入力の要約
+    input: string;
+    // このステップの戻り値の要約
+    output: string;
+    // このステップで確定したか
+    matched: boolean;
+    // 生の戻り値 (JSON 文字列)。デバッグ用
+    detail?: string;
+}
+
+/**
+ * 録画 1 件のシリーズ判定結果 (トレース付き)
+ */
+export interface SeriesAnalyzeResult {
+    recordedId: RecordedId;
+    title: string;
+    channelId: ChannelId;
+    startAt: UnixtimeMS;
+    // シリーズへリンクされたか
+    linked: boolean;
+    // 未確定キューへ積まれたか
+    pending: boolean;
+    seriesId: SeriesId | null;
+    seriesTitle: string | null;
+    episodeNumber: number | null;
+    episodeTitle: string | null;
+    airType: string | null;
+    matchMethod: string | null;
+    confidence: number | null;
+    // 手動確定済みで判定をスキップした場合 true
+    manualLock: boolean;
+    steps: SeriesAnalyzeStep[];
 }
 
 export interface MetadataProviderInfo {

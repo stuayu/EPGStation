@@ -123,15 +123,39 @@ export default class SyobocalTitleDictionary implements ISyobocalTitleDictionary
     }
 
     public async fetchComment(tid: number): Promise<string | null> {
-        if (Number.isFinite(tid) === false || tid <= 0) return null;
-        if ((await this.enabled()) === false) return null;
+        if (Number.isFinite(tid) === false || tid <= 0) {
+            this.log.system.debug(`syobocal title dictionary: skip fetching a comment for an invalid TID (${tid})`);
+
+            return null;
+        }
+        if ((await this.enabled()) === false) {
+            this.log.system.debug(
+                `syobocal title dictionary: skip fetching the comment of TID ${tid} (syobocal integration is disabled)`,
+            );
+
+            return null;
+        }
 
         try {
             const params = new URLSearchParams({ Command: 'TitleLookup', TID: String(tid), Fields: 'TID,Comment' });
             const baseUrl = await this.endpoints.resolve('syobocal');
-            const xml = (await this.http.get(`${baseUrl}?${params.toString()}`)).text;
-            const row = xmlItems(xml, 'TitleItem')[0];
-            return SyobocalTitleDictionary.textOrNull(row?.Comment);
+            const url = `${baseUrl}?${params.toString()}`;
+            const xml = (await this.http.get(url)).text;
+            const items = xmlItems(xml, 'TitleItem');
+            const comment = SyobocalTitleDictionary.textOrNull(items[0]?.Comment);
+            if (comment === null) {
+                // 「コメントが本当に空」なのか「レスポンスを読めていない」のかを切り分けられるようにする
+                this.log.system.warn(
+                    `syobocal title dictionary: no comment for TID ${tid}` +
+                        ` (TitleItem ${items.length} 件, レスポンス ${xml.length} bytes, url=${url})`,
+                );
+            } else {
+                this.log.system.info(
+                    `syobocal title dictionary: fetched the comment of TID ${tid} (${comment.length} chars)`,
+                );
+            }
+
+            return comment;
         } catch (err) {
             this.log.system.warn(`syobocal title dictionary: failed to fetch the comment of TID ${tid}`);
             this.log.system.warn(err);

@@ -11,6 +11,7 @@ import ISeriesApiModel, {
     MissingEpisodeProposal,
     SeriesBackfillOption,
     SeriesBackfillResult,
+    SeriesAnalyzeResult,
     ProgramSeriesMetrics,
     SeriesListOption,
     UpdateSeriesMetadata,
@@ -158,6 +159,9 @@ export default class SeriesApiModel implements ISeriesApiModel {
     }
     public async cancelBackfill(): Promise<void> {
         await this.repository.delete('/series/backfill');
+    }
+    public async analyze(recordedId: apid.RecordedId): Promise<SeriesAnalyzeResult> {
+        return (await this.repository.post(`/series/analyze/${recordedId}`, {})).data;
     }
     public async reserveMissingEpisode(seriesId: number, seasonNumber: number, episodeNumber: number, programId: number): Promise<{ reserveId: number }> {
         return (await this.repository.post(`/series/${seriesId}/missing-episodes/reserve`, { seasonNumber, episodeNumber, programId })).data;

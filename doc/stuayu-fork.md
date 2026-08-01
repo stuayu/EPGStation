@@ -954,3 +954,41 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - 見送った更新: `url-join` 5 / `inversify` 8 (ESM 専用かつ `require(ESM)` 時に API 互換性の確認が必要)、`vue-facing-decorator` 4 (全クラスコンポーネントに影響)、`typescript` 7 (typescript-eslint 8 の peer が `<6.1.0`)、`aribts` (npm の latest タグが現行より古い)
         - `npm audit` に残る 10 件 (high) は `mirakurun` パッケージ経由の間接依存 (`brace-expansion` / `js-yaml` 4 系) で、いずれも API 非互換な修正版しか存在せず対処不可。EPGStation 側から実行されないコード (redoc / mirakurun 本体) か、静的な glob パターンにしか使われないため実害はない
         - `overrides` の `express-openapi.glob: ^7.0.0` は維持する必要がある。glob 10 以降の `globSync()` は Windows でパス区切りが `\` になり、`fs-routes` が組み立てる API のルートパス (`src/model/service/api/` のディレクトリ構造 = URL パス) が壊れるため
+    - シリーズ判定を「対象を絞って実行」「1 件だけ実行」できるようにし、判定過程を画面とログから追えるようにした
+        - **未シリーズ化のみ / 直近 N 件のみのバックフィル** (`POST /api/series/backfill` の `onlyUnlinked` / `latest`): サーバー設定 > シリーズ管理タブのチェックボックスと件数入力から指定する。`onlyUnlinked` は `IRecordedDB.findForSeriesBackfill()` の SQL で `recorded_series_link` に無い録画だけに絞る (走査自体を減らす。従来はループ内でスキップしていたためドライランでは効いていなかった)。`latest` は `findSeriesBackfillFloorId(count)` で直近 N 件の下限 id を求め、そこから昇順に処理する
+        - **直近 N 件の実行は「部分実行」扱い**で、ドライランと同じくメモリ上の状態で完結させ `IAppSettingDB` の再開カーソル (`seriesBackfill`) を書き換えない。全件バックフィルの続きが失われないようにするため
+        - **録画 1 件だけのシリーズ判定** (`POST /api/series/analyze/{recordedId}`): 録画詳細画面の「シリーズ判定を実行」ボタンから叩く。`SeriesBackfillManageModel.analyze()` が Operator 側で `SeriesResolver.resolve()` を 1 件分だけ実行し、結果 (シリーズ・話数・サブタイトル・判定方法・確度) と判定過程を返す。シリーズ未紐付けの録画でもボタンは出る
+        - **判定過程のトレース**: `ISeriesResolver.resolve(recording, trace?)` に収集器を渡すと、放送予定照会 → エイリアス辞書 → 作品辞書 → LLM → 類似度スコアリングの各ステップについて「入力・戻り値の要約・確定したか・生の戻り値 (JSON)」を記録する。**トレースは省略可能**で、渡さないときの挙動は従来どおり (バックフィル本体はコスト増を避けるため渡さない)
+        - 結果は `SeriesAnalyzeDialog.vue` のポップアップに表を出し、行ごとに「生データ」を展開できる。同じ内容は Operator のログにも 1 ステップ 1 行で出る
+    - 外部メタデータへの問い合わせをログから追えるようにした (コメントが取れない等の切り分け用)
+        - `ProviderHttpClient` にロガーを注入し、リクエスト (メソッド・URL・試行回数)、レスポンス (ステータス・所要時間・バイト数)、429 のリトライ待ち、4xx の本文冒頭、試行を使い切った失敗を出すようにした。URL は 300 文字で切り詰める (Wikidata の SPARQL 対策)。`ILoggerModel` は `@optional()` なので未注入でも動く
+        - `SyobocalTitleDictionary.fetchComment()`: 連携が無効でスキップした場合・TitleItem は返ったがコメントが空の場合を区別してログに出す (件数・レスポンスサイズ・URL 付き)。取得できた場合は文字数を出す
+        - `SeriesMetadataFiller.fill()`: 作品コメントの結果を常に集計して出す (`filled/fetched` に加え、**しょぼいカレンダー TID が無くて引けなかった件数**と**1 回の上限 100 件を超えて次回へ繰り越した件数**)。コメントが埋まらない原因が「連携無効」「TID 未確定」「上限」のどれなのかを切り分けられる
+        - `SyobocalProgramLookup`: 放送予定の取得件数 (ChID・Range・バイト数) を info、連携無効・ChID 未解決・該当放送なし・確定した TID / 話数 / サブタイトル / コメント長を debug で出す
+    - しょぼいカレンダーの放送予定照会 (ProgLookup) が実質使えていなかったのを直した
+        - **同梱チャンネルマップ (`SyobocalChannelMapData`) を実データから作り直した**。従来は東京キー局 7 局だけを収録していたうえ、**ChID も networkId も誤っていた** (ChID は `3=日テレ / 5=テレ朝 / 6=TBS / 8=フジ` としていたが、しょぼいカレンダーの実際の割り当ては `3=フジ / 4=日テレ / 5=TBS / 6=テレ朝 / 8=tvk`。networkId も 7 局すべて `32736` = NHK総合・東京の値になっていた)。このため放送予定照会がほぼ全件で `no ChID` となり、**放送回コメントもサブタイトルも一切入らない**状態だった
+        - ChID は `ChLookup` (`https://cal.syoboi.jp/db.php?Command=ChLookup`)、networkId / serviceId は実機の `channel` テーブルから起こし、**地上波・BS・CS 110 度の 124 局**を収録した。地上波の networkId は放送事業者ごとに全国一意なので、収録した値はそのまま他環境でも使える
+        - しょぼいカレンダー未登録の県域局 (福島中央テレビなど) は**意図的に載せない**。これらは従来どおり系列 (BIT) のキー局の放送予定で代用する
+        - `SyobocalProgramLookup.KEY_STATION_CH_ID` も同じ誤りを持っていた (`ntv:3, ex:5, tbs:6, cx:8`) ので `ntv:4, ex:6, tbs:5, cx:3` に修正した。BIT が取れている環境では**キー局代用が別局の番組表を引いていた**
+        - 検証: 実データで TOKYO MX (ChID 19) / MBS (ChID 48) の録画が確度 0.98 (開始時刻一致) でシリーズ・話数まで確定するのを確認済み。テスト `test/ut/syobocal-channel-map.test.js` にキー局の ChID 対応と ChID / networkId+serviceId の一意性を固定した
+    - しょぼいカレンダーへのアクセス間隔を上げ、429 を受けたら自動で広げるようにした
+        - しょぼいカレンダーは Cloudflare のレート制限が厳しく、既定の 250ms 間隔では **429 (error 1015)** を返す。`ProviderHttpClient.HOST_MINIMUM_INTERVAL_MS` でホスト別の最小間隔を持たせ、`cal.syoboi.jp` は 1500ms にした
+        - さらに 429 を受けたホストは以後の最小間隔を 2 倍 (上限 10 秒) に引き上げる。同じ同期の続きで叩き続けて弾かれ続けるのを防ぐ。呼び出し側が `option.minimumIntervalMs` を明示した場合はそちらが優先される
+    - 作品コメントの取得が 1 回では終わらない問題に対処した
+        - 1 回の `SeriesMetadataFiller.fill()` で取りに行く上限を 100 → 300 件に引き上げ、**繰り越しが残っていれば 10 分後に続きを自動実行する** (最大 20 回)。作品コメントは TID ごとに 1 リクエスト必要で、レート制限もあるため 1 回では全件取り切れず、従来は利用者が手動実行を繰り返すしかなかった
+        - `SeriesMetadataFillResult` (= `POST /api/series/refresh-metadata` の応答) に `commentFetched` / `commentFilled` / `commentPending` / `commentSkippedNoTid` を追加し、シリーズ一覧の再取得ボタンのスナックバーに「コメント N 件取得、残り M 件」を出すようにした
+    - 続編 (第 2 期など) を放送時期で選び分けるようにした
+        - **局によっては期の表記を送出しない** (例: 福島中央テレビの「株式会社マジルミエ[字]」)。しょぼいカレンダーは期ごとに別 TID を持ち、正式タイトルは「株式会社マジルミエ」「株式会社マジルミエ(第2期)」なので、タイトル照合だけでは**常に期表記の無い第 1 期に当たってしまう**。放送予定照会が引けない局ではこれを覆せず、2026 年 7 月放送の第 2 期が 2024 年秋の第 1 期に紐づいていた
+        - `WorkDictionary` が「期表記を落とした基本キー」(`SeriesNormalizer.seasonBaseKey()`) で同じ作品の全期をグループ化し、`lookup(title, airedAt)` に録画の放送日時を渡すと**その日時が放送期間に入る期へ差し替える**。放送期間は しょぼいカレンダーの初回放送年月 + 総話数分の週 + 余裕 6 週で見積もる。期間に入る期が 1 つに定まらない場合・放送日時を渡さない場合は従来どおり
+        - **再放送 (`parsed.airType === 'rerun'`) では放送日時を渡さない**。第 1 期の再放送が第 2 期の放送期間に入って誤判定するため
+        - 判定順は変えていない。放送予定照会 (`SyobocalProgramLookup`) が引ける局ではそちらが先に確定するので、これはしょぼいカレンダー未登録の局を救う後段の判定になる
+        - `ISyobocalTitleDB.listSeasons()` を追加 (TID・照合キー・初回放送年月・総話数)。バックフィルのドライラン (`SeriesBackfillManageModel.decide()`) も同じ条件で放送日時を渡す
+    - 系列を同梱データで補い、遅れ放送の話数を系列キー局の放送予定から確定できるようにした
+        - **系列の同梱データ** (`src/model/channel/BroadcastAffiliationData.ts`): 系列は BIT (PID 0x0024) の受動収集のみだったため、**まだ受信していない局は「未分類」のまま**で、番組表の系列別グルーピングも、しょぼいカレンダー未登録局のキー局代用も機能しなかった (実環境では `channel_affiliation` が 0 件だった)。公知の系列を同梱データとして持ち、BIT が無い局だけこれで補う。**BIT を受信済みの局は常に BIT が優先**される (実際の送出が唯一の正)
+        - 同梱データは 2 段構え。**`BROADCAST_AFFILIATION_BY_NETWORK_ID`** が networkId → 系列識別 (ARIB TR-B14 の affiliation_id) の実測値 127 局分 (実機の `channel` テーブルから起こしたもの)、**`BROADCAST_AFFILIATION_BY_NAME`** が放送局名 → 系列の全国データ 129 局分。後者は Wikipedia の各ニュースネットワーク (NNN / JNN / FNN / ANN / TXN) と全国独立放送協議会の加盟局一覧から起こしており、**地上波の民放全社を網羅する**ため、実測値に無い地域の局でも局名から系列が付く
+        - 局名の照合は「正式名称の含有一致 (長い名前から) → 略称の完全一致」の順。EPG の局名にはサブチャンネル番号が付く (「福島中央テレビ1」) ため含有一致にしているが、**「大分放送」と「大分朝日放送」のように一方が他方を含む組み合わせがある**ので必ず長い名前から照合する。略称 (3 文字程度) は偶然一致しやすいので完全一致のみ (末尾のサブチャンネル番号は落として比較)
+        - `BroadcastAffiliationTarget` に `name` を追加し、`ChannelApiModel` / `ScheduleApiModel` / `SyobocalProgramLookup` が局名を渡す
+        - ケーブル・コミュニティ局は系列を持たないため収録しない。実データでは地上波の実局はすべて分類され、未分類として残るのはケーブル局と (このフォークで `NW*` 扱いになっている) 衛星チャンネルだけになった
+        - **遅れ放送の話数解決** (`ISyobocalProgramLookup.lookupDelayed()`): しょぼいカレンダー未登録の県域局はキー局の数日後に同じ作品を流すため、同時刻の照合 (`lookup()`) では拾えない。**作品 (TID) が確定していれば**キー局の放送予定を `ChID` + `TID` で絞って引き、録画時刻より前で最も近い放送をその回とみなす。遅れ日数が一定でなくても (2 週遅れ・特番による飛び) 追える。遡る範囲は 28 日、応答は 1 作品分なので軽い
+        - 呼び出しは `SeriesResolver.linkToWork()` の話数解決の**最後**。「放送予定の話数 → タイトルの話数表記 → サブタイトル逆引き → 遅れ放送」の順で、前段で決まっていれば外部照会は行わない。遅れ放送で確定した場合は `airType` を `delayed` にする
+        - 検証: 福島中央テレビ (しょぼいカレンダー未登録・日テレ系) の「株式会社マジルミエ[字]」4 件が、キー局 (日本テレビ) の放送予定から第 1〜4 話 + サブタイトルまで確定するのを実データで確認した (6 日遅れのネット)

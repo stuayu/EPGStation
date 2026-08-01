@@ -3533,6 +3533,16 @@ components:
                 chunkSize:
                     description: 1 回に処理する録画件数 (省略時はデフォルト値)
                     type: integer
+                restart:
+                    description: true の場合、前回の再開位置を破棄して先頭から実行し直す
+                    type: boolean
+                onlyUnlinked:
+                    description: true の場合、まだシリーズへリンクされていない録画だけを対象にする
+                    type: boolean
+                latest:
+                    description: 指定した場合、直近 (id の新しい方から) この件数の録画だけを対象にする
+                    type: integer
+                    minimum: 1
 
         SeriesBackfillState:
             description: バックフィルの実行状態
@@ -3651,6 +3661,106 @@ components:
                         $ref: '#/components/schemas/SeriesBackfillPreviewItem'
                 previewTruncated:
                     type: boolean
+                onlyUnlinked:
+                    description: 実行時に指定された「未リンクのみ」条件
+                    type: boolean
+                latest:
+                    description: 実行時に指定された「直近 N 件のみ」条件
+                    type: integer
+                    nullable: true
+
+        SeriesAnalyzeStep:
+            description: シリーズ判定 1 ステップ分のトレース (どの照会に何を投げて何が返ったか)
+            type: object
+            required:
+                - step
+                - label
+                - input
+                - output
+                - matched
+            properties:
+                step:
+                    description: 判定ステップの識別子
+                    type: string
+                label:
+                    description: 画面表示用のステップ名
+                    type: string
+                input:
+                    description: このステップへの入力の要約
+                    type: string
+                output:
+                    description: このステップの戻り値の要約
+                    type: string
+                matched:
+                    description: このステップで確定したか
+                    type: boolean
+                detail:
+                    description: 生の戻り値 (JSON 文字列)
+                    type: string
+
+        SeriesAnalyzeResult:
+            description: 録画 1 件のシリーズ判定結果 (トレース付き)
+            type: object
+            required:
+                - recordedId
+                - title
+                - channelId
+                - startAt
+                - linked
+                - pending
+                - seriesId
+                - seriesTitle
+                - episodeNumber
+                - episodeTitle
+                - airType
+                - matchMethod
+                - confidence
+                - manualLock
+                - steps
+            properties:
+                recordedId:
+                    $ref: '#/components/schemas/RecordedId'
+                title:
+                    type: string
+                channelId:
+                    $ref: '#/components/schemas/ChannelId'
+                startAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                linked:
+                    description: シリーズへリンクされたか
+                    type: boolean
+                pending:
+                    description: 未確定キューへ積まれたか
+                    type: boolean
+                seriesId:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/SeriesId'
+                seriesTitle:
+                    type: string
+                    nullable: true
+                episodeNumber:
+                    type: integer
+                    nullable: true
+                episodeTitle:
+                    type: string
+                    nullable: true
+                airType:
+                    type: string
+                    nullable: true
+                matchMethod:
+                    type: string
+                    nullable: true
+                confidence:
+                    type: number
+                    nullable: true
+                manualLock:
+                    description: 手動確定済みで判定をスキップした場合 true
+                    type: boolean
+                steps:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SeriesAnalyzeStep'
 
         MetadataProviderInfo:
             type: object

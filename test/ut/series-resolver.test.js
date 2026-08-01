@@ -79,8 +79,14 @@ function stubLlm(extracted = null, enabled = extracted !== null) {
     return { isEnabled: () => enabled, isSuspended: () => false, extractWorkTitle: async () => extracted };
 }
 // しょぼいカレンダーの放送予定照会。既定では「該当なし」を返す (連携無効の環境と同じ挙動)
-function stubProgramLookup(program = null) {
-    return { calls: [], lookup: async function (channelId, startAt) { this.calls.push({ channelId, startAt }); return program; } };
+function stubProgramLookup(program = null, delayed = null) {
+    return {
+        calls: [],
+        delayedCalls: [],
+        lookup: async function (channelId, startAt) { this.calls.push({ channelId, startAt }); return program; },
+        // 遅れ放送の照会 (系列キー局の放送予定を作品で絞って引く)。既定は「該当なし」
+        lookupDelayed: async function (channelId, startAt, tid) { this.delayedCalls.push({ channelId, startAt, tid }); return delayed; },
+    };
 }
 function resolver(
     db,
@@ -546,4 +552,109 @@ test('a programme title contained in the recording title is accepted', async () 
     });
 
     assert.equal(link.matchMethod, 'syobocal');
+});
+
+test('resolve() records each lookup step into the trace collector when one is passed', async () => {
+    const series = { id: 1, title: '作品名', normalizedTitle: '作品名', preferredChannelId: 10 };
+    const db = memory([series]);
+    const trace = [];
+    const link = await resolver(db).resolve(
+        { recordedId: 5, title: '作品名 第3話', channelId: 10, startAt: 100 },
+        trace,
+    );
+
+    assert.equal(link.seriesId, 1);
+    const steps = trace.map(x => x.step);
+    // 判定順どおりに記録される (放送予定 → エイリアス → 作品辞書 → LLM → 類似度)
+    assert.deepEqual(steps, [
+        'parse',
+        'programLookup',
+        'alias',
+        'workDictionary',
+        'llmDictionary',
+        'llmGrouping',
+        'titleScoring',
+    ]);
+    assert.equal(trace[trace.length - 1].matched, true);
+    // 入力と戻り値の要約がそれぞれ入っている (画面・ログでの追跡用)
+    for (const step of trace) {
+        assert.equal(typeof step.input, 'string');
+        assert.equal(typeof step.output, 'string');
+        assert.equal(typeof step.label, 'string');
+    }
+});
+
+test('resolve() traces the broadcast schedule lookup that決定した作品', async () => {
+    const db = memory([]);
+    const program = { tid: 100, count: 3, subTitle: 'サブ', comment: null, startAt: 100, endAt: 200, exactStart: true, viaKeyStation: false };
+    const dictionary = stubTitleDictionary(null);
+    dictionary.findByIds = async () => workMatch({ title: '作品名' });
+    const trace = [];
+    await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), stubProgramLookup(program)).resolve(
+        { recordedId: 5, title: '作品名 第3話', channelId: 10, startAt: 100 },
+        trace,
+    );
+
+    const programStep = trace.find(x => x.step === 'programLookup');
+    assert.ok(programStep.output.includes('TID=100'));
+    assert.equal(programStep.matched, true);
+    const matchStep = trace.find(x => x.step === 'programMatch');
+    assert.equal(matchStep.matched, true);
+    assert.ok(matchStep.input.includes('syobocalTid=100'));
+});
+
+test('resolve() works without a trace collector (default path)', async () => {
+    const series = { id: 1, title: '作品名', normalizedTitle: '作品名', preferredChannelId: 10 };
+    const db = memory([series]);
+    const link = await resolver(db).resolve({ recordedId: 5, title: '作品名 第3話', channelId: 10, startAt: 100 });
+    assert.equal(link.seriesId, 1);
+});
+
+// しょぼいカレンダー未登録の県域局は、キー局の数日後に同じ作品を流す (遅れネット)。
+// 同時刻の照合では拾えないが、作品が確定していればキー局の放送予定を作品で絞って追える
+test('resolve() takes the episode number from the key station broadcast for a delayed airing', async () => {
+    const db = memory([]);
+    const dictionary = stubTitleDictionary(workMatch({ title: '作品名', syobocalTid: 100 }));
+    const delayed = {
+        tid: 100,
+        count: 4,
+        subTitle: 'キー局のサブタイトル',
+        comment: null,
+        startAt: Date.parse('2026-07-26T00:55:00+09:00'),
+        endAt: null,
+        exactStart: false,
+        viaKeyStation: true,
+    };
+    // その局自身の放送予定は引けない (未登録局) / 遅れ放送だけが引ける
+    const programLookup = stubProgramLookup(null, delayed);
+    const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
+        recordedId: 5,
+        // 話数表記もサブタイトルも無いタイトル
+        title: '作品名[字]',
+        channelId: 10,
+        startAt: Date.parse('2026-08-01T02:06:00+09:00'),
+    });
+
+    assert.equal(link.seriesId, 20);
+    const episode = db.episodes.find(x => x.id === link.episodeId);
+    assert.equal(episode.episodeNumber, 4);
+    assert.equal(episode.title, 'キー局のサブタイトル');
+    // キー局より後に流れている = 遅れ放送と分かる
+    assert.equal(link.airType, 'delayed');
+    assert.equal(programLookup.delayedCalls[0].tid, 100);
+});
+
+// タイトルから話数が取れる録画では、余計な外部照会を増やさない
+test('resolve() does not ask for a delayed broadcast when the episode number is already known', async () => {
+    const db = memory([]);
+    const dictionary = stubTitleDictionary(workMatch({ title: '作品名', syobocalTid: 100 }));
+    const programLookup = stubProgramLookup(null, null);
+    await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
+        recordedId: 5,
+        title: '作品名 第3話',
+        channelId: 10,
+        startAt: 1000,
+    });
+
+    assert.equal(programLookup.delayedCalls.length, 0);
 });

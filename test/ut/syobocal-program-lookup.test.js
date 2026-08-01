@@ -119,8 +119,8 @@ test('falls back to the key station of the affiliation for unregistered local ch
     assert.equal(match.count, 9);
     // 呼び出し側が「作品の確定には使えない」と判断できるよう印を付ける
     assert.equal(match.viaKeyStation, true);
-    // 日本テレビの ChID で問い合わせる
-    assert.ok(http.urls[0].includes('ChID=3'));
+    // 日本テレビの ChID (しょぼいカレンダーの実データでは 4) で問い合わせる
+    assert.ok(http.urls[0].includes('ChID=4'));
 });
 
 // 遅れ放送ではキー局の同時刻に別番組が並ぶため、時間帯の包含では拾わない
@@ -158,5 +158,53 @@ test('rejects invalid start times without touching the network', async () => {
     const http = stubHttp(progXml([]));
     assert.equal(await lookup(http).lookup(1, 0), null);
     assert.equal(await lookup(http).lookup(1, Number.NaN), null);
+    assert.equal(http.urls.length, 0);
+});
+
+// --- 遅れ放送の話数解決 (lookupDelayed) ---
+// しょぼいカレンダー未登録の県域局は、キー局の数日後に同じ作品を流す。
+// 作品 (TID) が確定していれば、キー局の放送予定をその作品に絞って遡れる
+test('lookupDelayed() picks the latest key-station broadcast of the work before the recording', async () => {
+    const http = stubHttp(
+        progXml([
+            { pid: 1, tid: 7892, stTime: '2026-07-19 01:05:00', edTime: '2026-07-19 01:35:00', count: 3 },
+            { pid: 2, tid: 7892, stTime: '2026-07-26 00:55:00', edTime: '2026-07-26 01:25:00', count: 4, subTitle: 'サブ4' },
+            { pid: 3, tid: 7892, stTime: '2026-08-02 00:55:00', edTime: '2026-08-02 01:25:00', count: 5 },
+        ]),
+    );
+    // 未登録局 (mapping なし) + 日テレ系
+    const model = lookup(http, { mapping: undefined, affiliation: { id: 'ntv', name: '日テレ系', order: 3 } });
+    const match = await model.lookupDelayed(1, Date.parse('2026-08-01T02:06:00+09:00'), 7892);
+
+    // 8/1 の録画に対応するのは 7/26 放送の第 4 話 (8/2 の第 5 話はまだ流れていない)
+    assert.equal(match.count, 4);
+    assert.equal(match.subTitle, 'サブ4');
+    assert.equal(match.viaKeyStation, true);
+    // キー局 (日本テレビ = ChID 4) の放送予定を作品で絞って引く
+    assert.ok(http.urls[0].includes('ChID=4'));
+    assert.ok(http.urls[0].includes('TID=7892'));
+});
+
+test('lookupDelayed() ignores broadcasts of other works', async () => {
+    const http = stubHttp(
+        progXml([{ pid: 1, tid: 999, stTime: '2026-07-26 00:55:00', edTime: '2026-07-26 01:25:00', count: 4 }]),
+    );
+    const model = lookup(http, { mapping: undefined, affiliation: { id: 'ntv', name: '日テレ系', order: 3 } });
+
+    assert.equal(await model.lookupDelayed(1, Date.parse('2026-08-01T02:06:00+09:00'), 7892), null);
+});
+
+test('lookupDelayed() does nothing for a channel that has its own schedule', async () => {
+    const http = stubHttp(progXml([]));
+    // 直接マッピングがある局はその局の放送予定で決まるので、遅れ放送の照会は行わない
+    assert.equal(await lookup(http).lookupDelayed(1, START_AT, 100), null);
+    assert.equal(http.urls.length, 0);
+});
+
+test('lookupDelayed() does nothing when the affiliation is unknown', async () => {
+    const http = stubHttp(progXml([]));
+    const model = lookup(http, { mapping: undefined, affiliation: null });
+
+    assert.equal(await model.lookupDelayed(1, START_AT, 100), null);
     assert.equal(http.urls.length, 0);
 });

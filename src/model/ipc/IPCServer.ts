@@ -579,6 +579,13 @@ export default class IPCServer implements IIPCServer {
             await this.seriesBackfillManage.cancel();
         };
 
+        // analyze (録画 1 件のシリーズ判定 + トレース)
+        index[SeriesFunctions.analyze] = async msg => {
+            const recordedId = this.getArgsValue<apid.RecordedId>(msg, 'recordedId');
+
+            return await this.seriesBackfillManage.analyze(recordedId);
+        };
+
         return index;
     }
 

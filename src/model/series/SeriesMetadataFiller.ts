@@ -33,10 +33,15 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
     private static readonly LLM_MAX_PER_RUN = 200;
     // 1 回の fill() で作品コメントを取りに行くシリーズ数の上限。
     // TID ごとに 1 リクエスト必要なので、初回で溢れても次回以降の実行で続きが進む
-    private static readonly COMMENT_MAX_PER_RUN = 100;
+    private static readonly COMMENT_MAX_PER_RUN = 300;
+    // 上限で繰り越しが出た場合に、続きを実行するまでの待ち時間
+    private static readonly FOLLOW_UP_DELAY_MS = 10 * 60 * 1000;
+    // 自動で続きを実行する最大回数 (取りこぼしが延々と残る状況で無限に叩き続けないための歯止め)
+    private static readonly MAX_FOLLOW_UP_RUNS = 20;
 
     private log: ILogger;
     private scheduled: boolean = false;
+    private followUpRuns: number = 0;
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -59,6 +64,9 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
         let llmResolved = 0;
         let commentFetched = 0;
         let commentFilled = 0;
+        // コメントを引けなかった理由の内訳 (取れていないときに原因を切り分けられるようにする)
+        let commentSkippedNoTid = 0;
+        let commentDeferred = 0;
         const llmEnabled = this.isLlmEnabled();
         let llmSuspended = false;
 
@@ -157,7 +165,10 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
             // 3. 作品コメントを取得する。1 作品あたり数 KB あり全件同期には含めていないため、
             //    シリーズになっている作品だけを TID 指定で個別に引く
             const syobocalTid = patch.syobocalTid ?? series.syobocalTid;
-            if (
+            if (needsComment === true && typeof syobocalTid !== 'number') {
+                // TID が無い作品はコメントを引く手段が無い (辞書に当たっていない)
+                commentSkippedNoTid++;
+            } else if (
                 needsComment === true &&
                 typeof syobocalTid === 'number' &&
                 commentFetched < SeriesMetadataFiller.COMMENT_MAX_PER_RUN
@@ -167,15 +178,25 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
                 if (comment !== null) {
                     await this.db.updateSeriesComment(series.id, comment, 'dictionary', Date.now()).catch(() => {});
                     commentFilled++;
+                } else {
+                    this.log.system.debug(
+                        `series metadata: no comment for seriesId=${series.id} (TID ${syobocalTid}, ${series.title})`,
+                    );
                 }
+            } else if (needsComment === true) {
+                // 1 回の上限に達したぶんは次回の実行へ回る
+                commentDeferred++;
             }
 
             if (Object.keys(patch).length === 0) continue;
             await this.db.updateExternalMetadata(series.id, patch);
             updated++;
         }
-        if (commentFilled > 0) {
-            this.log.system.info(`series metadata: fetched comments for ${commentFilled}/${commentFetched} series`);
+        if (commentFetched > 0 || commentSkippedNoTid > 0 || commentDeferred > 0) {
+            this.log.system.info(
+                `series metadata: comments filled ${commentFilled}/${commentFetched}` +
+                    ` (しょぼいカレンダー TID 無しで取得不可: ${commentSkippedNoTid} 件、上限超過で次回へ繰り越し: ${commentDeferred} 件)`,
+            );
         }
         this.log.system.debug(`series metadata: estimated season for ${estimated} series`);
         if (llmAnalyzed > 0) {
@@ -184,7 +205,16 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
             );
         }
 
-        return { scanned: all.length, updated, llmAnalyzed, llmResolved };
+        return {
+            scanned: all.length,
+            updated,
+            llmAnalyzed,
+            llmResolved,
+            commentFetched,
+            commentFilled,
+            commentPending: commentDeferred,
+            commentSkippedNoTid,
+        };
     }
 
     /**
@@ -270,6 +300,17 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
         if (this.scheduled === true) return;
         this.scheduled = true;
 
+        this.scheduleRun(SeriesMetadataFiller.INITIAL_DELAY_MS);
+    }
+
+    /**
+     * delayMs 後に fill() を 1 回実行する。
+     * コメント取得が 1 回あたりの上限で繰り越された場合は、間隔を空けて続きを自動実行する
+     * (作品コメントは TID ごとに 1 リクエスト必要で、しょぼいカレンダーのレート制限もあるため
+     *  1 回では全件を取り切れない。利用者に手動実行を繰り返させないための自動追走)
+     * @param delayMs: number
+     */
+    private scheduleRun(delayMs: number): void {
         const timer = setTimeout(() => {
             void (async () => {
                 const config = this.config.getConfig();
@@ -286,12 +327,20 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
                             `series metadata: filled ${result.updated}/${result.scanned} series from the work dictionary`,
                         );
                     }
+                    if (result.commentPending > 0 && this.followUpRuns < SeriesMetadataFiller.MAX_FOLLOW_UP_RUNS) {
+                        this.followUpRuns++;
+                        this.log.system.info(
+                            `series metadata: ${result.commentPending} comments remain, scheduling a follow-up run` +
+                                ` (${this.followUpRuns}/${SeriesMetadataFiller.MAX_FOLLOW_UP_RUNS})`,
+                        );
+                        this.scheduleRun(SeriesMetadataFiller.FOLLOW_UP_DELAY_MS);
+                    }
                 } catch (err) {
-                    this.log.system.warn('series metadata: initial fill failed');
+                    this.log.system.warn('series metadata: fill failed');
                     this.log.system.warn(err);
                 }
             })();
-        }, SeriesMetadataFiller.INITIAL_DELAY_MS);
+        }, delayMs);
         if (typeof timer.unref === 'function') timer.unref();
     }
 }

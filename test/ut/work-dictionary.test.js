@@ -17,6 +17,15 @@ function makeSyobocalDB(titles = [], episodesByTid = {}) {
                 { lookupKey: t.lookupKey, tid: t.tid, rank: 0 },
                 ...(t.aliases ?? []).map(a => ({ lookupKey: a, tid: t.tid, rank: 1 })),
             ]),
+        // 続編 (期) のグループ構築用。firstYear/firstMonth を持つ作品だけが期の選び直しの対象になる
+        listSeasons: async () =>
+            titles.map(t => ({
+                tid: t.tid,
+                lookupKey: t.lookupKey,
+                firstYear: t.firstYear ?? null,
+                firstMonth: t.firstMonth ?? null,
+                totalEpisodes: t.totalEpisodes ?? null,
+            })),
         get: async tid => map.get(tid) ?? null,
         listEpisodes: async tid => episodesByTid[tid] ?? [],
     };
@@ -55,8 +64,16 @@ function makeAnnictDB(works = []) {
     };
 }
 
-function syobocalTitle({ tid, title, aliases = [], totalEpisodes = null }) {
-    return { tid, title, lookupKey: syobocalLookupKey(title), aliases: aliases.map(syobocalLookupKey), totalEpisodes };
+function syobocalTitle({ tid, title, aliases = [], totalEpisodes = null, firstYear = null, firstMonth = null }) {
+    return {
+        tid,
+        title,
+        lookupKey: syobocalLookupKey(title),
+        aliases: aliases.map(syobocalLookupKey),
+        totalEpisodes,
+        firstYear,
+        firstMonth,
+    };
 }
 function annictWork({ annictId, title, aliases = [], syobocalTid = null, episodesCount = null }) {
     return {
@@ -314,4 +331,58 @@ test('lookup() does not duplicate a work that both syobocal and wikidata have (j
     assert.equal(match.syobocalTid, 42);
     assert.equal(match.source, 'syobocal');
     assert.equal(match.wikidataQid, 'Q99');
+});
+
+// 局によっては「株式会社マジルミエ[字]」のように期の表記を送出しないため、タイトル照合だけでは
+// 常に第 1 期へ寄ってしまう。放送日時を渡した場合はその日時に合う期を選ぶ
+test('lookup() picks the season whose broadcast period contains the recording', async () => {
+    const dict = new WorkDictionary(
+        makeSyobocalDB([
+            syobocalTitle({ tid: 7181, title: '株式会社マジルミエ', totalEpisodes: 12, firstYear: 2024, firstMonth: 10 }),
+            syobocalTitle({ tid: 7892, title: '株式会社マジルミエ(第2期)', totalEpisodes: 12, firstYear: 2026, firstMonth: 7 }),
+        ]),
+        makeAnnictDB(),
+        makeWikidataDB(),
+    );
+
+    // 2026-08-01 の録画 → 第 2 期
+    const second = await dict.lookup('株式会社マジルミエ[字]', Date.parse('2026-08-01T02:06:00+09:00'));
+    assert.equal(second.syobocalTid, 7892);
+    assert.equal(second.title, '株式会社マジルミエ(第2期)');
+
+    // 2024-12-06 の録画 → 第 1 期
+    const first = await dict.lookup('株式会社マジルミエ[字]', Date.parse('2024-12-06T23:00:00+09:00'));
+    assert.equal(first.syobocalTid, 7181);
+
+    // 放送日時を渡さなければ従来どおりタイトル照合の結果 (期表記の無い第 1 期) を返す
+    const noDate = await dict.lookup('株式会社マジルミエ[字]');
+    assert.equal(noDate.syobocalTid, 7181);
+});
+
+test('lookup() keeps the matched work when no season period contains the recording', async () => {
+    const dict = new WorkDictionary(
+        makeSyobocalDB([
+            syobocalTitle({ tid: 7181, title: '株式会社マジルミエ', totalEpisodes: 12, firstYear: 2024, firstMonth: 10 }),
+            syobocalTitle({ tid: 7892, title: '株式会社マジルミエ(第2期)', totalEpisodes: 12, firstYear: 2026, firstMonth: 7 }),
+        ]),
+        makeAnnictDB(),
+        makeWikidataDB(),
+    );
+
+    // どの期の放送期間にも入らない日時 (期の間) では選び直さない
+    const match = await dict.lookup('株式会社マジルミエ[字]', Date.parse('2025-06-01T00:00:00+09:00'));
+    assert.equal(match.syobocalTid, 7181);
+});
+
+test('lookup() does not switch seasons for a work that has only one season', async () => {
+    const dict = new WorkDictionary(
+        makeSyobocalDB([
+            syobocalTitle({ tid: 1, title: '単発作品', totalEpisodes: 12, firstYear: 2024, firstMonth: 10 }),
+        ]),
+        makeAnnictDB(),
+        makeWikidataDB(),
+    );
+
+    const match = await dict.lookup('単発作品', Date.parse('2026-08-01T00:00:00+09:00'));
+    assert.equal(match.syobocalTid, 1);
 });

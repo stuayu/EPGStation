@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import IChannelAffiliationDB from '../db/IChannelAffiliationDB';
+import { BROADCAST_AFFILIATION_BY_NAME, BROADCAST_AFFILIATION_BY_NETWORK_ID } from './BroadcastAffiliationData';
 import IBroadcastAffiliation, { BroadcastAffiliationItem, BroadcastAffiliationTarget } from './IBroadcastAffiliation';
 
 /**
@@ -7,8 +8,10 @@ import IBroadcastAffiliation, { BroadcastAffiliationItem, BroadcastAffiliationTa
  *
  * BIT (Broadcaster Information Table) の extended_broadcaster_descriptor に含まれる
  * 系列識別 (affiliation_id) を DB から読み、放送局 (networkId) を系列にまとめる。
- * BIT は録画・ライブ視聴時に流れてきた分だけ収集する (受動収集) ため、
- * まだ受信していない放送局は「未分類」として扱う。
+ * BIT は録画・ライブ視聴時に流れてきた分だけ収集する (受動収集) ため、まだ受信していない
+ * 放送局については公知の系列を集めた同梱データ (BroadcastAffiliationData) で補う。
+ * 同梱データにも無い放送局だけが「未分類」になる。
+ * BIT を受信済みの局は常に BIT の内容を優先する (実際の送出が唯一の正)。
  */
 @injectable()
 export default class BroadcastAffiliation implements IBroadcastAffiliation {
@@ -104,8 +107,9 @@ export default class BroadcastAffiliation implements IBroadcastAffiliation {
             return null;
         }
 
-        const affiliationIds = this.cache[target.networkId];
-        if (typeof affiliationIds === 'undefined' || affiliationIds.length === 0) {
+        // BIT を受信済みならそれが正。未受信の局だけ同梱データで補う
+        const affiliationIds = this.cache[target.networkId] ?? BroadcastAffiliation.bundled(target);
+        if (affiliationIds.length === 0) {
             return BroadcastAffiliation.getUnknownAffiliation();
         }
 
@@ -129,6 +133,72 @@ export default class BroadcastAffiliation implements IBroadcastAffiliation {
         result.push(BroadcastAffiliation.getUnknownAffiliation());
 
         return result.sort((a, b) => a.order - b.order);
+    }
+
+    /**
+     * 同梱データから系列識別を引く (無ければ空配列)。
+     * networkId の実測値を最優先で引き、未収録の局は放送局名で引き直す
+     * @param target: BroadcastAffiliationTarget
+     * @return number[]
+     */
+    private static bundled(target: BroadcastAffiliationTarget): number[] {
+        const byNetworkId = BROADCAST_AFFILIATION_BY_NETWORK_ID[target.networkId];
+        if (typeof byNetworkId === 'number') return [byNetworkId];
+
+        const byName = BroadcastAffiliation.findByName(target.name);
+
+        return byName === null ? [] : [byName];
+    }
+
+    /**
+     * 放送局名から系列識別を引く。
+     * 正式名称は含有一致 (EPG の局名にはサブチャンネル番号などが付くため) だが、
+     * 「大分放送」と「大分朝日放送」のような紛らわしい組み合わせを取り違えないよう
+     * **長い名前から順に**照合する。略称は偶然一致を避けるため完全一致でのみ引く
+     * @param name: string | undefined 放送局名
+     * @return number | null
+     */
+    private static findByName(name: string | undefined): number | null {
+        const normalized = BroadcastAffiliation.normalizeName(name);
+        if (normalized === '') return null;
+        // 末尾のサブチャンネル番号を落とした形 (「HTB1」→「HTB」)。略称の完全一致に使う
+        const withoutSubChannel = normalized.replace(/\d+$/u, '');
+
+        let best: { affiliationId: number; length: number } | null = null;
+        for (const entry of BROADCAST_AFFILIATION_BY_NAME) {
+            for (const candidate of entry.names) {
+                const key = BroadcastAffiliation.normalizeName(candidate);
+                if (key === '' || normalized.includes(key) === false) continue;
+                if (best === null || key.length > best.length) {
+                    best = { affiliationId: entry.affiliationId, length: key.length };
+                }
+            }
+        }
+        if (best !== null) return best.affiliationId;
+
+        for (const entry of BROADCAST_AFFILIATION_BY_NAME) {
+            for (const candidate of entry.abbreviations) {
+                const key = BroadcastAffiliation.normalizeName(candidate);
+                if (key === '') continue;
+                if (key === normalized || key === withoutSubChannel) return entry.affiliationId;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 放送局名を照合用に正規化する (全角・大文字小文字・記号・空白の揺れを吸収する)
+     * @param value: string | undefined
+     * @return string
+     */
+    private static normalizeName(value: string | undefined): string {
+        if (typeof value !== 'string') return '';
+
+        return value
+            .normalize('NFKC')
+            .toUpperCase()
+            .replace(/[\s\u3000!-/:-@[-`{-~、。・～〜ー―－‐]/gu, '');
     }
 
     /**

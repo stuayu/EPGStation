@@ -20,6 +20,14 @@ export interface SeriesBackfillCandidateRow {
     startAt: number;
 }
 
+// シリーズ化バックフィルの対象絞り込み
+export interface SeriesBackfillFilter {
+    // true の場合、まだシリーズへリンクされていない録画だけを対象にする
+    onlyUnlinked?: boolean;
+    // この id 未満の録画は対象外にする (直近 N 件だけを対象にする際の下限)
+    minId?: number;
+}
+
 /**
  * TS 解析で放送局が特定できたときに書き戻す値
  */
@@ -56,14 +64,27 @@ export default interface IRecordedDB {
      * シリーズ化バックフィル用に録画を id 昇順でチャンク取得する (録画中のものは除く)
      * @param afterId: number この id より大きいものを対象とする
      * @param limit: number
+     * @param filter: SeriesBackfillFilter 対象の絞り込み条件
      * @return Promise<SeriesBackfillCandidateRow[]>
      */
-    findForSeriesBackfill(afterId: number, limit: number): Promise<SeriesBackfillCandidateRow[]>;
+    findForSeriesBackfill(
+        afterId: number,
+        limit: number,
+        filter?: SeriesBackfillFilter,
+    ): Promise<SeriesBackfillCandidateRow[]>;
 
     /**
      * シリーズ化バックフィルの残件数を取得する
      * @param afterId: number この id より大きいものを対象とする
+     * @param filter: SeriesBackfillFilter 対象の絞り込み条件
      * @return Promise<number>
      */
-    countForSeriesBackfill(afterId: number): Promise<number>;
+    countForSeriesBackfill(afterId: number, filter?: SeriesBackfillFilter): Promise<number>;
+
+    /**
+     * 直近 (id 降順) の録画 count 件のうち、最も小さい id を返す (バックフィルの対象下限)
+     * @param count: number
+     * @return Promise<number> 対象が無い場合は 0
+     */
+    findSeriesBackfillFloorId(count: number): Promise<number>;
 }

@@ -12,8 +12,11 @@ export interface SeriesBackfillOption {
     intervalMs?: number;
     // true の場合、前回の再開位置 (lastRecordedId) を破棄して先頭から実行し直す (dryRun 時は無視される)
     restart?: boolean;
-    // true の場合、既にシリーズへリンク済みの録画はスキップし、未リンクの録画だけを照合する (dryRun 時は無視される)
+    // true の場合、まだシリーズへリンクされていない録画だけを対象にする (ドライランでも有効)
     onlyUnlinked?: boolean;
+    // 指定した場合、直近 (id の新しい方から) この件数の録画だけを対象にする。
+    // 一時的な部分実行なので実バックフィルの再開カーソルには影響しない
+    latest?: number;
 }
 
 /**
@@ -61,6 +64,42 @@ export interface SeriesBackfillStatus {
     // 次回の再開位置 (この recordedId まで処理済み)
     lastRecordedId: number;
     error: string | null;
+    // 実行時に指定された絞り込み条件 (画面での確認用)
+    onlyUnlinked?: boolean;
+    latest?: number | null;
+}
+
+/**
+ * シリーズ判定 1 ステップ分のトレース
+ */
+export interface SeriesAnalyzeStep {
+    step: string;
+    label: string;
+    input: string;
+    output: string;
+    matched: boolean;
+    detail?: string;
+}
+
+/**
+ * 録画 1 件のシリーズ判定結果 (判定過程のトレース付き)
+ */
+export interface SeriesAnalyzeResult {
+    recordedId: number;
+    title: string;
+    channelId: number;
+    startAt: number;
+    linked: boolean;
+    pending: boolean;
+    seriesId: number | null;
+    seriesTitle: string | null;
+    episodeNumber: number | null;
+    episodeTitle: string | null;
+    airType: string | null;
+    matchMethod: string | null;
+    confidence: number | null;
+    manualLock: boolean;
+    steps: SeriesAnalyzeStep[];
 }
 
 /**
@@ -91,4 +130,11 @@ export default interface ISeriesBackfillManageModel {
      * 実行中のバックフィルをキャンセルする (実行中でない場合は何もしない)
      */
     cancel(): Promise<void>;
+
+    /**
+     * 録画 1 件だけシリーズ判定を実行し、判定過程のトレース付きで結果を返す
+     * @param recordedId: number
+     * @return Promise<SeriesAnalyzeResult>
+     */
+    analyze(recordedId: number): Promise<SeriesAnalyzeResult>;
 }

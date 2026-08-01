@@ -7,6 +7,14 @@ export interface SeriesMetadataFillResult {
     llmAnalyzed: number;
     // LLM が抽出した作品名で辞書を引き直し、外部 ID を確定できたシリーズ数
     llmResolved: number;
+    // しょぼいカレンダーへ作品コメントを取りに行った件数
+    commentFetched: number;
+    // 実際に作品コメントを埋められた件数
+    commentFilled: number;
+    // 1 回あたりの上限に達して次回へ繰り越したコメント取得の件数
+    commentPending: number;
+    // しょぼいカレンダー TID が無くコメントを引けなかったシリーズ数
+    commentSkippedNoTid: number;
 }
 
 export default interface ISeriesMetadataFiller {
@@ -19,8 +27,9 @@ export default interface ISeriesMetadataFiller {
      */
     fill(): Promise<SeriesMetadataFillResult>;
     /**
-     * 起動後しばらくしてから一度だけ fill() を実行する。
-     * 作品辞書の同期が終わってから走らせたいので遅延させる (多重起動しない)
+     * 起動後しばらくしてから fill() を実行する。
+     * 作品辞書の同期が終わってから走らせたいので遅延させる (多重起動しない)。
+     * 1 回あたりの上限で繰り越したコメント取得が残っている場合は、間隔を空けて自動的に続きを実行する
      */
     scheduleInitialFill(): void;
 }

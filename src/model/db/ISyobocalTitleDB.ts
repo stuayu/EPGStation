@@ -21,6 +21,15 @@ export interface SyobocalTitleAliasRecord {
     rank: number;
 }
 
+// 続編 (期) の判定に使う、作品ごとの照合キーと放送時期
+export interface SyobocalTitleSeasonRecord {
+    tid: number;
+    lookupKey: string;
+    firstYear: number | null;
+    firstMonth: number | null;
+    totalEpisodes: number | null;
+}
+
 export interface SyobocalTitleEpisodeRecord {
     tid: number;
     episodeNumber: number;
@@ -56,6 +65,12 @@ export default interface ISyobocalTitleDB {
      * @return Promise<SyobocalTitleAliasRecord[]>
      */
     listAllAliases(): Promise<SyobocalTitleAliasRecord[]>;
+    /**
+     * 作品ごとの照合キーと放送時期を全件読み出す。
+     * 同じ作品の続編 (第 2 期など) を放送時期で選び分けるための索引構築に使う
+     * @return Promise<SyobocalTitleSeasonRecord[]>
+     */
+    listSeasons(): Promise<SyobocalTitleSeasonRecord[]>;
     /**
      * TID から作品を取得する
      * @param tid: number

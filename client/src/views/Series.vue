@@ -677,9 +677,16 @@ class SeriesView extends Vue {
             const result = await this.api.refreshMetadata();
             // LLM フォールバックを使った場合は、辞書で引けなかった分を何件救えたかも知らせる
             const llm = result.llmAnalyzed > 0 ? ` (LLM 解析 ${result.llmAnalyzed} 件中 ${result.llmResolved} 件確定)` : '';
+            // 作品コメントは 1 作品ごとにしょぼいカレンダーへ問い合わせるため 1 回で取り切れない。
+            // 残りが何件あるかを出し、もう一度実行すれば進むことが分かるようにする
+            const comment =
+                result.commentFetched > 0 || result.commentPending > 0
+                    ? ` / コメント ${result.commentFilled} 件取得` +
+                      (result.commentPending > 0 ? `、残り ${result.commentPending} 件` : '')
+                    : '';
             this.snackbarState.open({
                 color: 'success',
-                text: `${result.scanned} 件中 ${result.updated} 件を更新しました${llm}`,
+                text: `${result.scanned} 件中 ${result.updated} 件を更新しました${llm}${comment}`,
             });
             await this.loadSeasons();
             await this.load();

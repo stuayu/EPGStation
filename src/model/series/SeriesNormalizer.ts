@@ -394,3 +394,28 @@ export function parseSeriesInfo(input: string): SeriesParseResult {
         isSpecial: SPECIAL_PROGRAM_PATTERN.test(normalized),
     };
 }
+
+// 照合キーの末尾に付く「期」の表記 (しょぼいカレンダーの正式タイトルは
+// 「株式会社マジルミエ(第2期)」「よふかしのうた(第2期)」のように期を括弧書きで持つ)。
+// syobocalLookupKey は記号を落とすため、ここでは記号が無い状態を前提に照合する
+const SEASON_SUFFIX_IN_KEY =
+    /(?:第?\d+期|第?[一二三四五六七八九十]+期|シーズン\d+|season\d+|\d+(?:st|nd|rd|th)season|パート\d+|part\d+|final(?:season)?)$/u;
+
+/**
+ * 照合キーから末尾の「期」表記を落として基本キーにする。
+ * 「株式会社マジルミエ第2期」→「株式会社マジルミエ」のように、同じ作品の続編どうしを
+ * 1 つのグループへまとめるために使う (WorkDictionary が放送時期から期を選び直す)
+ * @param lookupKey: string syobocalLookupKey() で作った照合キー
+ * @return string 期表記を落とした基本キー (落とすものが無ければそのまま)
+ */
+export function seasonBaseKey(lookupKey: string): string {
+    let key = lookupKey;
+    // 「(第2期)」のように複数の表記が重なることは無いが、末尾の空要素を残さないよう繰り返し落とす
+    for (let i = 0; i < 2; i++) {
+        const stripped = key.replace(SEASON_SUFFIX_IN_KEY, '');
+        if (stripped === key || stripped.length < 2) break;
+        key = stripped;
+    }
+
+    return key;
+}

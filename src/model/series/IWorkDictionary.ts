@@ -31,10 +31,14 @@ export default interface IWorkDictionary {
      * 録画番組タイトルから作品を特定する。
      * しょぼいカレンダー辞書と Annict 辞書を統合した索引を引き、両方に存在する作品は
      * Annict の syobocalTid を使って 1 件へ統合する。該当なしの場合は null を返す
+     * 引き当てた作品に続編 (第 2 期など) がある場合は、airedAt を渡すとその放送日時に合う期を選ぶ
+     * (局が期の表記を送出しない録画で、常に第 1 期へ寄ってしまうのを防ぐ)
      * @param recordedTitle: string 録画番組タイトル (生のまま渡してよい)
+     * @param airedAt: number | undefined 録画の放送開始時刻。再放送など放送日時から期を決められない
+     *                 場合は渡さないこと
      * @return Promise<WorkMatch | null>
      */
-    lookup(recordedTitle: string): Promise<WorkMatch | null>;
+    lookup(recordedTitle: string, airedAt?: number): Promise<WorkMatch | null>;
     /**
      * サブタイトル文字列から話数を逆引きする (話数表記の無いタイトル用)。
      * しょぼいカレンダーのサブタイトル一覧のみを使う (Annict 側は話数の欠落が多いため)

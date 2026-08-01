@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify';
-import { In, IsNull, Not } from 'typeorm';
+import { DataSource, In, IsNull, Not, SelectQueryBuilder } from 'typeorm';
 import * as apid from '../../../api';
 import Recorded from '../../db/entities/Recorded';
 import RecordedSeriesLink from '../../db/entities/RecordedSeriesLink';
@@ -16,6 +16,7 @@ import IRecordedDB, {
     RecordedChannelUpdateValues,
     RecordedColumnOption,
     SeriesBackfillCandidateRow,
+    SeriesBackfillFilter,
 } from './IRecordedDB';
 import IRecordedTagDB from './IRecordedTagDB';
 
@@ -594,15 +595,15 @@ export default class RecordedDB implements IRecordedDB {
      * @param limit: number
      * @return Promise<SeriesBackfillCandidateRow[]>
      */
-    public async findForSeriesBackfill(afterId: number, limit: number): Promise<SeriesBackfillCandidateRow[]> {
+    public async findForSeriesBackfill(
+        afterId: number,
+        limit: number,
+        filter: SeriesBackfillFilter = {},
+    ): Promise<SeriesBackfillCandidateRow[]> {
         const connection = await this.op.getConnection();
 
-        const queryBuilder = connection
-            .getRepository(Recorded)
-            .createQueryBuilder('recorded')
+        const queryBuilder = this.createSeriesBackfillQuery(connection, afterId, filter)
             .select(['recorded.id', 'recorded.name', 'recorded.channelId', 'recorded.startAt'])
-            .where('recorded.id > :afterId', { afterId })
-            .andWhere('recorded.isRecording = :isRecording', { isRecording: false })
             .orderBy('recorded.id', 'ASC')
             .limit(limit);
 
@@ -621,19 +622,75 @@ export default class RecordedDB implements IRecordedDB {
     /**
      * シリーズ化バックフィルの残件数を取得する
      * @param afterId: number
+     * @param filter: SeriesBackfillFilter
      * @return Promise<number>
      */
-    public async countForSeriesBackfill(afterId: number): Promise<number> {
+    public async countForSeriesBackfill(afterId: number, filter: SeriesBackfillFilter = {}): Promise<number> {
         const connection = await this.op.getConnection();
+        const queryBuilder = this.createSeriesBackfillQuery(connection, afterId, filter);
 
+        return await this.promieRetry.run(() => {
+            return queryBuilder.getCount();
+        });
+    }
+
+    /**
+     * 直近 (id 降順) の録画 count 件のうち最も小さい id を返す
+     * @param count: number
+     * @return Promise<number> 対象が無い場合は 0
+     */
+    public async findSeriesBackfillFloorId(count: number): Promise<number> {
+        if (count <= 0) {
+            return 0;
+        }
+
+        const connection = await this.op.getConnection();
+        const queryBuilder = connection
+            .getRepository(Recorded)
+            .createQueryBuilder('recorded')
+            .select(['recorded.id'])
+            .where('recorded.isRecording = :isRecording', { isRecording: false })
+            .orderBy('recorded.id', 'DESC')
+            .limit(count);
+
+        const rows = await this.promieRetry.run(() => {
+            return queryBuilder.getMany();
+        });
+
+        return rows.length === 0 ? 0 : rows[rows.length - 1].id;
+    }
+
+    /**
+     * シリーズ化バックフィルの対象を絞り込んだクエリビルダを作る
+     * @param connection: DataSource
+     * @param afterId: number
+     * @param filter: SeriesBackfillFilter
+     * @return SelectQueryBuilder<Recorded>
+     */
+    private createSeriesBackfillQuery(
+        connection: DataSource,
+        afterId: number,
+        filter: SeriesBackfillFilter,
+    ): SelectQueryBuilder<Recorded> {
         const queryBuilder = connection
             .getRepository(Recorded)
             .createQueryBuilder('recorded')
             .where('recorded.id > :afterId', { afterId })
             .andWhere('recorded.isRecording = :isRecording', { isRecording: false });
 
-        return await this.promieRetry.run(() => {
-            return queryBuilder.getCount();
-        });
+        if (typeof filter.minId === 'number' && filter.minId > 0) {
+            queryBuilder.andWhere('recorded.id >= :minId', { minId: filter.minId });
+        }
+
+        if (filter.onlyUnlinked === true) {
+            // まだシリーズへリンクされていない録画だけに絞る (DB 側で弾くことで走査自体を減らす)
+            queryBuilder.andWhere(qb => {
+                const sub = qb.subQuery().select('link.recordedId').from(RecordedSeriesLink, 'link').getQuery();
+
+                return `recorded.id NOT IN ${sub}`;
+            });
+        }
+
+        return queryBuilder;
     }
 }

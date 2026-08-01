@@ -72,10 +72,11 @@ class ChannelApiModel implements IChannelApiModel {
                 result.region = region;
             }
 
-            // 地上波系は BIT から収集した系列情報を付与する
+            // 地上波系は BIT から収集した系列情報を付与する (未受信の局は局名から同梱データで補う)
             const affiliation = this.broadcastAffiliation.getAffiliation({
                 networkId: c.networkId,
                 channelType: c.channelType,
+                name: c.halfWidthName ?? c.name,
             });
             if (affiliation !== null) {
                 result.affiliation = affiliation;
