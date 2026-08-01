@@ -55,7 +55,16 @@ function createModel(options) {
         upsert: async info => upserted.push(info),
         findId: async () => opt.storedTsInfo ?? null,
     };
-    const recordedDB = { findId: async () => opt.recorded ?? null };
+    const channelUpdates = [];
+    const recordedDB = {
+        findId: async () => opt.recorded ?? null,
+        updateChannel: async (recordedId, values) => channelUpdates.push({ recordedId, values }),
+    };
+    const channelDB = {
+        findId: async id => (opt.channels ?? []).find(c => c.id === id) ?? null,
+        findNetworkIdAndServiceId: async (networkId, serviceId) =>
+            (opt.channels ?? []).find(c => c.networkId === networkId && c.serviceId === serviceId) ?? null,
+    };
     const videoUtil = {
         getFullFilePathFromVideoFile: () => opt.filePath ?? '/tmp/epgstation-not-exists.ts',
         getDetailedInfo: async () => ({
@@ -72,9 +81,18 @@ function createModel(options) {
     const tsInfoAnalyzer = { analyze: async () => opt.tsInfo ?? emptyTsInfo() };
 
     return {
-        model: new VideoFileAnalyzeModel(videoFileDB, videoFileTsInfoDB, recordedDB, videoUtil, tsInfoAnalyzer, logger),
+        model: new VideoFileAnalyzeModel(
+            videoFileDB,
+            videoFileTsInfoDB,
+            recordedDB,
+            videoUtil,
+            tsInfoAnalyzer,
+            channelDB,
+            logger,
+        ),
         upserted: upserted,
         startAtUpdated: startAtUpdated,
+        channelUpdates: channelUpdates,
     };
 }
 
@@ -204,4 +222,74 @@ test('存在しない video file id を指定すると例外を投げる', async
 
     await assert.rejects(() => model.analyzeTsInfo(999), /VideoFileIsUndefined/);
     await assert.rejects(() => model.analyzeMetadata(999), /VideoFileIsUndefined/);
+});
+
+test('TS の network id + service id で放送局を引けたら、その放送局へ紐付け直す', async () => {
+    // 取り込み時に放送局を特定できず、channel を引けない状態の録画
+    const { model, channelUpdates } = createModel({
+        recorded: { id: 10, channelId: 0, channelName: null, halfWidthChannelName: null },
+        channels: [
+            { id: 3273601024, networkId: 32736, serviceId: 1024, name: 'ＮＨＫ総合１', halfWidthName: 'NHK総合1' },
+        ],
+        tsInfo: emptyTsInfo({ networkId: 32736, serviceId: 1024, serviceName: 'ＮＨＫ総合１・福島' }),
+    });
+
+    await model.analyzeTsInfo(1);
+
+    assert.deepEqual(channelUpdates, [
+        {
+            recordedId: 10,
+            values: { channelId: 3273601024, channelName: 'ＮＨＫ総合１', halfWidthChannelName: 'NHK総合1' },
+        },
+    ]);
+});
+
+test('channel テーブルに無い放送局は、表示名が空のときだけ SDT の局名で補う', async () => {
+    const { model, channelUpdates } = createModel({
+        recorded: { id: 10, channelId: 0, channelName: null, halfWidthChannelName: null },
+        channels: [],
+        tsInfo: emptyTsInfo({ networkId: 41072, serviceId: 23608, serviceName: 'とちぎテレビ1' }),
+    });
+
+    await model.analyzeTsInfo(1);
+
+    assert.deepEqual(channelUpdates, [
+        { recordedId: 10, values: { channelName: 'とちぎテレビ1', halfWidthChannelName: 'とちぎテレビ1' } },
+    ]);
+});
+
+test('すでに放送局を引ける録画や、局名が入っている録画には触らない', async () => {
+    // channel を引ける = 画面で正しく表示できているので書き換えない
+    const resolvable = createModel({
+        recorded: { id: 10, channelId: 3273601024, channelName: 'ＮＨＫ総合１', halfWidthChannelName: 'NHK総合1' },
+        channels: [
+            { id: 3273601024, networkId: 32736, serviceId: 1024, name: 'ＮＨＫ総合１', halfWidthName: 'NHK総合1' },
+        ],
+        tsInfo: emptyTsInfo({ networkId: 32736, serviceId: 1024, serviceName: '別の名前' }),
+    });
+    await resolvable.model.analyzeTsInfo(1);
+    assert.deepEqual(resolvable.channelUpdates, []);
+
+    // channel は引けないが、録画時点の局名が残っているものも上書きしない
+    const named = createModel({
+        recorded: { id: 10, channelId: 12345, channelName: 'とちぎテレビ1', halfWidthChannelName: 'とちぎテレビ1' },
+        channels: [],
+        tsInfo: emptyTsInfo({ networkId: 41072, serviceId: 23608, serviceName: 'TOCHIGI TV' }),
+    });
+    await named.model.analyzeTsInfo(1);
+    assert.deepEqual(named.channelUpdates, []);
+});
+
+test('局名の書き戻しに失敗しても TS 解析自体は成功扱いにする', async () => {
+    const { model, upserted } = createModel({
+        recorded: { id: 10, channelId: 0, channelName: null, halfWidthChannelName: null },
+        channels: [],
+        tsInfo: emptyTsInfo({ networkId: 41072, serviceId: 23608, serviceName: 'とちぎテレビ1' }),
+    });
+    model.recordedDB.updateChannel = async () => {
+        throw new Error('db is down');
+    };
+
+    assert.equal(await model.analyzeTsInfo(1), true);
+    assert.equal(upserted.length, 1);
 });

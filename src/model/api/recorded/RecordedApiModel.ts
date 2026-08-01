@@ -294,9 +294,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
         if (typeof channel === 'undefined' && typeof channelName === 'string') {
             channel = channels.find(
                 c =>
-                    c.name === channelName ||
-                    c.halfWidthName === channelName ||
-                    c.name.includes(channelName as string),
+                    c.name === channelName || c.halfWidthName === channelName || c.name.includes(channelName as string),
             );
         }
 

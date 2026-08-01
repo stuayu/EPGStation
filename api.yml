@@ -1743,9 +1743,9 @@ components:
             required: [type]
             properties:
                 type:
-                    description: 解析の種別 (metadata = ffprobe / tsInfo = TS の PSI/SI)
+                    description: 解析の種別 (metadata = ffprobe / tsInfo = TS の PSI/SI / channel = 保存済みの TS 解析結果から放送局を反映)
                     type: string
-                    enum: [metadata, tsInfo]
+                    enum: [metadata, tsInfo, channel]
                 mode:
                     description: 対象 (unanalyzed = 未解析のみ / all = 解析済みを含む全件。省略時 unanalyzed)
                     type: string
@@ -1762,7 +1762,7 @@ components:
                 type:
                     type: string
                     nullable: true
-                    enum: [metadata, tsInfo]
+                    enum: [metadata, tsInfo, channel]
                 mode:
                     type: string
                     nullable: true
