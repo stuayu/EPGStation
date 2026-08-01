@@ -23,6 +23,10 @@ export default abstract class BaseVideo extends Vue {
     // 遅延表示待ちのコメント。破棄時にまとめてキャンセルする
     private jikkyoDelayTimerIds: number[] = [];
 
+    // DPlayer が再生速度を保存する localStorage のキー。
+    // 録画とライブで同じ DPlayer 設定を共有しているため、ライブ側だけ持ち込まないようにする
+    private static readonly DPLAYER_SPEED_STORAGE_KEY = 'dplayer-speed';
+
     private static readonly JIKKYO_COMMENT_QUEUE_LIMIT = 100;
     // 放送時刻の取り直し間隔
     private static readonly BROADCAST_TIME_INTERVAL = 15 * 1000;
@@ -73,7 +77,7 @@ export default abstract class BaseVideo extends Vue {
             };
         }
 
-        this.dp = new DPlayer(options);
+        this.dp = BaseVideo.createDPlayer(options);
         this.bindEvents();
 
         // ストリーミング再生は video 要素が動画の一部しか持たないため、
@@ -107,6 +111,53 @@ export default abstract class BaseVideo extends Vue {
             });
             void this.jikkyoKakologClient.start();
         }
+    }
+
+    /**
+     * DPlayer を生成する。
+     *
+     * DPlayer は再生速度を localStorage (`dplayer-speed`) に保存し、次回の生成時に適用する。
+     * 録画とライブで同じ localStorage を共有しているため、録画を倍速で見た後に
+     * ライブ視聴を開くとライブまで倍速で始まってしまう。ライブでは
+     * 生成時に速度設定を持ち込まず、ライブ中に変えた速度も保存しないようにする
+     * (録画側で設定した速度はそのまま残す)
+     * @param options: DPlayerType.Options
+     * @return DPlayer
+     */
+    private static createDPlayer(options: DPlayerType.Options): DPlayer {
+        if (options.live !== true) {
+            return new DPlayer(options);
+        }
+
+        // 生成中だけ保存値を等速に見せ、生成後に元の値へ戻す
+        const saved = localStorage.getItem(BaseVideo.DPLAYER_SPEED_STORAGE_KEY);
+        localStorage.setItem(BaseVideo.DPLAYER_SPEED_STORAGE_KEY, '1');
+        let player: DPlayer;
+        try {
+            player = new DPlayer(options);
+        } finally {
+            if (saved === null) {
+                localStorage.removeItem(BaseVideo.DPLAYER_SPEED_STORAGE_KEY);
+            } else {
+                localStorage.setItem(BaseVideo.DPLAYER_SPEED_STORAGE_KEY, saved);
+            }
+        }
+
+        // ライブ中に速度を変えても録画側の設定を上書きしない
+        const user = (player as any).user;
+        if (typeof user?.set === 'function') {
+            const originalSet = user.set.bind(user);
+            user.set = (key: string, value: unknown): void => {
+                if (key === 'speed') {
+                    user.data.speed = value;
+
+                    return;
+                }
+                originalSet(key, value);
+            };
+        }
+
+        return player;
     }
 
     /**
