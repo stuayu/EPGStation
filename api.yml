@@ -2132,13 +2132,14 @@ components:
             description: ビデオファイルをアップロード
             type: object
             required:
-                - recordedId
                 - parentDirectoryName
                 - viewName
                 - fileType
             properties:
                 recordedId:
-                    $ref: '#/components/schemas/RecordedId'
+                    description: 紐付ける録画番組。省略した場合は TS を解析して番組情報を自動作成する (fileType が ts のときのみ)
+                    allOf:
+                        - $ref: '#/components/schemas/RecordedId'
                 parentDirectoryName:
                     description: 親保存ディレクトリ
                     type: string
@@ -2156,6 +2157,16 @@ components:
                 localFilePath:
                     description: アップロードファイルのローカルパス
                     type: string
+
+        UploadVideoFileResult:
+            description: ビデオファイルのアップロード結果
+            type: object
+            required: [recordedId]
+            properties:
+                recordedId:
+                    description: 紐付けた録画番組 (自動作成した場合は新しい id)
+                    allOf:
+                        - $ref: '#/components/schemas/RecordedId'
 
         ImportMode:
             description: 外部録画ファイル取り込みモード。register は元ファイルを移動せず登録のみ行う。move は録画ディレクトリへ移動する

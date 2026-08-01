@@ -16,7 +16,7 @@ export default interface IRecordedApiModel {
     changeProtect(recordedId: apid.RecordedId, isProtect: boolean): Promise<void>;
     getCleanupInfo(): Promise<apid.RecordedCleanupInfo>;
     fileCleanup(target?: apid.RecordedCleanupTarget): Promise<void>;
-    addUploadedVideoFile(option: UploadedVideoFileOption): Promise<void>;
+    addUploadedVideoFile(option: UploadedVideoFileOption): Promise<apid.RecordedId>;
     createNewRecorded(option: apid.CreateNewRecordedOption): Promise<apid.RecordedId>;
     getNextUp(recordedId: apid.RecordedId, isHalfWidth: boolean): Promise<NextUpResult | null>;
     scanImportDirectory(option: apid.ImportScanOption): Promise<apid.ImportScanResult>;

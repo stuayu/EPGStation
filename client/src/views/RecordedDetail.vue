@@ -7,6 +7,7 @@
                     :recordedItem="recorded.recordedItem"
                     v-on:download="downloadVideo"
                     v-on:downloadPlayList="downloadPlayList"
+                    v-on:uploaded="onUploadedVideoFile"
                 ></RecordedDetailMoreButton>
             </template>
         </TitleBar>
@@ -42,7 +43,10 @@
                                         ></v-img>
                                         <span>{{ recorded.display.channelName }}</span>
                                     </div>
-                                    <div v-if="typeof recorded.display.genreItems !== 'undefined' || typeof recorded.display.tags !== 'undefined'" class="d-flex flex-wrap ga-1 my-1">
+                                    <div
+                                        v-if="typeof recorded.display.genreItems !== 'undefined' || typeof recorded.display.tags !== 'undefined'"
+                                        class="d-flex flex-wrap ga-1 my-1"
+                                    >
                                         <v-chip v-for="genre in recorded.display.genreItems" :key="genre" size="small" variant="tonal" color="primary">
                                             {{ genre }}
                                         </v-chip>
@@ -78,7 +82,10 @@
                                             ></RecordedDetailPlayButton>
                                         </div>
                                         <div class="d-flex flex-wrap">
-                                            <RecordedDetailEncodeButton :recordedItem="recorded.recordedItem" :videoFiles="recorded.display.videoFiles"></RecordedDetailEncodeButton>
+                                            <RecordedDetailEncodeButton
+                                                :recordedItem="recorded.recordedItem"
+                                                :videoFiles="recorded.display.videoFiles"
+                                            ></RecordedDetailEncodeButton>
                                             <RecordedDetailStopEncodeButton :recordedItem="recorded.recordedItem" v-on:stopEncode="stopEncode"></RecordedDetailStopEncodeButton>
                                         </div>
                                         <RecordedDetailKodiButton :recordedItem="recorded.recordedItem" :videoFiles="recorded.display.videoFiles"></RecordedDetailKodiButton>
@@ -128,7 +135,6 @@ import Util from '@/util/Util';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 import IRecordedDetailState from '../model/state/recorded/detail/IRecordedDetailState';
-
 
 @Component({
     components: {
@@ -273,8 +279,20 @@ class RecordedDetail extends Vue {
     /**
      * データ取得
      */
+    /**
+     * ビデオファイルを追加したら一覧へ反映する
+     */
+    public async onUploadedVideoFile(): Promise<void> {
+        await this.fetchData().catch(err => {
+            console.error(err);
+        });
+    }
+
     private async fetchData(): Promise<void> {
-        await this.recordedDetailState.fetchData(parseInt(Util.getRouteString(this.$route.params.id) ?? '', 10), this.settingValue === null ? true : this.settingValue.isHalfWidthDisplayed);
+        await this.recordedDetailState.fetchData(
+            parseInt(Util.getRouteString(this.$route.params.id) ?? '', 10),
+            this.settingValue === null ? true : this.settingValue.isHalfWidthDisplayed,
+        );
 
         // 番組詳細 URL 処理
         this.$nextTick(() => {

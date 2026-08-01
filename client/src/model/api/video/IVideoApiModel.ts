@@ -17,5 +17,5 @@ export default interface IVideoApiModel {
     savePlaybackPosition(videoFileId: apid.VideoFileId, option: apid.UpdatePlaybackPositionOption): Promise<apid.WatchHistory>;
     savePlaybackPositionWithBeacon(videoFileId: apid.VideoFileId, option: apid.UpdatePlaybackPositionOption): void;
     sendToKodi(hostName: string, videoFileId: apid.VideoFileId): Promise<void>;
-    uploadedVideoFile(option: apid.UploadVideoFileOption): Promise<void>;
+    uploadedVideoFile(option: apid.UploadVideoFileOption): Promise<apid.RecordedId>;
 }

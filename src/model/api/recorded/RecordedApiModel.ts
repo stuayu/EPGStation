@@ -496,8 +496,8 @@ export default class RecordedApiModel implements IRecordedApiModel {
      * @param option: UploadedVideoFileInfo
      * @return Promise<void>
      */
-    public async addUploadedVideoFile(option: UploadedVideoFileOption): Promise<void> {
-        await this.ipc.recorded.addUploadedVideoFile(option);
+    public async addUploadedVideoFile(option: UploadedVideoFileOption): Promise<apid.RecordedId> {
+        return await this.ipc.recorded.addUploadedVideoFile(option);
     }
 
     /**

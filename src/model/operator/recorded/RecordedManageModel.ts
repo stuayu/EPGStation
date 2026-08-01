@@ -295,15 +295,27 @@ class RecordedManageModel implements IRecordedManageModel {
      * @param option: UploadedVideoFileInfo
      * @return Promise<void>
      */
-    public async addUploadedVideoFile(option: UploadedVideoFileOption): Promise<void> {
-        this.log.system.info(`add uploaded file: ${option.recordedId}`);
+    public async addUploadedVideoFile(option: UploadedVideoFileOption): Promise<apid.RecordedId> {
+        this.log.system.info(`add uploaded file: ${option.recordedId ?? 'auto'}`);
+
+        // recorded id が指定されていない場合は TS を解析して番組情報を作る
+        // (放送 TS には放送局・番組名・時刻がすべて入っているため、画面から入力させる必要が無い)
+        let recordedId = option.recordedId;
+        let isNewRecorded = false;
+        if (typeof recordedId === 'undefined') {
+            try {
+                recordedId = await this.createRecordedFromUploadedTsFile(option);
+                isNewRecorded = true;
+            } catch (err: any) {
+                await RecordedManageModel.unlinkUploadedFile(option);
+                throw err;
+            }
+        }
 
         // 指定された番組情報を取得
-        const recorded = await this.recordedDB.findId(option.recordedId);
+        const recorded = await this.recordedDB.findId(recordedId);
         if (recorded === null) {
-            if (typeof option.filePath !== 'undefined') {
-                await FileUtil.unlink(option.filePath).catch(() => {});
-            }
+            await RecordedManageModel.unlinkUploadedFile(option);
             throw new Error('RecordedIdIsNull');
         }
 
@@ -392,7 +404,7 @@ class RecordedManageModel implements IRecordedManageModel {
         try {
             const fileName = path.basename(filePath);
             const videoFileId = await this.addVideoFile({
-                recordedId: option.recordedId,
+                recordedId: recordedId,
                 parentDirectoryName: option.parentDirectoryName,
                 filePath:
                     typeof option.subDirectory === 'undefined'
@@ -413,7 +425,100 @@ class RecordedManageModel implements IRecordedManageModel {
             this.recordedEvent.emitAddUploadedVideoFile(videoFileId, needsCreateThumbnail);
         } catch (err: any) {
             await FileUtil.unlink(filePath).catch(() => {});
+            // 自動生成した番組情報は動画が登録できなければ残す意味が無い
+            if (isNewRecorded === true) {
+                await this.delete(recordedId, true).catch(() => {});
+            }
             throw err;
+        }
+
+        return recordedId;
+    }
+
+    /**
+     * アップロードされた TS ファイルを解析し、番組情報を新規作成する。
+     *
+     * 放送 TS の PSI/SI には放送局 (SDT/NIT)・番組名・開始時刻・尺・ジャンル (EIT[p/f]) が
+     * 入っているため、画面から番組情報を入力させずに登録できる。
+     * 解析できなかった場合は番組情報を作れないので例外を投げる
+     * @param option: UploadedVideoFileOption
+     * @return Promise<apid.RecordedId>
+     */
+    private async createRecordedFromUploadedTsFile(option: UploadedVideoFileOption): Promise<apid.RecordedId> {
+        if (option.fileType !== 'ts') {
+            // エンコード済みファイルには PSI/SI が無いため、番組情報は画面から入力してもらう
+            throw new Error('RecordedIdIsRequired');
+        }
+
+        const filePath = option.localFilePath ?? option.filePath;
+        if (typeof filePath === 'undefined') {
+            throw new Error('File path could not be determined');
+        }
+
+        const tsInfo = await this.tsInfoAnalyzer.analyze(filePath).catch(err => {
+            this.log.system.warn(`ts info analyze failed: ${filePath}`);
+            this.log.system.warn(err instanceof Error ? err.message : String(err));
+
+            return null;
+        });
+        if (tsInfo === null) {
+            throw new Error('TsInfoAnalyzeError');
+        }
+
+        // 放送局は network id + service id での厳密な引き当てだけを使う (取り違えると実況や番組表がずれる)
+        const channel =
+            tsInfo.networkId === null || tsInfo.serviceId === null
+                ? null
+                : await this.channelDB.findNetworkIdAndServiceId(tsInfo.networkId, tsInfo.serviceId).catch(() => null);
+        if (channel === null) {
+            throw new Error('ChannelIsNotFound');
+        }
+
+        const baseName = path.parse(option.fileName ?? path.basename(filePath)).name;
+        const startAt = tsInfo.eventStartAt ?? tsInfo.firstTdtAt;
+        if (startAt === null) {
+            throw new Error('StartAtIsNotFound');
+        }
+
+        // 番組長が取れない場合は実測尺で補う
+        let endAt: number;
+        if (tsInfo.eventDuration !== null) {
+            endAt = startAt + tsInfo.eventDuration * 1000;
+        } else {
+            const info = await this.videoUtil.getInfo(filePath);
+            endAt = startAt + Math.max(1000, Math.round(info.duration * 1000));
+        }
+
+        const createOption: apid.CreateNewRecordedOption = {
+            channelId: channel.id,
+            startAt: startAt,
+            endAt: endAt,
+            name: tsInfo.eventName ?? baseName,
+        };
+        if (tsInfo.eventDescription !== null) {
+            createOption.description = tsInfo.eventDescription;
+        }
+        if (tsInfo.eventExtended !== null) {
+            createOption.extended = tsInfo.eventExtended;
+        }
+        if (typeof tsInfo.genres[0]?.lv1 === 'number') {
+            createOption.genre1 = tsInfo.genres[0].lv1;
+        }
+        if (typeof tsInfo.genres[0]?.lv2 === 'number') {
+            createOption.subGenre1 = tsInfo.genres[0].lv2;
+        }
+
+        this.log.system.info(`create recorded from ts: ${createOption.name} (${channel.name})`);
+
+        return await this.createNewRecorded(createOption);
+    }
+
+    /**
+     * アップロード済みの一時ファイルを削除する (登録に失敗した場合の後始末)
+     */
+    private static async unlinkUploadedFile(option: UploadedVideoFileOption): Promise<void> {
+        if (typeof option.filePath !== 'undefined') {
+            await FileUtil.unlink(option.filePath).catch(() => {});
         }
     }
 
