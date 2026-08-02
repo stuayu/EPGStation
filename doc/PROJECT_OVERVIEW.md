@@ -65,7 +65,7 @@
 | `main.ts`                       | エントリ。DI コンテナ初期化 → サーバ config 取得 → Vue 生成                  |
 | `router.ts`                     | vue-router ルート定義 (全 19 ページ) + スクロール位置復元                    |
 | `views/`                        | ページコンポーネント                                                         |
-| `components/`                   | 機能別の再利用コンポーネント (guide, recorded, reserves, search, video など) |
+| `components/`                   | 機能別の再利用コンポーネント (guide, recorded, reserves, search, video, watch など) |
 | `model/ModelContainerSetter.ts` | クライアント側 DI 登録 (サーバと同じパターン)                                |
 | `model/api/`                    | REST API ラッパー (`RepositoryModel` = axios 共通層 + 機能別 `*ApiModel`)    |
 | `model/state/`                  | 画面ごとの State クラス (Vuex の代わり)                                      |
@@ -121,6 +121,7 @@ npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (
 
 ## 注意点・ハマりどころ
 
+- **視聴画面 (ライブ / 録画) は全画面レイアウト**: `client/src/components/watch/` の `WatchLayout` が `position: fixed` で画面全体を覆い、左にアイコンナビゲーション・上に番組情報バー・右に情報パネル (番組情報 / チャンネル / 次の話 / コメント) を置く。視聴中はグローバルナビゲーション (drawer) を畳み、離れるときに元へ戻す。右パネルの中身は名前付きスロットで差し込むため、画面ごとにタブの組み合わせを変えられる。実況コメントの一覧は `BaseVideo` が弾幕を描くタイミングで上げる `jikkyoComment` イベントを `VideoContainer` 経由で受け取る (遅延補正後なので弾幕と表示が揃う)。詳細は `doc/stuayu-fork.md`
 - package.json の `overrides` にある `express-openapi.glob: ^7.0.0` は外さないこと。glob 10 以降の `globSync()` は Windows でパス区切りが `\` になり、`fs-routes` 経由の API ルート解決 (ディレクトリ構造 = URL パス) が壊れる
 - **データ放送 (BML) は `web-bml` (tsukumijima/web-bml、otya128/web-bml のフォーク) を npm 依存として利用する**。ビルド済み `dist/` をコミットしたフォークなので `npm install` だけで使え、映像は引き続き EPGStation 側の DPlayer が持つ (web-bml 本体のエンコード機能・koa サーバは使わない)
 - **BML ブラウザは iframe に隔離せず `BMLBrowser` を直接生成し、映像要素を BML ブラウザの中へ物理的に移動して DPlayer に組み込む**。内部は closed な Shadow DOM のため本体 CSS とは衝突しない。`BMLBrowser` を保持するクラス (`client/src/util/DataBroadcastingManager.ts`) は **Vue のリアクティブ監視 (Proxy) に入れると内部の JS-Interpreter が壊れる**ため、必ず `markRaw()` で包んで保持する
