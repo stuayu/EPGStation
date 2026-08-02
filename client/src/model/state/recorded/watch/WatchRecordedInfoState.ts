@@ -46,8 +46,10 @@ export default class WatchRecordedInfoState implements IWatchRecordedInfoState {
         this.displayInfo = {
             channelName: ChannelNameUtil.getRecordedChannelName(this.channelModel, recordedInfo, isHalfWidth),
             time: DateUtil.format(startAt, 'MM/dd(w) hh:mm ~ ') + DateUtil.format(endAt, 'hh:mm'),
+            shortTime: `${DateUtil.format(startAt, 'hh:mm')} ~ ${DateUtil.format(endAt, 'hh:mm')}`,
             name: recordedInfo.name,
             description: recordedInfo.description,
+            extended: recordedInfo.extended,
         };
     }
 

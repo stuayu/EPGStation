@@ -16,6 +16,7 @@
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
+                    v-on:jikkyoComment="onJikkyoComment"
                     v-on:timeupdate="onTimeupdate"
                     v-on:pause="savePlaybackPosition"
                     v-on:ended="onEnded"
@@ -29,6 +30,7 @@
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
+                    v-on:jikkyoComment="onJikkyoComment"
                 ></LiveHLSVideo>
                 <RecordedStreamingVideo
                     v-if="videoParam.type == 'RecordedStreaming'"
@@ -43,6 +45,7 @@
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
+                    v-on:jikkyoComment="onJikkyoComment"
                     v-on:timeupdate="onTimeupdate"
                     v-on:pause="savePlaybackPosition"
                     v-on:ended="onEnded"
@@ -59,6 +62,7 @@
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
+                    v-on:jikkyoComment="onJikkyoComment"
                     v-on:timeupdate="onTimeupdate"
                     v-on:pause="savePlaybackPosition"
                     v-on:ended="onEnded"
@@ -73,6 +77,7 @@
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
+                    v-on:jikkyoComment="onJikkyoComment"
                 ></LiveMpegTsVideo>
             </div>
         </div>
@@ -92,6 +97,7 @@ import container from '@/model/ModelContainer';
 import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import DPlayer from 'dplayer';
 import { DataBroadcastingConnectParam } from '@/util/DataBroadcastingManager';
+import { JikkyoComment } from '@/util/JikkyoCommentClient';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
@@ -205,6 +211,11 @@ class VideoContainer extends Vue {
         this.isLoading = false;
         void this.applyResumePosition();
         this.$emit('canplay');
+    }
+
+    // 実況コメント (弾幕として描画したものを視聴画面の右パネルへ中継する)
+    public onJikkyoComment(comment: JikkyoComment): void {
+        this.$emit('jikkyoComment', comment);
     }
 
     // 直前の timeupdate 時点の再生位置 (秒)。データ放送のシーク検知に使う

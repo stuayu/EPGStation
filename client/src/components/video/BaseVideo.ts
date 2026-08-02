@@ -381,6 +381,9 @@ export default abstract class BaseVideo extends Vue {
      * ニコニコ実況コメントを DPlayer の弾幕として描画する
      */
     private drawJikkyoComment(comment: JikkyoComment): void {
+        // 右パネルのコメント一覧へ流す (描画タイミング = 遅延補正後なので弾幕と表示が揃う)
+        this.$emit('jikkyoComment', comment);
+
         const danmaku = this.dp === null ? null : (this.dp as any).danmaku;
         if (danmaku === null || typeof danmaku === 'undefined' || typeof danmaku.draw !== 'function') {
             // DPlayer の弾幕インスタンス生成前に届いたコメントは一時的に保持しておく
