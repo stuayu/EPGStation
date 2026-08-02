@@ -1113,6 +1113,8 @@ export interface ChannelScheduleOption {
 export interface BroadcastingScheduleOption {
     time?: UnixtimeMS; // 追加時間 (ms)
     isHalfWidth: boolean;
+    // 放送中の番組に加えて次の番組も返すか (視聴画面のチャンネル一覧で「NEXT」を出すために使う)
+    includeNextProgram?: boolean;
 }
 
 /**

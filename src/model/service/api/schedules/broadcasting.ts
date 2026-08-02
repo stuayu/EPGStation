@@ -14,6 +14,9 @@ export const get: Operation = async (req, res) => {
         if (typeof req.query.time !== 'undefined') {
             option.time = parseInt(req.query.time as any, 10);
         }
+        if (typeof req.query.includeNextProgram !== 'undefined') {
+            option.includeNextProgram = (req.query.includeNextProgram as any) === true || req.query.includeNextProgram === 'true';
+        }
 
         api.responseJSON(res, 200, await scheduleApiModel.getBroadcastingSchedule(option));
     } catch (err: unknown) {
@@ -28,6 +31,9 @@ get.apiDoc = {
     parameters: [
         {
             $ref: '#/components/parameters/AddtionTime',
+        },
+        {
+            $ref: '#/components/parameters/IncludeNextProgram',
         },
         {
             $ref: '#/components/parameters/IsHalfWidth',

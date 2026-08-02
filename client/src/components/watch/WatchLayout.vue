@@ -111,6 +111,7 @@ export default toNative(WatchLayout);
 
     // 16:9 を保ったまま、縦にも横にも収まる最大の大きさにする
     .video-frame
+        position: relative
         width: 100%
         max-width: calc((100vh - 64px) * 16 / 9)
 
