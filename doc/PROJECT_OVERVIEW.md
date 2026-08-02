@@ -38,24 +38,25 @@
 
 ### サーバ (`src/`)
 
-| パス                                | 役割                                                                                                                              |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`                      | エントリポイント (Operator)。init → runOperator → runService → cleanup → runEPGUpdater                                            |
-| `src/@types/`                       | グローバル型定義                                                                                                                  |
-| `src/db/entities/`                  | TypeORM エンティティ (Channel, Program, Recorded, Reserve, Rule, Thumbnail, VideoFile など)                                       |
-| `src/db/migrations/{mysql,sqlite}/` | DB 種別ごとのマイグレーション (postgres は空 = 実質未対応)                                                                        |
-| `src/lib/` `src/util/`              | 汎用ライブラリ / 純粋関数ユーティリティ                                                                                           |
-| `src/model/ModelContainerSetter.ts` | **DI バインディングの中心 (約 400 行)。新規クラスは必ずここに登録**                                                               |
-| `src/model/db/`                     | TypeORM Repository をラップしたデータアクセス層 (`I*DB.ts` / `*DB.ts`)                                                            |
-| `src/model/operator/`               | 録画エンジン本体: reservation / recording / recorded / rule / storage / thumbnail / externalCommand                               |
-| `src/model/epgUpdater/`             | EPG 更新 (Mirakurun イベントストリーム購読 + 定期実行)                                                                            |
-| `src/model/event/`                  | EventEmitter ベースの内部イベント                                                                                                 |
-| `src/model/ipc/`                    | Operator ⇔ Service 間 IPC                                                                                                         |
-| `src/model/api/`                    | API ビジネスロジック層 (express 非依存)                                                                                           |
-| `src/model/service/api/`            | express-openapi ルートハンドラ。**ディレクトリ構造 = URL パス** (例: `api/reserves/{reserveId}.ts` → `/api/reserves/{reserveId}`) |
-| `src/model/service/encode/`         | エンコードプロセス管理                                                                                                            |
-| `src/model/service/stream/`         | ライブ/録画済み × 通常/HLS のストリーミング                                                                                       |
-| `src/model/Configuration.ts`        | `config/config.yml` の読み込み (fs.watchFile によるホットリロード付き)                                                            |
+| パス                                  | 役割                                                                                                                              |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                        | エントリポイント (Operator)。init → runOperator → runService → cleanup → runEPGUpdater                                            |
+| `src/@types/`                         | グローバル型定義                                                                                                                  |
+| `src/db/entities/`                    | TypeORM エンティティ (Channel, Program, Recorded, Reserve, Rule, Thumbnail, VideoFile など)                                       |
+| `src/db/migrations/{mysql,sqlite}/`   | DB 種別ごとのマイグレーション (postgres は空 = 実質未対応)                                                                        |
+| `src/lib/` `src/util/`                | 汎用ライブラリ / 純粋関数ユーティリティ                                                                                           |
+| `src/model/ModelContainerSetter.ts`   | **DI バインディングの中心 (約 400 行)。新規クラスは必ずここに登録**                                                               |
+| `src/model/db/`                       | TypeORM Repository をラップしたデータアクセス層 (`I*DB.ts` / `*DB.ts`)                                                            |
+| `src/model/operator/`                 | 録画エンジン本体: reservation / recording / recorded / rule / storage / thumbnail / externalCommand                               |
+| `src/model/epgUpdater/`               | EPG 更新 (Mirakurun イベントストリーム購読 + 定期実行)                                                                            |
+| `src/model/event/`                    | EventEmitter ベースの内部イベント                                                                                                 |
+| `src/model/ipc/`                      | Operator ⇔ Service 間 IPC                                                                                                         |
+| `src/model/api/`                      | API ビジネスロジック層 (express 非依存)                                                                                           |
+| `src/model/service/api/`              | express-openapi ルートハンドラ。**ディレクトリ構造 = URL パス** (例: `api/reserves/{reserveId}.ts` → `/api/reserves/{reserveId}`) |
+| `src/model/service/encode/`           | エンコードプロセス管理                                                                                                            |
+| `src/model/service/stream/`           | ライブ/録画済み × 通常/HLS のストリーミング                                                                                       |
+| `src/model/service/dataBroadcasting/` | データ放送 (BML) 用 WebSocket サーバ (`web-bml/worker` の `decodeTS` で TS を解析し配信、映像プレイヤーとは別経路)                |
+| `src/model/Configuration.ts`          | `config/config.yml` の読み込み (fs.watchFile によるホットリロード付き)                                                            |
 
 ### クライアント (`client/src/`)
 
@@ -112,6 +113,7 @@ npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (
 ```
 
 - テストは node:test ベースで整備済み: `test/ut` (単体、行カバレッジ 80% のゲート付き) / `test/ita` (実 sqlite でのマイグレーション等) / `test/itb` (ローカル HTTP スタブサーバを使う通信系)。`npm test` = ut + ita、`npm run test:ci` = ut + ita + itb
+- データ放送 (BML) 機能は `web-bml` (tsukumijima/web-bml) を npm 依存として使うだけで、追加のビルド手順は無い。`npm run all-install` → `npm run build` (従来通り `build-server && build-client`) だけで済む
 - 設定: `config/config.yml` (テンプレートから起動時自動コピー)。ログ設定は `config/{operator,service,epgUpdater}LogConfig.yml`
 - マイグレーションは起動時に自動実行 (`migrationsRun: true`)
 - Docker: `Dockerfile.alpine` (node:24-alpine3.24 ベース) / `Dockerfile.debian` (node:24-trixie ベース) のマルチステージ
@@ -120,6 +122,9 @@ npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (
 ## 注意点・ハマりどころ
 
 - package.json の `overrides` にある `express-openapi.glob: ^7.0.0` は外さないこと。glob 10 以降の `globSync()` は Windows でパス区切りが `\` になり、`fs-routes` 経由の API ルート解決 (ディレクトリ構造 = URL パス) が壊れる
+- **データ放送 (BML) は `web-bml` (tsukumijima/web-bml、otya128/web-bml のフォーク) を npm 依存として利用する**。ビルド済み `dist/` をコミットしたフォークなので `npm install` だけで使え、映像は引き続き EPGStation 側の DPlayer が持つ (web-bml 本体のエンコード機能・koa サーバは使わない)
+- **BML ブラウザは iframe に隔離せず `BMLBrowser` を直接生成し、映像要素を BML ブラウザの中へ物理的に移動して DPlayer に組み込む**。内部は closed な Shadow DOM のため本体 CSS とは衝突しない。`BMLBrowser` を保持するクラス (`client/src/util/DataBroadcastingManager.ts`) は **Vue のリアクティブ監視 (Proxy) に入れると内部の JS-Interpreter が壊れる**ため、必ず `markRaw()` で包んで保持する
+- **データ放送の WebSocket (`DataBroadcastingWebSocketServer.ts`) は socket.io と同じ http/https サーバの `upgrade` イベントに `noServer: true` で相乗りする**。パスが `<subDirectory>/api/dataBroadcasting/ws` と一致しないリクエストの socket には絶対に触れないこと。触ると同居している socket.io のハンドシェイクが壊れる
 - `ormconfig.js` (CLI マイグレーション用) は `Configuration.ts` とは別に `config/config.yml` を独自に読む二重管理になっている
 - postgres のマイグレーションディレクトリは空。対応 DB は sqlite / mysql のみ
 - `mirakurun` 依存はフォーク版 (`stuayu/Mirakurun`) のコミット固定。ブランチ tarball 参照にすると Mirakurun 側の push で lockfile の integrity が壊れ CI が落ちるため、必ずコミット SHA の URL で固定する

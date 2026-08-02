@@ -7,11 +7,15 @@ import BaseVideo from '@/components/video/BaseVideo';
 import DPlayerUtil from '@/util/DPlayerUtil';
 import { DPlayerType } from 'dplayer';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
+import * as apid from '../../../../api';
 
 @Component({})
 class NormalVideo extends BaseVideo {
     @Prop({ required: true })
     public videoSrc!: string;
+
+    @Prop({ default: null })
+    public videoFileId!: apid.VideoFileId | null;
 
     @Prop({ default: null })
     public jikkyoChannelId!: string | null;
@@ -24,6 +28,17 @@ class NormalVideo extends BaseVideo {
 
     public mounted(): void {
         super.mounted();
+
+        if (this.videoFileId !== null) {
+            void this.fetchVideoFileSizeForDataBroadcasting(this.videoFileId);
+        }
+    }
+
+    /**
+     * データ放送 (BML) の接続パラメータ
+     */
+    public getDataBroadcastingParam() {
+        return this.videoFileId === null ? null : this.buildRecordedDataBroadcastingParam(this.videoFileId);
     }
 
     /**

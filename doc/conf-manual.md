@@ -543,6 +543,31 @@ updateChecker:
 
 ---
 
+### dataBroadcasting
+
+#### データ放送 (BML) 配信
+
+`featureFlags.dataBroadcasting` が有効な場合のみ動作する (既定は有効)。
+ライブ・録画再生画面でデータ放送を有効にすると、クライアントは WebSocket (`/api/dataBroadcasting/ws`) 経由でカルーセルのモジュール等を受け取る。
+BML の描画は npm 依存の `web-bml` (tsukumijima/web-bml) が担い、映像は引き続き EPGStation 側のプレイヤーが再生する。
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| object | -            | no   |
+
+- 子プロパティは以下の通り
+
+| 子プロパティ名 | 種類   | 必須 | 説明                                                                                      |
+| --------------- | ------ | ---- | ----------------------------------------------------------------------------------------- |
+| maxStreams      | number | no   | WebSocket 経由のデータ放送ストリームの同時本数上限。省略時 4。超えると最も古い接続を閉じる |
+
+```yaml
+dataBroadcasting:
+    maxStreams: 4
+```
+
+---
+
 ## 詳細設定
 
 ### needToReplaceEnclosingCharacters

@@ -119,6 +119,7 @@ export const FEATURE_FLAG_KEYS = [
     'externalFileImport',
     'advancedSearch',
     'updateNotification',
+    'dataBroadcasting',
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[number];
@@ -519,4 +520,11 @@ export default interface IConfigFile {
 
     // 配信先 kodi 設定
     kodiHosts?: KodiInfo[];
+
+    // データ放送 (BML) 配信 (featureFlags.dataBroadcasting が有効な場合のみ意味を持つ)
+    dataBroadcasting?: {
+        // WebSocket 経由のデータ放送ストリーム同時本数上限。既定 4。
+        // 上限を超えると最も古いストリームを閉じて新しい要求を受け付ける
+        maxStreams?: number;
+    };
 }

@@ -278,6 +278,10 @@ import IEncodeManageModel from './service/encode/IEncodeManageModel';
 import IEncodeProcessManageModel from './service/encode/IEncodeProcessManageModel';
 import IEncodeQueueStoreModel from './service/encode/IEncodeQueueStoreModel';
 import { EncoderModelProvider, IEncoderModel } from './service/encode/IEncoderModel';
+import DataBroadcastingManageModel from './service/dataBroadcasting/DataBroadcastingManageModel';
+import DataBroadcastingWebSocketServer from './service/dataBroadcasting/DataBroadcastingWebSocketServer';
+import IDataBroadcastingManageModel from './service/dataBroadcasting/IDataBroadcastingManageModel';
+import IDataBroadcastingWebSocketServer from './service/dataBroadcasting/IDataBroadcastingWebSocketServer';
 import IServiceServer from './service/IServiceServer';
 import ServiceServer from './service/ServiceServer';
 import ISocketIOManageModel from './service/socketio/ISocketIOManageModel';
@@ -474,6 +478,16 @@ export const set = (container: Container): void => {
     container.bind<IEventSetter>('IEventSetter').to(EventSetter).inSingletonScope();
 
     container.bind<ISocketIOManageModel>('ISocketIOManageModel').to(SocketIOManageModel).inSingletonScope();
+
+    container
+        .bind<IDataBroadcastingManageModel>('IDataBroadcastingManageModel')
+        .to(DataBroadcastingManageModel)
+        .inSingletonScope();
+
+    container
+        .bind<IDataBroadcastingWebSocketServer>('IDataBroadcastingWebSocketServer')
+        .to(DataBroadcastingWebSocketServer)
+        .inSingletonScope();
 
     container
         .bind<IExternalCommandManageModel>('IExternalCommandManageModel')

@@ -55,6 +55,7 @@ export default class SettingStorageModel extends AbstractStorageBaseModel<ISetti
             isShowRecordedAsSeries: false,
             isShowFollowingIndicatorInGuide: true,
             useDictionaryEpisodeTitle: true,
+            isEnableDataBroadcasting: false,
         };
     }
 
