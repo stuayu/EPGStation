@@ -8,6 +8,9 @@
         <v-btn icon variant="text" v-on:click="onSelectAll">
             <v-icon>mdi-select-all</v-icon>
         </v-btn>
+        <v-btn v-if="showEncode === true" icon variant="text" title="エンコード" v-on:click="onEncode">
+            <v-icon>mdi-cog-play</v-icon>
+        </v-btn>
         <v-btn icon variant="text" v-on:click="onDelete">
             <v-icon>mdi-delete</v-icon>
         </v-btn>
@@ -26,6 +29,12 @@ class EditTitleBar extends Vue {
 
     @Prop({ required: true })
     public isEditMode!: boolean;
+
+    /**
+     * エンコードボタンを表示するか (録画済み画面のみ true)
+     */
+    @Prop({ required: false, default: false })
+    public showEncode!: boolean;
 
     public navigationState: INavigationState = container.get<INavigationState>('INavigationState');
 
@@ -60,6 +69,13 @@ class EditTitleBar extends Vue {
      */
     public onSelectAll(): void {
         this.$emit('selectall');
+    }
+
+    /**
+     * エンコード
+     */
+    public onEncode(): void {
+        this.$emit('encode');
     }
 
     /**

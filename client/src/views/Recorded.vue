@@ -6,7 +6,9 @@
             v-model:isEditMode="isEditMode"
             v-on:exit="onFinishEdit"
             v-on:selectall="onSelectAll"
+            v-on:encode="onMultipleEncode"
             v-on:delete="onMultiplueDeletion"
+            :showEncode="true"
         ></EditTitleBar>
         <TitleBar v-else title="録画済み">
             <template v-slot:menu>
@@ -80,6 +82,12 @@
             :total="recordedState.getSelectedCnt().cnt"
             v-on:delete="onExecuteMultiplueDeletion"
         ></RecordedMultipleDeletionDialog>
+        <RecordedMultipleEncodeDialog
+            v-if="isEditMode === true"
+            v-model:isOpen="isOpenMultipleEncodeDialog"
+            :total="recordedState.getSelectedCnt().cnt"
+            v-on:encode="onExecuteMultipleEncode"
+        ></RecordedMultipleEncodeDialog>
         <RecordedCleanupDialog v-model:isOpen="isOpenCleanupDialog"></RecordedCleanupDialog>
         <RecordedImportDialog v-model:isOpen="isOpenImportDialog"></RecordedImportDialog>
     </v-main>
@@ -92,6 +100,7 @@ import RecordedImportDialog from '@/components/recorded/RecordedImportDialog.vue
 import RecordedItems from '@/components/recorded/RecordedItems.vue';
 import RecordedMainMenu from '@/components/recorded/RecordedMainMenu.vue';
 import RecordedMultipleDeletionDialog from '@/components/recorded/RecordedMultipleDeletionDialog.vue';
+import RecordedMultipleEncodeDialog from '@/components/recorded/RecordedMultipleEncodeDialog.vue';
 import RecordedSearchMenu from '@/components/recorded/RecordedSearchMenu.vue';
 import EditTitleBar from '@/components/titleBar/EditTitleBar.vue';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
@@ -100,7 +109,7 @@ import ISeriesApiModel, { SeriesListItem } from '@/model/api/series/ISeriesApiMo
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
-import IRecordedState, { MultipleDeletionOption } from '@/model/state/recorded/IRecordedState';
+import IRecordedState, { MultipleDeletionOption, MultipleEncodeOption } from '@/model/state/recorded/IRecordedState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
@@ -119,6 +128,7 @@ import * as apid from '../../../api';
         RecordedItems,
         Pagination,
         RecordedMultipleDeletionDialog,
+        RecordedMultipleEncodeDialog,
         RecordedCleanupDialog,
         RecordedImportDialog,
     },
@@ -126,6 +136,7 @@ import * as apid from '../../../api';
 class Recorded extends Vue {
     public isEditMode: boolean = false;
     public isOpenMultiplueDeletionDialog: boolean = false;
+    public isOpenMultipleEncodeDialog: boolean = false;
     public isOpenCleanupDialog: boolean = false;
     public isOpenImportDialog: boolean = false;
 
@@ -303,6 +314,58 @@ class Recorded extends Vue {
             this.snackbarState.open({
                 color: 'error',
                 text: '一部番組の削除に失敗しました。',
+            });
+        }
+    }
+
+    /**
+     * 複数選択エンコードのダイアログを開く
+     */
+    public onMultipleEncode(): void {
+        if (this.recordedState.getSelectedCnt().cnt === 0) {
+            this.snackbarState.open({
+                color: 'error',
+                text: '番組が選択されていません。',
+            });
+
+            return;
+        }
+
+        this.isOpenMultipleEncodeDialog = true;
+    }
+
+    /**
+     * 選択した番組をまとめてエンコードキューへ追加する
+     * @param option: MultipleEncodeOption
+     */
+    public async onExecuteMultipleEncode(option: MultipleEncodeOption): Promise<void> {
+        this.isOpenMultipleEncodeDialog = false;
+        this.isEditMode = false;
+
+        try {
+            const result = await this.recordedState.multipleEncode(option);
+
+            if (result.errorCnt > 0) {
+                this.snackbarState.open({
+                    color: 'error',
+                    text: `${result.successCnt} 件を追加しましたが ${result.errorCnt} 件の追加に失敗しました。`,
+                });
+            } else if (result.skippedCnt > 0) {
+                this.snackbarState.open({
+                    color: 'info',
+                    text: `${result.successCnt} 件をエンコードに追加しました (対象ファイルが無い ${result.skippedCnt} 件は除外)。`,
+                });
+            } else {
+                this.snackbarState.open({
+                    color: 'success',
+                    text: `${result.successCnt} 件をエンコードに追加しました。`,
+                });
+            }
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({
+                color: 'error',
+                text: 'エンコード追加に失敗しました。',
             });
         }
     }
