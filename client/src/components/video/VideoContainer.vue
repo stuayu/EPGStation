@@ -9,6 +9,7 @@
                     v-if="videoParam.type == 'Normal'"
                     ref="video"
                     v-model:videoSrc="videoParam.src"
+                    v-bind:videoFileId="videoParam.videoFileId ?? null"
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
                     v-bind:jikkyoStartAt="videoParam.jikkyoStartAt"
                     v-bind:jikkyoEndAt="videoParam.jikkyoEndAt"
@@ -89,6 +90,8 @@ import UaUtil from '@/util/UaUtil';
 import BaseVideo from '@/components/video/BaseVideo';
 import container from '@/model/ModelContainer';
 import IVideoApiModel from '@/model/api/video/IVideoApiModel';
+import DPlayer from 'dplayer';
+import { DataBroadcastingConnectParam } from '@/util/DataBroadcastingManager';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
@@ -201,12 +204,33 @@ class VideoContainer extends Vue {
     public onCanplay(): void {
         this.isLoading = false;
         void this.applyResumePosition();
+        this.$emit('canplay');
     }
+
+    // 直前の timeupdate 時点の再生位置 (秒)。データ放送のシーク検知に使う
+    private lastPlaybackTimeSec: number | null = null;
+    // この秒数を超える再生位置の飛びをシークとみなす (通常再生の timeupdate は数百ms〜数秒間隔の連続増加のため)
+    private readonly dataBroadcastingSeekThresholdSec = 3;
 
     public onTimeupdate(): void {
         this.emitRemainingTime();
+        this.checkDataBroadcastingSeek();
         if (this.resumeReady === false) return;
         if (Date.now() - this.lastSavedAt >= 10000) void this.savePlaybackPosition();
+    }
+
+    /**
+     * データ放送 (BML) レイヤーが録画ファイル内のバイト位置を再計算すべきタイミング (シーク) を検知して親へ通知する。
+     * レジューム適用直後 (再生開始位置の確定) も対象に含める
+     */
+    private checkDataBroadcastingSeek(): void {
+        const video = this.getVideo();
+        if (video === null) return;
+        const current = video.getCurrentTime();
+        if (this.lastPlaybackTimeSec === null || Math.abs(current - this.lastPlaybackTimeSec) > this.dataBroadcastingSeekThresholdSec) {
+            this.$emit('dataBroadcastingSeek', current);
+        }
+        this.lastPlaybackTimeSec = current;
     }
 
     public onEnded(): void {
@@ -260,6 +284,22 @@ class VideoContainer extends Vue {
         } finally {
             this.resumeReady = true;
         }
+    }
+
+    /**
+     * データ放送 (BML) 機能の初期化に必要な DPlayer インスタンスと接続パラメータを返す
+     * どちらも揃わない (video 未生成・当該 video が非対応) 場合は null
+     * @return { dp: DPlayer; param: DataBroadcastingConnectParam } | null
+     */
+    public getDataBroadcastingContext(): { dp: DPlayer; param: DataBroadcastingConnectParam } | null {
+        const video = this.getVideo();
+        if (video === null) return null;
+
+        const dp = video.getDPlayer();
+        const param = video.getDataBroadcastingParam();
+        if (dp === null || param === null) return null;
+
+        return { dp, param };
     }
 
     private getVideo(): BaseVideo | null {

@@ -1076,3 +1076,39 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - **XML 以外の応答を「該当なし」と誤認しないようにした** (`SyobocalXml.assertSyobocalResponse()`)。しょぼいカレンダーは Cloudflare のレート制限 (error 1015) やメンテナンス時に XML ではなく HTML を返すが、`xmlItems()` はそれを黙って空配列にするため**正常な「その日は放送なし」と区別が付かなかった**。ルート要素 (`ProgLookupResponse` 等) と `Result/Code` (200 / 404 のみ正常) を検証し、それ以外は取得失敗として上位へ伝える。放送予定照会・作品辞書の同期・作品コメント取得のすべてに適用
         - **0 件の結果はキャッシュしない**。従来は一時的な失敗で空になった結果も 6 時間キャッシュしていたため、一度失敗すると復旧まで同じ局が延々と「該当なし」になっていた
         - **`ISyobocalProgramLookup.lookup()` の戻り値に理由を付けた** (`{ match, detail }`)。「系列キー局 ChID 2 で代用、その日の放送予定 11 件から特定」「…11 件に開始時刻の一致なし (キー局代用時は開始時刻がほぼ一致する放送のみ採用)」のように、**どの ChID を引いて何件返ったか**がシリーズ判定のトレース (ポップアップ) に出る。引けなかったときに原因を切り分けられないのが一番困るため
+
+- **データ放送 (BML) に対応した**
+    - **背景**: 従来は映像・音声・字幕・実況コメントまでは表示できても、天気・番組連動クイズ・ニュース速報などのデータ放送 (BML) は一切表示できなかった
+    - **BML ブラウザは [tsukumijima/web-bml](https://github.com/tsukumijima/web-bml) (otya128/web-bml のフォーク、MIT License) を npm 依存として使う**: `"web-bml": "github:tsukumijima/web-bml#fea69f4526ee4acc66687019a1985643618be572"`。このフォークは**ビルド済みの `dist/` と型定義をリポジトリにコミットしている**ため、submodule も追加のビルド手順も無く `npm install` だけで使える (ルートと `client/` の両方の package.json に依存を追加している)。サーバは `web-bml/worker` (DOM 非依存のエントリ) から `decodeTS` を、クライアントは `web-bml` から `BMLBrowser` / `AribKeyCode` を import する。実装方針は [KonomiTV (tsukumijima/KonomiTV)](https://github.com/tsukumijima/KonomiTV) の `LiveDataBroadcastingManager` を参考にした
+    - **映像は EPGStation の DPlayer、web-bml は BML の描画専用**: web-bml が持つ ffmpeg エンコード機能・koa サーバは使わない。映像は引き続き DPlayer が再生するため、二重エンコードが起きず実況コメント・ARIB 字幕・シーク UI といった既存機能をそのまま使える
+    - **データ放送用に TS をもう 1 本引く**: ライブは Mirakurun の同一サービスストリームをもう 1 本開き、録画は録画ファイルをプロセス内で `fs.createReadStream` して直接読む (どちらも HTTP は経由しない)
+    - **サーバ側 (`src/model/service/dataBroadcasting/`)**
+        - `webBml.ts` — `web-bml/worker` の `decodeTS` と `ResponseMessage` 等の型を薄く re-export するだけのモジュール。テストは `__setDecodeTSForTest()` でスタブに差し替える
+        - `DataBroadcastingManageModel.ts` — WebSocket 1 本 = 1 ストリーム。同時接続数は既定 4 (`config.yml` の `dataBroadcasting.maxStreams`) を超えると最も古い接続を閉じる。decodeTS の Transform は下流を持たないため `resume()` で流し切る。backpressure 対策として `ws.bufferedAmount` が 8MB を超えている間は `moduleDownloaded` 以外のメッセージを間引き、32MB を超えたら切断する
+        - `DataBroadcastingWebSocketServer.ts` — npm の `ws` を `noServer: true` で使い、`ServiceServer` が作った http/https サーバの `upgrade` イベントに相乗りする。**パスが `<subDirectory>/api/dataBroadcasting/ws` でないリクエストの socket には一切触れない** (同じ upgrade イベントを socket.io と共有しているため、無関係な socket に触ると socket.io のハンドシェイクが壊れる)。`auth.enabled` が有効なときは `SocketIOManageModel` と同じ方式でセッション Cookie を検証する
+        - `DataBroadcastingParamParser.ts` — WebSocket の `?param=<JSON>` を手動で検証する。ライブは `{"type":"epgStationLive","channelId":<Channel.id>}`、録画は `{"type":"epgStationRecorded","videoFileId":<id>,"seek":<byte offset>}`
+        - close code は `1008` (パラメータ不正) / `1011` (内部エラー) / `4000` (正常終了・同時接続数超過による追い出し)。ハンドシェイク前に弾く場合は `401` (未認証)
+    - **クライアント側 (iframe は使わない)**
+        - `BMLBrowser` は内部で closed な Shadow DOM を使うため EPGStation 本体の CSS と衝突しない。そのため iframe 隔離をやめ、BML ブラウザを直接 DOM に生成して DPlayer に組み込む方式にした
+        - `client/src/util/DataBroadcastingManager.ts` — **Vue 非依存のプレーンクラス**。DPlayer インスタンスと接続パラメータを受け取り、BMLBrowser の生成・映像要素の移動・拡大縮小率の計算・WebSocket 接続・破棄を担う。**BMLBrowser 内部の JS-Interpreter が Vue のリアクティブ Proxy に包まれると壊れるため、Vue 側は必ず `markRaw()` で包んで保持する** (これが Vue コンポーネントではなくプレーンクラスに切り出している理由)
+        - BMLBrowser は DPlayer の `player.template.videoWrap` の中に動的に挿入した `div.dplayer-bml-browser` (映像より下のレイヤー) に生成する
+        - **映像要素を BML ブラウザの中へ物理的に移動するのが肝**。`bmlBrowser.getVideoElement()` が返す要素へ DPlayer の `player.template.videoWrapAspect` を `appendChild` する。`load` と `invisible: false` で BML 内へ移動し、`invisible: true` と破棄時に DPlayer へ戻す
+        - データ放送は 960×540 か 720×480 の固定サイズなので、`transform: scale()` と CSS カスタムプロパティ (`--bml-browser-scale-factor-width` / `-height`) で親のサイズに合わせる。720×480 のときは 16:9 へ矯正する倍率も掛ける。`ResizeObserver` で `videoWrap` を監視する。CSS は `client/src/App.vue` のグローバルスタイルに `.dplayer-bml-browser` として定義している (動的に挿入される要素のため scoped では効かない)。**背景色は指定しない** (BML 文書側が背景を持つため、塗ると映像に重ねて一部だけ表示するコンテンツで透過すべき領域が潰れる)
+        - サーバから WebSocket で受け取ったメッセージは、そのまま `bmlBrowser.emitMessage(msg)` へ渡すだけ
+        - **ARIB のデータ放送は起動直後 `invisible` (非表示) で、d ボタンを押して初めて表示される**。EPGStation では「データ放送を有効にする」操作自体が表示の意思表示なので、`load` 後に**最初の 1 回だけ自動で d (`AribKeyCode.DataButton`) を送る**
+        - **双方向データ放送 (IP 通信) はサーバ側にプロキシ API が無いため無効化している** (`isIPConnected(): 0` / `getConnectionType(): 403`)。将来サーバ側を実装したら差し替えられるよう TODO コメントを残してある
+        - `epg.tune` (データ放送からのチャンネル切り替え) は networkId + serviceId で EPGStation の channel を引いて視聴画面へ遷移する
+        - `greg` (受信機の電源を切るまで持続するメモリ) は sessionStorage に 64 要素で保持する
+        - `client/src/components/dataBroadcasting/DataBroadcastingRemote.vue` — リモコン UI (d / カラー 4 色 / 十字 / 決定 / 戻る / 数字)。web-bml の `AribKeyCode` を使い `bmlBrowser.content.processKeyDown/processKeyUp` へ送る。数字キーは BML が数字キーを使っているとき (`usedkeylistchanged` で判定) のみ有効
+        - `client/src/components/dataBroadcasting/DataBroadcastingMenu.vue` — 3 点リーダーの ON/OFF。localStorage (`isEnableDataBroadcasting`、**既定 false**)
+        - 組み込みは `client/src/components/video/BaseVideo.ts` が軸。`getDataBroadcastingParam()` (既定 `null`) を各 video コンポーネントが実装する。ライブ系は `channelId` から、録画系は `videoFileId` + シーク位置から作る
+        - 録画の `seek` は `videoFile.size × (再生位置秒 / 総再生時間秒)` の概算バイト位置。**再生位置が大きく飛んだ (シークした) ときは Manager ごと作り直して WebSocket を張り直す**
+        - BML 用フォントは `client/public/fonts/bml/` にコミットしてある (tsukumijima/web-bml 同梱の Kosugi / KosugiMaru)。Vite が `client/dist/fonts/bml/` へコピーする
+    - **ビルド・設定**: 追加のビルド手順は無い。`npm run all-install` → `npm run build` (従来通り `build-server && build-client`) だけ。機能フラグ `featureFlags.dataBroadcasting` (opt-out、未指定は有効)。`config.yml` の `dataBroadcasting.maxStreams` (既定 4) で同時接続数の上限を変更できる
+    - **検証済みのこと / 未検証のこと**
+        - 実 Mirakurun のライブ TS (NHK 総合福島) を 40 秒流し、サーバ側の `decodeTS` が `moduleDownloaded` / `pmt` / `moduleListUpdated` / `pcr` / `esEventUpdated` / `bit` / `programInfo` を出すことを確認済み
+        - そこで得た実データを `BMLBrowser` (EPGStation と同じオプション) へ流し込み、ヘッドレスブラウザで **NHK 福島のデータ放送が正しく描画されることをスクリーンショットで確認済み** (解像度 960×540 / profile A)。d ボタン送出前は `invisible: true`、送出後に描画される挙動も確認した
+        - **EPGStation の実画面 (DPlayer と組み合わせた状態) での表示・映像プレーンの移動・拡大縮小の見た目は未検証**
+        - 双方向データ放送 (IP 通信) は未対応
+        - ワンセグ (profile C) など 16:9 以外の解像度での見た目は未検証
+    - **テスト**: `test/ut/data-broadcasting-manage-model.test.js`、`test/ut/data-broadcasting-param-parser.test.js`

@@ -22,6 +22,7 @@
 - **更新通知とワンクリック更新** (GitHub Releases を定期確認し、リリース版・開発版のどちらへも画面から更新できる)
 - **ログファイルを Web UI 上から確認できる機能** (`/logs` ページ。プロセス/カテゴリ別のタブ切り替え、行数指定・キーワード絞り込み、ダウンロードに対応)
 - **ログイン認証と権限管理** (パスワード認証と SSO (Google / GitHub) に対応。既定は無効)
+- **データ放送 (BML) 対応** ([tsukumijima/web-bml](https://github.com/tsukumijima/web-bml) を利用し BML を描画、映像は引き続き EPGStation の DPlayer が再生。既定は無効)
 - **依存関係のモダナイズ**
     - フロントエンドを Vue 3 + Vuetify 4 へ更新し、ビルドを Vue CLI から Vite へ移行
     - 動画プレイヤーを [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) v1.32.8 へ更新

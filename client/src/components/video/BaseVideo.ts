@@ -6,6 +6,10 @@ import JikkyoCommentClient, { JikkyoComment } from '@/util/JikkyoCommentClient';
 import JikkyoKakologClient from '@/util/JikkyoKakologClient';
 import VirtualTimeline from '@/components/video/VirtualTimeline';
 import IStreamApiModel from '@/model/api/streams/IStreamApiModel';
+import IVideoApiModel from '@/model/api/video/IVideoApiModel';
+import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
+import { DataBroadcastingConnectParam } from '@/util/DataBroadcastingManager';
+import { isFeatureEnabled } from '@/util/FeatureFlags';
 import * as apid from '../../../../api';
 
 export default abstract class BaseVideo extends Vue {
@@ -452,6 +456,64 @@ export default abstract class BaseVideo extends Vue {
      */
     protected isEnabledVirtualTimeline(): boolean {
         return false;
+    }
+
+    // データ放送 (BML) のシーク位置計算用の videoFile サイズ (byte)。取得できていない場合は null (先頭からの視聴扱い)
+    private videoFileSizeForDataBroadcasting: number | null = null;
+
+    /**
+     * DPlayer のインスタンスを返す (データ放送 (BML) 機能が DPlayer の DOM に直接介入するために使う)
+     * @return DPlayer | null
+     */
+    public getDPlayer(): DPlayer | null {
+        return this.dp;
+    }
+
+    /**
+     * データ放送 (BML) の接続パラメータを返す。既定は null (データ放送非対応の video)
+     * ライブ視聴のサブクラスは channelId から、録画視聴のサブクラスは videoFileId (+ シーク位置) から組み立てて override する
+     * @return DataBroadcastingConnectParam | null
+     */
+    public getDataBroadcastingParam(): DataBroadcastingConnectParam | null {
+        return null;
+    }
+
+    /**
+     * データ放送のシーク位置計算に使う videoFile のサイズを取得しておく (取得できなくても視聴自体は継続する)
+     * featureFlags.dataBroadcasting が無効な場合は何もしない (不要な API 呼び出しを避ける)
+     * @param videoFileId: apid.VideoFileId
+     */
+    protected async fetchVideoFileSizeForDataBroadcasting(videoFileId: apid.VideoFileId): Promise<void> {
+        this.videoFileSizeForDataBroadcasting = null;
+
+        const serverConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
+        if (isFeatureEnabled(serverConfigModel.getConfig(), 'dataBroadcasting') === false) {
+            return;
+        }
+
+        try {
+            const metadata = await container.get<IVideoApiModel>('IVideoApiModel').getMetadata(videoFileId);
+            this.videoFileSizeForDataBroadcasting = metadata.size > 0 ? metadata.size : null;
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    /**
+     * 録画視聴用のデータ放送接続パラメータを組み立てる
+     * seek は videoFile.size × (再生位置秒 / 総再生時間秒) で求めたバイト位置の概算
+     * @param videoFileId: apid.VideoFileId
+     * @return DataBroadcastingConnectParam
+     */
+    protected buildRecordedDataBroadcastingParam(videoFileId: apid.VideoFileId): DataBroadcastingConnectParam {
+        if (this.videoFileSizeForDataBroadcasting === null) {
+            return { type: 'epgStationRecorded', videoFileId };
+        }
+
+        const duration = this.getDuration();
+        const seek = duration > 0 ? Math.max(0, Math.floor(this.videoFileSizeForDataBroadcasting * (this.getCurrentTime() / duration))) : 0;
+
+        return { type: 'epgStationRecorded', videoFileId, seek };
     }
 
     /**

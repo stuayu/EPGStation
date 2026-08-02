@@ -24,6 +24,7 @@ import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import IVideoApiModel from '../api/video/IVideoApiModel';
+import IDataBroadcastingWebSocketServer from './dataBroadcasting/IDataBroadcastingWebSocketServer';
 import IServiceServer from './IServiceServer';
 import ISocketIOManageModel from './socketio/ISocketIOManageModel';
 import IHLSMemoryStoreModel from './stream/util/IHLSMemoryStoreModel';
@@ -53,6 +54,7 @@ class ServiceServer implements IServiceServer {
     private config: IConfigFile;
     private socketIoManageModel: ISocketIOManageModel;
     private hlsMemoryStore: IHLSMemoryStoreModel;
+    private dataBroadcastingWebSocketServer: IDataBroadcastingWebSocketServer;
     private app = express();
 
     constructor(
@@ -61,11 +63,13 @@ class ServiceServer implements IServiceServer {
         @inject('ISocketIOManageModel')
         socketIoManageModel: ISocketIOManageModel,
         @inject('IHLSMemoryStoreModel') hlsMemoryStore: IHLSMemoryStoreModel,
+        @inject('IDataBroadcastingWebSocketServer') dataBroadcastingWebSocketServer: IDataBroadcastingWebSocketServer,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
         this.socketIoManageModel = socketIoManageModel;
         this.hlsMemoryStore = hlsMemoryStore;
+        this.dataBroadcastingWebSocketServer = dataBroadcastingWebSocketServer;
 
         this.init();
     }
@@ -511,6 +515,9 @@ class ServiceServer implements IServiceServer {
         void this.analyzeVideoFileMetadata();
 
         const sokcetioServers: http.Server[] = [];
+        // Web API (express アプリ) を実際に配信しているサーバー。
+        // データ放送用 WebSocket はこの上で upgrade を待ち受ける (socket.io 専用ポートとは別枠で管理する)
+        const appServers: http.Server[] = [];
 
         // http
         if (typeof this.config.port !== 'undefined') {
@@ -520,6 +527,7 @@ class ServiceServer implements IServiceServer {
             const server = this.app.listen(this.config.port, () => {
                 this.log.system.info(`http server listening on ${this.config.port}`);
             });
+            appServers.push(server);
 
             // socket.io
             if (socketioPort === this.config.port) {
@@ -558,6 +566,7 @@ class ServiceServer implements IServiceServer {
                     this.log.system.info(`https server listening on ${this.config.https.port}`);
                 }
             });
+            appServers.push(httpsServer);
 
             // socket.io
             if (typeof this.config.https.socketioPort === 'undefined') {
@@ -572,6 +581,7 @@ class ServiceServer implements IServiceServer {
         }
 
         this.socketIoManageModel.initialize(sokcetioServers);
+        this.dataBroadcastingWebSocketServer.initialize(appServers);
     }
 }
 

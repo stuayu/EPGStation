@@ -1040,6 +1040,7 @@ export interface FeatureFlags {
     externalFileImport?: boolean;
     advancedSearch?: boolean;
     updateNotification?: boolean;
+    dataBroadcasting?: boolean;
 }
 
 /**
