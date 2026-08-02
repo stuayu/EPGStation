@@ -56,6 +56,9 @@ export default class SettingStorageModel extends AbstractStorageBaseModel<ISetti
             isShowFollowingIndicatorInGuide: true,
             useDictionaryEpisodeTitle: true,
             isEnableDataBroadcasting: false,
+            isOpenWatchSidePanel: true,
+            watchSidePanelTab: 'program',
+            pinnedChannelIds: [],
         };
     }
 

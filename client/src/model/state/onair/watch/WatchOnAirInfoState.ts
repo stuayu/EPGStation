@@ -53,8 +53,13 @@ export default class WatchOnAirInfoState implements IWatchOnAirInfoState {
                         item.isDurationUndefined === true
                             ? `${DateUtil.format(startAt, 'MM/dd(w) hh:mm ~ ')}(終了時刻未定)`
                             : DateUtil.format(startAt, 'MM/dd(w) hh:mm ~ ') + DateUtil.format(endAt, 'hh:mm'),
+                    shortTime:
+                        item.isDurationUndefined === true
+                            ? `${DateUtil.format(startAt, 'hh:mm ~ ')}(終了未定)`
+                            : DateUtil.format(startAt, 'hh:mm ~ ') + DateUtil.format(endAt, 'hh:mm'),
                     name: item.name,
                     description: item.description,
+                    extended: 'extended' in item ? item.extended : undefined,
                 };
                 this.endAt = item.endAt;
             }
