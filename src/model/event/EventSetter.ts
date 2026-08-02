@@ -98,6 +98,13 @@ export default class EventSetter implements IEventSetter {
         // EIT[p/f] 相当の更新を視聴画面・番組表へ即時反映させる
         this.epgUpdateEvent.setOnAirProgramUpdated(channelIds => {
             this.ipc.notifyOnAirProgramClient(channelIds);
+
+            // 予約の再スケジュールは epgUpdateIntervalTime 周期の updateAll 任せだと最大でその間隔だけ遅れる。
+            // 放送中 / 直後に始まる番組の時刻変更は録画に直結するため、対象放送局の予約だけ即時に追従させる
+            this.reservationManage.updateOnAirReserves(channelIds).catch(err => {
+                this.log.system.error('update on air reserves error');
+                this.log.system.error(err);
+            });
         });
 
         this.epgUpdateEvent.setUpdated(async () => {

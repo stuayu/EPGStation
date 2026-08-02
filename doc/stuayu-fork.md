@@ -161,6 +161,8 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **背景**: 系列別のまとめ方は番組表・放映中の 3 点リーダーとサイドメニューにしか無く、「どの系列にどの局があるか」を見る画面が無かった
     - **UI**: `/affiliations` (`client/src/views/Affiliations.vue`) を追加し、ナビゲーションに「系列局」を出す。系列ごとにカードで並べ、カードを選ぶと `/guide?affiliation={id}` (系列別の番組表) へ、局のチップを選ぶとその局の番組表へ移動する。系列の判定はサーバが `GET /api/channels` に付ける `channel.affiliation` をそのまま使うため、新しい API は増やしていない
     - **関東の独立局**: 東京MX・群馬テレビ・とちぎテレビ・テレビ埼玉・千葉テレビ・tvk は同梱データ (`BroadcastAffiliationData`) で系列識別 0x07 (独立系) にまとまる。県外地上波 (`NWxx`) でも同じ扱いになることを `test/ut/broadcast-affiliation.test.js` で固定した
+    - **切り替えスイッチが保存されていなかったのを直した**: 「サイドメニューの番組表・放映中のタブを系列別にする」スイッチは `ISettingStorageModel.getSavedValue()` の戻り値 (localStorage から作り直した別オブジェクト) を書き換えてから `save()` を呼んでいた。`AbstractStorageBaseModel.save()` が保存するのは `tmp` なので変更が捨てられ、**スイッチを入れてもサイドメニュー・放映中のタブが地域別のままだった**。`resetTmpValue()` で保存値を `tmp` へ読み直してから 1 項目だけ書き換えて保存するようにした
+    - **系列別番組表の並び順**: 系列で絞った番組表は**キー局を先頭に置き、それ以降は都道府県コード順**で並べる (`client/src/util/AffiliationChannelSort.ts` の `sortByKeyStationAndPrefecture()` を `GuideState.filterSchedules()` から使う)。キー局は関東広域の 7 局の `networkId` (32736〜32742 = NHK 総合 / NHK E テレ / 日テレ / TBS / フジ / テレ朝 / テレ東) で判定し、都道府県コードは `channel.region.order` (JIS X 0401。広域圏は最小の県コード、判定不能は 99) をそのまま使う
 
 - **視聴履歴の一覧画面を追加した**
     - **背景**: 視聴履歴 (`watch_history`) は再生位置と視聴状態を持っていたが、録画一覧のバッジと再生時の続き再生に使うだけで、「最近見た番組」を一覧する画面が無かった
@@ -427,6 +429,8 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **放送時間未定 (ARIB の duration = 0xFFFFFF) の修正**: Mirakurun はこれを `duration: 1` (1ms) で返す。従来は `endAt = startAt + duration` としていたため、**放送開始 1ms 後に「終了済み」となり放送中一覧・視聴画面・番組表から即座に消えていた** (実データでも NHK 総合/Eテレ/BS のニュース枠 6 件で発生を確認)。`src/util/ProgramDuration.ts` を追加し、未定の場合は暫定 3 時間の終了時刻を入れる
     - **番組表のレイアウト崩れ対策**: 暫定 3 時間のままだと次の番組に食い込むため、番組表 API (`ScheduleApiModel`) で**同じ放送局の次の番組の開始時刻まで切り詰める** (`clampUndefinedDuration`)。実データ (NHK Eテレ1福島) で 16:37:31 開始の未定番組が次の 17:00 番組の直前まで正しく詰まり、重なり 0 件を確認済み
     - **表示**: `LiveStreamInfoItem` / `ScheduleProgramItem` に `isDurationUndefined` を追加し、視聴画面の番組情報カードと番組表のダイアログでは終了時刻の代わりに「(終了時刻未定)」と出す (暫定値を本当の終了時刻のように見せない)
+    - **予約も EIT[p/f] で即時に追従させる**: 上記の通知はクライアントへの反映だけで、**予約の再スケジュールは `epgUpdateIntervalTime` (既定 10 分) 周期の `updateAll()` 任せ**だった。緊急地震速報や前番組の延長・繰り上げで開始時刻が変わっても予約側の反映が最大 10 分遅れ、録画開始に間に合わないことがある。`EventSetter` が `onAirProgramUpdated` を受けたときに `ReservationManageModel.updateOnAirReserves(channelIds)` を呼び、**その放送局の「現在時刻〜15 分先に重なる programId 予約」だけ**を `update()` で追従させるようにした (時刻指定予約は番組情報を持たないため対象外、スキップ済みの予約も対象外)。対象が数件に限られるので 10 秒周期で呼ばれても負荷は小さく、変更が無ければ `update()` 内の `programUpdateTime` 比較で即 return する。追従の結果は従来どおり `reserveEvent` 経由で `RecorderModel.update()` へ流れ、録画中の終了時刻変更にも反映される。テストは `test/ut/reservation-on-air-follow.test.js`
+    - **残っている遅延**: `EPGUpdateManageModel.saveProgram()` は「更新イベントの中に 5 分以内に始まる番組がある」ときだけ DB へ書き込む (`needToSave`)。`remove` / `redefine` だけが溜まった回は書き込まれないため、**番組が消えた場合の反映は次の全体更新まで遅れる**。また 10 秒周期の tick は `updateAll` と直列 (`runExclusiveUpdateTask`) なので、全件更新に時間がかかる環境ではその間 EIT[p/f] の反映が止まる
 
 - **EPG 追従 (EIT[p/f]) の経過を info ログに出し、予約画面にも状態を表示するようにした**
     - **背景**: 番組の延長・繰り上げが起きたとき、何がどう動いたのかがログから追えなかった (`update program db done` のような件数だけ)。時刻がずれた録画を後から検証できるよう、**変更前 → 変更後の時刻を併記**して残す

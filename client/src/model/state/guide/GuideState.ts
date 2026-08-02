@@ -1,6 +1,7 @@
 import ChannelModel from '@/model/channels/ChannelModel';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import { IGuideGenreSettingStorageModel, IGuideGenreSettingValue } from '@/model/storage/guide/IGuideGenreSettingStorageModel';
+import { sortByKeyStationAndPrefecture } from '@/util/AffiliationChannelSort';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
 import { normalizeSeriesTitleForGuide } from '@/util/SeriesTitleNormalizer';
 import { inject, injectable } from 'inversify';
@@ -243,9 +244,12 @@ class GuideState implements IGuideState {
     private filterSchedules(schedules: apid.Schedule[], option: FetchGuideOption): apid.Schedule[] {
         const result = schedules.filter(s => ChannelModel.isAudioVideoService(s.channel.type));
 
-        // 系列別番組表のときは地上波系を系列で絞り込む
+        // 系列別番組表のときは地上波系を系列で絞り込み、キー局を先頭・以降を都道府県コード順に並べる
         if (typeof option.affiliation !== 'undefined') {
-            return result.filter(s => typeof s.channel.affiliation !== 'undefined' && s.channel.affiliation.id === option.affiliation);
+            return sortByKeyStationAndPrefecture(
+                result.filter(s => typeof s.channel.affiliation !== 'undefined' && s.channel.affiliation.id === option.affiliation),
+                s => s.channel,
+            );
         }
 
         // 地域別番組表のときは地上波系を地域で絞り込む
