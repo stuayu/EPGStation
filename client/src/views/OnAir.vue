@@ -2,7 +2,10 @@
     <v-main>
         <TitleBar title="放映中">
             <template v-slot:menu>
-                <ChannelGroupingMenu v-if="isTabView === true" v-on:changed="onChangedGrouping"></ChannelGroupingMenu>
+                <!-- 系列でまとめた表示は系列局の一覧から選ぶ -->
+                <v-btn icon variant="text" size="small" title="系列局から選ぶ" v-on:click="gotoAffiliations">
+                    <v-icon>mdi-television-classic</v-icon>
+                </v-btn>
             </template>
             <template v-slot:extension>
                 <v-tabs v-if="isTabView === true && onAirState.getSchedules().length > 0" v-model="onAirState.selectedTab" centered>
@@ -29,7 +32,6 @@
 </template>
 
 <script lang="ts">
-import ChannelGroupingMenu from '@/components/channel/ChannelGroupingMenu.vue';
 import ProgramDialog from '@/components/guide/ProgramDialog.vue';
 import OnAirCard from '@/components/onair/OnAirCard.vue';
 import OnAirSelectStream from '@/components/onair/OnAirSelectStream.vue';
@@ -48,7 +50,6 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
 @Component({
     components: {
         TitleBar,
-        ChannelGroupingMenu,
         OnAirCard,
         OnAirSelectStream,
         ProgramDialog,
@@ -71,10 +72,10 @@ class OnAir extends Vue {
     }
 
     /**
-     * 放送局のまとめ方 (地域別 / 系列別) が変わったときにタブを作り直す
+     * 系列局の一覧へ移動する (系列を選ぶとその系列の番組表が開く)
      */
-    public onChangedGrouping(): void {
-        this.onAirState.selectedTab = undefined;
+    public async gotoAffiliations(): Promise<void> {
+        await Util.move(this.$router, { path: '/affiliations' });
     }
 
     // EIT[p/f] が流れてきたら放送中一覧を取り直す (どの局でも一覧に影響するため絞り込まない)

@@ -7,7 +7,7 @@
         >
             <template v-slot:menu>
                 <GuideTimeSelector v-if="isLoading === false"></GuideTimeSelector>
-                <GuideMainMenu v-on:updatedgenre="onUpdateGenre" v-on:changedgrouping="onChangedGrouping"></GuideMainMenu>
+                <GuideMainMenu v-on:updatedgenre="onUpdateGenre"></GuideMainMenu>
             </template>
         </TitleBar>
         <div class="app-content guide" v-bind:class="darkClassList">
@@ -190,38 +190,6 @@ class Guide extends Vue {
     /**
      * ジャンル情報の更新
      */
-    /**
-     * 放送局のまとめ方 (地域別 / 系列別) が変わったときの処理
-     * 地域別・系列別の番組表を開いている場合は、表示中の放送局が属する新しいグループへ移動する
-     */
-    public async onChangedGrouping(): Promise<void> {
-        const query = this.$route.query;
-        if (typeof query.region === 'undefined' && typeof query.affiliation === 'undefined') {
-            // 放送波種別・単局表示のときはグループの切り替え対象ではない
-            return;
-        }
-
-        const channels = this.guideState.getChannels();
-        if (channels.length === 0) {
-            return;
-        }
-
-        const isAffiliationMode = (this.settingValue?.channelGroupingType ?? 'region') === 'affiliation';
-        const group = isAffiliationMode ? channels[0].affiliation : channels[0].region;
-        const newQuery: { [key: string]: string } = {};
-        if (typeof group !== 'undefined') {
-            newQuery[isAffiliationMode ? 'affiliation' : 'region'] = group.id;
-        }
-        if (typeof query.time !== 'undefined') {
-            newQuery.time = Util.getRouteString(query.time) ?? '';
-        }
-
-        await Util.move(this.$router, {
-            path: '/guide',
-            query: newQuery,
-        });
-    }
-
     public onUpdateGenre(): void {
         this.isLoading = true;
         this.$nextTick(() => {

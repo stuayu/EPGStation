@@ -25,21 +25,13 @@
                 </v-list-item>
 
                 <v-divider></v-divider>
-                <v-list-subheader>放送局のまとめ方</v-list-subheader>
-                <v-list-item v-on:click="setGroupingType('region')" slim>
+                <!-- 系列でまとめた番組表は系列局の一覧から選ぶ (メニュー内での切り替えはやめた) -->
+                <v-list-item v-on:click="gotoAffiliations" slim>
                     <template #prepend>
-                        <v-icon>{{ groupingType === 'region' ? 'mdi-check' : 'mdi-map-marker' }}</v-icon>
+                        <v-icon>mdi-television-classic</v-icon>
                     </template>
                     <div class="v-list-item-content">
-                        <v-list-item-title>地域別</v-list-item-title>
-                    </div>
-                </v-list-item>
-                <v-list-item v-on:click="setGroupingType('affiliation')" slim>
-                    <template #prepend>
-                        <v-icon>{{ groupingType === 'affiliation' ? 'mdi-check' : 'mdi-television-classic' }}</v-icon>
-                    </template>
-                    <div class="v-list-item-content">
-                        <v-list-item-title>系列別</v-list-item-title>
+                        <v-list-item-title>系列局から選ぶ</v-list-item-title>
                     </div>
                 </v-list-item>
                 <v-divider></v-divider>
@@ -64,7 +56,6 @@ import GuideGenreSettingDialog from '@/components/guide/GuideGenreSettingDialog.
 import IReservesApiModel from '@/model/api/reserves/IReservesApiModel';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { ChannelGroupingType, ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 
@@ -79,26 +70,14 @@ class GuideMainMenu extends Vue {
 
     private reservesApiModel: IReservesApiModel = container.get<IReservesApiModel>('IReservesApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
-    private settingStorageModel: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
-    private settingValue: ISettingValue = this.settingStorageModel.getSavedValue();
-
-    get groupingType(): ChannelGroupingType {
-        return this.settingValue.channelGroupingType ?? 'region';
-    }
 
     /**
-     * 地上波系のまとめ方 (地域別 / 系列別) を切り替える
-     * @param type: ChannelGroupingType
+     * 系列局の一覧へ移動する (系列を選ぶとその系列の番組表が開く)
      */
-    public setGroupingType(type: ChannelGroupingType): void {
+    public async gotoAffiliations(): Promise<void> {
         this.isOpened = false;
-        if (this.groupingType === type) {
-            return;
-        }
-
-        this.settingValue.channelGroupingType = type;
-        this.settingStorageModel.save();
-        this.$emit('changedgrouping');
+        await Util.sleep(300);
+        await Util.move(this.$router, { path: '/affiliations' });
     }
 
     public async updateReserves(): Promise<void> {

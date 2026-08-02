@@ -6,6 +6,17 @@
                 系列を選ぶとその系列の放送局だけを並べた番組表へ移動します。系列は放送波の BIT (系列識別) と同梱データから判定しています。
             </div>
 
+            <!-- 放送局のまとめ方の切り替えは番組表・放映中の 3 点リーダーからここへ移した -->
+            <v-switch
+                v-model="isAffiliationMode"
+                label="サイドメニューの番組表・放映中のタブを系列別にする"
+                color="primary"
+                density="compact"
+                hide-details
+                class="mb-3"
+                @update:model-value="onChangeGroupingType"
+            ></v-switch>
+
             <v-alert v-if="groups.length === 0" type="info">放送局情報がまだ取得できていません</v-alert>
 
             <v-row v-else>
@@ -41,7 +52,8 @@
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import IChannelModel, { Channel } from '@/model/channels/IChannelModel';
-import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
+import INavigationState from '@/model/state/navigation/INavigationState';
+import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 
 /**
@@ -60,8 +72,11 @@ interface AffiliationGroup {
 class AffiliationsView extends Vue {
     private channelModel: IChannelModel = container.get<IChannelModel>('IChannelModel');
     private settingStorageModel: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
+    private navigationState: INavigationState = container.get<INavigationState>('INavigationState');
+    private settingValue: ISettingValue = this.settingStorageModel.getSavedValue();
 
     public groups: AffiliationGroup[] = [];
+    public isAffiliationMode: boolean = (this.settingStorageModel.getSavedValue().channelGroupingType ?? 'region') === 'affiliation';
 
     public async mounted(): Promise<void> {
         await this.channelModel.fetchChannels().catch(err => console.error(err));
@@ -95,6 +110,16 @@ class AffiliationsView extends Vue {
         }
 
         this.groups = [...index.values()].sort((a, b) => a.order - b.order);
+    }
+
+    /**
+     * サイドメニュー・放映中のタブを地域別 / 系列別で切り替える
+     */
+    public onChangeGroupingType(): void {
+        this.settingValue.channelGroupingType = this.isAffiliationMode === true ? 'affiliation' : 'region';
+        this.settingStorageModel.save();
+        // サイドメニューの番組表リンクを新しい軸で作り直す
+        this.navigationState.updateItems(this.$route);
     }
 
     /**
