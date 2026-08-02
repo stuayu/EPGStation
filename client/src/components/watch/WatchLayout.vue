@@ -31,6 +31,7 @@
 <script lang="ts">
 import WatchSideBar from '@/components/watch/WatchSideBar.vue';
 import container from '@/model/ModelContainer';
+import INavigationState from '@/model/state/navigation/INavigationState';
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
@@ -53,10 +54,22 @@ class WatchLayout extends Vue {
     public isPanelOpen: boolean = true;
 
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
+    private navigationState: INavigationState = container.get<INavigationState>('INavigationState');
+
+    // 視聴画面へ入る前のグローバルナビゲーションの開閉状態 (画面を離れるときに戻す)
+    private prevNavigationOpenState: boolean | null = null;
 
     public created(): void {
         // 開閉状態は次回以降の表示にも引き継ぐ
         this.isPanelOpen = this.setting.getSavedValue().isOpenWatchSidePanel !== false;
+
+        // 左のアイコンナビゲーションが役割を兼ねるため、グローバルナビゲーションは畳んでおく
+        this.prevNavigationOpenState = this.navigationState.openState;
+        this.navigationState.openState = false;
+    }
+
+    public beforeUnmount(): void {
+        this.navigationState.openState = this.prevNavigationOpenState;
     }
 
     public togglePanel(): void {

@@ -1,61 +1,75 @@
 <template>
-    <v-main>
-        <TitleBar title="視聴">
-            <template v-slot:menu>
-                <DataBroadcastingMenu v-if="isFeatureEnabledDataBroadcasting === true" v-on:changed="onDataBroadcastingEnabledChanged"></DataBroadcastingMenu>
-            </template>
-        </TitleBar>
-        <transition name="page">
-            <div class="watch-layout mx-auto">
-                <div class="watch-main">
-                    <VideoContainer
+    <WatchLayout v-bind:panelTitle="displayInfo === null ? '' : displayInfo.channelName">
+        <template v-slot:topBar>
+            <WatchTopBar
+                v-bind:channelName="displayInfo === null ? '' : displayInfo.channelName"
+                v-bind:programName="displayInfo === null ? '' : displayInfo.name"
+                v-bind:timeText="displayInfo === null ? '' : displayInfo.shortTime"
+            >
+                <template v-slot:menu>
+                    <DataBroadcastingMenu v-if="isFeatureEnabledDataBroadcasting === true" v-on:changed="onDataBroadcastingEnabledChanged"></DataBroadcastingMenu>
+                </template>
+            </WatchTopBar>
+        </template>
+        <VideoContainer
+            v-if="videoParam !== null"
+            ref="videoContainer"
+            v-bind:videoParam="videoParam"
+            v-on:canplay="onVideoCanplay"
+            v-on:dataBroadcastingSeek="onDataBroadcastingSeek"
+            v-on:jikkyoComment="onJikkyoComment"
+        ></VideoContainer>
+        <DataBroadcastingRemote
+            v-if="isEnabledDataBroadcasting === true"
+            v-bind:isUsingNumericKey="isDataBroadcastingUsingNumericKey"
+            v-bind:isLoading="isDataBroadcastingLoading"
+            v-on:key="onDataBroadcastingKey"
+        ></DataBroadcastingRemote>
+        <template v-slot:panel>
+            <WatchSidePanel v-bind:tabs="panelTabs">
+                <template v-slot:program>
+                    <WatchPanelProgram v-bind:info="displayInfo"></WatchPanelProgram>
+                </template>
+                <template v-slot:nextup>
+                    <NextUpPanel
                         v-if="videoParam !== null"
-                        ref="videoContainer"
-                        v-bind:videoParam="videoParam"
-                        v-on:canplay="onVideoCanplay"
-                        v-on:dataBroadcastingSeek="onDataBroadcastingSeek"
-                    ></VideoContainer>
-                    <DataBroadcastingRemote
-                        v-if="isEnabledDataBroadcasting === true"
-                        v-bind:isUsingNumericKey="isDataBroadcastingUsingNumericKey"
-                        v-bind:isLoading="isDataBroadcastingLoading"
-                        v-on:key="onDataBroadcastingKey"
-                    ></DataBroadcastingRemote>
-                    <WatchOnRecordedInfoCard
-                        v-if="videoParam !== null"
-                        v-bind:recordedId="videoParam.recordedId"
-                        v-bind:videoFileId="videoParam.videoFileId"
-                    ></WatchOnRecordedInfoCard>
-                </div>
-                <NextUpPanel
-                    v-if="videoParam !== null && isEnabledNextUpPanel === true"
-                    :recordedId="videoParam.recordedId"
-                    :isHalfWidth="false"
-                    :streamingType="videoParam.type === 'RecordedStreaming' ? videoParam.streamingType : 'hls'"
-                    :mode="videoParam.mode"
-                ></NextUpPanel>
-            </div>
-        </transition>
-    </v-main>
+                        :recordedId="videoParam.recordedId"
+                        :isHalfWidth="false"
+                        :streamingType="videoParam.type === 'RecordedStreaming' ? videoParam.streamingType : 'hls'"
+                        :mode="videoParam.mode"
+                    ></NextUpPanel>
+                </template>
+                <template v-slot:comment>
+                    <WatchPanelComments v-bind:comments="jikkyoComments"></WatchPanelComments>
+                </template>
+            </WatchSidePanel>
+        </template>
+    </WatchLayout>
 </template>
 
 <script lang="ts">
 import DataBroadcastingMenu from '@/components/dataBroadcasting/DataBroadcastingMenu.vue';
 import DataBroadcastingRemote from '@/components/dataBroadcasting/DataBroadcastingRemote.vue';
-import WatchOnRecordedInfoCard from '@/components/recorded/watch/WatchRecordedInfoCard.vue';
 import NextUpPanel from '@/components/recorded/watch/NextUpPanel.vue';
-import TitleBar from '@/components/titleBar/TitleBar.vue';
+import WatchLayout from '@/components/watch/WatchLayout.vue';
+import WatchPanelComments from '@/components/watch/WatchPanelComments.vue';
+import WatchPanelProgram from '@/components/watch/WatchPanelProgram.vue';
+import WatchSidePanel from '@/components/watch/WatchSidePanel.vue';
+import WatchTopBar from '@/components/watch/WatchTopBar.vue';
 import VideoContainer from '@/components/video/VideoContainer.vue';
 import * as VideoParam from '@/components/video/ViedoParam';
 import IRecordedApiModel from '@/model/api/recorded/IRecordedApiModel';
 import IChannelModel from '@/model/channels/IChannelModel';
 import container from '@/model/ModelContainer';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
-import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
+import { ISettingStorageModel, WatchSidePanelTab } from '@/model/storage/setting/ISettingStorageModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
+import IWatchRecordedInfoState, { DsiplayWatchInfo } from '@/model/state/recorded/watch/IWatchRecordedInfoState';
+import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import DataBroadcastingManager from '@/util/DataBroadcastingManager';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
+import { JikkyoComment } from '@/util/JikkyoCommentClient';
 import { JikkyoKakologParam, resolveJikkyoKakologParam } from '@/util/JikkyoKakologParam';
 import Util from '@/util/Util';
 import { AribKeyCode } from 'web-bml';
@@ -65,9 +79,12 @@ import * as apid from '../../../api';
 
 @Component({
     components: {
-        TitleBar,
+        WatchLayout,
+        WatchTopBar,
+        WatchSidePanel,
+        WatchPanelProgram,
+        WatchPanelComments,
         VideoContainer,
-        WatchOnRecordedInfoCard,
         NextUpPanel,
         DataBroadcastingRemote,
         DataBroadcastingMenu,
@@ -75,6 +92,61 @@ import * as apid from '../../../api';
 })
 class WatchRecordedStreaming extends Vue {
     public videoParam: VideoParam.RecordedStreamingParam | VideoParam.RecordedHLSParam | null = null;
+
+    /**
+     * 上部バー・右パネルに出す録画番組の情報
+     */
+    public displayInfo: DsiplayWatchInfo | null = null;
+
+    /**
+     * 右パネルに並べる実況コメント (古いものから順に保持する)
+     */
+    public jikkyoComments: JikkyoComment[] = [];
+
+    // 保持するコメントの上限 (超えた分は古いものから捨てる)
+    private static readonly JIKKYO_COMMENT_LIMIT = 500;
+
+    private infoState: IWatchRecordedInfoState = container.get<IWatchRecordedInfoState>('IWatchRecordedInfoState');
+    private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+
+    /**
+     * 右パネルのタブ構成 (Next Up パネルは機能フラグで出し分ける)
+     */
+    get panelTabs(): WatchSidePanelTab[] {
+        return this.isEnabledNextUpPanel === true ? ['program', 'nextup', 'comment'] : ['program', 'comment'];
+    }
+
+    /**
+     * 録画番組の情報を取得し直す
+     */
+    private async updateProgramInfo(): Promise<void> {
+        if (this.videoParam === null) {
+            return;
+        }
+
+        await this.infoState.update(this.videoParam.recordedId).catch(err => {
+            this.snackbarState.open({
+                color: 'error',
+                text: '番組情報取得に失敗',
+            });
+            console.error(err);
+        });
+
+        this.displayInfo = this.infoState.getInfo();
+    }
+
+    /**
+     * 映像に流れた実況コメントを右パネル用に貯める
+     * @param comment: JikkyoComment
+     */
+    public onJikkyoComment(comment: JikkyoComment): void {
+        this.jikkyoComments.push(comment);
+
+        if (this.jikkyoComments.length > WatchRecordedStreaming.JIKKYO_COMMENT_LIMIT) {
+            this.jikkyoComments.splice(0, this.jikkyoComments.length - WatchRecordedStreaming.JIKKYO_COMMENT_LIMIT);
+        }
+    }
+
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private recordedApiModel: IRecordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
     private channelModel: IChannelModel = container.get<IChannelModel>('IChannelModel');
@@ -185,6 +257,11 @@ class WatchRecordedStreaming extends Vue {
         // 動画が作り直されるため、先にデータ放送を破棄しておく (再セットアップは新しい video の canplay を待つ)
         void this.teardownDataBroadcasting();
 
+        // 番組情報とコメントは動画の切り替えのたびに取り直す
+        this.infoState.clear();
+        this.displayInfo = null;
+        this.jikkyoComments = [];
+
         // 視聴パラメータセット
         const videoFileId = parseInt(Util.getRouteString(this.$route.params.id) ?? '', 10);
         const recordedId = typeof this.$route.query.recordedId !== 'string' ? null : parseInt(this.$route.query.recordedId, 10);
@@ -216,6 +293,9 @@ class WatchRecordedStreaming extends Vue {
                 }
             }
 
+            // 上部バー・右パネル用の番組情報を取得する
+            await this.updateProgramInfo();
+
             // データ取得完了を通知
             await this.scrollState.emitDoneGetData();
         });
@@ -241,19 +321,3 @@ class WatchRecordedStreaming extends Vue {
 
 export default toNative(WatchRecordedStreaming);
 </script>
-
-<style lang="sass" scoped>
-.watch-layout
-    display: flex
-    gap: 16px
-    align-items: flex-start
-    max-width: 1600px
-
-.watch-main
-    flex: 1
-    min-width: 0
-
-@media (max-width: 1200px)
-    .watch-layout
-        flex-direction: column
-</style>

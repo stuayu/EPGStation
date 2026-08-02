@@ -54,6 +54,8 @@ class WatchSidePanel extends Vue {
                 return '番組情報';
             case 'channel':
                 return 'チャンネル';
+            case 'nextup':
+                return '次の話';
             case 'comment':
                 return 'コメント';
         }
@@ -65,6 +67,8 @@ class WatchSidePanel extends Vue {
                 return 'mdi-information-outline';
             case 'channel':
                 return 'mdi-television-guide';
+            case 'nextup':
+                return 'mdi-playlist-play';
             case 'comment':
                 return 'mdi-comment-text-outline';
         }

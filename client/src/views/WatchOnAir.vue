@@ -13,7 +13,13 @@
                 </template>
             </WatchTopBar>
         </template>
-        <VideoContainer v-if="videoParam !== null" ref="videoContainer" v-bind:videoParam="videoParam" v-on:canplay="onVideoCanplay"></VideoContainer>
+        <VideoContainer
+            v-if="videoParam !== null"
+            ref="videoContainer"
+            v-bind:videoParam="videoParam"
+            v-on:canplay="onVideoCanplay"
+            v-on:jikkyoComment="onJikkyoComment"
+        ></VideoContainer>
         <DataBroadcastingRemote
             v-if="isEnabledDataBroadcasting === true"
             v-bind:isUsingNumericKey="isDataBroadcastingUsingNumericKey"
@@ -36,6 +42,9 @@
                 <template v-slot:channel>
                     <WatchPanelChannels v-bind:currentChannelId="watchParam === null ? null : watchParam.channel" v-on:select="moveChannel"></WatchPanelChannels>
                 </template>
+                <template v-slot:comment>
+                    <WatchPanelComments v-bind:comments="jikkyoComments"></WatchPanelComments>
+                </template>
             </WatchSidePanel>
         </template>
     </WatchLayout>
@@ -46,6 +55,7 @@ import DataBroadcastingMenu from '@/components/dataBroadcasting/DataBroadcasting
 import DataBroadcastingRemote from '@/components/dataBroadcasting/DataBroadcastingRemote.vue';
 import WatchLayout from '@/components/watch/WatchLayout.vue';
 import WatchPanelChannels from '@/components/watch/WatchPanelChannels.vue';
+import WatchPanelComments from '@/components/watch/WatchPanelComments.vue';
 import WatchPanelProgram from '@/components/watch/WatchPanelProgram.vue';
 import WatchSidePanel from '@/components/watch/WatchSidePanel.vue';
 import WatchTopBar from '@/components/watch/WatchTopBar.vue';
@@ -62,6 +72,7 @@ import IWatchOnAirInfoState, { DsiplayWatchInfo } from '@/model/state/onair/watc
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DataBroadcastingManager from '@/util/DataBroadcastingManager';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
+import { JikkyoComment } from '@/util/JikkyoCommentClient';
 import JikkyoUtil from '@/util/JikkyoUtil';
 import Util from '@/util/Util';
 import { AribKeyCode } from 'web-bml';
@@ -83,6 +94,7 @@ interface WatchParam {
         WatchSidePanel,
         WatchPanelProgram,
         WatchPanelChannels,
+        WatchPanelComments,
         VideoContainer,
         DataBroadcastingRemote,
         DataBroadcastingMenu,
@@ -103,7 +115,15 @@ class WatchOnAir extends Vue {
      */
     public displayInfo: DsiplayWatchInfo | null = null;
 
-    public panelTabs: WatchSidePanelTab[] = ['program', 'channel'];
+    public panelTabs: WatchSidePanelTab[] = ['program', 'channel', 'comment'];
+
+    /**
+     * 右パネルに並べる実況コメント (古いものから順に保持する)
+     */
+    public jikkyoComments: JikkyoComment[] = [];
+
+    // 保持するコメントの上限 (超えた分は古いものから捨てる)
+    private static readonly JIKKYO_COMMENT_LIMIT = 500;
 
     private infoState: IWatchOnAirInfoState = container.get<IWatchOnAirInfoState>('IWatchOnAirInfoState');
     private onAirState: IOnAirState = container.get<IOnAirState>('IOnAirState');
@@ -240,6 +260,18 @@ class WatchOnAir extends Vue {
         if (this.infoUpdateTimer !== null) {
             clearTimeout(this.infoUpdateTimer);
             this.infoUpdateTimer = null;
+        }
+    }
+
+    /**
+     * 映像に流れた実況コメントを右パネル用に貯める
+     * @param comment: JikkyoComment
+     */
+    public onJikkyoComment(comment: JikkyoComment): void {
+        this.jikkyoComments.push(comment);
+
+        if (this.jikkyoComments.length > WatchOnAir.JIKKYO_COMMENT_LIMIT) {
+            this.jikkyoComments.splice(0, this.jikkyoComments.length - WatchOnAir.JIKKYO_COMMENT_LIMIT);
         }
     }
 

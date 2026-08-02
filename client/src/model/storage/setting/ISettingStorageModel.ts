@@ -6,7 +6,7 @@ export type GuideViewMode = 'sequential' | 'minimum' | 'all';
 export type ChannelGroupingType = 'region' | 'affiliation';
 
 // 視聴画面の右パネルのタブ
-export type WatchSidePanelTab = 'program' | 'channel' | 'comment';
+export type WatchSidePanelTab = 'program' | 'channel' | 'nextup' | 'comment';
 
 export interface ISettingValue {
     isEnablePWA: boolean;

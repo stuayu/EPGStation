@@ -6,6 +6,9 @@
             <div class="text-subtitle-1 font-weight-bold name">{{ info.name }}</div>
             <div v-if="info.description" class="text-body-2 description">{{ info.description }}</div>
             <div v-if="info.extended" class="text-body-2 extended">{{ info.extended }}</div>
+            <div class="actions">
+                <slot name="actions"></slot>
+            </div>
         </template>
         <div v-else class="text-body-2 empty">番組情報がありません</div>
     </div>
@@ -54,6 +57,9 @@ export default toNative(WatchPanelProgram);
         color: rgba(255, 255, 255, 0.75)
         white-space: pre-wrap
         word-break: break-all
+
+    .actions
+        margin-top: 12px
 
     .empty
         color: rgba(255, 255, 255, 0.5)
