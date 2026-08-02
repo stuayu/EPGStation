@@ -1250,6 +1250,56 @@ class ReservationManageModel implements IReservationManageModel {
     }
 
     /**
+     * EIT[p/f] (現在放送中 / 直後に始まる番組) の更新を予約へ即時反映する。
+     *
+     * 予約の再スケジュールは通常 epgUpdateIntervalTime 周期の updateAll でしか行われないため、
+     * 前番組の延長・短縮で開始時刻が変わっても最大でその間隔だけ反映が遅れ、録画開始に間に合わないことがある。
+     * ここでは対象の放送局の直近の予約だけを更新するので、10 秒周期で呼ばれても負荷は小さい
+     * @param channelIds: apid.ChannelId[] EIT[p/f] の更新があった放送局
+     */
+    public async updateOnAirReserves(channelIds: apid.ChannelId[]): Promise<void> {
+        if (channelIds.length === 0) {
+            return;
+        }
+
+        const targetChannelIds = new Set(channelIds);
+        const now = new Date().getTime();
+
+        // 録画中 / 直後に始まる予約を拾う (EIT[p/f] の following 相当より少し広く取る)
+        const reserves = await this.reserveDB
+            .findTimeRanges({
+                times: [
+                    {
+                        startAt: now,
+                        endAt: now + ReservationManageModel.ON_AIR_RESERVE_WINDOW,
+                    },
+                ],
+                hasSkip: false,
+                hasConflict: true,
+                hasOverlap: false,
+            })
+            .catch(err => {
+                this.log.system.error('get on air reserves error');
+                this.log.system.error(err);
+
+                return [] as Reserve[];
+            });
+
+        for (const reserve of reserves) {
+            // 時刻指定予約は番組情報を持たないため追従の対象外
+            if (reserve.programId === null || targetChannelIds.has(reserve.channelId) === false) {
+                continue;
+            }
+
+            // 変更が無ければ update() 内で早期 return されるためログは抑制する
+            await this.update(reserve.id, true).catch(err => {
+                this.log.system.error(`update on air reservation error: ${reserve.id}`);
+                this.log.system.error(err);
+            });
+        }
+    }
+
+    /**
      * 予約キャンセル
      * 手動予約の場合は削除
      * ルール予約の場合は除外
@@ -1779,6 +1829,10 @@ namespace ReservationManageModel {
     export const REMOVE_SKIP_RESERVE_PRIORITY = 2;
     export const REMOVE_OVERLAP_RESERVE_PRIORITY = 2;
     export const EDIT_RESERVE_PRIORITY = 2;
+
+    // EIT[p/f] の更新で追従させる予約の範囲 (現在時刻からの先読み時間)。
+    // OnAirProgramDetector の following 判定 (10 分) より少し広く取る
+    export const ON_AIR_RESERVE_WINDOW = 15 * 60 * 1000;
 }
 
 export default ReservationManageModel;

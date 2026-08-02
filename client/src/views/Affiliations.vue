@@ -53,7 +53,7 @@ import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import IChannelModel, { Channel } from '@/model/channels/IChannelModel';
 import INavigationState from '@/model/state/navigation/INavigationState';
-import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
+import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 
 /**
@@ -73,7 +73,6 @@ class AffiliationsView extends Vue {
     private channelModel: IChannelModel = container.get<IChannelModel>('IChannelModel');
     private settingStorageModel: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     private navigationState: INavigationState = container.get<INavigationState>('INavigationState');
-    private settingValue: ISettingValue = this.settingStorageModel.getSavedValue();
 
     public groups: AffiliationGroup[] = [];
     public isAffiliationMode: boolean = (this.settingStorageModel.getSavedValue().channelGroupingType ?? 'region') === 'affiliation';
@@ -116,7 +115,10 @@ class AffiliationsView extends Vue {
      * サイドメニュー・放映中のタブを地域別 / 系列別で切り替える
      */
     public onChangeGroupingType(): void {
-        this.settingValue.channelGroupingType = this.isAffiliationMode === true ? 'affiliation' : 'region';
+        // save() が保存するのは tmp なので、getSavedValue() の戻り値 (localStorage から作った別オブジェクト) を
+        // 書き換えても保存されない。保存値を tmp へ読み直してから 1 項目だけ書き換える
+        this.settingStorageModel.resetTmpValue();
+        this.settingStorageModel.tmp.channelGroupingType = this.isAffiliationMode === true ? 'affiliation' : 'region';
         this.settingStorageModel.save();
         // サイドメニューの番組表リンクを新しい軸で作り直す
         this.navigationState.updateItems(this.$route);
