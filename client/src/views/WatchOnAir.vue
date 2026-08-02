@@ -20,10 +20,21 @@
             v-bind:isLoading="isDataBroadcastingLoading"
             v-on:key="onDataBroadcastingKey"
         ></DataBroadcastingRemote>
+        <div class="channel-switch">
+            <v-btn icon variant="text" title="前のチャンネル" v-on:click="switchChannel(-1)">
+                <v-icon>mdi-chevron-up</v-icon>
+            </v-btn>
+            <v-btn icon variant="text" title="次のチャンネル" v-on:click="switchChannel(1)">
+                <v-icon>mdi-chevron-down</v-icon>
+            </v-btn>
+        </div>
         <template v-slot:panel>
             <WatchSidePanel v-bind:tabs="panelTabs">
                 <template v-slot:program>
                     <WatchPanelProgram v-bind:info="displayInfo"></WatchPanelProgram>
+                </template>
+                <template v-slot:channel>
+                    <WatchPanelChannels v-bind:currentChannelId="watchParam === null ? null : watchParam.channel" v-on:select="moveChannel"></WatchPanelChannels>
                 </template>
             </WatchSidePanel>
         </template>
@@ -34,6 +45,7 @@
 import DataBroadcastingMenu from '@/components/dataBroadcasting/DataBroadcastingMenu.vue';
 import DataBroadcastingRemote from '@/components/dataBroadcasting/DataBroadcastingRemote.vue';
 import WatchLayout from '@/components/watch/WatchLayout.vue';
+import WatchPanelChannels from '@/components/watch/WatchPanelChannels.vue';
 import WatchPanelProgram from '@/components/watch/WatchPanelProgram.vue';
 import WatchSidePanel from '@/components/watch/WatchSidePanel.vue';
 import WatchTopBar from '@/components/watch/WatchTopBar.vue';
@@ -45,6 +57,7 @@ import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import { ISettingStorageModel, WatchSidePanelTab } from '@/model/storage/setting/ISettingStorageModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
+import IOnAirState from '@/model/state/onair/IOnAirState';
 import IWatchOnAirInfoState, { DsiplayWatchInfo } from '@/model/state/onair/watch/IWatchOnAirInfoState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DataBroadcastingManager from '@/util/DataBroadcastingManager';
@@ -69,6 +82,7 @@ interface WatchParam {
         WatchTopBar,
         WatchSidePanel,
         WatchPanelProgram,
+        WatchPanelChannels,
         VideoContainer,
         DataBroadcastingRemote,
         DataBroadcastingMenu,
@@ -89,9 +103,10 @@ class WatchOnAir extends Vue {
      */
     public displayInfo: DsiplayWatchInfo | null = null;
 
-    public panelTabs: WatchSidePanelTab[] = ['program'];
+    public panelTabs: WatchSidePanelTab[] = ['program', 'channel'];
 
     private infoState: IWatchOnAirInfoState = container.get<IWatchOnAirInfoState>('IWatchOnAirInfoState');
+    private onAirState: IOnAirState = container.get<IOnAirState>('IOnAirState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private infoUpdateTimer: ReturnType<typeof setTimeout> | null = null;
@@ -229,6 +244,55 @@ class WatchOnAir extends Vue {
     }
 
     /**
+     * 視聴する放送局を切り替える (配信種別・エンコード設定は今の視聴と同じものを引き継ぐ)
+     * @param channelId: apid.ChannelId
+     */
+    public async moveChannel(channelId: apid.ChannelId): Promise<void> {
+        if (this.watchParam === null || this.watchParam.channel === channelId) {
+            return;
+        }
+
+        await Util.move(this.$router, {
+            path: '/onair/watch',
+            query: {
+                type: this.watchParam.type,
+                channel: channelId.toString(10),
+                mode: this.watchParam.mode.toString(10),
+            },
+        }).catch(err => {
+            console.error(err);
+            this.snackbarState.open({
+                color: 'error',
+                text: 'チャンネルの切り替えに失敗',
+            });
+        });
+    }
+
+    /**
+     * 放送中の放送局一覧を基準に、前後のチャンネルへ移動する
+     * @param direction: number -1: 前, 1: 次
+     */
+    public async switchChannel(direction: number): Promise<void> {
+        if (this.watchParam === null) {
+            return;
+        }
+
+        const schedules = this.onAirState.getSchedules();
+        if (schedules.length === 0) {
+            return;
+        }
+
+        const currentIndex = schedules.findIndex(s => {
+            return s.display.channelId === this.watchParam?.channel;
+        });
+
+        // 一覧に無い放送局を視聴している場合は先頭から始める
+        const nextIndex = currentIndex === -1 ? 0 : (currentIndex + direction + schedules.length) % schedules.length;
+
+        await this.moveChannel(schedules[nextIndex].display.channelId);
+    }
+
+    /**
      * 視聴中番組の情報を取得し直し、番組終了時刻に合わせて次の更新を予約する
      */
     private async updateProgramInfo(): Promise<void> {
@@ -340,3 +404,25 @@ class WatchOnAir extends Vue {
 
 export default toNative(WatchOnAir);
 </script>
+
+<style lang="sass" scoped>
+// 映像の右端に重ねるチャンネル切り替えボタン
+.channel-switch
+    position: absolute
+    top: 50%
+    right: 8px
+    z-index: 2
+    display: flex
+    flex-direction: column
+    gap: 8px
+    transform: translateY(-50%)
+    opacity: 0.6
+    transition: opacity 0.2s
+
+    &:hover
+        opacity: 1
+
+    .v-btn
+        background: rgba(0, 0, 0, 0.5)
+        color: #fff
+</style>

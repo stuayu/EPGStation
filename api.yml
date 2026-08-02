@@ -4591,6 +4591,14 @@ components:
             schema:
                 $ref: '#/components/schemas/UnixtimeMS'
 
+        IncludeNextProgram:
+            description: 次の番組も含めて取得するか
+            in: query
+            name: includeNextProgram
+            required: false
+            schema:
+                type: boolean
+
         IsHalfWidth:
             description: 半角文字で取得するか
             in: query

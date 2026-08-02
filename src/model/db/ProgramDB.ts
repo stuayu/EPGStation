@@ -39,6 +39,9 @@ interface KeywordOption {
 
 @injectable()
 export default class ProgramDB implements IProgramDB {
+    // 次の番組を探すときに放送中の番組から先読みする時間 (ms)
+    private static readonly NEXT_PROGRAM_SEARCH_TIME = 4 * 60 * 60 * 1000;
+
     private log: ILogger;
     private config: IConfigFile;
     private op: IDBOperator;
@@ -1126,10 +1129,15 @@ export default class ProgramDB implements IProgramDB {
         const connection = await this.op.getConnection();
         const repository = connection.getRepository(Program);
 
+        // 次の番組も必要な場合は、放送中の番組の後ろに続く番組も拾えるよう startAt の上限を広げる
+        // (放送局ごとに現在番組の終了時刻が違うため、時間範囲で取ってから呼び出し側で必要な数へ切り詰める)
+        const startAtLimit = option.includeNextProgram === true ? time + ProgramDB.NEXT_PROGRAM_SEARCH_TIME : time;
+
+
         return await this.promieRetry.run(() => {
             return repository.find({
                 where: {
-                    startAt: LessThanOrEqual(time),
+                    startAt: LessThanOrEqual(startAtLimit),
                     endAt: MoreThanOrEqual(time),
                 },
                 order: {

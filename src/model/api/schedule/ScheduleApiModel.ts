@@ -295,9 +295,12 @@ export default class ScheduleApiModel implements IScheduleApiModel {
         const channels = await this.channelDB.findAll(true);
         const programs = await this.programDB.findBroadcasting(option);
 
+        // 次の番組も返す場合は放送中 + 次の 2 件までに切り詰める
+        const programLimit = option.includeNextProgram === true ? 2 : 1;
+
         return this.createSchedule(channels, programs, option.isHalfWidth, true).map(s => {
-            if (s.programs.length > 1) {
-                s.programs = [s.programs[0]];
+            if (s.programs.length > programLimit) {
+                s.programs = s.programs.slice(0, programLimit);
             }
 
             return s;
