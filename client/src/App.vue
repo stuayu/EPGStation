@@ -92,3 +92,27 @@ html.fix-address-bar, html.fix-address-bar2
     color: white !important
     background-color: #4285f4 !important
 </style>
+
+<style lang="sass">
+/**
+ * データ放送 (BML) ブラウザのコンテナ。
+ * DataBroadcastingManager (client/src/util/DataBroadcastingManager.ts) が DPlayer の
+ * dplayer-video-wrap の中に動的に挿入する (映像より下のレイヤーに置き、表示状態になると
+ * 映像の DOM 要素をこの中の video plane へ物理的に移動する)。
+ * データ放送は 960x540 か 720x480 の固定サイズなので、transform: scale() でレスポンシブにする
+ * (KonomiTV の .dplayer-bml-browser 定義を踏襲)
+ */
+.dplayer-video-wrap
+    .dplayer-bml-browser
+        display: block
+        position: absolute
+        width: var(--bml-browser-width, 960px)
+        height: var(--bml-browser-height, 540px)
+        // 背景色は指定しない。BML 文書側が背景を持つため、ここで塗ると
+        // 映像に重ねて一部だけ表示するコンテンツで透過すべき領域が潰れる
+        color: #000
+        overflow: hidden
+        transform-origin: center
+        transform: scale(var(--bml-browser-scale-factor-width, 1), var(--bml-browser-scale-factor-height, 1))
+        aspect-ratio: 16 / 9
+</style>

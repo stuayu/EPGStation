@@ -747,6 +747,13 @@ stream:
 # 秘密情報暗号化鍵は data/key/secret.key へ自動生成・保存されます (config.yml での指定は廃止)。
 # 旧バージョンで secretKey を設定していた場合は、初回起動時にその値が鍵ファイルへ移行されます。
 
+# データ放送 (BML) 配信 (featureFlags.dataBroadcasting: true の場合のみ有効)。
+# クライアントは WebSocket (/api/dataBroadcasting/ws) でカルーセルのモジュール等を受け取ります。
+# dataBroadcasting:
+#     # WebSocket 経由のデータ放送ストリーム同時本数上限。既定 4。
+#     # 上限を超えると最も古いストリームを閉じて新しい要求を受け付けます
+#     maxStreams: 4
+
 # 機能フラグ。**未指定の項目は有効**として扱われます。
 # 止めたい機能だけ false を書いてください (featureFlags 自体を省略すると全機能が有効)。
 # featureFlags:
@@ -762,6 +769,7 @@ stream:
 #     externalFileImport: true
 #     advancedSearch: true
 #     updateNotification: true
+#     dataBroadcasting: true
 
 # 録画開始のリトライ方針。
 # 前の番組が「放送時刻未定」(ARIB の duration = 0xFFFFFF) で延長していると、
