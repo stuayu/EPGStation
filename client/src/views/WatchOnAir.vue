@@ -1,38 +1,52 @@
 <template>
-    <v-main>
-        <TitleBar title="視聴">
-            <template v-slot:menu>
-                <DataBroadcastingMenu v-if="isFeatureEnabledDataBroadcasting === true" v-on:changed="onDataBroadcastingEnabledChanged"></DataBroadcastingMenu>
-            </template>
-        </TitleBar>
-        <transition name="page">
-            <div class="video-container-wrap mx-auto">
-                <VideoContainer v-if="videoParam !== null" ref="videoContainer" v-bind:videoParam="videoParam" v-on:canplay="onVideoCanplay"></VideoContainer>
-                <DataBroadcastingRemote
-                    v-if="isEnabledDataBroadcasting === true"
-                    v-bind:isUsingNumericKey="isDataBroadcastingUsingNumericKey"
-                    v-bind:isLoading="isDataBroadcastingLoading"
-                    v-on:key="onDataBroadcastingKey"
-                ></DataBroadcastingRemote>
-                <WatchOnAirInfoCard v-if="watchParam !== null" v-bind:channel="watchParam.channel" v-bind:mode="watchParam.mode"></WatchOnAirInfoCard>
-                <div style="visibility: hidden">dummy</div>
-            </div>
-        </transition>
-    </v-main>
+    <WatchLayout v-bind:panelTitle="channelName">
+        <template v-slot:topBar>
+            <WatchTopBar
+                v-bind:logoSrc="logoSrc"
+                v-bind:channelName="channelName"
+                v-bind:programName="displayInfo === null ? '' : displayInfo.name"
+                v-bind:timeText="displayInfo === null ? '' : displayInfo.shortTime"
+                v-bind:showClock="true"
+            >
+                <template v-slot:menu>
+                    <DataBroadcastingMenu v-if="isFeatureEnabledDataBroadcasting === true" v-on:changed="onDataBroadcastingEnabledChanged"></DataBroadcastingMenu>
+                </template>
+            </WatchTopBar>
+        </template>
+        <VideoContainer v-if="videoParam !== null" ref="videoContainer" v-bind:videoParam="videoParam" v-on:canplay="onVideoCanplay"></VideoContainer>
+        <DataBroadcastingRemote
+            v-if="isEnabledDataBroadcasting === true"
+            v-bind:isUsingNumericKey="isDataBroadcastingUsingNumericKey"
+            v-bind:isLoading="isDataBroadcastingLoading"
+            v-on:key="onDataBroadcastingKey"
+        ></DataBroadcastingRemote>
+        <template v-slot:panel>
+            <WatchSidePanel v-bind:tabs="panelTabs">
+                <template v-slot:program>
+                    <WatchPanelProgram v-bind:info="displayInfo"></WatchPanelProgram>
+                </template>
+            </WatchSidePanel>
+        </template>
+    </WatchLayout>
 </template>
 
 <script lang="ts">
 import DataBroadcastingMenu from '@/components/dataBroadcasting/DataBroadcastingMenu.vue';
 import DataBroadcastingRemote from '@/components/dataBroadcasting/DataBroadcastingRemote.vue';
-import WatchOnAirInfoCard from '@/components/onair/watch/WatchOnAirInfoCard.vue';
-import TitleBar from '@/components/titleBar/TitleBar.vue';
+import WatchLayout from '@/components/watch/WatchLayout.vue';
+import WatchPanelProgram from '@/components/watch/WatchPanelProgram.vue';
+import WatchSidePanel from '@/components/watch/WatchSidePanel.vue';
+import WatchTopBar from '@/components/watch/WatchTopBar.vue';
 import VideoContainer from '@/components/video/VideoContainer.vue';
 import { BaseVideoParam, LiveHLSParam, LiveMpegTsVideoParam, NormalVideoParam } from '@/components/video/ViedoParam';
 import container from '@/model/ModelContainer';
 import IChannelModel from '@/model/channels/IChannelModel';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
-import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
+import ISocketIOModel from '@/model/socketio/ISocketIOModel';
+import { ISettingStorageModel, WatchSidePanelTab } from '@/model/storage/setting/ISettingStorageModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
+import IWatchOnAirInfoState, { DsiplayWatchInfo } from '@/model/state/onair/watch/IWatchOnAirInfoState';
+import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DataBroadcastingManager from '@/util/DataBroadcastingManager';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
 import JikkyoUtil from '@/util/JikkyoUtil';
@@ -51,9 +65,11 @@ interface WatchParam {
 
 @Component({
     components: {
-        TitleBar,
+        WatchLayout,
+        WatchTopBar,
+        WatchSidePanel,
+        WatchPanelProgram,
         VideoContainer,
-        WatchOnAirInfoCard,
         DataBroadcastingRemote,
         DataBroadcastingMenu,
     },
@@ -67,6 +83,53 @@ class WatchOnAir extends Vue {
     private settingStorageModel: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
 
     public watchParam: WatchParam | null = null;
+
+    /**
+     * 上部バー・右パネルに出す視聴中番組の情報
+     */
+    public displayInfo: DsiplayWatchInfo | null = null;
+
+    public panelTabs: WatchSidePanelTab[] = ['program'];
+
+    private infoState: IWatchOnAirInfoState = container.get<IWatchOnAirInfoState>('IWatchOnAirInfoState');
+    private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
+    private infoUpdateTimer: ReturnType<typeof setTimeout> | null = null;
+    private onUpdateStatusCallback = (async (): Promise<void> => {
+        await this.updateProgramInfo();
+    }).bind(this);
+    // EIT[p/f] が流れてきたら、視聴中の放送局のときだけ番組情報を取り直す
+    private onUpdateOnAirProgramCallback = ((payload: { channelIds: number[] }): void => {
+        if (Array.isArray(payload?.channelIds) === false || this.watchParam === null) {
+            return;
+        }
+        if (payload.channelIds.includes(this.watchParam.channel) === false) {
+            return;
+        }
+        void this.updateProgramInfo();
+    }).bind(this);
+
+    /**
+     * 視聴中の放送局名
+     */
+    get channelName(): string {
+        if (this.displayInfo !== null) {
+            return this.displayInfo.channelName;
+        }
+
+        if (this.watchParam === null) {
+            return '';
+        }
+
+        return this.channelModel.findChannel(this.watchParam.channel, true)?.name ?? '';
+    }
+
+    /**
+     * 視聴中の放送局のロゴ URL (ロゴを持たない放送局では img の読み込みに失敗するため、表示側で握りつぶす)
+     */
+    get logoSrc(): string | null {
+        return this.watchParam === null ? null : `./api/channels/${this.watchParam.channel.toString(10)}/logo`;
+    }
 
     // データ放送 (BML) 機能本体。Vue のリアクティブ監視に含めると内部の JS-Interpreter が壊れるため、
     // プレーンなフィールド (非 reactive) として保持する
@@ -146,8 +209,49 @@ class WatchOnAir extends Vue {
         this.dataBroadcastingManager?.sendKey(keyCode);
     }
 
+    public created(): void {
+        // socket.io イベント
+        this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.onUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
+    }
+
     public beforeUnmount(): void {
         void this.teardownDataBroadcasting();
+
+        // socket.io イベント
+        this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.offUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
+
+        if (this.infoUpdateTimer !== null) {
+            clearTimeout(this.infoUpdateTimer);
+            this.infoUpdateTimer = null;
+        }
+    }
+
+    /**
+     * 視聴中番組の情報を取得し直し、番組終了時刻に合わせて次の更新を予約する
+     */
+    private async updateProgramInfo(): Promise<void> {
+        if (this.watchParam === null) {
+            return;
+        }
+
+        await this.infoState.update(this.watchParam.channel, this.watchParam.mode).catch(err => {
+            this.snackbarState.open({
+                color: 'error',
+                text: 'ストリーム情報取得に失敗',
+            });
+            console.error(err);
+        });
+
+        this.displayInfo = this.infoState.getInfo();
+
+        if (this.infoUpdateTimer !== null) {
+            clearTimeout(this.infoUpdateTimer);
+        }
+        this.infoUpdateTimer = setTimeout(() => {
+            void this.updateProgramInfo();
+        }, this.infoState.getUpdateTime());
     }
 
     @Watch('$route', { immediate: true, deep: true })
@@ -155,6 +259,10 @@ class WatchOnAir extends Vue {
         // チャンネル切り替え等で video が作り直されるため、先にデータ放送を破棄しておく
         // (再セットアップは新しい video の canplay を待って onVideoCanplay で行う)
         void this.teardownDataBroadcasting();
+
+        // 番組情報はチャンネル切り替えのたびに取り直す
+        this.infoState.clear();
+        this.displayInfo = null;
 
         // 視聴パラメータセット
         this.watchParam =
@@ -193,6 +301,8 @@ class WatchOnAir extends Vue {
                         jikkyoChannelId: jikkyoChannelId,
                     };
                 }
+                // 上部バー・右パネル用の番組情報を取得する
+                await this.updateProgramInfo();
             }
 
             // データ取得完了を通知
@@ -230,8 +340,3 @@ class WatchOnAir extends Vue {
 
 export default toNative(WatchOnAir);
 </script>
-
-<style lang="sass" scoped>
-.video-container-wrap
-    max-width: 1200px
-</style>

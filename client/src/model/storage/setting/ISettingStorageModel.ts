@@ -5,6 +5,9 @@ export type GuideViewMode = 'sequential' | 'minimum' | 'all';
 // 地上波系の放送局のまとめ方 (地域別 / 系列別)
 export type ChannelGroupingType = 'region' | 'affiliation';
 
+// 視聴画面の右パネルのタブ
+export type WatchSidePanelTab = 'program' | 'channel' | 'comment';
+
 export interface ISettingValue {
     isEnablePWA: boolean;
     shouldUseOSColorTheme: boolean;
@@ -56,6 +59,12 @@ export interface ISettingValue {
     useDictionaryEpisodeTitle: boolean;
     // 視聴画面でデータ放送 (BML) レイヤーを表示するか (featureFlags.dataBroadcasting が有効な場合のみ意味を持つ、既定 OFF)
     isEnableDataBroadcasting: boolean;
+    // 視聴画面の右パネルを開いているか (既定 開いている)
+    isOpenWatchSidePanel: boolean;
+    // 視聴画面の右パネルで選択しているタブ
+    watchSidePanelTab: WatchSidePanelTab;
+    // 視聴画面のチャンネル一覧でピン留めしている放送局 (ChannelId の配列)
+    pinnedChannelIds: number[];
 }
 
 export type ISettingStorageModel = IStorageBaseModel<ISettingValue>;
