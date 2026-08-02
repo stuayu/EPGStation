@@ -1133,7 +1133,6 @@ export default class ProgramDB implements IProgramDB {
         // (放送局ごとに現在番組の終了時刻が違うため、時間範囲で取ってから呼び出し側で必要な数へ切り詰める)
         const startAtLimit = option.includeNextProgram === true ? time + ProgramDB.NEXT_PROGRAM_SEARCH_TIME : time;
 
-
         return await this.promieRetry.run(() => {
             return repository.find({
                 where: {

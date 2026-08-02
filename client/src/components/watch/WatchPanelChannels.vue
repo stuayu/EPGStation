@@ -14,6 +14,9 @@
             </v-btn>
         </div>
         <div class="list">
+            <div v-if="selectedTab === pinnedTabId" class="pin-setting">
+                <v-btn size="small" variant="tonal" prepend-icon="mdi-pin-outline" v-on:click="isOpenPinnedChannelsDialog = true">ピン留めを編集</v-btn>
+            </div>
             <div
                 v-for="item in items"
                 :key="item.display.channelId"
@@ -43,12 +46,16 @@
                 </template>
                 <v-progress-linear :model-value="item.display.digestibility" height="2" color="primary" class="progress"></v-progress-linear>
             </div>
-            <div v-if="items.length === 0" class="empty text-body-2">放送中の番組がありません</div>
+            <div v-if="items.length === 0" class="empty text-body-2">
+                {{ selectedTab === pinnedTabId ? 'ピン留めした放送局がありません' : '放送中の番組がありません' }}
+            </div>
         </div>
+        <WatchPinnedChannelsDialog v-model:isOpen="isOpenPinnedChannelsDialog"></WatchPinnedChannelsDialog>
     </div>
 </template>
 
 <script lang="ts">
+import WatchPinnedChannelsDialog from '@/components/watch/WatchPinnedChannelsDialog.vue';
 import container from '@/model/ModelContainer';
 import IOnAirState, { OnAirDisplayData, OnAirTabItem } from '@/model/state/onair/IOnAirState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
@@ -61,7 +68,11 @@ import * as apid from '../../../../api';
  * 右パネルの「チャンネル」タブの中身
  * 放送中の番組を放送波・地域ごとのタブで並べ、クリックでそのチャンネルの視聴へ切り替える
  */
-@Component({})
+@Component({
+    components: {
+        WatchPinnedChannelsDialog,
+    },
+})
 class WatchPanelChannels extends Vue {
     /**
      * 視聴中の放送局 (一覧上で強調表示する)
@@ -70,6 +81,7 @@ class WatchPanelChannels extends Vue {
     public currentChannelId!: apid.ChannelId | null;
 
     public selectedTab: string = WatchPanelChannels.PINNED_TAB_ID;
+    public isOpenPinnedChannelsDialog: boolean = false;
 
     private onAirState: IOnAirState = container.get<IOnAirState>('IOnAirState');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
@@ -78,6 +90,13 @@ class WatchPanelChannels extends Vue {
     private digestibilityTimer: ReturnType<typeof setInterval> | null = null;
 
     private static readonly PINNED_TAB_ID = 'pinned';
+
+    /**
+     * ピン留めタブの識別子 (テンプレートから参照するため getter で公開する)
+     */
+    get pinnedTabId(): string {
+        return WatchPanelChannels.PINNED_TAB_ID;
+    }
 
     get tabs(): OnAirTabItem[] {
         return [
@@ -108,8 +127,12 @@ class WatchPanelChannels extends Vue {
         return this.onAirState.getSchedules(this.selectedTab);
     }
 
+    /**
+     * ピン留めした放送局
+     * 保存値 (getSavedValue) は localStorage の直読みで再描画の対象にならないため、リアクティブな tmp を参照する
+     */
     get pinnedChannelIds(): apid.ChannelId[] {
-        return this.setting.getSavedValue().pinnedChannelIds ?? [];
+        return this.setting.tmp.pinnedChannelIds ?? [];
     }
 
     public async created(): Promise<void> {
@@ -341,6 +364,11 @@ export default toNative(WatchPanelChannels);
         right: 0
         bottom: 0
         border-radius: 0 0 6px 6px
+
+    .pin-setting
+        display: flex
+        justify-content: center
+        margin-bottom: 8px
 
     .empty
         padding: 12px 4px
