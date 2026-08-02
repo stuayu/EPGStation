@@ -292,6 +292,13 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **教訓**: `video_file.type` のように複数の目的で参照されているフィールドを変更するときは、`grep` で全参照箇所を洗い出してから着手すること。今回は「PSI/SI 解析対象かどうか」だけを見て変更し、「ストリーミングパイプライン選択」という別の用途を見落としたため手戻りになった
     - **テスト**: `test/ut/encode-finish-model.test.js` (拡張子に関わらず `type: 'encoded'` のまま)、`test/ut/video-file-analyze-model.test.js` (拡張子ベースの対象判定)、`test/ut/video-metadata-api.test.js` (`reanalyzeAllTsInfo`)
 
+- **録画済み一覧から複数選択してまとめてエンコードできるようにした**
+    - **背景**: 複数選択 (編集モード) は削除にしか使えず、まとめてエンコードするには録画を 1 件ずつ開いて「エンコード」を実行する必要があった
+    - **UI**: 編集モードのツールバー (`EditTitleBar.vue`) に歯車アイコンのエンコードボタンを追加した。`EditTitleBar` は予約・ルール・録画中・エンコード画面でも共用しているため、表示は **`showEncode` prop の opt-in** (既定 `false`) にして録画済み一覧だけで出す
+    - **ダイアログ** (`RecordedMultipleEncodeDialog.vue`): エンコード元の種別 (TS / エンコード済み)・プリセット・保存先 (親ディレクトリ + サブディレクトリ、元ファイルと同じ場所に保存するか)・元ファイルを削除するかを指定する。プリセットと保存先の初期値は単体エンコードのダイアログと同じ `IAddEncodeSettingStorageModel` (localStorage) を共有するので、普段使う設定がそのまま出る
+    - **実行** (`RecordedState.multipleEncode()`): 選択中の録画から指定種別のビデオファイルを 1 件ずつ選び、`POST /api/encode` (`IEncodeApiModel.addEncode()`) を順に呼ぶ。**指定した種別のファイルを持たない録画は飛ばす** (TS を選んだのに TS 削除済み等)。結果は「追加した件数 / 対象ファイルが無く飛ばした件数 / 失敗した件数」で返し、スナックバーに出す。一部が失敗しても残りは続行する
+    - サーバー側の変更は無い (既存の単体エンコード追加 API を件数分呼ぶだけ)
+
 - **録画の放送局名を TS 解析結果 (SDT) 優先で表示し、一覧のタイトル表示を切り替えられるようにした + 録画詳細にコメントを表示した**
     - **放送局名は TS 解析の局名を最優先にした**: `ChannelNameUtil.getRecordedChannelName()` の解決順を「TS 解析 (SDT) の局名 → 現在の channel 情報 → 録画時点の局名 → networkId/serviceId 表記」に変更した。実際に録画されたストリーム自身が名乗っている名前なので、チャンネル情報の変更・引っ越し・NW 局の取り違えがあっても録画の実体と一致する
         - 一覧に載せるため `RecordedItem.tsChannelName` を追加した。`IVideoFileTsInfoDB.findServiceNamesByRecordedIds()` で **1 クエリ**にまとめて引く (件数が増えても N+1 にならない)。同じ録画に複数ファイルがある場合は最初に解析されたものを採る
