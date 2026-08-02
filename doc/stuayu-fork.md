@@ -292,6 +292,22 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **教訓**: `video_file.type` のように複数の目的で参照されているフィールドを変更するときは、`grep` で全参照箇所を洗い出してから着手すること。今回は「PSI/SI 解析対象かどうか」だけを見て変更し、「ストリーミングパイプライン選択」という別の用途を見落としたため手戻りになった
     - **テスト**: `test/ut/encode-finish-model.test.js` (拡張子に関わらず `type: 'encoded'` のまま)、`test/ut/video-file-analyze-model.test.js` (拡張子ベースの対象判定)、`test/ut/video-metadata-api.test.js` (`reanalyzeAllTsInfo`)
 
+- **視聴画面 (ライブ / 録画) をテレビ風の全画面レイアウトにした**
+    - **背景**: 視聴画面は `TitleBar` + プレイヤー + 情報カードの縦積みで、番組情報を見るにもチャンネルを変えるにも画面を離れる必要があった。KonomiTV のような「映像 + 右の情報パネル」の形に寄せて、視聴したまま番組情報・チャンネル・コメントを追えるようにした
+    - **レイアウト** (`client/src/components/watch/WatchLayout.vue`): `position: fixed` の全画面ダークレイアウト。左に**アイコンだけのナビゲーション** (`WatchSideBar.vue`、項目はグローバルナビゲーションの `INavigationState` と共有)、上に**放送局ロゴ + 番組名 + 放送時間 + 時計**のバー (`WatchTopBar.vue`)、右に**情報パネル**を置く。映像は 16:9 を保ったまま縦にも横にも収まる最大サイズにする (`max-width: calc((100vh - 64px) * 16 / 9)`)
+        - **視聴中はグローバルナビゲーション (drawer) を畳む**。左のアイコン列が役割を兼ねるため二重に出さない。画面を離れるときに元の開閉状態へ戻す
+        - 画面幅 1024px 以下では縦積み (左ナビは上部の横並びツールバー、パネルは映像の下) に切り替わる
+    - **右パネル** (`WatchSidePanel.vue`): 下部のタブで中身を切り替える。中身は名前付きスロット (`program` / `channel` / `nextup` / `comment`) で受け取るため、画面ごとに使うタブを選べる (ライブは 番組情報・チャンネル・コメント、録画は 番組情報・次の話・コメント)
+        - **番組情報** (`WatchPanelProgram.vue`): 放送局名・放送時間・番組名・概要・詳細。録画視聴では `actions` スロットに「視聴済みにする」ボタンを差す
+        - **チャンネル** (`WatchPanelChannels.vue`): 放送中の番組を **ピン留め / 地デジ (地域別) / BS / CS** のタブで並べる。各行は現在番組・**NEXT (次の番組)**・番組の進捗バーを持ち、クリックでその放送局の視聴へ切り替える (配信種別・エンコード設定は今の視聴から引き継ぐ)。ピン留めは localStorage (`pinnedChannelIds`) に保存する
+        - **コメント** (`WatchPanelComments.vue`): 映像に流れている実況コメントを時系列で並べる。末尾付近にいるときだけ自動追従し、上へスクロールしている間は追従しない (「最新のコメントへ」ボタンで戻る)
+    - **実況コメントの受け渡し**: `BaseVideo.drawJikkyoComment()` が弾幕を描くタイミングで `jikkyoComment` イベントを上げ、`VideoContainer` が視聴画面へ中継する。**遅延補正後のタイミングで流すため、パネルの表示と弾幕の表示が揃う**。保持数は 500 件で、超えた分は古いものから捨てる
+    - **チャンネル切り替え**: 映像の右端に前後のチャンネルへ移動するボタンを重ねた (放送中一覧の並び順で循環する)
+    - **API**: NEXT を出すため `GET /api/schedules/broadcasting` に **`includeNextProgram`** を追加した。指定したときだけ放送局ごとに「放送中 + 次」の 2 件を返す (既定は従来どおり 1 件)。`ProgramDB.findBroadcasting()` は次の番組を拾うため、このとき `startAt` の上限を 4 時間先まで広げる
+    - **削除したもの**: 役目を終えた `WatchOnAirInfoCard.vue` / `WatchRecordedInfoCard.vue`。番組情報の取得と視聴済み切り替えは各視聴画面 (`WatchOnAir.vue` / `WatchRecorded.vue` / `WatchRecordedStreaming.vue`) へ移した
+    - **保存する設定** (`ISettingValue`): `isOpenWatchSidePanel` (パネルの開閉)、`watchSidePanelTab` (選択タブ)、`pinnedChannelIds` (ピン留めした放送局)
+    - **未対応**: 下部の再生コントロールと設定ポップアップ (画質・音声・コメント表示・透明度・キーボードショートカット) は DPlayer 標準のものをそのまま使っている
+
 - **録画済み一覧から複数選択してまとめてエンコードできるようにした**
     - **背景**: 複数選択 (編集モード) は削除にしか使えず、まとめてエンコードするには録画を 1 件ずつ開いて「エンコード」を実行する必要があった
     - **UI**: 編集モードのツールバー (`EditTitleBar.vue`) に歯車アイコンのエンコードボタンを追加した。`EditTitleBar` は予約・ルール・録画中・エンコード画面でも共用しているため、表示は **`showEncode` prop の opt-in** (既定 `false`) にして録画済み一覧だけで出す
