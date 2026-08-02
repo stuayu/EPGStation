@@ -54,6 +54,8 @@ export interface ISettingValue {
     // シリーズ詳細のエピソード名を作品辞書 (しょぼいカレンダー) 由来の「第N話 サブタイトル」で表示するか。
     // false の場合は録画タイトルをそのまま表示する (既定 true)
     useDictionaryEpisodeTitle: boolean;
+    // 視聴画面でデータ放送 (BML) レイヤーを表示するか (featureFlags.dataBroadcasting が有効な場合のみ意味を持つ、既定 OFF)
+    isEnableDataBroadcasting: boolean;
 }
 
 export type ISettingStorageModel = IStorageBaseModel<ISettingValue>;

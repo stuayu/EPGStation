@@ -50,6 +50,13 @@ class LiveMpegTsVideo extends BaseVideo {
         return this.channelId;
     }
 
+    /**
+     * データ放送 (BML) の接続パラメータ
+     */
+    public getDataBroadcastingParam() {
+        return this.channelId === null ? null : { type: 'epgStationLive' as const, channelId: this.channelId };
+    }
+
     public async beforeUnmount(): Promise<void> {
         super.beforeUnmount();
     }

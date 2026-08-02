@@ -81,6 +81,7 @@ class RecordedStreamingVideo extends BaseVideo {
 
         await this.videoState.clear();
         await this.updateVideoInfo();
+        await this.fetchVideoFileSizeForDataBroadcasting(this.videoFileId);
 
         // 画質切替用に視聴設定一覧を取得する
         const videoFileType = this.videoState.getVideoFileType(this.videoFileId);
@@ -194,6 +195,13 @@ class RecordedStreamingVideo extends BaseVideo {
      */
     protected isEnabledVirtualTimeline(): boolean {
         return true;
+    }
+
+    /**
+     * データ放送 (BML) の接続パラメータ
+     */
+    public getDataBroadcastingParam() {
+        return this.buildRecordedDataBroadcastingParam(this.videoFileId);
     }
 
     /**

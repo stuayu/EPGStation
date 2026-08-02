@@ -40,6 +40,13 @@ class LiveHLSVideo extends BaseVideo {
         return this.channelId;
     }
 
+    /**
+     * データ放送 (BML) の接続パラメータ
+     */
+    public getDataBroadcastingParam() {
+        return { type: 'epgStationLive' as const, channelId: this.channelId };
+    }
+
     private videoState: ILiveHLSVideoState = container.get<ILiveHLSVideoState>('ILiveHLSVideoState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private checkEnabledTimerId: ReturnType<typeof setTimeout> | undefined;
