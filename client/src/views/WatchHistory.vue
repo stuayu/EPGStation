@@ -55,14 +55,17 @@
             </v-list>
 
             <v-pagination v-if="pageCount > 1" v-model="page" :length="pageCount" density="comfortable" class="mt-3" @update:model-value="fetchData"></v-pagination>
+            <RecordedDetailSelectStreamDialog></RecordedDetailSelectStreamDialog>
         </v-container>
     </v-main>
 </template>
 
 <script lang="ts">
+import RecordedDetailSelectStreamDialog from '@/components/recorded/detail/RecordedDetailSelectStreamDialog.vue';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import IVideoApiModel from '@/model/api/video/IVideoApiModel';
+import IRecordedDetailSelectStreamState from '@/model/state/recorded/detail/IRecordedDetailSelectStreamState';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
@@ -75,7 +78,7 @@ import * as apid from '../../../api';
  * 視聴履歴の一覧画面。
  * 最後に見た順に並べ、再生位置・視聴状態を出す。行をクリックすると続きから再生する
  */
-@Component({ components: { TitleBar } })
+@Component({ components: { TitleBar, RecordedDetailSelectStreamDialog } })
 class WatchHistoryView extends Vue {
     // 1 ページあたりの表示件数
     private static readonly PAGE_SIZE = 24;
@@ -90,6 +93,7 @@ class WatchHistoryView extends Vue {
     private serverConfig: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private settingStorageModel: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
+    public streamSelectDialogState: IRecordedDetailSelectStreamState = container.get<IRecordedDetailSelectStreamState>('IRecordedDetailSelectStreamState');
 
     get isEnabled(): boolean {
         return isFeatureEnabled(this.serverConfig.getConfig(), 'watchHistory');
@@ -183,18 +187,39 @@ class WatchHistoryView extends Vue {
 
     /**
      * 続きから再生する (録画が削除済みの場合は何もしない)
+     * エンコード済みファイルはブラウザで直接再生し、TS はそのままでは再生できないため
+     * 配信設定 (streamingType / mode) を選ばせてからストリーミング再生画面へ送る
      */
     public play(record: apid.WatchHistoryRecord): void {
-        if (record.recorded === null) {
+        if (record.recorded === null || typeof record.recorded === 'undefined') {
             this.snackbarState.open({ color: 'error', text: 'この録画は削除されています' });
 
             return;
         }
 
-        void this.$router.push({
-            path: '/recorded/watch',
-            query: { videoId: String(record.videoFileId), recordedId: String(record.recordedId) },
-        });
+        const videoFile = record.recorded.videoFiles?.find(video => video.id === record.videoFileId) ?? null;
+        if (videoFile === null) {
+            // 履歴だけ残って録画ファイルが消えている場合は詳細画面へ逃がす
+            void this.$router.push(`/recorded/detail/${record.recordedId}`);
+
+            return;
+        }
+
+        if (videoFile.type === 'encoded') {
+            void this.$router.push({
+                path: '/recorded/watch',
+                query: { videoId: String(record.videoFileId), recordedId: String(record.recordedId) },
+            });
+
+            return;
+        }
+
+        try {
+            this.streamSelectDialogState.open(videoFile, record.recordedId);
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: 'この録画を再生できる配信設定がありません' });
+        }
     }
 
     /**
