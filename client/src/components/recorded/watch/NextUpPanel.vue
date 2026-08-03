@@ -25,7 +25,7 @@
                 <v-tab value="latest">最新</v-tab>
                 <v-tab value="series">シリーズ</v-tab>
             </v-tabs>
-            <v-window v-model="tab">
+            <v-window v-model="tab" class="next-up-body">
                 <v-window-item value="latest">
                     <v-list lines="two" density="compact">
                         <v-list-item v-for="item in data?.latest ?? []" :key="`latest-${item.id}`">
@@ -346,9 +346,24 @@ namespace NextUpPanel {
 export default toNative(NextUpPanel);
 </script>
 <style lang="sass" scoped>
+// 視聴画面の右パネルに置かれたときは親の高さに収め、リスト部だけをスクロールさせる
+// (親に高さの制約が無い画面では max-height が効かないため、従来通り中身の分だけ伸びる)
 .next-up-panel
     width: 360px
     max-width: 100%
+    max-height: 100%
+    display: flex
+    flex-direction: column
+
+    > .v-card-title,
+    .countdown-card,
+    .v-tabs
+        flex-shrink: 0
+
+.next-up-panel .next-up-body
+    flex: 1 1 auto
+    min-height: 0
+    overflow-y: auto
 
 .countdown-card
     background: rgba(var(--v-theme-primary), 0.08)
