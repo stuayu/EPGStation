@@ -19,7 +19,7 @@ import IEncodeManageModel from '../../service/encode/IEncodeManageModel';
 import { UploadedVideoFileOption } from '../../operator/recorded/IRecordedManageModel';
 import ITsInfoAnalyzer, { TsInfo } from '../../recorded/ts/ITsInfoAnalyzer';
 import IRecordedItemUtil from '../IRecordedItemUtil';
-import IRecordedApiModel, { NextUpResult } from './IRecordedApiModel';
+import IRecordedApiModel, { NextUpOption, NextUpResult } from './IRecordedApiModel';
 
 @injectable()
 export default class RecordedApiModel implements IRecordedApiModel {
@@ -92,46 +92,69 @@ export default class RecordedApiModel implements IRecordedApiModel {
         return result;
     }
 
-    public async getNextUp(recordedId: apid.RecordedId, isHalfWidth: boolean): Promise<NextUpResult | null> {
+    public async getNextUp(
+        recordedId: apid.RecordedId,
+        isHalfWidth: boolean,
+        option: NextUpOption = {},
+    ): Promise<NextUpResult | null> {
         if (!isFeatureEnabled(this.configuration.getConfig(), 'nextUpPanel'))
             throw new Error('NextUpPanelFeatureIsDisabled');
         const current = await this.recordedDB.findId(recordedId);
         if (current === null) return null;
-        const recentOption = { isHalfWidth, offset: 0, limit: 9, isReverse: false } as FindAllOption;
-        recentOption.isRecording = false;
-        const [recentRecords] = await this.recordedDB.findAll(recentOption, {
-            isNeedVideoFiles: true,
-            isNeedThumbnails: false,
-            isNeedsDropLog: false,
-            isNeedTags: false,
-        });
-        const latest = (
-            await this.toRecordedItems(
-                recentRecords.filter(x => x.id !== recordedId),
-                isHalfWidth,
-            )
-        ).slice(0, 8);
+
+        // 1 ページ分の件数。端末 (特にスマートフォン) の描画負荷を抑えるため上限を設ける
+        const limit = Math.min(
+            typeof option.limit === 'number' && option.limit > 0
+                ? Math.floor(option.limit)
+                : RecordedApiModel.NEXT_UP_DEFAULT_LIMIT,
+            RecordedApiModel.NEXT_UP_MAX_LIMIT,
+        );
+        const offset = typeof option.offset === 'number' && option.offset > 0 ? Math.floor(option.offset) : 0;
+        const target = option.target ?? 'all';
+
+        let latest: apid.RecordedItem[] = [];
+        let hasMoreLatest = false;
+        if (target === 'all' || target === 'latest') {
+            // 再生中の録画が混ざる分を見越して 1 件多く引き、続きの有無も同時に判定する
+            const recentOption = { isHalfWidth, offset, limit: limit + 2, isReverse: false } as FindAllOption;
+            recentOption.isRecording = false;
+            const [recentRecords] = await this.recordedDB.findAll(recentOption, {
+                isNeedVideoFiles: true,
+                isNeedThumbnails: false,
+                isNeedsDropLog: false,
+                isNeedTags: false,
+            });
+            const filtered = recentRecords.filter(x => x.id !== recordedId);
+            hasMoreLatest = filtered.length > limit;
+            latest = await this.toRecordedItems(filtered.slice(0, limit), isHalfWidth);
+        }
 
         const link = await this.seriesDB.findLink(recordedId);
         let currentSeriesId: number | null = null;
         let series: apid.RecordedItem[] = [];
+        let hasMoreSeries = false;
         if (link !== null) {
             currentSeriesId = link.seriesId;
-            const rows = (await this.seriesDB.listRecorded(link.seriesId))
-                .filter(x => x.recordedId !== recordedId)
-                .slice(0, 8);
-            const seriesRecords = await this.recordedDB.findIds(
-                rows.map(x => x.recordedId),
-                { isNeedVideoFiles: true, isNeedThumbnails: false, isNeedsDropLog: false, isNeedTags: false },
-                true,
-            );
-            const index = new Map(seriesRecords.map(x => [x.id, x]));
-            series = await this.toRecordedItems(
-                rows.map(x => index.get(x.recordedId)).filter((x): x is NonNullable<typeof x> => x !== undefined),
-                isHalfWidth,
-            );
+            if (target === 'all' || target === 'series') {
+                // シリーズの紐付けは 1 作品分なので全件引いてから切り出す
+                const allRows = (await this.seriesDB.listRecorded(link.seriesId)).filter(
+                    x => x.recordedId !== recordedId,
+                );
+                const rows = allRows.slice(offset, offset + limit);
+                hasMoreSeries = allRows.length > offset + rows.length;
+                const seriesRecords = await this.recordedDB.findIds(
+                    rows.map(x => x.recordedId),
+                    { isNeedVideoFiles: true, isNeedThumbnails: false, isNeedsDropLog: false, isNeedTags: false },
+                    true,
+                );
+                const index = new Map(seriesRecords.map(x => [x.id, x]));
+                series = await this.toRecordedItems(
+                    rows.map(x => index.get(x.recordedId)).filter((x): x is NonNullable<typeof x> => x !== undefined),
+                    isHalfWidth,
+                );
+            }
         }
-        return { currentSeriesId, latest, series };
+        return { currentSeriesId, latest, series, hasMoreLatest, hasMoreSeries };
     }
 
     private async toRecordedItems(
@@ -606,6 +629,9 @@ export default class RecordedApiModel implements IRecordedApiModel {
     }
 
     // 外部録画ファイル取り込みの重複判定に使う時刻許容誤差 (ms)
+    // 次に見る候補の 1 ページ分の既定件数 / 上限件数
+    private static readonly NEXT_UP_DEFAULT_LIMIT = 20;
+    private static readonly NEXT_UP_MAX_LIMIT = 100;
     private static readonly DUPLICATE_TOLERANCE_MS = 5 * 60 * 1000;
     // スキャンでは候補が多いこともあるため、1 件あたりの TS 解析は短めで打ち切る
     private static readonly SCAN_TS_ANALYZE_TIMEOUT_MS = 10 * 1000;
