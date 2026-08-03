@@ -48,7 +48,6 @@ export interface ISettingValue {
     // 配信遅延はサーバの放送時刻 (TDT/TOT) と再生バッファから自動で補正するが、
     // 環境ごとのずれを手で詰めるための微調整値
     jikkyoLiveOffsetSec: number;
-    isNextUpPanelOpen: boolean; // Next Up パネルの開閉状態
     nextUpPanelTab: 'latest' | 'series'; // Next Up パネルの選択タブ
     isEnableNextUpAutoPlayForLatestTab: boolean; // 新着タブ選択時に連続再生を有効にするか (既定 OFF。シリーズタブは常時有効)
     isShowRecordedAsSeries: boolean; // 録画済み一覧をシリーズ単位表示にするか (既定 OFF。互換性維持のため従来のフラット表示が既定)

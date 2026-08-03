@@ -1,71 +1,73 @@
 <template>
-    <v-card class="next-up-panel" variant="outlined">
-        <v-card-title class="d-flex align-center justify-space-between">
-            <span>Next Up</span>
-            <div class="d-flex align-center">
-                <v-btn v-if="data !== null && data.currentSeriesId !== null" size="small" variant="text" @click="moveSeries">シリーズへ</v-btn>
-                <v-btn
-                    size="small"
-                    variant="text"
-                    icon
-                    :aria-label="panelOpen === true ? 'パネルを閉じる' : 'パネルを開く'"
-                    @click="togglePanelOpen"
+    <div class="next-up-panel">
+        <div v-if="showCountdown === true && countdownItem !== null" class="countdown pa-3">
+            <div class="text-caption">次: {{ countdownItem.name }}</div>
+            <div class="text-subtitle-2">{{ countdownSeconds }} 秒後に自動再生します</div>
+            <v-btn size="small" variant="outlined" class="mt-1" @click="cancelCountdown">キャンセル</v-btn>
+        </div>
+        <div class="head px-3 pt-3 d-flex align-center justify-space-between">
+            <div class="switch">
+                <button
+                    type="button"
+                    class="switch-item"
+                    v-bind:class="{ selected: tab === 'latest' }"
+                    v-on:click="tab = 'latest'"
                 >
-                    <v-icon>{{ panelOpen === true ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
-                </v-btn>
+                    最新
+                </button>
+                <button
+                    type="button"
+                    class="switch-item"
+                    v-bind:class="{ selected: tab === 'series' }"
+                    v-on:click="tab = 'series'"
+                >
+                    シリーズ
+                </button>
             </div>
-        </v-card-title>
-        <template v-if="panelOpen === true">
-            <div v-if="showCountdown === true && countdownItem !== null" class="countdown-card pa-3">
-                <div class="text-caption">次: {{ countdownItem.name }}</div>
-                <div class="text-subtitle-2">{{ countdownSeconds }} 秒後に自動再生します</div>
-                <v-btn size="small" variant="outlined" class="mt-1" @click="cancelCountdown">キャンセル</v-btn>
+            <v-btn v-if="data !== null && data.currentSeriesId !== null" size="small" variant="text" @click="moveSeries">シリーズへ</v-btn>
+        </div>
+        <div class="body" ref="body">
+            <div v-show="tab === 'latest'">
+                <div v-for="item in data?.latest ?? []" :key="`latest-${item.id}`" class="item" v-on:click="play(item)">
+                    <v-img :src="thumbnailPath(item)" width="96" height="54" cover class="thumbnail"></v-img>
+                    <div class="detail">
+                        <div class="text-body-2 name">{{ item.name }}</div>
+                        <div class="text-caption sub">{{ channelName(item) }} · {{ formatDate(item.startAt) }}</div>
+                        <div class="status">
+                            <span v-if="watchStatusLabel(item) !== null" class="text-caption" v-bind:class="`text-${watchStatusColor(item)}`">{{ watchStatusLabel(item) }}</span>
+                            <v-progress-linear v-if="watchProgress(item) !== null" :model-value="watchProgress(item) ?? 0" height="3" class="progress"></v-progress-linear>
+                        </div>
+                    </div>
+                    <v-btn size="small" variant="text" icon aria-label="再生" v-on:click.stop="play(item)">
+                        <v-icon>mdi-play</v-icon>
+                    </v-btn>
+                </div>
+                <div ref="latestSentinel" class="load-sentinel">
+                    <v-progress-circular v-if="isLoadingMore === true && tab === 'latest'" indeterminate size="20"></v-progress-circular>
+                </div>
             </div>
-            <v-tabs v-model="tab" density="comfortable">
-                <v-tab value="latest">最新</v-tab>
-                <v-tab value="series">シリーズ</v-tab>
-            </v-tabs>
-            <v-window v-model="tab" class="next-up-body" ref="body">
-                <v-window-item value="latest">
-                    <v-list lines="two" density="compact">
-                        <v-list-item v-for="item in data?.latest ?? []" :key="`latest-${item.id}`">
-                            <v-list-item-title>{{ item.name }}</v-list-item-title>
-                            <v-list-item-subtitle>{{ item.channelName || item.channelId }} · {{ formatDate(item.startAt) }}</v-list-item-subtitle>
-                            <template #append>
-                                <div class="d-flex flex-column align-end" style="min-width: 72px">
-                                    <v-chip v-if="watchStatusLabel(item) !== null" size="x-small" :color="watchStatusColor(item)" class="mb-1">{{ watchStatusLabel(item) }}</v-chip>
-                                    <v-progress-linear v-if="watchProgress(item) !== null" :model-value="watchProgress(item) ?? 0" height="3"></v-progress-linear>
-                                    <v-btn size="small" variant="text" @click="play(item)">再生</v-btn>
-                                </div>
-                            </template>
-                        </v-list-item>
-                    </v-list>
-                    <div ref="latestSentinel" class="load-sentinel">
-                        <v-progress-circular v-if="isLoadingMore === true && tab === 'latest'" indeterminate size="20"></v-progress-circular>
+            <div v-show="tab === 'series'">
+                <div v-for="item in data?.series ?? []" :key="`series-${item.id}`" class="item" v-on:click="play(item)">
+                    <v-img :src="thumbnailPath(item)" width="96" height="54" cover class="thumbnail"></v-img>
+                    <div class="detail">
+                        <div class="text-body-2 name">{{ episodeLabel(item) }}{{ item.name }}</div>
+                        <div class="text-caption sub">{{ channelName(item) }} · {{ formatDate(item.startAt) }}</div>
+                        <div class="status">
+                            <span v-if="watchStatusLabel(item) !== null" class="text-caption" v-bind:class="`text-${watchStatusColor(item)}`">{{ watchStatusLabel(item) }}</span>
+                            <v-progress-linear v-if="watchProgress(item) !== null" :model-value="watchProgress(item) ?? 0" height="3" class="progress"></v-progress-linear>
+                        </div>
                     </div>
-                </v-window-item>
-                <v-window-item value="series">
-                    <v-list lines="two" density="compact">
-                        <v-list-item v-for="item in data?.series ?? []" :key="`series-${item.id}`">
-                            <v-list-item-title>{{ episodeLabel(item) }}{{ item.name }}</v-list-item-title>
-                            <v-list-item-subtitle>{{ item.channelName || item.channelId }} · {{ formatDate(item.startAt) }}</v-list-item-subtitle>
-                            <template #append>
-                                <div class="d-flex flex-column align-end" style="min-width: 72px">
-                                    <v-chip v-if="watchStatusLabel(item) !== null" size="x-small" :color="watchStatusColor(item)" class="mb-1">{{ watchStatusLabel(item) }}</v-chip>
-                                    <v-progress-linear v-if="watchProgress(item) !== null" :model-value="watchProgress(item) ?? 0" height="3"></v-progress-linear>
-                                    <v-btn size="small" variant="text" @click="play(item)">再生</v-btn>
-                                </div>
-                            </template>
-                        </v-list-item>
-                    </v-list>
-                    <div ref="seriesSentinel" class="load-sentinel">
-                        <v-progress-circular v-if="isLoadingMore === true && tab === 'series'" indeterminate size="20"></v-progress-circular>
-                    </div>
-                </v-window-item>
-            </v-window>
-            <v-card-text v-if="!loading && empty">候補がありません</v-card-text>
-        </template>
-    </v-card>
+                    <v-btn size="small" variant="text" icon aria-label="再生" v-on:click.stop="play(item)">
+                        <v-icon>mdi-play</v-icon>
+                    </v-btn>
+                </div>
+                <div ref="seriesSentinel" class="load-sentinel">
+                    <v-progress-circular v-if="isLoadingMore === true && tab === 'series'" indeterminate size="20"></v-progress-circular>
+                </div>
+            </div>
+            <div v-if="loading === false && empty === true" class="text-body-2 empty pa-3">候補がありません</div>
+        </div>
+    </div>
 </template>
 <script lang="ts">
 import container from '@/model/ModelContainer';
@@ -95,7 +97,6 @@ class NextUpPanel extends Vue {
     public loading = false;
     public isLoadingMore = false;
     public tab: 'latest' | 'series' = 'latest';
-    public panelOpen = true;
 
     // 無限スクロール用の監視。スクロールイベントを毎フレーム処理しないよう IntersectionObserver を使う
     // (低スペックのスマートフォンでも描画を妨げないため)
@@ -133,8 +134,7 @@ class NextUpPanel extends Vue {
     }
 
     public created(): void {
-        // §11: 開閉状態・タブ選択をクライアント設定から復元する
-        this.panelOpen = this.settingModel.tmp.isNextUpPanelOpen;
+        // §11: タブ選択をクライアント設定から復元する
         this.tab = this.settingModel.tmp.nextUpPanelTab;
         // §12: 将来のリモコン操作を見据えたキーボードショートカット (N キーで次を再生)
         document.addEventListener('keydown', this.onKeydown);
@@ -159,20 +159,6 @@ class NextUpPanel extends Vue {
         this.$nextTick(() => {
             this.setupObserver();
         });
-    }
-
-    @Watch('panelOpen')
-    public onPanelOpenChange(): void {
-        // 畳んでいる間は監視も止める (見えていないリストの追加読み込みを走らせない)
-        this.$nextTick(() => {
-            this.setupObserver();
-        });
-    }
-
-    public togglePanelOpen(): void {
-        this.panelOpen = !this.panelOpen;
-        this.settingModel.tmp.isNextUpPanelOpen = this.panelOpen;
-        this.settingModel.save();
     }
 
     @Watch('recordedId', { immediate: true })
@@ -200,12 +186,12 @@ class NextUpPanel extends Vue {
 
     /**
      * 表示中のタブの番兵要素だけを IntersectionObserver で監視する
-     * 監視対象は 1 つだけに保ち、パネルを畳んでいる間や続きが無い場合は監視自体を止める
+     * 監視対象は 1 つだけに保ち、続きが無い場合は監視自体を止める
      */
     private setupObserver(): void {
         this.teardownObserver();
 
-        if (this.panelOpen === false || typeof IntersectionObserver === 'undefined') {
+        if (typeof IntersectionObserver === 'undefined') {
             return;
         }
         if (this.hasMore(this.tab) === false) {
@@ -213,7 +199,7 @@ class NextUpPanel extends Vue {
         }
 
         const sentinel = (this.tab === 'series' ? this.$refs.seriesSentinel : this.$refs.latestSentinel) as HTMLElement | undefined;
-        const root = (this.$refs.body as { $el?: HTMLElement } | undefined)?.$el;
+        const root = this.$refs.body as HTMLElement | undefined;
         if (typeof sentinel === 'undefined' || sentinel === null) {
             return;
         }
@@ -225,7 +211,7 @@ class NextUpPanel extends Vue {
                 }
             },
             {
-                root: root instanceof HTMLElement ? root : null,
+                root: typeof root === 'undefined' ? null : root,
                 // 下端に到達する少し手前で読み始める
                 rootMargin: '200px',
             },
@@ -367,6 +353,20 @@ class NextUpPanel extends Vue {
         return Math.min(100, Math.round((history.position / history.duration) * 100));
     }
 
+    /**
+     * サムネイル画像の URL (無い場合は代替画像)
+     */
+    thumbnailPath(item: apid.RecordedItem): string {
+        return typeof item.thumbnails === 'undefined' || item.thumbnails.length === 0 ? './img/noimg.png' : `./api/thumbnails/${item.thumbnails[0]}`;
+    }
+
+    /**
+     * 放送局名 (TS 解析の局名を優先する)
+     */
+    channelName(item: apid.RecordedItem): string {
+        return item.tsChannelName ?? item.channelName ?? String(item.channelId);
+    }
+
     episodeLabel(item: apid.RecordedItem): string {
         const episodeNumber = this.episodeNumberMap.get(item.id);
 
@@ -490,24 +490,87 @@ namespace NextUpPanel {
 export default toNative(NextUpPanel);
 </script>
 <style lang="sass" scoped>
-// 視聴画面の右パネルに置かれたときは親の高さに収め、リスト部だけをスクロールさせる
-// (親に高さの制約が無い画面では max-height が効かないため、従来通り中身の分だけ伸びる)
+// 視聴画面の右パネル内に置かれる前提のレイアウト・配色 (番組情報タブに合わせる)
 .next-up-panel
-    width: 360px
-    max-width: 100%
-    max-height: 100%
     display: flex
     flex-direction: column
+    width: 100%
+    height: 100%
+    min-height: 0
+    color: rgba(255, 255, 255, 0.9)
 
-    > .v-card-title,
-    .countdown-card,
-    .v-tabs
+    .countdown,
+    .head
         flex-shrink: 0
 
-.next-up-panel .next-up-body
-    flex: 1 1 auto
-    min-height: 0
-    overflow-y: auto
+    .countdown
+        background: rgba(var(--v-theme-primary), 0.16)
+
+    .switch
+        display: flex
+        gap: 4px
+
+    .switch-item
+        padding: 4px 10px
+        border-radius: 14px
+        font-size: 0.75rem
+        color: rgba(255, 255, 255, 0.6)
+        background: rgba(255, 255, 255, 0.08)
+        cursor: pointer
+
+        &:hover
+            color: rgba(255, 255, 255, 0.85)
+
+        &.selected
+            color: rgb(var(--v-theme-primary))
+            background: rgba(var(--v-theme-primary), 0.16)
+
+    .body
+        flex: 1 1 auto
+        min-height: 0
+        overflow-y: auto
+        padding: 4px 0
+
+    .item
+        display: flex
+        align-items: center
+        gap: 10px
+        padding: 8px 12px
+        cursor: pointer
+
+        &:hover
+            background: rgba(255, 255, 255, 0.06)
+
+    .thumbnail
+        flex: 0 0 auto
+        border-radius: 4px
+
+    .detail
+        flex: 1 1 auto
+        min-width: 0
+
+    .name
+        display: -webkit-box
+        -webkit-line-clamp: 2
+        -webkit-box-orient: vertical
+        overflow: hidden
+
+    .sub
+        color: rgba(255, 255, 255, 0.6)
+        white-space: nowrap
+        overflow: hidden
+        text-overflow: ellipsis
+
+    .status
+        display: flex
+        align-items: center
+        gap: 6px
+
+    .progress
+        max-width: 80px
+
+    .empty
+        color: rgba(255, 255, 255, 0.5)
 
 // 無限スクロールの番兵。高さを持たせて rootMargin と合わせて先読みさせる
 .load-sentinel
@@ -515,7 +578,4 @@ export default toNative(NextUpPanel);
     align-items: center
     justify-content: center
     height: 32px
-
-.countdown-card
-    background: rgba(var(--v-theme-primary), 0.08)
 </style>

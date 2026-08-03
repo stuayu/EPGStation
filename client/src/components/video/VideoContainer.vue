@@ -117,6 +117,8 @@ class VideoContainer extends Vue {
     public isiPad: boolean = UaUtil.isiPadOS();
     private videoApi = container.get<IVideoApiModel>('IVideoApiModel');
     private lastSavedAt = 0;
+    // 生成時に固定する再生対象のビデオファイル ID (再生位置の保存・復元に使う)
+    private playingVideoFileId: number | null = null;
     private resumeApplied = false;
     // レジューム適用 (GET 待ち) が完了するまで再生位置の保存を抑止し、
     // 最初の timeupdate が position≈0 を PUT して履歴を上書きしてしまうレースを防ぐ
@@ -137,6 +139,11 @@ class VideoContainer extends Vue {
     }).bind(this);
 
     public created(): void {
+        // 再生対象は生成時に固定する。
+        // 動画を切り替えると親が videoParam を差し替えてからこのコンポーネントを破棄するため、
+        // 破棄時の再生位置保存で参照すると「古い再生位置を新しいビデオファイルの履歴に書く」ことになる
+        this.playingVideoFileId = 'videoFileId' in this.videoParam && typeof this.videoParam.videoFileId === 'number' ? this.videoParam.videoFileId : null;
+
         document.addEventListener('webkitfullscreenchange', this.fullScreenListener, false);
         document.addEventListener('mozfullscreenchange', this.fullScreenListener, false);
         document.addEventListener('MSFullscreenChange', this.fullScreenListener, false);
@@ -317,7 +324,7 @@ class VideoContainer extends Vue {
         return (this.$refs.video as BaseVideo | undefined) ?? null;
     }
     private getVideoFileId(): number | null {
-        return 'videoFileId' in this.videoParam && typeof this.videoParam.videoFileId === 'number' ? this.videoParam.videoFileId : null;
+        return this.playingVideoFileId;
     }
 }
 

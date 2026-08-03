@@ -13,6 +13,7 @@
         </template>
         <VideoContainer
             v-if="videoParam !== null"
+            v-bind:key="videoKey"
             ref="videoContainer"
             v-bind:videoParam="videoParam"
             v-on:ended="onVideoEnded"
@@ -126,6 +127,15 @@ class WatchRecorded extends Vue {
      */
     get panelTabs(): WatchSidePanelTab[] {
         return this.isEnabledNextUpPanel === true ? ['program', 'nextup', 'comment'] : ['program', 'comment'];
+    }
+
+    /**
+     * VideoContainer の再生成キー
+     * 各 video コンポーネントは mounted 時にしか DPlayer を作らないため、
+     * 再生対象が変わったら VideoContainer ごと作り直さないと動画が切り替わらない
+     */
+    get videoKey(): string {
+        return `normal-${this.videoFileId ?? 'none'}`;
     }
 
     /**
@@ -338,6 +348,8 @@ class WatchRecorded extends Vue {
         this.displayInfo = null;
         this.watchHistory = null;
         this.jikkyoComments = [];
+        // 古い動画を残さない (再生対象が無い URL へ遷移した場合にそのまま再生され続けるのを防ぐ)
+        this.videoParam = null;
 
         // 視聴パラメータセット
         const videoId = typeof this.$route.query.videoId !== 'string' ? null : parseInt(this.$route.query.videoId, 10);

@@ -13,6 +13,7 @@
         </template>
         <VideoContainer
             v-if="videoParam !== null"
+            v-bind:key="videoKey"
             ref="videoContainer"
             v-bind:videoParam="videoParam"
             v-on:canplay="onVideoCanplay"
@@ -108,6 +109,21 @@ class WatchRecordedStreaming extends Vue {
 
     private infoState: IWatchRecordedInfoState = container.get<IWatchRecordedInfoState>('IWatchRecordedInfoState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+
+    /**
+     * VideoContainer の再生成キー
+     * 各 video コンポーネントは mounted 時にしか DPlayer を作らないため、
+     * 再生対象が変わったら VideoContainer ごと作り直さないと動画が切り替わらない
+     */
+    get videoKey(): string {
+        if (this.videoParam === null) {
+            return 'none';
+        }
+
+        const streamingType = this.videoParam.type === 'RecordedStreaming' ? this.videoParam.streamingType : 'hls';
+
+        return `${streamingType}-${this.videoParam.videoFileId}-${this.videoParam.mode}`;
+    }
 
     /**
      * 右パネルのタブ構成 (Next Up パネルは機能フラグで出し分ける)
@@ -261,6 +277,8 @@ class WatchRecordedStreaming extends Vue {
         this.infoState.clear();
         this.displayInfo = null;
         this.jikkyoComments = [];
+        // 古い動画を残さない (パラメータ不足の URL へ遷移した場合にそのまま再生され続けるのを防ぐ)
+        this.videoParam = null;
 
         // 視聴パラメータセット
         const videoFileId = parseInt(Util.getRouteString(this.$route.params.id) ?? '', 10);

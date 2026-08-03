@@ -306,7 +306,8 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - **チャンネル** (`WatchPanelChannels.vue`): 放送中の番組を **ピン留め / 地デジ (地域別) / BS / CS** のタブで並べる。各行は現在番組・**NEXT (次の番組)**・番組の進捗バーを持ち、クリックでその放送局の視聴へ切り替える (配信種別・エンコード設定は今の視聴から引き継ぐ)。ピン留めは localStorage (`pinnedChannelIds`) に保存する
             - **ピン留めはまとめて設定できる** (`WatchPinnedChannelsDialog.vue`): ピン留めタブの「ピン留めを編集」から開く。上段でピン留め済みの並べ替え (↑↓) と解除、下段で全放送局 (地上波系は地域名、BS / CS は放送波種別でグルーピング) をキーワード検索しながらチェックで追加する。一覧の各行にあるピンアイコンと同じ設定を編集する
             - **設定の参照は `ISettingStorageModel.tmp` を使う**。`getSavedValue()` は localStorage の直読みで Vue のリアクティブ依存が張られないため、これで組み立てた表示は設定を変えても再描画されない
-        - **次の話** (`NextUpPanel.vue`): パネル内に収まる高さ (`max-height: 100%` + 縦 flex) にして、見出し・タブ・カウントダウンは固定、**リスト部 (`v-window`) だけをスクロール**させる。以前は一覧が長いとパネルからはみ出して下の項目を見られなかった。親に高さの制約が無い画面 (録画詳細など) では `max-height: 100%` が効かないため、従来どおり中身の分だけ縦に伸びる
+        - **次の話** (`NextUpPanel.vue`): パネル内に収まる高さ (縦 flex) にして、タブ・カウントダウンは固定、**リスト部だけをスクロール**させる。以前は一覧が長いとパネルからはみ出して下の項目を見られなかった
+            - **見た目は番組情報タブに揃えている**。`v-card` / `v-list` (Vuetify のテーマ色) をやめ、暗色パネル上で読める配色 (`rgba(255,255,255,*)`) の自前リストにした。各行はサムネイル + 番組名 + 放送局・日時 + 視聴状態で、**行全体のクリックでも再生**できる。「最新 / シリーズ」の切り替えは `v-tabs` ではなくチップ状のスイッチ。パネルのタブで開閉できるため、パネル自体の折り畳みボタン (設定 `isNextUpPanelOpen`) は廃止した
         - **コメント** (`WatchPanelComments.vue`): 映像に流れている実況コメントを時系列で並べる。末尾付近にいるときだけ自動追従し、上へスクロールしている間は追従しない (「最新のコメントへ」ボタンで戻る)
     - **実況コメントの受け渡し**: `BaseVideo.drawJikkyoComment()` が弾幕を描くタイミングで `jikkyoComment` イベントを上げ、`VideoContainer` が視聴画面へ中継する。**遅延補正後のタイミングで流すため、パネルの表示と弾幕の表示が揃う**。保持数は 500 件で、超えた分は古いものから捨てる
     - **チャンネル切り替え**: 映像の右端に前後のチャンネルへ移動するボタンを重ねた (放送中一覧の並び順で循環する)
@@ -314,6 +315,17 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **削除したもの**: 役目を終えた `WatchOnAirInfoCard.vue` / `WatchRecordedInfoCard.vue`。番組情報の取得と視聴済み切り替えは各視聴画面 (`WatchOnAir.vue` / `WatchRecorded.vue` / `WatchRecordedStreaming.vue`) へ移した
     - **保存する設定** (`ISettingValue`): `isOpenWatchSidePanel` (パネルの開閉)、`watchSidePanelTab` (選択タブ)、`pinnedChannelIds` (ピン留めした放送局)
     - **未対応**: 下部の再生コントロールと設定ポップアップ (画質・音声・コメント表示・透明度・キーボードショートカット) は DPlayer 標準のものをそのまま使っている
+
+- **視聴画面で別の録画へ切り替えても再生が変わらない問題を修正した**
+    - **原因**: 各 video コンポーネント (`NormalVideo.vue` / `RecordedStreamingVideo.vue` など) は `mounted()` のときにしか DPlayer を作らない。「次の話」パネルの再生ボタンで同じ画面 (`/recorded/watch` の query 違い、`/recorded/streaming/:id`) へ遷移すると、Vue が同じコンポーネントを使い回して props だけ差し替えるため、**プレイヤーは前の動画のまま**だった (シークバーの長さ・再生位置も前のもの)
+    - **修正**: `WatchRecorded.vue` / `WatchRecordedStreaming.vue` が `VideoContainer` に**再生対象から作ったキー** (`videoKey`: 直接再生は `normal-<videoFileId>`、ストリーミングは `<streamingType>-<videoFileId>-<mode>`) を付け、再生対象が変わったら `VideoContainer` ごと作り直す。URL 変更時は `videoParam` を一度 `null` に戻し、再生対象の無い URL で前の動画が鳴り続けないようにする
+    - **併せて修正**: `VideoContainer` は再生位置の保存・復元に使うビデオファイル ID を**生成時に固定する** (`playingVideoFileId`)。以前は `videoParam` を都度参照していたため、切り替え時に親が `videoParam` を差し替えてから破棄される順序の関係で、**古い再生位置を新しいビデオファイルの視聴履歴へ書き込んでいた**。作り直しでレジューム状態 (`resumeApplied` / `resumeReady`) もリセットされるので、切り替え後は「前回再生位置、無ければ先頭」から始まる
+    - 「次の話」からの遷移は**今の配信設定 (`streamingType` / `mode`) を踏襲する**。ストリーミング視聴中はストリーミング再生画面へ同じパラメータで、直接再生中はエンコード済みファイルの直接再生へ遷移する (従来どおり)
+
+- **視聴履歴の一覧から TS 録画を再生できるようにした**
+    - **原因**: 一覧の行クリックは常に `/recorded/watch?videoId=&recordedId=` へ送っていたが、この画面はファイルを直接再生するもので、**TS ファイルはブラウザで再生できない** (配信設定 `streamingType` / `mode` が要る)
+    - **修正**: `WatchHistory.vue` が履歴の `videoFileId` に対応する `videoFile` を録画情報から引き、`type === 'encoded'` なら従来どおり直接再生、**TS なら録画詳細と同じ配信設定ダイアログ (`RecordedDetailSelectStreamDialog.vue`) を開いてからストリーミング再生画面へ送る**。録画ファイルが既に無い履歴は録画詳細画面へ逃がす。配信設定が用意されていない場合 (`isEnableTSRecordedStream` が false など) はスナックバーで知らせる
+    - **ついでに直した**: `RecordedDetailSelectStreamState.open()` が `streamTypeItems` を作り直しておらず、同じ画面で 2 回開くと選択肢が重複していた。加えて ts ⇔ encoded で前回選んだ配信種別が今回の選択肢に無い場合は選び直すようにした (存在しない種別のまま開くと視聴設定が空になる)
 
 - **録画済み一覧から複数選択してまとめてエンコードできるようにした**
     - **背景**: 複数選択 (編集モード) は削除にしか使えず、まとめてエンコードするには録画を 1 件ずつ開いて「エンコード」を実行する必要があった
