@@ -425,7 +425,7 @@ class RecordedManageModel implements IRecordedManageModel {
 
             // 通知
             const needsCreateThumbnail = typeof recorded.thumbnails === 'undefined' || recorded.thumbnails.length === 0;
-            this.recordedEvent.emitAddUploadedVideoFile(videoFileId, needsCreateThumbnail);
+            this.recordedEvent.emitAddUploadedVideoFile(videoFileId, needsCreateThumbnail, recordedId);
         } catch (err: any) {
             await FileUtil.unlink(filePath).catch(() => {});
             // 自動生成した番組情報は動画が登録できなければ残す意味が無い
@@ -710,7 +710,7 @@ class RecordedManageModel implements IRecordedManageModel {
                         recorded === null ||
                         typeof recorded.thumbnails === 'undefined' ||
                         recorded.thumbnails.length === 0;
-                    this.recordedEvent.emitAddUploadedVideoFile(videoFileId, needsCreateThumbnail);
+                    this.recordedEvent.emitAddUploadedVideoFile(videoFileId, needsCreateThumbnail, recordedId);
                 }
 
                 results.push({ localFilePath: option.localFilePath, imported: true, recordedId, name });

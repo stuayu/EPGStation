@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../api';
+import IRecordedDB from '../db/IRecordedDB';
 import IConfigFile from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
@@ -44,6 +45,7 @@ export default class EventSetter implements IEventSetter {
     private config: IConfigFile;
     private notification: INotificationDispatcher;
     private seriesResolver: ISeriesResolver;
+    private recordedDB: IRecordedDB;
 
     private isFirstreserveationUpdate: boolean = true;
 
@@ -68,6 +70,7 @@ export default class EventSetter implements IEventSetter {
         @inject('IConfiguration') configure: IConfiguration,
         @inject('INotificationDispatcher') notification: INotificationDispatcher,
         @inject('ISeriesResolver') seriesResolver: ISeriesResolver,
+        @inject('IRecordedDB') recordedDB: IRecordedDB,
     ) {
         this.log = logger.getLogger();
         this.epgUpdateEvent = epgUpdateEvent;
@@ -88,6 +91,7 @@ export default class EventSetter implements IEventSetter {
         this.config = configure.getConfig();
         this.notification = notification;
         this.seriesResolver = seriesResolver;
+        this.recordedDB = recordedDB;
     }
 
     /**
@@ -364,12 +368,17 @@ export default class EventSetter implements IEventSetter {
         });
 
         // upload video file
-        this.recordedEvent.setAddUploadedVideoFile((videoFileId, needsCreateThumbnail) => {
+        this.recordedEvent.setAddUploadedVideoFile((videoFileId, needsCreateThumbnail, recordedId) => {
             this.ipc.notifyClient();
             // サムネイル作成
             if (needsCreateThumbnail === true) {
                 this.thumbnailManage.add(videoFileId);
             }
+
+            // シリーズ自動マッピング
+            // TS 解析 (放送局・番組名・開始時刻の確定) が済んだ後に発行されるイベントなので、
+            // 録画完了時と同じくしょぼいカレンダーの放送予定照会・作品辞書を引ける
+            void this.resolveSeriesForUploadedRecorded(recordedId);
         });
 
         // video file 削除
@@ -411,6 +420,31 @@ export default class EventSetter implements IEventSetter {
         this.encodeEvent.setFinishEncode(info => {
             this.externalCommandManage.addEncodingFinishCmd(info);
         });
+    }
+
+    /**
+     * アップロード / 取り込みで追加された録画をシリーズへ解決する
+     * 録画完了時と違い予約が存在しないため、判定は TS 解析で確定した番組名・放送局・開始時刻だけで行う
+     * @param recordedId: apid.RecordedId
+     * @return Promise<void>
+     */
+    private async resolveSeriesForUploadedRecorded(recordedId: apid.RecordedId): Promise<void> {
+        try {
+            const recorded = await this.recordedDB.findId(recordedId);
+            if (recorded === null) {
+                return;
+            }
+
+            await this.seriesResolver.resolve({
+                recordedId: recorded.id,
+                title: recorded.name,
+                channelId: recorded.channelId,
+                startAt: recorded.startAt,
+            });
+        } catch (err: any) {
+            this.log.system.error('series resolve failed');
+            this.log.system.error(err);
+        }
     }
 
     /**

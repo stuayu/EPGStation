@@ -8,7 +8,7 @@ import IRecordedApiModel from '../../../api/recorded/IRecordedApiModel';
 import IChannelModel from '../../../channels/IChannelModel';
 import IServerConfigModel from '../../../serverConfig/IServerConfigModel';
 import { ISettingStorageModel } from '../../../storage/setting/ISettingStorageModel';
-import IRecordedUploadState, { ImportScanRowItem, SelectorItem, UploadProgramOption, VideoFileItem } from './IRecordedUploadState';
+import IRecordedUploadState, { ImportScanRowItem, SelectorItem, ServerFileItem, UploadProgramOption, VideoFileItem } from './IRecordedUploadState';
 
 @injectable()
 class RecordedUploadState implements IRecordedUploadState {
@@ -205,6 +205,8 @@ class RecordedUploadState implements IRecordedUploadState {
             // 自動取得モードは放送 TS 前提なので ts を既定にする
             fileType: this.isAutoDetect === true ? 'ts' : undefined,
             file: null,
+            fileSource: 'browser',
+            localFilePath: null,
         });
 
         this.videoItemCnt++;
@@ -274,6 +276,11 @@ class RecordedUploadState implements IRecordedUploadState {
 
         if (typeof item.parentDirectoryName !== 'string') {
             return false;
+        }
+
+        // サーバー上のファイルを指定する場合はパスが、ブラウザからのアップロードならファイルが必要
+        if (item.fileSource === 'server') {
+            return typeof item.localFilePath === 'string' && item.localFilePath.length > 0;
         }
 
         if (typeof item.file === 'undefined' || item.file === null) {
@@ -347,6 +354,31 @@ class RecordedUploadState implements IRecordedUploadState {
         } finally {
             this.importIsScanning = false;
         }
+    }
+
+    /**
+     * サーバー上 (importDirs 配下) のファイルを列挙する
+     * アップロード時のファイル選択用なので、TS 解析・重複判定は行わせない (analyze: false)
+     * @param importDirName: string
+     * @param subPath: string | null
+     * @param recursive: boolean
+     * @return Promise<ServerFileItem[]>
+     */
+    public async listServerFiles(importDirName: string, subPath: string | null, recursive: boolean): Promise<ServerFileItem[]> {
+        const result = await this.recordedApiModel.scanImportDirectory({
+            importDirName: importDirName,
+            subPath: typeof subPath === 'string' && subPath.length > 0 ? subPath : undefined,
+            recursive: recursive,
+            analyze: false,
+        });
+
+        return result.items.map(item => {
+            return <ServerFileItem>{
+                filePath: item.filePath,
+                fileName: item.fileName,
+                size: item.size,
+            };
+        });
     }
 
     /**
@@ -435,13 +467,15 @@ class RecordedUploadState implements IRecordedUploadState {
         const recordedId = this.isAutoDetect === true ? null : await this.recordedApiModel.createNewRecorded(this.createProgramOption());
 
         for (const video of this.videoFileItems) {
+            const isServerFile = video.fileSource === 'server';
             if (
                 typeof video.parentDirectoryName !== 'string' ||
                 typeof video.viewName !== 'string' ||
                 video.viewName.length === 0 ||
                 typeof video.fileType !== 'string' ||
-                typeof video.file === 'undefined' ||
-                video.file === null
+                (isServerFile === true
+                    ? typeof video.localFilePath !== 'string' || video.localFilePath.length === 0
+                    : typeof video.file === 'undefined' || video.file === null)
             ) {
                 continue;
             }
@@ -450,8 +484,12 @@ class RecordedUploadState implements IRecordedUploadState {
                 parentDirectoryName: video.parentDirectoryName,
                 viewName: video.viewName,
                 fileType: video.fileType as apid.VideoFileType,
-                file: video.file,
             };
+            if (isServerFile === true) {
+                uploadVideoOption.localFilePath = video.localFilePath as string;
+            } else {
+                uploadVideoOption.file = video.file as File;
+            }
             if (recordedId !== null) {
                 uploadVideoOption.recordedId = recordedId;
             }

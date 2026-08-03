@@ -2217,7 +2217,7 @@ components:
                     type: string
                     format: binary
                 localFilePath:
-                    description: アップロードファイルのローカルパス
+                    description: サーバー上のファイルパス。file の代わりに指定する。config.importDirs 配下のファイルのみ許可され、指定したファイルは録画ディレクトリへ移動される
                     type: string
 
         UploadVideoFileResult:
@@ -2259,6 +2259,9 @@ components:
                     type: string
                 recursive:
                     description: サブディレクトリも走査するか (既定 true)
+                    type: boolean
+                analyze:
+                    description: TS 解析・重複判定を行い番組情報を推定するか (既定 true)。false ならファイルの列挙だけを行う (アップロード時のファイル選択用)
                     type: boolean
 
         ImportScanResultItem:

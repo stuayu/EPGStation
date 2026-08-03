@@ -229,13 +229,44 @@ export default class RecordedApiModel implements IRecordedApiModel {
         const candidates = await ImportDirectoryScanner.scan(resolvedDir.realPath, option.recursive ?? true);
         const channels = await this.channelDB.findAll();
 
+        // analyze を false にすると TS 解析・重複判定を行わずファイルの列挙だけを返す
+        // (アップロード画面でサーバー上のファイルを選ぶだけの用途では番組情報の推定が不要なため)
+        const analyze = option.analyze !== false;
+
         const items: apid.ImportScanResultItem[] = [];
         for (const candidate of candidates) {
-            const item = await this.toScanResultItem(candidate, channels);
+            const item =
+                analyze === true
+                    ? await this.toScanResultItem(candidate, channels)
+                    : await RecordedApiModel.toFileListItem(candidate);
             items.push(item);
         }
 
         return { items };
+    }
+
+    /**
+     * スキャン候補 1 件分を、TS 解析を行わないファイル情報だけの item に変換する
+     * @param candidate: ImportDirectoryScanner.CandidateFile
+     * @return Promise<apid.ImportScanResultItem>
+     */
+    private static async toFileListItem(
+        candidate: ImportDirectoryScanner.CandidateFile,
+    ): Promise<apid.ImportScanResultItem> {
+        const item: apid.ImportScanResultItem = {
+            filePath: candidate.filePath,
+            fileName: candidate.fileName,
+            hasProgramTxt: candidate.programTxtPath !== null,
+            hasErr: candidate.errPath !== null,
+        };
+
+        try {
+            item.size = await FileUtil.getFileSize(candidate.filePath);
+        } catch (err: any) {
+            // 取得できなくても無視する
+        }
+
+        return item;
     }
 
     /**
@@ -550,6 +581,18 @@ export default class RecordedApiModel implements IRecordedApiModel {
      * @return Promise<void>
      */
     public async addUploadedVideoFile(option: UploadedVideoFileOption): Promise<apid.RecordedId> {
+        // サーバー上のファイルを直接指定する場合は importDirs 配下に限定する。
+        // 指定されたパスのファイルは録画ディレクトリへ移動される (元の場所から消える) ため、
+        // 任意のパスを受け付けると無関係なファイルを動かせてしまう
+        if (typeof option.localFilePath === 'string') {
+            const config = this.configuration.getConfig();
+            const resolved = await ImportPathValidator.resolveImportTargetPath(
+                option.localFilePath,
+                config.importDirs ?? [],
+            );
+            option.localFilePath = resolved.realPath;
+        }
+
         return await this.ipc.recorded.addUploadedVideoFile(option);
     }
 

@@ -5,6 +5,13 @@ export interface SelectorItem {
     value: number;
 }
 
+/**
+ * アップロードするファイルの指定方法
+ * browser: 手元の PC からブラウザ経由でアップロードする
+ * server: サーバー上 (config.importDirs 配下) のファイルを指定する
+ */
+export type VideoFileSource = 'browser' | 'server';
+
 export interface VideoFileItem {
     key: number;
     parentDirectoryName: string | undefined;
@@ -12,6 +19,19 @@ export interface VideoFileItem {
     viewName: string | null;
     fileType: apid.VideoFileType | undefined;
     file: File | null | undefined;
+    // ファイルの指定方法
+    fileSource: VideoFileSource;
+    // fileSource が server のときに指定する、サーバー上のファイルパス
+    localFilePath: string | null;
+}
+
+/**
+ * サーバー上のファイル選択ダイアログで表示する 1 件分
+ */
+export interface ServerFileItem {
+    filePath: string;
+    fileName: string;
+    size?: number;
 }
 
 /**
@@ -75,6 +95,7 @@ export default interface IRecordedUploadState {
     getImportDuplicateActionItems(): apid.ImportDuplicateAction[];
     getImportModeItems(): apid.ImportMode[];
     scanImportDirectory(): Promise<void>;
+    listServerFiles(importDirName: string, subPath: string | null, recursive: boolean): Promise<ServerFileItem[]>;
     startImportRegistration(): Promise<void>;
     retryFailedImports(): Promise<void>;
 }

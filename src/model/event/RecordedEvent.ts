@@ -51,9 +51,14 @@ class RecordedEvent implements IRecordedEvent {
      * アップロードビデオファイル追加イベント発行
      * @param newVideoFileId: apid.VideoFileId
      * @param needsCreateThumbnail: boolean サムネイル生成が必要か
+     * @param recordedId: apid.RecordedId 紐付いた録画番組
      */
-    public emitAddUploadedVideoFile(newVideoFileId: apid.VideoFileId, needsCreateThumbnail: boolean): void {
-        this.emitter.emit(RecordedEvent.ADD_UPLOADED_VIDEO_FILE, newVideoFileId, needsCreateThumbnail);
+    public emitAddUploadedVideoFile(
+        newVideoFileId: apid.VideoFileId,
+        needsCreateThumbnail: boolean,
+        recordedId: apid.RecordedId,
+    ): void {
+        this.emitter.emit(RecordedEvent.ADD_UPLOADED_VIDEO_FILE, newVideoFileId, needsCreateThumbnail, recordedId);
     }
 
     /**
@@ -131,16 +136,20 @@ class RecordedEvent implements IRecordedEvent {
 
     /**
      * アップロードビデオファイル追加イベント登録
-     * @param callback: (newVideoFileId: apid.VideoFileId, needsCreateThumbnail: boolean) => void
+     * @param callback: (newVideoFileId: apid.VideoFileId, needsCreateThumbnail: boolean, recordedId: apid.RecordedId) => void
      */
     public setAddUploadedVideoFile(
-        callback: (newVideoFileId: apid.VideoFileId, needsCreateThumbnail: boolean) => void,
+        callback: (
+            newVideoFileId: apid.VideoFileId,
+            needsCreateThumbnail: boolean,
+            recordedId: apid.RecordedId,
+        ) => void,
     ): void {
         this.emitter.on(
             RecordedEvent.ADD_UPLOADED_VIDEO_FILE,
-            async (newVideoFileId: apid.VideoFileId, needsCreateThumbnail: boolean) => {
+            async (newVideoFileId: apid.VideoFileId, needsCreateThumbnail: boolean, recordedId: apid.RecordedId) => {
                 try {
-                    await callback(newVideoFileId, needsCreateThumbnail);
+                    await callback(newVideoFileId, needsCreateThumbnail, recordedId);
                 } catch (err: any) {
                     this.log.system.error(err);
                 }
