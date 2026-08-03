@@ -80,16 +80,40 @@
 
                 <v-select class="directory" v-model="video.parentDirectoryName" :items="uploadState.getPrentDirectoryItems()" label="directory"></v-select>
                 <v-text-field v-model="video.subDirectory" label="sub directory" clearable></v-text-field>
-                <v-file-input v-model="video.file" label="video file" v-on:update:model-value="setViewName(video)"></v-file-input>
+                <v-radio-group v-model="video.fileSource" inline hide-details class="mb-2">
+                    <v-radio value="browser" label="この端末のファイルをアップロード"></v-radio>
+                    <v-radio value="server" label="サーバー上のファイルを指定" :disabled="isServerFileSelectable === false"></v-radio>
+                </v-radio-group>
+                <div v-if="isServerFileSelectable === false" class="text-caption text-medium-emphasis mb-2">
+                    サーバー上のファイルを指定するには config.yml の importDirs にディレクトリを設定してください。
+                </div>
+                <v-file-input
+                    v-if="video.fileSource !== 'server'"
+                    v-model="video.file"
+                    label="video file"
+                    v-on:update:model-value="setViewName(video)"
+                ></v-file-input>
+                <div v-else class="d-flex align-center ga-2 mb-2">
+                    <v-text-field
+                        v-model="video.localFilePath"
+                        label="サーバー上のファイルパス"
+                        readonly
+                        hide-details
+                        placeholder="ファイルを選択してください"
+                    ></v-text-field>
+                    <v-btn v-on:click="openServerFileSelect(video)" variant="outlined" color="secondary">選択</v-btn>
+                </div>
             </SearchOptionRow>
         </div>
+        <ServerFileSelectDialog v-model="isOpenServerFileSelect" v-on:selected="onServerFileSelected"></ServerFileSelectDialog>
     </div>
 </template>
 
 <script lang="ts">
+import ServerFileSelectDialog from '@/components/recorded/upload/ServerFileSelectDialog.vue';
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
-import IRecordedUploadState, { VideoFileItem } from '@/model/state/recorded/upload/IRecordedUploadState';
+import IRecordedUploadState, { ServerFileItem, VideoFileItem } from '@/model/state/recorded/upload/IRecordedUploadState';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 /**
@@ -99,12 +123,47 @@ import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 @Component({
     components: {
         SearchOptionRow,
+        ServerFileSelectDialog,
     },
 })
 class RecordedUploadFields extends Vue {
     public uploadState: IRecordedUploadState = container.get<IRecordedUploadState>('IRecordedUploadState');
     public ruleLoading: boolean = false;
     public ruleSearchInput: string | undefined;
+    public isOpenServerFileSelect: boolean = false;
+
+    // サーバー上のファイル選択ダイアログを開いた対象
+    private serverFileSelectTarget: VideoFileItem | null = null;
+
+    /**
+     * サーバー上のファイルを指定できるか (importDirs が設定されている場合のみ)
+     */
+    get isServerFileSelectable(): boolean {
+        return this.uploadState.getImportDirItems().length > 0;
+    }
+
+    /**
+     * 指定したビデオファイル欄に対してサーバー上のファイル選択ダイアログを開く
+     */
+    public openServerFileSelect(video: VideoFileItem): void {
+        this.serverFileSelectTarget = video;
+        this.isOpenServerFileSelect = true;
+    }
+
+    /**
+     * 選択されたサーバー上のファイルをビデオファイル欄へ反映する
+     */
+    public onServerFileSelected(file: ServerFileItem): void {
+        if (this.serverFileSelectTarget === null) {
+            return;
+        }
+
+        this.serverFileSelectTarget.localFilePath = file.filePath;
+        if (typeof this.serverFileSelectTarget.viewName !== 'string' || this.serverFileSelectTarget.viewName.length === 0) {
+            this.serverFileSelectTarget.viewName = file.fileName;
+        }
+        this.serverFileSelectTarget = null;
+    }
 
     /**
      * 番組情報の自動取得モードを切り替える

@@ -1286,7 +1286,7 @@ export interface UploadVideoFileOption {
     viewName: string; // UI 上での表示名
     fileType: VideoFileType; // ファイルタイプ
     file?: File; // ファイル
-    localFilePath?: string; // アップロードファイルのローカルパス
+    localFilePath?: string; // サーバー上のファイルパス (file の代わりに指定する。importDirs 配下のみ許可、指定ファイルは録画ディレクトリへ移動される)
 }
 
 export interface UploadVideoFileResult {
@@ -1369,6 +1369,7 @@ export interface ImportScanOption {
     importDirName: string; // config.importDirs で定義したディレクトリ名
     subPath?: string; // importDirName 配下のサブパス (省略時はルート)
     recursive?: boolean; // サブディレクトリも走査するか (既定 true)
+    analyze?: boolean; // TS 解析・重複判定を行い番組情報を推定するか (既定 true)。false ならファイルの列挙だけを行う
 }
 
 /**
