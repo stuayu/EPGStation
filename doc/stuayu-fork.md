@@ -674,6 +674,10 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - `data === null` (ロード中/404) のとき「シリーズへ」ボタンが誤って表示される不具合を修正 (`data !== null && data.currentSeriesId !== null`)
         - `WatchRecorded.vue` が `featureFlags.nextUpPanel` を見ずにパネルを常時表示していた回帰を修正 (無効時はパネル自体を描画しない)
         - 録画詳細レスポンス自体には `seriesId`/`episodeNo` が無いため、シリーズタブ選択時に `ISeriesApiModel.get(seriesId)` (既存 API) から話数マップを解決して表示・連続再生の順序判定に使用 (サーバ側変更なし)
+        - **一覧は無限スクロールで、上限は 8 件固定から撤廃した**: `GET /api/recorded/{recordedId}/next-up` に `limit` (既定 20 / 上限 100)・`offset`・`target` (`all` / `latest` / `series`) を追加し、レスポンスに `hasMoreLatest` / `hasMoreSeries` を返す。従来は新着・シリーズとも `.slice(0, 8)` で切り捨てていたため、9 話目以降がそもそも取得できていなかった
+            - **追加読み込みは表示中のタブだけを引く** (`target`)。全件を一度に返さないのは、スマートフォンで DOM とレスポンスが一度に膨らむのを避けるため
+            - クライアント (`NextUpPanel.vue`) は**スクロールイベントではなく `IntersectionObserver`** で末尾の番兵要素を監視する (スクロールのたびにハンドラを走らせない)。監視するのは表示中タブの番兵 1 つだけで、パネルを畳んでいる間・続きが無い場合・読み込み失敗時は監視自体を止める
+            - 追加分は id で重複を除いてから追記する (ページ境界で同じ録画が二重に並ばないようにする)
 
 - システム設定 (S5/S6) の残作業を実装し、通知イベント種別を拡充（S1〜S7、サーバ側のみ）
     - **DI 登録漏れの修正**: `IAppSettingHistoryDB` / `INotificationQueueDB` が `ModelContainerSetter.ts` に未登録だったため起動時に DI 解決で落ちる不具合を修正

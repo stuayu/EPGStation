@@ -25,7 +25,7 @@
                 <v-tab value="latest">最新</v-tab>
                 <v-tab value="series">シリーズ</v-tab>
             </v-tabs>
-            <v-window v-model="tab" class="next-up-body">
+            <v-window v-model="tab" class="next-up-body" ref="body">
                 <v-window-item value="latest">
                     <v-list lines="two" density="compact">
                         <v-list-item v-for="item in data?.latest ?? []" :key="`latest-${item.id}`">
@@ -40,6 +40,9 @@
                             </template>
                         </v-list-item>
                     </v-list>
+                    <div ref="latestSentinel" class="load-sentinel">
+                        <v-progress-circular v-if="isLoadingMore === true && tab === 'latest'" indeterminate size="20"></v-progress-circular>
+                    </div>
                 </v-window-item>
                 <v-window-item value="series">
                     <v-list lines="two" density="compact">
@@ -55,6 +58,9 @@
                             </template>
                         </v-list-item>
                     </v-list>
+                    <div ref="seriesSentinel" class="load-sentinel">
+                        <v-progress-circular v-if="isLoadingMore === true && tab === 'series'" indeterminate size="20"></v-progress-circular>
+                    </div>
                 </v-window-item>
             </v-window>
             <v-card-text v-if="!loading && empty">候補がありません</v-card-text>
@@ -74,6 +80,8 @@ interface NextUpData {
     currentSeriesId: number | null;
     latest: apid.RecordedItem[];
     series: apid.RecordedItem[];
+    hasMoreLatest: boolean;
+    hasMoreSeries: boolean;
 }
 
 @Component({})
@@ -85,8 +93,13 @@ class NextUpPanel extends Vue {
 
     public data: NextUpData | null = null;
     public loading = false;
+    public isLoadingMore = false;
     public tab: 'latest' | 'series' = 'latest';
     public panelOpen = true;
+
+    // 無限スクロール用の監視。スクロールイベントを毎フレーム処理しないよう IntersectionObserver を使う
+    // (低スペックのスマートフォンでも描画を妨げないため)
+    private observer: IntersectionObserver | null = null;
 
     // 連続再生 (§4.9) 用の状態
     public showCountdown = false;
@@ -127,9 +140,14 @@ class NextUpPanel extends Vue {
         document.addEventListener('keydown', this.onKeydown);
     }
 
+    public mounted(): void {
+        this.setupObserver();
+    }
+
     public beforeUnmount(): void {
         document.removeEventListener('keydown', this.onKeydown);
         this.clearCountdownTimer();
+        this.teardownObserver();
     }
 
     @Watch('tab')
@@ -137,6 +155,18 @@ class NextUpPanel extends Vue {
         this.settingModel.tmp.nextUpPanelTab = value;
         this.settingModel.save();
         this.resetCountdown();
+        // 表示中のタブの番兵だけを監視する
+        this.$nextTick(() => {
+            this.setupObserver();
+        });
+    }
+
+    @Watch('panelOpen')
+    public onPanelOpenChange(): void {
+        // 畳んでいる間は監視も止める (見えていないリストの追加読み込みを走らせない)
+        this.$nextTick(() => {
+            this.setupObserver();
+        });
     }
 
     public togglePanelOpen(): void {
@@ -152,12 +182,124 @@ class NextUpPanel extends Vue {
         this.episodeNumberMap = new Map();
         this.currentEpisodeNumber = null;
         try {
-            this.data = await this.api.getNextUp(this.recordedId, this.isHalfWidth);
+            this.data = await this.api.getNextUp(this.recordedId, this.isHalfWidth, {
+                limit: NextUpPanel.PAGE_SIZE,
+                offset: 0,
+            });
             if (this.data !== null && this.data.currentSeriesId !== null) {
                 await this.loadEpisodeNumbers(this.data.currentSeriesId);
             }
         } finally {
             this.loading = false;
+        }
+
+        this.$nextTick(() => {
+            this.setupObserver();
+        });
+    }
+
+    /**
+     * 表示中のタブの番兵要素だけを IntersectionObserver で監視する
+     * 監視対象は 1 つだけに保ち、パネルを畳んでいる間や続きが無い場合は監視自体を止める
+     */
+    private setupObserver(): void {
+        this.teardownObserver();
+
+        if (this.panelOpen === false || typeof IntersectionObserver === 'undefined') {
+            return;
+        }
+        if (this.hasMore(this.tab) === false) {
+            return;
+        }
+
+        const sentinel = (this.tab === 'series' ? this.$refs.seriesSentinel : this.$refs.latestSentinel) as HTMLElement | undefined;
+        const root = (this.$refs.body as { $el?: HTMLElement } | undefined)?.$el;
+        if (typeof sentinel === 'undefined' || sentinel === null) {
+            return;
+        }
+
+        this.observer = new IntersectionObserver(
+            entries => {
+                if (entries.some(entry => entry.isIntersecting === true) === true) {
+                    void this.loadMore();
+                }
+            },
+            {
+                root: root instanceof HTMLElement ? root : null,
+                // 下端に到達する少し手前で読み始める
+                rootMargin: '200px',
+            },
+        );
+        this.observer.observe(sentinel);
+    }
+
+    private teardownObserver(): void {
+        if (this.observer !== null) {
+            this.observer.disconnect();
+            this.observer = null;
+        }
+    }
+
+    /**
+     * 指定タブに続きがあるか
+     */
+    private hasMore(tab: 'latest' | 'series'): boolean {
+        if (this.data === null) {
+            return false;
+        }
+
+        return tab === 'series' ? this.data.hasMoreSeries === true : this.data.hasMoreLatest === true;
+    }
+
+    /**
+     * 表示中のタブの続きを 1 ページ分だけ読み込む
+     * 追加読み込み中は再入しないので、番兵が何度交差しても多重リクエストにはならない
+     */
+    private async loadMore(): Promise<void> {
+        if (this.isLoadingMore === true || this.loading === true || this.data === null) {
+            return;
+        }
+        if (this.hasMore(this.tab) === false) {
+            return;
+        }
+
+        const tab = this.tab;
+        const offset = tab === 'series' ? this.data.series.length : this.data.latest.length;
+
+        this.isLoadingMore = true;
+        try {
+            const result = await this.api.getNextUp(this.recordedId, this.isHalfWidth, {
+                limit: NextUpPanel.PAGE_SIZE,
+                offset: offset,
+                target: tab,
+            });
+            if (result === null || this.data === null || tab !== this.tab) {
+                return;
+            }
+
+            // 既に持っている録画は取り除いてから追記する (境界での重複対策)
+            const current = tab === 'series' ? this.data.series : this.data.latest;
+            const known = new Set(current.map(item => item.id));
+            const added = (tab === 'series' ? result.series : result.latest).filter(item => known.has(item.id) === false);
+            current.push(...added);
+
+            if (tab === 'series') {
+                this.data.hasMoreSeries = result.hasMoreSeries === true && added.length > 0;
+            } else {
+                this.data.hasMoreLatest = result.hasMoreLatest === true && added.length > 0;
+            }
+        } catch (err) {
+            console.error(err);
+            // 失敗したら監視を止めて無限リトライを避ける
+            if (this.data !== null) {
+                if (tab === 'series') this.data.hasMoreSeries = false;
+                else this.data.hasMoreLatest = false;
+            }
+        } finally {
+            this.isLoadingMore = false;
+            this.$nextTick(() => {
+                this.setupObserver();
+            });
         }
     }
 
@@ -341,6 +483,8 @@ class NextUpPanel extends Vue {
 namespace NextUpPanel {
     export const COUNTDOWN_TRIGGER_SECONDS = 8;
     export const COUNTDOWN_DURATION_SECONDS = 8;
+    // 1 回の読み込み件数。DOM を一度に増やしすぎないよう小さめに取る
+    export const PAGE_SIZE = 20;
 }
 
 export default toNative(NextUpPanel);
@@ -364,6 +508,13 @@ export default toNative(NextUpPanel);
     flex: 1 1 auto
     min-height: 0
     overflow-y: auto
+
+// 無限スクロールの番兵。高さを持たせて rootMargin と合わせて先読みさせる
+.load-sentinel
+    display: flex
+    align-items: center
+    justify-content: center
+    height: 32px
 
 .countdown-card
     background: rgba(var(--v-theme-primary), 0.08)

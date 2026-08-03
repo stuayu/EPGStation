@@ -5,6 +5,19 @@ export interface NextUpResult {
     currentSeriesId: number | null;
     latest: apid.RecordedItem[];
     series: apid.RecordedItem[];
+    // それぞれ続きがあるか (無限スクロールの打ち切り判定に使う)
+    hasMoreLatest: boolean;
+    hasMoreSeries: boolean;
+}
+
+/**
+ * 次に見る候補の取得範囲
+ * target を指定すると片方のリストだけを引く (追加読み込み時に不要なクエリを打たないため)
+ */
+export interface NextUpOption {
+    limit?: number;
+    offset?: number;
+    target?: 'all' | 'latest' | 'series';
 }
 
 export default interface IRecordedApiModel {
@@ -18,7 +31,7 @@ export default interface IRecordedApiModel {
     fileCleanup(target?: apid.RecordedCleanupTarget): Promise<void>;
     addUploadedVideoFile(option: UploadedVideoFileOption): Promise<apid.RecordedId>;
     createNewRecorded(option: apid.CreateNewRecordedOption): Promise<apid.RecordedId>;
-    getNextUp(recordedId: apid.RecordedId, isHalfWidth: boolean): Promise<NextUpResult | null>;
+    getNextUp(recordedId: apid.RecordedId, isHalfWidth: boolean, option?: NextUpOption): Promise<NextUpResult | null>;
     scanImportDirectory(option: apid.ImportScanOption): Promise<apid.ImportScanResult>;
     startImportJob(option: apid.ImportRegisterOption): Promise<apid.ImportJobStartResult>;
     getImportJobStatus(jobId: string): Promise<apid.ImportJobStatus | null>;
