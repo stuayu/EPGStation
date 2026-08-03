@@ -231,6 +231,12 @@ export default class RecordedApiModel implements IRecordedApiModel {
 
         const config = this.configuration.getConfig();
         const importDirs = config.importDirs ?? [];
+        // importDirs ごと未設定の場合と、名前が見つからない場合を区別する。
+        // 前者は config.yml の設定漏れ (EDCB 録画の取り込みで最も多い原因) なので、
+        // ImportDirNotFound ではなく専用のエラーを返して原因を切り分けられるようにする
+        if (importDirs.length === 0) {
+            throw new Error('ImportDirsNotConfigured');
+        }
         const dir = importDirs.find(d => d.name === option.importDirName);
         if (typeof dir === 'undefined') {
             throw new Error('ImportDirNotFound');
@@ -608,7 +614,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
         // サーバー上のファイルを直接指定する場合は importDirs 配下に限定する。
         // 指定されたパスのファイルは録画ディレクトリへ移動される (元の場所から消える) ため、
         // 任意のパスを受け付けると無関係なファイルを動かせてしまう
-        if (typeof option.localFilePath === 'string') {
+        if (typeof option.localFilePath === 'string' && option.localFilePath.length > 0) {
             const config = this.configuration.getConfig();
             const resolved = await ImportPathValidator.resolveImportTargetPath(
                 option.localFilePath,
