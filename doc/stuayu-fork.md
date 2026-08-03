@@ -138,6 +138,14 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 ## 変更箇所
 
+- **EDCB からの録画情報登録と TS ファイルのアップロードが失敗していたのを直した**
+    - **背景**: 「サーバー上のファイル指定 (`localFilePath`)」を `POST /api/videos/upload` に追加した際、multipart/form-data で届く**空文字**を考慮していなかった
+    - **アップロードが壊れていた原因 (1)**: `ServiceServer.uploadFile()` が `req.body.recordedId` を無条件に `parseInt()` していたため、空文字や数値以外が届くと **`NaN`** になり、OpenAPI の `integer` 検証で 400 になっていた。これにより「`recordedId` を省略して TS から番組情報を自動作成する」経路が使えなくなっていた。空文字・数値以外は「未指定」としてキーごと落とすようにした
+    - **アップロードが壊れていた原因 (2)**: `localFilePath` が空文字で届くと `typeof === 'string'` の判定を抜けてしまい、**ブラウザからの通常の TS アップロードなのに** `ImportPathValidator` の importDirs 検証に入り、`importDirs` 未設定の環境で `ImportDirsNotConfigured` で失敗していた。API 層 (`videos/upload.ts`) とモデル層 (`RecordedApiModel.addUploadedVideoFile`) の両方で**非空のときだけ**サーバー上のファイル指定とみなすようにした (`subDirectory` も同様に正規化)
+    - **EDCB 取り込みが壊れていた原因**: `config.yml` に `importDirs` を書いていないと `importDirs` は空配列になるが、スキャンは `ImportDirNotFound` (= 名前違い) と区別がつかないエラーを返していた。**`importDirs` ごと未設定の場合は `ImportDirsNotConfigured`** を返し、設定漏れと名前違いを切り分けられるようにした
+        - EDCB の録画を取り込むには `config.yml` の `importDirs` に録画フォルダを登録する必要がある (テンプレートではコメントアウトされている)
+    - **テスト**: `test/ut/recorded-upload-local-file.test.js` に「空文字の `localFilePath` は未指定扱い」「`importDirs` 未設定時は `ImportDirsNotConfigured`」を追加
+
 - **前番組の延長中に録画が始まって前番組が録れてしまうのを防いだ (EIT[p/f] による録画開始ゲート)**
     - **背景**: programId 予約は Mirakurun が EIT[p/f] で対象イベントが present になるまでデータを流さないため問題にならないが、**時刻指定予約はチャンネルストリームを使う**ので予定時刻から即データが流れる。前番組が「放送時間未定」(ARIB の duration = 0xFFFFFF) で延長していると、その前番組が録画ファイルとして残り、録画詳細も作られてしまっていた
     - **EIT[p/f] を録画側でも読む**: `EitPresentParser` (`src/model/operator/recording/`) が録画ストリームから EIT[p/f] present (PID 0x12 / table_id 0x4E / section 0) を取り出し、放送中の番組の `eventId` / 開始時刻 / 番組長を返す。`BitParser` と同じくパケット分解とセクション組み立てだけを自前で行う (aribts の TsSectionParser は録画経路に挟むには重い)

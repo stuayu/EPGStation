@@ -453,8 +453,27 @@ class ServiceServer implements IServiceServer {
                 return next(err instanceof Error ? err : new Error(String(err)));
             }
 
+            // multipart/form-data では数値も文字列で届く。
+            // 空文字や数値として解釈できない値を parseInt すると NaN になり、
+            // OpenAPI の integer 検証で 400 になってしまう
+            // (recordedId 省略時の「TS を解析して番組情報を自動作成する」経路が使えなくなる) ため、
+            // 「未指定」としてキーごと削除する
             if (typeof req.body.recordedId === 'string') {
-                req.body.recordedId = parseInt(req.body.recordedId, 10);
+                const parsedRecordedId = parseInt(req.body.recordedId, 10);
+                if (req.body.recordedId.trim().length === 0 || Number.isNaN(parsedRecordedId) === true) {
+                    delete req.body.recordedId;
+                } else {
+                    req.body.recordedId = parsedRecordedId;
+                }
+            }
+
+            // 空文字で届いた任意項目は「未指定」として扱う。
+            // 特に localFilePath は空文字のままだと「サーバー上のファイル指定」とみなされ、
+            // importDirs の検証に入って ImportDirsNotConfigured で失敗してしまう
+            for (const optionalKey of ['localFilePath', 'subDirectory']) {
+                if (typeof req.body[optionalKey] === 'string' && req.body[optionalKey].trim().length === 0) {
+                    delete req.body[optionalKey];
+                }
             }
 
             if (typeof req.file !== 'undefined' && typeof req.file.fieldname !== 'undefined') {

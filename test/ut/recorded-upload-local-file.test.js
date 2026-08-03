@@ -131,3 +131,32 @@ test('addUploadedVideoFile passes through an uploaded file without path validati
     assert.equal(calls.length, 1);
     assert.equal(calls[0].filePath, '/tmp/upload/xxxx');
 });
+
+// multipart/form-data では未入力の項目が空文字で届くことがある。
+// 空文字を「サーバー上のファイル指定」と誤認すると、importDirs 未設定の環境で
+// ブラウザからの通常の TS アップロードまで ImportDirsNotConfigured で失敗してしまう
+test('addUploadedVideoFile treats an empty localFilePath as unset', async () => {
+    const calls = [];
+    const model = makeModel(undefined, calls);
+    await model.addUploadedVideoFile({
+        parentDirectoryName: 'recorded',
+        viewName: 'sample.ts',
+        fileType: 'ts',
+        filePath: '/tmp/upload/xxxx',
+        fileName: 'sample.ts',
+        localFilePath: '',
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].filePath, '/tmp/upload/xxxx');
+});
+
+// importDirs ごと未設定なのか、名前が違うだけなのかを切り分けられるようにする
+// (EDCB 録画の取り込みが動かない原因の大半は config.yml の importDirs 未設定)
+test('scanImportDirectory reports ImportDirsNotConfigured when importDirs is empty', async () => {
+    const model = new Model({}, {}, {}, {}, { getConfig: () => ({}) }, {}, {}, {}, {}, {});
+    await assert.rejects(
+        () => model.scanImportDirectory({ importDirName: 'import' }),
+        /ImportDirsNotConfigured/,
+    );
+});
