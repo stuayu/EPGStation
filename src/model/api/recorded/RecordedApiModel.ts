@@ -120,7 +120,8 @@ export default class RecordedApiModel implements IRecordedApiModel {
             recentOption.isRecording = false;
             const [recentRecords] = await this.recordedDB.findAll(recentOption, {
                 isNeedVideoFiles: true,
-                isNeedThumbnails: false,
+                // パネルの一覧はサムネイル付きで表示する
+                isNeedThumbnails: true,
                 isNeedsDropLog: false,
                 isNeedTags: false,
             });
@@ -144,7 +145,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
                 hasMoreSeries = allRows.length > offset + rows.length;
                 const seriesRecords = await this.recordedDB.findIds(
                     rows.map(x => x.recordedId),
-                    { isNeedVideoFiles: true, isNeedThumbnails: false, isNeedsDropLog: false, isNeedTags: false },
+                    { isNeedVideoFiles: true, isNeedThumbnails: true, isNeedsDropLog: false, isNeedTags: false },
                     true,
                 );
                 const index = new Map(seriesRecords.map(x => [x.id, x]));
