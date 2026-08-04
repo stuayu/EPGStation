@@ -462,7 +462,7 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **失敗理由を 2 つに分けた** (`src/model/operator/recording/RecordingRetryPolicy.ts`):
         - `waitingForEvent` (最初のデータが来ない = まだ番組が始まっていない) → **既定 3 時間**まで 60 秒間隔で待ち続ける
         - `error` (チューナーが開けない・ソケット断など) → 従来どおり回数で見切る (5 秒 × 3 回 → 60 秒 × 27 回)
-      分けたことで、**延長待ちがチューナー異常用の再試行回数を食い潰さない**
+          分けたことで、**延長待ちがチューナー異常用の再試行回数を食い潰さない**
     - **設定で外出し**: `config.yml` の `recording` (`startWaitLimitMs` / `startWaitIntervalMs` / `firstDataTimeoutMs` / `errorFastRetryCount` / `errorFastRetryIntervalMs` / `errorRetryCount` / `errorRetryIntervalMs`)。サーバー設定 > 設定ファイルタブの「録画開始のリトライ」からも編集できる。`RecorderModel` は予約ごとに生成され都度 config を読むため**再起動不要**。`startWaitLimitMs: 0` で従来相当の挙動に戻せる
     - **あわせて判明した既存不具合 (修正済み)**: 放送時刻未定の番組**自体を予約**した場合、`endAt = startAt + 1ms` のため `setTimer()` の `now >= reserve.endAt` が成立し、**タイマーを張らずに録画されなかった**。`resolveEndAt` の導入 (暫定 3 時間) で解消済み
 
@@ -1194,3 +1194,10 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - ログインユーザー一覧・通知失敗履歴は、スマホでは表の代わりにカード一覧（`v-card` 縦並び）で表示する
         - 作品辞書検索結果はクール・話数・外部 ID 列をスマホで隠して作品名下にまとめ、エイリアス辞書は学習元・登録日時列（`colgroup` も含む）をスマホで隠す
     - **対象外**: 視聴画面（`WatchOnAir.vue` / `WatchRecorded.vue` / `WatchRecordedStreaming.vue` / `components/watch/*`）は既にダーク・ライト両モード対応済みのため今回の変更に含めていない
+
+- **番組表以外の画面でもダーク/ライト両モードで色が破綻していた箇所を直した（レスポンシブ対応 フェーズ2）**
+    - **背景**: 視聴画面 (`WatchLayout.vue` 等) は既に CSS 変数でテーマ対応済みだった一方、他の画面にはライトモードやダークモードのどちら一方だけを前提にした固定色 (`rgba(0, 0, 0, 0.06)` や固定のグレー・黄色) が残っており、もう一方のテーマではコントラスト不足や色の浮きが発生していた
+    - **ページネーション (`MobilePagination.vue`)**: 無効ボタンの固定グレー `rgb(167 167 167)` を、Vuetify の非活性不透明度変数 `rgba(var(--v-theme-on-surface), var(--v-disabled-opacity))` に置き換えた（ライトモードでのコントラスト不足を解消）
+    - **更新パネル (`UpdatePanel.vue`)**: コミット ID ・更新ログの背景だった固定の `rgba(0, 0, 0, 0.06)` を `rgba(var(--v-theme-on-surface), 0.06)` にし、ダークモードで背景がほとんど見えなくなっていたのを直した
+    - **予約カード・検索結果カード (`ReservesCard.vue` / `SearchResultCard.vue`)**: 衝突・スキップ・重複の背景色が番組表 (`Guide.vue`) と違いライトモード配色固定だったため、番組表と同じ `isDark` 判定を追加して、ダークモード時は同じダークパレット (`#f6c90e` / `#717171`) を使うようにした
+    - **対象外としたもの**: ジャンル別の固定色や番組表のチップ文字色など、すでにライト/ダーク両方の定義を持つもの (`Guide.vue`の`.ctg-*`等) や、背景画像に重ねるオーバーレイのようにテーマと無関係であるべき色 (チェックボックス背景の白丸、モーダルの暗幕など) は意図してそのままにしている

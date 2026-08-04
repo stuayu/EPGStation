@@ -381,10 +381,11 @@ export default toNative(UpdatePanel);
 
 <style lang="sass" scoped>
 // コミット ID は等幅で見せる
+// 背景は固定の黒ではなく、テーマの文字色を薄く重ねてダークモードでも見えるようにする
 .commit-id
     font-family: monospace
     font-size: 13px
-    background: rgba(0, 0, 0, 0.06)
+    background: rgba(var(--v-theme-on-surface), 0.06)
     border-radius: 3px
     padding: 1px 6px
 
@@ -395,7 +396,7 @@ export default toNative(UpdatePanel);
     overflow-y: auto
 
 .update-log
-    background: rgba(0, 0, 0, 0.06)
+    background: rgba(var(--v-theme-on-surface), 0.06)
     border-radius: 4px
     padding: 8px
     font-size: 12px
