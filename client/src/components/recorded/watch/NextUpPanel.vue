@@ -7,22 +7,8 @@
         </div>
         <div class="head px-3 pt-3 d-flex align-center justify-space-between">
             <div class="switch">
-                <button
-                    type="button"
-                    class="switch-item"
-                    v-bind:class="{ selected: tab === 'latest' }"
-                    v-on:click="tab = 'latest'"
-                >
-                    最新
-                </button>
-                <button
-                    type="button"
-                    class="switch-item"
-                    v-bind:class="{ selected: tab === 'series' }"
-                    v-on:click="tab = 'series'"
-                >
-                    シリーズ
-                </button>
+                <button type="button" class="switch-item" v-bind:class="{ selected: tab === 'latest' }" v-on:click="tab = 'latest'">最新</button>
+                <button type="button" class="switch-item" v-bind:class="{ selected: tab === 'series' }" v-on:click="tab = 'series'">シリーズ</button>
             </div>
             <v-btn v-if="data !== null && data.currentSeriesId !== null" size="small" variant="text" @click="moveSeries">シリーズへ</v-btn>
         </div>
@@ -393,7 +379,7 @@ class NextUpPanel extends Vue {
      * 新着タブは未視聴優先、無ければ先頭
      */
     private resolveNextItem(): apid.RecordedItem | null {
-        const list = this.tab === 'series' ? this.data?.series ?? [] : this.data?.latest ?? [];
+        const list = this.tab === 'series' ? (this.data?.series ?? []) : (this.data?.latest ?? []);
         if (list.length === 0) return null;
 
         if (this.tab === 'series') {
@@ -497,7 +483,7 @@ export default toNative(NextUpPanel);
     width: 100%
     height: 100%
     min-height: 0
-    color: rgba(255, 255, 255, 0.9)
+    color: var(--watch-fg)
 
     .countdown,
     .head
@@ -514,12 +500,12 @@ export default toNative(NextUpPanel);
         padding: 4px 10px
         border-radius: 14px
         font-size: 0.75rem
-        color: rgba(255, 255, 255, 0.6)
-        background: rgba(255, 255, 255, 0.08)
+        color: var(--watch-fg-dim)
+        background: var(--watch-surface-chip)
         cursor: pointer
 
         &:hover
-            color: rgba(255, 255, 255, 0.85)
+            color: var(--watch-fg)
 
         &.selected
             color: rgb(var(--v-theme-primary))
@@ -539,7 +525,7 @@ export default toNative(NextUpPanel);
         cursor: pointer
 
         &:hover
-            background: rgba(255, 255, 255, 0.06)
+            background: var(--watch-surface-hover)
 
     .thumbnail
         flex: 0 0 auto
@@ -556,7 +542,7 @@ export default toNative(NextUpPanel);
         overflow: hidden
 
     .sub
-        color: rgba(255, 255, 255, 0.6)
+        color: var(--watch-fg-dim)
         white-space: nowrap
         overflow: hidden
         text-overflow: ellipsis
@@ -570,7 +556,7 @@ export default toNative(NextUpPanel);
         max-width: 80px
 
     .empty
-        color: rgba(255, 255, 255, 0.5)
+        color: var(--watch-fg-dim)
 
 // 無限スクロールの番兵。高さを持たせて rootMargin と合わせて先読みさせる
 .load-sentinel

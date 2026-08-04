@@ -99,7 +99,7 @@ export default toNative(WatchSidePanel);
     .tabs
         display: flex
         flex-shrink: 0
-        border-top: 1px solid rgba(255, 255, 255, 0.08)
+        border-top: 1px solid var(--watch-border)
 
     .tab
         flex: 1 1 0
@@ -110,11 +110,11 @@ export default toNative(WatchSidePanel);
         gap: 2px
         padding: 8px 0
         cursor: pointer
-        color: rgba(255, 255, 255, 0.6)
+        color: var(--watch-fg-dim)
         user-select: none
 
         &:hover
-            color: rgba(255, 255, 255, 0.85)
+            color: var(--watch-fg)
 
         &.selected
             color: rgb(var(--v-theme-primary))

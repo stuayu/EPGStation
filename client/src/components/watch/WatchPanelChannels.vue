@@ -260,7 +260,7 @@ export default toNative(WatchPanelChannels);
     display: flex
     flex-direction: column
     height: 100%
-    color: rgba(255, 255, 255, 0.9)
+    color: var(--watch-fg)
 
     .tab-bar
         display: flex
@@ -285,15 +285,15 @@ export default toNative(WatchPanelChannels);
         font-size: 0.8rem
         white-space: nowrap
         cursor: pointer
-        color: rgba(255, 255, 255, 0.6)
+        color: var(--watch-fg-dim)
         user-select: none
 
         &:hover
-            color: rgba(255, 255, 255, 0.9)
+            color: var(--watch-fg)
 
         &.selected
             color: rgb(var(--v-theme-primary))
-            background: rgba(255, 255, 255, 0.08)
+            background: var(--watch-surface-chip)
 
     .list
         flex: 1 1 auto
@@ -306,14 +306,14 @@ export default toNative(WatchPanelChannels);
         margin-bottom: 8px
         padding: 8px 8px 10px
         border-radius: 6px
-        background: rgba(255, 255, 255, 0.05)
+        background: var(--watch-surface-item)
         cursor: pointer
 
         &:hover
-            background: rgba(255, 255, 255, 0.1)
+            background: var(--watch-surface-hover)
 
         &.selected
-            background: rgba(255, 255, 255, 0.16)
+            background: var(--watch-surface-selected)
 
     .head
         display: flex
@@ -336,7 +336,7 @@ export default toNative(WatchPanelChannels);
 
         .pin
             flex-shrink: 0
-            color: rgba(255, 255, 255, 0.5)
+            color: var(--watch-fg-dim)
 
     .program-name
         margin-top: 4px
@@ -349,14 +349,14 @@ export default toNative(WatchPanelChannels);
     .next-name
         margin-top: 6px
         font-size: 0.75rem
-        color: rgba(255, 255, 255, 0.6)
+        color: var(--watch-fg-dim)
         white-space: nowrap
         overflow: hidden
         text-overflow: ellipsis
 
     .program-time
         font-size: 0.7rem
-        color: rgba(255, 255, 255, 0.55)
+        color: var(--watch-fg-dim)
 
     .progress
         position: absolute
@@ -372,5 +372,5 @@ export default toNative(WatchPanelChannels);
 
     .empty
         padding: 12px 4px
-        color: rgba(255, 255, 255, 0.5)
+        color: var(--watch-fg-dim)
 </style>

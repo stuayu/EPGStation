@@ -15,6 +15,7 @@
         </template>
         <VideoContainer
             v-if="videoParam !== null"
+            v-bind:key="videoKey"
             ref="videoContainer"
             v-bind:videoParam="videoParam"
             v-on:canplay="onVideoCanplay"
@@ -80,7 +81,6 @@ import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import { markRaw } from 'vue';
 import * as apid from '../../../api';
 
-
 interface WatchParam {
     type: string;
     channel: apid.ChannelId;
@@ -116,6 +116,16 @@ class WatchOnAir extends Vue {
     public displayInfo: DsiplayWatchInfo | null = null;
 
     public panelTabs: WatchSidePanelTab[] = ['program', 'channel', 'comment'];
+
+    /**
+     * VideoContainer の再生成キー
+     * 各 video コンポーネントは mounted 時にしか DPlayer を作らないため、
+     * 視聴対象 (配信種別・放送局・エンコード設定) が変わったら VideoContainer ごと
+     * 作り直さないと映像が切り替わらない
+     */
+    get videoKey(): string {
+        return this.watchParam === null ? 'none' : `${this.watchParam.type}-${this.watchParam.channel}-${this.watchParam.mode}`;
+    }
 
     /**
      * 右パネルに並べる実況コメント (古いものから順に保持する)
@@ -356,9 +366,12 @@ class WatchOnAir extends Vue {
         // (再セットアップは新しい video の canplay を待って onVideoCanplay で行う)
         void this.teardownDataBroadcasting();
 
-        // 番組情報はチャンネル切り替えのたびに取り直す
+        // 番組情報・コメントはチャンネル切り替えのたびに取り直す
         this.infoState.clear();
         this.displayInfo = null;
+        this.jikkyoComments = [];
+        // 古い映像を残さない (視聴対象が無い URL へ遷移した場合にそのまま再生され続けるのを防ぐ)
+        this.videoParam = null;
 
         // 視聴パラメータセット
         this.watchParam =

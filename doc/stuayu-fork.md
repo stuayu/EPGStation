@@ -138,6 +138,17 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 ## 変更箇所
 
+- **放送中画面でチャンネルを選んでも DPlayer の映像が切り替わらないバグを修正した**
+    - **原因**: 右パネルのチャンネル一覧からの切り替えは `/onair/watch` の query だけが変わる遷移なので、Vue Router は同じコンポーネントを使い回す。`videoParam` は書き換わるが `VideoContainer` に `key` が無く `videoParam.type` も同じのため、`LiveMpegTsVideo` / `LiveHLSVideo` が再マウントされない。各 video コンポーネントは `mounted()` でしか DPlayer を生成せず props の変化を見ていないため、古いチャンネルの映像が流れ続けていた
+    - **修正**: 録画視聴側 (`WatchRecorded.vue` / `WatchRecordedStreaming.vue`) と同じやり方に揃え、`WatchOnAir.vue` の `VideoContainer` にも `videoKey` (配信種別 + 放送局 + エンコード設定) を付けて作り直すようにした。あわせて route 変更時に `videoParam` と実況コメントをリセットするようにした
+- **視聴画面 (放送中・録画再生) をダークモード・ライトモードの両方に対応させた**
+    - 視聴画面の配色は `#15100f` や `rgba(255, 255, 255, ...)` のハードコードだったため、ライトモードでも常に黑背景のままだった
+    - `WatchLayout.vue` で `--watch-bg` / `--watch-fg*` / `--watch-surface-*` / `--watch-border*` といった CSS 変数を一括定義し、`$vuetify.theme.global.current.dark` を見てルート要素に `is-light` クラスを付ける方式にした
+        - CSS 変数は scoped style の影響を受けず DOM を辿って継承されるので、子コンポーネントの scoped style からもそのまま参照できる
+        - 対応ファイル: `WatchLayout.vue`, `WatchTopBar.vue`, `WatchSideBar.vue`, `WatchSidePanel.vue`, `WatchPanelProgram.vue`, `WatchPanelComments.vue`, `WatchPanelChannels.vue`, `NextUpPanel.vue`
+    - 実況コメントの既定色は白なので、ライトモードでは右パネルのコメントが白背景に埋もれて読めなくなるため、白系のときだけテーマ色を使うようにした (`getCommentColor()`)
+    - 映像の上に重なるチャンネル切替ボタンと映像の黑帯は、両モードで成立するため黑背景・白文字のままにしている
+
 - **EDCB からの録画情報登録と TS ファイルのアップロードが失敗していたのを直した**
     - **背景**: 「サーバー上のファイル指定 (`localFilePath`)」を `POST /api/videos/upload` に追加した際、multipart/form-data で届く**空文字**を考慮していなかった
     - **アップロードが壊れていた原因 (1)**: `ServiceServer.uploadFile()` が `req.body.recordedId` を無条件に `parseInt()` していたため、空文字や数値以外が届くと **`NaN`** になり、OpenAPI の `integer` 検証で 400 になっていた。これにより「`recordedId` を省略して TS から番組情報を自動作成する」経路が使えなくなっていた。空文字・数値以外は「未指定」としてキーごと落とすようにした

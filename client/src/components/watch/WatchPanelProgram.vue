@@ -40,13 +40,13 @@ export default toNative(WatchPanelProgram);
 
 <style lang="sass" scoped>
 .watch-panel-program
-    color: rgba(255, 255, 255, 0.9)
+    color: var(--watch-fg)
 
     .channel
-        color: rgba(255, 255, 255, 0.75)
+        color: var(--watch-fg-muted)
 
     .time
-        color: rgba(255, 255, 255, 0.6)
+        color: var(--watch-fg-dim)
 
     .name
         margin-top: 4px
@@ -54,7 +54,7 @@ export default toNative(WatchPanelProgram);
     .description,
     .extended
         margin-top: 8px
-        color: rgba(255, 255, 255, 0.75)
+        color: var(--watch-fg-muted)
         white-space: pre-wrap
         word-break: break-all
 
@@ -62,5 +62,5 @@ export default toNative(WatchPanelProgram);
         margin-top: 12px
 
     .empty
-        color: rgba(255, 255, 255, 0.5)
+        color: var(--watch-fg-dim)
 </style>
