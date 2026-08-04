@@ -118,10 +118,10 @@
                     <thead>
                         <tr>
                             <th style="width: 48px"></th>
-                            <th style="width: 110px">話数</th>
+                            <th :style="{ width: isMobile === true ? '64px' : '110px' }">話数</th>
                             <th>タイトル</th>
-                            <th style="width: 200px">放送局・放送日時</th>
-                            <th style="width: 150px">放送種別</th>
+                            <th v-if="isMobile === false" style="width: 200px">放送局・放送日時</th>
+                            <th :style="{ width: isMobile === true ? '96px' : '150px' }">放送種別</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -140,8 +140,11 @@
                                     :class="{ 'text-primary': isEdited(item) }"
                                 ></v-text-field>
                             </td>
-                            <td class="text-truncate" style="max-width: 1px">{{ item.episodeTitle || item.recordedTitle }}</td>
-                            <td class="text-caption">{{ item.channelName || item.channelId }}<br />{{ formatDate(item.startAt) }}</td>
+                            <td class="text-truncate" style="max-width: 1px">
+                                {{ item.episodeTitle || item.recordedTitle }}
+                                <div v-if="isMobile === true" class="text-caption text-medium-emphasis">{{ item.channelName || item.channelId }} / {{ formatDate(item.startAt) }}</div>
+                            </td>
+                            <td v-if="isMobile === false" class="text-caption">{{ item.channelName || item.channelId }}<br />{{ formatDate(item.startAt) }}</td>
                             <td>
                                 <v-select
                                     v-model="edits[item.recordedId].airType"
@@ -286,6 +289,11 @@ interface BulkEdit {
 
 @Component({ components: { TitleBar, SeriesTitleDisplayMenu, SeriesExternalLinks, SyobocalComment } })
 class SeriesDetailView extends Vue {
+    // スマホ・タブレットでは一括編集テーブルの列幅を縮め、放送局・放送日時列をタイトル下にまとめる
+    get isMobile(): boolean {
+        return this.$vuetify.display.smAndDown;
+    }
+
     detail: Detail | null = null;
     channelId: number | null = null;
     annictSyncing = false;

@@ -6,7 +6,7 @@
                 再起動が必要です ({{ requiresRestartKeys.join('、') }})。変更を反映するには Operator プロセスの再起動が必要です。
             </v-alert>
             <v-card>
-                <v-tabs v-model="tab">
+                <v-tabs v-model="tab" show-arrows>
                     <v-tab value="basic">基本</v-tab>
                     <v-tab value="integration">連携</v-tab>
                     <v-tab value="notification">通知</v-tab>
@@ -371,26 +371,40 @@
                             <div class="text-subtitle-1 mb-2">通知の失敗履歴 (リトライ上限到達)</div>
                             <v-btn size="small" variant="text" @click="loadNotificationFailures">再読み込み</v-btn>
                             <v-alert v-if="notificationFailures.length === 0" type="info" class="mt-2">失敗履歴はありません</v-alert>
-                            <v-table v-else density="compact">
-                                <thead>
-                                    <tr>
-                                        <th>配信先</th>
-                                        <th>イベント</th>
-                                        <th>試行回数</th>
-                                        <th>最終エラー</th>
-                                        <th>日時</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="f in notificationFailures" :key="f.id">
-                                        <td>{{ f.targetName }}</td>
-                                        <td>{{ f.eventType }}</td>
-                                        <td>{{ f.attempts }}</td>
-                                        <td>{{ f.lastError ?? '-' }}</td>
-                                        <td>{{ formatDate(f.updatedAt) }}</td>
-                                    </tr>
-                                </tbody>
-                            </v-table>
+                            <template v-else>
+                                <v-table v-if="isMobile === false" density="compact">
+                                    <thead>
+                                        <tr>
+                                            <th>配信先</th>
+                                            <th>イベント</th>
+                                            <th>試行回数</th>
+                                            <th>最終エラー</th>
+                                            <th>日時</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="f in notificationFailures" :key="f.id">
+                                            <td>{{ f.targetName }}</td>
+                                            <td>{{ f.eventType }}</td>
+                                            <td>{{ f.attempts }}</td>
+                                            <td>{{ f.lastError ?? '-' }}</td>
+                                            <td>{{ formatDate(f.updatedAt) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </v-table>
+                                <!-- スマホ・タブレット向け: 表の代わりにカード一覧で表示する -->
+                                <div v-else>
+                                    <v-card v-for="f in notificationFailures" :key="f.id" variant="outlined" class="mb-2 pa-2">
+                                        <div class="d-flex align-center flex-wrap ga-2">
+                                            <span class="text-body-2 font-weight-bold">{{ f.targetName }}</span>
+                                            <v-chip size="x-small">{{ f.eventType }}</v-chip>
+                                            <span class="text-caption">試行 {{ f.attempts }} 回</span>
+                                        </div>
+                                        <div class="text-caption text-error mt-1">{{ f.lastError ?? '-' }}</div>
+                                        <div class="text-caption text-medium-emphasis">{{ formatDate(f.updatedAt) }}</div>
+                                    </v-card>
+                                </div>
+                            </template>
                         </v-window-item>
 
                         <!-- シリーズ管理タブ -->
@@ -545,8 +559,8 @@
                                         <col class="alias-col-check" />
                                         <col class="alias-col-normalized" />
                                         <col class="alias-col-series" />
-                                        <col class="alias-col-source" />
-                                        <col class="alias-col-date" />
+                                        <col v-if="isMobile === false" class="alias-col-source" />
+                                        <col v-if="isMobile === false" class="alias-col-date" />
                                         <col class="alias-col-action" />
                                     </colgroup>
                                     <thead>
@@ -556,8 +570,8 @@
                                             </th>
                                             <th>正規化タイトル</th>
                                             <th>シリーズ</th>
-                                            <th>学習元</th>
-                                            <th class="alias-date-cell">登録日時</th>
+                                            <th v-if="isMobile === false">学習元</th>
+                                            <th v-if="isMobile === false" class="alias-date-cell">登録日時</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -584,12 +598,12 @@
                                                     @update:model-value="value => setAliasSeries(a, value)"
                                                 ></v-autocomplete>
                                             </td>
-                                            <td>
+                                            <td v-if="isMobile === false">
                                                 <v-chip size="x-small" :color="aliasSourceOf(a) === 'llm' ? 'primary' : undefined">
                                                     {{ aliasSourceOf(a) === 'llm' ? 'LLM 学習' : '手動' }}
                                                 </v-chip>
                                             </td>
-                                            <td class="text-caption alias-date-cell">{{ formatDate(a.createdAt) }}</td>
+                                            <td v-if="isMobile === false" class="text-caption alias-date-cell">{{ formatDate(a.createdAt) }}</td>
                                             <td>
                                                 <v-btn v-if="isAliasEdited(a.id)" size="small" variant="text" @click="resetAliasEdit(a.id)">戻す</v-btn>
                                                 <v-btn v-else size="small" variant="text" color="error" @click="markAliasRemove(a.id)">削除</v-btn>
@@ -637,9 +651,9 @@
                                         <tr>
                                             <th>作品</th>
                                             <th>辞書</th>
-                                            <th>クール</th>
-                                            <th>話数</th>
-                                            <th>外部 ID</th>
+                                            <th v-if="isMobile === false">クール</th>
+                                            <th v-if="isMobile === false">話数</th>
+                                            <th v-if="isMobile === false">外部 ID</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -648,11 +662,14 @@
                                             <td>
                                                 <div>{{ w.title }}</div>
                                                 <div v-if="w.titleKana" class="text-caption text-grey">{{ w.titleKana }}</div>
+                                                <div v-if="isMobile === true" class="text-caption text-medium-emphasis">
+                                                    {{ dictionarySeasonLabel(w) }} / 話数: {{ w.totalEpisodes || '-' }} / {{ dictionaryIdsLabel(w) }}
+                                                </div>
                                             </td>
                                             <td>{{ dictionarySourceLabel(w.source) }}</td>
-                                            <td>{{ dictionarySeasonLabel(w) }}</td>
-                                            <td>{{ w.totalEpisodes || '-' }}</td>
-                                            <td class="text-caption">{{ dictionaryIdsLabel(w) }}</td>
+                                            <td v-if="isMobile === false">{{ dictionarySeasonLabel(w) }}</td>
+                                            <td v-if="isMobile === false">{{ w.totalEpisodes || '-' }}</td>
+                                            <td v-if="isMobile === false" class="text-caption">{{ dictionaryIdsLabel(w) }}</td>
                                             <td class="text-right">
                                                 <v-chip v-if="w.seriesId" size="small" color="success" variant="tonal">登録済み</v-chip>
                                                 <v-btn
@@ -758,7 +775,7 @@
                                 システム管理者は設定変更・ユーザー管理・バージョン更新ができます。最初にサインアップした人が自動でシステム管理者になり、以降は一般権限です。
                                 パスワードを変更すると、そのユーザーのログイン状態 (発行済みセッション) はすべて無効になります
                             </div>
-                            <v-table density="compact">
+                            <v-table v-if="isMobile === false" density="compact">
                                 <thead>
                                     <tr>
                                         <th>ユーザー名</th>
@@ -795,6 +812,32 @@
                                     </tr>
                                 </tbody>
                             </v-table>
+                            <!-- スマホ・タブレット向け: 表の代わりにカード一覧で表示する -->
+                            <div v-else>
+                                <v-card v-for="u in authUsers" :key="u.id" variant="outlined" class="mb-2 pa-2">
+                                    <div class="d-flex align-center flex-wrap ga-1 mb-1">
+                                        <span class="text-body-1">{{ u.name }}</span>
+                                        <v-chip v-if="u.name === currentUserName" size="x-small" color="primary">ログイン中</v-chip>
+                                        <v-chip size="x-small" :color="u.role === 'admin' ? 'deep-purple' : undefined" variant="flat">
+                                            {{ u.role === 'admin' ? 'システム管理者' : '一般' }}
+                                        </v-chip>
+                                    </div>
+                                    <div class="d-flex ga-1 flex-wrap mb-1">
+                                        <v-chip v-for="p in u.providers" :key="p" size="x-small" variant="outlined">{{ p }}</v-chip>
+                                        <v-chip v-if="u.hasPassword === true" size="x-small" variant="outlined">パスワード</v-chip>
+                                    </div>
+                                    <div class="text-caption text-medium-emphasis mb-2">作成日時: {{ formatDate(u.createdAt) }}</div>
+                                    <div class="d-flex flex-wrap ga-1">
+                                        <v-btn size="small" variant="text" @click="toggleRole(u)">
+                                            {{ u.role === 'admin' ? '一般にする' : '管理者にする' }}
+                                        </v-btn>
+                                        <v-btn v-if="u.hasPassword === true || u.name === currentUserName" size="small" variant="text" @click="openPasswordDialog(u)">
+                                            パスワード
+                                        </v-btn>
+                                        <v-btn size="small" variant="text" color="error" :disabled="authUsers.length <= 1" @click="removeAuthUser(u)">削除</v-btn>
+                                    </div>
+                                </v-card>
+                            </div>
 
                             <v-divider class="my-4"></v-divider>
                             <div class="text-subtitle-1 mb-2">ユーザーの追加</div>
@@ -903,6 +946,11 @@ interface ChannelMapEntryForm {
 class SystemSetting extends Vue {
     // 一括解析ジョブの進捗ポーリング間隔
     private static readonly ANALYZE_JOB_POLLING_INTERVAL = 2000;
+
+    // スマホ・タブレット向け: 表の列を間引いたりカード一覧に切り替えるための判定
+    get isMobile(): boolean {
+        return this.$vuetify.display.smAndDown;
+    }
 
     tab = 'basic';
     saving = false;
