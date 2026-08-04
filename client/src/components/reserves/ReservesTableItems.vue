@@ -5,11 +5,11 @@
                 <template v-slot:default>
                     <thead>
                         <tr>
-                            <th class="channel">放送局</th>
+                            <th v-if="isMobile === false" class="channel">放送局</th>
                             <th class="day">日付</th>
                             <th class="time">時間</th>
                             <th>番組名</th>
-                            <th>内容</th>
+                            <th v-if="isMobile === false">内容</th>
                             <th class="menu"></th>
                         </tr>
                     </thead>
@@ -20,7 +20,7 @@
                             v-bind:class="{ 'selected-color': reserve.isSelected === true }"
                             v-on:click="clickItem(reserve)"
                         >
-                            <td>{{ reserve.display.channelName }}</td>
+                            <td v-if="isMobile === false">{{ reserve.display.channelName }}</td>
                             <td>{{ reserve.display.day }}({{ reserve.display.dow }})</td>
                             <td>
                                 {{ reserve.display.startTime }}~<span v-bind:class="{ 'text-error font-weight-bold': reserve.reserveItem.isTimeUndefined === true }">{{ reserve.display.endTime }}</span>
@@ -30,9 +30,10 @@
                                 <v-icon v-if="reserve.display.isRule === true" class="reserve-icon">mdi-calendar</v-icon>
                                 <v-icon v-else class="reserve-icon">mdi-timer-outline</v-icon>
                                 {{ reserve.display.name }}
+                                <div v-if="isMobile === true" class="text-caption text-medium-emphasis">{{ reserve.display.channelName }}</div>
                                 <ReserveScheduleStatus :reserveItem="reserve.reserveItem" class="d-block mt-1"></ReserveScheduleStatus>
                             </td>
-                            <td>{{ reserve.display.description }}</td>
+                            <td v-if="isMobile === false">{{ reserve.display.description }}</td>
                             <td>
                                 <ReserveMenu v-if="isEditMode === false" :reserveItem="reserve.reserveItem" :disableEdit="false"></ReserveMenu>
                             </td>
@@ -60,6 +61,11 @@ import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
     },
 })
 class ReservesTableItems extends Vue {
+    // スマホ・タブレットでは放送局・内容列を隠し、番組名の下にまとめて表示する
+    get isMobile(): boolean {
+        return this.$vuetify.display.smAndDown;
+    }
+
     @Prop({
         required: true,
     })

@@ -1184,3 +1184,13 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - 双方向データ放送 (IP 通信) は未対応
         - ワンセグ (profile C) など 16:9 以外の解像度での見た目は未検証
     - **テスト**: `test/ut/data-broadcasting-manage-model.test.js`、`test/ut/data-broadcasting-param-parser.test.js`
+
+- **サーバー設定画面を中心に、スマホ・タブレットでの表示崩れを直した（レスポンシブ対応 フェーズ1）**
+    - **背景**: 雲形などの一括編集テーブルやタブがデスクトップ幅固定で作られており、スマホ・タブレットで開くと列が折り重なる・横スクロールが発生する箇所が多しあった（視聴画面は別作業で対応済みのため今回の対象外）
+    - **共通方針**: 各 Vue コンポーネントに `get isMobile(): boolean { return this.$vuetify.display.smAndDown; }` を追加し、優先度の低い列を `v-if="isMobile === false"` で非表示にし、その内容を主列（タイトル等）の下に `text-caption` でキャプション表示する方式に統一した（既存の `SeriesAnalyzeDialog.vue` のパターンを踏袖）
+    - **録画一覧 / 予約一覧 / ルール一覧**: `RecordedTableItems.vue` / `ReservesTableItems.vue` / `RuleTableItems.vue` で、放送局・内容・除外キーワード・ジャンルなどの列をスマホで隠し、主列の下にキャプションとして表示するようにした（`RecordedTableItems.vue` は `time`/`menu` 列幅も 600px 以下で縮めている）
+    - **シリーズ一覧 / シリーズ詳細**: `Series.vue` のコンパクト表示で出所・クール・未視聴・容量列を、`SeriesDetail.vue` の一括編集テーブルで放送局・放送日時列をそれぞれスマホで隠し、タイトル下のキャプションにまとめた（話数・放送種別列は幅を縮めて残している）
+    - **サーバー設定 (`SystemSetting.vue`)**: `v-tabs` に `show-arrows` を付けてタブが横スクロールできるようにした上で、以下を対応させた
+        - ログインユーザー一覧・通知失敗履歴は、スマホでは表の代わりにカード一覧（`v-card` 縦並び）で表示する
+        - 作品辞書検索結果はクール・話数・外部 ID 列をスマホで隠して作品名下にまとめ、エイリアス辞書は学習元・登録日時列（`colgroup` も含む）をスマホで隠す
+    - **対象外**: 視聴画面（`WatchOnAir.vue` / `WatchRecorded.vue` / `WatchRecordedStreaming.vue` / `components/watch/*`）は既にダーク・ライト両モード対応済みのため今回の変更に含めていない

@@ -247,11 +247,11 @@
                     <tr>
                         <th v-if="selectionMode === true" style="width: 48px"></th>
                         <th>タイトル</th>
-                        <th style="width: 90px">出所</th>
-                        <th style="width: 110px">クール</th>
+                        <th v-if="isMobile === false" style="width: 90px">出所</th>
+                        <th v-if="isMobile === false" style="width: 110px">クール</th>
                         <th style="width: 90px">録画</th>
-                        <th style="width: 90px">未視聴</th>
-                        <th style="width: 90px">容量</th>
+                        <th v-if="isMobile === false" style="width: 90px">未視聴</th>
+                        <th v-if="isMobile === false" style="width: 90px">容量</th>
                         <th style="width: 120px">状態</th>
                         <th style="width: 48px"></th>
                     </tr>
@@ -267,17 +267,24 @@
                         <td v-if="selectionMode === true" @click.stop>
                             <v-checkbox-btn :model-value="isSelected(item.id)" @click="toggleSelect(item.id)"></v-checkbox-btn>
                         </td>
-                        <td class="text-truncate" style="max-width: 1px">{{ item.title }}</td>
-                        <td>
+                        <td class="text-truncate" style="max-width: 1px">
+                            {{ item.title }}
+                            <div v-if="isMobile === true" class="text-caption text-medium-emphasis text-truncate">
+                                <v-chip size="x-small" :color="originColor(item)" variant="flat" :title="originTitle(item)">{{ originText(item) }}</v-chip>
+                                {{ seasonText(item) }}<span v-if="item.seasonSource === 'estimated'">(推定)</span>
+                                / 未視聴 {{ item.unwatchedCount }} / {{ fileSizeText(item.totalFileSize) }}
+                            </div>
+                        </td>
+                        <td v-if="isMobile === false">
                             <v-chip size="x-small" :color="originColor(item)" variant="flat" :title="originTitle(item)">{{ originText(item) }}</v-chip>
                         </td>
-                        <td>
+                        <td v-if="isMobile === false">
                             {{ seasonText(item) }}
                             <span v-if="item.seasonSource === 'estimated'" class="text-caption text-grey">(推定)</span>
                         </td>
                         <td>{{ item.recordedCount }}</td>
-                        <td>{{ item.unwatchedCount }}</td>
-                        <td>{{ fileSizeText(item.totalFileSize) }}</td>
+                        <td v-if="isMobile === false">{{ item.unwatchedCount }}</td>
+                        <td v-if="isMobile === false">{{ fileSizeText(item.totalFileSize) }}</td>
                         <td>
                             <v-chip v-if="item.isOnAir" size="x-small" color="primary" variant="flat">放送中</v-chip>
                             <v-chip v-if="item.missingEpisodeCount > 0" size="x-small" color="warning" variant="flat" class="ml-1">欠番</v-chip>
@@ -437,6 +444,11 @@ interface MergeTargetOption {
 
 @Component({ components: { TitleBar, Pagination } })
 class SeriesView extends Vue {
+    // スマホ・タブレットではコンパクト表示の列を間引きし、タイトルの下にまとめて表示する
+    get isMobile(): boolean {
+        return this.$vuetify.display.smAndDown;
+    }
+
     // 表示形式の選択を保存する localStorage キー
     private static readonly VIEW_MODE_KEY = 'series-view-mode';
     // マージ候補を問い合わせる選択シリーズの上限 (選択が多いときに API を叩きすぎないため)

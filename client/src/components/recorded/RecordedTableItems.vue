@@ -5,15 +5,28 @@
                 <thead>
                     <tr>
                         <th>タイトル</th>
-                        <th class="channel">放送局</th>
+                        <th v-if="isMobile === false" class="channel">放送局</th>
                         <th class="time">時間</th>
                         <th class="menu"></th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-for="item in items" v-bind:key="item.recordedItem.id" v-on:click="gotoDetail(item)" v-bind:class="{ 'selected-color': item.isSelected === true }">
-                        <td>{{ item.display.name }}</td>
-                        <td class="channel-cell">
+                        <td>
+                            {{ item.display.name }}
+                            <div v-if="isMobile === true" class="d-flex align-center channel-line mt-1">
+                                <v-img
+                                    v-if="typeof item.display.logoSrc !== 'undefined'"
+                                    :src="item.display.logoSrc"
+                                    v-on:error="onLogoError(item)"
+                                    class="channel-logo mr-1 flex-grow-0"
+                                    height="16"
+                                    width="28"
+                                ></v-img>
+                                <span class="text-caption text-medium-emphasis">{{ item.display.channelName }}</span>
+                            </div>
+                        </td>
+                        <td v-if="isMobile === false" class="channel-cell">
                             <div class="d-flex align-center channel-line">
                                 <v-img
                                     v-if="typeof item.display.logoSrc !== 'undefined'"
@@ -49,6 +62,11 @@ import * as apid from '../../../../api';
     },
 })
 class RecordedTableItems extends Vue {
+    // スマホ・タブレットでは放送局列を隠し、タイトルの下にまとめて表示する
+    get isMobile(): boolean {
+        return this.$vuetify.display.smAndDown;
+    }
+
     @Prop({ required: true })
     public items!: RecordedDisplayData[];
 
@@ -98,4 +116,11 @@ export default toNative(RecordedTableItems);
         width: 190px
     .menu
         width: 68px
+
+@media (max-width: 600px)
+    .recorded-table
+        .time
+            width: 108px
+        .menu
+            width: 56px
 </style>
