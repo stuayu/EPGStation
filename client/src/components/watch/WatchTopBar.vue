@@ -98,7 +98,7 @@ export default toNative(WatchTopBar);
     height: 48px
     padding: 0 12px
     overflow: hidden
-    color: #fff
+    color: var(--watch-fg-strong)
 
     .channel
         flex-shrink: 0
@@ -130,7 +130,7 @@ export default toNative(WatchTopBar);
     .clock
         flex-shrink: 0
         font-size: 0.85rem
-        color: rgba(255, 255, 255, 0.75)
+        color: var(--watch-fg-muted)
 
     .menu
         flex-shrink: 0

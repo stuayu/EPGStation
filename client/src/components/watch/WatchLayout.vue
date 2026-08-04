@@ -1,5 +1,5 @@
 <template>
-    <div class="watch-layout" v-bind:class="{ 'is-panel-open': isPanelOpen === true }">
+    <div class="watch-layout" v-bind:class="{ 'is-panel-open': isPanelOpen === true, 'is-light': isLightTheme === true }">
         <WatchSideBar class="side-bar"></WatchSideBar>
         <div class="main">
             <div class="top">
@@ -53,6 +53,14 @@ class WatchLayout extends Vue {
 
     public isPanelOpen: boolean = true;
 
+    /**
+     * ライトテーマか
+     * 視聴画面の配色は CSS 変数で切り替えるため、ここではルート要素へクラスを付けるだけにする
+     */
+    get isLightTheme(): boolean {
+        return this.$vuetify.theme.global.current.dark === false;
+    }
+
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     private navigationState: INavigationState = container.get<INavigationState>('INavigationState');
 
@@ -92,8 +100,40 @@ export default toNative(WatchLayout);
     left: 0
     z-index: 4
     display: flex
-    background: #15100f
-    color: #fff
+    background: var(--watch-bg)
+    color: var(--watch-fg-strong)
+
+    // 視聴画面全体の配色。CSS 変数は scoped style の影響を受けず DOM を辿って継承されるため、
+    // ここで一括定義すれば子コンポーネントの scoped style からもそのまま参照できる
+    --watch-bg: #15100f
+    --watch-fg: rgba(255, 255, 255, 0.9)
+    --watch-fg-strong: #fff
+    --watch-fg-muted: rgba(255, 255, 255, 0.72)
+    --watch-fg-dim: rgba(255, 255, 255, 0.5)
+    --watch-surface: rgba(255, 255, 255, 0.03)
+    --watch-surface-subtle: rgba(255, 255, 255, 0.02)
+    --watch-surface-item: rgba(255, 255, 255, 0.05)
+    --watch-surface-hover: rgba(255, 255, 255, 0.1)
+    --watch-surface-selected: rgba(255, 255, 255, 0.16)
+    --watch-surface-chip: rgba(255, 255, 255, 0.08)
+    --watch-border: rgba(255, 255, 255, 0.08)
+    --watch-border-subtle: rgba(255, 255, 255, 0.06)
+
+    // ライトモード。映像自体は黑帯ごと黑のままなので、周囲の UI だけを明るくする
+    &.is-light
+        --watch-bg: #f4f4f6
+        --watch-fg: rgba(0, 0, 0, 0.87)
+        --watch-fg-strong: rgba(0, 0, 0, 0.92)
+        --watch-fg-muted: rgba(0, 0, 0, 0.66)
+        --watch-fg-dim: rgba(0, 0, 0, 0.45)
+        --watch-surface: #ffffff
+        --watch-surface-subtle: rgba(0, 0, 0, 0.02)
+        --watch-surface-item: rgba(0, 0, 0, 0.04)
+        --watch-surface-hover: rgba(0, 0, 0, 0.08)
+        --watch-surface-selected: rgba(0, 0, 0, 0.12)
+        --watch-surface-chip: rgba(0, 0, 0, 0.06)
+        --watch-border: rgba(0, 0, 0, 0.12)
+        --watch-border-subtle: rgba(0, 0, 0, 0.08)
 
     .main
         flex: 1 1 auto
@@ -112,7 +152,7 @@ export default toNative(WatchLayout);
     .panel-toggle
         flex-shrink: 0
         margin-right: 4px
-        color: rgba(255, 255, 255, 0.7)
+        color: var(--watch-fg-muted)
 
     .video-area
         flex: 1 1 auto
@@ -133,7 +173,7 @@ export default toNative(WatchLayout);
         display: flex
         flex-direction: column
         width: 360px
-        background: rgba(255, 255, 255, 0.03)
+        background: var(--watch-surface)
 
     .panel-header
         display: flex
@@ -142,7 +182,7 @@ export default toNative(WatchLayout);
         flex-shrink: 0
         height: 48px
         padding: 0 8px
-        color: rgba(255, 255, 255, 0.85)
+        color: var(--watch-fg)
 
         .panel-title
             font-size: 0.9rem

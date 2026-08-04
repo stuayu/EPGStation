@@ -61,7 +61,7 @@ export default toNative(WatchSideBar);
     flex-shrink: 0
     width: 56px
     padding: 8px 0
-    background: rgba(255, 255, 255, 0.02)
+    background: var(--watch-surface-subtle)
 
     .items
         display: flex
@@ -70,10 +70,10 @@ export default toNative(WatchSideBar);
         gap: 4px
 
     .item
-        color: rgba(255, 255, 255, 0.7)
+        color: var(--watch-fg-muted)
 
         &:hover
-            color: #fff
+            color: var(--watch-fg-strong)
 
     // 画面が狭いときは上部の横並びツールバーとして出す
     @media screen and (max-width: 1024px)
