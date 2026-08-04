@@ -1,5 +1,5 @@
 <template>
-    <div v-bind:class="{ 'needs-decoration': !!needsDecoration }">
+    <div v-bind:class="{ 'needs-decoration': !!needsDecoration, 'is-dark': isDark }">
         <v-card v-for="reserve in reserves" v-bind:key="reserve.reserveItem.id" v-bind:class="getClass(reserve)" class="reserve-card mx-auto" :variant="flat ? 'flat' : 'elevated'" style="cursor: pointer">
             <v-list-item class="px-3" three-line>
                 <div style="width: 100%" v-on:click="clickItem(reserve)">
@@ -44,6 +44,11 @@ import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
     },
 })
 class ReservesCard extends Vue {
+    // 番組表 (Guide.vue) と同じ衝突・スキップ色をダークモードでも使うための判定
+    get isDark(): boolean {
+        return this.$vuetify.theme.global.current.dark;
+    }
+
     @Prop({
         required: true,
     })
@@ -121,6 +126,15 @@ export default toNative(ReservesCard);
         text-decoration: line-through
         background-color: #aaa
         color: black
+
+    // 番組表 (Guide.vue) と同じダークモード配色
+    &.is-dark
+        .conflict
+            background-color: #f6c90e
+        .skip
+            background-color: #717171
+        .overlap
+            background-color: #717171
 
 .reserve-icon
     font-size: 20px !important

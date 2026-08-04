@@ -111,5 +111,7 @@ export default toNative(MobilePagination);
         min-width: 36px
     .disabled
         pointer-events: none
-        color: rgb(167 167 167)
+        // 固定のグレーはライトモードでコントラスト不足になっていたため、
+        // テーマの文字色を基準にした Vuetify の非活性不透明度で代替する
+        color: rgba(var(--v-theme-on-surface), var(--v-disabled-opacity))
 </style>

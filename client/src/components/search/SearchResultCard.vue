@@ -1,5 +1,5 @@
 <template>
-    <v-card class="my-2" :class="program.display.reserveType" v-on:click="openDetail">
+    <v-card class="my-2" :class="[program.display.reserveType, { 'is-dark': isDark }]" v-on:click="openDetail">
         <v-list-item three-line>
             <div class="v-list-item-content">
                 <div class="text-subtitle-1 font-weight-black">{{ program.display.name }}</div>
@@ -22,6 +22,11 @@ import * as apid from '../../../../api';
 
 @Component({})
 class SearchResultCard extends Vue {
+    // 番組表 (Guide.vue) と同じ衝突・スキップ色をダークモードでも使うための判定
+    get isDark(): boolean {
+        return this.$vuetify.theme.global.current.dark;
+    }
+
     @Prop({ required: true })
     public program!: SearchResultItem;
 
@@ -53,4 +58,13 @@ export default toNative(SearchResultCard);
     text-decoration: line-through
     background-color: #aaa
     color: black
+
+// 番組表 (Guide.vue) と同じダークモード配色
+&.is-dark
+    &.conflict
+        background-color: #f6c90e
+    &.skip
+        background-color: #717171
+    &.overlap
+        background-color: #717171
 </style>
