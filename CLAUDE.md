@@ -86,7 +86,7 @@ npm run test:ci        # ut + ita + itb
 - `ChannelType` に `NW1`〜`NW40` (県外地上波) が追加されている。チャンネル種別を扱うコードでは GR/BS/CS/SKY だけを前提にしない
 - `mirakurun` 依存は `stuayu/Mirakurun` の**タグで固定**する (現在は `git+https://github.com/stuayu/Mirakurun.git#4.2.0-stuayu`)。**ブランチ参照は禁止** (`#stuayu-main` のようなブランチ指定は Mirakurun 側の push のたびに解決先が変わり lockfile が壊れて CI が落ちる)。更新時は package.json のタグを差し替えて `npm install` で lockfile を更新する
 - `git+https` 形式は npm の依存元制限 (`allow-git`) の対象。リポジトリの `.npmrc` に `allow-git=all` を置いてあり、無い環境では `npm run all-install` が mirakurun のインストールで失敗する (PowerShell なら `$env:NPM_CONFIG_ALLOW_GIT="all"` で回避)
-- 設定項目を追加したら `config/config.yml.template` と `config/config-win.yml.template` の**両方**を更新する
+- 設定項目を追加したら `src/model/config/ConfigSchema.ts` (単一定義元、GUI 編集可否・再起動要否・秘密情報フラグをここで宣言する) に追加し、`config/config.yml.template` と `config/config-win.yml.template` の**両方**を更新する。テンプレートへの記載漏れは `test/ut/config-schema-template-sync.test.js` がテストで検知する
 - `ormconfig.js` は `Configuration.ts` と別実装で config.yml を読む (二重管理)。設定の読み方を変える場合は両方直す
 - **ライブ HLS は 2 モード**: cmd が `%streamFileDir%` を含まない場合は in-memory 配信 (fMP4 を `Fmp4Packager` → `HLSMemoryStoreModel` でメモリ保持、ディスク書き込みなし・Windows 対応)。含む場合は従来の TS セグメント方式。**どちらも ARIB 字幕に対応**する (in-memory 側は ID3 を `emsg` box で運ぶ)。配信周りを触る前に `doc/streaming-refresh.md` を読むこと
 - **DPlayer に `type: 'normal'` を渡すと ARIB 字幕が出ない**。`initMSE()` の `switch` に `case 'normal'` / `default` が無く、aribb24 の CanvasRenderer を作るのは `case 'hls'` / `case 'mpegts'` の中だけ。Safari でネイティブ HLS 再生にしたい場合は `type: 'hls'` のまま `DPlayerUtil.setupGlobals()` が `window.Hls.isSupported()` を `false` に見せて、DPlayer 側にネイティブ HLS + in-band metadata 自動検出の分岐を選ばせる (詳細は `doc/streaming-refresh.md`)

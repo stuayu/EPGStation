@@ -1103,17 +1103,14 @@ components:
                 - week
             properties:
                 start:
-                    description:
-                        開始時刻 1 - 23, 時刻予約の場合は 0 時を 0 とした 0 ~ (60 * 50 * 24) - 1
+                    description: 開始時刻 1 - 23, 時刻予約の場合は 0 時を 0 とした 0 ~ (60 * 50 * 24) - 1
                         秒までの開始時刻を指定する
                     type: integer
                 range:
-                    description:
-                        開始時刻からの時刻範囲(時) 1 - 23, 時刻予約の場合は秒で時間の長さを指定する 1 ~ 60 * 50 * 24 秒
+                    description: 開始時刻からの時刻範囲(時) 1 - 23, 時刻予約の場合は秒で時間の長さを指定する 1 ~ 60 * 50 * 24 秒
                     type: integer
                 week:
-                    description:
-                        曜日指定 0x01, 0x02, 0x04, 0x08, 0x10, 0x20 ,0x40 が日〜土に対応するので and
+                    description: 曜日指定 0x01, 0x02, 0x04, 0x08, 0x10, 0x20 ,0x40 が日〜土に対応するので and
                         演算で曜日を指定する
                     type: integer
 
@@ -3942,17 +3939,99 @@ components:
             required:
                 - proposals
 
+        ConfigSchemaFieldInfo:
+            description: config.yml の 1 入力欄の定義 (単純なキーは 1 つ、オブジェクト型のキーは複数持つ)
+            type: object
+            required:
+                - path
+                - label
+                - type
+            properties:
+                path:
+                    description: config 内のパス ('a.b' 形式)
+                    type: string
+                label:
+                    type: string
+                type:
+                    type: string
+                    enum:
+                        - string
+                        - number
+                        - boolean
+                        - select
+                        - lines
+                itemType:
+                    description: type が 'lines' のときの要素の型
+                    type: string
+                    enum:
+                        - string
+                        - number
+                items:
+                    description: type が 'select' のときの選択肢
+                    type: array
+                    items:
+                        type: object
+                        required:
+                            - title
+                            - value
+                        properties:
+                            title:
+                                type: string
+                            value:
+                                oneOf:
+                                    - type: string
+                                    - type: number
+                hint:
+                    type: string
+                secret:
+                    description: パスワード欄など、画面・API 応答でマスクすべき項目か
+                    type: boolean
+
         ConfigFieldInfo:
-            description: config.yml の編集可能なキー
+            description: config.yml の編集可能なキーの定義
             type: object
             required:
                 - key
+                - label
                 - requiresRestart
+                - editable
             properties:
                 key:
                     type: string
+                label:
+                    type: string
+                hint:
+                    type: string
                 requiresRestart:
                     description: 変更に EPGStation の再起動が必要か
+                    type: boolean
+                editable:
+                    description: gui = 画面 (DB オーバーレイ) から編集可能 / ymlOnly = config.yml でのみ設定可能
+                    type: string
+                    enum:
+                        - gui
+                        - ymlOnly
+                reason:
+                    description: editable が ymlOnly のときの、画面から変更できない理由 (利用者向けの日本語説明)
+                    type: string
+                reasonCategory:
+                    description: >-
+                        editable が ymlOnly のときの理由の性質。safety = 恒久的な安全上の制約 (将来も GUI 化しない) /
+                        notImplemented = 単に GUI 側の実装が追いついていないだけ (将来 GUI 化しうる)
+                    type: string
+                    enum:
+                        - safety
+                        - notImplemented
+                fields:
+                    description: editable が gui のときの入力欄一覧
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ConfigSchemaFieldInfo'
+                customEditor:
+                    description: >-
+                        editable が gui かつ fields が空のとき、画面の汎用フォームではなく専用の Vue コンポーネントで
+                        編集することを示す (recorded / encode / stream 等)。これが無いのに fields が空な gui 項目は
+                        「GUI 編集可能だが対応する編集 UI が未実装」を意味し、画面上に注意喚起として列挙される
                     type: boolean
 
         EditableConfig:
@@ -3962,20 +4041,33 @@ components:
                 - effective
                 - file
                 - overlay
+                - provenance
                 - fields
             properties:
                 effective:
-                    description: config.yml + GUI の差分を重ねた実効値 (秘密情報はマスク済み)
+                    description: 既定値 + config.yml + GUI の差分を重ねた実効値 (秘密情報はマスク済み)
                     type: object
                     additionalProperties: true
                 file:
-                    description: config.yml をそのまま読んだ値
+                    description: config.yml をそのまま読んだ値 (既定値補完後)
                     type: object
                     additionalProperties: true
                 overlay:
                     description: GUI で保存されている差分
                     type: object
                     additionalProperties: true
+                provenance:
+                    description: >-
+                        各項目 (トップレベルキー・入力欄の path) が既定値 / config.yml / GUI の差分の
+                        どれで決まっているかをサーバー側で判定した結果。キーは ConfigFieldInfo.key または
+                        ConfigSchemaFieldInfo.path
+                    type: object
+                    additionalProperties:
+                        type: string
+                        enum:
+                            - default
+                            - file
+                            - overlay
                 fields:
                     type: array
                     items:
@@ -5158,8 +5250,7 @@ components:
                 type: integer
 
         StreamProfile:
-            description:
-                配信プリセット id (新形式)。指定時は mode より優先される。mode / profile どちらも未指定の場合は 400
+            description: 配信プリセット id (新形式)。指定時は mode より優先される。mode / profile どちらも未指定の場合は 400
             in: query
             name: profile
             required: false

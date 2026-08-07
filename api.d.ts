@@ -897,7 +897,7 @@ export interface StreamAudioParam {
 }
 
 /**
- * クライアントへ公開する id ベースの配信プリセット情報 (cmd は含まない)
+ * クライアントへ���開する id ベースの配信プリセット情報 (cmd は含まない)
  */
 export interface ClientStreamProfile {
     id: string;
@@ -2314,7 +2314,7 @@ export interface AuthStatus {
     initialized: boolean;
     // ログイン中のユーザー (未ログインなら null)
     user: { id: number; name: string; role: AuthRole } | null;
-    // 設定済みの外部 ID プロバイダ (ログイン画面のボタン用)
+    // 設定済みの外部 ID プロバイダ (ログイン画面のボ��ン用)
     providers: AuthProviderItem[];
     // 2 人目以降のサインアップを許可しているか
     allowSignUp: boolean;
@@ -2347,24 +2347,61 @@ export interface ChangePasswordOption {
 }
 
 /**
+ * config.yml の 1 入力欄の定義 (単純なキーは 1 つ、オブジェクト型のキーは複数持つ)
+ */
+export interface ConfigSchemaFieldInfo {
+    // config 内のパス ('a.b' 形式)
+    path: string;
+    label: string;
+    type: 'string' | 'number' | 'boolean' | 'select' | 'lines';
+    // type が 'lines' のときの要素の型
+    itemType?: 'string' | 'number';
+    // type が 'select' のときの選択肢
+    items?: { title: string; value: string | number }[];
+    hint?: string;
+    // パスワード欄など、画面・API 応答でマスクすべき項目か
+    secret?: boolean;
+}
+
+/**
  * config.yml の編集可能なキーの定義
  */
 export interface ConfigFieldInfo {
     key: string;
+    label: string;
+    hint?: string;
     // 変更に EPGStation の再起動が必要か
     requiresRestart: boolean;
+    // 'gui'= 画面 (DB オーバーレイ) から編集可能 / 'ymlOnly'= config.yml でのみ設定可能
+    editable: 'gui' | 'ymlOnly';
+    // editable が 'ymlOnly' のときの、画面から変更できない理由 (利用者向けの日本語説明)
+    reason?: string;
+    // editable が 'ymlOnly' のときの理由の性質。'safety'= 恒久的な安全上の制約 (将来も GUI 化しない) /
+    // 'notImplemented'= 単に GUI 側の実装が追いついていないだけ (将来 GUI 化しうる)
+    reasonCategory?: 'safety' | 'notImplemented';
+    // editable が 'gui' のときの入力欄一覧
+    fields?: ConfigSchemaFieldInfo[];
+    // editable が 'gui' かつ fields が空のとき、専用の Vue コンポーネントで編集することを示す
+    // (recorded / encode / stream 等)。これが無いのに fields が空な gui 項目は
+    // 「GUI 編集可能だが対応する編集 UI が未実装」を意味し、画面上に注意喚起として列挙される
+    customEditor?: boolean;
 }
 
 /**
  * config.yml 編集画面用の情報
  */
+// 項目 (ConfigFieldInfo.key または ConfigSchemaFieldInfo.path) ごとの出所判定結果
+export type ConfigProvenance = 'default' | 'file' | 'overlay';
+
 export interface EditableConfig {
-    // config.yml + GUI の差分を重ねた実効値 (秘密情報はマスク済み)
+    // 既定値 + config.yml + GUI の差分を重ねた実効値 (秘密情報はマスク済み)
     effective: { [key: string]: any };
-    // config.yml をそのまま読んだ値 (「ファイルの値に戻す」の表示に使う)
+    // config.yml をそのまま読んだ値 (既定値補完後。「ファイルの値に戻す」の表示に使う)
     file: { [key: string]: any };
     // GUI で保存されている差分
     overlay: { [key: string]: any };
-    // 編集できるキーと再起動要否
+    // 各項目がどこで決まっているか (既定値 / config.yml / GUI の差分) をサーバー側で判定した結果
+    provenance: { [path: string]: ConfigProvenance };
+    // 編集できるキーと再起動要否・出自の判定に使うメタ情報
     fields: ConfigFieldInfo[];
 }

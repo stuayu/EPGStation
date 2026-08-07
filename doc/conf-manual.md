@@ -71,6 +71,78 @@
     - [HLS 配信時の一時ファイルの出力先を変更したい](#streamfilepath)
     - [ストリーミング視聴の設定を変更したい](#stream)
     - [任意の Kodi と連携させたい](#kodihosts)
+- [設定の決まり方](#設定の決まり方)
+    - [実効値の 3 層](#実効値の-3-層)
+    - [GUI で変えられる項目・変えられない項目とその理由](#gui-で変えられる項目変えられない項目とその理由)
+    - [yml 派と GUI 派の使い分け](#yml-派と-gui-派の使い分け)
+
+---
+
+## 設定の決まり方
+
+### 実効値の 3 層
+
+EPGStation の各設定項目の実効値は、次の 3 層を**この順に重ねて**決まる。
+
+```
+既定値 (DEFAULT_VALUE) → config.yml → 画面での変更 (DB オーバーレイ)
+```
+
+1. **既定値 (DEFAULT_VALUE)**: 何も書かなければ使われる EPGStation 組み込みの値。
+2. **config.yml**: 手で編集した config.yml に値が書かれていれば、既定値より優先される。
+3. **画面での変更 (DB オーバーレイ)**: サーバー設定 > 「設定ファイル」タブから変更すると、
+   その差分が `app_setting` テーブルに保存され、起動時に config.yml の上に重ねて適用される。
+   **config.yml 自体は書き換えない**ため、コメントや書式は失われない。
+
+どの項目が今どの層で決まっているかは、設定画面の各項目に付くバッジ
+(`既定値` / `config.yml` / `画面で変更`) で確認できる。この判定はサーバー側 (`AppSettingApiModel`)
+が確定させて API 応答 (`provenance`) で返しており、画面はそれをそのまま表示するだけである。
+「config.yml の値に戻す」ボタンはこの 3 層目 (画面での変更) の差分だけを消す操作であり、
+config.yml 自体は変更されない。また、画面で編集した値を config.yml と同じ値に戻して保存すると、
+その項目の差分は保存時に自動的に取り除かれる (触っただけで永久に「画面で変更」表示が残ることはない)。
+
+### GUI で変えられる項目・変えられない項目とその理由
+
+設定画面のフィールドは、サーバー側の単一スキーマ定義 (`src/model/config/ConfigSchema.ts`) から
+自動的に描画されており、画面のフォームと config.yml の項目は常に一致する。
+
+項目ごとに GUI から編集できるかどうかが決まっており、編集できない項目は画面に
+「config.yml でのみ設定できる項目」として理由付きで読み取り専用表示される。この読み取り専用項目は
+理由の性質によって画面上で 2 つのパネルに分かれる。
+
+**安全上の理由で恒久的に GUI 化しない項目** (自己参照・ロックアウトの危険があるため):
+
+| 項目                                       | 編集できない理由                                                                                                                              |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dbtype` / `mysql` / `sqlite` / `postgres` | 画面での変更差分自体をこの DB 接続設定を使って読み出すため、誤った値を保存すると次回起動時に差分を読み出せず復旧不能になる (自己参照の詰み)。 |
+| `auth`                                     | 認証設定は画面へ入るための手段そのものであり、画面から誤って変更するとロックアウトしうるため。                                                |
+
+**単に GUI 側の実装が追いついていないだけの項目** (将来 GUI 化しうる):
+
+`https` / `uid` / `gid` / `notifications` (config.yml 側) / `metadataChannelMappingPath` /
+`metadataSharedDataUrl` / `metadataSharedDataUpdateIntervalMs` / `seriesStartup` /
+`dataBroadcasting` / `metadataDefaults` / `seriesDefaults` / `importDirs` / `encodePresets` /
+`urlscheme` / `kodiHosts`。このうち `metadataDefaults` / `seriesDefaults` は画面 (システム設定)
+側に対応項目があり、そちらが未入力のときにのみ使われる既定値という位置づけである。
+
+詳細な理由は設定画面の各項目に表示される。
+
+### 秘密情報の扱い
+
+API キー・パスワード・Webhook URL など秘密情報にあたる項目は、画面に表示する際は
+`********` にマスクされる (元の値が API 応答に含まれることはない)。マスクされたまま
+保存操作をしても「変更なし」として扱われ、既存の秘密情報が消えたり空文字で上書きされたり
+することはない。値を変更したい場合は、マスクされた欄を新しい値で置き換えて保存する。
+
+### yml 派と GUI 派の使い分け
+
+- **config.yml を直接編集する**運用に向いているケース: 構成管理ツールでバージョン管理したい、
+  複数台に同じ設定を配布したい、コメントを残しながら設定したい場合。
+- **画面から変更する**運用に向いているケース: 一時的に値を変えて様子を見たい、
+  YAML の書式を意識せず変更したい、変更履歴やロールバックを使いたい場合
+  (履歴は「システム管理」内の設定変更履歴から確認・ロールバックできる)。
+- 両方を併用してもよい。画面での変更は config.yml に対する差分として保存されるため、
+  画面で変更していない項目は config.yml の変更がそのまま反映され続ける。
 
 ---
 
@@ -307,22 +379,22 @@ EPGStation へのアクセスにログインを必要にする。**既定で有�
 
 - 子プロパティは以下の通り
 
-| 子プロパティ名 | 種類    | 必須 | 説明                                                                     |
-| -------------- | ------- | ---- | ------------------------------------------------------------------------ |
-| enabled        | boolean | no   | ログイン必須にするか。**省略時 true**。無効にするには false を書く       |
-| sessionTtlMs   | number  | no   | セッションの有効期間 (ms)。省略時 30 日                                  |
-| mediaTokenTtlMs| number  | no   | 外部プレイヤー用アクセストークンの有効期間 (ms)。省略時 365 日           |
-| allowAnonymous | boolean | no   | 未ログインでも一般ユーザーと同じ操作を許可するか。**省略時 true**         |
-| allowSignUp    | boolean | no   | 2 人目以降のサインアップを許可するか。省略時 true                        |
-| providers      | object  | no   | 外部 ID プロバイダ (SSO) の設定。`google` / `github`                     |
+| 子プロパティ名  | 種類    | 必須 | 説明                                                               |
+| --------------- | ------- | ---- | ------------------------------------------------------------------ |
+| enabled         | boolean | no   | ログイン必須にするか。**省略時 true**。無効にするには false を書く |
+| sessionTtlMs    | number  | no   | セッションの有効期間 (ms)。省略時 30 日                            |
+| mediaTokenTtlMs | number  | no   | 外部プレイヤー用アクセストークンの有効期間 (ms)。省略時 365 日     |
+| allowAnonymous  | boolean | no   | 未ログインでも一般ユーザーと同じ操作を許可するか。**省略時 true**  |
+| allowSignUp     | boolean | no   | 2 人目以降のサインアップを許可するか。省略時 true                  |
+| providers       | object  | no   | 外部 ID プロバイダ (SSO) の設定。`google` / `github`               |
 
 - `providers.google` / `providers.github` の子プロパティ
 
-| 子プロパティ名 | 種類   | 必須 | 説明                                                                                        |
-| -------------- | ------ | ---- | ------------------------------------------------------------------------------------------- |
-| clientId       | string | yes  | OAuth クライアント ID                                                                       |
-| clientSecret   | string | yes  | OAuth クライアントシークレット                                                              |
-| redirectUri    | string | no   | コールバック URL。省略時は `<アクセス元 URL>/api/auth/oauth/<google\|github>/callback`       |
+| 子プロパティ名 | 種類   | 必須 | 説明                                                                                   |
+| -------------- | ------ | ---- | -------------------------------------------------------------------------------------- |
+| clientId       | string | yes  | OAuth クライアント ID                                                                  |
+| clientSecret   | string | yes  | OAuth クライアントシークレット                                                         |
+| redirectUri    | string | no   | コールバック URL。省略時は `<アクセス元 URL>/api/auth/oauth/<google\|github>/callback` |
 
 ```yaml
 auth:
@@ -415,18 +487,18 @@ Mirakurun は EIT[p/f] で対象の番組が現在番組になるまでデータ
 
 - 子プロパティは以下の通り
 
-| 子プロパティ名           | 種類   | 必須 | 説明                                                                       |
-| ------------------------ | ------ | ---- | -------------------------------------------------------------------------- |
-| startWaitLimitMs         | number | no   | 番組開始を待つ上限 (ms)。省略時 3 時間。**0 で待たない**                   |
-| startWaitIntervalMs      | number | no   | 開始待ち中の再試行間隔 (ms)。省略時 60000                                  |
-| firstDataTimeoutMs       | number | no   | 最初のデータを待つ時間 (ms)。省略時 5000。超えたら「まだ始まっていない」と判断する |
-| errorFastRetryCount      | number | no   | チューナー異常時に短い間隔で再試行する回数。省略時 3                       |
-| errorFastRetryIntervalMs | number | no   | 同・間隔 (ms)。省略時 5000                                                 |
-| errorRetryCount          | number | no   | その後、長い間隔で再試行する回数。省略時 27                                |
-| errorRetryIntervalMs     | number | no   | 同・間隔 (ms)。省略時 60000                                                |
-| startGateEnabled         | boolean | no  | 予約した番組が EIT[p/f] present になるまで録画を始めない。省略時 true       |
-| startGateTimeoutMs       | number | no   | EIT[p/f] を読めないまま録画を開始するまでの時間 (ms)。省略時 60000          |
-| startGateStartMarginMs   | number | no   | 放送中の番組の開始時刻が予約開始時刻よりこれ以上前なら前の番組とみなす (ms)。省略時 120000 |
+| 子プロパティ名           | 種類    | 必須 | 説明                                                                                       |
+| ------------------------ | ------- | ---- | ------------------------------------------------------------------------------------------ |
+| startWaitLimitMs         | number  | no   | 番組開始を待つ上限 (ms)。省略時 3 時間。**0 で待たない**                                   |
+| startWaitIntervalMs      | number  | no   | 開始待ち中の再試行間隔 (ms)。省略時 60000                                                  |
+| firstDataTimeoutMs       | number  | no   | 最初のデータを待つ時間 (ms)。省略時 5000。超えたら「まだ始まっていない」と判断する         |
+| errorFastRetryCount      | number  | no   | チューナー異常時に短い間隔で再試行する回数。省略時 3                                       |
+| errorFastRetryIntervalMs | number  | no   | 同・間隔 (ms)。省略時 5000                                                                 |
+| errorRetryCount          | number  | no   | その後、長い間隔で再試行する回数。省略時 27                                                |
+| errorRetryIntervalMs     | number  | no   | 同・間隔 (ms)。省略時 60000                                                                |
+| startGateEnabled         | boolean | no   | 予約した番組が EIT[p/f] present になるまで録画を始めない。省略時 true                      |
+| startGateTimeoutMs       | number  | no   | EIT[p/f] を読めないまま録画を開始するまでの時間 (ms)。省略時 60000                         |
+| startGateStartMarginMs   | number  | no   | 放送中の番組の開始時刻が予約開始時刻よりこれ以上前なら前の番組とみなす (ms)。省略時 120000 |
 
 ```yaml
 recording:
@@ -459,20 +531,20 @@ recording:
 | ------ | ------------ | ---- |
 | object | -            | no   |
 
-| 子プロパティ名        | 説明                                                       |
-| --------------------- | ---------------------------------------------------------- |
-| watchHistory          | 視聴履歴                                                   |
-| notifications         | 通知 (Webhook / Discord)                                   |
-| dashboard             | ダッシュボード                                             |
-| systemSettings        | サーバー設定画面                                           |
-| seriesLibrary         | シリーズライブラリ                                         |
-| metadataProviders     | メタデータ連携 (しょぼいカレンダー / Annict / Wikidata)   |
-| programSeriesMapping  | 番組⇄シリーズの事前マッピング                              |
-| annictSync            | Annict 視聴記録の同期                                      |
-| nextUpPanel           | 「次に見る」パネル                                         |
-| externalFileImport    | 外部録画ファイルの取り込み                                 |
-| advancedSearch        | 保存検索                                                   |
-| updateNotification    | 更新通知・ワンクリック更新                                 |
+| 子プロパティ名       | 説明                                                    |
+| -------------------- | ------------------------------------------------------- |
+| watchHistory         | 視聴履歴                                                |
+| notifications        | 通知 (Webhook / Discord)                                |
+| dashboard            | ダッシュボード                                          |
+| systemSettings       | サーバー設定画面                                        |
+| seriesLibrary        | シリーズライブラリ                                      |
+| metadataProviders    | メタデータ連携 (しょぼいカレンダー / Annict / Wikidata) |
+| programSeriesMapping | 番組⇄シリーズの事前マッピング                           |
+| annictSync           | Annict 視聴記録の同期                                   |
+| nextUpPanel          | 「次に見る」パネル                                      |
+| externalFileImport   | 外部録画ファイルの取り込み                              |
+| advancedSearch       | 保存検索                                                |
+| updateNotification   | 更新通知・ワンクリック更新                              |
 
 ```yaml
 featureFlags:
@@ -492,15 +564,15 @@ featureFlags:
 | ------ | ------------ | ---- |
 | object | -            | no   |
 
-| 子プロパティ名  | 種類   | 必須 | 説明                                                                                 |
-| --------------- | ------ | ---- | ------------------------------------------------------------------------------------ |
-| url             | string | yes  | OpenAI 互換 Chat Completions API のベース URL (Ollama: `http://localhost:11434/v1`)  |
-| model           | string | yes  | モデル名                                                                             |
-| apiKey          | string | no   | API キー (ローカル LLM では通常不要)                                                 |
-| timeoutMs       | number | no   | タイムアウト (ms)。省略時 30000                                                      |
-| minIntervalMs   | number | no   | リクエスト間隔の下限 (ms)。省略時 0                                                  |
-| maxTokens       | number | no   | 応答の上限トークン数。省略時 2000                                                    |
-| maxTokensLimit  | number | no   | 上限が足りず本文が空で切れた場合の自動引き上げの天井。省略時 16000                   |
+| 子プロパティ名 | 種類   | 必須 | 説明                                                                                |
+| -------------- | ------ | ---- | ----------------------------------------------------------------------------------- |
+| url            | string | yes  | OpenAI 互換 Chat Completions API のベース URL (Ollama: `http://localhost:11434/v1`) |
+| model          | string | yes  | モデル名                                                                            |
+| apiKey         | string | no   | API キー (ローカル LLM では通常不要)                                                |
+| timeoutMs      | number | no   | タイムアウト (ms)。省略時 30000                                                     |
+| minIntervalMs  | number | no   | リクエスト間隔の下限 (ms)。省略時 0                                                 |
+| maxTokens      | number | no   | 応答の上限トークン数。省略時 2000                                                   |
+| maxTokensLimit | number | no   | 上限が足りず本文が空で切れた場合の自動引き上げの天井。省略時 16000                  |
 
 ```yaml
 seriesLlm:
@@ -526,12 +598,12 @@ git clone した環境では、サーバー設定画面の「更新」タブか�
 
 - 子プロパティは以下の通り
 
-| 子プロパティ名     | 種類    | 必須 | 説明                                                                       |
-| ------------------ | ------- | ---- | -------------------------------------------------------------------------- |
-| repository         | string  | no   | 監視するリポジトリ (`owner/repo` 形式)。省略時 `stuayu/EPGStation`         |
-| branch             | string  | no   | 「最新の開発版へ更新」で追従するブランチ。省略時 `main`                    |
-| checkIntervalMs    | number  | no   | チェック間隔 (ms)。省略時 6 時間。0 以下でチェックを停止する               |
-| includePrerelease  | boolean | no   | プレリリース (rc / beta / alpha) も通知するか。省略時 true (UI では色を変えて区別する) |
+| 子プロパティ名    | 種類    | 必須 | 説明                                                                                   |
+| ----------------- | ------- | ---- | -------------------------------------------------------------------------------------- |
+| repository        | string  | no   | 監視するリポジトリ (`owner/repo` 形式)。省略時 `stuayu/EPGStation`                     |
+| branch            | string  | no   | 「最新の開発版へ更新」で追従するブランチ。省略時 `main`                                |
+| checkIntervalMs   | number  | no   | チェック間隔 (ms)。省略時 6 時間。0 以下でチェックを停止する                           |
+| includePrerelease | boolean | no   | プレリリース (rc / beta / alpha) も通知するか。省略時 true (UI では色を変えて区別する) |
 
 ```yaml
 updateChecker:
@@ -557,9 +629,9 @@ BML の描画は npm 依存の `web-bml` (tsukumijima/web-bml) が担い、映�
 
 - 子プロパティは以下の通り
 
-| 子プロパティ名 | 種類   | 必須 | 説明                                                                                      |
-| --------------- | ------ | ---- | ----------------------------------------------------------------------------------------- |
-| maxStreams      | number | no   | WebSocket 経由のデータ放送ストリームの同時本数上限。省略時 4。超えると最も古い接続を閉じる |
+| 子プロパティ名 | 種類   | 必須 | 説明                                                                                       |
+| -------------- | ------ | ---- | ------------------------------------------------------------------------------------------ |
+| maxStreams     | number | no   | WebSocket 経由のデータ放送ストリームの同時本数上限。省略時 4。超えると最も古い接続を閉じる |
 
 ```yaml
 dataBroadcasting:
@@ -685,8 +757,8 @@ epgRetentionTime: -1
 
 省略時は `epgUpdateIntervalTime` と同じ間隔で削除する。`epgRetentionTime` が `-1` (無期限) の場合は削除自体が行われない。
 
-| 種類   | デフォルト値              | 必須 |
-| ------ | ------------------------- | ---- |
+| 種類   | デフォルト値                 | 必須 |
+| ------ | ---------------------------- | ---- |
 | number | epgUpdateIntervalTime と同じ | no   |
 
 ```yaml
@@ -1252,12 +1324,12 @@ concurrentEncodeNum: 1
 > これは `encode` から作られるクライアント表示用の解決済み一覧 (配列) であり、
 > ここで説明する config.yml の一括有効化フラグ (オブジェクト) とは別物である。
 
-| 子プロパティ名 | 種類     | デフォルト値                                   | 必須 | 説明                       |
-| -------------- | -------- | ---------------------------------------------- | ---- | -------------------------- |
-| hwaccel        | string   | `software`                                     | no   | `software` \| `qsv` \| `vaapi` \| `nvenc` \| `qsvencc` \| `nvencc` \| `vceencc` |
-| codecs         | string[] | `[h264]`                                       | no   | `h264` \| `hevc` の配列    |
-| qualities      | string[] | `[1080p, 720p, 480p]`                          | no   | `1080p` \| `720p` \| `480p` \| `240p` の配列 |
-| targets        | string[] | `[recorded, liveHLS, recordedStreaming]`       | no   | 生成対象の配列 (下記参照)  |
+| 子プロパティ名 | 種類     | デフォルト値                             | 必須 | 説明                                                                            |
+| -------------- | -------- | ---------------------------------------- | ---- | ------------------------------------------------------------------------------- |
+| hwaccel        | string   | `software`                               | no   | `software` \| `qsv` \| `vaapi` \| `nvenc` \| `qsvencc` \| `nvencc` \| `vceencc` |
+| codecs         | string[] | `[h264]`                                 | no   | `h264` \| `hevc` の配列                                                         |
+| qualities      | string[] | `[1080p, 720p, 480p]`                    | no   | `1080p` \| `720p` \| `480p` \| `240p` の配列                                    |
+| targets        | string[] | `[recorded, liveHLS, recordedStreaming]` | no   | 生成対象の配列 (下記参照)                                                       |
 
 - `hwaccel`
     - `software`: libx264 / libx265 (CPU エンコード)
