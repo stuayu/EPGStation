@@ -19,6 +19,8 @@ class Configuration implements IConfiguration {
     private templateConfig: IConfigFile | null = null;
     // config.yml をそのまま読んだ値 (ファイルが正)
     private fileConfig!: IConfigFile;
+    // config.yml をそのまま読んだ生の値 (デフォルト値補完前。出自判定に使う)
+    private rawFileConfig: Record<string, unknown> = {};
     // GUI から編集された差分を重ねた実効値
     private config!: IConfigFile;
     // DB (app_setting の config キー) から読み込んだ差分
@@ -36,15 +38,18 @@ class Configuration implements IConfiguration {
             this.templateConfig = null;
         }
 
-        this.fileConfig = this.readConfig(Configuration.CONFIG_FILE_PATH, false);
+        const mainConfigStr = this.readConfigFile(Configuration.CONFIG_FILE_PATH, false);
+        this.applyMainConfigString(Configuration.CONFIG_FILE_PATH, mainConfigStr);
         this.config = this.fileConfig;
         this.log.system.info('config.yml read success');
 
         fs.watchFile(Configuration.CONFIG_FILE_PATH, async () => {
             this.log.system.info('updated config file');
             try {
-                const newConfig = <any>yaml.load(await fs.promises.readFile(Configuration.CONFIG_FILE_PATH, 'utf-8'));
-                this.fileConfig = this.formatConfig(newConfig);
+                const str = await fs.promises.readFile(Configuration.CONFIG_FILE_PATH, 'utf-8');
+                // fileConfig と rawFileConfig を同じタイミング・同じ経路で確定させる。
+                // formatConfig が例外を投げた場合はどちらも更新前の値のまま維持される
+                this.applyMainConfigString(Configuration.CONFIG_FILE_PATH, str);
                 // 手編集で config.yml が変わっても GUI の差分は維持する
                 this.applyOverlay();
             } catch (err: any) {
@@ -119,15 +124,14 @@ class Configuration implements IConfiguration {
     }
 
     /**
-     * read config
+     * ファイルを同期的に読み込む。読み取り以外の副作用は持たない
      * @param configPath: ファイルパス
-     * @param isWarning エラーを warning でログに残すか
-     * @return IConfigFile
+     * @param isWarning エラーを warning でログに残すか (false の場合 fatal)
+     * @return string
      */
-    private readConfig(configPath: string, isWarning: boolean): IConfigFile {
-        let str: string;
+    private readConfigFile(configPath: string, isWarning: boolean): string {
         try {
-            str = fs.readFileSync(configPath, 'utf-8');
+            return fs.readFileSync(configPath, 'utf-8');
         } catch (error: unknown) {
             if (isWarning) {
                 this.log.system.warn(error);
@@ -136,6 +140,17 @@ class Configuration implements IConfiguration {
             }
             throw error;
         }
+    }
+
+    /**
+     * read config
+     * 副作用を持たない純粋な読み取り関数 (テンプレートの読み込みに使う)
+     * @param configPath: ファイルパス
+     * @param isWarning エラーを warning でログに残すか
+     * @return IConfigFile
+     */
+    private readConfig(configPath: string, isWarning: boolean): IConfigFile {
+        const str = this.readConfigFile(configPath, isWarning);
 
         const loadedConfig: unknown = yaml.load(str);
         if (typeof loadedConfig !== 'object' || loadedConfig === null) {
@@ -143,6 +158,30 @@ class Configuration implements IConfiguration {
         }
 
         return this.formatConfig(loadedConfig as IConfigFile);
+    }
+
+    /**
+     * config.yml (メイン設定ファイル) の文字列を解析し、fileConfig と
+     * 出所判定用の生スナップショット rawFileConfig を同じタイミングで確定させる。
+     * formatConfig が例外を投げた場合はここで throw され、
+     * fileConfig / rawFileConfig のどちらも更新前の値のまま維持される
+     * (初回読み込み・fs.watchFile による再読み込みの両方から呼ばれる)
+     * @param configPath: エラーメッセージ用のファイルパス
+     * @param str: 読み込んだ config.yml の文字列
+     */
+    private applyMainConfigString(configPath: string, str: string): void {
+        const loadedConfig: unknown = yaml.load(str);
+        if (typeof loadedConfig !== 'object' || loadedConfig === null) {
+            throw new Error(`${configPath} does not contain a valid configuration object.`);
+        }
+
+        // デフォルト値補完で loadedConfig が書き換えられる前にスナップショットを取る
+        const rawSnapshot = JSON.parse(JSON.stringify(loadedConfig));
+        // formatConfig が例外を投げた場合、下の代入には到達しない
+        const formatted = this.formatConfig(loadedConfig as IConfigFile);
+
+        this.rawFileConfig = rawSnapshot;
+        this.fileConfig = formatted;
     }
 
     /**
@@ -281,6 +320,22 @@ class Configuration implements IConfiguration {
      */
     public getFileConfig(): IConfigFile {
         return JSON.parse(JSON.stringify(this.fileConfig));
+    }
+
+    /**
+     * config.yml をそのまま読んだ生の値を返す (デフォルト値補完前のスナップショット)
+     * @return Record<string, unknown>
+     */
+    public getRawFileConfig(): Record<string, unknown> {
+        return JSON.parse(JSON.stringify(this.rawFileConfig));
+    }
+
+    /**
+     * 既定値 (Configuration.DEFAULT_VALUE) のコピーを返す
+     * @return Record<string, unknown>
+     */
+    public getDefaultValue(): Record<string, unknown> {
+        return JSON.parse(JSON.stringify(Configuration.DEFAULT_VALUE));
     }
 
     /**

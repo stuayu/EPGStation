@@ -1,26 +1,80 @@
 <template>
     <div v-if="loaded === true">
         <v-alert type="info" density="compact" class="mb-3">
-            config.yml を直接書き換えるのではなく、ここでの変更を<b>差分として保存</b>し、起動時に config.yml へ重ねて適用します。
-            そのため config.yml のコメントや書式は失われません。空欄にすると config.yml の値に戻ります。
+            config.yml を直接書き換えるのではなく、ここでの変更を
+            <b>差分として保存</b>
+            し、起動時に config.yml へ重ねて適用します。 そのため config.yml のコメントや書式は失われません。空欄にすると config.yml の値に戻ります。 実効値は
+            <b>既定値 → config.yml → 画面での変更</b>
+            の順に重ねて決まり、各項目に今どこで決まっているかをバッジで表示します。
         </v-alert>
         <v-alert v-if="restartKeys.length > 0" type="warning" density="compact" closable class="mb-3" @click:close="restartKeys = []">
             保存しました。次の項目は EPGStation の再起動後に反映されます: {{ restartKeys.join('、') }}
         </v-alert>
 
-        <v-text-field
-            v-model="keyword"
-            label="設定項目を検索"
-            density="compact"
-            hide-details
-            clearable
-            prepend-inner-icon="mdi-magnify"
-            class="mb-3"
-        ></v-text-field>
+        <v-text-field v-model="keyword" label="設定項目を検索" density="compact" hide-details clearable prepend-inner-icon="mdi-magnify" class="mb-3"></v-text-field>
 
         <v-expansion-panels v-model="openedSections" multiple>
-            <v-expansion-panel v-for="section in visibleSections" :key="section.title" :title="section.title">
+            <v-expansion-panel v-if="visibleUnclassifiedItems.length > 0" key="__unclassified" title="分類未定義の項目 (要確認)">
                 <template v-slot:text>
+                    <v-alert type="error" density="compact" variant="tonal" class="mb-3">
+                        これらの項目は GUI 編集可能として定義されていますが、対応する入力欄が未実装です。ConfigSchema.ts の fields か customEditor
+                        の設定漏れの可能性があります。config.yml を直接編集してください。
+                    </v-alert>
+                    <div v-for="item in visibleUnclassifiedItems" :key="item.key" class="mb-4">
+                        <div class="d-flex align-center ga-2 flex-wrap">
+                            <span class="font-weight-medium">{{ item.label }}</span>
+                            <v-chip size="x-small" :color="provenanceColorOfKey(item.key)" variant="flat">{{ provenanceLabelOfKey(item.key) }}</v-chip>
+                            <v-chip size="x-small" color="error" variant="flat">未分類</v-chip>
+                        </div>
+                        <div v-if="item.hint" class="text-caption text-grey">{{ item.hint }}</div>
+                        <pre class="mt-1" style="white-space: pre-wrap; font-size: 12px">{{ displayValueOf(item.key) }}</pre>
+                    </div>
+                </template>
+            </v-expansion-panel>
+
+            <v-expansion-panel v-if="visibleYmlOnlySafetyItems.length > 0" key="__ymlOnlySafety" title="config.yml でのみ設定できる項目 (安全上の理由)">
+                <template v-slot:text>
+                    <v-alert type="warning" density="compact" variant="tonal" class="mb-3">
+                        これらの項目は安全上の理由から画面では変更できません。config.yml を直接編集してください。
+                    </v-alert>
+                    <div v-for="item in visibleYmlOnlySafetyItems" :key="item.key" class="mb-4">
+                        <div class="d-flex align-center ga-2 flex-wrap">
+                            <span class="font-weight-medium">{{ item.label }}</span>
+                            <v-chip size="x-small" :color="provenanceColorOfKey(item.key)" variant="flat">{{ provenanceLabelOfKey(item.key) }}</v-chip>
+                            <v-chip size="x-small" color="grey" variant="flat">config.yml 専用</v-chip>
+                        </div>
+                        <div v-if="item.hint" class="text-caption text-grey">{{ item.hint }}</div>
+                        <div v-if="item.reason" class="text-caption text-grey">{{ item.reason }}</div>
+                        <pre class="mt-1" style="white-space: pre-wrap; font-size: 12px">{{ displayValueOf(item.key) }}</pre>
+                    </div>
+                </template>
+            </v-expansion-panel>
+
+            <v-expansion-panel
+                v-if="visibleYmlOnlyNotImplementedItems.length > 0"
+                key="__ymlOnlyNotImplemented"
+                title="まだ画面から編集できない項目 (config.yml で設定してください)"
+            >
+                <template v-slot:text>
+                    <v-alert type="info" density="compact" variant="tonal" class="mb-3">
+                        これらの項目は単に画面側の対応がまだ無いだけです。config.yml を直接編集してください。
+                    </v-alert>
+                    <div v-for="item in visibleYmlOnlyNotImplementedItems" :key="item.key" class="mb-4">
+                        <div class="d-flex align-center ga-2 flex-wrap">
+                            <span class="font-weight-medium">{{ item.label }}</span>
+                            <v-chip size="x-small" :color="provenanceColorOfKey(item.key)" variant="flat">{{ provenanceLabelOfKey(item.key) }}</v-chip>
+                            <v-chip size="x-small" color="grey" variant="flat">config.yml 専用</v-chip>
+                        </div>
+                        <div v-if="item.hint" class="text-caption text-grey">{{ item.hint }}</div>
+                        <div v-if="item.reason" class="text-caption text-grey">{{ item.reason }}</div>
+                        <pre class="mt-1" style="white-space: pre-wrap; font-size: 12px">{{ displayValueOf(item.key) }}</pre>
+                    </div>
+                </template>
+            </v-expansion-panel>
+
+            <v-expansion-panel v-for="section in visibleGuiSections" :key="section.key" :title="section.label">
+                <template v-slot:text>
+                    <div v-if="section.hint" class="text-caption text-grey mb-2">{{ section.hint }}</div>
                     <div v-for="field in section.fields" :key="field.path" class="mb-3">
                         <!-- 真偽値 -->
                         <v-switch
@@ -84,13 +138,11 @@
                             @update:model-value="v => setValue(field, v)"
                         ></v-text-field>
 
-                        <div class="d-flex align-center ga-2 mt-1">
+                        <div class="d-flex align-center ga-2 mt-1 flex-wrap">
                             <span v-if="field.hint" class="text-caption text-grey">{{ field.hint }}</span>
+                            <v-chip size="x-small" :color="provenanceColor(field)" variant="flat">{{ provenanceLabel(field) }}</v-chip>
                             <v-chip v-if="requiresRestart(field)" size="x-small" color="warning" variant="flat">要再起動</v-chip>
-                            <v-chip v-if="isOverridden(field)" size="x-small" color="primary" variant="flat">画面で変更</v-chip>
-                            <v-btn v-if="isOverridden(field)" size="x-small" variant="text" @click="resetField(field)">
-                                config.yml の値に戻す
-                            </v-btn>
+                            <v-btn v-if="isOverridden(field)" size="x-small" variant="text" @click="resetField(field)">config.yml の値に戻す</v-btn>
                         </div>
                     </div>
                 </template>
@@ -99,6 +151,11 @@
             <!-- 録画ディレクトリ -->
             <v-expansion-panel v-if="keyword === '' || keyword === null" title="録画ディレクトリ">
                 <template v-slot:text>
+                    <div class="d-flex align-center ga-2 mb-2 flex-wrap">
+                        <v-chip size="x-small" :color="provenanceColorOfKey('recorded')" variant="flat">{{ provenanceLabelOfKey('recorded') }}</v-chip>
+                        <v-chip size="x-small" color="warning" variant="flat">要再起動</v-chip>
+                        <v-btn v-if="isKeyOverridden('recorded')" size="x-small" variant="text" @click="resetKey('recorded')">config.yml の値に戻す</v-btn>
+                    </div>
                     <div v-for="(dir, index) in recordedDirs" :key="index" class="d-flex ga-2 mb-2 align-start">
                         <v-text-field v-model="dir.name" label="名前" density="compact" hide-details style="max-width: 180px"></v-text-field>
                         <v-text-field v-model="dir.path" label="パス" density="compact" hide-details></v-text-field>
@@ -127,7 +184,8 @@
                     </div>
                     <v-btn size="small" variant="tonal" @click="recordedDirs.push({ name: '', path: '' })">追加</v-btn>
                     <div class="text-caption text-grey mt-1">
-                        1 件目が既定の保存先です。<v-chip size="x-small" color="warning" variant="flat" class="ml-1">要再起動</v-chip>
+                        1 件目が既定の保存先です。
+                        <v-chip size="x-small" color="warning" variant="flat" class="ml-1">要再起動</v-chip>
                     </div>
                 </template>
             </v-expansion-panel>
@@ -135,6 +193,10 @@
             <!-- 配信プロファイル -->
             <v-expansion-panel v-if="keyword === '' || keyword === null" title="配信プロファイル (ライブ / 録画済み)">
                 <template v-slot:text>
+                    <div class="d-flex align-center ga-2 mb-2 flex-wrap">
+                        <v-chip size="x-small" :color="provenanceColorOfKey('stream')" variant="flat">{{ provenanceLabelOfKey('stream') }}</v-chip>
+                        <v-btn v-if="isKeyOverridden('stream')" size="x-small" variant="text" @click="resetKey('stream')">config.yml の値に戻す</v-btn>
+                    </div>
                     <StreamProfileEditor ref="streamEditor" :value="streamConfig"></StreamProfileEditor>
                 </template>
             </v-expansion-panel>
@@ -142,6 +204,10 @@
             <!-- エンコード設定 -->
             <v-expansion-panel v-if="keyword === '' || keyword === null" title="エンコード設定">
                 <template v-slot:text>
+                    <div class="d-flex align-center ga-2 mb-2 flex-wrap">
+                        <v-chip size="x-small" :color="provenanceColorOfKey('encode')" variant="flat">{{ provenanceLabelOfKey('encode') }}</v-chip>
+                        <v-btn v-if="isKeyOverridden('encode')" size="x-small" variant="text" @click="resetKey('encode')">config.yml の値に戻す</v-btn>
+                    </div>
                     <div v-for="(item, index) in encodePresets" :key="index" class="mb-3">
                         <div class="d-flex ga-2 align-start">
                             <v-text-field v-model="item.name" label="名前" density="compact" hide-details style="max-width: 200px"></v-text-field>
@@ -177,9 +243,39 @@ import container from '@/model/ModelContainer';
 import ISystemSettingApiModel from '@/model/api/config/ISystemSettingApiModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import StreamProfileEditor from '@/components/settings/StreamProfileEditor.vue';
-import { CONFIG_FORM_SECTIONS, ConfigFormField } from '@/util/ConfigFormFields';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
+
+type ConfigProvenance = apid.ConfigProvenance;
+
+const PROVENANCE_LABELS: Record<ConfigProvenance, string> = {
+    default: '既定値',
+    file: 'config.yml',
+    overlay: '画面で変更',
+};
+const PROVENANCE_COLORS: Record<ConfigProvenance, string> = {
+    default: 'default',
+    file: 'secondary',
+    overlay: 'primary',
+};
+
+interface GuiSection {
+    key: string;
+    label: string;
+    hint?: string;
+    fields: apid.ConfigSchemaFieldInfo[];
+}
+interface YmlOnlyItem {
+    key: string;
+    label: string;
+    hint?: string;
+    reason?: string;
+}
+interface UnclassifiedItem {
+    key: string;
+    label: string;
+    hint?: string;
+}
 
 /**
  * config.yml を画面から編集するパネル。
@@ -193,11 +289,13 @@ class ConfigFormPanel extends Vue {
     openedSections: number[] = [0];
     restartKeys: string[] = [];
 
-    // config.yml の値 (差分を消したときに戻る先)
+    // config.yml の値 (差分を消したときに戻る先。既定値補完後)
     private fileConfig: Record<string, any> = {};
     // 画面で編集中の差分
     private overlay: Record<string, any> = {};
     private fields: apid.ConfigFieldInfo[] = [];
+    // 各項目の出所判定結果 (既定値 / config.yml / 画面での変更)。サーバー側で確定済み
+    private provenance: Record<string, apid.ConfigProvenance> = {};
 
     recordedDirs: Array<Record<string, any>> = [];
     // 配信プロファイル (stream) の編集用。子コンポーネントが直接書き換える
@@ -212,15 +310,51 @@ class ConfigFormPanel extends Vue {
     private api = container.get<ISystemSettingApiModel>('ISystemSettingApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
-    get visibleSections(): Array<{ title: string; fields: ConfigFormField[] }> {
+    // GUI から編集できる項目。専用の Vue コンポーネントで編集する項目 (customEditor: true。
+    // recorded / encode / stream) は汎用フォームの対象外として除く
+    get guiSections(): GuiSection[] {
+        return this.fields.filter(f => f.editable === 'gui' && f.customEditor !== true).map(f => ({ key: f.key, label: f.label, hint: f.hint, fields: f.fields ?? [] }));
+    }
+    get visibleGuiSections(): GuiSection[] {
         const keyword = (this.keyword ?? '').trim().toLowerCase();
-        if (keyword === '') return CONFIG_FORM_SECTIONS;
-        return CONFIG_FORM_SECTIONS.map(section => ({
-            title: section.title,
-            fields: section.fields.filter(
-                f => f.label.toLowerCase().includes(keyword) || f.path.toLowerCase().includes(keyword),
-            ),
-        })).filter(section => section.fields.length > 0);
+        if (keyword === '') return this.guiSections;
+        return this.guiSections
+            .map(section => ({
+                ...section,
+                fields: section.fields.filter(f => f.label.toLowerCase().includes(keyword) || f.path.toLowerCase().includes(keyword)),
+            }))
+            .filter(section => section.fields.length > 0);
+    }
+    // guiSections のうち fields が空の項目。customEditor も付いておらず fields も無いため、
+    // 画面のどこにも入力欄が出ない「分類漏れ」項目 (本来は customEditor か fields の設定漏れ)。
+    // 黙って消えてしまわないよう、明示的に一覧して警告表示する
+    get unclassifiedItems(): UnclassifiedItem[] {
+        return this.guiSections.filter(s => s.fields.length === 0).map(s => ({ key: s.key, label: s.label, hint: s.hint }));
+    }
+    get visibleUnclassifiedItems(): UnclassifiedItem[] {
+        const keyword = (this.keyword ?? '').trim().toLowerCase();
+        if (keyword === '') return this.unclassifiedItems;
+        return this.unclassifiedItems.filter(item => item.label.toLowerCase().includes(keyword) || item.key.toLowerCase().includes(keyword));
+    }
+    // config.yml でのみ設定できる項目 (自己参照・ロックアウト防止などの理由で GUI からは編集不可)
+    get ymlOnlyItems(): YmlOnlyItem[] {
+        return this.fields.filter(f => f.editable === 'ymlOnly').map(f => ({ key: f.key, label: f.label, hint: f.hint, reason: f.reason }));
+    }
+    get visibleYmlOnlyItems(): YmlOnlyItem[] {
+        const keyword = (this.keyword ?? '').trim().toLowerCase();
+        if (keyword === '') return this.ymlOnlyItems;
+        return this.ymlOnlyItems.filter(item => item.label.toLowerCase().includes(keyword) || item.key.toLowerCase().includes(keyword));
+    }
+    // 恒久的な安全上の制約 (将来も GUI 化しない)
+    get visibleYmlOnlySafetyItems(): YmlOnlyItem[] {
+        return this.visibleYmlOnlyItems.filter(item => this.reasonCategoryOfKey(item.key) === 'safety');
+    }
+    // 単に GUI 側の実装が追いついていないだけ (将来 GUI 化しうる)
+    get visibleYmlOnlyNotImplementedItems(): YmlOnlyItem[] {
+        return this.visibleYmlOnlyItems.filter(item => this.reasonCategoryOfKey(item.key) !== 'safety');
+    }
+    private reasonCategoryOfKey(key: string): apid.ConfigFieldInfo['reasonCategory'] {
+        return this.fields.find(f => f.key === key)?.reasonCategory;
     }
 
     mounted(): void {
@@ -233,7 +367,8 @@ class ConfigFormPanel extends Vue {
             this.fileConfig = result.file ?? {};
             this.overlay = result.overlay ?? {};
             this.fields = result.fields ?? [];
-            // 配列項目は編集しやすいよう実効値から複製して持つ
+            this.provenance = result.provenance ?? {};
+            // 配列項目は編集しやすいよ��実効値から複製して持つ
             this.recordedDirs = JSON.parse(JSON.stringify(result.effective?.recorded ?? []));
             this.encodePresets = JSON.parse(JSON.stringify(result.effective?.encode ?? []));
             this.streamConfig = JSON.parse(JSON.stringify(result.effective?.stream ?? {}));
@@ -247,16 +382,16 @@ class ConfigFormPanel extends Vue {
     /**
      * 表示する値。差分があればそれを、無ければ config.yml の値を返す
      */
-    valueOf(field: ConfigFormField): any {
+    valueOf(field: apid.ConfigSchemaFieldInfo): any {
         const overlaid = ConfigFormPanel.pick(this.overlay, field.path);
         return typeof overlaid === 'undefined' ? ConfigFormPanel.pick(this.fileConfig, field.path) : overlaid;
     }
-    linesOf(field: ConfigFormField): string {
+    linesOf(field: apid.ConfigSchemaFieldInfo): string {
         const value = this.valueOf(field);
         return Array.isArray(value) ? value.join('\n') : '';
     }
 
-    setValue(field: ConfigFormField, value: any): void {
+    setValue(field: apid.ConfigSchemaFieldInfo, value: any): void {
         // 空文字・null は「差分を消して config.yml の値に戻す」
         if (value === null || value === '' || (typeof value === 'number' && Number.isNaN(value))) {
             this.resetField(field);
@@ -264,7 +399,7 @@ class ConfigFormPanel extends Vue {
         }
         ConfigFormPanel.assign(this.overlay, field.path, value);
     }
-    setLines(field: ConfigFormField, value: string): void {
+    setLines(field: apid.ConfigSchemaFieldInfo, value: string): void {
         const lines = (value ?? '')
             .split('\n')
             .map(x => x.trim())
@@ -275,15 +410,59 @@ class ConfigFormPanel extends Vue {
         }
         ConfigFormPanel.assign(this.overlay, field.path, field.itemType === 'number' ? lines.map(Number) : lines);
     }
-    resetField(field: ConfigFormField): void {
+    resetField(field: apid.ConfigSchemaFieldInfo): void {
         ConfigFormPanel.remove(this.overlay, field.path);
     }
-    isOverridden(field: ConfigFormField): boolean {
+    isOverridden(field: apid.ConfigSchemaFieldInfo): boolean {
         return typeof ConfigFormPanel.pick(this.overlay, field.path) !== 'undefined';
     }
-    requiresRestart(field: ConfigFormField): boolean {
+    requiresRestart(field: apid.ConfigSchemaFieldInfo): boolean {
         const topKey = field.path.split('.')[0];
         return this.fields.find(x => x.key === topKey)?.requiresRestart === true;
+    }
+
+    /**
+     * 出自判定 (既定値 / config.yml / 画面での変更) はサーバー側 (AppSettingApiModel) で
+     * 確定済みの結果を引くだけにする。判定基準そのものはもうここには無い
+     */
+    private provenanceOfPath(path: string): ConfigProvenance {
+        return this.provenance[path] ?? 'default';
+    }
+    provenanceLabel(field: apid.ConfigSchemaFieldInfo): string {
+        return PROVENANCE_LABELS[this.provenanceOfPath(field.path)];
+    }
+    provenanceColor(field: apid.ConfigSchemaFieldInfo): string {
+        return PROVENANCE_COLORS[this.provenanceOfPath(field.path)];
+    }
+    provenanceLabelOfKey(key: string): string {
+        return PROVENANCE_LABELS[this.provenanceOfPath(key)];
+    }
+    provenanceColorOfKey(key: string): string {
+        return PROVENANCE_COLORS[this.provenanceOfPath(key)];
+    }
+
+    /**
+     * recorded / encode / stream のようにトップレベルキー単位で扱う専用ウィジェット項目の
+     * 「画面で変更」判定と、config.yml の値への差し戻し
+     */
+    isKeyOverridden(key: string): boolean {
+        return typeof ConfigFormPanel.pick(this.overlay, key) !== 'undefined';
+    }
+    resetKey(key: 'recorded' | 'encode' | 'stream'): void {
+        ConfigFormPanel.remove(this.overlay, key);
+        if (key === 'recorded') this.recordedDirs = JSON.parse(JSON.stringify(this.fileConfig.recorded ?? []));
+        if (key === 'encode') this.encodePresets = JSON.parse(JSON.stringify(this.fileConfig.encode ?? []));
+        if (key === 'stream') this.streamConfig = JSON.parse(JSON.stringify(this.fileConfig.stream ?? {}));
+    }
+
+    /**
+     * config.yml 専用項目の読み取り専用表示用。実効値を整形して返す
+     */
+    displayValueOf(key: string): string {
+        const value = ConfigFormPanel.pick(this.fileConfig, key);
+        if (typeof value === 'undefined') return '(未設定)';
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+        return JSON.stringify(value, null, 4);
     }
 
     async save(): Promise<void> {
@@ -303,10 +482,7 @@ class ConfigFormPanel extends Vue {
             // 表示中のプロファイルも書き戻してから比較する
             const editor = this.$refs.streamEditor as { flush?: () => void } | undefined;
             editor?.flush?.();
-            if (
-                Object.keys(this.streamConfig).length > 0 &&
-                ConfigFormPanel.differs(this.streamConfig, this.fileConfig.stream)
-            ) {
+            if (Object.keys(this.streamConfig).length > 0 && ConfigFormPanel.differs(this.streamConfig, this.fileConfig.stream)) {
                 payload.stream = this.streamConfig;
             }
 

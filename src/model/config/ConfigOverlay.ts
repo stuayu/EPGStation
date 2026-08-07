@@ -1,4 +1,5 @@
 import IConfigFile from '../IConfigFile';
+import { CONFIG_SCHEMA } from './ConfigSchema';
 
 /**
  * config.yml を GUI から編集するための「重ね書き (オーバーレイ)」の定義。
@@ -9,6 +10,19 @@ import IConfigFile from '../IConfigFile';
  * 読み込み時に「config.yml → DB の値」の順で重ねて実効値を作る。
  *
  * これにより手編集派の config.yml はそのまま残り、GUI 派は画面だけで完結できる。
+ *
+ * GUI から編集できるキー・再起動要否は、以前はこのファイルの手書き配列
+ * (`CONFIG_OVERLAY_FIELDS`) が定義元だったが、`ConfigSchema.ts` の
+ * `CONFIG_SCHEMA` と定義が二重管理になり食い違いの温床になっていたため、
+ * 現在は `CONFIG_SCHEMA` を唯一の定義元とし、ここではそこから導出するだけにする
+ * (`editable === 'gui'` のエントリがオーバーレイ対象、`requiresRestart` もそのまま使う)。
+ *
+ * **DB 接続設定 (dbtype / mysql / sqlite / postgres) が対象に含まれないのも
+ * ConfigSchema 側の判断**: オーバーレイ自体を DB から読むため、誤った接続設定を
+ * 保存すると次回起動時に値を読み出せず復旧できなくなる (自己参照の詰み、
+ * `reason: 'selfReference'`)。認証設定 (auth) も画面へ入る手段そのものなので
+ * 同様に config.yml 専用にしている (`reason: 'authLockout'`)。理由の詳細は
+ * `ConfigSchema.ts` の `YML_ONLY_REASONS` を参照
  */
 
 export interface ConfigFieldDefinition {
@@ -19,109 +33,21 @@ export interface ConfigFieldDefinition {
 }
 
 /**
- * GUI から編集できるトップレベルキー。
+ * GUI から編集できるトップレベルキー一覧 (`ConfigSchema` の `editable === 'gui'` から導出)。
  *
- * **DB 接続設定 (dbtype / mysql / sqlite / postgres) は意図的に含めない**。
- * オーバーレイ自体を DB から読むため、誤った接続設定を保存すると次回起動時に
- * 値を読み出せず復旧できなくなる (自己参照の詰み) ため。
- * 認証設定 (auth) も、画面へ入る手段そのものなので config.yml 専用にしている。
+ * 各キーの `requiresRestart` の根拠 (再起動不要と判断した理由) は
+ * 元は本ファイルにコメントとして書かれていたが、定義元を ConfigSchema に一本化したため
+ * 各エントリの JSDoc コメントとして `ConfigSchema.ts` 側へ移植した。参考までに転記:
+ * - `recording`: RecorderModel は予約ごとに生成され、そのたびに config を読むため再起動不要
+ * - `encodePresets`: EncodePresets.applyToConfig が formatConfig の都度 encode/stream.profiles を
+ *   組み立て直すため再起動不要
+ * - `stream`: StreamProfileManageModel は呼び出しのたびに config を読むため再起動不要
+ * - `reserveNewAddtionCommand` 等の外部コマンド系: ExternalCommandManageModel がコンストラクタで
+ *   config を読むため再起動が必要
  */
-export const CONFIG_OVERLAY_FIELDS: readonly ConfigFieldDefinition[] = [
-    // --- 基本 ---
-    { key: 'port', requiresRestart: true },
-    { key: 'socketioPort', requiresRestart: true },
-    { key: 'clientSocketioPort', requiresRestart: true },
-    { key: 'subDirectory', requiresRestart: true },
-    { key: 'apiServers', requiresRestart: true },
-    { key: 'isAllowAllCORS', requiresRestart: true },
-    { key: 'mirakurunPath', requiresRestart: true },
-    { key: 'mirakurunAPIPath', requiresRestart: true },
-    { key: 'epgUpdateIntervalTime', requiresRestart: false },
-    { key: 'epgRetentionTime', requiresRestart: true },
-    { key: 'epgDeleteIntervalTime', requiresRestart: true },
-    { key: 'needToReplaceEnclosingCharacters', requiresRestart: false },
-    { key: 'isSuppressReservesUpdateAllLog', requiresRestart: false },
-
-    // --- 放送局 ---
-    { key: 'channelOrder', requiresRestart: false },
-    { key: 'sidOrder', requiresRestart: false },
-    { key: 'excludeChannels', requiresRestart: false },
-    { key: 'excludeSids', requiresRestart: false },
-
-    // --- 優先度・マージン ---
-    { key: 'recPriority', requiresRestart: false },
-    { key: 'conflictPriority', requiresRestart: false },
-    { key: 'streamingPriority', requiresRestart: false },
-    { key: 'timeSpecifiedStartMargin', requiresRestart: false },
-    { key: 'timeSpecifiedEndMargin', requiresRestart: false },
-
-    // --- 録画 ---
-    { key: 'recordedFormat', requiresRestart: false },
-    { key: 'recordedFileExtension', requiresRestart: false },
-    { key: 'recorded', requiresRestart: true },
-    { key: 'recordedTmp', requiresRestart: true },
-    { key: 'recordedHistoryRetentionPeriodDays', requiresRestart: false },
-    // RecorderModel は予約ごとに生成され、そのたびに config を読むため再起動不要
-    { key: 'recording', requiresRestart: false },
-    { key: 'storageLimitCheckIntervalTime', requiresRestart: true },
-    { key: 'isEnabledDropCheck', requiresRestart: false },
-    { key: 'dropLog', requiresRestart: true },
-
-    // --- 外部ファイル取り込み ---
-    { key: 'importDirs', requiresRestart: true },
-    { key: 'importDefaultMode', requiresRestart: false },
-    { key: 'importFileNamePatterns', requiresRestart: false },
-    { key: 'importWatch', requiresRestart: true },
-    { key: 'importWatchIntervalSec', requiresRestart: true },
-
-    // --- サムネイル ---
-    { key: 'thumbnail', requiresRestart: true },
-    { key: 'thumbnailCmd', requiresRestart: false },
-    { key: 'thumbnailSize', requiresRestart: false },
-    { key: 'thumbnailPosition', requiresRestart: false },
-
-    // --- 外部コマンド ---
-    { key: 'ffmpeg', requiresRestart: false },
-    { key: 'ffprobe', requiresRestart: false },
-    { key: 'tsreadex', requiresRestart: false },
-    // rigaya 系エンコーダ (encodePresets.hwaccel が qsvencc/nvencc/vceencc のときに使う実行ファイルパス)
-    { key: 'qsvencc', requiresRestart: false },
-    { key: 'nvencc', requiresRestart: false },
-    { key: 'vceencc', requiresRestart: false },
-    { key: 'uploadTempDir', requiresRestart: true },
-
-    // --- エンコード ---
-    { key: 'encodeProcessNum', requiresRestart: true },
-    { key: 'streamProcessNum', requiresRestart: true },
-    { key: 'concurrentEncodeNum', requiresRestart: true },
-    { key: 'encode', requiresRestart: false },
-    // EncodePresets.applyToConfig が formatConfig の都度 encode/stream.profiles を組み立て直すため再起動不要
-    { key: 'encodePresets', requiresRestart: false },
-
-    // --- 視聴・配信 ---
-    { key: 'urlscheme', requiresRestart: false },
-    { key: 'streamFilePath', requiresRestart: true },
-    { key: 'kodiHosts', requiresRestart: false },
-    // StreamProfileManageModel は呼び出しのたびに config を読むため再起動不要
-    { key: 'stream', requiresRestart: false },
-
-    // --- 外部コマンド実行 ---
-    // ExternalCommandManageModel がコンストラクタで config を読むため再起動が必要
-    { key: 'reserveNewAddtionCommand', requiresRestart: true },
-    { key: 'reserveUpdateCommand', requiresRestart: true },
-    { key: 'reservedeletedCommand', requiresRestart: true },
-    { key: 'recordingPreStartCommand', requiresRestart: true },
-    { key: 'recordingPrepRecFailedCommand', requiresRestart: true },
-    { key: 'recordingStartCommand', requiresRestart: true },
-    { key: 'recordingFinishCommand', requiresRestart: true },
-    { key: 'recordingFailedCommand', requiresRestart: true },
-    { key: 'encodingFinishCommand', requiresRestart: true },
-
-    // --- 機能フラグ・付随設定 ---
-    { key: 'featureFlags', requiresRestart: true },
-    { key: 'updateChecker', requiresRestart: false },
-    { key: 'seriesLlm', requiresRestart: false },
-] as const;
+export const CONFIG_OVERLAY_FIELDS: readonly ConfigFieldDefinition[] = CONFIG_SCHEMA.filter(
+    entry => entry.editable === 'gui',
+).map(entry => ({ key: entry.key, requiresRestart: entry.requiresRestart }));
 
 export const CONFIG_OVERLAY_KEYS: ReadonlySet<string> = new Set(CONFIG_OVERLAY_FIELDS.map(x => x.key as string));
 

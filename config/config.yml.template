@@ -5,11 +5,41 @@ mirakurunPath: http+unix://%2Fvar%2Frun%2Fmirakurun.sock/
 # mirakurun の API エンドポイントのベースパス (省略時 /api)
 # mirakurunAPIPath: /api
 
+# socket.io の待受ポート番号 (省略時 port と同じ)
+# socketioPort: 8888
+# Web クライアントが接続する socket.io のポート番号。リバースプロキシ配下では必須
+# clientSocketioPort: 8888
+
+# EPGStation が https で直接 Web アクセスを待ち受ける設定。clientSocketioPort とは併用不可。
+# リバースプロキシ経由でアクセスする場合は使用しないこと
+# https:
+#     port: 8443
+#     key: '/path/to/privkey.pem'
+#     cert: '/path/to/fullchain.pem'
+
+# リバースプロキシ配下で /epg などのサブディレクトリに置いて動かす場合
+# subDirectory: '/epg'
+
+# Swagger UI で使用するサーバー一覧
+# apiServers:
+#     - 'http://localhost:8888'
+
+# CORS ヘッダーをすべて許可する (いずれ真面目に実装した際に削除する予定)
+# isAllowAllCORS: false
+
 # dbtype: sqlite
 # sqlite:
 #   extensions:
 #     - '/hoge/regexp.dylib'
 #   regexp: true
+
+# dbtype: postgres
+# postgres:
+#     host: 192.168.xx.xx
+#     port: 5432
+#     user: epgstation
+#     password: epgstation
+#     database: epgstation
 
 dbtype: mysql
 mysql:
@@ -20,8 +50,21 @@ mysql:
     database: epgstation
     charset: utf8mb4
 
+# EPGStation を実行する uid / gid (root で起動し setuid/setgid する場合)。Windows では使用されない
+# uid: 'epgstation'
+# gid: 'epgstation'
+
 # 囲み文字を置換するか
 needToReplaceEnclosingCharacters: true
+
+# 放送局の並び順 (Mirakurun の channel id で指定)
+# channelOrder: [1, 2, 3]
+# sid (service id) で並び順を指定する場合
+# sidOrder: [101, 102, 103]
+# 放送局の除外 (channel id)
+# excludeChannels: [4]
+# sid (service id) で除外する場合
+# excludeSids: [201]
 
 epgUpdateIntervalTime: 10
 
@@ -32,15 +75,35 @@ epgRetentionTime: 0
 # 過去の番組表データを削除する間隔 (分)。省略時は epgUpdateIntervalTime と同じ
 #epgDeleteIntervalTime: 60
 
+# ストリーミング視聴時に Mirakurun へ渡すプライオリティ
+# streamingPriority: 0
+# 手動予約の開始/終了マージン (秒)
+# timeSpecifiedStartMargin: 1
+# timeSpecifiedEndMargin: 1
 conflictPriority: 1
 recPriority: 2
 isEnabledDropCheck: true
+
+# 予約定期更新時のログ出力を抑えるか
+# isSuppressReservesUpdateAllLog: false
 
 recordedFormat: '%YEAR%年%MONTH%月%DAY%日%HOUR%時%MIN%分%SEC%秒-%HALF_WIDTH_TITLE%-%HALF_WIDTH_CHNAME%'
 recordedFileExtension: .m2ts
 recorded:
     - name: recorded
       path: '%ROOT%/recorded'
+
+# 録画中の一時保存先。録画完了後に recorded へ移動する (省略時は recorded と同じ場所)
+# recordedTmp: '%ROOT%/recorded'
+
+# 重複確認用に番組名を保管しておく期間 (日)
+# recordedHistoryRetentionPeriodDays: 90
+
+# ストレージの空き容量をチェックする間隔 (秒)
+# storageLimitCheckIntervalTime: 60
+
+# ドロップチェック時に生成される .log ファイルの保存先 (省略時 EPGStation 直下の drop ディレクトリ)
+# dropLog: '%ROOT%/drop'
 
 # 外部録画ファイル (EDCB 等) の取り込みを許可するディレクトリ (featureFlags.externalFileImport: true の場合のみ有効)
 # 未設定 (コメントアウトのまま) だと取り込み機能自体が無効になる
@@ -55,6 +118,9 @@ recorded:
 thumbnail: '%ROOT%/thumbnail'
 thumbnailSize: 480x270
 thumbnailPosition: 5
+
+# サムネイル生成時に実行されるコマンド
+# thumbnailCmd: '%FFMPEG% -ss %THUMBNAIL_POSITION% -y -i %INPUT% -vframes 1 -f image2 -s %THUMBNAIL_SIZE% %OUTPUT%'
 
 ffmpeg: /usr/local/bin/ffmpeg
 ffprobe: /usr/local/bin/ffprobe
@@ -747,6 +813,30 @@ stream:
 # 秘密情報暗号化鍵は data/key/secret.key へ自動生成・保存されます (config.yml での指定は廃止)。
 # 旧バージョンで secretKey を設定していた場合は、初回起動時にその値が鍵ファイルへ移行されます。
 
+# ファイルアップロード時に使用する一時領域 (省略時 EPGStation 直下の data/upload ディレクトリ)
+# uploadTempDir: '%ROOT%/data/upload'
+
+# HLS 配信時に使用される一時領域 (省略時 EPGStation 直下の data/streamfiles ディレクトリ)
+# streamFilePath: '%ROOT%/data/streamfiles'
+
+# 配信先 kodi 設定
+# kodiHosts:
+#     - name: 'livingroom'
+#       host: 'http://192.168.xx.xx:8080'
+#       user: 'kodi'
+#       password: 'kodi'
+
+# 外部コマンド実行。各コマンドの起動時に渡される環境変数の詳細は doc/conf-manual.md を参照
+# recordingPreStartCommand: '/bin/bash /home/hoge/foo.sh prestart'
+# recordingPrepRecFailedCommand: '/usr/bin/logger prepfailed'
+# recordingStartCommand: '/bin/node /home/hoge/fuga.js start'
+# recordingFinishCommand: '/bin/bash /home/hoge/foo.sh end'
+# recordingFailedCommand: '/usr/bin/logger recfailed'
+# encodingFinishCommand: '/bin/node /home/hoge/fuga.js finish'
+# reserveNewAddtionCommand: '/bin/node /home/hoge/fuga.js reserve'
+# reserveUpdateCommand: '/bin/node /home/hoge/piyo.js update'
+# reservedeletedCommand: '/bin/bash /home/hoge/bar.sh deleted'
+
 # データ放送 (BML) 配信 (featureFlags.dataBroadcasting: true の場合のみ有効)。
 # クライアントは WebSocket (/api/dataBroadcasting/ws) でカルーセルのモジュール等を受け取ります。
 # dataBroadcasting:
@@ -890,6 +980,10 @@ stream:
 
 # シリーズ自動マッピングの LLM フォールバック (featureFlags.seriesLibrary: true の場合のみ有効)。
 # 作品辞書 (しょぼいカレンダー + Annict) で確定できなかったものだけを OpenAI 互換 API へ渡し、
+# シリーズ自動マッピングの既定値。設定画面 (DB) の値が優先される
+# seriesDefaults:
+#     matchThreshold: 0.6
+
 # 抽出された作品名で辞書を引き直す。url と model の両方を指定した場合のみ有効になる。
 # 抽出結果は必ず辞書で検証されるため、LLM の誤生成単体で誤リンクには至らない。
 # 対象は (1) 録画単位: 辞書で引けなかった録画タイトル (2) シリーズ単位: 辞書で引けず
