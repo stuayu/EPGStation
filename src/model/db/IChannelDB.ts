@@ -8,6 +8,10 @@ export interface ChannelUpdateValues {
 }
 
 export default interface IChannelDB {
+    /**
+     * channels を DB へ全件挿入 (無ければ更新) する。
+     * 個々のレコードの失敗はログを出して続行するが、トランザクション自体が失敗した場合は throw する
+     */
     insert(channels: mapid.Service[]): Promise<void>;
     update(values: ChannelUpdateValues): Promise<void>;
     findId(channelId: apid.ChannelId): Promise<Channel | null>;

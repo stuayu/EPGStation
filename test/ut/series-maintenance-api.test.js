@@ -22,6 +22,7 @@ function pendingFixture() {
         listPendingMatches: async () => [[pending], 1],
         getPendingMatch: async id => (id === 1 ? pending : null),
         deletePendingMatch: async () => {},
+        parsePendingCandidates: json => JSON.parse(json),
     };
     const mappingApiModel = {
         update: async (recordedId, option) => ({ recordedId, seriesId: option.seriesId, manualLock: true }),

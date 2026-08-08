@@ -11,6 +11,8 @@ import SeriesReservationHint from '../../db/entities/SeriesReservationHint';
 import Thumbnail from '../../db/entities/Thumbnail';
 import VideoFile from '../../db/entities/VideoFile';
 import WatchHistory from '../../db/entities/WatchHistory';
+import ILogger from '../ILogger';
+import ILoggerModel from '../ILoggerModel';
 import IDBOperator from './IDBOperator';
 import ISeriesDB, {
     EmptySeriesRow,
@@ -33,7 +35,14 @@ export default class SeriesDB implements ISeriesDB {
     // IN 句のバインド変数上限 (SQLite は既定 999) を超えないように分割する単位
     private static readonly DELETE_CHUNK_SIZE = 200;
 
-    constructor(@inject('IDBOperator') private op: IDBOperator) {}
+    private log: ILogger;
+
+    constructor(
+        @inject('IDBOperator') private op: IDBOperator,
+        @inject('ILoggerModel') logger: ILoggerModel,
+    ) {
+        this.log = logger.getLogger();
+    }
     async findCandidates(normalizedTitle: string): Promise<Series[]> {
         const c = await this.op.getConnection();
         const repo = c.getRepository(Series);
@@ -519,11 +528,25 @@ export default class SeriesDB implements ISeriesDB {
         const c = await this.op.getConnection();
         await c.getRepository(SeriesPendingMatch).delete({ id });
     }
-    public static parsePendingCandidates(json: string): PendingCandidate[] {
+    /**
+     * candidatesJson (SeriesPendingMatch のカラム) をパースする
+     * 壊れた JSON が入っていても呼び出し元の一覧表示全体を落とさないよう空配列を返す。
+     * インスタンスのロガーを使うため static ではなくインスタンスメソッドにしている
+     * @param json: string
+     * @param context: string | undefined ログに出す識別情報 (呼び出し元で分かる場合のみ)
+     * @return PendingCandidate[]
+     */
+    public parsePendingCandidates(json: string, context?: string): PendingCandidate[] {
         try {
             const value = JSON.parse(json);
             return Array.isArray(value) ? value : [];
-        } catch {
+        } catch (err) {
+            this.log.system.error(
+                `SeriesDB.parsePendingCandidates: failed to parse candidatesJson${
+                    typeof context === 'undefined' ? '' : ` (${context})`
+                }`,
+            );
+            this.log.system.error(err);
             return [];
         }
     }
@@ -821,6 +844,10 @@ export default class SeriesDB implements ISeriesDB {
             await queryRunner.commitTransaction();
         } catch (err: any) {
             await queryRunner.rollbackTransaction();
+            this.log.system.error(
+                `SeriesDB.restoreSeries error: failed to restore ${items.length} items (rolled back)`,
+            );
+            this.log.system.error(err);
             throw err;
         } finally {
             await queryRunner.release();
@@ -836,6 +863,10 @@ export default class SeriesDB implements ISeriesDB {
             await queryRunner.commitTransaction();
         } catch (err: any) {
             await queryRunner.rollbackTransaction();
+            this.log.system.error(
+                `SeriesDB.restoreEpisodes error: failed to restore ${items.length} items (rolled back)`,
+            );
+            this.log.system.error(err);
             throw err;
         } finally {
             await queryRunner.release();
@@ -851,6 +882,8 @@ export default class SeriesDB implements ISeriesDB {
             await queryRunner.commitTransaction();
         } catch (err: any) {
             await queryRunner.rollbackTransaction();
+            this.log.system.error(`SeriesDB.restoreLinks error: failed to restore ${items.length} items (rolled back)`);
+            this.log.system.error(err);
             throw err;
         } finally {
             await queryRunner.release();
@@ -866,6 +899,10 @@ export default class SeriesDB implements ISeriesDB {
             await queryRunner.commitTransaction();
         } catch (err: any) {
             await queryRunner.rollbackTransaction();
+            this.log.system.error(
+                `SeriesDB.restoreAliases error: failed to restore ${items.length} items (rolled back)`,
+            );
+            this.log.system.error(err);
             throw err;
         } finally {
             await queryRunner.release();
@@ -881,6 +918,10 @@ export default class SeriesDB implements ISeriesDB {
             await queryRunner.commitTransaction();
         } catch (err: any) {
             await queryRunner.rollbackTransaction();
+            this.log.system.error(
+                `SeriesDB.restorePendingMatches error: failed to restore ${items.length} items (rolled back)`,
+            );
+            this.log.system.error(err);
             throw err;
         } finally {
             await queryRunner.release();
@@ -896,6 +937,10 @@ export default class SeriesDB implements ISeriesDB {
             await queryRunner.commitTransaction();
         } catch (err: any) {
             await queryRunner.rollbackTransaction();
+            this.log.system.error(
+                `SeriesDB.restoreHistories error: failed to restore ${items.length} items (rolled back)`,
+            );
+            this.log.system.error(err);
             throw err;
         } finally {
             await queryRunner.release();

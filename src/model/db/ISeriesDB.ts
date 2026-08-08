@@ -298,6 +298,14 @@ export default interface ISeriesDB {
 
     // --- 未確定キュー (S9 §4.5) ---
     upsertPendingMatch(value: NewPendingMatch): Promise<SeriesPendingMatch>;
+    /**
+     * candidatesJson (SeriesPendingMatch のカラム) をパースする。
+     * 壊れた JSON が入っていても一覧表示全体を落とさないよう空配列を返し、パース失敗はログへ出す
+     * @param json: string
+     * @param context?: string ログに出す識別情報 (呼び出し元で分かる場合のみ、例: recordedId=1)
+     * @return PendingCandidate[]
+     */
+    parsePendingCandidates(json: string, context?: string): PendingCandidate[];
     listPendingMatches(offset: number, limit: number): Promise<[SeriesPendingMatch[], number]>;
     getPendingMatch(id: number): Promise<SeriesPendingMatch | null>;
     findPendingMatchByRecordedId(recordedId: number): Promise<SeriesPendingMatch | null>;

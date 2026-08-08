@@ -158,6 +158,26 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         fields: [{ path: 'mirakurunAPIPath', label: 'Mirakurun の API ベースパス (省略時 /api)', type: 'string' }],
     },
     {
+        key: 'tunerServerType',
+        label: 'チューナーサーバーの種別',
+        hint: '省略時 (自動判定) は getServerConfig() の成否で mirakurun / mirakc を判定する。互換実装の検証時などに固定したい場合に指定する',
+        requiresRestart: true,
+        editable: 'gui',
+        fields: [
+            {
+                path: 'tunerServerType',
+                label: 'チューナーサーバーの種別',
+                type: 'select',
+                items: [
+                    { title: '自動判定', value: 'auto' },
+                    { title: 'Mirakurun', value: 'mirakurun' },
+                    { title: 'mirakc', value: 'mirakc' },
+                ],
+                hint: '省略時 (自動判定) は getServerConfig() の成否で mirakurun / mirakc を判定する。互換実装の検証時などに固定したい場合に指定する',
+            },
+        ],
+    },
+    {
         key: 'epgUpdateIntervalTime',
         label: 'EPG 更新間隔 (分)',
         requiresRestart: false,

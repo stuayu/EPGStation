@@ -1,5 +1,7 @@
 import { inject, injectable } from 'inversify';
 import ChannelAffiliation from '../../db/entities/ChannelAffiliation';
+import ILogger from '../ILogger';
+import ILoggerModel from '../ILoggerModel';
 import IPromiseRetry from '../IPromiseRetry';
 import IChannelAffiliationDB from './IChannelAffiliationDB';
 import IDBOperator from './IDBOperator';
@@ -8,10 +10,16 @@ import IDBOperator from './IDBOperator';
 export default class ChannelAffiliationDB implements IChannelAffiliationDB {
     private op: IDBOperator;
     private promieRetry: IPromiseRetry;
+    private log: ILogger;
 
-    constructor(@inject('IDBOperator') op: IDBOperator, @inject('IPromiseRetry') promieRetry: IPromiseRetry) {
+    constructor(
+        @inject('IDBOperator') op: IDBOperator,
+        @inject('IPromiseRetry') promieRetry: IPromiseRetry,
+        @inject('ILoggerModel') logger: ILoggerModel,
+    ) {
         this.op = op;
         this.promieRetry = promieRetry;
+        this.log = logger.getLogger();
     }
 
     /**
@@ -70,6 +78,8 @@ export default class ChannelAffiliationDB implements IChannelAffiliationDB {
             await queryRunner.commitTransaction();
         } catch (err: any) {
             hasError = err;
+            this.log.system.error(`ChannelAffiliationDB.replace error: networkId=${networkId}`);
+            this.log.system.error(err);
             await queryRunner.rollbackTransaction();
         } finally {
             await queryRunner.release();

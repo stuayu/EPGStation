@@ -241,6 +241,24 @@ mirakurunPath: 'https://mirakurun.example.com'
 mirakurunAPIPath: '/api'
 ```
 
+### tunerServerType
+
+#### チューナーサーバーの種別
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| string | auto         | no   |
+
+- `auto` / `mirakurun` / `mirakc` のいずれか
+- 省略時 (`auto`) は `getServerConfig()` の成否でチューナーサーバーの種別を自動判定する。
+  取得できれば Mirakurun、404 / 501 のようにエンドポイント自体が無いと判断できる応答なら mirakc と判定する。
+  接続不能・タイムアウト・5xx のような一時的な失敗では判定結果をキャッシュせず、次回起動時に再判定する
+- Mirakurun 互換サーバーとの接続を検証する際など、自動判定を迂回して種別を固定したい場合に指定する
+
+```yaml
+tunerServerType: 'mirakurun'
+```
+
 ### dbtype
 
 #### 使用するデータベースの種類
