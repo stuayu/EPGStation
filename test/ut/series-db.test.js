@@ -141,18 +141,35 @@ function makeConnection() {
     };
 }
 
+function makeLogger() {
+    const calls = { warn: [], error: [], debug: [], info: [] };
+    const system = {
+        warn: (...args) => calls.warn.push(args),
+        error: (...args) => calls.error.push(args),
+        debug: (...args) => calls.debug.push(args),
+        info: (...args) => calls.info.push(args),
+    };
+    return {
+        loggerModel: { getLogger: () => ({ system, access: system, stream: system, encode: system }) },
+        calls,
+    };
+}
+
 function makeDB() {
     const connection = makeConnection();
     const op = { getConnection: async () => connection };
-    return { db: new SeriesDB(op), connection };
+    const { loggerModel, calls } = makeLogger();
+    return { db: new SeriesDB(op, loggerModel), connection, loggerCalls: calls };
 }
 
 test('findCandidates: exact match takes priority over prefix match', async () => {
     const { db, connection } = makeDB();
-    connection.storeFor(Series).rows.push(
-        { id: 1, title: 'A', normalizedTitle: 'アニメa', createdAt: 1, updatedAt: 1 },
-        { id: 2, title: 'B', normalizedTitle: 'アニメaその2', createdAt: 1, updatedAt: 1 },
-    );
+    connection
+        .storeFor(Series)
+        .rows.push(
+            { id: 1, title: 'A', normalizedTitle: 'アニメa', createdAt: 1, updatedAt: 1 },
+            { id: 2, title: 'B', normalizedTitle: 'アニメaその2', createdAt: 1, updatedAt: 1 },
+        );
 
     const exact = await db.findCandidates('アニメa');
     assert.equal(exact.length, 1);
@@ -238,11 +255,13 @@ test('findLink / saveLink: create then update in place (does not duplicate rows)
 
 test('list: filters by keyword across title/normalizedTitle and paginates', async () => {
     const { db, connection } = makeDB();
-    connection.storeFor(Series).rows.push(
-        { id: 1, title: 'アニメA', normalizedTitle: 'アニメa', updatedAt: 3 },
-        { id: 2, title: 'ドラマB', normalizedTitle: 'ドラマb', updatedAt: 2 },
-        { id: 3, title: 'アニメC', normalizedTitle: 'アニメc', updatedAt: 1 },
-    );
+    connection
+        .storeFor(Series)
+        .rows.push(
+            { id: 1, title: 'アニメA', normalizedTitle: 'アニメa', updatedAt: 3 },
+            { id: 2, title: 'ドラマB', normalizedTitle: 'ドラマb', updatedAt: 2 },
+            { id: 3, title: 'アニメC', normalizedTitle: 'アニメc', updatedAt: 1 },
+        );
 
     const [all, allTotal] = await db.list(undefined, 0, 10);
     assert.equal(allTotal, 3);
@@ -400,10 +419,12 @@ test('mergeSeries: no-op when ids are equal, otherwise moves links/episodes/alia
     const { db, connection } = makeDB();
     assert.equal(await db.mergeSeries(1, 1), 0);
 
-    connection.storeFor(Series).rows.push(
-        { id: 1, title: 'From', normalizedTitle: 'from', updatedAt: 1 },
-        { id: 2, title: 'To', normalizedTitle: 'to', updatedAt: 1 },
-    );
+    connection
+        .storeFor(Series)
+        .rows.push(
+            { id: 1, title: 'From', normalizedTitle: 'from', updatedAt: 1 },
+            { id: 2, title: 'To', normalizedTitle: 'to', updatedAt: 1 },
+        );
     const ep = await db.createEpisode({
         seriesId: 1,
         seasonNumber: 1,

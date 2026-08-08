@@ -1,6 +1,8 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../api';
 import Thumbnail from '../../db/entities/Thumbnail';
+import ILogger from '../ILogger';
+import ILoggerModel from '../ILoggerModel';
 import IPromiseRetry from '../IPromiseRetry';
 import IDBOperator from './IDBOperator';
 import IThumbnailDB from './IThumbnailDB';
@@ -9,10 +11,16 @@ import IThumbnailDB from './IThumbnailDB';
 export default class ThumbnailDB implements IThumbnailDB {
     private op: IDBOperator;
     private promieRetry: IPromiseRetry;
+    private log: ILogger;
 
-    constructor(@inject('IDBOperator') op: IDBOperator, @inject('IPromiseRetry') promieRetry: IPromiseRetry) {
+    constructor(
+        @inject('IDBOperator') op: IDBOperator,
+        @inject('IPromiseRetry') promieRetry: IPromiseRetry,
+        @inject('ILoggerModel') logger: ILoggerModel,
+    ) {
         this.op = op;
         this.promieRetry = promieRetry;
+        this.log = logger.getLogger();
     }
 
     /**
@@ -39,7 +47,8 @@ export default class ThumbnailDB implements IThumbnailDB {
             }
             await queryRunner.commitTransaction();
         } catch (err: any) {
-            console.error(err);
+            this.log.system.error(`ThumbnailDB.restore error: failed to restore ${items.length} items`);
+            this.log.system.error(err);
             hasError = err;
             await queryRunner.rollbackTransaction();
         } finally {
