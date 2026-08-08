@@ -3,7 +3,6 @@ import { isFeatureEnabled } from '../../FeatureFlags';
 import IConfiguration from '../../IConfiguration';
 import IRecordedDB from '../../db/IRecordedDB';
 import ISeriesDB from '../../db/ISeriesDB';
-import SeriesDB from '../../db/SeriesDB';
 import ISeriesMappingApiModel, { SeriesMappingValue, UpdateSeriesMappingOption } from './ISeriesMappingApiModel';
 import ISeriesPendingApiModel, { PendingListResult } from './ISeriesPendingApiModel';
 @injectable()
@@ -27,7 +26,7 @@ export default class SeriesPendingApiModel implements ISeriesPendingApiModel {
                 recordedTitle: recordedItems[i]?.name ?? '',
                 normalizedTitle: x.normalizedTitle,
                 channelId: x.channelId,
-                candidates: SeriesDB.parsePendingCandidates(x.candidatesJson),
+                candidates: this.seriesDB.parsePendingCandidates(x.candidatesJson, `recordedId=${x.recordedId}`),
                 createdAt: Number(x.createdAt),
             })),
             total,

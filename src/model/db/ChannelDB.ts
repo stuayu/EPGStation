@@ -32,9 +32,12 @@ export default class ChannelDB implements IChannelDB {
     }
 
     /**
-     * Mirakurun から取得した channel 情報を DB へ全件挿入する
+     * Mirakurun から取得した channel 情報を DB へ全件挿入する。
+     * 個々のレコードの挿入失敗はログを出して次のレコードへ進むが、
+     * トランザクション自体が失敗した場合 (commit 失敗など) は rollback したうえで throw する
      * @param channels: Service[]
      * @return Promise<void>
+     * @throws トランザクションが失敗した場合
      */
     public async insert(channels: mapid.Service[]): Promise<void> {
         const values: QueryDeepPartialEntity<Channel>[] = [];
@@ -79,7 +82,6 @@ export default class ChannelDB implements IChannelDB {
 
         await queryRunner.startTransaction();
 
-        const hasError = false;
         try {
             for (const value of values) {
                 try {
@@ -113,13 +115,13 @@ export default class ChannelDB implements IChannelDB {
             await queryRunner.commitTransaction();
         } catch (transactionErr) {
             await queryRunner.rollbackTransaction();
-            this.log.system.error('transaction error');
+            // 個々のレコードの失敗はループ内で握り潰して続行するが、
+            // トランザクション自体の失敗 (commit 失敗など) は呼び出し側が検知できるよう rollback 後に throw する
+            this.log.system.error('Channel insert transaction failed (rolled back)');
             this.log.system.error(transactionErr);
+            throw transactionErr;
         } finally {
             await queryRunner.release();
-        }
-        if (hasError) {
-            throw new Error('insert error');
         }
     }
 

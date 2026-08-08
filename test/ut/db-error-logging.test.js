@@ -306,17 +306,13 @@ test('SeriesDB.restoreHistories: エラー時にログを出しつつ rollback �
     assert.ok(containsError(calls.error, 'series delete boom'));
 });
 
-test('SeriesDB.parsePendingCandidates: 壊れた JSON はログを出しつつ空配列を返す (握り潰さない)', () => {
-    const originalConsoleError = console.error;
-    const logged = [];
-    console.error = (...args) => logged.push(args);
-    try {
-        const result = SeriesDB.parsePendingCandidates('not json', 'recordedId=1');
-        assert.deepEqual(result, []);
-        assert.ok(logged.length > 0, 'console.error should be called');
-        const hasContext = logged.some(args => args.some(a => typeof a === 'string' && a.includes('recordedId=1')));
-        assert.ok(hasContext, 'context should be included in the log');
-    } finally {
-        console.error = originalConsoleError;
-    }
+test('SeriesDB.parsePendingCandidates: 壊れた JSON はロガーへ出しつつ空配列を返す (握り潰さない)', () => {
+    const op = { getConnection: async () => ({}) };
+    const { loggerModel, calls } = makeLogger();
+    const db = new SeriesDB(op, loggerModel);
+
+    const result = db.parsePendingCandidates('not json', 'recordedId=1');
+    assert.deepEqual(result, []);
+    const hasContext = calls.error.some(args => args.some(a => typeof a === 'string' && a.includes('recordedId=1')));
+    assert.ok(hasContext, 'context should be included in the log');
 });
