@@ -9,6 +9,8 @@ import VideoFile from '../../db/entities/VideoFile';
 import { isFeatureEnabled } from '../FeatureFlags';
 import IConfiguration from '../IConfiguration';
 import RecordedKeywordSearch, { buildRecordedKeywordSearchPlan } from '../recorded/RecordedKeywordSearch';
+import ILogger from '../ILogger';
+import ILoggerModel from '../ILoggerModel';
 import IPromiseRetry from '../IPromiseRetry';
 import IDBOperator from './IDBOperator';
 import IRecordedDB, {
@@ -27,17 +29,20 @@ export default class RecordedDB implements IRecordedDB {
     private promieRetry: IPromiseRetry;
     private config: IConfiguration;
     private recordedTagDB: IRecordedTagDB;
+    private log: ILogger;
 
     constructor(
         @inject('IDBOperator') op: IDBOperator,
         @inject('IPromiseRetry') promieRetry: IPromiseRetry,
         @inject('IConfiguration') config: IConfiguration,
         @inject('IRecordedTagDB') recordedTagDB: IRecordedTagDB,
+        @inject('ILoggerModel') logger: ILoggerModel,
     ) {
         this.op = op;
         this.promieRetry = promieRetry;
         this.config = config;
         this.recordedTagDB = recordedTagDB;
+        this.log = logger.getLogger();
     }
 
     /**
@@ -68,7 +73,8 @@ export default class RecordedDB implements IRecordedDB {
             }
             await queryRunner.commitTransaction();
         } catch (err: any) {
-            console.error(err);
+            this.log.system.error(`RecordedDB.restore error: failed to restore ${items.length} items`);
+            this.log.system.error(err);
             hasError = err;
             await queryRunner.rollbackTransaction();
         } finally {

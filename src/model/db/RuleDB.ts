@@ -2,6 +2,8 @@ import { inject, injectable } from 'inversify';
 import * as apid from '../../../api';
 import Rule from '../../db/entities/Rule';
 import StrUtil from '../../util/StrUtil';
+import ILogger from '../ILogger';
+import ILoggerModel from '../ILoggerModel';
 import IPromiseRetry from '../IPromiseRetry';
 import DBUtil from './DBUtil';
 import IDBOperator from './IDBOperator';
@@ -11,10 +13,16 @@ import IRuleDB, { RuleWithCnt } from './IRuleDB';
 export default class RuleDB implements IRuleDB {
     private op: IDBOperator;
     private promieRetry: IPromiseRetry;
+    private log: ILogger;
 
-    constructor(@inject('IDBOperator') op: IDBOperator, @inject('IPromiseRetry') promieRetry: IPromiseRetry) {
+    constructor(
+        @inject('IDBOperator') op: IDBOperator,
+        @inject('IPromiseRetry') promieRetry: IPromiseRetry,
+        @inject('ILoggerModel') logger: ILoggerModel,
+    ) {
         this.op = op;
         this.promieRetry = promieRetry;
+        this.log = logger.getLogger();
     }
 
     /**
@@ -41,7 +49,8 @@ export default class RuleDB implements IRuleDB {
             }
             await queryRunner.commitTransaction();
         } catch (err: any) {
-            console.error(err);
+            this.log.system.error(`RuleDB.restore error: failed to restore ${items.length} items`);
+            this.log.system.error(err);
             hasError = err;
             await queryRunner.rollbackTransaction();
         } finally {

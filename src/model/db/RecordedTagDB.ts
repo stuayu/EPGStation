@@ -3,6 +3,8 @@ import * as apid from '../../../api';
 import Recorded from '../../db/entities/Recorded';
 import RecordedTag from '../../db/entities/RecordedTag';
 import StrUtil from '../../util/StrUtil';
+import ILogger from '../ILogger';
+import ILoggerModel from '../ILoggerModel';
 import IPromiseRetry from '../IPromiseRetry';
 import DBUtil from './DBUtil';
 import IDBOperator from './IDBOperator';
@@ -12,10 +14,16 @@ import IRecordedTagDB from './IRecordedTagDB';
 export default class RecordedTagDB implements IRecordedTagDB {
     private op: IDBOperator;
     private promieRetry: IPromiseRetry;
+    private log: ILogger;
 
-    constructor(@inject('IDBOperator') op: IDBOperator, @inject('IPromiseRetry') promieRetry: IPromiseRetry) {
+    constructor(
+        @inject('IDBOperator') op: IDBOperator,
+        @inject('IPromiseRetry') promieRetry: IPromiseRetry,
+        @inject('ILoggerModel') logger: ILoggerModel,
+    ) {
         this.op = op;
         this.promieRetry = promieRetry;
+        this.log = logger.getLogger();
     }
 
     /**
@@ -42,7 +50,8 @@ export default class RecordedTagDB implements IRecordedTagDB {
             }
             await queryRunner.commitTransaction();
         } catch (err: any) {
-            console.error(err);
+            this.log.system.error(`RecordedTagDB.restore error: failed to restore ${items.length} items`);
+            this.log.system.error(err);
             hasError = err;
             await queryRunner.rollbackTransaction();
         } finally {

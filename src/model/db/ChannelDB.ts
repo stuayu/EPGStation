@@ -32,41 +32,49 @@ export default class ChannelDB implements IChannelDB {
     }
 
     /**
-     * Mirakurun から取得した channel 情報を DB へ全件挿入する
+     * Mirakurun から取得した channel 情報を DB へ全件挿入する。
+     * 個々のレコードの挿入失敗はログを出して次のレコードへ進むが、
+     * トランザクション自体が失敗した場合 (commit 失敗など) は rollback したうえで throw する
      * @param channels: Service[]
      * @return Promise<void>
+     * @throws トランザクションが失敗した場合
      */
     public async insert(channels: mapid.Service[]): Promise<void> {
         const values: QueryDeepPartialEntity<Channel>[] = [];
 
         // 挿入データ作成
-        try {
-            for (const channel of channels) {
-                if (typeof channel.channel === 'undefined') {
+        // 1 件の変換に失敗しても以降のサービスの処理を止めないよう、
+        // try/catch はループの内側 (1 サービス単位) に置く
+        let failedCount = 0;
+        const failedServices: string[] = [];
+        for (const channel of channels) {
+            try {
+                const value = this.createInsertValue(channel);
+                if (value === null) {
                     // 物理チャンネル情報が無いサービスは登録できないが、
                     // return してしまうと以降の放送局がすべて未登録になるため skip する
                     this.log.system.warn(`channel info is not found: ${channel.id} ${channel.name}`);
                     continue;
                 }
-
-                const name = StrUtil.toDBStr(channel.name);
-                values.push({
-                    id: channel.id,
-                    serviceId: channel.serviceId,
-                    networkId: channel.networkId,
-                    name: name,
-                    halfWidthName: StrUtil.toHalf(name),
-                    remoteControlKeyId:
-                        typeof channel.remoteControlKeyId === 'undefined' ? null : channel.remoteControlKeyId,
-                    hasLogoData: !!channel.hasLogoData,
-                    channelTypeId: this.getChannelTypeId(channel.channel[0].type),
-                    channelType: channel.channel[0].type,
-                    channel: channel.channel[0].channel,
-                    type: typeof (channel as any)['type'] !== 'number' ? null : (channel as any)['type'],
-                });
+                values.push(value);
+            } catch (error) {
+                failedCount += 1;
+                // channel.name の参照自体が例外を投げるケースもあり得るため、識別情報の組み立ても保護する
+                let label: string;
+                try {
+                    label = `${channel.id} ${channel.name}`;
+                } catch {
+                    label = `${channel.id} (name unavailable)`;
+                }
+                failedServices.push(label);
+                this.log.system.debug(`Failed to create insert value for channel: ${label}`);
+                this.log.system.debug(error);
             }
-        } catch (error) {
-            this.log.system.error('Failed to create insert values for channels', error);
+        }
+        if (failedCount > 0) {
+            this.log.system.error(
+                `Failed to create insert values for ${failedCount} channels: ${failedServices.join(', ')}`,
+            );
         }
 
         const connection = await this.op.getConnection();
@@ -74,7 +82,6 @@ export default class ChannelDB implements IChannelDB {
 
         await queryRunner.startTransaction();
 
-        const hasError = false;
         try {
             for (const value of values) {
                 try {
@@ -108,14 +115,51 @@ export default class ChannelDB implements IChannelDB {
             await queryRunner.commitTransaction();
         } catch (transactionErr) {
             await queryRunner.rollbackTransaction();
-            this.log.system.error('transaction error');
+            // 個々のレコードの失敗はループ内で握り潰して続行するが、
+            // トランザクション自体の失敗 (commit 失敗など) は呼び出し側が検知できるよう rollback 後に throw する
+            this.log.system.error('Channel insert transaction failed (rolled back)');
             this.log.system.error(transactionErr);
+            throw transactionErr;
         } finally {
             await queryRunner.release();
         }
-        if (hasError) {
-            throw new Error('insert error');
+    }
+
+    /**
+     * Mirakurun の Service 情報を DB 挿入用のデータへ変換する
+     * 物理チャンネル情報が無い場合は null を返す (呼び出し側で skip する)
+     * @param channel: mapid.Service
+     * @return QueryDeepPartialEntity<Channel> | null
+     */
+    private createInsertValue(channel: mapid.Service): QueryDeepPartialEntity<Channel> | null {
+        // stuayu フォークの Mirakurun (及び EPGStation 同梱の型定義) は Service.channel を配列で返すが、
+        // 本家 Mirakurun や mirakc など多くの Mirakurun 互換実装は単一オブジェクトで返す。
+        // 型定義 (mapid.Service.channel) は配列のみを想定しているため、単一オブジェクトを受ける分岐では
+        // as 経由の型アサーションが必要になる。
+        const rawChannel = channel.channel as mapid.Channel[] | mapid.Channel | undefined;
+        const physicalChannel: mapid.Channel | undefined = Array.isArray(rawChannel)
+            ? rawChannel[0]
+            : (rawChannel as mapid.Channel | undefined);
+
+        if (typeof physicalChannel === 'undefined' || physicalChannel === null) {
+            return null;
         }
+
+        const name = StrUtil.toDBStr(channel.name);
+
+        return {
+            id: channel.id,
+            serviceId: channel.serviceId,
+            networkId: channel.networkId,
+            name: name,
+            halfWidthName: StrUtil.toHalf(name),
+            remoteControlKeyId: typeof channel.remoteControlKeyId === 'undefined' ? null : channel.remoteControlKeyId,
+            hasLogoData: !!channel.hasLogoData,
+            channelTypeId: this.getChannelTypeId(physicalChannel.type),
+            channelType: physicalChannel.type,
+            channel: physicalChannel.channel,
+            type: typeof (channel as any)['type'] !== 'number' ? null : (channel as any)['type'],
+        };
     }
 
     /**
