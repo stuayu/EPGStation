@@ -191,6 +191,9 @@ export default interface IConfigFile {
 
     mirakurunPath: string;
     mirakurunAPIPath?: string; // mirakurun の API エンドポイントのベースパス (省略時 /api)
+    // チューナーサーバーの種別 (省略時 'auto': getServerConfig() の成否で自動判定する)。
+    // 互換実装の検証時など、自動判定を迂回して固定したい場合に指定する
+    tunerServerType?: 'mirakurun' | 'mirakc' | 'auto';
 
     subDirectory?: string;
 
