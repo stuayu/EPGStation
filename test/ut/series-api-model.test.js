@@ -3,13 +3,16 @@ require('reflect-metadata');
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const SeriesApiModel = require('../../dist/model/api/series/SeriesApiModel').default;
+const SeriesTotalEpisodes = require('../../dist/model/series/SeriesTotalEpisodes').default;
 const series = {
     id: 1,
     title: '作品',
     normalizedTitle: '作品',
     mediaType: 'tv',
     preferredChannelId: 10,
-    syobocalTid: null,
+    // 総話数は DB に無く、しょぼいカレンダー作品辞書だけが持っている状態
+    totalEpisodes: null,
+    syobocalTid: 500,
     annictId: null,
     tmdbId: null,
     updatedAt: 200,
@@ -44,7 +47,7 @@ const db = {
     query: async option => [
         [
             {
-                series: { id: 1, title: '作品', normalizedTitle: '作品', mediaType: 'tv', preferredChannelId: 10, updatedAt: '5', titleKana: null, seasonYear: 2025, seasonName: 'SPRING', totalEpisodes: 12, syobocalTid: null, annictId: null, tmdbId: null },
+                series: { id: 1, title: '作品', normalizedTitle: '作品', mediaType: 'tv', preferredChannelId: 10, updatedAt: '5', titleKana: null, seasonYear: 2025, seasonName: 'SPRING', totalEpisodes: null, syobocalTid: 500, annictId: null, tmdbId: null },
                 recordedCount: 1,
                 totalFileSize: 1024,
                 firstAiredAt: 100,
@@ -60,7 +63,16 @@ const db = {
 };
 // アイキャッチ画像は装飾なので、既定では「画像なし」を返すスタブを渡す
 const imageModel = { getInfo: async () => null, getInfoMap: async () => new Map(), getFile: async () => null };
-const model = new SeriesApiModel({ getConfig: () => ({ featureFlags: { seriesLibrary: true } }) }, db, imageModel);
+const config = { getConfig: () => ({ featureFlags: { seriesLibrary: true } }) };
+// 総話数は同期済みの外部辞書 (しょぼいカレンダー) から引く。実装をそのまま使って経路ごと検証する
+function totalEpisodes() {
+    return new SeriesTotalEpisodes(
+        config,
+        { get: async tid => (tid === 500 ? { tid, totalEpisodes: 12 } : null) },
+        { get: async () => null },
+    );
+}
+const model = new SeriesApiModel(config, db, imageModel, totalEpisodes());
 test('series API clamps pagination and returns total', async () => {
     const x = await model.list({ keyword: '作品', offset: -2, limit: 500 });
     assert.equal(x.total, 1);
@@ -74,7 +86,7 @@ test('series API returns aggregates and badge counts', async () => {
     assert.equal(item.unwatchedCount, 1);
     assert.equal(item.seasonYear, 2025);
     assert.equal(item.seasonName, 'SPRING');
-    // 総話数 12 で 1 話しか無いので欠番 11 話
+    // 外部辞書の総話数 12 で 1 話しか無いので欠番 11 話 (series.totalEpisodes は未設定)
     assert.equal(item.missingEpisodeCount, 11);
     assert.equal(item.duplicateEpisodeCount, 0);
 });
@@ -86,7 +98,20 @@ test('series detail supports channel filtering and numeric conversion', async ()
     assert.equal(x.recorded[0].episodeNumber, 1);
     assert.equal(x.channels[0].count, 1);
 });
+// 画面に出す欠番一覧も、集計値と同じく外部辞書の総話数まで見る
+test('series detail lists missing episodes up to the total episode count from the dictionary', async () => {
+    const x = await model.get(1);
+    assert.equal(x.missingEpisodeCount, 11);
+    assert.equal(x.continuity.missingEpisodes.length, 11);
+    assert.deepEqual(x.continuity.missingEpisodes[0], { seasonNumber: 1, episodeNumber: 2 });
+    assert.deepEqual(x.continuity.missingEpisodes.at(-1), { seasonNumber: 1, episodeNumber: 12 });
+});
 test('series API is hidden while feature is disabled', async () => {
-    const m = new SeriesApiModel({ getConfig: () => ({ featureFlags: { seriesLibrary: false } }) }, db, imageModel);
+    const m = new SeriesApiModel(
+        { getConfig: () => ({ featureFlags: { seriesLibrary: false } }) },
+        db,
+        imageModel,
+        totalEpisodes(),
+    );
     await assert.rejects(() => m.list({ offset: 0, limit: 10 }), /SeriesLibraryFeatureIsDisabled/);
 });

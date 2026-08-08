@@ -708,6 +708,28 @@ export default class RecordedDB implements IRecordedDB {
             queryBuilder.andWhere('recorded.id >= :minId', { minId: filter.minId });
         }
 
+        if (Array.isArray(filter.seriesIds)) {
+            if (filter.seriesIds.length === 0) {
+                // 対象シリーズが 1 件も無い = 対象の録画も無い (空の IN 句は SQL エラーになるため明示的に潰す)
+                queryBuilder.andWhere('1 = 0');
+            } else {
+                // 指定シリーズにリンク済みの録画だけに絞る (シリーズ単位の再解析)
+                queryBuilder.andWhere(
+                    qb => {
+                        const sub = qb
+                            .subQuery()
+                            .select('link.recordedId')
+                            .from(RecordedSeriesLink, 'link')
+                            .where('link.seriesId IN (:...seriesIds)')
+                            .getQuery();
+
+                        return `recorded.id IN ${sub}`;
+                    },
+                    { seriesIds: filter.seriesIds },
+                );
+            }
+        }
+
         if (filter.onlyUnlinked === true) {
             // まだシリーズへリンクされていない録画だけに絞る (DB 側で弾くことで走査自体を減らす)
             queryBuilder.andWhere(qb => {

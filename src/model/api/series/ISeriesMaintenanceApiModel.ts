@@ -7,6 +7,8 @@ export type DeleteEmptySeriesResult = apid.DeleteEmptySeriesResult;
 export type DictionaryWorkSearchResult = apid.DictionaryWorkSearchResult;
 export type CreateSeriesFromDictionaryOption = apid.CreateSeriesFromDictionaryOption;
 export type CreateSeriesFromDictionaryResult = apid.CreateSeriesFromDictionaryResult;
+export type ReanalyzeSeriesOption = apid.ReanalyzeSeriesOption;
+export type ReanalyzeSeriesResult = apid.ReanalyzeSeriesResult;
 export interface RefreshSeriesMetadataResult {
     // 走査したシリーズ数
     scanned: number;
@@ -65,6 +67,16 @@ export default interface ISeriesMaintenanceApiModel {
      * @return Promise<RefreshSeriesMetadataResult>
      */
     refreshMetadata(seriesId?: number): Promise<RefreshSeriesMetadataResult>;
+    /**
+     * 指定したシリーズをまとめて再解析する。
+     * シリーズのメタデータを作品辞書から引き直し (省略可)、続けてそのシリーズにリンク済みの
+     * 録画をすべてシリーズ判定にかけ直す (話数・サブタイトル・放送種別の付け直し)。
+     * 手動確定 (manualLock) 済みの録画は従来どおり対象外。
+     * 録画の再判定はバックグラウンドで進むため、進捗は GET /api/series/backfill/status で追う
+     * @param option: ReanalyzeSeriesOption
+     * @return Promise<ReanalyzeSeriesResult>
+     */
+    reanalyze(option: ReanalyzeSeriesOption): Promise<ReanalyzeSeriesResult>;
     /**
      * fromSeriesIds のリンク・エピソード・エイリアスを toSeriesId へ統合し、統合元のシリーズを削除する
      * @param fromSeriesIds: number[] 統合元。toSeriesId が混ざっていても無視する

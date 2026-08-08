@@ -645,17 +645,144 @@ test('resolve() takes the episode number from the key station broadcast for a de
     assert.equal(programLookup.delayedCalls[0].tid, 100);
 });
 
-// タイトルから話数が取れる録画では、余計な外部照会を増やさない
-test('resolve() does not ask for a delayed broadcast when the episode number is already known', async () => {
+// 話数がタイトルから取れていても、遅れ放送かどうかは外部の放送予定でしか分からないので照会する
+test('resolve() asks for a delayed broadcast even when the episode number is known (to label the air type)', async () => {
     const db = memory([]);
     const dictionary = stubTitleDictionary(workMatch({ title: '作品名', syobocalTid: 100 }));
-    const programLookup = stubProgramLookup(null, null);
-    await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
+    const delayed = {
+        tid: 100,
+        count: 3,
+        subTitle: 'キー局のサブタイトル',
+        comment: null,
+        startAt: 100,
+        endAt: null,
+        isRerun: false,
+        isFirstEpisode: false,
+        isFinalEpisode: false,
+        exactStart: false,
+        viaKeyStation: true,
+    };
+    const programLookup = stubProgramLookup(null, delayed);
+    const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), programLookup).resolve({
         recordedId: 5,
         title: '作品名 第3話',
         channelId: 10,
         startAt: 1000,
     });
 
-    assert.equal(programLookup.delayedCalls.length, 0);
+    assert.equal(programLookup.delayedCalls.length, 1);
+    assert.equal(link.airType, 'delayed');
+});
+
+// 遅れ放送の対応付けを誤ると別の回を指してしまうため、タイトルの話数と食い違う照会結果は採らない
+test('resolve() ignores a delayed broadcast whose episode number contradicts the title', async () => {
+    const db = memory([]);
+    const dictionary = stubTitleDictionary(workMatch({ title: '作品名', syobocalTid: 100 }));
+    const delayed = {
+        tid: 100,
+        count: 9,
+        subTitle: '別の回のサブタイトル',
+        comment: null,
+        startAt: 100,
+        endAt: null,
+        isRerun: false,
+        isFirstEpisode: false,
+        isFinalEpisode: false,
+        exactStart: false,
+        viaKeyStation: true,
+    };
+    const link = await resolver(
+        db,
+        0.8,
+        stubNotification(),
+        dictionary,
+        stubLlm(),
+        stubProgramLookup(null, delayed),
+    ).resolve({ recordedId: 5, title: '作品名 第3話', channelId: 10, startAt: 1000 });
+
+    const episode = db.episodes.find(x => x.id === link.episodeId);
+    assert.equal(episode.episodeNumber, 3);
+    assert.equal(episode.title, null);
+    assert.notEqual(link.airType, 'delayed');
+});
+
+// 放送種別は しょぼいカレンダーの放送予定 (ProgItem.Flag) を最優先で使う
+test('resolve() labels the air type as rerun when the broadcast schedule says so', async () => {
+    const db = memory([]);
+    const dictionary = stubTitleDictionary(workMatch({ title: '作品名', syobocalTid: 100 }));
+    const program = {
+        tid: 100,
+        count: 3,
+        subTitle: 'サブタイトル',
+        comment: null,
+        startAt: 1000,
+        endAt: 2000,
+        isRerun: true,
+        isFirstEpisode: false,
+        isFinalEpisode: false,
+        exactStart: true,
+        viaKeyStation: false,
+    };
+    // ローカルには同じ回のリンクが 1 件も無い (従来はこの条件だと初回放送と判定していた)
+    const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), stubProgramLookup(program)).resolve({
+        recordedId: 5,
+        title: '作品名[字]',
+        channelId: 10,
+        startAt: 1000,
+    });
+
+    assert.equal(link.airType, 'rerun');
+});
+
+test('resolve() labels the air type as first when the broadcast schedule is not a rerun', async () => {
+    const db = memory([]);
+    const dictionary = stubTitleDictionary(workMatch({ title: '作品名', syobocalTid: 100 }));
+    const program = {
+        tid: 100,
+        count: 1,
+        subTitle: 'サブタイトル',
+        comment: null,
+        startAt: 1000,
+        endAt: 2000,
+        isRerun: false,
+        isFirstEpisode: true,
+        isFinalEpisode: false,
+        exactStart: true,
+        viaKeyStation: false,
+    };
+    const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), stubProgramLookup(program)).resolve({
+        recordedId: 5,
+        title: '作品名[字]',
+        channelId: 10,
+        startAt: 1000,
+    });
+
+    assert.equal(link.airType, 'first');
+});
+
+// しょぼいカレンダー側のフラグ付け漏れで初回放送に化けないよう、タイトルの明示は残す
+test('resolve() keeps the rerun label from the title when the schedule has no rerun flag', async () => {
+    const db = memory([]);
+    const dictionary = stubTitleDictionary(workMatch({ title: '作品名', syobocalTid: 100 }));
+    const program = {
+        tid: 100,
+        count: 3,
+        subTitle: 'サブタイトル',
+        comment: null,
+        startAt: 1000,
+        endAt: 2000,
+        isRerun: false,
+        isFirstEpisode: false,
+        isFinalEpisode: false,
+        exactStart: true,
+        viaKeyStation: false,
+    };
+    const link = await resolver(db, 0.8, stubNotification(), dictionary, stubLlm(), stubProgramLookup(program)).resolve({
+        recordedId: 5,
+        title: '作品名 第3話 (再)',
+        channelId: 10,
+        startAt: 1000,
+    });
+
+    assert.equal(link.airType, 'rerun');
 });

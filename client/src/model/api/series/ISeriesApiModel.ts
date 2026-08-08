@@ -13,6 +13,8 @@ export type MissingEpisodeProposal = apid.MissingEpisodeProposal;
 export type SeriesBackfillOption = apid.SeriesBackfillOption;
 export type SeriesBackfillResult = apid.SeriesBackfillResult;
 export type SeriesAnalyzeResult = apid.SeriesAnalyzeResult;
+export type ReanalyzeSeriesOption = apid.ReanalyzeSeriesOption;
+export type ReanalyzeSeriesResult = apid.ReanalyzeSeriesResult;
 export type SeriesAnalyzeStep = apid.SeriesAnalyzeStep;
 export type ProgramSeriesMetrics = apid.ProgramSeriesMetrics;
 export type SeriesMergeCandidate = apid.SeriesMergeCandidate;
@@ -88,6 +90,13 @@ export default interface ISeriesApiModel {
      * @return Promise<RefreshSeriesMetadataResult>
      */
     refreshMetadata(seriesId?: number): Promise<RefreshSeriesMetadataResult>;
+    /**
+     * 選択したシリーズをまとめて再解析する (メタデータ再取得 + 配下の録画の判定やり直し)。
+     * 録画の再判定はバックグラウンドで進むため、進捗は getBackfillStatus() で追う
+     * @param option: ReanalyzeSeriesOption
+     * @return Promise<ReanalyzeSeriesResult>
+     */
+    reanalyze(option: ReanalyzeSeriesOption): Promise<ReanalyzeSeriesResult>;
     /**
      * シリーズのクール・読み仮名・総話数を手動で設定する
      * @param seriesId: number

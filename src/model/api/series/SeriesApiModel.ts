@@ -4,6 +4,7 @@ import IConfiguration from '../../IConfiguration';
 import ISeriesDB from '../../db/ISeriesDB';
 import { analyzeSeriesContinuity } from '../../series/SeriesContinuity';
 import { getSeriesOrigin } from '../../series/SeriesOrigin';
+import ISeriesTotalEpisodes from '../../series/ISeriesTotalEpisodes';
 import * as apid from '../../../../api';
 import ISeriesApiModel, { SeriesDetail, SeriesListOption, SeriesListResult } from './ISeriesApiModel';
 import ISeriesImageModel from './ISeriesImageModel';
@@ -13,6 +14,7 @@ export default class SeriesApiModel implements ISeriesApiModel {
         @inject('IConfiguration') private config: IConfiguration,
         @inject('ISeriesDB') private db: ISeriesDB,
         @inject('ISeriesImageModel') private imageModel: ISeriesImageModel,
+        @inject('ISeriesTotalEpisodes') private totalEpisodes: ISeriesTotalEpisodes,
     ) {}
     // 最終録画からこの期間内なら「放送中」とみなす
     private static readonly ON_AIR_WITHIN_MS = 45 * 24 * 60 * 60 * 1000;
@@ -39,10 +41,13 @@ export default class SeriesApiModel implements ISeriesApiModel {
 
         // 欠番・重複は話数の連続性から判定する。ページ分の録画行を 1 クエリでまとめて取る
         const recordedRows = await this.db.listRecordedForSeriesIds(rows.map(x => x.series.id)).catch(() => new Map());
+        // 総話数は外部辞書 (しょぼいカレンダー / Annict) にも問い合わせる。
+        // series.totalEpisodes が未設定のシリーズでも最終話までを欠番検出の対象にするため
+        const totals = await this.totalEpisodes.resolveMany(rows.map(x => x.series)).catch(() => new Map());
         const now = Date.now();
         let items = rows.map(row => {
             const continuity = analyzeSeriesContinuity(recordedRows.get(row.series.id) ?? [], {
-                totalEpisodesBySeason: row.series.totalEpisodes === null ? undefined : { 1: row.series.totalEpisodes },
+                totalEpisodesBySeason: totals.get(row.series.id),
                 now,
             });
             return {
@@ -115,10 +120,10 @@ export default class SeriesApiModel implements ISeriesApiModel {
         const image = await this.imageModel.getInfo(id).catch(() => null);
         // 一覧と同じ集計値を詳細でも返す (SeriesDetail は SeriesListItem を継承している)
         const summary = (await this.db.listRecordedForSeriesIds([id])).get(id) ?? [];
-        const continuity = analyzeSeriesContinuity(summary, {
-            totalEpisodesBySeason: series.totalEpisodes === null ? undefined : { 1: series.totalEpisodes },
-            now: Date.now(),
-        });
+        // 欠番検出の上限は外部辞書の放送予定総話数まで含めて解決する (series.totalEpisodes が未設定でも効く)
+        const totalEpisodesBySeason = await this.totalEpisodes.resolve(series).catch(() => undefined);
+        const now = Date.now();
+        const continuity = analyzeSeriesContinuity(summary, { totalEpisodesBySeason, now });
         const lastAiredAt = summary.length === 0 ? null : Math.max(...summary.map(x => Number(x.startAt)));
         return {
             id: series.id,
@@ -154,7 +159,9 @@ export default class SeriesApiModel implements ISeriesApiModel {
                 tmdbId: series.tmdbId,
             },
             channels: channels.map(x => ({ ...x, count: Number(x.count) })),
-            continuity: analyzeSeriesContinuity(allRecorded ?? recorded),
+            // 画面に出す欠番一覧も集計値と同じ条件で求める (総話数・放送ペース補正を渡さないと
+            // 「観測済みの最大話数まで」しか見ないため、最終話が録れていないシリーズの欠番が出ない)
+            continuity: analyzeSeriesContinuity(allRecorded ?? recorded, { totalEpisodesBySeason, now }),
             recorded: recorded.map(x => ({
                 ...x,
                 recordedId: Number(x.recordedId),

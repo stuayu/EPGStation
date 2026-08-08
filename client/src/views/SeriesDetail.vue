@@ -34,6 +34,17 @@
                 <v-btn variant="outlined" size="small" prepend-icon="mdi-sync" :loading="metadataSyncing" @click="refreshMetadata">
                     辞書から再取得
                 </v-btn>
+                <!-- このシリーズの録画をまとめてシリーズ判定にかけ直す (話数・サブタイトル・放送種別) -->
+                <v-btn
+                    variant="outlined"
+                    size="small"
+                    prepend-icon="mdi-refresh-auto"
+                    :loading="reanalyzing"
+                    @click="isOpenReanalyzeDialog = true"
+                    title="このシリーズの各録画の話数・放送種別を外部データから引き直す"
+                >
+                    録画を再問い合わせ
+                </v-btn>
                 <v-btn variant="outlined" size="small" :loading="annictSyncing" @click="syncAnnict">Annict同期</v-btn>
             </div>
             <v-alert v-if="annictMessage" type="success" class="mb-3">{{ annictMessage }}</v-alert>
@@ -265,6 +276,37 @@
                 </v-card-actions>
             </v-card>
         </v-dialog>
+
+        <!-- このシリーズの録画をまとめて再問い合わせする -->
+        <v-dialog v-model="isOpenReanalyzeDialog" max-width="560">
+            <v-card>
+                <v-card-title>録画を再問い合わせ</v-card-title>
+                <v-card-text>
+                    <p class="mb-3">
+                        このシリーズに紐づく {{ detail?.recordedCount ?? 0 }} 件の録画について、外部データ (しょぼいカレンダーの放送予定 / 作品辞書) から情報を引き直します。
+                    </p>
+                    <ul class="text-body-2 mb-3 pl-4">
+                        <li>各録画の話数・サブタイトル・放送種別 (初回 / 再放送 / 遅れ放送)</li>
+                        <li>シリーズの表示名・クール・読み仮名・総話数・外部 ID・作品コメント</li>
+                    </ul>
+                    <v-checkbox
+                        v-model="reanalyzeRefreshMetadata"
+                        label="シリーズのメタデータも引き直す"
+                        density="compact"
+                        hide-details
+                        class="mb-2"
+                    ></v-checkbox>
+                    <v-alert type="info" density="compact" variant="tonal">
+                        手動で確定した録画と、手動で設定したシリーズ名・クール・コメントは書き換えません。判定の結果、別のシリーズへ移る録画もあります
+                    </v-alert>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn variant="text" @click="isOpenReanalyzeDialog = false">キャンセル</v-btn>
+                    <v-btn color="primary" variant="text" :loading="reanalyzing" @click="executeReanalyze">実行する</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </v-main>
 </template>
 <script lang="ts">
@@ -273,7 +315,12 @@ import SeriesTitleDisplayMenu from '@/components/series/SeriesTitleDisplayMenu.v
 import SyobocalComment from '@/components/series/SyobocalComment.vue';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
-import ISeriesApiModel, { SeriesDetail as Detail, SeriesRecording, MissingEpisodeProposal } from '@/model/api/series/ISeriesApiModel';
+import ISeriesApiModel, {
+    SeriesDetail as Detail,
+    SeriesRecording,
+    MissingEpisodeProposal,
+    SeriesBackfillResult,
+} from '@/model/api/series/ISeriesApiModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import * as apid from '../../../api';
@@ -289,6 +336,10 @@ interface BulkEdit {
 
 @Component({ components: { TitleBar, SeriesTitleDisplayMenu, SeriesExternalLinks, SyobocalComment } })
 class SeriesDetailView extends Vue {
+    // 録画の再問い合わせ後に進捗を見に行く間隔と回数 (最大 2 分待って終わらなければ画面更新だけ行う)
+    private static readonly BACKFILL_POLL_INTERVAL_MS = 2000;
+    private static readonly BACKFILL_POLL_MAX = 60;
+
     // スマホ・タブレットでは一括編集テーブルの列幅を縮め、放送局・放送日時列をタイトル下にまとめる
     get isMobile(): boolean {
         return this.$vuetify.display.smAndDown;
@@ -298,6 +349,10 @@ class SeriesDetailView extends Vue {
     channelId: number | null = null;
     annictSyncing = false;
     metadataSyncing = false;
+    isOpenReanalyzeDialog = false;
+    reanalyzing = false;
+    // 再解析時にシリーズのメタデータも引き直すか (録画側の再判定は常に行う)
+    reanalyzeRefreshMetadata = true;
     annictMessage = '';
     futureProposals: MissingEpisodeProposal[] = [];
     reservingKey: string | null = null;
@@ -396,6 +451,55 @@ class SeriesDetailView extends Vue {
             this.metadataSyncing = false;
         }
     }
+    /**
+     * このシリーズの録画をまとめてシリーズ判定にかけ直す。
+     * 録画側の判定は Operator でバックグラウンドに進むため、終わるまで進捗を見て画面を更新する
+     */
+    async executeReanalyze(): Promise<void> {
+        this.reanalyzing = true;
+        try {
+            const result = await this.api.reanalyze({
+                seriesIds: [this.id],
+                refreshMetadata: this.reanalyzeRefreshMetadata,
+            });
+            this.isOpenReanalyzeDialog = false;
+            this.snackbarState.open({
+                color: 'success',
+                text: `録画 ${result.backfill.total} 件の再問い合わせを開始しました`,
+            });
+            const status = await this.waitForBackfill();
+            await this.load();
+            await this.loadFutureProposals();
+            if (status !== null) {
+                this.snackbarState.open({
+                    color: 'success',
+                    text: `再問い合わせが完了しました (${status.processed} 件処理、${status.linked} 件更新)`,
+                });
+            }
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: '録画の再問い合わせに失敗しました' });
+        } finally {
+            this.reanalyzing = false;
+        }
+    }
+
+    /**
+     * バックフィル (録画の再判定) が終わるまで進捗を見に行く。
+     * 上限まで待っても終わらない場合は null を返し、画面の更新だけ行う (処理自体は続く)
+     * @return Promise<SeriesBackfillResult | null>
+     */
+    private async waitForBackfill(): Promise<SeriesBackfillResult | null> {
+        for (let i = 0; i < SeriesDetailView.BACKFILL_POLL_MAX; i++) {
+            await new Promise(resolve => setTimeout(resolve, SeriesDetailView.BACKFILL_POLL_INTERVAL_MS));
+            const status = await this.api.getBackfillStatus().catch(() => null);
+            if (status === null) return null;
+            if (status.state !== 'running') return status;
+        }
+
+        return null;
+    }
+
     async load() {
         this.detail = await this.api.get(this.id, this.channelId ?? undefined);
     }

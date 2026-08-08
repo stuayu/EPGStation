@@ -22,6 +22,7 @@ export default class SeriesBackfillApiModel implements ISeriesBackfillApiModel {
             restart: option.restart === true,
             onlyUnlinked: option.onlyUnlinked === true,
             latest: typeof option.latest === 'number' ? option.latest : undefined,
+            seriesIds: Array.isArray(option.seriesIds) ? option.seriesIds : undefined,
         });
     }
     async getStatus(): Promise<SeriesBackfillResult> {

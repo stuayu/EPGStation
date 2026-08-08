@@ -17,6 +17,9 @@ export interface SeriesBackfillOption {
     // 指定した場合、直近 (id の新しい方から) この件数の録画だけを対象にする。
     // 一時的な部分実行なので実バックフィルの再開カーソルには影響しない
     latest?: number;
+    // 指定した場合、これらのシリーズにリンク済みの録画だけを対象にする (シリーズ単位の再解析)。
+    // latest と同じく一時的な部分実行なので、実バックフィルの再開カーソルには影響しない
+    seriesIds?: number[];
 }
 
 /**
@@ -67,6 +70,8 @@ export interface SeriesBackfillStatus {
     // 実行時に指定された絞り込み条件 (画面での確認用)
     onlyUnlinked?: boolean;
     latest?: number | null;
+    // シリーズ単位の再解析で対象にしたシリーズ数 (指定が無い場合は null)
+    seriesCount?: number | null;
 }
 
 /**

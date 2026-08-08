@@ -15,12 +15,15 @@ const waitUntil = async predicate => {
     throw new Error('timeout waiting for condition');
 };
 
-function makeRecordedDB(rows, linkedIds = new Set()) {
+function makeRecordedDB(rows, linkedIds = new Set(), seriesOfRecorded = new Map()) {
     const filtered = (afterId, filter = {}) =>
         rows
             .filter(r => r.id > afterId)
             .filter(r => (typeof filter.minId === 'number' && filter.minId > 0 ? r.id >= filter.minId : true))
             .filter(r => (filter.onlyUnlinked === true ? linkedIds.has(r.id) === false : true))
+            .filter(r =>
+                Array.isArray(filter.seriesIds) ? filter.seriesIds.includes(seriesOfRecorded.get(r.id) ?? null) : true,
+            )
             .sort((a, b) => a.id - b.id);
 
     return {
@@ -88,10 +91,10 @@ function makeTitleDictionary(match = null) {
         getStatus: async () => ({ titleCount: 0, lastUpdate: null, lastSyncedAt: null, running: false, error: null }),
     };
 }
-function makeModel({ rows, seriesDB, settingsDB, resolver, titleDictionary, linkedIds }) {
+function makeModel({ rows, seriesDB, settingsDB, resolver, titleDictionary, linkedIds, seriesOfRecorded }) {
     return new SeriesBackfillManageModel(
         logger,
-        makeRecordedDB(rows, linkedIds),
+        makeRecordedDB(rows, linkedIds, seriesOfRecorded),
         seriesDB ?? makeSeriesDB(),
         settingsDB ?? makeSettingsDB(),
         resolver ?? makeResolver(),
@@ -348,6 +351,30 @@ test('latest limits the run to the newest N recordings without moving the persis
     assert.deepEqual(resolver.calls, [4, 5]);
     assert.equal(status.processed, 2);
     assert.equal(status.latest, 2);
+    // 部分実行なので全件バックフィルの再開位置 (永続化された状態) は据え置き
+    assert.equal(settingsDB._store.seriesBackfill, undefined);
+});
+
+// シリーズ単位の再解析: 指定シリーズにリンク済みの録画だけを対象にし、永続カーソルは動かさない
+test('seriesIds limits the run to recordings linked to the given series (transient run)', async () => {
+    const rows = [1, 2, 3, 4].map(id => ({ id, name: `title${id}`, channelId: 10, startAt: id * 1000 }));
+    const settingsDB = makeSettingsDB();
+    const resolver = makeResolver(new Map(rows.map(r => [r.id, { seriesId: 1, recordedId: r.id }])));
+    // 録画 1・3 はシリーズ 5、録画 2 はシリーズ 6、録画 4 は未リンク
+    const seriesOfRecorded = new Map([
+        [1, 5],
+        [2, 6],
+        [3, 5],
+    ]);
+    const model = makeModel({ rows, settingsDB, resolver, seriesOfRecorded });
+
+    await model.start({ seriesIds: [5], chunkSize: 10, intervalMs: 0 });
+    await waitUntil(async () => (await model.getStatus()).state === 'completed');
+
+    const status = await model.getStatus();
+    assert.deepEqual(resolver.calls, [1, 3]);
+    assert.equal(status.processed, 2);
+    assert.equal(status.seriesCount, 1);
     // 部分実行なので全件バックフィルの再開位置 (永続化された状態) は据え置き
     assert.equal(settingsDB._store.seriesBackfill, undefined);
 });
