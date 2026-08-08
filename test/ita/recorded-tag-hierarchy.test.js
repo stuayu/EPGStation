@@ -51,7 +51,9 @@ class FakeConnection {
 const makeDB = rows => {
     const op = { getConnection: async () => new FakeConnection(rows) };
     const promiseRetry = { run: fn => fn() };
-    return new RecordedTagDB(op, promiseRetry);
+    const system = { warn: () => {}, error: () => {}, debug: () => {}, info: () => {} };
+    const loggerModel = { getLogger: () => ({ system, access: system, stream: system, encode: system }) };
+    return new RecordedTagDB(op, promiseRetry, loggerModel);
 };
 
 // chain: 1 -> 2 -> 3 (3 は 1 の孫)

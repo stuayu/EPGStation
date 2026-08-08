@@ -128,6 +128,7 @@ export default class DBOperator implements IDBOperator {
             }
         } catch (error) {
             this.log.system.error('sqlite extension load check error');
+            this.log.system.error(error);
             return;
         }
 
@@ -139,6 +140,7 @@ export default class DBOperator implements IDBOperator {
                 this.log.system.info(`loaded extension success: ${extension}`);
             } catch (error) {
                 this.log.system.error(`failed to load extension: ${extension}`);
+                this.log.system.error(error);
                 throw error;
             }
         }

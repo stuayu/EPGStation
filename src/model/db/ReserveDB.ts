@@ -3,6 +3,8 @@ import { FindOptionsWhere, FindManyOptions, In, IsNull, LessThan, LessThanOrEqua
 import * as apid from '../../../api';
 import Reserve from '../../db/entities/Reserve';
 import { IReserveUpdateValues } from '../event/IReserveEvent';
+import ILogger from '../ILogger';
+import ILoggerModel from '../ILoggerModel';
 import IPromiseRetry from '../IPromiseRetry';
 import IDBOperator from './IDBOperator';
 import IReserveDB, {
@@ -18,10 +20,16 @@ import IReserveDB, {
 export default class ReserveDB implements IReserveDB {
     private op: IDBOperator;
     private promieRetry: IPromiseRetry;
+    private log: ILogger;
 
-    constructor(@inject('IDBOperator') op: IDBOperator, @inject('IPromiseRetry') promieRetry: IPromiseRetry) {
+    constructor(
+        @inject('IDBOperator') op: IDBOperator,
+        @inject('IPromiseRetry') promieRetry: IPromiseRetry,
+        @inject('ILoggerModel') logger: ILoggerModel,
+    ) {
         this.op = op;
         this.promieRetry = promieRetry;
+        this.log = logger.getLogger();
     }
 
     /**
@@ -48,7 +56,8 @@ export default class ReserveDB implements IReserveDB {
             }
             await queryRunner.commitTransaction();
         } catch (err: any) {
-            console.error(err);
+            this.log.system.error(`ReserveDB.restore error: failed to restore ${items.length} items`);
+            this.log.system.error(err);
             hasError = err;
             await queryRunner.rollbackTransaction();
         } finally {
@@ -149,7 +158,13 @@ export default class ReserveDB implements IReserveDB {
 
             await queryRunner.commitTransaction();
         } catch (err: any) {
-            console.error(err);
+            const deleteIds = (values.delete ?? []).map(d => d.id);
+            const insertCount = values.insert?.length ?? 0;
+            const updateIds = (values.update ?? []).map(u => u.id);
+            this.log.system.error(
+                `ReserveDB.updateMany error: delete=[${deleteIds.join(',')}] insertCount=${insertCount} update=[${updateIds.join(',')}]`,
+            );
+            this.log.system.error(err);
             hasError = true;
             await queryRunner.rollbackTransaction();
         } finally {
