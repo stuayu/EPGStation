@@ -4,6 +4,9 @@ port: 8888
 mirakurunPath: http+unix://%2Fvar%2Frun%2Fmirakurun.sock/
 # mirakurun の API エンドポイントのベースパス (省略時 /api)
 # mirakurunAPIPath: /api
+# チューナーサーバーの種別 (省略時 auto: getServerConfig() の成否で自動判定する)
+# 互換実装の検証時などに mirakurun / mirakc を固定したい場合に指定する
+# tunerServerType: auto
 
 # socket.io の待受ポート番号 (省略時 port と同じ)
 # socketioPort: 8888

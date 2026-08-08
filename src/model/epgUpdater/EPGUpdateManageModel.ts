@@ -240,6 +240,12 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
 
     /**
      * チューナーサーバの種別のチェック
+     * config.yml の tunerServerType で明示指定されていればそれを優先し、判定を行わない。
+     * 'auto' (省略時既定) では getServerConfig() の成否で判定する。
+     * - 成功: mirakurun と判定してキャッシュする
+     * - 404 / 501 等「エンドポイントが存在しない」ことを示す応答: mirakc と判定してキャッシュする
+     * - 接続不能・タイムアウト・5xx 等の一時的な失敗: mirakc とみなして返すが、
+     *   確定した判定ではないためキャッシュしない (次回呼び出し時に再判定する)
      * @returns Promise<TunerServerType>
      */
     public async checkTunerServerType(): Promise<TunerServerType> {
@@ -247,15 +253,81 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
             return this.tunerServerType;
         }
 
+        const configured = this.configuration.getConfig().tunerServerType;
+        if (configured === 'mirakurun' || configured === 'mirakc') {
+            this.tunerServerType = configured === 'mirakurun' ? TunerServerType.mirakurun : TunerServerType.mirakc;
+            this.log.system.info(`tuner server type is fixed to "${configured}" by config.yml (tunerServerType)`);
+
+            return this.tunerServerType;
+        }
+
         // getServerConfig() の実行の可否で判定を行う
         try {
             await this.mirakurunClient.getServerConfig();
             this.tunerServerType = TunerServerType.mirakurun;
-        } catch (err) {
-            this.tunerServerType = TunerServerType.mirakc;
+            this.log.system.info('tuner server type: mirakurun (getServerConfig() succeeded)');
+        } catch (err: any) {
+            const kind = EPGUpdateManageModel.classifyTunerServerError(err);
+            if (kind === 'incompatible') {
+                this.tunerServerType = TunerServerType.mirakc;
+                this.log.system.info(
+                    `tuner server type: mirakc (getServerConfig() responded that the endpoint does not exist: ${EPGUpdateManageModel.describeError(err)})`,
+                );
+            } else {
+                // 一時的な失敗とみなし、判定は確定させずキャッシュしない (次回呼び出しで再判定する)
+                this.log.system.warn(
+                    `failed to check tuner server type (treated as transient, will retry next time): ${EPGUpdateManageModel.describeError(err)}`,
+                );
+
+                return TunerServerType.mirakc;
+            }
         }
 
         return this.tunerServerType;
+    }
+
+    /**
+     * getServerConfig() 失敗時のエラーを分類する
+     * - 'incompatible': 404 / 501 のように、そのエンドポイントが存在しないと判断できる応答、
+     *   または docs の内容が Mirakurun と一致せず operationId を解決できなかった場合
+     * - 'transient': 接続不能・タイムアウト・5xx など、一時的な失敗とみなせる場合
+     * @param err: any
+     * @return 'incompatible' | 'transient'
+     */
+    private static classifyTunerServerError(err: any): 'incompatible' | 'transient' {
+        // mirakurun クライアントの call() は docs は取得できたが operationId が
+        // 見つからない場合、Error("operationId \"xxx\" is not found.") を投げる。
+        // これは docs の内容が Mirakurun の API 定義と一致しないことを意味するため
+        // エンドポイントが存在しないのと同様に扱う
+        if (typeof err?.message === 'string' && EPGUpdateManageModel.OPERATION_ID_NOT_FOUND_REGEXP.test(err.message)) {
+            return 'incompatible';
+        }
+
+        // mirakurun クライアントの ErrorResponse (または同形の応答) は status を持つ。
+        // 404 / 501 は「そのエンドポイントが無い」ことを示す応答、
+        // それ以外 (接続不能を示す -1、5xx 等) は一時的な失敗として扱う
+        const status = typeof err?.status === 'number' ? err.status : undefined;
+        if (status === 404 || status === 501) {
+            return 'incompatible';
+        }
+
+        return 'transient';
+    }
+
+    /**
+     * ログ出力用にエラーの概要を組み立てる
+     * @param err: any
+     * @return string
+     */
+    private static describeError(err: any): string {
+        if (typeof err?.message === 'string') {
+            return err.message;
+        }
+        if (typeof err?.status === 'number') {
+            return `status: ${err.status}${typeof err?.statusText === 'string' ? ` ${err.statusText}` : ''}`;
+        }
+
+        return String(err);
     }
 
     /**
@@ -852,6 +924,10 @@ namespace EPGUpdateManageModel {
     // EIT[p/f] の追従ログを 1 回の更新で出す上限。
     // 全件更新直後などは対象が数百件になるため、超えたら件数だけを残す
     export const ON_AIR_LOG_LIMIT = 30;
+
+    // mirakurun クライアントが operationId を解決できなかったときに投げる Error のメッセージパターン。
+    // docs (OpenAPI 定義) は取得できたが、その内容に対象の operationId が含まれない場合に発生する
+    export const OPERATION_ID_NOT_FOUND_REGEXP = /operationId ".*" is not found\.?/;
 }
 
 export default EPGUpdateManageModel;
