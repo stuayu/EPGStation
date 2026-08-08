@@ -71,6 +71,59 @@ function maintenanceFixture() {
     };
     return { model: new MaintenanceModel(config, db), merged };
 }
+
+// シリーズ単位の再解析 (メタデータ再取得 + 配下の録画の判定やり直し)
+function reanalyzeFixture(option = {}) {
+    const series = { 1: { id: 1, title: 'A' }, 2: { id: 2, title: 'B' } };
+    const db = { getSeries: async id => series[id] ?? null };
+    const filled = [];
+    const metadataFiller = {
+        fill: async o => {
+            filled.push(o);
+            return { scanned: 2, updated: 1, titleSynced: 0, llmAnalyzed: 0, llmResolved: 0, commentFetched: 0, commentFilled: 0, commentPending: 0, commentSkippedNoTid: 0 };
+        },
+    };
+    const started = [];
+    const backfill = {
+        start: async o => {
+            started.push(o);
+            return { state: 'running', total: 4 };
+        },
+    };
+    const model = new MaintenanceModel(option.config ?? config, db, metadataFiller, {}, backfill);
+    return { model, filled, started };
+}
+
+test('reanalyze refreshes the metadata and starts a series-scoped backfill', async () => {
+    const { model, filled, started } = reanalyzeFixture();
+    const result = await model.reanalyze({ seriesIds: [1, 2, 1] });
+    // 重複した id は 1 件に畳む
+    assert.equal(result.seriesCount, 2);
+    assert.deepEqual(filled, [{ seriesIds: [1, 2], force: true }]);
+    assert.deepEqual(started, [{ seriesIds: [1, 2] }]);
+    assert.equal(result.backfill.total, 4);
+    assert.equal(result.metadata.updated, 1);
+});
+
+test('reanalyze can skip the metadata refresh', async () => {
+    const { model, filled, started } = reanalyzeFixture();
+    const result = await model.reanalyze({ seriesIds: [1], refreshMetadata: false });
+    assert.equal(result.metadata, null);
+    assert.equal(filled.length, 0);
+    assert.deepEqual(started, [{ seriesIds: [1] }]);
+});
+
+test('reanalyze rejects an empty list and unknown series ids without starting anything', async () => {
+    const { model, started } = reanalyzeFixture();
+    await assert.rejects(() => model.reanalyze({ seriesIds: [] }), /InvalidRequestBody/);
+    await assert.rejects(() => model.reanalyze({ seriesIds: [1, 999] }), /SeriesIsNotFound/);
+    assert.equal(started.length, 0);
+});
+
+test('reanalyze is hidden while feature is disabled', async () => {
+    const { model } = reanalyzeFixture({ config: disabledConfig });
+    await assert.rejects(() => model.reanalyze({ seriesIds: [1] }), /SeriesLibraryFeatureIsDisabled/);
+});
 test('merge moves links from source to target series', async () => {
     const { model } = maintenanceFixture();
     const result = await model.merge([1], 2);

@@ -3,8 +3,8 @@ import * as apid from '../../../../api';
 import Series from '../../../db/entities/Series';
 import IProgramDB from '../../db/IProgramDB';
 import ISeriesDB from '../../db/ISeriesDB';
-import ISyobocalTitleDB from '../../db/ISyobocalTitleDB';
 import { isFeatureEnabled } from '../../FeatureFlags';
+import ISeriesTotalEpisodes from '../../series/ISeriesTotalEpisodes';
 import IConfiguration from '../../IConfiguration';
 import IMetadataService from '../../metadata/IMetadataService';
 import { analyzeSeriesContinuity } from '../../series/SeriesContinuity';
@@ -32,7 +32,7 @@ export default class MissingEpisodeApiModel implements IMissingEpisodeApiModel {
         @inject('IProgramDB') private programDB: IProgramDB,
         @inject('IReserveApiModel') private reserveApi: IReserveApiModel,
         @inject('IMetadataService') private metadata: IMetadataService,
-        @inject('ISyobocalTitleDB') private syobocalTitleDB: ISyobocalTitleDB,
+        @inject('ISeriesTotalEpisodes') private totalEpisodes: ISeriesTotalEpisodes,
     ) {}
 
     public async listProposals(seriesId: number): Promise<MissingEpisodeProposal[]> {
@@ -134,19 +134,16 @@ export default class MissingEpisodeApiModel implements IMissingEpisodeApiModel {
     }
 
     /**
-     * 外部メタデータ (Annict / しょぼいカレンダー) から放送予定総話数を取得する。
+     * 放送予定総話数を取得する。
+     * ローカルに同期済みの辞書 (しょぼいカレンダー / Annict) は SeriesTotalEpisodes が引くので、
+     * ここではそれでも分からなかった場合だけ外部 API へ問い合わせる。
      * メタデータ側はシーズン区分を持たないため、簡易的に season 1 の総話数として扱う (既知の制約)
      */
     private async externalTotals(series: Series): Promise<Record<number, number> | undefined> {
-        if (!isFeatureEnabled(this.config.getConfig(), 'metadataProviders')) return undefined;
+        const local = await this.totalEpisodes.resolve(series).catch(() => undefined);
+        if (typeof local !== 'undefined') return local;
 
-        // ローカルのしょぼいカレンダー作品辞書に総話数があれば、外部への問い合わせなしで済ませる
-        if (series.syobocalTid !== null) {
-            const dictionaryTitle = await this.syobocalTitleDB.get(series.syobocalTid).catch(() => null);
-            if (dictionaryTitle !== null && dictionaryTitle.totalEpisodes !== null) {
-                return { 1: dictionaryTitle.totalEpisodes };
-            }
-        }
+        if (!isFeatureEnabled(this.config.getConfig(), 'metadataProviders')) return undefined;
 
         try {
             const work = series.annictId

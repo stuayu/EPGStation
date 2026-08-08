@@ -9,7 +9,10 @@ import Series from '../../../db/entities/Series';
 import { rankMergeCandidates } from '../../series/SeriesMergeCandidates';
 import { getSeriesOrigin } from '../../series/SeriesOrigin';
 import * as apid from '../../../../api';
+import ISeriesBackfillApiModel from './ISeriesBackfillApiModel';
 import ISeriesMaintenanceApiModel, {
+    ReanalyzeSeriesOption,
+    ReanalyzeSeriesResult,
     RefreshSeriesMetadataResult,
     UpdateSeriesMetadata,
     MergeSeriesResult,
@@ -27,6 +30,7 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
         @inject('ISeriesDB') private db: ISeriesDB,
         @inject('ISeriesMetadataFiller') private metadataFiller: ISeriesMetadataFiller,
         @inject('IWorkDictionary') private dictionary: IWorkDictionary,
+        @inject('ISeriesBackfillApiModel') private backfill: ISeriesBackfillApiModel,
     ) {}
 
     private static readonly SEASON_NAMES: ReadonlySet<string> = new Set(['WINTER', 'SPRING', 'SUMMER', 'AUTUMN']);
@@ -38,6 +42,8 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
     private static readonly MAX_COMMENT_LENGTH = 20000;
     // シリーズ表示名の最大文字数
     private static readonly MAX_TITLE_LENGTH = 500;
+    // 1 回の再解析で指定できるシリーズ数の上限 (一覧からの複数選択を想定)
+    private static readonly MAX_REANALYZE_SERIES = 100;
 
     public async updateMetadata(seriesId: number, value: UpdateSeriesMetadata): Promise<void> {
         this.enabled();
@@ -142,6 +148,33 @@ export default class SeriesMaintenanceApiModel implements ISeriesMaintenanceApiM
 
         // 1 件だけの再取得は画面からの明示的な操作なので、埋まっている項目も辞書で引き直す
         return await this.metadataFiller.fill({ seriesIds: [seriesId], force: true });
+    }
+
+    public async reanalyze(option: ReanalyzeSeriesOption): Promise<ReanalyzeSeriesResult> {
+        this.enabled();
+        const seriesIds = Array.isArray(option?.seriesIds)
+            ? [...new Set(option.seriesIds.filter(x => typeof x === 'number' && Number.isInteger(x) && x > 0))]
+            : [];
+        if (seriesIds.length === 0) throw new Error('InvalidRequestBody');
+        if (seriesIds.length > SeriesMaintenanceApiModel.MAX_REANALYZE_SERIES) throw new Error('TooManySeries');
+
+        // 1 件でも存在しない id が混ざっていれば、対象が意図とずれるので実行前に弾く
+        for (const seriesId of seriesIds) {
+            if ((await this.db.getSeries(seriesId)) === null) throw new Error('SeriesIsNotFound');
+        }
+
+        // 1. シリーズ側のメタデータ (表示名・クール・総話数・外部 ID・作品コメント) を辞書から引き直す。
+        //    画面からの明示的な操作なので、すでに埋まっている項目も force で更新する (手動設定は除く)
+        const metadata =
+            option.refreshMetadata === false
+                ? null
+                : await this.metadataFiller.fill({ seriesIds: seriesIds, force: true });
+
+        // 2. 続けて配下の録画をシリーズ判定にかけ直す (話数・サブタイトル・放送種別の付け直し)。
+        //    Operator 側でチャンク分割しながら進むため、ここでは開始時点の状態だけ返す
+        const backfill = await this.backfill.start({ seriesIds: seriesIds });
+
+        return { seriesCount: seriesIds.length, metadata: metadata, backfill: backfill };
     }
 
     async merge(fromSeriesIds: number[], toSeriesId: number): Promise<MergeSeriesResult> {

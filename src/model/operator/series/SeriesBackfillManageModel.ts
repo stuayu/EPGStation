@@ -98,15 +98,17 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         const dryRun = option.dryRun === true;
         const onlyUnlinked = option.onlyUnlinked === true;
         const latest = this.normalizeLatest(option.latest);
+        const seriesIds = SeriesBackfillManageModel.normalizeSeriesIds(option.seriesIds);
         const chunkSize = this.normalizeChunkSize(option.chunkSize);
         const intervalMs = this.normalizeIntervalMs(option.intervalMs);
-        // 直近 N 件だけの部分実行は一時的な用途なので、ドライランと同じく永続カーソルを汚さない
-        const persist = dryRun === false && latest === null;
+        // 直近 N 件・シリーズ指定の部分実行は一時的な用途なので、ドライランと同じく永続カーソルを汚さない
+        const persist = dryRun === false && latest === null && seriesIds === null;
         this.lastMode = persist ? 'real' : 'transient';
 
         // 直近 N 件だけを対象にする場合の下限 id (0 = 制限なし)
         const minId = latest === null ? 0 : await this.recordedDB.findSeriesBackfillFloorId(latest);
         const filter: SeriesBackfillFilter = { onlyUnlinked: onlyUnlinked, minId: minId };
+        if (seriesIds !== null) filter.seriesIds = seriesIds;
 
         if (persist === true && option.restart === true) {
             // 前回の再開位置 (lastRecordedId) と件数を破棄して先頭から実行し直す
@@ -126,8 +128,10 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         const status = persist === false ? (this.transientStatus as SeriesBackfillStatus) : this.realStatus;
         status.onlyUnlinked = onlyUnlinked;
         status.latest = latest;
+        status.seriesCount = seriesIds === null ? null : seriesIds.length;
         this.log.system.info(
-            `series backfill: start (dryRun=${dryRun}, onlyUnlinked=${onlyUnlinked}, latest=${latest ?? 'なし'}, minId=${minId}, chunkSize=${chunkSize})`,
+            `series backfill: start (dryRun=${dryRun}, onlyUnlinked=${onlyUnlinked}, latest=${latest ?? 'なし'},` +
+                ` seriesIds=${seriesIds === null ? 'なし' : seriesIds.join(',')}, minId=${minId}, chunkSize=${chunkSize})`,
         );
         status.state = 'running';
         status.startedAt = status.startedAt ?? Date.now();
@@ -614,6 +618,18 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         }
 
         return Math.min(SeriesBackfillManageModel.MAX_LATEST, Math.floor(value));
+    }
+
+    /**
+     * シリーズ単位の再解析で指定されたシリーズ id を正規化する。
+     * 指定が無い (= シリーズで絞らない) 場合だけ null を返し、空配列は「対象なし」としてそのまま扱う
+     * @param value: number[] | undefined
+     * @return number[] | null
+     */
+    private static normalizeSeriesIds(value: number[] | undefined): number[] | null {
+        if (Array.isArray(value) === false) return null;
+
+        return [...new Set(value.filter(x => typeof x === 'number' && Number.isInteger(x) && x > 0))];
     }
 
     private normalizeIntervalMs(value: number | undefined): number {

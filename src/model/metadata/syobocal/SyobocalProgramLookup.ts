@@ -46,6 +46,12 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
     // 遅れ放送を探すときにキー局の放送予定を遡る日数。
     // 1〜2 週遅れが大半だが、特番による飛び・3 週遅れも拾えるよう余裕を持たせる
     private static readonly DELAY_LOOKBACK_DAYS = 28;
+    // ProgItem.Flag のビット定義 (実 API の応答で確認した値)。
+    // 1 = 注目 / 2 = 新番組 (初回) / 4 = 最終回 / 8 = 再放送 のビットフラグで、
+    // 「再放送として編成された回か」を放送予定そのものから判定できる
+    private static readonly FLAG_FIRST_EPISODE = 0x2;
+    private static readonly FLAG_FINAL_EPISODE = 0x4;
+    private static readonly FLAG_RERUN = 0x8;
     // 系列 (BroadcastAffiliation の id) → キー局の しょぼいカレンダー ChID。
     // しょぼいカレンダーに放送データが無い地方局を、系列のキー局の放送予定で代用するために使う。
     // 値は しょぼいカレンダーの ChLookup の実データ (SyobocalChannelMapData と対応)。
@@ -135,7 +141,8 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
         this.log.system.debug(
             `syobocal program lookup: ChID ${target.chId} ${new Date(startAt).toLocaleString()}` +
                 ` => TID ${picked.tid} 第${picked.count ?? '?'}話 subTitle=${picked.subTitle ?? 'なし'}` +
-                ` comment=${picked.comment === null ? 'なし' : `${picked.comment.length}文字`}`,
+                ` comment=${picked.comment === null ? 'なし' : `${picked.comment.length}文字`}` +
+                ` ${picked.isRerun === true ? '再放送' : '再放送ではない'}`,
         );
 
         return {
@@ -339,6 +346,8 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
         const count = Number(row.Count);
         const subTitle = (row.SubTitle ?? '').trim();
         const comment = (row.ProgComment ?? '').trim();
+        const flag = Number(row.Flag);
+        const flags = Number.isFinite(flag) && flag > 0 ? flag : 0;
         return {
             tid,
             count: row.Count && Number.isFinite(count) && count > 0 ? count : null,
@@ -346,6 +355,9 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
             comment: comment === '' ? null : comment,
             startAt,
             endAt: parseSyobocalDate(row.EdTime ?? '') ?? null,
+            isRerun: (flags & SyobocalProgramLookup.FLAG_RERUN) !== 0,
+            isFirstEpisode: (flags & SyobocalProgramLookup.FLAG_FIRST_EPISODE) !== 0,
+            isFinalEpisode: (flags & SyobocalProgramLookup.FLAG_FINAL_EPISODE) !== 0,
             // 開始時刻の一致は pick()、問い合わせ先の ChID は lookup() が知っているのでそちらで上書きする
             exactStart: false,
             viaKeyStation: false,

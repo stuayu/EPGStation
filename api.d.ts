@@ -1920,6 +1920,8 @@ export interface SeriesBackfillOption {
     onlyUnlinked?: boolean;
     // 指定した場合、直近 (id の新しい方から) この件数の録画だけを対象にする
     latest?: number;
+    // 指定した場合、これらのシリーズにリンク済みの録画だけを対象にする (シリーズ単位の再解析)
+    seriesIds?: SeriesId[];
 }
 
 /**
@@ -1971,6 +1973,30 @@ export interface SeriesBackfillResult {
     // 実行時に指定された絞り込み条件 (画面での確認用)
     onlyUnlinked?: boolean;
     latest?: number | null;
+    // シリーズ単位の再解析で対象にしたシリーズ数 (指定が無い場合は null)
+    seriesCount?: number | null;
+}
+
+/**
+ * シリーズ単位の再解析 (メタデータ再取得 + 配下の録画の判定やり直し) のオプション
+ */
+export interface ReanalyzeSeriesOption {
+    // 対象シリーズ (1 件以上 100 件まで)
+    seriesIds: SeriesId[];
+    // シリーズのメタデータ (表示名・クール・総話数・外部 ID・作品コメント) も外部辞書から引き直すか (既定 true)
+    refreshMetadata?: boolean;
+}
+
+/**
+ * シリーズ単位の再解析の実行結果
+ */
+export interface ReanalyzeSeriesResult {
+    // 対象にしたシリーズ数
+    seriesCount: number;
+    // メタデータ再取得の結果 (refreshMetadata: false の場合は null)
+    metadata: RefreshSeriesMetadataResult | null;
+    // 配下の録画の再判定 (バックフィル) の開始時点の状態。進捗は GET /api/series/backfill/status で追える
+    backfill: SeriesBackfillResult;
 }
 
 /**

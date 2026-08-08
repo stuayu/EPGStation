@@ -260,6 +260,8 @@ import ISecretCrypto from './security/ISecretCrypto';
 import SecretCrypto from './security/SecretCrypto';
 import ISeriesResolver from './series/ISeriesResolver';
 import SeriesResolver from './series/SeriesResolver';
+import ISeriesTotalEpisodes from './series/ISeriesTotalEpisodes';
+import SeriesTotalEpisodes from './series/SeriesTotalEpisodes';
 import IStorageManageModel from './operator/storage/IStorageManageModel';
 import StorageManageModel from './operator/storage/StorageManageModel';
 import IThumbnailManageModel from './operator/thumbnail/IThumbnailManageModel';
@@ -391,6 +393,7 @@ export const set = (container: Container): void => {
     container.bind<IAnnictWorkDB>('IAnnictWorkDB').to(AnnictWorkDB).inSingletonScope();
     container.bind<IWikidataProgramDB>('IWikidataProgramDB').to(WikidataProgramDB).inSingletonScope();
     container.bind<ISeriesResolver>('ISeriesResolver').to(SeriesResolver).inSingletonScope();
+    container.bind<ISeriesTotalEpisodes>('ISeriesTotalEpisodes').to(SeriesTotalEpisodes).inSingletonScope();
 
     container.bind<IDropLogFileDB>('IDropLogFileDB').to(DropLogFileDB).inSingletonScope();
 

@@ -10,7 +10,7 @@ function progXml(items) {
     const body = items
         .map(
             x =>
-                `<ProgItem><PID>${x.pid}</PID><TID>${x.tid}</TID><StTime>${x.stTime}</StTime><EdTime>${x.edTime}</EdTime><Count>${x.count ?? ''}</Count><SubTitle>${x.subTitle ?? ''}</SubTitle></ProgItem>`,
+                `<ProgItem><PID>${x.pid}</PID><TID>${x.tid}</TID><StTime>${x.stTime}</StTime><EdTime>${x.edTime}</EdTime><Count>${x.count ?? ''}</Count><SubTitle>${x.subTitle ?? ''}</SubTitle><Flag>${x.flag ?? 0}</Flag></ProgItem>`,
         )
         .join('');
     return `<?xml version="1.0" encoding="UTF-8"?><ProgLookupResponse><ProgItems>${body}</ProgItems></ProgLookupResponse>`;
@@ -249,4 +249,30 @@ test('lookup() explains why a programme could not be resolved', async () => {
 
     const failed = await lookup(stubHttp('<!doctype html><html></html>')).lookup(1, START_AT);
     assert.match(failed.detail, /取得に失敗/);
+});
+
+// ProgItem.Flag はビットフラグ (1=注目 / 2=新番組 / 4=最終回 / 8=再放送)。
+// 「その回が再放送として編成されているか」は放送種別の判定に最優先で使う
+test('reads the rerun / first / final flags from ProgItem.Flag', async () => {
+    const http = stubHttp(
+        progXml([
+            { pid: 1, tid: 200, stTime: '2026-08-01 23:00:00', edTime: '2026-08-01 23:30:00', count: 16, flag: 12 },
+        ]),
+    );
+    const match = (await lookup(http).lookup(1, START_AT)).match;
+    assert.equal(match.isRerun, true);
+    assert.equal(match.isFinalEpisode, true);
+    assert.equal(match.isFirstEpisode, false);
+});
+
+test('treats a missing or zero Flag as a normal (not rerun) broadcast', async () => {
+    const http = stubHttp(
+        progXml([
+            { pid: 1, tid: 200, stTime: '2026-08-01 23:00:00', edTime: '2026-08-01 23:30:00', count: 16, flag: 2 },
+        ]),
+    );
+    const match = (await lookup(http).lookup(1, START_AT)).match;
+    assert.equal(match.isRerun, false);
+    assert.equal(match.isFirstEpisode, true);
+    assert.equal(match.isFinalEpisode, false);
 });

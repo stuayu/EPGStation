@@ -104,6 +104,17 @@
                 <v-btn variant="text" size="small" prepend-icon="mdi-call-merge" :disabled="selectedIds.length === 0" @click="openMergeDialog">
                     マージ
                 </v-btn>
+                <v-btn
+                    variant="text"
+                    size="small"
+                    prepend-icon="mdi-refresh-auto"
+                    :loading="reanalyzing"
+                    :disabled="selectedIds.length === 0"
+                    @click="isOpenReanalyzeDialog = true"
+                    title="選択したシリーズのメタデータと各録画の話数・放送種別を外部データから引き直す"
+                >
+                    再解析
+                </v-btn>
             </v-toolbar>
 
             <!-- グリッド表示 -->
@@ -418,6 +429,37 @@
                 </v-card-actions>
             </v-card>
         </v-dialog>
+
+        <!-- 選択したシリーズをまとめて再解析する (メタデータ + 各録画の話数・放送種別) -->
+        <v-dialog v-model="isOpenReanalyzeDialog" max-width="560">
+            <v-card>
+                <v-card-title>選択したシリーズを再解析</v-card-title>
+                <v-card-text>
+                    <p class="mb-3">
+                        選択した {{ selectedIds.length }} 件のシリーズについて、外部データ (しょぼいカレンダー / Annict / Wikidata) から情報を引き直します。
+                    </p>
+                    <ul class="text-body-2 mb-3 pl-4">
+                        <li>シリーズの表示名・クール・読み仮名・総話数・外部 ID・作品コメント</li>
+                        <li>各録画の話数・サブタイトル・放送種別 (初回 / 再放送 / 遅れ放送)</li>
+                    </ul>
+                    <v-checkbox
+                        v-model="reanalyzeRefreshMetadata"
+                        label="シリーズのメタデータも引き直す"
+                        density="compact"
+                        hide-details
+                        class="mb-2"
+                    ></v-checkbox>
+                    <v-alert type="info" density="compact" variant="tonal">
+                        手動で確定した録画 (鍵アイコン) と、手動で設定したシリーズ名・クール・コメントは書き換えません。録画の再解析はバックグラウンドで進み、進捗はサーバー設定 &gt; シリーズ管理タブで確認できます
+                    </v-alert>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn variant="text" @click="isOpenReanalyzeDialog = false">キャンセル</v-btn>
+                    <v-btn color="primary" variant="text" :loading="reanalyzing" @click="executeReanalyze">実行する</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </v-main>
 </template>
 <script lang="ts">
@@ -621,6 +663,11 @@ class SeriesView extends Vue {
     merging = false;
     refreshing = false;
 
+    isOpenReanalyzeDialog = false;
+    reanalyzing = false;
+    // 再解析時にシリーズのメタデータも引き直すか (録画側の再判定は常に行う)
+    reanalyzeRefreshMetadata = true;
+
     isOpenEditDialog = false;
     editSeriesId: number | null = null;
     editTitle = '';
@@ -730,6 +777,37 @@ class SeriesView extends Vue {
             this.snackbarState.open({ color: 'error', text: 'メタデータの再取得に失敗しました' });
         } finally {
             this.refreshing = false;
+        }
+    }
+
+    /**
+     * 選択したシリーズをまとめて再解析する。
+     * シリーズのメタデータを辞書から引き直し、続けて配下の録画を判定にかけ直す
+     * (録画側はバックグラウンドで進むため、ここでは開始したことだけを知らせる)
+     */
+    async executeReanalyze(): Promise<void> {
+        if (this.selectedIds.length === 0) return;
+        this.reanalyzing = true;
+        try {
+            const result = await this.api.reanalyze({
+                seriesIds: [...this.selectedIds],
+                refreshMetadata: this.reanalyzeRefreshMetadata,
+            });
+            const metadata =
+                result.metadata === null
+                    ? ''
+                    : ` / メタデータ ${result.metadata.scanned} 件中 ${result.metadata.updated} 件を更新`;
+            this.snackbarState.open({
+                color: 'success',
+                text: `${result.seriesCount} 件のシリーズの再解析を開始しました (録画 ${result.backfill.total} 件)${metadata}`,
+            });
+            this.isOpenReanalyzeDialog = false;
+            await this.load();
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: '再解析の開始に失敗しました' });
+        } finally {
+            this.reanalyzing = false;
         }
     }
 

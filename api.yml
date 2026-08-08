@@ -3583,6 +3583,11 @@ components:
                     description: 指定した場合、直近 (id の新しい方から) この件数の録画だけを対象にする
                     type: integer
                     minimum: 1
+                seriesIds:
+                    description: 指定した場合、これらのシリーズにリンク済みの録画だけを対象にする (シリーズ単位の再解析)
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SeriesId'
 
         SeriesBackfillState:
             description: バックフィルの実行状態
@@ -3708,6 +3713,48 @@ components:
                     description: 実行時に指定された「直近 N 件のみ」条件
                     type: integer
                     nullable: true
+                seriesCount:
+                    description: シリーズ単位の再解析で対象にしたシリーズ数 (指定が無い場合は null)
+                    type: integer
+                    nullable: true
+
+        ReanalyzeSeriesOption:
+            description: シリーズ単位の再解析 (メタデータ再取得 + 配下の録画の判定やり直し) のオプション
+            type: object
+            required:
+                - seriesIds
+            properties:
+                seriesIds:
+                    description: 対象シリーズ
+                    type: array
+                    minItems: 1
+                    maxItems: 100
+                    items:
+                        $ref: '#/components/schemas/SeriesId'
+                refreshMetadata:
+                    description: シリーズのメタデータも外部辞書から引き直すか (既定 true)
+                    type: boolean
+
+        ReanalyzeSeriesResult:
+            description: シリーズ単位の再解析の実行結果
+            type: object
+            required:
+                - seriesCount
+                - metadata
+                - backfill
+            properties:
+                seriesCount:
+                    description: 対象にしたシリーズ数
+                    type: integer
+                metadata:
+                    description: 'メタデータ再取得の結果 (refreshMetadata: false の場合は null)'
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                backfill:
+                    description: 配下の録画の再判定 (バックフィル) の開始時点の状態
+                    allOf:
+                        - $ref: '#/components/schemas/SeriesBackfillResult'
 
         SeriesAnalyzeStep:
             description: シリーズ判定 1 ステップ分のトレース (どの照会に何を投げて何が返ったか)

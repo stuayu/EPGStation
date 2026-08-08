@@ -12,6 +12,8 @@ import ISeriesApiModel, {
     SeriesBackfillOption,
     SeriesBackfillResult,
     SeriesAnalyzeResult,
+    ReanalyzeSeriesOption,
+    ReanalyzeSeriesResult,
     ProgramSeriesMetrics,
     SeriesListOption,
     UpdateSeriesMetadata,
@@ -46,6 +48,9 @@ export default class SeriesApiModel implements ISeriesApiModel {
     async refreshMetadata(seriesId?: number): Promise<RefreshSeriesMetadataResult> {
         return (await this.repository.post('/series/refresh-metadata', typeof seriesId === 'number' ? { seriesId } : {}))
             .data;
+    }
+    public async reanalyze(option: ReanalyzeSeriesOption): Promise<ReanalyzeSeriesResult> {
+        return (await this.repository.post('/series/reanalyze', option)).data;
     }
     async updateSeriesMetadata(seriesId: number, value: UpdateSeriesMetadata): Promise<void> {
         await this.repository.put(`/series/${seriesId}/metadata`, value);

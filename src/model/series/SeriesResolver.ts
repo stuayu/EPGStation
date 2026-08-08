@@ -12,6 +12,7 @@ import ILlmTitleExtractor from './ILlmTitleExtractor';
 import IWorkDictionary, { WorkMatch } from './IWorkDictionary';
 import ISeriesResolver, { SeriesRecordingInput, SeriesResolveTrace } from './ISeriesResolver';
 import {
+    AirType,
     displaySeriesTitle,
     isDerivedFromTitle,
     normalizeSeriesTitle,
@@ -524,20 +525,32 @@ export default class SeriesResolver implements ISeriesResolver {
                 .catch(() => null);
             if (episodeNumber !== null) resolved.episodeNumber = episodeNumber;
         }
-        // 3. それでも決まらない場合は遅れ放送とみなし、系列キー局の「同じ作品の放送」を遡って対応付ける。
+        // 3. その局自身の放送予定が引けていない録画は、系列キー局の「同じ作品の放送」を遡って対応付ける。
         //    しょぼいカレンダー未登録の県域局はキー局の数日後に流すため同時刻の照合では拾えないが、
-        //    作品が確定していればキー局の放送予定をその作品に絞って追える
+        //    作品が確定していればキー局の放送予定をその作品に絞って追える。
+        //    **話数がタイトルから取れている場合も引く**: 遅れ放送かどうかの判定に使うため
+        //    (話数の有無で照会を打ち切ると、話数表記のある県域局の録画が初回放送に化ける)。
+        //    総集編・一挙放送は通し話数を持たないため対象から外す
         const delayed =
-            resolved.episodeNumber === null && match.syobocalTid !== null && parsed.isSpecial === false
+            confirmed === null && match.syobocalTid !== null && parsed.isSpecial === false
                 ? await this.lookupDelayedProgram(recording, match.syobocalTid)
                 : null;
-        if (delayed !== null && delayed.count !== null) {
-            resolved.episodeNumber = delayed.count;
-            // キー局より後に流れている = 遅れ放送と分かるので、放送種別も確定させる
-            if (resolved.airType === 'unknown') resolved.airType = 'delayed';
+        // キー局を遡って引いた回が、タイトルから読み取れている話数と食い違う場合は対応付けを誤って
+        // いる (特番による飛び・遅れ週数のずれ) 可能性が高いので、話数も放送種別も採用しない
+        const delayedMatched =
+            delayed !== null &&
+            (resolved.episodeNumber === null || delayed.count === null || delayed.count === resolved.episodeNumber)
+                ? delayed
+                : null;
+        if (delayedMatched !== null && delayedMatched.count !== null) {
+            resolved.episodeNumber = delayedMatched.count;
         }
+        // 放送種別は外部の放送予定を最優先で確定させる (§放送種別の判定順)。
+        // ローカルの重複判定 (同じ回のリンクが既にあるか) はライブラリの持ち方に左右されるため、
+        // 「その回が再放送として編成されているか」という放送予定の事実より後に置く
+        resolved.airType = SeriesResolver.decideAirType(parsed.airType, confirmed, delayedMatched);
         // 放送予定から取れたサブタイトルはその回の実際の放送内容なので、話数からの逆引きより優先する
-        const episodeTitle = confirmed?.subTitle ?? delayed?.subTitle ?? null;
+        const episodeTitle = confirmed?.subTitle ?? delayedMatched?.subTitle ?? null;
         const episodeComment = confirmed?.comment ?? null;
 
         return await this.linkTo(
@@ -550,6 +563,35 @@ export default class SeriesResolver implements ISeriesResolver {
             episodeTitle,
             episodeComment,
         );
+    }
+
+    /**
+     * 放送種別 (初回 / 再放送 / 遅れ放送) を決める。
+     *
+     * 判定順は「外部の放送予定 > 録画タイトルの表記 > 不明 (呼び出し側でローカル DB から推定)」。
+     * 放送予定 (ProgItem.Flag) の再放送フラグは編成そのものの事実なので最優先で採用し、
+     * 系列キー局を遡って対応付けた回 (lookupDelayed) は遅れ放送として確定させる。
+     * 放送予定が再放送を示していない場合でも、録画タイトルに "(再)" 等の明示があるときは
+     * 再放送として扱う (しょぼいカレンダー側のフラグ付け漏れを初回放送に倒さないため)
+     * @param parsedAirType: AirType 録画タイトルの表記から得た放送種別
+     * @param confirmed: SyobocalProgramMatch | null 局 + 開始時刻で確定した放送予定
+     * @param delayed: SyobocalProgramMatch | null 系列キー局を遡って対応付けた放送予定
+     * @return AirType
+     */
+    private static decideAirType(
+        parsedAirType: AirType,
+        confirmed: SyobocalProgramMatch | null,
+        delayed: SyobocalProgramMatch | null,
+    ): AirType {
+        // 1. 放送予定が再放送として編成している回
+        if (confirmed?.isRerun === true || delayed?.isRerun === true) return 'rerun';
+        // 2. キー局の放送より後に流れている = 遅れ放送
+        if (delayed !== null) return 'delayed';
+        // 3. 放送予定は引けているが再放送フラグは立っていない = その局での通常放送。
+        //    タイトルに再放送の明示がある場合だけはそちらを信じる (フラグ付け漏れへの保険)
+        if (confirmed !== null) return parsedAirType === 'rerun' ? 'rerun' : 'first';
+
+        return parsedAirType;
     }
 
     /**

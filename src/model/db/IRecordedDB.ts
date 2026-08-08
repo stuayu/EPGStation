@@ -26,6 +26,9 @@ export interface SeriesBackfillFilter {
     onlyUnlinked?: boolean;
     // この id 未満の録画は対象外にする (直近 N 件だけを対象にする際の下限)
     minId?: number;
+    // 指定した場合、これらのシリーズにリンク済みの録画だけを対象にする
+    // (シリーズ単位の再解析。空配列を渡した場合は対象なし)
+    seriesIds?: number[];
 }
 
 /**

@@ -40,6 +40,11 @@ function makeSeriesDB() {
     };
 }
 
+// 総話数の解決 (SeriesTotalEpisodes)。既定は「分からない」= 観測済みの話数だけで欠番を見る
+const noTotals = { resolve: async () => undefined };
+// 外部辞書から総話数が取れた状態
+const dictionaryTotals = { resolve: async () => ({ 1: 4 }) };
+
 function makeProgramDB(matchingProgram) {
     return {
         findId: async id => (matchingProgram && id === matchingProgram.id ? matchingProgram : null),
@@ -49,7 +54,7 @@ function makeProgramDB(matchingProgram) {
 
 test('feature flag off: listProposals throws SeriesLibraryFeatureIsDisabled and touches nothing', async () => {
     const seriesDB = makeSeriesDB();
-    const model = new MissingEpisodeApiModel(disabledConfig, seriesDB, makeProgramDB(null), {}, {});
+    const model = new MissingEpisodeApiModel(disabledConfig, seriesDB, makeProgramDB(null), {}, {}, noTotals);
     await assert.rejects(() => model.listProposals(1), /SeriesLibraryFeatureIsDisabled/);
 });
 
@@ -62,7 +67,7 @@ test('finds a future rerun candidate on the EPG for a missing episode (episode 2
         endAt: Date.now() + 25 * 60 * 60 * 1000,
     };
     const seriesDB = makeSeriesDB();
-    const model = new MissingEpisodeApiModel(enabledConfig, seriesDB, makeProgramDB(future), {}, {});
+    const model = new MissingEpisodeApiModel(enabledConfig, seriesDB, makeProgramDB(future), {}, {}, noTotals);
     const proposals = await model.listProposals(1);
     assert.equal(proposals.length, 1);
     assert.equal(proposals[0].episodeNumber, 2);
@@ -73,7 +78,7 @@ test('reserveProposal creates a reservation and pre-tags it with a rerun hint fo
     const program = { id: 555, channelId: 2, name: '対象作品 第2話', startAt: 1, endAt: 2 };
     const seriesDB = makeSeriesDB();
     const reserveApi = { add: async () => 999 };
-    const model = new MissingEpisodeApiModel(enabledConfig, seriesDB, makeProgramDB(program), reserveApi, {});
+    const model = new MissingEpisodeApiModel(enabledConfig, seriesDB, makeProgramDB(program), reserveApi, {}, noTotals);
     const reserveId = await model.reserveProposal(1, 1, 2, 555);
     assert.equal(reserveId, 999);
     assert.equal(seriesDB.savedHints.length, 1);
@@ -88,6 +93,31 @@ test('reserveProposal throws ProgramIsNotFound for an unknown programId (and nev
             throw new Error('must not be called');
         },
     };
-    const model = new MissingEpisodeApiModel(enabledConfig, seriesDB, makeProgramDB(null), reserveApi, {});
+    const model = new MissingEpisodeApiModel(enabledConfig, seriesDB, makeProgramDB(null), reserveApi, {}, noTotals);
     await assert.rejects(() => model.reserveProposal(1, 1, 2, 999), /ProgramIsNotFound/);
+});
+
+// 総話数が外部辞書から分かる場合は、観測済みの最大話数より後の回 (最終話まで) も欠番として扱う
+test('uses the total episode count from the dictionary so trailing episodes are also proposed', async () => {
+    const future = {
+        id: 556,
+        channelId: 2,
+        name: '対象作品',
+        startAt: Date.now() + 24 * 60 * 60 * 1000,
+        endAt: Date.now() + 25 * 60 * 60 * 1000,
+    };
+    const model = new MissingEpisodeApiModel(
+        enabledConfig,
+        makeSeriesDB(),
+        makeProgramDB(future),
+        {},
+        {},
+        dictionaryTotals,
+    );
+    const proposals = await model.listProposals(1);
+    // 録画済みは 1 話と 3 話。総話数 4 なので 2 話と 4 話が欠番
+    assert.deepEqual(
+        proposals.map(x => x.episodeNumber),
+        [2, 4],
+    );
 });

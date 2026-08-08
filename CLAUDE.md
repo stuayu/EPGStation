@@ -99,6 +99,10 @@ npm run test:ci        # ut + ita + itb
     - 確度は `exactStart` (番組の頭から録画) が 0.98、放送時間帯の包含で拾った場合が 0.92、未登録の地方局を系列キー局で代用した場合 (`viaKeyStation`) が 0.9。代用時は開始時刻がほぼ一致した放送しか拾わない
     - **返ってきた作品名が録画タイトルと共通部分を持たない場合はスキップする** (`isPlausibleProgramTitle()`)。時刻ずれ・キー局代用で別番組を拾ったときの安全弁。完全一致は求めず、含有か 2-gram 類似度 0.25 以上で通す
     - 話数はタイトルに表記があっても放送予定の `Count` を優先する。総集編・一挙放送は `SeriesParseResult.isSpecial` でサブタイトル逆引きの対象外
+    - **放送種別 (初回 / 再放送 / 遅れ放送) も放送予定が最優先** (`SeriesResolver.decideAirType()`)。しょぼいカレンダーの `ProgItem.Flag` はビットフラグ (1=注目 / 2=新番組 / 4=最終回 / **8=再放送**) で、`SyobocalProgramMatch.isRerun` として持つ。判定は ①放送予定が再放送 → `rerun` ②キー局を遡って対応付けた回 → `delayed` ③放送予定は引けたが再放送フラグ無し → `first` (タイトルに `(再)` があればフラグ付け漏れとみなし `rerun` を残す) ④放送予定が引けないときだけタイトル表記 → ローカル DB の重複判定
+    - 遅れ放送の照会 (`lookupDelayed()`) は**話数が既知でも引く** (放送種別の判定に要る)。ただしキー局側の話数がタイトルの話数と食い違う場合は話数・サブタイトル・放送種別のいずれも採用しない
+    - **欠番検出の総話数は `ISeriesTotalEpisodes` が解決する** (`series.totalEpisodes` → しょぼいカレンダー `syobocal_title.totalEpisodes` → Annict `episodesCount`)。シリーズ一覧・詳細・欠番補完提案はすべてこれを通す。`analyzeSeriesContinuity()` をオプション無しで呼ぶと観測済み最大話数までしか見ないので注意
+    - **シリーズ単位の再解析は `POST /api/series/reanalyze`** (`seriesIds` 1〜100 件 + `refreshMetadata`)。メタデータを辞書から force で引き直し、続けてそのシリーズにリンク済みの録画をバックフィルにかけ直す。`SeriesBackfillOption.seriesIds` による部分実行なので**全件バックフィルの再開カーソルは動かさない**。UI はシリーズ詳細の「録画を再問い合わせ」とシリーズ一覧の選択モード > 「再解析」
     - **`SeriesBackfillManageModel.decide()` (バックフィルのドライラン) は `resolve()` とは別実装**。判定順を変えたら必ず両方直す (揃っていないとプレビューと実行結果が食い違う)
 - **録画の放送局名は TS 解析 (SDT) の局名を最優先で表示する**。`ChannelNameUtil.getRecordedChannelName()` の順は「TS 解析の局名 (`RecordedItem.tsChannelName`) → 現在の channel 情報 → 録画時点の局名 → networkId/serviceId 表記」。一覧用に `IVideoFileTsInfoDB.findServiceNamesByRecordedIds()` で 1 クエリにまとめて引いている
 - **一覧の録画タイトル表示は `RecordedUtil.convertRecordedItemToDisplayData()` の 1 箇所で決まる**。`useDictionaryEpisodeTitle` (localStorage の共通設定) が有効なら `RecordedItem.series` から「作品名 第N話 サブタイトル」を組み立てる。録画済み一覧・ダッシュボード・検索結果はすべてここを通るため、切り替えは 3 点リーダー 1 箇所で全画面に効く

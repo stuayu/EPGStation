@@ -437,6 +437,10 @@
                                         確定: {{ backfillStatus.linked }} / 未確定: {{ backfillStatus.pending }} / スキップ: {{ backfillStatus.skipped }} / 失敗:
                                         {{ backfillStatus.failed }}
                                     </div>
+                                    <!-- シリーズ一覧・シリーズ詳細から起動した再解析もこの進捗に出る -->
+                                    <div v-if="backfillStatus.seriesCount" class="mt-1 text-caption text-grey">
+                                        シリーズ {{ backfillStatus.seriesCount }} 件を対象にした再解析
+                                    </div>
                                     <v-alert v-if="backfillStatus.error" type="error" class="mt-2">{{ backfillStatus.error }}</v-alert>
                                 </div>
                                 <div class="d-flex flex-wrap align-center ga-4 mb-2">

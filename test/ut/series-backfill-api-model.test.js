@@ -35,6 +35,7 @@ test('start() delegates to IPC, normalizing dryRun/chunkSize before forwarding',
         restart: false,
         onlyUnlinked: false,
         latest: undefined,
+        seriesIds: undefined,
     });
     assert.equal(result.state, 'running');
 
@@ -45,6 +46,7 @@ test('start() delegates to IPC, normalizing dryRun/chunkSize before forwarding',
         restart: false,
         onlyUnlinked: false,
         latest: undefined,
+        seriesIds: undefined,
     });
 
     // 絞り込み条件はそのまま Operator へ渡す
@@ -55,6 +57,18 @@ test('start() delegates to IPC, normalizing dryRun/chunkSize before forwarding',
         restart: false,
         onlyUnlinked: true,
         latest: 30,
+        seriesIds: undefined,
+    });
+
+    // シリーズ単位の再解析はシリーズ id をそのまま渡す
+    await model.start({ seriesIds: [3, 5] });
+    assert.deepEqual(sentOption, {
+        dryRun: false,
+        chunkSize: undefined,
+        restart: false,
+        onlyUnlinked: false,
+        latest: undefined,
+        seriesIds: [3, 5],
     });
 });
 
