@@ -530,23 +530,23 @@ export default class SeriesDB implements ISeriesDB {
     }
     /**
      * candidatesJson (SeriesPendingMatch のカラム) をパースする
-     * 壊れた JSON が入っていても呼び出し元の一覧表示全体を落とさないよう空配列を返すが、
-     * 静的メソッドでインスタンスのロガーを持たないため console.error に出す
+     * 壊れた JSON が入っていても呼び出し元の一覧表示全体を落とさないよう空配列を返す。
+     * インスタンスのロガーを使うため static ではなくインスタンスメソッドにしている
      * @param json: string
      * @param context: string | undefined ログに出す識別情報 (呼び出し元で分かる場合のみ)
      * @return PendingCandidate[]
      */
-    public static parsePendingCandidates(json: string, context?: string): PendingCandidate[] {
+    public parsePendingCandidates(json: string, context?: string): PendingCandidate[] {
         try {
             const value = JSON.parse(json);
             return Array.isArray(value) ? value : [];
         } catch (err) {
-            console.error(
+            this.log.system.error(
                 `SeriesDB.parsePendingCandidates: failed to parse candidatesJson${
                     typeof context === 'undefined' ? '' : ` (${context})`
                 }`,
             );
-            console.error(err);
+            this.log.system.error(err);
             return [];
         }
     }

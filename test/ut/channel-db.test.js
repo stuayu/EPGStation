@@ -138,3 +138,85 @@ test('insert: 1 件の変換で例外が起きても残りのサービスは登�
     assert.equal(calls.error.length, 1);
     assert.match(calls.error[0][0], /Failed to create insert values for 1 channels/);
 });
+
+test('insert: 個々のレコード (insert/update/delete いずれも) の失敗は無視して他のレコードは登録され、insert() は成功で返る', async () => {
+    const store = makeStore();
+    // id: 1 は insert/update/delete のすべてで失敗する「常に失敗するレコード」を再現する
+    const connection = {
+        createQueryRunner: () => ({
+            manager: {
+                insert: async (_Entity, item) => {
+                    if (item.id === 1) throw new Error('insert boom');
+                    if (store.has(item.id)) throw new Error('already exists');
+                    store.set(item.id, { ...item });
+                },
+                update: async (_Entity, id, item) => {
+                    if (id === 1) throw new Error('update boom');
+                    if (!store.has(id)) throw new Error('not found');
+                    store.set(id, { ...store.get(id), ...item });
+                },
+                delete: async (_Entity, id) => {
+                    if (id === 1) throw new Error('delete boom');
+                    store.delete(id);
+                },
+            },
+            startTransaction: async () => {},
+            commitTransaction: async () => {},
+            rollbackTransaction: async () => {},
+            release: async () => {},
+        }),
+    };
+    const op = { getConnection: async () => connection };
+    const { loggerModel } = makeLogger();
+    const configuration = { getConfig: () => ({}) };
+    const promiseRetry = { run: job => job() };
+    const db = new ChannelDB(loggerModel, configuration, op, promiseRetry);
+
+    await db.insert([
+        baseService({ id: 1, channel: { type: 'GR', channel: '1' } }),
+        baseService({ id: 2, channel: { type: 'BS', channel: '101' } }),
+    ]);
+
+    assert.equal(store.has(1), false);
+    assert.ok(store.has(2));
+});
+
+test('insert: トランザクション自体が失敗した場合は rollback してログを出し、insert() が reject する', async () => {
+    const store = makeStore();
+    const rollbackCalls = [];
+    const connection = {
+        createQueryRunner: () => ({
+            manager: {
+                insert: async (_Entity, item) => {
+                    store.set(item.id, { ...item });
+                },
+                update: async (_Entity, id, item) => {
+                    store.set(id, { ...store.get(id), ...item });
+                },
+                delete: async (_Entity, id) => {
+                    store.delete(id);
+                },
+            },
+            startTransaction: async () => {},
+            commitTransaction: async () => {
+                throw new Error('commit boom');
+            },
+            rollbackTransaction: async () => {
+                rollbackCalls.push(true);
+            },
+            release: async () => {},
+        }),
+    };
+    const op = { getConnection: async () => connection };
+    const { loggerModel, calls } = makeLogger();
+    const configuration = { getConfig: () => ({}) };
+    const promiseRetry = { run: job => job() };
+    const db = new ChannelDB(loggerModel, configuration, op, promiseRetry);
+
+    await assert.rejects(
+        () => db.insert([baseService({ id: 1, channel: { type: 'GR', channel: '1' } })]),
+        /commit boom/,
+    );
+    assert.equal(rollbackCalls.length, 1);
+    assert.ok(calls.error.some(args => args.some(a => typeof a === 'string' && a.includes('transaction failed'))));
+});

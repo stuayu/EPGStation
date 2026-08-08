@@ -359,11 +359,14 @@ test('pending match queue: upsert is keyed by recordedId, list/get/find/delete w
 });
 
 test('parsePendingCandidates parses JSON arrays and falls back to [] on invalid input', () => {
-    assert.deepEqual(SeriesDB.parsePendingCandidates('[{"seriesId":1,"seriesTitle":"A","score":0.5}]'), [
+    const { db, loggerCalls } = makeDB();
+    assert.deepEqual(db.parsePendingCandidates('[{"seriesId":1,"seriesTitle":"A","score":0.5}]'), [
         { seriesId: 1, seriesTitle: 'A', score: 0.5 },
     ]);
-    assert.deepEqual(SeriesDB.parsePendingCandidates('not json'), []);
-    assert.deepEqual(SeriesDB.parsePendingCandidates('{"not":"an array"}'), []);
+    assert.deepEqual(db.parsePendingCandidates('not json'), []);
+    assert.deepEqual(db.parsePendingCandidates('{"not":"an array"}'), []);
+    // 壊れた JSON のパース失敗はロガー経由で記録される (console.error には出さない)
+    assert.equal(loggerCalls.error.length, 2);
 });
 
 test('alias dictionary: upsert is keyed by normalizedTitle, list filters by seriesId', async () => {
