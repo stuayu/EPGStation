@@ -54,7 +54,16 @@
                 </v-list-item>
             </v-list>
 
-            <v-pagination v-if="pageCount > 1" v-model="page" :length="pageCount" density="comfortable" class="mt-3" @update:model-value="fetchData"></v-pagination>
+            <v-pagination
+                v-if="pageCount > 1"
+                v-model="page"
+                :length="pageCount"
+                :total-visible="7"
+                show-first-last-page
+                density="comfortable"
+                class="mt-3"
+                @update:model-value="fetchData"
+            ></v-pagination>
             <WatchHistoryPlayDialog
                 v-model="isOpenPlayDialog"
                 v-bind:videoFile="playDialogVideoFile"

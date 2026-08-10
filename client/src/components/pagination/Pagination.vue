@@ -1,8 +1,17 @@
 <template>
     <div>
-        <v-pagination v-if="total > pageSize" v-model="page" :circle="false" :length="totalPages" :total-visible="12" @update:model-value="onMovePage" class="normal px-1"></v-pagination>
+        <v-pagination
+            v-if="total > pageSize"
+            v-model="page"
+            :circle="false"
+            :length="totalPages"
+            :total-visible="12"
+            :show-first-last-page="showFirstLastPage"
+            @update:model-value="onMovePage"
+            class="normal px-1"
+        ></v-pagination>
         <div class="mobile">
-            <MobilePagination :pageSize="pageSize" :total="total"></MobilePagination>
+            <MobilePagination :pageSize="pageSize" :total="total" :showFirstLastPage="showFirstLastPage"></MobilePagination>
         </div>
     </div>
 </template>
@@ -30,6 +39,13 @@ class Pagination extends Vue {
         required: true,
     })
     public total!: number;
+
+    // 先頭・最終ページへ飛ぶボタンを出すか (ページ数が多い画面用)
+    @Prop({
+        required: false,
+        default: false,
+    })
+    public showFirstLastPage!: boolean;
 
     /**
      * pagination page

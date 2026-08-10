@@ -1,5 +1,15 @@
 <template>
     <div v-if="pages.length > 0" class="pagination d-flex justify-center">
+        <v-btn
+            v-if="showFirstLastPage === true"
+            v-bind:class="{ disabled: currentPage === 1 }"
+            :color="color"
+            title="先頭のページ"
+            v-on:click="onMovePage(1)"
+            class="my-2 mx-1"
+        >
+            <v-icon>mdi-page-first</v-icon>
+        </v-btn>
         <v-btn v-bind:class="{ disabled: currentPage === pages[0] }" :color="color" v-on:click="onMovePage(currentPage - 1)" class="my-2 mx-2">
             <v-icon>mdi-chevron-left</v-icon>
         </v-btn>
@@ -8,6 +18,16 @@
         </v-btn>
         <v-btn v-bind:class="{ disabled: currentPage === totalPages }" :color="color" v-on:click="onMovePage(currentPage + 1)" class="my-2 mx-2">
             <v-icon>mdi-chevron-right</v-icon>
+        </v-btn>
+        <v-btn
+            v-if="showFirstLastPage === true"
+            v-bind:class="{ disabled: currentPage === totalPages }"
+            :color="color"
+            title="最後のページ"
+            v-on:click="onMovePage(totalPages)"
+            class="my-2 mx-1"
+        >
+            <v-icon>mdi-page-last</v-icon>
         </v-btn>
     </div>
 </template>
@@ -31,6 +51,13 @@ class MobilePagination extends Vue {
         required: true,
     })
     public total!: number;
+
+    // 先頭・最終ページへ飛ぶボタンを出すか (ページ数が多い画面用)
+    @Prop({
+        required: false,
+        default: false,
+    })
+    public showFirstLastPage!: boolean;
 
     public currentPage: number = 1;
     public pages: number[] = [];

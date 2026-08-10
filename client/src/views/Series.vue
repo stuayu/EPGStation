@@ -313,7 +313,7 @@
                 <div class="text-center text-caption text-grey mb-1" v-if="total > 0">
                     {{ offset + 1 }}–{{ Math.min(offset + limit, total) }} / {{ total }}
                 </div>
-                <Pagination :total="total" :pageSize="limit"></Pagination>
+                <Pagination :total="total" :pageSize="limit" :showFirstLastPage="true"></Pagination>
             </div>
         </v-container>
 
