@@ -61,6 +61,8 @@ export interface BroadcastWave {
     NW38: BroadcastWaveState;
     NW39: BroadcastWaveState;
     NW40: BroadcastWaveState;
+    BS4K: BroadcastWaveState;
+    CS4K: BroadcastWaveState;
 }
 
 export interface SubGenreIndex {

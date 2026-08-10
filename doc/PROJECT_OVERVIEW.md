@@ -76,7 +76,7 @@
 
 - ルートの **`api.yml`** (OpenAPI 3.0.1) が API 仕様の正。express-openapi がこれを読み込んでバリデーション/ルーティングする
 - ルートの **`api.d.ts`** がサーバ・クライアント共有の型定義 (`import * as apid from '.../api'` で参照)
-- 本フォークでは `ChannelType` に `NW1`〜`NW40` を追加済み
+- 本フォークでは `ChannelType` に `NW1`〜`NW40` (県外地上波) と `BS4K` / `CS4K` (新4K8K衛星放送) を追加済み
 
 ## 主要ワークフロー別・変更対象ファイル
 

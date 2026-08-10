@@ -789,6 +789,12 @@ export default class ProgramDB implements IProgramDB {
             if (!!searchOption.NW40 === true) {
                 channelTypes.push('NW40');
             }
+            if (!!searchOption.BS4K === true) {
+                channelTypes.push('BS4K');
+            }
+            if (!!searchOption.CS4K === true) {
+                channelTypes.push('CS4K');
+            }
             this.createInQuery(query, 'channelType', channelTypes);
         }
     }

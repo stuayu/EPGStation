@@ -256,9 +256,13 @@ export default class ChannelDB implements IChannelDB {
                 return 42;
             case 'NW40':
                 return 43;
+            case 'BS4K':
+                return 44;
+            case 'CS4K':
+                return 45;
 
             default:
-                return 44;
+                return 46;
         }
     }
 

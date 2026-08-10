@@ -165,6 +165,7 @@ concurrentEncodeNum: 1
 #      デコード〜エンコードまで行い、ffmpeg へパイプして remux する)
 # - codecs: 有効化するコーデック配列 (省略時 [h264])。hevc は同画質で H.264 の約半分のビットレート
 # - qualities: 有効化する画質配列 (省略時 [1080p, 720p, 480p])
+#     2160p は新4K8K衛星放送 (BS4K / CS4K) 用。HEVC 前提のビットレート設定なので codecs に hevc を入れて使う
 # - targets: 生成対象 (省略時 [recorded, liveHLS, recordedStreaming])
 #     recorded: 録画ファイルのバックグラウンドエンコード (config/enc.js 経由)
 #     liveHLS: ライブ視聴の HLS 配信 (in-memory 低遅延)

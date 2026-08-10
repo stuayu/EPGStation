@@ -168,6 +168,12 @@ export default class OnAirState implements IOnAirState {
             if (config.broadcast.NW40 === true) {
                 this.tabs.push('NW40');
             }
+            if (config.broadcast.BS4K === true) {
+                this.tabs.push('BS4K');
+            }
+            if (config.broadcast.CS4K === true) {
+                this.tabs.push('CS4K');
+            }
         }
     }
 

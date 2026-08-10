@@ -231,6 +231,12 @@ export default class NavigationState implements INavigationState {
             if (config.broadcast.NW40 === true) {
                 types.push('NW40');
             }
+            if (config.broadcast.BS4K === true) {
+                types.push('BS4K');
+            }
+            if (config.broadcast.CS4K === true) {
+                types.push('CS4K');
+            }
 
             // 地上波系は地域別 (設定によっては系列別)、BS / CS / SKY は従来通り放送波種別で表示する
             const regionalTypes = types.filter(type => NavigationState.isRegionalType(type) === true);

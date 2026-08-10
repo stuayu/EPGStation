@@ -225,3 +225,18 @@ DPlayer の `switchQuality()` は「quality リストに事前登録された UR
 - ストリームの有効化待ちには上限を設けている (ライブ 30 秒 / 録画 60 秒)。タイムアウト時は例外となり画質切替が失敗扱いになる (再生は継続)。
 - 切替中は旧 video 要素が残るため、停止済みストリームへのセグメント要求で 404 が数回発生する (DPlayer が新しい video の `canplay` で旧要素を破棄するまでの間)。
 - 字幕 (aribb24) と実況弾幕は DPlayer 側の `initVideo()` で再初期化されるため、切替後も表示設定が引き継がれる。
+
+## 新4K8K衛星放送 (BS4K / CS4K) の配信
+
+新4K8K衛星放送は MMT/TLV を dantto4k 等で MPEG-2 TS へ変換して受け取る (`doc/stuayu-fork.md` 参照)。
+配信経路そのものは従来の TS と同じだが、**映像が HEVC (H.265)・音声が MPEG-4 AAC** になる点が違う。
+
+- **エンコードして配信する場合**: `encodePresets` の `qualities` に `2160p` を指定すると 4K のプリセットが生成される
+  (映像 15000kbps / 音声 256kbps)。ビットレートは HEVC 前提なので `codecs: [hevc]` と併用する。
+  H.264 を選んだ場合は 4K 用に `-level 5.2` が指定される
+- **無変換 (mpegts / -c:v copy) で配信する場合**: 再生側の HEVC 対応に依存する
+    - Safari は HLS + HEVC (`hvc1`) をネイティブ再生できる
+    - Chrome / Firefox で mpegts.js の低遅延ライブを使う場合は HEVC 対応版が必要。確実に再生したいなら
+      H.264 へエンコードするプリセットを使う
+- 字幕は dantto4k が MMT の字幕を ARIB B24 の TS 字幕へ変換するため、in-memory HLS の `emsg` 経路
+  (version 1 必須) を含め従来どおり動く

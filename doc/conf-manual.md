@@ -1346,7 +1346,7 @@ concurrentEncodeNum: 1
 | -------------- | -------- | ---------------------------------------- | ---- | ------------------------------------------------------------------------------- |
 | hwaccel        | string   | `software`                               | no   | `software` \| `qsv` \| `vaapi` \| `nvenc` \| `qsvencc` \| `nvencc` \| `vceencc` |
 | codecs         | string[] | `[h264]`                                 | no   | `h264` \| `hevc` の配列                                                         |
-| qualities      | string[] | `[1080p, 720p, 480p]`                    | no   | `1080p` \| `720p` \| `480p` \| `240p` の配列                                    |
+| qualities      | string[] | `[1080p, 720p, 480p]`                    | no   | `2160p` \| `1080p` \| `720p` \| `480p` \| `240p` の配列                         |
 | targets        | string[] | `[recorded, liveHLS, recordedStreaming]` | no   | 生成対象の配列 (下記参照)                                                       |
 
 - `hwaccel`
@@ -1363,6 +1363,10 @@ concurrentEncodeNum: 1
       エンコードは rigaya 側、fMP4 / HLS のコンテナ処理は ffmpeg 側)
     - 未対応の値を書いた場合は `software` として扱われる (`codecs` / `qualities` / `targets` の
       未対応要素も同様に無視され、すべて無効なときは既定値が使われる)
+- `qualities`
+    - `2160p` は新4K8K衛星放送 (`BS4K` / `CS4K`) 向け。映像 15000kbps / 音声 256kbps の
+      **HEVC 前提のビットレート**なので `codecs: [hevc]` と組み合わせて使う
+      (H.264 で 4K を出す場合は Level 5.2 が指定されるが、同じビットレートでは画質が落ちる)
 - `targets`
     - `recorded`: 録画ファイルのバックグラウンドエンコード (`config/enc.js` 経由、`encode` 相当)
     - `liveHLS`: ライブ視聴の HLS 配信 (in-memory 低遅延、`stream.profiles.live` の container: hls 相当)

@@ -72,7 +72,7 @@ export interface StreamProfile {
  * エンコードプリセット表 (§ encodePresets) の軸定義
  *
  * ハードウェア (software / qsv (Intel) / vaapi (AMD) / nvenc (NVIDIA)) ×
- * コーデック (h264 / hevc) × 画質 (1080p / 720p / 480p / 240p) × 用途の
+ * コーデック (h264 / hevc) × 画質 (2160p / 1080p / 720p / 480p / 240p) × 用途の
  * 組み合わせから、録画エンコード (encode) / ライブ HLS・録画ストリーミング
  * (stream.profiles) の設定を自動生成するための一括有効化フラグ。
  *
@@ -82,7 +82,7 @@ export interface StreamProfile {
  */
 export type EncodeHwAccel = 'software' | 'qsv' | 'vaapi' | 'nvenc' | 'qsvencc' | 'nvencc' | 'vceencc';
 export type EncodeCodec = 'h264' | 'hevc';
-export type EncodeQuality = '1080p' | '720p' | '480p' | '240p';
+export type EncodeQuality = '2160p' | '1080p' | '720p' | '480p' | '240p';
 
 /**
  * プリセットの適用先。

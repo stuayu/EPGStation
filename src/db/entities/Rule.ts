@@ -322,6 +322,16 @@ export default class Rule extends BaseEntity {
     public NW40: boolean = false; // NW
 
     @Column({
+        default: false,
+    })
+    public BS4K: boolean = false; // 新4K8K衛星放送
+
+    @Column({
+        default: false,
+    })
+    public CS4K: boolean = false; // 新4K8K衛星放送
+
+    @Column({
         type: 'text',
         nullable: true,
     })

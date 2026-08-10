@@ -279,6 +279,8 @@ export default class RuleDB implements IRuleDB {
             NW38: !!rule.searchOption.NW38,
             NW39: !!rule.searchOption.NW39,
             NW40: !!rule.searchOption.NW40,
+            BS4K: !!rule.searchOption.BS4K,
+            CS4K: !!rule.searchOption.CS4K,
 
             channelIds:
                 typeof rule.searchOption.channelIds === 'undefined'
@@ -422,6 +424,8 @@ export default class RuleDB implements IRuleDB {
                 NW38: rule.NW38,
                 NW39: rule.NW39,
                 NW40: rule.NW40,
+                BS4K: rule.BS4K,
+                CS4K: rule.CS4K,
                 isFree: rule.isFree,
             },
             reserveOption: {

@@ -1262,3 +1262,22 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **手動確定は壊さない**: 録画側の再判定は通常のバックフィルと同じ経路なので、`manualLock` 済みの録画はスキップされる。シリーズ側も手動設定した表示名・クール・コメント (`titleSource` / `seasonSource` / `commentSource` が `manual`) は `force` でも上書きしない
     - **UI**: シリーズ詳細に「録画を再問い合わせ」ボタン、シリーズ一覧の選択モードのツールバーに「再解析」ボタンを追加した (どちらも確認ダイアログで対象と「メタデータも引き直すか」を示す)。シリーズ詳細は対象が 1 シリーズで短時間に終わるため、実行後にバックフィルの進捗を 2 秒間隔で最大 2 分見に行き、完了したら画面を再読み込みして結果 (処理件数・更新件数) を出す
     - **テスト**: `test/ut/series-maintenance-api.test.js` に reanalyze の 4 件 (メタデータ再取得 + バックフィル開始、メタデータ省略、空リスト・不明 id の拒否、機能フラグ)、`test/ut/series-backfill-manage-model.test.js` に「`seriesIds` 指定は該当シリーズの録画だけを処理し永続カーソルを動かさない」、`test/ut/series-backfill-api-model.test.js` に `seriesIds` の受け渡しを追加した。DB クエリ自体 (`createSeriesBackfillQuery`) は他の絞り込み条件と同様に単体テスト対象外で、生成される SQL を TypeORM のクエリビルダで実地確認した
+
+- **新4K8K衛星放送 (BS4K / CS4K) に対応した**
+    - **前提**: 新4K8K衛星放送 (ISDB-S3) は MPEG-2 TS ではなく **MMT/TLV** で送出されるため、Mirakurun / EPGStation では扱えない。本フォークでは **フロントエンド ([dantto4k](https://github.com/nekohkr/dantto4k) / `BonDriver_dantto4k`) が MMT/TLV を MPEG-2 TS へ変換したストリーム**を受け取る方式を採る。変換後は SDT / EIT / PMT / 字幕 (ARIB B24) がすべて通常の TS と同じ形で載るため、EPG 取得・予約・録画・字幕は既存経路がそのまま使える (映像は HEVC、音声は MPEG-4 AAC になる)
+    - **Mirakurun 側 (`stuayu/Mirakurun`)**
+        - `ChannelType` に `BS4K` / `CS4K` を追加 (`api.yml` / `api.d.ts` / `common.ts` の `channelTypes` / `Service.ts` の `channelOrder` / `ServiceItem.getOrder()`)。並び順は既存の値を動かさないよう末尾 (BS4K = 45 / CS4K = 46) に置いた
+        - チャンネルスキャン (`/api/config/channels/scan`) に `BS4K` / `CS4K` を追加した。既定のチャンネル名は `BS4K{ch00}_{subch}` (ch 1〜23 / subch 0〜3) と `CS4K{ch}` (ch 2〜24) だが、**チャンネル識別子はチューナーコマンド (BonDriver 等) のチャンネル空間に依存する**ため `channelNameFormat` で上書きできる
+        - **サービススキャンのタイムアウトを設定可能にした** (`server.yml` の `serviceScanTimeout` / 環境変数 `SERVICE_SCAN_TIMEOUT`)。MMT/TLV → TS の変換は選局に 15〜20 秒かかることがあり、従来の固定 20 秒ではスキャンが空振りするため、**`BS4K` / `CS4K` のときは既定を 40 秒**にした (設定した場合はチャンネル種別によらずその値を使う)
+        - EPG 側は元から `stream_content = 9 (h.265)` と `component_type = 0x91〜0x94 (2160p)` / `0x83 (4320p)` を解釈できるため変更不要
+        - テスト: `test/scan.spec.js` に `BS4K` / `CS4K` のスキャン設定生成 (既定値・範囲指定・`channelNameFormat` 上書き) を追加
+    - **EPGStation 側**
+        - `ChannelType` に `BS4K` / `CS4K` を追加し、**放送波を 1 種別 1 フラグで扱っている箇所をすべて展開した**: `api.yml` (`ChannelType` enum・`RuleSearchOption`・`BroadcastStatus`・`requiredBS4K` / `requiredCS4K` パラメータ)、`api.d.ts`、`ProgramDB.setChannelQuery()`、`ChannelDB.getChannelTypeId()` (BS4K = 44 / CS4K = 45、既定値は 46 へ繰り下げ)、`RuleDB`、`ScheduleApiModel.getSchedules()`、`IPTVApiModel`、`schedules.ts`、`ReserveOptionChecker`、`ReservationManageModel.broadcastStatus`、クライアント側の `GuideState.BROADCAST_TYPES` / `OnAirState` / `NavigationState` / `SearchState` / `ISearchState` / `SearchOption.vue`
+        - **DB**: ルール検索の放送波に `rule.BS4K` / `rule.CS4K` を追加した (マイグレーションは sqlite / mysql の両方。既存ルールは `false` のままなので挙動は変わらない)
+        - **エンコードプリセット**: `EncodeQuality` に `2160p` を追加した (`height: 2160` / 映像 15000kbps / 音声 256kbps)。H.264 の 4K は Level 5.1 以上が要るため `h264Level()` に `2160 → 5.2` を足した。**ビットレートは HEVC 前提の値**なので `encodePresets` では `codecs: [hevc]` と組み合わせて使う
+        - 放送波タブ (番組表・放映中・グローバルナビゲーション) は `Mirakurun のチューナー types` から自動生成されるため、`tuners.yml` に `BS4K` / `CS4K` のチューナーを書けば UI にも出る
+        - テスト: `test/ut/encode-presets.test.js` に 2160p プリセットの生成 (H.264 の `-level 5.2` 含む)、`test/ita/rule-4k-broadcast-migration.test.js` に rule テーブルへの `BS4K` / `CS4K` 追加とロールバックを追加
+    - **注意点**
+        - 映像が HEVC になるため、**ブラウザでの再生はクライアント側の HEVC 対応に依存する**。Safari は HLS + HEVC をネイティブ再生できるが、Chrome / Firefox で mpegts.js の低遅延ライブを使う場合は HEVC 対応版が要る。確実に再生したい場合は `encodePresets` で H.264 へエンコードして配信する
+        - 録画ファイル自体は変換後の TS をそのまま保存するので、録画・取り込み・TS 解析 (`TsInfoAnalyzer`) は従来どおり動く
+        - 本フォークの `package.json` は Mirakurun をタグで固定しているため、**この 4K 対応を使うには `stuayu/Mirakurun` 側の新しいタグを切って `package.json` の参照タグを差し替える必要がある** (ブランチ参照は lockfile が壊れるため禁止)

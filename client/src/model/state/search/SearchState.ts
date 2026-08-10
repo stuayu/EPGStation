@@ -355,6 +355,14 @@ export default class SearchState implements ISearchState {
                     isEnable: true,
                     isShow: true,
                 },
+                BS4K: {
+                    isEnable: true,
+                    isShow: true,
+                },
+                CS4K: {
+                    isEnable: true,
+                    isShow: true,
+                },
             },
             genres: {},
             isShowSubgenres: true,
@@ -554,6 +562,14 @@ export default class SearchState implements ISearchState {
             if (config.broadcast.NW40 === false) {
                 this.searchOption.broadcastWave.NW40.isEnable = false;
                 this.searchOption.broadcastWave.NW40.isShow = false;
+            }
+            if (config.broadcast.BS4K === false) {
+                this.searchOption.broadcastWave.BS4K.isEnable = false;
+                this.searchOption.broadcastWave.BS4K.isShow = false;
+            }
+            if (config.broadcast.CS4K === false) {
+                this.searchOption.broadcastWave.CS4K.isEnable = false;
+                this.searchOption.broadcastWave.CS4K.isShow = false;
             }
         }
 
@@ -791,6 +807,8 @@ export default class SearchState implements ISearchState {
             this.searchOption.broadcastWave.NW38.isEnable = !!searchOption.NW38;
             this.searchOption.broadcastWave.NW39.isEnable = !!searchOption.NW39;
             this.searchOption.broadcastWave.NW40.isEnable = !!searchOption.NW40;
+            this.searchOption.broadcastWave.BS4K.isEnable = !!searchOption.BS4K;
+            this.searchOption.broadcastWave.CS4K.isEnable = !!searchOption.CS4K;
         }
 
         // ジャンル
@@ -1178,6 +1196,8 @@ export default class SearchState implements ISearchState {
             this.searchOption.broadcastWave.NW38.isEnable = false;
             this.searchOption.broadcastWave.NW39.isEnable = false;
             this.searchOption.broadcastWave.NW40.isEnable = false;
+            this.searchOption.broadcastWave.BS4K.isEnable = false;
+            this.searchOption.broadcastWave.CS4K.isEnable = false;
         } else if (this.isDisabledAllBroadcasWave(this.searchOption.broadcastWave)) {
             this.searchOption.broadcastWave.GR.isEnable = true;
             this.searchOption.broadcastWave.BS.isEnable = true;
@@ -1223,6 +1243,8 @@ export default class SearchState implements ISearchState {
             this.searchOption.broadcastWave.NW38.isEnable = true;
             this.searchOption.broadcastWave.NW39.isEnable = true;
             this.searchOption.broadcastWave.NW40.isEnable = true;
+            this.searchOption.broadcastWave.BS4K.isEnable = true;
+            this.searchOption.broadcastWave.CS4K.isEnable = true;
         }
 
         // time range
@@ -1440,6 +1462,14 @@ export default class SearchState implements ISearchState {
         }
 
         if (broadcas.NW40.isShow === true && broadcas.NW40.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.BS4K.isShow === true && broadcas.BS4K.isEnable === true) {
+            return false;
+        }
+
+        if (broadcas.CS4K.isShow === true && broadcas.CS4K.isEnable === true) {
             return false;
         }
 
@@ -1713,6 +1743,12 @@ export default class SearchState implements ISearchState {
             if (option.broadcastWave.NW40.isShow === true) {
                 ruleOption.NW40 = option.broadcastWave.NW40.isEnable;
             }
+            if (option.broadcastWave.BS4K.isShow === true) {
+                ruleOption.BS4K = option.broadcastWave.BS4K.isEnable;
+            }
+            if (option.broadcastWave.CS4K.isShow === true) {
+                ruleOption.CS4K = option.broadcastWave.CS4K.isEnable;
+            }
         }
 
         // genres
@@ -1954,6 +1990,14 @@ export default class SearchState implements ISearchState {
         }
 
         if (broadcas.NW40.isShow === true && broadcas.NW40.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.BS4K.isShow === true && broadcas.BS4K.isEnable !== true) {
+            return false;
+        }
+
+        if (broadcas.CS4K.isShow === true && broadcas.CS4K.isEnable !== true) {
             return false;
         }
 

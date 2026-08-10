@@ -138,7 +138,9 @@ export default class ReserveOptionChecker implements IReserveOptionChecker {
                 !!option.NW37 === true ||
                 !!option.NW38 === true ||
                 !!option.NW39 === true ||
-                !!option.NW40 === true
+                !!option.NW40 === true ||
+                !!option.BS4K === true ||
+                !!option.CS4K === true
             ) {
                 return false;
             }

@@ -47,6 +47,20 @@ test('qualities flag controls which heights are generated', () => {
     assert.match(expansion.live[0].cmd, /scale=-2:240/);
 });
 
+test('2160p quality generates 4K presets (新4K8K衛星放送 BS4K / CS4K 向け)', () => {
+    const expansion = EncodePresets.expand({ targets: ['liveHLS'], codecs: ['h264', 'hevc'], qualities: ['2160p'] });
+    assert.equal(expansion.live.length, 2);
+
+    for (const profile of expansion.live) {
+        assert.equal(profile.video.height, 2160);
+        assert.match(profile.cmd, /scale=-2:2160/);
+    }
+
+    // H.264 の 4K は Level 5.1 以上が必要
+    const h264 = expansion.live.find(p => p.id.includes('h264'));
+    assert.match(h264.cmd, /-level 5\.2/);
+});
+
 test('codecs flag adds hevc-specific ffmpeg options (tag:v hvc1, x265-params)', () => {
     const expansion = EncodePresets.expand({ targets: ['liveHLS'], codecs: ['h264', 'hevc'], qualities: ['720p'] });
     assert.equal(expansion.live.length, 2);

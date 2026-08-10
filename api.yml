@@ -136,6 +136,8 @@ components:
                 - NW38
                 - NW39
                 - NW40
+                - BS4K
+                - CS4K
 
         ProgramGenreLv1:
             description: ジャンル
@@ -421,6 +423,10 @@ components:
                         NW39:
                             type: boolean
                         NW40:
+                            type: boolean
+                        BS4K:
+                            type: boolean
+                        CS4K:
                             type: boolean
                 recorded:
                     description: 指定可能な録画ディレクトリ名
@@ -1054,6 +1060,12 @@ components:
                     type: boolean
                 NW40:
                     description: NW
+                    type: boolean
+                BS4K:
+                    description: 新4K8K衛星放送
+                    type: boolean
+                CS4K:
+                    description: 新4K8K衛星放送
                     type: boolean
                 channelIds:
                     description: 放送局
@@ -5147,6 +5159,20 @@ components:
             description: NW
             in: query
             name: NW40
+            required: true
+            schema:
+                type: boolean
+        requiredBS4K:
+            description: 新4K8K衛星放送
+            in: query
+            name: BS4K
+            required: true
+            schema:
+                type: boolean
+        requiredCS4K:
+            description: 新4K8K衛星放送
+            in: query
+            name: CS4K
             required: true
             schema:
                 type: boolean
