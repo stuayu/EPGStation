@@ -37,6 +37,7 @@
                     :circle="false"
                     :length="totalPages"
                     :total-visible="7"
+                    show-first-last-page
                     @update:model-value="onMovePage"
                 ></v-pagination>
             </div>

@@ -418,6 +418,8 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **シリーズ一覧の検索条件・ページ位置を URL query に載せた**: シリーズ一覧 (`client/src/views/Series.vue`) はキーワード・並べ替え・クール・放送状態・出所・欠番絞り込み・ページをコンポーネントのローカル状態で持っていたため、シリーズ詳細へ遷移してブラウザバックすると検索結果もページ位置も失われていた。録画済み一覧と同じ方式に揃え、これらを `?keyword=&sort=&order=&season=&status=&origin=&hasMissing=&page=` として URL に持たせ、`$route` の変化 (条件変更・ページ移動・ブラウザバック) を watch して取得し直すようにした。既定値の項目は query に載せない
     - **スクロール位置の復元**: 取得完了後に `IScrollPositionState.emitDoneGetData()` を呼ぶようにした。router の `scrollBehavior` はこの通知を待ってから位置を戻すため、これが無いと一覧が描画される前にスクロール復元が走って先頭に戻ってしまう
     - **ページャをページ番号指定にした**: 「前へ / 次へ」だけだった画面下部のページャを、ページ番号を直接選べる `v-pagination` に置き換えた。シリーズ一覧は URL query 駆動の共通コンポーネント `Pagination.vue` を使い、シリーズ未確定キュー (`SeriesPending.vue`) と録画済み一覧のシリーズ表示 (`Recorded.vue`) はローカル状態のまま `v-pagination` にした。件数表記 (`1–30 / 983`) はページャの上に残している。あわせて録画済み一覧のシリーズ表示でキーワード検索したときに 1 ページ目へ戻るようにした (従来はページ位置が残ったままだった)
+    - **先頭・最終ページへ飛ぶボタンを付けた**: ページ数が多い画面で端まで移動しづらかったため、共通コンポーネント `Pagination.vue` / `MobilePagination.vue` に `showFirstLastPage` prop (既定 `false` のオプトイン) を追加し、シリーズ一覧で有効にした。ローカル状態で `v-pagination` を直接使っているシリーズ未確定キュー (`SeriesPending.vue`) と視聴履歴 (`WatchHistory.vue`) にも `show-first-last-page` を付けている
+    - **検索結果にページネーションを付けた**: 番組検索 (`client/src/components/search/SearchResult.vue`) は最大 `searchLength` 件 (既定 300) をすべて一度に並べていた。検索 API (`POST /api/schedules/search`) は `limit` のみで offset を持たないため、取得済みの結果をクライアント側で 50 件ずつに区切って表示する方式にした。検索し直したら 1 ページ目へ戻し、ページ移動時は結果の先頭へスクロールする
 
 - **新しいバージョンの公開を Web UI で知らせ、ワンクリックで更新できるようにした**
     - **更新チェック**: Operator が GitHub Releases API (`https://api.github.com/repos/<owner>/<repo>/releases`) を起動 3 分後 + 既定 6 時間間隔で見に行き、最新の正式リリースとプレリリースをそれぞれ保持する (`UpdateManageModel`, `src/model/update/`)。取得に失敗しても前回のキャッシュを使い続け、理由だけを `checkError` で返す
