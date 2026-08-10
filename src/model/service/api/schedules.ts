@@ -57,6 +57,8 @@ export const get: Operation = async (req, res) => {
             NW38: req.query.NW38 as any,
             NW39: req.query.NW39 as any,
             NW40: req.query.NW40 as any,
+            BS4K: req.query.BS4K as any,
+            CS4K: req.query.CS4K as any,
         };
         if (typeof req.query.isFree === 'boolean') {
             option.isFree = req.query.isFree;
@@ -218,6 +220,12 @@ get.apiDoc = {
         },
         {
             $ref: '#/components/parameters/requiredNW40',
+        },
+        {
+            $ref: '#/components/parameters/requiredBS4K',
+        },
+        {
+            $ref: '#/components/parameters/requiredCS4K',
         },
     ],
     responses: {

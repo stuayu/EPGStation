@@ -296,6 +296,18 @@
                             class="mx-1 my-0"
                             label="NW40"
                         ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchOptionValue.broadcastWave.BS4K.isShow"
+                            v-model="searchOptionValue.broadcastWave.BS4K.isEnable"
+                            class="mx-1 my-0"
+                            label="BS4K"
+                        ></v-checkbox>
+                        <v-checkbox
+                            v-if="searchOptionValue.broadcastWave.CS4K.isShow"
+                            v-model="searchOptionValue.broadcastWave.CS4K.isEnable"
+                            class="mx-1 my-0"
+                            label="CS4K"
+                        ></v-checkbox>
                     </div>
                 </SearchOptionRow>
                 <SearchOptionRow title="ジャンル">

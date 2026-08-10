@@ -85,6 +85,8 @@ class ReservationManageModel implements IReservationManageModel {
         NW38: false,
         NW39: false,
         NW40: false,
+        BS4K: false,
+        CS4K: false,
     };
 
     constructor(

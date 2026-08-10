@@ -745,9 +745,9 @@ namespace GuideState {
     // 無限スクロールで伸ばせる表示時間の上限 (時間)。EPG は 8 日程度先までしか無い
     export const MAX_TIME_LENGTH = 24 * 8;
     // ScheduleOption の放送波キー
-    export const BROADCAST_TYPES: string[] = ['GR', 'BS', 'CS', 'SKY'].concat(
-        Array.from({ length: 40 }, (_, i) => `NW${i + 1}`),
-    );
+    export const BROADCAST_TYPES: string[] = ['GR', 'BS', 'CS', 'SKY']
+        .concat(Array.from({ length: 40 }, (_, i) => `NW${i + 1}`))
+        .concat(['BS4K', 'CS4K']);
     // 追いかけ中インジケータ判定用に取得するシリーズ数の上限 (簡易実装のため全件走査はしない)
     export const FOLLOWING_TITLE_FETCH_LIMIT = 500;
     // GET /api/series の limit 上限。これを超える limit は 400 になるため分割して取得する

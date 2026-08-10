@@ -124,6 +124,8 @@ class IPTVApiModel implements IIPTVApiModel {
                 'NW38',
                 'NW39',
                 'NW40',
+                'BS4K',
+                'CS4K',
             ],
         });
         const channels = await this.channelDB.findAll();

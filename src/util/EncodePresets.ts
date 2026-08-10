@@ -9,7 +9,7 @@ import IConfigFile, {
 
 /**
  * ハードウェア (software / qsv / vaapi / nvenc) × コーデック (h264 / hevc) ×
- * 画質 (1080p / 720p / 480p / 240p) × 用途 (recorded / liveHLS / recordedStreaming) の
+ * 画質 (2160p / 1080p / 720p / 480p / 240p) × 用途 (recorded / liveHLS / recordedStreaming) の
  * 組み合わせから、録画エンコード (encode) / 配信プリセット (stream.profiles) を組み立てる。
  *
  * config.yml で `encode:` / `stream.profiles.*` を 1 つずつ手書き (コメントアウトで運用) する代わりに、
@@ -100,6 +100,8 @@ const rigayaBinPath = (hwaccel: RigayaHwAccel, execPaths?: RigayaExecPaths): str
     execPaths?.[hwaccel] ?? RIGAYA_DEFAULT_BIN[hwaccel];
 
 const QUALITY_TABLE: Record<EncodeQuality, QualityParam> = {
+    // 新4K8K衛星放送 (BS4K / CS4K) 向け。HEVC 前提のビットレートなので H.264 では画質が落ちる
+    '2160p': { height: 2160, videoBitrate: 15000, audioBitrate: 256 },
     '1080p': { height: 1080, videoBitrate: 5000, audioBitrate: 192 },
     '720p': { height: 720, videoBitrate: 3000, audioBitrate: 192 },
     '480p': { height: 480, videoBitrate: 1500, audioBitrate: 128 },
@@ -243,6 +245,7 @@ namespace EncodePresets {
 
     const h264Profile = (height: number): string => (height >= 720 ? 'high' : 'main');
     const h264Level = (height: number): string => {
+        if (height >= 2160) return '5.2'; // 4K (3840x2160) は Level 5.1 以上が要る
         if (height >= 1080) return '4.1';
         if (height >= 720) return '4.0';
         if (height >= 480) return '3.1';

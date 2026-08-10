@@ -61,7 +61,9 @@ export type ChannelType =
     | 'NW37'
     | 'NW38'
     | 'NW39'
-    | 'NW40'; // NWを追加
+    | 'NW40' // NWを追加
+    | 'BS4K' // 新4K8K衛星放送 (BS)
+    | 'CS4K'; // 新4K8K衛星放送 (CS)
 export type BroadcastRegionId = string;
 
 /**
@@ -309,6 +311,8 @@ export interface BroadcastStatus {
     NW38: boolean;
     NW39: boolean;
     NW40: boolean;
+    BS4K: boolean;
+    CS4K: boolean;
 }
 
 /**
@@ -434,6 +438,8 @@ export interface RuleSearchOption {
     NW38?: boolean; // NW
     NW39?: boolean; // NW
     NW40?: boolean; // NW
+    BS4K?: boolean; // 新4K8K衛星放送
+    CS4K?: boolean; // 新4K8K衛星放送
     channelIds?: ChannelId[]; // channels ids
     genres?: Genre[];
     times?: SearchTime[]; // 開始時間からの有効時間
@@ -1096,6 +1102,8 @@ export interface ScheduleOption {
     NW38: boolean;
     NW39: boolean;
     NW40: boolean;
+    BS4K: boolean;
+    CS4K: boolean;
 }
 
 /**
