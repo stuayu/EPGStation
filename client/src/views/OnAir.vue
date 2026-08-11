@@ -2,6 +2,9 @@
     <v-main>
         <TitleBar title="放映中">
             <template v-slot:menu>
+                <v-btn icon variant="text" size="small" title="ピン留めを編集" v-on:click="isOpenPinnedChannelsDialog = true">
+                    <v-icon>mdi-pin-outline</v-icon>
+                </v-btn>
                 <!-- 系列でまとめた表示は系列局の一覧から選ぶ -->
                 <v-btn icon variant="text" size="small" title="系列局から選ぶ" v-on:click="gotoAffiliations">
                     <v-icon>mdi-television-classic</v-icon>
@@ -28,10 +31,12 @@
         <div style="visibility: hidden">dummy</div>
         <OnAirSelectStream></OnAirSelectStream>
         <ProgramDialog></ProgramDialog>
+        <PinnedChannelsDialog v-model:isOpen="isOpenPinnedChannelsDialog"></PinnedChannelsDialog>
     </v-main>
 </template>
 
 <script lang="ts">
+import PinnedChannelsDialog from '@/components/channel/PinnedChannelsDialog.vue';
 import ProgramDialog from '@/components/guide/ProgramDialog.vue';
 import OnAirCard from '@/components/onair/OnAirCard.vue';
 import OnAirSelectStream from '@/components/onair/OnAirSelectStream.vue';
@@ -53,10 +58,12 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
         OnAirCard,
         OnAirSelectStream,
         ProgramDialog,
+        PinnedChannelsDialog,
     },
 })
 class OnAir extends Vue {
     public onAirState: IOnAirState = container.get<IOnAirState>('IOnAirState');
+    public isOpenPinnedChannelsDialog: boolean = false;
     private settingValue: ISettingValue = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');

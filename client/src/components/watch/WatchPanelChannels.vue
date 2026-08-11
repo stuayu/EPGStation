@@ -50,12 +50,12 @@
                 {{ selectedTab === pinnedTabId ? 'ピン留めした放送局がありません' : '放送中の番組がありません' }}
             </div>
         </div>
-        <WatchPinnedChannelsDialog v-model:isOpen="isOpenPinnedChannelsDialog"></WatchPinnedChannelsDialog>
+        <PinnedChannelsDialog v-model:isOpen="isOpenPinnedChannelsDialog"></PinnedChannelsDialog>
     </div>
 </template>
 
 <script lang="ts">
-import WatchPinnedChannelsDialog from '@/components/watch/WatchPinnedChannelsDialog.vue';
+import PinnedChannelsDialog from '@/components/channel/PinnedChannelsDialog.vue';
 import container from '@/model/ModelContainer';
 import IOnAirState, { OnAirDisplayData, OnAirTabItem } from '@/model/state/onair/IOnAirState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
@@ -70,7 +70,7 @@ import * as apid from '../../../../api';
  */
 @Component({
     components: {
-        WatchPinnedChannelsDialog,
+        PinnedChannelsDialog,
     },
 })
 class WatchPanelChannels extends Vue {
@@ -80,7 +80,7 @@ class WatchPanelChannels extends Vue {
     @Prop({ required: false, default: null })
     public currentChannelId!: apid.ChannelId | null;
 
-    public selectedTab: string = WatchPanelChannels.PINNED_TAB_ID;
+    public selectedTab: string = container.get<IOnAirState>('IOnAirState').getPinnedTabId();
     public isOpenPinnedChannelsDialog: boolean = false;
 
     private onAirState: IOnAirState = container.get<IOnAirState>('IOnAirState');
@@ -89,50 +89,27 @@ class WatchPanelChannels extends Vue {
     private updateTimer: ReturnType<typeof setTimeout> | null = null;
     private digestibilityTimer: ReturnType<typeof setInterval> | null = null;
 
-    private static readonly PINNED_TAB_ID = 'pinned';
-
     /**
      * ピン留めタブの識別子 (テンプレートから参照するため getter で公開する)
      */
     get pinnedTabId(): string {
-        return WatchPanelChannels.PINNED_TAB_ID;
+        return this.onAirState.getPinnedTabId();
     }
 
     get tabs(): OnAirTabItem[] {
-        return [
-            {
-                id: WatchPanelChannels.PINNED_TAB_ID,
-                name: 'ピン留め',
-            },
-            ...this.onAirState.getTabs(),
-        ];
+        // 視聴画面はタブの中に「ピン留めを編集」を置いているため、空でもピン留めタブを出す
+        return this.onAirState.getTabs({ alwaysIncludePinned: true });
     }
 
     get items(): OnAirDisplayData[] {
-        if (this.selectedTab === WatchPanelChannels.PINNED_TAB_ID) {
-            const pinnedIds = this.pinnedChannelIds;
-
-            // ピン留めした順に並べる
-            return pinnedIds
-                .map(channelId => {
-                    return this.onAirState.getSchedules().find(s => {
-                        return s.display.channelId === channelId;
-                    });
-                })
-                .filter((item): item is OnAirDisplayData => {
-                    return typeof item !== 'undefined';
-                });
-        }
-
         return this.onAirState.getSchedules(this.selectedTab);
     }
 
     /**
      * ピン留めした放送局
-     * 保存値 (getSavedValue) は localStorage の直読みで再描画の対象にならないため、リアクティブな tmp を参照する
      */
     get pinnedChannelIds(): apid.ChannelId[] {
-        return this.setting.tmp.pinnedChannelIds ?? [];
+        return this.onAirState.getPinnedChannelIds();
     }
 
     public async created(): Promise<void> {

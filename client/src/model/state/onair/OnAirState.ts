@@ -9,6 +9,8 @@ import IOnAirState, { OnAirDisplayData, OnAirTabItem } from './IOnAirState';
 
 @injectable()
 export default class OnAirState implements IOnAirState {
+    // ピン留めした放送局だけを並べるタブの識別子 (放送波・地域に依存しないため接頭辞を持たない)
+    private static readonly PINNED_TAB_ID = 'pinned';
     // タブ識別子の接頭辞 (地域タブ・系列タブと放送波種別タブを区別する)
     private static readonly REGION_TAB_PREFIX = 'region:';
     private static readonly AFFILIATION_TAB_PREFIX = 'affiliation:';
@@ -267,6 +269,19 @@ export default class OnAirState implements IOnAirState {
             return this.schedules;
         }
 
+        // ピン留めタブは放送波・地域をまたいで、ピン留めした順に並べる
+        if (tabId === OnAirState.PINNED_TAB_ID) {
+            return this.getPinnedChannelIds()
+                .map(channelId => {
+                    return this.schedules.find(s => {
+                        return s.display.channelId === channelId;
+                    });
+                })
+                .filter((item): item is OnAirDisplayData => {
+                    return typeof item !== 'undefined';
+                });
+        }
+
         // 地域タブは地上波系 (GR / NWxx) をまとめて表示する
         if (tabId.startsWith(OnAirState.REGION_TAB_PREFIX) === true) {
             const regionId = tabId.slice(OnAirState.REGION_TAB_PREFIX.length);
@@ -307,15 +322,39 @@ export default class OnAirState implements IOnAirState {
     }
 
     /**
+     * ピン留めタブの識別子を返す
+     * @return string
+     */
+    public getPinnedTabId(): string {
+        return OnAirState.PINNED_TAB_ID;
+    }
+
+    /**
+     * ピン留めした放送局 (ピン留めした順)
+     * 保存値 (getSavedValue) は localStorage の直読みで再描画の対象にならないため、リアクティブな tmp を参照する
+     * @return apid.ChannelId[]
+     */
+    public getPinnedChannelIds(): apid.ChannelId[] {
+        return this.settingStorage.tmp.pinnedChannelIds ?? [];
+    }
+
+    /**
      * タブの一覧を返す。
+     * ピン留めした放送局があれば先頭がピン留めタブになり (タブ表示の初期選択もこれになる)、
      * 地上波系 (GR / NWxx) は番組表と同じ地域名でまとめ、BS / CS / SKY は放送波種別で分ける
+     * @param option.alwaysIncludePinned: boolean ピン留めが空でもピン留めタブを含めるか
+     *        (視聴画面のチャンネル一覧はタブの中にピン留めの編集導線を持つため true にする)
      * @return OnAirTabItem[]
      */
-    public getTabs(): OnAirTabItem[] {
+    public getTabs(option?: { alwaysIncludePinned?: boolean }): OnAirTabItem[] {
         const regionalTypes = this.tabs.filter(type => OnAirState.isRegionalType(type) === true);
         const otherTypes = this.tabs.filter(type => OnAirState.isRegionalType(type) === false);
 
-        const result: OnAirTabItem[] = [];
+        // 空のピン留めタブを既定で出すと中身の無い画面が初期表示になるため、ピン留めがある場合だけ並べる
+        const result: OnAirTabItem[] =
+            option?.alwaysIncludePinned === true || this.getPinnedChannelIds().length > 0
+                ? [{ id: OnAirState.PINNED_TAB_ID, name: 'ピン留め' }]
+                : [];
         const isAffiliationMode = this.getGroupingType() === 'affiliation';
         const groups = regionalTypes.length === 0 ? [] : this.getChannelGroups(regionalTypes, isAffiliationMode);
         if (groups.length === 0) {

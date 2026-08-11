@@ -20,7 +20,7 @@ export interface OnAirDisplayData {
  * 地上波系 (GR / NWxx) は番組表と同じ地域名でまとめ、BS / CS / SKY は放送波種別で分ける
  */
 export interface OnAirTabItem {
-    // タブの識別子 (地域は 'region:<地域 id>'、放送波種別は 'type:<ChannelType>')
+    // タブの識別子 (ピン留めは 'pinned'、地域は 'region:<地域 id>'、放送波種別は 'type:<ChannelType>')
     id: string;
     // タブに表示する名前
     name: string;
@@ -33,6 +33,16 @@ export default interface IOnAirState {
     updateDigestibility(): void;
     getSchedules(tabId?: string): OnAirDisplayData[];
     getReserveIndex(): ReserveStateItemIndex;
-    getTabs(): OnAirTabItem[];
+    getTabs(option?: { alwaysIncludePinned?: boolean }): OnAirTabItem[];
+    /**
+     * ピン留めタブの識別子を返す
+     * @return string
+     */
+    getPinnedTabId(): string;
+    /**
+     * ピン留めした放送局 (ピン留めした順) を返す
+     * @return apid.ChannelId[]
+     */
+    getPinnedChannelIds(): apid.ChannelId[];
     getUpdateTime(): number;
 }
