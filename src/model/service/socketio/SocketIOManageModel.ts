@@ -16,6 +16,8 @@ import ISocketIOManageModel from './ISocketIOManageModel';
 export default class SocketIOManageModel implements ISocketIOManageModel {
     // EIT[p/f] 相当の更新通知に使う socket.io イベント名 (クライアントと合わせること)
     private static readonly ON_AIR_PROGRAM_EVENT = 'updateOnAirProgram';
+    // 番組情報の更新通知に使う socket.io イベント名 (クライアントと合わせること)
+    private static readonly PROGRAM_UPDATED_EVENT = 'updateProgram';
 
     private log: ILogger;
     private config: IConfigFile;
@@ -110,6 +112,22 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
 
         for (const io of this.ios) {
             io.sockets.emit(SocketIOManageModel.ON_AIR_PROGRAM_EVENT, { channelIds });
+        }
+    }
+
+    /**
+     * 番組情報の更新を通知する。
+     * EIT[p/f] の窓 (現在〜10 分先) の外で起きた変更も含むため、
+     * 受け取った側は表示している時間帯と重なるときだけ反応する
+     * @param option: { channelIds: number[]; startAt: number | null; endAt: number | null }
+     */
+    public notifyProgramUpdated(option: { channelIds: number[]; startAt: number | null; endAt: number | null }): void {
+        if (this.ios.length === 0) {
+            throw new Error('must call SocketIoManageModel initialize');
+        }
+
+        for (const io of this.ios) {
+            io.sockets.emit(SocketIOManageModel.PROGRAM_UPDATED_EVENT, option);
         }
     }
 

@@ -111,6 +111,25 @@ export default class EventSetter implements IEventSetter {
             });
         });
 
+        // 番組情報の更新通知 (EIT[p/f] の窓の外で起きた変更も含む)
+        this.epgUpdateEvent.setProgramUpdated(notice => {
+            // 番組表は表示中の時間帯と重なるときだけ取り直す (判断はクライアント側)
+            this.ipc.notifyProgramUpdatedClient({
+                channelIds: notice.channelIds,
+                startAt: notice.startAt,
+                endAt: notice.endAt,
+            });
+
+            // 変更のあった番組 id に一致する予約だけを追従させる。
+            // updateOnAirReserves() の 15 分窓に入らない先の予約もこちらで拾える
+            if (notice.programIds.length > 0) {
+                this.reservationManage.updateReservesByProgramIds(notice.programIds).catch(err => {
+                    this.log.system.error('update reserves by program ids error');
+                    this.log.system.error(err);
+                });
+            }
+        });
+
         this.epgUpdateEvent.setUpdated(async () => {
             await this.recordedManage.historyCleanup().catch(() => {});
 

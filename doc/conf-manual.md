@@ -783,6 +783,37 @@ epgRetentionTime: -1
 epgDeleteIntervalTime: 60
 ```
 
+### epgRealtime
+
+#### EPG のリアルタイム同期
+
+災害発生時の特別番組への差し替えや前番組の延長による番組情報の変更を、`epgUpdateIntervalTime` の周期を待たずに DB へ反映する。
+
+Mirakurun / recisdb-proxy の event stream から受け取った更新イベントのうち、次のいずれかに該当するものだけを先行して反映する (それ以外は従来どおり周期反映のままなので DB の負荷は増えない)。
+
+- 番組の消滅・付け替え (`remove` / `redefine`)
+- 放送時間未定 (ARIB の `duration = 0xFFFFFF`) への変更 — 放送時刻に関わらず対象
+- `urgentWindowMinutes` 以内に始まる、または放送中の番組の更新
+
+機能の有効・無効は機能フラグ `featureFlags.epgRealtimeSync` で切り替える (未指定なら有効)。この項目は反映の細かい挙動を調整するためのもので、すべて省略できる。
+
+| 子項目              | 種類   | デフォルト値 | 必須 | 説明                                                             |
+| ------------------- | ------ | ------------ | ---- | ---------------------------------------------------------------- |
+| debounceMs          | number | 500          | no   | 連続して届く更新を 1 回の DB 更新にまとめるための待ち時間 (ミリ秒) |
+| minIntervalMs       | number | 500          | no   | 先行反映同士の最小間隔 (ミリ秒)                                  |
+| urgentWindowMinutes | number | 180          | no   | これ以内に始まる番組の変更を即時反映の対象とする (分)            |
+
+```yaml
+epgRealtime:
+    debounceMs: 500
+    minIntervalMs: 500
+    urgentWindowMinutes: 180
+```
+
+mirakc を使っている場合、番組情報の更新は元々 serviceId 単位で 10 秒ごとに反映されるため、この設定は影響しない。
+
+recisdb-proxy のような Mirakurun 互換実装を使う場合は、`tunerServerType: mirakurun` を明示して自動判定を無効にすること (`/api/config/server` を返さない実装は mirakc と誤判定される)。
+
 ### isSuppressReservesUpdateAllLog
 
 #### 予約定期更新時のログ出力を抑えるか

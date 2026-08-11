@@ -15,11 +15,15 @@ import { resolveEndAt } from '../../util/ProgramDuration';
 import { formatDurationUndefinedChange, formatLogDuration, formatTimeChange } from '../../util/ProgramTimeLog';
 import Program from '../../db/entities/Program';
 import { detectOnAirPrograms, OnAirDetectResult } from './OnAirProgramDetector';
+import { classifyProgramEvent, ProgramUpdatePriorityOption, splitUrgentProgramEvents } from './ProgramUpdatePriority';
+import { buildProgramUpdateNotice, hasProgramUpdateNotice } from './ProgramUpdateNotice';
+import { resolveEPGRealtimeConfig } from './EPGRealtimeConfig';
 import IEPGUpdateManageModel, {
     ProgramBaseEvent,
     UpdateEvent,
     RemoveEvent,
     RedefineEvent,
+    SaveProgramOption,
     ServiceEvent,
     EPGUpdateEvent,
     TunerServerType,
@@ -411,7 +415,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                     const events: mapid.Event[] = <mapid.Event[]>JSON.parse(`[${String(tmp).slice(0, -3)}]`);
                     for (const event of events) {
                         if (event.resource === 'program') {
-                            this.programQueue.push(<any>event);
+                            this.enqueueProgramEvent(<any>event);
                         } else if (event.resource === 'service') {
                             this.serviceQueue.push(<any>event);
                         }
@@ -528,13 +532,54 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
     }
 
     /**
-     * programQueue の program を DB へ反映させる
+     * 番組更新イベントをキューへ積む。
+     * 即時反映が必要なイベント (災害時の特番割り込み・延長・予約に近い時間帯の変更) を
+     * 受信した場合は URGENT_ENQUEUED を通知し、周期を待たずに先行フラッシュさせる
+     * @param event: ProgramBaseEvent
      */
-    public async saveProgram(timeThreshold: number = 0): Promise<void> {
+    private enqueueProgramEvent(event: ProgramBaseEvent): void {
+        this.programQueue.push(event);
+
+        const option = this.createPriorityOption();
+        if (option === null) {
+            return;
+        }
+
+        if (classifyProgramEvent(event, option) === 'immediate') {
+            this.emit(EPGUpdateEvent.URGENT_ENQUEUED);
+        }
+    }
+
+    /**
+     * 緊急度判定用のオプションを作る (設定はホットリロードされるため実行時に読み直す)
+     * @return ProgramUpdatePriorityOption | null 機能が無効な場合は null
+     */
+    private createPriorityOption(): ProgramUpdatePriorityOption | null {
+        const realtime = resolveEPGRealtimeConfig(this.configuration.getConfig());
+        if (realtime.enabled === false) {
+            return null;
+        }
+
+        return {
+            now: new Date().getTime(),
+            urgentWindowMs: realtime.urgentWindowMs,
+        };
+    }
+
+    /**
+     * programQueue の program を DB へ反映させる
+     * @param timeThreshold: number この時刻より前に始まる番組の更新が無ければキューへ戻す (0 で無条件に反映)
+     * @param option: SaveProgramOption
+     */
+    public async saveProgram(timeThreshold: number = 0, option?: SaveProgramOption): Promise<void> {
         // 取り出し
-        const programs = this.programQueue.splice(0, this.programQueue.length);
+        const programs = option?.urgentOnly === true ? this.spliceUrgentPrograms() : this.spliceAllPrograms();
         if (programs.length === 0) {
             return;
+        }
+        // 先行フラッシュは緊急イベントだけを対象にするため時刻での足切りを行わない
+        if (option?.urgentOnly === true) {
+            timeThreshold = 0;
         }
         this.log.system.debug('number of de-queued items: %d', programs.length);
 
@@ -639,6 +684,19 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                     if (onAirChannelIds.length > 0) {
                         this.emit(EPGUpdateEvent.ON_AIR_PROGRAM_UPDATED, onAirChannelIds);
                     }
+
+                    // 変更のあった放送局・時間帯・番組 id を通知する。
+                    // EIT[p/f] の窓 (現在〜10 分先) の外で起きた変更もここには載るため、
+                    // 番組表は表示中の時間帯と重なるときだけ取り直せる (予約側は番組 id で追従する)
+                    const notice = buildProgramUpdateNotice({
+                        changed: changed,
+                        deleted: deleteValues,
+                        getChannelId: p => this.channelIndex[p.networkId]?.[p.serviceId]?.id ?? null,
+                        programIdLimit: EPGUpdateManageModel.PROGRAM_ID_NOTICE_LIMIT,
+                    });
+                    if (hasProgramUpdateNotice(notice) === true) {
+                        this.emit(EPGUpdateEvent.PROGRAM_RANGE_UPDATED, notice);
+                    }
                 }
             } else {
                 // 整理した結果のEventをキューへ戻す
@@ -655,6 +713,37 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
             this.programQueue = programs.concat(this.programQueue);
             throw err;
         }
+    }
+
+    /**
+     * キューの内容をすべて取り出す
+     * @return ProgramBaseEvent[]
+     */
+    private spliceAllPrograms(): ProgramBaseEvent[] {
+        return this.programQueue.splice(0, this.programQueue.length);
+    }
+
+    /**
+     * 即時反映が必要なイベントだけをキューから取り出す。
+     * 同一番組に対するイベントの追い越しを防ぐため、
+     * 対象の番組 id に属するイベントはまとめて取り出す
+     * @return ProgramBaseEvent[]
+     */
+    private spliceUrgentPrograms(): ProgramBaseEvent[] {
+        const option = this.createPriorityOption();
+        if (option === null) {
+            return [];
+        }
+
+        const split = splitUrgentProgramEvents(this.programQueue, option);
+        if (split.urgent.length === 0) {
+            return [];
+        }
+
+        this.programQueue = split.rest;
+        this.log.system.debug('number of urgent de-queued items: %d', split.urgent.length);
+
+        return split.urgent;
     }
 
     /**
@@ -924,6 +1013,11 @@ namespace EPGUpdateManageModel {
     // EIT[p/f] の追従ログを 1 回の更新で出す上限。
     // 全件更新直後などは対象が数百件になるため、超えたら件数だけを残す
     export const ON_AIR_LOG_LIMIT = 30;
+
+    // 更新通知に載せる番組 id の上限。
+    // これを超える更新は予約を 1 件ずつ追従させるより
+    // 周期的な予約全体更新に任せたほうが安いため、番組 id を載せない
+    export const PROGRAM_ID_NOTICE_LIMIT = 1000;
 
     // mirakurun クライアントが operationId を解決できなかったときに投げる Error のメッセージパターン。
     // docs (OpenAPI 定義) は取得できたが、その内容に対象の operationId が含まれない場合に発生する

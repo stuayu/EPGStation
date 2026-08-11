@@ -6,8 +6,17 @@ export type MessageId = number;
  * 親プロセスから子プロセスへのメッセージ
  */
 export interface ParentMessage {
-    type: 'pushEncode' | 'notifyClient' | 'notifyOnAirProgram';
+    type: 'pushEncode' | 'notifyClient' | 'notifyOnAirProgram' | 'notifyProgramUpdated';
     value?: any;
+}
+
+/**
+ * 番組情報の更新通知。番組表が「表示中の時間帯と重なるときだけ」
+ * 取り直せるよう、放送局 id に加えて変更のあった時間帯を添える
+ */
+export interface NotifyProgramUpdatedMessage extends ParentMessage {
+    type: 'notifyProgramUpdated';
+    value: { channelIds: number[]; startAt: number | null; endAt: number | null };
 }
 
 /**

@@ -9,5 +9,10 @@ export default interface IIPCServer {
      * @param channelIds: number[] 対象の放送局
      */
     notifyOnAirProgramClient(channelIds: number[]): void;
+    /**
+     * 番組情報の更新をクライアントへ通知する (番組表の即時更新用)
+     * @param option: 変更のあった放送局と時間帯
+     */
+    notifyProgramUpdatedClient(option: { channelIds: number[]; startAt: number | null; endAt: number | null }): void;
     setEncode(addOption: apid.AddEncodeProgramOption): void;
 }

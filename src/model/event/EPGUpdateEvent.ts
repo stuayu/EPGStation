@@ -3,6 +3,7 @@ import { inject, injectable } from 'inversify';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import IEPGUpdateEvent from './IEPGUpdateEvent';
+import { ProgramUpdateNotice } from '../epgUpdater/ProgramUpdateNotice';
 
 @injectable()
 class EPGUpdateEvent implements IEPGUpdateEvent {
@@ -43,6 +44,28 @@ class EPGUpdateEvent implements IEPGUpdateEvent {
     }
 
     /**
+     * 番組情報の更新通知イベント発行 (番組表の即時更新と予約の追従に使う)
+     * @param notice: ProgramUpdateNotice
+     */
+    public emitProgramUpdated(notice: ProgramUpdateNotice): void {
+        this.emitter.emit(EPGUpdateEvent.PROGRAM_UPDATED_EVENT, notice);
+    }
+
+    /**
+     * 番組情報の更新通知イベント登録
+     * @param callback: (notice: ProgramUpdateNotice) => void
+     */
+    public setProgramUpdated(callback: (notice: ProgramUpdateNotice) => void): void {
+        this.emitter.on(EPGUpdateEvent.PROGRAM_UPDATED_EVENT, (notice: ProgramUpdateNotice) => {
+            try {
+                callback(notice);
+            } catch (err: any) {
+                this.log.system.error(err);
+            }
+        });
+    }
+
+    /**
      * EPG 更新完了イベント登録
      * @param callback: () => void
      */
@@ -74,6 +97,7 @@ class EPGUpdateEvent implements IEPGUpdateEvent {
 namespace EPGUpdateEvent {
     export const UPDATED_EVENT = 'updated';
     export const ON_AIR_PROGRAM_UPDATED_EVENT = 'onAirProgramUpdated';
+    export const PROGRAM_UPDATED_EVENT = 'programUpdated';
 }
 
 export default EPGUpdateEvent;
