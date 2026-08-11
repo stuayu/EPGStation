@@ -42,6 +42,25 @@ test('precompute does not confirm below-threshold matches (pending queue)', asyn
     assert.equal(result.pending, 1);
     assert.equal(saved, null);
 });
+test('precompute never creates a series when no candidate exists', async () => {
+    let saved = null;
+    const m = new Model(
+        { getConfig: () => ({ featureFlags: { seriesLibrary: true, programSeriesMapping: true } }) },
+        { findId: async () => ({ id: 300, name: '天気予報[天]', channelId: 10, startAt: 1000 }) },
+        { get: async () => null, save: async x => (saved = x) },
+        {
+            findCandidates: async () => [],
+            createSeries: async () => {
+                throw new Error('precompute must not create a series');
+            },
+        },
+        { getAll: async () => ({}), upsert: async () => {} },
+    );
+    const result = await m.precompute([300]);
+    assert.equal(result.skipped, 1);
+    assert.equal(result.matched, 0);
+    assert.equal(saved, null);
+});
 test('get() is read-only and returns the already-saved mapping without writing', async () => {
     const m = new Model(
         { getConfig: () => ({ featureFlags: { seriesLibrary: true, programSeriesMapping: true } }) },

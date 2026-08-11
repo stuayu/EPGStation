@@ -138,6 +138,13 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
 
 ## 変更箇所
 
+- **録画が 1 件も無いシリーズが EPG 更新のたびに量産されるバグを修正した**
+    - **原因**: 番組表 ⇄ シリーズの事前マッピング (`ProgramSeriesApiModel.precompute()`) が、既存シリーズの候補が 1 件も無かった番組について**シリーズを新規作成**していた。録画側の `SeriesResolver` からコピーした「類似候補が無い = 明確な新規シリーズ」という判断だが、録画は実体があるのに対し EPG は録画と無関係な番組 (ニュース・天気予報・通販・単発特番・「サブチャンネル切り替え方法のご案内」など) を大量に含むため、`PROGRAM_UPDATED` が飛ぶたびに空シリーズが増え続けていた
+    - シリーズ名も `program.name` の生値 (`Ａ－Ｓｔｕｄｉｏ＋【瀬戸康史】[解][字]` のような記号・出演者付き) をそのまま使っていた。録画側は `displaySeriesTitle()` で話数・記号を落とすため、両者が非対称だった。さらに作品辞書を引かないため辞書起点のシリーズとも二重化していた
+    - 番組が過去になって `program` 行が消えると `program_series_link` も無くなるため、**シリーズだけが孤児として残る**。実データでは 1082 シリーズ中 80 件が録画 0 件で、作成時刻が同一秒に 15 件・13 件と固まっていた (= EPG 更新バッチ産)
+    - **修正**: `precompute()` の候補 0 件分岐から `createSeries()` を削除し `skipped` として数えるだけにした。この API の目的は「番組表と**既存の**シリーズライブラリの対応付け」なのでシリーズの新設は不要で、シリーズを作るのは実体 (録画) がある `SeriesResolver` 側の責務に一本化した。回帰テストは `test/ut/program-series-api.test.js` の `precompute never creates a series when no candidate exists` (スタブの `createSeries` が呼ばれたら失敗する)
+    - 既に作られてしまった空シリーズは**サーバー設定 > シリーズ管理タブの「空シリーズ」欄**から削除できる (`DELETE /api/series/empty`)
+
 - **放送中画面でチャンネルを選んでも DPlayer の映像が切り替わらないバグを修正した**
     - **原因**: 右パネルのチャンネル一覧からの切り替えは `/onair/watch` の query だけが変わる遷移なので、Vue Router は同じコンポーネントを使い回す。`videoParam` は書き換わるが `VideoContainer` に `key` が無く `videoParam.type` も同じのため、`LiveMpegTsVideo` / `LiveHLSVideo` が再マウントされない。各 video コンポーネントは `mounted()` でしか DPlayer を生成せず props の変化を見ていないため、古いチャンネルの映像が流れ続けていた
     - **修正**: 録画視聴側 (`WatchRecorded.vue` / `WatchRecordedStreaming.vue`) と同じやり方に揃え、`WatchOnAir.vue` の `VideoContainer` にも `videoKey` (配信種別 + 放送局 + エンコード設定) を付けて作り直すようにした。あわせて route 変更時に `videoParam` と実況コメントをリセットするようにした

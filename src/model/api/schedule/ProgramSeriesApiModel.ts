@@ -45,7 +45,8 @@ export default class ProgramSeriesApiModel implements IProgramSeriesApiModel {
     /**
      * EPG 更新で変更のあった programIds について、事前にシリーズ対応を計算し保存する。
      * SeriesResolver と同じしきい値判定 (既定 0.8、settings.series.matchThreshold で変更可) を用い、
-     * しきい値未満の場合は誤リンクを避けるため確定させない (未マッチとしてメトリクスにのみ反映する)
+     * しきい値未満の場合は誤リンクを避けるため確定させない (未マッチとしてメトリクスにのみ反映する)。
+     * 既存シリーズへの対応付けのみを行い、シリーズの新規作成は一切行わない
      */
     public async precompute(programIds: number[]): Promise<ProgramSeriesPrecomputeResult> {
         this.enabled();
@@ -86,15 +87,12 @@ export default class ProgramSeriesApiModel implements IProgramSeriesApiModel {
                 }
             }
             if (candidates.length === 0) {
-                // 類似候補が無い = 誤リンクの恐れが無い明確な新規シリーズなので自動作成する
-                winner = await this.seriesDB.createSeries({
-                    title: program.name,
-                    normalizedTitle: parsed.normalizedTitle,
-                    preferredChannelId: program.channelId,
-                    createdAt: now,
-                    updatedAt: now,
-                });
-                confidence = 1;
+                // 番組表側でシリーズを新規作成してはいけない。
+                // EPG は録画と無関係な番組 (ニュース・天気・通販・単発) を大量に含むため、
+                // ここで作ると録画が 1 件も紐付かない空シリーズが EPG 更新のたびに量産される。
+                // シリーズの新設は実体 (録画) がある SeriesResolver 側の責務
+                skipped++;
+                continue;
             } else if (!winner || confidence < threshold) {
                 // しきい値未満 = 誤リンクの恐れがあるため確定させない (§4.10)
                 pending++;
