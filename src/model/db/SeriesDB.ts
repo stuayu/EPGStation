@@ -51,6 +51,12 @@ export default class SeriesDB implements ISeriesDB {
         const key = normalizedTitle.slice(0, Math.min(4, normalizedTitle.length));
         return key ? await repo.find({ where: { normalizedTitle: Like(`%${key}%`) }, take: 100 }) : [];
     }
+    public async findByNormalizedTitleExact(normalizedTitle: string, excludeSeriesId?: number): Promise<Series[]> {
+        if (normalizedTitle === '') return [];
+        const c = await this.op.getConnection();
+        const rows = await c.getRepository(Series).find({ where: { normalizedTitle } });
+        return typeof excludeSeriesId === 'number' ? rows.filter(row => row.id !== excludeSeriesId) : rows;
+    }
     public async findBySyobocalTid(syobocalTid: number): Promise<Series | null> {
         const c = await this.op.getConnection();
         return await c.getRepository(Series).findOne({ where: { syobocalTid } });
@@ -475,6 +481,8 @@ export default class SeriesDB implements ISeriesDB {
         value: {
             title?: string;
             titleSource?: string | null;
+            // 自動判定の引き当てキー。作品辞書で作品が確定しているシリーズだけ、辞書の正式タイトル由来のキーへ寄せる
+            normalizedTitle?: string;
             annictId?: string | null;
             syobocalTid?: number | null;
             wikidataQid?: string | null;

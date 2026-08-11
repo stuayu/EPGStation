@@ -7,13 +7,16 @@ const SeriesMetadataFiller = require('../../dist/model/series/SeriesMetadataFill
 const logger = { getLogger: () => ({ system: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} } }) };
 const config = { getConfig: () => ({ featureFlags: { seriesLibrary: true, metadataProviders: true } }) };
 
-function makeDB(series, firstAiredAt = new Map()) {
+function makeDB(series, firstAiredAt = new Map(), keyOwners = []) {
     const updates = [];
     const aliases = [];
     return {
         updates,
         aliases,
         findAllSeries: async () => series,
+        // 引き当てキーを寄せる前の衝突チェック。keyOwners に同じキーのシリーズを置くと衝突扱いになる
+        findByNormalizedTitleExact: async (normalizedTitle, excludeSeriesId) =>
+            keyOwners.filter(x => x.normalizedTitle === normalizedTitle && x.id !== excludeSeriesId),
         findAlias: async () => null,
         upsertAlias: async (normalizedTitle, seriesId, createdAt, source) => aliases.push({ normalizedTitle, seriesId, source }),
         findFirstAiredAtMap: async () => firstAiredAt,
@@ -471,4 +474,86 @@ test('fill() with force still keeps a manually set season and title', async () =
 
     assert.equal(typeof db.updates[0]?.patch.title, 'undefined');
     assert.equal(typeof db.updates[0]?.patch.seasonYear, 'undefined');
+});
+
+// 引き当てキー (normalizedTitle) の同期。録画タイトル由来の余計な文字列 (編成枠名・サブタイトル・
+// 出演者) がキーに残ると、同じ作品の録画が引き当てられず新しいシリーズが作られ続ける
+function dictOf(title, over = {}) {
+    return {
+        lookup: async () => ({
+            syobocalTid: null,
+            annictId: null,
+            wikidataQid: 'Q1',
+            tmdbId: null,
+            title,
+            titleKana: null,
+            seasonYear: null,
+            seasonName: null,
+            totalEpisodes: null,
+            ...over,
+        }),
+        lookupEpisodeNumber: async () => null,
+    };
+}
+
+test('fill() rewrites the matching key with the dictionary title when the work is confirmed', async () => {
+    const db = makeDB([
+        series({
+            title: '王様のブランチ',
+            titleSource: 'dictionary',
+            normalizedTitle: '王様のブランチ 日曜劇場「vivant」から堺雅人&阿部寛がスタジオ生出演',
+            wikidataQid: 'Q1',
+        }),
+    ]);
+    const result = await new SeriesMetadataFiller(logger, config, db, dictOf('王様のブランチ'), noLlm, noComment).fill();
+
+    assert.equal(result.keySynced, 1);
+    assert.equal(result.keyConflicted, 0);
+    assert.equal(db.updates[0].patch.normalizedTitle, '王様のブランチ');
+});
+
+test('fill() keeps the key when the dictionary key is already used by another series', async () => {
+    const db = makeDB(
+        [
+            series({
+                title: '鬼滅の刃',
+                titleSource: 'dictionary',
+                normalizedTitle: '「鬼滅の刃」シリーズ全編再放送',
+                wikidataQid: 'Q1',
+            }),
+        ],
+        new Map(),
+        [{ id: 99, normalizedTitle: '鬼滅の刃' }],
+    );
+    const result = await new SeriesMetadataFiller(logger, config, db, dictOf('鬼滅の刃'), noLlm, noComment).fill();
+
+    assert.equal(result.keySynced, 0);
+    assert.equal(result.keyConflicted, 1);
+    assert.equal(typeof db.updates[0]?.patch.normalizedTitle, 'undefined');
+});
+
+test('fill() never rewrites the key of a series that has no external id', async () => {
+    const db = makeDB([
+        series({ title: 'ローカル番組', normalizedTitle: 'ローカル番組 ゲスト回', titleSource: null }),
+    ]);
+    const dict = { lookup: async () => null, lookupEpisodeNumber: async () => null };
+    const result = await new SeriesMetadataFiller(logger, config, db, dict, noLlm, noComment).fill();
+
+    assert.equal(result.keySynced, 0);
+    assert.equal(typeof db.updates[0]?.patch.normalizedTitle, 'undefined');
+});
+
+test('fill() never rewrites the key of a manually named series', async () => {
+    const db = makeDB([
+        series({
+            title: '手動で付けた名前',
+            titleSource: 'manual',
+            normalizedTitle: '手動で付けた名前 サブタイトル',
+            wikidataQid: 'Q1',
+        }),
+    ]);
+    const result = await new SeriesMetadataFiller(logger, config, db, dictOf('作品'), noLlm, noComment).fill();
+
+    assert.equal(result.keySynced, 0);
+    assert.equal(typeof db.updates[0]?.patch.normalizedTitle, 'undefined');
 });

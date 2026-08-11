@@ -170,6 +170,14 @@ export interface NewReservationHint {
 export default interface ISeriesDB {
     findCandidates(normalizedTitle: string): Promise<Series[]>;
     /**
+     * 引き当てキー (normalizedTitle) が完全一致するシリーズを引く。
+     * キーを別の値へ寄せる前に、既存シリーズと衝突しないかを確かめるために使う
+     * @param normalizedTitle: string
+     * @param excludeSeriesId: number | undefined 除外するシリーズ id (自分自身)
+     * @return Promise<Series[]>
+     */
+    findByNormalizedTitleExact(normalizedTitle: string, excludeSeriesId?: number): Promise<Series[]>;
+    /**
      * しょぼいカレンダーの TID からシリーズを引く (作品辞書で確定した録画を同一シリーズへ寄せるために使う)
      * @param syobocalTid: number
      * @return Promise<Series | null>
@@ -284,6 +292,8 @@ export default interface ISeriesDB {
         value: {
             title?: string;
             titleSource?: string | null;
+            // 自動判定の引き当てキー。作品辞書で作品が確定しているシリーズだけ、辞書の正式タイトル由来のキーへ寄せる
+            normalizedTitle?: string;
             annictId?: string | null;
             syobocalTid?: number | null;
             wikidataQid?: string | null;
