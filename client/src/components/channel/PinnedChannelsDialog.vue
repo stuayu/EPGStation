@@ -1,6 +1,6 @@
 <template>
     <v-dialog v-if="isRemove === false" v-model="dialogModel" max-width="600" scrollable>
-        <v-card class="watch-pinned-channels-dialog">
+        <v-card class="pinned-channels-dialog">
             <v-card-title class="text-subtitle-1">ピン留めする放送局</v-card-title>
             <v-card-text class="pa-0">
                 <div class="section-title">ピン留め済み ({{ pinnedItems.length }})</div>
@@ -68,11 +68,11 @@ interface ChannelGroup {
 }
 
 /**
- * 視聴画面のチャンネル一覧でピン留めする放送局をまとめて設定するダイアログ
+ * ピン留めする放送局をまとめて設定するダイアログ (視聴画面のチャンネル一覧と放映中の共用)
  * 一覧の各行にあるピンアイコンと同じ設定 (pinnedChannelIds) を編集する
  */
 @Component({})
-class WatchPinnedChannelsDialog extends Vue {
+class PinnedChannelsDialog extends Vue {
     @Prop({ required: true })
     public isOpen!: boolean;
 
@@ -232,11 +232,11 @@ class WatchPinnedChannelsDialog extends Vue {
     }
 }
 
-export default toNative(WatchPinnedChannelsDialog);
+export default toNative(PinnedChannelsDialog);
 </script>
 
 <style lang="sass" scoped>
-.watch-pinned-channels-dialog
+.pinned-channels-dialog
     .section-title
         padding: 8px 16px 4px
         font-size: 0.75rem
