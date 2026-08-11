@@ -766,9 +766,15 @@ class SeriesView extends Vue {
                     : '';
             // 外部辞書の正式タイトルへ合わせた件数 (シリーズ名が変わるため明示する)
             const title = result.titleSynced > 0 ? ` / シリーズ名 ${result.titleSynced} 件を辞書名へ同期` : '';
+            // 引き当てキーの掃除。衝突で見送ったものはマージが要るので件数を出す
+            const key =
+                result.keySynced > 0 || result.keyConflicted > 0
+                    ? ` / 判定キー ${result.keySynced} 件を整理` +
+                      (result.keyConflicted > 0 ? `、${result.keyConflicted} 件は既存シリーズと重複のため要マージ` : '')
+                    : '';
             this.snackbarState.open({
                 color: 'success',
-                text: `${result.scanned} 件中 ${result.updated} 件を更新しました${llm}${title}${comment}`,
+                text: `${result.scanned} 件中 ${result.updated} 件を更新しました${llm}${title}${key}${comment}`,
             });
             await this.loadSeasons();
             await this.load();

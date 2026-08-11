@@ -440,9 +440,11 @@ class SeriesDetailView extends Vue {
             const detail =
                 result.updated === 0
                     ? '更新はありません'
-                    : result.titleSynced > 0
-                      ? 'シリーズ名を辞書名へ同期しました'
-                      : 'メタデータを更新しました';
+                    : result.keySynced > 0
+                      ? 'シリーズ名と判定キーを辞書名へ同期しました'
+                      : result.titleSynced > 0
+                        ? 'シリーズ名を辞書名へ同期しました'
+                        : 'メタデータを更新しました';
             this.snackbarState.open({ color: 'success', text: `辞書から再取得しました (${detail})` });
         } catch (err) {
             console.error(err);

@@ -9,7 +9,7 @@ import ISyobocalTitleDictionary from '../metadata/syobocal/ISyobocalTitleDiction
 import ILlmTitleExtractor from './ILlmTitleExtractor';
 import ISeriesMetadataFiller, { SeriesMetadataFillOption, SeriesMetadataFillResult } from './ISeriesMetadataFiller';
 import IWorkDictionary, { WorkMatch } from './IWorkDictionary';
-import { isDerivedFromTitle } from './SeriesNormalizer';
+import { isDerivedFromTitle, normalizeSeriesTitle } from './SeriesNormalizer';
 
 /**
  * 既存シリーズのクール (seasonYear/seasonName)・読み仮名・総話数・外部 ID を
@@ -63,6 +63,8 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
         const firstAiredAt = await this.db.findFirstAiredAtMap().catch(() => new Map<number, number>());
         let updated = 0;
         let titleSynced = 0;
+        let keySynced = 0;
+        let keyConflicted = 0;
         let estimated = 0;
         let llmAnalyzed = 0;
         let llmResolved = 0;
@@ -86,6 +88,10 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
             // 表示名を作品辞書の正式タイトルへ合わせる。手動で付けた名前は上書きしない。
             // すでに辞書名へ同期済みでも、辞書側の表記が変わることがあるため引き直す
             const needsTitle = series.titleSource !== 'manual';
+            // 引き当てキー (normalizedTitle) に録画タイトル由来の余計な文字列 (編成枠名・サブタイトル・
+            // 出演者・記号) が残っているシリーズを拾う。表示名だけ辞書名へ同期していると、
+            // 同じ作品なのにキーが揃わず新しいシリーズが作られ続ける
+            const needsKeySync = needsTitle === true && normalizeSeriesTitle(series.title) !== series.normalizedTitle;
             // 作品辞書から埋めるものが残っているか。コメントは辞書本体には無く TID 指定で個別に引くため、
             // ここには含めない (コメントだけが未取得のシリーズで辞書を引き直さない)
             const needsDictionary =
@@ -95,12 +101,14 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
                 needsSeason === true ||
                 series.syobocalTid === null ||
                 series.annictId === null ||
-                needsTitle === true;
+                needsTitle === true ||
+                needsKeySync === true;
             if (needsDictionary === false && needsComment === false) continue;
 
             const patch: {
                 title?: string;
                 titleSource?: string | null;
+                normalizedTitle?: string;
                 syobocalTid?: number | null;
                 annictId?: string | null;
                 wikidataQid?: string | null;
@@ -184,6 +192,19 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
                     patch.seasonName = match.seasonName;
                     patch.seasonSource = 'dictionary';
                 }
+
+                // 引き当てキー (normalizedTitle) も辞書の正式タイトル由来のものへ揃える。
+                // 作品が辞書で確定しているシリーズに限る (外部 ID があるかを条件にする) ため、
+                // キーを正式名に寄せても別作品を巻き込むことはない
+                const keyResult = await this.syncNormalizedTitle(series, patch, needsTitle);
+                if (keyResult === 'conflict') keyConflicted++;
+                else if (keyResult !== null) {
+                    patch.normalizedTitle = keyResult;
+                    keySynced++;
+                    this.log.system.info(
+                        `series key synced: seriesId=${series.id} "${series.normalizedTitle}" -> "${keyResult}"`,
+                    );
+                }
             }
 
             // 2. 辞書で埋まらなかったクールは、最古の録画日時から推測する。
@@ -245,10 +266,19 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
             this.log.system.info(`series metadata: synced ${titleSynced} series title(s) with the work dictionary`);
         }
 
+        if (keySynced > 0 || keyConflicted > 0) {
+            this.log.system.info(
+                `series metadata: synced ${keySynced} matching key(s) with the work dictionary` +
+                    ` (既存シリーズと衝突するため見送り: ${keyConflicted} 件。統合はシリーズ一覧のマージから)`,
+            );
+        }
+
         return {
             scanned: all.length,
             updated,
             titleSynced,
+            keySynced,
+            keyConflicted,
             llmAnalyzed,
             llmResolved,
             commentFetched,
@@ -256,6 +286,56 @@ export default class SeriesMetadataFiller implements ISeriesMetadataFiller {
             commentPending: commentDeferred,
             commentSkippedNoTid,
         };
+    }
+
+    /**
+     * 自動判定の引き当てキー (normalizedTitle) を、作品辞書の正式タイトル由来のキーへ揃える。
+     *
+     * シリーズは録画タイトルから作られるため、局が送出した編成枠名・サブタイトル・出演者・記号が
+     * キーにそのまま残ることがある (例: 表示名「王様のブランチ」に対しキーが
+     * 「王様のブランチ 日曜劇場「vivant」から堺雅人&…」)。表示名だけ辞書名へ同期しても
+     * キーが汚れたままだと同じ作品の録画が引き当てられず、シリーズが際限なく増えていく。
+     *
+     * 別作品を巻き込まないよう、以下をすべて満たす場合だけ寄せる:
+     *   - 作品辞書で作品が確定している (外部 ID を持つ)
+     *   - 表示名が手動設定でない (手動で付けた名前からキーを作らない)
+     *   - 寄せた先のキーが他のシリーズと衝突しない (期・シリーズ違いを 1 つに潰さないための歯止め)
+     *
+     * @param series: Series 対象シリーズ
+     * @param patch: この実行で更新する項目 (表示名・外部 ID は確定済みの値を使う)
+     * @param needsTitle: boolean 表示名が手動設定でないか
+     * @return Promise<string | 'conflict' | null> 寄せるキー / 衝突で見送り / 対象外
+     */
+    private async syncNormalizedTitle(
+        series: Series,
+        patch: { title?: string; syobocalTid?: number | null; annictId?: string | null; wikidataQid?: string | null },
+        needsTitle: boolean,
+    ): Promise<string | 'conflict' | null> {
+        if (needsTitle === false) return null;
+        // 外部 ID が 1 つも無いシリーズ = 辞書で作品を確定できていないので、キーは録画タイトル由来のまま残す
+        const hasExternalId =
+            (patch.syobocalTid ?? series.syobocalTid) !== null ||
+            (patch.annictId ?? series.annictId) !== null ||
+            (patch.wikidataQid ?? series.wikidataQid) !== null;
+        if (hasExternalId === false) return null;
+
+        const desired = normalizeSeriesTitle(patch.title ?? series.title);
+        if (desired === '' || desired === series.normalizedTitle) return null;
+
+        const conflicts =
+            typeof this.db.findByNormalizedTitleExact === 'function'
+                ? await this.db.findByNormalizedTitleExact(desired, series.id).catch(() => null)
+                : null;
+        // 照会に失敗したときは寄せない (衝突の有無が分からないまま書き換えない)
+        if (conflicts === null) return null;
+        if (conflicts.length > 0) {
+            this.log.system.info(
+                `series metadata: keeping the key of seriesId=${series.id} ("${series.normalizedTitle}")` +
+                    ` because "${desired}" is already used by seriesId=${conflicts.map(x => x.id).join(',')}`,
+            );
+            return 'conflict';
+        }
+        return desired;
     }
 
     /**

@@ -34,6 +34,10 @@ export interface RefreshSeriesMetadataResult {
     updated: number;
     // 表示名を作品辞書の正式タイトルへ合わせたシリーズ数
     titleSynced: number;
+    // 引き当てキー (normalizedTitle) を辞書の正式タイトル由来のものへ揃えたシリーズ数
+    keySynced: number;
+    // 揃えた先のキーが既存シリーズと衝突するため見送ったシリーズ数 (統合はマージ操作で行う)
+    keyConflicted: number;
     // LLM フォールバックへ回したシリーズ数
     llmAnalyzed: number;
     // LLM 経由で外部 ID を確定できたシリーズ数
