@@ -7,13 +7,20 @@ import { isFeatureEnabled } from '../FeatureFlags';
 import IProgramSeriesApiModel from '../api/schedule/IProgramSeriesApiModel';
 import IEPGUpdateManageModel, { EPGUpdateEvent, TunerServerType } from './IEPGUpdateManageModel';
 import IEPGUpdater from './IEPGUpdater';
+import { resolveEPGRealtimeConfig } from './EPGRealtimeConfig';
+import { ProgramUpdateNotice } from './ProgramUpdateNotice';
 import Util from '../../util/Util';
 
 @injectable()
 class EPGUpdater implements IEPGUpdater {
     private log: ILogger;
     private config: IConfigFile;
+    private configuration: IConfiguration;
     private updateManage: IEPGUpdateManageModel;
+
+    // 緊急更新の先行フラッシュ (デバウンス) 用
+    private urgentFlushTimer: NodeJS.Timeout | null = null;
+    private lastUrgentFlushTime: number = 0;
 
     private isEventStreamAlive: boolean = false;
     private lastUpdatedTime: number = 0;
@@ -37,7 +44,14 @@ class EPGUpdater implements IEPGUpdater {
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
+        this.configuration = configuration;
         this.updateManage = updateManage;
+
+        // 災害時の特番割り込み・前番組の延長など、即時に反映すべき更新は
+        // 10 秒周期の tick を待たずに短いデバウンスで先行して DB へ書く
+        this.updateManage.on(EPGUpdateEvent.URGENT_ENQUEUED, () => {
+            this.scheduleUrgentFlush();
+        });
 
         this.updateManage.on(EPGUpdateEvent.PROGRAM_UPDATED, (programIds?: number[]) => {
             this.lastEventStreamUpdatedTime = new Date().getTime();
@@ -51,6 +65,13 @@ class EPGUpdater implements IEPGUpdater {
         this.updateManage.on(EPGUpdateEvent.ON_AIR_PROGRAM_UPDATED, (channelIds?: number[]) => {
             if (typeof process.send === 'undefined' || !channelIds || channelIds.length === 0) return;
             process.send({ msg: 'onAirProgramUpdated', channelIds });
+        });
+
+        // 変更のあった放送局・時間帯・番組 id を親プロセスへ渡す。
+        // EIT[p/f] の窓の外で起きた変更 (数時間先の延長・特番差し込み) もここには載る
+        this.updateManage.on(EPGUpdateEvent.PROGRAM_RANGE_UPDATED, (notice?: ProgramUpdateNotice) => {
+            if (typeof process.send === 'undefined' || typeof notice === 'undefined') return;
+            process.send({ msg: 'programUpdated', notice: notice });
         });
 
         this.updateManage.on(EPGUpdateEvent.SERVICE_UPDATED, () => {
@@ -170,6 +191,63 @@ class EPGUpdater implements IEPGUpdater {
                 }
             });
         }, 10 * 1000);
+    }
+
+    /**
+     * 緊急更新の先行フラッシュを予約する。
+     *
+     * event stream は 1 つの更新につき複数のイベントを連続で送ってくるため、
+     * 受信のたびに DB を書かず debounceMs だけ待って 1 回にまとめる。
+     * さらに minIntervalMs で連続フラッシュの間隔を絞り、
+     * EPG の大量流入時に DB 更新が張り付かないようにする
+     */
+    private scheduleUrgentFlush(): void {
+        // updateAll が完了するまではキューのフラッシュを行わない (通常の tick と同じ扱い)
+        if (this.isEventStreamAlive === false) {
+            return;
+        }
+
+        // 予約済みなら何もしない (デバウンスの待ち時間を延長しない = 更新が来続けても必ず反映される)
+        if (this.urgentFlushTimer !== null) {
+            return;
+        }
+
+        const realtime = resolveEPGRealtimeConfig(this.configuration.getConfig());
+        if (realtime.enabled === false) {
+            return;
+        }
+
+        const sinceLastFlush = new Date().getTime() - this.lastUrgentFlushTime;
+        const wait = Math.max(realtime.debounceMs, realtime.minIntervalMs - sinceLastFlush);
+
+        this.urgentFlushTimer = setTimeout(() => {
+            this.urgentFlushTimer = null;
+            this.runUrgentFlush().catch(err => {
+                this.log.system.error('urgent epg flush error');
+                this.log.system.error(err);
+            });
+        }, wait);
+    }
+
+    /**
+     * 緊急更新の先行フラッシュを実行する。
+     * 定期実行タスク (updateAll など) と競合しないよう同じロックに乗せる
+     */
+    private async runUrgentFlush(): Promise<void> {
+        this.lastUrgentFlushTime = new Date().getTime();
+
+        await this.runExclusiveUpdateTask(async () => {
+            if (this.isEventStreamAlive === false) {
+                return;
+            }
+
+            try {
+                await this.updateManage.saveProgram(0, { urgentOnly: true });
+            } catch (err: any) {
+                this.log.system.error('urgent program update error');
+                this.log.system.error(err);
+            }
+        });
     }
 
     /**

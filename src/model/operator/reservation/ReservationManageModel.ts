@@ -1302,6 +1302,42 @@ class ReservationManageModel implements IReservationManageModel {
     }
 
     /**
+     * EPG 更新で変更のあった番組の予約を追従させる。
+     *
+     * `updateOnAirReserves()` は「現在時刻〜15 分先」の窓に入る予約しか見ないため、
+     * 数時間先の番組が延長・繰り上げ・消滅しても反映は `epgUpdateIntervalTime` 周期の
+     * `updateAll()` 待ちになる。ここでは **変更のあった番組 id に一致する予約だけ** を
+     * 引いて更新するので、放送時刻に関わらず即座に追従できる。
+     * 対象が無ければ DB を 1 回引くだけで終わる
+     * @param programIds: apid.ProgramId[] 変更・削除のあった番組 id
+     */
+    public async updateReservesByProgramIds(programIds: apid.ProgramId[]): Promise<void> {
+        if (programIds.length === 0) {
+            return;
+        }
+
+        const reserves = await this.reserveDB.findProgramIds(programIds).catch(err => {
+            this.log.system.error('get reserves by program ids error');
+            this.log.system.error(err);
+
+            return [] as Reserve[];
+        });
+
+        for (const reserve of reserves) {
+            // 除外済みの予約は対象外 (番組が変わっても除外のままでよい)
+            if (reserve.isSkip === true) {
+                continue;
+            }
+
+            // 変更が無ければ update() 内で早期 return されるためログは抑制する
+            await this.update(reserve.id, true).catch(err => {
+                this.log.system.error(`update reservation by program id error: ${reserve.id}`);
+                this.log.system.error(err);
+            });
+        }
+    }
+
+    /**
      * 予約キャンセル
      * 手動予約の場合は削除
      * ルール予約の場合は除外

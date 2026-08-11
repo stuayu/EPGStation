@@ -2,7 +2,7 @@ import { inject, injectable } from 'inversify';
 import * as socketIo from 'socket.io-client';
 import Util from '../../util/Util';
 import IServerConfigModel from '../serverConfig/IServerConfigModel';
-import ISocketIOModel from './ISocketIOModel';
+import ISocketIOModel, { ProgramUpdatePayload } from './ISocketIOModel';
 
 @injectable()
 class SocketIOModel implements ISocketIOModel {
@@ -84,6 +84,32 @@ class SocketIOModel implements ISocketIOModel {
     }
 
     /**
+     * 番組情報更新イベントへのコールバック追加。
+     * 変更のあった放送局 id と時間帯が渡ってくるので、
+     * 番組表は表示中の時間帯と重なるときだけ取り直せる
+     * @param callback: (payload: ProgramUpdatePayload) => void
+     */
+    public onUpdateProgram(callback: (payload: ProgramUpdatePayload) => void): void {
+        if (this.io === null) {
+            throw new Error('IOIsNull');
+        }
+
+        this.io.on(SocketIOModel.UPDATE_PROGRAM_EVENT, callback);
+    }
+
+    /**
+     * 番組情報更新イベントへのコールバック削除
+     * @param callback: (payload: ProgramUpdatePayload) => void
+     */
+    public offUpdateProgram(callback: (payload: ProgramUpdatePayload) => void): void {
+        if (this.io === null) {
+            throw new Error('IOIsNull');
+        }
+
+        this.io.off(SocketIOModel.UPDATE_PROGRAM_EVENT, callback);
+    }
+
+    /**
      * update encode status イベントへのコールバック追加
      * @param callback: () => void
      */
@@ -112,6 +138,7 @@ namespace SocketIOModel {
     export const UPDATE_STATUS_EVENT = 'updateStatus';
     export const UPDATE_ENCODE_STATUS_EVENT = 'updateEncode';
     export const UPDATE_ON_AIR_PROGRAM_EVENT = 'updateOnAirProgram';
+    export const UPDATE_PROGRAM_EVENT = 'updateProgram';
 }
 
 export default SocketIOModel;

@@ -78,6 +78,20 @@ epgRetentionTime: 0
 # 過去の番組表データを削除する間隔 (分)。省略時は epgUpdateIntervalTime と同じ
 #epgDeleteIntervalTime: 60
 
+# EPG のリアルタイム同期。
+# 災害時の特別番組の割り込みや前番組の延長による番組情報の変更を、
+# epgUpdateIntervalTime の周期を待たずに (既定 0.5 秒後に) DB へ反映します。
+# 通常の EPG 更新 (先の日付の番組情報) は従来どおり周期反映のままなので DB 負荷は増えません。
+# 機能の有効・無効は featureFlags.epgRealtimeSync で切り替えます (未指定なら有効)。
+# epgRealtime:
+#     # 連続して届く更新を 1 回の DB 更新にまとめるための待ち時間 (ms)。既定 500
+#     debounceMs: 500
+#     # 先行反映同士の最小間隔 (ms)。既定 500
+#     minIntervalMs: 500
+#     # これ以内に始まる番組の変更を即時反映の対象とする (分)。既定 180。
+#     # 放送時間未定への変更・番組の消滅は、この時間に関わらず常に即時反映されます
+#     urgentWindowMinutes: 180
+
 # ストリーミング視聴時に Mirakurun へ渡すプライオリティ
 # streamingPriority: 0
 # 手動予約の開始/終了マージン (秒)
@@ -862,6 +876,7 @@ stream:
 #     advancedSearch: true
 #     updateNotification: true
 #     dataBroadcasting: true
+#     epgRealtimeSync: true
 
 # 録画開始のリトライ方針。
 # 前の番組が「放送時刻未定」(ARIB の duration = 0xFFFFFF) で延長していると、

@@ -215,6 +215,33 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         ],
     },
     {
+        key: 'epgRealtime',
+        label: 'EPG リアルタイム同期',
+        hint: '災害時の特番割り込みや前番組の延長による番組情報の変更を、EPG 更新間隔を待たず即座に反映する (有効・無効は機能フラグ epgRealtimeSync)',
+        requiresRestart: false,
+        editable: 'gui',
+        fields: [
+            {
+                path: 'epgRealtime.debounceMs',
+                label: '先行反映までの待ち時間 (ms)',
+                type: 'number',
+                hint: '連続して届く更新を 1 回の DB 更新にまとめるための待ち時間。既定 500',
+            },
+            {
+                path: 'epgRealtime.minIntervalMs',
+                label: '先行反映の最小間隔 (ms)',
+                type: 'number',
+                hint: '既定 500。EPG が大量に流入したときに DB 更新が張り付かないよう間隔を空ける',
+            },
+            {
+                path: 'epgRealtime.urgentWindowMinutes',
+                label: '即時反映の対象とする時間 (分)',
+                type: 'number',
+                hint: 'これ以内に始まる番組の変更を即時反映する。既定 180 (放送時間未定への変更・番組の消滅は時間帯に関わらず即時反映)',
+            },
+        ],
+    },
+    {
         key: 'needToReplaceEnclosingCharacters',
         label: '番組情報の囲み文字を [] に置換する',
         requiresRestart: false,
@@ -682,6 +709,8 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
             { path: 'featureFlags.externalFileImport', label: '外部録画ファイルの取り込み', type: 'boolean' },
             { path: 'featureFlags.advancedSearch', label: '保存検索', type: 'boolean' },
             { path: 'featureFlags.updateNotification', label: '更新通知', type: 'boolean' },
+            { path: 'featureFlags.dataBroadcasting', label: 'データ放送 (BML)', type: 'boolean' },
+            { path: 'featureFlags.epgRealtimeSync', label: 'EPG リアルタイム同期', type: 'boolean' },
         ],
     },
     {

@@ -8,5 +8,10 @@ export default interface ISocketIOManageModel {
      * @param channelIds: number[] 対象の放送局
      */
     notifyOnAirProgramUpdated(channelIds: number[]): void;
+    /**
+     * 番組情報の更新を通知する (変更のあった放送局と時間帯を添える)
+     * @param option: { channelIds: number[]; startAt: number | null; endAt: number | null }
+     */
+    notifyProgramUpdated(option: { channelIds: number[]; startAt: number | null; endAt: number | null }): void;
     notifyUpdateEncodeProgress(): void;
 }

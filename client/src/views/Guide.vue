@@ -51,7 +51,7 @@ import TimeScale from '@/components/guide/TimeScale.vue';
 import OnAirSelectStream from '@/components/onair/OnAirSelectStream.vue';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
-import ISocketIOModel from '@/model/socketio/ISocketIOModel';
+import ISocketIOModel, { ProgramUpdatePayload } from '@/model/socketio/ISocketIOModel';
 import IGuideState, { FetchGuideOption } from '@/model/state/guide/IGuideState';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
@@ -110,6 +110,11 @@ class Guide extends Vue {
         void this.refreshByOnAirUpdate();
     }).bind(this);
 
+    // 番組情報の更新通知。表示中の時間帯・放送局と重なるときだけ取り直す
+    private onUpdateProgramCallback = ((payload: ProgramUpdatePayload): void => {
+        void this.refreshByProgramUpdate(payload);
+    }).bind(this);
+
     private programBaseWidth: number = 140;
     private programBaseHeight: number = 180;
 
@@ -157,6 +162,7 @@ class Guide extends Vue {
         // socket.io イベント
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
         this.socketIoModel.onUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
+        this.socketIoModel.onUpdateProgram(this.onUpdateProgramCallback);
 
         if (UaUtil.isiOS() === true) {
             // html の class に guide を追加
@@ -172,6 +178,7 @@ class Guide extends Vue {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
         this.socketIoModel.offUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
+        this.socketIoModel.offUpdateProgram(this.onUpdateProgramCallback);
 
         if (UaUtil.isiOS() === true) {
             // html の class から guide を削除
@@ -272,6 +279,52 @@ class Guide extends Vue {
     private async refreshByOnAirUpdate(): Promise<void> {
         // 時刻指定で過去/未来を見ている場合は現在放送中の変更と無関係
         if (typeof this.$route.query.time === 'string') return;
+
+        await this.refreshGuide();
+    }
+
+    /**
+     * 番組情報の更新を番組表へ反映する。
+     * EIT[p/f] の窓の外で起きた変更 (数時間先の延長・特番差し込み) も届くため、
+     * **表示している時間帯・放送局と重なるときだけ**取り直す。
+     * 時刻指定で先の時間帯を見ている場合もここでは対象になる
+     * @param payload: ProgramUpdatePayload
+     */
+    private async refreshByProgramUpdate(payload: ProgramUpdatePayload): Promise<void> {
+        if (this.isOverlappedWithDisplay(payload) === false) return;
+
+        await this.refreshGuide();
+    }
+
+    /**
+     * 更新通知が表示中の番組表と重なるか
+     * @param payload: ProgramUpdatePayload
+     * @return boolean
+     */
+    private isOverlappedWithDisplay(payload: ProgramUpdatePayload): boolean {
+        // 時間帯が不明な通知 (番組の削除のみ) は判断できないので取り直す
+        if (typeof payload.startAt === 'number' && typeof payload.endAt === 'number') {
+            const displayStartAt = this.guideState.getStartAt();
+            const displayEndAt = displayStartAt + this.guideState.getTimesLength() * 60 * 60 * 1000;
+            if (payload.endAt <= displayStartAt || payload.startAt >= displayEndAt) return false;
+        }
+
+        // 表示中の放送局に含まれないなら無視する
+        if (Array.isArray(payload.channelIds) === true && payload.channelIds.length > 0) {
+            const displayChannelIds = new Set(this.guideState.getChannels().map(c => c.id));
+            if (displayChannelIds.size > 0 && payload.channelIds.some(id => displayChannelIds.has(id)) === false) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * スクロール位置を保ったまま番組表を取り直す。
+     * 短時間に何度も呼ばれうるため間引く
+     */
+    private async refreshGuide(): Promise<void> {
         const now = new Date().getTime();
         if (now - this.lastOnAirRefreshAt < Guide.ON_AIR_REFRESH_INTERVAL) return;
         this.lastOnAirRefreshAt = now;

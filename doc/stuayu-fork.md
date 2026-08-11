@@ -522,7 +522,69 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **番組表のレイアウト崩れ対策**: 暫定 3 時間のままだと次の番組に食い込むため、番組表 API (`ScheduleApiModel`) で**同じ放送局の次の番組の開始時刻まで切り詰める** (`clampUndefinedDuration`)。実データ (NHK Eテレ1福島) で 16:37:31 開始の未定番組が次の 17:00 番組の直前まで正しく詰まり、重なり 0 件を確認済み
     - **表示**: `LiveStreamInfoItem` / `ScheduleProgramItem` に `isDurationUndefined` を追加し、視聴画面の番組情報カードと番組表のダイアログでは終了時刻の代わりに「(終了時刻未定)」と出す (暫定値を本当の終了時刻のように見せない)
     - **予約も EIT[p/f] で即時に追従させる**: 上記の通知はクライアントへの反映だけで、**予約の再スケジュールは `epgUpdateIntervalTime` (既定 10 分) 周期の `updateAll()` 任せ**だった。緊急地震速報や前番組の延長・繰り上げで開始時刻が変わっても予約側の反映が最大 10 分遅れ、録画開始に間に合わないことがある。`EventSetter` が `onAirProgramUpdated` を受けたときに `ReservationManageModel.updateOnAirReserves(channelIds)` を呼び、**その放送局の「現在時刻〜15 分先に重なる programId 予約」だけ**を `update()` で追従させるようにした (時刻指定予約は番組情報を持たないため対象外、スキップ済みの予約も対象外)。対象が数件に限られるので 10 秒周期で呼ばれても負荷は小さく、変更が無ければ `update()` 内の `programUpdateTime` 比較で即 return する。追従の結果は従来どおり `reserveEvent` 経由で `RecorderModel.update()` へ流れ、録画中の終了時刻変更にも反映される。テストは `test/ut/reservation-on-air-follow.test.js`
-    - **残っている遅延**: `EPGUpdateManageModel.saveProgram()` は「更新イベントの中に 5 分以内に始まる番組がある」ときだけ DB へ書き込む (`needToSave`)。`remove` / `redefine` だけが溜まった回は書き込まれないため、**番組が消えた場合の反映は次の全体更新まで遅れる**。また 10 秒周期の tick は `updateAll` と直列 (`runExclusiveUpdateTask`) なので、全件更新に時間がかかる環境ではその間 EIT[p/f] の反映が止まる
+    - **残っていた遅延は後述の「EPG のリアルタイム同期」で解消した**: `EPGUpdateManageModel.saveProgram()` は「更新イベントの中に 5 分以内に始まる番組がある」ときだけ DB へ書き込む (`needToSave`) 仕様で、`remove` / `redefine` だけが溜まった回は書き込まれず、番組が消えた場合の反映が次の全体更新まで遅れていた。なお 10 秒周期の tick が `updateAll` と直列 (`runExclusiveUpdateTask`) である点は変わらないため、全件更新に時間がかかる環境では**その間だけ** EIT[p/f] の反映が待たされる
+
+- **EPG のリアルタイム同期を追加した (災害時の特番割り込み・番組延長を即時に DB へ反映する)**
+    - **背景**: Mirakurun / recisdb-proxy の event stream (`/events`) 自体はリアルタイムに届いているのに、DB への反映は「10 秒周期の tick」+「`saveProgram(now + 5 分)` の足切り」を通るため、**5 分より先に始まる番組の変更は `epgUpdateIntervalTime` (既定 10 分) まで反映されなかった**。災害発生時の特別番組への差し替えや、当日夕方以降の編成変更がこれに該当する。周期そのものを縮める案は `updateAll()` が program の全削除 + 全挿入で重いため採らず、**緊急度の高いイベントだけを先行して書き込む経路を別に生やす**方針にした
+    - **緊急度の判定 (`src/model/epgUpdater/ProgramUpdatePriority.ts`)**: event stream から受け取ったイベントを `immediate` / `normal` に分類する。判定はキューへ積む時点で行うため **DB 参照を伴わない同期処理だけ**で完結させている (「DB の現在値と時刻が変わったか」は判定できないので、代わりに「近い時間帯の番組の更新か」で拾う)
+        - `remove` / `redefine` — 番組の消滅・付け替え (特番割り込みで飛んだ場合を含む)
+        - 放送時間未定 (ARIB の `duration = 0xFFFFFF`、Mirakurun では `1`) — 放送時刻に関わらず即時。延長・特番編成の典型
+        - `urgentWindowMinutes` (既定 180 分) 以内に始まる、または放送中の番組の更新
+        - 予約済みの番組 (`isReservedProgramId`。判定関数を差し込める形にしてあるが、EPGUpdater は別プロセスで予約情報を持たないため現時点では未使用)
+    - **先行フラッシュ**: `immediate` を受信すると `EPGUpdateEvent.URGENT_ENQUEUED` が飛び、`EPGUpdater` が `debounceMs` (既定 500ms) 待ってから `saveProgram(0, { urgentOnly: true })` を呼ぶ。event stream は 1 つの編成変更につき複数イベントを連続で送ってくるため、デバウンスで 1 回の DB 更新にまとめる。`minIntervalMs` (既定 500ms) で先行フラッシュ同士の間隔も絞る。実行は既存の `runExclusiveUpdateTask()` に乗せるので `updateAll` とは競合しない
+    - **部分フラッシュ**: 従来の `saveProgram()` は「キュー全体を書く or 全部キューへ戻す」の二値だった。`urgentOnly` 指定時は `splitUrgentProgramEvents()` が緊急分だけを取り出し、残りは従来どおり周期反映に回す。**同じ番組に対するイベントの追い越しを防ぐため、`immediate` と判定された番組 id に属するイベントはまとめて取り出す** (後続の update だけ先に書いて、キューに残った古い create が後から書かれ時刻が巻き戻る事故を防ぐ)。この不変条件は `test/ut/program-update-priority.test.js` が固定している
+    - **通常の EPG 更新の負荷は変わらない**: 先の日付の番組情報 (`normal`) は従来どおり 10 秒 tick + 5 分ウィンドウ + `epgUpdateIntervalTime` のままで、DB への書き込み回数が増えるのは緊急イベントを受信したときだけ
+    - **予約・画面への波及は既存経路をそのまま使う**: 先行フラッシュでも `PROGRAM_UPDATED` / `ON_AIR_PROGRAM_UPDATED` は同じように emit されるため、socket.io の `updateOnAirProgram` と `ReservationManageModel.updateOnAirReserves()` がそのまま動く。ただし `notify()` (予約の全体 `updateAll`) は呼ばない (重いので従来の周期のまま)
+    - **予約は番組 id 単位でも追従する**: `updateOnAirReserves()` は「現在時刻〜15 分先」の窓に入る予約しか見ないため、数時間先の番組が延長・繰り上げ・消滅しても反映は `epgUpdateIntervalTime` 周期の `updateAll()` 待ちだった。`saveProgram()` が **変更・削除のあった番組 id** を通知に載せ、`ReservationManageModel.updateReservesByProgramIds()` が `IReserveDB.findProgramIds()` (500 件ずつ分割して `IN` で引く) で一致する予約だけを更新する。放送時刻に関わらず追従できる。除外済み (`isSkip`) の予約は対象外。番組 id が 1000 件 (`PROGRAM_ID_NOTICE_LIMIT`) を超える更新では id を載せず、周期的な全体更新に任せる (件数が多いときは 1 件ずつ追従するより全体更新のほうが安い)
+    - **番組表は変更のあった時間帯だけで反応する**: 従来の `updateOnAirProgram` は EIT[p/f] の窓 (現在〜10 分先) しか対象にしておらず、番組表も「現在時刻を表示中のときだけ」取り直していた。新しい socket.io イベント **`updateProgram`** で `{ channelIds, startAt, endAt }` (変更のあった番組の時間帯の全体) を配り、番組表は**表示中の時間帯・放送局と重なるときだけ**取り直す (`Guide.vue` の `isOverlappedWithDisplay()`)。時刻指定で先の時間帯を見ている場合もこちらは反応する。取り直しは従来どおり 30 秒に 1 回を上限にスクロール位置を保ったまま行う。通知の組み立ては `src/model/epgUpdater/ProgramUpdateNotice.ts` (放送時間未定の番組は暫定の終了時刻で範囲に含める。削除された番組は放送局・時間帯が分からないため id だけ載せる)
+    - **通知の経路**: `EPGUpdateManageModel` (`PROGRAM_RANGE_UPDATED`) → `EPGUpdater` (`process.send`) → `EPGUpdateExecutorManageModel` → `IEPGUpdateEvent.emitProgramUpdated()` → `EventSetter` で 2 つに分岐し、①`IIPCServer.notifyProgramUpdatedClient()` → Service → socket.io `updateProgram` (画面)、②`updateReservesByProgramIds()` (予約) へ流れる。番組 id はクライアントへは送らない (予約追従にしか使わないため)
+    - **設定**: 有効・無効は機能フラグ `featureFlags.epgRealtimeSync` (opt-out、未指定なら有効)。チューニングは `config.yml` の `epgRealtime` (`debounceMs` / `minIntervalMs` / `urgentWindowMinutes`)。解決と値の丸めは `src/model/epgUpdater/EPGRealtimeConfig.ts` に集約し、config はホットリロードされるため実行時に毎回読み直す
+    - **mirakc は対象外**: mirakc 経路 (`/events` の SSE) は `programQueue` を使わず serviceId 単位で更新するため、この先行フラッシュは発火しない (`saveOnAirServices()` が元々 10 秒ごとに放映中を更新している)
+    - **recisdb-proxy を使う場合の注意**: `checkTunerServerType()` は `getServerConfig()` (`/api/config/server`) の成否で mirakurun / mirakc を判定する。互換実装がこのエンドポイントを返さないと mirakc と誤判定して `/events` の SSE を叩き続けるため、`config.yml` の `tunerServerType: mirakurun` で固定すること
+
+    - **DB 反映フローの全体像**:
+
+      ```mermaid
+      flowchart TD
+          MIRA["Mirakurun / recisdb-proxy<br/>GET /events (chunked JSON)"] -->|program event| ENQ["EPGUpdateManageModel<br/>enqueueProgramEvent()"]
+          ENQ --> QUEUE[("programQueue<br/>(メモリ)")]
+          ENQ --> CLS{"classifyProgramEvent()<br/>緊急度判定"}
+
+          CLS -->|"immediate<br/>(remove / redefine /<br/>放送時間未定 /<br/>urgentWindow 以内)"| URGENT["URGENT_ENQUEUED"]
+          CLS -->|normal| WAIT["周期反映に任せる"]
+
+          URGENT --> DEB["EPGUpdater<br/>debounceMs (既定 500ms) 待機<br/>+ minIntervalMs で間隔制限"]
+          DEB --> LOCK
+
+          TICK["setInterval 10 秒"] --> LOCK["runExclusiveUpdateTask()<br/>EPG 更新系タスクの直列化"]
+
+          LOCK -->|"先行フラッシュ<br/>saveProgram(0, urgentOnly)"| SPLIT["splitUrgentProgramEvents()<br/>緊急分だけ取り出す<br/>(同一 programId はまとめて)"]
+          LOCK -->|"通常 tick<br/>saveProgram(now + 5 分)"| THRESH{"5 分以内に始まる<br/>番組の更新がある?"}
+          LOCK -->|"epgUpdateIntervalTime 経過 /<br/>event stream 断"| ALL["updateAll()<br/>全件取得 → 全削除 + 全挿入"]
+
+          SPLIT --> UPD
+          THRESH -->|Yes| UPD["ProgramDB.update()<br/>insert / update / delete"]
+          THRESH -->|No| REQ["キューへ戻す"]
+          REQ --> QUEUE
+          SPLIT -.->|"残り (normal)"| QUEUE
+          QUEUE -.->|取り出し| SPLIT
+          QUEUE -.->|取り出し| THRESH
+
+          ALL --> DB[("program テーブル")]
+          UPD --> DB
+          UPD --> DETECT["detectOnAirPrograms()<br/>EIT[p/f] 相当の抽出"]
+          UPD --> NOTICE["buildProgramUpdateNotice()<br/>変更のあった番組 id /<br/>放送局 / 時間帯"]
+          DETECT --> EV1["PROGRAM_UPDATED<br/>(programIds)"]
+          DETECT --> EV2["ON_AIR_PROGRAM_UPDATED<br/>(channelIds)"]
+          NOTICE --> EV3["PROGRAM_RANGE_UPDATED<br/>(programIds / channelIds /<br/>startAt / endAt)"]
+
+          EV2 --> IPC["EPGUpdater (子) → Operator<br/>process.send"]
+          EV3 --> IPC
+          IPC --> RES["ReservationManageModel<br/>updateOnAirReserves()<br/>= 放送中〜15 分先の予約"]
+          IPC --> RES2["ReservationManageModel<br/>updateReservesByProgramIds()<br/>= 番組 id 一致の予約<br/>(放送時刻に関わらず)"]
+          IPC --> SIO["Service → socket.io<br/>updateOnAirProgram<br/>= 視聴画面 / 放映中一覧"]
+          IPC --> SIO2["Service → socket.io<br/>updateProgram<br/>= 番組表 (表示中の<br/>時間帯と重なる場合のみ)"]
+      ```
 
 - **EPG 追従 (EIT[p/f]) の経過を info ログに出し、予約画面にも状態を表示するようにした**
     - **背景**: 番組の延長・繰り上げが起きたとき、何がどう動いたのかがログから追えなかった (`update program db done` のような件数だけ)。時刻がずれた録画を後から検証できるよう、**変更前 → 変更後の時刻を併記**して残す

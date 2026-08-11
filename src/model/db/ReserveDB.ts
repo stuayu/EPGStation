@@ -18,6 +18,9 @@ import IReserveDB, {
 
 @injectable()
 export default class ReserveDB implements IReserveDB {
+    // program id を複数指定して引くときの 1 クエリあたりの件数
+    private static readonly FIND_PROGRAM_IDS_CHUNK_SIZE = 500;
+
     private op: IDBOperator;
     private promieRetry: IPromiseRetry;
     private log: ILogger;
@@ -299,6 +302,35 @@ export default class ReserveDB implements IReserveDB {
                 where: { programId: programId },
             });
         });
+    }
+
+    /**
+     * program id を複数指定して検索する。
+     * EPG 更新で変更のあった番組の予約だけを追従させるために使う
+     * @param programIds: apid.ProgramId[]
+     * @return Promise<Reserve[]>
+     */
+    public async findProgramIds(programIds: apid.ProgramId[]): Promise<Reserve[]> {
+        if (programIds.length === 0) {
+            return [];
+        }
+
+        const connection = await this.op.getConnection();
+        const repository = connection.getRepository(Reserve);
+
+        // SQL の IN が長くなりすぎないよう分割して引く
+        const results: Reserve[] = [];
+        for (let i = 0; i < programIds.length; i += ReserveDB.FIND_PROGRAM_IDS_CHUNK_SIZE) {
+            const chunk = programIds.slice(i, i + ReserveDB.FIND_PROGRAM_IDS_CHUNK_SIZE);
+            const reserves = await this.promieRetry.run(() => {
+                return repository.find({
+                    where: { programId: In(chunk) },
+                });
+            });
+            results.push(...reserves);
+        }
+
+        return results;
     }
 
     /**

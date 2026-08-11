@@ -120,6 +120,7 @@ export const FEATURE_FLAG_KEYS = [
     'advancedSearch',
     'updateNotification',
     'dataBroadcasting',
+    'epgRealtimeSync',
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[number];
@@ -237,6 +238,17 @@ export default interface IConfigFile {
 
     // 過去の番組表データを削除する間隔 (分)。省略時は epgUpdateIntervalTime と同じ
     epgDeleteIntervalTime?: number;
+
+    // EPG のリアルタイム同期 (event stream の緊急更新を周期を待たず DB へ反映する) 設定。
+    // 有効・無効は featureFlags.epgRealtimeSync で切り替える
+    epgRealtime?: {
+        // 緊急イベント受信からフラッシュまでの待ち時間 (ms)。既定 500
+        debounceMs?: number;
+        // 先行フラッシュ同士の最小間隔 (ms)。既定 500
+        minIntervalMs?: number;
+        // この時間内に始まる番組の更新を即時反映の対象とする (分)。既定 180
+        urgentWindowMinutes?: number;
+    };
 
     // 放送局並び順
     channelOrder?: apid.ChannelId[];

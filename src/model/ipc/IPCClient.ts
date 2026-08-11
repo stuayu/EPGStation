@@ -103,6 +103,16 @@ export default class IPCClient implements IIPCClient {
                 // EIT[p/f] 相当の更新通知 (視聴画面・番組表の即時更新用)
                 const channelIds = (<any>msg).value?.channelIds;
                 if (Array.isArray(channelIds) === true) this.socketIO.notifyOnAirProgramUpdated(channelIds);
+            } else if ((<ParentMessage>msg).type === 'notifyProgramUpdated') {
+                // 番組情報の更新通知 (番組表が表示中の時間帯と重なるときだけ取り直す)
+                const value = (<any>msg).value;
+                if (typeof value === 'object' && value !== null && Array.isArray(value.channelIds) === true) {
+                    this.socketIO.notifyProgramUpdated({
+                        channelIds: value.channelIds,
+                        startAt: typeof value.startAt === 'number' ? value.startAt : null,
+                        endAt: typeof value.endAt === 'number' ? value.endAt : null,
+                    });
+                }
             } else if ((<ParentMessage>msg).type === 'pushEncode') {
                 // エンコード依頼
                 this.encodeManage.push((<PushEncodeMessage>msg).value);

@@ -11,6 +11,7 @@ export default interface IReservationManageModel {
     updateRule(ruleId: apid.RuleId, isSuppressLog?: boolean, isFirstUpdate?: boolean): Promise<void>;
     updateAll(isFirstUpdate?: boolean): Promise<void>;
     updateOnAirReserves(channelIds: apid.ChannelId[]): Promise<void>;
+    updateReservesByProgramIds(programIds: apid.ProgramId[]): Promise<void>;
     cancel(reserveId: apid.ReserveId): Promise<void>;
     removeSkip(reserveId: apid.ReserveId): Promise<void>;
     removeOverlap(reserveId: apid.ReserveId): Promise<void>;

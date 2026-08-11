@@ -1047,6 +1047,7 @@ export interface FeatureFlags {
     advancedSearch?: boolean;
     updateNotification?: boolean;
     dataBroadcasting?: boolean;
+    epgRealtimeSync?: boolean;
 }
 
 /**
