@@ -25,31 +25,114 @@
             </template>
         </TitleBar>
         <v-container v-if="detail">
-            <div class="d-flex align-center flex-wrap ga-2 mb-3">
-                <!-- 外部辞書のタグ。クリックで元サイトの作品ページを開く -->
-                <SeriesExternalLinks :externalIds="detail.externalIds"></SeriesExternalLinks>
-                <v-chip v-if="detail.titleSource === 'manual'" size="small" color="primary" variant="tonal">シリーズ名は手動設定</v-chip>
-                <v-spacer></v-spacer>
-                <!-- 表示名・クール・読み仮名・総話数を作品辞書から取り直す (このシリーズだけ) -->
-                <v-btn variant="outlined" size="small" prepend-icon="mdi-sync" :loading="metadataSyncing" @click="refreshMetadata">
-                    辞書から再取得
-                </v-btn>
-                <!-- このシリーズの録画をまとめてシリーズ判定にかけ直す (話数・サブタイトル・放送種別) -->
-                <v-btn
-                    variant="outlined"
-                    size="small"
-                    prepend-icon="mdi-refresh-auto"
-                    :loading="reanalyzing"
-                    @click="isOpenReanalyzeDialog = true"
-                    title="このシリーズの各録画の話数・放送種別を外部データから引き直す"
-                >
-                    録画を再問い合わせ
-                </v-btn>
-                <v-btn variant="outlined" size="small" :loading="annictSyncing" @click="syncAnnict">Annict同期</v-btn>
-            </div>
-            <v-alert v-if="annictMessage" type="success" class="mb-3">{{ annictMessage }}</v-alert>
-            <v-alert v-if="detail.continuity.missingEpisodes.length" type="warning" class="mb-3">欠番: {{ missingEpisodeText }}</v-alert>
-            <v-alert v-if="detail.continuity.duplicateEpisodes.length" type="info" class="mb-3">複数録画・再放送: {{ duplicateEpisodeText }}</v-alert>
+            <!-- シリーズの概要ヘッダ: アイキャッチ画像・基本情報・視聴進捗・操作をまとめて上部に置く -->
+            <v-card class="series-hero mb-4" variant="outlined">
+                <div class="d-flex flex-column flex-sm-row">
+                    <div class="series-hero__image">
+                        <!-- アイキャッチ画像 (Annict 由来、無ければ録画サムネイル)。どちらも無い作品は代替表示 -->
+                        <v-img
+                            v-if="detail.hasImage"
+                            :src="`./api/series/${detail.id}/image`"
+                            :alt="detail.title"
+                            :aspect-ratio="16 / 9"
+                            cover
+                            class="bg-grey-lighten-3 h-100"
+                        >
+                            <template v-slot:placeholder>
+                                <div class="d-flex align-center justify-center fill-height">
+                                    <v-progress-circular indeterminate size="24" color="grey"></v-progress-circular>
+                                </div>
+                            </template>
+                            <template v-slot:error>
+                                <div class="d-flex align-center justify-center fill-height">
+                                    <v-icon size="40" color="grey">mdi-image-off-outline</v-icon>
+                                </div>
+                            </template>
+                        </v-img>
+                        <div v-else class="d-flex align-center justify-center bg-grey-lighten-3 h-100" :style="{ aspectRatio: '16 / 9' }">
+                            <v-icon size="40" color="grey">mdi-television-classic</v-icon>
+                        </div>
+                    </div>
+
+                    <div class="series-hero__body d-flex flex-column pa-4">
+                        <div class="text-h6 text-sm-h5">{{ detail.title }}</div>
+                        <div v-if="detail.titleKana" class="text-caption text-medium-emphasis">{{ detail.titleKana }}</div>
+
+                        <!-- 状態チップ -->
+                        <div class="d-flex align-center ga-1 flex-wrap mt-2">
+                            <v-chip v-if="detail.isOnAir" size="small" color="primary" variant="flat">放送中</v-chip>
+                            <v-chip size="small" :color="originColor" variant="flat" :title="originTitle">{{ originText }}</v-chip>
+                            <v-chip size="small" variant="tonal">{{ detail.mediaType }}</v-chip>
+                            <v-chip v-if="detail.unwatchedCount > 0" size="small" color="info" variant="flat">未視聴 {{ detail.unwatchedCount }}</v-chip>
+                            <v-chip v-if="detail.missingEpisodeCount > 0" size="small" color="warning" variant="flat" :title="missingEpisodeText">
+                                欠番 {{ detail.missingEpisodeCount }}
+                            </v-chip>
+                            <v-chip v-if="detail.duplicateEpisodeCount > 0" size="small" color="grey" variant="flat" :title="duplicateEpisodeText">
+                                重複 {{ detail.duplicateEpisodeCount }}
+                            </v-chip>
+                            <v-chip v-if="detail.titleSource === 'manual'" size="small" color="primary" variant="tonal">シリーズ名は手動設定</v-chip>
+                        </div>
+
+                        <!-- 基本情報 -->
+                        <div class="series-hero__meta text-body-2 text-medium-emphasis mt-3">
+                            <span>
+                                クール: {{ seasonText }}
+                                <span v-if="detail.seasonSource === 'estimated'" class="text-caption" title="録画日時からの推測値です">(推定)</span>
+                            </span>
+                            <span>録画: {{ detail.recordedCount }} 件{{ totalEpisodesText }}</span>
+                            <span>容量: {{ fileSizeText }}</span>
+                            <span>放送局: {{ detail.channels.length }} 局</span>
+                            <span v-if="detail.firstAiredAt">初回: {{ formatDay(detail.firstAiredAt) }}</span>
+                            <span v-if="detail.lastAiredAt">最新: {{ formatDay(detail.lastAiredAt) }}</span>
+                        </div>
+
+                        <!-- 視聴進捗 -->
+                        <div class="mt-3">
+                            <v-progress-linear :model-value="watchedPercent" height="6" color="info" bg-color="grey-lighten-2" rounded></v-progress-linear>
+                            <div class="text-caption text-medium-emphasis mt-1">
+                                {{ detail.recordedCount - detail.unwatchedCount }}/{{ detail.recordedCount }} 視聴 ({{ watchedPercent }}%)
+                            </div>
+                        </div>
+
+                        <v-spacer></v-spacer>
+
+                        <!-- 外部辞書のタグ (クリックで元サイトの作品ページを開く) と操作 -->
+                        <div class="d-flex align-center flex-wrap ga-2 mt-3">
+                            <SeriesExternalLinks :externalIds="detail.externalIds"></SeriesExternalLinks>
+                            <v-spacer></v-spacer>
+                            <!-- 表示名・クール・読み仮名・総話数を作品辞書から取り直す (このシリーズだけ) -->
+                            <v-btn variant="outlined" size="small" prepend-icon="mdi-sync" :loading="metadataSyncing" @click="refreshMetadata">
+                                辞書から再取得
+                            </v-btn>
+                            <!-- このシリーズの録画をまとめてシリーズ判定にかけ直す (話数・サブタイトル・放送種別) -->
+                            <v-btn
+                                variant="outlined"
+                                size="small"
+                                prepend-icon="mdi-refresh-auto"
+                                :loading="reanalyzing"
+                                @click="isOpenReanalyzeDialog = true"
+                                title="このシリーズの各録画の話数・放送種別を外部データから引き直す"
+                            >
+                                録画を再問い合わせ
+                            </v-btn>
+                            <v-btn variant="outlined" size="small" :loading="annictSyncing" @click="syncAnnict">Annict同期</v-btn>
+                        </div>
+                    </div>
+                </div>
+                <div v-if="detail.imageSource === 'thumbnail' || detail.imageCopyright" class="d-flex align-center ga-1 px-4 pb-2 text-caption text-medium-emphasis">
+                    <v-icon v-if="detail.imageSource === 'thumbnail'" size="x-small" title="録画サムネイルを表示しています">mdi-video-outline</v-icon>
+                    <span v-if="detail.imageSource === 'thumbnail'">録画サムネイル</span>
+                    <span v-if="detail.imageCopyright" class="text-truncate" :title="detail.imageCopyright">{{ detail.imageCopyright }}</span>
+                </div>
+            </v-card>
+
+            <v-alert v-if="annictMessage" type="success" density="compact" variant="tonal" class="mb-3">{{ annictMessage }}</v-alert>
+            <v-alert v-if="detail.continuity.missingEpisodes.length" type="warning" density="compact" variant="tonal" class="mb-3">
+                欠番: {{ missingEpisodeText }}
+            </v-alert>
+            <v-alert v-if="detail.continuity.duplicateEpisodes.length" type="info" density="compact" variant="tonal" class="mb-3">
+                複数録画・再放送: {{ duplicateEpisodeText }}
+            </v-alert>
 
             <v-card v-if="futureProposals.length > 0" class="mb-3" variant="outlined">
                 <v-card-title class="text-subtitle-1">今後の放送予定・欠番補完</v-card-title>
@@ -322,6 +405,7 @@ import ISeriesApiModel, {
     SeriesBackfillResult,
 } from '@/model/api/series/ISeriesApiModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
+import SeriesDisplay from '@/util/SeriesDisplay';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import * as apid from '../../../api';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
@@ -398,6 +482,34 @@ class SeriesDetailView extends Vue {
     useDictionaryEpisodeTitle: boolean = this.settingValue.useDictionaryEpisodeTitle ?? true;
     get id() {
         return Number(this.$route.params.id);
+    }
+    /**
+     * 概要ヘッダのクール表記
+     */
+    get seasonText(): string {
+        return this.detail === null ? '-' : SeriesDisplay.seasonText(this.detail);
+    }
+    /**
+     * 総話数が分かっている場合だけ「/ 全 N 話」を添える
+     */
+    get totalEpisodesText(): string {
+        const total = this.detail?.totalEpisodes;
+        return typeof total === 'number' && total > 0 ? ` / 全 ${total} 話` : '';
+    }
+    get fileSizeText(): string {
+        return SeriesDisplay.fileSizeText(this.detail?.totalFileSize ?? 0);
+    }
+    get watchedPercent(): number {
+        return this.detail === null ? 0 : SeriesDisplay.watchedPercent(this.detail);
+    }
+    get originText(): string {
+        return SeriesDisplay.originText(this.detail ?? {});
+    }
+    get originColor(): string {
+        return SeriesDisplay.originColor(this.detail ?? {});
+    }
+    get originTitle(): string {
+        return SeriesDisplay.originTitle(this.detail ?? {});
     }
     get missingEpisodeText(): string {
         return this.detail?.continuity.missingEpisodes.map(x => `S${x.seasonNumber} 第${x.episodeNumber}話`).join('、') ?? '';
@@ -616,6 +728,12 @@ class SeriesDetailView extends Vue {
         return new Date(value).toLocaleString();
     }
     /**
+     * 概要ヘッダの日付表記 (時刻は出さない)
+     */
+    formatDay(value: number): string {
+        return new Date(value).toLocaleDateString();
+    }
+    /**
      * 話数・放送種別の一括編集を開始する。現在の値を編集用のバッファへ写す
      */
     startBulkEdit(): void {
@@ -740,5 +858,31 @@ export default toNative(SeriesDetailView);
 <style lang="scss" scoped>
 .episode-comment {
     white-space: pre-wrap;
+}
+
+// 概要ヘッダ: 横並びのときだけ画像の幅を固定し、情報側を伸ばす
+.series-hero {
+    &__image {
+        flex: 0 0 auto;
+        width: 100%;
+    }
+
+    &__body {
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    &__meta {
+        display: flex;
+        flex-wrap: wrap;
+        column-gap: 16px;
+        row-gap: 4px;
+    }
+}
+
+@media (min-width: 600px) {
+    .series-hero__image {
+        width: 280px;
+    }
 }
 </style>

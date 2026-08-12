@@ -120,6 +120,8 @@ export default class SeriesApiModel implements ISeriesApiModel {
         const image = await this.imageModel.getInfo(id).catch(() => null);
         // 一覧と同じ集計値を詳細でも返す (SeriesDetail は SeriesListItem を継承している)
         const summary = (await this.db.listRecordedForSeriesIds([id])).get(id) ?? [];
+        // 容量・未視聴数は一覧と同じ集計クエリから取る (画面上部の概要に出す)
+        const aggregate = await this.db.querySummary(id).catch(() => null);
         // 欠番検出の上限は外部辞書の放送予定総話数まで含めて解決する (series.totalEpisodes が未設定でも効く)
         const totalEpisodesBySeason = await this.totalEpisodes.resolve(series).catch(() => undefined);
         const now = Date.now();
@@ -133,10 +135,10 @@ export default class SeriesApiModel implements ISeriesApiModel {
             seasonSource: (series.seasonSource ?? null) as apid.SeriesListItem['seasonSource'],
             titleSource: (series.titleSource ?? null) as apid.SeriesListItem['titleSource'],
             recordedCount: summary.length,
-            totalFileSize: 0,
+            totalFileSize: aggregate?.totalFileSize ?? 0,
             firstAiredAt: summary.length === 0 ? null : Math.min(...summary.map(x => Number(x.startAt))),
             lastAiredAt,
-            unwatchedCount: 0,
+            unwatchedCount: aggregate?.unwatchedCount ?? 0,
             totalEpisodes: series.totalEpisodes,
             missingEpisodeCount: continuity.missingEpisodes.length,
             duplicateEpisodeCount: continuity.duplicateEpisodes.length,

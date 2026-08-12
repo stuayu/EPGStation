@@ -57,6 +57,11 @@ const db = {
         ].slice(0, option.limit),
         1,
     ],
+    // シリーズ 1 件分の集計値 (詳細画面の概要ヘッダで使う容量・未視聴数)
+    querySummary: async id =>
+        id === 1
+            ? { recordedCount: 1, totalFileSize: 2048, firstAiredAt: 100, lastAiredAt: 100, unwatchedCount: 1 }
+            : null,
     listRecordedForSeriesIds: async ids =>
         new Map(ids.map(id => [id, [{ recordedId: 2, channelId: 10, startAt: 100, seasonNumber: 1, episodeNumber: 1 }]])),
     listSeasons: async () => [{ seasonYear: '2025', seasonName: 'SPRING', count: '3' }],
@@ -97,6 +102,9 @@ test('series detail supports channel filtering and numeric conversion', async ()
     const x = await model.get(1, 10);
     assert.equal(x.recorded[0].episodeNumber, 1);
     assert.equal(x.channels[0].count, 1);
+    // 概要ヘッダに出す容量・未視聴数は一覧と同じ集計クエリから取る
+    assert.equal(x.totalFileSize, 2048);
+    assert.equal(x.unwatchedCount, 1);
 });
 // 画面に出す欠番一覧も、集計値と同じく外部辞書の総話数まで見る
 test('series detail lists missing episodes up to the total episode count from the dictionary', async () => {

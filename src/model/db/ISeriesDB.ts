@@ -120,6 +120,11 @@ export interface SeriesListRow {
     unwatchedCount: number;
 }
 
+/**
+ * シリーズ 1 件分の集計値 (SeriesListRow から Series 本体を除いたもの)
+ */
+export type SeriesSummaryRow = Omit<SeriesListRow, 'series'>;
+
 export interface SeriesSeasonRow {
     seasonYear: number;
     seasonName: string;
@@ -251,6 +256,13 @@ export default interface ISeriesDB {
      * @return Promise<[SeriesListRow[], number]> 行と総件数
      */
     query(option: SeriesListQuery): Promise<[SeriesListRow[], number]>;
+    /**
+     * シリーズ 1 件分の集計値 (録画件数・容量・初回/最終放送日時・未視聴数) を返す。
+     * 一覧の query() と同じ集計をシリーズ詳細でも使うためのもの
+     * @param seriesId: number
+     * @return Promise<SeriesSummaryRow | null> シリーズが無い場合は null
+     */
+    querySummary(seriesId: number): Promise<SeriesSummaryRow | null>;
     /**
      * 正規化タイトルが指定の接頭辞で始まるシリーズを返す (マージ候補の前方一致検索用)
      * @param prefix: string 正規化済みの接頭辞。空文字の場合は空配列を返す
