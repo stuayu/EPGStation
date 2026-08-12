@@ -18,6 +18,7 @@ import ISeriesDB, {
     EmptySeriesRow,
     SeriesListQuery,
     SeriesListRow,
+    SeriesSummaryRow,
     SeriesSeasonRow,
     NewEpisode,
     NewHistory,
@@ -337,6 +338,49 @@ export default class SeriesDB implements ISeriesDB {
             });
         }
         return [result, total];
+    }
+
+    /**
+     * シリーズ 1 件分の集計値を返す (一覧の query() と同じ集計をシリーズ詳細でも使う)
+     * @param seriesId: number
+     * @return Promise<SeriesSummaryRow | null> シリーズが無い (録画も無い) 場合は null
+     */
+    public async querySummary(seriesId: number): Promise<SeriesSummaryRow | null> {
+        const c = await this.op.getConnection();
+        const row = await c
+            .getRepository(Series)
+            .createQueryBuilder('s')
+            .leftJoin(RecordedSeriesLink, 'l', 'l.seriesId = s.id')
+            .leftJoin(Recorded, 'r', 'r.id = l.recordedId')
+            .leftJoin(VideoFile, 'v', 'v.recordedId = l.recordedId')
+            .leftJoin(WatchHistory, 'w', "w.recordedId = l.recordedId AND w.status = 'watched'")
+            .select('COUNT(DISTINCT l.recordedId)', 'recordedCount')
+            .addSelect('COALESCE(SUM(v.size), 0)', 'totalFileSize')
+            .addSelect('MIN(r.startAt)', 'firstAiredAt')
+            .addSelect('MAX(r.startAt)', 'lastAiredAt')
+            .addSelect('COUNT(DISTINCT w.recordedId)', 'watchedCount')
+            .where('s.id = :seriesId', { seriesId: seriesId })
+            .groupBy('s.id')
+            .getRawOne<{
+                recordedCount: string;
+                totalFileSize: string;
+                firstAiredAt: string | null;
+                lastAiredAt: string | null;
+                watchedCount: string;
+            }>();
+        if (typeof row === 'undefined') {
+            return null;
+        }
+
+        const recordedCount = Number(row.recordedCount);
+
+        return {
+            recordedCount: recordedCount,
+            totalFileSize: Number(row.totalFileSize),
+            firstAiredAt: row.firstAiredAt === null ? null : Number(row.firstAiredAt),
+            lastAiredAt: row.lastAiredAt === null ? null : Number(row.lastAiredAt),
+            unwatchedCount: Math.max(0, recordedCount - Number(row.watchedCount)),
+        };
     }
 
     public async listRecordedForSeriesIds(seriesIds: number[]): Promise<Map<number, SeriesRecordedRow[]>> {

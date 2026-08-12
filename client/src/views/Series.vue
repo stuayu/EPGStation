@@ -470,6 +470,7 @@ import * as apid from '../../../api';
 import ISeriesApiModel, { SeriesListItem } from '@/model/api/series/ISeriesApiModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
+import SeriesDisplay from '@/util/SeriesDisplay';
 import Util from '@/util/Util';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { LocationQueryRaw } from 'vue-router';
@@ -533,20 +534,13 @@ class SeriesView extends Vue {
         { title: 'ローカル生成', value: 'local' },
     ];
 
-    private static readonly SEASON_LABEL: Record<string, string> = {
-        WINTER: '冬',
-        SPRING: '春',
-        SUMMER: '夏',
-        AUTUMN: '秋',
-    };
-
     /**
      * クール絞り込みの選択肢 ("2025年春 (12)" 形式)。
      * シリーズにはアニメ以外 (ドラマ・バラエティ等) も含まれるためジャンル名は付けない
      */
     get seasonItems(): Array<{ title: string; value: string }> {
         return this.seasons.map(x => ({
-            title: `${x.seasonYear}年${SeriesView.SEASON_LABEL[x.seasonName] ?? x.seasonName} (${x.count})`,
+            title: `${x.seasonYear}年${SeriesDisplay.seasonLabel(x.seasonName)} (${x.count})`,
             value: `${x.seasonYear}:${x.seasonName}`,
         }));
     }
@@ -555,27 +549,21 @@ class SeriesView extends Vue {
      * カード/リストに出すクール表記
      */
     seasonText(item: SeriesListItem): string {
-        if (typeof item.seasonYear !== 'number' || item.seasonYear === null) return '-';
-        const label = SeriesView.SEASON_LABEL[item.seasonName ?? ''] ?? '';
-        return `${item.seasonYear}年${label}`;
+        return SeriesDisplay.seasonText(item);
     }
 
     /**
      * 視聴済みの割合 (進捗バー用)
      */
     watchedPercent(item: SeriesListItem): number {
-        if (item.recordedCount === 0) return 0;
-        return Math.round(((item.recordedCount - item.unwatchedCount) / item.recordedCount) * 100);
+        return SeriesDisplay.watchedPercent(item);
     }
 
     /**
      * バイト数を人が読める表記にする
      */
     fileSizeText(size: number): string {
-        if (!size || size <= 0) return '0 B';
-        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        const index = Math.min(units.length - 1, Math.floor(Math.log(size) / Math.log(1024)));
-        return `${(size / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+        return SeriesDisplay.fileSizeText(size);
     }
 
     toggleOrder(): void {
@@ -886,15 +874,13 @@ class SeriesView extends Vue {
      * シリーズの出所 (辞書起点 / ローカル生成) の表示テキスト
      */
     originText(item: { origin?: apid.SeriesOrigin }): string {
-        return item.origin === 'dictionary' ? '辞書' : 'ローカル';
+        return SeriesDisplay.originText(item);
     }
     originColor(item: { origin?: apid.SeriesOrigin }): string {
-        return item.origin === 'dictionary' ? 'teal' : 'grey';
+        return SeriesDisplay.originColor(item);
     }
     originTitle(item: { origin?: apid.SeriesOrigin }): string {
-        return item.origin === 'dictionary'
-            ? 'しょぼいカレンダー / Annict / Wikidata の作品辞書に紐づくシリーズ'
-            : '録画タイトルから作られたシリーズ (誤生成の可能性あり)';
+        return SeriesDisplay.originTitle(item);
     }
 
     toggleSelectionMode(): void {
