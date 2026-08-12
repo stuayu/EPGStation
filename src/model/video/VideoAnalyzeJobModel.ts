@@ -127,6 +127,9 @@ export default class VideoAnalyzeJobModel implements IVideoAnalyzeJobModel {
         mode: apid.VideoAnalyzeJobMode,
         singleTargets: apid.VideoFileId[] | null = null,
     ): Promise<void> {
+        // 未解析のみのモードは「空の項目を補う」だけに留め、既存の値は触らない
+        const overwrite = mode === 'all' || singleTargets !== null;
+
         try {
             let offset = 0;
             for (;;) {
@@ -149,7 +152,9 @@ export default class VideoAnalyzeJobModel implements IVideoAnalyzeJobModel {
                     try {
                         if (type === 'metadata') await this.analyzeModel.analyzeMetadata(target);
                         else if (type === 'channel') await this.analyzeModel.applyStoredChannelInfo(target);
-                        else await this.analyzeModel.analyzeTsInfo(target);
+                        // 全件強制再解析と録画 1 件の再解析は明示的な操作なので、
+                        // 誤った番組情報 (前番組の EIT[p/f] 由来など) を TS の内容で上書きする
+                        else await this.analyzeModel.analyzeTsInfo(target, { overwriteProgramInfo: overwrite });
                         this.job.analyzed++;
                     } catch (err: any) {
                         // 1 件失敗しても残りは続行する (ファイル欠損・壊れた TS など)

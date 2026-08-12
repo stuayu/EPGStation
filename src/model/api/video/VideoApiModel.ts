@@ -294,7 +294,8 @@ export default class VideoApiModel implements IVideoApiModel {
         let failed = 0;
         for (const target of targets) {
             try {
-                await this.analyzeModel.analyzeTsInfo(target.id);
+                // 明示的な全件強制再解析なので、誤った番組情報を TS の内容で上書きする
+                await this.analyzeModel.analyzeTsInfo(target.id, { overwriteProgramInfo: true });
                 analyzed++;
             } catch (err: any) {
                 // 1 件失敗しても残りは続行する (ファイル欠損・壊れた TS など)

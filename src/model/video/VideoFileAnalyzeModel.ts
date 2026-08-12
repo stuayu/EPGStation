@@ -14,7 +14,7 @@ import IVideoFileTsInfoDB from '../db/IVideoFileTsInfoDB';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import ITsInfoAnalyzer, { TsInfo } from '../recorded/ts/ITsInfoAnalyzer';
-import IVideoFileAnalyzeModel from './IVideoFileAnalyzeModel';
+import IVideoFileAnalyzeModel, { TsInfoApplyOption } from './IVideoFileAnalyzeModel';
 
 /**
  * 放送局の解決に必要な最小限の情報 (TS 解析結果 / 保存済みの ts_info のどちらからでも作れる)
@@ -154,9 +154,10 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
      * type: 'encoded' でも PSI/SI を保持しているファイルを解析対象に含めるには、
      * type を書き換えるのではなく拡張子で別軸に判定する必要がある
      * @param videoFileId: apid.VideoFileId
+     * @param option: TsInfoApplyOption 解析結果の反映のしかた
      * @return Promise<boolean> 解析して保存した場合 true (TS を含まない拡張子の場合は false)
      */
-    public async analyzeTsInfo(videoFileId: apid.VideoFileId): Promise<boolean> {
+    public async analyzeTsInfo(videoFileId: apid.VideoFileId, option?: TsInfoApplyOption): Promise<boolean> {
         const video = await this.videoFileDB.findId(videoFileId);
         if (video === null) {
             throw new Error('VideoFileIsUndefined');
@@ -176,7 +177,7 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
         }
 
         const info = await this.tsInfoAnalyzer.analyze(filePath);
-        await this.saveTsInfo(videoFileId, info);
+        await this.saveTsInfo(videoFileId, info, option);
 
         return true;
     }
@@ -186,9 +187,10 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
      * 取り込み処理のように、登録前にファイルパスへ対して解析を済ませている場合に使う
      * @param videoFileId: apid.VideoFileId
      * @param info: TsInfo
+     * @param option: TsInfoApplyOption 解析結果の反映のしかた
      * @return Promise<void>
      */
-    public async saveTsInfo(videoFileId: apid.VideoFileId, info: TsInfo): Promise<void> {
+    public async saveTsInfo(videoFileId: apid.VideoFileId, info: TsInfo, option?: TsInfoApplyOption): Promise<void> {
         await this.videoFileTsInfoDB.upsert(VideoFileAnalyzeModel.toEntity(videoFileId, info));
 
         // BIT が取れていれば放送局の系列情報を更新する (受動収集)
@@ -209,8 +211,9 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
             this.log?.system.warn(`failed to apply channel info: videoFileId ${videoFileId}: ${err?.message ?? err}`);
         });
 
-        // 番組情報 (概要・詳細・ジャンル・映像音声情報) が空の録画を EIT[p/f] の内容で補う
-        await this.applyProgramInfo(videoFileId, info).catch(err => {
+        // 番組情報 (概要・詳細・ジャンル・映像音声情報) を EIT[p/f] の内容で補う
+        // (overwriteProgramInfo が指定された再解析では既存値も上書きする)
+        await this.applyProgramInfo(videoFileId, info, option?.overwriteProgramInfo === true).catch(err => {
             this.log?.system.warn(`failed to apply program info: videoFileId ${videoFileId}: ${err?.message ?? err}`);
         });
     }
@@ -222,12 +225,20 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
      * 番組の概要・詳細・ジャンル・映像音声情報が空のままで、EPGStation が録画した番組と
      * 表示内容が大きく変わってしまう。TS を解析した時点でこれらを補う。
      *
-     * すでに値が入っている項目は上書きしない (画面から入力した内容・EPG 由来の値を壊さない)
+     * 既定ではすでに値が入っている項目は上書きしない (画面から入力した内容・EPG 由来の値を壊さない)。
+     * overwrite = true の場合は TS から取れた項目で既存値を置き換える。
+     * 過去の解析ロジックはファイル先頭を読んでいたため前番組の EIT[p/f] を拾うことがあり、
+     * 誤ったジャンル・概要が入ったままの録画を再解析で直せるようにするための経路
      * @param videoFileId: apid.VideoFileId
      * @param info: TsInfo
-     * @return Promise<boolean> 何らかの項目を補完した場合 true
+     * @param overwrite: boolean 既存値も上書きするか
+     * @return Promise<boolean> 何らかの項目を更新した場合 true
      */
-    private async applyProgramInfo(videoFileId: apid.VideoFileId, info: TsInfo): Promise<boolean> {
+    private async applyProgramInfo(
+        videoFileId: apid.VideoFileId,
+        info: TsInfo,
+        overwrite: boolean = false,
+    ): Promise<boolean> {
         const video = await this.videoFileDB.findId(videoFileId);
         if (video === null) return false;
 
@@ -237,11 +248,17 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
         const values: RecordedProgramUpdateValues = {};
 
         // 番組名は「ファイル名のまま」の場合があるが、利用者が付けた名前を勝手に変えないため触らない
-        if (VideoFileAnalyzeModel.isEmpty(recorded.description) === true && info.eventDescription !== null) {
+        if (
+            (overwrite === true || VideoFileAnalyzeModel.isEmpty(recorded.description) === true) &&
+            info.eventDescription !== null
+        ) {
             values.description = StrUtil.toDBStr(info.eventDescription);
             values.halfWidthDescription = StrUtil.toHalf(values.description);
         }
-        if (VideoFileAnalyzeModel.isEmpty(recorded.extended) === true && info.eventExtended !== null) {
+        if (
+            (overwrite === true || VideoFileAnalyzeModel.isEmpty(recorded.extended) === true) &&
+            info.eventExtended !== null
+        ) {
             values.extended = StrUtil.toDBStr(info.eventExtended);
             values.halfWidthExtended = StrUtil.toHalf(values.extended);
         }
@@ -251,7 +268,7 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
             typeof recorded.genre1 === 'number' ||
             typeof recorded.genre2 === 'number' ||
             typeof recorded.genre3 === 'number';
-        if (hasGenre === false && info.genres.length > 0) {
+        if ((overwrite === true || hasGenre === false) && info.genres.length > 0) {
             const genreKeys: Array<['genre1' | 'genre2' | 'genre3', 'subGenre1' | 'subGenre2' | 'subGenre3']> = [
                 ['genre1', 'subGenre1'],
                 ['genre2', 'subGenre2'],
@@ -259,28 +276,51 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
             ];
             genreKeys.forEach(([genreKey, subGenreKey], i) => {
                 const genre = info.genres[i];
-                if (typeof genre === 'undefined') return;
+                // 上書き時に TS 側の組数が少ない場合、余った組は消して古い値を残さない
+                if (typeof genre === 'undefined') {
+                    if (overwrite === true) {
+                        values[genreKey] = null;
+                        values[subGenreKey] = null;
+                    }
+
+                    return;
+                }
                 values[genreKey] = genre.lv1;
                 values[subGenreKey] = genre.lv2;
             });
         }
 
-        if (VideoFileAnalyzeModel.isEmpty(recorded.videoType) === true && info.videoType !== null) {
+        if (
+            (overwrite === true || VideoFileAnalyzeModel.isEmpty(recorded.videoType) === true) &&
+            info.videoType !== null
+        ) {
             values.videoType = info.videoType;
         }
-        if (VideoFileAnalyzeModel.isEmpty(recorded.videoResolution) === true && info.videoResolution !== null) {
+        if (
+            (overwrite === true || VideoFileAnalyzeModel.isEmpty(recorded.videoResolution) === true) &&
+            info.videoResolution !== null
+        ) {
             values.videoResolution = info.videoResolution;
         }
-        if (typeof recorded.videoStreamContent !== 'number' && info.videoStreamContent !== null) {
+        if (
+            (overwrite === true || typeof recorded.videoStreamContent !== 'number') &&
+            info.videoStreamContent !== null
+        ) {
             values.videoStreamContent = info.videoStreamContent;
         }
-        if (typeof recorded.videoComponentType !== 'number' && info.videoComponentType !== null) {
+        if (
+            (overwrite === true || typeof recorded.videoComponentType !== 'number') &&
+            info.videoComponentType !== null
+        ) {
             values.videoComponentType = info.videoComponentType;
         }
-        if (typeof recorded.audioSamplingRate !== 'number' && info.audioSamplingRate !== null) {
+        if ((overwrite === true || typeof recorded.audioSamplingRate !== 'number') && info.audioSamplingRate !== null) {
             values.audioSamplingRate = info.audioSamplingRate;
         }
-        if (typeof recorded.audioComponentType !== 'number' && info.audioComponentType !== null) {
+        if (
+            (overwrite === true || typeof recorded.audioComponentType !== 'number') &&
+            info.audioComponentType !== null
+        ) {
             values.audioComponentType = info.audioComponentType;
         }
 
@@ -288,7 +328,7 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
 
         await this.recordedDB.updateProgramInfo(recorded.id, values);
         this.log?.system.info(
-            `apply program info from ts: recordedId ${recorded.id}: ${Object.keys(values).join(', ')}`,
+            `apply program info from ts${overwrite === true ? ' (overwrite)' : ''}: recordedId ${recorded.id}: ${Object.keys(values).join(', ')}`,
         );
 
         return true;

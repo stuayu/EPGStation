@@ -5,12 +5,48 @@ import * as stream from 'stream';
 import BitParser from '../../channel/BitParser';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
+import ChannelUtil from '../../../util/ChannelUtil';
 import ITsInfoAnalyzer, { TsGenre, TsInfo, TsInfoAnalyzeOption } from './ITsInfoAnalyzer';
+
+/**
+ * PCR (Program Clock Reference) のサンプル 1 点
+ */
+interface PcrSample {
+    pid: number;
+    pcr: number;
+    packetIndex: number;
+}
+
+/**
+ * SDT の service_descriptor から取り出したサービス 1 件分
+ */
+interface SdtService {
+    serviceType: number | null;
+    name: string | null;
+    provider: string | null;
+}
+
+/**
+ * 1 区間分の解析結果。firstTdtAt は「読み出しを開始した位置の放送時刻」であって
+ * 「ファイル先頭の放送時刻」ではない点に注意 (中央から読んだ場合は analyze() が補正する)
+ */
+interface ScanResult {
+    info: TsInfo;
+    // 読み出し開始位置に対応する放送時刻 (= 補正後の info.firstTdtAt)
+    regionStartAt: number | null;
+    // 区間内で実測した平均バイトレート (byte / ミリ秒)
+    bytesPerMs: number | null;
+    // 採用したサービスの PCR_PID
+    pcrPid: number | null;
+}
 
 /**
  * TS ファイルの PSI/SI (PAT / SDT / NIT / EIT / TDT / PMT) を解析して
  * 放送局・番組・ストリーム構成の情報を取り出す
  *
+ * 既定ではファイルの中央から読む。ファイル先頭は
+ * 「前番組の EIT[p/f] がまだ present として流れている」「録画開始直後で TS が壊れている」
+ * ことがあり、そのまま採用すると番組名・ジャンルが前番組のものになるため。
  * ファイル全体は読まず、必要なテーブルが揃うか上限に達した時点で打ち切る
  */
 @injectable()
@@ -20,6 +56,26 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
     // 解析の既定の打ち切り時間
     private static readonly DEFAULT_TIMEOUT_MS = 60 * 1000;
     private static readonly JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+    private static readonly TS_PACKET_SIZE = 188;
+    private static readonly SYNC_BYTE = 0x47;
+    // ファイル中央から読むために必要な最小ファイルサイズ。
+    // これ未満のファイルは中央から読んでも残りが短く、テーブルが一巡しないおそれがあるため先頭から読む
+    private static readonly MIN_MIDDLE_ANALYZE_BYTES = 64 * 1024 * 1024;
+    // 任意位置から TS パケット境界を探すために読むバイト数
+    private static readonly SYNC_SEARCH_BYTES = TsInfoAnalyzer.TS_PACKET_SIZE * 20;
+    // ファイル先頭の放送時刻 (TDT/TOT) を読むために先頭から読み込む最大バイト数。
+    // TDT は 5 秒以下の周期で送出されるため通常はこれより遥かに手前で見つかり、その時点で打ち切る
+    private static readonly HEAD_PROBE_MAX_BYTES = 32 * 1024 * 1024;
+    // ファイル先頭で読んだ時刻と中央からの推定値がこれ以上離れていたら、
+    // 先頭が壊れている (または別番組の TS が連結されている) とみなして推定値を採る
+    private static readonly HEAD_TIME_TOLERANCE_MS = 5 * 60 * 1000;
+    // 平均バイトレートの実測に必要な最小の PCR 区間 (短すぎる区間は誤差が大きい)
+    private static readonly MIN_BITRATE_SPAN_MS = 1000;
+    // 相乗りしている複数サービスの中から対象を選ぶために最低限読むパケット数 (約 3.7MB)
+    private static readonly MIN_PACKETS_FOR_SERVICE_SELECTION = 20000;
+    // 対象サービスとして最優先する service_type (デジタルTVサービス / 超高精細度4K専用TVサービス)
+    private static readonly PRIMARY_SERVICE_TYPES = [0x01, 0xad];
 
     // PCR (Program Clock Reference) の刻み (27MHz)
     private static readonly PCR_TICK_HZ = 27_000_000;
@@ -117,35 +173,126 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
 
     /**
      * TS ファイルを解析する
+     *
+     * 既定ではファイルの中央から読む。ファイル先頭の EIT[p/f] は前番組を指していることがあり、
+     * そのまま採用すると番組名・ジャンルが前番組のものになってしまうため。
+     * ただし firstTdtAt (ファイル先頭の放送時刻) だけは先頭を読み直して求める
      * @param filePath: string 解析対象のファイルパス
      * @param option: TsInfoAnalyzeOption
      * @return Promise<TsInfo> 解析できなかった項目は null で返る
      */
-    public analyze(filePath: string, option?: TsInfoAnalyzeOption): Promise<TsInfo> {
+    public async analyze(filePath: string, option?: TsInfoAnalyzeOption): Promise<TsInfo> {
         const maxReadBytes = option?.maxReadBytes ?? TsInfoAnalyzer.DEFAULT_MAX_READ_BYTES;
         const timeoutMs = option?.timeoutMs ?? TsInfoAnalyzer.DEFAULT_TIMEOUT_MS;
 
-        return new Promise<TsInfo>(resolve => {
+        const startPosition = await this.decideStartPosition(filePath, option);
+        const result = await this.scan(filePath, startPosition, maxReadBytes, timeoutMs);
+
+        if (startPosition > 0) {
+            result.info.firstTdtAt = await this.resolveFileStartAt(filePath, startPosition, result, timeoutMs);
+        }
+
+        return result.info;
+    }
+
+    /**
+     * 解析の読み出し開始位置を決める。
+     * 中央から読む場合は TS パケット境界へ丸める (境界がずれると先頭のパケットを取りこぼす)
+     * @param filePath: string
+     * @param option: TsInfoAnalyzeOption | undefined
+     * @return Promise<number> ファイル先頭からのバイト位置 (0 なら先頭から読む)
+     */
+    private async decideStartPosition(filePath: string, option?: TsInfoAnalyzeOption): Promise<number> {
+        if (option?.analyzeFromMiddle === false) {
+            return 0;
+        }
+
+        const size = await fs.promises
+            .stat(filePath)
+            .then(stat => stat.size)
+            .catch(() => null);
+        if (size === null || size < TsInfoAnalyzer.MIN_MIDDLE_ANALYZE_BYTES) {
+            return 0;
+        }
+
+        const middle = Math.floor(size / 2);
+
+        return await this.findPacketBoundary(filePath, middle - (middle % TsInfoAnalyzer.TS_PACKET_SIZE));
+    }
+
+    /**
+     * 指定位置の近くにある TS パケット境界 (sync_byte が 188 byte 間隔で並ぶ位置) を探す
+     * @param filePath: string
+     * @param position: number 探索を始めるバイト位置
+     * @return Promise<number> 見つからない場合は position をそのまま返す
+     */
+    private async findPacketBoundary(filePath: string, position: number): Promise<number> {
+        const handle = await fs.promises.open(filePath, 'r').catch(() => null);
+        if (handle === null) {
+            return position;
+        }
+
+        try {
+            const buffer = Buffer.alloc(TsInfoAnalyzer.SYNC_SEARCH_BYTES);
+            const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+            const limit = bytesRead - TsInfoAnalyzer.TS_PACKET_SIZE * 2;
+            for (let i = 0; i < limit; i++) {
+                if (
+                    buffer[i] === TsInfoAnalyzer.SYNC_BYTE &&
+                    buffer[i + TsInfoAnalyzer.TS_PACKET_SIZE] === TsInfoAnalyzer.SYNC_BYTE &&
+                    buffer[i + TsInfoAnalyzer.TS_PACKET_SIZE * 2] === TsInfoAnalyzer.SYNC_BYTE
+                ) {
+                    return position + i;
+                }
+            }
+
+            return position;
+        } catch (err: any) {
+            return position;
+        } finally {
+            await handle.close().catch(() => {});
+        }
+    }
+
+    /**
+     * 指定位置から TS を読んで PSI/SI を解析する
+     * @param filePath: string
+     * @param startPosition: number 読み出し開始位置 (バイト)
+     * @param maxReadBytes: number 読み込む最大バイト数
+     * @param timeoutMs: number 打ち切り時間
+     * @return Promise<ScanResult>
+     */
+    private scan(
+        filePath: string,
+        startPosition: number,
+        maxReadBytes: number,
+        timeoutMs: number,
+    ): Promise<ScanResult> {
+        return new Promise<ScanResult>(resolve => {
             const info: TsInfo = TsInfoAnalyzer.createEmptyInfo();
-            // SDT / EIT は全サービス分流れてくるため、対象サービスを決めるまでは候補として保持する
-            const sdtServices = new Map<
-                number,
-                { serviceType: number | null; name: string | null; provider: string | null }
-            >();
+            // SDT / EIT / PMT は全サービス分流れてくるため、対象サービスを決めるまでは候補として保持する
+            const sdtServices = new Map<number, SdtService>();
             const pmtStreams = new Map<number, aribts.Stream[]>();
-            // program_number -> PCR_PID (TDT/TOT のファイル先頭時刻補正に使う)
+            // program_number -> PCR_PID (TDT/TOT の時刻補正に使う)
             const pmtPcrPids = new Map<number, number>();
+            // service_id -> EIT[p/f] present から作った番組情報の候補
+            const eitCandidates = new Map<number, TsInfo>();
+            // PID ごとのパケット数。どのサービスが実際にデータを流しているか (= 録画対象か) の判定に使う
+            const pidPacketCounts = new Map<number, number>();
             let patServiceIds: number[] = [];
             let isFinished = false;
 
-            // PCR による TDT/TOT 時刻の補正用: 受信したパケット数 (= ファイル先頭からの相対位置) と、
-            // PID ごとの PCR サンプル (ファイル先頭からの経過時間を測るための基準点)
+            // PCR による TDT/TOT 時刻の補正用: 受信したパケット数 (= 読み出し開始位置からの相対位置) と、
+            // PID ごとの PCR サンプル (読み出し開始位置からの経過時間を測るための基準点)
             let packetIndex = 0;
-            const pcrSamples: Array<{ pid: number; pcr: number; packetIndex: number }> = [];
+            const pcrSamples: PcrSample[] = [];
             // 最初に確定した TDT/TOT が見つかった時点でのパケット位置
             let firstTdtPacketIndex: number | null = null;
 
-            const readableStream = fs.createReadStream(filePath, { start: 0, end: Math.max(0, maxReadBytes - 1) });
+            const readableStream = fs.createReadStream(filePath, {
+                start: startPosition,
+                end: startPosition + Math.max(1, maxReadBytes) - 1,
+            });
             const tsReadableConnector = new aribts.TsReadableConnector();
             const tsPacketParser = new aribts.TsPacketParser();
             const tsSectionParser = new aribts.TsSectionParser();
@@ -158,13 +305,20 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                 isFinished = true;
                 clearTimeout(timer);
 
-                // 対象サービスが決まっていない場合は PAT の先頭を採用する
-                if (info.serviceId === null && patServiceIds.length > 0) {
-                    info.serviceId = patServiceIds[0];
-                }
+                const result: ScanResult = { info: info, regionStartAt: null, bytesPerMs: null, pcrPid: null };
 
-                // 対象サービスの SDT 情報を反映する
+                // 相乗りしているサービスの中から録画対象のサービスを選ぶ
+                info.serviceId = TsInfoAnalyzer.selectServiceId(
+                    patServiceIds,
+                    sdtServices,
+                    pmtStreams,
+                    pmtPcrPids,
+                    eitCandidates,
+                    pidPacketCounts,
+                );
+
                 if (info.serviceId !== null) {
+                    // 対象サービスの SDT 情報を反映する
                     const service = sdtServices.get(info.serviceId);
                     if (typeof service !== 'undefined') {
                         info.serviceType = service.serviceType;
@@ -177,12 +331,20 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                         TsInfoAnalyzer.setStreamInfo(info, streams);
                     }
 
-                    // TDT/TOT で得た時刻を、実際に見つかった位置 (ファイル先頭からの経過時間) の分だけ
-                    // 遡って補正する。対象サービスの PCR_PID が分からない・PCR サンプルが
-                    // 足りない等で補正できない場合は無補正の値のまま使う
-                    if (info.firstTdtAt !== null && firstTdtPacketIndex !== null) {
-                        const pcrPid = pmtPcrPids.get(info.serviceId);
-                        if (typeof pcrPid === 'number' && pcrPid !== TsInfoAnalyzer.PCR_PID_NONE) {
+                    // 対象サービスの EIT[p/f] present を反映する
+                    const event = eitCandidates.get(info.serviceId);
+                    if (typeof event !== 'undefined') {
+                        TsInfoAnalyzer.applyEventCandidate(info, event);
+                    }
+
+                    const pcrPid = pmtPcrPids.get(info.serviceId);
+                    if (typeof pcrPid === 'number' && pcrPid !== TsInfoAnalyzer.PCR_PID_NONE) {
+                        result.pcrPid = pcrPid;
+
+                        // TDT/TOT で得た時刻を、実際に見つかった位置 (読み出し開始位置からの経過時間) の
+                        // 分だけ遡って補正する。PCR サンプルが足りない等で補正できない場合は
+                        // 無補正の値のまま使う
+                        if (info.firstTdtAt !== null && firstTdtPacketIndex !== null) {
                             const corrected = TsInfoAnalyzer.correctStartAtByPcr(
                                 info.firstTdtAt,
                                 firstTdtPacketIndex,
@@ -193,17 +355,32 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                                 info.firstTdtAt = corrected;
                             }
                         }
+
+                        result.bytesPerMs = TsInfoAnalyzer.calcBytesPerMs(pcrPid, pcrSamples);
                     }
                 }
 
+                result.regionStartAt = info.firstTdtAt;
+
                 readableStream.unpipe();
                 readableStream.destroy();
-                resolve(info);
+                resolve(result);
             };
 
             // 必要な情報がそろっていれば残りは読まずに打ち切る
             const checkFinish = (): void => {
-                if (TsInfoAnalyzer.hasEnoughInfo(info, sdtServices, pmtStreams)) {
+                if (
+                    TsInfoAnalyzer.hasEnoughInfo(
+                        info,
+                        packetIndex,
+                        patServiceIds,
+                        sdtServices,
+                        pmtStreams,
+                        pmtPcrPids,
+                        eitCandidates,
+                        pidPacketCounts,
+                    )
+                ) {
                     finish();
                 }
             };
@@ -286,16 +463,17 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                 checkFinish();
             });
 
-            // EIT[p/f] present: 録画された番組そのものの情報
+            // EIT[p/f] present: 録画された番組そのものの情報。
+            // 同一 TS の全サービス分が流れてくるため、サービスごとに候補として保持し、
+            // どれを採用するかは finish() のサービス選択で決める
             tsSectionParser.on('eit', (section: aribts.TsSectionEventInformation) => {
-                if (info.eventId !== null) {
-                    return;
-                }
-
                 try {
                     const eit = section.decode();
                     // 自ストリームの present (section 0) のみ採用する
                     if (eit.table_id !== TsInfoAnalyzer.TABLE_ID_EIT_PF_ACTUAL || eit.section_number !== 0) {
+                        return;
+                    }
+                    if (eitCandidates.has(eit.service_id) === true) {
                         return;
                     }
                     const event = eit.events[0];
@@ -303,22 +481,22 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                         return;
                     }
 
-                    // EIT[p/f] は同一 TS の全サービス分が流れてくる。
                     // PAT に載っているサービス (サービス指定で録画されたファイルでは対象サービスのみ) 以外は採用しない
                     if (patServiceIds.length > 0 && patServiceIds.includes(eit.service_id) === false) {
                         return;
                     }
 
-                    // EIT[p/f] が流れているサービスを対象サービスとして確定させる
-                    info.serviceId = eit.service_id;
-                    info.networkId = eit.original_network_id;
-                    info.transportStreamId = eit.transport_stream_id;
+                    const candidate = TsInfoAnalyzer.createEmptyInfo();
+                    candidate.serviceId = eit.service_id;
+                    candidate.networkId = eit.original_network_id;
+                    candidate.transportStreamId = eit.transport_stream_id;
 
-                    info.eventId = event.event_id;
-                    info.eventStartAt = TsInfoAnalyzer.decodeJstDate(event.start_time);
-                    info.eventDuration = TsInfoAnalyzer.decodeBcdDuration(event.duration);
+                    candidate.eventId = event.event_id;
+                    candidate.eventStartAt = TsInfoAnalyzer.decodeJstDate(event.start_time);
+                    candidate.eventDuration = TsInfoAnalyzer.decodeBcdDuration(event.duration);
 
-                    TsInfoAnalyzer.setEventDescriptors(info, event.descriptors);
+                    TsInfoAnalyzer.setEventDescriptors(candidate, event.descriptors);
+                    eitCandidates.set(eit.service_id, candidate);
                 } catch (err: any) {
                     // 壊れたセクションは無視して読み進める
                 }
@@ -359,11 +537,18 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                 }
             });
 
-            // PCR (Program Clock Reference) サンプリング。
+            // PCR (Program Clock Reference) サンプリングと PID ごとのパケット数集計。
             // tsSectionParser とは別に生パケットを直接覗き見る (pipe の消費とは独立に動く追加の
             // 'data' リスナーとして安全に併存できる。ストリームの分岐・消費はしない)
             tsPacketParser.on('data', (packet: aribts.TsPacket) => {
                 const currentIndex = packetIndex++;
+
+                try {
+                    const pid = packet.getPid();
+                    pidPacketCounts.set(pid, (pidPacketCounts.get(pid) ?? 0) + 1);
+                } catch (err: any) {
+                    // 壊れたパケットは無視して読み進める
+                }
 
                 if (pcrSamples.length >= TsInfoAnalyzer.MAX_PCR_SAMPLES) {
                     return;
@@ -429,20 +614,173 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
 
     /**
      * 解析を打ち切ってよいだけの情報が集まったか
-     * 局名・番組・時刻・ストリーム構成がそろっていればファイルの残りを読む必要はない
+     * 対象サービスの局名・番組・時刻・ストリーム構成がそろっていればファイルの残りを読む必要はない
      */
     private static hasEnoughInfo(
         info: TsInfo,
-        sdtServices: Map<number, unknown>,
-        pmtStreams: Map<number, unknown>,
+        packetCount: number,
+        patServiceIds: number[],
+        sdtServices: Map<number, SdtService>,
+        pmtStreams: Map<number, aribts.Stream[]>,
+        pmtPcrPids: Map<number, number>,
+        eitCandidates: Map<number, TsInfo>,
+        pidPacketCounts: Map<number, number>,
     ): boolean {
-        return (
-            info.serviceId !== null &&
-            info.eventId !== null &&
-            info.firstTdtAt !== null &&
-            sdtServices.has(info.serviceId) &&
-            pmtStreams.has(info.serviceId)
+        if (info.firstTdtAt === null) {
+            return false;
+        }
+
+        // サービスが相乗りしている TS の選択はパケット数の偏り (どのサービスが実際にデータを
+        // 流しているか) を見るため、判断が安定するだけの量を読むまでは打ち切らない。
+        // サービス指定で録画されたファイル (PAT に 1 サービスしか無い) は選択に迷わないので待たない
+        if (patServiceIds.length !== 1 && packetCount < TsInfoAnalyzer.MIN_PACKETS_FOR_SERVICE_SELECTION) {
+            return false;
+        }
+
+        const serviceId = TsInfoAnalyzer.selectServiceId(
+            patServiceIds,
+            sdtServices,
+            pmtStreams,
+            pmtPcrPids,
+            eitCandidates,
+            pidPacketCounts,
         );
+        if (serviceId === null) {
+            return false;
+        }
+
+        return sdtServices.has(serviceId) && pmtStreams.has(serviceId) && eitCandidates.has(serviceId);
+    }
+
+    /**
+     * 相乗りしている複数サービスの中から、この録画ファイルの対象サービスを選ぶ。
+     *
+     * 全サービス録画の TS には主番組・サブチャンネル・ワンセグ・データ放送が同居しており、
+     * 単純に PAT の先頭や最初に見つかった EIT[p/f] を採ると、ワンセグやサブチャンネルの
+     * 放送局名・番組名を拾ってしまう。実際にデータが流れている量 (PID ごとのパケット数) と
+     * service_type を見て、主番組を選ぶ
+     *
+     * @param patServiceIds: number[] PAT に載っているサービス
+     * @param sdtServices: Map<number, SdtService>
+     * @param pmtStreams: Map<number, aribts.Stream[]>
+     * @param pmtPcrPids: Map<number, number>
+     * @param eitCandidates: Map<number, TsInfo>
+     * @param pidPacketCounts: Map<number, number>
+     * @return number | null 候補が無い場合は null
+     */
+    private static selectServiceId(
+        patServiceIds: number[],
+        sdtServices: Map<number, SdtService>,
+        pmtStreams: Map<number, aribts.Stream[]>,
+        pmtPcrPids: Map<number, number>,
+        eitCandidates: Map<number, TsInfo>,
+        pidPacketCounts: Map<number, number>,
+    ): number | null {
+        // PAT が読めていればそれが対象候補の正。読めていない場合は他のテーブルから拾う
+        const candidates =
+            patServiceIds.length > 0
+                ? patServiceIds
+                : Array.from(
+                      new Set<number>([...pmtStreams.keys(), ...eitCandidates.keys(), ...sdtServices.keys()]),
+                  ).sort((a, b) => a - b);
+
+        if (candidates.length === 0) {
+            return null;
+        }
+        if (candidates.length === 1) {
+            return candidates[0];
+        }
+
+        let best: { serviceId: number; rank: number; packets: number; hasEit: boolean } | null = null;
+        for (const serviceId of candidates) {
+            const current = {
+                serviceId: serviceId,
+                rank: TsInfoAnalyzer.getServiceTypeRank(sdtServices.get(serviceId)?.serviceType ?? null),
+                packets: TsInfoAnalyzer.countServicePackets(serviceId, pmtStreams, pmtPcrPids, pidPacketCounts),
+                hasEit: eitCandidates.has(serviceId),
+            };
+
+            if (
+                best === null ||
+                current.rank > best.rank ||
+                (current.rank === best.rank &&
+                    (current.packets > best.packets ||
+                        (current.packets === best.packets &&
+                            ((current.hasEit === true && best.hasEit === false) ||
+                                (current.hasEit === best.hasEit && current.serviceId < best.serviceId)))))
+            ) {
+                best = current;
+            }
+        }
+
+        return best === null ? null : best.serviceId;
+    }
+
+    /**
+     * service_type の優先度。数字が大きいほど「録画対象になりうる本編サービス」
+     * @param serviceType: number | null SDT が読めていない場合は null
+     */
+    private static getServiceTypeRank(serviceType: number | null): number {
+        if (serviceType === null) {
+            // SDT がまだ読めていないサービス。データ放送より上・本編より下に置く
+            return 1;
+        }
+        if (TsInfoAnalyzer.PRIMARY_SERVICE_TYPES.includes(serviceType) === true) {
+            return 2;
+        }
+
+        // 臨時・プロモーション・音声サービスは本編の次点。ワンセグ・データ放送は最下位
+        return ChannelUtil.isMediaService(serviceType) === true ? 1 : 0;
+    }
+
+    /**
+     * サービスが流したパケット数 (PMT が指す ES と PCR の合計) を数える
+     */
+    private static countServicePackets(
+        serviceId: number,
+        pmtStreams: Map<number, aribts.Stream[]>,
+        pmtPcrPids: Map<number, number>,
+        pidPacketCounts: Map<number, number>,
+    ): number {
+        const streams = pmtStreams.get(serviceId);
+        if (typeof streams === 'undefined') {
+            return 0;
+        }
+
+        const pids = new Set<number>(streams.map(s => s.elementary_PID));
+        const pcrPid = pmtPcrPids.get(serviceId);
+        if (typeof pcrPid === 'number' && pcrPid !== TsInfoAnalyzer.PCR_PID_NONE) {
+            pids.add(pcrPid);
+        }
+
+        let packets = 0;
+        for (const pid of pids) {
+            packets += pidPacketCounts.get(pid) ?? 0;
+        }
+
+        return packets;
+    }
+
+    /**
+     * 選ばれたサービスの EIT[p/f] 候補を解析結果へ写す
+     */
+    private static applyEventCandidate(info: TsInfo, candidate: TsInfo): void {
+        info.networkId = candidate.networkId ?? info.networkId;
+        info.transportStreamId = candidate.transportStreamId ?? info.transportStreamId;
+
+        info.eventId = candidate.eventId;
+        info.eventName = candidate.eventName;
+        info.eventDescription = candidate.eventDescription;
+        info.eventExtended = candidate.eventExtended;
+        info.eventStartAt = candidate.eventStartAt;
+        info.eventDuration = candidate.eventDuration;
+        info.genres = candidate.genres;
+        info.videoType = candidate.videoType;
+        info.videoResolution = candidate.videoResolution;
+        info.videoStreamContent = candidate.videoStreamContent;
+        info.videoComponentType = candidate.videoComponentType;
+        info.audioSamplingRate = candidate.audioSamplingRate;
+        info.audioComponentType = candidate.audioComponentType;
     }
 
     /**
@@ -585,6 +923,217 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
         }
 
         return tdtAt - elapsedMs;
+    }
+
+    /**
+     * PCR サンプルから平均バイトレート (byte / ミリ秒) を実測する。
+     * 中央から解析したときに「ファイル先頭からその位置までの経過時間」を見積もるために使う
+     * @param pcrPid: number 対象サービスの PCR_PID
+     * @param pcrSamples: PcrSample[] 収集した PCR サンプル (PID 混在)
+     * @return number | null 測れない場合は null
+     */
+    private static calcBytesPerMs(pcrPid: number, pcrSamples: PcrSample[]): number | null {
+        const samples = pcrSamples.filter(s => s.pid === pcrPid);
+        if (samples.length < 2) {
+            return null;
+        }
+
+        let first = samples[0];
+        let last = samples[0];
+        for (const s of samples) {
+            if (s.packetIndex < first.packetIndex) {
+                first = s;
+            }
+            if (s.packetIndex > last.packetIndex) {
+                last = s;
+            }
+        }
+
+        let deltaTicks = last.pcr - first.pcr;
+        if (deltaTicks < 0) {
+            deltaTicks += TsInfoAnalyzer.PCR_WRAP_TICKS;
+        }
+        const elapsedMs = (deltaTicks / TsInfoAnalyzer.PCR_TICK_HZ) * 1000;
+        if (Number.isFinite(elapsedMs) === false || elapsedMs < TsInfoAnalyzer.MIN_BITRATE_SPAN_MS) {
+            return null;
+        }
+
+        const bytes = (last.packetIndex - first.packetIndex) * TsInfoAnalyzer.TS_PACKET_SIZE;
+
+        return bytes <= 0 ? null : bytes / elapsedMs;
+    }
+
+    /**
+     * ファイル先頭に対応する放送時刻を求める。
+     *
+     * 中央から解析した場合、そこで得た TDT/TOT はファイル先頭ではなく中央の時刻なので、
+     * ①ファイル先頭を読み直して直接 TDT/TOT を得る ②中央の時刻から実測バイトレート分を
+     * 遡って見積もる、の 2 通りで求め、両者が食い違う場合は先頭が壊れているとみなして
+     * 見積もりの方を採る
+     * @param filePath: string
+     * @param startPosition: number 中央解析の読み出し開始位置 (バイト)
+     * @param result: ScanResult 中央解析の結果
+     * @param timeoutMs: number
+     * @return Promise<number | null> どちらも求まらない場合は null
+     */
+    private async resolveFileStartAt(
+        filePath: string,
+        startPosition: number,
+        result: ScanResult,
+        timeoutMs: number,
+    ): Promise<number | null> {
+        const headAt = await this.scanHeadTime(filePath, result.pcrPid, timeoutMs);
+        const estimated =
+            result.regionStartAt !== null && result.bytesPerMs !== null
+                ? result.regionStartAt - startPosition / result.bytesPerMs
+                : null;
+
+        if (headAt !== null) {
+            if (estimated === null || Math.abs(headAt - estimated) <= TsInfoAnalyzer.HEAD_TIME_TOLERANCE_MS) {
+                return Math.round(headAt);
+            }
+
+            this.log.system.warn(
+                `ts info head time is inconsistent: ${filePath} (head: ${new Date(headAt).toISOString()}, estimated: ${new Date(Math.round(estimated)).toISOString()})`,
+            );
+        }
+
+        return estimated === null ? null : Math.round(estimated);
+    }
+
+    /**
+     * ファイル先頭から TDT/TOT を 1 つ読み、PCR でファイル先頭の時刻へ補正して返す。
+     * TDT は 5 秒以下の周期で流れるため、最初の 1 つが見つかった時点で読み込みを打ち切る
+     * @param filePath: string
+     * @param pcrPid: number | null 対象サービスの PCR_PID (不明なら最初に見つかった PCR の PID を使う)
+     * @param timeoutMs: number
+     * @return Promise<number | null> 読めなかった場合は null
+     */
+    private scanHeadTime(filePath: string, pcrPid: number | null, timeoutMs: number): Promise<number | null> {
+        return new Promise<number | null>(resolve => {
+            let isFinished = false;
+            let packetIndex = 0;
+            const pcrSamples: PcrSample[] = [];
+            let tdtAt: number | null = null;
+            let tdtPacketIndex: number | null = null;
+
+            const readableStream = fs.createReadStream(filePath, {
+                start: 0,
+                end: TsInfoAnalyzer.HEAD_PROBE_MAX_BYTES - 1,
+            });
+            const tsReadableConnector = new aribts.TsReadableConnector();
+            const tsPacketParser = new aribts.TsPacketParser();
+            const tsSectionParser = new aribts.TsSectionParser();
+
+            const finish = (): void => {
+                if (isFinished === true) {
+                    return;
+                }
+                isFinished = true;
+                clearTimeout(timer);
+                readableStream.unpipe();
+                readableStream.destroy();
+
+                if (tdtAt === null || tdtPacketIndex === null) {
+                    resolve(null);
+
+                    return;
+                }
+
+                const targetPid =
+                    pcrPid !== null && pcrPid !== TsInfoAnalyzer.PCR_PID_NONE ? pcrPid : (pcrSamples[0]?.pid ?? null);
+                if (targetPid === null) {
+                    resolve(tdtAt);
+
+                    return;
+                }
+
+                resolve(TsInfoAnalyzer.correctStartAtByPcr(tdtAt, tdtPacketIndex, targetPid, pcrSamples) ?? tdtAt);
+            };
+
+            const timer = setTimeout(() => {
+                this.log.system.warn(`ts info head time analyze timeout: ${filePath}`);
+                finish();
+            }, timeoutMs);
+
+            const onTimeTable = (jstTime: unknown): void => {
+                if (tdtAt !== null) {
+                    return;
+                }
+                const decoded = TsInfoAnalyzer.decodeJstDate(jstTime);
+                if (decoded === null) {
+                    return;
+                }
+                tdtAt = decoded;
+                tdtPacketIndex = packetIndex;
+
+                // ファイル先頭の時刻はこの 1 つで足りる
+                finish();
+            };
+
+            tsSectionParser.on('tdt', (section: aribts.TsSectionTimeAndDate) => {
+                try {
+                    onTimeTable(section.decode().JST_time);
+                } catch (err: any) {
+                    // 壊れたセクションは無視して読み進める
+                }
+            });
+
+            tsSectionParser.on('tot', (section: aribts.TsSectionTimeOffset) => {
+                try {
+                    onTimeTable(section.decode().JST_time);
+                } catch (err: any) {
+                    // 壊れたセクションは無視して読み進める
+                }
+            });
+
+            tsPacketParser.on('data', (packet: aribts.TsPacket) => {
+                const currentIndex = packetIndex++;
+
+                if (pcrSamples.length >= TsInfoAnalyzer.MAX_PCR_SAMPLES) {
+                    return;
+                }
+
+                try {
+                    if (packet.getPcrFlag() !== 1) {
+                        return;
+                    }
+
+                    const decoded = packet.decode();
+                    const af = decoded.adaptation_field;
+                    if (
+                        typeof af === 'undefined' ||
+                        af === null ||
+                        typeof af.program_clock_reference_base !== 'number' ||
+                        typeof af.program_clock_reference_extension !== 'number'
+                    ) {
+                        return;
+                    }
+
+                    pcrSamples.push({
+                        pid: packet.getPid(),
+                        pcr: af.program_clock_reference_base * 300 + af.program_clock_reference_extension,
+                        packetIndex: currentIndex,
+                    });
+                } catch (err: any) {
+                    // 壊れたパケットは無視して読み進める
+                }
+            });
+
+            readableStream.pipe(tsReadableConnector as unknown as stream.Writable);
+            tsReadableConnector.pipe(tsPacketParser as any);
+            tsPacketParser.pipe(tsSectionParser);
+
+            readableStream.on('error', () => {
+                finish();
+            });
+            readableStream.on('end', () => {
+                finish();
+            });
+            readableStream.on('close', () => {
+                finish();
+            });
+        });
     }
 
     /**

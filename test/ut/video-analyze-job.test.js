@@ -65,8 +65,8 @@ function fixture(ids, options = {}) {
             if (options.slowMs) await sleep(options.slowMs);
             return {};
         },
-        analyzeTsInfo: async id => {
-            calls.push(['tsInfo', id]);
+        analyzeTsInfo: async (id, option) => {
+            calls.push(['tsInfo', id, option?.overwriteProgramInfo === true]);
             if (failIds.has(id) === true) throw new Error('boom');
             analyzed.add(id);
             if (options.slowMs) await sleep(options.slowMs);
@@ -181,5 +181,26 @@ test('the channel type reapplies stored ts info without touching the files', asy
     assert.deepEqual(
         calls.map(c => c[0]),
         ['channel', 'channel', 'channel'],
+    );
+});
+
+test('tsInfo の全件強制再解析だけが番組情報の上書きを許可する', async () => {
+    const { model, calls } = fixture([1, 2]);
+
+    // 未解析のみ = 空の項目を補うだけ (既存の値は触らない)
+    await model.start({ type: 'tsInfo', mode: 'unanalyzed' });
+    await waitFinish(model);
+    assert.deepEqual(
+        calls.map(c => c[2]),
+        [false, false],
+    );
+
+    // 全件強制再解析は明示的な操作なので上書きする
+    calls.length = 0;
+    await model.start({ type: 'tsInfo', mode: 'all' });
+    await waitFinish(model);
+    assert.deepEqual(
+        calls.map(c => c[2]),
+        [true, true],
     );
 });
