@@ -366,3 +366,46 @@ test('すでに入っている番組情報は TS の内容で上書きしない'
     // 空だった audioSamplingRate だけが補完される
     assert.deepEqual(programUpdates[0].values, { audioSamplingRate: 48000 });
 });
+
+test('overwriteProgramInfo を指定した再解析は既存の番組情報を TS の内容で上書きする', async () => {
+    // 旧実装がファイル先頭を読んで前番組の EIT[p/f] を拾ってしまった録画を、
+    // 全件強制再解析 / 1 件再解析で直せるようにするための経路
+    const { model, programUpdates } = createModel({
+        recorded: {
+            id: 10,
+            isRecording: false,
+            startAt: 1700000000000,
+            channelId: 1,
+            description: '前番組の概要',
+            extended: '前番組の詳細',
+            genre1: 6,
+            subGenre1: 1,
+            genre2: 3,
+            subGenre2: 2,
+            videoType: 'h.264',
+        },
+        channels: [{ id: 1, networkId: 32416, serviceId: 21504, name: 'ＮＨＫ総合１', halfWidthName: 'NHK総合1' }],
+        tsInfo: emptyTsInfo({
+            networkId: 32416,
+            serviceId: 21504,
+            eventDescription: '本来の番組の概要',
+            genres: [{ lv1: 7, lv2: 0 }],
+            videoType: 'mpeg2',
+            audioSamplingRate: 48000,
+        }),
+    });
+
+    await model.analyzeTsInfo(1, { overwriteProgramInfo: true });
+
+    assert.equal(programUpdates.length, 1);
+    assert.equal(programUpdates[0].values.description, '本来の番組の概要');
+    assert.equal(programUpdates[0].values.genre1, 7);
+    assert.equal(programUpdates[0].values.subGenre1, 0);
+    // TS 側に無いジャンルの組は消して古い値を残さない
+    assert.equal(programUpdates[0].values.genre2, null);
+    assert.equal(programUpdates[0].values.subGenre2, null);
+    assert.equal(programUpdates[0].values.videoType, 'mpeg2');
+    assert.equal(programUpdates[0].values.audioSamplingRate, 48000);
+    // TS 側が null の項目は触らない (詳細は EIT[p/f] から取れなかった)
+    assert.equal('extended' in programUpdates[0].values, false);
+});

@@ -65,6 +65,11 @@ export interface TsInfoAnalyzeOption {
     maxReadBytes?: number;
     // 解析の打ち切り時間 (ミリ秒)
     timeoutMs?: number;
+    // ファイル中央から解析するか (既定 true)。
+    // ファイル先頭には前番組の EIT[p/f] や録画開始直後の壊れた TS が入っていることがあり、
+    // そのまま読むと番組名・ジャンルが前番組のものになるため、既定では中央から読む。
+    // false にすると従来どおりファイル先頭から解析する
+    analyzeFromMiddle?: boolean;
 }
 
 export default interface ITsInfoAnalyzer {

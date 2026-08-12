@@ -50,12 +50,13 @@ export interface RecordedProgramUpdateValues {
     halfWidthDescription?: string;
     extended?: string;
     halfWidthExtended?: string;
-    genre1?: number;
-    subGenre1?: number;
-    genre2?: number;
-    subGenre2?: number;
-    genre3?: number;
-    subGenre3?: number;
+    // ジャンルは上書き更新で「TS 側の組数が減った分を消す」ために null を許す
+    genre1?: number | null;
+    subGenre1?: number | null;
+    genre2?: number | null;
+    subGenre2?: number | null;
+    genre3?: number | null;
+    subGenre3?: number | null;
     videoType?: string;
     videoResolution?: string;
     videoStreamContent?: number;
