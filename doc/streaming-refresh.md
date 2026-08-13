@@ -228,7 +228,7 @@ DPlayer の `switchQuality()` は「quality リストに事前登録された UR
 
 ## 新4K8K衛星放送 (BS4K / CS4K) の配信
 
-新4K8K衛星放送は MMT/TLV を dantto4k 等で MPEG-2 TS へ変換して受け取る (`doc/stuayu-fork.md` 参照)。
+新4K8K衛星放送は MMT/TLV を dantto4k 等で MPEG-2 TS へ変換して受け取る (`doc/changelog-fork.md` 参照)。
 配信経路そのものは従来の TS と同じだが、**映像が HEVC (H.265)・音声が MPEG-4 AAC** になる点が違う。
 
 - **エンコードして配信する場合**: `encodePresets` の `qualities` に `2160p` を指定すると 4K のプリセットが生成される

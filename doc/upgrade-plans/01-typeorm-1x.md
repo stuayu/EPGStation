@@ -46,6 +46,6 @@
 
 ## 4. 完了時
 
-- `doc/stuayu-fork.md` の「変更箇所」と、`doc/PROJECT_OVERVIEW.md` の技術スタック行 (TypeORM バージョンに言及があれば) を更新
+- `doc/changelog-fork.md` の「変更箇所」と、`doc/PROJECT_OVERVIEW.md` の技術スタック行 (TypeORM バージョンに言及があれば) を更新
 - 日本語コミット (`Update: TypeORM を 1.x に更新` 等)。ドライバ変更 (mysql→mysql2 等) をした場合はコミットメッセージと `doc/conf-manual.md` の DB 設定説明に反映
 - 報告: 変更ファイル一覧、採用した 1.x での破壊的変更への対応内容、検証結果 (未検証項目は明示)、ユーザーへの移行時注意点
