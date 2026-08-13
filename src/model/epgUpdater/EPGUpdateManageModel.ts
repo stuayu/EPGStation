@@ -16,7 +16,7 @@ import { formatDurationUndefinedChange, formatLogDuration, formatTimeChange } fr
 import Program from '../../db/entities/Program';
 import { detectOnAirPrograms, OnAirDetectResult } from './OnAirProgramDetector';
 import { classifyProgramEvent, ProgramUpdatePriorityOption, splitUrgentProgramEvents } from './ProgramUpdatePriority';
-import { buildProgramUpdateNotice, hasProgramUpdateNotice } from './ProgramUpdateNotice';
+import { buildProgramUpdateNotice, hasProgramUpdateNotice, DeletedProgramRange } from './ProgramUpdateNotice';
 import { resolveEPGRealtimeConfig } from './EPGRealtimeConfig';
 import IEPGUpdateManageModel, {
     ProgramBaseEvent,
@@ -663,6 +663,11 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                     // 変更前の時刻をログに併記するため、DB 更新の前に現在値を控える
                     const oldPrograms = await this.getProgramsForOnAirLog(onAirTargets);
 
+                    // 削除される番組の放送局・時間帯も DB 更新の前に控える。
+                    // これが無いと「削除だけの更新」が範囲不明の通知になり、
+                    // 番組表・視聴画面が無関係な更新でも毎回取り直してしまう
+                    const deletedRanges = await this.getDeletedProgramRanges(deleteValues);
+
                     await this.programDB.update(this.channelIndex, {
                         insert: insertValues,
                         update: updateValues,
@@ -691,6 +696,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                     const notice = buildProgramUpdateNotice({
                         changed: changed,
                         deleted: deleteValues,
+                        deletedRanges: deletedRanges,
                         getChannelId: p => this.channelIndex[p.networkId]?.[p.serviceId]?.id ?? null,
                         programIdLimit: EPGUpdateManageModel.PROGRAM_ID_NOTICE_LIMIT,
                     });
@@ -744,6 +750,36 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
         this.log.system.debug('number of urgent de-queued items: %d', split.urgent.length);
 
         return split.urgent;
+    }
+
+    /**
+     * 削除される番組の放送局・時間帯を DB から取得する。
+     * 番組表・視聴画面が「表示中の内容と重なるときだけ取り直す」ための情報で、
+     * DB から消える前に呼ぶ必要がある
+     * @param programIds: mapid.ProgramId[] 削除される番組 id
+     * @return Promise<DeletedProgramRange[]> 取得できたものだけ
+     */
+    private async getDeletedProgramRanges(programIds: mapid.ProgramId[]): Promise<DeletedProgramRange[]> {
+        if (programIds.length === 0 || programIds.length > EPGUpdateManageModel.PROGRAM_ID_NOTICE_LIMIT) {
+            return [];
+        }
+
+        try {
+            const programs = await this.programDB.findIds(programIds);
+
+            return programs.map(program => {
+                return {
+                    channelId: program.channelId,
+                    startAt: program.startAt,
+                    endAt: program.endAt,
+                };
+            });
+        } catch (err: any) {
+            // 通知の絞り込みに使うだけなので、取得できなくても更新自体は続ける
+            this.log.system.debug('get deleted program ranges error');
+
+            return [];
+        }
     }
 
     /**

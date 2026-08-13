@@ -64,6 +64,7 @@ export default interface IProgramDB {
     update(channelTypes: IChannelTypeIndex, values: ProgramUpdateValues): Promise<void>;
     deleteOld(time: apid.UnixtimeMS): Promise<void>;
     findId(programId: apid.ProgramId): Promise<Program | null>;
+    findIds(programIds: apid.ProgramId[]): Promise<Program[]>;
     findEventRelayProgram(
         networkId: apid.NetworkId,
         serviceId: apid.ServiceId,
