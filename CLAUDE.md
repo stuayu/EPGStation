@@ -13,6 +13,7 @@ EPGStation (stuayu フォーク) — 日本の DTV 録画管理ソフトウェ�
 | ドキュメント | 読むとき |
 | --- | --- |
 | `doc/changelog-fork.md` | **ある実装がなぜそうなっているか**を調べるとき。変更ログ (372KB)。**通読しない**。先頭の索引で項目名を探し、その文字列で grep して該当箇所だけ読む |
+| `doc/architecture.md` | 全体像を図で掴みたいとき (受信環境・プロセス構成・録画の流れ・配信経路・EPG 追従) |
 | `doc/streaming-refresh.md` | ライブ/録画配信・エンコード・プレイヤー UI を触るとき |
 | `doc/conf-manual.md` | 設定項目を追加・変更するとき |
 | `api.yml` | API を追加・変更するとき (OpenAPI 定義の正) |

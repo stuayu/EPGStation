@@ -15,20 +15,33 @@
 
 `dist/index.js` (親) を起動すると **2 プロセス構成** で動作する。
 
-```text
-┌──────────────────────────────┐    child_process.spawn + IPC
-│ Operator (親プロセス)          │◄──────────────────────────────┐
-│  - 予約管理 / 録画実行          │                                │
-│  - EPG 更新 (EPGUpdater)      │   ┌──────────────────────────┐ │
-│  - ストレージ監視              │   │ Service (子プロセス)       │─┘
-│  src/index.ts                 │   │  - Web API (express)      │
-└──────────────┬───────────────┘   │  - ストリーミング配信       │
-               │                    │  - エンコード管理           │
-        Mirakurun / DB              │  - socket.io 通知          │
-                                    │  src/model/service/        │
-                                    │      ServiceExecutor.ts    │
-                                    └──────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph OP["Operator (親プロセス) — src/index.ts"]
+        RSV["予約管理 / 録画実行"]
+        EPGU["EPG 更新 (EPGUpdater を子として spawn)"]
+        STORAGE["ストレージ監視 / サムネイル / シリーズ判定"]
+    end
+
+    subgraph SV["Service (子プロセス) — src/model/service/ServiceExecutor.ts"]
+        API["Web API (express)"]
+        STREAM["ストリーミング配信"]
+        ENC["エンコード管理"]
+        SIO["socket.io 通知"]
+    end
+
+    TUNER["Mirakurun / 互換実装"]
+    DB[("DB (SQLite / MySQL)")]
+
+    TUNER --> OP
+    TUNER --> STREAM
+    OP <-- "IPC (src/model/ipc/)" --> SV
+    OP --> DB
+    SV --> DB
 ```
+
+**図で全体像を掴みたい場合は [architecture.md](architecture.md)** (受信環境の全体像、録画が生まれるまで、
+ストリーミングの経路、EPG のリアルタイム追従を mermaid でまとめてある)。
 
 - 親 → 子は [index.ts](../src/index.ts) の `runService()` が spawn し、落ちたら自動再起動
 - **Mirakurun 未接続でも起動する**: 起動時の疎通確認 (`ConnectionCheckModel`) は有限回で打ち切り、30 秒間隔のバックグラウンドリトライで復旧時に自動反映。状態は `GET /api/status` で取れ、Web UI が警告バナーを出す (DB 接続は必須)

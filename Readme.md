@@ -206,6 +206,7 @@ Android の 設定 → ユーザー補助 で "操作の監視" が必要なサ�
 
 ## 開発者向け
 
+- 全体像の図: [doc/architecture.md](doc/architecture.md)
 - アーキテクチャと実装場所: [doc/PROJECT_OVERVIEW.md](doc/PROJECT_OVERVIEW.md)
 - 作業ルール・コーディング規約・注意点: [CLAUDE.md](CLAUDE.md)
 - テスト方針: [doc/testing.md](doc/testing.md)
