@@ -20,6 +20,13 @@ import IThumbnailManageModel from './IThumbnailManageModel';
 
 @injectable()
 export default class ThumbnailManageModel implements IThumbnailManageModel {
+    // 同じ動画で生成に失敗し続けたときに諦める回数。
+    // 定期クリーンアップが「サムネイルの無い録画」を毎回拾うため、
+    // これが無いと壊れたファイル 1 件で永久にエラーログが出続ける
+    private static readonly MAX_FAILURE_COUNT = 3;
+    // 失敗時にログへ出す ffmpeg の stderr の行数 (原因が分からないと直せないため)
+    private static readonly STDERR_LOG_LINES = 10;
+
     private log: ILogger;
     private config: IConfigFile;
     private queue: IPromiseQueue;
@@ -28,6 +35,8 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
     private thumbnailDB: IThumbnailDB;
     private thumbnailEvent: IThumbnailEvent;
     private videoUtil: IVideoUtil;
+    // 生成に失敗した回数 (videoFileId 単位)。プロセス再起動でリセットされる
+    private failureCount: { [videoFileId: number]: number } = {};
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -54,13 +63,35 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
      * @param videoFileId: apid.VideoFileId
      */
     public add(videoFileId: apid.VideoFileId): void {
+        // 失敗し続けている動画は諦める。
+        // (定期クリーンアップが毎回拾うため、放置するとエラーログが延々と出る)
+        const failureCount = this.failureCount[videoFileId] ?? 0;
+        if (failureCount >= ThumbnailManageModel.MAX_FAILURE_COUNT) {
+            this.log.system.debug(`skip thumbnail queue (failed ${failureCount} times): ${videoFileId}`);
+
+            return;
+        }
+
         this.log.system.info(`add thumbnail queue: ${videoFileId}`);
 
         this.queue.add<void>(() => {
-            return this.create(videoFileId).catch(err => {
-                this.log.system.error(`create thumbnail error: ${videoFileId}`);
-                this.log.system.error(err);
-            });
+            return this.create(videoFileId)
+                .then(() => {
+                    delete this.failureCount[videoFileId];
+                })
+                .catch(err => {
+                    const count = (this.failureCount[videoFileId] ?? 0) + 1;
+                    this.failureCount[videoFileId] = count;
+                    this.log.system.error(
+                        `create thumbnail error: ${videoFileId} (${count}/${ThumbnailManageModel.MAX_FAILURE_COUNT})`,
+                    );
+                    this.log.system.error(err);
+                    if (count >= ThumbnailManageModel.MAX_FAILURE_COUNT) {
+                        this.log.system.warn(
+                            `give up creating thumbnail: ${videoFileId} (retry after restarting or re-adding the video)`,
+                        );
+                    }
+                });
         });
     }
 
@@ -109,10 +140,15 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         // run ffmpeg
         const child = spawn(cmds.bin, cmds.args);
 
-        // debug 用
+        // 失敗時に原因をログへ出せるよう、末尾だけ控えておく
+        let stderrLines: string[] = [];
         if (child.stderr !== null) {
             child.stderr.on('data', data => {
-                this.log.system.debug(String(data));
+                const text = String(data);
+                this.log.system.debug(text);
+                stderrLines = stderrLines
+                    .concat(text.split(/\r?\n/).filter(line => line.trim().length > 0))
+                    .slice(-ThumbnailManageModel.STDERR_LOG_LINES);
             });
         }
         if (child.stdout !== null) {
@@ -122,7 +158,11 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         // プロセス終了処理
         const endProcessing = async (code: number | null): Promise<boolean> => {
             if (code !== 0) {
-                this.log.system.error(`create thumbnail cmd error: ${code}`);
+                this.log.system.error(`create thumbnail cmd error: ${code}, input: ${videoFilePath}`);
+                if (stderrLines.length > 0) {
+                    this.log.system.error(`thumbnail cmd stderr: ${stderrLines.join(' / ')}`);
+                }
+
                 return false;
             }
             this.log.system.info(`create thumbnail: ${videoFileId}, ${output}`);

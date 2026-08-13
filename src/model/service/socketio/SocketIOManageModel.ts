@@ -10,6 +10,7 @@ import IAuthModel from '../../auth/IAuthModel';
 import { SESSION_COOKIE_NAME } from '../../auth/SessionCookie';
 import { readCookie } from '../../auth/SessionToken';
 import container from '../../ModelContainer';
+import { formatLogTimeRange } from '../../../util/ProgramTimeLog';
 import ISocketIOManageModel from './ISocketIOManageModel';
 
 @injectable()
@@ -113,6 +114,11 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
         for (const io of this.ios) {
             io.sockets.emit(SocketIOManageModel.ON_AIR_PROGRAM_EVENT, { channelIds });
         }
+
+        // 画面が追従しているかを追えるように、配った内容と接続数を残す
+        this.log.system.info(
+            `notify ${SocketIOManageModel.ON_AIR_PROGRAM_EVENT}: channels: [${channelIds.join(', ')}] clients: ${this.getClientCount()}`,
+        );
     }
 
     /**
@@ -129,6 +135,24 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
         for (const io of this.ios) {
             io.sockets.emit(SocketIOManageModel.PROGRAM_UPDATED_EVENT, option);
         }
+
+        this.log.system.info(
+            `notify ${SocketIOManageModel.PROGRAM_UPDATED_EVENT}: channels: [${option.channelIds.join(', ')}] ` +
+                `range: ${formatLogTimeRange(option.startAt, option.endAt)} clients: ${this.getClientCount()}`,
+        );
+    }
+
+    /**
+     * socket.io に接続中のクライアント数を返す
+     * @return number
+     */
+    private getClientCount(): number {
+        let count = 0;
+        for (const io of this.ios) {
+            count += io.sockets.sockets.size;
+        }
+
+        return count;
     }
 
     /**

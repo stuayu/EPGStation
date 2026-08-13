@@ -564,6 +564,7 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
     - **原因 1 (視聴画面)**: `vue-facing-decorator` はクラスフィールドの初期値を **data 用の一時インスタンス** (`new cons()` した結果) から集めて data にコピーする。このとき Vue インスタンスへ束縛されるのは**メソッドだけ**で、クラスフィールドとして書いたコールバック (`private xxxCallback = ((): void => { ... }).bind(this)`) の `this` は一時インスタンスのままになる。そのためコールバックの中から `this.watchParam` のような**データを直接読むと初期値 (null) しか見えず**、`WatchOnAir` の「視聴中の放送局か」の判定が常に成立せず即 return していた。判定はメソッド (`onUpdateOnAirProgram()` / `onUpdateProgram()`) 側へ移した。**socket.io などのコールバックをクラスフィールドで持つときは、中でメソッドを呼ぶだけにしてデータを直接参照しないこと** (メソッド内であれば `this` は Vue インスタンス)
     - **原因 2 (番組表)**: `Guide.refreshGuide()` が `fetchGuide()` と `createProgramDoms()` は呼ぶのに `renderProgramDoms()` を呼んでいなかった。番組表のセルは Vue のテンプレートではなく**手組みの DOM を `content` へ流し込む**方式のため、これを呼ばないとデータだけ新しくなり画面は古いままになる (`updateVisible()` も `renderProgramDoms()` の末尾で呼ばれるため、可視判定も更新されない)
     - **削除通知が範囲不明で全画面を叩いていたのも直した**: `buildProgramUpdateNotice()` は削除された番組を「放送局・時間帯が分からない」として id だけ載せていたため、削除だけの更新が `{ channelIds: [], startAt: null, endAt: null }` として飛び、受け取った番組表・視聴画面が毎回取り直していた (実測で 10〜20 秒おきに発生していた)。`EPGUpdateManageModel` が **DB から消える前に** `IProgramDB.findIds()` で放送局・時間帯を控え (`getDeletedProgramRanges()`、`PROGRAM_ID_NOTICE_LIMIT` 件まで)、通知の範囲に混ぜるようにした
+    - **通知の到達をログで追えるようにした**: Operator 側は `EventSetter` が `send onAirProgramUpdated to client: channels: [...]` / `send programUpdated to client: channels: [...] range: ... programs: N` を、Service 側は `SocketIOManageModel` が `notify updateOnAirProgram: channels: [...] clients: N` / `notify updateProgram: channels: [...] range: ... clients: N` を info で出す。**接続中のクライアント数**も併記するので、「サーバは配ったが画面が動かない」のか「そもそも配っていない」のかを Operator / Service のログだけで切り分けられる (時間帯の整形は `src/util/ProgramTimeLog.ts` の `formatLogTimeRange()`)
     - **併せて直したもの**: 番組表の取り直しの最小間隔を 30 秒 → 10 秒に縮め、**間隔内に来た通知を破棄せず繰り越す** (従来は破棄していたため、次の通知が来るまで古い表示のままになりえた)。視聴画面は `updateOnAirProgram` に加えて **`updateProgram` も購読**し、EIT[p/f] の窓 (現在〜10 分先) の外で確定した延長・繰り上げにも追従する
 
 - **EPG のリアルタイム同期を追加した (災害時の特番割り込み・番組延長を即時に DB へ反映する)**
@@ -1119,6 +1120,9 @@ GR,BS,CSの箇所をNW1~40のチャンネル空間を追加することで正常
         - Vuetify 3 以降で `v-img` の既定が `cover` から `contain` に変わったため、サムネイルが上下に余白の付いた縮小表示になっていた。`cover` を明示 (`RecordedSmallCard.vue` / `RecordedLargeCard.vue` / `EncodeSmallCard.vue` / `RecordedDetail.vue`)
         - `RecordedSmallCard` の高さが `100px` 固定だったが、Vuetify 3 以降のタイポグラフィでは 4 行分が収まらず説明文が上下で切れてカードからはみ出していた (実測 116px)。`min-height` に変更
     - サムネイルファイルが存在しない場合に `GET /api/thumbnails/{id}` が 500 を返していたのを 404 に修正 (DB には登録があるがファイルが無いケース)
+    - **サムネイル生成の失敗が永久にリトライされ、原因も分からなかったのを直した** (`ThumbnailManageModel`)
+        - 定期クリーンアップが「サムネイルの無い録画」を毎回拾って再生成を依頼するため、壊れた動画ファイルが 1 件あると 10 分おきに `create thumbnail cmd error` が出続けていた (本番ログで 3 件が延々と失敗していた)。**同じ videoFileId が 3 回失敗したら諦める** ようにし、諦めたことを warn で 1 度だけ残す (カウンタはメモリ保持なので Operator 再起動でやり直せる)
+        - 失敗理由が ffmpeg の stderr (debug ログ) にしか出ず追えなかったため、**異常終了時は入力ファイルのパスと stderr の末尾 10 行を error ログに出す**ようにした
     - DPlayer の画質切替をライブ HLS / 録画再生にも対応 (従来は M2TS-LL のみ)
         - 対象は ライブ HLS (`LiveHLSVideo.vue`)・録画 HLS (`RecordedHLSStreamingVideo.vue`)・録画 mp4/webm ストリーミング (`RecordedStreamingVideo.vue`)。DPlayer 標準の設定メニュー (歯車 → 画質) から `config.yml` の視聴設定 (mode) を切り替えられる
         - HLS は切替時に m3u8 の URL が変わるため、`BaseVideo.setupQualitySwitch()` で `dp.switchQuality` をラップし「ストリームセッション停止 → 新 mode で再作成 → 有効化待ち → URL 差し替え」を非同期で行う。失敗時は notice を出すだけで再生は継続

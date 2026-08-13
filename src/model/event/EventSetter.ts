@@ -23,6 +23,7 @@ import IReserveEvent from './IReserveEvent';
 import IRuleEvent from './IRuleEvent';
 import IThumbnailEvent from './IThumbnailEvent';
 import ISeriesResolver from '../series/ISeriesResolver';
+import { formatLogTimeRange } from '../../util/ProgramTimeLog';
 
 @injectable()
 export default class EventSetter implements IEventSetter {
@@ -101,6 +102,9 @@ export default class EventSetter implements IEventSetter {
         // EPG 更新完了イベント
         // EIT[p/f] 相当の更新を視聴画面・番組表へ即時反映させる
         this.epgUpdateEvent.setOnAirProgramUpdated(channelIds => {
+            // 画面への反映が止まったときにどこまで届いたか追えるようにする
+            // (この後 Service 側でも配信結果と接続数をログに残す)
+            this.log.system.info(`send onAirProgramUpdated to client: channels: [${channelIds.join(', ')}]`);
             this.ipc.notifyOnAirProgramClient(channelIds);
 
             // 予約の再スケジュールは epgUpdateIntervalTime 周期の updateAll 任せだと最大でその間隔だけ遅れる。
@@ -113,6 +117,11 @@ export default class EventSetter implements IEventSetter {
 
         // 番組情報の更新通知 (EIT[p/f] の窓の外で起きた変更も含む)
         this.epgUpdateEvent.setProgramUpdated(notice => {
+            this.log.system.info(
+                `send programUpdated to client: channels: [${notice.channelIds.join(', ')}] ` +
+                    `range: ${formatLogTimeRange(notice.startAt, notice.endAt)} programs: ${notice.programIds.length}`,
+            );
+
             // 番組表は表示中の時間帯と重なるときだけ取り直す (判断はクライアント側)
             this.ipc.notifyProgramUpdatedClient({
                 channelIds: notice.channelIds,

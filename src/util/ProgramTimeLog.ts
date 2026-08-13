@@ -79,3 +79,17 @@ export const formatDurationUndefinedChange = (
 
     return isNewUndefined === true ? 'end time became pending' : 'end time has been fixed';
 };
+
+/**
+ * 時間帯をログ用に整形する (更新通知の範囲表示に使う)
+ * @param startAt: number | null | undefined 開始 UnixtimeMS
+ * @param endAt: number | null | undefined 終了 UnixtimeMS
+ * @return string 範囲が不明な場合は 'unknown'
+ */
+export const formatLogTimeRange = (startAt: number | null | undefined, endAt: number | null | undefined): string => {
+    if (typeof startAt !== 'number' && typeof endAt !== 'number') {
+        return 'unknown';
+    }
+
+    return `${formatLogTime(startAt)} - ${formatLogTime(endAt)}`;
+};
