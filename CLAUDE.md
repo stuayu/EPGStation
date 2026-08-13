@@ -89,7 +89,7 @@ npm run test:ci        # ut + ita + itb
 ### 環境・ビルド
 
 - **Windows 対応が最優先**。パスは `path.join`、Mirakurun の named pipe 対応を壊さない。CI は 3 OS × Node 24
-- `mirakurun` 依存は `stuayu/Mirakurun` の**タグで固定**する (現在 `#4.2.0-stuayu`)。ブランチ参照は lockfile が壊れて CI が落ちるため禁止
+- `mirakurun` 依存は `stuayu/Mirakurun` の**タグで固定**する (現在の値は `package.json` を見る)。ブランチ参照は lockfile が壊れて CI が落ちるため禁止
 - `git+https` は npm の `allow-git` 制限対象。リポジトリの `.npmrc` に `allow-git=all` がある (無い環境は `NPM_CONFIG_ALLOW_GIT=all`)
 
 ### 設定・DB

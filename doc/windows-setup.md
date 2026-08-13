@@ -37,16 +37,52 @@ winget install OpenJS.NodeJS.LTS
     - チューナー・サーバ・チャンネルの設定: `Mirakurun\local_config`
     - ログ・ロゴ・番組情報・チャンネル情報の保存先: `Mirakurun\local_data` (新規インストール時は中身を消しておくとよい)
 
-3. サービスとして登録する (**管理者権限**)
+3. サービス登録に使う `node-windows` を用意する
 
     ```powershell
-    npm run postinstall -g
+    npm install -g node-windows
+    npm link node-windows
     ```
 
-4. `http://localhost:40772` にアクセスできることを確認する
+4. サービスとして登録する (**管理者権限の PowerShell / コマンドプロンプト**)
+
+    ```powershell
+    npm run install-win-service
+    ```
+
+    - 実行中に**サービスを動かすアカウントのパスワード**を聞かれる (入力は伏せ字になる)。
+      既定は**ログオン中のユーザー**として登録される。LocalSystem ではユーザー環境に置いた
+      BonDriver・録画コマンド・設定へ手が届かないため
+    - パスワードを持たないアカウントで動かしたい場合は `--system` を付けて LocalSystem として登録する
+
+        ```powershell
+        node bin/install-win-service.js --system
+        ```
+
+    - 実行アカウントを明示する場合は `--user` / `--password`
+
+        ```powershell
+        node bin/install-win-service.js --user=".\mirakurun"
+        ```
+
+    - 1 台で複数の Mirakurun を動かす場合は `--name` で表示名を変える
+      (**解除・状況確認でも同じ `--name` を渡す**)
+
+5. `http://localhost:40772` にアクセスできることを確認する
    (開かない場合は Mirakurun のログに理由が出ている)
 
-アンインストールは管理者権限で `npm run preuninstall -g` を実行してからフォルダを削除する。
+登録状況とサービスから見える実行環境は、管理者権限なしで確認できる。
+
+```powershell
+npm run status-win-service
+```
+
+アンインストールは管理者権限で次を実行してからフォルダを削除する
+(`uninstall` は内部でサービスを停止してから削除する)。
+
+```powershell
+npm run uninstall-win-service
+```
 
 ## セットアップ
 
