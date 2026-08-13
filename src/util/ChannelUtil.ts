@@ -1,5 +1,23 @@
+import * as mapid from '../../node_modules/mirakurun/api';
+
 /* eslint-disable no-fallthrough */
 namespace ChannelUtil {
+    /**
+     * Mirakurun の `Service.channel` は配列または単一オブジェクトのどちらでも返るため、
+     * 実際に DB / 索引更新で扱う物理チャンネルを正規化する。
+     * @param channel Service.channel の値
+     * @return 先頭の物理チャンネル情報。無い場合は undefined
+     */
+    export const resolvePhysicalChannel = (
+        channel: mapid.Channel[] | mapid.Channel | undefined | null,
+    ): mapid.Channel | undefined => {
+        const rawChannel = Array.isArray(channel) ? channel[0] : channel;
+        if (typeof rawChannel === 'undefined' || rawChannel === null) {
+            return undefined;
+        }
+        return rawChannel;
+    };
+
     /**
      * 映像・音声サービスであるかを返す
      * @param serviceType: number 対象のサービスタイプ
