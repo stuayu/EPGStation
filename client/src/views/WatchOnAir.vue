@@ -143,15 +143,16 @@ class WatchOnAir extends Vue {
     private onUpdateStatusCallback = (async (): Promise<void> => {
         await this.updateProgramInfo();
     }).bind(this);
-    // EIT[p/f] が流れてきたら、視聴中の放送局のときだけ番組情報を取り直す
+    // EIT[p/f] が流れてきたら、視聴中の放送局のときだけ番組情報を取り直す。
+    // NOTE: クラスフィールドの初期化時点の this は data 用の一時インスタンスで、
+    // watchParam などのデータは初期値のままになる (メソッドだけが Vue インスタンスへ束縛される)。
+    // 判定は必ずメソッド側で行うこと
     private onUpdateOnAirProgramCallback = ((payload: { channelIds: number[] }): void => {
-        if (Array.isArray(payload?.channelIds) === false || this.watchParam === null) {
-            return;
-        }
-        if (payload.channelIds.includes(this.watchParam.channel) === false) {
-            return;
-        }
-        void this.updateProgramInfo();
+        this.onUpdateOnAirProgram(payload);
+    }).bind(this);
+    // 番組情報の更新通知 (EIT[p/f] の窓の外で起きた延長・繰り上げもここで拾う)
+    private onUpdateProgramCallback = ((payload: { channelIds: number[]; startAt: number | null; endAt: number | null }): void => {
+        this.onUpdateProgram(payload);
     }).bind(this);
 
     /**
@@ -254,10 +255,43 @@ class WatchOnAir extends Vue {
         this.dataBroadcastingManager?.sendKey(keyCode);
     }
 
+    /**
+     * EIT[p/f] の更新通知。視聴中の放送局のときだけ番組情報を取り直す
+     * @param payload: { channelIds: number[] }
+     */
+    public onUpdateOnAirProgram(payload: { channelIds: number[] }): void {
+        if (Array.isArray(payload?.channelIds) === false || this.watchParam === null) {
+            return;
+        }
+        if (payload.channelIds.includes(this.watchParam.channel) === false) {
+            return;
+        }
+
+        void this.updateProgramInfo();
+    }
+
+    /**
+     * 番組情報の更新通知。視聴中の放送局が含まれるときだけ番組情報を取り直す。
+     * EIT[p/f] の窓の外で確定した延長・繰り上げもここで拾う
+     * @param payload: { channelIds: number[]; startAt: number | null; endAt: number | null }
+     */
+    public onUpdateProgram(payload: { channelIds: number[]; startAt: number | null; endAt: number | null }): void {
+        if (this.watchParam === null) {
+            return;
+        }
+        // 放送局が特定できない通知 (番組の削除のみ) は判断できないので取り直す
+        if (Array.isArray(payload?.channelIds) === true && payload.channelIds.length > 0 && payload.channelIds.includes(this.watchParam.channel) === false) {
+            return;
+        }
+
+        void this.updateProgramInfo();
+    }
+
     public created(): void {
         // socket.io イベント
         this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
         this.socketIoModel.onUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
+        this.socketIoModel.onUpdateProgram(this.onUpdateProgramCallback);
     }
 
     public beforeUnmount(): void {
@@ -266,6 +300,7 @@ class WatchOnAir extends Vue {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
         this.socketIoModel.offUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
+        this.socketIoModel.offUpdateProgram(this.onUpdateProgramCallback);
 
         if (this.infoUpdateTimer !== null) {
             clearTimeout(this.infoUpdateTimer);

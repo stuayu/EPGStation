@@ -25,10 +25,11 @@ const program = (id, startAt, duration, channelId = 3273601024) => ({
     channelId: channelId,
 });
 
-const build = (changed, deleted = [], programIdLimit = 1000) =>
+const build = (changed, deleted = [], programIdLimit = 1000, deletedRanges = undefined) =>
     buildProgramUpdateNotice({
         changed: changed,
         deleted: deleted,
+        deletedRanges: deletedRanges,
         getChannelId: p => p.channelId ?? null,
         programIdLimit: programIdLimit,
     });
@@ -58,6 +59,33 @@ test('削除された番組は id だけ載せる (放送局・時間帯は分�
     assert.deepEqual(notice.channelIds, []);
     assert.equal(notice.startAt, null);
     assert.equal(notice.endAt, null);
+});
+
+test('削除された番組も範囲が分かれば放送局・時間帯に反映する', () => {
+    const notice = build(
+        [],
+        [10, 11],
+        1000,
+        [
+            { channelId: 100, startAt: NOW, endAt: NOW + 30 * MINUTE },
+            { channelId: 200, startAt: NOW - 60 * MINUTE, endAt: NOW - 30 * MINUTE },
+        ],
+    );
+
+    assert.deepEqual(notice.programIds, [10, 11]);
+    assert.deepEqual(notice.channelIds, [100, 200]);
+    assert.equal(notice.startAt, NOW - 60 * MINUTE);
+    assert.equal(notice.endAt, NOW + 30 * MINUTE);
+});
+
+test('削除された番組の範囲は変更された番組の範囲とまとめる', () => {
+    const notice = build([program(1, NOW, 30 * MINUTE, 100)], [10], 1000, [
+        { channelId: 300, startAt: NOW + 120 * MINUTE, endAt: NOW + 150 * MINUTE },
+    ]);
+
+    assert.deepEqual(notice.channelIds, [100, 300]);
+    assert.equal(notice.startAt, NOW);
+    assert.equal(notice.endAt, NOW + 150 * MINUTE);
 });
 
 test('放送局を引けない番組は channelIds に載せないが時間帯には含める', () => {

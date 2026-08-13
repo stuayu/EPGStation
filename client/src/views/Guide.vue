@@ -80,8 +80,9 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
     },
 })
 class Guide extends Vue {
-    // EIT[p/f] 更新による番組表の取り直しの最小間隔 (10 秒周期の通知で再取得を繰り返さないため)
-    private static readonly ON_AIR_REFRESH_INTERVAL = 30 * 1000;
+    // EIT[p/f] 更新による番組表の取り直しの最小間隔 (10 秒周期の通知で再取得を繰り返さないため)。
+    // 間隔内に来た更新は捨てずに繰り越して 1 回にまとめる (EIT[p/f] を取りこぼさないため)
+    private static readonly ON_AIR_REFRESH_INTERVAL = 10 * 1000;
     // 無限スクロールで次の時間帯を読み込み始める、末尾からの距離 (px)
     private static readonly LOAD_MORE_THRESHOLD = 600;
 
@@ -106,6 +107,8 @@ class Guide extends Vue {
     // EIT[p/f] の更新通知。現在時刻を含む表示のときだけ番組表を取り直す。
     // 10 秒周期で流れてくる可能性があるため間引き、スクロール位置は維持する
     private lastOnAirRefreshAt = 0;
+    // 最小間隔内に来た更新を繰り越すためのタイマー
+    private pendingRefreshTimer: ReturnType<typeof setTimeout> | null = null;
     private onUpdateOnAirProgramCallback = ((): void => {
         void this.refreshByOnAirUpdate();
     }).bind(this);
@@ -179,6 +182,11 @@ class Guide extends Vue {
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
         this.socketIoModel.offUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
         this.socketIoModel.offUpdateProgram(this.onUpdateProgramCallback);
+
+        if (this.pendingRefreshTimer !== null) {
+            clearTimeout(this.pendingRefreshTimer);
+            this.pendingRefreshTimer = null;
+        }
 
         if (UaUtil.isiOS() === true) {
             // html の class から guide を削除
@@ -326,7 +334,19 @@ class Guide extends Vue {
      */
     private async refreshGuide(): Promise<void> {
         const now = new Date().getTime();
-        if (now - this.lastOnAirRefreshAt < Guide.ON_AIR_REFRESH_INTERVAL) return;
+        const wait = Guide.ON_AIR_REFRESH_INTERVAL - (now - this.lastOnAirRefreshAt);
+        if (wait > 0) {
+            // 直前に取り直したばかりの場合は捨てずに繰り越す。
+            // 捨ててしまうと、次の通知が来るまで画面が古いままになる
+            if (this.pendingRefreshTimer === null) {
+                this.pendingRefreshTimer = setTimeout(() => {
+                    this.pendingRefreshTimer = null;
+                    void this.refreshGuide();
+                }, wait);
+            }
+
+            return;
+        }
         this.lastOnAirRefreshAt = now;
 
         // 取り直しでスクロール位置が飛ばないように退避しておく
@@ -335,7 +355,12 @@ class Guide extends Vue {
         const top = scroller?.$el.scrollTop ?? 0;
         try {
             await this.guideState.fetchGuide(this.createFetchGuideOption());
+            if (typeof this.$refs.programs === 'undefined') return;
+            this.setDisplayRange();
             this.guideState.createProgramDoms(typeof this.$route.query.channelId !== 'undefined');
+            // 生成し直した番組 DOM を描画領域へ流し込む。
+            // これを呼ばないとデータだけ新しくなり画面は古いままになる
+            await this.renderProgramDoms();
             this.$nextTick(() => {
                 const target = this.$refs.programs as InstanceType<typeof GuideScroller> | undefined;
                 if (typeof target === 'undefined') return;

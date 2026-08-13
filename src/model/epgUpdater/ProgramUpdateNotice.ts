@@ -24,11 +24,24 @@ export interface ProgramUpdateNotice {
     endAt: number | null;
 }
 
+/**
+ * 削除された番組の放送局・時間帯 (DB から削除前に引いたもの)。
+ * これが無いと「削除だけの更新」が放送局・時間帯の分からない通知になり、
+ * 番組表・視聴画面が毎回取り直す羽目になる
+ */
+export interface DeletedProgramRange {
+    channelId: number;
+    startAt: number;
+    endAt: number;
+}
+
 export interface BuildProgramUpdateNoticeOption {
     // 追加・更新された番組
     changed: mapid.Program[];
     // 削除された番組 id
     deleted: mapid.ProgramId[];
+    // 削除された番組の放送局・時間帯 (引けなかった分は省略してよい)
+    deletedRanges?: DeletedProgramRange[];
     // 番組から放送局 id を引く
     getChannelId: (program: mapid.Program) => number | null;
     // 通知に載せる番組 id の上限 (超えた場合は programIds を空にする)
@@ -65,11 +78,23 @@ export const buildProgramUpdateNotice = (option: BuildProgramUpdateNoticeOption)
         endAt = endAt === null ? programEndAt : Math.max(endAt, programEndAt);
     }
 
-    // 削除された番組は放送局・時間帯が分からないため id だけ載せる
     for (const id of option.deleted) {
         if (typeof id === 'number') {
             programIds.push(id);
         }
+    }
+
+    // 削除された番組は DB から引いた放送局・時間帯を使う。
+    // 引けなかった (既に消えていた) 分は範囲不明のままになる
+    for (const range of option.deletedRanges ?? []) {
+        if (typeof range?.startAt !== 'number' || typeof range.endAt !== 'number') {
+            continue;
+        }
+        if (typeof range.channelId === 'number' && range.channelId !== 0) {
+            channelIds.add(range.channelId);
+        }
+        startAt = startAt === null ? range.startAt : Math.min(startAt, range.startAt);
+        endAt = endAt === null ? range.endAt : Math.max(endAt, range.endAt);
     }
 
     return {

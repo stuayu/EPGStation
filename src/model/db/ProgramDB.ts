@@ -41,6 +41,8 @@ interface KeywordOption {
 export default class ProgramDB implements IProgramDB {
     // 次の番組を探すときに放送中の番組から先読みする時間 (ms)
     private static readonly NEXT_PROGRAM_SEARCH_TIME = 4 * 60 * 60 * 1000;
+    // program id をまとめて引くときの IN の分割単位
+    private static readonly FIND_IDS_CHUNK_SIZE = 500;
 
     private log: ILogger;
     private config: IConfigFile;
@@ -405,6 +407,34 @@ export default class ProgramDB implements IProgramDB {
         });
 
         return typeof result === 'undefined' ? null : result;
+    }
+
+    /**
+     * program id をまとめて指定して検索する
+     * @param programIds: program id
+     * @return Promise<Program[]> 見つかったものだけを返す
+     */
+    public async findIds(programIds: apid.ProgramId[]): Promise<Program[]> {
+        if (programIds.length === 0) {
+            return [];
+        }
+
+        const connection = await this.op.getConnection();
+        const repository = connection.getRepository(Program);
+
+        // SQL の IN が長くなりすぎないよう分割して引く
+        const results: Program[] = [];
+        for (let i = 0; i < programIds.length; i += ProgramDB.FIND_IDS_CHUNK_SIZE) {
+            const chunk = programIds.slice(i, i + ProgramDB.FIND_IDS_CHUNK_SIZE);
+            const programs = await this.promieRetry.run(() => {
+                return repository.find({
+                    where: { id: In(chunk) },
+                });
+            });
+            results.push(...programs);
+        }
+
+        return results;
     }
 
     /**
