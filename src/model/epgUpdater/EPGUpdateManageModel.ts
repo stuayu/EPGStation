@@ -14,6 +14,7 @@ import IMirakurunClientModel from '../IMirakurunClientModel';
 import { resolveEndAt } from '../../util/ProgramDuration';
 import { formatDurationUndefinedChange, formatLogDuration, formatTimeChange } from '../../util/ProgramTimeLog';
 import Program from '../../db/entities/Program';
+import ChannelUtil from '../../util/ChannelUtil';
 import { detectOnAirPrograms, OnAirDetectResult } from './OnAirProgramDetector';
 import { classifyProgramEvent, ProgramUpdatePriorityOption, splitUrgentProgramEvents } from './ProgramUpdatePriority';
 import { buildProgramUpdateNotice, hasProgramUpdateNotice, DeletedProgramRange } from './ProgramUpdateNotice';
@@ -225,27 +226,23 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
      * @return void
      */
     private updateChannelIndex(services: mapid.Service[]): void {
+        let invalidChannelCount = 0;
+        let invalidChannelSummary: string | null = null;
+
         for (const service of services) {
             if (typeof service.channel === 'undefined' || service.channel === null) {
                 continue;
             }
 
-            const rawChannel = service.channel as any;
+            const channel = ChannelUtil.resolvePhysicalChannel(
+                service.channel as mapid.Channel[] | mapid.Channel | undefined,
+            );
 
-            const channel = Array.isArray(rawChannel) ? rawChannel[0] : rawChannel;
-
-            if (
-                typeof channel === 'undefined' ||
-                channel === null ||
-                typeof channel.type === 'undefined' ||
-                typeof channel.channel === 'undefined'
-            ) {
-                this.log.system.warn(
-                    `skip channel index update: invalid channel data ` +
-                        `(networkId=${service.networkId}, ` +
-                        `serviceId=${service.serviceId}, ` +
-                        `name=${service.name})`,
-                );
+            if (typeof channel === 'undefined' || channel === null || typeof channel.type === 'undefined') {
+                invalidChannelCount += 1;
+                if (invalidChannelCount === 1) {
+                    invalidChannelSummary = `(networkId=${service.networkId}, serviceId=${service.serviceId}, name=${service.name})`;
+                }
                 continue;
             }
 
@@ -259,6 +256,12 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
             };
             // ログで放送局を判別できるようにする
             this.channelNameIndex[service.id] = service.name;
+        }
+
+        if (invalidChannelCount > 0 && invalidChannelSummary !== null) {
+            this.log.system.warn(
+                `skip channel index update: invalid channel data (${invalidChannelCount} services skipped; example: ${invalidChannelSummary})`,
+            );
         }
     }
 

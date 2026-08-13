@@ -4,6 +4,7 @@ import type { QueryDeepPartialEntity } from 'typeorm';
 import * as apid from '../../../api';
 import * as mapid from '../../../node_modules/mirakurun/api';
 import Channel from '../../db/entities/Channel';
+import ChannelUtil from '../../util/ChannelUtil';
 import StrUtil from '../../util/StrUtil';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
@@ -137,9 +138,7 @@ export default class ChannelDB implements IChannelDB {
         // 型定義 (mapid.Service.channel) は配列のみを想定しているため、単一オブジェクトを受ける分岐では
         // as 経由の型アサーションが必要になる。
         const rawChannel = channel.channel as mapid.Channel[] | mapid.Channel | undefined;
-        const physicalChannel: mapid.Channel | undefined = Array.isArray(rawChannel)
-            ? rawChannel[0]
-            : (rawChannel as mapid.Channel | undefined);
+        const physicalChannel = ChannelUtil.resolvePhysicalChannel(rawChannel);
 
         if (typeof physicalChannel === 'undefined' || physicalChannel === null) {
             return null;

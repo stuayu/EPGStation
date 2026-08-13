@@ -126,6 +126,12 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 変更履歴 (新しい順)
 
+- **Mirakurun の `Service.channel` を配列 / 単一オブジェクトの両形式で正規化し、放送局索引の欠落を防いだ**
+    - **背景**: `ChannelDB` では `physicalChannel` の存在だけを見て安全に DB へ格納していたが、`EPGUpdateManageModel.updateChannelIndex()` だけ `channel.channel` が未定義なら無効扱いしていた。Mirakurun 互換実装では「物理チャンネル情報はあるが channel 番号が `undefined` のサービス」が理論上あり、放送局索引だけ落ちていた
+    - **修正**: `service.channel` を `mapid.Channel[] | mapid.Channel | undefined` で正規化し、`physicalChannel` が存在するかのみを見て索引へ登録するようにした。`service.channel === undefined` はそのまま skip し、`type` の未定義だけを invalid とみなして 1 件まとめて warn を出す
+    - **ログ方針**: 破損した channel は例外的な値であるため、サマリ付きの `warn` を 1 件だけ出す。`undefined` の場合はノイズを出さずに skip し、EPG 更新のたびに大量ログが出ることを避ける
+    - **テスト**: `test/ut/epg-channel-index.test.js` に「配列形式」「単一オブジェクト形式」「`service.channel` 未定義は skip」「不正な channel は warn 1 件のみ」ケースを追加した
+    - 実装は `src/util/ChannelUtil.ts` の `resolvePhysicalChannel()` に共通化し、`ChannelDB` と `EPGUpdateManageModel` の正規化を揃えた
 
 - **放映中 (`/onair`) にピン留めタブを追加し、初期表示にした**
     - **背景**: 視聴画面の右パネル (チャンネルタブ) にしかピン留めが無く、放映中の一覧では県外地上波 (NW1〜NW40) を含む多数の地域タブから毎回目的の局を探す必要があった
@@ -576,47 +582,47 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
     - **DB 反映フローの全体像**:
 
-      ```mermaid
-      flowchart TD
-          MIRA["Mirakurun / recisdb-proxy<br/>GET /events (chunked JSON)"] -->|program event| ENQ["EPGUpdateManageModel<br/>enqueueProgramEvent()"]
-          ENQ --> QUEUE[("programQueue<br/>(メモリ)")]
-          ENQ --> CLS{"classifyProgramEvent()<br/>緊急度判定"}
+        ```mermaid
+        flowchart TD
+            MIRA["Mirakurun / recisdb-proxy<br/>GET /events (chunked JSON)"] -->|program event| ENQ["EPGUpdateManageModel<br/>enqueueProgramEvent()"]
+            ENQ --> QUEUE[("programQueue<br/>(メモリ)")]
+            ENQ --> CLS{"classifyProgramEvent()<br/>緊急度判定"}
 
-          CLS -->|"immediate<br/>(remove / redefine /<br/>放送時間未定 /<br/>urgentWindow 以内)"| URGENT["URGENT_ENQUEUED"]
-          CLS -->|normal| WAIT["周期反映に任せる"]
+            CLS -->|"immediate<br/>(remove / redefine /<br/>放送時間未定 /<br/>urgentWindow 以内)"| URGENT["URGENT_ENQUEUED"]
+            CLS -->|normal| WAIT["周期反映に任せる"]
 
-          URGENT --> DEB["EPGUpdater<br/>debounceMs (既定 500ms) 待機<br/>+ minIntervalMs で間隔制限"]
-          DEB --> LOCK
+            URGENT --> DEB["EPGUpdater<br/>debounceMs (既定 500ms) 待機<br/>+ minIntervalMs で間隔制限"]
+            DEB --> LOCK
 
-          TICK["setInterval 10 秒"] --> LOCK["runExclusiveUpdateTask()<br/>EPG 更新系タスクの直列化"]
+            TICK["setInterval 10 秒"] --> LOCK["runExclusiveUpdateTask()<br/>EPG 更新系タスクの直列化"]
 
-          LOCK -->|"先行フラッシュ<br/>saveProgram(0, urgentOnly)"| SPLIT["splitUrgentProgramEvents()<br/>緊急分だけ取り出す<br/>(同一 programId はまとめて)"]
-          LOCK -->|"通常 tick<br/>saveProgram(now + 5 分)"| THRESH{"5 分以内に始まる<br/>番組の更新がある?"}
-          LOCK -->|"epgUpdateIntervalTime 経過 /<br/>event stream 断"| ALL["updateAll()<br/>全件取得 → 全削除 + 全挿入"]
+            LOCK -->|"先行フラッシュ<br/>saveProgram(0, urgentOnly)"| SPLIT["splitUrgentProgramEvents()<br/>緊急分だけ取り出す<br/>(同一 programId はまとめて)"]
+            LOCK -->|"通常 tick<br/>saveProgram(now + 5 分)"| THRESH{"5 分以内に始まる<br/>番組の更新がある?"}
+            LOCK -->|"epgUpdateIntervalTime 経過 /<br/>event stream 断"| ALL["updateAll()<br/>全件取得 → 全削除 + 全挿入"]
 
-          SPLIT --> UPD
-          THRESH -->|Yes| UPD["ProgramDB.update()<br/>insert / update / delete"]
-          THRESH -->|No| REQ["キューへ戻す"]
-          REQ --> QUEUE
-          SPLIT -.->|"残り (normal)"| QUEUE
-          QUEUE -.->|取り出し| SPLIT
-          QUEUE -.->|取り出し| THRESH
+            SPLIT --> UPD
+            THRESH -->|Yes| UPD["ProgramDB.update()<br/>insert / update / delete"]
+            THRESH -->|No| REQ["キューへ戻す"]
+            REQ --> QUEUE
+            SPLIT -.->|"残り (normal)"| QUEUE
+            QUEUE -.->|取り出し| SPLIT
+            QUEUE -.->|取り出し| THRESH
 
-          ALL --> DB[("program テーブル")]
-          UPD --> DB
-          UPD --> DETECT["detectOnAirPrograms()<br/>EIT[p/f] 相当の抽出"]
-          UPD --> NOTICE["buildProgramUpdateNotice()<br/>変更のあった番組 id /<br/>放送局 / 時間帯"]
-          DETECT --> EV1["PROGRAM_UPDATED<br/>(programIds)"]
-          DETECT --> EV2["ON_AIR_PROGRAM_UPDATED<br/>(channelIds)"]
-          NOTICE --> EV3["PROGRAM_RANGE_UPDATED<br/>(programIds / channelIds /<br/>startAt / endAt)"]
+            ALL --> DB[("program テーブル")]
+            UPD --> DB
+            UPD --> DETECT["detectOnAirPrograms()<br/>EIT[p/f] 相当の抽出"]
+            UPD --> NOTICE["buildProgramUpdateNotice()<br/>変更のあった番組 id /<br/>放送局 / 時間帯"]
+            DETECT --> EV1["PROGRAM_UPDATED<br/>(programIds)"]
+            DETECT --> EV2["ON_AIR_PROGRAM_UPDATED<br/>(channelIds)"]
+            NOTICE --> EV3["PROGRAM_RANGE_UPDATED<br/>(programIds / channelIds /<br/>startAt / endAt)"]
 
-          EV2 --> IPC["EPGUpdater (子) → Operator<br/>process.send"]
-          EV3 --> IPC
-          IPC --> RES["ReservationManageModel<br/>updateOnAirReserves()<br/>= 放送中〜15 分先の予約"]
-          IPC --> RES2["ReservationManageModel<br/>updateReservesByProgramIds()<br/>= 番組 id 一致の予約<br/>(放送時刻に関わらず)"]
-          IPC --> SIO["Service → socket.io<br/>updateOnAirProgram<br/>= 視聴画面 / 放映中一覧"]
-          IPC --> SIO2["Service → socket.io<br/>updateProgram<br/>= 番組表 (表示中の<br/>時間帯と重なる場合のみ)"]
-      ```
+            EV2 --> IPC["EPGUpdater (子) → Operator<br/>process.send"]
+            EV3 --> IPC
+            IPC --> RES["ReservationManageModel<br/>updateOnAirReserves()<br/>= 放送中〜15 分先の予約"]
+            IPC --> RES2["ReservationManageModel<br/>updateReservesByProgramIds()<br/>= 番組 id 一致の予約<br/>(放送時刻に関わらず)"]
+            IPC --> SIO["Service → socket.io<br/>updateOnAirProgram<br/>= 視聴画面 / 放映中一覧"]
+            IPC --> SIO2["Service → socket.io<br/>updateProgram<br/>= 番組表 (表示中の<br/>時間帯と重なる場合のみ)"]
+        ```
 
 - **EPG 追従 (EIT[p/f]) の経過を info ログに出し、予約画面にも状態を表示するようにした**
     - **背景**: 番組の延長・繰り上げが起きたとき、何がどう動いたのかがログから追えなかった (`update program db done` のような件数だけ)。時刻がずれた録画を後から検証できるよう、**変更前 → 変更後の時刻を併記**して残す
@@ -1355,7 +1361,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 - **DB 層 (`src/model/db/`) で例外を握り潰していた箇所にログを追加し、不具合調査を追いやすくした**
     - **背景**: DB 層の catch 節の多くが「メッセージだけ出してエラー本体を出さない」「エラーを完全に握り潰して既定値を返す」ままで、DB 障害発生時に原因追跡が困難だった。挙動は変えず、ログの追加のみを行った
-    - **完全な握り潰し (A) を修正**: `SeriesDB.parsePendingCandidates()` は壊れた `candidatesJson` を空配列へフォールバックする際に何もログを出していなかった。静的メソッドでインスタンスのロガーを持たないため `console.error` に出すようにし、呼び出し元が分かる場合に識別情報を付けられるよう任意の `context` 引数を追加した (省略可、既存呼び出しは無変更で動く)。**その後、この `console.error` 自体が log4js を経由しない問題そのものだったため、インスタンスメソッドに変更して `this.log.system.error()` を使うようにした** (`ISeriesDB` にも追加)。唯一の呼び出し元 `SeriesPendingApiModel.list()` は `SeriesDB.parsePendingCandidates(...)` (static import) から `this.seriesDB.parsePendingCandidates(x.candidatesJson, \`recordedId=${x.recordedId}\`)` へ変更し、識別情報として `recordedId` を渡すようにした。パース失敗時に空配列で継続する挙動は変えていない
+    - **完全な握り潰し (A) を修正**: `SeriesDB.parsePendingCandidates()` は壊れた `candidatesJson` を空配列へフォールバックする際に何もログを出していなかった。静的メソッドでインスタンスのロガーを持たないため `console.error` に出すようにし、呼び出し元が分かる場合に識別情報を付けられるよう任意の `context` 引数を追加した (省略可、既存呼び出しは無変更で動く)。**その後、この `console.error` 自体が log4js を経由しない問題そのものだったため、インスタンスメソッドに変更して `this.log.system.error()` を使うようにした** (`ISeriesDB` にも追加)。唯一の呼び出し元 `SeriesPendingApiModel.list()` は `SeriesDB.parsePendingCandidates(...)` (static import) から `this.seriesDB.parsePendingCandidates(x.candidatesJson, \`recordedId=${x.recordedId}\`)`へ変更し、識別情報として`recordedId` を渡すようにした。パース失敗時に空配列で継続する挙動は変えていない
     - **情報欠落 (B) を修正**: `DBOperator.setSQLiteExtensions()` の 2 箇所 (拡張読み込みチェック失敗時 / 拡張読み込み失敗時) はメッセージのみでエラー本体を出していなかったため `this.log.system.error(error)` を追加した。`ChannelAffiliationDB.replace()` はロガーを一切持たずエラーを完全に上位へ委ねていたため、`ILoggerModel` を注入して `networkId` とエラー本体をログしてから rethrow するようにした
     - **`restore()` 系メソッドの `console.error` を構造化ログへ置き換え**: `DropLogFileDB` / `RecordedHistoryDB` / `ReserveDB` / `RecordedDB` / `ThumbnailDB` / `RecordedTagDB` / `RuleDB` / `VideoFileDB` の `restore()` (バックアップ復元、delete → insert をトランザクションで行い失敗時は rollback + throw) は、失敗時に `console.error(err)` だけ出して `log4js` の設定 (ログファイル出力) を経由していなかった。全クラスに `ILoggerModel` を注入し、`this.log.system.error()` でクラス名・対象件数・エラー本体を出すようにした。`SeriesDB` の `restoreSeries` / `restoreEpisodes` / `restoreLinks` / `restoreAliases` / `restorePendingMatches` / `restoreHistories` (エラーをそのまま rethrow するだけでログ無し) にも同様にログを追加した。`ReserveDB.updateMany()` は対象の delete/insert/update id をログに含めるようにした
     - **DI コンストラクタ変更**: 上記クラスはいずれもコンストラクタ末尾に `@inject('ILoggerModel') logger: ILoggerModel` を追加しただけで、`ModelContainerSetter.ts` の登録 (`.to(Class)`) は変更不要 (inversify がデコレータから解決するため)。`test/ita/recorded-tag-hierarchy.test.js` が `RecordedTagDB` を位置引数で組み立てていたため、ロガースタブを追加した

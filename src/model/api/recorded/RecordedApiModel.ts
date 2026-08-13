@@ -29,10 +29,10 @@ export default class RecordedApiModel implements IRecordedApiModel {
     private recordedItemUtil: IRecordedItemUtil;
     private configuration: IConfiguration;
     private watchHistoryDB: IWatchHistoryDB;
-    private seriesDB: ISeriesDB;
-    private channelDB: IChannelDB;
-    private tsInfoAnalyzer: ITsInfoAnalyzer;
-    private videoFileTsInfoDB: IVideoFileTsInfoDB;
+    private seriesDB?: ISeriesDB;
+    private channelDB?: IChannelDB;
+    private tsInfoAnalyzer?: ITsInfoAnalyzer;
+    private videoFileTsInfoDB?: IVideoFileTsInfoDB;
 
     constructor(
         @inject('IIPCClient') ipc: IIPCClient,
@@ -41,10 +41,10 @@ export default class RecordedApiModel implements IRecordedApiModel {
         @inject('IRecordedItemUtil') recordedItemUtil: IRecordedItemUtil,
         @inject('IConfiguration') configuration: IConfiguration,
         @inject('IWatchHistoryDB') watchHistoryDB: IWatchHistoryDB,
-        @inject('ISeriesDB') seriesDB: ISeriesDB,
-        @inject('IChannelDB') channelDB: IChannelDB,
-        @inject('ITsInfoAnalyzer') tsInfoAnalyzer: ITsInfoAnalyzer,
-        @inject('IVideoFileTsInfoDB') videoFileTsInfoDB: IVideoFileTsInfoDB,
+        @inject('ISeriesDB') seriesDB?: ISeriesDB,
+        @inject('IChannelDB') channelDB?: IChannelDB,
+        @inject('ITsInfoAnalyzer') tsInfoAnalyzer?: ITsInfoAnalyzer,
+        @inject('IVideoFileTsInfoDB') videoFileTsInfoDB?: IVideoFileTsInfoDB,
     ) {
         this.recordedDB = recordedDB;
         this.ipc = ipc;
@@ -130,6 +130,9 @@ export default class RecordedApiModel implements IRecordedApiModel {
             latest = await this.toRecordedItems(filtered.slice(0, limit), isHalfWidth);
         }
 
+        if (typeof this.seriesDB === 'undefined')
+            return { currentSeriesId: null, latest: [], series: [], hasMoreLatest: false, hasMoreSeries: false };
+
         const link = await this.seriesDB.findLink(recordedId);
         let currentSeriesId: number | null = null;
         let series: apid.RecordedItem[] = [];
@@ -179,7 +182,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
      * @param items: apid.RecordedItem[]
      */
     private async attachTsChannelNames(items: apid.RecordedItem[]): Promise<void> {
-        if (items.length === 0) return;
+        if (items.length === 0 || typeof this.videoFileTsInfoDB === 'undefined') return;
         try {
             const index = await this.videoFileTsInfoDB.findServiceNamesByRecordedIds(items.map(item => item.id));
             if (index.size === 0) return;
@@ -201,7 +204,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
      */
     private async attachSeriesInfo(items: apid.RecordedItem[]): Promise<void> {
         if (!isFeatureEnabled(this.configuration.getConfig(), 'seriesLibrary')) return;
-        if (items.length === 0) return;
+        if (items.length === 0 || typeof this.seriesDB === 'undefined') return;
         try {
             const index = await this.seriesDB.findSeriesInfoByRecordedIds(items.map(item => item.id));
             if (index.size === 0) return;
@@ -227,6 +230,9 @@ export default class RecordedApiModel implements IRecordedApiModel {
     public async scanImportDirectory(option: apid.ImportScanOption): Promise<apid.ImportScanResult> {
         if (!isFeatureEnabled(this.configuration.getConfig(), 'externalFileImport')) {
             throw new Error('ExternalFileImportFeatureIsDisabled');
+        }
+        if (typeof this.channelDB === 'undefined') {
+            return { items: [] };
         }
 
         const config = this.configuration.getConfig();
@@ -308,6 +314,9 @@ export default class RecordedApiModel implements IRecordedApiModel {
     private async analyzeTsInfoForScan(filePath: string): Promise<TsInfo | null> {
         // TS 以外の拡張子には PSI/SI が無い
         if (RecordedApiModel.TS_EXTENSIONS.includes(path.extname(filePath).toLowerCase()) === false) {
+            return null;
+        }
+        if (typeof this.tsInfoAnalyzer === 'undefined') {
             return null;
         }
 
@@ -397,7 +406,12 @@ export default class RecordedApiModel implements IRecordedApiModel {
         // 放送局は TS の network id + service id での厳密な引き当てを最優先し、
         // 取れない場合のみ従来どおり放送局名の曖昧一致で探す
         let channel: { id: apid.ChannelId } | undefined;
-        if (tsInfo !== null && tsInfo.networkId !== null && tsInfo.serviceId !== null) {
+        if (
+            typeof this.channelDB !== 'undefined' &&
+            tsInfo !== null &&
+            tsInfo.networkId !== null &&
+            tsInfo.serviceId !== null
+        ) {
             const found = await this.channelDB
                 .findNetworkIdAndServiceId(tsInfo.networkId, tsInfo.serviceId)
                 .catch(() => null);
