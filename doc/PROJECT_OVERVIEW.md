@@ -3,7 +3,7 @@
 日本の DTV 録画管理ソフトウェア EPGStation のフォーク版。
 上流は [l3tnun/EPGStation](https://github.com/l3tnun/EPGStation) で、本フォーク (stuayu 版) は
 **Windows 完全対応**・**県外地上波対応 (NW1〜NW40 チャンネル型の追加)**・**Mirakurun dev 版 (stuayu/Mirakurun) との連携** を主軸に拡張している。
-フォーク独自の変更点の詳細はすべて [stuayu-fork.md](stuayu-fork.md) にある。
+フォーク独自の変更点の詳細はすべて [changelog-fork.md](changelog-fork.md) にある。
 
 - 言語/ランタイム: TypeScript / Node.js 24 (CI も 24.x)
 - サーバ: Express 5 + express-openapi, TypeORM 1.1 (SQLite / MySQL), inversify (DI), log4js, socket.io
@@ -120,7 +120,7 @@ npm run recover-channel-name   # 過去の録画の放送局名を復元 (既定
 
 ## 主要機能と実装場所
 
-詳細な設計と経緯は `doc/stuayu-fork.md` にある。ここは「どこを見ればよいか」の索引。
+詳細な設計と経緯は `doc/changelog-fork.md` にある。ここは「どこを見ればよいか」の索引。
 
 | 機能 | 入口 | 要点 |
 | --- | --- | --- |

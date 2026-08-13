@@ -8,22 +8,35 @@ EPGStation (stuayu フォーク) — 日本の DTV 録画管理ソフトウェ�
 
 @doc/PROJECT_OVERVIEW.md
 
-タスクが該当するときだけ Read で読む:
+タスクが該当するときだけ Read で読む (一覧は `doc/README.md`):
 
 | ドキュメント | 読むとき |
 | --- | --- |
-| `doc/stuayu-fork.md` | フォーク独自機能の詳細 (変更の背景と経緯が全部ここ) |
+| `doc/changelog-fork.md` | **ある実装がなぜそうなっているか**を調べるとき。変更ログ (372KB)。**通読しない**。先頭の索引で項目名を探し、その文字列で grep して該当箇所だけ読む |
 | `doc/streaming-refresh.md` | ライブ/録画配信・エンコード・プレイヤー UI を触るとき |
 | `doc/conf-manual.md` | 設定項目を追加・変更するとき |
 | `api.yml` | API を追加・変更するとき (OpenAPI 定義の正) |
 | `doc/webapi.md` | API の挙動を確認するとき |
+| `doc/testing.md` | テストの方針を確認するとき |
 | `doc/windows-setup.md` / `doc/linux-setup.md` | 環境構築の質問に答えるとき |
+
+## 決まった作業には Skill を使う
+
+`.claude/skills/` に手順書がある。**該当する作業では必ず使う** (手順の抜けがそのまま不具合になる領域を選んである)。
+
+| Skill | 使うとき |
+| --- | --- |
+| `add-api-endpoint` | WebAPI エンドポイントの追加・変更 |
+| `add-client-page` | Web UI のページ・コンポーネント追加 |
+| `add-config-option` | `config.yml` の設定項目追加 |
+| `db-migration` | DB スキーマ変更 |
+| `write-tests` | テスト追加 |
 
 ## ドキュメント更新ルール (必須)
 
 コードを追加・修正したら、**同じ作業の中で関連ドキュメントも更新する**。実装完了 = ドキュメント更新完了。
 
-- 機能追加・挙動変更 → `doc/stuayu-fork.md`。アーキテクチャ・注意点が変わるなら `doc/PROJECT_OVERVIEW.md` も
+- 機能追加・挙動変更 → `doc/changelog-fork.md`。アーキテクチャ・注意点が変わるなら `doc/PROJECT_OVERVIEW.md` も
 - API → `api.yml` + `api.d.ts` (`doc/webapi.md` は Swagger UI 参照方式のため通常不要)
 - 設定項目 → `doc/conf-manual.md` + `config/config.yml.template` + `config/config-win.yml.template`
 - ストリーミング → `doc/streaming-refresh.md`
@@ -71,7 +84,7 @@ npm run test:ci        # ut + ita + itb
 
 ## 踏むと壊れるところ
 
-詳細と背景は `doc/PROJECT_OVERVIEW.md` と `doc/stuayu-fork.md` にある。ここは「知らずに触ると壊す」ものだけ。
+詳細と背景は `doc/PROJECT_OVERVIEW.md` と `doc/changelog-fork.md` にある。ここは「知らずに触ると壊す」ものだけ。
 
 ### 環境・ビルド
 

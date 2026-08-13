@@ -5,7 +5,8 @@
 | main     | [![build](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml/badge.svg?branch=main)](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml) |
 | test     | [![build](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml/badge.svg?branch=test)](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml) |
 
-[l3tnun/EPGStation](https://github.com/l3tnun/EPGStation) のフォーク版です。フォーク版の機能詳細は [doc/stuayu-fork.md](doc/stuayu-fork.md) をご覧ください。
+[l3tnun/EPGStation](https://github.com/l3tnun/EPGStation) のフォーク版です。
+ドキュメントの一覧は [doc/README.md](doc/README.md)、変更の経緯は [doc/changelog-fork.md](doc/changelog-fork.md) をご覧ください。
 
 > [!NOTE]
 > 本フォークは[フォーク版 Mirakurun (stuayu/Mirakurun)](https://github.com/stuayu/Mirakurun) と組み合わせて動作させることを前提としています。
@@ -38,7 +39,7 @@
 | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | [![サーバー設定 (基本)](img/screenshots/system-settings-basic.png)](img/screenshots/system-settings-basic.png) | [![サーバー設定 (連携)](img/screenshots/system-settings-integration.png)](img/screenshots/system-settings-integration.png) | [![サーバー設定 (シリーズ管理)](img/screenshots/system-settings-series.png)](img/screenshots/system-settings-series.png) | [![サーバー設定 (更新)](img/screenshots/system-settings-update.png)](img/screenshots/system-settings-update.png) |
 
-各画面の詳細は [doc/stuayu-fork.md](doc/stuayu-fork.md) を参照してください。
+各画面の説明は [doc/screenshots.md](doc/screenshots.md)、変更の経緯は [doc/changelog-fork.md](doc/changelog-fork.md) を参照してください。
 
 ### インストールとビルド方法
 

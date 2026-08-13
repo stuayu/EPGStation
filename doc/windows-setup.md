@@ -14,6 +14,40 @@
     - EPGStation をアップデートするときに便利です
 - Windows PowerShell もしくは コマンドプロンプト
 
+## フォーク版 Mirakurun のセットアップ
+
+本フォークは[フォーク版 Mirakurun (stuayu/Mirakurun)](https://github.com/stuayu/Mirakurun) との組み合わせが前提。
+先に Node.js LTS を入れる (Windows 10/11 なら winget を推奨)。
+
+```powershell
+winget install OpenJS.NodeJS.LTS
+```
+
+1. クローンしてビルドする
+
+    ```powershell
+    git clone https://github.com/stuayu/Mirakurun -b stuayu-main
+    cd Mirakurun
+    npm install
+    npm run build
+    ```
+
+2. 設定ファイルを編集する
+
+    - チューナー・サーバ・チャンネルの設定: `Mirakurun\local_config`
+    - ログ・ロゴ・番組情報・チャンネル情報の保存先: `Mirakurun\local_data` (新規インストール時は中身を消しておくとよい)
+
+3. サービスとして登録する (**管理者権限**)
+
+    ```powershell
+    npm run postinstall -g
+    ```
+
+4. `http://localhost:40772` にアクセスできることを確認する
+   (開かない場合は Mirakurun のログに理由が出ている)
+
+アンインストールは管理者権限で `npm run preuninstall -g` を実行してからフォルダを削除する。
+
 ## セットアップ
 
 ここでは Windows PowerShell を用いたセットアップを解説します
@@ -30,12 +64,11 @@
 
 2. EPGStation のインストール
 
-    ```
-    > git clone https://github.com/l3tnun/EPGStation.git
+    ```powershell
+    > git clone https://github.com/stuayu/EPGStation.git -b main
     > cd EPGStation
     > npm run all-install
-    > npm run build
-
+    > npm run build-win   # Windows は build-win (Linux/Mac は build)
     ```
 
     `mirakurun` は GitHub リポジトリを git 参照 (`git+https://...#<タグ>`) で固定しているため、npm の依存元制限
@@ -191,11 +224,31 @@ encode:
       rate: 4.0
 ```
 
-## MySQL 使用時の注意
+## MySQL / MariaDB を使う場合
 
-EPGStation 使用中は MySQL のバイナリログが大量に生成されてディスクを圧迫するので、MySQL の設定 (my.ini) を変えることを推
-奨します
+winget で MariaDB を入れられる。Windows で `mysql` コマンドが見つからない場合は
+[この記事](https://zenn.dev/stuayu/articles/412f3faf5713a0) を参考に環境変数を設定するか、GUI から設定する。
+
+```powershell
+winget install MariaDB.Server
+mysql -u root -e 'CREATE DATABASE epgstation CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;'
+mysql -u root -e 'CREATE USER "epgstation"@"localhost" IDENTIFIED BY "epgstation";'
+mysql -u root -e 'GRANT ALL ON epgstation.* TO "epgstation"@"localhost";'
+```
+
+EPGStation 使用中は MySQL のバイナリログが大量に生成されてディスクを圧迫するので、MySQL の設定 (my.ini) を変えることを推奨します
 
 ```
 expire_logs_days = 1
 ```
+
+## 本家 EPGStation からの移行 (バックアップの互換性)
+
+**ルール予約のバックアップだけは本家と互換性が無い**。本フォークはチャンネル種別に `NW1`〜`NW40` を追加しているため。
+
+1. 移行前に本家でバックアップを取る (`npm run backup <ファイル名>.sql`)
+2. バックアップファイルの予約データを手で消すか、`GR` / `BS` / `CS` の箇所に `NW1`〜`NW40` のチャンネル空間を追加する
+3. すでに MySQL (MariaDB) を使っていた場合はテーブルを drop して作り直す
+4. **Web UI から正常にアクセスできることを確認してから** リストアする (`npm run restore <ファイル名>.sql`)
+
+`rule` の部分で失敗する場合は sql ファイルを手で修正する。
