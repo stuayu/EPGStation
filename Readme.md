@@ -5,31 +5,57 @@
 | main     | [![build](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml/badge.svg?branch=main)](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml) |
 | test     | [![build](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml/badge.svg?branch=test)](https://github.com/stuayu/EPGStation/actions/workflows/build-validation.yml) |
 
-[l3tnun/EPGStation](https://github.com/l3tnun/EPGStation) のフォーク版です。
-ドキュメントの一覧は [doc/README.md](doc/README.md)、変更の経緯は [doc/changelog-fork.md](doc/changelog-fork.md) をご覧ください。
+[Mirakurun](https://github.com/Chinachu/Mirakurun) を使用した録画管理ソフト [l3tnun/EPGStation](https://github.com/l3tnun/EPGStation) のフォーク版です。
+モバイルフレンドリーな Web インターフェイスはそのままに、**Windows 完全対応**・**県外地上波 (NW1〜NW40)**・**シリーズ管理**などを追加しています。
 
 > [!NOTE]
 > 本フォークは[フォーク版 Mirakurun (stuayu/Mirakurun)](https://github.com/stuayu/Mirakurun) と組み合わせて動作させることを前提としています。
 > 本家 Mirakurun や mirakc での動作は保証しません。
 
-## フォーク版の主な拡張
+- ドキュメント一覧: [doc/README.md](doc/README.md)
+- 変更の経緯: [doc/changelog-fork.md](doc/changelog-fork.md)
 
-- **Windows 完全対応** (named pipe 接続、Windows サービス化、セットアップマニュアル)
-- **県外地上波対応** (チャンネル種別 `NW1`〜`NW40` の追加)
-- **Mirakurun への HTTPS 接続対応** (`mirakurunPath: https://...` を指定可能。API エンドポイントのベースパスも `mirakurunAPIPath` で変更可能)
-- **ニコニコ実況コメントの弾幕表示** (ライブ視聴は [NX-Jikkyo](https://nx-jikkyo.tsukumijima.net)、録画再生は[過去ログ API](https://jikkyo.tsukumijima.net) から取得。設定ページの localStorage 保存でオン/オフ可能)
-- **シリーズ管理** (録画をシリーズ単位でまとめ、しょぼいカレンダー / Annict / Wikidata の作品辞書で自動マッピング。欠番・重複・未視聴のバッジ表示、アイキャッチ画像、未確定キューからの手動割り当てに対応)
-- **サーバー設定画面** (`config.yml` の主要項目を Web UI から変更。外部サービス連携、ログレベル、録画ファイルの一括解析、シリーズ照合ルールの管理を含む)
-- **更新通知とワンクリック更新** (GitHub Releases を定期確認し、リリース版・開発版のどちらへも画面から更新できる)
-- **ログファイルを Web UI 上から確認できる機能** (`/logs` ページ。プロセス/カテゴリ別のタブ切り替え、行数指定・キーワード絞り込み、ダウンロードに対応)
-- **ログイン認証と権限管理** (パスワード認証と SSO (Google / GitHub) に対応。既定は無効)
-- **データ放送 (BML) 対応** ([tsukumijima/web-bml](https://github.com/tsukumijima/web-bml) を利用し BML を描画、映像は引き続き EPGStation の DPlayer が再生。既定は無効)
+## 機能
+
+### 番組の視聴・録画・管理 (上流から引き継ぐ基本機能)
+
+- 番組表の表示・番組検索
+- 予約
+    - 番組表からの手動予約、ルールによる自動予約
+    - 予約の競合・重複の警告
+- 視聴
+    - 放送中番組のライブ視聴、録画済み番組のストリーミング視聴・ダウンロード
+    - [aribb24.js][] による字幕 / 文字スーパー表示
+    - [mpegts.js][] による[低遅延ライブ視聴](doc/caption-lowlatency-setup.md)
+- エンコード、ドロップチェック、外部コマンド連携
+- WebAPI ([doc/webapi.md](doc/webapi.md)。全 API は `/api/debug` の Swagger UI で確認できます)
+
+### フォーク版の拡張
+
+- **Windows 完全対応** — named pipe 接続、Windows サービス化、セットアップマニュアル
+- **県外地上波対応** — チャンネル種別 `NW1`〜`NW40` を追加。新4K8K衛星放送 (`BS4K` / `CS4K`) にも対応
+- **Mirakurun への HTTPS 接続** — `mirakurunPath: https://...`。API のベースパスも `mirakurunAPIPath` で変更可能
+- **シリーズ管理** — 録画をシリーズ単位でまとめ、しょぼいカレンダー / Annict / Wikidata の作品辞書で自動マッピング。話数・サブタイトル・放送種別 (初回 / 再放送 / 遅れ放送) の判定、欠番・重複・未視聴のバッジ、アイキャッチ画像、未確定キューからの手動割り当てに対応
+- **EPG のリアルタイム追従** — 災害時の特番割り込みや前番組の延長を待たずに DB へ反映し、視聴画面・番組表・予約が即座に追随します。前番組の延長中に録画を始めてしまわないよう EIT[p/f] を見て開始を待つ機能も入っています
+- **テレビ風の視聴画面** — ライブ / 録画とも全画面レイアウト。番組情報・チャンネル・次の話・実況コメントを右パネルに表示
+- **ニコニコ実況コメントの弾幕表示** — ライブは [NX-Jikkyo](https://nx-jikkyo.tsukumijima.net)、録画は[過去ログ API](https://jikkyo.tsukumijima.net) から取得。放送波の時刻 (TDT / TOT) で遅延を補正します
+- **データ放送 (BML) 対応** — [tsukumijima/web-bml](https://github.com/tsukumijima/web-bml) で BML を描画 (映像は引き続き DPlayer が再生)。既定は無効
+- **録画ファイルの TS 解析** — 取り込み・アップロードした TS から放送局・番組情報・映像音声情報を復元します
+- **放送局の系列表示** — 日テレ系・TBS 系などで番組表と放映中をグルーピングできます (`/affiliations`)
+- **サーバー設定画面** — `config.yml` の主要項目を Web UI から変更。外部サービス連携、ログレベル、録画ファイルの一括解析、シリーズ照合ルールの管理を含みます
+- **更新通知とワンクリック更新** — GitHub Releases を定期確認し、リリース版・開発版のどちらへも画面から更新できます
+- **ログイン認証と権限管理** — パスワード認証と SSO (Google / GitHub)。既定は無効
+- **ログ閲覧画面** — `/logs` でプロセス / カテゴリ別にログを閲覧・絞り込み・ダウンロードできます
+- **視聴履歴** — 続きから再生、視聴済み管理
 - **依存関係のモダナイズ**
-    - フロントエンドを Vue 3 + Vuetify 4 へ更新し、ビルドを Vue CLI から Vite へ移行
-    - 動画プレイヤーを [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) v1.32.8 へ更新
-    - サーバ側を Node.js 24 / Express 5 / TypeORM 1.0 / better-sqlite3 へ更新
+    - フロントエンド: Vue 3 + Vuetify 4、ビルドは Vite
+    - 動画プレイヤー: [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer)
+    - サーバ: Node.js 24 / Express 5 / TypeORM 1.x / better-sqlite3
 
-### フォーク版の画面
+[aribb24.js]: https://github.com/monyone/aribb24.js
+[mpegts.js]: https://github.com/xqq/mpegts.js
+
+## 画面
 
 | シリーズ一覧                                                                        | シリーズ詳細                                                                            | シリーズ未確定キュー                                                                              |
 | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -39,231 +65,156 @@
 | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | [![サーバー設定 (基本)](img/screenshots/system-settings-basic.png)](img/screenshots/system-settings-basic.png) | [![サーバー設定 (連携)](img/screenshots/system-settings-integration.png)](img/screenshots/system-settings-integration.png) | [![サーバー設定 (シリーズ管理)](img/screenshots/system-settings-series.png)](img/screenshots/system-settings-series.png) | [![サーバー設定 (更新)](img/screenshots/system-settings-update.png)](img/screenshots/system-settings-update.png) |
 
-各画面の説明は [doc/screenshots.md](doc/screenshots.md)、変更の経緯は [doc/changelog-fork.md](doc/changelog-fork.md) を参照してください。
-
-### インストールとビルド方法
-
-- Windows
-    - `npm run all-install && npm run build-win`
-    - `npm run install-win-service` (Windows サービスとして登録する場合)
-- Linux / macOS
-    - `npm run all-install && npm run build`
-
-以下オリジナル
----
-
-[Mirakurun](https://github.com/Chinachu/Mirakurun) を使用した録画管理ソフトです  
-iOS・Android での閲覧に最適化されたモバイルフレンドリーな Web インターフェイスが特徴です  
-PC からの閲覧でもモダンな UI で操作可能です
-
-## 機能
-
-### 放送番組の視聴・録画・管理
-
-- ブラウザでの Web インターフェイス操作
-    - 番組表の表示
-    - 番組検索
-    - 番組単位の予約
-        - 番組表からの手動予約
-        - ルールによる自動予約
-        - 予約の競合や重複の警告
-    - 番組の視聴
-        - 放送中番組のライブ視聴
-        - [aribb24.js][] を使用する Web での字幕/文字スーパー表示機能
-        - [mpegts.js][] を使用する Web での[低遅延ライブ視聴機能](doc/caption-lowlatency-setup.md)
-        - 録画済み番組のストリーミング視聴
-        - 録画済み番組のダウンロード
-- API
-    - [WebAPI Document](doc/webapi.md)
-
-[aribb24.js]: https://github.com/monyone/aribb24.js
-[mpegts.js]: https://github.com/xqq/mpegts.js
-
-## スクリーンショット
-
-| ![](https://raw.githubusercontent.com/wiki/l3tnun/EPGStation/images/v2/dashboard.png) | ![](https://raw.githubusercontent.com/wiki/l3tnun/EPGStation/images/v2/live.png) | ![](https://raw.githubusercontent.com/wiki/l3tnun/EPGStation/images/v2/program.png) | ![](https://raw.githubusercontent.com/wiki/l3tnun/EPGStation/images/v2/recording.png) | ![](https://raw.githubusercontent.com/wiki/l3tnun/EPGStation/images/v2/recorded.png) | ![](https://raw.githubusercontent.com/wiki/l3tnun/EPGStation/images/v2/reserves.png) | ![](https://raw.githubusercontent.com/wiki/l3tnun/EPGStation/images/v2/rule.png) | ![](https://raw.githubusercontent.com/wiki/l3tnun/EPGStation/images/v2/search.png) |
-| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-
----
-
-## デモ
-
-![](https://raw.githubusercontent.com/wiki/l3tnun/EPGStation/images/v2/demo.gif)
+各画面の説明は [doc/screenshots.md](doc/screenshots.md) を参照してください。
 
 ## 動作環境
 
 - Linux / macOS / Windows
-- [Node.js](http://nodejs.org/) : 24.x (npm 11.x)
+- [Node.js](http://nodejs.org/) 24.x (npm 11.x)
 - [フォーク版 Mirakurun (stuayu/Mirakurun)](https://github.com/stuayu/Mirakurun)
     - HTTP / HTTPS / unix socket / named pipe (Windows) での接続に対応
     - 本家 [Mirakurun](https://github.com/Chinachu/Mirakurun) や [mirakc](https://github.com/mirakc/mirakc) での動作は保証しません
 - いずれかのデータベース
-    - [SQLite3](https://www.sqlite.org/)（設定不要だが検索機能に制限あり）[標準]
+    - [SQLite3](https://www.sqlite.org/) — 設定不要。検索機能に制限あり [標準]
         - [SQLite3 使用時の正規表現での検索の有効化について](doc/sqlite3-regexp.md)
-    - [MySQL](https://www.mysql.com/jp/) ([MariaDB](https://mariadb.org/))【推奨(要設定)】※文字コードは utf8mb4
+    - [MySQL](https://www.mysql.com/jp/) / [MariaDB](https://mariadb.org/) — 推奨 (要設定)。文字コードは utf8mb4
         - [Mirakurun 3.9.0-beta.24 以降の設定について](doc/mysql-mirakurun-3.9.0-beta.24.md)
-    - ~~[PostgreSQL](https://www.postgresql.org/)~~ (未対応)
-- [FFmpeg](http://ffmpeg.org/)
+    - PostgreSQL は未対応
+- [FFmpeg](http://ffmpeg.org/) (FFprobe を含む)
 
-SQLite ドライバ ([better-sqlite3](https://github.com/WiseLibs/better-sqlite3)) のインストール時にビルド済みバイナリが取得できなかった場合は次の環境も必要
+SQLite ドライバ ([better-sqlite3](https://github.com/WiseLibs/better-sqlite3)) のインストール時にビルド済みバイナリを取得できなかった場合は、次の環境も必要です。
 
-- for Linux / macOS
-    - [Python v3.x](https://www.python.org/) node-gyp にて必要
-    - [GCC](https://gcc.gnu.org/) node-gyp にて必要
-- for Windows
-    - [Visual Studio Build Tools](https://visualstudio.microsoft.com/ja/downloads/) node-gyp にて必要
+- Linux / macOS: [Python 3.x](https://www.python.org/) と [GCC](https://gcc.gnu.org/) (node-gyp が使用)
+- Windows: [Visual Studio Build Tools](https://visualstudio.microsoft.com/ja/downloads/) (node-gyp が使用)
 
----
+## セットアップ
 
-## セットアップ方法
+| 環境 | マニュアル |
+| --- | --- |
+| Windows | [doc/windows-setup.md](doc/windows-setup.md) (フォーク版 Mirakurun の導入手順を含む) |
+| Linux / macOS | [doc/linux-setup.md](doc/linux-setup.md) |
+| 字幕表示 / 低遅延配信 | [doc/caption-lowlatency-setup.md](doc/caption-lowlatency-setup.md) |
 
-### [Linux / macOS 用セットアップマニュアル](doc/linux-setup.md)
+インストールとビルドの最小手順:
 
-### [Windows 用セットアップマニュアル](doc/windows-setup.md)
+```bash
+git clone https://github.com/stuayu/EPGStation.git -b main
+cd EPGStation
+npm run all-install
+npm run build         # Windows は npm run build-win
+npm start
+```
 
-### [字幕表示 / 低遅延配信用セットアップマニュアル](doc/caption-lowlatency-setup.md)
+Windows でサービスとして常駐させる場合は `npm run install-win-service` (管理者権限)。
+状況確認は `npm run status-win-service`、解除は `npm run uninstall-win-service` です。
 
----
+設定は `config/config.yml` を編集します (無い場合はテンプレートから起動時に自動生成されます)。
+全項目の説明は [doc/conf-manual.md](doc/conf-manual.md) にあります。
 
-## アップデート方法
+### Docker
 
-- 以下のコマンドを実行後に EPGStation を再起動する
+タグを打つたびに `ghcr.io/stuayu/epgstation` へマルチアーキテクチャのイメージを公開しています。
+`latest` / `<バージョン>` は Debian ベース、`alpine` サフィックス付きは Alpine ベースです
+(Dockerfile は `Dockerfile.debian` / `Dockerfile.alpine`)。
 
-    ```
-    $ git pull
-    $ npm run all-install
-    $ npm run build        # Windows は npm run build-win
-    ```
+## アップデート
 
----
+### Web UI から更新する (推奨)
 
-## v1 からの移行について
+サーバー設定画面の「更新」タブから、リリース版 (タグ) と開発版 (`main` の最新コミット) のどちらへも
+ワンクリックで更新できます。更新後の再起動はサービス管理 (systemd / docker / pm2 / Windows サービス) に委ねます。
+git clone した環境でのみ利用できます。
 
-[doc/v1migrate.md](doc/v1migrate.md) を参照
+### 手動で更新する
 
----
+```bash
+git pull
+npm run all-install
+npm run build         # Windows は npm run build-win
+```
+
+実行後に EPGStation を再起動してください。
 
 ## 動作確認
 
-- ブラウザから `http://<IPaddress>:<Port>/` にアクセスをする
-- curl や wget で API を叩く
+- ブラウザから `http://<IPアドレス>:<ポート>/` にアクセスする
+- API を直接叩く
 
+    ```bash
+    curl -o - http://<IPアドレス>:<ポート>/api/config
     ```
-    $ curl -o - http://<IPaddress>:<Port>/api/config
-    ```
 
-### ログの確認
+### ログ
 
-Web UI の `/logs` ページからも各プロセスのログファイルを閲覧・ダウンロードできます (サーバへの SSH ログイン等が不要な場合はこちらが手軽です)。詳細は [doc/log-manual.md](doc/log-manual.md) を参照してください。
+Web UI の `/logs` ページから、各プロセスのログを閲覧・絞り込み・ダウンロードできます (SSH ログイン不要)。
+ファイルは `logs/{EPGUpdater,Operator,Service}/` に出力されます。
 
-#### [ログ出力の詳細設定](doc/log-manual.md)
+| プロセス | 主なログ |
+| --- | --- |
+| EPGUpdater | `system.log` — Mirakurun へのアクセス、番組情報の更新 |
+| Operator | `system.log` — 録画、予約の追従、コマンド実行 |
+| Service | `access.log` (Web アクセス) / `stream.log` (配信) / `encode.log` (エンコード) / `system.log` |
 
-#### logs/EPGUpdater
-
-- EPG 更新機能からのログが記録されています
-    - `access.log`
-        - 基本的に空ファイル
-    - `stream.log`
-        - 基本的に空ファイル
-    - `system.log`
-        - Mirakurun へのアクセスログ、番組情報の更新等のログ
-
-#### EPGStation/logs/Operator
-
-- 録画管理機能からのログが記録されています
-    - `access.log`
-        - 基本的に空ファイル
-    - `stream.log`
-        - 基本的に空ファイル
-    - `system.log`
-        - Mirakurun へのアクセスログ、コマンドの実行、録画等のログ
-
-#### EPGStation/logs/Service
-
-- Web インターフェイスからのログ記録されています
-    - `access.log`
-        - Web インターフェイスへのアクセスログ
-    - `stream.log`
-        - ストリーミング配信ログ
-    - `system.log`
-        - Web サーバの動作ログ
-    - `encode.log`
-        - エンコード処理関連のログ
-
----
-
-## クライアント向け設定
-
-- EPGStation を利用する端末向けの設定を行うと快適に利用可能です
-
-### URL Scheme
-
-- EPGStation 上の動画再生を OS 上のアプリケーションで行うことが出来ます
-
-    - [config.yml 内の設定 (iOS, Android, macOS, Windows)](doc/conf-manual.md#urlscheme)
-    - [macOS 用の URL Scheme 設定方法](doc/mac-url-scheme.md)
-    - [Windows 用の URL Scheme 設定方法](doc/windows-url-scheme.md)
-
-- 上記以外の環境での設定は WebUI の設定で各ブラウザごとに設定してください
-
-### スマートフォン側の設定
-
-config.yml で設定したアプリをインストールしてください
-
----
+出力レベルなどの詳細設定は [doc/log-manual.md](doc/log-manual.md) を参照してください。
 
 ## データベースのバックアップとレストア
 
-データベースに含まれる以下の情報がバックアップ可能です
+予約情報・録画済み番組情報・録画履歴・録画予約ルールをバックアップできます。
+バックアップデータはデータベースに依存しないため、MySQL でバックアップして SQLite3 へレストアすることも可能です。
 
-- 予約情報
-- 録画済み番組情報
-- 録画履歴
-- 録画予約ルール
-
-バックアップデータはデータベースに依存しないので MySQL でバックアップし、SQLite3 へレストアなども可能です
-
-### 注意
-
-以下のファイルとディレクトリはバックアップに含まれません  
-別途手動でバックアップしてください
-
-- 録画ファイル (recorded)
-- サムネイル (thumbnail)
-- ドロップログ (drop)
-- ログ (logs)
-- 設定ファイル (config.yml)
-
-### バックアップ
-
-- 以下のコマンドを実行
-
-```
-npm run backup FILENAME
+```bash
+npm run backup FILENAME     # バックアップ
+npm run restore FILENAME    # レストア (config.yml に新しい DB 設定を書いてから実行する)
 ```
 
-### レストア
+> [!IMPORTANT]
+> 録画ファイル (recorded) / サムネイル (thumbnail) / ドロップログ (drop) / ログ (logs) / 設定ファイル (config.yml)
+> は**バックアップに含まれません**。別途手動でバックアップしてください。
+>
+> 本家 EPGStation から移行する場合、**ルール予約のバックアップだけは互換性がありません**
+> (本フォークは `NW1`〜`NW40` を追加しているため)。手順は [doc/windows-setup.md](doc/windows-setup.md) を参照してください。
 
-- config.yml に新しいデータベース設定を記述後に以下のコマンドを実行
+v1 からの移行は [doc/v1migrate.md](doc/v1migrate.md) を参照してください。
 
-```
-npm run restore FILENAME
-```
+## クライアント向け設定
 
----
+### URL Scheme
+
+EPGStation 上の動画再生を OS 上のアプリケーションで行えます。
+
+- [config.yml 内の設定 (iOS, Android, macOS, Windows)](doc/conf-manual.md#urlscheme)
+- [macOS 用の URL Scheme 設定方法](doc/mac-url-scheme.md)
+- [Windows 用の URL Scheme 設定方法](doc/windows-url-scheme.md)
+
+上記以外の環境では、Web UI の設定画面から各ブラウザごとに設定してください。
+スマートフォンでは config.yml で指定したアプリをインストールしておく必要があります。
 
 ## Tips
 
 ### Kodi との連携
 
-[Kodi](https://kodi.tv/) との連携に対応しています詳細は [doc/kodi.md](doc/kodi.md) を参照してください
+[Kodi](https://kodi.tv/) との連携に対応しています。詳細は [doc/kodi.md](doc/kodi.md) を参照してください。
+
+### リバースプロキシ
+
+nginx を使う場合の設定例は [doc/linux-nginx.md](doc/linux-nginx.md) にあります。
 
 ### Android 6.0 以上での注意
 
-Android の設定 -> ユーザー補助 にて "操作の監視" が必要なサービスを ON にしていると、番組表の動作が著しく重くなります  
-具体的なアプリは LMT Launcher や Pie Control などが挙げられます
+Android の 設定 → ユーザー補助 で "操作の監視" が必要なサービス (LMT Launcher, Pie Control など) を ON にしていると、
+番組表の動作が著しく重くなります。該当サービスを OFF にするか、Firefox での使用を試してください。
 
-該当サービスを OFF にするのが一番良いですが、それができない場合は Firefox での使用を試してみてください。
+## 開発者向け
+
+- アーキテクチャと実装場所: [doc/PROJECT_OVERVIEW.md](doc/PROJECT_OVERVIEW.md)
+- 作業ルール・コーディング規約・注意点: [CLAUDE.md](CLAUDE.md)
+- テスト方針: [doc/testing.md](doc/testing.md)
+
+```bash
+npm run compile   # サーバの型チェック
+npm test          # 単体 + 結合テスト
+npm run lint      # eslint --fix
+```
 
 ## Contributing
 
