@@ -3,19 +3,19 @@
 日本の DTV 録画管理ソフトウェア EPGStation のフォーク版。
 上流は [l3tnun/EPGStation](https://github.com/l3tnun/EPGStation) で、本フォーク (stuayu 版) は
 **Windows 完全対応**・**県外地上波対応 (NW1〜NW40 チャンネル型の追加)**・**Mirakurun dev 版 (stuayu/Mirakurun) との連携** を主軸に拡張している。
-フォーク独自の変更点は [stuayu-fork.md](stuayu-fork.md) を参照。
+フォーク独自の変更点の詳細はすべて [stuayu-fork.md](stuayu-fork.md) にある。
 
-- 言語/ランタイム: TypeScript / Node.js 24 LTSのみ (CIでは24.xを検証)
+- 言語/ランタイム: TypeScript / Node.js 24 (CI も 24.x)
 - サーバ: Express 5 + express-openapi, TypeORM 1.1 (SQLite / MySQL), inversify (DI), log4js, socket.io
-- クライアント: Vue 3 + Vuetify 4 (クラスコンポーネント + デコレータ, `vue-facing-decorator`), inversify による独自 State 管理 (Vuex 不使用)。ビルドは Vite
-- 動画再生: [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) に統一 (GitHub タグ固定)。HLS は hls.js、低遅延ライブは mpegts.js、ARIB 字幕は DPlayer 内蔵の aribb24.js を利用 (`client/src/components/video/`)。ニコニコ実況コメントの弾幕表示に対応 (NX-Jikkyo / 過去ログ API, `client/src/util/Jikkyo*.ts`)
-- チューナーバックエンド: Mirakurun (`stuayu/Mirakurun` の stuayu-main 系コミットに固定)
+- クライアント: Vue 3 + Vuetify 4 (クラスコンポーネント + `vue-facing-decorator`), inversify による独自 State 管理 (Vuex 不使用)。ビルドは Vite
+- 動画再生: [DPlayer (tsukumijima フォーク)](https://github.com/tsukumijima/DPlayer) に統一 (タグ固定)。HLS は hls.js、低遅延ライブは mpegts.js、ARIB 字幕は DPlayer 内蔵の aribb24.js (`client/src/components/video/`)
+- チューナーバックエンド: Mirakurun (`stuayu/Mirakurun` のタグ固定)
 
 ## プロセス構成
 
 `dist/index.js` (親) を起動すると **2 プロセス構成** で動作する。
 
-```
+```text
 ┌──────────────────────────────┐    child_process.spawn + IPC
 │ Operator (親プロセス)          │◄──────────────────────────────┐
 │  - 予約管理 / 録画実行          │                                │
@@ -31,76 +31,75 @@
 ```
 
 - 親 → 子は [index.ts](../src/index.ts) の `runService()` が spawn し、落ちたら自動再起動
-- **Mirakurun 未接続でも起動する**: 起動時の疎通確認 (`ConnectionCheckModel`) は有限回で打ち切り、チューナー情報は 30 秒間隔のバックグラウンドリトライで復旧時に自動反映。接続状態は `GET /api/status` で取得でき、Web UI が警告バナーを表示する (DB 接続は従来通り必須)
-- プロセス間通信は `src/model/ipc/` (`IPCServer` = 親側, `IPCClient` = 子側, メッセージ定義は `IPCMessageDefine.ts`)
+- **Mirakurun 未接続でも起動する**: 起動時の疎通確認 (`ConnectionCheckModel`) は有限回で打ち切り、30 秒間隔のバックグラウンドリトライで復旧時に自動反映。状態は `GET /api/status` で取れ、Web UI が警告バナーを出す (DB 接続は必須)
+- プロセス間通信は `src/model/ipc/` (`IPCServer` = 親, `IPCClient` = 子, 定義は `IPCMessageDefine.ts`)
 
 ## ディレクトリ構成
 
 ### サーバ (`src/`)
 
-| パス                                  | 役割                                                                                                                              |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`                        | エントリポイント (Operator)。init → runOperator → runService → cleanup → runEPGUpdater                                            |
-| `src/@types/`                         | グローバル型定義                                                                                                                  |
-| `src/db/entities/`                    | TypeORM エンティティ (Channel, Program, Recorded, Reserve, Rule, Thumbnail, VideoFile など)                                       |
-| `src/db/migrations/{mysql,sqlite}/`   | DB 種別ごとのマイグレーション (postgres は空 = 実質未対応)                                                                        |
-| `src/lib/` `src/util/`                | 汎用ライブラリ / 純粋関数ユーティリティ                                                                                           |
-| `src/model/ModelContainerSetter.ts`   | **DI バインディングの中心 (約 400 行)。新規クラスは必ずここに登録**                                                               |
-| `src/model/db/`                       | TypeORM Repository をラップしたデータアクセス層 (`I*DB.ts` / `*DB.ts`)                                                            |
-| `src/model/operator/`                 | 録画エンジン本体: reservation / recording / recorded / rule / storage / thumbnail / externalCommand                               |
-| `src/model/epgUpdater/`               | EPG 更新 (Mirakurun イベントストリーム購読 + 定期実行)                                                                            |
-| `src/model/event/`                    | EventEmitter ベースの内部イベント                                                                                                 |
-| `src/model/ipc/`                      | Operator ⇔ Service 間 IPC                                                                                                         |
-| `src/model/api/`                      | API ビジネスロジック層 (express 非依存)                                                                                           |
-| `src/model/service/api/`              | express-openapi ルートハンドラ。**ディレクトリ構造 = URL パス** (例: `api/reserves/{reserveId}.ts` → `/api/reserves/{reserveId}`) |
-| `src/model/service/encode/`           | エンコードプロセス管理                                                                                                            |
-| `src/model/service/stream/`           | ライブ/録画済み × 通常/HLS のストリーミング                                                                                       |
-| `src/model/service/dataBroadcasting/` | データ放送 (BML) 用 WebSocket サーバ (`web-bml/worker` の `decodeTS` で TS を解析し配信、映像プレイヤーとは別経路)                |
-| `src/model/Configuration.ts`          | `config/config.yml` の読み込み (fs.watchFile によるホットリロード付き)                                                            |
+| パス | 役割 |
+| --- | --- |
+| `src/index.ts` | エントリポイント (Operator)。init → runOperator → runService → cleanup → runEPGUpdater |
+| `src/db/entities/` | TypeORM エンティティ |
+| `src/db/migrations/{mysql,sqlite}/` | DB 種別ごとのマイグレーション (postgres は空 = 未対応) |
+| `src/lib/` `src/util/` | 汎用ライブラリ / 純粋関数ユーティリティ |
+| `src/model/ModelContainerSetter.ts` | **DI バインディングの中心。新規クラスは必ずここに登録** |
+| `src/model/db/` | TypeORM Repository をラップしたデータアクセス層 (`I*DB.ts` / `*DB.ts`) |
+| `src/model/operator/` | 録画エンジン本体: reservation / recording / recorded / rule / storage / thumbnail / externalCommand |
+| `src/model/epgUpdater/` | EPG 更新 (Mirakurun イベントストリーム購読 + 定期実行) |
+| `src/model/event/` | EventEmitter ベースの内部イベント |
+| `src/model/ipc/` | Operator ⇔ Service 間 IPC |
+| `src/model/api/` | API ビジネスロジック層 (express 非依存) |
+| `src/model/service/api/` | express-openapi ルートハンドラ。**ディレクトリ構造 = URL パス** |
+| `src/model/service/encode/` | エンコードプロセス管理 |
+| `src/model/service/stream/` | ライブ/録画済み × 通常/HLS のストリーミング |
+| `src/model/service/dataBroadcasting/` | データ放送 (BML) 用 WebSocket サーバ (映像プレイヤーとは別経路) |
+| `src/model/series/` `src/model/metadata/` | シリーズ判定と外部辞書 (しょぼいカレンダー / Annict / Wikidata) |
+| `src/model/Configuration.ts` | `config/config.yml` の読み込み (fs.watchFile でホットリロード) |
 
 ### クライアント (`client/src/`)
 
-| パス                            | 役割                                                                         |
-| ------------------------------- | ---------------------------------------------------------------------------- |
-| `main.ts`                       | エントリ。DI コンテナ初期化 → サーバ config 取得 → Vue 生成                  |
-| `router.ts`                     | vue-router ルート定義 (全 19 ページ) + スクロール位置復元                    |
-| `views/`                        | ページコンポーネント                                                         |
-| `components/`                   | 機能別の再利用コンポーネント (guide, recorded, reserves, search, video, watch など) |
-| `model/ModelContainerSetter.ts` | クライアント側 DI 登録 (サーバと同じパターン)                                |
-| `model/api/`                    | REST API ラッパー (`RepositoryModel` = axios 共通層 + 機能別 `*ApiModel`)    |
-| `model/state/`                  | 画面ごとの State クラス (Vuex の代わり)                                      |
-| `model/storage/`                | localStorage 永続化                                                          |
-| `model/socketio/`               | socket.io クライアント (`updateStatus` / `updateEncode` イベント購読)        |
+| パス | 役割 |
+| --- | --- |
+| `main.ts` | エントリ。DI コンテナ初期化 → サーバ config 取得 → Vue 生成 |
+| `router.ts` | vue-router ルート定義 + スクロール位置復元 (**hash モード**) |
+| `views/` `components/` | ページ / 機能別コンポーネント (guide, recorded, reserves, search, series, video, watch など) |
+| `model/ModelContainerSetter.ts` | クライアント側 DI 登録 (サーバと同じパターン) |
+| `model/api/` | REST API ラッパー (`RepositoryModel` = axios 共通層 + 機能別 `*ApiModel`) |
+| `model/state/` | 画面ごとの State クラス (Vuex の代わり) |
+| `model/storage/` | localStorage 永続化 |
+| `model/socketio/` | socket.io クライアント (`updateStatus` / `updateEncode` / `updateOnAirProgram` / `updateProgram`) |
 
 ### API 仕様の共有
 
-- ルートの **`api.yml`** (OpenAPI 3.0.1) が API 仕様の正。express-openapi がこれを読み込んでバリデーション/ルーティングする
-- ルートの **`api.d.ts`** がサーバ・クライアント共有の型定義 (`import * as apid from '.../api'` で参照)
-- 本フォークでは `ChannelType` に `NW1`〜`NW40` (県外地上波) と `BS4K` / `CS4K` (新4K8K衛星放送) を追加済み
+- ルートの **`api.yml`** (OpenAPI 3.0.1) が仕様の正。express-openapi がこれを読んでバリデーション/ルーティングする
+- ルートの **`api.d.ts`** がサーバ・クライアント共有の型定義 (`import * as apid from '.../api'`)
+- 本フォークでは `ChannelType` に `NW1`〜`NW40` (県外地上波) と `BS4K` / `CS4K` を追加済み
 
 ## 主要ワークフロー別・変更対象ファイル
 
-| やりたいこと              | 触るファイル                                                                                                               |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| API エンドポイント追加    | `api.yml` → `src/model/service/api/**` → `src/model/api/**` → `ModelContainerSetter.ts` → `api.d.ts`                       |
-| DB スキーマ変更           | `src/db/entities/` → `npm run orm-gen --db=<mysql\|sqlite> --name=<Name>` (**mysql/sqlite 両方**) → `src/model/db/**`      |
-| 録画・予約ロジック        | `src/model/operator/{reservation,recording,rule}/**`                                                                       |
-| EPG 更新                  | `src/model/epgUpdater/**`                                                                                                  |
-| エンコード                | `src/model/service/encode/**`                                                                                              |
-| ストリーミング            | `src/model/service/stream/**`                                                                                              |
-| Operator⇔Service 通信追加 | `src/model/ipc/IPCMessageDefine.ts`, `IPCServer.ts`, `IPCClient.ts`                                                        |
-| 設定項目追加              | `src/model/IConfigFile.ts`, `Configuration.ts` (DEFAULT_VALUE), `src/model/config/ConfigSchema.ts` (単一定義元、GUI 編集可否をここで決める), `config/config.yml.template` (+ `config-win.yml.template`。`test/ut/config-schema-template-sync.test.js` が両テンプレートへの記載を強制する) |
-| クライアント新ページ      | `client/src/views/` → `router.ts` → `model/state/**` → `model/ModelContainerSetter.ts` → ナビゲーション                    |
+| やりたいこと | 触るファイル |
+| --- | --- |
+| API エンドポイント追加 | `api.yml` → `src/model/service/api/**` → `src/model/api/**` → `ModelContainerSetter.ts` → `api.d.ts` |
+| DB スキーマ変更 | `src/db/entities/` → `npm run orm-gen --db=<mysql\|sqlite> --name=<Name>` (**両方**) → `src/model/db/**` |
+| 録画・予約ロジック | `src/model/operator/{reservation,recording,rule}/**` |
+| EPG 更新 | `src/model/epgUpdater/**` |
+| エンコード | `src/model/service/encode/**` |
+| ストリーミング | `src/model/service/stream/**` |
+| Operator⇔Service 通信追加 | `src/model/ipc/IPCMessageDefine.ts`, `IPCServer.ts`, `IPCClient.ts` |
+| 設定項目追加 | `src/model/IConfigFile.ts`, `Configuration.ts` (DEFAULT_VALUE), `src/model/config/ConfigSchema.ts` (単一定義元), 両テンプレート |
+| クライアント新ページ | `client/src/views/` → `router.ts` → `model/state/**` → `model/ModelContainerSetter.ts` → ナビゲーション |
 
 ## コーディング規約 (両側共通)
 
-- **インターフェース分離**: DI 対象は必ず `IXxx.ts` (インターフェース) + `Xxx.ts` (実装, `@injectable()`) のペア。文字列トークン `'IXxx'` でバインドし、利用側は `container.get<IXxx>('IXxx')`
+- **インターフェース分離**: DI 対象は `IXxx.ts` + `Xxx.ts` (`@injectable()`) のペア。文字列トークン `'IXxx'` で bind し、`container.get<IXxx>('IXxx')` で取る
 - **命名**: PascalCase + 役割サフィックス (`~Model`, `~ManageModel`, `~DB`, `~ApiModel`, `~State`, `~Util`)。ファイル名 = クラス名
-- **namespace 定数**: クラス定義直後に同名 `namespace Xxx { export const ... }` で定数を定義
-- **Provider パターン**: 複数インスタンスが必要なもの (Recorder, Encoder, Stream) は `toProvider()` でファクトリ注入
+- **namespace 定数**: クラス定義直後に同名 `namespace` で定義
+- **Provider パターン**: 複数インスタンスが要るもの (Recorder, Encoder, Stream) は `toProvider()` でファクトリ注入
 - **JSDoc 風の日本語コメント** を public メソッドに付与
 - **エラーハンドリング**: サーバ API は try/catch → `api.responseServerError()`。クライアントは try/catch → `ISnackbarState.open()` + `console.error`
-- Lint/Format: ESLint (Flat Config: `eslint.config.mjs`) + Prettier。`npm run build-server` に lint/format が組み込まれている
+- Lint/Format: ESLint (Flat Config) + Prettier。`npm run build-server` に組み込み済み
 
 ## ビルド・運用
 
@@ -108,73 +107,109 @@
 npm run all-install   # サーバ + クライアントの依存インストール
 npm run build         # Linux/Mac (build-win で Windows)
 npm start             # node dist/index.js
-npm run backup / restore   # DB バックアップ / リストア
-npm run recover-channel-name   # 過去の録画番組の放送局名を復元 (既定は dry run, --apply で更新)
+npm run backup / restore       # DB バックアップ / リストア
+npm run recover-channel-name   # 過去の録画の放送局名を復元 (既定 dry run, --apply で更新)
 ```
 
-- テストは node:test ベースで整備済み: `test/ut` (単体、行カバレッジ 80% のゲート付き) / `test/ita` (実 sqlite でのマイグレーション等) / `test/itb` (ローカル HTTP スタブサーバを使う通信系)。`npm test` = ut + ita、`npm run test:ci` = ut + ita + itb
-- データ放送 (BML) 機能は `web-bml` (tsukumijima/web-bml) を npm 依存として使うだけで、追加のビルド手順は無い。`npm run all-install` → `npm run build` (従来通り `build-server && build-client`) だけで済む
-- 設定: `config/config.yml` (テンプレートから起動時自動コピー)。ログ設定は `config/{operator,service,epgUpdater}LogConfig.yml`
+- テストは node:test ベース: `test/ut` (単体、行カバレッジ 80% ゲート) / `test/ita` (実 sqlite) / `test/itb` (HTTP スタブ)。`npm test` = ut + ita、`npm run test:ci` = + itb
+- 設定は `config/config.yml` (テンプレートから起動時に自動コピー)。ログ設定は `config/{operator,service,epgUpdater}LogConfig.yml`
 - マイグレーションは起動時に自動実行 (`migrationsRun: true`)
-- Docker: `Dockerfile.alpine` (node:24-alpine3.24 ベース) / `Dockerfile.debian` (node:24-trixie ベース) のマルチステージ
-- CI: `.github/workflows/build-validation.yml` (3 OS × Node 24 のビルド検証、Mirakurun `stuayu-main` ブランチと組み合わせ。タグ push では走らない)、`docker.yml` (マルチアーチイメージの Docker Hub push)、`release.yml` (タグ push で 3 OS 分の 7z を作り GitHub Release を自動作成)
+- Docker: `Dockerfile.alpine` / `Dockerfile.debian` のマルチステージ
+- CI: `build-validation.yml` (3 OS × Node 24)、`docker.yml` (Docker Hub push)、`release.yml` (タグ push で 3 OS 分の 7z を作り GitHub Release 作成)
+- データ放送 (BML) は `web-bml` を npm 依存として使うだけで追加のビルド手順は無い
+
+## 主要機能と実装場所
+
+詳細な設計と経緯は `doc/stuayu-fork.md` にある。ここは「どこを見ればよいか」の索引。
+
+| 機能 | 入口 | 要点 |
+| --- | --- | --- |
+| シリーズ自動マッピング | `src/model/series/`, `src/model/metadata/` | 下記「シリーズ判定」参照 |
+| TS 解析 | `src/model/recorded/ts/TsInfoAnalyzer.ts`, `src/model/video/VideoFileAnalyzeModel.ts` | 下記「TS 解析」参照 |
+| 放送局の系列 | `src/model/channel/BitParser.ts`, `BroadcastAffiliationData.ts` | 正は放送波の BIT (PID `0x0024`)。Mirakurun API では取れないため録画/配信経路から受動収集し `channel_affiliation` へ貯める。未受信の局は同梱データ (networkId 実測 127 局 + 局名 → 系列 129 局) で補い、どちらにも無い局だけ「未分類」。番組表・放映中のグルーピング軸 (地域別 / 系列別) は `/affiliations` のスイッチで切り替え |
+| 実況コメント | `client/src/util/Jikkyo*.ts`, `src/model/service/stream/util/BroadcastTimeExtractor.ts` | サーバが TS の TDT/TOT から放送時刻を取り `GET /api/streams` の `broadcastTime` で配る。クライアントは「サーバ遅延 + 再生バッファ + 手動オフセット」だけ描画を遅らせる |
+| 視聴画面 | `client/src/components/watch/WatchLayout.vue` | `position: fixed` の全画面レイアウト。左にアイコンナビ、上に番組情報バー、右に情報パネル (名前付きスロットで差し替え)。視聴中はグローバルナビを畳む |
+| データ放送 (BML) | `client/src/util/DataBroadcastingManager.ts`, `src/model/service/dataBroadcasting/` | `web-bml` (tsukumijima フォーク) を npm 依存で利用。iframe に隔離せず `BMLBrowser` を直接生成し、**映像要素を BML ブラウザの中へ物理的に移動**して DPlayer に組み込む |
+| ログイン認証・権限 | `src/model/auth/` | `auth.enabled` で有効化 (既定 無効)。パスワード (scrypt) と SSO (Google / GitHub)。セッションは HMAC 署名付き HttpOnly Cookie。**最初にサインアップした人が管理者**。`/api/settings`・`/api/auth/users`・`/api/update`・`/api/logs` は管理者限定 |
+| 更新通知・ワンクリック更新 | `src/model/update/`, `client/.../UpdatePanel.vue` | GitHub Releases を定期確認。リリース版 (タグ) と開発版 (`main`) を選べる。`git checkout` → `all-install` → ビルド → Operator 終了 (サービス管理に再起動させる)。git clone 環境のみ |
+| Windows サービス | `scripts/win-service.js`, `src/util/GitCommand.ts` | `node-windows` で登録。LocalSystem・セッション 0 で動くためユーザーの PATH を参照できず、専用 `Path` と `git config --system safe.directory` を設定する |
+
+### EPG 追従 (EIT[p/f] とリアルタイム同期)
+
+- **リアルタイム同期**: event stream のイベントを `ProgramUpdatePriority.ts` が `immediate` / `normal` に分類し、`immediate` (番組の消滅・付け替え / 放送時間未定への変更 / `urgentWindowMinutes` 既定 180 分以内に始まる番組) だけを 10 秒 tick を待たず先行して DB へ書く (デバウンス 500ms)。設定は `featureFlags.epgRealtimeSync` と `config.yml` の `epgRealtime`
+- **クライアントへの通知は 2 系統**: `updateOnAirProgram` (`channelIds`、EIT[p/f] 相当。視聴画面・放映中一覧) と `updateProgram` (`{ channelIds, startAt, endAt }`、変更のあった時間帯そのもの。番組表)。全体更新 (`updateStatus`) と分けているのは 10 秒周期で飛びうるため
+- **予約も同じ通知で追従する**: `updateOnAirReserves()` (その局の現在〜15 分先の programId 予約) と `updateReservesByProgramIds()` (放送が何時間先でも追従)。番組 id が 1000 件を超える更新では id を載せず周期的な全体更新に任せる
+- **録画開始ゲート**: 時刻指定予約はチャンネルストリームのため予定時刻から即データが流れる。`EitPresentParser` + `RecordingStartGate` が EIT[p/f] present を読み、**予約した番組が始まるまで録画ファイルを作らない** (既定 60 秒で諦めて録り始める)。設定は `recording.startGate*`
+- **録画開始・終了は EIT[p/f] 追従**: programId 予約は Mirakurun の program stream を使い、対象イベントが present になるまでデータが流れない。前番組の延長中は「まだ始まっていない」だけなので `RecordingRetryPolicy` が既定 3 時間待つ。**停止に `reserve.endAt` を使わない**
+- **ログで追える**: EIT[p/f] の受信・予約の再スケジュール・録画側の時刻変更を「変更前 → 変更後」の時刻付き info で出す (整形は `src/util/ProgramTimeLog.ts`)。クライアントへの通知も Operator / Service の両方で接続クライアント数付きの info を出す
+
+### シリーズ判定
+
+外部の作品タイトル辞書が主軸。3 つの辞書をローカル DB へ取り込み、`WorkDictionary` が 1 つのメモリ索引へ統合する。
+
+- 辞書: `SyobocalTitleDictionary` (しょぼいカレンダー、約 8 千件・アニメ) / `AnnictWorkDictionary` (`searchWorks`、約 1.7 万件・アニメ) / `WikidataProgramDictionary` (SPARQL、約 4 万件・**全ジャンル**)。**重複はしょぼいカレンダー TID で結合する** (Annict は `syobocalTid`、Wikidata は `P11648`)
+- **判定順**: ①放送予定 (`SyobocalProgramLookup`、放送局 + 放送開始時刻) → ②エイリアス辞書 → ③作品辞書 (タイトル照合) → ④LLM → ⑤類似度スコアリング。**エイリアスより放送予定が優先**、**手動確定 (`manualLock`) だけは放送予定より強い**
+- **確度**: `exactStart` (番組の頭から録画) 0.98 / 放送時間帯の包含 0.92 / 系列キー局で代用 (`viaKeyStation`) 0.9。返ってきた作品名が録画タイトルと共通部分を持たないものは `isPlausibleProgramTitle()` で捨てる
+- **話数**: タイトルに表記があっても放送予定の `Count` を優先。遅れネットの県域局は `lookupDelayed()` がキー局の放送予定を 28 日遡って対応付ける。総集編・一挙放送 (`isSpecial`) はサブタイトル逆引きの対象外
+- **放送種別**: `decideAirType()` が「放送予定が再放送 (`ProgItem.Flag` の bit 8) → `rerun` / キー局を遡って対応付け → `delayed` / それ以外 → `first`」で決める。タイトルに `(再)` があればフラグ付け漏れとみなし `rerun` を残す
+- **問い合わせ先の ChID は同梱マップ** (`SyobocalChannelMapData`、124 局)。しょぼいカレンダーの `ChLookup` と実機の networkId / serviceId から起こしているので、**書き換えるときは必ず実データで確認する** (取り違えると別局の番組表を引く)
+- **続編は放送時期で選び分ける**: 期表記の無い録画はタイトル照合だと第 1 期に当たるため、基本キーで全期をまとめ放送日時が入る期へ差し替える (再放送では放送日時を渡さない)
+- **総話数 (欠番検出)** は `ISeriesTotalEpisodes` が `series.totalEpisodes` → しょぼいカレンダー → Annict の順に解決する
+- **実行契機**: 録画完了・アップロード / 取り込み完了 (どちらも `EventSetter`)。手動はバックフィル (`POST /api/series/backfill`、全件 / `onlyUnlinked` / `latest`)、シリーズ単位 (`POST /api/series/reanalyze`)、1 件 (`POST /api/series/analyze/{recordedId}`)。`latest` と `seriesIds` は部分実行なので全件バックフィルの再開カーソルを動かさない
+- **判定過程はトレースできる**: `resolve(recording, trace?)` に収集器を渡すと各照会の入力と戻り値を記録する (1 件実行の結果はポップアップ + Operator のログ)
+- **表示名は辞書の正式タイトルへ同期する**: `SeriesMetadataFiller.fill()` が `series.title` と引き当てキー `normalizedTitle` を辞書名由来へ揃える (外部 ID あり・手動設定でない・寄せ先が未使用、の 3 条件を満たす場合のみ)。手動で付けた名前 (`titleSource: 'manual'`) は上書きしない
+- **誤生成の掃除**: 出所 (`SeriesListItem.origin`) は外部 ID の有無で `dictionary` / `local` を判定。一覧から複数選択して `POST /api/series/merge`、統合先は辞書起点を既定にする。エイリアスの誤学習は設定画面 > シリーズ管理タブから付け替え・削除できる (`source: 'manual'` になり自動学習で上書きされない)
+- **しょぼいカレンダーのコメント**は作品コメント (`series.comment`) と放送回コメント (`series_episode.comment`) の 2 種類。作品コメントは全件同期に含めず TID 指定で個別取得する (XML が 9.5MB → 24MB になるため)。表示は Wiki 記法を解析する `SyobocalWiki.ts` + `SyobocalComment.vue` を通す (**`v-html` は使わない**)
+- 同期は Operator 起動時 + しょぼいカレンダー 24h / Annict 7d / Wikidata 7d。アイキャッチ画像は Annict 由来で、`SeriesImageModel` がサーバ側でキャッシュして `GET /api/series/{seriesId}/image` で配る (取れない作品は録画サムネイルで代用)
+
+### TS 解析
+
+`TsInfoAnalyzer` (`src/model/recorded/ts/`) が `aribts` で PAT / SDT / NIT / PMT / EIT[p/f] / TDT / TOT を解析し `video_file_ts_info` へ保存する。ffprobe と合わせて `VideoFileAnalyzeModel` が入口。
+
+- **既定でファイル中央から読む** (64MB 以上)。先頭には前番組の EIT[p/f] と録画開始直後の壊れた TS が混ざるため
+- **`firstTdtAt` は「ファイル先頭の放送時刻」の意味を保つ**。`resolveFileStartAt()` が「先頭を読み直した値」と「中央から実測バイトレートで遡った見積もり」を突き合わせ、5 分以上ずれたら見積もりを採る
+- **相乗りサービス (ワンセグ・サブチャンネル・データ放送) からの本編選択は `selectServiceId()`**: service_type の格 → PID ごとのパケット数 → EIT[p/f] の有無 → service_id 昇順。パケット数の偏りを見るため最低 20000 パケットは読む
+- `video_file.startAt` は TDT/TOT を使うが、**出現位置がファイル先頭から離れていることがある**ため PCR (27MHz) で経過時間を測って補正する (`correctStartAtByPcr()`)
+- **番組情報の上書きは明示的な再解析のときだけ** (`overwriteProgramInfo`)。取り込み・アップロード時と「未解析のみ」の一括解析は空の項目を補うだけ。**番組名 (`recorded.name`) はどちらでも上書きしない**
+- 取り込み時の放送局特定は**ファイル名の推定ではなく network id + service id での厳密な引き当て**を優先する
+- 録画の放送局名の表示は `ChannelNameUtil.getRecordedChannelName()`、一覧のタイトル表示は `RecordedUtil.convertRecordedItemToDisplayData()` の 1 箇所で決まる
 
 ## 注意点・ハマりどころ
 
-- **視聴画面 (ライブ / 録画) は全画面レイアウト**: `client/src/components/watch/` の `WatchLayout` が `position: fixed` で画面全体を覆い、左にアイコンナビゲーション・上に番組情報バー・右に情報パネル (番組情報 / チャンネル / 次の話 / コメント) を置く。視聴中はグローバルナビゲーション (drawer) を畳み、離れるときに元へ戻す。右パネルの中身は名前付きスロットで差し込むため、画面ごとにタブの組み合わせを変えられる。実況コメントの一覧は `BaseVideo` が弾幕を描くタイミングで上げる `jikkyoComment` イベントを `VideoContainer` 経由で受け取る (遅延補正後なので弾幕と表示が揃う)。詳細は `doc/stuayu-fork.md`
-- package.json の `overrides` にある `express-openapi.glob: ^7.0.0` は外さないこと。glob 10 以降の `globSync()` は Windows でパス区切りが `\` になり、`fs-routes` 経由の API ルート解決 (ディレクトリ構造 = URL パス) が壊れる
-- **データ放送 (BML) は `web-bml` (tsukumijima/web-bml、otya128/web-bml のフォーク) を npm 依存として利用する**。ビルド済み `dist/` をコミットしたフォークなので `npm install` だけで使え、映像は引き続き EPGStation 側の DPlayer が持つ (web-bml 本体のエンコード機能・koa サーバは使わない)
-- **BML ブラウザは iframe に隔離せず `BMLBrowser` を直接生成し、映像要素を BML ブラウザの中へ物理的に移動して DPlayer に組み込む**。内部は closed な Shadow DOM のため本体 CSS とは衝突しない。`BMLBrowser` を保持するクラス (`client/src/util/DataBroadcastingManager.ts`) は **Vue のリアクティブ監視 (Proxy) に入れると内部の JS-Interpreter が壊れる**ため、必ず `markRaw()` で包んで保持する
-- **データ放送の WebSocket (`DataBroadcastingWebSocketServer.ts`) は socket.io と同じ http/https サーバの `upgrade` イベントに `noServer: true` で相乗りする**。パスが `<subDirectory>/api/dataBroadcasting/ws` と一致しないリクエストの socket には絶対に触れないこと。触ると同居している socket.io のハンドシェイクが壊れる
-- `ormconfig.js` (CLI マイグレーション用) は `Configuration.ts` とは別に `config/config.yml` を独自に読む二重管理になっている
-- postgres のマイグレーションディレクトリは空。対応 DB は sqlite / mysql のみ
-- `mirakurun` 依存はフォーク版 (`stuayu/Mirakurun`) のコミット固定。ブランチ tarball 参照にすると Mirakurun 側の push で lockfile の integrity が壊れ CI が落ちるため、必ずコミット SHA の URL で固定する
-- Windows 対応が本フォークの柱。サーバ側変更時は Windows での動作 (パス区切り、named pipe など) を常に考慮すること
-- Express 5 では `req.query` がアクセスごとに再パースされる getter になったため、`ServiceServer.ts` でリクエスト受信時に一度だけ実体化するミドルウェアを挟んでいる
-- TypeORM 1.x では criteria が空の `delete()` が禁止されているため、全件削除は `createQueryBuilder().delete()` を使う (既存コードは対応済み)
-- **ライブ実況の遅延補正**: ライブ配信は `BroadcastTimeExtractor` (`src/model/service/stream/util/`) が TS の TDT / TOT を読んで放送時刻を保持し、`GET /api/streams` の `broadcastTime` で配る。クライアント (`BaseVideo.ts`) は「サーバ遅延 + 再生バッファ + 手動オフセット」の分だけ実況コメントの描画を遅らせる
-- **放送局の系列 (日テレ系・TBS 系…)**: 判定の正は放送波の **BIT (PID `0x0024`)** に載る系列識別 (`affiliation_id`)。Mirakurun の API では取れないため、**録画ファイルの TS 解析とライブ視聴の配信経路からの受動収集**で集め (`src/model/channel/BitParser.ts` / `BitCollectTransform.ts`)、`channel_affiliation` テーブルへ貯める。ただし BIT はその局を実際に受信するまで集まらないので、**まだ受信していない局は公知の系列を集めた同梱データ (`BroadcastAffiliationData.ts`) で補う**。同梱データは「networkId の実測値 127 局」と「放送局名 → 系列の全国データ 129 局 (Wikipedia の各ニュースネットワーク + 全国独立放送協議会の加盟局一覧が出典)」の 2 段構えで、実測値に無い地域の局も局名から引ける (局名の照合は長い正式名称から。「大分放送」と「大分朝日放送」のような包含関係があるため) (BIT を受信済みの局は常に BIT が優先)。同梱データにも無い局 (ケーブル・コミュニティ局) だけが「独立系」ではなく**「未分類」**になる。番組表・放映中のグルーピング軸 (地域別 / 系列別) は**系列局ページ (`/affiliations`) のスイッチ**で切り替える (既定 地域別、設定は両画面共通)。系列で絞った番組表 (`/guide?affiliation=`) の放送局はキー局が先頭で、以降は都道府県コード順 (`client/src/util/AffiliationChannelSort.ts`)。詳細は `doc/stuayu-fork.md`
-- **しょぼいカレンダーのコメントは Wiki 記法**: `*見出し` / `-箇条書き` / `:項目:内容` / `[[ラベル URL]]` / `!注記` で書かれている。表示は `client/src/util/SyobocalWiki.ts` (解析) + `client/src/components/series/SyobocalComment.vue` (描画) を通す。**`v-html` は使わない** (構造を組み立ててテンプレートで描画する)。コメントを表示する画面を増やすときはこのコンポーネントを使うこと
-- **シリーズの外部辞書タグ**: しょぼいカレンダー / Annict / **Wikidata** へのリンク付きタグは `client/src/components/series/SeriesExternalLinks.vue` に集約している (`SeriesDetail.externalIds` の `syobocalTid` / `annictId` / `wikidataQid`)
-- **録画ファイルの TS 解析は「ファイル中央」から読む**: ファイル先頭には前番組の EIT[p/f] がまだ present として流れており、録画開始直後の壊れた TS も混ざるため、既定でファイル中央 (`size / 2`、64MB 以上のファイルのみ) を読み出し開始位置にする (`TsInfoAnalyzer.decideStartPosition()` + `findPacketBoundary()` で TS パケット境界へ丸める)。`firstTdtAt` (ファイル先頭の放送時刻) だけは意味が変わってしまうので、先頭を読み直して求めた値と、中央の実測バイトレートから遡って見積もった値を突き合わせて決める (`resolveFileStartAt()`)。**相乗りしているワンセグ・サブチャンネル・データ放送の中から本編サービスを選ぶ**のは `selectServiceId()` で、service_type の格 → 実際に流れているパケット数 → EIT の有無 → service_id 昇順の順に見る (これが無いとワンセグの放送局名・番組名を拾う)。詳細は `doc/stuayu-fork.md`
-- **録画ファイルの TS 解析**: 取り込み・アップロードしたファイルは `TsInfoAnalyzer` (`src/model/recorded/ts/`) が `aribts` で PAT / SDT / NIT / PMT / EIT[p/f] / TDT / TOT を解析し、放送局・番組・ストリーム構成を `video_file_ts_info` テーブルへ保存する。**EIT[p/f] からは概要・詳細・ジャンル 3 組に加えて映像音声情報 (component_descriptor / audio_component_descriptor) も取り出し**、EPGStation で録画した番組と同じ項目を埋める。API で録画情報だけ先に作って後から動画を足した場合は `VideoFileAnalyzeModel.applyProgramInfo()` が**空の項目だけ**補完する (既存値は上書きしない)。**全件強制再解析と録画 1 件の再解析だけは `overwriteProgramInfo` を渡して既存値も上書きする** (旧実装がファイル先頭を読んで前番組の情報を拾った録画を直すため。番組名は上書きしない)。取り込み時の放送局特定は**ファイル名の推定ではなく network id + service id での厳密な引き当て**を優先する。ffprobe 解析と合わせて `VideoFileAnalyzeModel` (`src/model/video/`) が入口になり、Operator (取り込み時) と Service (API 経由) の双方から使う。`video_file.startAt` (ファイル先頭に対応する実時刻) は TDT / TOT が取れればそれを使う (実況コメントの時刻合わせに効く)。**TDT/TOT はファイル先頭からある程度離れた位置で初めて出現することがある**ため、そのまま採用すると誤差が乗る。PCR (27MHz) でファイル先頭からの実経過時間を測り、その分を差し引いて補正する (`TsInfoAnalyzer.correctStartAtByPcr()`、詳細は `doc/stuayu-fork.md`)
-- エンコードキューは `data/encodeQueue.json` に永続化され、Service プロセス起動時に `EncodeManageModel.restore()` で復元される (Web API の待ち受け開始はこの復元後)。キューを変更するコードを追加したら保存 (`saveQueue()`) の呼び出し漏れに注意
-- `ExecutionManagementModel` は優先度付きの排他ロック。`getExecution()` の Promise は 60 秒でタイムアウトするため、呼び出し側は必ず reject を処理する (放置するとキュー処理が止まる)
-- **機能フラグ (`featureFlags`) は opt-out**。未指定の機能は**有効**として扱われ、止めたいものだけ `config.yml` に `false` を書く (`src/model/FeatureFlags.ts` / `client/src/util/FeatureFlags.ts`)。`featureFlags: {}` は「全部無効」ではなく「全部有効」を意味する
-- シリーズ自動マッピングは **外部の作品タイトル辞書が主軸**。**3 つの辞書**をローカル DB へ取り込み、`WorkDictionary` (`src/model/series/`) が 1 つのメモリ索引に統合して引く
-    - `SyobocalTitleDictionary` (しょぼいカレンダー、約 8 千件・アニメ専門) / `AnnictWorkDictionary` (Annict `searchWorks`、約 1.7 万件・アニメ専門) — Annict 側が持つ `syobocalTid` で厳密に結合する
-    - `WikidataProgramDictionary` (Wikidata SPARQL、約 4 万件・**全ジャンル**) — ドラマ・バラエティ・情報番組・ローカル局番組を担当。Wikidata の `P11648` (しょぼいカレンダーのシリーズ ID) でアニメ辞書と厳密に結合し、重複を作らない。一般番組は短く一般的なタイトルが多いため、**厳密キー (`strictProgramKey`) の完全一致のみ**で引く (含有・前方一致には参加させない)
-    - `SeriesResolver` はこの統合辞書を使い、録画タイトル同士の類似度判定は辞書で引けなかった場合のフォールバック。さらに `seriesLlm` を設定すると LLM が装飾を剥がした番組名で辞書を引き直す
-    - **しょぼいカレンダーのコメントも取り込む**: 作品コメント (`TitleItem.Comment`、シリーズ単位の長文) と放送回コメント (`ProgItem.ProgComment`、エピソード単位の短いメモ)。作品コメントは全件同期に含めず、シリーズになっている作品だけ TID 指定で個別に引く。**1 作品 1 リクエストかつ しょぼいカレンダーは Cloudflare のレート制限 (429) が厳しいため 1 回では取り切れない**ので、`SeriesMetadataFiller` は 1 回 300 件までにして繰り越しがあれば 10 分後に自動で続きを実行する。`ProviderHttpClient` は `cal.syoboi.jp` へのアクセス間隔を 1500ms に取り、429 を受けたら間隔を自動で広げる。どちらもシリーズ詳細画面から編集・削除でき、手動で触ったものは `commentSource: 'manual'` になり自動同期で上書きされない
-    - **話数は「放送局 + 放送開始時刻」でも確定できる**: `SyobocalProgramLookup` (`src/model/metadata/syobocal/`) がしょぼいカレンダーの放送予定 (`ProgLookup`) を引き、`TID` / 通し話数 / サブタイトルを返す。タイトルの表記に依存しないため、話数表記もサブタイトルも無い録画で効く。**タイトルに話数表記があっても必ず引き、`TID` が一致すれば放送予定の話数を優先する**。取得は放送日 1 日分をまとめて行いキャッシュするので、局・日ごとに 1 回で済む。**問い合わせ先の ChID は同梱マップ (`SyobocalChannelMapData`、地上波 + BS + CS の 124 局) で決まる。ChID は しょぼいカレンダーの `ChLookup`、networkId / serviceId は実機の値から起こしているので、番号を書き換えるときは必ず実データで確認すること** (取り違えると別局の番組表を引く)。しょぼいカレンダー未登録の地方局は系列のキー局の放送予定で代用するが、遅れ放送で別番組を指しうるため作品の確定には使わない。**遅れネットの県域局は `lookupDelayed()` が別に効く**: 作品 (TID) が確定していればキー局の放送予定をその作品に絞って 28 日遡り、録画時刻より前で最も近い放送をその回とみなして話数・サブタイトルを確定する (`airType` は `delayed`)。総集編・一挙放送 (`SeriesParseResult.isSpecial`) は通し話数を持たないためサブタイトル逆引きの対象外
-    - **放送種別 (初回 / 再放送 / 遅れ放送) も放送予定を最優先で決める**: しょぼいカレンダーの `ProgItem.Flag` (1=注目 / 2=新番組 / 4=最終回 / **8=再放送**) を `SyobocalProgramMatch.isRerun` として取り込み、`SeriesResolver.decideAirType()` が「放送予定が再放送 → `rerun` / キー局を遡って対応付けた回 → `delayed` / 放送予定は引けたが再放送フラグ無し → `first`」の順で確定させる。タイトルの `(再)` 表記としょぼいカレンダー側のフラグ付け漏れに備え、タイトルが再放送と言っている場合は `rerun` を残す。放送予定が引けない録画だけが従来どおりタイトル表記 → ローカル DB の重複判定に落ちる。遅れ放送の照会は話数が既知でも行う (放送種別の判定に要るため) が、キー局側の話数がタイトルの話数と食い違う結果は採らない
-    - **欠番検出の総話数も外部辞書から引く**: `ISeriesTotalEpisodes` (`src/model/series/SeriesTotalEpisodes.ts`) が `series.totalEpisodes` → しょぼいカレンダー (`syobocal_title.totalEpisodes`) → Annict (`annict_work.episodesCount`) の順で解決し、シリーズ一覧・シリーズ詳細・欠番補完提案がすべてこれを使う。参照はローカルに同期済みのテーブルのみで外部 HTTP は発生しない
-    - 同期は Operator 起動時 + しょぼいカレンダー 24 時間 / Annict 7 日 / Wikidata 7 日間隔 (`featureFlags.metadataProviders` + 各連携が有効な場合のみ。Annict はアクセストークン必須、Wikidata は不要で既定 ON)。詳細は `doc/stuayu-fork.md`
-    - **続編 (第 2 期など) は放送時期で選び分ける**: 局が期の表記を送出しない録画 (「株式会社マジルミエ[字]」など) はタイトル照合だと常に第 1 期に当たるため、`WorkDictionary` が期表記を落とした基本キーで同じ作品の全期をまとめ、録画の放送日時が入る期へ差し替える。再放送 (`airType === 'rerun'`) では放送日時を渡さない (第 1 期の再放送が第 2 期の期間に入るため)
-    - **判定の実行は「全件 / 未シリーズ化のみ / 直近 N 件 / 1 件だけ」から選べる**: バックフィル (`POST /api/series/backfill`) の `onlyUnlinked` は DB 側で `recorded_series_link` に無い録画だけに絞り、`latest` は直近 N 件だけを対象にする (どちらもサーバー設定 > シリーズ管理タブから指定。`latest` 指定時は部分実行として扱い、全件バックフィルの再開カーソルを書き換えない)。録画 1 件だけの実行は `POST /api/series/analyze/{recordedId}` (録画詳細画面のボタン)
-    - **シリーズ単位の再解析**: `POST /api/series/reanalyze` (`seriesIds` 1〜100 件 + `refreshMetadata`) が「シリーズのメタデータを辞書から force で引き直す」→「そのシリーズにリンク済みの録画をバックフィルにかけ直す」の 2 段で動く。`SeriesBackfillOption.seriesIds` を使う部分実行なので全件バックフィルの再開カーソルは動かさず、手動確定 (`manualLock`) 済みの録画と手動設定のメタデータは書き換えない。UI はシリーズ詳細の「録画を再問い合わせ」ボタンと、シリーズ一覧の選択モードの「再解析」ボタン
-    - **自動実行の契機は「録画完了」と「アップロード / 取り込み完了」の 2 つ**。どちらも `EventSetter` が `ISeriesResolver.resolve()` を呼ぶ。アップロード側は TS 解析 (放送局・番組名・開始時刻の確定) が済んだ後に発行される `addUploadedVideoFile` イベントを受けるため、しょぼいカレンダーの放送予定照会をそのまま使える
-    - **判定過程はトレースできる**: `ISeriesResolver.resolve(recording, trace?)` に収集器を渡すと、各照会 (放送予定・エイリアス・作品辞書・LLM・類似度) の入力と戻り値を記録する。1 件実行の結果はポップアップに表示され、同じ内容が Operator のログにも出る。外部への HTTP は `ProviderHttpClient` がステータス・所要時間・サイズ・リトライをログに残す
-- **config.yml は「ファイルがベース + DB の差分」**: GUI で変更した値は `app_setting` の `config` キーに差分として入り、`Configuration` が読み込み時に重ねて実効値を作る (`src/model/config/ConfigOverlay.ts`)。**yml へは書き戻さない** (コメント破壊と watchFile ループの回避)。差分は各プロセスで **DB 接続直後・モデル構築前**に適用する必要がある (多くのモデルがコンストラクタで config を読むため)。**項目の定義元は `src/model/config/ConfigSchema.ts` の `CONFIG_SCHEMA` に一本化されている** (キー・型・GUI 編集可否・再起動要否・秘密情報フラグ)。GUI 編集可否は `dbtype` / `mysql` / `sqlite` / `postgres` / `auth` (自己参照・ロックアウトで恒久的に編集不可) と、単に GUI 未実装なだけの項目の 2 系統に分かれる (詳細は `doc/conf-manual.md`)。設定項目を追加するときは `ConfigSchema.ts` への追加が必須で、両テンプレート (`config.yml.template` / `config-win.yml.template`) への記載漏れは `test/ut/config-schema-template-sync.test.js` が検知する
-- **EIT[p/f] の即時反映**: 現在放送中/次の番組の更新は socket.io の `updateOnAirProgram` (更新のあった放送局 id 付き) で配り、視聴画面・放送中一覧・番組表がその場で追随する。全体更新 (`updateStatus`) とは別イベントなのは 10 秒周期で飛びうるため。**同じイベントで予約も追従する**: `EventSetter` が `ReservationManageModel.updateOnAirReserves()` を呼び、その放送局の「現在時刻〜15 分先に重なる programId 予約」だけを再スケジュールする (`epgUpdateIntervalTime` 周期の `updateAll` を待つと緊急地震速報や延長・繰り上げの反映が最大 10 分遅れ、録画開始に間に合わないため)
-- **EPG のリアルタイム同期**: event stream から受け取った番組更新イベントを `ProgramUpdatePriority.ts` が `immediate` / `normal` に分類し、`immediate` (番組の消滅・付け替え / 放送時間未定への変更 / `urgentWindowMinutes` 既定 180 分以内に始まる番組の更新) だけを 10 秒周期の tick を待たずに先行して DB へ書く (デバウンス既定 500ms)。災害時の特番割り込みや編成変更の反映が最大 10 分から 1 秒程度に縮む。通常の EPG 更新は従来どおり周期反映のままなので DB 負荷は増えない。同一 `programId` のイベントは追い越しを防ぐためまとめて取り出す。設定は `featureFlags.epgRealtimeSync` (opt-out) と `config.yml` の `epgRealtime`。フロー図は `doc/stuayu-fork.md`
-- **番組更新の通知は 2 系統**: EIT[p/f] 相当の `updateOnAirProgram` (channelIds、視聴画面・放映中一覧) に加え、**`updateProgram`** (`{ channelIds, startAt, endAt }`) が変更のあった時間帯そのものを配る。番組表は表示中の時間帯・放送局と重なるときだけ取り直すため、EIT[p/f] の窓 (現在〜10 分先) の外で起きた数時間先の延長・特番差し込みにも追随する。同じ通知で **予約は番組 id 単位でも追従する** (`ReservationManageModel.updateReservesByProgramIds()` + `IReserveDB.findProgramIds()`)。窓に依存しないため、放送が何時間先でも変更が即座に予約へ反映される。番組 id が 1000 件を超える更新では id を載せず周期的な全体更新に任せる
-- **クライアントの socket.io コールバックはクラスフィールドの中でデータを読まない**: `vue-facing-decorator` はクラスフィールドの初期値を data 用の一時インスタンスから集めるため、`private xxxCallback = ((): void => { ... }).bind(this)` の `this` は Vue インスタンスではない (**メソッドだけが Vue インスタンスへ束縛される**)。フィールドのコールバックから `this.watchParam` のようなデータを読むと初期値しか見えず、条件判定が黙って壊れる (実際に視聴画面の EIT[p/f] 反映が効かなくなっていた)。判定・処理は必ずメソッドへ置き、コールバックはそれを呼ぶだけにする
-- **番組表 (`Guide.vue`) のセルは手組み DOM**: 番組のセルは Vue のテンプレートではなく `GuideState.createProgramDoms()` が作った DOM を `renderProgramDoms()` で流し込む。データを取り直したら **`createProgramDoms()` と `renderProgramDoms()` の両方**を呼ばないと画面は古いまま (可視判定の `updateVisible()` も `renderProgramDoms()` の末尾で走る)
-- **EPG 追従はログで追える**: EIT[p/f] の受信 (`EPGUpdateManageModel.saveProgram()`)、予約の再スケジュール (`ReservationManageModel.update()`)、録画側の時刻変更 (`RecorderModel.update()`) をいずれも **変更前 → 変更後の時刻付きで info** に出す。整形は `src/util/ProgramTimeLog.ts` に集約。予約側は `reserve.isTimeUndefined` (終了時刻未定) / `reserve.isFollowingSchedule` (前番組延長で開始待ち) を持ち、予約一覧とダッシュボードで赤字・チップ表示する
-- **録画開始ゲート**: 時刻指定予約はチャンネルストリームを使うため予定時刻から即データが流れる。前番組が「放送時間未定」で延長していると前番組を録ってしまうため、`EitPresentParser` + `RecordingStartGate` (`src/model/operator/recording/`) が EIT[p/f] present を読み、**予約した番組が始まるまで録画ファイルを作らない** (待機中のデータは捨てる)。EIT を読めないまま既定 60 秒を過ぎたら録り逃さないよう開始する。設定は `config.yml` の `recording.startGate*`
-- **録画開始は EIT[p/f] 追従**: programId 予約は Mirakurun の program stream (eventId + parseEIT) を使い、対象イベントが present になるまでデータが流れない。前番組の延長で開始が遅れている間は「まだ始まっていない」だけなので、`RecordingRetryPolicy` がチューナー異常とは別枠で既定 3 時間まで待つ (`config.yml` の `recording` で調整可)。録画終了もストリームの終了 (別イベントが present になって Mirakurun が閉じる) で判定するため、programId 予約では `reserve.endAt` を停止に使わない
-- **放送時間未定の番組**: ARIB の `duration = 0xFFFFFF` を Mirakurun は `duration: 1` で返す。そのまま `startAt + duration` を終了時刻にすると開始直後に消えるため、`src/util/ProgramDuration.ts` が暫定の終了時刻 (3 時間) を与え、番組表 API で次の番組の開始時刻まで切り詰める。番組の時刻を扱うコードを書くときはここを通すこと
-- **ログイン認証と権限** (`src/model/auth/`): `config.yml` の `auth.enabled` で有効化 (既定 無効)。パスワード (scrypt) と **SSO (Google / GitHub, OAuth 2.0 認可コードフロー)** に対応し、セッションは HMAC 署名付き HttpOnly Cookie。**最初にサインアップした人が自動でシステム管理者**、以降は一般権限で、管理者が随時権限を付与できる。`/api/settings`・`/api/auth/users`・`/api/update`・`/api/logs` は管理者限定 (403)。SSO のクライアント ID / シークレットはログイン前に必要なため config.yml に置く
-- **更新通知とワンクリック更新** (`src/model/update/`): Operator が GitHub Releases を定期確認し、新しい版があれば Web UI 右上にトーストを出す (プレリリースは色違い)。更新はサーバー設定画面の「更新」タブ (共通コンポーネント `UpdatePanel.vue`) から実行し、**リリース版 (タグ)** と **開発版 (`main` ブランチの最新コミット)** の 2 系統を選べる。処理は `git checkout` → `npm run all-install` → `compile` + クライアントビルドで、完了後に Operator を終了して**サービス管理 (docker / systemd / pm2 / Windows サービス) に再起動させる**。管理下でない場合のみ後継プロセスを自分で spawn する。git clone した環境でのみ実行可能で、配布アーカイブ環境は案内のみ。API は `/api/update` 系、制御は機能フラグ `updateNotification` と `config.yml` の `updateChecker`
-- **Windows サービス** (`scripts/win-service.js`): サービス登録は `node-windows` (optionalDependencies)。`npm run install-win-service` / `uninstall-win-service` / `status-win-service`。サービスは LocalSystem・セッション 0 で動きユーザーの PATH を参照できないため、登録時にサービス専用の `Path` と `git config --system safe.directory` を設定する。実行時にも `src/util/GitCommand.ts` が git の場所解決・`-c safe.directory` 付与・Windows での npm.cmd の shell 起動を担う (これが無いとワンクリック更新が動かない)
-- **リリースタグとバージョン比較の注意**: 本フォークのタグは `2.14.0-stuayu-260727`、`package.json` は `2.14.0-stuayu` と日付サフィックスの有無が違う。素の semver 比較だと自分自身より新しい版があるように見えるため、`src/util/VersionUtil.ts` が日付サフィックスを別枠で扱う。現在バージョンの解決は `src/util/CurrentVersion.ts` (git 管理下なら `git describe --tags` を優先) に集約され、`GET /api/version` (ナビゲーション左上の表記) と更新画面の両方がこれを使う。バージョン判定を触るときはここを壊さないこと
-- **エイリアス辞書 (`series_alias`) の誤学習は設定画面から直せる**。LLM が自動学習した「正規化タイトル → シリーズ」は確度 1.0 で確定させるため誤りの影響が大きい。サーバー設定 > シリーズ管理タブの表から付け替え・削除ができ (`PUT /api/series/aliases/{aliasId}` / `POST /api/series/aliases/bulk`)、**付け替えたものは `source: 'manual'` になって以後の自動学習で上書きされない**。引き当てキーである `normalizedTitle` は変更させない
-- **シリーズの表示名は外部辞書の正式タイトルへ同期する**。`SeriesMetadataFiller.fill()` (起動 10 分後 + 設定画面の「メタデータ再取得」) が作品辞書を引き、`series.title` が辞書名と違えば上書きする。**自動判定の引き当てキー `normalizedTitle` も同じタイミングで辞書名由来のものへ揃える** (`syncNormalizedTitle()`)。ただし別作品を巻き込まないよう、①外部 ID を持つ (作品が辞書で確定している) ②表示名が手動設定でない ③寄せた先のキーが他のシリーズに使われていない、の 3 つを満たす場合だけで、衝突したものは件数だけ報告してマージ操作へ回す (衝突チェックは `ISeriesDB.findByNormalizedTitleExact()`)。キーが録画タイトル由来のままだと「王様のブランチ 日曜劇場「VIVANT」から…」のような汚れたキーが残り、同じ作品の録画が引き当てられずシリーズが増え続ける。出所は `series.titleSource` (`dictionary` / `manual` / null) で持ち、手動で付けた名前は再取得で上書きしない。手動編集はシリーズ一覧の編集ダイアログ (`PUT /api/series/{seriesId}/metadata` の `title`。`null` を送ると手動設定を解除して次回の再取得で辞書名へ戻す)
-- シリーズの誤生成を掃除する導線が画面にある。**シリーズの出所** (`SeriesListItem.origin`) は外部 ID (`syobocalTid` / `annictId` / `wikidataQid`) の有無で `dictionary` / `local` を判定する (`src/model/series/SeriesOrigin.ts`)。一覧はチェックボックスで複数選択して `POST /api/series/merge` (`fromSeriesIds`) にまとめて流し、統合先は**辞書起点のシリーズを既定**にする (自動判定がそこへ寄るため)。マージ候補は `GET /api/series/{seriesId}/merge-candidates` が正規化タイトルの前方一致で返す (`src/model/series/SeriesMergeCandidates.ts`)
-- 話数・放送種別 (初回 / 再放送 / 遅れ放送 / 不明) はシリーズ詳細の一括編集モードから `POST /api/series/mappings/bulk` でまとめて更新する。**省略した項目は現在値を維持**し、エイリアス学習は既定で行わない (話数の付け直しでタイトル辞書を汚さないため)
-- シリーズ一覧のアイキャッチ画像は Annict 由来 (しょぼいカレンダーは画像を提供しない)。Annict の URL は作品公式サイトの OGP 画像を指し http:// も混ざるため、直リンクせず `SeriesImageModel` がサーバ側で取得して `data/seriesImage/` にキャッシュし `GET /api/series/{seriesId}/image` で配信する。画像が取れない作品は録画サムネイルで代用する
-- **Annict GraphQL API に `Query.works` は存在しない** (`searchWorks` のみ)。`Episode` に `airedAt` も無い。存在しないフィールドを要求するとクエリ全体が GraphQL エラーになるため、クエリを書くときは実 API のスキーマ (introspection) で確認すること
-- ライブ HLS は 2 モード: cmd が `%streamFileDir%` を含まなければ in-memory 配信 (`HLSMemoryStoreModel`、ディスク書き込みなし)、含めば従来のディスク方式。**どちらも ARIB 字幕に対応**し、in-memory 側は ID3 を `emsg` box (version 1 必須) で運ぶ。詳細は `doc/streaming-refresh.md`
-- エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換される
-- ストリーミング API の `req.query` は express-openapi が OpenAPI スキーマに従い数値へ型変換する。`mode` 等のクエリを文字列前提で扱わないこと
+### 環境・ビルド
+
+- **Windows 対応が本フォークの柱**。パス区切り・named pipe を常に考慮する
+- package.json の `overrides` にある `express-openapi.glob: ^7.0.0` は外さない。glob 10 以降の `globSync()` は Windows でパス区切りが `\` になり、`fs-routes` の API ルート解決が壊れる
+- `mirakurun` 依存は `stuayu/Mirakurun` の**タグで固定**する。ブランチ参照は Mirakurun 側の push で lockfile の integrity が壊れ CI が落ちる
+- **リリースタグと package.json のバージョンは形が違う** (`2.14.0-stuayu-260727` と `2.14.0-stuayu`)。素の semver 比較だと自分より新しく見えるため `src/util/VersionUtil.ts` が日付サフィックスを別枠で扱う。現在バージョンの解決は `src/util/CurrentVersion.ts` に集約
+
+### 設定・DB
+
+- **config.yml は「ファイルがベース + DB の差分」**: GUI での変更は `app_setting` の `config` キーに差分として入り、`ConfigOverlay.ts` が重ねて実効値を作る。**yml へは書き戻さない**。差分は各プロセスで **DB 接続直後・モデル構築前**に適用する (多くのモデルがコンストラクタで config を読むため)
+- **項目の定義元は `ConfigSchema.ts` の `CONFIG_SCHEMA` に一本化**されている (キー・型・GUI 編集可否・再起動要否・秘密情報フラグ)。追加時は両テンプレートへの記載が必須 (`test/ut/config-schema-template-sync.test.js` が検知)
+- `ormconfig.js` (CLI マイグレーション用) は `Configuration.ts` と別に config.yml を読む二重管理
+- 対応 DB は sqlite / mysql のみ (postgres のマイグレーションディレクトリは空)
+- TypeORM 1.x は criteria が空の `delete()` を禁止しているため、全件削除は `createQueryBuilder().delete()` を使う
+- **機能フラグ (`featureFlags`) は opt-out**。未指定は**有効**扱い (`featureFlags: {}` は「全部有効」)
+- 秘密情報の暗号化鍵は `data/key/secret.key` に自動生成 (`EPGSTATION_SECRET_KEY_FILE` で上書き可)
+
+### サーバ
+
+- Express 5 は `req.query` がアクセスごとに再パースされる getter のため、`ServiceServer.ts` で一度だけ実体化するミドルウェアを挟んでいる
+- ストリーミング API の `req.query` は express-openapi がスキーマに従い数値へ型変換する。`mode` 等を文字列前提で扱わない
+- **放送時間未定の番組**: ARIB の `duration = 0xFFFFFF` を Mirakurun は `duration: 1` で返す。そのまま `startAt + duration` にすると開始直後に消えるため、`src/util/ProgramDuration.ts` が暫定の終了時刻 (3 時間) を与え、番組表 API で次の番組の開始時刻まで切り詰める。**番組の時刻を扱うコードは必ずここを通す**
+- エンコードキューは `data/encodeQueue.json` に永続化され Service 起動時に復元される。キューを変更したら `saveQueue()` の呼び出し漏れに注意
+- `ExecutionManagementModel` (優先度付き排他ロック) の `getExecution()` は 60 秒でタイムアウトする。reject を握り潰すとキュー処理が止まる
+- **Annict GraphQL API に `Query.works` は無い** (`searchWorks` のみ)。`Episode.airedAt` も無い。存在しないフィールドが 1 つあるとクエリ全体がエラーになるため introspection で確認してから書く
+
+### クライアント
+
+- **クラスフィールドのコールバックの `this` は Vue インスタンスではない**: `vue-facing-decorator` はフィールドの初期値を data 用の一時インスタンスから集めるため、`private xxxCallback = ((): void => { ... }).bind(this)` の中から `this.watchParam` のようなデータを読むと初期値しか見えない (**メソッドだけが Vue インスタンスへ束縛される**)。判定・処理はメソッドへ置き、コールバックはそれを呼ぶだけにする
+- **番組表 (`Guide.vue`) のセルは手組み DOM**: `GuideState.createProgramDoms()` が作った DOM を `renderProgramDoms()` で流し込む。データを取り直したら**両方**呼ばないと画面が古いまま (可視判定の `updateVisible()` も `renderProgramDoms()` の末尾で走る)
+- **`DataBroadcastingManager` は `markRaw()` で包む**: BMLBrowser 内部の JS-Interpreter が Vue のプロキシに包まれると壊れる。Vue コンポーネントではなくプレーンクラスに切り出しているのも同じ理由
+
+### ストリーミング・データ放送
+
+- **ライブ HLS は 2 モード**: cmd が `%streamFileDir%` を含まなければ in-memory 配信 (`HLSMemoryStoreModel`、ディスク書き込みなし)、含めば従来のディスク方式。**どちらも ARIB 字幕対応**で、in-memory 側は ID3 を `emsg` box (**version 1 必須**) で運ぶ
+- エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換
+- **データ放送の WebSocket は socket.io と同じサーバの `upgrade` イベントに `noServer: true` で相乗りする**。パスが `<subDirectory>/api/dataBroadcasting/ws` と一致しない socket には絶対に触れない (触ると socket.io のハンドシェイクが壊れる)
