@@ -226,16 +226,36 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
      */
     private updateChannelIndex(services: mapid.Service[]): void {
         for (const service of services) {
-            if (typeof service.channel === 'undefined') {
+            if (typeof service.channel === 'undefined' || service.channel === null) {
                 continue;
             }
+
+            const rawChannel = service.channel as any;
+
+            const channel = Array.isArray(rawChannel) ? rawChannel[0] : rawChannel;
+
+            if (
+                typeof channel === 'undefined' ||
+                channel === null ||
+                typeof channel.type === 'undefined' ||
+                typeof channel.channel === 'undefined'
+            ) {
+                this.log.system.warn(
+                    `skip channel index update: invalid channel data ` +
+                        `(networkId=${service.networkId}, ` +
+                        `serviceId=${service.serviceId}, ` +
+                        `name=${service.name})`,
+                );
+                continue;
+            }
+
             if (typeof this.channelIndex[service.networkId] === 'undefined') {
                 this.channelIndex[service.networkId] = {};
             }
             this.channelIndex[service.networkId][service.serviceId] = {
                 id: service.id,
-                type: service.channel[0].type,
-                channel: service.channel[0].channel,
+                type: channel.type,
+                channel: channel.channel,
             };
             // ログで放送局を判別できるようにする
             this.channelNameIndex[service.id] = service.name;
