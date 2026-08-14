@@ -15,6 +15,8 @@ export default class OnAirState implements IOnAirState {
     private static readonly REGION_TAB_PREFIX = 'region:';
     private static readonly AFFILIATION_TAB_PREFIX = 'affiliation:';
     private static readonly TYPE_TAB_PREFIX = 'type:';
+    // EPG が取れていない放送局の番組名として表示する文字列
+    private static readonly NO_PROGRAM_NAME = '番組情報がありません';
 
     public selectedTab: string | undefined;
 
@@ -211,18 +213,24 @@ export default class OnAirState implements IOnAirState {
      * @return OnAirDisplayData
      */
     private createDisplayData(baseTime: apid.UnixtimeMS, schedule: apid.Schedule): OnAirDisplayData {
-        const startAt = DateUtil.getJaDate(new Date(schedule.programs[0].startAt));
-        const endAt = DateUtil.getJaDate(new Date(schedule.programs[0].endAt));
+        // EPG が取れていない放送局は番組情報が空で返ってくる (視聴はできるので一覧には出す)
+        const program = schedule.programs.length === 0 ? null : schedule.programs[0];
 
         const result: OnAirDisplayData = {
             display: {
                 channelId: schedule.channel.id,
                 channelName: schedule.channel.name,
-                time: `${DateUtil.format(startAt, 'hh:mm')} ~ ${DateUtil.format(endAt, 'hh:mm')}`,
-                name: schedule.programs[0].name,
-                description: schedule.programs[0].description,
-                extended: schedule.programs[0].extended,
-                digestibility: this.getDigestibility(baseTime, schedule.programs[0].startAt, schedule.programs[0].endAt),
+                time:
+                    program === null
+                        ? ''
+                        : `${DateUtil.format(DateUtil.getJaDate(new Date(program.startAt)), 'hh:mm')} ~ ${DateUtil.format(
+                              DateUtil.getJaDate(new Date(program.endAt)),
+                              'hh:mm',
+                          )}`,
+                name: program === null ? OnAirState.NO_PROGRAM_NAME : program.name,
+                description: program === null ? undefined : program.description,
+                extended: program === null ? undefined : program.extended,
+                digestibility: program === null ? 0 : this.getDigestibility(baseTime, program.startAt, program.endAt),
             },
             schedule: schedule,
         };
@@ -459,6 +467,11 @@ export default class OnAirState implements IOnAirState {
         let min = 6048000000;
         const now = new Date().getTime();
         for (const s of this.schedules) {
+            // 番組情報が無い放送局は更新時刻を決められないので数えない
+            if (s.schedule.programs.length === 0) {
+                continue;
+            }
+
             const endTime = s.schedule.programs[0].endAt - now;
             if (min > endTime) {
                 min = endTime;
