@@ -118,6 +118,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 基盤・互換性
 
+- 全サービスを列挙して返すチューナーサーバ (recisdb-proxy) で放映中・番組表が壊れるのを直した
 - 新4K8K衛星放送 (BS4K / CS4K) に対応した
 - 本家 Mirakurun / mirakc など他の Mirakurun 互換実装にも接続できるようにした
 - DB 層 (`src/model/db/`) で例外を握り潰していた箇所にログを追加し、不具合調査を追いやすくした
@@ -128,6 +129,23 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 ---
 
 ## 変更履歴 (新しい順)
+
+- **全サービスを列挙して返すチューナーサーバ (recisdb-proxy) で放映中・番組表が壊れるのを直した**
+    - **背景**: `recisdb-proxy` (BonDriver をそのまま並べる Mirakurun 互換実装) へ接続すると、放映中タブに何も表示されず、番組表には同じ番組の列が並んでいた。本家 Mirakurun (`stuayu/Mirakurun`) との API 応答の違いが原因で、実データを突き合わせたところ次の差があった
+        - チューナ情報 (`/api/tuners`) の `types` が**空配列**で返る (Mirakurun は `["GR"]` のように埋まる)
+        - サービス (`/api/services`) が **770 件** (Mirakurun は 573 件)。未運用のサブチャンネルや空きスロットまで列挙する
+        - `remoteControlKeyId` が **1 件も無い** (Mirakurun は 573 件中 375 件にある)
+        - `service_type` が `0` (未定義) のサービス、`serviceId` が `0` のサービスが混ざる
+        - 番組情報の項目 (`description` / `extended` など) が値なしのとき **`undefined` ではなく `null`** で返る
+        - `channel.type` が `GR` / `BS` / `CS` のみで、県外地上波の `NW1`〜`NW40` が付かない
+    - **放映中タブが空だった**: 放送波の状態 (`GET /api/config` の `broadcast`) はチューナ情報の `types` から作っており、空配列だと全放送波が `false` になる。クライアントはこのフラグからタブを組み立てるため、**タブが 1 つも作られず画面が空**になっていた (番組表 API 自体は正常に返っていた)。`ReservationManageModel.getBroadcastStatus()` を、全放送波が `false` のときは**登録済みチャンネルの `channelType` から放送波を補う**ようにした (5 分キャッシュ)
+        - 取得は `ChannelDB.findChannelTypeList()` (`channelType` の distinct) で、**待ち時間に 3 秒の上限**を設けている。`GET /api/config` は Service → Operator の IPC を挟むため、起動直後の一括同期などで DB が詰まっていると **API 全体が `IPCTimeout` で 500 になる**。上限を超えたときは古い値 (無ければチューナ由来の値) を返し、取得はそのまま裏で続ける
+    - **EPG 更新が毎回落ちていた**: `ProgramDB.createProgramValue()` が `description` などを `typeof === 'undefined'` でしか判定しておらず、`null` が来ると `Cannot read properties of null (reading 'length')` で更新全体が失敗していた。`name` / `genres` / `description` / `extended` / `video` / `audio` / `audios` を `null` 許容にした
+    - **番組表に同じ番組の列が並んでいた**: proxy は親チャンネルと同じ EIT をサブチャンネルにも載せる (実データでは「とちぎテレビ１/２/３」に同一の番組が入っていた)。Mirakurun はサブサービス自体を返さないため起きなかった。`ScheduleApiModel.createSchedule()` に、**同一 networkId 内で serviceId が最小のものを親とし、自身の番組がすべて親の同時刻・同名の番組に含まれるサブチャンネルだけを列から除外する**処理を入れた。サブチャンネルが別番組を放送している間は除外しない (設定 `isHideDuplicateSubChannel`、既定 有効)
+    - **無効なサービスを取り込まないようにした**: `service_type` が `0`、または `serviceId` が `0` のサービスは放送されていない枠なので `EPGUpdateManageModel.updateChannels()` で除外する (実データで 21 件)。`ChannelDB.insert()` は受信できなくなった局を残す仕様で既存レコードを消さないため、**過去に取り込んでしまった分は `ChannelDB.deleteInvalidChannels()` が放送局更新のたびに掃除する** (実データで 11 件削除、719 局になった)
+    - **県外地上波が全部 `GR` になる件は既存の地域別グルーピングで吸収する**: proxy は `channel.type` に `NW1`〜`NW40` を返さないため県外の局が `GR` に集まるが、番組表・放映中のグループは `BroadcastRegion` が networkId + serviceId から求める**地域**が軸 (既定 `channelGroupingType: 'region'`) なので、`GR` に集中しても地域ごとに分かれて表示される。EPGStation 側での NW 番号の自動採番は、既存の予約・ルールと不整合になるため行わない
+    - **残る差 (proxy 側の対応が要るもの)**: `remoteControlKeyId` が無いためチャンネルの並びが id 順 (= networkId + serviceId 順) になる。`hasLogoData` が常に `false` のため局ロゴが出ない。どちらも放送波の NIT / ロゴ収集が要る情報で EPGStation 側では補えない
+    - **テスト**: `test/ut/duplicate-sub-channel.test.js` (サブチャンネル除外の 4 ケースと無効サービス除外)
 
 - **設定画面の不具合を直した (スナックバーの背景が透明・サーバー設定への導線が黙って消える・未保存かどうか分からない)**
     - **スナックバーの背景が出ていなかった**: 色の指定が Vuetify 2 のクラス名 (`success` / `grey darken-3`) のままで、Vuetify 3 以降の背景色ユーティリティ (`bg-success` / `bg-grey-darken-3`) と噛み合っていなかった。背景が透明のまま文字色だけ白が効くため、「保存されました」等が**まったく読めない**状態だった。`Snackbar.vue` が `bg-` を付けて class を組み立てるようにし、`SnackbarState.NROMAL_COLOR` も Vuetify 3 以降のパレット名 (`grey-darken-3`) へ直した

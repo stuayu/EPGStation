@@ -393,6 +393,7 @@ namespace Configuration {
         isAllowAllCORS: false,
         dbtype: 'sqlite',
         needToReplaceEnclosingCharacters: true,
+        isHideDuplicateSubChannel: true,
         epgUpdateIntervalTime: 10,
         epgRetentionTime: 0,
         conflictPriority: 1,

@@ -145,7 +145,8 @@ export default class ProgramDB implements IProgramDB {
         program: mapid.Program,
         updateTime: number,
     ): QueryDeepPartialEntity<Program> | null {
-        if (typeof program.name === 'undefined') {
+        // 互換実装 (recisdb-proxy 等) は値が無い項目を undefined ではなく null で返すことがある
+        if (typeof program.name === 'undefined' || program.name === null) {
             return null;
         }
 
@@ -168,7 +169,7 @@ export default class ProgramDB implements IProgramDB {
         let subGenre2: number | null = null;
         let genre3: number | null = null;
         let subGenre3: number | null = null;
-        if (typeof program.genres !== 'undefined') {
+        if (typeof program.genres !== 'undefined' && program.genres !== null && program.genres.length > 0) {
             // 最大3つのジャンルを格納する
             if (program.genres[0].lv1 < 0xe) {
                 genre1 = program.genres[0].lv1;
@@ -225,7 +226,11 @@ export default class ProgramDB implements IProgramDB {
         };
 
         // description
-        if (typeof program.description === 'undefined' || program.description.length === 0) {
+        if (
+            typeof program.description === 'undefined' ||
+            program.description === null ||
+            program.description.length === 0
+        ) {
             value.description = null;
             value.halfWidthDescription = null;
         } else {
@@ -238,7 +243,7 @@ export default class ProgramDB implements IProgramDB {
         }
 
         // extended
-        if (typeof program.extended === 'undefined') {
+        if (typeof program.extended === 'undefined' || program.extended === null) {
             value.extended = null;
             value.halfWidthExtended = null;
             value.rawExtended = null;
@@ -257,7 +262,7 @@ export default class ProgramDB implements IProgramDB {
         }
 
         // video
-        if (typeof program.video !== 'undefined') {
+        if (typeof program.video !== 'undefined' && program.video !== null) {
             value.videoType = program.video.type;
             value.videoResolution = program.video.resolution;
             value.videoStreamContent = program.video.streamContent;
@@ -265,13 +270,13 @@ export default class ProgramDB implements IProgramDB {
         }
 
         // audio
-        if (typeof (program as any).audio !== 'undefined') {
+        if (typeof (program as any).audio !== 'undefined' && (program as any).audio !== null) {
             value.audioSamplingRate = (program as any).audio.samplingRate;
             value.audioComponentType = (program as any).audio.componentType;
         }
 
         // audios
-        if (typeof (program as any).audios !== 'undefined') {
+        if (typeof (program as any).audios !== 'undefined' && (program as any).audios !== null) {
             for (const audio of (program as any).audios) {
                 // TODO 複数音声データに対応する
                 // 互換性維持のため main の音声情報だけを格納する

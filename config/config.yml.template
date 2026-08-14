@@ -60,6 +60,11 @@ mysql:
 # 囲み文字を置換するか
 needToReplaceEnclosingCharacters: true
 
+# 親チャンネルと同じ番組しか流していないサブチャンネル (○○２ / ○○３ など) を
+# 番組表・放映中に表示しないか (既定 true)
+# 未運用のサブチャンネルまで返すチューナーサーバで同じ番組の列が並ぶのを防ぐ
+isHideDuplicateSubChannel: true
+
 # 放送局の並び順 (Mirakurun の channel id で指定)
 # channelOrder: [1, 2, 3]
 # sid (service id) で並び順を指定する場合

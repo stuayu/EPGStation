@@ -198,6 +198,17 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
             throw err;
         });
 
+        // 無効なサービスを削除する
+        // service_type 0 (未定義) や serviceId 0 のサービスは放送されていない枠で、
+        // 全サービスを列挙して返すチューナーサーバ (recisdb-proxy 等) が混ぜてくることがある
+        const beforeInvalidFilter = services.length;
+        services = services.filter(s => {
+            return s.serviceId !== 0 && (typeof (s as any).type !== 'number' || (s as any).type !== 0);
+        });
+        if (beforeInvalidFilter !== services.length) {
+            this.log.system.info(`exclude invalid services: ${beforeInvalidFilter - services.length}`);
+        }
+
         // 除外索引に含まれる放送局を削除
         services = services.filter(s => {
             return (
@@ -213,6 +224,17 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
             throw err;
         });
         this.log.system.info('done update channel');
+
+        // 過去に取り込んでしまった無効なサービスを掃除する
+        const deletedCount = await this.channelDB.deleteInvalidChannels().catch(err => {
+            this.log.system.error('delete invalid channel error');
+            this.log.system.error(err);
+
+            return 0;
+        });
+        if (deletedCount > 0) {
+            this.log.system.info(`delete invalid channels: ${deletedCount}`);
+        }
 
         // 放送局索引作成
         this.channelIndex = {};

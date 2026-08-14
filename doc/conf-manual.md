@@ -672,6 +672,22 @@ dataBroadcasting:
 needToReplaceEnclosingCharacters: true
 ```
 
+### isHideDuplicateSubChannel
+
+#### 内容が親チャンネルと同じサブチャンネルを番組表・放映中に表示しないか
+
+同一 networkId 内で serviceId が最小のチャンネルを親とし、自身の番組がすべて親の同時刻・同名の番組と一致するサブチャンネル (○○２ / ○○３ など) を番組表・放映中の一覧から除外する。
+
+未運用のサブチャンネルまで全サービスを返すチューナーサーバ (recisdb-proxy など) では、親と同じ EIT がサブサービスにも載るため同じ番組の列が並んでしまう。この設定はその重複を隠すためのもの。サブチャンネルが親と異なる番組を放送している間は除外されない。
+
+| 種類    | デフォルト値 | 必須 |
+| ------- | ------------ | ---- |
+| boolean | true         | no   |
+
+```yaml
+isHideDuplicateSubChannel: true
+```
+
 ### recPriority
 
 #### 録画時に Mirakurun へ渡されるプライオリティ
