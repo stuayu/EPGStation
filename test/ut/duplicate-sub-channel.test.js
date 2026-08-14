@@ -101,10 +101,46 @@ test('親チャンネルの番組が取得できていないときはサブチ�
     const model = createModel([parent, sub1], [program(sub1, NOW, '無自覚聖女')], true);
 
     const result = await model.getBroadcastingSchedule({ isHalfWidth: true });
+    // 親は EPG が無くても放映中には出す (番組一覧は空)
     assert.deepEqual(
         result.map(s => s.channel.id),
-        [sub1.id],
+        [parent.id, sub1.id],
     );
+    assert.deepEqual(result[0].programs, []);
+});
+
+test('EPG が取得できていない放送局も放映中には親サービスだけ出る', async () => {
+    const model = createModel([parent, sub1, sub2], [], true);
+
+    const result = await model.getBroadcastingSchedule({ isHalfWidth: true });
+    assert.deepEqual(
+        result.map(s => s.channel.id),
+        [parent.id],
+    );
+    assert.deepEqual(result[0].programs, []);
+});
+
+test('映像・音声サービス以外は番組が無ければ放映中に出さない', async () => {
+    // データ放送 (type: 192) だけの放送局。親サービス扱いにしない
+    const dataService = { ...channel(28800, 'とちぎテレビデータ'), networkId: 32399, id: 3239928800, type: 192 };
+    const model = createModel([dataService], [], true);
+
+    assert.deepEqual(await model.getBroadcastingSchedule({ isHalfWidth: true }), []);
+});
+
+test('番組表は EPG が取得できていない放送局を出さない', async () => {
+    const model = createModel([parent, sub1], [], true);
+    // 番組表側は findChannleTypes / findSchedule を使う
+    model.channelDB.findChannleTypes = async () => [parent, sub1];
+    model.programDB.findSchedule = async () => [];
+
+    const result = await model.getSchedules({
+        GR: true,
+        startAt: NOW,
+        endAt: NOW + HALF_HOUR,
+        isHalfWidth: true,
+    });
+    assert.deepEqual(result, []);
 });
 
 const createUpdateManageModel = insertedServices => {

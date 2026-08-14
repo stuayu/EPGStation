@@ -118,6 +118,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 基盤・互換性
 
+- EPG が取れていない放送局も放映中の一覧に出すようにした / リモコンキー順に並ばない原因を潰した
 - 全サービスを列挙して返すチューナーサーバ (recisdb-proxy) で放映中・番組表が壊れるのを直した
 - 新4K8K衛星放送 (BS4K / CS4K) に対応した
 - 本家 Mirakurun / mirakc など他の Mirakurun 互換実装にも接続できるようにした
@@ -129,6 +130,17 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 ---
 
 ## 変更履歴 (新しい順)
+
+- **EPG が取れていない放送局も放映中の一覧に出すようにした / リモコンキー順に並ばない原因を潰した**
+    - **背景**: 放映中タブに出ていない放送局があり、番組表・放映中ともチャンネルがリモコンキー順に並んでいなかった。実データを調べたところ原因は別々の 2 つだった
+        - **並び順**: サーバは既にリモコンキー昇順で返している (`ChannelDB.findChannleTypes()` / `findAll()` の ORDER BY)。ただし `remoteControlKeyId` が `null` の局は末尾へ回る仕様で、実機では地上波 183 局のうち **48 局が `null`** だった (テレ玉・とちぎテレビ・チバテレ・tvk・TOKYO MX・NHK 総合 (東京)・福島の民放 4 局など)。**EPGStation 側の不具合ではない**
+        - **一覧から消えていた局**: `ScheduleApiModel.createSchedule()` が番組情報を 1 件も持たない放送局を落としていた。EPG が届いていない局は、視聴はできるのに放映中から消えていた
+    - **`remoteControlKeyId` の欠損はチューナーサーバ側で直した**: 欠損していた行はいずれも `recisdb-proxy` に CSV インポート / `POST /api/channels` で手動登録した行で、その 2 経路は `remote_control_key` / `physical_ch` / `network_name` を NULL 固定で登録する (スキャン経由の行は NIT の TS情報記述子から埋まる)。共有チューナー (BonDriverProxyEx 経由) のようにスキャンを回さない構成だけが欠損する。**視聴・EPG 収集中の TS から NIT (PID 0x0010) を読み、NULL の列だけ埋める**コレクタを proxy 側に追加した (`tuner/nit_collector.rs` → `nit_writer.rs`)。既存値は上書きせず、照合は networkId 単位、衛星は対象外。**一度も選局していない局は埋まらない**ので、その分は末尾に残る
+    - **EPG が無い放送局も放映中には出す**: `createSchedule()` に `includeEmptyChannels` を足し、**放映中 (`getBroadcastingSchedule`) のときだけ**番組が無い放送局を空の `programs` で返すようにした。**番組表 (`getSchedules`) は従来どおり出さない** (番組が 1 件も無い列が並ぶだけのため)
+        - **出すのは親サービスだけ**: 全サービスを列挙して返すチューナーサーバでは未運用のサブチャンネル・データ放送・ワンセグまで並んでしまう。`getParentChannelIds()` が **映像・音声サービス (`ChannelUtil.isMediaService()`) かつ同一 networkId で serviceId 最小**のものに限る
+        - クライアント側は `programs[0]` を前提にしていた箇所を直した。`OnAirState.createDisplayData()` は番組が無ければ番組名を「番組情報がありません」、時刻・説明を空にする。`getUpdateTime()` は番組の終了時刻から次の更新時刻を決めるため、番組が無い局を数えない。`OnAirCard.vue` は番組情報ダイアログの代わりにストリーム選択を開く
+    - **確認**: 実機で放映中 253 局のうち **107 局が番組情報なしで新たに表示**されること、いずれも映像サービスの親サービスであること、番組表 API には出ないことを確認した
+    - **テスト**: `test/ut/duplicate-sub-channel.test.js` に 3 ケース追加 (EPG ゼロなら親のみ / 映像サービス以外は出さない / 番組表には出さない)
 
 - **全サービスを列挙して返すチューナーサーバ (recisdb-proxy) で放映中・番組表が壊れるのを直した**
     - **背景**: `recisdb-proxy` (BonDriver をそのまま並べる Mirakurun 互換実装) へ接続すると、放映中タブに何も表示されず、番組表には同じ番組の列が並んでいた。本家 Mirakurun (`stuayu/Mirakurun`) との API 応答の違いが原因で、実データを突き合わせたところ次の差があった

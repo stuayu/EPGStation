@@ -214,6 +214,8 @@ npm run recover-channel-name   # 過去の録画の放送局名を復元 (既定
 - **放送時間未定の番組**: ARIB の `duration = 0xFFFFFF` を Mirakurun は `duration: 1` で返す。そのまま `startAt + duration` にすると開始直後に消えるため、`src/util/ProgramDuration.ts` が暫定の終了時刻 (3 時間) を与え、番組表 API で次の番組の開始時刻まで切り詰める。**番組の時刻を扱うコードは必ずここを通す**
 - **Mirakurun 互換実装との差を前提にする**: `recisdb-proxy` のような実装は「チューナ情報の `types` が空」「未運用のサブチャンネル・空きスロットまで全サービスを返す」「`remoteControlKeyId` が無い」「値なしの項目を `undefined` ではなく `null` で返す」。放送波の状態 (`getBroadcastStatus()`) は `types` が空ならチャンネルの `channelType` から補い、Mirakurun からの値は `null` 込みで扱う
 - **親と同一内容のサブチャンネルは番組表・放映中から隠す**: 親 (同一 networkId で serviceId 最小) と同時刻・同名の番組しか持たないサブチャンネルを `ScheduleApiModel.createSchedule()` が列から落とす (`isHideDuplicateSubChannel`、既定 有効)。別番組を放送している間は表示される
+- **EPG が無い放送局は放映中にだけ出す**: 番組情報を 1 件も持たない放送局は、`getBroadcastingSchedule()` (放映中) では**映像・音声サービスの親サービスだけ**が空の `programs` で返る (視聴はできるため)。**番組表 (`getSchedules()`) では従来どおり落とす**。クライアントは `schedule.programs[0]` を前提にしないこと (`OnAirState` / `OnAirCard.vue` は空を許容済み)
+- **放送局の並びはリモコンキー昇順**で、`remoteControlKeyId` が `null` の局は末尾に回る (`ChannelDB` の ORDER BY)。並びがおかしいときは**まずチューナーサーバがキーを返しているかを疑う** (EPGStation 側では補完しない)
 - エンコードキューは `data/encodeQueue.json` に永続化され Service 起動時に復元される。キューを変更したら `saveQueue()` の呼び出し漏れに注意
 - `ExecutionManagementModel` (優先度付き排他ロック) の `getExecution()` は 60 秒でタイムアウトする。reject を握り潰すとキュー処理が止まる
 - **Annict GraphQL API に `Query.works` は無い** (`searchWorks` のみ)。`Episode.airedAt` も無い。存在しないフィールドが 1 つあるとクエリ全体がエラーになるため introspection で確認してから書く

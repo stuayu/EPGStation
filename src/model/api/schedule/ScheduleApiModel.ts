@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
+import ChannelUtil from '../../../util/ChannelUtil';
 import { clampUndefinedDuration, isDurationUndefined } from '../../../util/ProgramDuration';
 import Channel from '../../../db/entities/Channel';
 import Program from '../../../db/entities/Program';
@@ -217,6 +218,7 @@ export default class ScheduleApiModel implements IScheduleApiModel {
      * @param programs: Program[]
      * @param isHalfWidth: boolean true 半角文字で返す, false: オリジナルのまま
      * @param needsRawExtended rawExtended を必要とするか
+     * @param includeEmptyChannels 番組情報が 1 件も無い放送局も空の programs で含めるか
      * @return apid.Schedule[]
      */
     private createSchedule(
@@ -224,6 +226,7 @@ export default class ScheduleApiModel implements IScheduleApiModel {
         programs: Program[],
         isHalfWidth: boolean,
         needsRawExtended: boolean,
+        includeEmptyChannels: boolean = false,
     ): apid.Schedule[] {
         // channelId ごとに programs をまとめる
         const programsIndex: { [key: number]: apid.ScheduleProgramItem[] } = {};
@@ -241,10 +244,24 @@ export default class ScheduleApiModel implements IScheduleApiModel {
                 ? channels
                 : this.excludeDuplicateSubChannels(channels, programsIndex);
 
+        // 番組情報が無くても表示する放送局 (親サービスのみ)
+        const emptyChannelIds =
+            includeEmptyChannels === true ? this.getParentChannelIds(targetChannels) : new Set<apid.ChannelId>();
+
         // 結果を格納する
         const result: apid.Schedule[] = [];
         for (const channel of targetChannels) {
             if (typeof programsIndex[channel.id] === 'undefined') {
+                // EPG が取れていない放送局でも、映像・音声サービスの親サービスだけは
+                // 空の番組一覧で返す (視聴はできるため放映中の一覧から消したくない)
+                if (emptyChannelIds.has(channel.id) === false) {
+                    continue;
+                }
+
+                result.push({
+                    channel: this.toScheduleChannleItem(channel, isHalfWidth),
+                    programs: [],
+                });
                 continue;
             }
 
@@ -256,6 +273,31 @@ export default class ScheduleApiModel implements IScheduleApiModel {
         }
 
         return result;
+    }
+
+    /**
+     * 番組情報が無くても表示してよい放送局の id を返す
+     *
+     * 全サービスを列挙して返すチューナーサーバでは未運用のサブチャンネルや
+     * データ放送・ワンセグまで並んでしまうため、
+     * 映像・音声サービスかつ同一 networkId で serviceId 最小のもの (親サービス) に限る。
+     * @param channels: Channel[]
+     * @return Set<apid.ChannelId>
+     */
+    private getParentChannelIds(channels: Channel[]): Set<apid.ChannelId> {
+        const parents: { [networkId: number]: Channel } = {};
+        for (const channel of channels) {
+            if (channel.type === null || ChannelUtil.isMediaService(channel.type) === false) {
+                continue;
+            }
+
+            const parent = parents[channel.networkId];
+            if (typeof parent === 'undefined' || channel.serviceId < parent.serviceId) {
+                parents[channel.networkId] = channel;
+            }
+        }
+
+        return new Set(Object.values(parents).map(c => c.id));
     }
 
     /**
@@ -367,7 +409,8 @@ export default class ScheduleApiModel implements IScheduleApiModel {
         // 次の番組も返す場合は放送中 + 次の 2 件までに切り詰める
         const programLimit = option.includeNextProgram === true ? 2 : 1;
 
-        return this.createSchedule(channels, programs, option.isHalfWidth, true).map(s => {
+        // EPG が未取得の放送局も一覧に出す (視聴はできるため)
+        return this.createSchedule(channels, programs, option.isHalfWidth, true, true).map(s => {
             if (s.programs.length > programLimit) {
                 s.programs = s.programs.slice(0, programLimit);
             }

@@ -18,11 +18,11 @@
                             <v-icon size="small">{{ isPinned(item.display.channelId) === true ? 'mdi-pin' : 'mdi-pin-outline' }}</v-icon>
                         </v-btn>
                     </div>
-                    <div class="text-caption font-weight-light">{{ item.display.time }}</div>
+                    <div v-if="item.display.time.length > 0" class="text-caption font-weight-light">{{ item.display.time }}</div>
                     <div class="mb-1 text-subtitle-2">
                         {{ item.display.name }}
                     </div>
-                    <div class="text-body-2 font-weight-light">{{ item.display.description }}</div>
+                    <div v-if="typeof item.display.description !== 'undefined'" class="text-body-2 font-weight-light">{{ item.display.description }}</div>
 
                     <div class="pt-3">
                         <v-progress-linear buffer-value="100" :model-value="item.display.digestibility"></v-progress-linear>
@@ -79,6 +79,14 @@ class OnAirCard extends Vue {
 
     public openGuideProgramDialog(schedule: apid.Schedule, e: Event): void {
         e.stopPropagation();
+
+        // EPG が取れていない放送局は番組情報が無いのでダイアログを出さない
+        // (クリックはカード側のストリーム選択へ委ねる)
+        if (schedule.programs.length === 0) {
+            this.openStreamSelector(schedule.channel);
+
+            return;
+        }
 
         const option: ProgramDialogOpenOption = {
             channel: schedule.channel,
