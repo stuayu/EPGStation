@@ -4,7 +4,26 @@
         <transition name="page">
             <div v-if="isShow" ref="appContent" class="app-content">
                 <v-container>
+                    <!-- 保存ボタンはページ最下部にあり、設定項目が多いと画面外に出るため、
+                         未保存であることは最上部に出したうえでスクロールに追従させる -->
+                    <div v-if="isDirty === true" class="unsaved-bar mb-4">
+                        <v-alert type="warning" variant="flat" density="compact" class="d-flex align-center">
+                            <div class="d-flex align-center flex-wrap ga-2">
+                                <span class="text-body-2">未保存の変更があります (保存せずに移動すると破棄されます)</span>
+                                <v-spacer></v-spacer>
+                                <v-btn size="small" variant="outlined" v-on:click="save">保存</v-btn>
+                            </div>
+                        </v-alert>
+                    </div>
                     <v-btn v-if="isShowSystemSettings === true" block color="primary" class="mb-4" to="/settings/system">サーバー設定を開く</v-btn>
+                    <!-- サーバー設定の導線が機能フラグ由来で消えたのか、config 取得失敗で消えたのかを区別できるようにする -->
+                    <v-alert v-else-if="isServerConfigMissing === true" type="warning" variant="tonal" class="mb-4">
+                        <div class="d-flex align-center flex-wrap ga-2">
+                            <span class="text-body-2">サーバーの設定情報を取得できていないため、サーバー設定への導線を表示できません。</span>
+                            <v-spacer></v-spacer>
+                            <v-btn size="small" variant="outlined" :loading="isRetryingServerConfig" @click="retryFetchServerConfig">再取得</v-btn>
+                        </div>
+                    </v-alert>
                     <!-- 認証が有効なときだけログイン状態を出す -->
                     <v-card v-if="isAuthEnabled === true" class="mx-auto mb-4" max-width="800">
                         <v-card-text class="d-flex align-center ga-2 flex-wrap">
@@ -48,6 +67,14 @@
                                     </div>
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="isForceDarkTheme" :disabled="shouldUseOSColorTheme"></v-switch>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">テーマカラー</v-list-item-title>
+                                        <v-list-item-subtitle>ヘッダー・メニュー・スイッチ・進捗バーの色</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-select v-model="themeColor" :items="themeColorItems" class="theme-color"></v-select>
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -393,7 +420,9 @@
                             </v-list-item>
                         </template>
 
-                        <v-card-actions>
+                        <v-card-actions class="flex-wrap">
+                            <!-- 未保存であることは最上部の追従バーが担うため、ここは保存済みの表示だけ -->
+                            <div v-if="isDirty === false" class="text-medium-emphasis text-body-2 ml-2">保存済みです</div>
                             <v-spacer></v-spacer>
                             <v-btn variant="text" v-on:click="reset">リセット</v-btn>
                             <v-btn variant="text" color="primary" v-on:click="save">保存</v-btn>
@@ -419,6 +448,7 @@ import { isFeatureEnabled } from '@/util/FeatureFlags';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import IColorThemeState from '@/model/state/IColorThemeState';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
+import ThemeColorUtil from '@/util/ThemeColorUtil';
 
 interface GuideModeItem {
     title: string;
@@ -472,8 +502,55 @@ class Settings extends Vue {
      * featureFlags.systemSettings に加え、認証有効時はシステム管理者のみに見せる
      */
     get isShowSystemSettings(): boolean {
+        // serverConfigModel はリアクティブではないため、再取得したことを画面へ伝える目的で
+        // serverConfigRevision を参照している (値そのものは使わない)
+        void this.serverConfigRevision;
         if (isFeatureEnabled(this.serverConfigModel.getConfig(), 'systemSettings') === false) return false;
         return this.isAdmin;
+    }
+
+    /**
+     * サーバーの config を取得できていないか
+     * isFeatureEnabled() は config 未取得 (null) でも false を返すため、
+     * これが true のときは「機能が無効」ではなく「判断できない」状態を意味する
+     */
+    get isServerConfigMissing(): boolean {
+        void this.serverConfigRevision;
+
+        return this.serverConfigModel.getConfig() === null;
+    }
+
+    // serverConfigModel は DI のプレーンクラスでリアクティブではないため、
+    // 再取得のたびにこの値を進めて getter を再評価させる
+    serverConfigRevision = 0;
+    isRetryingServerConfig = false;
+
+    /**
+     * サーバーの config を取得し直す
+     * 起動時の取得は main.ts の 1 回きりで、失敗すると機能フラグ由来の導線が
+     * 黙って消えたままになるため、設定画面から再試行できるようにしている
+     */
+    public async retryFetchServerConfig(): Promise<void> {
+        if (this.isRetryingServerConfig === true) return;
+
+        this.isRetryingServerConfig = true;
+        try {
+            await this.serverConfigModel.fetchConfig();
+            this.serverConfigRevision++;
+            if (this.serverConfigModel.getConfig() !== null) {
+                this.snackbarState.open({
+                    text: 'サーバーの設定情報を取得しました',
+                    color: 'success',
+                });
+            }
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({
+                color: 'error',
+                text: 'サーバーの設定情報を取得できませんでした',
+            });
+        }
+        this.isRetryingServerConfig = false;
     }
 
     // 認証が無効な場合は全員が管理者相当として扱う (従来どおりの動作)
@@ -523,6 +600,7 @@ class Settings extends Vue {
         },
     ];
 
+    public themeColorItems: ThemeColorUtil.ThemeColorDefinition[] = ThemeColorUtil.COLORS;
     public guideLengthItems: SelectItem[] = [];
     public reservesLengthItems: SelectItem[] = [];
     public recordingLengthItems: SelectItem[] = [];
@@ -548,6 +626,16 @@ class Settings extends Vue {
     set isForceDarkTheme(value: boolean) {
         this.storageModel.tmp.isForceDarkTheme = value;
         this.$vuetify.theme.change(value ? 'dark' : 'light');
+    }
+
+    get themeColor(): ThemeColorUtil.ThemeColorType {
+        return this.colorThemeState.getTmpThemeColor();
+    }
+
+    set themeColor(value: ThemeColorUtil.ThemeColorType) {
+        this.storageModel.tmp.themeColor = value;
+        // 保存前にその場で見た目を確認できるようにする (保存せずページを離れると unmounted で元へ戻る)
+        ThemeColorUtil.apply(this.$vuetify.theme, value);
     }
 
     get isSupportedMpegts(): boolean {
@@ -582,10 +670,19 @@ class Settings extends Vue {
             };
             this.searchLengthItems.push(item);
         }
+
+        // 上の isForceDarkTheme の代入で tmp が動くため、その後に控える
+        // (OS テーマ連動時は保存値と実際のテーマが食い違い、常に未保存扱いになってしまう)
+        this.updateSavedSnapshot();
     }
 
     public mounted(): void {
         void this.loadAuthRole();
+
+        // 起動時の取得に失敗していた場合はここで 1 度だけ取り直す
+        if (this.serverConfigModel.getConfig() === null) {
+            void this.retryFetchServerConfig();
+        }
     }
 
     public beforeUnmount(): void {
@@ -595,6 +692,7 @@ class Settings extends Vue {
     public unmounted(): void {
         // ページから移動するときに tmp をリセット
         this.storageModel.resetTmpValue();
+        ThemeColorUtil.apply(this.$vuetify.theme, this.colorThemeState.getThemeColor());
         this.$vuetify.theme.change(this.colorThemeState.isDarkTheme() ? 'dark' : 'light');
     }
 
@@ -603,6 +701,7 @@ class Settings extends Vue {
      */
     public reset(): void {
         this.storageModel.tmp = this.storageModel.getDefaultValue();
+        ThemeColorUtil.apply(this.$vuetify.theme, this.colorThemeState.getTmpThemeColor());
         this.$vuetify.theme.change(this.colorThemeState.isDarkTheme() ? 'dark' : 'light');
     }
 
@@ -612,11 +711,32 @@ class Settings extends Vue {
     public save(): void {
         this.storageModel.save();
         this.navigationState.updateItems(this.$route);
+        this.updateSavedSnapshot();
 
         this.snackbarState.open({
             text: '保存されました',
             color: 'success',
         });
+    }
+
+    /**
+     * 未保存の変更があるか
+     * 保存済みの内容をそのまま持っておき、編集中の tmp と比較する。
+     * localStorage を都度読み直さないのは、保存後に getter が
+     * 再評価されず「未保存」の表示が残ってしまうため
+     */
+    get isDirty(): boolean {
+        return JSON.stringify(this.storageModel.tmp) !== this.savedSnapshot;
+    }
+
+    // 保存済みの設定内容 (JSON 文字列)
+    savedSnapshot = '';
+
+    /**
+     * 保存済みの内容として現在の tmp を控える
+     */
+    private updateSavedSnapshot(): void {
+        this.savedSnapshot = JSON.stringify(this.storageModel.tmp);
     }
 
     @Watch('$route', { immediate: true, deep: true })
@@ -636,6 +756,15 @@ export default toNative(Settings);
 </script>
 
 <style lang="sass" scoped>
+// スクロールしても画面上端に留まる。
+// top を 0 にすると固定表示のヘッダー (v-app-bar) の裏へ潜って見えなくなるため、
+// Vuetify がレイアウトから算出しているヘッダーの高さ (--v-layout-top) だけ下げる
+.unsaved-bar
+    position: sticky
+    top: var(--v-layout-top, 64px)
+    z-index: 5
+.theme-color
+    max-width: 170px
 .guide-mode
     max-width: 100px
 .guide-time
