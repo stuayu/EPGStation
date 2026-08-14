@@ -67,7 +67,7 @@
         </v-menu>
         <div v-if="isOpened === true" class="menu-background" v-on:click="onClickMenuBackground"></div>
         <AddEncodeDialog v-model:isOpen="isOpenEncodeDialog" :recordedItem="recordedItem"></AddEncodeDialog>
-        <RecordedDeleteDialog v-model:isOpen="isOpenDeleteDialog" :recordedItem="recordedItem"></RecordedDeleteDialog>
+        <RecordedDeleteDialog v-model:isOpen="isOpenDeleteDialog" :recordedItem="recordedItem" v-on:deleteSuccessful="onDeleteSuccessful"></RecordedDeleteDialog>
     </div>
 </template>
 
@@ -102,6 +102,10 @@ class RecordedItemMenu extends Vue {
     public serverConfig: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
     public recordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+
+    public onDeleteSuccessful(needsPageback: boolean): void {
+        this.$emit('deleteSuccessful', needsPageback);
+    }
 
     public async gotoRule(): Promise<void> {
         if (typeof this.recordedItem.ruleId === 'undefined') {

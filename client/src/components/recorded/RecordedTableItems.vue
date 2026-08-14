@@ -41,7 +41,7 @@
                         </td>
                         <td>{{ item.display.shortTime }} ({{ item.display.durationText }})</td>
                         <td class="menu">
-                            <RecordedItemMenu v-if="isEditMode === false" :recordedItem="item.recordedItem" v-on:stopEncode="stopEncode"></RecordedItemMenu>
+                            <RecordedItemMenu v-if="isEditMode === false" :recordedItem="item.recordedItem" v-on:stopEncode="stopEncode" v-on:deleteSuccessful="onDeleteSuccessful"></RecordedItemMenu>
                         </td>
                     </tr>
                 </tbody>
@@ -92,6 +92,10 @@ class RecordedTableItems extends Vue {
     // ロゴ画像の取得に失敗した場合は局名だけの表示にフォールバックする
     public onLogoError(item: RecordedDisplayData): void {
         item.display.logoSrc = undefined;
+    }
+    
+    public onDeleteSuccessful(needsPageback: boolean): void {
+        this.$emit('deleteSuccessful', needsPageback);
     }
 }
 

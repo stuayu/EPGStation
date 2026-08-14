@@ -16,7 +16,7 @@
                 <tbody>
                     <tr v-for="item in items" v-bind:key="item.display.id" v-bind:class="{ 'selected-color': item.isSelected === true }" v-on:click="selectItem(item)">
                         <td class="toggle">
-                            <v-switch v-if="isEditMode === false" v-model="item.display.isEnable" hide-details density="compact" v-on:update:model-value="changeState(item)"></v-switch>
+                            <v-switch color="primary" v-if="isEditMode === false" v-model="item.display.isEnable" hide-details density="compact" v-on:update:model-value="changeState(item)"></v-switch>
                         </td>
                         <td>
                             {{ item.display.keyword }}
@@ -30,7 +30,7 @@
                         <td v-if="isMobile === false">{{ item.display.genres }}</td>
                         <td class="reserve-cnt reserve-cnt-body">{{ item.display.reservationsCnt }}</td>
                         <td class="menu">
-                            <RuleItemMenu v-if="isEditMode === false" :ruleItem="item"></RuleItemMenu>
+                            <RuleItemMenu v-if="isEditMode === false" :ruleItem="item" v-on:deleted="$emit('deleted')"></RuleItemMenu>
                         </td>
                     </tr>
                 </tbody>

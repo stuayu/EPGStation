@@ -67,6 +67,7 @@
                         v-on:detail="gotoDetail"
                         v-on:stopEncode="stopEncode"
                         v-on:selected="selectItem"
+                        v-on:deleteSuccessful="onSingleDeleteSuccessful"
                         :isTableMode="settingValue.isShowTableMode === true"
                         v-model:isEditMode="isEditMode"
                         :isShowDropInfo="settingValue.isShowDropInfoInsteadOfDescription"
@@ -134,6 +135,7 @@ import * as apid from '../../../api';
     },
 })
 class Recorded extends Vue {
+    public refreshKey: number = 0;
     public isEditMode: boolean = false;
     public isOpenMultiplueDeletionDialog: boolean = false;
     public isOpenMultipleEncodeDialog: boolean = false;
@@ -149,9 +151,27 @@ class Recorded extends Vue {
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
     private seriesApi: ISeriesApiModel = container.get<ISeriesApiModel>('ISeriesApiModel');
+
     private onUpdateStatusCallback = (async (): Promise<void> => {
         await this.recordedState.fetchData(this.createFetchDataOption());
+        // Inversify 管理 State の変更を Vue 側へ確実に反映
+        this.refreshKey++;
     }).bind(this);
+    /*    
+    private onUpdateStatusCallback = (async (): Promise<void> => {
+        console.log(
+            '[Recorded DEBUG] before',
+            this.recordedState.getRecorded().map(r => r.recordedItem.id),
+        );
+
+        await this.recordedState.fetchData(this.createFetchDataOption());
+
+        console.log(
+            '[Recorded DEBUG] after',
+            this.recordedState.getRecorded().map(r => r.recordedItem.id),
+        );
+    }).bind(this);
+    */
 
     // シリーズ単位表示 (§4.4)。既定は従来のフラット表示 (isShowRecordedAsSeries の保存値に従う)
     public isShowAsSeries: boolean = false;
@@ -280,6 +300,10 @@ class Recorded extends Vue {
             });
         }
     }
+    
+    public async onSingleDeleteSuccessful(_needsPageback: boolean): Promise<void> {
+        await this.recordedState.fetchData(this.createFetchDataOption());
+    }
 
     public onEdit(): void {
         this.isEditMode = true;
@@ -306,6 +330,9 @@ class Recorded extends Vue {
         this.isEditMode = false;
         try {
             await this.recordedState.multiplueDeletion(option);
+            // 削除完了後に録画済み一覧を取り直す
+            await this.recordedState.fetchData(this.createFetchDataOption());
+            
             this.snackbarState.open({
                 color: 'success',
                 text: '選択した番組を削除しました。',

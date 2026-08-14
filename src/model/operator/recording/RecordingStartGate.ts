@@ -104,8 +104,15 @@ export const decideRecordingStart = (input: StartGateInput): StartGateDecision =
 
     // programId 予約は eventId で厳密に判断できる
     if (input.eventId !== null) {
+        // eventId が一致していれば確実に目的番組
         if (present.eventId === input.eventId) {
             return { canStart: true, reason: 'eventMatched' };
+        }
+
+        // eventId が一致しなくても、present の開始時刻が
+        // 予約開始時刻に達していれば目的番組として扱う
+        if (present.startAt !== null && present.startAt >= input.reserveStartAt - input.config.startMarginMs) {
+            return { canStart: true, reason: 'startTimeReached' };
         }
 
         return {

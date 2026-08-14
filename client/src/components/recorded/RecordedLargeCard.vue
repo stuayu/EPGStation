@@ -5,7 +5,7 @@
             <div class="d-flex align-center">
                 <div class="text text-subtitle-2 font-weight-bold">{{ item.display.name }}</div>
                 <v-spacer></v-spacer>
-                <RecordedItemMenu v-if="isEditMode === false" :recordedItem="item.recordedItem" v-on:stopEncode="stopEncode"></RecordedItemMenu>
+                <RecordedItemMenu v-if="isEditMode === false" :recordedItem="item.recordedItem" v-on:stopEncode="stopEncode" v-on:deleteSuccessful="onDeleteSuccessful"></RecordedItemMenu>
             </div>
             <div class="text text-caption font-weight-light d-flex align-center channel-line">
                 <v-img
@@ -96,6 +96,10 @@ class RecordedLargeCard extends Vue {
 
     public watchStatusColor(status: apid.WatchStatus | undefined): string {
         return WatchStatusUtil.getColor(status);
+    }
+
+    public onDeleteSuccessful(needsPageback: boolean): void {
+        this.$emit('deleteSuccessful', needsPageback);
     }
 }
 

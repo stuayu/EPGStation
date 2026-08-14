@@ -193,6 +193,39 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
     }
 
     /**
+     * 外部コマンドの標準出力・標準エラーを system log に出力する
+     */
+    private attachExternalCommandLog(child: any): void {
+        child.stdout?.on('data', (data: Buffer) => {
+            const message = data.toString().trim();
+
+            if (message.length === 0) {
+                return;
+            }
+
+            for (const line of message.split(/\r?\n/)) {
+                if (line.length > 0) {
+                    this.log.system.info(`[external command] ${line}`);
+                }
+            }
+        });
+
+        child.stderr?.on('data', (data: Buffer) => {
+            const message = data.toString().trim();
+
+            if (message.length === 0) {
+                return;
+            }
+
+            for (const line of message.split(/\r?\n/)) {
+                if (line.length > 0) {
+                    this.log.system.warn(`[external command] ${line}`);
+                }
+            }
+        });
+    }
+
+    /**
      * 外部コマンドを実行する
      * @param cmd: string
      * @param reserve: Reserve
@@ -206,7 +239,7 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
 
         return new Promise<void>(resolve => {
             const child = spawn(cmds.bin, cmds.args, {
-                stdio: 'ignore',
+                stdio: ['ignore', 'pipe', 'pipe'],
                 env: {
                     PATH: process.env['PATH'],
                     RESERVEID: reserve.id,
@@ -226,6 +259,8 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
                     HALF_WIDTH_EXTENDED: reserve.halfWidthExtended,
                 },
             } as any);
+
+            this.attachExternalCommandLog(child);
 
             child.on('exit', () => {
                 if (child.exitCode == 0) {
@@ -269,7 +304,7 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
 
         return new Promise<void>(async resolve => {
             const child = spawn(cmds.bin, cmds.args, {
-                stdio: 'ignore',
+                stdio: ['ignore', 'pipe', 'pipe'],
                 env: {
                     PATH: process.env['PATH'],
                     RECORDEDID: recorded.id,
@@ -300,6 +335,8 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
                     SCRAMBLING_CNT: recorded.dropLogFile?.scramblingCnt.toString(10) || null,
                 },
             } as any);
+
+            this.attachExternalCommandLog(child);
 
             child.on('exit', () => {
                 if (child.exitCode == 0) {
@@ -353,7 +390,7 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
 
         return new Promise<void>(async resolve => {
             const child = spawn(cmds.bin, cmds.args, {
-                stdio: 'ignore',
+                stdio: ['ignore', 'pipe', 'pipe'],
                 env: {
                     PATH: process.env['PATH'],
                     RECORDEDID: info.recordedId,
@@ -372,6 +409,8 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
                     HALF_WIDTH_CHANNELNAME: typeof channel.halfWidthName === 'string' ? channel.halfWidthName : '',
                 },
             } as any);
+
+            this.attachExternalCommandLog(child);
 
             child.on('exit', () => {
                 if (child.exitCode == 0) {

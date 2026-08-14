@@ -40,7 +40,19 @@ export default class VersionState implements IVersionState {
      * バージョン文字列を返す
      * @return string
      */
+    /*
     public getVersionString(): string {
         return this.info == null ? 'EPGStation' : `EPGStation v${this.info.version}`;
+    }
+    */
+    
+    public getVersionString(): string {
+        if (this.info == null) {
+            return 'EPGStation';
+        }
+
+        const version = this.info.version.match(/^\d+\.\d+\.\d+/)?.[0] ?? this.info.version;
+
+        return `EPGStation v${version}`;
     }
 }

@@ -20,7 +20,7 @@
             <div ref="appContent" class="app-content">
                 <v-container>
                     <div v-if="ruleState.getRules().length > 0" v-bind:style="contentWrapStyle">
-                        <RuleItems :rules="ruleState.getRules()" v-model:isEditMode="isEditMode" v-on:selected="selectItem"></RuleItems>
+                        <RuleItems :rules="ruleState.getRules()" v-model:isEditMode="isEditMode" v-on:selected="selectItem" v-on:deleted="onSingleDeleted"></RuleItems>
                         <Pagination :total="ruleState.getTotal()" :pageSize="settingValue?.rulesLength ?? 0"></Pagination>
                     </div>
                     <v-btn v-on:click="addRule" icon size="large" class="position-fixed right-0 bottom-0 ma-4" color="pink">
@@ -136,6 +136,10 @@ class Reserves extends Vue {
     public selectItem(ruleId: apid.ReserveId): void {
         this.ruleState.select(ruleId);
     }
+    
+    public async onSingleDeleted(): Promise<void> {
+        await this.ruleState.fetchData(this.createFetchDataOption());
+    }
 
     public onMultiplueDeletion(): void {
         this.isOpenMultiplueDeletionDialog = true;
@@ -146,10 +150,41 @@ class Reserves extends Vue {
         this.isEditMode = false;
         try {
             await this.ruleState.multiplueDeletion();
+            
+            // 削除完了後、一覧を即時更新
+            await this.ruleState.fetchData(this.createFetchDataOption());
             this.snackbarState.open({
                 color: 'success',
                 text: '選択したルールを削除しました。',
             });
+
+        /*
+        try {
+            console.log(
+                '[Rule DEBUG] before deletion',
+                    this.ruleState.getRules().map(r => r.item.id),
+            );
+
+            await this.ruleState.multiplueDeletion();
+
+            console.log(
+                '[Rule DEBUG] after deletion before fetch',
+                this.ruleState.getRules().map(r => r.item.id),
+            );
+
+            await this.ruleState.fetchData(this.createFetchDataOption());
+
+            console.log(
+                '[Rule DEBUG] after fetch',
+                this.ruleState.getRules().map(r => r.item.id),
+            );
+
+            this.snackbarState.open({
+                color: 'success',
+                text: '選択したルールを削除しました。',
+            });
+        */
+
         } catch (err) {
             this.snackbarState.open({
                 color: 'error',

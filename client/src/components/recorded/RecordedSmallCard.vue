@@ -14,7 +14,7 @@
             <div class="d-flex align-center">
                 <div class="text mt-1 text-subtitle-2 font-weight-bold">{{ item.display.name }}</div>
                 <div v-if="isEditMode === false" class="menu-wrap">
-                    <RecordedItemMenu :recordedItem="item.recordedItem" v-on:stopEncode="stopEncode"></RecordedItemMenu>
+                    <RecordedItemMenu :recordedItem="item.recordedItem" v-on:stopEncode="stopEncode" v-on:deleteSuccessful="onDeleteSuccessful"></RecordedItemMenu>
                 </div>
             </div>
             <div class="text text-caption font-weight-light d-flex align-center channel-line">
@@ -108,6 +108,10 @@ class RecordedSmallCard extends Vue {
 
     public watchStatusColor(status: apid.WatchStatus | undefined): string {
         return WatchStatusUtil.getColor(status);
+    }
+    
+    public onDeleteSuccessful(needsPageback: boolean): void {
+        this.$emit('deleteSuccessful', needsPageback);
     }
 }
 

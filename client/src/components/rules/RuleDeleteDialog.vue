@@ -69,6 +69,7 @@ class RuleDeleteDialog extends Vue {
 
         try {
             await this.ruleApiModel.delete(this.ruleItem.display.id);
+            this.$emit('deleted');
             this.snackbarState.open({
                 color: 'success',
                 text: `${this.ruleItem.display.keyword} を削除`,

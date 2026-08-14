@@ -33,7 +33,11 @@
                 </v-list-item>
             </v-list>
         </v-menu>
-        <RuleDeleteDialog v-model:isOpen="isOpenDeleteDialog" :ruleItem="ruleItem"></RuleDeleteDialog>
+        <RuleDeleteDialog
+            v-model:isOpen="isOpenDeleteDialog"
+            :ruleItem="ruleItem"
+            v-on:deleted="$emit('deleted')"
+        ></RuleDeleteDialog>
     </div>
 </template>
 

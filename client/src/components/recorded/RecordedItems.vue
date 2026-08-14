@@ -10,6 +10,7 @@
                     v-on:detail="gotoDetail"
                     v-on:stopEncode="stopEncode"
                     v-on:selected="selected"
+                    v-on:deleteSuccessful="onDeleteSuccessful"
                 ></RecordedLargeCard>
             </div>
         </div>
@@ -21,6 +22,7 @@
                 v-on:detail="gotoDetail"
                 v-on:stopEncode="stopEncode"
                 v-on:selected="selected"
+                v-on:deleteSuccessful="onDeleteSuccessful"
             ></RecordedTableItems>
             <div v-for="r in recorded" v-bind:key="r.recordedItem.id"></div>
         </div>
@@ -33,6 +35,7 @@
                     v-on:detail="gotoDetail"
                     v-on:stopEncode="stopEncode"
                     v-on:selected="selected"
+                    v-on:deleteSuccessful="onDeleteSuccessful"
                     :noThumbnail="!!isRecording === true"
                 ></RecordedsmallCard>
             </div>
@@ -112,6 +115,10 @@ class RecordedItems extends Vue {
 
     public selected(recordedId: apid.RecordedId): void {
         this.$emit('selected', recordedId);
+    }
+
+    public onDeleteSuccessful(needsPageback: boolean): void {
+        this.$emit('deleteSuccessful', needsPageback);
     }
 }
 

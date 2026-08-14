@@ -17,14 +17,23 @@
         </TitleBar>
         <transition name="page">
             <div ref="appContent" class="mx-auto app-content pa-2">
-                <div v-if="encodeState.getEncodeInfo().runningItems.length > 0">
+                <div v-if="encodeInfo.runningItems.length > 0">
                     <div class="title">エンコード中</div>
-                    <EncodeItems :items="encodeState.getEncodeInfo().runningItems" v-model:isEditMode="isEditMode" v-on:selected="selectItem"></EncodeItems>
+                    <EncodeItems
+                        :items="encodeInfo.runningItems"
+                        v-model:isEditMode="isEditMode"
+                        v-on:selected="selectItem">
+                    </EncodeItems>
                 </div>
-                <div v-if="encodeState.getEncodeInfo().waitItems.length > 0">
-                    <div class="title pt-2">待機中</div>
-                    <EncodeItems :items="encodeState.getEncodeInfo().waitItems" v-model:isEditMode="isEditMode" v-on:selected="selectItem"></EncodeItems>
-                </div>
+
+            <div v-if="encodeInfo.waitItems.length > 0">
+                <div class="title pt-2">待機中</div>
+                <EncodeItems
+                    :items="encodeInfo.waitItems"
+                    v-model:isEditMode="isEditMode"
+                    v-on:selected="selectItem">
+                </EncodeItems>
+            </div>
                 <div style="visibility: hidden">dummy</div>
             </div>
         </transition>
@@ -43,7 +52,11 @@ import EditTitleBar from '@/components/titleBar/EditTitleBar.vue';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
+/*
 import IEncodeState from '@/model/state/encode/IEncodeState';
+*/
+import IEncodeState, { EncodeInfoDisplayData } from '@/model/state/encode/IEncodeState';
+
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
@@ -64,14 +77,28 @@ class Encode extends Vue {
     public isOpenMultiplueDeletionDialog: boolean = false;
 
     public encodeState: IEncodeState = container.get<IEncodeState>('IEncodeState');
+    /*Add*/
+    public encodeInfo: EncodeInfoDisplayData = {
+        runningItems: [],
+        waitItems: [],
+    };
+    /*Add End*/
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     private settingValue: ISettingValue | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
-    private onUpdateStatusCallback = (async (): Promise<void> => {
+
+    public async onUpdateStatusCallback(): Promise<void> {
         await this.encodeState.fetchData(this.isHalfWidth());
-    }).bind(this);
+
+        const info = this.encodeState.getEncodeInfo();
+
+        this.encodeInfo = {
+            runningItems: [...info.runningItems],
+            waitItems: [...info.waitItems],
+        };
+    }
 
     get selectedTitle(): string {
         return `${this.encodeState.getSelectedCnt()} 件選択`;
@@ -142,6 +169,14 @@ class Encode extends Vue {
                 console.error(err);
             });
 
+            // Vue側のリアクティブデータへ反映
+            // this.encodeInfo = this.encodeState.getEncodeInfo();
+            const info = this.encodeState.getEncodeInfo();
+
+            this.encodeInfo = {
+                runningItems: [...info.runningItems],
+                waitItems: [...info.waitItems],
+            };
             // データ取得完了を通知
             await this.scrollState.emitDoneGetData();
         });
