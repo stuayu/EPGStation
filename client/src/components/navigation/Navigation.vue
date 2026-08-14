@@ -7,7 +7,7 @@
         app
         overflow
     >
-        <v-list-item>
+        <v-list-item :class="headerClass">
             <div class="v-list-item-content">
                 <v-list-item-title class="title">{{ versionState.getVersionString() }}</v-list-item-title>
             </div>
@@ -20,7 +20,8 @@
                 link
                 :disabled="item.herf === null"
                 v-on:click="route(item)"
-                v-bind:class="getNavigationItemClass(index)"
+                :active="navigationState.navigationPosition === index"
+                :color="themeColorName"
             >
                 <template #prepend>
                     <v-icon>{{ item.icon }}</v-icon>
@@ -45,6 +46,7 @@ import IVersionState from '@/model/state/version/IVersionState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationRaw as Location } from 'vue-router';
+import ThemeColorUtil from '@/util/ThemeColorUtil';
 import Util from '../../util/Util';
 
 interface NavigationItem {
@@ -78,12 +80,21 @@ class Navigation extends Vue {
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
     }
 
-    public getNavigationItemClass(index: number): any {
-        return this.navigationState.navigationPosition === index
-            ? {
-                  selected: true,
-              }
-            : {};
+    /**
+     * ドロワー先頭 (バージョン表示) の class を返す
+     * title bar と揃えるため、ダークテーマでは色を敷かず既定の背景のままにする
+     * @return any
+     */
+    get headerClass(): any {
+        return this.$vuetify.theme.global.current.dark === true ? {} : { [`bg-${ThemeColorUtil.COLOR_NAME}`]: true };
+    }
+
+    /**
+     * 選択中のナビゲーション項目に使う色名を返す
+     * @return string
+     */
+    get themeColorName(): string {
+        return ThemeColorUtil.COLOR_NAME;
     }
 
     /**
@@ -138,10 +149,6 @@ export default toNative(Navigation);
 .list-dummy
     margin-bottom: 16px
 
-.v-item-group
-    .selected
-        &:before
-            opacity: 0.12
 
 // iOS デバイスで一番下までスクロールできないため
 .v-navigation-drawer
