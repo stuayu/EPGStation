@@ -40,6 +40,10 @@ class ReservationManageModel implements IReservationManageModel {
     private ruleDB: IRuleDB;
     private reserveEvent: IReserveEvent;
     private tuners: Tuner[] = [];
+    // チューナ情報から放送波を判定できなかったときにチャンネル情報から作る代替値
+    private broadcastStatusFallback: apid.BroadcastStatus | null = null;
+    private broadcastStatusFallbackUpdatedAt = 0;
+    private broadcastStatusFallbackUpdating: Promise<apid.BroadcastStatus | null> | null = null;
     private broadcastStatus: apid.BroadcastStatus = {
         GR: false,
         BS: false,
@@ -130,10 +134,77 @@ class ReservationManageModel implements IReservationManageModel {
 
     /**
      * 放送波の状態を返す
-     * @return apid.BroadcastStatus
+     *
+     * チューナ情報の types が空で返る互換実装 (recisdb-proxy 等) では全ての放送波が false のままとなり
+     * クライアントの放映中タブが 1 つも作られないため、その場合は登録済みチャンネルの種別で補完する
+     * @return Promise<apid.BroadcastStatus>
      */
-    public getBroadcastStatus(): apid.BroadcastStatus {
-        return this.broadcastStatus;
+    public async getBroadcastStatus(): Promise<apid.BroadcastStatus> {
+        const hasEnabledType = Object.keys(this.broadcastStatus).some(key => (<any>this.broadcastStatus)[key] === true);
+        if (hasEnabledType === true) {
+            return this.broadcastStatus;
+        }
+
+        // チャンネル情報からの補完 (毎回全件取得しないように一定時間キャッシュする)
+        const now = new Date().getTime();
+        if (
+            this.broadcastStatusFallback !== null &&
+            now - this.broadcastStatusFallbackUpdatedAt < ReservationManageModel.BROADCAST_STATUS_FALLBACK_TTL
+        ) {
+            return this.broadcastStatusFallback;
+        }
+
+        // 起動直後の一括同期などで DB が詰まっていると IPC 側がタイムアウトするため、
+        // 取得は待ち時間に上限を設けて行い、間に合わなければ古い値 (無ければチューナ由来の値) を返す
+        const updating = this.updateBroadcastStatusFallback();
+        const updated = await Promise.race([
+            updating,
+            new Promise<null>(resolve => {
+                const timer = setTimeout(() => {
+                    resolve(null);
+                }, ReservationManageModel.BROADCAST_STATUS_FALLBACK_TIMEOUT);
+                timer.unref();
+            }),
+        ]);
+
+        return updated ?? this.broadcastStatusFallback ?? this.broadcastStatus;
+    }
+
+    /**
+     * 登録済みチャンネルの放送波種別から broadcastStatus の代替値を作る
+     * 実行中に再度呼ばれた場合は同じ Promise を返す
+     * @return Promise<apid.BroadcastStatus | null> 取得に失敗した場合は null
+     */
+    private updateBroadcastStatusFallback(): Promise<apid.BroadcastStatus | null> {
+        if (this.broadcastStatusFallbackUpdating !== null) {
+            return this.broadcastStatusFallbackUpdating;
+        }
+
+        this.broadcastStatusFallbackUpdating = (async () => {
+            const status: apid.BroadcastStatus = Object.assign({}, this.broadcastStatus);
+            try {
+                const channelTypes = await this.channelDB.findChannelTypeList();
+                for (const channelType of channelTypes) {
+                    if (typeof (<any>status)[channelType] !== 'undefined') {
+                        (<any>status)[channelType] = true;
+                    }
+                }
+            } catch (err: any) {
+                this.log.system.error('get broadcast status fallback error');
+                this.log.system.error(err);
+
+                return null;
+            } finally {
+                this.broadcastStatusFallbackUpdating = null;
+            }
+
+            this.broadcastStatusFallback = status;
+            this.broadcastStatusFallbackUpdatedAt = new Date().getTime();
+
+            return status;
+        })();
+
+        return this.broadcastStatusFallbackUpdating;
     }
 
     /**
@@ -1871,6 +1942,12 @@ namespace ReservationManageModel {
     // EIT[p/f] の更新で追従させる予約の範囲 (現在時刻からの先読み時間)。
     // OnAirProgramDetector の following 判定 (10 分) より少し広く取る
     export const ON_AIR_RESERVE_WINDOW = 15 * 60 * 1000;
+
+    // チャンネル情報から作った放送波状態のキャッシュ保持時間
+    export const BROADCAST_STATUS_FALLBACK_TTL = 5 * 60 * 1000;
+
+    // 上記の取得を待つ上限時間 (超えたら古い値を返し、取得はそのまま裏で続ける)
+    export const BROADCAST_STATUS_FALLBACK_TIMEOUT = 3 * 1000;
 }
 
 export default ReservationManageModel;

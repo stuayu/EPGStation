@@ -229,6 +229,11 @@ export default interface IConfigFile {
     // 囲み文字を置換するか
     needToReplaceEnclosingCharacters: boolean;
 
+    // 親チャンネルと同一内容のサブチャンネルを番組表・放映中から隠すか。
+    // 未運用のサブチャンネルまで全サービスを返すチューナーサーバ (recisdb-proxy 等) で
+    // 同じ番組の列が並ぶのを防ぐ
+    isHideDuplicateSubChannel: boolean;
+
     // epg 更新時間間隔 (分)
     epgUpdateIntervalTime: number;
 

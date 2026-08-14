@@ -251,6 +251,20 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         ],
     },
     {
+        key: 'isHideDuplicateSubChannel',
+        label: '内容が同じサブチャンネルを番組表・放映中に表示しない',
+        hint: '親チャンネルと同じ番組しか流していないサブチャンネル (○○２ / ○○３ など) の列を隠す。サブチャンネルが別番組を放送しているときは表示される',
+        requiresRestart: false,
+        editable: 'gui',
+        fields: [
+            {
+                path: 'isHideDuplicateSubChannel',
+                label: '内容が同じサブチャンネルを番組表・放映中に表示しない',
+                type: 'boolean',
+            },
+        ],
+    },
+    {
         key: 'isSuppressReservesUpdateAllLog',
         label: '予約定期更新のログを抑制する',
         requiresRestart: false,

@@ -279,6 +279,48 @@ export default class ChannelDB implements IChannelDB {
     }
 
     /**
+     * 登録されている放送波種別の一覧を返す
+     * @return Promise<apid.ChannelType[]>
+     */
+    public async findChannelTypeList(): Promise<apid.ChannelType[]> {
+        const connection = await this.op.getConnection();
+
+        const result = await this.promieRetry.run(() => {
+            return connection
+                .getRepository(Channel)
+                .createQueryBuilder('channel')
+                .select('channel.channelType', 'channelType')
+                .distinct(true)
+                .getRawMany();
+        });
+
+        return result.map(r => r.channelType as apid.ChannelType);
+    }
+
+    /**
+     * 無効なサービス (serviceId が 0、または service_type が 0) の放送局を削除する
+     *
+     * 全サービスを列挙して返すチューナーサーバ (recisdb-proxy 等) から
+     * 過去に取り込んでしまった放送されていない枠を掃除するためのもの
+     * @return Promise<number> 削除件数
+     */
+    public async deleteInvalidChannels(): Promise<number> {
+        const connection = await this.op.getConnection();
+
+        const result = await this.promieRetry.run(() => {
+            return connection
+                .createQueryBuilder()
+                .delete()
+                .from(Channel)
+                .where('serviceId = :serviceId', { serviceId: 0 })
+                .orWhere('type = :type', { type: 0 })
+                .execute();
+        });
+
+        return typeof result.affected === 'number' ? result.affected : 0;
+    }
+
+    /**
      * channel id を指定して検索
      * @param channelId: channel id
      * @return Promise<Channel | null>

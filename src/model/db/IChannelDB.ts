@@ -18,4 +18,16 @@ export default interface IChannelDB {
     findNetworkIdAndServiceId(networkId: number, serviceId: number): Promise<Channel | null>;
     findChannleTypes(types: apid.ChannelType[], needSort?: boolean): Promise<Channel[]>;
     findAll(needSort?: boolean): Promise<Channel[]>;
+
+    /**
+     * 登録されている放送波種別の一覧を返す
+     * @return Promise<apid.ChannelType[]>
+     */
+    findChannelTypeList(): Promise<apid.ChannelType[]>;
+
+    /**
+     * 無効なサービス (serviceId が 0、または service_type が 0) の放送局を削除する
+     * @return Promise<number> 削除件数
+     */
+    deleteInvalidChannels(): Promise<number>;
 }

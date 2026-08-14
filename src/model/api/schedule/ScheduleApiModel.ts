@@ -7,6 +7,7 @@ import IBroadcastAffiliation from '../../channel/IBroadcastAffiliation';
 import IBroadcastRegion from '../../channel/IBroadcastRegion';
 import IChannelDB from '../../db/IChannelDB';
 import IProgramDB, { ProgramWithOverlap } from '../../db/IProgramDB';
+import IConfiguration from '../../IConfiguration';
 import IScheduleApiModel from './IScheduleApiModel';
 
 @injectable()
@@ -15,17 +16,20 @@ export default class ScheduleApiModel implements IScheduleApiModel {
     private programDB: IProgramDB;
     private broadcastRegion: IBroadcastRegion;
     private broadcastAffiliation: IBroadcastAffiliation;
+    private configuration: IConfiguration;
 
     constructor(
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IProgramDB') programDB: IProgramDB,
         @inject('IBroadcastRegion') broadcastRegion: IBroadcastRegion,
         @inject('IBroadcastAffiliation') broadcastAffiliation: IBroadcastAffiliation,
+        @inject('IConfiguration') configuration: IConfiguration,
     ) {
         this.channelDB = channelDB;
         this.programDB = programDB;
         this.broadcastRegion = broadcastRegion;
         this.broadcastAffiliation = broadcastAffiliation;
+        this.configuration = configuration;
     }
 
     /**
@@ -231,9 +235,15 @@ export default class ScheduleApiModel implements IScheduleApiModel {
             programsIndex[program.channelId].push(this.toScheduleProgramItem(program, isHalfWidth, needsRawExtended));
         }
 
+        // 内容が親チャンネルと同じサブチャンネルを除外する
+        const targetChannels =
+            this.configuration.getConfig().isHideDuplicateSubChannel === false
+                ? channels
+                : this.excludeDuplicateSubChannels(channels, programsIndex);
+
         // 結果を格納する
         const result: apid.Schedule[] = [];
-        for (const channel of channels) {
+        for (const channel of targetChannels) {
             if (typeof programsIndex[channel.id] === 'undefined') {
                 continue;
             }
@@ -246,6 +256,59 @@ export default class ScheduleApiModel implements IScheduleApiModel {
         }
 
         return result;
+    }
+
+    /**
+     * 親チャンネルと同一内容のサブチャンネルを除いた Channel[] を返す
+     *
+     * 未運用のサブチャンネルまで全サービスを返すチューナーサーバ (recisdb-proxy 等) では
+     * 親と同じ EIT がサブサービスにも載るため、同じ番組の列が並んでしまう。
+     * 同一 networkId 内で serviceId が最小のものを親とし、自身の番組がすべて
+     * 親の同時刻・同名の番組に含まれるサブチャンネルだけを除外する
+     * (サブチャンネルが別番組を放送している間は除外しない)
+     * @param channels: Channel[]
+     * @param programsIndex: channelId ごとの番組一覧
+     * @return Channel[]
+     */
+    private excludeDuplicateSubChannels(
+        channels: Channel[],
+        programsIndex: { [key: number]: apid.ScheduleProgramItem[] },
+    ): Channel[] {
+        // networkId ごとの親チャンネル (serviceId 最小) を求める
+        const parents: { [networkId: number]: Channel } = {};
+        for (const channel of channels) {
+            const parent = parents[channel.networkId];
+            if (typeof parent === 'undefined' || channel.serviceId < parent.serviceId) {
+                parents[channel.networkId] = channel;
+            }
+        }
+
+        // 親チャンネルの番組の索引 (開始時刻 + 番組名)
+        const parentProgramIndex: { [networkId: number]: Set<string> } = {};
+        for (const networkId in parents) {
+            const programs = programsIndex[parents[networkId].id];
+            if (typeof programs === 'undefined') {
+                continue;
+            }
+
+            parentProgramIndex[networkId] = new Set(programs.map(p => `${p.startAt}_${p.name}`));
+        }
+
+        return channels.filter(channel => {
+            const parent = parents[channel.networkId];
+            if (typeof parent === 'undefined' || parent.id === channel.id) {
+                return true;
+            }
+
+            const parentPrograms = parentProgramIndex[channel.networkId];
+            const programs = programsIndex[channel.id];
+            if (typeof parentPrograms === 'undefined' || typeof programs === 'undefined' || programs.length === 0) {
+                return true;
+            }
+
+            // 1 件でも親に無い番組があれば別内容として残す
+            return programs.some(p => parentPrograms.has(`${p.startAt}_${p.name}`) === false);
+        });
     }
 
     /**
