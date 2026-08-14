@@ -27,9 +27,15 @@ import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 class Snackbar extends Vue {
     public snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
+    /**
+     * 背景色の class を返す
+     * Vuetify 3 以降の背景色ユーティリティは `bg-` 接頭辞付き (`success` ではなく `bg-success`)。
+     * 接頭辞が無いと背景が透明のまま白文字だけが残り、メッセージが読めなくなる
+     * @return any
+     */
     get snackbarClass(): any {
         const result: any = {};
-        result[this.snackbarState.displayOption.color] = true;
+        result[`bg-${this.snackbarState.displayOption.color}`] = true;
 
         return result;
     }

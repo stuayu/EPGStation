@@ -22,6 +22,7 @@ import { Container } from 'inversify';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import ISocketIOModel from '../model/socketio/ISocketIOModel';
 import IColorThemeState from '@/model/state/IColorThemeState';
+import ThemeColorUtil from '@/util/ThemeColorUtil';
 
 @Component({
     components: {
@@ -42,6 +43,7 @@ class AppContent extends Vue {
 
     public async created(): Promise<void> {
         // theme 設定を反映
+        ThemeColorUtil.apply(this.$vuetify.theme, this.colorThemeState.getThemeColor());
         this.$vuetify.theme.change((this.colorThemeState.isDarkTheme()) ? 'dark' : 'light');
 
         // socket.io 設定
