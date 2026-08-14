@@ -64,7 +64,9 @@ class SnackbarState implements ISnackbarState {
 }
 
 namespace SnackbarState {
-    export const NROMAL_COLOR = 'grey darken-3';
+    // Vuetify 3 以降のパレット名 (Snackbar.vue が `bg-` を付けて class にする)。
+    // Vuetify 2 の 'grey darken-3' 形式のままだと該当する class が無く背景が透明になる
+    export const NROMAL_COLOR = 'grey-darken-3';
 }
 
 export default SnackbarState;

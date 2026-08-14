@@ -16,6 +16,7 @@
 import container from '@/model/ModelContainer';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import INavigationState from '../../model/state/navigation/INavigationState';
+import ThemeColorUtil from '@/util/ThemeColorUtil';
 
 @Component({})
 class TitleBar extends Vue {
@@ -29,9 +30,10 @@ class TitleBar extends Vue {
 
     /**
      * title bar の色を返す
+     * ダークテーマでは従来どおり既定の暗い背景のままにする (色を敷くと暗所での眩しさが増すため)
      */
     get appBarColor(): string | undefined {
-        return this.$vuetify.theme.global.current.dark === true ? undefined : 'indigo';
+        return this.$vuetify.theme.global.current.dark === true ? undefined : ThemeColorUtil.COLOR_NAME;
     }
 
     public onTitle(): void {

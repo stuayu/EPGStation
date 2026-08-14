@@ -1,4 +1,5 @@
 import { inject, injectable } from 'inversify';
+import ThemeColorUtil from '../../../util/ThemeColorUtil';
 import UaUtil from '../../../util/UaUtil';
 import AbstractStorageBaseModel from '../AbstractStorageBaseModel';
 import IStorageOperationModel from '../IStorageOperationModel';
@@ -15,6 +16,7 @@ export default class SettingStorageModel extends AbstractStorageBaseModel<ISetti
             isEnablePWA: true,
             shouldUseOSColorTheme: true,
             isForceDarkTheme: false,
+            themeColor: ThemeColorUtil.DEFAULT_COLOR,
             isHalfWidthDisplayed: true,
             isOnAirTabListView: true,
             channelGroupingType: 'region',

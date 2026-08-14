@@ -1,4 +1,5 @@
 import IStorageBaseModel from '../IStorageBaseModel';
+import ThemeColorUtil from '@/util/ThemeColorUtil';
 
 export type GuideViewMode = 'sequential' | 'minimum' | 'all';
 
@@ -12,6 +13,8 @@ export interface ISettingValue {
     isEnablePWA: boolean;
     shouldUseOSColorTheme: boolean;
     isForceDarkTheme: boolean;
+    // システム全体のテーマカラー (ヘッダー・ナビゲーション・トグル・プログレスバー)
+    themeColor: ThemeColorUtil.ThemeColorType;
     isHalfWidthDisplayed: boolean;
     isOnAirTabListView: boolean;
     isPreferredPlayingLiveM2TSOnWeb: boolean;
