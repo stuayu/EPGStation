@@ -46,9 +46,10 @@ class RecordedStreamingVideo extends BaseVideo {
 
     private videoState = container.get<IRecordedStreamingVideoState>('IRecordedStreamingVideoState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
-    private onUpdateStatusCallback = (async (): Promise<void> => {
+    // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
+    public async onUpdateStatus(): Promise<void> {
         await this.updateVideoInfo();
-    }).bind(this);
+    }
     private basePlayPosition: number = 0;
     private dummyPlayPosition: number | null = null; // setCurrentTime が呼ばれている間に再生位置として返すダミー値
     private pauseStateBeforeCurrentTime: boolean = false; // setCurrentTime が処理終了時に再生状態を復元するための値
@@ -75,7 +76,7 @@ class RecordedStreamingVideo extends BaseVideo {
 
     public created(): void {
         // socket.io イベント
-        this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.onUpdateState(this.onUpdateStatus);
     }
 
     public async mounted(): Promise<void> {
@@ -132,7 +133,7 @@ class RecordedStreamingVideo extends BaseVideo {
 
     public async beforeUnmount(): Promise<void> {
         // socket.io イベント
-        this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.offUpdateState(this.onUpdateStatus);
 
         clearInterval(this.updateDurationTimerId);
         clearTimeout(this.setCurrentTimeTimerId);

@@ -78,9 +78,10 @@ class Recording extends Vue {
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
-    private onUpdateStatusCallback = (async (): Promise<void> => {
+    // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
+    public async onUpdateStatus(): Promise<void> {
         await this.recordingState.fetchData(this.createFetchDataOption());
-    }).bind(this);
+    }
 
     get selectedTitle(): string {
         return `${this.recordingState.getSelectedCnt()} 件選択`;
@@ -90,12 +91,12 @@ class Recording extends Vue {
         this.settingValue = this.setting.getSavedValue();
 
         // socket.io イベント
-        this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.onUpdateState(this.onUpdateStatus);
     }
 
     public beforeUnmount(): void {
         // socket.io イベント
-        this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.offUpdateState(this.onUpdateStatus);
     }
 
     public gotoDetail(recordedId: apid.RecordedId): void {

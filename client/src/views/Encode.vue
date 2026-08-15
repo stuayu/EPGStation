@@ -69,9 +69,10 @@ class Encode extends Vue {
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
-    private onUpdateStatusCallback = (async (): Promise<void> => {
+    // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
+    public async onUpdateStatus(): Promise<void> {
         await this.encodeState.fetchData(this.isHalfWidth());
-    }).bind(this);
+    }
 
     get selectedTitle(): string {
         return `${this.encodeState.getSelectedCnt()} 件選択`;
@@ -81,14 +82,14 @@ class Encode extends Vue {
         this.settingValue = this.setting.getSavedValue();
 
         // socket.io イベント
-        this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
-        this.socketIoModel.onUpdateEncodeState(this.onUpdateStatusCallback);
+        this.socketIoModel.onUpdateState(this.onUpdateStatus);
+        this.socketIoModel.onUpdateEncodeState(this.onUpdateStatus);
     }
 
     public beforeUnmount(): void {
         // socket.io イベント
-        this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
-        this.socketIoModel.offUpdateEncodeState(this.onUpdateStatusCallback);
+        this.socketIoModel.offUpdateState(this.onUpdateStatus);
+        this.socketIoModel.offUpdateEncodeState(this.onUpdateStatus);
     }
 
     public onEdit(): void {

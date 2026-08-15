@@ -118,9 +118,10 @@ class WatchRecorded extends Vue {
     private infoState: IWatchRecordedInfoState = container.get<IWatchRecordedInfoState>('IWatchRecordedInfoState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
-    private onUpdateStatusCallback = (async (): Promise<void> => {
+    // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
+    public async onUpdateStatus(): Promise<void> {
         await this.updateProgramInfo();
-    }).bind(this);
+    }
 
     /**
      * 右パネルのタブ構成 (Next Up パネルは機能フラグで出し分ける)
@@ -248,14 +249,14 @@ class WatchRecorded extends Vue {
 
     public created(): void {
         // socket.io イベント
-        this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.onUpdateState(this.onUpdateStatus);
     }
 
     public beforeUnmount(): void {
         void this.teardownDataBroadcasting();
 
         // socket.io イベント
-        this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.offUpdateState(this.onUpdateStatus);
     }
 
     /**
