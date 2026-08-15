@@ -93,26 +93,82 @@ test('同じ入力ファイルのタスクが複数あるときは追加時刻�
     assert.equal(results.length, 0);
 });
 
-test('エンコード中はコンソール出力の百分率を進捗にする', async () => {
+// サーバ全体の進捗が取れないときだけ、エンコーダの進捗行 (行頭の [n%]) から拾う
+test('エンコード中はコンソール出力の進捗行を進捗にする', async () => {
     const { client, updates } = await createWatcher();
 
     client.emit('uiData', { queueItems: [queueItem({ state: 'Encoding', consoleId: 1 })] });
-    client.emit('consoleUpdate', { index: 1, lines: ['エンコード中 42.5% fps=30'] });
+    client.emit('consoleUpdate', { index: 1, lines: ['[42.5%] 100/235 frames: 30.00 fps'] });
 
     const last = updates[updates.length - 1];
     assert.equal(last.percent, 0.425);
-    assert.match(last.log, /エンコード中 42\.5% fps=30/);
+    assert.match(last.log, /\[42\.5%\] 100\/235 frames/);
 });
 
-test('コンソールから進捗が取れないときはサーバ全体の進捗で代用する', async () => {
+// State.Progress はキュー全体の進み具合 (完了したアイテムの割合) で、
+// 個々のタスクの進捗ではない。実行中もほとんど動かず値も実態と合わない
+test('サーバ全体の進捗 (State.Progress) はタスクの進捗として使わない', async () => {
     const { client, updates } = await createWatcher();
 
     client.emit('uiData', {
         queueItems: [queueItem({ state: 'Encoding', consoleId: 1 })],
-        state: { pause: false, suspend: false, running: true, progress: 0.6 },
+        state: { pause: false, suspend: false, running: true, progress: 0.87 },
     });
 
-    assert.equal(updates[updates.length - 1].percent, 0.6);
+    assert.equal(updates[updates.length - 1].percent, 0);
+
+    client.emit('consoleUpdate', { index: 1, lines: ['[12.5%] 100/800 frames'] });
+    assert.equal(updates[updates.length - 1].percent, 0.125);
+});
+
+// 百分率が出るのはエンコード段階だけ。それ以外は総数が分からない形でしか出ない
+test('百分率が出ない段階では直前の進捗を保つ', async () => {
+    const { client, updates } = await createWatcher();
+
+    client.emit('uiData', { queueItems: [queueItem({ state: 'Encoding', consoleId: 1 })] });
+    client.emit('consoleUpdate', { index: 1, lines: ['[45.0%] 360/800 frames'] });
+    assert.equal(updates[updates.length - 1].percent, 0.45);
+
+    // 段階が変わって総数の分からない出力になっても 0% へ戻さない
+    client.emit('consoleUpdate', { index: 1, lines: ['1066フレーム完了 125.36fps'] });
+    const last = updates[updates.length - 1];
+    assert.equal(last.percent, 0.45);
+    assert.match(last.log, /1066フレーム完了/);
+});
+
+// 進捗行は `[60.7%] ... GPU 21%, VD 58%` の形。行内の他の百分率を拾うと進捗が飛ぶ
+test('進捗行以外の百分率 (CPU / GPU 使用率など) は進捗として拾わない', async () => {
+    const { client, updates } = await createWatcher();
+
+    client.emit('uiData', { queueItems: [queueItem({ state: 'Encoding', consoleId: 1 })] });
+    client.emit('consoleUpdate', {
+        index: 1,
+        lines: ['[60.7%] 29701/48918 frames: 132.14 fps, 2453 kbps, remain 0:02:25, GPU 21%, VD 58%'],
+    });
+    assert.equal(updates[updates.length - 1].percent, 0.607);
+
+    // 進捗と無関係な行が後から来ても、そこの百分率は採らない (直前の進捗を保つ)
+    client.emit('consoleUpdate', { index: 1, lines: ['encode time 0:04:42, CPU: 10.8%, GPU: 21.6%, VD: 54.7%'] });
+    assert.equal(updates[updates.length - 1].percent, 0.607);
+
+    client.emit('consoleUpdate', { index: 1, lines: ['未出力フレーム: 43（0.050%）'] });
+    assert.equal(updates[updates.length - 1].percent, 0.607);
+});
+
+// 進捗行は改行ではなく CR で同じ行を上書きしていく
+test('CR で繋がった進捗はいちばん新しいものを採る', async () => {
+    const { client, updates } = await createWatcher();
+
+    client.emit('uiData', { queueItems: [queueItem({ state: 'Encoding', consoleId: 1 })] });
+    client.emit('consoleUpdate', {
+        index: 1,
+        lines: ['[10.0%] 1/10 frames\r[20.0%] 2/10 frames\r[30.5%] 3/10 frames\r'],
+    });
+
+    const last = updates[updates.length - 1];
+    assert.equal(last.percent, 0.305);
+    // 表示も最新の 1 行だけにする (繋がったままだと画面に古い進捗が出続ける)
+    assert.match(last.log, /\[30\.5%\] 3\/10 frames$/);
 });
 
 test('完了すると出力パスを EPGStation 側のパスへ戻して通知する', async () => {
@@ -232,6 +288,32 @@ test('投入前からキューに居た同じ入力ファイルのタスクは�
         updateType: 'Add',
         updatedItem: queueItem({ id: 6, state: 'Queue', addTime: 1785225100000 }),
     });
+    assert.equal(results.length, 0);
+    assert.equal(updates[updates.length - 1].state, 'Queue');
+
+    client.emit('uiData', {
+        updateType: 'Update',
+        updatedItem: queueItem({ id: 6, state: 'Complete', actualDstPath: 'D:\\out\\new.mp4' }),
+    });
+    assert.equal(results.length, 1);
+    assert.equal(results[0].outputPath, 'D:\\out\\new.mp4');
+});
+
+// AmatsukazeAddTask の実行中にサーバから Add 通知が届く。投入完了を伝える markTaskAdded() は
+// AddTask プロセスの終了後にしか呼べないので、Add 通知の方が先に来る。
+// これを「投入前から居たもの」として除外すると、投入したのに永久に見つからなくなる
+test('投入完了を伝える前に届いた Add 通知でも自分のタスクとして拾う', async () => {
+    const { client, watcher, results, updates } = await createWatcher([], false);
+
+    // start() 直後のキュー全体 (前回失敗した同じ録画のタスクが残っている)
+    client.emit('uiData', { queueItems: [queueItem({ id: 5, state: 'Failed' })] });
+
+    // AddTask 実行中に自分のタスクの Add が届く
+    client.emit('uiData', { updateType: 'Add', updatedItem: queueItem({ id: 6, state: 'Queue' }) });
+
+    // AddTask プロセスが終わってから投入完了を伝える
+    watcher.markTaskAdded();
+
     assert.equal(results.length, 0);
     assert.equal(updates[updates.length - 1].state, 'Queue');
 
