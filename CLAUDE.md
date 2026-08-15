@@ -123,6 +123,7 @@ npm run test:ci        # ut + ita + itb
 - **in-memory HLS は LL-HLS (`#EXT-X-PART`)**。パート = fMP4 フラグメント = GOP。`emsg` (字幕) は**セグメントではなくパート先頭**に置く (パートが単独配信されるため)。`HLSMemoryStoreModel.delete()` は待機中の要求を必ず解決する (しないとレスポンスが返らない)
 - **in-memory HLS の字幕 (`emsg`) は必ず version 1**。version 0 だと hls.js が `scheme_id_uri` を読み違え、字幕が一切出ない
 - **音声トラック切替は cmd のプレースホルダ経由**。`%DUALMONOMODE%` / `%AUDIOMAP%`。**デュアルモノラル (二か国語) の副音声は `-map` では選べない** — `-dual_mono_mode sub` を使う。手書き cmd (直書き) では切り替わらない
+- **rigaya 系エンコーダで録画ファイルを直接読むときは `--avsync forcecfr --fps 30000/1001` が必須**。ファイル先頭のタイムスタンプからフレームレートを推定するため録画 TS では推定を外し、映像だけが遅れて音ズレする (実測 60 秒で 7.2 秒)。パイプ入力 (ライブ・録画中) は対象外
 - **HEVC の配信は fMP4 + `-tag:v hvc1` が必須**。iOS / Safari は TS セグメントの HEVC を再生できず、`hev1` タグでも映像が出ない。rigaya 系 (QSVEncC 等) はエンコーダ側でタグ指定できないため後段 ffmpeg の remux で付ける。プロファイルは Main・8bit
 - **DPlayer に `type: 'normal'` を渡すと ARIB 字幕が出ない**。Safari のネイティブ HLS でも `type: 'hls'` のままにする
 - **BML ブラウザは映像要素を自分の中へ物理的に移動する**。`invisible` の切り替えと破棄時に元へ戻す処理を落とさない
