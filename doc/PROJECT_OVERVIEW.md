@@ -222,7 +222,7 @@ npm run recover-channel-name   # 過去の録画の放送局名を復元 (既定
 
 ### クライアント
 
-- **クラスフィールドのコールバックの `this` は Vue インスタンスではない**: `vue-facing-decorator` はフィールドの初期値を data 用の一時インスタンスから集めるため、`private xxxCallback = ((): void => { ... }).bind(this)` の中から `this.watchParam` のようなデータを読むと初期値しか見えない (**メソッドだけが Vue インスタンスへ束縛される**)。判定・処理はメソッドへ置き、コールバックはそれを呼ぶだけにする
+- **クラスフィールドのコールバックの `this` は Vue インスタンスではない**: `vue-facing-decorator` はフィールドの初期値を data 用の一時インスタンスから集めるため、`private xxxCallback = ((): void => { ... }).bind(this)` の中から `this.watchParam` のようなデータを読むと初期値しか見えない (**メソッドだけが Vue インスタンスへ束縛される**)。**`this.xxxState` もリアクティブなプロキシではなくなる**ので、state を書き換えても再描画が起きない (データは新しいのに画面が古いまま)。**コールバックからメソッドを呼ぶだけでは直らない** — 呼ばれた側の `this` も一時インスタンスのままになる。socket.io の購読は**フィールドを挟まずメソッドをそのまま渡す** (`this.socketIoModel.onUpdateState(this.onUpdateStatus)`)
 - **番組表 (`Guide.vue`) のセルは手組み DOM**: `GuideState.createProgramDoms()` が作った DOM を `renderProgramDoms()` で流し込む。データを取り直したら**両方**呼ばないと画面が古いまま (可視判定の `updateVisible()` も `renderProgramDoms()` の末尾で走る)
 - **色は Vuetify 3 以降のクラス名で書く**: 背景色は `bg-success` / `bg-grey-darken-3` のように `bg-` が要る (Vuetify 2 の `success` / `grey darken-3` は無効で、**黙って透明になる**)。`v-switch` / `v-progress-linear` は `color` 未指定だと `currentColor` (ほぼ黒) になるため、既定色を `plugins/vuetify.ts` の `defaults` で `appTheme` に寄せてある
 - **`DataBroadcastingManager` は `markRaw()` で包む**: BMLBrowser 内部の JS-Interpreter が Vue のプロキシに包まれると壊れる。Vue コンポーネントではなくプレーンクラスに切り出しているのも同じ理由

@@ -149,9 +149,6 @@ class Recorded extends Vue {
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
     private seriesApi: ISeriesApiModel = container.get<ISeriesApiModel>('ISeriesApiModel');
-    private onUpdateStatusCallback = (async (): Promise<void> => {
-        await this.recordedState.fetchData(this.createFetchDataOption());
-    }).bind(this);
 
     // シリーズ単位表示 (§4.4)。既定は従来のフラット表示 (isShowRecordedAsSeries の保存値に従う)
     public isShowAsSeries: boolean = false;
@@ -193,7 +190,19 @@ class Recorded extends Vue {
         }
 
         // socket.io イベント
-        this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.onUpdateState(this.onUpdateStatus);
+    }
+
+    /**
+     * サーバから状態更新が通知されたときの処理。
+     *
+     * **クラスフィールドのコールバックにしてはいけない**。
+     * その中の this は Vue インスタンスではないため、`this.recordedState` が
+     * リアクティブでない素のインスタンスになり、取り直したデータが画面へ反映されない
+     * (データは新しいのに画面が古いまま = 再読み込みするまで消えない、という症状になる)
+     */
+    public async onUpdateStatus(): Promise<void> {
+        await this.recordedState.fetchData(this.createFetchDataOption());
     }
 
     /**
@@ -250,7 +259,7 @@ class Recorded extends Vue {
 
     public beforeUnmount(): void {
         // socket.io イベント
-        this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.offUpdateState(this.onUpdateStatus);
     }
 
     public handleBeforeRouteUpdate(to: Route, from: Route, next: () => void): void {

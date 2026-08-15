@@ -116,13 +116,14 @@ class Dashboard extends Vue {
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
     public versionState: IVersionState = container.get<IVersionState>('IVersionState');
-    private onUpdateStatusCallback = (async (): Promise<void> => {
+    // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
+    public async onUpdateStatus(): Promise<void> {
         try {
             await this.fetchAllData();
         } catch (err) {
             console.error(err);
         }
-    }).bind(this);
+    }
     private recordingScroll: number = 0;
     private recordedScroll: number = 0;
     private reserveScroll: number = 0;
@@ -169,7 +170,7 @@ class Dashboard extends Vue {
         this.settingValue = this.setting.getSavedValue();
 
         // socket.io イベント
-        this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.onUpdateState(this.onUpdateStatus);
     }
 
     public mounted(): void {
@@ -227,7 +228,7 @@ class Dashboard extends Vue {
 
     public beforeUnmount(): void {
         // socket.io イベント
-        this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.offUpdateState(this.onUpdateStatus);
 
         this.isShow = false;
 

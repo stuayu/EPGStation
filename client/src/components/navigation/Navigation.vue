@@ -64,20 +64,21 @@ class Navigation extends Vue {
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     public versionState: IVersionState = container.get<IVersionState>('IVersionState');
-    private onUpdateStatusCallback = (async (): Promise<void> => {
+    // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
+    public async onUpdateStatus(): Promise<void> {
         await this.versionState.fetchData();
-    }).bind(this);
+    }
 
     public created(): void {
         this.navigationState.updateItems(this.$route);
 
         // socket.io イベント
-        this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.onUpdateState(this.onUpdateStatus);
     }
 
     public beforeUnmount(): void {
         // socket.io イベント
-        this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
+        this.socketIoModel.offUpdateState(this.onUpdateStatus);
     }
 
     /**

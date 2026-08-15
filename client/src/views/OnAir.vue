@@ -68,9 +68,10 @@ class OnAir extends Vue {
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
-    private onUpdateStatusCallback = (async (): Promise<void> => {
+    // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
+    public async onUpdateStatus(): Promise<void> {
         await this.fetchData();
-    }).bind(this);
+    }
     private updateTimer: ReturnType<typeof setTimeout> | null = null;
     private updateDigestibilityTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -86,20 +87,21 @@ class OnAir extends Vue {
     }
 
     // EIT[p/f] が流れてきたら放送中一覧を取り直す (どの局でも一覧に影響するため絞り込まない)
-    private onUpdateOnAirProgramCallback = ((): void => {
+    // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
+    public onUpdateOnAirProgram(): void {
         void this.fetchData().catch(() => {});
-    }).bind(this);
+    }
 
     public created(): void {
         // socket.io イベント
-        this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
-        this.socketIoModel.onUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
+        this.socketIoModel.onUpdateState(this.onUpdateStatus);
+        this.socketIoModel.onUpdateOnAirProgram(this.onUpdateOnAirProgram);
     }
 
     public beforeUnmount(): void {
         // socket.io イベント
-        this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
-        this.socketIoModel.offUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
+        this.socketIoModel.offUpdateState(this.onUpdateStatus);
+        this.socketIoModel.offUpdateOnAirProgram(this.onUpdateOnAirProgram);
 
         if (this.updateTimer !== null) {
             clearTimeout(this.updateTimer);

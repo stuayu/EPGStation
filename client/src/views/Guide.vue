@@ -100,23 +100,26 @@ class Guide extends Vue {
     private sizeSetting = container.get<IGuideSizeSettingStorageModel>('IGuideSizeSettingStorageModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
-    private onUpdateStatusCallback = ((): void => {
+    // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
+    public onUpdateStatus(): void {
         this.guideState.updateReserves();
-    }).bind(this);
+    }
 
     // EIT[p/f] の更新通知。現在時刻を含む表示のときだけ番組表を取り直す。
     // 10 秒周期で流れてくる可能性があるため間引き、スクロール位置は維持する
     private lastOnAirRefreshAt = 0;
     // 最小間隔内に来た更新を繰り越すためのタイマー
     private pendingRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-    private onUpdateOnAirProgramCallback = ((): void => {
+    // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
+    public onUpdateOnAirProgram(): void {
         void this.refreshByOnAirUpdate();
-    }).bind(this);
+    }
 
     // 番組情報の更新通知。表示中の時間帯・放送局と重なるときだけ取り直す
-    private onUpdateProgramCallback = ((payload: ProgramUpdatePayload): void => {
+    // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
+    public onUpdateProgramUpdated(payload: ProgramUpdatePayload): void {
         void this.refreshByProgramUpdate(payload);
-    }).bind(this);
+    }
 
     private programBaseWidth: number = 140;
     private programBaseHeight: number = 180;
@@ -163,9 +166,9 @@ class Guide extends Vue {
         window.addEventListener('resize', this.windowResizeCallback, false);
 
         // socket.io イベント
-        this.socketIoModel.onUpdateState(this.onUpdateStatusCallback);
-        this.socketIoModel.onUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
-        this.socketIoModel.onUpdateProgram(this.onUpdateProgramCallback);
+        this.socketIoModel.onUpdateState(this.onUpdateStatus);
+        this.socketIoModel.onUpdateOnAirProgram(this.onUpdateOnAirProgram);
+        this.socketIoModel.onUpdateProgram(this.onUpdateProgramUpdated);
 
         if (UaUtil.isiOS() === true) {
             // html の class に guide を追加
@@ -179,9 +182,9 @@ class Guide extends Vue {
         window.removeEventListener('resize', this.windowResizeCallback, false);
 
         // socket.io イベント
-        this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
-        this.socketIoModel.offUpdateOnAirProgram(this.onUpdateOnAirProgramCallback);
-        this.socketIoModel.offUpdateProgram(this.onUpdateProgramCallback);
+        this.socketIoModel.offUpdateState(this.onUpdateStatus);
+        this.socketIoModel.offUpdateOnAirProgram(this.onUpdateOnAirProgram);
+        this.socketIoModel.offUpdateProgram(this.onUpdateProgramUpdated);
 
         if (this.pendingRefreshTimer !== null) {
             clearTimeout(this.pendingRefreshTimer);
