@@ -20,6 +20,14 @@ export interface VirtualTimelineSource {
  * ここで DPlayer の表示更新とシーク操作を乗っ取り、
  * VirtualTimelineSource が返す動画全体の値に置き換える。
  */
+/**
+ * チャプターマーカー 1 件分 (DPlayer の options.highlight の要素)
+ */
+interface HighlightItem {
+    time: number;
+    text?: string;
+}
+
 export default class VirtualTimeline {
     private static readonly UPDATE_INTERVAL = 250; // シークバー表示の更新間隔 (ms)
 
@@ -27,6 +35,8 @@ export default class VirtualTimeline {
     private source: VirtualTimelineSource;
     private updateTimerId: ReturnType<typeof setInterval> | undefined;
     private originalSeek: ((time: number, hideNotice?: boolean) => void) | null = null;
+    private highlights: HighlightItem[] = []; // DPlayer から引き取ったチャプターマーカー
+    private highlightElements: HTMLElement[] = []; // 上記に対応するマーカーの DOM
     private dragPercentage: number | null = null; // シークバーをドラッグ中の位置 (0.0 ~ 1.0)
     private isPausedBeforeDrag: boolean = false;
     private updateListener = (): void => {
@@ -51,6 +61,7 @@ export default class VirtualTimeline {
 
         this.setupSeek();
         this.setupBarEvents();
+        this.setupHighlights();
 
         // DPlayer 側の更新の後に上書きするため、DPlayer の生成後に登録する
         this.dp.on('timeupdate', this.updateListener);
@@ -86,6 +97,15 @@ export default class VirtualTimeline {
             (this.dp as any).seek = this.originalSeek;
             this.originalSeek = null;
         }
+
+        // 自前で作ったチャプターマーカーを片付け、DPlayer へ描画を返す
+        for (const element of this.highlightElements) {
+            element.remove();
+        }
+        this.highlightElements = [];
+        if (this.highlights.length > 0) {
+            (this.dp.options as any).highlight = this.highlights;
+        }
     }
 
     /**
@@ -110,6 +130,72 @@ export default class VirtualTimeline {
         const dtime = VirtualTimeline.secondToTime(duration);
         if (this.dp.template.dtime.textContent !== dtime) {
             this.dp.template.dtime.textContent = dtime;
+        }
+
+        this.updateHighlights(duration);
+    }
+
+    /**
+     * チャプターマーカー (highlight) の描画を DPlayer から引き取る
+     *
+     * DPlayer は durationchange のたびにマーカーを作り直し、位置を
+     * `time / video.duration` で決めている。ストリーミング再生の video.duration は
+     * 「エンコードが済んだところまでの長さ」なので、そのままにするとエンコードが進むたびに
+     * マーカーが動いてしまう。options.highlight を取り上げて DPlayer 側の再描画を止め、
+     * 動画全体の長さを分母にして自分で描く
+     */
+    private setupHighlights(): void {
+        const options = this.dp.options as any;
+        const items: any[] = Array.isArray(options.highlight) === true ? options.highlight : [];
+
+        this.highlights = items
+            .filter(item => typeof item?.time === 'number' && isFinite(item.time) === true && item.time >= 0)
+            .map(item => ({ time: item.time, text: typeof item.text === 'string' ? item.text : undefined }));
+
+        // DPlayer の durationchange ハンドラは options.highlight が無ければ何もしない
+        options.highlight = undefined;
+
+        this.renderHighlights();
+    }
+
+    /**
+     * チャプターマーカーの DOM を作る (位置は updateHighlights が決める)
+     */
+    private renderHighlights(): void {
+        const barWrap = this.dp.template.playedBarWrap;
+        if (typeof barWrap === 'undefined' || barWrap === null) {
+            return;
+        }
+
+        // DPlayer が先に作ったマーカーが残っていれば消す
+        barWrap.querySelectorAll('.dplayer-highlight').forEach(element => {
+            element.remove();
+        });
+
+        this.highlightElements = this.highlights.map(item => {
+            const marker = document.createElement('div');
+            marker.classList.add('dplayer-highlight');
+
+            const label = document.createElement('span');
+            label.classList.add('dplayer-highlight-text');
+            label.textContent = item.text ?? 'チャプター';
+            marker.appendChild(label);
+            barWrap.insertBefore(marker, this.dp.template.playedBarTime);
+
+            return marker;
+        });
+    }
+
+    /**
+     * チャプターマーカーの位置を動画全体の長さを基準に更新する
+     * @param duration: number 動画全体の長さ (秒)
+     */
+    private updateHighlights(duration: number): void {
+        for (let i = 0; i < this.highlightElements.length; i++) {
+            const left = `${VirtualTimeline.toPercentage(this.highlights[i].time, duration) * 100}%`;
+            if (this.highlightElements[i].style.left !== left) {
+                this.highlightElements[i].style.left = left;
+            }
         }
     }
 

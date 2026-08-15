@@ -217,9 +217,14 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
   ffprobe が 0 件を返した場合はこのファイルを読む (`ChapterFileUtil`)。形式は Ogg / Matroska の
   simple chapter format (`CHAPTER01=00:00:00.000` / `CHAPTER01NAME=A`) で、
   終了位置を持たないため `endAt` は次のチャプターの開始位置 (最後の 1 件は動画全体の長さ) で埋める。
-- **DPlayer の `highlight` は生成時にしか読まれない**ため、チャプターはプレイヤーを作る前に取得しておく
-  (`BaseVideo.applyChapterHighlights()` を `createPlayer()` の前に呼ぶ)。ファイルを直接再生する
+- **DPlayer に `highlight` を渡せるのはプレイヤー生成時だけ**なので、チャプターは
+  `createPlayer()` の前に取得しておく (`BaseVideo.applyChapterHighlights()`)。ファイルを直接再生する
   `NormalVideo` だけは動画長が `loadedmetadata` まで分からないので、読み込み後に自前でマーカーを描き足す。
+- **ストリーミング再生のマーカーは `VirtualTimeline` が描く**。DPlayer は `durationchange` のたびに
+  マーカーを作り直し、位置を `time / video.duration` で決める。ストリーミングの `video.duration` は
+  「エンコードが済んだところまでの長さ」なので、放置するとエンコードが進むたびにマーカーが左へ動く。
+  `VirtualTimeline` が `options.highlight` を取り上げて DPlayer 側の再描画を止め
+  (この値が無ければ DPlayer はマーカーに一切触らない)、動画全体の長さを分母にして位置を更新する。
 - キーボードの `[` / `]` で前後のチャプターへ移動できる。
 
 ### mpegts 配信 (m2ts / m2ts-ll) の ARIB 字幕
