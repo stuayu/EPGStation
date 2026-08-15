@@ -396,6 +396,9 @@ class EncoderModel implements IEncoderModel {
         } else if (code !== 0) {
             // エンコードが正常終了しなかった
             this.log.encode.error(`encode failed: ${this.encodeOption.encodeId} ${outputFilePath}`);
+        } else if ((await this.isValidOutputFile(outputFilePath)) === false) {
+            // 終了コードは 0 だが出力ファイルが壊れている (下記 isValidOutputFile 参照)
+            this.log.encode.error(`encode output is broken: ${this.encodeOption.encodeId} ${outputFilePath}`);
         } else {
             // エンコード正常終了
             this.log.encode.info(`Successfully encod: ${this.encodeOption.encodeId} ${outputFilePath}`);
@@ -419,6 +422,41 @@ class EncoderModel implements IEncoderModel {
         // エンコードプロセスの終了を通知
         this.listener.emit(EncoderModel.ENCODE_FINISH_EVENT, isError, outputFilePath);
         this.listener.removeAllListeners();
+    }
+
+    /**
+     * エンコード結果のファイルが動画として成立しているか調べる。
+     *
+     * 終了コードだけでは成否を判定できない。保存先の空き容量が尽きた場合、外部エンコーダ
+     * (Amatsukaze / tsreplace など) は書き込みに失敗しても終了コード 0 で終わることがあり、
+     * 0 バイト〜数百バイトの出力が「成功」として DB に登録されてしまう。
+     * `removeOriginal` が有効なら元の TS まで消えるため、ここで弾く必要がある
+     * @param outputFilePath: string | null 出力先 (null = 出力ファイルを作らないエンコード)
+     * @return Promise<boolean> 動画として成立していれば true を返す
+     */
+    private async isValidOutputFile(outputFilePath: string | null): Promise<boolean> {
+        if (outputFilePath === null) {
+            return true;
+        }
+
+        try {
+            const stats = await FileUtil.stat(outputFilePath);
+            if (stats.size < EncoderModel.MIN_OUTPUT_FILE_SIZE) {
+                this.log.encode.error(
+                    `encode output file is too small: ${outputFilePath} (${stats.size} bytes)。` +
+                        '保存先の空き容量を確認してください',
+                );
+
+                return false;
+            }
+        } catch (err: any) {
+            this.log.encode.error(`encode output file is not found: ${outputFilePath}`);
+            this.log.encode.error(err);
+
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -474,6 +512,12 @@ namespace EncoderModel {
     export const ENCODE_FINISH_EVENT = 'encodeFinishEvent';
     export const ENCODE_PRIPORITY = 10;
     export const DEFAULT_TIMEOUT_RATE = 4.0;
+    /**
+     * 成功とみなす出力ファイルの最小サイズ (byte)。
+     * ディスクフル時の出力は 0 バイト〜数百バイトになるため、
+     * 最短の番組でも確実に超える 1MiB を下限にする
+     */
+    export const MIN_OUTPUT_FILE_SIZE = 1024 * 1024;
 }
 
 export default EncoderModel;

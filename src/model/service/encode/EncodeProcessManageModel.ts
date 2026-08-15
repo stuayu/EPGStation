@@ -121,11 +121,14 @@ class EncodeProcessManageModel implements IEncodeProcessManageModel {
         // input, output を置換
         let shellCmd = option.cmd;
         if (useShell === true) {
+            // シェル経由ではコマンド文字列がそのままシェルに解釈されるため、
+            // 空白・括弧を含む録画ファイルのパスは引用符で囲んでから埋め込む
+            // (囲まないとコマンドが途中で切れ、ストリーミングのプロセス生成に失敗する)
             if (option.input !== null) {
-                shellCmd = shellCmd.replace(/%INPUT%/g, option.input);
+                shellCmd = ProcessUtil.replaceShellPlaceholder(shellCmd, '%INPUT%', option.input);
             }
             if (option.output !== null) {
-                shellCmd = shellCmd.replace(/%OUTPUT%/g, option.output);
+                shellCmd = ProcessUtil.replaceShellPlaceholder(shellCmd, '%OUTPUT%', option.output);
             }
         } else if (cmds !== null) {
             for (let i = 0; i < cmds.args.length; i++) {

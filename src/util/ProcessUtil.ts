@@ -83,6 +83,56 @@ namespace ProcessUtil {
     };
 
     /**
+     * シェル (cmd.exe / /bin/sh) 経由で実行するコマンドへ埋め込む値を引用符で囲む。
+     *
+     * 録画ファイルのパスには空白・括弧・`&` などシェルの区切り文字がそのまま入るため
+     * (例: `202608151635_アニメ 魔入りました!入間くん4(18)…_NHKEテレ1福島.hevc.ts`)、
+     * 引用符無しで埋め込むと**コマンドが途中で切れて起動に失敗する**
+     * @param value: string
+     * @return string
+     */
+    export const quoteShellArg = (value: string): string => {
+        if (process.platform === 'win32') {
+            // Windows のファイル名に `"` は使えないため、そのまま囲うだけでよい
+            return `"${value}"`;
+        }
+
+        // sh では `"` 内でも `$` / バッククォート / `\` が解釈されるためシングルクォートで囲む
+        return `'${value.replace(/'/g, `'\\''`)}'`;
+    };
+
+    /**
+     * シェル経由で実行するコマンド文字列のプレースホルダを、引用符で囲んだ値へ置換する。
+     * 既に config.yml 側で `"%INPUT%"` のように引用符で囲まれている箇所は
+     * 二重に囲わないよう値だけを差し込む
+     * @param cmd: string
+     * @param placeholder: string 置換対象 (例: '%INPUT%')
+     * @param value: string
+     * @return string
+     */
+    export const replaceShellPlaceholder = (cmd: string, placeholder: string, value: string): string => {
+        let result = '';
+        let index = 0;
+
+        for (;;) {
+            const found = cmd.indexOf(placeholder, index);
+            if (found < 0) {
+                result += cmd.slice(index);
+                break;
+            }
+
+            const prev = cmd[found - 1];
+            const next = cmd[found + placeholder.length];
+            const isQuoted = (prev === '"' && next === '"') || (prev === "'" && next === "'");
+
+            result += cmd.slice(index, found) + (isQuoted === true ? value : quoteShellArg(value));
+            index = found + placeholder.length;
+        }
+
+        return result;
+    };
+
+    /**
      * プロセスが終了しているか
      * @param child ChildProcess
      * @return boolean 終了していれば true を返す

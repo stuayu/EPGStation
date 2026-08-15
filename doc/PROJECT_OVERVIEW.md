@@ -218,6 +218,7 @@ npm run recover-channel-name   # 過去の録画の放送局名を復元 (既定
 - **EPG が無い放送局は放映中にだけ出す**: 番組情報を 1 件も持たない放送局は、`getBroadcastingSchedule()` (放映中) では**映像・音声サービスの親サービスだけ**が空の `programs` で返る (視聴はできるため)。**番組表 (`getSchedules()`) では従来どおり落とす**。クライアントは `schedule.programs[0]` を前提にしないこと (`OnAirState` / `OnAirCard.vue` は空を許容済み)
 - **放送局の並びはリモコンキー昇順**で、`remoteControlKeyId` が `null` の局は末尾に回る (`ChannelDB` の ORDER BY)。並びがおかしいときは**まずチューナーサーバがキーを返しているかを疑う** (EPGStation 側では補完しない)
 - エンコードキューは `data/encodeQueue.json` に永続化され Service 起動時に復元される。キューを変更したら `saveQueue()` の呼び出し漏れに注意
+- **エンコードの成否を終了コードだけで判断しない**。外部エンコーダ (Amatsukaze / tsreplace 等) はディスクフルで書き込みに失敗しても終了コード 0 で終わることがある。`EncoderModel.childEndProcessing()` が出力ファイルのサイズ (`MIN_OUTPUT_FILE_SIZE` = 1MiB) も見て失敗扱いにしている。**元ファイルの削除 (`removeOriginal`) はこの判定が失敗を返さないことに依存している**ので、`EncodeManageModel.onFinish()` の分岐を崩さないこと
 - `ExecutionManagementModel` (優先度付き排他ロック) の `getExecution()` は 60 秒でタイムアウトする。reject を握り潰すとキュー処理が止まる
 - **Annict GraphQL API に `Query.works` は無い** (`searchWorks` のみ)。`Episode.airedAt` も無い。存在しないフィールドが 1 つあるとクエリ全体がエラーになるため introspection で確認してから書く
 
@@ -238,5 +239,5 @@ npm run recover-channel-name   # 過去の録画の放送局名を復元 (既定
 - **音声トラックの切り替えは cmd のプレースホルダで行う**: `%DUALMONOMODE%` (`-dual_mono_mode main|sub`) と `%AUDIOMAP%` (`-map 0:v:0 -map 0:a:<n>`)。**二か国語放送のデュアルモノラルは `-map` では選べない** (1 つのステレオ ES の左右に主音声・副音声が入っているため)。`-dual_mono_mode` を直書きした手書き cmd では切り替わらない
 - **チャプターは DB に持たず要求のたびに ffprobe で読む** (`GET /api/videos/{videoFileId}/chapters`)。DPlayer の `highlight` は生成時にしか読まれないため、プレイヤーを作る前に取得すること
 - **HEVC を配信するなら fMP4 + `hvc1` タグが必須**: iOS / Safari は MPEG-TS セグメントの HEVC を再生できず、`hev1` タグでも映像が出ない。rigaya 系 (QSVEncC 等) はエンコーダ側でタグを指定できないため、後段 ffmpeg の `-c:v copy -tag:v hvc1` で付ける。プロファイルは Main・8bit 4:2:0 に固定する
-- エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換
+- エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換。**シェル経由の cmd へパスを埋め込むときは必ず `ProcessUtil.replaceShellPlaceholder()` を通す** — 録画ファイル名には空白・括弧が普通に入るため、素の文字列置換だとシェルがそこでコマンドを分割し、エンコーダが起動直後に落ちる (画面には「再生が始まらない」としか出ない)
 - **データ放送の WebSocket は socket.io と同じサーバの `upgrade` イベントに `noServer: true` で相乗りする**。パスが `<subDirectory>/api/dataBroadcasting/ws` と一致しない socket には絶対に触れない (触ると socket.io のハンドシェイクが壊れる)
