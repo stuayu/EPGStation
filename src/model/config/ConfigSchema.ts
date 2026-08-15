@@ -602,6 +602,17 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         fields: [],
         customEditor: true,
     },
+    // エンコードコマンド (dist/AmatsukazeEncodeTool.js) は独立したプロセスとして起動され、
+    // DB オーバーレイを読まずに config.yml だけを読む。画面から変更できると
+    // 「画面では変わっているのに実際のエンコードに反映されない」状態になるため yml 限定にする
+    {
+        key: 'amatsukaze',
+        label: 'Amatsukaze 連携',
+        hint: 'エンコードコマンドに dist/AmatsukazeEncodeTool.js を指定したときの接続先・投入方法・パス変換',
+        requiresRestart: false,
+        editable: 'ymlOnly',
+        reason: 'notYetWired',
+    },
     // EncodePresets.applyToConfig が formatConfig の都度 encode/stream.profiles を組み立て直すため再起動不要
     {
         key: 'encodePresets',

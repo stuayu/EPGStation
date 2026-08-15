@@ -241,6 +241,53 @@ encode:
     # qualities: [1080p, 720p])。個別に手書きしたい場合のみ、この配列に id ベースで
     # 追記する (書式は上のコメントと config/enc.js の PRESETS 定義を参照)。
     # =====================================================================
+    # CM カット・ロゴ消しを Amatsukaze に任せる場合は下記を有効にする
+    # (接続先などは後述の amatsukaze セクションで設定する)。
+    # - id: amatsukaze
+    #   name: Amatsukaze
+    #   cmd: '%NODE% %ROOT%/dist/AmatsukazeEncodeTool.js プロファイル名'
+    #   suffix: .mp4
+    #   # キュー待ちの時間も含むためタイムアウト倍率は長めにする
+    #   rate: 12.0
+
+# Amatsukaze 連携 (CM カット・ロゴ消しを Amatsukaze に任せる場合)
+# エンコードプリセットの cmd に dist/AmatsukazeEncodeTool.js を指定すると、
+# AmatsukazeAddTask で AmatsukazeServer のキューにタスクを積み、
+# AmatsukazeServer に接続して進捗・処理状況・失敗理由を EPGStation の
+# エンコード画面へリアルタイムに表示します (完了後は通常のエンコード結果として登録)。
+# encode の書式例:
+# - id: amatsukaze
+#   name: Amatsukaze
+#   cmd: '%NODE% %ROOT%/dist/AmatsukazeEncodeTool.js プロファイル名'
+#   suffix: .mp4
+#   rate: 12.0
+# amatsukaze:
+#     # AmatsukazeServer のアドレス。既定 localhost
+#     host: localhost
+#     # AmatsukazeServer のポート。既定 32768
+#     port: 32768
+#     # AmatsukazeAddTask のパス
+#     addTaskPath: 'C:\rec\Amatsukaze\exe_files\AmatsukazeAddTask.exe'
+#     # Amatsukaze のルートディレクトリ (AmatsukazeAddTask の -r。サーバ未起動時の自動起動に使われる)
+#     amatsukazeRoot: 'C:\rec\Amatsukaze'
+#     # Windows 以外で AmatsukazeAddTask.exe を実行する場合の mono のパス (Windows では不要)
+#     monoPath: ''
+#     # 既定のプロファイル名 (エンコードコマンドの第 1 引数で上書き可)
+#     profile: デフォルト
+#     # キューの優先度 (1〜5)。既定 3
+#     priority: 3
+#     # TS ファイルを転送済みフォルダへ移動しない。既定 true
+#     noMove: true
+#     # AmatsukazeServer への接続を諦めるまでの時間 (ms)。既定 60000
+#     connectTimeoutMs: 60000
+#     # タスクの状態がまったく変化しないまま経過したら諦める時間 (ms)。既定 0 (打ち切らない)
+#     taskTimeoutMs: 0
+#     # EPGStation と Amatsukaze が別マシンにある場合の入出力パス変換。
+#     # local から始まるパスを remote に置き換えて AmatsukazeServer に渡し、
+#     # AmatsukazeServer が返したパスは remote → local に戻します
+#     pathMappings:
+#         - local: 'D:\recorded'
+#           remote: '\\nas\recorded'
 
 urlscheme:
     m2ts:
