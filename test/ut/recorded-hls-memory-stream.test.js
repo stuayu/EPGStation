@@ -108,10 +108,9 @@ function withStubbedFfprobe(fn) {
     });
 }
 
-function makeModel({ streamFilePath, videoFileType = 'encoded', videoFilePath = '/fake/video.mp4' }) {
+function makeModel({ streamFilePath, videoFileType = 'encoded', videoFilePath = '/fake/video.mp4', hlsMemoryStore = new HLSMemoryStoreModel(logger) }) {
     const processManager = makeProcessManager();
     const fileDeleter = makeFileDeleter();
-    const hlsMemoryStore = new HLSMemoryStoreModel(logger);
 
     const model = new RecordedHLSStreamModel(
         makeConfig(streamFilePath),
@@ -237,6 +236,114 @@ test('in-memory モードの ts 入力は ID3 変換と AribId3Extractor を経�
         assert.equal(model.id3MetadataTransoform, null);
 
         fs.rmSync(streamFilePath, { recursive: true, force: true });
+    });
+});
+
+// 再生位置より先行しすぎたエンコードの抑制 (throttle) の検証。
+// 完全に止めるとプレイリストの更新も止まり、LL-HLS のプレイヤー (iOS Safari など) が
+// ブロッキングプレイリスト要求を出したまま新しいセグメントを取りに来なくなるため、
+// クライアントの取得位置が進まず再開もできないデッドロックになる。
+// そのため通常の先行はペーシング (一定時間で必ず再開) で処理する。
+function makeThrottleModel(aheadNum) {
+    const state = { aheadNum: aheadNum };
+    const hlsMemoryStore = {
+        create: () => {},
+        has: () => true,
+        setInit: () => {},
+        addPart: () => {},
+        addSegment: () => {},
+        isReady: () => true,
+        getPlaylist: () => null,
+        waitForPlaylist: async () => null,
+        getInitSegment: () => null,
+        getSegment: () => null,
+        getPart: async () => null,
+        getAheadSegmentNum: () => state.aheadNum,
+        delete: () => {},
+    };
+
+    const { model, processManager } = makeModel({ streamFilePath: os.tmpdir(), hlsMemoryStore });
+
+    model.setOption(
+        {
+            videoFileId: 1,
+            playPosition: 0,
+            cmd: '%FFMPEG% -i pipe:0 -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1',
+        },
+        0,
+    );
+
+    return { model, processManager, state };
+}
+
+test('先行しすぎたエンコードは完全停止せず一定時間で再開する (プレイリスト更新が止まるとプレイヤーがストールするため)', async () => {
+    await withStubbedFfprobe(async () => {
+        // MAX_AHEAD_SEGMENT_NUM (60) 超過だが HARD_MAX_AHEAD_SEGMENT_NUM (120) 以下
+        const { model, processManager, state } = makeThrottleModel(61);
+
+        await model.start(10);
+        const stdout = processManager.processes[0].stdout;
+
+        model.throttleEncodeIfTooFarAhead(10);
+
+        assert.equal(model.isEncodeThrottled, true);
+        assert.equal(stdout.isPaused(), true);
+
+        // 取得位置が進まなくても (先行量が変わらなくても) 再開する
+        await new Promise(resolve => setTimeout(resolve, 1200));
+
+        assert.equal(state.aheadNum, 61);
+        assert.equal(model.isEncodeThrottled, false);
+        assert.equal(stdout.isPaused(), false);
+
+        await model.stop();
+    });
+});
+
+test('先行量が HARD_MAX を超えている間は再生位置が戻るまでエンコードを止め続ける', async () => {
+    await withStubbedFfprobe(async () => {
+        // プレイヤーが取得自体をやめている状態 (一時停止・離脱)
+        const { model, processManager, state } = makeThrottleModel(200);
+
+        await model.start(11);
+        const stdout = processManager.processes[0].stdout;
+
+        model.throttleEncodeIfTooFarAhead(11);
+
+        assert.equal(model.isEncodeThrottled, true);
+        assert.equal(stdout.isPaused(), true);
+
+        // 先行量が下がらない間は再開しない (保持数を超えて古いセグメントが押し出されるのを防ぐ)
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        assert.equal(model.isEncodeThrottled, true);
+        assert.equal(stdout.isPaused(), true);
+
+        // 取得位置が進んで先行量が下がれば再開する
+        state.aheadNum = 100;
+        await new Promise(resolve => setTimeout(resolve, 700));
+
+        assert.equal(model.isEncodeThrottled, false);
+        assert.equal(stdout.isPaused(), false);
+
+        await model.stop();
+    });
+});
+
+test('先行量が MAX_AHEAD 以下ならエンコードを止めない', async () => {
+    await withStubbedFfprobe(async () => {
+        const { model, processManager } = makeThrottleModel(60);
+
+        await model.start(12);
+        const stdout = processManager.processes[0].stdout;
+        // start 直後は pipe されていないので明示的に流しておく
+        stdout.resume();
+
+        model.throttleEncodeIfTooFarAhead(12);
+
+        assert.equal(model.isEncodeThrottled, false);
+        assert.equal(stdout.isPaused(), false);
+
+        await model.stop();
     });
 });
 
