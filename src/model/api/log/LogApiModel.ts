@@ -107,7 +107,10 @@ class LogApiModel implements ILogApiModel {
     private async findLogFile(logFileId: string): Promise<ResolvedLogFile | null> {
         const files = await this.resolveLogFiles();
 
-        return files.find(f => f.item.id === logFileId) ?? null;
+        // 旧形式 (プロセスとファイル名を "/" で連結した id) も受け付ける
+        const id = logFileId.replace('/', LogApiModel.ID_SEPARATOR);
+
+        return files.find(f => f.item.id === id) ?? null;
     }
 
     /**
@@ -149,7 +152,9 @@ class LogApiModel implements ILogApiModel {
                         continue;
                     }
 
-                    const id = `${source.process}/${name}`;
+                    // id は URL パスの 1 セグメントとして使うため "/" を含めない
+                    // (リバースプロキシが %2F をデコードして転送するとルーティングが壊れるため)
+                    const id = `${source.process}${LogApiModel.ID_SEPARATOR}${name}`;
                     if (result.some(r => r.item.id === id) === true) {
                         continue;
                     }
@@ -269,6 +274,9 @@ namespace LogApiModel {
     ];
 
     export const FILE_APPENDER_TYPES = ['file', 'fileSync', 'dateFile'];
+
+    // ログファイル id の区切り文字 ("/" は URL パスのセグメント区切りになるため使わない)
+    export const ID_SEPARATOR = '__';
 
     // 一度に返す行数の既定値と上限
     export const DEFAULT_LINES = 500;
