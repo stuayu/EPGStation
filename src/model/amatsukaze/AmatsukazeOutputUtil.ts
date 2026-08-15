@@ -72,57 +72,6 @@ namespace AmatsukazeOutputUtil {
 
         return selected === null ? null : selected.filePath;
     };
-
-    /**
-     * 動画ファイルパスから最後の拡張子を除いたベースを返す
-     * (例: `foo.hevc.ts` → `foo.hevc`)
-     * @param videoPath: string
-     * @return string
-     */
-    export const getBasePath = (videoPath: string): string => {
-        const extension = path.extname(videoPath);
-
-        return extension.length === 0 ? videoPath : videoPath.slice(0, videoPath.length - extension.length);
-    };
-
-    /**
-     * 動画ファイルに付随する副産物 (チャプター・字幕) を列挙する。
-     *
-     * 副産物は動画の**最後の拡張子を差し替えた**名前で出力される
-     * (`foo.hevc.ts` に対して `foo.hevc.chapter.txt` / `foo.hevc.ass`)。
-     * 動画の名前を変えて移動するときはこれらも合わせて運ばないと、
-     * チャプター (`ChapterFileUtil` が同じ規則で探す) が拾えなくなる
-     * @param videoPath: string 動画ファイルのパス
-     * @return { filePath: string; suffix: string }[] suffix はベース (最後の拡張子を除いた部分) を除いた残り
-     */
-    export const listSideCarFiles = (videoPath: string): { filePath: string; suffix: string }[] => {
-        const dir = path.dirname(videoPath);
-        const videoName = path.basename(videoPath);
-        const baseName = path.basename(getBasePath(videoPath));
-
-        let entries: string[];
-        try {
-            entries = fs.readdirSync(dir);
-        } catch (err: any) {
-            return [];
-        }
-
-        const result: { filePath: string; suffix: string }[] = [];
-        for (const entry of entries) {
-            if (entry === videoName || entry.startsWith(`${baseName}.`) === false) {
-                continue;
-            }
-
-            const suffix = entry.slice(baseName.length);
-            if (isSideCar(suffix) === false) {
-                continue;
-            }
-
-            result.push({ filePath: path.join(dir, entry), suffix: suffix });
-        }
-
-        return result;
-    };
 }
 
 export default AmatsukazeOutputUtil;

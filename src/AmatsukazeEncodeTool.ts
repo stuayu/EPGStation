@@ -158,52 +158,25 @@ namespace AmatsukazeEncodeTool {
     };
 
     /**
-     * Amatsukaze の出力ファイルを EPGStation が期待するパスへ移動する。
-     * 別ドライブ・別ファイルシステムをまたぐ場合に rename が失敗するためコピー + 削除で代替する
-     * @param src: string
-     * @param dest: string
-     * @return Promise<void>
+     * 実際の出力ファイルを EncoderModel へ伝える。
+     * EncoderModel はこのパスを結果として登録する
+     * @param filePath: string
      */
-    const moveFile = async (src: string, dest: string): Promise<void> => {
-        await fs.promises.mkdir(path.dirname(dest), { recursive: true });
-        try {
-            await fs.promises.rename(src, dest);
-        } catch (err: any) {
-            if (err?.code !== 'EXDEV') {
-                throw err;
-            }
-            await fs.promises.copyFile(src, dest);
-            await fs.promises.unlink(src);
-        }
+    const printOutputPath = (filePath: string): void => {
+        console.log(JSON.stringify({ type: 'output', path: filePath }));
     };
 
     /**
-     * 動画と一緒に出力される副産物 (字幕・チャプター) を、動画と同じ名前で移動する。
-     * チャプターは `<動画ファイル名>.chapter.txt` を読む作りなので、
-     * 動画の名前を変えるならこちらも合わせないと拾えなくなる
-     * @param srcVideo: string 移動前の動画ファイルパス
-     * @param destVideo: string 移動後の動画ファイルパス
-     * @return Promise<void>
-     */
-    const moveSideCarFiles = async (srcVideo: string, destVideo: string): Promise<void> => {
-        // 副産物は動画の最後の拡張子を差し替えた名前なので、移動先も同じ規則で組み立てる
-        const destBase = AmatsukazeOutputUtil.getBasePath(destVideo);
-
-        for (const sideCar of AmatsukazeOutputUtil.listSideCarFiles(srcVideo)) {
-            const dest = `${destBase}${sideCar.suffix}`;
-            try {
-                await moveFile(sideCar.filePath, dest);
-                printLog(`move side car: ${path.basename(sideCar.filePath)} -> ${path.basename(dest)}`);
-            } catch (err: any) {
-                printLog(`move side car failed: ${path.basename(sideCar.filePath)} (${err.message})`);
-            }
-        }
-    };
-
-    /**
-     * 完了したタスクの出力を EPGStation の出力先へ反映する
+     * 完了したタスクの出力を EPGStation へ反映する。
+     *
+     * **出力ファイルは Amatsukaze が書いた場所をそのまま使う** (`%OUTPUT%` へは移動しない)。
+     * Amatsukaze は出力先ディレクトリしか受け付けず、ファイル名は入力 TS から自分で決めて
+     * **同名があれば上書きする**。一方 EPGStation は `%OUTPUT%` を決めるときに重複を避けて
+     * `(1)` を付けるため、両者の名前が食い違うことがある。
+     * 移動で揃えようとすると、タスク完了直後は Amatsukaze がまだファイルを掴んでいて
+     * `EBUSY` になり、エンコードは成功しているのに録画として登録されない
      * @param result: AmatsukazeTaskResult
-     * @param output: string EPGStation が期待する出力ファイルパス
+     * @param output: string EPGStation が用意した出力ファイルパス (拡張子の確認にだけ使う)
      * @return Promise<void>
      */
     const applyOutput = async (result: AmatsukazeTaskResult, output: string): Promise<void> => {
@@ -223,10 +196,6 @@ namespace AmatsukazeEncodeTool {
             );
         }
 
-        if (path.resolve(outputPath) === path.resolve(output)) {
-            return;
-        }
-
         if (fs.existsSync(outputPath) === false) {
             throw new Error(`Amatsukaze の出力ファイルが見つかりません: ${outputPath}`);
         }
@@ -240,9 +209,10 @@ namespace AmatsukazeEncodeTool {
             );
         }
 
-        printLog(`move output: ${outputPath} -> ${output}`);
-        await moveFile(outputPath, output);
-        await moveSideCarFiles(outputPath, output);
+        if (path.resolve(outputPath) !== path.resolve(output)) {
+            printLog(`use Amatsukaze output as is: ${outputPath} (EPGStation planned: ${output})`);
+        }
+        printOutputPath(outputPath);
     };
 
     /**

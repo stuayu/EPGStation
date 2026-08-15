@@ -41,6 +41,8 @@ class EncoderModel implements IEncoderModel {
     private isCanceld: boolean = false; // キャンセルが呼び出されたか?
     private progressInfo: EncodeProgressInfo | null = null;
     private stderrLogs: string[] = []; // 失敗時に出し直すための標準エラー出力 (直近のみ保持)
+    // エンコードプロセスが申告してきた実際の出力先 (出力先を自分で決めるコマンド用)
+    private reportedOutputFilePath: string | null = null;
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -250,6 +252,7 @@ class EncoderModel implements IEncoderModel {
          */
         // debug 用 (失敗したときだけ error として出し直せるよう直近の内容も控えておく)
         this.stderrLogs = [];
+        this.reportedOutputFilePath = null;
         if (this.childProcess.stderr !== null) {
             this.childProcess.stderr.on('data', data => {
                 const text = String(data);
@@ -357,6 +360,10 @@ class EncoderModel implements IEncoderModel {
 
                     // エンコード進捗変更通知
                     this.encodeEvent.emitUpdateEncodeProgress();
+                } else if (log.type === 'output' && typeof log.path === 'string') {
+                    // 出力先を自分で決めるエンコードコマンド (Amatsukaze 連携など) が
+                    // 実際に書き出したファイルを伝えてくる。以降はこちらを結果として扱う
+                    this.reportedOutputFilePath = log.path;
                 }
             }
         }
@@ -407,7 +414,7 @@ class EncoderModel implements IEncoderModel {
     private async childEndProcessing(
         code: number | null,
         signal: NodeJS.Signals | null,
-        outputFilePath: string | null,
+        reservedOutputFilePath: string | null,
     ): Promise<void> {
         // exit code
         this.log.encode.info(`exit code: ${code}, signal: ${signal}`);
@@ -417,9 +424,15 @@ class EncoderModel implements IEncoderModel {
             clearTimeout(this.timerId);
         }
 
-        // ファイルパスの登録を削除
-        if (outputFilePath !== null) {
-            this.fileManager.release(outputFilePath);
+        // ファイルパスの登録を削除 (予約したのは EPGStation が決めたパスなのでそちらを解放する)
+        if (reservedOutputFilePath !== null) {
+            this.fileManager.release(reservedOutputFilePath);
+        }
+
+        // エンコードプロセスが実際の出力先を伝えてきた場合はそちらを採用する
+        const outputFilePath = this.reportedOutputFilePath ?? reservedOutputFilePath;
+        if (this.reportedOutputFilePath !== null && this.reportedOutputFilePath !== reservedOutputFilePath) {
+            this.log.encode.info(`use reported output file path: ${this.reportedOutputFilePath}`);
         }
 
         if (this.encodeOption === null) {
