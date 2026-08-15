@@ -99,6 +99,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 秘密情報の暗号化鍵を `data/key/secret.key` へ自動生成するようにした
 - 外部サービスのエンドポイント URL を設定画面から差し替え可能にした
 - 機能フラグを opt-in (既定 OFF) から opt-out (既定 ON) へ切り替えた
+- 録画後エンコードを Amatsukaze に投げ、進捗・処理状況・失敗理由をエンコード画面へリアルタイム表示できるようにした
 - DBベースのランタイム設定ストアを追加（S5） / サーバー設定GUIと秘密情報保護を追加（S6）
 - Webhook / Discord 通知基盤を追加（S3） / 通知設定GUIを実配送へ統合（S7）
 - ホームダッシュボード集約APIを追加（S4）
@@ -134,6 +135,56 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 ---
 
 ## 変更履歴 (新しい順)
+
+- **録画後エンコードを Amatsukaze に投げ、進捗・処理状況・失敗理由をエンコード画面へリアルタイム表示できるようにした**
+    - **背景**: CM カット・ロゴ消しを [Amatsukaze](https://github.com/nekopanda/Amatsukaze) に任せたい場合、
+      従来は同梱の `config/amatsukaze_addtask.bat.template` で `AmatsukazeAddTask` にキュー投入するだけだった。
+      この方式は**出力ファイルの存在を 120 秒ごとに見に行くだけ**で、キュー待ちなのか処理中なのか、
+      失敗した場合になぜ失敗したのかが EPGStation 側からはまったく分からなかった
+    - **`AmatsukazeAddTask` は投入専用**: 状態取得の口を持たないため、バッチ方式のままでは進捗を拾えない。
+      一方 `AmatsukazeServer` は TCP (既定 32768) でバイナリ RPC を公開しており、接続して `Request` を送るだけで
+      キュー・状態・進捗が push されてくる (認証・ハンドシェイク無し)。**これを使えば追加のエージェント無しで
+      進捗を取れる**と判断し、RPC クライアントを自前実装することにした
+        - フレーム構造はヘッダ 6 byte (`int16 LE = RPCMethodId` + `int32 LE = ペイロード長`) +
+          `[int32 len][本体]` のチャンク列。本体は DataContractSerializer 形式の XML。
+          出典は nekopanda/Amatsukaze の
+          `AmatsukazeServer/Server/{ServerInterface,ServerConnection,EncodeServerData}.cs`
+        - `ServerRequest` は `[Flags]` enum だが、複数フラグをまとめた表記に依存しないよう
+          Queue / State / Console を 1 つずつ送るようにした
+        - XML のパース/ビルドは外部ライブラリを使わず `AmatsukazeXml.ts` に最小実装した
+          (DataContractSerializer 形式は一般的な XML パーサの想定と噛み合わない癖があるため)
+    - **タスクの特定は入力 TS のパスで行う**: `AmatsukazeAddTask` は `RequestId` を外へ返さないため、
+      自分が投入したタスクをキューの中から見分ける手段が無い。`QueueItem.SrcPath` (入力 TS のフルパス) で
+      照合し、同じ入力の古いタスクが残っている場合は**追加時刻が新しい方**を自分のタスクとみなす
+        (`AmatsukazeTaskWatcher.ts`)
+    - **進捗の算出**: エンコーダのコンソール出力から百分率を拾い、取れない場合はサーバ全体の進捗
+      (`State.Progress`) で代用する。`{"type":"progress","percent":0〜1,"log":"..."}` を stdout へ出し、
+      `EncoderModel` がそのまま読むので既存の進捗バー・状態表示に手を入れずに乗せられる。
+      「ロゴ・プロファイル待ち」「Amatsukaze のキュー待ち (2 番目) profile:HEVC」
+      「Amatsukaze でエンコード中: ...」のようなログも合わせて出す
+    - **完了・失敗・キャンセル**: 完了したら Amatsukaze の出力ファイル (`ActualDstPath`) を EPGStation が
+      期待する `%OUTPUT%` へ移動し、通常のエンコード結果として `video_file` に登録する。失敗時は Amatsukaze の
+      失敗理由 (`FailReason`) を stderr に出して終了コード 1 で終える (エンコード画面にエラーとして出る)。
+      EPGStation 側でキャンセル (SIGINT/SIGTERM) すると `ChangeItem` の `Cancel` で Amatsukaze のキューからも
+      取り消す
+    - **設定は `editable: 'ymlOnly'` (`notYetWired`) にした**: エンコードコマンド
+      (`dist/AmatsukazeEncodeTool.js`) は録画エンコードとは独立したプロセスとして起動され、画面から変更した
+      設定 (DB オーバーレイ) を読まずに config.yml だけを読む。GUI 編集を許すと
+      「画面では変わっているのに実際のエンコードには反映されない」状態になるため、当面は config.yml の
+      直接編集のみに限定した
+    - **使い方**: config.yml の encode プリセットに
+      `cmd: '%NODE% %ROOT%/dist/AmatsukazeEncodeTool.js <プロファイル名>'` と書き、接続先・投入方法・
+      パス変換は新設の `amatsukaze` セクションで設定する。`pathMappings` は EPGStation と Amatsukaze が
+      別マシンにある場合の入出力パス変換 (`local` → `remote` で送り、戻りは `remote` → `local`)
+    - **旧方式は削除した**: `config/amatsukaze_addtask.bat.template` (Windows バッチ) は、
+      進捗も失敗理由も分からず保守もしづらいため同梱をやめた。既に使っている場合は
+      encode プリセットの cmd を `dist/AmatsukazeEncodeTool.js` に差し替える
+    - **実装場所**: `src/AmatsukazeEncodeTool.ts` (エンコードコマンド本体),
+      `src/model/amatsukaze/{AmatsukazeXml,AmatsukazeRpcClient,AmatsukazeTaskWatcher,AmatsukazeConfigResolver}.ts`,
+      `src/model/IConfigFile.ts` (`AmatsukazeConfig` / `AmatsukazePathMapping`),
+      `src/model/config/ConfigSchema.ts`, `config/config.yml.template`, `config/config-win.yml.template`
+    - **テスト**: `test/ut/amatsukaze-{xml,config-resolver,task-watcher}.test.js` (単体),
+      `test/itb/amatsukaze-rpc-client.test.js` (ローカル HTTP/TCP スタブによる RPC クライアントの結合テスト)
 
 - **通知は届いているのに画面が更新されない原因 (socket.io のコールバックを Vue が追跡できていなかった) を直した**
     - **背景**: socket.io の接続を直した後も「削除しても消えない」「エンコード進捗が動かない」が続くという報告

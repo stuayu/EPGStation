@@ -20,6 +20,7 @@
     - [機能ごとの有効・無効を切り替えたい](#featureflags)
     - [シリーズ名の抽出に LLM を使いたい](#seriesllm)
     - [新しいバージョンの公開を知りたい](#updatechecker)
+    - [CM カット・ロゴ消しを Amatsukaze に任せたい](#amatsukaze)
 - [詳細設定](#詳細設定)
     - [番組情報の囲み文字の設定を変更したい](#needtoreplaceenclosingcharacters)
     - [録画時の Mirakurun の優先度を変更したい](#recpriority)
@@ -667,6 +668,87 @@ BML の描画は npm 依存の `web-bml` (tsukumijima/web-bml) が担い、映�
 dataBroadcasting:
     maxStreams: 4
 ```
+
+---
+
+### amatsukaze
+
+#### CM カット・ロゴ消しを Amatsukaze に任せる
+
+エンコードプリセット (`encode`) の `cmd` に `dist/AmatsukazeEncodeTool.js` を指定すると、録画後のエンコードを
+[Amatsukaze](https://github.com/nekopanda/Amatsukaze) に投げられる。`AmatsukazeAddTask` でキューに投入したあと
+`AmatsukazeServer` へ TCP 接続して自分のタスクだけを追跡し、進捗・処理状況 (キュー待ち・エンコード中など) を
+EPGStation のエンコード画面へリアルタイムに表示する。失敗した場合は Amatsukaze 側の失敗理由がそのまま表示される。
+
+`encode` の書式例:
+
+```yaml
+encode:
+    - id: amatsukaze
+      name: Amatsukaze
+      cmd: '%NODE% %ROOT%/dist/AmatsukazeEncodeTool.js プロファイル名'
+      suffix: .mp4
+      # キュー待ちの時間も含むためタイムアウト倍率は長めにする
+      rate: 12.0
+```
+
+このセクション自体は上記の `amatsukaze` オブジェクトで、接続先・投入方法・パス変換をまとめて設定する。
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| object | -            | no   |
+
+- 子プロパティは以下の通り
+
+| 子プロパティ名   | 種類               | 必須 | 説明                                                                                    |
+| ---------------- | ------------------- | ---- | ---------------------------------------------------------------------------------------- |
+| host             | string              | no   | AmatsukazeServer のアドレス。省略時 `localhost`                                          |
+| port             | number              | no   | AmatsukazeServer のポート。省略時 32768                                                  |
+| addTaskPath      | string              | no   | `AmatsukazeAddTask` (.exe) のパス                                                        |
+| amatsukazeRoot   | string              | no   | Amatsukaze のルートディレクトリ (`AmatsukazeAddTask` の `-r`。未起動時の自動起動に使う)  |
+| monoPath         | string              | no   | Windows 以外で `AmatsukazeAddTask.exe` を mono 経由で起動する場合の mono のパス          |
+| profile          | string              | no   | 既定のプロファイル名。エンコードコマンドの第 1 引数で上書きできる                        |
+| priority         | number              | no   | キューの優先度 (1〜5)。省略時 3                                                          |
+| noMove           | boolean             | no   | TS ファイルを「転送済み」フォルダへ移動しない (`--no-move`)。省略時 true                 |
+| connectTimeoutMs | number              | no   | AmatsukazeServer への接続を諦めるまでの時間 (ms)。省略時 60000                           |
+| taskTimeoutMs    | number              | no   | タスクの状態が変化しないまま経過したら諦める時間 (ms)。省略時 0 (打ち切らない)           |
+| pathMappings     | 子プロパティの配列  | no   | EPGStation と Amatsukaze が別マシンにある場合の入出力パス変換 (下記参照)                 |
+
+- `pathMappings` の子プロパティは以下の通り
+
+| 子プロパティ名 | 種類   | 必須 | 説明                                  |
+| -------------- | ------ | ---- | ------------------------------------- |
+| local          | string | yes  | EPGStation 側から見たパスの先頭部分   |
+| remote         | string | yes  | Amatsukaze 側から見た対応するパスの先頭部分 |
+
+`local` から始まるパスを `remote` に置き換えて `AmatsukazeServer` へ渡し、`AmatsukazeServer` が返したパスは
+`remote` → `local` に戻して EPGStation 側で扱う。
+
+```yaml
+amatsukaze:
+    host: localhost
+    port: 32768
+    addTaskPath: /home/user/Amatsukaze/exe_files/AmatsukazeAddTask.exe
+    amatsukazeRoot: /home/user/Amatsukaze
+    monoPath: /usr/bin/mono
+    profile: デフォルト
+    priority: 3
+    noMove: true
+    connectTimeoutMs: 60000
+    taskTimeoutMs: 0
+    pathMappings:
+        - local: /mnt/recorded
+          remote: \\nas\recorded
+```
+
+- **この項目は GUI から編集できない (`editable: 'ymlOnly'`、理由: `notYetWired`)**。
+  エンコードコマンド (`dist/AmatsukazeEncodeTool.js`) は録画エンコードとは独立したプロセスとして起動され、
+  画面で変更した設定 (DB オーバーレイ) を読まずに config.yml だけを読む。そのため GUI 編集を許すと
+  「画面では変わっているのに実際のエンコードには反映されない」状態になってしまうため、当面は
+  config.yml の直接編集のみに限定している
+- 従来の `config/amatsukaze_addtask.bat.template` (出力ファイルの存在を一定間隔で見に行くだけの方式) は
+  進捗も失敗理由も分からないため同梱をやめた。使っていた場合は encode プリセットの cmd を
+  `dist/AmatsukazeEncodeTool.js` に差し替える
 
 ---
 

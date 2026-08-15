@@ -169,6 +169,44 @@ export interface KodiInfo {
 }
 
 /**
+ * Amatsukaze の入出力パス変換 (EPGStation と Amatsukaze が別マシンにある場合に使う)
+ * local から始まるパスを remote に置き換えて AmatsukazeServer へ渡し、
+ * 逆に AmatsukazeServer から返ってきたパスは remote → local に戻す
+ */
+export interface AmatsukazePathMapping {
+    local: string;
+    remote: string;
+}
+
+/**
+ * Amatsukaze 連携設定
+ */
+export interface AmatsukazeConfig {
+    // AmatsukazeServer のアドレス。既定 localhost
+    host?: string;
+    // AmatsukazeServer のポート。既定 32768
+    port?: number;
+    // AmatsukazeAddTask (.exe) のパス
+    addTaskPath?: string;
+    // Amatsukaze のルートディレクトリ (AmatsukazeAddTask の -r に渡す。サーバ自動起動用)
+    amatsukazeRoot?: string;
+    // Windows 以外で AmatsukazeAddTask.exe を mono 経由で起動する場合の mono のパス
+    monoPath?: string;
+    // 既定のプロファイル名。エンコードコマンドの第 1 引数で上書きできる
+    profile?: string;
+    // キューの優先度 (1〜5)。既定 3
+    priority?: number;
+    // TS ファイルを「転送済み」フォルダへ移動しない (--no-move)。既定 true
+    noMove?: boolean;
+    // AmatsukazeServer への接続を諦めるまでの時間 (ms)。既定 60000
+    connectTimeoutMs?: number;
+    // キューに積んだタスクの状態がまったく変化しないまま経過したら諦める時間 (ms)。既定 0 (無効)
+    taskTimeoutMs?: number;
+    // 入出力パスの変換規則 (EPGStation と Amatsukaze が別マシンの場合)
+    pathMappings?: AmatsukazePathMapping[];
+}
+
+/**
  * config ファイル形式
  */
 export default interface IConfigFile {
@@ -367,6 +405,9 @@ export default interface IConfigFile {
         video?: StreamVideoParam; // クライアント表示用の映像設定情報 (配信側の型を再利用)
         audio?: StreamAudioParam; // クライアント表示用の音声設定情報 (配信側の型を再利用)
     }[];
+
+    // Amatsukaze 連携 (dist/AmatsukazeEncodeTool.js をエンコードコマンドに指定したときに使う)
+    amatsukaze?: AmatsukazeConfig;
 
     // 予約定期更新時のログ出力を抑えるか
     isSuppressReservesUpdateAllLog: boolean;
