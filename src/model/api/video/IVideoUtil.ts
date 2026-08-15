@@ -26,7 +26,10 @@ export default interface IVideoUtil {
     getDetailedInfo(filePath: string): Promise<VideoDetailInfo>;
 
     /**
-     * ffprobe でファイルに埋め込まれたチャプターを取得する
+     * チャプターを取得する。
+     * ffprobe でファイルに埋め込まれたチャプターを読み、無ければ
+     * 動画の横に置かれた `<動画ファイル名>.chapter.txt` を読む
+     * (MPEG-TS はチャプターを埋め込めないため、tsreplace 出力などはこちらになる)
      * @param filePath: string
      * @return Promise<apid.VideoChapter[]> チャプターが無い場合は空配列
      */
