@@ -57,6 +57,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 視聴・ストリーミング・データ放送
 
+- tsreplace 出力 (.ts) のチャプターがシークバーに出なかったのを直した
 - 録画ファイルのストリーミングが、ファイル名に空白や括弧を含むと必ず失敗していたのを直した
 - 配信を画質優先へ調整し、音声トラック切り替え・チャプター表示・プレイヤー機能を追加した
 - HLS 配信を LL-HLS (EXT-X-PART) にし、録画済み HLS も fMP4 化して HEVC / iOS で再生できるようにした
@@ -138,6 +139,22 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 ---
 
 ## 変更履歴 (新しい順)
+
+- **tsreplace 出力 (.ts) のチャプターがシークバーに出なかったのを直した**
+    - **症状**: Amatsukaze の tsreplace 出力 (`*.hevc.ts`) の横に `*.hevc.chapter.txt` があるのに、
+      再生画面のシークバーにチャプターマーカーが 1 つも出ない。`GET /api/videos/{id}/chapters` は
+      エラーにならず `{"chapters":[]}` を返す
+    - **原因**: チャプターは要求のたびに ffprobe で読む設計だが、**MPEG-TS コンテナはチャプターを
+      埋め込めない**。mkv / mp4 出力なら埋め込まれるので気付きにくい。tsreplace は `.ts` のまま
+      PSI/SI を保持する出力なので、チャプターは別ファイルへ書き出される
+    - **対処**: ffprobe が 0 件を返したときに、動画の横の `<動画ファイル名>.chapter.txt`
+      (Ogg / Matroska の simple chapter format: `CHAPTER01=00:00:00.000` / `CHAPTER01NAME=A`)
+      を読むフォールバックを足した (`src/util/ChapterFileUtil.ts`,
+      `src/model/api/video/VideoUtil.ts`)。ファイル名は動画の**最後の拡張子だけ**を差し替える
+      (`foo.hevc.ts` → `foo.hevc.chapter.txt`)
+    - **注意点**: チャプターファイルには終了位置が無いため、`endAt` は次のチャプターの開始位置で
+      埋める。最後の 1 件だけは動画全体の長さが要るので、ffprobe を `-show_chapters -show_format`
+      の 1 回呼び出しにまとめて尺も一緒に取っている。検証は `test/ut/chapter-file-util.test.js`
 
 - **エンコード結果が壊れていても「成功」として登録され、元の TS が消えていたのを直した**
     - **症状**: 保存先ドライブの空き容量が尽きると、エンコード結果が 0 バイト〜数百バイトの

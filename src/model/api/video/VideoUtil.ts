@@ -3,6 +3,8 @@ import { inject, injectable } from 'inversify';
 import * as path from 'path';
 import * as apid from '../../../../api';
 import VideoFile from '../../../db/entities/VideoFile';
+import ChapterFileUtil from '../../../util/ChapterFileUtil';
+import FileUtil from '../../../util/FileUtil';
 import IVideoFileDB from '../../db/IVideoFileDB';
 import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
@@ -106,11 +108,27 @@ export default class VideoUtil implements IVideoUtil {
         });
     }
 
-    public getChapters(filePath: string): Promise<apid.VideoChapter[]> {
-        return new Promise<apid.VideoChapter[]>((resolve, reject) => {
+    public async getChapters(filePath: string): Promise<apid.VideoChapter[]> {
+        const probed = await this.getEmbeddedChapters(filePath);
+        if (probed.chapters.length > 0) {
+            return probed.chapters;
+        }
+
+        // MPEG-TS はチャプターを埋め込めないため、tsreplace 出力 (.ts のまま) などでは
+        // 動画の横に置かれた `<動画ファイル名>.chapter.txt` を読む
+        return await this.getSidecarChapters(filePath, probed.duration);
+    }
+
+    /**
+     * ffprobe でファイルに埋め込まれたチャプターと動画全体の長さを取得する
+     * @param filePath: string
+     * @return Promise<{ chapters: apid.VideoChapter[]; duration?: number }>
+     */
+    private getEmbeddedChapters(filePath: string): Promise<{ chapters: apid.VideoChapter[]; duration?: number }> {
+        return new Promise<{ chapters: apid.VideoChapter[]; duration?: number }>((resolve, reject) => {
             execFile(
                 this.config.ffprobe,
-                ['-v', '0', '-show_chapters', '-of', 'json', filePath],
+                ['-v', '0', '-show_chapters', '-show_format', '-of', 'json', filePath],
                 { maxBuffer: VideoUtil.FFPROBE_MAX_BUFFER },
                 (err, stdout) => {
                     if (err) {
@@ -122,9 +140,10 @@ export default class VideoUtil implements IVideoUtil {
                     try {
                         const result = <any>JSON.parse(stdout);
                         const chapters: any[] = Array.isArray(result.chapters) ? result.chapters : [];
+                        const duration = VideoUtil.toNumber(result.format?.duration);
 
-                        resolve(
-                            chapters.map((chapter, index) => {
+                        resolve({
+                            chapters: chapters.map((chapter, index) => {
                                 // start_time / end_time は秒の文字列。無い場合は time_base × start から計算する
                                 const timeBase = VideoUtil.parseTimeBase(chapter.time_base);
                                 const startAt =
@@ -142,13 +161,33 @@ export default class VideoUtil implements IVideoUtil {
                                     title: typeof title === 'string' && title.length > 0 ? title : null,
                                 };
                             }),
-                        );
+                            duration: duration === null ? undefined : duration,
+                        });
                     } catch (e: any) {
                         reject(e);
                     }
                 },
             );
         });
+    }
+
+    /**
+     * 動画ファイルの横に置かれたチャプターファイルを読む
+     * @param filePath: string 動画ファイルのパス
+     * @param duration?: number 動画全体の長さ (秒)。最後のチャプターの終了位置に使う
+     * @return Promise<apid.VideoChapter[]> ファイルが無い・読めない場合は空配列
+     */
+    private async getSidecarChapters(filePath: string, duration?: number): Promise<apid.VideoChapter[]> {
+        const chapterFilePath = ChapterFileUtil.getChapterFilePath(filePath);
+
+        try {
+            const content = await FileUtil.readFile(chapterFilePath);
+
+            return ChapterFileUtil.parse(content, duration);
+        } catch (err: any) {
+            // チャプターファイルが無いのは普通の状態なのでログには残さない
+            return [];
+        }
     }
 
     public getAudioTracks(filePath: string): Promise<apid.VideoAudioTrack[]> {

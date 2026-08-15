@@ -208,10 +208,15 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
 
 ### チャプター
 
-エンコード済みファイルにチャプターが埋め込まれていればシークバー上へ表示する。
+エンコード済みファイルのチャプターをシークバー上へ表示する。
 
-- **`GET /api/videos/{videoFileId}/chapters`** が `ffprobe -show_chapters` の結果を返す。
+- **`GET /api/videos/{videoFileId}/chapters`** が `ffprobe -show_chapters -show_format` の結果を返す。
   DB には保存せず要求のたびに読み出す (1 ファイルあたり数十 ms で終わるため)。
+- **MPEG-TS コンテナはチャプターを埋め込めない**。Amatsukaze の tsreplace 出力 (`*.hevc.ts`) のように
+  `.ts` のまま残す構成では、チャプターが `<動画ファイル名>.chapter.txt` へ別途書き出される。
+  ffprobe が 0 件を返した場合はこのファイルを読む (`ChapterFileUtil`)。形式は Ogg / Matroska の
+  simple chapter format (`CHAPTER01=00:00:00.000` / `CHAPTER01NAME=A`) で、
+  終了位置を持たないため `endAt` は次のチャプターの開始位置 (最後の 1 件は動画全体の長さ) で埋める。
 - **DPlayer の `highlight` は生成時にしか読まれない**ため、チャプターはプレイヤーを作る前に取得しておく
   (`BaseVideo.applyChapterHighlights()` を `createPlayer()` の前に呼ぶ)。ファイルを直接再生する
   `NormalVideo` だけは動画長が `loadedmetadata` まで分からないので、読み込み後に自前でマーカーを描き足す。
