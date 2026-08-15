@@ -386,7 +386,9 @@ export default class AmatsukazeRpcClient extends EventEmitter implements IAmatsu
 
         return {
             index: index,
-            lines: text.split(/\r?\n/).filter(line => line.length > 0),
+            // エンコーダの進捗行は改行ではなく CR で上書きしていくため CR でも行を分ける
+            // (分けないと複数回分の進捗が 1 行に繋がり、最新ではなく最初の値を読んでしまう)
+            lines: text.split(/\r\n|\r|\n/).filter(line => line.length > 0),
         };
     }
 

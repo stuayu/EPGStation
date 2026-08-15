@@ -4,7 +4,6 @@ import { AmatsukazePathMapping } from '../IConfigFile';
 import {
     AmatsukazeConsoleText,
     AmatsukazeQueueItem,
-    AmatsukazeServerState,
     AmatsukazeUIData,
     IAmatsukazeRpcClient,
 } from './IAmatsukazeRpcClient';
@@ -45,7 +44,8 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
     private targetItem: AmatsukazeQueueItem | null = null;
     // キュー全体 (待ち順の算出に使う)
     private queueItems: AmatsukazeQueueItem[] = [];
-    private serverState: AmatsukazeServerState | null = null;
+    // 最後に拾えたエンコードの進捗 (百分率が出ない段階では直前の値を保つ)
+    private lastEncodingPercent: number = 0;
     // コンソール番号ごとの最新の進捗行
     private consoleTexts: Map<number, string[]> = new Map();
     private lastProgress: AmatsukazeTaskProgress | null = null;
@@ -56,6 +56,8 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
     private isTaskAdded: boolean = false;
     // 投入前からキューに居たアイテムの id (自分のタスクではないので候補から外す)
     private preExistingItemIds: Set<number> = new Set();
+    // 投入前のキュー全体を受け取ったか (除外リストはこの 1 回で確定させる)
+    private hasQueueSnapshot: boolean = false;
     // 投入したタスクがキューに現れるのを待つタイマー
     private targetWaitTimer: NodeJS.Timeout | null = null;
 
@@ -179,7 +181,6 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
         if (typeof data.updatedItem !== 'undefined') {
             const item = data.updatedItem;
             this.mergeQueueItem(item, data.updateType);
-            this.rememberPreExistingItems([item]);
             if (this.isTaskAdded === true && this.isTarget(item) === true) {
                 if (data.updateType === 'Remove') {
                     // キューから消えた = 別経路で削除された
@@ -198,12 +199,10 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
             }
         }
 
-        if (typeof data.state !== 'undefined') {
-            this.serverState = data.state;
-        }
+        // data.state (State.Progress) はキュー全体の進み具合なので、タスクの進捗には使わない
 
         if (typeof data.console !== 'undefined') {
-            this.consoleTexts.set(data.console.index, data.console.lines);
+            this.consoleTexts.set(data.console.index, AmatsukazeTaskWatcher.splitConsoleLines(data.console.lines));
         }
 
         this.publishProgress();
@@ -215,7 +214,7 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
      */
     private onConsoleUpdate(data: AmatsukazeConsoleText): void {
         const current = this.consoleTexts.get(data.index) ?? [];
-        const merged = current.concat(data.lines);
+        const merged = current.concat(AmatsukazeTaskWatcher.splitConsoleLines(data.lines));
         // 進捗表示にしか使わないので末尾だけ残す
         this.consoleTexts.set(
             data.index,
@@ -227,13 +226,19 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
 
     /**
      * タスク投入前から居たアイテムとして id を控える。
-     * 投入が済んだ後に現れたアイテムは自分のタスクの可能性があるので控えない
+     *
+     * **控えるのは `start()` の `requestAll()` で返ってくるキュー全体の 1 回だけ**。
+     * 差分更新 (QueueUpdate) まで控えると、`AmatsukazeAddTask` の実行中に届いた
+     * 自分のタスクの Add 通知を「投入前から居たもの」として除外してしまい、
+     * 投入したのに永久に見つからなくなる (投入完了を伝える `markTaskAdded()` は
+     * AddTask プロセスの終了後にしか呼べないため、Add 通知の方が先に届く)
      * @param items: AmatsukazeQueueItem[]
      */
     private rememberPreExistingItems(items: AmatsukazeQueueItem[]): void {
-        if (this.isTaskAdded === true) {
+        if (this.isTaskAdded === true || this.hasQueueSnapshot === true) {
             return;
         }
+        this.hasQueueSnapshot = true;
 
         for (const item of items) {
             this.preExistingItemIds.add(item.id);
@@ -472,28 +477,76 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
 
     /**
      * エンコード中の進捗 (0〜1) を返す。
-     * 自分のタスクを実行しているコンソールの出力から百分率を拾い、
-     * 取れない場合はサーバ全体の進捗で代用する
+     *
+     * 進捗は**自分のタスクを実行しているコンソールの出力**から拾う。
+     * `State.Progress` は使わない — あれはキュー全体の進み具合 (完了したアイテムの割合) で、
+     * 個々のタスクの進捗ではないため、実行中もほとんど動かず値も実態と合わない。
+     *
+     * Amatsukaze の処理は 解析 → ロゴ/CM 検出 → エンコード → mux と段階が分かれており、
+     * 百分率が出るのはエンコード段階だけ (`[60.7%] ...`)。それ以外の段階では
+     * `1066フレーム完了 125.36fps` のように総数が分からない形でしか出ないので、
+     * **拾えない間は直前の値を保つ** (0% へ戻すとバーが行き来して読めなくなる)
      * @param item: AmatsukazeQueueItem
      * @return number
      */
     private getEncodingPercent(item: AmatsukazeQueueItem): number {
         const lines = this.consoleTexts.get(item.consoleId) ?? [];
         for (let i = lines.length - 1; i >= 0; i--) {
-            const matched = /(\d+(?:\.\d+)?)\s*%/.exec(lines[i]);
-            if (matched !== null) {
-                const percent = parseFloat(matched[1]) / 100;
-                if (Number.isFinite(percent) === true) {
-                    return Math.min(Math.max(percent, 0), 1);
+            const percent = AmatsukazeTaskWatcher.parseProgressPercent(lines[i]);
+            if (percent !== null) {
+                this.lastEncodingPercent = percent;
+
+                return percent;
+            }
+        }
+
+        return this.lastEncodingPercent;
+    }
+
+    /**
+     * コンソール出力を行へ分ける。
+     *
+     * エンコーダの進捗行は改行ではなく CR で同じ行を上書きしていくため、
+     * CR で分けないと複数回分の進捗が 1 行に繋がってしまう
+     * (画面には最初の進捗が出続け、進捗の抽出も最初の値を読んでしまう)
+     * @param lines: string[]
+     * @return string[]
+     */
+    private static splitConsoleLines(lines: string[]): string[] {
+        const result: string[] = [];
+        for (const line of lines) {
+            for (const part of line.split(/\r\n|\r|\n/)) {
+                if (part.length > 0) {
+                    result.push(part);
                 }
             }
         }
 
-        if (this.serverState !== null && this.serverState.progress > 0) {
-            return Math.min(Math.max(this.serverState.progress, 0), 1);
+        return result;
+    }
+
+    /**
+     * エンコーダの進捗行から百分率 (0〜1) を取り出す。
+     *
+     * 進捗行は `[60.7%] 29701/48918 frames: ... GPU 21%, VD 58%` の形で、
+     * **行頭の `[...%]` だけが進捗**。同じ行に GPU 使用率などの別の百分率が並ぶうえ、
+     * 進捗と無関係な行にも `CPU: 10.8%` や `未出力フレーム: 43（0.050%）` が出るため、
+     * 行内の百分率を拾うと進捗が飛ぶ
+     * @param line: string
+     * @return number | null 進捗行でない場合は null
+     */
+    private static parseProgressPercent(line: string): number | null {
+        const matched = /^\s*\[(\d+(?:\.\d+)?)%\]/.exec(line);
+        if (matched === null) {
+            return null;
         }
 
-        return 0;
+        const percent = parseFloat(matched[1]) / 100;
+        if (Number.isFinite(percent) === false) {
+            return null;
+        }
+
+        return Math.min(Math.max(percent, 0), 1);
     }
 
     /**
