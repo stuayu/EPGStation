@@ -5443,7 +5443,7 @@ components:
                 default: 3
 
         PathLogFileId:
-            description: ログファイル id
+            description: ログファイル id (プロセス名とファイル名を "__" で連結したもの)
             in: path
             name: logFileId
             required: true
