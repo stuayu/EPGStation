@@ -5,7 +5,19 @@
  * AmatsukazeServer/Server/{ServerInterface,EncodeServerData}.cs に合わせてある。
  */
 
-/** RPC のメソッド ID (ServerInterface.cs の RPCMethodId) */
+/**
+ * RPC のメソッド ID (ServerInterface.cs の RPCMethodId)
+ *
+ * **メンバの並びは Amatsukaze のバージョンで変わる**。現行の Amatsukaze では
+ * ChangeItem (103) より後ろにメソッドが 1 つ増えており、`Request` 以降が
+ * nekopanda/Amatsukaze 当時の値から 1 ずつ後ろへずれている。
+ * ID がずれたフレームを送るとサーバは応答を返さずソケットを切る (クライアント側は
+ * `read ECONNRESET` になるだけで理由が分からない) ため、値を変えるときは
+ * 実機の通信を観測して裏を取ること。
+ *
+ * 実測で確認済み: AddQueue = 102 / ChangeItem = 103 / Request = 112 /
+ * 受信側 (200 番台) は据え置き
+ */
 export enum RPCMethodId {
     SetProfile = 100,
     SetAutoSelect = 101,
@@ -17,11 +29,12 @@ export enum RPCMethodId {
     SetCommonData = 107,
     SetServiceSetting = 108,
     AddDrcsMap = 109,
-    EndServer = 110,
-    Request = 111,
-    RequestLogFile = 112,
-    RequestLogoData = 113,
-    RequestDrcsImages = 114,
+    // 未検証 (EPGStation では使わない)。EndServer はサーバを止めてしまうため軽々に呼ばないこと
+    EndServer = 111,
+    Request = 112,
+    RequestLogFile = 113,
+    RequestLogoData = 114,
+    RequestDrcsImages = 115,
 
     OnUIData = 200,
     OnConsoleUpdate = 201,
