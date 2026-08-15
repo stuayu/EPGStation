@@ -49,8 +49,30 @@ export default abstract class RecordedStreamBaseModel
      */
     private static readonly MAX_AHEAD_SEGMENT_NUM = 60;
 
+    /**
+     * エンコードを完全に止める先行セグメント数。
+     *
+     * MAX_AHEAD_SEGMENT_NUM を超えた時点で完全に止めてしまうと、
+     * **プレイリストが一切更新されなくなる**。LL-HLS のプレイヤー (iOS Safari のネイティブ HLS など) は
+     * ブロッキングプレイリスト要求 (`_HLS_msn`) の応答が変化するのを待ってから次のセグメントを取得するため、
+     * 更新が止まると新しいセグメントを取りに来ない → クライアントの取得位置 (lastServedSeq) が進まない →
+     * 先行量が減らずエンコードも再開しない、というデッドロックになる (実際に再生が停止する)。
+     *
+     * そのため MAX_AHEAD_SEGMENT_NUM 超過では「実時間ペースまで落とす」だけにして、
+     * プレイリストは更新され続けるようにする。完全停止はプレイヤーが取得自体をやめている
+     * (一時停止・離脱) 場合の保険として、保持数 (RECORDED_RETAIN_SEGMENT_NUM = 180) に
+     * 十分な余裕を残すこの値でのみ行う
+     */
+    private static readonly HARD_MAX_AHEAD_SEGMENT_NUM = 120;
+
     // 先行しすぎで止めたエンコードを再開してよいかを調べる間隔 (ms)
     private static readonly THROTTLE_CHECK_INTERVAL = 500;
+
+    /**
+     * 先行時にエンコードを止めておく時間 (ms)。
+     * 1 セグメント (約 1 秒) 生成するごとにこの時間止めることで、実時間相当のペースまで落とす
+     */
+    private static readonly PACE_INTERVAL = 1000;
 
     private videoFileDB: IVideoFileDB;
     private recordedDB: IRecordedDB;
@@ -270,15 +292,21 @@ export default abstract class RecordedStreamBaseModel
     }
 
     /**
-     * エンコードが再生位置より先行しすぎていたら一時停止する。
+     * エンコードが再生位置より先行しすぎていたらペースを落とす。
      * 標準出力の読み出しを止めるとパイプが詰まり、エンコーダ自身が書き込みでブロックする
+     *
+     * 先行量が MAX_AHEAD_SEGMENT_NUM を超えた場合は PACE_INTERVAL だけ止めて実時間ペースへ落とし、
+     * HARD_MAX_AHEAD_SEGMENT_NUM を超えた場合のみ、再生位置が追いつくまで完全に止める
+     * (完全停止はプレイリストの更新も止めてしまい、LL-HLS のプレイヤーがストールするため最後の手段)
      * @param streamId: apid.StreamId
      */
     private throttleEncodeIfTooFarAhead(streamId: apid.StreamId): void {
-        if (
-            this.isEncodeThrottled === true ||
-            this.hlsMemoryStore.getAheadSegmentNum(streamId) <= RecordedStreamBaseModel.MAX_AHEAD_SEGMENT_NUM
-        ) {
+        if (this.isEncodeThrottled === true) {
+            return;
+        }
+
+        const aheadNum = this.hlsMemoryStore.getAheadSegmentNum(streamId);
+        if (aheadNum <= RecordedStreamBaseModel.MAX_AHEAD_SEGMENT_NUM) {
             return;
         }
 
@@ -287,15 +315,7 @@ export default abstract class RecordedStreamBaseModel
             return;
         }
 
-        this.log.stream.debug(`pause encode (too far ahead): ${streamId}`);
-        this.isEncodeThrottled = true;
-        stdout.pause();
-
-        this.throttleTimerId = setInterval(() => {
-            if (this.hlsMemoryStore.getAheadSegmentNum(streamId) > RecordedStreamBaseModel.MAX_AHEAD_SEGMENT_NUM) {
-                return;
-            }
-
+        const resume = () => {
             this.clearThrottleTimer();
             if (this.isEncodeThrottled === false) {
                 return;
@@ -304,11 +324,38 @@ export default abstract class RecordedStreamBaseModel
             this.log.stream.debug(`resume encode: ${streamId}`);
             this.isEncodeThrottled = false;
             stdout.resume();
-        }, RecordedStreamBaseModel.THROTTLE_CHECK_INTERVAL);
+        };
+
+        this.log.stream.debug(`pause encode (ahead ${aheadNum} segments): ${streamId}`);
+        this.isEncodeThrottled = true;
+        stdout.pause();
+
+        if (aheadNum > RecordedStreamBaseModel.HARD_MAX_AHEAD_SEGMENT_NUM) {
+            // プレイヤーがセグメントを取得しなくなっている (一時停止・離脱) 状態。
+            // 保持数を超えて古いセグメントが押し出されないよう、取得位置が戻るまで止める
+            this.throttleTimerId = setInterval(() => {
+                if (
+                    this.hlsMemoryStore.getAheadSegmentNum(streamId) >
+                    RecordedStreamBaseModel.HARD_MAX_AHEAD_SEGMENT_NUM
+                ) {
+                    return;
+                }
+
+                resume();
+            }, RecordedStreamBaseModel.THROTTLE_CHECK_INTERVAL);
+
+            return;
+        }
+
+        // 実時間ペースまで落とす。止めっぱなしにせず必ず再開することで、
+        // プレイリストが更新され続けプレイヤーが次のセグメントを取りに来られるようにする
+        this.throttleTimerId = setTimeout(resume, RecordedStreamBaseModel.PACE_INTERVAL);
     }
 
     /**
      * エンコード再開待ちのタイマーを止める
+     * (ペーシング時は setTimeout、完全停止時は setInterval で登録されるが、
+     * Node.js ではどちらも同じ Timeout オブジェクトなので clearInterval で解除できる)
      */
     private clearThrottleTimer(): void {
         if (this.throttleTimerId !== null) {
