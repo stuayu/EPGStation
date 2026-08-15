@@ -120,6 +120,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 基盤・互換性
 
+- 削除やエンコード進捗が画面に即時反映されない (socket.io がリバースプロキシ経由で繋がらない) のを直した
 - EPG が取れていない放送局も放映中の一覧に出すようにした / リモコンキー順に並ばない原因を潰した
 - 全サービスを列挙して返すチューナーサーバ (recisdb-proxy) で放映中・番組表が壊れるのを直した
 - 新4K8K衛星放送 (BS4K / CS4K) に対応した
@@ -133,6 +134,63 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 変更履歴 (新しい順)
 
+- **削除やエンコード進捗が画面に即時反映されない (socket.io がリバースプロキシ経由で繋がらない) のを直した**
+    - **背景**: 「録画やルールを削除しても画面が変わらない」「エンコード進捗が更新されない」という報告
+      ([#11](https://github.com/stuayu/EPGStation/issues/11))。画面の自動更新は socket.io の
+      `updateStatus` / `updateEncode` 通知が全ての起点になっており、**接続できていないと一切反映されない**。
+      ブラウザを再読み込みすれば見えるのは、そのとき HTTP で取り直しているから
+    - **接続先の組み立てが間違っていた**: クライアントは接続先を
+      `${location.protocol}//${location.hostname}:${config.socketIOPort}` と組み立てており、
+      **`location.port` を無視していた**。`socketIOPort` はサーバが自分の待ち受けポート (既定 8888) を
+      返すため、**リバースプロキシ経由 (443 → 8888 など) では存在しないポートへ繋ぎに行って必ず失敗する**
+        - サーバが `GET /api/config` で `useDedicatedSocketIOPort` を返すようにした。
+          `socketioPort` / `https.socketioPort` / `clientSocketioPort` のいずれも指定が無ければ
+          socket.io は Web API と同じ待ち受けを共有しているので `false` になり、
+          **クライアントは接続先を組み立てず `location.origin` へそのまま接続する** (ポート・経路をそのまま使う)。
+          専用ポートを指定している場合だけ従来どおり組み立てる
+    - **複数の経路から接続される前提にした**: 同じサーバーが「LAN から直アクセス」と
+      「リバースプロキシ経由」の両方で使われることがあるため、**どの経路で来たかを接続ごとに判断する**
+        - **サーバは常に Web API と同じ待ち受けでも socket.io を受ける**ようにした。専用ポートを
+          指定している場合は「専用ポート + Web API のポート」の両方で受ける。プロキシ経由の
+          クライアントは専用ポートに到達できないため、**どの経路から来ても必ず繋がる先が要る**
+        - **`useDedicatedSocketIOPort` は接続ごとに決める**。`api.getAccessPort()` が
+          `X-Forwarded-Host` / `Host` からクライアントが使ったポートを取り、自分の待ち受けポートと
+          一致すれば直アクセス (専用ポートを教える)、違えばプロキシ経由 (アクセス中のオリジンへ繋がせる)
+        - **クライアントは接続先の候補を順に試す**。`[専用ポート, location.origin]` (サーバの判断で順序が
+          入れ替わる) を持ち、`connect_error` が 2 回続いたら次の候補へ切り替える。
+          **接続先を切り替えると socket インスタンスが作り直される**ため、購読中のコールバックは
+          `SocketIOModel` 側で保持して張り直す。`getIO()` に直接 `on` すると切替後に外れる
+        - 接続失敗の通知は候補の切り替えで復旧しうるので、**8 秒待ってもまだ繋がっていないときだけ**出す
+    - **プロキシが TLS を終端する構成で `/api/config` が 500 になっていた**: `X-Forwarded-Proto: https`
+      で来ると https 扱いになるが、EPGStation 自身は http でしか待ち受けていないため
+      `httpsConfigError` を投げていた (config が取れないので画面全体が動かない)。
+      実際の待ち受け側の設定へフォールバックするようにした
+    - **失敗が画面に出ていなかった**: 接続断は `disconnect` で通知されるが、**最初から繋がらない場合は
+      `connect_error` で通知される**。これを誰も拾っていなかったため、自動更新が死んでいても無言だった。
+      `ISocketIOModel.onConnectError()` を追加し、一度だけスナックバーで知らせるようにした
+      (socket.io は再接続を試み続けるため、繰り返しは出さない)
+    - **認証有効時に Cookie が飛ばない**: 専用ポートを使う構成は socket.io だけ別オリジンになるため、
+      handshake にセッション Cookie が乗らず `Unauthorized` で弾かれていた。クライアントに
+      `withCredentials: true` を付け、サーバの CORS を `origin: '*'` から
+      **要求元の反射 + `credentials: true`** に変えた (`Access-Control-Allow-Origin: *` は
+      credentials 付きの要求では**ブラウザに拒否される**ため、両者はセットで直す必要がある)
+    - **自分の操作は socket.io を待たずに反映する**: 通知が届かない環境でも操作結果だけは見えるよう、
+      `RepositoryModel` (axios 共通層) が **POST / PUT / DELETE の成功を `ApiMutationNotifier` へ流し**、
+      `SocketIOModel` がそれを `updateStatus` / `updateEncode` と同じ扱いで購読中のコールバックへ配る。
+      各画面は既存の購読のままで再取得されるので、**View 側の改修は不要**
+        - 連続操作 (複数選択削除など) でまとめて再取得されるよう 300ms 待ってから配る
+        - 視聴中に周期的に呼ばれる API (`/streams/{id}/keep`) と `/auth` は対象外。
+          全画面の再取得を誘発させないため
+    - **実装場所**: `src/model/api/config/ConfigApiModel.ts`, `src/model/service/api.ts` (`getAccessPort`),
+      `src/model/service/api/config.ts`, `src/model/service/ServiceServer.ts`,
+      `src/model/service/socketio/SocketIOManageModel.ts`, `client/src/model/socketio/SocketIOModel.ts`,
+      `client/src/util/ApiMutationNotifier.ts`, `client/src/model/api/RepositoryModel.ts`,
+      `client/src/views/AppContent.vue`, `api.yml`, `api.d.ts`
+    - **ついでに直した**: `AppContent` の後始末が `io.on('connect')` で登録して `io.off('reconnect')` を
+      呼んでおり、ハンドラが外れていなかった。https の socket.io 専用ポートの起動ログが
+      http 側のポート (`config.socketioPort`) を出していたのも直した
+    - **テスト**: `test/ut/config-api-socketio-port.test.js` (経路ごとの判定 10 パターン) と
+      `test/ut/api-access-port.test.js` (`X-Forwarded-Host` の優先・多段プロキシ・IPv6 リテラル) を新規追加
 - **配信を画質優先へ調整し、音声トラック切り替え・チャプター表示・プレイヤー機能を追加した**
     - **画質優先チューニング**: 配信のビットレートを引き上げ (1080p は H.264 で 5000 → 8000kbps)、
       **コーデック別に係数を掛ける**ようにした (HEVC は同画質を約 65% のビットレートで出せるため 5200kbps)。

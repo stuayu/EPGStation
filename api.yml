@@ -296,6 +296,7 @@ components:
             type: object
             required:
                 - socketIOPort
+                - useDedicatedSocketIOPort
                 - broadcast
                 - recorded
                 - encode
@@ -307,6 +308,12 @@ components:
                 socketIOPort:
                     description: socket.io 通信で使用するポート
                     type: integer
+                useDedicatedSocketIOPort:
+                    description: |
+                        socket.io が Web API と別のポートを使っているか。
+                        false の場合、クライアントは接続先を組み立てずアクセス中のオリジンへそのまま接続する
+                        (リバースプロキシ経由でポートが変換されていても接続できる)
+                    type: boolean
                 broadcast:
                     description: 有効な放送波情報
                     type: object

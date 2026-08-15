@@ -34,6 +34,9 @@ import ThemeColorUtil from '@/util/ThemeColorUtil';
 })
 class AppContent extends Vue {
     public isDisconnected: boolean = false;
+    // 接続失敗の通知は繰り返さない (socket.io は再接続を試み続けるため)
+    private hasNotifiedConnectError: boolean = false;
+    private connectErrorTimerId: number | null = null;
 
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
@@ -79,8 +82,37 @@ class AppContent extends Vue {
         }
 
         // イベント設定
-        io.on('disconnect', this.onDisconnect);
-        io.on('connect', this.onReconnect);
+        // 接続先の候補を切り替えると socket インスタンスが作り直されるため、
+        // io へ直接ではなくモデル経由で購読する
+        this.socketIoModel.onDisconnect(this.onDisconnect);
+        this.socketIoModel.onConnect(this.onReconnect);
+        this.socketIoModel.onConnectError(this.onConnectError);
+    }
+
+    /**
+     * socketIO 接続失敗時。
+     * 接続できないと画面が自動更新されなくなるため、黙って失敗させず一度だけ知らせる。
+     * ただし別の接続先候補へ切り替えて復旧することがあるので、
+     * しばらく待っても繋がらないときだけ知らせる
+     */
+    private onConnectError(): void {
+        if (this.hasNotifiedConnectError === true || this.connectErrorTimerId !== null) {
+            return;
+        }
+
+        this.connectErrorTimerId = window.setTimeout(() => {
+            this.connectErrorTimerId = null;
+            if (this.socketIoModel.isConnected() === true) {
+                return;
+            }
+            this.hasNotifiedConnectError = true;
+
+            this.snackbarState.open({
+                color: 'error',
+                text: 'サーバとの接続に失敗しました。画面が自動更新されません',
+                timeout: 10000,
+            });
+        }, AppContent.CONNECT_ERROR_NOTIFY_DELAY);
     }
 
     /**
@@ -101,6 +133,12 @@ class AppContent extends Vue {
      * socketIO 再接続時
      */
     private onReconnect(): void {
+        // 繋がったので接続失敗の通知は取りやめる
+        if (this.connectErrorTimerId !== null) {
+            window.clearTimeout(this.connectErrorTimerId);
+            this.connectErrorTimerId = null;
+        }
+
         if (this.isDisconnected === false) {
             return;
         }
@@ -124,23 +162,19 @@ class AppContent extends Vue {
     public unmounted(): void {
         this.serverStatusState.stopPolling();
 
-        const io = this.socketIoModel.getIO();
-        if (io === null) {
+        if (this.connectErrorTimerId !== null) {
+            window.clearTimeout(this.connectErrorTimerId);
+            this.connectErrorTimerId = null;
+        }
+
+        if (this.socketIoModel.getIO() === null) {
             return;
         }
 
         // イベント削除
-        io.off('disconnect', this.onDisconnect);
-        io.off('reconnect', this.onReconnect);
-    }
-
-    /**
-     * socket io path
-     * @param port
-     * @return string
-     */
-    private getSocketIoPath(port: number): string {
-        return `${location.protocol}//${location.hostname}:${port}`;
+        this.socketIoModel.offDisconnect(this.onDisconnect);
+        this.socketIoModel.offConnect(this.onReconnect);
+        this.socketIoModel.offConnectError(this.onConnectError);
     }
 
     @Watch('$route', { immediate: true, deep: true })
@@ -148,6 +182,11 @@ class AppContent extends Vue {
         this.snackbarState.close();
         this.scrollState.updateHistoryPosition();
     }
+}
+
+namespace AppContent {
+    // 接続失敗を知らせるまでの猶予 (ms)。別の接続先候補への切り替えを待つ
+    export const CONNECT_ERROR_NOTIFY_DELAY = 8000;
 }
 
 export default toNative(AppContent);

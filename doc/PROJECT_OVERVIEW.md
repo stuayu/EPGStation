@@ -226,6 +226,9 @@ npm run recover-channel-name   # 過去の録画の放送局名を復元 (既定
 - **番組表 (`Guide.vue`) のセルは手組み DOM**: `GuideState.createProgramDoms()` が作った DOM を `renderProgramDoms()` で流し込む。データを取り直したら**両方**呼ばないと画面が古いまま (可視判定の `updateVisible()` も `renderProgramDoms()` の末尾で走る)
 - **色は Vuetify 3 以降のクラス名で書く**: 背景色は `bg-success` / `bg-grey-darken-3` のように `bg-` が要る (Vuetify 2 の `success` / `grey darken-3` は無効で、**黙って透明になる**)。`v-switch` / `v-progress-linear` は `color` 未指定だと `currentColor` (ほぼ黒) になるため、既定色を `plugins/vuetify.ts` の `defaults` で `appTheme` に寄せてある
 - **`DataBroadcastingManager` は `markRaw()` で包む**: BMLBrowser 内部の JS-Interpreter が Vue のプロキシに包まれると壊れる。Vue コンポーネントではなくプレーンクラスに切り出しているのも同じ理由
+- **socket.io の接続先を組み立て直さない**: 専用ポート (`socketioPort` / `clientSocketioPort`) の指定が無ければ `GET /api/config` の `useDedicatedSocketIOPort` が `false` になり、クライアントは `location.origin` へそのまま接続する。ここでポートを組み立てるとリバースプロキシ配下 (443 → 8888 など) で必ず接続に失敗する。**接続できていないと画面の自動更新が一切効かなくなる**ので、失敗は `connect_error` (`disconnect` ではない) で拾って知らせること
+- **socket.io は複数経路から接続される前提で書く**: 同じサーバーが LAN 直アクセスとプロキシ経由の両方で使われる。サーバは**専用ポートを指定していても Web API と同じ待ち受けでも socket.io を受ける** (プロキシ経由のクライアントは専用ポートに届かないため)。`useDedicatedSocketIOPort` は `api.getAccessPort()` が見たアクセス先ポートと自分の待ち受けポートの一致で**接続ごとに**決まる。クライアントは候補を順に試して切り替えるので、**`getIO()` に直接 `on` してはいけない** (切替で socket が作り直され購読が外れる)。購読は `ISocketIOModel` の `on*` を使う
+- **自分の操作の反映をサーバ通知に頼らない**: `RepositoryModel` が POST / PUT / DELETE の成功を `ApiMutationNotifier` へ流し、`SocketIOModel` が `updateStatus` / `updateEncode` と同じ扱いで購読者へ配る。各画面は socket.io の購読だけ書けばよく、削除後の再取得を個別に書く必要はない
 
 ### ストリーミング・データ放送
 

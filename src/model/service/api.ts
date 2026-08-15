@@ -282,3 +282,33 @@ export const isSecureProtocol = (req: express.Request): boolean => {
         req.protocol === 'https'
     );
 };
+
+/**
+ * クライアントがアクセスに使ったポート番号を返す。
+ * 同じサーバーへ LAN 直アクセス・リバースプロキシ経由など複数の経路で繋がれるため、
+ * 「今どの経路で来たか」を知る必要がある場合に使う
+ * @param req: express.Request
+ * @return number | null 判別できない場合は null
+ */
+export const getAccessPort = (req: express.Request): number | null => {
+    // プロキシが付ける X-Forwarded-Host を優先する (Host は書き換えられていることがあるため)
+    const host = req.header('x-forwarded-host') ?? req.header('host') ?? null;
+    if (host === null) {
+        return null;
+    }
+
+    // 複数のプロキシを経由すると "front, back" のように連結されるので、最初 (クライアントに近い側) を見る
+    const target = host.split(',')[0].trim();
+
+    // ポートの指定が無ければプロトコルの既定ポート
+    // (IPv6 リテラルは [::1]:8888 の形で来るため、閉じ括弧より後ろだけを見る)
+    const portSeparatorIndex = target.lastIndexOf(':');
+    const closeBracketIndex = target.lastIndexOf(']');
+    if (portSeparatorIndex === -1 || portSeparatorIndex < closeBracketIndex) {
+        return isSecureProtocol(req) === true ? 443 : 80;
+    }
+
+    const port = parseInt(target.slice(portSeparatorIndex + 1), 10);
+
+    return isNaN(port) === true ? null : port;
+};
