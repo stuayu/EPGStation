@@ -16,6 +16,12 @@ export interface AmatsukazeTaskResult {
     isSucceeded: boolean;
     // Amatsukaze が実際に出力したファイルのパス (EPGStation から見たパスへ変換済み)
     outputPath: string | null;
+    /**
+     * 出力ファイルパスのベース (拡張子なし。EPGStation から見たパスへ変換済み)。
+     * Amatsukaze のバージョンによっては完了しても `ActualDstPath` が返らないため、
+     * その場合はここから実ファイルを探す
+     */
+    outputPathBase: string | null;
     // 失敗理由 (Failed / PreFailed のとき)
     failReason: string | null;
     // エンコードにかかった時間 (ms)
@@ -24,6 +30,7 @@ export interface AmatsukazeTaskResult {
 
 export interface IAmatsukazeTaskWatcher {
     start(): Promise<void>;
+    markTaskAdded(): void;
     stop(): void;
     cancel(): Promise<void>;
     on(event: 'update', listener: (progress: AmatsukazeTaskProgress) => void): void;

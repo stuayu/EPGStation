@@ -15,13 +15,21 @@ import { AmatsukazeTaskProgress, AmatsukazeTaskResult, IAmatsukazeTaskWatcher } 
  * 進捗・処理状況・結果を通知する。
  *
  * AmatsukazeAddTask はタスク投入専用でリクエスト ID を外へ出さないため、
- * 入力ファイルのパスと投入時刻でキューの中から自分のタスクを特定する。
+ * 入力ファイルのパスでキューの中から自分のタスクを特定する。
+ *
+ * **タスクの探索は投入が済んだ (`markTaskAdded()`) 後にしか行わない**。
+ * Amatsukaze のキューには同じ入力ファイルの過去のタスク (前回失敗した分など) が
+ * 残っていることがあり、投入前のキューから探すとそれを自分のタスクと取り違えて
+ * 「投入した瞬間に失敗・キャンセルされた」ことになってしまうため。
+ * 投入前に見えていたアイテムの id は覚えておき、候補から外す。
  */
 export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmatsukazeTaskWatcher {
     // 進捗が取れないときのフォールバック表示
     private static readonly UNKNOWN_PROGRESS_LOG = '状態を取得しています';
     // 状態が動かないことを確認する間隔 (ms)
     private static readonly TIMEOUT_CHECK_INTERVAL_MS = 30 * 1000;
+    // タスク投入後、自分のタスクがキューに現れるのを待つ時間 (ms)
+    private static readonly TARGET_WAIT_TIMEOUT_MS = 60 * 1000;
     // コンソール出力の保持行数 (進捗表示にしか使わないので末尾だけ残す)
     private static readonly CONSOLE_KEEP_LINES = 20;
     // 画面へ出すログ 1 行の最大長
@@ -44,6 +52,12 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
     private lastChangedAt: number = Date.now();
     private timeoutTimer: NodeJS.Timeout | null = null;
     private isFinished: boolean = false;
+    // タスク投入が済んだか (済むまでは対象を探さない)
+    private isTaskAdded: boolean = false;
+    // 投入前からキューに居たアイテムの id (自分のタスクではないので候補から外す)
+    private preExistingItemIds: Set<number> = new Set();
+    // 投入したタスクがキューに現れるのを待つタイマー
+    private targetWaitTimer: NodeJS.Timeout | null = null;
 
     constructor(
         client: IAmatsukazeRpcClient,
@@ -91,12 +105,51 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
     }
 
     /**
+     * タスクの投入が済んだことを伝える。
+     * これを呼ぶまで対象の探索は行わない (投入前からキューに居るアイテムを
+     * 自分のタスクと取り違えないようにするため)
+     */
+    public markTaskAdded(): void {
+        if (this.isTaskAdded === true) {
+            return;
+        }
+        this.isTaskAdded = true;
+
+        // 投入前に受け取っていたキューの中に、投入後のものが混ざっていることがあるので探し直す
+        this.updateTargetFromQueue();
+        this.publishProgress();
+
+        if (this.targetItemId !== null) {
+            return;
+        }
+
+        // 投入したはずのタスクがいつまでもキューに現れない場合に備える
+        this.targetWaitTimer = setTimeout(() => {
+            this.targetWaitTimer = null;
+            if (this.targetItemId !== null || this.isFinished === true) {
+                return;
+            }
+            this.emit(
+                'error',
+                new Error(
+                    `投入したタスクが Amatsukaze のキューに現れませんでした (${AmatsukazeTaskWatcher.TARGET_WAIT_TIMEOUT_MS} ms 待機): ${this.srcPath}`,
+                ),
+            );
+        }, AmatsukazeTaskWatcher.TARGET_WAIT_TIMEOUT_MS);
+        this.targetWaitTimer.unref();
+    }
+
+    /**
      * 監視を終了する (Amatsukaze 側のタスクには触らない)
      */
     public stop(): void {
         if (this.timeoutTimer !== null) {
             clearInterval(this.timeoutTimer);
             this.timeoutTimer = null;
+        }
+        if (this.targetWaitTimer !== null) {
+            clearTimeout(this.targetWaitTimer);
+            this.targetWaitTimer = null;
         }
     }
 
@@ -119,22 +172,22 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
     private onUIData(data: AmatsukazeUIData): void {
         if (typeof data.queueItems !== 'undefined') {
             this.queueItems = data.queueItems;
-            const matched = this.findTargetFromQueue(data.queueItems);
-            if (matched !== null) {
-                this.setTarget(matched);
-            }
+            this.rememberPreExistingItems(data.queueItems);
+            this.updateTargetFromQueue();
         }
 
         if (typeof data.updatedItem !== 'undefined') {
             const item = data.updatedItem;
             this.mergeQueueItem(item, data.updateType);
-            if (this.isTarget(item) === true) {
+            this.rememberPreExistingItems([item]);
+            if (this.isTaskAdded === true && this.isTarget(item) === true) {
                 if (data.updateType === 'Remove') {
                     // キューから消えた = 別経路で削除された
                     this.finish({
                         state: 'Canceled',
                         isSucceeded: false,
                         outputPath: null,
+                        outputPathBase: null,
                         failReason: 'Amatsukaze のキューからタスクが削除されました',
                         encodeTimeMs: item.encodeTimeMs,
                     });
@@ -173,8 +226,38 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
     }
 
     /**
+     * タスク投入前から居たアイテムとして id を控える。
+     * 投入が済んだ後に現れたアイテムは自分のタスクの可能性があるので控えない
+     * @param items: AmatsukazeQueueItem[]
+     */
+    private rememberPreExistingItems(items: AmatsukazeQueueItem[]): void {
+        if (this.isTaskAdded === true) {
+            return;
+        }
+
+        for (const item of items) {
+            this.preExistingItemIds.add(item.id);
+        }
+    }
+
+    /**
+     * 現在のキューから監視対象を探し直す (投入が済むまでは何もしない)
+     */
+    private updateTargetFromQueue(): void {
+        if (this.isTaskAdded === false) {
+            return;
+        }
+
+        const matched = this.findTargetFromQueue(this.queueItems);
+        if (matched !== null) {
+            this.setTarget(matched);
+        }
+    }
+
+    /**
      * キュー一覧から監視対象のタスクを探す。
-     * 同じ入力ファイルの過去のタスクが残っていることがあるため、追加時刻が最も新しいものを採る
+     * 同じ入力ファイルの過去のタスクが残っていることがあるため、
+     * 投入前から居たアイテムは除外した上で追加時刻が最も新しいものを採る
      * @param items: AmatsukazeQueueItem[]
      * @return AmatsukazeQueueItem | null
      */
@@ -210,6 +293,11 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
             return item.id === this.targetItemId;
         }
 
+        // 投入前から居たアイテム (前回失敗したタスクなど) は自分のものではない
+        if (this.preExistingItemIds.has(item.id) === true) {
+            return false;
+        }
+
         return isSameFilePath(item.srcPath, this.srcPath);
     }
 
@@ -242,6 +330,10 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
     private setTarget(item: AmatsukazeQueueItem): void {
         if (this.targetItemId === null) {
             this.targetItemId = item.id;
+            if (this.targetWaitTimer !== null) {
+                clearTimeout(this.targetWaitTimer);
+                this.targetWaitTimer = null;
+            }
         }
         if (this.targetItem === null || this.targetItem.state !== item.state) {
             this.lastChangedAt = Date.now();
@@ -254,6 +346,7 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
                     state: item.state,
                     isSucceeded: true,
                     outputPath: item.actualDstPath === null ? null : toLocalPath(item.actualDstPath, this.pathMappings),
+                    outputPathBase: item.dstPath === null ? null : toLocalPath(item.dstPath, this.pathMappings),
                     failReason: null,
                     encodeTimeMs: item.encodeTimeMs,
                 });
@@ -264,6 +357,7 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
                     state: item.state,
                     isSucceeded: false,
                     outputPath: null,
+                    outputPathBase: null,
                     failReason: item.failReason,
                     encodeTimeMs: item.encodeTimeMs,
                 });
@@ -273,6 +367,7 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
                     state: item.state,
                     isSucceeded: false,
                     outputPath: null,
+                    outputPathBase: null,
                     failReason: 'Amatsukaze 側でタスクがキャンセルされました',
                     encodeTimeMs: item.encodeTimeMs,
                 });

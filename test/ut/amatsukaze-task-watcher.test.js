@@ -43,9 +43,11 @@ const queueItem = (override = {}) => ({
 });
 
 /**
- * 監視を開始した watcher と、そこに流れた更新・結果を集めた入れ物を返す
+ * 監視を開始した watcher と、そこに流れた更新・結果を集めた入れ物を返す。
+ * 実際の呼び出し順は start() → AmatsukazeAddTask → markTaskAdded() なので、
+ * 既定では投入済みの状態にしておく (markTaskAdded を呼ぶまで対象は探されない)
  */
-const createWatcher = async (pathMappings = []) => {
+const createWatcher = async (pathMappings = [], markTaskAdded = true) => {
     const client = new StubRpcClient();
     const watcher = new AmatsukazeTaskWatcher(client, SRC_PATH, pathMappings, 0);
     const updates = [];
@@ -56,6 +58,9 @@ const createWatcher = async (pathMappings = []) => {
     watcher.on('finish', result => results.push(result));
     watcher.on('error', err => errors.push(err));
     await watcher.start();
+    if (markTaskAdded === true) {
+        watcher.markTaskAdded();
+    }
 
     return { client, watcher, updates, results, errors };
 };
@@ -125,6 +130,27 @@ test('完了すると出力パスを EPGStation 側のパスへ戻して通知�
     assert.equal(results[0].encodeTimeMs, 65000);
 });
 
+// Amatsukaze のバージョンによっては完了しても ActualDstPath が返らず、
+// 拡張子の付かない DstPath しか得られない (実ファイルは <DstPath>.hevc.ts のように出る)
+test('ActualDstPath が無くても DstPath を出力パスのベースとして渡す', async () => {
+    const { client, results } = await createWatcher([{ local: '/mnt/out', remote: '\\\\nas\\out' }]);
+
+    client.emit('uiData', {
+        queueItems: [
+            queueItem({
+                state: 'Complete',
+                actualDstPath: null,
+                dstPath: '\\\\nas\\out\\program',
+            }),
+        ],
+    });
+
+    assert.equal(results.length, 1);
+    assert.equal(results[0].isSucceeded, true);
+    assert.equal(results[0].outputPath, null);
+    assert.equal(results[0].outputPathBase, '/mnt/out\\program');
+});
+
 test('失敗すると失敗理由付きで通知する', async () => {
     const { client, results } = await createWatcher();
 
@@ -186,6 +212,56 @@ test('キャンセルすると追跡中のアイテムに対して Cancel を送
     await watcher.cancel();
 
     assert.deepEqual(client.changedItems, [{ itemId: 12, changeType: 'Cancel' }]);
+});
+
+// Amatsukaze のキューには同じ録画の過去のタスクが残る。投入前のキューから探すと
+// それを自分のタスクと取り違え、投入した瞬間に「失敗・キャンセルされた」ことになる
+test('投入前からキューに居た同じ入力ファイルのタスクは自分のものとして扱わない', async () => {
+    const { client, watcher, results, updates } = await createWatcher([], false);
+
+    // 投入前のキュー: 前回失敗した同じ録画のタスクが残っている
+    client.emit('uiData', { queueItems: [queueItem({ id: 5, state: 'Failed', failReason: '前回の失敗' })] });
+    assert.equal(results.length, 0);
+    assert.equal(updates.length, 0);
+
+    watcher.markTaskAdded();
+    assert.equal(results.length, 0);
+
+    // 投入した自分のタスクが現れたらそちらを追う
+    client.emit('uiData', {
+        updateType: 'Add',
+        updatedItem: queueItem({ id: 6, state: 'Queue', addTime: 1785225100000 }),
+    });
+    assert.equal(results.length, 0);
+    assert.equal(updates[updates.length - 1].state, 'Queue');
+
+    client.emit('uiData', {
+        updateType: 'Update',
+        updatedItem: queueItem({ id: 6, state: 'Complete', actualDstPath: 'D:\\out\\new.mp4' }),
+    });
+    assert.equal(results.length, 1);
+    assert.equal(results[0].outputPath, 'D:\\out\\new.mp4');
+});
+
+test('投入前に届いた完了・キャンセル通知では終了しない', async () => {
+    const { client, results } = await createWatcher([], false);
+
+    client.emit('uiData', { queueItems: [queueItem({ id: 5, state: 'Canceled' })] });
+    client.emit('uiData', { updateType: 'Update', updatedItem: queueItem({ id: 5, state: 'Complete' }) });
+
+    assert.equal(results.length, 0);
+});
+
+test('投入後に現れたタスクは全体更新からでも拾う', async () => {
+    const { client, watcher, updates } = await createWatcher([], false);
+
+    client.emit('uiData', { queueItems: [queueItem({ id: 5, state: 'Canceled' })] });
+    watcher.markTaskAdded();
+    client.emit('uiData', {
+        queueItems: [queueItem({ id: 5, state: 'Canceled' }), queueItem({ id: 6, state: 'Encoding' })],
+    });
+
+    assert.equal(updates[updates.length - 1].state, 'Encoding');
 });
 
 test('同じ内容の更新は重複して通知しない', async () => {
