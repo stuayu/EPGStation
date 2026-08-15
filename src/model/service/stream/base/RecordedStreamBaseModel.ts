@@ -17,6 +17,7 @@ import AribId3Extractor from '../llhls/AribId3Extractor';
 import Fmp4Packager from '../llhls/Fmp4Packager';
 import IAribId3Extractor from '../llhls/IAribId3Extractor';
 import IFmp4Packager from '../llhls/IFmp4Packager';
+import AudioTrackUtil from '../util/AudioTrackUtil';
 import IHLSFileDeleterModel from '../util/IHLSFileDeleterModel';
 import IHLSMemoryStoreModel from '../util/IHLSMemoryStoreModel';
 import IRecordedStreamBaseModel, { RecordedStreamOption, VideoFileInfo } from './IRecordedStreamBaseModel';
@@ -28,6 +29,11 @@ export default abstract class RecordedStreamBaseModel
     extends StreamBaseModel<RecordedStreamOption>
     implements IRecordedStreamBaseModel
 {
+    // in-memory 録画済み HLS の 1 セグメントを構成するパート数
+    // 1 パート = fMP4 フラグメント = GOP (EncodePresets の RECORDED_HLS_GOP_FRAMES で 0.5 秒) なので、
+    // 2 パートで 1 秒セグメントになる (#EXT-X-TARGETDURATION は 1 秒が下限)
+    private static readonly RECORDED_HLS_PARTS_PER_SEGMENT = 2;
+
     private videoFileDB: IVideoFileDB;
     private recordedDB: IRecordedDB;
     private videoUtil: IVideoUtil;
@@ -193,7 +199,10 @@ export default abstract class RecordedStreamBaseModel
     /**
      * in-memory HLS のパッケージングを開始する
      * エンコードプロセスが標準出力へ書き出す fragmented MP4 を Fmp4Packager で
-     * init / セグメントに分解し、HLSMemoryStoreModel へ蓄積する (ディスク書き込みなし)
+     * init / パート / セグメントに分解し、HLSMemoryStoreModel へ蓄積する (ディスク書き込みなし)
+     *
+     * ストアは 'recorded' モードで作る。シークバーでの巻き戻しに応えるため、
+     * ライブより多くのセグメントを保持しプレイリストへ載せる
      * @param streamId: apid.StreamId
      */
     private startMemoryHLSPackaging(streamId: apid.StreamId): void {
@@ -203,13 +212,19 @@ export default abstract class RecordedStreamBaseModel
 
         this.log.stream.info(`start in-memory recorded HLS packaging: ${streamId}`);
         this.memoryStreamId = streamId;
-        this.hlsMemoryStore.create(streamId);
+        this.hlsMemoryStore.create(streamId, 'recorded');
 
-        const packager = new Fmp4Packager({ partsPerSegment: 1 }, this.log);
+        const packager = new Fmp4Packager(
+            { partsPerSegment: RecordedStreamBaseModel.RECORDED_HLS_PARTS_PER_SEGMENT },
+            this.log,
+        );
         this.fmp4Packager = packager;
 
         packager.on('init', data => {
             this.hlsMemoryStore.setInit(streamId, data);
+        });
+        packager.on('part', part => {
+            this.hlsMemoryStore.addPart(streamId, part.data, part.duration, part.isIndependent);
         });
         packager.on('segment', segment => {
             this.hlsMemoryStore.addSegment(streamId, segment.data, segment.duration);
@@ -305,6 +320,9 @@ export default abstract class RecordedStreamBaseModel
         let cmd = this.processOption.cmd
             .replace(/%FFMPEG%/g, this.config.ffmpeg)
             .replace(/%SS%/g, this.videoFileType === 'ts' ? '' : this.processOption.playPosition.toString(10));
+
+        // 音声トラック指定 (%DUALMONOMODE% / %AUDIOMAP%) を展開する
+        cmd = AudioTrackUtil.replacePlaceholders(cmd, this.processOption.audioTrack);
 
         if (this.getStreamType() === 'RecordedHLS') {
             cmd = cmd

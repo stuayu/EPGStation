@@ -133,21 +133,33 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
 
 - `config.yml` の `stream.live.ts.hls` の `cmd` が `%streamFileDir%` を含まない場合、in-memory モードと判定される（設定スキーマの変更なし・従来のディスク方式もそのまま動作）。
 - in-memory モードの `cmd` は fragmented MP4 を標準出力（`pipe:1`）へ書き出すこと（`-movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`）。
-- サーバー側は `Fmp4Packager` で fMP4 を init セグメント / メディアセグメント（約 1 秒）に分解し、`HLSMemoryStoreModel`（singleton）に保持する。
+- サーバー側は `Fmp4Packager` で fMP4 を init セグメント / パート / メディアセグメントに分解し、`HLSMemoryStoreModel`（singleton）に保持する。
 - `/streamfiles/stream{id}.m3u8` などのリクエストはまずメモリストアから応答し、存在しない場合は従来どおりディスク（`streamFilePath`）へフォールバックする。
 - tmpfs 等 OS 依存の仕組みを使わないため Windows でも動作する。
 - **録画済み HLS 配信 (`RecordedHLS`) も同じ判定・同じ `HLSMemoryStoreModel` / `Fmp4Packager` / `/streamfiles/*` エンドポイントを共用して in-memory 化に対応済み** (`stream.recorded.{ts,encoded}.hls` の `cmd` が `%streamFileDir%` を含まなければ in-memory)。判定・パイプライン組み立ては `RecordedStreamBaseModel.isMemoryHLS()` / `startMemoryHLSPackaging()` に実装している (`LiveStreamBaseModel` と同名・同構造)。
+  - **`encodePresets` が生成する録画済み HLS プリセットは in-memory (fMP4) がデフォルト**。MPEG-TS セグメントの HLS では iOS / Safari が HEVC を再生できず、LL-HLS のパート分割も fMP4 フラグメント単位でしか実現できないため、`buildRecordedHlsCmd()` は `%streamFileDir%` を含まない fMP4 出力の cmd を生成する。ディスク方式で運用したい場合は `stream.profiles.recorded.*` を手書きすること。
   - 録画側はクライアントが再生位置 (`playPosition`) 付きでストリームセッションを作り直す方式 (シーク = ストリーム再生成) のため、ディスク方式の既存 cmd も `hls_list_size 0` + `delete_segments` のスライディングウィンドウであり、そもそも全編を保持する EVENT プレイリストではない。したがって in-memory 化してもシーク時の挙動 (再生位置からの作り直し) は変わらない。
-  - in-memory モードでも ARIB 字幕に対応する (ライブと同じ仕組み)。`ts` 録画の場合、エンコード前の TS を `arib-subtitle-timedmetadater` へ通し、`AribId3Extractor` が ID3 timed metadata を抜き取り、`Fmp4Packager` がセグメント先頭の `emsg` box として再多重化する。エンコード済みファイル (`encoded`) には ARIB 字幕が含まれないため対象外。
+  - ストアは `create(streamId, 'recorded')` で作る。プレイヤー内での巻き戻しに応えるため、ライブ (掲載 6 / 保持 12 セグメント) より多い 180 セグメントを保持しすべてプレイリストへ載せる。
+  - in-memory モードでも ARIB 字幕に対応する (ライブと同じ仕組み)。`ts` 録画の場合、エンコード前の TS を `arib-subtitle-timedmetadater` へ通し、`AribId3Extractor` が ID3 timed metadata を抜き取り、`Fmp4Packager` がパート先頭の `emsg` box として再多重化する。エンコード済みファイル (`encoded`) には ARIB 字幕が含まれないため対象外。
   - メモリ保持・破棄・タイムアウト・`keep()` によるセッション延長は `StreamBaseModel` / `StreamManageModel` を共通で通るため、ライブ HLS と同じ経路でクリーンアップされる (ストリーム停止時に `HLSMemoryStoreModel.delete()` が呼ばれ、ゴミは残らない)。
 
 ### 低遅延化
 
-- **セグメント長 = GOP 長**。fMP4 のフラグメント境界はキーフレーム (`frag_keyframe`) であり、`Fmp4Packager` は `partsPerSegment: 1` で 1 フラグメント = 1 セグメントにしているため、`-g` がそのままセグメント長になる。**遅延を詰めたいときはここを短くする**。QSV (`hevc_qsv`) 実運用で `-g 8` (≒0.27 秒、29.97fps) まで詰めても実測でエンコードが余裕を持って実時間に追いつくことを確認済み (後述の `-flags low_delay` 除去後)。より頻繁な I フレームは同一ビットレートでの実効画質をわずかに下げるトレードオフがある。
+- **パート長 = GOP 長**。fMP4 のフラグメント境界はキーフレーム (`frag_keyframe`) であり、1 フラグメント = 1 パートになるため、`-g` がそのままパート長になる。**遅延を詰めたいときはここを短くする**。QSV (`hevc_qsv`) 実運用で `-g 8` (≒0.27 秒、29.97fps) まで詰めても実測でエンコードが余裕を持って実時間に追いつくことを確認済み (後述の `-flags low_delay` 除去後)。より頻繁な I フレームは同一ビットレートでの実効画質をわずかに下げるトレードオフがある。
+- **セグメント長 = パート長 × `partsPerSegment`**。`#EXT-X-TARGETDURATION` は整数秒でしか書けず 1 秒が下限なので、既定は GOP 15 フレーム (≒0.5 秒) × 2 パート = 1 秒セグメントにしている (`LiveStreamBaseModel.LIVE_HLS_PARTS_PER_SEGMENT` / `RecordedStreamBaseModel.RECORDED_HLS_PARTS_PER_SEGMENT`)。
 - **ライブ入力に `-re` を付けない**。`-re` は入力をリアルタイム速度に制限するオプションで、Mirakurun から流れてくる TS は元々リアルタイムなので二重の律速になり、遅延だけが増える (低遅延の m2ts-ll 側には元から付いていない)。代わりに `-fflags nobuffer` で ffmpeg 内部の入力バッファリングを抑える。
-- プレイリストウィンドウは 8 セグメント、メモリ保持は 16 セグメント、再生開始は 2 セグメント貯まった時点 (秒数はセグメント長 = GOP 長に依存)。
-- クライアントの hls.js は `lowLatencyMode: false` / `liveSyncDurationCount: 4` / `maxLiveSyncPlaybackRate: 1` で運用する。このサーバーは真の LL-HLS (`#EXT-X-PART`) を実装していないため `lowLatencyMode` を有効にする本来のメリットが無く、無効化しても `liveSyncDurationCount` によるライブエッジ追従は変わらず機能する (下記「調査の経緯」を参照。実際の不具合の原因ではなかったが、意味のない設定として無効化している)。
-- **さらに詰めるなら EXT-X-PART (本来の LL-HLS)** が必要。`Fmp4Packager` は既にパート単位でデータを持っているため、`HLSMemoryStoreModel` に部分セグメントの配信とブロッキングなプレイリスト更新 (`_HLS_msn` / `_HLS_part`) を実装すれば 1 秒未満も狙える (未実装)。実装する場合は `lowLatencyMode: true` に戻した上で `#EXT-X-SERVER-CONTROL` / `#EXT-X-PART-INF` / `#EXT-X-PART` をプレイリストに含めること (含めないまま `lowLatencyMode: true` にすると hls.js の `LatencyController` が `timeupdate` のたびに再生速度を微調整する無意味な処理が走るだけになる)。
+- ライブのプレイリストウィンドウは 6 セグメント、メモリ保持は 12 セグメント、再生開始は 2 セグメント貯まった時点 (秒数はセグメント長に依存)。
+- クライアントの hls.js は `lowLatencyMode: true` / `liveSyncDurationCount: 3` / `maxLiveSyncPlaybackRate: 1` で運用する。`maxLiveSyncPlaybackRate: 1` は `LatencyController` による追いつき再生 (`playbackRate` の書き換え) だけを止めるための指定で、パート単位の取得とブロッキングプレイリスト要求は有効なまま残る。
+
+#### LL-HLS (EXT-X-PART)
+
+真の LL-HLS を実装済み。`Fmp4Packager` が emit するパートをそのまま配信し、セグメント確定を待たずに再生できる。
+
+- **プレイリストのタグ**: `#EXT-X-VERSION:9` / `#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=<PART-TARGET×3>` / `#EXT-X-PART-INF:PART-TARGET=<最大パート長>` / `#EXT-X-PART:DURATION=…,URI=…[,INDEPENDENT=YES]` / `#EXT-X-PRELOAD-HINT:TYPE=PART,URI=…`。`PART-HOLD-BACK` は仕様上 `PART-TARGET` の 3 倍以上が必須。
+- **パートの URL は `stream{id}-{seq}.{index}.part.m4s`**。セグメントの `stream{id}-{seq}.m4s` と正規表現で衝突しない形にしてある (`ServiceServer.serveInMemoryHLSFile()`)。
+- **ブロッキング要求に応える**。`?_HLS_msn=<seq>&_HLS_part=<index>` 付きのプレイリスト要求と、`#EXT-X-PRELOAD-HINT` で指定した未生成パートへの要求は、該当パートが生成されるまでレスポンスを保留する (`HLSMemoryStoreModel.waitForPlaylist()` / `getPart()`)。上限は 6 秒 (`BLOCK_TIMEOUT`) で、遠すぎる未来 (3 セグメント以上先) の要求は待たずに現状を返す。
+- **`delete()` は待機中の要求を必ず解決する**。解決せずにエントリを消すと、そのリクエストのレスポンスが永久に返らなくなる。
+- **`emsg` (ARIB 字幕) はセグメントではなくパートの先頭に置く**。LL-HLS ではパートが単独で配信されるため、セグメント確定まで待って付けるとパート経由で再生しているプレイヤーに字幕が届かない。セグメントはパートの単純連結なので、パート側に載せた `emsg` はセグメントにもそのまま含まれる (`Fmp4Packager.emitPart()`)。
 
 #### 実運用で発生した「ずっとかくつく」問題の調査経緯と真因
 
@@ -161,6 +173,50 @@ QSV (`hevc_qsv`) での低遅延ライブ HLS 配信で、視聴中ずっと映�
 4. **`-g 24` への変更 (QSV が 0.5 秒 GOP で「厳しい」という当初の申告) も誤診断だった可能性が高い**。`-flags low_delay` を外した状態で改めて `-g 15`→`-g 8` まで詰めても、エンコード速度は一貫して余裕を持って実時間を上回り、体感の不安定さも再発しなかった。当初 QSV の負荷が原因と判断された「かくつき」も、実際には同じ `-flags low_delay` 由来だった可能性が高い。
 5. 教訓: **この手の「継続的な微妙な体感品質劣化」の切り分けでは、まずデータの正しさ (エンコード速度・セグメント連続性) を機械的に確認して安心してよいが、そこから先の「体感」の良し悪しは自動計測より実際のユーザーの目が最も信頼できる。** 変更は 1 つずつ行い、都度ユーザーに直接確認してもらうのが最短路だった。
 
+### コーデックの iOS / Safari 互換
+
+HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも制約がある。`src/util/EncodePresets.ts` と `config/enc.js.template` は以下を満たすようにコマンドを組み立てる。
+
+- **HEVC は fMP4 でしか配信できない**。MPEG-TS セグメントの HLS に HEVC を入れても iOS / Safari は再生できない (Apple は fMP4 のみサポート)。`encodePresets` の録画済み HLS プリセットを in-memory fMP4 にしているのはこのため。
+- **HEVC の fMP4 / MP4 は必ず `hvc1` タグにする**。ffmpeg の既定は `hev1` で、`hev1` のままだと iOS / Safari で映像が出ない。ffmpeg 直接エンコードは `-tag:v hvc1`、rigaya 系 (QSVEncC / NVEncC / VCEEncC) は **エンコーダ側にコーデックタグを指定する手段が無い**ため、後段の ffmpeg remux (`-c:v copy -tag:v hvc1`) で付ける。録画エンコード (`config/enc.js`) の rigaya HEVC プリセットも、mp4 を直接書かず mpegts を標準出力へ渡して ffmpeg で `hvc1` 付き mp4 に remux する。
+- **HEVC は Main プロファイル・8bit 4:2:0 に固定する**。Main10 は端末世代によってハードウェアデコードできない。地上波・BS/CS は元が 8bit なので Main で足りる (`-profile:v main -pix_fmt yuv420p` / rigaya は `--profile main --output-depth 8`)。
+- **レベルも明示する**。HEVC は 1080p までが Level 4.1、4K が 5.1。H.264 は 720p 以上で High プロファイル、1080p が Level 4.1。4K の H.264 は iOS のハードウェアデコード対象外なので、`2160p` を使うなら `codecs: [hevc]` にすること。
+
+### 音声トラックの切り替え
+
+二か国語放送の副音声や、複数の音声 ES を持つ録画を再生中に切り替えられる。
+
+- **指定子は 3 種類**: `main` (主音声・既定) / `sub` (デュアルモノラルの副音声) / 数字 (音声 ES のインデックス)。
+  ストリーム API のクエリ `audioTrack` へ渡す (`GET /api/streams/live/{channelId}/hls?mode=0&audioTrack=sub` など)。
+- **デュアルモノラルの副音声は `-map` では選べない**。二か国語放送は「1 つのステレオ ES の左右に主音声・副音声」
+  という形で送られるため、副音声の選択は `-dual_mono_mode sub` で行う。音声 ES が複数ある放送では
+  `-map 0:a:<n>` で ES 自体を選ぶ。この使い分けは `AudioTrackUtil` にまとまっている。
+- **cmd のプレースホルダで展開する**: `%DUALMONOMODE%` (入力オプション、`-i` より前に置く) と
+  `%AUDIOMAP%` (出力オプション)。`encodePresets` が生成する cmd と config テンプレートの cmd には
+  埋め込んである。**`-dual_mono_mode main` を直書きした手書き cmd では音声を切り替えられない**
+  (置換対象が無いだけで従来どおり再生はできる)。`-map 0` を使う cmd (m2ts / m2ts-ll / ディスク HLS) には
+  `%AUDIOMAP%` を入れないこと (指定が二重になる)。
+- **録画の一覧は `GET /api/videos/{videoFileId}/audio-tracks`** が ffprobe を使って返す。
+  音声 ES が 1 つだけのステレオは、二か国語放送の可能性があるため主音声・副音声の 2 件へ展開する
+  (ただのステレオ放送だった場合、副音声を選ぶと右チャンネルが両耳に出るだけで再生自体は続く)。
+  ライブは事前に音声構成を知る手段が無いため、クライアントが主音声・副音声の 2 択を常に出す。
+- **切り替えはストリームの作り直し**になる (エンコード済みの音声を後から差し替えられないため)。
+  クライアントは画質切替と同じく、現在の再生位置でストリームを再生成してから url を差し替える。
+  ファイルを直接再生している場合 (`NormalVideo`) だけは video 要素の `audioTracks` で即座に切り替わる。
+- UI は **DPlayer の設定 > 音声パネルの DOM を流用**している (`DPlayerEnhancer`)。DPlayer 標準の実装は
+  mpegts.js / hls.js のトラックを直接叩くものなので、項目の生成とクリック時の動作を差し替えている。
+
+### チャプター
+
+エンコード済みファイルにチャプターが埋め込まれていればシークバー上へ表示する。
+
+- **`GET /api/videos/{videoFileId}/chapters`** が `ffprobe -show_chapters` の結果を返す。
+  DB には保存せず要求のたびに読み出す (1 ファイルあたり数十 ms で終わるため)。
+- **DPlayer の `highlight` は生成時にしか読まれない**ため、チャプターはプレイヤーを作る前に取得しておく
+  (`BaseVideo.applyChapterHighlights()` を `createPlayer()` の前に呼ぶ)。ファイルを直接再生する
+  `NormalVideo` だけは動画長が `loadedmetadata` まで分からないので、読み込み後に自前でマーカーを描き足す。
+- キーボードの `[` / `]` で前後のチャプターへ移動できる。
+
 ### mpegts 配信 (m2ts / m2ts-ll) の ARIB 字幕
 
 - **DPlayer は mpegts.js の `TIMED_ID3_METADATA_ARRIVED` からしか aribb24 へ字幕を渡さない**。TS に ARIB 字幕 ES (PID 0x130 等) がそのまま入っていても字幕は表示されない。そのため mpegts 配信でも HLS と同じく `arib-subtitle-timedmetadater` を通し、ID3 timed metadata ES (PID 0x1ffe) を足したうえでエンコーダへ渡す (`LiveStreamBaseModel`)
@@ -169,10 +225,10 @@ QSV (`hevc_qsv`) での低遅延ライブ HLS 配信で、視聴中ずっと映�
 
 ### 制限事項
 
-- in-memory モードの字幕は `emsg` box (`scheme_id_uri = https://aomedia.org/emsg/ID3`) で運ぶ。fMP4 には ARIB 字幕 ES / ID3 ES をそのまま多重化できないため、エンコード前の TS から ID3 timed metadata を抜き取り、セグメント先頭へ `emsg` として付け直す方式を採っている (`AribId3Extractor` → `Fmp4Packager.pushId3()`)。hls.js は `emsg` を ID3 として通知するため、クライアント側 (aribb24) の実装はディスク方式と共通。
+- in-memory モードの字幕は `emsg` box (`scheme_id_uri = https://aomedia.org/emsg/ID3`) で運ぶ。fMP4 には ARIB 字幕 ES / ID3 ES をそのまま多重化できないため、エンコード前の TS から ID3 timed metadata を抜き取り、パート先頭へ `emsg` として付け直す方式を採っている (`AribId3Extractor` → `Fmp4Packager.pushId3()`)。hls.js は `emsg` を ID3 として通知するため、クライアント側 (aribb24) の実装はディスク方式と共通。
 - 上記の性質上、字幕の絶対時刻はエンコードパイプラインの遅延分 (おおむね 1 秒程度) だけずれることがある。フレーム単位の同期が必要な場合は従来のディスク方式 cmd を使用すること。
 - 字幕を正しく扱うため、入力 TS は `tsreadex` を通すこと (ワンセグ/字幕の PID 整合やドロップ耐性のため実質必須)。cmd の先頭に `%TSREADEX% ... |` を置く形を推奨する。
-- メモリ保持は直近 12 セグメント（約 12 秒）のみで、ストリーム停止時に即時解放される (ライブ・録画共通、`HLSMemoryStoreModel` の保持数は共通設定)。
+- メモリ保持はライブが直近 12 セグメント、録画済みが直近 180 セグメント (1 秒セグメント換算で約 3 分) で、ストリーム停止時に即時解放される (`HLSMemoryStoreModel` の `LIVE_RETAIN_SEGMENT_NUM` / `RECORDED_RETAIN_SEGMENT_NUM`)。録画済みで保持範囲を超えて巻き戻す操作は、従来どおりクライアント側でストリームを作り直して対応する。
 - **PMT は 1 TS パケットに収まるとは限らない**。`arib-subtitle-timedmetadater` は PMT に metadata の記述子と ES を書き足すため、元の PMT が大きい放送局 (NHK 等) では 184 byte を超えて分割される。`AribId3Extractor` は PSI セクションを `section_length` まで組み立ててから解釈する。ここを先頭パケットだけで済ませると **metadata の PID を検出できず字幕が 1 つも出ない**。
 - **ID3 の PES は `PES_packet_length` で確定させる**。次の PES 到着を待つ実装にすると、字幕の間隔 (数秒〜数十秒) だけ表示が遅れて実質出ないのと同じになる。
 - **PES ヘッダの 33bit PTS はビット演算で組み立てられない** (JavaScript のビット演算は 32bit に丸められる)。`AribId3Extractor.parsePes()` は各フィールドを重み `2^30 / 2^22 / 2^15 / 2^7 / 2^0` で足し合わせて復元する。ここを間違えると字幕の表示タイミングだけがずれる (映像・音声は ffmpeg 側が扱うため気づきにくい)。テストは `test/ut/arib-id3-extractor.test.js`。

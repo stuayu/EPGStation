@@ -38,6 +38,8 @@ export const parseRequestParamInt = (value: string | string[], name: string): nu
 export interface StreamModeOrProfile {
     mode?: number;
     profile?: string;
+    // 再生する音声トラック ('main' | 'sub' | 音声 ES のインデックス文字列)
+    audioTrack?: string;
 }
 
 /**
@@ -71,9 +73,20 @@ export const parseStreamModeOrProfile = (req: express.Request, res: express.Resp
         return null;
     }
 
+    // audioTrack は 'main' / 'sub' / 音声 ES のインデックス文字列。
+    // クライアントが数値だけを送ってきた場合に備えて数値も受け付ける
+    const rawAudioTrack: unknown = req.query.audioTrack;
+    let audioTrack: string | undefined;
+    if (typeof rawAudioTrack === 'string' && rawAudioTrack.length > 0) {
+        audioTrack = rawAudioTrack;
+    } else if (typeof rawAudioTrack === 'number') {
+        audioTrack = rawAudioTrack.toString(10);
+    }
+
     return {
         mode: typeof mode === 'number' && !Number.isNaN(mode) ? mode : undefined,
         profile: profile,
+        audioTrack: audioTrack,
     };
 };
 

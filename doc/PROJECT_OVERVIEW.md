@@ -229,6 +229,10 @@ npm run recover-channel-name   # 過去の録画の放送局名を復元 (既定
 
 ### ストリーミング・データ放送
 
-- **ライブ HLS は 2 モード**: cmd が `%streamFileDir%` を含まなければ in-memory 配信 (`HLSMemoryStoreModel`、ディスク書き込みなし)、含めば従来のディスク方式。**どちらも ARIB 字幕対応**で、in-memory 側は ID3 を `emsg` box (**version 1 必須**) で運ぶ
+- **HLS は 2 モード**: cmd が `%streamFileDir%` を含まなければ in-memory 配信 (`HLSMemoryStoreModel`、ディスク書き込みなし)、含めば従来のディスク方式。ライブ・録画済みとも同じ判定で、**`encodePresets` が生成する HLS プリセットはどちらも in-memory (fMP4)**。**どちらのモードも ARIB 字幕対応**で、in-memory 側は ID3 を `emsg` box (**version 1 必須**) で運ぶ
+- **in-memory HLS は LL-HLS (`#EXT-X-PART`)**: パート = fMP4 フラグメント = GOP (既定 0.5 秒)、2 パートで 1 秒セグメント。ブロッキングプレイリスト要求 (`_HLS_msn` / `_HLS_part`) と `#EXT-X-PRELOAD-HINT` の先行要求は、該当パートが生成されるまでレスポンスを保留する。**`emsg` (字幕) はセグメントではなくパート先頭に置く** (パートが単独配信されるため)
+- **音声トラックの切り替えは cmd のプレースホルダで行う**: `%DUALMONOMODE%` (`-dual_mono_mode main|sub`) と `%AUDIOMAP%` (`-map 0:v:0 -map 0:a:<n>`)。**二か国語放送のデュアルモノラルは `-map` では選べない** (1 つのステレオ ES の左右に主音声・副音声が入っているため)。`-dual_mono_mode` を直書きした手書き cmd では切り替わらない
+- **チャプターは DB に持たず要求のたびに ffprobe で読む** (`GET /api/videos/{videoFileId}/chapters`)。DPlayer の `highlight` は生成時にしか読まれないため、プレイヤーを作る前に取得すること
+- **HEVC を配信するなら fMP4 + `hvc1` タグが必須**: iOS / Safari は MPEG-TS セグメントの HEVC を再生できず、`hev1` タグでも映像が出ない。rigaya 系 (QSVEncC 等) はエンコーダ側でタグを指定できないため、後段 ffmpeg の `-c:v copy -tag:v hvc1` で付ける。プロファイルは Main・8bit 4:2:0 に固定する
 - エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換
 - **データ放送の WebSocket は socket.io と同じサーバの `upgrade` イベントに `noServer: true` で相乗りする**。パスが `<subDirectory>/api/dataBroadcasting/ws` と一致しない socket には絶対に触れない (触ると socket.io のハンドシェイクが壊れる)

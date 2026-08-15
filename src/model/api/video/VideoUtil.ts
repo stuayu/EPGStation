@@ -106,6 +106,156 @@ export default class VideoUtil implements IVideoUtil {
         });
     }
 
+    public getChapters(filePath: string): Promise<apid.VideoChapter[]> {
+        return new Promise<apid.VideoChapter[]>((resolve, reject) => {
+            execFile(
+                this.config.ffprobe,
+                ['-v', '0', '-show_chapters', '-of', 'json', filePath],
+                { maxBuffer: VideoUtil.FFPROBE_MAX_BUFFER },
+                (err, stdout) => {
+                    if (err) {
+                        reject(err);
+
+                        return;
+                    }
+
+                    try {
+                        const result = <any>JSON.parse(stdout);
+                        const chapters: any[] = Array.isArray(result.chapters) ? result.chapters : [];
+
+                        resolve(
+                            chapters.map((chapter, index) => {
+                                // start_time / end_time は秒の文字列。無い場合は time_base × start から計算する
+                                const timeBase = VideoUtil.parseTimeBase(chapter.time_base);
+                                const startAt =
+                                    VideoUtil.toNumber(chapter.start_time) ??
+                                    (VideoUtil.toNumber(chapter.start) ?? 0) * timeBase;
+                                const endAt =
+                                    VideoUtil.toNumber(chapter.end_time) ??
+                                    (VideoUtil.toNumber(chapter.end) ?? 0) * timeBase;
+                                const title = chapter.tags?.title;
+
+                                return {
+                                    id: typeof chapter.id === 'number' ? chapter.id : index,
+                                    startAt: startAt,
+                                    endAt: endAt,
+                                    title: typeof title === 'string' && title.length > 0 ? title : null,
+                                };
+                            }),
+                        );
+                    } catch (e: any) {
+                        reject(e);
+                    }
+                },
+            );
+        });
+    }
+
+    public getAudioTracks(filePath: string): Promise<apid.VideoAudioTrack[]> {
+        return new Promise<apid.VideoAudioTrack[]>((resolve, reject) => {
+            execFile(
+                this.config.ffprobe,
+                ['-v', '0', '-show_streams', '-select_streams', 'a', '-of', 'json', filePath],
+                { maxBuffer: VideoUtil.FFPROBE_MAX_BUFFER },
+                (err, stdout) => {
+                    if (err) {
+                        reject(err);
+
+                        return;
+                    }
+
+                    try {
+                        const result = <any>JSON.parse(stdout);
+                        const streams: any[] = Array.isArray(result.streams) ? result.streams : [];
+
+                        resolve(VideoUtil.buildAudioTracks(streams));
+                    } catch (e: any) {
+                        reject(e);
+                    }
+                },
+            );
+        });
+    }
+
+    /**
+     * ffprobe の音声ストリーム情報から音声トラック一覧を組み立てる
+     *
+     * 地上波・BS/CS の二か国語放送は「1 つのステレオ ES の左右に主音声・副音声」を入れる
+     * デュアルモノラルで送られる。ffprobe からは 2ch のステレオにしか見えないため、
+     * **音声 ES が 1 つだけで 2ch のときは主音声・副音声の 2 トラックへ展開する**
+     * (実際にはただのステレオ放送であることも多いので、名前は「主音声」「副音声(デュアルモノラル時)」とする)。
+     * 音声 ES が複数ある場合はそれぞれが独立した音声なので展開しない
+     * @param streams: any[] ffprobe の音声ストリーム情報
+     * @return apid.VideoAudioTrack[]
+     */
+    private static buildAudioTracks(streams: any[]): apid.VideoAudioTrack[] {
+        const tracks: apid.VideoAudioTrack[] = [];
+
+        for (let i = 0; i < streams.length; i++) {
+            const stream = streams[i];
+            const codec = typeof stream.codec_name === 'string' ? stream.codec_name : null;
+            const language = typeof stream.tags?.language === 'string' ? stream.tags.language : null;
+            const channels = VideoUtil.toNumber(stream.channels);
+            const title = typeof stream.tags?.title === 'string' ? stream.tags.title : null;
+
+            const base = {
+                streamIndex: i,
+                codec: codec,
+                language: language,
+                channels: channels,
+            };
+
+            if (streams.length === 1 && channels === 2) {
+                tracks.push({
+                    ...base,
+                    track: 'main',
+                    name: title ?? '主音声',
+                    isDualMono: true,
+                });
+                tracks.push({
+                    ...base,
+                    track: 'sub',
+                    name: '副音声 (デュアルモノラル)',
+                    isDualMono: true,
+                });
+
+                continue;
+            }
+
+            tracks.push({
+                ...base,
+                track: i.toString(10),
+                name: title ?? (i === 0 ? '主音声' : `音声 ${i + 1}`),
+                isDualMono: false,
+            });
+        }
+
+        return tracks;
+    }
+
+    /**
+     * ffprobe の time_base ("1/1000" 形式) を秒へ換算する係数として解釈する
+     * @param value: unknown
+     * @return number 解釈できない場合は 0 (start_time 側が使われる想定)
+     */
+    private static parseTimeBase(value: unknown): number {
+        if (typeof value !== 'string') {
+            return 0;
+        }
+
+        const parts = value.split('/');
+        if (parts.length !== 2) {
+            return 0;
+        }
+
+        const numerator = parseFloat(parts[0]);
+        const denominator = parseFloat(parts[1]);
+
+        return isNaN(numerator) === true || isNaN(denominator) === true || denominator === 0
+            ? 0
+            : numerator / denominator;
+    }
+
     /**
      * ffprobe の出力を数値に変換する
      * @param value: unknown ffprobe の出力値

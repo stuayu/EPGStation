@@ -25,6 +25,28 @@ export default class VideoApiModel implements IVideoApiModel {
      * @param videoFileId: apid.VideoFileId
      * @return Promise<number> 動画の長さ(秒)
      */
+    /**
+     * 録画ファイルに埋め込まれたチャプターを取得する
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<apid.VideoChapter[]> チャプターが無い場合は空配列
+     */
+    public async getChapters(videoFileId: apid.VideoFileId): Promise<apid.VideoChapter[]> {
+        const result = await this.repository.get(`/videos/${videoFileId}/chapters`);
+
+        return result.data.chapters;
+    }
+
+    /**
+     * 録画ファイルの音声トラック一覧を取得する
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<apid.VideoAudioTrack[]>
+     */
+    public async getAudioTracks(videoFileId: apid.VideoFileId): Promise<apid.VideoAudioTrack[]> {
+        const result = await this.repository.get(`/videos/${videoFileId}/audio-tracks`);
+
+        return result.data.tracks;
+    }
+
     public async getDuration(videoFileId: apid.VideoFileId): Promise<number> {
         const result = await this.repository.get(`/videos/${videoFileId}/duration`);
 

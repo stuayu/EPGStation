@@ -57,6 +57,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 視聴・ストリーミング・データ放送
 
+- 配信を画質優先へ調整し、音声トラック切り替え・チャプター表示・プレイヤー機能を追加した
+- HLS 配信を LL-HLS (EXT-X-PART) にし、録画済み HLS も fMP4 化して HEVC / iOS で再生できるようにした
 - 放送中画面でチャンネルを選んでも DPlayer の映像が切り替わらないバグを修正した
 - 視聴画面 (放送中・録画再生) をダークモード・ライトモードの両方に対応させた
 - 録画の再生速度がライブ視聴にも波及していたのを直した
@@ -130,6 +132,70 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 ---
 
 ## 変更履歴 (新しい順)
+
+- **配信を画質優先へ調整し、音声トラック切り替え・チャプター表示・プレイヤー機能を追加した**
+    - **画質優先チューニング**: 配信のビットレートを引き上げ (1080p は H.264 で 5000 → 8000kbps)、
+      **コーデック別に係数を掛ける**ようにした (HEVC は同画質を約 65% のビットレートで出せるため 5200kbps)。
+      速度プリセットは用途で分ける: ライブ視聴は遅延が体感を損なうので従来どおり速度優先
+      (`-preset veryfast` / `--quality faster`)、**録画済みファイルの配信は 1 段重いプリセット**
+      (`-preset faster` / `--quality balanced` / NVENC は `p5`) にして、圧縮効率を落とす
+      `-tune fastdecode,zerolatency` も外した。
+        - 遅延の許容度と GOP 長は別物なので `StreamTuning` (`lowLatency` / `shortGop`) に分けた。
+          録画済み HLS は「遅延は許容できるが LL-HLS のパート境界のため GOP は短くしたい」ケースにあたる
+    - **音声トラックの切り替え**: 二か国語放送の副音声や複数音声 ES を再生中に切り替えられるようにした
+        - **デュアルモノラルは `-map` では切り替えられない**。二か国語放送は「1 つのステレオ ES の左右に
+          主音声・副音声」で送られるため、副音声の選択は `-dual_mono_mode sub` で行う。音声 ES が複数ある
+          場合のみ `-map 0:a:<n>` で ES を選ぶ。この使い分けを `AudioTrackUtil` に閉じ込め、
+          cmd のプレースホルダ `%DUALMONOMODE%` / `%AUDIOMAP%` として展開する
+        - ストリーム API に `audioTrack` クエリ (`main` / `sub` / 音声 ES のインデックス) を追加した
+        - 録画の一覧は `GET /api/videos/{videoFileId}/audio-tracks` (ffprobe)。**音声 ES が 1 本のステレオは
+          主音声・副音声の 2 件へ展開する** (ただのステレオ放送か二か国語かを ffprobe からは判別できないため)。
+          ライブは事前に構成が分からないのでクライアントが 2 択を常に出す
+        - **UI は DPlayer の設定 > 音声パネルの DOM を流用**した。DPlayer 標準の実装は mpegts.js / hls.js の
+          トラックを直接叩くもので、サーバー側でストリームを作り直す EPGStation の方式には使えないため、
+          項目の生成とクリック時の動作だけを `DPlayerEnhancer` で差し替えている
+        - **手書き cmd では効かない**: `-dual_mono_mode main` を直書きした既存の cmd はプレースホルダが
+          無いため切り替わらない (再生自体は従来どおり)。両テンプレートには埋め込み済み
+    - **チャプター表示**: エンコード済みファイルに埋め込まれたチャプターをシークバー上に表示し、
+      `[` / `]` で前後のチャプターへ移動できるようにした
+        - `GET /api/videos/{videoFileId}/chapters` が `ffprobe -show_chapters` の結果を返す (DB には持たない)
+        - **DPlayer の `highlight` は生成時にしか読まれない**ため、チャプターはプレイヤーを作る前に取得する。
+          ファイル直接再生 (`NormalVideo`) は動画長が `loadedmetadata` まで分からないので、読み込み後に
+          マーカーを自前で描き足す
+    - **プレイヤー機能の追加**: DPlayer が持っていて使っていなかった機能を有効化した
+      (スクリーンショット / Picture-in-Picture / AirPlay)。再生速度は 0.25〜4.0 の 12 段階へ拡張。
+      キーボードは `,` / `.` でコマ送り、`[` / `]` でチャプター移動、`c` で字幕、`i` で統計情報パネルを追加した
+      (**プレイヤーにフォーカスがあるときだけ拾う**。画面全体で拾うと検索フォームの入力を奪う)
+    - **実機確認**: ライブ視聴で LL-HLS のブロッキング要求 (`?_HLS_msn=14&_HLS_part=0`) とパート取得
+      (`stream0-14.0.part.m4s`) が 200 で流れること、ARIB 字幕が出ること、設定 > 音声で副音声を選ぶと
+      サーバー側の ffmpeg が `-dual_mono_mode sub` で起動し直すことを確認した
+    - **実装場所**: `src/util/EncodePresets.ts`, `src/model/service/stream/util/AudioTrackUtil.ts`,
+      `src/model/api/video/{VideoUtil,VideoApiModel}.ts`, `src/model/service/api/videos/{videoFileId}/{chapters,audio-tracks}.ts`,
+      `client/src/util/DPlayerEnhancer.ts`, `client/src/components/video/*`
+    - **テスト**: `test/ut/audio-track-util.test.js` / `test/ut/video-util-chapters.test.js` を新規追加。
+      `test/ut/encode-presets.test.js` にコーデック別ビットレート・用途別プリセット・プレースホルダの検証を追加
+
+- **HLS 配信を LL-HLS (EXT-X-PART) にし、録画済み HLS も fMP4 化して HEVC / iOS で再生できるようにした**
+    - **背景**: HEVC を使いたいが iPhone / iPad で再生できない組み合わせが複数あった
+        - **録画済み HLS が MPEG-TS セグメントだった**。Apple の HLS は **HEVC を fMP4 でしかサポートしない**ため、TS セグメントに HEVC を入れても iOS / Safari では再生できない
+        - **rigaya 系エンコーダ (QSVEncC / NVEncC / VCEEncC) の HEVC に `hvc1` タグが付いていなかった**。rigaya 側の cmd は「rigaya でエンコード → ffmpeg で `-c:v copy` remux」の形だが、その remux に `-tag:v hvc1` が無く、既定の `hev1` タグのままだと iOS / Safari で映像が出ない。**ffmpeg 直接エンコード側 (`buildVideoCodecOptions`) には元から `-tag:v hvc1` が入っていたため、rigaya 経路だけが抜けていた**
+        - ライブ HLS は in-memory fMP4 化済みだったが `#EXT-X-PART` が無く、hls.js 側も `lowLatencyMode: false` で運用していた
+    - **LL-HLS を実装した**: `HLSMemoryStoreModel` にパート保持を足し、`#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES` / `#EXT-X-PART-INF` / `#EXT-X-PART` / `#EXT-X-PRELOAD-HINT` を出すようにした。`?_HLS_msn` / `?_HLS_part` 付きのブロッキングプレイリスト要求と、`PRELOAD-HINT` で先行要求された未生成パートへの要求は、該当パートが生成されるまでレスポンスを保留する (上限 6 秒)。パートの URL は `stream{id}-{seq}.{index}.part.m4s` でセグメントの `stream{id}-{seq}.m4s` と衝突しない
+        - `Fmp4Packager` は元からパートを emit していたので、`partsPerSegment` を 1 → 2 にして「GOP 0.5 秒 = 1 パート、2 パート = 1 秒セグメント」にした (`#EXT-X-TARGETDURATION` は整数秒で 1 が下限のため、パート長のままセグメントにはできない)
+        - **`emsg` (ARIB 字幕) をセグメント先頭からパート先頭へ移した**。LL-HLS ではパートが単独で配信されるため、セグメント確定を待って `emsg` を付けるとパート経由で再生しているプレイヤーに字幕が一切届かない。セグメントはパートの単純連結なので、パート側に載せれば両方に入る
+        - `delete()` は待機中の要求を必ず解決する (解決せずにエントリを消すとレスポンスが返らなくなる)
+    - **録画済み HLS を in-memory fMP4 (LL-HLS) 化した**: `EncodePresets.buildRecordedHlsCmd()` が生成する cmd を、ディスクへ TS セグメントを書き出す形 (`-f hls -hls_segment_filename %streamFileDir%/…`) から fragmented MP4 を `pipe:1` へ書き出す形へ変えた。`%streamFileDir%` を含まないことが in-memory モードの判定条件なので、これだけで `RecordedStreamBaseModel.isMemoryHLS()` が true になる (in-memory 配信の仕組み自体は実装済みだった)
+        - ストアは `create(streamId, 'recorded')` で作る。プレイヤー内の巻き戻しに応えるため、ライブ (掲載 6 / 保持 12 セグメント) より多い 180 セグメント (1 秒セグメント換算で約 3 分) を保持しすべてプレイリストへ載せる
+        - 保持範囲を超える巻き戻しは、従来どおりクライアントがストリームを作り直して対応する (シーク = ストリーム再生成の設計は変えていない)
+        - ディスク方式も従来どおり動く。`stream.profiles.recorded.*` を手書きすれば TS セグメント方式のまま使える
+    - **HEVC / H.264 のパラメータを iOS 互換に揃えた**:
+        - rigaya 経路の後段 ffmpeg に `-tag:v hvc1` を追加 (ライブ HLS / 録画 mp4 / 録画 HLS の 3 経路すべて)
+        - `buildRigayaArgs()` に `--profile` / `--level` / `--output-depth 8` を追加。HEVC は Main (8bit 4:2:0)、H.264 は 720p 以上で High
+        - ffmpeg 直接エンコード側も HEVC に `-profile:v main -pix_fmt yuv420p` とレベル (`x265-params level-idc` / `-level`) を明示。vaapi にも profile を追加した
+        - `config/enc.js.template` (録画エンコード) も同様に修正。**rigaya の HEVC は mp4 を直接書かず、mpegts を標準出力へ渡して ffmpeg で `-tag:v hvc1` 付き mp4 へ remux する** (rigaya 側にコーデックタグを指定するオプションが無いため)
+    - **クライアント**: `LiveHLSVideo.vue` を `lowLatencyMode: true` に戻した (`maxLiveSyncPlaybackRate: 1` は維持。`LatencyController` の追いつき再生だけを止め、パート取得の利点は残す)。`RecordedHLSStreamingVideo.vue` は hls.js の設定を明示していなかった (既定は `lowLatencyMode: true`) ため、同じ方針で明示した
+    - **実装場所**: `src/model/service/stream/util/{HLSMemoryStoreModel,IHLSMemoryStoreModel}.ts`, `src/model/service/stream/llhls/Fmp4Packager.ts`, `src/model/service/stream/base/{Live,Recorded}StreamBaseModel.ts`, `src/model/service/ServiceServer.ts`, `src/util/EncodePresets.ts`, `config/enc.js.template`, `client/src/components/video/{LiveHLSVideo,RecordedHLSStreamingVideo}.vue`
+    - **テスト**: `test/ut/hls-memory-store-llhls.test.js` を新規追加 (プレイリストのタグ、未確定セグメントのパート掲載、パート待機、ブロッキング要求、破棄済みパート、`delete()` での待機解除、live/recorded モードの保持数)。`test/ut/encode-presets.test.js` に iOS 互換 (hvc1 / profile / level / 8bit) と録画済み HLS の fMP4 化を検証するケースを追加
 
 - **EPG が取れていない放送局も放映中の一覧に出すようにした / リモコンキー順に並ばない原因を潰した**
     - **背景**: 放映中タブに出ていない放送局があり、番組表・放映中ともチャンネルがリモコンキー順に並んでいなかった。実データを調べたところ原因は別々の 2 つだった

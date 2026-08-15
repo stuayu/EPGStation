@@ -24,4 +24,18 @@ export default interface IVideoApiModel {
     analyzeAllTsInfo(limit?: number): Promise<AnalyzeVideoFilesResult>;
     reanalyzeAllTsInfo(offset?: number, limit?: number): Promise<ReanalyzeTsInfoResult>;
     sendToKodi(host: string, isSecure: boolean, kodiName: string, videoFileId: apid.VideoFileId): Promise<void>;
+
+    /**
+     * 指定した video file id のファイルに埋め込まれたチャプターを返す
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<apid.VideoChapter[]> チャプターが無い場合は空配列
+     */
+    getChapters(videoFileId: apid.VideoFileId): Promise<apid.VideoChapter[]>;
+
+    /**
+     * 指定した video file id のファイルの音声トラック一覧を返す
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<apid.VideoAudioTrack[]>
+     */
+    getAudioTracks(videoFileId: apid.VideoFileId): Promise<apid.VideoAudioTrack[]>;
 }

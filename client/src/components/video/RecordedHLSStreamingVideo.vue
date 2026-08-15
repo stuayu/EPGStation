@@ -7,6 +7,7 @@ import BaseVideo from '@/components/video/BaseVideo';
 import container from '@/model/ModelContainer';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IRecordedHLSStreamingVideoState from '@/model/state/recorded/streaming/IRecordedHLSStreamingVideoState';
+import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
 import StreamQualityUtil from '@/util/StreamQualityUtil';
@@ -50,6 +51,9 @@ class RecordedHLSStreamingVideo extends BaseVideo {
     private lastSeekTime: number = 0; // setCurrentTime 実行中に setCurrentTime が重ねて実行されたか確認するための変数
     private qualityNames: string[] = []; // config の hls 視聴設定名一覧
     private currentMode: number = 0; // 再生中の視聴設定 (画質切替で更新される)
+    private videoApiModel: IVideoApiModel = container.get<IVideoApiModel>('IVideoApiModel');
+    private audioTracks: apid.VideoAudioTrack[] = []; // 選択できる音声トラック
+    private currentAudioTrack: apid.AudioTrackSpecifier = 'main'; // 再生中の音声トラック
 
     /**
      * 録画再生時のニコニコ実況過去ログ取得情報を返す
@@ -95,13 +99,18 @@ class RecordedHLSStreamingVideo extends BaseVideo {
                 }, 1000);
             }
 
+            // チャプター・音声トラックを先に取得しておく (DPlayer 生成時に必要)
+            await this.fetchChaptersAndAudioTracks();
+
             // HLS stream 開始
-            await this.videoState.start(this.videoFileId, this.basePlayPosition, this.currentMode).catch(err => {
-                this.snackbarState.open({
-                    color: 'error',
-                    text: 'ストリーム開始に失敗',
+            await this.videoState
+                .start(this.videoFileId, this.basePlayPosition, this.currentMode, this.currentAudioTrack)
+                .catch(err => {
+                    this.snackbarState.open({
+                        color: 'error',
+                        text: 'ストリーム開始に失敗',
+                    });
                 });
-            });
 
             // ストリームが有効になるまで待つ
             try {
@@ -118,6 +127,26 @@ class RecordedHLSStreamingVideo extends BaseVideo {
 
             this.initVideoSetting();
         });
+    }
+
+    /**
+     * チャプターと音声トラックを取得する
+     * どちらも取得に失敗しても再生自体は続けられるため、エラーは握りつぶしてログに残すだけにする
+     * @return Promise<void>
+     */
+    private async fetchChaptersAndAudioTracks(): Promise<void> {
+        try {
+            this.setChapters(await this.videoApiModel.getChapters(this.videoFileId));
+        } catch (err) {
+            console.error(err);
+        }
+
+        try {
+            this.audioTracks = await this.videoApiModel.getAudioTracks(this.videoFileId);
+        } catch (err) {
+            console.error(err);
+            this.audioTracks = [];
+        }
     }
 
     /**
@@ -224,11 +253,35 @@ class RecordedHLSStreamingVideo extends BaseVideo {
                     type: 'aribb24',
                 },
                 pluginOptions: {
+                    // hls.js 使用時 (Safari 以外) の設定
+                    // サーバーは録画済み HLS も LL-HLS (#EXT-X-PART) で配信する。
+                    // lowLatencyMode を有効にするとパート単位で取得するため、再生開始・
+                    // シーク後の待ちが 1 セグメント分から 1 パート分 (既定 0.5 秒) に縮む。
+                    //
+                    // ただし LatencyController の追いつき再生 (playbackRate の書き換え) は
+                    // 配信ジッタで常時発火して再生速度の微振動を起こすため無効にする
+                    // (maxLiveSyncPlaybackRate: 1)。
+                    // なお lowLatencyMode は hls.js の既定値が true なので、
+                    // ここでの明示は挙動を設定として固定するためのもの
+                    hls: {
+                        lowLatencyMode: true,
+                        maxLiveSyncPlaybackRate: 1,
+                        // 巻き戻し操作に応えるため、再生済み範囲は長めに保持する
+                        backBufferLength: 90,
+                        fragLoadingMaxRetry: 2,
+                        fragLoadingRetryDelay: 200,
+                        manifestLoadingMaxRetry: 2,
+                        manifestLoadingRetryDelay: 200,
+                    } as any,
                     aribb24: DPlayerUtil.createAribb24Options(),
                 },
             };
 
+            // チャプターをシークバー上のマーカーとして表示する
+            this.applyChapterHighlights(options, this.getDuration());
+
             this.createPlayer(options);
+            this.setupAudioTrackSwitchForRecorded();
 
             // 画質切替時は現在の再生位置からストリームを作り直してから url を差し替える
             this.setupQualitySwitch({
@@ -268,7 +321,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
 
         await this.videoState.stop();
         this.basePlayPosition = playPosition;
-        await this.videoState.start(this.videoFileId, this.basePlayPosition, mode);
+        await this.videoState.start(this.videoFileId, this.basePlayPosition, mode, this.currentAudioTrack);
         await this.waitForEnabled();
 
         const streamId = this.videoState.getStreamId();
@@ -277,6 +330,27 @@ class RecordedHLSStreamingVideo extends BaseVideo {
         }
 
         return `./streamfiles/stream${streamId}.m3u8`;
+    }
+
+    /**
+     * DPlayer の設定 > 音声パネルへ音声トラック切替を組み込む
+     * HLS 配信では音声を切り替えるとサーバー側のストリームを作り直す必要があるため、
+     * 画質切替と同じく「現在の再生位置からストリームを再生成して url を差し替える」形にする
+     */
+    private setupAudioTrackSwitchForRecorded(): void {
+        this.setupAudioTrackSwitch({
+            tracks: this.audioTracks,
+            current: this.currentAudioTrack,
+            onSelect: async track => {
+                const playPosition = this.getCurrentTime();
+                await this.videoState.stop();
+                this.basePlayPosition = playPosition;
+                await this.videoState.start(this.videoFileId, this.basePlayPosition, this.currentMode, track);
+                await this.waitForEnabled();
+                this.currentAudioTrack = track;
+                this.initVideoSetting();
+            },
+        });
     }
 
     /**

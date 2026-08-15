@@ -40,6 +40,7 @@ export const get: Operation = async (req, res) => {
             channelId: api.parseRequestParamInt(req.params.channelId, 'channelId'),
             mode: streamOption.mode,
             profile: streamOption.profile,
+            audioTrack: streamOption.audioTrack,
         });
         keepTimer = setInterval(() => {
             streamApiModel.keep(result.streamId);
@@ -85,6 +86,9 @@ get.apiDoc = {
         },
         {
             $ref: '#/components/parameters/StreamProfile',
+        },
+        {
+            $ref: '#/components/parameters/StreamAudioTrack',
         },
     ],
     responses: {

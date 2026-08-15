@@ -17,10 +17,11 @@ class LiveHLSVideoState implements ILiveHLSVideoState {
      * ストリーム開始
      * @param channelId: apid.ChannelId
      * @param mode: number
+     * @param audioTrack?: apid.AudioTrackSpecifier 再生する音声トラック (省略時は主音声)
      * @return Promise<void>
      */
-    public async start(channelId: apid.ChannelId, mode: number): Promise<void> {
-        this.streamId = await this.streamApiModel.startLiveHLS(channelId, mode);
+    public async start(channelId: apid.ChannelId, mode: number, audioTrack?: apid.AudioTrackSpecifier): Promise<void> {
+        this.streamId = await this.streamApiModel.startLiveHLS(channelId, mode, audioTrack);
 
         // ストリームを保持し続ける
         this.keepTimerId = setInterval(async () => {

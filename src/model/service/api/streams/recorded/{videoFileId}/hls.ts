@@ -17,6 +17,7 @@ export const get: Operation = async (req, res) => {
             playPosition: parseInt(req.query.ss as string, 10),
             mode: streamOption.mode,
             profile: streamOption.profile,
+            audioTrack: streamOption.audioTrack,
         });
         api.responseJSON(res, 200, {
             streamId: streamId,
@@ -42,6 +43,9 @@ get.apiDoc = {
         },
         {
             $ref: '#/components/parameters/StreamProfile',
+        },
+        {
+            $ref: '#/components/parameters/StreamAudioTrack',
         },
     ],
     responses: {

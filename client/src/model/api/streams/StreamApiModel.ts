@@ -32,10 +32,15 @@ export default class StreamApiModel implements IStreamApiModel {
      * @param mode: number
      * @return Promise<apid.StreamId>
      */
-    public async startLiveHLS(channelId: apid.ChannelId, mode: number): Promise<apid.StreamId> {
+    public async startLiveHLS(
+        channelId: apid.ChannelId,
+        mode: number,
+        audioTrack?: apid.AudioTrackSpecifier,
+    ): Promise<apid.StreamId> {
         const result = await this.repository.get(`/streams/live/${channelId}/hls`, {
             params: {
                 mode: mode,
+                audioTrack: audioTrack,
             },
         });
 
@@ -49,11 +54,17 @@ export default class StreamApiModel implements IStreamApiModel {
      * @param mode: ストリーミング設定
      * @return Promise<apid.StreamId>
      */
-    public async startRecordedHLS(videoFileId: apid.VideoFileId, ss: number, mode: number): Promise<apid.StreamId> {
+    public async startRecordedHLS(
+        videoFileId: apid.VideoFileId,
+        ss: number,
+        mode: number,
+        audioTrack?: apid.AudioTrackSpecifier,
+    ): Promise<apid.StreamId> {
         const result = await this.repository.get(`/streams/recorded/${videoFileId}/hls`, {
             params: {
                 ss: ss,
                 mode: mode,
+                audioTrack: audioTrack,
             },
         });
 

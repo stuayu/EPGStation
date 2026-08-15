@@ -260,10 +260,16 @@ class ServiceServer implements IServiceServer {
         // thumbnail
         this.app.use(this.createUrl('/thumbnail'), express.static(this.config.thumbnail, this.getStaticOptions()));
 
-        // in-memory HLS (ディスクに書き出さないライブ HLS 配信)
+        // in-memory HLS (ディスクに書き出さないライブ / 録画済み HLS 配信)
         // メモリストアに存在しないファイルは next() で従来のディスク配信 (express.static) へフォールバックする
         this.app.get(this.createUrl('/streamfiles/:filename'), (req, res, next) => {
-            this.serveInMemoryHLSFile(req, res, next);
+            this.serveInMemoryHLSFile(req, res, next).catch(err => {
+                this.log.system.error('serve in-memory HLS file error');
+                this.log.system.error(err);
+                if (res.headersSent === false) {
+                    res.status(500).end();
+                }
+            });
         });
 
         // streamFile
@@ -277,10 +283,13 @@ class ServiceServer implements IServiceServer {
     }
 
     /**
-     * in-memory HLS のプレイリスト・セグメント配信
+     * in-memory HLS のプレイリスト・セグメント・パート配信
      * メモリストアに存在しない場合は next() を呼び、従来のディスク配信へフォールバックする
+     *
+     * LL-HLS のブロッキングプレイリスト要求 (_HLS_msn / _HLS_part) と
+     * #EXT-X-PRELOAD-HINT による未生成パートの先行要求は、生成されるまで応答を保留する
      */
-    private serveInMemoryHLSFile(req: Request, res: Response, next: NextFunction): void {
+    private async serveInMemoryHLSFile(req: Request, res: Response, next: NextFunction): Promise<void> {
         const filename = req.params.filename;
         if (typeof filename !== 'string') {
             next();
@@ -298,7 +307,16 @@ class ServiceServer implements IServiceServer {
                 return;
             }
 
-            const playlist = this.hlsMemoryStore.getPlaylist(streamId);
+            // LL-HLS のブロッキングプレイリスト要求 (_HLS_msn / _HLS_part)
+            const msn = this.parseHLSDeliveryQuery(req, '_HLS_msn');
+            const playlist =
+                msn === null
+                    ? this.hlsMemoryStore.getPlaylist(streamId)
+                    : await this.hlsMemoryStore.waitForPlaylist(streamId, {
+                          msn: msn,
+                          part: this.parseHLSDeliveryQuery(req, '_HLS_part') ?? undefined,
+                      });
+
             if (playlist === null) {
                 // ストリームは存在するがまだセグメントが揃っていない
                 res.status(404).end();
@@ -324,6 +342,36 @@ class ServiceServer implements IServiceServer {
             }
 
             res.setHeader('Content-Type', 'video/mp4');
+            res.setHeader('Cache-Control', 'no-store');
+            res.status(200).send(data);
+
+            return;
+        }
+
+        // パート (LL-HLS): stream{id}-{seq}.{index}.part.m4s
+        // まだ生成されていないパート (#EXT-X-PRELOAD-HINT で先行要求されたもの) は生成を待って返す
+        const partMatch = /^stream(\d+)-(\d+)\.(\d+)\.part\.m4s$/.exec(filename);
+        if (partMatch !== null) {
+            const streamId = parseInt(partMatch[1], 10);
+            if (this.hlsMemoryStore.has(streamId) === false) {
+                next();
+
+                return;
+            }
+
+            const data = await this.hlsMemoryStore.getPart(
+                streamId,
+                parseInt(partMatch[2], 10),
+                parseInt(partMatch[3], 10),
+            );
+            if (data === null) {
+                // 破棄済み or 生成されなかったパート
+                res.status(404).end();
+
+                return;
+            }
+
+            res.setHeader('Content-Type', 'video/iso.segment');
             res.setHeader('Cache-Control', 'no-store');
             res.status(200).send(data);
 
@@ -356,6 +404,26 @@ class ServiceServer implements IServiceServer {
         }
 
         next();
+    }
+
+    /**
+     * LL-HLS の delivery directive (_HLS_msn / _HLS_part) を数値として取り出す
+     * @param req: Request
+     * @param name: string クエリ名
+     * @return number | null 指定が無い・数値でない場合は null
+     */
+    private parseHLSDeliveryQuery(req: Request, name: string): number | null {
+        const value = (req.query as Record<string, unknown>)[name];
+        if (typeof value === 'number') {
+            return isNaN(value) === true ? null : value;
+        }
+        if (typeof value !== 'string') {
+            return null;
+        }
+
+        const parsed = parseInt(value, 10);
+
+        return isNaN(parsed) === true ? null : parsed;
     }
 
     /** Express 5 で必要な配信ファイルの MIME を明示する。 */

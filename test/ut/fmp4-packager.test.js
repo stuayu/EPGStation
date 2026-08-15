@@ -215,7 +215,7 @@ test('partsPerSegment の指定が不正なら既定値を使う', async () => {
     assert.equal(events.segment[0].parts.length, 3);
 });
 
-test('pushId3 した ARIB 字幕をセグメント先頭の emsg box として多重化する', async () => {
+test('pushId3 した ARIB 字幕をパート先頭の emsg box として多重化する', async () => {
     const packager = new Fmp4Packager({ partsPerSegment: 2 });
     const segments = [];
     packager.on('segment', segment => segments.push(segment));
@@ -230,10 +230,14 @@ test('pushId3 した ARIB 字幕をセグメント先頭の emsg box として�
     await new Promise(resolve => packager.end(resolve));
 
     assert.equal(segments.length, 1);
-    // emsg は 2 件分がパートの前 (セグメント先頭) に置かれる
+    // emsg は 2 件分が先頭パートの前に置かれる
+    // (LL-HLS ではパートが単独で配信されるため、セグメント先頭ではなくパート先頭に載せる)
     assert.equal(segments[0].data.toString('latin1', 4, 8), 'emsg');
     assert.equal(countBoxes(segments[0].data, 'emsg'), 2);
-    assert.ok(segments[0].data.length > Buffer.concat(segments[0].parts.map(p => p.data)).length);
+    assert.equal(segments[0].parts[0].data.toString('latin1', 4, 8), 'emsg');
+    assert.equal(countBoxes(segments[0].parts[0].data, 'emsg'), 2);
+    // セグメントはパートの単純連結 (emsg はパート側に含まれている)
+    assert.deepEqual(segments[0].data, Buffer.concat(segments[0].parts.map(p => p.data)));
 });
 
 test('emsg は hls.js が解釈できる version 1 形式で、セグメントの tfdt を基準にした絶対時刻を持つ', async () => {

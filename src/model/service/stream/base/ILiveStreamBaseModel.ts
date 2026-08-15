@@ -7,6 +7,8 @@ export type LiveHLSStreamModelProvider = () => Promise<ILiveStreamBaseModel>;
 export interface LiveStreamOption {
     channelId: apid.ChannelId;
     cmd?: string;
+    // 再生する音声トラック (省略時は主音声)。cmd の %DUALMONOMODE% / %AUDIOMAP% を置換する
+    audioTrack?: apid.AudioTrackSpecifier;
 }
 
 export default interface ILiveStreamBaseModel extends IStreamBaseModel<LiveStreamOption> {

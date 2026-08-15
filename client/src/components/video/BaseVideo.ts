@@ -9,6 +9,7 @@ import IStreamApiModel from '@/model/api/streams/IStreamApiModel';
 import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import { DataBroadcastingConnectParam } from '@/util/DataBroadcastingManager';
+import DPlayerEnhancer from '@/util/DPlayerEnhancer';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
 import * as apid from '../../../../api';
 
@@ -20,6 +21,8 @@ export default abstract class BaseVideo extends Vue {
     private jikkyoKakologClient: JikkyoKakologClient | null = null;
     private jikkyoCommentQueue: JikkyoComment[] = []; // 弾幕インスタンス生成前に届いたコメント
     private isResolvingQuality: boolean = false; // 画質切替の url 解決中か
+    private chapters: apid.VideoChapter[] = []; // 再生中ファイルのチャプター (開始位置の昇順)
+    private extraHotkeyHandler: ((e: KeyboardEvent) => void) | null = null;
 
     // ライブ配信の放送時刻 (TDT / TOT)。実況コメントの遅延補正に使う
     private broadcastTime: apid.StreamBroadcastTime | null = null;
@@ -36,6 +39,10 @@ export default abstract class BaseVideo extends Vue {
     private static readonly BROADCAST_TIME_INTERVAL = 15 * 1000;
     // 補正しすぎて明らかにおかしくなるのを防ぐための遅延上限
     private static readonly JIKKYO_MAX_DELAY_MS = 60 * 1000;
+    // コマ送りの 1 回あたりの移動量 (秒)。29.97fps の 1 フレーム相当
+    private static readonly FRAME_STEP_SECONDS = 1 / 30;
+    // 再生速度の選択肢。標準の 8 段階に微調整と高速送りを足す
+    private static readonly PLAYBACK_SPEEDS = [0.25, 0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 3, 4];
 
     public mounted(): void {
         this.containerElement = this.$refs.container as HTMLElement;
@@ -55,6 +62,8 @@ export default abstract class BaseVideo extends Vue {
      */
     protected createPlayer(options: DPlayerType.Options): void {
         this.destroyPlayer();
+
+        this.applyCommonPlayerOptions(options);
 
         // ニコニコ実況 (NX-Jikkyo / 過去ログ API) のコメント弾幕表示設定
         const jikkyoChannelId = this.getJikkyoChannelId();
@@ -83,6 +92,7 @@ export default abstract class BaseVideo extends Vue {
 
         this.dp = BaseVideo.createDPlayer(options);
         this.bindEvents();
+        this.setupExtraHotkeys();
 
         // ストリーミング再生は video 要素が動画の一部しか持たないため、
         // DPlayer のシークバーを動画全体の時間軸で動かすアダプタを噛ませる
@@ -114,6 +124,35 @@ export default abstract class BaseVideo extends Vue {
                 },
             });
             void this.jikkyoKakologClient.start();
+        }
+    }
+
+    /**
+     * すべてのプレイヤーで共通して有効にするオプションを適用する
+     * (呼び出し側が明示的に指定している場合はそちらを優先する)
+     *
+     * - screenshot: 現在のフレームを画像として保存する。DPlayer は canvas 経由で描画するため
+     *   映像に CORS 制約があると使えないが、EPGStation は同一オリジンから配信するので問題ない
+     * - pictureInPicture / airplay: DPlayer の既定でも有効だが、意図を明示するため指定する
+     * - playbackSpeed: 標準の 8 段階に 0.1 刻みの微調整と 3.0 / 4.0 の高速送りを足す
+     * - hotkey: 標準のキーボード操作 (再生・音量・シーク) を有効にする
+     * @param options: DPlayerType.Options
+     */
+    private applyCommonPlayerOptions(options: DPlayerType.Options): void {
+        if (typeof options.screenshot === 'undefined') {
+            options.screenshot = true;
+        }
+        if (typeof options.pictureInPicture === 'undefined') {
+            options.pictureInPicture = true;
+        }
+        if (typeof options.airplay === 'undefined') {
+            options.airplay = true;
+        }
+        if (typeof options.hotkey === 'undefined') {
+            options.hotkey = true;
+        }
+        if (typeof options.playbackSpeed === 'undefined') {
+            options.playbackSpeed = BaseVideo.PLAYBACK_SPEEDS;
         }
     }
 
@@ -236,6 +275,181 @@ export default abstract class BaseVideo extends Vue {
                 }
             })();
         };
+    }
+
+    /**
+     * DPlayer の設定 > 音声パネルへ音声トラック切替を組み込む
+     *
+     * DPlayer 標準の音声切替は mpegts.js / hls.js が持つ音声トラックを直接切り替える実装で、
+     * 「サーバー側でストリームを作り直して音声を変える」EPGStation の方式には使えない。
+     * パネルの DOM だけを流用し、選択時の動作を onSelect に差し替える
+     * @param option.tracks: 表示する音声トラック一覧 (2 件未満なら切替 UI は出ない)
+     * @param option.current: 現在選択中のトラック
+     * @param option.onSelect: 選択時に呼ばれる (失敗時は例外を投げる)
+     */
+    protected setupAudioTrackSwitch(option: {
+        tracks: apid.VideoAudioTrack[];
+        current: apid.AudioTrackSpecifier;
+        onSelect: (track: apid.AudioTrackSpecifier) => Promise<void>;
+    }): void {
+        if (this.dp === null) {
+            return;
+        }
+
+        DPlayerEnhancer.applyAudioTrackSwitcher(this.dp as any, option);
+    }
+
+    /**
+     * チャプターを保持し、シークバー上のマーカーとキーボード操作を有効にする
+     * @param chapters: apid.VideoChapter[] 開始位置の昇順
+     */
+    protected setChapters(chapters: apid.VideoChapter[]): void {
+        this.chapters = chapters.slice().sort((a, b) => a.startAt - b.startAt);
+    }
+
+    /**
+     * 保持しているチャプターを返す
+     * @return apid.VideoChapter[]
+     */
+    protected getChapters(): apid.VideoChapter[] {
+        return this.chapters;
+    }
+
+    /**
+     * DPlayer 生成用オプションへチャプターのシークバーマーカーを設定する
+     * DPlayer は highlight を生成時にしか読まないため、createPlayer の前に呼ぶこと
+     * @param options: DPlayerType.Options
+     * @param duration: number 動画全体の長さ (秒)
+     */
+    protected applyChapterHighlights(options: DPlayerType.Options, duration: number): void {
+        const highlights = DPlayerEnhancer.buildChapterHighlights(this.chapters, duration);
+        if (highlights.length > 0) {
+            options.highlight = highlights;
+        }
+    }
+
+    /**
+     * 次のチャプターへ移動する
+     * @return boolean 移動先があった場合 true
+     */
+    public seekToNextChapter(): boolean {
+        return DPlayerEnhancer.seekToNextChapter(this.createChapterNavigation());
+    }
+
+    /**
+     * 前のチャプター (再生位置がチャプター先頭付近でなければ現在のチャプターの先頭) へ移動する
+     * @return boolean 移動先があった場合 true
+     */
+    public seekToPreviousChapter(): boolean {
+        return DPlayerEnhancer.seekToPreviousChapter(this.createChapterNavigation());
+    }
+
+    /**
+     * チャプター移動用の操作をまとめる
+     * @return DPlayerEnhancer.ChapterNavigation
+     */
+    private createChapterNavigation(): DPlayerEnhancer.ChapterNavigation {
+        return {
+            chapters: this.chapters,
+            getCurrentTime: () => this.getCurrentTime(),
+            seek: (time: number) => {
+                this.setCurrentTime(time);
+                const chapter = DPlayerEnhancer.findChapterAt(this.chapters, time);
+                if (chapter !== null) {
+                    (this.dp as any)?.notice?.(chapter.title ?? 'チャプター', 2000);
+                }
+            },
+        };
+    }
+
+    /**
+     * EPGStation 独自のキーボードショートカットを有効にする。
+     *
+     * DPlayer 標準のホットキー (space / 矢印キー / f など) は DPlayer 自身が処理するため、
+     * ここでは標準に無い操作だけを足す。**キー入力はプレイヤーにフォーカスがあるときだけ拾う**
+     * (画面全体で拾うと検索フォームへの入力を奪ってしまう)
+     */
+    private setupExtraHotkeys(): void {
+        const dp = this.dp as any;
+        const element: HTMLElement | undefined = dp?.container;
+        if (typeof element === 'undefined' || element === null) {
+            return;
+        }
+
+        this.extraHotkeyHandler = (e: KeyboardEvent): void => {
+            this.handleExtraHotkey(e);
+        };
+        element.addEventListener('keydown', this.extraHotkeyHandler);
+    }
+
+    /**
+     * 独自ショートカットの処理本体
+     *
+     * - `,` / `.`: 1 フレーム (約 1/30 秒) 単位のコマ送り (一時停止してから動かす)
+     * - `[` / `]`: 前後のチャプターへ移動
+     * - `c`: 字幕の表示切り替え
+     * - `i`: 統計情報パネルの表示切り替え
+     * @param e: KeyboardEvent
+     */
+    private handleExtraHotkey(e: KeyboardEvent): void {
+        if (e.ctrlKey === true || e.metaKey === true || e.altKey === true) {
+            return;
+        }
+
+        // 入力欄 (コメント入力など) にフォーカスがある間は横取りしない
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable === true) {
+            return;
+        }
+
+        switch (e.key) {
+            case ',':
+            case '.': {
+                this.pause();
+                const delta = e.key === '.' ? BaseVideo.FRAME_STEP_SECONDS : -BaseVideo.FRAME_STEP_SECONDS;
+                this.setCurrentTime(Math.max(0, this.getCurrentTime() + delta));
+                break;
+            }
+            case '[':
+                if (this.seekToPreviousChapter() === false) {
+                    return;
+                }
+                break;
+            case ']':
+                if (this.seekToNextChapter() === false) {
+                    return;
+                }
+                break;
+            case 'c':
+                if (this.isEnabledSubtitles() === false) {
+                    return;
+                }
+                if (this.isShowingSubtitle() === true) {
+                    this.disabledSubtitle();
+                } else {
+                    this.showSubtitle();
+                }
+                break;
+            case 'i':
+                (this.dp as any)?.infoPanel?.toggle?.();
+                break;
+            default:
+                return;
+        }
+
+        e.preventDefault();
+    }
+
+    /**
+     * 独自ショートカットの後片付け
+     */
+    private destroyExtraHotkeys(): void {
+        const element: HTMLElement | undefined = (this.dp as any)?.container;
+        if (this.extraHotkeyHandler !== null && typeof element !== 'undefined' && element !== null) {
+            element.removeEventListener('keydown', this.extraHotkeyHandler);
+        }
+        this.extraHotkeyHandler = null;
     }
 
     /**
@@ -426,6 +640,7 @@ export default abstract class BaseVideo extends Vue {
      * DPlayer インスタンスを破棄する
      */
     protected destroyPlayer(): void {
+        this.destroyExtraHotkeys();
         this.stopJikkyoDelay();
         if (this.jikkyoCommentClient !== null) {
             this.jikkyoCommentClient.destroy();

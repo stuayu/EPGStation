@@ -1416,9 +1416,77 @@ concurrentEncodeNum: 1
       (H.264 で 4K を出す場合は Level 5.2 が指定されるが、同じビットレートでは画質が落ちる)
 - `targets`
     - `recorded`: 録画ファイルのバックグラウンドエンコード (`config/enc.js` 経由、`encode` 相当)
-    - `liveHLS`: ライブ視聴の HLS 配信 (in-memory 低遅延、`stream.profiles.live` の container: hls 相当)
-    - `recordedStreaming`: 録画再生の mp4 / HLS 配信 (`stream.profiles.recorded.{ts,encoded}` 相当)
+    - `liveHLS`: ライブ視聴の HLS 配信 (in-memory LL-HLS、`stream.profiles.live` の container: hls 相当)
+    - `recordedStreaming`: 録画再生の mp4 / HLS 配信 (`stream.profiles.recorded.{ts,encoded}` 相当)。
+      HLS も in-memory LL-HLS で配信する
     - webm (vp9) はこのプリセット表の対象外。従来通り `stream.profiles` に手書きする
+
+#### 生成されるコマンドの iOS / Safari 互換
+
+`encodePresets` が生成するコマンドは、iPhone / iPad / Safari でそのまま再生できる形に揃えてある。
+
+- **HLS はライブ・録画済みとも fMP4 セグメントの LL-HLS (`#EXT-X-PART`) で配信する** (メモリ上で
+  セグメント化するのでディスクへは書き出さない)。Apple の HLS は **HEVC を fMP4 でしかサポートしない**ため、
+  MPEG-TS セグメントでは HEVC を再生できない
+- **HEVC には `hvc1` タグを付ける**。ffmpeg の既定は `hev1` で、そのままでは iOS / Safari で映像が出ない。
+  rigaya 系 (QSVEncC / NVEncC / VCEEncC) はエンコーダ側にコーデックタグを指定する手段が無いため、
+  後段の ffmpeg remux (`-c:v copy -tag:v hvc1`) で付ける
+- **HEVC は Main プロファイル・8bit 4:2:0 に固定する**。Main10 は端末世代によってハードウェアデコードできない
+  (地上波・BS/CS は元が 8bit なので Main で足りる)
+- **H.264 は 720p 以上で High プロファイル**、レベルは解像度に応じて設定される (1080p で 4.1)。
+  4K の H.264 は iOS のハードウェアデコード対象外なので、`2160p` を使うなら `codecs: [hevc]` にすること
+
+MPEG-TS セグメントをディスクへ書き出す従来方式で運用したい場合は、`stream.profiles.recorded.*` を
+手書きする (`cmd` に `%streamFileDir%` を含めるとディスク方式になる)。
+
+#### ビットレートと速度プリセット
+
+映像ビットレートは**画質優先**の値にしてある (H.264 基準)。HEVC は同じ画質をより低いビットレートで
+出せるため、内部で 0.65 倍した値が使われる。
+
+| quality | 解像度 | H.264 | HEVC | 音声 |
+| ------- | ------ | ----- | ---- | ---- |
+| 2160p   | 2160   | 24000 kbps | 15600 kbps | 256 kbps |
+| 1080p   | 1080   | 8000 kbps  | 5200 kbps  | 256 kbps |
+| 720p    | 720    | 4500 kbps  | 2900 kbps  | 192 kbps |
+| 480p    | 480    | 2000 kbps  | 1300 kbps  | 128 kbps |
+| 240p    | 240    | 1000 kbps  | 700 kbps   | 96 kbps  |
+
+速度プリセットは用途で変わる。ライブ視聴は遅延がそのまま体感を損なうので速度優先、
+録画済みファイルの配信は 1 段重いプリセットにして画質を優先する
+(録画中ファイルの配信は実況と合わせて見るため低遅延側のまま)。
+
+| 用途 | ソフトウェア | QSVEncC | NVEncC | VCEEncC |
+| ---- | ------------ | ------- | ------ | ------- |
+| ライブ視聴 / 録画中ファイル | `-preset veryfast` + `-tune zerolatency` 系 | `--quality faster` | `--preset P3` | `--preset fast` |
+| 録画済みファイル | `-preset faster` (`-tune` なし) | `--quality balanced` | `--preset P5` | `--preset balanced` |
+
+帯域や CPU 負荷を抑えたい場合は `codecs: [hevc]` にするか、1 段下の quality を使うこと。
+
+#### 音声トラックの切り替え
+
+再生中に音声トラックを切り替えられる。ストリーム API のクエリ `audioTrack` で指定する。
+
+| 値 | 意味 |
+| -- | ---- |
+| `main` (既定) | 主音声 |
+| `sub` | デュアルモノラル (二か国語放送) の副音声 |
+| 数字 | 音声 ES のインデックス (0 始まり) |
+
+`cmd` の中では 2 つのプレースホルダとして展開される。
+
+- `%DUALMONOMODE%` → `-dual_mono_mode main` または `-dual_mono_mode sub` (**入力オプションなので `-i` より前に置く**)
+- `%AUDIOMAP%` → 音声 ES を指定したときだけ `-map 0:v:0 -map 0:a:<n>` (出力オプション)
+
+> **注意**: `-dual_mono_mode main` を直書きした手書きの `cmd` では音声を切り替えられない
+> (置換対象が無いだけで再生自体は従来どおり動く)。切り替えたい場合は `%DUALMONOMODE%` へ置き換えること。
+> `-map 0` を使う `cmd` (m2ts / m2ts-ll / ディスク方式の HLS) に `%AUDIOMAP%` を入れてはいけない
+> (map 指定が二重になる)。
+
+録画ファイルの音声トラック一覧は `GET /api/videos/{videoFileId}/audio-tracks` で取得できる。
+**音声 ES が 1 本のステレオは主音声・副音声の 2 件へ展開される** (ffprobe からは二か国語放送か
+ただのステレオ放送かを判別できないため)。ライブ視聴は事前に構成が分からないので、
+Web UI が主音声・副音声の 2 択を常に表示する。
 
 **優先順位 (手書き優先)**: `encode` 配列、`stream.profiles.live`、`stream.profiles.recorded.ts`、
 `stream.profiles.recorded.encoded` はそれぞれ独立した単位で判定され、1 件でも手書きの設定が
