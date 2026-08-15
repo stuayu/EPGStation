@@ -113,6 +113,7 @@ npm run test:ci        # ut + ita + itb
 - **クラスフィールドに書いたコールバックの `this` は Vue インスタンスではない**。フィールドの初期値は data 用の一時インスタンスから集められ、**メソッドだけが Vue インスタンスへ束縛される**。`private xxxCallback = ((): void => { ... }).bind(this)` の中から `this.watchParam` のようなデータを読むと初期値しか見えず、条件判定が黙って壊れる。さらに **`this.xxxState` も Vue のリアクティブなプロキシではなくなる**ため、そこで state を書き換えても再描画がトリガされない (データは新しいのに画面が古いまま = 再読み込みするまで反映されない)。**フィールドのコールバックからメソッドを呼ぶだけでも直らない** (呼ばれたメソッドの `this` も一時インスタンスのまま)。socket.io などのコールバックは**フィールドを挟まず、メソッドをそのまま渡す** (`onUpdateState(this.onUpdateStatus)`)
 - **番組表 (`Guide.vue`) のセルは手組み DOM**。データを取り直したら `GuideState.createProgramDoms()` と `Guide.renderProgramDoms()` の**両方**を呼ぶ (後者を呼ばないと画面が古いまま。可視判定の `updateVisible()` もその末尾で走る)
 - **`DataBroadcastingManager` は `markRaw()` で包む**。BMLBrowser 内部の JS-Interpreter が Vue のプロキシに包まれると壊れる
+- **ストリーミング再生のシークバーは `VirtualTimeline` が全部描く**。`video.duration` は「エンコード済みの長さ」でしかないため、DPlayer 標準の表示 (再生位置・バッファ・時刻・チャプターマーカー) をそのまま使うとエンコードの進行に合わせて表示がずれる。シークバー上に何かを足すときは `VirtualTimeline` 側で動画全体の長さを分母にして描くこと
 
 ### ストリーミング・データ放送
 
