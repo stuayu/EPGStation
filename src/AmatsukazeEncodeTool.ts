@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
 import { install } from 'source-map-support';
+import AmatsukazeOutputUtil from './model/amatsukaze/AmatsukazeOutputUtil';
+import AmatsukazeTextUtil from './model/amatsukaze/AmatsukazeTextUtil';
 import AmatsukazeRpcClient from './model/amatsukaze/AmatsukazeRpcClient';
 import AmatsukazeTaskWatcher from './model/amatsukaze/AmatsukazeTaskWatcher';
 import {
@@ -118,11 +120,24 @@ namespace AmatsukazeEncodeTool {
             printLog(`add task: ${bin} ${args.join(' ')}`);
 
             const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+            // AmatsukazeAddTask は日本語 Windows の ANSI コードページ (cp932) で出力するため、
+            // 行が完結してからまとめて変換する (チャンクの切れ目で変換すると日本語が化ける)
+            const stdoutDecoder = new AmatsukazeTextUtil.LineDecoder();
+            const stderrDecoder = new AmatsukazeTextUtil.LineDecoder();
+            const printLines = (lines: string[]): void => {
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (trimmed.length > 0) {
+                        printLog(`AddTask: ${trimmed}`);
+                    }
+                }
+            };
+
             child.stdout.on('data', data => {
-                printLog(`AddTask: ${String(data).trim()}`);
+                printLines(stdoutDecoder.push(data));
             });
             child.stderr.on('data', data => {
-                printLog(`AddTask: ${String(data).trim()}`);
+                printLines(stderrDecoder.push(data));
             });
 
             child.on('error', err => {
@@ -130,6 +145,9 @@ namespace AmatsukazeEncodeTool {
             });
 
             child.on('close', code => {
+                // 改行で終わらなかった分を取りこぼさない
+                printLines([stdoutDecoder.flush(), stderrDecoder.flush()].filter(line => line !== null) as string[]);
+
                 if (code === 0) {
                     resolve();
                 } else {
@@ -160,25 +178,60 @@ namespace AmatsukazeEncodeTool {
     };
 
     /**
+     * 動画と一緒に出力される副産物 (字幕・チャプター) を、動画と同じ名前で移動する。
+     * チャプターは `<動画ファイル名>.chapter.txt` を読む作りなので、
+     * 動画の名前を変えるならこちらも合わせないと拾えなくなる
+     * @param srcVideo: string 移動前の動画ファイルパス
+     * @param destVideo: string 移動後の動画ファイルパス
+     * @return Promise<void>
+     */
+    const moveSideCarFiles = async (srcVideo: string, destVideo: string): Promise<void> => {
+        // 副産物は動画の最後の拡張子を差し替えた名前なので、移動先も同じ規則で組み立てる
+        const destBase = AmatsukazeOutputUtil.getBasePath(destVideo);
+
+        for (const sideCar of AmatsukazeOutputUtil.listSideCarFiles(srcVideo)) {
+            const dest = `${destBase}${sideCar.suffix}`;
+            try {
+                await moveFile(sideCar.filePath, dest);
+                printLog(`move side car: ${path.basename(sideCar.filePath)} -> ${path.basename(dest)}`);
+            } catch (err: any) {
+                printLog(`move side car failed: ${path.basename(sideCar.filePath)} (${err.message})`);
+            }
+        }
+    };
+
+    /**
      * 完了したタスクの出力を EPGStation の出力先へ反映する
      * @param result: AmatsukazeTaskResult
      * @param output: string EPGStation が期待する出力ファイルパス
      * @return Promise<void>
      */
     const applyOutput = async (result: AmatsukazeTaskResult, output: string): Promise<void> => {
-        if (result.outputPath === null) {
-            throw new Error('Amatsukaze から出力ファイルのパスを取得できませんでした');
+        let outputPath = result.outputPath;
+        if (outputPath === null && result.outputPathBase !== null) {
+            // ActualDstPath を返さない Amatsukaze では DstPath から実ファイルを探す
+            outputPath = AmatsukazeOutputUtil.findOutputByBase(result.outputPathBase);
+            if (outputPath !== null) {
+                printLog(`resolved output from base: ${result.outputPathBase} -> ${outputPath}`);
+            }
         }
 
-        if (path.resolve(result.outputPath) === path.resolve(output)) {
+        if (outputPath === null) {
+            throw new Error(
+                'Amatsukaze から出力ファイルのパスを取得できませんでした' +
+                    (result.outputPathBase === null ? '' : ` (探索したパス: ${result.outputPathBase}.*)`),
+            );
+        }
+
+        if (path.resolve(outputPath) === path.resolve(output)) {
             return;
         }
 
-        if (fs.existsSync(result.outputPath) === false) {
-            throw new Error(`Amatsukaze の出力ファイルが見つかりません: ${result.outputPath}`);
+        if (fs.existsSync(outputPath) === false) {
+            throw new Error(`Amatsukaze の出力ファイルが見つかりません: ${outputPath}`);
         }
 
-        const srcExtension = path.extname(result.outputPath).toLowerCase();
+        const srcExtension = path.extname(outputPath).toLowerCase();
         const destExtension = path.extname(output).toLowerCase();
         if (srcExtension !== destExtension) {
             printLog(
@@ -187,8 +240,9 @@ namespace AmatsukazeEncodeTool {
             );
         }
 
-        printLog(`move output: ${result.outputPath} -> ${output}`);
-        await moveFile(result.outputPath, output);
+        printLog(`move output: ${outputPath} -> ${output}`);
+        await moveFile(outputPath, output);
+        await moveSideCarFiles(outputPath, output);
     };
 
     /**
@@ -241,6 +295,9 @@ namespace AmatsukazeEncodeTool {
 
         await watcher.start();
         await addTask(config, profile, remoteInput, remoteOutputDir);
+        // 投入前からキューに居るアイテム (前回失敗した同じ録画のタスクなど) を
+        // 自分のタスクと取り違えないよう、探索はここから始めさせる
+        watcher.markTaskAdded();
 
         // 中断されたら Amatsukaze 側のタスクも取り消す
         let isCanceling = false;

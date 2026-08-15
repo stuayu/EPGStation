@@ -15,7 +15,7 @@
                     <div class="text text-caption font-weight-light">{{ item.display.channelName }}</div>
                     <div class="text text-caption font-weight-light">{{ item.display.time }} ({{ item.display.duration }} m)</div>
                     <div class="text text-caption font-regular">{{ item.display.mode }}</div>
-                    <div class="text text-caption font-regular">{{ item.display.encodeInfo }}</div>
+                    <div class="text encode-info text-caption font-regular">{{ item.display.encodeInfo }}</div>
                     <v-progress-linear v-if="typeof item.display.percent !== 'undefined'" buffer-value="100" :model-value="item.display.percent"></v-progress-linear>
                 </div>
             </div>
@@ -84,6 +84,14 @@ export default toNative(EncodeSmallCard);
             overflow: hidden
             text-overflow: ellipsis
             white-space: nowrap
+        // エンコードの状況 (Amatsukaze のコンソール出力など) は 1 行に収まらないので折り返す。
+        // 途中で切ると失敗理由や進捗の肝心な部分が読めなくなるため行数は制限しない
+        .encode-info
+            overflow: visible
+            text-overflow: clip
+            white-space: normal
+            overflow-wrap: anywhere
+            word-break: break-word
         .text-subtitle-2
             padding-right: 30px
         .dummy

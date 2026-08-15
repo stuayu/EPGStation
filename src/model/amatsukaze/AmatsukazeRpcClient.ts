@@ -11,6 +11,7 @@ import {
     RPCMethodId,
     ServerRequestName,
 } from './IAmatsukazeRpcClient';
+import AmatsukazeTextUtil from './AmatsukazeTextUtil';
 import {
     buildContractXml,
     buildEnumXml,
@@ -380,7 +381,8 @@ export default class AmatsukazeRpcClient extends EventEmitter implements IAmatsu
             return null;
         }
 
-        const text = Buffer.from(base64, 'base64').toString('utf8');
+        // エンコーダのログは日本語 Windows の ANSI コードページ (cp932) で入っている
+        const text = AmatsukazeTextUtil.decode(Buffer.from(base64, 'base64'));
 
         return {
             index: index,
