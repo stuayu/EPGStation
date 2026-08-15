@@ -84,14 +84,60 @@ test('liveHLS cmd never includes %streamFileDir% (stays in-memory per doc/stream
     }
 });
 
-test('recordedStreaming hls cmd uses disk-based %streamFileDir% segments (subtitle/full-length support)', () => {
+test('recordedStreaming hls cmd outputs in-memory fMP4 (LL-HLS) instead of disk segments', () => {
     const expansion = EncodePresets.expand({ targets: ['recordedStreaming'], qualities: ['720p'] });
     const tsHls = expansion.recordedTs.find(p => p.container === 'hls');
     const encodedHls = expansion.recordedEncoded.find(p => p.container === 'hls');
     assert.ok(tsHls && encodedHls);
-    assert.match(tsHls.cmd, /%streamFileDir%/);
+
+    for (const profile of [tsHls, encodedHls]) {
+        // %streamFileDir% を含まないことが in-memory モードの判定条件 (RecordedStreamBaseModel.isMemoryHLS)
+        assert.doesNotMatch(profile.cmd, /%streamFileDir%/);
+        assert.match(profile.cmd, /-f mp4 pipe:1/);
+        assert.match(profile.cmd, /empty_moov\+default_base_moof\+frag_keyframe/);
+    }
+
     assert.match(tsHls.cmd, /-i pipe:0/);
     assert.match(encodedHls.cmd, /-ss %SS% -i %INPUT%/);
+});
+
+test('hevc profiles are iOS compatible (hvc1 tag, main profile, 8bit)', () => {
+    // ffmpeg 直接エンコード
+    const sw = EncodePresets.expand({
+        codecs: ['hevc'],
+        targets: ['liveHLS', 'recordedStreaming'],
+        qualities: ['1080p'],
+    });
+    for (const profile of [...sw.live, ...sw.recordedTs, ...sw.recordedEncoded]) {
+        assert.match(profile.cmd, /-tag:v hvc1/);
+        assert.match(profile.cmd, /-profile:v main/);
+        assert.match(profile.cmd, /-pix_fmt yuv420p/);
+    }
+
+    // rigaya 系 (QSVEncC) は ffmpeg 側の remux で hvc1 タグを付ける
+    const qsvencc = EncodePresets.expand({
+        hwaccel: 'qsvencc',
+        codecs: ['hevc'],
+        targets: ['liveHLS', 'recordedStreaming'],
+        qualities: ['1080p'],
+    });
+    for (const profile of [...qsvencc.live, ...qsvencc.recordedTs, ...qsvencc.recordedEncoded]) {
+        assert.match(profile.cmd, /-c:v copy -tag:v hvc1/);
+        assert.match(profile.cmd, /--profile main/);
+        assert.match(profile.cmd, /--level 4\.1/);
+        assert.match(profile.cmd, /--output-depth 8/);
+    }
+
+    // H.264 に hvc1 タグを付けてはいけない
+    const h264 = EncodePresets.expand({
+        hwaccel: 'qsvencc',
+        codecs: ['h264'],
+        targets: ['liveHLS'],
+        qualities: ['1080p'],
+    });
+    assert.doesNotMatch(h264.live[0].cmd, /hvc1/);
+    assert.match(h264.live[0].cmd, /--profile high/);
+    assert.match(h264.live[0].cmd, /--level 4\.1/);
 });
 
 test('hwaccel qsv/vaapi/nvenc select the right ffmpeg encoder name and options', () => {
@@ -205,8 +251,9 @@ test('rigaya cmd only uses options that actually exist in QSVEncC/NVEncC/VCEEncC
             assert.match(cmd, /--vpp-deinterlace normal/);
             assert.match(cmd, /--strict-gop/);
         }
-        // dual mono の主音声選択は remux 側の ffmpeg が担う
-        assert.match(cmd, /-dual_mono_mode main/);
+        // dual mono の主音声・副音声の選択は remux 側の ffmpeg が担う
+        // (実際の値は配信開始時に %DUALMONOMODE% が -dual_mono_mode main|sub へ展開される)
+        assert.match(cmd, /%DUALMONOMODE%/);
     }
 });
 
@@ -292,4 +339,62 @@ test('ids are stable and unique across the whole expansion (client-facing profil
         ...expansion.recordedEncoded.map(e => e.id),
     ];
     assert.equal(new Set(allIds).size, allIds.length);
+});
+
+test('bitrate is codec aware (HEVC uses ~65% of the H.264 bitrate for the same quality)', () => {
+    const h264 = EncodePresets.expand({ codecs: ['h264'], targets: ['liveHLS'], qualities: ['1080p'] });
+    const hevc = EncodePresets.expand({ codecs: ['hevc'], targets: ['liveHLS'], qualities: ['1080p'] });
+
+    assert.equal(h264.live[0].video.bitrate, 8000);
+    assert.equal(hevc.live[0].video.bitrate, 5200);
+    // cmd 側のビットレート指定も揃っている
+    assert.match(h264.live[0].cmd, /-b:v 8000k/);
+    assert.match(hevc.live[0].cmd, /-b:v 5200k/);
+});
+
+test('recorded playback favours quality over latency, live keeps the low latency preset', () => {
+    const expansion = EncodePresets.expand({ targets: ['liveHLS', 'recordedStreaming'], qualities: ['720p'] });
+
+    // ライブは速度優先 (veryfast + zerolatency 系)
+    assert.match(expansion.live[0].cmd, /-preset veryfast/);
+    assert.match(expansion.live[0].cmd, /-tune fastdecode,zerolatency/);
+
+    // 録画済みファイルの配信は 1 段重いプリセットにして -tune を外す
+    for (const profile of expansion.recordedEncoded) {
+        assert.match(profile.cmd, /-preset faster/);
+        assert.doesNotMatch(profile.cmd, /zerolatency/);
+    }
+
+    // 録画中ファイル (ts 入力) は実況と合わせて見るため低遅延のまま
+    for (const profile of expansion.recordedTs) {
+        assert.match(profile.cmd, /-preset veryfast/);
+    }
+});
+
+test('rigaya encoders get an explicit speed preset per tool', () => {
+    const qsvencc = EncodePresets.expand({
+        hwaccel: 'qsvencc',
+        targets: ['liveHLS', 'recordedStreaming'],
+        qualities: ['720p'],
+    });
+    // QSVEncC は --quality、ライブは速度側 / 録画済みは画質側
+    assert.match(qsvencc.live[0].cmd, /--quality faster/);
+    assert.match(qsvencc.recordedEncoded[0].cmd, /--quality balanced/);
+
+    // NVEncC / VCEEncC はオプション名も値も異なる
+    const nvencc = EncodePresets.expand({ hwaccel: 'nvencc', targets: ['liveHLS'], qualities: ['720p'] });
+    assert.match(nvencc.live[0].cmd, /--preset P3/);
+    const vceencc = EncodePresets.expand({ hwaccel: 'vceencc', targets: ['liveHLS'], qualities: ['720p'] });
+    assert.match(vceencc.live[0].cmd, /--preset fast/);
+});
+
+test('generated cmds carry the audio track placeholders', () => {
+    const expansion = EncodePresets.expand({ targets: ['liveHLS', 'recordedStreaming'], qualities: ['720p'] });
+
+    for (const profile of [...expansion.live, ...expansion.recordedTs, ...expansion.recordedEncoded]) {
+        assert.match(profile.cmd, /%DUALMONOMODE%/);
+        assert.match(profile.cmd, /%AUDIOMAP%/);
+        // 置換前のハードコードが残っていないこと
+        assert.doesNotMatch(profile.cmd, /-dual_mono_mode/);
+    }
 });

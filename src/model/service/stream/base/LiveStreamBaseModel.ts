@@ -19,6 +19,7 @@ import IBroadcastTimeExtractor from '../util/IBroadcastTimeExtractor';
 import Fmp4Packager from '../llhls/Fmp4Packager';
 import IAribId3Extractor from '../llhls/IAribId3Extractor';
 import IFmp4Packager from '../llhls/IFmp4Packager';
+import AudioTrackUtil from '../util/AudioTrackUtil';
 import IHLSFileDeleterModel from '../util/IHLSFileDeleterModel';
 import IHLSMemoryStoreModel from '../util/IHLSMemoryStoreModel';
 import ILiveStreamBaseModel, { LiveStreamOption } from './ILiveStreamBaseModel';
@@ -30,6 +31,11 @@ export default abstract class LiveStreamBaseModel
     extends StreamBaseModel<LiveStreamOption>
     implements ILiveStreamBaseModel
 {
+    // in-memory ライブ HLS の 1 セグメントを構成するパート数
+    // 1 パート = fMP4 フラグメント = GOP (EncodePresets の LIVE_HLS_GOP_FRAMES で 0.5 秒) なので、
+    // 2 パートで 1 秒セグメントになる (#EXT-X-TARGETDURATION は 1 秒が下限)
+    private static readonly LIVE_HLS_PARTS_PER_SEGMENT = 2;
+
     private stream: http.IncomingMessage | null = null;
     private streamProcess: ChildProcess | null = null;
     private mirakurunClientModel: IMirakurunClientModel;
@@ -96,6 +102,8 @@ export default abstract class LiveStreamBaseModel
         let cmd = this.processOption.cmd
             .replace(/%FFMPEG%/g, this.config.ffmpeg)
             .replace(/%TSREADEX%/g, typeof this.config.tsreadex === 'undefined' ? 'tsreadex' : this.config.tsreadex);
+        // 音声トラック指定 (%DUALMONOMODE% / %AUDIOMAP%) を展開する
+        cmd = AudioTrackUtil.replacePlaceholders(cmd, this.processOption.audioTrack);
         if (this.getStreamType() === 'LiveHLS') {
             cmd = cmd
                 .replace(/%streamFileDir%/g, this.config.streamFilePath)
@@ -233,7 +241,11 @@ export default abstract class LiveStreamBaseModel
     /**
      * in-memory HLS のパッケージングを開始する
      * エンコードプロセスが標準出力へ書き出す fragmented MP4 を Fmp4Packager で
-     * init / セグメントに分解し、HLSMemoryStoreModel へ蓄積する (ディスク書き込みなし)
+     * init / パート / セグメントに分解し、HLSMemoryStoreModel へ蓄積する (ディスク書き込みなし)
+     *
+     * fMP4 のフラグメント境界 (= GOP 境界) が 1 パートになる。
+     * LIVE_HLS_PARTS_PER_SEGMENT 個のパートで 1 セグメントを構成し、
+     * セグメント確定を待たずにパート (#EXT-X-PART) を配信することで遅延を詰める
      * @param streamId: apid.StreamId
      */
     private startMemoryHLSPackaging(streamId: apid.StreamId): void {
@@ -243,13 +255,19 @@ export default abstract class LiveStreamBaseModel
 
         this.log.stream.info(`start in-memory HLS packaging: ${streamId}`);
         this.memoryStreamId = streamId;
-        this.hlsMemoryStore.create(streamId);
+        this.hlsMemoryStore.create(streamId, 'live');
 
-        const packager = new Fmp4Packager({ partsPerSegment: 1 }, this.log);
+        const packager = new Fmp4Packager(
+            { partsPerSegment: LiveStreamBaseModel.LIVE_HLS_PARTS_PER_SEGMENT },
+            this.log,
+        );
         this.fmp4Packager = packager;
 
         packager.on('init', data => {
             this.hlsMemoryStore.setInit(streamId, data);
+        });
+        packager.on('part', part => {
+            this.hlsMemoryStore.addPart(streamId, part.data, part.duration, part.isIndependent);
         });
         packager.on('segment', segment => {
             this.hlsMemoryStore.addSegment(streamId, segment.data, segment.duration);

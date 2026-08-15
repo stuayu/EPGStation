@@ -8,6 +8,8 @@ export interface RecordedStreamOption {
     videoFileId: apid.VideoFileId;
     playPosition: number; // 再生位置(秒)
     cmd: string;
+    // 再生する音声トラック (省略時は主音声)。cmd の %DUALMONOMODE% / %AUDIOMAP% を置換する
+    audioTrack?: apid.AudioTrackSpecifier;
 }
 
 export interface VideoFileInfo {

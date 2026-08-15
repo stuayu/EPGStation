@@ -37,6 +37,28 @@ interface QualityParam {
     audioBitrate: number; // kbps
 }
 
+/**
+ * 配信コマンドの遅延・画質方針。
+ * 遅延の許容度と GOP 長は独立して決めたいので分けている
+ * (録画済み HLS は「遅延は許容できるが LL-HLS のパート境界のため GOP は短くしたい」ケース)
+ */
+interface StreamTuning {
+    // 遅延を最優先する (速度寄りの速度プリセット / zerolatency 系の指定を使う)。
+    // false なら 1 段重いプリセットにして画質を優先する
+    lowLatency: boolean;
+    // GOP を 1 秒相当まで短くする (HLS のセグメント / パート境界を細かくする用途)
+    shortGop: boolean;
+}
+
+// ライブ視聴: 遅延最優先 + 短い GOP
+const TUNING_LIVE: StreamTuning = { lowLatency: true, shortGop: true };
+// 録画中ファイルの配信 (実況と同時に見るため遅延を詰める)
+const TUNING_RECORDING: StreamTuning = { lowLatency: true, shortGop: true };
+// 録画済みファイルの mp4 配信: 画質優先
+const TUNING_RECORDED_MP4: StreamTuning = { lowLatency: false, shortGop: false };
+// 録画済みファイルの HLS 配信: 画質優先だが LL-HLS のパート境界のため GOP は短くする
+const TUNING_RECORDED_HLS: StreamTuning = { lowLatency: false, shortGop: true };
+
 // ffmpeg のエンコーダ名 (hwaccel × codec)。
 // qsvencc/nvencc/vceencc は rigaya 系エンコーダが実際のエンコードを担い、ffmpeg 側は
 // -c:v copy で remux するだけなので、ここではクライアント表示用に codec 種別 (h264/hevc) のみを表す
@@ -99,14 +121,39 @@ export interface RigayaExecPaths {
 const rigayaBinPath = (hwaccel: RigayaHwAccel, execPaths?: RigayaExecPaths): string =>
     execPaths?.[hwaccel] ?? RIGAYA_DEFAULT_BIN[hwaccel];
 
+/**
+ * 画質ごとの解像度・ビットレート。
+ *
+ * ビットレートは**画質優先**の値にしてある。地上波 (MPEG-2 で 15Mbps 前後) をソースにした
+ * リアルタイムエンコードでは、ビットレートを削るほど動きの激しい場面のブロックノイズが目立つ。
+ * 帯域を絞りたい場合は `codecs: [hevc]` を選ぶか、1 段下の quality を使うこと。
+ *
+ * `videoBitrate` は H.264 基準の値で、HEVC は同画質をより低いビットレートで出せるため
+ * `HEVC_BITRATE_RATE` を掛けて下げる (下げた分をそのまま画質差にせず帯域削減に回す)。
+ */
 const QUALITY_TABLE: Record<EncodeQuality, QualityParam> = {
-    // 新4K8K衛星放送 (BS4K / CS4K) 向け。HEVC 前提のビットレートなので H.264 では画質が落ちる
-    '2160p': { height: 2160, videoBitrate: 15000, audioBitrate: 256 },
-    '1080p': { height: 1080, videoBitrate: 5000, audioBitrate: 192 },
-    '720p': { height: 720, videoBitrate: 3000, audioBitrate: 192 },
-    '480p': { height: 480, videoBitrate: 1500, audioBitrate: 128 },
-    '240p': { height: 240, videoBitrate: 800, audioBitrate: 96 },
+    // 新4K8K衛星放送 (BS4K / CS4K) 向け。H.264 の 4K は iOS のハードウェアデコード対象外なので
+    // codecs: [hevc] と組み合わせて使う (HEVC では ×0.65 の 15600kbps になる)
+    '2160p': { height: 2160, videoBitrate: 24000, audioBitrate: 256 },
+    '1080p': { height: 1080, videoBitrate: 8000, audioBitrate: 256 },
+    '720p': { height: 720, videoBitrate: 4500, audioBitrate: 192 },
+    '480p': { height: 480, videoBitrate: 2000, audioBitrate: 128 },
+    '240p': { height: 240, videoBitrate: 1000, audioBitrate: 96 },
 };
+
+// HEVC のビットレート係数 (同画質を H.264 の約 65% のビットレートで出せる)
+const HEVC_BITRATE_RATE = 0.65;
+
+/**
+ * コーデックを考慮した映像ビットレートを返す
+ * @param quality: EncodeQuality
+ * @param codec: EncodeCodec
+ * @return number kbps
+ */
+const videoBitrateOf = (quality: EncodeQuality, codec: EncodeCodec): number =>
+    codec === 'hevc'
+        ? Math.round((QUALITY_TABLE[quality].videoBitrate * HEVC_BITRATE_RATE) / 100) * 100
+        : QUALITY_TABLE[quality].videoBitrate;
 
 const DEFAULT_HWACCEL: EncodeHwAccel = 'software';
 const DEFAULT_CODECS: EncodeCodec[] = ['h264'];
@@ -192,10 +239,18 @@ namespace EncodePresets {
 
     /**
      * -c:v 以降のレート制御・GOP 設定を組み立てる (hwaccel ごとに指定できるオプション体系が異なるため個別に定義する)
+     *
+     * `lowLatency` で速度と画質のどちらを優先するかが変わる:
+     * - ライブ視聴 (true): 遅延がそのまま体感を損なうため速度優先のプリセットを使う
+     * - 録画再生 (false): 数百 ms の遅れは体感に響かないので、1 段重いプリセットにして画質を優先する。
+     *   ソフトウェアエンコードの `-tune fastdecode,zerolatency` (先読み・B フレームを止める指定) も
+     *   外して圧縮効率を戻す。ただし fMP4 のフラグメント境界をキーフレームで閉じる必要があるため
+     *   closed GOP (`-flags +cgop`、呼び出し側で付与) は録画再生でも維持する
      * @param hwaccel: EncodeHwAccel
      * @param codec: EncodeCodec
      * @param height: number
      * @param videoBitrate: number kbps
+     * @param lowLatency: boolean true でライブ視聴向けの速度優先設定にする
      * @return string
      */
     const buildVideoCodecOptions = (
@@ -203,41 +258,55 @@ namespace EncodePresets {
         codec: EncodeCodec,
         height: number,
         videoBitrate: number,
+        lowLatency: boolean,
     ): string => {
         const bufsize = videoBitrate * 2;
         const isHevc = codec === 'hevc';
         const hvc1 = isHevc ? ' -tag:v hvc1' : '';
+        const rate = `-b:v ${videoBitrate}k -maxrate ${videoBitrate}k -bufsize ${bufsize}k`;
 
         switch (hwaccel) {
             case 'nvenc': {
-                const profileLevel = isHevc ? '' : ` -profile:v ${h264Profile(height)} -level ${h264Level(height)}`;
-                return (
-                    `-b:v ${videoBitrate}k -maxrate ${videoBitrate}k -bufsize ${bufsize}k${profileLevel} ` +
-                    `-preset p3 -tune ll -rc cbr -bf 0 -zerolatency 1 -no-scenecut 1 -g 30 -keyint_min 30${hvc1}`
-                );
+                const profileLevel = isHevc
+                    ? ` -profile:v ${hevcProfile()} -level ${hevcLevel(height)}`
+                    : ` -profile:v ${h264Profile(height)} -level ${h264Level(height)}`;
+                // p3 = 速度寄り / p5 = 画質寄り (p7 は録画再生のリアルタイム性に対して遅すぎる)。
+                // ライブは -tune ll (低遅延) + CBR、録画再生は -tune hq + VBR で画質を優先する
+                const tuning = lowLatency
+                    ? '-preset p3 -tune ll -rc cbr -bf 0 -zerolatency 1 -no-scenecut 1'
+                    : '-preset p5 -tune hq -rc vbr -bf 0 -no-scenecut 1';
+                return `${rate}${profileLevel} ${tuning} -g 30 -keyint_min 30${hvc1}`;
             }
             case 'qsv': {
-                const profilePart = isHevc ? '' : ` -profile:v ${h264Profile(height)}`;
+                const profilePart = isHevc ? ` -profile:v ${hevcProfile()}` : ` -profile:v ${h264Profile(height)}`;
                 return (
-                    `-b:v ${videoBitrate}k -maxrate ${videoBitrate}k -bufsize ${bufsize}k${profilePart} ` +
-                    `-preset veryfast -g 30 -keyint_min 30${hvc1}`
+                    `${rate}${profilePart} -preset ${lowLatency ? 'veryfast' : 'faster'} ` +
+                    `-g 30 -keyint_min 30${hvc1}`
                 );
             }
             case 'vaapi':
-                // vaapi は -preset / -profile を解釈しないドライバが多いため、汎用のビットレート指定のみで制御する
-                return `-b:v ${videoBitrate}k -maxrate ${videoBitrate}k -bufsize ${bufsize}k -g 30 -keyint_min 30${hvc1}`;
+                // vaapi は -preset / -level を解釈しないドライバが多いため、profile とビットレートのみで制御する
+                return (
+                    `${rate} -profile:v ${isHevc ? hevcProfile() : h264Profile(height)} ` +
+                    `-g 30 -keyint_min 30${hvc1}`
+                );
             case 'software':
             default: {
                 if (isHevc) {
+                    // libx265 は libx264 より大幅に重いため、録画再生でも 1 段までしか上げない
+                    const tune = lowLatency ? ' -tune zerolatency' : '';
                     return (
-                        `-b:v ${videoBitrate}k -maxrate ${videoBitrate}k -bufsize ${bufsize}k ` +
-                        `-preset veryfast -tune zerolatency -g 30 -keyint_min 30 -x265-params scenecut=0:repeat-headers=1${hvc1}`
+                        `${rate} -profile:v ${hevcProfile()} -pix_fmt yuv420p ` +
+                        `-preset ${lowLatency ? 'veryfast' : 'faster'}${tune} ` +
+                        `-g 30 -keyint_min 30 -x265-params scenecut=0:repeat-headers=1:level-idc=${hevcLevel(height)}${hvc1}`
                     );
                 }
+                // -tune fastdecode,zerolatency は先読みと B フレームを止めるため圧縮効率が落ちる。
+                // 録画再生では外し、その分を画質に回す
+                const tune = lowLatency ? ' -tune fastdecode,zerolatency' : '';
                 return (
-                    `-b:v ${videoBitrate}k -maxrate ${videoBitrate}k -bufsize ${bufsize}k ` +
-                    `-profile:v ${h264Profile(height)} -level ${h264Level(height)} -preset veryfast ` +
-                    `-tune fastdecode,zerolatency -g 30 -keyint_min 30 -sc_threshold 0`
+                    `${rate} -profile:v ${h264Profile(height)} -level ${h264Level(height)} -pix_fmt yuv420p ` +
+                    `-preset ${lowLatency ? 'veryfast' : 'faster'}${tune} -g 30 -keyint_min 30 -sc_threshold 0`
                 );
             }
         }
@@ -250,6 +319,25 @@ namespace EncodePresets {
         if (height >= 720) return '4.0';
         if (height >= 480) return '3.1';
         return '3.0';
+    };
+
+    /**
+     * HEVC のプロファイル。
+     * iOS / Safari のハードウェアデコーダは HEVC Main (8bit 4:2:0) が確実に再生できる範囲で、
+     * Main10 は端末世代によっては再生できない。地上波・BS/CS は元が 8bit なので Main で足りる
+     * @return string
+     */
+    const hevcProfile = (): string => 'main';
+
+    /**
+     * HEVC のレベル。iOS の HEVC ハードウェアデコードは Main Level 5.1 までを想定する
+     * @param height: number
+     * @return string
+     */
+    const hevcLevel = (height: number): string => {
+        if (height >= 2160) return '5.1';
+        if (height >= 1080) return '4.1';
+        return '4';
     };
 
     // vaapi はデバイスの初期化 (-vaapi_device) を -i より前段のグローバルオプションとして必要とする
@@ -273,12 +361,17 @@ namespace EncodePresets {
      * 同じ「ビットレート指定」の運用感に揃える。
      * --bframes 0 + --strict-gop は HLS/fMP4 のセグメント境界をキーフレームで確実に閉じるための指定
      * (buildLiveHlsCmd 等の -flags +cgop と同じ狙い)。
+     *
+     * iOS / Safari 互換のため --profile / --level / --output-depth 8 を明示する。
+     * HEVC は Main (8bit 4:2:0) 以外だと端末世代によってハードウェアデコードできず再生できない。
+     * なお rigaya 側の mp4/mpegts 出力にコーデックタグ (hvc1) を指定する手段は無いため、
+     * hvc1 タグ付けは後段 ffmpeg の -tag:v hvc1 (buildHvc1TagOption) で行う。
      * @param hwaccel: RigayaHwAccel
      * @param codec: EncodeCodec
      * @param height: number
      * @param videoBitrate: number kbps
      * @param deinterlace: boolean 入力がインタレースか
-     * @param lowLatency: boolean true ならライブ/実況ストリーミング向けに GOP を短くし --lowlatency を付与する
+     * @param tuning: StreamTuning 遅延と GOP の方針
      * @return string
      */
     const buildRigayaArgs = (
@@ -287,7 +380,7 @@ namespace EncodePresets {
         height: number,
         videoBitrate: number,
         deinterlace: boolean,
-        lowLatency: boolean,
+        tuning: StreamTuning,
     ): string => {
         const maxBitrate = videoBitrate * 2;
         // 幅は -2 (アスペクト比を保ったまま 2 の倍数へ丸める) にして、高さのみ画質プリセットに合わせる
@@ -297,17 +390,56 @@ namespace EncodePresets {
                 ? ' --interlace tff --vpp-yadif'
                 : ' --interlace tff --vpp-deinterlace normal'
             : '';
-        // 低遅延用途 (ライブ / 録画中ファイルの実況ストリーミング) は GOP を短く (1 秒 @30fps) して
-        // セグメント追従性を優先し、そうでない場合はやや長め (2 秒) にして圧縮効率を優先する
-        const gop = lowLatency ? 30 : 60;
+        // HLS はセグメント / パート境界を GOP で刻むため短く (1 秒 @30fps)、
+        // それ以外はやや長め (2 秒) にして圧縮効率を優先する
+        const gop = tuning.shortGop ? 30 : 60;
         const strictGop = hwaccel === 'vceencc' ? '' : ' --strict-gop';
-        const latency = lowLatency ? ' --lowlatency' : '';
+        const latency = tuning.lowLatency ? ' --lowlatency' : '';
+        // iOS / Safari 互換: HEVC は Main (8bit)、H.264 は High/Main + レベル指定
+        const profile = codec === 'hevc' ? hevcProfile() : h264Profile(height);
+        const level = codec === 'hevc' ? hevcLevel(height) : h264Level(height);
 
         return (
-            `-c ${codec} --vbr ${videoBitrate} --max-bitrate ${maxBitrate} --gop-len ${gop}${strictGop} ` +
+            `-c ${codec} --profile ${profile} --level ${level} --output-depth 8 ` +
+            `${rigayaQualityOption(hwaccel, tuning.lowLatency)} ` +
+            `--vbr ${videoBitrate} --max-bitrate ${maxBitrate} --gop-len ${gop}${strictGop} ` +
             `--bframes 0${deint} ${resize}${latency}`
         );
     };
+
+    /**
+     * rigaya 系エンコーダの速度プリセットを返す。
+     * **オプション名も選べる値も 3 ツールで異なる**:
+     * - QSVEncC: `--quality best|higher|high|balanced|fast|faster|fastest`
+     * - NVEncC: `--preset P1`〜`P7` (数字が大きいほど画質優先)
+     * - VCEEncC: `--preset balanced|fast|slow|slower` (quality という値は存在しない)
+     *
+     * ライブは実時間に追いつくことが最優先なので速度側、録画再生は 1 段画質側へ倒す
+     * (未指定だと各ツールの既定 = おおむね balanced 相当になるため、意図を明示する)
+     * @param hwaccel: RigayaHwAccel
+     * @param lowLatency: boolean
+     * @return string
+     */
+    const rigayaQualityOption = (hwaccel: RigayaHwAccel, lowLatency: boolean): string => {
+        switch (hwaccel) {
+            case 'qsvencc':
+                return lowLatency ? '--quality faster' : '--quality balanced';
+            case 'nvencc':
+                return lowLatency ? '--preset P3' : '--preset P5';
+            case 'vceencc':
+            default:
+                return lowLatency ? '--preset fast' : '--preset balanced';
+        }
+    };
+
+    /**
+     * HEVC を fMP4 / MP4 で配信する際に必須のコーデックタグ指定を返す。
+     * 既定の hev1 タグでは iOS / Safari が再生できない (映像が出ない・エラーになる) ため、
+     * HEVC のときは必ず hvc1 を指定する
+     * @param codec: EncodeCodec
+     * @return string 先頭にスペースを含む (H.264 の場合は空文字列)
+     */
+    const buildHvc1TagOption = (codec: EncodeCodec): string => (codec === 'hevc' ? ' -tag:v hvc1' : '');
 
     /**
      * rigaya 系エンコーダ → ffmpeg のパイプラインの前段 (rigaya エンコーダ部分) を組み立てる。
@@ -332,12 +464,12 @@ namespace EncodePresets {
         height: number,
         videoBitrate: number,
         deinterlace: boolean,
-        lowLatency: boolean,
+        tuning: StreamTuning,
         inputSpec: string,
         execPaths?: RigayaExecPaths,
     ): string => {
         const bin = rigayaBinPath(hwaccel, execPaths);
-        const codecArgs = buildRigayaArgs(hwaccel, codec, height, videoBitrate, deinterlace, lowLatency);
+        const codecArgs = buildRigayaArgs(hwaccel, codec, height, videoBitrate, deinterlace, tuning);
 
         // コンテナ指定は --output-format (別名 -f)。--format というオプションは存在しない
         return `${bin} --avhw ${inputSpec} ${codecArgs} --audio-copy --output-format mpegts -o - |`;
@@ -377,26 +509,27 @@ namespace EncodePresets {
                 height,
                 videoBitrate,
                 true,
-                true,
+                TUNING_LIVE,
                 '-i - --input-format mpegts',
                 execPaths,
             );
 
             return (
-                `${prefix} %FFMPEG% -dual_mono_mode main -f mpegts -analyzeduration 500000 -probesize 500000 ` +
+                `${prefix} %FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 500000 ` +
                 `-fflags nobuffer -i pipe:0 -sn -threads 0 ` +
-                `-max_muxing_queue_size 1024 -c:v copy -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
+                `-max_muxing_queue_size 1024 -c:v copy${buildHvc1TagOption(codec)} ` +
+                `%AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
                 `-movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`
             );
         }
 
         const ffCodec = CODEC_NAME[hwaccel][codec];
         const vf = buildVideoFilter(hwaccel, height, true);
-        const codecOpts = buildVideoCodecOptions(hwaccel, codec, height, videoBitrate);
+        const codecOpts = buildVideoCodecOptions(hwaccel, codec, height, videoBitrate, TUNING_LIVE.lowLatency);
 
         return (
-            `%FFMPEG% -dual_mono_mode main -fflags nobuffer ${vaapiDeviceOption(hwaccel)}-i pipe:0 ` +
-            `-sn -threads 0 -max_muxing_queue_size 1024 -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
+            `%FFMPEG% %DUALMONOMODE% -fflags nobuffer ${vaapiDeviceOption(hwaccel)}-i pipe:0 ` +
+            `-sn -threads 0 -max_muxing_queue_size 1024 %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
             `-vf ${vf} -c:v ${ffCodec} ${codecOpts} -flags +cgop ` +
             // セグメント長 = GOP 長になるため、ライブ HLS では 0.5 秒 GOP まで詰める
             // (codecOpts の -g 30 を後ろから上書きする)
@@ -435,42 +568,62 @@ namespace EncodePresets {
                 height,
                 videoBitrate,
                 isTs,
-                isTs,
+                isTs ? TUNING_RECORDING : TUNING_RECORDED_MP4,
                 inputSpec,
                 execPaths,
             );
 
             return (
-                `${prefix} %FFMPEG% -dual_mono_mode main -f mpegts -analyzeduration 500000 -probesize 5000000 -fflags nobuffer ` +
+                `${prefix} %FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 5000000 -fflags nobuffer ` +
                 `-flags low_delay -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024 -max_interleave_delta 1 ` +
-                `-c:v copy -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
+                `-c:v copy${buildHvc1TagOption(codec)} %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
                 `-movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000 -y -f mp4 pipe:1`
             );
         }
 
         const ffCodec = CODEC_NAME[hwaccel][codec];
         const vf = buildVideoFilter(hwaccel, height, isTs);
-        const codecOpts = buildVideoCodecOptions(hwaccel, codec, height, videoBitrate);
+        const codecOpts = buildVideoCodecOptions(
+            hwaccel,
+            codec,
+            height,
+            videoBitrate,
+            (isTs ? TUNING_RECORDING : TUNING_RECORDED_MP4).lowLatency,
+        );
         const input = isTs ? '-i pipe:0' : '-ss %SS% -i %INPUT%';
 
         return (
-            `%FFMPEG% -dual_mono_mode main -fflags nobuffer -flags low_delay -analyzeduration 500000 ` +
+            `%FFMPEG% %DUALMONOMODE% -fflags nobuffer -flags low_delay -analyzeduration 500000 ` +
             `-probesize 5000000 ${vaapiDeviceOption(hwaccel)}${input} -sn -threads 0 -max_muxing_queue_size 1024 ` +
-            `-max_interleave_delta 1 -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
+            `-max_interleave_delta 1 %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
             `-vf ${vf} -c:v ${ffCodec} ${codecOpts} -flags +cgop ` +
             `-movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000 -y -f mp4 pipe:1`
         );
     };
 
     /**
+     * 録画済み HLS (in-memory LL-HLS 配信) の GOP 長 (フレーム)
+     * fMP4 のフラグメント境界 = キーフレームであり、それが LL-HLS のパート境界になる
+     * (29.97fps で 15 フレーム = 約 0.5 秒。2 パートで 1 秒セグメント)
+     */
+    const RECORDED_HLS_GOP_FRAMES = 15;
+
+    /**
      * 録画ストリーミング (HLS) 用のコマンドを組み立てる。
-     * ディスクへセグメントを書き出す従来方式 (録画済み HLS は EVENT プレイリストで全編を保持する必要があるため)
+     * cmd に %streamFileDir% を含めないことで RecordedStreamBaseModel.isMemoryHLS() が
+     * in-memory モードと判定し、fragmented MP4 を Fmp4Packager が LL-HLS
+     * (#EXT-X-PART 付き) としてメモリ上で配信する (ディスク書き込みなし)。
+     *
+     * MPEG-TS セグメントではなく fMP4 セグメントにしているのは、
+     * - HEVC は MPEG-TS の HLS では iOS / Safari が再生できない (fMP4 でのみ対応)
+     * - LL-HLS のパート分割は fMP4 フラグメント単位でしか実現できない
+     * ため。ARIB 字幕は Fmp4Packager が emsg box (version 1) として多重化する。
      *
      * シーク応答・再生開始の速さ優先のチューニング:
-     * - -hls_time 1 (1 秒セグメント) を維持し、シーク時の再生開始までの待ちを最小化
-     * - -flags +cgop で closed GOP を強制し、セグメント境界が前後の GOP を参照しないようにする
-     *   (-hls_flags の independent_segments はプレイリスト上のヒントに過ぎず、実際に GOP を
-     *   閉じるのは -flags +cgop 側の役目)
+     * - GOP を 0.5 秒まで詰めてパート境界を細かくし、再生開始・シーク時の待ちを最小化
+     * - -flags +cgop で closed GOP を強制し、フラグメントが前後の GOP を参照しないようにする
+     * - -movflags empty_moov+default_base_moof+frag_keyframe は Fmp4Packager が前提とする
+     *   フラグメント化 fMP4 の必須フラグ (doc/streaming-refresh.md 参照、変更しないこと)
      */
     const buildRecordedHlsCmd = (
         scope: EncodeTargetKind,
@@ -491,33 +644,39 @@ namespace EncodePresets {
                 height,
                 videoBitrate,
                 isTs,
-                isTs,
+                isTs ? TUNING_RECORDING : TUNING_RECORDED_HLS,
                 inputSpec,
                 execPaths,
             );
 
             return (
-                `${prefix} %FFMPEG% -dual_mono_mode main -f mpegts -analyzeduration 500000 -probesize 5000000 ` +
-                `-i pipe:0 -sn -map 0 ` +
-                `-threads 0 -ignore_unknown -max_muxing_queue_size 1024 -max_interleave_delta 1 ` +
-                `-f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1 ` +
-                `-hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments+independent_segments ` +
-                `-c:v copy -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 -flags +loop-global_header %OUTPUT%`
+                `${prefix} %FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 5000000 ` +
+                `-fflags nobuffer -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024 -max_interleave_delta 1 ` +
+                `-c:v copy${buildHvc1TagOption(codec)} %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
+                `-movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`
             );
         }
 
         const ffCodec = CODEC_NAME[hwaccel][codec];
         const vf = buildVideoFilter(hwaccel, height, isTs);
-        const codecOpts = buildVideoCodecOptions(hwaccel, codec, height, videoBitrate);
+        const codecOpts = buildVideoCodecOptions(
+            hwaccel,
+            codec,
+            height,
+            videoBitrate,
+            (isTs ? TUNING_RECORDING : TUNING_RECORDED_HLS).lowLatency,
+        );
         const input = isTs ? '-i pipe:0' : '-ss %SS% -i %INPUT%';
 
         return (
-            `%FFMPEG% -dual_mono_mode main ${vaapiDeviceOption(hwaccel)}${input} -sn -map 0 -threads 0 ` +
-            `-ignore_unknown -max_muxing_queue_size 1024 -max_interleave_delta 1 ` +
-            `-f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1 ` +
-            `-hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments+independent_segments ` +
-            `-c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 -vf ${vf} -c:v ${ffCodec} ${codecOpts} ` +
-            `-flags +cgop+loop-global_header %OUTPUT%`
+            `%FFMPEG% %DUALMONOMODE% -fflags nobuffer -analyzeduration 500000 -probesize 5000000 ` +
+            `${vaapiDeviceOption(hwaccel)}${input} -sn -threads 0 -max_muxing_queue_size 1024 ` +
+            `-max_interleave_delta 1 %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
+            `-vf ${vf} -c:v ${ffCodec} ${codecOpts} -flags +cgop ` +
+            // パート長 = GOP 長になるため、録画済み HLS でも 0.5 秒 GOP まで詰める
+            // (codecOpts の -g 30 を後ろから上書きする)
+            `-g ${RECORDED_HLS_GOP_FRAMES} -keyint_min ${RECORDED_HLS_GOP_FRAMES} ` +
+            `-movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`
         );
     };
 
@@ -548,7 +707,9 @@ namespace EncodePresets {
 
         for (const codec of codecs) {
             for (const quality of qualities) {
-                const { height, videoBitrate, audioBitrate } = QUALITY_TABLE[quality];
+                const { height, audioBitrate } = QUALITY_TABLE[quality];
+                // HEVC は同画質をより低いビットレートで出せるため係数を掛ける
+                const videoBitrate = videoBitrateOf(quality, codec);
                 const name = buildName(quality, codec, hwaccel);
 
                 if (targetSet.has('recorded')) {

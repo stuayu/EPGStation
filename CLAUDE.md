@@ -117,8 +117,11 @@ npm run test:ci        # ut + ita + itb
 
 配信周りを触る前に `doc/streaming-refresh.md` を読む。
 
-- **ライブ HLS は 2 モード**。cmd に `%streamFileDir%` が無ければ in-memory 配信 (ディスク書き込みなし)、あれば従来の TS セグメント方式。どちらも ARIB 字幕対応
+- **HLS は 2 モード**。cmd に `%streamFileDir%` が無ければ in-memory 配信 (ディスク書き込みなし)、あれば従来の TS セグメント方式。ライブ・録画済みとも同じ判定で、`encodePresets` が生成する HLS プリセットはどちらも in-memory。どちらのモードも ARIB 字幕対応
+- **in-memory HLS は LL-HLS (`#EXT-X-PART`)**。パート = fMP4 フラグメント = GOP。`emsg` (字幕) は**セグメントではなくパート先頭**に置く (パートが単独配信されるため)。`HLSMemoryStoreModel.delete()` は待機中の要求を必ず解決する (しないとレスポンスが返らない)
 - **in-memory HLS の字幕 (`emsg`) は必ず version 1**。version 0 だと hls.js が `scheme_id_uri` を読み違え、字幕が一切出ない
+- **音声トラック切替は cmd のプレースホルダ経由**。`%DUALMONOMODE%` / `%AUDIOMAP%`。**デュアルモノラル (二か国語) の副音声は `-map` では選べない** — `-dual_mono_mode sub` を使う。手書き cmd (直書き) では切り替わらない
+- **HEVC の配信は fMP4 + `-tag:v hvc1` が必須**。iOS / Safari は TS セグメントの HEVC を再生できず、`hev1` タグでも映像が出ない。rigaya 系 (QSVEncC 等) はエンコーダ側でタグ指定できないため後段 ffmpeg の remux で付ける。プロファイルは Main・8bit
 - **DPlayer に `type: 'normal'` を渡すと ARIB 字幕が出ない**。Safari のネイティブ HLS でも `type: 'hls'` のままにする
 - **BML ブラウザは映像要素を自分の中へ物理的に移動する**。`invisible` の切り替えと破棄時に元へ戻す処理を落とさない
 - **データ放送の WebSocket は socket.io と同じサーバの `upgrade` に相乗りする**。パスが `<subDirectory>/api/dataBroadcasting/ws` 以外の socket には触らない (触ると socket.io のハンドシェイクが壊れる)

@@ -54,9 +54,6 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
     // 現在組み立て中のセグメントを構成する part
     private currentSegmentParts: Fmp4PackagerPart[] = [];
 
-    // 組み立て中セグメントの先頭パートの時刻情報 (emsg の絶対時刻の基準に使う)
-    private currentSegmentBase: { tfdt: number | null; timescale: number | null } | null = null;
-
     // 次のセグメントへ乗せる ID3 timed metadata (ARIB 字幕)
     private pendingId3: AribId3Metadata[] = [];
 
@@ -104,8 +101,13 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
 
     /**
      * 保留中の ID3 timed metadata を emsg box 列として組み立てる
-     * @param baseMediaDecodeTime: number | null セグメント先頭パートの tfdt
-     * @param timescale: number | null セグメント先頭パートのトラックの timescale
+     *
+     * LL-HLS では 1 パートが単独で配信される (プレイヤーはセグメント全体を待たずに
+     * パートを取得して再生する) ため、emsg はセグメント先頭ではなくパート先頭に置く。
+     * セグメントは各パートのバイト列の連結なので、パートに載せた emsg はそのまま
+     * セグメント側にも含まれる
+     * @param baseMediaDecodeTime: number | null パートの tfdt
+     * @param timescale: number | null パートのトラックの timescale
      * @return Buffer 保留がない場合は空の Buffer
      */
     private buildPendingEmsgBoxes(baseMediaDecodeTime: number | null, timescale: number | null): Buffer {
@@ -122,7 +124,7 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
         const segmentBase = baseMediaDecodeTime !== null && baseMediaDecodeTime >= 0 ? baseMediaDecodeTime : 0;
 
         // ID3 の PTS (90kHz) はエンコード前の TS のものでメディアタイムラインと基準が異なるため、
-        // セグメント先頭 (= 最初の metadata) からの相対時刻に変換して載せ替える
+        // パート先頭 (= 最初の metadata) からの相対時刻に変換して載せ替える
         const base = pending[0].pts;
         const boxes: Buffer[] = [];
         for (const metadata of pending) {
@@ -611,16 +613,16 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
      * 確定した 1 パートを emit し、partsPerSegment 個貯まったらセグメントとして emit する
      */
     private emitPart(slot: Fmp4Packager.PartSlot): void {
+        // ARIB 字幕 (ID3 timed metadata) はパート先頭の emsg box として多重化する。
+        // LL-HLS ではパートが単独で配信されるため、セグメント確定まで待つと
+        // パート経由で再生しているプレイヤーに字幕が届かない
+        const emsg = this.buildPendingEmsgBoxes(slot.tfdt, slot.timescale);
+
         const part: Fmp4PackagerPart = {
-            data: slot.buf,
+            data: emsg.length > 0 ? Buffer.concat([emsg, slot.buf]) : slot.buf,
             duration: slot.duration as number,
             isIndependent: this.currentSegmentParts.length === 0,
         };
-
-        if (this.currentSegmentParts.length === 0) {
-            // emsg の絶対時刻の基準にするためセグメント先頭パートの時刻情報を控えておく
-            this.currentSegmentBase = { tfdt: slot.tfdt, timescale: slot.timescale };
-        }
 
         this.currentSegmentParts.push(part);
         this.emit('part', part);
@@ -640,14 +642,10 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
 
         const parts = this.currentSegmentParts;
         this.currentSegmentParts = [];
-        const segmentBase = this.currentSegmentBase;
-        this.currentSegmentBase = null;
 
-        // ARIB 字幕 (ID3 timed metadata) をセグメント先頭の emsg box として多重化する
-        const emsg = this.buildPendingEmsgBoxes(segmentBase?.tfdt ?? null, segmentBase?.timescale ?? null);
-
+        // emsg (ARIB 字幕) は emitPart() でパート側に載せてあるため、ここは単純連結でよい
         const segment: Fmp4PackagerSegment = {
-            data: Buffer.concat(emsg.length > 0 ? [emsg, ...parts.map(p => p.data)] : parts.map(p => p.data)),
+            data: Buffer.concat(parts.map(p => p.data)),
             duration: parts.reduce((sum, p) => sum + p.duration, 0),
             parts,
         };

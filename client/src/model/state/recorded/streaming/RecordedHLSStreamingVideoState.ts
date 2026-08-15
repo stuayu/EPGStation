@@ -30,9 +30,15 @@ class RecordedHLSStreamingVideoState extends RecordedStreamingVideoState impleme
      * @param videoFileId: apid.VideoFileId
      * @param playPosition: number 再生位置
      * @param mode: number
+     * @param audioTrack?: apid.AudioTrackSpecifier 再生する音声トラック (省略時は主音声)
      * @return Promise<void>
      */
-    public async start(videoFileId: apid.VideoFileId, playPosition: number, mode: number): Promise<void> {
+    public async start(
+        videoFileId: apid.VideoFileId,
+        playPosition: number,
+        mode: number,
+        audioTrack?: apid.AudioTrackSpecifier,
+    ): Promise<void> {
         if (this.isStarting === true) {
             return;
         }
@@ -43,7 +49,7 @@ class RecordedHLSStreamingVideoState extends RecordedStreamingVideoState impleme
 
         this.isStarting = true;
         try {
-            this.streamId = await this.streamApiModel.startRecordedHLS(videoFileId, playPosition, mode);
+            this.streamId = await this.streamApiModel.startRecordedHLS(videoFileId, playPosition, mode, audioTrack);
             this.isStarting = false;
         } catch (err) {
             this.isStarting = false;

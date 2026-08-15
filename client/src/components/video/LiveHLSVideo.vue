@@ -52,6 +52,7 @@ class LiveHLSVideo extends BaseVideo {
     private checkEnabledTimerId: ReturnType<typeof setTimeout> | undefined;
     private qualityNames: string[] = []; // config の hls 視聴設定名一覧
     private currentMode: number = 0; // 再生中の視聴設定 (画質切替で更新される)
+    private currentAudioTrack: apid.AudioTrackSpecifier = 'main'; // 再生中の音声トラック
 
     public async mounted(): Promise<void> {
         this.containerElement = this.$refs.container as HTMLElement;
@@ -60,7 +61,7 @@ class LiveHLSVideo extends BaseVideo {
         this.currentMode = StreamQualityUtil.normalizeMode(this.qualityNames, this.mode);
 
         // HLS stream 開始
-        await this.videoState.start(this.channelId, this.currentMode).catch(err => {
+        await this.videoState.start(this.channelId, this.currentMode, this.currentAudioTrack).catch(err => {
             this.snackbarState.open({
                 color: 'error',
                 text: 'ストリーム開始に失敗',
@@ -143,27 +144,23 @@ class LiveHLSVideo extends BaseVideo {
             },
             pluginOptions: {
                 // hls.js 使用時 (Safari 以外) の低遅延・バッファチューニング
-                // セグメント長は config.yml の cmd の -g (GOP) で決まる (QSV は現在 24 フレーム
-                // ≒ 0.8 秒。QSV エンコードが 15 フレーム ≒ 0.5 秒だと負荷が厳しかったため延長した)
+                // サーバーは LL-HLS (#EXT-X-PART / ブロッキングプレイリスト要求) で配信する。
+                // パート長 = config.yml の cmd の -g (GOP) で決まる (既定 15 フレーム ≒ 0.5 秒) で、
+                // 2 パート = 1 セグメントになる
                 //
-                // lowLatencyMode は意図的に false にしている。true にすると hls.js の
-                // LatencyController が video の timeupdate イベントのたびに
-                // (ライブエッジとの距離 - targetLatency) を計算し、50ms を超えて乖離すると
-                // media.playbackRate を書き換えて追いつき再生を試みる。この判定は非常に高頻度
-                // (timeupdate は数百ms〜毎フレーム相当で発火) かつ閾値が極端に狭いため、
-                // 通常のセグメント配信ジッタだけで常時発火し、体感できるレベルの再生速度の
-                // 微振動 = 「ずっとかくつく」症状の原因になっていた
-                // (mpdecimate による実測: 189 秒の録画中に 80〜200ms の一時停止が 138 回、
-                // ほぼ均等に分布して発生していたことを確認済み)。
-                // このサーバーは真の LL-HLS (#EXT-X-PART) を実装していないため、
-                // lowLatencyMode を有効にする本来のメリットも元々存在しない。
+                // lowLatencyMode を有効にすると hls.js は #EXT-X-PART を読んでパート単位で取得し、
+                // _HLS_msn / _HLS_part 付きのブロッキング要求でプレイリストを更新する。
+                // 同時に LatencyController が有効になり、ライブエッジとの乖離が 50ms を超えると
+                // playbackRate を書き換えて追いつき再生を試みる。この判定は非常に高頻度
+                // (timeupdate は数百ms〜毎フレーム相当で発火) なため、配信ジッタだけで常時発火して
+                // 再生速度の微振動 = 「ずっとかくつく」症状になることがある。
+                // maxLiveSyncPlaybackRate: 1 で速度書き換えだけを止め、パート取得の利点は残す
                 hls: {
-                    lowLatencyMode: false,
-                    // ライブエッジからの同期距離。0.8 秒 × 4 ≒ 3.2 秒
-                    liveSyncDurationCount: 4,
-                    liveMaxLatencyDurationCount: 12,
-                    // lowLatencyMode: false の場合 LatencyController の追いつき再生ロジック自体が
-                    // 丸ごと無効化されるため実質無意味だが、意図を明示するため 1 (無効) にしておく
+                    lowLatencyMode: true,
+                    // ライブエッジからの同期距離。1 秒セグメント × 3 ≒ 3 秒
+                    liveSyncDurationCount: 3,
+                    liveMaxLatencyDurationCount: 10,
+                    // 追いつき再生 (playbackRate の書き換え) は無効にする
                     maxLiveSyncPlaybackRate: 1,
                     // セグメントが短いぶんリクエスト間隔が詰まるため、失敗時の再試行を短くする
                     fragLoadingMaxRetry: 2,
@@ -178,6 +175,7 @@ class LiveHLSVideo extends BaseVideo {
         };
 
         this.createPlayer(options);
+        this.setupLiveAudioTrackSwitch();
 
         // 画質切替時はサーバー側のストリームを作り直してから url を差し替える
         this.setupQualitySwitch({
@@ -223,7 +221,7 @@ class LiveHLSVideo extends BaseVideo {
      */
     private async restartStream(mode: number): Promise<string> {
         await this.videoState.stop();
-        await this.videoState.start(this.channelId, mode);
+        await this.videoState.start(this.channelId, mode, this.currentAudioTrack);
         await this.waitForEnabled();
 
         const streamId = this.videoState.getStreamId();
@@ -232,6 +230,46 @@ class LiveHLSVideo extends BaseVideo {
         }
 
         return `./streamfiles/stream${streamId}.m3u8`;
+    }
+
+    /**
+     * DPlayer の設定 > 音声パネルへ主音声・副音声の切替を組み込む
+     *
+     * ライブは放送中の音声構成を事前に知る手段が無い (録画のように ffprobe をかけられない) ため、
+     * 二か国語放送のデュアルモノラルを前提に主音声・副音声の 2 択を常に出す。
+     * ステレオ放送で副音声を選んだ場合は右チャンネルが両耳に出るだけで再生自体は続く
+     */
+    private setupLiveAudioTrackSwitch(): void {
+        this.setupAudioTrackSwitch({
+            tracks: [
+                {
+                    track: 'main',
+                    name: '主音声',
+                    streamIndex: 0,
+                    isDualMono: true,
+                    codec: null,
+                    language: null,
+                    channels: null,
+                },
+                {
+                    track: 'sub',
+                    name: '副音声 (デュアルモノラル)',
+                    streamIndex: 0,
+                    isDualMono: true,
+                    codec: null,
+                    language: null,
+                    channels: null,
+                },
+            ],
+            current: this.currentAudioTrack,
+            onSelect: async track => {
+                await this.videoState.stop();
+                await this.videoState.start(this.channelId, this.currentMode, track);
+                await this.waitForEnabled();
+                this.currentAudioTrack = track;
+                this.initVideoSetting();
+            },
+        });
     }
 
     /**

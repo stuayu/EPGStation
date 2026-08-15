@@ -158,6 +158,45 @@ export default class VideoApiModel implements IVideoApiModel {
     }
 
     /**
+     * 指定した video file id のファイルに埋め込まれたチャプターを返す
+     * チャプターは DB に持っておらず、要求のたびに ffprobe で読み出す
+     * (エンコード済みファイル 1 本あたり数十 ms で終わる軽い処理のため)
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<apid.VideoChapter[]> チャプターが無い場合は空配列
+     */
+    public async getChapters(videoFileId: apid.VideoFileId): Promise<apid.VideoChapter[]> {
+        const filePath = await this.getExistingFilePath(videoFileId);
+
+        return await this.videoUtil.getChapters(filePath);
+    }
+
+    /**
+     * 指定した video file id のファイルの音声トラック一覧を返す
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<apid.VideoAudioTrack[]>
+     */
+    public async getAudioTracks(videoFileId: apid.VideoFileId): Promise<apid.VideoAudioTrack[]> {
+        const filePath = await this.getExistingFilePath(videoFileId);
+
+        return await this.videoUtil.getAudioTracks(filePath);
+    }
+
+    /**
+     * video file id から実ファイルのパスを解決する
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<string>
+     * @throws VideoFileIsUndefined ファイルが DB に無い、またはパスを解決できない
+     */
+    private async getExistingFilePath(videoFileId: apid.VideoFileId): Promise<string> {
+        const filePath = await this.videoUtil.getFullFilePathFromId(videoFileId);
+        if (filePath === null) {
+            throw new Error('VideoFileIsUndefined');
+        }
+
+        return filePath;
+    }
+
+    /**
      * 指定した video file id のメタデータを返す。未解析ならその場で解析する
      * @param videoFileId: apid.VideoFileId
      * @return Promise<VideoFileMetadataResult>

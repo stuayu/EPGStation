@@ -7,6 +7,7 @@ import BaseVideo from '@/components/video/BaseVideo';
 import container from '@/model/ModelContainer';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IRecordedStreamingVideoState from '@/model/state/recorded/streaming/IRecordedStreamingVideoState';
+import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import DPlayerUtil from '@/util/DPlayerUtil';
 import StreamQualityUtil from '@/util/StreamQualityUtil';
 import { DPlayerType } from 'dplayer';
@@ -55,7 +56,8 @@ class RecordedStreamingVideo extends BaseVideo {
     private updateDurationTimerId: ReturnType<typeof setTimeout> | undefined; // 録画中の番組の動画長を更新するためのタイマー
     private setCurrentTimeTimerId: ReturnType<typeof setTimeout> | undefined; // setCurrentTime を大量に呼び出さないようにするためのタイマー
     private qualityNames: string[] = []; // config の視聴設定名一覧
-    private currentMode: number = 0; // 再生中の視聴設定 (画質切替で更新される)
+    private currentMode: number = 0;
+    private videoApiModel: IVideoApiModel = container.get<IVideoApiModel>('IVideoApiModel'); // 再生中の視聴設定 (画質切替で更新される)
 
     /**
      * 録画再生時のニコニコ実況過去ログ取得情報を返す
@@ -82,6 +84,7 @@ class RecordedStreamingVideo extends BaseVideo {
         await this.videoState.clear();
         await this.updateVideoInfo();
         await this.fetchVideoFileSizeForDataBroadcasting(this.videoFileId);
+        await this.fetchChapters();
 
         // 画質切替用に視聴設定一覧を取得する
         const videoFileType = this.videoState.getVideoFileType(this.videoFileId);
@@ -100,6 +103,19 @@ class RecordedStreamingVideo extends BaseVideo {
                     clearInterval(this.updateDurationTimerId);
                 }
             }, 1000);
+        }
+    }
+
+    /**
+     * 録画ファイルのチャプターを取得する
+     * 取得に失敗しても再生自体は続けられるため、エラーはログに残すだけにする
+     * @return Promise<void>
+     */
+    private async fetchChapters(): Promise<void> {
+        try {
+            this.setChapters(await this.videoApiModel.getChapters(this.videoFileId));
+        } catch (err) {
+            console.error(err);
         }
     }
 
@@ -160,6 +176,9 @@ class RecordedStreamingVideo extends BaseVideo {
                           type: 'normal',
                       },
         };
+
+        // チャプターをシークバー上のマーカーとして表示する
+        this.applyChapterHighlights(options, this.getDuration());
 
         this.createPlayer(options);
 

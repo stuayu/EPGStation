@@ -1231,12 +1231,19 @@ export interface AddManualEncodeProgramOption {
 }
 
 /**
+ * 再生する音声トラックの指定子
+ * 'main' = 主音声 (既定) / 'sub' = デュアルモノラルの副音声 / 数字文字列 = 音声 ES のインデックス
+ */
+export type AudioTrackSpecifier = string;
+
+/**
  * ライブストリームオプション
  */
 export interface LiveStreamOption {
     channelId: ChannelId;
     mode?: number; // config 設定 (旧形式 index)。profile 未指定時は必須
     profile?: string; // config 設定 (新形式 StreamProfile.id)。指定時は mode より優先される
+    audioTrack?: AudioTrackSpecifier; // 再生する音声トラック (省略時は主音声)
 }
 
 export interface RecordedStreanOption {
@@ -1244,6 +1251,45 @@ export interface RecordedStreanOption {
     playPosition: number; // 再生位置 (秒)
     mode?: number; // config 設定 (旧形式 index)。profile 未指定時は必須
     profile?: string; // config 設定 (新形式 StreamProfile.id)。指定時は mode より優先される
+    audioTrack?: AudioTrackSpecifier; // 再生する音声トラック (省略時は主音声)
+}
+
+/**
+ * 録画ファイルに埋め込まれたチャプター 1 件
+ */
+export interface VideoChapter {
+    id: number;
+    startAt: number; // 開始位置 (秒)
+    endAt: number; // 終了位置 (秒)
+    title: string | null;
+}
+
+/**
+ * 録画ファイルのチャプター一覧
+ */
+export interface VideoChapters {
+    chapters: VideoChapter[];
+}
+
+/**
+ * 録画ファイルの音声トラック 1 件
+ * デュアルモノラルの ES は主音声・副音声の 2 件へ展開される
+ */
+export interface VideoAudioTrack {
+    track: AudioTrackSpecifier; // ストリーム API の audioTrack へ渡す指定子
+    name: string;
+    streamIndex: number;
+    isDualMono: boolean;
+    codec: string | null;
+    language: string | null;
+    channels: number | null;
+}
+
+/**
+ * 録画ファイルの音声トラック一覧
+ */
+export interface VideoAudioTracks {
+    tracks: VideoAudioTrack[];
 }
 /**
  * ライブストリーム情報

@@ -1774,6 +1774,75 @@ components:
                     description: 対象となる TS ファイルの総数
                     type: integer
 
+        VideoChapter:
+            description: 録画ファイルに埋め込まれたチャプター 1 件
+            type: object
+            required: [id, startAt, endAt]
+            properties:
+                id:
+                    description: ファイル内でのチャプター番号 (0 始まり)
+                    type: integer
+                startAt:
+                    description: 開始位置 (秒、ファイル先頭からの相対)
+                    type: number
+                endAt:
+                    description: 終了位置 (秒、ファイル先頭からの相対)
+                    type: number
+                title:
+                    description: チャプター名 (メタデータに無い場合は null)
+                    type: string
+                    nullable: true
+
+        VideoChapters:
+            description: 録画ファイルのチャプター一覧
+            type: object
+            required: [chapters]
+            properties:
+                chapters:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/VideoChapter'
+
+        VideoAudioTrack:
+            description: 録画ファイルの音声トラック 1 件 (デュアルモノラルは主音声・副音声へ展開される)
+            type: object
+            required: [track, name, streamIndex, isDualMono]
+            properties:
+                track:
+                    description: ストリーム API の audioTrack へ渡す指定子 (main / sub / 音声 ES のインデックス)
+                    type: string
+                name:
+                    description: 表示名
+                    type: string
+                streamIndex:
+                    description: 音声 ES のインデックス (0 始まり)
+                    type: integer
+                isDualMono:
+                    description: デュアルモノラル (主音声・副音声が 1 つの ES に入っている) 由来か
+                    type: boolean
+                codec:
+                    description: コーデック名
+                    type: string
+                    nullable: true
+                language:
+                    description: 言語コード
+                    type: string
+                    nullable: true
+                channels:
+                    description: チャンネル数
+                    type: integer
+                    nullable: true
+
+        VideoAudioTracks:
+            description: 録画ファイルの音声トラック一覧
+            type: object
+            required: [tracks]
+            properties:
+                tracks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/VideoAudioTrack'
+
         StartVideoAnalyzeJobOption:
             description: 録画ファイル一括解析ジョブの開始オプション
             type: object
@@ -5337,6 +5406,16 @@ components:
             required: true
             schema:
                 type: integer
+
+        StreamAudioTrack:
+            description: >-
+                再生する音声トラック。main = 主音声 (既定) / sub = デュアルモノラルの副音声 /
+                数字 = 音声 ES のインデックス。録画の一覧は GET /api/videos/{videoFileId}/audio-tracks で取得する
+            in: query
+            name: audioTrack
+            required: false
+            schema:
+                type: string
 
         IPTVIsHalfWidth:
             description: 半角文字で取得するか

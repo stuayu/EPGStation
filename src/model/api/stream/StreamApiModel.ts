@@ -83,6 +83,7 @@ export default class StreamApiModel implements IStreamApiModel {
             {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
+                audioTrack: option.audioTrack,
             },
             resolved.displayMode,
         );
@@ -110,6 +111,7 @@ export default class StreamApiModel implements IStreamApiModel {
             {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
+                audioTrack: option.audioTrack,
             },
             resolved.displayMode,
         );
@@ -137,6 +139,7 @@ export default class StreamApiModel implements IStreamApiModel {
             {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
+                audioTrack: option.audioTrack,
             },
             resolved.displayMode,
         );
@@ -164,6 +167,7 @@ export default class StreamApiModel implements IStreamApiModel {
             {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
+                audioTrack: option.audioTrack,
             },
             resolved.displayMode,
         );
@@ -191,6 +195,7 @@ export default class StreamApiModel implements IStreamApiModel {
             {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
+                audioTrack: option.audioTrack,
             },
             resolved.displayMode,
         );
@@ -285,6 +290,7 @@ export default class StreamApiModel implements IStreamApiModel {
                 videoFileId: option.videoFileId,
                 playPosition: option.playPosition,
                 cmd: resolved.cmd,
+                audioTrack: option.audioTrack,
             },
             resolved.displayMode,
         );
@@ -313,6 +319,7 @@ export default class StreamApiModel implements IStreamApiModel {
                 videoFileId: option.videoFileId,
                 playPosition: option.playPosition,
                 cmd: resolved.cmd,
+                audioTrack: option.audioTrack,
             },
             resolved.displayMode,
         );
@@ -341,6 +348,7 @@ export default class StreamApiModel implements IStreamApiModel {
                 videoFileId: option.videoFileId,
                 playPosition: option.playPosition,
                 cmd: resolved.cmd,
+                audioTrack: option.audioTrack,
             },
             resolved.displayMode,
         );

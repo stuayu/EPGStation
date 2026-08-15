@@ -40,16 +40,24 @@ const audioBitrate = videoHeight > 720 ? '192k' : '128k';
 const PRESETS = {
     // AVC (H.264) ソフトウェアエンコード。-preset slow は veryfast より時間がかかる代わりに
     // 同じ -crf でもファイルサイズが小さくなる (圧縮効率が上がる)
+    // -pix_fmt yuv420p / -profile:v high は iOS / Safari のハードウェアデコード互換のため
     h264: {
         codec: 'libx264',
-        quality: ['-preset', 'slow', '-crf', '23'],
+        quality: ['-preset', 'slow', '-crf', '23', '-profile:v', 'high', '-pix_fmt', 'yuv420p'],
     },
     // HEVC (H.265) ソフトウェアエンコード。同画質で H.264 の約半分のサイズだが CPU 負荷は高い
     // -tag:v hvc1 は Safari / iOS / Apple 系プレイヤーでの再生に必須
+    // -profile:v main + -pix_fmt yuv420p (8bit 4:2:0) も同様に必須。Main10 は端末世代によって再生できない
     // libx265 の medium は libx264 の slow と同程度の負荷なので、ここは medium で止めている
     hevc: {
         codec: 'libx265',
-        quality: ['-preset', 'medium', '-crf', '25', '-tag:v', 'hvc1'],
+        quality: [
+            '-preset', 'medium',
+            '-crf', '25',
+            '-profile:v', 'main',
+            '-pix_fmt', 'yuv420p',
+            '-tag:v', 'hvc1',
+        ],
     },
     // AVC (NVIDIA NVENC)。-cq は -rc vbr かつ -b:v 0 のときに CRF 相当として機能する。
     // -preset p7 は NVENC で最も画質優先 (最も遅い) プリセット、-tune hq は画質重視のチューニング
@@ -60,7 +68,15 @@ const PRESETS = {
     // HEVC (NVIDIA NVENC)
     hevc_nvenc: {
         codec: 'hevc_nvenc',
-        quality: ['-preset', 'p7', '-tune', 'hq', '-rc', 'vbr', '-cq', '28', '-b:v', '0', '-tag:v', 'hvc1'],
+        quality: [
+            '-preset', 'p7',
+            '-tune', 'hq',
+            '-rc', 'vbr',
+            '-cq', '28',
+            '-b:v', '0',
+            '-profile:v', 'main',
+            '-tag:v', 'hvc1',
+        ],
     },
     // AVC (Intel QSV)。-global_quality は ICQ モード。-preset slower は veryslow の 1 段手前
     // (veryslow は環境によって極端に遅くなることがあるため slower を採用)
@@ -72,7 +88,7 @@ const PRESETS = {
     // HEVC (Intel QSV)
     hevc_qsv: {
         codec: 'hevc_qsv',
-        quality: ['-preset', 'slower', '-global_quality', '28', '-tag:v', 'hvc1'],
+        quality: ['-preset', 'slower', '-global_quality', '28', '-profile:v', 'main', '-tag:v', 'hvc1'],
         needsNv12: true,
     },
     // AVC (AMD/Intel VAAPI)。-qp は固定量子化 (小さいほど高画質)
@@ -85,7 +101,7 @@ const PRESETS = {
     // HEVC (AMD/Intel VAAPI)
     hevc_vaapi: {
         codec: 'hevc_vaapi',
-        quality: ['-qp', '26', '-tag:v', 'hvc1'],
+        quality: ['-qp', '26', '-profile:v', 'main', '-tag:v', 'hvc1'],
         vaapi: true,
     },
 
@@ -98,12 +114,37 @@ const PRESETS = {
     //   NVEncC:  --preset P1〜P7 (P7 = quality)
     //   VCEEncC: --preset balanced|fast|slow|slower  (quality という値は存在しない)
     // レート制御は背景エンコード向けに --cqp <I:P:B> (固定量子化 = 画質基準) を使う。
+    //
+    // HEVC の場合は rigaya 側で mp4 を書かず、mpegts を標準出力へ渡して ffmpeg で
+    // -tag:v hvc1 を付けて mp4 化する (rigaya にはコーデックタグを指定する手段が無く、
+    // 既定の hev1 タグのままだと iOS / Safari で再生できないため)。
     qsvencc_h264: { rigaya: 'qsvencc', rigayaCodec: 'h264', quality: ['--quality', 'best', '--cqp', '20:22:24'] },
     qsvencc_hevc: { rigaya: 'qsvencc', rigayaCodec: 'hevc', quality: ['--quality', 'best', '--cqp', '22:24:26'] },
     nvencc_h264: { rigaya: 'nvencc', rigayaCodec: 'h264', quality: ['--preset', 'P7', '--cqp', '20:22:24'] },
     nvencc_hevc: { rigaya: 'nvencc', rigayaCodec: 'hevc', quality: ['--preset', 'P7', '--cqp', '22:24:26'] },
     vceencc_h264: { rigaya: 'vceencc', rigayaCodec: 'h264', quality: ['--preset', 'slower', '--cqp', '20:22:24'] },
     vceencc_hevc: { rigaya: 'vceencc', rigayaCodec: 'hevc', quality: ['--preset', 'slower', '--cqp', '22:24:26'] },
+};
+
+/**
+ * iOS / Safari のハードウェアデコーダで確実に再生できるプロファイル・レベルを返す
+ * HEVC は Main (8bit 4:2:0) のみを使う (Main10 は端末世代によって再生できない)。
+ * 地上波・BS/CS は元が 8bit なので Main で足りる
+ * @param codec 'h264' | 'hevc'
+ * @param height 出力の高さ (0 以下・NaN の場合は 1080 相当として扱う)
+ * @return { profile: string, level: string }
+ */
+const getProfileAndLevel = (codec, height) => {
+    const h = isNaN(height) === true || height <= 0 ? 1080 : height;
+
+    if (codec === 'hevc') {
+        return { profile: 'main', level: h >= 2160 ? '5.1' : h >= 1080 ? '4.1' : '4' };
+    }
+
+    return {
+        profile: h >= 720 ? 'high' : 'main',
+        level: h >= 2160 ? '5.2' : h >= 1080 ? '4.1' : h >= 720 ? '4' : h >= 480 ? '3.1' : '3',
+    };
 };
 
 // rigaya 系エンコーダの既定コマンド名 (config.yml で実行ファイルパス未指定の場合に使う)
@@ -173,11 +214,19 @@ Array.prototype.push.apply(args, ['-f', 'mp4', '-c:a', 'aac', '-ar', '48000', '-
  * @return string[] エンコーダに渡す引数
  */
 const buildRigayaArgs = (preset) => {
+    // 出力の高さ (リサイズしない場合は元解像度)
+    const outputHeight = needsResize ? maxHeight : videoHeight;
+    const { profile, level } = getProfileAndLevel(preset.rigayaCodec, outputHeight);
+
     const rigayaArgs = [
         // ハードウェアデコード + ハードウェアエンコード
         '--avhw',
         '-i', input,
         '-c', preset.rigayaCodec,
+        // iOS / Safari 互換のプロファイル・レベル・ビット深度
+        '--profile', profile,
+        '--level', level,
+        '--output-depth', '8',
         // 録画済みファイルの保存用途なので GOP は 2 秒 (@30fps) にして圧縮効率を優先する
         '--gop-len', '60',
         // 放送波はインタレース (地上波・BS/CS はすべて tff)
@@ -210,9 +259,58 @@ const buildRigayaArgs = (preset) => {
     }
 
     // 出力設定
-    Array.prototype.push.apply(rigayaArgs, ['--output-format', 'mp4', '-o', output]);
+    // HEVC は hvc1 タグを付けるため ffmpeg へ mpegts で受け渡す (needsHvc1Remux 参照)
+    if (needsHvc1Remux(preset)) {
+        Array.prototype.push.apply(rigayaArgs, ['--output-format', 'mpegts', '-o', '-']);
+    } else {
+        Array.prototype.push.apply(rigayaArgs, ['--output-format', 'mp4', '-o', output]);
+    }
 
     return rigayaArgs;
+};
+
+/**
+ * rigaya 系エンコーダの出力を ffmpeg で hvc1 タグ付き mp4 へ remux する必要があるか
+ * rigaya 系エンコーダには mp4 のコーデックタグを指定するオプションが無く、
+ * 既定の hev1 タグのままだと iOS / Safari で再生できない
+ * @param preset プリセット定義
+ * @return boolean
+ */
+function needsHvc1Remux(preset) {
+    return typeof preset.rigaya !== 'undefined' && preset.rigayaCodec === 'hevc';
+}
+
+/**
+ * rigaya 系エンコーダ (mpegts を標準出力へ) を受けて mp4 へ remux する ffmpeg の引数
+ * 映像・音声とも rigaya 側でエンコード済みなので copy でよい
+ * @return string[]
+ */
+const buildHvc1RemuxArgs = () => [
+    '-y',
+    '-fflags', '+genpts',
+    '-f', 'mpegts',
+    '-i', 'pipe:0',
+    '-c', 'copy',
+    // iOS / Safari で HEVC を再生するために必須のコーデックタグ
+    '-tag:v', 'hvc1',
+    '-movflags', 'faststart',
+    '-f', 'mp4',
+    output,
+];
+
+/**
+ * 引数付きのコマンドライン文字列を組み立てる (ログ出力用)
+ * @param bin 実行ファイル
+ * @param execArgs 引数
+ * @return string
+ */
+const toCommandLine = (bin, execArgs) => {
+    let str = bin;
+    for (let i of execArgs) {
+        str += ` ${ i }`
+    }
+
+    return str;
 };
 
 // rigaya 系プリセットの場合は ffmpeg ではなく rigaya 製エンコーダを実行する
@@ -220,11 +318,7 @@ const isRigaya = typeof preset.rigaya !== 'undefined';
 const bin = isRigaya ? (process.env[preset.rigaya.toUpperCase()] || RIGAYA_DEFAULT_BIN[preset.rigaya]) : ffmpeg;
 const execArgs = isRigaya ? buildRigayaArgs(preset) : args;
 
-let str = bin;
-for (let i of execArgs) {
-    str += ` ${ i }`
-}
-console.error(str);
+console.error(toCommandLine(bin, execArgs));
 
 const child = spawn(bin, execArgs);
 
@@ -235,10 +329,39 @@ child.on('error', (err) => {
     throw new Error(err);
 });
 
-child.on('close', (code) => {
-    process.exitCode = code;
-});
+// HEVC (rigaya 系) は ffmpeg で hvc1 タグを付けて mp4 化する
+let remux = null;
+if (needsHvc1Remux(preset)) {
+    const remuxArgs = buildHvc1RemuxArgs();
+    console.error(toCommandLine(ffmpeg, remuxArgs));
+
+    remux = spawn(ffmpeg, remuxArgs);
+    remux.stderr.on('data', (data) => { console.error(String(data)); });
+    remux.on('error', (err) => {
+        console.error(err);
+        throw new Error(err);
+    });
+    remux.on('close', (code) => {
+        process.exitCode = code;
+    });
+
+    child.stdout.pipe(remux.stdin);
+
+    // エンコーダが異常終了したら remux 側も止める
+    child.on('close', (code) => {
+        if (code !== 0 && remux !== null) {
+            remux.kill('SIGINT');
+        }
+    });
+} else {
+    child.on('close', (code) => {
+        process.exitCode = code;
+    });
+}
 
 process.on('SIGINT', () => {
     child.kill('SIGINT');
+    if (remux !== null) {
+        remux.kill('SIGINT');
+    }
 });
