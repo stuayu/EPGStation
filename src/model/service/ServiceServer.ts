@@ -617,9 +617,11 @@ class ServiceServer implements IServiceServer {
             appServers.push(server);
 
             // socket.io
-            if (socketioPort === this.config.port) {
-                sokcetioServers.push(server);
-            } else {
+            // 専用ポートを指定していても Web API と同じ待ち受けでも受け付ける。
+            // 同じサーバーが LAN 直アクセスとリバースプロキシ経由の両方で使われることがあり、
+            // プロキシ経由のクライアントは専用ポートへ到達できないため
+            sokcetioServers.push(server);
+            if (socketioPort !== this.config.port) {
                 const socketIOServer = http.createServer();
                 socketIOServer.listen(this.config.socketioPort, () => {
                     this.log.system.info(`http SocketIO listening on ${this.config.socketioPort}`);
@@ -655,14 +657,15 @@ class ServiceServer implements IServiceServer {
             });
             appServers.push(httpsServer);
 
-            // socket.io
-            if (typeof this.config.https.socketioPort === 'undefined') {
-                sokcetioServers.push(httpsServer);
-            } else {
+            // socket.io (http 側と同じく、専用ポートと Web API の両方で受け付ける)
+            sokcetioServers.push(httpsServer);
+            if (typeof this.config.https.socketioPort !== 'undefined') {
                 const socketIOServer = https.createServer(option);
                 sokcetioServers.push(socketIOServer);
                 socketIOServer.listen(this.config.https.socketioPort, () => {
-                    this.log.system.info(`https SocketIO listening on ${this.config.socketioPort}`);
+                    if (typeof this.config.https !== 'undefined') {
+                        this.log.system.info(`https SocketIO listening on ${this.config.https.socketioPort}`);
+                    }
                 });
             }
         }

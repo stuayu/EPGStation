@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, CancelTokenSource } from 'axios';
 import { injectable } from 'inversify';
 import stringify from 'json-stable-stringify';
+import ApiMutationNotifier from '../../util/ApiMutationNotifier';
 import IRepositoryModel from './IRepositoryModel';
 
 type MethodType = 'GET' | 'DELETE' | 'POST' | 'PUT';
@@ -34,6 +35,26 @@ class RepositoryModel implements IRepositoryModel {
 
         this.setUnauthorizedHandler(this.repo);
         this.setUnauthorizedHandler(this.textRepo);
+    }
+
+    /**
+     * 状態を変える通信 (POST / PUT / DELETE) が成功したことを通知する。
+     * サーバからの socket.io 通知が届かない環境でも、
+     * 自分の操作結果だけは画面へ反映されるようにするための保険
+     * @param url: string
+     * @param result: Promise<AxiosResponse<any>>
+     * @return Promise<AxiosResponse<any>>
+     */
+    private notifyMutation(url: string, result: Promise<AxiosResponse<any>>): Promise<AxiosResponse<any>> {
+        if (ApiMutationNotifier.isTargetUrl(url) === false) {
+            return result;
+        }
+
+        return result.then(response => {
+            ApiMutationNotifier.notify();
+
+            return response;
+        });
     }
 
     /**
@@ -96,7 +117,7 @@ class RepositoryModel implements IRepositoryModel {
      */
     public delete(url: string, config?: AxiosRequestConfig | undefined): Promise<AxiosResponse<any>> {
         const key = this.setToken('DELETE', url, config);
-        const result = this.repo.delete(url, config);
+        const result = this.notifyMutation(url, this.repo.delete(url, config));
         delete this.cancelSourceIndex[key];
 
         return result;
@@ -111,7 +132,7 @@ class RepositoryModel implements IRepositoryModel {
      */
     public put(url: string, data?: any, config?: AxiosRequestConfig | undefined): Promise<AxiosResponse<any>> {
         const key = this.setToken('PUT', url, config);
-        const result = this.repo.put(url, data, config);
+        const result = this.notifyMutation(url, this.repo.put(url, data, config));
         delete this.cancelSourceIndex[key];
 
         return result;
@@ -126,7 +147,7 @@ class RepositoryModel implements IRepositoryModel {
      */
     public post(url: string, data?: any, config?: AxiosRequestConfig | undefined): Promise<AxiosResponse<any>> {
         const key = this.setToken('POST', url, config);
-        const result = this.repo.post(url, data, config);
+        const result = this.notifyMutation(url, this.repo.post(url, data, config));
         delete this.cancelSourceIndex[key];
 
         return result;

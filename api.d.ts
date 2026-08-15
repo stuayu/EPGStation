@@ -978,6 +978,11 @@ export interface LogFileContent {
  */
 export interface Config {
     socketIOPort: number;
+    /**
+     * socket.io が Web API と別のポートを使っているか。
+     * false ならクライアントはアクセス中のオリジンへそのまま接続する
+     */
+    useDedicatedSocketIOPort: boolean;
     broadcast: BroadcastStatus;
     recorded: string[];
     encode: string[];

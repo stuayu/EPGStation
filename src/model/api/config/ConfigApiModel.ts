@@ -70,33 +70,77 @@ export default class ConfigApiModel implements IConfigApiModel {
     }
 
     /**
+     * EPGStation へ直接アクセスされているか (リバースプロキシを挟んでいないか) を判定する。
+     *
+     * 同じサーバーが LAN 直アクセスとプロキシ経由の両方で使われることがあるため、
+     * socket.io の専用ポートを教えてよいかは接続ごとに判断する必要がある。
+     * プロキシ経由の場合、専用ポートは外へ公開されていないのが普通なので、
+     * ポートを教えず「アクセス中のオリジンへ繋げ」と返す
+     * @param isSecure: boolean https アクセスか?
+     * @param accessPort: number | null クライアントがアクセスに使ったポート
+     * @return boolean 判別できない場合は直接アクセス扱い (従来の挙動) にする
+     */
+    private isDirectAccess(isSecure: boolean, accessPort: number | null): boolean {
+        if (accessPort === null) {
+            return true;
+        }
+
+        return accessPort === this.resolveListenSetting(isSecure).listenPort;
+    }
+
+    /**
+     * アクセス経路に対応する待ち受け設定 (Web API のポートと socket.io の専用ポート) を返す。
+     *
+     * https でアクセスされていても https 設定が無い場合がある。
+     * リバースプロキシが TLS を終端し、EPGStation へは http で転送している構成で、
+     * この場合は http 側の設定が実際の待ち受けになる
+     * @param isSecure: boolean https アクセスか?
+     * @return { listenPort: number; dedicatedPort: number | null }
+     */
+    private resolveListenSetting(isSecure: boolean): { listenPort: number; dedicatedPort: number | null } {
+        const config = this.configuration.getConfig();
+        const useHttps = isSecure === true ? typeof config.https !== 'undefined' : typeof config.port === 'undefined';
+
+        if (useHttps === true) {
+            if (typeof config.https === 'undefined') {
+                throw new Error('httpsConfigError');
+            }
+
+            return {
+                listenPort: config.https.port,
+                dedicatedPort: typeof config.https.socketioPort === 'undefined' ? null : config.https.socketioPort,
+            };
+        }
+
+        if (typeof config.port === 'undefined') {
+            throw new Error('httpConfigError');
+        }
+
+        return {
+            listenPort: config.port,
+            dedicatedPort: typeof config.socketioPort === 'undefined' ? null : config.socketioPort,
+        };
+    }
+
+    /**
      * コンフィグ設定を返す
      * @param isSecure: boolean https アクセスか?
+     * @param accessPort?: number | null クライアントがアクセスに使ったポート (判別できない場合は null)
      */
-    public async getConfig(isSecure: boolean): Promise<apid.Config> {
+    public async getConfig(isSecure: boolean, accessPort: number | null = null): Promise<apid.Config> {
         const config = this.configuration.getConfig();
 
         const result: apid.Config = <any>{};
 
         // socket.io ポート設定
-        if (typeof config.clientSocketioPort !== 'undefined') {
-            result.socketIOPort = config.clientSocketioPort;
-        } else if (isSecure === true) {
-            // https
-            if (typeof config.https === 'undefined') {
-                throw new Error('httpsConfigError');
-            }
-
-            result.socketIOPort =
-                typeof config.https.socketioPort === 'undefined' ? config.https.port : config.https.socketioPort;
-        } else {
-            // http
-            if (typeof config.port === 'undefined') {
-                throw new Error('httpConfigError');
-            }
-
-            result.socketIOPort = typeof config.socketioPort === 'undefined' ? config.port : config.socketioPort;
-        }
+        // 専用ポートの指定が無い場合は Web API と同じ待ち受けを共有しているため、
+        // クライアントには「接続先を組み立てず、アクセス中のオリジンへそのまま繋げばよい」と伝える
+        // (リバースプロキシ経由でポートが変換されていると、ここで返すポートでは接続できないため)
+        const listenSetting = this.resolveListenSetting(isSecure);
+        const dedicatedPort =
+            typeof config.clientSocketioPort !== 'undefined' ? config.clientSocketioPort : listenSetting.dedicatedPort;
+        result.socketIOPort = dedicatedPort === null ? listenSetting.listenPort : dedicatedPort;
+        result.useDedicatedSocketIOPort = dedicatedPort !== null && this.isDirectAccess(isSecure, accessPort) === true;
 
         result.recorded = config.recorded.map(r => {
             return r.name;

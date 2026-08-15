@@ -44,7 +44,11 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
                             ? '/socket.io'
                             : urljoin(this.config.subDirectory, '/socket.io'),
                     cors: {
-                        origin: '*',
+                        // クライアントは認証セッションの Cookie を送るため、
+                        // `*` ではなく要求元をそのまま許可する
+                        // (`Access-Control-Allow-Origin: *` は credentials 付きの要求では拒否されるため)
+                        origin: true,
+                        credentials: true,
                     },
                 }),
             );

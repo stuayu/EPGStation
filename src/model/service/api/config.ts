@@ -7,7 +7,7 @@ export const get: Operation = async (req, res) => {
     const configApiModel = container.get<IConfigApiModel>('IConfigApiModel');
 
     try {
-        api.responseJSON(res, 200, await configApiModel.getConfig(api.isSecureProtocol(req)));
+        api.responseJSON(res, 200, await configApiModel.getConfig(api.isSecureProtocol(req), api.getAccessPort(req)));
     } catch (err: unknown) {
         api.responseServerError(res, api.getErrorMessage(err));
     }

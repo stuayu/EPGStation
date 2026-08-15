@@ -18,6 +18,10 @@ export interface ProgramUpdatePayload {
 export default interface ISocketIOModel {
     Iinitialize(): void;
     getIO(): socketIo.Socket | null;
+    /**
+     * サーバと繋がっているか
+     */
+    isConnected(): boolean;
     onUpdateState(callback: () => void): void;
     offUpdateState(callback: () => void): void;
     /**
@@ -34,4 +38,19 @@ export default interface ISocketIOModel {
     offUpdateProgram(callback: (payload: ProgramUpdatePayload) => void): void;
     onUpdateEncodeState(callback: () => void): void;
     offUpdateEncodeState(callback: () => void): void;
+    /**
+     * socket.io の接続失敗通知。
+     * 接続できていない状態は disconnect ではなく connect_error で通知される
+     */
+    onConnectError(callback: (err: Error) => void): void;
+    offConnectError(callback: (err: Error) => void): void;
+    /**
+     * 接続 / 切断の通知。
+     * 接続先の候補を切り替えると socket インスタンスが作り直されるため、
+     * `getIO()` に直接 on するのではなくこちらを使う
+     */
+    onConnect(callback: () => void): void;
+    offConnect(callback: () => void): void;
+    onDisconnect(callback: () => void): void;
+    offDisconnect(callback: () => void): void;
 }
