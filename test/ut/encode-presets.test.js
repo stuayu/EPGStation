@@ -257,6 +257,33 @@ test('rigaya cmd only uses options that actually exist in QSVEncC/NVEncC/VCEEncC
     }
 });
 
+// rigaya 系はファイル先頭のタイムスタンプからフレームレートを推定するが、録画 TS では
+// 推定を外して映像だけが遅れる (実測: 59.94fps を 31.75fps と誤検出し 60 秒で 7.2 秒ずれた)。
+// --avsync forcecfr が入力 PTS どおりの CFR に揃え、--fps が出力レートを固定する
+test('rigaya encoded (file input) forces CFR so audio and video stay in sync', () => {
+    for (const hwaccel of ['qsvencc', 'nvencc', 'vceencc']) {
+        const expansion = EncodePresets.expand({ hwaccel: hwaccel, targets: ['recordedStreaming'], qualities: ['720p'] });
+
+        for (const profile of expansion.recordedEncoded) {
+            assert.match(profile.cmd, /--avsync forcecfr/, `${hwaccel} ${profile.id}`);
+            assert.match(profile.cmd, /--fps 30000\/1001/, `${hwaccel} ${profile.id}`);
+        }
+    }
+});
+
+// パイプ入力 (ライブ・録画中の TS) は放送 TS がそのまま流れるため対象外
+test('rigaya pipe input (live / recording ts) does not get the file input sync options', () => {
+    const expansion = EncodePresets.expand({
+        hwaccel: 'qsvencc',
+        targets: ['liveHLS', 'recordedStreaming'],
+        qualities: ['720p'],
+    });
+
+    for (const profile of [...expansion.live, ...expansion.recordedTs]) {
+        assert.doesNotMatch(profile.cmd, /--avsync|--fps /, profile.id);
+    }
+});
+
 test('rigaya encoded (progressive input) does not deinterlace or force the interlace flag', () => {
     const expansion = EncodePresets.expand({ hwaccel: 'nvencc', targets: ['recordedStreaming'], qualities: ['720p'] });
     const encodedMp4 = expansion.recordedEncoded.find(p => p.container === 'mp4');

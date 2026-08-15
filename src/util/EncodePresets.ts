@@ -145,6 +145,25 @@ const QUALITY_TABLE: Record<EncodeQuality, QualityParam> = {
 const HEVC_BITRATE_RATE = 0.65;
 
 /**
+ * rigaya 系エンコーダが**録画ファイルを直接読む**場合 (--seek %SS% -i %INPUT%) に必須の A/V 同期指定。
+ *
+ * rigaya 系はファイル先頭付近のタイムスタンプからフレームレートを推定するが、
+ * 録画 TS (特に Amatsukaze の tsreplace 出力) は先頭のタイムスタンプが不揃いなため
+ * **推定を外す**。実測では 59.94fps のファイルを 31.75fps / 44.96fps と誤検出し、
+ * その速度で出力するため映像だけが遅れていく (60 秒で 7.2 秒ずれた)。
+ * 音声は --audio-copy で元のタイムスタンプのまま流れるので、ずれは再生時間に比例して開く。
+ *
+ * - `--avsync forcecfr`: 入力の PTS を見てフレームを挿入・削除し、実時間どおりの CFR にする
+ *   (これが同期を保証する本体)
+ * - `--fps 30000/1001`: 出力フレームレートを 29.97 に固定する。付けないと誤検出した値
+ *   (31.75fps など) がそのまま出力レートになり、--gop-len で決まる LL-HLS のパート長が
+ *   ファイルごとに変わってしまう。forcecfr と併用する限り再生速度には影響しない
+ *
+ * パイプ入力 (ライブ・録画中の TS) は放送 TS がそのまま流れてくるため対象外。
+ */
+const FILE_INPUT_SYNC_OPTIONS = '--avsync forcecfr --fps 30000/1001';
+
+/**
  * コーデックを考慮した映像ビットレートを返す
  * @param quality: EncodeQuality
  * @param codec: EncodeCodec
@@ -381,10 +400,13 @@ namespace EncodePresets {
         videoBitrate: number,
         deinterlace: boolean,
         tuning: StreamTuning,
+        isFileInput: boolean = false,
     ): string => {
         const maxBitrate = videoBitrate * 2;
         // 幅は -2 (アスペクト比を保ったまま 2 の倍数へ丸める) にして、高さのみ画質プリセットに合わせる
         const resize = `--output-res -2x${height}`;
+        // 録画ファイルを直接読む場合の A/V 同期対策 (下記 FILE_INPUT_SYNC_OPTIONS 参照)
+        const sync = isFileInput ? ` ${FILE_INPUT_SYNC_OPTIONS}` : '';
         const deint = deinterlace
             ? hwaccel === 'vceencc'
                 ? ' --interlace tff --vpp-yadif'
@@ -403,7 +425,7 @@ namespace EncodePresets {
             `-c ${codec} --profile ${profile} --level ${level} --output-depth 8 ` +
             `${rigayaQualityOption(hwaccel, tuning.lowLatency)} ` +
             `--vbr ${videoBitrate} --max-bitrate ${maxBitrate} --gop-len ${gop}${strictGop} ` +
-            `--bframes 0${deint} ${resize}${latency}`
+            `--bframes 0${deint} ${resize}${latency}${sync}`
         );
     };
 
@@ -469,7 +491,9 @@ namespace EncodePresets {
         execPaths?: RigayaExecPaths,
     ): string => {
         const bin = rigayaBinPath(hwaccel, execPaths);
-        const codecArgs = buildRigayaArgs(hwaccel, codec, height, videoBitrate, deinterlace, tuning);
+        // 録画ファイルを直接読む指定 (--seek %SS% -i %INPUT%) かどうかで A/V 同期指定の要否が変わる
+        const isFileInput = inputSpec.includes('%INPUT%');
+        const codecArgs = buildRigayaArgs(hwaccel, codec, height, videoBitrate, deinterlace, tuning, isFileInput);
 
         // コンテナ指定は --output-format (別名 -f)。--format というオプションは存在しない
         return `${bin} --avhw ${inputSpec} ${codecArgs} --audio-copy --output-format mpegts -o - |`;

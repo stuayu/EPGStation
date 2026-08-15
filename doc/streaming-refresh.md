@@ -124,6 +124,17 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
 - デュアルモノの主音声選択は rigaya 側では `--audio-copy` のままにし、remux 側の ffmpeg の
   `-dual_mono_mode main` で行う (録画エンコードの `config/enc.js` 側は `--audio-stream FL:stereo`)
 - `cmd` に `|` を含むためシェル経由で実行される (Windows は `cmd.exe`)
+- **録画ファイルを直接読む cmd (`--seek %SS% -i %INPUT%`) には `--avsync forcecfr --fps 30000/1001` が必須**。
+  rigaya 系はファイル先頭付近のタイムスタンプからフレームレートを推定するが、録画 TS
+  (特に Amatsukaze の tsreplace 出力) は先頭が不揃いなため推定を外す。実測では 59.94fps のファイルを
+  31.75fps (`4540/143`) と誤検出し、その速度で出力するため映像だけが実時間より遅れていった
+  (60 秒のソースで映像 51.59 秒 / 音声 58.75 秒)。音声は `--audio-copy` で元のタイムスタンプのまま
+  流れるので、ずれは再生時間に比例して開く。
+  `--avsync forcecfr` が入力 PTS を見てフレームを挿入・削除し実時間どおりの CFR に揃える (同期の本体)。
+  `--fps` は出力レートの固定用で、付けないと誤検出値がそのまま出力レートになり `--gop-len` で決まる
+  LL-HLS のパート長がファイルごとに変わる。`forcecfr` と併用する限り再生速度には影響しない。
+  パイプ入力 (ライブ・録画中の TS) は放送 TS がそのまま流れるため不要
+  (`EncodePresets.FILE_INPUT_SYNC_OPTIONS`)
 
 ## in-memory HLS（低遅延・ディスク書き込みなし）
 
