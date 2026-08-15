@@ -34,6 +34,24 @@ export default abstract class RecordedStreamBaseModel
     // 2 パートで 1 秒セグメントになる (#EXT-X-TARGETDURATION は 1 秒が下限)
     private static readonly RECORDED_HLS_PARTS_PER_SEGMENT = 2;
 
+    /**
+     * エンコードを再生位置より先行させてよいセグメント数 (1 セグメント = 約 1 秒)。
+     *
+     * 録画ファイルのエンコードは実時間より数倍速いため、放っておくと再生位置から際限なく先行する。
+     * in-memory ストアはセグメントを一定数しか保持しない (HLSMemoryStoreModel の
+     * RECORDED_RETAIN_SEGMENT_NUM) ので、先行しすぎると**再生位置のセグメントが破棄され、
+     * プレイリストの先頭が再生位置を追い越す**。hls.js は録画済みプレイリストも live 扱いで読むため
+     * (成長し続ける = #EXT-X-ENDLIST が無い)、再生位置がプレイリストの範囲外になると
+     * `synchronizeToLiveEdge()` がライブエッジ = エンコード最新位置へ強制シークする。
+     *
+     * 保持数より十分小さくしてこの追い越しを防ぐ。先行分はそのまま
+     * 「シークに即応できる範囲」でもあるので、短くしすぎない
+     */
+    private static readonly MAX_AHEAD_SEGMENT_NUM = 60;
+
+    // 先行しすぎで止めたエンコードを再開してよいかを調べる間隔 (ms)
+    private static readonly THROTTLE_CHECK_INTERVAL = 500;
+
     private videoFileDB: IVideoFileDB;
     private recordedDB: IRecordedDB;
     private videoUtil: IVideoUtil;
@@ -50,6 +68,9 @@ export default abstract class RecordedStreamBaseModel
     // in-memory HLS で ARIB 字幕 (ID3 timed metadata) を取り出すための Transform
     private aribId3Extractor: IAribId3Extractor | null = null;
     private memoryStreamId: apid.StreamId | null = null;
+    // エンコードが先行しすぎたため一時停止しているか
+    private isEncodeThrottled: boolean = false;
+    private throttleTimerId: ReturnType<typeof setInterval> | null = null;
 
     constructor(
         @inject('IConfiguration') configure: IConfiguration,
@@ -231,6 +252,7 @@ export default abstract class RecordedStreamBaseModel
             if (this.isEnable() === false && this.hlsMemoryStore.isReady(streamId) === true) {
                 this.markEnable(streamId);
             }
+            this.throttleEncodeIfTooFarAhead(streamId);
         });
         packager.on('halted', message => {
             this.log.stream.error(`in-memory recorded HLS packaging halted: ${streamId} ${message}`);
@@ -245,6 +267,54 @@ export default abstract class RecordedStreamBaseModel
         }
 
         this.streamProcess.stdout.pipe(packager);
+    }
+
+    /**
+     * エンコードが再生位置より先行しすぎていたら一時停止する。
+     * 標準出力の読み出しを止めるとパイプが詰まり、エンコーダ自身が書き込みでブロックする
+     * @param streamId: apid.StreamId
+     */
+    private throttleEncodeIfTooFarAhead(streamId: apid.StreamId): void {
+        if (
+            this.isEncodeThrottled === true ||
+            this.hlsMemoryStore.getAheadSegmentNum(streamId) <= RecordedStreamBaseModel.MAX_AHEAD_SEGMENT_NUM
+        ) {
+            return;
+        }
+
+        const stdout = this.streamProcess?.stdout ?? null;
+        if (stdout === null) {
+            return;
+        }
+
+        this.log.stream.debug(`pause encode (too far ahead): ${streamId}`);
+        this.isEncodeThrottled = true;
+        stdout.pause();
+
+        this.throttleTimerId = setInterval(() => {
+            if (this.hlsMemoryStore.getAheadSegmentNum(streamId) > RecordedStreamBaseModel.MAX_AHEAD_SEGMENT_NUM) {
+                return;
+            }
+
+            this.clearThrottleTimer();
+            if (this.isEncodeThrottled === false) {
+                return;
+            }
+
+            this.log.stream.debug(`resume encode: ${streamId}`);
+            this.isEncodeThrottled = false;
+            stdout.resume();
+        }, RecordedStreamBaseModel.THROTTLE_CHECK_INTERVAL);
+    }
+
+    /**
+     * エンコード再開待ちのタイマーを止める
+     */
+    private clearThrottleTimer(): void {
+        if (this.throttleTimerId !== null) {
+            clearInterval(this.throttleTimerId);
+            this.throttleTimerId = null;
+        }
     }
 
     /**
@@ -375,6 +445,9 @@ export default abstract class RecordedStreamBaseModel
      */
     public async stop(): Promise<void> {
         await super.stop();
+
+        this.clearThrottleTimer();
+        this.isEncodeThrottled = false;
 
         if (this.fileStream !== null) {
             this.fileStream.unpipe();

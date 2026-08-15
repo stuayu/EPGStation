@@ -177,6 +177,48 @@ test('recorded モードはライブより多くのセグメントを保持し�
     assert.equal(recordedCount, 30);
 });
 
+// 録画ファイルのエンコードは実時間より数倍速いため、放っておくと再生位置から際限なく先行し、
+// 再生位置のセグメントが保持上限から押し出される。そうなると hls.js が
+// synchronizeToLiveEdge() でエンコード最新位置へ強制シークしてしまうので、
+// 先行量を測ってエンコードを止められるようにしている
+test('getAheadSegmentNum はクライアントが取得した位置からの先行セグメント数を返す', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'recorded');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 20);
+
+    // まだ 1 つも取得されていなければ先行量は測れない (0 を返す)
+    assert.equal(store.getAheadSegmentNum(1), 0);
+
+    // seq 5 まで取得済み → 確定済みの最新は seq 19 なので 14 セグメント先行
+    store.getSegment(1, 5);
+    assert.equal(store.getAheadSegmentNum(1), 14);
+
+    // さらにエンコードが進めば先行量も増える
+    pushSegments(store, 1, 3);
+    assert.equal(store.getAheadSegmentNum(1), 17);
+
+    // 追いつけば 0 に戻る
+    store.getSegment(1, 22);
+    assert.equal(store.getAheadSegmentNum(1), 0);
+});
+
+test('getAheadSegmentNum はパート取得でも更新される (LL-HLS はパート単位で取りに来る)', async () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'recorded');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 10);
+
+    await store.getPart(1, 3, 0);
+    assert.equal(store.getAheadSegmentNum(1), 6);
+});
+
+test('存在しないストリームの getAheadSegmentNum は 0', () => {
+    const store = new HLSMemoryStoreModel(logger);
+
+    assert.equal(store.getAheadSegmentNum(99), 0);
+});
+
 test('addPart を経由しない addSegment はセグメント全体を 1 パートとして扱う', () => {
     const store = new HLSMemoryStoreModel(logger);
     store.create(1, 'live');

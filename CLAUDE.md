@@ -120,6 +120,7 @@ npm run test:ci        # ut + ita + itb
 配信周りを触る前に `doc/streaming-refresh.md` を読む。
 
 - **HLS は 2 モード**。cmd に `%streamFileDir%` が無ければ in-memory 配信 (ディスク書き込みなし)、あれば従来の TS セグメント方式。ライブ・録画済みとも同じ判定で、`encodePresets` が生成する HLS プリセットはどちらも in-memory。どちらのモードも ARIB 字幕対応
+- **録画済み HLS はエンコードを再生位置の近くに留める**。エンコードは実時間の数倍速なので、放置すると再生位置のセグメントが保持上限から押し出され、hls.js (録画済みプレイリストも live 扱い) がエンコード最新位置へ強制シークする。`RecordedStreamBaseModel` が先行量 (`getAheadSegmentNum()`) を見てエンコーダの stdout の読み出しを止める
 - **in-memory HLS は LL-HLS (`#EXT-X-PART`)**。パート = fMP4 フラグメント = GOP。`emsg` (字幕) は**セグメントではなくパート先頭**に置く (パートが単独配信されるため)。`HLSMemoryStoreModel.delete()` は待機中の要求を必ず解決する (しないとレスポンスが返らない)
 - **in-memory HLS の字幕 (`emsg`) は必ず version 1**。version 0 だと hls.js が `scheme_id_uri` を読み違え、字幕が一切出ない
 - **音声トラック切替は cmd のプレースホルダ経由**。`%DUALMONOMODE%` / `%AUDIOMAP%`。**デュアルモノラル (二か国語) の副音声は `-map` では選べない** — `-dual_mono_mode sub` を使う。手書き cmd (直書き) では切り替わらない

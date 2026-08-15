@@ -26,6 +26,9 @@ interface HLSMemoryStreamEntry {
     pending: HLSMemorySegment | null;
     // パート生成待ちの待機者
     waiters: HLSMemoryWaiter[];
+    // クライアントが実際に取得した最新のセグメント seq (未取得なら null)。
+    // 録画済み配信で「エンコードがどれだけ再生位置より先行しているか」を測るのに使う
+    lastServedSeq: number | null;
 }
 
 /**
@@ -75,6 +78,7 @@ export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
             nextSeq: 0,
             pending: null,
             waiters: [],
+            lastServedSeq: null,
         });
     }
 
@@ -263,6 +267,7 @@ export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
         }
 
         const segment = entry.segments.find(s => s.seq === seq);
+        this.updateLastServedSeq(entry, seq);
 
         return typeof segment === 'undefined' || segment.data === null ? null : segment.data;
     }
@@ -273,6 +278,8 @@ export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
             return null;
         }
 
+        this.updateLastServedSeq(entry, seq);
+
         const found = this.findPart(entry, seq, index);
         if (found !== null) {
             return found;
@@ -281,6 +288,25 @@ export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
         await this.waitForPart(entry, seq, index);
 
         return this.findPart(entry, seq, index);
+    }
+
+    public getAheadSegmentNum(streamId: apid.StreamId): number {
+        const entry = this.entries.get(streamId);
+        if (typeof entry === 'undefined' || entry.lastServedSeq === null) {
+            return 0;
+        }
+
+        // nextSeq は次に確定するセグメントの seq なので、確定済みの最新は nextSeq - 1
+        return Math.max(0, entry.nextSeq - 1 - entry.lastServedSeq);
+    }
+
+    /**
+     * クライアントが取得したセグメント seq を記録する (巻き戻しでも最新値を追うため単調増加にはしない)
+     * @param entry: HLSMemoryStreamEntry
+     * @param seq: number
+     */
+    private updateLastServedSeq(entry: HLSMemoryStreamEntry, seq: number): void {
+        entry.lastServedSeq = seq;
     }
 
     public delete(streamId: apid.StreamId): void {

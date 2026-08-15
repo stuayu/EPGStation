@@ -128,6 +128,14 @@ export default interface IHLSMemoryStoreModel {
     getPart(streamId: apid.StreamId, seq: number, index: number): Promise<Buffer | null>;
 
     /**
+     * クライアントが最後に取得したセグメントより、エンコードがどれだけ先行しているかを返す。
+     * 録画済み配信でエンコードを再生位置の近くに留める (先行しすぎを防ぐ) ために使う
+     * @param streamId: apid.StreamId
+     * @return number 先行しているセグメント数 (未取得なら 0)
+     */
+    getAheadSegmentNum(streamId: apid.StreamId): number;
+
+    /**
      * streamId のエントリを破棄する
      */
     delete(streamId: apid.StreamId): void;
