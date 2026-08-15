@@ -50,29 +50,30 @@ export default abstract class RecordedStreamBaseModel
     private static readonly MAX_AHEAD_SEGMENT_NUM = 60;
 
     /**
-     * エンコードを完全に止める先行セグメント数。
+     * 先行 1 セグメントあたりの停止時間 (ms)。
      *
-     * MAX_AHEAD_SEGMENT_NUM を超えた時点で完全に止めてしまうと、
-     * **プレイリストが一切更新されなくなる**。LL-HLS のプレイヤー (iOS Safari のネイティブ HLS など) は
-     * ブロッキングプレイリスト要求 (`_HLS_msn`) の応答が変化するのを待ってから次のセグメントを取得するため、
-     * 更新が止まると新しいセグメントを取りに来ない → クライアントの取得位置 (lastServedSeq) が進まない →
-     * 先行量が減らずエンコードも再開しない、というデッドロックになる (実際に再生が停止する)。
+     * 抑制は**完全停止ではなく比例制御**で行う。停止時間 =
+     * (先行量 - MAX_AHEAD_SEGMENT_NUM) × この値 で決め、MAX_PACE_INTERVAL で頭打ちにする。
      *
-     * そのため MAX_AHEAD_SEGMENT_NUM 超過では「実時間ペースまで落とす」だけにして、
-     * プレイリストは更新され続けるようにする。完全停止はプレイヤーが取得自体をやめている
-     * (一時停止・離脱) 場合の保険として、保持数 (RECORDED_RETAIN_SEGMENT_NUM = 180) に
-     * 十分な余裕を残すこの値でのみ行う
+     * 完全に止めると**プレイリストが一切更新されなくなる**。LL-HLS のプレイヤー
+     * (iOS Safari のネイティブ HLS など) はブロッキングプレイリスト要求 (`_HLS_msn`) の応答が
+     * 変化するのを待ってから次のセグメントを取得するため、更新が止まると新しいセグメントを
+     * 取りに来ない → クライアントの取得位置 (lastServedSeq) が進まない → 先行量が減らず
+     * エンコードも再開しない、というデッドロックになる (再生が止まったまま戻らない)。
+     *
+     * また、一定時間ごとの ON/OFF (停止 1 秒 → 再開) のような粗い制御も避ける。
+     * 停止中もエンコーダはパイプバッファへ書き込み続け、再開時に一気に流れ込むため、
+     * 配信が「バーストと空白の繰り返し」になり再生がとびとびになる。
+     * 超過量が小さいうちは短い停止を細かく入れることで、供給を滑らかに保つ
      */
-    private static readonly HARD_MAX_AHEAD_SEGMENT_NUM = 120;
-
-    // 先行しすぎで止めたエンコードを再開してよいかを調べる間隔 (ms)
-    private static readonly THROTTLE_CHECK_INTERVAL = 500;
+    private static readonly PACE_INTERVAL_PER_SEGMENT = 100;
 
     /**
-     * 先行時にエンコードを止めておく時間 (ms)。
-     * 1 セグメント (約 1 秒) 生成するごとにこの時間止めることで、実時間相当のペースまで落とす
+     * 1 回あたりの停止時間の上限 (ms)。
+     * プレイヤーが取得自体をやめている (一時停止・離脱) 場合はここまで遅くなるが、
+     * それでもプレイリストは更新され続けるのでプレイヤーが詰まることはない
      */
-    private static readonly PACE_INTERVAL = 1000;
+    private static readonly MAX_PACE_INTERVAL = 5000;
 
     private videoFileDB: IVideoFileDB;
     private recordedDB: IRecordedDB;
@@ -92,7 +93,7 @@ export default abstract class RecordedStreamBaseModel
     private memoryStreamId: apid.StreamId | null = null;
     // エンコードが先行しすぎたため一時停止しているか
     private isEncodeThrottled: boolean = false;
-    private throttleTimerId: ReturnType<typeof setInterval> | null = null;
+    private throttleTimerId: ReturnType<typeof setTimeout> | null = null;
 
     constructor(
         @inject('IConfiguration') configure: IConfiguration,
@@ -295,9 +296,9 @@ export default abstract class RecordedStreamBaseModel
      * エンコードが再生位置より先行しすぎていたらペースを落とす。
      * 標準出力の読み出しを止めるとパイプが詰まり、エンコーダ自身が書き込みでブロックする
      *
-     * 先行量が MAX_AHEAD_SEGMENT_NUM を超えた場合は PACE_INTERVAL だけ止めて実時間ペースへ落とし、
-     * HARD_MAX_AHEAD_SEGMENT_NUM を超えた場合のみ、再生位置が追いつくまで完全に止める
-     * (完全停止はプレイリストの更新も止めてしまい、LL-HLS のプレイヤーがストールするため最後の手段)
+     * 停止時間は超過量に比例させ (PACE_INTERVAL_PER_SEGMENT × 超過セグメント数、
+     * 上限 MAX_PACE_INTERVAL)、必ず再開する。完全に止めるとプレイリストの更新も止まり、
+     * LL-HLS のプレイヤーが次のセグメントを取りに来なくなってデッドロックするため
      * @param streamId: apid.StreamId
      */
     private throttleEncodeIfTooFarAhead(streamId: apid.StreamId): void {
@@ -306,7 +307,8 @@ export default abstract class RecordedStreamBaseModel
         }
 
         const aheadNum = this.hlsMemoryStore.getAheadSegmentNum(streamId);
-        if (aheadNum <= RecordedStreamBaseModel.MAX_AHEAD_SEGMENT_NUM) {
+        const excessNum = aheadNum - RecordedStreamBaseModel.MAX_AHEAD_SEGMENT_NUM;
+        if (excessNum <= 0) {
             return;
         }
 
@@ -315,51 +317,34 @@ export default abstract class RecordedStreamBaseModel
             return;
         }
 
-        const resume = () => {
+        // 超過が小さいうちは短く止めて供給を滑らかに保ち、
+        // 大きくなるほど長く止めて先行を抑える
+        const pauseTime = Math.min(
+            excessNum * RecordedStreamBaseModel.PACE_INTERVAL_PER_SEGMENT,
+            RecordedStreamBaseModel.MAX_PACE_INTERVAL,
+        );
+
+        this.log.stream.debug(`pause encode ${pauseTime}ms (ahead ${aheadNum} segments): ${streamId}`);
+        this.isEncodeThrottled = true;
+        stdout.pause();
+
+        this.throttleTimerId = setTimeout(() => {
             this.clearThrottleTimer();
             if (this.isEncodeThrottled === false) {
                 return;
             }
 
-            this.log.stream.debug(`resume encode: ${streamId}`);
             this.isEncodeThrottled = false;
             stdout.resume();
-        };
-
-        this.log.stream.debug(`pause encode (ahead ${aheadNum} segments): ${streamId}`);
-        this.isEncodeThrottled = true;
-        stdout.pause();
-
-        if (aheadNum > RecordedStreamBaseModel.HARD_MAX_AHEAD_SEGMENT_NUM) {
-            // プレイヤーがセグメントを取得しなくなっている (一時停止・離脱) 状態。
-            // 保持数を超えて古いセグメントが押し出されないよう、取得位置が戻るまで止める
-            this.throttleTimerId = setInterval(() => {
-                if (
-                    this.hlsMemoryStore.getAheadSegmentNum(streamId) >
-                    RecordedStreamBaseModel.HARD_MAX_AHEAD_SEGMENT_NUM
-                ) {
-                    return;
-                }
-
-                resume();
-            }, RecordedStreamBaseModel.THROTTLE_CHECK_INTERVAL);
-
-            return;
-        }
-
-        // 実時間ペースまで落とす。止めっぱなしにせず必ず再開することで、
-        // プレイリストが更新され続けプレイヤーが次のセグメントを取りに来られるようにする
-        this.throttleTimerId = setTimeout(resume, RecordedStreamBaseModel.PACE_INTERVAL);
+        }, pauseTime);
     }
 
     /**
      * エンコード再開待ちのタイマーを止める
-     * (ペーシング時は setTimeout、完全停止時は setInterval で登録されるが、
-     * Node.js ではどちらも同じ Timeout オブジェクトなので clearInterval で解除できる)
      */
     private clearThrottleTimer(): void {
         if (this.throttleTimerId !== null) {
-            clearInterval(this.throttleTimerId);
+            clearTimeout(this.throttleTimerId);
             this.throttleTimerId = null;
         }
     }

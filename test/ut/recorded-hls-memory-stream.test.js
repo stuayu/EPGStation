@@ -243,7 +243,8 @@ test('in-memory モードの ts 入力は ID3 変換と AribId3Extractor を経�
 // 完全に止めるとプレイリストの更新も止まり、LL-HLS のプレイヤー (iOS Safari など) が
 // ブロッキングプレイリスト要求を出したまま新しいセグメントを取りに来なくなるため、
 // クライアントの取得位置が進まず再開もできないデッドロックになる。
-// そのため通常の先行はペーシング (一定時間で必ず再開) で処理する。
+// そのため抑制は「超過量に比例した短い停止 → 必ず再開」の比例制御で行う
+// (粗い ON/OFF だと再開時にバーストして配信がとびとびになる)。
 function makeThrottleModel(aheadNum) {
     const state = { aheadNum: aheadNum };
     const hlsMemoryStore = {
@@ -276,9 +277,9 @@ function makeThrottleModel(aheadNum) {
     return { model, processManager, state };
 }
 
-test('先行しすぎたエンコードは完全停止せず一定時間で再開する (プレイリスト更新が止まるとプレイヤーがストールするため)', async () => {
+test('先行が少しだけ超えている場合は短く止めるだけで再開する (供給を途切れさせないため)', async () => {
     await withStubbedFfprobe(async () => {
-        // MAX_AHEAD_SEGMENT_NUM (60) 超過だが HARD_MAX_AHEAD_SEGMENT_NUM (120) 以下
+        // MAX_AHEAD_SEGMENT_NUM (60) の 1 セグメント超過 = 停止 100ms
         const { model, processManager, state } = makeThrottleModel(61);
 
         await model.start(10);
@@ -289,8 +290,8 @@ test('先行しすぎたエンコードは完全停止せず一定時間で再�
         assert.equal(model.isEncodeThrottled, true);
         assert.equal(stdout.isPaused(), true);
 
-        // 取得位置が進まなくても (先行量が変わらなくても) 再開する
-        await new Promise(resolve => setTimeout(resolve, 1200));
+        // 取得位置が進まなくても (先行量が変わらなくても) 短時間で再開する
+        await new Promise(resolve => setTimeout(resolve, 250));
 
         assert.equal(state.aheadNum, 61);
         assert.equal(model.isEncodeThrottled, false);
@@ -300,10 +301,10 @@ test('先行しすぎたエンコードは完全停止せず一定時間で再�
     });
 });
 
-test('先行量が HARD_MAX を超えている間は再生位置が戻るまでエンコードを止め続ける', async () => {
+test('先行が大きいほど長く止める (超過量に比例、上限 5 秒)', async () => {
     await withStubbedFfprobe(async () => {
-        // プレイヤーが取得自体をやめている状態 (一時停止・離脱)
-        const { model, processManager, state } = makeThrottleModel(200);
+        // 60 + 20 超過 = 停止 2000ms
+        const { model, processManager } = makeThrottleModel(80);
 
         await model.start(11);
         const stdout = processManager.processes[0].stdout;
@@ -313,14 +314,34 @@ test('先行量が HARD_MAX を超えている間は再生位置が戻るまで�
         assert.equal(model.isEncodeThrottled, true);
         assert.equal(stdout.isPaused(), true);
 
-        // 先行量が下がらない間は再開しない (保持数を超えて古いセグメントが押し出されるのを防ぐ)
-        await new Promise(resolve => setTimeout(resolve, 1200));
+        // 少し待った程度では再開しない
+        await new Promise(resolve => setTimeout(resolve, 500));
         assert.equal(model.isEncodeThrottled, true);
         assert.equal(stdout.isPaused(), true);
 
-        // 取得位置が進んで先行量が下がれば再開する
-        state.aheadNum = 100;
-        await new Promise(resolve => setTimeout(resolve, 700));
+        // 比例分の時間が経てば、先行量が下がっていなくても再開する
+        // (止めっぱなしにするとプレイリストの更新が止まりプレイヤーがストールするため)
+        await new Promise(resolve => setTimeout(resolve, 1800));
+        assert.equal(model.isEncodeThrottled, false);
+        assert.equal(stdout.isPaused(), false);
+
+        await model.stop();
+    });
+});
+
+test('先行が極端に大きくても停止時間は上限で頭打ちになり、必ず再開する', async () => {
+    await withStubbedFfprobe(async () => {
+        // 超過 1940 セグメント分でも上限の 5000ms で頭打ち
+        const { model, processManager } = makeThrottleModel(2000);
+
+        await model.start(13);
+        const stdout = processManager.processes[0].stdout;
+
+        model.throttleEncodeIfTooFarAhead(13);
+
+        assert.equal(model.isEncodeThrottled, true);
+
+        await new Promise(resolve => setTimeout(resolve, 5300));
 
         assert.equal(model.isEncodeThrottled, false);
         assert.equal(stdout.isPaused(), false);
