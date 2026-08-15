@@ -40,6 +40,7 @@ class EncoderModel implements IEncoderModel {
     private timerId: ReturnType<typeof setTimeout> | null = null; // タイムアウト検知用タイマーid
     private isCanceld: boolean = false; // キャンセルが呼び出されたか?
     private progressInfo: EncodeProgressInfo | null = null;
+    private stderrLogs: string[] = []; // 失敗時に出し直すための標準エラー出力 (直近のみ保持)
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -247,10 +248,13 @@ class EncoderModel implements IEncoderModel {
         /**
          * プロセスの設定
          */
-        // debug 用
+        // debug 用 (失敗したときだけ error として出し直せるよう直近の内容も控えておく)
+        this.stderrLogs = [];
         if (this.childProcess.stderr !== null) {
             this.childProcess.stderr.on('data', data => {
-                this.log.encode.debug(String(data));
+                const text = String(data);
+                this.log.encode.debug(text);
+                this.addStderrLog(text);
             });
         }
 
@@ -359,6 +363,41 @@ class EncoderModel implements IEncoderModel {
     }
 
     /**
+     * エンコードプロセスの標準エラー出力を控える。
+     * 進捗表示で際限なく流れてくるため直近 EncoderModel.STDERR_LOG_LINES 行だけ残す
+     * @param text: string
+     */
+    private addStderrLog(text: string): void {
+        for (const line of text.split(/\r?\n/)) {
+            const trimmed = line.trim();
+            if (trimmed.length === 0) {
+                continue;
+            }
+            this.stderrLogs.push(trimmed);
+        }
+
+        if (this.stderrLogs.length > EncoderModel.STDERR_LOG_LINES) {
+            this.stderrLogs = this.stderrLogs.slice(this.stderrLogs.length - EncoderModel.STDERR_LOG_LINES);
+        }
+    }
+
+    /**
+     * 控えておいた標準エラー出力を error として出す。
+     * 標準エラーは debug でしか残らないため、失敗時はここで出さないと
+     * 終了コードだけが記録に残り原因が分からなくなる
+     */
+    private logStderr(): void {
+        if (this.stderrLogs.length === 0) {
+            return;
+        }
+
+        this.log.encode.error(`encode process stderr (last ${this.stderrLogs.length} lines):`);
+        for (const line of this.stderrLogs) {
+            this.log.encode.error(`  ${line}`);
+        }
+    }
+
+    /**
      * エンコードプロセス終了処理
      * @param code number | null
      * @param signal NodeJS.Signals | null
@@ -396,9 +435,11 @@ class EncoderModel implements IEncoderModel {
         } else if (code !== 0) {
             // エンコードが正常終了しなかった
             this.log.encode.error(`encode failed: ${this.encodeOption.encodeId} ${outputFilePath}`);
+            this.logStderr();
         } else if ((await this.isValidOutputFile(outputFilePath)) === false) {
             // 終了コードは 0 だが出力ファイルが壊れている (下記 isValidOutputFile 参照)
             this.log.encode.error(`encode output is broken: ${this.encodeOption.encodeId} ${outputFilePath}`);
+            this.logStderr();
         } else {
             // エンコード正常終了
             this.log.encode.info(`Successfully encod: ${this.encodeOption.encodeId} ${outputFilePath}`);
@@ -518,6 +559,12 @@ namespace EncoderModel {
      * 最短の番組でも確実に超える 1MiB を下限にする
      */
     export const MIN_OUTPUT_FILE_SIZE = 1024 * 1024;
+    /**
+     * 失敗時に error として出し直す標準エラー出力の保持行数。
+     * エンコーダの標準エラーは進捗表示で流れ続けるため通常は debug でしか残さないが、
+     * それだと失敗時に終了コードしか記録が残らず原因が追えない
+     */
+    export const STDERR_LOG_LINES = 20;
 }
 
 export default EncoderModel;
