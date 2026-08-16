@@ -455,7 +455,7 @@ class EncoderModel implements IEncoderModel {
             this.logStderr();
         } else {
             // エンコード正常終了
-            this.log.encode.info(`Successfully encod: ${this.encodeOption.encodeId} ${outputFilePath}`);
+            this.log.encode.info(`Successfully encode: ${this.encodeOption.encodeId} ${outputFilePath}`);
 
             isError = false;
         }
