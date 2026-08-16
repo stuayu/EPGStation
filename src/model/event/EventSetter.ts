@@ -178,7 +178,7 @@ export default class EventSetter implements IEventSetter {
                 this.log.system.error(err);
             });
             this.reservationManage.updateRule(ruleId).catch(err => {
-                this.log.system.error(`falied to update rule. ruleId: ${ruleId}`);
+                this.log.system.error(`failed to update rule. ruleId: ${ruleId}`);
                 this.log.system.error(err);
             });
         });

@@ -179,7 +179,7 @@ class RecordedManageModel implements IRecordedManageModel {
         // DB からサムネイル情報削除
         if (hasThumbnails === true) {
             this.thumbnailDB.deleteRecordedId(recordedId).catch(err => {
-                this.log.system.error(`falied to delete thumbnail data: ${recordedId}`);
+            this.log.system.error(`failed to delete thumbnail data: ${recordedId}`);
                 this.log.system.error(err);
             });
         }
@@ -187,20 +187,20 @@ class RecordedManageModel implements IRecordedManageModel {
         // DB から録画ファイル情報削除
         if (hasVideoFiles === true) {
             await this.videoFileDB.deleteRecordedId(recordedId).catch(err => {
-                this.log.system.error(`falied to delete video data: ${recordedId}`);
+            this.log.system.error(`failed to delete video data: ${recordedId}`);
                 this.log.system.error(err);
             });
         }
 
         // DB から視聴履歴情報削除 (孤児レコード防止)
         await this.watchHistoryDB.deleteByRecordedId(recordedId).catch(err => {
-            this.log.system.error(`falied to delete watch history data: ${recordedId}`);
+            this.log.system.error(`failed to delete watch history data: ${recordedId}`);
             this.log.system.error(err);
         });
 
         // DB から録画情報削除
         await this.recordedDB.deleteOnce(recordedId).catch(err => {
-            this.log.system.error(`falied to delete recorded data: ${recordedId}`);
+            this.log.system.error(`failed to delete recorded data: ${recordedId}`);
             this.log.system.error(err);
         });
 
@@ -897,23 +897,23 @@ class RecordedManageModel implements IRecordedManageModel {
 
     /**
      * 指定された video file id のファイルを削除する
-     * @param videoFileid: apid.VideoFileId
+     * @param videoFileId: apid.VideoFileId
      * @param isIgnoreProtection: boolean
      * @return Promise<void>
      */
-    public async deleteVideoFile(videoFileid: apid.VideoFileId, isIgnoreProtection: boolean = false): Promise<void> {
-        this.log.system.info(`delete video file: ${videoFileid}`);
+    public async deleteVideoFile(videoFileId: apid.VideoFileId, isIgnoreProtection: boolean = false): Promise<void> {
+        this.log.system.info(`delete video file: ${videoFileId}`);
 
-        const video = await this.videoFileDB.findId(videoFileid);
+        const video = await this.videoFileDB.findId(videoFileId);
         if (video === null) {
-            this.log.system.info(`video file is not found: ${videoFileid}`);
+            this.log.system.info(`video file is not found: ${videoFileId}`);
             throw new Error('VideoFileIsNotFound');
         }
 
         // プロテクトがかかっているか確認
         let recorded = await this.recordedDB.findId(video.recordedId);
         if (isIgnoreProtection === false && recorded !== null && recorded.isProtected === true) {
-            this.log.system.warn(`${videoFileid} is protected`);
+            this.log.system.warn(`${videoFileId} is protected`);
             throw new Error('RecordedIsProtected');
         }
 
@@ -924,9 +924,9 @@ class RecordedManageModel implements IRecordedManageModel {
 
         // 実ファイル削除 (register モードで取り込んだ外部ファイルは削除せず登録解除のみ行う)
         if (video.isExternalFile === true) {
-            this.log.system.info(`skip deleting external file (register mode): video file id ${videoFileid}`);
+            this.log.system.info(`skip deleting external file (register mode): video file id ${videoFileId}`);
         } else {
-            const filePath = await this.videoUtil.getFullFilePathFromId(videoFileid);
+            const filePath = await this.videoUtil.getFullFilePathFromId(videoFileId);
             if (filePath !== null) {
                 this.log.system.info(`delete: ${filePath}`);
                 await FileUtil.unlink(filePath).catch(err => {
@@ -937,11 +937,11 @@ class RecordedManageModel implements IRecordedManageModel {
         }
 
         // DB から削除
-        await this.videoFileDB.deleteOnce(videoFileid);
+        await this.videoFileDB.deleteOnce(videoFileId);
 
         // DB から視聴履歴情報削除 (孤児レコード防止)
-        await this.watchHistoryDB.deleteByVideoFileId(videoFileid).catch(err => {
-            this.log.system.error(`falied to delete watch history data: ${videoFileid}`);
+        await this.watchHistoryDB.deleteByVideoFileId(videoFileId).catch(err => {
+            this.log.system.error(`failed to delete watch history data: ${videoFileId}`);
             this.log.system.error(err);
         });
 
@@ -952,7 +952,7 @@ class RecordedManageModel implements IRecordedManageModel {
             this.log.system.info(`empty video files: ${video.recordedId}`);
             await this.delete(video.recordedId, false);
         } else {
-            this.recordedEvent.emitDeleteVideoFile(videoFileid);
+            this.recordedEvent.emitDeleteVideoFile(videoFileId);
         }
     }
 

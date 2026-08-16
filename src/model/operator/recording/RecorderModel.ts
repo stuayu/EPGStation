@@ -62,7 +62,7 @@ class RecorderModel implements IRecorderModel {
     private reserve!: Reserve;
     private recordedId: apid.RecordedId | null = null;
     private videoFileId: apid.VideoFileId | null = null;
-    private videoFileFulPath: string | null = null;
+    private videoFileFullPath: string | null = null;
     private timerId: NodeJS.Timeout | null = null;
     // 番組開始待ちの起点 (ms)。チューナー異常のリトライ回数とは別に数える
     private waitingForEventSince: number | null = null;
@@ -714,7 +714,7 @@ class RecorderModel implements IRecorderModel {
             videoFile.startAt = new Date().getTime();
             this.log.system.info(`create video file: ${videoFile.filePath}`);
             this.videoFileId = await this.videoFileDB.insertOnce(videoFile);
-            this.videoFileFulPath = recPath.fullPath;
+            this.videoFileFullPath = recPath.fullPath;
 
             recorded.videoFiles = [videoFile];
 
@@ -929,8 +929,8 @@ class RecorderModel implements IRecorderModel {
             // tmp に録画していた場合は移動する
             if (typeof this.config.recordedTmp !== 'undefined' && this.videoFileId !== null) {
                 try {
-                    const newVdeoFileFulPath = await this.recordingUtil.movingFromTmp(this.reserve, this.videoFileId);
-                    this.videoFileFulPath = newVdeoFileFulPath;
+                    const newVideoFileFullPath = await this.recordingUtil.movingFromTmp(this.reserve, this.videoFileId);
+                    this.videoFileFullPath = newVideoFileFullPath;
                 } catch (err: any) {
                     this.log.system.fatal(`movingFromTmp error: ${this.videoFileId}`);
                     this.log.system.fatal(err);
@@ -938,7 +938,7 @@ class RecorderModel implements IRecorderModel {
             }
 
             // update video file size
-            if (this.videoFileId !== null && this.videoFileFulPath !== null) {
+            if (this.videoFileId !== null && this.videoFileFullPath !== null) {
                 this.recordingUtil.updateVideoFileSize(this.videoFileId).catch(err => {
                     this.log.system.error(`update file size error: ${this.videoFileId}`);
                     this.log.system.error(err);
@@ -989,7 +989,7 @@ class RecorderModel implements IRecorderModel {
         }
 
         this.log.system.info(
-            `recording finish reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}, videoFileFulPath: ${this.videoFileFulPath}`,
+            `recording finish reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}, videoFileFullPath: ${this.videoFileFullPath}`,
         );
     }
 

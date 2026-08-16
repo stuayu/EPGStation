@@ -275,13 +275,13 @@ class RecordingUtilModel implements IRecordingUtilModel {
     public async updateVideoFileSize(videoFileId: apid.VideoFileId): Promise<void> {
         this.log.system.info(`update file size: ${videoFileId}`);
 
-        const videoFileFulPath = await this.videoUtil.getFullFilePathFromId(videoFileId);
-        if (videoFileFulPath === null) {
+        const videoFileFullPath = await this.videoUtil.getFullFilePathFromId(videoFileId);
+        if (videoFileFullPath === null) {
             throw new Error('VideoFilePathIsNull');
         }
 
         try {
-            const fileSize = await FileUtil.getFileSize(videoFileFulPath);
+            const fileSize = await FileUtil.getFileSize(videoFileFullPath);
             await this.videoFileDB.updateSize(videoFileId, fileSize);
         } catch (err: any) {
             this.log.system.error(`update file size error: ${videoFileId}`);

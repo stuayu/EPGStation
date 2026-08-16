@@ -105,7 +105,7 @@ class V1MigrationTool {
 
         // ルールインポート
         this.log.system.info('--- import rules ---');
-        const ruleIndex = await this.imporRule(oldBackupData.rules, parentRecordedName);
+        const ruleIndex = await this.importRule(oldBackupData.rules, parentRecordedName);
 
         // 録画番組のインポート
         this.log.system.info('--- import recorded ---');
@@ -159,7 +159,7 @@ class V1MigrationTool {
      * @param parentDirectoryName: string 親ディレクトリ名
      * @return Promise<RuleIndex>
      */
-    private async imporRule(ruleItems: OldRuleItem[], parentDirectoryName: string): Promise<RuleIndex> {
+    private async importRule(ruleItems: OldRuleItem[], parentDirectoryName: string): Promise<RuleIndex> {
         const ruleIndex: RuleIndex = {};
 
         for (const oldRule of ruleItems) {

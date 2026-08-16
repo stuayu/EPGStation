@@ -1251,7 +1251,7 @@ export interface LiveStreamOption {
     audioTrack?: AudioTrackSpecifier; // 再生する音声トラック (省略時は主音声)
 }
 
-export interface RecordedStreanOption {
+export interface RecordedStreamOption {
     videoFileId: VideoFileId;
     playPosition: number; // 再生位置 (秒)
     mode?: number; // config 設定 (旧形式 index)。profile 未指定時は必須
@@ -1331,7 +1331,7 @@ export interface StreamBroadcastTime {
  * ビデオファイルストリーム情報
  */
 export interface VideoFileStreamInfoItem extends LiveStreamInfoItem {
-    viodeFileId: VideoFileId;
+    videoFileId: VideoFileId;
     recordedId: RecordedId;
 }
 
