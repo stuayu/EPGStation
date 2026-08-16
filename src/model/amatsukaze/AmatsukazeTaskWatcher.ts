@@ -60,6 +60,8 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
     private hasQueueSnapshot: boolean = false;
     // 投入したタスクがキューに現れるのを待つタイマー
     private targetWaitTimer: NodeJS.Timeout | null = null;
+    private hasInitialQueueSnapshot: boolean = false;
+    private initialQueueSnapshotWaiters: Array<() => void> = [];
 
     constructor(
         client: IAmatsukazeRpcClient,
@@ -104,6 +106,22 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
             }, AmatsukazeTaskWatcher.TIMEOUT_CHECK_INTERVAL_MS);
             this.timeoutTimer.unref();
         }
+    }
+
+    /**
+     * 投入前のキュー一覧を受信するまで待つ。
+     * requestAll() は RPC の送信完了しか待たないため、応答前にタスクを追加すると
+     * 追加したタスクと同じ入力を持つ過去のタスクを誤って拾うことがある。
+     * @return Promise<void>
+     */
+    public waitForInitialQueueSnapshot(): Promise<void> {
+        if (this.hasInitialQueueSnapshot === true) {
+            return Promise.resolve();
+        }
+
+        return new Promise<void>(resolve => {
+            this.initialQueueSnapshotWaiters.push(resolve);
+        });
     }
 
     /**
@@ -174,6 +192,13 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
     private onUIData(data: AmatsukazeUIData): void {
         if (typeof data.queueItems !== 'undefined') {
             this.queueItems = data.queueItems;
+            if (this.hasInitialQueueSnapshot === false) {
+                this.hasInitialQueueSnapshot = true;
+                const waiters = this.initialQueueSnapshotWaiters.splice(0);
+                for (const resolve of waiters) {
+                    resolve();
+                }
+            }
             this.rememberPreExistingItems(data.queueItems);
             this.updateTargetFromQueue();
         }
@@ -187,6 +212,7 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
                     this.finish({
                         state: 'Canceled',
                         isSucceeded: false,
+                        sourcePath: this.srcPath,
                         outputPath: null,
                         outputPathBase: null,
                         failReason: 'Amatsukaze のキューからタスクが削除されました',
@@ -350,6 +376,7 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
                 this.finish({
                     state: item.state,
                     isSucceeded: true,
+                    sourcePath: this.srcPath,
                     outputPath: item.actualDstPath === null ? null : toLocalPath(item.actualDstPath, this.pathMappings),
                     outputPathBase: item.dstPath === null ? null : toLocalPath(item.dstPath, this.pathMappings),
                     failReason: null,
@@ -361,6 +388,7 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
                 this.finish({
                     state: item.state,
                     isSucceeded: false,
+                    sourcePath: this.srcPath,
                     outputPath: null,
                     outputPathBase: null,
                     failReason: item.failReason,
@@ -371,6 +399,7 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
                 this.finish({
                     state: item.state,
                     isSucceeded: false,
+                    sourcePath: this.srcPath,
                     outputPath: null,
                     outputPathBase: null,
                     failReason: 'Amatsukaze 側でタスクがキャンセルされました',

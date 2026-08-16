@@ -12,6 +12,8 @@ export interface AmatsukazeTaskProgress {
 /** 監視対象タスクの終了結果 */
 export interface AmatsukazeTaskResult {
     state: AmatsukazeQueueState;
+    // 監視対象の入力ファイル (EPGStation から見たパス)
+    sourcePath: string;
     // 成功したか (Complete のみ true)
     isSucceeded: boolean;
     // Amatsukaze が実際に出力したファイルのパス (EPGStation から見たパスへ変換済み)

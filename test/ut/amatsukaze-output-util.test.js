@@ -56,6 +56,25 @@ test('本編候補が複数あるときは大きい方を採る', () => {
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('preferred suffix が指定されたときは hevc.ts を優先する', () => {
+    const dir = fs.mkdtempSync(path.join(tmpDir, 'epgstation-amatsukaze-out-preferred-'));
+    const base = path.join(dir, 'program');
+    const original = writeFileForDir(dir, 'program.ts', 4096);
+    const encoded = writeFileForDir(dir, 'program.hevc.ts', 1024);
+
+    assert.equal(AmatsukazeOutputUtil.findOutputByBase(base, '.hevc.ts'), encoded);
+    assert.notEqual(AmatsukazeOutputUtil.findOutputByBase(base, '.hevc.ts'), original);
+
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+function writeFileForDir(dir, name, size) {
+    const filePath = path.join(dir, name);
+    fs.writeFileSync(filePath, Buffer.alloc(size));
+
+    return filePath;
+}
+
 test('該当するファイルが無ければ null', () => {
     assert.equal(AmatsukazeOutputUtil.findOutputByBase(path.join(tmpDir, 'notfound')), null);
 });

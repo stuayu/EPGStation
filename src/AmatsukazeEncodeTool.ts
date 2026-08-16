@@ -181,9 +181,27 @@ namespace AmatsukazeEncodeTool {
      */
     const applyOutput = async (result: AmatsukazeTaskResult, output: string): Promise<void> => {
         let outputPath = result.outputPath;
+        if (result.outputPathBase !== null) {
+            // DstPath は拡張子なしのベース名。入力ファイルを除外して残った動画候補から
+            // 実際の拡張子を自動判定する (プロファイルごとの suffix 設定に依存しない)。
+            const resolvedOutputPath = AmatsukazeOutputUtil.findOutputByBase(result.outputPathBase, null, [
+                result.sourcePath,
+            ]);
+            if (
+                resolvedOutputPath !== null &&
+                (outputPath === null || path.resolve(outputPath) !== path.resolve(resolvedOutputPath))
+            ) {
+                if (outputPath !== null) {
+                    printLog(`prefer output suffix: ${outputPath} -> ${resolvedOutputPath}`);
+                } else {
+                    printLog(`resolved output from base: ${result.outputPathBase} -> ${resolvedOutputPath}`);
+                }
+                outputPath = resolvedOutputPath;
+            }
+        }
         if (outputPath === null && result.outputPathBase !== null) {
             // ActualDstPath を返さない Amatsukaze では DstPath から実ファイルを探す
-            outputPath = AmatsukazeOutputUtil.findOutputByBase(result.outputPathBase);
+            outputPath = AmatsukazeOutputUtil.findOutputByBase(result.outputPathBase, null, [result.sourcePath]);
             if (outputPath !== null) {
                 printLog(`resolved output from base: ${result.outputPathBase} -> ${outputPath}`);
             }
@@ -264,6 +282,9 @@ namespace AmatsukazeEncodeTool {
         });
 
         await watcher.start();
+        // requestAll() は要求送信完了しか待たないため、初期キューを受信してから投入する。
+        // これにより同じ入力ファイルの過去タスクを今回のタスクと誤認しない。
+        await watcher.waitForInitialQueueSnapshot();
         await addTask(config, profile, remoteInput, remoteOutputDir);
         // 投入前からキューに居るアイテム (前回失敗した同じ録画のタスクなど) を
         // 自分のタスクと取り違えないよう、探索はここから始めさせる

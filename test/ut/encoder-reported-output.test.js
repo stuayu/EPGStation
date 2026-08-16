@@ -34,6 +34,18 @@ test('output メッセージで実際の出力先を受け取る', () => {
     assert.equal(encoder.reportedOutputFilePath, 'D:\\out\\program.hevc.ts');
 });
 
+test('標準出力のチャンク境界で output メッセージが分割されても受け取る', () => {
+    const encoder = createEncoder();
+    const message = JSON.stringify({ type: 'output', path: 'D:\\out\\program.hevc.ts' }) + '\n';
+    const splitAt = Math.floor(message.length / 2);
+
+    encoder.updateEncodingProgressInfo(message.slice(0, splitAt));
+    assert.equal(encoder.reportedOutputFilePath, null);
+
+    encoder.updateEncodingProgressInfo(message.slice(splitAt));
+    assert.equal(encoder.reportedOutputFilePath, 'D:\\out\\program.hevc.ts');
+});
+
 test('progress メッセージは出力先を書き換えない', () => {
     const encoder = createEncoder();
 

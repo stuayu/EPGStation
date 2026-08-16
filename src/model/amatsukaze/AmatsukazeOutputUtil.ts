@@ -33,9 +33,28 @@ namespace AmatsukazeOutputUtil {
      * @param base: string 出力ファイルパスのベース (拡張子なし)
      * @return string | null 見つからない場合は null
      */
-    export const findOutputByBase = (base: string): string | null => {
+    export const findOutputByBase = (
+        base: string,
+        preferredSuffix: string | null = null,
+        excludedPaths: string[] = [],
+    ): string | null => {
         const dir = path.dirname(base);
         const prefix = `${path.basename(base)}.`;
+        const normalizedExcludedPaths = excludedPaths.map(filePath => path.resolve(filePath).toLowerCase());
+        const isExcluded = (filePath: string): boolean =>
+            normalizedExcludedPaths.includes(path.resolve(filePath).toLowerCase());
+
+        if (preferredSuffix !== null) {
+            const preferredPath = path.join(dir, `${path.basename(base)}${preferredSuffix}`);
+            try {
+                const stat = fs.statSync(preferredPath);
+                if (stat.isFile() === true && isExcluded(preferredPath) === false) {
+                    return preferredPath;
+                }
+            } catch (err: any) {
+                // 通常の候補探索へ進む
+            }
+        }
 
         let entries: string[];
         try {
@@ -54,6 +73,9 @@ namespace AmatsukazeOutputUtil {
             }
 
             const filePath = path.join(dir, entry);
+            if (isExcluded(filePath) === true) {
+                continue;
+            }
             let size = 0;
             try {
                 const stat = fs.statSync(filePath);

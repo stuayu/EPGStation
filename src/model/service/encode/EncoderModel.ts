@@ -41,6 +41,8 @@ class EncoderModel implements IEncoderModel {
     private isCanceld: boolean = false; // キャンセルが呼び出されたか?
     private progressInfo: EncodeProgressInfo | null = null;
     private stderrLogs: string[] = []; // 失敗時に出し直すための標準エラー出力 (直近のみ保持)
+    // 標準出力は 1 回の data イベントで JSON 1 行が揃うとは限らない
+    private stdoutBuffer: string = '';
     // エンコードプロセスが申告してきた実際の出力先 (出力先を自分で決めるコマンド用)
     private reportedOutputFilePath: string | null = null;
 
@@ -252,6 +254,7 @@ class EncoderModel implements IEncoderModel {
          */
         // debug 用 (失敗したときだけ error として出し直せるよう直近の内容も控えておく)
         this.stderrLogs = [];
+        this.stdoutBuffer = '';
         this.reportedOutputFilePath = null;
         if (this.childProcess.stderr !== null) {
             this.childProcess.stderr.on('data', data => {
@@ -347,10 +350,21 @@ class EncoderModel implements IEncoderModel {
             return;
         }
 
-        const logs = String(data).split('\n');
-        for (let j = 0; j < logs.length; j++) {
-            if (logs[j] != '') {
-                const log = JSON.parse(String(logs[j]));
+        this.stdoutBuffer += String(data);
+        const logs = this.stdoutBuffer.split(/\r?\n/);
+        // 最後の要素は改行されていない未完成の JSON として保持する
+        this.stdoutBuffer = logs.pop() ?? '';
+
+        for (const line of logs) {
+            const trimmed = line.trim();
+            if (trimmed.length > 0) {
+                let log: any;
+                try {
+                    log = JSON.parse(trimmed);
+                } catch (err: any) {
+                    // 外部コマンドのログが混ざっても、後続の JSON を捨てない
+                    continue;
+                }
                 this.log.encode.debug(log);
                 if (log.type === 'progress' && typeof log.percent === 'number' && typeof log.log === 'string') {
                     this.progressInfo = {
