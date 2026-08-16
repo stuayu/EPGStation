@@ -577,6 +577,8 @@ class RecorderModel implements IRecorderModel {
             let hasData = false;
             let lastLoggedReason: string | null = null;
             const startedAt = new Date().getTime();
+            let startGateTimerId: NodeJS.Timeout | null = null;
+            let startGateTimedOut = false;
 
             // データが 1 バイトも来ない場合は従来どおり「まだ始まっていない」として再試行へ回す
             const firstDataTimerId = setTimeout(() => {
@@ -586,33 +588,27 @@ class RecorderModel implements IRecorderModel {
 
             const cleanup = (): void => {
                 clearTimeout(firstDataTimerId);
+                if (startGateTimerId !== null) {
+                    clearTimeout(startGateTimerId);
+                }
                 stream.removeListener('data', onData);
                 // リスナーを外しただけでは流れ続けてデータを取りこぼすため、
                 // 録画の書き込み (pipe) を始めるまで止めておく
                 stream.pause();
             };
 
-            const onData = (chunk: Buffer): void => {
-                if (hasData === false) {
-                    hasData = true;
-                    clearTimeout(firstDataTimerId);
-                }
-
-                if (gateConfig.enabled === true) {
-                    for (const event of parser.write(chunk)) {
-                        // 同一 TS には複数サービスの EIT が流れるため、対象サービスのものだけ見る
-                        if (event.serviceId !== serviceId) {
-                            continue;
-                        }
-                        present = event;
-                    }
-                }
-
+            const decideStart = (): void => {
+                // setTimeout は指定より僅かに早く発火することがある。タイマー経由の判定が
+                // 経過時間不足で空振りすると次のデータまで開始判定が動かないため、
+                // タイマーが発火した後は必ず上限に達したものとして扱う
+                const elapsedMs = new Date().getTime() - startedAt;
                 const decision = decideRecordingStart({
                     eventId: eventId,
                     reserveStartAt: this.reserve.startAt,
                     present: present,
-                    elapsedMs: new Date().getTime() - startedAt,
+                    elapsedMs: startGateTimedOut === true ? Math.max(elapsedMs, gateConfig.timeoutMs) : elapsedMs,
+                    currentAt: new Date().getTime(),
+                    recordingStartMarginMs: eventId === null ? this.config.timeSpecifiedStartMargin * 1000 : undefined,
                     config: gateConfig,
                 });
 
@@ -633,6 +629,7 @@ class RecorderModel implements IRecorderModel {
                         `waiting for the reserved program to start on air: reserveId: ${this.reserve.id},` +
                             ` reason: ${decision.reason},` +
                             ` scheduled start: ${formatLogTime(this.reserve.startAt)},` +
+                            ` reserved eventId: ${eventId === null ? 'unknown' : eventId},` +
                             ` on air eventId: ${present === null ? 'unknown' : present.eventId},` +
                             ` on air start: ${present?.startAt == null ? 'unknown' : formatLogTime(present.startAt)}`,
                     );
@@ -648,6 +645,46 @@ class RecorderModel implements IRecorderModel {
                     reject(new Error(RecorderModel.WAITING_FOR_EVENT_ERROR));
                 }
             };
+
+            const onData = (chunk: Buffer): void => {
+                if (hasData === false) {
+                    hasData = true;
+                    clearTimeout(firstDataTimerId);
+
+                    if (eventId !== null) {
+                        // Mirakurun の getProgramStream は TSFilter(eventId) を通しており、
+                        // 対象 event_id の EIT[p/f] を検出するまでデータを出力しない。
+                        // ここで再度 EIT を待つと、Mirakurun が開始済みでも録画開始が遅れる。
+                        this.log.system.info(
+                            `program stream data detected by Mirakurun event filter: reserveId: ${this.reserve.id}`,
+                        );
+                        cleanup();
+                        resolve();
+
+                        return;
+                    }
+                }
+
+                if (gateConfig.enabled === true) {
+                    for (const event of parser.write(chunk)) {
+                        // 同一 TS には複数サービスの EIT が流れるため、対象サービスのものだけ見る
+                        if (event.serviceId !== serviceId) {
+                            continue;
+                        }
+                        present = event;
+                    }
+                }
+
+                decideStart();
+            };
+
+            if (gateConfig.enabled === true && eventId === null) {
+                // データが届き続けても EIT[p/f] の判定が変わらない場合に備える
+                startGateTimerId = setTimeout(() => {
+                    startGateTimedOut = true;
+                    decideStart();
+                }, gateConfig.timeoutMs);
+            }
 
             stream.on('data', onData);
         });

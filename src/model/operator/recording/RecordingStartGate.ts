@@ -52,6 +52,10 @@ export interface StartGateInput {
     present: EitPresentEvent | null;
     // ストリームを受け取り始めてからの経過時間 (ms)
     elapsedMs: number;
+    // 実際の現在時刻 (UNIX 時刻・ミリ秒)。省略時は開始マージンを判定しない
+    currentAt?: number;
+    // 時刻指定予約の実録画開始マージン (ms)
+    recordingStartMarginMs?: number;
     config: RecordingStartGateConfig;
 }
 
@@ -68,6 +72,8 @@ export type StartGateReason =
     | 'previousProgramExtending'
     // 前の番組が続いている
     | 'previousProgram'
+    // 目的の番組は検出したが、録画開始マージンまで待つ
+    | 'waitingForStartMargin'
     // まだ EIT[p/f] を読めていない
     | 'waitingForEit';
 
@@ -78,14 +84,36 @@ export interface StartGateDecision {
 }
 
 /**
+ * 前の番組が続いていると判断したときの扱いを決める。
+ *
+ * 放送時間未定 (延長しうる) の間は待ち続ける。ここで開始すると延長中の前番組を
+ * 録ってしまい、ゲートを入れた意味が無くなるため。
+ * 尺が確定している別番組が流れ続けている場合は、EIT と予約の食い違い
+ * (放送側の event_id 振り直しなど) が疑われるので上限を過ぎたら開始する。
+ * @param present: EitPresentEvent
+ * @param input: StartGateInput
+ * @return StartGateDecision
+ */
+const decidePreviousProgram = (present: EitPresentEvent, input: StartGateInput): StartGateDecision => {
+    if (present.durationSec === null) {
+        return { canStart: false, reason: 'previousProgramExtending' };
+    }
+
+    return input.elapsedMs >= input.config.timeoutMs
+        ? { canStart: true, reason: 'timeout' }
+        : { canStart: false, reason: 'previousProgram' };
+};
+
+/**
  * いま流れているストリームが「予約した番組」かどうかを判断する。
  *
  * 時刻指定予約 (Mirakurun のチャンネルストリーム) は予定時刻から即データが流れるため、
  * 前番組が延長しているとそのまま前番組を録ってしまう。EIT[p/f] present を読み、
  * 前番組が続いている間は録画を始めない。
  *
- * 判断がつかないまま待ち続けると録り逃すため、EIT[p/f] を読めないまま
- * timeoutMs を過ぎた場合は開始する (安全側に倒す)
+ * 判断がつかないまま待ち続けると録り逃すため、EIT[p/f] を読めない場合と
+ * 尺の確定した別番組が流れ続けている場合は timeoutMs を過ぎたら開始する (安全側に倒す)。
+ * ただし放送時間未定 (延長中) の番組が流れている間は待ち続ける
  * @param input: StartGateInput
  * @return StartGateDecision
  */
@@ -108,6 +136,10 @@ export const decideRecordingStart = (input: StartGateInput): StartGateDecision =
             return { canStart: true, reason: 'eventMatched' };
         }
 
+        // programId 予約は eventId が一致しない限り開始しない。
+        // EDCB もチャンネルを事前に開いて EIT[p/f] を取得したうえで、
+        // ぴったり録画は present event_id の一致を開始条件にしている。
+        // 不一致のまま timeout で開始すると、別番組を録画する危険がある。
         return {
             canStart: false,
             reason: present.durationSec === null ? 'previousProgramExtending' : 'previousProgram',
@@ -124,11 +156,15 @@ export const decideRecordingStart = (input: StartGateInput): StartGateDecision =
     }
 
     if (present.startAt >= input.reserveStartAt - input.config.startMarginMs) {
+        if (
+            input.currentAt !== undefined &&
+            input.recordingStartMarginMs !== undefined &&
+            input.currentAt < input.reserveStartAt - input.recordingStartMarginMs
+        ) {
+            return { canStart: false, reason: 'waitingForStartMargin' };
+        }
         return { canStart: true, reason: 'startTimeReached' };
     }
 
-    return {
-        canStart: false,
-        reason: present.durationSec === null ? 'previousProgramExtending' : 'previousProgram',
-    };
+    return decidePreviousProgram(present, input);
 };
