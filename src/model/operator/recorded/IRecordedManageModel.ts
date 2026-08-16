@@ -70,7 +70,7 @@ export default interface IRecordedManageModel {
         option: ImportedExternalRecordedFileOption[],
     ): Promise<ImportedExternalRecordedFileResult[]>;
     createNewRecorded(option: apid.CreateNewRecordedOption): Promise<apid.RecordedId>;
-    deleteVideoFile(videoFileid: apid.VideoFileId, isIgnoreProtection?: boolean): Promise<void>;
+    deleteVideoFile(videoFileId: apid.VideoFileId, isIgnoreProtection?: boolean): Promise<void>;
     changeProtect(recordedId: apid.RecordedId, isProtect: boolean): Promise<void>;
     historyCleanup(): Promise<void>;
     getCleanupInfo(): Promise<apid.RecordedCleanupInfo>;
