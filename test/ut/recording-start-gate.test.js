@@ -24,6 +24,60 @@ test('programId 予約は EIT[p/f] present の eventId が一致したら開始�
     assert.equal(decision.reason, 'eventMatched');
 });
 
+test('programId 予約で eventId が一致しない場合は予約開始時刻に達しても待つ', () => {
+    const decision = decideRecordingStart({
+        eventId: 100,
+        reserveStartAt: RESERVE_START,
+        // 放送側で event_id が振り直された目的の番組
+        present: { serviceId: 1, eventId: 99, startAt: RESERVE_START, durationSec: 1800 },
+        elapsedMs: 0,
+        config,
+    });
+
+    assert.equal(decision.canStart, false);
+    assert.equal(decision.reason, 'previousProgram');
+});
+
+test('programId 予約で尺の確定した別番組が続いても開始しない', () => {
+    const decision = decideRecordingStart({
+        eventId: 100,
+        reserveStartAt: RESERVE_START,
+        // 予約開始時刻より前に始まった、尺の確定している別番組
+        present: { serviceId: 1, eventId: 99, startAt: RESERVE_START - 30 * 60 * 1000, durationSec: 1800 },
+        elapsedMs: config.timeoutMs,
+        config,
+    });
+
+    assert.equal(decision.canStart, false);
+    assert.equal(decision.reason, 'previousProgram');
+});
+
+test('programId 予約で放送時間未定 (延長中) の前番組が続く間は上限を過ぎても開始しない', () => {
+    const decision = decideRecordingStart({
+        eventId: 100,
+        reserveStartAt: RESERVE_START,
+        present: { serviceId: 1, eventId: 99, startAt: RESERVE_START - 3600000, durationSec: null },
+        elapsedMs: config.timeoutMs * 10,
+        config,
+    });
+
+    assert.equal(decision.canStart, false);
+    assert.equal(decision.reason, 'previousProgramExtending');
+});
+
+test('時刻指定予約で尺の確定した前番組が続いても上限を過ぎたら開始する', () => {
+    const decision = decideRecordingStart({
+        eventId: null,
+        reserveStartAt: RESERVE_START,
+        present: { serviceId: 1, eventId: 99, startAt: RESERVE_START - 30 * 60 * 1000, durationSec: 1800 },
+        elapsedMs: config.timeoutMs,
+        config,
+    });
+
+    assert.equal(decision.canStart, true);
+    assert.equal(decision.reason, 'timeout');
+});
+
 test('前番組が放送時間未定 (延長しうる) の間は録画を開始しない', () => {
     const decision = decideRecordingStart({
         eventId: 100,
@@ -50,6 +104,21 @@ test('時刻指定予約は放送中の番組の開始時刻が予約開始時�
 
     assert.equal(decision.canStart, true);
     assert.equal(decision.reason, 'startTimeReached');
+});
+
+test('時刻指定予約は EIT を先に検出しても録画開始マージンまでは待つ', () => {
+    const decision = decideRecordingStart({
+        eventId: null,
+        reserveStartAt: RESERVE_START,
+        present: { serviceId: 1, eventId: 100, startAt: RESERVE_START - 30 * 1000, durationSec: 1800 },
+        elapsedMs: 0,
+        currentAt: RESERVE_START - 10 * 1000,
+        recordingStartMarginMs: 1000,
+        config,
+    });
+
+    assert.equal(decision.canStart, false);
+    assert.equal(decision.reason, 'waitingForStartMargin');
 });
 
 test('時刻指定予約で前番組が続いている間は録画を開始しない', () => {

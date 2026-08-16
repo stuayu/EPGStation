@@ -5,7 +5,6 @@ import { finished } from 'stream';
 import * as apid from '../../../../api';
 import * as mapid from '../../../../node_modules/mirakurun/api';
 import Reserve from '../../../db/entities/Reserve';
-import Util from '../../../util/Util';
 import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
@@ -291,13 +290,9 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
             delete this.timerIndex[reserve.id];
         });
 
-        // 予約時間まで待つ
-        if (now < reserve.startAt) {
-            channelStream.on('data', () => {}); // 読み込まないと stream がバッファに貯まるため
-            await Util.sleep(reserve.startAt - now - 1000 * this.config.timeSpecifiedStartMargin);
-            channelStream.removeAllListeners('data'); // clear
-        }
-
+        // EDCB と同様、録画開始前にチャンネルを開いた状態で EIT[p/f] を取得する。
+        // ここで予約時刻まで待つと、RecordingStartGate が前番組の延長や早始まりを
+        // 判定できる時間がなくなる。呼び出し側がデータを消費しながら開始を判定する。
         return channelStream;
     }
 
