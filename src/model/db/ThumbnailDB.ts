@@ -93,8 +93,8 @@ export default class ThumbnailDB implements IThumbnailDB {
     }
 
     /**
-     * 指定した reocrdeId のサムネイル情報を削除する
-     * @param recordedId: apid.ReocrdedId
+     * 指定した recordeId のサムネイル情報を削除する
+     * @param recordedId: apid.RecordedId
      * @return Promise<void>
      */
     public async deleteRecordedId(recordedId: apid.RecordedId): Promise<void> {
