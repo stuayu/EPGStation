@@ -79,6 +79,21 @@ test('キュー一覧から入力ファイルが一致するタスクを見つ�
     assert.match(last.log, /profile:HEVC/);
 });
 
+test('初期キュー一覧を受信するまで待機できる', async () => {
+    const { client, watcher } = await createWatcher([], false);
+    let resolved = false;
+    const snapshot = watcher.waitForInitialQueueSnapshot().then(() => {
+        resolved = true;
+    });
+
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(resolved, false);
+
+    client.emit('uiData', { queueItems: [] });
+    await snapshot;
+    assert.equal(resolved, true);
+});
+
 test('同じ入力ファイルのタスクが複数あるときは追加時刻が新しい方を追跡する', async () => {
     const { client, results } = await createWatcher();
 
