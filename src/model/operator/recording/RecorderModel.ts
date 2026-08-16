@@ -786,7 +786,7 @@ class RecorderModel implements IRecorderModel {
             try {
                 recorded = await this.recordedDB.findId(this.recordedId);
             } catch (e: any) {
-                this.log.system.error(`reocrded is deleted: ${this.recordedId}`);
+                this.log.system.error(`recorded is deleted: ${this.recordedId}`);
                 recorded = null;
             }
         }
@@ -1228,7 +1228,7 @@ class RecorderModel implements IRecorderModel {
         // update recorded DB
         if (this.isRecording === true && this.recordedId !== null) {
             const recorded = await this.createRecorded();
-            this.log.system.info(`update reocrded: ${this.recordedId}`);
+            this.log.system.info(`update recorded: ${this.recordedId}`);
             this.recordedDB.updateOnce(recorded);
         }
     }
