@@ -77,10 +77,10 @@ export default class EncodeApiModel implements IEncodeApiModel {
                 mode: i.mode,
                 recorded: this.recordedItemUtil.convertRecordedToRecordedItem(recordedItem, isHalfWidth, {}),
             };
-            if (typeof i.percent !== 'undefined' && typeof i.log !== 'undefined') {
-                info.percent = i.percent;
-                info.log = i.log;
-            }
+            // 外部エンコーダのキューへ投入中など、まだ進捗通知が届いていない場合も
+            // runningItems を画面上で空欄にしない。
+            info.percent = i.percent ?? 0;
+            info.log = i.log ?? 'エンコード状態を取得しています';
             result.runningItems.push(info);
         }
 
