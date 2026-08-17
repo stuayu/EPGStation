@@ -179,7 +179,7 @@ class RecordedManageModel implements IRecordedManageModel {
         // DB からサムネイル情報削除
         if (hasThumbnails === true) {
             this.thumbnailDB.deleteRecordedId(recordedId).catch(err => {
-            this.log.system.error(`failed to delete thumbnail data: ${recordedId}`);
+                this.log.system.error(`failed to delete thumbnail data: ${recordedId}`);
                 this.log.system.error(err);
             });
         }
@@ -187,7 +187,7 @@ class RecordedManageModel implements IRecordedManageModel {
         // DB から録画ファイル情報削除
         if (hasVideoFiles === true) {
             await this.videoFileDB.deleteRecordedId(recordedId).catch(err => {
-            this.log.system.error(`failed to delete video data: ${recordedId}`);
+                this.log.system.error(`failed to delete video data: ${recordedId}`);
                 this.log.system.error(err);
             });
         }

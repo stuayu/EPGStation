@@ -43,7 +43,11 @@ export const get: Operation = async (req, res) => {
             audioTrack: streamOption.audioTrack,
         });
         keepTimer = setInterval(() => {
-            streamApiModel.keep(result.streamId);
+            try {
+                streamApiModel.keep(result.streamId);
+            } catch {
+                clearInterval(keepTimer);
+            }
         }, 10 * 1000);
     } catch (err: unknown) {
         api.responseStreamStartError(res, err);
