@@ -61,6 +61,7 @@ export default class IPCClient implements IIPCClient {
 
     private log: ILogger;
     private listener: events.EventEmitter = new events.EventEmitter();
+    private messageId = Date.now();
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -92,6 +93,9 @@ export default class IPCClient implements IIPCClient {
      * IPC 通信初期設定
      */
     private ipcInit(): void {
+        process.on('disconnect', () => {
+            this.listener.emit('ipcDisconnect');
+        });
         process.on('message', async (msg: ReplayMessage | ParentMessage) => {
             if (typeof (<ReplayMessage>msg).id !== 'undefined') {
                 // 送信したメッセージの応答
@@ -127,37 +131,57 @@ export default class IPCClient implements IIPCClient {
      */
     private send<T>(option: ClientMessageOption, timeout: number = 5000): Promise<T> {
         const msg: SendMessage = {
-            id: new Date().getTime(),
+            // 同一ミリ秒に複数のIPCを送るとIDが衝突するため、単調増加させる。
+            id: ++this.messageId,
             model: option.model,
             func: option.func,
             args: option.args,
         };
 
-        process.nextTick(() => {
-            if (typeof process.send === 'undefined') {
-                this.log.system.error('process.send is undefined');
-
-                return;
-            }
-
-            process.send(msg);
-        });
-
         return new Promise<T>((resolve: (value: T) => void, reject: (err: Error) => void) => {
-            this.listener.once(msg.id.toString(10), (replay: ReplayMessage) => {
+            let settled = false;
+            let timer: NodeJS.Timeout | undefined;
+            const onDisconnect = (): void => {
+                settle(() => reject(new Error('IPCDisconnected')));
+            };
+            const settle = (callback: () => void): void => {
+                if (settled === true) return;
+                settled = true;
+                if (timer !== undefined) clearTimeout(timer);
+                this.listener.removeListener(msg.id.toString(10), onReplay);
+                this.listener.removeListener('ipcDisconnect', onDisconnect);
+                callback();
+            };
+            const onReplay = (replay: ReplayMessage): void => {
                 if (typeof replay.error === 'undefined') {
-                    resolve(<T>replay.result);
+                    settle(() => resolve(<T>replay.result));
                 } else {
-                    reject(new Error(replay.error));
+                    settle(() => reject(new Error(replay.error)));
                 }
-            });
+            };
+            this.listener.once(msg.id.toString(10), onReplay);
+            this.listener.once('ipcDisconnect', onDisconnect);
 
             if (timeout > 0) {
-                setTimeout(() => {
-                    this.listener.removeAllListeners(msg.id.toString(10));
-                    reject(new Error('IPCTimeout'));
+                timer = setTimeout(() => {
+                    settle(() => reject(new Error('IPCTimeout')));
                 }, timeout);
             }
+
+            process.nextTick(() => {
+                if (typeof process.send === 'undefined' || process.connected !== true) {
+                    settle(() => reject(new Error('IPCDisconnected')));
+                    return;
+                }
+
+                try {
+                    process.send(msg, err => {
+                        if (err !== null) settle(() => reject(new Error(`IPCSendError: ${err.message}`)));
+                    });
+                } catch (err: any) {
+                    settle(() => reject(new Error(`IPCSendError: ${err.message}`)));
+                }
+            });
         });
     }
 

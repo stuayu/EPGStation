@@ -14,7 +14,7 @@
         "lint": "eslint --fix src/",
         "format": "prettier --check --write \"src/**/*.ts\"",
         "clean": "node scripts/clean-dist.js",
-        "compile": "npm run clean && tsc",
+        "compile": "tsc --noEmit && tsc",
         "watch": "tsc --watch",
         "orm-gen": "typeorm migration:generate src/db/migrations/${npm_config_db}/${npm_config_name} -d ./ormconfig.js",
         "orm-run": "typeorm migration:run -d ./ormconfig.js",
