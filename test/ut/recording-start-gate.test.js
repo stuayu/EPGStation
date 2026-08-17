@@ -7,6 +7,7 @@ const {
     DEFAULT_RECORDING_START_GATE_CONFIG,
 } = require('../../dist/model/operator/recording/RecordingStartGate');
 const EitPresentParser = require('../../dist/model/operator/recording/EitPresentParser').default;
+const aribts = require('aribts');
 
 const config = DEFAULT_RECORDING_START_GATE_CONFIG;
 const RESERVE_START = Date.parse('2026-08-02T21:00:00+09:00');
@@ -121,6 +122,21 @@ test('時刻指定予約は EIT を先に検出しても録画開始マージン
     assert.equal(decision.reason, 'waitingForStartMargin');
 });
 
+test('時刻指定予約は EIT を読めずタイムアウトしても開始マージンまでは開始しない', () => {
+    const decision = decideRecordingStart({
+        eventId: null,
+        reserveStartAt: RESERVE_START,
+        present: null,
+        elapsedMs: 0,
+        currentAt: RESERVE_START - 10 * 1000,
+        recordingStartMarginMs: 1000,
+        config: { ...config, timeoutMs: 0 },
+    });
+
+    assert.equal(decision.canStart, false);
+    assert.equal(decision.reason, 'waitingForStartMargin');
+});
+
 test('時刻指定予約で前番組が続いている間は録画を開始しない', () => {
     const decision = decideRecordingStart({
         eventId: null,
@@ -132,6 +148,58 @@ test('時刻指定予約で前番組が続いている間は録画を開始し�
 
     assert.equal(decision.canStart, false);
     assert.equal(decision.reason, 'previousProgram');
+});
+
+test('時刻指定予約は following の開始時刻に達したら present 更新前でも開始する', () => {
+    const decision = decideRecordingStart({
+        eventId: null,
+        reserveStartAt: RESERVE_START,
+        present: { serviceId: 1, eventId: 99, startAt: RESERVE_START - 3600000, durationSec: null },
+        following: { serviceId: 1, eventId: 100, startAt: RESERVE_START, durationSec: 1800, isFollowing: true },
+        elapsedMs: 0,
+        currentAt: RESERVE_START,
+        recordingStartMarginMs: 1000,
+        config,
+    });
+
+    assert.equal(decision.canStart, true);
+    assert.equal(decision.reason, 'startTimeReached');
+});
+
+test('following の開始時刻が繰り下がった場合は実際の開始時刻まで待つ', () => {
+    const decision = decideRecordingStart({
+        eventId: null,
+        reserveStartAt: RESERVE_START,
+        present: { serviceId: 1, eventId: 99, startAt: RESERVE_START - 3600000, durationSec: null },
+        following: { serviceId: 1, eventId: 100, startAt: RESERVE_START + 5 * 60 * 1000, durationSec: 1800, isFollowing: true },
+        elapsedMs: 0,
+        currentAt: RESERVE_START,
+        recordingStartMarginMs: 1000,
+        config,
+    });
+
+    assert.equal(decision.canStart, false);
+    assert.equal(decision.reason, 'previousProgramExtending');
+});
+
+test('放送時間未定の前番組でも開始ゲートの上限後は録画を開始する', () => {
+    const decision = decideRecordingStart({
+        eventId: null,
+        reserveStartAt: RESERVE_START,
+        present: {
+            serviceId: 21512,
+            eventId: 100,
+            startAt: RESERVE_START - 3 * 60 * 1000,
+            durationSec: null,
+        },
+        elapsedMs: 60 * 1000,
+        currentAt: RESERVE_START + 45 * 1000,
+        recordingStartMarginMs: 1000,
+        config,
+    });
+
+    assert.equal(decision.canStart, true);
+    assert.equal(decision.reason, 'timeout');
 });
 
 // 録り逃しの方が損害が大きいので、判断がつかないまま上限を過ぎたら開始する
@@ -183,7 +251,7 @@ test('設定値は未指定・範囲外なら既定値へ丸める', () => {
 /**
  * EIT[p/f] present のセクションを載せた TS パケットを作る
  */
-const buildEitPacket = (serviceId, eventId, startAt, durationSec) => {
+const buildEitPacket = (serviceId, eventId, startAt, durationSec, sectionNumber = 0) => {
     const body = Buffer.alloc(12 + 4); // event 12 byte + CRC 4 byte
     body.writeUInt16BE(eventId, 0);
 
@@ -220,8 +288,8 @@ const buildEitPacket = (serviceId, eventId, startAt, durationSec) => {
     header[1] = 0x80 | ((sectionLength >> 8) & 0x0f);
     header[2] = sectionLength & 0xff;
     header.writeUInt16BE(serviceId, 3);
-    header[5] = 0x00; // version
-    header[6] = 0x00; // section_number = 0 (present)
+    header[5] = 0x01; // version / current_next_indicator
+    header[6] = sectionNumber;
     header[7] = 0x01; // last_section_number
     header.writeUInt16BE(1, 8); // transport_stream_id
     header.writeUInt16BE(1, 10); // original_network_id
@@ -229,6 +297,7 @@ const buildEitPacket = (serviceId, eventId, startAt, durationSec) => {
     header[13] = 0x4e;
 
     const section = Buffer.concat([header, body]);
+    aribts.TsCrc32.calcToBuffer(section.subarray(0, -4)).copy(section, section.length - 4);
     const packet = Buffer.alloc(188, 0xff);
     packet[0] = 0x47;
     packet[1] = 0x40; // payload_unit_start_indicator + pid 上位 (0x0012)
@@ -257,4 +326,29 @@ test('放送時間未定 (0xFFFFFF) は durationSec が null になる', () => {
 
     assert.equal(events.length, 1);
     assert.equal(events[0].durationSec, null);
+});
+
+test('EIT[p/f] following のセクションを解析できる', () => {
+    const parser = new EitPresentParser();
+    const events = parser.write(buildEitPacket(1024, 4661, RESERVE_START, 1800, 1));
+
+    assert.equal(events.length, 1);
+    assert.equal(events[0].isFollowing, true);
+    assert.equal(events[0].eventId, 4661);
+});
+
+test('current_next_indicator が0のEITは録画開始判定に使わない', () => {
+    const packet = buildEitPacket(1024, 4662, RESERVE_START, 1800);
+    packet[5 + 5] = 0x00;
+
+    const parser = new EitPresentParser();
+    assert.deepEqual(parser.write(packet), []);
+});
+
+test('CRCが壊れたEITは録画開始判定に使わない', () => {
+    const packet = buildEitPacket(1024, 4663, RESERVE_START, 1800);
+    packet[5 + 14] ^= 0x01;
+
+    const parser = new EitPresentParser();
+    assert.deepEqual(parser.write(packet), []);
 });

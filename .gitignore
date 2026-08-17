@@ -27,3 +27,8 @@ data/seriesImage/*
 
 # node-windows が作る Windows サービスの実体 (winsw の exe / 設定 / ログ)
 /daemon
+
+# Codex / Playwright のローカル検証生成物
+.local/
+.playwright-mcp/
+.review-tmp/

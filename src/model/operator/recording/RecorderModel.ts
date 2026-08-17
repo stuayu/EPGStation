@@ -546,7 +546,8 @@ class RecorderModel implements IRecorderModel {
     }
 
     /**
-     * 予約した番組が実際に始まる (EIT[p/f] present が目的の番組になる) まで待つ。
+     * 予約した番組が実際に始まる (EIT[p/f] following の start_time 到達、または
+     * present の更新) まで待つ。
      *
      * 時刻指定予約は Mirakurun のチャンネルストリームを使うため、予定時刻になった瞬間から
      * データが流れる。前番組が「放送時間未定」で延長している間はまだ前番組なので、
@@ -554,7 +555,8 @@ class RecorderModel implements IRecorderModel {
      * ここで EIT[p/f] を読み、目的の番組になるまでデータを捨てて待つ。
      *
      * - データ自体が来ない場合は従来どおり `WaitingForEventStart` で再試行へ回す
-     * - EIT[p/f] を読めないまま上限を過ぎた場合は録り逃さないよう開始する (安全側)
+     * - EIT[p/f] を読めない、または前番組が放送時間未定のまま上限を過ぎた場合は
+     *   録り逃さないよう開始する (安全側)
      * - 予約終了時刻を過ぎても始まらない場合は再試行へ回す
      * @return Promise<void>
      */
@@ -574,6 +576,7 @@ class RecorderModel implements IRecorderModel {
         return new Promise<void>((resolve, reject) => {
             const parser = new EitPresentParser();
             let present: EitPresentEvent | null = null;
+            let following: EitPresentEvent | null = null;
             let hasData = false;
             let lastLoggedReason: string | null = null;
             const startedAt = new Date().getTime();
@@ -606,6 +609,7 @@ class RecorderModel implements IRecorderModel {
                     eventId: eventId,
                     reserveStartAt: this.reserve.startAt,
                     present: present,
+                    following: following,
                     elapsedMs: startGateTimedOut === true ? Math.max(elapsedMs, gateConfig.timeoutMs) : elapsedMs,
                     currentAt: new Date().getTime(),
                     recordingStartMarginMs: eventId === null ? this.config.timeSpecifiedStartMargin * 1000 : undefined,
@@ -671,7 +675,11 @@ class RecorderModel implements IRecorderModel {
                         if (event.serviceId !== serviceId) {
                             continue;
                         }
-                        present = event;
+                        if (event.isFollowing === true) {
+                            following = event;
+                        } else {
+                            present = event;
+                        }
                     }
                 }
 
@@ -680,10 +688,12 @@ class RecorderModel implements IRecorderModel {
 
             if (gateConfig.enabled === true && eventId === null) {
                 // データが届き続けても EIT[p/f] の判定が変わらない場合に備える
+                const startMarginAt = this.reserve.startAt - this.config.timeSpecifiedStartMargin * 1000;
+                const startMarginDelay = Math.max(0, startMarginAt - new Date().getTime());
                 startGateTimerId = setTimeout(() => {
                     startGateTimedOut = true;
                     decideStart();
-                }, gateConfig.timeoutMs);
+                }, Math.max(gateConfig.timeoutMs, startMarginDelay));
             }
 
             stream.on('data', onData);
@@ -1150,9 +1160,19 @@ class RecorderModel implements IRecorderModel {
                 // 録画準備中 or 録画中
                 if (this.reserve.programId === null) {
                     // 時間指定予約で時刻に変更があった
-                    // TODO 現時点では時刻指定で時間変更を受け入れられるようにな api になっていない
-                    // TODO 録画中 or 録画準備中の開始時刻変更にも対応していない
-                    if (this.reserve.endAt !== newReserve.endAt) {
+                    if (this.reserve.startAt !== newReserve.startAt && this.isPrepRecording === true) {
+                        // 準備中の開始時刻変更は、古い時刻のストリームと開始ゲートを残さない
+                        this.log.system.info(
+                            `restart prepare recording after startAt change: ${newReserve.id},` +
+                                ` start: ${formatTimeChange(this.reserve.startAt, newReserve.startAt)}`,
+                        );
+                        await this._cancel().catch(err => {
+                            this.log.system.error(`cancel recording error: ${newReserve.id}`);
+                            this.log.system.error(err);
+                        });
+                        // NOTE: キャンセルエラーが発生したとしても新しい時刻でタイマーを再セット
+                        this.setTimer(newReserve, isSuppressLog);
+                    } else if (this.reserve.endAt !== newReserve.endAt) {
                         // 時間指定予約で終了時刻に変更があった
                         this.log.system.info(
                             `change recording endAt: ${newReserve.id},` +

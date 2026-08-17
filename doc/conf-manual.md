@@ -527,7 +527,7 @@ Mirakurun は EIT[p/f] で対象の番組が現在番組になるまでデータ
 | errorFastRetryIntervalMs | number  | no   | 同・間隔 (ms)。省略時 5000                                                                 |
 | errorRetryCount          | number  | no   | その後、長い間隔で再試行する回数。省略時 27                                                |
 | errorRetryIntervalMs     | number  | no   | 同・間隔 (ms)。省略時 60000                                                                |
-| startGateEnabled         | boolean | no   | 予約した番組が EIT[p/f] present になるまで録画を始めない。省略時 true                      |
+| startGateEnabled         | boolean | no   | 予約した番組が EIT[p/f] following/present で始まるまで録画を始めない。省略時 true          |
 | startGateTimeoutMs       | number  | no   | EIT[p/f] を読めないまま録画を開始するまでの時間 (ms)。省略時 60000                         |
 | startGateStartMarginMs   | number  | no   | 放送中の番組の開始時刻が予約開始時刻よりこれ以上前なら前の番組とみなす (ms)。省略時 120000 |
 
@@ -547,7 +547,7 @@ recording:
 
 - 値が範囲外・不正な場合は既定値へ丸めるため、設定ミスで録画が動かなくなることはない
 - 野球中継などの長い延長に備える場合は `startWaitLimitMs` を延ばす
-- `startGateEnabled` は**時刻指定予約で効く**。時刻指定予約はチャンネルストリームを使うため予定時刻から即データが流れ、前番組が延長していると前番組を録ってしまう。EIT[p/f] present を読んで目的の番組が始まるまで待ち、その間のデータは捨てる (録画ファイルにも残らない)。EIT[p/f] を読めないまま `startGateTimeoutMs` を過ぎた場合は録り逃さないよう録画を開始する
+- `startGateEnabled` は**時刻指定予約で効く**。時刻指定予約はチャンネルストリームを使うため予定時刻から即データが流れ、前番組が延長していると前番組を録ってしまう。EIT[p/f] following の `start_time` を優先し、present 更新前でも目的の番組の開始を判断する。その間のデータは捨てる (録画ファイルにも残らない)。EIT[p/f] を読めないまま `startGateTimeoutMs` を過ぎた場合は録り逃さないよう録画を開始する
 
 ---
 
