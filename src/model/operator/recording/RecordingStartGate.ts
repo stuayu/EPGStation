@@ -50,6 +50,8 @@ export interface StartGateInput {
     reserveStartAt: number;
     // 直近に読めた EIT[p/f] present (まだ読めていない場合は null)
     present: EitPresentEvent | null;
+    // EIT[p/f] following。時刻指定予約では present の更新前に開始時刻を判断するために使う
+    following?: EitPresentEvent | null;
     // ストリームを受け取り始めてからの経過時間 (ms)
     elapsedMs: number;
     // 実際の現在時刻 (UNIX 時刻・ミリ秒)。省略時は開始マージンを判定しない
@@ -86,8 +88,8 @@ export interface StartGateDecision {
 /**
  * 前の番組が続いていると判断したときの扱いを決める。
  *
- * 放送時間未定 (延長しうる) の間は待ち続ける。ここで開始すると延長中の前番組を
- * 録ってしまい、ゲートを入れた意味が無くなるため。
+ * 放送時間未定 (延長しうる) の間は開始ゲートの上限まで待つ。ここで早く開始すると
+ * 延長中の前番組を録ってしまう一方、無期限に待つと次番組を取り逃すため。
  * 尺が確定している別番組が流れ続けている場合は、EIT と予約の食い違い
  * (放送側の event_id 振り直しなど) が疑われるので上限を過ぎたら開始する。
  * @param present: EitPresentEvent
@@ -96,7 +98,12 @@ export interface StartGateDecision {
  */
 const decidePreviousProgram = (present: EitPresentEvent, input: StartGateInput): StartGateDecision => {
     if (present.durationSec === null) {
-        return { canStart: false, reason: 'previousProgramExtending' };
+        // 放送時間未定の前番組でも、EIT の更新を取りこぼすと次番組が始まっても
+        // 永久に録画を開始できない。開始ゲートの上限を録画取り逃し防止の安全弁
+        // として適用する。
+        return input.elapsedMs >= input.config.timeoutMs
+            ? { canStart: true, reason: 'timeout' }
+            : { canStart: false, reason: 'previousProgramExtending' };
     }
 
     return input.elapsedMs >= input.config.timeoutMs
@@ -113,7 +120,7 @@ const decidePreviousProgram = (present: EitPresentEvent, input: StartGateInput):
  *
  * 判断がつかないまま待ち続けると録り逃すため、EIT[p/f] を読めない場合と
  * 尺の確定した別番組が流れ続けている場合は timeoutMs を過ぎたら開始する (安全側に倒す)。
- * ただし放送時間未定 (延長中) の番組が流れている間は待ち続ける
+ * ただし放送時間未定 (延長中) の番組が流れている間も、上限を過ぎたら開始する
  * @param input: StartGateInput
  * @return StartGateDecision
  */
@@ -123,6 +130,46 @@ export const decideRecordingStart = (input: StartGateInput): StartGateDecision =
     }
 
     const present = input.present;
+    const following = input.following ?? null;
+    // タイムアウトは EIT を読めない場合の安全弁だが、予約時刻より前に
+    // 録画を始めてよいという意味ではない。準備開始直後に timeoutMs=0
+    // などが指定されても、時刻指定予約の開始マージンまでは待つ。
+    const isBeforeRecordingStartMargin =
+        input.eventId === null &&
+        input.currentAt !== undefined &&
+        input.recordingStartMarginMs !== undefined &&
+        input.currentAt < input.reserveStartAt - input.recordingStartMarginMs;
+    if (isBeforeRecordingStartMargin === true) {
+        return { canStart: false, reason: 'waitingForStartMargin' };
+    }
+
+    if (
+        input.eventId === null &&
+        following !== null &&
+        following.startAt !== null &&
+        input.currentAt !== undefined &&
+        following.startAt > input.currentAt + (input.recordingStartMarginMs ?? 0)
+    ) {
+        return {
+            canStart: false,
+            reason: present?.durationSec === null ? 'previousProgramExtending' : 'previousProgram',
+        };
+    }
+
+    // ARIB TR-B14 は番組開始を following の start_time で判定する。
+    // present が前番組のままでも、following が予約番組を示していれば
+    // EIT[p/f] の present 更新を待って録画開始を遅らせない。
+    if (
+        input.eventId === null &&
+        following !== null &&
+        following.startAt !== null &&
+        following.startAt >= input.reserveStartAt - input.config.startMarginMs &&
+        input.currentAt !== undefined &&
+        input.currentAt >= following.startAt - (input.recordingStartMarginMs ?? 0)
+    ) {
+        return { canStart: true, reason: 'startTimeReached' };
+    }
+
     if (present === null) {
         // EIT[p/f] がまだ読めていない。上限を過ぎたら開始する
         return input.elapsedMs >= input.config.timeoutMs

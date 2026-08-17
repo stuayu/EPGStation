@@ -48,6 +48,13 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### EPG 追従・予約・録画実行
 
+- ARIB TR-B14 の EIT[p/f] 運用に合わせ、時刻指定予約の録画開始判定で following の start_time も利用し、present 更新前の録画開始遅延を防ぐようにした
+- 録画開始判定用の EIT[p/f] で current_next_indicator と CRC-32 を検証し、未適用または破損したSIを開始判定に使わないようにした
+
+- 前番組の放送時間が未定で EIT の更新を取りこぼした場合でも、開始ゲートの上限後に次番組の録画を開始して録り逃しを防ぐようにした
+
+- 時刻指定予約の録画開始ゲートで、EIT を読めない場合の timeout が録画準備直後に発火しても、予約時刻の開始マージンより前に録画を開始しないようにした
+
 - 録画開始ゲートを EDCB の事前チューナー準備・event_id 判定に合わせた
 - `programId` 予約の録画開始判定を Mirakurun の `TSFilter(eventId)` と整合させた
 - 前番組の延長中に録画が始まって前番組が録れてしまうのを防いだ (EIT[p/f] による録画開始ゲート)
@@ -749,8 +756,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 - **前番組の延長中に録画が始まって前番組が録れてしまうのを防いだ (EIT[p/f] による録画開始ゲート)**
     - **背景**: programId 予約は Mirakurun が EIT[p/f] で対象イベントが present になるまでデータを流さないため問題にならないが、**時刻指定予約はチャンネルストリームを使う**ので予定時刻から即データが流れる。前番組が「放送時間未定」(ARIB の duration = 0xFFFFFF) で延長していると、その前番組が録画ファイルとして残り、録画詳細も作られてしまっていた
-    - **EIT[p/f] を録画側でも読む**: `EitPresentParser` (`src/model/operator/recording/`) が録画ストリームから EIT[p/f] present (PID 0x12 / table_id 0x4E / section 0) を取り出し、放送中の番組の `eventId` / 開始時刻 / 番組長を返す。`BitParser` と同じくパケット分解とセクション組み立てだけを自前で行う (aribts の TsSectionParser は録画経路に挟むには重い)
-    - **開始判定**: `RecordingStartGate` (`decideRecordingStart()`) が「いま流れているのが予約した番組か」を判断する。programId 予約は `eventId` の一致、時刻指定予約は present の開始時刻が予約開始時刻 (既定 2 分のマージン込み) 以降かで見る。**放送時間未定の番組が流れている間は延長中とみなして待つ**
+    - **EIT[p/f] を録画側でも読む**: `EitPresentParser` (`src/model/operator/recording/`) が録画ストリームから EIT[p/f] present/following (PID 0x12 / table_id 0x4E / section 0/1) を取り出し、放送中の番組の `eventId` / 開始時刻 / 番組長を返す。`current_next_indicator` と CRC-32 も検証し、現在有効でない断片や破損した断片を開始判定に使わない
+    - **開始判定**: `RecordingStartGate` (`decideRecordingStart()`) が「いま流れているのが予約した番組か」を判断する。programId 予約は `eventId` の一致、時刻指定予約はまず following の `start_time` を使い、following が未到着の場合だけ present の開始時刻をフォールバックとして使う (既定 2 分のマージン込み)。**放送時間未定の番組が流れている間は延長中とみなして待つ**
     - **待っている間のデータは捨てる**: `RecorderModel.doRecord()` はゲートを通るまで録画ファイルを作らず pipe もしない (ゲート通過までストリームは `pause()` しておく)。そのため前番組は録画ファイルにも録画一覧にも残らない
     - **録り逃さないための安全弁**: EIT[p/f] を読めないまま `startGateTimeoutMs` (既定 60 秒) を過ぎたら録画を開始する。予約終了時刻を過ぎても始まらない場合は `WaitingForEventStart` として従来の再試行 (最大 3 時間待ち) へ回す。待機中は予約の「追従中」表示が点く
     - **設定**: `config.yml` の `recording` に `startGateEnabled` (既定 true) / `startGateTimeoutMs` / `startGateStartMarginMs` を追加した

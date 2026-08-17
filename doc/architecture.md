@@ -141,8 +141,8 @@ sequenceDiagram
     Note over O: 予約時刻になったら録画開始
 
     O->>M: program stream 要求 (programId 予約)
-    M-->>R: 対象イベントが present になってから TS が流れ始める
-    R->>R: 録画開始ゲート (EIT[p/f] を見て前番組を録らない)
+    M-->>R: programId は対象イベントが present になってから、時刻指定は予約時刻から TS が流れ始める
+    R->>R: 録画開始ゲート (EIT[p/f] following/present と event_id を検証)
     R->>R: TS をファイルへ書き出し
     R->>O: 録画完了
 

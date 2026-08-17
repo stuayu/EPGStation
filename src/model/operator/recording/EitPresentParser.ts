@@ -1,5 +1,7 @@
+import * as aribts from 'aribts';
+
 /**
- * 現在放送中の番組 (EIT[p/f] present) 1 件分
+ * EIT[p/f] の present または following 1 件分
  */
 export interface EitPresentEvent {
     serviceId: number;
@@ -8,14 +10,16 @@ export interface EitPresentEvent {
     startAt: number | null;
     // 番組長 (秒)。**放送時間未定 (ARIB の 0xFFFFFF) の場合は null** = 延長の可能性あり
     durationSec: number | null;
+    // section_number = 1 は EIT[p/f] following。未指定は既存の present テスト互換用。
+    isFollowing?: boolean;
 }
 
 /**
- * 録画中の TS から EIT[p/f] present (PID 0x12 / table_id 0x4E / section 0) を取り出すパーサ。
+ * 録画中の TS から EIT[p/f] (PID 0x12 / table_id 0x4E / section 0, 1) を取り出すパーサ。
  *
  * 「予約した番組が本当に始まったか」を録画側で判断するために使う。
  * 時刻指定予約 (Mirakurun のチャンネルストリーム) は予定時刻になった瞬間からデータが流れるため、
- * 前番組が延長していると前番組を録ってしまう。EIT[p/f] の present を読めば
+ * 前番組が延長していると前番組を録ってしまう。EIT[p/f] の present/following を読めば
  * 「いま流れているのが何の番組か」「その番組の放送時間が未定 (= 延長しうる) か」が分かる。
  *
  * aribts の TsSectionParser はストリーム全体を扱うため録画経路に挟むには重い。
@@ -38,7 +42,7 @@ export default class EitPresentParser {
     private sectionLength = 0;
 
     /**
-     * TS のチャンクを流し込み、解析できた present の番組情報を返す
+     * TS のチャンクを流し込み、解析できた present / following の番組情報を返す
      * @param chunk: Buffer TS データ (188 byte 境界でなくてもよい)
      * @return EitPresentEvent[] このチャンクで解析できたもの
      */
@@ -194,9 +198,14 @@ export default class EitPresentParser {
             return null;
         }
 
+        // EIT の section は current_next_indicator=1 の現行情報だけを採用し、
+        // CRC-32 が正しいものだけを録画開始判定へ渡す。
+        if ((section[5] & 0x01) === 0 || aribts.TsCrc32.calc(section) !== 0) {
+            return null;
+        }
+
         const sectionNumber = section[6];
-        if (sectionNumber !== 0) {
-            // section 0 = present (1 = following)
+        if (sectionNumber !== 0 && sectionNumber !== 1) {
             return null;
         }
 
@@ -212,6 +221,7 @@ export default class EitPresentParser {
             startAt: startAt,
             durationSec:
                 duration === EitPresentParser.UNDEFINED_DURATION ? null : EitPresentParser.decodeBcdDuration(event, 7),
+            isFollowing: sectionNumber === 1,
         };
     }
 
