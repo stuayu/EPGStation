@@ -148,7 +148,8 @@ export const decideRecordingStart = (input: StartGateInput): StartGateDecision =
         following !== null &&
         following.startAt !== null &&
         input.currentAt !== undefined &&
-        following.startAt > input.currentAt + (input.recordingStartMarginMs ?? 0)
+        following.startAt > input.currentAt + (input.recordingStartMarginMs ?? 0) &&
+        input.elapsedMs < input.config.timeoutMs
     ) {
         return {
             canStart: false,

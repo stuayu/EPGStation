@@ -182,6 +182,21 @@ test('following の開始時刻が繰り下がった場合は実際の開始時�
     assert.equal(decision.reason, 'previousProgramExtending');
 });
 
+test('following が将来を示していてもゲート上限後は録画を開始する', () => {
+    const decision = decideRecordingStart({
+        eventId: null,
+        reserveStartAt: 1_000_000,
+        present: { serviceId: 1, eventId: 99, startAt: 900_000, durationSec: 600 },
+        following: { serviceId: 1, eventId: 100, startAt: 1_200_000, durationSec: 600, isFollowing: true },
+        currentAt: 1_000_000,
+        elapsedMs: 60_000,
+        recordingStartMarginMs: 1_000,
+        config: { ...config, timeoutMs: 60_000, startMarginMs: 0 },
+    });
+
+    assert.deepEqual(decision, { canStart: true, reason: 'timeout' });
+});
+
 test('放送時間未定の前番組でも開始ゲートの上限後は録画を開始する', () => {
     const decision = decideRecordingStart({
         eventId: null,
