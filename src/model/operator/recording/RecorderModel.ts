@@ -26,7 +26,12 @@ import IReserveEvent from '../../event/IReserveEvent';
 import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
 import EitPresentParser, { EitPresentEvent } from './EitPresentParser';
-import { decideRecordingRetry, RecordingRetryReason, resolveRecordingRetryConfig } from './RecordingRetryPolicy';
+import {
+    decideRecordingRetry,
+    getFirstDataWaitTimeoutMs,
+    RecordingRetryReason,
+    resolveRecordingRetryConfig,
+} from './RecordingRetryPolicy';
 import { decideRecordingStart, resolveRecordingStartGateConfig } from './RecordingStartGate';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
@@ -64,6 +69,8 @@ class RecorderModel implements IRecorderModel {
     private videoFileId: apid.VideoFileId | null = null;
     private videoFileFullPath: string | null = null;
     private timerId: NodeJS.Timeout | null = null;
+    // 録画準備失敗後の再試行待ちタイマー。準備中のキャンセルと区別する
+    private prepRetryTimerId: NodeJS.Timeout | null = null;
     // 番組開始待ちの起点 (ms)。チューナー異常のリトライ回数とは別に数える
     private waitingForEventSince: number | null = null;
     // チューナー異常など、待っても直らない可能性がある失敗の回数
@@ -74,6 +81,9 @@ class RecorderModel implements IRecorderModel {
     private isStopPrepRec: boolean = false;
     private isNeedDeleteReservation: boolean = true;
     private isPrepRecording: boolean = false;
+    private isPrepRecordInFlight: boolean = false;
+    // 世代が変わった準備チェーンは、遅れて完了しても再試行や失敗通知を行わない
+    private prepGeneration: number = 0;
     private isRecording: boolean = false;
     private isPlanToDelete: boolean = false;
     private isCanceledCallingFinished: boolean = false; // mirakurun の stream の終了検知をキャンセルするか
@@ -149,7 +159,16 @@ class RecorderModel implements IRecorderModel {
      * @return boolean セットに成功したら true を返す
      */
     public setTimer(reserve: Reserve, isSuppressLog: boolean): boolean {
+        const generation = ++this.prepGeneration;
         this.reserve = reserve;
+
+        if (this.prepRetryTimerId !== null) {
+            clearTimeout(this.prepRetryTimerId);
+            this.prepRetryTimerId = null;
+        }
+        this.isStopPrepRec = false;
+        this.errorRetryCount = 0;
+        this.waitingForEventSince = null;
 
         // 除外, 重複しているものはタイマーをセットしない
         if (this.reserve.isSkip === true || this.reserve.isOverlap === true) {
@@ -176,6 +195,9 @@ class RecorderModel implements IRecorderModel {
             this.log.system.info(`set timer: ${this.reserve.id}, ${time}`);
         }
         this.timerId = setTimeout(async () => {
+            if (generation !== this.prepGeneration) {
+                return;
+            }
             try {
                 this.prepRecord();
             } catch (err: any) {
@@ -190,6 +212,9 @@ class RecorderModel implements IRecorderModel {
      * 録画準備
      */
     private async prepRecord(retry: number = 0): Promise<void> {
+        const generation = this.prepGeneration;
+        let prepStream: http.IncomingMessage | null = null;
+
         // 番組開始待ちの起点。予定開始時刻とこの時点の遅い方から数える
         // (EPG 更新で予約時刻が動いた場合に待ち直せるようにする)
         if (this.waitingForEventSince === null) {
@@ -206,6 +231,7 @@ class RecorderModel implements IRecorderModel {
         this.log.system.info(`preprec: ${this.reserve.id}`);
 
         this.isPrepRecording = true;
+        this.isPrepRecordInFlight = true;
         this.isRecording = false;
         this.isPlanToDelete = false;
 
@@ -220,27 +246,42 @@ class RecorderModel implements IRecorderModel {
             // NOTE: mirakurunの不具合に対処
             if (this.reserve.programId) {
                 const program = await this.programDB.findId(this.reserve.programId);
+                if (this.isObsoletePrepChain(generation, prepStream) === true) {
+                    return;
+                }
                 if (program === null) {
                     this.log.system.warn(
                         `the program data does not found in database. retry later, (reerveId: ${this.reserve.id}, programId: ${this.reserve.programId})`,
                     );
-                    this.emitCancelEvent();
-                    return;
+                    throw new Error(RecorderModel.WAITING_FOR_EVENT_ERROR);
                 }
             }
 
             this.abortController = new AbortController();
             this.stream = await this.streamCreator.create(this.reserve, this.abortController.signal);
+            prepStream = this.stream;
+            if (this.isObsoletePrepChain(generation, prepStream) === true) {
+                return;
+            }
 
             // 録画準備のキャンセル or ストリーム取得中に予約が削除されていないかチェック
             if ((await this.reserveDB.findId(this.reserve.id)) === null) {
+                if (this.isObsoletePrepChain(generation, prepStream) === true) {
+                    return;
+                }
                 this.log.system.error(`canceled preprec: ${this.reserve.id}`);
                 this.destroyStream();
                 this.emitCancelEvent();
             } else {
                 await this.doRecord();
+                if (this.isObsoletePrepChain(generation, prepStream) === true) {
+                    return;
+                }
             }
         } catch (err: any) {
+            if (this.isObsoletePrepChain(generation, prepStream) === true) {
+                return;
+            }
             if ((this.isStopPrepRec as any) === true) {
                 this.destroyStream();
                 this.emitCancelEvent();
@@ -264,6 +305,9 @@ class RecorderModel implements IRecorderModel {
                 // 前番組の延長などで EIT[p/f] がまだ present になっていない状態。
                 // 画面に「追従中」と出せるように予約へ記録する
                 await this.setFollowingSchedule(true);
+                if (this.isObsoletePrepChain(generation, prepStream) === true) {
+                    return;
+                }
                 this.log.system.info(
                     `waiting for the program to start: reserveId: ${this.reserve.id},` +
                         ` programId: ${this.reserve.programId},` +
@@ -278,7 +322,11 @@ class RecorderModel implements IRecorderModel {
             }
 
             if (decision.retry === true) {
-                setTimeout(() => {
+                this.prepRetryTimerId = setTimeout(() => {
+                    if (generation !== this.prepGeneration) {
+                        return;
+                    }
+                    this.prepRetryTimerId = null;
                     this.prepRecord(retry + 1);
                 }, decision.delayMs);
             } else {
@@ -294,7 +342,10 @@ class RecorderModel implements IRecorderModel {
                 this.recordingEvent.emitPrepRecordingFailed(this.reserve);
             }
         } finally {
-            this.abortController = null;
+            if (generation === this.prepGeneration) {
+                this.abortController = null;
+                this.isPrepRecordInFlight = false;
+            }
         }
     }
 
@@ -302,6 +353,7 @@ class RecorderModel implements IRecorderModel {
      * 録画準備キャンセル完了時に発行するイベント
      */
     private emitCancelEvent(): void {
+        ++this.prepGeneration;
         this.isStopPrepRec = false;
         this.isPrepRecording = false;
         this.isRecording = false;
@@ -366,6 +418,51 @@ class RecorderModel implements IRecorderModel {
                 this.log.system.error(err);
             });
         }
+    }
+
+    /**
+     * 世代が無効になった準備チェーンのストリームだけを破棄する
+     * @param prepStream: http.IncomingMessage | null 無効なチェーンが取得したストリーム
+     */
+    private destroyObsoletePrepStream(prepStream: http.IncomingMessage | null): void {
+        if (prepStream === null) {
+            return;
+        }
+
+        try {
+            prepStream.destroy();
+            prepStream.push(null);
+            prepStream.removeAllListeners('data');
+            if (this.stream === prepStream) {
+                this.stream = null;
+            }
+        } catch (err: any) {
+            this.log.system.error(`destroy obsolete stream error: ${this.reserve.id}`);
+            this.log.system.error(err);
+        }
+    }
+
+    /**
+     * 予約の再スケジュールやキャンセルで世代が変わった準備チェーンを終了させる。
+     *
+     * 世代が変わった後の遅れた完了で再試行タイマーを張り直すと、新しいスケジュールと
+     * 並走して同じ予約の録画準備が二重に走るため、掴んだストリームだけ片付けて黙って終える。
+     * キャンセル待ちが居る場合はここで完了を通知する
+     * @param generation: number チェーン開始時の世代
+     * @param prepStream: http.IncomingMessage | null チェーンが取得したストリーム
+     * @return boolean 世代が変わっていて終了すべき場合は true
+     */
+    private isObsoletePrepChain(generation: number, prepStream: http.IncomingMessage | null): boolean {
+        if (generation === this.prepGeneration) {
+            return false;
+        }
+
+        this.destroyObsoletePrepStream(prepStream);
+        if (this.isStopPrepRec === true) {
+            this.emitCancelEvent();
+        }
+
+        return true;
     }
 
     /**
@@ -568,9 +665,9 @@ class RecorderModel implements IRecorderModel {
 
         const gateConfig = resolveRecordingStartGateConfig(this.config.recording);
         const retryConfig = resolveRecordingRetryConfig(this.config.recording);
-        // Mirakurun の program id は (networkId * 65536 + serviceId) * 65536 + eventId、
+        // Mirakurun の program id は networkId * 10^10 + serviceId * 10^5 + eventId、
         // channel id は networkId * 100000 + serviceId で作られている
-        const eventId = this.reserve.programId === null ? null : this.reserve.programId % 0x10000;
+        const eventId = this.reserve.programId === null ? null : this.reserve.programId % 100000;
         const serviceId = this.reserve.channelId % 100000;
 
         return new Promise<void>((resolve, reject) => {
@@ -583,11 +680,19 @@ class RecorderModel implements IRecorderModel {
             let startGateTimerId: NodeJS.Timeout | null = null;
             let startGateTimedOut = false;
 
-            // データが 1 バイトも来ない場合は従来どおり「まだ始まっていない」として再試行へ回す
+            // 時刻指定予約だけは、ストリームを開いてもデータが来ない異常を短時間で検知する。
+            // programId 予約は Mirakurun が対象 event_id までデータを止めるため、予約終了時刻
+            // (または開始待ち上限) まで同じストリームを保持する。
+            const firstDataTimeoutMs = getFirstDataWaitTimeoutMs({
+                eventId,
+                reserveEndAt: this.reserve.endAt,
+                now: new Date().getTime(),
+                config: retryConfig,
+            });
             const firstDataTimerId = setTimeout(() => {
                 cleanup();
                 reject(new Error(RecorderModel.WAITING_FOR_EVENT_ERROR));
-            }, retryConfig.firstDataTimeoutMs);
+            }, firstDataTimeoutMs);
 
             const cleanup = (): void => {
                 clearTimeout(firstDataTimerId);
@@ -595,6 +700,9 @@ class RecorderModel implements IRecorderModel {
                     clearTimeout(startGateTimerId);
                 }
                 stream.removeListener('data', onData);
+                stream.removeListener('close', onStreamClosed);
+                stream.removeListener('end', onStreamClosed);
+                stream.removeListener('error', onStreamClosed);
                 // リスナーを外しただけでは流れ続けてデータを取りこぼすため、
                 // 録画の書き込み (pipe) を始めるまで止めておく
                 stream.pause();
@@ -686,6 +794,11 @@ class RecorderModel implements IRecorderModel {
                 decideStart();
             };
 
+            const onStreamClosed = (): void => {
+                cleanup();
+                reject(new Error(RecorderModel.WAITING_FOR_EVENT_ERROR));
+            };
+
             if (gateConfig.enabled === true && eventId === null) {
                 // データが届き続けても EIT[p/f] の判定が変わらない場合に備える
                 const startMarginAt = this.reserve.startAt - this.config.timeSpecifiedStartMargin * 1000;
@@ -697,6 +810,9 @@ class RecorderModel implements IRecorderModel {
             }
 
             stream.on('data', onData);
+            stream.once('close', onStreamClosed);
+            stream.once('end', onStreamClosed);
+            stream.once('error', onStreamClosed);
         });
     }
 
@@ -1069,6 +1185,7 @@ class RecorderModel implements IRecorderModel {
      * 予約のキャンセル
      */
     private async _cancel(): Promise<void> {
+        ++this.prepGeneration;
         if (this.isPrepRecording === false && this.isRecording === false) {
             // 録画処理が開始されていない
             if (this.timerId !== null) {
@@ -1077,10 +1194,30 @@ class RecorderModel implements IRecorderModel {
         } else if (this.isPrepRecording === true) {
             this.log.system.info(`cancel preprec: ${this.reserve.id}`);
 
+            // まだ非同期処理を実行しておらず、再試行タイマーを待っているだけなら、
+            // CANCEL_EVENT を待つ相手がいない。ここでタイマーを破棄して即時完了する。
+            if (this.isPrepRecordInFlight === false && this.prepRetryTimerId !== null) {
+                clearTimeout(this.prepRetryTimerId);
+                this.prepRetryTimerId = null;
+                this.isPlanToDelete = false;
+                this.emitCancelEvent();
+
+                return;
+            }
+
             // 録画準備中
             return new Promise<void>((resolve: () => void, reject: (err: Error) => void) => {
                 // タイムアウト設定
                 const timerId = setTimeout(() => {
+                    this.isStopPrepRec = true;
+                    if (this.abortController !== null) {
+                        this.abortController.abort();
+                    }
+                    this.destroyStream();
+                    this.isPrepRecording = false;
+                    this.isPrepRecordInFlight = false;
+                    ++this.prepGeneration;
+                    this.isStopPrepRec = false;
                     reject(new Error('PrepRecCancelTimeoutError'));
                 }, 60 * 1000);
 

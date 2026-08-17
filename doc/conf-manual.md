@@ -522,7 +522,7 @@ Mirakurun は EIT[p/f] で対象の番組が現在番組になるまでデータ
 | ------------------------ | ------- | ---- | ------------------------------------------------------------------------------------------ |
 | startWaitLimitMs         | number  | no   | 番組開始を待つ上限 (ms)。省略時 3 時間。**0 で待たない**                                   |
 | startWaitIntervalMs      | number  | no   | 開始待ち中の再試行間隔 (ms)。省略時 60000                                                  |
-| firstDataTimeoutMs       | number  | no   | 最初のデータを待つ時間 (ms)。省略時 5000。超えたら「まだ始まっていない」と判断する         |
+| firstDataTimeoutMs       | number  | no   | 最初のデータを待つ時間 (ms)。省略時 5000。時刻指定予約ではこの時間で異常判定し、programId 予約では Mirakurun のストリームを予約終了時刻または `startWaitLimitMs` まで保持する際の待ち時間の下限として使う |
 | errorFastRetryCount      | number  | no   | チューナー異常時に短い間隔で再試行する回数。省略時 3                                       |
 | errorFastRetryIntervalMs | number  | no   | 同・間隔 (ms)。省略時 5000                                                                 |
 | errorRetryCount          | number  | no   | その後、長い間隔で再試行する回数。省略時 27                                                |
@@ -548,6 +548,7 @@ recording:
 - 値が範囲外・不正な場合は既定値へ丸めるため、設定ミスで録画が動かなくなることはない
 - 野球中継などの長い延長に備える場合は `startWaitLimitMs` を延ばす
 - `startGateEnabled` は**時刻指定予約で効く**。時刻指定予約はチャンネルストリームを使うため予定時刻から即データが流れ、前番組が延長していると前番組を録ってしまう。EIT[p/f] following の `start_time` を優先し、present 更新前でも目的の番組の開始を判断する。その間のデータは捨てる (録画ファイルにも残らない)。EIT[p/f] を読めないまま `startGateTimeoutMs` を過ぎた場合は録り逃さないよう録画を開始する
+- programId 予約は Mirakurun の `TSFilter(eventId)` が EIT[p] の対象 event_id 一致までデータを出さないため、EPGStation はストリームを開いたまま最初のデータを待つ。5 秒で捨てて開き直すことはしない。待機中に Mirakurun が `close` / `end` / `error` でストリームを閉じた場合は再試行し、予約終了時刻まで始まらない場合も再試行する。この待機中は同じチャンネルのチューナーを保持する
 
 ---
 

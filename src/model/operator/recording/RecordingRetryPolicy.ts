@@ -31,6 +31,13 @@ export interface RecordingRetryConfig {
     errorRetryIntervalMs: number;
 }
 
+export interface FirstDataWaitTimeoutInput {
+    eventId: number | null;
+    reserveEndAt: number;
+    now: number;
+    config: RecordingRetryConfig;
+}
+
 export const DEFAULT_RECORDING_RETRY_CONFIG: Readonly<RecordingRetryConfig> = Object.freeze({
     // 野球中継の延長などを見込んで既定 3 時間まで待つ
     startWaitLimitMs: 3 * 60 * 60 * 1000,
@@ -70,6 +77,26 @@ export const resolveRecordingRetryConfig = (value: unknown): RecordingRetryConfi
         errorRetryCount: clamp(source.errorRetryCount, d.errorRetryCount, 0, 1000),
         errorRetryIntervalMs: clamp(source.errorRetryIntervalMs, d.errorRetryIntervalMs, 1000, 60 * 60 * 1000),
     };
+};
+
+/**
+ * ストリームから最初のデータを待つ時間を決める。
+ * programId 予約は Mirakurun が対象 event_id までデータを止めるため、
+ * 短い firstDataTimeoutMs でストリームを開き直してはならない。
+ * startWaitLimitMs や予約終了時刻までの残り時間が短い場合でも、
+ * programId 予約は firstDataTimeoutMs を下限として待つ。
+ * @param input: FirstDataWaitTimeoutInput
+ * @return number 待ち時間 (ms)
+ */
+export const getFirstDataWaitTimeoutMs = (input: FirstDataWaitTimeoutInput): number => {
+    if (input.eventId === null) {
+        return input.config.firstDataTimeoutMs;
+    }
+
+    return Math.max(
+        input.config.firstDataTimeoutMs,
+        Math.min(input.config.startWaitLimitMs, input.reserveEndAt - input.now),
+    );
 };
 
 export interface RetryDecisionInput {

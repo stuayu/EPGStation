@@ -155,7 +155,8 @@ npm run recover-channel-name   # 過去の録画の放送局名を復元 (既定
 - **クライアントへの通知は 2 系統**: `updateOnAirProgram` (`channelIds`、EIT[p/f] 相当。視聴画面・放映中一覧) と `updateProgram` (`{ channelIds, startAt, endAt }`、変更のあった時間帯そのもの。番組表)。全体更新 (`updateStatus`) と分けているのは 10 秒周期で飛びうるため
 - **予約も同じ通知で追従する**: `updateOnAirReserves()` (その局の現在〜15 分先の programId 予約) と `updateReservesByProgramIds()` (放送が何時間先でも追従)。番組 id が 1000 件を超える更新では id を載せず周期的な全体更新に任せる
 - **録画開始ゲート**: 時刻指定予約は録画準備時にチャンネルストリームを先に開き、`EitPresentParser` + `RecordingStartGate` が待機中から EIT[p/f] following/present を読む。following の `start_time` を先に使い、present 更新前でも対象番組の開始を判断する。**予約した番組が始まるまで録画ファイルを作らない** (既定 60 秒で諦めて録り始める)。設定は `recording.startGate*`。**programId 予約は event_id 不一致のまま開始しない** (EDCB のぴったり録画と同じく一致を優先)。時刻指定予約では EIT を先に検出しても `timeSpecifiedStartMargin` までは録画開始を待ち、流れている番組の尺が未定 (`durationSec === null`) なら延長中として待ち続ける。尺が確定した別番組が続く場合や EIT を読めない場合だけ timeout 後に開始する
-- **録画開始・終了は EIT[p/f] 追従**: programId 予約は Mirakurun の program stream を使い、`TSFilter(eventId)` が対象イベントを present にするまでデータを流さない。EPGStation は Mirakurun からの最初のデータ到着を開始条件として二重待機を避ける。前番組の延長中は「まだ始まっていない」だけなので `RecordingRetryPolicy` が既定 3 時間待つ。**停止に `reserve.endAt` を使わない**
+- **programId 予約の開始待ち**: Mirakurun の `TSFilter(eventId)` が EIT[p] の対象 event_id 一致までデータを出さないため、EPGStation はストリームを開いたまま最初のデータを待つ。`firstDataTimeoutMs` の 5 秒でストリームを捨てて開き直すことはしない。待機上限は予約終了時刻または `startWaitLimitMs` の早い方で、Mirakurun から `close` / `end` / `error` が来た場合は再試行する。待機中は同じチャンネルのチューナーを保持する
+- **録画開始・終了は EIT[p/f] 追従**: programId 予約は Mirakurun の program stream を使い、`TSFilter(eventId)` が対象イベントを present にするまでデータを流さない。EPGStation は Mirakurun からの最初のデータ到着を開始条件として二重待機を避ける。前番組の延長中は「まだ始まっていない」だけなので `RecordingRetryPolicy` が既定 3 時間待つ。予約更新・キャンセルで再試行待ちを中断した場合は timer と追従状態をリセットし、古い recorder が次の予約を妨げない。**停止に `reserve.endAt` を使わない**
 - **ログで追える**: EIT[p/f] の受信・予約の再スケジュール・録画側の時刻変更を「変更前 → 変更後」の時刻付き info で出す (整形は `src/util/ProgramTimeLog.ts`)。クライアントへの通知も Operator / Service の両方で接続クライアント数付きの info を出す
 
 ### シリーズ判定
