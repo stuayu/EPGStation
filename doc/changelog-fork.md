@@ -1100,6 +1100,11 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
     - **設定で外出し**: `config.yml` の `recording` (`startWaitLimitMs` / `startWaitIntervalMs` / `firstDataTimeoutMs` / `errorFastRetryCount` / `errorFastRetryIntervalMs` / `errorRetryCount` / `errorRetryIntervalMs`)。サーバー設定 > 設定ファイルタブの「録画開始のリトライ」からも編集できる。`RecorderModel` は予約ごとに生成され都度 config を読むため**再起動不要**。`startWaitLimitMs: 0` で従来相当の挙動に戻せる
     - **あわせて判明した既存不具合 (修正済み)**: 放送時刻未定の番組**自体を予約**した場合、`endAt = startAt + 1ms` のため `setTimer()` の `now >= reserve.endAt` が成立し、**タイマーを張らずに録画されなかった**。`resolveEndAt` の導入 (暫定 3 時間) で解消済み
 
+- **Issue #13 の再修正: 前番組追従中の録画取りこぼしと programId の開始遅延を解消した**
+    - **症状**: 録画準備の再試行待ち中に予約が EIT[p/f] 追従で更新されると、キャンセルが `CANCEL_EVENT` を待ったまま固まり、60 秒後に `isStopPrepRec` が残って録画を開始しないことがあった。また programId 予約は最初のデータを 5 秒で捨て、次の試行まで 60 秒待つため、正常な番組でも先頭を取り逃していた
+    - **対処**: `RecorderModel` が再試行 timer を保持してキャンセル時に破棄し、再試行待ちと非同期準備中を分離した。再スケジュール時は stop 状態・エラー回数・待機起点を初期化する。準備チェーンを世代管理し、キャンセルや再スケジュール後に古いチェーンが再試行・失敗通知・エラー回数更新を行わないよう無効化する。programId 予約は Mirakurun の `TSFilter(eventId)` が対象 event_id まで出力を止める仕様に合わせ、ストリームを予約終了時刻または開始待ち上限まで保持する。時刻指定予約を含むすべての予約で `close` / `end` / `error` を検知し、待機中のストリーム断を既存の再試行へ回す
+    - **併修**: Mirakurun の 10 進桁連結による program id から event_id を `% 100000` で取り出すよう修正し、DB 上で番組情報が一時的に消えた場合も「後で再試行」する経路へ戻した
+
 - **設定ファイルが無い場合に自動生成するようにした (ログ設定・enc.js)**
     - **これまでの状態**: `config.yml` は `Configuration.ensureConfigFile()` がテンプレートから自動生成していたが、**ログ設定 (`operatorLogConfig.yml` / `serviceLogConfig.yml` / `epgUpdaterLogConfig.yml`) は自動生成されず、無いと `process.exit(1)` で起動できなかった** (`log file is not found`)。手順書の `cp` を 1 つ忘れただけで起動しない、非対称な状態だった
     - **ログ設定の自動生成**: `LoggerModel` が `<name>.yml` を探し、無ければ同梱の `<name>.sample.yml` からコピーする。Operator / Service / EPGUpdater が同時に起動しても壊れないよう、`config.yml` と同じく排他作成 (`COPYFILE_EXCL`) を使い `EEXIST` は正常として扱う

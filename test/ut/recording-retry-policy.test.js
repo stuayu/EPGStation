@@ -4,6 +4,7 @@ const test = require('node:test');
 const {
     DEFAULT_RECORDING_RETRY_CONFIG,
     decideRecordingRetry,
+    getFirstDataWaitTimeoutMs,
     resolveRecordingRetryConfig,
 } = require('../../dist/model/operator/recording/RecordingRetryPolicy');
 
@@ -98,5 +99,75 @@ test('waiting can be disabled to get the previous behaviour', () => {
     assert.equal(
         decideRecordingRetry({ reason: 'waitingForEvent', errorRetryCount: 0, waitedMs: 0, config: resolved }).retry,
         false,
+    );
+});
+
+test('programId 予約は最初のデータを開始待ち上限または予約終了まで待つ', () => {
+    const now = Date.parse('2026-08-17T21:00:00+09:00');
+    assert.equal(
+        getFirstDataWaitTimeoutMs({
+            eventId: 123,
+            reserveEndAt: now + 90 * MINUTE,
+            now,
+            config,
+        }),
+        90 * MINUTE,
+    );
+    assert.equal(
+        getFirstDataWaitTimeoutMs({
+            eventId: 123,
+            reserveEndAt: now + 4 * 60 * MINUTE,
+            now,
+            config,
+        }),
+        config.startWaitLimitMs,
+    );
+});
+
+test('programId 予約は startWaitLimitMs が 0 でも firstDataTimeoutMs は待つ', () => {
+    const now = Date.parse('2026-08-17T21:00:00+09:00');
+    const zeroWaitConfig = resolveRecordingRetryConfig({ startWaitLimitMs: 0 });
+    assert.equal(
+        getFirstDataWaitTimeoutMs({
+            eventId: 123,
+            reserveEndAt: now + 90 * MINUTE,
+            now,
+            config: zeroWaitConfig,
+        }),
+        zeroWaitConfig.firstDataTimeoutMs,
+    );
+});
+
+test('programId 予約は予約終了時刻を過ぎても firstDataTimeoutMs は待つ', () => {
+    const now = Date.parse('2026-08-17T21:00:00+09:00');
+    assert.equal(
+        getFirstDataWaitTimeoutMs({
+            eventId: 123,
+            reserveEndAt: now,
+            now,
+            config,
+        }),
+        config.firstDataTimeoutMs,
+    );
+    assert.equal(
+        getFirstDataWaitTimeoutMs({
+            eventId: 123,
+            reserveEndAt: now - MINUTE,
+            now,
+            config,
+        }),
+        config.firstDataTimeoutMs,
+    );
+});
+
+test('時刻指定予約は従来どおり firstDataTimeoutMs で異常判定する', () => {
+    assert.equal(
+        getFirstDataWaitTimeoutMs({
+            eventId: null,
+            reserveEndAt: Number.MAX_SAFE_INTEGER,
+            now: 0,
+            config,
+        }),
+        config.firstDataTimeoutMs,
     );
 });
