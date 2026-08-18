@@ -13,7 +13,12 @@ const config = DEFAULT_RECORDING_RETRY_CONFIG;
 
 test('waiting for a delayed program keeps retrying up to the limit', () => {
     // 前番組が放送時刻未定で延長している間、番組はまだ始まっていない
-    const decision = decideRecordingRetry({ reason: 'waitingForEvent', errorRetryCount: 0, waitedMs: 40 * MINUTE, config });
+    const decision = decideRecordingRetry({
+        reason: 'waitingForEvent',
+        errorRetryCount: 0,
+        waitedMs: 40 * MINUTE,
+        config,
+    });
     assert.equal(decision.retry, true);
     assert.equal(decision.delayMs, config.startWaitIntervalMs);
 });
@@ -89,7 +94,10 @@ test('settings are read from config and clamped to a sane range', () => {
         24 * 60 * MINUTE,
     );
     assert.equal(resolveRecordingRetryConfig({ startWaitIntervalMs: 1 }).startWaitIntervalMs, 1000);
-    assert.equal(resolveRecordingRetryConfig({ firstDataTimeoutMs: 'x' }).firstDataTimeoutMs, config.firstDataTimeoutMs);
+    assert.equal(
+        resolveRecordingRetryConfig({ firstDataTimeoutMs: 'x' }).firstDataTimeoutMs,
+        config.firstDataTimeoutMs,
+    );
     assert.deepEqual(resolveRecordingRetryConfig(undefined), config);
     assert.deepEqual(resolveRecordingRetryConfig(null), config);
 });
@@ -164,6 +172,19 @@ test('時刻指定予約は従来どおり firstDataTimeoutMs で異常判定す
     assert.equal(
         getFirstDataWaitTimeoutMs({
             eventId: null,
+            reserveEndAt: Number.MAX_SAFE_INTEGER,
+            now: 0,
+            config,
+        }),
+        config.firstDataTimeoutMs,
+    );
+});
+
+test('service stream の programId 予約は TS 未到着を transport timeout として判定する', () => {
+    assert.equal(
+        getFirstDataWaitTimeoutMs({
+            eventId: 123,
+            serviceStream: true,
             reserveEndAt: Number.MAX_SAFE_INTEGER,
             now: 0,
             config,

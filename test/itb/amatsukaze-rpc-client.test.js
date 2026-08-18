@@ -7,7 +7,7 @@ const AmatsukazeRpcClient = require('../../dist/model/amatsukaze/AmatsukazeRpcCl
 const HEADER_SIZE = 6;
 const RPC_ON_UI_DATA = 200;
 const RPC_ON_CONSOLE_UPDATE = 201;
-const RPC_REQUEST = 111;
+const RPC_REQUEST = 112;
 const RPC_CHANGE_ITEM = 103;
 
 /**

@@ -335,6 +335,8 @@ export default interface IConfigFile {
     // 録画開始のリトライ方針。
     // 前番組の延長 (放送時刻未定) で開始が遅れている場合と、チューナー異常とを分けて扱う
     recording?: {
+        // programId 予約のストリーム取得方式。既定 service。障害時の切り戻し用に program を残す
+        programStreamMode?: 'program' | 'service';
         // 番組開始を待つ上限 (ms)。既定 3 時間。0 で待たない
         startWaitLimitMs?: number;
         // 開始待ち中の再試行間隔 (ms)。既定 60000
@@ -355,6 +357,8 @@ export default interface IConfigFile {
         startGateTimeoutMs?: number;
         // 放送中の番組の開始時刻が予約開始時刻よりこれ以上前なら「前の番組」とみなす (ms)。既定 120000
         startGateStartMarginMs?: number;
+        // programId 予約で別 event_id が固着した場合の開始期限 (ms)。既定 300000
+        hardStartGateTimeoutMs?: number;
     };
 
     // 録画履歴保存期間

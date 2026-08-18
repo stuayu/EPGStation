@@ -4,8 +4,8 @@
  * 録画開始が失敗する理由は性質の違う 2 つがある。
  *
  * - **番組がまだ始まっていない** (`waitingForEvent`):
- *   Mirakurun は EIT[p/f] で対象の event_id が現在番組になるまでデータを流さない。
- *   前の番組が「放送時刻未定」(ARIB の duration = 0xFFFFFF) で延長している間はこの状態が続く。
+ *   legacy の program stream は EIT[p/f] で対象の event_id が現在番組になるまでデータを流さない。
+ *   service stream の境界待ちは TS 到着後に同一セッションで行う。
  *   これは異常ではなく待つべき状態なので、長時間 (既定 3 時間) 待てるようにする。
  * - **チューナーが開けない・ソケット断など** (`error`):
  *   こちらは復旧しない可能性があるため、従来どおり回数で見切る。
@@ -36,6 +36,8 @@ export interface FirstDataWaitTimeoutInput {
     reserveEndAt: number;
     now: number;
     config: RecordingRetryConfig;
+    // programId 予約でも service stream を使う場合は transport 異常を短時間で切り分ける
+    serviceStream?: boolean;
 }
 
 export const DEFAULT_RECORDING_RETRY_CONFIG: Readonly<RecordingRetryConfig> = Object.freeze({
@@ -81,15 +83,15 @@ export const resolveRecordingRetryConfig = (value: unknown): RecordingRetryConfi
 
 /**
  * ストリームから最初のデータを待つ時間を決める。
- * programId 予約は Mirakurun が対象 event_id までデータを止めるため、
- * 短い firstDataTimeoutMs でストリームを開き直してはならない。
+ * legacy の program stream は対象 event_id までデータを止めるため長く保持するが、
+ * service stream は TS 未到着を transport 異常として firstDataTimeoutMs で判定する。
  * startWaitLimitMs や予約終了時刻までの残り時間が短い場合でも、
  * programId 予約は firstDataTimeoutMs を下限として待つ。
  * @param input: FirstDataWaitTimeoutInput
  * @return number 待ち時間 (ms)
  */
 export const getFirstDataWaitTimeoutMs = (input: FirstDataWaitTimeoutInput): number => {
-    if (input.eventId === null) {
+    if (input.eventId === null || input.serviceStream === true) {
         return input.config.firstDataTimeoutMs;
     }
 

@@ -37,8 +37,7 @@ export default class EitPresentParser {
     private static readonly UNDEFINED_DURATION = 0xffffff;
 
     private remaining: Buffer = Buffer.alloc(0);
-    private sectionBuffer: Buffer[] = [];
-    private sectionSize = 0;
+    private sectionBuffer: Buffer = Buffer.alloc(0);
     private sectionLength = 0;
 
     /**
@@ -65,10 +64,7 @@ export default class EitPresentParser {
             const packet = buffer.subarray(offset, offset + EitPresentParser.TS_PACKET_SIZE);
             offset += EitPresentParser.TS_PACKET_SIZE;
 
-            const event = this.readPacket(packet);
-            if (event !== null) {
-                result.push(event);
-            }
+            result.push(...this.readPacket(packet));
         }
 
         buffer = buffer.subarray(offset);
@@ -80,47 +76,48 @@ export default class EitPresentParser {
     /**
      * TS パケット 1 つを処理する
      * @param packet: Buffer 188 byte の TS パケット
-     * @return EitPresentEvent | null セクションが完成した場合のみ返す
+     * @return EitPresentEvent[] この packet で完成した present / following
      */
-    private readPacket(packet: Buffer): EitPresentEvent | null {
+    private readPacket(packet: Buffer): EitPresentEvent[] {
         if ((packet[1] & 0x80) !== 0) {
             // transport_error_indicator
-            return null;
+            return [];
         }
 
         const pid = ((packet[1] & 0x1f) << 8) | packet[2];
         if (pid !== EitPresentParser.EIT_PID) {
-            return null;
+            return [];
         }
 
         const adaptationFieldControl = (packet[3] & 0x30) >> 4;
         if (adaptationFieldControl === 0b00 || adaptationFieldControl === 0b10) {
-            return null;
+            return [];
         }
 
         let payloadOffset = 4;
         if (adaptationFieldControl === 0b11) {
             payloadOffset += packet[4] + 1;
             if (payloadOffset >= EitPresentParser.TS_PACKET_SIZE) {
-                return null;
+                return [];
             }
         }
 
         const payloadUnitStartIndicator = (packet[1] & 0x40) !== 0;
         let payload = packet.subarray(payloadOffset);
 
-        let completed: EitPresentEvent | null = null;
+        const completed: EitPresentEvent[] = [];
         if (payloadUnitStartIndicator === true) {
             const pointerField = payload[0];
             if (1 + pointerField > payload.length) {
                 this.resetSection();
 
-                return null;
+                return [];
             }
 
             if (pointerField > 0) {
-                completed = this.appendSection(payload.subarray(1, 1 + pointerField));
+                completed.push(...this.appendSection(payload.subarray(1, 1 + pointerField)));
             }
+            // pointer_field より後は新しい section の先頭。前 section が未完なら破棄する
             this.resetSection();
             payload = payload.subarray(1 + pointerField);
 
@@ -128,60 +125,60 @@ export default class EitPresentParser {
                 return completed;
             }
         } else if (this.sectionBuffer.length === 0) {
-            return null;
+            return [];
         }
 
-        const appended = this.appendSection(payload);
+        completed.push(...this.appendSection(payload));
 
-        return appended === null ? completed : appended;
+        return completed;
     }
 
     /**
      * 組み立て中のセクションにデータを追加し、完成したら解析する
      * @param data: Buffer
-     * @return EitPresentEvent | null
+     * @return EitPresentEvent[]
      */
-    private appendSection(data: Buffer): EitPresentEvent | null {
+    private appendSection(data: Buffer): EitPresentEvent[] {
+        const result: EitPresentEvent[] = [];
         if (data.length === 0) {
-            return null;
+            return result;
         }
 
-        this.sectionBuffer.push(Buffer.from(data));
-        this.sectionSize += data.length;
+        let offset = 0;
+        while (offset < data.length) {
+            if (this.sectionBuffer.length === 0 && data[offset] === 0xff) break;
 
-        if (this.sectionLength === 0) {
-            if (this.sectionSize < 3) {
-                return null;
+            if (this.sectionLength === 0) {
+                const neededForHeader = 3 - this.sectionBuffer.length;
+                const take = Math.min(neededForHeader, data.length - offset);
+                this.sectionBuffer = Buffer.concat([this.sectionBuffer, data.subarray(offset, offset + take)]);
+                offset += take;
+                if (this.sectionBuffer.length < 3) break;
+
+                this.sectionLength = (((this.sectionBuffer[1] & 0x0f) << 8) | this.sectionBuffer[2]) + 3;
+                if (this.sectionLength < 3 || this.sectionLength > EitPresentParser.MAX_SECTION_SIZE) {
+                    this.resetSection();
+                    break;
+                }
             }
 
-            const head = Buffer.concat(this.sectionBuffer, this.sectionSize);
-            if (head[0] !== EitPresentParser.TABLE_ID_EIT_PF_ACTUAL) {
-                this.resetSection();
+            const needed = this.sectionLength - this.sectionBuffer.length;
+            const take = Math.min(needed, data.length - offset);
+            this.sectionBuffer = Buffer.concat([this.sectionBuffer, data.subarray(offset, offset + take)]);
+            offset += take;
+            if (this.sectionBuffer.length < this.sectionLength) break;
 
-                return null;
-            }
-
-            this.sectionLength = (((head[1] & 0x0f) << 8) | head[2]) + 3;
-            if (this.sectionLength > EitPresentParser.MAX_SECTION_SIZE) {
-                this.resetSection();
-
-                return null;
-            }
+            const section = this.sectionBuffer;
+            this.resetSection();
+            if (section[0] !== EitPresentParser.TABLE_ID_EIT_PF_ACTUAL) continue;
+            const event = EitPresentParser.parseSection(section);
+            if (event !== null) result.push(event);
         }
-
-        if (this.sectionSize < this.sectionLength) {
-            return null;
-        }
-
-        const section = Buffer.concat(this.sectionBuffer, this.sectionSize).subarray(0, this.sectionLength);
-        this.resetSection();
-
-        return EitPresentParser.parseSection(section);
+        return result;
     }
 
     private resetSection(): void {
-        this.sectionBuffer = [];
-        this.sectionSize = 0;
+        this.sectionBuffer = Buffer.alloc(0);
         this.sectionLength = 0;
     }
 

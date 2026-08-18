@@ -10,6 +10,8 @@ export interface RecordingStartGateConfig {
     timeoutMs: number;
     // present の番組開始時刻が予約開始時刻よりこれ以上前なら「前の番組」とみなす (ms)
     startMarginMs: number;
+    // programId 予約で別 event_id が固着した場合の安全弁 (ms)
+    hardTimeoutMs: number;
 }
 
 export const DEFAULT_RECORDING_START_GATE_CONFIG: Readonly<RecordingStartGateConfig> = Object.freeze({
@@ -19,6 +21,7 @@ export const DEFAULT_RECORDING_START_GATE_CONFIG: Readonly<RecordingStartGateCon
     timeoutMs: 60 * 1000,
     // 番組開始時刻は EPG と実送出で数十秒ずれることがある
     startMarginMs: 2 * 60 * 1000,
+    hardTimeoutMs: 5 * 60 * 1000,
 });
 
 const clamp = (value: unknown, fallback: number, min: number, max: number): number => {
@@ -40,6 +43,7 @@ export const resolveRecordingStartGateConfig = (value: unknown): RecordingStartG
         enabled: source.startGateEnabled !== false,
         timeoutMs: clamp(source.startGateTimeoutMs, d.timeoutMs, 0, 60 * 60 * 1000),
         startMarginMs: clamp(source.startGateStartMarginMs, d.startMarginMs, 0, 60 * 60 * 1000),
+        hardTimeoutMs: clamp(source.hardStartGateTimeoutMs, d.hardTimeoutMs, 0, 24 * 60 * 60 * 1000),
     };
 };
 
@@ -78,11 +82,13 @@ export type StartGateReason =
     | 'waitingForStartMargin'
     // まだ EIT[p/f] を読めていない
     | 'waitingForEit';
+// programId の EIT fallback (診断用に soft / hard を区別する)
+export type ProgramFallbackReason = 'eitSoftTimeout' | 'eitHardTimeout' | 'followingTimeReached';
 
 export interface StartGateDecision {
     // 録画を開始してよいか
     canStart: boolean;
-    reason: StartGateReason;
+    reason: StartGateReason | ProgramFallbackReason;
 }
 
 /**
@@ -174,7 +180,7 @@ export const decideRecordingStart = (input: StartGateInput): StartGateDecision =
     if (present === null) {
         // EIT[p/f] がまだ読めていない。上限を過ぎたら開始する
         return input.elapsedMs >= input.config.timeoutMs
-            ? { canStart: true, reason: 'timeout' }
+            ? { canStart: true, reason: input.eventId === null ? 'timeout' : 'eitSoftTimeout' }
             : { canStart: false, reason: 'waitingForEit' };
     }
 
@@ -184,10 +190,24 @@ export const decideRecordingStart = (input: StartGateInput): StartGateDecision =
             return { canStart: true, reason: 'eventMatched' };
         }
 
-        // programId 予約は eventId が一致しない限り開始しない。
-        // EDCB もチャンネルを事前に開いて EIT[p/f] を取得したうえで、
-        // ぴったり録画は present event_id の一致を開始条件にしている。
-        // 不一致のまま timeout で開始すると、別番組を録画する危険がある。
+        // present 更新前でも対象 following の開始時刻に到達したら開始する。
+        if (
+            following !== null &&
+            following.eventId === input.eventId &&
+            following.startAt !== null &&
+            input.currentAt !== undefined &&
+            input.currentAt >= following.startAt
+        ) {
+            return { canStart: true, reason: 'followingTimeReached' };
+        }
+
+        // 別 event_id のまま固着した場合は hard timeout で全損を避ける。
+        if (input.elapsedMs >= input.config.hardTimeoutMs) {
+            return { canStart: true, reason: 'eitHardTimeout' };
+        }
+
+        // programId 予約は eventId が一致しない限り通常は開始しない。
+        // ただし EIT 異常で全損しないよう hardTimeoutMs の安全弁を上で適用する。
         return {
             canStart: false,
             reason: present.durationSec === null ? 'previousProgramExtending' : 'previousProgram',

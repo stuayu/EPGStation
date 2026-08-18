@@ -945,10 +945,12 @@ stream:
 
 # 録画開始のリトライ方針。
 # 前の番組が「放送時刻未定」(ARIB の duration = 0xFFFFFF) で延長していると、
-# 予約した番組の開始が遅れます。Mirakurun は EIT[p/f] で対象の番組が始まるまで
-# データを流さないため、EPGStation はその間待つ必要があります。
+# 予約した番組の開始が遅れます。既定の service stream では EPGStation が EIT[p/f] を読み、
+# 対象番組の境界まで待ちます。切り戻し用の program stream では Mirakurun がデータ出力を保留します。
 # チューナー異常とは別枠で数えるので、延長待ちが異常時の再試行回数を食い潰しません。
 # recording:
+#     # programId 予約の取得方式 (既定 service。障害時の切り戻し用に program を指定可)
+#     programStreamMode: service
 #     # 番組開始を待つ上限 (ms)。既定 3 時間。0 で待たない
 #     startWaitLimitMs: 10800000
 #     # 開始待ち中の再試行間隔 (ms)。既定 60000
@@ -966,6 +968,8 @@ stream:
 #     startGateEnabled: true
 #     # EIT[p/f] を読めないまま録画を開始するまでの時間 (ms)。既定 60000
 #     startGateTimeoutMs: 60000
+#     # 別 event_id の固着時にも録画を開始する期限 (ms)。既定 300000
+#     hardStartGateTimeoutMs: 300000
 #     # 放送中の番組の開始時刻が予約開始時刻よりこれ以上前なら「前の番組」とみなす (ms)。既定 120000
 #     startGateStartMarginMs: 120000
 
