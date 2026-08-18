@@ -415,6 +415,9 @@ namespace Configuration {
         importFileNamePatterns: [],
         importWatch: false,
         importWatchIntervalSec: 300,
+        recording: {
+            programStreamMode: 'service',
+        },
         storageLimitCheckIntervalTime: 60,
         thumbnail: path.join(__dirname, '..', '..', 'thumbnail'),
         thumbnailCmd:

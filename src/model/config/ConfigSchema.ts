@@ -393,6 +393,15 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         editable: 'gui',
         fields: [
             {
+                path: 'recording.programStreamMode',
+                label: 'programId 予約のストリーム方式',
+                type: 'select',
+                items: [
+                    { value: 'service', title: 'サービスストリーム (推奨)' },
+                    { value: 'program', title: '番組ストリーム (切り戻し)' },
+                ],
+            },
+            {
                 path: 'recording.startWaitLimitMs',
                 label: '番組開始を待つ上限 (ms)',
                 type: 'number',
@@ -424,6 +433,25 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
                 hint: '既定 27',
             },
             { path: 'recording.errorRetryIntervalMs', label: '同・間隔 (ms)', type: 'number', hint: '既定 60000' },
+            { path: 'recording.startGateEnabled', label: 'EIT 開始ゲート', type: 'boolean' },
+            {
+                path: 'recording.startGateTimeoutMs',
+                label: 'EIT soft timeout (ms)',
+                type: 'number',
+                hint: '既定 60000',
+            },
+            {
+                path: 'recording.hardStartGateTimeoutMs',
+                label: 'EIT hard timeout (ms)',
+                type: 'number',
+                hint: '既定 300000',
+            },
+            {
+                path: 'recording.startGateStartMarginMs',
+                label: 'EIT 開始時刻の許容差 (ms)',
+                type: 'number',
+                hint: '既定 120000',
+            },
         ],
     },
     {

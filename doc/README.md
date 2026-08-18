@@ -33,6 +33,7 @@ EPGStation (stuayu フォーク) のドキュメントの入口。**目的から
 | 設定項目の追加・変更 | [conf-manual.md](conf-manual.md) |
 | API の追加・変更 | ルートの `api.yml` (OpenAPI 定義が仕様の正) |
 | テストの書き方・方針 | [testing.md](testing.md) |
+| programId 録画の開始・終了制御 | [recording-service-stream-design.md](recording-service-stream-design.md) — service stream へ移行する設計と検証計画 |
 | **ある機能がなぜそうなっているのか** | [changelog-fork.md](changelog-fork.md) — 変更ログ。索引から目的の項目を検索して読む |
 
 ### 決まった作業には Skill がある

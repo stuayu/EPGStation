@@ -505,7 +505,8 @@ IPTV クライアントなどに URL を手で登録する場合は、`GET /api/
 #### 録画開始のリトライ
 
 前の番組が「放送時刻未定」(ARIB の `duration` = 0xFFFFFF) で延長していると、予約した番組の開始が遅れる。
-Mirakurun は EIT[p/f] で対象の番組が現在番組になるまでデータを流さないため、EPGStation はその間待つ必要がある。
+既定の service stream では EPGStation が EIT[p/f] を読み、対象番組の境界まで同じストリームで待つ。
+切り戻し用の program stream では Mirakurun が対象 event_id までデータ出力を保留する。
 
 **「番組がまだ始まっていない」と「チューナー異常」を別枠で数える**ので、
 延長待ちが異常時の再試行回数を食い潰すことはない。
@@ -522,7 +523,7 @@ Mirakurun は EIT[p/f] で対象の番組が現在番組になるまでデータ
 | ------------------------ | ------- | ---- | ------------------------------------------------------------------------------------------ |
 | startWaitLimitMs         | number  | no   | 番組開始を待つ上限 (ms)。省略時 3 時間。**0 で待たない**                                   |
 | startWaitIntervalMs      | number  | no   | 開始待ち中の再試行間隔 (ms)。省略時 60000                                                  |
-| firstDataTimeoutMs       | number  | no   | 最初のデータを待つ時間 (ms)。省略時 5000。時刻指定予約ではこの時間で異常判定し、programId 予約では Mirakurun のストリームを予約終了時刻または `startWaitLimitMs` まで保持する際の待ち時間の下限として使う |
+| firstDataTimeoutMs       | number  | no   | 最初の TS を待つ時間 (ms)。省略時 5000。service stream では transport 異常の判定に使い、legacy の `programStreamMode: program` では対象 event 待ちの下限として使う |
 | errorFastRetryCount      | number  | no   | チューナー異常時に短い間隔で再試行する回数。省略時 3                                       |
 | errorFastRetryIntervalMs | number  | no   | 同・間隔 (ms)。省略時 5000                                                                 |
 | errorRetryCount          | number  | no   | その後、長い間隔で再試行する回数。省略時 27                                                |
@@ -530,9 +531,12 @@ Mirakurun は EIT[p/f] で対象の番組が現在番組になるまでデータ
 | startGateEnabled         | boolean | no   | 予約した番組が EIT[p/f] following/present で始まるまで録画を始めない。省略時 true          |
 | startGateTimeoutMs       | number  | no   | EIT[p/f] を読めないまま録画を開始するまでの時間 (ms)。省略時 60000                         |
 | startGateStartMarginMs   | number  | no   | 放送中の番組の開始時刻が予約開始時刻よりこれ以上前なら前の番組とみなす (ms)。省略時 120000 |
+| programStreamMode        | string  | no   | programId 予約の取得方式。`service` (既定、EPGStation が EIT 境界を管理) または `program` (切り戻し) |
+| hardStartGateTimeoutMs   | number  | no   | programId 予約で別 event_id が固着した場合の開始期限 (ms)。省略時 300000                   |
 
 ```yaml
 recording:
+    programStreamMode: service
     startWaitLimitMs: 10800000
     startWaitIntervalMs: 60000
     firstDataTimeoutMs: 5000
@@ -543,12 +547,15 @@ recording:
     startGateEnabled: true
     startGateTimeoutMs: 60000
     startGateStartMarginMs: 120000
+    hardStartGateTimeoutMs: 300000
 ```
 
 - 値が範囲外・不正な場合は既定値へ丸めるため、設定ミスで録画が動かなくなることはない
 - 野球中継などの長い延長に備える場合は `startWaitLimitMs` を延ばす
-- `startGateEnabled` は**時刻指定予約で効く**。時刻指定予約はチャンネルストリームを使うため予定時刻から即データが流れ、前番組が延長していると前番組を録ってしまう。EIT[p/f] following の `start_time` を優先し、present 更新前でも目的の番組の開始を判断する。その間のデータは捨てる (録画ファイルにも残らない)。EIT[p/f] を読めないまま `startGateTimeoutMs` を過ぎた場合は録り逃さないよう録画を開始する
-- programId 予約は Mirakurun の `TSFilter(eventId)` が EIT[p] の対象 event_id 一致までデータを出さないため、EPGStation はストリームを開いたまま最初のデータを待つ。5 秒で捨てて開き直すことはしない。待機中に Mirakurun が `close` / `end` / `error` でストリームを閉じた場合は再試行し、予約終了時刻まで始まらない場合も再試行する。この待機中は同じチャンネルのチューナーを保持する
+- `programStreamMode: service` (既定) では programId 予約もサービスストリームを使い、TS 到着 (transport) と EIT[p/f] 境界待ちを分離する。target present の event_id 一致、target following の start_time 到達を通常開始条件とし、EIT が無い場合は soft timeout (既定 60 秒)、別 event_id 固着は hard timeout (既定 5 分) で安全側に開始する。待機中の TS は最大 8 MiB のリングバッファへ保持する
+- soft/hard timeout で fallback 開始した場合は、全損を避ける代わりにリングバッファ内の前番組が最大 8 MiB 混ざり得る。開始理由は Operator の info ログで `eitSoftTimeout` / `eitHardTimeout` として区別できる
+- `startGateEnabled` は EIT[p/f] 境界待ちを有効にする (時刻指定予約・programId 予約の両方)。時刻指定予約では following の `start_time` を優先し、present 更新前でも目的番組の開始を判断する。programId 予約では対象 present の event_id 一致を優先し、EIT 無しの soft timeout と別 event_id 固着の hard timeout を安全弁として使う。待機中の TS は最大 8 MiB を保持して開始時に書き出す
+- service stream は予約終了時刻 + margin のハードタイマーで終了し、対象 present が別 event_id に変化してもデバウンス後に終了する。EPG 追従の endAt 更新は programId 予約にも反映する (録画準備中の変更は録画開始を待ってから反映する)。`programStreamMode: program` は切り戻し用である
 
 ---
 

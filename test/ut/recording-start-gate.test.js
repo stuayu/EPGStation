@@ -62,8 +62,34 @@ test('programId 予約で放送時間未定 (延長中) の前番組が続く間
         config,
     });
 
-    assert.equal(decision.canStart, false);
-    assert.equal(decision.reason, 'previousProgramExtending');
+    assert.equal(decision.canStart, true);
+    assert.equal(decision.reason, 'eitHardTimeout');
+});
+
+test('programId 予約は対象 following の開始時刻に達したら present 更新前でも開始する', () => {
+    const decision = decideRecordingStart({
+        eventId: 100,
+        reserveStartAt: RESERVE_START,
+        present: { serviceId: 1, eventId: 99, startAt: RESERVE_START - 60000, durationSec: null },
+        following: { serviceId: 1, eventId: 100, startAt: RESERVE_START, durationSec: 1800, isFollowing: true },
+        elapsedMs: 1000,
+        currentAt: RESERVE_START,
+        config,
+    });
+    assert.equal(decision.canStart, true);
+    assert.equal(decision.reason, 'followingTimeReached');
+});
+
+test('programId 予約は EIT が無い場合 soft timeout で開始する', () => {
+    const decision = decideRecordingStart({
+        eventId: 100,
+        reserveStartAt: RESERVE_START,
+        present: null,
+        elapsedMs: config.timeoutMs,
+        config,
+    });
+    assert.equal(decision.canStart, true);
+    assert.equal(decision.reason, 'eitSoftTimeout');
 });
 
 test('時刻指定予約で尺の確定した前番組が続いても上限を過ぎたら開始する', () => {
@@ -79,7 +105,7 @@ test('時刻指定予約で尺の確定した前番組が続いても上限を�
     assert.equal(decision.reason, 'timeout');
 });
 
-test('前番組が放送時間未定 (延長しうる) の間は録画を開始しない', () => {
+test('前番組が放送時間未定でも hard timeout 後は録画を開始する', () => {
     const decision = decideRecordingStart({
         eventId: 100,
         reserveStartAt: RESERVE_START,
@@ -89,8 +115,8 @@ test('前番組が放送時間未定 (延長しうる) の間は録画を開始�
         config,
     });
 
-    assert.equal(decision.canStart, false);
-    assert.equal(decision.reason, 'previousProgramExtending');
+    assert.equal(decision.canStart, true);
+    assert.equal(decision.reason, 'eitHardTimeout');
 });
 
 test('時刻指定予約は放送中の番組の開始時刻が予約開始時刻に達したら開始する', () => {
@@ -171,7 +197,13 @@ test('following の開始時刻が繰り下がった場合は実際の開始時�
         eventId: null,
         reserveStartAt: RESERVE_START,
         present: { serviceId: 1, eventId: 99, startAt: RESERVE_START - 3600000, durationSec: null },
-        following: { serviceId: 1, eventId: 100, startAt: RESERVE_START + 5 * 60 * 1000, durationSec: 1800, isFollowing: true },
+        following: {
+            serviceId: 1,
+            eventId: 100,
+            startAt: RESERVE_START + 5 * 60 * 1000,
+            durationSec: 1800,
+            isFollowing: true,
+        },
         elapsedMs: 0,
         currentAt: RESERVE_START,
         recordingStartMarginMs: 1000,
@@ -237,7 +269,7 @@ test('EIT[p/f] を読めないまま上限を過ぎたら録画を開始する',
         config,
     });
     assert.equal(timeout.canStart, true);
-    assert.equal(timeout.reason, 'timeout');
+    assert.equal(timeout.reason, 'eitSoftTimeout');
 });
 
 test('ゲートを無効にすると常に開始する', () => {
@@ -277,7 +309,7 @@ const buildEitPacket = (serviceId, eventId, startAt, durationSec, sectionNumber 
         const jst = startAt + 9 * 60 * 60 * 1000;
         const mjd = Math.floor(jst / 86400000) + 40587;
         const rest = Math.floor((jst % 86400000) / 1000);
-        const toBcd = v => ((Math.floor(v / 10) << 4) | v % 10) & 0xff;
+        const toBcd = v => ((Math.floor(v / 10) << 4) | (v % 10)) & 0xff;
         body.writeUInt16BE(mjd, 2);
         body[4] = toBcd(Math.floor(rest / 3600));
         body[5] = toBcd(Math.floor((rest % 3600) / 60));
@@ -289,7 +321,7 @@ const buildEitPacket = (serviceId, eventId, startAt, durationSec, sectionNumber 
         body[8] = 0xff;
         body[9] = 0xff;
     } else {
-        const toBcd = v => ((Math.floor(v / 10) << 4) | v % 10) & 0xff;
+        const toBcd = v => ((Math.floor(v / 10) << 4) | (v % 10)) & 0xff;
         body[7] = toBcd(Math.floor(durationSec / 3600));
         body[8] = toBcd(Math.floor((durationSec % 3600) / 60));
         body[9] = toBcd(durationSec % 60);
@@ -350,6 +382,32 @@ test('EIT[p/f] following のセクションを解析できる', () => {
     assert.equal(events.length, 1);
     assert.equal(events[0].isFollowing, true);
     assert.equal(events[0].eventId, 4661);
+});
+
+test('同じ TS packet に連続する present と following を両方解析できる', () => {
+    const presentPacket = buildEitPacket(1024, 4660, RESERVE_START, 1800, 0);
+    const followingPacket = buildEitPacket(1024, 4661, RESERVE_START + 1800000, 1800, 1);
+    const sectionOf = packet => {
+        const size = (((packet[6] & 0x0f) << 8) | packet[7]) + 3;
+        return packet.subarray(5, 5 + size);
+    };
+    const packet = Buffer.alloc(188, 0xff);
+    packet[0] = 0x47;
+    packet[1] = 0x40;
+    packet[2] = 0x12;
+    packet[3] = 0x10;
+    packet[4] = 0;
+    const sections = Buffer.concat([sectionOf(presentPacket), sectionOf(followingPacket)]);
+    sections.copy(packet, 5);
+
+    const events = new EitPresentParser().write(packet);
+    assert.deepEqual(
+        events.map(event => [event.eventId, event.isFollowing]),
+        [
+            [4660, false],
+            [4661, true],
+        ],
+    );
 });
 
 test('current_next_indicator が0のEITは録画開始判定に使わない', () => {

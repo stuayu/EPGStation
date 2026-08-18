@@ -13,6 +13,10 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
+## 2026-08-19
+
+- **programId 録画をサービスストリーム境界制御へ移行**: 既定の `recording.programStreamMode: service` で TS 到着と EIT[p/f] を分離し、present/following の対象 eventId、soft 60 秒 / hard 5 分の安全弁、最大 8 MiB (188-byte packet 単位) の開始待ちリングバッファ、present event 変更・終了タイマー・EPG endAt 更新を EPGStation 側で管理する。Mirakurun の共有 `priority` は変更せず各 stream request option へ明示する。stream 実体ごとに timer と正常終了理由を持たせ、古い再試行の終了通知が新しい stream を閉じないようにした。録画準備中 (stream 未登録) に EPG 追従で `endAt` が動いた場合は録画開始まで待ってからハードタイマーへ反映する — 待たずに諦めると `create()` へ渡した古い `endAt` のままタイマーが張られ、延長を追従したはずの録画が旧終了時刻で尻切れになる。`program` は Mirakurun の開始・終了境界をそのまま使う切り戻し用として残した
+
 ## 索引
 
 ### シリーズ管理・作品辞書
