@@ -76,6 +76,13 @@ apiServers:
 
 epgUpdateIntervalTime: 10
 
+# event stream が動いていても定期的に Mirakurun から番組表を全件取り直す間隔 (分)。
+# 省略時 360 (6 時間)。0 で無効。
+# event stream は差分しか運ばないため、新しく増えた番組の create イベントが
+# 何らかの理由で届かないと DB が古いまま残り、再起動するまで番組表が増えません。
+# その取りこぼしを定期的に回収するための保険です。
+#epgFullRefreshIntervalTime: 360
+
 # 過去の番組表データを残す時間 (時間)
 # 0: 終了した番組を順次削除する (既定) / -1: 削除せず無期限に残す
 epgRetentionTime: 0

@@ -916,6 +916,29 @@ recordedHistoryRetentionPeriodDays: 180
 epgUpdateIntervalTime: 15
 ```
 
+### epgFullRefreshIntervalTime
+
+#### event stream が動いていても番組表を全件取り直す間隔 (分)
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| number | 360          | no   |
+
+```yaml
+epgFullRefreshIntervalTime: 360
+```
+
+Mirakurun の event stream は**差分しか運ばない**。既存番組の `update` は届き続けるのに
+新しく増えた番組の `create` が届かない状態になると、EPGStation の DB は古いまま残り、
+**再起動して全件取得が走るまで番組表が増えない**。
+
+これを検知するための既存のウォッチドッグは「イベントが一定時間来ないこと」しか見ていないため、
+イベントが届き続けているこのケースでは発火しない。そこで event stream の状態に関わらず、
+この間隔ごとに `getPrograms()` で全件取り直して DB を突き合わせる。
+
+`0` で無効。全件取得は番組数に比例して重いので、短くしすぎない (既定 6 時間)。
+実行時は Operator のログに `periodic full refresh` が出る。
+
 ### epgRetentionTime
 
 #### 過去の番組表データを残す時間 (時間)
