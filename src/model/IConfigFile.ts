@@ -365,6 +365,12 @@ export default interface IConfigFile {
         storageFallbackMarginMB?: number;
         // 予想サイズ計算に使うビットレート (Mbps)。省略時は放送種別ごとの既定値
         storageFallbackBitrateMbps?: number;
+        // 予約開始時刻の何秒前からチャンネルを開いて張り付くか。既定 15。負値不可
+        prepRecSec?: number;
+        // 予約開始時刻の何秒前から実際に録画を開始するか。既定 0。負値不可
+        startMarginSec?: number;
+        // 予約終了時刻の何秒後まで実際に録画を続けるか。既定 0。負値不可
+        endMarginSec?: number;
     };
 
     // 録画履歴保存期間

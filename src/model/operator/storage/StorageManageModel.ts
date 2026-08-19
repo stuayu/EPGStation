@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
-import diskusage from 'diskusage-ng';
 import { inject, injectable } from 'inversify';
 import Recorded from '../../../db/entities/Recorded';
+import DiskSpaceUtil from '../../../util/DiskSpaceUtil';
 import ProcessUtil from '../../../util/ProcessUtil';
 import Util from '../../../util/Util';
 import IRecordedDB from '../../db/IRecordedDB';
@@ -176,16 +176,8 @@ export default class StorageManageModel implements IStorageManageModel {
      * @param dirPath: ディレクトリパス
      * @return Promise<number>
      */
-    private getFreeSize(dirPath: string): Promise<number> {
-        return new Promise<number>((resolve, reject) => {
-            diskusage(dirPath, (err, usage) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(usage.available);
-                }
-            });
-        });
+    private async getFreeSize(dirPath: string): Promise<number> {
+        return (await DiskSpaceUtil.get(dirPath)).available;
     }
 
     /**

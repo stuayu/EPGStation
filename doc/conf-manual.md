@@ -536,6 +536,9 @@ IPTV クライアントなどに URL を手で登録する場合は、`GET /api/
 | storageFallbackEnabled   | boolean | no   | 予想録画サイズに対して空きが足りない場合、`recorded` の次の保存先へ振り替える。省略時 true |
 | storageFallbackMarginMB  | number  | no   | 予想録画サイズに上乗せする余裕 (MB)。省略時 3072                                           |
 | storageFallbackBitrateMbps | number | no   | 予想サイズ計算に使うビットレート (Mbps)。省略時は放送種別ごとの既定値                       |
+| prepRecSec               | number  | no   | 予約開始時刻の何秒前からチャンネルを開いて張り付くか。省略時 15。**マイナス不可**           |
+| startMarginSec           | number  | no   | 予約開始時刻の何秒前から実際に録画を開始するか。省略時 0。**マイナス不可**                  |
+| endMarginSec             | number  | no   | 予約終了時刻の何秒後まで実際に録画を続けるか。省略時 0。**マイナス不可**                    |
 
 ```yaml
 recording:
@@ -554,6 +557,9 @@ recording:
     storageFallbackEnabled: true
     storageFallbackMarginMB: 3072
     storageFallbackBitrateMbps: 19
+    prepRecSec: 15
+    startMarginSec: 0
+    endMarginSec: 0
 ```
 
 - 値が範囲外・不正な場合は既定値へ丸めるため、設定ミスで録画が動かなくなることはない
@@ -583,6 +589,21 @@ recording dir has no room: reserveId: 13, using TS2, required: 5350MB, free: 900
 ```
 
 `storageFallbackEnabled: false` で無効にできる。`recorded` が 1 つしかない場合は何もしない。
+
+##### 録画のタイミング (張り付き・開始マージン・終了マージン)
+
+紛らわしいので用語を分けてある。**3 つとも負値は受け付けず、0 未満は 0 に丸める**。
+
+| 用語 | 設定 | 意味 |
+| --- | --- | --- |
+| 張り付き | `prepRecSec` | 予約開始時刻の N 秒前にチューナーを確保してストリームを開き、EIT[p/f] の監視を始める。**まだ録画ファイルへは書かない** |
+| 開始マージン | `startMarginSec` | 予約開始時刻の N 秒前から実際の録画開始を許可する |
+| 終了マージン | `endMarginSec` | 予約終了時刻の N 秒後まで録画を続ける |
+
+- **張り付きは必ず開始マージンより前になる**。`prepRecSec` が `startMarginSec` 以下だと、ストリームを開いた瞬間に開始判定が走り EIT を 1 度も読めないまま録画が始まってしまうため、`startMarginSec + 5 秒` まで自動で押し上げる
+- 既存の `timeSpecifiedStartMargin` / `timeSpecifiedEndMargin` (時刻指定予約用) はそのまま残り、**大きい方**が採用される。新設定を入れない限り従来の挙動は変わらず、新設定は全予約共通の下限として働く
+- **programId 予約でも効く**。対象 following の開始時刻に `startMarginSec` だけ前倒しで到達判定する。ただし放送が予定より早く始まって EIT[p/f] present が対象 event_id になった場合は、マージンを待たずその時点から録る
+- 張り付きを延ばすとチューナーをその分長く占有する。同時録画数に余裕がない環境では詰まる可能性がある
 
 ---
 

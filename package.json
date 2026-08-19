@@ -48,7 +48,6 @@
         "axios": "1.18.1",
         "better-sqlite3": "12.11.1",
         "cors": "2.8.6",
-        "diskusage-ng": "1.0.4",
         "eventsource": "4.1.0",
         "express": "5.2.1",
         "express-openapi": "12.1.3",

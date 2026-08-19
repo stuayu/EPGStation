@@ -15,6 +15,9 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-20
 
+- **録画のタイミングを設定できるようにした**: 「張り付き (`recording.prepRecSec`、既定 15 秒)」「開始マージン (`startMarginSec`、既定 0)」「終了マージン (`endMarginSec`、既定 0)」の 3 つ。いずれも**負値は 0 に丸める**。張り付きは開始マージン + 5 秒を下限として自動で押し上げる (ストリームを開いた瞬間に開始判定が走って EIT を 1 度も読めないのを防ぐ)。既存の `timeSpecifiedStartMargin` / `timeSpecifiedEndMargin` とは大きい方を採るため、新設定を入れない限り従来の挙動は変わらない。programId 予約でも following の開始時刻判定に開始マージンが効く。判定は `RecordingTimingConfig.ts` の純粋関数。固定値だった `IRecordingStreamCreator.PREP_TIME` の参照箇所 (予約タイマー・チューナー再利用判定・endAt 変更待ち) をすべて設定値へ置き換えた
+- **ディスク空き容量の取得をネイティブモジュールから Node.js 標準へ移した**: `diskusage-ng` (node-gyp ビルドが要るネイティブモジュール) をやめ、`fs.statfs` (Node 18.15 以降) を使う `src/util/DiskSpaceUtil.ts` に集約した。**Windows 実機で動作確認済み** (`Win32_LogicalDisk` の値と一致)。macOS でも確認。置き換え先は録画先の空き判定・ストレージ監視 (`StorageManageModel`)・ストレージ API (`StorageApiModel`) の 3 箇所で、`package.json` から `diskusage-ng` 依存を削除した
+
 - **録画先の空き容量が足りない場合に次の保存先へ自動で振り替えるようにした**: 録画開始前に「番組長 × 放送種別ごとの想定ビットレート ÷ 8 + 余裕」で予想サイズを出し、`config.recorded` の順に空きを見て最初に収まる保存先を選ぶ。満杯になり次第、順次さらに次の候補へ送る。どこも足りない場合は最も空きが大きい保存先を使って error ログを出す (全損を避ける)。既定ビットレートは GR 19 / BS 26 / CS・SKY 20 / 4K 40 Mbps、余裕は 3072MB。設定は `recording.storageFallbackEnabled` / `storageFallbackMarginMB` / `storageFallbackBitrateMbps`。**背景**: 実機の第一保存先 (D:) が満杯だったとき、録画開始後に `ENOSPC` で落ちて 0 バイトのファイルと失敗した録画情報だけが残り、リトライしても同じディレクトリへ書きに行くため復旧しなかった。判定は `RecordedDirCapacity.ts` の純粋関数、空き容量の取得は `RecordingUtilModel` (既存依存の `diskusage-ng` を再利用)
 
 ## 2026-08-19
