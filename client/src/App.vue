@@ -86,6 +86,17 @@ html.fix-address-bar, html.fix-address-bar2
 
 <style lang="sass">
 /**
+ * v-menu の中に置くカードの幅。
+ *
+ * v-dialog と違い v-menu のコンテンツはビューポート幅に丸められないため、
+ * 固定幅 (width="420" など) を指定するとスマホで画面からはみ出し、
+ * 下部の「検索」「閉じる」ボタンが押せなくなる (Issue #16)。
+ * 希望幅は保ちつつ、画面が狭いときは余白 16px を残して縮める。
+ */
+.menu-card
+    max-width: calc(100vw - 32px)
+
+/**
  * 複数選択時の色
  */
 .selected-color

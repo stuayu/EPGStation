@@ -6,7 +6,7 @@
                     <v-icon>mdi-magnify</v-icon>
                 </v-btn>
             </template>
-            <v-card width="420">
+            <v-card class="menu-card" width="420">
                 <div class="recorded-search pa-4">
                     <div class="d-flex align-center">
                         <v-text-field

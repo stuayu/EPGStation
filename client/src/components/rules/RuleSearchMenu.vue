@@ -6,7 +6,7 @@
                     <v-icon>mdi-magnify</v-icon>
                 </v-btn>
             </template>
-            <v-card width="400">
+            <v-card class="menu-card" width="400">
                 <div class="rule-search pa-4">
                     <v-text-field v-model="keyword" label="キーワード" clearable v-on:keydown.enter="onSearch()"></v-text-field>
                 </div>
