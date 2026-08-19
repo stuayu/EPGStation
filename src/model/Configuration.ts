@@ -395,6 +395,7 @@ namespace Configuration {
         needToReplaceEnclosingCharacters: true,
         isHideDuplicateSubChannel: true,
         epgUpdateIntervalTime: 10,
+        epgFullRefreshIntervalTime: 360,
         epgRetentionTime: 0,
         conflictPriority: 1,
         recPriority: 2,

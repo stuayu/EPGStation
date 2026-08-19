@@ -279,6 +279,10 @@ export default interface IConfigFile {
     // 0 なら終了した番組を即座に削除する (従来動作)、-1 なら削除しない (無期限)
     epgRetentionTime: number;
 
+    // event stream が動いていても全件突き合わせる間隔 (分)。省略時 360 (6 時間)。0 で無効。
+    // event stream は差分しか運ばないため、新規番組の create が届かないと DB が古いまま残る
+    epgFullRefreshIntervalTime?: number;
+
     // 過去の番組表データを削除する間隔 (分)。省略時は epgUpdateIntervalTime と同じ
     epgDeleteIntervalTime?: number;
 

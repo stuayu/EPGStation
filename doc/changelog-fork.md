@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-20
 
+- **番組表が増えなくなる問題への保険を入れた (Issue #6)**: Mirakurun の event stream は差分しか運ばないため、既存番組の `update` は届き続けるのに新規番組の `create` が届かないと DB が古いまま残り、再起動して `updateAll()` が走るまで番組表が増えない。既存のウォッチドッグ (`lastEventStreamUpdatedTime + updateInterval * 1.5`) は「イベントが来ないこと」しか見ておらず、**イベントが届き続けるとウォッチドッグが永久に発火しない**ためこのケースを検知できなかった。`epgFullRefreshIntervalTime` (既定 360 分、0 で無効) を追加し、event stream の状態に関わらず定期的に `getPrograms()` で全件突き合わせる。あわせて 2 件修正: (1) `saveProgram()` のログの `insertValues` が常に 0 だった (`create` も `update` も `updateValues` へ入れていた) ため「新規番組のイベントが届いているか」を切り分けられなかったので、`create` / `update` を分けて数えるようにした。DB 側は upsert なので反映内容は変わらない。(2) `updateAll()` のタイムアウトが `setTimeout` のコールバック内で `throw` しており、呼び出し元の try/catch では捕まらず未捕捉例外になっていた (しかも `getPrograms()` を中断できず実質無効だった)。reject する Promise と `Promise.race` する形へ直した
+
 - **スマホで検索メニューが見切れるのを直した (Issue #16)**: 録画済み・ルールタブの検索メニューは `v-menu` の中に固定幅の `v-card` (420 / 400px) を置いていた。`v-dialog` と違い `v-menu` のコンテンツはビューポートに丸められないため、幅の狭い端末で横にはみ出す。さらに中身が overlay の `max-height` を超えても `overflow-y: visible` のためスクロールできず、下部の「検索」「閉じる」が画面外のまま到達できなかった。グローバルクラス `.menu-card` (横は `max-width: calc(100vw - 32px)`、縦は flex column + 本文 `.menu-card-body` だけスクロール) を追加。**WebKit で実測**: iPhone 15 Pro 相当 (393x660) で修正前は横 39px はみ出し・検索ボタン y=685 (画面高 660 超) → 修正後は横収まり・検索ボタン y=604 でクリック可。iPhone SE (320x568) / iPad Mini でも確認、広い画面では希望幅 420px を維持
 
 - **延長 (録画準備中の endAt 変更) の取りこぼしとブロックを直した**: `RecordingStreamCreator.changeEndAt()` は stream 未取得のとき `StreamChangeAtError` を投げていたため、`RecorderModel` は録画開始まで待ってから反映していた。張り付きを 2 分にすると予約更新が最大 2 分止まる。creator 側に保留 (`pendingEndAt`) を持たせ、`registerStream()` で新しい `endAt` を反映するようにして待ちを無くした。legacy program stream では何もせず投げない

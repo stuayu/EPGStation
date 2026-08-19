@@ -185,6 +185,21 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         fields: [{ path: 'epgUpdateIntervalTime', label: 'EPG 更新間隔 (分)', type: 'number' }],
     },
     {
+        key: 'epgFullRefreshIntervalTime',
+        label: 'EPG 全件突き合わせ間隔 (分)',
+        hint: '省略時 360 (6 時間)。0 で無効',
+        requiresRestart: true,
+        editable: 'gui',
+        fields: [
+            {
+                path: 'epgFullRefreshIntervalTime',
+                label: 'EPG 全件突き合わせ間隔 (分)',
+                type: 'number',
+                hint: 'event stream が動いていても定期的に Mirakurun から全件取り直す。省略時 360 (6 時間)。0 で無効',
+            },
+        ],
+    },
+    {
         key: 'epgRetentionTime',
         label: '過去の番組表データの保存期間 (時間)',
         hint: '0: 終了した番組を即座に削除 (従来動作) / -1: 削除しない (無期限)',

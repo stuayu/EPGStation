@@ -102,21 +102,28 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
     public async updateAll(): Promise<void> {
         await this.updateChannels();
 
-        // タイムアウト設定
-        const timeout = setTimeout(
-            () => {
+        // タイムアウト設定。
+        // NOTE: setTimeout のコールバック内で throw しても呼び出し元の try/catch では
+        // 捕まらず未捕捉例外になるため、reject する Promise と race させる
+        let timeout: NodeJS.Timeout | null = null;
+        const timeoutPromise = new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(() => {
                 this.log.system.error('update all timeout');
+                reject(new Error('EPGUpdateAllTimeoutError'));
+            }, EPGUpdateManageModel.UPDATE_ALL_TIMEOUT);
+        });
+        const clearTimeoutIfNeeded = (): void => {
+            if (timeout !== null) {
                 clearTimeout(timeout);
-                throw new Error('EPGUpdateAllTimeoutError');
-            },
-            10 * 60 * 1000,
-        );
+                timeout = null;
+            }
+        };
 
         this.log.system.info('get programs');
-        const programs = await this.mirakurunClient.getPrograms().catch(err => {
+        const programs = await Promise.race([this.mirakurunClient.getPrograms(), timeoutPromise]).catch(err => {
             this.log.system.error('get programs error');
             this.log.system.error(err);
-            clearTimeout(timeout);
+            clearTimeoutIfNeeded();
             throw err;
         });
         this.log.system.info(`Successfully retrieved ${programs.length} program(s).`);
@@ -128,17 +135,18 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
 
         this.log.system.debug(`Filtered and retrieved ${insertPrograms.length} program(s).`);
         this.log.system.info('start update programs');
-        await this.programDB
-            .insert(this.channelIndex, insertPrograms, [], this.createProgramKeepOption())
-            .catch(err => {
-                this.log.system.error('update programs error');
-                this.log.system.error(err);
-                clearTimeout(timeout);
-                throw err;
-            });
+        await Promise.race([
+            this.programDB.insert(this.channelIndex, insertPrograms, [], this.createProgramKeepOption()),
+            timeoutPromise,
+        ]).catch(err => {
+            this.log.system.error('update programs error');
+            this.log.system.error(err);
+            clearTimeoutIfNeeded();
+            throw err;
+        });
         this.log.system.info('done update programs');
 
-        clearTimeout(timeout);
+        clearTimeoutIfNeeded();
     }
 
     /**
@@ -679,7 +687,13 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                     deleteValues.push((<RemoveEvent>event).data.id);
                 }
                 for (const [_id, event] of Object.entries(updateIndex)) {
-                    updateValues.push((<UpdateEvent>event).data);
+                    // create と update を分けて数える。DB 側は upsert なので扱いは同じだが、
+                    // 「新規番組の create が届いているか」をログで切り分けられるようにする
+                    if (event.type === 'create') {
+                        insertValues.push((<UpdateEvent>event).data);
+                    } else {
+                        updateValues.push((<UpdateEvent>event).data);
+                    }
                 }
 
                 if (deleteValues.length > 0 || insertValues.length > 0 || updateValues.length > 0) {
@@ -1087,6 +1101,9 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
 }
 
 namespace EPGUpdateManageModel {
+    // updateAll (Mirakurun からの全件取得 + DB 反映) の上限時間
+    export const UPDATE_ALL_TIMEOUT = 10 * 60 * 1000;
+
     // event stream の開始文字列
     export const START_STRING = Buffer.from([0x5b, 0x0a]);
     export const DATA_DELIMITER_STRING = Buffer.from([0x7d, 0x0a, 0x2c, 0x0a]);

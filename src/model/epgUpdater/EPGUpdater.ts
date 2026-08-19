@@ -25,6 +25,8 @@ class EPGUpdater implements IEPGUpdater {
     private isEventStreamAlive: boolean = false;
     private lastUpdatedTime: number = 0;
     private lastEventStreamUpdatedTime: number = 0;
+    // 最後に updateAll (Mirakurun からの全件取得) が成功した時刻
+    private lastFullUpdatedTime: number = 0;
     private lastDeletedTime: number = 0;
     private retryCount: number = 0;
 
@@ -94,10 +96,7 @@ class EPGUpdater implements IEPGUpdater {
                 // updateAllが完了して以降、queueフラッシュ処理を有効にするために
                 // この位置でisEventStreamAliveをtrueにする
                 const now = new Date().getTime();
-                this.lastUpdatedTime = now;
-                // updateAll 後は全件数削除が行われるため削除時間も更新する
-                this.lastDeletedTime = now;
-                this.lastEventStreamUpdatedTime = now;
+                this.applyFullUpdateResult(now, false);
                 this.isEventStreamAlive = true;
             });
         });
@@ -115,6 +114,14 @@ class EPGUpdater implements IEPGUpdater {
         this.log.system.info('start EPG update');
 
         const updateInterval = this.config.epgUpdateIntervalTime * 60 * 1000;
+        // event stream が生きていても定期的に全件突き合わせる間隔 (0 で無効)。
+        // event stream は差分しか運ばないため、新しく増えた番組の create が
+        // 何らかの理由で届かないと DB が永久に古いままになる (再起動でだけ直る)。
+        // updateAll は Mirakurun から全件取り直すので、その取りこぼしを回収できる
+        const fullRefreshInterval =
+            typeof this.config.epgFullRefreshIntervalTime === 'number' && this.config.epgFullRefreshIntervalTime > 0
+                ? this.config.epgFullRefreshIntervalTime * 60 * 1000
+                : 0;
         // 過去の番組表データの削除間隔 (省略時は EPG 更新間隔と同じ)
         const deleteInterval =
             typeof this.config.epgDeleteIntervalTime === 'number' && this.config.epgDeleteIntervalTime > 0
@@ -155,11 +162,7 @@ class EPGUpdater implements IEPGUpdater {
                         this.lastUpdatedTime + updateInterval * 1.5 <= now
                     ) {
                         await this.updateManage.updateAll();
-                        this.lastUpdatedTime = now;
-                        // updateAll 後は全件数削除が行われるため削除時間も更新する
-                        this.lastDeletedTime = now;
-                        this.lastEventStreamUpdatedTime = now;
-                        this.notify();
+                        this.applyFullUpdateResult(now);
                     }
 
                     if (
@@ -170,11 +173,21 @@ class EPGUpdater implements IEPGUpdater {
                         // 長時間 event stream から更新が無い場合は全件更新を実施する
                         this.log.system.warn('no epg event updates for a long time, running full refresh');
                         await this.updateManage.updateAll();
-                        this.lastUpdatedTime = now;
-                        // updateAll 後は全件数削除が行われるため削除時間も更新する
-                        this.lastDeletedTime = now;
-                        this.lastEventStreamUpdatedTime = now;
-                        this.notify();
+                        this.applyFullUpdateResult(now);
+                    } else if (
+                        this.isEventStreamAlive === true &&
+                        fullRefreshInterval > 0 &&
+                        this.lastFullUpdatedTime !== 0 &&
+                        this.lastFullUpdatedTime + fullRefreshInterval <= now
+                    ) {
+                        // event stream が動いていても定期的に全件突き合わせる。
+                        // 上のウォッチドッグは「イベントが来ない」ことしか見ておらず、
+                        // イベントは届き続けるのに新しい番組が増えない状態を検知できない
+                        this.log.system.info(
+                            `periodic full refresh: ${Math.floor((now - this.lastFullUpdatedTime) / 60000)} min since last full update`,
+                        );
+                        await this.updateManage.updateAll();
+                        this.applyFullUpdateResult(now);
                     }
                 } catch (err: any) {
                     this.log.system.error('EPG update error');
@@ -289,6 +302,22 @@ class EPGUpdater implements IEPGUpdater {
                 const retryInterval = this.retryCount * 5 * 1000;
                 await Util.sleep(retryInterval);
             }
+        }
+    }
+
+    /**
+     * updateAll (全件取得) が終わった後の時刻管理をまとめて行う
+     * @param now: number 現在時刻 (ms)
+     * @param notify: boolean 予約側へ通知するか
+     */
+    private applyFullUpdateResult(now: number, notify: boolean = true): void {
+        this.lastUpdatedTime = now;
+        // updateAll 後は全件数削除が行われるため削除時間も更新する
+        this.lastDeletedTime = now;
+        this.lastEventStreamUpdatedTime = now;
+        this.lastFullUpdatedTime = now;
+        if (notify === true) {
+            this.notify();
         }
     }
 
