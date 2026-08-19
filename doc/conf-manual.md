@@ -606,6 +606,8 @@ recording dir has no room: reserveId: 13, using TS2, required: 5350MB, free: 900
 - 既存の `timeSpecifiedStartMargin` / `timeSpecifiedEndMargin` (時刻指定予約用) はそのまま残り、**大きい方**が採用される。片方だけ大きくしたい場合に使える
 - **programId 予約でも効く**。対象 following の開始時刻に `startMarginSec` だけ前倒しで到達判定する。ただし放送が予定より早く始まって EIT[p/f] present が対象 event_id になった場合は、マージンを待たずその時点から録る
 - 張り付きを延ばすとチューナーをその分長く占有する。同時録画数に余裕がない環境では詰まる可能性がある
+- **チューナー再利用時に許容する末尾欠けは `prepRecSec` とは連動しない** (固定 15 秒)。連動させると張り付きを延ばした分だけ、実行中の `allowEndLack` 録画の末尾を切り落としてしまう
+- **録画準備中に EPG 追従で終了時刻が動いた場合 (延長) も取りこぼさない**。`RecordingStreamCreator` が新しい `endAt` を覚えておき、ストリーム取得時にハードタイマーへ反映する。予約更新側は待たされない
 
 ---
 
