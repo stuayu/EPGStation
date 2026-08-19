@@ -51,10 +51,7 @@ const nearReserve = () => ({ ...reserve, startAt: Date.now() + 60_000, endAt: Da
 
 // endAt 変更時に張られるイベントリレー確認タイマーがテスト後に残らないようにする
 const clearEventRelayTimer = recorder => {
-    if (recorder.eventRelayTimerId !== null) {
-        clearTimeout(recorder.eventRelayTimerId);
-        recorder.eventRelayTimerId = null;
-    }
+    recorder.eventRelayTimer.clear();
 };
 
 class SynchronousFirstDataStream extends PassThrough {

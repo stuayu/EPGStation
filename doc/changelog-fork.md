@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-19
 
+- **予約タイマーが setTimeout の 32bit 上限で即発火するのを直した**: Node.js の `setTimeout` は遅延が 2^31-1 ms (約 24.8 日) を超えると警告付きで 1ms へ丸めて即発火する。数週間先の時刻指定予約で録画準備 (`RecorderModel.setTimer`)、イベントリレー確認 (`setEventRelayTimer`)、service stream の予約終了ハードタイマー (`RecordingStreamCreator.setEndTimer`) がその場で走っていた。`src/util/LongTimer.ts` が上限以下のチャンクへ分割して再武装する
+- **`RecordingStreamCreator` の timer 二重管理を解消**: `timerIndex` を廃止し、stream の寿命は `StreamSession` へ一本化した
 - **programId 録画をサービスストリーム境界制御へ移行**: 既定の `recording.programStreamMode: service` で TS 到着と EIT[p/f] を分離し、present/following の対象 eventId、soft 60 秒 / hard 5 分の安全弁、最大 8 MiB (188-byte packet 単位) の開始待ちリングバッファ、present event 変更・終了タイマー・EPG endAt 更新を EPGStation 側で管理する。Mirakurun の共有 `priority` は変更せず各 stream request option へ明示する。stream 実体ごとに timer と正常終了理由を持たせ、古い再試行の終了通知が新しい stream を閉じないようにした。録画準備中 (stream 未登録) に EPG 追従で `endAt` が動いた場合は録画開始まで待ってからハードタイマーへ反映する — 待たずに諦めると `create()` へ渡した古い `endAt` のままタイマーが張られ、延長を追従したはずの録画が旧終了時刻で尻切れになる。`program` は Mirakurun の開始・終了境界をそのまま使う切り戻し用として残した
 
 ## 索引
