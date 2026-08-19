@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-20
 
+- **スマホで検索メニューが見切れるのを直した (Issue #16)**: 録画済み・ルールタブの検索メニューは `v-menu` の中に固定幅の `v-card` (420 / 400px) を置いていた。`v-dialog` と違い `v-menu` のコンテンツはビューポートに丸められないため、幅の狭い端末で横にはみ出す。さらに中身が overlay の `max-height` を超えても `overflow-y: visible` のためスクロールできず、下部の「検索」「閉じる」が画面外のまま到達できなかった。グローバルクラス `.menu-card` (横は `max-width: calc(100vw - 32px)`、縦は flex column + 本文 `.menu-card-body` だけスクロール) を追加。**WebKit で実測**: iPhone 15 Pro 相当 (393x660) で修正前は横 39px はみ出し・検索ボタン y=685 (画面高 660 超) → 修正後は横収まり・検索ボタン y=604 でクリック可。iPhone SE (320x568) / iPad Mini でも確認、広い画面では希望幅 420px を維持
+
 - **延長 (録画準備中の endAt 変更) の取りこぼしとブロックを直した**: `RecordingStreamCreator.changeEndAt()` は stream 未取得のとき `StreamChangeAtError` を投げていたため、`RecorderModel` は録画開始まで待ってから反映していた。張り付きを 2 分にすると予約更新が最大 2 分止まる。creator 側に保留 (`pendingEndAt`) を持たせ、`registerStream()` で新しい `endAt` を反映するようにして待ちを無くした。legacy program stream では何もせず投げない
 - **チューナー再利用時に許容する末尾欠けを張り付き時間から切り離した**: `getTunerId()` の「末尾を削れる tuner を探す」判定が `IRecordingStreamCreator.PREP_TIME` を使っていたため、`prepRecSec` に連動させると張り付きを延ばした分だけ実行中の `allowEndLack` 録画の末尾を切り落としてしまう。閾値は固定 15 秒に戻した
 
