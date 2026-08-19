@@ -9,6 +9,7 @@ import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IMirakurunClientModel from '../../IMirakurunClientModel';
+import LongTimer from '../../../util/LongTimer';
 import IRecordingStreamCreator from './IRecordingStreamCreator';
 
 interface TunerProgram {
@@ -21,13 +22,10 @@ interface TunerStatus {
     programs: TunerProgram[];
 }
 
-interface TimerIndex {
-    [key: number]: NodeJS.Timeout;
-}
-
 interface StreamSession {
     stream: http.IncomingMessage;
-    timer: NodeJS.Timeout | null;
+    // 予約終了ハードタイマー。legacy program stream は Mirakurun 任せなので null のまま
+    timer: LongTimer | null;
 }
 
 @injectable()
@@ -36,7 +34,6 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
     private configuration: IConfiguration;
     private mirakurunClientModel: IMirakurunClientModel;
     private tuners: TunerStatus[] = [];
-    private timerIndex: TimerIndex = {};
     // tuner 割当が無い競合予約も含め、service stream の寿命を stream 実体単位で管理する
     private streamIndex: { [key: number]: StreamSession } = {};
     private closeReasonIndex = new WeakMap<http.IncomingMessage, Exclude<IRecordingStreamCreator.CloseReason, null>>();
@@ -90,8 +87,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
     private deleteReserve(reserveId: apid.ReserveId, expectedStream: http.IncomingMessage): void {
         const session = this.streamIndex[reserveId];
         if (session?.stream === expectedStream) {
-            if (session.timer !== null) clearTimeout(session.timer);
-            delete this.timerIndex[reserveId];
+            session.timer?.clear();
             delete this.streamIndex[reserveId];
         }
 
@@ -308,12 +304,12 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      * @param reserve: Reserve
      */
     private destroyStream(reserve: Reserve): void {
-        clearTimeout(this.timerIndex[reserve.id]);
-        delete this.timerIndex[reserve.id];
-
         const session = this.streamIndex[reserve.id];
         const stream = session?.stream ?? null;
-        if (session !== undefined) session.timer = null;
+        if (session !== undefined) {
+            session.timer?.clear();
+            session.timer = null;
+        }
 
         if (stream !== null) {
             this.closeReasonIndex.set(stream, 'scheduled-end');
@@ -324,27 +320,28 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
 
     /** 予約終了時刻 + margin のハードタイマーを設定する */
     private setEndTimer(reserve: Reserve, session: StreamSession): void {
-        if (session.timer !== null) clearTimeout(session.timer);
         const delay =
             reserve.endAt - new Date().getTime() + 1000 * this.configuration.getConfig().timeSpecifiedEndMargin;
-        const timer = setTimeout(
+        // 数週間先の時刻指定予約でも setTimeout の 32bit 上限で即発火しないようにする。
+        // timer は張り直すたびに作り直し、下の同一性チェックで古い発火を弾けるようにする
+        session.timer?.clear();
+        const timer = new LongTimer();
+        session.timer = timer;
+        timer.set(
             () => {
-                // clearTimeout と同時に発火した古い timer が新しい session を閉じないようにする
+                // clear と同時に発火した古い timer が新しい session を閉じないようにする
                 if (this.streamIndex[reserve.id] !== session || session.timer !== timer) return;
                 this.destroyStream(reserve);
             },
             Math.max(0, delay),
         );
-        session.timer = timer;
-        this.timerIndex[reserve.id] = timer;
     }
 
     /** 取得した stream を寿命管理へ登録する */
     private registerStream(reserve: Reserve, stream: http.IncomingMessage, managedEnd: boolean): void {
         const oldSession = this.streamIndex[reserve.id];
         if (oldSession !== undefined && oldSession.stream !== stream) {
-            if (oldSession.timer !== null) clearTimeout(oldSession.timer);
-            delete this.timerIndex[reserve.id];
+            oldSession.timer?.clear();
             oldSession.stream.destroy();
             oldSession.stream.push(null);
         }

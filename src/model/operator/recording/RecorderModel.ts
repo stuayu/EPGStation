@@ -41,6 +41,7 @@ import IDropCheckerModel from './IDropCheckerModel';
 import IRecorderModel from './IRecorderModel';
 import IRecordingStreamCreator from './IRecordingStreamCreator';
 import IRecordingUtilModel, { RecFilePathInfo } from './IRecordingUtilModel';
+import LongTimer from '../../../util/LongTimer';
 import RecordingStartBuffer from './RecordingStartBuffer';
 import { decideRecordingEnd } from './RecordingBoundary';
 
@@ -70,7 +71,8 @@ class RecorderModel implements IRecorderModel {
     private recordedId: apid.RecordedId | null = null;
     private videoFileId: apid.VideoFileId | null = null;
     private videoFileFullPath: string | null = null;
-    private timerId: NodeJS.Timeout | null = null;
+    // 数週間先の予約でも setTimeout の 32bit 上限で即発火しないよう LongTimer を使う
+    private timer = new LongTimer();
     // 録画準備失敗後の再試行待ちタイマー。準備中のキャンセルと区別する
     private prepRetryTimerId: NodeJS.Timeout | null = null;
     // 番組開始待ちの起点 (ms)。チューナー異常のリトライ回数とは別に数える
@@ -98,7 +100,9 @@ class RecorderModel implements IRecorderModel {
     private boundaryEndReason: string | null = null;
 
     // イベントリレータイマー
-    private eventRelayTimerId: NodeJS.Timeout | null = null;
+    private eventRelayTimer = new LongTimer();
+    // イベントリレーの確認を一度でも仕掛けたか (発火済みでも true のまま)
+    private isEventRelayTimerSet = false;
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -192,14 +196,10 @@ class RecorderModel implements IRecorderModel {
         }
 
         // タイマーをセット
-        if (this.timerId !== null) {
-            clearTimeout(this.timerId);
-        }
-
         if (isSuppressLog === false) {
             this.log.system.info(`set timer: ${this.reserve.id}, ${time}`);
         }
-        this.timerId = setTimeout(async () => {
+        this.timer.set(async () => {
             if (generation !== this.prepGeneration) {
                 return;
             }
@@ -892,25 +892,24 @@ class RecorderModel implements IRecorderModel {
                     continue;
                 }
                 if (targetSeen === false) continue;
-                if (
-                    decideRecordingEnd({
-                        targetEventId,
-                        presentEventId: event.eventId,
-                        targetConfirmed: targetSeen,
-                        now: new Date().getTime(),
-                        endAt: this.reserve.endAt,
-                        endMarginMs: this.config.timeSpecifiedEndMargin * 1000,
-                    }) !== 'present-event-changed'
-                ) {
-                    continue;
-                }
+                // scheduled-end は本来 RecordingStreamCreator のハードタイマーが閉じる。
+                // タイマーを取り逃した場合の保険としてここでも同じ理由で閉じる
+                const endReason = decideRecordingEnd({
+                    targetEventId,
+                    presentEventId: event.eventId,
+                    targetConfirmed: targetSeen,
+                    now: new Date().getTime(),
+                    endAt: this.reserve.endAt,
+                    endMarginMs: this.config.timeSpecifiedEndMargin * 1000,
+                });
+                if (endReason === null) continue;
                 if (this.boundaryEndTimerId !== null) continue;
                 this.log.system.info(
-                    `recording boundary changed: reserveId: ${this.reserve.id},` +
+                    `recording boundary changed: reserveId: ${this.reserve.id}, reason: ${endReason},` +
                         ` targetEventId: ${targetEventId}, presentEventId: ${event.eventId}`,
                 );
                 this.boundaryEndTimerId = setTimeout(() => {
-                    this.boundaryEndReason = 'present-event-changed';
+                    this.boundaryEndReason = endReason;
                     if (this.stream !== null) {
                         this.stream.destroy();
                         this.stream.push(null);
@@ -1141,9 +1140,7 @@ class RecorderModel implements IRecorderModel {
         this.destroyStream();
 
         // イベントリレーのチェック用タイマーをクリア
-        if (this.eventRelayTimerId !== null) {
-            clearTimeout(this.eventRelayTimerId);
-        }
+        this.eventRelayTimer.clear();
 
         // 削除予定か?
         if (this.isPlanToDelete === true) {
@@ -1301,9 +1298,7 @@ class RecorderModel implements IRecorderModel {
         ++this.prepGeneration;
         if (this.isPrepRecording === false && this.isRecording === false) {
             // 録画処理が開始されていない
-            if (this.timerId !== null) {
-                clearTimeout(this.timerId);
-            }
+            this.timer.clear();
         } else if (this.isPrepRecording === true) {
             this.log.system.info(`cancel preprec: ${this.reserve.id}`);
 
@@ -1550,10 +1545,8 @@ class RecorderModel implements IRecorderModel {
         }
 
         // タイマーをセットする
-        if (this.eventRelayTimerId !== null) {
-            clearTimeout(this.eventRelayTimerId);
-        }
-        this.eventRelayTimerId = setTimeout(async () => {
+        this.isEventRelayTimerSet = true;
+        this.eventRelayTimer.set(async () => {
             await this.checkEventRelay();
         }, time);
     }
@@ -1642,7 +1635,7 @@ class RecorderModel implements IRecorderModel {
     public resetTimer(): boolean {
         // 録画中ならイベントリレーのチェック用のタイマーを再設定
         if (this.isRecording === true) {
-            if (this.eventRelayTimerId !== null) {
+            if (this.isEventRelayTimerSet === true) {
                 this.setEventRelayTimer(this.reserve);
             }
             return true;
