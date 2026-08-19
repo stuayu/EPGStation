@@ -1,4 +1,3 @@
-import diskusage from 'diskusage-ng';
 import * as fs from 'fs';
 import { inject, injectable } from 'inversify';
 import * as path from 'path';
@@ -6,6 +5,7 @@ import * as apid from '../../../../api';
 import Reserve from '../../../db/entities/Reserve';
 import Recorded from '../../../db/entities/Recorded';
 import DateUtil from '../../../util/DateUtil';
+import DiskSpaceUtil from '../../../util/DiskSpaceUtil';
 import FileUtil from '../../../util/FileUtil';
 import StrUtil from '../../../util/StrUtil';
 import IVideoUtil from '../../api/video/IVideoUtil';
@@ -141,18 +141,14 @@ class RecordingUtilModel implements IRecordingUtilModel {
      * @param dirPath: string
      * @return Promise<number | null>
      */
-    private getFreeBytes(dirPath: string): Promise<number | null> {
-        return new Promise<number | null>(resolve => {
-            diskusage(dirPath, (err, usage) => {
-                if (err) {
-                    // 未マウント・未作成のディレクトリは候補から外れるだけにする
-                    this.log.system.warn(`get disk info error: ${dirPath}`);
-                    resolve(null);
-                } else {
-                    resolve(usage.available);
-                }
-            });
-        });
+    private async getFreeBytes(dirPath: string): Promise<number | null> {
+        const available = await DiskSpaceUtil.getAvailable(dirPath);
+        if (available === null) {
+            // 未マウント・未作成のディレクトリは候補から外れるだけにする
+            this.log.system.warn(`get disk info error: ${dirPath}`);
+        }
+
+        return available;
     }
 
     /**

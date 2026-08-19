@@ -43,6 +43,7 @@ import IRecordingStreamCreator from './IRecordingStreamCreator';
 import IRecordingUtilModel, { RecFilePathInfo } from './IRecordingUtilModel';
 import LongTimer from '../../../util/LongTimer';
 import RecordingStartBuffer from './RecordingStartBuffer';
+import { RecordingTimingConfig, resolveRecordingTimingConfig } from './RecordingTimingConfig';
 import { decideRecordingEnd } from './RecordingBoundary';
 
 /**
@@ -190,7 +191,7 @@ class RecorderModel implements IRecorderModel {
         }
 
         // 待機時間を計算
-        let time = this.reserve.startAt - now - IRecordingStreamCreator.PREP_TIME;
+        let time = this.reserve.startAt - now - this.getTimingConfig().prepMs;
         if (time < 0) {
             time = 0;
         }
@@ -681,6 +682,7 @@ class RecorderModel implements IRecorderModel {
 
         const gateConfig = resolveRecordingStartGateConfig(this.config.recording);
         const retryConfig = resolveRecordingRetryConfig(this.config.recording);
+        const timing = this.getTimingConfig();
         // Mirakurun の program id は networkId * 10^10 + serviceId * 10^5 + eventId、
         // channel id は networkId * 100000 + serviceId で作られている
         const eventId = this.reserve.programId === null ? null : this.reserve.programId % 100000;
@@ -750,7 +752,7 @@ class RecorderModel implements IRecorderModel {
                     following: following,
                     elapsedMs: forcedElapsedMs,
                     currentAt: new Date().getTime(),
-                    recordingStartMarginMs: eventId === null ? this.config.timeSpecifiedStartMargin * 1000 : undefined,
+                    recordingStartMarginMs: timing.startMarginMs,
                     config: gateConfig,
                 });
 
@@ -900,7 +902,7 @@ class RecorderModel implements IRecorderModel {
                     targetConfirmed: targetSeen,
                     now: new Date().getTime(),
                     endAt: this.reserve.endAt,
-                    endMarginMs: this.config.timeSpecifiedEndMargin * 1000,
+                    endMarginMs: this.getTimingConfig().endMarginMs,
                 });
                 if (endReason === null) continue;
                 if (this.boundaryEndTimerId !== null) continue;
@@ -979,8 +981,7 @@ class RecorderModel implements IRecorderModel {
                 return;
             }
 
-            const scheduledEndReached =
-                new Date().getTime() >= this.reserve.endAt + 1000 * this.config.timeSpecifiedEndMargin;
+            const scheduledEndReached = new Date().getTime() >= this.reserve.endAt + this.getTimingConfig().endMarginMs;
             const closeReason = this.boundaryEndReason ?? this.streamCreator.getCloseReason(s);
             if (err && closeReason === null && scheduledEndReached === false) {
                 this.log.system.error(
@@ -1506,6 +1507,18 @@ class RecorderModel implements IRecorderModel {
     }
 
     /**
+     * 現在の config から録画タイミング (張り付き・開始マージン・終了マージン) を解決する
+     * @return RecordingTimingConfig
+     */
+    private getTimingConfig(): RecordingTimingConfig {
+        return resolveRecordingTimingConfig(
+            this.config.recording,
+            this.config.timeSpecifiedStartMargin,
+            this.config.timeSpecifiedEndMargin,
+        );
+    }
+
+    /**
      * 録画準備中に呼ばれた場合、録画が実際に始まる (= stream が寿命管理へ登録される) まで待つ。
      * 準備中の stream は未登録なので、待たずに endAt を変えようとしても反映されない。
      * @param reserve: Reserve 予約情報 (ログ用)
@@ -1517,7 +1530,7 @@ class RecorderModel implements IRecorderModel {
             // タイムアウト設定
             const timeoutId = setTimeout(() => {
                 reject(new Error('ChangeEndAtTimeoutError'));
-            }, IRecordingStreamCreator.PREP_TIME);
+            }, this.getTimingConfig().prepMs);
 
             // 録画開始内部イベント待ち
             this.eventEmitter.once(RecorderModel.START_RECORDING_EVENT, () => {

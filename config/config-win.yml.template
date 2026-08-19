@@ -976,6 +976,12 @@ stream:
 #     storageFallbackMarginMB: 3072
 #     # 予想サイズ計算に使うビットレート (Mbps)。省略時は放送種別ごとの既定値 (GR 19 / BS 26 / CS・SKY 20 / 4K 40)
 #     storageFallbackBitrateMbps: 19
+#     # 予約開始時刻の何秒前からチャンネルを開いて張り付くか。既定 15。マイナス不可
+#     prepRecSec: 15
+#     # 予約開始時刻の何秒前から実際に録画を開始するか。既定 0。マイナス不可
+#     startMarginSec: 0
+#     # 予約終了時刻の何秒後まで実際に録画を続けるか。既定 0。マイナス不可
+#     endMarginSec: 0
 
 # Web UI / API のログイン認証。**既定で有効**です。
 # 初回アクセス時に管理ユーザーの作成画面が表示され、最初に登録した人が

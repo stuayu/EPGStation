@@ -140,6 +140,8 @@ export const decideRecordingStart = (input: StartGateInput): StartGateDecision =
     // タイムアウトは EIT を読めない場合の安全弁だが、予約時刻より前に
     // 録画を始めてよいという意味ではない。準備開始直後に timeoutMs=0
     // などが指定されても、時刻指定予約の開始マージンまでは待つ。
+    // このガードは時刻指定予約専用。programId 予約は event_id 一致で番組を特定できるため、
+    // 放送が予定より早く始まった場合はその時点から録りたい
     const isBeforeRecordingStartMargin =
         input.eventId === null &&
         input.currentAt !== undefined &&
@@ -191,12 +193,13 @@ export const decideRecordingStart = (input: StartGateInput): StartGateDecision =
         }
 
         // present 更新前でも対象 following の開始時刻に到達したら開始する。
+        // 開始マージンが設定されていればその分だけ前倒しする。
         if (
             following !== null &&
             following.eventId === input.eventId &&
             following.startAt !== null &&
             input.currentAt !== undefined &&
-            input.currentAt >= following.startAt
+            input.currentAt >= following.startAt - (input.recordingStartMarginMs ?? 0)
         ) {
             return { canStart: true, reason: 'followingTimeReached' };
         }

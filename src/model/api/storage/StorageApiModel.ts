@@ -1,6 +1,6 @@
-import diskusage from 'diskusage-ng';
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
+import DiskSpaceUtil from '../../../util/DiskSpaceUtil';
 import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
 import IStorageApiModel from './IStorageApiModel';
@@ -35,19 +35,13 @@ export default class StorageApiModel implements IStorageApiModel {
      * 指定したディレクトリのディスク使用情報を取得する
      * @param dirPath ディスクディレクトリ
      */
-    private getDiskInfo(dirPath: string): Promise<apid.DiskUsage> {
-        return new Promise<apid.DiskUsage>((resolve, reject) => {
-            diskusage(dirPath, (err, usage) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve({
-                        available: usage.available,
-                        used: usage.used,
-                        total: usage.total,
-                    });
-                }
-            });
-        });
+    private async getDiskInfo(dirPath: string): Promise<apid.DiskUsage> {
+        const usage = await DiskSpaceUtil.get(dirPath);
+
+        return {
+            available: usage.available,
+            used: usage.used,
+            total: usage.total,
+        };
     }
 }

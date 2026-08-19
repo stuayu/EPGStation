@@ -470,6 +470,24 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
                 type: 'number',
                 hint: '省略時は放送種別ごとの既定値 (GR 19 / BS 26 / CS・SKY 20 / 4K 40)',
             },
+            {
+                path: 'recording.prepRecSec',
+                label: '開始時刻の何秒前から張り付くか',
+                type: 'number',
+                hint: '既定 15。チャンネルを開いて EIT[p/f] の監視を始める時刻。負値不可',
+            },
+            {
+                path: 'recording.startMarginSec',
+                label: '開始時刻の何秒前から録画するか',
+                type: 'number',
+                hint: '既定 0。負値不可',
+            },
+            {
+                path: 'recording.endMarginSec',
+                label: '終了時刻の何秒後まで録画するか',
+                type: 'number',
+                hint: '既定 0。負値不可',
+            },
         ],
     },
     {
