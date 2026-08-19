@@ -7,7 +7,7 @@
                 </v-btn>
             </template>
             <v-card class="menu-card" width="420">
-                <div class="recorded-search pa-4">
+                <div class="recorded-search menu-card-body pa-4">
                     <div class="d-flex align-center">
                         <v-text-field
                             v-model="searchState.keyword"
