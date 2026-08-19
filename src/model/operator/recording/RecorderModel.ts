@@ -1432,10 +1432,8 @@ class RecorderModel implements IRecorderModel {
                                 ` end: ${formatTimeChange(this.reserve.endAt, newReserve.endAt)}`,
                         );
 
-                        if (this.isPrepRecording === true) {
-                            // 録画準備中なら録画中になるまで待つ
-                            await this.waitForRecordingStart(newReserve);
-                        }
+                        // 録画準備中でも changeEndAt が新しい endAt を覚えて
+                        // stream 取得時に反映するため、ここで待つ必要はない
 
                         // 終了時刻変更
                         try {
@@ -1450,15 +1448,8 @@ class RecorderModel implements IRecorderModel {
                     // legacy program stream の終了は Mirakurun が管理するため、EPGStation 側の終了タイマーは変更しない。
                     if (this.reserve.endAt !== newReserve.endAt) {
                         if (this.config.recording?.programStreamMode !== 'program') {
-                            // 録画準備中は stream が未登録で changeEndAt が失敗する。
-                            // ここで諦めると create() へ渡した古い endAt のまま終了タイマーが張られ、
-                            // 延長を追従したはずの録画が旧終了時刻で尻切れになる
-                            if (this.isPrepRecording === true) {
-                                await this.waitForRecordingStart(newReserve).catch(err => {
-                                    this.log.system.error(`wait change recording endAt: ${newReserve.id}`);
-                                    this.log.system.error(err);
-                                });
-                            }
+                            // 録画準備中に届いた変更は changeEndAt が覚えておき、
+                            // stream 取得時 (registerStream) に反映される
                             try {
                                 this.streamCreator.changeEndAt(newReserve);
                             } catch (err: any) {
@@ -1523,28 +1514,6 @@ class RecorderModel implements IRecorderModel {
             this.config.timeSpecifiedStartMargin,
             this.config.timeSpecifiedEndMargin,
         );
-    }
-
-    /**
-     * 録画準備中に呼ばれた場合、録画が実際に始まる (= stream が寿命管理へ登録される) まで待つ。
-     * 準備中の stream は未登録なので、待たずに endAt を変えようとしても反映されない。
-     * @param reserve: Reserve 予約情報 (ログ用)
-     * @return Promise<void> PREP_TIME 以内に録画が始まらなければ reject する
-     */
-    private waitForRecordingStart(reserve: Reserve): Promise<void> {
-        return new Promise<void>((resolve: () => void, reject: (err: Error) => void) => {
-            this.log.system.debug(`wait change endAt: ${reserve.id}`);
-            // タイムアウト設定
-            const timeoutId = setTimeout(() => {
-                reject(new Error('ChangeEndAtTimeoutError'));
-            }, this.getTimingConfig().prepMs);
-
-            // 録画開始内部イベント待ち
-            this.eventEmitter.once(RecorderModel.START_RECORDING_EVENT, () => {
-                clearTimeout(timeoutId);
-                resolve();
-            });
-        });
     }
 
     /**

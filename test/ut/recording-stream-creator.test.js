@@ -121,6 +121,64 @@ test('legacy program stream は Mirakurun の終了境界を維持しハード�
     await creator.create(reserve({ id: 5, endAt: Date.now() + 10 }));
     await new Promise(resolve => setTimeout(resolve, 30));
     assert.equal(stream.destroyed, false);
-    assert.throws(() => creator.changeEndAt(reserve({ id: 5 })), /StreamChangeAtError/);
+    // legacy は Mirakurun が終了境界を持つので、endAt 変更は何もせず投げもしない
+    assert.doesNotThrow(() => creator.changeEndAt(reserve({ id: 5, endAt: Date.now() + 10 })));
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.equal(stream.destroyed, false, 'ハードタイマーを追加していない');
+    stream.destroy();
+});
+
+test('stream 取得前の endAt 変更 (準備中の延長) は投げずに覚えておく', () => {
+    const creator = new RecordingStreamCreator(
+        { getLogger: () => logger },
+        { getConfig: () => ({ recPriority: 9, conflictPriority: 4, timeSpecifiedEndMargin: 1, recording: {} }) },
+        { getClient: () => ({}) },
+    );
+    // 以前は StreamChangeAtError を投げていた。呼び出し側を待たせないため投げない
+    const extended = Date.now() + 600_000;
+    assert.doesNotThrow(() => creator.changeEndAt(reserve({ id: 42, endAt: extended })));
+    assert.equal(creator.pendingEndAt[42], extended, '新しい endAt を覚えている');
+});
+
+test('準備中に延長された endAt が stream 取得時のハードタイマーへ反映される', async () => {
+    const stream = new PassThrough();
+    const client = { priority: 0, getServiceStream: async () => stream };
+    const creator = new RecordingStreamCreator(
+        { getLogger: () => logger },
+        { getConfig: () => ({ recPriority: 9, conflictPriority: 4, timeSpecifiedEndMargin: 1, recording: {} }) },
+        { getClient: () => client },
+    );
+
+    const original = reserve({ id: 7, endAt: Date.now() + 300 });
+    const extendedEndAt = Date.now() + 3600_000;
+
+    // stream 取得より先に延長が届く
+    creator.changeEndAt({ ...original, endAt: extendedEndAt });
+    await creator.create(original);
+
+    // 旧 endAt (300ms 後) で閉じられていないこと
+    await new Promise(resolve => setTimeout(resolve, 600));
+    assert.equal(stream.destroyed, false, '古い endAt でストリームが閉じられていない');
+    assert.equal(creator.getCloseReason(stream), null);
+    assert.equal(creator.pendingEndAt[7], undefined, '反映後は保留を消す');
+
+    stream.destroy();
+});
+
+test('stream 取得後の endAt 変更はそのままハードタイマーを張り直す', async () => {
+    const stream = new PassThrough();
+    const client = { priority: 0, getServiceStream: async () => stream };
+    const creator = new RecordingStreamCreator(
+        { getLogger: () => logger },
+        { getConfig: () => ({ recPriority: 9, conflictPriority: 4, timeSpecifiedEndMargin: 1, recording: {} }) },
+        { getClient: () => client },
+    );
+
+    const original = reserve({ id: 8, endAt: Date.now() + 300 });
+    await creator.create(original);
+    creator.changeEndAt({ ...original, endAt: Date.now() + 3600_000 });
+
+    await new Promise(resolve => setTimeout(resolve, 600));
+    assert.equal(stream.destroyed, false, '延長後は古い endAt で閉じない');
     stream.destroy();
 });

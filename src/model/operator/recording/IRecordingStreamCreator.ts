@@ -12,6 +12,9 @@ interface IRecordingStreamCreator {
 }
 
 namespace IRecordingStreamCreator {
+    // チューナー再利用時に許容する末尾欠け (ms)。
+    // 録画の張り付き時間は recording.prepRecSec で設定する (RecordingTimingConfig) が、
+    // こちらは「実行中の録画をどれだけ切ってよいか」なので連動させない
     export const PREP_TIME = 15 * 1000;
     export type CloseReason = 'scheduled-end' | null;
 }

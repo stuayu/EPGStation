@@ -37,6 +37,8 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
     private tuners: TunerStatus[] = [];
     // tuner 割当が無い競合予約も含め、service stream の寿命を stream 実体単位で管理する
     private streamIndex: { [key: number]: StreamSession } = {};
+    // stream 取得前に届いた endAt 変更 (EPG 追従による延長など) を覚えておく
+    private pendingEndAt: { [key: number]: number } = {};
     private closeReasonIndex = new WeakMap<http.IncomingMessage, Exclude<IRecordingStreamCreator.CloseReason, null>>();
 
     constructor(
@@ -90,6 +92,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
         if (session?.stream === expectedStream) {
             session.timer?.clear();
             delete this.streamIndex[reserveId];
+            delete this.pendingEndAt[reserveId];
         }
 
         for (const tuner of this.tuners) {
@@ -170,14 +173,17 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
             }
         }
 
-        // 末尾を削ることで終了できる tuner を探す
+        // 末尾を削ることで終了できる tuner を探す。
+        // ここの閾値は「許容できる末尾欠け」であって張り付き時間ではない。
+        // prepRecSec に連動させると、張り付きを延ばした分だけ実行中の
+        // allowEndLack 録画の末尾を切り落としてしまう
         const now = new Date().getTime();
-        const prepMs = this.getTiming().prepMs;
+        const allowedEndLackMs = IRecordingStreamCreator.PREP_TIME;
         for (let i = 0; i < this.tuners.length; i++) {
             if (this.tuners[i].types.indexOf(<any>reserve.channelType) !== -1) {
                 let isOk = true;
                 for (const p of this.tuners[i].programs) {
-                    if (p.reserve.allowEndLack === false || p.reserve.endAt - now > prepMs) {
+                    if (p.reserve.allowEndLack === false || p.reserve.endAt - now > allowedEndLackMs) {
                         isOk = false;
                         break;
                     }
@@ -198,7 +204,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
 
                     try {
                         const newProgram = await mirakurun.getProgram(p.reserve.programId);
-                        if (newProgram.startAt + newProgram.duration - now > prepMs) {
+                        if (newProgram.startAt + newProgram.duration - now > allowedEndLackMs) {
                             // 延長があった
                             isOk = false;
                             break;
@@ -350,8 +356,16 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
         this.streamIndex[reserve.id] = session;
         // legacy program stream は Mirakurun 自身が番組終了境界を管理する
         if (managedEnd) {
-            this.setEndTimer(reserve, session);
+            // 準備中に EPG 追従で endAt が動いていたらそちらを使う
+            const pending = this.pendingEndAt[reserve.id];
+            const target =
+                typeof pending === 'number' && pending !== reserve.endAt ? { ...reserve, endAt: pending } : reserve;
+            if (target !== reserve) {
+                this.log.system.info(`apply pending endAt: reserveId: ${reserve.id}, ${reserve.endAt} -> ${pending}`);
+            }
+            this.setEndTimer(target as Reserve, session);
         }
+        delete this.pendingEndAt[reserve.id];
         finished(stream, {}, err => {
             // 予定終了で自ら destroy した場合は premature close になるため error 扱いしない
             if (err && this.closeReasonIndex.get(stream) === undefined) {
@@ -368,8 +382,18 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      */
     public changeEndAt(reserve: Reserve): void {
         const session = this.streamIndex[reserve.id];
-        if (session === undefined || session.timer === null) {
-            throw new Error('StreamChangeAtError');
+        if (session === undefined) {
+            // 録画準備中で stream をまだ取得していない。create() に渡された古い Reserve で
+            // 終了タイマーが張られないよう、新しい endAt を覚えておいて registerStream で使う
+            // (呼び出し側を待たせると、張り付き 2 分の間ずっと予約更新が止まる)
+            this.pendingEndAt[reserve.id] = reserve.endAt;
+
+            return;
+        }
+
+        if (session.timer === null) {
+            // legacy program stream は Mirakurun が終了境界を管理するので何もしない
+            return;
         }
 
         // timer 再設定

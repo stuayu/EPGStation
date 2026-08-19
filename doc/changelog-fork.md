@@ -15,6 +15,9 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-20
 
+- **延長 (録画準備中の endAt 変更) の取りこぼしとブロックを直した**: `RecordingStreamCreator.changeEndAt()` は stream 未取得のとき `StreamChangeAtError` を投げていたため、`RecorderModel` は録画開始まで待ってから反映していた。張り付きを 2 分にすると予約更新が最大 2 分止まる。creator 側に保留 (`pendingEndAt`) を持たせ、`registerStream()` で新しい `endAt` を反映するようにして待ちを無くした。legacy program stream では何もせず投げない
+- **チューナー再利用時に許容する末尾欠けを張り付き時間から切り離した**: `getTunerId()` の「末尾を削れる tuner を探す」判定が `IRecordingStreamCreator.PREP_TIME` を使っていたため、`prepRecSec` に連動させると張り付きを延ばした分だけ実行中の `allowEndLack` 録画の末尾を切り落としてしまう。閾値は固定 15 秒に戻した
+
 - **録画のタイミングを設定できるようにした**: 「張り付き (`recording.prepRecSec`)」「開始マージン (`startMarginSec`)」「終了マージン (`endMarginSec`)」の 3 つ。**既定値は EDCB に合わせた** — 張り付き 2 分前 / 開始マージン 5 秒 / 終了マージン 5 秒 (マージン無しにしたい場合は 0 を明示する)。**開始ゲートの上限は「予約開始時刻 (開始マージン込み)」から数える**ため、張り付きを延ばしても soft / hard timeout が予定開始より前に発火して前番組を録り始めることはない。いずれも**負値は 0 に丸める**。張り付きは開始マージン + 5 秒を下限として自動で押し上げる (ストリームを開いた瞬間に開始判定が走って EIT を 1 度も読めないのを防ぐ)。既存の `timeSpecifiedStartMargin` / `timeSpecifiedEndMargin` とは大きい方を採るため、新設定を入れない限り従来の挙動は変わらない。programId 予約でも following の開始時刻判定に開始マージンが効く。判定は `RecordingTimingConfig.ts` の純粋関数。固定値だった `IRecordingStreamCreator.PREP_TIME` の参照箇所 (予約タイマー・チューナー再利用判定・endAt 変更待ち) をすべて設定値へ置き換えた
 - **ディスク空き容量の取得をネイティブモジュールから Node.js 標準へ移した**: `diskusage-ng` (node-gyp ビルドが要るネイティブモジュール) をやめ、`fs.statfs` (Node 18.15 以降) を使う `src/util/DiskSpaceUtil.ts` に集約した。**Windows 実機で動作確認済み** (`Win32_LogicalDisk` の値と一致)。macOS でも確認。置き換え先は録画先の空き判定・ストレージ監視 (`StorageManageModel`)・ストレージ API (`StorageApiModel`) の 3 箇所で、`package.json` から `diskusage-ng` 依存を削除した
 

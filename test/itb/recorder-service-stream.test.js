@@ -223,18 +223,11 @@ test('legacy program stream には EPGStation 側の終了境界 listener を追
     source.destroy();
 });
 
-test('録画準備中の endAt 変更は録画開始まで待ってからハードタイマーへ反映する', async () => {
+test('録画準備中の endAt 変更 (延長) はブロックせず即 creator へ渡す', async () => {
     const calls = [];
     const recorder = makeRecorder(
         { programStreamMode: 'service' },
-        {
-            getCloseReason: () => null,
-            changeEndAt: r => {
-                // 準備中に呼ばれた場合は stream 未登録として失敗する creator を再現する
-                if (recorder.isRecording !== true) throw new Error('StreamChangeAtError');
-                calls.push(r.endAt);
-            },
-        },
+        { getCloseReason: () => null, changeEndAt: r => calls.push(r.endAt) },
     );
     const current = nearReserve();
     recorder.reserve = current;
@@ -242,20 +235,67 @@ test('録画準備中の endAt 変更は録画開始まで待ってからハー�
     recorder.isRecording = false;
 
     const newReserve = { ...current, endAt: current.endAt + 600_000 };
-    const updated = recorder.update(newReserve, true);
+    // 張り付き 2 分の間ずっと予約更新が止まらないこと (待ちを入れると 2 分かかる)
+    const started = Date.now();
+    await recorder.update(newReserve, true);
+    assert.ok(Date.now() - started < 1000, `update がブロックしていない (${Date.now() - started}ms)`);
 
-    // 録画開始前は反映されない
-    await new Promise(resolve => setTimeout(resolve, 10));
-    assert.deepEqual(calls, []);
-
-    // 録画開始で待ちが解け、新しい endAt が渡る
-    recorder.isPrepRecording = false;
-    recorder.isRecording = true;
-    recorder.eventEmitter.emit(RecorderModel.START_RECORDING_EVENT);
-
-    await updated;
     assert.deepEqual(calls, [newReserve.endAt]);
     assert.equal(recorder.reserve.endAt, newReserve.endAt);
+    clearEventRelayTimer(recorder);
+});
+
+test('録画中の延長でイベントリレー確認タイマーも張り直す', async () => {
+    const recorder = makeRecorder(
+        { programStreamMode: 'service' },
+        { getCloseReason: () => null, changeEndAt: () => {} },
+    );
+    const current = nearReserve();
+    recorder.reserve = current;
+    recorder.isPrepRecording = false;
+    recorder.isRecording = true;
+    recorder.recordedId = null;
+
+    assert.equal(recorder.eventRelayTimer.isPending, false);
+    await recorder.update({ ...current, endAt: current.endAt + 600_000 }, true);
+    assert.equal(recorder.eventRelayTimer.isPending, true, '延長でリレー確認タイマーが張られる');
+    assert.equal(recorder.isEventRelayTimerSet, true);
+    clearEventRelayTimer(recorder);
+});
+
+test('録画準備中の延長ではイベントリレー確認タイマーを張らない', async () => {
+    const recorder = makeRecorder(
+        { programStreamMode: 'service' },
+        { getCloseReason: () => null, changeEndAt: () => {} },
+    );
+    const current = nearReserve();
+    recorder.reserve = current;
+    recorder.isPrepRecording = true;
+    recorder.isRecording = false;
+
+    await recorder.update({ ...current, endAt: current.endAt + 600_000 }, true);
+    assert.equal(recorder.eventRelayTimer.isPending, false);
+    clearEventRelayTimer(recorder);
+});
+
+test('resetTimer は一度でもリレー確認を仕掛けていれば張り直す', async () => {
+    const recorder = makeRecorder(
+        { programStreamMode: 'service' },
+        { getCloseReason: () => null, changeEndAt: () => {} },
+    );
+    recorder.reserve = nearReserve();
+    recorder.isRecording = true;
+
+    // まだ仕掛けていない -> 何もしない
+    assert.equal(recorder.resetTimer(), true);
+    assert.equal(recorder.eventRelayTimer.isPending, false);
+
+    // 仕掛けたあとは発火済みでも張り直す
+    recorder.setEventRelayTimer(recorder.reserve);
+    recorder.eventRelayTimer.clear();
+    assert.equal(recorder.eventRelayTimer.isPending, false);
+    assert.equal(recorder.resetTimer(), true);
+    assert.equal(recorder.eventRelayTimer.isPending, true, '張り直された');
     clearEventRelayTimer(recorder);
 });
 
