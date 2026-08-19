@@ -972,6 +972,12 @@ stream:
 #     hardStartGateTimeoutMs: 300000
 #     # 放送中の番組の開始時刻が予約開始時刻よりこれ以上前なら「前の番組」とみなす (ms)。既定 120000
 #     startGateStartMarginMs: 120000
+#     # 予想録画サイズに対して空きが足りない場合、次の recorded へ振り替える (既定 true)
+#     storageFallbackEnabled: true
+#     # 予想録画サイズに上乗せする余裕 (MB)。既定 3072
+#     storageFallbackMarginMB: 3072
+#     # 予想サイズ計算に使うビットレート (Mbps)。省略時は放送種別ごとの既定値 (GR 19 / BS 26 / CS・SKY 20 / 4K 40)
+#     storageFallbackBitrateMbps: 19
 
 # Web UI / API のログイン認証。**既定で有効**です。
 # 初回アクセス時に管理ユーザーの作成画面が表示され、最初に登録した人が

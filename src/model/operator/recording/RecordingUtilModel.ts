@@ -1,3 +1,4 @@
+import diskusage from 'diskusage-ng';
 import * as fs from 'fs';
 import { inject, injectable } from 'inversify';
 import * as path from 'path';
@@ -17,6 +18,12 @@ import IExecutionManagementModel from '../../IExecutionManagementModel';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IRecordingUtilModel, { RecFilePathInfo } from './IRecordingUtilModel';
+import {
+    DirCandidate,
+    estimateRecordingBytes,
+    resolveStorageFallbackConfig,
+    selectRecordedDir,
+} from './RecordedDirCapacity';
 
 @injectable()
 class RecordingUtilModel implements IRecordingUtilModel {
@@ -68,6 +75,87 @@ class RecordingUtilModel implements IRecordingUtilModel {
     }
 
     /**
+     * 予想録画サイズに対して空き容量が足りない場合、次の優先順位の録画先へ振り替える。
+     *
+     * 録画を始めてから ENOSPC になると 0 バイトのファイルと失敗した録画情報しか残らず、
+     * リトライしても同じディレクトリへ書きに行くため復旧しない。開始前に振り替える。
+     *
+     * @param reserve: Reserve
+     * @param parentDir: RecordedDirInfo 本来の保存先
+     * @return Promise<RecordedDirInfo> 実際に使う保存先
+     */
+    private async applyStorageFallback(reserve: Reserve, parentDir: RecordedDirInfo): Promise<RecordedDirInfo> {
+        const fallbackConfig = resolveStorageFallbackConfig(this.config.recording);
+        if (fallbackConfig.enabled === false || this.config.recorded.length <= 1) {
+            return parentDir;
+        }
+
+        // 本来の保存先を先頭に、config.recorded の順で後続候補を並べる
+        const ordered: RecordedDirInfo[] = [parentDir];
+        for (const d of this.config.recorded) {
+            if (d.path !== parentDir.path) {
+                ordered.push(d);
+            }
+        }
+
+        const requiredBytes = estimateRecordingBytes(
+            reserve.endAt - reserve.startAt,
+            reserve.channelType,
+            fallbackConfig,
+        );
+
+        const candidates: DirCandidate[] = [];
+        for (const dir of ordered) {
+            candidates.push({ dir: dir, freeBytes: await this.getFreeBytes(dir.path) });
+        }
+
+        const selected = selectRecordedDir(candidates, requiredBytes);
+        if (selected === null) {
+            return parentDir;
+        }
+
+        const requiredMB = Math.round(requiredBytes / 1024 / 1024);
+        const freeMB = selected.freeBytes === null ? 'unknown' : Math.round(selected.freeBytes / 1024 / 1024);
+        if (selected.reason === 'fallback') {
+            this.log.system.warn(
+                `recording dir fallback: reserveId: ${reserve.id}, ${parentDir.name} -> ${selected.dir.name},` +
+                    ` required: ${requiredMB}MB, free: ${freeMB}MB`,
+            );
+        } else if (selected.reason === 'insufficient') {
+            this.log.system.error(
+                `recording dir has no room: reserveId: ${reserve.id}, using ${selected.dir.name},` +
+                    ` required: ${requiredMB}MB, free: ${freeMB}MB`,
+            );
+        } else {
+            this.log.system.debug(
+                `recording dir: reserveId: ${reserve.id}, ${selected.dir.name},` +
+                    ` required: ${requiredMB}MB, free: ${freeMB}MB`,
+            );
+        }
+
+        return selected.dir;
+    }
+
+    /**
+     * 空き容量を取得する。取得できない場合は null を返す
+     * @param dirPath: string
+     * @return Promise<number | null>
+     */
+    private getFreeBytes(dirPath: string): Promise<number | null> {
+        return new Promise<number | null>(resolve => {
+            diskusage(dirPath, (err, usage) => {
+                if (err) {
+                    // 未マウント・未作成のディレクトリは候補から外れるだけにする
+                    this.log.system.warn(`get disk info error: ${dirPath}`);
+                    resolve(null);
+                } else {
+                    resolve(usage.available);
+                }
+            });
+        });
+    }
+
+    /**
      * 保存先ディレクトリを取得する
      * @param reserve: Reserve
      * @param isEnableTmp: 一時保存ディレクトリを使用するか
@@ -102,6 +190,9 @@ class RecordingUtilModel implements IRecordingUtilModel {
                 // 親ディレクトリが見つからなかった
                 parentDir = this.config.recorded[0];
             }
+
+            // 空き容量が足りない場合は次の優先順位の録画先へ振り替える
+            parentDir = await this.applyStorageFallback(reserve, parentDir);
 
             // サブディレクトリ
             subDir = reserve.directory === null ? '' : reserve.directory;

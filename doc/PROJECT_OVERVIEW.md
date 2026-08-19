@@ -157,6 +157,7 @@ npm run recover-channel-name   # 過去の録画の放送局名を復元 (既定
 - **録画開始ゲート**: 時刻指定予約と programId 予約はともに `getServiceStream` (既定) を録画優先度のリクエスト option で開く。`EitPresentParser` + `RecordingStartGate` が TS 到着 (transport) と EIT[p/f] 境界待ちを分離し、target present の event_id 一致 / target following の start_time 到達を通常開始条件にする。EIT 無しは soft timeout (既定 60 秒)、別 event_id 固着は hard timeout (既定 5 分) で録り逃しを防ぐ。待機中 TS は最大 8 MiB のリングバッファへ保持し、開始時に先に書き出す。設定は `recording.programStreamMode`、`recording.startGate*`、`recording.hardStartGateTimeoutMs`
 - **programId 予約の開始待ち**: 既定のサービスストリームでは TS 到着を `firstDataTimeoutMs` で transport 異常として判定し、TS 到着後の EIT 境界待ちとは分離する。target present の event_id 一致、target following の start_time 到達を通常条件とし、EIT 無しは soft 60 秒、別 event_id 固着は hard 5 分で開始する。待機中は最大 8 MiB のリングバッファを使い、同じチャンネルのチューナーを保持する。`programStreamMode: program` の切り戻し経路も維持する
 - **録画開始・終了は EIT[p/f] 追従**: service stream は自動終了しないため、対象 present が別 event_id に変化した場合はデバウンス後に終了し、`endAt + timeSpecifiedEndMargin` をハード期限とする。EPG 追従で `endAt` が変われば programId 予約もタイマーを更新する。開始後の一時的 EIT 欠落では終了しない。HTTP 応答、first TS、first EIT、開始/終了理由、priority を info ログへ出し、`isFollowingSchedule` は開始待ち時だけ true とする
+- **録画先は空き容量で自動振り替え**: 録画開始前に予想サイズ (番組長 × 放送種別ごとの想定ビットレート + 余裕) を出し、`config.recorded` の順に空きを見て最初に収まる保存先を選ぶ。満杯になり次第順次次へ送り、どこも足りなければ最も空きが大きい所を使う。判定は `RecordedDirCapacity.ts` (純粋関数)、空き取得は `RecordingUtilModel`。設定は `recording.storageFallback*`
 - **ログで追える**: EIT[p/f] の受信・予約の再スケジュール・録画側の時刻変更を「変更前 → 変更後」の時刻付き info で出す (整形は `src/util/ProgramTimeLog.ts`)。クライアントへの通知も Operator / Service の両方で接続クライアント数付きの info を出す
 
 ### シリーズ判定

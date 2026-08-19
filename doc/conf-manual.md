@@ -533,6 +533,9 @@ IPTV クライアントなどに URL を手で登録する場合は、`GET /api/
 | startGateStartMarginMs   | number  | no   | 放送中の番組の開始時刻が予約開始時刻よりこれ以上前なら前の番組とみなす (ms)。省略時 120000 |
 | programStreamMode        | string  | no   | programId 予約の取得方式。`service` (既定、EPGStation が EIT 境界を管理) または `program` (切り戻し) |
 | hardStartGateTimeoutMs   | number  | no   | programId 予約で別 event_id が固着した場合の開始期限 (ms)。省略時 300000                   |
+| storageFallbackEnabled   | boolean | no   | 予想録画サイズに対して空きが足りない場合、`recorded` の次の保存先へ振り替える。省略時 true |
+| storageFallbackMarginMB  | number  | no   | 予想録画サイズに上乗せする余裕 (MB)。省略時 3072                                           |
+| storageFallbackBitrateMbps | number | no   | 予想サイズ計算に使うビットレート (Mbps)。省略時は放送種別ごとの既定値                       |
 
 ```yaml
 recording:
@@ -548,6 +551,9 @@ recording:
     startGateTimeoutMs: 60000
     startGateStartMarginMs: 120000
     hardStartGateTimeoutMs: 300000
+    storageFallbackEnabled: true
+    storageFallbackMarginMB: 3072
+    storageFallbackBitrateMbps: 19
 ```
 
 - 値が範囲外・不正な場合は既定値へ丸めるため、設定ミスで録画が動かなくなることはない
@@ -556,6 +562,27 @@ recording:
 - soft/hard timeout で fallback 開始した場合は、全損を避ける代わりにリングバッファ内の前番組が最大 8 MiB 混ざり得る。開始理由は Operator の info ログで `eitSoftTimeout` / `eitHardTimeout` として区別できる
 - `startGateEnabled` は EIT[p/f] 境界待ちを有効にする (時刻指定予約・programId 予約の両方)。時刻指定予約では following の `start_time` を優先し、present 更新前でも目的番組の開始を判断する。programId 予約では対象 present の event_id 一致を優先し、EIT 無しの soft timeout と別 event_id 固着の hard timeout を安全弁として使う。待機中の TS は最大 8 MiB を保持して開始時に書き出す
 - service stream は予約終了時刻 + margin のハードタイマーで終了し、対象 present が別 event_id に変化してもデバウンス後に終了する。EPG 追従の endAt 更新は programId 予約にも反映する (録画準備中の変更は録画開始を待ってから反映する)。`programStreamMode: program` は切り戻し用である
+
+##### 空き容量による録画先の自動振り替え
+
+録画を始めてから保存先が満杯 (`ENOSPC`) になると、0 バイトのファイルと失敗した録画情報だけが残る。
+リトライしても同じディレクトリへ書きに行くため復旧しない。そこで**録画開始前に予想サイズを計算し、
+空きが足りなければ `recorded` の次の保存先へ振り替える**。
+
+- 予想サイズ = 番組長 × 放送種別ごとの想定ビットレート ÷ 8 + `storageFallbackMarginMB`
+- 既定ビットレート (Mbps): GR 19 / BS 26 / CS・SKY 20 / BS4K・CS4K 40。**表に無い放送種別 (県外地上波 NW1〜NW40 など) は 19**
+- 余裕 (既定 3072MB) は、同時に走る他の録画・エンコードの書き込み分を見込んだもの
+- 候補は「本来の保存先 → `recorded` の定義順」。**満杯になり次第、順次さらに次の候補へ送る**
+- どの保存先も足りない場合は、少しでも長く録れるよう**最も空きが大きい保存先**を使い error ログを出す
+- 空き容量を取得できない保存先 (未マウント等) は候補から外す。1 つも取得できない場合は本来の保存先のまま進める
+- 振り替えが起きると Operator のログに warn で出る
+
+```
+recording dir fallback: reserveId: 12, TS -> TS2, required: 5350MB, free: 61MB
+recording dir has no room: reserveId: 13, using TS2, required: 5350MB, free: 900MB
+```
+
+`storageFallbackEnabled: false` で無効にできる。`recorded` が 1 つしかない場合は何もしない。
 
 ---
 

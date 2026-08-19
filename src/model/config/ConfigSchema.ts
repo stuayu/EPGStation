@@ -452,6 +452,24 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
                 type: 'number',
                 hint: '既定 120000',
             },
+            {
+                path: 'recording.storageFallbackEnabled',
+                label: '空き容量不足で次の録画先へ振り替える',
+                type: 'boolean',
+                hint: '既定 有効',
+            },
+            {
+                path: 'recording.storageFallbackMarginMB',
+                label: '予想録画サイズに上乗せする余裕 (MB)',
+                type: 'number',
+                hint: '既定 3072',
+            },
+            {
+                path: 'recording.storageFallbackBitrateMbps',
+                label: '予想サイズ計算のビットレート (Mbps)',
+                type: 'number',
+                hint: '省略時は放送種別ごとの既定値 (GR 19 / BS 26 / CS・SKY 20 / 4K 40)',
+            },
         ],
     },
     {
