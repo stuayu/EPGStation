@@ -6,6 +6,7 @@ import ILoggerModel from '../ILoggerModel';
 import { isFeatureEnabled } from '../FeatureFlags';
 import IProgramSeriesApiModel from '../api/schedule/IProgramSeriesApiModel';
 import IEPGUpdateManageModel, { EPGUpdateEvent, TunerServerType } from './IEPGUpdateManageModel';
+import { decideFullUpdate } from './FullUpdateDecision';
 import IEPGUpdater from './IEPGUpdater';
 import { resolveEPGRealtimeConfig } from './EPGRealtimeConfig';
 import { ProgramUpdateNotice } from './ProgramUpdateNotice';
@@ -157,35 +158,25 @@ class EPGUpdater implements IEPGUpdater {
                             // mirakc の場合
                             await this.updateMirakcEvent(updateInterval, now);
                         }
-                    } else if (
-                        this.isEventStreamAlive === false &&
-                        this.lastUpdatedTime + updateInterval * 1.5 <= now
-                    ) {
-                        await this.updateManage.updateAll();
-                        this.applyFullUpdateResult(now);
                     }
 
-                    if (
-                        this.isEventStreamAlive === true &&
-                        this.lastEventStreamUpdatedTime !== 0 &&
-                        this.lastEventStreamUpdatedTime + updateInterval * 1.5 <= now
-                    ) {
-                        // 長時間 event stream から更新が無い場合は全件更新を実施する
-                        this.log.system.warn('no epg event updates for a long time, running full refresh');
-                        await this.updateManage.updateAll();
-                        this.applyFullUpdateResult(now);
-                    } else if (
-                        this.isEventStreamAlive === true &&
-                        fullRefreshInterval > 0 &&
-                        this.lastFullUpdatedTime !== 0 &&
-                        this.lastFullUpdatedTime + fullRefreshInterval <= now
-                    ) {
-                        // event stream が動いていても定期的に全件突き合わせる。
-                        // 上のウォッチドッグは「イベントが来ない」ことしか見ておらず、
-                        // イベントは届き続けるのに新しい番組が増えない状態を検知できない
-                        this.log.system.info(
-                            `periodic full refresh: ${Math.floor((now - this.lastFullUpdatedTime) / 60000)} min since last full update`,
-                        );
+                    const fullUpdateReason = decideFullUpdate({
+                        isEventStreamAlive: this.isEventStreamAlive,
+                        now: now,
+                        lastUpdatedTime: this.lastUpdatedTime,
+                        lastEventStreamUpdatedTime: this.lastEventStreamUpdatedTime,
+                        lastFullUpdatedTime: this.lastFullUpdatedTime,
+                        updateIntervalMs: updateInterval,
+                        fullRefreshIntervalMs: fullRefreshInterval,
+                    });
+                    if (fullUpdateReason !== null) {
+                        if (fullUpdateReason === 'staleEventStream') {
+                            this.log.system.warn('no epg event updates for a long time, running full refresh');
+                        } else if (fullUpdateReason === 'periodic') {
+                            this.log.system.info(
+                                `periodic full refresh: ${Math.floor((now - this.lastFullUpdatedTime) / 60000)} min since last full update`,
+                            );
+                        }
                         await this.updateManage.updateAll();
                         this.applyFullUpdateResult(now);
                     }
