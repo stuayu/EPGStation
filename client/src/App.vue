@@ -95,6 +95,22 @@ html.fix-address-bar, html.fix-address-bar2
  */
 .menu-card
     max-width: calc(100vw - 32px)
+    // v-menu が overlay へ付ける max-height の中に収め、はみ出した分は
+    // 本文だけをスクロールさせる。これをしないと下部のアクション行
+    // (「検索」「閉じる」) が画面外へ出たままスクロールもできない
+    max-height: inherit
+    display: flex
+    flex-direction: column
+
+    // 本文。v-card は先頭に .v-card__loader を挿むため要素位置では指定できない
+    > .menu-card-body
+        flex: 1 1 auto
+        min-height: 0
+        overflow-y: auto
+
+    > .v-divider,
+    > .v-card-actions
+        flex: 0 0 auto
 
 /**
  * 複数選択時の色
