@@ -115,6 +115,17 @@ npm run test:ci        # ut + ita + itb
 - **`DataBroadcastingManager` は `markRaw()` で包む**。BMLBrowser 内部の JS-Interpreter が Vue のプロキシに包まれると壊れる
 - **ストリーミング再生のシークバーは `VirtualTimeline` が全部描く**。`video.duration` は「エンコード済みの長さ」でしかないため、DPlayer 標準の表示 (再生位置・バッファ・時刻・チャプターマーカー) をそのまま使うとエンコードの進行に合わせて表示がずれる。シークバー上に何かを足すときは `VirtualTimeline` 側で動画全体の長さを分母にして描くこと
 
+### スマホ・タブレット対応
+
+**Web UI はスマホからも常用される**。狭い画面で要素が画面外へ出ると、そこが操作不能になる (Issue #16)。
+
+- **端末幅の判定は `this.$vuetify.display.smAndDown`** (600px 未満)。`UaUtil.isMobile()` は UA 判定なので、端末の向きや分割表示では当てにならない。レイアウトの出し分けは必ず display 側を使う
+- **`v-dialog` はビューポート幅に丸められるが、`v-menu` は丸められない**。`v-menu` の中に `width="420"` のような固定幅を置くと狭い端末で横にはみ出す。共通クラス **`.menu-card`** (`client/src/App.vue` に定義) を付ける — 希望幅は保ったまま `max-width: calc(100vw - 32px)` で縮む
+- **縦も溢れる**。`v-menu` の overlay には `max-height` が付くが `overflow-y: visible` なので、中身が超えると画面外へ出たままスクロールもできない。`.menu-card` は flex column にしてあるので、**スクロールさせたい本文に `.menu-card-body` を付ける** (区切り線とアクション行は縮まず残る)。**`v-card` は先頭に `.v-card__loader` を挿むため「最初の子要素」では本文を指せない**
+- **一覧の表は列を落とす**。`RecordedTableItems.vue` / `ReservesTableItems.vue` / `RuleTableItems.vue` が `isMobile` で放送局・内容の列を隠し、代わりにタイトル下へ小さく出している。列を足すときも同じ出し分けを踏襲する
+- **背の高いダイアログは `:fullscreen="isMobile === true"`** (`SeriesAnalyzeDialog.vue` が例)
+- **確認は実測でやる**。`playwright` の WebKit (iOS Safari と同じエンジン) を `devices['iPhone SE']` (320x568) / `devices['iPhone 14 Pro']` (393x660) / `devices['iPad Mini']` で開き、**操作対象のボタンが `boundingBox()` でビューポート内に収まるか**と**実際に `click()` できるか**を見る。見た目のスクリーンショットだけでは「画面外だが描画はされている」を見逃す
+
 ### ストリーミング・データ放送
 
 配信周りを触る前に `doc/streaming-refresh.md` を読む。
