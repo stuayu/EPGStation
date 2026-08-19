@@ -797,7 +797,10 @@ class RecorderModel implements IRecorderModel {
                 if (hasData === false) {
                     hasData = true;
                     clearTimeout(firstDataTimerId);
-                    startedAt = new Date().getTime();
+                    // ゲートの上限は「予約開始時刻 (開始マージン込み)」から数える。
+                    // 張り付き (prepRecSec) を延ばしても soft / hard timeout が
+                    // 予定開始より前に発火して前番組を録り始めないようにする
+                    startedAt = Math.max(new Date().getTime(), this.reserve.startAt - timing.startMarginMs);
                     this.log.system.info(
                         `first TS received: reserveId: ${this.reserve.id}, bytes: ${chunk.length},` +
                             ` programId: ${this.reserve.programId ?? 'time-specified'}`,
@@ -812,18 +815,22 @@ class RecorderModel implements IRecorderModel {
                         return;
                     }
                     if (gateConfig.enabled === true) {
-                        const softDelay = gateConfig.timeoutMs;
-                        startGateTimerId = setTimeout(() => {
-                            startGateTimedOut = 'soft';
-                            decideStart();
-                        }, softDelay);
+                        // startedAt が未来 (張り付き中) の場合はその分だけ待ちを延ばす
+                        const gateBase = (startedAt as number) - new Date().getTime();
+                        startGateTimerId = setTimeout(
+                            () => {
+                                startGateTimedOut = 'soft';
+                                decideStart();
+                            },
+                            Math.max(0, gateBase + gateConfig.timeoutMs),
+                        );
                         if (eventId !== null) {
                             hardGateTimerId = setTimeout(
                                 () => {
                                     startGateTimedOut = 'hard';
                                     decideStart();
                                 },
-                                Math.max(0, gateConfig.hardTimeoutMs),
+                                Math.max(0, gateBase + gateConfig.hardTimeoutMs),
                             );
                         }
                     }

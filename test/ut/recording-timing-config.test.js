@@ -10,11 +10,12 @@ const {
 const TS_START = 1;
 const TS_END = 1;
 
-test('未設定なら張り付き 15 秒・マージンは既存の時刻指定設定に従う', () => {
+test('未設定なら EDCB 既定 (張り付き 2 分・マージン 5 秒ずつ)', () => {
     const t = resolveRecordingTimingConfig(undefined, TS_START, TS_END);
     assert.equal(t.prepMs, DEFAULT_PREP_MS);
-    assert.equal(t.startMarginMs, 1000);
-    assert.equal(t.endMarginMs, 1000);
+    assert.equal(DEFAULT_PREP_MS, 2 * 60 * 1000);
+    assert.equal(t.startMarginMs, 5000);
+    assert.equal(t.endMarginMs, 5000);
 });
 
 test('張り付き時間を設定できる', () => {
@@ -34,20 +35,27 @@ test('マイナスは受け付けず 0 に丸める', () => {
         TS_START,
         TS_END,
     );
-    // prep は 0 に丸めたうえで「開始マージン + 最低リード 5 秒」が下限になる
-    assert.equal(t.prepMs, 1000 + 5000);
-    assert.equal(t.startMarginMs, 1000, 'マイナスは 0 になり既存の時刻指定設定 1 秒が残る');
+    // マイナスは 0 になり、既存の時刻指定設定 1 秒が残る
+    assert.equal(t.startMarginMs, 1000);
     assert.equal(t.endMarginMs, 1000);
+    // prep も 0 に丸めたうえで「開始マージン + 最低リード 5 秒」が下限になる
+    assert.equal(t.prepMs, 1000 + 5000);
 });
 
-test('マイナスの時刻指定マージンも 0 として扱う', () => {
-    const t = resolveRecordingTimingConfig({}, -5, -5);
+test('マージンを明示的に 0 にすれば 0 にできる', () => {
+    const t = resolveRecordingTimingConfig({ startMarginSec: 0, endMarginSec: 0 }, 0, 0);
     assert.equal(t.startMarginMs, 0);
     assert.equal(t.endMarginMs, 0);
 });
 
+test('マイナスの時刻指定マージンは 0 として扱い、新設定の既定が残る', () => {
+    const t = resolveRecordingTimingConfig({}, -5, -5);
+    assert.equal(t.startMarginMs, 5000);
+    assert.equal(t.endMarginMs, 5000);
+});
+
 test('新設定と既存の時刻指定設定は大きい方を採る', () => {
-    const bigNew = resolveRecordingTimingConfig({ startMarginSec: 20, endMarginSec: 40 }, 5, 5);
+    const bigNew = resolveRecordingTimingConfig({ startMarginSec: 20, endMarginSec: 40 }, 1, 1);
     assert.equal(bigNew.startMarginMs, 20 * 1000);
     assert.equal(bigNew.endMarginMs, 40 * 1000);
 
@@ -72,8 +80,8 @@ test('非数・null は既定へ丸める', () => {
             TS_END,
         );
         assert.equal(t.prepMs, DEFAULT_PREP_MS);
-        assert.equal(t.startMarginMs, 1000);
-        assert.equal(t.endMarginMs, 1000);
+        assert.equal(t.startMarginMs, 5000);
+        assert.equal(t.endMarginMs, 5000);
     }
 });
 
