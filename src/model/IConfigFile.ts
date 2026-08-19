@@ -359,6 +359,12 @@ export default interface IConfigFile {
         startGateStartMarginMs?: number;
         // programId 予約で別 event_id が固着した場合の開始期限 (ms)。既定 300000
         hardStartGateTimeoutMs?: number;
+        // 予想録画サイズに対して空きが足りない場合、次の recorded へ振り替えるか。既定 true
+        storageFallbackEnabled?: boolean;
+        // 予想録画サイズに上乗せする余裕 (MB)。既定 3072
+        storageFallbackMarginMB?: number;
+        // 予想サイズ計算に使うビットレート (Mbps)。省略時は放送種別ごとの既定値
+        storageFallbackBitrateMbps?: number;
     };
 
     // 録画履歴保存期間

@@ -13,6 +13,10 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
+## 2026-08-20
+
+- **録画先の空き容量が足りない場合に次の保存先へ自動で振り替えるようにした**: 録画開始前に「番組長 × 放送種別ごとの想定ビットレート ÷ 8 + 余裕」で予想サイズを出し、`config.recorded` の順に空きを見て最初に収まる保存先を選ぶ。満杯になり次第、順次さらに次の候補へ送る。どこも足りない場合は最も空きが大きい保存先を使って error ログを出す (全損を避ける)。既定ビットレートは GR 19 / BS 26 / CS・SKY 20 / 4K 40 Mbps、余裕は 3072MB。設定は `recording.storageFallbackEnabled` / `storageFallbackMarginMB` / `storageFallbackBitrateMbps`。**背景**: 実機の第一保存先 (D:) が満杯だったとき、録画開始後に `ENOSPC` で落ちて 0 バイトのファイルと失敗した録画情報だけが残り、リトライしても同じディレクトリへ書きに行くため復旧しなかった。判定は `RecordedDirCapacity.ts` の純粋関数、空き容量の取得は `RecordingUtilModel` (既存依存の `diskusage-ng` を再利用)
+
 ## 2026-08-19
 
 - **予約タイマーが setTimeout の 32bit 上限で即発火するのを直した**: Node.js の `setTimeout` は遅延が 2^31-1 ms (約 24.8 日) を超えると警告付きで 1ms へ丸めて即発火する。数週間先の時刻指定予約で録画準備 (`RecorderModel.setTimer`)、イベントリレー確認 (`setEventRelayTimer`)、service stream の予約終了ハードタイマー (`RecordingStreamCreator.setEndTimer`) がその場で走っていた。`src/util/LongTimer.ts` が上限以下のチャンクへ分割して再武装する
