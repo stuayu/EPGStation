@@ -1,7 +1,7 @@
 <template>
     <div class="guide-day-select-dialog">
         <v-dialog v-if="isRemove === false" v-model="dialogModel" max-width="400" scrollable>
-            <v-card>
+            <v-card class="guide-day-select-card">
                 <v-date-picker v-model="dateValue" :min="minDate" :max="maxDate" show-adjacent-months hide-header color="primary"></v-date-picker>
                 <v-card-actions>
                     <v-btn v-on:click="gotoNow" variant="text">現在時刻</v-btn>
@@ -150,3 +150,12 @@ class GuideDaySelectDialog extends Vue {
 
 export default toNative(GuideDaySelectDialog);
 </script>
+
+<style lang="sass" scoped>
+.guide-day-select-card
+    // v-date-picker は固定幅 328px。狭い端末では v-dialog の幅を超えて
+    // 土曜の列が画面外に出てしまうため、幅いっぱいに縮める
+    .v-date-picker
+        width: 100%
+        min-width: 0
+</style>

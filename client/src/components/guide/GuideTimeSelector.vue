@@ -6,7 +6,7 @@
                     <v-icon>mdi-calendar-clock</v-icon>
                 </v-btn>
             </template>
-            <v-card class="guide-time-selector">
+            <v-card class="guide-time-selector menu-card">
                 <v-date-picker v-model="dateValue" :min="minDate" :max="maxDate" show-adjacent-months hide-header color="primary"></v-date-picker>
                 <div class="d-flex ga-2 px-4 pb-2">
                     <v-select
@@ -201,4 +201,9 @@ export default toNative(GuideTimeSelector);
 .guide-time-selector
     .v-date-picker
         box-shadow: none
+        // v-menu の中身はビューポート幅に丸められない (.menu-card で横幅は縮むが、
+        // v-date-picker は固定幅 328px なのでそのままでは土曜の列が画面外に出て選べない)。
+        // 日付セルは grid の 1fr なので、幅を 100% にすればセルごと縮む
+        width: 100%
+        min-width: 0
 </style>

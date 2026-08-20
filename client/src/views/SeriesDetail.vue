@@ -2,8 +2,10 @@
     <v-main>
         <TitleBar :title="detail?.title || 'シリーズ詳細'">
             <template v-slot:menu>
+                <!-- 狭い端末ではアイコンを並べるとシリーズ名が読めなくなるため、
+                     通常時の操作はケバブメニューへまとめる (モード解除は常にアイコンで出す) -->
                 <v-btn
-                    v-if="isBulkMode === false && isSplitMode === false"
+                    v-if="isMobile === false && isBulkMode === false && isSplitMode === false"
                     icon
                     variant="text"
                     size="small"
@@ -15,13 +17,25 @@
                 <v-btn v-if="isBulkMode === true" icon variant="text" size="small" @click="cancelBulkEdit" title="一括編集をやめる">
                     <v-icon>mdi-close</v-icon>
                 </v-btn>
-                <v-btn v-if="isSplitMode === false && isBulkMode === false" icon variant="text" size="small" @click="isSplitMode = true" title="分割">
+                <v-btn
+                    v-if="isMobile === false && isSplitMode === false && isBulkMode === false"
+                    icon
+                    variant="text"
+                    size="small"
+                    @click="isSplitMode = true"
+                    title="分割"
+                >
                     <v-icon>mdi-call-split</v-icon>
                 </v-btn>
                 <v-btn v-if="isSplitMode === true" icon variant="text" size="small" @click="cancelSplit" title="分割をやめる">
                     <v-icon>mdi-close</v-icon>
                 </v-btn>
-                <SeriesTitleDisplayMenu v-on:changed="onChangedTitleDisplay"></SeriesTitleDisplayMenu>
+                <SeriesTitleDisplayMenu
+                    :show-edit-actions="isMobile === true && isBulkMode === false && isSplitMode === false"
+                    v-on:changed="onChangedTitleDisplay"
+                    v-on:bulkedit="startBulkEdit"
+                    v-on:split="isSplitMode = true"
+                ></SeriesTitleDisplayMenu>
             </template>
         </TitleBar>
         <v-container v-if="detail">

@@ -53,8 +53,10 @@
                         v-if="isAdvancedSearchEnabled === true"
                         v-model="searchState.tagId"
                         :items="searchState.tagItems"
-                        label="タグ (子孫タグも含めて絞り込み)"
+                        label="タグ"
                         clearable
+                        persistent-hint
+                        hint="子孫タグも含めて絞り込みます"
                     ></v-select>
                     <div class="check-boxes">
                         <v-checkbox v-model="searchState.hasOriginalFile" label="元ファイルを含む" class="mt-2"></v-checkbox>

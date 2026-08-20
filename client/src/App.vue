@@ -113,6 +113,18 @@ html.fix-address-bar, html.fix-address-bar2
         flex: 0 0 auto
 
 /**
+ * タイトルバーのタイトル。
+ *
+ * Vuetify 既定の .v-toolbar-title は flex: 1 1 (basis 0) なので、後ろに置いた v-spacer と
+ * 余った幅を等分してしまう。結果、右側にメニューアイコンが 1〜2 個しか無くても
+ * タイトルは画面の半分ほどで ellipsis され、スマホでは「番組表 08/...」のように
+ * 日付が読めなくなる (Issue #18)。
+ * 必要な幅を先に確保し、本当に入りきらないときだけ縮めるようにする。
+ */
+.app-bar-title
+    flex: 0 1 auto
+
+/**
  * 複数選択時の色
  */
 .selected-color

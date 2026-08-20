@@ -7,4 +7,5 @@ export default interface IStorageState {
     fetchData(): Promise<void>;
     getInfo(): VersionInfo | null;
     getVersionString(): string;
+    getFullVersionString(): string;
 }

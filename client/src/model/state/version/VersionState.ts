@@ -4,6 +4,9 @@ import IVersionState, { VersionInfo } from './IVersionState';
 
 @injectable()
 export default class VersionState implements IVersionState {
+    // 表示用に切り出す semver のベース部分 (例: '2.15.0-stuayu-260809-68-g06f1494' → '2.15.0')
+    private static readonly BASE_VERSION_REGEXP = /^\d+(\.\d+){0,2}/;
+
     private versionApiModel: IVersionApiModel;
 
     private info: VersionInfo | null = null;
@@ -37,10 +40,27 @@ export default class VersionState implements IVersionState {
     }
 
     /**
-     * バージョン文字列を返す
+     * 画面表示用のバージョン文字列を返す。
+     * リリースタグは '2.15.0-stuayu-260809-68-g06f1494' のように長く、
+     * タイトルバーやナビゲーションドロワーでは見切れてしまうためベース部分だけにする
+     * (完全なバージョンは設定 > 更新 で確認できる)
      * @return string
      */
     public getVersionString(): string {
+        if (this.info == null) {
+            return 'EPGStation';
+        }
+
+        const matched = this.info.version.match(VersionState.BASE_VERSION_REGEXP);
+
+        return `EPGStation v${matched === null ? this.info.version : matched[0]}`;
+    }
+
+    /**
+     * 省略していないバージョン文字列を返す
+     * @return string
+     */
+    public getFullVersionString(): string {
         return this.info == null ? 'EPGStation' : `EPGStation v${this.info.version}`;
     }
 }

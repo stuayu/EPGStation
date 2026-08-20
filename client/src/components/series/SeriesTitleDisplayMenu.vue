@@ -7,6 +7,27 @@
                 </v-btn>
             </template>
             <v-list>
+                <!-- 狭い端末ではタイトルバーにアイコンを並べられない (シリーズ名が読めなくなる) ため、
+                     一括編集・分割はこのメニューへ入れる -->
+                <template v-if="showEditActions === true">
+                    <v-list-item v-on:click="onBulkEdit" slim>
+                        <template #prepend>
+                            <v-icon>mdi-playlist-edit</v-icon>
+                        </template>
+                        <div class="v-list-item-content">
+                            <v-list-item-title>話数・放送種別の一括編集</v-list-item-title>
+                        </div>
+                    </v-list-item>
+                    <v-list-item v-on:click="onSplit" slim>
+                        <template #prepend>
+                            <v-icon>mdi-call-split</v-icon>
+                        </template>
+                        <div class="v-list-item-content">
+                            <v-list-item-title>分割</v-list-item-title>
+                        </div>
+                    </v-list-item>
+                    <v-divider></v-divider>
+                </template>
                 <v-list-subheader>エピソード名の表示</v-list-subheader>
                 <v-list-item v-on:click="setUseDictionaryEpisodeTitle(true)" slim>
                     <template #prepend>
@@ -32,7 +53,7 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
-import { Component, Emit, Vue, toNative } from 'vue-facing-decorator';
+import { Component, Emit, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 /**
  * シリーズ詳細のエピソード行タイトルを、作品辞書 (しょぼいカレンダー) 由来のエピソード名で表示するか
@@ -41,6 +62,12 @@ import { Component, Emit, Vue, toNative } from 'vue-facing-decorator';
  */
 @Component({})
 class SeriesTitleDisplayMenu extends Vue {
+    /**
+     * 一括編集・分割の項目をメニューに含めるか (狭い端末でだけ true にする)
+     */
+    @Prop({ required: false, default: false })
+    public showEditActions!: boolean;
+
     public isOpened: boolean = false;
 
     private settingStorageModel: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
@@ -62,6 +89,16 @@ class SeriesTitleDisplayMenu extends Vue {
         this.settingStorageModel.save();
 
         this.onChanged();
+    }
+
+    public onBulkEdit(): void {
+        this.isOpened = false;
+        this.$emit('bulkedit');
+    }
+
+    public onSplit(): void {
+        this.isOpened = false;
+        this.$emit('split');
     }
 
     @Emit('changed')

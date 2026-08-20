@@ -402,7 +402,9 @@ export default toNative(Logs);
     max-width: 160px
 
 .keyword-field
-    min-width: 200px
+    // ラベル (キーワードで絞り込み) と先頭の検索アイコンが並ぶため 200px では
+    // 狭い端末でラベルが省略される
+    min-width: 240px
     max-width: 320px
 
 .log-viewer

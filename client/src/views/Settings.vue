@@ -766,9 +766,26 @@ export default toNative(Settings);
 .theme-color
     max-width: 170px
 .guide-mode
-    max-width: 100px
+    max-width: 120px
 .guide-time
-    max-width: 70px
+    max-width: 90px
+
+// 設定行 (説明 + v-spacer + スイッチ / セレクト)。
+// 既定では説明側の div が縮まず、入力側の .v-input (flex: 1 1 auto) だけが縮むため、
+// 狭い端末では説明が 1 行のまま伸びてスイッチが画面外へ押し出され、
+// セレクトは「ブ...」のように選択値が読めない幅まで潰れる
+.my-2.d-flex.flex-row.align-center
+    > div:first-child
+        flex: 1 1 auto
+        min-width: 0
+
+    > .v-input
+        flex: 0 0 auto
+
+// v-list-item-title は 1 行固定 (nowrap + ellipsis) なので、狭い端末では項目名の
+// 後半が読めなくなる (「実況コメントサーバー (NX-Jikky...」)。設定項目名は折り返す
+.my-2.d-flex .v-list-item-title
+    white-space: normal
 </style>
 
 <style lang="sass">
