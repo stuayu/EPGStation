@@ -54,6 +54,23 @@ export default class VirtualTimeline {
     private hoverListener = (event: Event): void => {
         this.onHover(event);
     };
+    // ドラッグ直後の click を 1 回だけ握り潰すためのフラグ
+    private isSuppressingClick: boolean = false;
+    private clickSuppressListener = (event: Event): void => {
+        if (this.isSuppressingClick === false) {
+            return;
+        }
+
+        this.isSuppressingClick = false;
+        if (this.isBarEvent(event) === false) {
+            return;
+        }
+
+        // DPlayer は container の click (キャプチャ) で再生をトグルする。
+        // mousedown を止めても click は発火するため、シーク直後に再生が止まってしまう
+        event.stopPropagation();
+        event.preventDefault();
+    };
 
     constructor(dp: DPlayer, source: VirtualTimelineSource) {
         this.dp = dp;
@@ -91,6 +108,7 @@ export default class VirtualTimeline {
             parent.removeEventListener('touchstart', this.dragStartListener, true);
             parent.removeEventListener('mousemove', this.hoverListener, false);
         }
+        document.removeEventListener('click', this.clickSuppressListener, true);
         this.removeDragListeners();
 
         if (this.originalSeek !== null) {
@@ -243,6 +261,8 @@ export default class VirtualTimeline {
         parent.addEventListener('touchstart', this.dragStartListener, true);
         // ホバー時のプレビュー時刻は DPlayer が実時間で書き込むため、その後に上書きする
         parent.addEventListener('mousemove', this.hoverListener, false);
+        // DPlayer は container のキャプチャで click を拾うため、それより先に受け取る必要がある
+        document.addEventListener('click', this.clickSuppressListener, true);
     }
 
     /**
@@ -300,6 +320,13 @@ export default class VirtualTimeline {
         this.dragPercentage = null;
         this.removeDragListeners();
         this.dp.container.classList.remove('dplayer-seeking');
+
+        // mouseup の直後に発火する click を 1 回だけ止める。
+        // 取りこぼした場合に次のクリックを巻き込まないよう、同 tick で解除する
+        this.isSuppressingClick = true;
+        setTimeout(() => {
+            this.isSuppressingClick = false;
+        }, 0);
 
         // 再生状態を先に戻してから setCurrentTime() を呼ぶ。
         // ストリームを作り直す実装 (RecordedStreamingVideo) は setCurrentTime() の中で
