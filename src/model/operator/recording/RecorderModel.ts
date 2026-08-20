@@ -323,7 +323,15 @@ class RecorderModel implements IRecorderModel {
                 );
             } else {
                 this.errorRetryCount++;
-                this.log.system.error(`preprec failed: ${this.reserve.id}`);
+                // 何回目の失敗か・上限・次回がいつかを 1 行で残す。
+                // これが無いと同じエラーが並ぶだけで、粘っている最中なのか
+                // もう諦めたのかがログから判断できない
+                const errorRetryLimit = retryConfig.errorFastRetryCount + retryConfig.errorRetryCount;
+                this.log.system.error(
+                    `preprec failed: reserveId: ${this.reserve.id}, attempt: ${this.errorRetryCount}/${errorRetryLimit},` +
+                        ` next: ${decision.retry === true ? `${Math.floor(decision.delayMs / 1000)}s later` : 'give up'},` +
+                        ` error: ${err?.message ?? err}`,
+                );
                 this.log.system.error(err);
             }
 
@@ -340,6 +348,12 @@ class RecorderModel implements IRecorderModel {
                 if (reason === 'waitingForEvent') {
                     this.log.system.error(
                         `the program did not start within the wait limit: reserveId: ${this.reserve.id}`,
+                    );
+                } else {
+                    this.log.system.error(
+                        `gave up preparing recording: reserveId: ${this.reserve.id},` +
+                            ` programId: ${this.reserve.programId}, channelId: ${this.reserve.channelId},` +
+                            ` attempts: ${this.errorRetryCount}, last error: ${err?.message ?? err}`,
                     );
                 }
                 // 待機を打ち切ったので追従中の表示も解除する
