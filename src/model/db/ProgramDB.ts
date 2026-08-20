@@ -1,6 +1,6 @@
 import { inject, injectable } from 'inversify';
 import { FindOptionsWhere, In, LessThan, LessThanOrEqual, MoreThan, MoreThanOrEqual, ObjectLiteral } from 'typeorm';
-import type { QueryDeepPartialEntity } from 'typeorm';
+import type { QueryDeepPartialEntity, QueryRunner } from 'typeorm';
 import * as apid from '../../../api';
 import * as mapid from '../../../node_modules/mirakurun/api';
 import Program from '../../db/entities/Program';
@@ -109,6 +109,11 @@ export default class ProgramDB implements IProgramDB {
                         builder.orWhere('endAt < :threshold', { threshold: keepOption.retentionThreshold });
                     }
                     await builder.execute();
+
+                    // 残した過去番組と id が重複する分を削除する。
+                    // Mirakurun は終了直後の番組もしばらく返し続けるため、保存期間内に終了した番組を
+                    // 残したまま挿入すると主キーの重複 (ER_DUP_ENTRY) で全件更新が失敗する
+                    await this.deleteKeptDuplicates(queryRunner, values, keepOption.now);
                 }
             } else {
                 await queryRunner.manager.delete(Program, { channelId: In(deleteChannelIds) });
@@ -130,6 +135,28 @@ export default class ProgramDB implements IProgramDB {
 
         if (hasError) {
             throw new Error('InsertError');
+        }
+    }
+
+    /**
+     * 全件更新時に削除しなかった過去の番組のうち、これから挿入する番組と id が重複するものを削除する
+     * @param queryRunner: QueryRunner 削除に使う queryRunner (呼び出し元のトランザクションを引き継ぐ)
+     * @param values: QueryDeepPartialEntity<Program>[] これから挿入する番組
+     * @param now: number 全件更新の基準時刻
+     */
+    private async deleteKeptDuplicates(
+        queryRunner: QueryRunner,
+        values: QueryDeepPartialEntity<Program>[],
+        now: number,
+    ): Promise<void> {
+        // 残っているのは終了済みの番組だけなので、終了済みの番組の id だけを見れば良い
+        const ids = values
+            .filter(value => typeof value.endAt === 'number' && (value.endAt as number) < now)
+            .map(value => value.id as apid.ProgramId);
+
+        for (let i = 0; i < ids.length; i += ProgramDB.FIND_IDS_CHUNK_SIZE) {
+            const chunk = ids.slice(i, i + ProgramDB.FIND_IDS_CHUNK_SIZE);
+            await queryRunner.manager.delete(Program, { id: In(chunk) });
         }
     }
 
