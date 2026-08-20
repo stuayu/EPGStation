@@ -98,6 +98,7 @@ npm run test:ci        # ut + ita + itb
 - 設定項目の定義元は `src/model/config/ConfigSchema.ts` の 1 箇所。追加したら**両テンプレート**を更新する (`test/ut/config-schema-template-sync.test.js` が記載漏れを検知)
 - `ormconfig.js` は `Configuration.ts` と別実装で config.yml を読む。読み方を変えるなら両方直す
 - DB は sqlite / mysql のみ。マイグレーションは `npm run orm-gen --db=<mysql|sqlite> --name=<Name>` で**両方**生成する
+- **番組表の全件更新は「残した過去番組」との主キー衝突に注意**。`epgRetentionTime` で過去番組を残す設定だと Mirakurun が返し続ける終了直後の番組と id が衝突する。`ProgramDB.insert()` が挿入前に 「終了済み (`endAt < now`) で再取得された番組」の id を消している
 - **機能フラグ (`featureFlags`) は opt-out**。未指定 = 有効 (`!== false` 判定)。テストで無効を表すときは該当キーに `false` を明示する
 - 秘密情報の暗号化鍵は `data/key/secret.key` に自動生成 (config の `secretKey` は廃止。パスは `EPGSTATION_SECRET_KEY_FILE` で上書き可)
 
@@ -123,6 +124,13 @@ npm run test:ci        # ut + ita + itb
 - **端末幅の判定は `this.$vuetify.display.smAndDown`** (600px 未満)。`UaUtil.isMobile()` は UA 判定なので、端末の向きや分割表示では当てにならない。レイアウトの出し分けは必ず display 側を使う
 - **`v-dialog` はビューポート幅に丸められるが、`v-menu` は丸められない**。`v-menu` の中に `width="420"` のような固定幅を置くと狭い端末で横にはみ出す。共通クラス **`.menu-card`** (`client/src/App.vue` に定義) を付ける — 希望幅は保ったまま `max-width: calc(100vw - 32px)` で縮む
 - **縦も溢れる**。`v-menu` の overlay には `max-height` が付くが `overflow-y: visible` なので、中身が超えると画面外へ出たままスクロールもできない。`.menu-card` は flex column にしてあるので、**スクロールさせたい本文に `.menu-card-body` を付ける** (区切り線とアクション行は縮まず残る)。**`v-card` は先頭に `.v-card__loader` を挿むため「最初の子要素」では本文を指せない**
+- **タイトルバーのタイトルには `.app-bar-title` を付ける**。Vuetify の `.v-toolbar-title` は `flex: 1 1` (basis 0) なので、後ろの `v-spacer` と余白を**等分**してしまい、右にアイコンが 1 つしか無くても画面の半分ほどで ellipsis される (狭い端末で「番組表 08/...」と日付が読めなくなる)。共通クラス `.app-bar-title` (`client/src/App.vue`、`flex: 0 1 auto`) が必要幅を先に確保する
+- **横並びの入力は狭い端末で潰れる**。Vuetify の `.v-input` は既定が `flex: 1 1 auto` なので、`d-flex` に 2 つ並べるとラベルや選択値が読めない幅まで縮む。折り返してほしいものは `flex: 1 1 <基準幅>` + `flex-wrap`、縮ませたくないものは `flex: 0 0 auto` を与える。説明 + スイッチの行は説明側の div に `flex: 1 1 auto; min-width: 0` を付けないとスイッチが画面外へ出る
+- **`v-date-picker` は固定幅 328px**。`v-menu` / 幅の狭い `v-dialog` に入れるときは `width: 100%` にする (しないと土曜の列が画面外に出て選べない)
+- **`v-list-item-title` / `v-card-title` は nowrap + ellipsis**。設定項目名やカードの作品名として使うなら `white-space: normal` (必要なら `-webkit-line-clamp` で行数を制限) を当てる
+- **入力欄のラベルに説明を書かない**。「タグ (子孫タグも含めて絞り込み)」のような長いラベルは省略されて読めなくなる。ラベルは短くし、説明は `hint` + `persistent-hint` へ
+- **タイトルバーにアイコンを 3 つ以上置かない**。`TitleBar` の menu スロットにアイコンが 3 つ並ぶと 375px でもタイトルが省略される。狭い端末 (`$vuetify.display.smAndDown`) ではケバブメニューへ畳む (`SeriesDetail.vue` が例)
+- **`v-pagination` は折り返さない**。`total-visible` が大きいまま `show-first-last-page` を付けると狭い端末で前後ページのボタンが画面外に出る。`$vuetify.display.smAndDown` で表示数を減らす (`SeriesPending.vue` が例)。共通の `Pagination.vue` は 500px 以下で `MobilePagination` に切り替わるので、そちらを使えるならそれで良い
 - **一覧の表は列を落とす**。`RecordedTableItems.vue` / `ReservesTableItems.vue` / `RuleTableItems.vue` が `isMobile` で放送局・内容の列を隠し、代わりにタイトル下へ小さく出している。列を足すときも同じ出し分けを踏襲する
 - **背の高いダイアログは `:fullscreen="isMobile === true"`** (`SeriesAnalyzeDialog.vue` が例)
 - **確認は実測でやる**。`playwright` の WebKit (iOS Safari と同じエンジン) を `devices['iPhone SE']` (320x568) / `devices['iPhone 14 Pro']` (393x660) / `devices['iPad Mini']` で開き、**操作対象のボタンが `boundingBox()` でビューポート内に収まるか**と**実際に `click()` できるか**を見る。見た目のスクリーンショットだけでは「画面外だが描画はされている」を見逃す

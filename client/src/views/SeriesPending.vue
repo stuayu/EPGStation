@@ -31,13 +31,16 @@
                 <div class="text-center text-caption text-grey mb-1" v-if="total > 0">
                     {{ items.length === 0 ? 0 : offset + 1 }}–{{ Math.min(offset + limit, total) }} / {{ total }}
                 </div>
+                <!-- v-pagination は折り返さないため、狭い端末ではボタン数を減らさないと
+                     前後のページボタンが画面外へ出て押せなくなる -->
                 <v-pagination
                     v-if="totalPages > 1"
                     v-model="page"
                     :circle="false"
                     :length="totalPages"
-                    :total-visible="7"
-                    show-first-last-page
+                    :total-visible="isMobile === true ? 3 : 7"
+                    :show-first-last-page="isMobile === false"
+                    :density="isMobile === true ? 'comfortable' : 'default'"
                     @update:model-value="onMovePage"
                 ></v-pagination>
             </div>
@@ -127,6 +130,10 @@ class SeriesPendingView extends Vue {
         } finally {
             this.processingId = null;
         }
+    }
+
+    get isMobile(): boolean {
+        return this.$vuetify.display.smAndDown;
     }
 
     /**

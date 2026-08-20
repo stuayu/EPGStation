@@ -3,7 +3,8 @@
         <v-card>
             <div class="pa-3 pt-4 pb-0 add-encode">
                 <div class="text-subtitle-1">{{ recordedItem.name }}</div>
-                <div class="d-flex">
+                <!-- 狭い端末では 2 つ並べると source 側がラベルも読めない幅まで潰れるため、入りきらなければ折り返す -->
+                <div class="d-flex ga-2 flex-wrap">
                     <v-select :items="addEncodeState.getVideoFiles()" v-model="addEncodeState.videoFileId" label="source" class="source"></v-select>
                     <v-select :items="addEncodeState.getEncodeList()" v-model="addEncodeState.encodeMode" label="preset" class="preset"></v-select>
                 </div>
@@ -127,9 +128,9 @@ export default toNative(AddEncodeDialog);
 <style lang="sass" scoped>
 .add-encode
     .source
-        flex-basis: 35%
+        flex: 1 1 140px
     .preset
-        flex-basis: 65%
+        flex: 1 1 200px
 
     @media screen and (min-width: 400px)
         .directory

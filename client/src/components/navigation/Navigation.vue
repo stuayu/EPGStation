@@ -9,7 +9,9 @@
     >
         <v-list-item :class="headerClass">
             <div class="v-list-item-content">
-                <v-list-item-title class="title">{{ versionState.getVersionString() }}</v-list-item-title>
+                <v-list-item-title class="title" :title="versionState.getFullVersionString()">{{
+                    versionState.getVersionString()
+                }}</v-list-item-title>
             </div>
         </v-list-item>
 

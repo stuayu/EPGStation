@@ -3,7 +3,7 @@
         <v-btn icon variant="text" v-on:click="onClose">
             <v-icon>mdi-close</v-icon>
         </v-btn>
-        <v-toolbar-title>{{ title }}</v-toolbar-title>
+        <v-toolbar-title class="app-bar-title">{{ title }}</v-toolbar-title>
         <v-spacer></v-spacer>
         <v-btn icon variant="text" v-on:click="onSelectAll">
             <v-icon>mdi-select-all</v-icon>

@@ -4,20 +4,20 @@
             <v-card v-if="channelItem !== null">
                 <div class="pa-4 pb-0">
                     <div>{{ channelItem.name }}</div>
-                    <div class="d-flex">
+                    <!-- 狭い端末では 2 つ並べると選択値 (M2TS-LL など) が読めない幅まで縮むため、入りきらなければ折り返す -->
+                    <div class="d-flex ga-2 flex-wrap">
                         <v-select
                             v-if="isHiddenStreamTypes === false"
                             :items="dialogState.streamTypes"
                             v-model="dialogState.selectedStreamType"
                             v-on:update:model-value="updateStreamConfig"
-                            class="guide-time"
-                            style="max-width: 120px"
+                            style="flex: 1 1 140px; max-width: 160px"
                         ></v-select>
                         <v-select
                             v-if="isHiddenStreamConfig === false"
                             :items="dialogState.streamConfigItems"
                             v-model="dialogState.selectedStreamConfig"
-                            class="guide-time"
+                            style="flex: 1 1 140px"
                         ></v-select>
                     </div>
                     <div class="d-flex">

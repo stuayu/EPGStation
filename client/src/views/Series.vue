@@ -29,7 +29,7 @@
                 (メタデータ再取得) を実行すると、作品辞書からクール・読み仮名・総話数を取り込んでクール絞り込みとあいうえお順が使えるようになります。
                 <span class="text-caption">(サーバ起動から 10 分後にも自動で実行されます)</span>
             </v-alert>
-            <div class="d-flex align-center ga-2 flex-wrap mb-2">
+            <div class="d-flex align-center ga-2 flex-wrap mb-2 series-filters">
                 <v-select
                     v-model="sort"
                     :items="sortItems"
@@ -37,7 +37,7 @@
                     label="並べ替え"
                     density="compact"
                     hide-details
-                    style="max-width: 200px"
+                    style="flex: 1 1 200px; max-width: 200px"
                     v-on:update:model-value="reload"
                 ></v-select>
                 <v-btn
@@ -153,7 +153,7 @@
                         <div v-else class="d-flex align-center justify-center bg-grey-lighten-3" :style="{ aspectRatio: '16 / 9' }">
                             <v-icon size="40" color="grey">mdi-television-classic</v-icon>
                         </div>
-                        <v-card-title class="text-body-1">{{ item.title }}</v-card-title>
+                        <v-card-title class="text-body-1 series-card-title">{{ item.title }}</v-card-title>
                         <v-card-subtitle class="pb-1">
                             {{ seasonText(item) }}
                             <span v-if="item.seasonSource === 'estimated'" class="text-caption text-grey" title="録画日時からの推測値です">(推定)</span>
@@ -341,11 +341,36 @@
                         <v-spacer></v-spacer>
                         <v-btn size="small" variant="text" color="primary" @click="resetTitleToDictionary">辞書名に戻す</v-btn>
                     </div>
-                    <div class="d-flex ga-2">
-                        <v-text-field v-model.number="editSeasonYear" type="number" label="年" density="compact" clearable></v-text-field>
-                        <v-select v-model="editSeasonName" :items="seasonNameItems" item-title="title" label="季節" density="compact" clearable></v-select>
+                    <!-- 季節は「夏 (7-9月)」のように長く、clearable の x と矢印も幅を取る。
+                         横に並べたままだと狭い端末でラベルも選択値も読めないため、入りきらなければ折り返す -->
+                    <div class="d-flex ga-2 flex-wrap">
+                        <v-text-field
+                            v-model.number="editSeasonYear"
+                            type="number"
+                            label="年"
+                            density="compact"
+                            clearable
+                            style="flex: 1 1 120px; max-width: 160px"
+                        ></v-text-field>
+                        <v-select
+                            v-model="editSeasonName"
+                            :items="seasonNameItems"
+                            item-title="title"
+                            label="季節"
+                            density="compact"
+                            clearable
+                            style="flex: 1 1 170px"
+                        ></v-select>
                     </div>
-                    <v-text-field v-model="editTitleKana" label="読み仮名 (あいうえお順の並べ替えに使用)" density="compact" clearable></v-text-field>
+                    <!-- ラベルに説明を入れると狭い端末で省略されて読めないため、説明は hint へ -->
+                    <v-text-field
+                        v-model="editTitleKana"
+                        label="読み仮名"
+                        density="compact"
+                        clearable
+                        persistent-hint
+                        hint="あいうえお順の並べ替えに使用します"
+                    ></v-text-field>
                     <v-text-field v-model.number="editTotalEpisodes" type="number" label="総話数 (欠番検出に使用)" density="compact" clearable></v-text-field>
                     <v-alert v-if="editSeasonYear !== null && editSeasonName === null" type="warning" density="compact">
                         年と季節は両方指定してください (片方だけでは絞り込みに使えません)
@@ -1026,6 +1051,25 @@ export default toNative(SeriesView);
 </script>
 
 <style lang="sass" scoped>
+// 絞り込み行のセレクト。
+// .v-input は既定が flex: 1 1 auto なので、flex-wrap を付けていても全部が縮んで
+// 1 行に収まってしまい、狭い端末ではラベルが「ク...」のように読めなくなる。
+// 折り返しの基準幅を与えて、入りきらないものは次の行へ送る
+.series-filters
+    > .v-input
+        flex: 1 1 150px
+
+// グリッド表示のカードタイトル。
+// v-card-title は 1 行固定 (nowrap + ellipsis) なので、狭い端末では作品名が
+// ほとんど読めない。2 行までは折り返して見せる
+.series-card-title
+    white-space: normal
+    display: -webkit-box
+    -webkit-line-clamp: 2
+    -webkit-box-orient: vertical
+    overflow: hidden
+    line-height: 1.35
+
 // グリッド表示のチェックボックスはサムネイルに重ねる
 .series-select-overlay
     position: absolute

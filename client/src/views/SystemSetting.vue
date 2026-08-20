@@ -52,7 +52,7 @@
                                     density="compact"
                                     hide-details
                                     clearable
-                                    style="max-width: 180px"
+                                    style="flex: 1 1 150px; max-width: 180px"
                                 ></v-select>
                             </div>
 

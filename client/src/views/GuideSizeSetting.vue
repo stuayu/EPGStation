@@ -287,6 +287,20 @@ export default toNative(GuideSizeSetting);
 
 .size-selector
     max-width: 100px
+
+// 設定行 (項目名 + v-spacer + セレクト)。
+// .v-input は既定が flex: 1 1 auto なので、項目名が長い行ではセレクトだけが縮み、
+// 狭い端末で選択値が「14...」のように読めなくなる
+.my-2.d-flex.flex-row.align-center
+    > div:first-child
+        flex: 1 1 auto
+        min-width: 0
+
+        .v-list-item-title
+            white-space: normal
+
+    > .v-input
+        flex: 0 0 auto
 @media screen and (min-width: 600px)
     .guide-size-setting
         display: flex

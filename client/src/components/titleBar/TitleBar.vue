@@ -1,7 +1,11 @@
 <template>
     <v-app-bar :color="appBarColor">
         <v-app-bar-nav-icon @click.stop="toggle"></v-app-bar-nav-icon>
-        <v-toolbar-title class="title-content" v-bind:class="{ clickable: !!needsTitleClickEvent === true }" v-on:click="onTitle">
+        <v-toolbar-title
+            class="title-content app-bar-title"
+            v-bind:class="{ clickable: !!needsTitleClickEvent === true }"
+            v-on:click="onTitle"
+        >
             {{ title }}
         </v-toolbar-title>
         <v-spacer></v-spacer>
