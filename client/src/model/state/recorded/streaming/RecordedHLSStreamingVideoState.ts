@@ -62,7 +62,11 @@ class RecordedHLSStreamingVideoState extends RecordedStreamingVideoState impleme
                 return;
             }
 
-            await this.streamApiModel.keep(this.streamId);
+            // ストリームを作り直した直後は古い streamId が 404 になる。
+            // keep はベストエフォートなので握り潰す (未処理の Promise 拒否にしない)
+            await this.streamApiModel.keep(this.streamId).catch(err => {
+                console.error(err);
+            });
         }, RecordedHLSStreamingVideoState.KEEP_INTERVAL * 1000);
 
         await Util.sleep(1000);

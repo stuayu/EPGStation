@@ -12,6 +12,13 @@ export const put: Operation = async (req, res) => {
             code: 200,
         });
     } catch (err: unknown) {
+        // シークや画質切替でストリームを作り直した直後は、古い streamId への
+        // keep が飛んでくる。存在しないストリームは 404 で返す (500 ではない)
+        if (api.getErrorMessage(err) === 'StreamIsUndefined') {
+            api.responseError(res, { code: 404, message: 'stream is not found' });
+
+            return;
+        }
         api.responseServerError(res, api.getErrorMessage(err));
     }
 };
@@ -28,6 +35,9 @@ put.apiDoc = {
     responses: {
         200: {
             description: 'ストリーム停止タイマーを更新しました',
+        },
+        404: {
+            description: '指定したストリームが存在しません',
         },
         default: {
             description: '予期しないエラー',
