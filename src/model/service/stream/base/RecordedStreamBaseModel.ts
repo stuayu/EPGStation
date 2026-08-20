@@ -157,6 +157,16 @@ export default abstract class RecordedStreamBaseModel
             throw new Error('OutOfRange');
         }
 
+        // 負の再生位置は受け付けない。
+        // api.yml の ss は minimum を持たないため負値がここまで届く。素通しすると
+        // エンコーダへ負の -ss を渡し、createReadStream の start も負になる
+        if (this.processOption.playPosition < 0) {
+            this.log.stream.warn(
+                `negative playPosition: ${this.processOption.playPosition}, clamped to 0 (videoFileId: ${this.processOption.videoFileId})`,
+            );
+            this.processOption.playPosition = 0;
+        }
+
         // file read stream の生成
         try {
             this.setFileStream();

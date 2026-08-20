@@ -192,3 +192,15 @@ test('service stream の programId 予約は TS 未到着を transport timeout �
         config.firstDataTimeoutMs,
     );
 });
+
+test('エラー再試行の上限は fast + 通常の合計になる', () => {
+    const config = resolveRecordingRetryConfig({ errorFastRetryCount: 3, errorRetryCount: 27 });
+    // ログに出す上限値と decideRecordingRetry の打ち切り位置が一致していること
+    const limit = config.errorFastRetryCount + config.errorRetryCount;
+    for (let i = 0; i < limit; i++) {
+        const d = decideRecordingRetry({ reason: 'error', errorRetryCount: i, waitedMs: 0, config });
+        assert.equal(d.retry, true, `${i} 回目はまだ再試行する`);
+    }
+    const over = decideRecordingRetry({ reason: 'error', errorRetryCount: limit, waitedMs: 0, config });
+    assert.equal(over.retry, false, '上限に達したら諦める');
+});

@@ -267,6 +267,21 @@ class VideoContainer extends Vue {
         this.$emit('remainingTime', Math.max(0, duration - video.getCurrentTime()));
     }
 
+    /**
+     * 保存できる再生位置へ丸める。
+     * ストリーミング再生ではシーク中に getCurrentTime() が負を返すことがあり、
+     * そのまま送ると API のスキーマ (position は 0 以上) に弾かれて
+     * 視聴位置が保存されなくなる
+     * @param video: 動画コンポーネント
+     * @param duration: number 動画の長さ (秒)
+     * @return number
+     */
+    private static normalizePosition(current: number, duration: number): number {
+        if (Number.isFinite(current) === false) return 0;
+
+        return Math.min(Math.max(0, current), duration);
+    }
+
     public async savePlaybackPosition(): Promise<void> {
         // レジューム適用が完了する前に保存すると position≈0 で履歴を上書きしてしまうため抑止する
         if (this.resumeReady === false) return;
@@ -275,15 +290,21 @@ class VideoContainer extends Vue {
         if (id === null || video === null) return;
         const duration = video.getDuration();
         if (duration <= 0) return;
+        const position = VideoContainer.normalizePosition(video.getCurrentTime(), duration);
         this.lastSavedAt = Date.now();
-        await this.videoApi.savePlaybackPosition(id, { position: video.getCurrentTime(), duration }).catch(console.error);
+        await this.videoApi.savePlaybackPosition(id, { position: position, duration }).catch(console.error);
     }
 
     private savePlaybackPositionWithBeacon(): void {
         const id = this.getVideoFileId();
         const video = this.getVideo();
-        if (id === null || video === null || video.getDuration() <= 0) return;
-        this.videoApi.savePlaybackPositionWithBeacon(id, { position: video.getCurrentTime(), duration: video.getDuration() });
+        if (id === null || video === null) return;
+        const duration = video.getDuration();
+        if (duration <= 0) return;
+        this.videoApi.savePlaybackPositionWithBeacon(id, {
+            position: VideoContainer.normalizePosition(video.getCurrentTime(), duration),
+            duration: duration,
+        });
     }
 
     private async applyResumePosition(): Promise<void> {

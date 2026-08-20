@@ -265,6 +265,11 @@ class RecordedStreamingVideo extends BaseVideo {
             return;
         }
 
+        // シークバーの端をつかむと僅かに負の値が来る。負のまま進めると
+        // basePlayPosition が負になり、サーバへ負の ss を要求してしまう
+        const duration = this.getDuration();
+        time = Math.min(Math.max(0, Number.isFinite(time) === true ? time : 0), duration > 0 ? duration : time);
+
         // エンコード済み範囲か
         if (time >= this.basePlayPosition && time <= this.basePlayPosition + super.getDuration()) {
             super.setCurrentTime(time - this.basePlayPosition);
