@@ -62,7 +62,9 @@ export default class StreamApiModel implements IStreamApiModel {
     ): Promise<apid.StreamId> {
         const result = await this.repository.get(`/streams/recorded/${videoFileId}/hls`, {
             params: {
-                ss: ss,
+                // ss は api.yml で integer。小数のまま投げるとサーバ側の parseInt で
+                // 切り捨てられ、同じ位置でも URL が一致しなくなる。負値も受け付けない
+                ss: Math.max(0, Math.floor(Number.isFinite(ss) === true ? ss : 0)),
                 mode: mode,
                 audioTrack: audioTrack,
             },
