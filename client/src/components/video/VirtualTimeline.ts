@@ -266,7 +266,9 @@ export default class VirtualTimeline {
         this.dragPercentage = this.getPercentage(event);
         this.dp.container.classList.add('dplayer-seeking');
         if (this.dp.video.paused === false) {
-            this.dp.video.pause();
+            // dp.video を直接止めると DPlayer 内部の paused フラグが更新されない。
+            // BaseVideo.paused() はそのフラグを見るため、必ず DPlayer の API 経由で操作する
+            this.dp.pause();
         }
 
         document.addEventListener('mousemove', this.dragMoveListener, { passive: false });
@@ -305,9 +307,7 @@ export default class VirtualTimeline {
         // 順序が逆だと「ドラッグ中の一時停止」を意図した停止と誤認し、
         // シーク後に必ず停止してしまう
         if (this.isPausedBeforeDrag === false) {
-            this.dp.video.play().catch(() => {
-                // 自動再生がブロックされた場合は何もしない
-            });
+            this.dp.play();
         }
         this.source.setCurrentTime(percentage * this.source.getDuration());
 
