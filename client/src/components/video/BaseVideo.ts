@@ -1,4 +1,5 @@
 import DPlayer, { DPlayerType } from 'dplayer';
+import { markRaw } from 'vue';
 import { Component, Vue } from 'vue-facing-decorator';
 import container from '@/model/ModelContainer';
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
@@ -90,7 +91,12 @@ export default abstract class BaseVideo extends Vue {
             };
         }
 
-        this.dp = BaseVideo.createDPlayer(options);
+        // markRaw で包まないと this.dp が Vue のリアクティブ Proxy になる。
+        // DPlayer.play() の mutex 処理は `this !== instances[i]` で他インスタンスを止めるが、
+        // Proxy 経由で呼ぶと this (Proxy) と instances に入っている生インスタンスが
+        // 別オブジェクトになるため判定が成立し、**自分自身を pause してしまう**。
+        // 再生ボタン・ホットキー・シーク後の再開が軒並み効かなくなる
+        this.dp = markRaw(BaseVideo.createDPlayer(options));
         this.bindEvents();
         this.setupExtraHotkeys();
 
