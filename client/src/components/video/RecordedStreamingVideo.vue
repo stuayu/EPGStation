@@ -206,7 +206,11 @@ class RecordedStreamingVideo extends BaseVideo {
      * video src を生成する
      */
     private createVideoSrc(info: VideoSrcInfo): string {
-        return `./api/streams/recorded/${info.videoFileId}/${info.streamingType}?mode=${info.mode}&ss=${info.playPosition}`;
+        // ss は api.yml で integer。小数のまま投げるとサーバ側の parseInt で
+        // 切り捨てられ、同じ位置でも URL が一致しなくなる
+        const ss = Math.max(0, Math.floor(info.playPosition));
+
+        return `./api/streams/recorded/${info.videoFileId}/${info.streamingType}?mode=${info.mode}&ss=${ss}`;
     }
 
     /**
@@ -268,7 +272,10 @@ class RecordedStreamingVideo extends BaseVideo {
         // シークバーの端をつかむと僅かに負の値が来る。負のまま進めると
         // basePlayPosition が負になり、サーバへ負の ss を要求してしまう
         const duration = this.getDuration();
-        time = Math.min(Math.max(0, Number.isFinite(time) === true ? time : 0), duration > 0 ? duration : time);
+        time = Math.max(0, Number.isFinite(time) === true ? time : 0);
+        if (duration > 0) {
+            time = Math.min(time, duration);
+        }
 
         // エンコード済み範囲か
         if (time >= this.basePlayPosition && time <= this.basePlayPosition + super.getDuration()) {
@@ -289,38 +296,45 @@ class RecordedStreamingVideo extends BaseVideo {
         clearTimeout(this.setCurrentTimeTimerId);
         this.setCurrentTimeTimerId = setTimeout(async () => {
             if (this.dp === null) {
+                // 解除しないと getCurrentTime() がダミー値を返し続け、シークバーが固まる
+                this.dummyPlayPosition = null;
+
                 return;
             }
 
-            const playbackRate = this.dp.video.playbackRate;
+            try {
+                const playbackRate = this.dp.video.playbackRate;
 
-            this.basePlayPosition = time;
-            this.onWaiting();
-            this.onPause();
+                this.basePlayPosition = time;
+                this.onWaiting();
+                this.onPause();
 
-            this.dp.switchVideo(
-                {
-                    url: this.createVideoSrc({
-                        videoFileId: this.videoFileId,
-                        streamingType: this.streamingType,
-                        mode: this.currentMode,
-                        playPosition: this.basePlayPosition,
-                    }),
-                    type: 'normal',
-                },
-                false,
-                false,
-            );
+                this.dp.switchVideo(
+                    {
+                        url: this.createVideoSrc({
+                            videoFileId: this.videoFileId,
+                            streamingType: this.streamingType,
+                            mode: this.currentMode,
+                            playPosition: this.basePlayPosition,
+                        }),
+                        type: 'normal',
+                    },
+                    false,
+                    false,
+                );
 
-            this.dp.video.playbackRate = playbackRate;
-            if (this.pauseStateBeforeCurrentTime === true) {
-                this.pause();
-            } else {
-                await this.play().catch(err => {
-                    // console.error(err);
-                });
+                this.dp.video.playbackRate = playbackRate;
+                if (this.pauseStateBeforeCurrentTime === true) {
+                    this.pause();
+                } else {
+                    await this.play().catch(err => {
+                        // console.error(err);
+                    });
+                }
+            } finally {
+                // switchVideo が失敗しても必ず解除する
+                this.dummyPlayPosition = null;
             }
-            this.dummyPlayPosition = null;
         }, 200);
     }
 }

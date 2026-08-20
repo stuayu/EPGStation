@@ -299,12 +299,17 @@ export default class VirtualTimeline {
         this.removeDragListeners();
         this.dp.container.classList.remove('dplayer-seeking');
 
-        this.source.setCurrentTime(percentage * this.source.getDuration());
+        // 再生状態を先に戻してから setCurrentTime() を呼ぶ。
+        // ストリームを作り直す実装 (RecordedStreamingVideo) は setCurrentTime() の中で
+        // 現在の paused() を読み、作り直した後の再生状態に使う。
+        // 順序が逆だと「ドラッグ中の一時停止」を意図した停止と誤認し、
+        // シーク後に必ず停止してしまう
         if (this.isPausedBeforeDrag === false) {
             this.dp.video.play().catch(() => {
                 // 自動再生がブロックされた場合は何もしない
             });
         }
+        this.source.setCurrentTime(percentage * this.source.getDuration());
 
         this.update();
     }
