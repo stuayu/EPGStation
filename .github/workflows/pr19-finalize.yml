@@ -25,7 +25,7 @@ jobs:
           node-version: 24.x
           cache: npm
 
-      - name: Update changelog
+      - name: Update changelog in working tree
         shell: python {0}
         run: |
           from pathlib import Path
@@ -57,21 +57,41 @@ jobs:
                   raise RuntimeError('changelog insertion marker was not found')
               path.write_text(text, encoding='utf-8')
 
-      - name: Install server dependencies
-        run: npm install
-
-      - name: Compile server
-        run: npm run compile
-
-      - name: Run PR regression tests
-        run: node --test test/ut/ts-playback-time-resolver.test.js test/ut/encode-finish-model.test.js
-
-      - name: Commit changelog and remove helper workflow
+      - name: Verify and finalize
+        shell: bash
         run: |
+          set +e
+          : > /tmp/pr19-verify.log
+          npm install >> /tmp/pr19-verify.log 2>&1
+          status=$?
+          if [ "$status" -eq 0 ]; then
+            npm run compile >> /tmp/pr19-verify.log 2>&1
+            status=$?
+          fi
+          if [ "$status" -eq 0 ]; then
+            node --test test/ut/ts-playback-time-resolver.test.js test/ut/encode-finish-model.test.js >> /tmp/pr19-verify.log 2>&1
+            status=$?
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/pr19-finalize.yml
-          git add doc/changelog-fork.md
-          git diff --cached --quiet && exit 0
-          git commit -m "docs: startAt 同期修正を変更ログに追記"
+
+          if [ "$status" -eq 0 ]; then
+            rm -f .github/pr19-verify-failure.txt
+            git rm .github/workflows/pr19-finalize.yml
+            git add doc/changelog-fork.md
+            git commit -m "docs: startAt 同期修正を変更ログに追記"
+            git push origin HEAD:fix/tsreplace-playback-start-at
+            exit 0
+          fi
+
+          {
+            echo "PR #19 verification failed (exit=$status)"
+            echo
+            tail -n 250 /tmp/pr19-verify.log
+          } > .github/pr19-verify-failure.txt
+          git restore doc/changelog-fork.md
+          git add .github/pr19-verify-failure.txt
+          git commit -m "ci: PR #19 検証失敗ログを保存"
           git push origin HEAD:fix/tsreplace-playback-start-at
+          exit "$status"
