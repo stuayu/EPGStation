@@ -58,6 +58,8 @@ class WatchSidePanel extends Vue {
                 return '次の話';
             case 'comment':
                 return 'コメント';
+            case 'sns':
+                return 'SNS投稿';
         }
     }
 
@@ -71,6 +73,8 @@ class WatchSidePanel extends Vue {
                 return 'mdi-playlist-play';
             case 'comment':
                 return 'mdi-comment-text-outline';
+            case 'sns':
+                return 'mdi-send-outline';
         }
     }
 }

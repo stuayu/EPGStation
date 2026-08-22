@@ -2491,3 +2491,208 @@ export interface EditableConfig {
     // 編集できるキーと再起動要否・出自の判定に使うメタ情報
     fields: ConfigFieldInfo[];
 }
+
+// ------------------------------------------------------------------
+// SNS 投稿 (Bluesky / Misskey)
+// ------------------------------------------------------------------
+
+export type SnsAccountId = number;
+export type SnsProvider = 'bluesky' | 'misskey';
+export type SnsVisibility = 'public' | 'home' | 'followers' | 'specified';
+
+export interface SnsAccountItem {
+    id: SnsAccountId;
+    provider: SnsProvider;
+    // Bluesky: DID / Misskey: Misskey 側の user id
+    remoteUserId: string;
+    // Misskey のホスト名 (misskey.io) / Bluesky は PDS ホスト
+    instanceUrl: string | null;
+    handle: string;
+    displayName: string;
+    avatarUrl: string | null;
+    // Misskey のみ使用。Bluesky は常に null
+    defaultVisibility: SnsVisibility | null;
+    defaultChannelId: string | null;
+    defaultChannelName: string | null;
+    isDefaultLocalOnly: boolean;
+    // トークン / セッションが壊れていて再連携が必要か
+    needsReauth: boolean;
+    // 再連携が必要な理由。'encryption': credential が未暗号化 (鍵ローテーション等で復号できない)。
+    // 'permission': MiAuth で発行済みのトークンの権限が現在アプリが要求する権限を満たしていない
+    // (MiAuth は permission がトークン発行時に固定されるため、要求権限を増やしても既存トークンには反映されない)。
+    // needsReauth が false のときは null
+    needsReauthReason: 'encryption' | 'permission' | null;
+    createdAt: UnixtimeMS;
+    updatedAt: UnixtimeMS;
+}
+
+export interface SnsAccountItems {
+    items: SnsAccountItem[];
+}
+
+export interface UpdateSnsAccountOption {
+    // Misskey のみ有効な項目。Bluesky アカウントに指定しても無視される
+    defaultVisibility?: SnsVisibility | null;
+    defaultChannelId?: string | null;
+    defaultChannelName?: string | null;
+    isDefaultLocalOnly?: boolean;
+}
+
+export interface SnsBlueskyLoginOption {
+    identifier: string;
+    appPassword: string;
+    // PDS ホスト。省略時は bsky.social
+    service?: string;
+}
+
+export interface SnsMisskeyAuthOption {
+    instanceUrl: string;
+}
+
+export interface SnsMisskeyAuthSession {
+    sessionId: string;
+    // ブラウザをこの URL へ遷移させると MiAuth の承認画面が開く
+    authUrl: string;
+}
+
+export interface SnsMisskeyChannel {
+    id: string;
+    name: string;
+}
+
+export interface SnsMisskeyChannels {
+    items: SnsMisskeyChannel[];
+}
+
+export interface SnsPostImage {
+    // data URL (data:image/jpeg;base64,...)。最大 4 枚、Bluesky は 1 枚あたり 2MB 上限
+    dataUrl: string;
+}
+
+export interface SnsPostMisskeyOption {
+    visibility?: SnsVisibility;
+    localOnly?: boolean;
+    channelId?: string | null;
+    cw?: string | null;
+}
+
+export interface SnsPostOption {
+    accountIds: SnsAccountId[];
+    text: string;
+    // クライアントが位置指定込みで本文へ合成済みのハッシュタグ一覧。サーバーでは本文と合成しない (参考情報)
+    hashtags?: string[];
+    images?: SnsPostImage[];
+    misskey?: SnsPostMisskeyOption;
+}
+
+export interface SnsPostAccountResult {
+    accountId: SnsAccountId;
+    provider: SnsProvider;
+    isSuccess: boolean;
+    // 成功時の投稿 URL (Bluesky は bsky.app のパーマリンク、Misskey はノートの URL)
+    url?: string;
+    // 失敗時の理由
+    detail?: string;
+}
+
+export interface SnsPostResult {
+    results: SnsPostAccountResult[];
+}
+
+// Misskey のタイムライン種別。Bluesky は常に本人のホームタイムラインを返すため無視される
+export type SnsTimelineType = 'home' | 'social' | 'local' | 'channel';
+
+export interface SnsTimelineImage {
+    url: string;
+    thumbnailUrl: string | null;
+    isSensitive: boolean;
+}
+
+export interface SnsTimelineReaction {
+    // Misskey: Unicode 絵文字 or ':name:'/':name@host:' 形式。Bluesky: 常に '❤' (like)
+    name: string;
+    count: number;
+    // カスタム絵文字の画像 URL。Unicode 絵文字や Bluesky の like では null
+    url: string | null;
+    isMine: boolean;
+}
+
+export interface SnsTimelineAuthor {
+    id: string;
+    handle: string;
+    displayName: string;
+    avatarUrl: string | null;
+}
+
+export interface SnsTimelineNote {
+    // Misskey: note id / Bluesky: at-uri
+    id: string;
+    // Bluesky のみ。like / repost に必要
+    cid?: string;
+    createdAt: UnixtimeMS;
+    // 本文 (Misskey の MFM 記法・カスタム絵文字表記はそのまま残す)
+    text: string;
+    cw: string | null;
+    author: SnsTimelineAuthor;
+    images: SnsTimelineImage[];
+    // Bluesky は like を 1 件として詰める
+    reactions: SnsTimelineReaction[];
+    renoteCount: number;
+    isRenotedByMe: boolean;
+    // 元の投稿を開くための URL
+    url: string | null;
+}
+
+export interface SnsTimeline {
+    notes: SnsTimelineNote[];
+    // 次ページ取得用。Misskey は untilId、Bluesky は API が返した cursor
+    cursor: string | null;
+}
+
+export interface SnsMisskeyEmoji {
+    name: string;
+    url: string;
+    category: string | null;
+    aliases: string[];
+}
+
+export interface SnsMisskeyEmojis {
+    emojis: SnsMisskeyEmoji[];
+}
+
+export interface SnsReactionOption {
+    accountId: SnsAccountId;
+    // Misskey: note id / Bluesky: at-uri
+    noteId: string;
+    // Misskey のみ有効。省略時は既定のリアクションを使う
+    reaction?: string;
+    // Bluesky で POST (like 作成) する場合に必須。対象投稿の cid
+    cid?: string;
+    // Bluesky で DELETE (like 取り消し) する場合に必須。
+    // POST 成功時のレスポンス (SnsReactionResult.reactionKey) をそのまま渡す
+    reactionKey?: string;
+}
+
+export interface SnsReactionResult {
+    isSuccess: boolean;
+    // Bluesky の POST 成功時のみ含まれる。DELETE 時に reactionKey として渡す
+    reactionKey?: string;
+    // 失敗時の理由
+    detail?: string;
+}
+
+export interface SnsRenoteOption {
+    accountId: SnsAccountId;
+    // Misskey: note id / Bluesky: at-uri
+    noteId: string;
+    // Bluesky で必須。対象投稿の cid
+    cid?: string;
+}
+
+export interface SnsRenoteResult {
+    isSuccess: boolean;
+    // 成功時、リノート/repost した元投稿を開く URL
+    url?: string;
+    // 失敗時の理由
+    detail?: string;
+}

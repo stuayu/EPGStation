@@ -17,6 +17,7 @@ import Reserves from './views/Reserves.vue';
 import Rule from './views/Rule.vue';
 import Search from './views/Search.vue';
 import Settings from './views/Settings.vue';
+import SnsAccounts from './views/SnsAccounts.vue';
 import SystemSetting from './views/SystemSetting.vue';
 import Series from './views/Series.vue';
 import SeriesDetail from './views/SeriesDetail.vue';
@@ -58,6 +59,7 @@ export default createRouter({
         { path: '/search', name: 'search', component: Search },
         { path: '/rule', name: 'rule', component: Rule },
         { path: '/settings', name: 'settings', component: Settings },
+        { path: '/settings/sns', name: 'settings-sns', component: SnsAccounts },
         { path: '/settings/system', name: 'system-settings', component: SystemSetting },
         { path: '/storages', name: 'storages', component: Storages },
         { path: '/logs', name: 'logs', component: Logs },

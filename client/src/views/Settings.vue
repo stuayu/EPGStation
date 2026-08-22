@@ -420,6 +420,77 @@
                             </v-list-item>
                         </template>
 
+                        <v-divider></v-divider>
+
+                        <v-list-item three-line>
+                            <div class="v-list-item-content">
+                                <div class="title">SNS 投稿</div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">視聴画面に SNS 投稿パネルを表示する</v-list-item-title>
+                                        <v-list-item-subtitle>連携アカウントが 1 件もない場合はタブ自体を表示しません</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="storageModel.tmp.isEnableSnsPanel"></v-switch>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">投稿とタイムラインを同時表示する</v-list-item-title>
+                                        <v-list-item-subtitle>狭い画面ではこの設定に関わらずタブ切り替えになります</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="storageModel.tmp.snsUseSplitPanelView"></v-switch>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">本文のライブプレビューを表示する</v-list-item-title>
+                                        <v-list-item-subtitle>入力中の本文をカスタム絵文字・MFM 装飾込みで下に表示します</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="storageModel.tmp.snsEnableComposePreview"></v-switch>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">局タグを自動追加</v-list-item-title>
+                                        <v-list-item-subtitle>放送局名から解決したハッシュタグを自動で合成します</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="storageModel.tmp.snsAutoAddChannelHashtag"></v-switch>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">番組タグを自動追加</v-list-item-title>
+                                        <v-list-item-subtitle>番組概要・詳細から抽出したハッシュタグを自動で合成します</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="storageModel.tmp.snsAutoAddProgramHashtag"></v-switch>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">ハッシュタグの挿入位置</v-list-item-title>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-select :items="snsHashtagPositionItems" v-model="storageModel.tmp.snsHashtagPosition" class="sns-hashtag-position"></v-select>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">番組切り替え時にハッシュタグをリセット</v-list-item-title>
+                                        <v-list-item-subtitle>無効にすると手で編集したハッシュタグを次の番組でも保持します</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="storageModel.tmp.snsResetHashtagOnProgramSwitch"></v-switch>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">投稿後にパネルを畳む</v-list-item-title>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="storageModel.tmp.snsFoldPanelAfterPost"></v-switch>
+                                </div>
+                                <v-btn block variant="outlined" class="mt-2" to="/settings/sns">SNS 連携アカウントを管理</v-btn>
+                            </div>
+                        </v-list-item>
+
                         <v-card-actions class="flex-wrap">
                             <!-- 未保存であることは最上部の追従バーが担うため、ここは保存済みの表示だけ -->
                             <div v-if="isDirty === false" class="text-medium-emphasis text-body-2 ml-2">保存済みです</div>
@@ -449,10 +520,16 @@ import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import IColorThemeState from '@/model/state/IColorThemeState';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
 import ThemeColorUtil from '@/util/ThemeColorUtil';
+import ProgramHashtagUtil from '@/util/ProgramHashtagUtil';
 
 interface GuideModeItem {
     title: string;
     value: GuideViewMode;
+}
+
+interface HashtagPositionItem {
+    title: string;
+    value: ProgramHashtagUtil.HashtagPosition;
 }
 
 interface SelectItem {
@@ -598,6 +675,13 @@ class Settings extends Vue {
             title: 'すべて',
             value: 'all',
         },
+    ];
+
+    public readonly snsHashtagPositionItems: HashtagPositionItem[] = [
+        { title: '本文の前', value: 'prepend' },
+        { title: '本文の後', value: 'append' },
+        { title: '本文の前 (改行)', value: 'prependWithLineBreak' },
+        { title: '本文の後 (改行)', value: 'appendWithLineBreak' },
     ];
 
     public themeColorItems: ThemeColorUtil.ThemeColorDefinition[] = ThemeColorUtil.COLORS;
@@ -769,6 +853,8 @@ export default toNative(Settings);
     max-width: 120px
 .guide-time
     max-width: 90px
+.sns-hashtag-position
+    max-width: 190px
 
 // 設定行 (説明 + v-spacer + スイッチ / セレクト)。
 // 既定では説明側の div が縮まず、入力側の .v-input (flex: 1 1 auto) だけが縮むため、
