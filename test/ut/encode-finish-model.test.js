@@ -14,6 +14,7 @@ const logger = {
 function createFakes() {
     const addVideoFileCalls = [];
     const emitFinishEncodeCalls = [];
+    const analyzeAllCalls = [];
 
     const socket = {
         notifyClient: () => {},
@@ -36,6 +37,12 @@ function createFakes() {
         },
     };
 
+    const videoFileAnalyzeModel = {
+        analyzeAll: async videoFileId => {
+            analyzeAllCalls.push(videoFileId);
+        },
+    };
+
     // set() が呼ぶコールバック登録を横取りするだけの簡易 IEncodeEvent
     let finishEncodeCallback = null;
     const encodeEvent = {
@@ -48,7 +55,20 @@ function createFakes() {
         setUpdateEncodeProgress: () => {},
     };
 
-    return { addVideoFileCalls, emitFinishEncodeCalls, socket, ipc, encodeEvent, getFinishEncodeCallback: () => finishEncodeCallback };
+    return {
+        addVideoFileCalls,
+        emitFinishEncodeCalls,
+        analyzeAllCalls,
+        socket,
+        ipc,
+        encodeEvent,
+        videoFileAnalyzeModel,
+        getFinishEncodeCallback: () => finishEncodeCallback,
+    };
+}
+
+function createModel(fakes) {
+    return new EncodeFinishModel(logger, fakes.socket, fakes.ipc, fakes.encodeEvent, fakes.videoFileAnalyzeModel);
 }
 
 function baseInfo(overrides) {
@@ -73,7 +93,7 @@ function baseInfo(overrides) {
 // TS 解析 (PSI/SI) の対象判定は type ではなく拡張子で別途行う (VideoFileAnalyzeModel を参照)
 test('tsreplace 系 (.ts 拡張子のまま) の出力も type: encoded として登録される', async () => {
     const fakes = createFakes();
-    const model = new EncodeFinishModel(logger, fakes.socket, fakes.ipc, fakes.encodeEvent);
+    const model = createModel(fakes);
     model.set();
 
     await fakes.getFinishEncodeCallback()(baseInfo({ filePath: 'output.hevc.ts' }));
@@ -82,34 +102,47 @@ test('tsreplace 系 (.ts 拡張子のまま) の出力も type: encoded とし�
     assert.equal(fakes.addVideoFileCalls[0].type, 'encoded');
 });
 
+test('エンコード出力を登録した直後に TS/ffprobe の再解析を実行する', async () => {
+    const fakes = createFakes();
+    const model = createModel(fakes);
+    model.set();
+
+    await fakes.getFinishEncodeCallback()(baseInfo({ filePath: 'output.hevc.ts' }));
+
+    assert.deepEqual(fakes.analyzeAllCalls, [100]);
+});
+
 test('完全な再マルチプレクス (.mp4) の出力も type: encoded として登録される', async () => {
     const fakes = createFakes();
-    const model = new EncodeFinishModel(logger, fakes.socket, fakes.ipc, fakes.encodeEvent);
+    const model = createModel(fakes);
     model.set();
 
     await fakes.getFinishEncodeCallback()(baseInfo({ filePath: 'output.mp4' }));
 
     assert.equal(fakes.addVideoFileCalls.length, 1);
     assert.equal(fakes.addVideoFileCalls[0].type, 'encoded');
+    assert.deepEqual(fakes.analyzeAllCalls, [100]);
 });
 
 test('.mkv の出力も type: encoded として登録される', async () => {
     const fakes = createFakes();
-    const model = new EncodeFinishModel(logger, fakes.socket, fakes.ipc, fakes.encodeEvent);
+    const model = createModel(fakes);
     model.set();
 
     await fakes.getFinishEncodeCallback()(baseInfo({ filePath: 'output.mkv' }));
 
     assert.equal(fakes.addVideoFileCalls.length, 1);
     assert.equal(fakes.addVideoFileCalls[0].type, 'encoded');
+    assert.deepEqual(fakes.analyzeAllCalls, [100]);
 });
 
-test('fullOutputPath が null (ファイルサイズ更新のみ) の場合は addVideoFile を呼ばない', async () => {
+test('fullOutputPath が null (ファイルサイズ更新のみ) の場合は addVideoFile と再解析を呼ばない', async () => {
     const fakes = createFakes();
-    const model = new EncodeFinishModel(logger, fakes.socket, fakes.ipc, fakes.encodeEvent);
+    const model = createModel(fakes);
     model.set();
 
     await fakes.getFinishEncodeCallback()(baseInfo({ fullOutputPath: null, filePath: null }));
 
     assert.equal(fakes.addVideoFileCalls.length, 0);
+    assert.equal(fakes.analyzeAllCalls.length, 0);
 });
