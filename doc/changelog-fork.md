@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-22
 
+- **tsreplace 出力の `video_file.startAt` が数分ずれることがあったのを直した (ファイル先頭時刻の採用条件)**: `TsInfoAnalyzer.resolveFileStartAt()` は 「先頭を読み直した TDT/TOT」と「中央から実測バイトレートで遡った見積もり」が 5 分以上食い違うと**見積もりの方を採って**いた。しかし見積もりは「ファイル全体が一定ビットレート」を前提にしているため、tsreplace の HEVC 出力のような VBR ファイルでは中央区間のビットレートを全体に外挿することになり大きく外れる。実測では head `08:29:41` / estimated `08:21:52` の **7 分 48 秒差**で、ファイル名の録画時刻 (17:30 JST) と突き合わせると head が正しかった。先頭で実際に読んだ値を常に優先し、見積もりは先頭が読めなかったときの代替に降格した。先頭の時刻が中央の時刻より後になる場合 (時系列としてあり得ない) だけ、壊れた TDT/TOT とみなして見積もりへ退避する。これは `TsPlaybackTimeResolver` の前提 (`firstTdtAt` = 対象サービスの先頭 PCR の実時刻) が成り立つのが先頭読み経路だけであることとも整合する — 見積もり経路ではアンカーが別物になり、PTS−PCR 差の補正が土台から狂っていた。
+
 - **Web API の約 20 本のルートが登録されず 404 になっていたのを直した (ログ表示・録画詳細・シリーズ・予約・ルール・番組表詳細など)**: `api.yml` に `nullable: true` と `allOf: [$ref]` を持ち `type` を書いていないスキーマが 22 箇所あり、express-openapi が使う ajv が `"nullable" cannot be used without "type"` で例外を投げていた。`openapi.initialize()` は非同期にルートを登録するため、この例外で**登録が途中で打ち切られる**。さらに `ServiceExecutor` の `uncaughtException` ハンドラがプロセスを落とさずログだけ出すため、**サーバーは生きたまま一部のルートだけが未登録**という状態になり、`/api/logs/{logFileId}`・`/api/recorded/{recordedId}`・`/api/series/{seriesId}` などが Express 既定の `Cannot GET` (404) を返していた。express-openapi 自身が張る `/api/docs` も未登録だった。該当 22 箇所へ参照先スキーマの型 (`integer` / `object` / `string`) を明記して解消した。OpenAPI 3.0 の `nullable` は型に対する修飾なので、`allOf` の隣に単独で置くのは元々不正。静的パスのルートと `/api/streams`・`/api/videos` 系が動いていたため、**全体障害に見えず気付きにくい**壊れ方だった。
 
 - **tsreplace 出力を含む録画の `video_file.startAt` を「再生位置 0 秒 = 最初の映像 PTS」の実時刻へ合わせ、ニコニコ実況の過去ログ同期を正確にした**: 従来の TDT/TOT + PCR 補正は TS 先頭付近の PCR の実時刻を求めるところまでは正しかったが、tsreplace 等で映像 PTS/PCR が再構成されると最初に表示される映像 PTS と先頭 PCR にオフセットが残り、コメントが数秒ずれる。対象サービスの PMT から PCR_PID を特定し、先頭 PCR と最初の映像 PTS (無ければ音声 PTS) の差を 27MHz 時間軸で求め、`startAt = firstTdtAt + (firstMediaPTS - firstPCR)` として保存する `TsPlaybackTimeResolver` を追加。33bit wrap に対応し、5 分超の不自然な差・必要情報不足時は従来の `firstTdtAt` へフォールバックする。さらに `EncodeFinishModel` で `addVideoFile()` 直後に `analyzeAll()` を実行し、tsreplace 出力も登録直後に TS/ffprobe を解析して `startAt` を埋める。外部で作った tsreplace の `.ts` を取り込む経路も、`fileType` ではなく拡張子で PSI/SI 解析の可否を判定するように直した。既存 tsreplace ファイルは TS 再解析で更新できる。
@@ -167,6 +169,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 録画ファイルの解析・取り込み
 
+- tsreplace 出力で `video_file.startAt` が数分ずれる原因だった、ファイル先頭時刻の採用条件を直した
 - tsreplace 出力を含む録画の `video_file.startAt` を最初の映像 PTS の実時刻へ補正し、ニコニコ実況と再生位置 0 秒を同期させた
 - エンコード結果が壊れていても「成功」として登録され、元の TS が消えていたのを直した
 - EDCB からの録画情報登録と TS ファイルのアップロードが失敗していたのを直した
