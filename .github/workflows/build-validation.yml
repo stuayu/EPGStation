@@ -8,30 +8,7 @@ on:
   schedule:
     - cron: '0 18 * * *' # 03:00 JST: ITB nightly
 
-permissions:
-  contents: write
-  statuses: write
-
-concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  mark-pr19-running:
-    name: mark-pr19-running
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/fix/tsreplace-playback-start-at' && github.actor != 'github-actions[bot]' }}
-    runs-on: ubuntu-latest
-    steps:
-    - name: Publish pending status
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-          -f state=pending \
-          -f context=pr19-verification \
-          -f description='UT/ITA verification is running' \
-          -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-
   test:
     name: test-${{ matrix.level }}
     runs-on: ubuntu-latest
@@ -70,8 +47,8 @@ jobs:
       run: npm run test:itb
 
   build:
+
     name: build-${{matrix.os}}-${{matrix.node-version}}
-    if: github.ref != 'refs/heads/fix/tsreplace-playback-start-at'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -93,29 +70,29 @@ jobs:
     - name: install winser on windows
       if: runner.os == 'Windows'
       run: npm install winser -g
-
+      
     - name: Mirakurun Checkout
       uses: actions/checkout@v4
       with:
         ref: stuayu-main
         repository: stuayu/Mirakurun
         path: Mirakurun
-
+    
     - name: Mirakurun build and install
       working-directory: Mirakurun
       run: |
         npm install
-
+    
     - name: Install all
       working-directory: EPGStation
       run: |
         npm run all-install
-
+      
     - name: Build EPGStation
       working-directory: EPGStation
       if: runner.os == 'Windows'
       run: npm run build-win
-
+    
     - name: Build EPGStation
       working-directory: EPGStation
       if: runner.os == 'Linux' || runner.os == 'macOS'
@@ -131,106 +108,9 @@ jobs:
       with:
         name: EPGStation-${{ matrix.os }}-${{ matrix.node-version }}.7z
         path: EPGStation-${{ matrix.os }}-${{ matrix.node-version }}.7z
-
+    
     - name: Upload Project as Artifact
       uses: actions/upload-artifact@v4
       with:
         name: Mirakurun-${{ matrix.os }}-${{ matrix.node-version }}.7z
         path: Mirakurun-${{ matrix.os }}-${{ matrix.node-version }}.7z
-
-  finalize-pr19:
-    name: finalize-pr19
-    needs: [test]
-    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/fix/tsreplace-playback-start-at' && github.actor != 'github-actions[bot]' }}
-    runs-on: ubuntu-latest
-    steps:
-    - name: Publish test result status
-      env:
-        GH_TOKEN: ${{ github.token }}
-        TEST_RESULT: ${{ needs.test.result }}
-      run: |
-        if [ "$TEST_RESULT" = "success" ]; then
-          state=success
-          description='UT/ITA verification passed'
-        else
-          state=failure
-          description="UT/ITA verification failed: $TEST_RESULT"
-        fi
-        gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-          -f state="$state" \
-          -f context=pr19-verification \
-          -f description="$description" \
-          -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        ref: fix/tsreplace-playback-start-at
-        fetch-depth: 0
-
-    - name: Update changelog and save verification result
-      shell: bash
-      run: |
-        set +e
-        patch_status=0
-        if [ "${{ needs.test.result }}" = "success" ]; then
-          python <<'PY'
-        from pathlib import Path
-
-        path = Path('doc/changelog-fork.md')
-        text = path.read_text(encoding='utf-8')
-        unique = 'tsreplace 出力を含む録画の `video_file.startAt` を最初の映像 PTS の実時刻へ補正し、ニコニコ実況の再生位置 0 秒と同期させた'
-
-        if unique not in text:
-            date_entry = '''- **tsreplace 出力を含む録画の `video_file.startAt` を「再生位置 0 秒 = 最初の映像 PTS」の実時刻へ合わせ、ニコニコ実況の過去ログ同期を正確にした**: 従来の TDT/TOT + PCR 補正は TS 先頭付近の PCR の実時刻を求めるところまでは正しかったが、tsreplace 等で映像 PTS/PCR が再構成されると最初に表示される映像 PTS と先頭 PCR にオフセットが残り、コメントが数秒ずれる。対象サービスの PMT から PCR_PID を特定し、先頭 PCR と最初の映像 PTS (無ければ音声 PTS) の差を 27MHz 時間軸で求め、`startAt = firstTdtAt + (firstMediaPTS - firstPCR)` として保存する `TsPlaybackTimeResolver` を追加。33bit wrap に対応し、5 分超の不自然な差・必要情報不足時は従来の `firstTdtAt` へフォールバックする。さらに `EncodeFinishModel` で `addVideoFile()` 直後に `analyzeAll()` を実行し、tsreplace 出力も登録直後に TS/ffprobe を解析して `startAt` を埋める。既存 tsreplace ファイルは TS 再解析で更新できる。\n\n'''
-            text = text.replace('## 2026-08-22\n\n', '## 2026-08-22\n\n' + date_entry, 1)
-
-            index_entry = '- tsreplace 出力を含む録画の `video_file.startAt` を最初の映像 PTS の実時刻へ補正し、ニコニコ実況と再生位置 0 秒を同期させた\n'
-            text = text.replace('### 録画ファイルの解析・取り込み\n\n', '### 録画ファイルの解析・取り込み\n\n' + index_entry, 1)
-
-            detail_entry = '''- **tsreplace 出力を含む録画の `video_file.startAt` を最初の映像 PTS の実時刻へ補正し、ニコニコ実況の再生位置 0 秒と同期させた**
-    - **背景**: 既存の TDT/TOT + PCR 補正は「ファイル先頭付近の PCR が実時間で何時か」を求めていたが、tsreplace 等で PTS/PCR が再構成されると最初に表示される映像 PTS と先頭 PCR の間に数秒の差が残り、`JikkyoKakologClient` の `startAt + currentTime` と実放送時刻がずれる
-    - `TsPlaybackTimeResolver` が PMT から PCR_PID と映像/音声 PID を特定し、先頭 PCR と最初の映像 PTS (無ければ音声 PTS) を同じ 27MHz 時間軸へ載せ、`firstTdtAt + (firstMediaPts - firstPcr)` を playback 0 の実時刻として返す
-    - 33bit の PTS/PCR wrap に対応し、5 分を超える不自然な差や必要情報不足時は従来の `firstTdtAt` へフォールバックする
-    - `EncodeFinishModel` は `addVideoFile()` の直後に `analyzeAll()` を呼び、tsreplace 出力も登録直後に TS/ffprobe 解析して `startAt` を保存する。既存ファイルも TS 再解析で更新できる
-    - テストは +2.5 秒オフセット、wrap、音声 PTS fallback、異常値拒否、エンコード完了後の自動解析を固定した
-
-'''
-            text = text.replace('## 変更履歴 (新しい順)\n\n', '## 変更履歴 (新しい順)\n\n' + detail_entry, 1)
-
-            if unique not in text:
-                raise RuntimeError('changelog insertion marker was not found')
-            path.write_text(text, encoding='utf-8')
-        PY
-          patch_status=$?
-        else
-          patch_status=1
-        fi
-
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-        if [ "${{ needs.test.result }}" = "success" ] && [ "$patch_status" -eq 0 ]; then
-          {
-            echo "status=success"
-            echo "run_id=$GITHUB_RUN_ID"
-            echo "test_result=${{ needs.test.result }}"
-            echo "changelog_patch_status=$patch_status"
-          } > .github/pr19-verify-result.txt
-          git add doc/changelog-fork.md .github/pr19-verify-result.txt
-          git commit -m "docs: startAt 同期修正を変更ログに追記"
-          git push origin HEAD:fix/tsreplace-playback-start-at
-          exit 0
-        fi
-
-        git restore doc/changelog-fork.md
-        {
-          echo "status=failure"
-          echo "run_id=$GITHUB_RUN_ID"
-          echo "test_result=${{ needs.test.result }}"
-          echo "changelog_patch_status=$patch_status"
-        } > .github/pr19-verify-result.txt
-        git add .github/pr19-verify-result.txt
-        git commit -m "ci: PR #19 検証失敗情報を保存"
-        git push origin HEAD:fix/tsreplace-playback-start-at
-        exit 1
