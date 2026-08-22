@@ -49,7 +49,8 @@ export default class RecordedUtil implements IRecordedUtil {
         const startAt = DateUtil.getJaDate(new Date(item.startAt));
         const endAt = DateUtil.getJaDate(new Date(item.endAt));
         const duration = Math.floor((item.endAt - item.startAt) / 1000 / 60);
-        const fileDuration = RecordedUtil.getFileDuration(item);
+        const displayVideo = RecordedUtil.getDisplayVideoFile(item);
+        const fileDuration = RecordedUtil.getFileDuration(displayVideo);
         const result: RecordedDisplayData = {
             display: {
                 channelName: ChannelNameUtil.getRecordedChannelName(this.channelModel, item, isHalfWidth),
@@ -74,7 +75,7 @@ export default class RecordedUtil implements IRecordedUtil {
             result.display.fileDuration = fileDuration;
         }
 
-        const recordedTimeText = RecordedUtil.createRecordedTimeText(item, startAt);
+        const recordedTimeText = RecordedUtil.createRecordedTimeText(displayVideo, startAt);
         if (recordedTimeText !== null) {
             result.display.recordedTimeText = recordedTimeText;
         }
@@ -166,46 +167,68 @@ export default class RecordedUtil implements IRecordedUtil {
     }
 
     /**
-     * 実測の長さが最も長い録画ファイルを返す
-     * 複数ファイルがある場合に最長を採るのは、TS とエンコード済みで尺が異なることがあるため
-     * @param item: apid.RecordedItem
-     * @return apid.VideoFile | null 実測メタデータを持つファイルが無い場合は null
+     * GUI の「実際に録画された時間 / 実尺」の基準にする video file を返す。
+     *
+     * 以前は duration が最長のファイルを代表としていたが、元 TS と tsreplace 出力が
+     * 同じ RecordedItem に共存すると、TS 側の古い startAt を拾ってしまい、解析ログで
+     * tsreplace 側の正しい startAt が求まっていても GUI に反映されないことがあった。
+     *
+     * 実際の再生基準時刻として解析済み startAt を持つファイルを最優先し、その中では
+     * tsreplace を含む encoded を優先する。同一条件なら後から生成/登録された id の大きい
+     * ファイルを採用する。startAt がまだ無い場合だけ duration を持つファイルへフォールバックする。
      */
-    private static getLongestVideoFile(item: apid.RecordedItem): apid.VideoFile | null {
-        if (typeof item.videoFiles === 'undefined') {
+    private static getDisplayVideoFile(item: apid.RecordedItem): apid.VideoFile | null {
+        if (typeof item.videoFiles === 'undefined' || item.videoFiles.length === 0) {
             return null;
         }
 
-        const videos = item.videoFiles.filter(video => typeof video.duration === 'number' && video.duration > 0);
+        const score = (video: apid.VideoFile): number => {
+            const hasStartAt = typeof video.startAt === 'number';
+            const hasDuration = typeof video.duration === 'number' && video.duration > 0;
+            if (hasStartAt && video.type === 'encoded') return 4;
+            if (hasStartAt) return 3;
+            if (hasDuration && video.type === 'encoded') return 2;
+            if (hasDuration) return 1;
+            return 0;
+        };
 
-        return videos.length === 0 ? null : videos.reduce((a, b) => ((a.duration as number) >= (b.duration as number) ? a : b));
+        return item.videoFiles.reduce((best, current) => {
+            const bestScore = score(best);
+            const currentScore = score(current);
+            if (currentScore !== bestScore) {
+                return currentScore > bestScore ? current : best;
+            }
+
+            return current.id > best.id ? current : best;
+        });
     }
 
     /**
      * 録画ファイルの実測の長さ (分) を返す
-     * @param item: apid.RecordedItem
+     * @param video: apid.VideoFile | null GUI 表示の基準にするファイル
      * @return number | null 未解析でメタデータが無い場合は null
      */
-    private static getFileDuration(item: apid.RecordedItem): number | null {
-        const video = RecordedUtil.getLongestVideoFile(item);
+    private static getFileDuration(video: apid.VideoFile | null): number | null {
+        if (video === null || typeof video.duration !== 'number' || video.duration <= 0) {
+            return null;
+        }
 
-        return video === null ? null : Math.round((video.duration as number) / 60);
+        return Math.round(video.duration / 60);
     }
 
     /**
      * 詳細画面用に「実際に録画された時間」の文字列を作る
-     * ファイル先頭の実時刻 (ffprobe 解析時に記録) がある場合は録画開始〜終了時刻も添える
-     * @param item: apid.RecordedItem
+     * ファイル先頭の実時刻 (TS/ffprobe 解析時に記録) がある場合は録画開始〜終了時刻も添える
+     * @param video: apid.VideoFile | null GUI 表示の基準にするファイル
      * @param programStartAt: Date 番組の開始日時 (日付を省略できるかの判定に使う)
      * @return string | null 実測メタデータが無い場合は null
      */
-    private static createRecordedTimeText(item: apid.RecordedItem, programStartAt: Date): string | null {
-        const video = RecordedUtil.getLongestVideoFile(item);
-        if (video === null) {
+    private static createRecordedTimeText(video: apid.VideoFile | null, programStartAt: Date): string | null {
+        if (video === null || typeof video.duration !== 'number' || video.duration <= 0) {
             return null;
         }
 
-        const durationSec = video.duration as number;
+        const durationSec = video.duration;
         const lengthText = RecordedUtil.createHmsText(durationSec);
         if (typeof video.startAt !== 'number') {
             // 録画開始時刻が分からない場合は長さだけ返す
