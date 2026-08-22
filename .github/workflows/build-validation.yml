@@ -10,12 +10,28 @@ on:
 
 permissions:
   contents: write
+  statuses: write
 
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  mark-pr19-running:
+    name: mark-pr19-running
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/fix/tsreplace-playback-start-at' && github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Publish pending status
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+          -f state=pending \
+          -f context=pr19-verification \
+          -f description='UT/ITA verification is running' \
+          -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
   test:
     name: test-${{ matrix.level }}
     runs-on: ubuntu-latest
@@ -128,6 +144,24 @@ jobs:
     if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/fix/tsreplace-playback-start-at' && github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     steps:
+    - name: Publish test result status
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TEST_RESULT: ${{ needs.test.result }}
+      run: |
+        if [ "$TEST_RESULT" = "success" ]; then
+          state=success
+          description='UT/ITA verification passed'
+        else
+          state=failure
+          description="UT/ITA verification failed: $TEST_RESULT"
+        fi
+        gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+          -f state="$state" \
+          -f context=pr19-verification \
+          -f description="$description" \
+          -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
     - name: Checkout
       uses: actions/checkout@v4
       with:
