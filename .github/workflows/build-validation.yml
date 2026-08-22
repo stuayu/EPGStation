@@ -50,7 +50,6 @@ jobs:
       run: npm run test:itb
 
   build:
-
     name: build-${{matrix.os}}-${{matrix.node-version}}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -73,29 +72,29 @@ jobs:
     - name: install winser on windows
       if: runner.os == 'Windows'
       run: npm install winser -g
-      
+
     - name: Mirakurun Checkout
       uses: actions/checkout@v4
       with:
         ref: stuayu-main
         repository: stuayu/Mirakurun
         path: Mirakurun
-    
+
     - name: Mirakurun build and install
       working-directory: Mirakurun
       run: |
         npm install
-    
+
     - name: Install all
       working-directory: EPGStation
       run: |
         npm run all-install
-      
+
     - name: Build EPGStation
       working-directory: EPGStation
       if: runner.os == 'Windows'
       run: npm run build-win
-    
+
     - name: Build EPGStation
       working-directory: EPGStation
       if: runner.os == 'Linux' || runner.os == 'macOS'
@@ -111,7 +110,7 @@ jobs:
       with:
         name: EPGStation-${{ matrix.os }}-${{ matrix.node-version }}.7z
         path: EPGStation-${{ matrix.os }}-${{ matrix.node-version }}.7z
-    
+
     - name: Upload Project as Artifact
       uses: actions/upload-artifact@v4
       with:
@@ -120,8 +119,8 @@ jobs:
 
   finalize-pr19:
     name: finalize-pr19
-    needs: [test]
-    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/fix/tsreplace-playback-start-at' }}
+    needs: [test, build]
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/fix/tsreplace-playback-start-at' && github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
@@ -130,12 +129,12 @@ jobs:
         ref: fix/tsreplace-playback-start-at
         fetch-depth: 0
 
-    - name: Update changelog and finalize branch
+    - name: Update changelog and save verification result
       shell: bash
       run: |
         set +e
         patch_status=0
-        if [ "${{ needs.test.result }}" = "success" ]; then
+        if [ "${{ needs.test.result }}" = "success" ] && [ "${{ needs.build.result }}" = "success" ]; then
           python <<'PY'
         from pathlib import Path
 
@@ -144,9 +143,7 @@ jobs:
         unique = 'tsreplace 出力を含む録画の `video_file.startAt` を最初の映像 PTS の実時刻へ補正し、ニコニコ実況の再生位置 0 秒と同期させた'
 
         if unique not in text:
-            date_entry = '''- **tsreplace 出力を含む録画の `video_file.startAt` を「再生位置 0 秒 = 最初の映像 PTS」の実時刻へ合わせ、ニコニコ実況の過去ログ同期を正確にした**: 従来の TDT/TOT + PCR 補正は TS 先頭付近の PCR の実時刻を求めるところまでは正しかったが、tsreplace 等で映像 PTS/PCR が再構成されると最初に表示される映像 PTS と先頭 PCR にオフセットが残り、コメントが数秒ずれる。対象サービスの PMT から PCR_PID を特定し、先頭 PCR と最初の映像 PTS (無ければ音声 PTS) の差を 27MHz 時間軸で求め、`startAt = firstTdtAt + (firstMediaPTS - firstPCR)` として保存する `TsPlaybackTimeResolver` を追加。33bit wrap に対応し、5 分超の不自然な差・必要情報不足時は従来の `firstTdtAt` へフォールバックする。さらに `EncodeFinishModel` で `addVideoFile()` 直後に `analyzeAll()` を実行し、tsreplace 出力も登録直後に TS/ffprobe を解析して `startAt` を埋める。既存 tsreplace ファイルは TS 再解析で更新できる。
-
-'''
+            date_entry = '''- **tsreplace 出力を含む録画の `video_file.startAt` を「再生位置 0 秒 = 最初の映像 PTS」の実時刻へ合わせ、ニコニコ実況の過去ログ同期を正確にした**: 従来の TDT/TOT + PCR 補正は TS 先頭付近の PCR の実時刻を求めるところまでは正しかったが、tsreplace 等で映像 PTS/PCR が再構成されると最初に表示される映像 PTS と先頭 PCR にオフセットが残り、コメントが数秒ずれる。対象サービスの PMT から PCR_PID を特定し、先頭 PCR と最初の映像 PTS (無ければ音声 PTS) の差を 27MHz 時間軸で求め、`startAt = firstTdtAt + (firstMediaPTS - firstPCR)` として保存する `TsPlaybackTimeResolver` を追加。33bit wrap に対応し、5 分超の不自然な差・必要情報不足時は従来の `firstTdtAt` へフォールバックする。さらに `EncodeFinishModel` で `addVideoFile()` 直後に `analyzeAll()` を実行し、tsreplace 出力も登録直後に TS/ffprobe を解析して `startAt` を埋める。既存 tsreplace ファイルは TS 再解析で更新できる。\n\n'''
             text = text.replace('## 2026-08-22\n\n', '## 2026-08-22\n\n' + date_entry, 1)
 
             index_entry = '- tsreplace 出力を含む録画の `video_file.startAt` を最初の映像 PTS の実時刻へ補正し、ニコニコ実況と再生位置 0 秒を同期させた\n'
@@ -173,12 +170,16 @@ jobs:
 
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git fetch origin main
-        git checkout origin/main -- .github/workflows/build-validation.yml
 
-        if [ "${{ needs.test.result }}" = "success" ] && [ "$patch_status" -eq 0 ]; then
-          rm -f .github/pr19-verify-failure.txt
-          git add doc/changelog-fork.md .github/workflows/build-validation.yml
+        if [ "${{ needs.test.result }}" = "success" ] && [ "${{ needs.build.result }}" = "success" ] && [ "$patch_status" -eq 0 ]; then
+          {
+            echo "status=success"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "test_result=${{ needs.test.result }}"
+            echo "build_result=${{ needs.build.result }}"
+            echo "changelog_patch_status=$patch_status"
+          } > .github/pr19-verify-result.txt
+          git add doc/changelog-fork.md .github/pr19-verify-result.txt
           git commit -m "docs: startAt 同期修正を変更ログに追記"
           git push origin HEAD:fix/tsreplace-playback-start-at
           exit 0
@@ -186,12 +187,13 @@ jobs:
 
         git restore doc/changelog-fork.md
         {
-          echo "PR #19 verification failed"
+          echo "status=failure"
           echo "run_id=$GITHUB_RUN_ID"
           echo "test_result=${{ needs.test.result }}"
+          echo "build_result=${{ needs.build.result }}"
           echo "changelog_patch_status=$patch_status"
-        } > .github/pr19-verify-failure.txt
-        git add .github/pr19-verify-failure.txt .github/workflows/build-validation.yml
+        } > .github/pr19-verify-result.txt
+        git add .github/pr19-verify-result.txt
         git commit -m "ci: PR #19 検証失敗情報を保存"
         git push origin HEAD:fix/tsreplace-playback-start-at
         exit 1
