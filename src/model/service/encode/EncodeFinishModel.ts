@@ -4,6 +4,7 @@ import IEncodeEvent, { FinishEncodeInfo } from '../../event/IEncodeEvent';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IIPCClient from '../../ipc/IIPCClient';
+import IVideoFileAnalyzeModel from '../../video/IVideoFileAnalyzeModel';
 import ISocketIOManageModel from '../socketio/ISocketIOManageModel';
 import IEncodeFinishModel from './IEncodeFinishModel';
 
@@ -13,17 +14,20 @@ export default class EncodeFinishModel implements IEncodeFinishModel {
     private socket: ISocketIOManageModel;
     private ipc: IIPCClient;
     private encodeEvent: IEncodeEvent;
+    private videoFileAnalyzeModel: IVideoFileAnalyzeModel;
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
         @inject('ISocketIOManageModel') socket: ISocketIOManageModel,
         @inject('IIPCClient') ipc: IIPCClient,
         @inject('IEncodeEvent') encodeEvent: IEncodeEvent,
+        @inject('IVideoFileAnalyzeModel') videoFileAnalyzeModel: IVideoFileAnalyzeModel,
     ) {
         this.log = logger.getLogger();
         this.socket = socket;
         this.ipc = ipc;
         this.encodeEvent = encodeEvent;
+        this.videoFileAnalyzeModel = videoFileAnalyzeModel;
     }
 
     public set(): void {
@@ -75,6 +79,12 @@ export default class EncodeFinishModel implements IEncodeFinishModel {
                     name: info.mode,
                 });
                 newVideoFileId = id;
+
+                // addVideoFile() は DB 登録だけで、エンコード後の実ファイルは解析しない。
+                // tsreplace 出力の startAt は TDT/TOT + PCR/PTS から「再生位置 0 秒の実時刻」を
+                // 求める必要があるため、登録直後に TS/ffprobe 解析を実行する。
+                // mp4/mkv 等は TS 解析が自動でスキップされ、ffprobe メタデータだけ保存される。
+                await this.videoFileAnalyzeModel.analyzeAll(id);
             }
         } catch (err: any) {
             this.log.encode.error('finish encode error');
