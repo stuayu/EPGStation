@@ -67,9 +67,6 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
     // ファイル先頭の放送時刻 (TDT/TOT) を読むために先頭から読み込む最大バイト数。
     // TDT は 5 秒以下の周期で送出されるため通常はこれより遥かに手前で見つかり、その時点で打ち切る
     private static readonly HEAD_PROBE_MAX_BYTES = 32 * 1024 * 1024;
-    // ファイル先頭で読んだ時刻と中央からの推定値がこれ以上離れていたら、
-    // 先頭が壊れている (または別番組の TS が連結されている) とみなして推定値を採る
-    private static readonly HEAD_TIME_TOLERANCE_MS = 5 * 60 * 1000;
     // 平均バイトレートの実測に必要な最小の PCR 区間 (短すぎる区間は誤差が大きい)
     private static readonly MIN_BITRATE_SPAN_MS = 1000;
     // 相乗りしている複数サービスの中から対象を選ぶために最低限読むパケット数 (約 3.7MB)
@@ -968,8 +965,9 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
      *
      * 中央から解析した場合、そこで得た TDT/TOT はファイル先頭ではなく中央の時刻なので、
      * ①ファイル先頭を読み直して直接 TDT/TOT を得る ②中央の時刻から実測バイトレート分を
-     * 遡って見積もる、の 2 通りで求め、両者が食い違う場合は先頭が壊れているとみなして
-     * 見積もりの方を採る
+     * 遡って見積もる、の 2 通りで求める。
+     * ①が取れたら常にそちらを採り、②は①が取れなかったときの代替としてのみ使う
+     * (②はファイル全体が一定ビットレートである前提のため、再エンコード済みの VBR では大きく外れる)
      * @param filePath: string
      * @param startPosition: number 中央解析の読み出し開始位置 (バイト)
      * @param result: ScanResult 中央解析の結果
@@ -989,12 +987,19 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                 : null;
 
         if (headAt !== null) {
-            if (estimated === null || Math.abs(headAt - estimated) <= TsInfoAnalyzer.HEAD_TIME_TOLERANCE_MS) {
+            // 先頭で実際に読んだ TDT/TOT が最も直接的な値なので原則こちらを採る。
+            // 中央からの見積もりは「ファイル全体が一定ビットレート」を前提にしているため、
+            // tsreplace 等で再エンコードした VBR のファイルでは数分単位で外れる
+            // (実測: HEVC 出力で 7 分 48 秒ずれ、見積もりの方が誤りだった)。
+            // よって見積もりは「先頭の値を採用するかどうか」の判断材料には使わない
+            if (result.regionStartAt === null || headAt <= result.regionStartAt) {
                 return Math.round(headAt);
             }
 
+            // 先頭の時刻が中央の時刻より後になるのは時系列としてあり得ないため、
+            // 壊れた TDT/TOT を読んだものとみなして見積もりへ退避する
             this.log.system.warn(
-                `ts info head time is inconsistent: ${filePath} (head: ${new Date(headAt).toISOString()}, estimated: ${new Date(Math.round(estimated)).toISOString()})`,
+                `ts info head time is newer than region time: ${filePath} (head: ${new Date(headAt).toISOString()}, region: ${new Date(result.regionStartAt).toISOString()})`,
             );
         }
 
