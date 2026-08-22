@@ -134,16 +134,13 @@ export default class TsPlaybackTimeResolver {
                 }
             }
 
-            if (mediaPts === null) {
+            if (mediaPts === null || pcrPid === null) {
                 return null;
             }
 
-            let firstPcr: number | null = pcrPid === null ? null : (firstPcrByPid.get(pcrPid) ?? null);
-            if (firstPcr === null) {
-                // PMT が先頭の壊れた領域などで取れなかった場合の保険。
-                // PTS と最も近い PCR を採るが、十分近い候補が無ければ推測しない。
-                firstPcr = TsPlaybackTimeResolver.selectNearestPcr(mediaPts, firstPcrByPid);
-            }
+            // firstTdtAt は TsInfoAnalyzer が「対象サービスの先頭 PCR」に結び付けた実時刻なので、
+            // 必ず PMT で確定した同じ PCR_PID を使う。他サービスの PCR からは推測しない。
+            const firstPcr = firstPcrByPid.get(pcrPid) ?? null;
             if (firstPcr === null) {
                 return null;
             }
@@ -262,19 +259,5 @@ export default class TsPlaybackTimeResolver {
         }
 
         return normalized;
-    }
-
-    private static selectNearestPcr(mediaPts: number, pcrByPid: Map<number, number>): number | null {
-        const mediaTicks = mediaPts * TsPlaybackTimeResolver.PTS_TO_PCR_TICKS;
-        let best: { pcr: number; absMs: number } | null = null;
-        for (const pcr of pcrByPid.values()) {
-            const delta = TsPlaybackTimeResolver.normalizeClockDelta(mediaTicks - pcr);
-            const absMs = Math.abs((delta / TsPlaybackTimeResolver.PCR_TICK_HZ) * 1000);
-            if (absMs <= TsPlaybackTimeResolver.MAX_MEDIA_OFFSET_MS && (best === null || absMs < best.absMs)) {
-                best = { pcr, absMs };
-            }
-        }
-
-        return best?.pcr ?? null;
     }
 }
