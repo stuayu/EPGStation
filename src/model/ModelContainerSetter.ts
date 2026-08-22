@@ -129,6 +129,7 @@ import IThumbnailDB from './db/IThumbnailDB';
 import IVideoFileDB from './db/IVideoFileDB';
 import IVideoFileTsInfoDB from './db/IVideoFileTsInfoDB';
 import IWatchHistoryDB from './db/IWatchHistoryDB';
+import ISnsAccountDB from './db/ISnsAccountDB';
 import IAnnictWatchSyncDB from './db/IAnnictWatchSyncDB';
 import AnnictWatchSyncDB from './db/AnnictWatchSyncDB';
 import ProgramDB from './db/ProgramDB';
@@ -144,6 +145,17 @@ import ThumbnailDB from './db/ThumbnailDB';
 import VideoFileDB from './db/VideoFileDB';
 import VideoFileTsInfoDB from './db/VideoFileTsInfoDB';
 import WatchHistoryDB from './db/WatchHistoryDB';
+import SnsAccountDB from './db/SnsAccountDB';
+import IBlueskyClient from './sns/IBlueskyClient';
+import BlueskyClient from './sns/BlueskyClient';
+import IMisskeyClient from './sns/IMisskeyClient';
+import MisskeyClient from './sns/MisskeyClient';
+import IMisskeyAuthModel from './sns/IMisskeyAuthModel';
+import MisskeyAuthModel from './sns/MisskeyAuthModel';
+import IMisskeyStreamConnector from './sns/IMisskeyStreamConnector';
+import MisskeyStreamConnector from './sns/MisskeyStreamConnector';
+import ISnsApiModel from './api/sns/ISnsApiModel';
+import SnsApiModel from './api/sns/SnsApiModel';
 import EPGUpdateExecutorManageModel from './epgUpdater/EPGUpdateExecutorManageModel';
 import EPGUpdateManageModel from './epgUpdater/EPGUpdateManageModel';
 import EPGUpdater from './epgUpdater/EPGUpdater';
@@ -284,6 +296,10 @@ import DataBroadcastingManageModel from './service/dataBroadcasting/DataBroadcas
 import DataBroadcastingWebSocketServer from './service/dataBroadcasting/DataBroadcastingWebSocketServer';
 import IDataBroadcastingManageModel from './service/dataBroadcasting/IDataBroadcastingManageModel';
 import IDataBroadcastingWebSocketServer from './service/dataBroadcasting/IDataBroadcastingWebSocketServer';
+import ISnsTimelineRelayManageModel from './service/sns/ISnsTimelineRelayManageModel';
+import SnsTimelineRelayManageModel from './service/sns/SnsTimelineRelayManageModel';
+import ISnsTimelineWebSocketServer from './service/sns/ISnsTimelineWebSocketServer';
+import SnsTimelineWebSocketServer from './service/sns/SnsTimelineWebSocketServer';
 import IServiceServer from './service/IServiceServer';
 import ServiceServer from './service/ServiceServer';
 import ISocketIOManageModel from './service/socketio/ISocketIOManageModel';
@@ -358,6 +374,10 @@ export const set = (container: Container): void => {
         .inSingletonScope();
     container.bind<IMetadataService>('IMetadataService').to(MetadataService).inSingletonScope();
     container.bind<IProviderHttpClient>('IProviderHttpClient').to(ProviderHttpClient).inSingletonScope();
+    container.bind<IBlueskyClient>('IBlueskyClient').to(BlueskyClient).inSingletonScope();
+    container.bind<IMisskeyClient>('IMisskeyClient').to(MisskeyClient).inSingletonScope();
+    container.bind<IMisskeyStreamConnector>('IMisskeyStreamConnector').to(MisskeyStreamConnector).inSingletonScope();
+    container.bind<IMisskeyAuthModel>('IMisskeyAuthModel').to(MisskeyAuthModel).inSingletonScope();
     container
         .bind<IMetadataEndpointResolver>('IMetadataEndpointResolver')
         .to(MetadataEndpointResolver)
@@ -387,6 +407,7 @@ export const set = (container: Container): void => {
     container.bind<IVideoFileTsInfoDB>('IVideoFileTsInfoDB').to(VideoFileTsInfoDB).inSingletonScope();
     container.bind<IChannelAffiliationDB>('IChannelAffiliationDB').to(ChannelAffiliationDB).inSingletonScope();
     container.bind<IWatchHistoryDB>('IWatchHistoryDB').to(WatchHistoryDB).inSingletonScope();
+    container.bind<ISnsAccountDB>('ISnsAccountDB').to(SnsAccountDB).inSingletonScope();
     container.bind<IAnnictWatchSyncDB>('IAnnictWatchSyncDB').to(AnnictWatchSyncDB).inSingletonScope();
     container.bind<ISeriesDB>('ISeriesDB').to(SeriesDB).inSingletonScope();
     container.bind<ISyobocalTitleDB>('ISyobocalTitleDB').to(SyobocalTitleDB).inSingletonScope();
@@ -493,6 +514,16 @@ export const set = (container: Container): void => {
         .inSingletonScope();
 
     container
+        .bind<ISnsTimelineRelayManageModel>('ISnsTimelineRelayManageModel')
+        .to(SnsTimelineRelayManageModel)
+        .inSingletonScope();
+
+    container
+        .bind<ISnsTimelineWebSocketServer>('ISnsTimelineWebSocketServer')
+        .to(SnsTimelineWebSocketServer)
+        .inSingletonScope();
+
+    container
         .bind<IExternalCommandManageModel>('IExternalCommandManageModel')
         .to(ExternalCommandManageModel)
         .inSingletonScope();
@@ -568,6 +599,7 @@ export const set = (container: Container): void => {
 
     container.bind<IVideoApiModel>('IVideoApiModel').to(VideoApiModel).inSingletonScope();
     container.bind<IWatchHistoryApiModel>('IWatchHistoryApiModel').to(WatchHistoryApiModel).inSingletonScope();
+    container.bind<ISnsApiModel>('ISnsApiModel').to(SnsApiModel).inSingletonScope();
 
     container.bind<IEncodeApiModel>('IEncodeApiModel').to(EncodeApiModel).inSingletonScope();
 

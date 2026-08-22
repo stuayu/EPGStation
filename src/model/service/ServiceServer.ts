@@ -26,6 +26,7 @@ import ILoggerModel from '../ILoggerModel';
 import IVideoApiModel from '../api/video/IVideoApiModel';
 import IDataBroadcastingWebSocketServer from './dataBroadcasting/IDataBroadcastingWebSocketServer';
 import IServiceServer from './IServiceServer';
+import ISnsTimelineWebSocketServer from './sns/ISnsTimelineWebSocketServer';
 import ISocketIOManageModel from './socketio/ISocketIOManageModel';
 import IHLSMemoryStoreModel from './stream/util/IHLSMemoryStoreModel';
 
@@ -49,12 +50,18 @@ const isPackageMetadata = (value: unknown): value is PackageMetadata => {
 class ServiceServer implements IServiceServer {
     // 起動時のメタデータ一括解析の 1 回あたりの件数
     private static readonly VIDEO_METADATA_ANALYZE_CHUNK = 20;
+    // application/json ボディの上限。SNS 投稿 (`POST /api/sns/post`) は画像を data URL (base64) で
+    // JSON ボディに含めて送るため、express.json() の既定 100kb では 1 枚のキャプチャ (最大 1.9MB 相当、
+    // base64 で約 2.5MB) すら収まらず必ず 413 Payload Too Large になる。4 枚まで添付できる想定で余裕を持たせる
+    // (client/src/components/watch/sns/SnsCaptureAttachment.vue の TARGET_MAX_BYTES / maxAttached と対応)
+    private static readonly JSON_BODY_LIMIT = '20mb';
 
     private log: ILogger;
     private config: IConfigFile;
     private socketIoManageModel: ISocketIOManageModel;
     private hlsMemoryStore: IHLSMemoryStoreModel;
     private dataBroadcastingWebSocketServer: IDataBroadcastingWebSocketServer;
+    private snsTimelineWebSocketServer: ISnsTimelineWebSocketServer;
     private app = express();
 
     constructor(
@@ -64,12 +71,14 @@ class ServiceServer implements IServiceServer {
         socketIoManageModel: ISocketIOManageModel,
         @inject('IHLSMemoryStoreModel') hlsMemoryStore: IHLSMemoryStoreModel,
         @inject('IDataBroadcastingWebSocketServer') dataBroadcastingWebSocketServer: IDataBroadcastingWebSocketServer,
+        @inject('ISnsTimelineWebSocketServer') snsTimelineWebSocketServer: ISnsTimelineWebSocketServer,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
         this.socketIoManageModel = socketIoManageModel;
         this.hlsMemoryStore = hlsMemoryStore;
         this.dataBroadcastingWebSocketServer = dataBroadcastingWebSocketServer;
+        this.snsTimelineWebSocketServer = snsTimelineWebSocketServer;
 
         this.init();
     }
@@ -222,7 +231,7 @@ class ServiceServer implements IServiceServer {
             app: this.app,
             docsPath: '/docs',
             consumesMiddleware: {
-                'application/json': express.json(),
+                'application/json': express.json({ limit: ServiceServer.JSON_BODY_LIMIT }),
                 'text/text': express.text(),
                 'multipart/form-data': (req, res, next) => {
                     this.uploadFile(req, res, next);
@@ -672,6 +681,7 @@ class ServiceServer implements IServiceServer {
 
         this.socketIoManageModel.initialize(sokcetioServers);
         this.dataBroadcastingWebSocketServer.initialize(appServers);
+        this.snsTimelineWebSocketServer.initialize(appServers);
     }
 }
 

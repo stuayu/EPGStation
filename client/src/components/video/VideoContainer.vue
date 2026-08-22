@@ -347,6 +347,15 @@ class VideoContainer extends Vue {
     private getVideoFileId(): number | null {
         return this.playingVideoFileId;
     }
+
+    /**
+     * 再生中の `<video>` 要素を返す (SNS 投稿パネルのキャプチャ添付用)
+     * DPlayer が未生成、または video が非対応の場合は null
+     * @return HTMLVideoElement | null
+     */
+    public getVideoElement(): HTMLVideoElement | null {
+        return this.getVideo()?.getDPlayer()?.video ?? null;
+    }
 }
 
 export default toNative(VideoContainer);

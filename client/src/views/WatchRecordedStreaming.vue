@@ -43,6 +43,9 @@
                 <template v-slot:comment>
                     <WatchPanelComments v-bind:comments="jikkyoComments"></WatchPanelComments>
                 </template>
+                <template v-slot:sns>
+                    <SnsPostPanel ref="snsPostPanel" v-bind:programInfo="displayInfo" v-bind:isLive="false" v-bind:getVideoElement="getVideoElementForSns"></SnsPostPanel>
+                </template>
             </WatchSidePanel>
         </template>
     </WatchLayout>
@@ -57,6 +60,7 @@ import WatchPanelComments from '@/components/watch/WatchPanelComments.vue';
 import WatchPanelProgram from '@/components/watch/WatchPanelProgram.vue';
 import WatchSidePanel from '@/components/watch/WatchSidePanel.vue';
 import WatchTopBar from '@/components/watch/WatchTopBar.vue';
+import SnsPostPanel from '@/components/watch/sns/SnsPostPanel.vue';
 import VideoContainer from '@/components/video/VideoContainer.vue';
 import * as VideoParam from '@/components/video/ViedoParam';
 import IRecordedApiModel from '@/model/api/recorded/IRecordedApiModel';
@@ -76,6 +80,7 @@ import Util from '@/util/Util';
 import { AribKeyCode } from 'web-bml';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import { markRaw } from 'vue';
+import type { RouteLocationNormalized as Route, NavigationGuardNext } from 'vue-router';
 import * as apid from '../../../api';
 
 @Component({
@@ -89,6 +94,7 @@ import * as apid from '../../../api';
         NextUpPanel,
         DataBroadcastingRemote,
         DataBroadcastingMenu,
+        SnsPostPanel,
     },
 })
 class WatchRecordedStreaming extends Vue {
@@ -129,7 +135,20 @@ class WatchRecordedStreaming extends Vue {
      * 右パネルのタブ構成 (Next Up パネルは機能フラグで出し分ける)
      */
     get panelTabs(): WatchSidePanelTab[] {
-        return this.isEnabledNextUpPanel === true ? ['program', 'nextup', 'comment'] : ['program', 'comment'];
+        const tabs: WatchSidePanelTab[] = this.isEnabledNextUpPanel === true ? ['program', 'nextup', 'comment'] : ['program', 'comment'];
+        if (this.settingStorageModel.tmp.isEnableSnsPanel === true) {
+            tabs.push('sns');
+        }
+
+        return tabs;
+    }
+
+    /**
+     * SNS 投稿パネルのキャプチャ添付用に、再生中の video 要素を返す
+     * @return HTMLVideoElement | null
+     */
+    public getVideoElementForSns(): HTMLVideoElement | null {
+        return (this.$refs.videoContainer as InstanceType<typeof VideoContainer> | undefined)?.getVideoElement() ?? null;
     }
 
     /**
@@ -335,7 +354,24 @@ class WatchRecordedStreaming extends Vue {
             videoFileId: videoFileId,
         });
     }
+
+    /**
+     * ページ離脱時に呼ばれる。ダウンロードも投稿もしていない SNS キャプチャが残っている場合は確認する
+     */
+    public handleBeforeRouteLeave(to: Route, from: Route, next: NavigationGuardNext): void {
+        const hasUnsavedCaptures = (this.$refs.snsPostPanel as InstanceType<typeof SnsPostPanel> | undefined)?.hasUnsavedCaptures() ?? false;
+        if (hasUnsavedCaptures === true && window.confirm('ダウンロードも投稿もしていない SNS キャプチャがあります。画面を離れると失われますがよろしいですか？') === false) {
+            next(false);
+
+            return;
+        }
+        next();
+    }
 }
 
-export default toNative(WatchRecordedStreaming);
+export default Object.assign(toNative(WatchRecordedStreaming), {
+    beforeRouteLeave(this: WatchRecordedStreaming, to: Route, from: Route, next: NavigationGuardNext): void {
+        this.handleBeforeRouteLeave(to, from, next);
+    },
+});
 </script>
