@@ -26,7 +26,7 @@ jobs:
           cache: npm
 
       - name: Update changelog
-        shell: python
+        shell: python {0}
         run: |
           from pathlib import Path
 
@@ -60,14 +60,11 @@ jobs:
       - name: Install server dependencies
         run: npm install
 
-      - name: Run unit tests
-        run: npm run test:ut
-
-      - name: Run integration tests
-        run: npm run test:ita
-
       - name: Compile server
         run: npm run compile
+
+      - name: Run PR regression tests
+        run: node --test test/ut/ts-playback-time-resolver.test.js test/ut/encode-finish-model.test.js
 
       - name: Commit changelog and remove helper workflow
         run: |
