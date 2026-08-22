@@ -4770,6 +4770,410 @@ components:
                 updatedAt:
                     $ref: '#/components/schemas/UnixtimeMS'
 
+        SnsAccountId:
+            description: SNS 連携アカウント id
+            type: integer
+
+        SnsProvider:
+            type: string
+            enum: [bluesky, misskey]
+
+        SnsVisibility:
+            description: Misskey の公開範囲
+            type: string
+            enum: [public, home, followers, specified]
+
+        SnsAccountItem:
+            type: object
+            required:
+                - id
+                - provider
+                - remoteUserId
+                - instanceUrl
+                - handle
+                - displayName
+                - avatarUrl
+                - defaultVisibility
+                - defaultChannelId
+                - defaultChannelName
+                - isDefaultLocalOnly
+                - needsReauth
+                - needsReauthReason
+                - createdAt
+                - updatedAt
+            properties:
+                id: { $ref: '#/components/schemas/SnsAccountId' }
+                provider: { $ref: '#/components/schemas/SnsProvider' }
+                remoteUserId:
+                    description: 'Bluesky: DID / Misskey: Misskey 側の user id'
+                    type: string
+                instanceUrl:
+                    description: 'Misskey のホスト名 (misskey.io) / Bluesky は PDS ホスト'
+                    type: string
+                    nullable: true
+                handle:
+                    type: string
+                displayName:
+                    type: string
+                avatarUrl:
+                    type: string
+                    nullable: true
+                defaultVisibility:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/SnsVisibility'
+                defaultChannelId:
+                    type: string
+                    nullable: true
+                defaultChannelName:
+                    type: string
+                    nullable: true
+                isDefaultLocalOnly:
+                    type: boolean
+                needsReauth:
+                    description: トークン / セッションが壊れていて再連携が必要か
+                    type: boolean
+                needsReauthReason:
+                    description: >
+                        再連携が必要な理由。'encryption': credential が未暗号化 (鍵ローテーション等で復号できない)。
+                        'permission': MiAuth で発行済みのトークンの権限が現在アプリが要求する権限を満たしていない
+                        (MiAuth は permission がトークン発行時に固定されるため、要求権限を増やしても既存トークンには反映されない)。
+                        needsReauth が false のときは null
+                    type: string
+                    enum: [encryption, permission]
+                    nullable: true
+                createdAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                updatedAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+
+        SnsAccountItems:
+            type: object
+            required: [items]
+            properties:
+                items:
+                    type: array
+                    items: { $ref: '#/components/schemas/SnsAccountItem' }
+
+        UpdateSnsAccountOption:
+            description: Misskey のみ有効な項目。Bluesky アカウントに指定しても無視される
+            type: object
+            additionalProperties: false
+            properties:
+                defaultVisibility:
+                    nullable: true
+                    allOf:
+                        - $ref: '#/components/schemas/SnsVisibility'
+                defaultChannelId:
+                    type: string
+                    nullable: true
+                defaultChannelName:
+                    type: string
+                    nullable: true
+                isDefaultLocalOnly:
+                    type: boolean
+
+        SnsBlueskyLoginOption:
+            type: object
+            required: [identifier, appPassword]
+            additionalProperties: false
+            properties:
+                identifier:
+                    description: ハンドル or メールアドレス
+                    type: string
+                appPassword:
+                    type: string
+                service:
+                    description: PDS ホスト。省略時は bsky.social
+                    type: string
+
+        SnsMisskeyAuthOption:
+            type: object
+            required: [instanceUrl]
+            additionalProperties: false
+            properties:
+                instanceUrl:
+                    description: 'インスタンス URL または ホスト名 (例: https://misskey.io/, misskey.io)'
+                    type: string
+
+        SnsMisskeyAuthSession:
+            type: object
+            required: [sessionId, authUrl]
+            properties:
+                sessionId:
+                    type: string
+                authUrl:
+                    description: ブラウザをこの URL へ遷移させると MiAuth の承認画面が開く
+                    type: string
+
+        SnsMisskeyChannel:
+            type: object
+            required: [id, name]
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+
+        SnsMisskeyChannels:
+            type: object
+            required: [items]
+            properties:
+                items:
+                    type: array
+                    items: { $ref: '#/components/schemas/SnsMisskeyChannel' }
+
+        SnsPostImage:
+            type: object
+            required: [dataUrl]
+            properties:
+                dataUrl:
+                    description: 'data URL (data:image/jpeg;base64,...)。最大 4 枚、Bluesky は 1 枚あたり 2MB 上限'
+                    type: string
+
+        SnsPostMisskeyOption:
+            type: object
+            additionalProperties: false
+            properties:
+                visibility: { $ref: '#/components/schemas/SnsVisibility' }
+                localOnly:
+                    type: boolean
+                channelId:
+                    type: string
+                    nullable: true
+                cw:
+                    type: string
+                    nullable: true
+
+        SnsPostOption:
+            type: object
+            required: [accountIds, text]
+            additionalProperties: false
+            properties:
+                accountIds:
+                    type: array
+                    items: { $ref: '#/components/schemas/SnsAccountId' }
+                text:
+                    type: string
+                hashtags:
+                    description: クライアントが位置指定込みで本文へ合成済みのハッシュタグ一覧 (参考情報。サーバーでは本文と合成しない)
+                    type: array
+                    items: { type: string }
+                images:
+                    type: array
+                    items: { $ref: '#/components/schemas/SnsPostImage' }
+                misskey: { $ref: '#/components/schemas/SnsPostMisskeyOption' }
+
+        SnsPostAccountResult:
+            type: object
+            required: [accountId, provider, isSuccess]
+            properties:
+                accountId: { $ref: '#/components/schemas/SnsAccountId' }
+                provider: { $ref: '#/components/schemas/SnsProvider' }
+                isSuccess:
+                    type: boolean
+                url:
+                    description: 成功時の投稿 URL
+                    type: string
+                detail:
+                    description: 失敗時の理由
+                    type: string
+
+        SnsPostResult:
+            type: object
+            required: [results]
+            properties:
+                results:
+                    type: array
+                    items: { $ref: '#/components/schemas/SnsPostAccountResult' }
+
+        SnsTimelineType:
+            description: Misskey のタイムライン種別。Bluesky は常に本人のホームタイムラインを返すため無視される
+            type: string
+            enum: [home, social, local, channel]
+
+        SnsTimelineImage:
+            type: object
+            required: [url, thumbnailUrl, isSensitive]
+            properties:
+                url:
+                    type: string
+                thumbnailUrl:
+                    type: string
+                    nullable: true
+                isSensitive:
+                    type: boolean
+
+        SnsTimelineReaction:
+            type: object
+            required: [name, count, url, isMine]
+            properties:
+                name:
+                    description: 'Misskey: Unicode 絵文字 or ":name:"/"​:name@host:" 形式。Bluesky: 常に "❤" (like)'
+                    type: string
+                count:
+                    type: integer
+                url:
+                    description: カスタム絵文字の画像 URL。Unicode 絵文字や Bluesky の like では null
+                    type: string
+                    nullable: true
+                isMine:
+                    type: boolean
+
+        SnsTimelineAuthor:
+            type: object
+            required: [id, handle, displayName, avatarUrl]
+            properties:
+                id:
+                    type: string
+                handle:
+                    type: string
+                displayName:
+                    type: string
+                avatarUrl:
+                    type: string
+                    nullable: true
+
+        SnsTimelineNote:
+            type: object
+            required:
+                - id
+                - createdAt
+                - text
+                - cw
+                - author
+                - images
+                - reactions
+                - renoteCount
+                - isRenotedByMe
+                - url
+            properties:
+                id:
+                    description: 'Misskey: note id / Bluesky: at-uri'
+                    type: string
+                cid:
+                    description: Bluesky のみ。like / repost に必要
+                    type: string
+                createdAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                text:
+                    description: 本文 (Misskey の MFM 記法・カスタム絵文字表記はそのまま残す)
+                    type: string
+                cw:
+                    type: string
+                    nullable: true
+                author: { $ref: '#/components/schemas/SnsTimelineAuthor' }
+                images:
+                    type: array
+                    items: { $ref: '#/components/schemas/SnsTimelineImage' }
+                reactions:
+                    description: Bluesky は like を 1 件として詰める
+                    type: array
+                    items: { $ref: '#/components/schemas/SnsTimelineReaction' }
+                renoteCount:
+                    type: integer
+                isRenotedByMe:
+                    type: boolean
+                url:
+                    description: 元の投稿を開くための URL
+                    type: string
+                    nullable: true
+
+        SnsTimeline:
+            type: object
+            required: [notes, cursor]
+            properties:
+                notes:
+                    type: array
+                    items: { $ref: '#/components/schemas/SnsTimelineNote' }
+                cursor:
+                    description: 次ページ取得用。Misskey は untilId、Bluesky は API が返した cursor
+                    type: string
+                    nullable: true
+
+        SnsMisskeyEmoji:
+            type: object
+            required: [name, url, category, aliases]
+            properties:
+                name:
+                    type: string
+                url:
+                    type: string
+                category:
+                    type: string
+                    nullable: true
+                aliases:
+                    type: array
+                    items: { type: string }
+
+        SnsMisskeyEmojis:
+            type: object
+            required: [emojis]
+            properties:
+                emojis:
+                    type: array
+                    items: { $ref: '#/components/schemas/SnsMisskeyEmoji' }
+
+        SnsReactionOption:
+            type: object
+            required: [accountId, noteId]
+            additionalProperties: false
+            properties:
+                accountId: { $ref: '#/components/schemas/SnsAccountId' }
+                noteId:
+                    description: 'Misskey: note id / Bluesky: at-uri'
+                    type: string
+                reaction:
+                    description: Misskey のみ有効。省略時は既定のリアクションを使う
+                    type: string
+                cid:
+                    description: Bluesky で POST (like 作成) する場合に必須。対象投稿の cid
+                    type: string
+                reactionKey:
+                    description: >-
+                        Bluesky で DELETE (like 取り消し) する場合に必須。
+                        POST 成功時のレスポンス (SnsReactionResult.reactionKey) をそのまま渡す
+                    type: string
+
+        SnsReactionResult:
+            type: object
+            required: [isSuccess]
+            properties:
+                isSuccess:
+                    type: boolean
+                reactionKey:
+                    description: Bluesky の POST 成功時のみ含まれる。DELETE 時に reactionKey として渡す
+                    type: string
+                detail:
+                    description: 失敗時の理由
+                    type: string
+
+        SnsRenoteOption:
+            type: object
+            required: [accountId, noteId]
+            additionalProperties: false
+            properties:
+                accountId: { $ref: '#/components/schemas/SnsAccountId' }
+                noteId:
+                    description: 'Misskey: note id / Bluesky: at-uri'
+                    type: string
+                cid:
+                    description: Bluesky で必須。対象投稿の cid
+                    type: string
+
+        SnsRenoteResult:
+            type: object
+            required: [isSuccess]
+            properties:
+                isSuccess:
+                    type: boolean
+                url:
+                    description: 成功時、リノート/repost した元投稿を開く URL
+                    type: string
+                detail:
+                    description: 失敗時の理由
+                    type: string
+
     parameters:
         Offset:
             description: offset
@@ -5354,6 +5758,14 @@ components:
             description: saved search id
             in: path
             name: searchId
+            required: true
+            schema:
+                type: integer
+
+        PathSnsAccountId:
+            description: SNS 連携アカウント id
+            in: path
+            name: snsAccountId
             required: true
             schema:
                 type: integer
