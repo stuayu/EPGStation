@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   finalize:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -75,10 +74,10 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/pr19-finalize.yml
 
           if [ "$status" -eq 0 ]; then
             rm -f .github/pr19-verify-failure.txt
-            git rm .github/workflows/pr19-finalize.yml
             git add doc/changelog-fork.md
             git commit -m "docs: startAt 同期修正を変更ログに追記"
             git push origin HEAD:fix/tsreplace-playback-start-at
