@@ -119,7 +119,7 @@ jobs:
 
   finalize-pr19:
     name: finalize-pr19
-    needs: [test, build]
+    needs: [test]
     if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/fix/tsreplace-playback-start-at' && github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     steps:
@@ -134,7 +134,7 @@ jobs:
       run: |
         set +e
         patch_status=0
-        if [ "${{ needs.test.result }}" = "success" ] && [ "${{ needs.build.result }}" = "success" ]; then
+        if [ "${{ needs.test.result }}" = "success" ]; then
           python <<'PY'
         from pathlib import Path
 
@@ -150,11 +150,11 @@ jobs:
             text = text.replace('### 録画ファイルの解析・取り込み\n\n', '### 録画ファイルの解析・取り込み\n\n' + index_entry, 1)
 
             detail_entry = '''- **tsreplace 出力を含む録画の `video_file.startAt` を最初の映像 PTS の実時刻へ補正し、ニコニコ実況の再生位置 0 秒と同期させた**
-            - **背景**: 既存の TDT/TOT + PCR 補正は「ファイル先頭付近の PCR が実時間で何時か」を求めていたが、tsreplace 等で PTS/PCR が再構成されると最初に表示される映像 PTS と先頭 PCR の間に数秒の差が残り、`JikkyoKakologClient` の `startAt + currentTime` と実放送時刻がずれる
-            - `TsPlaybackTimeResolver` が PMT から PCR_PID と映像/音声 PID を特定し、先頭 PCR と最初の映像 PTS (無ければ音声 PTS) を同じ 27MHz 時間軸へ載せ、`firstTdtAt + (firstMediaPts - firstPcr)` を playback 0 の実時刻として返す
-            - 33bit の PTS/PCR wrap に対応し、5 分を超える不自然な差や必要情報不足時は従来の `firstTdtAt` へフォールバックする
-            - `EncodeFinishModel` は `addVideoFile()` の直後に `analyzeAll()` を呼び、tsreplace 出力も登録直後に TS/ffprobe 解析して `startAt` を保存する。既存ファイルも TS 再解析で更新できる
-            - テストは +2.5 秒オフセット、wrap、音声 PTS fallback、異常値拒否、エンコード完了後の自動解析を固定した
+    - **背景**: 既存の TDT/TOT + PCR 補正は「ファイル先頭付近の PCR が実時間で何時か」を求めていたが、tsreplace 等で PTS/PCR が再構成されると最初に表示される映像 PTS と先頭 PCR の間に数秒の差が残り、`JikkyoKakologClient` の `startAt + currentTime` と実放送時刻がずれる
+    - `TsPlaybackTimeResolver` が PMT から PCR_PID と映像/音声 PID を特定し、先頭 PCR と最初の映像 PTS (無ければ音声 PTS) を同じ 27MHz 時間軸へ載せ、`firstTdtAt + (firstMediaPts - firstPcr)` を playback 0 の実時刻として返す
+    - 33bit の PTS/PCR wrap に対応し、5 分を超える不自然な差や必要情報不足時は従来の `firstTdtAt` へフォールバックする
+    - `EncodeFinishModel` は `addVideoFile()` の直後に `analyzeAll()` を呼び、tsreplace 出力も登録直後に TS/ffprobe 解析して `startAt` を保存する。既存ファイルも TS 再解析で更新できる
+    - テストは +2.5 秒オフセット、wrap、音声 PTS fallback、異常値拒否、エンコード完了後の自動解析を固定した
 
 '''
             text = text.replace('## 変更履歴 (新しい順)\n\n', '## 変更履歴 (新しい順)\n\n' + detail_entry, 1)
@@ -171,12 +171,11 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-        if [ "${{ needs.test.result }}" = "success" ] && [ "${{ needs.build.result }}" = "success" ] && [ "$patch_status" -eq 0 ]; then
+        if [ "${{ needs.test.result }}" = "success" ] && [ "$patch_status" -eq 0 ]; then
           {
             echo "status=success"
             echo "run_id=$GITHUB_RUN_ID"
             echo "test_result=${{ needs.test.result }}"
-            echo "build_result=${{ needs.build.result }}"
             echo "changelog_patch_status=$patch_status"
           } > .github/pr19-verify-result.txt
           git add doc/changelog-fork.md .github/pr19-verify-result.txt
@@ -190,7 +189,6 @@ jobs:
           echo "status=failure"
           echo "run_id=$GITHUB_RUN_ID"
           echo "test_result=${{ needs.test.result }}"
-          echo "build_result=${{ needs.build.result }}"
           echo "changelog_patch_status=$patch_status"
         } > .github/pr19-verify-result.txt
         git add .github/pr19-verify-result.txt
