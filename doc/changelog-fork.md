@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-22
 
+- **tsreplace 出力を含む録画の `video_file.startAt` を「再生位置 0 秒 = 最初の映像 PTS」の実時刻へ合わせ、ニコニコ実況の過去ログ同期を正確にした**: 従来の TDT/TOT + PCR 補正は TS 先頭付近の PCR の実時刻を求めるところまでは正しかったが、tsreplace 等で映像 PTS/PCR が再構成されると最初に表示される映像 PTS と先頭 PCR にオフセットが残り、コメントが数秒ずれる。対象サービスの PMT から PCR_PID を特定し、先頭 PCR と最初の映像 PTS (無ければ音声 PTS) の差を 27MHz 時間軸で求め、`startAt = firstTdtAt + (firstMediaPTS - firstPCR)` として保存する `TsPlaybackTimeResolver` を追加。33bit wrap に対応し、5 分超の不自然な差・必要情報不足時は従来の `firstTdtAt` へフォールバックする。さらに `EncodeFinishModel` で `addVideoFile()` 直後に `analyzeAll()` を実行し、tsreplace 出力も登録直後に TS/ffprobe を解析して `startAt` を埋める。外部で作った tsreplace の `.ts` を取り込む経路も、`fileType` ではなく拡張子で PSI/SI 解析の可否を判定するように直した。既存 tsreplace ファイルは TS 再解析で更新できる。
+
 - **実機 (localhost:8888、実際の Misskey アカウント) で利用者から報告された 2 件の不具合・不満を直した (画像添付投稿の失敗 / 分割表示が既定 OFF で導線も遠い)**。
   **(1) 画像を添付すると投稿が必ず失敗するバグ**: 事前の仮説は `MisskeyClient.uploadFile()` が `new Blob([...])` に MIME type を渡していないこと (`application/octet-stream` として送られる) だったが、**実機で 1x1 の小さい PNG を実際に添付してみたところ普通に成功した** ため、この仮説は主原因ではないと判断し切り分けを続けた。次に**実際のキャプチャに近いサイズ (78KB 〜 160KB の JPEG) で試したところ、`POST /api/sns/post` が Misskey まで届く前に `413 Payload Too Large` (プレーンな HTML) を返すことを実機で確認した**。原因は `ServiceServer.ts` の `openapi.initialize()` に渡している `consumesMiddleware['application/json']` が `express.json()` を**オプション無しで**使っていたこと — **既定の上限は 100kb** で、SNS 投稿は画像を data URL (base64) のまま JSON ボディに乗せて送るため、`SnsCaptureAttachment.vue` の 1 枚の上限 (`TARGET_MAX_BYTES` = 1.9MB、base64 で約 2.5MB) は言うに及ばず、数十 KB の JPEG 1 枚でも確実に超過して 413 になる。**画像添付は原理的に一度も成功したことがなかった不具合**。修正は `ServiceServer.JSON_BODY_LIMIT` (`'20mb'`、4 枚 × 約 2.5MB + 本文の余裕を見た値) を定義し `express.json({ limit: ServiceServer.JSON_BODY_LIMIT })` として渡すだけ (この limit は全 JSON エンドポイント共通。他の JSON API のボディは全て数 KB 未満なので実害なし)。**実機で最終確認**: 修正前は 160KB の JPEG 添付で確実に 413、修正後は同じ画像で `POST /api/sns/post` が実際に Misskey へ投稿され `isSuccess:true` + 実在の note URL を返すことを確認した。**MIME type 未指定の Blob も (実害は確認できなかったが) 技術的には誤りなので合わせて直した**: `IMisskeyClient.uploadFile()` に `mimeType` 引数を追加し、`SnsApiModel.postToMisskey()` が data URL から取り出した実際の MIME type (`DecodedImage.mimeType`) をそのまま渡すようにした。**エラー文言の改善**: `SnsApiModel.describeError()` が Misskey のエラーで `message` (detail) だけを返し `code` を捨てていたため、`INVALID_PARAM` なのか容量超過なのか画面から判断できなかった。権限不足以外の `MisskeyApiError` も `` `${code}: ${detail}` `` の形で返すようにした (`test/ut/sns-api-model.test.js` の既存アサーションを新フォーマットに追随)。**回帰テスト**: `test/ut/misskey-client.test.js` (Blob の `type` が渡した mimeType になっていることを確認)、`test/ut/sns-api-model.test.js` (mime type がそのまま `uploadFile()` へ渡ること、エラー `detail` に `code` が含まれること)、`test/itb/service-server-json-body-limit.test.js` (新規。100kb を超える実際の JSON ボディが `ServiceServer.JSON_BODY_LIMIT` 込みの `express.json()` では通り、既定設定 (limit 未指定) では 413 になることを両方確認する回帰テスト。**`ServiceServer.js` は ut のカバレッジ計測対象に含めると 27% 前後の低いカバレッジで全体を 80% ゲート未満に落とすため、あえて itb に置いた** — ut に置いて実際に確認済み)。
   **(2) 投稿とタイムラインの同時表示が実質使われていない不満**: 設定 `snsUseSplitPanelView` の既定値が `false` (タブ切替) で、切り替え導線も設定画面の奥にしかなく「同時表示できることに気づけない」状態だった。**既定値を `true` (分割) に変更** (`SettingStorageModel.getDefaultValue()`)。**`SnsPostPanel.vue` のタブ行 (`v-btn-toggle` があった場所) にアイコンボタンを追加**し、パネルから直接「分割」⇔「タブ切替」を切り替えられるようにした (`mdi-view-split-horizontal` / `mdi-tab`、押すと `settingStorageModel.tmp.snsUseSplitPanelView` を反転して即 `save()` — `WatchSidePanel.selectTab()` と同じ「`tmp` を書き換えてその場で `save()`」パターンで、`Settings.vue` の未保存トラッキングとは別経路)。**狭い端末 (`isMobile === true`) ではボタン自体を出さない**: `isSplitView` が狭い端末では常に `false` 固定 (分割すると両方使えなくなるため) のため、そこで設定を切り替えても見た目が変わらず利用者を混乱させるだけと判断した (タブレットを横向きにして `smAndDown` を跨いだ場合は設定が効くが、その状態は元々ボタンを出していない画面幅からの操作ではないため実害なしと判断)。分割時の最小高さ・ドラッグ可動域 (20%〜80%) は既存実装のまま (壊れていなかったので変更なし)。**検証**: `cd client && npm run build` (vue-tsc + vite build) 通過。WebKit 実測は下記参照。
@@ -163,6 +165,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 録画ファイルの解析・取り込み
 
+- tsreplace 出力を含む録画の `video_file.startAt` を最初の映像 PTS の実時刻へ補正し、ニコニコ実況と再生位置 0 秒を同期させた
 - エンコード結果が壊れていても「成功」として登録され、元の TS が消えていたのを直した
 - EDCB からの録画情報登録と TS ファイルのアップロードが失敗していたのを直した
 - 録画 1 件だけ TS を再解析できるようにした (過去に取り込んだ録画の番組情報の補完)
@@ -236,6 +239,15 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 ---
 
 ## 変更履歴 (新しい順)
+
+- **tsreplace 出力を含む録画の `video_file.startAt` を最初の映像 PTS の実時刻へ補正し、ニコニコ実況の再生位置 0 秒と同期させた**
+    - **背景**: 既存の TDT/TOT + PCR 補正は「ファイル先頭付近の PCR が実時間で何時か」を求めていたが、tsreplace 等で PTS/PCR が再構成されると最初に表示される映像 PTS と先頭 PCR の間に数秒の差が残り、`JikkyoKakologClient` の `startAt + currentTime` と実放送時刻がずれる
+    - `TsPlaybackTimeResolver` が PMT から PCR_PID と映像/音声 PID を特定し、先頭 PCR と最初の映像 PTS (無ければ音声 PTS) を同じ 27MHz 時間軸へ載せ、`firstTdtAt + (firstMediaPts - firstPcr)` を playback 0 の実時刻として返す
+    - 対象サービスの PMT が示す PCR_PID だけを使う。`TsInfoAnalyzer.scanHeadTime()` が TDT を「その PCR_PID の先頭 PCR」へ引き戻して `firstTdtAt` を作っているため、両者の基準点が一致する。別サービスの PCR からは推測しない
+    - 33bit の PTS/PCR wrap に対応し、5 分を超える不自然な差や必要情報不足時は従来の `firstTdtAt` へフォールバックする
+    - `EncodeFinishModel` は `addVideoFile()` の直後に `analyzeAll()` を呼び、tsreplace 出力も登録直後に TS/ffprobe 解析して `startAt` を保存する。既存ファイルも TS 再解析で更新できる
+    - **外部取り込み経路も直した**: `RecordedManageModel.analyzeTsInfoForImport()` が `option.fileType !== 'ts'` で早期 return していたため、外部で作った tsreplace の `.ts` を `fileType: 'encoded'` で取り込むと PSI/SI 解析ごと飛ばされ `firstTdtAt` が取れず、startAt 補正も効かなかった。アップロード経路 (`createRecordedFromUploadedTsFile()`) と同じく実ファイルの拡張子で判定するようにした
+    - テストは +2.5 秒オフセット、wrap、音声 PTS fallback、異常値拒否、エンコード完了後の自動解析、取り込み時の拡張子判定を固定した
 
 - **録画開始ゲートを EDCB の事前チューナー準備・event_id 判定に合わせた**
     - EDCB は録画マージン前にチューナーを READY 化して対象チャンネルを開き、EIT[p/f] を取得する。ぴったり録画は present の event_id 一致で開始し、不一致の別番組を timeout で録画しない
