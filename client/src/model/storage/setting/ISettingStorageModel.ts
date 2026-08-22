@@ -1,5 +1,6 @@
 import IStorageBaseModel from '../IStorageBaseModel';
 import ThemeColorUtil from '@/util/ThemeColorUtil';
+import ProgramHashtagUtil from '@/util/ProgramHashtagUtil';
 
 export type GuideViewMode = 'sequential' | 'minimum' | 'all';
 
@@ -7,7 +8,7 @@ export type GuideViewMode = 'sequential' | 'minimum' | 'all';
 export type ChannelGroupingType = 'region' | 'affiliation';
 
 // 視聴画面の右パネルのタブ
-export type WatchSidePanelTab = 'program' | 'channel' | 'nextup' | 'comment';
+export type WatchSidePanelTab = 'program' | 'channel' | 'nextup' | 'comment' | 'sns';
 
 export interface ISettingValue {
     isEnablePWA: boolean;
@@ -67,6 +68,31 @@ export interface ISettingValue {
     watchSidePanelTab: WatchSidePanelTab;
     // 視聴画面のチャンネル一覧でピン留めしている放送局 (ChannelId の配列)
     pinnedChannelIds: number[];
+    // 視聴画面の SNS 投稿パネルを有効にするか (既定 有効。連携アカウントが 0 件の場合はタブ自体を出さない)
+    isEnableSnsPanel: boolean;
+    // 局タグ (放送局名から解決したハッシュタグ) を自動で合成対象に含めるか
+    snsAutoAddChannelHashtag: boolean;
+    // 番組概要・詳細から抽出したハッシュタグを自動で合成対象に含めるか
+    snsAutoAddProgramHashtag: boolean;
+    // ハッシュタグを本文へ差し込む位置
+    snsHashtagPosition: ProgramHashtagUtil.HashtagPosition;
+    // 番組が切り替わったときにハッシュタグ入力欄をリセットしてから自動合成し直すか
+    snsResetHashtagOnProgramSwitch: boolean;
+    // ハッシュタグのプリセット (並び順を保持)
+    snsSavedHashtags: string[];
+    // 投稿成功後に SNS 投稿パネルを畳むか
+    snsFoldPanelAfterPost: boolean;
+    // 直近に選択していた投稿先アカウント ID (SnsAccountId の配列)
+    snsLastSelectedAccountIds: number[];
+    // 絵文字ピッカーで最近使った絵文字名 (新しい順、上限 30 件)
+    snsRecentEmojiNames: string[];
+    // SNS 投稿パネルを「投稿」「タイムライン」のタブ排他切替ではなく、縦分割で同時表示するか (既定 true = 分割)。
+    // 狭い端末 ($vuetify.display.smAndDown) では常にタブ切替になり、この設定は無視される
+    snsUseSplitPanelView: boolean;
+    // 縦分割表示時の投稿フォーム側の高さ比率 (0.2 〜 0.8)
+    snsSplitPanelRatio: number;
+    // 本文入力欄の下にカスタム絵文字・MFM 記法のライブプレビューを出すか (既定 true)
+    snsEnableComposePreview: boolean;
 }
 
 export type ISettingStorageModel = IStorageBaseModel<ISettingValue>;

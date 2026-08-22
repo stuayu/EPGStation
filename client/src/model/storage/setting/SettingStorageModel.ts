@@ -60,6 +60,18 @@ export default class SettingStorageModel extends AbstractStorageBaseModel<ISetti
             isOpenWatchSidePanel: true,
             watchSidePanelTab: 'program',
             pinnedChannelIds: [],
+            isEnableSnsPanel: true,
+            snsAutoAddChannelHashtag: true,
+            snsAutoAddProgramHashtag: true,
+            snsHashtagPosition: 'append',
+            snsResetHashtagOnProgramSwitch: true,
+            snsSavedHashtags: [],
+            snsFoldPanelAfterPost: false,
+            snsLastSelectedAccountIds: [],
+            snsRecentEmojiNames: [],
+            snsUseSplitPanelView: true,
+            snsSplitPanelRatio: 0.4,
+            snsEnableComposePreview: true,
         };
     }
 

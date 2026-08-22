@@ -53,6 +53,40 @@ namespace DateUtil {
 
         return new Date(localDate.getTime() + offSet);
     };
+
+    /**
+     * 相対時刻の文字列を返す (SNS タイムライン等の投稿時刻表示用)
+     * 1 分未満は「たった今」、1 時間未満は「n分前」、24 時間未満は「n時間前」、
+     * 7 日未満は「n日前」、それ以降は yyyy/MM/dd を返す
+     * @param unixTimeMs: number
+     * @return string
+     */
+    export const getRelativeTimeString = (unixTimeMs: number): string => {
+        const diffMs = Date.now() - unixTimeMs;
+        if (diffMs < 0) {
+            return format(new Date(unixTimeMs), 'yyyy/MM/dd hh:mm');
+        }
+
+        const diffMinutes = Math.floor(diffMs / (60 * 1000));
+        if (diffMinutes < 1) {
+            return 'たった今';
+        }
+        if (diffMinutes < 60) {
+            return `${diffMinutes}分前`;
+        }
+
+        const diffHours = Math.floor(diffMinutes / 60);
+        if (diffHours < 24) {
+            return `${diffHours}時間前`;
+        }
+
+        const diffDays = Math.floor(diffHours / 24);
+        if (diffDays < 7) {
+            return `${diffDays}日前`;
+        }
+
+        return format(new Date(unixTimeMs), 'yyyy/MM/dd');
+    };
 }
 
 export default DateUtil;

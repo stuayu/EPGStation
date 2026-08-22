@@ -15,6 +15,8 @@ import RecordedApiModel from './api/recorded/RecordedApiModel';
 import ISeriesApiModel from './api/series/ISeriesApiModel';
 import IAuthApiModel from './api/auth/IAuthApiModel';
 import AuthApiModel from './api/auth/AuthApiModel';
+import ISnsApiModel from './api/sns/ISnsApiModel';
+import SnsApiModel from './api/sns/SnsApiModel';
 import IUpdateApiModel from './api/update/IUpdateApiModel';
 import UpdateApiModel from './api/update/UpdateApiModel';
 import SeriesApiModel from './api/series/SeriesApiModel';
@@ -115,6 +117,12 @@ import ISnackbarState from './state/snackbar/ISnackbarState';
 import SnackbarState from './state/snackbar/SnackbarState';
 import ILogState from './state/log/ILogState';
 import LogState from './state/log/LogState';
+import ISnsAccountsState from './state/sns/ISnsAccountsState';
+import SnsAccountsState from './state/sns/SnsAccountsState';
+import ISnsPostState from './state/sns/ISnsPostState';
+import SnsPostState from './state/sns/SnsPostState';
+import ISnsTimelineState from './state/sns/ISnsTimelineState';
+import SnsTimelineState from './state/sns/SnsTimelineState';
 import IStorageState from './state/storage/IStorageState';
 import StorageState from './state/storage/StorageState';
 import AddEncodeSettingStorageModel from './storage/encode/AddEncodeSettingStorageModel';
@@ -165,6 +173,7 @@ export default (container: Container): void => {
     container.bind<ISeriesApiModel>('ISeriesApiModel').to(SeriesApiModel).inSingletonScope();
     container.bind<IUpdateApiModel>('IUpdateApiModel').to(UpdateApiModel).inSingletonScope();
     container.bind<IAuthApiModel>('IAuthApiModel').to(AuthApiModel).inSingletonScope();
+    container.bind<ISnsApiModel>('ISnsApiModel').to(SnsApiModel).inSingletonScope();
     container.bind<IRecordedTagApiModel>('IRecordedTagApiModel').to(RecordedTagApiModel).inSingletonScope();
     container.bind<ISavedSearchApiModel>('ISavedSearchApiModel').to(SavedSearchApiModel).inSingletonScope();
 
@@ -281,4 +290,10 @@ export default (container: Container): void => {
     container.bind<IVersionState>('IVersionState').to(VersionState).inSingletonScope();
 
     container.bind<IColorThemeState>('IColorThemeState').to(ColorThemeState).inSingletonScope();
+
+    container.bind<ISnsAccountsState>('ISnsAccountsState').to(SnsAccountsState).inSingletonScope();
+
+    container.bind<ISnsPostState>('ISnsPostState').to(SnsPostState).inSingletonScope();
+
+    container.bind<ISnsTimelineState>('ISnsTimelineState').to(SnsTimelineState).inSingletonScope();
 };
