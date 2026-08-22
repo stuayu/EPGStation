@@ -14,6 +14,7 @@ import IVideoFileTsInfoDB from '../db/IVideoFileTsInfoDB';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import ITsInfoAnalyzer, { TsInfo } from '../recorded/ts/ITsInfoAnalyzer';
+import TsPlaybackTimeResolver, { TsPlaybackTimeInfo } from '../recorded/ts/TsPlaybackTimeResolver';
 import IVideoFileAnalyzeModel, { TsInfoApplyOption } from './IVideoFileAnalyzeModel';
 
 /**
@@ -201,9 +202,12 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
             });
         }
 
-        // TDT / TOT から録画開始時刻が分かった場合は、推定値より優先して記録する
+        // TDT/TOT + PCR だけでは「先頭 PCR の実時刻」までしか分からない。
+        // ニコニコ実況との同期に必要なのは再生位置 0 秒 (= 最初の映像 PTS) の実時刻なので、
+        // PTS と PCR の差を加味した値を優先して保存する。解析不能なら従来の firstTdtAt へ戻す。
         if (info.firstTdtAt !== null) {
-            await this.videoFileDB.updateStartAt(videoFileId, info.firstTdtAt);
+            const startAt = await this.resolveTsPlaybackStartAt(videoFileId, info);
+            await this.videoFileDB.updateStartAt(videoFileId, startAt ?? info.firstTdtAt);
         }
 
         // 放送局が引けていない録画は「不明な放送局」と表示されるため、TS から分かった局名で補う
@@ -216,6 +220,48 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
         await this.applyProgramInfo(videoFileId, info, option?.overwriteProgramInfo === true).catch(err => {
             this.log?.system.warn(`failed to apply program info: videoFileId ${videoFileId}: ${err?.message ?? err}`);
         });
+    }
+
+    /**
+     * TS の先頭 PCR 実時刻から、最初の映像/音声 PTS に対応する再生開始実時刻を求める。
+     * @param videoFileId: apid.VideoFileId
+     * @param info: TsPlaybackTimeInfo
+     * @return Promise<number | null>
+     */
+    private async resolveTsPlaybackStartAt(
+        videoFileId: apid.VideoFileId,
+        info: TsPlaybackTimeInfo,
+    ): Promise<number | null> {
+        if (info.firstTdtAt === null) {
+            return null;
+        }
+
+        const video = await this.videoFileDB.findId(videoFileId);
+        if (video === null) {
+            return null;
+        }
+        const filePath = this.videoUtil.getFullFilePathFromVideoFile(video);
+        if (filePath === null) {
+            return null;
+        }
+
+        try {
+            const startAt = await TsPlaybackTimeResolver.resolve(filePath, info);
+            if (startAt !== null) {
+                this.log?.system.debug(
+                    `resolved playback startAt from TS PTS: videoFileId ${videoFileId}: ${new Date(startAt).toISOString()} ` +
+                        `(PCR head: ${new Date(Number(info.firstTdtAt)).toISOString()})`,
+                );
+            }
+
+            return startAt;
+        } catch (err: any) {
+            this.log?.system.warn(
+                `ts playback time resolve failed: videoFileId ${videoFileId}: ${err?.message ?? err}`,
+            );
+
+            return null;
+        }
     }
 
     /**
@@ -444,17 +490,25 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
 
     /**
      * 録画ファイル先頭 (再生位置 0 秒) に対応する実時刻を決める
-     * TS の TDT / TOT が取れていればそれを使い、無ければファイルの更新時刻から推定する
+     * TS の TDT / TOT が取れていれば PTS/PCR 差も加味し、無ければファイルの更新時刻から推定する
      * @param video: VideoFile
      * @param filePath: string 実ファイルパス
      * @param duration: number 実測尺 (秒)
      * @return Promise<number | null> 決められなければ null
      */
     private async resolveStartAt(video: VideoFile, filePath: string, duration: number): Promise<number | null> {
-        // TS 解析で得た放送時刻が最も正確
+        // TS 解析で得た放送時刻を基準に、最初の映像 PTS の実時刻を求める。
         const tsInfo = await this.videoFileTsInfoDB.findId(video.id).catch(() => null);
         if (tsInfo !== null && tsInfo.firstTdtAt !== null && typeof tsInfo.firstTdtAt !== 'undefined') {
-            return Number(tsInfo.firstTdtAt);
+            const firstTdtAt = Number(tsInfo.firstTdtAt);
+            const startAt = await this.resolveTsPlaybackStartAt(video.id, {
+                serviceId: tsInfo.serviceId ?? null,
+                videoPid: tsInfo.videoPid ?? null,
+                audioPid: tsInfo.audioPid ?? null,
+                firstTdtAt: firstTdtAt,
+            });
+
+            return startAt ?? firstTdtAt;
         }
 
         const recorded = await this.recordedDB.findId(video.recordedId);
