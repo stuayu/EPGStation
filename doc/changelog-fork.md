@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-22
 
+- **Web API の約 20 本のルートが登録されず 404 になっていたのを直した (ログ表示・録画詳細・シリーズ・予約・ルール・番組表詳細など)**: `api.yml` に `nullable: true` と `allOf: [$ref]` を持ち `type` を書いていないスキーマが 22 箇所あり、express-openapi が使う ajv が `"nullable" cannot be used without "type"` で例外を投げていた。`openapi.initialize()` は非同期にルートを登録するため、この例外で**登録が途中で打ち切られる**。さらに `ServiceExecutor` の `uncaughtException` ハンドラがプロセスを落とさずログだけ出すため、**サーバーは生きたまま一部のルートだけが未登録**という状態になり、`/api/logs/{logFileId}`・`/api/recorded/{recordedId}`・`/api/series/{seriesId}` などが Express 既定の `Cannot GET` (404) を返していた。express-openapi 自身が張る `/api/docs` も未登録だった。該当 22 箇所へ参照先スキーマの型 (`integer` / `object` / `string`) を明記して解消した。OpenAPI 3.0 の `nullable` は型に対する修飾なので、`allOf` の隣に単独で置くのは元々不正。静的パスのルートと `/api/streams`・`/api/videos` 系が動いていたため、**全体障害に見えず気付きにくい**壊れ方だった。
+
 - **tsreplace 出力を含む録画の `video_file.startAt` を「再生位置 0 秒 = 最初の映像 PTS」の実時刻へ合わせ、ニコニコ実況の過去ログ同期を正確にした**: 従来の TDT/TOT + PCR 補正は TS 先頭付近の PCR の実時刻を求めるところまでは正しかったが、tsreplace 等で映像 PTS/PCR が再構成されると最初に表示される映像 PTS と先頭 PCR にオフセットが残り、コメントが数秒ずれる。対象サービスの PMT から PCR_PID を特定し、先頭 PCR と最初の映像 PTS (無ければ音声 PTS) の差を 27MHz 時間軸で求め、`startAt = firstTdtAt + (firstMediaPTS - firstPCR)` として保存する `TsPlaybackTimeResolver` を追加。33bit wrap に対応し、5 分超の不自然な差・必要情報不足時は従来の `firstTdtAt` へフォールバックする。さらに `EncodeFinishModel` で `addVideoFile()` 直後に `analyzeAll()` を実行し、tsreplace 出力も登録直後に TS/ffprobe を解析して `startAt` を埋める。外部で作った tsreplace の `.ts` を取り込む経路も、`fileType` ではなく拡張子で PSI/SI 解析の可否を判定するように直した。既存 tsreplace ファイルは TS 再解析で更新できる。
 
 - **実機 (localhost:8888、実際の Misskey アカウント) で利用者から報告された 2 件の不具合・不満を直した (画像添付投稿の失敗 / 分割表示が既定 OFF で導線も遠い)**。
@@ -226,6 +228,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 基盤・互換性
 
+- `api.yml` の不正な `nullable` 指定で Web API の一部ルートが登録されず 404 になっていたのを直した
 - 削除やエンコード進捗が画面に即時反映されない (socket.io がリバースプロキシ経由で繋がらない) のを直した
 - EPG が取れていない放送局も放映中の一覧に出すようにした / リモコンキー順に並ばない原因を潰した
 - 全サービスを列挙して返すチューナーサーバ (recisdb-proxy) で放映中・番組表が壊れるのを直した

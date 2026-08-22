@@ -1900,10 +1900,12 @@ components:
                     description: 解析に失敗した件数
                     type: integer
                 startedAt:
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/UnixtimeMS'
                 finishedAt:
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/UnixtimeMS'
@@ -1946,6 +1948,7 @@ components:
                 status: { $ref: '#/components/schemas/WatchStatus' }
                 updatedAt: { $ref: '#/components/schemas/UnixtimeMS' }
                 recorded:
+                    type: object
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/RecordedItem'
@@ -2944,6 +2947,7 @@ components:
                 mediaType:
                     type: string
                 preferredChannelId:
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/ChannelId'
@@ -3407,6 +3411,7 @@ components:
                     enum: [exact, contain, prefix]
                 seriesId:
                     description: すでにローカルにあるシリーズの id (未登録なら null)
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/SeriesId'
@@ -3696,6 +3701,7 @@ components:
                 - score
             properties:
                 seriesId:
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/SeriesId'
@@ -3724,6 +3730,7 @@ components:
                     description: 'true: 確定シリーズ (または新規作成予定) / false: 未確定 (候補のみ)'
                     type: boolean
                 seriesId:
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/SeriesId'
@@ -3776,10 +3783,12 @@ components:
                 failed:
                     type: integer
                 startedAt:
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/UnixtimeMS'
                 finishedAt:
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/UnixtimeMS'
@@ -3908,6 +3917,7 @@ components:
                     description: 未確定キューへ積まれたか
                     type: boolean
                 seriesId:
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/SeriesId'
@@ -4007,6 +4017,7 @@ components:
                 matchedPrograms:
                     type: integer
                 updatedAt:
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/UnixtimeMS'
@@ -4543,6 +4554,7 @@ components:
                 prerelease:
                     type: boolean
                 publishedAt:
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/UnixtimeMS'
@@ -4589,10 +4601,12 @@ components:
                     type: string
                     nullable: true
                 startedAt:
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/UnixtimeMS'
                 finishedAt:
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/UnixtimeMS'
@@ -4625,6 +4639,7 @@ components:
                 message:
                     type: string
                 committedAt:
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/UnixtimeMS'
@@ -4660,14 +4675,17 @@ components:
                 currentIsPrerelease:
                     type: boolean
                 latestStable:
+                    type: object
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/UpdateReleaseInfo'
                 latestPrerelease:
+                    type: object
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/UpdateReleaseInfo'
                 availableRelease:
+                    type: object
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/UpdateReleaseInfo'
@@ -4676,6 +4694,7 @@ components:
                     nullable: true
                     enum: [stable, prerelease]
                 checkedAt:
+                    type: integer
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/UnixtimeMS'
@@ -4683,6 +4702,7 @@ components:
                     type: string
                     nullable: true
                 branch:
+                    type: object
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/UpdateBranchInfo'
@@ -4819,6 +4839,7 @@ components:
                     type: string
                     nullable: true
                 defaultVisibility:
+                    type: string
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/SnsVisibility'
@@ -4861,6 +4882,7 @@ components:
             additionalProperties: false
             properties:
                 defaultVisibility:
+                    type: string
                     nullable: true
                     allOf:
                         - $ref: '#/components/schemas/SnsVisibility'
