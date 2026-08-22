@@ -811,3 +811,87 @@ test('analyzeFromMiddle: false ならファイル先頭から解析する (従�
     assert.equal(info.eventId, 1111);
     assert.equal(info.eventName, 'ＰＲＥＶ　ＰＲＯＧＲＡＭ');
 });
+
+// --- ファイル先頭時刻の決定 (resolveFileStartAt) ---
+// scanHeadTime は実ファイル I/O を伴うためスタブし、head と見積もりの採否だけを固定する
+function callResolveFileStartAt(headAt, result, startPosition = 64 * 1024 * 1024) {
+    const warns = [];
+    const context = {
+        scanHeadTime: async () => headAt,
+        log: {
+            system: { info: () => {}, warn: m => warns.push(m), error: () => {}, debug: () => {} },
+        },
+    };
+
+    return TsInfoAnalyzer.prototype.resolveFileStartAt
+        .call(context, 'dummy.ts', startPosition, result, 1000)
+        .then(v => ({ value: v, warns: warns }));
+}
+
+test('先頭の TDT/TOT が読めたら、見積もりと大きく食い違っても先頭を採る', async () => {
+    // tsreplace の HEVC 出力は VBR で、中央の実測バイトレートからの外挿が数分ずれる。
+    // 実測では head 08:29:41 / estimated 08:21:52 (7 分 48 秒差) で head が正しかった
+    const headAt = Date.parse('2026-08-22T08:29:41.171Z');
+    const regionStartAt = Date.parse('2026-08-22T09:00:00.000Z');
+    const startPosition = 64 * 1024 * 1024;
+    // 見積もりが head より 7 分 48 秒手前になるようなバイトレートを与える
+    const estimatedElapsedMs = regionStartAt - (headAt - 468000);
+    const result = {
+        regionStartAt: regionStartAt,
+        bytesPerMs: startPosition / estimatedElapsedMs,
+        pcrPid: 0x1000,
+    };
+
+    const { value, warns } = await callResolveFileStartAt(headAt, result, startPosition);
+
+    assert.equal(value, headAt);
+    assert.deepEqual(warns, []);
+});
+
+test('先頭が読めなければ中央からの見積もりを使う', async () => {
+    const regionStartAt = Date.parse('2026-08-22T09:00:00.000Z');
+    const startPosition = 64 * 1024 * 1024;
+    const result = {
+        regionStartAt: regionStartAt,
+        bytesPerMs: startPosition / 600000, // 10 分ぶん
+        pcrPid: 0x1000,
+    };
+
+    const { value } = await callResolveFileStartAt(null, result, startPosition);
+
+    assert.equal(value, regionStartAt - 600000);
+});
+
+test('先頭の時刻が中央より後なら、壊れているとみなして見積もりへ退避する', async () => {
+    const regionStartAt = Date.parse('2026-08-22T09:00:00.000Z');
+    const headAt = regionStartAt + 60000; // 時系列としてあり得ない
+    const startPosition = 64 * 1024 * 1024;
+    const result = {
+        regionStartAt: regionStartAt,
+        bytesPerMs: startPosition / 600000,
+        pcrPid: 0x1000,
+    };
+
+    const { value, warns } = await callResolveFileStartAt(headAt, result, startPosition);
+
+    assert.equal(value, regionStartAt - 600000);
+    assert.equal(warns.length, 1);
+    assert.ok(warns[0].includes('head time is newer than region time'));
+});
+
+test('先頭も見積もりも得られなければ null を返す', async () => {
+    const result = { regionStartAt: null, bytesPerMs: null, pcrPid: null };
+
+    const { value } = await callResolveFileStartAt(null, result);
+
+    assert.equal(value, null);
+});
+
+test('見積もりが立たなくても先頭が読めていればそれを使う', async () => {
+    const headAt = Date.parse('2026-08-22T08:29:41.171Z');
+    const result = { regionStartAt: null, bytesPerMs: null, pcrPid: null };
+
+    const { value } = await callResolveFileStartAt(headAt, result);
+
+    assert.equal(value, headAt);
+});
