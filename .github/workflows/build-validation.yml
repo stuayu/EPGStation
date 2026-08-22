@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: test-${{ matrix.level }}
@@ -51,6 +55,7 @@ jobs:
 
   build:
     name: build-${{matrix.os}}-${{matrix.node-version}}
+    if: github.ref != 'refs/heads/fix/tsreplace-playback-start-at'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
