@@ -631,7 +631,7 @@ class RecordedManageModel implements IRecordedManageModel {
                 }
 
                 // TS の PSI/SI から放送局・番組情報を取り出す (ファイル名や program.txt の推定より正確)
-                const tsInfo = await this.analyzeTsInfoForImport(option, resolved.realPath);
+                const tsInfo = await this.analyzeTsInfoForImport(resolved.realPath);
 
                 const startAt =
                     typeof option.startAt === 'number'
@@ -733,16 +733,15 @@ class RecordedManageModel implements IRecordedManageModel {
     /**
      * 取り込み対象ファイルの TS を解析する
      * 解析に失敗しても取り込み自体は続行させたいので、失敗時は null を返す
-     * @param option: ImportedExternalRecordedFileOption
      * @param filePath: string 実ファイルパス
      * @return Promise<TsInfo | null>
      */
-    private async analyzeTsInfoForImport(
-        option: ImportedExternalRecordedFileOption,
-        filePath: string,
-    ): Promise<TsInfo | null> {
-        // エンコード済みファイルには PSI/SI が無い
-        if (option.fileType !== 'ts') {
+    private async analyzeTsInfoForImport(filePath: string): Promise<TsInfo | null> {
+        // 対象判定は fileType ではなく拡張子で行う。
+        // tsreplace 系 (映像だけ差し替え済みで出力拡張子は .ts のまま) は fileType が encoded でも
+        // PSI/SI を保持しており、放送局・番組情報と firstTdtAt (実況同期に使う開始時刻) を取り出せる。
+        // 完全な再マルチプレクス (.mp4/.mkv 等) には PSI/SI が無いので解析しない
+        if (path.extname(filePath).toLowerCase() !== RecordedManageModel.TS_FILE_EXTENSION) {
             return null;
         }
 

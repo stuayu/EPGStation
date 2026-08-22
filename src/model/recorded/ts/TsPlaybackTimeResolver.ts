@@ -39,11 +39,7 @@ export default class TsPlaybackTimeResolver {
      * @return Promise<number | null>
      */
     public static async resolve(filePath: string, info: TsPlaybackTimeInfo): Promise<number | null> {
-        if (
-            info.firstTdtAt === null ||
-            info.serviceId === null ||
-            (info.videoPid === null && info.audioPid === null)
-        ) {
+        if (info.firstTdtAt === null || info.serviceId === null || (info.videoPid === null && info.audioPid === null)) {
             return null;
         }
 
@@ -148,10 +144,7 @@ export default class TsPlaybackTimeResolver {
             const mediaTicks = mediaPts * TsPlaybackTimeResolver.PTS_TO_PCR_TICKS;
             const deltaTicks = TsPlaybackTimeResolver.normalizeClockDelta(mediaTicks - firstPcr);
             const deltaMs = (deltaTicks / TsPlaybackTimeResolver.PCR_TICK_HZ) * 1000;
-            if (
-                Number.isFinite(deltaMs) === false ||
-                Math.abs(deltaMs) > TsPlaybackTimeResolver.MAX_MEDIA_OFFSET_MS
-            ) {
+            if (Number.isFinite(deltaMs) === false || Math.abs(deltaMs) > TsPlaybackTimeResolver.MAX_MEDIA_OFFSET_MS) {
                 return null;
             }
 
