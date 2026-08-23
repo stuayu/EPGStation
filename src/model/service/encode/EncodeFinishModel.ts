@@ -86,8 +86,8 @@ export default class EncodeFinishModel implements IEncodeFinishModel {
                 // mp4/mkv 等は TS 解析が自動でスキップされ、ffprobe メタデータだけ保存される。
                 await this.videoFileAnalyzeModel.analyzeAll(id);
 
-                // エンコード出力も録画完了・アップロードと同じ経路でサムネイルを生成する。
-                await this.ipc.thumbnail.add(id);
+                // 既存サムネイルを削除し、エンコード出力から同じ録画のサムネイルを生成する。
+                await this.ipc.thumbnail.replaceRecorded(info.recordedId, id);
             }
         } catch (err: any) {
             this.log.encode.error('finish encode error');

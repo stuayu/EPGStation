@@ -448,18 +448,48 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
     }
 
     /** 指定録画のサムネイルを削除して再生成する。 */
-    public async regenerateRecorded(recordedId: apid.RecordedId, profile?: 'fast' | 'balanced' | 'quality'): Promise<void> {
+    public async regenerateRecorded(
+        recordedId: apid.RecordedId,
+        profile?: 'fast' | 'balanced' | 'quality',
+    ): Promise<void> {
         const recorded = await this.recordedDB.findId(recordedId);
         if (recorded === null || recorded.videoFiles === undefined || recorded.videoFiles.length === 0) {
             throw new Error('RecordedIsNotFound');
         }
+
+        await this.replaceRecorded(recordedId, recorded.videoFiles[0].id, profile);
+    }
+
+    /**
+     * 指定録画のサムネイルを削除し、指定動画ファイルから再生成する
+     * @param recordedId: apid.RecordedId
+     * @param videoFileId: apid.VideoFileId
+     * @param profile: 生成プロファイル
+     * @return Promise<void>
+     */
+    public async replaceRecorded(
+        recordedId: apid.RecordedId,
+        videoFileId: apid.VideoFileId,
+        profile?: 'fast' | 'balanced' | 'quality',
+    ): Promise<void> {
+        const recorded = await this.recordedDB.findId(recordedId);
+        if (
+            recorded === null ||
+            recorded.videoFiles === undefined ||
+            recorded.videoFiles.some(videoFile => videoFile.id === videoFileId) === false
+        ) {
+            throw new Error('VideoFileIsNotFound');
+        }
+
         const thumbnails = recorded.thumbnails ?? [];
         for (const thumbnail of thumbnails) {
             await this.thumbnailDB.deleteOnce(thumbnail.id).catch(() => undefined);
-            await FileUtil.unlink(path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, thumbnail.filePath)).catch(() => undefined);
+            await FileUtil.unlink(
+                path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, thumbnail.filePath),
+            ).catch(() => undefined);
         }
         // profile は V1 では候補数だけに反映し、基本設定を恒久変更しない。
-        this.add(recorded.videoFiles[0].id, profile);
+        this.add(videoFileId, profile);
     }
 
     /**

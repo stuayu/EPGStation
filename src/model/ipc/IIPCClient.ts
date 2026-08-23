@@ -65,6 +65,7 @@ export interface IPCRuleManageModel {
 export interface IPCThumbnailManageModel {
     regenerate(): Promise<void>;
     regenerateRecorded(recordedId: apid.RecordedId, profile?: 'fast' | 'balanced' | 'quality'): Promise<void>;
+    replaceRecorded(recordedId: apid.RecordedId, videoFileId: apid.VideoFileId): Promise<void>;
     fileCleanup(): Promise<void>;
     add(videoFileId: apid.VideoFileId): Promise<void>;
     delete(thumbnailId: apid.ThumbnailId): Promise<void>;

@@ -155,6 +155,7 @@ export enum ThumbnailFunctions {
     add = 'add',
     delete = 'delete',
     regenerateRecorded = 'regenerateRecorded',
+    replaceRecorded = 'replaceRecorded',
 }
 
 /**
