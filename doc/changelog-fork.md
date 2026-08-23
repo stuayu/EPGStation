@@ -13,6 +13,10 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
+## 2026-08-23
+
+- **エンコード完了時のサムネイル更新を標準処理へ統一**: エンコード出力の登録後にV1.7.1のThumbnailManageModelへ生成を依頼する経路を追加。設定した外部 `update_thumbnail` スクリプトに依存しないようにし、旧スクリプトのテンプレートと実装を削除した。
+
 ## 2026-08-22
 
 - **短時間・duration誤推定録画のサムネイル候補を修正**: 実ファイルより長い duration で候補が空になる場合、先頭区間へ FFmpeg 抽出を再試行し、短時間動画は中央1候補へ縮退する。候補0件は `thumbnailPosition` → 中央 → 0秒付近の fallback を通る。
