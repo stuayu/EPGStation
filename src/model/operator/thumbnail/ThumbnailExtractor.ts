@@ -2,9 +2,11 @@ import { spawn } from 'child_process';
 
 export interface ThumbnailExtractedFrame { timestamp: number; data: Buffer; width: number; height: number; }
 
+const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
+
 /** FFmpeg を一度だけ起動し、候補区間の RGB24 フレームを取得する。 */
 export default class ThumbnailExtractor {
-    public extract(ffmpeg: string, input: string, duration: number, count: number, timeoutMs = 120000): Promise<ThumbnailExtractedFrame[]> {
+    public extract(ffmpeg: string, input: string, duration: number, count: number, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ThumbnailExtractedFrame[]> {
         const safeDuration = Math.max(1, duration);
         const safeCount = Math.max(1, Math.floor(count));
         const start = safeDuration * 0.05;
