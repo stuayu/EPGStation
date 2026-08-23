@@ -29,6 +29,18 @@ test('公開再生成経路は従来どおり先頭動画とprofileを使う', (
     runScenario('regenerateRecorded');
 });
 
+test('公開再生成経路は最新IDのencoded動画を優先する', () => {
+    runScenario('regenerateRecordedPrefersLatestEncoded');
+});
+
+test('チャプターはencoded動画だけ読み、生TSでは読まない', () => {
+    runScenario('chaptersOnlyForEncoded');
+});
+
+test('encoded動画のチャプター読取失敗時も元候補で継続する', () => {
+    runScenario('chapterFailureContinues');
+});
+
 test('サムネイルのファイル名衝突回避とposter寸法を解決する', () => {
     runScenario('filenameAndSizeHelpers');
 });

@@ -18,6 +18,7 @@ import ILoggerModel from '../../ILoggerModel';
 import { IPromiseQueue } from '../../IPromiseQueue';
 import IThumbnailManageModel from './IThumbnailManageModel';
 import { createThumbnailCandidates } from './ThumbnailCandidateGenerator';
+import { filterThumbnailCandidatesByChapters } from './ThumbnailChapterFilter';
 import ThumbnailExtractor from './ThumbnailExtractor';
 import ThumbnailImageAnalyzer, { ThumbnailImageFeatures } from './ThumbnailImageAnalyzer';
 import BasicThumbnailScorer from './ThumbnailScorer';
@@ -33,6 +34,17 @@ export function resolveThumbnailProfile(profile?: ThumbnailProfile, configured?:
 /** fast profile 以外で候補画像解析を行う。 */
 export function shouldAnalyzeThumbnail(profile: ThumbnailProfile): boolean {
     return profile !== 'fast';
+}
+
+interface ThumbnailVideoFile {
+    id: apid.VideoFileId;
+    type: string;
+}
+
+/** encoded を優先し、複数あれば最新ID、無ければ従来どおり先頭を選ぶ。 */
+export function selectThumbnailVideoFile<T extends ThumbnailVideoFile>(videoFiles: T[]): T | undefined {
+    const encoded = videoFiles.filter(videoFile => videoFile.type === 'encoded').sort((a, b) => b.id - a.id);
+    return encoded[0] ?? videoFiles[0];
 }
 
 @injectable()
@@ -167,14 +179,23 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         const extension = format === 'webp' ? 'webp' : 'jpg';
         const fileName = await this.getSaveFileName(videoFile.recordedId, 0, `poster.${extension}`);
         const output = path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, fileName);
-        const candidates = createThumbnailCandidates(
-            searchDuration,
+        const candidateCount =
             effectiveProfile === 'fast'
                 ? 5
                 : effectiveProfile === 'quality'
                   ? 50
-                  : (this.config.thumbnailCandidateCount ?? 20),
+                  : (this.config.thumbnailCandidateCount ?? 20);
+        let candidates = createThumbnailCandidates(
+            searchDuration,
+            candidateCount,
             this.config.thumbnailPosition,
+        );
+        candidates = await this.filterCandidatesForVideoFile(
+            videoFile,
+            videoFilePath,
+            candidates,
+            searchDuration,
+            candidateCount,
         );
         let selectedTimestamp =
             candidates[Math.floor(candidates.length / 2)]?.timestamp ?? this.config.thumbnailPosition;
@@ -182,12 +203,10 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         let selectedFeatures: ThumbnailImageFeatures | null = null;
         if (shouldAnalyzeThumbnail(effectiveProfile)) {
             try {
-                const frames = await this.extractor.extract(
+                const frames = await this.extractor.extractCandidates(
                     this.config.ffmpeg,
                     videoFilePath,
-                    searchDuration,
-                    effectiveProfile === 'quality' ? 50 : (this.config.thumbnailCandidateCount ?? 20),
-                    this.config.thumbnailPosition,
+                    candidates,
                 );
                 if (frames.length === 0) {
                     selectedTimestamp = Math.min(
@@ -358,6 +377,33 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         });
     }
 
+    private async filterCandidatesForVideoFile(
+        videoFile: ThumbnailVideoFile,
+        videoFilePath: string,
+        candidates: ReturnType<typeof createThumbnailCandidates>,
+        searchDuration: number,
+        candidateCount: number,
+    ): Promise<ReturnType<typeof createThumbnailCandidates>> {
+        if (videoFile.type !== 'encoded') return candidates;
+        try {
+            const chapters = await this.videoUtil.getChapters(videoFilePath);
+            const filtered = filterThumbnailCandidatesByChapters(
+                candidates,
+                chapters,
+                searchDuration,
+                candidateCount,
+            );
+            if (filtered.usedFallback) {
+                this.log.system.warn(`thumbnail chapters contain no usable non-CM range, fallback: ${videoFile.id}`);
+            }
+            return filtered.candidates;
+        } catch (err) {
+            this.log.system.warn(`thumbnail chapter analysis failed, continue without chapters: ${videoFile.id}`);
+            this.log.system.debug(err);
+            return candidates;
+        }
+    }
+
     /**
      * 重複しないサムネイルファイル名を返す
      * @param recordedId: recorded id
@@ -459,10 +505,12 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
             if (typeof recorded.videoFiles === 'undefined' || recorded.videoFiles.length === 0) {
                 continue;
             }
+            const selectedVideoFile = selectThumbnailVideoFile(recorded.videoFiles);
+            if (selectedVideoFile === undefined) continue;
 
             if (typeof recorded.thumbnails === 'undefined' || recorded.thumbnails.length === 0) {
                 // サムネイルが存在しないので生成リストに追加
-                videoFileIds.push(recorded.videoFiles[0].id);
+                videoFileIds.push(selectedVideoFile.id);
                 continue;
             }
 
@@ -494,7 +542,7 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
 
             // サムネイル情報が存在しなくなったので生成リストに追加
             if (existingThumbnailCnt === 0) {
-                videoFileIds.push(recorded.videoFiles[0].id);
+                videoFileIds.push(selectedVideoFile.id);
             }
         }
 
@@ -514,7 +562,9 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
             throw new Error('RecordedIsNotFound');
         }
 
-        await this.replaceRecorded(recordedId, recorded.videoFiles[0].id, profile);
+        const selectedVideoFile = selectThumbnailVideoFile(recorded.videoFiles);
+        if (selectedVideoFile === undefined) throw new Error('RecordedIsNotFound');
+        await this.replaceRecorded(recordedId, selectedVideoFile.id, profile);
     }
 
     /**

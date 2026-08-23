@@ -42,6 +42,23 @@ export default class ThumbnailExtractor {
         timeoutMs = DEFAULT_TIMEOUT_MS,
     ): Promise<ThumbnailExtractedFrame[]> {
         const candidates = createThumbnailCandidates(duration, count, legacyPosition);
+        return await this.extractCandidates(ffmpeg, input, candidates, timeoutMs);
+    }
+
+    /**
+     * 確定済み候補時刻からフレームを抽出する。
+     * @param ffmpeg FFmpeg 実行ファイル
+     * @param input 入力動画パス
+     * @param candidates 抽出候補
+     * @param timeoutMs 候補ごとのタイムアウト
+     * @return 時刻順の抽出成功フレーム
+     */
+    public async extractCandidates(
+        ffmpeg: string,
+        input: string,
+        candidates: { timestamp: number }[],
+        timeoutMs = DEFAULT_TIMEOUT_MS,
+    ): Promise<ThumbnailExtractedFrame[]> {
         const frames: ThumbnailExtractedFrame[] = [];
         const errors: unknown[] = [];
         let nextIndex = 0;

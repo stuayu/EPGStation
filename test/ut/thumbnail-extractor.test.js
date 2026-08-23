@@ -42,6 +42,21 @@ test('候補抽出は input-side seek で全区間デコードを行わない', 
     }
 });
 
+test('Managerで確定した候補配列をそのまま抽出する', async () => {
+    const timestamps = [];
+    const extractor = new ThumbnailExtractor((_bin, args) => {
+        timestamps.push(Number(args[args.indexOf('-ss') + 1]));
+        const child = childProcess();
+        process.nextTick(() => {
+            child.stdout.write(Buffer.alloc(FRAME_BYTES));
+            child.emit('exit', 0);
+        });
+        return child;
+    });
+    await extractor.extractCandidates('ffmpeg', 'input.ts', [{ timestamp: 12 }, { timestamp: 34 }]);
+    assert.deepEqual(timestamps.sort((a, b) => a - b), [12, 34]);
+});
+
 test('候補抽出の同時実行数は3以下', async () => {
     let active = 0;
     let maxActive = 0;

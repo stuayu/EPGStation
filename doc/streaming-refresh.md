@@ -228,6 +228,9 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
   ffprobe が 0 件を返した場合はこのファイルを読む (`ChapterFileUtil`)。形式は Ogg / Matroska の
   simple chapter format (`CHAPTER01=00:00:00.000` / `CHAPTER01NAME=A`) で、
   終了位置を持たないため `endAt` は次のチャプターの開始位置 (最後の 1 件は動画全体の長さ) で埋める。
+- **録画サムネイルでも同じ `VideoUtil.getChapters()` を使う**。エンコード済み動画だけを対象に、タイトルが
+  trim後 `CM` で始まる区間と境界前後0.5秒を候補から除外する。埋込・sidecarのどちらでも同じ判定になる。
+  全候補がCMなら非CMチャプター中央へ補完し、チャプターが全件CM・無効なら生成不能を避けて通常候補へ戻す。
 - **DPlayer に `highlight` を渡せるのはプレイヤー生成時だけ**なので、チャプターは
   `createPlayer()` の前に取得しておく (`BaseVideo.applyChapterHighlights()`)。ファイルを直接再生する
   `NormalVideo` だけは動画長が `loadedmetadata` まで分からないので、読み込み後に自前でマーカーを描き足す。
