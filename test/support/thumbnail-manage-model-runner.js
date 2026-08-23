@@ -12,7 +12,7 @@ const logger = {
     }),
 };
 
-function createModel(storageRoot, recorded, deletedIds, queue = { add: () => {} }) {
+function createModel(storageRoot, recorded, deletedIds, queue = { add: () => {} }, videoUtil = {}) {
     return new ThumbnailManageModel(
         logger,
         { getConfig: () => ({ thumbnail: storageRoot, thumbnailStorageRoot: storageRoot }) },
@@ -21,7 +21,7 @@ function createModel(storageRoot, recorded, deletedIds, queue = { add: () => {} 
         {},
         { deleteOnce: async id => deletedIds.push(id) },
         { emitDeleted: () => {}, emitAdded: () => {} },
-        {},
+        videoUtil,
     );
 }
 
@@ -87,13 +87,62 @@ async function deleteThumbnail() {
 }
 
 async function regenerateRecorded() {
-    const model = createModel('/unused', { id: 1, videoFiles: [{ id: 100 }], thumbnails: [] }, []);
+    const model = createModel('/unused', { id: 1, videoFiles: [{ id: 100, type: 'ts' }], thumbnails: [] }, []);
     const calls = [];
     model.replaceRecorded = async (...args) => calls.push(args);
 
     await model.regenerateRecorded(1, 'fast');
 
     assert.deepEqual(calls, [[1, 100, 'fast']]);
+}
+
+async function regenerateRecordedPrefersLatestEncoded() {
+    const model = createModel('/unused', {
+        id: 1,
+        videoFiles: [
+            { id: 100, type: 'ts' },
+            { id: 101, type: 'encoded' },
+            { id: 105, type: 'encoded' },
+        ],
+        thumbnails: [],
+    }, []);
+    const calls = [];
+    model.replaceRecorded = async (...args) => calls.push(args);
+
+    await model.regenerateRecorded(1, 'quality');
+    assert.deepEqual(calls, [[1, 105, 'quality']]);
+}
+
+async function chaptersOnlyForEncoded() {
+    const calls = [];
+    const videoUtil = { getChapters: async filePath => {
+        calls.push(filePath);
+        return [{ id: 1, title: 'CM', startAt: 0, endAt: 10 }];
+    } };
+    const model = createModel('/unused', null, [], { add: () => {} }, videoUtil);
+    const candidates = [{ timestamp: 5, index: 0 }, { timestamp: 15, index: 1 }];
+
+    assert.deepEqual(
+        await model.filterCandidatesForVideoFile({ id: 1, type: 'ts' }, 'raw.ts', candidates, 20, 2),
+        candidates,
+    );
+    assert.deepEqual(calls, []);
+    const filtered = await model.filterCandidatesForVideoFile(
+        { id: 2, type: 'encoded' }, 'encoded.mp4', candidates, 20, 2,
+    );
+    assert.deepEqual(calls, ['encoded.mp4']);
+    assert.deepEqual(filtered.map(candidate => candidate.timestamp), [15]);
+}
+
+async function chapterFailureContinues() {
+    const model = createModel('/unused', null, [], { add: () => {} }, {
+        getChapters: async () => { throw new Error('ffprobe failed'); },
+    });
+    const candidates = [{ timestamp: 5, index: 0 }];
+    assert.deepEqual(
+        await model.filterCandidatesForVideoFile({ id: 2, type: 'encoded' }, 'encoded.mp4', candidates, 20, 1),
+        candidates,
+    );
 }
 
 async function filenameAndSizeHelpers() {
@@ -148,6 +197,9 @@ const scenarios = {
     rejectForeignVideoFile,
     deleteThumbnail,
     regenerateRecorded,
+    regenerateRecordedPrefersLatestEncoded,
+    chaptersOnlyForEncoded,
+    chapterFailureContinues,
     filenameAndSizeHelpers,
     duplicateQueue,
     failedQueueCanRetry,

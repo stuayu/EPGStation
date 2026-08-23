@@ -189,6 +189,8 @@ V1.6 では `ThumbnailExtractor` が FFmpeg の RGB24 出力を取得し、`Thum
 
 duration 10 秒未満は中央候補1点とし、候補0件でも既存の thumbnail 生成を継続する。候補時刻の生成は `ThumbnailCandidateGenerator` に統一し、設定した `thumbnailPosition` も duration 不明時・候補1点時に維持する。
 
+エンコード済み動画は `VideoUtil.getChapters()` で埋込チャプターまたは sidecar `*.chapter.txt` を読み、trim後のタイトルが大文字小文字を問わず `CM` で始まる区間と境界前後0.5秒を候補から除外する。全候補がCMなら探索範囲内の非CMチャプター中央で補完し、全チャプターがCM・無効なら画像なしを避けるため通常候補へ戻す。生TSではチャプター解析しない。全件・録画単位の再生成は encoded を優先し、複数ある場合は最大IDを選ぶ。エンコード済みが無ければ従来どおり先頭動画を使う。
+
 ### TS 解析
 
 `TsInfoAnalyzer` (`src/model/recorded/ts/`) が `aribts` で PAT / SDT / NIT / PMT / EIT[p/f] / TDT / TOT を解析し `video_file_ts_info` へ保存する。ffprobe と合わせて `VideoFileAnalyzeModel` が入口。
