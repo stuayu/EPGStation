@@ -34,7 +34,7 @@ export default class ThumbnailApiModel implements IThumbnailApiModel {
             return null;
         }
 
-        return path.join(this.config.thumbnail, thumbnail.filePath);
+        return path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, thumbnail.filePath);
     }
 
     /**
@@ -43,6 +43,11 @@ export default class ThumbnailApiModel implements IThumbnailApiModel {
      */
     public regenerate(): Promise<void> {
         return this.ipc.thumbnail.regenerate();
+    }
+
+    /** 指定録画のサムネイル再生成を Operator へ依頼する。 */
+    public regenerateRecorded(recordedId: apid.RecordedId, profile?: 'fast' | 'balanced' | 'quality'): Promise<void> {
+        return this.ipc.thumbnail.regenerateRecorded(recordedId, profile);
     }
 
     /**

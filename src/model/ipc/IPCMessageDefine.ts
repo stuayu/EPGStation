@@ -154,6 +154,7 @@ export enum ThumbnailFunctions {
     fileCleanup = 'fileCleanup',
     add = 'add',
     delete = 'delete',
+    regenerateRecorded = 'regenerateRecorded',
 }
 
 /**

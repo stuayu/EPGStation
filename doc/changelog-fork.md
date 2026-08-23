@@ -15,6 +15,12 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-22
 
+- **短時間・duration誤推定録画のサムネイル候補を修正**: 実ファイルより長い duration で候補が空になる場合、先頭区間へ FFmpeg 抽出を再試行し、短時間動画は中央1候補へ縮退する。候補0件は `thumbnailPosition` → 中央 → 0秒付近の fallback を通る。
+
+- **サムネイル V1.6 の実画像評価と実TS抽出を追加**: FFmpeg を候補区間で一度だけ起動し RGB24 フレームを抽出、brightness / contrast / sharpness / edge / blackRatio を解析して最高スコアを採用する。poster 保存幅設定 (`thumbnailPosterWidth`, 既定 1280)、wide 640px リサイズ、低品質・解析失敗時の legacy 位置 fallback、debug スコアログ、`meta/<recordedId>.json` を追加。FFmpeg timeout と解析失敗は録画処理へ伝播させない。
+
+- **録画サムネイル V1 を拡張**: 候補時刻生成、差し替え可能な `ThumbnailScorer`、poster / wide variant、JPEG / WebP、幅・高さ・相対時刻・スコア・生成形式の保存、録画単位の非同期再生成 API (`POST /api/videos/{recordedId}/thumbnail/regenerate`) を追加。旧 `filePath` と JPEG 設定は維持。候補画像の高度な画像解析、永続ジョブ、AI は V2 以降。
+
 - **tsreplace 出力の `video_file.startAt` が数分ずれることがあったのを直した (ファイル先頭時刻の採用条件)**: `TsInfoAnalyzer.resolveFileStartAt()` は 「先頭を読み直した TDT/TOT」と「中央から実測バイトレートで遡った見積もり」が 5 分以上食い違うと**見積もりの方を採って**いた。しかし見積もりは「ファイル全体が一定ビットレート」を前提にしているため、tsreplace の HEVC 出力のような VBR ファイルでは中央区間のビットレートを全体に外挿することになり大きく外れる。実測では head `08:29:41` / estimated `08:21:52` の **7 分 48 秒差**で、ファイル名の録画時刻 (17:30 JST) と突き合わせると head が正しかった。先頭で実際に読んだ値を常に優先し、見積もりは先頭が読めなかったときの代替に降格した。先頭の時刻が中央の時刻より後になる場合 (時系列としてあり得ない) だけ、壊れた TDT/TOT とみなして見積もりへ退避する。これは `TsPlaybackTimeResolver` の前提 (`firstTdtAt` = 対象サービスの先頭 PCR の実時刻) が成り立つのが先頭読み経路だけであることとも整合する — 見積もり経路ではアンカーが別物になり、PTS−PCR 差の補正が土台から狂っていた。
 
 - **Web API の約 20 本のルートが登録されず 404 になっていたのを直した (ログ表示・録画詳細・シリーズ・予約・ルール・番組表詳細など)**: `api.yml` に `nullable: true` と `allOf: [$ref]` を持ち `type` を書いていないスキーマが 22 箇所あり、express-openapi が使う ajv が `"nullable" cannot be used without "type"` で例外を投げていた。`openapi.initialize()` は非同期にルートを登録するため、この例外で**登録が途中で打ち切られる**。さらに `ServiceExecutor` の `uncaughtException` ハンドラがプロセスを落とさずログだけ出すため、**サーバーは生きたまま一部のルートだけが未登録**という状態になり、`/api/logs/{logFileId}`・`/api/recorded/{recordedId}`・`/api/series/{seriesId}` などが Express 既定の `Cannot GET` (404) を返していた。express-openapi 自身が張る `/api/docs` も未登録だった。該当 22 箇所へ参照先スキーマの型 (`integer` / `object` / `string`) を明記して解消した。OpenAPI 3.0 の `nullable` は型に対する修飾なので、`allOf` の隣に単独で置くのは元々不正。静的パスのルートと `/api/streams`・`/api/videos` 系が動いていたため、**全体障害に見えず気付きにくい**壊れ方だった。
