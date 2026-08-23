@@ -428,6 +428,7 @@ namespace Configuration {
         thumbnailFormat: 'jpeg',
         thumbnailProfile: 'balanced',
         thumbnailCandidateCount: 20,
+        thumbnailSearchDuration: 1200,
         thumbnailStorageRoot: '',
         thumbnailPosterWidth: 1280,
         dropLog: path.join(__dirname, '..', '..', 'drop'),

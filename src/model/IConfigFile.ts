@@ -391,6 +391,7 @@ export default interface IConfigFile {
     thumbnailFormat?: 'jpeg' | 'webp';
     thumbnailProfile?: 'fast' | 'balanced' | 'quality';
     thumbnailCandidateCount?: number;
+    thumbnailSearchDuration?: number;
     thumbnailStorageRoot?: string;
     thumbnailPosterWidth?: number;
 

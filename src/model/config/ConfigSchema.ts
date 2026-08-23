@@ -624,6 +624,21 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         fields: [{ path: 'thumbnailCandidateCount', label: 'サムネイル候補数', type: 'number' }],
     },
     {
+        key: 'thumbnailSearchDuration',
+        label: 'サムネイル探索範囲 (秒)',
+        hint: '録画先頭から候補を探す範囲。0 で全編、既定 1200 秒',
+        requiresRestart: false,
+        editable: 'gui',
+        fields: [
+            {
+                path: 'thumbnailSearchDuration',
+                label: 'サムネイル探索範囲 (秒)',
+                type: 'number',
+                hint: '0 で全編、既定 1200',
+            },
+        ],
+    },
+    {
         key: 'thumbnailStorageRoot',
         label: 'サムネイルキャッシュ保存先',
         requiresRestart: true,

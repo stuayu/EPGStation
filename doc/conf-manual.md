@@ -51,6 +51,7 @@
     - [サムネイル生成コマンドを変更したい](#thumbnailcmd)
     - [サムネイル画像の解像度を変更したい](#thumbnailsize)
     - [サムネイル画像を生成する再生位置を変更したい](#thumbnailposition)
+    - [サムネイル候補を探す時間範囲を変更したい](#thumbnailsearchduration)
     - [ファイルアップロード時の一時フォルダを変更したい](#uploadtempdir)
 - [外部コマンド実行](#外部コマンド実行)
     - [録画予約新規追加時に外部コマンドを実行したい](#reservenewaddtioncommand)
@@ -1367,6 +1368,20 @@ thumbnailSize: '320x180'
 
 ```yaml
 thumbnailPosition: 30
+```
+
+### thumbnailSearchDuration
+
+#### サムネイル候補を探す時間範囲（秒）
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| number | 1200         | no   |
+
+録画先頭から指定秒数までを候補探索範囲にする。既定は20分。録画が設定値より短い場合は録画全体を使う。`0` は全編、負値も `0` に丸めて全編を使う。設定画面から変更でき、再起動不要。
+
+```yaml
+thumbnailSearchDuration: 1200
 ```
 
 ### uploadTempDir

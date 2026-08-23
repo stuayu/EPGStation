@@ -150,6 +150,7 @@ thumbnailPosition: 5
 thumbnailFormat: jpeg
 thumbnailProfile: balanced
 thumbnailCandidateCount: 20
+thumbnailSearchDuration: 1200 # 録画先頭から候補を探す秒数。0 で全編
 # thumbnailStorageRoot: '%ROOT%/thumbnail'
 thumbnailPosterWidth: 1280
 
