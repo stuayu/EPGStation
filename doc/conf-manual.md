@@ -1485,6 +1485,8 @@ recordingFailedCommand: '/usr/bin/logger recfailed'
 
 ### encodingFinishCommand
 
+エンコード完了時のサムネイル生成はEPGStationが自動で実行する。サムネイル更新専用スクリプトをこの設定へ登録する必要はない。
+
 - エンコード終了時に実行するコマンド
 
 | 種類   | デフォルト値 | 必須 |

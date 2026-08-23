@@ -15,6 +15,7 @@ function createFakes() {
     const addVideoFileCalls = [];
     const emitFinishEncodeCalls = [];
     const analyzeAllCalls = [];
+    const thumbnailAddCalls = [];
 
     const socket = {
         notifyClient: () => {},
@@ -33,6 +34,11 @@ function createFakes() {
         encodeEvent: {
             emitFinishEncode: async info => {
                 emitFinishEncodeCalls.push(info);
+            },
+        },
+        thumbnail: {
+            add: async videoFileId => {
+                thumbnailAddCalls.push(videoFileId);
             },
         },
     };
@@ -59,6 +65,7 @@ function createFakes() {
         addVideoFileCalls,
         emitFinishEncodeCalls,
         analyzeAllCalls,
+        thumbnailAddCalls,
         socket,
         ipc,
         encodeEvent,
@@ -112,6 +119,16 @@ test('エンコード出力を登録した直後に TS/ffprobe の再解析を�
     assert.deepEqual(fakes.analyzeAllCalls, [100]);
 });
 
+test('エンコード出力の登録後にV1.7.1サムネイル生成をキューへ追加する', async () => {
+    const fakes = createFakes();
+    const model = createModel(fakes);
+    model.set();
+
+    await fakes.getFinishEncodeCallback()(baseInfo());
+
+    assert.deepEqual(fakes.thumbnailAddCalls, [100]);
+});
+
 test('完全な再マルチプレクス (.mp4) の出力も type: encoded として登録される', async () => {
     const fakes = createFakes();
     const model = createModel(fakes);
@@ -145,4 +162,5 @@ test('fullOutputPath が null (ファイルサイズ更新のみ) の場合は a
 
     assert.equal(fakes.addVideoFileCalls.length, 0);
     assert.equal(fakes.analyzeAllCalls.length, 0);
+    assert.equal(fakes.thumbnailAddCalls.length, 0);
 });
