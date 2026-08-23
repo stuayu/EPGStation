@@ -21,6 +21,19 @@ import { createThumbnailCandidates } from './ThumbnailCandidateGenerator';
 import ThumbnailExtractor from './ThumbnailExtractor';
 import ThumbnailImageAnalyzer, { ThumbnailImageFeatures } from './ThumbnailImageAnalyzer';
 import BasicThumbnailScorer from './ThumbnailScorer';
+import { resolveThumbnailSearchDuration } from './ThumbnailSearchDuration';
+
+export type ThumbnailProfile = 'fast' | 'balanced' | 'quality';
+
+/** API 指定を優先し、未指定時は設定、設定も無ければ balanced を返す。 */
+export function resolveThumbnailProfile(profile?: ThumbnailProfile, configured?: ThumbnailProfile): ThumbnailProfile {
+    return profile ?? configured ?? 'balanced';
+}
+
+/** fast profile 以外で候補画像解析を行う。 */
+export function shouldAnalyzeThumbnail(profile: ThumbnailProfile): boolean {
+    return profile !== 'fast';
+}
 
 @injectable()
 export default class ThumbnailManageModel implements IThumbnailManageModel {
@@ -135,26 +148,56 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         }
 
         const format = this.config.thumbnailFormat === 'webp' ? 'webp' : 'jpeg';
+        const effectiveProfile = resolveThumbnailProfile(profile, this.config.thumbnailProfile);
+        const searchDuration = resolveThumbnailSearchDuration(
+            videoFile.duration ?? 0,
+            this.config.thumbnailSearchDuration,
+        );
         const extension = format === 'webp' ? 'webp' : 'jpg';
         const fileName = await this.getSaveFileName(videoFile.recordedId, 0, `poster.${extension}`);
         const output = path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, fileName);
         const candidates = createThumbnailCandidates(
-            videoFile.duration ?? 0,
-            profile === 'fast' ? 5 : profile === 'quality' ? 50 : this.config.thumbnailCandidateCount ?? 20,
+            searchDuration,
+            effectiveProfile === 'fast'
+                ? 5
+                : effectiveProfile === 'quality'
+                  ? 50
+                  : (this.config.thumbnailCandidateCount ?? 20),
             this.config.thumbnailPosition,
         );
-        let selectedTimestamp = candidates[Math.floor(candidates.length / 2)]?.timestamp ?? this.config.thumbnailPosition;
+        let selectedTimestamp =
+            candidates[Math.floor(candidates.length / 2)]?.timestamp ?? this.config.thumbnailPosition;
         let selectedScore: number | null = null;
         let selectedFeatures: ThumbnailImageFeatures | null = null;
-        if (profile !== 'fast') {
+        if (shouldAnalyzeThumbnail(effectiveProfile)) {
             try {
-                const frames = await this.extractor.extract(this.config.ffmpeg, videoFilePath, videoFile.duration ?? 0, profile === 'quality' ? 50 : this.config.thumbnailCandidateCount ?? 20);
+                const frames = await this.extractor.extract(
+                    this.config.ffmpeg,
+                    videoFilePath,
+                    searchDuration,
+                    effectiveProfile === 'quality' ? 50 : (this.config.thumbnailCandidateCount ?? 20),
+                    this.config.thumbnailPosition,
+                );
                 if (frames.length === 0) {
-                    selectedTimestamp = Math.min(videoFile.duration ?? this.config.thumbnailPosition, Math.max(0, this.config.thumbnailPosition));
+                    selectedTimestamp = Math.min(
+                        videoFile.duration ?? this.config.thumbnailPosition,
+                        Math.max(0, this.config.thumbnailPosition),
+                    );
                 }
                 for (const frame of frames) {
                     const features = this.analyzer.analyze(frame.data, frame.width, frame.height);
-                    const score = this.scorer.score({ brightness: features.brightness, contrast: features.contrast, sharpness: features.sharpness, sceneChange: features.edge, blackPenalty: features.blackRatio * 50, blurPenalty: 0, features }, { videoFile });
+                    const score = this.scorer.score(
+                        {
+                            brightness: features.brightness,
+                            contrast: features.contrast,
+                            sharpness: features.sharpness,
+                            sceneChange: features.edge,
+                            blackPenalty: features.blackRatio * 50,
+                            blurPenalty: 0,
+                            features,
+                        },
+                        { videoFile },
+                    );
                     this.log.system.debug(JSON.stringify({ timestamp: frame.timestamp, ...features, score }));
                     if (selectedScore === null || score > selectedScore) {
                         selectedScore = score;
@@ -169,7 +212,10 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         }
         // 低品質候補は legacy 位置、次に中央、最後に取得済み候補へフォールバック。
         if (selectedScore !== null && selectedScore < 15) {
-            selectedTimestamp = Math.min(videoFile.duration ?? this.config.thumbnailPosition, Math.max(0, this.config.thumbnailPosition));
+            selectedTimestamp = Math.min(
+                videoFile.duration ?? this.config.thumbnailPosition,
+                Math.max(0, this.config.thumbnailPosition),
+            );
             selectedScore = null;
             selectedFeatures = null;
         }

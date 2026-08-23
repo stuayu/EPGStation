@@ -1,46 +1,132 @@
 import { spawn } from 'child_process';
+import { createThumbnailCandidates } from './ThumbnailCandidateGenerator';
 
-export interface ThumbnailExtractedFrame { timestamp: number; data: Buffer; width: number; height: number; }
+export interface ThumbnailExtractedFrame {
+    timestamp: number;
+    data: Buffer;
+    width: number;
+    height: number;
+}
 
-const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
+// 候補は1フレームだけなので、壊れたTSでキューを長時間塞がない上限とする。
+const DEFAULT_TIMEOUT_MS = 2 * 60 * 1000;
+// TS を複数seekするとディスクI/Oが競合する。3並列なら待ち時間を縮めつつ過負荷を抑えられる。
+const MAX_PARALLEL_EXTRACTIONS = 3;
+type SpawnProcess = typeof spawn;
 
-/** FFmpeg を一度だけ起動し、候補区間の RGB24 フレームを取得する。 */
+/** 候補時刻ごとに FFmpeg の input-side seek を使い、RGB24 フレームを取得する。 */
 export default class ThumbnailExtractor {
-    public extract(ffmpeg: string, input: string, duration: number, count: number, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ThumbnailExtractedFrame[]> {
-        const safeDuration = Math.max(1, duration);
-        const safeCount = Math.max(1, Math.floor(count));
-        const start = safeDuration * 0.05;
-        const end = Math.max(start, safeDuration * 0.95);
-        const interval = safeCount === 1 ? 1 : Math.max(0.1, (end - start) / (safeCount - 1));
-        return this.extractOnce(ffmpeg, input, start, end, interval, safeCount, timeoutMs).then(frames => {
-            if (frames.length > 0 || start <= 0) return frames;
-            // duration が DB の推定値で実ファイルより長い場合、先頭区間へ再試行する。
-            return this.extractOnce(ffmpeg, input, 0, Math.min(safeDuration, 10), Math.max(0.1, Math.min(interval, 1)), safeCount, timeoutMs);
-        });
+    private spawnProcess: SpawnProcess;
+
+    /** @param spawnProcess テストで差し替えるプロセス生成関数 */
+    constructor(spawnProcess: SpawnProcess = spawn) {
+        this.spawnProcess = spawnProcess;
     }
 
-    private extractOnce(ffmpeg: string, input: string, start: number, end: number, interval: number, safeCount: number, timeoutMs: number): Promise<ThumbnailExtractedFrame[]> {
+    /**
+     * 候補時刻からフレームを抽出する。個別候補の失敗は除外し、全候補失敗時だけ reject する。
+     * @param ffmpeg FFmpeg 実行ファイル
+     * @param input 入力動画パス
+     * @param duration 録画時間（秒）
+     * @param count 候補数
+     * @param legacyPosition duration不明・候補1点時の従来切り出し位置
+     * @param timeoutMs 候補ごとのタイムアウト
+     * @return 時刻順の抽出成功フレーム
+     */
+    public async extract(
+        ffmpeg: string,
+        input: string,
+        duration: number,
+        count: number,
+        legacyPosition = 5,
+        timeoutMs = DEFAULT_TIMEOUT_MS,
+    ): Promise<ThumbnailExtractedFrame[]> {
+        const candidates = createThumbnailCandidates(duration, count, legacyPosition);
+        const frames: ThumbnailExtractedFrame[] = [];
+        const errors: unknown[] = [];
+        let nextIndex = 0;
+        const worker = async (): Promise<void> => {
+            while (nextIndex < candidates.length) {
+                const candidate = candidates[nextIndex++];
+                try {
+                    frames.push(await this.extractAt(ffmpeg, input, candidate.timestamp, timeoutMs));
+                } catch (err) {
+                    errors.push(err);
+                }
+            }
+        };
+        await Promise.all(
+            Array.from({ length: Math.min(MAX_PARALLEL_EXTRACTIONS, candidates.length) }, () => worker()),
+        );
+        if (frames.length === 0) {
+            throw new AggregateError(errors, 'ThumbnailExtractorAllCandidatesFailed');
+        }
+        return frames.sort((a, b) => a.timestamp - b.timestamp);
+    }
+
+    private extractAt(
+        ffmpeg: string,
+        input: string,
+        timestamp: number,
+        timeoutMs: number,
+    ): Promise<ThumbnailExtractedFrame> {
         const width = 320;
         const height = 180;
-        const args = ['-hide_banner', '-loglevel', 'error', '-ss', `${start}`, '-i', input, '-t', `${Math.max(0.1, end - start)}`, '-vf', `fps=1/${interval},scale=${width}:${height}:flags=fast_bilinear`, '-frames:v', `${safeCount}`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'];
+        const args = [
+            '-hide_banner',
+            '-loglevel',
+            'error',
+            // -ss を -i より前に置き、TS を先頭から候補位置まで全デコードしない。
+            '-ss',
+            `${timestamp}`,
+            '-i',
+            input,
+            '-frames:v',
+            '1',
+            '-vf',
+            `scale=${width}:${height}:flags=fast_bilinear`,
+            '-f',
+            'rawvideo',
+            '-pix_fmt',
+            'rgb24',
+            'pipe:1',
+        ];
         return new Promise((resolve, reject) => {
-            const child = spawn(ffmpeg, args);
+            const child = this.spawnProcess(ffmpeg, args);
             const chunks: Buffer[] = [];
             let stderr = '';
-            const timer = setTimeout(() => { child.kill(); reject(new Error('ThumbnailExtractorTimeout')); }, timeoutMs);
-            child.stdout?.on('data', chunk => chunks.push(Buffer.from(chunk)));
-            child.stderr?.on('data', chunk => { stderr += String(chunk); });
-            child.once('error', err => { clearTimeout(timer); reject(err); });
-            child.once('exit', code => {
+            let settled = false;
+            const finish = (err?: Error): void => {
+                if (settled === true) return;
+                settled = true;
                 clearTimeout(timer);
-                if (code !== 0) return reject(new Error(`ThumbnailExtractorExit:${code}:${stderr.slice(-500)}`));
-                const bytes = width * height * 3;
-                const data = Buffer.concat(chunks);
-                const frames: ThumbnailExtractedFrame[] = [];
-                for (let i = 0; i < Math.min(safeCount, Math.floor(data.length / bytes)); i++) {
-                    frames.push({ timestamp: Math.min(end, start + i * interval), data: data.subarray(i * bytes, (i + 1) * bytes), width, height });
+                if (err !== undefined) {
+                    reject(err);
+                    return;
                 }
-                resolve(frames);
+                const data = Buffer.concat(chunks);
+                const bytes = width * height * 3;
+                if (data.length < bytes) {
+                    reject(new Error(`ThumbnailExtractorIncompleteFrame:${data.length}/${bytes}`));
+                    return;
+                }
+                resolve({ timestamp, data: data.subarray(0, bytes), width, height });
+            };
+            const timer = setTimeout(() => {
+                child.kill();
+                finish(new Error('ThumbnailExtractorTimeout'));
+            }, timeoutMs);
+            child.stdout?.on('data', chunk => chunks.push(Buffer.from(chunk)));
+            child.stderr?.on('data', chunk => {
+                stderr += String(chunk);
+            });
+            child.once('error', err => finish(err));
+            child.once('exit', code => {
+                if (code !== 0) {
+                    finish(new Error(`ThumbnailExtractorExit:${code}:${stderr.slice(-500)}`));
+                    return;
+                }
+                finish();
             });
         });
     }
