@@ -224,7 +224,7 @@ class RecordedManageModel implements IRecordedManageModel {
      * @return string
      */
     private getThumbnailPath(thumbnail: Thumbnail): string {
-        return path.join(this.config.thumbnail, thumbnail.filePath);
+        return path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, thumbnail.filePath);
     }
 
     /**

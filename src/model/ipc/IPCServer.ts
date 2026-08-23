@@ -538,6 +538,12 @@ export default class IPCServer implements IIPCServer {
             await this.thumbnailManage.regenerate();
         };
 
+        index[ThumbnailFunctions.regenerateRecorded] = async msg => {
+            const recordedId = this.getArgsValue<apid.RecordedId>(msg, 'recordedId');
+            const profile = this.getArgsValue<'fast' | 'balanced' | 'quality' | undefined>(msg, 'profile');
+            await this.thumbnailManage.regenerateRecorded(recordedId, profile);
+        };
+
         // fileCleanup
         index[ThumbnailFunctions.fileCleanup] = async () => {
             await this.thumbnailManage.fileCleanup();

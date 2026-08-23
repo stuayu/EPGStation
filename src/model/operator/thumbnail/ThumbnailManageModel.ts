@@ -17,6 +17,10 @@ import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import { IPromiseQueue } from '../../IPromiseQueue';
 import IThumbnailManageModel from './IThumbnailManageModel';
+import { createThumbnailCandidates } from './ThumbnailCandidateGenerator';
+import ThumbnailExtractor from './ThumbnailExtractor';
+import ThumbnailImageAnalyzer, { ThumbnailImageFeatures } from './ThumbnailImageAnalyzer';
+import BasicThumbnailScorer from './ThumbnailScorer';
 
 @injectable()
 export default class ThumbnailManageModel implements IThumbnailManageModel {
@@ -26,6 +30,7 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
     private static readonly MAX_FAILURE_COUNT = 3;
     // 失敗時にログへ出す ffmpeg の stderr の行数 (原因が分からないと直せないため)
     private static readonly STDERR_LOG_LINES = 10;
+    private static readonly FFMPEG_TIMEOUT_MS = 120000;
 
     private log: ILogger;
     private config: IConfigFile;
@@ -35,6 +40,9 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
     private thumbnailDB: IThumbnailDB;
     private thumbnailEvent: IThumbnailEvent;
     private videoUtil: IVideoUtil;
+    private extractor = new ThumbnailExtractor();
+    private analyzer = new ThumbnailImageAnalyzer();
+    private scorer = new BasicThumbnailScorer();
     // 生成に失敗した回数 (videoFileId 単位)。プロセス再起動でリセットされる
     private failureCount: { [videoFileId: number]: number } = {};
 
@@ -62,7 +70,7 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
      * サムネイル作成 Queue に追加する
      * @param videoFileId: apid.VideoFileId
      */
-    public add(videoFileId: apid.VideoFileId): void {
+    public add(videoFileId: apid.VideoFileId, profile?: 'fast' | 'balanced' | 'quality'): void {
         // 失敗し続けている動画は諦める。
         // (定期クリーンアップが毎回拾うため、放置するとエラーログが延々と出る)
         const failureCount = this.failureCount[videoFileId] ?? 0;
@@ -75,7 +83,7 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         this.log.system.info(`add thumbnail queue: ${videoFileId}`);
 
         this.queue.add<void>(() => {
-            return this.create(videoFileId)
+            return this.create(videoFileId, profile)
                 .then(() => {
                     delete this.failureCount[videoFileId];
                 })
@@ -99,7 +107,7 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
      * サムネイル生成をして生成したファイルを Thumbnail に登録する
      * @param videoFileId: apid.VideoFileId
      */
-    private async create(videoFileId: apid.VideoFileId): Promise<void> {
+    private async create(videoFileId: apid.VideoFileId, profile?: 'fast' | 'balanced' | 'quality'): Promise<void> {
         const videoFile = await this.videoFileDB.findId(videoFileId);
         const videoFilePath = await this.videoUtil.getFullFilePathFromId(videoFileId);
         if (videoFile === null || videoFilePath === null) {
@@ -108,23 +116,61 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         }
 
         // check thumbnail dir
+        const thumbnailRoot = this.config.thumbnailStorageRoot || this.config.thumbnail;
         try {
-            await FileUtil.access(this.config.thumbnail, fs.constants.R_OK | fs.constants.W_OK);
+            await FileUtil.access(thumbnailRoot, fs.constants.R_OK | fs.constants.W_OK);
         } catch (err: any) {
             if (typeof err.code !== 'undefined' && err.code === 'ENOENT') {
                 // ディレクトリが存在しないので作成する
-                this.log.system.warn(`mkdirp: ${this.config.thumbnail}`);
-                await FileUtil.mkdir(this.config.thumbnail);
+                this.log.system.warn(`mkdirp: ${thumbnailRoot}`);
+                await FileUtil.mkdir(thumbnailRoot);
             } else {
                 // アクセス権に Read or Write が無い
-                this.log.system.fatal(`thumbnail dir permission error: ${this.config.thumbnail}`);
+                this.log.system.fatal(`thumbnail dir permission error: ${thumbnailRoot}`);
                 this.log.system.fatal(err);
                 throw err;
             }
         }
 
-        const fileName = await this.getSaveFileName(videoFile.recordedId);
-        const output = path.join(this.config.thumbnail, fileName);
+        const format = this.config.thumbnailFormat === 'webp' ? 'webp' : 'jpeg';
+        const extension = format === 'webp' ? 'webp' : 'jpg';
+        const fileName = await this.getSaveFileName(videoFile.recordedId, 0, `poster.${extension}`);
+        const output = path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, fileName);
+        const candidates = createThumbnailCandidates(
+            videoFile.duration ?? 0,
+            profile === 'fast' ? 5 : profile === 'quality' ? 50 : this.config.thumbnailCandidateCount ?? 20,
+            this.config.thumbnailPosition,
+        );
+        let selectedTimestamp = candidates[Math.floor(candidates.length / 2)]?.timestamp ?? this.config.thumbnailPosition;
+        let selectedScore: number | null = null;
+        let selectedFeatures: ThumbnailImageFeatures | null = null;
+        if (profile !== 'fast') {
+            try {
+                const frames = await this.extractor.extract(this.config.ffmpeg, videoFilePath, videoFile.duration ?? 0, profile === 'quality' ? 50 : this.config.thumbnailCandidateCount ?? 20);
+                if (frames.length === 0) {
+                    selectedTimestamp = Math.min(videoFile.duration ?? this.config.thumbnailPosition, Math.max(0, this.config.thumbnailPosition));
+                }
+                for (const frame of frames) {
+                    const features = this.analyzer.analyze(frame.data, frame.width, frame.height);
+                    const score = this.scorer.score({ brightness: features.brightness, contrast: features.contrast, sharpness: features.sharpness, sceneChange: features.edge, blackPenalty: features.blackRatio * 50, blurPenalty: 0, features }, { videoFile });
+                    this.log.system.debug(JSON.stringify({ timestamp: frame.timestamp, ...features, score }));
+                    if (selectedScore === null || score > selectedScore) {
+                        selectedScore = score;
+                        selectedTimestamp = frame.timestamp;
+                        selectedFeatures = features;
+                    }
+                }
+            } catch (err) {
+                this.log.system.warn(`thumbnail candidate analysis failed, fallback: ${videoFileId}`);
+                this.log.system.debug(err);
+            }
+        }
+        // 低品質候補は legacy 位置、次に中央、最後に取得済み候補へフォールバック。
+        if (selectedScore !== null && selectedScore < 15) {
+            selectedTimestamp = Math.min(videoFile.duration ?? this.config.thumbnailPosition, Math.max(0, this.config.thumbnailPosition));
+            selectedScore = null;
+            selectedFeatures = null;
+        }
         const cmdStr = this.config.thumbnailCmd.replace(/%FFMPEG%/g, this.config.ffmpeg);
         const cmds = ProcessUtil.parseCmdStr(cmdStr);
 
@@ -133,12 +179,16 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
             cmds.args[i] = cmds.args[i]
                 .replace(/%INPUT%/, videoFilePath)
                 .replace(/%OUTPUT%/, output)
-                .replace(/%THUMBNAIL_POSITION%/, `${this.config.thumbnailPosition.toString(10)}`)
-                .replace(/%THUMBNAIL_SIZE%/, this.config.thumbnailSize);
+                .replace(/%THUMBNAIL_POSITION%/, `${selectedTimestamp.toString(10)}`)
+                .replace(/%THUMBNAIL_SIZE%/, this.getPosterSize());
         }
 
         // run ffmpeg
         const child = spawn(cmds.bin, cmds.args);
+        const processTimer = setTimeout(() => {
+            this.log.system.warn(`thumbnail ffmpeg timeout: ${videoFileId}`);
+            child.kill();
+        }, ThumbnailManageModel.FFMPEG_TIMEOUT_MS);
 
         // 失敗時に原因をログへ出せるよう、末尾だけ控えておく
         let stderrLines: string[] = [];
@@ -171,6 +221,12 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
             const thumbnail = new Thumbnail();
             thumbnail.filePath = fileName;
             thumbnail.recordedId = videoFile.recordedId;
+            thumbnail.variant = 'poster';
+            thumbnail.format = format;
+            thumbnail.timestamp = selectedTimestamp;
+            thumbnail.score = selectedScore;
+            thumbnail.width = this.parseWidth(this.getPosterSize());
+            thumbnail.height = this.parseHeight(this.getPosterSize());
             try {
                 await this.thumbnailDB.insertOnce(thumbnail);
             } catch (err: any) {
@@ -185,6 +241,30 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
                 return false;
             }
 
+            // V1 wide は同じ選択フレームを互換的に保持。後続版で個別リサイズへ拡張。
+            const wideName = await this.getSaveFileName(videoFile.recordedId, 0, `wide.${extension}`);
+            const widePath = path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, wideName);
+            await this.resize(output, widePath, 640);
+            const wide = new Thumbnail();
+            wide.filePath = wideName;
+            wide.recordedId = videoFile.recordedId;
+            wide.variant = 'wide';
+            wide.format = format;
+            wide.timestamp = thumbnail.timestamp;
+            wide.score = thumbnail.score;
+            wide.width = 640;
+            wide.height = thumbnail.height === null || thumbnail.width === null ? null : Math.round(thumbnail.height * 640 / thumbnail.width);
+            await this.thumbnailDB.insertOnce(wide).catch(async () => {
+                await FileUtil.unlink(widePath).catch(() => undefined);
+                this.log.system.error(`wide thumbnail add DB error: ${videoFileId}`);
+            });
+
+            const metaDir = path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, 'meta');
+            await FileUtil.mkdir(metaDir);
+            await fs.promises.writeFile(path.join(metaDir, `${videoFile.recordedId}.json`), JSON.stringify({
+                generator: 'v1.5', selectedTimestamp, score: selectedScore, features: selectedFeatures,
+            }, null, 2), 'utf8');
+
             // event emit
             this.thumbnailEvent.emitAdded(videoFileId, videoFile.recordedId);
 
@@ -193,6 +273,7 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
 
         return new Promise<void>(async (resolve: () => void, reject: (err: Error) => void) => {
             child.on('exit', async code => {
+                clearTimeout(processTimer);
                 if ((await endProcessing(code)) === true) {
                     resolve();
                 } else {
@@ -201,6 +282,7 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
             });
 
             child.on('error', err => {
+                clearTimeout(processTimer);
                 this.log.system.error(`create thumbnail failed: ${videoFileId}`);
                 reject(err);
             });
@@ -223,18 +305,44 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
      * @param conflict: 重複数
      * @return string
      */
-    private async getSaveFileName(recordedId: apid.RecordedId, conflict: number = 0): Promise<string> {
+    private async getSaveFileName(recordedId: apid.RecordedId, conflict: number = 0, suffix = 'jpg'): Promise<string> {
         const conflictStr = conflict === 0 ? '' : `(${conflict})`;
-        const fileName = `${recordedId}${conflictStr}.jpg`;
-        const filePath = path.join(this.config.thumbnail, fileName);
+        const fileName = `${recordedId}${conflictStr}-${suffix}`;
+        const filePath = path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, fileName);
 
         try {
             await FileUtil.stat(filePath);
 
-            return this.getSaveFileName(recordedId, conflict + 1);
+            return this.getSaveFileName(recordedId, conflict + 1, suffix);
         } catch (err: any) {
             return fileName;
         }
+    }
+
+    private parseWidth(size: string): number | null {
+        const value = Number.parseInt(size.split('x')[0] ?? '', 10);
+        return Number.isFinite(value) ? value : null;
+    }
+
+    private parseHeight(size: string): number | null {
+        const value = Number.parseInt(size.split('x')[1] ?? '', 10);
+        return Number.isFinite(value) ? value : null;
+    }
+
+    private getPosterSize(): string {
+        const width = Math.max(1, this.config.thumbnailPosterWidth ?? 1280);
+        const sourceWidth = this.parseWidth(this.config.thumbnailSize) ?? 16;
+        const sourceHeight = this.parseHeight(this.config.thumbnailSize) ?? 9;
+        return `${width}x${Math.max(1, Math.round(width * sourceHeight / sourceWidth))}`;
+    }
+
+    private resize(input: string, output: string, width: number): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const child = spawn(this.config.ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-i', input, '-vf', `scale=${width}:-2`, '-frames:v', '1', '-f', 'image2', output]);
+            const timer = setTimeout(() => child.kill(), ThumbnailManageModel.FFMPEG_TIMEOUT_MS);
+            child.once('error', reject);
+            child.once('exit', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`ThumbnailResizeExit:${code}`)); });
+        });
     }
 
     /**
@@ -258,7 +366,7 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         });
 
         // サムネイルファイルを削除
-        const filePath = path.join(this.config.thumbnail, thumbnail.filePath);
+        const filePath = path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, thumbnail.filePath);
         await FileUtil.unlink(filePath).catch(err => {
             this.log.system.error(`delete thumbnail error: ${thumbnailId}`);
             this.log.system.error(err);
@@ -305,7 +413,7 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
 
             // サムネイルファイルが存在するか確認
             for (const thumbnail of recorded.thumbnails) {
-                const thumbnailPath = path.join(this.config.thumbnail, thumbnail.filePath);
+                const thumbnailPath = path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, thumbnail.filePath);
                 try {
                     await FileUtil.stat(thumbnailPath);
                     // ファイルが存在するので無視
@@ -337,6 +445,21 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         }
     }
 
+    /** 指定録画のサムネイルを削除して再生成する。 */
+    public async regenerateRecorded(recordedId: apid.RecordedId, profile?: 'fast' | 'balanced' | 'quality'): Promise<void> {
+        const recorded = await this.recordedDB.findId(recordedId);
+        if (recorded === null || recorded.videoFiles === undefined || recorded.videoFiles.length === 0) {
+            throw new Error('RecordedIsNotFound');
+        }
+        const thumbnails = recorded.thumbnails ?? [];
+        for (const thumbnail of thumbnails) {
+            await this.thumbnailDB.deleteOnce(thumbnail.id).catch(() => undefined);
+            await FileUtil.unlink(path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, thumbnail.filePath)).catch(() => undefined);
+        }
+        // profile は V1 では候補数だけに反映し、基本設定を恒久変更しない。
+        this.add(recorded.videoFiles[0].id, profile);
+    }
+
     /**
      * DB に登録されていないログファイル削除 &  DB に登録されているが存在しないログ情報の削除
      */
@@ -347,7 +470,7 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         // ファイル, ディレクトリ索引生成と DB 上に存在するが実ファイルが存在しないデータを削除する
         const fileIndex: { [filePath: string]: boolean } = {}; // ファイル索引
         for (const thumbnail of thumbnails) {
-            const filePath = path.join(this.config.thumbnail, thumbnail.filePath);
+            const filePath = path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, thumbnail.filePath);
 
             if ((await this.checkFileExistence(filePath)) === true) {
                 // ファイルが存在するなら索引に追加
@@ -362,7 +485,7 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         }
 
         // ファイル索引上に存在しないファイルを削除する
-        const list = await FileUtil.getFileList(this.config.thumbnail);
+        const list = await FileUtil.getFileList(this.config.thumbnailStorageRoot || this.config.thumbnail);
         for (const file of list.files) {
             if (typeof fileIndex[file] !== 'undefined') {
                 continue;

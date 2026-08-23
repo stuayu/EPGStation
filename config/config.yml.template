@@ -147,6 +147,11 @@ recorded:
 thumbnail: '%ROOT%/thumbnail'
 thumbnailSize: 480x270
 thumbnailPosition: 5
+thumbnailFormat: jpeg
+thumbnailProfile: balanced
+thumbnailCandidateCount: 20
+# thumbnailStorageRoot: '%ROOT%/thumbnail'
+thumbnailPosterWidth: 1280
 
 # サムネイル生成時に実行されるコマンド
 # thumbnailCmd: '%FFMPEG% -ss %THUMBNAIL_POSITION% -y -i %INPUT% -vframes 1 -f image2 -s %THUMBNAIL_SIZE% %OUTPUT%'

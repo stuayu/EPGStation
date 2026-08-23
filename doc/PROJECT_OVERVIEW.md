@@ -181,6 +181,14 @@ npm run recover-channel-name   # 過去の録画の放送局名を復元 (既定
 - **しょぼいカレンダーのコメント**は作品コメント (`series.comment`) と放送回コメント (`series_episode.comment`) の 2 種類。作品コメントは全件同期に含めず TID 指定で個別取得する (XML が 9.5MB → 24MB になるため)。表示は Wiki 記法を解析する `SyobocalWiki.ts` + `SyobocalComment.vue` を通す (**`v-html` は使わない**)
 - 同期は Operator 起動時 + しょぼいカレンダー 24h / Annict 7d / Wikidata 7d。アイキャッチ画像は Annict 由来で、`SeriesImageModel` がサーバ側でキャッシュして `GET /api/series/{seriesId}/image` で配る (取れない作品は録画サムネイルで代用)
 
+### 録画サムネイル V1
+
+`ThumbnailManageModel` は録画長の 5〜95% から候補時刻を生成し、既存 Queue 経由で代表フレームを保存する。`ThumbnailScorer` は画像評価の差し替え境界で、V1 の `BasicThumbnailScorer` は明るさ・コントラスト・シャープネス・場面変化を加点し、黒画・ぼけを減点する。生成形式は JPEG (既定) / WebP、variant は poster / wide。`Thumbnail` には形式、寸法、動画開始からの相対時刻、スコア、生成時刻を保持する。旧 `filePath` は維持し、既存 API / クライアントから利用できる。保存先は `thumbnailStorageRoot` (未指定時 `thumbnail`)。録画単位の再生成は `POST /api/videos/{recordedId}/thumbnail/regenerate`。
+
+V1.6 では `ThumbnailExtractor` が FFmpeg の RGB24 出力を一括取得し、`ThumbnailImageAnalyzer` が画像特徴量を計算する。解析失敗・timeout・低品質候補は `thumbnailPosition` を優先する fallback へ戻る。poster 幅は `thumbnailPosterWidth` (既定 1280)、wide は 640。候補ごとの特徴量と score は debug ログ、採用結果は `meta/<recordedId>.json` に保存する。
+
+短時間動画や DB duration の過大推定で開始 seek が実ファイル末尾を超えた場合、`ThumbnailExtractor` は先頭区間へ再試行する。duration 10 秒未満は中央候補1点とし、候補0件でも既存の thumbnail 生成を継続する。
+
 ### TS 解析
 
 `TsInfoAnalyzer` (`src/model/recorded/ts/`) が `aribts` で PAT / SDT / NIT / PMT / EIT[p/f] / TDT / TOT を解析し `video_file_ts_info` へ保存する。ffprobe と合わせて `VideoFileAnalyzeModel` が入口。

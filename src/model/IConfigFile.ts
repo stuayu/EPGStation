@@ -388,6 +388,11 @@ export default interface IConfigFile {
     thumbnailCmd: string;
     thumbnailSize: string;
     thumbnailPosition: number;
+    thumbnailFormat?: 'jpeg' | 'webp';
+    thumbnailProfile?: 'fast' | 'balanced' | 'quality';
+    thumbnailCandidateCount?: number;
+    thumbnailStorageRoot?: string;
+    thumbnailPosterWidth?: number;
 
     // drop log
     dropLog: string;
