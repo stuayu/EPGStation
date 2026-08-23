@@ -12,11 +12,11 @@ const logger = {
     }),
 };
 
-function createModel(storageRoot, recorded, deletedIds) {
+function createModel(storageRoot, recorded, deletedIds, queue = { add: () => {} }) {
     return new ThumbnailManageModel(
         logger,
         { getConfig: () => ({ thumbnail: storageRoot, thumbnailStorageRoot: storageRoot }) },
-        { add: () => {} },
+        queue,
         { findId: async () => recorded },
         {},
         { deleteOnce: async id => deletedIds.push(id) },
@@ -114,12 +114,43 @@ async function filenameAndSizeHelpers() {
     }
 }
 
+async function duplicateQueue() {
+    const jobs = [];
+    const model = createModel('/unused', null, [], { add: job => jobs.push(job) });
+    let resolveCreate;
+    model.create = () => new Promise(resolve => { resolveCreate = resolve; });
+
+    model.add(10);
+    model.add(10);
+    assert.equal(jobs.length, 1);
+    const running = jobs[0]();
+    model.add(10);
+    assert.equal(jobs.length, 1);
+    resolveCreate();
+    await running;
+    model.add(10);
+    assert.equal(jobs.length, 2);
+}
+
+async function failedQueueCanRetry() {
+    const jobs = [];
+    const model = createModel('/unused', null, [], { add: job => jobs.push(job) });
+    model.create = async () => { throw new Error('expected failure'); };
+
+    model.add(10);
+    await jobs[0]();
+    model.add(10);
+    assert.equal(jobs.length, 2);
+}
+
 const scenarios = {
     replaceRecorded,
     rejectForeignVideoFile,
     deleteThumbnail,
     regenerateRecorded,
     filenameAndSizeHelpers,
+    duplicateQueue,
+    failedQueueCanRetry,
 };
 const scenario = scenarios[process.argv[2]];
 if (scenario === undefined) {

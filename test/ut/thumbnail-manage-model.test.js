@@ -32,3 +32,11 @@ test('公開再生成経路は従来どおり先頭動画とprofileを使う', (
 test('サムネイルのファイル名衝突回避とposter寸法を解決する', () => {
     runScenario('filenameAndSizeHelpers');
 });
+
+test('同じ動画の待機中・実行中の重複追加は1件にまとめ、完了後は再追加できる', () => {
+    runScenario('duplicateQueue');
+});
+
+test('サムネイル生成失敗後も同じ動画を再追加できる', () => {
+    runScenario('failedQueueCanRetry');
+});
