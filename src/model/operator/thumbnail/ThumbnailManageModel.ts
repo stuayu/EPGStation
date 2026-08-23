@@ -30,7 +30,9 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
     private static readonly MAX_FAILURE_COUNT = 3;
     // 失敗時にログへ出す ffmpeg の stderr の行数 (原因が分からないと直せないため)
     private static readonly STDERR_LOG_LINES = 10;
-    private static readonly FFMPEG_TIMEOUT_MS = 120000;
+    // 長時間TSの候補解析はキーフレーム探索とデコードに時間がかかるため、
+    // 30分番組でも十分な1時間を上限とする。プロセス停止不能時の無限待機は防ぐ。
+    private static readonly FFMPEG_TIMEOUT_MS = 60 * 60 * 1000;
 
     private log: ILogger;
     private config: IConfigFile;
