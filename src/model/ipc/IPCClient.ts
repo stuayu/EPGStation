@@ -564,6 +564,13 @@ export default class IPCClient implements IIPCClient {
                     args: { recordedId, profile },
                 });
             },
+            replaceRecorded: (recordedId, videoFileId) => {
+                return this.send({
+                    model: ModelName.thumbnail,
+                    func: ThumbnailFunctions.replaceRecorded,
+                    args: { recordedId, videoFileId },
+                });
+            },
             fileCleanup: () => {
                 return this.send({
                     model: ModelName.thumbnail,
