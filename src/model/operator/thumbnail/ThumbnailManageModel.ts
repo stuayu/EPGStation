@@ -58,6 +58,8 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
     private extractor = new ThumbnailExtractor();
     private analyzer = new ThumbnailImageAnalyzer();
     private scorer = new BasicThumbnailScorer();
+    // 同じ動画が録画完了・定期掃除など複数経路から同時投入されるのを防ぐ。
+    private queuedVideoFileIds = new Set<apid.VideoFileId>();
     // 生成に失敗した回数 (videoFileId 単位)。プロセス再起動でリセットされる
     private failureCount: { [videoFileId: number]: number } = {};
 
@@ -94,6 +96,12 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
 
             return;
         }
+        if (this.queuedVideoFileIds.has(videoFileId)) {
+            this.log.system.debug(`skip duplicate thumbnail queue: ${videoFileId}`);
+
+            return;
+        }
+        this.queuedVideoFileIds.add(videoFileId);
 
         this.log.system.info(`add thumbnail queue: ${videoFileId}`);
 
@@ -114,6 +122,9 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
                             `give up creating thumbnail: ${videoFileId} (retry after restarting or re-adding the video)`,
                         );
                     }
+                })
+                .finally(() => {
+                    this.queuedVideoFileIds.delete(videoFileId);
                 });
         });
     }
