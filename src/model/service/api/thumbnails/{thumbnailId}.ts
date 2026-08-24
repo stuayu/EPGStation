@@ -1,4 +1,5 @@
 import { Operation } from 'express-openapi';
+import * as fs from 'fs';
 import IThumbnailApiModel from '../../../api/thumbnail/IThumbnailApiModel';
 import container from '../../../ModelContainer';
 import * as api from '../../api';
@@ -17,6 +18,8 @@ export const get: Operation = async (req, res) => {
                 message: 'thumbnail is not Found',
             });
         } else {
+            const stat = fs.statSync(filePath);
+            res.setHeader('Last-Modified', stat.mtime.toUTCString());
             api.responseFile(req, res, filePath, 'image/jpeg', false);
         }
     } catch (err: unknown) {

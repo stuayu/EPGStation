@@ -19,7 +19,11 @@ function createModel(storageRoot, recorded, deletedIds, queue = { add: () => {} 
         queue,
         { findId: async () => recorded },
         {},
-        { deleteOnce: async id => deletedIds.push(id) },
+        {
+            deleteOnce: async id => deletedIds.push(id),
+            findByRecordedIdAndVariant: async () => null,
+            replaceOnce: async () => 1,
+        },
         { emitDeleted: () => {}, emitAdded: () => {} },
         videoUtil,
     );
@@ -40,13 +44,13 @@ async function replaceRecorded() {
             },
             deletedIds,
         );
-        model.add = (videoFileId, profile) => queued.push({ videoFileId, profile });
+        model.add = (recordedId, profile) => queued.push({ recordedId, profile });
 
         await model.replaceRecorded(1, 100, 'quality');
 
         assert.deepEqual(deletedIds, [5]);
         await assert.rejects(fs.stat(path.join(storageRoot, 'old.jpg')), { code: 'ENOENT' });
-        assert.deepEqual(queued, [{ videoFileId: 100, profile: 'quality' }]);
+        assert.deepEqual(queued, [{ recordedId: 1, profile: 'quality' }]);
     } finally {
         await fs.rm(storageRoot, { recursive: true, force: true });
     }

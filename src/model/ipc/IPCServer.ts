@@ -557,9 +557,9 @@ export default class IPCServer implements IIPCServer {
 
         // add
         index[ThumbnailFunctions.add] = async msg => {
-            const videoFileId = this.getArgsValue<apid.VideoFileId>(msg, 'videoFileId');
+            const recordedId = this.getArgsValue<apid.RecordedId>(msg, 'recordedId');
 
-            this.thumbnailManage.add(videoFileId);
+            this.thumbnailManage.add(recordedId);
         };
 
         // delete

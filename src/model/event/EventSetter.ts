@@ -1,6 +1,7 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../api';
 import IRecordedDB from '../db/IRecordedDB';
+import IVideoFileDB from '../db/IVideoFileDB';
 import IConfigFile from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
@@ -47,6 +48,7 @@ export default class EventSetter implements IEventSetter {
     private notification: INotificationDispatcher;
     private seriesResolver: ISeriesResolver;
     private recordedDB: IRecordedDB;
+    private videoFileDB: IVideoFileDB;
 
     private isFirstreserveationUpdate: boolean = true;
 
@@ -72,6 +74,7 @@ export default class EventSetter implements IEventSetter {
         @inject('INotificationDispatcher') notification: INotificationDispatcher,
         @inject('ISeriesResolver') seriesResolver: ISeriesResolver,
         @inject('IRecordedDB') recordedDB: IRecordedDB,
+        @inject('IVideoFileDB') videoFileDB: IVideoFileDB,
     ) {
         this.log = logger.getLogger();
         this.epgUpdateEvent = epgUpdateEvent;
@@ -93,6 +96,7 @@ export default class EventSetter implements IEventSetter {
         this.notification = notification;
         this.seriesResolver = seriesResolver;
         this.recordedDB = recordedDB;
+        this.videoFileDB = videoFileDB;
     }
 
     /**
@@ -269,7 +273,7 @@ export default class EventSetter implements IEventSetter {
 
             if (typeof recorded.videoFiles !== 'undefined' && recorded.videoFiles.length > 0) {
                 // サムネイル作成
-                this.thumbnailManage.add(recorded.videoFiles[0].id);
+                this.thumbnailManage.add(recorded.id);
 
                 // エンコード追加 1
                 if (reserve.encodeMode1 !== null) {
@@ -381,13 +385,17 @@ export default class EventSetter implements IEventSetter {
         });
 
         // video file サイズ更新
-        this.recordedEvent.setUpdateVideoFileSize(() => {
+        this.recordedEvent.setUpdateVideoFileSize(async videoFileId => {
             this.ipc.notifyClient();
+            const videoFile = await this.videoFileDB.findId(videoFileId);
+            if (videoFile !== null) this.thumbnailManage.add(videoFile.recordedId);
         });
 
         // video file 追加
-        this.recordedEvent.setAddVideoFile(() => {
+        this.recordedEvent.setAddVideoFile(async newVideoFileId => {
             this.ipc.notifyClient();
+            const videoFile = await this.videoFileDB.findId(newVideoFileId);
+            if (videoFile !== null) this.thumbnailManage.add(videoFile.recordedId);
         });
 
         // 録画済み番組新規追加
@@ -396,11 +404,11 @@ export default class EventSetter implements IEventSetter {
         });
 
         // upload video file
-        this.recordedEvent.setAddUploadedVideoFile((videoFileId, needsCreateThumbnail, recordedId) => {
+        this.recordedEvent.setAddUploadedVideoFile((_videoFileId, needsCreateThumbnail, recordedId) => {
             this.ipc.notifyClient();
             // サムネイル作成
             if (needsCreateThumbnail === true) {
-                this.thumbnailManage.add(videoFileId);
+                this.thumbnailManage.add(recordedId);
             }
 
             // シリーズ自動マッピング
@@ -410,7 +418,7 @@ export default class EventSetter implements IEventSetter {
         });
 
         // video file 削除
-        this.recordedEvent.setDeleteVideoFile(() => {
+        this.recordedEvent.setDeleteVideoFile(_videoFileId => {
             this.ipc.notifyClient();
         });
 

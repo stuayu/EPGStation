@@ -76,6 +76,29 @@ export default class ThumbnailDB implements IThumbnailDB {
         return insertedResult.identifiers[0].id;
     }
 
+    /** 同一録画・variant のサムネイルを置換する。 */
+    public async replaceOnce(thumbnail: Thumbnail): Promise<apid.ThumbnailId> {
+        const connection = await this.op.getConnection();
+        const queryRunner = connection.createQueryRunner();
+        await queryRunner.startTransaction();
+        try {
+            await queryRunner.manager
+                .createQueryBuilder()
+                .delete()
+                .from(Thumbnail)
+                .where({ recordedId: thumbnail.recordedId, variant: thumbnail.variant })
+                .execute();
+            const result = await queryRunner.manager.insert(Thumbnail, thumbnail);
+            await queryRunner.commitTransaction();
+            return result.identifiers[0].id;
+        } catch (err) {
+            await queryRunner.rollbackTransaction();
+            throw err;
+        } finally {
+            await queryRunner.release();
+        }
+    }
+
     /**
      * 指定したサムネイル情報を 1 件削除
      * @param thumbnailId: apid.ThumbnailId
@@ -133,6 +156,12 @@ export default class ThumbnailDB implements IThumbnailDB {
     public async findByRecordedId(recordedId: apid.RecordedId): Promise<Thumbnail | null> {
         const connection = await this.op.getConnection();
         return await connection.getRepository(Thumbnail).findOne({ where: { recordedId }, order: { id: 'ASC' } });
+    }
+
+    /** 録画 ID と variant からサムネイルを取得する。 */
+    public async findByRecordedIdAndVariant(recordedId: apid.RecordedId, variant: string): Promise<Thumbnail | null> {
+        const connection = await this.op.getConnection();
+        return await connection.getRepository(Thumbnail).findOne({ where: { recordedId, variant } });
     }
 
     /**

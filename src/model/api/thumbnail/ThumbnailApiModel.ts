@@ -2,6 +2,7 @@ import { inject, injectable } from 'inversify';
 import * as path from 'path';
 import * as apid from '../../../../api';
 import IThumbnailDB from '../../db/IThumbnailDB';
+import IVideoFileDB from '../../db/IVideoFileDB';
 import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
 import IIPCClient from '../../ipc/IIPCClient';
@@ -12,15 +13,18 @@ export default class ThumbnailApiModel implements IThumbnailApiModel {
     private ipc: IIPCClient;
     private thumbnailDB: IThumbnailDB;
     private config: IConfigFile;
+    private videoFileDB: IVideoFileDB;
 
     constructor(
         @inject('IIPCClient') ipc: IIPCClient,
         @inject('IThumbnailDB') thumbnailDB: IThumbnailDB,
         @inject('IConfiguration') configuration: IConfiguration,
+        @inject('IVideoFileDB') videoFileDB: IVideoFileDB,
     ) {
         this.ipc = ipc;
         this.thumbnailDB = thumbnailDB;
         this.config = configuration.getConfig();
+        this.videoFileDB = videoFileDB;
     }
 
     /**
@@ -63,7 +67,9 @@ export default class ThumbnailApiModel implements IThumbnailApiModel {
      * @return Promise<void>
      */
     public async add(videoFileId: apid.VideoFileId): Promise<void> {
-        await this.ipc.thumbnail.add(videoFileId);
+        const videoFile = await this.videoFileDB.findId(videoFileId);
+        if (videoFile === null) throw new Error('VideoFileIsNotFound');
+        await this.ipc.thumbnail.add(videoFile.recordedId);
     }
 
     /**

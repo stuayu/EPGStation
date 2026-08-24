@@ -162,7 +162,7 @@ export default class SeriesImageModel implements ISeriesImageModel {
                 this.log.system.info(
                     `series image: request thumbnail generation seriesId=${seriesId} videoFileId=${videoFile.id}`,
                 );
-                await this.ipc.thumbnail.add(videoFile.id);
+                await this.ipc.thumbnail.add(Number(row.recordedId));
                 return;
             }
         } catch (err) {

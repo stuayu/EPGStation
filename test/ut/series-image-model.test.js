@@ -330,10 +330,10 @@ test('getFile() asks the operator to generate a thumbnail when no image exists a
     assert.equal(await model.getFile(1), null);
     // 生成依頼は応答をブロックしないよう投げっぱなしにしているので、完了を待ってから確認する
     await new Promise(resolve => setImmediate(resolve));
-    assert.deepEqual(calls, [70]);
+    assert.deepEqual(calls, [7]);
 
     // 生成が終わるまでの間に連打されても再依頼しない
     await model.getFile(1);
     await new Promise(resolve => setImmediate(resolve));
-    assert.deepEqual(calls, [70]);
+    assert.deepEqual(calls, [7]);
 });

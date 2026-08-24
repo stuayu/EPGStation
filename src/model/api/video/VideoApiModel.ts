@@ -219,7 +219,12 @@ export default class VideoApiModel implements IVideoApiModel {
      * @return Promise<VideoFileMetadataResult>
      */
     public async analyzeMetadata(videoFileId: apid.VideoFileId): Promise<VideoFileMetadataResult> {
-        return await this.analyzeModel.analyzeMetadata(videoFileId);
+        const metadata = await this.analyzeModel.analyzeMetadata(videoFileId);
+        const videoFile = await this.videoFileDB.findId(videoFileId);
+        if (videoFile !== null) {
+            await this.ipc.thumbnail.add(videoFile.recordedId);
+        }
+        return metadata;
     }
 
     /**
