@@ -5041,6 +5041,9 @@ components:
                     nullable: true
                 isMine:
                     type: boolean
+                reactionKey:
+                    description: 'Bluesky のみ。viewer.like の at-uri (like レコード)。Misskey では未使用'
+                    type: string
 
         SnsTimelineAuthor:
             type: object
@@ -5096,6 +5099,9 @@ components:
                     type: integer
                 isRenotedByMe:
                     type: boolean
+                repostKey:
+                    description: 'Bluesky のみ。viewer.repost の at-uri (repost レコード)。Misskey では未使用'
+                    type: string
                 url:
                     description: 元の投稿を開くための URL
                     type: string

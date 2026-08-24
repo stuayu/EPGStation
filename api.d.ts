@@ -2615,6 +2615,8 @@ export interface SnsTimelineReaction {
     // カスタム絵文字の画像 URL。Unicode 絵文字や Bluesky の like では null
     url: string | null;
     isMine: boolean;
+    // Bluesky のみ。viewer.like の at-uri (like レコード)。Misskey では未使用
+    reactionKey?: string;
 }
 
 export interface SnsTimelineAuthor {
@@ -2639,6 +2641,8 @@ export interface SnsTimelineNote {
     reactions: SnsTimelineReaction[];
     renoteCount: number;
     isRenotedByMe: boolean;
+    // Bluesky のみ。viewer.repost の at-uri (repost レコード)。Misskey では未使用
+    repostKey?: string;
     // 元の投稿を開くための URL
     url: string | null;
 }

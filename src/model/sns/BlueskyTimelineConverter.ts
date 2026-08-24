@@ -83,10 +83,12 @@ export const convertBlueskyFeedViewPostToTimelineNote = (item: BlueskyFeedViewPo
                 count: post.likeCount ?? 0,
                 url: null,
                 isMine: typeof post.viewer?.like === 'string',
+                reactionKey: post.viewer?.like,
             },
         ],
         renoteCount: post.repostCount ?? 0,
         isRenotedByMe: typeof post.viewer?.repost === 'string',
+        repostKey: post.viewer?.repost,
         url: buildBlueskyPostUrl(post.uri),
     };
 };
