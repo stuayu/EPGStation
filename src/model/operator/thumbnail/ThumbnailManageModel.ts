@@ -531,7 +531,11 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
             child.once('error', reject);
             child.once('exit', code => {
                 clearTimeout(timer);
-                code === 0 ? resolve() : reject(new Error(`ThumbnailResizeExit:${code}`));
+                if (code === 0) {
+                    resolve();
+                } else {
+                    reject(new Error(`ThumbnailResizeExit:${code}`));
+                }
             });
         });
     }
