@@ -13,5 +13,7 @@ export default interface IThumbnailDB {
      * @return Promise<Thumbnail | null>
      */
     findByRecordedId(recordedId: apid.RecordedId): Promise<Thumbnail | null>;
+    findByRecordedIdAndVariant(recordedId: apid.RecordedId, variant: string): Promise<Thumbnail | null>;
+    replaceOnce(thumbnail: Thumbnail): Promise<apid.ThumbnailId>;
     findAll(): Promise<Thumbnail[]>;
 }

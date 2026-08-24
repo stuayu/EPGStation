@@ -87,7 +87,7 @@ function createModel(options) {
             recordedDB,
             {},
             videoUtil,
-            {},
+            { thumbnail: { add: async () => {} } },
             analyzeModel,
         ),
         updated: updated,

@@ -577,12 +577,12 @@ export default class IPCClient implements IIPCClient {
                     func: ThumbnailFunctions.fileCleanup,
                 });
             },
-            add: videoFileId => {
+            add: recordedId => {
                 return this.send({
                     model: ModelName.thumbnail,
                     func: ThumbnailFunctions.add,
                     args: {
-                        videoFileId: videoFileId,
+                        recordedId: recordedId,
                     },
                 });
             },

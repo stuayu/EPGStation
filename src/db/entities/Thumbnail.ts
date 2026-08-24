@@ -37,6 +37,15 @@ export default class Thumbnail extends BaseEntity {
     @Column()
     public recordedId!: number;
 
+    @Column({ type: 'integer', nullable: true })
+    public videoFileId: number | null = null;
+
+    @Column({ type: 'bigint', nullable: true })
+    public videoFileSize: number | null = null;
+
+    @Column({ type: 'bigint', nullable: true })
+    public videoFileAnalyzedAt: number | null = null;
+
     @ManyToOne(() => Recorded, recorded => recorded.thumbnails)
     @JoinTable({ name: 'recordedId' })
     public recorded?: Recorded;
