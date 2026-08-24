@@ -240,6 +240,48 @@ test('ThumbnailDB: insertOnce / findAll / findByRecordedId の正常系', async 
     await db.deleteRecordedId(1);
 });
 
+test('ThumbnailDB.replaceOnce は同一 recordedId + variant をtransaction内で置換する', async () => {
+    const calls = [];
+    const connection = {
+        createQueryRunner: () => ({
+            manager: {
+                createQueryBuilder: () => ({
+                    delete: () => ({
+                        from: () => ({
+                            where: criteria => ({
+                                execute: async () => calls.push(['delete', criteria]),
+                            }),
+                        }),
+                    }),
+                }),
+                insert: async (_entity, thumbnail) => {
+                    calls.push(['insert', thumbnail]);
+                    return { identifiers: [{ id: 8 }] };
+                },
+            },
+            startTransaction: async () => calls.push(['start']),
+            commitTransaction: async () => calls.push(['commit']),
+            rollbackTransaction: async () => calls.push(['rollback']),
+            release: async () => calls.push(['release']),
+        }),
+    };
+    const db = new ThumbnailDB(
+        { getConnection: async () => connection },
+        { run: job => job() },
+        makeLogger().loggerModel,
+    );
+    const thumbnail = { recordedId: 10, variant: 'poster', videoFileId: 20 };
+
+    assert.equal(await db.replaceOnce(thumbnail), 8);
+    assert.deepEqual(calls, [
+        ['start'],
+        ['delete', { recordedId: 10, variant: 'poster' }],
+        ['insert', thumbnail],
+        ['commit'],
+        ['release'],
+    ]);
+});
+
 test('ChannelAffiliationDB: findAll の正常系、replace は差分が無ければ書き込まない', async () => {
     const connection = {
         getRepository: () => ({
