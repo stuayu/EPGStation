@@ -28,6 +28,15 @@ const jsonResponse = (status, body) => ({
     json: () => body,
 });
 
+const emptyResponse = status => ({
+    status,
+    headers: new Map(),
+    text: '',
+    json: () => {
+        throw new SyntaxError('Unexpected end of JSON input');
+    },
+});
+
 test('getMe() は /api/i へ i (token) を渡し、ユーザー情報へ変換する', async () => {
     const http = makeHttpStub(url => {
         assert.equal(url, 'https://misskey.io/api/i');
@@ -37,6 +46,26 @@ test('getMe() は /api/i へ i (token) を渡し、ユーザー情報へ変換�
     const user = await client.getMe('misskey.io', 'token-1');
     assert.deepEqual(user, { id: 'u1', username: 'foo', name: 'Foo', avatarUrl: 'https://x/a.png', host: null });
     assert.equal(http.calls[0].body, JSON.stringify({ i: 'token-1' }));
+});
+
+test('createReaction() は204 No Contentを成功として扱う', async () => {
+    const http = makeHttpStub((url, body) => {
+        assert.equal(url, 'https://misskey.io/api/notes/reactions/create');
+        assert.deepEqual(JSON.parse(body), { i: 'token-1', noteId: 'note1', reaction: '👍' });
+        return emptyResponse(204);
+    });
+    const client = new MisskeyClient(http);
+    await client.createReaction('misskey.io', 'token-1', 'note1', '👍');
+});
+
+test('deleteReaction() は204 No Contentを成功として扱う', async () => {
+    const http = makeHttpStub((url, body) => {
+        assert.equal(url, 'https://misskey.io/api/notes/reactions/delete');
+        assert.deepEqual(JSON.parse(body), { i: 'token-1', noteId: 'note1' });
+        return emptyResponse(204);
+    });
+    const client = new MisskeyClient(http);
+    await client.deleteReaction('misskey.io', 'token-1', 'note1');
 });
 
 test('createNote() はチャンネル指定時に visibility を強制的に public にする', async () => {

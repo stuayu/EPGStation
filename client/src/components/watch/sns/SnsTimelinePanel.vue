@@ -123,11 +123,6 @@ class SnsTimelinePanel extends Vue {
     private pollTimer: number | null = null;
     // 処理中のノート id (連打によるレースを避ける)
     private pendingReactionNoteIds: Set<string> = new Set();
-    // このセッション内で自分が作成した Bluesky like の rkey (noteId -> reactionKey)。
-    // 取り消し (DELETE) には作成時のレスポンスの reactionKey が必須なため、これを持たない
-    // (= 別セッションで付けた) like はこの画面では取り消せない
-    private blueskyReactionKeys: Map<string, string> = new Map();
-
     public readonly typeItems: { title: string; value: apid.SnsTimelineType }[] = [
         { title: 'ホーム', value: 'home' },
         { title: 'ソーシャル', value: 'social' },
@@ -204,7 +199,6 @@ class SnsTimelinePanel extends Vue {
         this.hasMore = true;
         this.wsError = null;
         this.emojis = [];
-        this.blueskyReactionKeys.clear();
         this.pendingReactionNoteIds.clear();
 
         const account = this.selectedAccount;
@@ -270,7 +264,7 @@ class SnsTimelinePanel extends Vue {
     }
 
     /**
-     * Bluesky のポーリング。既存ノートに無い id だけを新着として先頭へ差し込む
+     * Bluesky のポーリング。新着を追加し、既存ノートのリアクション状態も同期する
      */
     private async pollBluesky(): Promise<void> {
         const account = this.selectedAccount;
@@ -280,8 +274,19 @@ class SnsTimelinePanel extends Vue {
             const timeline = await this.snsTimelineState.getTimeline(account.id, undefined, undefined, SnsTimelinePanel.PAGE_SIZE);
             this.wsError = null;
 
-            const existingIds = new Set(this.notes.map(n => n.id));
-            const newNotes = timeline.notes.filter(n => existingIds.has(n.id) === false);
+            const newNotes: apid.SnsTimelineNote[] = [];
+            for (const timelineNote of timeline.notes) {
+                const existing = this.notes.find(n => n.id === timelineNote.id);
+                if (typeof existing === 'undefined') {
+                    newNotes.push(timelineNote);
+                    continue;
+                }
+
+                existing.reactions = timelineNote.reactions;
+                existing.renoteCount = timelineNote.renoteCount;
+                existing.isRenotedByMe = timelineNote.isRenotedByMe;
+                existing.repostKey = timelineNote.repostKey;
+            }
             for (const n of newNotes.reverse()) {
                 this.notes.unshift(n);
             }
@@ -380,7 +385,7 @@ class SnsTimelinePanel extends Vue {
 
         const wasMine = reaction.isMine;
 
-        if (account.provider === 'bluesky' && wasMine === true && this.blueskyReactionKeys.has(note.id) === false) {
+        if (account.provider === 'bluesky' && wasMine === true && typeof reaction.reactionKey !== 'string') {
             this.snackbarState.open({ color: 'normal', text: 'このセッションより前に付けたリアクションはこの画面では取り消せません' });
 
             return;
@@ -394,19 +399,17 @@ class SnsTimelinePanel extends Vue {
             if (wasMine === true) {
                 const option: apid.SnsReactionOption = { accountId: account.id, noteId: note.id };
                 if (account.provider === 'bluesky') {
-                    option.reactionKey = this.blueskyReactionKeys.get(note.id);
+                    option.reactionKey = reaction.reactionKey;
                 } else {
                     option.reaction = reaction.name;
                 }
                 result = await this.snsTimelineState.removeReaction(option);
-                if (result.isSuccess === true) {
-                    this.blueskyReactionKeys.delete(note.id);
-                }
             } else {
                 const option: apid.SnsReactionOption = { accountId: account.id, noteId: note.id, reaction: reaction.name, cid: note.cid };
                 result = await this.snsTimelineState.addReaction(option);
-                if (result.isSuccess === true && account.provider === 'bluesky' && typeof result.reactionKey !== 'undefined') {
-                    this.blueskyReactionKeys.set(note.id, result.reactionKey);
+                if (result.isSuccess === true && account.provider === 'bluesky' && typeof result.reactionKey === 'string') {
+                    const updated = note.reactions.find(r => r.name === reaction.name);
+                    if (typeof updated !== 'undefined') updated.reactionKey = result.reactionKey;
                 }
             }
 
@@ -418,8 +421,9 @@ class SnsTimelinePanel extends Vue {
             console.error(err);
             this.applyReactionOptimistic(note, reaction.name, wasMine === true, reaction.url);
             this.snackbarState.open({ color: 'error', text: 'リアクションの操作に失敗しました' });
+        } finally {
+            this.pendingReactionNoteIds.delete(note.id);
         }
-        this.pendingReactionNoteIds.delete(note.id);
     }
 
     /**
@@ -439,11 +443,27 @@ class SnsTimelinePanel extends Vue {
         this.applyReactionOptimistic(note, reactionName, true);
 
         try {
-            const result = await this.snsTimelineState.addReaction({ accountId: account.id, noteId: note.id, reaction: reactionName });
+            let result: apid.SnsReactionResult;
+            if (previousMine !== null) {
+                result = await this.snsTimelineState.removeReaction({
+                    accountId: account.id,
+                    noteId: note.id,
+                    reaction: previousMine.name,
+                });
+                if (result.isSuccess === false) {
+                    this.applyReactionOptimistic(note, reactionName, false);
+                    this.applyReactionOptimistic(note, previousMine.name, true);
+                    this.snackbarState.open({ color: 'error', text: `リアクションの変更に失敗しました${typeof result.detail === 'string' ? ` (${result.detail})` : ''}` });
+                    return;
+                }
+            }
+
+            result = await this.snsTimelineState.addReaction({ accountId: account.id, noteId: note.id, reaction: reactionName });
             if (result.isSuccess === false) {
                 this.applyReactionOptimistic(note, reactionName, false);
                 if (previousMine !== null) {
-                    this.applyReactionOptimistic(note, previousMine.name, true);
+                    const restore = await this.snsTimelineState.addReaction({ accountId: account.id, noteId: note.id, reaction: previousMine.name });
+                    if (restore.isSuccess === true) this.applyReactionOptimistic(note, previousMine.name, true);
                 }
                 this.snackbarState.open({ color: 'error', text: `リアクションの追加に失敗しました${typeof result.detail === 'string' ? ` (${result.detail})` : ''}` });
             }
@@ -451,11 +471,17 @@ class SnsTimelinePanel extends Vue {
             console.error(err);
             this.applyReactionOptimistic(note, reactionName, false);
             if (previousMine !== null) {
-                this.applyReactionOptimistic(note, previousMine.name, true);
+                try {
+                    const restore = await this.snsTimelineState.addReaction({ accountId: account.id, noteId: note.id, reaction: previousMine.name });
+                    if (restore.isSuccess === true) this.applyReactionOptimistic(note, previousMine.name, true);
+                } catch (restoreErr) {
+                    console.error(restoreErr);
+                }
             }
             this.snackbarState.open({ color: 'error', text: 'リアクションの追加に失敗しました' });
+        } finally {
+            this.pendingReactionNoteIds.delete(note.id);
         }
-        this.pendingReactionNoteIds.delete(note.id);
     }
 
     /**

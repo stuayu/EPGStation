@@ -51,6 +51,7 @@ test('like は 1 件の reactions として詰められ、viewer.like の有無�
     assert.equal(liked.reactions[0].name, '❤');
     assert.equal(liked.reactions[0].count, 2);
     assert.equal(liked.reactions[0].isMine, true);
+    assert.equal(liked.reactions[0].reactionKey, 'at://x/app.bsky.feed.like/1');
 
     const notLiked = convertBlueskyFeedViewPostToTimelineNote({ post: basePost({ viewer: {} }) });
     assert.equal(notLiked.reactions[0].isMine, false);
@@ -60,6 +61,7 @@ test('renoteCount / isRenotedByMe は repostCount / viewer.repost から決ま�
     const reposted = convertBlueskyFeedViewPostToTimelineNote({ post: basePost({ viewer: { repost: 'at://x/app.bsky.feed.repost/1' } }) });
     assert.equal(reposted.renoteCount, 1);
     assert.equal(reposted.isRenotedByMe, true);
+    assert.equal(reposted.repostKey, 'at://x/app.bsky.feed.repost/1');
 });
 
 test('images embed から画像一覧を取り出す', () => {

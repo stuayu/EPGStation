@@ -262,11 +262,11 @@ export default class MisskeyClient implements IMisskeyClient {
     }
 
     public async createReaction(host: string, token: string, noteId: string, reaction: string): Promise<void> {
-        await this.post(host, '/api/notes/reactions/create', { i: token, noteId, reaction });
+        await this.postVoid(host, '/api/notes/reactions/create', { i: token, noteId, reaction });
     }
 
     public async deleteReaction(host: string, token: string, noteId: string): Promise<void> {
-        await this.post(host, '/api/notes/reactions/delete', { i: token, noteId });
+        await this.postVoid(host, '/api/notes/reactions/delete', { i: token, noteId });
     }
 
     public async renote(host: string, token: string, noteId: string): Promise<MisskeyCreateNoteResult> {
@@ -348,6 +348,22 @@ export default class MisskeyClient implements IMisskeyClient {
         this.throwIfError(response.status, parsed);
 
         return parsed;
+    }
+
+    /**
+     * JSON本文を返さないMisskey APIへPOSTする。
+     * @param host: string
+     * @param path: string
+     * @param body: Record<string, unknown>
+     * @return Promise<void>
+     */
+    private async postVoid(host: string, path: string, body: Record<string, unknown>): Promise<void> {
+        const response = await this.http.post(`https://${host}${path}`, JSON.stringify(body), {
+            headers: { 'content-type': 'application/json' },
+        });
+        const text = response.text;
+        const parsed: MisskeyErrorBody = text === '' ? {} : JSON.parse(text);
+        this.throwIfError(response.status, parsed);
     }
 
     private throwIfError(status: number, body: MisskeyErrorBody): void {
