@@ -59,9 +59,28 @@ export function isThumbnailGenerationCurrent(
     return (
         thumbnail !== null &&
         thumbnail.videoFileId === videoFile.id &&
-        Number(thumbnail.videoFileSize) === Number(videoFile.size ?? 0) &&
-        Number(thumbnail.videoFileAnalyzedAt ?? 0) === Number(videoFile.analyzedAt ?? 0)
+        areNullableNumbersEqual(thumbnail.videoFileSize, videoFile.size) &&
+        areNullableNumbersEqual(thumbnail.videoFileAnalyzedAt, videoFile.analyzedAt)
     );
+}
+
+/** poster と wide のいずれかが現行世代でなければ再生成する。 */
+export function shouldRegenerateThumbnail(
+    poster: Pick<Thumbnail, 'videoFileId' | 'videoFileSize' | 'videoFileAnalyzedAt'> | null,
+    wide: Pick<Thumbnail, 'videoFileId' | 'videoFileSize' | 'videoFileAnalyzedAt'> | null,
+    videoFile: ThumbnailVideoFile,
+): boolean {
+    return (
+        isThumbnailGenerationCurrent(poster, videoFile) === false ||
+        isThumbnailGenerationCurrent(wide, videoFile) === false
+    );
+}
+
+function areNullableNumbersEqual(left: number | null | undefined, right: number | null | undefined): boolean {
+    if (left === null || typeof left === 'undefined' || right === null || typeof right === 'undefined') {
+        return (left === null || typeof left === 'undefined') && (right === null || typeof right === 'undefined');
+    }
+    return Number(left) === Number(right);
 }
 
 @injectable()
@@ -171,7 +190,7 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
 
         const currentPoster = await this.thumbnailDB.findByRecordedIdAndVariant(recordedId, 'poster');
         const currentWide = await this.thumbnailDB.findByRecordedIdAndVariant(recordedId, 'wide');
-        if (this.isThumbnailCurrent(currentPoster, videoFile) && this.isThumbnailCurrent(currentWide, videoFile)) {
+        if (shouldRegenerateThumbnail(currentPoster, currentWide, videoFile) === false) {
             this.log.system.debug(`skip unchanged thumbnail: recordedId=${recordedId}, videoFileId=${videoFile.id}`);
             return;
         }
@@ -430,10 +449,6 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
                 }
             }
         });
-    }
-
-    private isThumbnailCurrent(thumbnail: Thumbnail | null, videoFile: ThumbnailVideoFile): boolean {
-        return isThumbnailGenerationCurrent(thumbnail, videoFile);
     }
 
     private async filterCandidatesForVideoFile(

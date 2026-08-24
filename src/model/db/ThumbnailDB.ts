@@ -78,25 +78,27 @@ export default class ThumbnailDB implements IThumbnailDB {
 
     /** 同一録画・variant のサムネイルを置換する。 */
     public async replaceOnce(thumbnail: Thumbnail): Promise<apid.ThumbnailId> {
-        const connection = await this.op.getConnection();
-        const queryRunner = connection.createQueryRunner();
-        await queryRunner.startTransaction();
-        try {
-            await queryRunner.manager
-                .createQueryBuilder()
-                .delete()
-                .from(Thumbnail)
-                .where({ recordedId: thumbnail.recordedId, variant: thumbnail.variant })
-                .execute();
-            const result = await queryRunner.manager.insert(Thumbnail, thumbnail);
-            await queryRunner.commitTransaction();
-            return result.identifiers[0].id;
-        } catch (err) {
-            await queryRunner.rollbackTransaction();
-            throw err;
-        } finally {
-            await queryRunner.release();
-        }
+        return await this.promieRetry.run(async () => {
+            const connection = await this.op.getConnection();
+            const queryRunner = connection.createQueryRunner();
+            await queryRunner.startTransaction();
+            try {
+                await queryRunner.manager
+                    .createQueryBuilder()
+                    .delete()
+                    .from(Thumbnail)
+                    .where({ recordedId: thumbnail.recordedId, variant: thumbnail.variant })
+                    .execute();
+                const result = await queryRunner.manager.insert(Thumbnail, thumbnail);
+                await queryRunner.commitTransaction();
+                return result.identifiers[0].id;
+            } catch (err) {
+                await queryRunner.rollbackTransaction();
+                throw err;
+            } finally {
+                await queryRunner.release();
+            }
+        });
     }
 
     /**
