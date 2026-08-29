@@ -12,6 +12,7 @@
     - [SQLite3 の設定を変更したい](#sqlite)
     - [利用する FFmpeg を明示的に指定したい](#ffmpeg)
     - [利用する FFprobe を明示的に指定したい](#ffprobe)
+    - [ffprobe が応答しないときの上限時間を変えたい](#ffprobetimeout)
     - [tsreadex で TS を前処理したい](#tsreadex)
     - [QSVEncC / NVEncC / VCEEncC のパスを指定したい](#qsvencc)
 - [stuayu フォーク独自の設定](#stuayu-フォーク独自の設定)
@@ -347,6 +348,22 @@ ffmpeg: '/usr/bin/ffmpeg'
 
 ```yaml
 ffprobe: '/usr/bin/ffprobe'
+```
+
+### ffprobeTimeout
+
+#### ffprobe 1 回あたりの上限時間 (秒)
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| number | 30           | no   |
+
+壊れた動画ファイルや応答しないストレージ (NAS / SMB の一時障害など) で ffprobe が終了しない場合、
+メタデータ・チャプター・音声トラックの取得が返らなくなり、一括解析もそこで止まる。
+この時間を超えた ffprobe は強制終了され、その 1 件だけが失敗として扱われる。
+
+```yaml
+ffprobeTimeout: 60
 ```
 
 ### tsreadex

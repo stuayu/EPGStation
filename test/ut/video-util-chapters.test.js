@@ -23,7 +23,7 @@ async function withStubbedFfprobe(responder, fn) {
     cp.execFile = (file, args, options, callback) => {
         // options を省略した呼び出しにも対応する
         const cb = typeof options === 'function' ? options : callback;
-        const result = responder(args);
+        const result = responder(args, typeof options === 'function' ? undefined : options);
         setImmediate(() => {
             if (result instanceof Error) {
                 cb(result, '', '');
@@ -159,4 +159,66 @@ test('ffprobe が失敗したら reject する', async () => {
             await assert.rejects(() => makeVideoUtil().getAudioTracks('/fake/video.mp4'));
         },
     );
+});
+
+test('すべての ffprobe 呼び出しに timeout と killSignal を設定する', async () => {
+    const optionsList = [];
+
+    await withStubbedFfprobe(
+        (args, options) => {
+            optionsList.push(options);
+            return JSON.stringify({ format: { duration: '1', size: '2', bit_rate: '3' }, streams: [], chapters: [] });
+        },
+        async () => {
+            const videoUtil = makeVideoUtil();
+            await videoUtil.getDetailedInfo('/fake/video.mp4');
+            await videoUtil.getChapters('/fake/video.mp4');
+            await videoUtil.getAudioTracks('/fake/video.mp4');
+            await videoUtil.getInfo('/fake/video.mp4');
+        },
+    );
+
+    assert.equal(optionsList.length, 4);
+    for (const options of optionsList) {
+        assert.equal(typeof options.timeout, 'number');
+        assert.ok(options.timeout > 0);
+        assert.equal(options.killSignal, 'SIGKILL');
+    }
+});
+
+test('終了しない ffprobe は timeout 後に reject しプロセスを残さない', { skip: process.platform === 'win32' }, async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'epgstation-ffprobe-'));
+    const ffprobePath = path.join(tempDir, 'ffprobe-hang.js');
+    const pidPath = path.join(tempDir, 'ffprobe.pid');
+    fs.writeFileSync(
+        ffprobePath,
+        `#!/usr/bin/env node\nrequire('node:fs').writeFileSync(${JSON.stringify(pidPath)}, String(process.pid));\nsetInterval(() => {}, 1000);\n`,
+    );
+    fs.chmodSync(ffprobePath, 0o755);
+
+    try {
+        const videoUtil = new VideoUtil(
+            { getConfig: () => ({ ffprobe: ffprobePath, recorded: [], ffprobeTimeout: 1 }) },
+            {},
+        );
+        await assert.rejects(() => videoUtil.getDetailedInfo('/fake/video.mp4'), error => {
+            assert.equal(error.name, 'FfprobeTimeoutError');
+            return true;
+        });
+        const pid = Number(fs.readFileSync(pidPath, 'utf8'));
+        assert.ok(Number.isInteger(pid) && pid > 0);
+        assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+    } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+});
+
+test('ffprobeTimeout は秒で受け取り、未指定・不正値は既定 30 秒、下限は 1 秒へ丸める', () => {
+    const build = config => new VideoUtil({ getConfig: () => ({ ffprobe: 'ffprobe', recorded: [], ...config }) }, {});
+
+    assert.equal(build({}).getFfprobeTimeoutMs(), 30000);
+    assert.equal(build({ ffprobeTimeout: 60 }).getFfprobeTimeoutMs(), 60000);
+    assert.equal(build({ ffprobeTimeout: 0.1 }).getFfprobeTimeoutMs(), 1000);
+    assert.equal(build({ ffprobeTimeout: -5 }).getFfprobeTimeoutMs(), 30000);
+    assert.equal(build({ ffprobeTimeout: 'x' }).getFfprobeTimeoutMs(), 30000);
 });

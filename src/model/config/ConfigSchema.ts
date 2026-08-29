@@ -667,6 +667,14 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         fields: [{ path: 'ffprobe', label: 'ffprobe のパス', type: 'string' }],
     },
     {
+        key: 'ffprobeTimeout',
+        label: 'ffprobe のタイムアウト (秒)',
+        hint: '壊れた動画や応答しないストレージで解析が止まらないようにする上限時間。既定 30 秒',
+        requiresRestart: false,
+        editable: 'gui',
+        fields: [{ path: 'ffprobeTimeout', label: 'ffprobe のタイムアウト (秒)', type: 'number' }],
+    },
+    {
         key: 'tsreadex',
         label: 'tsreadex のパス (省略時は PATH 上)',
         requiresRestart: false,

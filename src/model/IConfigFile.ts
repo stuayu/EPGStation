@@ -404,6 +404,7 @@ export default interface IConfigFile {
 
     ffmpeg: string;
     ffprobe: string;
+    ffprobeTimeout?: number; // ffprobe 1 回あたりの上限時間 (秒)。応答しないファイルで解析が止まらないようにする
     tsreadex?: string; // tsreadex の実行ファイルパス (省略時は PATH 上の tsreadex を使用)
     // rigaya 氏のハードウェアエンコーダの実行ファイルパス (省略時は PATH 上のコマンド名 (QSVEncC/NVEncC/VCEEncC) を使用)
     // encodePresets.hwaccel や encode[].cmd / stream.profiles の cmd 内で明示的に呼び出す場合に使用する
