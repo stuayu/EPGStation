@@ -19,6 +19,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 - **録画削除時の DB 失敗による実ファイル欠損を防止**: 録画・サムネイル・動画・視聴履歴・シリーズ関連・ドロップログの DB 削除を 1 トランザクションへ統合し、実ファイルは同一 filesystem 内へ一時退避してから DB を削除する。DB 失敗時は退避ファイルを元へ戻し、成功イベントを発行しない。退避後の unlink 失敗は削除イベントを発行してから `RecordedDeleteCleanupRequired` として要清掃扱いにする (DB 上は消えているため画面へ反映させる)。動画ファイルのパスが解決できない壊れたレコードは、実ファイルを残したまま DB 側の削除を続行して消せなくならないようにする。中断で残った退避ファイル (`.<ファイル名>.deleting-<recordedId>-<n>`) は録画ファイルのクリーンアップが掃除する。Issue #26。
 
+- **タグリリースへ可変な Mirakurun branch HEAD が混入する問題を修正 (Issue #27)**: `release.yml` と `build-validation.yml` が共有する Mirakurun revision を `.github/mirakurun-revision` の commit SHA へ固定し、CI 上の EPGStation 側の依存導入を `npm ci` へ変更した (`npm run all-install` はワンクリック更新でも使うため `npm i` のまま残し、CI だけが `npm ci` を直接呼ぶ。Mirakurun は lockfile を持たないため `npm install` のまま)。配布する EPGStation には EPGStation/Mirakurun の commit と両 lockfile の SHA-256 を `build-manifest.txt` として同梱する。
+
 ## 2026-08-24
 
 - **サムネイル後処理の失敗で生成キューが停止する問題を修正**: thumbnail command 終了後の resize・wide DB 登録・meta 保存で発生した例外を `create()` の reject へ伝播し、`queuedRecordedIds` の解除と後続ジョブの実行を保証する。失敗時は新世代の DB 行・画像を除去し、旧世代の DB 行を復元する。
