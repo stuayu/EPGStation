@@ -284,42 +284,37 @@ class ReservationManageModel implements IReservationManageModel {
     public async addEventRelay(programId: apid.ProgramId, parentReserve: Reserve): Promise<apid.ReserveId | null> {
         this.log.system.info(`add event relay. reserveId: ${parentReserve.id}, programId: ${programId}`);
 
-        // すでに録画されていないか検索する
-        const reservedPrograms = await this.reserveDB.findProgramId(programId);
-        if (reservedPrograms.length > 0) {
-            this.log.system.warn(`already reserved program. reserveId: ${parentReserve.id}, programId: ${programId}`);
-            return null;
-        }
-
         // 実行権取得
         const exeId = await this.executeManagementModel.getExecution(ReservationManageModel.ADD_RESERVE_PRIORITY);
-        const finalize = () => {
+        let newReserve: Reserve;
+        let insertedId: apid.ReserveId;
+        try {
+            // すでに録画されていないか検索する
+            const reservedPrograms = await this.reserveDB.findProgramId(programId);
+            if (reservedPrograms.length > 0) {
+                this.log.system.warn(
+                    `already reserved program. reserveId: ${parentReserve.id}, programId: ${programId}`,
+                );
+                return null;
+            }
+
+            // 予約情報を生成する
+            newReserve = await this.createEventRelayReserve(programId, parentReserve);
+
+            // 追加する予約情報が競合するかチェック
+            await this.checkSingleReserveConflict(newReserve);
+
+            // 追加
+            insertedId = await this.reserveDB.insertOnce(newReserve).catch(err => {
+                this.log.system.info(`add reservation error: reserveId: ${parentReserve.id}, programId: ${programId}`);
+                this.log.system.error(err);
+                throw new Error('ReservationManageModelAddReserveError');
+            });
+            newReserve.id = insertedId;
+        } finally {
+            // 予約処理の成功・失敗を問わず実行権を解放する
             this.executeManagementModel.unLockExecution(exeId);
-        };
-
-        // 予約情報を生成する
-        const newReserve = await this.createEventRelayReserve(programId, parentReserve).catch(err => {
-            finalize();
-            throw err;
-        });
-
-        // 追加する予約情報が競合するかチェック
-        await this.checkSingleReserveConflict(newReserve).catch(err => {
-            finalize();
-            throw err;
-        });
-
-        // 追加
-        const insertedId = await this.reserveDB.insertOnce(newReserve).catch(err => {
-            this.log.system.info(`add reservation error: reserveId: ${parentReserve.id}, programId: ${programId}`);
-            this.log.system.error(err);
-            finalize();
-            throw new Error('ReservationManageModelAddReserveError');
-        });
-        newReserve.id = insertedId;
-
-        // 完了したのでロック解除
-        finalize();
+        }
 
         this.log.system.info(
             `successful add event relay. reserveId: ${parentReserve.id}, newReserveId: ${newReserve.id} programId: ${programId}`,
