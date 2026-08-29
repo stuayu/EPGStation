@@ -24,6 +24,11 @@ jobs:
         with:
           path: EPGStation
 
+      - name: Read Mirakurun revision
+        id: mirakurunRevision
+        shell: bash
+        run: echo "revision=$(tr -d '\r\n' < EPGStation/.github/mirakurun-revision)" >> "$GITHUB_OUTPUT"
+
       - name: Use Node.js 24.x
         uses: actions/setup-node@v4
         with:
@@ -36,7 +41,7 @@ jobs:
       - name: Mirakurun Checkout
         uses: actions/checkout@v4
         with:
-          ref: stuayu-main
+          ref: ${{ steps.mirakurunRevision.outputs.revision }}
           repository: stuayu/Mirakurun
           path: Mirakurun
 
@@ -46,7 +51,9 @@ jobs:
 
       - name: Install all
         working-directory: EPGStation
-        run: npm run all-install
+        run: |
+          npm ci
+          cd client && npm ci
 
       - name: Build EPGStation
         working-directory: EPGStation
@@ -57,6 +64,10 @@ jobs:
         working-directory: EPGStation
         if: runner.os != 'Windows'
         run: npm run build
+
+      - name: Create build manifest
+        working-directory: EPGStation
+        run: node scripts/create-build-manifest.js --mirakurun-dir ../Mirakurun
 
       - name: Compress Project
         shell: bash

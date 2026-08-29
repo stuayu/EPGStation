@@ -25,7 +25,7 @@ jobs:
         node-version: 24.x
         cache: npm
     - name: Install server dependencies
-      run: npm install
+      run: npm ci
     - name: Run ${{ matrix.level }}
       run: npm run test:${{ matrix.level }}
 
@@ -42,7 +42,7 @@ jobs:
         node-version: 24.x
         cache: npm
     - name: Install server dependencies
-      run: npm install
+      run: npm ci
     - name: Run ITB
       run: npm run test:itb
 
@@ -62,6 +62,11 @@ jobs:
       with:
         path: EPGStation
 
+    - name: Read Mirakurun revision
+      id: mirakurunRevision
+      shell: bash
+      run: echo "revision=$(tr -d '\r\n' < EPGStation/.github/mirakurun-revision)" >> "$GITHUB_OUTPUT"
+
     - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
@@ -74,7 +79,7 @@ jobs:
     - name: Mirakurun Checkout
       uses: actions/checkout@v4
       with:
-        ref: stuayu-main
+        ref: ${{ steps.mirakurunRevision.outputs.revision }}
         repository: stuayu/Mirakurun
         path: Mirakurun
     
@@ -86,7 +91,8 @@ jobs:
     - name: Install all
       working-directory: EPGStation
       run: |
-        npm run all-install
+        npm ci
+        cd client && npm ci
       
     - name: Build EPGStation
       working-directory: EPGStation
@@ -98,6 +104,10 @@ jobs:
       if: runner.os == 'Linux' || runner.os == 'macOS'
       run: npm run build
 
+    - name: Create build manifest
+      working-directory: EPGStation
+      run: |
+        node scripts/create-build-manifest.js --mirakurun-dir ../Mirakurun
     - name: Compress Project
       run: |
         7z a -t7z -mx=9 -m0=lzma2 -md=256m -mfb=273 -ms=on EPGStation-${{ matrix.os }}-${{ matrix.node-version }}.7z ./EPGStation
