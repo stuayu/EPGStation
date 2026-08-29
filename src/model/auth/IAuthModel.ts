@@ -18,8 +18,8 @@ export default interface IAuthModel {
      */
     isEnabled(): boolean;
     /**
-     * ログインしていない利用者にも一般ユーザーと同じ操作を許可するか
-     * (システム管理者向けの操作は許可しない)
+     * ログインしていない利用者に読み取り系 API へのアクセスを許可するか
+     * (書き込み系 API とシステム管理者向けの操作は許可しない)
      * @return boolean
      */
     isAnonymousAllowed(): boolean;

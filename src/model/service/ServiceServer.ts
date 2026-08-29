@@ -15,7 +15,13 @@ import type { ServeStaticOptions } from 'serve-static';
 import urljoin from 'url-join';
 import FileUtil from '../../util/FileUtil';
 import IAuthModel from '../auth/IAuthModel';
-import { isAdminApiPath, isMediaApiPath, isPublicApiPath, toApiPath } from '../auth/AuthGuard';
+import {
+    isAdminApiPath,
+    isAnonymousApiRequestAllowed,
+    isMediaApiPath,
+    isPublicApiPath,
+    toApiPath,
+} from '../auth/AuthGuard';
 import { SESSION_COOKIE_NAME } from '../auth/SessionCookie';
 import { readCookie } from '../auth/SessionToken';
 import container from '../ModelContainer';
@@ -139,7 +145,7 @@ class ServiceServer implements IServiceServer {
 
                 // 外部プレイヤー・IPTV クライアントは Cookie を送れないため、
                 // 動画配信系に限りクエリのアクセストークンでも認証を通す
-                if (payload === null && apiPath !== null && isMediaApiPath(apiPath) === true) {
+                if (payload === null && apiPath !== null && isMediaApiPath(req.method, apiPath) === true) {
                     const query = new URL(req.url, 'http://localhost').searchParams.get('token');
                     payload = await authModel.verifyMediaToken(query);
                 }
@@ -147,9 +153,8 @@ class ServiceServer implements IServiceServer {
                 const isAdminRequest = apiPath !== null && isAdminApiPath(apiPath) === true;
 
                 if (payload === null) {
-                    // 未ログインでも一般ユーザーと同じ操作を許可する設定なら、
-                    // システム管理者向け以外はそのまま通す
-                    if (authModel.isAnonymousAllowed() === true && isAdminRequest === false) {
+                    // 匿名許可時も読み取り系メソッドだけを通し、書き込み系 API は認証を要求する
+                    if (isAnonymousApiRequestAllowed(req.method, authModel.isAnonymousAllowed(), isAdminRequest)) {
                         next();
 
                         return;

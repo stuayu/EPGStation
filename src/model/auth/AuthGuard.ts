@@ -36,20 +36,54 @@ export const isPublicApiPath = (pathname: string): boolean => {
     return PUBLIC_API_PREFIXES.some(prefix => target === prefix || target.startsWith(`${prefix}/`));
 };
 
-// 外部プレイヤー (VLC / Infuse) や IPTV クライアントが直接開く API。
-// これらは Cookie を送れないため、クエリのアクセストークンでも認証できるようにする
-const MEDIA_API_PREFIXES: readonly string[] = ['/videos', '/iptv', '/streams', '/recorded'];
+/**
+ * 匿名アクセスを許可できる安全な HTTP メソッドか
+ * @param method: string HTTP メソッド
+ * @return boolean
+ */
+export const isSafeAnonymousMethod = (method: string): boolean => {
+    return method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+};
+
+/**
+ * 認証 payload が無い API リクエストを通してよいか
+ * @param method: string HTTP メソッド
+ * @param anonymousAllowed: boolean 匿名アクセス設定
+ * @param isAdminRequest: boolean 管理者 API か
+ * @return boolean
+ */
+export const isAnonymousApiRequestAllowed = (
+    method: string,
+    anonymousAllowed: boolean,
+    isAdminRequest: boolean,
+): boolean => {
+    return anonymousAllowed === true && isSafeAnonymousMethod(method) && isAdminRequest === false;
+};
+
+// 外部プレイヤー (VLC / Infuse) や IPTV クライアントが直接開く再生 API。
+// Cookie を送れないため、クエリのアクセストークンでも認証できるようにする。
+// 管理 API と同じ配下にあるため、接頭辞ではなく再生用途のルートを個別に列挙する。
+const MEDIA_API_ROUTES: readonly RegExp[] = [
+    /^\/videos\/\d+\/?$/u,
+    /^\/videos\/\d+\/playlist\/?$/u,
+    /^\/iptv\/(?:channel\.m3u8|epg\.xml)\/?$/u,
+    /^\/streams\/live\/\d+\/(?:hls|mp4|webm|m2ts|m2tsll)\/?$/u,
+    /^\/streams\/live\/\d+\/m2ts\/playlist\/?$/u,
+    /^\/streams\/recorded\/\d+\/(?:hls|mp4|webm)\/?$/u,
+];
 
 /**
  * クエリのアクセストークンでも認証を通してよいパスか
+ * @param method: string HTTP メソッド
  * @param pathname: string API のベース (/api) を除いたパス
  * @return boolean
  */
-export const isMediaApiPath = (pathname: string): boolean => {
-    if (typeof pathname !== 'string' || pathname === '') return false;
+export const isMediaApiPath = (method: string, pathname: string): boolean => {
+    if (typeof method !== 'string' || typeof pathname !== 'string' || pathname === '') return false;
+    if (method !== 'GET' && method !== 'HEAD') return false;
     const normalized = pathname.split('?')[0].replace(/\/+$/u, '');
 
-    return MEDIA_API_PREFIXES.some(prefix => normalized === prefix || normalized.startsWith(`${prefix}/`));
+    return MEDIA_API_ROUTES.some(route => route.test(normalized));
 };
 
 /**
