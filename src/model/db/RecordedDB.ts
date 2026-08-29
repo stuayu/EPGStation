@@ -6,6 +6,8 @@ import RecordedSeriesLink from '../../db/entities/RecordedSeriesLink';
 import SeriesPendingMatch from '../../db/entities/SeriesPendingMatch';
 import Thumbnail from '../../db/entities/Thumbnail';
 import VideoFile from '../../db/entities/VideoFile';
+import WatchHistory from '../../db/entities/WatchHistory';
+import DropLogFile from '../../db/entities/DropLogFile';
 import { isFeatureEnabled } from '../FeatureFlags';
 import IConfiguration from '../IConfiguration';
 import RecordedKeywordSearch, { buildRecordedKeywordSearchPlan } from '../recorded/RecordedKeywordSearch';
@@ -265,6 +267,38 @@ export default class RecordedDB implements IRecordedDB {
         await this.promieRetry.run(() => {
             return queryBuilder.execute();
         });
+    }
+
+    /**
+     * 録画と関連データを 1 トランザクションで削除する
+     * @param recordedId: apid.RecordedId
+     * @param dropLogFileId: apid.DropLogFileId | null
+     * @return Promise<void>
+     */
+    public async deleteRecordedWithRelatedData(
+        recordedId: apid.RecordedId,
+        dropLogFileId: apid.DropLogFileId | null,
+    ): Promise<void> {
+        const connection = await this.op.getConnection();
+        const queryRunner = connection.createQueryRunner();
+        await queryRunner.startTransaction();
+        try {
+            await queryRunner.manager.delete(WatchHistory, { recordedId });
+            await queryRunner.manager.delete(Thumbnail, { recordedId });
+            await queryRunner.manager.delete(VideoFile, { recordedId });
+            await queryRunner.manager.delete(RecordedSeriesLink, { recordedId });
+            await queryRunner.manager.delete(SeriesPendingMatch, { recordedId });
+            await queryRunner.manager.delete(Recorded, { id: recordedId });
+            if (dropLogFileId !== null) {
+                await queryRunner.manager.delete(DropLogFile, { id: dropLogFileId });
+            }
+            await queryRunner.commitTransaction();
+        } catch (err) {
+            await queryRunner.rollbackTransaction();
+            throw err;
+        } finally {
+            await queryRunner.release();
+        }
     }
 
     /**

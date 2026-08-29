@@ -25,7 +25,7 @@ function buildModel({
     return new RecordedManageModel(
         logger,
         { getConfig: () => config },
-        recordedDB,
+        { deleteRecordedWithRelatedData: async () => {}, ...recordedDB },
         channelDB ?? { findId: async () => null, findNetworkIdAndServiceId: async () => null },
         videoFileDB,
         { deleteRecordedId: async () => {} },
