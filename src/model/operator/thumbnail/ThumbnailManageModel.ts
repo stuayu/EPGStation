@@ -344,13 +344,30 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
             thumbnail.score = selectedScore;
             thumbnail.width = this.parseWidth(this.getPosterSize());
             thumbnail.height = this.parseHeight(this.getPosterSize());
-            try {
-                await this.thumbnailDB.replaceOnce(thumbnail);
-                if (currentPoster !== null && currentPoster.filePath !== thumbnail.filePath) {
-                    await FileUtil.unlink(
-                        path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, currentPoster.filePath),
-                    ).catch(() => undefined);
+            let posterId: apid.ThumbnailId | null = null;
+            let wideId: apid.ThumbnailId | null = null;
+            const wideName = `${recordedId}-wide.${extension}`;
+            const widePath = path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, wideName);
+
+            const rollback = async (): Promise<void> => {
+                if (wideId !== null) await this.thumbnailDB.deleteOnce(wideId).catch(() => undefined);
+                if (posterId !== null) await this.thumbnailDB.deleteOnce(posterId).catch(() => undefined);
+
+                // ファイル名は録画 id から決まるため、再生成では旧世代と同じパスになる。
+                // 復元する旧世代の行が参照しているファイルは消さない (消すと画像の無い行が残る)
+                const restoredPaths = [currentPoster, currentWide]
+                    .filter((t): t is Thumbnail => t !== null)
+                    .map(t => path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, t.filePath));
+                for (const generatedPath of [widePath, output]) {
+                    if (restoredPaths.includes(generatedPath) === true) continue;
+                    await FileUtil.unlink(generatedPath).catch(() => undefined);
                 }
+
+                if (currentPoster !== null) await this.thumbnailDB.replaceOnce(currentPoster).catch(() => undefined);
+                if (currentWide !== null) await this.thumbnailDB.replaceOnce(currentWide).catch(() => undefined);
+            };
+            try {
+                posterId = await this.thumbnailDB.replaceOnce(thumbnail);
             } catch (err: any) {
                 this.log.system.error(`thumbnail add DB error: recordedId=${recordedId}, videoFileId=${videoFile.id}`);
                 this.log.system.error(err);
@@ -364,74 +381,76 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
             }
 
             // V1 wide は同じ選択フレームを互換的に保持。後続版で個別リサイズへ拡張。
-            const wideName = `${recordedId}-wide.${extension}`;
-            const widePath = path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, wideName);
-            await this.resize(output, widePath, 640);
-            const wide = new Thumbnail();
-            wide.filePath = wideName;
-            wide.recordedId = recordedId;
-            wide.videoFileId = videoFile.id;
-            wide.videoFileSize = videoFile.size ?? null;
-            wide.videoFileAnalyzedAt = videoFile.analyzedAt ?? null;
-            wide.variant = 'wide';
-            wide.format = format;
-            wide.timestamp = thumbnail.timestamp;
-            wide.score = thumbnail.score;
-            wide.width = 640;
-            wide.height =
-                thumbnail.height === null || thumbnail.width === null
-                    ? null
-                    : Math.round((thumbnail.height * 640) / thumbnail.width);
-            let wideReplaced = false;
-            await this.thumbnailDB
-                .replaceOnce(wide)
-                .then(() => {
-                    wideReplaced = true;
-                })
-                .catch(async () => {
-                    await FileUtil.unlink(widePath).catch(() => undefined);
-                    this.log.system.error(`wide thumbnail add DB error: ${videoFile.id}`);
-                });
-            if (wideReplaced && currentWide !== null && currentWide.filePath !== wide.filePath) {
-                await FileUtil.unlink(
-                    path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, currentWide.filePath),
-                ).catch(() => undefined);
+            try {
+                await this.resize(output, widePath, 640);
+                const wide = new Thumbnail();
+                wide.filePath = wideName;
+                wide.recordedId = recordedId;
+                wide.videoFileId = videoFile.id;
+                wide.videoFileSize = videoFile.size ?? null;
+                wide.videoFileAnalyzedAt = videoFile.analyzedAt ?? null;
+                wide.variant = 'wide';
+                wide.format = format;
+                wide.timestamp = thumbnail.timestamp;
+                wide.score = thumbnail.score;
+                wide.width = 640;
+                wide.height =
+                    thumbnail.height === null || thumbnail.width === null
+                        ? null
+                        : Math.round((thumbnail.height * 640) / thumbnail.width);
+                wideId = await this.thumbnailDB.replaceOnce(wide);
+
+                const metaDir = path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, 'meta');
+                await FileUtil.mkdir(metaDir);
+                await fs.promises.writeFile(
+                    path.join(metaDir, `${recordedId}.json`),
+                    JSON.stringify(
+                        {
+                            generator: 'v1.5',
+                            selectedTimestamp,
+                            score: selectedScore,
+                            features: selectedFeatures,
+                        },
+                        null,
+                        2,
+                    ),
+                    'utf8',
+                );
+
+                // 古い画像は新しい世代の後処理が全て成功してから削除する。
+                if (currentPoster !== null && currentPoster.filePath !== thumbnail.filePath) {
+                    await FileUtil.unlink(
+                        path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, currentPoster.filePath),
+                    ).catch(() => undefined);
+                }
+                if (currentWide !== null && currentWide.filePath !== wide.filePath) {
+                    await FileUtil.unlink(
+                        path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, currentWide.filePath),
+                    ).catch(() => undefined);
+                }
+
+                // event emit
+                this.thumbnailEvent.emitAdded(videoFile.id, recordedId);
+            } catch (err) {
+                await rollback();
+                throw err;
             }
-
-            const metaDir = path.join(this.config.thumbnailStorageRoot || this.config.thumbnail, 'meta');
-            await FileUtil.mkdir(metaDir);
-            await fs.promises.writeFile(
-                path.join(metaDir, `${recordedId}.json`),
-                JSON.stringify(
-                    {
-                        generator: 'v1.5',
-                        selectedTimestamp,
-                        score: selectedScore,
-                        features: selectedFeatures,
-                    },
-                    null,
-                    2,
-                ),
-                'utf8',
-            );
-
-            // event emit
-            this.thumbnailEvent.emitAdded(videoFile.id, recordedId);
 
             return true;
         };
 
-        return new Promise<void>(async (resolve: () => void, reject: (err: Error) => void) => {
-            child.on('exit', async code => {
+        return new Promise<void>((resolve: () => void, reject: (err: Error) => void) => {
+            const settle = (processing: Promise<boolean>): void => {
+                void processing
+                    .then(ok => (ok ? resolve() : reject(new Error('CreateThumbnailExitError'))))
+                    .catch(reject);
+            };
+            child.once('exit', code => {
                 clearTimeout(processTimer);
-                if ((await endProcessing(code)) === true) {
-                    resolve();
-                } else {
-                    reject(new Error('CreateThumbnailExitError'));
-                }
+                settle(endProcessing(code));
             });
 
-            child.on('error', err => {
+            child.once('error', err => {
                 clearTimeout(processTimer);
                 this.log.system.error(
                     `create thumbnail failed: recordedId=${recordedId}, videoFileId=${videoFile.id}, input=${videoFilePath}`,
@@ -442,11 +461,7 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
             // プロセスの即時終了対応
             if (ProcessUtil.isExited(child) === true) {
                 child.removeAllListeners();
-                if ((await endProcessing(child.exitCode)) === true) {
-                    resolve();
-                } else {
-                    reject(new Error('CreateThumbnailExitError'));
-                }
+                settle(endProcessing(child.exitCode));
             }
         });
     }
