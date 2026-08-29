@@ -21,6 +21,10 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 - **タグリリースへ可変な Mirakurun branch HEAD が混入する問題を修正 (Issue #27)**: `release.yml` と `build-validation.yml` が共有する Mirakurun revision を `.github/mirakurun-revision` の commit SHA へ固定し、CI 上の EPGStation 側の依存導入を `npm ci` へ変更した (`npm run all-install` はワンクリック更新でも使うため `npm i` のまま残し、CI だけが `npm ci` を直接呼ぶ。Mirakurun は lockfile を持たないため `npm install` のまま)。配布する EPGStation には EPGStation/Mirakurun の commit と両 lockfile の SHA-256 を `build-manifest.txt` として同梱する。
 
+- **匿名許可時に非adminの書き込み API まで実行できる問題を修正 (Issue #29)**: `auth.allowAnonymous` の設定値は維持しつつ、認証 payload が無い場合に通す HTTP メソッドを `GET` / `HEAD` / `OPTIONS` に限定した。録画削除などの `POST` / `PUT` / `PATCH` / `DELETE` は、admin API でなくても認証を要求する。media token は従来どおり再生用 `GET` / `HEAD` allowlist のみで認証し、セッション認証と admin API の保護も維持する。
+
+- **再生専用 media token が録画・動画管理 API を認証してしまう問題を修正 (Issue #28)**: `AuthGuard` の media token 判定を method + 再生用 API の明示 allowlist に変更し、`GET`/`HEAD` の動画・IPTV・ライブ/録画ストリームだけを許可する。`/recorded` 配下や動画・ストリームの管理操作は対象外とする。allowlist への追記漏れで外部プレイヤーが 401 にならないよう、`test/ut/auth.test.js` が `/videos`・`/streams`・`/iptv` 配下の実ルートと突き合わせる。
+
 ## 2026-08-24
 
 - **サムネイル後処理の失敗で生成キューが停止する問題を修正**: thumbnail command 終了後の resize・wide DB 登録・meta 保存で発生した例外を `create()` の reject へ伝播し、`queuedRecordedIds` の解除と後続ジョブの実行を保証する。失敗時は新世代の DB 行・画像を除去し、旧世代の DB 行を復元する。

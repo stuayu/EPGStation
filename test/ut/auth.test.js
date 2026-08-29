@@ -1,10 +1,19 @@
 'use strict';
 require('reflect-metadata');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 const { hashPassword, verifyPassword, assertValidPassword } = require('../../dist/model/auth/PasswordHash');
 const { createSessionToken, verifySessionToken, readCookie } = require('../../dist/model/auth/SessionToken');
-const { isAdminApiPath, isMediaApiPath, isPublicApiPath, toApiPath } = require('../../dist/model/auth/AuthGuard');
+const {
+    isAdminApiPath,
+    isAnonymousApiRequestAllowed,
+    isMediaApiPath,
+    isPublicApiPath,
+    isSafeAnonymousMethod,
+    toApiPath,
+} = require('../../dist/model/auth/AuthGuard');
 const AuthModel = require('../../dist/model/auth/AuthModel').default;
 
 test('password hashing is salted (the same password produces different hashes)', () => {
@@ -275,6 +284,26 @@ test('anonymous users must never reach the admin only endpoints', () => {
     }
 });
 
+test('anonymous access is read-only and admin APIs remain protected for every request method', () => {
+    for (const method of ['GET', 'HEAD', 'OPTIONS']) {
+        assert.equal(isSafeAnonymousMethod(method), true, method);
+    }
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+        assert.equal(isSafeAnonymousMethod(method), false, method);
+    }
+
+    for (const method of ['GET', 'HEAD', 'OPTIONS']) {
+        assert.equal(isAnonymousApiRequestAllowed(method, true, false), true, `${method} anonymous read`);
+        assert.equal(isAnonymousApiRequestAllowed(method, true, true), false, `${method} anonymous admin`);
+        assert.equal(isAnonymousApiRequestAllowed(method, false, false), false, `${method} anonymous disabled`);
+    }
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+        assert.equal(isAnonymousApiRequestAllowed(method, true, false), false, `${method} anonymous write`);
+        assert.equal(isAnonymousApiRequestAllowed(method, true, true), false, `${method} anonymous admin`);
+        assert.equal(isAnonymousApiRequestAllowed(method, false, false), false, `${method} anonymous disabled`);
+    }
+});
+
 test('media tokens let external players through without a cookie', async () => {
     const { model } = authFixture();
     const login = await model.setup('admin', 'password123');
@@ -299,14 +328,43 @@ test('media tokens are invalidated by a password change', async () => {
     assert.equal(await model.verifyMediaToken(mediaToken), null);
 });
 
-test('only the media endpoints accept a token in the query', () => {
+test('only playback GET and HEAD endpoints accept a media token in the query', () => {
     // 外部プレイヤー・IPTV クライアントは Cookie を送れない
-    for (const path of ['/videos/1', '/videos/1/playlist', '/iptv/channel.m3u8', '/streams/live/1/m2ts', '/recorded/1/thumbnail']) {
-        assert.equal(isMediaApiPath(path), true, path);
+    for (const method of ['GET', 'HEAD']) {
+        for (const path of [
+            '/videos/1',
+            '/videos/1/playlist',
+            '/iptv/channel.m3u8',
+            '/iptv/epg.xml',
+            '/streams/live/1/m2ts',
+            '/streams/live/1/m2ts/playlist',
+            '/streams/recorded/1/hls',
+        ]) {
+            assert.equal(isMediaApiPath(method, path), true, `${method} ${path}`);
+        }
     }
-    // 設定変更などをトークンで叩けてしまわないこと
-    for (const path of ['/settings/system', '/auth/users', '/reserves', '/rules', '/videosxyz']) {
-        assert.equal(isMediaApiPath(path), false, path);
+    // 破壊的操作・管理 API・再生以外の参照 API をトークンで叩けてしまわないこと
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+        for (const path of ['/recorded', '/recorded/1', '/videos/1', '/videos/analyze', '/streams/1', '/streams/1/keep']) {
+            assert.equal(isMediaApiPath(method, path), false, `${method} ${path}`);
+        }
+    }
+    for (const path of [
+        '/recorded',
+        '/recorded/1',
+        '/recorded/1/protect',
+        '/videos/analyze',
+        '/videos/1/metadata',
+        '/videos/1/playback-position',
+        '/streams/1',
+        '/streams/1/keep',
+        '/settings/system',
+        '/auth/users',
+        '/reserves',
+        '/rules',
+        '/videosxyz',
+    ]) {
+        assert.equal(isMediaApiPath('GET', path), false, `GET ${path}`);
     }
 });
 
@@ -433,4 +491,62 @@ test('the linked providers are visible in the user list', async () => {
     assert.deepEqual(users[0].providers, ['google']);
     // SSO だけのユーザーはパスワードを持たない
     assert.equal(users[0].hasPassword, false);
+});
+
+// 再生系 API を足したとき、media token の allowlist への追記漏れに気づけるようにする。
+// (漏れると外部プレイヤー・IPTV クライアントが 401 になる)
+test('media token の allowlist は /videos・/streams・/iptv 配下の実ルートを網羅する', () => {
+    const routeRoot = path.resolve(__dirname, '../../src/model/service/api');
+    const listRoutes = dir => {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+        return entries.flatMap(entry => {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory() === true) return listRoutes(full);
+
+            return entry.name.endsWith('.ts') ? [full] : [];
+        });
+    };
+
+    // ルートファイルのパスを URL パスへ直す ({param} は数値、拡張子付きファイル名はそのまま)
+    const toRoutePath = file =>
+        '/' +
+        path
+            .relative(routeRoot, file)
+            .split(path.sep)
+            .join('/')
+            .replace(/\.ts$/u, '')
+            .replace(/\{[^}]+\}/gu, '1');
+
+    // GET/HEAD を公開していて、外部プレイヤーが直接開く再生用ルート
+    const expectedMediaRoutes = [
+        '/videos/1',
+        '/videos/1/playlist',
+        '/iptv/channel.m3u8',
+        '/iptv/epg.xml',
+        '/streams/live/1/hls',
+        '/streams/live/1/mp4',
+        '/streams/live/1/webm',
+        '/streams/live/1/m2ts',
+        '/streams/live/1/m2tsll',
+        '/streams/live/1/m2ts/playlist',
+        '/streams/recorded/1/hls',
+        '/streams/recorded/1/mp4',
+        '/streams/recorded/1/webm',
+    ];
+
+    // 一覧に挙げたルートが実在すること (API 側の改名・削除に気づく)
+    const actualRoutes = new Set(
+        ['videos', 'streams', 'iptv'].flatMap(dir => listRoutes(path.join(routeRoot, dir))).map(toRoutePath),
+    );
+    for (const route of expectedMediaRoutes) {
+        assert.ok(actualRoutes.has(route), `${route} のルートファイルが見つからない`);
+        assert.equal(isMediaApiPath('GET', route), true, `${route} が media token の allowlist から漏れている`);
+    }
+
+    // 再生用以外は allowlist に入れない
+    for (const route of actualRoutes) {
+        if (expectedMediaRoutes.includes(route) === true) continue;
+        assert.equal(isMediaApiPath('GET', route), false, `${route} は media token で通してはいけない`);
+    }
 });
