@@ -43,7 +43,6 @@ class RecordedManageModel implements IRecordedManageModel {
     private recordedDB: IRecordedDB;
     private channelDB: IChannelDB;
     private videoFileDB: IVideoFileDB;
-    private thumbnailDB: IThumbnailDB;
     private dropLogFileDB: IDropLogFileDB;
     private recordedHistoryDB: IRecordedHistoryDB;
     private watchHistoryDB: IWatchHistoryDB;
@@ -60,7 +59,8 @@ class RecordedManageModel implements IRecordedManageModel {
         @inject('IRecordedDB') recordedDB: IRecordedDB,
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IVideoFileDB') videoFileDB: IVideoFileDB,
-        @inject('IThumbnailDB') thumbnailDB: IThumbnailDB,
+        // サムネイルの DB 削除は recordedDB のトランザクションに含めるが、DI の引数順は互換のため維持する
+        @inject('IThumbnailDB') _thumbnailDB: IThumbnailDB,
         @inject('IDropLogFileDB') dropLogFileDB: IDropLogFileDB,
         @inject('IRecordedHistoryDB') recordedHistoryDB: IRecordedHistoryDB,
         @inject('IWatchHistoryDB') watchHistoryDB: IWatchHistoryDB,
@@ -77,7 +77,6 @@ class RecordedManageModel implements IRecordedManageModel {
         this.recordedDB = recordedDB;
         this.channelDB = channelDB;
         this.videoFileDB = videoFileDB;
-        this.thumbnailDB = thumbnailDB;
         this.dropLogFileDB = dropLogFileDB;
         this.recordedHistoryDB = recordedHistoryDB;
         this.watchHistoryDB = watchHistoryDB;
@@ -125,97 +124,106 @@ class RecordedManageModel implements IRecordedManageModel {
         const hasThumbnails = typeof recorded.thumbnails !== 'undefined' && recorded.thumbnails.length > 0;
         const hasVideoFiles = typeof recorded.videoFiles !== 'undefined' && recorded.videoFiles.length > 0;
 
-        // サムネイル実ファイル削除
-        if (hasThumbnails === true && typeof recorded.thumbnails !== 'undefined') {
-            for (const t of recorded.thumbnails) {
-                const filePath = this.getThumbnailPath(t);
-                this.log.system.info(`delete: ${filePath}`);
-                await FileUtil.unlink(filePath).catch(err => {
-                    this.log.system.error(`failed to delete ${filePath}`);
-                    this.log.system.error(err);
-                });
+        const stagedFiles: Array<{ originalPath: string; stagedPath: string }> = [];
+        let stageIndex = 0;
+        const stageFile = async (filePath: string): Promise<void> => {
+            const stagedPath = RecordedManageModel.createStagedFilePath(filePath, recordedId, stageIndex++);
+            try {
+                await FileUtil.rename(filePath, stagedPath);
+                stagedFiles.push({ originalPath: filePath, stagedPath });
+            } catch (err: any) {
+                if (err?.code === 'ENOENT') return;
+                throw err;
             }
-        }
-
-        // 録画ファイル実ファイル削除 (register モードで取り込んだ外部ファイルは実ファイルを削除せず登録解除のみ行う)
-        if (hasVideoFiles === true && typeof recorded.videoFiles !== 'undefined') {
-            for (const v of recorded.videoFiles) {
-                if (v.isExternalFile === true) {
-                    this.log.system.info(`skip deleting external file (register mode): video file id ${v.id}`);
-                    continue;
-                }
-
-                let filePath: string | null;
+        };
+        const rollbackStagedFiles = async (): Promise<void> => {
+            for (const stagedFile of stagedFiles.reverse()) {
                 try {
-                    filePath = await this.videoUtil.getFullFilePathFromId(v.id);
-                    if (filePath === null) {
-                        throw new Error('GetVideoFilePathError');
-                    }
-                } catch (err: any) {
-                    this.log.system.error(`get video file path error: ${v.id}`);
-                    this.log.system.error(err);
-                    this.log.system.error(v);
-                    continue;
+                    await FileUtil.rename(stagedFile.stagedPath, stagedFile.originalPath);
+                } catch (rollbackErr) {
+                    this.log.system.error(`failed to rollback staged file: ${stagedFile.originalPath}`);
+                    this.log.system.error(rollbackErr);
                 }
-
-                this.log.system.info(`delete: ${filePath}`);
-                await FileUtil.unlink(filePath).catch(err => {
-                    this.log.system.error(`failed to delete ${filePath}`);
-                    this.log.system.error(err);
-                });
             }
+        };
+
+        // DB 失敗時に実ファイルを失わないよう、同一 filesystem 内へ退避
+        try {
+            if (hasThumbnails === true && typeof recorded.thumbnails !== 'undefined') {
+                for (const t of recorded.thumbnails) {
+                    const filePath = this.getThumbnailPath(t);
+                    this.log.system.info(`delete: ${filePath}`);
+                    await stageFile(filePath);
+                }
+            }
+
+            // 録画ファイル実ファイル削除 (register モードで取り込んだ外部ファイルは実ファイルを削除せず登録解除のみ行う)
+            if (hasVideoFiles === true && typeof recorded.videoFiles !== 'undefined') {
+                for (const v of recorded.videoFiles) {
+                    if (v.isExternalFile === true) {
+                        this.log.system.info(`skip deleting external file (register mode): video file id ${v.id}`);
+                        continue;
+                    }
+
+                    let filePath: string | null;
+                    try {
+                        filePath = await this.videoUtil.getFullFilePathFromId(v.id);
+                        if (filePath === null) {
+                            throw new Error('GetVideoFilePathError');
+                        }
+                    } catch (err: any) {
+                        // パスが解決できない録画は実ファイルを退避できないが、ここで中断すると
+                        // 壊れたレコードを二度と消せなくなる。DB 側の削除は続け、実ファイルは残す
+                        this.log.system.error(`get video file path error: ${v.id}`);
+                        this.log.system.error(err);
+                        this.log.system.error(v);
+                        continue;
+                    }
+
+                    this.log.system.info(`delete: ${filePath}`);
+                    await stageFile(filePath);
+                }
+            }
+
+            // ドロップログファイル削除処理
+            if (typeof recorded.dropLogFile !== 'undefined' && recorded.dropLogFile !== null) {
+                const filePath = this.getDropLogFilePath(recorded.dropLogFile);
+                this.log.system.info(`delete: ${filePath}`);
+                await stageFile(filePath);
+            }
+        } catch (err) {
+            await rollbackStagedFiles();
+            throw err;
         }
 
-        // ドロップログファイル削除処理
-        if (typeof recorded.dropLogFile !== 'undefined' && recorded.dropLogFile !== null) {
-            const filePath = this.getDropLogFilePath(recorded.dropLogFile);
-            this.log.system.info(`delete: ${filePath}`);
-            await FileUtil.unlink(filePath).catch(err => {
-                this.log.system.error(`failed to delete ${filePath}`);
-                this.log.system.error(err);
-            });
+        try {
+            await this.recordedDB.deleteRecordedWithRelatedData(recordedId, recorded.dropLogFile?.id ?? null);
+        } catch (err) {
+            await rollbackStagedFiles();
+            throw err;
         }
 
-        // DB からサムネイル情報削除
-        if (hasThumbnails === true) {
-            this.thumbnailDB.deleteRecordedId(recordedId).catch(err => {
-                this.log.system.error(`failed to delete thumbnail data: ${recordedId}`);
-                this.log.system.error(err);
-            });
-        }
-
-        // DB から録画ファイル情報削除
-        if (hasVideoFiles === true) {
-            await this.videoFileDB.deleteRecordedId(recordedId).catch(err => {
-                this.log.system.error(`failed to delete video data: ${recordedId}`);
-                this.log.system.error(err);
-            });
-        }
-
-        // DB から視聴履歴情報削除 (孤児レコード防止)
-        await this.watchHistoryDB.deleteByRecordedId(recordedId).catch(err => {
-            this.log.system.error(`failed to delete watch history data: ${recordedId}`);
-            this.log.system.error(err);
-        });
-
-        // DB から録画情報削除
-        await this.recordedDB.deleteOnce(recordedId).catch(err => {
-            this.log.system.error(`failed to delete recorded data: ${recordedId}`);
-            this.log.system.error(err);
-        });
-
-        // DB からドロップログファイル情報削除
-        if (typeof recorded.dropLogFile !== 'undefined' && recorded.dropLogFile !== null) {
-            await this.dropLogFileDB.deleteOnce(recorded.dropLogFile.id).catch(err => {
-                this.log.system.error(`failed to delete drop log data: ${recorded.dropLogFile?.id}`);
-                this.log.system.error(err);
-            });
+        // ここまで来れば DB 上の録画は消えている。退避ファイルの後始末に失敗しても
+        // 削除自体は成立しているので、イベントを発行してから要清掃として知らせる
+        let cleanupFailed = false;
+        for (const stagedFile of stagedFiles) {
+            try {
+                await FileUtil.unlink(stagedFile.stagedPath);
+            } catch (cleanupErr) {
+                this.log.system.error(`recorded delete cleanup required: ${stagedFile.stagedPath}`);
+                this.log.system.error(cleanupErr);
+                cleanupFailed = true;
+            }
         }
 
         this.log.system.info(`successful delete recorded: ${recordedId}`);
 
         // イベント発行
         this.recordedEvent.emitDeleteRecorded(recorded);
+
+        if (cleanupFailed === true) {
+            throw new Error('RecordedDeleteCleanupRequired');
+        }
     }
 
     /**
@@ -1136,7 +1144,43 @@ class RecordedManageModel implements IRecordedManageModel {
             }
         }
 
+        // 削除処理が中断されて残った退避ファイルを掃除する
+        await this.cleanupStagedFiles();
+
         this.log.system.info('start video files cleanup completed');
+    }
+
+    /**
+     * 録画削除が中断されて残った退避ファイル (.<ファイル名>.deleting-<recordedId>-<n>) を削除する
+     * @return Promise<void>
+     */
+    private async cleanupStagedFiles(): Promise<void> {
+        const dirs = new Set<string>([this.config.thumbnailStorageRoot || this.config.thumbnail, this.config.dropLog]);
+        for (const recordedDir of this.config.recorded) {
+            dirs.add(recordedDir.path);
+        }
+
+        for (const dir of dirs) {
+            let files: string[];
+            try {
+                files = await FileUtil.readDir(dir);
+            } catch (err: any) {
+                continue;
+            }
+
+            for (const file of files) {
+                if (RecordedManageModel.STAGED_FILE_PATTERN.test(file) === false) {
+                    continue;
+                }
+
+                const filePath = path.join(dir, file);
+                this.log.system.info(`delete staged file: ${filePath}`);
+                await FileUtil.unlink(filePath).catch(err => {
+                    this.log.system.error(`failed to delete staged file: ${filePath}`);
+                    this.log.system.error(err);
+                });
+            }
+        }
     }
 
     /**
@@ -1197,6 +1241,20 @@ class RecordedManageModel implements IRecordedManageModel {
 namespace RecordedManageModel {
     // getCleanupInfo で返す代表ファイルパスの最大件数
     export const CLEANUP_INFO_SAMPLE_COUNT = 5;
+
+    // 削除中に実ファイルを退避させるときの一時ファイル名
+    export const STAGED_FILE_PATTERN = /^\..+\.deleting-\d+-\d+$/;
+
+    /**
+     * 削除処理中に実ファイルを退避させる一時パスを生成する
+     * @param filePath: string 元のファイルパス
+     * @param recordedId: apid.RecordedId
+     * @param index: number 同一録画内の連番
+     * @return string 退避先パス
+     */
+    export const createStagedFilePath = (filePath: string, recordedId: apid.RecordedId, index: number): string => {
+        return path.join(path.dirname(filePath), `.${path.basename(filePath)}.deleting-${recordedId}-${index}`);
+    };
 }
 
 export default RecordedManageModel;

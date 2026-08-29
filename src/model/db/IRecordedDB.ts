@@ -76,6 +76,7 @@ export default interface IRecordedDB {
     removeRuleId(ruleId: apid.RuleId): Promise<void>;
     changeProtect(recordedId: apid.RecordedId, isProtect: boolean): Promise<void>;
     deleteOnce(recordedId: apid.RecordedId): Promise<void>;
+    deleteRecordedWithRelatedData(recordedId: apid.RecordedId, dropLogFileId: apid.DropLogFileId | null): Promise<void>;
     findId(recordedId: apid.RecordedId): Promise<Recorded | null>;
     findIds(
         recordedIds: apid.RecordedId[],

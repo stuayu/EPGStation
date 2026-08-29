@@ -55,6 +55,7 @@ function buildModel(options) {
         findId: async id => (id === 500 ? { id: 500, thumbnails: [] } : (opt.existingRecorded ?? null)),
         updateChannel: async () => {},
         removeRecording: async () => {},
+        deleteRecordedWithRelatedData: async () => {},
     };
     const videoFileDB = {
         insertOnce: async video => {
