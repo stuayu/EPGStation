@@ -17,6 +17,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 - **サムネイル後処理の失敗で生成キューが停止する問題を修正**: thumbnail command 終了後の resize・wide DB 登録・meta 保存で発生した例外を `create()` の reject へ伝播し、`queuedRecordedIds` の解除と後続ジョブの実行を保証する。失敗時は新世代の DB 行・画像を除去し、旧世代の DB 行を復元する。
 
+- **ffprobe の無期限ハングを防止**: `VideoUtil` のメタデータ・チャプター・音声トラック・旧動画情報取得を共通実行経路へ集約し、既定 30 秒 (設定 `ffprobeTimeout` で秒単位に変更可、下限 1 秒) の timeout と `SIGKILL` を設定。壊れた動画や応答しないストレージで 1 件が停止しても、API は reject し、一括解析は既存の失敗処理で後続ファイルへ進む。
+
 - **VideoFile差替え後のサムネイル世代管理を追加**: Thumbnailへ生成元の`videoFileId`・ファイルサイズ・解析時刻を保存し、録画ごとに`encoded`を優先して代表VideoFileを再選択する。録画完了、VideoFile追加・サイズ更新、メタデータ解析後に録画単位でキューへ入れ、生成前に同一世代ならスキップ、世代が変わればposter/wideを置換する。サムネイルAPIは`Last-Modified`を返す。実装は`ThumbnailManageModel.ts`、`ThumbnailDB.ts`、`EventSetter.ts`、`src/db/migrations/{sqlite,mysql}/1787541900000-AddThumbnailVideoFileGeneration.ts`。
 
 - **SNSリアクションのAPI仕様差異を修正**: Misskeyのリアクション作成・削除は204 No Contentを返すため、JSON本文なしのPOST処理を追加。別リアクションへの変更は削除後に追加する順序へ統一。Blueskyはタイムラインの`viewer.like`/`viewer.repost`のAT URIを共通型へ保持し、既存likeの解除に利用する。Blueskyの定期取得では既存ノートのリアクション数・自分のlike/repost状態も更新する。

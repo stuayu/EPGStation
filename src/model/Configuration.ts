@@ -436,6 +436,7 @@ namespace Configuration {
         isEnabledDropCheck: false,
         ffmpeg: '/usr/local/bin/ffmpeg',
         ffprobe: '/usr/local/bin/ffprobe',
+        ffprobeTimeout: 30,
         encodeProcessNum: 1,
         streamProcessNum: 4,
         concurrentEncodeNum: 0,

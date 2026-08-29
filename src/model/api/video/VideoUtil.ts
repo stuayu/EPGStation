@@ -14,6 +14,10 @@ import IVideoUtil, { VideoDetailInfo, VideoInfo } from './IVideoUtil';
 export default class VideoUtil implements IVideoUtil {
     // ffprobe の出力 (ストリーム情報込み) を受け取るバッファサイズ
     private static readonly FFPROBE_MAX_BUFFER = 10 * 1024 * 1024;
+    // 壊れたファイルや応答しないストレージで ffprobe が終了しない場合の上限 (config で変更可)
+    private static readonly DEFAULT_FFPROBE_TIMEOUT_MS = 30 * 1000;
+    private static readonly MIN_FFPROBE_TIMEOUT_MS = 1000;
+    private static readonly FFPROBE_KILL_SIGNAL = 'SIGKILL';
 
     private config: IConfigFile;
     private videoFileDB: IVideoFileDB;
@@ -71,41 +75,23 @@ export default class VideoUtil implements IVideoUtil {
      * @param filePath: string 解析対象のファイルパス
      * @return Promise<VideoDetailInfo>
      */
-    public getDetailedInfo(filePath: string): Promise<VideoDetailInfo> {
-        return new Promise<VideoDetailInfo>((resolve, reject) => {
-            execFile(
-                this.config.ffprobe,
-                ['-v', '0', '-show_format', '-show_streams', '-of', 'json', filePath],
-                { maxBuffer: VideoUtil.FFPROBE_MAX_BUFFER },
-                (err, stdout) => {
-                    if (err) {
-                        reject(err);
+    public async getDetailedInfo(filePath: string): Promise<VideoDetailInfo> {
+        const stdout = await this.execFfprobe(['-v', '0', '-show_format', '-show_streams', '-of', 'json', filePath]);
+        const result = <any>JSON.parse(stdout);
+        const streams: any[] = Array.isArray(result.streams) ? result.streams : [];
+        const video = streams.find(s => s.codec_type === 'video');
+        const audio = streams.find(s => s.codec_type === 'audio');
 
-                        return;
-                    }
-
-                    try {
-                        const result = <any>JSON.parse(stdout);
-                        const streams: any[] = Array.isArray(result.streams) ? result.streams : [];
-                        const video = streams.find(s => s.codec_type === 'video');
-                        const audio = streams.find(s => s.codec_type === 'audio');
-
-                        resolve({
-                            duration: VideoUtil.toNumber(result.format?.duration) ?? 0,
-                            size: VideoUtil.toNumber(result.format?.size) ?? 0,
-                            bitRate: VideoUtil.toNumber(result.format?.bit_rate) ?? 0,
-                            startTime: VideoUtil.toNumber(result.format?.start_time),
-                            videoCodec: typeof video?.codec_name === 'string' ? video.codec_name : null,
-                            audioCodec: typeof audio?.codec_name === 'string' ? audio.codec_name : null,
-                            width: VideoUtil.toNumber(video?.width),
-                            height: VideoUtil.toNumber(video?.height),
-                        });
-                    } catch (e: any) {
-                        reject(e);
-                    }
-                },
-            );
-        });
+        return {
+            duration: VideoUtil.toNumber(result.format?.duration) ?? 0,
+            size: VideoUtil.toNumber(result.format?.size) ?? 0,
+            bitRate: VideoUtil.toNumber(result.format?.bit_rate) ?? 0,
+            startTime: VideoUtil.toNumber(result.format?.start_time),
+            videoCodec: typeof video?.codec_name === 'string' ? video.codec_name : null,
+            audioCodec: typeof audio?.codec_name === 'string' ? audio.codec_name : null,
+            width: VideoUtil.toNumber(video?.width),
+            height: VideoUtil.toNumber(video?.height),
+        };
     }
 
     public async getChapters(filePath: string): Promise<apid.VideoChapter[]> {
@@ -124,51 +110,30 @@ export default class VideoUtil implements IVideoUtil {
      * @param filePath: string
      * @return Promise<{ chapters: apid.VideoChapter[]; duration?: number }>
      */
-    private getEmbeddedChapters(filePath: string): Promise<{ chapters: apid.VideoChapter[]; duration?: number }> {
-        return new Promise<{ chapters: apid.VideoChapter[]; duration?: number }>((resolve, reject) => {
-            execFile(
-                this.config.ffprobe,
-                ['-v', '0', '-show_chapters', '-show_format', '-of', 'json', filePath],
-                { maxBuffer: VideoUtil.FFPROBE_MAX_BUFFER },
-                (err, stdout) => {
-                    if (err) {
-                        reject(err);
+    private async getEmbeddedChapters(filePath: string): Promise<{ chapters: apid.VideoChapter[]; duration?: number }> {
+        const stdout = await this.execFfprobe(['-v', '0', '-show_chapters', '-show_format', '-of', 'json', filePath]);
+        const result = <any>JSON.parse(stdout);
+        const chapters: any[] = Array.isArray(result.chapters) ? result.chapters : [];
+        const duration = VideoUtil.toNumber(result.format?.duration);
 
-                        return;
-                    }
+        return {
+            chapters: chapters.map((chapter, index) => {
+                // start_time / end_time は秒の文字列。無い場合は time_base × start から計算する
+                const timeBase = VideoUtil.parseTimeBase(chapter.time_base);
+                const startAt =
+                    VideoUtil.toNumber(chapter.start_time) ?? (VideoUtil.toNumber(chapter.start) ?? 0) * timeBase;
+                const endAt = VideoUtil.toNumber(chapter.end_time) ?? (VideoUtil.toNumber(chapter.end) ?? 0) * timeBase;
+                const title = chapter.tags?.title;
 
-                    try {
-                        const result = <any>JSON.parse(stdout);
-                        const chapters: any[] = Array.isArray(result.chapters) ? result.chapters : [];
-                        const duration = VideoUtil.toNumber(result.format?.duration);
-
-                        resolve({
-                            chapters: chapters.map((chapter, index) => {
-                                // start_time / end_time は秒の文字列。無い場合は time_base × start から計算する
-                                const timeBase = VideoUtil.parseTimeBase(chapter.time_base);
-                                const startAt =
-                                    VideoUtil.toNumber(chapter.start_time) ??
-                                    (VideoUtil.toNumber(chapter.start) ?? 0) * timeBase;
-                                const endAt =
-                                    VideoUtil.toNumber(chapter.end_time) ??
-                                    (VideoUtil.toNumber(chapter.end) ?? 0) * timeBase;
-                                const title = chapter.tags?.title;
-
-                                return {
-                                    id: typeof chapter.id === 'number' ? chapter.id : index,
-                                    startAt: startAt,
-                                    endAt: endAt,
-                                    title: typeof title === 'string' && title.length > 0 ? title : null,
-                                };
-                            }),
-                            duration: duration === null ? undefined : duration,
-                        });
-                    } catch (e: any) {
-                        reject(e);
-                    }
-                },
-            );
-        });
+                return {
+                    id: typeof chapter.id === 'number' ? chapter.id : index,
+                    startAt: startAt,
+                    endAt: endAt,
+                    title: typeof title === 'string' && title.length > 0 ? title : null,
+                };
+            }),
+            duration: duration === null ? undefined : duration,
+        };
     }
 
     /**
@@ -190,30 +155,21 @@ export default class VideoUtil implements IVideoUtil {
         }
     }
 
-    public getAudioTracks(filePath: string): Promise<apid.VideoAudioTrack[]> {
-        return new Promise<apid.VideoAudioTrack[]>((resolve, reject) => {
-            execFile(
-                this.config.ffprobe,
-                ['-v', '0', '-show_streams', '-select_streams', 'a', '-of', 'json', filePath],
-                { maxBuffer: VideoUtil.FFPROBE_MAX_BUFFER },
-                (err, stdout) => {
-                    if (err) {
-                        reject(err);
+    public async getAudioTracks(filePath: string): Promise<apid.VideoAudioTrack[]> {
+        const stdout = await this.execFfprobe([
+            '-v',
+            '0',
+            '-show_streams',
+            '-select_streams',
+            'a',
+            '-of',
+            'json',
+            filePath,
+        ]);
+        const result = <any>JSON.parse(stdout);
+        const streams: any[] = Array.isArray(result.streams) ? result.streams : [];
 
-                        return;
-                    }
-
-                    try {
-                        const result = <any>JSON.parse(stdout);
-                        const streams: any[] = Array.isArray(result.streams) ? result.streams : [];
-
-                        resolve(VideoUtil.buildAudioTracks(streams));
-                    } catch (e: any) {
-                        reject(e);
-                    }
-                },
-            );
-        });
+        return VideoUtil.buildAudioTracks(streams);
     }
 
     /**
@@ -314,26 +270,68 @@ export default class VideoUtil implements IVideoUtil {
         return isNaN(parsed) === true ? null : parsed;
     }
 
-    public getInfo(filePath: string): Promise<VideoInfo> {
-        return new Promise<VideoInfo>((resolve, reject) => {
-            execFile(this.config.ffprobe, ['-v', '0', '-show_format', '-of', 'json', filePath], (err, stdout) => {
-                if (err) {
-                    reject(err);
+    public async getInfo(filePath: string): Promise<VideoInfo> {
+        const stdout = await this.execFfprobe(['-v', '0', '-show_format', '-of', 'json', filePath]);
+        const result = <any>JSON.parse(stdout);
 
-                    return;
-                }
+        return {
+            duration: parseFloat(result.format.duration),
+            size: parseInt(result.format.size, 10),
+            bitRate: parseFloat(result.format.bit_rate),
+        };
+    }
 
-                try {
-                    const result = <any>JSON.parse(stdout);
-                    resolve({
-                        duration: parseFloat(result.format.duration),
-                        size: parseInt(result.format.size, 10),
-                        bitRate: parseFloat(result.format.bit_rate),
-                    });
-                } catch (err: any) {
-                    reject(err);
-                }
-            });
+    /**
+     * ffprobe を有限時間で実行する
+     * @param args: string[] ffprobe の引数
+     * @return Promise<string> 標準出力
+     */
+    /**
+     * ffprobe の上限時間 (ms) を取得する
+     * 未指定・不正値は既定 30 秒へ、下限は 1 秒へ丸める
+     * @return number
+     */
+    private getFfprobeTimeoutMs(): number {
+        const configured = this.config.ffprobeTimeout;
+        if (typeof configured !== 'number' || Number.isFinite(configured) === false || configured <= 0) {
+            return VideoUtil.DEFAULT_FFPROBE_TIMEOUT_MS;
+        }
+
+        return Math.max(VideoUtil.MIN_FFPROBE_TIMEOUT_MS, Math.round(configured * 1000));
+    }
+
+    private execFfprobe(args: string[]): Promise<string> {
+        const timeout = this.getFfprobeTimeoutMs();
+
+        return new Promise<string>((resolve, reject) => {
+            execFile(
+                this.config.ffprobe,
+                args,
+                {
+                    maxBuffer: VideoUtil.FFPROBE_MAX_BUFFER,
+                    timeout: timeout,
+                    killSignal: VideoUtil.FFPROBE_KILL_SIGNAL,
+                },
+                (err, stdout) => {
+                    if (err) {
+                        if (err.killed === true || err.code === 'ETIMEDOUT') {
+                            const timeoutError = new Error(
+                                `ffprobe timed out after ${timeout} ms`,
+                            );
+                            timeoutError.name = 'FfprobeTimeoutError';
+                            reject(timeoutError);
+
+                            return;
+                        }
+
+                        reject(err);
+
+                        return;
+                    }
+
+                    resolve(stdout);
+                },
+            );
         });
     }
 }
