@@ -29,6 +29,129 @@ function createModel(storageRoot, recorded, deletedIds, queue = { add: () => {} 
     );
 }
 
+async function createFailureThenQueueProgresses() {
+    const storageRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'epgstation-thumbnail-failure-'));
+    const command = path.join(storageRoot, 'thumbnail-command.js');
+    try {
+        await fs.writeFile(command, "require('node:fs').writeFileSync(process.argv[2], 'poster');\n");
+        const records = new Map([
+            [1, { id: 1, videoFiles: [{ id: 101, type: 'ts', duration: 60 }] }],
+            [2, { id: 2, videoFiles: [{ id: 102, type: 'ts', duration: 60 }] }],
+        ]);
+        const jobs = [];
+        const deletedIds = [];
+        const replaced = [];
+        const model = createModel(
+            storageRoot,
+            null,
+            deletedIds,
+            { add: job => jobs.push(job) },
+            { getFullFilePathFromId: async id => path.join(storageRoot, `${id}.ts`) },
+        );
+        model.config.thumbnailCmd = `${process.execPath} ${command} %OUTPUT%`;
+        model.config.ffmpeg = process.execPath;
+        model.config.thumbnailSize = '16x9';
+        model.recordedDB.findId = async id => records.get(id) ?? null;
+        model.thumbnailDB.replaceOnce = async thumbnail => {
+            replaced.push({ id: thumbnail.recordedId, variant: thumbnail.variant });
+            return replaced.length;
+        };
+        model.thumbnailDB.deleteOnce = async id => deletedIds.push(id);
+        model.resize = async (_input, output, width) => {
+            if (width === 640 && output.includes(`${path.sep}1-wide.`)) throw new Error('resize failed');
+        };
+
+        model.add(1);
+        model.add(2);
+        await jobs[0]();
+        assert.deepEqual(deletedIds, [1]);
+        await jobs[1]();
+        assert.deepEqual(replaced, [
+            { id: 1, variant: 'poster' },
+            { id: 2, variant: 'poster' },
+            { id: 2, variant: 'wide' },
+        ]);
+        model.add(1);
+        assert.equal(jobs.length, 3);
+    } finally {
+        await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+}
+
+async function metaFailureRejectsAndRollsBack() {
+    const storageRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'epgstation-thumbnail-meta-failure-'));
+    const command = path.join(storageRoot, 'thumbnail-command.js');
+    try {
+        await fs.writeFile(command, "require('node:fs').writeFileSync(process.argv[2], 'poster');\n");
+        await fs.writeFile(path.join(storageRoot, 'meta'), 'not a directory');
+        const deletedIds = [];
+        const model = createModel(
+            storageRoot,
+            { id: 1, videoFiles: [{ id: 101, type: 'ts', duration: 60 }] },
+            deletedIds,
+            {},
+            { getFullFilePathFromId: async () => path.join(storageRoot, '101.ts') },
+        );
+        model.config.thumbnailCmd = `${process.execPath} ${command} %OUTPUT%`;
+        model.config.ffmpeg = process.execPath;
+        model.config.thumbnailSize = '16x9';
+        model.thumbnailDB.replaceOnce = async thumbnail => (thumbnail.variant === 'poster' ? 11 : 12);
+        model.thumbnailDB.deleteOnce = async id => deletedIds.push(id);
+        model.resize = async () => {};
+
+        await assert.rejects(model.create(1), /EEXIST|ENOTDIR/);
+        assert.deepEqual(deletedIds, [12, 11]);
+        await assert.rejects(fs.stat(path.join(storageRoot, '1-poster.jpg')), { code: 'ENOENT' });
+    } finally {
+        await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+}
+
+async function rollbackKeepsRestoredThumbnailFile() {
+    const storageRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'epgstation-thumbnail-rollback-'));
+    const command = path.join(storageRoot, 'thumbnail-command.js');
+    try {
+        await fs.writeFile(command, "require('node:fs').writeFileSync(process.argv[2], 'poster');\n");
+        await fs.writeFile(path.join(storageRoot, 'meta'), 'not a directory');
+        const deletedIds = [];
+        const restored = [];
+        // 旧世代は再生成後と同じファイル名 (録画 id 由来) を指す
+        const currentPoster = { id: 21, recordedId: 1, variant: 'poster', filePath: '1-poster.jpg' };
+        const model = createModel(
+            storageRoot,
+            { id: 1, videoFiles: [{ id: 101, type: 'ts', duration: 60 }] },
+            deletedIds,
+            {},
+            { getFullFilePathFromId: async () => path.join(storageRoot, '101.ts') },
+        );
+        model.config.thumbnailCmd = `${process.execPath} ${command} %OUTPUT%`;
+        model.config.ffmpeg = process.execPath;
+        model.config.thumbnailSize = '16x9';
+        model.thumbnailDB.findByRecordedIdAndVariant = async (_recordedId, variant) =>
+            variant === 'poster' ? currentPoster : null;
+        model.thumbnailDB.replaceOnce = async thumbnail => {
+            if (thumbnail === currentPoster) {
+                restored.push(thumbnail.id);
+
+                return thumbnail.id;
+            }
+
+            return thumbnail.variant === 'poster' ? 11 : 12;
+        };
+        model.thumbnailDB.deleteOnce = async id => deletedIds.push(id);
+        model.resize = async () => {};
+
+        await assert.rejects(model.create(1), /EEXIST|ENOTDIR/);
+        assert.deepEqual(deletedIds, [12, 11]);
+        assert.deepEqual(restored, [21]);
+        // 復元した行が指すファイルは残す (消すと画像の無い行になる)
+        const stat = await fs.stat(path.join(storageRoot, '1-poster.jpg'));
+        assert.ok(stat.isFile());
+    } finally {
+        await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+}
+
 async function replaceRecorded() {
     const storageRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'epgstation-thumbnail-'));
     try {
@@ -207,6 +330,9 @@ const scenarios = {
     filenameAndSizeHelpers,
     duplicateQueue,
     failedQueueCanRetry,
+    createFailureThenQueueProgresses,
+    metaFailureRejectsAndRollsBack,
+    rollbackKeepsRestoredThumbnailFile,
 };
 const scenario = scenarios[process.argv[2]];
 if (scenario === undefined) {

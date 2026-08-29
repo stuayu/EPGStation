@@ -52,3 +52,15 @@ test('同じ動画の待機中・実行中の重複追加は1件にまとめ、�
 test('サムネイル生成失敗後も同じ動画を再追加できる', () => {
     runScenario('failedQueueCanRetry');
 });
+
+test('後処理のresize失敗でキューを停止させず後続ジョブを実行する', () => {
+    runScenario('createFailureThenQueueProgresses');
+});
+
+test('meta保存失敗時にcreateをrejectし新規DB行と画像をロールバックする', () => {
+    runScenario('metaFailureRejectsAndRollsBack');
+});
+
+test('ロールバックしても復元した旧世代の画像ファイルは残す', () => {
+    runScenario('rollbackKeepsRestoredThumbnailFile');
+});
