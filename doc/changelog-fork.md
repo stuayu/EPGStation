@@ -13,6 +13,10 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
+## 2026-08-29
+
+- **イベントリレー予約の並行処理で同一番組が二重予約される問題を修正**: `ReservationManageModel.addEventRelay()` の `programId` 重複確認を予約追加の実行権取得後へ移動し、確認・予約生成・競合確認・INSERTを同じロック内で直列化した。例外時も `try/finally` で実行権を解放する。Issue #25。
+
 ## 2026-08-24
 
 - **サムネイル後処理の失敗で生成キューが停止する問題を修正**: thumbnail command 終了後の resize・wide DB 登録・meta 保存で発生した例外を `create()` の reject へ伝播し、`queuedRecordedIds` の解除と後続ジョブの実行を保証する。失敗時は新世代の DB 行・画像を除去し、旧世代の DB 行を復元する。
