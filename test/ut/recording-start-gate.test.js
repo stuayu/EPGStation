@@ -375,7 +375,8 @@ test('放送時間未定 (0xFFFFFF) は durationSec が null になる', () => {
     assert.equal(events[0].durationSec, null);
 });
 
-test('EIT[p/f] following のセクションを解析できる', () => {
+// EIT[p/f] は 1 section 1 event で送られ、present / following は section_number で分かれる
+test('section_number=1 の event は following として解析する', () => {
     const parser = new EitPresentParser();
     const events = parser.write(buildEitPacket(1024, 4661, RESERVE_START, 1800, 1));
 

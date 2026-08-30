@@ -2,6 +2,7 @@ import * as apid from '../../../api';
 import * as mapid from '../../../node_modules/mirakurun/api';
 import Program from '../../db/entities/Program';
 import IChannelTypeIndex from './IChannelTypeHash';
+import { EitOnAirRecord } from '../api/schedule/EitOnAirResolver';
 
 export interface ProgramWithOverlap extends Program {
     overlap: boolean;
@@ -75,4 +76,5 @@ export default interface IProgramDB {
     findAll(): Promise<Program[]>;
     findSchedule(option: FindScheduleOption | FindScheduleIdOption): Promise<Program[]>;
     findBroadcasting(option: apid.BroadcastingScheduleOption): Promise<Program[]>;
+    applyEitProgram(channelId: apid.ChannelId, event: EitOnAirRecord): Promise<Program | null>;
 }

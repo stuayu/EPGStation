@@ -10,12 +10,23 @@ export interface EitPresentEvent {
     startAt: number | null;
     // 番組長 (秒)。**放送時間未定 (ARIB の 0xFFFFFF) の場合は null** = 延長の可能性あり
     durationSec: number | null;
-    // section_number = 1 は EIT[p/f] following。未指定は既存の present テスト互換用。
-    isFollowing?: boolean;
+    // EIT event の running_status (0=undefined, 1=not running, 2=starts soon,
+    // 3=pausing, 4=running)。
+    runningStatus: number;
+    // EIT section 内の時系列で 2 件目が following。
+    isFollowing: boolean;
+    transportStreamId: number;
+    originalNetworkId: number;
+}
+
+export interface EitPresentParserOptions {
+    serviceId?: number;
+    transportStreamId?: number;
+    originalNetworkId?: number;
 }
 
 /**
- * 録画中の TS から EIT[p/f] (PID 0x12 / table_id 0x4E / section 0, 1) を取り出すパーサ。
+ * 録画中の TS から EIT[p/f] (PID 0x12 / table_id 0x4E) を取り出すパーサ。
  *
  * 「予約した番組が本当に始まったか」を録画側で判断するために使う。
  * 時刻指定予約 (Mirakurun のチャンネルストリーム) は予定時刻になった瞬間からデータが流れるため、
@@ -36,9 +47,15 @@ export default class EitPresentParser {
     // 放送時間未定を表す値
     private static readonly UNDEFINED_DURATION = 0xffffff;
 
+    private options: EitPresentParserOptions;
+
     private remaining: Buffer = Buffer.alloc(0);
     private sectionBuffer: Buffer = Buffer.alloc(0);
     private sectionLength = 0;
+
+    public constructor(options: EitPresentParserOptions = {}) {
+        this.options = options;
+    }
 
     /**
      * TS のチャンクを流し込み、解析できた present / following の番組情報を返す
@@ -171,8 +188,7 @@ export default class EitPresentParser {
             const section = this.sectionBuffer;
             this.resetSection();
             if (section[0] !== EitPresentParser.TABLE_ID_EIT_PF_ACTUAL) continue;
-            const event = EitPresentParser.parseSection(section);
-            if (event !== null) result.push(event);
+            result.push(...EitPresentParser.parseSection(section, this.options));
         }
         return result;
     }
@@ -183,43 +199,77 @@ export default class EitPresentParser {
     }
 
     /**
-     * EIT セクションから present の番組を取り出す
+     * EIT セクションから時系列順の present / following を取り出す
      * @param section: Buffer
-     * @return EitPresentEvent | null present (section_number 0) 以外は null
+     * @return EitPresentEvent[] section 内の present / following
      */
-    private static parseSection(section: Buffer): EitPresentEvent | null {
+    private static parseSection(section: Buffer, options: EitPresentParserOptions): EitPresentEvent[] {
         // table_id(1) section_length(2) service_id(2) version(1) section_number(1)
         // last_section_number(1) transport_stream_id(2) original_network_id(2)
         // segment_last_section_number(1) last_table_id(1) = 14 byte
-        if (section.length < 14 + 12) {
-            return null;
+        if (section.length < 14 + 12 + 4) {
+            return [];
         }
 
         // EIT の section は current_next_indicator=1 の現行情報だけを採用し、
         // CRC-32 が正しいものだけを録画開始判定へ渡す。
-        if ((section[5] & 0x01) === 0 || aribts.TsCrc32.calc(section) !== 0) {
-            return null;
-        }
-
-        const sectionNumber = section[6];
-        if (sectionNumber !== 0 && sectionNumber !== 1) {
-            return null;
+        if ((section[1] & 0x80) === 0 || (section[5] & 0x01) === 0 || aribts.TsCrc32.calc(section) !== 0) {
+            return [];
         }
 
         const serviceId = section.readUInt16BE(3);
-        const event = section.subarray(14);
-        const eventId = event.readUInt16BE(0);
-        const startAt = EitPresentParser.decodeJstDate(event.subarray(2, 7));
-        const duration = (event[7] << 16) | (event[8] << 8) | event[9];
+        const transportStreamId = section.readUInt16BE(8);
+        const originalNetworkId = section.readUInt16BE(10);
+        if (
+            (options.serviceId !== undefined && options.serviceId !== serviceId) ||
+            (options.transportStreamId !== undefined && options.transportStreamId !== transportStreamId) ||
+            (options.originalNetworkId !== undefined && options.originalNetworkId !== originalNetworkId)
+        ) {
+            return [];
+        }
 
-        return {
-            serviceId: serviceId,
-            eventId: eventId,
-            startAt: startAt,
-            durationSec:
-                duration === EitPresentParser.UNDEFINED_DURATION ? null : EitPresentParser.decodeBcdDuration(event, 7),
-            isFollowing: sectionNumber === 1,
-        };
+        // EIT[p/f] は present を section_number = 0、following を section_number = 1 で送る
+        // (1 セクションに 1 イベント)。NVOD 参照サービスだけは 1 セクションに複数イベントが載るため、
+        // その場合に限り section 内の 2 件目以降を following として扱う
+        const sectionNumber = section[6];
+        if (sectionNumber > 1) {
+            return [];
+        }
+
+        const result: EitPresentEvent[] = [];
+        const eventEnd = section.length - 4;
+        let offset = 14;
+        let eventIndex = 0;
+        while (offset < eventEnd) {
+            if (offset + 12 > eventEnd) return [];
+            const eventId = section.readUInt16BE(offset);
+            const startAt = EitPresentParser.decodeJstDate(section.subarray(offset + 2, offset + 7));
+            const duration = (section[offset + 7] << 16) | (section[offset + 8] << 8) | section[offset + 9];
+            const runningStatus = section[offset + 10] >> 5;
+            const descriptorsLength = ((section[offset + 10] & 0x0f) << 8) | section[offset + 11];
+            offset += 12;
+            if (offset + descriptorsLength > eventEnd || runningStatus > 4) return [];
+            const durationSec =
+                duration === EitPresentParser.UNDEFINED_DURATION
+                    ? null
+                    : EitPresentParser.decodeBcdDuration(section, offset - 5);
+            if (durationSec === undefined) return [];
+            if (eventIndex < 2) {
+                result.push({
+                    serviceId,
+                    eventId,
+                    startAt,
+                    durationSec,
+                    runningStatus,
+                    isFollowing: sectionNumber === 1 || eventIndex === 1,
+                    transportStreamId,
+                    originalNetworkId,
+                });
+            }
+            eventIndex++;
+            offset += descriptorsLength;
+        }
+        return result;
     }
 
     /**
@@ -236,9 +286,19 @@ export default class EitPresentParser {
         }
 
         const mjd = (bytes[0] << 8) | bytes[1];
-        const hour = (bytes[2] >> 4) * 10 + (bytes[2] & 0x0f);
-        const minute = (bytes[3] >> 4) * 10 + (bytes[3] & 0x0f);
-        const second = (bytes[4] >> 4) * 10 + (bytes[4] & 0x0f);
+        const hour = EitPresentParser.decodeBcd(bytes[2]);
+        const minute = EitPresentParser.decodeBcd(bytes[3]);
+        const second = EitPresentParser.decodeBcd(bytes[4]);
+        if (
+            hour === undefined ||
+            minute === undefined ||
+            second === undefined ||
+            hour > 23 ||
+            minute > 59 ||
+            second > 59
+        ) {
+            return null;
+        }
 
         // MJD の起点 (1858-11-17) からの日数を UNIX 時刻へ。時刻は JST なので UTC へ戻す
         const days = mjd - 40587;
@@ -253,11 +313,20 @@ export default class EitPresentParser {
      * @param offset: number
      * @return number
      */
-    private static decodeBcdDuration(bytes: Buffer, offset: number): number {
-        const hour = (bytes[offset] >> 4) * 10 + (bytes[offset] & 0x0f);
-        const minute = (bytes[offset + 1] >> 4) * 10 + (bytes[offset + 1] & 0x0f);
-        const second = (bytes[offset + 2] >> 4) * 10 + (bytes[offset + 2] & 0x0f);
+    private static decodeBcdDuration(bytes: Buffer, offset: number): number | undefined {
+        const hour = EitPresentParser.decodeBcd(bytes[offset]);
+        const minute = EitPresentParser.decodeBcd(bytes[offset + 1]);
+        const second = EitPresentParser.decodeBcd(bytes[offset + 2]);
+        if (hour === undefined || minute === undefined || second === undefined || minute > 59 || second > 59) {
+            return undefined;
+        }
 
         return hour * 3600 + minute * 60 + second;
+    }
+
+    private static decodeBcd(value: number): number | undefined {
+        const high = value >> 4;
+        const low = value & 0x0f;
+        return high <= 9 && low <= 9 ? high * 10 + low : undefined;
     }
 }

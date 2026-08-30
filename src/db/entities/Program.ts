@@ -43,6 +43,18 @@ export default class Program extends BaseEntity {
     })
     public endAt!: number;
 
+    @Column({ type: 'bigint', nullable: true })
+    public eitReceivedAt!: number | null;
+
+    @Column({ type: 'bigint', nullable: true })
+    public eitStartAt!: number | null;
+
+    @Column({ type: 'bigint', nullable: true })
+    public eitEndAt!: number | null;
+
+    @Column({ type: 'boolean', default: false })
+    public eitDurationUndefined!: boolean;
+
     @Column({
         type: 'integer',
         select: false,

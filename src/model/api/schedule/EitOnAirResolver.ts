@@ -4,6 +4,8 @@ export interface EitOnAirRecord {
     eventId: number;
     startAt: number | null;
     durationSec: number | null;
+    /** ARIB running_status。未指定の既存 IPC 値は従来互換で受け入れる。 */
+    runningStatus?: number;
     receivedAt: number;
     isFollowing: boolean;
 }
@@ -42,7 +44,29 @@ export const resolveEitOnAirProgram = (
     now: number,
     freshnessMs: number = EIT_FRESHNESS_MS,
 ): Program | null => {
-    if (eit === null || eit.isFollowing === true || now - eit.receivedAt > freshnessMs) return null;
+    // 1=not running / 2=starts in a few seconds は present として採用しない。
+    // 0=undefined と 3=pausing は放送局が送る現在 event の情報を失わないため受け入れる。
+    if (
+        eit === null ||
+        eit.isFollowing === true ||
+        eit.runningStatus === 1 ||
+        eit.runningStatus === 2 ||
+        now - eit.receivedAt > freshnessMs
+    )
+        return null;
+    const id = getMirakurunProgramId(channel.networkId, channel.serviceId, eit.eventId);
+    return programs.find(program => program.id === id) ?? null;
+};
+
+/** 鮮度内の EIT[p/f] に対応する番組を返す (present/following 共通) */
+export const resolveFreshEitProgram = (
+    programs: Program[],
+    channel: { networkId: number; serviceId: number },
+    eit: EitOnAirRecord | null,
+    now: number,
+    freshnessMs: number = EIT_FRESHNESS_MS,
+): Program | null => {
+    if (eit === null || now - eit.receivedAt > freshnessMs) return null;
     const id = getMirakurunProgramId(channel.networkId, channel.serviceId, eit.eventId);
     return programs.find(program => program.id === id) ?? null;
 };

@@ -1,5 +1,6 @@
 import { ChildProcess } from 'child_process';
 import * as apid from '../../../api';
+import { EitOnAirRecord } from '../api/schedule/EitOnAirResolver';
 
 export default interface IIPCServer {
     register(child: ChildProcess): void;
@@ -14,5 +15,6 @@ export default interface IIPCServer {
      * @param option: 変更のあった放送局と時間帯
      */
     notifyProgramUpdatedClient(option: { channelIds: number[]; startAt: number | null; endAt: number | null }): void;
+    notifyEitPresent(channelId: number, event: EitOnAirRecord): void;
     setEncode(addOption: apid.AddEncodeProgramOption): void;
 }

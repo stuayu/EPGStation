@@ -9,6 +9,9 @@ import IEncodeManageModel from './encode/IEncodeManageModel';
 import IConfigOverlayLoader from '../config/IConfigOverlayLoader';
 import ILogLevelApplier from '../log/ILogLevelApplier';
 import IServiceServer from './IServiceServer';
+import IEitPresentStore from './stream/util/IEitPresentStore';
+import ISocketIOManageModel from './socketio/ISocketIOManageModel';
+import IProgramDB from '../db/IProgramDB';
 install();
 
 containerSetter.set(container);
@@ -41,6 +44,24 @@ process.on('unhandledRejection', err => {
     encodeFinishModel.set();
 
     const serviceServer = container.get<IServiceServer>('IServiceServer');
+
+    const eitStore = container.get<IEitPresentStore>('IEitPresentStore');
+    const socketIO = container.get<ISocketIOManageModel>('ISocketIOManageModel');
+    const programDB = container.get<IProgramDB>('IProgramDB');
+    eitStore.onChange((channelId, event) => {
+        void programDB.applyEitProgram(channelId, event).catch(err => log.system.error(err));
+        socketIO.notifyOnAirProgramUpdated([channelId]);
+        socketIO.notifyProgramUpdated({
+            channelIds: [channelId],
+            startAt: event.startAt,
+            endAt:
+                event.durationSec === null || event.startAt === null ? null : event.startAt + event.durationSec * 1000,
+        });
+        // Service のライブ受信結果を Operator のDB/予約追従へ渡す
+        if (typeof process.send !== 'undefined') {
+            process.send({ type: 'notifyEitPresentToOperator', value: { channelId, event } });
+        }
+    });
 
     /**
      * 前回終了時に残っていたエンコードキューを復元してから待ち受けを開始する

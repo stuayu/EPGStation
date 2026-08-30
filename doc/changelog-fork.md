@@ -15,6 +15,10 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-29
 
+- **EIT[p/f] の規格解釈を修正**: `table_id=0x4E`、`section_syntax_indicator=1`、CRC、`current_next_indicator=1`、サービス/TS/ネットワーク識別子を検証し、section 番号を present/following の識別に使わないようにした。B10 の定義どおり section 内の時系列 event 先頭を present、次を following として複数 event を取り込む。start_time の未定値、duration の 0xFFFFFF、BCD 異常値を安全に扱い、`running_status=1/2` の present は放送中番組・録画開始判定へ採用しない。
+
+- **録画中 EIT[p/f] と following を番組表・DB・予約へ反映**: `RecorderModel` の録画TS監視結果を IPC で Service と Operator の EITストアへ集約し、放映中APIは鮮度内の present/following の event_id・時刻を正とする。EIT確定時刻は `program` へ鮮度付きで保存し、`ProgramDB` が Mirakurun の `saveProgram()` 差分更新・`updateAll()` 全件置換の直前に再適用する。鮮度切れ後は通常のMirakurun値へ戻す。変更時は `ON_AIR_PROGRAM_UPDATED` / `PROGRAM_RANGE_UPDATED` と予約追従を即時発行する。実装は `EitPresentStore`、`RecorderModel`、`IPC*`、`ProgramDB`、`ScheduleApiModel`、`src/db/migrations/{sqlite,mysql}/1787542000000-AddProgramEitTime.ts`。
+
 - **HEVC 配信の一番上の画質だけビットレートの削減をやめた**: HEVC は同画質を低いビットレートで出せるため `HEVC_BITRATE_RATE` (0.65) を掛けて帯域を削っていたが、画質一覧の先頭は「帯域を使ってでも綺麗に見たい」ときに選ぶものなので、**その配信設定の最高解像度だけ係数を掛けず H.264 と同じビットレートを使う** (1080p までなら 1080p が 5200 → 8000kbps、`2160p` を含むなら 2160p が 15600 → 24000kbps)。対象は `encodePresets.qualities` の内容から動的に決まり、下位の解像度と H.264 は従来どおり。`src/util/EncodePresets.ts` の `highestQualityOf()` / `videoBitrateOf()`。
 
 - **Issue #30: エンコード済み MP4 の副音声切替を修正**: `NormalVideo` が `audioTracks` 1 本のステレオ AAC を

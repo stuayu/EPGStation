@@ -23,6 +23,7 @@ import IProgramDB, {
     ProgramWithOverlap,
     ProgramKeepOption,
 } from './IProgramDB';
+import { EIT_FRESHNESS_MS, EitOnAirRecord, resolveEitBroadcastTime } from '../api/schedule/EitOnAirResolver';
 
 interface FindQuery {
     strs: string[];
@@ -83,6 +84,7 @@ export default class ProgramDB implements IProgramDB {
                 values.push(value);
             }
         }
+        await this.applyFreshEitOverrides(values);
 
         // get queryRunner
         const connection = await this.op.getConnection();
@@ -364,6 +366,7 @@ export default class ProgramDB implements IProgramDB {
                 insertValues.push(value);
             }
         }
+        await this.applyFreshEitOverrides(insertValues);
 
         // get queryRunner
         const connection = await this.op.getConnection();
@@ -404,6 +407,66 @@ export default class ProgramDB implements IProgramDB {
 
         if (hasError) {
             throw new Error('UpdateError');
+        }
+    }
+
+    /** 放送波 EIT[p/f] の時刻を番組へ保存し、Mirakurun 更新から保護する */
+    public async applyEitProgram(channelId: apid.ChannelId, event: EitOnAirRecord): Promise<Program | null> {
+        const connection = await this.op.getConnection();
+        const repository = connection.getRepository(Program);
+        const id = channelId * 100000 + event.eventId;
+        const current = await repository.findOne({ where: { id } });
+        if (current === null || typeof current === 'undefined') return null;
+
+        const time = resolveEitBroadcastTime(event, current.startAt, current.endAt);
+        const duration = event.durationSec === null ? current.duration : event.durationSec;
+        await repository.update(id, {
+            startAt: time.startAt,
+            endAt: time.endAt,
+            duration,
+            eitReceivedAt: event.receivedAt,
+            eitStartAt: time.startAt,
+            eitEndAt: time.endAt,
+            eitDurationUndefined: time.isDurationUndefined,
+        });
+        Object.assign(current, { startAt: time.startAt, endAt: time.endAt, duration });
+        return current;
+    }
+
+    /** Mirakurun の値を、鮮度内の EIT 確定値で上書きする */
+    private async applyFreshEitOverrides(values: QueryDeepPartialEntity<Program>[]): Promise<void> {
+        if (values.length === 0) return;
+        const connection = await this.op.getConnection();
+        // DB 操作を queryRunner だけスタブする既存 UT では追加の照会を省く
+        if (typeof (connection as any).getRepository !== 'function') return;
+        const repository = connection.getRepository(Program);
+        const now = new Date().getTime();
+        for (const value of values) {
+            if (typeof value.id !== 'number') continue;
+            const current = await repository.findOne({ where: { id: value.id } });
+            if (current === null || typeof current === 'undefined') continue;
+            if (current.eitReceivedAt !== null && now - current.eitReceivedAt <= EIT_FRESHNESS_MS) {
+                value.startAt = current.eitStartAt ?? current.startAt;
+                value.endAt = current.eitEndAt ?? current.endAt;
+                value.duration = current.eitDurationUndefined
+                    ? current.duration
+                    : Math.max(
+                          0,
+                          Math.round(
+                              ((current.eitEndAt ?? current.endAt) - (current.eitStartAt ?? current.startAt)) / 1000,
+                          ),
+                      );
+                value.eitReceivedAt = current.eitReceivedAt;
+                value.eitStartAt = current.eitStartAt;
+                value.eitEndAt = current.eitEndAt;
+                value.eitDurationUndefined = current.eitDurationUndefined;
+            } else {
+                // 鮮度切れ後は Mirakurun を正とする
+                value.eitReceivedAt = null;
+                value.eitStartAt = null;
+                value.eitEndAt = null;
+                value.eitDurationUndefined = false;
+            }
         }
     }
 

@@ -57,6 +57,7 @@ export default class EitPresentCollectTransform extends stream.Transform {
                     eventId: event.eventId,
                     startAt: event.startAt,
                     durationSec: event.durationSec,
+                    runningStatus: event.runningStatus,
                     receivedAt: new Date().getTime(),
                     isFollowing: event.isFollowing === true,
                 });
