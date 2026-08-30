@@ -225,9 +225,17 @@ rigaya 系 (QSVEncC / NVEncC / VCEEncC) を使うプリセットも同じで、r
 EPGStation の rigaya プリセットは「rigaya が映像だけ処理 → 後段の ffmpeg が音声を aac 化」というパイプラインなので、
 ブーストは後段 ffmpeg が担当する。音声コピーのみの経路と保存用 `encode` には適用しない。
 
-手書きの配信用 cmd (`stream.profiles.*`) では `%AUDIOBOOST%` を置くとこのオプションへ展開される
-(`%DUALMONOMODE%` / `%AUDIOMAP%` と同じ扱い)。**保存用 `encode` の cmd では展開されない**ので置かないこと。
-  ファイルを直接再生している場合 (`NormalVideo`) だけは video 要素の `audioTracks` で即座に切り替わる。
+配信用 cmd (`stream.profiles.*`) では `%AUDIOFILTER%` を置くと、音声トラック指定とブーストを 1 本の
+`-af` へ統合して展開する (`%DUALMONOMODE%` / `%AUDIOMAP%` と同じ扱い)。`-af` を複数指定すると後勝ちで
+前のフィルタが無効になるため、pan と volume を別々に置かない。
+
+録画済みの encoded 入力で副音声を選ぶ場合、放送 TS のデュアルモノラルではなく通常のステレオ AAC
+（左=主、右=副）なので、`%AUDIOFILTER%` は `pan=stereo|c0=c1|c1=c1` を生成する。TS 入力とライブは
+従来どおり `-dual_mono_mode sub` を使う。主音声には pan を掛けず、通常のステレオ放送をモノラル化しない。
+
+ファイル直接再生 (`NormalVideo`) は、`audioTracks` が複数なら従来どおりブラウザの実トラックを使う。
+実トラックが 1 本でもサーバーの音声トラック API がデュアルモノラルを返す場合は Web Audio API で L/R を分け、
+副音声選択時だけ右チャンネルを左右へ複製する。Web Audio 非対応・グラフ生成失敗時は UI を表示せず通常再生を維持する。
 - UI は **DPlayer の設定 > 音声パネルの DOM を流用**している (`DPlayerEnhancer`)。DPlayer 標準の実装は
   mpegts.js / hls.js のトラックを直接叩くものなので、項目の生成とクリック時の動作を差し替えている。
 

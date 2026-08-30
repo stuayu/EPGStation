@@ -5,15 +5,15 @@ const test = require('node:test');
 
 const AudioTrackUtil = require('../../dist/model/service/stream/util/AudioTrackUtil').default;
 
-// 配信コマンドの音声トラック指定 (%DUALMONOMODE% / %AUDIOMAP%) の展開を検証する。
+// 配信コマンドの音声トラック指定・音声フィルタの展開を検証する。
 
 const CMD = '%FFMPEG% %DUALMONOMODE% -i pipe:0 -sn %AUDIOMAP% -c:a aac -f mp4 pipe:1';
-const BOOST_CMD = '%FFMPEG% -i pipe:0 %AUDIOBOOST% -c:a aac -f mp4 pipe:1';
+const FILTER_CMD = '%FFMPEG% %DUALMONOMODE% -i pipe:0 -sn %AUDIOMAP% -c:a aac %AUDIOFILTER% -f mp4 pipe:1';
 
-test('%AUDIOBOOST% は倍率へ置換され、1.0 では空になる', () => {
-    assert.match(AudioTrackUtil.replacePlaceholders(BOOST_CMD, undefined, 2), /-af volume=2/);
-    assert.doesNotMatch(AudioTrackUtil.replacePlaceholders(BOOST_CMD, undefined, 1), /AUDIOBOOST|volume=/);
-    assert.doesNotMatch(AudioTrackUtil.replacePlaceholders(BOOST_CMD, undefined, 5), /AUDIOBOOST/);
+test('音声フィルタはブースト倍率へ置換され、1.0 では空になる', () => {
+    assert.match(AudioTrackUtil.replacePlaceholders(FILTER_CMD, undefined, 2), /-af volume=2/);
+    assert.doesNotMatch(AudioTrackUtil.replacePlaceholders(FILTER_CMD, undefined, 1), /AUDIOFILTER|volume=/);
+    assert.doesNotMatch(AudioTrackUtil.replacePlaceholders(FILTER_CMD, undefined, 5), /AUDIOFILTER/);
 });
 
 test('未指定なら主音声 (dual_mono_mode main) で -map を付けない', () => {
@@ -31,6 +31,31 @@ test("'sub' はデュアルモノラルの副音声を選ぶ (-map ではなく 
     const cmd = AudioTrackUtil.replacePlaceholders(CMD, 'sub');
     assert.match(cmd, /-dual_mono_mode sub/);
     assert.doesNotMatch(cmd, /-map/);
+});
+
+test('TS の主音声・副音声とブーストを 1 本の -af へまとめる', () => {
+    const main = AudioTrackUtil.replacePlaceholders(FILTER_CMD, 'main', 2, 'ts');
+    const sub = AudioTrackUtil.replacePlaceholders(FILTER_CMD, 'sub', 2, 'ts');
+    assert.match(main, /-dual_mono_mode main/);
+    assert.match(sub, /-dual_mono_mode sub/);
+    assert.match(main, /-af volume=2/);
+    assert.match(sub, /-af volume=2/);
+    assert.equal((sub.match(/(?:^| )-af\b/g) ?? []).length, 1);
+    assert.doesNotMatch(sub, /AUDIOFILTER|AUDIOBOOST/);
+});
+
+test('encoded の副音声だけ pan を追加し、主音声はステレオを維持する', () => {
+    const main = AudioTrackUtil.replacePlaceholders(FILTER_CMD, 'main', 2, 'encoded');
+    const sub = AudioTrackUtil.replacePlaceholders(FILTER_CMD, 'sub', 2, 'encoded');
+    assert.doesNotMatch(main, /pan=/);
+    assert.match(sub, /-dual_mono_mode main/);
+    assert.match(sub, /-af pan=stereo\|c0=c1\|c1=c1,volume=2/);
+    assert.equal((sub.match(/(?:^| )-af\b/g) ?? []).length, 1);
+});
+
+test('ブースト無しの主音声・副音声はフィルタ無しまたは pan のみ', () => {
+    assert.doesNotMatch(AudioTrackUtil.replacePlaceholders(FILTER_CMD, 'main', 1, 'ts'), /-af/);
+    assert.match(AudioTrackUtil.replacePlaceholders(FILTER_CMD, 'sub', 1, 'encoded'), /-af pan=stereo\|c0=c1\|c1=c1/);
 });
 
 test('数字指定は音声 ES を -map で選ぶ (映像も明示する必要がある)', () => {

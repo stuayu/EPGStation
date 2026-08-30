@@ -21,13 +21,13 @@ export const normalizeAudioBoost = (value: unknown): number => {
 };
 
 /**
- * 音声ブーストの ffmpeg オプションを返す。
+ * 音声ブーストの ffmpeg フィルタ式を返す。
+ * 他のフィルタ (副音声の pan など) と 1 本の -af へ連結するために、オプション名を含めない形で返す
  * @param value: unknown 設定値
- * @param optionName?: string オプション名 (ffmpeg / rigaya 後段用)
  * @return string ブースト無しなら空文字列
  */
-export const audioBoostOption = (value: unknown, optionName = '-af'): string => {
+export const audioBoostFilter = (value: unknown): string => {
     const boost = normalizeAudioBoost(value);
 
-    return boost === MIN_AUDIO_BOOST ? '' : ` ${optionName} volume=${boost}`;
+    return boost === MIN_AUDIO_BOOST ? '' : `volume=${boost}`;
 };

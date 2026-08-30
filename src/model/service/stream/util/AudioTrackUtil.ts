@@ -1,5 +1,5 @@
 import * as apid from '../../../../../api';
-import { audioBoostOption } from '../../../../util/AudioBoostUtil';
+import { audioBoostFilter } from '../../../../util/AudioBoostUtil';
 
 /**
  * 配信コマンド (cmd) の音声トラック指定を組み立てるユーティリティ。
@@ -7,7 +7,7 @@ import { audioBoostOption } from '../../../../util/AudioBoostUtil';
  * cmd には 3 つのプレースホルダを置く:
  * - `%DUALMONOMODE%`: 入力オプションの `-dual_mono_mode main|sub` に展開される (`-i` より前に置くこと)
  * - `%AUDIOMAP%`: 出力オプションの `-map 0:v:0 -map 0:a:<n>` に展開される (音声 ES を選ぶ場合のみ非空)
- * - `%AUDIOBOOST%`: 音声ブーストの `-af volume=<倍率>` に展開される (1.0 の場合は空文字)
+ * - `%AUDIOFILTER%`: 音声トラック指定と音声ブーストを統合した `-af` に展開される
  *
  * 二か国語放送は「1 つのステレオ ES の左右に主音声・副音声」を入れるデュアルモノラルで送られるため、
  * 副音声の選択は `-map` ではなく `-dual_mono_mode sub` で行う。
@@ -27,13 +27,44 @@ namespace AudioTrackUtil {
         cmd: string,
         audioTrack?: apid.AudioTrackSpecifier,
         audioBoost?: unknown,
+        videoFileType: apid.VideoFileType = 'ts',
     ): string => {
         const streamIndex = parseStreamIndex(audioTrack);
+        const audioFilter = buildAudioFilter(audioTrack, audioBoost, videoFileType);
+        const dualMonoMode = videoFileType === 'ts' && audioTrack === 'sub' ? 'sub' : 'main';
 
         return cmd
-            .replace(/%DUALMONOMODE%/g, `-dual_mono_mode ${audioTrack === 'sub' ? 'sub' : 'main'}`)
+            .replace(/%DUALMONOMODE%/g, `-dual_mono_mode ${dualMonoMode}`)
             .replace(/%AUDIOMAP%/g, streamIndex === null ? '' : `-map 0:v:0 -map 0:a:${streamIndex}`)
-            .replace(/%AUDIOBOOST%/g, audioBoostOption(audioBoost));
+            .replace(/%AUDIOFILTER%/g, audioFilter);
+    };
+
+    /**
+     * 音声トラック指定と音声ブーストを 1 本の -af へまとめる
+     * @param audioTrack?: apid.AudioTrackSpecifier
+     * @param audioBoost?: unknown
+     * @param videoFileType: apid.VideoFileType 入力ファイル種別
+     * @return string -af オプション。フィルタ無しなら空文字列
+     */
+    export const buildAudioFilter = (
+        audioTrack?: apid.AudioTrackSpecifier,
+        audioBoost?: unknown,
+        videoFileType: apid.VideoFileType = 'ts',
+    ): string => {
+        const filters: string[] = [];
+
+        // encoded は既に通常のステレオへ変換済みのため、sub は右chを両耳へ複製する。
+        // main へ pan を掛けると、通常のステレオ放送までモノラル化するので掛けない。
+        if (videoFileType === 'encoded' && audioTrack === 'sub') {
+            filters.push('pan=stereo|c0=c1|c1=c1');
+        }
+
+        const boost = audioBoostFilter(audioBoost);
+        if (boost !== '') {
+            filters.push(boost);
+        }
+
+        return filters.length === 0 ? '' : `-af ${filters.join(',')}`;
     };
 
     /**
