@@ -8,7 +8,7 @@ import IGuideReserveUtil, { ReserveStateItemIndex } from '../guide/IGuideReserve
 import IOnAirState, { OnAirDisplayData, OnAirTabItem } from './IOnAirState';
 
 @injectable()
-export default class OnAirState implements IOnAirState {
+class OnAirState implements IOnAirState {
     // ピン留めした放送局だけを並べるタブの識別子 (放送波・地域に依存しないため接頭辞を持たない)
     private static readonly PINNED_TAB_ID = 'pinned';
     // タブ識別子の接頭辞 (地域タブ・系列タブと放送波種別タブを区別する)
@@ -477,10 +477,20 @@ export default class OnAirState implements IOnAirState {
                 min = endTime;
             }
         }
-        if (min < 0) {
-            min = 0;
+        // 終了時刻が過ぎた番組が混ざっていると 0 になり、取得を延々と繰り返してしまう。
+        // 下限を設けて API を叩き続けないようにする (放送時刻の変更は socket.io の通知で拾う)
+        if (min < OnAirState.MIN_UPDATE_TIME) {
+            min = OnAirState.MIN_UPDATE_TIME;
         }
 
         return min;
     }
 }
+
+namespace OnAirState {
+    // 放送中一覧を取り直す最小間隔 (ms)。
+    // 終了時刻が過ぎた番組が混ざっていると 0 秒間隔で取得を繰り返してしまうため
+    export const MIN_UPDATE_TIME = 1000;
+}
+
+export default OnAirState;
