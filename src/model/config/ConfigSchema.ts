@@ -607,14 +607,35 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         label: 'サムネイル形式',
         requiresRestart: false,
         editable: 'gui',
-        fields: [{ path: 'thumbnailFormat', label: 'サムネイル形式', type: 'select', items: [{ title: 'JPEG', value: 'jpeg' }, { title: 'WebP', value: 'webp' }] }],
+        fields: [
+            {
+                path: 'thumbnailFormat',
+                label: 'サムネイル形式',
+                type: 'select',
+                items: [
+                    { title: 'JPEG', value: 'jpeg' },
+                    { title: 'WebP', value: 'webp' },
+                ],
+            },
+        ],
     },
     {
         key: 'thumbnailProfile',
         label: 'サムネイル品質プロファイル',
         requiresRestart: false,
         editable: 'gui',
-        fields: [{ path: 'thumbnailProfile', label: 'サムネイル品質プロファイル', type: 'select', items: [{ title: 'Fast', value: 'fast' }, { title: 'Balanced', value: 'balanced' }, { title: 'Quality', value: 'quality' }] }],
+        fields: [
+            {
+                path: 'thumbnailProfile',
+                label: 'サムネイル品質プロファイル',
+                type: 'select',
+                items: [
+                    { title: 'Fast', value: 'fast' },
+                    { title: 'Balanced', value: 'balanced' },
+                    { title: 'Quality', value: 'quality' },
+                ],
+            },
+        ],
     },
     {
         key: 'thumbnailCandidateCount',
@@ -665,6 +686,14 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         requiresRestart: false,
         editable: 'gui',
         fields: [{ path: 'ffprobe', label: 'ffprobe のパス', type: 'string' }],
+    },
+    {
+        key: 'audioBoost',
+        label: '配信音声ブースト倍率',
+        hint: 'ライブ・録画再生の配信音声に適用する倍率。既定 2.0、1.0 で無効、上限 4.0。保存用エンコードには適用しない',
+        requiresRestart: false,
+        editable: 'gui',
+        fields: [{ path: 'audioBoost', label: '配信音声ブースト倍率', type: 'number' }],
     },
     {
         key: 'ffprobeTimeout',

@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-29
 
+- **配信の音声が小さい問題に対し、音声ブースト `audioBoost` を追加**: ライブ・録画再生の配信で音声を `volume` フィルタで増幅する (既定 2.0 倍、`1.0`〜`4.0` に丸め、`1.0` でフィルタ無し)。KonomiTV が固定 2 倍を掛けているのに倣ったもの。**フィルタは音声を aac へ再エンコードする ffmpeg のコマンドへ入れる** — rigaya 系 (QSVEncC 等) を使うプリセットでも rigaya 側は `--audio-copy` のまま触らない。rigaya の `--audio-filter` は `--audio-codec` で再エンコードする場合にしか効かず `--audio-copy` と併用できないためで、EPGStation の rigaya プリセットは「rigaya が映像 → 後段 ffmpeg が音声を aac 化」というパイプラインなのでブーストは後段が担当する。音声コピーのみの経路と保存用 `encode` は対象外。手書きの配信用 cmd では `%AUDIOBOOST%` が使える (`%DUALMONOMODE%` / `%AUDIOMAP%` と同じ扱い。保存用 `encode` の cmd では展開されない)。倍率の丸めは `src/util/AudioBoostUtil.ts`、cmd の組み立ては `src/util/EncodePresets.ts`、置換は `src/model/service/stream/util/AudioTrackUtil.ts`。
+
 - **匿名許可時に非adminの書き込み API まで実行できる問題を修正 (Issue #29)**: `auth.allowAnonymous` の設定値は維持しつつ、認証 payload が無い場合に通す HTTP メソッドを `GET` / `HEAD` / `OPTIONS` に限定した。録画削除などの `POST` / `PUT` / `PATCH` / `DELETE` は、admin API でなくても認証を要求する。media token は従来どおり再生用 `GET` / `HEAD` allowlist のみで認証し、セッション認証と admin API の保護も維持する。
 
 - **再生専用 media token が録画・動画管理 API を認証してしまう問題を修正 (Issue #28)**: `AuthGuard` の media token 判定を method + 再生用 API の明示 allowlist に変更し、`GET`/`HEAD` の動画・IPTV・ライブ/録画ストリームだけを許可する。`/recorded` 配下や動画・ストリームの管理操作は対象外とする。allowlist への追記漏れで外部プレイヤーが 401 にならないよう、`test/ut/auth.test.js` が `/videos`・`/streams`・`/iptv` 配下の実ルートと突き合わせる。

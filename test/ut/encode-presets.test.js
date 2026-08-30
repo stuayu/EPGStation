@@ -2,6 +2,39 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const EncodePresets = require('../../dist/util/EncodePresets').default;
+const { normalizeAudioBoost } = require('../../dist/util/AudioBoostUtil');
+
+test('音声ブースト倍率を既定値と範囲へ正規化する', () => {
+    assert.equal(normalizeAudioBoost(undefined), 2.0);
+    assert.equal(normalizeAudioBoost(1.0), 1.0);
+    assert.equal(normalizeAudioBoost(0.5), 1.0);
+    assert.equal(normalizeAudioBoost(5.0), 4.0);
+    assert.equal(normalizeAudioBoost('2'), 2.0);
+    assert.equal(normalizeAudioBoost(Number.NaN), 2.0);
+});
+
+test('配信プリセットは音声を aac 化する ffmpeg 側でブーストし、1.0 ではフィルタを入れない', () => {
+    const ffmpeg = EncodePresets.expand({ targets: ['liveHLS'], qualities: ['720p'] }, undefined, 2.0);
+    assert.match(ffmpeg.live[0].cmd, /-c:a aac[^|]*-af volume=2/);
+
+    const ffmpegOff = EncodePresets.expand({ targets: ['liveHLS'], qualities: ['720p'] }, undefined, 1.0);
+    assert.doesNotMatch(ffmpegOff.live[0].cmd, /volume=/);
+});
+
+// rigaya 系は --audio-copy で音声を素通しし、後段の ffmpeg が aac 化する。
+// rigaya の --audio-filter は --audio-copy と併用できないため、ブーストは後段 ffmpeg へ入れる
+test('rigaya 系プリセットのブーストは rigaya ではなく後段の ffmpeg に入る', () => {
+    const rigaya = EncodePresets.expand({ hwaccel: 'qsvencc', targets: ['liveHLS'], qualities: ['720p'] }, undefined, 2.0);
+    const cmd = rigaya.live[0].cmd;
+    const [rigayaStage, ffmpegStage] = cmd.split('|');
+
+    assert.match(rigayaStage, /--audio-copy/);
+    assert.doesNotMatch(rigayaStage, /--audio-filter|volume=/);
+    assert.match(ffmpegStage, /-c:a aac[\s\S]*-af volume=2/);
+
+    const rigayaOff = EncodePresets.expand({ hwaccel: 'qsvencc', targets: ['liveHLS'], qualities: ['720p'] }, undefined, 1.0);
+    assert.doesNotMatch(rigayaOff.live[0].cmd, /volume=/);
+});
 
 test('undefined presets produce nothing (feature flag off / not configured)', () => {
     const expansion = EncodePresets.expand(undefined);

@@ -213,6 +213,20 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
   ライブは事前に音声構成を知る手段が無いため、クライアントが主音声・副音声の 2 択を常に出す。
 - **切り替えはストリームの作り直し**になる (エンコード済みの音声を後から差し替えられないため)。
   クライアントは画質切替と同じく、現在の再生位置でストリームを再生成してから url を差し替える。
+
+### 配信音声ブースト
+
+`audioBoost` を指定すると、ライブ・録画再生の再エンコード配信音声へ `volume` フィルタを適用する。
+既定値は `2.0`、有効範囲は `1.0`〜`4.0`。`1.0` ではフィルタを付けない。
+
+**フィルタは音声を aac へ再エンコードする ffmpeg のコマンドへ入れる** (`-af volume=<倍率>`)。
+rigaya 系 (QSVEncC / NVEncC / VCEEncC) を使うプリセットも同じで、rigaya 側は `--audio-copy` のまま触らない
+— rigaya の `--audio-filter` は音声を再エンコードする場合 (`--audio-codec`) にしか効かず、`--audio-copy` とは併用できないため。
+EPGStation の rigaya プリセットは「rigaya が映像だけ処理 → 後段の ffmpeg が音声を aac 化」というパイプラインなので、
+ブーストは後段 ffmpeg が担当する。音声コピーのみの経路と保存用 `encode` には適用しない。
+
+手書きの配信用 cmd (`stream.profiles.*`) では `%AUDIOBOOST%` を置くとこのオプションへ展開される
+(`%DUALMONOMODE%` / `%AUDIOMAP%` と同じ扱い)。**保存用 `encode` の cmd では展開されない**ので置かないこと。
   ファイルを直接再生している場合 (`NormalVideo`) だけは video 要素の `audioTracks` で即座に切り替わる。
 - UI は **DPlayer の設定 > 音声パネルの DOM を流用**している (`DPlayerEnhancer`)。DPlayer 標準の実装は
   mpegts.js / hls.js のトラックを直接叩くものなので、項目の生成とクリック時の動作を差し替えている。

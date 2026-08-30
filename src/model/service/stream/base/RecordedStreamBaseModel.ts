@@ -434,7 +434,7 @@ export default abstract class RecordedStreamBaseModel
             .replace(/%SS%/g, this.videoFileType === 'ts' ? '' : this.processOption.playPosition.toString(10));
 
         // 音声トラック指定 (%DUALMONOMODE% / %AUDIOMAP%) を展開する
-        cmd = AudioTrackUtil.replacePlaceholders(cmd, this.processOption.audioTrack);
+        cmd = AudioTrackUtil.replacePlaceholders(cmd, this.processOption.audioTrack, this.config.audioBoost);
 
         if (this.getStreamType() === 'RecordedHLS') {
             cmd = cmd
