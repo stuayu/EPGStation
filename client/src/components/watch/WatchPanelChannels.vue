@@ -57,6 +57,7 @@
 <script lang="ts">
 import PinnedChannelsDialog from '@/components/channel/PinnedChannelsDialog.vue';
 import container from '@/model/ModelContainer';
+import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IOnAirState, { OnAirDisplayData, OnAirTabItem } from '@/model/state/onair/IOnAirState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
@@ -86,6 +87,7 @@ class WatchPanelChannels extends Vue {
     private onAirState: IOnAirState = container.get<IOnAirState>('IOnAirState');
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private updateTimer: ReturnType<typeof setTimeout> | null = null;
     private digestibilityTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -112,11 +114,33 @@ class WatchPanelChannels extends Vue {
         return this.onAirState.getPinnedChannelIds();
     }
 
+    // EIT[p/f] や EPG の更新でチャンネル一覧の放送時刻を取り直す。
+    // タイマー (番組の切り替わり) だけに頼ると、放送時間の変更が次の境界まで画面へ出ない
+    // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
+    public onUpdateOnAirProgram(): void {
+        void this.fetchData();
+    }
+
+    // 番組情報の更新通知。どの放送局の変更でも一覧に影響するため絞り込まない
+    public onUpdateProgram(): void {
+        void this.fetchData();
+    }
+
     public async created(): Promise<void> {
+        // socket.io イベント
+        this.socketIoModel.onUpdateState(this.onUpdateOnAirProgram);
+        this.socketIoModel.onUpdateOnAirProgram(this.onUpdateOnAirProgram);
+        this.socketIoModel.onUpdateProgram(this.onUpdateProgram);
+
         await this.fetchData();
     }
 
     public beforeUnmount(): void {
+        // socket.io イベント
+        this.socketIoModel.offUpdateState(this.onUpdateOnAirProgram);
+        this.socketIoModel.offUpdateOnAirProgram(this.onUpdateOnAirProgram);
+        this.socketIoModel.offUpdateProgram(this.onUpdateProgram);
+
         if (this.updateTimer !== null) {
             clearTimeout(this.updateTimer);
             this.updateTimer = null;

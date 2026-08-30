@@ -124,6 +124,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-30
 
+- **視聴画面のチャンネル一覧の放送時刻が更新されない問題を修正**: `WatchPanelChannels.vue` が socket.io の更新通知を購読しておらず、「現在番組の終了時刻に達したら取り直す」タイマーだけで動いていたため、放送時間の変更 (EIT[p/f] / EPG 追従) が次の番組境界まで画面へ出なかった。`updateOnAirProgram` / `updateProgram` / `updateStatus` を購読して取り直す。あわせて `OnAirState.getUpdateTime()` に下限 (1 秒) を設けた — 終了時刻が過ぎた番組が混ざると 0 を返し、API を叩き続けるループになるため。放映中ページ (`OnAir.vue`) は元から購読済み、番組情報タブと上部バーは `WatchOnAir.vue` 経由で更新されるため変更不要。
+
 - **配信中の EIT[p/f] が取れていなかったのを直した**: 実機のライブ視聴で EIT[p/f] が反映されず調査したところ 3 つ問題があった。① **`EitPresentStore` が present と following を同じ入れ物へ入れていた** — EIT[p/f] は present と following が交互に流れてくるため、後から届いた following が present を上書きし、放送中判定 (present しか見ない) がほぼ常に成立しなくなっていた。別々に保持する。② **相乗りサービスの EIT で本編が上書きされていた** — 同じ TS にはワンセグ・サブチャンネル分の EIT も流れる (実測: NHK総合1・福島 の TS に serviceId 21504 と 21505 の EIT)。視聴中の serviceId と一致するものだけ採用する。③ **無変換配信 (エンコードプロセス無し) の経路で解析していなかった**。解析用の枝を 1 本生やして読む。**放送時刻そのものも放送波を正とする** — Mirakurun の EPG が終了時刻を確定値で持っていても、EIT が放送時間未定と言っているなら未定として返す (実機で、放送波が未定と言っている 12:00 のニュースを Mirakurun が 12:25 終了として持っていた)。duration が確定していれば EIT の値で終了時刻を出す。あわせて present が変わったときに info ログを出すようにした (受信できているかログから追えるようにするため)。
 
 - **放送時間未定の番組と event stream 切断時の画面更新を修正**: `ScheduleApiModel` が未定番組を次番組の開始後も暫定3時間の `endAt` で放送中扱いしていたため、クランプ後の終了時刻で除外するようにした。`EPGUpdateManageModel.updateAll()` は前後の現在番組・次番組を放送局ごとに比較し、変化局だけ `ON_AIR_PROGRAM_UPDATED` を通知し、範囲不明の `PROGRAM_RANGE_UPDATED` も送る。これにより event stream のイベントが届かず全件更新だけが成功する環境でも番組表・視聴画面が再取得される。短時間の再接続では重い全件更新を60秒間隔で抑制し、接続後にイベントを1件も受けず切断した場合はリバースプロキシのバッファリング可能性を warn ログへ出す。回帰テストは `test/ut/on-air-program-snapshot.test.js` と `test/ut/full-update-decision.test.js`
