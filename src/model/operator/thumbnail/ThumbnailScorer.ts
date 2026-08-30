@@ -29,6 +29,13 @@ export default class BasicThumbnailScorer implements ThumbnailScorer {
             const edge = Math.min(100, f.edge / 2);
             return brightness * 0.3 + contrast * 0.3 + sharpness * 0.2 + edge * 0.2 - f.blackRatio * 50;
         }
-        return frame.brightness + frame.contrast + frame.sharpness + frame.sceneChange - frame.blackPenalty - frame.blurPenalty;
+        return (
+            frame.brightness +
+            frame.contrast +
+            frame.sharpness +
+            frame.sceneChange -
+            frame.blackPenalty -
+            frame.blurPenalty
+        );
     }
 }

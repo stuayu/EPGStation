@@ -29,11 +29,21 @@ post.apiDoc = {
     parameters: [{ $ref: '#/components/parameters/PathRecordedId' }],
     requestBody: {
         required: false,
-        content: { 'application/json': { schema: { type: 'object', properties: { profile: { type: 'string', enum: ['fast', 'balanced', 'quality'] } } } } },
+        content: {
+            'application/json': {
+                schema: {
+                    type: 'object',
+                    properties: { profile: { type: 'string', enum: ['fast', 'balanced', 'quality'] } },
+                },
+            },
+        },
     },
     responses: {
         202: { description: '再生成を開始しました' },
         404: { description: '録画が見つかりません' },
-        default: { description: '予期しないエラー', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        default: {
+            description: '予期しないエラー',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+        },
     },
 };

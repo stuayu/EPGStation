@@ -15,13 +15,14 @@ export function isCommercialChapter(chapter: apid.VideoChapter): boolean {
 
 /** CM チャプター境界の前後0.5秒を含め、候補時刻が除外対象か判定する。 */
 export function isInCommercialChapter(timestamp: number, chapters: apid.VideoChapter[]): boolean {
-    return chapters.some(chapter =>
-        isCommercialChapter(chapter) &&
-        Number.isFinite(chapter.startAt) &&
-        Number.isFinite(chapter.endAt) &&
-        chapter.endAt > chapter.startAt &&
-        timestamp >= chapter.startAt - CHAPTER_MARGIN_SECONDS &&
-        timestamp < chapter.endAt + CHAPTER_MARGIN_SECONDS,
+    return chapters.some(
+        chapter =>
+            isCommercialChapter(chapter) &&
+            Number.isFinite(chapter.startAt) &&
+            Number.isFinite(chapter.endAt) &&
+            chapter.endAt > chapter.startAt &&
+            timestamp >= chapter.startAt - CHAPTER_MARGIN_SECONDS &&
+            timestamp < chapter.endAt + CHAPTER_MARGIN_SECONDS,
     );
 }
 
@@ -36,15 +37,15 @@ export function filterThumbnailCandidatesByChapters(
     count: number,
 ): ThumbnailChapterFilterResult {
     const maxCount = Math.max(1, Math.floor(count));
-    const normalize = (items: ThumbnailCandidate[]): ThumbnailCandidate[] => items
-        .slice()
-        .sort((a, b) => a.timestamp - b.timestamp)
-        .slice(0, maxCount)
-        .map((candidate, index) => ({ timestamp: candidate.timestamp, index }));
-    const validChapters = chapters.filter(chapter =>
-        Number.isFinite(chapter.startAt) &&
-        Number.isFinite(chapter.endAt) &&
-        chapter.endAt > chapter.startAt,
+    const normalize = (items: ThumbnailCandidate[]): ThumbnailCandidate[] =>
+        items
+            .slice()
+            .sort((a, b) => a.timestamp - b.timestamp)
+            .slice(0, maxCount)
+            .map((candidate, index) => ({ timestamp: candidate.timestamp, index }));
+    const validChapters = chapters.filter(
+        chapter =>
+            Number.isFinite(chapter.startAt) && Number.isFinite(chapter.endAt) && chapter.endAt > chapter.startAt,
     );
     if (chapters.length > 0 && validChapters.length === 0) {
         return { candidates: normalize(candidates), usedFallback: true };
