@@ -13,7 +13,11 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
-## 2026-08-29
+## 2026-08-30
+
+- **録画再生のデータ放送時刻を視聴位置へ同期**: 録画 TS の先読みで BML の TDT/TOT 時刻がエンコード位置へ進んでいたため、録画ファイル先頭の `startAt` と DPlayer の再生位置から時刻を求め、再生中・一時停止中・シーク時に BMLBrowser へ再注入する。ライブは TS の TDT/TOT を継続利用する。`BroadcastTimeExtractor` は B10 の JST_time に合わせ、BCD と MJD 日付の異常値を拒否する。
+
+- **放送局ロゴの ARIB 経路を点検**: EPGStation は `logo_transmission_descriptor` や CDT を再解釈せず、Mirakurun が蓄積・PNG 化したロゴを API から転送する。B10 の 0x01/0x02 (CDT)・0x03 (簡易ロゴ) の意味を混同する処理は無く、404 は未受信局の正常な「ロゴ無し」として扱う。B21 の 6 種類の logotype に依存する固定サイズ変換も無く、表示は縦横比を維持する。
 
 - **EIT[p/f] の規格解釈を修正**: `table_id=0x4E`、`section_syntax_indicator=1`、CRC、`current_next_indicator=1`、サービス/TS/ネットワーク識別子を検証し、section 番号を present/following の識別に使わないようにした。B10 の定義どおり section 内の時系列 event 先頭を present、次を following として複数 event を取り込む。start_time の未定値、duration の 0xFFFFFF、BCD 異常値を安全に扱い、`running_status=1/2` の present は放送中番組・録画開始判定へ採用しない。
 

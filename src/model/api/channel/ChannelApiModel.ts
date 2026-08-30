@@ -98,7 +98,18 @@ class ChannelApiModel implements IChannelApiModel {
             throw new Error(IChannelApiModelError.NOT_FOUND);
         }
 
-        return this.mirakurunClient.getLogoImage(channelId);
+        // hasLogoData が true でもチューナー側がロゴを持っていないことがある
+        // (県外地上波のように、受信できていない放送局のロゴは Mirakurun が 404 を返す)。
+        // これをサーバエラーとして返すと画面のコンソールがエラーで埋まるため、素直に 404 として扱う
+        try {
+            return await this.mirakurunClient.getLogoImage(channelId);
+        } catch (err: any) {
+            if (err?.response?.status === 404 || err?.status === 404) {
+                throw new Error(IChannelApiModelError.NOT_FOUND);
+            }
+
+            throw err;
+        }
     }
 }
 

@@ -324,6 +324,7 @@ export default toNative(WatchPanelChannels);
         .logo
             height: 20px
             max-width: 48px
+            width: auto
             object-fit: contain
 
         .channel-name
