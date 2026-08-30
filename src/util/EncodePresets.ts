@@ -130,6 +130,8 @@ const rigayaBinPath = (hwaccel: RigayaHwAccel, execPaths?: RigayaExecPaths): str
  *
  * `videoBitrate` は H.264 基準の値で、HEVC は同画質をより低いビットレートで出せるため
  * `HEVC_BITRATE_RATE` を掛けて下げる (下げた分をそのまま画質差にせず帯域削減に回す)。
+ * ただし**その配信設定で一番上に出る画質 (最高解像度) だけは係数を掛けず**、H.264 と同じ
+ * ビットレートを与える (一覧の先頭は帯域より画質を取る選択肢のため)。
  */
 const QUALITY_TABLE: Record<EncodeQuality, QualityParam> = {
     // 新4K8K衛星放送 (BS4K / CS4K) 向け。H.264 の 4K は iOS のハードウェアデコード対象外なので
@@ -164,13 +166,36 @@ const HEVC_BITRATE_RATE = 0.65;
 const FILE_INPUT_SYNC_OPTIONS = '--avsync forcecfr --fps 30000/1001';
 
 /**
+ * 指定された quality のうち最も解像度が高いものを返す
+ * 一覧の先頭に出る「一番良い画質」の選択肢を決めるために使う
+ * @param qualities: EncodeQuality[]
+ * @return EncodeQuality | null 空配列なら null
+ */
+const highestQualityOf = (qualities: EncodeQuality[]): EncodeQuality | null => {
+    let highest: EncodeQuality | null = null;
+    for (const quality of qualities) {
+        if (highest === null || QUALITY_TABLE[quality].height > QUALITY_TABLE[highest].height) {
+            highest = quality;
+        }
+    }
+
+    return highest;
+};
+
+/**
  * コーデックを考慮した映像ビットレートを返す
+ *
+ * HEVC は同画質をより低いビットレートで出せるため通常は係数を掛けて帯域を削るが、
+ * **その配信設定で一番上に出る画質 (最高解像度) だけは係数を掛けない**。
+ * 一覧の先頭は「帯域を使ってでも綺麗に見たい」ときに選ぶものなので、
+ * H.264 と同じビットレートを与えて画質差として出す
  * @param quality: EncodeQuality
  * @param codec: EncodeCodec
+ * @param highestQuality?: EncodeQuality | null この配信設定での最高解像度
  * @return number kbps
  */
-const videoBitrateOf = (quality: EncodeQuality, codec: EncodeCodec): number =>
-    codec === 'hevc'
+const videoBitrateOf = (quality: EncodeQuality, codec: EncodeCodec, highestQuality?: EncodeQuality | null): number =>
+    codec === 'hevc' && quality !== highestQuality
         ? Math.round((QUALITY_TABLE[quality].videoBitrate * HEVC_BITRATE_RATE) / 100) * 100
         : QUALITY_TABLE[quality].videoBitrate;
 
@@ -732,12 +757,14 @@ namespace EncodePresets {
         const targets = pickValid(presets.targets, isValidTarget, DEFAULT_TARGETS);
 
         const targetSet = new Set(targets);
+        // 一番上に出る画質だけ HEVC の係数を外すため、最高解像度を先に決める
+        const highestQuality = highestQualityOf(qualities);
 
         for (const codec of codecs) {
             for (const quality of qualities) {
                 const { height, audioBitrate } = QUALITY_TABLE[quality];
-                // HEVC は同画質をより低いビットレートで出せるため係数を掛ける
-                const videoBitrate = videoBitrateOf(quality, codec);
+                // HEVC は同画質をより低いビットレートで出せるため係数を掛ける (最高解像度を除く)
+                const videoBitrate = videoBitrateOf(quality, codec, highestQuality);
                 const name = buildName(quality, codec, hwaccel);
 
                 if (targetSet.has('recorded')) {

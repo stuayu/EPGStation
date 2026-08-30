@@ -406,15 +406,20 @@ test('ids are stable and unique across the whole expansion (client-facing profil
     assert.equal(new Set(allIds).size, allIds.length);
 });
 
-test('bitrate is codec aware (HEVC uses ~65% of the H.264 bitrate for the same quality)', () => {
-    const h264 = EncodePresets.expand({ codecs: ['h264'], targets: ['liveHLS'], qualities: ['1080p'] });
-    const hevc = EncodePresets.expand({ codecs: ['hevc'], targets: ['liveHLS'], qualities: ['1080p'] });
+test('bitrate is codec aware (HEVC uses ~65% of the H.264 bitrate except for the top quality)', () => {
+    // 1080p は最高解像度ではない状況で比べる (最高解像度は係数を掛けないため)
+    const h264 = EncodePresets.expand({ codecs: ['h264'], targets: ['liveHLS'], qualities: ['2160p', '1080p'] });
+    const hevc = EncodePresets.expand({ codecs: ['hevc'], targets: ['liveHLS'], qualities: ['2160p', '1080p'] });
 
-    assert.equal(h264.live[0].video.bitrate, 8000);
-    assert.equal(hevc.live[0].video.bitrate, 5200);
+    assert.equal(h264.live[1].video.bitrate, 8000);
+    assert.equal(hevc.live[1].video.bitrate, 5200);
     // cmd 側のビットレート指定も揃っている
-    assert.match(h264.live[0].cmd, /-b:v 8000k/);
-    assert.match(hevc.live[0].cmd, /-b:v 5200k/);
+    assert.match(h264.live[1].cmd, /-b:v 8000k/);
+    assert.match(hevc.live[1].cmd, /-b:v 5200k/);
+
+    // 一番上の画質は H.264 と同じビットレートになる
+    assert.equal(hevc.live[0].video.bitrate, 24000);
+    assert.match(hevc.live[0].cmd, /-b:v 24000k/);
 });
 
 test('recorded playback favours quality over latency, live keeps the low latency preset', () => {
@@ -462,4 +467,28 @@ test('generated cmds carry the audio track placeholders', () => {
         // 置換前のハードコードが残っていないこと
         assert.doesNotMatch(profile.cmd, /-dual_mono_mode/);
     }
+});
+
+// 一覧の先頭に出る画質は「帯域より画質」を選ぶためのものなので、
+// HEVC の帯域削減係数 (×0.65) を掛けず H.264 と同じビットレートを与える
+test('HEVC は最高解像度だけ帯域削減の係数を掛けない', () => {
+    const bitrateOf = profile => Number((profile.cmd.match(/-b:v (\d+)k/) ?? [])[1]);
+
+    const hevc = EncodePresets.expand({ codecs: ['hevc'], qualities: ['1080p', '720p', '480p'], targets: ['liveHLS'] });
+    assert.equal(bitrateOf(hevc.live[0]), 8000, '最高解像度 (1080p) は H.264 と同じ 8000k');
+    assert.equal(bitrateOf(hevc.live[1]), 2900, '下位は従来どおり ×0.65');
+    assert.equal(bitrateOf(hevc.live[2]), 1300);
+
+    // 最高解像度は設定された qualities の中で動的に決まる
+    const with4k = EncodePresets.expand({ codecs: ['hevc'], qualities: ['2160p', '1080p'], targets: ['liveHLS'] });
+    assert.equal(bitrateOf(with4k.live[0]), 24000, '2160p があればそちらが最高解像度');
+    assert.equal(bitrateOf(with4k.live[1]), 5200, '1080p は最高解像度ではなくなるので ×0.65');
+
+    const upTo720 = EncodePresets.expand({ codecs: ['hevc'], qualities: ['720p', '480p'], targets: ['liveHLS'] });
+    assert.equal(bitrateOf(upTo720.live[0]), 4500, '720p までなら 720p が最高解像度');
+
+    // H.264 は従来どおり
+    const h264 = EncodePresets.expand({ codecs: ['h264'], qualities: ['1080p', '720p'], targets: ['liveHLS'] });
+    assert.equal(bitrateOf(h264.live[0]), 8000);
+    assert.equal(bitrateOf(h264.live[1]), 4500);
 });
