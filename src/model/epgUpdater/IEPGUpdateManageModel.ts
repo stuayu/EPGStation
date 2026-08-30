@@ -42,6 +42,7 @@ export interface ServiceEvent extends mapid.Event {
 export namespace EPGUpdateEvent {
     export const STREAM_STARTED = 'event stream started';
     export const STREAM_ABORTED = 'event stream aborted';
+    export const STREAM_NO_EVENT = 'event stream disconnected without event';
     export const PROGRAM_UPDATED = 'program updated';
     // EIT[p/f] 相当 (現在放送中 / 直後に始まる番組) が更新された放送局の通知
     export const ON_AIR_PROGRAM_UPDATED = 'on air program updated';
@@ -79,4 +80,5 @@ export default interface IEPGUpdateManageModel extends EventEmitter {
     saveService(): Promise<void>;
     saveOnAirServices(): Promise<void>;
     saveUpdateServices(): Promise<void>;
+    updateProgramsByChannels(channelIds: number[]): Promise<void>;
 }

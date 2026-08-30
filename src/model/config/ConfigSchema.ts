@@ -200,6 +200,18 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         ],
     },
     {
+        key: 'epgPolling',
+        label: 'EPG サービス単位 polling',
+        hint: 'event stream が使えないとき、重要チャンネルだけ Mirakurun から取得する',
+        requiresRestart: false,
+        editable: 'gui',
+        fields: [
+            { path: 'epgPolling.enabled', label: '有効にする', type: 'boolean' },
+            { path: 'epgPolling.intervalSec', label: '間隔 (秒)', type: 'number', hint: '既定 60' },
+            { path: 'epgPolling.maxChannels', label: '1 周期の最大局数', type: 'number', hint: '既定 8' },
+        ],
+    },
+    {
         key: 'epgRetentionTime',
         label: '過去の番組表データの保存期間 (時間)',
         hint: '0: 終了した番組を即座に削除 (従来動作) / -1: 削除しない (無期限)',

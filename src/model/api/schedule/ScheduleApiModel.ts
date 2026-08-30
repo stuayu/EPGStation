@@ -10,6 +10,8 @@ import IChannelDB from '../../db/IChannelDB';
 import IProgramDB, { ProgramWithOverlap } from '../../db/IProgramDB';
 import IConfiguration from '../../IConfiguration';
 import IScheduleApiModel from './IScheduleApiModel';
+import IEitPresentStore from '../../service/stream/util/IEitPresentStore';
+import { resolveEitOnAirProgram } from './EitOnAirResolver';
 
 @injectable()
 export default class ScheduleApiModel implements IScheduleApiModel {
@@ -18,6 +20,7 @@ export default class ScheduleApiModel implements IScheduleApiModel {
     private broadcastRegion: IBroadcastRegion;
     private broadcastAffiliation: IBroadcastAffiliation;
     private configuration: IConfiguration;
+    private eitPresentStore?: IEitPresentStore;
 
     constructor(
         @inject('IChannelDB') channelDB: IChannelDB,
@@ -25,12 +28,14 @@ export default class ScheduleApiModel implements IScheduleApiModel {
         @inject('IBroadcastRegion') broadcastRegion: IBroadcastRegion,
         @inject('IBroadcastAffiliation') broadcastAffiliation: IBroadcastAffiliation,
         @inject('IConfiguration') configuration: IConfiguration,
+        @inject('IEitPresentStore') eitPresentStore?: IEitPresentStore,
     ) {
         this.channelDB = channelDB;
         this.programDB = programDB;
         this.broadcastRegion = broadcastRegion;
         this.broadcastAffiliation = broadcastAffiliation;
         this.configuration = configuration;
+        this.eitPresentStore = eitPresentStore;
     }
 
     /**
@@ -410,7 +415,33 @@ export default class ScheduleApiModel implements IScheduleApiModel {
         const programLimit = option.includeNextProgram === true ? 2 : 1;
 
         // EPG が未取得の放送局も一覧に出す (視聴はできるため)
+        const now = new Date().getTime() + (option.time ?? 0);
         return this.createSchedule(channels, programs, option.isHalfWidth, true, true).map(s => {
+            // 未定番組は次番組の開始時刻までに切り詰めた終了時刻で放送中判定する。
+            // Mirakurun の暫定3時間の endAt を使うと、前番組が現在番組に居座る
+            s.programs = s.programs.filter(program => program.endAt > now);
+
+            // 配信中の放送波から読んだ EIT[p/f] があれば、そちらを現在番組の正とする。
+            // Mirakurun の EPG が古い・誤っていても、実際に流れている番組を先頭へ出す
+            const channel = channels.find(c => c.id === s.channel.id);
+            if (channel !== undefined) {
+                const eitProgram = resolveEitOnAirProgram(
+                    programs.filter(p => p.channelId === channel.id),
+                    channel,
+                    this.eitPresentStore?.get(channel.id) ?? null,
+                    now,
+                );
+                if (eitProgram !== null) {
+                    const item = this.toScheduleProgramItem(eitProgram, option.isHalfWidth, true);
+                    // Mirakurun の endAt が既に過ぎていても、EIT が present と言う以上まだ放送中。
+                    // 時刻を作り話で埋めず「終了時刻未定」として返す (画面もその表示になる)
+                    if (item.endAt <= now) {
+                        item.isDurationUndefined = true;
+                    }
+                    // 現在番組を EIT のものへ差し替え、後続 (次番組) はそのまま残す
+                    s.programs = [item, ...s.programs.filter(program => program.id !== item.id)];
+                }
+            }
             if (s.programs.length > programLimit) {
                 s.programs = s.programs.slice(0, programLimit);
             }

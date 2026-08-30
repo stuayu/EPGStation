@@ -322,6 +322,8 @@ import HLSFileDeleterModel from './service/stream/util/HLSFileDeleterModel';
 import IHLSFileDeleterModel from './service/stream/util/IHLSFileDeleterModel';
 import HLSMemoryStoreModel from './service/stream/util/HLSMemoryStoreModel';
 import IHLSMemoryStoreModel from './service/stream/util/IHLSMemoryStoreModel';
+import IEitPresentStore from './service/stream/util/IEitPresentStore';
+import EitPresentStore from './service/stream/util/EitPresentStore';
 import IStreamProfileManageModel from './stream/IStreamProfileManageModel';
 import StreamProfileManageModel from './stream/StreamProfileManageModel';
 
@@ -673,6 +675,7 @@ export const set = (container: Container): void => {
     // in-memory HLS セグメントストア
     // ストリーム生成側 (LiveStreamBaseModel) と配信側 (ServiceServer) で共有するため singleton で登録する
     container.bind<IHLSMemoryStoreModel>('IHLSMemoryStoreModel').to(HLSMemoryStoreModel).inSingletonScope();
+    container.bind<IEitPresentStore>('IEitPresentStore').to(EitPresentStore).inSingletonScope();
 
     container.bind<ILiveStreamBaseModel>('LiveHLSStreamModel').to(LiveHLSStreamModel);
 

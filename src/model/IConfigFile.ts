@@ -283,6 +283,13 @@ export default interface IConfigFile {
     // event stream は差分しか運ばないため、新規番組の create が届かないと DB が古いまま残る
     epgFullRefreshIntervalTime?: number;
 
+    // event stream が利用できない場合のサービス単位 EPG polling
+    epgPolling?: {
+        enabled?: boolean;
+        intervalSec?: number;
+        maxChannels?: number;
+    };
+
     // 過去の番組表データを削除する間隔 (分)。省略時は epgUpdateIntervalTime と同じ
     epgDeleteIntervalTime?: number;
 

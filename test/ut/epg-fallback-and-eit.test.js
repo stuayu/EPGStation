@@ -1,0 +1,85 @@
+'use strict';
+const assert = require('node:assert/strict');
+const test = require('node:test');
+const { onEventStreamDisconnected, onEventStreamStarted } = require('../../dist/model/epgUpdater/EventStreamFallbackDecision');
+const { selectEPGPollingChannels } = require('../../dist/model/epgUpdater/EPGPollingSelection');
+const { getMirakurunProgramId, resolveEitOnAirProgram } = require('../../dist/model/api/schedule/EitOnAirResolver');
+
+test('無イベント切断が閾値に達すると polling へ切り替え、stream 復活で戻る', () => {
+    let state = { consecutiveSilentDisconnects: 0, polling: false };
+    state = onEventStreamDisconnected(state, false, 2);
+    assert.equal(state.polling, false);
+    state = onEventStreamDisconnected(state, false, 2);
+    assert.equal(state.polling, true);
+    assert.deepEqual(onEventStreamStarted(), { consecutiveSilentDisconnects: 0, polling: false });
+});
+
+test('polling 対象はライブ、録画、予定の順に上限まで選ぶ', () => {
+    assert.deepEqual(selectEPGPollingChannels([
+        { channelId: 1, upcomingRecording: true }, { channelId: 2, activeStream: true },
+        { channelId: 3, recording: true }, { channelId: 2, recording: true },
+    ], 3), [2, 3, 1]);
+});
+
+test('EIT present は event id から導出した番組を選び、古ければ DB 判定へ戻る', () => {
+    const id = getMirakurunProgramId(32416, 21504, 15501);
+    const program = { id, channelId: 1, startAt: 0, endAt: 1, name: '正しい番組' };
+    assert.equal(resolveEitOnAirProgram([program], { networkId: 32416, serviceId: 21504 }, {
+        eventId: 15501, startAt: 0, durationSec: null, receivedAt: 1000, isFollowing: false,
+    }, 2000).name, '正しい番組');
+    assert.equal(resolveEitOnAirProgram([program], { networkId: 32416, serviceId: 21504 }, {
+        eventId: 15501, startAt: 0, durationSec: null, receivedAt: 0, isFollowing: false,
+    }, 2000, 1000), null);
+});
+
+test('EIT present の番組は Mirakurun の古い終了時刻でも現在番組として返す', () => {
+    const id = getMirakurunProgramId(1, 2, 3);
+    const program = { id, channelId: 1, startAt: 0, endAt: 1, name: '放送中' };
+    assert.equal(resolveEitOnAirProgram([program], { networkId: 1, serviceId: 2 }, {
+        eventId: 3, startAt: 0, durationSec: null, receivedAt: 1000, isFollowing: false,
+    }, 10000).id, id);
+});
+
+// 配信中の TS から EIT を読む Transform は、TS を欠けさせずそのまま下流へ流すこと
+// (data リスナで読むと flowing モードになり pipe 前のデータを落として映像が壊れる)
+test('EitPresentCollectTransform は TS を素通しし、読み取った present をストアへ書く', async () => {
+    const EitPresentCollectTransform = require('../../dist/model/service/stream/util/EitPresentCollectTransform').default;
+    const updates = [];
+    const store = { update: (channelId, record) => updates.push({ channelId, record }), get: () => null, clear: () => {} };
+    const transform = new EitPresentCollectTransform(store, 3241621504);
+
+    const input = Buffer.concat([Buffer.alloc(188, 0x47), Buffer.alloc(188, 0x47)]);
+    const chunks = [];
+    transform.on('data', c => chunks.push(c));
+    await new Promise((resolve, reject) => {
+        transform.on('end', resolve);
+        transform.on('error', reject);
+        transform.end(input);
+    });
+
+    // 入力した TS がそのまま下流へ流れること (欠けたら配信が壊れる)
+    assert.deepEqual(Buffer.concat(chunks), input);
+});
+
+// 解析で例外が出ても配信を止めない
+test('EitPresentCollectTransform は解析が失敗しても TS を流し続ける', async () => {
+    const EitPresentCollectTransform = require('../../dist/model/service/stream/util/EitPresentCollectTransform').default;
+    const store = {
+        update: () => {
+            throw new Error('store error');
+        },
+        get: () => null,
+        clear: () => {},
+    };
+    const transform = new EitPresentCollectTransform(store, 1);
+    const input = Buffer.alloc(376, 0x47);
+    const chunks = [];
+    transform.on('data', c => chunks.push(c));
+    await new Promise((resolve, reject) => {
+        transform.on('end', resolve);
+        transform.on('error', reject);
+        transform.end(input);
+    });
+
+    assert.deepEqual(Buffer.concat(chunks), input);
+});

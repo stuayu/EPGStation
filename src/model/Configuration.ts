@@ -396,6 +396,11 @@ namespace Configuration {
         isHideDuplicateSubChannel: true,
         epgUpdateIntervalTime: 10,
         epgFullRefreshIntervalTime: 360,
+        epgPolling: {
+            enabled: true,
+            intervalSec: 60,
+            maxChannels: 8,
+        },
         epgRetentionTime: 0,
         conflictPriority: 1,
         recPriority: 2,

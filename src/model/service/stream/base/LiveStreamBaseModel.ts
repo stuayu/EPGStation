@@ -16,6 +16,8 @@ import ISocketIOManageModel from '../../socketio/ISocketIOManageModel';
 import AribId3Extractor from '../llhls/AribId3Extractor';
 import BroadcastTimeExtractor from '../util/BroadcastTimeExtractor';
 import IBroadcastTimeExtractor from '../util/IBroadcastTimeExtractor';
+import IEitPresentStore from '../util/IEitPresentStore';
+import EitPresentCollectTransform from '../util/EitPresentCollectTransform';
 import Fmp4Packager from '../llhls/Fmp4Packager';
 import IAribId3Extractor from '../llhls/IAribId3Extractor';
 import IFmp4Packager from '../llhls/IFmp4Packager';
@@ -46,10 +48,13 @@ export default abstract class LiveStreamBaseModel
     private aribId3Extractor: IAribId3Extractor | null = null;
     // 配信中の映像の放送時刻 (TDT / TOT) を読み取る。実況コメントの遅延補正に使う
     private broadcastTimeExtractor: IBroadcastTimeExtractor | null = null;
+    // 配信中の TS から EIT[p/f] を読み、放送中番組の判定に使う
+    private eitPresentCollectTransform: EitPresentCollectTransform | null = null;
     // 配信中の TS から BIT (放送局の系列情報) を収集する
     private affiliationCollector: IBroadcastAffiliationCollector;
     private bitCollectTransform: BitCollectTransform | null = null;
     private memoryStreamId: apid.StreamId | null = null;
+    private eitPresentStore: IEitPresentStore;
 
     constructor(
         @inject('IConfiguration') configure: IConfiguration,
@@ -60,12 +65,14 @@ export default abstract class LiveStreamBaseModel
         @inject('ISocketIOManageModel') socketIO: ISocketIOManageModel,
         @inject('IHLSMemoryStoreModel') hlsMemoryStore: IHLSMemoryStoreModel,
         @inject('IBroadcastAffiliationCollector') affiliationCollector: IBroadcastAffiliationCollector,
+        @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
     ) {
         super(configure, logger, processManager, fileDeleter, socketIO);
 
         this.mirakurunClientModel = mirakurunClientModel;
         this.hlsMemoryStore = hlsMemoryStore;
         this.affiliationCollector = affiliationCollector;
+        this.eitPresentStore = eitPresentStore;
     }
 
     /**
@@ -181,7 +188,16 @@ export default abstract class LiveStreamBaseModel
                 // 放送局の系列情報 (BIT) を配信のついでに収集する
                 this.bitCollectTransform = new BitCollectTransform(this.affiliationCollector, this.log);
                 this.broadcastTimeExtractor.pipe(this.bitCollectTransform);
-                const tsSource = this.bitCollectTransform;
+
+                // 放送波の EIT[p/f] を読み、放送中番組の判定を Mirakurun の EPG より優先させる。
+                // data リスナではなく Transform で挟む (data リスナは flowing モードへ切り替えて
+                // pipe が繋がる前のデータを落とすため)
+                this.eitPresentCollectTransform = new EitPresentCollectTransform(
+                    this.eitPresentStore,
+                    this.processOption.channelId,
+                );
+                this.bitCollectTransform.pipe(this.eitPresentCollectTransform);
+                const tsSource = this.eitPresentCollectTransform;
 
                 // ARIB 字幕を ID3 timed metadata へ変換する (arib-subtitle-timedmetadater)。
                 // HLS だけでなく mpegts 配信 (m2ts / m2tsll) でも必要:
@@ -344,6 +360,16 @@ export default abstract class LiveStreamBaseModel
             this.bitCollectTransform.unpipe();
             this.bitCollectTransform.destroy();
             this.bitCollectTransform = null;
+        }
+
+        if (this.eitPresentCollectTransform !== null) {
+            this.eitPresentCollectTransform.unpipe();
+            this.eitPresentCollectTransform.destroy();
+            this.eitPresentCollectTransform = null;
+        }
+        if (this.processOption !== null) {
+            // 配信が終わったら EIT は古くなるので捨てる (放送中判定は DB 由来へ戻る)
+            this.eitPresentStore.clear(this.processOption.channelId);
         }
 
         if (this.fmp4Packager !== null) {

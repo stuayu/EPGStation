@@ -957,6 +957,12 @@ Mirakurun の event stream は**差分しか運ばない**。既存番組の `up
 `0` で無効。全件取得は番組数に比例して重いので、短くしすぎない (既定 6 時間)。
 実行時は Operator のログに `periodic full refresh` が出る。
 
+### epgPolling
+
+event stream が接続できない、またはイベントなし切断が続く場合のサービス単位 EPG polling。
+`enabled` は既定 `true`、`intervalSec` は既定 `60` 秒、`maxChannels` は既定 `8` 局。
+対象はライブ配信中、録画中、数分以内に録画開始予定の順で選ぶ。event stream が復活すると停止する。
+
 ### epgRetentionTime
 
 #### 過去の番組表データを残す時間 (時間)

@@ -1,7 +1,10 @@
 'use strict';
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { decideFullUpdate } = require('../../dist/model/epgUpdater/FullUpdateDecision');
+const {
+    decideFullUpdate,
+    shouldRunStreamStartFullUpdate,
+} = require('../../dist/model/epgUpdater/FullUpdateDecision');
 
 const MIN = 60 * 1000;
 const NOW = 1_800_000_000_000;
@@ -72,4 +75,11 @@ test('event stream が切れている場合は定期突き合わせの条件を�
     // stream が切れていて lastUpdatedTime が新しいなら、全件取得はまだ走らせない
     const input = base({ isEventStreamAlive: false, lastUpdatedTime: NOW, lastFullUpdatedTime: NOW - 400 * MIN });
     assert.equal(decideFullUpdate(input), null);
+});
+
+test('event stream の直後の再接続では全件更新を省略し、間隔後は実行する', () => {
+    const minute = 60 * 1000;
+    assert.equal(shouldRunStreamStartFullUpdate(100 * minute, 100 * minute + 59 * 1000, minute), false);
+    assert.equal(shouldRunStreamStartFullUpdate(100 * minute, 101 * minute, minute), true);
+    assert.equal(shouldRunStreamStartFullUpdate(0, 1, minute), true);
 });

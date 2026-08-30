@@ -154,6 +154,11 @@ npm run recover-channel-name   # 過去の録画の放送局名を復元 (既定
 
 ### EPG 追従 (EIT[p/f] とリアルタイム同期)
 
+- **未定番組の放送中判定**: `ScheduleApiModel.getBroadcastingSchedule()` は `clampUndefinedDuration()` 後の終了時刻で判定する。暫定3時間の終了時刻を過ぎても、次番組が始まった未定番組を現在番組として返し続けない
+- **全件更新の画面通知**: `updateAll()` は前後の「現在 + 次」番組を放送局単位で比較し、変化した局だけ `ON_AIR_PROGRAM_UPDATED` を送る。番組表へは範囲不明 (`channelIds: []`, `startAt/endAt: null`) の `PROGRAM_RANGE_UPDATED` を送り、クライアントに再取得させる。event stream 再接続から60秒以内は全件更新を省略し、定期全件更新は従来どおり実行する
+- **event stream 無イベント警告**: 接続後にイベントを1件も受信せず切断した場合、リバースプロキシのバッファリング可能性を warn ログへ出す
+- **event stream 障害時の EPG polling**: 無イベント切断または接続失敗が連続すると、`epgPolling` に従いライブ配信中・録画中・録画開始間近の局を優先して `GET /api/programs?networkId=...&serviceId=...` で取得する。既定は60秒・1周期8局。stream復活時に停止し、定期全件更新 (`epgFullRefreshIntervalTime`) は残す
+- **Service 側 EIT[p/f]**: `LiveStreamBaseModel` の TS pass-through parser が EIT present/following を読み、DI singleton `EitPresentStore` が局単位で保持する。`ScheduleApiModel` は鮮度2分以内の present を DB 時刻より優先し、Mirakurun の古い終了時刻でも present の番組を放映中として返す。録画側 Operator からの IPC 転送は未実装
 - **リアルタイム同期**: event stream のイベントを `ProgramUpdatePriority.ts` が `immediate` / `normal` に分類し、`immediate` (番組の消滅・付け替え / 放送時間未定への変更 / `urgentWindowMinutes` 既定 180 分以内に始まる番組) だけを 10 秒 tick を待たず先行して DB へ書く (デバウンス 500ms)。設定は `featureFlags.epgRealtimeSync` と `config.yml` の `epgRealtime`
 - **event stream が動いていても定期的に全件突き合わせる**: event stream は差分しか運ばないため、新規番組の `create` が届かないと DB が古いまま残る (再起動でだけ直る)。既存のウォッチドッグは「イベントが来ない」ことしか見ておらず、イベントが届き続けるこのケースを検知できない。`epgFullRefreshIntervalTime` (既定 360 分) ごとに `updateAll()` で取り直す
 - **クライアントへの通知は 2 系統**: `updateOnAirProgram` (`channelIds`、EIT[p/f] 相当。視聴画面・放映中一覧) と `updateProgram` (`{ channelIds, startAt, endAt }`、変更のあった時間帯そのもの。番組表)。全体更新 (`updateStatus`) と分けているのは 10 秒周期で飛びうるため
