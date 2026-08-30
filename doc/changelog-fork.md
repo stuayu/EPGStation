@@ -15,15 +15,15 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-29
 
-- **イベントリレー予約の並行処理で同一番組が二重予約される問題を修正**: `ReservationManageModel.addEventRelay()` の `programId` 重複確認を予約追加の実行権取得後へ移動し、確認・予約生成・競合確認・INSERTを同じロック内で直列化した。例外時も `try/finally` で実行権を解放する。Issue #25。
-
-- **録画削除時の DB 失敗による実ファイル欠損を防止**: 録画・サムネイル・動画・視聴履歴・シリーズ関連・ドロップログの DB 削除を 1 トランザクションへ統合し、実ファイルは同一 filesystem 内へ一時退避してから DB を削除する。DB 失敗時は退避ファイルを元へ戻し、成功イベントを発行しない。退避後の unlink 失敗は削除イベントを発行してから `RecordedDeleteCleanupRequired` として要清掃扱いにする (DB 上は消えているため画面へ反映させる)。動画ファイルのパスが解決できない壊れたレコードは、実ファイルを残したまま DB 側の削除を続行して消せなくならないようにする。中断で残った退避ファイル (`.<ファイル名>.deleting-<recordedId>-<n>`) は録画ファイルのクリーンアップが掃除する。Issue #26。
-
-- **タグリリースへ可変な Mirakurun branch HEAD が混入する問題を修正 (Issue #27)**: `release.yml` と `build-validation.yml` が共有する Mirakurun revision を `.github/mirakurun-revision` の commit SHA へ固定し、CI 上の EPGStation 側の依存導入を `npm ci` へ変更した (`npm run all-install` はワンクリック更新でも使うため `npm i` のまま残し、CI だけが `npm ci` を直接呼ぶ。Mirakurun は lockfile を持たないため `npm install` のまま)。配布する EPGStation には EPGStation/Mirakurun の commit と両 lockfile の SHA-256 を `build-manifest.txt` として同梱する。
-
 - **匿名許可時に非adminの書き込み API まで実行できる問題を修正 (Issue #29)**: `auth.allowAnonymous` の設定値は維持しつつ、認証 payload が無い場合に通す HTTP メソッドを `GET` / `HEAD` / `OPTIONS` に限定した。録画削除などの `POST` / `PUT` / `PATCH` / `DELETE` は、admin API でなくても認証を要求する。media token は従来どおり再生用 `GET` / `HEAD` allowlist のみで認証し、セッション認証と admin API の保護も維持する。
 
 - **再生専用 media token が録画・動画管理 API を認証してしまう問題を修正 (Issue #28)**: `AuthGuard` の media token 判定を method + 再生用 API の明示 allowlist に変更し、`GET`/`HEAD` の動画・IPTV・ライブ/録画ストリームだけを許可する。`/recorded` 配下や動画・ストリームの管理操作は対象外とする。allowlist への追記漏れで外部プレイヤーが 401 にならないよう、`test/ut/auth.test.js` が `/videos`・`/streams`・`/iptv` 配下の実ルートと突き合わせる。
+
+- **タグリリースへ可変な Mirakurun branch HEAD が混入する問題を修正 (Issue #27)**: `release.yml` と `build-validation.yml` が共有する Mirakurun revision を `.github/mirakurun-revision` の commit SHA へ固定し、CI 上の EPGStation 側の依存導入を `npm ci` へ変更した (`npm run all-install` はワンクリック更新でも使うため `npm i` のまま残し、CI だけが `npm ci` を直接呼ぶ。Mirakurun は lockfile を持たないため `npm install` のまま)。配布する EPGStation には EPGStation/Mirakurun の commit と両 lockfile の SHA-256 を `build-manifest.txt` として同梱する。
+
+- **録画削除時の DB 失敗による実ファイル欠損を防止**: 録画・サムネイル・動画・視聴履歴・シリーズ関連・ドロップログの DB 削除を 1 トランザクションへ統合し、実ファイルは同一 filesystem 内へ一時退避してから DB を削除する。DB 失敗時は退避ファイルを元へ戻し、成功イベントを発行しない。退避後の unlink 失敗は削除イベントを発行してから `RecordedDeleteCleanupRequired` として要清掃扱いにする (DB 上は消えているため画面へ反映させる)。動画ファイルのパスが解決できない壊れたレコードは、実ファイルを残したまま DB 側の削除を続行して消せなくならないようにする。中断で残った退避ファイル (`.<ファイル名>.deleting-<recordedId>-<n>`) は録画ファイルのクリーンアップが掃除する。Issue #26。
+
+- **イベントリレー予約の並行処理で同一番組が二重予約される問題を修正**: `ReservationManageModel.addEventRelay()` の `programId` 重複確認を予約追加の実行権取得後へ移動し、確認・予約生成・競合確認・INSERTを同じロック内で直列化した。例外時も `try/finally` で実行権を解放する。Issue #25。
 
 ## 2026-08-24
 
