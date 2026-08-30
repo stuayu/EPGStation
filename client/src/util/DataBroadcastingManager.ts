@@ -30,6 +30,8 @@ export interface DataBroadcastingManagerCallbacks {
     onUsedKeyListChanged?: (isUsingNumericKey: boolean) => void;
     // BML ブラウザの読み込み/通信状態が変化したとき (リモコンのローディング表示に使う)
     onLoadingChanged?: (loading: boolean) => void;
+    // 録画再生時の再生位置に対応する放送時刻。ライブでは未指定
+    getBroadcastTime?: () => number | null;
 }
 
 /**
@@ -51,6 +53,8 @@ export default class DataBroadcastingManager {
     private readonly player: DPlayer;
     private readonly param: DataBroadcastingConnectParam;
     private readonly callbacks?: DataBroadcastingManagerCallbacks;
+    private broadcastTimeTimerId: number | null = null;
+    private readonly broadcastTimeListener = (): void => this.sendPlaybackBroadcastTime();
 
     // 映像が入る DOM 要素。DPlayer 内の dplayer-video-wrap-aspect をそのまま使う (中に映像と字幕が含まれる)
     private readonly mediaElement: HTMLElement;
@@ -213,6 +217,15 @@ export default class DataBroadcastingManager {
         this.resizeObserver.observe(this.player.template.videoWrap);
 
         this.connectWebSocket();
+        if (typeof this.callbacks?.getBroadcastTime === 'function') {
+            this.player.on('timeupdate', this.broadcastTimeListener);
+            this.player.on('play', this.broadcastTimeListener);
+            this.player.on('pause', this.broadcastTimeListener);
+            this.player.on('seeking', this.broadcastTimeListener);
+            this.player.on('seeked', this.broadcastTimeListener);
+            this.broadcastTimeTimerId = window.setInterval(this.broadcastTimeListener, 250);
+            this.sendPlaybackBroadcastTime();
+        }
     }
 
     /**
@@ -259,6 +272,15 @@ export default class DataBroadcastingManager {
      * データ放送機能を終了し、破棄する
      */
     public async destroy(): Promise<void> {
+        if (this.broadcastTimeTimerId !== null) {
+            window.clearInterval(this.broadcastTimeTimerId);
+            this.broadcastTimeTimerId = null;
+        }
+        this.player.off('timeupdate', this.broadcastTimeListener);
+        this.player.off('play', this.broadcastTimeListener);
+        this.player.off('pause', this.broadcastTimeListener);
+        this.player.off('seeking', this.broadcastTimeListener);
+        this.player.off('seeked', this.broadcastTimeListener);
         if (this.ws !== null) {
             try {
                 this.ws.close();
@@ -305,6 +327,13 @@ export default class DataBroadcastingManager {
      */
     private setLoading(loading: boolean): void {
         this.callbacks?.onLoadingChanged?.(loading);
+    }
+
+    /** 録画の再生位置を BML の現在時刻へ反映する */
+    private sendPlaybackBroadcastTime(): void {
+        const time = this.callbacks?.getBroadcastTime?.();
+        if (time === null || typeof time === 'undefined' || this.bmlBrowser === null) return;
+        this.bmlBrowser.emitMessage({ type: 'currentTime', timeUnixMillis: time });
     }
 
     /**

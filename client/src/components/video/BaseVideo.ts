@@ -10,6 +10,7 @@ import IStreamApiModel from '@/model/api/streams/IStreamApiModel';
 import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import { DataBroadcastingConnectParam } from '@/util/DataBroadcastingManager';
+import { resolveDataBroadcastingTime } from '../../../../src/model/service/dataBroadcasting/DataBroadcastingTime';
 import DPlayerEnhancer from '@/util/DPlayerEnhancer';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
 import * as apid from '../../../../api';
@@ -684,6 +685,7 @@ export default abstract class BaseVideo extends Vue {
 
     // データ放送 (BML) のシーク位置計算用の videoFile サイズ (byte)。取得できていない場合は null (先頭からの視聴扱い)
     private videoFileSizeForDataBroadcasting: number | null = null;
+    private dataBroadcastingStartAt: number | null = null;
 
     /**
      * DPlayer のインスタンスを返す (データ放送 (BML) 機能が DPlayer の DOM に直接介入するために使う)
@@ -718,9 +720,15 @@ export default abstract class BaseVideo extends Vue {
         try {
             const metadata = await container.get<IVideoApiModel>('IVideoApiModel').getMetadata(videoFileId);
             this.videoFileSizeForDataBroadcasting = metadata.size > 0 ? metadata.size : null;
+            this.dataBroadcastingStartAt = metadata.startAt;
         } catch (err) {
             console.error(err);
         }
+    }
+
+    /** 録画ファイルの再生位置に対応する放送時刻を返す */
+    public getDataBroadcastingTime(): number | null {
+        return resolveDataBroadcastingTime(this.dataBroadcastingStartAt, this.getCurrentTime());
     }
 
     /**

@@ -157,14 +157,23 @@ export default class BroadcastTimeExtractor extends stream.Transform implements 
         year = year + k + 1900;
         month = month - 1 - k * 12;
 
-        const hour = (buffer[2] >> 4) * 10 + (buffer[2] & 0x0f);
-        const minute = (buffer[3] >> 4) * 10 + (buffer[3] & 0x0f);
-        const second = (buffer[4] >> 4) * 10 + (buffer[4] & 0x0f);
+        const decodeBcd = (value: number): number | null => {
+            const high = value >> 4;
+            const low = value & 0x0f;
+            return high <= 9 && low <= 9 ? high * 10 + low : null;
+        };
+        const hour = decodeBcd(buffer[2]);
+        const minute = decodeBcd(buffer[3]);
+        const second = decodeBcd(buffer[4]);
 
-        if (hour > 23 || minute > 59 || second > 60) {
+        if (hour === null || minute === null || second === null || hour > 23 || minute > 59 || second > 60) {
             return null;
         }
 
-        return Date.UTC(year, month - 1, day, hour, minute, second) - BroadcastTimeExtractor.JST_OFFSET_MS;
+        const utc = Date.UTC(year, month - 1, day, hour, minute, second);
+        const date = new Date(utc);
+        if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day)
+            return null;
+        return utc - BroadcastTimeExtractor.JST_OFFSET_MS;
     }
 }

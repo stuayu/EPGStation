@@ -108,6 +108,7 @@ export default toNative(WatchTopBar);
         .logo
             height: 28px
             max-width: 72px
+            width: auto
             object-fit: contain
 
         .logo-text

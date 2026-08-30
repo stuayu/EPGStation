@@ -330,7 +330,7 @@ class VideoContainer extends Vue {
      * どちらも揃わない (video 未生成・当該 video が非対応) 場合は null
      * @return { dp: DPlayer; param: DataBroadcastingConnectParam } | null
      */
-    public getDataBroadcastingContext(): { dp: DPlayer; param: DataBroadcastingConnectParam } | null {
+    public getDataBroadcastingContext(): { dp: DPlayer; param: DataBroadcastingConnectParam; getBroadcastTime: () => number | null } | null {
         const video = this.getVideo();
         if (video === null) return null;
 
@@ -338,7 +338,7 @@ class VideoContainer extends Vue {
         const param = video.getDataBroadcastingParam();
         if (dp === null || param === null) return null;
 
-        return { dp, param };
+        return { dp, param, getBroadcastTime: () => video.getDataBroadcastingTime() };
     }
 
     private getVideo(): BaseVideo | null {

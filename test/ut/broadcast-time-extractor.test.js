@@ -91,6 +91,14 @@ test('TOT からも放送時刻を読み取る', () => {
     assert.equal(result.time, Date.UTC(2026, 0, 1, 0, 0, 0) - 9 * 3600 * 1000);
 });
 
+test('BCD の異常値を無視する', () => {
+    const extractor = new BroadcastTimeExtractor();
+    const invalid = jstTimeBuffer(2026, 1, 1, 0, 0, 0);
+    invalid[3] = 0x6a;
+    write(extractor, [buildTimePacket(0x70, invalid)]);
+    assert.equal(extractor.getBroadcastTime(), null);
+});
+
 test('新しい TDT を受け取ると値を更新する', () => {
     const extractor = new BroadcastTimeExtractor();
     write(extractor, [

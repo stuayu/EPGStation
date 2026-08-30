@@ -344,3 +344,10 @@ DPlayer の `switchQuality()` は「quality リストに事前登録された UR
       H.264 へエンコードするプリセットを使う
 - 字幕は dantto4k が MMT の字幕を ARIB B24 の TS 字幕へ変換するため、in-memory HLS の `emsg` 経路
   (version 1 必須) を含め従来どおり動く
+# ストリーミング実装メモ
+
+## データ放送の録画再生時刻
+
+録画用のデータ放送 WebSocket は録画 TS を `decodeTS` へ先読みするため、WebSocket から届く `currentTime` は視聴者の再生位置ではない。録画再生では、メタデータ API の `startAt` (録画ファイル先頭の放送時刻) に DPlayer の動画全体の再生位置を加算し、BMLBrowser の `currentTime` をクライアントから 250 ms 間隔で更新する。timeupdate、play、pause、seeking、seeked でも即時更新する。ライブは TS の TDT/TOT を従来どおり使う。
+
+停止中も更新を続けるのは、BMLBrowser が最後の currentTime と受信した PCR の差を補間するため。録画 TS の先読みで PCR が進んでも、再生位置の時刻を再注入して時計が実時間やエンコード位置へ進まないようにする。
