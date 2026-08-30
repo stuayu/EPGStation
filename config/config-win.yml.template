@@ -82,6 +82,10 @@ epgUpdateIntervalTime: 10
 # 何らかの理由で届かないと DB が古いまま残り、再起動するまで番組表が増えません。
 # その取りこぼしを定期的に回収するための保険です。
 #epgFullRefreshIntervalTime: 360
+#epgPolling:
+#  enabled: true
+#  intervalSec: 60
+#  maxChannels: 8
 
 # 過去の番組表データを残す時間 (時間)
 # 0: 終了した番組を順次削除する (既定) / -1: 削除せず無期限に残す

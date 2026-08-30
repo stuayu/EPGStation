@@ -66,3 +66,16 @@ export const decideFullUpdate = (input: FullUpdateInput): FullUpdateReason => {
 
     return null;
 };
+
+/**
+ * event stream 再接続時の全件更新を実行するか判定する。
+ * @param lastFullUpdatedTime: number 最後に全件更新が成功した時刻
+ * @param now: number 現在時刻
+ * @param minimumIntervalMs: number 再接続時の最小間隔
+ * @return boolean 実行するなら true
+ */
+export const shouldRunStreamStartFullUpdate = (
+    lastFullUpdatedTime: number,
+    now: number,
+    minimumIntervalMs: number,
+): boolean => lastFullUpdatedTime === 0 || now - lastFullUpdatedTime >= minimumIntervalMs;

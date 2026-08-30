@@ -18,6 +18,7 @@ import ChannelUtil from '../../util/ChannelUtil';
 import { detectOnAirPrograms, OnAirDetectResult } from './OnAirProgramDetector';
 import { classifyProgramEvent, ProgramUpdatePriorityOption, splitUrgentProgramEvents } from './ProgramUpdatePriority';
 import { buildProgramUpdateNotice, hasProgramUpdateNotice, DeletedProgramRange } from './ProgramUpdateNotice';
+import { createOnAirProgramSnapshot, findChangedOnAirChannels } from './OnAirProgramSnapshot';
 import { resolveEPGRealtimeConfig } from './EPGRealtimeConfig';
 import IEPGUpdateManageModel, {
     ProgramBaseEvent,
@@ -29,6 +30,7 @@ import IEPGUpdateManageModel, {
     EPGUpdateEvent,
     TunerServerType,
 } from './IEPGUpdateManageModel';
+import IEitPresentStore from '../service/stream/util/IEitPresentStore';
 
 // EIT[p/f] 追従ログの対象 (検出結果 + 元の番組情報)
 type OnAirLogTarget = OnAirDetectResult<{
@@ -72,6 +74,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
         mirakurunClientModel: IMirakurunClientModel,
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IProgramDB') programDB: IProgramDB,
+        @inject('IEitPresentStore') eitPresentStore?: IEitPresentStore,
     ) {
         super();
 
@@ -80,6 +83,9 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
         this.channelDB = channelDB;
         this.programDB = programDB;
         this.configuration = configuration;
+        eitPresentStore?.onChange(channelId => {
+            this.emit(EPGUpdateEvent.ON_AIR_PROGRAM_UPDATED, [channelId]);
+        });
 
         // 除外放送局索引情報のセット
         const config = configuration.getConfig();
@@ -101,6 +107,11 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
      */
     public async updateAll(): Promise<void> {
         await this.updateChannels();
+        const onAirNow = new Date().getTime();
+        const beforeOnAir = createOnAirProgramSnapshot(
+            await this.programDB.findBroadcasting({ isHalfWidth: false, includeNextProgram: true }),
+            onAirNow,
+        );
 
         // タイムアウト設定。
         // NOTE: setTimeout のコールバック内で throw しても呼び出し元の try/catch では
@@ -146,7 +157,59 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
         });
         this.log.system.info('done update programs');
 
+        const afterOnAir = createOnAirProgramSnapshot(
+            await this.programDB.findBroadcasting({ isHalfWidth: false, includeNextProgram: true }),
+            onAirNow,
+        );
+        const changedOnAirChannels = findChangedOnAirChannels(beforeOnAir, afterOnAir);
+        if (changedOnAirChannels.length > 0) {
+            this.emit(EPGUpdateEvent.ON_AIR_PROGRAM_UPDATED, changedOnAirChannels);
+        }
+        // 全件更新では差分範囲を求められないため、クライアントへ再取得を指示する。
+        this.emit(EPGUpdateEvent.PROGRAM_RANGE_UPDATED, {
+            programIds: [],
+            channelIds: [],
+            startAt: null,
+            endAt: null,
+        });
+
         clearTimeoutIfNeeded();
+    }
+
+    /** サービス単位で Mirakurun の番組を取得し、既存の保存・通知経路へ流す。 */
+    public async updateProgramsByChannels(channelIds: number[]): Promise<void> {
+        const channels = await this.channelDB.findAll();
+        const targets = channels.filter(channel => channelIds.includes(channel.id));
+        const programs: mapid.Program[] = [];
+        for (const channel of targets) {
+            const values = await this.mirakurunClient.getPrograms({
+                networkId: channel.networkId,
+                serviceId: channel.serviceId,
+            });
+            programs.push(...values.filter(program => this.isMainProgram(program)));
+        }
+        if (programs.length === 0) return;
+        const now = new Date().getTime();
+        const before = createOnAirProgramSnapshot(
+            await this.programDB.findBroadcasting({ isHalfWidth: false, includeNextProgram: true }),
+            now,
+        );
+        // insert() は deleteChannelIds が空だと全件削除するため、差分更新経路を使う。
+        await this.programDB.update(this.channelIndex, { insert: programs, update: [], delete: [] });
+        const after = createOnAirProgramSnapshot(
+            await this.programDB.findBroadcasting({ isHalfWidth: false, includeNextProgram: true }),
+            now,
+        );
+        const changed = findChangedOnAirChannels(before, after);
+        if (changed.length > 0) this.emit(EPGUpdateEvent.ON_AIR_PROGRAM_UPDATED, changed);
+        this.emit(EPGUpdateEvent.PROGRAM_RANGE_UPDATED, {
+            programIds: programs.map(program => program.id),
+            channelIds: [
+                ...new Set(programs.map(program => this.channelIndex[program.networkId]?.[program.serviceId]?.id)),
+            ].filter((id): id is number => typeof id === 'number'),
+            startAt: null,
+            endAt: null,
+        });
     }
 
     /**
@@ -414,16 +477,28 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
             this.log.system.error('event stream get error');
             this.log.system.error(err);
             this.stopStream(eventStream);
+            this.emit(EPGUpdateEvent.STREAM_NO_EVENT);
             throw err;
         });
 
         this.emit(EPGUpdateEvent.STREAM_STARTED);
 
         return new Promise<void>(async (_resolve: () => void, reject: (err: Error) => void) => {
+            let receivedEvent = false;
+            const warnIfNoEvent = (): void => {
+                if (receivedEvent === false) {
+                    this.log.system.warn(
+                        'event stream disconnected without receiving any event; a reverse proxy may be buffering the stream',
+                    );
+                    this.emit(EPGUpdateEvent.STREAM_NO_EVENT);
+                }
+            };
+
             // エラー処理
             eventStream.once('error', err => {
                 this.log.system.error('event stream error');
                 this.log.system.error(err);
+                warnIfNoEvent();
                 this.stopStream(eventStream);
                 this.emit(EPGUpdateEvent.STREAM_ABORTED);
                 reject(err);
@@ -431,13 +506,17 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
 
             eventStream.once('end', () => {
                 this.log.system.error('event stream is ended');
+                warnIfNoEvent();
                 this.stopStream(eventStream);
+                this.emit(EPGUpdateEvent.STREAM_ABORTED);
                 reject(new Error('EndedEventStream'));
             });
 
             eventStream.once('close', () => {
                 this.log.system.error('event stream is closed');
+                warnIfNoEvent();
                 this.stopStream(eventStream);
+                this.emit(EPGUpdateEvent.STREAM_ABORTED);
                 reject(new Error('ClosedEventStream'));
             });
 
@@ -466,6 +545,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                     // event 情報をパースして queue に積む
                     this.log.system.debug(String(tmp));
                     const events: mapid.Event[] = <mapid.Event[]>JSON.parse(`[${String(tmp).slice(0, -3)}]`);
+                    receivedEvent = receivedEvent || events.length > 0;
                     for (const event of events) {
                         if (event.resource === 'program') {
                             this.enqueueProgramEvent(<any>event);
@@ -507,6 +587,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
 
         // open 時の処理
         let isEventsOpend = false;
+        let receivedEvent = false;
         sse.onopen = () => {
             isEventsOpend = true;
             this.emit(EPGUpdateEvent.STREAM_STARTED);
@@ -514,6 +595,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
 
         // 放映中プログラムの更新
         sse.addEventListener('onair.program-changed', ev => {
+            receivedEvent = true;
             const { serviceId } = JSON.parse(ev.data as string);
             this.updatedOnAirServiceIds[serviceId] = true;
             this.log.system.debug(`mirakc update onair services: ${serviceId}`);
@@ -523,6 +605,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
         let isFirst = true;
         let startTime = 0;
         sse.addEventListener('epg.programs-updated', ev => {
+            receivedEvent = true;
             const now = new Date().getTime();
             if (isFirst === true) {
                 isFirst = false;
@@ -543,6 +626,12 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
             // エラー発生時のエラー処理の定義
             const finalize = (errorMessage: string) => {
                 clearInterval(timer);
+                if (isEventsOpend === true && receivedEvent === false) {
+                    this.log.system.warn(
+                        'event stream disconnected without receiving any event; a reverse proxy may be buffering the stream',
+                    );
+                    this.emit(EPGUpdateEvent.STREAM_NO_EVENT);
+                }
                 try {
                     sse.close();
                 } catch (err) {

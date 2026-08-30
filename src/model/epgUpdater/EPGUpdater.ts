@@ -6,11 +6,19 @@ import ILoggerModel from '../ILoggerModel';
 import { isFeatureEnabled } from '../FeatureFlags';
 import IProgramSeriesApiModel from '../api/schedule/IProgramSeriesApiModel';
 import IEPGUpdateManageModel, { EPGUpdateEvent, TunerServerType } from './IEPGUpdateManageModel';
-import { decideFullUpdate } from './FullUpdateDecision';
+import { decideFullUpdate, shouldRunStreamStartFullUpdate } from './FullUpdateDecision';
 import IEPGUpdater from './IEPGUpdater';
 import { resolveEPGRealtimeConfig } from './EPGRealtimeConfig';
 import { ProgramUpdateNotice } from './ProgramUpdateNotice';
 import Util from '../../util/Util';
+import IStreamManageModel from '../service/stream/manager/IStreamManageModel';
+import IReserveDB from '../db/IReserveDB';
+import { selectEPGPollingChannels } from './EPGPollingSelection';
+import {
+    onEventStreamDisconnected,
+    onEventStreamStarted,
+    EventStreamFallbackState,
+} from './EventStreamFallbackDecision';
 
 @injectable()
 class EPGUpdater implements IEPGUpdater {
@@ -36,19 +44,29 @@ class EPGUpdater implements IEPGUpdater {
     // DELETE FROM program 同士が競合して MySQL の Lock wait timeout (ER_LOCK_WAIT_TIMEOUT) が発生する
     private updateTaskLock: Promise<void> = Promise.resolve();
     private isUpdateTaskRunning: boolean = false;
+    private fallbackState: EventStreamFallbackState = { consecutiveSilentDisconnects: 0, polling: false };
+    private lastPollingTime = 0;
+    private streamManage?: IStreamManageModel;
+    private reserveDB?: IReserveDB;
 
     private static readonly EVENT_STREAM_REONNECTION_MAX = 12;
+    // event stream の短時間再接続で同じ全件取得を繰り返さない間隔
+    private static readonly STREAM_START_FULL_UPDATE_INTERVAL = 60 * 1000;
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
         @inject('IConfiguration') configuration: IConfiguration,
         @inject('IEPGUpdateManageModel') updateManage: IEPGUpdateManageModel,
         @inject('IProgramSeriesApiModel') private programSeries: IProgramSeriesApiModel,
+        @inject('IStreamManageModel') streamManage?: IStreamManageModel,
+        @inject('IReserveDB') reserveDB?: IReserveDB,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
         this.configuration = configuration;
         this.updateManage = updateManage;
+        this.streamManage = streamManage;
+        this.reserveDB = reserveDB;
 
         // 災害時の特番割り込み・前番組の延長など、即時に反映すべき更新は
         // 10 秒周期の tick を待たずに短いデバウンスで先行して DB へ書く
@@ -84,26 +102,46 @@ class EPGUpdater implements IEPGUpdater {
         });
 
         this.updateManage.on(EPGUpdateEvent.STREAM_STARTED, async () => {
+            this.fallbackState = onEventStreamStarted();
             this.log.system.info('event stream started');
             this.retryCount = 0;
-            // 定期実行タスクの updateAll と同時に走らないよう排他制御する
-            await this.runExclusiveUpdateTask(async () => {
-                try {
-                    await this.updateManage.updateAll();
-                    this.notify();
-                } catch (err: any) {
-                    this.log.system.error('updateAll error');
-                }
-                // updateAllが完了して以降、queueフラッシュ処理を有効にするために
-                // この位置でisEventStreamAliveをtrueにする
-                const now = new Date().getTime();
-                this.applyFullUpdateResult(now, false);
+            const now = new Date().getTime();
+            if (
+                shouldRunStreamStartFullUpdate(
+                    this.lastFullUpdatedTime,
+                    now,
+                    EPGUpdater.STREAM_START_FULL_UPDATE_INTERVAL,
+                )
+            ) {
+                // 定期実行タスクの updateAll と同時に走らないよう排他制御する
+                await this.runExclusiveUpdateTask(async () => {
+                    let updateSucceeded = false;
+                    try {
+                        await this.updateManage.updateAll();
+                        updateSucceeded = true;
+                        this.notify();
+                    } catch (err: any) {
+                        this.log.system.error('updateAll error');
+                    }
+                    // updateAllが完了して以降、queueフラッシュ処理を有効にするために
+                    // この位置でisEventStreamAliveをtrueにする
+                    if (updateSucceeded === true) {
+                        this.applyFullUpdateResult(now, false);
+                    }
+                    this.isEventStreamAlive = true;
+                });
+            } else {
+                this.log.system.info('skip updateAll after event stream reconnect: recent full update');
                 this.isEventStreamAlive = true;
-            });
+            }
         });
 
         this.updateManage.on(EPGUpdateEvent.STREAM_ABORTED, () => {
             this.log.system.info('has disconnected from the mirakurun');
+            this.isEventStreamAlive = false;
+        });
+        this.updateManage.on(EPGUpdateEvent.STREAM_NO_EVENT, () => {
+            this.fallbackState = onEventStreamDisconnected(this.fallbackState, false, 2);
             this.isEventStreamAlive = false;
         });
     }
@@ -150,6 +188,7 @@ class EPGUpdater implements IEPGUpdater {
                 const now = new Date().getTime();
 
                 try {
+                    if (this.fallbackState.polling === true) await this.pollImportantChannels(now);
                     if (this.isEventStreamAlive === true) {
                         if (tunerServerType === TunerServerType.mirakurun) {
                             // mirakurun の場合
@@ -195,6 +234,34 @@ class EPGUpdater implements IEPGUpdater {
                 }
             });
         }, 10 * 1000);
+    }
+
+    /** event stream 障害時だけ、重要チャンネルをサービス単位で取得する。 */
+    private async pollImportantChannels(now: number): Promise<void> {
+        const polling = this.configuration.getConfig().epgPolling;
+        if (polling?.enabled === false || this.fallbackState.polling === false) return;
+        const intervalMs = (typeof polling?.intervalSec === 'number' ? polling.intervalSec : 60) * 1000;
+        if (this.lastPollingTime + intervalMs > now) return;
+        this.lastPollingTime = now;
+        const candidates: import('./EPGPollingSelection').PollingChannelCandidate[] = (
+            this.streamManage?.getStreamInfos() ?? []
+        )
+            .filter(item => item.info.type === 'LiveStream' || item.info.type === 'LiveHLS')
+            .map(item => ({ channelId: (item.info as any).channelId, activeStream: true }));
+        const reserves =
+            this.reserveDB === undefined
+                ? []
+                : await this.reserveDB.findLists({ startAt: now, endAt: now + 5 * 60 * 1000 });
+        for (const reserve of reserves) {
+            candidates.push({
+                channelId: reserve.channelId,
+                recording: reserve.startAt <= now && reserve.endAt >= now,
+                upcomingRecording: reserve.startAt > now,
+            });
+        }
+        const limit = typeof polling?.maxChannels === 'number' ? polling.maxChannels : 8;
+        const channelIds = selectEPGPollingChannels(candidates, limit);
+        if (channelIds.length > 0) await this.updateManage.updateProgramsByChannels(channelIds);
     }
 
     /**
