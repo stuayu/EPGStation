@@ -272,7 +272,10 @@ class ServiceServer implements IServiceServer {
         );
 
         // thumbnail
-        this.app.use(this.createUrl('/thumbnail'), express.static(this.config.thumbnailStorageRoot || this.config.thumbnail, this.getStaticOptions()));
+        this.app.use(
+            this.createUrl('/thumbnail'),
+            express.static(this.config.thumbnailStorageRoot || this.config.thumbnail, this.getStaticOptions()),
+        );
 
         // in-memory HLS (ディスクに書き出さないライブ / 録画済み HLS 配信)
         // メモリストアに存在しないファイルは next() で従来のディスク配信 (express.static) へフォールバックする

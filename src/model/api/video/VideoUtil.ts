@@ -315,9 +315,7 @@ export default class VideoUtil implements IVideoUtil {
                 (err, stdout) => {
                     if (err) {
                         if (err.killed === true || err.code === 'ETIMEDOUT') {
-                            const timeoutError = new Error(
-                                `ffprobe timed out after ${timeout} ms`,
-                            );
+                            const timeoutError = new Error(`ffprobe timed out after ${timeout} ms`);
                             timeoutError.name = 'FfprobeTimeoutError';
                             reject(timeoutError);
 

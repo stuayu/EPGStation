@@ -16,7 +16,7 @@ export function createThumbnailCandidates(duration: number, count: number, legac
     const end = Math.max(start, duration * 0.95);
     if (safeCount === 1) return [{ timestamp: Math.min(duration, Math.max(0, legacyPosition)), index: 0 }];
     return Array.from({ length: safeCount }, (_, index) => ({
-        timestamp: start + (end - start) * index / (safeCount - 1),
+        timestamp: start + ((end - start) * index) / (safeCount - 1),
         index,
     }));
 }
