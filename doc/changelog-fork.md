@@ -120,6 +120,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-30
 
+- **配信中の EIT[p/f] が取れていなかったのを直した**: 実機のライブ視聴で EIT[p/f] が反映されず調査したところ 3 つ問題があった。① **`EitPresentStore` が present と following を同じ入れ物へ入れていた** — EIT[p/f] は present と following が交互に流れてくるため、後から届いた following が present を上書きし、放送中判定 (present しか見ない) がほぼ常に成立しなくなっていた。別々に保持する。② **相乗りサービスの EIT で本編が上書きされていた** — 同じ TS にはワンセグ・サブチャンネル分の EIT も流れる (実測: NHK総合1・福島 の TS に serviceId 21504 と 21505 の EIT)。視聴中の serviceId と一致するものだけ採用する。③ **無変換配信 (エンコードプロセス無し) の経路で解析していなかった**。解析用の枝を 1 本生やして読む。あわせて present が変わったときに info ログを出すようにした (受信できているかログから追えるようにするため)。
+
 - **放送時間未定の番組と event stream 切断時の画面更新を修正**: `ScheduleApiModel` が未定番組を次番組の開始後も暫定3時間の `endAt` で放送中扱いしていたため、クランプ後の終了時刻で除外するようにした。`EPGUpdateManageModel.updateAll()` は前後の現在番組・次番組を放送局ごとに比較し、変化局だけ `ON_AIR_PROGRAM_UPDATED` を通知し、範囲不明の `PROGRAM_RANGE_UPDATED` も送る。これにより event stream のイベントが届かず全件更新だけが成功する環境でも番組表・視聴画面が再取得される。短時間の再接続では重い全件更新を60秒間隔で抑制し、接続後にイベントを1件も受けず切断した場合はリバースプロキシのバッファリング可能性を warn ログへ出す。回帰テストは `test/ut/on-air-program-snapshot.test.js` と `test/ut/full-update-decision.test.js`
 
 ## 2026-08-20
