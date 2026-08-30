@@ -13,6 +13,27 @@ export const EIT_FRESHNESS_MS = 2 * 60 * 1000;
 export const getMirakurunProgramId = (networkId: number, serviceId: number, eventId: number): number =>
     (networkId * 100000 + serviceId) * 100000 + eventId;
 
+/**
+ * EIT[p/f] の present から、放送波を正とした放送時刻を求める
+ * @param eit: EitOnAirRecord
+ * @param fallbackStartAt: number EIT が開始時刻を持たない場合に使う値 (DB の値)
+ * @param fallbackEndAt: number 放送時間未定の場合に使う暫定終了時刻 (DB の値)
+ * @return { startAt, endAt, isDurationUndefined }
+ */
+export const resolveEitBroadcastTime = (
+    eit: EitOnAirRecord,
+    fallbackStartAt: number,
+    fallbackEndAt: number,
+): { startAt: number; endAt: number; isDurationUndefined: boolean } => {
+    const startAt = eit.startAt ?? fallbackStartAt;
+    // durationSec が null = ARIB の放送時間未定。終了時刻を確定値として出さない
+    if (eit.durationSec === null) {
+        return { startAt: startAt, endAt: Math.max(fallbackEndAt, startAt), isDurationUndefined: true };
+    }
+
+    return { startAt: startAt, endAt: startAt + eit.durationSec * 1000, isDurationUndefined: false };
+};
+
 /** 新しい EIT present が DB の現在番組候補を上書きするか判定する。 */
 export const resolveEitOnAirProgram = (
     programs: Program[],
