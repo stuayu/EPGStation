@@ -23,7 +23,12 @@ export default class EitPresentStore implements IEitPresentStore {
     public update(channelId: number, event: EitOnAirRecord): boolean {
         const record: ChannelRecord = this.records.get(channelId) ?? { present: null, following: null };
         const previous = event.isFollowing === true ? record.following : record.present;
-        const changed = previous?.eventId !== event.eventId;
+        const changed =
+            previous === null ||
+            previous?.eventId !== event.eventId ||
+            previous?.startAt !== event.startAt ||
+            previous?.durationSec !== event.durationSec ||
+            previous?.runningStatus !== event.runningStatus;
 
         if (event.isFollowing === true) {
             record.following = event;
@@ -32,8 +37,8 @@ export default class EitPresentStore implements IEitPresentStore {
         }
         this.records.set(channelId, record);
 
-        if (changed === true && event.isFollowing === false) {
-            this.emitter.emit('change', channelId);
+        if (changed === true) {
+            this.emitter.emit('change', channelId, event);
         }
 
         return changed;
@@ -69,7 +74,7 @@ export default class EitPresentStore implements IEitPresentStore {
      * present が変わったときに呼ばれるリスナを登録する
      * @param listener: (channelId: number) => void
      */
-    public onChange(listener: (channelId: number) => void): void {
+    public onChange(listener: (channelId: number, event: EitOnAirRecord) => void): void {
         this.emitter.on('change', listener);
     }
 }

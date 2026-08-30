@@ -11,7 +11,7 @@ import IProgramDB, { ProgramWithOverlap } from '../../db/IProgramDB';
 import IConfiguration from '../../IConfiguration';
 import IScheduleApiModel from './IScheduleApiModel';
 import IEitPresentStore from '../../service/stream/util/IEitPresentStore';
-import { resolveEitBroadcastTime, resolveEitOnAirProgram } from './EitOnAirResolver';
+import { resolveEitBroadcastTime, resolveEitOnAirProgram, resolveFreshEitProgram } from './EitOnAirResolver';
 
 @injectable()
 export default class ScheduleApiModel implements IScheduleApiModel {
@@ -416,42 +416,65 @@ export default class ScheduleApiModel implements IScheduleApiModel {
 
         // EPG が未取得の放送局も一覧に出す (視聴はできるため)
         const now = new Date().getTime() + (option.time ?? 0);
-        return this.createSchedule(channels, programs, option.isHalfWidth, true, true).map(s => {
-            // 未定番組は次番組の開始時刻までに切り詰めた終了時刻で放送中判定する。
-            // Mirakurun の暫定3時間の endAt を使うと、前番組が現在番組に居座る
-            s.programs = s.programs.filter(program => program.endAt > now);
+        return await Promise.all(
+            this.createSchedule(channels, programs, option.isHalfWidth, true, true).map(async s => {
+                // 未定番組は次番組の開始時刻までに切り詰めた終了時刻で放送中判定する。
+                // Mirakurun の暫定3時間の endAt を使うと、前番組が現在番組に居座る
+                s.programs = s.programs.filter(program => program.endAt > now);
 
-            // 配信中の放送波から読んだ EIT[p/f] があれば、そちらを現在番組の正とする。
-            // Mirakurun の EPG が古い・誤っていても、実際に流れている番組を先頭へ出す
-            const channel = channels.find(c => c.id === s.channel.id);
-            if (channel !== undefined) {
-                const eitProgram = resolveEitOnAirProgram(
-                    programs.filter(p => p.channelId === channel.id),
-                    channel,
-                    this.eitPresentStore?.get(channel.id) ?? null,
-                    now,
-                );
-                if (eitProgram !== null) {
-                    const item = this.toScheduleProgramItem(eitProgram, option.isHalfWidth, true);
-                    // 放送時刻も放送波を正とする。Mirakurun の EPG が終了時刻を確定値で持っていても、
-                    // EIT が放送時間未定と言っているなら未定として返す (画面もその表示になる)
-                    const eit = this.eitPresentStore?.get(channel.id) ?? null;
-                    if (eit !== null) {
-                        const time = resolveEitBroadcastTime(eit, item.startAt, Math.max(item.endAt, now));
+                // 配信中の放送波から読んだ EIT[p/f] があれば、そちらを現在番組の正とする。
+                // Mirakurun の EPG が古い・誤っていても、実際に流れている番組を先頭へ出す
+                const channel = channels.find(c => c.id === s.channel.id);
+                if (channel !== undefined) {
+                    const eitProgram = resolveEitOnAirProgram(
+                        programs.filter(p => p.channelId === channel.id),
+                        channel,
+                        this.eitPresentStore?.get(channel.id) ?? null,
+                        now,
+                    );
+                    if (eitProgram !== null) {
+                        const item = this.toScheduleProgramItem(eitProgram, option.isHalfWidth, true);
+                        // 放送時刻も放送波を正とする。Mirakurun の EPG が終了時刻を確定値で持っていても、
+                        // EIT が放送時間未定と言っているなら未定として返す (画面もその表示になる)
+                        const eit = this.eitPresentStore?.get(channel.id) ?? null;
+                        if (eit !== null) {
+                            const time = resolveEitBroadcastTime(eit, item.startAt, Math.max(item.endAt, now));
+                            item.startAt = time.startAt;
+                            item.endAt = time.endAt;
+                            item.isDurationUndefined = time.isDurationUndefined;
+                        }
+                        // 現在番組を EIT のものへ差し替え、後続 (次番組) はそのまま残す
+                        s.programs = [item, ...s.programs.filter(program => program.id !== item.id)];
+                    }
+                    const following = this.eitPresentStore?.getFollowing(channel.id) ?? null;
+                    let followingProgram = resolveFreshEitProgram(programs, channel, following, now);
+                    if (followingProgram === null && following !== null) {
+                        const followingId = channel.id * 100000 + following.eventId;
+                        followingProgram = await this.programDB.findId(followingId);
+                    }
+                    if (followingProgram !== null && following !== null) {
+                        const item = this.toScheduleProgramItem(followingProgram, option.isHalfWidth, true);
+                        const time = resolveEitBroadcastTime(following, item.startAt, item.endAt);
                         item.startAt = time.startAt;
                         item.endAt = time.endAt;
                         item.isDurationUndefined = time.isDurationUndefined;
+                        const currentItem = s.programs[0];
+                        s.programs = currentItem
+                            ? [
+                                  currentItem,
+                                  item,
+                                  ...s.programs.filter(p => p.id !== item.id && p.id !== currentItem.id),
+                              ]
+                            : [item];
                     }
-                    // 現在番組を EIT のものへ差し替え、後続 (次番組) はそのまま残す
-                    s.programs = [item, ...s.programs.filter(program => program.id !== item.id)];
                 }
-            }
-            if (s.programs.length > programLimit) {
-                s.programs = s.programs.slice(0, programLimit);
-            }
+                if (s.programs.length > programLimit) {
+                    s.programs = s.programs.slice(0, programLimit);
+                }
 
-            return s;
-        });
+                return s;
+            }),
+        );
     }
 
     /**

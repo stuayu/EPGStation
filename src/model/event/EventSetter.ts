@@ -2,6 +2,7 @@ import { inject, injectable } from 'inversify';
 import * as apid from '../../../api';
 import IRecordedDB from '../db/IRecordedDB';
 import IVideoFileDB from '../db/IVideoFileDB';
+import IProgramDB from '../db/IProgramDB';
 import IConfigFile from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
@@ -25,6 +26,7 @@ import IRuleEvent from './IRuleEvent';
 import IThumbnailEvent from './IThumbnailEvent';
 import ISeriesResolver from '../series/ISeriesResolver';
 import { formatLogTimeRange } from '../../util/ProgramTimeLog';
+import IEitPresentStore from '../service/stream/util/IEitPresentStore';
 
 @injectable()
 export default class EventSetter implements IEventSetter {
@@ -49,6 +51,8 @@ export default class EventSetter implements IEventSetter {
     private seriesResolver: ISeriesResolver;
     private recordedDB: IRecordedDB;
     private videoFileDB: IVideoFileDB;
+    private programDB: IProgramDB;
+    private eitPresentStore: IEitPresentStore;
 
     private isFirstreserveationUpdate: boolean = true;
 
@@ -75,6 +79,8 @@ export default class EventSetter implements IEventSetter {
         @inject('ISeriesResolver') seriesResolver: ISeriesResolver,
         @inject('IRecordedDB') recordedDB: IRecordedDB,
         @inject('IVideoFileDB') videoFileDB: IVideoFileDB,
+        @inject('IProgramDB') programDB: IProgramDB,
+        @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
     ) {
         this.log = logger.getLogger();
         this.epgUpdateEvent = epgUpdateEvent;
@@ -97,12 +103,17 @@ export default class EventSetter implements IEventSetter {
         this.seriesResolver = seriesResolver;
         this.recordedDB = recordedDB;
         this.videoFileDB = videoFileDB;
+        this.programDB = programDB;
+        this.eitPresentStore = eitPresentStore;
     }
 
     /**
      * event をセットする
      */
     public set(): void {
+        this.eitPresentStore.onChange((channelId, event) => {
+            void this.applyEitProgram(channelId, event);
+        });
         // EPG 更新完了イベント
         // EIT[p/f] 相当の更新を視聴画面・番組表へ即時反映させる
         this.epgUpdateEvent.setOnAirProgramUpdated(channelIds => {
@@ -456,6 +467,23 @@ export default class EventSetter implements IEventSetter {
         this.encodeEvent.setFinishEncode(info => {
             this.externalCommandManage.addEncodingFinishCmd(info);
         });
+    }
+
+    /** EIT[p/f] の時刻をDBへ反映し、通常の番組更新と同じ通知・予約追従を行う */
+    private async applyEitProgram(
+        channelId: number,
+        event: import('../api/schedule/EitOnAirResolver').EitOnAirRecord,
+    ): Promise<void> {
+        const program = await this.programDB.applyEitProgram(channelId, event);
+        if (program === null) return;
+        const programId = program.id;
+        this.epgUpdateEvent.emitOnAirProgramUpdated([channelId]);
+        this.ipc.notifyProgramUpdatedClient({
+            channelIds: [channelId],
+            startAt: program.startAt,
+            endAt: program.endAt,
+        });
+        await this.reservationManage.updateReservesByProgramIds([programId]);
     }
 
     /**

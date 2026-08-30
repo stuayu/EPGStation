@@ -83,8 +83,17 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
         this.channelDB = channelDB;
         this.programDB = programDB;
         this.configuration = configuration;
-        eitPresentStore?.onChange(channelId => {
+        eitPresentStore?.onChange((channelId, event) => {
             this.emit(EPGUpdateEvent.ON_AIR_PROGRAM_UPDATED, [channelId]);
+            this.emit(EPGUpdateEvent.PROGRAM_RANGE_UPDATED, {
+                programIds: [channelId * 100000 + event.eventId],
+                channelIds: [channelId],
+                startAt: event.startAt,
+                endAt:
+                    event.startAt === null || event.durationSec === null
+                        ? null
+                        : event.startAt + event.durationSec * 1000,
+            });
         });
 
         // 除外放送局索引情報のセット

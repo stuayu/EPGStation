@@ -45,6 +45,8 @@ import LongTimer from '../../../util/LongTimer';
 import RecordingStartBuffer from './RecordingStartBuffer';
 import { RecordingTimingConfig, resolveRecordingTimingConfig } from './RecordingTimingConfig';
 import { decideRecordingEnd } from './RecordingBoundary';
+import IEitPresentStore from '../../service/stream/util/IEitPresentStore';
+import IIPCServer from '../../ipc/IIPCServer';
 
 /**
  * Recorder
@@ -67,6 +69,8 @@ class RecorderModel implements IRecorderModel {
     private mirakurunClientModel: IMirakurunClientModel;
     private notification: INotificationDispatcher;
     private reserveEvent: IReserveEvent;
+    private eitPresentStore: IEitPresentStore;
+    private ipc: IIPCServer;
 
     private reserve!: Reserve;
     private recordedId: apid.RecordedId | null = null;
@@ -123,6 +127,8 @@ class RecorderModel implements IRecorderModel {
         @inject('IMirakurunClientModel') mirakurunClientModel: IMirakurunClientModel,
         @inject('INotificationDispatcher') notification: INotificationDispatcher,
         @inject('IReserveEvent') reserveEvent: IReserveEvent,
+        @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
+        @inject('IIPCServer') ipc: IIPCServer,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
@@ -140,6 +146,8 @@ class RecorderModel implements IRecorderModel {
         this.mirakurunClientModel = mirakurunClientModel;
         this.notification = notification;
         this.reserveEvent = reserveEvent;
+        this.eitPresentStore = eitPresentStore;
+        this.ipc = ipc;
     }
 
     /**
@@ -597,6 +605,7 @@ class RecorderModel implements IRecorderModel {
             this.passThroughStreamForWrite.write(chunk);
         }
         this.setupProgramBoundaryMonitor(waitingBuffer);
+        this.setupEitPresentMonitor(waitingBuffer);
         const recordingStream = this.stream;
         const writeStream = this.passThroughStreamForWrite;
         if (recordingStream === null || writeStream === null) {
@@ -671,6 +680,29 @@ class RecorderModel implements IRecorderModel {
             this.destroyStream();
             throw err;
         });
+    }
+
+    /** 録画中の全TSからEIT[p/f]を読み、Operator/Service双方のストアへ渡す */
+    private setupEitPresentMonitor(initialChunks: Buffer[] = []): void {
+        if (this.stream === null) return;
+        const parser = new EitPresentParser();
+        const serviceId = this.reserve.channelId % 100000;
+        const consume = (chunk: Buffer): void => {
+            for (const event of parser.write(chunk)) {
+                if (event.serviceId !== serviceId) continue;
+                const record = {
+                    eventId: event.eventId,
+                    startAt: event.startAt,
+                    durationSec: event.durationSec,
+                    receivedAt: new Date().getTime(),
+                    isFollowing: event.isFollowing === true,
+                };
+                this.eitPresentStore.update(this.reserve.channelId, record);
+                this.ipc.notifyEitPresent(this.reserve.channelId, record);
+            }
+        };
+        for (const chunk of initialChunks) consume(chunk);
+        this.stream.on('data', consume);
     }
 
     /**

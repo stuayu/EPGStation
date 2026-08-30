@@ -36,6 +36,8 @@ import {
     ThumbnailFunctions,
     UpdateFunctions,
 } from './IPCMessageDefine';
+import { EitOnAirRecord } from '../api/schedule/EitOnAirResolver';
+import IEitPresentStore from '../service/stream/util/IEitPresentStore';
 
 interface IFunctionIndex {
     [functionName: string]: (msg: SendMessage) => Promise<any>;
@@ -54,6 +56,7 @@ export default class IPCServer implements IIPCServer {
     private seriesBackfillManage: ISeriesBackfillManageModel;
     private appSettingChangeEvent: IAppSettingChangeEvent;
     private updateManage: IUpdateManageModel;
+    private eitPresentStore: IEitPresentStore;
     private child: ChildProcess | null = null;
     private functions: {
         [modelName: string]: IFunctionIndex;
@@ -72,6 +75,7 @@ export default class IPCServer implements IIPCServer {
         @inject('ISeriesBackfillManageModel') seriesBackfillManage: ISeriesBackfillManageModel,
         @inject('IAppSettingChangeEvent') appSettingChangeEvent: IAppSettingChangeEvent,
         @inject('IUpdateManageModel') updateManage: IUpdateManageModel,
+        @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
     ) {
         this.reservationManage = reservationManage;
         this.recordedManage = recordedManage;
@@ -84,6 +88,7 @@ export default class IPCServer implements IIPCServer {
         this.seriesBackfillManage = seriesBackfillManage;
         this.appSettingChangeEvent = appSettingChangeEvent;
         this.updateManage = updateManage;
+        this.eitPresentStore = eitPresentStore;
 
         this.init();
     }
@@ -92,6 +97,13 @@ export default class IPCServer implements IIPCServer {
         this.child = child;
 
         this.child.on('message', async (msg: SendMessage) => {
+            if ((<any>msg).type === 'notifyEitPresentToOperator') {
+                const value = (<any>msg).value;
+                if (typeof value?.channelId === 'number' && typeof value?.event === 'object') {
+                    this.eitPresentStore.update(value.channelId, value.event);
+                }
+                return;
+            }
             if (
                 typeof this.functions[msg.model] !== 'undefined' &&
                 typeof this.functions[msg.model][msg.func] !== 'undefined'
@@ -163,6 +175,12 @@ export default class IPCServer implements IIPCServer {
             type: 'notifyProgramUpdated',
             value: option,
         }));
+    }
+
+    /** Service 側へ録画中 EIT[p/f] を転送する */
+    public notifyEitPresent(channelId: number, event: EitOnAirRecord): void {
+        if (this.child === null) return;
+        this.child.send(<any>{ type: 'notifyEitPresent', value: { channelId, event } });
     }
 
     /**

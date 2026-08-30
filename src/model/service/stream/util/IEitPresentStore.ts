@@ -40,5 +40,5 @@ export default interface IEitPresentStore {
      * present が変わったときに呼ばれるリスナを登録する
      * @param listener: (channelId: number) => void
      */
-    onChange(listener: (channelId: number) => void): void;
+    onChange(listener: (channelId: number, event: EitOnAirRecord) => void): void;
 }

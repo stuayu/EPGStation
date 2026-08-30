@@ -1,4 +1,5 @@
 import * as apid from '../../../api';
+import { EitOnAirRecord } from '../api/schedule/EitOnAirResolver';
 
 export type MessageId = number;
 
@@ -6,8 +7,24 @@ export type MessageId = number;
  * 親プロセスから子プロセスへのメッセージ
  */
 export interface ParentMessage {
-    type: 'pushEncode' | 'notifyClient' | 'notifyOnAirProgram' | 'notifyProgramUpdated';
+    type:
+        | 'pushEncode'
+        | 'notifyClient'
+        | 'notifyOnAirProgram'
+        | 'notifyProgramUpdated'
+        | 'notifyEitPresent'
+        | 'notifyEitPresentToOperator';
     value?: any;
+}
+
+export interface NotifyEitPresentMessage extends ParentMessage {
+    type: 'notifyEitPresent';
+    value: { channelId: number; event: EitOnAirRecord };
+}
+
+export interface NotifyEitPresentToOperatorMessage extends ParentMessage {
+    type: 'notifyEitPresentToOperator';
+    value: { channelId: number; event: EitOnAirRecord };
 }
 
 /**

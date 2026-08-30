@@ -13,6 +13,7 @@ import {
 import { SeriesBackfillOption } from '../operator/series/ISeriesBackfillManageModel';
 import IEncodeManageModel from '../service/encode/IEncodeManageModel';
 import ISocketIOManageModel from '../service/socketio/ISocketIOManageModel';
+import IEitPresentStore from '../service/stream/util/IEitPresentStore';
 import IIPCClient, {
     IPCAppSettingManageModel,
     IPCOperatorEncodeEvent,
@@ -43,6 +44,7 @@ import {
     SeriesFunctions,
     ThumbnailFunctions,
 } from './IPCMessageDefine';
+import container from '../ModelContainer';
 
 @injectable()
 export default class IPCClient implements IIPCClient {
@@ -116,6 +118,13 @@ export default class IPCClient implements IIPCClient {
                         startAt: typeof value.startAt === 'number' ? value.startAt : null,
                         endAt: typeof value.endAt === 'number' ? value.endAt : null,
                     });
+                }
+            } else if ((<ParentMessage>msg).type === 'notifyEitPresent') {
+                const value = (<any>msg).value;
+                if (typeof value?.channelId === 'number' && typeof value?.event === 'object') {
+                    // 録画側の EIT も Service 側の singleton store へ集約する
+                    const store = container.get<IEitPresentStore>('IEitPresentStore');
+                    store.update(value.channelId, value.event);
                 }
             } else if ((<ParentMessage>msg).type === 'pushEncode') {
                 // エンコード依頼

@@ -135,7 +135,9 @@ export const decideRecordingStart = (input: StartGateInput): StartGateDecision =
         return { canStart: true, reason: 'disabled' };
     }
 
-    const present = input.present;
+    // EIT の present でも 1=not running / 2=starts in a few seconds は現在番組ではない。
+    // 明示された異常状態だけ無効化し、running_status=0 の既存放送波は従来どおり扱う。
+    const present = input.present?.runningStatus === 1 || input.present?.runningStatus === 2 ? null : input.present;
     const following = input.following ?? null;
     // タイムアウトは EIT を読めない場合の安全弁だが、予約時刻より前に
     // 録画を始めてよいという意味ではない。準備開始直後に timeoutMs=0
