@@ -15,7 +15,12 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-29
 
-- **配信の音声が小さい問題に対し、音声ブースト `audioBoost` を追加**: ライブ・録画再生の配信で音声を `volume` フィルタで増幅する (既定 2.0 倍、`1.0`〜`4.0` に丸め、`1.0` でフィルタ無し)。KonomiTV が固定 2 倍を掛けているのに倣ったもの。**フィルタは音声を aac へ再エンコードする ffmpeg のコマンドへ入れる** — rigaya 系 (QSVEncC 等) を使うプリセットでも rigaya 側は `--audio-copy` のまま触らない。rigaya の `--audio-filter` は `--audio-codec` で再エンコードする場合にしか効かず `--audio-copy` と併用できないためで、EPGStation の rigaya プリセットは「rigaya が映像 → 後段 ffmpeg が音声を aac 化」というパイプラインなのでブーストは後段が担当する。音声コピーのみの経路と保存用 `encode` は対象外。手書きの配信用 cmd では `%AUDIOBOOST%` が使える (`%DUALMONOMODE%` / `%AUDIOMAP%` と同じ扱い。保存用 `encode` の cmd では展開されない)。倍率の丸めは `src/util/AudioBoostUtil.ts`、cmd の組み立ては `src/util/EncodePresets.ts`、置換は `src/model/service/stream/util/AudioTrackUtil.ts`。
+- **Issue #30: エンコード済み MP4 の副音声切替を修正**: `NormalVideo` が `audioTracks` 1 本のステレオ AAC を
+  音声切替対象外にしていたため、サーバーの音声トラック API と Web Audio API を使い、右チャンネルを左右へ
+  複製する副音声 UI を追加。Web Audio 非対応時は通常再生を維持する。配信側は `%AUDIOFILTER%` へ pan と
+  volume を統合し、encoded 入力の副音声だけ pan、TS 入力は従来の `-dual_mono_mode sub` を使う。
+
+- **配信の音声が小さい問題に対し、音声ブースト `audioBoost` を追加**: ライブ・録画再生の配信で音声を `volume` フィルタで増幅する (既定 2.0 倍、`1.0`〜`4.0` に丸め、`1.0` でフィルタ無し)。KonomiTV が固定 2 倍を掛けているのに倣ったもの。**フィルタは音声を aac へ再エンコードする ffmpeg のコマンドへ入れる** — rigaya 系 (QSVEncC 等) を使うプリセットでも rigaya 側は `--audio-copy` のまま触らない。rigaya の `--audio-filter` は `--audio-codec` で再エンコードする場合にしか効かず `--audio-copy` と併用できないためで、EPGStation の rigaya プリセットは「rigaya が映像 → 後段 ffmpeg が音声を aac 化」というパイプラインなのでブーストは後段が担当する。音声コピーのみの経路と保存用 `encode` は対象外。手書きの配信用 cmd では `%AUDIOFILTER%` が使える (`%DUALMONOMODE%` / `%AUDIOMAP%` と同じ扱い。保存用 `encode` の cmd では展開されない)。倍率の丸めは `src/util/AudioBoostUtil.ts`、cmd の組み立ては `src/util/EncodePresets.ts`、置換は `src/model/service/stream/util/AudioTrackUtil.ts`。
 
 - **匿名許可時に非adminの書き込み API まで実行できる問題を修正 (Issue #29)**: `auth.allowAnonymous` の設定値は維持しつつ、認証 payload が無い場合に通す HTTP メソッドを `GET` / `HEAD` / `OPTIONS` に限定した。録画削除などの `POST` / `PUT` / `PATCH` / `DELETE` は、admin API でなくても認証を要求する。media token は従来どおり再生用 `GET` / `HEAD` allowlist のみで認証し、セッション認証と admin API の保護も維持する。
 

@@ -433,8 +433,13 @@ export default abstract class RecordedStreamBaseModel
             .replace(/%FFMPEG%/g, this.config.ffmpeg)
             .replace(/%SS%/g, this.videoFileType === 'ts' ? '' : this.processOption.playPosition.toString(10));
 
-        // 音声トラック指定 (%DUALMONOMODE% / %AUDIOMAP%) を展開する
-        cmd = AudioTrackUtil.replacePlaceholders(cmd, this.processOption.audioTrack, this.config.audioBoost);
+        // 音声トラック指定・フィルタ (%DUALMONOMODE% / %AUDIOMAP% / %AUDIOFILTER%) を展開する
+        cmd = AudioTrackUtil.replacePlaceholders(
+            cmd,
+            this.processOption.audioTrack,
+            this.config.audioBoost,
+            this.videoFileType,
+        );
 
         if (this.getStreamType() === 'RecordedHLS') {
             cmd = cmd

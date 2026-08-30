@@ -102,8 +102,8 @@ export default abstract class LiveStreamBaseModel
         let cmd = this.processOption.cmd
             .replace(/%FFMPEG%/g, this.config.ffmpeg)
             .replace(/%TSREADEX%/g, typeof this.config.tsreadex === 'undefined' ? 'tsreadex' : this.config.tsreadex);
-        // 音声トラック指定 (%DUALMONOMODE% / %AUDIOMAP%) を展開する
-        cmd = AudioTrackUtil.replacePlaceholders(cmd, this.processOption.audioTrack, this.config.audioBoost);
+        // 音声トラック指定・フィルタ (%DUALMONOMODE% / %AUDIOMAP% / %AUDIOFILTER%) を展開する
+        cmd = AudioTrackUtil.replacePlaceholders(cmd, this.processOption.audioTrack, this.config.audioBoost, 'ts');
         if (this.getStreamType() === 'LiveHLS') {
             cmd = cmd
                 .replace(/%streamFileDir%/g, this.config.streamFilePath)

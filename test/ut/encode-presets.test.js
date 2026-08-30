@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const EncodePresets = require('../../dist/util/EncodePresets').default;
+const AudioTrackUtil = require('../../dist/model/service/stream/util/AudioTrackUtil').default;
 const { normalizeAudioBoost } = require('../../dist/util/AudioBoostUtil');
 
 test('音声ブースト倍率を既定値と範囲へ正規化する', () => {
@@ -13,12 +14,16 @@ test('音声ブースト倍率を既定値と範囲へ正規化する', () => {
     assert.equal(normalizeAudioBoost(Number.NaN), 2.0);
 });
 
-test('配信プリセットは音声を aac 化する ffmpeg 側でブーストし、1.0 ではフィルタを入れない', () => {
+test('配信プリセットは音声フィルタのプレースホルダを使う', () => {
     const ffmpeg = EncodePresets.expand({ targets: ['liveHLS'], qualities: ['720p'] }, undefined, 2.0);
-    assert.match(ffmpeg.live[0].cmd, /-c:a aac[^|]*-af volume=2/);
+    assert.match(ffmpeg.live[0].cmd, /%AUDIOFILTER%/);
+    const replaced = AudioTrackUtil.replacePlaceholders(ffmpeg.live[0].cmd, undefined, 2.0, 'ts');
+    assert.match(replaced, /-c:a aac[^|]*-af volume=2/);
+    assert.doesNotMatch(replaced, /%AUDIOFILTER%|%AUDIOBOOST%|%DUALMONOMODE%|%AUDIOMAP%/);
 
     const ffmpegOff = EncodePresets.expand({ targets: ['liveHLS'], qualities: ['720p'] }, undefined, 1.0);
-    assert.doesNotMatch(ffmpegOff.live[0].cmd, /volume=/);
+    const replacedOff = AudioTrackUtil.replacePlaceholders(ffmpegOff.live[0].cmd, undefined, 1.0, 'ts');
+    assert.doesNotMatch(replacedOff, /volume=|%AUDIOFILTER%/);
 });
 
 // rigaya 系は --audio-copy で音声を素通しし、後段の ffmpeg が aac 化する。
@@ -30,7 +35,7 @@ test('rigaya 系プリセットのブーストは rigaya ではなく後段の f
 
     assert.match(rigayaStage, /--audio-copy/);
     assert.doesNotMatch(rigayaStage, /--audio-filter|volume=/);
-    assert.match(ffmpegStage, /-c:a aac[\s\S]*-af volume=2/);
+    assert.match(ffmpegStage, /-c:a aac[\s\S]*%AUDIOFILTER%/);
 
     const rigayaOff = EncodePresets.expand({ hwaccel: 'qsvencc', targets: ['liveHLS'], qualities: ['720p'] }, undefined, 1.0);
     assert.doesNotMatch(rigayaOff.live[0].cmd, /volume=/);
