@@ -2,6 +2,7 @@
     <WatchLayout v-bind:panelTitle="displayInfo === null ? '' : displayInfo.channelName">
         <template v-slot:topBar>
             <WatchTopBar
+                v-bind:logoSrc="logoSrc"
                 v-bind:channelName="displayInfo === null ? '' : displayInfo.channelName"
                 v-bind:programName="displayInfo === null ? '' : displayInfo.name"
                 v-bind:timeText="displayInfo === null ? '' : displayInfo.shortTime"
@@ -107,6 +108,16 @@ class WatchRecorded extends Vue {
      * 上部バー・右パネルに出す録画番組の情報
      */
     public displayInfo: DsiplayWatchInfo | null = null;
+
+    /**
+     * 録画した放送局のロゴ URL
+     * ロゴを持たない放送局では img の読み込みに失敗するため、表示側 (WatchTopBar) で握りつぶす
+     */
+    get logoSrc(): string | null {
+        const channelId = this.displayInfo?.channelId ?? null;
+
+        return channelId === null ? null : `./api/channels/${channelId.toString(10)}/logo`;
+    }
 
     /**
      * 再生中のビデオファイルの視聴履歴 (視聴済みボタンの表示に使う)
@@ -239,6 +250,9 @@ class WatchRecorded extends Vue {
         // 内部に BMLBrowser (JS-Interpreter を持つ) を保持するこのインスタンスがリアクティブ化されると壊れる
         this.dataBroadcastingManager = markRaw(
             new DataBroadcastingManager(context.dp, context.param, {
+                // 録画再生では「いま再生している位置の放送時刻」を渡す
+                // (渡さないとデータ放送側の時計が実時間のままになる)
+                getBroadcastTime: context.getBroadcastTime,
                 onUsedKeyListChanged: isUsing => {
                     this.isDataBroadcastingUsingNumericKey = isUsing;
                 },
