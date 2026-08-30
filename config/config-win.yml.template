@@ -163,6 +163,9 @@ ffprobe: 'C:\rec\ffmpeg\bin\ffprobe.exe'
 # ffprobe 1 回あたりの上限時間 (秒)。壊れた動画・応答しないストレージで解析が止まらないようにする
 # ffprobeTimeout: 30
 
+# 配信時の音声ブースト倍率 (1.0〜4.0、1.0 で無効、既定 2.0。保存用エンコードには適用しない)
+# audioBoost: 2.0
+
 # tsreadex の実行ファイルパス (ライブ HLS の cmd で %TSREADEX% を使う場合に指定、省略時は PATH 上の tsreadex)
 # tsreadex: /usr/local/bin/tsreadex
 

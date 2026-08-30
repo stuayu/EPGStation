@@ -8,6 +8,13 @@ const AudioTrackUtil = require('../../dist/model/service/stream/util/AudioTrackU
 // 配信コマンドの音声トラック指定 (%DUALMONOMODE% / %AUDIOMAP%) の展開を検証する。
 
 const CMD = '%FFMPEG% %DUALMONOMODE% -i pipe:0 -sn %AUDIOMAP% -c:a aac -f mp4 pipe:1';
+const BOOST_CMD = '%FFMPEG% -i pipe:0 %AUDIOBOOST% -c:a aac -f mp4 pipe:1';
+
+test('%AUDIOBOOST% は倍率へ置換され、1.0 では空になる', () => {
+    assert.match(AudioTrackUtil.replacePlaceholders(BOOST_CMD, undefined, 2), /-af volume=2/);
+    assert.doesNotMatch(AudioTrackUtil.replacePlaceholders(BOOST_CMD, undefined, 1), /AUDIOBOOST|volume=/);
+    assert.doesNotMatch(AudioTrackUtil.replacePlaceholders(BOOST_CMD, undefined, 5), /AUDIOBOOST/);
+});
 
 test('未指定なら主音声 (dual_mono_mode main) で -map を付けない', () => {
     assert.equal(

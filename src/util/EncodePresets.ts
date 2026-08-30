@@ -6,6 +6,7 @@ import IConfigFile, {
     EncodeQuality,
     StreamProfile,
 } from '../model/IConfigFile';
+import { audioBoostOption, normalizeAudioBoost } from './AudioBoostUtil';
 
 /**
  * ハードウェア (software / qsv / vaapi / nvenc) × コーデック (h264 / hevc) ×
@@ -496,6 +497,8 @@ namespace EncodePresets {
         const codecArgs = buildRigayaArgs(hwaccel, codec, height, videoBitrate, deinterlace, tuning, isFileInput);
 
         // コンテナ指定は --output-format (別名 -f)。--format というオプションは存在しない
+        // 音声はここでは触らず (--audio-copy) 後段の ffmpeg が aac 化するため、
+        // 音量ブーストも後段へ寄せる (--audio-filter は --audio-copy と併用できない)
         return `${bin} --avhw ${inputSpec} ${codecArgs} --audio-copy --output-format mpegts -o - |`;
     };
 
@@ -525,6 +528,7 @@ namespace EncodePresets {
         videoBitrate: number,
         audioBitrate: number,
         execPaths?: RigayaExecPaths,
+        audioBoost?: number,
     ): string => {
         if (isRigayaHwAccel(hwaccel)) {
             const prefix = buildRigayaPipelinePrefix(
@@ -542,7 +546,7 @@ namespace EncodePresets {
                 `${prefix} %FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 500000 ` +
                 `-fflags nobuffer -i pipe:0 -sn -threads 0 ` +
                 `-max_muxing_queue_size 1024 -c:v copy${buildHvc1TagOption(codec)} ` +
-                `%AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
+                `%AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2${audioBoostOption(audioBoost)} ` +
                 `-movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`
             );
         }
@@ -553,7 +557,7 @@ namespace EncodePresets {
 
         return (
             `%FFMPEG% %DUALMONOMODE% -fflags nobuffer ${vaapiDeviceOption(hwaccel)}-i pipe:0 ` +
-            `-sn -threads 0 -max_muxing_queue_size 1024 %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
+            `-sn -threads 0 -max_muxing_queue_size 1024 %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2${audioBoostOption(audioBoost)} ` +
             `-vf ${vf} -c:v ${ffCodec} ${codecOpts} -flags +cgop ` +
             // セグメント長 = GOP 長になるため、ライブ HLS では 0.5 秒 GOP まで詰める
             // (codecOpts の -g 30 を後ろから上書きする)
@@ -581,6 +585,7 @@ namespace EncodePresets {
         videoBitrate: number,
         audioBitrate: number,
         execPaths?: RigayaExecPaths,
+        audioBoost?: number,
     ): string => {
         const isTs = scope === 'ts';
 
@@ -600,7 +605,7 @@ namespace EncodePresets {
             return (
                 `${prefix} %FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 5000000 -fflags nobuffer ` +
                 `-flags low_delay -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024 -max_interleave_delta 1 ` +
-                `-c:v copy${buildHvc1TagOption(codec)} %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
+                `-c:v copy${buildHvc1TagOption(codec)} %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2${audioBoostOption(audioBoost)} ` +
                 `-movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000 -y -f mp4 pipe:1`
             );
         }
@@ -619,7 +624,7 @@ namespace EncodePresets {
         return (
             `%FFMPEG% %DUALMONOMODE% -fflags nobuffer -flags low_delay -analyzeduration 500000 ` +
             `-probesize 5000000 ${vaapiDeviceOption(hwaccel)}${input} -sn -threads 0 -max_muxing_queue_size 1024 ` +
-            `-max_interleave_delta 1 %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
+            `-max_interleave_delta 1 %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2${audioBoostOption(audioBoost)} ` +
             `-vf ${vf} -c:v ${ffCodec} ${codecOpts} -flags +cgop ` +
             `-movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000 -y -f mp4 pipe:1`
         );
@@ -657,6 +662,7 @@ namespace EncodePresets {
         videoBitrate: number,
         audioBitrate: number,
         execPaths?: RigayaExecPaths,
+        audioBoost?: number,
     ): string => {
         const isTs = scope === 'ts';
 
@@ -676,7 +682,7 @@ namespace EncodePresets {
             return (
                 `${prefix} %FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 5000000 ` +
                 `-fflags nobuffer -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024 -max_interleave_delta 1 ` +
-                `-c:v copy${buildHvc1TagOption(codec)} %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
+                `-c:v copy${buildHvc1TagOption(codec)} %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2${audioBoostOption(audioBoost)} ` +
                 `-movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`
             );
         }
@@ -695,7 +701,7 @@ namespace EncodePresets {
         return (
             `%FFMPEG% %DUALMONOMODE% -fflags nobuffer -analyzeduration 500000 -probesize 5000000 ` +
             `${vaapiDeviceOption(hwaccel)}${input} -sn -threads 0 -max_muxing_queue_size 1024 ` +
-            `-max_interleave_delta 1 %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 ` +
+            `-max_interleave_delta 1 %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2${audioBoostOption(audioBoost)} ` +
             `-vf ${vf} -c:v ${ffCodec} ${codecOpts} -flags +cgop ` +
             // パート長 = GOP 長になるため、録画済み HLS でも 0.5 秒 GOP まで詰める
             // (codecOpts の -g 30 を後ろから上書きする)
@@ -714,8 +720,10 @@ namespace EncodePresets {
     export const expand = (
         presets: EncodePresetsConfig | undefined,
         execPaths?: RigayaExecPaths,
+        audioBoost?: unknown,
     ): EncodePresetExpansion => {
         const result: EncodePresetExpansion = { encode: [], live: [], recordedTs: [], recordedEncoded: [] };
+        const normalizedAudioBoost = normalizeAudioBoost(audioBoost);
         if (typeof presets === 'undefined') {
             return result;
         }
@@ -755,7 +763,15 @@ namespace EncodePresets {
                         container: 'hls',
                         video: { codec: CODEC_NAME[hwaccel][codec], height, bitrate: videoBitrate },
                         audio: { codec: 'aac', bitrate: audioBitrate },
-                        cmd: buildLiveHlsCmd(hwaccel, codec, height, videoBitrate, audioBitrate, execPaths),
+                        cmd: buildLiveHlsCmd(
+                            hwaccel,
+                            codec,
+                            height,
+                            videoBitrate,
+                            audioBitrate,
+                            execPaths,
+                            normalizedAudioBoost,
+                        ),
                     });
                 }
 
@@ -766,7 +782,16 @@ namespace EncodePresets {
                         container: 'mp4',
                         video: { codec: CODEC_NAME[hwaccel][codec], height, bitrate: videoBitrate },
                         audio: { codec: 'aac', bitrate: audioBitrate },
-                        cmd: buildRecordedMp4Cmd('ts', hwaccel, codec, height, videoBitrate, audioBitrate, execPaths),
+                        cmd: buildRecordedMp4Cmd(
+                            'ts',
+                            hwaccel,
+                            codec,
+                            height,
+                            videoBitrate,
+                            audioBitrate,
+                            execPaths,
+                            normalizedAudioBoost,
+                        ),
                     });
                     result.recordedTs.push({
                         id: `preset-recorded-ts-hls-${hwaccel}-${codec}-${quality}`,
@@ -774,7 +799,16 @@ namespace EncodePresets {
                         container: 'hls',
                         video: { codec: CODEC_NAME[hwaccel][codec], height, bitrate: videoBitrate },
                         audio: { codec: 'aac', bitrate: audioBitrate },
-                        cmd: buildRecordedHlsCmd('ts', hwaccel, codec, height, videoBitrate, audioBitrate, execPaths),
+                        cmd: buildRecordedHlsCmd(
+                            'ts',
+                            hwaccel,
+                            codec,
+                            height,
+                            videoBitrate,
+                            audioBitrate,
+                            execPaths,
+                            normalizedAudioBoost,
+                        ),
                     });
                     result.recordedEncoded.push({
                         id: `preset-recorded-encoded-mp4-${hwaccel}-${codec}-${quality}`,
@@ -790,6 +824,7 @@ namespace EncodePresets {
                             videoBitrate,
                             audioBitrate,
                             execPaths,
+                            normalizedAudioBoost,
                         ),
                     });
                     result.recordedEncoded.push({
@@ -806,6 +841,7 @@ namespace EncodePresets {
                             videoBitrate,
                             audioBitrate,
                             execPaths,
+                            normalizedAudioBoost,
                         ),
                     });
                 }
@@ -831,11 +867,15 @@ namespace EncodePresets {
             return;
         }
 
-        const expansion = expand(config.encodePresets, {
-            qsvencc: config.qsvencc,
-            nvencc: config.nvencc,
-            vceencc: config.vceencc,
-        });
+        const expansion = expand(
+            config.encodePresets,
+            {
+                qsvencc: config.qsvencc,
+                nvencc: config.nvencc,
+                vceencc: config.vceencc,
+            },
+            config.audioBoost,
+        );
 
         if ((config.encode?.length ?? 0) === 0 && expansion.encode.length > 0) {
             config.encode = expansion.encode;

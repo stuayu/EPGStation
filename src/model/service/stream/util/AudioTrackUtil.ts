@@ -1,11 +1,13 @@
 import * as apid from '../../../../../api';
+import { audioBoostOption } from '../../../../util/AudioBoostUtil';
 
 /**
  * 配信コマンド (cmd) の音声トラック指定を組み立てるユーティリティ。
  *
- * cmd には 2 つのプレースホルダを置く:
+ * cmd には 3 つのプレースホルダを置く:
  * - `%DUALMONOMODE%`: 入力オプションの `-dual_mono_mode main|sub` に展開される (`-i` より前に置くこと)
  * - `%AUDIOMAP%`: 出力オプションの `-map 0:v:0 -map 0:a:<n>` に展開される (音声 ES を選ぶ場合のみ非空)
+ * - `%AUDIOBOOST%`: 音声ブーストの `-af volume=<倍率>` に展開される (1.0 の場合は空文字)
  *
  * 二か国語放送は「1 つのステレオ ES の左右に主音声・副音声」を入れるデュアルモノラルで送られるため、
  * 副音声の選択は `-map` ではなく `-dual_mono_mode sub` で行う。
@@ -21,12 +23,17 @@ namespace AudioTrackUtil {
      * @param audioTrack?: apid.AudioTrackSpecifier 'main' | 'sub' | 音声 ES のインデックス文字列
      * @return string
      */
-    export const replacePlaceholders = (cmd: string, audioTrack?: apid.AudioTrackSpecifier): string => {
+    export const replacePlaceholders = (
+        cmd: string,
+        audioTrack?: apid.AudioTrackSpecifier,
+        audioBoost?: unknown,
+    ): string => {
         const streamIndex = parseStreamIndex(audioTrack);
 
         return cmd
             .replace(/%DUALMONOMODE%/g, `-dual_mono_mode ${audioTrack === 'sub' ? 'sub' : 'main'}`)
-            .replace(/%AUDIOMAP%/g, streamIndex === null ? '' : `-map 0:v:0 -map 0:a:${streamIndex}`);
+            .replace(/%AUDIOMAP%/g, streamIndex === null ? '' : `-map 0:v:0 -map 0:a:${streamIndex}`)
+            .replace(/%AUDIOBOOST%/g, audioBoostOption(audioBoost));
     };
 
     /**
