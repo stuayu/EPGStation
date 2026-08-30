@@ -1,4 +1,5 @@
 'use strict';
+require('reflect-metadata');
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { onEventStreamDisconnected, onEventStreamStarted } = require('../../dist/model/epgUpdater/EventStreamFallbackDecision');
@@ -82,4 +83,53 @@ test('EitPresentCollectTransform は解析が失敗しても TS を流し続け�
     });
 
     assert.deepEqual(Buffer.concat(chunks), input);
+});
+
+// EIT[p/f] は present と following が交互に流れてくる。同じ入れ物へ入れると
+// 後から来た following が present を上書きし、放送中判定 (present しか見ない) が成立しなくなる
+test('EitPresentStore は present と following を混ぜない', () => {
+    const EitPresentStore = require('../../dist/model/service/stream/util/EitPresentStore').default;
+    const store = new EitPresentStore();
+
+    store.update(3241621504, { eventId: 5740, startAt: 1, durationSec: 360, receivedAt: 1, isFollowing: false });
+    store.update(3241621504, { eventId: 5742, startAt: 2, durationSec: 600, receivedAt: 2, isFollowing: true });
+
+    assert.equal(store.get(3241621504).eventId, 5740, 'following が来ても present は残ること');
+    assert.equal(store.getFollowing(3241621504).eventId, 5742);
+
+    store.clear(3241621504);
+    assert.equal(store.get(3241621504), null);
+});
+
+// 相乗りサービス (ワンセグ・サブチャンネル) の EIT で本編を上書きしない
+test('EitPresentCollectTransform は視聴中のサービス以外の EIT を捨てる', async () => {
+    const EitPresentCollectTransform = require('../../dist/model/service/stream/util/EitPresentCollectTransform').default;
+    const updates = [];
+    const store = {
+        update: (channelId, record) => {
+            updates.push(record.eventId);
+
+            return true;
+        },
+        get: () => null,
+        getFollowing: () => null,
+        clear: () => {},
+    };
+    const transform = new EitPresentCollectTransform(store, 3241621504, 21504);
+    // パーサを差し替えて、本編 (21504) と相乗り (21505) の両方が流れてくる状況を作る
+    transform.parser = {
+        write: () => [
+            { serviceId: 21504, eventId: 5740, startAt: 1, durationSec: 360, isFollowing: false },
+            { serviceId: 21505, eventId: 9999, startAt: 1, durationSec: 360, isFollowing: false },
+        ],
+    };
+
+    await new Promise((resolve, reject) => {
+        transform.on('data', () => {});
+        transform.on('end', resolve);
+        transform.on('error', reject);
+        transform.end(Buffer.alloc(188, 0x47));
+    });
+
+    assert.deepEqual(updates, [5740], '視聴中のサービスの EIT だけを採用すること');
 });

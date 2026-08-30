@@ -192,10 +192,7 @@ export default abstract class LiveStreamBaseModel
                 // 放送波の EIT[p/f] を読み、放送中番組の判定を Mirakurun の EPG より優先させる。
                 // data リスナではなく Transform で挟む (data リスナは flowing モードへ切り替えて
                 // pipe が繋がる前のデータを落とすため)
-                this.eitPresentCollectTransform = new EitPresentCollectTransform(
-                    this.eitPresentStore,
-                    this.processOption.channelId,
-                );
+                this.eitPresentCollectTransform = this.createEitPresentCollectTransform();
                 this.bitCollectTransform.pipe(this.eitPresentCollectTransform);
                 const tsSource = this.eitPresentCollectTransform;
 
@@ -238,6 +235,13 @@ export default abstract class LiveStreamBaseModel
                 this.emitExitStream();
             }
         } else {
+            // 無変換配信 (エンコードプロセス無し) でも放送波の EIT[p/f] は読む。
+            // 配信そのものは this.stream をそのまま返すため、解析用に枝を 1 本生やして捨てる
+            // (同じ Readable へ複数 pipe しても各 destination へ同じデータが流れる)
+            this.eitPresentCollectTransform = this.createEitPresentCollectTransform();
+            this.stream.pipe(this.eitPresentCollectTransform);
+            this.eitPresentCollectTransform.resume();
+
             // stream 停止処理時にイベントを発行する
             this.stream.on('close', () => {
                 this.emitExitStream();
@@ -394,6 +398,22 @@ export default abstract class LiveStreamBaseModel
                 await this.fileDeleter.deleteAllFiles();
             }
         }
+    }
+
+    /**
+     * 配信中の TS から EIT[p/f] を読む Transform を生成する
+     * 相乗りサービス (ワンセグ・サブチャンネル) を弾くため、視聴中のサービス id を渡す
+     * @return EitPresentCollectTransform
+     */
+    private createEitPresentCollectTransform(): EitPresentCollectTransform {
+        if (this.processOption === null) {
+            throw new Error('ProcessOptionIsNull');
+        }
+
+        // 放送局 id は networkId * 100000 + serviceId で構成される
+        const serviceId = this.processOption.channelId % 100000;
+
+        return new EitPresentCollectTransform(this.eitPresentStore, this.processOption.channelId, serviceId, this.log);
     }
 
     /**
