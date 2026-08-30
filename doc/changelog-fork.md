@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-08-29
 
+- **HEVC 配信の一番上の画質だけビットレートの削減をやめた**: HEVC は同画質を低いビットレートで出せるため `HEVC_BITRATE_RATE` (0.65) を掛けて帯域を削っていたが、画質一覧の先頭は「帯域を使ってでも綺麗に見たい」ときに選ぶものなので、**その配信設定の最高解像度だけ係数を掛けず H.264 と同じビットレートを使う** (1080p までなら 1080p が 5200 → 8000kbps、`2160p` を含むなら 2160p が 15600 → 24000kbps)。対象は `encodePresets.qualities` の内容から動的に決まり、下位の解像度と H.264 は従来どおり。`src/util/EncodePresets.ts` の `highestQualityOf()` / `videoBitrateOf()`。
+
 - **Issue #30: エンコード済み MP4 の副音声切替を修正**: `NormalVideo` が `audioTracks` 1 本のステレオ AAC を
   音声切替対象外にしていたため、サーバーの音声トラック API と Web Audio API を使い、右チャンネルを左右へ
   複製する副音声 UI を追加。Web Audio 非対応時は通常再生を維持する。配信側は `%AUDIOFILTER%` へ pan と
