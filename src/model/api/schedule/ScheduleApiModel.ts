@@ -11,7 +11,7 @@ import IProgramDB, { ProgramWithOverlap } from '../../db/IProgramDB';
 import IConfiguration from '../../IConfiguration';
 import IScheduleApiModel from './IScheduleApiModel';
 import IEitPresentStore from '../../service/stream/util/IEitPresentStore';
-import { resolveEitOnAirProgram } from './EitOnAirResolver';
+import { resolveEitBroadcastTime, resolveEitOnAirProgram } from './EitOnAirResolver';
 
 @injectable()
 export default class ScheduleApiModel implements IScheduleApiModel {
@@ -433,10 +433,14 @@ export default class ScheduleApiModel implements IScheduleApiModel {
                 );
                 if (eitProgram !== null) {
                     const item = this.toScheduleProgramItem(eitProgram, option.isHalfWidth, true);
-                    // Mirakurun の endAt が既に過ぎていても、EIT が present と言う以上まだ放送中。
-                    // 時刻を作り話で埋めず「終了時刻未定」として返す (画面もその表示になる)
-                    if (item.endAt <= now) {
-                        item.isDurationUndefined = true;
+                    // 放送時刻も放送波を正とする。Mirakurun の EPG が終了時刻を確定値で持っていても、
+                    // EIT が放送時間未定と言っているなら未定として返す (画面もその表示になる)
+                    const eit = this.eitPresentStore?.get(channel.id) ?? null;
+                    if (eit !== null) {
+                        const time = resolveEitBroadcastTime(eit, item.startAt, Math.max(item.endAt, now));
+                        item.startAt = time.startAt;
+                        item.endAt = time.endAt;
+                        item.isDurationUndefined = time.isDurationUndefined;
                     }
                     // 現在番組を EIT のものへ差し替え、後続 (次番組) はそのまま残す
                     s.programs = [item, ...s.programs.filter(program => program.id !== item.id)];

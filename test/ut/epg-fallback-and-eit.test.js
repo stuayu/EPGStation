@@ -133,3 +133,36 @@ test('EitPresentCollectTransform は視聴中のサービス以外の EIT を捨
 
     assert.deepEqual(updates, [5740], '視聴中のサービスの EIT だけを採用すること');
 });
+
+// 放送波が「放送時間未定」と言っているなら、Mirakurun が確定した終了時刻を持っていても未定として返す
+test('EIT の放送時間未定は Mirakurun の確定した終了時刻より優先する', () => {
+    const { resolveEitBroadcastTime } = require('../../dist/model/api/schedule/EitOnAirResolver');
+    const startAt = new Date('2026-08-30T12:00:00+09:00').getTime();
+    const dbEndAt = startAt + 25 * 60 * 1000; // Mirakurun は 12:25 終了と言っている
+
+    // duration 未定 (ARIB の 0xFFFFFF)
+    const undefinedDuration = resolveEitBroadcastTime(
+        { eventId: 5742, startAt: startAt, durationSec: null, receivedAt: startAt, isFollowing: false },
+        startAt,
+        dbEndAt,
+    );
+    assert.equal(undefinedDuration.isDurationUndefined, true);
+    assert.equal(undefinedDuration.startAt, startAt);
+
+    // duration が確定しているときは放送波の値で終了時刻を出す
+    const fixedDuration = resolveEitBroadcastTime(
+        { eventId: 5742, startAt: startAt, durationSec: 360, receivedAt: startAt, isFollowing: false },
+        startAt,
+        dbEndAt,
+    );
+    assert.equal(fixedDuration.isDurationUndefined, false);
+    assert.equal(fixedDuration.endAt, startAt + 360 * 1000, 'Mirakurun の 25 分ではなく放送波の 6 分を使う');
+
+    // EIT が開始時刻を持たない場合は DB の値へ退避する
+    const noStart = resolveEitBroadcastTime(
+        { eventId: 5742, startAt: null, durationSec: null, receivedAt: startAt, isFollowing: false },
+        startAt,
+        dbEndAt,
+    );
+    assert.equal(noStart.startAt, startAt);
+});
