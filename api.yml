@@ -2859,6 +2859,60 @@ components:
                 streamId:
                     $ref: '#/components/schemas/StreamId'
 
+        SourceCapabilities:
+            description: 入力映像の特性
+            type: object
+            required: [codec, scan, hdr, sourceClass, confidence]
+            properties:
+                transport: { type: string, enum: [mpegts, mmt-tlv, mp4, other] }
+                codec: { type: string, enum: [mpeg2, h264, hevc, av1, unknown] }
+                width: { type: integer }
+                height: { type: integer }
+                bitDepth: { type: integer, enum: [8, 10, 12] }
+                scan: { type: string, enum: [interlaced, progressive, unknown] }
+                frameRate: { type: number }
+                fieldOrder: { type: string, enum: [tff, bff, unknown] }
+                colorPrimaries: { type: string, enum: [bt709, bt2020, unknown] }
+                transfer: { type: string, enum: [bt709, hlg, pq, unknown] }
+                hdr: { type: string, enum: [sdr, hlg, pq, unknown] }
+                sourceClass: { type: string, enum: [legacy-broadcast, bs4k, generic, unknown] }
+                confidence: { type: string, enum: [high, medium, low] }
+
+        PlaybackOptions:
+            description: 端末と入力に応じた再生選択肢
+            type: object
+            required: [source, recommended, profiles, options]
+            properties:
+                source: { $ref: '#/components/schemas/SourceCapabilities' }
+                recommended:
+                    type: object
+                    required: [id, resolvedId, label, reason, fallbackChain]
+                    properties:
+                        id: { type: string }
+                        resolvedId: { type: string }
+                        label: { type: string }
+                        reason: { type: string }
+                        fallbackChain:
+                            type: array
+                            description: 起動失敗時に順に試す再生プロファイル
+                            items: { type: string }
+                profiles:
+                    type: array
+                    items:
+                        type: object
+                        required: [id, label, detail, available]
+                        properties:
+                            id: { type: string }
+                            label: { type: string }
+                            detail: { type: string }
+                            available: { type: boolean, enum: [true] }
+                options:
+                    type: object
+                    required: [hdr, correction]
+                    properties:
+                        hdr: { type: array, items: { type: string } }
+                        correction: { type: array, items: { type: string } }
+
         StorageItem:
             description: ストレージ使用状況
             type: object
@@ -5701,6 +5755,37 @@ components:
             name: isDownload
             schema:
                 type: boolean
+
+        PlaybackCapabilityHevc:
+            description: HEVC 再生対応
+            in: query
+            name: hevc
+            schema: { type: boolean }
+        PlaybackCapabilityHevcMain10:
+            description: HEVC 10bit 再生対応
+            in: query
+            name: hevcMain10
+            schema: { type: boolean }
+        PlaybackCapabilityH264:
+            description: H.264 再生対応
+            in: query
+            name: h264
+            schema: { type: boolean }
+        PlaybackCapabilityHdr:
+            description: HDR 表示対応
+            in: query
+            name: hdr
+            schema: { type: boolean }
+        PlaybackCapabilityHlg:
+            description: HLG 表示対応
+            in: query
+            name: hlg
+            schema: { type: boolean }
+        PlaybackProfile:
+            description: 明示する再生プロファイル
+            in: query
+            name: profile
+            schema: { type: string }
 
         IsReverse:
             description: 逆順で取得するか

@@ -15,6 +15,15 @@ import DPlayerEnhancer from '@/util/DPlayerEnhancer';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
 import * as apid from '../../../../api';
 
+type QualityPlaybackSnapshot = {
+    volume: number;
+    muted: boolean;
+    playbackRate: number;
+    subtitles: boolean;
+    fullscreen: boolean;
+    pip: boolean;
+};
+
 export default abstract class BaseVideo extends Vue {
     protected dp: DPlayer | null = null;
     protected containerElement: HTMLElement | null = null;
@@ -232,6 +241,40 @@ export default abstract class BaseVideo extends Vue {
         }
 
         const originalSwitchQuality = dp.switchQuality.bind(dp);
+        let pendingSnapshot: QualityPlaybackSnapshot | null = null;
+        const originalInitVideo = typeof dp.initVideo === 'function' ? dp.initVideo.bind(dp) : null;
+        if (originalInitVideo !== null) {
+            dp.initVideo = (video: HTMLVideoElement, type: string): void => {
+                originalInitVideo(video, type);
+                const snapshot = pendingSnapshot;
+                if (snapshot === null) return;
+
+                let restored = false;
+                const restore = (): void => {
+                    if (restored === true) return;
+                    restored = true;
+                    video.removeEventListener('loadedmetadata', restore);
+                    video.removeEventListener('canplay', restore);
+                    try { video.volume = snapshot.volume; } catch (err) { console.error(err); }
+                    try { video.muted = snapshot.muted; } catch (err) { console.error(err); }
+                    try { video.playbackRate = snapshot.playbackRate; } catch (err) { console.error(err); }
+                    try {
+                        if (dp.subtitle !== null) snapshot.subtitles ? dp.subtitle.show() : dp.subtitle.hide();
+                    } catch (err) { console.error(err); }
+                    try {
+                        const fullscreen = document.fullscreenElement === dp.container || (document as any).webkitFullscreenElement === dp.container;
+                        if (snapshot.fullscreen !== fullscreen) dp.fullScreen?.toggle?.('browser');
+                    } catch (err) { console.error(err); }
+                    try {
+                        const isPip = document.pictureInPictureElement === video || (video as any).webkitPresentationMode === 'picture-in-picture';
+                        if (snapshot.pip === true && isPip === false) void (video as any).requestPictureInPicture?.().catch?.(() => undefined);
+                    } catch (err) { console.error(err); }
+                    pendingSnapshot = null;
+                };
+                video.addEventListener('loadedmetadata', restore, { once: true });
+                video.addEventListener('canplay', restore, { once: true });
+            };
+        }
         dp.switchQuality = (index: number | string): void => {
             const mode = typeof index === 'string' ? parseInt(index, 10) : index;
             const quality = dp.options.video.quality;
@@ -246,12 +289,22 @@ export default abstract class BaseVideo extends Vue {
 
             this.isResolvingQuality = true;
             dp.notice(`画質を ${quality[mode].name} に切り替えています…`, -1);
+            const video = dp.video as HTMLVideoElement;
+            pendingSnapshot = {
+                volume: video.volume,
+                muted: video.muted,
+                playbackRate: video.playbackRate,
+                subtitles: this.isShowingSubtitle(),
+                fullscreen: document.fullscreenElement === dp.container || (document as any).webkitFullscreenElement === dp.container,
+                pip: document.pictureInPictureElement === video || (video as any).webkitPresentationMode === 'picture-in-picture',
+            };
 
             (async (): Promise<void> => {
                 try {
                     quality[mode].url = await option.resolveUrl(mode);
                 } catch (err) {
                     console.error(err);
+                    pendingSnapshot = null;
                     this.isResolvingQuality = false;
                     dp.notice('画質の切り替えに失敗しました', 3000);
 
@@ -282,6 +335,14 @@ export default abstract class BaseVideo extends Vue {
                 }
             })();
         };
+    }
+
+    /**
+     * プレイヤー内の再生画質メニューから既存の DPlayer 切替経路を呼ぶ。
+     * @param mode: number 配信設定の index
+     */
+    public switchQuality(mode: number): void {
+        (this.dp as any)?.switchQuality?.(mode);
     }
 
     /**
@@ -798,6 +859,9 @@ export default abstract class BaseVideo extends Vue {
 
         // 音量変化
         dp.on('volumechange', this.onVolumechange.bind(this));
+
+        // プレイヤーの起動失敗を親へ橋渡しする
+        dp.on('error', this.onError.bind(this));
     }
 
     /**
@@ -862,6 +926,14 @@ export default abstract class BaseVideo extends Vue {
      */
     protected onVolumechange(): void {
         this.$emit('volumechange');
+    }
+
+    /**
+     * プレイヤーのエラーを親へ通知する
+     * @param error: unknown
+     */
+    protected onError(error: unknown): void {
+        this.$emit('error', error);
     }
 
     public beforeUnmount(): void {

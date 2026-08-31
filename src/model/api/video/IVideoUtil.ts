@@ -16,6 +16,15 @@ export interface VideoDetailInfo extends VideoInfo {
     audioCodec: string | null;
     width: number | null;
     height: number | null;
+    pixFmt?: string | null;
+    profile?: string | null;
+    fieldOrder?: string | null;
+    avgFrameRate?: string | null;
+    rFrameRate?: string | null;
+    colorPrimaries?: string | null;
+    colorTransfer?: string | null;
+    colorSpace?: string | null;
+    bitsPerRawSample?: string | number | null;
 }
 
 export default interface IVideoUtil {

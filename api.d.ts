@@ -1259,6 +1259,36 @@ export interface RecordedStreamOption {
     audioTrack?: AudioTrackSpecifier; // 再生する音声トラック (省略時は主音声)
 }
 
+export interface SourceCapabilities {
+    transport?: 'mpegts' | 'mmt-tlv' | 'mp4' | 'other';
+    codec: 'mpeg2' | 'h264' | 'hevc' | 'av1' | 'unknown';
+    width?: number;
+    height?: number;
+    bitDepth?: 8 | 10 | 12;
+    scan: 'interlaced' | 'progressive' | 'unknown';
+    frameRate?: number;
+    fieldOrder?: 'tff' | 'bff' | 'unknown';
+    colorPrimaries?: 'bt709' | 'bt2020' | 'unknown';
+    transfer?: 'bt709' | 'hlg' | 'pq' | 'unknown';
+    hdr: 'sdr' | 'hlg' | 'pq' | 'unknown';
+    sourceClass: 'legacy-broadcast' | 'bs4k' | 'generic' | 'unknown';
+    confidence: 'high' | 'medium' | 'low';
+}
+
+export interface PlaybackProfile {
+    id: string;
+    label: string;
+    detail: string;
+    available: true;
+}
+
+export interface PlaybackOptions {
+    source: SourceCapabilities;
+    recommended: { id: string; resolvedId: string; label: string; reason: string; fallbackChain: string[] };
+    profiles: PlaybackProfile[];
+    options: { hdr: string[]; correction: string[] };
+}
+
 /**
  * 録画ファイルに埋め込まれたチャプター 1 件
  */

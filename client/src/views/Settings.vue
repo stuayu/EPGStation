@@ -91,6 +91,19 @@
 
                         <v-list-item three-line>
                             <div class="v-list-item-content">
+                                <div class="title">再生</div>
+                                <div class="my-2 d-flex flex-row align-center"><div><v-list-item-title class="text-subtitle-1">既定の画質</v-list-item-title><v-list-item-subtitle>再生開始時に優先する画質です</v-list-item-subtitle></div><v-spacer></v-spacer><v-select v-model="preferredQuality" :items="playbackQualityItems" class="playback-quality-setting"></v-select></div>
+                                <div class="my-2 d-flex flex-row align-center"><div><v-list-item-title class="text-subtitle-1">映像補正</v-list-item-title><v-list-item-subtitle>古い映像の明るさや走査線を自動調整します</v-list-item-subtitle></div><v-spacer></v-spacer><v-select v-model="videoCorrection" :items="videoCorrectionItems" class="playback-small-setting"></v-select></div>
+                                <div class="my-2 d-flex flex-row align-center"><div><v-list-item-title class="text-subtitle-1">HDR</v-list-item-title><v-list-item-subtitle>対応端末では明るさの情報を保ったまま再生します</v-list-item-subtitle></div><v-spacer></v-spacer><v-select v-model="hdrMode" :items="hdrModeItems" class="playback-small-setting"></v-select></div>
+                                <div class="my-2 d-flex flex-row align-center"><div><v-list-item-title class="text-subtitle-1">再生前に画質を選ぶ</v-list-item-title><v-list-item-subtitle>毎回、再生画質を確認します</v-list-item-subtitle></div><v-spacer></v-spacer><v-switch v-model="chooseQualityBeforePlay"></v-switch></div>
+                                <div class="my-2 d-flex flex-row align-center"><div><v-list-item-title class="text-subtitle-1">モバイル回線では画質を下げる</v-list-item-title><v-list-item-subtitle>通信量を抑えるため自動選択を調整します</v-list-item-subtitle></div><v-spacer></v-spacer><v-switch v-model="lowerQualityOnMobile"></v-switch></div>
+                            </div>
+                        </v-list-item>
+
+                        <v-divider></v-divider>
+
+                        <v-list-item three-line>
+                            <div class="v-list-item-content">
                                 <div class="title">放映中</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -521,6 +534,7 @@ import IColorThemeState from '@/model/state/IColorThemeState';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
 import ThemeColorUtil from '@/util/ThemeColorUtil';
 import ProgramHashtagUtil from '@/util/ProgramHashtagUtil';
+import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 
 interface GuideModeItem {
     title: string;
@@ -545,6 +559,7 @@ interface SelectItem {
 class Settings extends Vue {
     public isShow: boolean = false;
     public storageModel: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
+    public playbackState: IPlaybackOptionsState = container.get<IPlaybackOptionsState>('IPlaybackOptionsState');
 
     private navigationState: INavigationState = container.get<INavigationState>('INavigationState');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
@@ -683,6 +698,23 @@ class Settings extends Vue {
         { title: '本文の前 (改行)', value: 'prependWithLineBreak' },
         { title: '本文の後 (改行)', value: 'appendWithLineBreak' },
     ];
+
+    public readonly playbackQualityItems = [
+        { title: '自動・おすすめ', value: 'auto' }, { title: 'オリジナル', value: 'original' }, { title: '4K 高画質', value: '2160p-high' },
+        { title: '1080p 高画質', value: '1080p-high' }, { title: '1080p 標準', value: '1080p' }, { title: '720p', value: '720p' }, { title: 'データ節約', value: 'data-saver' },
+    ];
+    public readonly videoCorrectionItems = [{ title: '自動', value: 'auto' }, { title: 'オフ', value: 'off' }, { title: '明るめ', value: 'bright' }];
+    public readonly hdrModeItems = [{ title: '自動', value: 'auto' }, { title: 'HDR を維持', value: 'preserve' }, { title: 'SDR に変換', value: 'sdr' }];
+    get preferredQuality(): string { return this.playbackState.preference.preferredQuality; }
+    set preferredQuality(value: string) { this.playbackState.savePreference({ preferredQuality: value }); }
+    get videoCorrection(): string { return this.playbackState.preference.videoCorrection; }
+    set videoCorrection(value: string) { this.playbackState.savePreference({ videoCorrection: value }); }
+    get hdrMode(): string { return this.playbackState.preference.hdrMode; }
+    set hdrMode(value: string) { this.playbackState.savePreference({ hdrMode: value }); }
+    get chooseQualityBeforePlay(): boolean { return this.playbackState.preference.autoPlayWithRecommendedQuality === false; }
+    set chooseQualityBeforePlay(value: boolean) { this.playbackState.savePreference({ autoPlayWithRecommendedQuality: !value }); }
+    get lowerQualityOnMobile(): boolean { return this.playbackState.preference.mobileDataPreference; }
+    set lowerQualityOnMobile(value: boolean) { this.playbackState.savePreference({ mobileDataPreference: value }); }
 
     public themeColorItems: ThemeColorUtil.ThemeColorDefinition[] = ThemeColorUtil.COLORS;
     public guideLengthItems: SelectItem[] = [];
@@ -855,6 +887,10 @@ export default toNative(Settings);
     max-width: 90px
 .sns-hashtag-position
     max-width: 190px
+.playback-quality-setting
+    max-width: 170px
+.playback-small-setting
+    max-width: 140px
 
 // 設定行 (説明 + v-spacer + スイッチ / セレクト)。
 // 既定では説明側の div が縮まず、入力側の .v-input (flex: 1 1 auto) だけが縮むため、
