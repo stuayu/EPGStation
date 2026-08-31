@@ -204,7 +204,9 @@ duration 10 秒未満は中央候補1点とし、候補0件でも既存の thumb
 
 - **既定でファイル中央から読む** (64MB 以上)。先頭には前番組の EIT[p/f] と録画開始直後の壊れた TS が混ざるため
 - **`firstTdtAt` は「ファイル先頭の放送時刻」の意味を保つ**。`resolveFileStartAt()` が「先頭を読み直した値」を常に優先し、「中央から実測バイトレートで遡った見積もり」は先頭が読めなかったときの代替としてだけ使う。**見積もりを採否の判断材料にしない** — ファイル全体が一定ビットレートである前提のため、tsreplace 等で再エンコードした VBR のファイルでは数分ずれる (実測: HEVC 出力で 7 分 48 秒、見積もりの方が誤り)。先頭の時刻が中央の時刻より後になる場合だけ、壊れた TDT/TOT とみなして見積もりへ退避する
-- **相乗りサービス (ワンセグ・サブチャンネル・データ放送) からの本編選択は `selectServiceId()`**: service_type の格 → PID ごとのパケット数 → EIT[p/f] の有無 → service_id 昇順。パケット数の偏りを見るため最低 20000 パケットは読む
+- **録画対象サービスの決定はまず `expectedServiceId`**: 全サービス TS には本編・サブチャンネル・ワンセグ・データ放送が同居しており、TS だけからは「どれを録画したのか」を仕様上決められない。`TsInfoAnalyzeOption.expectedServiceId` (録画 → channel、取り込みは `option.channelId` から解決) があればそれを必ず採る。**`selectServiceId()` の推定は fallback**: service_type の格 → PID ごとのパケット数 → EIT[p/f] の有無 → service_id 昇順。パケット数の偏りを見るため最低 20000 パケットは読む
+- **EIT[p/f] の記述子は STD-B10 どおりに読む**: extended_event_descriptor は `descriptor_number` 順に並べ替えて連結し、末尾の `text_char` も含める (言語違いは混ぜない)。音声の代表は `main_component_flag = 1`。代表映像・代表音声の PID は EIT の `component_tag` と PMT の `stream_identifier_descriptor` (0x52) で引き当て、引けないときだけ stream_type 一致の先頭へ落ちる。**記述子 1 つの decode 失敗で番組情報全体を捨てない**
+- **PCR の時間軸は `discontinuity_indicator` で切れる**: TS 連結・ドロップ・エンコーダ再起動で PCR が別の軸になるため、`PcrSample.epoch` が違うサンプル同士で差分を取らない (`correctStartAtByPcr()` は起点と同じ epoch のみ、`calcBytesPerMs()` は epoch ごとの最長区間、`TsPlaybackTimeResolver` は基準 PCR 取得後の不連続で null を返す)
 - `video_file.startAt` は TDT/TOT を使うが、**出現位置がファイル先頭から離れていることがある**ため PCR (27MHz) で経過時間を測って補正する (`correctStartAtByPcr()`)
 - **番組情報の上書きは明示的な再解析のときだけ** (`overwriteProgramInfo`)。取り込み・アップロード時と「未解析のみ」の一括解析は空の項目を補うだけ。**番組名 (`recorded.name`) はどちらでも上書きしない**
 - 取り込み時の放送局特定は**ファイル名の推定ではなく network id + service id での厳密な引き当て**を優先する

@@ -70,6 +70,12 @@ export interface TsInfoAnalyzeOption {
     // そのまま読むと番組名・ジャンルが前番組のものになるため、既定では中央から読む。
     // false にすると従来どおりファイル先頭から解析する
     analyzeFromMiddle?: boolean;
+    // 録画対象として呼び出し側が把握している service_id。
+    // 全サービス録画の TS には本編・サブチャンネル・ワンセグ・データ放送が同居しており、
+    // TS だけからは「どれを録画したのか」を仕様上一意に決められない。
+    // 指定があり、その service_id が TS 内に存在する場合は必ずそれを採用する
+    // (指定が無い / TS 内に無い場合のみ service_type とパケット数による推定へ落ちる)
+    expectedServiceId?: number;
 }
 
 export default interface ITsInfoAnalyzer {

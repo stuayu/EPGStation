@@ -15,6 +15,33 @@ interface PcrSample {
     pid: number;
     pcr: number;
     packetIndex: number;
+    // PCR の時間軸の世代。adaptation_field.discontinuity_indicator で切り替わる。
+    // 異なる epoch のサンプル同士は同じ時間軸に無いため差分を取ってはいけない
+    epoch: number;
+}
+
+/**
+ * extended_event_descriptor 1 個分。ARIB STD-B10 では 1 番組の詳細情報が
+ * descriptor_number 0..last_descriptor_number へ分割して送出されるため、
+ * 連結する前に 1 個ずつこの形で集めておく
+ */
+interface ExtendedEventPart {
+    descriptorNumber: number;
+    lastDescriptorNumber: number;
+    languageCode: string | null;
+    items: Array<{ description: string; value: string }>;
+    text: string;
+}
+
+/**
+ * EIT[p/f] present から作った番組情報の候補。
+ * component_tag は PMT の stream_identifier_descriptor と突き合わせて
+ * 代表映像・代表音声の ES を決めるために保持する
+ */
+interface EventCandidate {
+    info: TsInfo;
+    videoComponentTag: number | null;
+    audioComponentTag: number | null;
 }
 
 /**
@@ -97,6 +124,8 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
     private static readonly DESCRIPTOR_TAG_COMPONENT = 0x50;
     private static readonly DESCRIPTOR_TAG_CONTENT = 0x54;
     private static readonly DESCRIPTOR_TAG_AUDIO_COMPONENT = 0xc4;
+    // PMT の ES 記述子。EIT の component_tag と PMT の ES を対応付けるために使う
+    private static readonly DESCRIPTOR_TAG_STREAM_IDENTIFIER = 0x52;
 
     // component_descriptor の stream_content → 映像符号化方式 (Mirakurun の program.video.type と同じ表記)
     private static readonly STREAM_CONTENT: { [key: number]: string } = {
@@ -183,7 +212,7 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
         const timeoutMs = option?.timeoutMs ?? TsInfoAnalyzer.DEFAULT_TIMEOUT_MS;
 
         const startPosition = await this.decideStartPosition(filePath, option);
-        const result = await this.scan(filePath, startPosition, maxReadBytes, timeoutMs);
+        const result = await this.scan(filePath, startPosition, maxReadBytes, timeoutMs, option?.expectedServiceId);
 
         if (startPosition > 0) {
             result.info.firstTdtAt = await this.resolveFileStartAt(filePath, startPosition, result, timeoutMs);
@@ -264,6 +293,7 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
         startPosition: number,
         maxReadBytes: number,
         timeoutMs: number,
+        expectedServiceId?: number,
     ): Promise<ScanResult> {
         return new Promise<ScanResult>(resolve => {
             const info: TsInfo = TsInfoAnalyzer.createEmptyInfo();
@@ -273,7 +303,7 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
             // program_number -> PCR_PID (TDT/TOT の時刻補正に使う)
             const pmtPcrPids = new Map<number, number>();
             // service_id -> EIT[p/f] present から作った番組情報の候補
-            const eitCandidates = new Map<number, TsInfo>();
+            const eitCandidates = new Map<number, EventCandidate>();
             // PID ごとのパケット数。どのサービスが実際にデータを流しているか (= 録画対象か) の判定に使う
             const pidPacketCounts = new Map<number, number>();
             let patServiceIds: number[] = [];
@@ -283,6 +313,8 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
             // PID ごとの PCR サンプル (読み出し開始位置からの経過時間を測るための基準点)
             let packetIndex = 0;
             const pcrSamples: PcrSample[] = [];
+            // PID ごとの PCR 時間軸の世代 (discontinuity_indicator で切り替わる)
+            const pcrEpochs = new Map<number, number>();
             // 最初に確定した TDT/TOT が見つかった時点でのパケット位置
             let firstTdtPacketIndex: number | null = null;
 
@@ -312,7 +344,20 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                     pmtPcrPids,
                     eitCandidates,
                     pidPacketCounts,
+                    expectedServiceId,
                 );
+
+                if (
+                    typeof expectedServiceId === 'number' &&
+                    info.serviceId !== null &&
+                    info.serviceId !== expectedServiceId
+                ) {
+                    // 呼び出し側が録画対象として把握している service_id が TS の中に見つからなかった場合。
+                    // 仕様上一意に決まらないので heuristic へ落ちたことを残す
+                    this.log.system.warn(
+                        `expected service id ${expectedServiceId} was not found in TS; fallback service selection used: ${filePath}`,
+                    );
+                }
 
                 if (info.serviceId !== null) {
                     // 対象サービスの SDT 情報を反映する
@@ -323,15 +368,22 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                         info.serviceProviderName = service.provider;
                     }
 
-                    const streams = pmtStreams.get(info.serviceId);
-                    if (typeof streams !== 'undefined') {
-                        TsInfoAnalyzer.setStreamInfo(info, streams);
-                    }
-
                     // 対象サービスの EIT[p/f] present を反映する
+                    // (PMT より先に反映するのは、EIT の component_tag を使って
+                    //  PMT の代表映像・代表音声 ES を選ぶため)
                     const event = eitCandidates.get(info.serviceId);
                     if (typeof event !== 'undefined') {
-                        TsInfoAnalyzer.applyEventCandidate(info, event);
+                        TsInfoAnalyzer.applyEventCandidate(info, event.info);
+                    }
+
+                    const streams = pmtStreams.get(info.serviceId);
+                    if (typeof streams !== 'undefined') {
+                        TsInfoAnalyzer.setStreamInfo(
+                            info,
+                            streams,
+                            event?.videoComponentTag ?? null,
+                            event?.audioComponentTag ?? null,
+                        );
                     }
 
                     const pcrPid = pmtPcrPids.get(info.serviceId);
@@ -376,6 +428,7 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                         pmtPcrPids,
                         eitCandidates,
                         pidPacketCounts,
+                        expectedServiceId,
                     )
                 ) {
                     finish();
@@ -466,8 +519,13 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
             tsSectionParser.on('eit', (section: aribts.TsSectionEventInformation) => {
                 try {
                     const eit = section.decode();
-                    // 自ストリームの present (section 0) のみ採用する
-                    if (eit.table_id !== TsInfoAnalyzer.TABLE_ID_EIT_PF_ACTUAL || eit.section_number !== 0) {
+                    // 自ストリームの present (section 0) のみ採用する。
+                    // current_next_indicator = 0 は「次に適用される内容」なので現在の番組ではない
+                    if (
+                        eit.table_id !== TsInfoAnalyzer.TABLE_ID_EIT_PF_ACTUAL ||
+                        eit.section_number !== 0 ||
+                        eit.current_next_indicator !== 1
+                    ) {
                         return;
                     }
                     if (eitCandidates.has(eit.service_id) === true) {
@@ -483,15 +541,20 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                         return;
                     }
 
-                    const candidate = TsInfoAnalyzer.createEmptyInfo();
-                    candidate.serviceId = eit.service_id;
-                    candidate.networkId = eit.original_network_id;
-                    candidate.transportStreamId = eit.transport_stream_id;
+                    const info2 = TsInfoAnalyzer.createEmptyInfo();
+                    info2.serviceId = eit.service_id;
+                    info2.networkId = eit.original_network_id;
+                    info2.transportStreamId = eit.transport_stream_id;
 
-                    candidate.eventId = event.event_id;
-                    candidate.eventStartAt = TsInfoAnalyzer.decodeJstDate(event.start_time);
-                    candidate.eventDuration = TsInfoAnalyzer.decodeBcdDuration(event.duration);
+                    info2.eventId = event.event_id;
+                    info2.eventStartAt = TsInfoAnalyzer.decodeJstDate(event.start_time);
+                    info2.eventDuration = TsInfoAnalyzer.decodeBcdDuration(event.duration);
 
+                    const candidate: EventCandidate = {
+                        info: info2,
+                        videoComponentTag: null,
+                        audioComponentTag: null,
+                    };
                     TsInfoAnalyzer.setEventDescriptors(candidate, event.descriptors);
                     eitCandidates.set(eit.service_id, candidate);
                 } catch (err: any) {
@@ -567,10 +630,19 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                         return;
                     }
 
+                    const pid = packet.getPid();
+                    // discontinuity_indicator = 1 のパケットが運ぶ PCR は新しい時間軸の起点。
+                    // 以降のサンプルは別 epoch として扱い、epoch をまたいだ差分計算をしない
+                    // (ARIB / ISO 13818-1: TS の連結・録画ドロップ・エンコーダ再起動で発生する)
+                    if (af.discontinuity_indicator === 1) {
+                        pcrEpochs.set(pid, (pcrEpochs.get(pid) ?? 0) + 1);
+                    }
+
                     pcrSamples.push({
-                        pid: packet.getPid(),
+                        pid: pid,
                         pcr: af.program_clock_reference_base * 300 + af.program_clock_reference_extension,
                         packetIndex: currentIndex,
+                        epoch: pcrEpochs.get(pid) ?? 0,
                     });
                 } catch (err: any) {
                     // 壊れたパケットは無視して読み進める
@@ -620,8 +692,9 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
         sdtServices: Map<number, SdtService>,
         pmtStreams: Map<number, aribts.Stream[]>,
         pmtPcrPids: Map<number, number>,
-        eitCandidates: Map<number, TsInfo>,
+        eitCandidates: Map<number, EventCandidate>,
         pidPacketCounts: Map<number, number>,
+        expectedServiceId?: number,
     ): boolean {
         if (info.firstTdtAt === null) {
             return false;
@@ -630,7 +703,11 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
         // サービスが相乗りしている TS の選択はパケット数の偏り (どのサービスが実際にデータを
         // 流しているか) を見るため、判断が安定するだけの量を読むまでは打ち切らない。
         // サービス指定で録画されたファイル (PAT に 1 サービスしか無い) は選択に迷わないので待たない
-        if (patServiceIds.length !== 1 && packetCount < TsInfoAnalyzer.MIN_PACKETS_FOR_SERVICE_SELECTION) {
+        // 対象サービスが呼び出し側から指定されている場合も、そのサービスの情報がそろえば打ち切ってよい
+        const isServiceDecided =
+            patServiceIds.length === 1 ||
+            (typeof expectedServiceId === 'number' && pmtStreams.has(expectedServiceId) === true);
+        if (isServiceDecided === false && packetCount < TsInfoAnalyzer.MIN_PACKETS_FOR_SERVICE_SELECTION) {
             return false;
         }
 
@@ -641,6 +718,7 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
             pmtPcrPids,
             eitCandidates,
             pidPacketCounts,
+            expectedServiceId,
         );
         if (serviceId === null) {
             return false;
@@ -661,8 +739,9 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
      * @param sdtServices: Map<number, SdtService>
      * @param pmtStreams: Map<number, aribts.Stream[]>
      * @param pmtPcrPids: Map<number, number>
-     * @param eitCandidates: Map<number, TsInfo>
+     * @param eitCandidates: Map<number, EventCandidate>
      * @param pidPacketCounts: Map<number, number>
+     * @param expectedServiceId: number | undefined 呼び出し側が把握している録画対象の service_id
      * @return number | null 候補が無い場合は null
      */
     private static selectServiceId(
@@ -670,8 +749,9 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
         sdtServices: Map<number, SdtService>,
         pmtStreams: Map<number, aribts.Stream[]>,
         pmtPcrPids: Map<number, number>,
-        eitCandidates: Map<number, TsInfo>,
+        eitCandidates: Map<number, EventCandidate>,
         pidPacketCounts: Map<number, number>,
+        expectedServiceId?: number,
     ): number | null {
         // PAT が読めていればそれが対象候補の正。読めていない場合は他のテーブルから拾う
         const candidates =
@@ -680,6 +760,18 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                 : Array.from(
                       new Set<number>([...pmtStreams.keys(), ...eitCandidates.keys(), ...sdtServices.keys()]),
                   ).sort((a, b) => a - b);
+
+        // 呼び出し側が録画対象の service_id を知っている場合はそれが正。
+        // 以降のパケット数・service_type による推定は、あくまで手掛かりが無いときの代替手段
+        if (typeof expectedServiceId === 'number') {
+            if (
+                candidates.includes(expectedServiceId) === true ||
+                pmtStreams.has(expectedServiceId) === true ||
+                sdtServices.has(expectedServiceId) === true
+            ) {
+                return expectedServiceId;
+            }
+        }
 
         if (candidates.length === 0) {
             return null;
@@ -781,79 +873,248 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
     }
 
     /**
-     * EIT の記述子から番組名・概要・詳細・ジャンルを取り出す
+     * EIT の記述子から番組名・概要・詳細・ジャンル・代表映像/音声を取り出す
+     *
+     * ARIB STD-B10 で規定されている以下を扱う
+     * - short_event_descriptor (0x4D): 番組名・概要
+     * - extended_event_descriptor (0x4E): 詳細情報 (descriptor_number で分割送出される)
+     * - content_descriptor (0x54): ジャンル
+     * - component_descriptor (0x50): 映像コンポーネント
+     * - audio_component_descriptor (0xC4): 音声コンポーネント
+     * @param candidate: EventCandidate
+     * @param descriptors: aribts.TsDescriptors
      */
-    private static setEventDescriptors(info: TsInfo, descriptors: aribts.TsDescriptors): void {
-        // extended_event_descriptor は複数に分割されるため、項目名ごとにつなぎ合わせる
-        const extendedItems: Array<{ description: string; value: string }> = [];
+    private static setEventDescriptors(candidate: EventCandidate, descriptors: aribts.TsDescriptors): void {
+        const info = candidate.info;
+        // extended_event_descriptor は分割されるため、いったんそのまま集めてから連結する
+        const extendedParts: ExtendedEventPart[] = [];
+        // component_descriptor / audio_component_descriptor も複数流れる
+        const videoComponents: Array<{
+            streamContent: number | null;
+            componentType: number | null;
+            tag: number | null;
+        }> = [];
+        const audioComponents: Array<{
+            componentType: number | null;
+            samplingRate: number | null;
+            tag: number | null;
+            isMain: boolean;
+        }> = [];
 
         for (const descriptor of descriptors.decode()) {
-            const d = descriptor.decode();
-            switch (d.descriptor_tag) {
-                case TsInfoAnalyzer.DESCRIPTOR_TAG_SHORT_EVENT:
-                    info.eventName = TsInfoAnalyzer.decodeChar(d.event_name);
-                    info.eventDescription = TsInfoAnalyzer.decodeChar(d.text);
-                    break;
-                case TsInfoAnalyzer.DESCRIPTOR_TAG_EXTENDED_EVENT:
-                    for (const item of d.items ?? []) {
-                        const description = TsInfoAnalyzer.decodeChar(item.item_description) ?? '';
-                        const value = TsInfoAnalyzer.decodeChar(item.item) ?? '';
-                        const last = extendedItems[extendedItems.length - 1];
-                        // 項目名が空の場合は直前の項目の続き
-                        if (description === '' && typeof last !== 'undefined') {
-                            last.value += value;
-                        } else {
-                            extendedItems.push({ description: description, value: value });
-                        }
-                    }
-                    break;
-                case TsInfoAnalyzer.DESCRIPTOR_TAG_CONTENT:
-                    info.genres = (d.contents ?? [])
-                        .map((c: { content_nibble_level_1: number; content_nibble_level_2: number }): TsGenre => ({
-                            lv1: c.content_nibble_level_1,
-                            lv2: c.content_nibble_level_2,
-                        }))
-                        .filter((g: TsGenre) => g.lv1 !== TsInfoAnalyzer.GENRE_NIBBLE_UNDEFINED);
-                    break;
-                case TsInfoAnalyzer.DESCRIPTOR_TAG_COMPONENT:
-                    // 映像は複数流れることがあるが、EPGStation が持つのは代表 1 本なので最初のものを採用する
-                    if (info.videoComponentType === null) {
-                        info.videoStreamContent = d.stream_content ?? null;
-                        info.videoComponentType = d.component_type ?? null;
-                        info.videoType = TsInfoAnalyzer.STREAM_CONTENT[d.stream_content] ?? null;
-                        info.videoResolution = TsInfoAnalyzer.COMPONENT_TYPE_RESOLUTION[d.component_type] ?? null;
-                    }
-                    break;
-                case TsInfoAnalyzer.DESCRIPTOR_TAG_AUDIO_COMPONENT:
-                    if (info.audioComponentType === null) {
-                        info.audioComponentType = d.component_type ?? null;
+            let d: aribts.Descriptor;
+            try {
+                d = descriptor.decode();
+            } catch (err: any) {
+                // 壊れた記述子が 1 つあっても他の記述子は捨てない
+                continue;
+            }
+
+            try {
+                switch (d.descriptor_tag) {
+                    case TsInfoAnalyzer.DESCRIPTOR_TAG_SHORT_EVENT:
+                        info.eventName = TsInfoAnalyzer.decodeChar(d.event_name);
+                        info.eventDescription = TsInfoAnalyzer.decodeChar(d.text);
+                        break;
+                    case TsInfoAnalyzer.DESCRIPTOR_TAG_EXTENDED_EVENT:
+                        extendedParts.push({
+                            descriptorNumber: typeof d.descriptor_number === 'number' ? d.descriptor_number : 0,
+                            lastDescriptorNumber:
+                                typeof d.last_descriptor_number === 'number' ? d.last_descriptor_number : 0,
+                            languageCode: TsInfoAnalyzer.decodeLanguageCode(d.ISO_639_language_code),
+                            items: (d.items ?? []).map((item: { item_description: unknown; item: unknown }) => ({
+                                description: TsInfoAnalyzer.decodeChar(item.item_description) ?? '',
+                                value: TsInfoAnalyzer.decodeChar(item.item) ?? '',
+                            })),
+                            text: TsInfoAnalyzer.decodeChar(d.text) ?? '',
+                        });
+                        break;
+                    case TsInfoAnalyzer.DESCRIPTOR_TAG_CONTENT:
+                        info.genres = (d.contents ?? [])
+                            .map((c: { content_nibble_level_1: number; content_nibble_level_2: number }): TsGenre => ({
+                                lv1: c.content_nibble_level_1,
+                                lv2: c.content_nibble_level_2,
+                            }))
+                            .filter((g: TsGenre) => g.lv1 !== TsInfoAnalyzer.GENRE_NIBBLE_UNDEFINED);
+                        break;
+                    case TsInfoAnalyzer.DESCRIPTOR_TAG_COMPONENT:
+                        videoComponents.push({
+                            streamContent: d.stream_content ?? null,
+                            componentType: d.component_type ?? null,
+                            tag: typeof d.component_tag === 'number' ? d.component_tag : null,
+                        });
+                        break;
+                    case TsInfoAnalyzer.DESCRIPTOR_TAG_AUDIO_COMPONENT: {
                         const samplingRate = TsInfoAnalyzer.SAMPLING_RATE[d.sampling_rate] ?? -1;
-                        info.audioSamplingRate = samplingRate > 0 ? samplingRate : null;
+                        audioComponents.push({
+                            componentType: d.component_type ?? null,
+                            samplingRate: samplingRate > 0 ? samplingRate : null,
+                            tag: typeof d.component_tag === 'number' ? d.component_tag : null,
+                            isMain: d.main_component_flag === 1,
+                        });
+                        break;
                     }
-                    break;
-                default:
-                    break;
+                    default:
+                        break;
+                }
+            } catch (err: any) {
+                // 記述子 1 つの内容が壊れていても全体は捨てない
             }
         }
 
-        if (extendedItems.length > 0) {
-            info.eventExtended = extendedItems.map(item => `${item.description}\n${item.value}`).join('\n\n');
+        info.eventExtended = TsInfoAnalyzer.buildExtendedEvent(extendedParts);
+
+        // 映像は EPGStation が持てる代表 1 本のみ。EIT の並び順は保証されないため先頭を代表とする
+        const video = videoComponents[0];
+        if (typeof video !== 'undefined') {
+            info.videoStreamContent = video.streamContent;
+            info.videoComponentType = video.componentType;
+            info.videoType =
+                video.streamContent === null ? null : (TsInfoAnalyzer.STREAM_CONTENT[video.streamContent] ?? null);
+            info.videoResolution =
+                video.componentType === null
+                    ? null
+                    : (TsInfoAnalyzer.COMPONENT_TYPE_RESOLUTION[video.componentType] ?? null);
+            candidate.videoComponentTag = video.tag;
+        }
+
+        // 音声は二か国語・解説音声などが並ぶため、main_component_flag = 1 (主音声) を優先する。
+        // 立っているものが無い場合のみ先頭を代表とする (fallback)
+        const audio = audioComponents.find(a => a.isMain === true) ?? audioComponents[0];
+        if (typeof audio !== 'undefined') {
+            info.audioComponentType = audio.componentType;
+            info.audioSamplingRate = audio.samplingRate;
+            candidate.audioComponentTag = audio.tag;
         }
     }
 
     /**
-     * PMT のストリーム一覧から映像・音声の代表 1 本ずつを拾う
+     * 分割送出された extended_event_descriptor を 1 つの詳細情報へ組み立てる。
+     *
+     * ARIB STD-B10 では 1 番組の詳細情報が descriptor_number 0..last_descriptor_number に
+     * 分割される。項目名 (item_description) が空の item は直前の項目の続きであり、
+     * 末尾の text_char (d.text) も詳細情報の一部なので落とさない。
+     * 受信順は保証されないため descriptor_number で並べ替えてから連結する。
+     * 言語が複数ある場合は混ぜず、jpn を優先して 1 言語分だけ採用する
+     * @param parts: ExtendedEventPart[]
+     * @return string | null 1 件も無い場合は null
      */
-    private static setStreamInfo(info: TsInfo, streams: aribts.Stream[]): void {
+    private static buildExtendedEvent(parts: ExtendedEventPart[]): string | null {
+        if (parts.length === 0) {
+            return null;
+        }
+
+        const languages = Array.from(new Set(parts.map(p => p.languageCode ?? '')));
+        // 日本の地上デジタル放送は jpn だが、仕様としては他言語もありうるので固定はしない
+        const language = languages.includes('jpn') === true ? 'jpn' : languages[0];
+        const targets = parts
+            .filter(p => (p.languageCode ?? '') === language)
+            .sort((a, b) => a.descriptorNumber - b.descriptorNumber);
+
+        const items: Array<{ description: string; value: string }> = [];
+        let text = '';
+        for (const part of targets) {
+            for (const item of part.items) {
+                const last = items[items.length - 1];
+                // 項目名が空の item は直前の項目の続き (分割された項目の後半)
+                if (item.description === '' && typeof last !== 'undefined') {
+                    last.value += item.value;
+                } else {
+                    items.push({ description: item.description, value: item.value });
+                }
+            }
+            text += part.text;
+        }
+
+        const blocks = items.map(item => `${item.description}\n${item.value}`);
+        if (text !== '') {
+            blocks.push(text);
+        }
+
+        return blocks.length === 0 ? null : blocks.join('\n\n');
+    }
+
+    /**
+     * PMT のストリーム一覧から映像・音声の代表 1 本ずつを拾う。
+     *
+     * ARIB STD-B10 では EIT の component_descriptor / audio_component_descriptor が持つ
+     * component_tag と、PMT の各 ES が持つ stream_identifier_descriptor の component_tag が
+     * 対応する。代表として選ぶべき ES は EIT 側が示しているため、まず component_tag で引き当て、
+     * 引けなかった場合のみ stream_type が一致する先頭の ES を採る (fallback)
+     * @param info: TsInfo
+     * @param streams: aribts.Stream[]
+     * @param videoComponentTag: number | null EIT の component_descriptor.component_tag
+     * @param audioComponentTag: number | null EIT の audio_component_descriptor.component_tag
+     */
+    private static setStreamInfo(
+        info: TsInfo,
+        streams: aribts.Stream[],
+        videoComponentTag: number | null = null,
+        audioComponentTag: number | null = null,
+    ): void {
+        const video =
+            TsInfoAnalyzer.findStreamByComponentTag(streams, TsInfoAnalyzer.VIDEO_STREAM_TYPES, videoComponentTag) ??
+            streams.find(s => TsInfoAnalyzer.VIDEO_STREAM_TYPES.includes(s.stream_type));
+        if (typeof video !== 'undefined') {
+            info.videoStreamType = video.stream_type;
+            info.videoPid = video.elementary_PID;
+        }
+
+        const audio =
+            TsInfoAnalyzer.findStreamByComponentTag(streams, TsInfoAnalyzer.AUDIO_STREAM_TYPES, audioComponentTag) ??
+            streams.find(s => TsInfoAnalyzer.AUDIO_STREAM_TYPES.includes(s.stream_type));
+        if (typeof audio !== 'undefined') {
+            info.audioStreamType = audio.stream_type;
+            info.audioPid = audio.elementary_PID;
+        }
+    }
+
+    /**
+     * PMT の ES の中から stream_identifier_descriptor の component_tag が一致するものを探す
+     * @param streams: aribts.Stream[]
+     * @param streamTypes: number[] 対象とする stream_type
+     * @param componentTag: number | null EIT 側の component_tag (null なら引き当てない)
+     * @return aribts.Stream | null 見つからない場合は null
+     */
+    private static findStreamByComponentTag(
+        streams: aribts.Stream[],
+        streamTypes: number[],
+        componentTag: number | null,
+    ): aribts.Stream | null {
+        if (componentTag === null) {
+            return null;
+        }
+
         for (const s of streams) {
-            if (info.videoPid === null && TsInfoAnalyzer.VIDEO_STREAM_TYPES.includes(s.stream_type)) {
-                info.videoStreamType = s.stream_type;
-                info.videoPid = s.elementary_PID;
-            } else if (info.audioPid === null && TsInfoAnalyzer.AUDIO_STREAM_TYPES.includes(s.stream_type)) {
-                info.audioStreamType = s.stream_type;
-                info.audioPid = s.elementary_PID;
+            if (streamTypes.includes(s.stream_type) === false) {
+                continue;
+            }
+            if (TsInfoAnalyzer.getComponentTag(s) === componentTag) {
+                return s;
             }
         }
+
+        return null;
+    }
+
+    /**
+     * PMT の ES 記述子から stream_identifier_descriptor の component_tag を取り出す
+     * @param es: aribts.Stream
+     * @return number | null 持たない場合は null
+     */
+    private static getComponentTag(es: aribts.Stream): number | null {
+        try {
+            for (const descriptor of es.ES_info.decode()) {
+                const d = descriptor.decode();
+                if (d.descriptor_tag === TsInfoAnalyzer.DESCRIPTOR_TAG_STREAM_IDENTIFIER) {
+                    return typeof d.component_tag === 'number' ? d.component_tag : null;
+                }
+            }
+        } catch (err: any) {
+            // 壊れた記述子は無視する
+        }
+
+        return null;
     }
 
     /**
@@ -877,31 +1138,35 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
         tdtAt: number,
         tdtPacketIndex: number,
         pcrPid: number,
-        pcrSamples: Array<{ pid: number; pcr: number; packetIndex: number }>,
+        pcrSamples: PcrSample[],
     ): number | null {
-        const samples = pcrSamples.filter(s => s.pid === pcrPid);
-        if (samples.length < 2) {
+        const pidSamples = pcrSamples.filter(s => s.pid === pcrPid);
+        if (pidSamples.length < 2) {
             // 基準点 (ファイル先頭付近) と終点 (TDT/TOT 付近) の 2 点がそろわないと測れない
             return null;
         }
 
         // ファイル先頭に最も近い (最小 packetIndex) サンプルを起点とする
-        let first = samples[0];
-        for (const s of samples) {
+        let first = pidSamples[0];
+        for (const s of pidSamples) {
             if (s.packetIndex < first.packetIndex) {
                 first = s;
             }
         }
 
+        // 起点と同じ時間軸 (epoch) のサンプルだけを使う。PCR が不連続になった後のサンプルは
+        // 別の時間軸なので、差分を取っても経過時間にはならない
+        const samples = pidSamples.filter(s => s.epoch === first.epoch);
+
         // TDT/TOT が見つかった位置以前で、最も近いサンプルを終点とする
-        let nearest: { pid: number; pcr: number; packetIndex: number } | null = null;
+        let nearest: PcrSample | null = null;
         for (const s of samples) {
             if (s.packetIndex <= tdtPacketIndex && (nearest === null || s.packetIndex > nearest.packetIndex)) {
                 nearest = s;
             }
         }
         if (nearest === null || nearest.packetIndex === first.packetIndex) {
-            // TDT/TOT より前に (起点と別の) PCR サンプルが無く、経過時間を測れない
+            // TDT/TOT より前に (起点と同じ時間軸で、かつ起点と別の) PCR サンプルが無く、経過時間を測れない
             return null;
         }
 
@@ -930,21 +1195,42 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
      * @return number | null 測れない場合は null
      */
     private static calcBytesPerMs(pcrPid: number, pcrSamples: PcrSample[]): number | null {
-        const samples = pcrSamples.filter(s => s.pid === pcrPid);
-        if (samples.length < 2) {
+        const pidSamples = pcrSamples.filter(s => s.pid === pcrPid);
+        if (pidSamples.length < 2) {
             return null;
         }
 
-        let first = samples[0];
-        let last = samples[0];
-        for (const s of samples) {
-            if (s.packetIndex < first.packetIndex) {
-                first = s;
+        // PCR が不連続になった前後は同じ時間軸に無いため、epoch ごとに区切り、
+        // その中で最も長い区間を使ってバイトレートを測る
+        const epochs = new Map<number, { first: PcrSample; last: PcrSample }>();
+        for (const s of pidSamples) {
+            const range = epochs.get(s.epoch);
+            if (typeof range === 'undefined') {
+                epochs.set(s.epoch, { first: s, last: s });
+                continue;
             }
-            if (s.packetIndex > last.packetIndex) {
-                last = s;
+            if (s.packetIndex < range.first.packetIndex) {
+                range.first = s;
+            }
+            if (s.packetIndex > range.last.packetIndex) {
+                range.last = s;
             }
         }
+
+        let widest: { first: PcrSample; last: PcrSample } | null = null;
+        for (const range of epochs.values()) {
+            if (
+                widest === null ||
+                range.last.packetIndex - range.first.packetIndex > widest.last.packetIndex - widest.first.packetIndex
+            ) {
+                widest = range;
+            }
+        }
+        if (widest === null) {
+            return null;
+        }
+        const first = widest.first;
+        const last = widest.last;
 
         let deltaTicks = last.pcr - first.pcr;
         if (deltaTicks < 0) {
@@ -1019,6 +1305,8 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
             let isFinished = false;
             let packetIndex = 0;
             const pcrSamples: PcrSample[] = [];
+            // PID ごとの PCR 時間軸の世代 (discontinuity_indicator で切り替わる)
+            const pcrEpochs = new Map<number, number>();
             let tdtAt: number | null = null;
             let tdtPacketIndex: number | null = null;
 
@@ -1115,10 +1403,17 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
                         return;
                     }
 
+                    const pid = packet.getPid();
+                    // 別の時間軸になった PCR を同じ軸として引き算しないよう epoch を進める
+                    if (af.discontinuity_indicator === 1) {
+                        pcrEpochs.set(pid, (pcrEpochs.get(pid) ?? 0) + 1);
+                    }
+
                     pcrSamples.push({
-                        pid: packet.getPid(),
+                        pid: pid,
                         pcr: af.program_clock_reference_base * 300 + af.program_clock_reference_extension,
                         packetIndex: currentIndex,
+                        epoch: pcrEpochs.get(pid) ?? 0,
                     });
                 } catch (err: any) {
                     // 壊れたパケットは無視して読み進める
@@ -1142,8 +1437,21 @@ export default class TsInfoAnalyzer implements ITsInfoAnalyzer {
     }
 
     /**
-     * ARIB 8 単位符号の Buffer を文字列にする
-     * @return string | null デコードできない場合は null
+     * ISO 639-2 の言語コード (3 byte) を小文字の文字列にする
+     * @return string | null 読めない場合は null
+     */
+    private static decodeLanguageCode(buffer: unknown): string | null {
+        if (Buffer.isBuffer(buffer) === false || (buffer as Buffer).length < 3) {
+            return null;
+        }
+
+        const code = (buffer as Buffer).toString('ascii', 0, 3).toLowerCase();
+
+        return /^[a-z]{3}$/.test(code) === true ? code : null;
+    }
+
+    /**
+     * ARIB 8 単位符号の文字列をデコードする
      */
     private static decodeChar(buffer: unknown): string | null {
         if (Buffer.isBuffer(buffer) === false || (buffer as Buffer).length === 0) {

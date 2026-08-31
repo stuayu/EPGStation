@@ -164,6 +164,8 @@ npm run test:ci        # ut + ita + itb
 ### TS 解析・録画表示
 
 - **`TsInfoAnalyzer` は既定でファイル中央から読む** (先頭には前番組の EIT[p/f] と壊れた TS が混ざるため)。`firstTdtAt` は「ファイル先頭の放送時刻」という意味を保つこと
-- **相乗りサービス (ワンセグ・サブチャンネル・データ放送) からの本編選択は `selectServiceId()`**。パケット数の偏りを見るため最低 20000 パケットは読む
+- **相乗りサービス (ワンセグ・サブチャンネル・データ放送) からの本編選択は、まず呼び出し側が渡す `expectedServiceId`**。無い場合の `selectServiceId()` は仕様上の根拠が無い推定なので fallback 扱い (パケット数の偏りを見るため最低 20000 パケットは読む)
+- **EIT[p/f] の記述子は ARIB STD-B10 どおりに読む**。extended_event は `descriptor_number` 順 + `text_char` 込み、音声代表は `main_component_flag`、代表 PID は `component_tag` ↔ PMT の `stream_identifier_descriptor`。**記述子 1 つの decode 失敗で番組情報を丸ごと捨てない** (`aribts` は予約タグで `undefined` を返す)
+- **PCR は `discontinuity_indicator` で時間軸が切り替わる**。epoch の違うサンプル同士で差分を取らない
 - **番組情報の上書きは明示的な再解析のときだけ**。取り込み・アップロード時と「未解析のみ」の一括解析は空の項目を補うだけ。番組名 (`recorded.name`) はどちらでも上書きしない
 - 録画の放送局名は `ChannelNameUtil.getRecordedChannelName()`、一覧のタイトル表示は `RecordedUtil.convertRecordedItemToDisplayData()` の 1 箇所で決まる

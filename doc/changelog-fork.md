@@ -13,6 +13,20 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
+## 2026-08-31
+
+- **録画 TS 再解析を ARIB STD-B10 に照らして点検し、5 点の仕様逸脱を修正した**: 対象は `TsInfoAnalyzer` / `TsPlaybackTimeResolver` と、解析を呼ぶ `VideoFileAnalyzeModel` / `RecordedManageModel`。
+
+    - **extended_event_descriptor (0x4E) を完全に解析するようにした**: 従来は `items` の `item_description` / `item` しか読んでおらず、**末尾の `text_char` (自由記述) を捨てていた**うえ、descriptor が複数に分割されているとき **`descriptor_number` で並べ替えず受信順のまま連結**していた (STD-B10 6.2.7)。1 番組の詳細情報が `descriptor_number` 0..`last_descriptor_number` に分割され、TS 上の到着順が保証されない以上、項目の順序と分割された項目値の連結先が入れ替わる。各 descriptor を `ExtendedEventPart` (descriptor_number / last_descriptor_number / ISO_639_language_code / items / text) として集めてから、`descriptor_number` 昇順で連結する `buildExtendedEvent()` を追加した。**言語が違う descriptor は同じ文章へ混ぜない** (jpn を優先し、無ければ最初の言語)。`item_description` が空の item が直前項目の続きである扱いは従来どおり。
+    - **壊れた記述子が 1 つあると番組情報が丸ごと消える問題を直した**: `aribts` の `TsDescriptors.decode()` は予約タグ (0x00 / 0x01 / 0xDF) に対し `undefined` を返すため、`descriptor.decode()` が TypeError になる。従来は `setEventDescriptors()` 全体が例外で抜け、**EIT[p/f] の候補自体が登録されず番組名・開始時刻・ジャンルがすべて null になっていた**。記述子 1 つずつ try/catch で切り分けるようにした。
+    - **録画対象サービスの決定を heuristic 主体にしないようにした**: 全サービス TS には本編・サブチャンネル・ワンセグ・データ放送が同居し、**TS だけからは「どれを録画したのか」を仕様上一意に決められない**。`TsInfoAnalyzeOption.expectedServiceId` を追加し、呼び出し側が知っている service_id があればそれを必ず採用する。`VideoFileAnalyzeModel.analyzeTsInfo()` は録画 → channel から、`RecordedManageModel` の取り込みは `option.channelId` から解決して渡す。TS 内に見つからない場合だけ `expected service id <n> was not found in TS; fallback service selection used` を warn へ出して従来の推定 (service_type → パケット数 → EIT の有無 → service_id 昇順) へ落ちる。**推定は fallback であって仕様上の根拠ではない**。アップロード TS の新規登録・取り込みスキャンは対象の放送局が未確定なので従来どおり推定を使う。
+    - **音声は `main_component_flag` で主音声を選ぶようにした**: 従来は最初に見つかった `audio_component_descriptor` を代表にしていたため、**二か国語・解説音声が先に並ぶ番組で副音声の component_type / sampling_rate を記録していた**。STD-B10 の `main_component_flag = 1` を優先し、立っているものが無い場合だけ先頭を使う。
+    - **EIT の component_tag で PMT の ES を引き当てるようにした**: 従来 `setStreamInfo()` は stream_type が一致する**先頭の** ES を代表映像・代表音声にしていた。STD-B10 では EIT の `component_descriptor` / `audio_component_descriptor` の `component_tag` と、PMT の `stream_identifier_descriptor` (0x52) の `component_tag` が対応する。まず component_tag で引き当て、引けない場合のみ従来の先頭採用へ落ちる。映像・音声が複数ある番組で代表 PID がずれなくなる (`videoPid` / `audioPid` は `TsPlaybackTimeResolver` の PTS 基準にも使われるため、ずれると実況同期もずれる)。EIT を PMT より先に反映する順序へ変えたのはこのため。
+    - **PCR の不連続 (discontinuity_indicator) を扱うようにした**: 従来は wraparound しか見ておらず、**TS 連結・録画ドロップ・エンコーダ再起動で時間軸が切り替わった PCR を同じ軸として引き算していた**。`PcrSample` に epoch を持たせ、`adaptation_field.discontinuity_indicator = 1` で PID ごとに epoch を進める。`correctStartAtByPcr()` は起点と同じ epoch のサンプルだけを使い、`calcBytesPerMs()` は epoch ごとに区切って最長区間で測る。`TsPlaybackTimeResolver` も基準 PCR を取った後に不連続を見つけたら推測せず null を返す (呼び出し側が `firstTdtAt` へフォールバックする)。ファイル先頭 (基準 PCR より前) の不連続は開始点なので無視する。
+
+    点検して**問題無しと判断した**もの: TDT/TOT の MJD + BCD 変換とタイムゾーン非依存 (`decodeJstDate`)、`ChannelUtil.isMediaService()` の service_type (0x01 / 0x02 / 0xA1 / 0xA2 / 0xA5 / 0xA6 / 0xAD。ワンセグは 0xA5、データ放送は 0xC0 で本編より下位に落ちる)、NIT/SDT の actual 限定 (0x40 / 0x42) と ONID + TSID + SID での放送局引き当て (`findNetworkIdAndServiceId`)、ARIB 文字列を `aribts.TsChar` に委譲していること。EIT[p/f] は `current_next_indicator = 1` の検証を追加したうえで**「解析区間で最初に受信した present を採る」設計は維持**した — 解析はファイル中央 (番組の途中) から読むため、区間内で後から届いた present へ乗り換えると番組境界をまたいだときに次番組を拾う。
+    - **テスト**: `test/ut/ts-info-analyzer.test.js` に extended_event の分割・順序逆転・項目継続・text のみ・言語混在・壊れた記述子混在、main/sub 音声、component_tag による映像音声の引き当てとその fallback、PCR 不連続、`expectedServiceId` の優先・不在時 fallback を追加。`test/ut/ts-playback-time-resolver.test.js` に PCR 不連続の 2 件を追加。
+
 ## 2026-08-30
 
 - **録画再生のデータ放送時刻を視聴位置へ同期**: 録画 TS の先読みで BML の TDT/TOT 時刻がエンコード位置へ進んでいたため、録画ファイル先頭の `startAt` と DPlayer の再生位置から時刻を求め、再生中・一時停止中・シーク時に BMLBrowser へ再注入する。ライブは TS の TDT/TOT を継続利用する。`BroadcastTimeExtractor` は B10 の JST_time に合わせ、BCD と MJD 日付の異常値を拒否する。

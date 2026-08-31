@@ -639,7 +639,10 @@ class RecordedManageModel implements IRecordedManageModel {
                 }
 
                 // TS の PSI/SI から放送局・番組情報を取り出す (ファイル名や program.txt の推定より正確)
-                const tsInfo = await this.analyzeTsInfoForImport(resolved.realPath);
+                const tsInfo = await this.analyzeTsInfoForImport(
+                    resolved.realPath,
+                    await this.resolveExpectedServiceId(option.channelId),
+                );
 
                 const startAt =
                     typeof option.startAt === 'number'
@@ -742,9 +745,10 @@ class RecordedManageModel implements IRecordedManageModel {
      * 取り込み対象ファイルの TS を解析する
      * 解析に失敗しても取り込み自体は続行させたいので、失敗時は null を返す
      * @param filePath: string 実ファイルパス
+     * @param expectedServiceId: number | null 取り込み先の放送局の service_id (分かる場合)
      * @return Promise<TsInfo | null>
      */
-    private async analyzeTsInfoForImport(filePath: string): Promise<TsInfo | null> {
+    private async analyzeTsInfoForImport(filePath: string, expectedServiceId: number | null): Promise<TsInfo | null> {
         // 対象判定は fileType ではなく拡張子で行う。
         // tsreplace 系 (映像だけ差し替え済みで出力拡張子は .ts のまま) は fileType が encoded でも
         // PSI/SI を保持しており、放送局・番組情報と firstTdtAt (実況同期に使う開始時刻) を取り出せる。
@@ -754,11 +758,30 @@ class RecordedManageModel implements IRecordedManageModel {
         }
 
         try {
-            return await this.tsInfoAnalyzer.analyze(filePath);
+            // 全サービス録画の TS は本編・サブチャンネル・ワンセグが同居しており、
+            // TS だけからは録画対象サービスを一意に決められないため、分かっている場合は指定する
+            return await this.tsInfoAnalyzer.analyze(filePath, {
+                expectedServiceId: expectedServiceId ?? undefined,
+            });
         } catch (err: any) {
             this.log.system.warn(`ts info analyze failed: ${filePath}`);
             this.log.system.warn(err instanceof Error ? err.message : String(err));
 
+            return null;
+        }
+    }
+
+    /**
+     * 放送局 (channelId) から service_id を求める
+     * @param channelId: apid.ChannelId
+     * @return Promise<number | null> 引けない場合は null
+     */
+    private async resolveExpectedServiceId(channelId: apid.ChannelId): Promise<number | null> {
+        try {
+            const channel = await this.channelDB.findId(channelId);
+
+            return channel === null ? null : channel.serviceId;
+        } catch (err: any) {
             return null;
         }
     }
