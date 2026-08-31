@@ -16,11 +16,17 @@ export const toStreamProfile = (input: CustomStreamPresetInput): StreamProfile =
     id: input.id,
     name: input.name,
     container: input.container,
-    video: input.output.codec === 'copy' ? undefined : {
-        codec: input.output.codec === 'hevc' ? 'libx265' : 'libx264',
-        height: input.output.resolution === 'source' ? undefined : Number.parseInt(input.output.resolution ?? '0', 10),
-        bitrate: input.output.videoBitrate,
-    },
+    video:
+        input.output.codec === 'copy'
+            ? undefined
+            : {
+                  codec: input.output.codec === 'hevc' ? 'libx265' : 'libx264',
+                  height:
+                      input.output.resolution === 'source'
+                          ? undefined
+                          : Number.parseInt(input.output.resolution ?? '0', 10),
+                  bitrate: input.output.videoBitrate,
+              },
     cmd: input.rawCommand?.trim() || undefined,
     customOptions: input.customOptions,
     isUnconverted: input.output.codec === 'copy',
@@ -34,4 +40,3 @@ export const cloneBuiltinPreset = (preset: StreamPreset, id: string): CustomStre
     container: preset.output.container ?? 'hls',
     output: { ...preset.output },
 });
-

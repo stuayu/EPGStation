@@ -1282,7 +1282,10 @@ export interface PlaybackProfile {
     available: true;
     builtin: boolean;
     legacy: boolean;
+    modes: Partial<Record<'m2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls', number>>;
 }
+
+export type PlaybackContainer = 'm2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | 'normal';
 
 export interface PlaybackOptions {
     source: SourceCapabilities;

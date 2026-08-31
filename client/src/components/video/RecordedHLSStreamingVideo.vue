@@ -30,6 +30,9 @@ class RecordedHLSStreamingVideo extends BaseVideo {
     @Prop({ default: null })
     public jikkyoChannelId!: string | null;
 
+    @Prop({ default: () => [] })
+    public playbackProfiles!: apid.PlaybackProfile[];
+
     @Prop({ default: null })
     public jikkyoStartAt!: number | null;
 
@@ -282,6 +285,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             this.applyChapterHighlights(options, this.getDuration());
 
             this.createPlayer(options);
+            this.setPlaybackProfiles(this.playbackProfiles, 'hls');
             this.setupAudioTrackSwitchForRecorded();
 
             // 画質切替時は現在の再生位置からストリームを作り直してから url を差し替える

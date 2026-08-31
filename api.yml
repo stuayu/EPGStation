@@ -2900,7 +2900,7 @@ components:
                     type: array
                     items:
                         type: object
-                        required: [id, label, detail, available, builtin, legacy]
+                        required: [id, label, detail, available, builtin, legacy, modes]
                         properties:
                             id: { type: string }
                             label: { type: string }
@@ -2908,6 +2908,10 @@ components:
                             available: { type: boolean, enum: [true] }
                             builtin: { type: boolean }
                             legacy: { type: boolean }
+                            modes:
+                                type: object
+                                description: コンテナ別の既存 stream 設定 mode。未対応コンテナは含まない
+                                additionalProperties: { type: integer, minimum: 0 }
                 options:
                     type: object
                     required: [hdr, correction]
@@ -5788,6 +5792,11 @@ components:
             in: query
             name: profile
             schema: { type: string }
+        PlaybackContainer:
+            description: 実際に再生するコンテナ。指定時は該当コンテナ内の画質一覧を返す
+            in: query
+            name: container
+            schema: { type: string, enum: [m2ts, m2tsll, mp4, webm, hls, normal] }
 
         IsReverse:
             description: 逆順で取得するか
