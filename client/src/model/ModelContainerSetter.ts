@@ -149,6 +149,8 @@ import VersionState from '@/model/state/version/VersionState';
 import IVersionState from '@/model/state/version/IVersionState';
 import VersionApiModel from '@/model/api/version/VersionApiModel';
 import IVersionApiModel from '@/model/api/version/IVersionApiModel';
+import IPlaybackOptionsState from './state/video/IPlaybackOptionsState';
+import PlaybackOptionsState from './state/video/PlaybackOptionsState';
 
 /**
  * container に各 Model を登録する
@@ -194,6 +196,8 @@ export default (container: Container): void => {
     container.bind<ILogApiModel>('ILogApiModel').to(LogApiModel).inSingletonScope();
 
     container.bind<IVersionApiModel>('IVersionApiModel').to(VersionApiModel).inSingletonScope();
+
+    container.bind<IPlaybackOptionsState>('IPlaybackOptionsState').to(PlaybackOptionsState).inSingletonScope();
 
     container.bind<IThumbnailApiModel>('IThumbnailApiModel').to(ThumbnailApiModel).inSingletonScope();
 

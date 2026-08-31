@@ -1,6 +1,16 @@
 <template>
     <div class="video-container" ref="container">
         <div class="video-content" v-bind:class="{ 'is-ipad': isiPad === true }">
+            <PlaybackOptionsMenu
+                v-if="playbackOptions !== null && playbackProfiles.length > 0"
+                class="playback-options"
+                :profiles="playbackProfiles"
+                :selected-id="selectedPlaybackId"
+                :show-hdr="playbackOptions.source.hdr !== 'sdr' && clientHdr"
+                :correction="playbackPreference.videoCorrection"
+                :hdr-mode="playbackPreference.hdrMode"
+                @select="selectPlaybackProfile"
+            ></PlaybackOptionsMenu>
             <div v-if="isLoading === true" class="loading">
                 <v-progress-circular :size="50" color="primary" indeterminate></v-progress-circular>
             </div>
@@ -20,6 +30,7 @@
                     v-on:timeupdate="onTimeupdate"
                     v-on:pause="savePlaybackPosition"
                     v-on:ended="onEnded"
+                    v-on:error="onVideoError"
                 ></NormalVideo>
                 <LiveHLSVideo
                     v-if="videoParam.type == 'LiveHLS'"
@@ -31,6 +42,7 @@
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
                     v-on:jikkyoComment="onJikkyoComment"
+                    v-on:error="onVideoError"
                 ></LiveHLSVideo>
                 <RecordedStreamingVideo
                     v-if="videoParam.type == 'RecordedStreaming'"
@@ -49,6 +61,7 @@
                     v-on:timeupdate="onTimeupdate"
                     v-on:pause="savePlaybackPosition"
                     v-on:ended="onEnded"
+                    v-on:error="onVideoError"
                 ></RecordedStreamingVideo>
                 <RecordedHLSStreamingVideo
                     v-if="videoParam.type == 'RecordedHLS'"
@@ -66,6 +79,7 @@
                     v-on:timeupdate="onTimeupdate"
                     v-on:pause="savePlaybackPosition"
                     v-on:ended="onEnded"
+                    v-on:error="onVideoError"
                 ></RecordedHLSStreamingVideo>
                 <LiveMpegTsVideo
                     v-if="videoParam.type == 'LiveMpegTs'"
@@ -78,6 +92,7 @@
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
                     v-on:jikkyoComment="onJikkyoComment"
+                    v-on:error="onVideoError"
                 ></LiveMpegTsVideo>
             </div>
         </div>
@@ -99,6 +114,11 @@ import DPlayer from 'dplayer';
 import { DataBroadcastingConnectParam } from '@/util/DataBroadcastingManager';
 import { JikkyoComment } from '@/util/JikkyoCommentClient';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
+import PlaybackOptionsMenu from '@/components/video/quality/PlaybackOptionsMenu.vue';
+import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
+import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
+import { getClientCapabilities, ClientCapabilities } from '@/util/ClientCapabilityUtil';
+import * as apid from '../../../../api';
 
 @Component({
     components: {
@@ -107,6 +127,7 @@ import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
         RecordedStreamingVideo,
         RecordedHLSStreamingVideo,
         LiveMpegTsVideo,
+        PlaybackOptionsMenu,
     },
 })
 class VideoContainer extends Vue {
@@ -114,6 +135,21 @@ class VideoContainer extends Vue {
     public videoParam!: VideoParam.BaseVideoParam;
 
     public isLoading: boolean = true;
+    public playbackOptions: apid.PlaybackOptions | null = null;
+    public playbackProfiles: apid.PlaybackProfile[] = [];
+    public selectedPlaybackId = 'auto';
+    public clientHdr = false;
+    private playbackOptionsState: IPlaybackOptionsState = container.get<IPlaybackOptionsState>('IPlaybackOptionsState');
+    private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private fallbackAttempts = 0;
+    private fallbackTried = new Set<string>();
+    private fallbackNoticeShown = false;
+    private pendingPlaybackError: unknown = null;
+    private autoPlayback = false;
+
+    get playbackPreference() {
+        return this.playbackOptionsState.preference;
+    }
     public isiPad: boolean = UaUtil.isiPadOS();
     private videoApi = container.get<IVideoApiModel>('IVideoApiModel');
     private lastSavedAt = 0;
@@ -143,6 +179,7 @@ class VideoContainer extends Vue {
         // 動画を切り替えると親が videoParam を差し替えてからこのコンポーネントを破棄するため、
         // 破棄時の再生位置保存で参照すると「古い再生位置を新しいビデオファイルの履歴に書く」ことになる
         this.playingVideoFileId = 'videoFileId' in this.videoParam && typeof this.videoParam.videoFileId === 'number' ? this.videoParam.videoFileId : null;
+        void this.loadPlaybackOptions();
 
         document.addEventListener('webkitfullscreenchange', this.fullScreenListener, false);
         document.addEventListener('mozfullscreenchange', this.fullScreenListener, false);
@@ -150,6 +187,99 @@ class VideoContainer extends Vue {
         document.addEventListener('fullscreenchange', this.fullScreenListener, false);
         window.addEventListener('pagehide', this.pageHideListener, false);
         document.addEventListener('visibilitychange', this.visibilityChangeListener, false);
+    }
+
+    private async loadPlaybackOptions(): Promise<void> {
+        try {
+            const param = this.videoParam;
+            const capabilities: ClientCapabilities = await getClientCapabilities();
+            this.clientHdr = capabilities.hdr;
+            if (param.type === 'LiveHLS' || param.type === 'LiveMpegTs') {
+                await this.playbackOptionsState.loadLive(param.channelId);
+            } else if ('videoFileId' in param && typeof param.videoFileId === 'number') {
+                await this.playbackOptionsState.loadRecorded(param.videoFileId);
+            } else {
+                return;
+            }
+            this.playbackOptions = this.playbackOptionsState.options;
+            this.playbackProfiles = this.playbackOptions?.profiles.filter(profile => profile.available === true) ?? [];
+            this.selectedPlaybackId = this.playbackOptionsState.selectedPresetId;
+            this.autoPlayback = this.selectedPlaybackId === 'auto';
+            this.fallbackAttempts = 0;
+            this.fallbackTried.clear();
+            this.fallbackNoticeShown = false;
+            const pendingError = this.pendingPlaybackError;
+            this.pendingPlaybackError = null;
+            if (pendingError !== null) this.onVideoError(pendingError);
+        } catch (err) {
+            // 旧 config のみの環境では従来の DPlayer quality を使う
+            console.error(err);
+        }
+    }
+
+    public selectPlaybackProfile(id: string): void {
+        this.playbackOptionsState.selectPreset(id);
+        this.selectedPlaybackId = id;
+        this.autoPlayback = id === 'auto';
+        const index = this.playbackProfiles.findIndex(profile => profile.id === id);
+        if (index >= 0) {
+            (this.$refs.video as InstanceType<typeof BaseVideo> | undefined)?.switchQuality(index);
+        }
+    }
+
+    /**
+     * 自動画質の起動失敗を fallbackChain の順に最大 3 回だけ再試行する
+     * @param error: unknown
+     */
+    public onVideoError(error: unknown): void {
+        if (this.videoParam.type === 'Normal') return;
+        if (this.playbackOptions === null) {
+            this.pendingPlaybackError = error;
+            return;
+        }
+        if (this.autoPlayback === false || this.fallbackAttempts >= 3) {
+            return;
+        }
+
+        const reason = this.getPlaybackErrorText(error);
+        const chain = this.playbackOptionsState.getFallbackChain();
+        const nextId = chain.find(id => this.fallbackTried.has(id) === false && this.playbackProfiles.some(profile => profile.id === id));
+        if (typeof nextId === 'undefined') {
+            return;
+        }
+
+        this.fallbackTried.add(nextId);
+        this.fallbackAttempts++;
+        const nextIndex = this.playbackProfiles.findIndex(profile => profile.id === nextId);
+        const nextProfile = this.playbackProfiles[nextIndex];
+        if (typeof nextProfile === 'undefined') return;
+
+        if (this.fallbackNoticeShown === false) {
+            this.fallbackNoticeShown = true;
+            const failedLabel = this.playbackOptions.recommended.label;
+            this.snackbarState.open({
+                color: 'warning',
+                text: `${failedLabel} で再生できなかったため、${nextProfile.label} で再生しています。`,
+                timeout: 6000,
+                action: {
+                    text: '詳細',
+                    onClick: () => {
+                        this.snackbarState.open({ color: 'warning', text: `再生エラー: ${reason}`, timeout: 8000 });
+                    },
+                },
+            });
+        }
+
+        this.playbackOptionsState.selectPreset(nextId);
+        this.selectedPlaybackId = nextId;
+        (this.$refs.video as InstanceType<typeof BaseVideo> | undefined)?.switchQuality(nextIndex);
+    }
+
+    private getPlaybackErrorText(error: unknown): string {
+        if (error instanceof Error && error.message.length > 0) return error.message;
+        if (typeof error === 'string' && error.length > 0) return error;
+        if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') return error.message;
+        return 'プレイヤーがストリームを開始できませんでした';
     }
 
     public beforeUnmount(): void {
@@ -378,6 +508,12 @@ export default toNative(VideoContainer);
         left: 0
         width: 100%
         height: 100%
+
+        .playback-options
+            position: absolute
+            top: 8px
+            right: 8px
+            z-index: 3
 
     .loading
         z-index: 2

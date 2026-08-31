@@ -346,8 +346,46 @@ DPlayer の `switchQuality()` は「quality リストに事前登録された UR
   (version 1 必須) を含め従来どおり動く
 # ストリーミング実装メモ
 
+## Playback API (Phase 7)
+
+`GET /api/streams/live/{channelId}/playback-options` と `GET /api/videos/{videoFileId}/playback-options` は、入力映像と端末能力から利用可能なプロファイル、推奨プロファイル、再生方式、有限のフォールバック列 (`recommended.fallbackChain`) を返す。端末能力は query (`hevc` / `hevcMain10` / `h264` / `hdr` / `hlg`) で渡す。クライアントはこの列を優先し、旧 API では利用可能 profile 順へ fallback する。
+
+`PlaybackPolicyResolver` は再エンコード不要な入力では `video-copy` / `direct-play` を優先する。HDR 非対応端末では SDR プロファイルへ自動選択し、`profiles` には実際に利用可能な候補だけを含める。
+
+既存の `config.yml` の `stream.profiles.*` / 旧形式 `stream.live.*`・`stream.recorded.*` は、Built-in プリセットを導入してもユーザー定義を優先する。設定だけの環境では従来の mode 順と cmd を維持し、`encodePresets` 未設定時に新しい自動生成を強制しない。
+
+## Command Builder (Phase 5)
+
+`LiveCommandBuilder` / `RecordedCommandBuilder` は `SourceCapabilities`、`StreamPreset.output`、利用可能エンコーダ能力から配信 cmd を生成する。既存 `config.yml` の手書き `stream:` cmd と `StreamProfileManageModel` の生成経路は変更しない。
+
+- デインターレースは搬送形式ではなく `source.scan` だけで決める。progressive は無指定、interlaced は field order (不明時 tff) と 30p/60p に従う
+- source fps は解析値を rigaya の `--fps` へ渡す。未知値の 29.97 fallback は legacy-broadcast だけで、BS4K へ適用しない
+- 10bit は Main10 / `--output-depth 10` または `yuv420p10le` を使う。対応しないエンコーダへは黙って切り替えず失敗する
+- live は低遅延、recorded は品質寄り。ただし LL-HLS のため GOP は短く保つ
+- エンコーダ能力の選択結果は 60 秒 TTL でキャッシュする
+
+設計上、コンテナ / Transport と映像特性を混同しない。MPEG-TS でも BS4K 変換後は progressive として扱う。録画ファイルの fps を 29.97 に固定せず、10bit を 8bit pixel format へ落とさない。HDR→SDR は `format` だけで変換せず、トーンマップ・色域・メタデータを変換する。
+
+## HDR / SDR トーンマッピング (Phase 6)
+
+HDR (`hlg` / `pq`) を `tone-map` または `sdr` で配信するときだけ、ffmpeg は `zscale=t=linear:npl=100` → `tonemap=hable:desat=0` → BT.709 変換 → `format=yuv420p` の順で処理する。解像度 `scale` は色変換後に置き、出力メタデータも BT.709 にする。rigaya 系は `--vpp-colorspace hdr2sdr=hable` と BT.709 の color metadata を使う。
+
+`preserve` は BT.2020 / HLG・PQ / 10bit を維持する。SDR 入力には HDR トーンマップを付けない。映像補正は `VideoCorrectionUtil` の純粋関数で決め、`auto` は解析に頼らず追加補正しない。ライブで輝度解析は行わない。
+
 ## データ放送の録画再生時刻
 
 録画用のデータ放送 WebSocket は録画 TS を `decodeTS` へ先読みするため、WebSocket から届く `currentTime` は視聴者の再生位置ではない。録画再生では、メタデータ API の `startAt` (録画ファイル先頭の放送時刻) に DPlayer の動画全体の再生位置を加算し、BMLBrowser の `currentTime` をクライアントから 250 ms 間隔で更新する。timeupdate、play、pause、seeking、seeked でも即時更新する。ライブは TS の TDT/TOT を従来どおり使う。
 
 停止中も更新を続けるのは、BMLBrowser が最後の currentTime と受信した PCR の差を補間するため。録画 TS の先読みで PCR が進んでも、再生位置の時刻を再注入して時計が実時間やエンコード位置へ進まないようにする。
+
+## Phase 8/9 クライアント画質 UI
+
+再生画質の表示は `PlaybackQualitySheet`、`PlaybackQualityList`、`PlaybackQualityItem` に集約した。画質リストは開始時の選択と再生中メニューで共用し、デスクトップではダイアログ / メニュー、幅 600px 未満では Bottom Sheet を使う。`menu-card` と `menu-card-body`、safe area、`70svh` 上限、44px 行高を適用する。
+
+`ClientCapabilityUtil` は MediaCapabilities の `decodingInfo()` を優先し、`canPlayType()` を補助に使う。HEVC Main10 は `hvc1.2.4.L153.B0`、HDR は `dynamic-range: high` で判定し、結果を localStorage に TTL 付きで保存する。`PlaybackLabelUtil` は通常表示から HEVC / Main10 / エンコーダ名を隠し、詳細表示だけへ渡す。
+
+`PlaybackOptionsState` は Phase 7 の Playback API を端末能力付きで呼び、画質選択と設定を端末単位の localStorage へ保存する。既存の `type` + `mode` 導線と BaseVideo の画質切替機構は変更せず、旧 config のみの環境も従来経路を維持する。
+
+画質切替前に BaseVideo が音量、muted、再生速度、字幕、Fullscreen、PiP を退避し、新しい video 要素の loadedmetadata / canplay 後に個別復元する。復元失敗は再生を止めない。
+
+自動画質のプレイヤー起動エラーは VideoContainer が `recommended.fallbackChain` の順に最大3回まで再試行する。fallback 通知は warning snackbar を1回だけ表示し、「詳細」で直近のプレイヤーエラーを表示する。旧 API が fallbackChain を返さない場合は利用可能 profile の順を候補に使う。

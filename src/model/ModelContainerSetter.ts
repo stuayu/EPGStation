@@ -253,6 +253,8 @@ import IVideoAnalyzeJobModel from './video/IVideoAnalyzeJobModel';
 import VideoAnalyzeJobModel from './video/VideoAnalyzeJobModel';
 import IVideoFileAnalyzeModel from './video/IVideoFileAnalyzeModel';
 import VideoFileAnalyzeModel from './video/VideoFileAnalyzeModel';
+import ISourceAnalyzer from './stream/capability/ISourceAnalyzer';
+import SourceAnalyzer from './stream/capability/SourceAnalyzer';
 import ITsInfoAnalyzer from './recorded/ts/ITsInfoAnalyzer';
 import TsInfoAnalyzer from './recorded/ts/TsInfoAnalyzer';
 import IRecorderModel, { RecorderModelProvider } from './operator/recording/IRecorderModel';
@@ -326,6 +328,16 @@ import IEitPresentStore from './service/stream/util/IEitPresentStore';
 import EitPresentStore from './service/stream/util/EitPresentStore';
 import IStreamProfileManageModel from './stream/IStreamProfileManageModel';
 import StreamProfileManageModel from './stream/StreamProfileManageModel';
+import IStreamPresetRegistry from './stream/preset/IStreamPresetRegistry';
+import StreamPresetRegistry from './stream/preset/StreamPresetRegistry';
+import IPlaybackPolicyResolver from './stream/resolver/IPlaybackPolicyResolver';
+import PlaybackPolicyResolver from './stream/resolver/PlaybackPolicyResolver';
+import IPlaybackApiModel from './api/stream/IPlaybackApiModel';
+import PlaybackApiModel from './api/stream/PlaybackApiModel';
+import ILiveCommandBuilder from './stream/builder/ILiveCommandBuilder';
+import LiveCommandBuilder from './stream/builder/LiveCommandBuilder';
+import IRecordedCommandBuilder from './stream/builder/IRecordedCommandBuilder';
+import RecordedCommandBuilder from './stream/builder/RecordedCommandBuilder';
 
 /**
  * container に 各 Model を登録する
@@ -461,6 +473,7 @@ export const set = (container: Container): void => {
     container.bind<IDropCheckerModel>('IDropCheckerModel').to(DropCheckerModel);
     container.bind<ITsInfoAnalyzer>('ITsInfoAnalyzer').to(TsInfoAnalyzer).inSingletonScope();
     container.bind<IVideoFileAnalyzeModel>('IVideoFileAnalyzeModel').to(VideoFileAnalyzeModel).inSingletonScope();
+    container.bind<ISourceAnalyzer>('ISourceAnalyzer').to(SourceAnalyzer).inSingletonScope();
     // 一括解析ジョブは Service プロセスに常駐させ、画面を閉じても進捗を追えるようにする
     container.bind<IVideoAnalyzeJobModel>('IVideoAnalyzeJobModel').to(VideoAnalyzeJobModel).inSingletonScope();
 
@@ -727,8 +740,16 @@ export const set = (container: Container): void => {
         .bind<IStreamProfileManageModel>('IStreamProfileManageModel')
         .to(StreamProfileManageModel)
         .inSingletonScope();
+    container
+        .bind<IStreamPresetRegistry>('IStreamPresetRegistry')
+        .to(StreamPresetRegistry)
+        .inSingletonScope();
+    container.bind<IPlaybackPolicyResolver>('IPlaybackPolicyResolver').to(PlaybackPolicyResolver).inSingletonScope();
+    container.bind<ILiveCommandBuilder>('ILiveCommandBuilder').to(LiveCommandBuilder).inSingletonScope();
+    container.bind<IRecordedCommandBuilder>('IRecordedCommandBuilder').to(RecordedCommandBuilder).inSingletonScope();
 
     container.bind<IStreamApiModel>('IStreamApiModel').to(StreamApiModel).inSingletonScope();
+    container.bind<IPlaybackApiModel>('IPlaybackApiModel').to(PlaybackApiModel).inSingletonScope();
 
     container.bind<IStorageApiModel>('IStorageApiModel').to(StorageApiModel).inSingletonScope();
 };

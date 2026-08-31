@@ -13,7 +13,19 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
+## 2026-09-01
+
+- **ストリーミング刷新 Phase 10 の回帰テストと設計文書を是正した**: 既存 `stream:` 設定のみの環境で従来のプリセット順・cmd を維持する回帰、Original の video copy、BS4K 1080p HDR、iOS HDR 対応 / 非対応端末の選択をテストへ追加した。`PROJECT_OVERVIEW.md` に SourceAnalyzer / StreamPresetRegistry / PlaybackPolicyResolver / Command Builder / Playback API / 画質 UI の構成と、Transport・scan・fps・bit depth・HDR の分離規則を追記した。
+
+- **ストリーミング刷新 Phase 6 の HDR / SDR 経路を分離した**: HDR の `tone-map` / `sdr` 指定時、HLG / PQ 入力だけ `zscale` → `tonemap=hable` → BT.709 `zscale` → 8bit `format` を通し、出力メタデータも BT.709 に修正する。rigaya 系は `--vpp-colorspace hdr2sdr=hable` を使う。`preserve` は BT.2020 / HLG・PQ / Main10 を維持し、SDR 入力へトーンマップを二重適用しない。映像補正は純粋関数へ分離し、`auto` は保守的に追加補正せず、ネイティブ HDR を明るくしない。実装は `src/util/StreamArgsUtil.ts` / `src/util/VideoCorrectionUtil.ts`。
+
+- **ストリーミング刷新 Phase 5 の Command Builder を追加した**: `SourceCapabilities` の scan / frameRate / bitDepth / HDR と `StreamPreset.output`、利用可能エンコーダ能力からライブ・録画配信用 cmd を組み立てる。progressive source へデインターレースを付けず、Main10 非対応エンコーダへの黙った 8bit fallback も行わない。rigaya の録画ファイル入力だけ解析 fps 付き `--avsync forcecfr` を使い、HEVC 配信の `hvc1` タグを維持する。既存 `stream:` の手書き cmd と既存生成経路は変更しない。実装は `src/util/StreamArgsUtil.ts` / `src/model/stream/builder/`。
+
 ## 2026-08-31
+
+- **ストリーミング刷新 Phase 4 の Preset Registry を追加した**: Built-in / Legacy / 既存 config / `encodePresets` の候補を統合し、映像特性とクライアント能力で利用可能な候補だけを返す。既存 config のプリセットと mode 添字の対応は維持し、既存 cmd 生成経路とクライアントは変更しない。実装は `BuiltinStreamPresets` / `StreamPresetRegistry`。
+
+- **ストリーミング刷新 Phase 3b の Source Analyzer 基盤を追加した**: `VideoUtil.getDetailedInfo()` が ffprobe から `pix_fmt` / `profile` / `field_order` / フレームレート / 色特性 / ビット深度を取得し、既存の戻り値と呼び出しは維持する。`SourceAnalyzer` は解析済み録画の DB 情報を優先し、未解析時だけ ffprobe で `SourceCapabilities` を作る。ライブは BS4K と legacy-broadcast の仕様既定値を返し、録画・ライブそれぞれ TTL 付きメモリキャッシュを使う。実装は `src/model/stream/capability/SourceAnalyzer.ts` / `ISourceAnalyzer.ts` と DI 登録。録画後エンコード、既存のストリーム cmd 生成、クライアントは変更しない。
 
 - **録画 TS 再解析を ARIB STD-B10 に照らして点検し、5 点の仕様逸脱を修正した**: 対象は `TsInfoAnalyzer` / `TsPlaybackTimeResolver` と、解析を呼ぶ `VideoFileAnalyzeModel` / `RecordedManageModel`。
 
@@ -2171,3 +2183,20 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
         - 映像が HEVC になるため、**ブラウザでの再生はクライアント側の HEVC 対応に依存する**。Safari は HLS + HEVC をネイティブ再生できるが、Chrome / Firefox で mpegts.js の低遅延ライブを使う場合は HEVC 対応版が要る。確実に再生したい場合は `encodePresets` で H.264 へエンコードして配信する
         - 録画ファイル自体は変換後の TS をそのまま保存するので、録画・取り込み・TS 解析 (`TsInfoAnalyzer`) は従来どおり動く
         - 本フォークの `package.json` は Mirakurun をタグで固定しているため、**この 4K 対応を使うには `stuayu/Mirakurun` 側の新しいタグを切って `package.json` の参照タグを差し替える必要がある** (ブランチ参照は lockfile が壊れるため禁止)
+
+- **再生開始時の Playback API とポリシー解決を追加した**
+    - `/api/streams/live/{channelId}/playback-options` と `/api/videos/{videoFileId}/playback-options` で、入力映像・端末能力に応じた利用可能プロファイルと推奨を返すようにした
+    - `PlaybackPolicyResolver` は再エンコード不要な場合に `video-copy` / `direct-play` を優先し、HDR 非対応端末では SDR 系へ自動 fallback する。fallbackChain は最大 3 件
+    - 既存のストリーム cmd、録画後エンコード、client は変更していない
+    - テスト: `test/ut/playback-policy-resolver.test.js`
+
+- **Phase 8/9 のクライアント画質選択 UI 基盤を追加した**
+    - `PlaybackQualitySheet` / `PlaybackQualityList` / `PlaybackQualityItem` を追加し、開始時選択と再生中メニューで同じ画質リストを使えるようにした
+    - デスクトップの dialog/menu とモバイルの Bottom Sheet、safe area、44px タップ領域、`70svh` 上限、`.menu-card` / `.menu-card-body` を実装した
+    - `ClientCapabilityUtil` は MediaCapabilities、canPlayType、dynamic-range を使い、HEVC Main10 (`hvc1.2.4.L153.B0`) を iOS 固定判定せず TTL キャッシュする
+    - `PlaybackLabelUtil` で通常表示の技術用語を隠し、`PlaybackOptionsState` と Phase 7 Playback API クライアントで選択状態を保存する
+    - 既存の type + mode 導線と BaseVideo の切替経路は互換維持のため変更していない
+
+- **Playback API の fallbackChain をクライアントへ接続した**
+    - playback-options API が `PlaybackPolicyResolver` の `recommended.fallbackChain` を返すようにし、クライアントは Resolver の順序 (同系統の軽量 → SDR 版 → H.264 互換) を優先して最大 3 回まで再試行する
+    - 旧 API 応答では利用可能 profile 順へ fallback する保険を残した

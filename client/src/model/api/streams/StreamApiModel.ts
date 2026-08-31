@@ -2,6 +2,7 @@ import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../api';
 import IRepositoryModel from '../IRepositoryModel';
 import IStreamApiModel from './IStreamApiModel';
+import { ClientCapabilities } from '@/util/ClientCapabilityUtil';
 
 @injectable()
 export default class StreamApiModel implements IStreamApiModel {
@@ -97,5 +98,23 @@ export default class StreamApiModel implements IStreamApiModel {
      */
     public async keep(streamId: apid.StreamId): Promise<void> {
         await this.repository.put(`/streams/${streamId}/keep`);
+    }
+
+    /**
+     * ライブ再生の画質選択肢を取得する
+     */
+    public async getLivePlaybackOptions(channelId: apid.ChannelId, client: ClientCapabilities, requestedPresetId?: string): Promise<apid.PlaybackOptions> {
+        const result = await this.repository.get(`/streams/live/${channelId}/playback-options`, { params: { ...client, profile: requestedPresetId } });
+
+        return result.data;
+    }
+
+    /**
+     * 録画再生の画質選択肢を取得する
+     */
+    public async getRecordedPlaybackOptions(videoFileId: apid.VideoFileId, client: ClientCapabilities, requestedPresetId?: string): Promise<apid.PlaybackOptions> {
+        const result = await this.repository.get(`/videos/${videoFileId}/playback-options`, { params: { ...client, profile: requestedPresetId } });
+
+        return result.data;
     }
 }

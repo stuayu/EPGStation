@@ -1,4 +1,4 @@
-export type colorType = 'normal' | 'success' | 'info' | 'error';
+export type colorType = 'normal' | 'success' | 'info' | 'warning' | 'error';
 
 export interface SnackbarDipslayOption {
     color: string;

@@ -4,6 +4,7 @@
             <v-card v-if="dialogState.title !== null">
                 <div class="pa-4 pb-0">
                     <div>{{ dialogState.title }}</div>
+                    <v-btn block variant="outlined" min-height="44" class="my-2" @click="openQualitySheet">画質: {{ selectedQualityLabel }}</v-btn>
                     <div class="d-flex">
                         <v-select
                             :items="dialogState.streamTypeItems"
@@ -25,6 +26,15 @@
                 </v-card-actions>
             </v-card>
         </v-dialog>
+        <PlaybackQualitySheet
+            v-if="qualitySheetOpen"
+            v-model="qualitySheetOpen"
+            title="再生画質"
+            :profiles="qualityProfiles"
+            :selected-id="playbackState.selectedPresetId"
+            @select="selectQuality"
+            @confirm="confirmQualitySelection"
+        ></PlaybackQualitySheet>
     </div>
 </template>
 
@@ -35,8 +45,10 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
+import PlaybackQualitySheet from '@/components/video/quality/PlaybackQualitySheet.vue';
+import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 
-@Component({})
+@Component({ components: { PlaybackQualitySheet } })
 class RecordedDetailSelectStreamDialog extends Vue {
     public dialogState: IRecordedDetailSelectStreamState = container.get<IRecordedDetailSelectStreamState>('IRecordedDetailSelectStreamState');
     public isRemove: boolean = false;
@@ -44,6 +56,35 @@ class RecordedDetailSelectStreamDialog extends Vue {
     public isHiddenStreamMode: boolean = false;
 
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+    public playbackState: IPlaybackOptionsState = container.get<IPlaybackOptionsState>('IPlaybackOptionsState');
+    public qualitySheetOpen = false;
+    get qualityProfiles(): apid.PlaybackProfile[] { return this.playbackState.options?.profiles.filter(profile => profile.available === true) ?? []; }
+    get selectedQualityLabel(): string { return this.qualityProfiles.find(profile => profile.id === this.playbackState.selectedPresetId)?.label ?? '自動・おすすめ'; }
+
+    public async openQualitySheet(): Promise<void> {
+        const videoFileId = this.dialogState.getVideoFileId();
+        if (videoFileId === null) return;
+        await this.playbackState.loadRecorded(videoFileId).catch(err => console.error(err));
+        this.qualitySheetOpen = this.qualityProfiles.length > 0;
+    }
+
+    private async maybeOpenQualitySheet(): Promise<void> {
+        const saved = localStorage.getItem('epgstation.playback.selection-made') === '1';
+        await this.openQualitySheet();
+        const preferred = this.playbackState.preference.preferredQuality;
+        if (this.qualityProfiles.length > 0 && (saved === false || this.playbackState.preference.autoPlayWithRecommendedQuality === false || !this.qualityProfiles.some(profile => profile.id === preferred))) this.qualitySheetOpen = true;
+    }
+
+    public confirmQualitySelection(): void {
+        localStorage.setItem('epgstation.playback.selection-made', '1');
+        this.qualitySheetOpen = false;
+    }
+
+    public selectQuality(id: string): void {
+        this.playbackState.selectPreset(id);
+        const index = this.qualityProfiles.findIndex(profile => profile.id === id);
+        if (index >= 0 && index < this.dialogState.streamModeItems.length) this.dialogState.selectedStreamMode = index;
+    }
 
     public beforeUnmount(): void {
         this.dialogState.close();
@@ -98,6 +139,7 @@ class RecordedDetailSelectStreamDialog extends Vue {
      */
     @Watch('dialogState.isOpen', { immediate: true })
     public onChangeState(newState: boolean, oldState: boolean): void {
+        if (newState === true && oldState !== true) void this.maybeOpenQualitySheet();
         if (newState === false && oldState === true) {
             // close
             this.$nextTick(async () => {

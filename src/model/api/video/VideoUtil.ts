@@ -91,6 +91,15 @@ export default class VideoUtil implements IVideoUtil {
             audioCodec: typeof audio?.codec_name === 'string' ? audio.codec_name : null,
             width: VideoUtil.toNumber(video?.width),
             height: VideoUtil.toNumber(video?.height),
+            pixFmt: typeof video?.pix_fmt === 'string' ? video.pix_fmt : null,
+            profile: typeof video?.profile === 'string' ? video.profile : null,
+            fieldOrder: typeof video?.field_order === 'string' ? video.field_order : null,
+            avgFrameRate: typeof video?.avg_frame_rate === 'string' ? video.avg_frame_rate : null,
+            rFrameRate: typeof video?.r_frame_rate === 'string' ? video.r_frame_rate : null,
+            colorPrimaries: typeof video?.color_primaries === 'string' ? video.color_primaries : null,
+            colorTransfer: typeof video?.color_transfer === 'string' ? video.color_transfer : null,
+            colorSpace: typeof video?.color_space === 'string' ? video.color_space : null,
+            bitsPerRawSample: video?.bits_per_raw_sample ?? null,
         };
     }
 
