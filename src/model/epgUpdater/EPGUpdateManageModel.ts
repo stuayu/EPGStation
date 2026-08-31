@@ -116,7 +116,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
      */
     public async updateAll(): Promise<void> {
         await this.updateChannels();
-        const onAirNow = new Date().getTime();
+        const onAirNow = Date.now();
         const beforeOnAir = createOnAirProgramSnapshot(
             await this.programDB.findBroadcasting({ isHalfWidth: false, includeNextProgram: true }),
             onAirNow,
@@ -198,7 +198,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
             programs.push(...values.filter(program => this.isMainProgram(program)));
         }
         if (programs.length === 0) return;
-        const now = new Date().getTime();
+        const now = Date.now();
         const before = createOnAirProgramSnapshot(
             await this.programDB.findBroadcasting({ isHalfWidth: false, includeNextProgram: true }),
             now,
@@ -615,7 +615,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
         let startTime = 0;
         sse.addEventListener('epg.programs-updated', ev => {
             receivedEvent = true;
-            const now = new Date().getTime();
+            const now = Date.now();
             if (isFirst === true) {
                 isFirst = false;
                 startTime = now;
@@ -712,7 +712,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
         }
 
         return {
-            now: new Date().getTime(),
+            now: Date.now(),
             urgentWindowMs: realtime.urgentWindowMs,
         };
     }
@@ -814,7 +814,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                             duration: p.duration,
                             source: p,
                         })),
-                        { now: new Date().getTime() },
+                        { now: Date.now() },
                     ).filter(t => t.program.channelId !== 0);
 
                     // 変更前の時刻をログに併記するため、DB 更新の前に現在値を控える
@@ -1019,7 +1019,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
     private createProgramKeepOption(): ProgramKeepOption {
         const config = this.configuration.getConfig();
         const retentionTime = typeof config.epgRetentionTime === 'number' ? config.epgRetentionTime : 0;
-        const now = new Date().getTime();
+        const now = Date.now();
 
         return {
             now: now,
@@ -1042,7 +1042,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
             return;
         }
 
-        const threshold = new Date().getTime() - retentionTime * 60 * 60 * 1000;
+        const threshold = Date.now() - retentionTime * 60 * 60 * 1000;
         this.log.system.info('delete old program db start');
         await this.programDB.deleteOld(threshold);
         this.log.system.info('delete old program db done');

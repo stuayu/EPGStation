@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-01
 
+- **ストリーミング刷新 Phase 15 のカスタムプリセット UI を追加した**: 設定画面の折り畳みセクションから Built-in を複製し、用途・解像度・Codec・Bit Depth・FPS・HDR・映像補正・エンコーダ・品質と上級者向け詳細、Raw Command を編集できる。保存先は config.yml ではなく `app_setting.config.stream.profiles` のオーバーレイ。Raw Command (`cmd`) は既存の自動コマンド生成より優先し、既存プリセット・録画後エンコード・既存 config は変更しない。実装は `CustomStreamPresetEditor` / `CustomStreamPresetUtil`。
+
 - **ストリーミング刷新 Phase 12 で config プリセットを品質バケットへ対応付けた**: `encodePresets` や既存 `stream:` 由来のプリセットを削除せず、通常表示では各品質バケットの代表 1 件を Built-in の分かりやすい名前で表示する。再生に使う ID と cmd は従来のユーザー定義を維持し、同じバケットの残りと対応付けできないプリセットは「その他の画質」へ残す。代表は低遅延コンテナを優先し、通常表示は最大 7 件。実装は `PlaybackApiModel`、テストは `playback-api-model.test.js`。
 
 - **ストリーミング刷新 Phase 11 の実機 E2E 欠陥を修正した**: 入力映像を超える解像度の config / legacy プリセットを候補と自動選択から除外し、config の video / cmd から判定できる HEVC・H.264 の端末非対応候補も除外する。Playback API に `builtin` / `legacy` を追加し、通常画面では Built-in を表示、その他を折り畳む。自動選択理由を実際の選択解像度に合わせ、配信選択ダイアログの操作領域を 44px 以上へ統一した。実装は `StreamPresetRegistry` / `PlaybackApiModel` / `PlaybackPolicyResolver` / 画質 UI。

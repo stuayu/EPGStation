@@ -66,6 +66,25 @@ export interface StreamProfile {
     audio?: StreamAudioParam;
     cmd?: string;
     isUnconverted?: boolean;
+    /** 上級者向け UI が保持する追加エンコード指定。cmd がある場合は cmd が優先される。 */
+    customOptions?: {
+        profile?: string;
+        level?: string;
+        rateControl?: string;
+        maxBitrate?: number;
+        crf?: number;
+        qvbr?: number;
+        cqp?: number;
+        gop?: number;
+        bFrames?: number;
+        lookahead?: number;
+        aq?: number;
+        pixelFormat?: string;
+        colorPrimaries?: string;
+        transfer?: string;
+        toneMapping?: string;
+        additionalArguments?: string;
+    };
 }
 
 /**

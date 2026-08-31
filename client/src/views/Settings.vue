@@ -104,6 +104,20 @@
 
                         <v-list-item three-line>
                             <div class="v-list-item-content">
+                                <v-expansion-panels variant="accordion">
+                                    <v-expansion-panel title="カスタムプリセット">
+                                        <v-expansion-panel-text>
+                                            <CustomStreamPresetEditor :items="customPresetItems" @save="saveCustomPreset" @remove="removeCustomPreset" />
+                                        </v-expansion-panel-text>
+                                    </v-expansion-panel>
+                                </v-expansion-panels>
+                            </div>
+                        </v-list-item>
+
+                        <v-divider></v-divider>
+
+                        <v-list-item three-line>
+                            <div class="v-list-item-content">
                                 <div class="title">放映中</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -535,6 +549,8 @@ import StreamSupportUtil from '@/util/StreamSupportUtil';
 import ThemeColorUtil from '@/util/ThemeColorUtil';
 import ProgramHashtagUtil from '@/util/ProgramHashtagUtil';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
+import ISystemSettingApiModel from '@/model/api/config/ISystemSettingApiModel';
+import CustomStreamPresetEditor, { CustomPresetForm } from '@/components/settings/CustomStreamPresetEditor.vue';
 
 interface GuideModeItem {
     title: string;
@@ -554,12 +570,17 @@ interface SelectItem {
 @Component({
     components: {
         TitleBar,
+        CustomStreamPresetEditor,
     },
 })
 class Settings extends Vue {
     public isShow: boolean = false;
     public storageModel: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     public playbackState: IPlaybackOptionsState = container.get<IPlaybackOptionsState>('IPlaybackOptionsState');
+    public customPresetItems: CustomPresetForm[] = [];
+    private customConfigOverlay: Record<string, any> = {};
+    private customEffectiveConfig: Record<string, any> = {};
+    private systemSettingApi: ISystemSettingApiModel = container.get<ISystemSettingApiModel>('ISystemSettingApiModel');
 
     private navigationState: INavigationState = container.get<INavigationState>('INavigationState');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
@@ -794,11 +815,78 @@ class Settings extends Vue {
 
     public mounted(): void {
         void this.loadAuthRole();
+        void this.loadCustomPresets();
 
         // 起動時の取得に失敗していた場合はここで 1 度だけ取り直す
         if (this.serverConfigModel.getConfig() === null) {
             void this.retryFetchServerConfig();
         }
+    }
+
+    /** カスタムプリセットを app_setting の config オーバーレイから読み込む。 */
+    public async loadCustomPresets(): Promise<void> {
+        try {
+            const config = await this.systemSettingApi.getEditableConfig();
+            this.customConfigOverlay = config.overlay ?? {};
+            this.customEffectiveConfig = config.effective ?? {};
+            const profiles = this.customEffectiveConfig.stream?.profiles ?? {};
+            const byId = new Map<string, { profile: any; live: boolean; recorded: boolean }>();
+            for (const p of profiles.live ?? []) if (String(p.id).startsWith('custom-')) byId.set(p.id, { profile: p, live: true, recorded: false });
+            for (const p of profiles.recorded?.ts ?? []) if (String(p.id).startsWith('custom-')) {
+                const current = byId.get(p.id); byId.set(p.id, { profile: current?.profile ?? p, live: current?.live === true, recorded: true });
+            }
+            this.customPresetItems = [...byId.values()].map(x => this.profileToForm(x.profile, x.live && x.recorded ? 'both' : x.live ? 'live' : 'recorded'));
+        } catch (err) {
+            // 一般ユーザーなど API が利用できない場合も、通常設定画面は利用可能にする。
+            console.error(err);
+        }
+    }
+
+    private profileToForm(profile: any, useFor: 'live' | 'recorded' | 'both'): CustomPresetForm {
+        return {
+            id: profile.id, name: profile.name, useFor, container: profile.container,
+            resolution: profile.video?.height ? `${profile.video.height}p` : 'source', codec: profile.video?.codec?.includes('265') ? 'hevc' : profile.isUnconverted ? 'copy' : 'h264',
+            bitDepth: profile.customOptions?.bitDepth ?? 'source', frameRate: profile.customOptions?.frameRate ?? 'source', hdrMode: profile.customOptions?.hdrMode ?? 'sdr', videoCorrection: profile.customOptions?.videoCorrection ?? 'auto',
+            encoder: profile.video?.codec ?? '', quality: profile.customOptions?.quality ?? 'balanced', deinterlace: profile.customOptions?.deinterlace ?? 'auto', rawCommand: profile.cmd ?? '', options: { ...(profile.customOptions ?? {}) },
+        };
+    }
+
+    /** カスタムプリセットを用途ごとの stream.profiles へ保存する。 */
+    public async saveCustomPreset(item: CustomPresetForm): Promise<void> {
+        const profile: any = {
+            id: item.id, name: item.name, container: item.container,
+            video: item.codec === 'copy' ? undefined : { codec: item.encoder || (item.codec === 'hevc' ? 'libx265' : 'libx264'), height: item.resolution === 'source' ? undefined : Number.parseInt(item.resolution, 10), bitrate: item.options.bitrate },
+            cmd: item.rawCommand.trim() || undefined, isUnconverted: item.codec === 'copy',
+            customOptions: { ...item.options, bitDepth: item.bitDepth, frameRate: item.frameRate, hdrMode: item.hdrMode, videoCorrection: item.videoCorrection, quality: item.quality, deinterlace: item.deinterlace },
+        };
+        const effective = this.customEffectiveConfig.stream?.profiles ?? {};
+        const profiles = {
+            live: [...(effective.live ?? []).filter((p: any) => p.id !== item.id)],
+            recorded: {
+                ts: [...(effective.recorded?.ts ?? []).filter((p: any) => p.id !== item.id)],
+                encoded: [...(effective.recorded?.encoded ?? []).filter((p: any) => p.id !== item.id)],
+            },
+        };
+        if (item.useFor === 'live' || item.useFor === 'both') profiles.live.push(profile);
+        if (item.useFor === 'recorded' || item.useFor === 'both') { profiles.recorded.ts.push(profile); profiles.recorded.encoded.push(profile); }
+        const overlay = JSON.parse(JSON.stringify(this.customConfigOverlay));
+        overlay.stream = { ...(overlay.stream ?? {}), profiles };
+        try {
+            await this.systemSettingApi.update({ config: overlay });
+            this.customConfigOverlay = overlay;
+            this.customEffectiveConfig.stream = { ...(this.customEffectiveConfig.stream ?? {}), profiles };
+            this.snackbarState.open({ text: 'カスタムプリセットを保存しました', color: 'success' });
+        } catch (err) { console.error(err); this.snackbarState.open({ text: 'カスタムプリセットの保存に失敗しました', color: 'error' }); }
+    }
+
+    public async removeCustomPreset(id: string): Promise<void> {
+        const item = this.customPresetItems.find(x => x.id === id);
+        if (item === undefined) return;
+        const effective = this.customEffectiveConfig.stream?.profiles ?? {};
+        const overlay = JSON.parse(JSON.stringify(this.customConfigOverlay));
+        overlay.stream = { ...(overlay.stream ?? {}), profiles: { live: (effective.live ?? []).filter((p: any) => p.id !== id), recorded: { ts: (effective.recorded?.ts ?? []).filter((p: any) => p.id !== id), encoded: (effective.recorded?.encoded ?? []).filter((p: any) => p.id !== id) } } };
+        try { await this.systemSettingApi.update({ config: overlay }); this.customPresetItems = this.customPresetItems.filter(x => x.id !== id); this.customConfigOverlay = overlay; this.customEffectiveConfig.stream.profiles = overlay.stream.profiles; }
+        catch (err) { console.error(err); this.snackbarState.open({ text: 'カスタムプリセットの削除に失敗しました', color: 'error' }); }
     }
 
     public beforeUnmount(): void {
