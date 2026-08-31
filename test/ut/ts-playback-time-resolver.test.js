@@ -191,3 +191,48 @@ test('必要なTS情報が無ければファイルを読まずnullを返す', as
         null,
     );
 });
+
+/**
+ * discontinuity_indicator を立てた PCR パケット
+ */
+function buildDiscontinuityPcrPacket(pid, pcrBase) {
+    const packet = buildPcrPacket(pid, pcrBase);
+    packet[5] = 0x90; // discontinuity_indicator = 1, PCR_flag = 1
+
+    return packet;
+}
+
+test('先頭PCRの後にPCRが不連続になった場合は推測せずnullを返す', async () => {
+    const pcrPid = 0x0100;
+    const pcrBase = 90_000 * 100;
+
+    await withTsFile(
+        [
+            buildPcrPacket(pcrPid, pcrBase),
+            buildPmtPacket(0x0064, 101, pcrPid),
+            // ここで時間軸が切り替わるため、この後の PTS との差は経過時間にならない
+            buildDiscontinuityPcrPacket(pcrPid, 90_000 * 500),
+            buildPesPacket(0x0101, 90_000 * 500 + 90_000 * 2.5),
+        ],
+        async file => {
+            assert.equal(await TsPlaybackTimeResolver.resolve(file, baseInfo()), null);
+        },
+    );
+});
+
+test('ファイル先頭 (基準の PCR より前) の不連続は開始点なので無視する', async () => {
+    const pcrPid = 0x0100;
+    const pcrBase = 90_000 * 100;
+
+    await withTsFile(
+        [
+            buildDiscontinuityPcrPacket(pcrPid, pcrBase),
+            buildPmtPacket(0x0064, 101, pcrPid),
+            buildPesPacket(0x0101, pcrBase + 90_000 * 2.5),
+        ],
+        async file => {
+            const info = baseInfo();
+            assert.equal(await TsPlaybackTimeResolver.resolve(file, info), info.firstTdtAt + 2500);
+        },
+    );
+});

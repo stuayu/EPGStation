@@ -24,7 +24,7 @@ declare module 'aribts' {
         program_number: number;
         PCR_PID: number;
         program_info_length: number;
-        program_info: unknown;
+        program_info: TsDescriptors;
         streams: Stream[];
     }
 
@@ -32,7 +32,8 @@ declare module 'aribts' {
         stream_type: number;
         elementary_PID: number;
         ES_info_length: number;
-        ES_info: unknown;
+        // ES ごとの記述子 (stream_identifier_descriptor から component_tag を取り出すのに使う)
+        ES_info: TsDescriptors;
     }
 
     /**
@@ -123,6 +124,8 @@ declare module 'aribts' {
         service_id: number;
         transport_stream_id: number;
         original_network_id: number;
+        version_number: number;
+        current_next_indicator: number;
         section_number: number;
         last_section_number: number;
         events: Array<{
@@ -188,6 +191,8 @@ declare module 'aribts' {
      */
     export interface AdaptationField {
         PCR_flag: number;
+        // 1 なら同一 PID の直前パケットとの間で時間軸 (PCR) が不連続であることを示す
+        discontinuity_indicator?: number;
         program_clock_reference_base?: number;
         program_clock_reference_extension?: number;
         [key: string]: unknown;

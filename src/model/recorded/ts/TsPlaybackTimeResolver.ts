@@ -64,6 +64,9 @@ export default class TsPlaybackTimeResolver {
             }
 
             const firstPcrByPid = new Map<number, number>();
+            // 最初の PCR を拾ったあとで時間軸が切り替わった PID。
+            // 別の時間軸になった PCR / PTS 同士の差は経過時間にならないため、算出をあきらめる
+            const discontinuousPids = new Set<number>();
             let pcrPid: number | null = null;
             let mediaPts: number | null = null;
 
@@ -87,6 +90,13 @@ export default class TsPlaybackTimeResolver {
                     const adaptationEnd = offset + 5 + adaptationLength;
                     if (adaptationEnd > offset + TsPlaybackTimeResolver.TS_PACKET_SIZE) {
                         continue;
+                    }
+
+                    // discontinuity_indicator = 1 は「この PID の時間軸がここで切り替わる」印。
+                    // 基準となる PCR をまだ 1 つも拾っていない (ファイル先頭の) 不連続は
+                    // 単なる開始点なので無視し、基準を取った後の切り替わりだけを数える
+                    if (adaptationLength >= 1 && (buffer[offset + 5] & 0x80) !== 0 && firstPcrByPid.size > 0) {
+                        discontinuousPids.add(pid);
                     }
 
                     if (adaptationLength >= 7 && (buffer[offset + 5] & 0x10) !== 0) {
@@ -131,6 +141,11 @@ export default class TsPlaybackTimeResolver {
             }
 
             if (mediaPts === null || pcrPid === null) {
+                return null;
+            }
+
+            // 先頭 PCR と最初の PTS の間で時間軸が切り替わっていたら、その差は経過時間にならない
+            if (discontinuousPids.has(pcrPid) === true || discontinuousPids.has(targetMediaPid) === true) {
                 return null;
             }
 

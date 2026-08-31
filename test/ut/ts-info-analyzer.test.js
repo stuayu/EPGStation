@@ -895,3 +895,613 @@ test('見積もりが立たなくても先頭が読めていればそれを使�
 
     assert.equal(value, headAt);
 });
+
+// --- ARIB STD-B10 記述子の解析 ---
+
+/**
+ * extended_event_descriptor (0x4E)
+ * @param option: { descriptorNumber, lastDescriptorNumber, lang, items: [{ description, value }], text }
+ */
+function buildExtendedEventDescriptor(option) {
+    const lang = option.lang ?? 'jpn';
+    const items = (option.items ?? []).map(item => {
+        const description = item.description === '' ? Buffer.alloc(0) : aribText(item.description);
+        const value = item.value === '' ? Buffer.alloc(0) : aribText(item.value);
+
+        return Buffer.concat([
+            Buffer.from([description.length]),
+            description,
+            Buffer.from([value.length]),
+            value,
+        ]);
+    });
+    const itemsBuffer = Buffer.concat(items);
+    const text = typeof option.text === 'string' && option.text.length > 0 ? aribText(option.text) : Buffer.alloc(0);
+
+    const body = Buffer.concat([
+        Buffer.from([((option.descriptorNumber & 0x0f) << 4) | (option.lastDescriptorNumber & 0x0f)]),
+        Buffer.from(lang, 'ascii'),
+        Buffer.from([itemsBuffer.length]),
+        itemsBuffer,
+        Buffer.from([text.length]),
+        text,
+    ]);
+
+    return Buffer.concat([Buffer.from([0x4e, body.length]), body]);
+}
+
+/**
+ * component_descriptor (0x50)
+ */
+function buildComponentDescriptor(streamContent, componentType, componentTag) {
+    const body = Buffer.concat([
+        Buffer.from([0xf0 | (streamContent & 0x0f), componentType, componentTag]),
+        Buffer.from('jpn', 'ascii'),
+    ]);
+
+    return Buffer.concat([Buffer.from([0x50, body.length]), body]);
+}
+
+/**
+ * audio_component_descriptor (0xC4)
+ * @param option: { componentType, componentTag, samplingRate, mainComponentFlag }
+ */
+function buildAudioComponentDescriptor(option) {
+    const flags =
+        ((option.mainComponentFlag & 0x01) << 6) | ((option.samplingRate & 0x07) << 1) | 0x01; /* reserved */
+    const body = Buffer.concat([
+        Buffer.from([
+            0xf0 | 0x02, // stream_content = 0x02 (音声)
+            option.componentType,
+            option.componentTag,
+            0x0f, // stream_type
+            0x00, // simulcast_group_tag
+            flags,
+        ]),
+        Buffer.from('jpn', 'ascii'),
+    ]);
+
+    return Buffer.concat([Buffer.from([0xc4, body.length]), body]);
+}
+
+/**
+ * 任意の記述子を持つ EIT[p/f] present
+ * @param option: buildEit と同じ + descriptors: Buffer
+ */
+function buildEitWithDescriptors(option) {
+    const descriptors = option.descriptors;
+
+    const event = Buffer.alloc(12);
+    event.writeUInt16BE(option.eventId, 0);
+    option.startTime.copy(event, 2);
+    option.duration.copy(event, 7);
+    event.writeUInt16BE(0x8000 | descriptors.length, 10);
+
+    const header = Buffer.alloc(11);
+    header.writeUInt16BE(option.serviceId, 0);
+    header[2] = 0xc1; // version 0 / current_next_indicator = 1
+    header[3] = 0x00;
+    header[4] = 0x00;
+    header.writeUInt16BE(option.transportStreamId, 5);
+    header.writeUInt16BE(option.originalNetworkId, 7);
+    header[9] = 0x00;
+    header[10] = 0x4e;
+
+    return buildSection(0x4e, Buffer.concat([header, event, descriptors]));
+}
+
+/**
+ * PMT (ES ごとに stream_identifier_descriptor を付けられる)
+ * @param streams: { streamType, pid, componentTag? }[]
+ */
+function buildPmtWithComponentTags(serviceId, pcrPid, streams) {
+    const header = Buffer.alloc(9);
+    header.writeUInt16BE(serviceId, 0);
+    header[2] = 0xc1;
+    header[3] = 0x00;
+    header[4] = 0x00;
+    header.writeUInt16BE(0xe000 | pcrPid, 5);
+    header.writeUInt16BE(0xf000, 7);
+
+    const esList = streams.map(s => {
+        const esInfo =
+            typeof s.componentTag === 'number' ? Buffer.from([0x52, 0x01, s.componentTag]) : Buffer.alloc(0);
+        const es = Buffer.alloc(5);
+        es[0] = s.streamType;
+        es.writeUInt16BE(0xe000 | s.pid, 1);
+        es.writeUInt16BE(0xf000 | esInfo.length, 3);
+
+        return Buffer.concat([es, esInfo]);
+    });
+
+    return buildSection(0x02, Buffer.concat([header, ...esList]));
+}
+
+/**
+ * 任意の記述子・PMT 構成を持つ TS を組み立てる
+ */
+function buildDescriptorTestTs(option) {
+    const transportStreamId = 0x7e87;
+    const serviceId = option.serviceId ?? 1024;
+    const pmt =
+        typeof option.pmtStreams === 'undefined'
+            ? buildPmt(serviceId, 0x0100, 0x0110)
+            : buildPmtWithComponentTags(serviceId, option.pcrPid ?? 0x0100, option.pmtStreams);
+
+    const packets = [];
+    for (let i = 0; i < 4; i++) {
+        packets.push(toPacket(PID_PAT, buildPat(transportStreamId, serviceId, PID_PMT), i));
+        packets.push(toPacket(PID_PMT, pmt, i));
+        packets.push(
+            toPacket(PID_SDT, buildSdt(transportStreamId, transportStreamId, serviceId, 'NHK', 'TEST TV'), i),
+        );
+        packets.push(
+            toPacket(
+                PID_EIT,
+                buildEitWithDescriptors({
+                    serviceId,
+                    transportStreamId,
+                    originalNetworkId: transportStreamId,
+                    eventId: 12345,
+                    startTime: jstTimeBuffer(2026, 7, 31, 22, 0, 0),
+                    duration: bcdDuration(0, 30, 0),
+                    descriptors: option.descriptors,
+                }),
+                i,
+            ),
+        );
+        packets.push(toPacket(PID_TDT, buildTdt(jstTimeBuffer(2026, 7, 31, 21, 59, 55)), i));
+    }
+
+    return packets;
+}
+
+const SHORT_EVENT_DESCRIPTOR = (() => {
+    const name = aribText('NAME');
+    const text = aribText('DESC');
+    const body = Buffer.concat([
+        Buffer.from([0x6a, 0x70, 0x6e, name.length]),
+        name,
+        Buffer.from([text.length]),
+        text,
+    ]);
+
+    return Buffer.concat([Buffer.from([0x4d, body.length]), body]);
+})();
+
+test('extended_event_descriptor: 1 つだけの場合は items をそのまま連結する', async () => {
+    const filePath = createTsFile(
+        'ext-single',
+        buildDescriptorTestTs({
+            descriptors: Buffer.concat([
+                SHORT_EVENT_DESCRIPTOR,
+                buildExtendedEventDescriptor({
+                    descriptorNumber: 0,
+                    lastDescriptorNumber: 0,
+                    items: [{ description: 'CAST', value: 'A' }],
+                }),
+            ]),
+        }),
+    );
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    assert.equal(info.eventExtended, 'ＣＡＳＴ\nＡ');
+});
+
+test('extended_event_descriptor: 分割された descriptor を descriptor_number 順に連結する', async () => {
+    // 受信順を入れ替えて (1 → 0)、descriptor_number で並べ直せることを確かめる
+    const filePath = createTsFile(
+        'ext-split',
+        buildDescriptorTestTs({
+            descriptors: Buffer.concat([
+                SHORT_EVENT_DESCRIPTOR,
+                buildExtendedEventDescriptor({
+                    descriptorNumber: 1,
+                    lastDescriptorNumber: 1,
+                    // item_description が空 = 直前の項目の続き
+                    items: [{ description: '', value: 'B' }],
+                }),
+                buildExtendedEventDescriptor({
+                    descriptorNumber: 0,
+                    lastDescriptorNumber: 1,
+                    items: [{ description: 'CAST', value: 'A' }],
+                }),
+            ]),
+        }),
+    );
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    assert.equal(info.eventExtended, 'ＣＡＳＴ\nＡＢ');
+});
+
+test('extended_event_descriptor: text_char (末尾の自由記述) も詳細情報へ含める', async () => {
+    const filePath = createTsFile(
+        'ext-text',
+        buildDescriptorTestTs({
+            descriptors: Buffer.concat([
+                SHORT_EVENT_DESCRIPTOR,
+                buildExtendedEventDescriptor({
+                    descriptorNumber: 0,
+                    lastDescriptorNumber: 0,
+                    items: [{ description: 'CAST', value: 'A' }],
+                    text: 'FREE',
+                }),
+            ]),
+        }),
+    );
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    assert.equal(info.eventExtended, 'ＣＡＳＴ\nＡ\n\nＦＲＥＥ');
+});
+
+test('extended_event_descriptor: text_char しか無い場合もその内容を採る', async () => {
+    const filePath = createTsFile(
+        'ext-text-only',
+        buildDescriptorTestTs({
+            descriptors: Buffer.concat([
+                SHORT_EVENT_DESCRIPTOR,
+                buildExtendedEventDescriptor({
+                    descriptorNumber: 0,
+                    lastDescriptorNumber: 0,
+                    items: [],
+                    text: 'FREE',
+                }),
+            ]),
+        }),
+    );
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    assert.equal(info.eventExtended, 'ＦＲＥＥ');
+});
+
+test('extended_event_descriptor: 言語が違う descriptor を同じ文章へ混ぜない (jpn 優先)', async () => {
+    const filePath = createTsFile(
+        'ext-lang',
+        buildDescriptorTestTs({
+            descriptors: Buffer.concat([
+                SHORT_EVENT_DESCRIPTOR,
+                buildExtendedEventDescriptor({
+                    descriptorNumber: 0,
+                    lastDescriptorNumber: 0,
+                    lang: 'eng',
+                    items: [{ description: 'CAST', value: 'X' }],
+                }),
+                buildExtendedEventDescriptor({
+                    descriptorNumber: 0,
+                    lastDescriptorNumber: 0,
+                    lang: 'jpn',
+                    items: [{ description: 'CAST', value: 'A' }],
+                }),
+            ]),
+        }),
+    );
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    assert.equal(info.eventExtended, 'ＣＡＳＴ\nＡ');
+});
+
+test('壊れた記述子が混ざっていても他の記述子は捨てない', async () => {
+    // descriptor_tag 0x00 は予約値。aribts は decode 不能な記述子を返すため、
+    // 記述子ごとに切り分けていないと EIT 全体が失われる
+    const filePath = createTsFile(
+        'ext-broken',
+        buildDescriptorTestTs({
+            descriptors: Buffer.concat([
+                Buffer.from([0x00, 0x02, 0xff, 0xff]),
+                SHORT_EVENT_DESCRIPTOR,
+                buildExtendedEventDescriptor({
+                    descriptorNumber: 0,
+                    lastDescriptorNumber: 0,
+                    items: [{ description: 'CAST', value: 'A' }],
+                }),
+            ]),
+        }),
+    );
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    assert.equal(info.eventId, 12345);
+    assert.equal(info.eventName, 'ＮＡＭＥ');
+    assert.equal(info.eventExtended, 'ＣＡＳＴ\nＡ');
+});
+
+test('audio_component_descriptor: main_component_flag が立っている主音声を代表にする', async () => {
+    const filePath = createTsFile(
+        'audio-main',
+        buildDescriptorTestTs({
+            descriptors: Buffer.concat([
+                SHORT_EVENT_DESCRIPTOR,
+                // 先に流れるのは副音声 (解説・第 2 音声)
+                buildAudioComponentDescriptor({
+                    componentType: 0x02,
+                    componentTag: 0x11,
+                    samplingRate: 6, // 44.1kHz
+                    mainComponentFlag: 0,
+                }),
+                buildAudioComponentDescriptor({
+                    componentType: 0x03,
+                    componentTag: 0x10,
+                    samplingRate: 7, // 48kHz
+                    mainComponentFlag: 1,
+                }),
+            ]),
+        }),
+    );
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    assert.equal(info.audioComponentType, 0x03);
+    assert.equal(info.audioSamplingRate, 48000);
+});
+
+test('audio_component_descriptor: main_component_flag が無ければ先頭を代表にする', async () => {
+    const filePath = createTsFile(
+        'audio-no-main',
+        buildDescriptorTestTs({
+            descriptors: Buffer.concat([
+                SHORT_EVENT_DESCRIPTOR,
+                buildAudioComponentDescriptor({
+                    componentType: 0x02,
+                    componentTag: 0x11,
+                    samplingRate: 6,
+                    mainComponentFlag: 0,
+                }),
+                buildAudioComponentDescriptor({
+                    componentType: 0x03,
+                    componentTag: 0x10,
+                    samplingRate: 7,
+                    mainComponentFlag: 0,
+                }),
+            ]),
+        }),
+    );
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    assert.equal(info.audioComponentType, 0x02);
+    assert.equal(info.audioSamplingRate, 44100);
+});
+
+test('component_tag で EIT の代表コンポーネントと PMT の ES を対応付ける', async () => {
+    const filePath = createTsFile(
+        'component-tag',
+        buildDescriptorTestTs({
+            pcrPid: 0x0100,
+            // PMT には映像 2 本・音声 2 本。EIT が指すのは 2 本目 (先頭を採ると間違える)
+            pmtStreams: [
+                { streamType: 0x02, pid: 0x0100, componentTag: 0x00 },
+                { streamType: 0x02, pid: 0x0101, componentTag: 0x01 },
+                { streamType: 0x0f, pid: 0x0110, componentTag: 0x10 },
+                { streamType: 0x0f, pid: 0x0111, componentTag: 0x11 },
+            ],
+            descriptors: Buffer.concat([
+                SHORT_EVENT_DESCRIPTOR,
+                buildComponentDescriptor(0x01, 0xb1, 0x01),
+                buildAudioComponentDescriptor({
+                    componentType: 0x02,
+                    componentTag: 0x10,
+                    samplingRate: 6,
+                    mainComponentFlag: 0,
+                }),
+                buildAudioComponentDescriptor({
+                    componentType: 0x03,
+                    componentTag: 0x11,
+                    samplingRate: 7,
+                    mainComponentFlag: 1,
+                }),
+            ]),
+        }),
+    );
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    assert.equal(info.videoPid, 0x0101);
+    assert.equal(info.videoStreamType, 0x02);
+    // 主音声 (main_component_flag = 1) の component_tag 0x11 に対応する ES
+    assert.equal(info.audioPid, 0x0111);
+    assert.equal(info.videoResolution, '1080i');
+});
+
+test('component_tag が PMT に無ければ stream_type が一致する先頭の ES を使う (fallback)', async () => {
+    const filePath = createTsFile(
+        'component-tag-missing',
+        buildDescriptorTestTs({
+            pcrPid: 0x0100,
+            pmtStreams: [
+                { streamType: 0x02, pid: 0x0100 },
+                { streamType: 0x0f, pid: 0x0110 },
+            ],
+            descriptors: Buffer.concat([
+                SHORT_EVENT_DESCRIPTOR,
+                buildComponentDescriptor(0x01, 0xb1, 0x7f),
+                buildAudioComponentDescriptor({
+                    componentType: 0x03,
+                    componentTag: 0x7e,
+                    samplingRate: 7,
+                    mainComponentFlag: 1,
+                }),
+            ]),
+        }),
+    );
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    assert.equal(info.videoPid, 0x0100);
+    assert.equal(info.audioPid, 0x0110);
+});
+
+// --- PCR の不連続 (discontinuity_indicator) ---
+
+/**
+ * discontinuity_indicator を立てた PCR パケット
+ * (TS の連結・録画ドロップ・エンコーダ再起動で発生し、以降の PCR は別の時間軸になる)
+ */
+function buildDiscontinuityPcrPacket(pid, pcr27M) {
+    const packet = buildPcrPacket(pid, pcr27M);
+    packet[5] = 0x90; // discontinuity_indicator = 1, PCR_flag = 1
+
+    return packet;
+}
+
+test('PCR が不連続になった後のサンプルを、同じ時間軸として経過時間の計算に使わない', async () => {
+    const videoPid = 0x0100;
+    const audioPid = 0x0110;
+    const serviceId = 1024;
+    const transportStreamId = 0x7e87;
+    const tdtTime = jstTimeBuffer(2026, 7, 31, 22, 0, 0);
+
+    const PCR_START = 2_000_000_000;
+    const FIVE_SECONDS_TICKS = 5 * 27_000_000;
+    const SIXTY_SECONDS_TICKS = 60 * 27_000_000;
+
+    const packets = buildPcrTestPackets(videoPid, audioPid, serviceId, transportStreamId, [
+        buildPcrPacket(videoPid, PCR_START),
+        buildPcrPacket(videoPid, PCR_START + FIVE_SECONDS_TICKS),
+        // ここで時間軸が切り替わる。この値を起点と引き算しても経過時間にはならない
+        buildDiscontinuityPcrPacket(videoPid, PCR_START + SIXTY_SECONDS_TICKS),
+        toPacket(PID_TDT, buildTdt(tdtTime), 0),
+    ]);
+
+    const filePath = createTsFile('pcr-discontinuity', packets);
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    // 不連続前 (同じ epoch) の 5 秒だけを補正に使う。60 秒ではない
+    const rawTdtAt = Date.UTC(2026, 6, 31, 22, 0, 0) - 9 * 3600 * 1000;
+    assert.equal(info.firstTdtAt, rawTdtAt - 5000);
+});
+
+test('起点の直後に PCR が不連続になった場合は経過時間を測らず、TDT の時刻をそのまま使う', async () => {
+    const videoPid = 0x0100;
+    const audioPid = 0x0110;
+    const serviceId = 1024;
+    const transportStreamId = 0x7e87;
+    const tdtTime = jstTimeBuffer(2026, 7, 31, 22, 0, 0);
+
+    const packets = buildPcrTestPackets(videoPid, audioPid, serviceId, transportStreamId, [
+        buildPcrPacket(videoPid, 2_000_000_000),
+        buildDiscontinuityPcrPacket(videoPid, 2_000_000_000 + 30 * 27_000_000),
+        toPacket(PID_TDT, buildTdt(tdtTime), 0),
+    ]);
+
+    const filePath = createTsFile('pcr-discontinuity-only', packets);
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    const rawTdtAt = Date.UTC(2026, 6, 31, 22, 0, 0) - 9 * 3600 * 1000;
+    assert.equal(info.firstTdtAt, rawTdtAt);
+});
+
+// --- 録画対象サービスの決定 (expectedServiceId) ---
+
+/**
+ * 本編とサブチャンネル (どちらもデジタル TV サービス) が同居する TS。
+ * 本編の方がパケット数が多いため、推定だけでは必ず本編が選ばれる
+ */
+function buildSubChannelTs(name) {
+    const transportStreamId = 0x7e87;
+    const mainServiceId = 1024;
+    const subServiceId = 1025;
+    const mainPmtPid = 0x1000;
+    const subPmtPid = 0x1001;
+
+    const packets = [];
+    let eitCounter = 0;
+    for (let i = 0; i < 4; i++) {
+        packets.push(
+            toPacket(
+                PID_PAT,
+                buildPatMulti(transportStreamId, [
+                    { serviceId: mainServiceId, pmtPid: mainPmtPid },
+                    { serviceId: subServiceId, pmtPid: subPmtPid },
+                ]),
+                i,
+            ),
+        );
+        packets.push(toPacket(mainPmtPid, buildPmt(mainServiceId, 0x0100, 0x0110), i));
+        packets.push(toPacket(subPmtPid, buildPmt(subServiceId, 0x0200, 0x0210), i));
+        packets.push(
+            toPacket(
+                PID_SDT,
+                buildSdtMulti(transportStreamId, transportStreamId, [
+                    { serviceId: mainServiceId, serviceType: 0x01, providerName: 'NHK', serviceName: 'MAIN TV' },
+                    { serviceId: subServiceId, serviceType: 0x01, providerName: 'NHK', serviceName: 'SUB TV' },
+                ]),
+                i,
+            ),
+        );
+        packets.push(
+            toPacket(
+                PID_EIT,
+                buildEit({
+                    serviceId: mainServiceId,
+                    transportStreamId,
+                    originalNetworkId: transportStreamId,
+                    eventId: 12345,
+                    eventName: 'MAIN PROGRAM',
+                    eventText: 'MAIN TEXT',
+                    genre1: 0x7,
+                    subGenre1: 0x0,
+                    startTime: jstTimeBuffer(2026, 7, 31, 22, 0, 0),
+                    duration: bcdDuration(0, 30, 0),
+                }),
+                eitCounter++,
+            ),
+        );
+        packets.push(
+            toPacket(
+                PID_EIT,
+                buildEit({
+                    serviceId: subServiceId,
+                    transportStreamId,
+                    originalNetworkId: transportStreamId,
+                    eventId: 999,
+                    eventName: 'SUB PROGRAM',
+                    eventText: 'SUB TEXT',
+                    genre1: 0x1,
+                    subGenre1: 0x0,
+                    startTime: jstTimeBuffer(2026, 7, 31, 22, 0, 0),
+                    duration: bcdDuration(0, 30, 0),
+                }),
+                eitCounter++,
+            ),
+        );
+        packets.push(toPacket(PID_TDT, buildTdt(jstTimeBuffer(2026, 7, 31, 21, 59, 55)), i));
+    }
+
+    // 本編の映像パケットを多めに流し、パケット数による推定では本編が選ばれるようにする
+    for (let i = 0; i < 200; i++) {
+        packets.push(buildPcrPacket(0x0100, 2_000_000_000 + i * 27_000));
+    }
+
+    return createTsFile(name, packets);
+}
+
+test('expectedServiceId の指定が無ければ、従来どおりパケット数と service_type で推定する', async () => {
+    const filePath = buildSubChannelTs('expected-none');
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000 });
+
+    assert.equal(info.serviceId, 1024);
+    assert.equal(info.eventName, 'ＭＡＩＮ　ＰＲＯＧＲＡＭ');
+});
+
+test('expectedServiceId が TS に存在すれば、推定より優先して必ずそれを採用する', async () => {
+    // サブチャンネル録画。TS だけを見ると本編が主に見えるため、指定が無いと取り違える
+    const filePath = buildSubChannelTs('expected-sub');
+    const info = await createAnalyzer().analyze(filePath, { timeoutMs: 10000, expectedServiceId: 1025 });
+
+    assert.equal(info.serviceId, 1025);
+    assert.equal(info.serviceName, 'ＳＵＢ　ＴＶ');
+    assert.equal(info.eventId, 999);
+    assert.equal(info.eventName, 'ＳＵＢ　ＰＲＯＧＲＡＭ');
+    assert.equal(info.videoPid, 0x0200);
+    assert.equal(info.audioPid, 0x0210);
+});
+
+test('expectedServiceId が TS に無ければ警告を出して推定へフォールバックする', async () => {
+    const warns = [];
+    const analyzer = new TsInfoAnalyzer({
+        getLogger: () => ({
+            system: { info: () => {}, warn: m => warns.push(m), error: () => {}, debug: () => {} },
+        }),
+    });
+
+    const filePath = buildSubChannelTs('expected-missing');
+    const info = await analyzer.analyze(filePath, { timeoutMs: 10000, expectedServiceId: 4096 });
+
+    assert.equal(info.serviceId, 1024);
+    assert.equal(warns.some(m => m.includes('expected service id 4096 was not found in TS')), true);
+});

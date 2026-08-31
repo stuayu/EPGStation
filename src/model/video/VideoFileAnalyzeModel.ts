@@ -177,10 +177,33 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
             );
         }
 
-        const info = await this.tsInfoAnalyzer.analyze(filePath);
+        // 全サービス録画の TS からは「どのサービスを録画したのか」を仕様上一意に決められないため、
+        // 録画情報から分かっている service_id を渡す (無い場合のみ TS からの推定へ落ちる)
+        const expectedServiceId = await this.resolveExpectedServiceId(video.recordedId);
+        const info = await this.tsInfoAnalyzer.analyze(filePath, { expectedServiceId: expectedServiceId ?? undefined });
         await this.saveTsInfo(videoFileId, info, option);
 
         return true;
+    }
+
+    /**
+     * 録画情報から、この録画の対象サービス (service_id) を求める
+     * @param recordedId: apid.RecordedId
+     * @return Promise<number | null> 分からない場合は null
+     */
+    private async resolveExpectedServiceId(recordedId: apid.RecordedId): Promise<number | null> {
+        try {
+            const recorded = await this.recordedDB.findId(recordedId);
+            if (recorded === null) {
+                return null;
+            }
+
+            const channel = await this.channelDB.findId(recorded.channelId);
+
+            return channel === null ? null : channel.serviceId;
+        } catch (err: any) {
+            return null;
+        }
     }
 
     /**
