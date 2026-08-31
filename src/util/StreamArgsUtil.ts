@@ -47,7 +47,11 @@ const toneMapFilter = (source: SourceCapabilities, preset: StreamPreset): string
 };
 
 /** source と preset の映像補正フィルタを返す。 */
-export const videoCorrectionFilter = (source: SourceCapabilities, preset: StreamPreset, mode?: StreamBuilderMode): string | null =>
+export const videoCorrectionFilter = (
+    source: SourceCapabilities,
+    preset: StreamPreset,
+    mode?: StreamBuilderMode,
+): string | null =>
     getVideoCorrectionFilter(source, correctionMode(preset), {
         hdrMode: preset.output.hdrMode,
         live: mode === 'live',
@@ -168,7 +172,7 @@ export const buildRigayaVideoArgs = (
             ? ` --colorprim bt2020 --transfer ${transfer} --colormatrix bt2020nc`
             : isToneMapping(source, preset)
               ? ' --colorprim bt709 --transfer bt709 --colormatrix bt709'
-            : '';
+              : '';
     const toneMap = isToneMapping(source, preset) ? ' --vpp-colorspace hdr2sdr=hable' : '';
     return `-c ${codec} --profile ${depth >= 10 ? 'main10' : 'main'} --output-depth ${depth} ${tuning}${deintArgs}${toneMap}${height ? ` --output-res -2x${height}` : ''}${hdr}${sync}`;
 };

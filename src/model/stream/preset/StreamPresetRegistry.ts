@@ -17,7 +17,11 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
         @inject('IStreamProfileManageModel') private readonly profiles: StreamProfileManageModel,
     ) {}
 
-    public getPresets(scope: StreamPresetScope, source: SourceCapabilities, client: ClientCapabilities): StreamPreset[] {
+    public getPresets(
+        scope: StreamPresetScope,
+        source: SourceCapabilities,
+        client: ClientCapabilities,
+    ): StreamPreset[] {
         const config = this.configuration.getConfig();
         const generated = EncodePresets.expand(config.encodePresets, {
             qsvencc: config.qsvencc,
@@ -44,9 +48,13 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
             .filter(preset => !userRoles.has(presetRole(preset)));
         const candidates = [...userPresets, ...auto];
         const occupied = new Set(candidates.map(presetRole));
-        const catalog = [...BUILTIN_STREAM_PRESETS, ...LEGACY_STREAM_PRESETS].filter(preset => !occupied.has(presetRole(preset)));
+        const catalog = [...BUILTIN_STREAM_PRESETS, ...LEGACY_STREAM_PRESETS].filter(
+            preset => !occupied.has(presetRole(preset)),
+        );
 
-        return [...candidates, ...catalog].filter(preset => this.appliesToScope(preset, scope) && this.isAvailable(preset, source, client));
+        return [...candidates, ...catalog].filter(
+            preset => this.appliesToScope(preset, scope) && this.isAvailable(preset, source, client),
+        );
     }
 
     public getModeMap(scope: StreamPresetScope): Record<StreamContainer, string[]> {
@@ -72,15 +80,18 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
         return this.profiles.getRecordedProfiles(scope === 'recorded-ts' ? 'ts' : 'encoded');
     }
 
-    private getGeneratedProfiles(expansion: ReturnType<typeof EncodePresets.expand>, scope: StreamPresetScope): StreamProfile[] {
+    private getGeneratedProfiles(
+        expansion: ReturnType<typeof EncodePresets.expand>,
+        scope: StreamPresetScope,
+    ): StreamProfile[] {
         if (scope === 'live') return expansion.live;
         return scope === 'recorded-ts' ? expansion.recordedTs : expansion.recordedEncoded;
     }
 
     private toPreset(profile: StreamProfile, scope: StreamPresetScope): StreamPreset {
-        const height = profile.video?.height;
-        const codec = profile.video?.codec?.toLowerCase();
-        const outputCodec = profile.isUnconverted === true ? 'copy' : codec?.includes('hevc') || codec?.includes('265') ? 'hevc' : 'h264';
+        const height = profile.video?.height ?? this.heightFromText(`${profile.id} ${profile.name}`);
+        const codec = this.codecOf(profile);
+        const outputCodec = profile.isUnconverted === true ? 'copy' : codec;
         return {
             id: profile.id,
             name: profile.isUnconverted === true ? 'オリジナル' : profile.name,
@@ -90,6 +101,19 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
             legacy: profile.id.startsWith('live-') || profile.id.startsWith('recorded-'),
             output: { codec: outputCodec, resolution: this.resolutionOf(height), container: profile.container },
         };
+    }
+
+    private codecOf(profile: StreamProfile): StreamPreset['output']['codec'] {
+        const value = `${profile.video?.codec ?? ''} ${profile.cmd ?? ''}`.toLowerCase();
+        if (/(?:hevc|h\.265|h265|x265|265)/.test(value)) return 'hevc';
+        if (/(?:h\.264|h264|avc|x264|264)/.test(value)) return 'h264';
+        if (/(?:-c:v|-codec:v)\s*(?:copy|none)/.test(value)) return 'copy';
+        return undefined;
+    }
+
+    private heightFromText(value: string): number | undefined {
+        const match = value.match(/(?:2160|1080|720|480|240)p/);
+        return match === null ? undefined : Number.parseInt(match[0], 10);
     }
 
     private resolutionOf(height?: number): StreamPreset['output']['resolution'] {
@@ -109,13 +133,37 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
         const sourceConditions = preset.sourceConditions;
         if (sourceConditions?.sourceClass && !sourceConditions.sourceClass.includes(source.sourceClass)) return false;
         if (sourceConditions?.hdr && !sourceConditions.hdr.includes(source.hdr)) return false;
-        if (sourceConditions?.minHeight !== undefined && (source.height === undefined || source.height < sourceConditions.minHeight)) return false;
-        if (sourceConditions?.maxHeight !== undefined && (source.height === undefined || source.height > sourceConditions.maxHeight)) return false;
+        if (
+            sourceConditions?.minHeight !== undefined &&
+            (source.height === undefined || source.height < sourceConditions.minHeight)
+        )
+            return false;
+        if (
+            sourceConditions?.maxHeight !== undefined &&
+            (source.height === undefined || source.height > sourceConditions.maxHeight)
+        )
+            return false;
+        const outputHeight = this.heightOf(preset.output.resolution);
+        if (outputHeight !== undefined && source.height !== undefined && outputHeight > source.height) return false;
+        if (preset.output.codec === 'hevc' && (!client.hevc || (preset.output.bitDepth === 10 && !client.hevcMain10)))
+            return false;
+        if (preset.output.codec === 'h264' && !client.h264) return false;
+        if (
+            preset.output.hdrMode === 'preserve' &&
+            source.hdr !== 'sdr' &&
+            (!client.hdr || (source.hdr === 'hlg' && !client.hlg))
+        )
+            return false;
         const clientConditions = preset.clientConditions;
         if (clientConditions?.requireHevc && !client.hevc) return false;
         if (clientConditions?.requireHevcMain10 && !client.hevcMain10) return false;
         if (clientConditions?.requireHdr && !client.hdr) return false;
         return true;
+    }
+
+    private heightOf(resolution: StreamPreset['output']['resolution']): number | undefined {
+        if (resolution === undefined || resolution === 'source') return undefined;
+        return Number.parseInt(resolution, 10);
     }
 }
 
@@ -123,6 +171,8 @@ const presetRole = (preset: StreamPreset): string => {
     if (preset.id === 'auto') return 'auto';
     if (preset.id === 'original' || preset.name === 'オリジナル') return 'original';
     const resolution =
-        preset.output.resolution ?? preset.id.match(/(2160|1080|720|480|240)p/)?.[0] ?? preset.name.match(/(2160|1080|720|480|240)p/)?.[0];
+        preset.output.resolution ??
+        preset.id.match(/(2160|1080|720|480|240)p/)?.[0] ??
+        preset.name.match(/(2160|1080|720|480|240)p/)?.[0];
     return resolution ?? preset.id;
 };

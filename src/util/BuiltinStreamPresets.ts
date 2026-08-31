@@ -75,7 +75,12 @@ export const BUILTIN_STREAM_PRESETS: readonly StreamPreset[] = [
     },
 ];
 
-const legacy = (id: string, name: string, container: StreamPreset['output']['container'], resolution: StreamPreset['output']['resolution']): StreamPreset => ({
+const legacy = (
+    id: string,
+    name: string,
+    container: StreamPreset['output']['container'],
+    resolution: StreamPreset['output']['resolution'],
+): StreamPreset => ({
     id,
     name,
     useFor: 'both',

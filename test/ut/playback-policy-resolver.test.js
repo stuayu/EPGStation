@@ -118,3 +118,14 @@ test('fallbackChain は有限で選択自身を含まない', () => {
     assert.ok(decision.fallbackChain.length <= 3);
     assert.equal(decision.fallbackChain.includes(decision.presetId), false);
 });
+
+test('1080i source の auto 理由は選択した解像度を説明する', () => {
+    const decision = new PlaybackPolicyResolver().resolve(
+        'live',
+        source({ codec: 'mpeg2', width: 1920, height: 1080, bitDepth: 8, scan: 'interlaced', hdr: 'sdr', sourceClass: 'legacy-broadcast' }),
+        client({ hevc: false, hevcMain10: false, hdr: false, hlg: false }),
+        BUILTIN_STREAM_PRESETS,
+    );
+    assert.notEqual(decision.output.resolution, '2160p');
+    assert.doesNotMatch(decision.reason, /安定して再生できる画質を選択しました/);
+});

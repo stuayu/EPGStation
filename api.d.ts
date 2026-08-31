@@ -1280,6 +1280,8 @@ export interface PlaybackProfile {
     label: string;
     detail: string;
     available: true;
+    builtin: boolean;
+    legacy: boolean;
 }
 
 export interface PlaybackOptions {

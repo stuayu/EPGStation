@@ -16,5 +16,8 @@ export const parseClientCapabilities = (query: Record<string, unknown>): ClientC
     screenWidth: number(query.screenWidth),
     screenHeight: number(query.screenHeight),
     hardwareDecode: bool(query.hardwareDecode),
-    network: query.network === 'fast' || query.network === 'slow' || query.network === 'cellular' ? query.network : 'unknown',
+    network:
+        query.network === 'fast' || query.network === 'slow' || query.network === 'cellular'
+            ? query.network
+            : 'unknown',
 });

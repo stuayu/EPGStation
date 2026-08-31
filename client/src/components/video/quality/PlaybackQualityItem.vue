@@ -5,7 +5,7 @@
         </template>
         <v-list-item-title>{{ label.name }}</v-list-item-title>
         <v-list-item-subtitle>{{ label.summary }}</v-list-item-subtitle>
-        <v-list-item-subtitle v-if="showDetail === true" class="detail">{{ label.detail }}</v-list-item-subtitle>
+        <v-list-item-subtitle v-if="showDetail === true || (profile.id === 'auto' && selected === true)" class="detail">{{ label.detail }}</v-list-item-subtitle>
         <template #append>
             <div class="badges">
                 <v-chip v-for="badge in label.badges" :key="badge" size="x-small" color="primary" variant="tonal">{{ badge }}</v-chip>

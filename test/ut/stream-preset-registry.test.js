@@ -48,6 +48,35 @@ test('HEVC 非対応 client では HEVC 必須プリセットを候補に出さ�
     assert.equal(ids.includes('1080p-high'), false);
 });
 
+test('1080i source では config と legacy の 2160p を候補に出さない', () => {
+    const configuration = config({
+        stream: {
+            profiles: {
+                live: [{ id: 'custom-2160p', name: '自作2160p', container: 'hls', video: { codec: 'libx264', height: 2160 } }],
+            },
+        },
+    });
+    const registry = makeRegistry(configuration);
+    const ids = registry.getPresets('live', source({ height: 1080 }), client()).map(item => item.id);
+    assert.equal(ids.includes('custom-2160p'), false);
+    assert.equal(ids.includes('legacy-stuayu-2160p'), false);
+});
+
+test('HEVC を cmd から推定し非対応 client では config プリセットを候補に出さない', () => {
+    const registry = makeRegistry(config({
+        stream: { profiles: { live: [{ id: 'custom-hevc', name: '自作高画質', container: 'hls', cmd: 'ffmpeg -c:v libx265 pipe:1' }] } },
+    }));
+    const ids = registry.getPresets('live', source(), client({ hevc: false })).map(item => item.id);
+    assert.equal(ids.includes('custom-hevc'), false);
+});
+
+test('builtin と legacy を候補で区別して返す', () => {
+    const registry = makeRegistry(config());
+    const presets = registry.getPresets('live', source(), client());
+    assert.equal(presets.find(item => item.id === '1080p').builtin, true);
+    assert.equal(presets.find(item => item.id === 'legacy-stuayu-240p').legacy, true);
+});
+
 test('既存 stream 設定だけの環境は従来のプリセットと生成 cmd をそのまま使う', () => {
     const legacyCmd = '%FFMPEG% -i pipe:0 -c:v copy -f mpegts pipe:1';
     const configuration = {
