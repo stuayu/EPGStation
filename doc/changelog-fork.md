@@ -15,6 +15,10 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-01
 
+- **ストリーミング刷新 Phase 12 で config プリセットを品質バケットへ対応付けた**: `encodePresets` や既存 `stream:` 由来のプリセットを削除せず、通常表示では各品質バケットの代表 1 件を Built-in の分かりやすい名前で表示する。再生に使う ID と cmd は従来のユーザー定義を維持し、同じバケットの残りと対応付けできないプリセットは「その他の画質」へ残す。代表は低遅延コンテナを優先し、通常表示は最大 7 件。実装は `PlaybackApiModel`、テストは `playback-api-model.test.js`。
+
+- **ストリーミング刷新 Phase 11 の実機 E2E 欠陥を修正した**: 入力映像を超える解像度の config / legacy プリセットを候補と自動選択から除外し、config の video / cmd から判定できる HEVC・H.264 の端末非対応候補も除外する。Playback API に `builtin` / `legacy` を追加し、通常画面では Built-in を表示、その他を折り畳む。自動選択理由を実際の選択解像度に合わせ、配信選択ダイアログの操作領域を 44px 以上へ統一した。実装は `StreamPresetRegistry` / `PlaybackApiModel` / `PlaybackPolicyResolver` / 画質 UI。
+
 - **ストリーミング刷新 Phase 10 の回帰テストと設計文書を是正した**: 既存 `stream:` 設定のみの環境で従来のプリセット順・cmd を維持する回帰、Original の video copy、BS4K 1080p HDR、iOS HDR 対応 / 非対応端末の選択をテストへ追加した。`PROJECT_OVERVIEW.md` に SourceAnalyzer / StreamPresetRegistry / PlaybackPolicyResolver / Command Builder / Playback API / 画質 UI の構成と、Transport・scan・fps・bit depth・HDR の分離規則を追記した。
 
 - **ストリーミング刷新 Phase 6 の HDR / SDR 経路を分離した**: HDR の `tone-map` / `sdr` 指定時、HLG / PQ 入力だけ `zscale` → `tonemap=hable` → BT.709 `zscale` → 8bit `format` を通し、出力メタデータも BT.709 に修正する。rigaya 系は `--vpp-colorspace hdr2sdr=hable` を使う。`preserve` は BT.2020 / HLG・PQ / Main10 を維持し、SDR 入力へトーンマップを二重適用しない。映像補正は純粋関数へ分離し、`auto` は保守的に追加補正せず、ネイティブ HDR を明るくしない。実装は `src/util/StreamArgsUtil.ts` / `src/util/VideoCorrectionUtil.ts`。
@@ -2200,3 +2204,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - **Playback API の fallbackChain をクライアントへ接続した**
     - playback-options API が `PlaybackPolicyResolver` の `recommended.fallbackChain` を返すようにし、クライアントは Resolver の順序 (同系統の軽量 → SDR 版 → H.264 互換) を優先して最大 3 回まで再試行する
     - 旧 API 応答では利用可能 profile 順へ fallback する保険を残した
+
+- **Playback API の画質表示を品質バケット順へ統一した**
+    - `recommended.label` を解決済みプリセットのバケット名へ揃え、`profiles` は「自動・おすすめ」を先頭に高画質順で表示する
+    - プリセット ID、cmd、実際の選択・配信経路、通常表示/折り畳みの件数は変更していない

@@ -2900,12 +2900,14 @@ components:
                     type: array
                     items:
                         type: object
-                        required: [id, label, detail, available]
+                        required: [id, label, detail, available, builtin, legacy]
                         properties:
                             id: { type: string }
                             label: { type: string }
                             detail: { type: string }
                             available: { type: boolean, enum: [true] }
+                            builtin: { type: boolean }
+                            legacy: { type: boolean }
                 options:
                     type: object
                     required: [hdr, correction]

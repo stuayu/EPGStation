@@ -14,7 +14,7 @@
             <v-card>
                 <v-card-title>{{ title }}</v-card-title>
                 <div class="menu-card-body"><PlaybackQualityList :profiles="profiles" :selected-id="selectedId" :show-detail="showDetail" @select="select"></PlaybackQualityList></div>
-                <v-card-actions><v-btn variant="text" @click="cancel">キャンセル</v-btn><v-spacer></v-spacer><v-btn color="primary" @click="confirm">再生</v-btn></v-card-actions>
+                <v-card-actions><v-btn variant="text" min-height="44" @click="cancel">キャンセル</v-btn><v-spacer></v-spacer><v-btn color="primary" min-height="44" @click="confirm">再生</v-btn></v-card-actions>
             </v-card>
         </v-dialog>
     </div>

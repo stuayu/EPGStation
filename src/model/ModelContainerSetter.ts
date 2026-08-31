@@ -740,10 +740,7 @@ export const set = (container: Container): void => {
         .bind<IStreamProfileManageModel>('IStreamProfileManageModel')
         .to(StreamProfileManageModel)
         .inSingletonScope();
-    container
-        .bind<IStreamPresetRegistry>('IStreamPresetRegistry')
-        .to(StreamPresetRegistry)
-        .inSingletonScope();
+    container.bind<IStreamPresetRegistry>('IStreamPresetRegistry').to(StreamPresetRegistry).inSingletonScope();
     container.bind<IPlaybackPolicyResolver>('IPlaybackPolicyResolver').to(PlaybackPolicyResolver).inSingletonScope();
     container.bind<ILiveCommandBuilder>('ILiveCommandBuilder').to(LiveCommandBuilder).inSingletonScope();
     container.bind<IRecordedCommandBuilder>('IRecordedCommandBuilder').to(RecordedCommandBuilder).inSingletonScope();

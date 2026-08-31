@@ -88,11 +88,16 @@ const getPrimaries = (value: string | undefined): ColorPrimaries | undefined => 
 
 const getCodec = (value: string | undefined): VideoCodecKind => {
     switch (value?.toLowerCase()) {
-        case 'mpeg2video': return 'mpeg2';
-        case 'h264': return 'h264';
-        case 'hevc': return 'hevc';
-        case 'av1': return 'av1';
-        default: return 'unknown';
+        case 'mpeg2video':
+            return 'mpeg2';
+        case 'h264':
+            return 'h264';
+        case 'hevc':
+            return 'hevc';
+        case 'av1':
+            return 'av1';
+        default:
+            return 'unknown';
     }
 };
 
@@ -101,8 +106,16 @@ export const toSourceCapabilities = (stream: FfprobeVideoStream): SourceCapabili
     const scan = getScan(stream.field_order);
     const transfer = getTransfer(stream.color_transfer);
     const frameRate = parseFrameRate(stream.avg_frame_rate) ?? parseFrameRate(stream.r_frame_rate);
-    const values = [stream.codec_name, stream.width, stream.height, getBitDepth(stream), stream.field_order,
-        frameRate, stream.color_transfer, stream.color_primaries].filter(value => value !== undefined).length;
+    const values = [
+        stream.codec_name,
+        stream.width,
+        stream.height,
+        getBitDepth(stream),
+        stream.field_order,
+        frameRate,
+        stream.color_transfer,
+        stream.color_primaries,
+    ].filter(value => value !== undefined).length;
 
     return {
         codec: getCodec(stream.codec_name),

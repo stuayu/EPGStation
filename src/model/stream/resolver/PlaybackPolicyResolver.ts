@@ -27,7 +27,10 @@ export default class PlaybackPolicyResolver implements IPlaybackPolicyResolver {
         if (usable.length === 0) throw new Error('PlaybackProfileIsUndefined');
 
         const requested = usable.find(preset => preset.id === requestedPresetId);
-        const selected = requestedPresetId !== 'auto' && requested !== undefined ? requested : this.selectAuto(usable, source, client);
+        const selected =
+            requestedPresetId !== 'auto' && requested !== undefined
+                ? requested
+                : this.selectAuto(usable, source, client);
         const fallbackChain = usable
             .filter(preset => preset.id !== selected.id && preset.id !== 'auto')
             .sort((a, b) => this.fallbackScore(b, source) - this.fallbackScore(a, source))
@@ -47,9 +50,11 @@ export default class PlaybackPolicyResolver implements IPlaybackPolicyResolver {
     }
 
     private selectAuto(presets: StreamPreset[], source: SourceCapabilities, client: ClientCapabilities): StreamPreset {
-        return [...presets]
-            .filter(preset => preset.id !== 'auto')
-            .sort((a, b) => this.autoScore(b, source, client) - this.autoScore(a, source, client))[0] ?? presets[0];
+        return (
+            [...presets]
+                .filter(preset => preset.id !== 'auto')
+                .sort((a, b) => this.autoScore(b, source, client) - this.autoScore(a, source, client))[0] ?? presets[0]
+        );
     }
 
     private autoScore(preset: StreamPreset, source: SourceCapabilities, client: ClientCapabilities): number {
@@ -61,7 +66,10 @@ export default class PlaybackPolicyResolver implements IPlaybackPolicyResolver {
     }
 
     private fallbackScore(preset: StreamPreset, source: SourceCapabilities): number {
-        const resolution = preset.output.resolution === 'source' ? source.height ?? 0 : Number.parseInt(preset.output.resolution ?? '0', 10);
+        const resolution =
+            preset.output.resolution === 'source'
+                ? (source.height ?? 0)
+                : Number.parseInt(preset.output.resolution ?? '0', 10);
         return resolution + QUALITY_ORDER[preset.quality];
     }
 
@@ -70,7 +78,12 @@ export default class PlaybackPolicyResolver implements IPlaybackPolicyResolver {
         if (output.codec === 'copy' && !this.sourceCanPlay(source, client)) return false;
         if (output.codec === 'hevc' && (!client.hevc || (output.bitDepth === 10 && !client.hevcMain10))) return false;
         if (output.codec === 'h264' && !client.h264) return false;
-        if (output.hdrMode === 'preserve' && source.hdr !== 'sdr' && (!client.hdr || (source.hdr === 'hlg' && !client.hlg))) return false;
+        if (
+            output.hdrMode === 'preserve' &&
+            source.hdr !== 'sdr' &&
+            (!client.hdr || (source.hdr === 'hlg' && !client.hlg))
+        )
+            return false;
         return true;
     }
 
@@ -80,19 +93,34 @@ export default class PlaybackPolicyResolver implements IPlaybackPolicyResolver {
         return false;
     }
 
-    private mode(preset: StreamPreset, source: SourceCapabilities, client: ClientCapabilities): PlaybackDecision['mode'] {
+    private mode(
+        preset: StreamPreset,
+        source: SourceCapabilities,
+        client: ClientCapabilities,
+    ): PlaybackDecision['mode'] {
         const output = preset.output;
         if (output.codec === 'copy') return output.container === undefined ? 'direct-play' : 'remux';
         const sameCodec = output.codec === source.codec || (output.codec === 'hevc' && source.codec === 'hevc');
-        const sameResolution = output.resolution === 'source' || (output.resolution === '2160p' && (source.height ?? 0) >= 2160) || (output.resolution === '1080p' && (source.height ?? 0) === 1080);
+        const sameResolution =
+            output.resolution === 'source' ||
+            (output.resolution === '2160p' && (source.height ?? 0) >= 2160) ||
+            (output.resolution === '1080p' && (source.height ?? 0) === 1080);
         const sameHdr = output.hdrMode === 'preserve' || (output.hdrMode === 'sdr' && source.hdr === 'sdr');
         if (sameCodec && sameResolution && sameHdr && this.sourceCanPlay(source, client)) return 'video-copy';
         return 'transcode';
     }
 
     private reason(preset: StreamPreset, source: SourceCapabilities, client: ClientCapabilities): string {
-        if (source.hdr !== 'sdr' && preset.output.hdrMode !== 'preserve') return '端末に合わせて明るさと画質を調整しました';
-        if (this.mode(preset, source, client) === 'direct-play' || this.mode(preset, source, client) === 'video-copy') return '元の映像を活かして再生できます';
-        return 'この端末で安定して再生できる画質を選択しました';
+        if (source.hdr !== 'sdr' && preset.output.hdrMode !== 'preserve')
+            return '端末に合わせて明るさと画質を調整しました';
+        if (this.mode(preset, source, client) === 'direct-play' || this.mode(preset, source, client) === 'video-copy')
+            return '元の映像を活かして再生できます';
+        const resolution =
+            preset.output.resolution === 'source' ? source.height : Number.parseInt(preset.output.resolution ?? '', 10);
+        if (resolution !== undefined && resolution === source.height && resolution > 0)
+            return `${resolution}pの映像に合わせて再生します`;
+        if (resolution !== undefined && resolution > 0 && resolution < (source.height ?? Number.POSITIVE_INFINITY))
+            return `${resolution}pに画質を下げて再生します`;
+        return '再生しやすい画質を選択しました';
     }
 }

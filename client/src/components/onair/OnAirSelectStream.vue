@@ -29,8 +29,8 @@
                 <v-card-actions>
                     <v-btn v-if="!!needsGotoGuideButton === true" color="primary" variant="text" v-on:click="gotoGuide">週間番組表</v-btn>
                     <v-spacer></v-spacer>
-                    <v-btn color="primary" variant="text" v-on:click="dialogState.isOpen = false">キャンセル</v-btn>
-                    <v-btn color="primary" variant="text" v-on:click="view">視聴</v-btn>
+                    <v-btn color="primary" variant="text" min-height="44" v-on:click="dialogState.isOpen = false">キャンセル</v-btn>
+                    <v-btn color="primary" variant="text" min-height="44" v-on:click="view">視聴</v-btn>
                 </v-card-actions>
             </v-card>
         </v-dialog>
