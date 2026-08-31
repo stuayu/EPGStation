@@ -346,6 +346,12 @@ DPlayer の `switchQuality()` は「quality リストに事前登録された UR
   (version 1 必須) を含め従来どおり動く
 # ストリーミング実装メモ
 
+## Phase 15: カスタムプリセット
+
+設定画面の「カスタムプリセット」は既定で折り畳み、通常利用者向けの「再生」設定と分離している。Built-in の複製、基本項目、詳細項目、Raw Command を編集できる。保存は config.yml へ書き戻さず、`app_setting` の `config.stream.profiles` オーバーレイへ行う。
+
+カスタムプロファイルは既存の `stream.profiles` に追加され、用途に応じて live / recorded.ts / recorded.encoded へ登録される。Raw Command は `StreamProfile.cmd` として保存され、`StreamProfileManageModel` の既存仕様により自動生成コマンドより優先される。既存の手書き cmd、Legacy 形式、録画後エンコード設定は変更しない。
+
 ## Playback API (Phase 7)
 
 `GET /api/streams/live/{channelId}/playback-options` と `GET /api/videos/{videoFileId}/playback-options` は、入力映像と端末能力から利用可能なプロファイル、推奨プロファイル、再生方式、有限のフォールバック列 (`recommended.fallbackChain`) を返す。端末能力は query (`hevc` / `hevcMain10` / `h264` / `hdr` / `hlg`) で渡す。クライアントはこの列を優先し、旧 API では利用可能 profile 順へ fallback する。
