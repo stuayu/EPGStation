@@ -103,8 +103,8 @@ export default class StreamApiModel implements IStreamApiModel {
     /**
      * ライブ再生の画質選択肢を取得する
      */
-    public async getLivePlaybackOptions(channelId: apid.ChannelId, client: ClientCapabilities, requestedPresetId?: string): Promise<apid.PlaybackOptions> {
-        const result = await this.repository.get(`/streams/live/${channelId}/playback-options`, { params: { ...client, profile: requestedPresetId } });
+    public async getLivePlaybackOptions(channelId: apid.ChannelId, client: ClientCapabilities, requestedPresetId?: string, container?: apid.PlaybackContainer): Promise<apid.PlaybackOptions> {
+        const result = await this.repository.get(`/streams/live/${channelId}/playback-options`, { params: { ...client, profile: requestedPresetId, container } });
 
         return result.data;
     }
@@ -112,8 +112,8 @@ export default class StreamApiModel implements IStreamApiModel {
     /**
      * 録画再生の画質選択肢を取得する
      */
-    public async getRecordedPlaybackOptions(videoFileId: apid.VideoFileId, client: ClientCapabilities, requestedPresetId?: string): Promise<apid.PlaybackOptions> {
-        const result = await this.repository.get(`/videos/${videoFileId}/playback-options`, { params: { ...client, profile: requestedPresetId } });
+    public async getRecordedPlaybackOptions(videoFileId: apid.VideoFileId, client: ClientCapabilities, requestedPresetId?: string, container?: apid.PlaybackContainer): Promise<apid.PlaybackOptions> {
+        const result = await this.repository.get(`/videos/${videoFileId}/playback-options`, { params: { ...client, profile: requestedPresetId, container } });
 
         return result.data;
     }

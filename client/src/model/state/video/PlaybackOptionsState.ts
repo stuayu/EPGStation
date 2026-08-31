@@ -15,13 +15,13 @@ export default class PlaybackOptionsState implements IPlaybackOptionsState {
 
     constructor(@inject('IStreamApiModel') private readonly api: IStreamApiModel) {}
 
-    public async loadLive(channelId: apid.ChannelId): Promise<void> {
-        this.options = await this.api.getLivePlaybackOptions(channelId, await getClientCapabilities(), this.preference.preferredQuality);
+    public async loadLive(channelId: apid.ChannelId, container?: apid.PlaybackContainer): Promise<void> {
+        this.options = await this.api.getLivePlaybackOptions(channelId, await getClientCapabilities(), this.preference.preferredQuality, container);
         this.selectedPresetId = this.options.recommended.id;
     }
 
-    public async loadRecorded(videoFileId: apid.VideoFileId): Promise<void> {
-        this.options = await this.api.getRecordedPlaybackOptions(videoFileId, await getClientCapabilities(), this.preference.preferredQuality);
+    public async loadRecorded(videoFileId: apid.VideoFileId, container?: apid.PlaybackContainer): Promise<void> {
+        this.options = await this.api.getRecordedPlaybackOptions(videoFileId, await getClientCapabilities(), this.preference.preferredQuality, container);
         this.selectedPresetId = this.options.recommended.id;
     }
 

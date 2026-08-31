@@ -38,6 +38,7 @@
                     v-bind:channelId="videoParam.channelId"
                     v-bind:mode="videoParam.mode"
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
+                    v-bind:playbackProfiles="playbackProfiles"
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
@@ -54,6 +55,7 @@
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
                     v-bind:jikkyoStartAt="videoParam.jikkyoStartAt"
                     v-bind:jikkyoEndAt="videoParam.jikkyoEndAt"
+                    v-bind:playbackProfiles="playbackProfiles"
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
@@ -72,6 +74,7 @@
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
                     v-bind:jikkyoStartAt="videoParam.jikkyoStartAt"
                     v-bind:jikkyoEndAt="videoParam.jikkyoEndAt"
+                    v-bind:playbackProfiles="playbackProfiles"
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
@@ -88,6 +91,7 @@
                     v-bind:channelId="videoParam.channelId"
                     v-bind:mode="videoParam.mode"
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
+                    v-bind:playbackProfiles="playbackProfiles"
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
@@ -195,9 +199,9 @@ class VideoContainer extends Vue {
             const capabilities: ClientCapabilities = await getClientCapabilities();
             this.clientHdr = capabilities.hdr;
             if (param.type === 'LiveHLS' || param.type === 'LiveMpegTs') {
-                await this.playbackOptionsState.loadLive(param.channelId);
+                await this.playbackOptionsState.loadLive(param.channelId, this.getPlaybackContainer() ?? undefined);
             } else if ('videoFileId' in param && typeof param.videoFileId === 'number') {
-                await this.playbackOptionsState.loadRecorded(param.videoFileId);
+                await this.playbackOptionsState.loadRecorded(param.videoFileId, this.getPlaybackContainer() ?? undefined);
             } else {
                 return;
             }
@@ -208,6 +212,8 @@ class VideoContainer extends Vue {
             this.fallbackAttempts = 0;
             this.fallbackTried.clear();
             this.fallbackNoticeShown = false;
+            await this.$nextTick();
+            this.applyPlaybackProfilesToVideo();
             const pendingError = this.pendingPlaybackError;
             this.pendingPlaybackError = null;
             if (pendingError !== null) this.onVideoError(pendingError);
@@ -221,10 +227,7 @@ class VideoContainer extends Vue {
         this.playbackOptionsState.selectPreset(id);
         this.selectedPlaybackId = id;
         this.autoPlayback = id === 'auto';
-        const index = this.playbackProfiles.findIndex(profile => profile.id === id);
-        if (index >= 0) {
-            (this.$refs.video as InstanceType<typeof BaseVideo> | undefined)?.switchQuality(index);
-        }
+        (this.$refs.video as InstanceType<typeof BaseVideo> | undefined)?.switchQuality(id);
     }
 
     /**
@@ -250,8 +253,7 @@ class VideoContainer extends Vue {
 
         this.fallbackTried.add(nextId);
         this.fallbackAttempts++;
-        const nextIndex = this.playbackProfiles.findIndex(profile => profile.id === nextId);
-        const nextProfile = this.playbackProfiles[nextIndex];
+        const nextProfile = this.playbackProfiles.find(profile => profile.id === nextId);
         if (typeof nextProfile === 'undefined') return;
 
         if (this.fallbackNoticeShown === false) {
@@ -272,7 +274,33 @@ class VideoContainer extends Vue {
 
         this.playbackOptionsState.selectPreset(nextId);
         this.selectedPlaybackId = nextId;
-        (this.$refs.video as InstanceType<typeof BaseVideo> | undefined)?.switchQuality(nextIndex);
+        (this.$refs.video as InstanceType<typeof BaseVideo> | undefined)?.switchQuality(nextId);
+    }
+
+    private applyPlaybackProfilesToVideo(): void {
+        const container = this.getPlaybackContainer();
+        if (container === null) return;
+        (this.$refs.video as InstanceType<typeof BaseVideo> | undefined)?.setPlaybackProfiles(
+            this.playbackProfiles,
+            container,
+            this.selectedPlaybackId,
+        );
+    }
+
+    private getPlaybackContainer(): 'm2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | null {
+        switch (this.videoParam.type) {
+            case 'LiveHLS':
+            case 'RecordedHLS':
+                return 'hls';
+            case 'LiveMpegTs':
+                return 'm2tsll';
+            case 'RecordedStreaming':
+                return this.videoParam.streamingType === 'mp4' || this.videoParam.streamingType === 'webm'
+                    ? this.videoParam.streamingType
+                    : null;
+            default:
+                return null;
+        }
     }
 
     private getPlaybackErrorText(error: unknown): string {

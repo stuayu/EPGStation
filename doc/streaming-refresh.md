@@ -390,7 +390,7 @@ HDR (`hlg` / `pq`) を `tone-map` または `sdr` で配信するときだけ、
 
 `ClientCapabilityUtil` は MediaCapabilities の `decodingInfo()` を優先し、`canPlayType()` を補助に使う。HEVC Main10 は `hvc1.2.4.L153.B0`、HDR は `dynamic-range: high` で判定し、結果を localStorage に TTL 付きで保存する。`PlaybackLabelUtil` は通常表示から HEVC / Main10 / エンコーダ名を隠し、詳細表示だけへ渡す。
 
-`PlaybackOptionsState` は Phase 7 の Playback API を端末能力付きで呼び、画質選択と設定を端末単位の localStorage へ保存する。既存の `type` + `mode` 導線と BaseVideo の画質切替機構は変更せず、旧 config のみの環境も従来経路を維持する。
+`PlaybackOptionsState` は Phase 7 の Playback API を端末能力付きで呼び、画質選択と設定を端末単位の localStorage へ保存する。Playback API の各 profile は preset id と container 別の既存 mode を持ち、VideoContainer は id を BaseVideo へ渡す。BaseVideo は container に対応する profile だけで DPlayer quality を作り、表示名・順序・件数を新 UI と一致させる。サーバーへ渡す mode は従来どおり config の添字であり、旧 config のみの環境では `StreamQualityUtil` の quality へフォールバックする。
 
 画質切替前に BaseVideo が音量、muted、再生速度、字幕、Fullscreen、PiP を退避し、新しい video 要素の loadedmetadata / canplay 後に個別復元する。復元失敗は再生を止めない。
 

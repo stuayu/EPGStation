@@ -13,6 +13,6 @@ export default interface IStreamApiModel {
     stop(streamId: apid.StreamId): Promise<void>;
     stopAll(): Promise<void>;
     keep(streamId: apid.StreamId): Promise<void>;
-    getLivePlaybackOptions(channelId: apid.ChannelId, client: ClientCapabilities, requestedPresetId?: string): Promise<apid.PlaybackOptions>;
-    getRecordedPlaybackOptions(videoFileId: apid.VideoFileId, client: ClientCapabilities, requestedPresetId?: string): Promise<apid.PlaybackOptions>;
+    getLivePlaybackOptions(channelId: apid.ChannelId, client: ClientCapabilities, requestedPresetId?: string, container?: apid.PlaybackContainer): Promise<apid.PlaybackOptions>;
+    getRecordedPlaybackOptions(videoFileId: apid.VideoFileId, client: ClientCapabilities, requestedPresetId?: string, container?: apid.PlaybackContainer): Promise<apid.PlaybackOptions>;
 }

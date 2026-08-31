@@ -3,6 +3,7 @@ import IPlaybackApiModel from '../../../../api/stream/IPlaybackApiModel';
 import container from '../../../../ModelContainer';
 import * as api from '../../../api';
 import { parseClientCapabilities } from '../../../../api/stream/PlaybackCapability';
+import * as apid from '../../../../../../api';
 
 export const get: Operation = async (req, res) => {
     try {
@@ -16,6 +17,7 @@ export const get: Operation = async (req, res) => {
                 videoFileId,
                 parseClientCapabilities(query),
                 query.profile as string | undefined,
+                query.container as apid.PlaybackContainer | undefined,
             ),
         );
     } catch (err: unknown) {
@@ -37,6 +39,7 @@ get.apiDoc = {
         { $ref: '#/components/parameters/PlaybackCapabilityHdr' },
         { $ref: '#/components/parameters/PlaybackCapabilityHlg' },
         { $ref: '#/components/parameters/PlaybackProfile' },
+        { $ref: '#/components/parameters/PlaybackContainer' },
     ],
     responses: {
         200: {

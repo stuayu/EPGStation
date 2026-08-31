@@ -29,6 +29,9 @@ class LiveMpegTsVideo extends BaseVideo {
     @Prop({ default: null })
     public jikkyoChannelId!: string | null;
 
+    @Prop({ default: () => [] })
+    public playbackProfiles!: apid.PlaybackProfile[];
+
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
     public mounted(): void {
@@ -125,6 +128,10 @@ class LiveMpegTsVideo extends BaseVideo {
         };
 
         this.createPlayer(options);
+        this.setPlaybackProfiles(this.playbackProfiles, 'm2tsll');
+        this.setupQualitySwitch({
+            resolveUrl: async mode => `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.channelId}/m2tsll?mode=${mode}`,
+        });
     }
 
     /**

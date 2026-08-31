@@ -25,6 +25,9 @@ class LiveHLSVideo extends BaseVideo {
     @Prop({ default: null })
     public jikkyoChannelId!: string | null;
 
+    @Prop({ default: () => [] })
+    public playbackProfiles!: apid.PlaybackProfile[];
+
     /**
      * ニコニコ実況の実況チャンネル ID を返す
      */
@@ -175,6 +178,7 @@ class LiveHLSVideo extends BaseVideo {
         };
 
         this.createPlayer(options);
+        this.setPlaybackProfiles(this.playbackProfiles, 'hls');
         this.setupLiveAudioTrackSwitch();
 
         // 画質切替時はサーバー側のストリームを作り直してから url を差し替える

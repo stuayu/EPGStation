@@ -13,8 +13,8 @@ export default interface IPlaybackOptionsState {
     preference: PlaybackPreference;
     selectedPresetId: string;
     getFallbackChain(): string[];
-    loadLive(channelId: apid.ChannelId): Promise<void>;
-    loadRecorded(videoFileId: apid.VideoFileId): Promise<void>;
+    loadLive(channelId: apid.ChannelId, container?: apid.PlaybackContainer): Promise<void>;
+    loadRecorded(videoFileId: apid.VideoFileId, container?: apid.PlaybackContainer): Promise<void>;
     selectPreset(id: string): void;
     savePreference(value: Partial<PlaybackPreference>): void;
     clear(): void;

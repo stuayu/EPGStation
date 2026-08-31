@@ -38,6 +38,9 @@ class RecordedStreamingVideo extends BaseVideo {
     @Prop({ default: null })
     public jikkyoChannelId!: string | null;
 
+    @Prop({ default: () => [] })
+    public playbackProfiles!: apid.PlaybackProfile[];
+
     @Prop({ default: null })
     public jikkyoStartAt!: number | null;
 
@@ -182,6 +185,7 @@ class RecordedStreamingVideo extends BaseVideo {
         this.applyChapterHighlights(options, this.getDuration());
 
         this.createPlayer(options);
+        this.setPlaybackProfiles(this.playbackProfiles, this.streamingType as 'mp4' | 'webm');
 
         // 画質切替時は現在の再生位置から配信し直す
         this.setupQualitySwitch({

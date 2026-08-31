@@ -24,6 +24,9 @@ type QualityPlaybackSnapshot = {
     pip: boolean;
 };
 
+type PlaybackContainer = keyof apid.PlaybackProfile['modes'];
+type PlaybackQuality = DPlayerType.VideoQuality & { presetId: string; mode: number };
+
 export default abstract class BaseVideo extends Vue {
     protected dp: DPlayer | null = null;
     protected containerElement: HTMLElement | null = null;
@@ -300,8 +303,10 @@ export default abstract class BaseVideo extends Vue {
             };
 
             (async (): Promise<void> => {
+                const qualityItem = quality[mode] as PlaybackQuality;
+                const serverMode = typeof qualityItem.mode === 'number' ? qualityItem.mode : mode;
                 try {
-                    quality[mode].url = await option.resolveUrl(mode);
+                    quality[mode].url = await option.resolveUrl(serverMode);
                 } catch (err) {
                     console.error(err);
                     pendingSnapshot = null;
@@ -319,7 +324,7 @@ export default abstract class BaseVideo extends Vue {
                 }
 
                 if (typeof option.onSwitched !== 'undefined') {
-                    option.onSwitched(mode);
+                    option.onSwitched(serverMode);
                 }
 
                 if (option.resetCurrentTime === true) {
@@ -339,10 +344,42 @@ export default abstract class BaseVideo extends Vue {
 
     /**
      * プレイヤー内の再生画質メニューから既存の DPlayer 切替経路を呼ぶ。
-     * @param mode: number 配信設定の index
+     * @param presetId プリセット識別子
      */
-    public switchQuality(mode: number): void {
-        (this.dp as any)?.switchQuality?.(mode);
+    public switchQuality(presetId: string): void {
+        if (this.dp === null) return;
+        const quality = ((this.dp as any).options?.video?.quality ?? []) as PlaybackQuality[];
+        const index = quality.findIndex(item => item.presetId === presetId);
+        if (index >= 0) (this.dp as any).switchQuality(index);
+    }
+
+    /**
+     * playback-options API のプリセットを DPlayer の quality へ反映する。
+     * @param profiles API が返した再生プロファイル
+     * @param container 実際の再生コンテナ
+     */
+    public setPlaybackProfiles(profiles: apid.PlaybackProfile[], container: PlaybackContainer, selectedId = 'auto'): void {
+        if (this.dp === null || profiles.length === 0) return;
+        const dp = this.dp as any;
+        const current = dp.video?.src ?? dp.options?.video?.url ?? '';
+        const oldQuality = (dp.options?.video?.quality ?? []) as DPlayerType.VideoQuality[];
+        const type = oldQuality[0]?.type ?? dp.options?.video?.type ?? 'normal';
+        const qualities: PlaybackQuality[] = profiles
+            .filter(profile => typeof profile.modes?.[container] === 'number')
+            .map(profile => ({
+                name: profile.label,
+                url: current,
+                type,
+                presetId: profile.id,
+                mode: profile.modes[container] as number,
+            }));
+        if (qualities.length === 0) return;
+        dp.options.video.quality = qualities;
+        const selected = qualities.findIndex(item => item.presetId === selectedId);
+        if (selected >= 0) {
+            dp.options.video.defaultQuality = selected;
+            dp.qualityIndex = selected;
+        }
     }
 
     /**

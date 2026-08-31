@@ -32,7 +32,10 @@ const createModel = () => {
             analyzeLiveChannel: async () => source,
             analyzeRecordedFile: async () => source,
         },
-        { getPresets: () => presets },
+        {
+            getPresets: () => presets,
+            getModeMap: () => ({ m2ts: [], m2tsll: [], mp4: [], webm: [], hls: ['1080p-sdr', '2160p-preserve'] }),
+        },
         { resolve: () => decision },
         { findId: async () => ({ type: 'ts' }) },
     );
@@ -52,6 +55,14 @@ test('playback-options は builtin と legacy の分類を維持する', async (
     const result = await createModel().getLivePlaybackOptions(1, client);
     assert.equal(result.profiles.find(profile => profile.id === 'auto').builtin, true);
     assert.equal(result.profiles.find(profile => profile.id === '1080p-sdr').legacy, true);
+});
+
+test('preset id から container 別 mode を解決し、profile の並びを mode 添字にしない', async () => {
+    const result = await createModel().getLivePlaybackOptions(1, client);
+    assert.deepEqual(result.profiles.map(profile => profile.id), ['auto', '2160p-preserve', '1080p-sdr']);
+    assert.deepEqual(result.profiles.find(profile => profile.id === 'auto').modes, { hls: 1 });
+    assert.deepEqual(result.profiles.find(profile => profile.id === '2160p-preserve').modes, { hls: 1 });
+    assert.deepEqual(result.profiles.find(profile => profile.id === '1080p-sdr').modes, { hls: 0 });
 });
 
 test('config 由来プリセットを品質バケットの代表として通常表示する', async () => {
@@ -99,4 +110,31 @@ test('config 由来プリセットを品質バケットの代表として通常�
         'custom-480',
         'custom-240',
     ]);
+});
+
+test('container 指定時は同じ container 内の品質バケット代表を選ぶ', async () => {
+    const containerPresets = [
+        { id: 'auto', name: '自動', builtin: true, output: { codec: 'copy', resolution: 'source' } },
+        { id: 'hls-1080', name: 'HLS 1080p 技術名', builtin: false, output: { codec: 'h264', resolution: '1080p', container: 'hls' } },
+        { id: 'hls-720', name: 'HLS 720p 技術名', builtin: false, output: { codec: 'h264', resolution: '720p', container: 'hls' } },
+        { id: 'hls-480', name: 'HLS 480p 技術名', builtin: false, output: { codec: 'h264', resolution: '480p', container: 'hls' } },
+        { id: 'm2tsll-1080', name: 'M2TS-LL 1080p 技術名', builtin: false, output: { codec: 'h264', resolution: '1080p', container: 'm2tsll' } },
+        { id: 'm2tsll-720', name: 'M2TS-LL 720p 技術名', builtin: false, output: { codec: 'h264', resolution: '720p', container: 'm2tsll' } },
+    ];
+    const model = new PlaybackApiModel(
+        { analyzeLiveChannel: async () => ({ ...source, codec: 'h264', height: 1080, hdr: 'sdr' }) },
+        {
+            getPresets: () => containerPresets,
+            getModeMap: () => ({ m2ts: [], m2tsll: ['m2tsll-1080', 'm2tsll-720'], mp4: [], webm: [], hls: ['hls-1080', 'hls-720', 'hls-480'] }),
+        },
+        { resolve: (_scope, _source, _client, available) => ({ presetId: available.find(p => p.id === 'hls-1080')?.id ?? 'auto', label: 'HLS 1080p 技術名', reason: 'test', fallbackChain: available.filter(p => p.id !== 'auto').map(p => p.id) }) },
+        { findId: async () => ({ type: 'ts' }) },
+    );
+
+    const result = await model.getLivePlaybackOptions(1, { ...client, hevc: false }, undefined, 'hls');
+    assert.deepEqual(result.profiles.map(profile => profile.id), ['auto', 'hls-1080', 'hls-720', 'hls-480']);
+    assert.deepEqual(result.profiles.map(profile => profile.label), ['自動・おすすめ', '1080p 標準', '720p', 'データ節約']);
+    assert.equal(result.profiles.every(profile => typeof profile.modes.hls === 'number'), true);
+    assert.equal(result.profiles.some(profile => typeof profile.modes.m2tsll === 'number'), false);
+    assert.equal(result.profiles.some(profile => profile.id === 'm2tsll-1080'), false);
 });

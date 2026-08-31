@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-01
 
+- **ストリーミング刷新 Phase 16 で DPlayer と新画質 UI の対応を統一した**: `playbackProfiles` の添字を画質切替へ渡さず、`StreamPresetRegistry` の container 別 mode map を Playback API から返して preset id で解決するようにした。DPlayer の quality も同じ playback profile から作り、品質バケット名・順序・container ごとの絞り込みを新 UI と一致させた。旧 config 環境では従来の `StreamQualityUtil` quality を維持する。実装は `PlaybackApiModel` / `BaseVideo` / 各 video component、テストは `playback-api-model.test.js`。
+
 - **ストリーミング刷新 Phase 15 のカスタムプリセット UI を追加した**: 設定画面の折り畳みセクションから Built-in を複製し、用途・解像度・Codec・Bit Depth・FPS・HDR・映像補正・エンコーダ・品質と上級者向け詳細、Raw Command を編集できる。保存先は config.yml ではなく `app_setting.config.stream.profiles` のオーバーレイ。Raw Command (`cmd`) は既存の自動コマンド生成より優先し、既存プリセット・録画後エンコード・既存 config は変更しない。実装は `CustomStreamPresetEditor` / `CustomStreamPresetUtil`。
 
 - **ストリーミング刷新 Phase 12 で config プリセットを品質バケットへ対応付けた**: `encodePresets` や既存 `stream:` 由来のプリセットを削除せず、通常表示では各品質バケットの代表 1 件を Built-in の分かりやすい名前で表示する。再生に使う ID と cmd は従来のユーザー定義を維持し、同じバケットの残りと対応付けできないプリセットは「その他の画質」へ残す。代表は低遅延コンテナを優先し、通常表示は最大 7 件。実装は `PlaybackApiModel`、テストは `playback-api-model.test.js`。

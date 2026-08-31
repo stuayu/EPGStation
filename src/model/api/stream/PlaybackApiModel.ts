@@ -22,14 +22,22 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         channelId: apid.ChannelId,
         client: ClientCapabilities,
         requestedPresetId?: string,
+        container?: apid.PlaybackContainer,
     ): Promise<PlaybackOptions> {
-        return this.create('live', await this.sourceAnalyzer.analyzeLiveChannel(channelId), client, requestedPresetId);
+        return this.create(
+            'live',
+            await this.sourceAnalyzer.analyzeLiveChannel(channelId),
+            client,
+            requestedPresetId,
+            container,
+        );
     }
 
     public async getRecordedPlaybackOptions(
         videoFileId: apid.VideoFileId,
         client: ClientCapabilities,
         requestedPresetId?: string,
+        container?: apid.PlaybackContainer,
     ): Promise<PlaybackOptions> {
         const video = await this.videoFileDB.findId(videoFileId);
         if (video === null) throw new Error('VideoFileIsUndefined');
@@ -39,6 +47,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
             await this.sourceAnalyzer.analyzeRecordedFile(videoFileId),
             client,
             requestedPresetId,
+            container,
         );
     }
 
@@ -47,8 +56,17 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         source: apid.SourceCapabilities,
         client: ClientCapabilities,
         requestedPresetId?: string,
+        container?: apid.PlaybackContainer,
     ): PlaybackOptions {
-        const presets = this.presetRegistry.getPresets(scope, source, client);
+        const allPresets = this.presetRegistry.getPresets(scope, source, client);
+        const modeMap =
+            typeof this.presetRegistry.getModeMap === 'function'
+                ? this.presetRegistry.getModeMap(scope)
+                : { m2ts: [], m2tsll: [], mp4: [], webm: [], hls: [] };
+        const presets =
+            container === undefined || container === 'normal'
+                ? allPresets
+                : allPresets.filter(preset => preset.id === 'auto' || modeMap[container]?.includes(preset.id) === true);
         const decision = this.resolver.resolve(scope, source, client, presets, requestedPresetId);
         const resolved = decision.presetId;
         const resolvedPreset = presets.find(preset => preset.id === resolved);
@@ -69,12 +87,26 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
             profiles: this.createProfiles(
                 presets.filter(preset => preset.id === 'auto' || this.isDecisionUsable(preset, source, client)),
                 decision.reason,
+                scope,
+                resolved,
+                container,
             ),
             options: { hdr: ['auto', 'preserve', 'sdr'], correction: ['auto', 'off', 'bright'] },
         };
     }
 
-    private createProfiles(presets: StreamPreset[], autoReason: string): PlaybackOptions['profiles'] {
+    private createProfiles(
+        presets: StreamPreset[],
+        autoReason: string,
+        scope: StreamPresetScope,
+        resolvedId: string,
+        container?: apid.PlaybackContainer,
+    ): PlaybackOptions['profiles'] {
+        // 古いテスト用 registry / 旧配備との互換。実 registry は必ず mode map を返す。
+        const modeMap =
+            typeof this.presetRegistry.getModeMap === 'function'
+                ? this.presetRegistry.getModeMap(scope)
+                : { m2ts: [], m2tsll: [], mp4: [], webm: [], hls: [] };
         const roles = presets.map(preset => this.builtinRole(preset));
         const representatives = new Map<string, StreamPreset>();
         for (const preset of presets) {
@@ -83,12 +115,16 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
             representatives.set(role, preset);
         }
 
-        // 同じ品質に複数ある場合、低遅延コンテナを代表にする。残りは全て折り畳みに残す。
+        // 同じ品質に複数ある場合、指定 container 内で代表を選ぶ。未指定時は従来の優先順を使う。
         for (const role of representatives.keys()) {
             const candidates = presets.filter(preset => this.builtinRole(preset) === role);
             representatives.set(
                 role,
-                [...candidates].sort((a, b) => this.representativeScore(b) - this.representativeScore(a))[0],
+                [...candidates].sort((a, b) =>
+                    container === undefined || container === 'normal'
+                        ? this.representativeScore(b) - this.representativeScore(a)
+                        : 0,
+                )[0],
             );
         }
 
@@ -98,6 +134,12 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                 const representative = role !== null && representatives.get(role) === preset;
                 const builtin = representative;
                 const builtinPreset = role === null ? undefined : BUILTIN_STREAM_PRESETS.find(item => item.id === role);
+                const modePresetId = preset.id === 'auto' ? resolvedId : preset.id;
+                const modes = Object.fromEntries(
+                    (Object.keys(modeMap) as Array<keyof typeof modeMap>)
+                        .map(container => [container, modeMap[container].indexOf(modePresetId)])
+                        .filter(entry => Number(entry[1]) >= 0),
+                ) as PlaybackOptions['profiles'][number]['modes'];
                 return {
                     role,
                     profile: {
@@ -110,6 +152,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                         available: true as const,
                         builtin,
                         legacy: preset.legacy === true,
+                        modes,
                     },
                 };
             })
