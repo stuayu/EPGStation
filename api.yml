@@ -5797,6 +5797,21 @@ components:
             in: query
             name: container
             schema: { type: string, enum: [m2ts, m2tsll, mp4, webm, hls, normal] }
+        PlaybackPreferHdr:
+            description: 端末設定の HDR の既定値。自動選択時に優先する
+            in: query
+            name: preferHdr
+            schema: { type: string, enum: [auto, preserve, sdr] }
+        PlaybackPreferCorrection:
+            description: 端末設定の映像補正の既定値。自動選択時に優先する
+            in: query
+            name: preferCorrection
+            schema: { type: string, enum: [auto, off, bright] }
+        PlaybackSaveData:
+            description: モバイル回線では画質を下げるか (端末設定)
+            in: query
+            name: saveData
+            schema: { type: boolean }
 
         IsReverse:
             description: 逆順で取得するか

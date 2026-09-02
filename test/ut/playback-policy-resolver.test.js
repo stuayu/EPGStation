@@ -129,3 +129,66 @@ test('1080i source の auto 理由は選択した解像度を説明する', () =
     assert.notEqual(decision.output.resolution, '2160p');
     assert.doesNotMatch(decision.reason, /安定して再生できる画質を選択しました/);
 });
+
+test('端末設定の HDR = SDR に変換 は自動選択で SDR 系を選ぶ', () => {
+    const decision = new PlaybackPolicyResolver().resolve('live', source(), client(), BUILTIN_STREAM_PRESETS, 'auto', {
+        hdrMode: 'sdr',
+    });
+    assert.equal(decision.output.hdrMode, 'sdr');
+});
+
+test('端末設定の HDR = 維持 は自動選択で HDR 系を選ぶ', () => {
+    const decision = new PlaybackPolicyResolver().resolve('live', source(), client(), BUILTIN_STREAM_PRESETS, 'auto', {
+        hdrMode: 'preserve',
+    });
+    assert.equal(decision.output.hdrMode, 'preserve');
+});
+
+test('モバイル回線では画質を下げる設定は cellular のときだけ効く', () => {
+    const cellular = new PlaybackPolicyResolver().resolve(
+        'live',
+        source(),
+        client({ network: 'cellular' }),
+        BUILTIN_STREAM_PRESETS,
+        'auto',
+        { saveData: true },
+    );
+    const fast = new PlaybackPolicyResolver().resolve(
+        'live',
+        source(),
+        client({ network: 'fast' }),
+        BUILTIN_STREAM_PRESETS,
+        'auto',
+        { saveData: true },
+    );
+    assert.equal(cellular.output.resolution, '480p');
+    assert.equal(fast.output.resolution, '2160p');
+});
+
+test('端末設定は明示的なプリセット指定を上書きしない', () => {
+    const decision = new PlaybackPolicyResolver().resolve(
+        'live',
+        source(),
+        client({ network: 'cellular' }),
+        BUILTIN_STREAM_PRESETS,
+        '2160p-high',
+        { saveData: true, hdrMode: 'sdr' },
+    );
+    assert.equal(decision.presetId, '2160p-high');
+});
+
+test('モバイル回線では画質を下げる設定は fallback 候補も低画質順にする', () => {
+    const decision = new PlaybackPolicyResolver().resolve(
+        'live',
+        source(),
+        client({ network: 'cellular' }),
+        BUILTIN_STREAM_PRESETS,
+        'auto',
+        { saveData: true },
+    );
+    const heights = decision.fallbackChain.map(id => {
+        const preset = BUILTIN_STREAM_PRESETS.find(item => item.id === id);
+        return preset.output.resolution === 'source' ? 2160 : Number.parseInt(preset.output.resolution, 10);
+    });
+    assert.deepEqual([...heights].sort((a, b) => a - b), heights, `fallbackChain=${decision.fallbackChain}`);
+});

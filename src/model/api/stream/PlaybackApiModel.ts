@@ -3,7 +3,7 @@ import * as apid from '../../../../api';
 import IVideoFileDB from '../../db/IVideoFileDB';
 import ISourceAnalyzer from '../../stream/capability/ISourceAnalyzer';
 import { ClientCapabilities } from '../../stream/capability/IClientCapabilities';
-import IPlaybackPolicyResolver from '../../stream/resolver/IPlaybackPolicyResolver';
+import IPlaybackPolicyResolver, { PlaybackPreference } from '../../stream/resolver/IPlaybackPolicyResolver';
 import IStreamPresetRegistry, { StreamPresetScope } from '../../stream/preset/IStreamPresetRegistry';
 import { StreamPreset } from '../../stream/preset/IStreamPreset';
 import { BUILTIN_STREAM_PRESETS } from '../../../util/BuiltinStreamPresets';
@@ -23,6 +23,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         client: ClientCapabilities,
         requestedPresetId?: string,
         container?: apid.PlaybackContainer,
+        preference?: PlaybackPreference,
     ): Promise<PlaybackOptions> {
         return this.create(
             'live',
@@ -30,6 +31,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
             client,
             requestedPresetId,
             container,
+            preference,
         );
     }
 
@@ -38,6 +40,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         client: ClientCapabilities,
         requestedPresetId?: string,
         container?: apid.PlaybackContainer,
+        preference?: PlaybackPreference,
     ): Promise<PlaybackOptions> {
         const video = await this.videoFileDB.findId(videoFileId);
         if (video === null) throw new Error('VideoFileIsUndefined');
@@ -48,6 +51,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
             client,
             requestedPresetId,
             container,
+            preference,
         );
     }
 
@@ -57,6 +61,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         client: ClientCapabilities,
         requestedPresetId?: string,
         container?: apid.PlaybackContainer,
+        preference?: PlaybackPreference,
     ): PlaybackOptions {
         const allPresets = this.presetRegistry.getPresets(scope, source, client);
         const modeMap =
@@ -67,7 +72,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
             container === undefined || container === 'normal'
                 ? allPresets
                 : allPresets.filter(preset => preset.id === 'auto' || modeMap[container]?.includes(preset.id) === true);
-        const decision = this.resolver.resolve(scope, source, client, presets, requestedPresetId);
+        const decision = this.resolver.resolve(scope, source, client, presets, requestedPresetId, preference);
         const resolved = decision.presetId;
         const resolvedPreset = presets.find(preset => preset.id === resolved);
         const resolvedRole = resolvedPreset === undefined ? null : this.builtinRole(resolvedPreset);
