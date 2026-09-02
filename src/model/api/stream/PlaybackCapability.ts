@@ -1,4 +1,5 @@
 import { ClientCapabilities } from '../../stream/capability/IClientCapabilities';
+import { PlaybackPreference } from '../../stream/resolver/IPlaybackPolicyResolver';
 
 const bool = (value: unknown): boolean => value === true || value === 'true' || value === '1';
 const number = (value: unknown): number | undefined => {
@@ -20,4 +21,17 @@ export const parseClientCapabilities = (query: Record<string, unknown>): ClientC
         query.network === 'fast' || query.network === 'slow' || query.network === 'cellular'
             ? query.network
             : 'unknown',
+});
+
+/**
+ * 端末の設定画面が保持している再生の既定値をクエリから取り出す。
+ * 未指定・不正値は「指定なし」として扱い、従来どおりの自動選択に戻す
+ * @param query: Record<string, unknown> リクエストクエリ
+ * @return PlaybackPreference
+ */
+export const parsePlaybackPreference = (query: Record<string, unknown>): PlaybackPreference => ({
+    hdrMode: query.preferHdr === 'preserve' || query.preferHdr === 'sdr' ? query.preferHdr : 'auto',
+    correction:
+        query.preferCorrection === 'off' || query.preferCorrection === 'bright' ? query.preferCorrection : 'auto',
+    saveData: bool(query.saveData),
 });

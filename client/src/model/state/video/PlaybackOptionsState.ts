@@ -1,6 +1,6 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../api';
-import IStreamApiModel from '../../api/streams/IStreamApiModel';
+import IStreamApiModel, { PlaybackQueryPreference } from '../../api/streams/IStreamApiModel';
 import { getClientCapabilities } from '@/util/ClientCapabilityUtil';
 import IPlaybackOptionsState, { PlaybackPreference } from './IPlaybackOptionsState';
 
@@ -15,14 +15,70 @@ export default class PlaybackOptionsState implements IPlaybackOptionsState {
 
     constructor(@inject('IStreamApiModel') private readonly api: IStreamApiModel) {}
 
+    // 取得の世代。この State は singleton なので、配信方式の切り替えなどで
+    // 続けて呼ばれると古い応答が後から解決して新しい選択肢を上書きしうる
+    private loadGeneration = 0;
+
     public async loadLive(channelId: apid.ChannelId, container?: apid.PlaybackContainer): Promise<void> {
-        this.options = await this.api.getLivePlaybackOptions(channelId, await getClientCapabilities(), this.preference.preferredQuality, container);
-        this.selectedPresetId = this.options.recommended.id;
+        const generation = ++this.loadGeneration;
+        const options = await this.api.getLivePlaybackOptions(
+            channelId,
+            await getClientCapabilities(),
+            this.preference.preferredQuality,
+            container,
+            this.getPreferenceQuery(),
+        );
+        this.applyOptions(generation, options);
     }
 
     public async loadRecorded(videoFileId: apid.VideoFileId, container?: apid.PlaybackContainer): Promise<void> {
-        this.options = await this.api.getRecordedPlaybackOptions(videoFileId, await getClientCapabilities(), this.preference.preferredQuality, container);
-        this.selectedPresetId = this.options.recommended.id;
+        const generation = ++this.loadGeneration;
+        const options = await this.api.getRecordedPlaybackOptions(
+            videoFileId,
+            await getClientCapabilities(),
+            this.preference.preferredQuality,
+            container,
+            this.getPreferenceQuery(),
+        );
+        this.applyOptions(generation, options);
+    }
+
+    /**
+     * 取得結果を反映する。後から解決した古い応答は捨てる
+     * @param generation: number 取得開始時の世代
+     * @param options: apid.PlaybackOptions 取得結果
+     */
+    private applyOptions(generation: number, options: apid.PlaybackOptions): void {
+        if (generation !== this.loadGeneration) return;
+
+        this.options = options;
+        this.selectedPresetId = this.getInitialPresetId();
+    }
+
+    /**
+     * 端末の設定画面が持つ既定値を API のクエリ形式へ変換する
+     * @return PlaybackQueryPreference
+     */
+    private getPreferenceQuery(): PlaybackQueryPreference {
+        return {
+            preferHdr: this.preference.hdrMode,
+            preferCorrection: this.preference.videoCorrection,
+            saveData: this.preference.mobileDataPreference,
+        };
+    }
+
+    /**
+     * 再生開始時に選択済みとして扱うプリセットを決める。
+     * 設定画面の「既定の画質」がこの入力で使えるならそれを、使えなければサーバの推奨 (auto) を選ぶ
+     * @return string プリセット識別子
+     */
+    private getInitialPresetId(): string {
+        const preferred = this.preference.preferredQuality;
+        if (preferred !== 'auto' && this.options?.profiles.some(profile => profile.id === preferred) === true) {
+            return preferred;
+        }
+
+        return this.options?.recommended.id ?? 'auto';
     }
 
     public selectPreset(id: string): void {
@@ -47,6 +103,8 @@ export default class PlaybackOptionsState implements IPlaybackOptionsState {
     }
 
     public clear(): void {
+        // 進行中の取得結果を反映させない
+        this.loadGeneration++;
         this.options = null;
         this.selectedPresetId = 'auto';
     }

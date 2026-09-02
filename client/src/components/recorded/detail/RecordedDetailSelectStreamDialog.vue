@@ -2,9 +2,17 @@
     <div class="recorded-detail-select-stream">
         <v-dialog v-if="isRemove === false" v-model="dialogState.isOpen" max-width="400" scrollable>
             <v-card v-if="dialogState.title !== null">
-                <div class="pa-4 pb-0">
+                <div class="pa-4 pb-0 select-stream-body">
                     <div>{{ dialogState.title }}</div>
-                    <v-btn block variant="outlined" min-height="44" class="my-2" @click="openQualitySheet">画質: {{ selectedQualityLabel }}</v-btn>
+                    <!-- 画質はダイアログの中で開閉する (別のダイアログを重ねるとポップアップが 2 重になるため) -->
+                    <v-btn block variant="outlined" min-height="44" class="my-2" :append-icon="isQualityListOpen === true ? 'mdi-chevron-up' : 'mdi-chevron-down'" @click="toggleQualityList">
+                        画質: {{ selectedQualityLabel }}
+                    </v-btn>
+                    <v-expand-transition>
+                        <v-sheet v-show="isQualityListOpen === true" class="quality-list mb-2" rounded border>
+                            <PlaybackQualityList :profiles="qualityProfiles" :selected-id="playbackState.selectedPresetId" @select="selectQuality"></PlaybackQualityList>
+                        </v-sheet>
+                    </v-expand-transition>
                     <div class="d-flex">
                         <v-select
                             :items="dialogState.streamTypeItems"
@@ -26,29 +34,27 @@
                 </v-card-actions>
             </v-card>
         </v-dialog>
-        <PlaybackQualitySheet
-            v-if="qualitySheetOpen"
-            v-model="qualitySheetOpen"
-            title="再生画質"
-            :profiles="qualityProfiles"
-            :selected-id="playbackState.selectedPresetId"
-            @select="selectQuality"
-            @confirm="confirmQualitySelection"
-        ></PlaybackQualitySheet>
     </div>
 </template>
 
 <script lang="ts">
 import container from '@/model/ModelContainer';
-import IRecordedDetailSelectStreamState from '@/model/state/recorded/detail/IRecordedDetailSelectStreamState';
+import IRecordedDetailSelectStreamState, { RecordedStreamType } from '@/model/state/recorded/detail/IRecordedDetailSelectStreamState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
-import PlaybackQualitySheet from '@/components/video/quality/PlaybackQualitySheet.vue';
+import PlaybackQualityList from '@/components/video/quality/PlaybackQualityList.vue';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 
-@Component({ components: { PlaybackQualitySheet } })
+// 配信方式ごとの playback-options 上のコンテナ名
+const STREAM_TYPE_CONTAINERS: { [key in RecordedStreamType]: Exclude<apid.PlaybackContainer, 'normal'> } = {
+    WebM: 'webm',
+    MP4: 'mp4',
+    HLS: 'hls',
+};
+
+@Component({ components: { PlaybackQualityList } })
 class RecordedDetailSelectStreamDialog extends Vue {
     public dialogState: IRecordedDetailSelectStreamState = container.get<IRecordedDetailSelectStreamState>('IRecordedDetailSelectStreamState');
     public isRemove: boolean = false;
@@ -57,33 +63,79 @@ class RecordedDetailSelectStreamDialog extends Vue {
 
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     public playbackState: IPlaybackOptionsState = container.get<IPlaybackOptionsState>('IPlaybackOptionsState');
-    public qualitySheetOpen = false;
-    get qualityProfiles(): apid.PlaybackProfile[] { return this.playbackState.options?.profiles.filter(profile => profile.available === true) ?? []; }
-    get selectedQualityLabel(): string { return this.qualityProfiles.find(profile => profile.id === this.playbackState.selectedPresetId)?.label ?? '自動・おすすめ'; }
+    public isQualityListOpen = false;
 
-    public async openQualitySheet(): Promise<void> {
+    // 読み込みの世代。配信方式を続けて切り替えたとき、古い応答が新しい選択を上書きしないようにする
+    private loadGeneration = 0;
+
+    get selectedContainer(): Exclude<apid.PlaybackContainer, 'normal'> | undefined {
+        return typeof this.dialogState.selectedStreamType === 'undefined' ? undefined : STREAM_TYPE_CONTAINERS[this.dialogState.selectedStreamType];
+    }
+
+    /**
+     * 選択できる画質。
+     * この配信方式で実際に mode を持つものだけに絞る (プレイヤー内の画質メニューと同じ規則)。
+     * mode を持たないプロファイルは選んでも配信設定が変わらず、選択が黙って無視される
+     */
+    get qualityProfiles(): apid.PlaybackProfile[] {
+        const container = this.selectedContainer;
+
+        return (
+            this.playbackState.options?.profiles.filter(
+                profile => profile.available === true && (container === undefined || typeof profile.modes[container] === 'number'),
+            ) ?? []
+        );
+    }
+
+    get selectedQualityLabel(): string {
+        return this.qualityProfiles.find(profile => profile.id === this.playbackState.selectedPresetId)?.label ?? '自動・おすすめ';
+    }
+
+    /**
+     * 画質一覧の開閉
+     */
+    public toggleQualityList(): void {
+        this.isQualityListOpen = this.isQualityListOpen === false;
+    }
+
+    /**
+     * 選択中の配信方式に合わせて画質の選択肢を読み込む。
+     * 端末の設定画面の既定値 (既定の画質・映像補正・HDR・モバイル回線) はここでサーバへ渡される
+     */
+    private async loadPlaybackOptions(): Promise<void> {
         const videoFileId = this.dialogState.getVideoFileId();
         if (videoFileId === null) return;
-        await this.playbackState.loadRecorded(videoFileId).catch(err => console.error(err));
-        this.qualitySheetOpen = this.qualityProfiles.length > 0;
-    }
 
-    private async maybeOpenQualitySheet(): Promise<void> {
-        const saved = localStorage.getItem('epgstation.playback.selection-made') === '1';
-        await this.openQualitySheet();
-        const preferred = this.playbackState.preference.preferredQuality;
-        if (this.qualityProfiles.length > 0 && (saved === false || this.playbackState.preference.autoPlayWithRecommendedQuality === false || !this.qualityProfiles.some(profile => profile.id === preferred))) this.qualitySheetOpen = true;
-    }
+        const generation = ++this.loadGeneration;
+        await this.playbackState.loadRecorded(videoFileId, this.selectedContainer).catch(err => console.error(err));
 
-    public confirmQualitySelection(): void {
-        localStorage.setItem('epgstation.playback.selection-made', '1');
-        this.qualitySheetOpen = false;
+        // 配信方式が続けて切り替えられた場合、古い応答は捨てる
+        if (generation !== this.loadGeneration) return;
+
+        // 「既定の画質」が明示指定されているときだけ配信設定へ反映する。
+        // 自動 (auto) のときにサーバの推奨を書き込むと、このダイアログで前回選んだ設定を毎回上書きしてしまう
+        if (this.playbackState.preference.preferredQuality !== 'auto') {
+            this.applySelectedQualityToStreamMode(this.playbackState.selectedPresetId);
+        }
     }
 
     public selectQuality(id: string): void {
         this.playbackState.selectPreset(id);
-        const index = this.qualityProfiles.findIndex(profile => profile.id === id);
-        if (index >= 0 && index < this.dialogState.streamModeItems.length) this.dialogState.selectedStreamMode = index;
+        this.applySelectedQualityToStreamMode(id);
+    }
+
+    /**
+     * 選択した画質に対応するサーバ側の mode をストリーム設定へ反映する
+     * @param id: string プリセット識別子
+     */
+    private applySelectedQualityToStreamMode(id: string): void {
+        const container = this.selectedContainer;
+        if (container === undefined) return;
+
+        const mode = this.qualityProfiles.find(profile => profile.id === id)?.modes[container];
+        if (typeof mode === 'number' && this.dialogState.streamModeItems.some(item => item.value === mode) === true) {
+            this.dialogState.selectedStreamMode = mode;
+        }
     }
 
     public beforeUnmount(): void {
@@ -92,6 +144,7 @@ class RecordedDetailSelectStreamDialog extends Vue {
 
     public updateModeItems(): void {
         this.dialogState.updateModeItems();
+        void this.loadPlaybackOptions();
 
         // 再描画
         this.isHiddenStreamMode = true;
@@ -139,7 +192,11 @@ class RecordedDetailSelectStreamDialog extends Vue {
      */
     @Watch('dialogState.isOpen', { immediate: true })
     public onChangeState(newState: boolean, oldState: boolean): void {
-        if (newState === true && oldState !== true) void this.maybeOpenQualitySheet();
+        if (newState === true && oldState !== true) {
+            // 「再生前に画質を選ぶ」設定のときだけ最初から一覧を開く
+            this.isQualityListOpen = this.playbackState.preference.autoPlayWithRecommendedQuality === false;
+            void this.loadPlaybackOptions();
+        }
         if (newState === false && oldState === true) {
             // close
             this.$nextTick(async () => {
@@ -156,3 +213,14 @@ class RecordedDetailSelectStreamDialog extends Vue {
 
 export default toNative(RecordedDetailSelectStreamDialog);
 </script>
+
+<style lang="sass" scoped>
+// 画質一覧を開くとダイアログが縦に伸びるため、狭い端末でも本文側だけスクロールさせる
+.select-stream-body
+    max-height: min(60svh, 520px)
+    overflow-y: auto
+
+.quality-list
+    max-height: 40svh
+    overflow-y: auto
+</style>

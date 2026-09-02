@@ -26,6 +26,7 @@
 - 判定結果は `ServerConfigModel` (配信形式の出し分け)、`OnAirSelectStream` (視聴ダイアログ)、`LiveMpegTsVideo` (プレイヤー)、`Settings` で共通利用。
 - 非対応時は理由付きのエラーメッセージを表示し、ネイティブ HLS へ誘導する。
 
+
 ### 3. プレイヤー上からの解像度動的切替 (M2TS-LL)
 
 - DPlayer の設定メニューに **画質 (quality) リスト**を表示し、再生を止めずに `config.yml` の `stream.live.ts.m2tsll` の各設定 (1080p / 720p / 480p など) を切り替え可能。
@@ -76,6 +77,51 @@ WebKit は fMP4 の `emsg` を metadata text track (`inBandMetadataTrackDispatch
 通知し、cue は `type = org.id3` / `info = aribb24.js` (PRIV フレームの owner) を持つ。
 aribb24.js の自動検出がこれを拾うため、in-memory HLS の字幕が Safari でも表示される
 (WebKit 26 / playwright webkit で実機確認済み)。
+
+## 画質選択 UI の入口 (2026-09)
+
+画質を選ぶ場所は 2 つだけで、それぞれ役割が違う。**入口を増やさない**。
+
+1. **配信選択ダイアログ** (`OnAirSelectStream` / `RecordedDetailSelectStreamDialog`) — 再生を始める前の選択。
+   「画質: <名前>」ボタンで `PlaybackQualityList` を**ダイアログの中にインライン展開**する。
+   **別のダイアログ / bottom sheet を重ねてはいけない** (放映中からチャンネルを選んだときにモーダルが
+   2 枚重なる不具合になっていた)。設定「再生前に画質を選ぶ」が ON のときだけ最初から展開して開く。
+2. **DPlayer の設定メニュー** (歯車) — 再生中の切替。`BaseVideo.setPlaybackProfiles()` が
+   `playback-options` の profile 一覧を DPlayer の quality へ流し込み、`setupQualitySwitch()` が
+   切替直前に url を解決する。**プレイヤーの上に独自の設定アイコンを重ねない** (歯車が 2 つ並ぶ)。
+
+- 画質からサーバの `mode` を引くときは **`PlaybackProfile.modes[<container>]`** を使う。
+  プロファイル配列の添字を `mode` に流用すると、絞り込み・並び替えが入った瞬間に別の設定で再生される。
+- 配信方式 (M2TS-LL / HLS / MP4 / WebM) を切り替えたら、その container で `playback-options` を取り直す。
+- DPlayer 側で画質が切り替わると `qualitySwitched` が親 (`VideoContainer`) へ飛ぶ。
+  親はこれを受けて自動画質の fallback を止める (ユーザーの明示的な選択を上書きしないため)。
+  **親自身が起こした切替 (自動 fallback) では飛ばさない** — 飛ばすと親が「ユーザーが選んだ」と誤認し、
+  2 回目以降の fallback が止まる。
+- **DPlayer は生成時に一度だけ設定メニューの DOM を作る**。`options.video.quality` を後から差し替えても
+  画面の一覧は古いままで、`switchQuality()` が選択状態を書き換える対象も**生成時に集めた
+  `template.qualityItem`** に固定されている。playback-options は録画ファイルの解析を伴い
+  応答まで数十秒かかることがありプレイヤー生成に間に合わないため、
+  `BaseVideo.refreshQualityMenu()` が項目を作り直して `template.qualityItem` を繋ぎ直し、
+  `markCurrentQuality()` が選択中の表示を自前で更新する。
+  **チェックアイコンの SVG は既存項目から流用する** (空の `.dplayer-toggle` にするとチェックが消える)。
+- **画質一覧には `modes[<container>]` を持つプロファイルだけを出す**。持たないもの (config に対応する
+  設定が無い Built-in カタログ由来のプロファイル) は選んでも `mode` が決まらず、選択が黙って無視される。
+- **選択肢の取得はレースを潰す**。配信方式を続けて切り替えると古い応答が後から解決して新しい選択を
+  上書きするため、ダイアログと `PlaybackOptionsState` (singleton) の両方に取得世代を持たせている。
+
+### 端末の設定画面 (設定 > 再生) の既定値
+
+| 設定項目 | クエリ | 効き方 |
+| --- | --- | --- |
+| 既定の画質 | `profile` | 指定があればそのプリセットを選ぶ (最優先) |
+| 映像補正 | `preferCorrection` | 自動選択のスコアへ加減点 |
+| HDR | `preferHdr` | 自動選択のスコアへ加減点 (素材が HDR のときだけ) |
+| モバイル回線では画質を下げる | `saveData` | 端末の回線種別が `cellular` / `slow` のときだけ加減点 |
+
+`PlaybackPolicyResolver.preferenceScore()` が計算する。**候補の絞り込みではなく加減点**にしてあるのは、
+設定に合う候補が 1 つも無い環境でも再生を止めないため。画質一覧で明示的に選んだプリセットは
+端末設定より優先される。**fallback 候補 (`fallbackScore()`) の並びも同じ向きにする** —
+常に高画質優先のままだと、通信量を抑える設定で選んだ低画質から再生に失敗したときに高画質へ戻ってしまう。
 
 ## 運用: ディスクにデータを残さない HLS 配信 (tmpfs)
 

@@ -35,6 +35,7 @@ export default abstract class BaseVideo extends Vue {
     private jikkyoKakologClient: JikkyoKakologClient | null = null;
     private jikkyoCommentQueue: JikkyoComment[] = []; // 弾幕インスタンス生成前に届いたコメント
     private isResolvingQuality: boolean = false; // 画質切替の url 解決中か
+    private isProgrammaticQualitySwitch: boolean = false; // 親から起こした画質切替か (ユーザー操作と区別する)
     private chapters: apid.VideoChapter[] = []; // 再生中ファイルのチャプター (開始位置の昇順)
     private extraHotkeyHandler: ((e: KeyboardEvent) => void) | null = null;
 
@@ -291,6 +292,8 @@ export default abstract class BaseVideo extends Vue {
             }
 
             this.isResolvingQuality = true;
+            // フラグは呼び出し元の同期処理の間しか立たないため、ここで捕まえて非同期処理へ持ち込む
+            const isProgrammatic = this.isProgrammaticQualitySwitch;
             dp.notice(`画質を ${quality[mode].name} に切り替えています…`, -1);
             const video = dp.video as HTMLVideoElement;
             pendingSnapshot = {
@@ -327,6 +330,14 @@ export default abstract class BaseVideo extends Vue {
                     option.onSwitched(serverMode);
                 }
 
+                // プレイヤーの設定メニューから切り替えた場合だけ親へ知らせる
+                // (親が持つ自動画質の fallback がユーザーの選択を上書きしないようにするため)。
+                // 親が起こした切替 (自動 fallback) で通知すると、親が「ユーザーが選んだ」と誤認して
+                // 2 回目以降の fallback が止まる
+                if (isProgrammatic === false) {
+                    this.$emit('qualitySwitched', qualityItem.presetId);
+                }
+
                 if (option.resetCurrentTime === true) {
                     // ストリームを再生位置から作り直しているため切替前の再生位置への seek を抑止し、
                     // 先頭 (= 切替前の再生位置) から再生させる
@@ -338,6 +349,11 @@ export default abstract class BaseVideo extends Vue {
                 } else {
                     originalSwitchQuality(mode);
                 }
+
+                // 選択中の表示は DPlayer 任せにしない。
+                // DPlayer は生成時に集めた要素だけを見て書き換えるため、
+                // playback-options が間に合わず作り直した項目では選択状態が更新されない
+                this.markCurrentQuality(mode);
             })();
         };
     }
@@ -350,7 +366,15 @@ export default abstract class BaseVideo extends Vue {
         if (this.dp === null) return;
         const quality = ((this.dp as any).options?.video?.quality ?? []) as PlaybackQuality[];
         const index = quality.findIndex(item => item.presetId === presetId);
-        if (index >= 0) (this.dp as any).switchQuality(index);
+        if (index < 0) return;
+
+        // 親から起こした切替は「ユーザーの選択」ではないので通知しない
+        this.isProgrammaticQualitySwitch = true;
+        try {
+            (this.dp as any).switchQuality(index);
+        } finally {
+            this.isProgrammaticQualitySwitch = false;
+        }
     }
 
     /**
@@ -380,6 +404,86 @@ export default abstract class BaseVideo extends Vue {
             dp.options.video.defaultQuality = selected;
             dp.qualityIndex = selected;
         }
+        this.refreshQualityMenu();
+    }
+
+    /**
+     * 設定 > 画質の「選択中」表示を index に合わせる
+     * @param index: number `options.video.quality` の添字
+     */
+    private markCurrentQuality(index: number): void {
+        if (this.dp === null) return;
+
+        const dp = this.dp as any;
+        const container = dp.container as HTMLElement | undefined;
+        if (typeof container === 'undefined') return;
+
+        const items = Array.from(container.querySelectorAll('.dplayer-setting-quality-item'));
+        for (const item of items) {
+            item.classList.toggle('dplayer-setting-quality-current', item.getAttribute('data-index') === `${index}`);
+        }
+
+        const quality = (dp.options?.video?.quality ?? []) as PlaybackQuality[];
+        const currentLabel = container.querySelector('.dplayer-setting-quality .dplayer-label-value');
+        if (currentLabel !== null && typeof quality[index] !== 'undefined') currentLabel.textContent = quality[index].name;
+    }
+
+    /**
+     * DPlayer の設定 > 画質パネルを `options.video.quality` から作り直す
+     *
+     * DPlayer は**生成時に一度だけ**設定メニューの DOM を組み立てるため、
+     * `options.video.quality` を後から差し替えても画面の一覧は古いまま残る。
+     * playback-options API は録画ファイルの解析を伴い応答まで数十秒かかることがあり、
+     * プレイヤー生成に間に合わないので、届いた時点でここから作り直す
+     */
+    private refreshQualityMenu(): void {
+        if (this.dp === null) return;
+
+        const dp = this.dp as any;
+        const container = dp.container as HTMLElement | undefined;
+        const panel = container?.querySelector('.dplayer-setting-quality-panel');
+        if (typeof container === 'undefined' || panel === null || typeof panel === 'undefined') return;
+
+        const quality = (dp.options?.video?.quality ?? []) as PlaybackQuality[];
+        const currentIndex = typeof dp.qualityIndex === 'number' ? dp.qualityIndex : 0;
+
+        // ヘッダー (戻るボタン) は DPlayer 側のハンドラが付いているため残し、項目だけ作り直す。
+        // 選択中を示すチェックアイコンは DPlayer のスタイルに合わせたいので既存の項目から借りる
+        const existing = Array.from(panel.querySelectorAll('.dplayer-setting-quality-item'));
+        const toggleTemplate = existing[0]?.querySelector('.dplayer-toggle')?.innerHTML ?? '';
+        for (const item of existing) {
+            item.remove();
+        }
+
+        quality.forEach((item, index) => {
+            const element = document.createElement('div');
+            element.className = `dplayer-setting-quality-item${index === currentIndex ? ' dplayer-setting-quality-current' : ''}`;
+            element.dataset.index = `${index}`;
+            const toggle = document.createElement('div');
+            toggle.className = 'dplayer-toggle';
+            toggle.innerHTML = toggleTemplate;
+            const label = document.createElement('span');
+            label.className = 'dplayer-label';
+            label.textContent = item.name;
+            element.appendChild(toggle);
+            element.appendChild(label);
+            // 差し替えた項目には DPlayer のハンドラが付かないため自前で繋ぐ。
+            // switchQuality は setupQualitySwitch でラップ済みのものを実行時に引く
+            element.addEventListener('click', () => {
+                dp.switchQuality(index);
+            });
+            panel.appendChild(element);
+        });
+
+        // DPlayer の switchQuality は「生成時に集めた」 template.qualityItem を回して
+        // 選択中の項目と表示中の画質名を書き換える。差し替えた要素へ繋ぎ直さないと
+        // 切替自体は成功しても選択状態とラベルが古いまま残る
+        if (typeof dp.template !== 'undefined') {
+            dp.template.qualityItem = Array.from(panel.querySelectorAll('.dplayer-setting-quality-item'));
+        }
+
+        const currentLabel = container.querySelector('.dplayer-setting-quality .dplayer-label-value');
+        if (currentLabel !== null) currentLabel.textContent = quality[currentIndex]?.name ?? '';
     }
 
     /**

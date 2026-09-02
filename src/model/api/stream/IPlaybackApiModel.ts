@@ -1,5 +1,6 @@
 import * as apid from '../../../../api';
 import { ClientCapabilities } from '../../stream/capability/IClientCapabilities';
+import { PlaybackPreference } from '../../stream/resolver/IPlaybackPolicyResolver';
 
 export interface PlaybackOptions {
     source: apid.SourceCapabilities;
@@ -22,11 +23,13 @@ export default interface IPlaybackApiModel {
         client: ClientCapabilities,
         requestedPresetId?: string,
         container?: apid.PlaybackContainer,
+        preference?: PlaybackPreference,
     ): Promise<PlaybackOptions>;
     getRecordedPlaybackOptions(
         videoFileId: apid.VideoFileId,
         client: ClientCapabilities,
         requestedPresetId?: string,
         container?: apid.PlaybackContainer,
+        preference?: PlaybackPreference,
     ): Promise<PlaybackOptions>;
 }

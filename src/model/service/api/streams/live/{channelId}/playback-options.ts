@@ -2,7 +2,7 @@ import { Operation } from 'express-openapi';
 import IPlaybackApiModel from '../../../../../api/stream/IPlaybackApiModel';
 import container from '../../../../../ModelContainer';
 import * as api from '../../../../api';
-import { parseClientCapabilities } from '../../../../../api/stream/PlaybackCapability';
+import { parseClientCapabilities, parsePlaybackPreference } from '../../../../../api/stream/PlaybackCapability';
 import * as apid from '../../../../../../../api';
 
 export const get: Operation = async (req, res) => {
@@ -18,6 +18,7 @@ export const get: Operation = async (req, res) => {
                 parseClientCapabilities(query),
                 query.profile as string | undefined,
                 query.container as apid.PlaybackContainer | undefined,
+                parsePlaybackPreference(query),
             ),
         );
     } catch (err: unknown) {
@@ -40,6 +41,9 @@ get.apiDoc = {
         { $ref: '#/components/parameters/PlaybackCapabilityHlg' },
         { $ref: '#/components/parameters/PlaybackProfile' },
         { $ref: '#/components/parameters/PlaybackContainer' },
+        { $ref: '#/components/parameters/PlaybackPreferHdr' },
+        { $ref: '#/components/parameters/PlaybackPreferCorrection' },
+        { $ref: '#/components/parameters/PlaybackSaveData' },
     ],
     responses: {
         200: {

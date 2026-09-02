@@ -13,6 +13,30 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
+## 2026-09-03
+
+- **配信選択ダイアログのポップアップ二重表示をやめ、視聴画面の設定アイコン重複を解消した**: 放映中一覧から放送局を選ぶと、配信選択ダイアログ (`OnAirSelectStream`) の上にさらに画質選択シート (`PlaybackQualitySheet`) が自動で開き、モーダルが 2 枚重なっていた (録画詳細の `RecordedDetailSelectStreamDialog` も同じ実装)。原因は `maybeOpenQualitySheet()` がダイアログを開いた契機で無条件にシートも開いていたこと。
+
+    - **画質選択はダイアログの中でインライン展開する**。「画質: <名前>」ボタンで `PlaybackQualityList` を開閉し、オーバーレイは常に 1 枚に保つ。設定「再生前に画質を選ぶ」が ON のときだけ最初から展開した状態で開く。画質一覧を開くとダイアログが縦に伸びるため、本文側 (`.select-stream-body`) と一覧 (`.quality-list`) にそれぞれ `max-height` + `overflow-y: auto` を与えて狭い端末でも操作ボタンが画面外へ出ないようにした。
+    - **`epgstation.playback.selection-made` の localStorage フラグは廃止**した (「一度でも選んだか」でシートの自動表示を切り替える必要が無くなったため)。
+    - **画質 → サーバ mode の対応付けを修正した**。従来は「表示中のプロファイル配列の添字」をそのまま `mode` として使っており、絞り込みや並び替えが入ると別の設定で再生していた。`PlaybackProfile.modes[<container>]` から引き直す。配信方式 (M2TS-LL / HLS / MP4 / WebM) を切り替えたときは、そのコンテナで `playback-options` を取り直す。
+    - **視聴画面 (ライブ・録画) の右上にあった設定アイコン (`PlaybackOptionsMenu`) を削除した**。DPlayer の設定メニューに画質切替が統合済み (`BaseVideo.setPlaybackProfiles()` / `switchQuality()`) で、歯車が 2 つ並んでいた。メニュー内の「映像補正」「HDR」は `update:correction` / `update:hdrMode` を誰も受けておらず動作していなかった。設定は端末の設定画面 (設定 > 再生) に一本化する。
+    - 使われなくなった `PlaybackOptionsMenu.vue` / `PlaybackQualitySheet.vue` は削除した (`PlaybackQualityList.vue` / `PlaybackQualityItem.vue` は残り、ダイアログ内のインライン一覧が使う)。
+    - **DPlayer の設定メニューから画質を切り替えたら `qualitySwitched` を親へ通知する**ようにした。これまで `VideoContainer` は「自動画質のまま」と認識し続けるため、再生エラー時の自動 fallback がユーザーの明示的な選択を上書きしていた。**ただし親が起こした切替 (自動 fallback 自身) では通知しない** — 通知すると親が「ユーザーが選んだ」と誤認し、2 回目以降の fallback が止まる。`switchQuality()` が立てるフラグを、非同期の url 解決へ入る前に捕まえて判定する。
+    - **DPlayer の画質メニューを後から作り直せるようにした** (`BaseVideo.refreshQualityMenu()` / `markCurrentQuality()`)。DPlayer は**生成時に一度だけ**設定メニューの DOM を組み立て、`switchQuality()` も**生成時に集めた `template.qualityItem`** しか見ない。playback-options は録画ファイルの解析を伴い応答まで数十秒かかることがあってプレイヤー生成に間に合わず、実測では旧 config 名 (`1080p(低遅延)`) のまま残り、切替後の選択状態も更新されなかった。届いた時点で項目を作り直し、`template.qualityItem` を繋ぎ直し、選択中の表示は自前で書き換える (チェックアイコンは既存項目の SVG を流用してスタイルを保つ)。
+    - **画質一覧はその配信方式で `modes[<container>]` を持つプロファイルだけに絞る** (プレイヤー内の画質メニューと同じ規則)。mode を持たないプロファイル (config に対応する設定が無い Built-in カタログ由来のもの) は選んでも配信設定が変わらず、選択が黙って無視されていた。
+    - **「既定の画質」が `auto` のときは配信設定を書き換えない**。開くたびにサーバの推奨で上書きすると、このダイアログで前回選んだ設定が毎回失われる。
+    - **画質選択肢の取得はレースを潰す**。配信方式を続けて切り替えると古い応答が後から解決して新しい選択を上書きするため、ダイアログ側と `PlaybackOptionsState` (singleton) の両方に取得世代を持たせ、古い応答を捨てる。
+
+- **端末の設定画面の再生設定 (映像補正 / HDR / モバイル回線) を実際に効かせるようにした**: 設定 > 再生の「既定の画質」だけが `playback-options` API へ渡っており、「映像補正」「HDR」「モバイル回線では画質を下げる」は保存されるだけで再生に影響していなかった。
+
+    - `GET /streams/live/{channelId}/playback-options` と `GET /videos/{videoFileId}/playback-options` に `preferHdr` / `preferCorrection` / `saveData` を追加し (`api.yml`)、`parsePlaybackPreference()` で読み取って `PlaybackPolicyResolver.resolve()` の第 6 引数 `PlaybackPreference` として渡す。
+    - **絞り込みではなく加減点**にした (`PlaybackPolicyResolver.preferenceScore()`)。設定に合う候補が 1 つも無い環境でも再生できる状態を保つため。HDR は素材が HDR のときだけ働き、`saveData` は端末の回線種別が `cellular` / `slow` のときだけ働く (回線種別が取れない端末では効かせない)。
+    - **明示的なプリセット指定 (画質一覧での選択) は従来どおり最優先**で、端末設定はこれを上書きしない。
+    - **fallback 候補の並びにも同じ設定を効かせる**。ここを常に高画質優先のままにすると、通信量を抑える設定で選んだ低画質から再生に失敗したときに高画質へ戻ってしまう。
+    - クライアント側は `PlaybackOptionsState.getPreferenceQuery()` でクエリを組み立て、`getInitialPresetId()` が「既定の画質」がその入力で使えるならそれを選択済みとして扱う。
+    - テストは `test/ut/playback-policy-resolver.test.js` に 5 件追加。
+
 ## 2026-09-01
 
 - **ストリーミング刷新 Phase 16 で DPlayer と新画質 UI の対応を統一した**: `playbackProfiles` の添字を画質切替へ渡さず、`StreamPresetRegistry` の container 別 mode map を Playback API から返して preset id で解決するようにした。DPlayer の quality も同じ playback profile から作り、品質バケット名・順序・container ごとの絞り込みを新 UI と一致させた。旧 config 環境では従来の `StreamQualityUtil` quality を維持する。実装は `PlaybackApiModel` / `BaseVideo` / 各 video component、テストは `playback-api-model.test.js`。

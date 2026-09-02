@@ -1,16 +1,6 @@
 <template>
     <div class="video-container" ref="container">
         <div class="video-content" v-bind:class="{ 'is-ipad': isiPad === true }">
-            <PlaybackOptionsMenu
-                v-if="playbackOptions !== null && playbackProfiles.length > 0"
-                class="playback-options"
-                :profiles="playbackProfiles"
-                :selected-id="selectedPlaybackId"
-                :show-hdr="playbackOptions.source.hdr !== 'sdr' && clientHdr"
-                :correction="playbackPreference.videoCorrection"
-                :hdr-mode="playbackPreference.hdrMode"
-                @select="selectPlaybackProfile"
-            ></PlaybackOptionsMenu>
             <div v-if="isLoading === true" class="loading">
                 <v-progress-circular :size="50" color="primary" indeterminate></v-progress-circular>
             </div>
@@ -44,6 +34,7 @@
                     v-on:canplay="onCanplay"
                     v-on:jikkyoComment="onJikkyoComment"
                     v-on:error="onVideoError"
+                    v-on:qualitySwitched="onQualitySwitched"
                 ></LiveHLSVideo>
                 <RecordedStreamingVideo
                     v-if="videoParam.type == 'RecordedStreaming'"
@@ -64,6 +55,7 @@
                     v-on:pause="savePlaybackPosition"
                     v-on:ended="onEnded"
                     v-on:error="onVideoError"
+                    v-on:qualitySwitched="onQualitySwitched"
                 ></RecordedStreamingVideo>
                 <RecordedHLSStreamingVideo
                     v-if="videoParam.type == 'RecordedHLS'"
@@ -83,6 +75,7 @@
                     v-on:pause="savePlaybackPosition"
                     v-on:ended="onEnded"
                     v-on:error="onVideoError"
+                    v-on:qualitySwitched="onQualitySwitched"
                 ></RecordedHLSStreamingVideo>
                 <LiveMpegTsVideo
                     v-if="videoParam.type == 'LiveMpegTs'"
@@ -97,6 +90,7 @@
                     v-on:canplay="onCanplay"
                     v-on:jikkyoComment="onJikkyoComment"
                     v-on:error="onVideoError"
+                    v-on:qualitySwitched="onQualitySwitched"
                 ></LiveMpegTsVideo>
             </div>
         </div>
@@ -118,10 +112,8 @@ import DPlayer from 'dplayer';
 import { DataBroadcastingConnectParam } from '@/util/DataBroadcastingManager';
 import { JikkyoComment } from '@/util/JikkyoCommentClient';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
-import PlaybackOptionsMenu from '@/components/video/quality/PlaybackOptionsMenu.vue';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
-import { getClientCapabilities, ClientCapabilities } from '@/util/ClientCapabilityUtil';
 import * as apid from '../../../../api';
 
 @Component({
@@ -131,7 +123,6 @@ import * as apid from '../../../../api';
         RecordedStreamingVideo,
         RecordedHLSStreamingVideo,
         LiveMpegTsVideo,
-        PlaybackOptionsMenu,
     },
 })
 class VideoContainer extends Vue {
@@ -142,7 +133,6 @@ class VideoContainer extends Vue {
     public playbackOptions: apid.PlaybackOptions | null = null;
     public playbackProfiles: apid.PlaybackProfile[] = [];
     public selectedPlaybackId = 'auto';
-    public clientHdr = false;
     private playbackOptionsState: IPlaybackOptionsState = container.get<IPlaybackOptionsState>('IPlaybackOptionsState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private fallbackAttempts = 0;
@@ -151,9 +141,6 @@ class VideoContainer extends Vue {
     private pendingPlaybackError: unknown = null;
     private autoPlayback = false;
 
-    get playbackPreference() {
-        return this.playbackOptionsState.preference;
-    }
     public isiPad: boolean = UaUtil.isiPadOS();
     private videoApi = container.get<IVideoApiModel>('IVideoApiModel');
     private lastSavedAt = 0;
@@ -196,8 +183,6 @@ class VideoContainer extends Vue {
     private async loadPlaybackOptions(): Promise<void> {
         try {
             const param = this.videoParam;
-            const capabilities: ClientCapabilities = await getClientCapabilities();
-            this.clientHdr = capabilities.hdr;
             if (param.type === 'LiveHLS' || param.type === 'LiveMpegTs') {
                 await this.playbackOptionsState.loadLive(param.channelId, this.getPlaybackContainer() ?? undefined);
             } else if ('videoFileId' in param && typeof param.videoFileId === 'number') {
@@ -223,11 +208,17 @@ class VideoContainer extends Vue {
         }
     }
 
-    public selectPlaybackProfile(id: string): void {
+    /**
+     * プレイヤー (DPlayer) の設定メニューから画質が切り替えられたときに呼ばれる
+     * @param id: string プリセット識別子
+     */
+    public onQualitySwitched(id: string): void {
         this.playbackOptionsState.selectPreset(id);
         this.selectedPlaybackId = id;
-        this.autoPlayback = id === 'auto';
-        (this.$refs.video as InstanceType<typeof BaseVideo> | undefined)?.switchQuality(id);
+        // 明示的に選ばれた画質を自動 fallback で上書きしない
+        this.autoPlayback = false;
+        this.fallbackTried.clear();
+        this.fallbackAttempts = 0;
     }
 
     /**
@@ -536,12 +527,6 @@ export default toNative(VideoContainer);
         left: 0
         width: 100%
         height: 100%
-
-        .playback-options
-            position: absolute
-            top: 8px
-            right: 8px
-            z-index: 3
 
     .loading
         z-index: 2
