@@ -133,6 +133,10 @@ npm run test:ci        # ut + ita + itb
 - **`v-pagination` は折り返さない**。`total-visible` が大きいまま `show-first-last-page` を付けると狭い端末で前後ページのボタンが画面外に出る。`$vuetify.display.smAndDown` で表示数を減らす (`SeriesPending.vue` が例)。共通の `Pagination.vue` は 500px 以下で `MobilePagination` に切り替わるので、そちらを使えるならそれで良い
 - **一覧の表は列を落とす**。`RecordedTableItems.vue` / `ReservesTableItems.vue` / `RuleTableItems.vue` が `isMobile` で放送局・内容の列を隠し、代わりにタイトル下へ小さく出している。列を足すときも同じ出し分けを踏襲する
 - **背の高いダイアログは `:fullscreen="isMobile === true"`** (`SeriesAnalyzeDialog.vue` が例)
+- **視聴画面のレイアウトは幅ではなく向きで切り替える**。縦積みにするのは縦持ち (`orientation: portrait`) の 1024px 以下だけで、**横持ちは左右分割のまま**にする (横持ちで縦積みにすると映像だけで画面が埋まり、パネルの高さが 0 になってタブごと画面外へ出る)。狭い縦持ち (720px 以下) では左のアイコンナビ (`WatchSideBar`) とパネル見出しを畳み、`.main` / `.video-area` を `flex: 0 0 auto` にして余りをパネルへ渡す (`flex: 1 1 auto` のままだとタブの中身次第で映像が伸縮する)。画面全体スクロールにはせず、パネル本文の中だけをスクロールさせる
+- **映像を小さくするときは幅ではなく枠の高さを下げる**。16:9 を保ったまま幅を詰めると 320px 端末で映像が 240px ほどになり、**DPlayer のコントロールが重なって押せなくなる**。幅は保ったまま `height` を与えて `::before` の 16:9 を無効にし、映像は枠の中で letterbox させる (`WatchLayout` の `.video-area.is-compact`)
+- **`.top > :first-child` のような位置指定でレイアウトを組まない**。視聴画面の上部バーは `:first-child` を伸ばしていたため、戻るボタンを先頭へ足した時点で伸びる相手が入れ替わり、バーが横へ伸びて右のボタンが画面外へ出た。伸ばす相手はクラス名で名指しする。加えて **`WatchTopBar` のような「伸縮する側」に `flex-shrink: 0` を付けない** (親から `min-width: 0` を当てても縮まない)
+- **データ放送の検証は Chromium で行う**。WebKit では mpegts.js が動かず BML が起動しないため、リモコンを含む実際のレイアウトを確認できない。`chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] })` を使い、**このサーバの Mirakurun で実際に受信できる放送局**を選ぶ (受信できない局はストリーム API が 500 を返し、映像もリモコンも出ない)
 - **確認は実測でやる**。`playwright` の WebKit (iOS Safari と同じエンジン) を `devices['iPhone SE']` (320x568) / `devices['iPhone 14 Pro']` (393x660) / `devices['iPad Mini']` で開き、**操作対象のボタンが `boundingBox()` でビューポート内に収まるか**と**実際に `click()` できるか**を見る。見た目のスクリーンショットだけでは「画面外だが描画はされている」を見逃す
 
 ### ストリーミング・データ放送
@@ -147,6 +151,9 @@ npm run test:ci        # ut + ita + itb
 - **rigaya 系エンコーダで録画ファイルを直接読むときは `--avsync forcecfr --fps 30000/1001` が必須**。ファイル先頭のタイムスタンプからフレームレートを推定するため録画 TS では推定を外し、映像だけが遅れて音ズレする (実測 60 秒で 7.2 秒)。パイプ入力 (ライブ・録画中) は対象外
 - **HEVC の配信は fMP4 + `-tag:v hvc1` が必須**。iOS / Safari は TS セグメントの HEVC を再生できず、`hev1` タグでも映像が出ない。rigaya 系 (QSVEncC 等) はエンコーダ側でタグ指定できないため後段 ffmpeg の remux で付ける。プロファイルは Main・8bit
 - **DPlayer に `type: 'normal'` を渡すと ARIB 字幕が出ない**。Safari のネイティブ HLS でも `type: 'hls'` のままにする
+- **表示ラベルの引き当てキーは `PlaybackProfile.role`** (`auto` / `original` / `2160p-high` / `1080p-high` / `1080p` / `720p` / `data-saver`)。`profile.id` は `live-m2tsll-1080p-avc` のような実プリセット id なので、id で辞書を引くと `auto` 以外は必ず外れる (実際に一言説明とバッジが出ていなかった)。`role` はサーバが `PlaybackApiModel.builtinRole()` で決めて API に載せる。
+- **「おまかせ」プリセットを返すのはライブだけ**で、録画の配信では `profiles` に `auto` が入らない。`PlaybackOptionsState.getInitialPresetId()` は `auto` が無ければ `recommended.resolvedId` を初期選択にする (`auto` のままだと、一覧のどれも選択されていないのにボタンだけ「おまかせ」と出る)。
+- **画質の表示名・一言説明・詳細・バッジは `client/src/util/PlaybackLabelUtil.ts` の 1 か所で決まる**。配信選択ダイアログ (`PlaybackQualityList` / `PlaybackQualityItem`) と DPlayer の設定メニュー (`BaseVideo.setPlaybackProfiles()`) の両方がここを通すため、新しい画質選択 UI を足すときもここを呼ぶ (別のラベル生成ロジックを作らない)
 - **BML ブラウザは映像要素を自分の中へ物理的に移動する**。`invisible` の切り替えと破棄時に元へ戻す処理を落とさない
 - **データ放送の WebSocket は socket.io と同じサーバの `upgrade` に相乗りする**。パスが `<subDirectory>/api/dataBroadcasting/ws` 以外の socket には触らない (触ると socket.io のハンドシェイクが壊れる)
 

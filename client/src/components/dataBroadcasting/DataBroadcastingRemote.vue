@@ -245,4 +245,11 @@ export default toNative(DataBroadcastingRemote);
 @media (max-width: 400px)
     .data-broadcasting-remote
         max-width: 100%
+
+// 視聴画面ではリモコンが映像の下に積まれる。狭い端末で開くと 450px ほどになり、
+// 映像を画面外へ押し出してしまうため、リモコンの中身だけをスクロールさせる
+@media screen and (max-width: 720px) and (orientation: portrait)
+    .data-broadcasting-remote :deep(.v-expansion-panel-text__wrapper)
+        max-height: 30svh
+        overflow-y: auto
 </style>

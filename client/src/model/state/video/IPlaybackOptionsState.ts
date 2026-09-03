@@ -6,6 +6,8 @@ export type PlaybackPreference = {
     hdrMode: string;
     autoPlayWithRecommendedQuality: boolean;
     mobileDataPreference: boolean;
+    // 画質選択一覧で技術的な詳細 (mode 番号など) まで表示するか。全画面で共通の設定として永続化する
+    showQualityDetail: boolean;
 };
 
 export default interface IPlaybackOptionsState {

@@ -149,6 +149,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                     role,
                     profile: {
                         id: preset.id,
+                        role,
                         label: builtin && builtinPreset !== undefined ? builtinPreset.name : preset.name,
                         detail:
                             preset.id === 'auto'

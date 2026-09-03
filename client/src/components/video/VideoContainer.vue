@@ -275,6 +275,7 @@ class VideoContainer extends Vue {
             this.playbackProfiles,
             container,
             this.selectedPlaybackId,
+            this.playbackOptions?.source,
         );
     }
 

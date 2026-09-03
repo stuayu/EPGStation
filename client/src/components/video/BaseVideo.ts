@@ -13,6 +13,7 @@ import { DataBroadcastingConnectParam } from '@/util/DataBroadcastingManager';
 import { resolveDataBroadcastingTime } from '../../../../src/model/service/dataBroadcasting/DataBroadcastingTime';
 import DPlayerEnhancer from '@/util/DPlayerEnhancer';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
+import { getPlaybackLabel } from '@/util/PlaybackLabelUtil';
 import * as apid from '../../../../api';
 
 type QualityPlaybackSnapshot = {
@@ -379,10 +380,13 @@ export default abstract class BaseVideo extends Vue {
 
     /**
      * playback-options API のプリセットを DPlayer の quality へ反映する。
+     * 表示名はダイアログ側の画質一覧 (PlaybackQualityList) と同じ PlaybackLabelUtil で生成し、表記を揃える
      * @param profiles API が返した再生プロファイル
      * @param container 実際の再生コンテナ
+     * @param selectedId 初期選択するプリセット識別子
+     * @param source 元映像の特性 (無ければ HDR バッジ等は付かないが名前生成に問題は無い)
      */
-    public setPlaybackProfiles(profiles: apid.PlaybackProfile[], container: PlaybackContainer, selectedId = 'auto'): void {
+    public setPlaybackProfiles(profiles: apid.PlaybackProfile[], container: PlaybackContainer, selectedId = 'auto', source?: apid.SourceCapabilities): void {
         if (this.dp === null || profiles.length === 0) return;
         const dp = this.dp as any;
         const current = dp.video?.src ?? dp.options?.video?.url ?? '';
@@ -391,7 +395,7 @@ export default abstract class BaseVideo extends Vue {
         const qualities: PlaybackQuality[] = profiles
             .filter(profile => typeof profile.modes?.[container] === 'number')
             .map(profile => ({
-                name: profile.label,
+                name: getPlaybackLabel(profile, source).name,
                 url: current,
                 type,
                 presetId: profile.id,

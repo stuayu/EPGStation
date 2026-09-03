@@ -66,6 +66,8 @@ export interface ISettingValue {
     isOpenWatchSidePanel: boolean;
     // 視聴画面の右パネルで選択しているタブ
     watchSidePanelTab: WatchSidePanelTab;
+    // 狭い端末 (映像とパネルが縦に並ぶ幅) で映像を小さくしてパネルを広げるか (既定 OFF)
+    isWatchVideoCompact: boolean;
     // 視聴画面のチャンネル一覧でピン留めしている放送局 (ChannelId の配列)
     pinnedChannelIds: number[];
     // 視聴画面の SNS 投稿パネルを有効にするか (既定 有効。連携アカウントが 0 件の場合はタブ自体を出さない)

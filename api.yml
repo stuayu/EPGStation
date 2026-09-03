@@ -2900,9 +2900,13 @@ components:
                     type: array
                     items:
                         type: object
-                        required: [id, label, detail, available, builtin, legacy, modes]
+                        required: [id, role, label, detail, available, builtin, legacy, modes]
                         properties:
                             id: { type: string }
+                            role:
+                                type: string
+                                nullable: true
+                                description: 画質の役割 (auto / original / 2160p-high / 1080p-high / 1080p / 720p / data-saver)。表示ラベルの引き当てに使う。該当しないプリセットは null
                             label: { type: string }
                             detail: { type: string }
                             available: { type: boolean, enum: [true] }
