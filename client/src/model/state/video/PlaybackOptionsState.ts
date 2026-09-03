@@ -5,7 +5,14 @@ import { getClientCapabilities } from '@/util/ClientCapabilityUtil';
 import IPlaybackOptionsState, { PlaybackPreference } from './IPlaybackOptionsState';
 
 const KEY = 'epgstation.playback.preferences';
-const DEFAULT: PlaybackPreference = { preferredQuality: 'auto', videoCorrection: 'auto', hdrMode: 'auto', autoPlayWithRecommendedQuality: true, mobileDataPreference: true };
+const DEFAULT: PlaybackPreference = {
+    preferredQuality: 'auto',
+    videoCorrection: 'auto',
+    hdrMode: 'auto',
+    autoPlayWithRecommendedQuality: true,
+    mobileDataPreference: true,
+    showQualityDetail: false,
+};
 
 @injectable()
 export default class PlaybackOptionsState implements IPlaybackOptionsState {
@@ -78,7 +85,13 @@ export default class PlaybackOptionsState implements IPlaybackOptionsState {
             return preferred;
         }
 
-        return this.options?.recommended.id ?? 'auto';
+        // 「おまかせ」を選択肢として持たない場面 (録画の配信) では解決済みプリセットを選択済みにする。
+        // 'auto' のままにすると、一覧のどれも選択されていないのにボタンだけ「おまかせ」と出る
+        if (this.options?.profiles.some(profile => (profile.role ?? profile.id) === 'auto') === true) {
+            return this.options.recommended.id;
+        }
+
+        return this.options?.recommended.resolvedId ?? 'auto';
     }
 
     public selectPreset(id: string): void {

@@ -10,15 +10,24 @@
                     </v-btn>
                     <v-expand-transition>
                         <v-sheet v-show="isQualityListOpen === true" class="quality-list mb-2" rounded border>
-                            <PlaybackQualityList :profiles="qualityProfiles" :selected-id="playbackState.selectedPresetId" @select="selectQuality"></PlaybackQualityList>
+                            <PlaybackQualityList
+                                :profiles="qualityProfiles"
+                                :selected-id="playbackState.selectedPresetId"
+                                :source="playbackState.options?.source"
+                                :recommended="playbackState.options?.recommended"
+                                :stream-container="selectedContainer"
+                                @select="selectQuality"
+                            ></PlaybackQualityList>
                         </v-sheet>
                     </v-expand-transition>
-                    <div class="d-flex">
+                    <div class="d-flex flex-wrap">
                         <v-select
                             :items="dialogState.streamTypeItems"
                             v-model="dialogState.selectedStreamType"
                             v-on:update:model-value="updateModeItems"
                             style="max-width: 120px"
+                            hint="配信方式を変えると選べる画質も変わります"
+                            persistent-hint
                         ></v-select>
                         <v-select
                             v-if="isHiddenStreamMode === false"
@@ -46,6 +55,7 @@ import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 import PlaybackQualityList from '@/components/video/quality/PlaybackQualityList.vue';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
+import { getPlaybackShortLabel } from '@/util/PlaybackLabelUtil';
 
 // 配信方式ごとの playback-options 上のコンテナ名
 const STREAM_TYPE_CONTAINERS: { [key in RecordedStreamType]: Exclude<apid.PlaybackContainer, 'normal'> } = {
@@ -88,7 +98,8 @@ class RecordedDetailSelectStreamDialog extends Vue {
     }
 
     get selectedQualityLabel(): string {
-        return this.qualityProfiles.find(profile => profile.id === this.playbackState.selectedPresetId)?.label ?? '自動・おすすめ';
+        const profile = this.qualityProfiles.find(profile => profile.id === this.playbackState.selectedPresetId);
+        return profile === undefined ? 'おまかせ (自動)' : getPlaybackShortLabel(profile, this.playbackState.options?.recommended);
     }
 
     /**
@@ -140,6 +151,29 @@ class RecordedDetailSelectStreamDialog extends Vue {
 
     public beforeUnmount(): void {
         this.dialogState.close();
+    }
+
+    /**
+     * 配信設定セレクタを手で変更したときに、画質の選択表示を追随させる。
+     * 画質選択由来の変更 (applySelectedQualityToStreamMode) は既に選択済みの画質と一致する mode を書き戻すだけなので、
+     * ここで selectPreset を呼び直しても実質的な変化は起きず、逆流ループにはならない
+     */
+    @Watch('dialogState.selectedStreamMode')
+    public onChangeSelectedStreamMode(mode: number | undefined): void {
+        if (typeof mode !== 'number') return;
+        const container = this.selectedContainer;
+        if (container === undefined) return;
+
+        // 既に選択中の画質がその mode なら触らない (画質選択由来の書き戻しで表示が動かないようにする)
+        const current = this.qualityProfiles.find(profile => profile.id === this.playbackState.selectedPresetId);
+        if (current !== undefined && current.modes[container] === mode) return;
+
+        // 「おまかせ」は解決先プリセットと同じ mode を持つため、先に具体的なプリセットを探す。
+        // ここで find の先頭一致に任せると、手で選んだ画質が毎回「おまかせ」へ巻き戻る
+        const matched =
+            this.qualityProfiles.find(profile => profile.id !== 'auto' && profile.modes[container] === mode) ??
+            this.qualityProfiles.find(profile => profile.modes[container] === mode);
+        if (matched !== undefined) this.playbackState.selectPreset(matched.id);
     }
 
     public updateModeItems(): void {

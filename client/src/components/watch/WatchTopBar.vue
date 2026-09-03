@@ -94,7 +94,10 @@ export default toNative(WatchTopBar);
     display: flex
     align-items: center
     gap: 12px
-    flex-shrink: 0
+    // 左右にボタンが並ぶ行の中で伸縮する側。flex-shrink: 0 だと番組名の分だけ横へ伸び、
+    // 戻るボタンや映像サイズのボタンを画面外へ押し出す
+    flex: 1 1 auto
+    min-width: 0
     height: 48px
     padding: 0 12px
     overflow: hidden

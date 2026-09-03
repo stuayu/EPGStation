@@ -127,6 +127,15 @@ class WatchPanelChannels extends Vue {
     }
 
     public async created(): Promise<void> {
+        // ピン留めが 1 件も無いと「ピン留めした放送局がありません」だけの画面で開いてしまうため、
+        // その場合は最初の放送波・地域タブを初期選択にする (ピン留めタブ自体は残す)
+        if (this.pinnedChannelIds.length === 0) {
+            const firstTab = this.tabs.find(tab => tab.id !== this.pinnedTabId);
+            if (typeof firstTab !== 'undefined') {
+                this.selectedTab = firstTab.id;
+            }
+        }
+
         // socket.io イベント
         this.socketIoModel.onUpdateState(this.onUpdateOnAirProgram);
         this.socketIoModel.onUpdateOnAirProgram(this.onUpdateOnAirProgram);
@@ -375,4 +384,31 @@ export default toNative(WatchPanelChannels);
     .empty
         padding: 12px 4px
         color: var(--watch-fg-dim)
+
+    // スマートフォン相当。1 件 110px ほどあると 3 件しか見えず、放送局を探せない。
+    // 次番組を省き番組名を 1 行に詰めて、同じ高さに 5 件以上入るようにする
+    @media screen and (max-width: 720px)
+        // 1 列だと 1 件 70px で 3 件しか入らない。局選びは一覧性が要るので 2 列に並べる
+        .list
+            display: grid
+            grid-template-columns: repeat(2, minmax(0, 1fr))
+            gap: 6px
+            align-content: start
+            padding: 4px 6px 8px
+
+        .item
+            margin-bottom: 0
+            padding: 6px 8px 8px
+
+        .pin-setting,
+        .empty
+            grid-column: 1 / -1
+
+        .program-name
+            -webkit-line-clamp: 1
+
+        // 放送時刻は進捗バーで代替できるため落とす (次番組の時刻ごと省く)
+        .next-name,
+        .program-time
+            display: none
 </style>

@@ -108,6 +108,12 @@ aribb24.js の自動検出がこれを拾うため、in-memory HLS の字幕が 
   設定が無い Built-in カタログ由来のプロファイル) は選んでも `mode` が決まらず、選択が黙って無視される。
 - **選択肢の取得はレースを潰す**。配信方式を続けて切り替えると古い応答が後から解決して新しい選択を
   上書きするため、ダイアログと `PlaybackOptionsState` (singleton) の両方に取得世代を持たせている。
+- **表示名・一言説明・バッジは `PlaybackLabelUtil.getPlaybackLabel()` の 1 か所で決める** (詳細は
+  「Phase 8/9 クライアント画質 UI」参照)。DPlayer の設定メニュー (`BaseVideo.setPlaybackProfiles()`) も
+  同じ関数で名前を作るため、配信選択ダイアログと表記が食い違わない。
+- **配信方式セレクタを手で変えたら選択中の画質表示も追随させる**。`dialogState.selectedStreamConfig` /
+  `selectedStreamMode` を `@Watch` し、その mode に一致するプロファイルがあれば `selectPreset()` で
+  合わせる (逆方向の画質選択は mode を書き戻すだけなので watch が発火しても実質変化がなく無限ループしない)。
 
 ### 端末の設定画面 (設定 > 再生) の既定値
 
@@ -432,9 +438,9 @@ HDR (`hlg` / `pq`) を `tone-map` または `sdr` で配信するときだけ、
 
 ## Phase 8/9 クライアント画質 UI
 
-再生画質の表示は `PlaybackQualitySheet`、`PlaybackQualityList`、`PlaybackQualityItem` に集約した。画質リストは開始時の選択と再生中メニューで共用し、デスクトップではダイアログ / メニュー、幅 600px 未満では Bottom Sheet を使う。`menu-card` と `menu-card-body`、safe area、`70svh` 上限、44px 行高を適用する。
+再生画質の表示は `PlaybackQualityList` / `PlaybackQualityItem` に集約した (旧 `PlaybackQualitySheet` は 2026-09-03 に削除。画質選択は配信選択ダイアログの中でインライン展開する方式へ一本化した)。画質リストは配信選択ダイアログと DPlayer の設定メニューの両方から共通のプロファイル一覧を参照する。`menu-card` と `menu-card-body`、safe area、`70svh` 上限、44px 行高を適用する。
 
-`ClientCapabilityUtil` は MediaCapabilities の `decodingInfo()` を優先し、`canPlayType()` を補助に使う。HEVC Main10 は `hvc1.2.4.L153.B0`、HDR は `dynamic-range: high` で判定し、結果を localStorage に TTL 付きで保存する。`PlaybackLabelUtil` は通常表示から HEVC / Main10 / エンコーダ名を隠し、詳細表示だけへ渡す。
+`ClientCapabilityUtil` は MediaCapabilities の `decodingInfo()` を優先し、`canPlayType()` を補助に使う。HEVC Main10 は `hvc1.2.4.L153.B0`、HDR は `dynamic-range: high` で判定し、結果を localStorage に TTL 付きで保存する。**表示ラベルは `client/src/util/PlaybackLabelUtil.ts` の 1 か所で決める** (`getPlaybackLabel()` / `getPlaybackShortLabel()`)。**表示ラベルの引き当てキーは `PlaybackProfile.role`** (`auto` / `original` / `2160p-high` / `1080p-high` / `1080p` / `720p` / `data-saver`)。`profile.id` は `live-m2tsll-1080p-avc` のような実プリセット id なので、id で辞書を引くと `auto` 以外は必ず外れる (実際に一言説明とバッジが出ていなかった)。`role` はサーバが `PlaybackApiModel.builtinRole()` で決めて API に載せる。 **「おまかせ」プリセットを返すのはライブだけ**で、録画の配信では `profiles` に `auto` が入らない。`PlaybackOptionsState.getInitialPresetId()` は `auto` が無ければ `recommended.resolvedId` を初期選択にする (`auto` のままだと、一覧のどれも選択されていないのにボタンだけ「おまかせ」と出る)。 通常表示は「今回の選択」「何が嬉しいか」の一言 (summary) までとし、HEVC / Main10 / エンコーダ名やサーバ mode 番号などの技術的な詳細は `showDetail` (「詳しく表示」トグル、`IPlaybackOptionsState.preference.showQualityDetail` に永続化) が ON のときだけ出す。バッジ (`おすすめ` / `4K` / `HDR` / `変換なし` / `通信量小` / `カスタム`) の判定にはプリセット情報だけでなく `SourceCapabilities` (HDR 判定) も要るため、呼び出し側は `source` を渡す必要がある。
 
 `PlaybackOptionsState` は Phase 7 の Playback API を端末能力付きで呼び、画質選択と設定を端末単位の localStorage へ保存する。Playback API の各 profile は preset id と container 別の既存 mode を持ち、VideoContainer は id を BaseVideo へ渡す。BaseVideo は container に対応する profile だけで DPlayer quality を作り、表示名・順序・件数を新 UI と一致させる。サーバーへ渡す mode は従来どおり config の添字であり、旧 config のみの環境では `StreamQualityUtil` の quality へフォールバックする。
 

@@ -7,6 +7,8 @@ export interface PlaybackOptions {
     recommended: { id: string; resolvedId: string; label: string; reason: string; fallbackChain: string[] };
     profiles: Array<{
         id: string;
+        // 画質の役割。表示ラベルの引き当てに使う。該当しないプリセットは null
+        role: string | null;
         label: string;
         detail: string;
         available: true;

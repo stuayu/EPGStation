@@ -15,6 +15,31 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-03
 
+- **視聴画面をスマートフォン向けに作り直した**: 320x568 では左のアイコンナビ (48px) とパネル見出し (48px) だけで縦が埋まり、右パネルの本文が 216px しか残らないため、SNS 投稿は本文入力欄が画面外、チャンネル一覧は 2 件しか見えなかった。**横持ちではさらに映像だけで画面が埋まり、パネルの高さが 0 になって操作できなかった** (タブ行ごと画面外)。
+
+    - **縦積みは縦持ちのときだけにした**。レイアウトの切り替えを `(max-width: 1024px) and (orientation: portrait)` に限定し、**横持ち (`orientation: landscape`) では左右分割に戻す** (パネル幅 44%、上限 360px、下限 240px、左のアイコンナビは隠す)。実測で iPhone SE 横 (568x320) のパネル高さが 0 → 320px、SNS タブが画面外 → 画面内になった。
+    - **狭い縦持ち (720px 以下) では視聴に不要なクロムを畳む**。左のアイコンナビ (`WatchSideBar`) とパネル見出し (`panel-header`、放送局名は上部バーと重複) を隠し、その分をパネルへ回す。ナビを隠す代わりに上部バー左へ戻るボタン (`WatchLayout.goBack()`、履歴が無ければ `/onair`) を置いた。
+    - **上部 (バー + 映像) は実寸で固定し、余りをすべてパネルへ渡す** (`.main` / `.video-area` を `flex: 0 0 auto`)。`flex: 1 1 auto` のままだとパネルの中身の高さに応じて映像が伸縮し、タブを切り替えるたびに配分が変わっていた。あわせて画面全体スクロール (`overflow-y: auto`) をやめ、パネル本文の中だけをスクロールさせる (全体スクロールだとタブ行が画面外へ流れ、操作先が見えなくなる)。
+    - **映像を小さくしてパネルを広げるトグルを追加した** (上部バー右、`isWatchVideoCompact` として localStorage へ永続化)。**幅を詰めて 16:9 を保つ実装にすると 320px 端末で映像が 242px になり DPlayer のコントロールが重なって押せなくなった**ため、幅は保ったまま枠の高さ (`24svh`) だけを下げ、映像は枠の中で letterbox させている。
+    - **データ放送のリモコンを開くと映像の下へ 450px ほど積み上がり、映像自体が画面外へスクロールアウトしていた** (Chromium + 受信できる放送局で実測)。`.video-area` に `max-height: 60svh` + `overflow-y: auto` を与えてパネルのタブ行を守り、リモコンの中身 (`.v-expansion-panel-text__wrapper`) を `max-height: 30svh` + スクロールに、さらに `:has(.v-expansion-panel--active)` でリモコンを開いている間だけ映像を `20svh` へ縮める。映像 y = -101px (画面外) → +38px (画面内)、リモコン高さ 452px → 234px になった。
+    - **リモコンを開くとチャンネル切替ボタン (`.channel-switch`) が色ボタンの上に重なって「黄」を塞いでいた**。このボタンは映像枠の縦中央 (`top: 50%`) に置かれているが、枠はリモコン込みで伸びるため中央が映像の外へ出る。リモコンを開いている間は隠す (チャンネル切り替えはパネルの「チャンネル」タブでできる)。
+    - **番組名が長いと上部バーが横へ伸び、戻るボタンと映像サイズのボタンが画面外へ出ていた** (実測: 320px 幅で `.watch-top-bar` が 579px、縮小トグルが x=619px)。`WatchTopBar` のルートが `flex-shrink: 0` だったため縮まず、`WatchLayout` 側の `min-width: 0` が効いていなかった。伸縮する側なので `flex: 1 1 auto` + `min-width: 0` に変え、`.top` にも `min-width: 0` / `overflow: hidden` を付けた。**`.top > :first-child` で伸ばす指定も、戻るボタンを先頭に足した時点で当たる相手が変わっていた**ため `.top > .watch-top-bar` に直した。
+    - **チャンネル一覧 (`WatchPanelChannels`) は狭い端末で 2 列にした**。1 件 70px の 1 列では 3 件しか入らず放送局を探せないため、`.list` を 2 列グリッドにし、番組名を 1 行 (`-webkit-line-clamp: 1`)、次番組と放送時刻 (進捗バーで代替できる) を省いた。**ピン留めが 0 件のときは最初の放送波・地域タブを初期選択にする** (「ピン留めした放送局がありません」だけの画面で開かない)。
+    - 実測 (playwright WebKit、SNS 投稿タブの本文領域): iPhone SE 216px → 285px (映像を小さくすると 324px)、iPhone 14 Pro 240px → 336px (同 394px)。チャンネル一覧の完全に見える件数は 3 件 → 6 件 (iPhone 14 Pro を小さくすると 8 件)。いずれもページスクロールは発生せず、4 つのタブは常に画面内にある。
+
+- **画質選択 UI を一般ユーザー・技術ユーザーの両方に分かるように改善した**: 従来はプリセット ID ごとに手書きの短い日本語ラベルだけを出しており、「オリジナル」「1080p 標準」等の名前だけでは何が得なのか分からず、`badges`(HDR / 4K 等) は `source` を渡していなかったため実際には一度も表示されていなかった。
+
+    - **表示ラベルの単一入口 `client/src/util/PlaybackLabelUtil.ts` を作り、名前・一言説明・技術詳細・バッジを 1 か所で決めるようにした**。`getPlaybackLabel(profile, source?, recommended?)` は auto のとき `summary` に「今回の選択: <recommended.label>」、`detail` に `recommended.reason` (サーバの選定理由の日本語文) を出す。既知 ID 以外は `profile.label` から解像度らしき数値を拾って summary のフォールバックにし (`guessResolutionSummary()`)、それも無理なら「カスタムプリセット」にした (旧「再生用プリセット」は情報量ゼロだったため置き換え)。バッジは `おすすめ` / `4K` / `HDR` / `変換なし` / `通信量小` / `カスタム` の意味のある集合へ絞り、幅の都合で最大 2 個の上限は維持。ダイアログのトグルボタン用に短縮ラベル `getPlaybackShortLabel()` (auto は「おまかせ (今回: <label>)」) を追加し、使われていなかった `getAutoReasonLabel` は削除した。
+    - **HDR バッジが出ないバグを直した**: `PlaybackQualityItem.vue` が `getPlaybackLabel()` に `source` を渡していなかった。`source` / `recommended` / `container` (`streamContainer` prop) を追加で受け取り、詳細表示 (`showDetail`) のときは `profile.detail` に加えて `profile.modes[<container>]` の mode 番号 (config.yml の `stream.*` と対応する数値) も出すようにした。auto 行は選択中かどうかに関わらず常に理由文 (`detail`) を出す。
+    - **`PlaybackQualityList.vue` に「詳しく表示」トグルを追加した**。状態は `IPlaybackOptionsState.preference.showQualityDetail` (新規 boolean, 既定 false) として `savePreference()` 経由で localStorage へ永続化し、全画面 (放送中選択ダイアログ・録画詳細選択ダイアログ) で共有する。「その他の画質」セクションは **「このサーバー独自の設定 (件数)」** に改名し、config.yml 由来のプリセットであることが分かるようにした。auto は表示側でも先頭に来るよう `primaryProfiles` でソートして保証。「利用可能な画質がありません」は「この配信方式で使える画質がありません。配信方式を変えてください」に変更し、原因が分かるようにした。
+    - **配信方式セレクタの下にヒント文を追加した** (`OnAirSelectStream.vue` / `RecordedDetailSelectStreamDialog.vue`。`hint` + `persistent-hint`、ラベル自体には書かない)。「配信方式を変えると選べる画質も変わります」。
+    - **配信方式セレクタを手で変えても画質の選択表示が追随しない不整合を直した**。`dialogState.selectedStreamConfig` / `selectedStreamMode` を `@Watch` し、変更後の mode に一致する `PlaybackProfile` があれば `playbackState.selectPreset()` で選択表示を合わせる。ただし **`modes[container] === mode` の単純な先頭一致で探すと、選んだ画質が毎回「おまかせ」へ巻き戻る** (実機で確認)。`auto` は解決先プリセットと同じ mode を持ち、一覧の先頭にいるため必ず先にヒットするため。現在は「選択中の画質が既にその mode ならそのまま」「`auto` 以外を先に探し、無ければ `auto`」の 2 段で判定している。
+    - **`PlaybackProfile` に `role` を追加した** (`api.yml` / `api.d.ts` / `IPlaybackApiModel` / `PlaybackApiModel.createProfiles()`)。`profile.id` は `live-m2tsll-1080p-avc` のような実プリセット id なので、`PlaybackLabelUtil` の辞書を id で引くと `auto` 以外は必ず外れ、**一言説明とバッジが実際には一度も出ていなかった** (実機で確認)。サーバは以前から `builtinRole()` で役割 (`auto` / `original` / `2160p-high` / `1080p-high` / `1080p` / `720p` / `data-saver`) を計算して並び順に使っていたので、それを API に載せてクライアントの引き当てキーにした。
+    - **録画の配信では「おまかせ」が選べないのに、ボタンだけ「おまかせ」と出ていた**のを直した。`profiles` に `auto` が入るのはライブだけで、録画側は実プリセットしか返らない。`PlaybackOptionsState.getInitialPresetId()` は `auto` が無ければ `recommended.resolvedId` を初期選択にする (一覧の 1 行が選択済みになり、トグルボタンの表記とも一致する)。
+    - **DPlayer 設定メニュー (`BaseVideo.setPlaybackProfiles()`) の画質名も `PlaybackLabelUtil.getPlaybackLabel().name` へ統一**し、ダイアログ側の表記と揃えた。`VideoContainer.vue` からは `playbackOptions.source` を渡して HDR 等の判定に使えるようにしたが、`LiveHLSVideo.vue` 等の内部呼び出し (`this.setPlaybackProfiles(profiles, 'hls')`) は source を持っていないため第 1〜3 引数のみで呼んでおり、これらでは HDR バッジ相当の判定は効かない (名前生成には影響しない)。DPlayer の設定メニューが画質切替の唯一の入口という規約は変えていない。
+    - **狭い端末の見え方は playwright (WebKit) の実測で詰めた** (`devices['iPhone SE']` 320x568 / `devices['iPhone 14 Pro']`)。320px では 1 行 238px のうち prepend の radio と append のバッジで両端を取られ、本文が 102px しか残らず「おまかせ (自 / 動)」のように名前が折り返っていた。**バッジは行の右端 (`#append`) ではなく本文側 (名前の右) へ置く**こと、行の左右余白を 8px に詰めること、radio を `density="compact"` にすることで本文幅を確保している。「詳しく表示」も当初は `v-switch` にしていたが、狭い端末でつまみがカード右端をはみ出すためトグルボタン (`v-btn` + `mdi-eye`) にした。
+    - 既存の client util 系テスト (`test/ut`) はサーバ側 `dist/` を `require()` する構成で、client (Vite/ESNext ビルド) の純粋関数を実行できる自動テスト基盤が無いため、`PlaybackLabelUtil` への自動テスト追加は見送った (代わりに上記の実機確認で担保している)。
+
 - **配信選択ダイアログのポップアップ二重表示をやめ、視聴画面の設定アイコン重複を解消した**: 放映中一覧から放送局を選ぶと、配信選択ダイアログ (`OnAirSelectStream`) の上にさらに画質選択シート (`PlaybackQualitySheet`) が自動で開き、モーダルが 2 枚重なっていた (録画詳細の `RecordedDetailSelectStreamDialog` も同じ実装)。原因は `maybeOpenQualitySheet()` がダイアログを開いた契機で無条件にシートも開いていたこと。
 
     - **画質選択はダイアログの中でインライン展開する**。「画質: <名前>」ボタンで `PlaybackQualityList` を開閉し、オーバーレイは常に 1 枚に保つ。設定「再生前に画質を選ぶ」が ON のときだけ最初から展開した状態で開く。画質一覧を開くとダイアログが縦に伸びるため、本文側 (`.select-stream-body`) と一覧 (`.quality-list`) にそれぞれ `max-height` + `overflow-y: auto` を与えて狭い端末でも操作ボタンが画面外へ出ないようにした。
@@ -272,6 +297,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 視聴・ストリーミング・データ放送
 
+- 画質選択 UI を一般ユーザー・技術ユーザーの両方に分かるように改善した (`PlaybackLabelUtil` への表示ラベル一元化、HDR バッジ表示バグ修正、詳しく表示トグル、配信方式とのセレクタ相互追随)
 - 録画の HLS 再生が 1〜2 分で止まったまま戻らなくなるのを直した (エンコード抑制のデッドロック)
 - 録画の HLS 再生中に、エンコードの最新位置へ勝手に飛ばされていたのを直した
 - 録画ファイルの配信で音ズレしていたのを直した (rigaya 系エンコーダのフレームレート誤検出)

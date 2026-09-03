@@ -1277,6 +1277,8 @@ export interface SourceCapabilities {
 
 export interface PlaybackProfile {
     id: string;
+    // 画質の役割。表示ラベルの引き当てに使う。該当しないプリセット (config.yml 由来など) は null
+    role: string | null;
     label: string;
     detail: string;
     available: true;
