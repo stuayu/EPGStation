@@ -1,18 +1,20 @@
 <template>
-    <div class="sns-account-selector">
+    <div class="sns-account-selector" v-bind:class="{ 'is-compact': compact === true }">
         <v-chip
             v-for="a in accounts"
             v-bind:key="a.id"
             size="small"
-            v-bind:variant="isSelected(a.id) === true ? 'flat' : 'outlined'"
-            v-bind:color="isSelected(a.id) === true ? 'primary' : undefined"
-            v-on:click="toggle(a.id)"
-        >
+        v-bind:variant="isSelected(a.id) === true ? 'flat' : 'outlined'"
+        v-bind:color="isSelected(a.id) === true ? 'primary' : undefined"
+        v-bind:title="a.displayName"
+        v-bind:aria-label="a.displayName"
+        v-on:click="toggle(a.id)"
+    >
             <v-avatar start size="18">
                 <v-img v-if="a.avatarUrl !== null" v-bind:src="a.avatarUrl"></v-img>
                 <v-icon v-else size="14">{{ a.provider === 'bluesky' ? 'mdi-butterfly-outline' : 'mdi-account-circle' }}</v-icon>
             </v-avatar>
-            <span class="chip-label">{{ a.displayName }}</span>
+            <span v-if="compact === false" class="chip-label">{{ a.displayName }}</span>
             <v-icon
                 v-if="a.needsReauth === true"
                 size="12"
@@ -39,6 +41,9 @@ class SnsAccountSelector extends Vue {
     @Prop({ required: true })
     public modelValue!: apid.SnsAccountId[];
 
+    @Prop({ required: false, default: false })
+    public compact!: boolean;
+
     public isSelected(accountId: apid.SnsAccountId): boolean {
         return this.modelValue.includes(accountId);
     }
@@ -63,6 +68,12 @@ export default toNative(SnsAccountSelector);
     display: flex
     flex-wrap: wrap
     gap: 6px
+
+    &.is-compact
+        flex-wrap: nowrap
+
+        .v-chip
+            padding-inline: 4px
 
     .chip-label
         max-width: 140px

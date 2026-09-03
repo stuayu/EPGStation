@@ -21,6 +21,7 @@
                     v-on:pause="savePlaybackPosition"
                     v-on:ended="onEnded"
                     v-on:error="onVideoError"
+                    v-on:screenshotRequest="onScreenshotRequest"
                 ></NormalVideo>
                 <LiveHLSVideo
                     v-if="videoParam.type == 'LiveHLS'"
@@ -35,6 +36,7 @@
                     v-on:jikkyoComment="onJikkyoComment"
                     v-on:error="onVideoError"
                     v-on:qualitySwitched="onQualitySwitched"
+                    v-on:screenshotRequest="onScreenshotRequest"
                 ></LiveHLSVideo>
                 <RecordedStreamingVideo
                     v-if="videoParam.type == 'RecordedStreaming'"
@@ -56,6 +58,7 @@
                     v-on:ended="onEnded"
                     v-on:error="onVideoError"
                     v-on:qualitySwitched="onQualitySwitched"
+                    v-on:screenshotRequest="onScreenshotRequest"
                 ></RecordedStreamingVideo>
                 <RecordedHLSStreamingVideo
                     v-if="videoParam.type == 'RecordedHLS'"
@@ -76,6 +79,7 @@
                     v-on:ended="onEnded"
                     v-on:error="onVideoError"
                     v-on:qualitySwitched="onQualitySwitched"
+                    v-on:screenshotRequest="onScreenshotRequest"
                 ></RecordedHLSStreamingVideo>
                 <LiveMpegTsVideo
                     v-if="videoParam.type == 'LiveMpegTs'"
@@ -91,6 +95,7 @@
                     v-on:jikkyoComment="onJikkyoComment"
                     v-on:error="onVideoError"
                     v-on:qualitySwitched="onQualitySwitched"
+                    v-on:screenshotRequest="onScreenshotRequest"
                 ></LiveMpegTsVideo>
             </div>
         </div>
@@ -105,13 +110,13 @@ import RecordedStreamingVideo from '@/components/video/RecordedStreamingVideo.vu
 import LiveMpegTsVideo from '@/components/video/LiveMpegTsVideo.vue';
 import * as VideoParam from '@/components/video/ViedoParam';
 import UaUtil from '@/util/UaUtil';
-import BaseVideo from '@/components/video/BaseVideo';
+import BaseVideo, { ScreenshotRequest } from '@/components/video/BaseVideo';
 import container from '@/model/ModelContainer';
 import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import DPlayer from 'dplayer';
 import { DataBroadcastingConnectParam } from '@/util/DataBroadcastingManager';
 import { JikkyoComment } from '@/util/JikkyoCommentClient';
-import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import * as apid from '../../../../api';
@@ -129,10 +134,20 @@ class VideoContainer extends Vue {
     @Prop({ required: true })
     public videoParam!: VideoParam.BaseVideoParam;
 
+    @Prop({ default: false })
+    public dataBroadcastingAvailable!: boolean;
+
+    @Prop({ default: false })
+    public dataBroadcastingEnabled!: boolean;
+
     public isLoading: boolean = true;
     public playbackOptions: apid.PlaybackOptions | null = null;
     public playbackProfiles: apid.PlaybackProfile[] = [];
     public selectedPlaybackId = 'auto';
+
+    public mounted(): void {
+        void this.$nextTick(() => this.applyDataBroadcastingControl());
+    }
     private playbackOptionsState: IPlaybackOptionsState = container.get<IPlaybackOptionsState>('IPlaybackOptionsState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private fallbackAttempts = 0;
@@ -366,8 +381,25 @@ class VideoContainer extends Vue {
     // 再生可能
     public onCanplay(): void {
         this.isLoading = false;
+        this.applyDataBroadcastingControl();
         void this.applyResumePosition();
         this.$emit('canplay');
+    }
+
+    /** DPlayer のカメラボタンから届いたキャプチャ要求を親へ中継する。 */
+    public onScreenshotRequest(request: ScreenshotRequest): void {
+        this.$emit('screenshotRequest', request);
+    }
+
+    /** データ放送機能・表示状態の変更を DPlayer 操作バーへ反映する。 */
+    @Watch('dataBroadcastingAvailable')
+    @Watch('dataBroadcastingEnabled')
+    public applyDataBroadcastingControl(): void {
+        const video = this.getVideo();
+        if (video === null) return;
+        video.setDataBroadcastingControl(this.dataBroadcastingAvailable, this.dataBroadcastingEnabled, () => {
+            this.$emit('dataBroadcastingToggle');
+        });
     }
 
     // 実況コメント (弾幕として描画したものを視聴画面の右パネルへ中継する)
@@ -498,14 +530,6 @@ class VideoContainer extends Vue {
         return this.playingVideoFileId;
     }
 
-    /**
-     * 再生中の `<video>` 要素を返す (SNS 投稿パネルのキャプチャ添付用)
-     * DPlayer が未生成、または video が非対応の場合は null
-     * @return HTMLVideoElement | null
-     */
-    public getVideoElement(): HTMLVideoElement | null {
-        return this.getVideo()?.getDPlayer()?.video ?? null;
-    }
 }
 
 export default toNative(VideoContainer);
@@ -559,4 +583,13 @@ export default toNative(VideoContainer);
         &.is-ipad
             .dplayer-subtitle
                 font-size: 26px
+
+    :deep(.dplayer-data-broadcasting-icon)
+        color: inherit
+        background: transparent
+        border: 0
+
+        &.dplayer-data-broadcasting-enabled
+            .dplayer-icon-content
+                color: rgb(var(--v-theme-primary))
 </style>

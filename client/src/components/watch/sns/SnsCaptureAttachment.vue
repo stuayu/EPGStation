@@ -46,18 +46,6 @@
             </div>
         </div>
 
-        <v-btn
-            size="small"
-            variant="outlined"
-            prepend-icon="mdi-camera-outline"
-            class="mt-1"
-            v-bind:disabled="getVideoElement === null || isCapturing === true"
-            v-bind:loading="isCapturing"
-            v-on:click="capture"
-        >
-            キャプチャを追加
-        </v-btn>
-
         <v-dialog v-model="isPreviewOpen" v-bind:fullscreen="isMobile === true" max-width="960" scrollable>
             <v-card v-if="previewCapture !== null" class="preview-card">
                 <div class="preview-toolbar">
@@ -110,10 +98,6 @@ export interface SnsCapture {
 class SnsCaptureAttachment extends Vue {
     @Prop({ required: true })
     public modelValue!: string[];
-
-    // キャプチャ元の video 要素を返す関数。null の場合はキャプチャ不可 (ボタンを無効化する)
-    @Prop({ required: false, default: null })
-    public getVideoElement!: (() => HTMLVideoElement | null) | null;
 
     // 撮影時点の番組名 (キャプチャに焼き込んでファイル名・一覧表示に使う)
     @Prop({ required: false, default: null })
@@ -204,11 +188,10 @@ class SnsCaptureAttachment extends Vue {
     /**
      * 再生中の video からキャプチャを 1 枚撮影する。添付枠 (4 枚) に空きがあれば自動で添付する
      */
-    public async capture(): Promise<void> {
+    public async capture(video: HTMLVideoElement): Promise<void> {
         if (this.isCapturing === true) return;
 
-        const video = this.getVideoElement?.() ?? null;
-        if (video === null || video.videoWidth === 0 || video.videoHeight === 0) {
+        if (video.videoWidth === 0 || video.videoHeight === 0) {
             this.snackbarState.open({ color: 'error', text: 'キャプチャできる映像がありません' });
 
             return;

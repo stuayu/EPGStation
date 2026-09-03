@@ -80,6 +80,11 @@ aribb24.js の自動検出がこれを拾うため、in-memory HLS の字幕が 
 
 ## 画質選択 UI の入口 (2026-09)
 
+### DPlayer 操作バーへの視聴操作集約
+
+- キャプチャは SNS 投稿パネル内に重複ボタンを置かず、DPlayer 標準のカメラボタンを使う。SNS 投稿パネルがマウントされている場合はキャプチャ要求を同期的に受け取り、画像をブラウザ内の添付候補へ保存して標準の即時ダウンロードを止める。SNS パネルが無い場合は DPlayer 従来どおり画像をダウンロードする。
+- データ放送の表示・非表示は上部バーの 3 点メニューではなく、DPlayer 右側操作バーのテレビボタンで切り替える。機能フラグが無効ならボタンを作らず、ON/OFF は従来どおり `ISettingStorageModel.isEnableDataBroadcasting` へ保存する。BML の Manager 所有・`markRaw()`・リモコン表示経路は変更しない。
+
 画質を選ぶ場所は 2 つだけで、それぞれ役割が違う。**入口を増やさない**。
 
 1. **配信選択ダイアログ** (`OnAirSelectStream` / `RecordedDetailSelectStreamDialog`) — 再生を始める前の選択。

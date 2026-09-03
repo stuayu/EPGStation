@@ -1,57 +1,57 @@
 <template>
     <div class="sns-misskey-options">
-        <div class="toggle-row" v-on:click="expanded = !expanded">
-            <v-icon size="14" class="mr-1">mdi-tune-variant</v-icon>
-            <span class="text-caption toggle-label">Misskey オプション</span>
-            <v-chip v-if="accounts.length > 1" size="x-small" variant="outlined" class="ml-2 shared-chip">
-                <span class="shared-chip-label">{{ accounts.length }} アカウント共通</span>
-            </v-chip>
-            <v-spacer></v-spacer>
-            <v-icon size="16">{{ expanded === true ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
-        </div>
+        <v-menu v-model="expanded" v-bind:close-on-content-click="false" location="bottom end">
+            <template v-slot:activator="{ props }">
+                <v-btn icon size="small" variant="outlined" density="compact" v-bind="props" title="Misskey オプション">
+                    <v-icon size="16">mdi-tune-variant</v-icon>
+                </v-btn>
+            </template>
+            <v-card class="menu-card" max-width="360">
+                <v-card-text class="menu-card-body options-body">
+                    <div v-if="accounts.length > 1" class="text-caption shared-hint">{{ accounts.length }} アカウント共通</div>
+                    <div class="option-row">
+                        <div class="text-caption option-label">公開範囲</div>
+                        <v-btn-toggle v-model="visibility" mandatory density="compact" variant="outlined" divided v-bind:disabled="channelForced === true" class="visibility-toggle">
+                            <v-btn value="public" size="small" title="公開"><v-icon size="16">mdi-earth</v-icon></v-btn>
+                            <v-btn value="home" size="small" title="ホーム"><v-icon size="16">mdi-home</v-icon></v-btn>
+                            <v-btn value="followers" size="small" title="フォロワー"><v-icon size="16">mdi-lock-outline</v-icon></v-btn>
+                            <v-btn value="specified" size="small" title="ダイレクト"><v-icon size="16">mdi-email-outline</v-icon></v-btn>
+                        </v-btn-toggle>
+                        <div v-if="channelForced === true" class="text-caption forced-hint">チャンネル投稿は公開のみです</div>
+                    </div>
 
-        <div v-show="expanded === true" class="options-body">
-            <div class="option-row">
-                <div class="text-caption option-label">公開範囲</div>
-                <v-btn-toggle v-model="visibility" mandatory density="compact" variant="outlined" divided v-bind:disabled="channelForced === true" class="visibility-toggle">
-                    <v-btn value="public" size="small" title="公開"><v-icon size="16">mdi-earth</v-icon></v-btn>
-                    <v-btn value="home" size="small" title="ホーム"><v-icon size="16">mdi-home</v-icon></v-btn>
-                    <v-btn value="followers" size="small" title="フォロワー"><v-icon size="16">mdi-lock-outline</v-icon></v-btn>
-                    <v-btn value="specified" size="small" title="ダイレクト"><v-icon size="16">mdi-email-outline</v-icon></v-btn>
-                </v-btn-toggle>
-                <div v-if="channelForced === true" class="text-caption forced-hint">チャンネル投稿は公開のみです</div>
-            </div>
+                    <v-select
+                        v-model="channelId"
+                        v-bind:items="channelItems"
+                        label="チャンネル"
+                        density="comfortable"
+                        hide-details
+                        v-bind:loading="isLoadingChannels"
+                        v-bind:disabled="accounts.length !== 1"
+                        class="mt-3"
+                    ></v-select>
+                    <div v-if="accounts.length > 1" class="text-caption channel-disabled-hint">複数アカウント選択時はチャンネルを選べません</div>
 
-            <v-select
-                v-model="channelId"
-                v-bind:items="channelItems"
-                label="チャンネル"
-                density="comfortable"
-                hide-details
-                v-bind:loading="isLoadingChannels"
-                v-bind:disabled="accounts.length !== 1"
-                class="mt-3"
-            ></v-select>
-            <div v-if="accounts.length > 1" class="text-caption channel-disabled-hint">複数アカウント選択時はチャンネルを選べません</div>
+                    <div class="option-row local-only-row mt-3">
+                        <div class="local-only-label">
+                            <div class="text-body-2">ローカルのみ</div>
+                            <div class="text-caption text-medium-emphasis">連合しているサーバーへ配信しません</div>
+                        </div>
+                        <v-switch v-model="localOnly" hide-details density="compact"></v-switch>
+                    </div>
 
-            <div class="option-row local-only-row mt-3">
-                <div class="local-only-label">
-                    <div class="text-body-2">ローカルのみ</div>
-                    <div class="text-caption text-medium-emphasis">連合しているサーバーへ配信しません</div>
-                </div>
-                <v-switch v-model="localOnly" hide-details density="compact"></v-switch>
-            </div>
-
-            <v-text-field
-                v-model="cw"
-                label="内容の注意書き (CW)"
-                density="comfortable"
-                hide-details
-                clearable
-                hint="投稿の前にクリックしないと本文が表示されなくなります"
-                class="mt-3"
-            ></v-text-field>
-        </div>
+                    <v-text-field
+                        v-model="cw"
+                        label="内容の注意書き (CW)"
+                        density="comfortable"
+                        hide-details
+                        clearable
+                        hint="投稿の前にクリックしないと本文が表示されなくなります"
+                        class="mt-3"
+                    ></v-text-field>
+                </v-card-text>
+            </v-card>
+        </v-menu>
     </div>
 </template>
 
@@ -179,29 +179,12 @@ export default toNative(SnsMisskeyOptions);
 
 <style lang="sass" scoped>
 .sns-misskey-options
-    border: 1px solid var(--watch-border-subtle)
-    border-radius: 4px
+    flex: 0 0 auto
 
-    .toggle-row
-        display: flex
-        align-items: center
-        padding: 6px 8px
-        cursor: pointer
-        user-select: none
-
-        .toggle-label
-            white-space: nowrap
-
-        .shared-chip
-            min-width: 0
-
-            .shared-chip-label
-                overflow: hidden
-                text-overflow: ellipsis
-                white-space: nowrap
-
-    .options-body
-        padding: 0 8px 8px
+.options-body
+    .shared-hint
+        color: var(--watch-fg-dim)
+        margin-bottom: 6px
 
     .option-row
         display: flex
