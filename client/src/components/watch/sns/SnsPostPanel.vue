@@ -1,11 +1,11 @@
 <template>
     <div class="sns-post-panel">
-        <div class="header" v-on:click="isCollapsed = !isCollapsed">
+        <button class="header" type="button" v-bind:aria-expanded="isCollapsed === false" v-on:click="isCollapsed = !isCollapsed">
             <v-icon size="small" class="mr-1">mdi-send-outline</v-icon>
             <div class="header-title">SNS投稿</div>
             <v-spacer></v-spacer>
             <v-icon size="small">{{ isCollapsed === true ? 'mdi-chevron-down' : 'mdi-chevron-up' }}</v-icon>
-        </div>
+        </button>
 
         <div v-show="isCollapsed === false" class="body">
             <template v-if="hasAccounts === false">
@@ -29,7 +29,19 @@
                         <v-btn value="post" size="small">投稿</v-btn>
                         <v-btn value="timeline" size="small">タイムライン</v-btn>
                     </v-btn-toggle>
-                    <v-spacer v-if="isSplitView === false"></v-spacer>
+                    <SnsAccountSelector
+                        class="header-accounts"
+                        v-bind:accounts="accounts"
+                        v-bind:compact="true"
+                        v-model="selectedAccountIds"
+                    ></SnsAccountSelector>
+                    <SnsMisskeyOptions
+                        v-if="hasMisskeySelected === true"
+                        class="header-misskey-options"
+                        v-bind:accounts="selectedMisskeyAccounts"
+                        v-model="misskeyOption"
+                    ></SnsMisskeyOptions>
+                    <v-spacer v-if="isSplitView === true"></v-spacer>
                     <!-- 狭い端末では常にタブ切替になり設定を切り替えても見た目が変わらないため、混乱を避けてボタン自体を出さない -->
                     <v-btn
                         v-if="isMobile === false"
@@ -58,22 +70,13 @@
                     >
                         <div class="tab-content post-tab">
                             <div class="section">
-                                <div class="section-label text-caption">投稿先</div>
-                                <SnsAccountSelector v-bind:accounts="accounts" v-model="selectedAccountIds"></SnsAccountSelector>
-                            </div>
-
-                            <div class="section" v-if="hasMisskeySelected === true">
-                                <SnsMisskeyOptions v-bind:accounts="selectedMisskeyAccounts" v-model="misskeyOption"></SnsMisskeyOptions>
-                            </div>
-
-                            <div class="section">
                                 <v-textarea
                                     ref="bodyTextarea"
                                     v-model="bodyText"
                                     label="本文"
                                     rows="3"
                                     auto-grow
-                                    density="comfortable"
+                                    v-bind:density="isMobile === true ? 'compact' : 'comfortable'"
                                     hide-details
                                     v-bind:counter="blueskyMaxLength"
                                 ></v-textarea>
@@ -116,7 +119,6 @@
                                 <SnsCaptureAttachment
                                     ref="captureAttachment"
                                     v-model="images"
-                                    v-bind:getVideoElement="getVideoElement ?? null"
                                     v-bind:programName="programInfo === null ? null : programInfo.name"
                                 ></SnsCaptureAttachment>
                             </div>
@@ -127,17 +129,18 @@
                                 </div>
                             </v-alert>
 
-                            <v-btn
-                                block
-                                color="primary"
-                                variant="flat"
-                                class="mt-3"
-                                v-bind:loading="isPosting"
-                                v-bind:disabled="canPost === false"
-                                v-on:click="submit"
-                            >
-                                投稿する
-                            </v-btn>
+                            <div class="post-actions">
+                                <v-btn
+                                    block
+                                    color="primary"
+                                    variant="flat"
+                                    v-bind:loading="isPosting"
+                                    v-bind:disabled="canPost === false"
+                                    v-on:click="submit"
+                                >
+                                    投稿する
+                                </v-btn>
+                            </div>
                         </div>
                     </div>
 
@@ -176,6 +179,7 @@ import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageMod
 import { MfmNode, parseMfm } from '@/util/MfmRenderUtil';
 import ProgramHashtagUtil from '@/util/ProgramHashtagUtil';
 import type { ComponentPublicInstance } from 'vue';
+import type { ScreenshotRequest } from '@/components/video/BaseVideo';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import MfmText from './MfmText.vue';
 import SnsAccountSelector from './SnsAccountSelector.vue';
@@ -220,10 +224,6 @@ class SnsPostPanel extends Vue {
     // ライブ視聴かどうか (true の場合のみ「チャンネル切替時に旧局タグを取り除く」処理を行う)
     @Prop({ required: false, default: false })
     public isLive!: boolean;
-
-    // 再生中の video 要素を返す関数 (キャプチャ添付用)。録画・ライブいずれも VideoContainer 経由で親から渡す
-    @Prop({ required: false, default: null })
-    public getVideoElement!: (() => HTMLVideoElement | null) | null;
 
     public isCollapsed: boolean = false;
     // サブタブ (投稿 / タイムライン)
@@ -358,6 +358,19 @@ class SnsPostPanel extends Vue {
      */
     public hasUnsavedCaptures(): boolean {
         return (this.$refs.captureAttachment as InstanceType<typeof SnsCaptureAttachment> | undefined)?.hasUnsavedCaptures() ?? false;
+    }
+
+    /**
+     * DPlayer のカメラボタンから届いた要求を SNS 添付として受け取る。
+     * 同期的に claim して、DPlayer 標準の即時ダウンロードを止める
+     * @param request DPlayer キャプチャ要求
+     */
+    public onScreenshotRequest(request: ScreenshotRequest): void {
+        const attachment = this.$refs.captureAttachment as InstanceType<typeof SnsCaptureAttachment> | undefined;
+        if (typeof attachment === 'undefined') return;
+
+        request.claim();
+        void attachment.capture(request.video);
     }
 
     public async created(): Promise<void> {
@@ -692,10 +705,14 @@ export default toNative(SnsPostPanel);
     color: var(--watch-fg)
 
     .header
+        width: 100%
         display: flex
         align-items: center
         flex-shrink: 0
         padding: 8px 12px
+        color: inherit
+        background: transparent
+        border: 0
         cursor: pointer
         user-select: none
         border-bottom: 1px solid var(--watch-border-subtle)
@@ -713,7 +730,18 @@ export default toNative(SnsPostPanel);
     .tab-row
         display: flex
         align-items: center
+        gap: 6px
         margin-bottom: 8px
+
+        .tab-toggle
+            flex: 1 1 auto
+            min-width: 0
+
+        .header-accounts
+            flex: 0 1 auto
+            min-width: 0
+            max-width: 35%
+            overflow-x: auto
 
     .section
         margin-bottom: 12px
@@ -784,4 +812,52 @@ export default toNative(SnsPostPanel);
         &:hover .split-divider-handle,
         &:active .split-divider-handle
             background: rgb(var(--v-theme-primary))
+
+    .post-actions
+        position: sticky
+        bottom: -12px
+        z-index: 2
+        margin: 12px -12px -12px
+        padding: 10px 12px 12px
+        border-top: 1px solid var(--watch-border-subtle)
+        background: rgb(var(--v-theme-surface))
+
+    @media screen and (max-width: 600px)
+        // 外側の WatchSidePanel に同じ見出しがあるため、狭い画面では重複をなくして操作領域へ高さを渡す
+        .header
+            display: none
+
+        .body
+            padding: 8px
+
+        .tab-row
+            position: sticky
+            top: -8px
+            z-index: 3
+            margin: -8px -8px 8px
+            padding: 8px
+            border-bottom: 1px solid var(--watch-border-subtle)
+            background: rgb(var(--v-theme-surface))
+
+        .tab-toggle
+            flex: 1 1 auto
+
+            :deep(.v-btn)
+                flex: 1 1 50%
+
+        .section
+            margin-bottom: 8px
+
+        .decoration-row
+            display: flex
+            gap: 6px
+
+            :deep(.v-btn)
+                flex: 1 1 0
+                min-width: 0
+
+        .post-actions
+            bottom: -8px
+            margin: 8px -8px -8px
+            padding: 8px
 </style>

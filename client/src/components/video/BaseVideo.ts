@@ -28,6 +28,11 @@ type QualityPlaybackSnapshot = {
 type PlaybackContainer = keyof apid.PlaybackProfile['modes'];
 type PlaybackQuality = DPlayerType.VideoQuality & { presetId: string; mode: number };
 
+export interface ScreenshotRequest {
+    video: HTMLVideoElement;
+    claim: () => void;
+}
+
 export default abstract class BaseVideo extends Vue {
     protected dp: DPlayer | null = null;
     protected containerElement: HTMLElement | null = null;
@@ -39,6 +44,10 @@ export default abstract class BaseVideo extends Vue {
     private isProgrammaticQualitySwitch: boolean = false; // 親から起こした画質切替か (ユーザー操作と区別する)
     private chapters: apid.VideoChapter[] = []; // 再生中ファイルのチャプター (開始位置の昇順)
     private extraHotkeyHandler: ((e: KeyboardEvent) => void) | null = null;
+    private screenshotButton: HTMLElement | null = null;
+    private screenshotClickHandler: ((event: MouseEvent) => void) | null = null;
+    private dataBroadcastingButton: HTMLButtonElement | null = null;
+    private dataBroadcastingToggleHandler: (() => void) | null = null;
 
     // ライブ配信の放送時刻 (TDT / TOT)。実況コメントの遅延補正に使う
     private broadcastTime: apid.StreamBroadcastTime | null = null;
@@ -114,6 +123,7 @@ export default abstract class BaseVideo extends Vue {
         this.dp = markRaw(BaseVideo.createDPlayer(options));
         this.bindEvents();
         this.setupExtraHotkeys();
+        this.setupScreenshotRequest();
 
         // ストリーミング再生は video 要素が動画の一部しか持たないため、
         // DPlayer のシークバーを動画全体の時間軸で動かすアダプタを噛ませる
@@ -175,6 +185,84 @@ export default abstract class BaseVideo extends Vue {
         if (typeof options.playbackSpeed === 'undefined') {
             options.playbackSpeed = BaseVideo.PLAYBACK_SPEEDS;
         }
+    }
+
+    /**
+     * DPlayer のカメラボタンを SNS 添付キャプチャ要求にも利用する。
+     * リスナーが claim した場合だけ標準の画像ダウンロードを抑止する。
+     */
+    private setupScreenshotRequest(): void {
+        if (this.dp === null) return;
+        const button = (this.dp as any).container?.querySelector?.('.dplayer-camera-icon') as HTMLElement | null;
+        if (button === null) return;
+
+        this.screenshotButton = button;
+        this.screenshotClickHandler = (event: MouseEvent): void => {
+            if (this.dp === null) return;
+            const state = { claimed: false };
+            const request: ScreenshotRequest = {
+                video: this.dp.video,
+                claim: () => {
+                    state.claimed = true;
+                },
+            };
+            this.$emit('screenshotRequest', request);
+            if (state.claimed === true) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            }
+        };
+        // DPlayer 自身の click handler より前に claim の有無を決める。
+        button.addEventListener('click', this.screenshotClickHandler, true);
+    }
+
+    /**
+     * DPlayer 右側操作バーのデータ放送トグルを設定する。
+     * @param visible 機能が利用可能なら true
+     * @param enabled データ放送表示中なら true
+     * @param onToggle トグル操作時のコールバック
+     */
+    public setDataBroadcastingControl(visible: boolean, enabled: boolean, onToggle: () => void): void {
+        this.destroyDataBroadcastingControl();
+        if (visible === false || this.dp === null) return;
+
+        const right = (this.dp as any).container?.querySelector?.('.dplayer-icons-right') as HTMLElement | null;
+        if (right === null) return;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'dplayer-icon dplayer-data-broadcasting-icon';
+        button.innerHTML = '<span class="dplayer-icon-content" aria-hidden="true"><svg viewBox="0 0 24 24" width="100%" height="100%"><path fill="currentColor" d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5v2H9v-2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2m0 2v10h16V7H4m2 2h5v2H6V9m0 4h8v2H6v-2m10-4h2v6h-2V9Z"/></svg></span>';
+        this.dataBroadcastingButton = button;
+        this.dataBroadcastingToggleHandler = onToggle;
+        button.addEventListener('click', onToggle);
+        const setting = right.querySelector('.dplayer-setting');
+        right.insertBefore(button, setting);
+        this.updateDataBroadcastingControl(enabled);
+    }
+
+    /**
+     * データ放送トグルの表示状態を更新する。
+     * @param enabled データ放送表示中なら true
+     */
+    public updateDataBroadcastingControl(enabled: boolean): void {
+        const button = this.dataBroadcastingButton;
+        if (button === null) return;
+        const label = enabled === true ? 'データ放送を閉じる' : 'データ放送を表示';
+        button.classList.toggle('dplayer-data-broadcasting-enabled', enabled);
+        button.setAttribute('aria-pressed', `${enabled}`);
+        button.setAttribute('aria-label', label);
+        button.title = label;
+        button.setAttribute('data-balloon-nofocus', '');
+        button.setAttribute('data-balloon-pos', 'up');
+    }
+
+    private destroyDataBroadcastingControl(): void {
+        if (this.dataBroadcastingButton !== null && this.dataBroadcastingToggleHandler !== null) {
+            this.dataBroadcastingButton.removeEventListener('click', this.dataBroadcastingToggleHandler);
+        }
+        this.dataBroadcastingButton?.remove();
+        this.dataBroadcastingButton = null;
+        this.dataBroadcastingToggleHandler = null;
     }
 
     /**
@@ -854,6 +942,12 @@ export default abstract class BaseVideo extends Vue {
      */
     protected destroyPlayer(): void {
         this.destroyExtraHotkeys();
+        if (this.screenshotButton !== null && this.screenshotClickHandler !== null) {
+            this.screenshotButton.removeEventListener('click', this.screenshotClickHandler, true);
+        }
+        this.screenshotButton = null;
+        this.screenshotClickHandler = null;
+        this.destroyDataBroadcastingControl();
         this.stopJikkyoDelay();
         if (this.jikkyoCommentClient !== null) {
             this.jikkyoCommentClient.destroy();

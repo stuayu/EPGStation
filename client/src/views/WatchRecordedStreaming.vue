@@ -6,20 +6,20 @@
                 v-bind:channelName="displayInfo === null ? '' : displayInfo.channelName"
                 v-bind:programName="displayInfo === null ? '' : displayInfo.name"
                 v-bind:timeText="displayInfo === null ? '' : displayInfo.shortTime"
-            >
-                <template v-slot:menu>
-                    <DataBroadcastingMenu v-if="isFeatureEnabledDataBroadcasting === true" v-on:changed="onDataBroadcastingEnabledChanged"></DataBroadcastingMenu>
-                </template>
-            </WatchTopBar>
+            ></WatchTopBar>
         </template>
         <VideoContainer
             v-if="videoParam !== null"
             v-bind:key="videoKey"
             ref="videoContainer"
             v-bind:videoParam="videoParam"
+            v-bind:dataBroadcastingAvailable="isFeatureEnabledDataBroadcasting"
+            v-bind:dataBroadcastingEnabled="isEnabledDataBroadcasting"
             v-on:canplay="onVideoCanplay"
+            v-on:dataBroadcastingToggle="onDataBroadcastingToggle"
             v-on:dataBroadcastingSeek="onDataBroadcastingSeek"
             v-on:jikkyoComment="onJikkyoComment"
+            v-on:screenshotRequest="onScreenshotRequest"
         ></VideoContainer>
         <DataBroadcastingRemote
             v-if="isEnabledDataBroadcasting === true"
@@ -45,7 +45,7 @@
                     <WatchPanelComments v-bind:comments="jikkyoComments"></WatchPanelComments>
                 </template>
                 <template v-slot:sns>
-                    <SnsPostPanel ref="snsPostPanel" v-bind:programInfo="displayInfo" v-bind:isLive="false" v-bind:getVideoElement="getVideoElementForSns"></SnsPostPanel>
+                    <SnsPostPanel ref="snsPostPanel" v-bind:programInfo="displayInfo" v-bind:isLive="false"></SnsPostPanel>
                 </template>
             </WatchSidePanel>
         </template>
@@ -53,7 +53,6 @@
 </template>
 
 <script lang="ts">
-import DataBroadcastingMenu from '@/components/dataBroadcasting/DataBroadcastingMenu.vue';
 import DataBroadcastingRemote from '@/components/dataBroadcasting/DataBroadcastingRemote.vue';
 import NextUpPanel from '@/components/recorded/watch/NextUpPanel.vue';
 import WatchLayout from '@/components/watch/WatchLayout.vue';
@@ -63,6 +62,7 @@ import WatchSidePanel from '@/components/watch/WatchSidePanel.vue';
 import WatchTopBar from '@/components/watch/WatchTopBar.vue';
 import SnsPostPanel from '@/components/watch/sns/SnsPostPanel.vue';
 import VideoContainer from '@/components/video/VideoContainer.vue';
+import type { ScreenshotRequest } from '@/components/video/BaseVideo';
 import * as VideoParam from '@/components/video/ViedoParam';
 import IRecordedApiModel from '@/model/api/recorded/IRecordedApiModel';
 import IChannelModel from '@/model/channels/IChannelModel';
@@ -94,7 +94,6 @@ import * as apid from '../../../api';
         VideoContainer,
         NextUpPanel,
         DataBroadcastingRemote,
-        DataBroadcastingMenu,
         SnsPostPanel,
     },
 })
@@ -158,8 +157,8 @@ class WatchRecordedStreaming extends Vue {
      * SNS 投稿パネルのキャプチャ添付用に、再生中の video 要素を返す
      * @return HTMLVideoElement | null
      */
-    public getVideoElementForSns(): HTMLVideoElement | null {
-        return (this.$refs.videoContainer as InstanceType<typeof VideoContainer> | undefined)?.getVideoElement() ?? null;
+    public onScreenshotRequest(request: ScreenshotRequest): void {
+        (this.$refs.snsPostPanel as InstanceType<typeof SnsPostPanel> | undefined)?.onScreenshotRequest(request);
     }
 
     /**
@@ -213,21 +212,21 @@ class WatchRecordedStreaming extends Vue {
         return isFeatureEnabled(this.serverConfigModel.getConfig(), 'nextUpPanel');
     }
 
-    /**
-     * featureFlags.dataBroadcasting が有効か (3 点リーダーのメニュー自体の表示可否)
-     */
+    /** featureFlags.dataBroadcasting が有効か (DPlayer 操作ボタンの表示可否)。 */
     get isFeatureEnabledDataBroadcasting(): boolean {
         return isFeatureEnabled(this.serverConfigModel.getConfig(), 'dataBroadcasting');
     }
 
     /**
-     * データ放送機能を実際に使うか (機能フラグが有効 かつ 3 点リーダーのメニューで ON にしている)
+     * データ放送機能を実際に使うか (機能フラグが有効 かつ DPlayer 操作ボタンで ON にしている)
      */
     get isEnabledDataBroadcasting(): boolean {
         return this.isFeatureEnabledDataBroadcasting === true && this.settingStorageModel.tmp.isEnableDataBroadcasting === true;
     }
 
-    public onDataBroadcastingEnabledChanged(): void {
+    public onDataBroadcastingToggle(): void {
+        this.settingStorageModel.tmp.isEnableDataBroadcasting = !this.settingStorageModel.tmp.isEnableDataBroadcasting;
+        this.settingStorageModel.save();
         void this.setupDataBroadcasting();
     }
 
