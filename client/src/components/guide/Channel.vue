@@ -1,7 +1,16 @@
 <template>
     <div class="channels d-flex" v-bind:class="{ isDark: $vuetify.theme.global.current.dark === true }">
         <div class="item dummy">dummy</div>
-        <div class="text-white item" v-for="channel in channelItems" v-bind:key="channel.index" v-on:click="onClick(channel.item)">
+        <component
+            v-for="channel in channelItems"
+            v-bind:key="channel.index"
+            v-bind:is="isSingleStation === true ? 'div' : 'button'"
+            class="text-white item"
+            v-bind:type="isSingleStation === true ? undefined : 'button'"
+            v-bind:title="isSingleStation === true ? undefined : `${channel.name}を視聴`"
+            v-bind:aria-label="isSingleStation === true ? undefined : `${channel.name}を視聴`"
+            v-on:click="onClick(channel.item)"
+        >
             <img
                 v-if="typeof channel.logoSrc !== 'undefined'"
                 :src="channel.logoSrc"
@@ -10,7 +19,7 @@
                 v-on:error="onLogoError(channel)"
             />
             <span class="channel-name">{{ channel.name }}</span>
-        </div>
+        </component>
         <div class="item scrollbar">dummy</div>
     </div>
 </template>
@@ -41,6 +50,10 @@ class Channel extends Vue {
 
     // ロゴ画像の取得に失敗した放送局 id (取得済み結果は channelItems の再計算で失われるため component 側で保持する)
     private failedLogoIds = new Set<apid.ChannelId>();
+
+    get isSingleStation(): boolean {
+        return typeof this.$route.query.channelId !== 'undefined';
+    }
 
     get channelItems(): DisplayChannelItem[] {
         if (typeof this.$route.query.channelId === 'undefined') {
@@ -117,6 +130,13 @@ $board-line-dark: 1px solid #888888
         gap: 3px
         padding: 2px 3px
         line-height: 1.2
+        appearance: none
+
+        &:focus-visible
+            outline: 3px solid rgb(var(--v-theme-primary))
+            outline-offset: -3px
+            filter: brightness(1.12)
+            z-index: 1
 
         // ロゴと局名を横 1 行に並べる。ロゴは行の高さに収まるサイズまで縮める
         .channel-logo
@@ -151,4 +171,8 @@ $board-line-dark: 1px solid #888888
             background: #393e46
             border-left: $board-line-dark
             border-right: $board-line-dark
+
+@media (hover: hover) and (pointer: fine)
+    .channels button.item:hover
+        filter: brightness(1.12)
 </style>

@@ -29,6 +29,15 @@
                             </template>
                         </GuideScroller>
                     </div>
+                    <v-btn
+                        class="now-button"
+                        color="primary"
+                        icon="mdi-clock-outline"
+                        size="small"
+                        aria-label="現在時刻へ戻る"
+                        title="現在時刻へ戻る"
+                        v-on:click="onNow"
+                    ></v-btn>
                 </div>
             </transition>
         </div>
@@ -57,12 +66,12 @@ import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { IGuideSizeSettingStorageModel } from '@/model/storage/guide/IGuideSizeSettingStorageModel';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
+import GuideRouteUtil from '@/util/GuideRouteUtil';
 import UaUtil from '@/util/UaUtil';
 import Util from '@/util/Util';
-import { debounce, throttle } from 'lodash';
+import { debounce } from 'lodash';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
-
 
 @Component({
     components: {
@@ -124,15 +133,12 @@ class Guide extends Vue {
     private programBaseWidth: number = 140;
     private programBaseHeight: number = 180;
 
-    private scrollCallback = throttle(() => {
-        this.setDisplayRange();
-        this.guideState.updateVisible();
-    }, 10);
+    private scrollAnimationFrame: number | null = null;
 
     private windowResizeCallback = debounce(() => {
         this.updateBaseSize();
         this.setDisplayRange();
-        this.guideState.updateVisible();
+        this.updateVisibleProgramDoms();
     }, 100);
 
     private isiOS: boolean = false;
@@ -190,6 +196,10 @@ class Guide extends Vue {
             clearTimeout(this.pendingRefreshTimer);
             this.pendingRefreshTimer = null;
         }
+        if (this.scrollAnimationFrame !== null) {
+            cancelAnimationFrame(this.scrollAnimationFrame);
+            this.scrollAnimationFrame = null;
+        }
 
         if (UaUtil.isiOS() === true) {
             // html の class から guide を削除
@@ -203,6 +213,30 @@ class Guide extends Vue {
      */
     public onTitle(): void {
         this.isOpenDaySelectDialog = true;
+    }
+
+    /**
+     * 現在時刻へ戻る。同じ表示範囲なら再取得せず、現在時刻の30分前へスクロールする
+     */
+    public async onNow(): Promise<void> {
+        const now = Date.now();
+        const startAt = this.guideState.getStartAt();
+        const endAt = startAt + this.guideState.getTimesLength() * 60 * 60 * 1000;
+        const isCurrentRange = now >= startAt && now < endAt;
+
+        if (isCurrentRange === false) {
+            await Util.move(this.$router, {
+                path: '/guide',
+                query: GuideRouteUtil.createQuery(this.$route, { type: Util.getRouteString(this.$route.query.type) }),
+            });
+            return;
+        }
+
+        const scroller = (this.$refs.programs as InstanceType<typeof GuideScroller> | undefined)?.$el as HTMLElement | undefined;
+        if (typeof scroller === 'undefined') return;
+        const elapsedMinutes = (now - startAt) / 60 / 1000;
+        const top = Math.max(0, (elapsedMinutes - 30) * (this.programBaseHeight / 60));
+        scroller.scrollTo({ top, behavior: 'smooth' });
     }
 
     /**
@@ -240,7 +274,7 @@ class Guide extends Vue {
                 element.scrollLeft <= this.programBaseWidth * this.guideState.getChannelsLength() - element.offsetWidth + scrollBarLeft &&
                 element.scrollTop <= this.programBaseHeight * this.guideState.getTimesLength() - element.offsetHeight + scrollBarTop)
         ) {
-            this.scrollCallback();
+            this.scheduleScrollUpdate();
         }
 
         // 末尾付近まで来たら次の時間帯を読み込む
@@ -475,16 +509,8 @@ class Guide extends Vue {
             await Util.sleep(waitTime);
         }
 
-        const programDoms = this.guideState.getProgramDoms();
-        const domsLength = programDoms.length;
-        for (let i = 0; i < domsLength; i++) {
-            content.appendChild(programDoms[i].element);
-            if (i % 500 === 0) {
-                await Util.sleep(1);
-            }
-        }
-
-        this.guideState.updateVisible();
+        this.setDisplayRange();
+        this.updateVisibleProgramDoms();
     }
 
     /**
@@ -511,7 +537,7 @@ class Guide extends Vue {
                 scroller.scrollLeft = left;
                 scroller.scrollTop = top;
                 this.setDisplayRange();
-                this.guideState.updateVisible();
+                this.updateVisibleProgramDoms();
             }
         } catch (err) {
             // 追加読み込みの失敗は表示中の内容に影響しないため通知しない
@@ -534,7 +560,8 @@ class Guide extends Vue {
         this.setCssVariable('--timescale-tablet-fontsize', `${sizeValue.tablet.timescaleFontsize}px`);
         this.setCssVariable('--program-tablet-fontsize', `${sizeValue.tablet.programFontSize}pt`);
 
-        this.setCssVariable('--channel-mobile-height', `${sizeValue.mobile.channelHeight}px`);
+        // タッチ操作とロゴの視認性を確保するため、モバイル局ヘッダーは最低28pxとする
+        this.setCssVariable('--channel-mobile-height', `${Math.max(28, sizeValue.mobile.channelHeight)}px`);
         this.setCssVariable('--channel-mobile-width', `${sizeValue.mobile.channelWidth}px`);
         this.setCssVariable('--channel-mobile-fontsize', `${sizeValue.mobile.channelFontsize}px`);
         this.setCssVariable('--timescale-mobile-height', `${sizeValue.mobile.timescaleHeight}px`);
@@ -628,15 +655,35 @@ class Guide extends Vue {
             offsetHeight: (this.$refs.programs as InstanceType<typeof GuideScroller>).$el.scrollTop,
         });
     }
+
+    /**
+     * スクロールに伴う番組DOM更新を1描画フレームに集約する
+     */
+    private scheduleScrollUpdate(): void {
+        if (this.scrollAnimationFrame !== null) return;
+        this.scrollAnimationFrame = requestAnimationFrame(() => {
+            this.scrollAnimationFrame = null;
+            this.setDisplayRange();
+            this.updateVisibleProgramDoms();
+        });
+    }
+
+    /**
+     * 可視領域周辺の番組DOMだけを描画領域へ接続する
+     */
+    private updateVisibleProgramDoms(): void {
+        if (typeof this.$refs.content === 'undefined') return;
+        this.guideState.updateVisible(this.$refs.content as HTMLElement);
+    }
 }
 
 export default Object.assign(toNative(Guide), {
     beforeRouteUpdate(this: Guide, to: Route, from: Route, next: () => void): void {
-            this.handleBeforeRouteUpdate(to, from, next);
-        },
+        this.handleBeforeRouteUpdate(to, from, next);
+    },
     beforeRouteLeave(this: Guide, to: Route, from: Route, next: () => void): void {
-            this.handleBeforeRouteLeave(to, from, next);
-        },
+        this.handleBeforeRouteLeave(to, from, next);
+    },
 });
 </script>
 
@@ -649,6 +696,13 @@ export default Object.assign(toNative(Guide), {
 
     .channel-wrap
         width: 100%
+
+    .now-button
+        position: absolute
+        right: 16px
+        bottom: 16px
+        z-index: 6
+        box-shadow: 0 2px 8px rgba(0, 0, 0, .35)
 
     .child
         position: absolute
@@ -684,7 +738,7 @@ $window-width: 600px
     /**
      * モバイル用設定
      */
-    --channel-mobile-height: 20px
+    --channel-mobile-height: 28px
     --channel-mobile-width: 100px
     --channel-mobile-fontsize: 12px
 
@@ -732,6 +786,12 @@ $window-width: 600px
             border: 1px solid #ccc
             color: black
 
+            &:focus-visible
+                outline: 3px solid rgb(var(--v-theme-primary))
+                outline-offset: -3px
+                filter: brightness(1.08)
+                z-index: 3
+
             &.hidden
                 display: none
 
@@ -775,6 +835,11 @@ $window-width: 600px
                     background-color: #717171
                 &.overlap
                     background-color: #717171
+
+    @media (hover: hover) and (pointer: fine)
+        .programs .item:hover
+            filter: brightness(1.06)
+            z-index: 2
 
 /**
  * ジャンル別色
