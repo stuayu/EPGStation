@@ -32,13 +32,33 @@ const canDecode = async (contentType: string, codec: string, hdr = false): Promi
     return video.canPlayType(`${contentType}; codecs="${codec}"`) !== '';
 };
 
-const getNetwork = (): ClientCapabilities['network'] => {
-    const connection = (navigator as Navigator & { connection?: { effectiveType?: string; type?: string; saveData?: boolean } }).connection;
-    if (connection?.type === 'cellular') return 'cellular';
-    if (connection?.saveData === true || connection?.effectiveType === 'slow-2g' || connection?.effectiveType === '2g') return 'slow';
+type NetworkInformationSnapshot = {
+    effectiveType?: string;
+    type?: string;
+    saveData?: boolean;
+    downlink?: number;
+    rtt?: number;
+};
+
+/** Network Information API の推定値を再生品質向けに分類する。 */
+export const classifyNetwork = (connection?: NetworkInformationSnapshot): ClientCapabilities['network'] => {
+    if (connection?.saveData === true) return 'slow';
+    if (connection?.effectiveType === 'slow-2g' || connection?.effectiveType === '2g' || connection?.effectiveType === '3g') return 'slow';
+
+    if (connection?.type === 'cellular') {
+        // effectiveType は通信規格ではなく実効品質。十分な帯域と低い RTT が観測できる
+        // 高品質セルラーは Wi-Fi と同様に扱い、回線種別だけで最低画質へ固定しない。
+        if (connection.effectiveType === '4g' && (connection.downlink ?? 0) >= 10 && (connection.rtt ?? Number.POSITIVE_INFINITY) <= 200) {
+            return 'fast';
+        }
+        return 'cellular';
+    }
     if (connection?.effectiveType === '4g') return 'fast';
     return 'unknown';
 };
+
+const getNetwork = (): ClientCapabilities['network'] =>
+    classifyNetwork((navigator as Navigator & { connection?: NetworkInformationSnapshot }).connection);
 
 const detect = async (): Promise<ClientCapabilities> => {
     const hdr = window.matchMedia('(dynamic-range: high)').matches;
@@ -60,7 +80,8 @@ export const getClientCapabilities = async (): Promise<ClientCapabilities> => {
         const cached = localStorage.getItem(CACHE_KEY);
         if (cached !== null) {
             const value = JSON.parse(cached) as { expiresAt: number; capabilities: ClientCapabilities };
-            if (value.expiresAt > Date.now()) return value.capabilities;
+            // Codec/HDR 能力だけをキャッシュする。回線状態は移動やテザリングで変わるため毎回取得する。
+            if (value.expiresAt > Date.now()) return { ...value.capabilities, network: getNetwork() };
         }
     } catch (_err) {
         // localStorage が使えない環境では都度判定
