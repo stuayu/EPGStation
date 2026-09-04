@@ -32,15 +32,21 @@ export default class PlaybackPolicyResolver implements IPlaybackPolicyResolver {
             requestedPresetId !== 'auto' && requested !== undefined
                 ? requested
                 : this.selectAuto(usable, source, client, preference);
-        const fallbackChain = usable
-            .filter(preset => preset.id !== selected.id && preset.id !== 'auto')
-            .sort(
-                (a, b) =>
-                    this.fallbackScore(b, source, client, preference) -
-                    this.fallbackScore(a, source, client, preference),
-            )
-            .slice(0, MAX_FALLBACKS)
-            .map(preset => preset.id);
+        const fallbackCandidates = usable.filter(preset => preset.id !== selected.id && preset.id !== 'auto');
+        const fallbackChain =
+            requestedPresetId === 'auto'
+                ? fallbackCandidates
+                      .filter(preset => this.compareFallbackLoad(preset, selected, source) < 0)
+                      .sort((a, b) => this.compareFallbackLoad(b, a, source))
+                      .map(preset => preset.id)
+                : fallbackCandidates
+                      .sort(
+                          (a, b) =>
+                              this.fallbackScore(b, source, client, preference) -
+                              this.fallbackScore(a, source, client, preference),
+                      )
+                      .slice(0, MAX_FALLBACKS)
+                      .map(preset => preset.id);
 
         return {
             presetId: selected.id,
@@ -145,6 +151,27 @@ export default class PlaybackPolicyResolver implements IPlaybackPolicyResolver {
         return preset.output.resolution === 'source'
             ? (source.height ?? 1080)
             : Number.parseInt(preset.output.resolution ?? '0', 10) || 0;
+    }
+
+    /**
+     * 自動 fallback 用の負荷順を比較する。
+     * 解像度を最優先し、同解像度では quality、さらに同 quality では映像 bitrate の順に比較する
+     * @param a: StreamPreset 比較対象
+     * @param b: StreamPreset 比較対象
+     * @param source: SourceCapabilities 入力の映像特性
+     * @return number a が高負荷なら正、低負荷なら負、同等なら 0
+     */
+    private compareFallbackLoad(a: StreamPreset, b: StreamPreset, source: SourceCapabilities): number {
+        const heightDifference = this.outputHeight(a, source) - this.outputHeight(b, source);
+        if (heightDifference !== 0) return heightDifference;
+
+        const qualityDifference = QUALITY_ORDER[a.quality] - QUALITY_ORDER[b.quality];
+        if (qualityDifference !== 0) return qualityDifference;
+
+        // bitrate 未指定はエンコーダ既定値または copy のため、同品質内では上限なしとして扱う
+        return (
+            (a.output.videoBitrate ?? Number.POSITIVE_INFINITY) - (b.output.videoBitrate ?? Number.POSITIVE_INFINITY)
+        );
     }
 
     private fallbackScore(

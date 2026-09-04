@@ -39,6 +39,7 @@ get.apiDoc = {
         { $ref: '#/components/parameters/PlaybackCapabilityH264' },
         { $ref: '#/components/parameters/PlaybackCapabilityHdr' },
         { $ref: '#/components/parameters/PlaybackCapabilityHlg' },
+        { $ref: '#/components/parameters/PlaybackCapabilityNetwork' },
         { $ref: '#/components/parameters/PlaybackProfile' },
         { $ref: '#/components/parameters/PlaybackContainer' },
         { $ref: '#/components/parameters/PlaybackPreferHdr' },

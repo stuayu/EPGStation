@@ -208,7 +208,12 @@ class VideoContainer extends Vue {
             this.playbackOptions = this.playbackOptionsState.options;
             this.playbackProfiles = this.playbackOptions?.profiles.filter(profile => profile.available === true) ?? [];
             this.selectedPlaybackId = this.playbackOptionsState.selectedPresetId;
-            this.autoPlayback = this.selectedPlaybackId === 'auto';
+            // 録画 API は auto 自体を profiles に含めず resolvedId を選択状態にする。
+            // 既定値が auto なら、表示中の ID が解決済みでも自動 fallback を有効に保つ。
+            this.autoPlayback =
+                this.selectedPlaybackId === 'auto' ||
+                (this.playbackOptionsState.preference.preferredQuality === 'auto' &&
+                    this.selectedPlaybackId === this.playbackOptions?.recommended.resolvedId);
             this.fallbackAttempts = 0;
             this.fallbackTried.clear();
             this.fallbackNoticeShown = false;
@@ -237,7 +242,7 @@ class VideoContainer extends Vue {
     }
 
     /**
-     * 自動画質の起動失敗を fallbackChain の順に最大 3 回だけ再試行する
+     * 自動画質の起動失敗を fallbackChain の順に低負荷方向へ再試行する
      * @param error: unknown
      */
     public onVideoError(error: unknown): void {
@@ -246,12 +251,12 @@ class VideoContainer extends Vue {
             this.pendingPlaybackError = error;
             return;
         }
-        if (this.autoPlayback === false || this.fallbackAttempts >= 3) {
+        const chain = this.playbackOptionsState.getFallbackChain();
+        if (this.autoPlayback === false || this.fallbackAttempts >= chain.length) {
             return;
         }
 
         const reason = this.getPlaybackErrorText(error);
-        const chain = this.playbackOptionsState.getFallbackChain();
         const nextId = chain.find(id => this.fallbackTried.has(id) === false && this.playbackProfiles.some(profile => profile.id === id));
         if (typeof nextId === 'undefined') {
             return;

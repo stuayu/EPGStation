@@ -5791,6 +5791,11 @@ components:
             in: query
             name: hlg
             schema: { type: boolean }
+        PlaybackCapabilityNetwork:
+            description: Network Information API から推定した回線品質
+            in: query
+            name: network
+            schema: { type: string, enum: [fast, slow, cellular, unknown] }
         PlaybackProfile:
             description: 明示する再生プロファイル
             in: query

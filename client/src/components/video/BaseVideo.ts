@@ -404,6 +404,8 @@ export default abstract class BaseVideo extends Vue {
                     pendingSnapshot = null;
                     this.isResolvingQuality = false;
                     dp.notice('画質の切り替えに失敗しました', 3000);
+                    // 自動 fallback 中なら親へ失敗を返し、さらに低い次候補を試せるようにする。
+                    if (isProgrammatic === true) this.$emit('error', err);
 
                     return;
                 }

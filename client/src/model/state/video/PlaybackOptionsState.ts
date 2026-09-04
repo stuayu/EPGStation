@@ -103,7 +103,9 @@ export default class PlaybackOptionsState implements IPlaybackOptionsState {
      * @return fallback 対象のプリセット識別子
      */
     public getFallbackChain(): string[] {
-        return this.options?.recommended.fallbackChain ?? this.options?.profiles.map(profile => profile.id) ?? [];
+        // 順序を保証できない旧 API の profile 一覧は使わない。
+        // 高品質側へ切り替わる可能性があるため、fallbackChain が無ければ自動切替を行わない。
+        return this.options?.recommended.fallbackChain ?? [];
     }
 
     public savePreference(value: Partial<PlaybackPreference>): void {
