@@ -92,11 +92,8 @@ class GuideState implements IGuideState {
         try {
             // GET /api/series の limit には上限があるため、上限件数までページングして集める
             const titles = new Set<string>();
-            for (let offset = 0; offset < GuideState.FOLLOWING_TITLE_FETCH_LIMIT; ) {
-                const limit = Math.min(
-                    GuideState.FOLLOWING_TITLE_PAGE_SIZE,
-                    GuideState.FOLLOWING_TITLE_FETCH_LIMIT - offset,
-                );
+            for (let offset = 0; offset < GuideState.FOLLOWING_TITLE_FETCH_LIMIT;) {
+                const limit = Math.min(GuideState.FOLLOWING_TITLE_PAGE_SIZE, GuideState.FOLLOWING_TITLE_FETCH_LIMIT - offset);
                 const result = await this.seriesApiModel.list({ offset: offset, limit: limit });
                 for (const item of result.items) titles.add(item.normalizedTitle);
                 offset += limit;
@@ -359,6 +356,7 @@ class GuideState implements IGuideState {
                     left: i,
                     height,
                     isVisible: false,
+                    isMounted: false,
                     genreLv1: typeof program.genre1 !== 'undefined' ? program.genre1 : typeof program.genre2 !== 'undefined' ? program.genre2 : program.genre3,
                 });
 
@@ -430,6 +428,9 @@ class GuideState implements IGuideState {
             'div',
             {
                 class: classStr,
+                role: 'button',
+                tabindex: '0',
+                'aria-label': `${DateUtil.format(DateUtil.getJaDate(new Date(option.program.startAt)), 'MM/dd hh:mm')} ${option.channel.name} ${option.program.name}`,
                 style:
                     `height: calc(${option.height} * (var(--timescale-height) / 60));` +
                     `top: calc(${option.top} * (var(--timescale-height) / 60)); ` +
@@ -453,6 +454,12 @@ class GuideState implements IGuideState {
             },
             child,
         );
+
+        element.onkeydown = (event: KeyboardEvent): void => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            element.click();
+        };
 
         return element;
     }
@@ -502,19 +509,23 @@ class GuideState implements IGuideState {
     /**
      * 番組要素の表示状態を更新する
      */
-    public updateVisible(): void {
+    public updateVisible(content: HTMLElement): void {
         const guideMode = this.settingModel.getSavedValue().guideMode;
-        if (this.displayRange === null || guideMode === 'all') {
+        if (this.displayRange === null) {
             return;
         }
 
         const baseHeight = this.displayRange.baseHeight / 60;
         const topStart = this.displayRange.offsetHeight;
         const topEnd = this.displayRange.offsetHeight + this.displayRange.maxHeight;
+        // 上下は3時間、左右は1画面分を先読みする。見えていない全番組を
+        // content に置き続けず、スクロール直前に必要になる要素だけ接続する。
+        const mountTopStart = Math.max(0, topStart - this.displayRange.baseHeight * 3);
+        const mountTopEnd = topEnd + this.displayRange.baseHeight * 3;
+        const mountLeftStart = Math.max(0, this.displayRange.offsetWidth - this.displayRange.maxWidth);
+        const mountLeftEnd = this.displayRange.offsetWidth + this.displayRange.maxWidth * 2;
+        const fragment = document.createDocumentFragment();
         for (const dom of this.programDoms) {
-            if (guideMode === 'sequential' && dom.isVisible === true) {
-                continue;
-            }
             let isVisible = true;
 
             // 幅方向
@@ -531,7 +542,7 @@ class GuideState implements IGuideState {
             }
 
             // 現在の表示と違っていれば更新
-            if (dom.isVisible !== isVisible) {
+            if (guideMode !== 'all' && !(guideMode === 'sequential' && dom.isVisible === true) && dom.isVisible !== isVisible) {
                 dom.isVisible = isVisible;
                 if (isVisible) {
                     dom.element.classList.remove('hidden');
@@ -539,7 +550,24 @@ class GuideState implements IGuideState {
                     dom.element.classList.add('hidden');
                 }
             }
+
+            const isMounted =
+                (dom.left + 1) * this.displayRange.baseWidth > mountLeftStart &&
+                dom.left * this.displayRange.baseWidth < mountLeftEnd &&
+                (dom.top + dom.height) * baseHeight > mountTopStart &&
+                dom.top * baseHeight < mountTopEnd;
+            if (dom.isMounted === isMounted) {
+                continue;
+            }
+
+            dom.isMounted = isMounted;
+            if (isMounted === true) {
+                fragment.appendChild(dom.element);
+            } else {
+                dom.element.remove();
+            }
         }
+        content.appendChild(fragment);
     }
 
     /**
@@ -745,9 +773,7 @@ namespace GuideState {
     // 無限スクロールで伸ばせる表示時間の上限 (時間)。EPG は 8 日程度先までしか無い
     export const MAX_TIME_LENGTH = 24 * 8;
     // ScheduleOption の放送波キー
-    export const BROADCAST_TYPES: string[] = ['GR', 'BS', 'CS', 'SKY']
-        .concat(Array.from({ length: 40 }, (_, i) => `NW${i + 1}`))
-        .concat(['BS4K', 'CS4K']);
+    export const BROADCAST_TYPES: string[] = ['GR', 'BS', 'CS', 'SKY'].concat(Array.from({ length: 40 }, (_, i) => `NW${i + 1}`)).concat(['BS4K', 'CS4K']);
     // 追いかけ中インジケータ判定用に取得するシリーズ数の上限 (簡易実装のため全件走査はしない)
     export const FOLLOWING_TITLE_FETCH_LIMIT = 500;
     // GET /api/series の limit 上限。これを超える limit は 400 になるため分割して取得する
