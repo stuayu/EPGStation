@@ -33,7 +33,7 @@
                     v-bind:title="`:${e.name}:`"
                     v-on:click="onSelect(e)"
                 >
-                    <img v-bind:src="e.url" v-bind:alt="e.name" loading="lazy" />
+                    <img v-bind:src="e.url" v-bind:alt="e.name" loading="lazy" referrerpolicy="no-referrer" />
                 </button>
             </div>
         </div>
@@ -51,7 +51,7 @@
                 v-bind:title="`:${e.name}:`"
                 v-on:click="onSelect(e)"
             >
-                <img v-bind:src="e.url" v-bind:alt="e.name" loading="lazy" />
+                <img v-bind:src="e.url" v-bind:alt="e.name" loading="lazy" referrerpolicy="no-referrer" />
             </button>
         </div>
 

@@ -23,7 +23,7 @@
                         <v-icon>mdi-tag-multiple-outline</v-icon>
                     </v-btn>
                 </template>
-                <v-card class="menu-card" max-width="320">
+                <v-card class="menu-card preset-menu-card">
                     <v-card-text class="menu-card-body">
                         <SnsHashtagPresets v-on:select="onSelectPreset"></SnsHashtagPresets>
                     </v-card-text>
@@ -97,4 +97,10 @@ export default toNative(SnsHashtagField);
         > .v-input
             flex: 1 1 auto
             min-width: 0
+
+// v-menu の中身は document.body 直下へテレポートされるため .sns-hashtag-field の子孫としてネストさせない。
+// v-card の max-width prop はインラインスタイルとなり .menu-card (共通クラス) の
+// max-width: calc(100vw - 32px) より強くなってしまうため、希望幅は width で持たせる
+.preset-menu-card
+    width: 320px
 </style>

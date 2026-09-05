@@ -6,7 +6,7 @@
                     <v-icon size="16">mdi-tune-variant</v-icon>
                 </v-btn>
             </template>
-            <v-card class="menu-card" max-width="360">
+            <v-card class="menu-card options-menu-card">
                 <v-card-text class="menu-card-body options-body">
                     <div v-if="accounts.length > 1" class="text-caption shared-hint">{{ accounts.length }} アカウント共通</div>
                     <div class="option-row">
@@ -180,6 +180,11 @@ export default toNative(SnsMisskeyOptions);
 <style lang="sass" scoped>
 .sns-misskey-options
     flex: 0 0 auto
+
+// v-card の max-width prop はインラインスタイルとなり .menu-card (共通クラス) の
+// max-width: calc(100vw - 32px) より強くなってしまうため、希望幅は width で持たせる
+.options-menu-card
+    width: 360px
 
 .options-body
     .shared-hint

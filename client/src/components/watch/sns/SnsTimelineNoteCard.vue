@@ -2,7 +2,7 @@
     <div class="sns-note-card">
         <div class="note-header">
             <v-avatar size="32" class="avatar">
-                <v-img v-if="note.author.avatarUrl !== null" v-bind:src="note.author.avatarUrl"></v-img>
+                <v-img v-if="note.author.avatarUrl !== null" v-bind:src="note.author.avatarUrl" referrerpolicy="no-referrer"></v-img>
                 <v-icon v-else size="20">mdi-account-circle</v-icon>
             </v-avatar>
             <div class="header-text">
@@ -30,7 +30,7 @@
                     v-bind:class="{ 'is-sensitive': img.isSensitive === true && revealed[i] !== true }"
                     v-on:click="onImageClick(img, i)"
                 >
-                    <img v-bind:src="img.thumbnailUrl ?? img.url" loading="lazy" />
+                    <img v-bind:src="img.thumbnailUrl ?? img.url" loading="lazy" referrerpolicy="no-referrer" />
                     <div v-if="img.isSensitive === true && revealed[i] !== true" class="sensitive-overlay">
                         <v-icon size="20">mdi-eye-off-outline</v-icon>
                         <span class="text-caption">閲覧注意 (タップで表示)</span>
@@ -50,7 +50,12 @@
                     v-bind:disabled="isReactionPending === true"
                     v-on:click="$emit('toggle-reaction', r)"
                 >
-                    <img v-if="resolveReactionUrl(r) !== null" v-bind:src="resolveReactionUrl(r) ?? undefined" class="reaction-emoji" />
+                    <img
+                        v-if="resolveReactionUrl(r) !== null"
+                        v-bind:src="resolveReactionUrl(r) ?? undefined"
+                        referrerpolicy="no-referrer"
+                        class="reaction-emoji"
+                    />
                     <span v-else>{{ reactionDisplayText(r) }}</span>
                     <span class="reaction-count ml-1">{{ r.count }}</span>
                 </v-chip>
@@ -61,7 +66,7 @@
                             <v-icon size="16">mdi-emoticon-plus-outline</v-icon>
                         </v-btn>
                     </template>
-                    <v-card class="menu-card" max-width="320">
+                    <v-card class="menu-card reaction-menu-card">
                         <v-card-text class="menu-card-body">
                             <SnsEmojiPicker v-bind:emojis="misskeyEmojis" v-on:select="onAddReaction"></SnsEmojiPicker>
                         </v-card-text>
@@ -89,7 +94,7 @@
                     </v-btn>
                 </div>
                 <div class="preview-body">
-                    <img v-bind:src="previewImageUrl" class="preview-image" />
+                    <img v-bind:src="previewImageUrl" referrerpolicy="no-referrer" class="preview-image" />
                 </div>
             </v-card>
         </v-dialog>
@@ -108,6 +113,10 @@ import * as apid from '../../../../../api';
  * SNS タイムラインのノート (投稿) 1 件分のカード。
  * リアクション・リノートの実際の API 呼び出しと楽観更新/巻き戻しは呼び出し側 (SnsTimelinePanel) が行い、
  * このコンポーネントはユーザー操作の意図をイベントとして伝えるだけ (CW の開閉・画像プレビューは自己完結)
+ *
+ * アバター・添付画像・カスタム絵文字は Misskey/Bluesky 側のメディアサーバーから直接読み込む。
+ * Misskey のメディアプロキシ (media.misskeyusercontent.jp 等) は Referer を見てホットリンクとみなし
+ * 403 を返すことがある (実測確認済み) ため、これら外部由来の img はすべて referrerpolicy="no-referrer" を付ける
  */
 @Component({
     components: { MfmText, SnsEmojiPicker },
@@ -328,12 +337,16 @@ export default toNative(SnsTimelineNoteCard);
         gap: 4px
         margin-top: 6px
 
+        // flex-basis を auto (既定) のままにすると、リアクション chip が多いときに
+        // このコンテナの「折り返さなかった場合の幅」(= 全 chip を 1 行に並べた幅) が
+        // wrap 判定の基準になり、.actions が行から押し出されてしまう。
+        // basis を 0% にして wrap 判定を無視し、.reactions 自身の内部 wrap (chip 単位) に任せる
         .reactions
             display: flex
             align-items: center
             flex-wrap: wrap
             gap: 4px
-            flex: 1 1 auto
+            flex: 1 1 0%
             min-width: 0
 
         .actions
@@ -347,7 +360,12 @@ export default toNative(SnsTimelineNoteCard);
         vertical-align: middle
         object-fit: contain
 
-// v-dialog の中身は document.body 直下へテレポートされるためネストさせない
+// v-menu / v-dialog の中身は document.body 直下へテレポートされるためネストさせない。
+// v-card の max-width prop はインラインスタイルとなり .menu-card (共通クラス) の
+// max-width: calc(100vw - 32px) より強くなってしまうため、希望幅は width で持たせる
+.reaction-menu-card
+    width: 320px
+
 .preview-card
     display: flex
     flex-direction: column

@@ -23,6 +23,7 @@
                     <v-btn
                         icon
                         size="x-small"
+                        density="compact"
                         variant="text"
                         v-bind:color="cap.isAttached === true ? 'primary' : undefined"
                         v-bind:title="cap.isAttached === true ? '添付しない' : '添付する'"
@@ -30,16 +31,16 @@
                     >
                         <v-icon size="16">{{ cap.isAttached === true ? 'mdi-check-circle' : 'mdi-checkbox-blank-circle-outline' }}</v-icon>
                     </v-btn>
-                    <v-btn icon size="x-small" variant="text" v-bind:disabled="i === 0" title="上へ" v-on:click="moveUp(i)">
+                    <v-btn icon size="x-small" density="compact" variant="text" v-bind:disabled="i === 0" title="上へ" v-on:click="moveUp(i)">
                         <v-icon size="16">mdi-arrow-up-bold</v-icon>
                     </v-btn>
-                    <v-btn icon size="x-small" variant="text" v-bind:disabled="i === captures.length - 1" title="下へ" v-on:click="moveDown(i)">
+                    <v-btn icon size="x-small" density="compact" variant="text" v-bind:disabled="i === captures.length - 1" title="下へ" v-on:click="moveDown(i)">
                         <v-icon size="16">mdi-arrow-down-bold</v-icon>
                     </v-btn>
-                    <v-btn icon size="x-small" variant="text" title="ダウンロード" v-on:click="download(cap)">
+                    <v-btn icon size="x-small" density="compact" variant="text" title="ダウンロード" v-on:click="download(cap)">
                         <v-icon size="16">mdi-download</v-icon>
                     </v-btn>
-                    <v-btn icon size="x-small" variant="text" title="削除" v-on:click="removeCapture(i)">
+                    <v-btn icon size="x-small" density="compact" variant="text" title="削除" v-on:click="removeCapture(i)">
                         <v-icon size="16">mdi-close</v-icon>
                     </v-btn>
                 </div>
@@ -437,8 +438,11 @@ export default toNative(SnsCaptureAttachment);
 
         .capture-actions
             display: flex
-            flex-wrap: wrap
-            gap: 2px
+            // density="compact" にしたボタンは 1 行 (5 個) に収まるため折り返さない。
+            // 折り返すと行数分だけカードの高さが伸びてしまう
+            flex-wrap: nowrap
+            justify-content: flex-end
+            gap: 0
             margin-top: 4px
 
 // 拡大プレビューの v-dialog は中身が document.body 直下へテレポートされるため、
