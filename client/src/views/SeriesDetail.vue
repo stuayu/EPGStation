@@ -183,7 +183,27 @@
                 <v-card-text v-else class="text-grey">コメントはありません</v-card-text>
             </v-card>
 
-            <v-select v-model="channelId" :items="channelItems" item-title="title" item-value="value" label="放送局で絞り込み" @update:model-value="load"></v-select>
+            <div class="d-flex align-center ga-2">
+                <v-select
+                    v-model="channelId"
+                    :items="channelItems"
+                    item-title="title"
+                    item-value="value"
+                    label="放送局で絞り込み"
+                    class="flex-grow-1"
+                    @update:model-value="load"
+                ></v-select>
+                <v-btn
+                    icon
+                    variant="text"
+                    size="small"
+                    :title="recordedSortOrder === 'episodeAsc' ? '1話順' : '最新話順'"
+                    :aria-label="recordedSortOrder === 'episodeAsc' ? '並び順: 1話順' : '並び順: 最新話順'"
+                    @click="toggleRecordedSortOrder"
+                >
+                    <v-icon>{{ recordedSortOrder === 'episodeAsc' ? 'mdi-sort-numeric-ascending' : 'mdi-sort-numeric-descending' }}</v-icon>
+                </v-btn>
+            </div>
 
             <!-- 話数・放送種別の一括編集 -->
             <template v-if="isBulkMode === true">
@@ -233,7 +253,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="item in detail.recorded" :key="item.recordedId">
+                        <tr v-for="item in displayedRecorded" :key="item.recordedId">
                             <td>
                                 <v-checkbox-btn v-model="selectedRecordedIds" :value="item.recordedId"></v-checkbox-btn>
                             </td>
@@ -276,7 +296,7 @@
             </template>
 
             <v-list v-else lines="three">
-                <v-list-item v-for="item in detail.recorded" :key="item.recordedId" :to="isSplitMode === true ? undefined : `/recorded/detail/${item.recordedId}`">
+                <v-list-item v-for="item in displayedRecorded" :key="item.recordedId" :to="isSplitMode === true ? undefined : `/recorded/detail/${item.recordedId}`">
                     <template #prepend>
                         <v-checkbox v-if="isSplitMode === true" v-model="selectedRecordedIds" :value="item.recordedId" hide-details density="compact"></v-checkbox>
                         <v-avatar v-else color="primary">{{ item.episodeNumber ?? '-' }}</v-avatar>
@@ -540,6 +560,40 @@ class SeriesDetailView extends Vue {
             ...(this.detail?.channels.map(x => ({ title: `${x.channelName || x.channelId} (${x.count})`, value: x.channelId })) || []),
         ];
     }
+
+    // 録画再生画面のシリーズタブと同じ設定で、シリーズ内の録画表示順を切り替える
+    get recordedSortOrder(): 'episodeAsc' | 'episodeDesc' {
+        return this.settingStorageModel.tmp.nextUpSeriesSortOrder;
+    }
+
+    get displayedRecorded(): SeriesRecording[] {
+        const recorded = [...(this.detail?.recorded ?? [])];
+        return recorded.sort((a, b) => {
+            const aHasEpisode = a.episodeNumber !== null;
+            const bHasEpisode = b.episodeNumber !== null;
+            if (aHasEpisode !== bHasEpisode) {
+                return aHasEpisode === true ? -1 : 1;
+            }
+
+            const aSeason = a.seasonNumber ?? 1;
+            const bSeason = b.seasonNumber ?? 1;
+            const seasonDifference = aSeason - bSeason;
+            if (seasonDifference !== 0) {
+                return this.recordedSortOrder === 'episodeAsc' ? seasonDifference : -seasonDifference;
+            }
+
+            const aEpisode = a.episodeNumber ?? 0;
+            const bEpisode = b.episodeNumber ?? 0;
+            const difference = aEpisode === bEpisode ? a.startAt - b.startAt : aEpisode - bEpisode;
+            return this.recordedSortOrder === 'episodeAsc' ? difference : -difference;
+        });
+    }
+
+    toggleRecordedSortOrder(): void {
+        this.settingStorageModel.tmp.nextUpSeriesSortOrder = this.recordedSortOrder === 'episodeAsc' ? 'episodeDesc' : 'episodeAsc';
+        this.settingStorageModel.save();
+    }
+
     mounted() {
         void this.load();
         void this.loadFutureProposals();

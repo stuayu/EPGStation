@@ -141,9 +141,11 @@ export default class RecordedApiModel implements IRecordedApiModel {
             currentSeriesId = link.seriesId;
             if (target === 'all' || target === 'series') {
                 // シリーズの紐付けは 1 作品分なので全件引いてから切り出す
-                const allRows = (await this.seriesDB.listRecorded(link.seriesId)).filter(
-                    x => x.recordedId !== recordedId,
-                );
+                // 現在再生中の録画も一覧に残す (クライアント側で強調表示するため)。
+                // listRecorded() は全件を一度に返す実装のため、並び替えてから offset/limit で
+                // 切り出しても (降順にしても) ページングの整合は崩れない
+                const allRows = await this.seriesDB.listRecorded(link.seriesId);
+                if (option.sortOrder === 'episodeDesc') allRows.reverse();
                 const rows = allRows.slice(offset, offset + limit);
                 hasMoreSeries = allRows.length > offset + rows.length;
                 const seriesRecords = await this.recordedDB.findIds(

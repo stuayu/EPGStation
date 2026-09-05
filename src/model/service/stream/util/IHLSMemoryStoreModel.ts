@@ -108,6 +108,14 @@ export default interface IHLSMemoryStoreModel {
     waitForPlaylist(streamId: apid.StreamId, request: HLSPlaylistRequest): Promise<string | null>;
 
     /**
+     * ブロッキングプレイリスト要求の msn が保持範囲より古いか判定する
+     * @param streamId: apid.StreamId
+     * @param msn: number 要求されたメディアシーケンス番号
+     * @return boolean 保持範囲より古い場合は true
+     */
+    isPlaylistRequestTooOld(streamId: apid.StreamId, msn: number): boolean;
+
+    /**
      * init セグメントを返す。未準備の場合は null
      */
     getInitSegment(streamId: apid.StreamId): Buffer | null;

@@ -54,6 +54,8 @@ export interface ISettingValue {
     jikkyoLiveOffsetSec: number;
     nextUpPanelTab: 'latest' | 'series'; // Next Up パネルの選択タブ
     isEnableNextUpAutoPlayForLatestTab: boolean; // 新着タブ選択時に連続再生を有効にするか (既定 OFF。シリーズタブは常時有効)
+    // Next Up パネルとシリーズ詳細の録画一覧の並び順 (見た目だけの設定。次に再生する話数の判定には使わない)
+    nextUpSeriesSortOrder: 'episodeAsc' | 'episodeDesc';
     isShowRecordedAsSeries: boolean; // 録画済み一覧をシリーズ単位表示にするか (既定 OFF。互換性維持のため従来のフラット表示が既定)
     channelGroupingType: ChannelGroupingType; // 番組表・放映中で地上波系をまとめる軸 (既定 地域別)
     isShowFollowingIndicatorInGuide: boolean; // 番組表に「追いかけ中」インジケータを表示するか (featureFlags.seriesLibrary かつ programSeriesMapping が有効な場合のみ意味を持つ)

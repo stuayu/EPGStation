@@ -108,7 +108,12 @@ function withStubbedFfprobe(fn) {
     });
 }
 
-function makeModel({ streamFilePath, videoFileType = 'encoded', videoFilePath = '/fake/video.mp4', hlsMemoryStore = new HLSMemoryStoreModel(logger) }) {
+function makeModel({
+    streamFilePath,
+    videoFileType = 'encoded',
+    videoFilePath = '/fake/video.mp4',
+    hlsMemoryStore = new HLSMemoryStoreModel(logger),
+}) {
     const processManager = makeProcessManager();
     const fileDeleter = makeFileDeleter();
 
@@ -256,6 +261,7 @@ function makeThrottleModel(aheadNum) {
         isReady: () => true,
         getPlaylist: () => null,
         waitForPlaylist: async () => null,
+        isPlaylistRequestTooOld: () => false,
         getInitSegment: () => null,
         getSegment: () => null,
         getPart: async () => null,
@@ -279,8 +285,8 @@ function makeThrottleModel(aheadNum) {
 
 test('先行が少しだけ超えている場合は短く止めるだけで再開する (供給を途切れさせないため)', async () => {
     await withStubbedFfprobe(async () => {
-        // MAX_AHEAD_SEGMENT_NUM (60) の 1 セグメント超過 = 停止 100ms
-        const { model, processManager, state } = makeThrottleModel(61);
+        // MAX_AHEAD_SEGMENT_NUM (150) の 1 セグメント超過 = 停止 100ms
+        const { model, processManager, state } = makeThrottleModel(151);
 
         await model.start(10);
         const stdout = processManager.processes[0].stdout;
@@ -293,7 +299,7 @@ test('先行が少しだけ超えている場合は短く止めるだけで再�
         // 取得位置が進まなくても (先行量が変わらなくても) 短時間で再開する
         await new Promise(resolve => setTimeout(resolve, 250));
 
-        assert.equal(state.aheadNum, 61);
+        assert.equal(state.aheadNum, 151);
         assert.equal(model.isEncodeThrottled, false);
         assert.equal(stdout.isPaused(), false);
 
@@ -303,8 +309,8 @@ test('先行が少しだけ超えている場合は短く止めるだけで再�
 
 test('先行が大きいほど長く止める (超過量に比例、上限 5 秒)', async () => {
     await withStubbedFfprobe(async () => {
-        // 60 + 20 超過 = 停止 2000ms
-        const { model, processManager } = makeThrottleModel(80);
+        // 150 + 20 超過 = 停止 2000ms
+        const { model, processManager } = makeThrottleModel(170);
 
         await model.start(11);
         const stdout = processManager.processes[0].stdout;
@@ -352,7 +358,7 @@ test('先行が極端に大きくても停止時間は上限で頭打ちにな�
 
 test('先行量が MAX_AHEAD 以下ならエンコードを止めない', async () => {
     await withStubbedFfprobe(async () => {
-        const { model, processManager } = makeThrottleModel(60);
+        const { model, processManager } = makeThrottleModel(150);
 
         await model.start(12);
         const stdout = processManager.processes[0].stdout;

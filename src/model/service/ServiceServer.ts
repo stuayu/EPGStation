@@ -326,6 +326,12 @@ class ServiceServer implements IServiceServer {
 
             // LL-HLS のブロッキングプレイリスト要求 (_HLS_msn / _HLS_part)
             const msn = this.parseHLSDeliveryQuery(req, '_HLS_msn');
+            if (msn !== null && this.hlsMemoryStore.isPlaylistRequestTooOld(streamId, msn) === true) {
+                this.log.system.debug(`in-memory HLS playlist request is too old: stream=${streamId} msn=${msn}`);
+                res.status(400).end();
+
+                return;
+            }
             const playlist =
                 msn === null
                     ? this.hlsMemoryStore.getPlaylist(streamId)
@@ -383,6 +389,9 @@ class ServiceServer implements IServiceServer {
             );
             if (data === null) {
                 // 破棄済み or 生成されなかったパート
+                this.log.system.debug(
+                    `in-memory HLS part unavailable: stream=${streamId} seq=${parseInt(partMatch[2], 10)} index=${parseInt(partMatch[3], 10)}`,
+                );
                 res.status(404).end();
 
                 return;
@@ -408,6 +417,9 @@ class ServiceServer implements IServiceServer {
             const data = this.hlsMemoryStore.getSegment(streamId, parseInt(segmentMatch[2], 10));
             if (data === null) {
                 // 破棄済み or 未生成のセグメント
+                this.log.system.debug(
+                    `in-memory HLS segment unavailable: stream=${streamId} seq=${parseInt(segmentMatch[2], 10)}`,
+                );
                 res.status(404).end();
 
                 return;

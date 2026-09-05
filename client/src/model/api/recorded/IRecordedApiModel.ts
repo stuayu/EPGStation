@@ -8,6 +8,8 @@ export interface NextUpRequestOption {
     limit?: number;
     offset?: number;
     target?: 'all' | 'latest' | 'series';
+    // シリーズ一覧の並び順。見た目だけに影響し、次に再生する話数の判定には使わない (既定 episodeAsc)
+    sortOrder?: 'episodeAsc' | 'episodeDesc';
 }
 
 export interface NextUpResponse {

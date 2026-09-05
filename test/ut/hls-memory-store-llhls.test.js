@@ -141,9 +141,34 @@ test('破棄済みのパートを要求しても待たずに null を返す', as
     store.create(1, 'live');
     store.setInit(1, Buffer.from('init'));
     // ライブは 12 セグメントまでしか保持しないため、先頭は破棄される
+    store.addSegment(1, Buffer.from('seg0'), 1);
+    store.getSegment(1, 0);
     pushSegments(store, 1, 15);
 
     assert.equal(await store.getPart(1, 0, 0), null);
+});
+
+test('取得前のセグメントは保持本数を超えても削除しない', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'live');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 15);
+
+    // クライアントがまだ何も取得していないため、先頭 seq は保持する
+    assert.deepEqual(store.getSegment(1, 0), Buffer.from('seg0-part0seg0-part1'));
+});
+
+test('古い msn のブロッキングプレイリスト要求は現在の playlist に置き換えない', async () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'live');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 15);
+
+    assert.equal(store.isPlaylistRequestTooOld(1, 0), false);
+    store.getSegment(1, 0);
+    pushSegments(store, 1, 12);
+    assert.equal(store.isPlaylistRequestTooOld(1, 0), true);
+    assert.equal(await store.waitForPlaylist(1, { msn: 0, part: 0 }), null);
 });
 
 test('delete で待機中の要求を解決してレスポンスが返らなくなるのを防ぐ', async () => {
@@ -175,6 +200,15 @@ test('recorded モードはライブより多くのセグメントを保持し�
     assert.equal(liveCount, 6);
     // 録画済みは巻き戻しに応えるため保持している 30 セグメントすべてを載せる
     assert.equal(recordedCount, 30);
+});
+
+test('recorded モードは再生開始位置をプレイリスト先頭へ固定する', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'recorded');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 2);
+
+    assert.match(store.getPlaylist(1), /#EXT-X-START:TIME-OFFSET=0,PRECISE=YES/);
 });
 
 // 録画ファイルのエンコードは実時間より数倍速いため、放っておくと再生位置から際限なく先行し、
@@ -211,6 +245,30 @@ test('getAheadSegmentNum はパート取得でも更新される (LL-HLS はパ�
 
     await store.getPart(1, 3, 0);
     assert.equal(store.getAheadSegmentNum(1), 6);
+});
+
+test('存在しないセグメント取得では lastServedSeq を更新しない', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'recorded');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 20);
+
+    store.getSegment(1, 5);
+    assert.equal(store.getAheadSegmentNum(1), 14);
+    assert.equal(store.getSegment(1, 99), null);
+    assert.equal(store.getAheadSegmentNum(1), 14);
+});
+
+test('存在しないパート取得では lastServedSeq を更新しない', async () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'recorded');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 20);
+
+    await store.getPart(1, 5, 0);
+    assert.equal(store.getAheadSegmentNum(1), 14);
+    assert.equal(await store.getPart(1, 99, 0), null);
+    assert.equal(store.getAheadSegmentNum(1), 14);
 });
 
 test('存在しないストリームの getAheadSegmentNum は 0', () => {

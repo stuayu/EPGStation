@@ -29,6 +29,8 @@ interface HLSMemoryStreamEntry {
     // クライアントが実際に取得した最新のセグメント seq (未取得なら null)。
     // 録画済み配信で「エンコードがどれだけ再生位置より先行しているか」を測るのに使う
     lastServedSeq: number | null;
+    // 取得済みの seq。未取得のセグメントを保持上限によって削除しないために使う
+    servedSeqs: Set<number>;
 }
 
 /**
@@ -79,6 +81,7 @@ export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
             pending: null,
             waiters: [],
             lastServedSeq: null,
+            servedSeqs: new Set(),
         });
     }
 
@@ -149,6 +152,13 @@ export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
         // 保持上限を超えた古いセグメントは破棄する
         const retainNum = this.getRetainSegmentNum(entry);
         while (entry.segments.length > retainNum) {
+            const oldest = entry.segments[0];
+            if (entry.servedSeqs.has(oldest.seq) === false) {
+                // プレイヤーがまだ取得していないセグメントは、保持本数だけを理由に削除しない
+                break;
+            }
+
+            entry.servedSeqs.delete(oldest.seq);
             entry.segments.shift();
         }
 
@@ -208,6 +218,11 @@ export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
             `#EXT-X-MEDIA-SEQUENCE:${windowSegments[0].seq}`,
             `#EXT-X-MAP:URI="stream${streamId}-init.mp4"`,
         ];
+        if (entry.mode === 'recorded') {
+            // 更新中プレイリストでも再生開始位置は録画の先頭に固定する。
+            // これが無いと Safari / hls.js がライブプレイリストと解釈し、生成済みの末尾へ移動することがある。
+            lines.push('#EXT-X-START:TIME-OFFSET=0,PRECISE=YES');
+        }
 
         // #EXT-X-PART を載せる範囲 (プレイリスト末尾から PART_WINDOW_SEGMENT_NUM 分)
         const partWindowStartSeq =
@@ -249,9 +264,37 @@ export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
             return Promise.resolve(this.getPlaylist(streamId));
         }
 
+        // 古い msn に対して現在のプレイリストを返すと、要求した seq が消えたことを
+        // プレイヤーが検知できず、現在の live edge へ飛ぶ原因になる
+        if (this.isPlaylistRequestTooOld(streamId, request.msn) === true) {
+            return Promise.resolve(null);
+        }
+
         const partIndex = typeof request.part === 'number' && isNaN(request.part) === false ? request.part : 0;
 
         return this.waitForPart(entry, request.msn, partIndex).then(() => this.getPlaylist(streamId));
+    }
+
+    /**
+     * ブロッキングプレイリスト要求の msn が保持範囲より古いか判定する
+     * @param streamId: apid.StreamId
+     * @param msn: number 要求されたメディアシーケンス番号
+     * @return boolean 保持範囲より古い場合は true
+     */
+    public isPlaylistRequestTooOld(streamId: apid.StreamId, msn: number): boolean {
+        const entry = this.entries.get(streamId);
+        if (typeof entry === 'undefined' || Number.isFinite(msn) === false) {
+            return false;
+        }
+
+        const oldestSeq =
+            entry.segments.length > 0
+                ? entry.segments[0].seq
+                : entry.pending !== null
+                  ? entry.pending.seq
+                  : entry.nextSeq;
+
+        return msn < oldestSeq;
     }
 
     public getInitSegment(streamId: apid.StreamId): Buffer | null {
@@ -267,7 +310,9 @@ export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
         }
 
         const segment = entry.segments.find(s => s.seq === seq);
-        this.updateLastServedSeq(entry, seq);
+        if (typeof segment !== 'undefined' && segment.data !== null) {
+            this.markServedSeq(entry, seq);
+        }
 
         return typeof segment === 'undefined' || segment.data === null ? null : segment.data;
     }
@@ -278,16 +323,20 @@ export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
             return null;
         }
 
-        this.updateLastServedSeq(entry, seq);
-
         const found = this.findPart(entry, seq, index);
         if (found !== null) {
+            this.markServedSeq(entry, seq);
             return found;
         }
 
         await this.waitForPart(entry, seq, index);
 
-        return this.findPart(entry, seq, index);
+        const served = this.findPart(entry, seq, index);
+        if (served !== null) {
+            this.markServedSeq(entry, seq);
+        }
+
+        return served;
     }
 
     public getAheadSegmentNum(streamId: apid.StreamId): number {
@@ -305,8 +354,9 @@ export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
      * @param entry: HLSMemoryStreamEntry
      * @param seq: number
      */
-    private updateLastServedSeq(entry: HLSMemoryStreamEntry, seq: number): void {
+    private markServedSeq(entry: HLSMemoryStreamEntry, seq: number): void {
         entry.lastServedSeq = seq;
+        entry.servedSeqs.add(seq);
     }
 
     public delete(streamId: apid.StreamId): void {
