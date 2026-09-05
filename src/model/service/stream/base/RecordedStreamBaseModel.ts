@@ -51,6 +51,10 @@ export default abstract class RecordedStreamBaseModel
     // 先読みを短くしすぎると Safari のネイティブ HLS でバッファが枯れやすくなる。
     private static readonly MAX_AHEAD_SEGMENT_NUM = 150;
 
+    // ブラウザがこの先行量まで消費したらエンコードを再開する。
+    // 再生を止めずに、保持窓の余裕も残すため数十秒分に設定する。
+    private static readonly RESUME_AHEAD_SEGMENT_NUM = 30;
+
     /**
      * 先行 1 セグメントあたりの停止時間 (ms)。
      *
@@ -308,8 +312,8 @@ export default abstract class RecordedStreamBaseModel
      * エンコードが再生位置より先行しすぎていたらペースを落とす。
      * 標準出力の読み出しを止めるとパイプが詰まり、エンコーダ自身が書き込みでブロックする
      *
-     * 停止時間は超過量に比例させ (PACE_INTERVAL_PER_SEGMENT × 超過セグメント数、
-     * 上限 MAX_PACE_INTERVAL)、必ず再開する。完全に止めるとプレイリストの更新も止まり、
+     * 先行量が RESUME_AHEAD_SEGMENT_NUM まで減れば再開する。プレイヤーが取得を止めても
+     * MAX_PACE_INTERVAL 経過後には必ず再開する。完全に止めるとプレイリストの更新も止まり、
      * LL-HLS のプレイヤーが次のセグメントを取りに来なくなってデッドロックするため
      * @param streamId: apid.StreamId
      */
@@ -340,15 +344,36 @@ export default abstract class RecordedStreamBaseModel
         this.isEncodeThrottled = true;
         stdout.pause();
 
-        this.throttleTimerId = setTimeout(() => {
+        const throttleStartedAt = Date.now();
+        const resumeThrottle = (): void => {
             this.clearThrottleTimer();
             if (this.isEncodeThrottled === false) {
                 return;
             }
 
+            const currentAheadNum = this.hlsMemoryStore.getAheadSegmentNum(streamId);
+            const elapsedTime = Date.now() - throttleStartedAt;
+            if (
+                currentAheadNum > RecordedStreamBaseModel.RESUME_AHEAD_SEGMENT_NUM &&
+                elapsedTime < RecordedStreamBaseModel.MAX_PACE_INTERVAL
+            ) {
+                this.throttleTimerId = setTimeout(
+                    resumeThrottle,
+                    Math.min(
+                        RecordedStreamBaseModel.PACE_INTERVAL_PER_SEGMENT,
+                        RecordedStreamBaseModel.MAX_PACE_INTERVAL - elapsedTime,
+                    ),
+                );
+                return;
+            }
+
+            this.log.stream.debug(
+                `resume encode (ahead ${currentAheadNum} segments, elapsed ${elapsedTime}ms): ${streamId}`,
+            );
             this.isEncodeThrottled = false;
             stdout.resume();
-        }, pauseTime);
+        };
+        this.throttleTimerId = setTimeout(resumeThrottle, pauseTime);
     }
 
     /**
