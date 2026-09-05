@@ -195,7 +195,7 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
 
 ## in-memory HLS（低遅延・ディスク書き込みなし）
 
-録画済み in-memory HLS は、保持する約 180 秒のセグメント窓から 30 秒の安全余白を残し、エンコードを再生位置より最大約 150 秒先まで進める。更新中プレイリストには `#EXT-X-START:TIME-OFFSET=0,PRECISE=YES` を付け、Safari / hls.js がライブ端へ移動せず録画先頭から再生するようにする。hls.js 経路も `startPosition: 0`、`maxBufferLength: 150`、`maxMaxBufferLength: 180` とし、先読み不足によるブツ切れを抑える。ライブ HLS の保持・先読み設定は変更しない。
+録画済み in-memory HLS は、保持する約 180 秒のセグメント窓から 30 秒の安全余白を残し、エンコードを再生位置より最大約 150 秒先まで進める。更新中プレイリストには `#EXT-X-START:TIME-OFFSET=0,PRECISE=YES` を付け、Safari / hls.js がライブ端へ移動せず録画先頭から再生するようにする。hls.js 経路も `startPosition: 0`、`maxBufferLength: 150`、`maxMaxBufferLength: 180` とし、先読み不足によるブツ切れを抑える。サーバーはブラウザが取得した最も新しい seq を先読み基準にし、古いセグメントの再取得では基準を後退させない。ライブ HLS の保持・先読み設定は変更しない。
 
 ライブ HLS をディスクに書き出さず、メモリ上でセグメント化・配信するモードを追加した。
 
