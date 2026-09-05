@@ -53,6 +53,7 @@ export default class SettingStorageModel extends AbstractStorageBaseModel<ISetti
             jikkyoLiveOffsetSec: 0,
             nextUpPanelTab: 'latest',
             isEnableNextUpAutoPlayForLatestTab: false,
+            nextUpSeriesSortOrder: 'episodeAsc',
             isShowRecordedAsSeries: false,
             isShowFollowingIndicatorInGuide: true,
             useDictionaryEpisodeTitle: true,

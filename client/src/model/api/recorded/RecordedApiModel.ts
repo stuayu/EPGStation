@@ -126,6 +126,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
                         limit: option?.limit,
                         offset: option?.offset,
                         target: option?.target,
+                        sortOrder: option?.sortOrder,
                     },
                 })
             ).data;

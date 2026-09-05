@@ -47,7 +47,9 @@ export default abstract class RecordedStreamBaseModel
      * 保持数より十分小さくしてこの追い越しを防ぐ。先行分はそのまま
      * 「シークに即応できる範囲」でもあるので、短くしすぎない
      */
-    private static readonly MAX_AHEAD_SEGMENT_NUM = 60;
+    // HLSMemoryStoreModel の録画保持上限 (180 秒) から、プレイリスト更新・再生位置の安全余白 30 秒を引く。
+    // 先読みを短くしすぎると Safari のネイティブ HLS でバッファが枯れやすくなる。
+    private static readonly MAX_AHEAD_SEGMENT_NUM = 150;
 
     /**
      * 先行 1 セグメントあたりの停止時間 (ms)。

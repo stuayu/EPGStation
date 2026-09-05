@@ -10,7 +10,19 @@
                 <button type="button" class="switch-item" v-bind:class="{ selected: tab === 'latest' }" v-on:click="tab = 'latest'">最新</button>
                 <button type="button" class="switch-item" v-bind:class="{ selected: tab === 'series' }" v-on:click="tab = 'series'">シリーズ</button>
             </div>
-            <v-btn v-if="data !== null && data.currentSeriesId !== null" size="small" variant="text" @click="moveSeries">シリーズへ</v-btn>
+            <div class="head-actions d-flex align-center">
+                <v-btn
+                    v-if="tab === 'series'"
+                    size="small"
+                    variant="text"
+                    icon
+                    v-bind:aria-label="seriesSortOrder === 'episodeAsc' ? '並び順: 1話順' : '並び順: 最新話順'"
+                    v-on:click="toggleSeriesSortOrder"
+                >
+                    <v-icon>{{ seriesSortOrder === 'episodeAsc' ? 'mdi-sort-numeric-ascending' : 'mdi-sort-numeric-descending' }}</v-icon>
+                </v-btn>
+                <v-btn v-if="data !== null && data.currentSeriesId !== null" size="small" variant="text" @click="moveSeries">シリーズへ</v-btn>
+            </div>
         </div>
         <div class="body" ref="body">
             <div v-show="tab === 'latest'">
@@ -33,9 +45,19 @@
                 </div>
             </div>
             <div v-show="tab === 'series'">
-                <div v-for="item in data?.series ?? []" :key="`series-${item.id}`" class="item" v-on:click="play(item)">
+                <div
+                    v-for="item in data?.series ?? []"
+                    :key="`series-${item.id}`"
+                    class="item"
+                    v-bind:class="{ 'is-current': isCurrentItem(item) }"
+                    v-on:click="isCurrentItem(item) === false ? play(item) : undefined"
+                >
                     <v-img :src="thumbnailPath(item)" width="96" height="54" cover class="thumbnail"></v-img>
                     <div class="detail">
+                        <div class="badges" v-if="isCurrentItem(item) === true || isNextItem(item) === true">
+                            <span v-if="isCurrentItem(item) === true" class="text-caption badge badge-current">再生中</span>
+                            <span v-else-if="isNextItem(item) === true" class="text-caption badge badge-next">次</span>
+                        </div>
                         <div class="text-body-2 name">{{ episodeLabel(item) }}{{ item.name }}</div>
                         <div class="text-caption sub">{{ channelName(item) }} · {{ formatDate(item.startAt) }}</div>
                         <div class="status">
@@ -43,7 +65,7 @@
                             <v-progress-linear v-if="watchProgress(item) !== null" :model-value="watchProgress(item) ?? 0" height="3" class="progress"></v-progress-linear>
                         </div>
                     </div>
-                    <v-btn size="small" variant="text" icon aria-label="再生" v-on:click.stop="play(item)">
+                    <v-btn v-if="isCurrentItem(item) === false" size="small" variant="text" icon aria-label="再生" v-on:click.stop="play(item)">
                         <v-icon>mdi-play</v-icon>
                     </v-btn>
                 </div>
@@ -119,6 +141,20 @@ class NextUpPanel extends Vue {
         return (this.data?.latest.length ?? 0) === 0 && (this.data?.series.length ?? 0) === 0;
     }
 
+    // シリーズタブの並び順 (見た目だけの設定)
+    get seriesSortOrder(): 'episodeAsc' | 'episodeDesc' {
+        return this.settingModel.tmp.nextUpSeriesSortOrder;
+    }
+
+    /**
+     * シリーズタブの一覧中で「次に再生する 1 件」(話数の判定は並び順・視聴履歴に関係なく決める)
+     * 連続再生 (自動遷移) の判定 (resolveNextItem) とここで表示するバッジが食い違わないよう、
+     * どちらも resolveNextSeriesItem() の 1 か所を通す
+     */
+    get nextSeriesItem(): apid.RecordedItem | null {
+        return this.resolveNextSeriesItem();
+    }
+
     public created(): void {
         // §11: タブ選択をクライアント設定から復元する
         this.tab = this.settingModel.tmp.nextUpPanelTab;
@@ -157,6 +193,7 @@ class NextUpPanel extends Vue {
             this.data = await this.api.getNextUp(this.recordedId, this.isHalfWidth, {
                 limit: NextUpPanel.PAGE_SIZE,
                 offset: 0,
+                sortOrder: this.seriesSortOrder,
             });
             if (this.data !== null && this.data.currentSeriesId !== null) {
                 await this.loadEpisodeNumbers(this.data.currentSeriesId);
@@ -244,6 +281,7 @@ class NextUpPanel extends Vue {
                 limit: NextUpPanel.PAGE_SIZE,
                 offset: offset,
                 target: tab,
+                sortOrder: this.seriesSortOrder,
             });
             if (result === null || this.data === null || tab !== this.tab) {
                 return;
@@ -292,6 +330,98 @@ class NextUpPanel extends Vue {
             this.episodeNumberMap = new Map();
             this.currentEpisodeNumber = null;
         }
+    }
+
+    /**
+     * シリーズタブの並び順 (1話順 / 最新話順) を切り替えて設定へ保存し、シリーズ一覧を読み直す
+     * 並び順はあくまで見た目の設定であり、次に再生する話数の判定 (resolveNextSeriesItem) には使わない
+     */
+    toggleSeriesSortOrder(): void {
+        this.settingModel.tmp.nextUpSeriesSortOrder = this.seriesSortOrder === 'episodeAsc' ? 'episodeDesc' : 'episodeAsc';
+        this.settingModel.save();
+        void this.reloadSeries();
+    }
+
+    /**
+     * シリーズ一覧だけを先頭ページから読み直す (並び順切り替え用)
+     */
+    private async reloadSeries(): Promise<void> {
+        if (this.data === null) return;
+
+        this.loading = true;
+        try {
+            const result = await this.api.getNextUp(this.recordedId, this.isHalfWidth, {
+                limit: NextUpPanel.PAGE_SIZE,
+                offset: 0,
+                target: 'series',
+                sortOrder: this.seriesSortOrder,
+            });
+            if (result !== null && this.data !== null) {
+                this.data.series = result.series;
+                this.data.hasMoreSeries = result.hasMoreSeries;
+            }
+        } finally {
+            this.loading = false;
+            this.$nextTick(() => {
+                this.setupObserver();
+            });
+        }
+    }
+
+    /**
+     * 指定録画が現在視聴中の録画かどうか (シリーズタブは現在の録画も一覧に含まれる)
+     */
+    isCurrentItem(item: apid.RecordedItem): boolean {
+        return item.id === this.recordedId;
+    }
+
+    /**
+     * 指定録画が「次に再生される 1 件」かどうか
+     */
+    isNextItem(item: apid.RecordedItem): boolean {
+        return this.nextSeriesItem?.id === item.id;
+    }
+
+    /**
+     * シリーズタブで「次に再生する録画」を 1 件決める
+     * 話数のみで判定し、並び順設定 (1話順/最新話順) にも視聴履歴にも左右されない (指示による)。
+     * - 現在の話数が判明していれば、現在より大きい最小話数の録画を次とする
+     * - 現在自体に話数が無い、または話数だけでは次が決められない (話数不明の録画しか残っていない等) 場合は
+     *   放送開始時刻で代用し、「現在の録画より後に始まった最も早い録画」を次とみなす
+     * - 連続再生 (resolveNextItem 経由) と一覧のバッジ表示は必ずこの結果を使う (表示と挙動を一致させるため)
+     */
+    private resolveNextSeriesItem(): apid.RecordedItem | null {
+        const list = this.data?.series ?? [];
+        if (list.length === 0) return null;
+
+        const candidates = list.filter(item => item.id !== this.recordedId);
+        if (candidates.length === 0) return null;
+
+        if (this.currentEpisodeNumber !== null) {
+            let best: apid.RecordedItem | null = null;
+            let bestEpisodeNumber = Number.MAX_SAFE_INTEGER;
+            for (const item of candidates) {
+                const episodeNumber = this.episodeNumberMap.get(item.id) ?? null;
+                if (episodeNumber === null || episodeNumber <= (this.currentEpisodeNumber as number)) continue;
+                if (episodeNumber < bestEpisodeNumber) {
+                    best = item;
+                    bestEpisodeNumber = episodeNumber;
+                }
+            }
+            if (best !== null) return best;
+        }
+
+        // 話数だけでは決められない場合は放送開始時刻で代用する
+        const current = list.find(item => item.id === this.recordedId);
+        const currentStartAt = current?.startAt ?? null;
+        if (currentStartAt === null) return null;
+
+        let best: apid.RecordedItem | null = null;
+        for (const item of candidates) {
+            if (item.startAt <= currentStartAt) continue;
+            if (best === null || item.startAt < best.startAt) best = item;
+        }
+        return best;
     }
 
     moveSeries(): void {
@@ -375,28 +505,16 @@ class NextUpPanel extends Vue {
 
     /**
      * 選択中タブから「次に再生する録画」を解決する
-     * シリーズタブは話数昇順で現在より後の最小話数を優先し、無ければ未視聴優先、それも無ければ先頭
-     * 新着タブは未視聴優先、無ければ先頭
+     * シリーズタブは resolveNextSeriesItem() (話数優先、視聴履歴は見ない) と同じ結果を用いる
+     * (一覧のバッジ表示と連続再生の遷移先を一致させるため)。新着タブは未視聴優先、無ければ先頭
      */
     private resolveNextItem(): apid.RecordedItem | null {
-        const list = this.tab === 'series' ? (this.data?.series ?? []) : (this.data?.latest ?? []);
-        if (list.length === 0) return null;
-
         if (this.tab === 'series') {
-            const withEpisode = list
-                .map(item => ({ item, episodeNumber: this.episodeNumberMap.get(item.id) ?? null }))
-                .sort((a, b) => (a.episodeNumber ?? Number.MAX_SAFE_INTEGER) - (b.episodeNumber ?? Number.MAX_SAFE_INTEGER));
-
-            if (this.currentEpisodeNumber !== null) {
-                const after = withEpisode.find(x => x.episodeNumber !== null && x.episodeNumber > (this.currentEpisodeNumber as number));
-                if (typeof after !== 'undefined') return after.item;
-            }
-
-            const unwatched = list.find(item => this.getWatchStatus(item) !== 'watched');
-            if (typeof unwatched !== 'undefined') return unwatched;
-
-            return withEpisode[0]?.item ?? list[0];
+            return this.resolveNextSeriesItem();
         }
+
+        const list = this.data?.latest ?? [];
+        if (list.length === 0) return null;
 
         const unwatched = list.find(item => this.getWatchStatus(item) !== 'watched');
 
@@ -511,6 +629,12 @@ export default toNative(NextUpPanel);
             color: rgb(var(--v-theme-primary))
             background: rgba(var(--v-theme-primary), 0.16)
 
+    // 右側のアイコン・テキストボタン群 (並び順切り替え・シリーズへ)。
+    // 数を増やすとタイトルバーと同じ理由で狭い端末で崩れるため 2 個までに留めている
+    .head-actions
+        flex: 0 0 auto
+        gap: 2px
+
     .body
         flex: 1 1 auto
         min-height: 0
@@ -527,6 +651,12 @@ export default toNative(NextUpPanel);
         &:hover
             background: var(--watch-surface-hover)
 
+        // 再生中の項目はクリックしても何も起きないので手のカーソルに戻す
+        &.is-current
+            cursor: default
+            background: rgba(var(--v-theme-primary), 0.1)
+            box-shadow: inset 3px 0 0 0 rgb(var(--v-theme-primary))
+
     .thumbnail
         flex: 0 0 auto
         border-radius: 4px
@@ -534,6 +664,26 @@ export default toNative(NextUpPanel);
     .detail
         flex: 1 1 auto
         min-width: 0
+
+    .badges
+        display: flex
+        gap: 4px
+        margin-bottom: 2px
+
+    .badge
+        display: inline-block
+        padding: 1px 6px
+        border-radius: 8px
+        line-height: 1.4
+        white-space: nowrap
+
+    .badge-current
+        color: rgb(var(--v-theme-primary))
+        background: rgba(var(--v-theme-primary), 0.16)
+
+    .badge-next
+        color: var(--watch-fg)
+        background: var(--watch-surface-chip)
 
     .name
         display: -webkit-box

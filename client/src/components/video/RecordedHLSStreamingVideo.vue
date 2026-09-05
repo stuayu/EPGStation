@@ -269,6 +269,11 @@ class RecordedHLSStreamingVideo extends BaseVideo {
                     // ここでの明示は挙動を設定として固定するためのもの
                     hls: {
                         lowLatencyMode: true,
+                        // 録画 HLS は更新中でも先頭から再生する。未指定だと hls.js がライブ端から開始する。
+                        startPosition: 0,
+                        // 録画済みは保持窓 (約 180 秒) の直前まで先読みし、再生中のバッファ枯れを避ける。
+                        maxBufferLength: 150,
+                        maxMaxBufferLength: 180,
                         maxLiveSyncPlaybackRate: 1,
                         // 巻き戻し操作に応えるため、再生済み範囲は長めに保持する
                         backBufferLength: 90,

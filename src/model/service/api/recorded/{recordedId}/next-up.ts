@@ -13,6 +13,7 @@ export const get: Operation = async (req, res) => {
                 limit: req.query.limit as any as number | undefined,
                 offset: req.query.offset as any as number | undefined,
                 target: req.query.target as any as 'all' | 'latest' | 'series' | undefined,
+                sortOrder: req.query.sortOrder as any as 'episodeAsc' | 'episodeDesc' | undefined,
             },
         );
         if (nextUp === null) {
@@ -53,6 +54,14 @@ get.apiDoc = {
             description: '取得対象のリスト。追加読み込み時に片方だけ引くために使う (既定 all)',
             required: false,
             schema: { type: 'string', enum: ['all', 'latest', 'series'] },
+        },
+        {
+            name: 'sortOrder',
+            in: 'query',
+            description:
+                'シリーズ一覧の並び順。見た目だけに影響し、次に再生する話数の判定には使わない (既定 episodeAsc)',
+            required: false,
+            schema: { type: 'string', enum: ['episodeAsc', 'episodeDesc'] },
         },
     ],
     responses: {
