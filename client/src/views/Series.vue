@@ -38,7 +38,7 @@
                     density="compact"
                     hide-details
                     style="flex: 1 1 200px; max-width: 200px"
-                    v-on:update:model-value="reload"
+                    v-on:update:model-value="onSortChanged"
                 ></v-select>
                 <v-btn
                     icon
@@ -517,8 +517,10 @@ class SeriesView extends Vue {
         return this.$vuetify.display.smAndDown;
     }
 
-    // 表示形式の選択を保存する localStorage キー
+    // 表示形式・並べ替え条件の選択を保存する localStorage キー
     private static readonly VIEW_MODE_KEY = 'series-view-mode';
+    private static readonly SORT_KEY = 'series-sort';
+    private static readonly ORDER_KEY = 'series-order';
     // マージ候補を問い合わせる選択シリーズの上限 (選択が多いときに API を叩きすぎないため)
     private static readonly MERGE_LOOKUP_LIMIT = 5;
     // URL query に載せない既定の並べ替え条件
@@ -593,7 +595,38 @@ class SeriesView extends Vue {
 
     toggleOrder(): void {
         this.order = this.order === 'asc' ? 'desc' : 'asc';
+        this.saveSortSettings();
         void this.reload();
+    }
+
+    onSortChanged(): void {
+        this.saveSortSettings();
+        void this.reload();
+    }
+
+    private saveSortSettings(): void {
+        try {
+            window.localStorage.setItem(SeriesView.SORT_KEY, this.sort);
+            window.localStorage.setItem(SeriesView.ORDER_KEY, this.order);
+        } catch (err) {
+            // プライベートモード等で保存できなくても一覧自体は動くので無視する
+            console.error(err);
+        }
+    }
+
+    private getSavedSortSettings(): { sort: apid.SeriesSortKey; order: 'asc' | 'desc' } {
+        try {
+            const savedSort = window.localStorage.getItem(SeriesView.SORT_KEY);
+            const savedOrder = window.localStorage.getItem(SeriesView.ORDER_KEY);
+            return {
+                sort: (this.sortItems.some(x => x.value === savedSort) ? savedSort : SeriesView.DEFAULT_SORT) as apid.SeriesSortKey,
+                order: savedOrder === 'asc' || savedOrder === 'desc' ? savedOrder : SeriesView.DEFAULT_ORDER,
+            };
+        } catch (err) {
+            // プライベートモード等で読み出せなくても既定値で一覧を表示する
+            console.error(err);
+            return { sort: SeriesView.DEFAULT_SORT, order: SeriesView.DEFAULT_ORDER };
+        }
     }
 
     saveViewMode(): void {
@@ -650,12 +683,13 @@ class SeriesView extends Vue {
         const query = this.$route.query;
         const sort = Util.getRouteString(query.sort);
         const order = Util.getRouteString(query.order);
+        const saved = this.getSavedSortSettings();
         const status = Util.getRouteString(query.status);
         const origin = Util.getRouteString(query.origin);
 
         this.keyword = Util.getRouteString(query.keyword) ?? '';
-        this.sort = (this.sortItems.some(x => x.value === sort) ? sort : SeriesView.DEFAULT_SORT) as apid.SeriesSortKey;
-        this.order = order === 'asc' || order === 'desc' ? order : SeriesView.DEFAULT_ORDER;
+        this.sort = (this.sortItems.some(x => x.value === sort) ? sort : saved.sort) as apid.SeriesSortKey;
+        this.order = order === 'asc' || order === 'desc' ? order : saved.order;
         this.season = Util.getRouteString(query.season) ?? null;
         this.status = status === 'onair' || status === 'finished' ? status : null;
         this.origin = origin === 'dictionary' || origin === 'local' ? origin : null;
