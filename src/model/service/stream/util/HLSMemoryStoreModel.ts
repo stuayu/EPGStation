@@ -350,12 +350,16 @@ export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
     }
 
     /**
-     * クライアントが取得したセグメント seq を記録する (巻き戻しでも最新値を追うため単調増加にはしない)
+     * クライアントが取得したセグメント seq を記録する
      * @param entry: HLSMemoryStreamEntry
      * @param seq: number
      */
     private markServedSeq(entry: HLSMemoryStreamEntry, seq: number): void {
-        entry.lastServedSeq = seq;
+        // ブラウザはバッファ補充中に古いセグメントも取得することがある。
+        // それで先読み基準を後退させると、エンコード抑制が解除されてバーストする。
+        if (entry.lastServedSeq === null || seq > entry.lastServedSeq) {
+            entry.lastServedSeq = seq;
+        }
         entry.servedSeqs.add(seq);
     }
 

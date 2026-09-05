@@ -259,6 +259,18 @@ test('存在しないセグメント取得では lastServedSeq を更新しな�
     assert.equal(store.getAheadSegmentNum(1), 14);
 });
 
+test('古いセグメントの再取得では先読み基準を後退させない', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'recorded');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 20);
+
+    store.getSegment(1, 10);
+    assert.equal(store.getAheadSegmentNum(1), 9);
+    store.getSegment(1, 2);
+    assert.equal(store.getAheadSegmentNum(1), 9);
+});
+
 test('存在しないパート取得では lastServedSeq を更新しない', async () => {
     const store = new HLSMemoryStoreModel(logger);
     store.create(1, 'recorded');
