@@ -283,7 +283,7 @@ function makeThrottleModel(aheadNum) {
     return { model, processManager, state };
 }
 
-test('先行が少しだけ超えている場合は短く止めるだけで再開する (供給を途切れさせないため)', async () => {
+test('先行量が数十セグメントまで減ればエンコードを再開する', async () => {
     await withStubbedFfprobe(async () => {
         // MAX_AHEAD_SEGMENT_NUM (150) の 1 セグメント超過 = 停止 100ms
         const { model, processManager, state } = makeThrottleModel(151);
@@ -296,10 +296,10 @@ test('先行が少しだけ超えている場合は短く止めるだけで再�
         assert.equal(model.isEncodeThrottled, true);
         assert.equal(stdout.isPaused(), true);
 
-        // 取得位置が進まなくても (先行量が変わらなくても) 短時間で再開する
+        // ブラウザが再生して取得位置が進み、先行量が 30 セグメントまで減ったら再開する
+        state.aheadNum = 30;
         await new Promise(resolve => setTimeout(resolve, 250));
 
-        assert.equal(state.aheadNum, 151);
         assert.equal(model.isEncodeThrottled, false);
         assert.equal(stdout.isPaused(), false);
 
@@ -310,7 +310,7 @@ test('先行が少しだけ超えている場合は短く止めるだけで再�
 test('先行が大きいほど長く止める (超過量に比例、上限 5 秒)', async () => {
     await withStubbedFfprobe(async () => {
         // 150 + 20 超過 = 停止 2000ms
-        const { model, processManager } = makeThrottleModel(170);
+        const { model, processManager, state } = makeThrottleModel(170);
 
         await model.start(11);
         const stdout = processManager.processes[0].stdout;
@@ -325,9 +325,9 @@ test('先行が大きいほど長く止める (超過量に比例、上限 5 秒
         assert.equal(model.isEncodeThrottled, true);
         assert.equal(stdout.isPaused(), true);
 
-        // 比例分の時間が経てば、先行量が下がっていなくても再開する
-        // (止めっぱなしにするとプレイリストの更新が止まりプレイヤーがストールするため)
-        await new Promise(resolve => setTimeout(resolve, 1800));
+        // ブラウザが消費して先行量が 30 セグメントまで減れば再開する
+        state.aheadNum = 30;
+        await new Promise(resolve => setTimeout(resolve, 2250));
         assert.equal(model.isEncodeThrottled, false);
         assert.equal(stdout.isPaused(), false);
 
