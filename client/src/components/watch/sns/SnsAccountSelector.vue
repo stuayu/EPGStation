@@ -11,7 +11,7 @@
         v-on:click="toggle(a.id)"
     >
             <v-avatar start size="18">
-                <v-img v-if="a.avatarUrl !== null" v-bind:src="a.avatarUrl"></v-img>
+                <v-img v-if="a.avatarUrl !== null" v-bind:src="a.avatarUrl" referrerpolicy="no-referrer"></v-img>
                 <v-icon v-else size="14">{{ a.provider === 'bluesky' ? 'mdi-butterfly-outline' : 'mdi-account-circle' }}</v-icon>
             </v-avatar>
             <span v-if="compact === false" class="chip-label">{{ a.displayName }}</span>

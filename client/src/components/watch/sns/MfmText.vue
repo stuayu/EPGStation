@@ -14,6 +14,7 @@
                 v-bind:src="emojiUrl(node.name) ?? undefined"
                 v-bind:alt="`:${node.name}:`"
                 v-bind:title="`:${node.name}:`"
+                referrerpolicy="no-referrer"
                 class="mfm-emoji"
             />
             <span v-else-if="node.type === 'emoji'">:{{ node.name }}:</span>

@@ -7,6 +7,18 @@
 
         <meta http-equiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+        <!--
+            SNS 投稿パネルが表示する Misskey/Bluesky のメディア (絵文字・アバター・添付画像) は、
+            Referer 付きだとホットリンク対策で 403 を返すサーバーがある (実測確認済み: media.misskeyusercontent.jp 等)。
+            個々の <img> / v-img に referrerpolicy="no-referrer" を付けても、Vue の :src バインディングは
+            属性が反映される前にブラウザがリクエストを開始してしまうことがあり (実測確認済み: src を先に設定すると
+            後から referrerpolicy を付けても間に合わず Referer 付きで飛ぶ)、v-img は内部で img を生成するため
+            テンプレート上の記述順でも制御できない。ページ全体の既定ポリシーをここで no-referrer にしておけば、
+            要素の属性適用タイミングに関係なく確実に Referer が付かなくなる。
+            EPGStation サーバー自身は Referer を一切参照していない (src/ に referer/referrer の参照なし、grep で確認済み)
+            ため、EPGStation 自身への画像取得などに影響はない
+        -->
+        <meta name="referrer" content="no-referrer" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="theme-color" content="#3f51b5" />
         <link rel="icon" href="./icon/favicon.png" />

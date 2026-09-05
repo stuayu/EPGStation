@@ -112,6 +112,7 @@ npm run test:ci        # ut + ita + itb
 ### クライアント (Vue 3 + vue-facing-decorator)
 
 - **クラスフィールドに書いたコールバックの `this` は Vue インスタンスではない**。フィールドの初期値は data 用の一時インスタンスから集められ、**メソッドだけが Vue インスタンスへ束縛される**。`private xxxCallback = ((): void => { ... }).bind(this)` の中から `this.watchParam` のようなデータを読むと初期値しか見えず、条件判定が黙って壊れる。さらに **`this.xxxState` も Vue のリアクティブなプロキシではなくなる**ため、そこで state を書き換えても再描画がトリガされない (データは新しいのに画面が古いまま = 再読み込みするまで反映されない)。**フィールドのコールバックからメソッドを呼ぶだけでも直らない** (呼ばれたメソッドの `this` も一時インスタンスのまま)。socket.io などのコールバックは**フィールドを挟まず、メソッドをそのまま渡す** (`onUpdateState(this.onUpdateStatus)`)
+- **SNS など外部サーバーの画像を出すときは Referer を送らない**。Misskey のメディアサーバー (`media.misskeyusercontent.jp` 等) は Referer 付きをホットリンクとみなして 403 を返す。**個々の `<img>` / `v-img` に `referrerpolicy="no-referrer"` を付けるだけでは直らない** — ブラウザは `src` が入った時点でリクエストを始めるので、後から属性が付いても間に合わない (`v-img` は内部で `img` を作るためテンプレートの記述順でも制御できない)。`client/index.html` の `<meta name="referrer" content="no-referrer" />` がページ全体の既定として効いているので、**これを外すと SNS の絵文字・アバター・添付画像が一斉に表示されなくなる**。DOM を後から見ると属性は付いて見えるため、確認は `naturalWidth > 0` で行うこと
 - **番組表 (`Guide.vue`) のセルは手組み DOM**。データを取り直したら `GuideState.createProgramDoms()` と `Guide.renderProgramDoms()` の**両方**を呼ぶ (後者を呼ばないと画面が古いまま。可視判定の `updateVisible()` もその末尾で走る)
 - **`DataBroadcastingManager` は `markRaw()` で包む**。BMLBrowser 内部の JS-Interpreter が Vue のプロキシに包まれると壊れる
 - **DPlayer インスタンスも `markRaw()` で包む** (`BaseVideo.createPlayer()`)。`DPlayer.play()` の mutex 処理は `this !== instances[i]` で他インスタンスを止めるが、リアクティブプロキシ経由で呼ぶと `this` (プロキシ) と配列内の生インスタンスが別オブジェクトになるため判定が成立し、**再生した瞬間に自分自身を pause する**。再生ボタン・ホットキー・シーク後の再開が軒並み効かなくなる
@@ -123,6 +124,7 @@ npm run test:ci        # ut + ita + itb
 
 - **端末幅の判定は `this.$vuetify.display.smAndDown`** (600px 未満)。`UaUtil.isMobile()` は UA 判定なので、端末の向きや分割表示では当てにならない。レイアウトの出し分けは必ず display 側を使う
 - **`v-dialog` はビューポート幅に丸められるが、`v-menu` は丸められない**。`v-menu` の中に `width="420"` のような固定幅を置くと狭い端末で横にはみ出す。共通クラス **`.menu-card`** (`client/src/App.vue` に定義) を付ける — 希望幅は保ったまま `max-width: calc(100vw - 32px)` で縮む
+- **`.menu-card` を付けたうえで `v-card` に `max-width` を直書きしない**。`v-card` の `max-width` prop は Vuetify がインラインスタイルとして書き込むため `.menu-card` の `max-width: calc(100vw - 32px)` より必ず強くなり、狭端末で縮まなくなる。希望幅は CSS クラス側の `width` で持たせる (`width` と `max-width` は別プロパティなので競合しない)。**`v-menu` の中身は `document.body` 直下へテレポートされるため、その幅指定クラスはコンポーネントのルートセレクタにネストさせず top-level に定義する**
 - **縦も溢れる**。`v-menu` の overlay には `max-height` が付くが `overflow-y: visible` なので、中身が超えると画面外へ出たままスクロールもできない。`.menu-card` は flex column にしてあるので、**スクロールさせたい本文に `.menu-card-body` を付ける** (区切り線とアクション行は縮まず残る)。**`v-card` は先頭に `.v-card__loader` を挿むため「最初の子要素」では本文を指せない**
 - **タイトルバーのタイトルには `.app-bar-title` を付ける**。Vuetify の `.v-toolbar-title` は `flex: 1 1` (basis 0) なので、後ろの `v-spacer` と余白を**等分**してしまい、右にアイコンが 1 つしか無くても画面の半分ほどで ellipsis される (狭い端末で「番組表 08/...」と日付が読めなくなる)。共通クラス `.app-bar-title` (`client/src/App.vue`、`flex: 0 1 auto`) が必要幅を先に確保する
 - **横並びの入力は狭い端末で潰れる**。Vuetify の `.v-input` は既定が `flex: 1 1 auto` なので、`d-flex` に 2 つ並べるとラベルや選択値が読めない幅まで縮む。折り返してほしいものは `flex: 1 1 <基準幅>` + `flex-wrap`、縮ませたくないものは `flex: 0 0 auto` を与える。説明 + スイッチの行は説明側の div に `flex: 1 1 auto; min-width: 0` を付けないとスイッチが画面外へ出る

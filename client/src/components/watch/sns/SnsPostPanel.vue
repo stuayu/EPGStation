@@ -91,7 +91,7 @@
                                         <template v-slot:activator="{ props }">
                                             <v-btn size="small" variant="outlined" v-bind="props" prepend-icon="mdi-emoticon-outline">絵文字</v-btn>
                                         </template>
-                                        <v-card class="menu-card" max-width="360">
+                                        <v-card class="menu-card composer-menu-card">
                                             <v-card-text class="menu-card-body">
                                                 <SnsEmojiPicker v-bind:emojis="composerEmojis" v-on:select="onInsertEmoji"></SnsEmojiPicker>
                                             </v-card-text>
@@ -101,7 +101,7 @@
                                         <template v-slot:activator="{ props }">
                                             <v-btn size="small" variant="outlined" v-bind="props" prepend-icon="mdi-format-color-text">装飾</v-btn>
                                         </template>
-                                        <v-card class="menu-card" max-width="360">
+                                        <v-card class="menu-card composer-menu-card">
                                             <v-card-text class="menu-card-body">
                                                 <SnsMfmPicker v-on:select="onInsertDecoration"></SnsMfmPicker>
                                             </v-card-text>
@@ -727,21 +727,28 @@ export default toNative(SnsPostPanel);
         overflow-y: auto
         padding: 12px
 
+    // 狭幅 (スマホ・視聴画面の狭いサイドパネル) では 1 行に収まらないため折り返す。
+    // ビューポート幅の @media ではなく flex-wrap で対応しているのは、このパネルの実際の幅は
+    // 視聴画面のレイアウト (分割表示・サイドパネル幅) 次第でビューポート幅と一致しないため
     .tab-row
         display: flex
         align-items: center
+        flex-wrap: wrap
         gap: 6px
         margin-bottom: 8px
 
         .tab-toggle
-            flex: 1 1 auto
+            flex: 1 1 140px
             min-width: 0
 
         .header-accounts
-            flex: 0 1 auto
+            flex: 1 1 120px
             min-width: 0
-            max-width: 35%
             overflow-x: auto
+
+        .header-misskey-options,
+        > .v-btn
+            flex: 0 0 auto
 
     .section
         margin-bottom: 12px
@@ -860,4 +867,10 @@ export default toNative(SnsPostPanel);
             bottom: -8px
             margin: 8px -8px -8px
             padding: 8px
+
+// v-menu の中身は document.body 直下へテレポートされるため .sns-post-panel の子孫としてネストさせない。
+// v-card の max-width prop はインラインスタイルとなり .menu-card (共通クラス) の
+// max-width: calc(100vw - 32px) より強くなってしまうため、希望幅は width で持たせる
+.composer-menu-card
+    width: 360px
 </style>

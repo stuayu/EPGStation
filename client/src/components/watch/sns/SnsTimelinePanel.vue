@@ -1,17 +1,74 @@
 <template>
     <div class="sns-timeline-panel">
         <div class="tl-controls">
-            <v-chip-group v-model="selectedAccountId" mandatory selected-class="text-primary" v-on:update:model-value="onAccountChanged">
-                <v-chip v-for="a in accounts" v-bind:key="a.id" v-bind:value="a.id" size="small" variant="outlined">
-                    <v-avatar start size="18">
-                        <v-img v-if="a.avatarUrl !== null" v-bind:src="a.avatarUrl"></v-img>
-                        <v-icon v-else size="14">{{ a.provider === 'bluesky' ? 'mdi-butterfly-outline' : 'mdi-account-circle' }}</v-icon>
-                    </v-avatar>
-                    <span class="chip-label">{{ a.displayName }}</span>
-                </v-chip>
-            </v-chip-group>
+            <div class="top-row">
+                <!--
+                    狭い端末ではアカウントが 1 つしか無いとき、この行ごと出さない
+                    (誰のタイムラインかは投稿タブ側のアカウント選択で分かるため、ここでの表示は冗長)。
+                    アカウントが複数あるときは切り替え手段が他に無いため、狭い端末でも出す
+                -->
+                <v-chip-group
+                    v-if="showAccountChipGroup === true"
+                    v-model="selectedAccountId"
+                    mandatory
+                    selected-class="text-primary"
+                    class="account-chip-group"
+                    v-on:update:model-value="onAccountChanged"
+                >
+                    <v-chip v-for="a in accounts" v-bind:key="a.id" v-bind:value="a.id" size="small" variant="outlined">
+                        <v-avatar start size="18">
+                            <v-img v-if="a.avatarUrl !== null" v-bind:src="a.avatarUrl" referrerpolicy="no-referrer"></v-img>
+                            <v-icon v-else size="14">{{ a.provider === 'bluesky' ? 'mdi-butterfly-outline' : 'mdi-account-circle' }}</v-icon>
+                        </v-avatar>
+                        <span class="chip-label">{{ a.displayName }}</span>
+                    </v-chip>
+                </v-chip-group>
 
-            <div v-if="selectedAccount !== null && selectedAccount.provider === 'misskey'" class="type-row">
+                <!--
+                    狭い端末では「タイムライン種別 + チャンネル」の v-select をインライン表示せず、
+                    アイコンボタン 1 つ (現在の種別名付き) + メニューへ畳む。
+                    アカウント選択の行と合わせても 1 行分の高さで済むようにし、ノート一覧 (.note-list) へ
+                    高さを渡す。操作 (種別切替・チャンネル選択) 自体はメニューの中にそのまま残す
+                -->
+                <v-menu
+                    v-if="isMobile === true && selectedAccount !== null && selectedAccount.provider === 'misskey'"
+                    v-bind:close-on-content-click="false"
+                    location="bottom end"
+                >
+                    <template v-slot:activator="{ props }">
+                        <v-btn size="small" variant="outlined" density="compact" v-bind="props" class="type-filter-btn" v-bind:title="`タイムライン: ${timelineTypeLabel}`">
+                            <v-icon size="16" class="mr-1">mdi-filter-variant</v-icon>
+                            <span class="text-caption">{{ timelineTypeLabel }}</span>
+                        </v-btn>
+                    </template>
+                    <v-card class="menu-card timeline-menu-card">
+                        <v-card-text class="menu-card-body">
+                            <v-select
+                                v-model="timelineType"
+                                v-bind:items="typeItems"
+                                label="タイムライン"
+                                density="compact"
+                                hide-details
+                                v-on:update:model-value="onTypeChanged"
+                            ></v-select>
+                            <v-select
+                                v-if="timelineType === 'channel'"
+                                v-model="channelId"
+                                v-bind:items="channelItems"
+                                label="チャンネル"
+                                density="compact"
+                                hide-details
+                                v-bind:loading="isLoadingChannels"
+                                class="mt-3"
+                                v-on:update:model-value="onChannelChanged"
+                            ></v-select>
+                        </v-card-text>
+                    </v-card>
+                </v-menu>
+            </div>
+
+            <!-- 広い画面 (isMobile === false) では、これまでどおり v-select をそのままインライン表示する -->
+            <div v-if="isMobile === false && selectedAccount !== null && selectedAccount.provider === 'misskey'" class="type-row">
                 <v-select
                     v-model="timelineType"
                     v-bind:items="typeItems"
@@ -98,6 +155,12 @@ class SnsTimelinePanel extends Vue {
     private static readonly BLUESKY_POLL_INTERVAL_MS = 20000;
     // 一番下からこの距離 (px) まで来たら次ページを読み込む
     private static readonly LOAD_MORE_THRESHOLD_PX = 120;
+    // notes 保持件数の上限。Misskey の WebSocket は接続している間ずっと新着を先頭へ積み続け、
+    // 無限スクロールの loadMore() も末尾へ積み続けるため、上限を設けないと長時間の視聴で
+    // 数千件まで膨らみ描画 (特に v-for + 画像) が固まる
+    private static readonly MAX_NOTES = 500;
+    // 上で間引くかどうかを、リストが先頭付近 (最新) を表示しているかで判定するためのしきい値 (px)
+    private static readonly TRIM_NEAR_TOP_THRESHOLD_PX = 40;
 
     public selectedAccountId: apid.SnsAccountId | null = null;
     public timelineType: apid.SnsTimelineType = 'home';
@@ -132,6 +195,24 @@ class SnsTimelinePanel extends Vue {
 
     public get selectedAccount(): apid.SnsAccountItem | null {
         return this.accounts.find(a => a.id === this.selectedAccountId) ?? null;
+    }
+
+    public get isMobile(): boolean {
+        return this.$vuetify.display.smAndDown === true;
+    }
+
+    /**
+     * アカウント選択の v-chip-group を表示するかどうか。
+     * 狭い端末でアカウントが 1 つしか無いときは、切り替え手段として意味を持たないため出さない
+     * (誰のタイムラインかは投稿タブ側のアカウント選択で分かる)
+     */
+    public get showAccountChipGroup(): boolean {
+        return this.isMobile === false || this.accounts.length > 1;
+    }
+
+    // 狭い端末のフィルターボタンに出す現在のタイムライン種別名
+    public get timelineTypeLabel(): string {
+        return this.typeItems.find(item => item.value === this.timelineType)?.title ?? 'ホーム';
     }
 
     public get channelItems(): { title: string; value: string | null }[] {
@@ -242,7 +323,12 @@ class SnsTimelinePanel extends Vue {
         this.socket = markRaw(
             new SnsTimelineSocket({
                 onNote: note => {
+                    // 同じ note が WebSocket から二重に届くと :key (note.id) が重複してしまうため、
+                    // 取り込み前に既存 id を弾く
+                    if (this.notes.some(n => n.id === note.id) === true) return;
+
                     this.notes.unshift(note);
+                    this.trimNotesIfNeeded();
                 },
                 onSubscribed: () => {
                     this.wsError = null;
@@ -274,9 +360,13 @@ class SnsTimelinePanel extends Vue {
             const timeline = await this.snsTimelineState.getTimeline(account.id, undefined, undefined, SnsTimelinePanel.PAGE_SIZE);
             this.wsError = null;
 
+            // notes.find() をポーリングのたびに timeline.notes の件数分回すと O(n^2) になるため、
+            // id -> note の Map を 1 回だけ組み立てて引く
+            const existingById = new Map(this.notes.map(n => [n.id, n]));
+
             const newNotes: apid.SnsTimelineNote[] = [];
             for (const timelineNote of timeline.notes) {
-                const existing = this.notes.find(n => n.id === timelineNote.id);
+                const existing = existingById.get(timelineNote.id);
                 if (typeof existing === 'undefined') {
                     newNotes.push(timelineNote);
                     continue;
@@ -289,6 +379,9 @@ class SnsTimelinePanel extends Vue {
             }
             for (const n of newNotes.reverse()) {
                 this.notes.unshift(n);
+            }
+            if (newNotes.length > 0) {
+                this.trimNotesIfNeeded();
             }
         } catch (err) {
             console.error(err);
@@ -365,6 +458,25 @@ class SnsTimelinePanel extends Vue {
             this.snackbarState.open({ color: 'error', text: 'タイムラインの追加読み込みに失敗しました' });
         }
         this.isLoadingMore = false;
+    }
+
+    /**
+     * notes が上限件数を超えたら末尾 (古いノート) から間引く。
+     * ただし、ユーザーが下へスクロールして末尾側 (古いノート) を読んでいる最中に間引くと
+     * 読んでいたものが急に消える体験になるため、リストが先頭付近 (最新) を表示しているときだけ間引く。
+     * 下へスクロールしている間は見送り、先頭へ戻ったタイミング (次の新着やポーリング) で追いつく
+     */
+    private trimNotesIfNeeded(): void {
+        if (this.notes.length <= SnsTimelinePanel.MAX_NOTES) return;
+
+        const list = this.$refs.list as HTMLElement | undefined;
+        const isNearTop = typeof list === 'undefined' || list.scrollTop <= SnsTimelinePanel.TRIM_NEAR_TOP_THRESHOLD_PX;
+        if (isNearTop === false) return;
+
+        this.notes.length = SnsTimelinePanel.MAX_NOTES;
+        // 末尾を切り捨てた以上、そこから続きを読み込む前提が崩れるため、次のページ取得は無効にする
+        // (押し出したノートより後ろのページを cursor で辿ると穴が空くため)
+        this.hasMore = false;
     }
 
     public onScroll(): void {
@@ -571,6 +683,22 @@ export default toNative(SnsTimelinePanel);
             text-overflow: ellipsis
             white-space: nowrap
 
+        // アカウント選択 (v-chip-group) とタイムライン種別フィルター (狭い端末ではアイコンボタン) の行。
+        // 狭い端末ではこの 1 行に収め、.note-list (ノート一覧) へ高さを渡す
+        .top-row
+            display: flex
+            align-items: center
+            flex-wrap: wrap
+            gap: 8px
+
+            .account-chip-group
+                flex: 1 1 auto
+                min-width: 0
+
+            .type-filter-btn
+                flex: 0 0 auto
+
+        // 広い画面のみ使う、種別 + チャンネルのインライン v-select
         .type-row
             display: flex
             flex-wrap: wrap
@@ -600,4 +728,10 @@ export default toNative(SnsTimelinePanel);
         color: var(--watch-fg-dim)
         text-align: center
         padding: 24px 0
+
+// v-menu の中身は document.body 直下へテレポートされるため .sns-timeline-panel の子孫としてネストさせない。
+// v-card の max-width prop はインラインスタイルとなり .menu-card (共通クラス) の
+// max-width: calc(100vw - 32px) より強くなってしまうため、希望幅は width で持たせる
+.timeline-menu-card
+    width: 280px
 </style>

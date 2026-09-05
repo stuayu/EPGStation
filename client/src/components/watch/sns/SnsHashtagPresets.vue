@@ -123,4 +123,7 @@ export default toNative(SnsHashtagPresets);
         > .v-input
             flex: 1 1 auto
             min-width: 0
+
+        > .v-btn
+            flex: 0 0 auto
 </style>

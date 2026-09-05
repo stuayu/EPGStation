@@ -13,6 +13,29 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
+## 2026-09-05
+
+- **SNS 投稿パネルの Misskey メディアが Referer で 403 になり、絵文字・アバター・添付画像が一切表示されていなかった**: Misskey のメディアサーバー (`media.misskeyusercontent.jp` / `proxy.misskeyusercontent.jp` 等) は Referer 付きのリクエストをホットリンクとみなして 403 を返す (実測: Referer 無し 200 / Referer 付き 403)。タイムラインの本文中のカスタム絵文字、リアクション絵文字、投稿者アバター、添付画像のすべてが対象で、画面には代替表示だけが並んでいた。
+
+    - **個々の `<img>` / `v-img` へ `referrerpolicy="no-referrer"` を付けるだけでは直らない**。ブラウザは `src` が設定された時点でリクエストを開始するため、後から属性が付いても間に合わず Referer 付きで飛ぶ (実測: `referrerPolicy` を先に設定すれば成功、`src` を先に設定すると失敗)。`v-img` は内部で `img` を生成するのでテンプレートの記述順でも制御できない。**DOM を後から覗くと属性は付いて見えるため、属性の有無では判定できない** (`naturalWidth > 0` で見ること)。
+    - `client/index.html` の `<head>` へ `<meta name="referrer" content="no-referrer" />` を入れ、ページ全体の既定ポリシーとして固定した。EPGStation サーバー自身は Referer を一切参照していない (`src/` に `referer` / `referrer` の参照が無いことを確認済み) ため、自前のリソース取得への影響は無い。各コンポーネントに付けた `referrerpolicy` 属性は意図の記録として残してある。
+    - 実測 (playwright WebKit / `devices['iPhone SE']`、本番サーバーを `/api` へプロキシした dev サーバー経由): SNS 由来の画像 79 枚中、読み込めていたのは 7 枚だけだったのが 79 枚すべてになり、4xx はゼロになった。
+
+- **SNS 投稿パネルを 320px 幅で操作できるようにした**: 視聴画面の右パネルは狭い縦持ちだと実効高さが 286px しか無く (iPhone SE 320x568)、タイムラインは操作行だけで 110px 以上を使っていたためノートが 1 件も読めなかった。また `v-menu` の中身が狭端末で横へはみ出していた。
+
+    - **`v-menu` の中の `v-card` に `max-width` を直書きしない**。`v-card` の `max-width` prop は Vuetify がインラインスタイルとして書き込むため、共通クラス `.menu-card` の `max-width: calc(100vw - 32px)` より必ず強くなり、狭端末で縮まなくなる。希望幅は `width` (別プロパティなので `max-width` と競合しない) を CSS クラス側で持たせる。`v-menu` の中身は `document.body` 直下へテレポートされるため、**この幅指定クラスはコンポーネントのルートセレクタにネストさせず top-level に定義する**。対象は絵文字ピッカー・MFM 装飾ピッカー (`SnsPostPanel.vue`)、ハッシュタグプリセット (`SnsHashtagField.vue`)、Misskey オプション (`SnsMisskeyOptions.vue`)、リアクション絵文字ピッカー (`SnsTimelineNoteCard.vue`)。
+    - **タイムラインの操作行を狭端末 (`$vuetify.display.smAndDown`) で畳んだ** (`SnsTimelinePanel.vue`)。アカウントが 1 つしか無いときはアカウント選択の `v-chip-group` を出さず (投稿タブ側の選択で分かる)、Misskey のタイムライン種別とチャンネルの 2 つの `v-select` はアイコンボタン + メニューへ収めた。操作 (アカウント切替・種別切替・チャンネル選択) はすべて残してある。実測で操作行が 110px 以上 → 16px になり、320x568 でもノートが 1 件フル表示されるようになった。
+    - `.tab-row` (`SnsPostPanel.vue`) を `flex-wrap: wrap` にし、タブトグルとアカウント選択に `flex-basis` を与えた。**ビューポート幅の `@media` ではなく `flex-wrap` にしてある** — このパネルの実効幅は視聴画面のレイアウト (分割表示・サイドパネル幅) 次第でビューポート幅と一致しないため。
+    - キャプチャの操作ボタン 5 つ (`SnsCaptureAttachment.vue` の `.capture-actions`) に `density="compact"` を付け `flex-wrap: nowrap` にした (折り返すとカードの高さが行数分伸びる)。320px 幅で 1 行 290px に収まることを実測で確認済み。
+    - `.reactions` (`SnsTimelineNoteCard.vue`) の `flex-basis` を `auto` → `0%` にした。`auto` だと「折り返さなかった場合の幅」が wrap 判定の基準になり、リアクションが多いときに `.actions` が行から押し出されていた。
+    - `.add-row` (`SnsHashtagPresets.vue`) のボタンへ `flex: 0 0 auto` を明示し、入力欄が先に縮むようにした。
+
+- **SNS タイムラインが長時間の視聴で固まる件と、ノートの重複・O(n^2) を直した** (`SnsTimelinePanel.vue`): `notes` 配列に上限が無く、Misskey の WebSocket が新着を `unshift()` し続け、無限スクロールの `loadMore()` も `push()` し続けるため、数千件まで膨らんで描画が詰まっていた。
+
+    - 保持上限を 500 件にした。ただし**ユーザーが下へスクロールして古いノートを読んでいる最中に消えないよう、リストが先頭付近 (`scrollTop <= 40px`) にあるときだけ末尾を切り捨てる**。下へスクロールしている間は見送り、先頭へ戻った次の新着で追いつく。切り捨てた後は `cursor` で続きを辿ると穴が空くため `hasMore = false` にする。
+    - `pollBluesky()` が新着ごとに `notes.find()` を回していて O(n^2) だったのを、`id -> note` の Map を 1 回組み立てて引く形にした。
+    - WebSocket の `onNote` に重複 id のチェックが無く、同じ note が二重に届くと `:key` が重複していたため、取り込み前に既存 id を弾くようにした。
+
 ## 2026-09-04
 
 - **番組表の現在時刻導線とキーボード操作を改善した**: KonomiTVの番組表UIを参考に、番組表の右下へ常時表示する現在時刻ボタンを追加した。現在表示中なら再取得せず現在時刻の30分前へ滑らかにスクロールし、過去・未来の表示中なら表示条件を保ったまま現在の番組表へ戻る。現在時刻線はテーマ色、先頭の丸印、影を備え、操作を遮らない装飾要素として表示範囲外では非表示にした。番組セルと放送局ヘッダーへキーボード操作、読み上げ用ラベル、フォーカス表示を追加し、タッチ端末では放送局ヘッダーのホバー効果を出さない。モバイルの放送局ヘッダーはロゴと操作領域を確保するため最低28pxにした。
