@@ -1,5 +1,6 @@
 import { injectable } from 'inversify';
 import {
+    buildFfmpegAudioArgs,
     buildFfmpegVideoArgs,
     buildRigayaVideoArgs,
     selectEncoder,
@@ -9,6 +10,13 @@ import { SourceCapabilities } from '../capability/ISourceCapabilities';
 import { StreamPreset } from '../preset/IStreamPreset';
 import ILiveCommandBuilder from './ILiveCommandBuilder';
 
+/**
+ * ライブ入力 (Mirakurun の TS) 用の配信コマンドを組み立てる
+ *
+ * 音声トラックの切り替えは %DUALMONOMODE% / %AUDIOMAP% / %AUDIOFILTER% を埋め込んでおき、
+ * 配信直前に AudioTrackUtil.replacePlaceholders() で展開する (直接 -dual_mono_mode を書かない)。
+ * 字幕・データ放送 (ARIB 字幕 / BML) は -map 0 + -c:s copy -c:d copy でそのまま通す
+ */
 @injectable()
 export default class LiveCommandBuilder implements ILiveCommandBuilder {
     /** ライブ入力用の低遅延配信コマンドを組み立てる。 */
@@ -17,17 +25,34 @@ export default class LiveCommandBuilder implements ILiveCommandBuilder {
         preset: StreamPreset,
         encoders: readonly StreamEncoderCapability[],
     ): string {
-        if (preset.output.codec === 'copy') return '%FFMPEG% -i pipe:0 -c copy -f mpegts pipe:1';
+        if (preset.output.codec === 'copy') {
+            return '%FFMPEG% %DUALMONOMODE% -i pipe:0 -map 0 -c copy -ignore_unknown -f mpegts pipe:1';
+        }
+
+        const audio = buildFfmpegAudioArgs(preset);
         const encoder = selectEncoder(source, preset, encoders);
         if (encoder.kind === 'ffmpeg') {
-            return `%FFMPEG% -i pipe:0 ${buildFfmpegVideoArgs(source, preset, 'live')} -f mpegts pipe:1`;
+            return (
+                `%FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -i pipe:0 -map 0 -c:s copy -c:d copy ` +
+                `-ignore_unknown -fflags nobuffer -flags low_delay -max_delay 250000 -max_interleave_delta 1 -threads 0 ` +
+                `${audio} ${buildFfmpegVideoArgs(source, preset, 'live')} -f mpegts pipe:1`
+            );
         }
+
         const bin =
             (encoder.command ?? encoder.kind === 'nvencc')
                 ? 'NVEncC'
                 : encoder.kind === 'qsvencc'
                   ? 'QSVEncC'
                   : 'VCEEncC';
-        return `${bin} --input-format mpegts -i - ${buildRigayaVideoArgs(source, preset, encoder, 'live', false)} -o - | %FFMPEG% -i pipe:0 -c copy -f mpegts pipe:1`;
+
+        // rigaya 系は音声をコピーのまま mpegts で流し、後段の ffmpeg で aac 化する
+        // (--audio-filter は --audio-copy と併用できないため、音声の加工は後段へ寄せる)
+        return (
+            `${bin} --input-format mpegts -i - ${buildRigayaVideoArgs(source, preset, encoder, 'live', false)} ` +
+            `--audio-copy --output-format mpegts -o - | ` +
+            `%FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -i pipe:0 -map 0 -c:v copy -c:s copy -c:d copy ` +
+            `-ignore_unknown -fflags nobuffer -flags low_delay -max_interleave_delta 1 ${audio} -f mpegts pipe:1`
+        );
     }
 }

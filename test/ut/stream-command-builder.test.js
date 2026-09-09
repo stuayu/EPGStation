@@ -141,3 +141,58 @@ test('Main10 requirement does not silently select an 8-bit-only encoder', () => 
         /No available encoder/,
     );
 });
+
+// ---- 音声トラック切り替え用プレースホルダ ----
+// 生成コマンドに -dual_mono_mode を直接書くと副音声を選べなくなるため、
+// AudioTrackUtil が展開できる形 (%DUALMONOMODE% / %AUDIOMAP% / %AUDIOFILTER%) で埋め込む
+
+test('ライブの生成コマンドは音声トラックのプレースホルダを持つ', () => {
+    const cmd = new LiveCommandBuilder().build(terrestrial1080i, { output: { codec: 'h264' } }, [encoder('ffmpeg')]);
+
+    assert.match(cmd, /%DUALMONOMODE%/u);
+    assert.match(cmd, /%AUDIOMAP%/u);
+    assert.match(cmd, /%AUDIOFILTER%/u);
+    assert.match(cmd, /-c:a aac/u);
+    assert.doesNotMatch(cmd, /-dual_mono_mode (main|sub)/u);
+});
+
+test('ライブの無変換配信も副音声を選べる', () => {
+    const cmd = new LiveCommandBuilder().build(terrestrial1080i, { output: { codec: 'copy' } }, [encoder('ffmpeg')]);
+
+    assert.match(cmd, /%DUALMONOMODE%/u);
+    assert.doesNotMatch(cmd, /-dual_mono_mode (main|sub)/u);
+});
+
+test('ライブは字幕・データ放送をそのまま通す', () => {
+    const cmd = new LiveCommandBuilder().build(terrestrial1080i, { output: { codec: 'h264' } }, [encoder('ffmpeg')]);
+
+    assert.match(cmd, /-c:s copy/u);
+    assert.match(cmd, /-c:d copy/u);
+});
+
+test('rigaya 系のライブ配信は音声をコピーして後段の ffmpeg で aac 化する', () => {
+    const cmd = new LiveCommandBuilder().build(terrestrial1080i, { output: { codec: 'h264' } }, [encoder('qsvencc')]);
+
+    assert.match(cmd, /--audio-copy/u);
+    assert.match(cmd, /\| %FFMPEG%/u);
+    assert.match(cmd, /-c:a aac/u);
+});
+
+test('録画済みの生成コマンドも音声トラックのプレースホルダを持つ', () => {
+    const cmd = new RecordedCommandBuilder().build(terrestrial1080i, { output: { codec: 'h264' } }, [
+        encoder('ffmpeg'),
+    ]);
+
+    assert.match(cmd, /%DUALMONOMODE%/u);
+    assert.match(cmd, /%AUDIOMAP%/u);
+    assert.match(cmd, /%AUDIOFILTER%/u);
+    assert.doesNotMatch(cmd, /-dual_mono_mode (main|sub)/u);
+});
+
+test('音声ビットレートはプリセットの指定に従う', () => {
+    const cmd = new LiveCommandBuilder().build(terrestrial1080i, { output: { codec: 'h264', audioBitrate: 128 } }, [
+        encoder('ffmpeg'),
+    ]);
+
+    assert.match(cmd, /-b:a 128k/u);
+});
