@@ -267,8 +267,9 @@ class RecordedStreamingVideo extends BaseVideo {
     /**
      * 再生位置設定
      * @param time: number (秒)
+     * @param resume?: boolean ストリーム作り直し後に再生を再開するか (シーク前の再生状態)
      */
-    public setCurrentTime(time: number): void {
+    public setCurrentTime(time: number, resume?: boolean): void {
         if (this.dp === null) {
             return;
         }
@@ -290,7 +291,12 @@ class RecordedStreamingVideo extends BaseVideo {
         }
 
         const now = new Date().getTime();
-        if (this.dummyPlayPosition === null && now - this.lastUpdatePauseState > 1000) {
+        if (typeof resume === 'boolean') {
+            // 呼び出し側 (VirtualTimeline) がシーク前の再生状態を持っているのでそれを使う。
+            // ドラッグ中は一時停止しているため、この時点の paused() を見ても正しい値にならない
+            this.pauseStateBeforeCurrentTime = resume === false;
+            this.lastUpdatePauseState = now;
+        } else if (this.dummyPlayPosition === null && now - this.lastUpdatePauseState > 1000) {
             this.pauseStateBeforeCurrentTime = this.paused();
             this.lastUpdatePauseState = now;
         }

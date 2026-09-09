@@ -48,6 +48,9 @@ export default abstract class BaseVideo extends Vue {
     private screenshotClickHandler: ((event: MouseEvent) => void) | null = null;
     private dataBroadcastingButton: HTMLButtonElement | null = null;
     private dataBroadcastingToggleHandler: (() => void) | null = null;
+    // play() を呼んだ後、まだ一度も 'playing' に到達していないか。
+    // true のまま 'pause' へ落ちたら自動再生ブロックとみなす (onPlay / onPlaying / onPause で更新する)
+    private autoplayCheckPending: boolean = false;
 
     // ライブ配信の放送時刻 (TDT / TOT)。実況コメントの遅延補正に使う
     private broadcastTime: apid.StreamBroadcastTime | null = null;
@@ -131,7 +134,7 @@ export default abstract class BaseVideo extends Vue {
             this.virtualTimeline = new VirtualTimeline(this.dp, {
                 getDuration: () => this.getDuration(),
                 getCurrentTime: () => this.getCurrentTime(),
-                setCurrentTime: (time: number) => this.setCurrentTime(time),
+                setCurrentTime: (time: number, resume: boolean) => this.setCurrentTime(time, resume),
                 getEncodedTime: () => this.getEncodedTime(),
             });
         }
@@ -1092,6 +1095,9 @@ export default abstract class BaseVideo extends Vue {
         // 再生
         dp.on('play', this.onPlay.bind(this));
 
+        // 実際に再生が始まった (play() 呼び出しの成否とは別。autoplay が成功したかの判定に使う)
+        dp.on('playing', this.onPlaying.bind(this));
+
         // 停止
         dp.on('pause', this.onPause.bind(this));
 
@@ -1145,14 +1151,43 @@ export default abstract class BaseVideo extends Vue {
      * 再生
      */
     protected onPlay(): void {
+        // 'playing' に到達すれば onPlaying() が下ろす。到達しないまま 'pause' へ落ちたら再生ブロック
+        this.autoplayCheckPending = true;
         this.$emit('play');
     }
 
     /**
+     * 実際に再生が始まった (readyState が進み映像が流れ始めた) タイミング
+     */
+    protected onPlaying(): void {
+        this.autoplayCheckPending = false;
+        this.$emit('playing');
+    }
+
+    /**
      * 停止
+     *
+     * play() 呼び出し (自動再生含む) 後、一度も 'playing' に到達しないまま 'pause' に
+     * 落ちた場合はブラウザの自動再生ブロックとみなし、ユーザーに気付けるよう通知する。
+     * DPlayer.play() は video.play() の Promise が reject されても呼び出し元に何も返さず、
+     * 内部で pause() を呼ぶだけで黙って止まるため、ここで検知する
      */
     protected onPause(): void {
+        if (this.autoplayCheckPending === true) {
+            this.autoplayCheckPending = false;
+            this.notifyPlaybackBlocked();
+        }
         this.$emit('pause');
+    }
+
+    /**
+     * 自動再生がブロックされたことをユーザーに通知する
+     * (ミュートしての再生継続や再生ボタンの強調ではなく、通知に留める。
+     * 音量を無断で変えるのは別の驚きを生み、再生ボタン自体は DPlayer が
+     * pause 状態のアイコンに戻すため、それだけでも操作の起点は残っている)
+     */
+    private notifyPlaybackBlocked(): void {
+        (this.dp as any)?.notice?.('自動再生がブロックされました。再生ボタンを押してください', 6000);
     }
 
     /**
@@ -1259,8 +1294,11 @@ export default abstract class BaseVideo extends Vue {
     /**
      * 再生位置設定
      * @param time: number (秒)
+     * @param resume?: boolean シーク完了後に再生を続けるか (シーク前の再生状態)。
+     *   ストリームを作り直す実装 (RecordedStreamingVideo 等) が「作り直し完了後に 1 回だけ」再開するのに使う。
+     *   省略した場合は実装側がその場の再生状態から判断する (シーク前に停止していないホットキー操作など)
      */
-    public setCurrentTime(time: number): void {
+    public setCurrentTime(time: number, resume?: boolean): void {
         if (this.dp === null) {
             return;
         }

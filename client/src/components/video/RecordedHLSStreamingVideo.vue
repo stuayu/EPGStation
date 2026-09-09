@@ -413,8 +413,9 @@ class RecordedHLSStreamingVideo extends BaseVideo {
     /**
      * 再生位置設定
      * @param time: number (秒)
+     * @param resume?: boolean ストリーム作り直し後に再生を再開するか (シーク前の再生状態)
      */
-    public setCurrentTime(time: number): void {
+    public setCurrentTime(time: number, resume?: boolean): void {
         if (this.dp === null) {
             return;
         }
@@ -428,7 +429,12 @@ class RecordedHLSStreamingVideo extends BaseVideo {
         }
 
         const now = new Date().getTime();
-        if (this.dummyPlayPosition === null && now - this.lastUpdatePauseState > 1000) {
+        if (typeof resume === 'boolean') {
+            // 呼び出し側 (VirtualTimeline) がシーク前の再生状態を持っているのでそれを使う。
+            // ドラッグ中は一時停止しているため、この時点の paused() を見ても正しい値にならない
+            this.pauseStateBeforeCurrentTime = resume === false;
+            this.lastUpdatePauseState = now;
+        } else if (this.dummyPlayPosition === null && now - this.lastUpdatePauseState > 1000) {
             this.pauseStateBeforeCurrentTime = this.paused();
             this.lastUpdatePauseState = now;
         }
@@ -460,7 +466,12 @@ class RecordedHLSStreamingVideo extends BaseVideo {
                 if (this.lastSeekTime !== beforeStartStream) {
                     return;
                 }
-                await this.videoState.start(this.videoFileId, this.basePlayPosition, this.currentMode);
+                await this.videoState.start(
+                    this.videoFileId,
+                    this.basePlayPosition,
+                    this.currentMode,
+                    this.currentAudioTrack,
+                );
                 if (this.lastSeekTime !== beforeStartStream) {
                     return;
                 }
@@ -475,7 +486,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             } catch (err) {
                 console.error(err);
                 await this.videoState.stop();
-                this.setCurrentTime(time);
+                this.setCurrentTime(time, this.pauseStateBeforeCurrentTime === false);
 
                 return;
             }
@@ -483,6 +494,14 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             await Util.sleep(500);
             if (this.dp !== null) {
                 this.dp.video.playbackRate = playbackRate;
+                // ストリームを作り直すと必ず停止状態から始まるため、シーク前の再生状態へ戻す
+                if (this.pauseStateBeforeCurrentTime === true) {
+                    this.pause();
+                } else {
+                    await this.play().catch(err => {
+                        console.error(err);
+                    });
+                }
             }
             this.dummyPlayPosition = null;
         }, 200);

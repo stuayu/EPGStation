@@ -7,7 +7,13 @@ import DPlayer from 'dplayer';
 export interface VirtualTimelineSource {
     getDuration(): number; // 動画全体の長さ (秒)
     getCurrentTime(): number; // 動画全体から見た再生位置 (秒)
-    setCurrentTime(time: number): void; // 動画全体から見た位置へシークする
+    // 動画全体から見た位置へシークする。
+    // resume: シーク完了後に再生を続けるべきか (シーク前の再生状態)。
+    // ストリームを作り直す実装 (RecordedStreamingVideo 等) はここを見て
+    // 「作り直し完了後に 1 回だけ」再開する。呼び出し側 (VirtualTimeline) は
+    // 作り直し前に自分で play()/pause() を呼ばない (作り直し前の play() は無意味な上、
+    // 直後の currentTime 変更/switchVideo と競合して再生中の video を止めてしまうことがある)
+    setCurrentTime(time: number, resume: boolean): void;
     getEncodedTime(): number; // エンコード (バッファ) 済みの位置 (秒)
 }
 
@@ -239,8 +245,10 @@ export default class VirtualTimeline {
                 return;
             }
 
-            // ストリームの範囲外はストリームを作り直してシークする
-            this.source.setCurrentTime(this.getBaseTime() + time);
+            // ストリームの範囲外はストリームを作り直してシークする。
+            // resume は「呼ばれた時点で実際に再生中だったか」で決める
+            // (ホットキー・スキップボタンは事前に pause() していないため)
+            this.source.setCurrentTime(this.getBaseTime() + time, this.dp.video.paused === false);
             this.update();
         };
     }
@@ -328,15 +336,16 @@ export default class VirtualTimeline {
             this.isSuppressingClick = false;
         }, 0);
 
-        // 再生状態を先に戻してから setCurrentTime() を呼ぶ。
-        // ストリームを作り直す実装 (RecordedStreamingVideo) は setCurrentTime() の中で
-        // 現在の paused() を読み、作り直した後の再生状態に使う。
-        // 順序が逆だと「ドラッグ中の一時停止」を意図した停止と誤認し、
-        // シーク後に必ず停止してしまう
-        if (this.isPausedBeforeDrag === false) {
-            this.dp.play();
-        }
-        this.source.setCurrentTime(percentage * this.source.getDuration());
+        // ここで play() は呼ばない。
+        // ドラッグ終了時点ではストリームを作り直す (switchVideo) 経路を通ることがほとんどで、
+        // 作り直し前に play() を呼んでも意味が無いばかりか、直後の switchVideo/currentTime
+        // 変更と競合して「再生開始直後に自分自身を止めてしまう」ことがある
+        // (video.play() の Promise が確定する前に読み込み中の src / currentTime を
+        // 変更すると、ブラウザがその play() を中断扱いにし、DPlayer の失敗時ハンドラが
+        // pause() を呼んでしまう)。
+        // 再開の責務は setCurrentTime() 実装側 (シーク/作り直し完了後) に一本化し、
+        // ここではドラッグ前の再生状態だけを resume として伝える
+        this.source.setCurrentTime(percentage * this.source.getDuration(), this.isPausedBeforeDrag === false);
 
         this.update();
     }
