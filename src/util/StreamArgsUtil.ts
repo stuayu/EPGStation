@@ -177,6 +177,21 @@ export const buildRigayaVideoArgs = (
     return `-c ${codec} --profile ${depth >= 10 ? 'main10' : 'main'} --output-depth ${depth} ${tuning}${deintArgs}${toneMap}${height ? ` --output-res -2x${height}` : ''}${hdr}${sync}`;
 };
 
+/**
+ * 配信コマンドの音声引数を組み立てる。
+ *
+ * 音声トラックの切り替え (主音声 / 副音声 / 音声 ES の指定) は %DUALMONOMODE% / %AUDIOMAP% /
+ * %AUDIOFILTER% を埋め込んでおき、配信直前に AudioTrackUtil.replacePlaceholders() で展開する。
+ * `-dual_mono_mode main` を直接書くと副音声を選べなくなるので書かないこと。
+ * @param preset: StreamPreset
+ * @return string
+ */
+export const buildFfmpegAudioArgs = (preset: StreamPreset): string => {
+    const bitrate = typeof preset.output.audioBitrate === 'number' ? preset.output.audioBitrate : 192;
+
+    return `%AUDIOMAP% -c:a aac -ar 48000 -b:a ${bitrate}k -ac 2 %AUDIOFILTER%`;
+};
+
 /** source/output に対応する ffmpeg の映像引数を組み立てる。 */
 export const buildFfmpegVideoArgs = (
     source: SourceCapabilities,
