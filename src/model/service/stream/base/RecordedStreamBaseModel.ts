@@ -456,8 +456,12 @@ export default abstract class RecordedStreamBaseModel
             throw new Error('SetVideoFileInfoError');
         }
 
+        // tsreadex を通す cmd はデュアルモノラルが 2 本の音声 ES へ分離済みなので、
+        // 副音声の選び方が変わる (置換前の cmd で判定する)
+        const isNormalizedByTsreadex = this.processOption.cmd.includes('%TSREADEX%');
         let cmd = this.processOption.cmd
             .replace(/%FFMPEG%/g, this.config.ffmpeg)
+            .replace(/%TSREADEX%/g, typeof this.config.tsreadex === 'undefined' ? 'tsreadex' : this.config.tsreadex)
             .replace(/%SS%/g, this.videoFileType === 'ts' ? '' : this.processOption.playPosition.toString(10));
 
         // 音声トラック指定・フィルタ (%DUALMONOMODE% / %AUDIOMAP% / %AUDIOFILTER%) を展開する
@@ -466,6 +470,7 @@ export default abstract class RecordedStreamBaseModel
             this.processOption.audioTrack,
             this.config.audioBoost,
             this.videoFileType,
+            isNormalizedByTsreadex,
         );
 
         if (this.getStreamType() === 'RecordedHLS') {

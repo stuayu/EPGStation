@@ -87,3 +87,31 @@ test('parseStreamIndex は音声 ES のインデックスのみを返す', () =>
     assert.equal(AudioTrackUtil.parseStreamIndex('-1'), null);
     assert.equal(AudioTrackUtil.parseStreamIndex('x'), null);
 });
+
+// ---- tsreadex で正規化した TS ----
+// tsreadex (-a 13) はデュアルモノラルを主音声・副音声の 2 本の音声 ES へ分離するため、
+// 副音声は -dual_mono_mode sub ではなく -map 0:a:1 で選ぶ必要がある
+
+test('tsreadex 正規化済みの副音声は 2 本目の音声 ES として選ぶ', () => {
+    const cmd = AudioTrackUtil.replacePlaceholders(CMD, 'sub', 1, 'ts', true);
+    assert.match(cmd, /-map 0:v:0 -map 0:a:1/);
+    // 分離済みなので dual_mono_mode では切り替わらない
+    assert.match(cmd, /-dual_mono_mode main/);
+});
+
+test('tsreadex 正規化済みの主音声は 1 本目の音声 ES として選ぶ', () => {
+    const cmd = AudioTrackUtil.replacePlaceholders(CMD, 'main', 1, 'ts', true);
+    assert.match(cmd, /-map 0:v:0 -map 0:a:0/);
+    assert.match(cmd, /-dual_mono_mode main/);
+});
+
+test('tsreadex 正規化済みなら encoded の副音声へ pan を掛けない', () => {
+    assert.doesNotMatch(AudioTrackUtil.replacePlaceholders(FILTER_CMD, 'sub', 1, 'encoded', true), /pan=/);
+    assert.match(AudioTrackUtil.replacePlaceholders(FILTER_CMD, 'sub', 1, 'encoded', false), /pan=stereo/);
+});
+
+test('音声 ES のインデックス指定は tsreadex の有無で変わらない', () => {
+    for (const normalized of [false, true]) {
+        assert.match(AudioTrackUtil.replacePlaceholders(CMD, '2', 1, 'ts', normalized), /-map 0:v:0 -map 0:a:2/);
+    }
+});

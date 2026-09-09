@@ -103,7 +103,111 @@ test('既存 stream 設定だけの環境は従来のプリセットと生成 cm
     assert.equal(profiles.getLiveProfiles()[0].cmd, legacyCmd);
     assert.equal(
         profiles.getLiveProfiles()[1].cmd,
-        '%FFMPEG% -re -dual_mono_mode main -i pipe:0 -sn -threads 0 -c:a aac -ar 48000 -b:a 128k -ac 2 -c:v libx264 -vf yadif,scale=-2:720 -b:v 2500k -profile:v baseline -preset veryfast -tune fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4 pipe:1',
+        '%FFMPEG% -re %DUALMONOMODE% -i pipe:0 -sn -threads 0 %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2 %AUDIOFILTER% -c:v libx264 -vf yadif,scale=-2:720 -b:v 2500k -profile:v baseline -preset veryfast -tune fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4 pipe:1',
     );
     assert.deepEqual(candidates.slice(0, 2).map(preset => preset.id), ['manual-live', 'generated-live']);
+});
+
+// cmd を省略したプリセットの自動生成コマンドは、音声トラック切り替えのプレースホルダを
+// 持っていないと副音声を選べない (AudioTrackUtil が展開する対象が無くなるため)
+test('cmd 省略プリセットの生成コマンドは音声トラックのプレースホルダを持つ', () => {
+    const configuration = {
+        stream: {
+            profiles: {
+                live: [
+                    {
+                        id: 'generated-m2tsll',
+                        name: '1080p',
+                        container: 'm2tsll',
+                        video: { codec: 'libx264', height: 1080, bitrate: 3000 },
+                        audio: { codec: 'aac', bitrate: 192 },
+                    },
+                    {
+                        id: 'generated-m2ts',
+                        name: '720p',
+                        container: 'm2ts',
+                        video: { codec: 'libx264', height: 720, bitrate: 3000 },
+                        audio: { codec: 'aac', bitrate: 192 },
+                    },
+                ],
+            },
+        },
+    };
+    const profiles = new StreamProfileManageModel({ getConfig: () => configuration }).getLiveProfiles();
+
+    for (const profile of profiles) {
+        assert.match(profile.cmd, /%DUALMONOMODE%/u);
+        assert.match(profile.cmd, /%AUDIOFILTER%/u);
+        assert.doesNotMatch(profile.cmd, /-dual_mono_mode (main|sub)/u);
+    }
+
+    // -map 0 で全 ES を通す m2tsll に %AUDIOMAP% を入れると ES が二重に出力される
+    assert.doesNotMatch(profiles[0].cmd, /%AUDIOMAP%/u);
+    assert.match(profiles[1].cmd, /%AUDIOMAP%/u);
+});
+
+// config の tsreadex を設定した場合、cmd 省略プリセットの前段へ tsreadex が入る。
+// tsreadex はデュアルモノラルを 2 本の音声 ES へ分離するため、副音声の選び方も変わる
+test('config に tsreadex を設定すると生成コマンドの前段へ tsreadex が入る', () => {
+    const configuration = {
+        tsreadex: '/usr/local/bin/tsreadex',
+        stream: {
+            profiles: {
+                live: [
+                    {
+                        id: 'generated-m2tsll',
+                        name: '1080p',
+                        container: 'm2tsll',
+                        video: { codec: 'libx264', height: 1080, bitrate: 3000 },
+                        audio: { codec: 'aac', bitrate: 192 },
+                    },
+                ],
+                recorded: {
+                    encoded: [
+                        {
+                            id: 'generated-encoded',
+                            name: '720p',
+                            container: 'mp4',
+                            video: { codec: 'libx264', height: 720, bitrate: 2000 },
+                            audio: { codec: 'aac', bitrate: 128 },
+                        },
+                    ],
+                },
+            },
+        },
+    };
+    const model = new StreamProfileManageModel({ getConfig: () => configuration });
+    const live = model.getLiveProfiles()[0].cmd;
+
+    assert.match(live, /^%TSREADEX% -x 18 -n -1 -a 13 -b 7 -c 5 -u 5 - \| %FFMPEG%/u);
+    // 第 2 音声が無いときに無音を挿入する -b 5 は使わない (副音声が完全な無音になる)
+    assert.doesNotMatch(live, /-b 5/u);
+    // 分離済みの音声 ES を選ぶため、-map 0 ではなく %AUDIOMAP% + optional map になる
+    assert.match(live, /%AUDIOMAP% -map "0:s\?" -map "0:d\?"/u);
+    assert.doesNotMatch(live, /-map 0 /u);
+
+    // 録画ファイル入力は放送 TS ではないので tsreadex を通さない
+    assert.doesNotMatch(model.getRecordedProfiles('encoded')[0].cmd, /%TSREADEX%/u);
+});
+
+test('config に tsreadex が無ければ生成コマンドは従来どおり -map 0 のまま', () => {
+    const configuration = {
+        stream: {
+            profiles: {
+                live: [
+                    {
+                        id: 'generated-m2tsll',
+                        name: '1080p',
+                        container: 'm2tsll',
+                        video: { codec: 'libx264', height: 1080, bitrate: 3000 },
+                        audio: { codec: 'aac', bitrate: 192 },
+                    },
+                ],
+            },
+        },
+    };
+    const cmd = new StreamProfileManageModel({ getConfig: () => configuration }).getLiveProfiles()[0].cmd;
+
+    assert.doesNotMatch(cmd, /%TSREADEX%/u);
+    assert.match(cmd, /-map 0 /u);
 });
