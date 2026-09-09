@@ -6,4 +6,5 @@ export default interface IScheduleApiModel {
     getChannelSchedule(option: apid.ChannelScheduleOption): Promise<apid.Schedule[]>;
     getBroadcastingSchedule(option: apid.BroadcastingScheduleOption): Promise<apid.Schedule[]>;
     search(option: apid.RuleSearchOption, isHalfWidth: boolean, limit?: number): Promise<apid.ScheduleProgramItem[]>;
+    getLiveAudioTracks(channelId: apid.ChannelId): Promise<apid.VideoAudioTrack[]>;
 }

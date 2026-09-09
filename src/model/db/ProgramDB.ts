@@ -305,16 +305,31 @@ export default class ProgramDB implements IProgramDB {
         }
 
         // audios
-        if (typeof (program as any).audios !== 'undefined' && (program as any).audios !== null) {
-            for (const audio of (program as any).audios) {
-                // TODO 複数音声データに対応する
-                // 互換性維持のため main の音声情報だけを格納する
+        const audios = (program as any).audios;
+        if (typeof audios !== 'undefined' && audios !== null && Array.isArray(audios) === true) {
+            for (const audio of audios) {
+                // audioSamplingRate / audioComponentType は互換用に main の値だけを格納する
                 if (audio.isMain === false) {
                     continue;
                 }
 
                 value.audioSamplingRate = audio.samplingRate;
                 value.audioComponentType = audio.componentType;
+            }
+
+            // 二か国語 (デュアルモノラル) や複数音声 ES の判別のため audios[] 全体も保持する
+            if (audios.length > 0) {
+                value.audios = JSON.stringify(
+                    audios.map((audio: any) => {
+                        return {
+                            componentType: audio.componentType,
+                            componentTag: audio.componentTag,
+                            isMain: audio.isMain,
+                            samplingRate: audio.samplingRate,
+                            langs: audio.langs,
+                        };
+                    }),
+                );
             }
         }
 

@@ -787,6 +787,34 @@ components:
                     $ref: '#/components/schemas/ProgramAudioSamplingRate'
                 audioComponentType:
                     type: integer
+                audios:
+                    $ref: '#/components/schemas/ProgramAudioInfos'
+
+        ProgramAudioInfo:
+            description: 音声 ES の情報 (Mirakurun の Program.audios[] 相当)
+            required:
+                - componentType
+                - isMain
+            type: object
+            properties:
+                componentType:
+                    description: 0x02 = デュアルモノラル (二か国語)、0x03 = ステレオ
+                    type: integer
+                componentTag:
+                    type: integer
+                isMain:
+                    type: boolean
+                samplingRate:
+                    $ref: '#/components/schemas/ProgramAudioSamplingRate'
+                langs:
+                    type: array
+                    items:
+                        type: string
+
+        ProgramAudioInfos:
+            type: array
+            items:
+                $ref: '#/components/schemas/ProgramAudioInfo'
 
         ScheduleProgramItems:
             type: array

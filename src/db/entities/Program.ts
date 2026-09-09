@@ -203,4 +203,15 @@ export default class Program extends BaseEntity {
         nullable: true,
     })
     public audioComponentType!: number | null;
+
+    /**
+     * Mirakurun の Program.audios[] を JSON 文字列で保持する
+     * audioSamplingRate / audioComponentType は主音声のみの互換用で、
+     * 二か国語 (デュアルモノラル) や複数音声 ES の判別にはこちらを使う
+     */
+    @Column({
+        type: 'text',
+        nullable: true,
+    })
+    public audios!: string | null;
 }
