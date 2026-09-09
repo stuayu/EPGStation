@@ -106,11 +106,20 @@ export default abstract class LiveStreamBaseModel
             return null;
         }
 
+        // tsreadex を通す cmd はデュアルモノラルが 2 本の音声 ES へ分離済みなので、
+        // 副音声の選び方が変わる (置換前の cmd で判定する。%TSREADEX% は下で消える)
+        const isNormalizedByTsreadex = this.processOption.cmd.includes('%TSREADEX%');
         let cmd = this.processOption.cmd
             .replace(/%FFMPEG%/g, this.config.ffmpeg)
             .replace(/%TSREADEX%/g, typeof this.config.tsreadex === 'undefined' ? 'tsreadex' : this.config.tsreadex);
         // 音声トラック指定・フィルタ (%DUALMONOMODE% / %AUDIOMAP% / %AUDIOFILTER%) を展開する
-        cmd = AudioTrackUtil.replacePlaceholders(cmd, this.processOption.audioTrack, this.config.audioBoost, 'ts');
+        cmd = AudioTrackUtil.replacePlaceholders(
+            cmd,
+            this.processOption.audioTrack,
+            this.config.audioBoost,
+            'ts',
+            isNormalizedByTsreadex,
+        );
         if (this.getStreamType() === 'LiveHLS') {
             cmd = cmd
                 .replace(/%streamFileDir%/g, this.config.streamFilePath)

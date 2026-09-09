@@ -15,6 +15,11 @@ import { audioBoostFilter } from '../../../../util/AudioBoostUtil';
  *
  * `%DUALMONOMODE%` / `%AUDIOMAP%` を含まない手書き cmd (従来の `-dual_mono_mode main` 直書き) は
  * 置換対象が無いだけで従来どおり動作する (音声トラックの切り替えは効かない)。
+ *
+ * **tsreadex を通した cmd では選び方が変わる**。tsreadex (`-a 13`) はデュアルモノラルの ES を
+ * 主音声・副音声の 2 本の ES へ分離済みなので、副音声は `-dual_mono_mode sub` では選べず
+ * `-map 0:a:1` で 2 本目の ES を選ぶ必要がある (実測: `-a 13 -b 5` の出力は音声 ES が常に 2 本)。
+ * 呼び出し側が `isNormalizedByTsreadex` を渡してこの違いを伝える。
  */
 namespace AudioTrackUtil {
     /**
@@ -28,10 +33,18 @@ namespace AudioTrackUtil {
         audioTrack?: apid.AudioTrackSpecifier,
         audioBoost?: unknown,
         videoFileType: apid.VideoFileType = 'ts',
+        isNormalizedByTsreadex: boolean = false,
     ): string => {
-        const streamIndex = parseStreamIndex(audioTrack);
-        const audioFilter = buildAudioFilter(audioTrack, audioBoost, videoFileType);
-        const dualMonoMode = videoFileType === 'ts' && audioTrack === 'sub' ? 'sub' : 'main';
+        // tsreadex 正規化済みは音声 ES が主音声・副音声の 2 本に分かれているため ES を選ぶ
+        const streamIndex =
+            isNormalizedByTsreadex === true && (audioTrack === 'main' || audioTrack === 'sub')
+                ? audioTrack === 'sub'
+                    ? 1
+                    : 0
+                : parseStreamIndex(audioTrack);
+        const audioFilter = buildAudioFilter(audioTrack, audioBoost, videoFileType, isNormalizedByTsreadex);
+        const dualMonoMode =
+            isNormalizedByTsreadex === false && videoFileType === 'ts' && audioTrack === 'sub' ? 'sub' : 'main';
 
         return cmd
             .replace(/%DUALMONOMODE%/g, `-dual_mono_mode ${dualMonoMode}`)
@@ -50,12 +63,14 @@ namespace AudioTrackUtil {
         audioTrack?: apid.AudioTrackSpecifier,
         audioBoost?: unknown,
         videoFileType: apid.VideoFileType = 'ts',
+        isNormalizedByTsreadex: boolean = false,
     ): string => {
         const filters: string[] = [];
 
         // encoded は既に通常のステレオへ変換済みのため、sub は右chを両耳へ複製する。
         // main へ pan を掛けると、通常のステレオ放送までモノラル化するので掛けない。
-        if (videoFileType === 'encoded' && audioTrack === 'sub') {
+        // tsreadex 正規化済みは副音声が独立した ES になっているので pan は不要。
+        if (isNormalizedByTsreadex === false && videoFileType === 'encoded' && audioTrack === 'sub') {
             filters.push('pan=stereo|c0=c1|c1=c1');
         }
 

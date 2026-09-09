@@ -170,7 +170,13 @@ ffprobe: /usr/local/bin/ffprobe
 # 配信時の音声ブースト倍率 (1.0〜4.0、1.0 で無効、既定 2.0。保存用エンコードには適用しない)
 # audioBoost: 2.0
 
-# tsreadex の実行ファイルパス (ライブ HLS の cmd で %TSREADEX% を使う場合に指定、省略時は PATH 上の tsreadex)
+# tsreadex の実行ファイルパス
+# **これを設定すると、cmd を省略した配信プリセット (ライブ・録画TS) の前段へ自動で tsreadex が入る**。
+# tsreadex は対象サービスの抽出・映像/音声 PID の固定・デュアルモノラル (二か国語) の主音声/副音声分離・
+# 欠落音声の補完を行うため、放送側で音声構成が変わっても配信は「映像 + 音声 2 本」の固定構造になり、
+# 番組の切り替わりで再生が止まらなくなる。設定しない場合は従来どおり tsreadex を通さない
+# (実行ファイルを同梱していないため、無条件に挟むと配信が起動しなくなる環境があるので既定は無効)。
+# cmd を手書きする場合は %TSREADEX% で参照できる (省略時は PATH 上の tsreadex)
 # tsreadex: /usr/local/bin/tsreadex
 
 # rigaya 氏製ハードウェアエンコーダの実行ファイルパス (省略時は PATH 上の QSVEncC / NVEncC / VCEEncC)
@@ -398,13 +404,14 @@ stream:
             # GPU デコード (-hwaccel cuda 等) まで含めて細かく調整したい場合のみ、
             # 生成された cmd を出発点にこの配列へ書き足すこと。
             #
-            # ----- tsreadex で TS を前処理する場合 (デュアルモノ分離・欠落音声の無音埋め・ワンセグ等の除去) -----
+            # ----- tsreadex で TS を前処理する場合 (デュアルモノ分離・欠落音声の補完・ワンセグ等の除去) -----
+            # ※ config の tsreadex を設定していれば cmd 省略時に自動で前段へ入るため、通常この書き方は不要
             # tsreadex のパスは config の tsreadex で指定 (省略時は PATH 上の tsreadex)
             # - id: live-hls-720p-tsreadex
             #   name: 720p(tsreadex)
             #   container: hls
             #   cmd:
-            #       '%TSREADEX% -x 18 -n -1 -a 13 -b 5 -c 1 -u 1 - | %FFMPEG% -re -f mpegts -analyzeduration 500000 -i pipe:0
+            #       '%TSREADEX% -x 18 -n -1 -a 13 -b 7 -c 5 -u 5 - | %FFMPEG% -re -f mpegts -analyzeduration 500000 -i pipe:0
             #       -sn -threads 0 -max_muxing_queue_size 1024
             #       %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2
             #       -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
