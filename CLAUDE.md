@@ -150,6 +150,10 @@ npm run test:ci        # ut + ita + itb
 - **in-memory HLS は LL-HLS (`#EXT-X-PART`)**。パート = fMP4 フラグメント = GOP。`emsg` (字幕) は**セグメントではなくパート先頭**に置く (パートが単独配信されるため)。`HLSMemoryStoreModel.delete()` は待機中の要求を必ず解決する (しないとレスポンスが返らない)
 - **in-memory HLS の字幕 (`emsg`) は必ず version 1**。version 0 だと hls.js が `scheme_id_uri` を読み違え、字幕が一切出ない
 - **音声トラック切替は cmd のプレースホルダ経由**。`%DUALMONOMODE%` / `%AUDIOMAP%`。**デュアルモノラル (二か国語) の副音声は `-map` では選べない** — `-dual_mono_mode sub` を使う。手書き cmd (直書き) では切り替わらない
+- **`config.tsreadex` を設定すると生成 cmd の前段へ tsreadex が入る** (`-a 13 -b 7`)。**`-b 5` にしない** — EPG が二か国語でも実際の AAC がデュアルモノラルでない局があり、副音声が完全な無音になる (実測 -91.0dB)。**tsreadex 経由では副音声は `-dual_mono_mode sub` では選べず `-map 0:a:1`** (`AudioTrackUtil` が cmd の `%TSREADEX%` の有無で切り替える)
+- **cmd を生成するコードに `-dual_mono_mode main` を直書きしない** (`StreamProfileManageModel.buildCmd()` / `Live|RecordedCommandBuilder`)。置換対象が消え、API が `audioTrack` を受け取っていても黙って主音声のまま再生される。**`-map 0` を使う container (m2tsll / hls) には `%AUDIOMAP%` を入れない** (ES が二重に出力される)
+- **ライブの音声トラック一覧は番組情報から作る** (`GET /api/channels/{channelId}/audio-tracks`)。ライブには ffprobe をかける実ファイルが無い。デュアルモノラル (`componentType` = 0x02) の ES 1 本を主音声・副音声へ展開する。元データは `program.audios` (Mirakurun の `audios[]` を JSON で保存)
+- **`mpegts.js` は tsukumijima フォークをコミット SHA で固定**。本家 npm 版は Safari で音声タイムスタンプのギャップ補完が無効化されており、Safari 26.5 以降で再生が止まる
 - **rigaya 系エンコーダで録画ファイルを直接読むときは `--avsync forcecfr --fps 30000/1001` が必須**。ファイル先頭のタイムスタンプからフレームレートを推定するため録画 TS では推定を外し、映像だけが遅れて音ズレする (実測 60 秒で 7.2 秒)。パイプ入力 (ライブ・録画中) は対象外
 - **HEVC の配信は fMP4 + `-tag:v hvc1` が必須**。iOS / Safari は TS セグメントの HEVC を再生できず、`hev1` タグでも映像が出ない。rigaya 系 (QSVEncC 等) はエンコーダ側でタグ指定できないため後段 ffmpeg の remux で付ける。プロファイルは Main・8bit
 - **DPlayer に `type: 'normal'` を渡すと ARIB 字幕が出ない**。Safari のネイティブ HLS でも `type: 'hls'` のままにする

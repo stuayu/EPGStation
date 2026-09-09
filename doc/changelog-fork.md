@@ -13,6 +13,41 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
+## 2026-09-09
+
+- **配信経路に tsreadex を組み込み、放送側の音声構成の変化で再生が壊れないようにした**: 二か国語放送は「1 つのステレオ ES の左右に主音声・副音声」を入れるデュアルモノラルで送られ、番組が切り替わると PMT の音声構成そのものが変わる。ffmpeg / mpegts.js はこの動的な変化を扱えない。tsreadex を前段に置けば対象サービスの抽出・映像/音声 PID の固定・デュアルモノラルの分離・欠落音声の補完が行われ、以降は「映像 + 音声 2 本」の固定構造になる。**同梱 `config.yml` は tsreadex の例をコメントアウトしたまま置いており、実際には一度も使われていなかった**。
+
+    - **`config.tsreadex` を設定したときだけ**、`cmd` を省略した配信プリセット (ライブ・録画 TS) の前段へ `%TSREADEX% -x 18 -n -1 -a 13 -b 7 -c 1 -u 1 - | ` を自動で入れるようにした (`StreamProfileManageModel`)。tsreadex は同梱していないため、無条件に挟むと実行ファイルが無い環境で配信が起動しなくなる。録画ファイル入力 (encoded) は放送 TS ではないので対象外。
+    - **`-b` は `5` ではなく `7` を使う**。`-b 5` は「第 2 音声が無ければ**無音の AAC** を挿入」、`-b 7` は「第 2 音声が無ければ**第 1 音声をコピー**」(どちらも `+4` のモノラル→ステレオ化込み)。**実測**: EPG が二か国語 (`componentType` = 0x02、`langs` = `["jpn","eng"]`) と言っている番組でも、実際の AAC がデュアルモノラルでない放送局があり、`-b 5` では副音声が **-91.0dB (完全な無音)** になった。`-b 7` では主音声と同じ **-28.4dB**。第 2 音声が実在する放送では `-b 5` / `-b 7` に差が無いことも別局で確認済み。副音声を選んだまま二か国語番組が終わるケースもこれで無音にならない。
+    - **tsreadex を通すと副音声の選び方が変わる**。デュアルモノラルは既に 2 本の音声 ES へ分離されているため `-dual_mono_mode sub` では選べず、`-map 0:a:1` で 2 本目の ES を選ぶ必要がある。`AudioTrackUtil.replacePlaceholders()` へ `isNormalizedByTsreadex` を足し、`LiveStreamBaseModel` / `RecordedStreamBaseModel` が**置換前の cmd に `%TSREADEX%` が含まれるか**で判定して渡すようにした (`%TSREADEX%` の置換より先に判定する)。`RecordedStreamBaseModel` には `%TSREADEX%` の置換自体が無かったので合わせて追加した。
+    - **`-map 0` と `%AUDIOMAP%` は併記できない** (ES が二重に出力される)。tsreadex を通す場合の m2tsll / ディスク HLS は `-map 0` をやめ、`%AUDIOMAP% -map "0:s?" -map "0:d?"` で映像・選択した音声・ARIB 字幕・データ放送を明示的に通す。**optional map の `?` はシェルの glob 文字**なので引用符で括る (`cmd` に `|` があるとシェル経由で実行されるため)。
+    - 実測に使ったのは本番環境の Mirakurun (CS)。二か国語番組から通常番組への切り替わりを跨いで 14 分録り、tsreadex 出力の音声 ES が PID `0x0110` / `0x0111` の 2 本で固定されたまま (追加・消滅なし) であること、主音声・副音声が境界の前は別内容 (差 -31.4dB)、後は同一内容 (差 -66.1dB) になることを確認した。
+
+- **自動生成された配信コマンドでは音声トラックの切り替えが一切効いていなかった**: `config.yml` の配信プリセットで `cmd` を省略すると `StreamProfileManageModel.buildCmd()` が ffmpeg コマンドを組み立てるが、そこに `-dual_mono_mode main` を**直書き**していたため、`AudioTrackUtil.replacePlaceholders()` が展開する `%DUALMONOMODE%` / `%AUDIOMAP%` / `%AUDIOFILTER%` が 1 つも存在しなかった。ストリーム API 側は `audioTrack` を受け取って渡していたので、UI で副音声を選んでも黙って主音声のまま再生されていた。
+
+    - 対象は `cmd` を省略した全プリセット (同梱 `config.yml` の m2tsll / m2ts / mp4 / webm がこれに当たる)。`cmd` を明示している HLS プリセットだけがプレースホルダを持っていたため、**HLS では副音声を選べるが m2tsll では選べない**という状態だった。
+    - `buildCmd()` の生成物をプレースホルダ入りへ差し替えた。**`-map 0` で全 ES を通す container (m2tsll / hls) には `%AUDIOMAP%` を入れない** — `-map 0` と `-map 0:v:0 -map 0:a:<n>` を併記すると ES が二重に出力されるため。これらは `%DUALMONOMODE%` + `%AUDIOFILTER%` だけで、デュアルモノラルの主音声・副音声を切り替える。
+    - 回帰テスト: `test/ut/stream-preset-registry.test.js` (生成 cmd がプレースホルダを持ち `-dual_mono_mode main` を含まないこと、m2tsll に `%AUDIOMAP%` が入らないこと)。
+
+- **Mirakurun の `audios[]` (音声 ES 一覧) を捨てずに保存し、ライブでも実データで音声を選べるようにした**: `ProgramDB.createProgramValue()` は `audios[]` から `isMain` の 1 件だけを取り出して `audioSamplingRate` / `audioComponentType` に入れ、残りを捨てていた (コードにも `TODO 複数音声データに対応する` が残っていた)。このため二か国語放送かどうか、副音声の言語が何かをサーバーもクライアントも知る手段が無く、ライブの音声切替 UI は**主音声・副音声の 2 択を常に決め打ちで出していた**。
+
+    - `program` テーブルへ `audios` (text) を追加し、Mirakurun の `audios[]` を JSON 文字列で保持するようにした (`componentType` / `componentTag` / `isMain` / `samplingRate` / `langs`)。マイグレーションは sqlite / mysql 両方。既存の `audioSamplingRate` / `audioComponentType` は互換のためそのまま残す。
+    - 読み出しは `src/util/ProgramAudioUtil.ts` (壊れた JSON・想定外の形を弾く純粋関数)、音声トラック一覧の組み立ては `src/util/ProgramAudioTrackUtil.ts`。番組表 API (`ScheduleProgramItem.audios`) にも載せた。
+    - ライブ用に `GET /api/channels/{channelId}/audio-tracks` を追加した。放送中番組 (EIT[p/f] 反映済み) の音声 ES から一覧を作る。**デュアルモノラル (`componentType` = 0x02) の ES 1 本は主音声・副音声の 2 件へ展開し**、複数音声 ES はそれぞれ独立した音声として `-map 0:a:<n>` 用の index を振る。通常のステレオ放送は空配列を返して切替 UI 自体を出さない。
+    - クライアントは `LiveHLSVideo.vue` / `LiveMpegTsVideo.vue` の両方がこの API を使う。**番組情報が取れない放送局のために、一覧が空だったときだけ従来の主音声・副音声 2 択へ落とす** (EPG を持たない局でも副音声を試せるようにするため)。m2tsll は画質切替と同じ経路 (`switchQuality`) で `audioTrack` を変えた url へ読み直す。
+    - 言語表記は `langs` から出す (`主音声 (日本語)` / `副音声 (英語)`)。知らない言語コードはコードのまま表示する。
+
+- **`LiveCommandBuilder` / `RecordedCommandBuilder` が音声・字幕・データ放送を落としていた**: どちらも DI へは登録されているが現時点でどこからも呼ばれていない (`ModelContainerSetter.ts` の bind のみ)。生成していたコマンドは `%FFMPEG% -i pipe:0 <映像引数> -f mpegts pipe:1` で、**`-c:a` も `%AUDIOMAP%` も無く**、rigaya 系の経路 (`NVEncC ... -o - | ffmpeg -c copy`) には音声の指定自体が無かった。このまま配線すると音声が消えるか、副音声を選べない配信になる。
+
+    - `StreamArgsUtil.buildFfmpegAudioArgs()` を追加し、両 builder が `%DUALMONOMODE%` / `%AUDIOMAP%` / `%AUDIOFILTER%` 入りの音声引数を出すようにした。ライブは `-map 0 -c:s copy -c:d copy` で ARIB 字幕・データ放送も通す。
+    - rigaya 系は既存の `EncodePresets` と同じ流儀に揃えた (`--audio-copy --output-format mpegts -o - |` で音声をコピーのまま流し、後段の ffmpeg で aac 化する)。`--audio-filter` は `--audio-copy` と併用できないため、音声の加工は後段へ寄せる。
+
+- **`mpegts.js` を tsukumijima フォークへ固定した**: 本家 (npm `mpegts.js@1.8.0`) には Safari 向けの実運用修正が入っていない。フォーク (`github:tsukumijima/mpegts.js#bf4e49d0`) は本家 master をマージ済みの 1.8.0 相当で、次の 2 点が追加されている。
+
+    - `remux/mp4-remuxer.js`: 音声タイムスタンプのギャップを無音フレームで埋める処理が `!Browser.safari` で無効化されていたのを撤去した。無効化されているとタイムラインが少しずつ縮んで累積し、**Safari 26.5 以降で再生が止まる**。
+    - `core/mse-controller.js`: ライブでは `MediaSource.duration` を `Infinity` に設定する。
+    - **ブランチ参照ではなくコミット SHA で固定する** (フォーク側に push があると lockfile の integrity が壊れて CI が落ちるため)。フォークは `dist/` をコミットしているので git 参照のままインストールできる。`client/.npmrc` へ `allow-git=all` を追記した (npm 11 系の依存元制限で `github:` 参照が拒否されるため。ルートの `.npmrc` は client のインストールでは読まれない)。
+
 ## 2026-09-05
 
 - **録画再生の HLS エンコードを再生位置へ近づけてから再開するようにした**: 先行量が 150 セグメントを超えたとき、ブラウザの取得位置が 30 セグメント先まで近づくのを待ってから標準出力の読み出しを再開する。取得が止まった場合も 5 秒で再開するため、LL-HLS の更新停止によるデッドロックは防ぐ。
