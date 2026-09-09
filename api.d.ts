@@ -91,6 +91,18 @@ export type ProgramGenreLv2 = number;
 export type ProgramVideoType = 'mpeg2' | 'h.264' | 'h.265';
 export type ProgramVideoResolution = '240p' | '480i' | '480p' | '720p' | '1080i' | '2160p' | '4320p';
 export type ProgramAudioSamplingRate = 16000 | 22050 | 24000 | 32000 | 44100 | 48000;
+
+/**
+ * 音声 ES の情報 (Mirakurun の Program.audios[] 相当)
+ */
+export interface ProgramAudioInfo {
+    // 0x02 = デュアルモノラル (二か国語)、0x03 = ステレオ
+    componentType: number;
+    componentTag?: number;
+    isMain: boolean;
+    samplingRate?: ProgramAudioSamplingRate;
+    langs?: string[];
+}
 export type RawExtended = { [description: string]: string };
 export type StreamId = number;
 export type StreamType = 'LiveStream' | 'LiveHLS' | 'RecordedStream' | 'RecordedHLS';
@@ -1174,6 +1186,7 @@ export interface ScheduleProgramItem {
     videoComponentType?: number;
     audioSamplingRate?: ProgramAudioSamplingRate;
     audioComponentType?: number;
+    audios?: ProgramAudioInfo[];
 }
 
 /**

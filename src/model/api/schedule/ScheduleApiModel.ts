@@ -12,6 +12,8 @@ import IConfiguration from '../../IConfiguration';
 import IScheduleApiModel from './IScheduleApiModel';
 import IEitPresentStore from '../../service/stream/util/IEitPresentStore';
 import { resolveEitBroadcastTime, resolveEitOnAirProgram, resolveFreshEitProgram } from './EitOnAirResolver';
+import ProgramAudioTrackUtil from '../../../util/ProgramAudioTrackUtil';
+import ProgramAudioUtil from '../../../util/ProgramAudioUtil';
 
 @injectable()
 export default class ScheduleApiModel implements IScheduleApiModel {
@@ -405,6 +407,26 @@ export default class ScheduleApiModel implements IScheduleApiModel {
      * @param option: apid.BroadcastingScheduleOption
      * @return Promise<apid.Schedule[]>
      */
+    /**
+     * 指定放送局で今放送中の番組から、ライブ配信で選べる音声トラック一覧を組み立てる
+     *
+     * ライブには実ファイルが無いため、録画済みのように ffprobe では調べられない。
+     * 放送中番組の音声 ES 情報 (Mirakurun の Program.audios[]) から導出する。
+     * 二か国語 (デュアルモノラル) でも複数音声 ES でもない場合は空配列を返す (切替 UI を出さない)
+     * @param channelId: apid.ChannelId
+     * @return Promise<apid.VideoAudioTrack[]>
+     */
+    public async getLiveAudioTracks(channelId: apid.ChannelId): Promise<apid.VideoAudioTrack[]> {
+        // 放送波の EIT[p/f] を反映した「実際に流れている番組」を使いたいので放映中一覧を経由する
+        const schedules = await this.getBroadcastingSchedule({ isHalfWidth: false });
+        const program = schedules.find(schedule => schedule.channel.id === channelId)?.programs[0];
+        if (typeof program === 'undefined') {
+            return [];
+        }
+
+        return ProgramAudioTrackUtil.getLiveAudioTracks(program.audios, program.audioComponentType);
+    }
+
     public async getBroadcastingSchedule(option: apid.BroadcastingScheduleOption): Promise<apid.Schedule[]> {
         await this.broadcastAffiliation.updateCache();
 
@@ -601,6 +623,11 @@ export default class ScheduleApiModel implements IScheduleApiModel {
 
         if (program.audioComponentType !== null) {
             result.audioComponentType = program.audioComponentType;
+        }
+
+        const audios = ProgramAudioUtil.parse(program.audios);
+        if (audios !== null) {
+            result.audios = audios;
         }
 
         return result;

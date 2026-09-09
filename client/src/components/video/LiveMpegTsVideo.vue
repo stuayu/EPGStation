@@ -4,6 +4,7 @@
 
 <script lang="ts">
 import BaseVideo from '@/components/video/BaseVideo';
+import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
@@ -33,9 +34,28 @@ class LiveMpegTsVideo extends BaseVideo {
     public playbackProfiles!: apid.PlaybackProfile[];
 
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private channelsApiModel: IChannelsApiModel = container.get<IChannelsApiModel>('IChannelsApiModel');
+    private audioTracks: apid.VideoAudioTrack[] = []; // 放送中番組から取得した音声トラック一覧
+    private currentMode: number = 0; // 再生中の視聴設定 (画質切替で更新される)
+    private currentAudioTrack: apid.AudioTrackSpecifier = 'main'; // 再生中の音声トラック
 
     public mounted(): void {
+        this.currentMode = this.mode;
         super.mounted();
+
+        // 放送中番組の音声 ES から選べる音声トラックを求める (取れなくても再生は続ける)
+        if (this.channelId !== null) {
+            this.channelsApiModel
+                .getLiveAudioTracks(this.channelId)
+                .then(tracks => {
+                    this.audioTracks = tracks;
+                    this.setupLiveAudioTrackSwitch();
+                })
+                .catch(err => {
+                    console.error(err);
+                    this.setupLiveAudioTrackSwitch();
+                });
+        }
     }
 
     /**
@@ -129,9 +149,47 @@ class LiveMpegTsVideo extends BaseVideo {
 
         this.createPlayer(options);
         this.setPlaybackProfiles(this.playbackProfiles, 'm2tsll');
+        this.setupLiveAudioTrackSwitch();
         this.setupQualitySwitch({
-            resolveUrl: async mode => `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.channelId}/m2tsll?mode=${mode}`,
+            resolveUrl: async mode => this.createStreamUrl(mode, this.currentAudioTrack),
+            onSwitched: mode => {
+                this.currentMode = mode;
+            },
         });
+    }
+
+    /**
+     * DPlayer の設定 > 音声パネルへ主音声・副音声の切替を組み込む
+     *
+     * m2tsll はサーバー側で音声を選んで配信するため、切替は画質切替と同じく
+     * 「audioTrack を変えた url へ差し替えて読み直す」形で行う。
+     * 番組情報が取れない放送局のために、一覧が空なら主音声・副音声の 2 択へ落とす
+     */
+    private setupLiveAudioTrackSwitch(): void {
+        this.setupAudioTrackSwitch({
+            tracks: this.audioTracks.length > 0 ? this.audioTracks : LiveMpegTsVideo.FALLBACK_AUDIO_TRACKS,
+            current: this.currentAudioTrack,
+            onSelect: async track => {
+                const dp = this.dp as any;
+                if (dp === null) {
+                    return;
+                }
+
+                this.currentAudioTrack = track;
+                // 画質切替と同じ経路で読み直す (音量・字幕表示などの復元も共通処理に任せる)
+                dp.switchQuality(this.currentMode);
+            },
+        });
+    }
+
+    /**
+     * 配信 url を組み立てる
+     * @param mode: number 視聴設定
+     * @param audioTrack: apid.AudioTrackSpecifier 音声トラック
+     * @return string
+     */
+    private createStreamUrl(mode: number, audioTrack: apid.AudioTrackSpecifier): string {
+        return `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.channelId}/m2tsll?mode=${mode}&audioTrack=${encodeURIComponent(audioTrack)}`;
     }
 
     /**
@@ -146,7 +204,7 @@ class LiveMpegTsVideo extends BaseVideo {
         return StreamQualityUtil.getLiveModeNames('m2tsll').map((name, mode) => {
             return {
                 name: name,
-                url: `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.channelId}/m2tsll?mode=${mode}`,
+                url: this.createStreamUrl(mode, this.currentAudioTrack),
                 type: 'mpegts',
             };
         });
@@ -175,6 +233,22 @@ class LiveMpegTsVideo extends BaseVideo {
     public setCurrentTime(time: number): void {
         return;
     }
+}
+
+namespace LiveMpegTsVideo {
+    // 番組情報から音声トラックを求められなかったときに出す 2 択 (二か国語放送のデュアルモノラル前提)
+    export const FALLBACK_AUDIO_TRACKS: apid.VideoAudioTrack[] = [
+        { track: 'main', name: '主音声', streamIndex: 0, isDualMono: true, codec: null, language: null, channels: null },
+        {
+            track: 'sub',
+            name: '副音声 (デュアルモノラル)',
+            streamIndex: 0,
+            isDualMono: true,
+            codec: null,
+            language: null,
+            channels: null,
+        },
+    ];
 }
 
 export default toNative(LiveMpegTsVideo);

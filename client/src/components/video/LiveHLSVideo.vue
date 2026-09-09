@@ -5,6 +5,7 @@
 <script lang="ts">
 import BaseVideo from '@/components/video/BaseVideo';
 import container from '@/model/ModelContainer';
+import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
 import ILiveHLSVideoState from '@/model/state/onair/ILiveHLSVideoState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
@@ -56,12 +57,21 @@ class LiveHLSVideo extends BaseVideo {
     private qualityNames: string[] = []; // config の hls 視聴設定名一覧
     private currentMode: number = 0; // 再生中の視聴設定 (画質切替で更新される)
     private currentAudioTrack: apid.AudioTrackSpecifier = 'main'; // 再生中の音声トラック
+    private channelsApiModel: IChannelsApiModel = container.get<IChannelsApiModel>('IChannelsApiModel');
+    private audioTracks: apid.VideoAudioTrack[] = []; // 放送中番組から取得した音声トラック一覧
 
     public async mounted(): Promise<void> {
         this.containerElement = this.$refs.container as HTMLElement;
 
         this.qualityNames = StreamQualityUtil.getLiveModeNames('hls');
         this.currentMode = StreamQualityUtil.normalizeMode(this.qualityNames, this.mode);
+
+        // 放送中番組の音声 ES から選べる音声トラックを求める (取れなくても再生は続ける)
+        this.audioTracks = await this.channelsApiModel.getLiveAudioTracks(this.channelId).catch(err => {
+            console.error(err);
+
+            return [];
+        });
 
         // HLS stream 開始
         await this.videoState.start(this.channelId, this.currentMode, this.currentAudioTrack).catch(err => {
@@ -239,32 +249,14 @@ class LiveHLSVideo extends BaseVideo {
     /**
      * DPlayer の設定 > 音声パネルへ主音声・副音声の切替を組み込む
      *
-     * ライブは放送中の音声構成を事前に知る手段が無い (録画のように ffprobe をかけられない) ため、
-     * 二か国語放送のデュアルモノラルを前提に主音声・副音声の 2 択を常に出す。
-     * ステレオ放送で副音声を選んだ場合は右チャンネルが両耳に出るだけで再生自体は続く
+     * ライブは録画のように ffprobe をかけられないため、放送中番組の音声 ES 情報
+     * (`GET /api/channels/{channelId}/audio-tracks`) から一覧を作る。
+     * 番組情報が取れない放送局のために、空だった場合は主音声・副音声の 2 択へ落とす
+     * (ステレオ放送で副音声を選んでも右チャンネルが両耳に出るだけで再生は続く)
      */
     private setupLiveAudioTrackSwitch(): void {
         this.setupAudioTrackSwitch({
-            tracks: [
-                {
-                    track: 'main',
-                    name: '主音声',
-                    streamIndex: 0,
-                    isDualMono: true,
-                    codec: null,
-                    language: null,
-                    channels: null,
-                },
-                {
-                    track: 'sub',
-                    name: '副音声 (デュアルモノラル)',
-                    streamIndex: 0,
-                    isDualMono: true,
-                    codec: null,
-                    language: null,
-                    channels: null,
-                },
-            ],
+            tracks: this.audioTracks.length > 0 ? this.audioTracks : LiveHLSVideo.FALLBACK_AUDIO_TRACKS,
             current: this.currentAudioTrack,
             onSelect: async track => {
                 await this.videoState.stop();
@@ -303,6 +295,22 @@ class LiveHLSVideo extends BaseVideo {
 
 namespace LiveHLSVideo {
     export const WAIT_ENABLED_LIMIT = 30; // ストリームが有効になるまで待つ最大秒数
+}
+
+namespace LiveHLSVideo {
+    // 番組情報から音声トラックを求められなかったときに出す 2 択 (二か国語放送のデュアルモノラル前提)
+    export const FALLBACK_AUDIO_TRACKS: apid.VideoAudioTrack[] = [
+        { track: 'main', name: '主音声', streamIndex: 0, isDualMono: true, codec: null, language: null, channels: null },
+        {
+            track: 'sub',
+            name: '副音声 (デュアルモノラル)',
+            streamIndex: 0,
+            isDualMono: true,
+            codec: null,
+            language: null,
+            channels: null,
+        },
+    ];
 }
 
 export default toNative(LiveHLSVideo);

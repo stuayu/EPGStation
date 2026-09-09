@@ -16,4 +16,15 @@ export default class ChannelsApiModel implements IChannelsApiModel {
 
         return result.data;
     }
+
+    /**
+     * ライブ視聴で選べる音声トラック一覧 (放送中番組の音声 ES) を取得する
+     * @param channelId: apid.ChannelId
+     * @return Promise<apid.VideoAudioTrack[]>
+     */
+    public async getLiveAudioTracks(channelId: apid.ChannelId): Promise<apid.VideoAudioTrack[]> {
+        const result = await this.repository.get(`/channels/${channelId}/audio-tracks`);
+
+        return result.data.tracks;
+    }
 }
