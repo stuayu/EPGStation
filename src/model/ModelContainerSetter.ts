@@ -318,6 +318,8 @@ import LiveHLSStreamModel from './service/stream/LiveHLSStreamModel';
 import LiveStreamModel from './service/stream/LiveStreamModel';
 import IStreamManageModel from './service/stream/manager/IStreamManageModel';
 import StreamManageModel from './service/stream/manager/StreamManageModel';
+import ILiveStreamSourceManageModel from './service/stream/manager/ILiveStreamSourceManageModel';
+import LiveStreamSourceManageModel from './service/stream/manager/LiveStreamSourceManageModel';
 import RecordedHLSStreamModel from './service/stream/RecordedHLSStreamModel';
 import RecordedStreamModel from './service/stream/RecordedStreamModel';
 import HLSFileDeleterModel from './service/stream/util/HLSFileDeleterModel';
@@ -669,6 +671,11 @@ export const set = (container: Container): void => {
     container.bind<IEncodeFinishModel>('IEncodeFinishModel').to(EncodeFinishModel).inSingletonScope();
 
     container.bind<ILiveStreamBaseModel>('LiveStreamModel').to(LiveStreamModel);
+    // 同一 channelId のライブ配信が Mirakurun の受信を共有するため singleton で登録する
+    container
+        .bind<ILiveStreamSourceManageModel>('ILiveStreamSourceManageModel')
+        .to(LiveStreamSourceManageModel)
+        .inSingletonScope();
 
     container.bind<LiveStreamModelProvider>('LiveStreamModelProvider').toProvider(context => {
         return () => {

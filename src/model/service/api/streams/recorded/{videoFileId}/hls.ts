@@ -14,7 +14,7 @@ export const get: Operation = async (req, res) => {
     try {
         const streamId = await streamApiModel.startRecordedHLSStream({
             videoFileId: api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'),
-            playPosition: parseInt(req.query.ss as string, 10),
+            playPosition: Number(req.query.ss),
             mode: streamOption.mode,
             profile: streamOption.profile,
             audioTrack: streamOption.audioTrack,

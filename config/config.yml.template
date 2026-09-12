@@ -177,6 +177,10 @@ ffprobe: /usr/local/bin/ffprobe
 # 番組の切り替わりで再生が止まらなくなる。設定しない場合は従来どおり tsreadex を通さない
 # (実行ファイルを同梱していないため、無条件に挟むと配信が起動しなくなる環境があるので既定は無効)。
 # cmd を手書きする場合は %TSREADEX% で参照できる (省略時は PATH 上の tsreadex)
+# **手書き cmd でも `%TSREADEX% ... | %FFMPEG% ... %AUDIOMAP% ...` の形にしておくと、主音声・副音声を
+# 同時に配信してプレイヤー側で再接続無しに切り替えられる** (m2tsll と in-memory HLS。クライアントは
+# audioTrack=all で開き、m2tsll は mpegts.js、HLS は音声レンディションの切替で音声を選ぶ)。
+# `-map 0` と %AUDIOMAP% は併記できない (ES が二重になる) ので、%AUDIOMAP% を使うこと
 # tsreadex: /usr/local/bin/tsreadex
 
 # rigaya 氏製ハードウェアエンコーダの実行ファイルパス (省略時は PATH 上の QSVEncC / NVEncC / VCEEncC)
@@ -336,8 +340,8 @@ urlscheme:
 # - NVENC / QSV などハードウェアエンコーダは -preset / -tune 等のオプション体系が異なり
 #   自動生成コマンドでは動かないため、必ず cmd を明示すること (下部のコメント例を参照)。
 # - id は運用中に変更しないこと (クライアントに保存された設定が無効になる)。
-# - 旧形式の ?mode=N は「同じ container 内の並び順」で解決されるため、各 container 内の
-#   解像度の並び (1080p → 720p → 480p → ...) は変更しないこと。
+# - 旧形式の ?mode=N は「同じ container 内の並び順」で解決される。m2ts は無変換を mode=0 とする
+#   ため、無変換を先頭に置き、その後へ 1080p → 720p → 480p の順で並べること。
 stream:
     profiles:
         live:
@@ -442,6 +446,9 @@ stream:
 
             # ================= M2TS (MPEG-TS / 外部プレイヤー向け) =================
             # cmd 省略時は container / video / audio から自動生成される
+            - id: live-m2ts-unconverted
+              name: 無変換
+              container: m2ts
             - id: live-m2ts-1080p-avc
               name: 1080p
               container: m2ts
@@ -472,10 +479,6 @@ stream:
               audio:
                   codec: aac
                   bitrate: 128
-            - id: live-m2ts-unconverted
-              name: 無変換
-              container: m2ts
-
             # ================= M2TS 低遅延 (m2tsll) =================
             - id: live-m2tsll-1080p-avc
               name: 1080p

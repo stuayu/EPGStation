@@ -141,8 +141,12 @@ test('cmd 省略プリセットの生成コマンドは音声トラックのプ�
         assert.doesNotMatch(profile.cmd, /-dual_mono_mode (main|sub)/u);
     }
 
-    // -map 0 で全 ES を通す m2tsll に %AUDIOMAP% を入れると ES が二重に出力される
+    // m2tsll は映像・音声・字幕を個別に map するため、tsreadex 無しでは %AUDIOMAP% を使わない
     assert.doesNotMatch(profiles[0].cmd, /%AUDIOMAP%/u);
+    assert.match(profiles[0].cmd, /-flags low_delay/u);
+    assert.match(profiles[0].cmd, /-probesize 500000/u);
+    assert.ok(profiles[0].cmd.indexOf('-probesize 500000') < profiles[0].cmd.indexOf('-i pipe:0'));
+    assert.ok(profiles[0].cmd.indexOf('-fflags nobuffer') < profiles[0].cmd.indexOf('-i pipe:0'));
     assert.match(profiles[1].cmd, /%AUDIOMAP%/u);
 });
 
@@ -182,15 +186,18 @@ test('config に tsreadex を設定すると生成コマンドの前段へ tsrea
     assert.match(live, /^%TSREADEX% -x 18 -n -1 -a 13 -b 7 -c 5 -u 5 - \| %FFMPEG%/u);
     // 第 2 音声が無いときに無音を挿入する -b 5 は使わない (副音声が完全な無音になる)
     assert.doesNotMatch(live, /-b 5/u);
-    // 分離済みの音声 ES を選ぶため、-map 0 ではなく %AUDIOMAP% + optional map になる
-    assert.match(live, /%AUDIOMAP% -map "0:s\?" -map "0:d\?"/u);
+    // 分離済みの音声 ES を選ぶため、-map 0 ではなく %AUDIOMAP% + 字幕の optional map になる。
+    // -map "0:d?" (文字スーパーを含むデータストリームの一括 map) は muxer が止まるため使わない
+    assert.match(live, /%AUDIOMAP% -map "0:s\?" -c:s copy /u);
     assert.doesNotMatch(live, /-map 0 /u);
+    assert.doesNotMatch(live, /0:d\?/u);
+    assert.doesNotMatch(live, /-c:d copy/u);
 
     // 録画ファイル入力は放送 TS ではないので tsreadex を通さない
     assert.doesNotMatch(model.getRecordedProfiles('encoded')[0].cmd, /%TSREADEX%/u);
 });
 
-test('config に tsreadex が無ければ生成コマンドは従来どおり -map 0 のまま', () => {
+test('config に tsreadex が無ければ m2tsll は個別 map で -map 0 も -map "0:d?" も使わない', () => {
     const configuration = {
         stream: {
             profiles: {
@@ -209,5 +216,51 @@ test('config に tsreadex が無ければ生成コマンドは従来どおり -m
     const cmd = new StreamProfileManageModel({ getConfig: () => configuration }).getLiveProfiles()[0].cmd;
 
     assert.doesNotMatch(cmd, /%TSREADEX%/u);
-    assert.match(cmd, /-map 0 /u);
+    // 文字スーパー (bin_data) を含む一括 map は使わず、ID3 (PID 0x1FFE) だけをピンポイントで拾う
+    assert.match(cmd, /-map 0:v:0 -map 0:a -map "0:s\?" -map "0:i:0x1ffe\?" -c:s copy -c:d copy /u);
+    assert.doesNotMatch(cmd, /-map 0 /u);
+    assert.doesNotMatch(cmd, /0:d\?/u);
+});
+
+test('cmd 省略の hls はディスクを使わない fMP4 pipe 出力になる', () => {
+    const withTsreadex = new StreamProfileManageModel({
+        getConfig: () => ({
+            tsreadex: '/usr/local/bin/tsreadex',
+            stream: {
+                profiles: {
+                    live: [
+                        {
+                            id: 'generated-hls',
+                            name: '1080p',
+                            container: 'hls',
+                            video: { codec: 'libx264', height: 1080, bitrate: 3000 },
+                            audio: { codec: 'aac', bitrate: 192 },
+                        },
+                    ],
+                },
+            },
+        }),
+    }).getLiveProfiles()[0].cmd;
+    assert.doesNotMatch(withTsreadex, /%streamFileDir%/u);
+    assert.match(withTsreadex, /-movflags empty_moov\+default_base_moof\+frag_keyframe -y -f mp4 pipe:1/u);
+
+    const withoutTsreadex = new StreamProfileManageModel({
+        getConfig: () => ({
+            stream: {
+                profiles: {
+                    live: [
+                        {
+                            id: 'generated-hls',
+                            name: '1080p',
+                            container: 'hls',
+                            video: { codec: 'libx264', height: 1080, bitrate: 3000 },
+                            audio: { codec: 'aac', bitrate: 192 },
+                        },
+                    ],
+                },
+            },
+        }),
+    }).getLiveProfiles()[0].cmd;
+    assert.doesNotMatch(withoutTsreadex, /%streamFileDir%/u);
+    assert.match(withoutTsreadex, /-g 15 -keyint_min 15 -sc_threshold 0/u);
 });

@@ -149,6 +149,10 @@ test('Main10 requirement does not silently select an 8-bit-only encoder', () => 
 test('ライブの生成コマンドは音声トラックのプレースホルダを持つ', () => {
     const cmd = new LiveCommandBuilder().build(terrestrial1080i, { output: { codec: 'h264' } }, [encoder('ffmpeg')]);
 
+    assert.match(cmd, /-flags low_delay/u);
+    assert.match(cmd, /-probesize 500000/u);
+    assert.ok(cmd.indexOf('-probesize 500000') < cmd.indexOf('-i pipe:0'));
+    assert.ok(cmd.indexOf('-fflags nobuffer') < cmd.indexOf('-i pipe:0'));
     assert.match(cmd, /%DUALMONOMODE%/u);
     assert.match(cmd, /%AUDIOMAP%/u);
     assert.match(cmd, /%AUDIOFILTER%/u);

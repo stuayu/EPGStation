@@ -139,10 +139,26 @@ function parseEmsgBoxes(data) {
  */
 async function run(chunks, option = {}, logger = null) {
     const packager = new Fmp4Packager(option, logger);
-    const events = { init: [], part: [], segment: [], trailer: [], halted: [] };
-    for (const name of Object.keys(events)) {
-        packager.on(name, value => events[name].push(value));
-    }
+    const events = {
+        init: [],
+        part: [],
+        segment: [],
+        trailer: [],
+        halted: [],
+        multiTrack: [],
+        trackInit: [],
+        trackPart: [],
+        trackSegment: [],
+    };
+    packager.on('init', value => events.init.push(value));
+    packager.on('part', value => events.part.push(value));
+    packager.on('segment', value => events.segment.push(value));
+    packager.on('trailer', value => events.trailer.push(value));
+    packager.on('halted', value => events.halted.push(value));
+    packager.on('multiTrack', roles => events.multiTrack.push(roles));
+    packager.on('trackInit', (role, data) => events.trackInit.push({ role, data }));
+    packager.on('trackPart', (role, part) => events.trackPart.push({ role, part }));
+    packager.on('trackSegment', (role, segment) => events.trackSegment.push({ role, segment }));
 
     for (const chunk of chunks) {
         packager.write(chunk);
@@ -151,6 +167,255 @@ async function run(chunks, option = {}, logger = null) {
 
     return { packager, events };
 }
+
+// ============================================================
+// 複数音声トラック分解モード (multiTrack) 用のヘルパー
+//
+// ffmpeg が `-map 0:v:0 -map 0:a:0 -map 0:a:1` で 1 映像 + 2 音声を
+// 1 本の fMP4 として出力した場合の moov/moof/mdat を模す。
+// 実際に ffmpeg 9.0.1 (-movflags empty_moov+default_base_moof+frag_keyframe) の出力で
+// 検証済みの構造 (1 moof に traf が複数、trun は data-offset-present +
+// sample-size-present、base-data-offset は moof 開始) に合わせている
+// ============================================================
+
+function makeHdlr(handlerType) {
+    const body = Buffer.alloc(4 + 4 + 4 + 12 + 1);
+    body.write(handlerType, 8, 'latin1');
+
+    return box('hdlr', body);
+}
+
+function makeMultiTrackMoov(tracks) {
+    const mvhd = Buffer.alloc(4);
+    const traks = [];
+    const trexes = [];
+    for (const t of tracks) {
+        const tkhd = Buffer.alloc(20);
+        tkhd.writeUInt32BE(t.trackId, 12);
+        const mdhd = Buffer.alloc(20);
+        mdhd.writeUInt32BE(t.timescale, 12);
+        const mdia = box('mdia', Buffer.concat([box('mdhd', mdhd), makeHdlr(t.mediaType)]));
+        traks.push(box('trak', Buffer.concat([box('tkhd', tkhd), mdia])));
+
+        const trex = Buffer.alloc(24);
+        trex.writeUInt32BE(t.trackId, 4);
+        trexes.push(box('trex', trex));
+    }
+    const mvex = box('mvex', Buffer.concat(trexes));
+
+    return box('moov', Buffer.concat([box('mvhd', mvhd), ...traks, mvex]));
+}
+
+/**
+ * tfhd (version 0, flags = default-base-is-moof のみ)
+ */
+function makeTfhdSimple(trackId) {
+    const body = Buffer.alloc(8);
+    body.writeUIntBE(0x020000, 1, 3);
+    body.writeUInt32BE(trackId, 4);
+
+    return box('tfhd', body);
+}
+
+function makeTfdtV1(baseMediaDecodeTime) {
+    const body = Buffer.alloc(12);
+    body.writeUInt8(1, 0);
+    body.writeBigUInt64BE(BigInt(baseMediaDecodeTime), 4);
+
+    return box('tfdt', body);
+}
+
+/**
+ * trun (data-offset-present + sample-size-present)。dataOffset は後から書き換える前提で
+ * 一旦 0 を入れておき、呼び出し側が bodyStart+8 の位置を書き換える
+ */
+function makeTrunPlaceholder(sampleSizes) {
+    const body = Buffer.alloc(8 + 4 + sampleSizes.length * 4);
+    body.writeUIntBE(0x000201, 1, 3); // data-offset-present(0x1) + sample-size-present(0x200)
+    body.writeUInt32BE(sampleSizes.length, 4);
+    // body[8..12) = data_offset (後で書き換え)
+    let offset = 12;
+    for (const size of sampleSizes) {
+        body.writeUInt32BE(size, offset);
+        offset += 4;
+    }
+
+    return box('trun', body);
+}
+
+/**
+ * 1 映像 + N 音声の moof + mdat を組み立てる。
+ * ffmpeg 実測どおり、各トラックのサンプルはトラック順に mdat 内へ連結配置する
+ * @param tracksSpec: { trackId, tfdt, sampleSizes, fill }[]
+ * @return { moof: Buffer, mdat: Buffer }
+ */
+function makeMultiTrackFragment(tracksSpec) {
+    const mfhd = box('mfhd', Buffer.alloc(8));
+
+    // traf ごとに、trun の data_offset フィールドが traf 内のどこにあるか (実際のバッファ長から算出する。
+    // ハードコードした box サイズはズレの温床になるため使わない)
+    const trafParts = tracksSpec.map(t => {
+        const tfhd = makeTfhdSimple(t.trackId);
+        const tfdt = makeTfdtV1(t.tfdt);
+        const trun = makeTrunPlaceholder(t.sampleSizes);
+        // trun 内で data_offset フィールドが始まる相対位置 (version+flags(4) + sample_count(4) の後ろ)
+        const dataOffsetOffsetInTrun = 8 + 4 + 4;
+        const dataOffsetOffsetInTraf = 8 /* traf header */ + tfhd.length + tfdt.length + dataOffsetOffsetInTrun;
+        const trafBody = Buffer.concat([tfhd, tfdt, trun]);
+
+        return { trafBuf: box('traf', trafBody), dataOffsetOffsetInTraf };
+    });
+
+    const moofBody = Buffer.concat([mfhd, ...trafParts.map(p => p.trafBuf)]);
+    const moof = box('moof', moofBody);
+
+    // 各 traf の trun.data_offset (moof 開始からの相対位置) を書き換える。
+    // ffmpeg 実測どおり、各トラックのサンプルは mdat 内でトラック順に連結配置される
+    let cursor = 8 /* moof header */ + mfhd.length;
+    let mdatCursor = moof.length + 8; // mdat の header 分
+    for (let i = 0; i < trafParts.length; i++) {
+        const fieldOffset = cursor + trafParts[i].dataOffsetOffsetInTraf;
+        moof.writeInt32BE(mdatCursor, fieldOffset);
+
+        mdatCursor += tracksSpec[i].sampleSizes.reduce((a, b) => a + b, 0);
+        cursor += trafParts[i].trafBuf.length;
+    }
+
+    const mdatBody = Buffer.concat(
+        tracksSpec.map(t => Buffer.alloc(t.sampleSizes.reduce((a, b) => a + b, 0), t.fill ?? t.trackId)),
+    );
+
+    return { moof, mdat: box('mdat', mdatBody) };
+}
+
+/**
+ * 1 映像 (trackId=1) + audioCount 本の音声 (trackId=2,3,...) の moov + N フラグメントを作る
+ */
+function makeMultiTrackStream(audioCount, fragmentCount = 2) {
+    const tracks = [{ trackId: 1, timescale: TIMESCALE, mediaType: 'vide' }];
+    for (let i = 0; i < audioCount; i++) {
+        tracks.push({ trackId: 2 + i, timescale: 48000, mediaType: 'soun' });
+    }
+    const moov = makeMultiTrackMoov(tracks);
+
+    const chunks = [makeFtyp(), moov];
+    for (let f = 0; f < fragmentCount; f++) {
+        const spec = tracks.map((t, i) => ({
+            trackId: t.trackId,
+            tfdt: f * (t.mediaType === 'vide' ? TIMESCALE : 48000),
+            sampleSizes: [20 + i, 21 + i],
+            fill: 0x10 * (i + 1) + f,
+        }));
+        const { moof, mdat } = makeMultiTrackFragment(spec);
+        chunks.push(moof, mdat);
+    }
+
+    return { tracks, chunks };
+}
+
+/**
+ * トラックの init + パート列を連結し、moof/mdat を辿って mdat の総バイト数を数える
+ * (取りこぼし・重複が無いことの検証用)
+ */
+function sumMdatBytes(data) {
+    let sum = 0;
+    let offset = 0;
+    while (offset + 8 <= data.length) {
+        const size = data.readUInt32BE(offset);
+        if (size < 8) break;
+        if (data.toString('latin1', offset + 4, offset + 8) === 'mdat') {
+            sum += size - 8;
+        }
+        offset += size;
+    }
+
+    return sum;
+}
+
+test('音声トラックが 2 本以上あると multiTrack へ入り、ロールごとに init/part/segment を分ける', async () => {
+    const { tracks, chunks } = makeMultiTrackStream(2, 2);
+    const { events } = await run(chunks, { partsPerSegment: 2 });
+
+    // 従来の init/part/segment は emit されない
+    assert.equal(events.init.length, 0);
+    assert.equal(events.part.length, 0);
+    assert.equal(events.segment.length, 0);
+
+    assert.equal(events.multiTrack.length, 1);
+    assert.deepEqual(events.multiTrack[0], ['video', 'audio0', 'audio1']);
+
+    assert.equal(events.trackInit.length, 3);
+    assert.deepEqual(
+        events.trackInit.map(e => e.role).sort(),
+        ['audio0', 'audio1', 'video'],
+    );
+
+    // 2 フラグメント x 3 ロールぶんの part
+    assert.equal(events.trackPart.length, 6);
+    for (const role of ['video', 'audio0', 'audio1']) {
+        const parts = events.trackPart.filter(e => e.role === role);
+        assert.equal(parts.length, 2);
+    }
+
+    void tracks;
+});
+
+test('multiTrack のロールごとの mdat 合計バイト数が入力のサンプル合計と一致する (取りこぼし検証)', async () => {
+    const { chunks } = makeMultiTrackStream(2, 3);
+    const { events } = await run(chunks, { partsPerSegment: 3 });
+
+    for (const role of ['video', 'audio0', 'audio1']) {
+        const parts = events.trackPart.filter(e => e.role === role).map(e => e.part.data);
+        const totalBytes = parts.reduce((sum, data) => sum + sumMdatBytes(data), 0);
+        // makeMultiTrackFragment は各フラグメントで sampleSizes = [20+i, 21+i] (41+2i byte) を積む
+        // (i は tracks 配列内でのインデックス: video=0, audio0=1, audio1=2)
+        const index = role === 'video' ? 0 : role === 'audio0' ? 1 : 2;
+        const perFragment = 20 + index + (21 + index);
+        assert.equal(totalBytes, perFragment * 3);
+    }
+});
+
+test('multiTrack でも emsg (ARIB 字幕) は video ロールのパートにのみ載る', async () => {
+    const { chunks } = makeMultiTrackStream(2, 2);
+    const packager = new Fmp4Packager({ partsPerSegment: 1 });
+    const trackParts = [];
+    packager.on('trackPart', (role, part) => trackParts.push({ role, part }));
+
+    // ftyp + moov を書き込んだ直後 (最初のフラグメントより前) に字幕を積む
+    packager.write(chunks[0]);
+    packager.write(chunks[1]);
+    packager.pushId3(makeMetadata(0, 'caption'));
+    for (const chunk of chunks.slice(2)) {
+        packager.write(chunk);
+    }
+    await new Promise(resolve => packager.end(resolve));
+
+    const videoParts = trackParts.filter(e => e.role === 'video');
+    const audioParts = trackParts.filter(e => e.role !== 'video');
+
+    assert.equal(countBoxes(videoParts[0].part.data, 'emsg'), 1);
+    for (const a of audioParts) {
+        assert.equal(countBoxes(a.part.data, 'emsg'), 0);
+    }
+});
+
+test('音声トラックが 1 本だけなら従来どおり (multiTrack へ入らない)', async () => {
+    const { chunks } = makeMultiTrackStream(1, 2);
+    const { events } = await run(chunks, { partsPerSegment: 2 });
+
+    assert.equal(events.multiTrack.length, 0);
+    assert.equal(events.trackInit.length, 0);
+    assert.equal(events.init.length, 1);
+    assert.equal(events.part.length, 2);
+});
+
+test('音声トラックが 3 本以上でも先頭 2 本 (audio0/audio1) のみ配信する', async () => {
+    const { chunks } = makeMultiTrackStream(3, 1);
+    const { events } = await run(chunks, { partsPerSegment: 1 });
+
+    assert.deepEqual(events.multiTrack[0], ['video', 'audio0', 'audio1']);
+    assert.equal(events.trackInit.length, 3);
+});
 
 /**
  * duration が 1 秒ずつ進む n 個の moof + mdat を作る

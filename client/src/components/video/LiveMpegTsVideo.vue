@@ -38,6 +38,7 @@ class LiveMpegTsVideo extends BaseVideo {
     private audioTracks: apid.VideoAudioTrack[] = []; // 放送中番組から取得した音声トラック一覧
     private currentMode: number = 0; // 再生中の視聴設定 (画質切替で更新される)
     private currentAudioTrack: apid.AudioTrackSpecifier = 'main'; // 再生中の音声トラック
+    private deferredMpegtsCleanups = new Set<() => void>();
 
     public mounted(): void {
         this.currentMode = this.mode;
@@ -81,6 +82,7 @@ class LiveMpegTsVideo extends BaseVideo {
     }
 
     public async beforeUnmount(): Promise<void> {
+        this.cleanupDeferredMpegts();
         super.beforeUnmount();
     }
 
@@ -133,6 +135,11 @@ class LiveMpegTsVideo extends BaseVideo {
                 mpegts: {
                     config: {
                         enableWorker: true,
+                        // stash は無効にするとネットワークの chunk 境界で TS/PES を取りこぼしやすい。
+                        // 64KiB は mpegts.js の既定値 (約 0.13 秒分、4Mbps 換算)。
+                        // stash を無効化せず初期 300KiB 待ちにも戻さない挙動を明示固定する。
+                        enableStashBuffer: true,
+                        stashInitialSize: 64 * 1024,
                         // 低遅延: 再生位置が遅延したら自動で追いかける
                         liveBufferLatencyChasing: true,
                         liveBufferLatencyMinRemain: 0.5,
@@ -150,19 +157,108 @@ class LiveMpegTsVideo extends BaseVideo {
         this.createPlayer(options);
         this.setPlaybackProfiles(this.playbackProfiles, 'm2tsll');
         this.setupLiveAudioTrackSwitch();
+        this.deferPreviousMpegtsDestroy();
         this.setupQualitySwitch({
             resolveUrl: async mode => this.createStreamUrl(mode, this.currentAudioTrack),
             onSwitched: mode => {
                 this.currentMode = mode;
+                // 画質切替 (= mpegts.js インスタンスの作り直し) の直後は選択中の副音声が失われる
+                // (新インスタンスは常に主音声から始まる) ため、切替が完了してから選択を再適用する。
+                // originalSwitchQuality() (dp.plugins.mpegts の再生成を含む) はこの後に同期的に
+                // 呼ばれるため、マイクロタスクへ逃がして完了を待つ
+                void Promise.resolve().then(() => this.reapplyEmbeddedAudioTrack(mode));
             },
+            onPlaybackReady: () => this.cleanupDeferredMpegts(),
         });
+    }
+
+    /**
+     * DPlayer の mpegts.js 差し替え時、旧プレイヤーを新しい video の canplay まで保持する。
+     * DPlayer 標準は initMSE() の冒頭で旧プレイヤーを破棄するため、切替中の旧ストリームも
+     * 切断される。新側の準備失敗時はタイムアウトで回収する。
+     */
+    private deferPreviousMpegtsDestroy(): void {
+        if (this.dp === null) return;
+
+        const dp = this.dp as any;
+        const originalInitMSE = typeof dp.initMSE === 'function' ? dp.initMSE.bind(dp) : null;
+        if (originalInitMSE === null) return;
+
+        dp.initMSE = (video: HTMLVideoElement, type: string): void => {
+            // 3 回以上の連続切替では、現在の切替に不要になった旧側を先に回収する。
+            // 旧保持を積み上げると streamProcessNum (既定4) を消費するため、保持は1本に制限する。
+            this.cleanupDeferredMpegts();
+            const previousMpegts = dp.plugins?.mpegts;
+            const previousCaption = dp.plugins?.aribb24Caption;
+            const previousSuperimpose = dp.plugins?.aribb24Superimpose;
+            if (
+                dp.options.live !== true ||
+                type !== 'mpegts' ||
+                previousMpegts === null ||
+                typeof previousMpegts === 'undefined'
+            ) {
+                originalInitMSE(video, type);
+                return;
+            }
+
+            // DPlayer の旧破棄処理を通さず、新プレイヤーを作らせる。
+            dp.plugins.mpegts = undefined;
+            dp.plugins.aribb24Caption = undefined;
+            dp.plugins.aribb24Superimpose = undefined;
+            try {
+                originalInitMSE(video, type);
+            } catch (err) {
+                dp.plugins.mpegts = previousMpegts;
+                // 新側の renderer 生成前に失敗した場合は旧側をそのまま復元する。
+                // 成功時だけ上記で dispose 済みなので、失敗経路では破棄しない。
+                dp.plugins.aribb24Caption = previousCaption;
+                dp.plugins.aribb24Superimpose = previousSuperimpose;
+                throw err;
+            }
+
+            // aribb24 renderer は旧 video の canvas と結び付いている。mpegts.js だけを
+            // canplay まで保持し、renderer は新側の生成直後に破棄することで、旧 canvas が
+            // 幅/高さ0の状態で字幕を描画する競合を避ける。
+            try { previousCaption?.dispose?.(); } catch (err) { console.error(err); }
+            try { previousSuperimpose?.dispose?.(); } catch (err) { console.error(err); }
+
+            let finished = false;
+            let timerId: number | undefined;
+            const cleanup = (): void => {
+                if (finished === true) return;
+                finished = true;
+                if (typeof timerId !== 'undefined') window.clearTimeout(timerId);
+                this.deferredMpegtsCleanups.delete(cleanup);
+                try { previousMpegts.unload?.(); } catch (err) { console.error(err); }
+                try { previousMpegts.detachMediaElement?.(); } catch (err) { console.error(err); }
+                try { previousMpegts.destroy?.(); } catch (err) { console.error(err); }
+            };
+            this.deferredMpegtsCleanups.add(cleanup);
+            timerId = window.setTimeout(cleanup, LiveMpegTsVideo.MPEGTS_HANDOFF_TIMEOUT_MS);
+        };
+    }
+
+    /** 保持中の旧 mpegts.js をまとめて停止する。 */
+    private cleanupDeferredMpegts(): void {
+        for (const cleanup of [...this.deferredMpegtsCleanups]) {
+            try {
+                cleanup();
+            } catch (err) {
+                console.error(err);
+            }
+        }
+        // cleanup 内でも delete するが、例外や将来の変更があっても保持集合を残さない。
+        this.deferredMpegtsCleanups.clear();
     }
 
     /**
      * DPlayer の設定 > 音声パネルへ主音声・副音声の切替を組み込む
      *
-     * m2tsll はサーバー側で音声を選んで配信するため、切替は画質切替と同じく
-     * 「audioTrack を変えた url へ差し替えて読み直す」形で行う。
+     * 再生中の画質 (m2tsll プロファイル) が embeddedAudioSwitch.m2tsll === true を返す場合、
+     * サーバーは主音声・副音声の両方の ES を同一ストリームに含めて配信している (audioTrack=all)。
+     * この場合は再接続せず mpegts.js の switchPrimaryAudio()/switchSecondaryAudio() を直接呼ぶ。
+     * それ以外 (embeddedAudioSwitch が false / 不明) は従来どおり
+     * 「audioTrack を変えた url へ差し替えて読み直す」方式にフォールバックする。
      * 番組情報が取れない放送局のために、一覧が空なら主音声・副音声の 2 択へ落とす
      */
     private setupLiveAudioTrackSwitch(): void {
@@ -175,6 +271,24 @@ class LiveMpegTsVideo extends BaseVideo {
                     return;
                 }
 
+                if (this.isEmbeddedAudioSwitchMode(this.currentMode) === true) {
+                    const mpegts = dp.plugins?.mpegts;
+                    if (
+                        typeof mpegts?.switchPrimaryAudio === 'function' &&
+                        typeof mpegts?.switchSecondaryAudio === 'function'
+                    ) {
+                        if (LiveMpegTsVideo.isSecondaryAudioTrack(track) === true) {
+                            mpegts.switchSecondaryAudio();
+                        } else {
+                            mpegts.switchPrimaryAudio();
+                        }
+                        this.currentAudioTrack = track;
+
+                        return;
+                    }
+                    // mpegts プラグインが見つからない場合は下の再接続方式へフォールバックする
+                }
+
                 this.currentAudioTrack = track;
                 // 画質切替と同じ経路で読み直す (音量・字幕表示などの復元も共通処理に任せる)
                 dp.switchQuality(this.currentMode);
@@ -183,13 +297,58 @@ class LiveMpegTsVideo extends BaseVideo {
     }
 
     /**
+     * 画質切替後、選択中の音声トラックを mpegts.js の新しいインスタンスへ再適用する
+     * (embeddedAudioSwitch が有効なモードで、副音声を選んでいる場合のみ何かする)
+     * @param mode: number 切替後の視聴設定
+     */
+    private reapplyEmbeddedAudioTrack(mode: number): void {
+        if (this.isEmbeddedAudioSwitchMode(mode) === false) {
+            return;
+        }
+        if (LiveMpegTsVideo.isSecondaryAudioTrack(this.currentAudioTrack) === false) {
+            // 主音声は mpegts.js の新インスタンスの既定値なので何もしなくてよい
+            return;
+        }
+
+        const dp = this.dp as any;
+        const mpegts = dp?.plugins?.mpegts;
+        if (typeof mpegts?.switchSecondaryAudio === 'function') {
+            mpegts.switchSecondaryAudio();
+        }
+    }
+
+    /**
+     * 指定した mode (m2tsll の再生プロファイル) が主音声・副音声を再接続無しで
+     * 切り替えられるか (embeddedAudioSwitch.m2tsll === true か) を返す
+     * @param mode: number
+     * @return boolean
+     */
+    private isEmbeddedAudioSwitchMode(mode: number): boolean {
+        const profile = this.playbackProfiles.find(item => item.modes?.m2tsll === mode);
+
+        return profile?.embeddedAudioSwitch?.m2tsll === true;
+    }
+
+    /**
      * 配信 url を組み立てる
+     * embeddedAudioSwitch が有効なモードでは、主音声・副音声の両方を含めるため
+     * audioTrack を 'all' に固定する (実際の選択は mpegts.js 側の切替で行う)。
+     *
+     * **主音声のときは embeddedAudioSwitch が分からなくても 'all' で開く**。playbackProfiles は
+     * プレイヤー生成後に非同期で届くため、最初の url を組む時点ではまだ空のことが多い
+     * (そのまま 'main' で開くと、tsreadex 経由でも副音声を含まない配信になり再接続無しで切り替えられない)。
+     * サーバーは tsreadex を通さない cmd では 'all' を 'main' として扱うので、どちらの構成でも安全
      * @param mode: number 視聴設定
      * @param audioTrack: apid.AudioTrackSpecifier 音声トラック
      * @return string
      */
     private createStreamUrl(mode: number, audioTrack: apid.AudioTrackSpecifier): string {
-        return `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.channelId}/m2tsll?mode=${mode}&audioTrack=${encodeURIComponent(audioTrack)}`;
+        const track =
+            this.isEmbeddedAudioSwitchMode(mode) === true || LiveMpegTsVideo.isSecondaryAudioTrack(audioTrack) === false
+                ? 'all'
+                : audioTrack;
+
+        return `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.channelId}/m2tsll?mode=${mode}&audioTrack=${encodeURIComponent(track)}`;
     }
 
     /**
@@ -236,6 +395,25 @@ class LiveMpegTsVideo extends BaseVideo {
 }
 
 namespace LiveMpegTsVideo {
+    export const MPEGTS_HANDOFF_TIMEOUT_MS = 10_000;
+
+    /**
+     * 音声トラック指定子が副音声 (mpegts.js の switchSecondaryAudio() 相当) を指すか判定する
+     * 'sub' / 音声 ES インデックス '1' を副音声とみなす ('main' / インデックス '0' / それ以外は主音声)
+     * @param track: apid.AudioTrackSpecifier
+     * @return boolean
+     */
+    export const isSecondaryAudioTrack = (track: apid.AudioTrackSpecifier): boolean => {
+        if (track === 'sub') {
+            return true;
+        }
+        if (track === 'main') {
+            return false;
+        }
+
+        return Number.parseInt(track, 10) === 1;
+    };
+
     // 番組情報から音声トラックを求められなかったときに出す 2 択 (二か国語放送のデュアルモノラル前提)
     export const FALLBACK_AUDIO_TRACKS: apid.VideoAudioTrack[] = [
         { track: 'main', name: '主音声', streamIndex: 0, isDualMono: true, codec: null, language: null, channels: null },

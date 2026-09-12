@@ -15,8 +15,9 @@ namespace StreamSupportUtil {
      * - iOS / iPadOS 26 以降の「ホーム画面に追加」した Web App (standalone) では
      *   WebKit の不具合により MSE / MMS ベースの再生が開始できないため無効化する
      *   (KonomiTV でも iOS/iPadOS 26.1 で同様の問題が報告されている)
-     * - macOS Safari 26 以降は mpegts.js ライブ再生で映像が停止する既知の
-     *   不具合があるため無効化し、ネイティブ HLS へ誘導する
+     * - macOS Safari 26 以降で映像が停止していた不具合は、mpegts.js を tsukumijima フォーク
+     *   (音声タイムスタンプのギャップ補完が Safari でも有効) へ固定したことで解消したため無効化しない
+     *   (実測: WebKit 26 でライブ M2TS-LL を 6 分間連続再生して停止なし)
      * @return M2TSLLSupportResult
      */
     export const checkM2TSLLSupport = (): M2TSLLSupportResult => {
@@ -35,14 +36,6 @@ namespace StreamSupportUtil {
             return {
                 isSupported: false,
                 reason: 'iOS 26 以降のホーム画面アプリでは低遅延再生できません。Safari のタブで開くか HLS で視聴してください。',
-            };
-        }
-
-        // macOS Safari 26 以降は mpegts.js ライブ再生で映像が停止する
-        if (UaUtil.isMac() === true && UaUtil.isSafari() === true && safariVersion !== null && safariVersion >= 26) {
-            return {
-                isSupported: false,
-                reason: 'Safari 26 では低遅延再生に既知の不具合があるため HLS で視聴してください。',
             };
         }
 

@@ -34,6 +34,7 @@ function makeConnection(repository) {
                     return builder;
                 },
                 orUpdate: () => builder,
+                updateEntity: () => builder,
                 execute: async () => {
                     const existing = repository.rows.get(values.videoFileId);
                     const saved = { ...(existing ?? {}), ...values, id: existing?.id ?? repository.nextId++ };

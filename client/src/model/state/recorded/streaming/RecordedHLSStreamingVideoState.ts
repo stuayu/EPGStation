@@ -1,6 +1,5 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../../api';
-import Util from '../../../../util/Util';
 import IStreamApiModel from '../../..//api/streams/IStreamApiModel';
 import IRecordedApiModel from '../../../api/recorded/IRecordedApiModel';
 import IVideoApiModel from '../../../api/video/IVideoApiModel';
@@ -69,7 +68,6 @@ class RecordedHLSStreamingVideoState extends RecordedStreamingVideoState impleme
             });
         }, RecordedHLSStreamingVideoState.KEEP_INTERVAL * 1000);
 
-        await Util.sleep(1000);
     }
 
     /**

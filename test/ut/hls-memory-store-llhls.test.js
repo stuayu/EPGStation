@@ -53,6 +53,60 @@ test('プレイリストに LL-HLS のタグ (SERVER-CONTROL / PART-INF / PART /
     assert.match(playlist, /#EXTINF:1\.00000,\nstream1-2\.m4s/);
 });
 
+test('先頭の長い不揃いなパートは公開せず、2本目から PART-TARGET を固定する', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'live');
+    store.setInit(1, Buffer.from('init'));
+    store.addPart(1, Buffer.from('long'), 1.0507, true);
+    store.addPart(1, Buffer.from('short'), 0.5005, false);
+    store.addSegment(1, Buffer.from('seg0'), 1.5512);
+
+    let playlist = store.getPlaylist(1);
+    assert.doesNotMatch(playlist, /PART-INF/);
+    assert.doesNotMatch(playlist, /stream1-0\.0\.part/);
+
+    store.addPart(1, Buffer.from('part1-0'), 0.5005, true);
+    store.addPart(1, Buffer.from('part1-1'), 0.5005, false);
+    store.addSegment(1, Buffer.from('seg1'), 1.001);
+    playlist = store.getPlaylist(1);
+    assert.match(playlist, /PART-TARGET=0\.501/);
+    assert.doesNotMatch(playlist, /stream1-0\.0\.part/);
+    assert.match(playlist, /stream1-1\.0\.part/);
+});
+
+test('公開済みパートは PART-TARGET の 85% 以上 100% 以下に収まる', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'live');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 2, 0.5);
+    store.addPart(1, Buffer.from('part2-0'), 0.8, true);
+    store.addPart(1, Buffer.from('part2-1'), 0.8, false);
+    store.addSegment(1, Buffer.from('seg2'), 1.6);
+
+    const playlist = store.getPlaylist(1);
+    const target = Number(/PART-TARGET=([0-9.]+)/.exec(playlist)[1]);
+    const durations = [...playlist.matchAll(/#EXT-X-PART:DURATION=([0-9.]+)/g)].map(match => Number(match[1]));
+    assert.ok(durations.length > 0);
+    assert.ok(durations.every(duration => duration >= target * 0.85 && duration <= target));
+    assert.equal(target, 0.5);
+    assert.doesNotMatch(playlist, /stream1-2\.0\.part/);
+});
+
+test('PART-INF と PRELOAD-HINT は公開パートがあるときだけ出る', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'live');
+    store.setInit(1, Buffer.from('init'));
+    store.addPart(1, Buffer.from('part0'), 1.05, true);
+    store.addSegment(1, Buffer.from('seg0'), 1.05);
+    assert.doesNotMatch(store.getPlaylist(1), /PART-INF|PRELOAD-HINT/);
+
+    store.addPart(1, Buffer.from('part1'), 0.5, true);
+    store.addSegment(1, Buffer.from('seg1'), 0.5);
+    const playlist = store.getPlaylist(1);
+    assert.match(playlist, /PART-INF/);
+    assert.match(playlist, /PRELOAD-HINT/);
+});
+
 test('セグメント確定前でもパートがプレイリストに載る', () => {
     const store = new HLSMemoryStoreModel(logger);
     store.create(1, 'live');
@@ -237,13 +291,38 @@ test('getAheadSegmentNum はクライアントが取得した位置からの先�
     assert.equal(store.getAheadSegmentNum(1), 0);
 });
 
-test('getAheadSegmentNum はパート取得でも更新される (LL-HLS はパート単位で取りに来る)', async () => {
+test('live モードは getAheadSegmentNum がパート取得でも更新される (LL-HLS はパート単位で取りに来る)', async () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'live');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 10);
+
+    await store.getPart(1, 3, 0);
+    assert.equal(store.getAheadSegmentNum(1), 6);
+});
+
+// 録画済み (mode === 'recorded') はプレイリストに #EXT-X-PART / #EXT-X-PRELOAD-HINT を出さないため、
+// getPart() が呼ばれても lastServedSeq は進めない (getSegment() だけが再生位置を表す)。
+// WebKit のネイティブ HLS が LL-HLS のライブ端パートを先取りし、lastServedSeq がライブ端へ
+// 跳んでエンコード抑制 (RecordedStreamBaseModel) が効かなくなっていた不具合の対策
+// (doc/streaming-refresh.md、doc/changelog-fork.md 2026-09-12 参照)
+test('recorded モードは getPart() を呼んでも lastServedSeq (getAheadSegmentNum) を進めない', async () => {
     const store = new HLSMemoryStoreModel(logger);
     store.create(1, 'recorded');
     store.setInit(1, Buffer.from('init'));
     pushSegments(store, 1, 10);
 
+    assert.equal(store.getAheadSegmentNum(1), 0);
     await store.getPart(1, 3, 0);
+    // getPart() だけでは lastServedSeq が未確定 (null) のまま = getAheadSegmentNum は 0
+    assert.equal(store.getAheadSegmentNum(1), 0);
+
+    // getSegment() (実際の再生位置) だけが lastServedSeq を進める
+    store.getSegment(1, 3);
+    assert.equal(store.getAheadSegmentNum(1), 6);
+
+    // その後 getPart() で先の (ライブ端に近い) パートを取得しても lastServedSeq は動かない
+    await store.getPart(1, 9, 0);
     assert.equal(store.getAheadSegmentNum(1), 6);
 });
 
@@ -271,9 +350,9 @@ test('古いセグメントの再取得では先読み基準を後退させな�
     assert.equal(store.getAheadSegmentNum(1), 9);
 });
 
-test('存在しないパート取得では lastServedSeq を更新しない', async () => {
+test('live モードは存在しないパート取得では lastServedSeq を更新しない', async () => {
     const store = new HLSMemoryStoreModel(logger);
-    store.create(1, 'recorded');
+    store.create(1, 'live');
     store.setInit(1, Buffer.from('init'));
     pushSegments(store, 1, 20);
 
@@ -300,4 +379,159 @@ test('addPart を経由しない addSegment はセグメント全体を 1 パー
     const playlist = store.getPlaylist(1);
     assert.match(playlist, /#EXT-X-PART:DURATION=1\.00000,URI="stream1-1\.0\.part\.m4s",INDEPENDENT=YES/);
     assert.deepEqual(store.getSegment(1, 1), Buffer.from('seg1'));
+});
+
+test('recorded モードは1セグメントで再生開始可能になるが live は2セグメント必要', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'recorded');
+    store.setInit(1, Buffer.from('init'));
+    store.addSegment(1, Buffer.from('seg0'), 1);
+    assert.equal(store.isReady(1), true);
+
+    store.create(2, 'live');
+    store.setInit(2, Buffer.from('init'));
+    store.addSegment(2, Buffer.from('seg0'), 1);
+    assert.equal(store.isReady(2), false);
+    store.addSegment(2, Buffer.from('seg1'), 1);
+    assert.equal(store.isReady(2), true);
+});
+
+// 録画済みのエンコードは実時間より速く終わるため、エンコーダの正常終了をそのまま
+// ストア破棄 (delete) に結び付けると、プレイヤーがまだ取得していない末尾のセグメントを
+// 失ってしまう (実測: 9.8 分の録画で 363 秒まで再生できていたのに、エンコーダ終了と
+// 同時にストアごと削除され、以後 60 秒経っても再生が戻らなかった)。
+// markEnded() はストアを残したまま「これ以上セグメントが増えない」ことだけを記録する
+
+test('recorded モードのプレイリストは PART / PRELOAD-HINT を出さず、markEnded 後に #EXT-X-ENDLIST が付く', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'recorded');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 3);
+
+    let playlist = store.getPlaylist(1);
+    assert.doesNotMatch(playlist, /#EXT-X-ENDLIST/);
+    // 録画済みは常時 LL-HLS のタグを出さない (WebKit がライブ端パートを先取りして
+    // 保持窓の判定が壊れるのを防ぐため。doc/streaming-refresh.md 参照)
+    assert.doesNotMatch(playlist, /#EXT-X-PRELOAD-HINT/);
+    assert.doesNotMatch(playlist, /#EXT-X-PART:/);
+    assert.doesNotMatch(playlist, /#EXT-X-PART-INF/);
+    assert.doesNotMatch(playlist, /#EXT-X-SERVER-CONTROL/);
+    assert.match(playlist, /#EXT-X-START:TIME-OFFSET=0,PRECISE=YES/);
+
+    store.markEnded(1);
+
+    playlist = store.getPlaylist(1);
+    assert.match(playlist, /#EXT-X-ENDLIST/);
+    assert.doesNotMatch(playlist, /#EXT-X-PRELOAD-HINT/);
+});
+
+test('live モードのプレイリストは従来どおり PRELOAD-HINT を出し、markEnded 後は出さない', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'live');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 3);
+
+    let playlist = store.getPlaylist(1);
+    assert.doesNotMatch(playlist, /#EXT-X-ENDLIST/);
+    assert.match(playlist, /#EXT-X-PRELOAD-HINT/);
+
+    store.markEnded(1);
+
+    playlist = store.getPlaylist(1);
+    assert.match(playlist, /#EXT-X-ENDLIST/);
+    assert.doesNotMatch(playlist, /#EXT-X-PRELOAD-HINT/);
+});
+
+test('markEnded はストアを破棄しない (終端後もセグメント取得は続けられる)', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'recorded');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 3);
+
+    store.markEnded(1);
+
+    assert.equal(store.has(1), true);
+    assert.notEqual(store.getSegment(1, 0), null);
+});
+
+test('markEnded は待機中のブロッキング要求を解決する (これ以上パートが来ないため)', async () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'recorded');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 1);
+
+    // まだ生成されていないセグメント 2 を要求する (通常は BLOCK_TIMEOUT まで待つ)
+    const pending = store.getPart(1, 2, 0);
+
+    let resolved = false;
+    pending.then(() => {
+        resolved = true;
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(resolved, false, '終端前に解決してはいけない');
+
+    store.markEnded(1);
+
+    assert.equal(await pending, null);
+});
+
+test('markEnded 後に未生成のパートを要求しても待たずに null を返す', async () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'recorded');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 1);
+    store.markEnded(1);
+
+    assert.equal(await store.getPart(1, 2, 0), null);
+});
+
+// 録画済み HLS の保持窓は「最新から N 本」ではなく「再生位置 (lastServedSeq) から
+// 一定数より古いもの」を基準にする。最新からの本数だけで破棄すると、エンコードが
+// 先行しているぶんプレイリストの先頭が再生位置を追い越してしまい、hls.js / Safari の
+// ネイティブ HLS がライブエッジへ強制シークする不具合があった
+
+test('録画済みは再生位置 (lastServedSeq) を基準に保持し、取得済みの手前だけ破棄する', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'recorded');
+    store.setInit(1, Buffer.from('init'));
+    pushSegments(store, 1, 200);
+
+    // 再生位置が seq 150 まで進んだことにする (0〜150 を実際に取得済みにする)
+    for (let seq = 0; seq <= 150; seq++) {
+        store.getSegment(1, seq);
+    }
+    assert.equal(store.getAheadSegmentNum(1), 49);
+
+    // エンコードがさらに進んで新しいセグメントが追加されると、古いセグメントの破棄が走る
+    pushSegments(store, 1, 5);
+
+    // KEEP_BEHIND (120) より手前 (seq < 150 - 120 = 30) の取得済みセグメントは破棄される
+    assert.equal(store.getSegment(1, 29), null);
+    // 境界 (seq 30) と、それ以降 (未取得分を含む) は保持される
+    assert.notEqual(store.getSegment(1, 30), null);
+    assert.notEqual(store.getSegment(1, 204), null);
+});
+
+test('録画済みで取得済みセグメントが無ければ、保持上限を超えても破棄しない (安全弁未満なら)', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'recorded');
+    store.setInit(1, Buffer.from('init'));
+    // lastServedSeq が判明していない (誰も取得していない) まま件数上限 (180) を超えて push する
+    pushSegments(store, 1, 200);
+
+    // 取得されていないセグメントは、保持上限だけを理由に削除しない
+    assert.notEqual(store.getSegment(1, 0), null);
+});
+
+test('録画済みで取得位置が進まなくても、安全弁の上限を超えたセグメントは破棄する', () => {
+    const store = new HLSMemoryStoreModel(logger);
+    store.create(1, 'recorded');
+    store.setInit(1, Buffer.from('init'));
+    // 一度も取得されないまま (lastServedSeq が null のまま) 安全弁 (400) の上限を超えて push する
+    pushSegments(store, 1, 450);
+
+    // 安全弁を超えないよう、古いセグメントは取得済みでなくても破棄される (450 - 400 = 50 本破棄)
+    assert.equal(store.getSegment(1, 49), null);
+    assert.notEqual(store.getSegment(1, 50), null);
+    assert.notEqual(store.getSegment(1, 449), null);
 });

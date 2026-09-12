@@ -20,6 +20,16 @@ import { audioBoostFilter } from '../../../../util/AudioBoostUtil';
  * 主音声・副音声の 2 本の ES へ分離済みなので、副音声は `-dual_mono_mode sub` では選べず
  * `-map 0:a:1` で 2 本目の ES を選ぶ必要がある (実測: `-a 13 -b 5` の出力は音声 ES が常に 2 本)。
  * 呼び出し側が `isNormalizedByTsreadex` を渡してこの違いを伝える。
+ *
+ * **`audioTrack: 'all'`** は tsreadex 正規化済みのときだけ主音声・副音声の両方の ES を
+ * `-map 0:v:0 -map 0:a:0 -map 0:a:1` として同時に配信する (m2tsll でクライアント側 (mpegts.js) が
+ * 再接続無しで `switchPrimaryAudio()` / `switchSecondaryAudio()` を呼んで切り替えるための経路)。
+ * tsreadex を通していない cmd で `all` が来た場合はデュアルモノラルの 1 ES しか無く分離できないため
+ * `main` と同じ扱いにする。
+ *
+ * **tsreadex 正規化済みで `audioTrack` が未指定の場合は index 0 (主音声 ES) を明示的に選ぶ**。
+ * tsreadex 正規化済みの cmd は `%AUDIOMAP%` を使う前提 (m2tsll の全 ES 通し `-map 0` を使わない) なので、
+ * 未指定のまま `%AUDIOMAP%` を空文字列にすると映像・音声が 1 本も map されず配信が始まらない。
  */
 namespace AudioTrackUtil {
     /**
@@ -35,20 +45,38 @@ namespace AudioTrackUtil {
         videoFileType: apid.VideoFileType = 'ts',
         isNormalizedByTsreadex: boolean = false,
     ): string => {
-        // tsreadex 正規化済みは音声 ES が主音声・副音声の 2 本に分かれているため ES を選ぶ
+        // tsreadex なしで 'all' が来た場合はデュアルモノラルの 1 ES しか無く分離できないため 'main' 扱いにする
+        const effectiveAudioTrack =
+            audioTrack === 'all' && isNormalizedByTsreadex === false ? 'main' : audioTrack;
+
+        // tsreadex 正規化済みは音声 ES が主音声・副音声の 2 本に分かれているため ES を選ぶ。
+        // 未指定は主音声 (index 0) を明示的に選ぶ (%AUDIOMAP% を空にすると何も map されなくなるため)
         const streamIndex =
-            isNormalizedByTsreadex === true && (audioTrack === 'main' || audioTrack === 'sub')
-                ? audioTrack === 'sub'
+            isNormalizedByTsreadex === true &&
+            (typeof effectiveAudioTrack === 'undefined' || effectiveAudioTrack === 'main' || effectiveAudioTrack === 'sub')
+                ? effectiveAudioTrack === 'sub'
                     ? 1
                     : 0
-                : parseStreamIndex(audioTrack);
-        const audioFilter = buildAudioFilter(audioTrack, audioBoost, videoFileType, isNormalizedByTsreadex);
+                : parseStreamIndex(effectiveAudioTrack);
+        const audioFilter = buildAudioFilter(effectiveAudioTrack, audioBoost, videoFileType, isNormalizedByTsreadex);
         const dualMonoMode =
-            isNormalizedByTsreadex === false && videoFileType === 'ts' && audioTrack === 'sub' ? 'sub' : 'main';
+            isNormalizedByTsreadex === false && videoFileType === 'ts' && effectiveAudioTrack === 'sub'
+                ? 'sub'
+                : 'main';
+
+        // 'all' (tsreadex 正規化済みのみ) は主音声・副音声の両方の ES を同時に map する。
+        // クライアント (mpegts.js) 側で switchPrimaryAudio()/switchSecondaryAudio() を呼んで
+        // 再接続無しに切り替えるための経路 (PlaybackProfile.embeddedAudioSwitch を参照)
+        const audioMap =
+            isNormalizedByTsreadex === true && effectiveAudioTrack === 'all'
+                ? '-map 0:v:0 -map 0:a:0 -map 0:a:1'
+                : streamIndex === null
+                  ? ''
+                  : `-map 0:v:0 -map 0:a:${streamIndex}`;
 
         return cmd
             .replace(/%DUALMONOMODE%/g, `-dual_mono_mode ${dualMonoMode}`)
-            .replace(/%AUDIOMAP%/g, streamIndex === null ? '' : `-map 0:v:0 -map 0:a:${streamIndex}`)
+            .replace(/%AUDIOMAP%/g, audioMap)
             .replace(/%AUDIOFILTER%/g, audioFilter);
     };
 

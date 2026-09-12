@@ -1,5 +1,9 @@
 import { DPlayerType } from 'dplayer';
 import * as apid from '../../../api';
+import {
+    getDPlayerAudioValue,
+    selectAudioTrackIndex,
+} from '../../../src/util/DPlayerAudioTrackUtil';
 
 /**
  * DPlayer (tsukumijima フォーク) の標準 UI へ EPGStation 固有の機能を差し込むユーティリティ。
@@ -18,6 +22,13 @@ namespace DPlayerEnhancer {
     const NO_AUDIO_SWITCHING_CLASS = 'dplayer-no-audio-switching';
     // 選択中の音声トラック項目に付くクラス
     const AUDIO_CURRENT_CLASS = 'dplayer-setting-audio-current';
+    const AUDIO_SWITCHER_STATE = Symbol('epgStationAudioSwitcherState');
+    const ARIBB24_GUARDED = Symbol('epgStationAribb24Guarded');
+
+    interface AudioTrackSwitcherState {
+        option: AudioTrackSwitchOption;
+        onQualityEnd: () => void;
+    }
 
     export interface AudioTrackSwitchOption {
         // 表示する音声トラック一覧 (2 件未満なら切替 UI は出さない)
@@ -40,9 +51,13 @@ namespace DPlayerEnhancer {
             return;
         }
 
-        // 選べるトラックが 1 つしかない場合は切替 UI を出さない
+        getAudioTrackSwitcherState(dp, option);
+
+        // 選べるトラックが 1 つしかない場合は切替 UI を出さない。ただし標準項目が
+        // 残っていれば、DPlayer の quality_end が読む選択要素を必ず1つ維持する。
         if (option.tracks.length < 2) {
             container.classList.add(NO_AUDIO_SWITCHING_CLASS);
+            syncAudioCurrentItems(panel, option);
 
             return;
         }
@@ -53,10 +68,19 @@ namespace DPlayerEnhancer {
         }
 
         const checkIcon = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>';
+        const selectedIndex = selectAudioTrackIndex(option.tracks, option.current);
+        if (selectedIndex >= 0 && option.tracks[selectedIndex].track !== option.current) {
+            option.current = option.tracks[selectedIndex].track;
+        }
+
         for (const track of option.tracks) {
             const item = document.createElement('div');
-            item.className = `dplayer-setting-audio-item${track.track === option.current ? ` ${AUDIO_CURRENT_CLASS}` : ''}`;
+            item.className = 'dplayer-setting-audio-item';
             item.dataset.audioTrack = track.track;
+            // EPGStation の onSelect と DPlayer 標準の画質復元は別経路だが、DPlayer の
+            // quality 切替完了処理は dataset.audio を読む。両方が同じ選択状態を見られるよう
+            // 独自指定子は audioTrack に残し、DPlayer 用の primary / secondary も併記する。
+            item.dataset.audio = getDPlayerAudioValue(track.track);
             item.innerHTML = `<div class="dplayer-toggle">${checkIcon}</div><span class="dplayer-label"></span>`;
             const label = item.querySelector('.dplayer-label');
             if (label !== null) {
@@ -70,11 +94,116 @@ namespace DPlayerEnhancer {
             });
         }
 
+        syncAudioCurrentItems(panel, option);
+
         // 現在の選択をパネルの外 (設定一覧の「音声」行) にも反映する
         updateAudioValueLabel(dp, option.tracks, option.current);
         container.classList.remove(NO_AUDIO_SWITCHING_CLASS);
         // パネルの高さはトラック数で変わるため、DPlayer が使う CSS 変数を更新する
         container.style.setProperty('--audio-length', option.tracks.length.toString(10));
+    };
+
+    /**
+     * quality_end が毎回参照する DPlayer の速度選択要素を1つ保証する。
+     * @param dp: any DPlayer インスタンス
+     */
+    export const ensureSpeedCurrent = (dp: any): void => {
+        const templateItems = dp?.template?.speedItem;
+        const items: HTMLElement[] = Array.isArray(templateItems)
+            ? templateItems
+            : Array.from(dp?.container?.querySelectorAll('.dplayer-setting-speed-item') ?? []);
+        if (items.length === 0) {
+            return;
+        }
+
+        const rate = Number(dp?.video?.playbackRate);
+        const selectedIndex = items.findIndex(item => Number.parseFloat(item.dataset.speed ?? '') === rate);
+        const index = selectedIndex >= 0 ? selectedIndex : 0;
+        for (let i = 0; i < items.length; i++) {
+            items[i].classList.toggle('dplayer-setting-speed-current', i === index);
+        }
+    };
+
+    /**
+     * 画質切替直後、video の寸法がまだ 0 の間に aribb24.js が描画しないようにする。
+     * ライブラリ本体は変更せず、DPlayer が生成した各 renderer の入力入口だけを抑制する。
+     * @param dp: any DPlayer インスタンス
+     * @param video: HTMLVideoElement 新しい video 要素
+     */
+    export const guardAribb24Renderers = (dp: any, video: HTMLVideoElement): void => {
+        for (const key of ['aribb24Caption', 'aribb24Superimpose']) {
+            const renderer = dp?.plugins?.[key];
+            if (renderer === null || typeof renderer === 'undefined' || renderer[ARIBB24_GUARDED] === true) {
+                continue;
+            }
+
+            for (const methodName of ['pushID3v2Data', 'pushID3v2Cue', 'refresh']) {
+                const original = renderer[methodName];
+                if (typeof original !== 'function') {
+                    continue;
+                }
+                renderer[methodName] = (...args: unknown[]): unknown => {
+                    const outputCanvases = [renderer.getViewCanvas?.(), renderer.getRawCanvas?.()].filter(
+                        (canvas): canvas is HTMLCanvasElement => canvas !== null && typeof canvas !== 'undefined',
+                    );
+                    if (
+                        video.videoWidth <= 0 ||
+                        video.videoHeight <= 0 ||
+                        outputCanvases.some(canvas => canvas.width <= 0 || canvas.height <= 0)
+                    ) {
+                        return false;
+                    }
+
+                    return original.apply(renderer, args);
+                };
+            }
+            renderer[ARIBB24_GUARDED] = true;
+        }
+    };
+
+    /** DPlayer の音声項目を現在値に合わせ、選択中を必ず1つだけにする。 */
+    const syncAudioCurrentItems = (panel: HTMLElement, option: AudioTrackSwitchOption): void => {
+        const items = Array.from(panel.querySelectorAll<HTMLElement>('.dplayer-setting-audio-item'));
+        if (items.length === 0) {
+            return;
+        }
+
+        const desiredAudio = getDPlayerAudioValue(option.current);
+        const trackIndex = selectAudioTrackIndex(option.tracks, option.current);
+        const standardIndex = items.findIndex(item => item.dataset.audio === desiredAudio);
+        const preferredIndex = option.tracks.length >= 2 && trackIndex >= 0 ? trackIndex : standardIndex;
+        const selectedIndex = preferredIndex >= 0 && preferredIndex < items.length ? preferredIndex : 0;
+
+        for (let i = 0; i < items.length; i++) {
+            if (typeof items[i].dataset.audio === 'undefined' || items[i].dataset.audio === '') {
+                items[i].dataset.audio = i === 1 ? 'secondary' : 'primary';
+            }
+            items[i].classList.toggle(AUDIO_CURRENT_CLASS, i === selectedIndex);
+        }
+    };
+
+    /** quality_end の購読を重複させず、再構築後の音声項目へ選択状態を戻す。 */
+    const getAudioTrackSwitcherState = (dp: any, option: AudioTrackSwitchOption): AudioTrackSwitcherState => {
+        const existing = dp[AUDIO_SWITCHER_STATE] as AudioTrackSwitcherState | undefined;
+        if (typeof existing !== 'undefined') {
+            existing.option = option;
+            return existing;
+        }
+
+        const state = {} as AudioTrackSwitcherState;
+        state.option = option;
+        state.onQualityEnd = (): void => {
+            const panel = dp?.container?.querySelector('.dplayer-setting-audio-panel') as HTMLElement | null | undefined;
+            if (panel === null || typeof panel === 'undefined') {
+                return;
+            }
+            syncAudioCurrentItems(panel, state.option);
+            updateAudioValueLabel(dp, state.option.tracks, state.option.current);
+        };
+        dp.on?.('quality_end', state.onQualityEnd);
+        dp[AUDIO_SWITCHER_STATE] = state;
+
+        return state;
     };
 
     /**
@@ -106,9 +235,7 @@ namespace DPlayerEnhancer {
         }
 
         option.current = track.track;
-        for (const item of Array.from(panel.querySelectorAll('.dplayer-setting-audio-item'))) {
-            item.classList.toggle(AUDIO_CURRENT_CLASS, (item as HTMLElement).dataset.audioTrack === track.track);
-        }
+        syncAudioCurrentItems(panel, option);
         updateAudioValueLabel(dp, option.tracks, track.track);
         dp?.notice?.(`音声: ${track.name}`, 2000);
         dp?.setting?.hide?.();

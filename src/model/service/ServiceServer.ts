@@ -33,8 +33,22 @@ import IVideoApiModel from '../api/video/IVideoApiModel';
 import IDataBroadcastingWebSocketServer from './dataBroadcasting/IDataBroadcastingWebSocketServer';
 import IServiceServer from './IServiceServer';
 import ISnsTimelineWebSocketServer from './sns/ISnsTimelineWebSocketServer';
+import compression from 'compression';
 import ISocketIOManageModel from './socketio/ISocketIOManageModel';
 import IHLSMemoryStoreModel from './stream/util/IHLSMemoryStoreModel';
+
+/** 圧縮してはいけない配信・WebSocket 系リクエストを除外する判定。 */
+export const shouldCompressRequest = (pathname: string): boolean => {
+    const excludedPrefixes = [
+        '/streamfiles',
+        '/api/streams',
+        '/api/videos',
+        '/socket.io',
+        '/api/dataBroadcasting/ws',
+        '/api/sns/ws',
+    ];
+    return excludedPrefixes.every(prefix => pathname !== prefix && pathname.startsWith(`${prefix}/`) === false);
+};
 
 const swaggerdist = require('swagger-ui-dist');
 
@@ -94,6 +108,11 @@ class ServiceServer implements IServiceServer {
      */
     private init(): void {
         this.setLog();
+        this.app.use(
+            compression({
+                filter: (req: Request, res: Response) => shouldCompressRequest(req.path) && compression.filter(req, res),
+            }),
+        );
         const api = this.getApiDocument(ServiceServer.API_YML);
         if (this.config.isAllowAllCORS === true) {
             this.app.use(cors());
@@ -314,50 +333,66 @@ class ServiceServer implements IServiceServer {
             return;
         }
 
-        // プレイリスト: stream{id}.m3u8
+        // マスタープレイリスト / 単一トラックのプレイリスト: stream{id}.m3u8
+        // 複数音声トラック分解モード (role: 'v' のエントリが存在する) のときはマスタープレイリストを返す
         const playlistMatch = /^stream(\d+)\.m3u8$/.exec(filename);
         if (playlistMatch !== null) {
             const streamId = parseInt(playlistMatch[1], 10);
+
+            if (this.hlsMemoryStore.has(streamId, 'v') === true) {
+                const audioTracks: { role: 'a0' | 'a1'; name: string; isDefault: boolean }[] = [];
+                if (this.hlsMemoryStore.has(streamId, 'a0') === true) {
+                    audioTracks.push({ role: 'a0', name: '主音声', isDefault: true });
+                }
+                if (this.hlsMemoryStore.has(streamId, 'a1') === true) {
+                    audioTracks.push({ role: 'a1', name: '副音声', isDefault: false });
+                }
+                const master = this.hlsMemoryStore.getMasterPlaylist(streamId, audioTracks);
+                if (master === null) {
+                    res.status(404).end();
+
+                    return;
+                }
+
+                res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+                res.setHeader('Cache-Control', 'no-store');
+                res.status(200).send(master);
+
+                return;
+            }
+
             if (this.hlsMemoryStore.has(streamId) === false) {
                 next();
 
                 return;
             }
 
-            // LL-HLS のブロッキングプレイリスト要求 (_HLS_msn / _HLS_part)
-            const msn = this.parseHLSDeliveryQuery(req, '_HLS_msn');
-            if (msn !== null && this.hlsMemoryStore.isPlaylistRequestTooOld(streamId, msn) === true) {
-                this.log.system.debug(`in-memory HLS playlist request is too old: stream=${streamId} msn=${msn}`);
-                res.status(400).end();
-
-                return;
-            }
-            const playlist =
-                msn === null
-                    ? this.hlsMemoryStore.getPlaylist(streamId)
-                    : await this.hlsMemoryStore.waitForPlaylist(streamId, {
-                          msn: msn,
-                          part: this.parseHLSDeliveryQuery(req, '_HLS_part') ?? undefined,
-                      });
-
-            if (playlist === null) {
-                // ストリームは存在するがまだセグメントが揃っていない
-                res.status(404).end();
-
-                return;
-            }
-
-            res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-            res.setHeader('Cache-Control', 'no-store');
-            res.status(200).send(playlist);
+            await this.respondInMemoryHLSPlaylist(req, res, streamId);
 
             return;
         }
 
-        // init セグメント: stream{id}-init.mp4
-        const initMatch = /^stream(\d+)-init\.mp4$/.exec(filename);
+        // 複数音声トラック分解モードのロール別メディアプレイリスト: stream{id}v.m3u8 / stream{id}a0.m3u8 / stream{id}a1.m3u8
+        const rolePlaylistMatch = /^stream(\d+)(v|a0|a1)\.m3u8$/.exec(filename);
+        if (rolePlaylistMatch !== null) {
+            const streamId = parseInt(rolePlaylistMatch[1], 10);
+            const role = rolePlaylistMatch[2] as 'v' | 'a0' | 'a1';
+            if (this.hlsMemoryStore.has(streamId, role) === false) {
+                next();
+
+                return;
+            }
+
+            await this.respondInMemoryHLSPlaylist(req, res, streamId, role);
+
+            return;
+        }
+
+        // init セグメント: stream{id}[-role]-init.mp4
+        const initMatch = /^stream(\d+)(v|a0|a1)?-init\.mp4$/.exec(filename);
         if (initMatch !== null) {
-            const data = this.hlsMemoryStore.getInitSegment(parseInt(initMatch[1], 10));
+            const role = initMatch[2] as 'v' | 'a0' | 'a1' | undefined;
+            const data = this.hlsMemoryStore.getInitSegment(parseInt(initMatch[1], 10), role);
             if (data === null) {
                 next();
 
@@ -371,12 +406,13 @@ class ServiceServer implements IServiceServer {
             return;
         }
 
-        // パート (LL-HLS): stream{id}-{seq}.{index}.part.m4s
+        // パート (LL-HLS): stream{id}[-role]-{seq}.{index}.part.m4s
         // まだ生成されていないパート (#EXT-X-PRELOAD-HINT で先行要求されたもの) は生成を待って返す
-        const partMatch = /^stream(\d+)-(\d+)\.(\d+)\.part\.m4s$/.exec(filename);
+        const partMatch = /^stream(\d+)(v|a0|a1)?-(\d+)\.(\d+)\.part\.m4s$/.exec(filename);
         if (partMatch !== null) {
             const streamId = parseInt(partMatch[1], 10);
-            if (this.hlsMemoryStore.has(streamId) === false) {
+            const role = partMatch[2] as 'v' | 'a0' | 'a1' | undefined;
+            if (this.hlsMemoryStore.has(streamId, role) === false) {
                 next();
 
                 return;
@@ -384,13 +420,14 @@ class ServiceServer implements IServiceServer {
 
             const data = await this.hlsMemoryStore.getPart(
                 streamId,
-                parseInt(partMatch[2], 10),
                 parseInt(partMatch[3], 10),
+                parseInt(partMatch[4], 10),
+                role,
             );
             if (data === null) {
                 // 破棄済み or 生成されなかったパート
                 this.log.system.debug(
-                    `in-memory HLS part unavailable: stream=${streamId} seq=${parseInt(partMatch[2], 10)} index=${parseInt(partMatch[3], 10)}`,
+                    `in-memory HLS part unavailable: stream=${streamId}${role ?? ''} seq=${parseInt(partMatch[3], 10)} index=${parseInt(partMatch[4], 10)}`,
                 );
                 res.status(404).end();
 
@@ -404,21 +441,22 @@ class ServiceServer implements IServiceServer {
             return;
         }
 
-        // メディアセグメント: stream{id}-{seq}.m4s
-        const segmentMatch = /^stream(\d+)-(\d+)\.m4s$/.exec(filename);
+        // メディアセグメント: stream{id}[-role]-{seq}.m4s
+        const segmentMatch = /^stream(\d+)(v|a0|a1)?-(\d+)\.m4s$/.exec(filename);
         if (segmentMatch !== null) {
             const streamId = parseInt(segmentMatch[1], 10);
-            if (this.hlsMemoryStore.has(streamId) === false) {
+            const role = segmentMatch[2] as 'v' | 'a0' | 'a1' | undefined;
+            if (this.hlsMemoryStore.has(streamId, role) === false) {
                 next();
 
                 return;
             }
 
-            const data = this.hlsMemoryStore.getSegment(streamId, parseInt(segmentMatch[2], 10));
+            const data = this.hlsMemoryStore.getSegment(streamId, parseInt(segmentMatch[3], 10), role);
             if (data === null) {
                 // 破棄済み or 未生成のセグメント
                 this.log.system.debug(
-                    `in-memory HLS segment unavailable: stream=${streamId} seq=${parseInt(segmentMatch[2], 10)}`,
+                    `in-memory HLS segment unavailable: stream=${streamId}${role ?? ''} seq=${parseInt(segmentMatch[3], 10)}`,
                 );
                 res.status(404).end();
 
@@ -433,6 +471,54 @@ class ServiceServer implements IServiceServer {
         }
 
         next();
+    }
+
+    /**
+     * プレイリスト要求 (単一トラック / ロール別) の共通処理。
+     * LL-HLS のブロッキングプレイリスト要求 (_HLS_msn / _HLS_part) にも対応する
+     * @param req: Request
+     * @param res: Response
+     * @param streamId: number
+     * @param role?: 'v' | 'a0' | 'a1'
+     */
+    private async respondInMemoryHLSPlaylist(
+        req: Request,
+        res: Response,
+        streamId: number,
+        role?: 'v' | 'a0' | 'a1',
+    ): Promise<void> {
+        const msn = this.parseHLSDeliveryQuery(req, '_HLS_msn');
+        if (msn !== null && this.hlsMemoryStore.isPlaylistRequestTooOld(streamId, msn, role) === true) {
+            this.log.system.debug(
+                `in-memory HLS playlist request is too old: stream=${streamId}${role ?? ''} msn=${msn}`,
+            );
+            res.status(400).end();
+
+            return;
+        }
+
+        const playlist =
+            msn === null
+                ? this.hlsMemoryStore.getPlaylist(streamId, role)
+                : await this.hlsMemoryStore.waitForPlaylist(
+                      streamId,
+                      {
+                          msn: msn,
+                          part: this.parseHLSDeliveryQuery(req, '_HLS_part') ?? undefined,
+                      },
+                      role,
+                  );
+
+        if (playlist === null) {
+            // ストリームは存在するがまだセグメントが揃っていない
+            res.status(404).end();
+
+            return;
+        }
+
+        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        res.setHeader('Cache-Control', 'no-store');
+        res.status(200).send(playlist);
     }
 
     /**
@@ -468,6 +554,12 @@ class ServiceServer implements IServiceServer {
                 const mime = mimeByExtension[path.extname(filePath).toLowerCase()];
                 if (typeof mime !== 'undefined') {
                     res.setHeader('Content-Type', mime);
+                }
+                const relativePath = path.relative(ServiceServer.CLIENT_DIR, filePath).replaceAll(path.sep, '/');
+                if (relativePath === 'index.html') {
+                    res.setHeader('Cache-Control', 'no-cache');
+                } else if (relativePath.startsWith('assets/')) {
+                    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
                 }
             },
         };

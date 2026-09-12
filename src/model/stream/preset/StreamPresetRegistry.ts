@@ -23,11 +23,15 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
         client: ClientCapabilities,
     ): StreamPreset[] {
         const config = this.configuration.getConfig();
-        const generated = EncodePresets.expand(config.encodePresets, {
-            qsvencc: config.qsvencc,
-            nvencc: config.nvencc,
-            vceencc: config.vceencc,
-        });
+        const generated = EncodePresets.expand(
+            config.encodePresets,
+            {
+                qsvencc: config.qsvencc,
+                nvencc: config.nvencc,
+                vceencc: config.vceencc,
+            },
+            typeof config.tsreadex !== 'undefined',
+        );
         const configured = this.getProfiles(scope);
         const generatedProfiles = this.getGeneratedProfiles(generated, scope);
         const generatedById = new Map(generatedProfiles.map(profile => [profile.id, profile]));
@@ -75,6 +79,32 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
         return this.getModeMap(scope)[container][mode] ?? null;
     }
 
+    /**
+     * 指定したプリセット id の実際の配信コマンドを返す
+     * config 由来 (StreamProfileManageModel、cmd 省略時は生成済み) と EncodePresets 生成の両方から探す
+     * @param scope: StreamPresetScope
+     * @param presetId: string
+     * @return string | undefined 該当プロファイルが無い、または cmd を持たない場合は undefined
+     */
+    public resolveProfileCmd(scope: StreamPresetScope, presetId: string): string | undefined {
+        const config = this.configuration.getConfig();
+        const generated = EncodePresets.expand(
+            config.encodePresets,
+            {
+                qsvencc: config.qsvencc,
+                nvencc: config.nvencc,
+                vceencc: config.vceencc,
+            },
+            typeof config.tsreadex !== 'undefined',
+        );
+        const configured = this.getProfiles(scope);
+        const generatedProfiles = this.getGeneratedProfiles(generated, scope);
+
+        const profile = configured.find(item => item.id === presetId) ?? generatedProfiles.find(item => item.id === presetId);
+
+        return profile?.cmd;
+    }
+
     private getProfiles(scope: StreamPresetScope): StreamProfile[] {
         if (scope === 'live') return this.profiles.getLiveProfiles();
         return this.profiles.getRecordedProfiles(scope === 'recorded-ts' ? 'ts' : 'encoded');
@@ -99,7 +129,13 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
             quality: profile.isUnconverted === true ? 'original' : 'balanced',
             builtin: false,
             legacy: profile.id.startsWith('live-') || profile.id.startsWith('recorded-'),
-            output: { codec: outputCodec, resolution: this.resolutionOf(height), container: profile.container },
+            output: {
+                codec: outputCodec,
+                resolution: this.resolutionOf(height),
+                container: profile.container,
+                videoBitrate: profile.video?.bitrate,
+                audioBitrate: profile.audio?.bitrate,
+            },
         };
     }
 

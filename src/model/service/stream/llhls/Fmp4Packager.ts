@@ -1,7 +1,12 @@
 import * as stream from 'stream';
 import ILogger from '../../../ILogger';
 import { AribId3Metadata } from './IAribId3Extractor';
-import IFmp4Packager, { Fmp4PackagerOption, Fmp4PackagerPart, Fmp4PackagerSegment } from './IFmp4Packager';
+import IFmp4Packager, {
+    Fmp4PackagerOption,
+    Fmp4PackagerPart,
+    Fmp4PackagerSegment,
+    Fmp4PackagerTrackRole,
+} from './IFmp4Packager';
 
 /**
  * ffmpeg などが出力する fragmented mp4 (CMAF) の生バイトストリームを受け取り、
@@ -62,6 +67,24 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
 
     // 統計 (検証用): 入力バイト数
     private totalInputBytes = 0;
+
+    // 音声トラックが 2 本以上ある入力を検出したかどうか (moov 解析後に確定する)
+    // true の場合、init / part / segment は 'trackInit' / 'trackPart' / 'trackSegment' でのみ emit され、
+    // 従来の 'init' / 'part' / 'segment' は emit されない (trak が 1 音声のみの入力は従来どおり)
+    private multiTrack = false;
+    // moov から求めた trackId -> 役割 (video / audio0 / audio1)。2 本目以降の余剰音声トラックは含まない
+    private trackRoleById: Map<number, Fmp4PackagerTrackRole> = new Map();
+    // ロールごとの分解状態
+    private mtTrackStates: Map<Fmp4PackagerTrackRole, Fmp4Packager.MtTrackState> = new Map();
+    // moof 解析中に集めた、トラックごとの traf 情報 (mdat 到着で確定させる)
+    private mtPendingMoof: {
+        moofBoxBuf: Buffer;
+        mfhdBox: Buffer | null;
+        trafs: Map<number, Fmp4Packager.MtTrafInfo>;
+    } | null = null;
+    // moof と mdat の間に現れた未知 box (通常は現れない)。dataOffset の相対位置を保つため
+    // moofBoxBuf の直後・mdatBoxBuf の直前として fragBuf へ連結する
+    private mtExtraBeforeMdat: Buffer = Buffer.alloc(0);
 
     constructor(option: Fmp4PackagerOption = {}, logger: ILogger | null = null) {
         super();
@@ -321,11 +344,17 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
         if (this.phase === 'waiting-moov') {
             if (type === 'moov') {
                 this.parseMoovTimescales(boxBuf, headerSize);
+                this.setupMultiTrackIfNeeded(boxBuf, headerSize);
 
                 const initData = Buffer.concat([this.leadingExtra, this.ftypBuf ?? Buffer.alloc(0), boxBuf]);
                 this.leadingExtra = Buffer.alloc(0);
                 this.phase = 'streaming';
-                this.emit('init', initData);
+
+                if (this.multiTrack === true) {
+                    this.emitMultiTrackInit(boxBuf, headerSize);
+                } else {
+                    this.emit('init', initData);
+                }
             } else if (type === 'moof' || type === 'mdat') {
                 this.haltWithError(`moov より前に fragment (${type}) を検出したため解析を停止します`);
             } else {
@@ -337,6 +366,12 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
         }
 
         // streaming フェーズ
+        if (this.multiTrack === true) {
+            this.handleMultiTrackBox(type, boxBuf, headerSize);
+
+            return;
+        }
+
         if (type === 'moof') {
             if (this.pendingMoof !== null) {
                 this.log?.stream.warn('mdat を伴わない moof を検出したため直前の moof を破棄します');
@@ -447,6 +482,575 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
         }
 
         return { trackId, tfdt, timescale };
+    }
+
+    // ============================================================
+    // 複数音声トラック分解モード (multiTrack)
+    //
+    // ffmpeg が「映像 1 + 音声 2」を 1 本の fMP4 として出力した場合
+    // (`-map 0:v:0 -map 0:a:0 -map 0:a:1`)、moov には trak が 3 つ、各 moof には
+    // trackId ごとの traf が (通常は 1 つの moof にまとめて) 含まれる。
+    // これを役割 (video / audio0 / audio1) ごとに独立した 2-trak 構成 (自身のみ) の
+    // init / part / segment へ分解し、LL-HLS の別レンディションとして配信できるようにする。
+    //
+    // 分解対象は「音声 trak が 2 つ以上」のときだけで、従来の 1 映像 + 1 音声の入力は
+    // this.multiTrack が false のまま従来の処理 (上の legacy コード) を通る。
+    // ============================================================
+
+    /**
+     * moov を解析し、音声トラックが 2 本以上あれば複数音声トラック分解モードへ入る
+     * @param moovBuf: Buffer moov box 全体 (header 含む)
+     * @param headerSize: number moov のヘッダサイズ
+     */
+    private setupMultiTrackIfNeeded(moovBuf: Buffer, headerSize: number): void {
+        const info = this.analyzeMoov(moovBuf, headerSize);
+
+        const videoIds: number[] = [];
+        const audioIds: number[] = [];
+        for (const [trackId, track] of info.tracks) {
+            if (track.mediaType === 'vide') {
+                videoIds.push(trackId);
+            } else if (track.mediaType === 'soun') {
+                audioIds.push(trackId);
+            }
+        }
+        videoIds.sort((a, b) => a - b);
+        audioIds.sort((a, b) => a - b);
+
+        if (audioIds.length < 2) {
+            // 従来どおり (単一音声、または音声トラック無し)
+            return;
+        }
+
+        this.trackRoleById = new Map();
+        if (videoIds.length > 0) {
+            this.trackRoleById.set(videoIds[0], 'video');
+        }
+        this.trackRoleById.set(audioIds[0], 'audio0');
+        this.trackRoleById.set(audioIds[1], 'audio1');
+
+        if (audioIds.length > 2) {
+            this.log?.stream.warn(
+                `音声トラックが ${audioIds.length} 本検出されましたが、先頭 2 本のみ配信します (trackIds=${audioIds.join(',')})`,
+            );
+        }
+
+        this.multiTrack = true;
+        for (const role of this.trackRoleById.values()) {
+            this.mtTrackStates.set(role, {
+                pendingSlot: null,
+                lastDuration: null,
+                currentSegmentParts: [],
+            });
+        }
+
+        this.emit('multiTrack', [...this.trackRoleById.values()]);
+    }
+
+    /**
+     * ロールごとの init (ftyp + moov(単一 trak)) を組み立てて emit する
+     * @param moovBuf: Buffer moov box 全体 (header 含む)
+     * @param headerSize: number moov のヘッダサイズ
+     */
+    private emitMultiTrackInit(moovBuf: Buffer, headerSize: number): void {
+        const info = this.analyzeMoov(moovBuf, headerSize);
+        const ftyp = this.ftypBuf ?? Buffer.alloc(0);
+
+        for (const [trackId, role] of this.trackRoleById) {
+            const track = info.tracks.get(trackId);
+            if (typeof track === 'undefined') {
+                continue;
+            }
+
+            const mvexChildren: Buffer[] = [];
+            if (info.mehdBox !== null) {
+                mvexChildren.push(info.mehdBox);
+            }
+            const trex = info.trexByTrack.get(trackId);
+            if (typeof trex !== 'undefined') {
+                mvexChildren.push(trex);
+            }
+            const mvexBox = this.buildBox('mvex', Buffer.concat(mvexChildren));
+
+            const moovBody = Buffer.concat([info.mvhdBox ?? Buffer.alloc(0), track.trakBox, mvexBox]);
+            const moovBox = this.buildBox('moov', moovBody);
+
+            this.emit('trackInit', role, Buffer.concat([ftyp, moovBox]));
+        }
+    }
+
+    /**
+     * moov 内を解析し、mvhd / トラックごとの trak・mediaType・timescale / mvex(mehd・trexByTrack) を取り出す
+     * @param moovBuf: Buffer moov box 全体 (header 含む)
+     * @param headerSize: number moov のヘッダサイズ
+     * @return Fmp4Packager.MoovInfo
+     */
+    private analyzeMoov(moovBuf: Buffer, headerSize: number): Fmp4Packager.MoovInfo {
+        const children = this.listChildBoxes(moovBuf, headerSize, moovBuf.length);
+
+        let mvhdBox: Buffer | null = null;
+        let mehdBox: Buffer | null = null;
+        const trexByTrack: Map<number, Buffer> = new Map();
+        const tracks: Map<number, Fmp4Packager.MoovTrackInfo> = new Map();
+
+        for (const child of children) {
+            if (child.type === 'mvhd') {
+                mvhdBox = child.box;
+            } else if (child.type === 'trak') {
+                const trakChildren = this.listChildBoxes(moovBuf, child.bodyStart, child.boxEnd);
+                let trackId: number | null = null;
+                let mediaType = '';
+                let timescale: number | null = null;
+
+                for (const trakChild of trakChildren) {
+                    if (trakChild.type === 'tkhd') {
+                        trackId = this.readTkhdTrackId(moovBuf, trakChild.bodyStart);
+                    } else if (trakChild.type === 'mdia') {
+                        const mdiaChildren = this.listChildBoxes(moovBuf, trakChild.bodyStart, trakChild.boxEnd);
+                        for (const mdiaChild of mdiaChildren) {
+                            if (mdiaChild.type === 'mdhd') {
+                                timescale = this.readMdhdTimescale(moovBuf, mdiaChild.bodyStart);
+                            } else if (mdiaChild.type === 'hdlr') {
+                                mediaType = moovBuf.toString('latin1', mdiaChild.bodyStart + 8, mdiaChild.bodyStart + 12);
+                            }
+                        }
+                    }
+                }
+
+                if (trackId !== null && timescale !== null) {
+                    tracks.set(trackId, { trakBox: child.box, mediaType, timescale });
+                }
+            } else if (child.type === 'mvex') {
+                const mvexChildren = this.listChildBoxes(moovBuf, child.bodyStart, child.boxEnd);
+                for (const mvexChild of mvexChildren) {
+                    if (mvexChild.type === 'mehd') {
+                        mehdBox = mvexChild.box;
+                    } else if (mvexChild.type === 'trex') {
+                        // trex body = version(1)+flags(3)+track_id(4)+...
+                        if (mvexChild.bodyStart + 8 <= moovBuf.length) {
+                            const trackId = moovBuf.readUInt32BE(mvexChild.bodyStart + 4);
+                            trexByTrack.set(trackId, mvexChild.box);
+                        }
+                    }
+                }
+            }
+        }
+
+        return { mvhdBox, mehdBox, trexByTrack, tracks };
+    }
+
+    /**
+     * [start, end) 内のトップレベル box を配列で返す (box 全体のバイト列を含む)
+     * 壊れた box を検出した場合はそこで走査を打ち切る (例外は投げない)
+     */
+    private listChildBoxes(
+        buf: Buffer,
+        start: number,
+        end: number,
+    ): { type: string; box: Buffer; boxStart: number; bodyStart: number; boxEnd: number }[] {
+        const result: { type: string; box: Buffer; boxStart: number; bodyStart: number; boxEnd: number }[] = [];
+        let offset = start;
+
+        while (offset < end) {
+            if (end - offset < Fmp4Packager.BASIC_HEADER_SIZE) {
+                break;
+            }
+
+            let size = buf.readUInt32BE(offset);
+            const type = buf.toString('latin1', offset + 4, offset + 8);
+            let headerSize = Fmp4Packager.BASIC_HEADER_SIZE;
+
+            if (size === 1) {
+                if (end - offset < Fmp4Packager.LARGE_HEADER_SIZE) {
+                    break;
+                }
+                const largeSize = buf.readBigUInt64BE(offset + 8);
+                if (largeSize > BigInt(Number.MAX_SAFE_INTEGER)) {
+                    break;
+                }
+                size = Number(largeSize);
+                headerSize = Fmp4Packager.LARGE_HEADER_SIZE;
+            } else if (size === 0) {
+                size = end - offset;
+            }
+
+            if (size < headerSize || offset + size > end) {
+                break;
+            }
+
+            result.push({
+                type,
+                box: buf.subarray(offset, offset + size),
+                boxStart: offset,
+                bodyStart: offset + headerSize,
+                boxEnd: offset + size,
+            });
+            offset += size;
+        }
+
+        return result;
+    }
+
+    /**
+     * box を組み立てる (size(4) + type(4) + body)
+     */
+    private buildBox(type: string, body: Buffer): Buffer {
+        const header = Buffer.alloc(8);
+        header.writeUInt32BE(8 + body.length, 0);
+        header.write(type, 4, 'ascii');
+
+        return Buffer.concat([header, body]);
+    }
+
+    /**
+     * streaming フェーズ、複数音声トラック分解モードでの box 処理
+     */
+    private handleMultiTrackBox(type: string, boxBuf: Buffer, headerSize: number): void {
+        if (type === 'moof') {
+            if (this.mtPendingMoof !== null) {
+                this.log?.stream.warn('mdat を伴わない moof を検出したため直前の moof を破棄します (multiTrack)');
+            }
+
+            const trafs: Map<number, Fmp4Packager.MtTrafInfo> = new Map();
+            let mfhdBox: Buffer | null = null;
+            const children = this.listChildBoxes(boxBuf, headerSize, boxBuf.length);
+            for (const child of children) {
+                if (child.type === 'mfhd') {
+                    mfhdBox = child.box;
+                } else if (child.type === 'traf') {
+                    const trafInfo = this.parseTrafForSplit(boxBuf, child.bodyStart, child.boxEnd, child.box, child.boxStart);
+                    if (trafInfo !== null) {
+                        trafs.set(trafInfo.trackId, trafInfo);
+                    }
+                }
+            }
+
+            this.mtPendingMoof = { moofBoxBuf: boxBuf, mfhdBox, trafs };
+            this.mtExtraBeforeMdat = Buffer.alloc(0);
+        } else if (type === 'mdat') {
+            if (this.mtPendingMoof === null) {
+                this.log?.stream.warn('moof を伴わない mdat を検出したため破棄します (multiTrack)');
+
+                return;
+            }
+
+            this.splitAndEmitMultiTrackFragment(this.mtPendingMoof, this.mtExtraBeforeMdat, boxBuf);
+            this.mtPendingMoof = null;
+            this.mtExtraBeforeMdat = Buffer.alloc(0);
+        } else {
+            this.log?.stream.info(`multiTrack streaming 中に box (${type}) を検出したため moof-mdat 間へ含めます`);
+            this.mtExtraBeforeMdat = Buffer.concat([this.mtExtraBeforeMdat, boxBuf]);
+        }
+    }
+
+    /**
+     * traf から分解に必要な情報 (trackId, tfdt, timescale, トラック内バイト長, data_offset とその書き換え位置) を取り出す
+     * @param moofBuf: Buffer moof box 全体 (header 含む)。オフセットはすべてこれを基準にする
+     * @param trafBodyStart: number
+     * @param trafBoxEnd: number
+     * @param trafBox: Buffer traf box 全体のスライス (header 含む)
+     * @param trafBoxStart: number moofBuf 内での traf box の開始位置
+     */
+    private parseTrafForSplit(
+        moofBuf: Buffer,
+        trafBodyStart: number,
+        trafBoxEnd: number,
+        trafBox: Buffer,
+        trafBoxStart: number,
+    ): Fmp4Packager.MtTrafInfo | null {
+        let trackId: number | null = null;
+        let defaultSampleSize: number | null = null;
+        let tfdt: number | null = null;
+        let trunInfo: { dataOffset: number | null; dataOffsetFieldOffset: number | null; byteLength: number } | null =
+            null;
+
+        const children = this.listChildBoxes(moofBuf, trafBodyStart, trafBoxEnd);
+        for (const child of children) {
+            if (child.type === 'tfhd') {
+                const parsed = this.parseTfhdForSplit(moofBuf, child.bodyStart);
+                trackId = parsed.trackId;
+                defaultSampleSize = parsed.defaultSampleSize;
+            } else if (child.type === 'tfdt') {
+                tfdt = this.readTfdtBaseMediaDecodeTime(moofBuf, child.bodyStart);
+            } else if (child.type === 'trun') {
+                trunInfo = this.parseTrunForSplit(moofBuf, child.bodyStart, defaultSampleSize);
+            }
+        }
+
+        const timescale = trackId !== null ? (this.trackTimescale.get(trackId) ?? null) : null;
+
+        if (
+            trackId === null ||
+            tfdt === null ||
+            timescale === null ||
+            trunInfo === null ||
+            trunInfo.dataOffset === null ||
+            trunInfo.dataOffsetFieldOffset === null ||
+            trunInfo.byteLength < 0
+        ) {
+            this.log?.stream.warn(
+                `traf の分解に必要な情報を取得できませんでした (trackId=${trackId}, tfdt=${tfdt}, timescale=${timescale})`,
+            );
+
+            return null;
+        }
+
+        return {
+            trackId,
+            tfdt,
+            timescale,
+            trafBox: Buffer.from(trafBox),
+            // trafBox 内での data_offset フィールドの相対位置 (moofBuf 座標 -> trafBox 座標)
+            dataOffsetPatchOffset: trunInfo.dataOffsetFieldOffset - trafBoxStart,
+            // moof 開始位置からの、このトラックのサンプルデータの相対位置 (base-data-offset = moof 開始)
+            dataOffsetFromMoofStart: trunInfo.dataOffset,
+            byteLength: trunInfo.byteLength,
+        };
+    }
+
+    /**
+     * tfhd を解析し trackId と default_sample_size を取り出す
+     */
+    private parseTfhdForSplit(buf: Buffer, bodyStart: number): { trackId: number | null; defaultSampleSize: number | null } {
+        if (buf.length - bodyStart < 8) {
+            return { trackId: null, defaultSampleSize: null };
+        }
+
+        const flags = buf.readUIntBE(bodyStart + 1, 3);
+        let offset = bodyStart + 4;
+        const trackId = buf.readUInt32BE(offset);
+        offset += 4;
+
+        if ((flags & 0x000001) !== 0) {
+            // base-data-offset (64bit)
+            offset += 8;
+        }
+        if ((flags & 0x000002) !== 0) {
+            // sample-description-index
+            offset += 4;
+        }
+        if ((flags & 0x000008) !== 0) {
+            // default-sample-duration
+            offset += 4;
+        }
+        let defaultSampleSize: number | null = null;
+        if ((flags & 0x000010) !== 0 && buf.length - offset >= 4) {
+            // default-sample-size
+            defaultSampleSize = buf.readUInt32BE(offset);
+        }
+
+        return { trackId, defaultSampleSize };
+    }
+
+    /**
+     * trun を解析し、data_offset (とその書き換え位置)、トラック内の総サンプルバイト数を求める
+     * sample-size-present が無い場合は tfhd の default_sample_size × sample_count で代用する
+     */
+    private parseTrunForSplit(
+        buf: Buffer,
+        bodyStart: number,
+        defaultSampleSize: number | null,
+    ): { dataOffset: number | null; dataOffsetFieldOffset: number | null; byteLength: number } {
+        if (buf.length - bodyStart < 8) {
+            return { dataOffset: null, dataOffsetFieldOffset: null, byteLength: -1 };
+        }
+
+        const flags = buf.readUIntBE(bodyStart + 1, 3);
+        const sampleCount = buf.readUInt32BE(bodyStart + 4);
+        let offset = bodyStart + 8;
+
+        let dataOffset: number | null = null;
+        let dataOffsetFieldOffset: number | null = null;
+        if ((flags & 0x000001) !== 0) {
+            // data-offset-present
+            dataOffsetFieldOffset = offset;
+            dataOffset = buf.readInt32BE(offset);
+            offset += 4;
+        }
+        if ((flags & 0x000004) !== 0) {
+            // first-sample-flags-present
+            offset += 4;
+        }
+
+        const sampleDurationPresent = (flags & 0x000100) !== 0;
+        const sampleSizePresent = (flags & 0x000200) !== 0;
+        const sampleFlagsPresent = (flags & 0x000400) !== 0;
+        const sampleCtoPresent = (flags & 0x000800) !== 0;
+
+        let byteLength = 0;
+        if (sampleSizePresent === true) {
+            for (let i = 0; i < sampleCount; i++) {
+                if (sampleDurationPresent === true) {
+                    offset += 4;
+                }
+                if (buf.length - offset < 4) {
+                    return { dataOffset, dataOffsetFieldOffset, byteLength: -1 };
+                }
+                byteLength += buf.readUInt32BE(offset);
+                offset += 4;
+                if (sampleFlagsPresent === true) {
+                    offset += 4;
+                }
+                if (sampleCtoPresent === true) {
+                    offset += 4;
+                }
+            }
+        } else if (defaultSampleSize !== null) {
+            byteLength = defaultSampleSize * sampleCount;
+        } else {
+            byteLength = -1;
+        }
+
+        return { dataOffset, dataOffsetFieldOffset, byteLength };
+    }
+
+    /**
+     * moof (全 traf 解析済み) + mdat から、ロールごとの 1 パート (単一 trak の moof + mdat) を組み立てて emit する
+     */
+    private splitAndEmitMultiTrackFragment(
+        pendingMoof: NonNullable<Fmp4Packager['mtPendingMoof']>,
+        extraBeforeMdat: Buffer,
+        mdatBox: Buffer,
+    ): void {
+        // dataOffset (base-data-offset = moof 開始) はオリジナルのバイト列上の相対位置なので、
+        // moof + (moof/mdat 間の余剰 box) + mdat を連結した仮想バッファでそのまま索引できる
+        const fragBuf = Buffer.concat([pendingMoof.moofBoxBuf, extraBeforeMdat, mdatBox]);
+        const mfhdBox = pendingMoof.mfhdBox ?? Buffer.alloc(0);
+
+        for (const [trackId, role] of this.trackRoleById) {
+            const traf = pendingMoof.trafs.get(trackId);
+            if (typeof traf === 'undefined') {
+                continue;
+            }
+
+            const trafBoxMutable = Buffer.from(traf.trafBox);
+            const newMoofBodyLength = mfhdBox.length + trafBoxMutable.length;
+            const newMoofSize = 8 + newMoofBodyLength;
+            const newDataOffset = newMoofSize + 8; // + mdat header
+
+            if (
+                traf.dataOffsetPatchOffset < 0 ||
+                traf.dataOffsetPatchOffset + 4 > trafBoxMutable.length
+            ) {
+                this.log?.stream.warn(`data_offset の書き換え位置が不正です (role=${role})`);
+                continue;
+            }
+            trafBoxMutable.writeInt32BE(newDataOffset, traf.dataOffsetPatchOffset);
+
+            const newMoofHeader = Buffer.alloc(8);
+            newMoofHeader.writeUInt32BE(newMoofSize, 0);
+            newMoofHeader.write('moof', 4, 'ascii');
+            const newMoofBox = Buffer.concat([newMoofHeader, mfhdBox, trafBoxMutable]);
+
+            const trackBytes = fragBuf.subarray(
+                traf.dataOffsetFromMoofStart,
+                traf.dataOffsetFromMoofStart + traf.byteLength,
+            );
+            const newMdatBox = this.buildBox('mdat', trackBytes);
+
+            this.finalizeMultiTrackPart(role, traf.tfdt, traf.timescale, Buffer.concat([newMoofBox, newMdatBox]));
+        }
+    }
+
+    /**
+     * ロールの 1 パートを確定させる。継続時間は「前回このロールで確定したパートの tfdt」との差分で求まるため、
+     * 1 パート分遅れて (次のパートが来たときに) 前回分を emit する
+     */
+    private finalizeMultiTrackPart(role: Fmp4PackagerTrackRole, tfdt: number, timescale: number, buf: Buffer): void {
+        const state = this.mtTrackStates.get(role);
+        if (typeof state === 'undefined') {
+            return;
+        }
+
+        if (state.pendingSlot !== null) {
+            const diff = tfdt - state.pendingSlot.tfdt;
+            const duration = diff >= 0 && timescale > 0 ? diff / timescale : (state.lastDuration ?? 0);
+            if (diff < 0) {
+                this.log?.stream.warn(`tfdt が逆行しました (role=${role}, prev=${state.pendingSlot.tfdt}, cur=${tfdt})`);
+            }
+            state.lastDuration = duration;
+            this.emitMultiTrackPart(
+                role,
+                state,
+                state.pendingSlot.buf,
+                duration,
+                state.pendingSlot.tfdt,
+                state.pendingSlot.timescale,
+            );
+        }
+
+        state.pendingSlot = { buf, tfdt, timescale };
+    }
+
+    /**
+     * 確定した 1 パートを emit する。emsg (ARIB 字幕) は video ロールのパートにのみ載せる
+     * (LL-HLS ではロールごとに独立したパートとして配信されるため、字幕は映像側にのみ多重化すれば十分)
+     */
+    private emitMultiTrackPart(
+        role: Fmp4PackagerTrackRole,
+        state: Fmp4Packager.MtTrackState,
+        buf: Buffer,
+        duration: number,
+        tfdt: number,
+        timescale: number,
+    ): void {
+        const emsg = role === 'video' ? this.buildPendingEmsgBoxes(tfdt, timescale) : Buffer.alloc(0);
+
+        const part: Fmp4PackagerPart = {
+            data: emsg.length > 0 ? Buffer.concat([emsg, buf]) : buf,
+            duration,
+            isIndependent: state.currentSegmentParts.length === 0,
+        };
+
+        state.currentSegmentParts.push(part);
+        this.emit('trackPart', role, part);
+
+        if (state.currentSegmentParts.length >= this.partsPerSegment) {
+            this.flushMultiTrackSegment(role, state);
+        }
+    }
+
+    private flushMultiTrackSegment(role: Fmp4PackagerTrackRole, state: Fmp4Packager.MtTrackState): void {
+        if (state.currentSegmentParts.length === 0) {
+            return;
+        }
+
+        const parts = state.currentSegmentParts;
+        state.currentSegmentParts = [];
+
+        const segment: Fmp4PackagerSegment = {
+            data: Buffer.concat(parts.map(p => p.data)),
+            duration: parts.reduce((sum, p) => sum + p.duration, 0),
+            parts,
+        };
+
+        this.emit('trackSegment', role, segment);
+    }
+
+    /**
+     * ストリーム終端で、複数音声トラック分解モードの残りパート・セグメントを確定させる
+     */
+    private finalizeMultiTrackAtEnd(): void {
+        if (this.mtPendingMoof !== null) {
+            this.log?.stream.warn('ストリーム終端で mdat を伴わない moof (multiTrack) が残ったため破棄します');
+            this.mtPendingMoof = null;
+        }
+
+        for (const [role, state] of this.mtTrackStates) {
+            if (state.pendingSlot !== null) {
+                const duration = state.lastDuration ?? 0;
+                this.emitMultiTrackPart(
+                    role,
+                    state,
+                    state.pendingSlot.buf,
+                    duration,
+                    state.pendingSlot.tfdt,
+                    state.pendingSlot.timescale,
+                );
+                state.pendingSlot = null;
+            }
+            this.flushMultiTrackSegment(role, state);
+        }
     }
 
     private readTkhdTrackId(buf: Buffer, bodyStart: number): number | null {
@@ -673,15 +1277,27 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
             }
         }
 
+        if (this.buffer.length > 0) {
+            this.log?.stream.warn(`ストリーム終端に未処理の端数データが ${this.buffer.length} byte 残りました (破棄)`);
+            this.buffer = Buffer.alloc(0);
+        }
+
+        if (this.multiTrack === true) {
+            if (this.mtExtraBeforeMdat.length > 0) {
+                this.log?.stream.warn(
+                    `ストリーム終端で mdat を伴わない moof (multiTrack) の後続 box が残ったため破棄します (${this.mtExtraBeforeMdat.length} byte)`,
+                );
+                this.mtExtraBeforeMdat = Buffer.alloc(0);
+            }
+            this.finalizeMultiTrackAtEnd();
+
+            return;
+        }
+
         // mdat が来ないまま終了した moof は破棄する
         if (this.pendingMoof !== null) {
             this.log?.stream.warn('ストリーム終端で mdat を伴わない moof が残ったため破棄します');
             this.pendingMoof = null;
-        }
-
-        if (this.buffer.length > 0) {
-            this.log?.stream.warn(`ストリーム終端に未処理の端数データが ${this.buffer.length} byte 残りました (破棄)`);
-            this.buffer = Buffer.alloc(0);
         }
 
         // 継続時間が確定しないまま残っている末尾パートは、同トラックの直近継続時間を流用して確定させる
@@ -763,6 +1379,48 @@ namespace Fmp4Packager {
         timescale: number | null;
         buf: Buffer;
         duration: number | null;
+    }
+
+    // moov 解析で得た、1 トラック分の情報
+    export interface MoovTrackInfo {
+        // trak box 全体のバイト列 (header 含む)
+        trakBox: Buffer;
+        // mdia/hdlr の handler_type ('vide' | 'soun' | その他)
+        mediaType: string;
+        timescale: number;
+    }
+
+    // moov 解析結果 (複数音声トラック分解モードの init 組み立てに使う)
+    export interface MoovInfo {
+        mvhdBox: Buffer | null;
+        mehdBox: Buffer | null;
+        trexByTrack: Map<number, Buffer>;
+        tracks: Map<number, MoovTrackInfo>;
+    }
+
+    // 複数音声トラック分解モードでの traf 解析結果
+    export interface MtTrafInfo {
+        trackId: number;
+        tfdt: number;
+        timescale: number;
+        // traf box 全体のコピー (header 含む)
+        trafBox: Buffer;
+        // trafBox 内で trun の data_offset フィールドを書き換えるための相対位置
+        dataOffsetPatchOffset: number;
+        // moof 開始位置からの、このトラックのサンプルデータの相対位置 (オリジナルのバイト列上)
+        dataOffsetFromMoofStart: number;
+        // このトラックのサンプルデータの総バイト数
+        byteLength: number;
+    }
+
+    // 複数音声トラック分解モードでの、ロールごとの状態
+    export interface MtTrackState {
+        // 継続時間が未確定のまま保持している直近のパート (次のパートの tfdt で確定する)
+        pendingSlot: { buf: Buffer; tfdt: number; timescale: number } | null;
+        // 直近確定した継続時間 (終端パートのフォールバックに使う)
+        lastDuration: number | null;
+        // 組み立て中のセグメントを構成する part
+        currentSegmentParts: Fmp4PackagerPart[];
     }
 }
 

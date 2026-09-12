@@ -189,8 +189,21 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
      * 音声トラックの切り替え (主音声 / 副音声 / 音声 ES の指定) は %DUALMONOMODE% / %AUDIOMAP% / %AUDIOFILTER% を
      * 埋め込んでおき、配信直前に AudioTrackUtil.replacePlaceholders() で展開する。
      * `-dual_mono_mode main` を直接書くと副音声を選べなくなるので書かないこと。
-     * `-map 0` を使う container (m2tsll / hls) は全 ES をそのまま通すため %AUDIOMAP% を入れない
-     * (両方指定すると ES が二重に出力される)
+     * `-map 0` を使う container (hls) は全 ES をそのまま通すため %AUDIOMAP% を入れない
+     * (両方指定すると ES が二重に出力される)。
+     *
+     * **m2tsll は `-map 0` と `-map "0:d?"` (data ストリームの一括 map) を使わない**。
+     * 相乗りサービスの文字スーパー (PID 0x138, ffmpeg 上は PTS の無い bin_data / private_stream_2) が
+     * `-map "0:d?"` で拾われると、mpegts muxer がその PTS 無しストリームとのインターリーブ待ちで
+     * 数フレームだけ書き出した後に完全に停止する (実測: ffmpeg 9.0.1、libx264 は 161 フレーム出力済みなのに
+     * mux 済みは frame=5 のまま、5 秒間隔の字幕ダミーの周期でしか進まない)。`-map "0:d?"` を外すと
+     * 実時間で正常に流れる (実測: 15 秒で 6.9MB / 402 フレーム)。
+     * - tsreadex 経由 (音声が主音声・副音声の 2 ES に分離済み): 映像・音声は %AUDIOMAP%、字幕は
+     *   `-map "0:s?"` のみ。ID3 timed metadata (ARIB 字幕) は tsreadex が PID を落とすため
+     *   出力側 (LiveStreamBaseModel) で付け直す
+     * - tsreadex 無し: 映像・音声・字幕を個別に map し、ID3 timed metadata (PID 0x1FFE、入力側で
+     *   arib-subtitle-timedmetadater が挿入済み) だけを `-map "0:i:0x1ffe?"` で明示的に拾う
+     *   (文字スーパーの bin_data を含む `0:d?` は使わない)
      * @param scope: ProfileScope
      * @param container: StreamContainer
      * @param video?: StreamVideoParam
@@ -220,17 +233,32 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
         const input = isEncodedSource ? '-ss %SS% -i %INPUT%' : '-i pipe:0';
         const realtime = isLive ? '-re ' : '';
 
-        // 全 ES を通す container (m2tsll / hls) は `-map 0` と %AUDIOMAP% を併記できない (ES が二重になる)。
-        // tsreadex を通した場合は音声 ES が主音声・副音声の 2 本に分かれており ES を選ぶ必要があるため、
-        // 映像・音声を %AUDIOMAP% で選び、字幕とデータ放送は optional な map で残す
-        // optional map の `?` はシェルの glob 文字なので引用符で括る (cmd に | があるとシェル経由で実行される)
-        const mapAll = useTsreadex === true ? '%AUDIOMAP% -map "0:s?" -map "0:d?"' : '-map 0';
+        // m2tsll は `-map 0` / `-map "0:d?"` を使わない (文字スーパーで muxer が止まる。上のコメント参照)。
+        // tsreadex 経由なら音声は %AUDIOMAP% で選び、字幕以外は map しない (ID3 は出力側で付け直す)。
+        // tsreadex 無しなら映像・音声・字幕に加え、入力側で挿入済みの ID3 timed metadata (PID 0x1FFE) だけを
+        // ピンポイントで拾う (文字スーパーを含む `0:d?` の一括 map は使わない)
+        const m2tsllMap =
+            useTsreadex === true
+                ? '%AUDIOMAP% -map "0:s?"'
+                : '-map 0:v:0 -map 0:a -map "0:s?" -map "0:i:0x1ffe?"';
+        const m2tsllStreamCopy = useTsreadex === true ? '-c:s copy' : '-c:s copy -c:d copy';
+        // tsreadex 済みの入力は PAT/PMT とストリーム構造が正規化されているため解析待ちを短くする。
+        // 実測 (同一放送波、最初の 300KB 出力まで): 500000/500000 は 3.9 秒、
+        // 200000/200000 は 3.3 秒、0/100000 は 2.8 秒だった。0 は放送・チューナー実装によって
+        // PMT 検出前に走り出す危険があるため採用せず、200000/200000 を使う。
+        // tsreadex を通さない場合は放送波の構造を直接解析する必要があるため従来値を維持する。
+        const m2tsllInputAnalysis =
+            useTsreadex === true
+                ? '-analyzeduration 200000 -probesize 200000'
+                : '-analyzeduration 500000 -probesize 500000';
 
         switch (container) {
             case 'm2tsll':
                 return (
-                    `%FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 ${input} ${mapAll} -c:s copy -c:d copy ` +
-                    `-ignore_unknown -fflags nobuffer -flags low_delay -max_delay 250000 -max_interleave_delta 1 -threads 0 ` +
+                    `%FFMPEG% %DUALMONOMODE% -f mpegts ${m2tsllInputAnalysis} -fflags nobuffer ${input} ` +
+                    `${m2tsllMap} ${m2tsllStreamCopy} -flags low_delay ` +
+                    // TS は PAT/PMT を短周期で送るため probe を 500KB に制限し、初回映像待ちを短くする。
+                    `-ignore_unknown -max_delay 250000 -max_interleave_delta 1 -threads 0 ` +
                     `-c:a ${audioCodec} -ar 48000 -b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec} -flags +cgop${vf} ` +
                     `-b:v ${videoBitrate} -preset veryfast -y -f mpegts pipe:1`
                 );
@@ -248,11 +276,10 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
                 );
             case 'hls':
                 return (
-                    `%FFMPEG% ${realtime}%DUALMONOMODE% ${input} -sn ${mapAll} -threads 0 -ignore_unknown ` +
-                    `-max_muxing_queue_size 1024 -f hls -hls_time 3 -hls_list_size ${isLive ? 17 : 0} -hls_allow_cache 1 ` +
-                    `-hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments ` +
-                    `-c:a ${audioCodec} -ar 48000 -b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${vf} -b:v ${videoBitrate} ` +
-                    `-preset veryfast -flags +loop-global_header %OUTPUT%`
+                    `%FFMPEG% ${realtime}%DUALMONOMODE% -fflags nobuffer ${input} -sn -threads 0 ` +
+                    `%AUDIOMAP% -c:a ${audioCodec} -ar 48000 -b:a ${audioBitrate} -ac 2 %AUDIOFILTER% ` +
+                    `-c:v ${videoCodec}${vf} -b:v ${videoBitrate} -preset veryfast -flags +cgop ` +
+                    `-g 15 -keyint_min 15 -sc_threshold 0 -movflags empty_moov+default_base_moof+frag_keyframe -y -f mp4 pipe:1`
                 );
             case 'm2ts':
             default:

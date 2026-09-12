@@ -15,13 +15,13 @@ test('音声ブースト倍率を既定値と範囲へ正規化する', () => {
 });
 
 test('配信プリセットは音声フィルタのプレースホルダを使う', () => {
-    const ffmpeg = EncodePresets.expand({ targets: ['liveHLS'], qualities: ['720p'] }, undefined, 2.0);
+    const ffmpeg = EncodePresets.expand({ targets: ['liveHLS'], qualities: ['720p'] });
     assert.match(ffmpeg.live[0].cmd, /%AUDIOFILTER%/);
     const replaced = AudioTrackUtil.replacePlaceholders(ffmpeg.live[0].cmd, undefined, 2.0, 'ts');
     assert.match(replaced, /-c:a aac[^|]*-af volume=2/);
     assert.doesNotMatch(replaced, /%AUDIOFILTER%|%AUDIOBOOST%|%DUALMONOMODE%|%AUDIOMAP%/);
 
-    const ffmpegOff = EncodePresets.expand({ targets: ['liveHLS'], qualities: ['720p'] }, undefined, 1.0);
+    const ffmpegOff = EncodePresets.expand({ targets: ['liveHLS'], qualities: ['720p'] });
     const replacedOff = AudioTrackUtil.replacePlaceholders(ffmpegOff.live[0].cmd, undefined, 1.0, 'ts');
     assert.doesNotMatch(replacedOff, /volume=|%AUDIOFILTER%/);
 });
@@ -29,7 +29,7 @@ test('配信プリセットは音声フィルタのプレースホルダを使�
 // rigaya 系は --audio-copy で音声を素通しし、後段の ffmpeg が aac 化する。
 // rigaya の --audio-filter は --audio-copy と併用できないため、ブーストは後段 ffmpeg へ入れる
 test('rigaya 系プリセットのブーストは rigaya ではなく後段の ffmpeg に入る', () => {
-    const rigaya = EncodePresets.expand({ hwaccel: 'qsvencc', targets: ['liveHLS'], qualities: ['720p'] }, undefined, 2.0);
+    const rigaya = EncodePresets.expand({ hwaccel: 'qsvencc', targets: ['liveHLS'], qualities: ['720p'] });
     const cmd = rigaya.live[0].cmd;
     const [rigayaStage, ffmpegStage] = cmd.split('|');
 
@@ -37,8 +37,56 @@ test('rigaya 系プリセットのブーストは rigaya ではなく後段の f
     assert.doesNotMatch(rigayaStage, /--audio-filter|volume=/);
     assert.match(ffmpegStage, /-c:a aac[\s\S]*%AUDIOFILTER%/);
 
-    const rigayaOff = EncodePresets.expand({ hwaccel: 'qsvencc', targets: ['liveHLS'], qualities: ['720p'] }, undefined, 1.0);
+    const rigayaOff = EncodePresets.expand({ hwaccel: 'qsvencc', targets: ['liveHLS'], qualities: ['720p'] });
     assert.doesNotMatch(rigayaOff.live[0].cmd, /volume=/);
+});
+
+// config.tsreadex が設定されているとき、パイプ入力 (liveHLS / recordedStreaming の ts scope) の
+// 生成コマンドの前段へ tsreadex を挟む (複数音声トラックの同時配信に %AUDIOMAP% を使うため)。
+// ファイル入力 (recordedStreaming の encoded scope) は放送 TS ではないため対象外
+test('withTsreadex を true にすると pipe 入力の生成コマンド前段に tsreadex が入る', () => {
+    const withTsreadex = EncodePresets.expand(
+        { targets: ['liveHLS', 'recordedStreaming'], qualities: ['720p'] },
+        undefined,
+        true,
+    );
+    assert.match(withTsreadex.live[0].cmd, /^%TSREADEX% -x 18 -n -1 -a 13 -b 7 -c 5 -u 5 - \| %FFMPEG%/);
+    for (const profile of withTsreadex.recordedTs) {
+        assert.match(profile.cmd, /^%TSREADEX% .* \| %FFMPEG%/);
+    }
+    // ファイル入力 (encoded) は放送 TS ではないため tsreadex を挟まない
+    for (const profile of withTsreadex.recordedEncoded) {
+        assert.doesNotMatch(profile.cmd, /%TSREADEX%/);
+    }
+
+    const withoutTsreadex = EncodePresets.expand({ targets: ['liveHLS'], qualities: ['720p'] });
+    assert.doesNotMatch(withoutTsreadex.live[0].cmd, /%TSREADEX%/);
+});
+
+test('withTsreadex は rigaya 系の pipe 入力でも先頭 (rigaya の前段) に tsreadex を挟む', () => {
+    const withTsreadex = EncodePresets.expand(
+        { hwaccel: 'qsvencc', targets: ['liveHLS'], qualities: ['720p'] },
+        undefined,
+        true,
+    );
+    assert.match(withTsreadex.live[0].cmd, /^%TSREADEX% .* \| QSVEncC/);
+});
+
+test('生成 cmd の ffmpeg 入力オプションは -i より前に置く', () => {
+    const expansion = EncodePresets.expand({ targets: ['liveHLS', 'recordedStreaming'], qualities: ['720p'] });
+    const profiles = [...expansion.live, ...expansion.recordedTs, ...expansion.recordedEncoded];
+    for (const profile of profiles) {
+        for (const stage of profile.cmd.split('|')) {
+            const input = stage.indexOf('-i ');
+            if (input < 0) continue;
+            for (const option of ['-analyzeduration ', '-probesize ', '-fflags nobuffer']) {
+                const position = stage.indexOf(option);
+                if (position >= 0) assert.ok(position < input, `${profile.id}: ${option} must precede -i`);
+            }
+            const lowDelay = stage.indexOf('-flags low_delay');
+            if (lowDelay >= 0) assert.ok(lowDelay > input, `${profile.id}: -flags low_delay must follow -i`);
+        }
+    }
 });
 
 test('undefined presets produce nothing (feature flag off / not configured)', () => {

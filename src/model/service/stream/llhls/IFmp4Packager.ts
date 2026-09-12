@@ -33,6 +33,14 @@ export interface Fmp4PackagerOption {
     partsPerSegment?: number;
 }
 
+/**
+ * 複数音声トラック分解モードでのトラックの役割
+ * - video: 映像トラック
+ * - audio0: 主音声トラック (trackId 昇順で最初の音声トラック)
+ * - audio1: 副音声トラック (trackId 昇順で 2 番目の音声トラック)
+ */
+export type Fmp4PackagerTrackRole = 'video' | 'audio0' | 'audio1';
+
 export default interface IFmp4Packager extends stream.Writable {
     /**
      * エンコード前の TS から抜き取った ID3 timed metadata (ARIB 字幕) を登録する
@@ -48,5 +56,14 @@ export default interface IFmp4Packager extends stream.Writable {
     on(event: 'trailer', listener: (data: Buffer) => void): this;
     // 破損入力等により解析を継続できず打ち切った際に通知される (標準の 'error' は使用しない)
     on(event: 'halted', listener: (message: string) => void): this;
+    // 音声トラックが 2 本以上ある入力を検出し、トラックごとに分解して配信するモードへ入った場合に通知される
+    // (moov 解析直後、trackInit より前に 1 回だけ発火する)
+    on(event: 'multiTrack', listener: (roles: Fmp4PackagerTrackRole[]) => void): this;
+    // 複数音声トラック分解モードでの init セグメント (トラックごと)
+    on(event: 'trackInit', listener: (role: Fmp4PackagerTrackRole, data: Buffer) => void): this;
+    // 複数音声トラック分解モードでのパート (トラックごと)
+    on(event: 'trackPart', listener: (role: Fmp4PackagerTrackRole, part: Fmp4PackagerPart) => void): this;
+    // 複数音声トラック分解モードでのセグメント (トラックごと)
+    on(event: 'trackSegment', listener: (role: Fmp4PackagerTrackRole, segment: Fmp4PackagerSegment) => void): this;
     on(event: string | symbol, listener: (...args: any[]) => void): this;
 }
