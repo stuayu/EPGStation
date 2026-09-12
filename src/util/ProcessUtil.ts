@@ -43,6 +43,27 @@ namespace ProcessUtil {
     export const ROOT_PATH = path.join(__dirname, '..', '..').replace(new RegExp(`\\${path.sep}$`), '');
 
     /**
+     * 直接 spawn に渡す引数の外側引用符を取り除く。
+     *
+     * cmd はシェル経由と直接 spawn の両方で使われるため、設定例では
+     * `?` などを守る引用符を残す。直接 spawn ではシェルが引用符を解釈しないので、
+     * ffmpeg へ渡す前にここで外す。
+     * @param arg: string
+     * @return string
+     */
+    const stripOuterQuotes = (arg: string): string => {
+        if (arg.length >= 2) {
+            const first = arg[0];
+            const last = arg[arg.length - 1];
+            if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+                return arg.slice(1, -1);
+            }
+        }
+
+        return arg;
+    };
+
+    /**
      * 渡された cmd 文字列を bin と args に分離する
      * @param cmd: string
      * @return ProcessUtil.Cmds
@@ -53,6 +74,7 @@ namespace ProcessUtil {
         if (typeof bin === 'undefined') {
             throw new Error('CmdParseError');
         }
+        bin = stripOuterQuotes(bin);
 
         // %NODE% の replace
         bin = bin.replace(/%NODE%/g, process.argv[0]);
@@ -65,6 +87,10 @@ namespace ProcessUtil {
         }
 
         args = args
+            .map(arg => {
+                // シェルを介さない spawn では引用符も引数の一部になるため除去
+                return stripOuterQuotes(arg);
+            })
             .map(arg => {
                 // 引数内の %ROOT% を置換
                 return arg.replace(/%ROOT%/g, ROOT_PATH);
@@ -130,6 +156,44 @@ namespace ProcessUtil {
         }
 
         return result;
+    };
+
+    /**
+     * コマンドにシェルパイプが含まれるか判定する。
+     *
+     * ffmpeg の pan フィルタなど、引用符内の `|` はシェルパイプではない。
+     * 単純な `cmd.includes('|')` では音声フィルタをパイプラインと誤判定し、
+     * ffmpeg の入力が 0 バイトになるため、引用符の外側だけを調べる。
+     * @param cmd: string
+     * @return boolean
+     */
+    export const hasShellPipeline = (cmd: string): boolean => {
+        let quote: '"' | "'" | null = null;
+        let escaped = false;
+
+        for (const char of cmd) {
+            if (escaped === true) {
+                escaped = false;
+                continue;
+            }
+
+            if (quote !== null) {
+                if (char === '\\' && quote === '"') {
+                    escaped = true;
+                } else if (char === quote) {
+                    quote = null;
+                }
+                continue;
+            }
+
+            if (char === '"' || char === "'") {
+                quote = char;
+            } else if (char === '|') {
+                return true;
+            }
+        }
+
+        return false;
     };
 
     /**

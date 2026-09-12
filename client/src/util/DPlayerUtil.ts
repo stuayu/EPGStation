@@ -4,6 +4,7 @@ import Mpegts from 'mpegts.js';
 import container from '../model/ModelContainer';
 import { ISettingStorageModel } from '../model/storage/setting/ISettingStorageModel';
 import UaUtil from './UaUtil';
+import { requirePlaybackUrl } from '../../../src/util/PlaybackUrlUtil';
 
 namespace DPlayerUtil {
     let isInitedGlobals = false;
@@ -20,7 +21,14 @@ namespace DPlayerUtil {
     const createMpegtsGlobal = (): typeof Mpegts => {
         const wrapped: any = { ...Mpegts };
         wrapped.createPlayer = (mediaDataSource: any, config?: any): any => {
-            const player = (Mpegts as any).createPlayer(mediaDataSource, config);
+            let url: string;
+            try {
+                url = requirePlaybackUrl(mediaDataSource?.url, 'mpegts.js initialization');
+            } catch (err) {
+                console.error('[EPGStation][mpegts] initialization skipped', err, { url: mediaDataSource?.url });
+                throw err;
+            }
+            const player = (Mpegts as any).createPlayer({ ...mediaDataSource, url }, config);
             const originalAttach = player.attachMediaElement.bind(player);
             player.attachMediaElement = (element: HTMLMediaElement): void => {
                 (element as any).disableRemotePlayback = true;

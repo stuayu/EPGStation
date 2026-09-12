@@ -1,6 +1,7 @@
 import { StreamPreset } from '../model/stream/preset/IStreamPreset';
 import { SourceCapabilities } from '../model/stream/capability/ISourceCapabilities';
 import { VideoCorrectionMode } from '../model/stream/preset/IStreamPreset';
+import { shouldDeinterlace } from './DeinterlaceUtil';
 import { getVideoCorrectionFilter } from './VideoCorrectionUtil';
 
 export type StreamEncoderKind = 'nvencc' | 'qsvencc' | 'vceencc' | 'ffmpeg';
@@ -61,8 +62,14 @@ export const videoCorrectionFilter = (
 export const deinterlaceMode = (source: SourceCapabilities, preset: StreamPreset): 'off' | 'normal' | 'bob' => {
     const requested = preset.output.deinterlace ?? 'auto';
     const enabled =
-        source.scan === 'interlaced' ||
-        (source.scan === 'unknown' && requested === 'auto' && source.sourceClass === 'legacy-broadcast');
+        source.scan === 'progressive'
+            ? false
+            : shouldDeinterlace({
+                  codec: source.codec,
+                  field_order: source.scan === 'interlaced' ? source.fieldOrder : undefined,
+                  fps: source.frameRate,
+                  container: source.transport,
+              });
     if (!enabled || requested === 'off') return 'off';
     if (requested === '60p' || (requested === 'auto' && preset.output.frameRate === '60p')) return 'bob';
     return 'normal';

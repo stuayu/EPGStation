@@ -63,7 +63,7 @@ const PRESETS = {
     // -preset p7 は NVENC で最も画質優先 (最も遅い) プリセット、-tune hq は画質重視のチューニング
     h264_nvenc: {
         codec: 'h264_nvenc',
-        quality: ['-preset', 'p7', '-tune', 'hq', '-rc', 'vbr', '-cq', '26', '-b:v', '0'],
+        quality: ['-preset', 'p7', '-tune', 'hq', '-rc', 'vbr', '-cq', '26', '-b:v', '0', '-pix_fmt', 'yuv420p'],
     },
     // HEVC (NVIDIA NVENC)
     hevc_nvenc: {

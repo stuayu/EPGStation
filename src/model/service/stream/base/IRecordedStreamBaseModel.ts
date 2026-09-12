@@ -8,6 +8,8 @@ export interface RecordedStreamOption {
     videoFileId: apid.VideoFileId;
     playPosition: number; // 再生位置(秒)
     cmd: string;
+    // 配信コンテナ。ARIB 字幕の出力側 ID3 化など、コンテナ依存の処理に使う
+    container?: apid.StreamContainer;
     // 再生する音声トラック (省略時は主音声)。cmd の %DUALMONOMODE% / %AUDIOMAP% を置換する
     audioTrack?: apid.AudioTrackSpecifier;
 }

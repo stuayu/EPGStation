@@ -6,6 +6,8 @@ import ID3MetadataTransform from 'arib-subtitle-timedmetadater';
 import * as apid from '../../../../../api';
 import * as fst from '../../../../lib/TailStream';
 import ProcessUtil from '../../../../util/ProcessUtil';
+import { calculateRecordedStreamStartByte } from '../../../../util/RecordedStreamByteOffset';
+import { normalizeStreamPlayPosition } from '../../../../util/StreamPlayPosition';
 import IVideoUtil from '../../../api/video/IVideoUtil';
 import IRecordedDB from '../../../db/IRecordedDB';
 import IVideoFileDB from '../../../db/IVideoFileDB';
@@ -18,6 +20,8 @@ import Fmp4Packager from '../llhls/Fmp4Packager';
 import IAribId3Extractor from '../llhls/IAribId3Extractor';
 import IFmp4Packager, { Fmp4PackagerTrackRole } from '../llhls/IFmp4Packager';
 import AudioTrackUtil from '../util/AudioTrackUtil';
+import ISourceAnalyzer from '../../../stream/capability/ISourceAnalyzer';
+import { replaceDeinterlacePlaceholder, toDeinterlaceInput } from '../../../../util/DeinterlaceUtil';
 import IHLSFileDeleterModel from '../util/IHLSFileDeleterModel';
 import IHLSMemoryStoreModel, { HLSMemoryTrackRole } from '../util/IHLSMemoryStoreModel';
 import IRecordedStreamBaseModel, { RecordedStreamOption, VideoFileInfo } from './IRecordedStreamBaseModel';
@@ -85,9 +89,12 @@ export default abstract class RecordedStreamBaseModel
     private recordedDB: IRecordedDB;
     private videoUtil: IVideoUtil;
     private hlsMemoryStore: IHLSMemoryStoreModel;
+    private sourceAnalyzer: ISourceAnalyzer | undefined;
 
     private fileStream: Readable | null = null;
     private id3MetadataTransoform: ID3MetadataTransform | null = null;
+    // TS 入力の m2tsll は入力側へ ID3 を map せず、出力 TS へ再挿入する
+    private id3OutputTransform: ID3MetadataTransform | null = null;
     private streamProcess: ChildProcess | null = null;
     private videoFilePath: string | null = null;
     private videoFileInfo: VideoFileInfo | null = null;
@@ -103,6 +110,18 @@ export default abstract class RecordedStreamBaseModel
     private isEncodeThrottled: boolean = false;
     private throttleTimerId: ReturnType<typeof setTimeout> | null = null;
 
+    /**
+     * TS 入力の m2tsll 配信で ARIB 字幕を出力側へ付け直すか判定する
+     * @return boolean
+     */
+    private useOutputSideId3(): boolean {
+        return (
+            this.videoFileType === 'ts' &&
+            this.processOption !== null &&
+            this.processOption.container === 'm2tsll'
+        );
+    }
+
     constructor(
         @inject('IConfiguration') configure: IConfiguration,
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -113,6 +132,7 @@ export default abstract class RecordedStreamBaseModel
         @inject('IRecordedDB') recordedDB: IRecordedDB,
         @inject('IVideoUtil') videoUtil: IVideoUtil,
         @inject('IHLSMemoryStoreModel') hlsMemoryStore: IHLSMemoryStoreModel,
+        @inject('ISourceAnalyzer') sourceAnalyzer?: ISourceAnalyzer,
     ) {
         super(configure, logger, processManager, fileDeleter, socketIO);
 
@@ -120,6 +140,7 @@ export default abstract class RecordedStreamBaseModel
         this.recordedDB = recordedDB;
         this.videoUtil = videoUtil;
         this.hlsMemoryStore = hlsMemoryStore;
+        this.sourceAnalyzer = sourceAnalyzer;
     }
 
     /**
@@ -160,6 +181,9 @@ export default abstract class RecordedStreamBaseModel
             throw new Error('SetVideoFileInfoError');
         }
 
+        // API 経由でない呼び出しも含め、エンコーダへ渡す開始位置を整数秒に揃える。
+        this.processOption.playPosition = normalizeStreamPlayPosition(this.processOption.playPosition);
+
         // 開始時刻が動画の長さを超えている
         if (this.processOption.playPosition > this.videoFileInfo.duration) {
             throw new Error('OutOfRange');
@@ -187,11 +211,10 @@ export default abstract class RecordedStreamBaseModel
 
         // エンコードプロセス生成
         const poption = await this.createProcessOption(streamId);
-        this.log.stream.info(`create encode process: ${poption.cmd}`);
         try {
             this.streamProcess = await this.processManager.create(poption);
         } catch (err: any) {
-            this.log.stream.error(`create encode process failed: ${poption.cmd}`);
+            this.log.stream.error('create encode process failed');
             await this.stop();
         }
         if (this.streamProcess === null) {
@@ -232,23 +255,36 @@ export default abstract class RecordedStreamBaseModel
         if (this.streamProcess.stdin !== null && this.fileStream !== null) {
             // ts が入力かつ HLS 配信の場合は ARIB 字幕を ID3 timed metadata へ変換する
             // arib-subtitle-timedmetadater を通す (エンコード済みファイルには ARIB 字幕が含まれない)
-            if (this.videoFileType === 'ts' && this.getStreamType() === 'RecordedHLS') {
+            if (
+                this.videoFileType === 'ts' &&
+                (this.getStreamType() === 'RecordedHLS' || this.processOption?.container === 'm2tsll')
+            ) {
                 this.log.stream.info('use arib-subtitle-timedmetadater');
-                this.id3MetadataTransoform = new ID3MetadataTransform();
-                this.fileStream.pipe(this.id3MetadataTransoform);
+                if (this.useOutputSideId3() === true) {
+                    // ID3 (PID 0x1FFE) は入力側へ map せず、エンコード後の MPEG-TS へ挿入し直す。
+                    this.fileStream.pipe(this.streamProcess.stdin);
+                } else {
+                    this.id3MetadataTransoform = new ID3MetadataTransform();
+                    this.fileStream.pipe(this.id3MetadataTransoform);
+                }
 
                 if (this.isMemoryHLS() === true) {
                     // in-memory (fMP4) モードでは mp4 出力に ID3 timed metadata を乗せられないため、
                     // エンコード前の TS から ID3 を抜き取り、セグメントの emsg box として再多重化する
                     this.aribId3Extractor = new AribId3Extractor(this.log);
-                    this.id3MetadataTransoform.pipe(this.aribId3Extractor);
+                    this.id3MetadataTransoform?.pipe(this.aribId3Extractor);
                     this.aribId3Extractor.pipe(this.streamProcess.stdin);
-                } else {
-                    this.id3MetadataTransoform.pipe(this.streamProcess.stdin);
+                } else if (this.useOutputSideId3() === false) {
+                    this.id3MetadataTransoform?.pipe(this.streamProcess.stdin);
                 }
             } else {
                 this.fileStream.pipe(this.streamProcess.stdin);
             }
+        }
+
+        if (this.useOutputSideId3() === true && this.streamProcess.stdout !== null) {
+            this.id3OutputTransform = new ID3MetadataTransform();
+            this.streamProcess.stdout.pipe(this.id3OutputTransform);
         }
 
         // プロセスが即時終了していた場合
@@ -362,6 +398,16 @@ export default abstract class RecordedStreamBaseModel
      * @param code: number | null 子プロセスの終了コード
      */
     private onStreamProcessExit(code: number | null): void {
+        // 通常の録画ストリームは stdout の EOF がレスポンスへ伝わってから停止する。
+        // ここで即時に emitExitStream() すると、エンコーダが実時間より速く完了した時点で
+        // まだブラウザが再生中の配信を「停止」と記録してしまう。正常終了は EOF として扱い、
+        // HTTP レスポンス完了後の route cleanup に任せる。
+        if (this.getStreamType() === 'RecordedStream' && code === 0) {
+            this.log.stream.info('recorded stream encode process finished normally');
+
+            return;
+        }
+
         if (
             this.getStreamType() === 'RecordedHLS' &&
             this.isMemoryHLS() === true &&
@@ -545,6 +591,8 @@ export default abstract class RecordedStreamBaseModel
             .replace(/%TSREADEX%/g, typeof this.config.tsreadex === 'undefined' ? 'tsreadex' : this.config.tsreadex)
             .replace(/%SS%/g, this.videoFileType === 'ts' ? '' : this.processOption.playPosition.toString(10));
 
+        cmd = await this.resolveDeinterlace(cmd);
+
         // 音声トラック指定・フィルタ (%DUALMONOMODE% / %AUDIOMAP% / %AUDIOFILTER%) を展開する
         cmd = AudioTrackUtil.replacePlaceholders(
             cmd,
@@ -574,6 +622,28 @@ export default abstract class RecordedStreamBaseModel
     }
 
     /**
+     * 録画素材の映像特性から自動生成 cmd のデインターレースを解決する。
+     * 解析できない場合は放送 TS を守るため yadif 有りにする。
+     * @param cmd: string
+     * @return Promise<string>
+     */
+    private async resolveDeinterlace(cmd: string): Promise<string> {
+        if (cmd.includes('%DEINTERLACE%') === false) return cmd;
+        if (this.sourceAnalyzer === undefined || this.processOption === null) {
+            return replaceDeinterlacePlaceholder(cmd);
+        }
+
+        try {
+            const source = await this.sourceAnalyzer.analyzeRecordedFile(this.processOption.videoFileId);
+            return replaceDeinterlacePlaceholder(cmd, toDeinterlaceInput(source));
+        } catch (err) {
+            this.log.stream.warn('recorded source analysis failed; keep deinterlace enabled');
+            this.log.stream.debug(err);
+            return replaceDeinterlacePlaceholder(cmd);
+        }
+    }
+
+    /**
      * fileStream をセットする
      */
     private setFileStream(): void {
@@ -586,8 +656,24 @@ export default abstract class RecordedStreamBaseModel
             return;
         }
 
-        this.log.stream.info(`create file stream: ${this.videoFilePath}`);
-        const start = Math.floor((this.videoFileInfo.bitRate / 8) * this.processOption.playPosition);
+        // reader は要求ごとに作り直す。TailStream の offset は内部状態なので、前回の reader を使い回さない。
+        if (this.fileStream !== null) {
+            this.fileStream.unpipe();
+            this.fileStream.destroy();
+            this.fileStream = null;
+        }
+
+        const estimatedStart = Math.floor((this.videoFileInfo.bitRate / 8) * this.processOption.playPosition);
+        const start = calculateRecordedStreamStartByte(
+            this.videoFileInfo.bitRate,
+            this.processOption.playPosition,
+            this.videoFileInfo.size,
+        );
+        this.log.stream.info(
+            `create recorded file stream: ${this.videoFilePath} ` +
+                `(videoFileId: ${this.processOption.videoFileId}, playPosition: ${this.processOption.playPosition}s, ` +
+                `estimatedOffset: ${estimatedStart}, readStart: ${start}, fileSize: ${this.videoFileInfo.size})`,
+        );
         if (this.isRecording === true) {
             this.fileStream = fst.createReadStream(this.videoFilePath, {
                 start: start,
@@ -612,6 +698,7 @@ export default abstract class RecordedStreamBaseModel
         if (this.fileStream !== null) {
             this.fileStream.unpipe();
             this.fileStream.destroy();
+            this.fileStream = null;
         }
 
         if (this.aribId3Extractor !== null) {
@@ -625,6 +712,15 @@ export default abstract class RecordedStreamBaseModel
             this.id3MetadataTransoform.unpipe();
             this.id3MetadataTransoform.destroy();
             this.id3MetadataTransoform = null;
+        }
+
+        if (this.id3OutputTransform !== null) {
+            if (this.streamProcess !== null && this.streamProcess.stdout !== null) {
+                this.streamProcess.stdout.unpipe(this.id3OutputTransform);
+            }
+            this.id3OutputTransform.unpipe();
+            this.id3OutputTransform.destroy();
+            this.id3OutputTransform = null;
         }
 
         if (this.fmp4Packager !== null) {
@@ -663,7 +759,9 @@ export default abstract class RecordedStreamBaseModel
      * @return internal.Readable
      */
     public getStream(): internal.Readable {
-        if (this.streamProcess !== null && this.streamProcess.stdout !== null) {
+        if (this.id3OutputTransform !== null) {
+            return this.id3OutputTransform;
+        } else if (this.streamProcess !== null && this.streamProcess.stdout !== null) {
             return this.streamProcess.stdout;
         } else {
             throw new Error('StreamIsNull');

@@ -100,9 +100,9 @@ test('defaults expand to software h264 at 1080p/720p/480p for all targets', () =
     // encode (recorded target): 3 qualities x 1 codec x 1 hwaccel
     assert.equal(expansion.encode.length, 3);
     assert.equal(expansion.live.length, 3);
-    // recordedStreaming: mp4 + hls per quality
-    assert.equal(expansion.recordedTs.length, 6);
-    assert.equal(expansion.recordedEncoded.length, 6);
+    // recordedStreaming: mp4 + hls + m2tsll per quality
+    assert.equal(expansion.recordedTs.length, 9);
+    assert.equal(expansion.recordedEncoded.length, 9);
 
     const encode1080 = expansion.encode.find(e => e.id === 'preset-encode-software-h264-1080p');
     assert.ok(encode1080, 'encode preset for 1080p software h264 should exist');
@@ -185,6 +185,52 @@ test('recordedStreaming hls cmd outputs in-memory fMP4 (LL-HLS) instead of disk 
 
     assert.match(tsHls.cmd, /-i pipe:0/);
     assert.match(encodedHls.cmd, /-ss %SS% -i %INPUT%/);
+});
+
+test('recordedStreaming m2tsll cmd is stdout MPEG-TS and separates TS/file input', () => {
+    const expansion = EncodePresets.expand({ targets: ['recordedStreaming'], qualities: ['720p'] });
+    const ts = expansion.recordedTs.find(p => p.container === 'm2tsll');
+    const encoded = expansion.recordedEncoded.find(p => p.container === 'm2tsll');
+    assert.ok(ts && encoded);
+    assert.match(ts.cmd, /-i pipe:0/);
+    assert.match(encoded.cmd, /-ss %SS% -i %INPUT%/);
+    for (const profile of [ts, encoded]) {
+        assert.match(profile.cmd, /-f mpegts pipe:1/);
+        assert.match(profile.cmd, /-flags \+cgop -vf (?:yadif,)?(?:format=nv12,)?/u);
+        assert.doesNotMatch(profile.cmd, /%streamFileDir%|%OUTPUT%/);
+    }
+});
+
+test('自動生成 m2tsll の optional map 引用符は実際の起動方式と一致する', () => {
+    const software = EncodePresets.expand({ targets: ['recordedStreaming'], qualities: ['720p'] });
+    for (const profile of [...software.recordedTs, ...software.recordedEncoded]) {
+        assert.doesNotMatch(profile.cmd, /"0:(?:s\?|i:0x1ffe\?)"/u, profile.id);
+        assert.doesNotMatch(profile.cmd, /0:i:0x1ffe\?/u, profile.id);
+    }
+
+    const tsreadex = EncodePresets.expand({ targets: ['recordedStreaming'], qualities: ['720p'] }, undefined, true);
+    for (const profile of tsreadex.recordedTs) {
+        assert.match(profile.cmd, /\|/u, profile.id);
+    }
+    const tsreadexM2tsll = tsreadex.recordedTs.find(profile => profile.container === 'm2tsll');
+    assert.match(tsreadexM2tsll.cmd, /-map "0:s\?" -c:s copy/u);
+    assert.doesNotMatch(tsreadexM2tsll.cmd, /0:i:0x1ffe\?/u);
+    for (const profile of tsreadex.recordedEncoded) {
+        assert.doesNotMatch(profile.cmd, /\|/u, profile.id);
+        assert.doesNotMatch(profile.cmd, /"0:(?:s\?|i:0x1ffe\?)"/u, profile.id);
+    }
+
+    const rigaya = EncodePresets.expand({
+        hwaccel: 'qsvencc',
+        targets: ['recordedStreaming'],
+        qualities: ['720p'],
+    });
+    for (const profile of [...rigaya.recordedTs, ...rigaya.recordedEncoded]) {
+        assert.match(profile.cmd, /\|/u, profile.id);
+    }
+    const rigayaM2tsll = rigaya.recordedEncoded.find(profile => profile.container === 'm2tsll');
+    assert.match(rigayaM2tsll.cmd, /-map "0:s\?" -c:s copy/u);
+    assert.doesNotMatch(rigayaM2tsll.cmd, /0:i:0x1ffe\?/u);
 });
 
 test('hevc profiles are iOS compatible (hvc1 tag, main profile, 8bit)', () => {
@@ -511,7 +557,7 @@ test('generated cmds carry the audio track placeholders', () => {
 
     for (const profile of [...expansion.live, ...expansion.recordedTs, ...expansion.recordedEncoded]) {
         assert.match(profile.cmd, /%DUALMONOMODE%/);
-        assert.match(profile.cmd, /%AUDIOMAP%/);
+        assert.match(profile.cmd, /%AUDIOMAP%|%AUDIOSELECTMAP%/);
         // 置換前のハードコードが残っていないこと
         assert.doesNotMatch(profile.cmd, /-dual_mono_mode/);
     }

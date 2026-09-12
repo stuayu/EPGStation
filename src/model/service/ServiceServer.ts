@@ -628,7 +628,7 @@ class ServiceServer implements IServiceServer {
             },
         });
 
-        multer({ storage: storage }).single('file')(req, res, async (err: unknown) => {
+        multer({ storage: storage, defParamCharset: 'utf8' }).single('file')(req, res, async (err: unknown) => {
             if (err) {
                 // エラー時はファイルを削除
                 const filePath = path.join(this.config.uploadTempDir, fileName);

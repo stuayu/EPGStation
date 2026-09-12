@@ -7,6 +7,7 @@ const {
     estimatePlaybackBandwidthKbps,
     selectThroughputFallback,
     canAutoFallback,
+    isPlaybackThroughputSufficient,
 } = require('../../dist/util/PlaybackStallDetector');
 
 const sample = (at, currentTime, bufferedEnd, event = 'poll', playing = true) => ({
@@ -133,6 +134,17 @@ test('Resource Timing が取れないときは帯域による直接降格をし�
         ),
         { profileId: null, bandwidthKbps: null },
     );
+});
+
+test('停滞中でも観測帯域が現在画質に十分なら配信側の遅延候補になる', () => {
+    const profiles = [{ id: '1080p', videoBitrate: 3000 }];
+    const samples = [
+        { at: 1_000, bytes: 500_000, durationMs: 1_000 },
+        { at: 2_000, bytes: 500_000, durationMs: 1_000 },
+    ];
+
+    assert.equal(isPlaybackThroughputSufficient('1080p', profiles, samples, 2_000), true);
+    assert.equal(isPlaybackThroughputSufficient('1080p', profiles, samples, 2_000, 0.6), false);
 });
 
 test('明示画質を選択中は自動画質 fallback を許可しない', () => {

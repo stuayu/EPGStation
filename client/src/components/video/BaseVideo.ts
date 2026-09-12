@@ -15,6 +15,13 @@ import DPlayerEnhancer from '@/util/DPlayerEnhancer';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
 import { getPlaybackLabel } from '@/util/PlaybackLabelUtil';
 import * as apid from '../../../../api';
+import { findPlaybackUrl, requirePlaybackUrl } from '../../../../src/util/PlaybackUrlUtil';
+import {
+    PLAYBACK_BUFFER_RECOVERY_MIN_GAP_SEC,
+    PlaybackBufferedRange,
+    resolvePlaybackBufferRecoveryTarget,
+} from '../../../../src/util/PlaybackBufferRecovery';
+import { resolveRecordedJikkyoPlaybackTime } from '../../../../src/util/RecordedJikkyoSync';
 
 type QualityPlaybackSnapshot = {
     volume: number;
@@ -27,6 +34,7 @@ type QualityPlaybackSnapshot = {
 
 type PlaybackContainer = keyof apid.PlaybackProfile['modes'];
 type PlaybackQuality = DPlayerType.VideoQuality & { presetId: string; mode: number };
+const MPEGTS_PLAYBACK_RECOVERY_TIMEOUT_MS = 15_000;
 
 export interface ScreenshotRequest {
     video: HTMLVideoElement;
@@ -51,12 +59,14 @@ export default abstract class BaseVideo extends Vue {
     } | null = null;
     private qualitySwitchTraceId = 0;
     private isProgrammaticQualitySwitch: boolean = false; // 親から起こした画質切替か (ユーザー操作と区別する)
+    private pendingRecordedJikkyoPlaybackTime: number | null = null;
     private chapters: apid.VideoChapter[] = []; // 再生中ファイルのチャプター (開始位置の昇順)
     private extraHotkeyHandler: ((e: KeyboardEvent) => void) | null = null;
     private screenshotButton: HTMLElement | null = null;
     private screenshotClickHandler: ((event: MouseEvent) => void) | null = null;
     private dataBroadcastingButton: HTMLButtonElement | null = null;
     private dataBroadcastingToggleHandler: (() => void) | null = null;
+    private playbackBufferRecoveryCleanup: (() => void) | null = null;
     // play() を呼んだ後、まだ一度も 'playing' に到達していないか。
     // true のまま 'pause' へ落ちたら自動再生ブロックとみなす (onPlay / onPlaying / onPause で更新する)
     private autoplayCheckPending: boolean = false;
@@ -98,7 +108,9 @@ export default abstract class BaseVideo extends Vue {
      * @param options: DPlayerType.Options
      */
     protected createPlayer(options: DPlayerType.Options): void {
-        this.destroyPlayer();
+        // HLS のシークでは DPlayer だけ再生成する。録画実況の取得済みコメントは
+        // 再利用し、ストリーム再生成のたびに過去ログ API を再取得しない。
+        this.destroyPlayer(true);
 
         this.applyCommonPlayerOptions(options);
 
@@ -145,6 +157,11 @@ export default abstract class BaseVideo extends Vue {
                 getDuration: () => this.getDuration(),
                 getCurrentTime: () => this.getCurrentTime(),
                 setCurrentTime: (time: number, resume: boolean) => this.setCurrentTime(time, resume),
+                onSeekStarted: () => {
+                    this.beginRecordedJikkyoTransition();
+                    this.$emit('playbackTransition');
+                },
+                onSeekCompleted: (time: number) => this.completeRecordedJikkyoSeek(time),
                 getEncodedTime: () => this.getEncodedTime(),
             });
         }
@@ -158,10 +175,10 @@ export default abstract class BaseVideo extends Vue {
             });
             this.jikkyoCommentClient.start();
             this.startBroadcastTimePolling();
-        } else if (isKakologEnabled === true && jikkyoKakologOption !== null) {
+        } else if (isKakologEnabled === true && jikkyoKakologOption !== null && this.jikkyoKakologClient === null) {
             this.jikkyoKakologClient = new JikkyoKakologClient({
                 ...jikkyoKakologOption,
-                getCurrentTime: () => this.getCurrentTime(),
+                getCurrentTime: () => this.getJikkyoPlaybackTime(),
                 onComment: comment => this.drawJikkyoComment(comment),
                 onError: message => {
                     (this.dp as any)?.notice?.(message, 5000);
@@ -400,6 +417,8 @@ export default abstract class BaseVideo extends Vue {
             }
 
             this.isResolvingQuality = true;
+            this.beginRecordedJikkyoTransition();
+            this.pendingRecordedJikkyoPlaybackTime = this.getJikkyoPlaybackTime();
             this.$emit('playbackTransition');
             // フラグは呼び出し元の同期処理の間しか立たないため、ここで捕まえて非同期処理へ持ち込む
             const isProgrammatic = this.isProgrammaticQualitySwitch;
@@ -429,7 +448,8 @@ export default abstract class BaseVideo extends Vue {
                 const qualityItem = quality[mode] as PlaybackQuality;
                 const serverMode = typeof qualityItem.mode === 'number' ? qualityItem.mode : mode;
                 try {
-                    quality[mode].url = await option.resolveUrl(serverMode);
+                    const resolvedUrl = await option.resolveUrl(serverMode);
+                    quality[mode].url = requirePlaybackUrl(resolvedUrl, `quality switch mode=${serverMode}`);
                 } catch (err) {
                     console.error(err);
                     BaseVideo.logQualitySwitchTrace('failed', trace, {
@@ -439,7 +459,9 @@ export default abstract class BaseVideo extends Vue {
                     });
                     if (this.qualitySwitchTrace?.id === trace.id) this.qualitySwitchTrace = null;
                     pendingSnapshot = null;
+                    this.pendingRecordedJikkyoPlaybackTime = null;
                     this.isResolvingQuality = false;
+                    this.completeRecordedJikkyoSeek();
                     dp.notice('画質の切り替えに失敗しました', 3000);
                     // 自動 fallback 中なら親へ失敗を返し、さらに低い次候補を試せるようにする。
                     if (isProgrammatic === true) this.$emit('error', err);
@@ -455,6 +477,7 @@ export default abstract class BaseVideo extends Vue {
                         elapsedMs: Math.round(performance.now() - trace.startedAt),
                     });
                     if (this.qualitySwitchTrace?.id === trace.id) this.qualitySwitchTrace = null;
+                    this.pendingRecordedJikkyoPlaybackTime = null;
                     return;
                 }
 
@@ -467,6 +490,10 @@ export default abstract class BaseVideo extends Vue {
                 if (typeof option.onSwitched !== 'undefined') {
                     option.onSwitched(serverMode);
                 }
+
+                // DPlayer の一部経路は options.video.url を再参照するため、
+                // 切替対象へ解決した URL を quality だけでなく現在値にも同期する。
+                dp.options.video.url = quality[mode].url;
 
                 // プレイヤーの設定メニューから切り替えた場合だけ親へ知らせる
                 // (親が持つ自動画質の fallback がユーザーの選択を上書きしないようにするため)。
@@ -562,6 +589,123 @@ export default abstract class BaseVideo extends Vue {
     }
 
     /**
+     * DPlayer の video 要素を指定 URL へ切り替える。
+     * DPlayer の内部 options にも URL を同期し、後続の quality 更新で空の video.src を採用しないようにする
+     * @param video: DPlayer の切替先 video 情報
+     */
+    protected switchVideo(video: { url: string; type?: DPlayerType.VideoType | string }): void {
+        if (this.dp === null) return;
+
+        const url = requirePlaybackUrl(video.url, 'DPlayer switchVideo');
+        const dp = this.dp as any;
+        dp.options.video.url = url;
+        dp.switchVideo({ ...video, url }, false, false);
+    }
+
+    /**
+     * mpegts.js の再接続後に、再生位置が新しいバッファより手前で止まる状態を復帰する。
+     * 初回生成時は mpegts.js の StartupStallJumper に任せ、ここでは initVideo() による
+     * シーク・画質切替・音声再接続だけを対象にする。
+     */
+    protected setupMpegtsPlaybackRecovery(): void {
+        if (this.dp === null) return;
+
+        const dp = this.dp as any;
+        if (typeof dp.initVideo !== 'function') return;
+
+        const originalInitVideo = dp.initVideo.bind(dp);
+        dp.initVideo = (video: HTMLVideoElement, type: string): void => {
+            originalInitVideo(video, type);
+            if (type === 'mpegts') this.armMpegtsPlaybackRecovery(video);
+        };
+    }
+
+    /** mpegts.js の再接続後にだけ、進展のない video をバッファ先頭へ寄せる。 */
+    private armMpegtsPlaybackRecovery(video: HTMLVideoElement): void {
+        this.clearPlaybackBufferRecovery();
+        if (this.dp === null) return;
+
+        const startedAt = performance.now();
+        let lastCurrentTime = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+        let lastProgressAt = startedAt;
+        let timerId: ReturnType<typeof setTimeout> | undefined;
+        let finished = false;
+
+        const cleanup = (): void => {
+            if (finished === true) return;
+            finished = true;
+            if (typeof timerId !== 'undefined') clearTimeout(timerId);
+            video.removeEventListener('progress', check);
+            video.removeEventListener('loadeddata', check);
+            video.removeEventListener('canplay', check);
+            video.removeEventListener('playing', check);
+            if (this.playbackBufferRecoveryCleanup === cleanup) this.playbackBufferRecoveryCleanup = null;
+        };
+
+        const check = (): void => {
+            if (finished === true || this.dp === null || this.dp.video !== video) {
+                cleanup();
+                return;
+            }
+
+            const now = performance.now();
+            const currentTime = video.currentTime;
+            if (Number.isFinite(currentTime) && currentTime > lastCurrentTime + PLAYBACK_BUFFER_RECOVERY_MIN_GAP_SEC) {
+                lastCurrentTime = currentTime;
+                lastProgressAt = now;
+            }
+
+            const buffered: PlaybackBufferedRange[] = [];
+            try {
+                for (let i = 0; i < video.buffered.length; i++) {
+                    buffered.push({ start: video.buffered.start(i), end: video.buffered.end(i) });
+                }
+            } catch {
+                // SourceBuffer 更新中は TimeRanges が一時的に読めないことがある。次のイベントで再試行する。
+            }
+
+            const target = resolvePlaybackBufferRecoveryTarget(currentTime, buffered, video.readyState, now - lastProgressAt);
+            if (target !== null) {
+                const wasPaused = video.paused;
+                try {
+                    video.currentTime = target;
+                } catch {
+                    if (now - startedAt < MPEGTS_PLAYBACK_RECOVERY_TIMEOUT_MS) timerId = setTimeout(check, 250);
+                    return;
+                }
+                console.debug('[EPGStation][playback-recovery] seek to buffered start', {
+                    currentTime,
+                    target,
+                    readyState: video.readyState,
+                    stalledMs: Math.round(now - lastProgressAt),
+                });
+                cleanup();
+                if (wasPaused === false) void this.play().catch(() => undefined);
+                return;
+            }
+
+            if (now - startedAt < MPEGTS_PLAYBACK_RECOVERY_TIMEOUT_MS) {
+                timerId = setTimeout(check, 250);
+            } else {
+                cleanup();
+            }
+        };
+
+        this.playbackBufferRecoveryCleanup = cleanup;
+        video.addEventListener('progress', check);
+        video.addEventListener('loadeddata', check);
+        video.addEventListener('canplay', check);
+        video.addEventListener('playing', check);
+        check();
+    }
+
+    /** 保持中の再生位置復帰監視を停止する。 */
+    private clearPlaybackBufferRecovery(): void {
+        this.playbackBufferRecoveryCleanup?.();
+        this.playbackBufferRecoveryCleanup = null;
+    }
+
+    /**
      * playback-options API のプリセットを DPlayer の quality へ反映する。
      * 表示名はダイアログ側の画質一覧 (PlaybackQualityList) と同じ PlaybackLabelUtil で生成し、表記を揃える
      * @param profiles API が返した再生プロファイル
@@ -572,8 +716,19 @@ export default abstract class BaseVideo extends Vue {
     public setPlaybackProfiles(profiles: apid.PlaybackProfile[], container: PlaybackContainer, selectedId = 'auto', source?: apid.SourceCapabilities): void {
         if (this.dp === null || profiles.length === 0) return;
         const dp = this.dp as any;
-        const current = dp.video?.src ?? dp.options?.video?.url ?? '';
         const oldQuality = (dp.options?.video?.quality ?? []) as DPlayerType.VideoQuality[];
+        const currentQualityIndex = typeof dp.qualityIndex === 'number' ? dp.qualityIndex : 0;
+        const current = findPlaybackUrl(
+            dp.options?.video?.url,
+            oldQuality[currentQualityIndex]?.url,
+            dp.video?.currentSrc,
+            dp.video?.src,
+        );
+        if (current === null) {
+            console.error('[EPGStation][playback-url] quality list update skipped: current URL is empty');
+
+            return;
+        }
         const type = oldQuality[0]?.type ?? dp.options?.video?.type ?? 'normal';
         const qualities: PlaybackQuality[] = profiles
             .filter(profile => typeof profile.modes?.[container] === 'number')
@@ -586,6 +741,7 @@ export default abstract class BaseVideo extends Vue {
             }));
         if (qualities.length === 0) return;
         dp.options.video.quality = qualities;
+        dp.options.video.url = current;
         const selected = qualities.findIndex(item => item.presetId === selectedId);
         if (selected >= 0) {
             dp.options.video.defaultQuality = selected;
@@ -1032,10 +1188,51 @@ export default abstract class BaseVideo extends Vue {
         }
     }
 
+    /** 録画実況の表示中弾幕を消す (ライブ実況の遅延補正には触れない) */
+    private clearRecordedJikkyoDanmaku(): void {
+        this.jikkyoCommentQueue = [];
+        const danmaku = this.dp === null ? null : (this.dp as any).danmaku;
+        if (danmaku === null || typeof danmaku === 'undefined' || typeof danmaku.clear !== 'function') {
+            return;
+        }
+
+        try {
+            danmaku.clear();
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    /** 録画実況のシーク・ストリーム再生成開始を通知する */
+    protected beginRecordedJikkyoTransition(): void {
+        if (this.jikkyoKakologClient !== null) this.clearRecordedJikkyoDanmaku();
+    }
+
+    /**
+     * 録画実況のシーク確定を通知する。
+     * 表示時刻は JikkyoKakologClient 内で `videoFile.startAt + 再生位置` に統一する。
+     * @param playbackTime VirtualTimeline 上の絶対再生位置 (秒)
+     */
+    protected completeRecordedJikkyoSeek(playbackTime?: number): void {
+        if (this.jikkyoKakologClient === null) return;
+
+        const time = resolveRecordedJikkyoPlaybackTime(playbackTime ?? this.getJikkyoPlaybackTime());
+        if (time === null) return;
+
+        this.clearRecordedJikkyoDanmaku();
+        this.jikkyoKakologClient.sync(time);
+    }
+
+    /** 録画実況へ渡す再生位置。ストリーム再生成中はサブクラスが null を返す */
+    protected getJikkyoPlaybackTime(): number | null {
+        return resolveRecordedJikkyoPlaybackTime(this.getCurrentTime());
+    }
+
     /**
      * DPlayer インスタンスを破棄する
      */
-    protected destroyPlayer(): void {
+    protected destroyPlayer(preserveRecordedJikkyo: boolean = false): void {
+        this.clearPlaybackBufferRecovery();
         this.destroyExtraHotkeys();
         if (this.screenshotButton !== null && this.screenshotClickHandler !== null) {
             this.screenshotButton.removeEventListener('click', this.screenshotClickHandler, true);
@@ -1048,7 +1245,7 @@ export default abstract class BaseVideo extends Vue {
             this.jikkyoCommentClient.destroy();
             this.jikkyoCommentClient = null;
         }
-        if (this.jikkyoKakologClient !== null) {
+        if (this.jikkyoKakologClient !== null && preserveRecordedJikkyo === false) {
             this.jikkyoKakologClient.destroy();
             this.jikkyoKakologClient = null;
         }
@@ -1056,6 +1253,7 @@ export default abstract class BaseVideo extends Vue {
 
         this.isResolvingQuality = false;
         this.pendingQualityPlaybackReady = null;
+        this.pendingRecordedJikkyoPlaybackTime = null;
         this.qualitySwitchTrace = null;
 
         if (this.virtualTimeline !== null) {
@@ -1246,6 +1444,12 @@ export default abstract class BaseVideo extends Vue {
         const onPlaybackReady = this.pendingQualityPlaybackReady;
         this.pendingQualityPlaybackReady = null;
         onPlaybackReady?.();
+        // 画質切替はストリーム再生成を伴うため、timeupdate を待たずに実況 index を貼り替える。
+        const recordedPlaybackTime = this.pendingRecordedJikkyoPlaybackTime;
+        this.pendingRecordedJikkyoPlaybackTime = null;
+        if (recordedPlaybackTime !== null) {
+            this.completeRecordedJikkyoSeek(recordedPlaybackTime);
+        }
         this.$emit('canplay');
     }
 
@@ -1412,7 +1616,10 @@ export default abstract class BaseVideo extends Vue {
             return;
         }
 
+        this.$emit('playbackTransition');
+        this.beginRecordedJikkyoTransition();
         this.dp.seek(time, true);
+        this.completeRecordedJikkyoSeek();
     }
 
     /**

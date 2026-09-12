@@ -15,6 +15,7 @@ export default interface IStreamApiModel {
     startLiveHLSStream(option: apid.LiveStreamOption): Promise<apid.StreamId>;
     startRecordedWebMStream(option: apid.RecordedStreamOption): Promise<StreamResponse>;
     startRecordedMp4Stream(option: apid.RecordedStreamOption): Promise<StreamResponse>;
+    startRecordedM2TsLLStream(option: apid.RecordedStreamOption): Promise<StreamResponse>;
     startRecordedHLSStream(option: apid.RecordedStreamOption): Promise<apid.StreamId>;
     getLiveM2TsStreamM3u8(host: string, isSecure: boolean, option: apid.LiveStreamOption): Promise<IPlayList | null>;
     stop(streamId: apid.StreamId, isForce?: boolean): Promise<void>;

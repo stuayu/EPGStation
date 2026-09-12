@@ -23,7 +23,7 @@ export const classifySource = (capabilities: SourceCapabilities, channelType?: s
     }
     if (
         capabilities.codec === 'mpeg2' &&
-        capabilities.scan === 'interlaced' &&
+        (capabilities.scan === 'interlaced' || capabilities.scan === 'unknown') &&
         capabilities.height !== undefined &&
         capabilities.height <= 1080
     ) {

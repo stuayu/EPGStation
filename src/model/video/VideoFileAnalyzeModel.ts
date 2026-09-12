@@ -11,10 +11,13 @@ import IChannelDB from '../db/IChannelDB';
 import IRecordedDB, { RecordedProgramUpdateValues } from '../db/IRecordedDB';
 import IVideoFileDB from '../db/IVideoFileDB';
 import IVideoFileTsInfoDB from '../db/IVideoFileTsInfoDB';
+import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
+import { resolveRecordingTimingConfig } from '../operator/recording/RecordingTimingConfig';
 import ITsInfoAnalyzer, { TsInfo } from '../recorded/ts/ITsInfoAnalyzer';
 import TsPlaybackTimeResolver, { TsPlaybackTimeInfo } from '../recorded/ts/TsPlaybackTimeResolver';
+import resolveVideoStartAt from '../../util/VideoStartAtResolver';
 import IVideoFileAnalyzeModel, { TsInfoApplyOption } from './IVideoFileAnalyzeModel';
 
 /**
@@ -48,6 +51,7 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
     private channelDB: IChannelDB;
     private log: ILogger | null;
     private affiliationCollector: IBroadcastAffiliationCollector | null;
+    private configuration: IConfiguration | null;
 
     constructor(
         @inject('IVideoFileDB') videoFileDB: IVideoFileDB,
@@ -58,6 +62,7 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('ILoggerModel') logger?: ILoggerModel,
         @inject('IBroadcastAffiliationCollector') affiliationCollector?: IBroadcastAffiliationCollector,
+        @inject('IConfiguration') configuration?: IConfiguration,
     ) {
         this.videoFileDB = videoFileDB;
         this.videoFileTsInfoDB = videoFileTsInfoDB;
@@ -67,6 +72,7 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
         this.channelDB = channelDB;
         this.log = typeof logger === 'undefined' ? null : logger.getLogger();
         this.affiliationCollector = typeof affiliationCollector === 'undefined' ? null : affiliationCollector;
+        this.configuration = typeof configuration === 'undefined' ? null : configuration;
     }
 
     /**
@@ -541,17 +547,32 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
             return null;
         }
 
-        if (duration > 0) {
-            try {
-                const stats = await fs.stat(filePath);
-
-                return Math.round(stats.mtimeMs - duration * 1000);
-            } catch (err: any) {
-                // stat に失敗した場合は番組開始時刻へフォールバックする
-            }
+        const associatedStartAt = (recorded?.videoFiles ?? [])
+            .filter(file => file.id !== video.id && Number.isFinite(Number(file.startAt)))
+            .sort((a, b) => (a.type === 'ts' ? 0 : 1) - (b.type === 'ts' ? 0 : 1))[0]?.startAt;
+        const config = this.configuration?.getConfig();
+        const timing =
+            config === undefined
+                ? null
+                : resolveRecordingTimingConfig(
+                      config.recording,
+                      config.timeSpecifiedStartMargin,
+                      config.timeSpecifiedEndMargin,
+                  );
+        let fileMtimeMs: number | null = null;
+        try {
+            fileMtimeMs = (await fs.stat(filePath)).mtimeMs;
+        } catch (err: any) {
+            // stat に失敗しても recorded の開始時刻を使える
         }
 
-        return recorded === null ? null : Number(recorded.startAt);
+        return resolveVideoStartAt({
+            associatedStartAt: associatedStartAt === undefined ? null : Number(associatedStartAt),
+            recordedStartAt: recorded === null ? null : Number(recorded.startAt),
+            recordingStartMarginMs: timing?.startMarginMs,
+            fileMtimeMs: fileMtimeMs,
+            durationSec: duration,
+        });
     }
 
     /**

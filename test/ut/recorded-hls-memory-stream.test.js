@@ -10,6 +10,7 @@ const { EventEmitter } = require('node:events');
 const { PassThrough } = require('node:stream');
 
 const RecordedHLSStreamModel = require('../../dist/model/service/stream/RecordedHLSStreamModel').default;
+const RecordedStreamModel = require('../../dist/model/service/stream/RecordedStreamModel').default;
 const HLSMemoryStoreModel = require('../../dist/model/service/stream/util/HLSMemoryStoreModel').default;
 
 // 録画済み HLS 配信の in-memory / ディスク方式の切り替えを検証するテスト。
@@ -112,12 +113,14 @@ function makeModel({
     streamFilePath,
     videoFileType = 'encoded',
     videoFilePath = '/fake/video.mp4',
+    streamModel = RecordedHLSStreamModel,
     hlsMemoryStore = new HLSMemoryStoreModel(logger),
+    sourceAnalyzer,
 }) {
     const processManager = makeProcessManager();
     const fileDeleter = makeFileDeleter();
 
-    const model = new RecordedHLSStreamModel(
+    const model = new streamModel(
         makeConfig(streamFilePath),
         logger,
         processManager,
@@ -127,10 +130,116 @@ function makeModel({
         recordedDB,
         makeVideoUtil(videoFilePath),
         hlsMemoryStore,
+        sourceAnalyzer,
     );
 
     return { model, processManager, fileDeleter, hlsMemoryStore };
 }
+
+test('録画の自動生成 cmd は配信開始時の progressive 素材情報で yadif を除去する', async () => {
+    await withStubbedFfprobe(async () => {
+        const streamFilePath = fs.mkdtempSync(path.join(os.tmpdir(), 'epg-recorded-deinterlace-'));
+        const modelData = makeModel({
+            streamFilePath,
+            sourceAnalyzer: {
+                analyzeRecordedFile: async () => ({
+                    codec: 'hevc',
+                    scan: 'unknown',
+                    fieldOrder: 'unknown',
+                    frameRate: 59.94,
+                    transport: 'mpegts',
+                    hdr: 'sdr',
+                    sourceClass: 'generic',
+                    confidence: 'high',
+                }),
+            },
+            streamModel: RecordedStreamModel,
+        });
+
+        modelData.model.setOption(
+            {
+                videoFileId: 1,
+                playPosition: 0,
+                container: 'm2tsll',
+                cmd: '%FFMPEG% -ss %SS% -i %INPUT% -vf %DEINTERLACE%,scale=-2:720 -f mpegts pipe:1',
+            },
+            0,
+        );
+        await modelData.model.start(1);
+
+        assert.doesNotMatch(modelData.processManager.calls[0].cmd, /yadif/u);
+        assert.match(modelData.processManager.calls[0].cmd, /-vf scale=-2:720/u);
+
+        await modelData.model.stop();
+        fs.rmSync(streamFilePath, { recursive: true, force: true });
+    });
+});
+
+test('TS入力のm2tsllは入力側ID3 mapを使わず出力側Transformへ字幕を渡す', async () => {
+    await withStubbedFfprobe(async () => {
+        const streamFilePath = fs.mkdtempSync(path.join(os.tmpdir(), 'epg-recorded-m2tsll-'));
+        const videoFilePath = path.join(streamFilePath, 'dummy.ts');
+        fs.writeFileSync(videoFilePath, Buffer.from('hello-ts-data-without-id3-header'));
+
+        const { model } = makeModel({
+            streamFilePath,
+            videoFileType: 'ts',
+            videoFilePath,
+            streamModel: RecordedStreamModel,
+        });
+        model.setOption(
+            {
+                videoFileId: 1,
+                playPosition: 0,
+                container: 'm2tsll',
+                cmd: '%FFMPEG% -i pipe:0 -map 0:v:0 -map 0:a:0 -map 0:s? -c:s copy -f mpegts pipe:1',
+            },
+            0,
+        );
+
+        await model.start(1);
+
+        assert.equal(model.id3MetadataTransoform, null);
+        assert.notEqual(model.id3OutputTransform, null);
+        assert.equal(model.getStream(), model.id3OutputTransform);
+
+        await model.stop();
+        assert.equal(model.id3OutputTransform, null);
+        fs.rmSync(streamFilePath, { recursive: true, force: true });
+    });
+});
+
+test('encodedのm2tsllはTS入力用の出力側ID3 Transformを使わない', async () => {
+    await withStubbedFfprobe(async () => {
+        const streamFilePath = fs.mkdtempSync(path.join(os.tmpdir(), 'epg-recorded-m2tsll-'));
+        const videoFilePath = path.join(streamFilePath, 'dummy.mp4');
+        fs.writeFileSync(videoFilePath, Buffer.from('encoded-data'));
+
+        const { model } = makeModel({
+            streamFilePath,
+            videoFileType: 'encoded',
+            videoFilePath,
+            streamModel: RecordedStreamModel,
+        });
+        model.setOption(
+            {
+                videoFileId: 1,
+                playPosition: 0,
+                container: 'm2tsll',
+                cmd: '%FFMPEG% -ss %SS% -i %INPUT% -map 0:v:0 -map 0:a:0 -map 0:s? -c:s copy -f mpegts pipe:1',
+            },
+            0,
+        );
+
+        await model.start(1);
+
+        assert.equal(model.id3MetadataTransoform, null);
+        assert.equal(model.id3OutputTransform, null);
+
+        await model.stop();
+        fs.rmSync(streamFilePath, { recursive: true, force: true });
+    });
+});
 
 test('cmd に %streamFileDir% を含まない場合は in-memory モードで配信し、ディスクを使わない', async () => {
     await withStubbedFfprobe(async () => {

@@ -6,6 +6,7 @@ import {
     selectEncoder,
     StreamEncoderCapability,
 } from '../../../util/StreamArgsUtil';
+import { recordedStreamPacingArgs } from '../../../util/RecordedStreamPacing';
 import { SourceCapabilities } from '../capability/ISourceCapabilities';
 import { StreamPreset } from '../preset/IStreamPreset';
 import IRecordedCommandBuilder from './IRecordedCommandBuilder';
@@ -24,15 +25,16 @@ export default class RecordedCommandBuilder implements IRecordedCommandBuilder {
         preset: StreamPreset,
         encoders: readonly StreamEncoderCapability[],
     ): string {
+        const pacing = recordedStreamPacingArgs();
         if (preset.output.codec === 'copy') {
-            return '%FFMPEG% %DUALMONOMODE% -ss %SS% -i %INPUT% -c copy -tag:v hvc1 -f mpegts pipe:1';
+            return `%FFMPEG% %DUALMONOMODE% ${pacing} -ss %SS% -i %INPUT% -c copy -tag:v hvc1 -f mpegts pipe:1`;
         }
 
         const audio = buildFfmpegAudioArgs(preset);
         const encoder = selectEncoder(source, preset, encoders);
         if (encoder.kind === 'ffmpeg') {
             return (
-                `%FFMPEG% %DUALMONOMODE% -ss %SS% -i %INPUT% -sn ${audio} ` +
+                `%FFMPEG% %DUALMONOMODE% ${pacing} -ss %SS% -i %INPUT% -sn ${audio} ` +
                 `${buildFfmpegVideoArgs(source, preset, 'recorded')} -f mpegts pipe:1`
             );
         }
@@ -49,7 +51,7 @@ export default class RecordedCommandBuilder implements IRecordedCommandBuilder {
         return (
             `${bin} --seek %SS% -i %INPUT% ${buildRigayaVideoArgs(source, preset, encoder, 'recorded', true)} ` +
             `--audio-copy --output-format mpegts -o - | ` +
-            `%FFMPEG% %DUALMONOMODE% -i pipe:0 -sn -c:v copy${source.codec === 'hevc' ? ' -tag:v hvc1' : ''} ` +
+            `%FFMPEG% %DUALMONOMODE% ${pacing} -i pipe:0 -sn -c:v copy${source.codec === 'hevc' ? ' -tag:v hvc1' : ''} ` +
             `${audio} -f mpegts pipe:1`
         );
     }

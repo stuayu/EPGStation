@@ -899,7 +899,7 @@ export interface M2TSStreamParam {
     isUnconverted: boolean; // 無変換か
 }
 
-// 配信コンテナ種別 (LL-HLS は別フェーズで追加予定のためまだ含めない)
+// 配信コンテナ種別 (m2tsll は mpegts.js 向け低遅延 MPEG-TS)
 export type StreamContainer = 'm2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls';
 
 export interface StreamVideoParam {
@@ -1021,11 +1021,13 @@ export interface Config {
                 webm?: string[];
                 mp4?: string[];
                 hls?: string[];
+                m2tsll?: string[];
             };
             encoded?: {
                 webm?: string[];
                 mp4?: string[];
                 hls?: string[];
+                m2tsll?: string[];
             };
         };
     };
@@ -1251,7 +1253,7 @@ export interface AddManualEncodeProgramOption {
 /**
  * 再生する音声トラックの指定子
  * 'main' = 主音声 (既定) / 'sub' = デュアルモノラルの副音声 / 数字文字列 = 音声 ES のインデックス /
- * 'all' = 主音声・副音声を両方含める (tsreadex 正規化済みの m2tsll のみ有効。それ以外は 'main' と同じ扱い)
+ * 'all' = 主音声・副音声を両方含める (tsreadex 正規化済みの m2tsll で有効。それ以外は 'main' と同じ扱い)
  */
 export type AudioTrackSpecifier = string;
 
@@ -1267,7 +1269,7 @@ export interface LiveStreamOption {
 
 export interface RecordedStreamOption {
     videoFileId: VideoFileId;
-    playPosition: number; // 再生位置 (秒。小数可)
+    playPosition: number; // 再生位置 (秒。小数可。ストリーム開始時に0以上の整数秒へ切り捨て)
     mode?: number; // config 設定 (旧形式 index)。profile 未指定時は必須
     profile?: string; // config 設定 (新形式 StreamProfile.id)。指定時は mode より優先される
     audioTrack?: AudioTrackSpecifier; // 再生する音声トラック (省略時は主音声)

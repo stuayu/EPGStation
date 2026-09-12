@@ -62,6 +62,10 @@ export default class RecordedDetailSelectStreamState implements IRecordedDetailS
                     this.streamTypeItems.push('HLS');
                     this.streamConfig['HLS'] = ts.hls;
                 }
+                if (typeof ts.m2tsll !== 'undefined' && ts.m2tsll.length > 0) {
+                    this.streamTypeItems.push('M2TS-LL');
+                    this.streamConfig['M2TS-LL'] = ts.m2tsll;
+                }
             } else if (videoFile.type === 'encoded' && config.isEnableEncodedRecordedStream === true && typeof encoded !== 'undefined') {
                 // webm
                 if (typeof encoded.webm !== 'undefined' && encoded.webm.length > 0) {
@@ -79,6 +83,10 @@ export default class RecordedDetailSelectStreamState implements IRecordedDetailS
                 if (typeof encoded.hls !== 'undefined' && encoded.hls.length > 0) {
                     this.streamTypeItems.push('HLS');
                     this.streamConfig['HLS'] = encoded.hls;
+                }
+                if (typeof encoded.m2tsll !== 'undefined' && encoded.m2tsll.length > 0) {
+                    this.streamTypeItems.push('M2TS-LL');
+                    this.streamConfig['M2TS-LL'] = encoded.m2tsll;
                 }
             } else {
                 // ビデオの形式に適したストリーミングの設定が存在しない

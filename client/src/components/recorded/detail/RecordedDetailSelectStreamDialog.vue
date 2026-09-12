@@ -62,6 +62,7 @@ const STREAM_TYPE_CONTAINERS: { [key in RecordedStreamType]: Exclude<apid.Playba
     WebM: 'webm',
     MP4: 'mp4',
     HLS: 'hls',
+    'M2TS-LL': 'm2tsll',
 };
 
 @Component({ components: { PlaybackQualityList } })

@@ -6,6 +6,7 @@ import IConfigFile, {
     EncodeQuality,
     StreamProfile,
 } from '../model/IConfigFile';
+import { recordedStreamPacingArgs } from './RecordedStreamPacing';
 
 // StreamProfileManageModel.TSREADEX_COMMAND と同じ値。
 // StreamProfileManageModel は @injectable() (inversify) クラスなので、DI コンテナを介さない
@@ -316,6 +317,9 @@ namespace EncodePresets {
         const bufsize = videoBitrate * 2;
         const isHevc = codec === 'hevc';
         const hvc1 = isHevc ? ' -tag:v hvc1' : '';
+        // qsv / vaapi は buildVideoFilter() の format=nv12 で 8bit 化する。
+        // software / nvenc はフィルタだけでは入力の bit depth が残るため、H.264 出力時に明示する。
+        const h264PixelFormat = codec === 'h264' && (hwaccel === 'software' || hwaccel === 'nvenc') ? ' -pix_fmt yuv420p' : '';
         const rate = `-b:v ${videoBitrate}k -maxrate ${videoBitrate}k -bufsize ${bufsize}k`;
 
         switch (hwaccel) {
@@ -328,7 +332,7 @@ namespace EncodePresets {
                 const tuning = lowLatency
                     ? '-preset p3 -tune ll -rc cbr -bf 0 -zerolatency 1 -no-scenecut 1'
                     : '-preset p5 -tune hq -rc vbr -bf 0 -no-scenecut 1';
-                return `${rate}${profileLevel} ${tuning} -g 30 -keyint_min 30${hvc1}`;
+                return `${rate}${profileLevel}${h264PixelFormat} ${tuning} -g 30 -keyint_min 30${hvc1}`;
             }
             case 'qsv': {
                 const profilePart = isHevc ? ` -profile:v ${hevcProfile()}` : ` -profile:v ${h264Profile(height)}`;
@@ -656,6 +660,7 @@ namespace EncodePresets {
             return (
                 tsreadexPrefix +
                 `${prefix} %FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 5000000 -fflags nobuffer ` +
+                `${recordedStreamPacingArgs()} ` +
                 `-i pipe:0 -flags low_delay -sn -threads 0 -max_muxing_queue_size 1024 -max_interleave_delta 1 ` +
                 `-c:v copy${buildHvc1TagOption(codec)} %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER% ` +
                 `-movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000 -y -f mp4 pipe:1`
@@ -676,7 +681,7 @@ namespace EncodePresets {
         return (
             tsreadexPrefix +
             `%FFMPEG% %DUALMONOMODE% -fflags nobuffer -analyzeduration 500000 -probesize 5000000 ` +
-            `${vaapiDeviceOption(hwaccel)}${input} -flags low_delay -sn -threads 0 -max_muxing_queue_size 1024 ` +
+            `${recordedStreamPacingArgs()} ${vaapiDeviceOption(hwaccel)}${input} -flags low_delay -sn -threads 0 -max_muxing_queue_size 1024 ` +
             `-max_interleave_delta 1 %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER% ` +
             `-vf ${vf} -c:v ${ffCodec} ${codecOpts} -flags +cgop ` +
             `-movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000 -y -f mp4 pipe:1`
@@ -764,6 +769,80 @@ namespace EncodePresets {
             // (codecOpts の -g 30 を後ろから上書きする)
             `-g ${RECORDED_HLS_GOP_FRAMES} -keyint_min ${RECORDED_HLS_GOP_FRAMES} ` +
             `-movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`
+        );
+    };
+
+    /**
+     * 録画 M2TS-LL (mpegts.js 向け低遅延 MPEG-TS) 用コマンドを組み立てる。
+     * TS は RecordedStreamBaseModel が stdin へ流し、encoded は %SS% 付きでファイルを読む。
+     * どちらもディスクへ出力しない。tsreadex 使用時の ARIB 字幕 ID3 は出力側で付け直す。
+     */
+    const buildRecordedM2TsLLCmd = (
+        scope: EncodeTargetKind,
+        hwaccel: EncodeHwAccel,
+        codec: EncodeCodec,
+        height: number,
+        videoBitrate: number,
+        audioBitrate: number,
+        execPaths?: RigayaExecPaths,
+        withTsreadex: boolean = false,
+    ): string => {
+        const isTs = scope === 'ts';
+        const tsreadexPrefix = buildTsreadexPipePrefix(withTsreadex === true && isTs === true);
+        // EncodeProcessManageModel はパイプラインだけをシェル経由で起動する。
+        // tsreadex または rigaya のパイプがある場合だけ `?` を引用する。
+        const useShell = (withTsreadex === true && isTs === true) || isRigayaHwAccel(hwaccel);
+        const subtitleMap = `-map ${useShell === true ? '"0:s?"' : '0:s?'}`;
+        // ID3 timed metadata は m2tsll の入力側へ map しない。TS 入力では
+        // RecordedStreamBaseModel が ffmpeg の stdout 側へ字幕から付け直す。
+        const map = `-map 0:v:0 %AUDIOSELECTMAP% ${subtitleMap}`;
+        const subtitleCopy = '-c:s copy';
+        const inputAnalysis =
+            withTsreadex === true && isTs === true
+                ? '-analyzeduration 200000 -probesize 200000'
+                : '-analyzeduration 500000 -probesize 500000';
+
+        if (isRigayaHwAccel(hwaccel)) {
+            const inputSpec = isTs ? '-i - --input-format mpegts' : '--seek %SS% -i %INPUT%';
+            const prefix = buildRigayaPipelinePrefix(
+                hwaccel,
+                codec,
+                height,
+                videoBitrate,
+                isTs,
+                isTs ? TUNING_RECORDING : TUNING_RECORDED_HLS,
+                inputSpec,
+                execPaths,
+            );
+
+            return (
+                tsreadexPrefix +
+                `${prefix} %FFMPEG% %DUALMONOMODE% -f mpegts ${inputAnalysis} -fflags nobuffer ` +
+                `${recordedStreamPacingArgs()} -i pipe:0 ` +
+                `${map} ${subtitleCopy} -flags low_delay -ignore_unknown -max_delay 250000 ` +
+                `-max_interleave_delta 1 -threads 0 -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER% ` +
+                `-c:v copy${buildHvc1TagOption(codec)} -y -f mpegts pipe:1`
+            );
+        }
+
+        const ffCodec = CODEC_NAME[hwaccel][codec];
+        const vf = buildVideoFilter(hwaccel, height, isTs);
+        const codecOpts = buildVideoCodecOptions(
+            hwaccel,
+            codec,
+            height,
+            videoBitrate,
+            (isTs ? TUNING_RECORDING : TUNING_RECORDED_HLS).lowLatency,
+        );
+        const input = isTs ? '-i pipe:0' : '-ss %SS% -i %INPUT%';
+
+        return (
+            tsreadexPrefix +
+            `%FFMPEG% %DUALMONOMODE% -f mpegts ${inputAnalysis} -fflags nobuffer ${recordedStreamPacingArgs()} ` +
+            `${vaapiDeviceOption(hwaccel)}${input} ` +
+            `${map} ${subtitleCopy} -flags low_delay -ignore_unknown -max_delay 250000 -max_interleave_delta 1 -threads 0 ` +
+            `-c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER% ` +
+            `-c:v ${ffCodec} ${codecOpts} -flags +cgop -vf ${vf} -y -f mpegts pipe:1`
         );
     };
 
@@ -862,6 +941,23 @@ namespace EncodePresets {
                             withTsreadex,
                         ),
                     });
+                    result.recordedTs.push({
+                        id: `preset-recorded-ts-m2tsll-${hwaccel}-${codec}-${quality}`,
+                        name,
+                        container: 'm2tsll',
+                        video: { codec: CODEC_NAME[hwaccel][codec], height, bitrate: videoBitrate },
+                        audio: { codec: 'aac', bitrate: audioBitrate },
+                        cmd: buildRecordedM2TsLLCmd(
+                            'ts',
+                            hwaccel,
+                            codec,
+                            height,
+                            videoBitrate,
+                            audioBitrate,
+                            execPaths,
+                            withTsreadex,
+                        ),
+                    });
                     result.recordedEncoded.push({
                         id: `preset-recorded-encoded-mp4-${hwaccel}-${codec}-${quality}`,
                         name,
@@ -885,6 +981,22 @@ namespace EncodePresets {
                         video: { codec: CODEC_NAME[hwaccel][codec], height, bitrate: videoBitrate },
                         audio: { codec: 'aac', bitrate: audioBitrate },
                         cmd: buildRecordedHlsCmd(
+                            'encoded',
+                            hwaccel,
+                            codec,
+                            height,
+                            videoBitrate,
+                            audioBitrate,
+                            execPaths,
+                        ),
+                    });
+                    result.recordedEncoded.push({
+                        id: `preset-recorded-encoded-m2tsll-${hwaccel}-${codec}-${quality}`,
+                        name,
+                        container: 'm2tsll',
+                        video: { codec: CODEC_NAME[hwaccel][codec], height, bitrate: videoBitrate },
+                        audio: { codec: 'aac', bitrate: audioBitrate },
+                        cmd: buildRecordedM2TsLLCmd(
                             'encoded',
                             hwaccel,
                             codec,

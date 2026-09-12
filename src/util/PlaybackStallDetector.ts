@@ -50,10 +50,35 @@ export interface PlaybackThroughputDecision {
 export const canAutoFallback = (autoPlayback: boolean, isNormalVideo: boolean): boolean =>
     autoPlayback === true && isNormalVideo === false;
 
-interface ThroughputProfile {
+export interface ThroughputProfile {
     id: string;
     videoBitrate?: number;
 }
+
+/**
+ * 現在の映像 bitrate を、観測した帯域で安全に維持できるか判定する。
+ * 停滞中でも帯域が十分なら、回線ではなく配信側のエンコード遅延を疑う材料になる。
+ * @param currentId: string 現在のプリセット識別子
+ * @param profiles: ThroughputProfile[] プリセットと映像 bitrate
+ * @param samples: PlaybackThroughputSample[] 取得実績
+ * @param now: number 判定時刻 (ms)
+ * @param safetyFactor: number 帯域に対する安全率
+ * @return boolean
+ */
+export const isPlaybackThroughputSufficient = (
+    currentId: string,
+    profiles: readonly ThroughputProfile[],
+    samples: readonly PlaybackThroughputSample[],
+    now: number,
+    safetyFactor = 0.75,
+): boolean => {
+    if (safetyFactor <= 0 || safetyFactor > 1) return false;
+
+    const bandwidthKbps = estimatePlaybackBandwidthKbps(samples, now);
+    const currentBitrate = profiles.find(profile => profile.id === currentId)?.videoBitrate;
+
+    return bandwidthKbps !== null && typeof currentBitrate === 'number' && bandwidthKbps * safetyFactor >= currentBitrate;
+};
 
 const DEFAULT_OPTIONS: Required<PlaybackStallDetectorOptions> = {
     // 30 秒は、ライブの通常のパート境界待ちを単発の回線揺らぎと分離する観測窓。

@@ -13,6 +13,7 @@ import {
 } from '../../service/stream/base/IRecordedStreamBaseModel';
 import IStreamManageModel from '../../service/stream/manager/IStreamManageModel';
 import IStreamProfileManageModel, { StreamProfileKind } from '../../stream/IStreamProfileManageModel';
+import { normalizeStreamPlayPosition } from '../../../util/StreamPlayPosition';
 import IApiUtil from '../IApiUtil';
 import IPlayList from '../IPlayList';
 import IStreamApiModel, { StreamResponse } from './IStreamApiModel';
@@ -293,7 +294,7 @@ export default class StreamApiModel implements IStreamApiModel {
         stream.setOption(
             {
                 videoFileId: option.videoFileId,
-                playPosition: option.playPosition,
+                playPosition: normalizeStreamPlayPosition(option.playPosition),
                 cmd: resolved.cmd,
                 audioTrack: option.audioTrack,
             },
@@ -322,7 +323,7 @@ export default class StreamApiModel implements IStreamApiModel {
         stream.setOption(
             {
                 videoFileId: option.videoFileId,
-                playPosition: option.playPosition,
+                playPosition: normalizeStreamPlayPosition(option.playPosition),
                 cmd: resolved.cmd,
                 audioTrack: option.audioTrack,
             },
@@ -339,6 +340,29 @@ export default class StreamApiModel implements IStreamApiModel {
     }
 
     /**
+     * m2ts Low Latency (mpegts.js 用) 形式の録画ストリーミングを開始する
+     * @param option: apid.RecordedStreamOption
+     * @return Promise<StreamResponse>
+     */
+    public async startRecordedM2TsLLStream(option: apid.RecordedStreamOption): Promise<StreamResponse> {
+        const resolved = await this.getRecordedVideoConfig('m2tsll', option);
+        const stream = await this.recordedStreamProvider();
+        stream.setOption(
+            {
+                videoFileId: option.videoFileId,
+                playPosition: normalizeStreamPlayPosition(option.playPosition),
+                cmd: resolved.cmd,
+                container: 'm2tsll',
+                audioTrack: option.audioTrack,
+            },
+            resolved.displayMode,
+        );
+        const streamId = await this.streamManageModel.start(stream);
+
+        return { streamId: streamId, stream: stream.getStream() };
+    }
+
+    /**
      * HLS 形式の Recorded streaming を開始する
      * @param option: apid.LiveStreamOption
      * @return Promise<apid.StreamId>
@@ -351,7 +375,7 @@ export default class StreamApiModel implements IStreamApiModel {
         stream.setOption(
             {
                 videoFileId: option.videoFileId,
-                playPosition: option.playPosition,
+                playPosition: normalizeStreamPlayPosition(option.playPosition),
                 cmd: resolved.cmd,
                 audioTrack: option.audioTrack,
             },
@@ -365,12 +389,12 @@ export default class StreamApiModel implements IStreamApiModel {
     /**
      * 録画済みビデオの配信プリセットを解決し stream コマンドを取り出す
      * ソースがエンコード済みか (recorded.encoded) 元 TS か (recorded.ts) で参照先を切り替える
-     * @param type: 'webm' | 'mp4' | 'hls'
+     * @param type: 'webm' | 'mp4' | 'm2tsll' | 'hls'
      * @param option apid.RecordedStreamOption
      * @return Promise<RecordedStreamConfig>
      */
     private async getRecordedVideoConfig(
-        type: 'webm' | 'mp4' | 'hls',
+        type: 'webm' | 'mp4' | 'm2tsll' | 'hls',
         option: apid.RecordedStreamOption,
     ): Promise<RecordedStreamConfig> {
         const isEncodedVideo = await this.isEncodedVideo(option.videoFileId);

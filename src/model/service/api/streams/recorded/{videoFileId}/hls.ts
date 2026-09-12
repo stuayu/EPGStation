@@ -2,6 +2,7 @@ import { Operation } from 'express-openapi';
 import IStreamApiModel from '../../../../../api/stream/IStreamApiModel';
 import container from '../../../../../ModelContainer';
 import * as api from '../../../../api';
+import { normalizeStreamPlayPosition } from '../../../../../../util/StreamPlayPosition';
 
 export const get: Operation = async (req, res) => {
     const streamApiModel = container.get<IStreamApiModel>('IStreamApiModel');
@@ -14,7 +15,7 @@ export const get: Operation = async (req, res) => {
     try {
         const streamId = await streamApiModel.startRecordedHLSStream({
             videoFileId: api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'),
-            playPosition: Number(req.query.ss),
+            playPosition: normalizeStreamPlayPosition(req.query.ss),
             mode: streamOption.mode,
             profile: streamOption.profile,
             audioTrack: streamOption.audioTrack,

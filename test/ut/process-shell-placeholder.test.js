@@ -50,11 +50,31 @@ test('プレースホルダが複数あればすべて置換する', () => {
 });
 
 test('プレースホルダが無ければコマンドはそのまま', () => {
-    assert.equal(ProcessUtil.replaceShellPlaceholder('ffmpeg -i pipe:0 | cat', '%INPUT%', 'x'), 'ffmpeg -i pipe:0 | cat');
+    assert.equal(
+        ProcessUtil.replaceShellPlaceholder('ffmpeg -i pipe:0 | cat', '%INPUT%', 'x'),
+        'ffmpeg -i pipe:0 | cat',
+    );
+});
+
+test('直接 spawn の引数では外側引用符を除去する', () => {
+    const parsed = ProcessUtil.parseCmdStr(`${process.execPath} -map "0:s?" -map '0:i:0x1ffe?'`);
+
+    assert.deepEqual(parsed.args, ['-map', '0:s?', '-map', '0:i:0x1ffe?']);
+});
+
+test('シェル経由の cmd では glob 文字を引用符付きで保持する', () => {
+    const cmd = 'ffmpeg -map "0:s?" -map "0:i:0x1ffe?" -f mpegts pipe:1 | cat';
+
+    assert.match(cmd, /-map "0:s\?" -map "0:i:0x1ffe\?"/);
+});
+
+test('音声 pan フィルタ内の | はシェルパイプと判定しない', () => {
+    assert.equal(ProcessUtil.hasShellPipeline('ffmpeg -af "pan=stereo|c0=c1|c1=c1" -f mp4 pipe:1'), false);
+    assert.equal(ProcessUtil.hasShellPipeline('tsreadex - | ffmpeg -i pipe:0 -f mp4 pipe:1'), true);
 });
 
 if (isWin === false) {
-    test("sh ではシングルクォート自身も安全にエスケープする", () => {
+    test('sh ではシングルクォート自身も安全にエスケープする', () => {
         assert.equal(ProcessUtil.quoteShellArg("it's.ts"), `'it'\\''s.ts'`);
     });
 

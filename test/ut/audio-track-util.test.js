@@ -19,8 +19,19 @@ test('音声フィルタはブースト倍率へ置換され、1.0 では空に�
 test('未指定なら主音声 (dual_mono_mode main) で -map を付けない', () => {
     assert.equal(
         AudioTrackUtil.replacePlaceholders(CMD, undefined),
-        '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn  -c:a aac -f mp4 pipe:1',
+        '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -c:a aac -f mp4 pipe:1',
     );
+});
+
+test('空の音声プレースホルダは余分な空白を残さない', () => {
+    const cmd = AudioTrackUtil.replacePlaceholders(
+        '%FFMPEG% %DUALMONOMODE% -i pipe:0 -sn  %AUDIOMAP%  -c:a aac %AUDIOFILTER% -f mp4 pipe:1',
+        'main',
+        1,
+        'encoded',
+    );
+
+    assert.equal(cmd, '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -c:a aac -f mp4 pipe:1');
 });
 
 test("'main' は未指定と同じ扱いになる", () => {
@@ -49,13 +60,13 @@ test('encoded の副音声だけ pan を追加し、主音声はステレオを�
     const sub = AudioTrackUtil.replacePlaceholders(FILTER_CMD, 'sub', 2, 'encoded');
     assert.doesNotMatch(main, /pan=/);
     assert.match(sub, /-dual_mono_mode main/);
-    assert.match(sub, /-af pan=stereo\|c0=c1\|c1=c1,volume=2/);
+    assert.match(sub, /-af "pan=stereo\|c0=c1\|c1=c1,volume=2"/);
     assert.equal((sub.match(/(?:^| )-af\b/g) ?? []).length, 1);
 });
 
 test('ブースト無しの主音声・副音声はフィルタ無しまたは pan のみ', () => {
     assert.doesNotMatch(AudioTrackUtil.replacePlaceholders(FILTER_CMD, 'main', 1, 'ts'), /-af/);
-    assert.match(AudioTrackUtil.replacePlaceholders(FILTER_CMD, 'sub', 1, 'encoded'), /-af pan=stereo\|c0=c1\|c1=c1/);
+    assert.match(AudioTrackUtil.replacePlaceholders(FILTER_CMD, 'sub', 1, 'encoded'), /-af "pan=stereo\|c0=c1\|c1=c1"/);
 });
 
 test('数字指定は音声 ES を -map で選ぶ (映像も明示する必要がある)', () => {
@@ -133,6 +144,15 @@ test("tsreadex 無しの 'all' はデュアルモノラルの 1 ES しか無い�
 test('tsreadex 正規化済みで audioTrack 未指定なら index 0 (主音声 ES) を明示的に選ぶ', () => {
     const cmd = AudioTrackUtil.replacePlaceholders(CMD, undefined, undefined, 'ts', true);
     assert.match(cmd, /-map 0:v:0 -map 0:a:0/);
+});
+
+test('m2tsll 用の音声専用 map は映像 map と分離して選択する', () => {
+    assert.equal(AudioTrackUtil.replacePlaceholders('%AUDIOSELECTMAP%', undefined, undefined, 'encoded'), '-map 0:a:0');
+    assert.equal(AudioTrackUtil.replacePlaceholders('%AUDIOSELECTMAP%', '2', undefined, 'encoded'), '-map 0:a:2');
+    assert.equal(
+        AudioTrackUtil.replacePlaceholders('%AUDIOSELECTMAP%', 'all', undefined, 'ts', true),
+        '-map 0:a:0 -map 0:a:1',
+    );
 });
 
 test('tsreadex 無しで audioTrack 未指定なら従来どおり -map を付けない', () => {

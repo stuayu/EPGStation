@@ -137,6 +137,27 @@ test('m2tsll で tsreadex 経由 (TSREADEX + AUDIOMAP を含む cmd) は embedde
     assert.equal(profile.embeddedAudioSwitch.m2tsll, true);
 });
 
+test('m2tsll で AUDIOSELECTMAP を使う tsreadex cmd も embeddedAudioSwitch.m2tsll が true になる', async () => {
+    const m2tsllPresets = [
+        { id: 'auto', name: '自動', builtin: true, output: { codec: 'copy', resolution: 'source' } },
+        { id: 'm2tsll-720', name: 'M2TS-LL 720p', builtin: false, output: { codec: 'h264', resolution: '720p', container: 'm2tsll' } },
+    ];
+    const model = new PlaybackApiModel(
+        { analyzeLiveChannel: async () => source },
+        {
+            getPresets: () => m2tsllPresets,
+            getModeMap: () => ({ m2ts: [], m2tsll: ['m2tsll-720'], mp4: [], webm: [], hls: [] }),
+            resolveProfileCmd: () => '%TSREADEX% | %FFMPEG% -map 0:v:0 %AUDIOSELECTMAP% -f mpegts pipe:1',
+        },
+        { resolve: () => ({ presetId: 'm2tsll-720', label: 'M2TS-LL 720p', reason: 'test', fallbackChain: [] }) },
+        { findId: async () => ({ type: 'ts' }) },
+    );
+
+    const result = await model.getLivePlaybackOptions(1, client);
+    const profile = result.profiles.find(p => p.id === 'm2tsll-720');
+    assert.equal(profile.embeddedAudioSwitch.m2tsll, true);
+});
+
 test('m2tsll でも tsreadex 無し (AUDIOMAP を含まない cmd) は embeddedAudioSwitch.m2tsll が false になる', async () => {
     const m2tsllPresets = [
         { id: 'auto', name: '自動', builtin: true, output: { codec: 'copy', resolution: 'source' } },

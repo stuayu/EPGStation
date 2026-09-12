@@ -8,7 +8,7 @@ import IServerConfigModel from '../model/serverConfig/IServerConfigModel';
  */
 namespace StreamQualityUtil {
     export type LiveStreamingType = 'm2ts' | 'm2tsll' | 'webm' | 'mp4' | 'hls';
-    export type RecordedStreamingType = 'webm' | 'mp4' | 'hls';
+    export type RecordedStreamingType = 'webm' | 'mp4' | 'hls' | 'm2tsll';
 
     /**
      * ライブ配信の視聴設定名一覧を返す

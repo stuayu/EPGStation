@@ -10,6 +10,7 @@ export function normalizePlaybackPosition(input: PlaybackPositionInput): Normali
     if (!Number.isFinite(input.position) || input.position < 0) throw new Error('PlaybackPositionIsInvalid');
     if (!Number.isFinite(input.duration) || input.duration <= 0) throw new Error('PlaybackDurationIsInvalid');
     const duration = Math.round(input.duration);
+    if (duration <= 0) throw new Error('PlaybackDurationIsInvalid');
     const position = Math.min(Math.round(input.position), duration);
     const status: WatchStatus = position === 0 ? 'unwatched' : position / duration >= 0.9 ? 'watched' : 'watching';
     return { position, duration, status };

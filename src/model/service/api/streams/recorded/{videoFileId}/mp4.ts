@@ -2,27 +2,35 @@ import { Operation } from 'express-openapi';
 import IStreamApiModel, { StreamResponse } from '../../../../../api/stream/IStreamApiModel';
 import container from '../../../../../ModelContainer';
 import * as api from '../../../../api';
+import { normalizeStreamPlayPosition } from '../../../../../../util/StreamPlayPosition';
 
 export const get: Operation = async (req, res) => {
     const streamApiModel = container.get<IStreamApiModel>('IStreamApiModel');
 
     let isClosed: boolean = false;
     let result: StreamResponse;
-    let keepTimer: ReturnType<typeof setTimeout>;
+    let keepTimer: ReturnType<typeof setInterval> | undefined;
+    let isStopped = false;
 
     const stop = async () => {
-        clearInterval(keepTimer);
+        if (typeof keepTimer !== 'undefined') clearInterval(keepTimer);
 
-        if (typeof result === 'undefined') {
+        if (typeof result === 'undefined' || isStopped === true) {
             return;
         }
 
+        isStopped = true;
         await streamApiModel.stop(result.streamId, true);
     };
 
-    req.on('close', async () => {
+    // GET リクエスト本文の受信完了でも req.close が発火し得るため、出力レスポンス側で切断を監視する。
+    res.on('close', async () => {
+        if (res.writableEnded === true) return;
         isClosed = true;
         await stop();
+    });
+    res.once('finish', () => {
+        void stop().catch(() => undefined);
     });
 
     const streamOption = api.parseStreamModeOrProfile(req, res);
@@ -33,7 +41,7 @@ export const get: Operation = async (req, res) => {
     try {
         result = await streamApiModel.startRecordedMp4Stream({
             videoFileId: api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'),
-            playPosition: Number(req.query.ss),
+            playPosition: normalizeStreamPlayPosition(req.query.ss),
             mode: streamOption.mode,
             profile: streamOption.profile,
             audioTrack: streamOption.audioTrack,

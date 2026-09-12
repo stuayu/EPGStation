@@ -21,6 +21,8 @@ import Fmp4Packager from '../llhls/Fmp4Packager';
 import IAribId3Extractor from '../llhls/IAribId3Extractor';
 import IFmp4Packager, { Fmp4PackagerTrackRole } from '../llhls/IFmp4Packager';
 import AudioTrackUtil from '../util/AudioTrackUtil';
+import ISourceAnalyzer from '../../../stream/capability/ISourceAnalyzer';
+import { replaceDeinterlacePlaceholder, toDeinterlaceInput } from '../../../../util/DeinterlaceUtil';
 import IHLSFileDeleterModel from '../util/IHLSFileDeleterModel';
 import IHLSMemoryStoreModel, { HLSMemoryTrackRole } from '../util/IHLSMemoryStoreModel';
 import ILiveStreamBaseModel, { LiveStreamOption } from './ILiveStreamBaseModel';
@@ -44,12 +46,11 @@ export default abstract class LiveStreamBaseModel
     // 旧テスト/外部組み立てとの互換用。通常は共有ソース manager を使う
     private mirakurunClientModel: IMirakurunClientModel;
     private liveStreamSourceManageModel: ILiveStreamSourceManageModel | undefined;
-    private id3MetadataTransoform: ID3MetadataTransform | null = null;
-    // tsreadex 経由の mpegts 出力 (m2ts / m2tsll) だけで使う、エンコード後に ID3 を挿入する Transform。
-    // tsreadex は入力側の ID3 (PID 0x1FFE) を落とすため、出力側 (streamProcess.stdout) へ挿入し直す
-    private id3OutputTransform: ID3MetadataTransform | null = null;
-    // 配信コマンドが tsreadex を経由しているか (createProcessOption() で確定する)
     private isNormalizedByTsreadex: boolean = false;
+    private id3MetadataTransoform: ID3MetadataTransform | null = null;
+    // m2tsll (および tsreadex 経由の m2ts) で使う、エンコード後に ID3 を挿入する Transform。
+    // 入力側へ ID3 を map せず、出力側 (streamProcess.stdout) へ挿入する
+    private id3OutputTransform: ID3MetadataTransform | null = null;
     private hlsMemoryStore: IHLSMemoryStoreModel;
     private fmp4Packager: IFmp4Packager | null = null;
     // in-memory HLS で ARIB 字幕 (ID3 timed metadata) を取り出すための Transform
@@ -77,6 +78,7 @@ export default abstract class LiveStreamBaseModel
         @inject('IBroadcastAffiliationCollector') affiliationCollector: IBroadcastAffiliationCollector,
         @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
         @inject('ILiveStreamSourceManageModel') liveStreamSourceManageModel?: ILiveStreamSourceManageModel,
+        @inject('ISourceAnalyzer') sourceAnalyzer?: ISourceAnalyzer,
     ) {
         super(configure, logger, processManager, fileDeleter, socketIO);
 
@@ -85,7 +87,10 @@ export default abstract class LiveStreamBaseModel
         this.hlsMemoryStore = hlsMemoryStore;
         this.affiliationCollector = affiliationCollector;
         this.eitPresentStore = eitPresentStore;
+        this.sourceAnalyzer = sourceAnalyzer;
     }
+
+    private sourceAnalyzer: ISourceAnalyzer | undefined;
 
     /**
      * in-memory HLS (ディスクに書き出さない fMP4 HLS 配信) モードか判定する
@@ -104,18 +109,18 @@ export default abstract class LiveStreamBaseModel
     /**
      * ID3 timed metadata (ARIB 字幕) の挿入をエンコード後 (ffmpeg 出力) 側で行うか判定する
      *
-     * tsreadex (`-a 13` 等) は放送波の PID を正規化する過程で ID3 timed metadata (PID 0x1FFE、
-     * arib-subtitle-timedmetadater が入力前に挿入したもの) を落としてしまう。
-     * そのため tsreadex 経由の mpegts 出力 (m2ts / m2tsll) だけは、入力側への挿入を諦めて
+     * m2tsll は ID3 timed metadata (PID 0x1FFE) を入力側へ map すると、字幕が疎な区間で
+     * mpegts muxer のインターリーブ待ちが発生する。そのため入力側への挿入を行わず、
      * エンコード後の TS (ARIB 字幕 ES を `-c:s copy` 済み) へ挿入し直す。
-     * mp4 / webm / HLS (ディスク・in-memory とも) は対象外 (mpegts 以外へは挿入できない、
+     * tsreadex 経由の m2ts (m2tsll 以外) も従来どおり対象とする。mp4 / webm / HLS
+     * (ディスク・in-memory とも) は対象外 (mpegts 以外へは挿入できない、
      * または in-memory HLS は別経路の AribId3Extractor が担う)
      */
     private useOutputSideId3(): boolean {
         return (
-            this.isNormalizedByTsreadex === true &&
             this.processOption !== null &&
-            (this.processOption.container === 'm2ts' || this.processOption.container === 'm2tsll')
+            (this.processOption.container === 'm2tsll' ||
+                (this.isNormalizedByTsreadex === true && this.processOption.container === 'm2ts'))
         );
     }
 
@@ -124,7 +129,7 @@ export default abstract class LiveStreamBaseModel
      * @param streamId: apid.StreamId
      * @return CreateProcessOption | null プロセス生成する必要がない場合は null を返す
      */
-    protected createProcessOption(streamId: apid.StreamId): CreateProcessOption | null {
+    protected async createProcessOption(streamId: apid.StreamId): Promise<CreateProcessOption | null> {
         if (this.processOption === null) {
             throw new Error('ProcessOptionIsNull');
         }
@@ -143,6 +148,7 @@ export default abstract class LiveStreamBaseModel
         let cmd = this.processOption.cmd
             .replace(/%FFMPEG%/g, this.config.ffmpeg)
             .replace(/%TSREADEX%/g, typeof this.config.tsreadex === 'undefined' ? 'tsreadex' : this.config.tsreadex);
+        cmd = await this.resolveDeinterlace(cmd);
         // 音声トラック指定・フィルタ (%DUALMONOMODE% / %AUDIOMAP% / %AUDIOFILTER%) を展開する
         cmd = AudioTrackUtil.replacePlaceholders(
             cmd,
@@ -169,6 +175,28 @@ export default abstract class LiveStreamBaseModel
     }
 
     /**
+     * ライブ素材の映像特性から自動生成 cmd のデインターレースを解決する。
+     * 解析できない場合は放送波を守るため従来どおり yadif 有りにする。
+     * @param cmd: string
+     * @return Promise<string>
+     */
+    private async resolveDeinterlace(cmd: string): Promise<string> {
+        if (cmd.includes('%DEINTERLACE%') === false) return cmd;
+        if (this.sourceAnalyzer === undefined || this.processOption === null) {
+            return replaceDeinterlacePlaceholder(cmd);
+        }
+
+        try {
+            const source = await this.sourceAnalyzer.analyzeLiveChannel(this.processOption.channelId);
+            return replaceDeinterlacePlaceholder(cmd, toDeinterlaceInput(source));
+        } catch (err) {
+            this.log.stream.warn('live source analysis failed; keep deinterlace enabled');
+            this.log.stream.debug(err);
+            return replaceDeinterlacePlaceholder(cmd);
+        }
+    }
+
+    /**
      * ストリーム開始
      * @param streamId: apid.StreamId
      * @return Promise<void>
@@ -190,7 +218,7 @@ export default abstract class LiveStreamBaseModel
         }
 
         // エンコードプロセスの生成が必要かチェック
-        const poption = this.createProcessOption(streamId);
+        const poption = await this.createProcessOption(streamId);
         if (poption !== null) {
             // エンコードプロセス生成
             this.log.stream.info(`create encode process: ${poption.cmd}`);
@@ -241,9 +269,9 @@ export default abstract class LiveStreamBaseModel
                 // DPlayer は mpegts.js の TIMED_ID3_METADATA_ARRIVED からしか aribb24 へ字幕を渡さないため、
                 // ARIB 字幕 ES をそのまま流しても字幕は表示されない
                 if (this.useOutputSideId3() === true) {
-                    // tsreadex はエンコード前の ID3 (PID 0x1FFE) を落とすため、入力側への挿入は行わず
-                    // エンコード後 (streamProcess.stdout) に挿入し直す (下の stdout 側の処理を参照)
-                    this.log.stream.info('use arib-subtitle-timedmetadater (output side, via tsreadex)');
+                    // ID3 (PID 0x1FFE) は入力側へ map せず、エンコード後 (streamProcess.stdout) に
+                    // 挿入し直す (下の stdout 側の処理を参照)
+                    this.log.stream.info('use arib-subtitle-timedmetadater (output side)');
                     tsSource.pipe(this.streamProcess.stdin);
                 } else {
                     this.log.stream.info('use arib-subtitle-timedmetadater');
@@ -261,7 +289,7 @@ export default abstract class LiveStreamBaseModel
                     }
                 }
 
-                // tsreadex 経由の mpegts 出力 (m2ts / m2tsll) は、エンコード後の TS (ARIB 字幕 ES を
+                // m2tsll (および tsreadex 経由の m2ts) は、エンコード後の TS (ARIB 字幕 ES を
                 // `-c:s copy` 済み) へ ID3 timed metadata を挿入し直す。getStream() はこの Transform を返す
                 if (this.useOutputSideId3() === true && this.streamProcess.stdout !== null) {
                     this.id3OutputTransform = new ID3MetadataTransform();
@@ -542,7 +570,7 @@ export default abstract class LiveStreamBaseModel
      */
     public getStream(): internal.Readable {
         if (this.id3OutputTransform !== null) {
-            // tsreadex 経由の mpegts 出力 (m2ts / m2tsll): ID3 を挿入し直した Transform を返す
+            // m2tsll / tsreadex 経由の m2ts: ID3 を挿入し直した Transform を返す
             return this.id3OutputTransform;
         } else if (this.streamProcess !== null && this.streamProcess.stdout !== null) {
             return this.streamProcess.stdout;
