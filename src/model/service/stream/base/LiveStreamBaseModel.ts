@@ -1,5 +1,4 @@
 import { ChildProcess } from 'child_process';
-import * as http from 'http';
 import { inject, injectable } from 'inversify';
 import internal from 'stream';
 import ID3MetadataTransform from 'arib-subtitle-timedmetadater';
@@ -20,13 +19,14 @@ import IEitPresentStore from '../util/IEitPresentStore';
 import EitPresentCollectTransform from '../util/EitPresentCollectTransform';
 import Fmp4Packager from '../llhls/Fmp4Packager';
 import IAribId3Extractor from '../llhls/IAribId3Extractor';
-import IFmp4Packager from '../llhls/IFmp4Packager';
+import IFmp4Packager, { Fmp4PackagerTrackRole } from '../llhls/IFmp4Packager';
 import AudioTrackUtil from '../util/AudioTrackUtil';
 import IHLSFileDeleterModel from '../util/IHLSFileDeleterModel';
-import IHLSMemoryStoreModel from '../util/IHLSMemoryStoreModel';
+import IHLSMemoryStoreModel, { HLSMemoryTrackRole } from '../util/IHLSMemoryStoreModel';
 import ILiveStreamBaseModel, { LiveStreamOption } from './ILiveStreamBaseModel';
 import { LiveStreamInfo } from './IStreamBaseModel';
 import StreamBaseModel from './StreamBaseModel';
+import ILiveStreamSourceManageModel, { LiveStreamSourceLease } from '../manager/ILiveStreamSourceManageModel';
 
 @injectable()
 export default abstract class LiveStreamBaseModel
@@ -38,10 +38,18 @@ export default abstract class LiveStreamBaseModel
     // 2 パートで 1 秒セグメントになる (#EXT-X-TARGETDURATION は 1 秒が下限)
     private static readonly LIVE_HLS_PARTS_PER_SEGMENT = 2;
 
-    private stream: http.IncomingMessage | null = null;
+    private stream: internal.Readable | null = null;
+    private mirakurunStreamLease: LiveStreamSourceLease | null = null;
     private streamProcess: ChildProcess | null = null;
+    // 旧テスト/外部組み立てとの互換用。通常は共有ソース manager を使う
     private mirakurunClientModel: IMirakurunClientModel;
+    private liveStreamSourceManageModel: ILiveStreamSourceManageModel | undefined;
     private id3MetadataTransoform: ID3MetadataTransform | null = null;
+    // tsreadex 経由の mpegts 出力 (m2ts / m2tsll) だけで使う、エンコード後に ID3 を挿入する Transform。
+    // tsreadex は入力側の ID3 (PID 0x1FFE) を落とすため、出力側 (streamProcess.stdout) へ挿入し直す
+    private id3OutputTransform: ID3MetadataTransform | null = null;
+    // 配信コマンドが tsreadex を経由しているか (createProcessOption() で確定する)
+    private isNormalizedByTsreadex: boolean = false;
     private hlsMemoryStore: IHLSMemoryStoreModel;
     private fmp4Packager: IFmp4Packager | null = null;
     // in-memory HLS で ARIB 字幕 (ID3 timed metadata) を取り出すための Transform
@@ -55,6 +63,8 @@ export default abstract class LiveStreamBaseModel
     private bitCollectTransform: BitCollectTransform | null = null;
     private memoryStreamId: apid.StreamId | null = null;
     private eitPresentStore: IEitPresentStore;
+    // 複数音声トラック分解モードで実際に使われたロール (音声 1 本のみなら null のまま)
+    private multiTrackRoles: Fmp4PackagerTrackRole[] | null = null;
 
     constructor(
         @inject('IConfiguration') configure: IConfiguration,
@@ -66,10 +76,12 @@ export default abstract class LiveStreamBaseModel
         @inject('IHLSMemoryStoreModel') hlsMemoryStore: IHLSMemoryStoreModel,
         @inject('IBroadcastAffiliationCollector') affiliationCollector: IBroadcastAffiliationCollector,
         @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
+        @inject('ILiveStreamSourceManageModel') liveStreamSourceManageModel?: ILiveStreamSourceManageModel,
     ) {
         super(configure, logger, processManager, fileDeleter, socketIO);
 
         this.mirakurunClientModel = mirakurunClientModel;
+        this.liveStreamSourceManageModel = liveStreamSourceManageModel;
         this.hlsMemoryStore = hlsMemoryStore;
         this.affiliationCollector = affiliationCollector;
         this.eitPresentStore = eitPresentStore;
@@ -86,6 +98,24 @@ export default abstract class LiveStreamBaseModel
             this.processOption !== null &&
             typeof this.processOption.cmd !== 'undefined' &&
             this.processOption.cmd.includes('%streamFileDir%') === false
+        );
+    }
+
+    /**
+     * ID3 timed metadata (ARIB 字幕) の挿入をエンコード後 (ffmpeg 出力) 側で行うか判定する
+     *
+     * tsreadex (`-a 13` 等) は放送波の PID を正規化する過程で ID3 timed metadata (PID 0x1FFE、
+     * arib-subtitle-timedmetadater が入力前に挿入したもの) を落としてしまう。
+     * そのため tsreadex 経由の mpegts 出力 (m2ts / m2tsll) だけは、入力側への挿入を諦めて
+     * エンコード後の TS (ARIB 字幕 ES を `-c:s copy` 済み) へ挿入し直す。
+     * mp4 / webm / HLS (ディスク・in-memory とも) は対象外 (mpegts 以外へは挿入できない、
+     * または in-memory HLS は別経路の AribId3Extractor が担う)
+     */
+    private useOutputSideId3(): boolean {
+        return (
+            this.isNormalizedByTsreadex === true &&
+            this.processOption !== null &&
+            (this.processOption.container === 'm2ts' || this.processOption.container === 'm2tsll')
         );
     }
 
@@ -109,6 +139,7 @@ export default abstract class LiveStreamBaseModel
         // tsreadex を通す cmd はデュアルモノラルが 2 本の音声 ES へ分離済みなので、
         // 副音声の選び方が変わる (置換前の cmd で判定する。%TSREADEX% は下で消える)
         const isNormalizedByTsreadex = this.processOption.cmd.includes('%TSREADEX%');
+        this.isNormalizedByTsreadex = isNormalizedByTsreadex;
         let cmd = this.processOption.cmd
             .replace(/%FFMPEG%/g, this.config.ffmpeg)
             .replace(/%TSREADEX%/g, typeof this.config.tsreadex === 'undefined' ? 'tsreadex' : this.config.tsreadex);
@@ -209,18 +240,32 @@ export default abstract class LiveStreamBaseModel
                 // HLS だけでなく mpegts 配信 (m2ts / m2tsll) でも必要:
                 // DPlayer は mpegts.js の TIMED_ID3_METADATA_ARRIVED からしか aribb24 へ字幕を渡さないため、
                 // ARIB 字幕 ES をそのまま流しても字幕は表示されない
-                this.log.stream.info('use arib-subtitle-timedmetadater');
-                this.id3MetadataTransoform = new ID3MetadataTransform();
-                tsSource.pipe(this.id3MetadataTransoform);
-
-                if (this.getStreamType() === 'LiveHLS' && this.isMemoryHLS() === true) {
-                    // in-memory (fMP4) モードでは mp4 出力に ID3 timed metadata を乗せられないため、
-                    // エンコード前の TS から ID3 を抜き取り、セグメントの emsg box として再多重化する
-                    this.aribId3Extractor = new AribId3Extractor(this.log);
-                    this.id3MetadataTransoform.pipe(this.aribId3Extractor);
-                    this.aribId3Extractor.pipe(this.streamProcess.stdin);
+                if (this.useOutputSideId3() === true) {
+                    // tsreadex はエンコード前の ID3 (PID 0x1FFE) を落とすため、入力側への挿入は行わず
+                    // エンコード後 (streamProcess.stdout) に挿入し直す (下の stdout 側の処理を参照)
+                    this.log.stream.info('use arib-subtitle-timedmetadater (output side, via tsreadex)');
+                    tsSource.pipe(this.streamProcess.stdin);
                 } else {
-                    this.id3MetadataTransoform.pipe(this.streamProcess.stdin);
+                    this.log.stream.info('use arib-subtitle-timedmetadater');
+                    this.id3MetadataTransoform = new ID3MetadataTransform();
+                    tsSource.pipe(this.id3MetadataTransoform);
+
+                    if (this.getStreamType() === 'LiveHLS' && this.isMemoryHLS() === true) {
+                        // in-memory (fMP4) モードでは mp4 出力に ID3 timed metadata を乗せられないため、
+                        // エンコード前の TS から ID3 を抜き取り、セグメントの emsg box として再多重化する
+                        this.aribId3Extractor = new AribId3Extractor(this.log);
+                        this.id3MetadataTransoform.pipe(this.aribId3Extractor);
+                        this.aribId3Extractor.pipe(this.streamProcess.stdin);
+                    } else {
+                        this.id3MetadataTransoform.pipe(this.streamProcess.stdin);
+                    }
+                }
+
+                // tsreadex 経由の mpegts 出力 (m2ts / m2tsll) は、エンコード後の TS (ARIB 字幕 ES を
+                // `-c:s copy` 済み) へ ID3 timed metadata を挿入し直す。getStream() はこの Transform を返す
+                if (this.useOutputSideId3() === true && this.streamProcess.stdout !== null) {
+                    this.id3OutputTransform = new ID3MetadataTransform();
+                    this.streamProcess.stdout.pipe(this.id3OutputTransform);
                 }
             } else {
                 await this.stop();
@@ -268,6 +313,13 @@ export default abstract class LiveStreamBaseModel
     }
 
     /**
+     * Fmp4Packager のロール (video/audio0/audio1) を HLSMemoryStoreModel のロール (v/a0/a1) へ変換する
+     */
+    private toHLSRole(role: Fmp4PackagerTrackRole): HLSMemoryTrackRole {
+        return role === 'video' ? 'v' : role === 'audio0' ? 'a0' : 'a1';
+    }
+
+    /**
      * in-memory HLS のパッケージングを開始する
      * エンコードプロセスが標準出力へ書き出す fragmented MP4 を Fmp4Packager で
      * init / パート / セグメントに分解し、HLSMemoryStoreModel へ蓄積する (ディスク書き込みなし)
@@ -284,6 +336,8 @@ export default abstract class LiveStreamBaseModel
 
         this.log.stream.info(`start in-memory HLS packaging: ${streamId}`);
         this.memoryStreamId = streamId;
+        // 単一トラック (従来) モードのエントリは即座に作る (multiTrack 判定は moov 到着後なので、
+        // 音声トラックが 2 本以上の場合はこのエントリは未使用のまま stop() で破棄される)
         this.hlsMemoryStore.create(streamId, 'live');
 
         const packager = new Fmp4Packager(
@@ -292,6 +346,7 @@ export default abstract class LiveStreamBaseModel
         );
         this.fmp4Packager = packager;
 
+        // 単一トラック (従来) モード。音声トラックが 1 本のときはこちらを使う
         packager.on('init', data => {
             this.hlsMemoryStore.setInit(streamId, data);
         });
@@ -304,6 +359,29 @@ export default abstract class LiveStreamBaseModel
                 this.markEnable(streamId);
             }
         });
+
+        // 複数音声トラック分解モード。音声トラックが 2 本以上のときはロールごとに別エントリへ振り分ける
+        // (URL 体系・マスタープレイリストは doc/streaming-refresh.md を参照)
+        packager.on('multiTrack', roles => {
+            this.multiTrackRoles = roles;
+            for (const role of roles) {
+                this.hlsMemoryStore.create(streamId, 'live', this.toHLSRole(role));
+            }
+        });
+        packager.on('trackInit', (role, data) => {
+            this.hlsMemoryStore.setInit(streamId, data, this.toHLSRole(role));
+        });
+        packager.on('trackPart', (role, part) => {
+            this.hlsMemoryStore.addPart(streamId, part.data, part.duration, part.isIndependent, this.toHLSRole(role));
+        });
+        packager.on('trackSegment', (role, segment) => {
+            const hlsRole = this.toHLSRole(role);
+            this.hlsMemoryStore.addSegment(streamId, segment.data, segment.duration, hlsRole);
+            if (this.isEnable() === false && this.hlsMemoryStore.isReady(streamId, 'v') === true) {
+                this.markEnable(streamId);
+            }
+        });
+
         packager.on('halted', message => {
             this.log.stream.error(`in-memory HLS packaging halted: ${streamId} ${message}`);
             this.emitExitStream();
@@ -329,6 +407,17 @@ export default abstract class LiveStreamBaseModel
             throw new Error('ProcessOptionIsNull');
         }
 
+        if (this.liveStreamSourceManageModel !== undefined) {
+            this.mirakurunStreamLease = await this.liveStreamSourceManageModel.acquire(
+                this.processOption.channelId,
+                config.streamingPriority,
+            );
+            this.stream = this.mirakurunStreamLease.stream;
+
+            return;
+        }
+
+        // 共有 source manager が無い旧式の直接組み立てでは従来経路を維持する。
         const mirakurun = this.mirakurunClientModel.getClient();
         mirakurun.priority = config.streamingPriority;
 
@@ -353,8 +442,14 @@ export default abstract class LiveStreamBaseModel
 
         if (this.stream !== null) {
             this.stream.unpipe();
+        }
+        if (this.mirakurunStreamLease !== null) {
+            this.mirakurunStreamLease.release();
+            this.mirakurunStreamLease = null;
+        } else if (this.stream !== null) {
             this.stream.destroy();
         }
+        this.stream = null;
 
         if (this.aribId3Extractor !== null) {
             this.aribId3Extractor.unpipe();
@@ -367,6 +462,15 @@ export default abstract class LiveStreamBaseModel
             this.id3MetadataTransoform.unpipe();
             this.id3MetadataTransoform.destroy();
             this.id3MetadataTransoform = null;
+        }
+
+        if (this.id3OutputTransform !== null) {
+            if (this.streamProcess !== null && this.streamProcess.stdout !== null) {
+                this.streamProcess.stdout.unpipe(this.id3OutputTransform);
+            }
+            this.id3OutputTransform.unpipe();
+            this.id3OutputTransform.destroy();
+            this.id3OutputTransform = null;
         }
 
         if (this.bitCollectTransform !== null) {
@@ -400,7 +504,14 @@ export default abstract class LiveStreamBaseModel
         if (this.getStreamType() === 'LiveHLS') {
             if (this.isMemoryHLS() === true) {
                 if (this.memoryStreamId !== null) {
+                    // 単一トラック (従来) 用に即座に作ったエントリ (multiTrack 判定に関わらず必ず存在する)
                     this.hlsMemoryStore.delete(this.memoryStreamId);
+                    if (this.multiTrackRoles !== null) {
+                        for (const role of this.multiTrackRoles) {
+                            this.hlsMemoryStore.delete(this.memoryStreamId, this.toHLSRole(role));
+                        }
+                        this.multiTrackRoles = null;
+                    }
                     this.memoryStreamId = null;
                 }
             } else {
@@ -430,7 +541,10 @@ export default abstract class LiveStreamBaseModel
      * @return internal.Readable
      */
     public getStream(): internal.Readable {
-        if (this.streamProcess !== null && this.streamProcess.stdout !== null) {
+        if (this.id3OutputTransform !== null) {
+            // tsreadex 経由の mpegts 出力 (m2ts / m2tsll): ID3 を挿入し直した Transform を返す
+            return this.id3OutputTransform;
+        } else if (this.streamProcess !== null && this.streamProcess.stdout !== null) {
             return this.streamProcess.stdout;
         } else if (this.stream !== null) {
             return this.stream;

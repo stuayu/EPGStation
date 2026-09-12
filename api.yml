@@ -2944,6 +2944,18 @@ components:
                                 type: object
                                 description: コンテナ別の既存 stream 設定 mode。未対応コンテナは含まない
                                 additionalProperties: { type: integer, minimum: 0 }
+                            videoBitrate:
+                                type: number
+                                description: 映像 bitrate (kbps)。自動画質 fallback の帯域判定に使う
+                            embeddedAudioSwitch:
+                                type: object
+                                description: >-
+                                    コンテナ別に、主音声・副音声を再接続無しで同時配信できるか。
+                                    true なら audioTrack=all で開き、クライアント側 (mpegts.js) の
+                                    switchPrimaryAudio/switchSecondaryAudio で切り替えられる。
+                                    現状 m2tsll (tsreadex 経由) のみ true になりうる。
+                                    hls は複数音声トラック未対応のため常に false
+                                additionalProperties: { type: boolean }
                 options:
                     type: object
                     required: [hdr, correction]
@@ -5995,17 +6007,19 @@ components:
                 type: string
 
         StreamPlayPosition:
-            description: 再生位置
+            description: 再生位置 (秒。小数可)
             in: query
             name: ss
             required: true
             schema:
-                type: integer
+                type: number
 
         StreamAudioTrack:
             description: >-
                 再生する音声トラック。main = 主音声 (既定) / sub = デュアルモノラルの副音声 /
-                数字 = 音声 ES のインデックス。録画の一覧は GET /api/videos/{videoFileId}/audio-tracks で取得する
+                数字 = 音声 ES のインデックス / all = 主音声・副音声を両方含める
+                (tsreadex 正規化済みの m2tsll のみ有効。それ以外では main と同じ扱いになる)。
+                録画の一覧は GET /api/videos/{videoFileId}/audio-tracks で取得する
             in: query
             name: audioTrack
             required: false

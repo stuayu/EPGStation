@@ -159,11 +159,60 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                         builtin,
                         legacy: preset.legacy === true,
                         modes,
+                        videoBitrate: preset.output.videoBitrate,
+                        embeddedAudioSwitch: this.getEmbeddedAudioSwitch(scope, modes, modePresetId),
                     },
                 };
             })
             .sort((a, b) => this.profileDisplayOrder(a.role) - this.profileDisplayOrder(b.role))
             .map(item => item.profile);
+    }
+
+    /**
+     * コンテナ別に「主音声・副音声を再接続無しで同時配信できるか」を判定する
+     *
+     * - m2tsll: 実プロファイルの cmd が `%TSREADEX%` と `%AUDIOMAP%` を両方含む場合のみ true になる
+     *   (StreamProfileManageModel.buildCmd() は tsreadex 経由の m2tsll だけこの組み合わせを生成する)。
+     *   クライアントはこれが true のときだけ `audioTrack=all` で開き、mpegts.js の
+     *   switchPrimaryAudio() / switchSecondaryAudio() で再接続無しに音声を切り替える
+     *   (client/src/components/video/LiveMpegTsVideo.vue)。
+     * - hls: 同じく cmd が `%TSREADEX%` と `%AUDIOMAP%` を両方含み、かつ in-memory HLS
+     *   (cmd に `%streamFileDir%` を含まない = ディスクに書き出さない) の場合のみ true になる。
+     *   Fmp4Packager が音声トラック 2 本以上の fMP4 を検出すると自動でトラックごとに分解し、
+     *   マスタープレイリスト (音声レンディション付き) を配信する (HLSMemoryStoreModel.getMasterPlaylist())。
+     *   ディスク方式の HLS (`%streamFileDir%` を含む cmd) は Fmp4Packager を経由しないため対象外
+     * @param scope: StreamPresetScope
+     * @param modes: PlaybackOptions['profiles'][number]['modes']
+     * @param modePresetId: string このプロファイルが実際に紐づく (auto 解決済みの) プリセット id
+     * @return PlaybackOptions['profiles'][number]['embeddedAudioSwitch']
+     */
+    private getEmbeddedAudioSwitch(
+        scope: StreamPresetScope,
+        modes: PlaybackOptions['profiles'][number]['modes'],
+        modePresetId: string,
+    ): PlaybackOptions['profiles'][number]['embeddedAudioSwitch'] {
+        const containers = Object.keys(modes) as Array<keyof typeof modes>;
+        if (containers.length === 0) {
+            return undefined;
+        }
+
+        const cmd =
+            typeof this.presetRegistry.resolveProfileCmd === 'function'
+                ? this.presetRegistry.resolveProfileCmd(scope, modePresetId)
+                : undefined;
+        const hasTsreadexAudioMap =
+            typeof cmd === 'string' && cmd.includes('%TSREADEX%') && cmd.includes('%AUDIOMAP%');
+        const isM2TsLLEmbedded = hasTsreadexAudioMap;
+        // in-memory HLS (%streamFileDir% を含まない) だけが Fmp4Packager 経由で複数音声トラックを配信できる
+        const isHlsEmbedded = hasTsreadexAudioMap && typeof cmd === 'string' && cmd.includes('%streamFileDir%') === false;
+
+        const result: NonNullable<PlaybackOptions['profiles'][number]['embeddedAudioSwitch']> = {};
+        for (const container of containers) {
+            result[container] =
+                (container === 'm2tsll' && isM2TsLLEmbedded) || (container === 'hls' && isHlsEmbedded);
+        }
+
+        return result;
     }
 
     private profileDisplayOrder(role: string | null): number {

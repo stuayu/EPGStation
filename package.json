@@ -47,6 +47,7 @@
         "aribts": "2.1.12",
         "axios": "1.18.1",
         "better-sqlite3": "12.11.1",
+        "compression": "1.8.2",
         "cors": "2.8.6",
         "eventsource": "4.1.0",
         "express": "5.2.1",
@@ -74,6 +75,7 @@
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",
+        "@types/compression": "1.8.1",
         "@types/express": "5.0.6",
         "@types/lodash": "4.17.24",
         "@types/minimist": "1.2.5",

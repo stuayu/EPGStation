@@ -84,6 +84,7 @@ export default class StreamApiModel implements IStreamApiModel {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
                 audioTrack: option.audioTrack,
+                container: 'm2ts',
             },
             resolved.displayMode,
         );
@@ -112,6 +113,7 @@ export default class StreamApiModel implements IStreamApiModel {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
                 audioTrack: option.audioTrack,
+                container: 'm2tsll',
             },
             resolved.displayMode,
         );
@@ -140,6 +142,7 @@ export default class StreamApiModel implements IStreamApiModel {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
                 audioTrack: option.audioTrack,
+                container: 'webm',
             },
             resolved.displayMode,
         );
@@ -168,6 +171,7 @@ export default class StreamApiModel implements IStreamApiModel {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
                 audioTrack: option.audioTrack,
+                container: 'mp4',
             },
             resolved.displayMode,
         );
@@ -196,6 +200,7 @@ export default class StreamApiModel implements IStreamApiModel {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
                 audioTrack: option.audioTrack,
+                container: 'hls',
             },
             resolved.displayMode,
         );

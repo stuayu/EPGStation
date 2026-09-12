@@ -414,3 +414,119 @@ test('エンコード済みファイル (mp4) は変換を通さず生データ�
         fs.rmSync(streamFilePath, { recursive: true, force: true });
     });
 });
+
+// 録画済み in-memory HLS のエンコードは実時間より速く終わるため、再生が終わるより先に
+// 必ずエンコーダが終了する。エンコーダの終了をそのままストリーム停止に結びつけると、
+// hlsMemoryStore.delete() でまだプレイヤーが取得していない末尾のセグメントまで失われる
+// (実測: 9.8 分の録画で 363 秒まで再生できていたのに、エンコーダ終了と同時にストアごと
+// 削除され、以後 60 秒経っても再生が戻らなかった)。
+// 正常終了 (exit code 0) はストアを残し、異常終了は従来どおり即座に止める
+
+test('in-memory HLS の正常終了 (exit code 0) はストリームを止めず、ストアへ終端だけ記録する', async () => {
+    await withStubbedFfprobe(async () => {
+        const streamFilePath = fs.mkdtempSync(path.join(os.tmpdir(), 'epg-recorded-hls-'));
+        const { model, processManager, hlsMemoryStore } = makeModel({ streamFilePath });
+
+        model.setOption(
+            {
+                videoFileId: 1,
+                playPosition: 0,
+                cmd: '%FFMPEG% -i pipe:0 -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1',
+            },
+            0,
+        );
+
+        let exited = false;
+        model.setExitStream(() => {
+            exited = true;
+        });
+
+        await model.start(20);
+        assert.equal(hlsMemoryStore.has(20), true);
+
+        // まだ再生されていないセグメントが残っている状態を再現する
+        hlsMemoryStore.setInit(20, Buffer.from('init'));
+        hlsMemoryStore.addSegment(20, Buffer.from('seg0'), 1);
+
+        // ffmpeg が録画末尾まで達して正常終了した状態を模す
+        processManager.processes[0].exitCode = 0;
+        processManager.processes[0].emit('exit', 0);
+
+        // ストリームは止めない (まだ再生されていないセグメントを失わないため)
+        assert.equal(exited, false);
+        assert.equal(hlsMemoryStore.has(20), true);
+        // プレイリストには終端 (#EXT-X-ENDLIST) が記録され、末尾セグメントはまだ取得できる
+        assert.match(hlsMemoryStore.getPlaylist(20), /#EXT-X-ENDLIST/);
+        assert.notEqual(hlsMemoryStore.getSegment(20, 0), null);
+
+        // 実際の停止 (クライアント切断 / keep タイマー切れ相当) では従来どおり破棄される
+        await model.stop();
+        assert.equal(hlsMemoryStore.has(20), false);
+
+        fs.rmSync(streamFilePath, { recursive: true, force: true });
+    });
+});
+
+test('in-memory HLS の異常終了 (exit code != 0) は従来どおり即座にストリームを止める', async () => {
+    await withStubbedFfprobe(async () => {
+        const streamFilePath = fs.mkdtempSync(path.join(os.tmpdir(), 'epg-recorded-hls-'));
+        const { model, processManager, hlsMemoryStore } = makeModel({ streamFilePath });
+
+        model.setOption(
+            {
+                videoFileId: 1,
+                playPosition: 0,
+                cmd: '%FFMPEG% -i pipe:0 -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1',
+            },
+            0,
+        );
+
+        // exitStream イベントが発行されたか (本番では StreamManageModel がこれを受けて stop() を呼ぶ)
+        let exited = false;
+        model.setExitStream(() => {
+            exited = true;
+        });
+
+        await model.start(21);
+        assert.equal(hlsMemoryStore.has(21), true);
+
+        processManager.processes[0].exitCode = 1;
+        processManager.processes[0].emit('exit', 1);
+
+        // 異常終了は従来どおり即座に exitStream イベントが発行される
+        assert.equal(exited, true);
+
+        await model.stop();
+        assert.equal(hlsMemoryStore.has(21), false);
+
+        fs.rmSync(streamFilePath, { recursive: true, force: true });
+    });
+});
+
+// 抑制ログが「pause encode 200ms」なのに実際には MAX_PACE_INTERVAL (5000ms) まで
+// 引き延ばされてから再開する不具合があった。先行量 (aheadNum) は視聴の実時間経過でしか
+// 減らないため、比例計算した短い pauseTime では RESUME_AHEAD_SEGMENT_NUM (30) まで
+// 下がりきらず、ループの上限が MAX_PACE_INTERVAL 固定だった結果、超過量に関わらず
+// 常に最大 5 秒まで停止していた。ループの上限は pauseTime 自身にする必要がある
+test('先行量が下がらなくても、比例計算した停止時間 (pauseTime) で再開する (MAX_PACE_INTERVAL まで引き延ばされない)', async () => {
+    await withStubbedFfprobe(async () => {
+        // 150 + 2 超過 = 停止 200ms。テスト中ずっと ahead は 152 のまま (RESUME_AHEAD_SEGMENT_NUM
+        // (30) までは実時間経過でしか下がらないため、この短時間では下がらない)
+        const { model, processManager } = makeThrottleModel(152);
+
+        await model.start(14);
+        const stdout = processManager.processes[0].stdout;
+
+        model.throttleEncodeIfTooFarAhead(14);
+        assert.equal(model.isEncodeThrottled, true);
+
+        // pauseTime (200ms) を大きく超えない範囲で再開していることを確認する。
+        // 修正前は ahead が下がらない限り MAX_PACE_INTERVAL (5000ms) まで再開しなかった
+        await new Promise(resolve => setTimeout(resolve, 350));
+
+        assert.equal(model.isEncodeThrottled, false);
+        assert.equal(stdout.isPaused(), false);
+
+        await model.stop();
+    });
+});

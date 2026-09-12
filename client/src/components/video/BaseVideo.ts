@@ -41,6 +41,15 @@ export default abstract class BaseVideo extends Vue {
     private jikkyoKakologClient: JikkyoKakologClient | null = null;
     private jikkyoCommentQueue: JikkyoComment[] = []; // 弾幕インスタンス生成前に届いたコメント
     private isResolvingQuality: boolean = false; // 画質切替の url 解決中か
+    private pendingQualityPlaybackReady: (() => void) | null = null;
+    private qualitySwitchTrace: {
+        id: number;
+        fromMode: number;
+        targetMode: number;
+        startedAt: number;
+        oldVideo: HTMLVideoElement;
+    } | null = null;
+    private qualitySwitchTraceId = 0;
     private isProgrammaticQualitySwitch: boolean = false; // 親から起こした画質切替か (ユーザー操作と区別する)
     private chapters: apid.VideoChapter[] = []; // 再生中ファイルのチャプター (開始位置の昇順)
     private extraHotkeyHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -124,6 +133,7 @@ export default abstract class BaseVideo extends Vue {
         // 別オブジェクトになるため判定が成立し、**自分自身を pause してしまう**。
         // 再生ボタン・ホットキー・シーク後の再開が軒並み効かなくなる
         this.dp = markRaw(BaseVideo.createDPlayer(options));
+        DPlayerEnhancer.guardAribb24Renderers(this.dp as any, this.dp.video);
         this.bindEvents();
         this.setupExtraHotkeys();
         this.setupScreenshotRequest();
@@ -326,7 +336,12 @@ export default abstract class BaseVideo extends Vue {
      * @param option.resetCurrentTime: true で切替後の再生位置を先頭に戻す (ストリームを再生位置から作り直す場合に使用)
      * @param option.onSwitched: url 解決後に呼ばれるコールバック
      */
-    protected setupQualitySwitch(option: { resolveUrl: (mode: number) => Promise<string>; resetCurrentTime?: boolean; onSwitched?: (mode: number) => void }): void {
+    protected setupQualitySwitch(option: {
+        resolveUrl: (mode: number) => Promise<string>;
+        resetCurrentTime?: boolean;
+        onSwitched?: (mode: number) => void;
+        onPlaybackReady?: () => void;
+    }): void {
         if (this.dp === null) {
             return;
         }
@@ -342,6 +357,7 @@ export default abstract class BaseVideo extends Vue {
         if (originalInitVideo !== null) {
             dp.initVideo = (video: HTMLVideoElement, type: string): void => {
                 originalInitVideo(video, type);
+                DPlayerEnhancer.guardAribb24Renderers(dp, video);
                 const snapshot = pendingSnapshot;
                 if (snapshot === null) return;
 
@@ -384,10 +400,22 @@ export default abstract class BaseVideo extends Vue {
             }
 
             this.isResolvingQuality = true;
+            this.$emit('playbackTransition');
             // フラグは呼び出し元の同期処理の間しか立たないため、ここで捕まえて非同期処理へ持ち込む
             const isProgrammatic = this.isProgrammaticQualitySwitch;
             dp.notice(`画質を ${quality[mode].name} に切り替えています…`, -1);
             const video = dp.video as HTMLVideoElement;
+            const trace = {
+                id: ++this.qualitySwitchTraceId,
+                fromMode: typeof dp.qualityIndex === 'number' ? dp.qualityIndex : -1,
+                targetMode: mode,
+                startedAt: performance.now(),
+                oldVideo: video,
+            };
+            this.qualitySwitchTrace = trace;
+            BaseVideo.logQualitySwitchTrace('start', trace, {
+                oldVideo: BaseVideo.getVideoTransitionState(video),
+            });
             pendingSnapshot = {
                 volume: video.volume,
                 muted: video.muted,
@@ -404,6 +432,12 @@ export default abstract class BaseVideo extends Vue {
                     quality[mode].url = await option.resolveUrl(serverMode);
                 } catch (err) {
                     console.error(err);
+                    BaseVideo.logQualitySwitchTrace('failed', trace, {
+                        elapsedMs: Math.round(performance.now() - trace.startedAt),
+                        reason: err instanceof Error ? err.message : String(err),
+                        oldVideo: BaseVideo.getVideoTransitionState(trace.oldVideo),
+                    });
+                    if (this.qualitySwitchTrace?.id === trace.id) this.qualitySwitchTrace = null;
                     pendingSnapshot = null;
                     this.isResolvingQuality = false;
                     dp.notice('画質の切り替えに失敗しました', 3000);
@@ -417,8 +451,18 @@ export default abstract class BaseVideo extends Vue {
 
                 // 切替処理中に破棄された場合は何もしない
                 if (this.dp === null) {
+                    BaseVideo.logQualitySwitchTrace('aborted', trace, {
+                        elapsedMs: Math.round(performance.now() - trace.startedAt),
+                    });
+                    if (this.qualitySwitchTrace?.id === trace.id) this.qualitySwitchTrace = null;
                     return;
                 }
+
+                BaseVideo.logQualitySwitchTrace('url-resolved', trace, {
+                    elapsedMs: Math.round(performance.now() - trace.startedAt),
+                    serverMode,
+                    oldVideo: BaseVideo.getVideoTransitionState(trace.oldVideo),
+                });
 
                 if (typeof option.onSwitched !== 'undefined') {
                     option.onSwitched(serverMode);
@@ -432,6 +476,17 @@ export default abstract class BaseVideo extends Vue {
                     this.$emit('qualitySwitched', qualityItem.presetId);
                 }
 
+                if (typeof option.onPlaybackReady !== 'undefined') {
+                    // originalSwitchQuality() が同期的に canplay を発火する実装でも、
+                    // 旧プレイヤーの後始末を取りこぼさないよう先に登録する。
+                    this.pendingQualityPlaybackReady = option.onPlaybackReady;
+                }
+
+                DPlayerEnhancer.ensureSpeedCurrent(dp);
+                BaseVideo.logQualitySwitchTrace('player-switch-requested', trace, {
+                    elapsedMs: Math.round(performance.now() - trace.startedAt),
+                    oldVideo: BaseVideo.getVideoTransitionState(trace.oldVideo),
+                });
                 if (option.resetCurrentTime === true) {
                     // ストリームを再生位置から作り直しているため切替前の再生位置への seek を抑止し、
                     // 先頭 (= 切替前の再生位置) から再生させる
@@ -450,6 +505,41 @@ export default abstract class BaseVideo extends Vue {
                 this.markCurrentQuality(mode);
             })();
         };
+    }
+
+    /** 画質切替中の旧 video / 新 video の状態を Playwright から確認できる形で残す。 */
+    private static logQualitySwitchTrace(phase: string, trace: { id: number; fromMode: number; targetMode: number; startedAt: number }, data: Record<string, unknown> = {}): void {
+        console.debug('[EPGStation][quality-switch]', phase, {
+            id: trace.id,
+            fromMode: trace.fromMode,
+            targetMode: trace.targetMode,
+            ...data,
+        });
+    }
+
+    /** video が切替中も画面へ表示されているかを測る。 */
+    private static getVideoTransitionState(video: HTMLVideoElement): Record<string, unknown> {
+        try {
+            const rect = video.getBoundingClientRect();
+            const style = window.getComputedStyle(video);
+
+            return {
+                connected: video.isConnected,
+                visible:
+                    rect.width > 0 &&
+                    rect.height > 0 &&
+                    style.display !== 'none' &&
+                    style.visibility !== 'hidden' &&
+                    style.opacity !== '0',
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+                readyState: video.readyState,
+                paused: video.paused,
+                currentTime: Number.isFinite(video.currentTime) ? video.currentTime : null,
+            };
+        } catch (err) {
+            return { readable: false, reason: err instanceof Error ? err.message : String(err) };
+        }
     }
 
     /**
@@ -965,6 +1055,8 @@ export default abstract class BaseVideo extends Vue {
         this.jikkyoCommentQueue = [];
 
         this.isResolvingQuality = false;
+        this.pendingQualityPlaybackReady = null;
+        this.qualitySwitchTrace = null;
 
         if (this.virtualTimeline !== null) {
             this.virtualTimeline.destroy();
@@ -1137,6 +1229,23 @@ export default abstract class BaseVideo extends Vue {
      * 再生可能
      */
     protected onCanplay(): void {
+        const trace = this.qualitySwitchTrace;
+        const currentVideo = this.dp?.video;
+        if (
+            trace !== null &&
+            typeof currentVideo !== 'undefined' &&
+            (currentVideo !== trace.oldVideo || this.pendingQualityPlaybackReady !== null)
+        ) {
+            BaseVideo.logQualitySwitchTrace('playback-ready', trace, {
+                elapsedMs: Math.round(performance.now() - trace.startedAt),
+                oldVideo: BaseVideo.getVideoTransitionState(trace.oldVideo),
+                newVideo: BaseVideo.getVideoTransitionState(currentVideo),
+            });
+            this.qualitySwitchTrace = null;
+        }
+        const onPlaybackReady = this.pendingQualityPlaybackReady;
+        this.pendingQualityPlaybackReady = null;
+        onPlaybackReady?.();
         this.$emit('canplay');
     }
 

@@ -112,6 +112,128 @@ test('config 由来プリセットを品質バケットの代表として通常�
     ]);
 });
 
+// embeddedAudioSwitch: m2tsll かつ cmd が %TSREADEX% と %AUDIOMAP% を両方含むときだけ true になる
+test('m2tsll で tsreadex 経由 (TSREADEX + AUDIOMAP を含む cmd) は embeddedAudioSwitch.m2tsll が true になる', async () => {
+    const m2tsllPresets = [
+        { id: 'auto', name: '自動', builtin: true, output: { codec: 'copy', resolution: 'source' } },
+        { id: 'm2tsll-1080', name: 'M2TS-LL 1080p', builtin: false, output: { codec: 'h264', resolution: '1080p', container: 'm2tsll' } },
+    ];
+    const model = new PlaybackApiModel(
+        { analyzeLiveChannel: async () => source },
+        {
+            getPresets: () => m2tsllPresets,
+            getModeMap: () => ({ m2ts: [], m2tsll: ['m2tsll-1080'], mp4: [], webm: [], hls: [] }),
+            resolveProfileCmd: (_scope, presetId) =>
+                presetId === 'm2tsll-1080'
+                    ? '%TSREADEX% -x 18 -n -1 -a 13 -b 7 -c 5 -u 5 - | %FFMPEG% %DUALMONOMODE% -f mpegts -i pipe:0 %AUDIOMAP% -map "0:s?" -c:s copy -c:v libx264 -y -f mpegts pipe:1'
+                    : undefined,
+        },
+        { resolve: () => ({ presetId: 'm2tsll-1080', label: 'M2TS-LL 1080p', reason: 'test', fallbackChain: [] }) },
+        { findId: async () => ({ type: 'ts' }) },
+    );
+
+    const result = await model.getLivePlaybackOptions(1, client);
+    const profile = result.profiles.find(p => p.id === 'm2tsll-1080');
+    assert.equal(profile.embeddedAudioSwitch.m2tsll, true);
+});
+
+test('m2tsll でも tsreadex 無し (AUDIOMAP を含まない cmd) は embeddedAudioSwitch.m2tsll が false になる', async () => {
+    const m2tsllPresets = [
+        { id: 'auto', name: '自動', builtin: true, output: { codec: 'copy', resolution: 'source' } },
+        { id: 'm2tsll-1080', name: 'M2TS-LL 1080p', builtin: false, output: { codec: 'h264', resolution: '1080p', container: 'm2tsll' } },
+    ];
+    const model = new PlaybackApiModel(
+        { analyzeLiveChannel: async () => source },
+        {
+            getPresets: () => m2tsllPresets,
+            getModeMap: () => ({ m2ts: [], m2tsll: ['m2tsll-1080'], mp4: [], webm: [], hls: [] }),
+            resolveProfileCmd: (_scope, presetId) =>
+                presetId === 'm2tsll-1080'
+                    ? '%FFMPEG% %DUALMONOMODE% -f mpegts -i pipe:0 -map 0:v:0 -map 0:a -map "0:s?" -c:s copy -c:v libx264 -y -f mpegts pipe:1'
+                    : undefined,
+        },
+        { resolve: () => ({ presetId: 'm2tsll-1080', label: 'M2TS-LL 1080p', reason: 'test', fallbackChain: [] }) },
+        { findId: async () => ({ type: 'ts' }) },
+    );
+
+    const result = await model.getLivePlaybackOptions(1, client);
+    const profile = result.profiles.find(p => p.id === 'm2tsll-1080');
+    assert.equal(profile.embeddedAudioSwitch.m2tsll, false);
+});
+
+test('hls は tsreadex 無し (AUDIOMAP のみ) の cmd では embeddedAudioSwitch.hls が false になる', async () => {
+    const hlsPresets = [
+        { id: 'auto', name: '自動', builtin: true, output: { codec: 'copy', resolution: 'source' } },
+        { id: 'hls-1080', name: 'HLS 1080p', builtin: false, output: { codec: 'h264', resolution: '1080p', container: 'hls' } },
+    ];
+    const model = new PlaybackApiModel(
+        { analyzeLiveChannel: async () => source },
+        {
+            getPresets: () => hlsPresets,
+            getModeMap: () => ({ m2ts: [], m2tsll: [], mp4: [], webm: [], hls: ['hls-1080'] }),
+            resolveProfileCmd: () =>
+                '%FFMPEG% %DUALMONOMODE% %AUDIOMAP% -sn -map 0 -f hls %OUTPUT%',
+        },
+        { resolve: () => ({ presetId: 'hls-1080', label: 'HLS 1080p', reason: 'test', fallbackChain: [] }) },
+        { findId: async () => ({ type: 'ts' }) },
+    );
+
+    const result = await model.getLivePlaybackOptions(1, client);
+    const profile = result.profiles.find(p => p.id === 'hls-1080');
+    assert.equal(profile.embeddedAudioSwitch.hls, false);
+});
+
+test('hls は tsreadex 経由 (TSREADEX + AUDIOMAP) かつ in-memory (streamFileDir を含まない) なら embeddedAudioSwitch.hls が true になる', async () => {
+    const hlsPresets = [
+        { id: 'auto', name: '自動', builtin: true, output: { codec: 'copy', resolution: 'source' } },
+        { id: 'hls-1080', name: 'HLS 1080p', builtin: false, output: { codec: 'h264', resolution: '1080p', container: 'hls' } },
+    ];
+    const model = new PlaybackApiModel(
+        { analyzeLiveChannel: async () => source },
+        {
+            getPresets: () => hlsPresets,
+            getModeMap: () => ({ m2ts: [], m2tsll: [], mp4: [], webm: [], hls: ['hls-1080'] }),
+            resolveProfileCmd: () =>
+                '%TSREADEX% -x 18 -n -1 -a 13 -b 7 -c 5 -u 5 - | %FFMPEG% %DUALMONOMODE% %AUDIOMAP% -f mp4 pipe:1',
+        },
+        { resolve: () => ({ presetId: 'hls-1080', label: 'HLS 1080p', reason: 'test', fallbackChain: [] }) },
+        { findId: async () => ({ type: 'ts' }) },
+    );
+
+    const result = await model.getLivePlaybackOptions(1, client);
+    const profile = result.profiles.find(p => p.id === 'hls-1080');
+    assert.equal(profile.embeddedAudioSwitch.hls, true);
+});
+
+test('hls は tsreadex 経由でもディスク方式 (streamFileDir を含む) なら embeddedAudioSwitch.hls が false になる', async () => {
+    const hlsPresets = [
+        { id: 'auto', name: '自動', builtin: true, output: { codec: 'copy', resolution: 'source' } },
+        { id: 'hls-1080', name: 'HLS 1080p', builtin: false, output: { codec: 'h264', resolution: '1080p', container: 'hls' } },
+    ];
+    const model = new PlaybackApiModel(
+        { analyzeLiveChannel: async () => source },
+        {
+            getPresets: () => hlsPresets,
+            getModeMap: () => ({ m2ts: [], m2tsll: [], mp4: [], webm: [], hls: ['hls-1080'] }),
+            resolveProfileCmd: () =>
+                '%TSREADEX% -x 18 -n -1 -a 13 -b 7 -c 5 -u 5 - | %FFMPEG% %DUALMONOMODE% %AUDIOMAP% -f hls %streamFileDir%/stream%streamNum%-%09d.ts %OUTPUT%',
+        },
+        { resolve: () => ({ presetId: 'hls-1080', label: 'HLS 1080p', reason: 'test', fallbackChain: [] }) },
+        { findId: async () => ({ type: 'ts' }) },
+    );
+
+    const result = await model.getLivePlaybackOptions(1, client);
+    const profile = result.profiles.find(p => p.id === 'hls-1080');
+    assert.equal(profile.embeddedAudioSwitch.hls, false);
+});
+
+// 旧いテストダブル (resolveProfileCmd を持たない presetRegistry) でも例外にならない
+test('presetRegistry.resolveProfileCmd が無い場合は embeddedAudioSwitch を false 扱いにする', async () => {
+    const result = await createModel().getLivePlaybackOptions(1, client);
+    const profile = result.profiles.find(p => p.id === '2160p-preserve');
+    assert.equal(profile.embeddedAudioSwitch === undefined || profile.embeddedAudioSwitch.hls === false, true);
+});
+
 test('container 指定時は同じ container 内の品質バケット代表を選ぶ', async () => {
     const containerPresets = [
         { id: 'auto', name: '自動', builtin: true, output: { codec: 'copy', resolution: 'source' } },

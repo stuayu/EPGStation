@@ -7,6 +7,7 @@ import ILiveHLSVideoState from './ILiveHLSVideoState';
 class LiveHLSVideoState implements ILiveHLSVideoState {
     private streamApiModel: IStreamApiModel;
     private streamId: apid.StreamId | null = null;
+    private streamIds = new Set<apid.StreamId>();
     private keepTimerId: ReturnType<typeof setTimeout> | undefined;
 
     constructor(@inject('IStreamApiModel') streamApiModel: IStreamApiModel) {
@@ -21,9 +22,12 @@ class LiveHLSVideoState implements ILiveHLSVideoState {
      * @return Promise<void>
      */
     public async start(channelId: apid.ChannelId, mode: number, audioTrack?: apid.AudioTrackSpecifier): Promise<void> {
-        this.streamId = await this.streamApiModel.startLiveHLS(channelId, mode, audioTrack);
+        const streamId = await this.streamApiModel.startLiveHLS(channelId, mode, audioTrack);
+        this.streamId = streamId;
+        this.streamIds.add(streamId);
 
         // ストリームを保持し続ける
+        if (typeof this.keepTimerId !== 'undefined') clearInterval(this.keepTimerId);
         this.keepTimerId = setInterval(async () => {
             if (this.streamId === null) {
                 return;
@@ -47,10 +51,51 @@ class LiveHLSVideoState implements ILiveHLSVideoState {
             this.keepTimerId = undefined;
         }
 
-        if (this.streamId !== null) {
-            await this.streamApiModel.stop(this.streamId);
-            this.streamId = null;
+        let firstError: unknown = null;
+        for (const streamId of this.streamIds) {
+            try {
+                await this.streamApiModel.stop(streamId);
+            } catch (err) {
+                firstError ??= err;
+            }
         }
+        this.streamIds.clear();
+        this.streamId = null;
+        if (firstError !== null) throw firstError;
+    }
+
+    /** 切替に失敗した現在のストリームだけを停止し、切替前のストリームへ戻す。 */
+    public async stopCurrentStream(): Promise<void> {
+        const current = this.streamId;
+        if (current === null) return;
+
+        let firstError: unknown = null;
+        try {
+            await this.streamApiModel.stop(current);
+            this.streamIds.delete(current);
+        } catch (err) {
+            firstError = err;
+        }
+
+        const previous = [...this.streamIds].at(-1) ?? null;
+        this.streamId = previous;
+        if (firstError !== null) throw firstError;
+    }
+
+    /** 新しい配信の再生開始後に、切替前のライブ配信を停止する。 */
+    public async stopPreviousStream(): Promise<void> {
+        const current = this.streamId;
+        let firstError: unknown = null;
+        for (const streamId of [...this.streamIds]) {
+            if (streamId === current) continue;
+            try {
+                await this.streamApiModel.stop(streamId);
+                this.streamIds.delete(streamId);
+            } catch (err) {
+                firstError ??= err;
+            }
+        }
+        if (firstError !== null) throw firstError;
     }
 
     /**

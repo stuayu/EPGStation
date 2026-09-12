@@ -10,6 +10,7 @@ import IRecordedHLSStreamingVideoState from '@/model/state/recorded/streaming/IR
 import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
+import HlsAudioTrackUtil from '@/util/HlsAudioTrackUtil';
 import StreamQualityUtil from '@/util/StreamQualityUtil';
 import Util from '@/util/Util';
 import { DPlayerType } from 'dplayer';
@@ -108,7 +109,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
 
             // HLS stream 開始
             await this.videoState
-                .start(this.videoFileId, this.basePlayPosition, this.currentMode, this.currentAudioTrack)
+                .start(this.videoFileId, this.basePlayPosition, this.currentMode, this.resolveStreamAudioTrack(this.currentAudioTrack))
                 .catch(err => {
                     this.snackbarState.open({
                         color: 'error',
@@ -165,22 +166,32 @@ class RecordedHLSStreamingVideo extends BaseVideo {
                 return;
             }
 
-            // ストリームが有効になるまで待つ
-            let count = 0;
-            const checkEnabledTimerId = setInterval(async () => {
-                count++;
-                if ((await this.videoState.isEnabled()) === true) {
-                    clearInterval(checkEnabledTimerId);
-                    resolve();
+            // 初回は即時、その後は 200ms 間隔で確認する。タイムアウトは従来の60秒を維持する。
+            const startedAt = Date.now();
+            let checkEnabledTimerId: ReturnType<typeof setTimeout> | undefined;
+            let settled = false;
+            const check = async (): Promise<void> => {
+                try {
+                    if ((await this.videoState.isEnabled()) === true) {
+                        settled = true;
+                        if (typeof checkEnabledTimerId !== 'undefined') clearTimeout(checkEnabledTimerId);
+                        resolve();
 
-                    return;
-                }
+                        return;
+                    }
+                    if (Date.now() - startedAt >= RecordedHLSStreamingVideo.WAIT_ENABLED_LIMIT * 1000) {
+                        settled = true;
+                        reject(new Error('StreamIsNotEnabled'));
 
-                if (count >= RecordedHLSStreamingVideo.WAIT_ENABLED_LIMIT) {
-                    clearInterval(checkEnabledTimerId);
-                    reject(new Error('StreamIsNotEnabled'));
+                        return;
+                    }
+                    if (settled === false) checkEnabledTimerId = setTimeout(() => void check(), RecordedHLSStreamingVideo.WAIT_ENABLED_INTERVAL_MS);
+                } catch (err) {
+                    settled = true;
+                    reject(err);
                 }
-            }, 1000);
+            };
+            void check();
         });
     }
 
@@ -258,17 +269,16 @@ class RecordedHLSStreamingVideo extends BaseVideo {
                 },
                 pluginOptions: {
                     // hls.js 使用時 (Safari 以外) の設定
-                    // サーバーは録画済み HLS も LL-HLS (#EXT-X-PART) で配信する。
-                    // lowLatencyMode を有効にするとパート単位で取得するため、再生開始・
-                    // シーク後の待ちが 1 セグメント分から 1 パート分 (既定 0.5 秒) に縮む。
-                    //
-                    // ただし LatencyController の追いつき再生 (playbackRate の書き換え) は
-                    // 配信ジッタで常時発火して再生速度の微振動を起こすため無効にする
-                    // (maxLiveSyncPlaybackRate: 1)。
-                    // なお lowLatencyMode は hls.js の既定値が true なので、
-                    // ここでの明示は挙動を設定として固定するためのもの
+                    // サーバーの録画済み HLS は通常の HLS (#EXT-X-PART を出さない) で配信する。
+                    // 以前は LL-HLS (#EXT-X-PART) として配信していたが、WebKit のネイティブ HLS が
+                    // 再生位置のセグメントと同時にライブ端のパート (#EXT-X-PRELOAD-HINT) も先取りするため、
+                    // サーバー側の「取得済みセグメント (lastServedSeq)」の判定がライブ端へ跳んでしまい、
+                    // エンコード先行量に比例した抑制が効かなくなっていた (実測: 9.8 分の録画を 28 秒でエンコード完了、
+                    // 保持窓を追い越して 180 秒地点で再生が止まる)。lowLatencyMode を無効にして
+                    // hls.js 側もパート単位の先読み・ブロッキングプレイリスト要求を行わないようにする
+                    // (詳細は doc/streaming-refresh.md、doc/changelog-fork.md 2026-09-12 を参照)。
                     hls: {
-                        lowLatencyMode: true,
+                        lowLatencyMode: false,
                         // 録画 HLS は更新中でも先頭から再生する。未指定だと hls.js がライブ端から開始する。
                         startPosition: 0,
                         // 録画済みは保持窓 (約 180 秒) の直前まで先読みし、再生中のバッファ枯れを避ける。
@@ -291,6 +301,8 @@ class RecordedHLSStreamingVideo extends BaseVideo {
 
             this.createPlayer(options);
             this.setPlaybackProfiles(this.playbackProfiles, 'hls');
+            // ストリームを作り直した直後 (シーク・画質切替) は音声レンディションの選択が主音声へ戻る
+            this.reapplyEmbeddedAudioTrack();
             this.setupAudioTrackSwitchForRecorded();
 
             // 画質切替時は現在の再生位置からストリームを作り直してから url を差し替える
@@ -331,7 +343,12 @@ class RecordedHLSStreamingVideo extends BaseVideo {
 
         await this.videoState.stop();
         this.basePlayPosition = playPosition;
-        await this.videoState.start(this.videoFileId, this.basePlayPosition, mode, this.currentAudioTrack);
+        await this.videoState.start(
+            this.videoFileId,
+            this.basePlayPosition,
+            mode,
+            this.resolveStreamAudioTrack(this.currentAudioTrack),
+        );
         await this.waitForEnabled();
 
         const streamId = this.videoState.getStreamId();
@@ -339,28 +356,91 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             throw new Error('StreamIdIsNull');
         }
 
+        this.reapplyEmbeddedAudioTrack();
+
         return `./streamfiles/stream${streamId}.m3u8`;
     }
 
     /**
      * DPlayer の設定 > 音声パネルへ音声トラック切替を組み込む
-     * HLS 配信では音声を切り替えるとサーバー側のストリームを作り直す必要があるため、
-     * 画質切替と同じく「現在の再生位置からストリームを再生成して url を差し替える」形にする
+     *
+     * **embeddedAudioSwitch.hls が true の配信は主音声・副音声の両方が同じストリームに
+     * 音声レンディションとして入っている** (サーバーが `audioTrack=all` を受けてマスタープレイリストを返す)。
+     * その場合はストリームを作り直さず、hls.js / ネイティブ HLS のレンディション切替だけで済ませる。
+     * そうでない配信は従来どおり「現在の再生位置からストリームを再生成して url を差し替える」
      */
     private setupAudioTrackSwitchForRecorded(): void {
         this.setupAudioTrackSwitch({
             tracks: this.audioTracks,
             current: this.currentAudioTrack,
             onSelect: async track => {
+                if (this.isEmbeddedAudioSwitchMode(this.currentMode) === true) {
+                    const switched = await HlsAudioTrackUtil.switchAudioTrack(this.dp as any, track);
+                    if (switched === true) {
+                        this.currentAudioTrack = track;
+
+                        return;
+                    }
+                    // レンディションが揃っていない場合は下の再接続方式へフォールバックする
+                }
+
                 const playPosition = this.getCurrentTime();
                 await this.videoState.stop();
                 this.basePlayPosition = playPosition;
-                await this.videoState.start(this.videoFileId, this.basePlayPosition, this.currentMode, track);
+                await this.videoState.start(
+                    this.videoFileId,
+                    this.basePlayPosition,
+                    this.currentMode,
+                    this.resolveStreamAudioTrack(track),
+                );
                 await this.waitForEnabled();
                 this.currentAudioTrack = track;
                 this.initVideoSetting();
             },
         });
+    }
+
+    /**
+     * ストリームを作り直した後、選択中の音声レンディションを選び直す
+     * (主音声は新しいストリームの既定値なので何もしなくてよい)
+     */
+    private reapplyEmbeddedAudioTrack(): void {
+        if (
+            this.isEmbeddedAudioSwitchMode(this.currentMode) === false ||
+            HlsAudioTrackUtil.isSecondaryAudioTrack(this.currentAudioTrack) === false
+        ) {
+            return;
+        }
+
+        void HlsAudioTrackUtil.switchAudioTrack(this.dp as any, this.currentAudioTrack);
+    }
+
+    /**
+     * 指定した mode (hls の再生プロファイル) が主音声・副音声を同時に配信できるか
+     * (embeddedAudioSwitch.hls === true か) を返す
+     * @param mode: number
+     * @return boolean
+     */
+    private isEmbeddedAudioSwitchMode(mode: number): boolean {
+        const profile = this.playbackProfiles.find(item => item.modes?.hls === mode);
+
+        return profile?.embeddedAudioSwitch?.hls === true;
+    }
+
+    /**
+     * ストリーム開始 API へ渡す音声トラック指定子を返す
+     *
+     * **主音声のときは embeddedAudioSwitch が分からなくても 'all' で開く**。playbackProfiles は
+     * プレイヤー生成後に非同期で届くため、最初のストリームを開始する時点ではまだ空のことが多い。
+     * サーバーは tsreadex を通さない cmd (録画済みファイル入力を含む) では 'all' を 'main' として扱う
+     * @param track: apid.AudioTrackSpecifier
+     * @return apid.AudioTrackSpecifier
+     */
+    private resolveStreamAudioTrack(track: apid.AudioTrackSpecifier): apid.AudioTrackSpecifier {
+        return HlsAudioTrackUtil.isSecondaryAudioTrack(track) === false ||
+            this.isEmbeddedAudioSwitchMode(this.currentMode) === true
+            ? 'all'
+            : track;
     }
 
     /**
@@ -452,6 +532,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             const needsShowSubtitle = this.isShowingSubtitle();
             this.disabledSubtitle();
             this.basePlayPosition = time;
+            this.$emit('playbackTransition');
             this.onWaiting();
             this.onPause();
 
@@ -470,7 +551,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
                     this.videoFileId,
                     this.basePlayPosition,
                     this.currentMode,
-                    this.currentAudioTrack,
+                    this.resolveStreamAudioTrack(this.currentAudioTrack),
                 );
                 if (this.lastSeekTime !== beforeStartStream) {
                     return;
@@ -491,7 +572,9 @@ class RecordedHLSStreamingVideo extends BaseVideo {
                 return;
             }
 
-            await Util.sleep(500);
+            // switchVideo() は次のイベントループで video 要素を差し替える。500ms 固定待ちではなく
+            // 最小限の猶予だけ置き、canplay リスナー側の再生開始を待つ。
+            await Util.sleep(100);
             if (this.dp !== null) {
                 this.dp.video.playbackRate = playbackRate;
                 // ストリームを作り直すと必ず停止状態から始まるため、シーク前の再生状態へ戻す
@@ -510,6 +593,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
 
 namespace RecordedHLSStreamingVideo {
     export const WAIT_ENABLED_LIMIT = 60; // ストリームが有効になるまで待つ最大秒数
+    export const WAIT_ENABLED_INTERVAL_MS = 200;
 }
 
 export default toNative(RecordedHLSStreamingVideo);

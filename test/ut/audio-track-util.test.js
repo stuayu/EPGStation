@@ -115,3 +115,27 @@ test('音声 ES のインデックス指定は tsreadex の有無で変わらな
         assert.match(AudioTrackUtil.replacePlaceholders(CMD, '2', 1, 'ts', normalized), /-map 0:v:0 -map 0:a:2/);
     }
 });
+
+// ---- audioTrack: 'all' (主音声・副音声の同時配信) ----
+
+test("tsreadex 正規化済みの 'all' は主音声・副音声の両方の ES を map する", () => {
+    const cmd = AudioTrackUtil.replacePlaceholders(CMD, 'all', undefined, 'ts', true);
+    assert.match(cmd, /-map 0:v:0 -map 0:a:0 -map 0:a:1/);
+});
+
+test("tsreadex 無しの 'all' はデュアルモノラルの 1 ES しか無いため 'main' と同じ扱いになる", () => {
+    const all = AudioTrackUtil.replacePlaceholders(CMD, 'all', undefined, 'ts', false);
+    const main = AudioTrackUtil.replacePlaceholders(CMD, 'main', undefined, 'ts', false);
+    assert.equal(all, main);
+    assert.doesNotMatch(all, /-map 0:a:0 -map 0:a:1/);
+});
+
+test('tsreadex 正規化済みで audioTrack 未指定なら index 0 (主音声 ES) を明示的に選ぶ', () => {
+    const cmd = AudioTrackUtil.replacePlaceholders(CMD, undefined, undefined, 'ts', true);
+    assert.match(cmd, /-map 0:v:0 -map 0:a:0/);
+});
+
+test('tsreadex 無しで audioTrack 未指定なら従来どおり -map を付けない', () => {
+    const cmd = AudioTrackUtil.replacePlaceholders(CMD, undefined, undefined, 'ts', false);
+    assert.doesNotMatch(cmd, /-map/);
+});

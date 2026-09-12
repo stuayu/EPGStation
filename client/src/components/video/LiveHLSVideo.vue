@@ -9,6 +9,7 @@ import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
 import ILiveHLSVideoState from '@/model/state/onair/ILiveHLSVideoState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
+import HlsAudioTrackUtil from '@/util/HlsAudioTrackUtil';
 import StreamQualityUtil from '@/util/StreamQualityUtil';
 import UaUtil from '@/util/UaUtil';
 import { DPlayerType } from 'dplayer';
@@ -74,12 +75,15 @@ class LiveHLSVideo extends BaseVideo {
         });
 
         // HLS stream 開始
-        await this.videoState.start(this.channelId, this.currentMode, this.currentAudioTrack).catch(err => {
-            this.snackbarState.open({
-                color: 'error',
-                text: 'ストリーム開始に失敗',
+        await this.videoState
+            .start(this.channelId, this.currentMode, this.resolveStreamAudioTrack(this.currentAudioTrack))
+            .catch(err => {
+                console.error(err);
+                this.snackbarState.open({
+                    color: 'error',
+                    text: 'ストリーム開始に失敗',
+                });
             });
-        });
 
         // ストリームが有効になるまで待つ
         this.checkEnabledTimerId = setInterval(async () => {
@@ -197,6 +201,12 @@ class LiveHLSVideo extends BaseVideo {
             onSwitched: mode => {
                 this.currentMode = mode;
             },
+            onPlaybackReady: () => {
+                if (HlsAudioTrackUtil.isSecondaryAudioTrack(this.currentAudioTrack) === true) {
+                    void HlsAudioTrackUtil.switchAudioTrack(this.dp as any, this.currentAudioTrack);
+                }
+                void this.videoState.stopPreviousStream().catch(err => console.error(err));
+            },
         });
 
         if (this.dp !== null) {
@@ -234,9 +244,14 @@ class LiveHLSVideo extends BaseVideo {
      * @return Promise<string> m3u8 の url
      */
     private async restartStream(mode: number): Promise<string> {
-        await this.videoState.stop();
-        await this.videoState.start(this.channelId, mode, this.currentAudioTrack);
-        await this.waitForEnabled();
+        try {
+            await this.videoState.start(this.channelId, mode, this.resolveStreamAudioTrack(this.currentAudioTrack));
+            await this.waitForEnabled();
+        } catch (err) {
+            // 切替前のストリームは再生継続用に残し、新しく作ったストリームだけ回収する。
+            await this.videoState.stopCurrentStream().catch(cleanupErr => console.error(cleanupErr));
+            throw err;
+        }
 
         const streamId = this.videoState.getStreamId();
         if (streamId === null) {
@@ -253,14 +268,28 @@ class LiveHLSVideo extends BaseVideo {
      * (`GET /api/channels/{channelId}/audio-tracks`) から一覧を作る。
      * 番組情報が取れない放送局のために、空だった場合は主音声・副音声の 2 択へ落とす
      * (ステレオ放送で副音声を選んでも右チャンネルが両耳に出るだけで再生は続く)
+     *
+     * **embeddedAudioSwitch.hls が true の配信は主音声・副音声の両方が同じストリームに
+     * 音声レンディションとして入っている** (サーバーが `audioTrack=all` を受けてマスタープレイリストを返す)。
+     * その場合はストリームを作り直さず、hls.js / ネイティブ HLS のレンディション切替だけで済ませる
      */
     private setupLiveAudioTrackSwitch(): void {
         this.setupAudioTrackSwitch({
             tracks: this.audioTracks.length > 0 ? this.audioTracks : LiveHLSVideo.FALLBACK_AUDIO_TRACKS,
             current: this.currentAudioTrack,
             onSelect: async track => {
+                if (this.isEmbeddedAudioSwitchMode(this.currentMode) === true) {
+                    const switched = await HlsAudioTrackUtil.switchAudioTrack(this.dp as any, track);
+                    if (switched === true) {
+                        this.currentAudioTrack = track;
+
+                        return;
+                    }
+                    // レンディションが揃っていない場合は下の再接続方式へフォールバックする
+                }
+
                 await this.videoState.stop();
-                await this.videoState.start(this.channelId, this.currentMode, track);
+                await this.videoState.start(this.channelId, this.currentMode, this.resolveStreamAudioTrack(track));
                 await this.waitForEnabled();
                 this.currentAudioTrack = track;
                 this.initVideoSetting();
@@ -269,32 +298,69 @@ class LiveHLSVideo extends BaseVideo {
     }
 
     /**
+     * 指定した mode (hls の再生プロファイル) が主音声・副音声を同時に配信できるか
+     * (embeddedAudioSwitch.hls === true か) を返す
+     * @param mode: number
+     * @return boolean
+     */
+    private isEmbeddedAudioSwitchMode(mode: number): boolean {
+        const profile = this.playbackProfiles.find(item => item.modes?.hls === mode);
+
+        return profile?.embeddedAudioSwitch?.hls === true;
+    }
+
+    /**
+     * ストリーム開始 API へ渡す音声トラック指定子を返す
+     *
+     * **主音声のときは embeddedAudioSwitch が分からなくても 'all' で開く**。playbackProfiles は
+     * プレイヤー生成後に非同期で届くため、最初のストリームを開始する時点ではまだ空のことが多い。
+     * サーバーは tsreadex を通さない cmd では 'all' を 'main' として扱うので、どちらの構成でも安全
+     * @param track: apid.AudioTrackSpecifier
+     * @return apid.AudioTrackSpecifier
+     */
+    private resolveStreamAudioTrack(track: apid.AudioTrackSpecifier): apid.AudioTrackSpecifier {
+        return HlsAudioTrackUtil.isSecondaryAudioTrack(track) === false ||
+            this.isEmbeddedAudioSwitchMode(this.currentMode) === true
+            ? 'all'
+            : track;
+    }
+
+    /**
      * ストリームが有効になるまで待つ
      * @return Promise<void>
      */
     private waitForEnabled(): Promise<void> {
         return new Promise<void>((resolve, reject) => {
-            let count = 0;
-            const timerId = setInterval(async () => {
-                count++;
-                if ((await this.videoState.isEnabled()) === true) {
-                    clearInterval(timerId);
-                    resolve();
-
-                    return;
+            const startedAt = Date.now();
+            let timerId: ReturnType<typeof setTimeout> | undefined;
+            let settled = false;
+            const check = async (): Promise<void> => {
+                try {
+                    if ((await this.videoState.isEnabled()) === true) {
+                        settled = true;
+                        if (typeof timerId !== 'undefined') clearTimeout(timerId);
+                        resolve();
+                        return;
+                    }
+                    if (Date.now() - startedAt >= LiveHLSVideo.WAIT_ENABLED_LIMIT * 1000) {
+                        settled = true;
+                        reject(new Error('StreamIsNotEnabled'));
+                        return;
+                    }
+                    if (settled === false) timerId = setTimeout(() => void check(), LiveHLSVideo.WAIT_ENABLED_INTERVAL_MS);
+                } catch (err) {
+                    settled = true;
+                    reject(err);
                 }
-
-                if (count >= LiveHLSVideo.WAIT_ENABLED_LIMIT) {
-                    clearInterval(timerId);
-                    reject(new Error('StreamIsNotEnabled'));
-                }
-            }, 1000);
+            };
+            void check();
         });
     }
 }
 
 namespace LiveHLSVideo {
     export const WAIT_ENABLED_LIMIT = 30; // ストリームが有効になるまで待つ最大秒数
+    export const WAIT_ENABLED_INTERVAL_MS = 200;
 }
 
 namespace LiveHLSVideo {

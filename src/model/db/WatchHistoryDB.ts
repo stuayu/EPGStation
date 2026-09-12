@@ -29,6 +29,11 @@ export default class WatchHistoryDB implements IWatchHistoryDB {
                 updatedAt: o.updatedAt,
             })
             .orUpdate(['recordedId', 'position', 'duration', 'status', 'updatedAt'], ['videoFileId'])
+            // 挿入後に生成列を読み戻す既定動作 (updateEntity) を切る。ON CONFLICT で既存行の更新に
+            // なった場合は挿入 id が無く、TypeORM が "Cannot update entity because entity id is not set
+            // in the entity." で失敗して PUT が 500 になる (再生位置が一切保存されなかった)。
+            // 戻り値は直後の findByVideoFileId() で読み直すので読み戻しは不要
+            .updateEntity(false)
             .execute();
         return (await this.findByVideoFileId(o.videoFileId))!;
     }

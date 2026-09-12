@@ -16,10 +16,10 @@ import ISocketIOManageModel from '../../socketio/ISocketIOManageModel';
 import AribId3Extractor from '../llhls/AribId3Extractor';
 import Fmp4Packager from '../llhls/Fmp4Packager';
 import IAribId3Extractor from '../llhls/IAribId3Extractor';
-import IFmp4Packager from '../llhls/IFmp4Packager';
+import IFmp4Packager, { Fmp4PackagerTrackRole } from '../llhls/IFmp4Packager';
 import AudioTrackUtil from '../util/AudioTrackUtil';
 import IHLSFileDeleterModel from '../util/IHLSFileDeleterModel';
-import IHLSMemoryStoreModel from '../util/IHLSMemoryStoreModel';
+import IHLSMemoryStoreModel, { HLSMemoryTrackRole } from '../util/IHLSMemoryStoreModel';
 import IRecordedStreamBaseModel, { RecordedStreamOption, VideoFileInfo } from './IRecordedStreamBaseModel';
 import { RecordedStreamInfo } from './IStreamBaseModel';
 import StreamBaseModel from './StreamBaseModel';
@@ -97,6 +97,8 @@ export default abstract class RecordedStreamBaseModel
     // in-memory HLS で ARIB 字幕 (ID3 timed metadata) を取り出すための Transform
     private aribId3Extractor: IAribId3Extractor | null = null;
     private memoryStreamId: apid.StreamId | null = null;
+    // 複数音声トラック分解モードで実際に使われたロール (音声 1 本のみなら null のまま)
+    private multiTrackRoles: Fmp4PackagerTrackRole[] | null = null;
     // エンコードが先行しすぎたため一時停止しているか
     private isEncodeThrottled: boolean = false;
     private throttleTimerId: ReturnType<typeof setTimeout> | null = null;
@@ -200,8 +202,8 @@ export default abstract class RecordedStreamBaseModel
         // in-memory モードはディスク上のファイルが増えないため startCheckStreamEnable が使えず、
         // プロセスの exit/error を直接監視する必要がある (ライブ HLS の in-memory モードと同様)
         if (this.getStreamType() !== 'RecordedHLS' || this.isMemoryHLS() === true) {
-            this.streamProcess.on('exit', () => {
-                this.emitExitStream();
+            this.streamProcess.on('exit', code => {
+                this.onStreamProcessExit(code);
             });
             this.streamProcess.on('error', () => {
                 this.emitExitStream();
@@ -257,6 +259,13 @@ export default abstract class RecordedStreamBaseModel
     }
 
     /**
+     * Fmp4Packager のロール (video/audio0/audio1) を HLSMemoryStoreModel のロール (v/a0/a1) へ変換する
+     */
+    private toHLSRole(role: Fmp4PackagerTrackRole): HLSMemoryTrackRole {
+        return role === 'video' ? 'v' : role === 'audio0' ? 'a0' : 'a1';
+    }
+
+    /**
      * in-memory HLS のパッケージングを開始する
      * エンコードプロセスが標準出力へ書き出す fragmented MP4 を Fmp4Packager で
      * init / パート / セグメントに分解し、HLSMemoryStoreModel へ蓄積する (ディスク書き込みなし)
@@ -272,6 +281,8 @@ export default abstract class RecordedStreamBaseModel
 
         this.log.stream.info(`start in-memory recorded HLS packaging: ${streamId}`);
         this.memoryStreamId = streamId;
+        // 単一トラック (従来) モードのエントリは即座に作る (multiTrack 判定は moov 到着後なので、
+        // 音声トラックが 2 本以上の場合はこのエントリは未使用のまま stop() で破棄される)
         this.hlsMemoryStore.create(streamId, 'recorded');
 
         const packager = new Fmp4Packager(
@@ -280,6 +291,7 @@ export default abstract class RecordedStreamBaseModel
         );
         this.fmp4Packager = packager;
 
+        // 単一トラック (従来) モード
         packager.on('init', data => {
             this.hlsMemoryStore.setInit(streamId, data);
         });
@@ -293,6 +305,32 @@ export default abstract class RecordedStreamBaseModel
             }
             this.throttleEncodeIfTooFarAhead(streamId);
         });
+
+        // 複数音声トラック分解モード。ロールごとに別エントリへ振り分ける
+        // (getAheadSegmentNum() / エンコード抑制は role: 'v' の値を基準にする)
+        packager.on('multiTrack', roles => {
+            this.multiTrackRoles = roles;
+            for (const role of roles) {
+                this.hlsMemoryStore.create(streamId, 'recorded', this.toHLSRole(role));
+            }
+        });
+        packager.on('trackInit', (role, data) => {
+            this.hlsMemoryStore.setInit(streamId, data, this.toHLSRole(role));
+        });
+        packager.on('trackPart', (role, part) => {
+            this.hlsMemoryStore.addPart(streamId, part.data, part.duration, part.isIndependent, this.toHLSRole(role));
+        });
+        packager.on('trackSegment', (role, segment) => {
+            const hlsRole = this.toHLSRole(role);
+            this.hlsMemoryStore.addSegment(streamId, segment.data, segment.duration, hlsRole);
+            if (this.isEnable() === false && this.hlsMemoryStore.isReady(streamId, 'v') === true) {
+                this.markEnable(streamId);
+            }
+            if (role === 'video') {
+                this.throttleEncodeIfTooFarAhead(streamId);
+            }
+        });
+
         packager.on('halted', message => {
             this.log.stream.error(`in-memory recorded HLS packaging halted: ${streamId} ${message}`);
             this.emitExitStream();
@@ -309,11 +347,51 @@ export default abstract class RecordedStreamBaseModel
     }
 
     /**
+     * エンコードプロセス終了時の処理
+     *
+     * 録画済み in-memory HLS のエンコードは実時間より速く終わるため、再生が終わるより先に
+     * 必ずエンコーダが終了する。ここで従来どおり emitExitStream() (= ストリーム停止) を
+     * 呼んでしまうと、stop() の hlsMemoryStore.delete() でまだプレイヤーが取得していない
+     * 末尾のセグメントまで失われる (実測: 9.8 分の録画で 363 秒地点まで再生できたのに
+     * エンコーダ終了と同時にストアごと削除され、そこで再生が止まったまま戻らなくなった)。
+     *
+     * そのため正常終了 (exit code 0) の場合はストリームを止めず、ストアへ終端
+     * (#EXT-X-ENDLIST) を記録するだけに留める。実際の停止はクライアント切断や
+     * keep タイマー切れ (StreamBaseModel.setStopTimer()) による通常の stop() に任せる。
+     * 異常終了 (0 以外の exit code) は録り直しようがないため従来どおり即座に停止する
+     * @param code: number | null 子プロセスの終了コード
+     */
+    private onStreamProcessExit(code: number | null): void {
+        if (
+            this.getStreamType() === 'RecordedHLS' &&
+            this.isMemoryHLS() === true &&
+            code === 0 &&
+            this.memoryStreamId !== null
+        ) {
+            this.log.stream.info(
+                `in-memory recorded HLS encode process finished normally: ${this.memoryStreamId}`,
+            );
+            if (this.multiTrackRoles !== null) {
+                for (const role of this.multiTrackRoles) {
+                    this.hlsMemoryStore.markEnded(this.memoryStreamId, this.toHLSRole(role));
+                }
+            } else {
+                this.hlsMemoryStore.markEnded(this.memoryStreamId);
+            }
+
+            return;
+        }
+
+        this.emitExitStream();
+    }
+
+    /**
      * エンコードが再生位置より先行しすぎていたらペースを落とす。
      * 標準出力の読み出しを止めるとパイプが詰まり、エンコーダ自身が書き込みでブロックする
      *
-     * 先行量が RESUME_AHEAD_SEGMENT_NUM まで減れば再開する。プレイヤーが取得を止めても
-     * MAX_PACE_INTERVAL 経過後には必ず再開する。完全に止めるとプレイリストの更新も止まり、
+     * 先行量が RESUME_AHEAD_SEGMENT_NUM まで減れば早期に再開する。減らなくても、
+     * このタイミングで計算した比例停止時間 (pauseTime、上限 MAX_PACE_INTERVAL) が
+     * 経過すれば必ず再開する。完全に止めるとプレイリストの更新も止まり、
      * LL-HLS のプレイヤーが次のセグメントを取りに来なくなってデッドロックするため
      * @param streamId: apid.StreamId
      */
@@ -322,7 +400,10 @@ export default abstract class RecordedStreamBaseModel
             return;
         }
 
-        const aheadNum = this.hlsMemoryStore.getAheadSegmentNum(streamId);
+        // 複数音声トラック分解モードでは role: 'v' (映像) の先行量を基準にする
+        // (全ロールが同じ moof 周期で確定するため、映像 1 系統で足りる)
+        const aheadRole = this.multiTrackRoles !== null ? 'v' : undefined;
+        const aheadNum = this.hlsMemoryStore.getAheadSegmentNum(streamId, aheadRole);
         const excessNum = aheadNum - RecordedStreamBaseModel.MAX_AHEAD_SEGMENT_NUM;
         if (excessNum <= 0) {
             return;
@@ -351,18 +432,18 @@ export default abstract class RecordedStreamBaseModel
                 return;
             }
 
-            const currentAheadNum = this.hlsMemoryStore.getAheadSegmentNum(streamId);
+            const currentAheadNum = this.hlsMemoryStore.getAheadSegmentNum(streamId, aheadRole);
             const elapsedTime = Date.now() - throttleStartedAt;
-            if (
-                currentAheadNum > RecordedStreamBaseModel.RESUME_AHEAD_SEGMENT_NUM &&
-                elapsedTime < RecordedStreamBaseModel.MAX_PACE_INTERVAL
-            ) {
+            // ループの上限は MAX_PACE_INTERVAL (定数) ではなく、この超過量に対して計算した
+            // pauseTime を使う。MAX_PACE_INTERVAL 固定だと、pauseTime が小さく計算された
+            // (超過がわずかな) 場合でも常に最大 5 秒まで引き延ばされてしまい、
+            // ログの "pause encode <pauseTime>ms" と実際の停止時間が食い違っていた。
+            // (先行量は視聴の実時間経過でしか減らないため、100ms 程度の短い pauseTime では
+            // RESUME_AHEAD_SEGMENT_NUM まで下がりきらず、毎回ループが延長され続けていた)
+            if (currentAheadNum > RecordedStreamBaseModel.RESUME_AHEAD_SEGMENT_NUM && elapsedTime < pauseTime) {
                 this.throttleTimerId = setTimeout(
                     resumeThrottle,
-                    Math.min(
-                        RecordedStreamBaseModel.PACE_INTERVAL_PER_SEGMENT,
-                        RecordedStreamBaseModel.MAX_PACE_INTERVAL - elapsedTime,
-                    ),
+                    Math.min(RecordedStreamBaseModel.PACE_INTERVAL_PER_SEGMENT, pauseTime - elapsedTime),
                 );
                 return;
             }
@@ -561,7 +642,14 @@ export default abstract class RecordedStreamBaseModel
         if (this.getStreamType() === 'RecordedHLS') {
             if (this.isMemoryHLS() === true) {
                 if (this.memoryStreamId !== null) {
+                    // 単一トラック (従来) 用に即座に作ったエントリ (multiTrack 判定に関わらず必ず存在する)
                     this.hlsMemoryStore.delete(this.memoryStreamId);
+                    if (this.multiTrackRoles !== null) {
+                        for (const role of this.multiTrackRoles) {
+                            this.hlsMemoryStore.delete(this.memoryStreamId, this.toHLSRole(role));
+                        }
+                        this.multiTrackRoles = null;
+                    }
                     this.memoryStreamId = null;
                 }
             } else {

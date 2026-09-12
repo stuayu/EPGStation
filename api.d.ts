@@ -1250,7 +1250,8 @@ export interface AddManualEncodeProgramOption {
 
 /**
  * 再生する音声トラックの指定子
- * 'main' = 主音声 (既定) / 'sub' = デュアルモノラルの副音声 / 数字文字列 = 音声 ES のインデックス
+ * 'main' = 主音声 (既定) / 'sub' = デュアルモノラルの副音声 / 数字文字列 = 音声 ES のインデックス /
+ * 'all' = 主音声・副音声を両方含める (tsreadex 正規化済みの m2tsll のみ有効。それ以外は 'main' と同じ扱い)
  */
 export type AudioTrackSpecifier = string;
 
@@ -1266,7 +1267,7 @@ export interface LiveStreamOption {
 
 export interface RecordedStreamOption {
     videoFileId: VideoFileId;
-    playPosition: number; // 再生位置 (秒)
+    playPosition: number; // 再生位置 (秒。小数可)
     mode?: number; // config 設定 (旧形式 index)。profile 未指定時は必須
     profile?: string; // config 設定 (新形式 StreamProfile.id)。指定時は mode より優先される
     audioTrack?: AudioTrackSpecifier; // 再生する音声トラック (省略時は主音声)
@@ -1298,6 +1299,13 @@ export interface PlaybackProfile {
     builtin: boolean;
     legacy: boolean;
     modes: Partial<Record<'m2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls', number>>;
+    // 映像 bitrate (kbps)。自動画質 fallback の実効帯域判定に使う
+    videoBitrate?: number;
+    // コンテナ別に「主音声・副音声を再接続無しで同時配信できるか」。
+    // true の場合、クライアントは audioTrack=all で開き、mpegts.js の
+    // switchPrimaryAudio() / switchSecondaryAudio() で再接続無しに音声を切り替えられる。
+    // 現状 m2tsll (tsreadex 経由) のみ true になりうる。hls は複数音声トラック未対応のため常に false
+    embeddedAudioSwitch?: Partial<Record<'m2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls', boolean>>;
 }
 
 export type PlaybackContainer = 'm2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | 'normal';

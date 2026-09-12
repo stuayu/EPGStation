@@ -7,6 +7,15 @@ import IConfigFile, {
     StreamProfile,
 } from '../model/IConfigFile';
 
+// StreamProfileManageModel.TSREADEX_COMMAND と同じ値。
+// StreamProfileManageModel は @injectable() (inversify) クラスなので、DI コンテナを介さない
+// 純粋関数の集まりであるこのファイルから import すると `reflect-metadata` の初期化前に
+// デコレータが評価され `Reflect.hasOwnMetadata is not a function` で落ちる
+// (実際に test/ut/encode-presets.test.js で再現した)。値を複製して疎結合に保つ。
+// 変更する場合は両方を同時に直すこと (test/ut/config-schema-template-sync.test.js のような
+// 自動検知は無い)
+const TSREADEX_COMMAND = '%TSREADEX% -x 18 -n -1 -a 13 -b 7 -c 5 -u 5 -';
+
 /**
  * ハードウェア (software / qsv / vaapi / nvenc) × コーデック (h264 / hevc) ×
  * 画質 (2160p / 1080p / 720p / 480p / 240p) × 用途 (recorded / liveHLS / recordedStreaming) の
@@ -545,6 +554,19 @@ namespace EncodePresets {
      */
     const LIVE_HLS_GOP_FRAMES = 15;
 
+    /**
+     * pipe 入力 (放送 TS をそのまま受け取る) コマンドの前段に tsreadex を挟む。
+     * `config.tsreadex` が設定されているときだけ StreamProfileManageModel と同じコマンドを使う
+     * (`%TSREADEX%` プレースホルダのまま、実行ファイルパスへの置換は配信開始時に行う)。
+     * ファイル入力 (録画済みエンコード済みファイルを直接読む) には使わない
+     * (放送 TS ではないため)
+     * @param withTsreadex: boolean
+     * @return string tsreadex を使わない場合は空文字列
+     */
+    const buildTsreadexPipePrefix = (withTsreadex: boolean): string => {
+        return withTsreadex === false ? '' : `${TSREADEX_COMMAND} | `;
+    };
+
     const buildLiveHlsCmd = (
         hwaccel: EncodeHwAccel,
         codec: EncodeCodec,
@@ -552,7 +574,9 @@ namespace EncodePresets {
         videoBitrate: number,
         audioBitrate: number,
         execPaths?: RigayaExecPaths,
+        withTsreadex: boolean = false,
     ): string => {
+        const tsreadexPrefix = buildTsreadexPipePrefix(withTsreadex);
         if (isRigayaHwAccel(hwaccel)) {
             const prefix = buildRigayaPipelinePrefix(
                 hwaccel,
@@ -566,6 +590,7 @@ namespace EncodePresets {
             );
 
             return (
+                tsreadexPrefix +
                 `${prefix} %FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 500000 ` +
                 `-fflags nobuffer -i pipe:0 -sn -threads 0 ` +
                 `-max_muxing_queue_size 1024 -c:v copy${buildHvc1TagOption(codec)} ` +
@@ -579,6 +604,7 @@ namespace EncodePresets {
         const codecOpts = buildVideoCodecOptions(hwaccel, codec, height, videoBitrate, TUNING_LIVE.lowLatency);
 
         return (
+            tsreadexPrefix +
             `%FFMPEG% %DUALMONOMODE% -fflags nobuffer ${vaapiDeviceOption(hwaccel)}-i pipe:0 ` +
             `-sn -threads 0 -max_muxing_queue_size 1024 %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER% ` +
             `-vf ${vf} -c:v ${ffCodec} ${codecOpts} -flags +cgop ` +
@@ -608,8 +634,11 @@ namespace EncodePresets {
         videoBitrate: number,
         audioBitrate: number,
         execPaths?: RigayaExecPaths,
+        withTsreadex: boolean = false,
     ): string => {
         const isTs = scope === 'ts';
+        // ファイル入力 (encoded) は放送 TS ではないため tsreadex を挟まない
+        const tsreadexPrefix = buildTsreadexPipePrefix(withTsreadex === true && isTs === true);
 
         if (isRigayaHwAccel(hwaccel)) {
             const inputSpec = isTs ? '-i - --input-format mpegts' : '--seek %SS% -i %INPUT%';
@@ -625,8 +654,9 @@ namespace EncodePresets {
             );
 
             return (
+                tsreadexPrefix +
                 `${prefix} %FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 5000000 -fflags nobuffer ` +
-                `-flags low_delay -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024 -max_interleave_delta 1 ` +
+                `-i pipe:0 -flags low_delay -sn -threads 0 -max_muxing_queue_size 1024 -max_interleave_delta 1 ` +
                 `-c:v copy${buildHvc1TagOption(codec)} %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER% ` +
                 `-movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000 -y -f mp4 pipe:1`
             );
@@ -644,8 +674,9 @@ namespace EncodePresets {
         const input = isTs ? '-i pipe:0' : '-ss %SS% -i %INPUT%';
 
         return (
-            `%FFMPEG% %DUALMONOMODE% -fflags nobuffer -flags low_delay -analyzeduration 500000 ` +
-            `-probesize 5000000 ${vaapiDeviceOption(hwaccel)}${input} -sn -threads 0 -max_muxing_queue_size 1024 ` +
+            tsreadexPrefix +
+            `%FFMPEG% %DUALMONOMODE% -fflags nobuffer -analyzeduration 500000 -probesize 5000000 ` +
+            `${vaapiDeviceOption(hwaccel)}${input} -flags low_delay -sn -threads 0 -max_muxing_queue_size 1024 ` +
             `-max_interleave_delta 1 %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER% ` +
             `-vf ${vf} -c:v ${ffCodec} ${codecOpts} -flags +cgop ` +
             `-movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000 -y -f mp4 pipe:1`
@@ -684,8 +715,11 @@ namespace EncodePresets {
         videoBitrate: number,
         audioBitrate: number,
         execPaths?: RigayaExecPaths,
+        withTsreadex: boolean = false,
     ): string => {
         const isTs = scope === 'ts';
+        // ファイル入力 (encoded) は放送 TS ではないため tsreadex を挟まない
+        const tsreadexPrefix = buildTsreadexPipePrefix(withTsreadex === true && isTs === true);
 
         if (isRigayaHwAccel(hwaccel)) {
             const inputSpec = isTs ? '-i - --input-format mpegts' : '--seek %SS% -i %INPUT%';
@@ -701,6 +735,7 @@ namespace EncodePresets {
             );
 
             return (
+                tsreadexPrefix +
                 `${prefix} %FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 5000000 ` +
                 `-fflags nobuffer -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024 -max_interleave_delta 1 ` +
                 `-c:v copy${buildHvc1TagOption(codec)} %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER% ` +
@@ -720,6 +755,7 @@ namespace EncodePresets {
         const input = isTs ? '-i pipe:0' : '-ss %SS% -i %INPUT%';
 
         return (
+            tsreadexPrefix +
             `%FFMPEG% %DUALMONOMODE% -fflags nobuffer -analyzeduration 500000 -probesize 5000000 ` +
             `${vaapiDeviceOption(hwaccel)}${input} -sn -threads 0 -max_muxing_queue_size 1024 ` +
             `-max_interleave_delta 1 %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER% ` +
@@ -741,6 +777,7 @@ namespace EncodePresets {
     export const expand = (
         presets: EncodePresetsConfig | undefined,
         execPaths?: RigayaExecPaths,
+        withTsreadex: boolean = false,
     ): EncodePresetExpansion => {
         // 音声フィルタ (音量ブースト・副音声の pan) は cmd へ %AUDIOFILTER% を置くだけにして、
         // 実際の値は配信開始時に AudioTrackUtil が config と再生要求から展開する
@@ -786,7 +823,7 @@ namespace EncodePresets {
                         container: 'hls',
                         video: { codec: CODEC_NAME[hwaccel][codec], height, bitrate: videoBitrate },
                         audio: { codec: 'aac', bitrate: audioBitrate },
-                        cmd: buildLiveHlsCmd(hwaccel, codec, height, videoBitrate, audioBitrate, execPaths),
+                        cmd: buildLiveHlsCmd(hwaccel, codec, height, videoBitrate, audioBitrate, execPaths, withTsreadex),
                     });
                 }
 
@@ -797,7 +834,16 @@ namespace EncodePresets {
                         container: 'mp4',
                         video: { codec: CODEC_NAME[hwaccel][codec], height, bitrate: videoBitrate },
                         audio: { codec: 'aac', bitrate: audioBitrate },
-                        cmd: buildRecordedMp4Cmd('ts', hwaccel, codec, height, videoBitrate, audioBitrate, execPaths),
+                        cmd: buildRecordedMp4Cmd(
+                            'ts',
+                            hwaccel,
+                            codec,
+                            height,
+                            videoBitrate,
+                            audioBitrate,
+                            execPaths,
+                            withTsreadex,
+                        ),
                     });
                     result.recordedTs.push({
                         id: `preset-recorded-ts-hls-${hwaccel}-${codec}-${quality}`,
@@ -805,7 +851,16 @@ namespace EncodePresets {
                         container: 'hls',
                         video: { codec: CODEC_NAME[hwaccel][codec], height, bitrate: videoBitrate },
                         audio: { codec: 'aac', bitrate: audioBitrate },
-                        cmd: buildRecordedHlsCmd('ts', hwaccel, codec, height, videoBitrate, audioBitrate, execPaths),
+                        cmd: buildRecordedHlsCmd(
+                            'ts',
+                            hwaccel,
+                            codec,
+                            height,
+                            videoBitrate,
+                            audioBitrate,
+                            execPaths,
+                            withTsreadex,
+                        ),
                     });
                     result.recordedEncoded.push({
                         id: `preset-recorded-encoded-mp4-${hwaccel}-${codec}-${quality}`,

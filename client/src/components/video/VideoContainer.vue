@@ -21,6 +21,7 @@
                     v-on:pause="savePlaybackPosition"
                     v-on:ended="onEnded"
                     v-on:error="onVideoError"
+                    v-on:playbackTransition="onPlaybackTransition"
                     v-on:screenshotRequest="onScreenshotRequest"
                 ></NormalVideo>
                 <LiveHLSVideo
@@ -35,6 +36,7 @@
                     v-on:canplay="onCanplay"
                     v-on:jikkyoComment="onJikkyoComment"
                     v-on:error="onVideoError"
+                    v-on:playbackTransition="onPlaybackTransition"
                     v-on:qualitySwitched="onQualitySwitched"
                     v-on:screenshotRequest="onScreenshotRequest"
                 ></LiveHLSVideo>
@@ -57,6 +59,7 @@
                     v-on:pause="savePlaybackPosition"
                     v-on:ended="onEnded"
                     v-on:error="onVideoError"
+                    v-on:playbackTransition="onPlaybackTransition"
                     v-on:qualitySwitched="onQualitySwitched"
                     v-on:screenshotRequest="onScreenshotRequest"
                 ></RecordedStreamingVideo>
@@ -78,6 +81,7 @@
                     v-on:pause="savePlaybackPosition"
                     v-on:ended="onEnded"
                     v-on:error="onVideoError"
+                    v-on:playbackTransition="onPlaybackTransition"
                     v-on:qualitySwitched="onQualitySwitched"
                     v-on:screenshotRequest="onScreenshotRequest"
                 ></RecordedHLSStreamingVideo>
@@ -94,6 +98,7 @@
                     v-on:canplay="onCanplay"
                     v-on:jikkyoComment="onJikkyoComment"
                     v-on:error="onVideoError"
+                    v-on:playbackTransition="onPlaybackTransition"
                     v-on:qualitySwitched="onQualitySwitched"
                     v-on:screenshotRequest="onScreenshotRequest"
                 ></LiveMpegTsVideo>
@@ -120,6 +125,13 @@ import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import * as apid from '../../../../api';
+import {
+    detectPlaybackStall,
+    canAutoFallback,
+    PlaybackStallSample,
+    PlaybackThroughputSample,
+    selectThroughputFallback,
+} from '../../../../src/util/PlaybackStallDetector';
 
 @Component({
     components: {
@@ -155,6 +167,21 @@ class VideoContainer extends Vue {
     private fallbackNoticeShown = false;
     private pendingPlaybackError: unknown = null;
     private autoPlayback = false;
+    private playbackStallSamples: PlaybackStallSample[] = [];
+    private playbackStallTimerId: number | undefined;
+    private playbackStallSuppressedUntil = 0;
+    private playbackStallCooldownUntil = 0;
+    private lastStallCurrentTime: number | null = null;
+    private wasPlaybackTabHidden = false;
+
+    private static readonly PLAYBACK_STALL_POLL_INTERVAL_MS = 1000;
+    // 起動・切替直後は demuxer/decoder の準備や最初のセグメント取得で waiting になり得る。
+    // 実測した M2TS-LL の最大起動時間 10 秒に余裕を足し、12 秒間は回線不足と判定しない。
+    private static readonly PLAYBACK_STALL_STARTUP_GRACE_MS = 12_000;
+    // シーク・画質切替・タブ復帰は currentTime が一時的に止まるため、8 秒間は監視を抑止する。
+    private static readonly PLAYBACK_STALL_TRANSITION_GRACE_MS = 8_000;
+    // fallback 直後の再生準備を待つ。足りなければ次の判定でさらに低い段へ落とす。
+    private static readonly PLAYBACK_STALL_COOLDOWN_MS = 25_000;
 
     public isiPad: boolean = UaUtil.isiPadOS();
     private videoApi = container.get<IVideoApiModel>('IVideoApiModel');
@@ -217,6 +244,10 @@ class VideoContainer extends Vue {
             this.fallbackAttempts = 0;
             this.fallbackTried.clear();
             this.fallbackNoticeShown = false;
+            this.playbackStallCooldownUntil = 0;
+            this.wasPlaybackTabHidden = false;
+            this.resetPlaybackStallDetection(VideoContainer.PLAYBACK_STALL_STARTUP_GRACE_MS);
+            this.startPlaybackStallMonitor();
             await this.$nextTick();
             this.applyPlaybackProfilesToVideo();
             const pendingError = this.pendingPlaybackError;
@@ -233,6 +264,7 @@ class VideoContainer extends Vue {
      * @param id: string プリセット識別子
      */
     public onQualitySwitched(id: string): void {
+        this.suppressPlaybackStallDetection();
         this.playbackOptionsState.selectPreset(id);
         this.selectedPlaybackId = id;
         // 明示的に選ばれた画質を自動 fallback で上書きしない
@@ -246,7 +278,15 @@ class VideoContainer extends Vue {
      * @param error: unknown
      */
     public onVideoError(error: unknown): void {
-        if (this.videoParam.type === 'Normal') return;
+        this.tryFallback(error);
+    }
+
+    /**
+     * 再生エラーまたは回線不足の停滞を fallbackChain の順に低負荷方向へ再試行する
+     * @param error: unknown
+     */
+    private tryFallback(error: unknown): void {
+        if (canAutoFallback(this.autoPlayback, this.videoParam.type === 'Normal') === false) return;
         if (this.playbackOptions === null) {
             this.pendingPlaybackError = error;
             return;
@@ -257,7 +297,21 @@ class VideoContainer extends Vue {
         }
 
         const reason = this.getPlaybackErrorText(error);
-        const nextId = chain.find(id => this.fallbackTried.has(id) === false && this.playbackProfiles.some(profile => profile.id === id));
+        const remainingChain = chain.filter(
+            id => this.fallbackTried.has(id) === false && this.playbackProfiles.some(profile => profile.id === id),
+        );
+        const currentId =
+            this.selectedPlaybackId === 'auto'
+                ? this.playbackOptions.recommended.resolvedId
+                : this.selectedPlaybackId;
+        const throughputDecision = selectThroughputFallback(
+            currentId,
+            remainingChain,
+            this.playbackProfiles,
+            this.getPlaybackThroughputSamples(),
+            Date.now(),
+        );
+        const nextId = throughputDecision.profileId ?? remainingChain[0];
         if (typeof nextId === 'undefined') {
             return;
         }
@@ -285,6 +339,7 @@ class VideoContainer extends Vue {
 
         this.playbackOptionsState.selectPreset(nextId);
         this.selectedPlaybackId = nextId;
+        this.suppressPlaybackStallDetection();
         (this.$refs.video as InstanceType<typeof BaseVideo> | undefined)?.switchQuality(nextId);
     }
 
@@ -323,6 +378,7 @@ class VideoContainer extends Vue {
     }
 
     public beforeUnmount(): void {
+        this.stopPlaybackStallMonitor();
         this.savePlaybackPositionWithBeacon();
         document.removeEventListener('webkitfullscreenchange', this.fullScreenListener, false);
         document.removeEventListener('mozfullscreenchange', this.fullScreenListener, false);
@@ -373,9 +429,15 @@ class VideoContainer extends Vue {
         return !this.isEnabledRotation || (window.screen as any).orientation.angle !== 0;
     }
 
+    /** 再生遷移 (シーク・画質切替) 中の停滞判定を一時停止する。 */
+    public onPlaybackTransition(): void {
+        this.suppressPlaybackStallDetection();
+    }
+
     // 読み込み中
     public onWaiting(): void {
         this.isLoading = true;
+        this.observePlaybackStall('waiting');
     }
 
     // 読み込み完了
@@ -386,6 +448,7 @@ class VideoContainer extends Vue {
     // 再生可能
     public onCanplay(): void {
         this.isLoading = false;
+        this.observePlaybackStall('timeupdate');
         this.applyDataBroadcastingControl();
         void this.applyResumePosition();
         this.$emit('canplay');
@@ -418,10 +481,128 @@ class VideoContainer extends Vue {
     private readonly dataBroadcastingSeekThresholdSec = 3;
 
     public onTimeupdate(): void {
+        this.observePlaybackStall('timeupdate');
         this.emitRemainingTime();
         this.checkDataBroadcastingSeek();
         if (this.resumeReady === false) return;
         if (Date.now() - this.lastSavedAt >= 10000) void this.savePlaybackPosition();
+    }
+
+    /** 自動画質時だけ再生停滞を定期観測する。 */
+    private startPlaybackStallMonitor(): void {
+        this.stopPlaybackStallMonitor();
+        if (this.autoPlayback === false) return;
+        this.playbackStallTimerId = window.setInterval(() => {
+            this.observePlaybackStall('poll');
+        }, VideoContainer.PLAYBACK_STALL_POLL_INTERVAL_MS);
+    }
+
+    private stopPlaybackStallMonitor(): void {
+        if (typeof this.playbackStallTimerId !== 'undefined') {
+            window.clearInterval(this.playbackStallTimerId);
+            this.playbackStallTimerId = undefined;
+        }
+    }
+
+    private suppressPlaybackStallDetection(
+        durationMs: number = VideoContainer.PLAYBACK_STALL_TRANSITION_GRACE_MS,
+    ): void {
+        this.playbackStallSamples = [];
+        this.lastStallCurrentTime = null;
+        this.playbackStallSuppressedUntil = Date.now() + durationMs;
+    }
+
+    private resetPlaybackStallDetection(graceMs: number): void {
+        this.playbackStallSamples = [];
+        this.lastStallCurrentTime = null;
+        this.playbackStallSuppressedUntil = Date.now() + graceMs;
+    }
+
+    /** Resource Timing API から現在の配信セグメント/パートの取得実績を集める。 */
+    private getPlaybackThroughputSamples(): PlaybackThroughputSample[] {
+        if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') return [];
+
+        const result: PlaybackThroughputSample[] = [];
+        let entries: PerformanceEntry[];
+        try {
+            entries = performance.getEntriesByType('resource');
+        } catch {
+            // Resource Timing が制限された Safari / cross-origin 環境では帯域推定を使わず、
+            // 停滞判定後の通常の1段 fallbackへ戻す。
+            return result;
+        }
+        for (const entry of entries) {
+            const resource = entry as PerformanceResourceTiming;
+            if (
+                resource.name.includes('/streamfiles/') === false ||
+                /\.(?:m4s|ts)(?:[?#]|$)/u.test(resource.name) === false
+            ) {
+                continue;
+            }
+            const bytes = resource.transferSize > 0 ? resource.transferSize : resource.encodedBodySize;
+            if (bytes <= 0 || resource.duration <= 0) continue;
+            result.push({
+                at: performance.timeOrigin + resource.startTime + resource.duration,
+                bytes,
+                durationMs: resource.duration,
+            });
+        }
+
+        return result;
+    }
+
+    /**
+     * video 要素の実測値を停滞判定へ渡す。
+     * `seeking` / 非表示タブは回線不足と区別し、復帰後に再観測する。
+     */
+    private observePlaybackStall(event: PlaybackStallSample['event']): void {
+        if (this.autoPlayback === false) return;
+        if (document.visibilityState === 'hidden') {
+            // 非表示中はブラウザーが video の進行を止めるため、回線不足の観測値を捨てる。
+            this.wasPlaybackTabHidden = true;
+            this.playbackStallSamples = [];
+            this.lastStallCurrentTime = null;
+            return;
+        }
+        if (this.wasPlaybackTabHidden === true) {
+            this.wasPlaybackTabHidden = false;
+            this.suppressPlaybackStallDetection();
+            return;
+        }
+        const video = this.getVideo()?.getDPlayer()?.video;
+        if (video === null || typeof video === 'undefined' || Number.isFinite(video.currentTime) === false) return;
+
+        const now = Date.now();
+        if (video.seeking === true) {
+            this.suppressPlaybackStallDetection();
+            return;
+        }
+
+        const currentTime = video.currentTime;
+        if (this.lastStallCurrentTime !== null && Math.abs(currentTime - this.lastStallCurrentTime) > 2) {
+            // VirtualTimeline のシークやライブ端への追従を、5 秒無進行として数えない。
+            this.suppressPlaybackStallDetection();
+            this.lastStallCurrentTime = currentTime;
+            return;
+        }
+        this.lastStallCurrentTime = currentTime;
+
+        let bufferedEnd: number | null = null;
+        try {
+            if (video.buffered.length > 0) bufferedEnd = video.buffered.end(video.buffered.length - 1);
+        } catch {
+            // buffered は source buffer の更新中に例外を投げることがある。currentTime だけ記録する。
+        }
+        this.playbackStallSamples.push({ at: now, currentTime, bufferedEnd, playing: video.paused === false, event });
+        if (this.playbackStallSamples.length > 90) this.playbackStallSamples.shift();
+        if (now < this.playbackStallSuppressedUntil) return;
+
+        const decision = detectPlaybackStall(this.playbackStallSamples, now);
+        if (decision.shouldFallback === true && now >= this.playbackStallCooldownUntil) {
+            this.playbackStallCooldownUntil = now + VideoContainer.PLAYBACK_STALL_COOLDOWN_MS;
+            this.resetPlaybackStallDetection(VideoContainer.PLAYBACK_STALL_TRANSITION_GRACE_MS);
+            this.tryFallback(new Error(`回線不足による再バッファリング (${decision.reason})`));
+        }
     }
 
     /**
