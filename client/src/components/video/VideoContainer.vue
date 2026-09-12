@@ -128,6 +128,7 @@ import * as apid from '../../../../api';
 import {
     detectPlaybackStall,
     canAutoFallback,
+    isPlaybackThroughputSufficient,
     PlaybackStallSample,
     PlaybackThroughputSample,
     selectThroughputFallback,
@@ -168,6 +169,7 @@ class VideoContainer extends Vue {
     private pendingPlaybackError: unknown = null;
     private autoPlayback = false;
     private playbackStallSamples: PlaybackStallSample[] = [];
+    private playbackThroughputSamples: PlaybackThroughputSample[] = [];
     private playbackStallTimerId: number | undefined;
     private playbackStallSuppressedUntil = 0;
     private playbackStallCooldownUntil = 0;
@@ -192,6 +194,9 @@ class VideoContainer extends Vue {
     // レジューム適用 (GET 待ち) が完了するまで再生位置の保存を抑止し、
     // 最初の timeupdate が position≈0 を PUT して履歴を上書きしてしまうレースを防ぐ
     private resumeReady = false;
+    // レジューム位置の取得中に手動シークが始まったら、取得済み位置を適用しない
+    private resumePositionGeneration = 0;
+    private resumePositionInvalidated = false;
 
     // DPlayer のフルスクリーン時にモバイル端末で画面回転をロックするための状態
     private isEnabledRotation: boolean = typeof window.screen.orientation !== 'undefined' && UaUtil.isMobile();
@@ -285,7 +290,7 @@ class VideoContainer extends Vue {
      * 再生エラーまたは回線不足の停滞を fallbackChain の順に低負荷方向へ再試行する
      * @param error: unknown
      */
-    private tryFallback(error: unknown): void {
+    private tryFallback(error: unknown, fromStall = false): void {
         if (canAutoFallback(this.autoPlayback, this.videoParam.type === 'Normal') === false) return;
         if (this.playbackOptions === null) {
             this.pendingPlaybackError = error;
@@ -296,7 +301,6 @@ class VideoContainer extends Vue {
             return;
         }
 
-        const reason = this.getPlaybackErrorText(error);
         const remainingChain = chain.filter(
             id => this.fallbackTried.has(id) === false && this.playbackProfiles.some(profile => profile.id === id),
         );
@@ -304,12 +308,21 @@ class VideoContainer extends Vue {
             this.selectedPlaybackId === 'auto'
                 ? this.playbackOptions.recommended.resolvedId
                 : this.selectedPlaybackId;
+        const now = Date.now();
+        const throughputSamples = this.getPlaybackThroughputSamples();
+        const encodeLimited =
+            fromStall === true &&
+            isPlaybackThroughputSufficient(currentId, this.playbackProfiles, throughputSamples, now);
+        const errorText = this.getPlaybackErrorText(error);
+        const reason = encodeLimited
+            ? `配信側のエンコードが再生に追いつかない可能性があります (${errorText})`
+            : errorText;
         const throughputDecision = selectThroughputFallback(
             currentId,
             remainingChain,
             this.playbackProfiles,
-            this.getPlaybackThroughputSamples(),
-            Date.now(),
+            throughputSamples,
+            now,
         );
         const nextId = throughputDecision.profileId ?? remainingChain[0];
         if (typeof nextId === 'undefined') {
@@ -362,7 +375,9 @@ class VideoContainer extends Vue {
             case 'LiveMpegTs':
                 return 'm2tsll';
             case 'RecordedStreaming':
-                return this.videoParam.streamingType === 'mp4' || this.videoParam.streamingType === 'webm'
+                return this.videoParam.streamingType === 'mp4' ||
+                    this.videoParam.streamingType === 'webm' ||
+                    this.videoParam.streamingType === 'm2tsll'
                     ? this.videoParam.streamingType
                     : null;
             default:
@@ -431,6 +446,8 @@ class VideoContainer extends Vue {
 
     /** 再生遷移 (シーク・画質切替) 中の停滞判定を一時停止する。 */
     public onPlaybackTransition(): void {
+        if (this.resumeApplied === false) this.resumePositionInvalidated = true;
+        this.resumePositionGeneration++;
         this.suppressPlaybackStallDetection();
     }
 
@@ -508,21 +525,23 @@ class VideoContainer extends Vue {
         durationMs: number = VideoContainer.PLAYBACK_STALL_TRANSITION_GRACE_MS,
     ): void {
         this.playbackStallSamples = [];
+        this.playbackThroughputSamples = [];
         this.lastStallCurrentTime = null;
         this.playbackStallSuppressedUntil = Date.now() + durationMs;
     }
 
     private resetPlaybackStallDetection(graceMs: number): void {
         this.playbackStallSamples = [];
+        this.playbackThroughputSamples = [];
         this.lastStallCurrentTime = null;
         this.playbackStallSuppressedUntil = Date.now() + graceMs;
     }
 
     /** Resource Timing API から現在の配信セグメント/パートの取得実績を集める。 */
     private getPlaybackThroughputSamples(): PlaybackThroughputSample[] {
-        if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') return [];
+        const result = [...this.playbackThroughputSamples];
+        if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') return result;
 
-        const result: PlaybackThroughputSample[] = [];
         let entries: PerformanceEntry[];
         try {
             entries = performance.getEntriesByType('resource');
@@ -551,6 +570,22 @@ class VideoContainer extends Vue {
         return result;
     }
 
+    /** mpegts.js の連続配信速度を Resource Timing と同じ形式で蓄積する。 */
+    private recordPlaybackThroughputSample(at: number): void {
+        const statistics = (this.getVideo()?.getDPlayer() as any)?.plugins?.mpegts?.statisticsInfo;
+        const speedKbPerSecond = Number(statistics?.speed);
+        if (Number.isFinite(speedKbPerSecond) === false || speedKbPerSecond <= 0) return;
+        if (this.playbackThroughputSamples.some(sample => sample.at === at)) return;
+
+        this.playbackThroughputSamples.push({
+            at,
+            // mpegts.js の speed は KB/s。durationMs=1000 で kbps へ換算できる。
+            bytes: speedKbPerSecond * 1024,
+            durationMs: 1000,
+        });
+        if (this.playbackThroughputSamples.length > 60) this.playbackThroughputSamples.shift();
+    }
+
     /**
      * video 要素の実測値を停滞判定へ渡す。
      * `seeking` / 非表示タブは回線不足と区別し、復帰後に再観測する。
@@ -561,6 +596,7 @@ class VideoContainer extends Vue {
             // 非表示中はブラウザーが video の進行を止めるため、回線不足の観測値を捨てる。
             this.wasPlaybackTabHidden = true;
             this.playbackStallSamples = [];
+            this.playbackThroughputSamples = [];
             this.lastStallCurrentTime = null;
             return;
         }
@@ -573,6 +609,7 @@ class VideoContainer extends Vue {
         if (video === null || typeof video === 'undefined' || Number.isFinite(video.currentTime) === false) return;
 
         const now = Date.now();
+        this.recordPlaybackThroughputSample(now);
         if (video.seeking === true) {
             this.suppressPlaybackStallDetection();
             return;
@@ -600,8 +637,8 @@ class VideoContainer extends Vue {
         const decision = detectPlaybackStall(this.playbackStallSamples, now);
         if (decision.shouldFallback === true && now >= this.playbackStallCooldownUntil) {
             this.playbackStallCooldownUntil = now + VideoContainer.PLAYBACK_STALL_COOLDOWN_MS;
+            this.tryFallback(new Error(`再バッファリング (${decision.reason})`), true);
             this.resetPlaybackStallDetection(VideoContainer.PLAYBACK_STALL_TRANSITION_GRACE_MS);
-            this.tryFallback(new Error(`回線不足による再バッファリング (${decision.reason})`));
         }
     }
 
@@ -657,7 +694,7 @@ class VideoContainer extends Vue {
         const video = this.getVideo();
         if (id === null || video === null) return;
         const duration = video.getDuration();
-        if (duration <= 0) return;
+        if (Number.isFinite(duration) === false || duration <= 0) return;
         const position = VideoContainer.normalizePosition(video.getCurrentTime(), duration);
         this.lastSavedAt = Date.now();
         await this.videoApi.savePlaybackPosition(id, { position: position, duration }).catch(console.error);
@@ -668,7 +705,7 @@ class VideoContainer extends Vue {
         const video = this.getVideo();
         if (id === null || video === null) return;
         const duration = video.getDuration();
-        if (duration <= 0) return;
+        if (Number.isFinite(duration) === false || duration <= 0) return;
         this.videoApi.savePlaybackPositionWithBeacon(id, {
             position: VideoContainer.normalizePosition(video.getCurrentTime(), duration),
             duration: duration,
@@ -686,7 +723,9 @@ class VideoContainer extends Vue {
             return;
         }
         try {
+            const generation = this.resumePositionGeneration;
             const history = await this.videoApi.getPlaybackPosition(id).catch(() => null);
+            if (this.resumePositionInvalidated === true || generation !== this.resumePositionGeneration) return;
             if (history !== null && history.status !== 'watched' && history.position > 0) video.setCurrentTime(history.position);
         } finally {
             this.resumeReady = true;

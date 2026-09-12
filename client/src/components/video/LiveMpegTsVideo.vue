@@ -170,6 +170,7 @@ class LiveMpegTsVideo extends BaseVideo {
             },
             onPlaybackReady: () => this.cleanupDeferredMpegts(),
         });
+        this.setupMpegtsPlaybackRecovery();
     }
 
     /**

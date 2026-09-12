@@ -13,7 +13,102 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
-## 2026-09-12
+## 2026-09-13
+
+- **デインターレース判定の解析枝とキャッシュを可視化した**: `getFullFilePathFromVideoFile()` が `null` の場合や ffprobe が失敗した場合、警告なしで DB fallback へ進み、fps / field_order が欠けた結果を30分キャッシュしていた。`SourceAnalyzer` は `ffprobe` / `db-fallback` / `channel-default` と codec・field_order・fps・yadif 結果を `deinterlace: yadif=... (source: ..., codec: ..., field_order: ..., fps: ...)` へ出す。DB fallback は `video_file` / `video_file_ts_info` に fps / field_order が無いため yadif 有りを維持し、判定材料が欠けた結果はキャッシュしない。後から実ファイルを解決できる場合は ffprobe を再試行して progressive 素材から yadif を外す。
+    - 実装: `src/model/stream/capability/SourceAnalyzer.ts`、`src/util/DeinterlaceUtil.ts`
+    - 回帰テスト: `test/ut/source-analyzer.test.js`
+
+- **前項訂正: デインターレース判定を実際の配信プリセット経路へ接続した**: 前項で `DeinterlaceUtil` により自動生成 cmd の判定が解決済みと記録したが、実際に使われる `StreamProfileManageModel.buildCmd()` の `yadif` 直書きには接続しておらず、プログレッシブ録画 m2tsll でも `yadif` が残っていた。プリセット生成時は `%DEINTERLACE%` を保持し、配信開始時に `RecordedStreamBaseModel` / `LiveStreamBaseModel` が `SourceAnalyzer` の ffprobe 情報で `yadif` または空へ置換する。解析不能時は放送波を守るため `yadif` 有り、プレースホルダを持たない手書き cmd は変更しない。
+    - 実装: `src/model/stream/StreamProfileManageModel.ts`、`src/model/service/stream/base/RecordedStreamBaseModel.ts`、`src/model/service/stream/base/LiveStreamBaseModel.ts`、`src/util/DeinterlaceUtil.ts`
+    - 回帰テスト: `test/ut/stream-profile-manage.test.js`、`test/ut/source-capability-util.test.js`、`test/ut/recorded-hls-memory-stream.test.js`
+
+- **前項訂正: 録画 M2TS-LL の開始60〜120秒の前方バッファ枯渇は供給不足が原因ではなかった**: `createReadStream` → `ID3MetadataTransform` → `ffmpeg.stdin` の供給経路は `speed=4.65x` で、readrate は律速でなかった。readrate は `1.5 / 45 / 2` へ戻した。素材は ffprobe で HEVC / 1440x1080 / yuv420p10le / 59.94fps / `field_order=unknown` の progressive だった。
+    - 同じエンコード設定の実測: 現状 `-vf yadif,scale=-2:720` は `fps=80 / speed=3.59x`、`yadif` 無しは `fps=117 / speed=5.28x`、`yadif` 無し + `-r 30000/1001` は `fps=157 / speed=5.24x`、`h264_videotoolbox` は `fps=154 / speed=6.95x`。HW エンコードは今回は採用しない。
+    - `yadif` を外すだけで 47% 改善するため、自動生成 cmd は `field_order` / fps から progressive と判定できる素材へ `yadif` を入れない。`tt/tb/bb/bt` は有り、`progressive` は無し、unknown は MPEG-2 1080i を守るため有りに倒す。ライブも progressive と実測できる場合だけ無しにする。
+    - `autoCleanupSourceBuffer: true`、後方30秒/15秒 cleanup、`lazyLoad: false` は維持。録画 HLS の先行抑制とは分離し、ライブ M2TS-LL の `-re` は変更していない。
+    - 実装: `src/util/DeinterlaceUtil.ts`、`src/util/SourceCapabilityUtil.ts`、`src/model/stream/capability/SourceAnalyzer.ts`、`src/util/StreamArgsUtil.ts`、`src/util/RecordedStreamPacing.ts`、両 OS の config template
+    - 回帰テスト: `test/ut/source-capability-util.test.js`、`test/ut/source-analyzer.test.js`、`test/ut/stream-command-builder.test.js`、`test/ut/recorded-stream-pacing.test.js`
+
+- **録画・ライブ M2TS-LL が特定の再生位置で固着する問題の真因を修正した**: m2tsll の自動生成コマンドが入力側の ID3 timed metadata (`-map "0:i:0x1ffe?"`) を map していたため、ARIB 字幕が疎な区間で mpegts muxer のインターリーブ待ちが発生していた。ブラウザを使わない同一経路の実測で、ID3 map 有りは `speed=0.068x`、ID3 map 無しは `speed=13.9x` だった。自動生成コマンドは映像・音声・字幕 ES だけを map し、TS 入力の m2tsll は `streamProcess.stdout` へ `ID3MetadataTransform` を挿入して字幕を運ぶ。tsreadex の有無によらず録画・ライブを同じ経路に揃えた。ディスク HLS の `-map "0:d?"` は対象外で現状維持。
+    - `ss=366` / `642` / `91` で固着し `ss=1471` で正常だったのは、MSE 再生成や 188 byte 境界とは別の問題だった。これらは別の再生・入力安定化策として残す。
+    - 実装: `StreamProfileManageModel`、`EncodePresets`、`LiveStreamBaseModel`、`RecordedStreamBaseModel`
+    - 回帰テスト: `test/ut/stream-profile-manage.test.js`、`test/ut/stream-preset-registry.test.js`、`test/ut/encode-presets.test.js`、`test/ut/recorded-hls-memory-stream.test.js`
+
+- **録画 M2TS-LL の後方・同値シークで MSE の時間軸を持ち越す問題を修正した**: 録画 M2TS-LL の `switchVideo()` は同じ video 要素を再利用するため、URL が同じ場合も含めて旧 mpegts.js の `MediaSource` / `SourceBuffer` / `currentTime` を即時破棄してから新しいインスタンスを作るようにした。別 video 要素を使う画質切替では、旧 mpegts.js だけを新側の `canplay` まで保持し、旧 video 専用の ARIB renderer は破棄する。mpegts.js 本体は変更していない。
+    - 実装: `src/util/MpegTsLifecycleUtil.ts`、`RecordedStreamingVideo.vue`
+    - 回帰テスト: `test/ut/mpegts-lifecycle-util.test.js`
+
+- **録画 M2TS-LL の後方シークで入力 TS が固着する問題を修正した**: 録画 TS をパイプへ供給する開始位置がビットレートから求めた任意 byte のままで、TS パケット境界からずれていた。開始 offset を負値・ファイル長でクランプしてから 188 byte 境界へ切り下げ、新しい reader をその位置から作る。info ログへ推定 offset、実際の reader 開始位置、ファイル長を出す。encoded の mp4 / webm は従来どおり ffmpeg の `-ss %SS% -i %INPUT%` で入力し、TS byte seek と共有しない。実装: `src/util/RecordedStreamByteOffset.ts`、`RecordedStreamBaseModel`。回帰テスト: `test/ut/recorded-stream-byte-offset.test.js`
+
+- **録画 M2TS-LL のシークでストリームを二重開始する競合を修正した**: `VideoContainer.applyResumePosition()` の非同期レジューム取得と `VirtualTimeline.onDragEnd()` の手動シークが同じ `RecordedStreamingVideo.setCurrentTime()` に到達し、`ss=642` と `ss=642.237...` の別 URL を作っていた。手動シーク開始時にレジューム取得の世代を無効化し、同じシーク操作に対して有効なストリーム要求を1本だけ残す。`RecordedStreamingVideo.createVideoSrc()` と録画 HLS の開始 API は `normalizeStreamPlayPosition()` で `ss` を0以上の整数秒へ切り捨てる。サーバーの録画ストリーム各 API ルート、`StreamApiModel`、`RecordedStreamBaseModel` でも再正規化し、ffmpeg / rigaya の `%SS%` と TS の byte seek に整数だけを渡す。OpenAPI の `ss` は小数を受け付けるが、サーバー内では切り捨て後の値を使う。
+    - 実装: `client/src/components/video/VideoContainer.vue`、`VirtualTimeline.ts`、`RecordedStreamingVideo.vue`、`RecordedHLSStreamingVideo.vue`、`src/util/StreamPlayPosition.ts`、録画ストリーム API / `RecordedStreamBaseModel`
+    - 回帰テスト: `test/ut/stream-play-position.test.js`
+
+- **録画 M2TS-LL の再生成後に、既に buffered がある場合だけ補助的に再生位置を復帰する処理を追加した**: `ss` 付きでストリームを作り直すと、新しい MPEG-TS の先頭 PTS が数秒後から始まり、`currentTime=0` が `buffered.start(0)` より手前に取り残されることがある。mpegts.js の `StartupStallJumper` は初回起動向けで、シーク後は progress listener を外して再発状態を救わないため、フォーク側の `BaseVideo` が `initVideo()` に復帰監視を接続する。再生成後、`readyState >= 2` かつ 1 秒以上 currentTime が進まず、最初の buffered 範囲より手前にある場合だけ `buffered.start(0)` へ寄せる。`buffered` が空の初期化停止や、シーク時の重複ストリーム要求はこの処理の対象外で、前項の競合対策で扱う。正常再生中の巻き戻しは行わない。
+    - 復帰時は `[EPGStation][playback-recovery]` の `console.debug` を出す。初回生成は既存 `StartupStallJumper` に任せ、mpegts.js 本体と SHA 固定は変更しない。
+    - 初回再生バッファゲート (`INITIAL_PLAYBACK_BUFFER_SEC = 8`) は初回の `play()` 成功判定までだけ有効で、ストリーム再生成時に再び有効化されない。バッファ先頭復帰は `buffered` が存在する再生成後のタイムラインずれだけを対象にする。
+    - 実装: `src/util/PlaybackBufferRecovery.ts`、`client/src/components/video/BaseVideo.ts`、`RecordedStreamingVideo.vue`、`LiveMpegTsVideo.vue`
+    - 回帰テスト: `test/ut/playback-buffer-recovery.test.js`
+
+- **録画 HLS の画質切替後に時刻表示・シークバーがストリーム先頭基準へ戻る競合を修正した**: DPlayer は同じインスタンスで画質を切り替える際、`initVideo()` ごとに匿名の標準 `timeupdate` 描画 listener を追加する。初回生成後に接続した `VirtualTimeline` より後へ標準 listener が積まれるため、DPlayer の `video.currentTime / video.duration` が絶対位置を上書きしていた。DPlayer 標準 listener は API 上個別解除できないため削除せず、`VirtualTimeline` が `initVideo()` 完了後に自身の listener を再接続し、常に最後に絶対位置を描画する構造へ変更した。接続状態と1個制約は `src/util/VirtualTimelineListenerController.ts` で管理し、録画 HLS / 録画 M2TS-LL・MP4・WebM / ライブの画質切替・シーク・レジュームで共用する。
+    - 実装: `client/src/components/video/VirtualTimeline.ts`、`src/util/VirtualTimelineListenerController.ts`
+    - 回帰テスト: `test/ut/virtual-timeline-listener.test.js`
+
+- **録画再生のニコニコ実況を再シーク・画質切替後も再生位置へ同期する設計にした**: 表示時刻とコメント index の計算を `src/util/RecordedJikkyoSync.ts` へ集約し、`videoFile.startAt + VirtualTimeline の絶対再生位置` を単一の基準にした。シーク開始時は DPlayer の `danmaku.clear()` で残存弾幕を消し、ストリーム再生成・画質切替の確定時は明示通知で index を貼り替える。`dummyPlayPosition` は実況同期へ渡さず、HLS の DPlayer 再生成でも過去ログ取得クライアントを保持するため再取得しない。ライブの遅延補正は録画へ適用しない。回帰テスト: `test/ut/recorded-jikkyo-sync.test.js`
+
+- **録画配信の `audioTrack=sub` が encoded MP4 / WebM / m2tsll / HLS の明示 cmd で主音声へ戻る問題を修正した**: 既存の明示プロファイルに `%AUDIOFILTER%` が無く、`AudioTrackUtil` が encoded の副音声用 `pan=stereo|c0=c1|c1=c1` を挿入できなかった。両 OS のテンプレートと実運用 `config/config.yml` の録画プロファイルへ `%AUDIOFILTER%` を追加し、録画全コンテナのプレースホルダを回帰テストで固定した。あわせて、録画ファイルの `%INPUT%` / `%OUTPUT%` 置換前 cmd をストリーム側がログへ出していたため削除し、`EncodeProcessManageModel` が spawn 直前の実コマンドをログへ出すようにした。`%INPUT%` の未置換は実行 cmd ではなく旧ログ経路の表示だった。実装: `RecordedStreamBaseModel`、`EncodeProcessManageModel`、両 config template。回帰テスト: `test/ut/stream-profile-manage.test.js`、`test/ut/stream-pixel-format.test.js`。
+
+- **encoded の `audioTrack=sub` が 0 バイトになる退行を修正した**: encoded の `pan=stereo|c0=c1|c1=c1` に含まれる `|` を `EncodeProcessManageModel` がシェルパイプと誤判定し、ffmpeg を分割実行していた。`%AUDIOFILTER%` のフィルタ全体を引用し、引用符外の `|` だけをシェル経路へ振り分ける `ProcessUtil.hasShellPipeline()` を追加した。空の `%AUDIOMAP%` / `%AUDIOFILTER%` はプレースホルダごと除去し、余分な空白も残さない。spawn 直前のログは実際の実行モードと引数を出す。回帰テスト: `test/ut/process-shell-placeholder.test.js`、`test/ut/audio-track-util.test.js`。
+
+- **encoded M2TS-LL の入力形式を修正した**: encoded は MP4 等のファイルを直接読むため、入力側の `-f mpegts` を TS プロファイルだけに限定した。出力側の mpegts は維持する。生成器と macOS / Windows テンプレートを同期し、MP4 を M2TS-LL へ変換する回帰テストを追加した。
+
+- **録画 M2TS-LL の実時間付近エンコードによる小停止を設計で吸収した**: mpegts.js / DPlayer に初回バッファ量の設定がないため、録画 M2TS-LL の `play()` をクライアント側でゲートし、前方バッファ8秒 (短い録画は終端まで) を確保してから再生を開始する。再生中の停滞は、Resource Timing と mpegts.js の `statisticsInfo.speed` を共通の実効帯域サンプルへ変換して観測する。帯域が現在画質に十分なのに停滞した場合は配信側エンコード遅延と推定し、既存 `fallbackChain` の低負荷側へ降格する。サンプル不足時は1段ずつ、fallback 後25秒のクールダウン、chain末尾の下限、手動画質を変更しない条件を維持する。
+    - 原因の記述は訂正する。供給経路ではなく、プログレッシブ HEVC 素材へ不要な `yadif` を掛けたエンコードが遅く、前方バッファの余裕を失わせていた。`yadif` 有り `speed=3.59x`、無し `speed=5.28x` の実測で確認した。
+    - 実装: `src/util/PlaybackStartBuffer.ts`、`src/util/PlaybackStallDetector.ts`、`client/src/components/video/RecordedStreamingVideo.vue`、`client/src/components/video/VideoContainer.vue`、`doc/streaming-refresh.md`。
+    - 期待値: WebKit / Chromium の各5分計測で停止0回。開始は数秒遅れるが、10bit HEVC素材では低負荷画質へ自動降格し、下限到達後は無限に降格しない。指示役が実測する。
+    - 回帰テスト: `test/ut/playback-start-buffer.test.js`、`test/ut/playback-stall-detector.test.js`。
+
+- **録画 M2TS-LL の WebKit 停止を修正し、ペーシングを緩和した**: 録画 M2TS-LL / MP4 / WebM の自動生成・テンプレート cmd を `-readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2` へ変更した。初期 45 秒バーストは維持し、実時間 1 倍固定で一度減ったバッファが回復できなかった問題へ、最大 1.5 倍の供給余力を追加した。録画 M2TS-LL では `lazyLoad: false` とし、mpegts.js の前方バッファ上限による HTTP 接続切断を起こさない。`autoCleanupSourceBuffer: true` と、30 秒遡った時に15秒遡りまで削除する設定で、再生済み領域だけを解放する。録画 m2tsll は Range/再接続で継続する配信ではなく、サーバーはレスポンス `close` を切断としてストリーム停止するため、lazyLoad の再接続では停止位置からシームレスに続かない。
+    - 原因確認: WebKit 26 で30分録画を5分計測した際、停止4回、最長40秒。停止時にサーバーのストリーム数が0となり、約15秒後に同じストリームが作り直された。lazyLoad が前方30秒で読み込みを止め、接続切断として扱われた事実と一致する。
+    - 実装: `src/util/RecordedStreamPacing.ts`、`client/src/components/video/RecordedStreamingVideo.vue`、`client/src/components/video/LiveMpegTsVideo.vue`、`config/config.yml.template`、`config/config-win.yml.template`。ライブ M2TS-LL は従来から lazyLoad 無し。
+    - 期待値: WebKit / Chromium の各5分計測で停止0回、サーバーのストリームが途中停止しない、前方バッファ15秒以上。指示役が実測する。
+    - M2TS-LL の `pipe:1` 出力に `-flush_packets 1` は追加していない。パケット単位 flush は書き出しを細切れにし、WebKit の `readyState` 揺れを悪化させうるため、既存の Node stdout/HTTP backpressure を維持した。
+    - 回帰テスト: `test/ut/recorded-stream-pacing.test.js`、`test/ut/stream-profile-manage.test.js`。
+
+- **シーク中の再生位置保存が 500 になる境界値を修正した**: サーバーは `position` / `duration` の NaN・Infinity・負値・0 以下を `400` の入力エラーとして返し、動画長を超える位置は動画長へ丸める。クライアントは duration が有限かつ正のときだけ通常保存・Beacon 保存を送る。`test/ut/playback-position.test.js` で境界値を固定した。
+
+- **アップロードの日本語ファイル名を UTF-8 で保持するようにした**: Multer へ `defParamCharset: 'utf8'` を指定し、保存処理へ渡す元ファイル名はパス区切り・制御文字・Windows 禁止文字・予約名・長さを正規化する。実ファイルの一時名とは分離し、Windows のファイル名制約にも合わせた。実装は `src/util/UploadFileNameUtil.ts`、回帰テストは `test/ut/upload-file-name.test.js`。
+
+- **encoded 動画アップロードの `video_file.startAt` 推定順を修正した**: TS 内の TDT/TOT と先頭 PTS、同じ録画へ紐付く元動画、番組開始時刻から録画開始マージンを引いた値、最後にファイル更新日時−動画長の順で採用する。既存 TS の `startAt` 意味は変更しない。推定根拠は `src/util/VideoStartAtResolver.ts` に切り出し、`test/ut/video-start-at-resolver.test.js` で固定した。
+
+- **録画済み MP4 / WebM の音声切替を接続した**: m2tsll だけでなく encoded 配信でも ffprobe の音声一覧を取得し、`audioTrack` 付き URLで再配信する。m2tsll の tsreadex 内蔵切替と、生 TS / tsreplace の未設定 tsreadex 時の `dual_mono_mode` 経路は維持する。音声 ES 1 本の encoded 副音声はサーバー側 `pan` で分離する。現物の TS / tsreplace HEVC / MP4 の再生確認は実機作業として残る。
+
+- **録画 M2TS-LL のレジュームで空 URL を mpegts.js へ渡す不具合を修正した**: `setPlaybackProfiles()` が DPlayer の内部 `video.src` (空文字または `blob:`) を優先して quality 配列へコピーしていた。DPlayer の設定 URLと現在 quality の URLを先に使い、画質切替で解決した URL は `options.video.url` と quality の両方へ同期するようにした。mpegts.js の生成入口でも空 URL を検出して初期化を中止し、エラーをログへ出す。共通 BaseVideo 経路のため、録画・ライブ M2TS-LLと録画 HLS のレジューム・シーク・画質切替を保護する。
+    - **URL 解決は `src/util/PlaybackUrlUtil.ts` へ切り出した**。空文字・`undefined`・DPlayer 内部の `blob:` を候補から除外し、候補が無い場合は例外にする。
+    - **回帰テスト**: `test/ut/mpegts-lifecycle-util.test.js`。
+
+- **録画 M2TS-LL の途中再開で再生不能になる不具合を修正した**: レジューム・シークの `switchVideo()` は同じ video 要素を再利用するため、旧 mpegts.js を新側の `canplay` まで保持すると、遅延 cleanup の `detachMediaElement()` が新側の MediaSource まで外していた。録画側は `switchVideo()` を先にラップし、DPlayer が新 URL を `video.src` へ設定する前に、旧 mpegts.js の video 要素が同じ場合だけ破棄する。別要素を使う画質切替だけ旧側を `canplay` まで保持する。`SourceBuffer` の破棄後参照を防ぐ純粋関数と、破棄が URL 設定より先になる回帰テストを追加した。
+    - 実装: `src/util/MpegTsLifecycleUtil.ts`、`client/src/components/video/RecordedStreamingVideo.vue`。
+    - 回帰テスト: `test/ut/mpegts-lifecycle-util.test.js`。
+
+- **録画 M2TS-LL / MP4 / WebM の配信ペーシングと EOF 回収を修正した**: 録画ファイル入力へ `-readrate 1 -readrate_initial_burst 45 -readrate_catchup 1.25` を追加した。初期 45 秒 (4 Mbps 換算で約 22.5 MB) は再生開始を早め、その後は実時間に制限するため、数倍速エンコードでブラウザが数百 MB を抱え込む問題を防ぐ。ライブの `-re` と録画 HLS のセグメント抑制は変更しない。mpegts.js の録画側は `autoCleanupSourceBuffer` と再生済み 30 秒保持を確認・維持した。
+    - 正常な録画エンコーダ終了は `RecordedStreamBaseModel` が即時 `emitExitStream()` せず EOF として扱う。HTTP レスポンスの `finish` 後に keep タイマーとサーバーストリームを回収するため、実時間より速く読み切った時点での「再生中停止」ログと未送信データの切り捨てを防ぐ。異常終了・クライアント切断は即時停止する。
+    - 実装: `src/util/RecordedStreamPacing.ts`、`EncodePresets`、`StreamProfileManageModel`、`RecordedCommandBuilder`、`RecordedStreamBaseModel`、録画 mp4/webm/m2tsll route、`RecordedStreamingVideo.vue`、両 config template。
+    - ffmpeg 9 未満の自動フォールバックは行わない。手書き cmd は自動改変せず、古い ffmpeg では readrate 系を外すか `-re` へ置換する。
+
+- **配信生成コマンドの optional map 引用を起動方式に合わせた**: `-map "0:s?"` / `-map "0:i:0x1ffe?"` の外側引用符はテンプレートと生成 cmd に残し、`ProcessUtil.parseCmdStr()` が直接 `spawn` の引数だけ外すようにした。tsreadex / rigaya のパイプを含むシェル起動時は引用符を保持するため、tsreadex 未設定の既定構成でも m2tsll が起動できる。m2tsll / HLS / MP4 / WebM の全配信生成経路を回帰テストで固定した。
+
+- **10bit HEVC 録画を H.264 配信へ変換できない不具合を修正した**: `-profile:v high` / `main` の H.264 出力へ `-pix_fmt yuv420p` を付け、10bit (`yuv420p10le`) 入力を8bitへ明示変換する。`StreamProfileManageModel` の cmd 省略経路、`EncodePresets` の software/NVENC、両OSの stream template、録画 mp4/HLS/M2TS-LL とライブ配信を対象にした。QSV/VAAPI は既存の `format=nv12`、rigaya は `--output-depth 8` を維持する。HEVC Main10/HDR preserve の `StreamArgsUtil` は変更しない。
+    - `EncodePresets` の録画 M2TS-LL software cmd に `-vf` が欠落していたため、`-flags +cgop -vf ...` へ修正した。これにより生成 M2TS-LL の0 byte終了も防ぐ。
+    - `test/ut/stream-pixel-format.test.js` に生成cmdと両テンプレートの文字列検査を追加し、実ファイルを使った ffmpeg 起動確認も行った。
+
+- **録画ストリーミングへ M2TS-LL を追加した**: `GET /api/streams/recorded/{videoFileId}/m2tsll` を追加し、録画 TS / encoded の stdout を `video/mp2t` としてディスクへ書かず配信する。`ss` (小数可)、`mode`、`profile`、`audioTrack` に対応し、録画中 TS は `TailStream` で末尾を追従する。
+    - `stream.profiles.recorded.ts` / `.encoded` と `encodePresets` に `container: m2tsll` を追加した。encoded の rigaya 系は既存どおり `--seek %SS% -i %INPUT%` と `--avsync forcecfr --fps 30000/1001` を使う。
+    - 録画詳細の配信選択、playback-options の m2tsll、mpegts.js 再生、VirtualTimeline、チャプター、音声切替、ARIB 字幕、実況コメントを接続した。非対応ブラウザーでは M2TS-LL を表示せず HLS へ誘導する。
+    - tsreadex 経由の録画 TS は入力側で失われる ID3 を stdout 側へ再挿入する。`audioTrack=all` は主音声・副音声を同時配信し、mpegts.js 側で再接続せず切り替える。
+    - 実装: `src/model/service/api/streams/recorded/{videoFileId}/m2tsll.ts`、`StreamApiModel`、`RecordedStreamBaseModel`、`EncodePresets`、`RecordedStreamingVideo.vue` ほか。回帰テストは録画プロファイル、コマンド、音声 map、認証 allowlist。
+    - 録画 mp4 / webm / M2TS-LL の stdout 配信は `req.close` ではなくレスポンス切断を監視する。GET 本文受信完了を視聴者切断と誤認してストリームを停止する経路を塞いだ。
 
 - **画質切替時のDPlayer例外とARIB字幕のcanvas競合を修正した**: DPlayerの切替完了処理は速度項目と音声項目の選択要素が必ず存在する前提で `dataset` を読む。`DPlayerEnhancer` の独自音声パネルで選択中項目が無くなると `quality_end` まで到達せず、ローディング解除や旧ストリーム後始末が止まっていた。
     - 独自音声項目へ EPGStation の `dataset.audioTrack` と、DPlayerが読む `dataset.audio` (`primary` / `secondary`) を併記し、現在値が一覧に無い場合も先頭項目を選択中にする。音声項目が1件以下で標準項目を残す場合も、選択中クラスを1つだけ維持する。速度項目も切替前に選択中を1つ保証する。

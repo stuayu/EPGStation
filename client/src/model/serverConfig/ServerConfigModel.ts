@@ -93,7 +93,7 @@ export default class ServerConfigModel implements IServerConfigModel {
                     continue;
                 }
 
-                const scope: { webm?: string[]; mp4?: string[]; hls?: string[] } = {};
+                const scope: { webm?: string[]; mp4?: string[]; hls?: string[]; m2tsll?: string[] } = {};
                 const webm = pickNames(items, 'webm');
                 if (webm.length > 0) {
                     scope.webm = webm;
@@ -105,6 +105,10 @@ export default class ServerConfigModel implements IServerConfigModel {
                 const hls = pickNames(items, 'hls');
                 if (hls.length > 0) {
                     scope.hls = hls;
+                }
+                const m2tsll = pickNames(items, 'm2tsll');
+                if (m2tsll.length > 0) {
+                    scope.m2tsll = m2tsll;
                 }
 
                 recorded[type] = scope;
@@ -142,7 +146,11 @@ export default class ServerConfigModel implements IServerConfigModel {
                 }
 
                 // ライブ視聴で再生可能な設定が残っているか
-                if (typeof this.config.streamConfig.live.ts.m2ts === 'undefined' && typeof this.config.streamConfig.live.ts.hls === 'undefined') {
+                if (
+                    typeof this.config.streamConfig.live.ts.m2ts === 'undefined' &&
+                    typeof this.config.streamConfig.live.ts.hls === 'undefined' &&
+                    typeof this.config.streamConfig.live.ts.m2tsll === 'undefined'
+                ) {
                     delete this.config.streamConfig.live.ts;
                     this.config.isEnableTSLiveStream = false;
                 }
@@ -159,9 +167,10 @@ export default class ServerConfigModel implements IServerConfigModel {
                 // 録画済み番組の ts ストリーミングの webm. mp4 を削除
                 delete this.config.streamConfig.recorded.ts.webm;
                 delete this.config.streamConfig.recorded.ts.mp4;
+                if (StreamSupportUtil.isM2TSLLSupported() === false) delete this.config.streamConfig.recorded.ts.m2tsll;
 
                 // 録画済み番組の ts ストリーミングの再生可能な設定が残っているか
-                if (typeof this.config.streamConfig.recorded.ts.hls === 'undefined') {
+                if (typeof this.config.streamConfig.recorded.ts.hls === 'undefined' && typeof this.config.streamConfig.recorded.ts.m2tsll === 'undefined') {
                     delete this.config.streamConfig.recorded.ts;
                     this.config.isEnableTSRecordedStream = false;
                 }
@@ -170,9 +179,10 @@ export default class ServerConfigModel implements IServerConfigModel {
                 // 録画済み番組のエンコード済みストリーミングの webm. mp4 を削除
                 delete this.config.streamConfig.recorded.encoded.webm;
                 delete this.config.streamConfig.recorded.encoded.mp4;
+                if (StreamSupportUtil.isM2TSLLSupported() === false) delete this.config.streamConfig.recorded.encoded.m2tsll;
 
                 // 録画済み番組のエンコード済みストリーミングの再生可能な設定が残っているか
-                if (typeof this.config.streamConfig.recorded.encoded.hls === 'undefined') {
+                if (typeof this.config.streamConfig.recorded.encoded.hls === 'undefined' && typeof this.config.streamConfig.recorded.encoded.m2tsll === 'undefined') {
                     delete this.config.streamConfig.recorded.encoded;
                     this.config.isEnableEncodedRecordedStream = false;
                 }

@@ -106,7 +106,7 @@ class EncodeProcessManageModel implements IEncodeProcessManageModel {
     private buildProcess(option: CreateProcessOption): ChildProcessInfo {
         // パイプライン (例: tsreadex | ffmpeg) を含むコマンドはシェル経由で実行する
         // (Windows では cmd.exe、その他では /bin/sh が使われる)
-        const useShell = option.cmd.includes('|');
+        const useShell = ProcessUtil.hasShellPipeline(option.cmd);
 
         let cmds: ProcessUtil.Cmds | null = null;
         if (useShell === false) {
@@ -142,10 +142,21 @@ class EncodeProcessManageModel implements IEncodeProcessManageModel {
             }
         }
 
+        // ここで初めて %INPUT% / %OUTPUT% が実引数へ置換される。
+        // 配信側で置換前 cmd をログに出すと、実際の spawn と異なる文字列になり
+        // 原因調査を誤らせるため、生成直前の実コマンドだけを記録する。
+        if (useShell === true) {
+            this.log.encode.info(`spawn with shell: ${shellCmd}`);
+        } else {
+            const parsedCmds = cmds as ProcessUtil.Cmds;
+            this.log.encode.info(
+                `spawn: ${[parsedCmds.bin, ...parsedCmds.args].map(ProcessUtil.quoteShellArg).join(' ')}`,
+            );
+        }
+
         // プロセス生成
         let child: ChildProcess;
         if (useShell === true) {
-            this.log.encode.info(`spawn with shell: ${shellCmd}`);
             child =
                 typeof option.spawnOption === 'undefined'
                     ? spawn(shellCmd, { shell: true })

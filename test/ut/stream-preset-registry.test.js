@@ -103,7 +103,7 @@ test('既存 stream 設定だけの環境は従来のプリセットと生成 cm
     assert.equal(profiles.getLiveProfiles()[0].cmd, legacyCmd);
     assert.equal(
         profiles.getLiveProfiles()[1].cmd,
-        '%FFMPEG% -re %DUALMONOMODE% -i pipe:0 -sn -threads 0 %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2 %AUDIOFILTER% -c:v libx264 -vf yadif,scale=-2:720 -b:v 2500k -profile:v baseline -preset veryfast -tune fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4 pipe:1',
+        '%FFMPEG% -re %DUALMONOMODE% -i pipe:0 -sn -threads 0 %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2 %AUDIOFILTER% -c:v libx264 -pix_fmt yuv420p -vf %DEINTERLACE%,scale=-2:720 -b:v 2500k -profile:v baseline -preset veryfast -tune fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4 pipe:1',
     );
     assert.deepEqual(candidates.slice(0, 2).map(preset => preset.id), ['manual-live', 'generated-live']);
 });
@@ -143,6 +143,7 @@ test('cmd 省略プリセットの生成コマンドは音声トラックのプ�
 
     // m2tsll は映像・音声・字幕を個別に map するため、tsreadex 無しでは %AUDIOMAP% を使わない
     assert.doesNotMatch(profiles[0].cmd, /%AUDIOMAP%/u);
+    assert.doesNotMatch(profiles[0].cmd, /0:i:0x1ffe\?/u);
     assert.match(profiles[0].cmd, /-flags low_delay/u);
     assert.match(profiles[0].cmd, /-probesize 500000/u);
     assert.ok(profiles[0].cmd.indexOf('-probesize 500000') < profiles[0].cmd.indexOf('-i pipe:0'));
@@ -186,9 +187,9 @@ test('config に tsreadex を設定すると生成コマンドの前段へ tsrea
     assert.match(live, /^%TSREADEX% -x 18 -n -1 -a 13 -b 7 -c 5 -u 5 - \| %FFMPEG%/u);
     // 第 2 音声が無いときに無音を挿入する -b 5 は使わない (副音声が完全な無音になる)
     assert.doesNotMatch(live, /-b 5/u);
-    // 分離済みの音声 ES を選ぶため、-map 0 ではなく %AUDIOMAP% + 字幕の optional map になる。
+    // 分離済みの音声 ES を選ぶため、-map 0 ではなく映像 map + %AUDIOSELECTMAP% + 字幕の optional map になる。
     // -map "0:d?" (文字スーパーを含むデータストリームの一括 map) は muxer が止まるため使わない
-    assert.match(live, /%AUDIOMAP% -map "0:s\?" -c:s copy /u);
+    assert.match(live, /-map 0:v:0 %AUDIOSELECTMAP% -map "0:s\?" -c:s copy /u);
     assert.doesNotMatch(live, /-map 0 /u);
     assert.doesNotMatch(live, /0:d\?/u);
     assert.doesNotMatch(live, /-c:d copy/u);
@@ -216,8 +217,10 @@ test('config に tsreadex が無ければ m2tsll は個別 map で -map 0 も -m
     const cmd = new StreamProfileManageModel({ getConfig: () => configuration }).getLiveProfiles()[0].cmd;
 
     assert.doesNotMatch(cmd, /%TSREADEX%/u);
-    // 文字スーパー (bin_data) を含む一括 map は使わず、ID3 (PID 0x1FFE) だけをピンポイントで拾う
-    assert.match(cmd, /-map 0:v:0 -map 0:a -map "0:s\?" -map "0:i:0x1ffe\?" -c:s copy -c:d copy /u);
+    // 文字スーパー (bin_data) と ID3 (PID 0x1FFE) の input map は使わない。
+    // ARIB 字幕の ID3 化は m2tsll の出力側で行う。
+    assert.match(cmd, /-map 0:v:0 %AUDIOSELECTMAP% -map 0:s\? -c:s copy /u);
+    assert.doesNotMatch(cmd, /0:i:0x1ffe\?/u);
     assert.doesNotMatch(cmd, /-map 0 /u);
     assert.doesNotMatch(cmd, /0:d\?/u);
 });

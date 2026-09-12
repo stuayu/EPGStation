@@ -617,11 +617,13 @@ export default interface IConfigFile {
                 webm?: StreamingCmd[];
                 mp4?: StreamingCmd[];
                 hls?: StreamingCmd[];
+                m2tsll?: StreamingCmd[];
             };
             encoded?: {
                 webm?: StreamingCmd[];
                 mp4?: StreamingCmd[];
                 hls?: StreamingCmd[];
+                m2tsll?: StreamingCmd[];
             };
         };
         // id ベースの配信プリセット設定 (新形式)。指定された場合、対象スコープでは live/recorded 旧形式より優先される

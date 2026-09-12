@@ -1,10 +1,19 @@
 import { inject, injectable } from 'inversify';
 import { StreamAudioParam, StreamContainer, StreamingCmd, StreamProfile, StreamVideoParam } from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
+import { recordedStreamPacingArgs } from '../../util/RecordedStreamPacing';
+import { DEINTERLACE_PLACEHOLDER } from '../../util/DeinterlaceUtil';
 import IStreamProfileManageModel, { StreamProfileKind } from './IStreamProfileManageModel';
 
 // ffmpeg コマンド生成時の対象スコープ (live / recordedTs は pipe 入力、recordedEncoded はファイル入力)
 type ProfileScope = 'live' | 'recordedTs' | 'recordedEncoded';
+
+/**
+ * ffmpeg の optional map specifier を実行方式に合わせて表記する。
+ * シェル経由では `?` の glob 展開を防ぐため引用し、spawn 直起動では引用符を引数へ渡さない。
+ */
+const buildOptionalMap = (specifier: string, useShell: boolean): string =>
+    `-map ${useShell === true ? `"${specifier}"` : specifier}`;
 
 /**
  * StreamProfileManageModel
@@ -82,6 +91,7 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
             ...this.normalizeLegacyList(legacy?.webm, idPrefix, 'webm'),
             ...this.normalizeLegacyList(legacy?.mp4, idPrefix, 'mp4'),
             ...this.normalizeLegacyList(legacy?.hls, idPrefix, 'hls'),
+            ...this.normalizeLegacyList(legacy?.m2tsll, idPrefix, 'm2tsll'),
         ];
     }
 
@@ -198,11 +208,11 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
      * 数フレームだけ書き出した後に完全に停止する (実測: ffmpeg 9.0.1、libx264 は 161 フレーム出力済みなのに
      * mux 済みは frame=5 のまま、5 秒間隔の字幕ダミーの周期でしか進まない)。`-map "0:d?"` を外すと
      * 実時間で正常に流れる (実測: 15 秒で 6.9MB / 402 フレーム)。
-     * - tsreadex 経由 (音声が主音声・副音声の 2 ES に分離済み): 映像・音声は %AUDIOMAP%、字幕は
+     * - tsreadex 経由 (音声が主音声・副音声の 2 ES に分離済み): 映像は固定 map、音声は %AUDIOSELECTMAP%、字幕は
      *   `-map "0:s?"` のみ。ID3 timed metadata (ARIB 字幕) は tsreadex が PID を落とすため
      *   出力側 (LiveStreamBaseModel) で付け直す
-     * - tsreadex 無し: 映像・音声・字幕を個別に map し、ID3 timed metadata (PID 0x1FFE、入力側で
-     *   arib-subtitle-timedmetadater が挿入済み) だけを `-map "0:i:0x1ffe?"` で明示的に拾う
+     * - tsreadex 無し: 映像・音声・字幕を個別に map する。ID3 timed metadata (PID 0x1FFE) は
+     *   入力側へ map せず、TS 入力の m2tsll では出力側の `ID3MetadataTransform` で付け直す
      *   (文字スーパーの bin_data を含む `0:d?` は使わない)
      * @param scope: ProfileScope
      * @param container: StreamContainer
@@ -224,24 +234,30 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
         const videoBitrate = `${typeof video?.bitrate === 'number' ? video.bitrate : 3000}k`;
         const audioCodec = audio?.codec ?? (container === 'webm' ? 'libvorbis' : 'aac');
         const audioBitrate = `${typeof audio?.bitrate === 'number' ? audio.bitrate : 192}k`;
+        // H.264 の High/Main は 10bit 入力を受けられないため、8bit へ明示変換する。
+        // HEVC 出力 (Main10 を含む) は pixel format を上書きしない。
+        const h264PixelFormat = /264/u.test(videoCodec) ? ' -pix_fmt yuv420p' : '';
 
         const scaleFilter = this.buildScaleFilter(video);
-        // recordedEncoded (ソースがファイル) は既に非インターレースとして扱い yadif を付与しない
-        const vfParts = [isEncodedSource ? null : 'yadif', scaleFilter].filter((v): v is string => v !== null);
-        const vf = vfParts.length > 0 ? ` -vf ${vfParts.join(',')}` : '';
+        // 素材はプリセット生成時点では未確定。配信開始時に %DEINTERLACE% を解決する。
+        // scale が無い場合もプレースホルダを残し、解決側で不要な -vf ごと除去する。
+        const vfFilter =
+            scaleFilter === null ? DEINTERLACE_PLACEHOLDER : `${DEINTERLACE_PLACEHOLDER},${scaleFilter}`;
+        const vf = ` -vf ${vfFilter}`;
 
         const input = isEncodedSource ? '-ss %SS% -i %INPUT%' : '-i pipe:0';
         const realtime = isLive ? '-re ' : '';
+        // 録画の非 HLS 入力は readrate で有限の先行速度に抑える。ライブと録画 HLS は別の速度制御を使う。
+        const pacedInput =
+            isLive || container === 'hls' ? input : `${recordedStreamPacingArgs()} ${input}`;
 
         // m2tsll は `-map 0` / `-map "0:d?"` を使わない (文字スーパーで muxer が止まる。上のコメント参照)。
-        // tsreadex 経由なら音声は %AUDIOMAP% で選び、字幕以外は map しない (ID3 は出力側で付け直す)。
-        // tsreadex 無しなら映像・音声・字幕に加え、入力側で挿入済みの ID3 timed metadata (PID 0x1FFE) だけを
-        // ピンポイントで拾う (文字スーパーを含む `0:d?` の一括 map は使わない)
-        const m2tsllMap =
-            useTsreadex === true
-                ? '%AUDIOMAP% -map "0:s?"'
-                : '-map 0:v:0 -map 0:a -map "0:s?" -map "0:i:0x1ffe?"';
-        const m2tsllStreamCopy = useTsreadex === true ? '-c:s copy' : '-c:s copy -c:d copy';
+        // 音声は %AUDIOSELECTMAP%、字幕は個別 map する。ID3 timed metadata は入力側へ map しない。
+        // TS 入力では Recorded/LiveStreamBaseModel が ffmpeg の出力側へ挿入し直す。
+        // (文字スーパーを含む `0:d?` の一括 map は使わない)
+        const subtitleMap = buildOptionalMap('0:s?', useTsreadex);
+        const m2tsllMap = `-map 0:v:0 %AUDIOSELECTMAP% ${subtitleMap}`;
+        const m2tsllStreamCopy = '-c:s copy';
         // tsreadex 済みの入力は PAT/PMT とストリーム構造が正規化されているため解析待ちを短くする。
         // 実測 (同一放送波、最初の 300KB 出力まで): 500000/500000 は 3.9 秒、
         // 200000/200000 は 3.3 秒、0/100000 は 2.8 秒だった。0 は放送・チューナー実装によって
@@ -251,41 +267,42 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
             useTsreadex === true
                 ? '-analyzeduration 200000 -probesize 200000'
                 : '-analyzeduration 500000 -probesize 500000';
+        const m2tsllInputFormat = isEncodedSource === true ? '' : '-f mpegts ';
 
         switch (container) {
             case 'm2tsll':
                 return (
-                    `%FFMPEG% %DUALMONOMODE% -f mpegts ${m2tsllInputAnalysis} -fflags nobuffer ${input} ` +
+                    `%FFMPEG% %DUALMONOMODE% ${m2tsllInputFormat}${m2tsllInputAnalysis} -fflags nobuffer ${pacedInput} ` +
                     `${m2tsllMap} ${m2tsllStreamCopy} -flags low_delay ` +
                     // TS は PAT/PMT を短周期で送るため probe を 500KB に制限し、初回映像待ちを短くする。
                     `-ignore_unknown -max_delay 250000 -max_interleave_delta 1 -threads 0 ` +
-                    `-c:a ${audioCodec} -ar 48000 -b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec} -flags +cgop${vf} ` +
+                    `-c:a ${audioCodec} -ar 48000 -b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${h264PixelFormat} -flags +cgop${vf} ` +
                     `-b:v ${videoBitrate} -preset veryfast -y -f mpegts pipe:1`
                 );
             case 'webm':
                 return (
-                    `%FFMPEG% ${realtime}%DUALMONOMODE% ${input} -sn -threads 3 %AUDIOMAP% -c:a ${audioCodec} -ar 48000 ` +
+                    `%FFMPEG% ${realtime}%DUALMONOMODE% ${pacedInput} -sn -threads 3 %AUDIOMAP% -c:a ${audioCodec} -ar 48000 ` +
                     `-b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${vf} -b:v ${videoBitrate} -deadline realtime -speed 4 ` +
                     `-cpu-used -8 -y -f webm pipe:1`
                 );
             case 'mp4':
                 return (
-                    `%FFMPEG% ${realtime}%DUALMONOMODE% ${input} -sn -threads 0 %AUDIOMAP% -c:a ${audioCodec} -ar 48000 ` +
-                    `-b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${vf} -b:v ${videoBitrate} -profile:v baseline -preset veryfast ` +
+                    `%FFMPEG% ${realtime}%DUALMONOMODE% ${pacedInput} -sn -threads 0 %AUDIOMAP% -c:a ${audioCodec} -ar 48000 ` +
+                    `-b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${h264PixelFormat}${vf} -b:v ${videoBitrate} -profile:v baseline -preset veryfast ` +
                     `-tune fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4 pipe:1`
                 );
             case 'hls':
                 return (
                     `%FFMPEG% ${realtime}%DUALMONOMODE% -fflags nobuffer ${input} -sn -threads 0 ` +
                     `%AUDIOMAP% -c:a ${audioCodec} -ar 48000 -b:a ${audioBitrate} -ac 2 %AUDIOFILTER% ` +
-                    `-c:v ${videoCodec}${vf} -b:v ${videoBitrate} -preset veryfast -flags +cgop ` +
+                    `-c:v ${videoCodec}${h264PixelFormat}${vf} -b:v ${videoBitrate} -preset veryfast -flags +cgop ` +
                     `-g 15 -keyint_min 15 -sc_threshold 0 -movflags empty_moov+default_base_moof+frag_keyframe -y -f mp4 pipe:1`
                 );
             case 'm2ts':
             default:
                 return (
-                    `%FFMPEG% ${realtime}%DUALMONOMODE% ${input} -sn -threads 0 %AUDIOMAP% -c:a ${audioCodec} -ar 48000 ` +
-                    `-b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${vf} -b:v ${videoBitrate} -preset veryfast -y -f mpegts pipe:1`
+                    `%FFMPEG% ${realtime}%DUALMONOMODE% ${pacedInput} -sn -threads 0 %AUDIOMAP% -c:a ${audioCodec} -ar 48000 ` +
+                    `-b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${h264PixelFormat}${vf} -b:v ${videoBitrate} -preset veryfast -y -f mpegts pipe:1`
                 );
         }
     }

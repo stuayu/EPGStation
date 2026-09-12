@@ -1,4 +1,8 @@
 import JikkyoCommentClient, { JikkyoComment } from './JikkyoCommentClient';
+import {
+    findRecordedJikkyoCommentIndex,
+    resolveRecordedJikkyoTimestamp,
+} from '../../../src/util/RecordedJikkyoSync';
 
 /**
  * ニコニコ実況過去ログ API のレスポンス形式
@@ -23,7 +27,7 @@ export interface JikkyoKakologClientOption {
     jikkyoChannelId: string;
     startAt: number; // 録画開始時刻 (UNIX 時刻・ミリ秒)
     endAt: number; // 録画終了時刻 (UNIX 時刻・ミリ秒)
-    getCurrentTime: () => number; // 動画の現在再生位置 (秒)
+    getCurrentTime: () => number | null; // VirtualTimeline 上の絶対再生位置 (秒)。再生成中は null
     onComment: (comment: JikkyoComment) => void;
     onError?: (message: string) => void;
 }
@@ -133,8 +137,7 @@ export default class JikkyoKakologClient {
      */
     private addComments(comments: KakologComment[]): void {
         this.comments = this.comments.concat(comments).sort((a, b) => a.timestamp - b.timestamp);
-        this.seek(this.option.getCurrentTime());
-        this.tick();
+        this.sync();
     }
 
     /**
@@ -146,13 +149,43 @@ export default class JikkyoKakologClient {
         }
 
         const playbackTime = this.option.getCurrentTime();
+        if (playbackTime === null) {
+            return;
+        }
+        this.drawCommentsAt(playbackTime);
+    }
+
+    /**
+     * 明示的に確定した録画再生位置へコメントの読み出し位置を移動する
+     * @param playbackTime VirtualTimeline 上の絶対再生位置 (秒)。省略時は現在位置
+     */
+    public sync(playbackTime: number | null = this.option.getCurrentTime()): void {
+        if (
+            this.isDestroyedNow() === true ||
+            this.comments.length === 0 ||
+            playbackTime === null ||
+            resolveRecordedJikkyoTimestamp(this.option.startAt, playbackTime) === null
+        ) {
+            return;
+        }
+
+        this.seek(playbackTime);
+        this.drawCommentsAt(playbackTime);
+    }
+
+    /** 指定位置のコメントを読み出す */
+    private drawCommentsAt(playbackTime: number): void {
+        const currentTimestamp = resolveRecordedJikkyoTimestamp(this.option.startAt, playbackTime);
+        if (currentTimestamp === null) {
+            return;
+        }
+
         if (this.lastPlaybackTime === null || Math.abs(playbackTime - this.lastPlaybackTime) > JikkyoKakologClient.SEEK_THRESHOLD) {
             // 初期表示・シーク時は、それ以前のコメントを一括描画しない
             this.seek(playbackTime);
         }
         this.lastPlaybackTime = playbackTime;
 
-        const currentTimestamp = this.option.startAt + playbackTime * 1000;
         while (this.nextCommentIndex < this.comments.length && this.comments[this.nextCommentIndex].timestamp <= currentTimestamp) {
             this.option.onComment(this.comments[this.nextCommentIndex]);
             this.nextCommentIndex++;
@@ -163,18 +196,7 @@ export default class JikkyoKakologClient {
      * 指定再生位置へコメントの読み出し位置を移動する
      */
     private seek(playbackTime: number): void {
-        const targetTimestamp = this.option.startAt + playbackTime * 1000;
-        let low = 0;
-        let high = this.comments.length;
-        while (low < high) {
-            const mid = Math.floor((low + high) / 2);
-            if (this.comments[mid].timestamp < targetTimestamp) {
-                low = mid + 1;
-            } else {
-                high = mid;
-            }
-        }
-        this.nextCommentIndex = low;
+        this.nextCommentIndex = findRecordedJikkyoCommentIndex(this.comments, this.option.startAt, playbackTime);
         this.lastPlaybackTime = playbackTime;
     }
 

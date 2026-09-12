@@ -1,4 +1,5 @@
 import DPlayer from 'dplayer';
+import VirtualTimelineListenerController from '../../../../src/util/VirtualTimelineListenerController';
 
 /**
  * 仮想タイムラインの値を提供するオブジェクト
@@ -14,6 +15,10 @@ export interface VirtualTimelineSource {
     // 作り直し前に自分で play()/pause() を呼ばない (作り直し前の play() は無意味な上、
     // 直後の currentTime 変更/switchVideo と競合して再生中の video を止めてしまうことがある)
     setCurrentTime(time: number, resume: boolean): void;
+    // 現在のストリーム内で完結するシークの開始・確定通知。
+    // ストリーム再生成が必要なシークは setCurrentTime() 側が通知する。
+    onSeekStarted?(): void;
+    onSeekCompleted?(time: number): void;
     getEncodedTime(): number; // エンコード (バッファ) 済みの位置 (秒)
 }
 
@@ -45,6 +50,8 @@ export default class VirtualTimeline {
     private highlightElements: HTMLElement[] = []; // 上記に対応するマーカーの DOM
     private dragPercentage: number | null = null; // シークバーをドラッグ中の位置 (0.0 ~ 1.0)
     private isPausedBeforeDrag: boolean = false;
+    private updateListenerController: VirtualTimelineListenerController;
+    private originalInitVideo: ((video: HTMLVideoElement, type: string) => void) | null = null;
     private updateListener = (): void => {
         this.update();
     };
@@ -86,8 +93,15 @@ export default class VirtualTimeline {
         this.setupBarEvents();
         this.setupHighlights();
 
+        const player = this.dp as any;
+        this.updateListenerController = new VirtualTimelineListenerController(
+            () => player.on('timeupdate', this.updateListener),
+            () => player.off('timeupdate', this.updateListener),
+        );
+        this.installInitVideoHook();
+
         // DPlayer 側の更新の後に上書きするため、DPlayer の生成後に登録する
-        this.dp.on('timeupdate', this.updateListener);
+        this.updateListenerController.attach();
         this.dp.on('durationchange', this.updateListener);
         this.dp.on('progress', this.updateListener);
         this.dp.on('canplay', this.updateListener);
@@ -103,7 +117,7 @@ export default class VirtualTimeline {
     public destroy(): void {
         clearInterval(this.updateTimerId);
 
-        this.dp.off('timeupdate', this.updateListener);
+        this.updateListenerController.detach();
         this.dp.off('durationchange', this.updateListener);
         this.dp.off('progress', this.updateListener);
         this.dp.off('canplay', this.updateListener);
@@ -122,6 +136,11 @@ export default class VirtualTimeline {
             this.originalSeek = null;
         }
 
+        if (this.originalInitVideo !== null) {
+            (this.dp as any).initVideo = this.originalInitVideo;
+            this.originalInitVideo = null;
+        }
+
         // 自前で作ったチャプターマーカーを片付け、DPlayer へ描画を返す
         for (const element of this.highlightElements) {
             element.remove();
@@ -130,6 +149,23 @@ export default class VirtualTimeline {
         if (this.highlights.length > 0) {
             (this.dp.options as any).highlight = this.highlights;
         }
+    }
+
+    /**
+     * DPlayer が video 再生成時に追加する標準描画 listener の後へ自分を接続する。
+     * 画質切替は同じ DPlayer 内で initVideo() を呼ぶため、初回接続だけでは
+     * 標準の timeupdate 描画が VirtualTimeline を後から上書きする。
+     */
+    private installInitVideoHook(): void {
+        const dp = this.dp as any;
+        if (typeof dp.initVideo !== 'function') return;
+
+        const originalInitVideo = dp.initVideo.bind(dp);
+        this.originalInitVideo = originalInitVideo;
+        dp.initVideo = (video: HTMLVideoElement, type: string): void => {
+            originalInitVideo(video, type);
+            this.updateListenerController.reattach();
+        };
     }
 
     /**
@@ -239,7 +275,9 @@ export default class VirtualTimeline {
             const isInStream = isFinite(realDuration) === true && time >= 0 && time <= realDuration;
 
             if (isInStream === true || this.originalSeek === null) {
+                this.source.onSeekStarted?.();
                 this.originalSeek?.(time, hideNotice);
+                this.source.onSeekCompleted?.(this.source.getCurrentTime());
                 this.update();
 
                 return;

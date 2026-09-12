@@ -54,6 +54,16 @@ test('BS4K progressive source never receives interlace or legacy 29.97 options',
     assert.doesNotMatch(cmd, /--interlace|--vpp-deinterlace|--vpp-yadif|yadif|30000\/1001/);
 });
 
+test('field_order unknown の progressive HEVC 59.94fps は配信 cmd に yadif を入れない', () => {
+    const source = { ...bs4k, scan: 'unknown', fieldOrder: 'unknown', frameRate: 59.94005994 };
+    const cmd = new RecordedCommandBuilder().build(
+        source,
+        preset({ codec: 'h264', resolution: '720p', bitDepth: 8, frameRate: '30p', hdrMode: 'sdr' }),
+        [encoder('ffmpeg', [8], false)],
+    );
+    assert.doesNotMatch(cmd, /yadif/u);
+});
+
 test('BS4K HDR preserve keeps Main10, 10-bit and HLG BT.2020 metadata', () => {
     const cmd = new LiveCommandBuilder().build(
         bs4k,

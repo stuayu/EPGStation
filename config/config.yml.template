@@ -363,7 +363,7 @@ stream:
               cmd:
                   '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024
                   %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2
-                  -c:v libx264 -vf yadif,scale=-2:1080 -b:v 5000k -maxrate 5000k -bufsize 10000k
+                  -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:1080 -b:v 5000k -maxrate 5000k -bufsize 10000k
                   -profile:v high -level 4.1 -preset veryfast -tune fastdecode,zerolatency
                   -g 15 -keyint_min 15 -sc_threshold 0
                   -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
@@ -380,7 +380,7 @@ stream:
               cmd:
                   '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024
                   %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2
-                  -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                  -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
                   -profile:v high -level 4.0 -preset veryfast -tune fastdecode,zerolatency
                   -g 15 -keyint_min 15 -sc_threshold 0
                   -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
@@ -397,7 +397,7 @@ stream:
               cmd:
                   '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024
                   %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2
-                  -c:v libx264 -vf yadif,scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
+                  -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
                   -profile:v main -level 3.1 -preset veryfast -tune fastdecode,zerolatency
                   -g 15 -keyint_min 15 -sc_threshold 0
                   -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
@@ -418,7 +418,7 @@ stream:
             #       '%TSREADEX% -x 18 -n -1 -a 13 -b 7 -c 5 -u 5 - | %FFMPEG% -re -f mpegts -analyzeduration 500000 -i pipe:0
             #       -sn -threads 0 -max_muxing_queue_size 1024
             #       %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2
-            #       -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+            #       -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
             #       -profile:v high -level 4.0 -preset veryfast -tune fastdecode,zerolatency
             #       -g 30 -keyint_min 30 -sc_threshold 0
             #       -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
@@ -431,7 +431,7 @@ stream:
             #       '%FFMPEG% -re %DUALMONOMODE% -i pipe:0 -sn -map 0 -threads 0 -ignore_unknown
             #       -max_muxing_queue_size 1024 -f hls -hls_time 3 -hls_list_size 17 -hls_allow_cache 1
             #       -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments -c:a
-            #       aac -ar 48000 -b:a 192k -ac 2 -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -preset veryfast
+            #       aac -ar 48000 -b:a 192k -ac 2 -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:720 -b:v 3000k -preset veryfast
             #       -flags +loop-global_header %OUTPUT%'
             # - id: live-hls-720p-arib
             #   name: 720p(arib)
@@ -440,7 +440,7 @@ stream:
             #       '%FFMPEG% -re %DUALMONOMODE% -fix_sub_duration -i pipe:0 -threads 0 -ignore_unknown
             #       -max_muxing_queue_size 1024 -f hls -hls_time 3 -hls_list_size 17 -hls_allow_cache 1
             #       -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts -hls_flags delete_segments -c:a
-            #       aac -ar 48000 -b:a 192k -ac 2 -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -preset veryfast
+            #       aac -ar 48000 -b:a 192k -ac 2 -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:720 -b:v 3000k -preset veryfast
             #       -flags +loop-global_header -c:s webvtt -master_pl_name stream%streamNum%.m3u8
             #       %streamFileDir%/stream%streamNum%-child.m3u8'
 
@@ -577,6 +577,10 @@ stream:
 
         recorded:
             # 録画再生用。mp4 / hls は再生開始までの待ち時間とシーク応答を短縮する低遅延設定を採用:
+            #   - 録画入力 (m2tsll / mp4 / webm) は -readrate 1.5 で実時間の 1.5 倍を上限に供給する。
+            #     初期 45 秒だけ -readrate_initial_burst で先読みし、-readrate_catchup 2 は I/O 遅延時だけ使う。
+            #     クライアント側は前方 30 秒で読み込みを止め、15 秒まで消費すると再開する。
+            #     これらは ffmpeg 9 のオプション。古い ffmpeg では手書き cmd から readrate 系を外すこと。
             #   - -fflags nobuffer / -flags low_delay / -analyzeduration 500000: 入力解析の待ちを最小化
             #   - -g 30 -keyint_min 30 -sc_threshold 0: GOP を約 1 秒に固定しシーク・セグメント境界を揃える
             #   - -tune fastdecode,zerolatency: エンコーダ内部の先読み (B フレーム等) を無効化
@@ -600,10 +604,10 @@ stream:
                       bitrate: 192
                   cmd:
                       '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -flags low_delay
-                      -analyzeduration 500000 -probesize 5000000 -i pipe:0 -sn -threads 0
+                      -analyzeduration 500000 -probesize 5000000 -readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2 -i pipe:0 -sn -threads 0
                       -max_muxing_queue_size 1024 -max_interleave_delta 1
-                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2
-                      -c:v libx264 -vf yadif,scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
                       -profile:v high -level 4.1 -preset veryfast -tune fastdecode,zerolatency
                       -g 30 -keyint_min 30 -sc_threshold 0
                       -movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000
@@ -620,10 +624,10 @@ stream:
                       bitrate: 192
                   cmd:
                       '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -flags low_delay
-                      -analyzeduration 500000 -probesize 5000000 -i pipe:0 -sn -threads 0
+                      -analyzeduration 500000 -probesize 5000000 -readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2 -i pipe:0 -sn -threads 0
                       -max_muxing_queue_size 1024 -max_interleave_delta 1
-                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2
-                      -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
                       -profile:v high -level 4.0 -preset veryfast -tune fastdecode,zerolatency
                       -g 30 -keyint_min 30 -sc_threshold 0
                       -movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000
@@ -640,10 +644,10 @@ stream:
                       bitrate: 128
                   cmd:
                       '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -flags low_delay
-                      -analyzeduration 500000 -probesize 5000000 -i pipe:0 -sn -threads 0
+                      -analyzeduration 500000 -probesize 5000000 -readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2 -i pipe:0 -sn -threads 0
                       -max_muxing_queue_size 1024 -max_interleave_delta 1
-                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2
-                      -c:v libx264 -vf yadif,scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
+                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
                       -profile:v main -level 3.1 -preset veryfast -tune fastdecode,zerolatency
                       -g 30 -keyint_min 30 -sc_threshold 0
                       -movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000
@@ -669,8 +673,8 @@ stream:
                       -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
                       -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
                       -hls_flags delete_segments+independent_segments
-                      -c:a aac -ar 48000 -b:a 192k -ac 2
-                      -c:v libx264 -vf yadif,scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
                       -preset veryfast -tune fastdecode,zerolatency
                       -g 30 -keyint_min 30 -sc_threshold 0
                       -flags +loop-global_header %OUTPUT%'
@@ -690,8 +694,8 @@ stream:
                       -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
                       -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
                       -hls_flags delete_segments+independent_segments
-                      -c:a aac -ar 48000 -b:a 192k -ac 2
-                      -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
                       -preset veryfast -tune fastdecode,zerolatency
                       -g 30 -keyint_min 30 -sc_threshold 0
                       -flags +loop-global_header %OUTPUT%'
@@ -711,8 +715,8 @@ stream:
                       -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
                       -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
                       -hls_flags delete_segments+independent_segments
-                      -c:a aac -ar 48000 -b:a 128k -ac 2
-                      -c:v libx264 -vf yadif,scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
+                      -c:a aac -ar 48000 -b:a 128k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
                       -preset veryfast -tune fastdecode,zerolatency
                       -g 30 -keyint_min 30 -sc_threshold 0
                       -flags +loop-global_header %OUTPUT%'
@@ -724,9 +728,33 @@ stream:
                 #       '%FFMPEG% %DUALMONOMODE% -fix_sub_duration -i pipe:0 -threads 0 -ignore_unknown
                 #       -max_muxing_queue_size 1024 -f hls -hls_time 3 -hls_list_size 0 -hls_allow_cache 1
                 #       -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts %AUDIOMAP% -c:a aac -ar 48000 -b:a
-                #       192k -ac 2 -c:v libx264 -vf yadif,scale=-2:720 -b:v 3000k -preset veryfast -flags
+                #       192k -ac 2 -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:720 -b:v 3000k -preset veryfast -flags
                 #       +loop-global_header -c:s webvtt -master_pl_name stream%streamNum%.m3u8
                 #       %streamFileDir%/stream%streamNum%-child.m3u8'
+
+                # ================= M2TS-LL (mpegts.js 向け低遅延 MPEG-TS) =================
+                # TS は stdout から直接配信する。%AUDIOSELECTMAP% で音声トラックを選択し、tsreadex を設定すると all で
+                # 主音声・副音声を同時配信し、ARIB 字幕は出力側で ID3 に変換する。
+                # -map "0:s?" などの外側引用符は残す。シェル経由では glob 展開を防ぎ、直接 spawn ではサーバーが外す。
+                - id: recorded-ts-m2tsll-720p-avc
+                  name: 720p(M2TS-LL)
+                  container: m2tsll
+                  video:
+                      codec: libx264
+                      height: 720
+                      bitrate: 3000
+                  audio:
+                      codec: aac
+                      bitrate: 192
+                  cmd:
+                      '%FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 500000
+                      -fflags nobuffer -readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2 -i pipe:0 -map 0:v:0 %AUDIOSELECTMAP% -map "0:s?" -map "0:i:0x1ffe?"
+                      -c:s copy -c:d copy -flags low_delay -ignore_unknown -max_delay 250000
+                      -max_interleave_delta 1 -threads 0 -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -preset veryfast -g 30 -keyint_min 30 -flags +cgop -y -f mpegts pipe:1'
+                # tsreadex を使う構成では、%AUDIOSELECTMAP% が主音声・副音声・all へ展開される。
+                # server は tsreadex 経由の m2tsll で出力側へ ARIB 字幕 ID3 を挿入する。
 
                 # ================= WebM =================
                 - id: recorded-ts-webm-1080p
@@ -776,10 +804,10 @@ stream:
                       bitrate: 192
                   cmd:
                       '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -flags low_delay
-                      -analyzeduration 500000 -probesize 5000000 -ss %SS% -i %INPUT% -sn -threads 0
+                      -analyzeduration 500000 -probesize 5000000 -readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2 -ss %SS% -i %INPUT% -sn -threads 0
                       -max_muxing_queue_size 1024 -max_interleave_delta 1
-                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2
-                      -c:v libx264 -vf scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
                       -profile:v high -level 4.1 -preset veryfast -tune fastdecode,zerolatency
                       -g 30 -keyint_min 30 -sc_threshold 0
                       -movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000
@@ -796,10 +824,10 @@ stream:
                       bitrate: 192
                   cmd:
                       '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -flags low_delay
-                      -analyzeduration 500000 -probesize 5000000 -ss %SS% -i %INPUT% -sn -threads 0
+                      -analyzeduration 500000 -probesize 5000000 -readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2 -ss %SS% -i %INPUT% -sn -threads 0
                       -max_muxing_queue_size 1024 -max_interleave_delta 1
-                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2
-                      -c:v libx264 -vf scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
                       -profile:v high -level 4.0 -preset veryfast -tune fastdecode,zerolatency
                       -g 30 -keyint_min 30 -sc_threshold 0
                       -movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000
@@ -816,10 +844,10 @@ stream:
                       bitrate: 128
                   cmd:
                       '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -flags low_delay
-                      -analyzeduration 500000 -probesize 5000000 -ss %SS% -i %INPUT% -sn -threads 0
+                      -analyzeduration 500000 -probesize 5000000 -readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2 -ss %SS% -i %INPUT% -sn -threads 0
                       -max_muxing_queue_size 1024 -max_interleave_delta 1
-                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2
-                      -c:v libx264 -vf scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
+                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
                       -profile:v main -level 3.1 -preset veryfast -tune fastdecode,zerolatency
                       -g 30 -keyint_min 30 -sc_threshold 0
                       -movflags empty_moov+default_base_moof+frag_keyframe -frag_duration 500000
@@ -844,8 +872,8 @@ stream:
                       -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
                       -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
                       -hls_flags delete_segments+independent_segments
-                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2
-                      -c:v libx264 -vf scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
                       -preset veryfast -tune fastdecode,zerolatency
                       -g 30 -keyint_min 30 -sc_threshold 0
                       -flags +loop-global_header %OUTPUT%'
@@ -865,8 +893,8 @@ stream:
                       -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
                       -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
                       -hls_flags delete_segments+independent_segments
-                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2
-                      -c:v libx264 -vf scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
                       -preset veryfast -tune fastdecode,zerolatency
                       -g 30 -keyint_min 30 -sc_threshold 0
                       -flags +loop-global_header %OUTPUT%'
@@ -886,11 +914,31 @@ stream:
                       -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
                       -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
                       -hls_flags delete_segments+independent_segments
-                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2
-                      -c:v libx264 -vf scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
+                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
                       -preset veryfast -tune fastdecode,zerolatency
                       -g 30 -keyint_min 30 -sc_threshold 0
                       -flags +loop-global_header %OUTPUT%'
+
+                # ================= M2TS-LL (mpegts.js 向け低遅延 MPEG-TS) =================
+                # -map "0:s?" の引用符は、シェル経由と直接 spawn の両方に対応するため残す。
+                - id: recorded-encoded-m2tsll-720p-avc
+                  name: 720p(M2TS-LL)
+                  container: m2tsll
+                  video:
+                      codec: libx264
+                      height: 720
+                      bitrate: 3000
+                  audio:
+                      codec: aac
+                      bitrate: 192
+                  cmd:
+                      '%FFMPEG% %DUALMONOMODE% -analyzeduration 500000 -probesize 500000
+                      -fflags nobuffer -readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2 -ss %SS% -i %INPUT% -map 0:v:0 %AUDIOSELECTMAP% -map "0:s?"
+                      -c:s copy -flags low_delay -ignore_unknown -max_delay 250000
+                      -max_interleave_delta 1 -threads 0 -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -preset veryfast -g 30 -keyint_min 30 -flags +cgop -y -f mpegts pipe:1'
 
                 # ================= WebM =================
                 - id: recorded-encoded-webm-1080p

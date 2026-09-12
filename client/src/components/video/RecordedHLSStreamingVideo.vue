@@ -16,6 +16,7 @@ import Util from '@/util/Util';
 import { DPlayerType } from 'dplayer';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
+import { resolveRecordedJikkyoPlaybackTime } from '../../../../src/util/RecordedJikkyoSync';
 
 @Component({})
 class RecordedHLSStreamingVideo extends BaseVideo {
@@ -315,7 +316,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             });
         } else {
             // seek によるストリーム再生成
-            this.dp.switchVideo({ url: videoSrc, type: 'hls' }, false, false);
+            this.switchVideo({ url: videoSrc, type: 'hls' });
         }
 
         // hls.js のバッファリング位置の関係で再生開始位置がずれることがあるため 0 に固定する
@@ -490,6 +491,11 @@ class RecordedHLSStreamingVideo extends BaseVideo {
         return this.dp === null ? 0 : this.basePlayPosition + super.getCurrentTime();
     }
 
+    /** ストリーム再生成中のダミー位置を実況同期へ渡さない */
+    protected getJikkyoPlaybackTime(): number | null {
+        return resolveRecordedJikkyoPlaybackTime(this.getCurrentTime(), this.dummyPlayPosition !== null);
+    }
+
     /**
      * 再生位置設定
      * @param time: number (秒)
@@ -500,6 +506,8 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             return;
         }
 
+        this.$emit('playbackTransition');
+        this.beginRecordedJikkyoTransition();
         // エンコード済み範囲か
         if (time >= this.basePlayPosition && time <= this.basePlayPosition + super.getDuration()) {
             super.setCurrentTime(time - this.basePlayPosition);
@@ -524,6 +532,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
         clearTimeout(this.setCurrentTimeTimerId);
         this.setCurrentTimeTimerId = setTimeout(async () => {
             if (this.dp === null) {
+                this.dummyPlayPosition = null;
                 return;
             }
 
@@ -587,6 +596,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
                 }
             }
             this.dummyPlayPosition = null;
+            this.completeRecordedJikkyoSeek(time);
         }, 200);
     }
 }

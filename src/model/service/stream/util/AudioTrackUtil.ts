@@ -7,6 +7,7 @@ import { audioBoostFilter } from '../../../../util/AudioBoostUtil';
  * cmd には 3 つのプレースホルダを置く:
  * - `%DUALMONOMODE%`: 入力オプションの `-dual_mono_mode main|sub` に展開される (`-i` より前に置くこと)
  * - `%AUDIOMAP%`: 出力オプションの `-map 0:v:0 -map 0:a:<n>` に展開される (音声 ES を選ぶ場合のみ非空)
+ * - `%AUDIOSELECTMAP%`: 既に映像 map がある cmd 用の音声 map `-map 0:a:<n>` に展開される
  * - `%AUDIOFILTER%`: 音声トラック指定と音声ブーストを統合した `-af` に展開される
  *
  * 二か国語放送は「1 つのステレオ ES の左右に主音声・副音声」を入れるデュアルモノラルで送られるため、
@@ -28,10 +29,22 @@ import { audioBoostFilter } from '../../../../util/AudioBoostUtil';
  * `main` と同じ扱いにする。
  *
  * **tsreadex 正規化済みで `audioTrack` が未指定の場合は index 0 (主音声 ES) を明示的に選ぶ**。
- * tsreadex 正規化済みの cmd は `%AUDIOMAP%` を使う前提 (m2tsll の全 ES 通し `-map 0` を使わない) なので、
- * 未指定のまま `%AUDIOMAP%` を空文字列にすると映像・音声が 1 本も map されず配信が始まらない。
+ * tsreadex 正規化済みの cmd は音声 map プレースホルダを使う前提 (m2tsll の全 ES 通し `-map 0` を使わない) なので、
+ * 未指定のまま音声 map を空文字列にすると映像・音声が 1 本も map されず配信が始まらない。
  */
 namespace AudioTrackUtil {
+    /**
+     * cmd のプレースホルダを置換する。空文字列の場合はプレースホルダ前後の空白も 1 つに整理する。
+     */
+    const replaceCommandPlaceholder = (cmd: string, placeholder: string, value: string): string => {
+        if (value !== '') {
+            return cmd.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+        }
+
+        const escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return cmd.replace(new RegExp(`\\s*${escapedPlaceholder}\\s*`, 'g'), ' ').trim();
+    };
+
     /**
      * cmd の音声トラックプレースホルダを展開する
      * @param cmd: string 置換前のコマンド
@@ -46,14 +59,15 @@ namespace AudioTrackUtil {
         isNormalizedByTsreadex: boolean = false,
     ): string => {
         // tsreadex なしで 'all' が来た場合はデュアルモノラルの 1 ES しか無く分離できないため 'main' 扱いにする
-        const effectiveAudioTrack =
-            audioTrack === 'all' && isNormalizedByTsreadex === false ? 'main' : audioTrack;
+        const effectiveAudioTrack = audioTrack === 'all' && isNormalizedByTsreadex === false ? 'main' : audioTrack;
 
         // tsreadex 正規化済みは音声 ES が主音声・副音声の 2 本に分かれているため ES を選ぶ。
-        // 未指定は主音声 (index 0) を明示的に選ぶ (%AUDIOMAP% を空にすると何も map されなくなるため)
+        // 未指定は主音声 (index 0) を明示的に選ぶ (音声 map を空にすると何も map されなくなるため)
         const streamIndex =
             isNormalizedByTsreadex === true &&
-            (typeof effectiveAudioTrack === 'undefined' || effectiveAudioTrack === 'main' || effectiveAudioTrack === 'sub')
+            (typeof effectiveAudioTrack === 'undefined' ||
+                effectiveAudioTrack === 'main' ||
+                effectiveAudioTrack === 'sub')
                 ? effectiveAudioTrack === 'sub'
                     ? 1
                     : 0
@@ -73,11 +87,24 @@ namespace AudioTrackUtil {
                 : streamIndex === null
                   ? ''
                   : `-map 0:v:0 -map 0:a:${streamIndex}`;
+        const audioSelectMap =
+            isNormalizedByTsreadex === true && effectiveAudioTrack === 'all'
+                ? '-map 0:a:0 -map 0:a:1'
+                : `-map 0:a:${streamIndex ?? 0}`;
 
-        return cmd
-            .replace(/%DUALMONOMODE%/g, `-dual_mono_mode ${dualMonoMode}`)
-            .replace(/%AUDIOMAP%/g, audioMap)
-            .replace(/%AUDIOFILTER%/g, audioFilter);
+        return replaceCommandPlaceholder(
+            replaceCommandPlaceholder(
+                replaceCommandPlaceholder(
+                    replaceCommandPlaceholder(cmd, '%DUALMONOMODE%', `-dual_mono_mode ${dualMonoMode}`),
+                    '%AUDIOMAP%',
+                    audioMap,
+                ),
+                '%AUDIOSELECTMAP%',
+                audioSelectMap,
+            ),
+            '%AUDIOFILTER%',
+            audioFilter,
+        );
     };
 
     /**
@@ -107,7 +134,15 @@ namespace AudioTrackUtil {
             filters.push(boost);
         }
 
-        return filters.length === 0 ? '' : `-af ${filters.join(',')}`;
+        if (filters.length === 0) {
+            return '';
+        }
+
+        const filter = filters.join(',');
+        // pan の区切り文字 `|` はシェルのパイプでもあるため、cmd がシェル経由になっても
+        // コマンドを分割しないようフィルタ全体を引用する。直接 spawn では ProcessUtil が
+        // 外側の引用符を取り除くため、ffmpeg へは従来どおり 1 引数として渡る。
+        return filter.includes('|') === true ? `-af "${filter}"` : `-af ${filter}`;
     };
 
     /**

@@ -533,6 +533,7 @@ test('media token の allowlist は /videos・/streams・/iptv 配下の実ル�
         '/streams/recorded/1/hls',
         '/streams/recorded/1/mp4',
         '/streams/recorded/1/webm',
+        '/streams/recorded/1/m2tsll',
     ];
 
     // 一覧に挙げたルートが実在すること (API 側の改名・削除に気づく)

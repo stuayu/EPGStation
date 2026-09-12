@@ -220,7 +220,7 @@ components:
                     type: boolean
 
         StreamContainer:
-            description: 配信コンテナ種別
+            description: 配信コンテナ種別。m2tsll は録画・ライブの stdout 直結 MPEG-TS 低遅延配信
             type: string
             enum:
                 - m2ts
@@ -6007,7 +6007,7 @@ components:
                 type: string
 
         StreamPlayPosition:
-            description: 再生位置 (秒。小数可)
+            description: 再生位置 (秒。小数可。サーバー内では0以上の整数秒へ切り捨て)
             in: query
             name: ss
             required: true
@@ -6018,7 +6018,7 @@ components:
             description: >-
                 再生する音声トラック。main = 主音声 (既定) / sub = デュアルモノラルの副音声 /
                 数字 = 音声 ES のインデックス / all = 主音声・副音声を両方含める
-                (tsreadex 正規化済みの m2tsll のみ有効。それ以外では main と同じ扱いになる)。
+                (tsreadex 正規化済みの m2tsll で同時配信に有効。録画・ライブとも対応し、それ以外では main と同じ扱いになる)。
                 録画の一覧は GET /api/videos/{videoFileId}/audio-tracks で取得する
             in: query
             name: audioTrack

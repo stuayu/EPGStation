@@ -69,7 +69,7 @@ const MEDIA_API_ROUTES: readonly RegExp[] = [
     /^\/iptv\/(?:channel\.m3u8|epg\.xml)\/?$/u,
     /^\/streams\/live\/\d+\/(?:hls|mp4|webm|m2ts|m2tsll)\/?$/u,
     /^\/streams\/live\/\d+\/m2ts\/playlist\/?$/u,
-    /^\/streams\/recorded\/\d+\/(?:hls|mp4|webm)\/?$/u,
+    /^\/streams\/recorded\/\d+\/(?:hls|mp4|webm|m2tsll)\/?$/u,
 ];
 
 /**

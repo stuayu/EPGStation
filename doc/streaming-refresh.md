@@ -7,7 +7,7 @@
 ### 1. mpegts.js 1.7.3 → 1.8.0 (ManagedMediaSource 対応)
 
 - iOS / iPadOS Safari 17.1+ の **ManagedMediaSource (MMS)** に対応した mpegts.js 1.8.0 へ更新。
-- これにより **iPhone / iPad の Safari でも M2TS-LL (低遅延) ライブ視聴が可能**になる (KonomiTV と同じ方式)。
+- これにより **iPhone / iPad の Safari でも M2TS-LL (低遅延) のライブ・録画視聴が可能**になる (KonomiTV と同じ方式)。
 - MMS は `video.disableRemotePlayback` が設定されていないと動作しないため、`DPlayerUtil.setupGlobals()` で `window.mpegts.createPlayer` をラップし、アタッチ前に `disableRemotePlayback` / `playsinline` を自動設定する。
 - **適用には `cd client && npm i` が必要** (サンドボックス環境ではレジストリに到達できないため未適用。コードは 1.7.3 のままでも動作する後方互換設計)。
 
@@ -30,8 +30,50 @@
 ### 3. プレイヤー上からの解像度動的切替 (M2TS-LL)
 
 - DPlayer の設定メニューに **画質 (quality) リスト**を表示し、再生を止めずに `config.yml` の `stream.live.ts.m2tsll` の各設定 (1080p / 720p / 480p など) を切り替え可能。
-- サーバー側は接続単位でエンコードプロセスを起動する。M2TS-LL は DPlayer の旧 mpegts.js を新側の `canplay` まで保持し、再生開始後に旧側を停止する。保持する旧側は常時1本以下に制限し、連続切替・コンポーネント破棄でも cleanup を完了させる。ライブ HLS は新ストリームの `canplay` まで旧ストリームを残す。新側の準備に失敗した場合は新側だけを回収する。
+- サーバー側は接続単位でエンコードプロセスを起動する。M2TS-LL の画質切替は別の video 要素を使うため DPlayer の旧 mpegts.js を新側の `canplay` まで保持し、再生開始後に旧側を停止する。一方、録画のレジューム・シーク (`switchVideo()`) は同じ video 要素を再利用するため、DPlayer が新 URL を `video.src` へ設定する前に旧側を破棄する。**URL が同じ同値シークも再生位置へ戻る操作なので、同じ `reset` 経路で MediaSource / SourceBuffer / mpegts.js を作り直す**。旧 video 専用の ARIB renderer も新しい時間軸へ持ち越さない。同じ要素で旧側を遅延 detach すると、新側の MediaSource まで外れて `SourceBuffer` 参照エラーになる。保持する旧側は常時1本以下に制限し、連続切替・コンポーネント破棄でも cleanup を完了させる。ライブ HLS は新ストリームの `canplay` まで旧ストリームを残す。新側の準備に失敗した場合は新側だけを回収する。
 - ライブ HLS / 録画ストリーミングの切替は後述の「全配信方式での画質切替」で対応済み。
+- DPlayer の quality 配列を playback-options で差し替えるときは、内部 `blob:` URL や空の `video.src` を配信 URL として引き継がず、`options.video.url` → 現在 quality → `currentSrc` / `src` の順で有効な URL を選ぶ。画質切替後の URL は `options.video.url` と quality の両方へ同期する。mpegts.js の生成入口でも空・内部 `blob:` URL を検出したら初期化せずエラーにする。
+
+### 3a. 録画 M2TS-LL
+
+- `GET /api/streams/recorded/{videoFileId}/m2tsll?ss=<秒>&mode=<番号>&profile=<id>&audioTrack=<指定子>` を追加した。`mode` または `profile` は既存の録画 HLS / MP4 と同じ規則で、`ss` は小数秒を受け付けるが、クライアント・API・ストリーム生成直前で0以上の整数秒へ切り捨てる。
+- 録画 TS は `RecordedStreamBaseModel` がファイル (録画中は `TailStream`) をエンコーダ stdin へ流し、stdout を `video/mp2t` として HTTP へ直結する。encoded は `-ss %SS% -i %INPUT%` のファイル入力で、いずれも中間ファイルを作らない。
+- クライアントは録画詳細に `M2TS-LL` を追加し、`StreamSupportUtil.checkM2TSLLSupport()` が非対応と判定した環境では選択肢から除外して HLS へ誘導する。再生は `type: 'mpegts'`、VirtualTimeline、チャプター、ARIB 字幕、実況コメント、音声切替を既存録画再生と共用する。
+- `audioTrack=all` は tsreadex 正規化済みプロファイルで主音声・副音声を同時配信し、mpegts.js の音声切替 API で再接続せず切り替える。非正規化プロファイルは `AUDIOSELECTMAP` で単一音声を選ぶ。
+- 録画 TS の m2tsll の ARIB 字幕は、tsreadex の有無によらず入力側でなく stdout 側へ ID3 timed metadata を挿入する。encoded は字幕対象外。
+- 録画のファイル入力は `-readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2` を `-i` より前へ置く。初期 45 秒 (4 Mbps 換算で約 22.5 MB) を先読みし、その後は実時間の 1.5 倍を上限に供給する。`readrate_catchup` は入力が指定速度に遅れたときだけ一時的に 2 倍まで使う。対象は M2TS-LL / MP4 / WebM。ライブの `-re` は変更しない。録画 HLS は既存のセグメント単位の先行抑制を使う。今回、readrate 引き上げは供給が律速でないことが判明したため前値へ戻した。
+- Chromium で同一素材の録画 M2TS-LL (`videoFileId=31024`) を5分連続再生した際、60〜120秒で前方バッファが枯渇する症状は観測された。ただしこれは供給不足が原因ではない。`createReadStream` → `ID3MetadataTransform` → `ffmpeg.stdin` と同じ供給経路は `speed=4.65x` で、律速はエンコード側だった。
+
+| 実時間 | ct | buf | rs |
+| ---: | ---: | ---: | ---: |
+| 0s | 0.14 | 12.76 | 4 |
+| 30s | 30.22 | 42.77 | 4 |
+| 60s | 60.28 | 61.69 | 4 |
+| 90s | 75.89 | 81.75 | 4 |
+| 120s | 98.17 | 98.24 | 2 |
+| 150s | 117.63 | 122.69 | 4 |
+| 180s | 138.73 | 143.15 | 4 |
+| 210s | 168.79 | 189.50 | 4 |
+| 240s | 198.91 | 244.80 | 4 |
+| 270s | 229.00 | 287.48 | 4 |
+| 300s | 259.09 | 330.81 | 4 |
+
+この症状を再現した素材のエンコード設定別実測は次のとおり。素材は ffprobe で `codec_name=hevc`、`1440x1080`、`yuv420p10le`、`r_frame_rate=60000/1001`、`avg_frame_rate=60000/1001`、`field_order=unknown` で、プログレッシブだった。
+
+| エンコード設定 | fps | speed |
+| --- | ---: | ---: |
+| 現状 (`-vf yadif,scale=-2:720`、出力 59.94fps) | 80 | 3.59x |
+| `yadif` なし | 117 | 5.28x |
+| `yadif` なし + `-r 30000/1001` | 157 | 5.24x |
+| `h264_videotoolbox` (HW、今回は採用しない) | 154 | 6.95x |
+
+`yadif` を外すだけで 47% 改善し、供給経路の `speed=4.65x` を下回っていた律速が解消する。プリセット生成時点では素材が未確定なので、`StreamProfileManageModel.buildCmd()` は `-vf %DEINTERLACE%,scale=...` の形でプレースホルダを保持する。配信開始時に `RecordedStreamBaseModel` / `LiveStreamBaseModel` が `SourceAnalyzer` の結果を使って置換する。ffprobe の `field_order` と fps から progressive と判定できる素材は `yadif` を入れず、`tt/tb/bb/bt` または `progressive` 以外の判定不能時は放送波そのままの MPEG-2 1080i を守るため `yadif` 有りに倒す。ライブも実測で progressive と判定できる場合だけ無しにする。`video_file` / `video_file_ts_info` に fps / field_order は無いため DB fallback は yadif 有りを維持し、欠落した解析結果はキャッシュしない。実行時は `deinterlace: yadif=... (source: ..., codec: ..., field_order: ..., fps: ...)` の info ログで枝と判定値を確認できる。プレースホルダを持たない手書き cmd は利用者の指定を変更しない。
+- mpegts.js の録画 M2TS-LL は `lazyLoad: false` とする。`lazyLoad` は前方バッファが上限を超えた時に transmuxer を停止し、その HTTP 接続を切る。録画 m2tsll の API はレスポンス `close` をストリーム停止として扱い、Range/再接続で同じ配信を継続する契約ではないため、lazyLoad の再接続で再生が数分ごとに停止する。クライアント側は `autoCleanupSourceBuffer: true`、`autoCleanupMaxBackwardDuration: 30`、`autoCleanupMinBackwardDuration: 15` で再生済み領域だけを解放する。`autoCleanupSourceBuffer` は前方バッファを削除しないため、録画 HLS の `getAheadSegmentNum()` 抑制とは別の役割とする。供給経路は `speed=4.65x` で、前方バッファ枯渇の主因はプログレッシブ素材へ不要な `yadif` を掛けたエンコード遅延だった。ライブ M2TS-LL (`LiveMpegTsVideo.vue`) は lazyLoad とペーシングを変更しない。
+- mpegts.js / DPlayer には初回再生に必要な前方バッファ秒数を指定する設定がない。そのため録画 M2TS-LL は DPlayer の `play()` をクライアント側でゲートし、前方バッファが8秒以上 (短い録画は終端まで) たまってから自動再生・手動再生を開始する。開始が数秒遅れても、実時間付近のエンコードで開始直後にバッファを使い切る事態を避ける。
+- 録画 M2TS-LL の再生中に停滞が起き、Resource Timing または mpegts.js の `statisticsInfo.speed` で現在画質を維持できる帯域が観測できた場合は、回線不足ではなく配信側エンコードの遅延候補とみなして `recommended.fallbackChain` の低負荷側へ降格する。帯域サンプルが不足する場合は従来どおり1段ずつ降格し、fallback 後25秒のクールダウンと chain の末尾で下限を設ける。手動画質は変更しない。
+- 原因の実測: WebKit 26 で30分録画を5分計測すると停止4回、最長40秒。停止時にサーバーのストリーム数が0となり、約15秒後に再作成された。目標は WebKit / Chromium の各5分計測で停止0回、サーバーのストリームが途中停止しない、前方バッファ15秒以上。
+- 録画 M2TS-LL の生成 cmd は `mpegts` を `pipe:1` へ出力し、`-flush_packets` は指定しない。Node の stdout/HTTP backpressure に任せる既存経路で、`-flush_packets 1` のパケット単位 flush は書き出しをさらに細切れにして WebKit の `readyState` 揺れを悪化させうるため追加しない。今回の主因はプログレッシブ素材への不要な `yadif` によるエンコード遅延であり、出力 flush 設定は変更しない。
+- ffmpeg 9 未満の自動フォールバックは実装しない。`-readrate_initial_burst` / `-readrate_catchup` の互換性を安全に判定できない手書き cmd をサーバー側で改変せず、古い ffmpeg を使う場合は設定 cmd から readrate 系を外す (または `-re` へ置換する)。
 
 ### 4. MSE / hls.js チューニング
 
@@ -79,7 +121,7 @@ EIT[p/f]・実況時刻・字幕が配信間で共有状態にならない。無
 
 ### 再生停滞時の自動画質 fallback
 
-`VideoContainer` は「おまかせ」選択時だけ、全配信方式で video 要素の実測値を共通監視する。直近 30 秒の低バッファ `waiting` 3 回、または再生中の `currentTime` 無進行 5 秒 + バッファ残量 1 秒以下を回線不足と判定する。Resource Timing API のセグメント/パート取得実績が2件以上あれば、取得時間とサイズから実効帯域を推定し、API が返す `PlaybackProfile.videoBitrate` のうち安全率75%に収まる低負荷段へ直接降格する。Safari の一部やクロスオリジンなどで Resource Timing が取れない場合は帯域を推定せず、1段ずつの fallback に戻す。実績不足時も1段ずつ進める。起動・シーク・画質切替・タブ復帰の猶予と fallback 後 25 秒のクールダウンを持つため、一時的な decoder 待ちやバックグラウンド停止で誤降下しない。明示画質は変更しない。判定本体は `src/util/PlaybackStallDetector.ts` の純粋関数で、UT から直接検証する。
+`VideoContainer` は「おまかせ」選択時だけ、全配信方式で video 要素の実測値を共通監視する。直近 30 秒の低バッファ `waiting` 3 回、または再生中の `currentTime` 無進行 5 秒 + バッファ残量 1 秒以下を停滞と判定する。Resource Timing API のセグメント/パート取得実績、または mpegts.js の連続配信速度が2件以上あれば、取得時間とサイズから実効帯域を推定し、API が返す `PlaybackProfile.videoBitrate` のうち安全率75%に収まる低負荷段へ直接降格する。停滞中でも帯域が現在画質に十分なら、回線ではなく配信側エンコード遅延の候補として扱う。Safari の一部やクロスオリジンなどで帯域を観測できない場合は推定せず、1段ずつの fallback に戻す。起動・シーク・画質切替・タブ復帰の猶予と fallback 後 25 秒のクールダウンを持つため、一時的な decoder 待ちやバックグラウンド停止で誤降下しない。明示画質は変更しない。判定本体は `src/util/PlaybackStallDetector.ts` の純粋関数で、UT から直接検証する。
 
 録画済み HLS の範囲外シークは、サーバーの ready 判定を 1 セグメントへ緩和し、クライアントの有効化確認を初回即時 + 200ms 間隔で行う。ライブ HLS の ready 判定はライブエッジ追従のため 2 セグメントのまま。
 
@@ -225,6 +267,10 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
 
 録画済みのエンコードは実時間より速く進むため、再生が終わるより先に必ずエンコーダが終了する。エンコーダの正常終了 (exit code 0) をそのままストリーム停止に結び付けると、`HLSMemoryStoreModel.delete()` でまだプレイヤーが取得していない末尾のセグメントまで失われてしまう (実測: 9.8 分の録画で 363 秒地点まで再生できていたのに、エンコーダ終了と同時にストアごと削除され、以後再生が戻らなくなった)。そのため正常終了時は `RecordedStreamBaseModel.onStreamProcessExit()` がストリームを止めず `HLSMemoryStoreModel.markEnded()` を呼ぶだけに留め、プレイリストへ `#EXT-X-ENDLIST` を付けて終端を伝える (待機中のブロッキングプレイリスト要求もここで解決する)。ストア自体の破棄はクライアント切断や keep タイマー切れ (`StreamBaseModel.setStopTimer()`、15 秒) による通常の `stop()` に任せる。異常終了 (0 以外の exit code) は録り直しようがないため従来どおり即座に停止する。
 
+録画 M2TS-LL / MP4 / WebM の通常配信も同じ問題を持つ。正常なエンコーダ終了で `RecordedStreamBaseModel` が直ちに `emitExitStream()` すると、実時間より速く読み切った時点で「再生中のストリーム停止」と記録される。正常終了は EOF として扱い、レスポンスの `finish` 後に route が keep タイマーとサーバーストリームを回収する。異常終了やクライアント切断は従来どおり即時停止する。したがって EOF 時点で既に送信済みのブラウザバッファは再生を継続し、未送信データを切り捨てない。
+
+メモリ設計の注意: 録画 HLS は通常 180 セグメント、異常時の安全弁は 1 エントリ 400 セグメント。1 セグメントを約 0.4MB とすると単一音声で最大約 160MB、複数音声レンディションでは映像・音声ロールごとに保持するため最大約 480MB/ストリームになり得る。現在はプロセス数上限による間接制限だけで、全視聴者横断のバイト数上限はない。複数同時視聴時は RSS を実測し、必要ならロール単位・全体単位の上限を別途設計する。今回この上限値自体は変更していない。
+
 ライブ HLS をディスクに書き出さず、メモリ上でセグメント化・配信するモードを追加した。
 
 ### 仕組み
@@ -296,6 +342,11 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
   埋め込んである。**`-dual_mono_mode main` を直書きした手書き cmd では音声を切り替えられない**
   (置換対象が無いだけで従来どおり再生はできる)。`-map 0` を使う cmd (m2ts / m2ts-ll / ディスク HLS) には
   `%AUDIOMAP%` を入れないこと (指定が二重になる)。
+- **`%AUDIOFILTER%` の `|` はシェルパイプではない**: encoded の副音声選択で使う
+  `pan=stereo|c0=c1|c1=c1` は ffmpeg のフィルタ構文なので、展開時にフィルタ全体を引用する。
+  `EncodeProcessManageModel` は引用符内の `|` をシェル経路と判定せず、引用符外の実パイプだけを
+  `shell` 実行へ送る。spawn 直前のログは置換後の実コマンドを出す。空の音声プレースホルダは
+  オプションと空白ごと除去する。
 - **`config.tsreadex` を設定すると生成 cmd の前段へ tsreadex が入る** (`-x 18 -n -1 -a 13 -b 7 -c 5 -u 5`)。
   対象サービスの抽出・映像/音声 PID の固定 (0x0100 / 0x0110 / 0x0111)・デュアルモノラルの分離・
   欠落音声の補完を行うため、放送側で音声構成が変わっても配信は「映像 + 音声 2 本」の固定構造になる。
@@ -305,23 +356,29 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
   `-b 7` で主音声と同じ -28.4dB)。**tsreadex 経由では副音声を `-dual_mono_mode sub` で選べない**
   (2 本の ES に分離済みなので `-map 0:a:1`)。`AudioTrackUtil` が置換前の cmd の `%TSREADEX%` の
   有無で切り替える。
-- **m2tsll は `-map 0` / `-map "0:d?"` を使わない**。相乗りサービスの文字スーパー (PID 0x138、
+- **録画済み MP4 / WebM も `audioTrack` を付けて再配信する**。ffprobe がデュアルモノラル 1 ES を主音声・副音声へ展開した場合、encoded の `sub` はサーバー側 ffmpeg の `pan` で右チャンネルを左右へ複製する。生 TS / tsreplace の m2tsll は従来どおり、tsreadex 無しなら `dual_mono_mode`、tsreadex 有りなら分離済み ES の map を使う。クライアントは再生開始後も音声一覧を保持し、画質切替・シーク後に選択状態を再適用する。
+- **m2tsll は `-map 0` / `-map "0:d?"` / 入力側 ID3 map を使わない**。相乗りサービスの文字スーパー (PID 0x138、
   ffmpeg 上は PTS の無い `bin_data` / `private_stream_2`) が一括 map で拾われると mpegts muxer が
   インターリーブ待ちで数フレームだけ書き出した後に完全停止する (実測: ffmpeg 9.0.1、libx264 は 161
-  フレーム出力済みなのに mux 済みは frame=5 のまま)。tsreadex 経由は `%AUDIOMAP% -map "0:s?" -c:s copy`
-  (字幕のみ map)、tsreadex 無しは `-map 0:v:0 -map 0:a -map "0:s?" -map "0:i:0x1ffe?" -c:s copy -c:d copy`
-  (ID3 timed metadata の PID `0x1FFE` だけをピンポイントで拾う) にする。**ディスク HLS は今回変更していない**
+  フレーム出力済みなのに mux 済みは frame=5 のまま)。tsreadex の有無によらず
+  `-map 0:v:0 %AUDIOSELECTMAP% -map "0:s?" -c:s copy` (映像・音声・ARIB 字幕 ES のみ map) にする。
+  **ディスク HLS は今回変更していない**
   (`%AUDIOMAP% -map "0:s?" -map "0:d?"` のまま) — 同じ問題を抱えうるが、リアルタイムの pipe mux (m2tsll)
   と挙動が異なる可能性があり実測で確認できていないため現状維持。`?` はシェルの glob 文字なので
-  引用符が要る。
-- **tsreadex 経由の m2tsll / m2ts は ID3 (ARIB 字幕) をエンコード後 (出力側) に挿入し直す**。
-  tsreadex は入力側で挿入した ID3 (PID `0x1FFE`) を落としてしまうため、`LiveStreamBaseModel` は
-  `isNormalizedByTsreadex === true` かつ出力コンテナが mpegts (m2ts / m2tsll) のときだけ入力側への
-  挿入をやめ、`streamProcess.stdout` (`-c:s copy` 済みの ARIB 字幕 ES を含む) へ `ID3MetadataTransform`
-  を挿入し直す (`getStream()` はこの Transform を返す)。mp4 / webm / HLS (ディスク・in-memory とも) は
-  対象外 (in-memory HLS は別経路の `AribId3Extractor` が担う)。出力コンテナの判定は cmd の正規表現では
-  なく、`ILiveStreamBaseModel.LiveStreamOption.container` (`StreamApiModel` が呼び出し時点で渡す) で行う。
-- **`audioTrack=all`**: tsreadex 正規化済みのときだけ `%AUDIOMAP%` を
+  引用符が要る。設定例の外側引用符は両経路で共通に残し、`ProcessUtil.parseCmdStr()` が直接 spawn
+  の引数だけ外す。シェル経路では引用符をそのまま `/bin/sh` / `cmd.exe` へ渡す。これにより tsreadex
+  未設定のライブ m2tsll と、録画 TS / encoded の m2tsll を含む全自動生成経路が起動できる。
+- **m2tsll の TS 入力は ID3 (ARIB 字幕) をエンコード後 (出力側) に挿入する**。
+  入力側へ ID3 timed metadata (PID `0x1FFE`) を map すると、字幕が疎な区間で mpegts muxer がインターリーブ待ちになり、
+  配信速度が異常に落ちる。ブラウザを使わない同一経路の実測で、ID3 map 有りは `speed=0.068x` / `fps=1.6` / 12 秒分の出力に実時間 2 分 56 秒、
+  ID3 map 無しは `speed=13.9x` / `fps=237` / 実時間 1.19 秒だった。`ss=366` は 20 秒取得で 86,668 bytes / 1 frame、
+  `ss=1471` は 10 秒取得で 12,644,316 bytes / 731 frames となり、位置依存の停止を説明する。
+  `LiveStreamBaseModel` / `RecordedStreamBaseModel` は、tsreadex の有無によらず m2tsll の TS 入力だけで、
+  `streamProcess.stdout` (`-c:s copy` 済みの ARIB 字幕 ES を含む) へ `ID3MetadataTransform` を挿入する (`getStream()` はこの Transform を返す)。
+  encoded 入力は対象外。mp4 / webm / HLS (ディスク・in-memory とも) は従来経路を維持する。
+- **M2TS-LL のクライアント側修正は別問題**。MSE / mpegts.js の再生成、188 byte 境界、再生位置競合はそれぞれ別の改善であり、
+  `ss=366` / `642` / `91` だけで発生する今回の固着の主因ではない。
+- **`audioTrack=all`**: tsreadex 正規化済みのときだけ `%AUDIOSELECTMAP%` を
   `-map 0:v:0 -map 0:a:0 -map 0:a:1` に展開し、主音声・副音声の両方の ES を同時に配信する。
   m2tsll でクライアント (mpegts.js) が再接続無しに `switchPrimaryAudio()` / `switchSecondaryAudio()`
   を呼んで切り替えるための経路 (下記「再接続無しの音声切替」参照)。tsreadex 無しで `all` が来た場合は
@@ -339,10 +396,11 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
 - **`PlaybackProfile.embeddedAudioSwitch`**: コンテナ別に「主音声・副音声を再接続無しで同時配信できるか」
   を示す (`Partial<Record<'m2ts'|'m2tsll'|'mp4'|'webm'|'hls', boolean>>`)。`PlaybackApiModel` が該当
   コンテナの実プロファイルの cmd (cmd 省略時は `StreamProfileManageModel` が生成した後の cmd、
-  `IStreamPresetRegistry.resolveProfileCmd()` で取得) を見て、`%TSREADEX%` と `%AUDIOMAP%` を両方含み
+  `IStreamPresetRegistry.resolveProfileCmd()` で取得) を見て、`%TSREADEX%` と音声選択用
+  プレースホルダ (`%AUDIOMAP%` または `%AUDIOSELECTMAP%`) を両方含み
   コンテナが m2tsll のとき、または in-memory HLS (cmd が `%streamFileDir%` を含まない) のとき true にする。
   ディスク方式の HLS は対象外。
-- クライアント (`LiveMpegTsVideo.vue`) は再生中モードで `embeddedAudioSwitch.m2tsll === true` なら、
+- クライアント (`LiveMpegTsVideo.vue` / `RecordedStreamingVideo.vue`) は再生中モードで `embeddedAudioSwitch.m2tsll === true` なら、
   配信 url を `audioTrack=all` で開き、音声パネルからの選択は再接続せず
   `dp.plugins.mpegts.switchPrimaryAudio()` / `switchSecondaryAudio()` を直接呼ぶ。画質切替で
   mpegts.js インスタンスが作り直された直後 (新インスタンスは常に主音声から始まる) は、選択中が
@@ -396,6 +454,15 @@ EPGStation の rigaya プリセットは「rigaya が映像だけ処理 → 後�
 `-af` へ統合して展開する (`%DUALMONOMODE%` / `%AUDIOMAP%` と同じ扱い)。`-af` を複数指定すると後勝ちで
 前のフィルタが無効になるため、pan と volume を別々に置かない。
 
+録画済みの明示 cmd も MP4 / WebM / m2tsll / HLS の全コンテナで `%DUALMONOMODE%` と音声 map
+(`%AUDIOMAP%` または `%AUDIOSELECTMAP%`) に加えて `%AUDIOFILTER%` を残す。特に encoded の `sub` は
+`%AUDIOFILTER%` が無いと `AudioTrackUtil` が `pan` を挿入できず、API が `audioTrack=sub` を受けても
+主音声と同じ音になる。`config.yml` の明示 cmd を変更するときも同じプレースホルダを維持する。
+
+録画ファイルの `%INPUT%` と `%OUTPUT%` は `EncodeProcessManageModel` が spawn 直前に置換する。
+ストリーム側で置換前 cmd をログへ出すと実行 cmd と異なるため、ログは置換後の shell 文字列または spawn 引数を
+記録する。ログに `%INPUT%` が残る場合は生成失敗ではなく、古いログ出力経路または古い配備物を疑う。
+
 録画済みの encoded 入力で副音声を選ぶ場合、放送 TS のデュアルモノラルではなく通常のステレオ AAC
 （左=主、右=副）なので、`%AUDIOFILTER%` は `pan=stereo|c0=c1|c1=c1` を生成する。TS 入力とライブは
 従来どおり `-dual_mono_mode sub` を使う。主音声には pan を掛けず、通常のステレオ放送をモノラル化しない。
@@ -432,16 +499,16 @@ EPGStation の rigaya プリセットは「rigaya が映像だけ処理 → 後�
 
 ### mpegts 配信 (m2ts / m2ts-ll) の ARIB 字幕
 
-- **DPlayer は mpegts.js の `TIMED_ID3_METADATA_ARRIVED` からしか aribb24 へ字幕を渡さない**。TS に ARIB 字幕 ES (PID 0x130 等) がそのまま入っていても字幕は表示されない。そのため mpegts 配信でも HLS と同じく `arib-subtitle-timedmetadater` を通し、ID3 timed metadata ES (PID 0x1ffe) を足したうえでエンコーダへ渡す (`LiveStreamBaseModel`)
-- **エンコード後も ID3 ES を残す必要がある**。m2ts-ll の自動生成コマンドは (tsreadex 無しの場合) `-map 0:v:0 -map 0:a -map "0:s?" -map "0:i:0x1ffe?" -c:s copy -c:d copy -ignore_unknown` で ID3 の PID `0x1FFE` をピンポイントに拾うため ID3 ES が出力に残る (実測で `Data: timed_id3` が出力側にも存在することを確認済み)。`-map` を持たない従来の m2ts コマンドは映像・音声しか選択しないため、ID3 は出力されず字幕も出ない
+- **DPlayer は mpegts.js の `TIMED_ID3_METADATA_ARRIVED` からしか aribb24 へ字幕を渡さない**。TS に ARIB 字幕 ES (PID 0x130 等) がそのまま入っていても字幕は表示されない。そのため mpegts 配信でも HLS と同じく `arib-subtitle-timedmetadater` を使う。m2tsll は字幕 ES をエンコーダへ渡し、エンコード後の stdout に ID3 timed metadata (PID 0x1ffe) を挿入する (`LiveStreamBaseModel` / `RecordedStreamBaseModel`)
+- **エンコード後は字幕 ES を残し、ID3 は出力側で生成する**。m2ts-ll の自動生成コマンドは tsreadex の有無によらず `-map 0:v:0 %AUDIOSELECTMAP% -map "0:s?" -c:s copy` で ARIB 字幕 ES を map する。`LiveStreamBaseModel` / `RecordedStreamBaseModel` が stdout の TS を `ID3MetadataTransform` へ通し、PID `0x1FFE` の ID3 timed metadata を出力へ付ける。入力側で ID3 を map すると疎な字幕区間で muxer が固着するため、`Data: timed_id3` はこの出力側経路で作られる
 - ID3 変換は PMT を書き換えるため、`-map` を使う設定では出力の PID 構成も変わる
-- **tsreadex 経由の m2ts / m2ts-ll は上記と経路が異なる**。tsreadex は入力側の ID3 (PID `0x1FFE`) を落としてしまうため、入力側への挿入は行わず、エンコード後の TS (`streamProcess.stdout`) へ ID3 を挿入し直す (`LiveStreamBaseModel.useOutputSideId3()`)。詳細は上の「音声トラックの切り替え」節を参照
+- **m2tsll の TS 入力は tsreadex の有無によらず出力側 ID3 経路を使う**。m2ts (m2tsll 以外) の既存 tsreadex 経路は従来どおり。詳細は上の「音声トラックの切り替え」節を参照
 
 ### 制限事項
 
 - in-memory モードの字幕は `emsg` box (`scheme_id_uri = https://aomedia.org/emsg/ID3`) で運ぶ。fMP4 には ARIB 字幕 ES / ID3 ES をそのまま多重化できないため、エンコード前の TS から ID3 timed metadata を抜き取り、パート先頭へ `emsg` として付け直す方式を採っている (`AribId3Extractor` → `Fmp4Packager.pushId3()`)。hls.js は `emsg` を ID3 として通知するため、クライアント側 (aribb24) の実装はディスク方式と共通。
 - 上記の性質上、字幕の絶対時刻はエンコードパイプラインの遅延分 (おおむね 1 秒程度) だけずれることがある。フレーム単位の同期が必要な場合は従来のディスク方式 cmd を使用すること。
-- 字幕を正しく扱うため、入力 TS は `tsreadex` を通すこと (ワンセグ/字幕の PID 整合やドロップ耐性のため実質必須)。cmd の先頭に `%TSREADEX% ... |` を置く形を推奨する。
+- 字幕を正しく扱うため、入力 TS は `tsreadex` を通すこと (ワンセグ/字幕の PID 整合やドロップ耐性のため推奨)。cmd の先頭に `%TSREADEX% ... |` を置く形を推奨する。tsreadex 無しの m2tsll も、字幕 ES を map して出力側で ID3 化するため利用できる。
 - メモリ保持はライブが直近 12 セグメントで、ストリーム停止時に即時解放される (`HLSMemoryStoreModel.LIVE_RETAIN_SEGMENT_NUM`)。録画済みは再生位置 (`lastServedSeq`) が判明するまでは直近 180 セグメントを暫定保持し (`RECORDED_RETAIN_SEGMENT_NUM`)、判明した後は再生位置から遡って約 120 秒分を保持する (`RECORDED_KEEP_BEHIND_SEGMENT_NUM`。詳細は上の「保持窓」節を参照)。どちらのモードも、まだクライアントが取得していないセグメントは保持上限だけを理由に削除しない (メモリ使用量の安全弁として `RECORDED_MAX_SEGMENT_NUM` (400 セグメント) を超えた場合だけは、未取得でも破棄する)。録画済みで保持範囲を超えて巻き戻す操作は、従来どおりクライアント側でストリームを作り直して対応する。
 - **録画済みはエンコードを再生位置の近くに留める**。録画ファイルのエンコードは実時間の数倍速で進むため、放置すると再生位置との差が際限なく開く。hls.js は録画済みのプレイリストも live 扱いで読む (エンコーダ動作中は `#EXT-X-ENDLIST` が無い) ため、再生位置が保持窓の外に出ると `StreamController.synchronizeToLiveEdge()` が `media.currentTime` をライブエッジ = エンコード最新位置へ書き換えてしまう (`liveMaxLatencyDurationCount` の既定は `Infinity` なので、発火するのは遅延しきい値ではなくこちらの条件)。`HLSMemoryStoreModel.getAheadSegmentNum()` がクライアントの取得済み seq からの先行量を返し、`RecordedStreamBaseModel` が 150 セグメント (`MAX_AHEAD_SEGMENT_NUM`) を超えたらエンコーダの標準出力の読み出しを止める。ブラウザが消費して先行量が 30 セグメント (`RESUME_AHEAD_SEGMENT_NUM`) まで減れば再開する。減らなくても、その時点の超過量に比例して計算した停止時間 (`pauseTime`。上限 `MAX_PACE_INTERVAL` = 5 秒) が経過すれば必ず再開する。パイプが詰まってエンコーダ自身が書き込みでブロックするため、追いつけば読み出しを再開するだけで戻る。先行分はシークに即応できる範囲でもあるので短くしすぎないこと。
 - **ただし完全に止めてはいけない (デッドロックになる)**。エンコードを止めるとプレイリストの更新も止まるが、LL-HLS のプレイヤー (特に iOS Safari のネイティブ HLS) は**ブロッキングプレイリスト要求 (`?_HLS_msn=<次の seq>`) の応答が変化してから次のセグメントを取得する**ため、更新が止まると新しいセグメントを取りに来なくなる。先行量の基準である `lastServedSeq` はクライアントが取得した最新 seq なので、取りに来なければ先行量も減らず、エンコードは永久に再開しない (画面は再生が止まったまま、サーバー側は `keep` が届き続けるので何のエラーも出ない)。そのため抑制中は先行量を定期確認し、30 セグメントまで減った時点で再開する。減らない場合も `pauseTime` の経過で必ず再開し、更新停止によるデッドロックを防ぐ。**再開判定のループ上限は固定の `MAX_PACE_INTERVAL` ではなく、その時点で計算した `pauseTime` を使う**。固定値にすると、超過量がわずかで `pauseTime` が短く計算された場合でも常に上限の 5 秒まで停止が引き延ばされてしまう (先行量は視聴の実時間経過でしか減らないため、短い `pauseTime` 内では `RESUME_AHEAD_SEGMENT_NUM` まで下がりきらず、ループが際限なく延長され続けていた)。**一定時間ごとの粗い ON/OFF (例: 1 秒止めて再開) にしてはいけない** — 停止中もエンコーダはパイプバッファへ書き込み続け、再開時に一気に流れ込むため、配信が「バーストと空白の繰り返し」になり再生がとびとびになる。
@@ -471,6 +538,7 @@ DPlayer 標準の設定メニュー (歯車 → 画質) から `config.yml` の�
 | ライブ M2TS-LL                    | `LiveMpegTsVideo.vue`           | `stream.live.ts.m2tsll`                   | URL に `?mode=` を含むだけなので DPlayer 標準の切替                      |
 | ライブ HLS                        | `LiveHLSVideo.vue`              | `stream.live.ts.hls`                      | ストリームセッションを停止 → 新 mode で再作成 → 新しい m3u8 へ差し替え   |
 | 録画 HLS                          | `RecordedHLSStreamingVideo.vue` | `stream.recorded.{ts,encoded}.hls`        | 現在の再生位置でセッションを作り直し、先頭 (= 切替前の再生位置) から再生 |
+| 録画 M2TS-LL                     | `RecordedStreamingVideo.vue`    | `stream.recorded.{ts,encoded}.m2tsll`    | `?mode=` / `?ss=` / `?audioTrack=` を付け直した MPEG-TS URL へ差し替え  |
 | 録画 mp4 / webm                   | `RecordedStreamingVideo.vue`    | `stream.recorded.{ts,encoded}.{mp4,webm}` | `?mode=` と `?ss=` (現在の再生位置) を付け直した URL へ差し替え          |
 | ライブ m2ts / mp4 / webm 直接再生 | `NormalVideo.vue`               | —                                         | 非対応 (既知の制限を参照)                                                |
 
@@ -497,6 +565,14 @@ DPlayer標準項目を残す場合も、選択中クラスを1つだけ維持す
 画質切替後の標準音声復元は別経路であり、後者へ必要な値を提供するだけなので二重の音声切替は行わない。
 `quality_end` では音声項目を再同期するため、切替に伴うパネル再構築後も選択表示を失わない。
 
+ストリーミング再生では最終描画に DPlayer 標準の `timeupdate` 値を使わず、時刻表示とシークバーを
+`VirtualTimeline` が描く。DPlayer は画質切替の `initVideo()` ごとに匿名の標準 `timeupdate`
+listener を追加するため、`VirtualTimeline` は `initVideo()` 完了後に自身の listener を一度外して
+再接続する。これにより標準描画より常に後で描画し、同じ DPlayer 内の旧標準 listener が残っていても
+ストリーム先頭基準の値が絶対位置を上書きしない。`VirtualTimelineListenerController` が接続状態と
+1 個制約を管理し、DPlayer 破棄時に解除する。録画 HLS / 録画 M2TS-LL・MP4・WebM / ライブの
+画質切替、シーク、レジュームで共通に適用する。
+
 同じ切替でvideo要素が作り直される間、aribb24.js のrendererへ幅または高さ0のvideoからID3/Cueを渡さない。
 `BaseVideo` が新rendererの `pushID3v2Data` / `pushID3v2Cue` / `refresh` をガードする。
 M2TS-LLでは旧mpegts.jsだけを新videoのcanplayまで保持し、旧aribb24 rendererは新renderer生成直後に破棄する。
@@ -504,6 +580,44 @@ HLSではDPlayer標準のrenderer破棄に同じ入力ガードを加える。�
 
 `resetCurrentTime: true` を指定した場合 (録画系) は、DPlayer が行う「切替前の再生位置への seek」を抑止し、
 新しいストリームの先頭から再生させる (ストリーム自体を再生位置から作り直しているため)。
+
+### M2TS-LL 再接続後のバッファ先頭復帰 (補助処理)
+
+録画 M2TS-LL はシーク・レジューム・画質切替・音声再接続で MPEG-TS ストリームを作り直す。
+`ss` から始まる新ストリームの先頭 PTS が 0 ではない場合、video の `currentTime=0` が
+`buffered.start(0)` より手前に残り、`paused=false` でも再生が進まないことがある。これは
+`buffered` が既に存在する再生成後のタイムラインずれだけを扱う補助処理である。
+mpegts.js の `StartupStallJumper` は初回起動時に一度だけ使われるため、フォーク側の
+`BaseVideo.setupMpegtsPlaybackRecovery()` が `initVideo()` の再生成後へ監視を追加する。
+
+- `readyState >= 2`、`currentTime` が 1 秒以上進んでいない、`currentTime < buffered.start(0) - 0.05`、
+  `buffered` が有効、の全条件を満たすときだけ `buffered.start(0)` へ寄せる
+- `currentTime` が 0.05 秒超進んだら無進行時計をリセットする。正常再生中の巻き戻しを防ぐ
+- `buffered=[]` の初期化停止や、1回のシークで複数ストリームを要求する競合はこの監視では直さない
+- 録画シークは `VideoContainer.applyResumePosition()` の非同期レジュームと `VirtualTimeline.onDragEnd()` の手動シークが同じ `setCurrentTime()` へ到達する。手動シーク開始時にレジューム世代を無効化し、`RecordedStreamingVideo.createVideoSrc()` と録画 HLS API の `ss` を `normalizeStreamPlayPosition()` で整数秒へ統一する
+- 初回生成は `StartupStallJumper` に任せ、mpegts.js 本体と SHA 固定は変更しない
+- 復帰時は `[EPGStation][playback-recovery]` の `console.debug` を出す
+- 録画の初回再生バッファゲート (`INITIAL_PLAYBACK_BUFFER_SEC = 8`) は初回 `play()` 開始までだけ有効で、
+  `initVideo()` の再生成後には再び有効化しない。ライブ M2TS-LL も同じ復帰監視を画質・音声再接続へ適用する
+
+### 録画 TS の byte seek
+
+録画 TS を入力にする M2TS-LL / mp4 / webm は、ffmpeg の入力へ `pipe:0` で渡すため、
+`RecordedStreamBaseModel` が再生位置から開始 byte を計算してファイル reader を作る。
+計算値は `bitRate * playPosition / 8` を基準に、0 未満とファイル長超過をクランプし、
+188 byte の TS パケット境界へ切り下げる。各ストリーム要求は provider から新しい
+`RecordedStreamBaseModel` を得て、新しい reader をこの絶対位置から作る。前回の再生位置や
+reader の offset は次の要求へ持ち越さない。
+
+info ログには `estimatedOffset` (境界調整前)、`readStart` (reader が実際に指定する開始位置)、
+`fileSize`、`videoFileId`、`playPosition` を出す。ログ例:
+
+```
+create recorded file stream: /recordings/example.ts (videoFileId: 31024, playPosition: 91s, estimatedOffset: 123456789, readStart: 123456780, fileSize: 987654321)
+```
+
+encoded の mp4 / webm はファイルを直接入力する方式で、従来どおり `-ss %SS% -i %INPUT%` を使う。
+この経路は TS byte seek と reader を共有しないため、録画 TS のパケット境界補正の対象外。
 
 ### 注意点
 
@@ -544,15 +658,15 @@ HLSではDPlayer標準のrenderer破棄に同じ入力ガードを加える。�
 
 ## Command Builder (Phase 5)
 
-`LiveCommandBuilder` / `RecordedCommandBuilder` は `SourceCapabilities`、`StreamPreset.output`、利用可能エンコーダ能力から配信 cmd を生成する。既存 `config.yml` の手書き `stream:` cmd と `StreamProfileManageModel` の生成経路は変更しない。
+`LiveCommandBuilder` / `RecordedCommandBuilder` は `SourceCapabilities`、`StreamPreset.output`、利用可能エンコーダ能力から配信 cmd を生成する。既存 `config.yml` の手書き `stream:` cmd と `StreamProfileManageModel` の生成経路は別系統として維持するが、cmd 省略時の H.264 出力は10bit入力を8bitへ明示変換する。
 
 - デインターレースは搬送形式ではなく `source.scan` だけで決める。progressive は無指定、interlaced は field order (不明時 tff) と 30p/60p に従う
 - source fps は解析値を rigaya の `--fps` へ渡す。未知値の 29.97 fallback は legacy-broadcast だけで、BS4K へ適用しない
-- 10bit は Main10 / `--output-depth 10` または `yuv420p10le` を使う。対応しないエンコーダへは黙って切り替えず失敗する
+- 10bit を維持する経路は Main10 / `--output-depth 10` または `yuv420p10le` を使う。H.264 (8bit) 出力へ変換する経路だけ `-pix_fmt yuv420p` (QSV/VAAPI は `format=nv12`) を明示し、対応しないエンコーダへは黙って切り替えず失敗する
 - live は低遅延、recorded は品質寄り。ただし LL-HLS のため GOP は短く保つ
 - エンコーダ能力の選択結果は 60 秒 TTL でキャッシュする
 
-設計上、コンテナ / Transport と映像特性を混同しない。MPEG-TS でも BS4K 変換後は progressive として扱う。録画ファイルの fps を 29.97 に固定せず、10bit を 8bit pixel format へ落とさない。HDR→SDR は `format` だけで変換せず、トーンマップ・色域・メタデータを変換する。
+設計上、コンテナ / Transport と映像特性を混同しない。MPEG-TS でも BS4K 変換後は progressive として扱う。録画ファイルの fps を 29.97 に固定せず、HEVC Main10/HDR preserve は10bitを維持する。一方、H.264 (8bit) へ再エンコードする配信だけは `yuv420p` へ落とす。HDR→SDR は `format` だけで変換せず、トーンマップ・色域・メタデータを変換する。
 
 ## HDR / SDR トーンマッピング (Phase 6)
 
@@ -565,6 +679,14 @@ HDR (`hlg` / `pq`) を `tone-map` または `sdr` で配信するときだけ、
 録画用のデータ放送 WebSocket は録画 TS を `decodeTS` へ先読みするため、WebSocket から届く `currentTime` は視聴者の再生位置ではない。録画再生では、メタデータ API の `startAt` (録画ファイル先頭の放送時刻) に DPlayer の動画全体の再生位置を加算し、BMLBrowser の `currentTime` をクライアントから 250 ms 間隔で更新する。timeupdate、play、pause、seeking、seeked でも即時更新する。ライブは TS の TDT/TOT を従来どおり使う。
 
 停止中も更新を続けるのは、BMLBrowser が最後の currentTime と受信した PCR の差を補間するため。録画 TS の先読みで PCR が進んでも、再生位置の時刻を再注入して時計が実時間やエンコード位置へ進まないようにする。
+
+## 録画実況のシーク同期
+
+録画実況の表示時刻は、常に `videoFile.startAt + VirtualTimeline の絶対再生位置` で決める。時刻変換とコメント index の二分探索は `src/util/RecordedJikkyoSync.ts` に集約し、`JikkyoKakologClient` はこの経路だけを使う。過去ログは録画全体を取得したクライアントが DPlayer の再生成をまたいで保持するため、HLS のシーク・画質切替で再取得しない。
+
+シーク開始時に録画実況の `danmaku.clear()` を呼び、シーク確定時に確定した絶対再生位置で index を貼り替えて同期する。確定通知は、通常シークの `setCurrentTime()`、録画 M2TS-LL / HLS のストリーム再生成完了、画質切替後の `canplay` から送る。再生成中の `dummyPlayPosition` は `null` として `tick()` / `sync()` から除外するため、ダミー位置への誤った貼り替えを防ぐ。一時停止中でも確定通知で1回同期する。
+
+録画過去ログは遅延補正を使わない。`drawJikkyoCommentWithDelay()` はライブ実況だけが使い、録画は確定した VirtualTimeline 位置へ直接描画する。
 
 ## Phase 8/9 クライアント画質 UI
 

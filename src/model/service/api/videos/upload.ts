@@ -2,6 +2,7 @@ import { Operation } from 'express-openapi';
 import IRecordedApiModel from '../../../api/recorded/IRecordedApiModel';
 import container from '../../../ModelContainer';
 import { UploadedVideoFileOption } from '../../../operator/recorded/IRecordedManageModel';
+import UploadFileNameUtil from '../../../../util/UploadFileNameUtil';
 import * as api from '../../api';
 
 export const post: Operation = async (req, res) => {
@@ -39,7 +40,7 @@ export const post: Operation = async (req, res) => {
             parentDirectoryName: req.body.parentDirectoryName,
             viewName: req.body.viewName,
             fileType: req.body.fileType,
-            fileName: req.file ? req.file.originalname : undefined,
+            fileName: req.file ? UploadFileNameUtil.normalize(req.file.originalname) : undefined,
             filePath: req.file ? req.file.path : undefined,
             localFilePath: localFilePath,
         };

@@ -171,7 +171,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
     /**
      * コンテナ別に「主音声・副音声を再接続無しで同時配信できるか」を判定する
      *
-     * - m2tsll: 実プロファイルの cmd が `%TSREADEX%` と `%AUDIOMAP%` を両方含む場合のみ true になる
+     * - m2tsll: 実プロファイルの cmd が `%TSREADEX%` と音声選択用プレースホルダを両方含む場合のみ true になる
      *   (StreamProfileManageModel.buildCmd() は tsreadex 経由の m2tsll だけこの組み合わせを生成する)。
      *   クライアントはこれが true のときだけ `audioTrack=all` で開き、mpegts.js の
      *   switchPrimaryAudio() / switchSecondaryAudio() で再接続無しに音声を切り替える
@@ -201,8 +201,14 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                 ? this.presetRegistry.resolveProfileCmd(scope, modePresetId)
                 : undefined;
         const hasTsreadexAudioMap =
-            typeof cmd === 'string' && cmd.includes('%TSREADEX%') && cmd.includes('%AUDIOMAP%');
-        const isM2TsLLEmbedded = hasTsreadexAudioMap;
+            typeof cmd === 'string' &&
+            cmd.includes('%TSREADEX%') &&
+            cmd.includes('%AUDIOMAP%');
+        const hasTsreadexAudioSelectMap =
+            typeof cmd === 'string' &&
+            cmd.includes('%TSREADEX%') &&
+            cmd.includes('%AUDIOSELECTMAP%');
+        const isM2TsLLEmbedded = hasTsreadexAudioMap || hasTsreadexAudioSelectMap;
         // in-memory HLS (%streamFileDir% を含まない) だけが Fmp4Packager 経由で複数音声トラックを配信できる
         const isHlsEmbedded = hasTsreadexAudioMap && typeof cmd === 'string' && cmd.includes('%streamFileDir%') === false;
 

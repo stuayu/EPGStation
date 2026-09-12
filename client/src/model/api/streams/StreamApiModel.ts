@@ -3,6 +3,7 @@ import * as apid from '../../../../../api';
 import IRepositoryModel from '../IRepositoryModel';
 import IStreamApiModel, { PlaybackQueryPreference } from './IStreamApiModel';
 import { ClientCapabilities } from '@/util/ClientCapabilityUtil';
+import { normalizeStreamPlayPosition } from '../../../../../src/util/StreamPlayPosition';
 
 @injectable()
 export default class StreamApiModel implements IStreamApiModel {
@@ -63,9 +64,7 @@ export default class StreamApiModel implements IStreamApiModel {
     ): Promise<apid.StreamId> {
         const result = await this.repository.get(`/streams/recorded/${videoFileId}/hls`, {
             params: {
-                // ss は VirtualTimeline の絶対位置。小数を保持してシーク位置の巻き戻りを防ぐ。
-                // 負値・非数だけは 0 に丸める。
-                ss: Math.max(0, Number.isFinite(ss) === true ? ss : 0),
+                ss: normalizeStreamPlayPosition(ss),
                 mode: mode,
                 audioTrack: audioTrack,
             },

@@ -1670,7 +1670,7 @@ concurrentEncodeNum: 1
 - **HEVC は Main プロファイル・8bit 4:2:0 に固定する**。Main10 は端末世代によってハードウェアデコードできない
   (地上波・BS/CS は元が 8bit なので Main で足りる)
 - **H.264 は 720p 以上で High プロファイル**、レベルは解像度に応じて設定される (1080p で 4.1)。
-  4K の H.264 は iOS のハードウェアデコード対象外なので、`2160p` を使うなら `codecs: [hevc]` にすること
+  4K の H.264 は iOS のハードウェアデコード対象外なので、`2160p` を使うなら `codecs: [hevc]` にすること。H.264 出力は10bit入力でも起動できるよう `-pix_fmt yuv420p` で8bitへ変換する (QSV/VAAPI は入力フィルタの `format=nv12`、rigaya は `--output-depth 8`)。
 
 MPEG-TS セグメントをディスクへ書き出す従来方式で運用したい場合は、`stream.profiles.recorded.*` を
 手書きする (`cmd` に `%streamFileDir%` を含めるとディスク方式になる)。
@@ -1719,6 +1719,7 @@ MPEG-TS セグメントをディスクへ書き出す従来方式で運用した
 
 - `%DUALMONOMODE%` → `-dual_mono_mode main` または `-dual_mono_mode sub` (**入力オプションなので `-i` より前に置く**)
 - `%AUDIOMAP%` → 音声 ES を指定したときだけ `-map 0:v:0 -map 0:a:<n>` (出力オプション)
+- `%AUDIOSELECTMAP%` → 既に映像 map がある cmd 用の `-map 0:a:<n>` (tsreadex 正規化 m2tsll など)
 
 > **注意**: `-dual_mono_mode main` を直書きした手書きの `cmd` では音声を切り替えられない
 > (置換対象が無いだけで再生自体は従来どおり動く)。切り替えたい場合は `%DUALMONOMODE%` へ置き換えること。
