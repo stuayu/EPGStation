@@ -1,6 +1,7 @@
 import * as apid from '../../../../../../api';
+import type { RecordedStreamType } from '@/util/StreamingTypeUtil';
 
-export type RecordedStreamType = 'WebM' | 'MP4' | 'HLS' | 'M2TS-LL';
+export type { RecordedStreamType } from '@/util/StreamingTypeUtil';
 
 export interface StreamConfigItem {
     title: string;

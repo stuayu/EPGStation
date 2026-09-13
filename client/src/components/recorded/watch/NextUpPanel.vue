@@ -83,6 +83,8 @@ import IRecordedApiModel from '@/model/api/recorded/IRecordedApiModel';
 import ISeriesApiModel from '@/model/api/series/ISeriesApiModel';
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
 import WatchStatusUtil from '@/util/WatchStatusUtil';
+import { parseRecordedStreamingType } from '@/util/StreamingTypeUtil';
+import type { RecordedStreamingType } from '@/util/StreamingTypeUtil';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
@@ -98,7 +100,7 @@ interface NextUpData {
 class NextUpPanel extends Vue {
     @Prop({ required: true }) public recordedId!: apid.RecordedId;
     @Prop({ default: false }) public isHalfWidth!: boolean;
-    @Prop({ default: null }) public streamingType!: string | null;
+    @Prop({ default: null }) public streamingType!: RecordedStreamingType | null;
     @Prop({ default: null }) public mode!: number | null;
 
     public data: NextUpData | null = null;
@@ -444,7 +446,13 @@ class NextUpPanel extends Vue {
             return;
         }
         if (this.streamingType !== null && this.mode !== null) {
-            void this.$router.push({ path: `/recorded/streaming/${video.id}`, query: { recordedId: String(item.id), streamingType: this.streamingType, mode: String(this.mode) } });
+            const streamingType = parseRecordedStreamingType(this.streamingType);
+            if (streamingType === null) {
+                console.error(`未知の録画配信方式です: ${String(this.streamingType)}`);
+
+                return;
+            }
+            void this.$router.push({ path: `/recorded/streaming/${video.id}`, query: { recordedId: String(item.id), streamingType: streamingType, mode: String(this.mode) } });
             return;
         }
         void this.$router.push(`/recorded/detail/${item.id}`);

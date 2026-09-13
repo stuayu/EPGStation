@@ -42,6 +42,7 @@ import IRecordedDetailSelectStreamState from '@/model/state/recorded/detail/IRec
 import Util from '@/util/Util';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
+import { toStreamingType } from '@/util/StreamingTypeUtil';
 
 /**
  * 視聴履歴一覧から再生方法を選ぶダイアログ。
@@ -145,7 +146,7 @@ class WatchHistoryPlayDialog extends Vue {
             return;
         }
 
-        const streamingType = this.streamState.selectedStreamType.toLowerCase();
+        const streamingType = toStreamingType(this.streamState.selectedStreamType);
         const mode = this.streamState.selectedStreamMode.toString(10);
         const videoFileId = this.videoFile.id;
         const recordedId = this.recordedId;

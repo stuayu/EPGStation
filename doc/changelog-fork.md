@@ -15,6 +15,15 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-13
 
+- **未知の配信方式で視聴画面が空白になる問題を修正した**: 録画・ライブの視聴 URL を厳密に検証し、未知の配信方式、不正な録画・動画ファイル ID、利用できない mode は動画を生成せず、画面上へ再読み込みと選び直しを案内するエラーを表示する。Snackbar もルート変更後に 10 秒表示する。回帰テスト: `test/ut/streaming-type-util.test.js`。
+
+- **配信方式ラベルから API パス名を暗黙変換して録画 M2TS-LL が 404 になる問題を修正した**: `M2TS-LL` を `m2ts-ll` へ変換していた録画詳細・視聴履歴の遷移を、`StreamingTypeUtil` の明示的な変換表 (`M2TS-LL` → `m2tsll`) へ変更した。ライブを含む配信ダイアログも同じ変換表を使う。録画・ライブ視聴画面は未知の配信方式 query を検証し、エラー通知を出して動画を生成しない。`test/ut/streaming-type-util.test.js` で表示ラベル、API パス名、録画 API ルート一覧の一致を固定した。
+
+- **再生ハーネスが真っ黒画面を見逃さないようにした**: `video.currentTime` の進行だけでは映像描画を保証できないため、ブラウザで `video` 要素を 160x90 canvas へ描画し、輝度平均・最大値・標準偏差を採取する。`watch` はフレーム取得失敗、真っ黒フレーム、画面変化不足を不合格にし、`quality-switch` と `m2ts-seek` もイベント後の映像描画を確認する。判定は `PlaybackHarnessUtil` の純粋関数へ置き、既定値は黒判定最大輝度16、黒フレーム許容比率0、平均輝度変化2以上、必要変化1回。`--max-black-ratio`、`--min-frame-changes`、`--black-luma-max`、`--frame-change-threshold` で上書きできる。
+    - 実装: `tools/playback-harness/lib/browser.js`、`tools/playback-harness/lib/scenarios.js`、`tools/playback-harness/run.js`、`src/util/PlaybackHarnessUtil.ts`
+    - 回帰テスト: `test/ut/playback-harness-util.test.js`
+    - ドキュメント: `tools/playback-harness/README.md`、`doc/testing.md`
+
 - **録画 M2TS-LL の iPad / MMS 再生停止を修正した**: DPlayer が組み立てる mpegts.js の `mediaDataSource` へ `isLive: true` を渡す経路を追加した。録画ファイルでもサーバは `-readrate` で実時間ペースに絞って流し続けるため、ManagedMediaSource の `onEndStreaming` で transmuxer を suspend させない。DPlayer 自身の `live` は false のままにして録画 UI と `ss` でのシークを維持し、ライブ m2tsll は変更しない。実装: `client/src/util/DPlayerUtil.ts`、`client/src/components/video/RecordedStreamingVideo.vue`
 - **録画データ放送の時計同期を補強した**: `videoFile.startAt + VirtualTimeline の絶対再生位置` を `RecordedJikkyoSync` と共有して計算し、ストリーム再生成中の `dummyPlayPosition` は送らない。`seeked` / `canplay` / 画質切替確定 (`quality_end`) で即時送信し、250ms タイマーは通常再生中の追従に限定した。`startAt` が無い場合は推測時刻を送らず BML 側の時計を上書きしない。回帰テスト: `test/ut/data-broadcasting-time.test.js`
 - **実機計測用の再生ハーネスを統合した**: 書き捨てだった Playwright / curl 計測を `tools/playback-harness/run.js` へ統合。ブラウザ起動・デバイス設定・`video.play()` による再生開始・再生状態採取・相対シーク・出力・終了コード判定を共通化し、watch、実況シーク、録画 m2tsll シーク、buffered 詳細、DPlayer 二重化、ptime、HLS 字幕 emsg、字幕描画、画質切替、録画ストレス、iPad 音声、ManagedMediaSource の13シナリオを収録した。`emsg` は `curl` + `ffprobe` の `emsg-check.sh` へ分離してブラウザ不要とした。

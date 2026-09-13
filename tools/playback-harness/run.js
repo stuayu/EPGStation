@@ -32,7 +32,7 @@ const usage = () => {
     console.log('  --help                      シナリオ一覧と共通オプション');
     console.log('\nシナリオ:');
     for (const [name, description] of scenarios) console.log(`  ${name.padEnd(18)} ${description}`);
-    console.log('\n判定上書き: --max-stops N --max-stall-seconds N --max-drift-seconds N --min-emsg-ratio N');
+    console.log('\n判定上書き: --max-stops N --max-stall-seconds N --max-drift-seconds N --min-emsg-ratio N --max-black-ratio N --min-frame-changes N --black-luma-max N --frame-change-threshold N');
 };
 
 const parseArgs = argv => {
@@ -53,6 +53,7 @@ const parseArgs = argv => {
             'duration', 'interval', 'maxStops', 'maxStallSeconds', 'minProgressSeconds', 'maxSwitchSeconds', 'minReceivedBytes',
             'minSubtitlePixels', 'minEmsgRatio', 'minSegments', 'videoStartAt', 'maxDriftSeconds', 'minCommentSamples',
             'commentWindow', 'mode', 'seekSeconds', 'minQualityItems', 'minAudioItems', 'cleanupWait', 'parallel',
+            'maxBlackRatio', 'minFrameChanges', 'blackLumaMax', 'frameChangeThreshold',
         ]);
         options[key] = numericKeys.has(key) ? Number(value) : value;
     }
@@ -75,6 +76,10 @@ const defaults = options => ({
     mode: options.mode ?? 0,
     seekSeconds: options.seekSeconds ?? 300,
     maxDriftSeconds: options.maxDriftSeconds ?? 2,
+    maxBlackRatio: options.maxBlackRatio ?? 0,
+    minFrameChanges: options.minFrameChanges ?? 1,
+    blackLumaMax: options.blackLumaMax ?? 16,
+    frameChangeThreshold: options.frameChangeThreshold ?? 2,
     minCommentSamples: options.minCommentSamples ?? 1,
     commentWindow: options.commentWindow ?? 8,
     minQualityItems: options.minQualityItems ?? 1,

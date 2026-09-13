@@ -5,6 +5,7 @@ const test = require('node:test');
 const {
     summarizePlaybackStalls,
     evaluatePlaybackStability,
+    evaluatePlaybackFrames,
     parsePlaybackTime,
     matchJikkyoCommentTimes,
     evaluateJikkyoSync,
@@ -12,6 +13,7 @@ const {
 } = require('../../dist/util/PlaybackHarnessUtil');
 
 const sample = (at, currentTime, paused = false) => ({ at, currentTime, paused });
+const frame = (averageLuma, maxLuma = averageLuma, standardDeviation = 10) => ({ averageLuma, maxLuma, standardDeviation });
 
 test('再生中の連続停止を回数・最長時間・合計時間へ集計する', () => {
     assert.deepEqual(
@@ -33,6 +35,52 @@ test('再生安定性は停止回数・最長停止・最低進行量で合否�
     assert.equal(evaluatePlaybackStability(samples, { maxStops: 1, maxStallSeconds: 2, minProgressSeconds: 1 }).passed, true);
     assert.equal(evaluatePlaybackStability(samples, { maxStops: 0 }).passed, false);
     assert.equal(evaluatePlaybackStability([sample(0, 0)], { minProgressSeconds: 1 }).reason, '再生進行 0.000s < 1s');
+});
+
+test('映像判定は真っ黒フレームを不合格にする', () => {
+    const result = evaluatePlaybackFrames([
+        { ...sample(0, 0), frame: frame(4, 10) },
+        { ...sample(1000, 1), frame: frame(5, 12) },
+    ]);
+    assert.equal(result.passed, false);
+    assert.deepEqual(result.summary, {
+        sampleCount: 2,
+        validFrameCount: 2,
+        frameFailureCount: 0,
+        blackFrameCount: 2,
+        blackFrameRatio: 1,
+        frameChangeCount: 0,
+    });
+});
+
+test('映像判定は明るい静止画を画面変化なしとして不合格にする', () => {
+    const result = evaluatePlaybackFrames([
+        { ...sample(0, 0), frame: frame(80, 120) },
+        { ...sample(1000, 1), frame: frame(80, 120) },
+    ]);
+    assert.equal(result.passed, false);
+    assert.equal(result.summary.frameChangeCount, 0);
+    assert.match(result.reason, /画面変化回数/u);
+});
+
+test('映像判定は黒くなく平均輝度が変化するフレームを合格にする', () => {
+    const result = evaluatePlaybackFrames([
+        { ...sample(0, 0), frame: frame(40, 100) },
+        { ...sample(1000, 1), frame: frame(70, 140) },
+        { ...sample(2000, 2), frame: frame(35, 90) },
+    ], { minFrameChanges: 2, frameChangeThreshold: 10 });
+    assert.equal(result.passed, true);
+    assert.equal(result.summary.frameChangeCount, 2);
+});
+
+test('映像判定は videoWidth 0 や drawImage 失敗に相当する取得失敗を不合格にする', () => {
+    const result = evaluatePlaybackFrames([
+        { ...sample(0, 0), frame: null },
+        { ...sample(1000, 1), frame: frame(50, 100) },
+    ]);
+    assert.equal(result.passed, false);
+    assert.equal(result.summary.frameFailureCount, 1);
+    assert.match(result.reason, /取得失敗/u);
 });
 
 test('DPlayer 時刻表示を分秒・時分秒へ変換し、不正値を拒否する', () => {

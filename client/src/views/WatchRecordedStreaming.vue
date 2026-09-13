@@ -21,6 +21,9 @@
             v-on:jikkyoComment="onJikkyoComment"
             v-on:screenshotRequest="onScreenshotRequest"
         ></VideoContainer>
+        <v-alert v-if="streamingErrorMessage !== null" class="streaming-error" type="error" variant="tonal" role="alert">
+            {{ streamingErrorMessage }}
+        </v-alert>
         <DataBroadcastingRemote
             v-if="isEnabledDataBroadcasting === true"
             v-bind:isUsingNumericKey="isDataBroadcastingUsingNumericKey"
@@ -79,10 +82,17 @@ import { JikkyoComment } from '@/util/JikkyoCommentClient';
 import { JikkyoKakologParam, resolveJikkyoKakologParam } from '@/util/JikkyoKakologParam';
 import Util from '@/util/Util';
 import { AribKeyCode } from 'web-bml';
+import { parseRecordedStreamingType } from '@/util/StreamingTypeUtil';
+import StreamQualityUtil from '@/util/StreamQualityUtil';
+import { isWatchModeInRange, parseWatchRouteInteger } from '@/util/WatchRouteParamUtil';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import { markRaw } from 'vue';
 import type { RouteLocationNormalized as Route, NavigationGuardNext } from 'vue-router';
 import * as apid from '../../../api';
+
+type RecordedTargetValidation =
+    | { valid: true; videoFileType: apid.VideoFileType | null }
+    | { valid: false; kind: 'recorded' | 'videoFile' };
 
 @Component({
     components: {
@@ -99,6 +109,7 @@ import * as apid from '../../../api';
 })
 class WatchRecordedStreaming extends Vue {
     public videoParam: VideoParam.RecordedStreamingParam | VideoParam.RecordedHLSParam | null = null;
+    public streamingErrorMessage: string | null = null;
 
     /**
      * 上部バー・右パネルに出す録画番組の情報
@@ -309,44 +320,111 @@ class WatchRecordedStreaming extends Vue {
         this.jikkyoComments = [];
         // 古い動画を残さない (パラメータ不足の URL へ遷移した場合にそのまま再生され続けるのを防ぐ)
         this.videoParam = null;
+        this.streamingErrorMessage = null;
 
         // 視聴パラメータセット
-        const videoFileId = parseInt(Util.getRouteString(this.$route.params.id) ?? '', 10);
-        const recordedId = typeof this.$route.query.recordedId !== 'string' ? null : parseInt(this.$route.query.recordedId, 10);
-        const streamingType = typeof this.$route.query.streamingType !== 'string' ? null : this.$route.query.streamingType;
-        const mode = typeof this.$route.query.mode !== 'string' ? null : parseInt(this.$route.query.mode, 10);
+        const videoFileId = parseWatchRouteInteger(Util.getRouteString(this.$route.params.id), 1);
+        const recordedId = parseWatchRouteInteger(this.$route.query.recordedId, 1);
+        const streamingTypeQuery = typeof this.$route.query.streamingType !== 'string' ? null : this.$route.query.streamingType;
+        const streamingType = parseRecordedStreamingType(streamingTypeQuery);
+        const mode = parseWatchRouteInteger(this.$route.query.mode, 0);
 
         this.$nextTick(async () => {
-            if (videoFileId !== null && recordedId !== null && streamingType !== null && mode !== null) {
-                // ニコニコ実況 過去ログ再生用パラメータ取得
-                const jikkyoKakologParam = await this.getJikkyoKakologParam(recordedId, videoFileId);
-
-                if (streamingType === 'hls') {
-                    this.videoParam = {
-                        type: 'RecordedHLS',
-                        recordedId: recordedId,
-                        videoFileId: videoFileId,
-                        mode: mode,
-                        ...(jikkyoKakologParam ?? {}),
-                    };
+            if (streamingTypeQuery !== null && streamingType === null) {
+                this.showStreamingError(`この配信方式には対応していません。ページを再読み込みして、対応する配信方式を選び直してください。(指定: ${streamingTypeQuery})`);
+            } else if (videoFileId === null || recordedId === null || mode === null || streamingType === null) {
+                this.showStreamingError('録画視聴パラメータが不正です。ページを再読み込みして、録画一覧から選び直してください。');
+            } else {
+                const target = await this.validateRecordedTarget(recordedId, videoFileId);
+                if (target.valid === false) {
+                    this.showStreamingError(
+                        target.kind === 'recorded'
+                            ? '指定した録画番組が見つかりません。ページを再読み込みして、録画一覧から選び直してください。'
+                            : '指定した録画ファイルが見つかりません。ページを再読み込みして、録画一覧から選び直してください。',
+                    );
+                } else if (
+                    isWatchModeInRange(
+                        mode,
+                        target.videoFileType === null ? [] : StreamQualityUtil.getRecordedModeNames(target.videoFileType, streamingType),
+                    ) === false
+                ) {
+                    this.showStreamingError(`選択した画質設定 (mode=${mode}) は利用できません。ページを再読み込みして、画質を選び直してください。`);
                 } else {
-                    this.videoParam = {
-                        type: 'RecordedStreaming',
-                        recordedId: recordedId,
-                        videoFileId: videoFileId,
-                        streamingType: streamingType,
-                        mode: mode,
-                        ...(jikkyoKakologParam ?? {}),
-                    };
-                }
-            }
+                    // ニコニコ実況 過去ログ再生用パラメータ取得
+                    const jikkyoKakologParam = await this.getJikkyoKakologParam(recordedId, videoFileId);
 
-            // 上部バー・右パネル用の番組情報を取得する
-            await this.updateProgramInfo();
+                    if (streamingType === 'hls') {
+                        this.videoParam = {
+                            type: 'RecordedHLS',
+                            recordedId: recordedId,
+                            videoFileId: videoFileId,
+                            mode: mode,
+                            ...(jikkyoKakologParam ?? {}),
+                        };
+                    } else {
+                        this.videoParam = {
+                            type: 'RecordedStreaming',
+                            recordedId: recordedId,
+                            videoFileId: videoFileId,
+                            streamingType: streamingType,
+                            mode: mode,
+                            ...(jikkyoKakologParam ?? {}),
+                        };
+                    }
+                }
+
+                // 上部バー・右パネル用の番組情報を取得する
+                await this.updateProgramInfo();
+            }
 
             // データ取得完了を通知
             await this.scrollState.emitDoneGetData();
         });
+    }
+
+    /**
+     * 録画番組と録画ファイルの存在を確認する。
+     * @param recordedId: apid.RecordedId
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<RecordedTargetValidation>
+     */
+    private async validateRecordedTarget(recordedId: apid.RecordedId, videoFileId: apid.VideoFileId): Promise<RecordedTargetValidation> {
+        let recorded: apid.RecordedItem;
+        try {
+            recorded = await this.recordedApiModel.get(recordedId, true);
+        } catch (err) {
+            console.error(err);
+
+            return { valid: false, kind: 'recorded' };
+        }
+
+        const videoFile = recorded.videoFiles?.find(item => item.id === videoFileId);
+        if (typeof videoFile !== 'undefined') {
+            return { valid: true, videoFileType: videoFile.type };
+        }
+
+        // videoFiles を返さない旧 API でも、メタデータ API で実在確認する。
+        try {
+            await this.videoApiModel.getMetadata(videoFileId);
+
+            return { valid: true, videoFileType: null };
+        } catch (err) {
+            console.error(err);
+
+            return { valid: false, kind: 'videoFile' };
+        }
+    }
+
+    /**
+     * URL の配信パラメータ異常を画面と Snackbar へ表示する。
+     * ルート変更時に AppContent が Snackbar を閉じるため、通知はルート監視完了後に表示する。
+     * @param message: string
+     */
+    private showStreamingError(message: string): void {
+        this.streamingErrorMessage = message;
+        window.setTimeout(() => {
+            this.snackbarState.open({ color: 'error', text: message, timeout: 10000 });
+        }, 0);
     }
 
     /**
@@ -386,3 +464,14 @@ export default Object.assign(toNative(WatchRecordedStreaming), {
     },
 });
 </script>
+
+<style lang="sass" scoped>
+.streaming-error
+    width: 100%
+    min-height: 180px
+    margin: 0
+    display: flex
+    align-items: center
+    justify-content: center
+    text-align: left
+</style>

@@ -24,10 +24,11 @@ import {
 import { isInitialPlaybackBufferReady } from '../../../../src/util/PlaybackStartBuffer';
 import { resolveRecordedJikkyoPlaybackTime } from '../../../../src/util/RecordedJikkyoSync';
 import { normalizeStreamPlayPosition } from '../../../../src/util/StreamPlayPosition';
+import type { RecordedStreamingType } from '@/util/StreamingTypeUtil';
 
 interface VideoSrcInfo {
     videoFileId: apid.VideoFileId;
-    streamingType: string;
+    streamingType: RecordedStreamingType;
     mode: number;
     playPosition: number;
     audioTrack?: apid.AudioTrackSpecifier;
@@ -45,7 +46,7 @@ class RecordedStreamingVideo extends BaseVideo {
     public videoFileId!: apid.VideoFileId;
 
     @Prop({ required: true })
-    public streamingType!: string;
+    public streamingType!: RecordedStreamingType;
 
     @Prop({ default: null })
     public jikkyoChannelId!: string | null;
