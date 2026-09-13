@@ -27,6 +27,11 @@ export interface VideoDetailInfo extends VideoInfo {
     bitsPerRawSample?: string | number | null;
 }
 
+export interface AudioTrackProbeOption {
+    /** 録画中の追記ファイルか。true の場合は現在位置までの bounded probe を使う */
+    isRecording?: boolean;
+}
+
 export default interface IVideoUtil {
     getFullFilePathFromId(videoFileId: apid.VideoFileId): Promise<string | null>;
     getFullFilePathFromVideoFile(videoFile: VideoFile): string | null;
@@ -50,5 +55,5 @@ export default interface IVideoUtil {
      * @param filePath: string
      * @return Promise<apid.VideoAudioTrack[]>
      */
-    getAudioTracks(filePath: string): Promise<apid.VideoAudioTrack[]>;
+    getAudioTracks(filePath: string, option?: AudioTrackProbeOption): Promise<apid.VideoAudioTrack[]>;
 }

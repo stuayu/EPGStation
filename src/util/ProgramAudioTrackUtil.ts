@@ -85,6 +85,20 @@ namespace ProgramAudioTrackUtil {
     };
 
     /**
+     * 番組切替後も現在の音声トラックを維持できるか判定し、無ければ主音声へ戻す。
+     * 音声情報が空でも主音声は fallback として常に有効とみなす。
+     * @param tracks: apid.VideoAudioTrack[] 新しい番組のトラック一覧
+     * @param current: apid.AudioTrackSpecifier 現在選択中のトラック
+     * @return apid.AudioTrackSpecifier
+     */
+    export const resolveCurrentTrack = (
+        tracks: apid.VideoAudioTrack[],
+        current: apid.AudioTrackSpecifier,
+    ): apid.AudioTrackSpecifier => {
+        return current === 'main' || tracks.some(track => track.track === current) ? current : 'main';
+    };
+
+    /**
      * デュアルモノラルの ES 1 本を主音声・副音声の 2 件へ展開する
      * @param streamIndex: number 音声 ES のインデックス
      * @param langs?: string[] 音声 ES の言語 (主音声・副音声の順)

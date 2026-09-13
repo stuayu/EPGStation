@@ -167,9 +167,10 @@ test('遅れて始まる音声 ES も独立したトラックとして返す', a
 
     assert.deepEqual(probeArgs, [
         '-analyzeduration',
-        '60000000',
+        '9223372036854775807',
         '-probesize',
-        '200000000',
+        '9223372036854775807',
+        '-count_frames',
         '-v',
         '0',
         '-show_streams',
@@ -179,6 +180,22 @@ test('遅れて始まる音声 ES も独立したトラックとして返す', a
         'json',
         '/fake/video.ts',
     ]);
+});
+
+test('録画中の音声 ES probe は現在ファイルを越えて待たない', async () => {
+    let probeArgs;
+
+    await withStubbedFfprobe(
+        args => {
+            probeArgs = args;
+            return JSON.stringify({ streams: [{ codec_name: 'aac', channels: 2 }] });
+        },
+        async () => {
+            await makeVideoUtil().getAudioTracks('/fake/video.ts', { isRecording: true });
+        },
+    );
+
+    assert.deepEqual(probeArgs.slice(0, 4), ['-analyzeduration', '60000000', '-probesize', '200000000']);
 });
 
 test('音声 ES が複数あり channels=0 の ES を含む場合も独立したトラックとして返す', async () => {

@@ -15,7 +15,9 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-13
 
-- **遅れて始まる音声 ES を ffprobe が取りこぼし、デュアルモノラルと誤判定する問題を修正した**: `VideoUtil.getAudioTracks()` に `-analyzeduration 60000000 -probesize 200000000` (60 秒 / 200 MB) を追加した。本番の encoded HEVC TS では 2 本目の音声 ES が主音声より 21.696 秒遅れて始まり、既定 probe の 1 本から拡大後の 2 本へ増えた。`SourceAnalyzer.getDetailedInfo()` は映像の `field_order` / fps 判定用、ライブ配信コマンドは低遅延用のため変更していない。`audioTrack=1` は既存の `AudioTrackUtil` により `-map 0:v:0 -map 0:a:1` へ展開される。回帰テスト: `test/ut/video-util-chapters.test.js`。
+- **再生位置で音声 ES が変わる録画・ライブへ追従するようにした**: 完了録画の音声一覧は ffprobe でファイル全体を走査し、録画中だけ `60 秒 / 200 MB` の bounded probe に制限する。数値 ES の配信 map は optional にし、選択 ES が区間に無い場合は主音声 map へ fallback して配信停止・0 バイトを防ぐ。ライブは `updateOnAirProgram` で一覧を再取得し、消えた選択を主音声へ戻す。通常ステレオで取得成功した空配列は切替 UI を隠し、取得失敗時だけ fallback 2 択を表示する。回帰テスト: `test/ut/audio-track-util.test.js`、`test/ut/program-audio.test.js`、`test/ut/video-util-chapters.test.js`、`test/ut/video-metadata-api.test.js`。
+
+- **遅れて始まる音声 ES を ffprobe が取りこぼし、デュアルモノラルと誤判定する問題を修正した**: `VideoUtil.getAudioTracks()` に `-analyzeduration 60000000 -probesize 200000000` (60 秒 / 200 MB) を追加した。本番の encoded HEVC TS では 2 本目の音声 ES が主音声より 21.696 秒遅れて始まり、既定 probe の 1 本から拡大後の 2 本へ増えた。`SourceAnalyzer.getDetailedInfo()` は映像の `field_order` / fps 判定用、ライブ配信コマンドは低遅延用のため変更していない。`audioTrack=1` は既存の `AudioTrackUtil` により音声 ES の optional map と主音声 fallback map へ展開される。回帰テスト: `test/ut/video-util-chapters.test.js`。
 
 - **未知の配信方式で視聴画面が空白になる問題を修正した**: 録画・ライブの視聴 URL を厳密に検証し、未知の配信方式、不正な録画・動画ファイル ID、利用できない mode は動画を生成せず、画面上へ再読み込みと選び直しを案内するエラーを表示する。Snackbar もルート変更後に 10 秒表示する。回帰テスト: `test/ut/streaming-type-util.test.js`。
 

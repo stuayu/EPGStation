@@ -6,13 +6,14 @@ import { audioBoostFilter } from '../../../../util/AudioBoostUtil';
  *
  * cmd には 3 つのプレースホルダを置く:
  * - `%DUALMONOMODE%`: 入力オプションの `-dual_mono_mode main|sub` に展開される (`-i` より前に置くこと)
- * - `%AUDIOMAP%`: 出力オプションの `-map 0:v:0 -map 0:a:<n>` に展開される (音声 ES を選ぶ場合のみ非空)
- * - `%AUDIOSELECTMAP%`: 既に映像 map がある cmd 用の音声 map `-map 0:a:<n>` に展開される
+ * - `%AUDIOMAP%`: 出力オプションの `-map 0:v:0 -map 0:a:<n>?` に展開される (音声 ES を選ぶ場合のみ非空)
+ * - `%AUDIOSELECTMAP%`: 既に映像 map がある cmd 用の音声 map `-map 0:a:<n>?` に展開される
  * - `%AUDIOFILTER%`: 音声トラック指定と音声ブーストを統合した `-af` に展開される
  *
  * 二か国語放送は「1 つのステレオ ES の左右に主音声・副音声」を入れるデュアルモノラルで送られるため、
  * 副音声の選択は `-map` ではなく `-dual_mono_mode sub` で行う。
- * 音声 ES が複数ある放送では `-map 0:a:<n>` で ES 自体を選ぶ。
+ * 音声 ES が複数ある放送では `-map 0:a:<n>?` で ES 自体を選ぶ。選択 ES がその区間に
+ * 無い場合は主音声の map も並べ、ffmpeg の map 失敗による配信停止を避ける。
  *
  * `%DUALMONOMODE%` / `%AUDIOMAP%` を含まない手書き cmd (従来の `-dual_mono_mode main` 直書き) は
  * 置換対象が無いだけで従来どおり動作する (音声トラックの切り替えは効かない)。
@@ -23,7 +24,7 @@ import { audioBoostFilter } from '../../../../util/AudioBoostUtil';
  * 呼び出し側が `isNormalizedByTsreadex` を渡してこの違いを伝える。
  *
  * **`audioTrack: 'all'`** は tsreadex 正規化済みのときだけ主音声・副音声の両方の ES を
- * `-map 0:v:0 -map 0:a:0 -map 0:a:1` として同時に配信する (m2tsll でクライアント側 (mpegts.js) が
+ * `-map 0:v:0 -map "0:a:0?" -map "0:a:1?"` として同時に配信する (m2tsll でクライアント側 (mpegts.js) が
  * 再接続無しで `switchPrimaryAudio()` / `switchSecondaryAudio()` を呼んで切り替えるための経路)。
  * tsreadex を通していない cmd で `all` が来た場合はデュアルモノラルの 1 ES しか無く分離できないため
  * `main` と同じ扱いにする。
@@ -83,14 +84,14 @@ namespace AudioTrackUtil {
         // 再接続無しに切り替えるための経路 (PlaybackProfile.embeddedAudioSwitch を参照)
         const audioMap =
             isNormalizedByTsreadex === true && effectiveAudioTrack === 'all'
-                ? '-map 0:v:0 -map 0:a:0 -map 0:a:1'
+                ? '-map 0:v:0 -map "0:a:0?" -map "0:a:1?"'
                 : streamIndex === null
                   ? ''
-                  : `-map 0:v:0 -map 0:a:${streamIndex}`;
+                  : buildSelectedAudioMap(streamIndex, true);
         const audioSelectMap =
             isNormalizedByTsreadex === true && effectiveAudioTrack === 'all'
-                ? '-map 0:a:0 -map 0:a:1'
-                : `-map 0:a:${streamIndex ?? 0}`;
+                ? '-map "0:a:0?" -map "0:a:1?"'
+                : buildSelectedAudioMap(streamIndex ?? 0, false);
 
         return replaceCommandPlaceholder(
             replaceCommandPlaceholder(
@@ -159,6 +160,22 @@ namespace AudioTrackUtil {
         const index = parseInt(audioTrack, 10);
 
         return isNaN(index) === true || index < 0 ? null : index;
+    };
+
+    /**
+     * 選択した音声 ES と主音声の map を組み立てる。
+     * 選択 ES が途中区間の PMT に無い場合、optional map は無視されて主音声だけが残る。
+     * @param streamIndex: number 音声 ES の相対インデックス
+     * @param includeVideo: boolean 映像 map も含めるか
+     * @return string
+     */
+    const buildSelectedAudioMap = (streamIndex: number, includeVideo: boolean): string => {
+        const prefix = includeVideo ? '-map 0:v:0 ' : '';
+        const selected = `-map "0:a:${streamIndex}?"`;
+        // index 0 は重複 map しない。1 以上は selected が消えたとき主音声へ落とす。
+        const fallback = streamIndex === 0 ? '' : ' -map "0:a:0?"';
+
+        return `${prefix}${selected}${fallback}`;
     };
 }
 

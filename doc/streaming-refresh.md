@@ -400,7 +400,7 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
 - **M2TS-LL のクライアント側修正は別問題**。MSE / mpegts.js の再生成、188 byte 境界、再生位置競合はそれぞれ別の改善であり、
   `ss=366` / `642` / `91` だけで発生する今回の固着の主因ではない。
 - **`audioTrack=all`**: tsreadex 正規化済みのときだけ `%AUDIOSELECTMAP%` を
-  `-map 0:v:0 -map 0:a:0 -map 0:a:1` に展開し、主音声・副音声の両方の ES を同時に配信する。
+  `-map 0:v:0 -map "0:a:0?" -map "0:a:1?"` に展開し、主音声・副音声の両方の ES を同時に配信する。
   m2tsll でクライアント (mpegts.js) が再接続無しに `switchPrimaryAudio()` / `switchSecondaryAudio()`
   を呼んで切り替えるための経路 (下記「再接続無しの音声切替」参照)。tsreadex 無しで `all` が来た場合は
   デュアルモノラルの 1 ES しか無く分離できないため `main` と同じ扱いにする。
@@ -457,9 +457,16 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
 - **録画の一覧は `GET /api/videos/{videoFileId}/audio-tracks`** が ffprobe を使って返す。
   音声 ES が 1 つだけのステレオは、二か国語放送の可能性があるため主音声・副音声の 2 件へ展開する
   (ただのステレオ放送だった場合、副音声を選ぶと右チャンネルが両耳に出るだけで再生自体は続く)。
-- 録画音声一覧の ffprobe は `-analyzeduration 60000000 -probesize 200000000` (60 秒 / 200 MB) を使う。
-  本番の encoded HEVC TS で 2 本目の音声 ES が 21.696 秒遅れて始まり、既定 probe では 1 本、拡大後は 2 本を検出できた。
-  これは録画ファイルの一覧解析だけに適用し、ライブ M2TS-LL の低遅延用 probe 値は変更しない。
+- 録画音声一覧の ffprobe は、完了録画では `-analyzeduration` / `-probesize` を int64 上限にしてファイル全体を走査する。
+  途中で現れる ES も一覧へ含めるため、シーク後に一覧を取り直さなくても選択肢を失わない。
+  録画中だけは `-analyzeduration 60000000 -probesize 200000000` (60 秒 / 200 MB) に制限する。
+  まだ存在しないファイル末尾を待たず、録画終了後の次回取得で全体一覧へ更新する。
+  本番の encoded HEVC TS では 2 本目の音声 ES が主音声より 21.696 秒遅れて始まり、拡大 probe で検出できた。
+  `getDetailedInfo()` とライブ M2TS-LL の低遅延用 probe 値は変更しない。
+- 数値 `audioTrack` の map は `-map "0:a:n?"` と主音声 `-map "0:a:0?"` を使う。
+  選択 ES がその区間の入力に無い場合は optional map が無視され、映像+主音声で配信を続ける。
+- ライブは `updateOnAirProgram` 通知を受けて音声トラック一覧を再取得する。
+  選択中の ES が新番組に無ければ主音声へ戻し、同時配信 m2tsll は `switchPrimaryAudio()`、それ以外は主音声でストリームを再生成する。
 - **切り替えはストリームの作り直し**になる (エンコード済みの音声を後から差し替えられないため)。
   クライアントは画質切替と同じく、現在の再生位置でストリームを再生成してから url を差し替える。
 
