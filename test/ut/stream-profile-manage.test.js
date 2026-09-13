@@ -373,3 +373,43 @@ test('rigaya 経由のライブ m2tsll は映像をコピーし、tsreadex を�
     // mpegts 出力に hvc1 タグは付けない (mp4 / hls だけ)
     assert.equal(/-tag:v hvc1/u.test(cmd), false);
 });
+
+test('rigaya 経由の生成 cmd は --repeat-headers を必ず付ける', () => {
+    // 無いと rigaya の mpegts 出力から後段 ffmpeg が extradata を作れず、
+    // fMP4 (HLS) へ remux するときに 1 フレームも書けない (本番で HLS が再生できなかった)
+    const detector = {
+        getStreamEncoder: () => ({
+            kind: 'qsvencc',
+            command: 'C:\\QSVEncC\\QSVEncC64.exe',
+            codecs: ['h264', 'hevc'],
+            bitDepths: [8, 10],
+        }),
+    };
+    const makeModel = container =>
+        new StreamProfileManageModel(
+            {
+                getConfig: () => ({
+                    tsreadex: 'C:\\tsreadex\\tsreadex.exe',
+                    stream: {
+                        profiles: {
+                            live: [
+                                {
+                                    id: `live-${container}`,
+                                    name: '1080p',
+                                    container,
+                                    video: { codec: 'hevc', height: 1080, bitrate: 2700 },
+                                    audio: { codec: 'aac', bitrate: 192 },
+                                },
+                            ],
+                        },
+                    },
+                }),
+            },
+            detector,
+        );
+
+    for (const container of ['hls', 'mp4', 'm2tsll']) {
+        const cmd = makeModel(container).getLiveProfiles()[0].cmd;
+        assert.match(cmd, /--repeat-headers/u, `${container} に --repeat-headers が無い`);
+    }
+});

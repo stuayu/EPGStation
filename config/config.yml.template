@@ -353,6 +353,10 @@ stream:
             # コマンドとみなされ、セグメントはメモリ上でのみ保持・配信される (Windows でも動作)
             # cmd に | を含めるとシェル経由で実行される (tsreadex などの前処理に利用可)
             # 従来の TS セグメント方式 (ディスク書き込み) に戻す場合は下部のコメント例を参照
+            # rigaya 系 (QSVEncC / NVEncC / VCEEncC) の cmd には --repeat-headers を必ず付けること。
+            # 既定では VPS/SPS/PPS がストリーム先頭にしか出ず、後段 ffmpeg が -c:v copy で
+            # mp4 (fMP4) へ remux するときに extradata を作れず 1 フレームも書けない
+            # (HLS はセグメントが 1 本もできず、再生が始まらない)。
             # rigaya 系 (QSVEncC / NVEncC / VCEEncC) の cmd を手書きする場合は、
             # --input-analyze / --input-probesize を小さくすること (目安: 1 秒 / 200000 byte)。
             # probe が終わるまでエンコーダは 1 byte も出力しないため、長く取ると再生開始が遅れる。

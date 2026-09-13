@@ -352,8 +352,12 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
         const strictGop = rigayaKind === 'vce' ? '' : ' --strict-gop';
         const input = isFileInput ? '--seek %SS% -i %INPUT%' : '--input-format mpegts -i -';
         const sync = isFileInput ? ' --avsync forcecfr --fps 30000/1001' : '';
+        // **`--repeat-headers` は必須**。rigaya 系の mpegts 出力は既定では VPS/SPS/PPS を
+        // ストリーム先頭にしか出さず、後段 ffmpeg の `-c:v copy` で mp4 (fMP4) へ remux するときに
+        // extradata を作れずヘッダを書けない (実測: 無しだと fMP4 出力が 0 byte、付けると 646 frames)。
+        // 詳細は StreamArgsUtil.buildRigayaVideoArgs() のコメント参照
         const encoderCmd =
-            `${bin} --avhw ${input} -c ${codec} --profile main --output-depth 8 ${quality} ` +
+            `${bin} --avhw ${input} -c ${codec} --profile main --output-depth 8 ${quality} --repeat-headers ` +
             `--vbr ${videoBitrate} --max-bitrate ${videoBitrate * 2} --gop-len 30${strictGop} --bframes 0 ` +
             `--output-res -2x${height}${sync} --audio-copy --output-format mpegts -o -`;
         const ffmpegInput = `%FFMPEG% %DUALMONOMODE% -f mpegts ${isFileInput ? '' : '-fflags nobuffer '}-i pipe:0`;
