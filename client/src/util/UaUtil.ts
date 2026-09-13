@@ -70,6 +70,15 @@ namespace UaUtil {
     };
 
     /**
+     * 描画エンジンが WebKit か判定する。
+     * iOS / iPadOS はブラウザの銘柄に関わらず全て WebKit なので、Safari 以外もここで true になる。
+     * @return boolean
+     */
+    export const isWebKitEngine = (): boolean => {
+        return isiOS() === true || isSafari() === true;
+    };
+
+    /**
      * UA が Safari 10+ か判定
      * @return boolean
      */

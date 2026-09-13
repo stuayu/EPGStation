@@ -16,7 +16,7 @@ import { isFeatureEnabled } from '@/util/FeatureFlags';
 import { getPlaybackOptionLabel } from '@/util/PlaybackLabelUtil';
 import * as apid from '../../../../api';
 import { findPlaybackUrl, requirePlaybackUrl } from '../../../../src/util/PlaybackUrlUtil';
-import { createPlaybackQualityOptions, disambiguatePlaybackLabels, SelectablePlaybackContainer } from '../../../../src/util/PlaybackQualityOptionUtil';
+import { createPlaybackQualityOptions, disambiguatePlaybackLabels, resolveQualityPanelMaxHeight, SelectablePlaybackContainer } from '../../../../src/util/PlaybackQualityOptionUtil';
 import {
     PLAYBACK_BUFFER_RECOVERY_MIN_GAP_SEC,
     PlaybackBufferedRange,
@@ -68,6 +68,7 @@ export default abstract class BaseVideo extends Vue {
     private qualitySwitchTraceId = 0;
     private isProgrammaticQualitySwitch: boolean = false; // 親から起こした画質切替か (ユーザー操作と区別する)
     private playbackContainer: PlaybackContainer | null = null;
+    private qualityPanelResizeObserver: ResizeObserver | null = null;
 
     /**
      * 設定メニューの画質一覧へ出す配信方式。
@@ -166,6 +167,7 @@ export default abstract class BaseVideo extends Vue {
         this.bindEvents();
         this.setupExtraHotkeys();
         this.setupScreenshotRequest();
+        this.setupQualityPanelResize();
 
         // ストリーミング再生は video 要素が動画の一部しか持たないため、
         // DPlayer のシークバーを動画全体の時間軸で動かすアダプタを噛ませる
@@ -892,8 +894,38 @@ export default abstract class BaseVideo extends Vue {
 
         const currentLabel = container.querySelector('.dplayer-setting-quality .dplayer-label-value');
         if (currentLabel !== null) currentLabel.textContent = quality[currentIndex]?.name ?? '';
+        this.applyQualityPanelSize(panel, container);
+    }
+
+    /**
+     * 画質メニューが画面外へはみ出さない大きさへ収める。
+     * パネルはコントローラから上へ開くため、上限はビューポートではなく
+     * **プレイヤーの高さ**でも抑える必要がある (狭い端末で上の項目が画面外に出て押せなくなる)。
+     * @param panel 画質メニューのパネル
+     * @param container DPlayer のルート要素
+     */
+    /**
+     * プレイヤーの大きさが変わったら画質メニューの上限も取り直す。
+     * 端末の回転・全画面・「映像を小さくする」トグルでプレイヤー高が変わるため、
+     * 一覧を作った時点の値のまま放置すると再びはみ出す
+     */
+    private setupQualityPanelResize(): void {
+        const dp = this.dp as any;
+        const container = dp?.container as HTMLElement | undefined;
+        if (typeof container === 'undefined' || typeof ResizeObserver === 'undefined') return;
+
+        this.qualityPanelResizeObserver?.disconnect();
+        const observer = new ResizeObserver(() => {
+            const panel = container.querySelector('.dplayer-setting-quality-panel') as HTMLElement | null;
+            if (panel !== null) this.applyQualityPanelSize(panel, container);
+        });
+        observer.observe(container);
+        this.qualityPanelResizeObserver = observer;
+    }
+
+    private applyQualityPanelSize(panel: HTMLElement, container: HTMLElement): void {
         panel.style.maxWidth = 'calc(100vw - 32px)';
-        panel.style.maxHeight = 'min(70vh, 420px)';
+        panel.style.maxHeight = `${resolveQualityPanelMaxHeight(container.clientHeight, window.innerHeight)}px`;
         panel.style.overflowY = 'auto';
     }
 
@@ -1301,6 +1333,8 @@ export default abstract class BaseVideo extends Vue {
      */
     protected destroyPlayer(preserveRecordedJikkyo: boolean = false): void {
         this.clearPlaybackBufferRecovery();
+        this.qualityPanelResizeObserver?.disconnect();
+        this.qualityPanelResizeObserver = null;
         this.destroyExtraHotkeys();
         if (this.screenshotButton !== null && this.screenshotClickHandler !== null) {
             this.screenshotButton.removeEventListener('click', this.screenshotClickHandler, true);

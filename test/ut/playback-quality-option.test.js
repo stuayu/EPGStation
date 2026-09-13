@@ -79,3 +79,23 @@ test('コーデックが分からない重複はラベルを変えない', () =>
 
     assert.deepEqual(disambiguatePlaybackLabels(labels, [{}, {}]), labels);
 });
+
+const { resolveQualityPanelMaxHeight } = require('../../dist/util/PlaybackQualityOptionUtil');
+
+test('画質メニューの高さはプレイヤーの高さでも抑える', () => {
+    // iPhone 14 Pro の実測 (プレイヤー 217px / ビューポート 660px)。
+    // ビューポート基準だけだと 420px になり画面の上へはみ出していた
+    assert.equal(resolveQualityPanelMaxHeight(217, 660), 151);
+});
+
+test('広い画面では従来どおり 420px を上限にする', () => {
+    assert.equal(resolveQualityPanelMaxHeight(720, 1080), 420);
+});
+
+test('プレイヤーが極端に低くても最低限の高さは残す', () => {
+    assert.equal(resolveQualityPanelMaxHeight(100, 660), 120);
+});
+
+test('大きさが取れないときは既定の 420px を使う', () => {
+    assert.equal(resolveQualityPanelMaxHeight(0, 0), 420);
+});

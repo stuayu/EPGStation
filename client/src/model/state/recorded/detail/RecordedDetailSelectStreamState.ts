@@ -2,6 +2,7 @@ import { IRecordedSelectStreamSettingStorageModel } from '@/model/storage/record
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../../api';
 import IServerConfigModel from '../../../serverConfig/IServerConfigModel';
+import StreamSupportUtil from '@/util/StreamSupportUtil';
 import IRecordedDetailSelectStreamState, { RecordedStreamType, StreamConfigItem } from './IRecordedDetailSelectStreamState';
 
 @injectable()
@@ -92,6 +93,20 @@ export default class RecordedDetailSelectStreamState implements IRecordedDetailS
                 // ビデオの形式に適したストリーミングの設定が存在しない
                 throw new Error('VideoTypeError');
             }
+
+            // 端末で再生できない配信方式を落とす。
+            // - MP4 / WebM: 録画のプログレッシブ配信は Content-Length / Range を返せない chunked なので
+            //   WebKit (iOS / iPadOS / Safari) では MediaError 4 になり、選んでも黒いままになる
+            // - M2TS-LL: mpegts.js (MSE / MMS) が使えない端末では再生できない
+            // ただし**全部落ちて選択肢が空になる設定もありうる**ため、その場合は元の一覧へ戻す
+            // (再生手段が 1 つも出ないより、再生できないかもしれない候補を残す方がまし)
+            const supported = this.streamTypeItems.filter(type => {
+                if (type === 'MP4' || type === 'WebM') return StreamSupportUtil.isProgressiveFileStreamSupported();
+                if (type === 'M2TS-LL') return StreamSupportUtil.isM2TSLLSupported();
+
+                return true;
+            });
+            if (supported.length > 0) this.streamTypeItems = supported;
 
             // 前回の選択が今回のビデオ形式に存在しない場合 (ts ⇔ encoded の切り替え) は選び直す
             if (typeof this.selectedStreamType !== 'undefined' && this.streamTypeItems.includes(this.selectedStreamType) === false) {
