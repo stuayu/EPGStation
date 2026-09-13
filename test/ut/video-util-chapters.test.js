@@ -139,6 +139,71 @@ test('音声 ES が複数ある場合はそれぞれ独立したトラックと�
     );
 });
 
+test('遅れて始まる音声 ES も独立したトラックとして返す', async () => {
+    const output = JSON.stringify({
+        streams: [
+            { index: 1, codec_name: 'aac', channels: 2, start_time: '81471.174500' },
+            { index: 11, codec_name: 'aac', channels: 2, start_time: '81492.870500', tags: { title: 'オーディオコメンタリー' } },
+        ],
+    });
+    let probeArgs;
+
+    await withStubbedFfprobe(
+        args => {
+            probeArgs = args;
+            return output;
+        },
+        async () => {
+            const tracks = await makeVideoUtil().getAudioTracks('/fake/video.ts');
+            assert.deepEqual(
+                tracks.map(t => [t.track, t.streamIndex, t.channels, t.isDualMono, t.name]),
+                [
+                    ['0', 0, 2, false, '主音声'],
+                    ['1', 1, 2, false, 'オーディオコメンタリー'],
+                ],
+            );
+        },
+    );
+
+    assert.deepEqual(probeArgs, [
+        '-analyzeduration',
+        '60000000',
+        '-probesize',
+        '200000000',
+        '-v',
+        '0',
+        '-show_streams',
+        '-select_streams',
+        'a',
+        '-of',
+        'json',
+        '/fake/video.ts',
+    ]);
+});
+
+test('音声 ES が複数あり channels=0 の ES を含む場合も独立したトラックとして返す', async () => {
+    const output = JSON.stringify({
+        streams: [
+            { index: 1, codec_name: 'aac', channels: 2 },
+            { index: 11, codec_name: 'aac', channels: 0, tags: { title: 'オーディオコメンタリー' } },
+        ],
+    });
+
+    await withStubbedFfprobe(
+        () => output,
+        async () => {
+            const tracks = await makeVideoUtil().getAudioTracks('/fake/video.ts');
+            assert.deepEqual(
+                tracks.map(t => [t.track, t.streamIndex, t.channels, t.isDualMono, t.name]),
+                [
+                    ['0', 0, 2, false, '主音声'],
+                    ['1', 1, 0, false, 'オーディオコメンタリー'],
+                ],
+            );
+        },
+    );
+});
+
 test('モノラル 1 本だけの場合は展開しない (デュアルモノラルではありえないため)', async () => {
     await withStubbedFfprobe(
         () => JSON.stringify({ streams: [{ codec_name: 'aac', channels: 1 }] }),

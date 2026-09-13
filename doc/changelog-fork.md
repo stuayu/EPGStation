@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-13
 
+- **遅れて始まる音声 ES を ffprobe が取りこぼし、デュアルモノラルと誤判定する問題を修正した**: `VideoUtil.getAudioTracks()` に `-analyzeduration 60000000 -probesize 200000000` (60 秒 / 200 MB) を追加した。本番の encoded HEVC TS では 2 本目の音声 ES が主音声より 21.696 秒遅れて始まり、既定 probe の 1 本から拡大後の 2 本へ増えた。`SourceAnalyzer.getDetailedInfo()` は映像の `field_order` / fps 判定用、ライブ配信コマンドは低遅延用のため変更していない。`audioTrack=1` は既存の `AudioTrackUtil` により `-map 0:v:0 -map 0:a:1` へ展開される。回帰テスト: `test/ut/video-util-chapters.test.js`。
+
 - **未知の配信方式で視聴画面が空白になる問題を修正した**: 録画・ライブの視聴 URL を厳密に検証し、未知の配信方式、不正な録画・動画ファイル ID、利用できない mode は動画を生成せず、画面上へ再読み込みと選び直しを案内するエラーを表示する。Snackbar もルート変更後に 10 秒表示する。回帰テスト: `test/ut/streaming-type-util.test.js`。
 
 - **配信方式ラベルから API パス名を暗黙変換して録画 M2TS-LL が 404 になる問題を修正した**: `M2TS-LL` を `m2ts-ll` へ変換していた録画詳細・視聴履歴の遷移を、`StreamingTypeUtil` の明示的な変換表 (`M2TS-LL` → `m2tsll`) へ変更した。ライブを含む配信ダイアログも同じ変換表を使う。録画・ライブ視聴画面は未知の配信方式 query を検証し、エラー通知を出して動画を生成しない。`test/ut/streaming-type-util.test.js` で表示ラベル、API パス名、録画 API ルート一覧の一致を固定した。
