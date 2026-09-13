@@ -33,6 +33,9 @@ EPGStation (stuayu フォーク) — 日本の DTV 録画管理ソフトウェ�
 | `db-migration` | DB スキーマ変更 |
 | `write-tests` | テスト追加 |
 | `debug-playback` | ライブ・録画の再生不具合 (止まる・シークで固まる・字幕や音声が出ない) の切り分け |
+| `deploy-production` | 変更を本番サーバ (Windows) へ反映して実機で確認する |
+| `delegate-to-codex` | 実装を Codex CLI へ委譲し、返ってきた報告を検証する |
+| `handle-github-issue` | stuayu/EPGStation の Issue を調査・修正して報告する |
 
 ## ドキュメント更新ルール (必須)
 
