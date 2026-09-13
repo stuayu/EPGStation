@@ -14,6 +14,8 @@ export default class UploadFileNameUtil {
     public static normalize(value: string): string {
         const baseName = value.normalize('NFC').split(/[\\/]/u).pop() ?? '';
         let normalized = baseName
+            // 制御文字を除去することが目的の正規表現なので、この行だけ no-control-regex を外す
+            // eslint-disable-next-line no-control-regex
             .replace(/[\u0000-\u001f\u007f]/gu, '_')
             .replace(/[<>:"|?*\\/]/gu, '_')
             .replace(/[ .]+$/u, '');
