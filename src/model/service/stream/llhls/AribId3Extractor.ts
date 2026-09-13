@@ -4,7 +4,7 @@ import IAribId3Extractor, { AribId3Metadata } from './IAribId3Extractor';
 
 /**
  * AribId3Extractor
- * arib-subtitle-timedmetadater が付加した ID3 timed metadata PES を TS から抜き取り
+ * ARIB 字幕 → ID3 変換器が付加した ID3 timed metadata PES を TS から抜き取り
  * 'id3' イベントとして通知する pass-through Transform
  * 入力された TS は加工せずそのまま下流 (エンコードプロセス) へ流す
  * per-stream (配信ごと) に生成するインスタンスであり DI コンテナには登録しない。
@@ -18,6 +18,8 @@ class AribId3Extractor extends stream.Transform implements IAribId3Extractor {
     private sectionBuffers: Map<number, AribId3Extractor.AssembleBuffer> = new Map();
     // 組み立て中の ID3 timed metadata PES
     private pesBuffers: Map<number, AribId3Extractor.AssembleBuffer> = new Map();
+    // 抽出件数。運用時の字幕経路切り分け用
+    private extractedCount = 0;
 
     constructor(logger: ILogger | null = null) {
         super();
@@ -121,7 +123,7 @@ class AribId3Extractor extends stream.Transform implements IAribId3Extractor {
 
     /**
      * payload から PSI セクションを取り出す。
-     * arib-subtitle-timedmetadater は PMT に metadata 用の記述子と ES を書き足すため、
+     * ID3 変換器は PMT に metadata 用の記述子と ES を書き足すため、
      * 元の PMT が大きい放送局では 1 TS パケット (184 byte) に収まらず分割される。
      * 先頭パケットだけを見ていると metadata の PID を検出できず、字幕が 1 つも出なくなる
      * @param pid: number
@@ -298,6 +300,13 @@ class AribId3Extractor extends stream.Transform implements IAribId3Extractor {
             return;
         }
 
+        this.extractedCount += 1;
+        if (this.extractedCount === 1 || this.extractedCount % 10 === 0) {
+            this.log?.stream.info(
+                `[AribId3Extractor] ID3 timed metadata を抽出しました: count=${this.extractedCount}, ` +
+                    `pts=${metadata.pts}, payloadBytes=${metadata.payload.length}`,
+            );
+        }
         this.emit('id3', metadata);
     }
 }
@@ -343,7 +352,7 @@ export const parsePes = (pes: Buffer): AribId3Metadata | null => {
         return null;
     }
 
-    // arib-subtitle-timedmetadater は ffmpeg 向けに 5 byte の padding を挿入する
+    // ffmpeg 向け ID3 metadata の 5 byte padding を許容する
     if (
         isId3Header(pes, offset) === false &&
         isId3Header(pes, offset + AribId3Extractor.FFMPEG_METADATA_PADDING_SIZE) === true

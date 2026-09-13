@@ -31,7 +31,11 @@ export interface Fmp4PackagerSegment {
 export interface Fmp4PackagerOption {
     // 1 セグメントを構成するパート数 (既定 3)
     partsPerSegment?: number;
+    // HLS の配信モード。診断ログでライブ / 録画済みを区別するために使う
+    mode?: Fmp4PackagerMode;
 }
+
+export type Fmp4PackagerMode = 'live' | 'recorded';
 
 /**
  * 複数音声トラック分解モードでのトラックの役割

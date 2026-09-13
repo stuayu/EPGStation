@@ -1,7 +1,7 @@
 import { ChildProcess } from 'child_process';
 import { inject, injectable } from 'inversify';
 import internal from 'stream';
-import ID3MetadataTransform from 'arib-subtitle-timedmetadater';
+import AribSubtitleTimedMetadataTransform from '../llhls/AribSubtitleTimedMetadataTransform';
 import * as apid from '../../../../../api';
 import ProcessUtil from '../../../../util/ProcessUtil';
 import IConfigFile from '../../../IConfigFile';
@@ -47,10 +47,10 @@ export default abstract class LiveStreamBaseModel
     private mirakurunClientModel: IMirakurunClientModel;
     private liveStreamSourceManageModel: ILiveStreamSourceManageModel | undefined;
     private isNormalizedByTsreadex: boolean = false;
-    private id3MetadataTransoform: ID3MetadataTransform | null = null;
+    private id3MetadataTransoform: AribSubtitleTimedMetadataTransform | null = null;
     // m2tsll (および tsreadex 経由の m2ts) で使う、エンコード後に ID3 を挿入する Transform。
     // 入力側へ ID3 を map せず、出力側 (streamProcess.stdout) へ挿入する
-    private id3OutputTransform: ID3MetadataTransform | null = null;
+    private id3OutputTransform: AribSubtitleTimedMetadataTransform | null = null;
     private hlsMemoryStore: IHLSMemoryStoreModel;
     private fmp4Packager: IFmp4Packager | null = null;
     // in-memory HLS で ARIB 字幕 (ID3 timed metadata) を取り出すための Transform
@@ -264,18 +264,18 @@ export default abstract class LiveStreamBaseModel
                 this.bitCollectTransform.pipe(this.eitPresentCollectTransform);
                 const tsSource = this.eitPresentCollectTransform;
 
-                // ARIB 字幕を ID3 timed metadata へ変換する (arib-subtitle-timedmetadater)。
+                // ARIB 字幕を ID3 timed metadata へ変換する (ローカル変換器)。
                 // HLS だけでなく mpegts 配信 (m2ts / m2tsll) でも必要:
                 // DPlayer は mpegts.js の TIMED_ID3_METADATA_ARRIVED からしか aribb24 へ字幕を渡さないため、
                 // ARIB 字幕 ES をそのまま流しても字幕は表示されない
                 if (this.useOutputSideId3() === true) {
                     // ID3 (PID 0x1FFE) は入力側へ map せず、エンコード後 (streamProcess.stdout) に
                     // 挿入し直す (下の stdout 側の処理を参照)
-                    this.log.stream.info('use arib-subtitle-timedmetadater (output side)');
+                    this.log.stream.info('use ARIB subtitle to ID3 timed metadata transform (output side)');
                     tsSource.pipe(this.streamProcess.stdin);
                 } else {
-                    this.log.stream.info('use arib-subtitle-timedmetadater');
-                    this.id3MetadataTransoform = new ID3MetadataTransform();
+                    this.log.stream.info('use ARIB subtitle to ID3 timed metadata transform');
+                    this.id3MetadataTransoform = new AribSubtitleTimedMetadataTransform();
                     tsSource.pipe(this.id3MetadataTransoform);
 
                     if (this.getStreamType() === 'LiveHLS' && this.isMemoryHLS() === true) {
@@ -292,7 +292,7 @@ export default abstract class LiveStreamBaseModel
                 // m2tsll (および tsreadex 経由の m2ts) は、エンコード後の TS (ARIB 字幕 ES を
                 // `-c:s copy` 済み) へ ID3 timed metadata を挿入し直す。getStream() はこの Transform を返す
                 if (this.useOutputSideId3() === true && this.streamProcess.stdout !== null) {
-                    this.id3OutputTransform = new ID3MetadataTransform();
+                    this.id3OutputTransform = new AribSubtitleTimedMetadataTransform();
                     this.streamProcess.stdout.pipe(this.id3OutputTransform);
                 }
             } else {
@@ -369,7 +369,7 @@ export default abstract class LiveStreamBaseModel
         this.hlsMemoryStore.create(streamId, 'live');
 
         const packager = new Fmp4Packager(
-            { partsPerSegment: LiveStreamBaseModel.LIVE_HLS_PARTS_PER_SEGMENT },
+            { partsPerSegment: LiveStreamBaseModel.LIVE_HLS_PARTS_PER_SEGMENT, mode: 'live' },
             this.log,
         );
         this.fmp4Packager = packager;

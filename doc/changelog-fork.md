@@ -15,6 +15,20 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-13
 
+- **HEVC TS の ARIB 字幕 ID3 化で文字スーパーを誤選択する問題を修正した**: `AribSubtitleTimedMetadataTransform` が `component_tag=0x30〜0x3f` を字幕として扱い、字幕 PID `0x114` の後ろにある文字スーパー PID `0x115` (`0x38`) を選んでいた。component tag は ARIB 字幕の `0x30〜0x37` / `0x87` に限定し、`stream_type=0x06` + `subtitling_descriptor (0x59)` は従来どおり受理する。`data_group_id` は字幕管理・本文の `0x00〜0x08` / `0x20〜0x28` を受理する。PTS の無い PES は PCR/映像PTSで代用せず破棄する (字幕固有の時刻を保てないため)
+    - 実ファイルを 250 MiB 位置から終端まで計測: HEVC `jikkyo_rose10.ts` は TS 387 / PES 387 / `0xbd` 387 / PTS有り 387 / data_group `0x20:312, 0x21:41, 0x22:34` / ID3 PES 387。MPEG-2 `bi_news.ts` は字幕 PID `0x130` を時系列PMTから追跡し、TS 643 / PES 643 / `0xbd` 643 / PTS有り 643 / data_group `0x20:476, 0x21:164, 0x22:3` / ID3 PES 641
+    - 回帰テスト: `test/ut/arib-subtitle-timed-metadata.test.js` に文字スーパー併存、管理・本文 group、PTS無しの最小TSを追加
+
+- **HEVC TS で ARIB 字幕の ID3 timed metadata が生成されない問題を修正した**: `arib-subtitle-timedmetadater@4.0.10` の `src/index.ts` は PMT の `stream_identifier_descriptor (0x52)` にある `component_tag` を `0x30〜0x37` または `0x87` と比較するだけで、映像 codec (`stream_type=0x24` の HEVC) や ARIB の `subtitling_descriptor (0x59)` を見ない。実測では tsreplace 出力 `jikkyo_rose10.ts` (HEVC、字幕 ES PID `0x114`) の Transform 出力 ID3 (PID `0x1FFE`) は **0 個**、通常録画 `bi_news.ts` (MPEG-2) は **45 個**だった。
+    - フォークはライブラリを変更せず、`AribSubtitleTimedMetadataTransform` を追加。`stream_type=0x06` の `0x59`、および従来の component tag (`0x30〜0x37` / `0x87`) から字幕 ES を判定し、PMT の metadata ES と ID3 PES を直接生成する。従来の MPEG-2 / H.264 経路は同じ component tag 判定で維持する。
+    - `LiveStreamBaseModel` / `RecordedStreamBaseModel` の入力側 HLS と出力側 m2tsll の両方をこの変換器へ切り替えた。QSVEncC 等が出力する HEVC TS も stdout 側で処理するため、`-c:s copy` で通過した ARIB 字幕 ES から ID3 を生成できる。
+    - 回帰テスト: `test/ut/arib-subtitle-timed-metadata.test.js`。HEVC + `0x59` は ID3 1 件、同じ入力で既存ライブラリは 0 件、MPEG-2 + 従来 component tag は既存ライブラリとフォーク変換器が各 1 件を確認する。
+
+- **録画済み in-memory HLS の ARIB 字幕が `emsg` へ渡らない問題を修正した**: `RecordedStreamBaseModel` は `Fmp4Packager` を先に開始し、後から `AribId3Extractor` を生成していたため、パッケージャ開始時の listener 登録で録画側 extractor を取りこぼしていた。PMT の ID3 PID は検出できても、抽出した metadata が `Fmp4Packager.pushId3()` へ届かず、セグメントに `emsg` が 1 件も入らなかった。録画側 extractor の生成直後に listener を接続し、録画済み HLS でも ID3 をパート先頭へ version 1 の `emsg` として付加する。録画済みプレイリストで `#EXT-X-PART` を公開しない設計は維持し、`Fmp4Packager` が part のバイト列をセグメントへ連結する経路で字幕を配信する。ライブ HLS の listener 経路と LL-HLS のパート公開は変更しない。
+    - 実装: `src/model/service/stream/base/RecordedStreamBaseModel.ts`、`src/model/service/stream/llhls/AribId3Extractor.ts`、`src/model/service/stream/llhls/Fmp4Packager.ts`
+    - 診断ログ: `[AribId3Extractor] ID3 timed metadata を抽出しました: count=...`、`[RecordedHLS] AribId3Extractor と Fmp4Packager の id3 経路を接続しました`、`[Fmp4Packager] ID3 metadata を保留しました: ...`、`[Fmp4Packager] emsg を付与しました: ... bytes=...`、`[Fmp4Packager] recorded part を生成しました: ...`、`[Fmp4Packager] recorded packaging summary: ...`
+    - 回帰テスト: `test/ut/fmp4-packager.test.js`、`test/ut/recorded-hls-memory-stream.test.js`
+
 - **デインターレース判定の解析枝とキャッシュを可視化した**: `getFullFilePathFromVideoFile()` が `null` の場合や ffprobe が失敗した場合、警告なしで DB fallback へ進み、fps / field_order が欠けた結果を30分キャッシュしていた。`SourceAnalyzer` は `ffprobe` / `db-fallback` / `channel-default` と codec・field_order・fps・yadif 結果を `deinterlace: yadif=... (source: ..., codec: ..., field_order: ..., fps: ...)` へ出す。DB fallback は `video_file` / `video_file_ts_info` に fps / field_order が無いため yadif 有りを維持し、判定材料が欠けた結果はキャッシュしない。後から実ファイルを解決できる場合は ffprobe を再試行して progressive 素材から yadif を外す。
     - 実装: `src/model/stream/capability/SourceAnalyzer.ts`、`src/util/DeinterlaceUtil.ts`
     - 回帰テスト: `test/ut/source-analyzer.test.js`
