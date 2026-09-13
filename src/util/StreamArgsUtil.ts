@@ -183,7 +183,16 @@ export const buildRigayaVideoArgs = (
               ? ' --colorprim bt709 --transfer bt709 --colormatrix bt709'
               : '';
     const toneMap = isToneMapping(source, preset) ? ' --vpp-colorspace hdr2sdr=hable' : '';
-    return `-c ${codec} --profile ${depth >= 10 ? 'main10' : 'main'} --output-depth ${depth} ${tuning}${deintArgs}${toneMap}${height ? ` --output-res -2x${height}` : ''}${hdr}${sync}`;
+
+    // **`--repeat-headers` は必須**。rigaya 系の mpegts 出力は既定では VPS/SPS/PPS を
+    // ストリームの先頭にしか出さないため、後段の ffmpeg が `-c:v copy` で mp4 (fMP4) へ
+    // remux しようとしても extradata を組み立てられず
+    // `Could not write header (incorrect codec parameters ?)` で 1 フレームも書けない。
+    // 実測 (本番 QSVEncC 8.16): 無しだと ffprobe で `Video: hevc, none` (解像度・pix_fmt 不明) となり
+    // fMP4 出力が exit=-22 / 0 byte。付けると `hevc (Main), yuv420p, 1920x1080, 29.97fps` と読め、
+    // 同じ入力で 646 frames / 7.7MB を出力できた。
+    // これが無いと in-memory HLS はセグメントを 1 本も作れず、配信が始まらない。
+    return `-c ${codec} --profile ${depth >= 10 ? 'main10' : 'main'} --output-depth ${depth} ${tuning} --repeat-headers${deintArgs}${toneMap}${height ? ` --output-res -2x${height}` : ''}${hdr}${sync}`;
 };
 
 /**
