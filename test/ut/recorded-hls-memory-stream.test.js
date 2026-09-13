@@ -342,6 +342,8 @@ test('in-memory モードの ts 入力は ID3 変換と AribId3Extractor を経�
         // セグメントの emsg box として乗せ直す。そのため 2 つの Transform を経由する
         assert.notEqual(model.id3MetadataTransoform, null);
         assert.notEqual(model.aribId3Extractor, null);
+        // 録画 HLS はパッケージャを先に作るため、後から生成した extractor にも listener が必要。
+        assert.equal(model.aribId3Extractor.listenerCount('id3'), 1);
 
         await model.stop();
 

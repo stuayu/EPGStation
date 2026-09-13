@@ -5,6 +5,7 @@ import IFmp4Packager, {
     Fmp4PackagerOption,
     Fmp4PackagerPart,
     Fmp4PackagerSegment,
+    Fmp4PackagerMode,
     Fmp4PackagerTrackRole,
 } from './IFmp4Packager';
 
@@ -22,6 +23,7 @@ import IFmp4Packager, {
 class Fmp4Packager extends stream.Writable implements IFmp4Packager {
     private log: ILogger | null;
     private partsPerSegment: number;
+    private mode: Fmp4PackagerMode;
 
     // 受信したが未処理のバイト列
     private buffer: Buffer = Buffer.alloc(0);
@@ -65,6 +67,10 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
     // emsg box の id (セグメントをまたいでユニークな値を使う)
     private emsgId = 0;
 
+    // 診断用の出力統計
+    private generatedPartCount = 0;
+    private attachedEmsgBytes = 0;
+
     // 統計 (検証用): 入力バイト数
     private totalInputBytes = 0;
 
@@ -86,6 +92,17 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
     // moofBoxBuf の直後・mdatBoxBuf の直前として fragBuf へ連結する
     private mtExtraBeforeMdat: Buffer = Buffer.alloc(0);
 
+    private logGeneratedPart(role?: Fmp4PackagerTrackRole): void {
+        this.generatedPartCount += 1;
+        if (this.generatedPartCount === 1 || this.generatedPartCount % 10 === 0) {
+            this.log?.stream.info(
+                `[Fmp4Packager] ${this.mode} part を生成しました: count=${this.generatedPartCount}, ` +
+                    `role=${role ?? 'single'}, pendingMetadata=${this.pendingId3.length}, ` +
+                    `emsgBytes=${this.attachedEmsgBytes}`,
+            );
+        }
+    }
+
     constructor(option: Fmp4PackagerOption = {}, logger: ILogger | null = null) {
         super();
 
@@ -94,6 +111,7 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
             typeof option.partsPerSegment === 'number' && option.partsPerSegment > 0
                 ? option.partsPerSegment
                 : Fmp4Packager.DEFAULT_PARTS_PER_SEGMENT;
+        this.mode = option.mode ?? 'live';
     }
 
     /**
@@ -115,6 +133,12 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
         }
 
         this.pendingId3.push(metadata);
+
+        if (this.pendingId3.length === 1 || this.pendingId3.length % 10 === 0) {
+            this.log?.stream.debug(
+                `[Fmp4Packager] ID3 metadata を保留しました: mode=${this.mode}, pending=${this.pendingId3.length}`,
+            );
+        }
 
         // セグメントが出力されない状況でメモリを食い潰さないようにする
         while (this.pendingId3.length > Fmp4Packager.MAX_PENDING_ID3) {
@@ -157,7 +181,14 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
             boxes.push(this.buildEmsgBox(scale, presentationTime, metadata.payload));
         }
 
-        return Buffer.concat(boxes);
+        const emsg = Buffer.concat(boxes);
+        this.attachedEmsgBytes += emsg.length;
+        this.log?.stream.info(
+            `[Fmp4Packager] emsg を付与しました: mode=${this.mode}, metadata=${pending.length}, ` +
+                `bytes=${emsg.length}, totalBytes=${this.attachedEmsgBytes}, pending=${this.pendingId3.length}`,
+        );
+
+        return emsg;
     }
 
     /**
@@ -1002,6 +1033,8 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
             isIndependent: state.currentSegmentParts.length === 0,
         };
 
+        this.logGeneratedPart(role);
+
         state.currentSegmentParts.push(part);
         this.emit('trackPart', role, part);
 
@@ -1228,6 +1261,8 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
             isIndependent: this.currentSegmentParts.length === 0,
         };
 
+        this.logGeneratedPart();
+
         this.currentSegmentParts.push(part);
         this.emit('part', part);
 
@@ -1291,6 +1326,11 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
             }
             this.finalizeMultiTrackAtEnd();
 
+            this.log?.stream.info(
+                `[Fmp4Packager] ${this.mode} packaging summary: parts=${this.generatedPartCount}, ` +
+                    `pendingMetadata=${this.pendingId3.length}, emsgBytes=${this.attachedEmsgBytes}`,
+            );
+
             return;
         }
 
@@ -1318,6 +1358,11 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
 
         // 端数のセグメントも確定させて出力する
         this.flushSegment();
+
+        this.log?.stream.info(
+            `[Fmp4Packager] ${this.mode} packaging summary: parts=${this.generatedPartCount}, ` +
+                `pendingMetadata=${this.pendingId3.length}, emsgBytes=${this.attachedEmsgBytes}`,
+        );
 
         // 最後の part の後に mfra 等の box が残っている場合、どの part にも属さないため
         // 個別イベントとして通知する (バイト取りこぼしがないことの検証用)

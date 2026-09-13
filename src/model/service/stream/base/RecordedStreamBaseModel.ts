@@ -2,7 +2,7 @@ import { ChildProcess, exec } from 'child_process';
 import * as fs from 'fs';
 import { inject, injectable } from 'inversify';
 import internal, { Readable } from 'stream';
-import ID3MetadataTransform from 'arib-subtitle-timedmetadater';
+import AribSubtitleTimedMetadataTransform from '../llhls/AribSubtitleTimedMetadataTransform';
 import * as apid from '../../../../../api';
 import * as fst from '../../../../lib/TailStream';
 import ProcessUtil from '../../../../util/ProcessUtil';
@@ -92,9 +92,9 @@ export default abstract class RecordedStreamBaseModel
     private sourceAnalyzer: ISourceAnalyzer | undefined;
 
     private fileStream: Readable | null = null;
-    private id3MetadataTransoform: ID3MetadataTransform | null = null;
+    private id3MetadataTransoform: AribSubtitleTimedMetadataTransform | null = null;
     // TS 入力の m2tsll は入力側へ ID3 を map せず、出力 TS へ再挿入する
-    private id3OutputTransform: ID3MetadataTransform | null = null;
+    private id3OutputTransform: AribSubtitleTimedMetadataTransform | null = null;
     private streamProcess: ChildProcess | null = null;
     private videoFilePath: string | null = null;
     private videoFileInfo: VideoFileInfo | null = null;
@@ -254,17 +254,17 @@ export default abstract class RecordedStreamBaseModel
         // パイプ処理
         if (this.streamProcess.stdin !== null && this.fileStream !== null) {
             // ts が入力かつ HLS 配信の場合は ARIB 字幕を ID3 timed metadata へ変換する
-            // arib-subtitle-timedmetadater を通す (エンコード済みファイルには ARIB 字幕が含まれない)
+            // ローカルの字幕 ES → ID3 変換器を通す (エンコード済みファイルには ARIB 字幕が含まれない)
             if (
                 this.videoFileType === 'ts' &&
                 (this.getStreamType() === 'RecordedHLS' || this.processOption?.container === 'm2tsll')
             ) {
-                this.log.stream.info('use arib-subtitle-timedmetadater');
+                this.log.stream.info('use ARIB subtitle to ID3 timed metadata transform');
                 if (this.useOutputSideId3() === true) {
                     // ID3 (PID 0x1FFE) は入力側へ map せず、エンコード後の MPEG-TS へ挿入し直す。
                     this.fileStream.pipe(this.streamProcess.stdin);
                 } else {
-                    this.id3MetadataTransoform = new ID3MetadataTransform();
+                    this.id3MetadataTransoform = new AribSubtitleTimedMetadataTransform();
                     this.fileStream.pipe(this.id3MetadataTransoform);
                 }
 
@@ -272,6 +272,14 @@ export default abstract class RecordedStreamBaseModel
                     // in-memory (fMP4) モードでは mp4 出力に ID3 timed metadata を乗せられないため、
                     // エンコード前の TS から ID3 を抜き取り、セグメントの emsg box として再多重化する
                     this.aribId3Extractor = new AribId3Extractor(this.log);
+                    // 録画 HLS は startMemoryHLSPackaging() が先に呼ばれるため、
+                    // パッケージャ作成時の listener 登録だけでは extractor を取りこぼす。
+                    if (this.fmp4Packager !== null) {
+                        this.aribId3Extractor.on('id3', metadata => {
+                            this.fmp4Packager?.pushId3(metadata);
+                        });
+                        this.log.stream.info('[RecordedHLS] AribId3Extractor と Fmp4Packager の id3 経路を接続しました');
+                    }
                     this.id3MetadataTransoform?.pipe(this.aribId3Extractor);
                     this.aribId3Extractor.pipe(this.streamProcess.stdin);
                 } else if (this.useOutputSideId3() === false) {
@@ -283,7 +291,7 @@ export default abstract class RecordedStreamBaseModel
         }
 
         if (this.useOutputSideId3() === true && this.streamProcess.stdout !== null) {
-            this.id3OutputTransform = new ID3MetadataTransform();
+            this.id3OutputTransform = new AribSubtitleTimedMetadataTransform();
             this.streamProcess.stdout.pipe(this.id3OutputTransform);
         }
 
@@ -322,7 +330,7 @@ export default abstract class RecordedStreamBaseModel
         this.hlsMemoryStore.create(streamId, 'recorded');
 
         const packager = new Fmp4Packager(
-            { partsPerSegment: RecordedStreamBaseModel.RECORDED_HLS_PARTS_PER_SEGMENT },
+            { partsPerSegment: RecordedStreamBaseModel.RECORDED_HLS_PARTS_PER_SEGMENT, mode: 'recorded' },
             this.log,
         );
         this.fmp4Packager = packager;

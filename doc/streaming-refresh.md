@@ -40,7 +40,7 @@
 - 録画 TS は `RecordedStreamBaseModel` がファイル (録画中は `TailStream`) をエンコーダ stdin へ流し、stdout を `video/mp2t` として HTTP へ直結する。encoded は `-ss %SS% -i %INPUT%` のファイル入力で、いずれも中間ファイルを作らない。
 - クライアントは録画詳細に `M2TS-LL` を追加し、`StreamSupportUtil.checkM2TSLLSupport()` が非対応と判定した環境では選択肢から除外して HLS へ誘導する。再生は `type: 'mpegts'`、VirtualTimeline、チャプター、ARIB 字幕、実況コメント、音声切替を既存録画再生と共用する。
 - `audioTrack=all` は tsreadex 正規化済みプロファイルで主音声・副音声を同時配信し、mpegts.js の音声切替 API で再接続せず切り替える。非正規化プロファイルは `AUDIOSELECTMAP` で単一音声を選ぶ。
-- 録画 TS の m2tsll の ARIB 字幕は、tsreadex の有無によらず入力側でなく stdout 側へ ID3 timed metadata を挿入する。encoded は字幕対象外。
+- 録画 TS の m2tsll の ARIB 字幕は、tsreadex の有無によらず入力側でなく stdout 側へ ID3 timed metadata を挿入する。字幕判定は `component_tag=0x30〜0x37` / `0x87` または `stream_type=0x06` + `subtitling_descriptor (0x59)`、data_group は `0x00〜0x08` / `0x20〜0x28` を受ける。PTS の無い PES は時刻を推測せず破棄する。encoded は字幕対象外。
 - 録画のファイル入力は `-readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2` を `-i` より前へ置く。初期 45 秒 (4 Mbps 換算で約 22.5 MB) を先読みし、その後は実時間の 1.5 倍を上限に供給する。`readrate_catchup` は入力が指定速度に遅れたときだけ一時的に 2 倍まで使う。対象は M2TS-LL / MP4 / WebM。ライブの `-re` は変更しない。録画 HLS は既存のセグメント単位の先行抑制を使う。今回、readrate 引き上げは供給が律速でないことが判明したため前値へ戻した。
 - Chromium で同一素材の録画 M2TS-LL (`videoFileId=31024`) を5分連続再生した際、60〜120秒で前方バッファが枯渇する症状は観測された。ただしこれは供給不足が原因ではない。`createReadStream` → `ID3MetadataTransform` → `ffmpeg.stdin` と同じ供給経路は `speed=4.65x` で、律速はエンコード側だった。
 
@@ -284,7 +284,7 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
   - **`encodePresets` が生成する録画済み HLS プリセットは in-memory (fMP4) がデフォルト**。MPEG-TS セグメントの HLS では iOS / Safari が HEVC を再生できず、LL-HLS のパート分割も fMP4 フラグメント単位でしか実現できないため、`buildRecordedHlsCmd()` は `%streamFileDir%` を含まない fMP4 出力の cmd を生成する。ディスク方式で運用したい場合は `stream.profiles.recorded.*` を手書きすること。
   - 録画側はクライアントが再生位置 (`playPosition`) 付きでストリームセッションを作り直す方式 (シーク = ストリーム再生成) のため、ディスク方式の既存 cmd も `hls_list_size 0` + `delete_segments` のスライディングウィンドウであり、そもそも全編を保持する EVENT プレイリストではない。したがって in-memory 化してもシーク時の挙動 (再生位置からの作り直し) は変わらない。
   - ストアは `create(streamId, 'recorded')` で作る。プレイヤー内での巻き戻しに応えるため、ライブ (掲載 6 / 保持 12 セグメント) より多い 180 セグメントを保持しすべてプレイリストへ載せる。
-  - in-memory モードでも ARIB 字幕に対応する (ライブと同じ仕組み)。`ts` 録画の場合、エンコード前の TS を `arib-subtitle-timedmetadater` へ通し、`AribId3Extractor` が ID3 timed metadata を抜き取り、`Fmp4Packager` がパート先頭の `emsg` box として再多重化する。エンコード済みファイル (`encoded`) には ARIB 字幕が含まれないため対象外。
+  - in-memory モードでも ARIB 字幕に対応する (ライブと同じ仕組み)。`ts` 録画の場合、エンコード前の TS を `AribSubtitleTimedMetadataTransform` へ通し、`AribId3Extractor` が ID3 timed metadata を抜き取り、`Fmp4Packager` がパート先頭の version 1 `emsg` box として再多重化する。録画済み HLS は `#EXT-X-PART` を公開しないが、パートのバイト列はセグメントへ連結されるため `emsg` もセグメントへ残る。エンコード済みファイル (`encoded`) には ARIB 字幕が含まれないため対象外。`[AribId3Extractor]` の抽出件数、`[Fmp4Packager]` の保留 metadata 件数・付与バイト数・part 生成数をログで確認できる。
   - メモリ保持・破棄・タイムアウト・`keep()` によるセッション延長は `StreamBaseModel` / `StreamManageModel` を共通で通るため、ライブ HLS と同じ経路でクリーンアップされる (ストリーム停止時に `HLSMemoryStoreModel.delete()` が呼ばれ、ゴミは残らない)。
 
 ### 低遅延化
@@ -368,13 +368,15 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
   引用符が要る。設定例の外側引用符は両経路で共通に残し、`ProcessUtil.parseCmdStr()` が直接 spawn
   の引数だけ外す。シェル経路では引用符をそのまま `/bin/sh` / `cmd.exe` へ渡す。これにより tsreadex
   未設定のライブ m2tsll と、録画 TS / encoded の m2tsll を含む全自動生成経路が起動できる。
+- **HEVC TS の ARIB 字幕 ID3 化は専用変換器で行う**。`arib-subtitle-timedmetadater@4.0.10` は PMT の `stream_identifier_descriptor (0x52)` の `component_tag=0x30〜0x37` / `0x87` だけを字幕として認識し、映像 codec 自体は参照しない。`0x38〜0x3f` は文字スーパー等の別 ES として扱う。EPGStation は `stream_type=0x06` の `subtitling_descriptor (0x59)` と従来の component tag を認識する `AribSubtitleTimedMetadataTransform` で PMT と ID3 PES を直接生成する。`data_group_id` は字幕管理・本文の `0x00〜0x08` / `0x20〜0x28` を受理し、PTS の無い PES は時刻を推測せず破棄する。MPEG-2 / H.264 の従来 component tag 判定も維持する。
 - **m2tsll の TS 入力は ID3 (ARIB 字幕) をエンコード後 (出力側) に挿入する**。
   入力側へ ID3 timed metadata (PID `0x1FFE`) を map すると、字幕が疎な区間で mpegts muxer がインターリーブ待ちになり、
   配信速度が異常に落ちる。ブラウザを使わない同一経路の実測で、ID3 map 有りは `speed=0.068x` / `fps=1.6` / 12 秒分の出力に実時間 2 分 56 秒、
   ID3 map 無しは `speed=13.9x` / `fps=237` / 実時間 1.19 秒だった。`ss=366` は 20 秒取得で 86,668 bytes / 1 frame、
   `ss=1471` は 10 秒取得で 12,644,316 bytes / 731 frames となり、位置依存の停止を説明する。
   `LiveStreamBaseModel` / `RecordedStreamBaseModel` は、tsreadex の有無によらず m2tsll の TS 入力だけで、
-  `streamProcess.stdout` (`-c:s copy` 済みの ARIB 字幕 ES を含む) へ `ID3MetadataTransform` を挿入する (`getStream()` はこの Transform を返す)。
+  `streamProcess.stdout` (`-c:s copy` 済みの ARIB 字幕 ES を含む) へ `AribSubtitleTimedMetadataTransform` を挿入する (`getStream()` はこの Transform を返す)。
+  QSVEncC 等の再エンコード後 stdout も HEVC になり得るため、入力側ではなく出力側で同じ変換を行う。
   encoded 入力は対象外。mp4 / webm / HLS (ディスク・in-memory とも) は従来経路を維持する。
 - **M2TS-LL のクライアント側修正は別問題**。MSE / mpegts.js の再生成、188 byte 境界、再生位置競合はそれぞれ別の改善であり、
   `ss=366` / `642` / `91` だけで発生する今回の固着の主因ではない。
@@ -499,8 +501,8 @@ EPGStation の rigaya プリセットは「rigaya が映像だけ処理 → 後�
 
 ### mpegts 配信 (m2ts / m2ts-ll) の ARIB 字幕
 
-- **DPlayer は mpegts.js の `TIMED_ID3_METADATA_ARRIVED` からしか aribb24 へ字幕を渡さない**。TS に ARIB 字幕 ES (PID 0x130 等) がそのまま入っていても字幕は表示されない。そのため mpegts 配信でも HLS と同じく `arib-subtitle-timedmetadater` を使う。m2tsll は字幕 ES をエンコーダへ渡し、エンコード後の stdout に ID3 timed metadata (PID 0x1ffe) を挿入する (`LiveStreamBaseModel` / `RecordedStreamBaseModel`)
-- **エンコード後は字幕 ES を残し、ID3 は出力側で生成する**。m2ts-ll の自動生成コマンドは tsreadex の有無によらず `-map 0:v:0 %AUDIOSELECTMAP% -map "0:s?" -c:s copy` で ARIB 字幕 ES を map する。`LiveStreamBaseModel` / `RecordedStreamBaseModel` が stdout の TS を `ID3MetadataTransform` へ通し、PID `0x1FFE` の ID3 timed metadata を出力へ付ける。入力側で ID3 を map すると疎な字幕区間で muxer が固着するため、`Data: timed_id3` はこの出力側経路で作られる
+- **DPlayer は mpegts.js の `TIMED_ID3_METADATA_ARRIVED` からしか aribb24 へ字幕を渡さない**。TS に ARIB 字幕 ES (PID 0x130 等) がそのまま入っていても字幕は表示されない。そのため mpegts 配信でも HLS と同じく `AribSubtitleTimedMetadataTransform` を使う。m2tsll は字幕 ES をエンコーダへ渡し、エンコード後の stdout に ID3 timed metadata (PID 0x1ffe) を挿入する (`LiveStreamBaseModel` / `RecordedStreamBaseModel`)
+- **エンコード後は字幕 ES を残し、ID3 は出力側で生成する**。m2ts-ll の自動生成コマンドは tsreadex の有無によらず `-map 0:v:0 %AUDIOSELECTMAP% -map "0:s?" -c:s copy` で ARIB 字幕 ES を map する。`LiveStreamBaseModel` / `RecordedStreamBaseModel` が stdout の TS を `AribSubtitleTimedMetadataTransform` へ通し、PID `0x1FFE` の ID3 timed metadata を出力へ付ける。入力側で ID3 を map すると疎な字幕区間で muxer が固着するため、`Data: timed_id3` はこの出力側経路で作られる
 - ID3 変換は PMT を書き換えるため、`-map` を使う設定では出力の PID 構成も変わる
 - **m2tsll の TS 入力は tsreadex の有無によらず出力側 ID3 経路を使う**。m2ts (m2tsll 以外) の既存 tsreadex 経路は従来どおり。詳細は上の「音声トラックの切り替え」節を参照
 
@@ -512,7 +514,7 @@ EPGStation の rigaya プリセットは「rigaya が映像だけ処理 → 後�
 - メモリ保持はライブが直近 12 セグメントで、ストリーム停止時に即時解放される (`HLSMemoryStoreModel.LIVE_RETAIN_SEGMENT_NUM`)。録画済みは再生位置 (`lastServedSeq`) が判明するまでは直近 180 セグメントを暫定保持し (`RECORDED_RETAIN_SEGMENT_NUM`)、判明した後は再生位置から遡って約 120 秒分を保持する (`RECORDED_KEEP_BEHIND_SEGMENT_NUM`。詳細は上の「保持窓」節を参照)。どちらのモードも、まだクライアントが取得していないセグメントは保持上限だけを理由に削除しない (メモリ使用量の安全弁として `RECORDED_MAX_SEGMENT_NUM` (400 セグメント) を超えた場合だけは、未取得でも破棄する)。録画済みで保持範囲を超えて巻き戻す操作は、従来どおりクライアント側でストリームを作り直して対応する。
 - **録画済みはエンコードを再生位置の近くに留める**。録画ファイルのエンコードは実時間の数倍速で進むため、放置すると再生位置との差が際限なく開く。hls.js は録画済みのプレイリストも live 扱いで読む (エンコーダ動作中は `#EXT-X-ENDLIST` が無い) ため、再生位置が保持窓の外に出ると `StreamController.synchronizeToLiveEdge()` が `media.currentTime` をライブエッジ = エンコード最新位置へ書き換えてしまう (`liveMaxLatencyDurationCount` の既定は `Infinity` なので、発火するのは遅延しきい値ではなくこちらの条件)。`HLSMemoryStoreModel.getAheadSegmentNum()` がクライアントの取得済み seq からの先行量を返し、`RecordedStreamBaseModel` が 150 セグメント (`MAX_AHEAD_SEGMENT_NUM`) を超えたらエンコーダの標準出力の読み出しを止める。ブラウザが消費して先行量が 30 セグメント (`RESUME_AHEAD_SEGMENT_NUM`) まで減れば再開する。減らなくても、その時点の超過量に比例して計算した停止時間 (`pauseTime`。上限 `MAX_PACE_INTERVAL` = 5 秒) が経過すれば必ず再開する。パイプが詰まってエンコーダ自身が書き込みでブロックするため、追いつけば読み出しを再開するだけで戻る。先行分はシークに即応できる範囲でもあるので短くしすぎないこと。
 - **ただし完全に止めてはいけない (デッドロックになる)**。エンコードを止めるとプレイリストの更新も止まるが、LL-HLS のプレイヤー (特に iOS Safari のネイティブ HLS) は**ブロッキングプレイリスト要求 (`?_HLS_msn=<次の seq>`) の応答が変化してから次のセグメントを取得する**ため、更新が止まると新しいセグメントを取りに来なくなる。先行量の基準である `lastServedSeq` はクライアントが取得した最新 seq なので、取りに来なければ先行量も減らず、エンコードは永久に再開しない (画面は再生が止まったまま、サーバー側は `keep` が届き続けるので何のエラーも出ない)。そのため抑制中は先行量を定期確認し、30 セグメントまで減った時点で再開する。減らない場合も `pauseTime` の経過で必ず再開し、更新停止によるデッドロックを防ぐ。**再開判定のループ上限は固定の `MAX_PACE_INTERVAL` ではなく、その時点で計算した `pauseTime` を使う**。固定値にすると、超過量がわずかで `pauseTime` が短く計算された場合でも常に上限の 5 秒まで停止が引き延ばされてしまう (先行量は視聴の実時間経過でしか減らないため、短い `pauseTime` 内では `RESUME_AHEAD_SEGMENT_NUM` まで下がりきらず、ループが際限なく延長され続けていた)。**一定時間ごとの粗い ON/OFF (例: 1 秒止めて再開) にしてはいけない** — 停止中もエンコーダはパイプバッファへ書き込み続け、再開時に一気に流れ込むため、配信が「バーストと空白の繰り返し」になり再生がとびとびになる。
-- **PMT は 1 TS パケットに収まるとは限らない**。`arib-subtitle-timedmetadater` は PMT に metadata の記述子と ES を書き足すため、元の PMT が大きい放送局 (NHK 等) では 184 byte を超えて分割される。`AribId3Extractor` は PSI セクションを `section_length` まで組み立ててから解釈する。ここを先頭パケットだけで済ませると **metadata の PID を検出できず字幕が 1 つも出ない**。
+- **PMT は 1 TS パケットに収まるとは限らない**。`AribSubtitleTimedMetadataTransform` は PMT に metadata の記述子と ES を書き足すため、元の PMT が大きい放送局 (NHK 等) では 184 byte を超えて分割される。`AribId3Extractor` は PSI セクションを `section_length` まで組み立ててから解釈する。ここを先頭パケットだけで済ませると **metadata の PID を検出できず字幕が 1 つも出ない**。
 - **ID3 の PES は `PES_packet_length` で確定させる**。次の PES 到着を待つ実装にすると、字幕の間隔 (数秒〜数十秒) だけ表示が遅れて実質出ないのと同じになる。
 - **PES ヘッダの 33bit PTS はビット演算で組み立てられない** (JavaScript のビット演算は 32bit に丸められる)。`AribId3Extractor.parsePes()` は各フィールドを重み `2^30 / 2^22 / 2^15 / 2^7 / 2^0` で足し合わせて復元する。ここを間違えると字幕の表示タイミングだけがずれる (映像・音声は ffmpeg 側が扱うため気づきにくい)。テストは `test/ut/arib-id3-extractor.test.js`。
 - `Fmp4Packager` の emsg box は `scheme_id_uri` に `https://aomedia.org/emsg/ID3` を使う。この文字列自体に `emsg` が含まれるため、**バイト列を文字列検索して emsg の数を数えてはいけない** (box を辿って数えること)。

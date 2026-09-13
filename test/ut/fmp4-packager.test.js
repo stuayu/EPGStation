@@ -480,10 +480,12 @@ test('partsPerSegment の指定が不正なら既定値を使う', async () => {
     assert.equal(events.segment[0].parts.length, 3);
 });
 
-test('pushId3 した ARIB 字幕をパート先頭の emsg box として多重化する', async () => {
-    const packager = new Fmp4Packager({ partsPerSegment: 2 });
+test('録画済みモードでパートを公開しなくても ID3 の emsg をセグメントへ載せる', async () => {
+    const packager = new Fmp4Packager({ partsPerSegment: 2, mode: 'recorded' });
     const segments = [];
     packager.on('segment', segment => segments.push(segment));
+    // 録画済み HLS は #EXT-X-PART を公開しない。セグメントだけを受け取る経路を模す。
+    packager.on('part', () => {});
 
     packager.write(makeFtyp());
     packager.write(makeMoov());
@@ -495,8 +497,7 @@ test('pushId3 した ARIB 字幕をパート先頭の emsg box として多重�
     await new Promise(resolve => packager.end(resolve));
 
     assert.equal(segments.length, 1);
-    // emsg は 2 件分が先頭パートの前に置かれる
-    // (LL-HLS ではパートが単独で配信されるため、セグメント先頭ではなくパート先頭に載せる)
+    // emsg はパート先頭へ載り、セグメントの連結結果にも残る
     assert.equal(segments[0].data.toString('latin1', 4, 8), 'emsg');
     assert.equal(countBoxes(segments[0].data, 'emsg'), 2);
     assert.equal(segments[0].parts[0].data.toString('latin1', 4, 8), 'emsg');

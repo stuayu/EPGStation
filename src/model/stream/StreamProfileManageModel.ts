@@ -212,7 +212,7 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
      *   `-map "0:s?"` のみ。ID3 timed metadata (ARIB 字幕) は tsreadex が PID を落とすため
      *   出力側 (LiveStreamBaseModel) で付け直す
      * - tsreadex 無し: 映像・音声・字幕を個別に map する。ID3 timed metadata (PID 0x1FFE) は
-     *   入力側へ map せず、TS 入力の m2tsll では出力側の `ID3MetadataTransform` で付け直す
+     *   入力側へ map せず、TS 入力の m2tsll では出力側の `AribSubtitleTimedMetadataTransform` で付け直す
      *   (文字スーパーの bin_data を含む `0:d?` は使わない)
      * @param scope: ProfileScope
      * @param container: StreamContainer
