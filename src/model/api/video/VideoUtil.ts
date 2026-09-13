@@ -18,12 +18,18 @@ export default class VideoUtil implements IVideoUtil {
     private static readonly DEFAULT_FFPROBE_TIMEOUT_MS = 30 * 1000;
     private static readonly MIN_FFPROBE_TIMEOUT_MS = 1000;
     private static readonly FFPROBE_KILL_SIGNAL = 'SIGKILL';
-    // 録画ファイルでは開始時刻が異なる音声 ES を取りこぼさないため、音声一覧だけ probe 範囲を広げる。
-    // 本番の encoded TS で約 21.7 秒遅れて始まる ES を 60 秒 / 200 MB で検出できた。
-    private static readonly AUDIO_TRACK_FFPROBE_ANALYZE_DURATION = 60 * 1000 * 1000;
-    private static readonly AUDIO_TRACK_FFPROBE_SIZE = 200 * 1000 * 1000;
-    // 完了済み録画はファイル全体に現れる ES を拾う。ffprobe の int64 上限を渡し、実際の EOF で止める。
-    private static readonly COMPLETE_AUDIO_TRACK_FFPROBE_LIMIT = '9223372036854775807';
+    // 本番の encoded TS で約 21.7 秒遅れて始まる ES を検出できた実測値 (ffprobe の単位はμ秒 / byte)。
+    private static readonly AUDIO_TRACK_FFPROBE_ANALYZE_DURATION = 10 * 1000 * 1000;
+    private static readonly AUDIO_TRACK_FFPROBE_SIZE = 20 * 1000 * 1000;
+    // 完了済み・録画中とも同じ有限上限を使う。完了後もファイル全体を走査せず、録画中も末尾を待たない。
+    private static readonly COMPLETE_AUDIO_TRACK_FFPROBE_LIMIT = {
+        analyzeduration: VideoUtil.AUDIO_TRACK_FFPROBE_ANALYZE_DURATION.toString(10),
+        probesize: VideoUtil.AUDIO_TRACK_FFPROBE_SIZE.toString(10),
+    };
+    private static readonly RECORDING_AUDIO_TRACK_FFPROBE_LIMIT = {
+        analyzeduration: VideoUtil.AUDIO_TRACK_FFPROBE_ANALYZE_DURATION.toString(10),
+        probesize: VideoUtil.AUDIO_TRACK_FFPROBE_SIZE.toString(10),
+    };
 
     private config: IConfigFile;
     private videoFileDB: IVideoFileDB;
@@ -172,20 +178,13 @@ export default class VideoUtil implements IVideoUtil {
 
     public async getAudioTracks(filePath: string, option?: AudioTrackProbeOption): Promise<apid.VideoAudioTrack[]> {
         const probeLimit = option?.isRecording === true
-            ? {
-                  analyzeduration: VideoUtil.AUDIO_TRACK_FFPROBE_ANALYZE_DURATION.toString(10),
-                  probesize: VideoUtil.AUDIO_TRACK_FFPROBE_SIZE.toString(10),
-              }
-            : {
-                  analyzeduration: VideoUtil.COMPLETE_AUDIO_TRACK_FFPROBE_LIMIT,
-                  probesize: VideoUtil.COMPLETE_AUDIO_TRACK_FFPROBE_LIMIT,
-              };
+            ? VideoUtil.RECORDING_AUDIO_TRACK_FFPROBE_LIMIT
+            : VideoUtil.COMPLETE_AUDIO_TRACK_FFPROBE_LIMIT;
         const stdout = await this.execFfprobe([
             '-analyzeduration',
             probeLimit.analyzeduration,
             '-probesize',
             probeLimit.probesize,
-            ...(option?.isRecording === true ? [] : ['-count_frames']),
             '-v',
             '0',
             '-show_streams',
