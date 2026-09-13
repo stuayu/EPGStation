@@ -352,6 +352,16 @@ stream:
             # コマンドとみなされ、セグメントはメモリ上でのみ保持・配信される (Windows でも動作)
             # cmd に | を含めるとシェル経由で実行される (tsreadex などの前処理に利用可)
             # 従来の TS セグメント方式 (ディスク書き込み) に戻す場合は下部のコメント例を参照
+            # rigaya 系 (QSVEncC / NVEncC / VCEEncC) の cmd を手書きする場合は、
+            # --input-analyze / --input-probesize を小さくすること (目安: 1 秒 / 200000 byte)。
+            # probe が終わるまでエンコーダは 1 byte も出力しないため、長く取ると再生開始が遅れる。
+            # HLS は最初のセグメントが揃うまで再生を始められず、待っている間にストリームが
+            # 破棄されることがある (実測: --input-analyze 20 --input-probesize 50000000 の指定で
+            # probe 中にエンコーダのメモリだけが増え続け、後段 ffmpeg へ 1 byte も渡っていなかった)。
+            # ffmpeg を手書きする場合も -analyzeduration / -probesize は同程度に小さくすること。
+            # なお、セグメントが 1 本もできないまま破棄される事象は probe 設定以外でも起きるため、
+            # そのときは stream.log の「in-memory HLS 初回出力待ち警告」を手掛かりに
+            # cmd を手で実行して各段の出力を確かめること。
             - id: live-hls-1080p-avc
               name: 1080p(低遅延)
               container: hls

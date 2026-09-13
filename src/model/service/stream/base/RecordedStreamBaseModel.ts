@@ -325,6 +325,7 @@ export default abstract class RecordedStreamBaseModel
 
         this.log.stream.info(`start in-memory recorded HLS packaging: ${streamId}`);
         this.memoryStreamId = streamId;
+        this.startInitialHlsOutputWarningTimer(streamId, '録画');
         // 単一トラック (従来) モードのエントリは即座に作る (multiTrack 判定は moov 到着後なので、
         // 音声トラックが 2 本以上の場合はこのエントリは未使用のまま stop() で破棄される)
         this.hlsMemoryStore.create(streamId, 'recorded');
@@ -343,6 +344,7 @@ export default abstract class RecordedStreamBaseModel
             this.hlsMemoryStore.addPart(streamId, part.data, part.duration, part.isIndependent);
         });
         packager.on('segment', segment => {
+            this.markInitialHlsOutput();
             this.hlsMemoryStore.addSegment(streamId, segment.data, segment.duration);
             if (this.isEnable() === false && this.hlsMemoryStore.isReady(streamId) === true) {
                 this.markEnable(streamId);
@@ -365,6 +367,7 @@ export default abstract class RecordedStreamBaseModel
             this.hlsMemoryStore.addPart(streamId, part.data, part.duration, part.isIndependent, this.toHLSRole(role));
         });
         packager.on('trackSegment', (role, segment) => {
+            this.markInitialHlsOutput();
             const hlsRole = this.toHLSRole(role);
             this.hlsMemoryStore.addSegment(streamId, segment.data, segment.duration, hlsRole);
             if (this.isEnable() === false && this.hlsMemoryStore.isReady(streamId, 'v') === true) {

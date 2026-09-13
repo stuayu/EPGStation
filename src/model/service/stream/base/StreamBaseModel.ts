@@ -13,6 +13,10 @@ import IEncodeProcessManageModel from '../../encode/IEncodeProcessManageModel';
 import ISocketIOManageModel from '../../socketio/ISocketIOManageModel';
 import IHLSFileDeleterModel from '../util/IHLSFileDeleterModel';
 import IStreamBaseModel, { LiveStreamInfo, RecordedStreamInfo } from './IStreamBaseModel';
+import {
+    INITIAL_HLS_OUTPUT_WARNING_DELAY_MS,
+    shouldWarnInitialHlsOutput,
+} from '../../../../util/InitialHlsOutputWarning';
 
 @injectable()
 abstract class StreamBaseModel<T> implements IStreamBaseModel<T> {
@@ -28,6 +32,8 @@ abstract class StreamBaseModel<T> implements IStreamBaseModel<T> {
     private isEnableStream: boolean = false;
     private streamCheckTimer: NodeJS.Timeout | null = null;
     private streamStopTimer: NodeJS.Timeout | null = null;
+    private initialHlsOutputWarningTimer: NodeJS.Timeout | null = null;
+    private hasInitialHlsOutput: boolean = false;
 
     constructor(
         @inject('IConfiguration') configure: IConfiguration,
@@ -101,6 +107,8 @@ abstract class StreamBaseModel<T> implements IStreamBaseModel<T> {
             clearInterval(this.streamCheckTimer);
             this.streamCheckTimer = null;
         }
+
+        this.clearInitialHlsOutputWarningTimer();
 
         if (this.streamStopTimer !== null) {
             clearTimeout(this.streamStopTimer);
@@ -251,6 +259,60 @@ abstract class StreamBaseModel<T> implements IStreamBaseModel<T> {
         this.isEnableStream = true;
         this.log.stream.info(`enable stream: ${streamId}`);
         this.socketIO.notifyClient();
+    }
+
+    /**
+     * in-memory HLS の初回セグメント待ち診断タイマーを開始する
+     *
+     * **init の到着では解除しない**。`-movflags empty_moov` を使う cmd では
+     * init (ftyp+moov) だけが先に出て、その後のフラグメントが 1 つも来ない状態が起こりうるため、
+     * init で解除すると「セグメントが 1 本もできないまま破棄される」症状を取り逃がす
+     * @param streamId: apid.StreamId
+     * @param streamKind: string ライブまたは録画済み
+     */
+    protected startInitialHlsOutputWarningTimer(streamId: apid.StreamId, streamKind: string): void {
+        this.clearInitialHlsOutputWarningTimer();
+        this.hasInitialHlsOutput = false;
+        const startedAtMs = Date.now();
+        this.initialHlsOutputWarningTimer = setTimeout(() => {
+            this.initialHlsOutputWarningTimer = null;
+            if (
+                shouldWarnInitialHlsOutput(
+                    Date.now(),
+                    startedAtMs,
+                    this.hasInitialHlsOutput,
+                    INITIAL_HLS_OUTPUT_WARNING_DELAY_MS,
+                ) === true
+            ) {
+                this.log.stream.warn(
+                    `in-memory HLS 初回出力待ち警告: ${streamKind} stream ${streamId} は ` +
+                        `${INITIAL_HLS_OUTPUT_WARNING_DELAY_MS / 1000} 秒待っても最初のセグメントが届きません。` +
+                        'エンコードコマンドの最終段が出力を始めていない可能性があります。' +
+                        'cmd を手で実行して出力が出るか、パイプの各段 (tsreadex / エンコーダ / ffmpeg) が ' +
+                        'CPU を使っているかを確認してください。' +
+                        'probe 設定 (rigaya 系の --input-analyze / --input-probesize、' +
+                        'ffmpeg の -analyzeduration / -probesize) が長い場合は出力開始が遅れます',
+                );
+            }
+        }, INITIAL_HLS_OUTPUT_WARNING_DELAY_MS);
+    }
+
+    /**
+     * in-memory HLS の初回セグメント到着を記録する
+     */
+    protected markInitialHlsOutput(): void {
+        this.hasInitialHlsOutput = true;
+        this.clearInitialHlsOutputWarningTimer();
+    }
+
+    /**
+     * in-memory HLS の初回出力待ち診断タイマーを解除する
+     */
+    private clearInitialHlsOutputWarningTimer(): void {
+        if (this.initialHlsOutputWarningTimer !== null) {
+            clearTimeout(this.initialHlsOutputWarningTimer);
+            this.initialHlsOutputWarningTimer = null;
+        }
     }
 
     /**
