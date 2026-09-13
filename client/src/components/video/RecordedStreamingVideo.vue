@@ -4,6 +4,7 @@
 
 <script lang="ts">
 import BaseVideo from '@/components/video/BaseVideo';
+import { SelectablePlaybackContainer } from '../../../../src/util/PlaybackQualityOptionUtil';
 import container from '@/model/ModelContainer';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IRecordedStreamingVideoState from '@/model/state/recorded/streaming/IRecordedStreamingVideoState';
@@ -24,6 +25,7 @@ import {
 import { isInitialPlaybackBufferReady } from '../../../../src/util/PlaybackStartBuffer';
 import { resolveRecordedJikkyoPlaybackTime } from '../../../../src/util/RecordedJikkyoSync';
 import { normalizeStreamPlayPosition } from '../../../../src/util/StreamPlayPosition';
+import { decideAudioTrackSwitch } from '../../../../src/util/AudioTrackSwitchDecision';
 import type { RecordedStreamingType } from '@/util/StreamingTypeUtil';
 
 interface VideoSrcInfo {
@@ -48,11 +50,17 @@ class RecordedStreamingVideo extends BaseVideo {
     @Prop({ required: true })
     public streamingType!: RecordedStreamingType;
 
+    @Prop({ default: 0 })
+    public playPosition!: number;
+
     @Prop({ default: null })
     public jikkyoChannelId!: string | null;
 
     @Prop({ default: () => [] })
     public playbackProfiles!: apid.PlaybackProfile[];
+
+    @Prop({ default: () => [] })
+    public selectablePlaybackContainers!: SelectablePlaybackContainer[];
 
     @Prop({ default: null })
     public jikkyoStartAt!: number | null;
@@ -113,6 +121,7 @@ class RecordedStreamingVideo extends BaseVideo {
 
     public async mounted(): Promise<void> {
         this.containerElement = this.$refs.container as HTMLElement;
+        this.basePlayPosition = Math.max(0, Number.isFinite(this.playPosition) ? this.playPosition : 0);
 
         await this.videoState.clear();
         await this.updateVideoInfo();
@@ -276,7 +285,7 @@ class RecordedStreamingVideo extends BaseVideo {
         if (isM2TsLL === true) {
             this.setupInitialPlaybackBufferGate();
         }
-        this.setPlaybackProfiles(this.playbackProfiles, this.streamingType as 'mp4' | 'webm' | 'm2tsll');
+        this.setPlaybackProfiles(this.playbackProfiles, this.streamingType as 'mp4' | 'webm' | 'm2tsll', undefined, undefined, undefined, this.currentMode);
         if (this.audioTracks.length > 0) {
             this.setupRecordedAudioTrackSwitch();
         }
@@ -286,6 +295,7 @@ class RecordedStreamingVideo extends BaseVideo {
 
         // 画質切替時は現在の再生位置から配信し直す
         this.setupQualitySwitch({
+            container: this.streamingType,
             resolveUrl: async mode => {
                 this.basePlayPosition = this.getCurrentTime();
 
@@ -394,10 +404,17 @@ class RecordedStreamingVideo extends BaseVideo {
             tracks: this.audioTracks,
             current: this.currentAudioTrack,
             onSelect: async track => {
+                const action = decideAudioTrackSwitch(
+                    this.currentAudioTrack,
+                    track,
+                    this.isEmbeddedAudioSwitchMode(this.currentMode),
+                );
+                if (action === 'noop') return;
+
                 const mpegts = (this.dp as any)?.plugins?.mpegts;
                 if (
+                    action === 'embedded' &&
                     this.streamingType === 'm2tsll' &&
-                    this.isEmbeddedAudioSwitchMode(this.currentMode) &&
                     typeof mpegts?.switchSecondaryAudio === 'function'
                 ) {
                     if (RecordedStreamingVideo.isSecondaryAudioTrack(track)) mpegts.switchSecondaryAudio();
@@ -405,10 +422,36 @@ class RecordedStreamingVideo extends BaseVideo {
                     this.currentAudioTrack = track;
                     return;
                 }
-                this.currentAudioTrack = track;
-                this.dp?.switchQuality(this.currentMode);
+
+                await this.reconnectAudioTrack(track);
             },
         });
+    }
+
+    /** 音声指定子を変えた URL へ、現在位置を保って録画ストリームを再接続する。 */
+    private async reconnectAudioTrack(track: apid.AudioTrackSpecifier): Promise<void> {
+        if (this.dp === null) return;
+
+        const playPosition = this.getCurrentTime();
+        const playbackRate = this.dp.video.playbackRate;
+        const wasPaused = this.paused();
+        this.basePlayPosition = playPosition;
+        this.onWaiting();
+        this.onPause();
+        this.switchVideo({
+            url: this.createVideoSrc({
+                videoFileId: this.videoFileId,
+                streamingType: this.streamingType,
+                mode: this.currentMode,
+                playPosition,
+                audioTrack: this.resolveStreamAudioTrack(track),
+            }),
+            type: this.streamingType === 'm2tsll' ? 'mpegts' : 'normal',
+        });
+        this.currentAudioTrack = track;
+        this.dp.video.playbackRate = playbackRate;
+        if (wasPaused === true) this.pause();
+        else await this.play();
     }
 
     private isEmbeddedAudioSwitchMode(mode: number): boolean {

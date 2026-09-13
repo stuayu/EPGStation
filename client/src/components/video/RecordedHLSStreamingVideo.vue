@@ -4,6 +4,7 @@
 
 <script lang="ts">
 import BaseVideo from '@/components/video/BaseVideo';
+import { SelectablePlaybackContainer } from '../../../../src/util/PlaybackQualityOptionUtil';
 import container from '@/model/ModelContainer';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IRecordedHLSStreamingVideoState from '@/model/state/recorded/streaming/IRecordedHLSStreamingVideoState';
@@ -17,6 +18,7 @@ import { DPlayerType } from 'dplayer';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 import { resolveRecordedJikkyoPlaybackTime } from '../../../../src/util/RecordedJikkyoSync';
+import { decideAudioTrackSwitch } from '../../../../src/util/AudioTrackSwitchDecision';
 
 @Component({})
 class RecordedHLSStreamingVideo extends BaseVideo {
@@ -29,11 +31,17 @@ class RecordedHLSStreamingVideo extends BaseVideo {
     @Prop({ required: true })
     public videoFileId!: apid.VideoFileId;
 
+    @Prop({ default: 0 })
+    public playPosition!: number;
+
     @Prop({ default: null })
     public jikkyoChannelId!: string | null;
 
     @Prop({ default: () => [] })
     public playbackProfiles!: apid.PlaybackProfile[];
+
+    @Prop({ default: () => [] })
+    public selectablePlaybackContainers!: SelectablePlaybackContainer[];
 
     @Prop({ default: null })
     public jikkyoStartAt!: number | null;
@@ -88,6 +96,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
 
     public mounted(): void {
         this.containerElement = this.$refs.container as HTMLElement;
+        this.basePlayPosition = Math.max(0, Number.isFinite(this.playPosition) ? this.playPosition : 0);
 
         this.$nextTick(async () => {
             await this.videoState.clear();
@@ -307,13 +316,14 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             this.applyChapterHighlights(options, this.getDuration());
 
             this.createPlayer(options);
-            this.setPlaybackProfiles(this.playbackProfiles, 'hls');
+            this.setPlaybackProfiles(this.playbackProfiles, 'hls', undefined, undefined, undefined, this.currentMode);
             // ストリームを作り直した直後 (シーク・画質切替) は音声レンディションの選択が主音声へ戻る
             this.reapplyEmbeddedAudioTrack();
             this.setupAudioTrackSwitchForRecorded();
 
             // 画質切替時は現在の再生位置からストリームを作り直してから url を差し替える
             this.setupQualitySwitch({
+                container: 'hls',
                 resolveUrl: mode => this.restartStream(mode),
                 resetCurrentTime: true,
                 onSwitched: mode => {
@@ -381,7 +391,14 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             tracks: this.audioTracks,
             current: this.currentAudioTrack,
             onSelect: async track => {
-                if (this.isEmbeddedAudioSwitchMode(this.currentMode) === true) {
+                const action = decideAudioTrackSwitch(
+                    this.currentAudioTrack,
+                    track,
+                    this.isEmbeddedAudioSwitchMode(this.currentMode),
+                );
+                if (action === 'noop') return;
+
+                if (action === 'embedded') {
                     const switched = await HlsAudioTrackUtil.switchAudioTrack(this.dp as any, track);
                     if (switched === true) {
                         this.currentAudioTrack = track;

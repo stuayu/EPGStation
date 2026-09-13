@@ -15,6 +15,12 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-13
 
+- **DPlayer の画質メニューから配信方式と画質を同時に選べるようにした**: `playback-options` の `modes` に実在する方式×画質だけを平坦な一覧へ出し、M2TS-LL 非対応端末では同方式を除外する。表示名は `PlaybackLabelUtil` で「標準 (HLS) > 1080p 高画質」「低遅延 (M2TS-LL) > 1080p 高画質」のように統一した。方式変更時は DPlayer の同一 index ガードを避けて親へ通知し、Live / Recorded のストリームコンポーネントを再生成する。録画は再生位置を引き継ぐ。回帰テスト: `test/ut/playback-quality-option.test.js`。
+
+- **音声を切り替えても再接続されない問題を修正した**: 音声切替で画質と同じ mode の `switchQuality()` を呼んでいたため、DPlayer の同一 index ガードで処理が無視されていた。`embeddedAudioSwitch` が false / 不明な m2tsll は `audioTrack` 付き URL を `switchVideo()` へ渡し、録画 HLS / ライブ HLS は `stop()` → `start()` → URL 差し替えで再接続する。切替前の再生位置・再生速度・一時停止状態を保持し、同一トラック選択は無処理とした。`switchQuality()` の呼出しを画質切替用途だけに限定し、判定を `src/util/AudioTrackSwitchDecision.ts` へ切り出した。回帰テスト: `test/ut/audio-track-switch-decision.test.js`。
+
+- **HLS の音声トラックが設定メニューから消える問題を修正した**: `DPlayer` は HLS の `initMSE()` で `dplayer-no-audio-switching` を付け、hls.js 経路では `AUDIO_TRACKS_UPDATED` の検出数でも同クラスを書き換える。独立音声 ES 2 本を持つ録画では、EPGStation が生成した2項目を残したままクラスだけ再付与されることがあった。`DPlayerEnhancer` は EPGStation の `option.tracks` を正としてイベント後に項目・表示クラスを再適用し、DPlayer が HLS インスタンスを作り直す `initMSE` 後も再接続する。回帰テスト: `test/ut/audio-track-switcher.test.js`。
+
 - **`GET /api/videos/{videoFileId}/audio-tracks` の応答遅延を修正した**: 前タスクで完了録画へ ffprobe の int64 上限と `-count_frames` を指定していたため、1GB 級 TS の全体走査・全フレーム計数が発生していた。音声 ES 一覧にはフレーム数が不要なので `-count_frames` を外し、完了録画・録画中とも `-analyzeduration 10000000 -probesize 20000000` (10秒 / 20MB) の有限 probe へ統一した。本番の2本目音声 ES (主音声から21.7秒遅延) を2本とも検出できる実測を基準にした。回帰テスト: `test/ut/video-util-chapters.test.js`。
 
 - **再生位置で音声 ES が変わる録画・ライブへ追従するようにした**: 完了録画の音声一覧は ffprobe でファイル全体を走査し、録画中だけ `60 秒 / 200 MB` の bounded probe に制限する。数値 ES の配信 map は optional にし、選択 ES が区間に無い場合は主音声 map へ fallback して配信停止・0 バイトを防ぐ。ライブは `updateOnAirProgram` で一覧を再取得し、消えた選択を主音声へ戻す。通常ステレオで取得成功した空配列は切替 UI を隠し、取得失敗時だけ fallback 2 択を表示する。回帰テスト: `test/ut/audio-track-util.test.js`、`test/ut/program-audio.test.js`、`test/ut/video-util-chapters.test.js`、`test/ut/video-metadata-api.test.js`。

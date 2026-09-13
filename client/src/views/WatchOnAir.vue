@@ -20,6 +20,7 @@
             v-on:dataBroadcastingToggle="onDataBroadcastingToggle"
             v-on:jikkyoComment="onJikkyoComment"
             v-on:screenshotRequest="onScreenshotRequest"
+            v-on:playbackContainerSwitch="onPlaybackContainerSwitch"
         ></VideoContainer>
         <v-alert v-if="streamingErrorMessage !== null" class="streaming-error" type="error" variant="tonal" role="alert">
             {{ streamingErrorMessage }}
@@ -67,7 +68,7 @@ import WatchSidePanel from '@/components/watch/WatchSidePanel.vue';
 import WatchTopBar from '@/components/watch/WatchTopBar.vue';
 import SnsPostPanel from '@/components/watch/sns/SnsPostPanel.vue';
 import VideoContainer from '@/components/video/VideoContainer.vue';
-import type { ScreenshotRequest } from '@/components/video/BaseVideo';
+import type { PlaybackContainerSwitchRequest, ScreenshotRequest } from '@/components/video/BaseVideo';
 import { BaseVideoParam, LiveHLSParam, LiveMpegTsVideoParam, NormalVideoParam } from '@/components/video/ViedoParam';
 import container from '@/model/ModelContainer';
 import IChannelModel from '@/model/channels/IChannelModel';
@@ -142,6 +143,30 @@ class WatchOnAir extends Vue {
     /** DPlayer のキャプチャ要求を SNS 投稿パネルへ渡す。 */
     public onScreenshotRequest(request: ScreenshotRequest): void {
         (this.$refs.snsPostPanel as InstanceType<typeof SnsPostPanel> | undefined)?.onScreenshotRequest(request);
+    }
+
+    /** DPlayer の設定メニューからライブ配信方式を切り替える。 */
+    public onPlaybackContainerSwitch(request: PlaybackContainerSwitchRequest): void {
+        if (this.watchParam === null || this.videoParam === null || (request.container !== 'hls' && request.container !== 'm2tsll')) return;
+
+        this.watchParam = { ...this.watchParam, type: request.container, mode: request.mode };
+        const jikkyoChannelId = this.videoParam.jikkyoChannelId;
+        if (request.container === 'hls') {
+            this.videoParam = {
+                type: 'LiveHLS',
+                channelId: this.watchParam.channel,
+                mode: request.mode,
+                jikkyoChannelId,
+            };
+        } else {
+            this.videoParam = {
+                type: 'LiveMpegTs',
+                src: `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.watchParam.channel}/m2tsll?mode=${request.mode}`,
+                channelId: this.watchParam.channel,
+                mode: request.mode,
+                jikkyoChannelId,
+            };
+        }
     }
 
     /**

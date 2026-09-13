@@ -31,6 +31,7 @@
                     v-bind:mode="videoParam.mode"
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
                     v-bind:playbackProfiles="playbackProfiles"
+                    v-bind:selectablePlaybackContainers="selectablePlaybackContainers"
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
@@ -38,6 +39,7 @@
                     v-on:error="onVideoError"
                     v-on:playbackTransition="onPlaybackTransition"
                     v-on:qualitySwitched="onQualitySwitched"
+                    v-on:playbackContainerSwitch="onPlaybackContainerSwitch"
                     v-on:screenshotRequest="onScreenshotRequest"
                 ></LiveHLSVideo>
                 <RecordedStreamingVideo
@@ -50,7 +52,9 @@
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
                     v-bind:jikkyoStartAt="videoParam.jikkyoStartAt"
                     v-bind:jikkyoEndAt="videoParam.jikkyoEndAt"
+                    v-bind:playPosition="videoParam.playPosition"
                     v-bind:playbackProfiles="playbackProfiles"
+                    v-bind:selectablePlaybackContainers="selectablePlaybackContainers"
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
@@ -61,6 +65,7 @@
                     v-on:error="onVideoError"
                     v-on:playbackTransition="onPlaybackTransition"
                     v-on:qualitySwitched="onQualitySwitched"
+                    v-on:playbackContainerSwitch="onPlaybackContainerSwitch"
                     v-on:screenshotRequest="onScreenshotRequest"
                 ></RecordedStreamingVideo>
                 <RecordedHLSStreamingVideo
@@ -72,7 +77,9 @@
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
                     v-bind:jikkyoStartAt="videoParam.jikkyoStartAt"
                     v-bind:jikkyoEndAt="videoParam.jikkyoEndAt"
+                    v-bind:playPosition="videoParam.playPosition"
                     v-bind:playbackProfiles="playbackProfiles"
+                    v-bind:selectablePlaybackContainers="selectablePlaybackContainers"
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
@@ -83,6 +90,7 @@
                     v-on:error="onVideoError"
                     v-on:playbackTransition="onPlaybackTransition"
                     v-on:qualitySwitched="onQualitySwitched"
+                    v-on:playbackContainerSwitch="onPlaybackContainerSwitch"
                     v-on:screenshotRequest="onScreenshotRequest"
                 ></RecordedHLSStreamingVideo>
                 <LiveMpegTsVideo
@@ -93,6 +101,7 @@
                     v-bind:mode="videoParam.mode"
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
                     v-bind:playbackProfiles="playbackProfiles"
+                    v-bind:selectablePlaybackContainers="selectablePlaybackContainers"
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
@@ -100,6 +109,7 @@
                     v-on:error="onVideoError"
                     v-on:playbackTransition="onPlaybackTransition"
                     v-on:qualitySwitched="onQualitySwitched"
+                    v-on:playbackContainerSwitch="onPlaybackContainerSwitch"
                     v-on:screenshotRequest="onScreenshotRequest"
                 ></LiveMpegTsVideo>
             </div>
@@ -115,7 +125,7 @@ import RecordedStreamingVideo from '@/components/video/RecordedStreamingVideo.vu
 import LiveMpegTsVideo from '@/components/video/LiveMpegTsVideo.vue';
 import * as VideoParam from '@/components/video/ViedoParam';
 import UaUtil from '@/util/UaUtil';
-import BaseVideo, { ScreenshotRequest } from '@/components/video/BaseVideo';
+import BaseVideo, { PlaybackContainerSwitchRequest, ScreenshotRequest } from '@/components/video/BaseVideo';
 import container from '@/model/ModelContainer';
 import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import DPlayer from 'dplayer';
@@ -124,6 +134,7 @@ import { JikkyoComment } from '@/util/JikkyoCommentClient';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
+import StreamSupportUtil from '@/util/StreamSupportUtil';
 import * as apid from '../../../../api';
 import {
     detectPlaybackStall,
@@ -231,9 +242,9 @@ class VideoContainer extends Vue {
         try {
             const param = this.videoParam;
             if (param.type === 'LiveHLS' || param.type === 'LiveMpegTs') {
-                await this.playbackOptionsState.loadLive(param.channelId, this.getPlaybackContainer() ?? undefined);
+                await this.playbackOptionsState.loadLive(param.channelId);
             } else if ('videoFileId' in param && typeof param.videoFileId === 'number') {
-                await this.playbackOptionsState.loadRecorded(param.videoFileId, this.getPlaybackContainer() ?? undefined);
+                await this.playbackOptionsState.loadRecorded(param.videoFileId);
             } else {
                 return;
             }
@@ -364,7 +375,30 @@ class VideoContainer extends Vue {
             container,
             this.selectedPlaybackId,
             this.playbackOptions?.source,
+            this.getSelectablePlaybackContainers(),
         );
+    }
+
+    /** DPlayer の方式切替要求を受け、選択状態を更新して視聴画面へ中継する。 */
+    public onPlaybackContainerSwitch(request: PlaybackContainerSwitchRequest): void {
+        this.onQualitySwitched(request.profileId);
+        this.$emit('playbackContainerSwitch', request);
+    }
+
+    /** 子コンポーネントへ渡す配信方式の一覧 (自分の再生成時に一覧が縮まないよう prop で持たせる) */
+    public get selectablePlaybackContainers(): Array<'m2tsll' | 'mp4' | 'webm' | 'hls'> {
+        return this.getSelectablePlaybackContainers();
+    }
+
+    private getSelectablePlaybackContainers(): Array<'m2tsll' | 'mp4' | 'webm' | 'hls'> {
+        const containers: Array<'m2tsll' | 'mp4' | 'webm' | 'hls'> =
+            this.videoParam.type === 'LiveHLS' || this.videoParam.type === 'LiveMpegTs'
+                ? ['hls', 'm2tsll']
+                : ['hls', 'm2tsll', 'mp4', 'webm'];
+
+        return StreamSupportUtil.isM2TSLLSupported() === true
+            ? containers
+            : containers.filter(container => container !== 'm2tsll');
     }
 
     private getPlaybackContainer(): 'm2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | null {

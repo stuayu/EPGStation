@@ -23,6 +23,7 @@ export interface RecordedStreamingParam extends VideoParamBase {
     videoFileId: apid.VideoFileId;
     streamingType: RecordedStreamingType;
     mode: number;
+    playPosition?: number;
 }
 
 export interface LiveHLSParam extends VideoParamBase {
@@ -36,6 +37,7 @@ export interface RecordedHLSParam extends VideoParamBase {
     recordedId: apid.RecordedId;
     videoFileId: apid.VideoFileId;
     mode: number;
+    playPosition?: number;
 }
 
 export interface LiveMpegTsVideoParam extends VideoParamBase {

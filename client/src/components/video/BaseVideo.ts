@@ -13,9 +13,10 @@ import { DataBroadcastingConnectParam } from '@/util/DataBroadcastingManager';
 import { resolveDataBroadcastingTime } from '../../../../src/model/service/dataBroadcasting/DataBroadcastingTime';
 import DPlayerEnhancer from '@/util/DPlayerEnhancer';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
-import { getPlaybackLabel } from '@/util/PlaybackLabelUtil';
+import { getPlaybackOptionLabel } from '@/util/PlaybackLabelUtil';
 import * as apid from '../../../../api';
 import { findPlaybackUrl, requirePlaybackUrl } from '../../../../src/util/PlaybackUrlUtil';
+import { createPlaybackQualityOptions, SelectablePlaybackContainer } from '../../../../src/util/PlaybackQualityOptionUtil';
 import {
     PLAYBACK_BUFFER_RECOVERY_MIN_GAP_SEC,
     PlaybackBufferedRange,
@@ -33,8 +34,15 @@ type QualityPlaybackSnapshot = {
 };
 
 type PlaybackContainer = keyof apid.PlaybackProfile['modes'];
-type PlaybackQuality = DPlayerType.VideoQuality & { presetId: string; mode: number };
+type PlaybackQuality = DPlayerType.VideoQuality & { presetId: string; mode: number; container: SelectablePlaybackContainer };
 const MPEGTS_PLAYBACK_RECOVERY_TIMEOUT_MS = 15_000;
+
+export interface PlaybackContainerSwitchRequest {
+    container: SelectablePlaybackContainer;
+    mode: number;
+    profileId: string;
+    playPosition: number;
+}
 
 export interface ScreenshotRequest {
     video: HTMLVideoElement;
@@ -59,6 +67,15 @@ export default abstract class BaseVideo extends Vue {
     } | null = null;
     private qualitySwitchTraceId = 0;
     private isProgrammaticQualitySwitch: boolean = false; // 親から起こした画質切替か (ユーザー操作と区別する)
+    private playbackContainer: PlaybackContainer | null = null;
+
+    /**
+     * 設定メニューの画質一覧へ出す配信方式。
+     * 子コンポーネントは自分の再生成のたびに setPlaybackProfiles() を呼ぶため、
+     * ここを prop で受けておかないと一覧が現在の方式 1 つへ縮む。
+     * `@Prop` は `@Component` を付けた側でしか効かないため、宣言だけ置いて実体は各コンポーネントで定義する。
+     */
+    public selectablePlaybackContainers?: SelectablePlaybackContainer[];
     private pendingRecordedJikkyoPlaybackTime: number | null = null;
     private chapters: apid.VideoChapter[] = []; // 再生中ファイルのチャプター (開始位置の昇順)
     private extraHotkeyHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -354,7 +371,8 @@ export default abstract class BaseVideo extends Vue {
      * @param option.onSwitched: url 解決後に呼ばれるコールバック
      */
     protected setupQualitySwitch(option: {
-        resolveUrl: (mode: number) => Promise<string>;
+        container: SelectablePlaybackContainer;
+        resolveUrl: (mode: number, container: SelectablePlaybackContainer) => Promise<string>;
         resetCurrentTime?: boolean;
         onSwitched?: (mode: number) => void;
         onPlaybackReady?: () => void;
@@ -411,6 +429,20 @@ export default abstract class BaseVideo extends Vue {
                 return;
             }
 
+            const qualityItem = quality[mode] as PlaybackQuality;
+            if (qualityItem.container !== option.container) {
+                this.beginRecordedJikkyoTransition();
+                this.$emit('playbackTransition');
+                this.$emit('playbackContainerSwitch', {
+                    container: qualityItem.container,
+                    mode: qualityItem.mode,
+                    profileId: qualityItem.presetId,
+                    playPosition: this.getCurrentTime(),
+                } satisfies PlaybackContainerSwitchRequest);
+
+                return;
+            }
+
             // 切替中の多重実行を防ぐ
             if (this.isResolvingQuality === true || dp.switchingQuality === true || dp.qualityIndex === mode) {
                 return;
@@ -445,10 +477,9 @@ export default abstract class BaseVideo extends Vue {
             };
 
             (async (): Promise<void> => {
-                const qualityItem = quality[mode] as PlaybackQuality;
-                const serverMode = typeof qualityItem.mode === 'number' ? qualityItem.mode : mode;
+                const serverMode = qualityItem.mode;
                 try {
-                    const resolvedUrl = await option.resolveUrl(serverMode);
+                    const resolvedUrl = await option.resolveUrl(serverMode, qualityItem.container);
                     quality[mode].url = requirePlaybackUrl(resolvedUrl, `quality switch mode=${serverMode}`);
                 } catch (err) {
                     console.error(err);
@@ -576,7 +607,7 @@ export default abstract class BaseVideo extends Vue {
     public switchQuality(presetId: string): void {
         if (this.dp === null) return;
         const quality = ((this.dp as any).options?.video?.quality ?? []) as PlaybackQuality[];
-        const index = quality.findIndex(item => item.presetId === presetId);
+        const index = quality.findIndex(item => item.presetId === presetId && item.container === this.playbackContainer);
         if (index < 0) return;
 
         // 親から起こした切替は「ユーザーの選択」ではないので通知しない
@@ -712,11 +743,27 @@ export default abstract class BaseVideo extends Vue {
      * @param container 実際の再生コンテナ
      * @param selectedId 初期選択するプリセット識別子
      * @param source 元映像の特性 (無ければ HDR バッジ等は付かないが名前生成に問題は無い)
+     * @param selectableContainers 一覧へ出す配信方式。省略時は前回の指定を引き継ぐ (子コンポーネントからの呼び出しで単一方式へ戻さないため)
      */
-    public setPlaybackProfiles(profiles: apid.PlaybackProfile[], container: PlaybackContainer, selectedId = 'auto', source?: apid.SourceCapabilities): void {
+    public setPlaybackProfiles(
+        profiles: apid.PlaybackProfile[],
+        container: PlaybackContainer,
+        selectedId = 'auto',
+        source?: apid.SourceCapabilities,
+        selectableContainers?: SelectablePlaybackContainer[],
+        currentMode?: number,
+    ): void {
         if (this.dp === null || profiles.length === 0) return;
         const dp = this.dp as any;
-        const oldQuality = (dp.options?.video?.quality ?? []) as DPlayerType.VideoQuality[];
+        this.playbackContainer = container;
+        const fromProp = this.selectablePlaybackContainers ?? [];
+        const containers =
+            typeof selectableContainers !== 'undefined' && selectableContainers.length > 0
+                ? selectableContainers
+                : fromProp.length > 0
+                  ? fromProp
+                  : [container as SelectablePlaybackContainer];
+        const oldQuality = (dp.options?.video?.quality ?? []) as PlaybackQuality[];
         const currentQualityIndex = typeof dp.qualityIndex === 'number' ? dp.qualityIndex : 0;
         const current = findPlaybackUrl(
             dp.options?.video?.url,
@@ -730,19 +777,26 @@ export default abstract class BaseVideo extends Vue {
             return;
         }
         const type = oldQuality[0]?.type ?? dp.options?.video?.type ?? 'normal';
-        const qualities: PlaybackQuality[] = profiles
-            .filter(profile => typeof profile.modes?.[container] === 'number')
-            .map(profile => ({
-                name: getPlaybackLabel(profile, source).name,
-                url: current,
-                type,
-                presetId: profile.id,
-                mode: profile.modes[container] as number,
-            }));
+        // quality 配列の添字は mode ではないため、現在の項目が持つサーバ mode を使う (初回は未設定なので selectedId 側で引き当てる)
+        const resolvedMode =
+            typeof currentMode === 'number'
+                ? currentMode
+                : typeof oldQuality[currentQualityIndex]?.mode === 'number'
+                  ? oldQuality[currentQualityIndex].mode
+                  : -1;
+        const qualityOptions = createPlaybackQualityOptions(profiles, containers, container as SelectablePlaybackContainer, resolvedMode, selectedId);
+        const qualities: PlaybackQuality[] = qualityOptions.options.map(option => ({
+            name: getPlaybackOptionLabel(option.profile, option.container, source),
+            url: current,
+            type,
+            presetId: option.profile.id,
+            mode: option.mode,
+            container: option.container,
+        }));
         if (qualities.length === 0) return;
         dp.options.video.quality = qualities;
         dp.options.video.url = current;
-        const selected = qualities.findIndex(item => item.presetId === selectedId);
+        const selected = qualityOptions.currentIndex;
         if (selected >= 0) {
             dp.options.video.defaultQuality = selected;
             dp.qualityIndex = selected;
@@ -784,7 +838,7 @@ export default abstract class BaseVideo extends Vue {
 
         const dp = this.dp as any;
         const container = dp.container as HTMLElement | undefined;
-        const panel = container?.querySelector('.dplayer-setting-quality-panel');
+        const panel = container?.querySelector('.dplayer-setting-quality-panel') as HTMLElement | null | undefined;
         if (typeof container === 'undefined' || panel === null || typeof panel === 'undefined') return;
 
         const quality = (dp.options?.video?.quality ?? []) as PlaybackQuality[];
@@ -802,12 +856,18 @@ export default abstract class BaseVideo extends Vue {
             const element = document.createElement('div');
             element.className = `dplayer-setting-quality-item${index === currentIndex ? ' dplayer-setting-quality-current' : ''}`;
             element.dataset.index = `${index}`;
+            element.dataset.profileId = item.presetId;
+            element.dataset.container = item.container;
+            element.dataset.mode = `${item.mode}`;
             const toggle = document.createElement('div');
             toggle.className = 'dplayer-toggle';
             toggle.innerHTML = toggleTemplate;
             const label = document.createElement('span');
             label.className = 'dplayer-label';
             label.textContent = item.name;
+            label.style.whiteSpace = 'normal';
+            label.style.overflowWrap = 'anywhere';
+            label.style.paddingRight = '24px';
             element.appendChild(toggle);
             element.appendChild(label);
             // 差し替えた項目には DPlayer のハンドラが付かないため自前で繋ぐ。
@@ -827,6 +887,9 @@ export default abstract class BaseVideo extends Vue {
 
         const currentLabel = container.querySelector('.dplayer-setting-quality .dplayer-label-value');
         if (currentLabel !== null) currentLabel.textContent = quality[currentIndex]?.name ?? '';
+        panel.style.maxWidth = 'calc(100vw - 32px)';
+        panel.style.maxHeight = 'min(70vh, 420px)';
+        panel.style.overflowY = 'auto';
     }
 
     /**

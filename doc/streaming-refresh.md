@@ -179,12 +179,19 @@ aribb24.js の自動検出がこれを拾うため、in-memory HLS の字幕が 
    **別のダイアログ / bottom sheet を重ねてはいけない** (放映中からチャンネルを選んだときにモーダルが
    2 枚重なる不具合になっていた)。設定「再生前に画質を選ぶ」が ON のときだけ最初から展開して開く。
 2. **DPlayer の設定メニュー** (歯車) — 再生中の切替。`BaseVideo.setPlaybackProfiles()` が
-   `playback-options` の profile 一覧を DPlayer の quality へ流し込み、`setupQualitySwitch()` が
-   切替直前に url を解決する。**プレイヤーの上に独自の設定アイコンを重ねない** (歯車が 2 つ並ぶ)。
+   `playback-options` の profile 一覧を方式×画質の平坦な quality 項目へ流し込み、`setupQualitySwitch()` が
+   切替直前に url を解決する。項目名は「標準 (HLS) > 1080p 高画質」のように方式と画質を併記する。
+   **プレイヤーの上に独自の設定アイコンを重ねない** (歯車が 2 つ並ぶ)。
 
 - 画質からサーバの `mode` を引くときは **`PlaybackProfile.modes[<container>]`** を使う。
   プロファイル配列の添字を `mode` に流用すると、絞り込み・並び替えが入った瞬間に別の設定で再生される。
-- 配信方式 (M2TS-LL / HLS / MP4 / WebM) を切り替えたら、その container で `playback-options` を取り直す。
+- 配信方式 (M2TS-LL / HLS / MP4 / WebM) と画質の組み合わせは、`modes[<container>]` が数値を持つものだけを
+  DPlayer の同じ画質メニューへ出す。端末非対応の M2TS-LL は除外する。
+- DPlayer の画質メニューは「方式 > 画質」の平坦な一覧とし、設定メニューの現在値にも両方を表示する。
+  階層を使わないため、方式を変える場合も利用可能な組み合わせを一目で比較できる。
+- 同じ方式内の切替は DPlayer の画質切替を使う。方式が変わる場合は DPlayer の同一 index ガードを避け、
+  `playbackContainerSwitch` を `VideoContainer` へ通知する。親が現在位置・mode を引き継いで
+  ライブ/録画のコンポーネントを再生成するため、方式変更時も再生位置を保つ。
 - DPlayer 側で画質が切り替わると `qualitySwitched` が親 (`VideoContainer`) へ飛ぶ。
   親はこれを受けて自動画質の fallback を止める (ユーザーの明示的な選択を上書きしないため)。
   **親自身が起こした切替 (自動 fallback) では飛ばさない** — 飛ばすと親が「ユーザーが選んだ」と誤認し、
@@ -245,7 +252,8 @@ HLS の遅延を詰める場合はエンコードコマンドに GOP 固定を�
 
 ## 既知の制限
 
-- 配信形式 (M2TS-LL ⇄ HLS) のシームレス切替は未対応 (画質切替は同一配信形式内のみ)。
+- 配信形式 (M2TS-LL ⇄ HLS) はシームレス切替ではなく、親画面が対象コンポーネントとストリームを再生成する。
+  録画は切替前の再生位置を引き継ぐ。ライブは新しい配信セッションを開始する。
 - ライブ視聴の m2ts / mp4 / webm 直接再生 (`NormalVideo`) は画質切替の対象外。これらは `<video>` 要素へ無限長ストリームを直接渡しており、切替時の seek 動作が安定しないため。
 - 解像度切替しても URL の `?mode=` クエリは更新されない (リロード時は当初のモードに戻る)。
 - iOS 26 のホーム画面 Web App 制限は WebKit 側の修正で解除できる見込み。解除時は `StreamSupportUtil.checkM2TSLLSupport()` のバージョン判定を更新すること。
@@ -376,6 +384,7 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
   (2 本の ES に分離済みなので `-map 0:a:1`)。`AudioTrackUtil` が置換前の cmd の `%TSREADEX%` の
   有無で切り替える。
 - **録画済み MP4 / WebM も `audioTrack` を付けて再配信する**。ffprobe がデュアルモノラル 1 ES を主音声・副音声へ展開した場合、encoded の `sub` はサーバー側 ffmpeg の `pan` で右チャンネルを左右へ複製する。生 TS / tsreplace の m2tsll は従来どおり、tsreadex 無しなら `dual_mono_mode`、tsreadex 有りなら分離済み ES の map を使う。クライアントは再生開始後も音声一覧を保持し、画質切替・シーク後に選択状態を再適用する。
+- **音声切替は画質切替へ委譲しない**。同一トラックなら何もしない。`embeddedAudioSwitch` が true の m2tsll / HLS は同一ストリーム内の音声切替、false / 不明なら現在の再生位置を `ss` / HLS 開始位置へ渡して音声指定子だけ変えたストリームを再接続する。m2tsll は `switchVideo()` へ `audioTrack=<指定子>` 付き URL を渡し、HLS は `stop()` → `start(..., audioTrack)` → プレイヤー URL 差し替えを行う。切替前の再生位置・再生速度・一時停止状態を保持する。
 - **m2tsll は `-map 0` / `-map "0:d?"` / 入力側 ID3 map を使わない**。相乗りサービスの文字スーパー (PID 0x138、
   ffmpeg 上は PTS の無い `bin_data` / `private_stream_2`) が一括 map で拾われると mpegts muxer が
   インターリーブ待ちで数フレームだけ書き出した後に完全停止する (実測: ffmpeg 9.0.1、libx264 は 161
@@ -499,6 +508,10 @@ EPGStation の rigaya プリセットは「rigaya が映像だけ処理 → 後�
 副音声選択時だけ右チャンネルを左右へ複製する。Web Audio 非対応・グラフ生成失敗時は UI を表示せず通常再生を維持する。
 - UI は **DPlayer の設定 > 音声パネルの DOM を流用**している (`DPlayerEnhancer`)。DPlayer 標準の実装は
   mpegts.js / hls.js のトラックを直接叩くものなので、項目の生成とクリック時の動作を差し替えている。
+  HLS では DPlayer 自身が `initMSE` および hls.js の `AUDIO_TRACKS_UPDATED` で
+  `dplayer-no-audio-switching` を更新するため、EPGStation の独立音声 ES 一覧 (`option.tracks`) を正として
+  各イベント後に独自項目と表示クラスを再適用する。DPlayer が `initMSE` で HLS インスタンスを作り直す
+  経路にも同じ再適用を接続する。
 
 ### チャプター
 
@@ -721,7 +734,7 @@ HDR (`hlg` / `pq`) を `tone-map` または `sdr` で配信するときだけ、
 
 `ClientCapabilityUtil` は MediaCapabilities の `decodingInfo()` を優先し、`canPlayType()` を補助に使う。HEVC Main10 は `hvc1.2.4.L153.B0`、HDR は `dynamic-range: high` で判定し、結果を localStorage に TTL 付きで保存する。回線状態はキャッシュせず、再生選択肢の取得ごとに Network Information API を読む。Save-Data または 3G 以下は `slow`、セルラーでも 4G・10Mbps 以上・RTT 200ms 以下なら `fast`、API 非対応なら `unknown` とする。回線情報は初期推奨の加減点にだけ使い、再生中の回線変化だけでは画質を変えない。**表示ラベルは `client/src/util/PlaybackLabelUtil.ts` の 1 か所で決める** (`getPlaybackLabel()` / `getPlaybackShortLabel()`)。**表示ラベルの引き当てキーは `PlaybackProfile.role`** (`auto` / `original` / `2160p-high` / `1080p-high` / `1080p` / `720p` / `data-saver`)。`profile.id` は `live-m2tsll-1080p-avc` のような実プリセット id なので、id で辞書を引くと `auto` 以外は必ず外れる (実際に一言説明とバッジが出ていなかった)。`role` はサーバが `PlaybackApiModel.builtinRole()` で決めて API に載せる。 **「おまかせ」プリセットを返すのはライブだけ**で、録画の配信では `profiles` に `auto` が入らない。`PlaybackOptionsState.getInitialPresetId()` は `auto` が無ければ `recommended.resolvedId` を初期選択にする (`auto` のままだと、一覧のどれも選択されていないのにボタンだけ「おまかせ」と出る)。 通常表示は「今回の選択」「何が嬉しいか」の一言 (summary) までとし、HEVC / Main10 / エンコーダ名やサーバ mode 番号などの技術的な詳細は `showDetail` (「詳しく表示」トグル、`IPlaybackOptionsState.preference.showQualityDetail` に永続化) が ON のときだけ出す。バッジ (`おすすめ` / `4K` / `HDR` / `変換なし` / `通信量小` / `カスタム`) の判定にはプリセット情報だけでなく `SourceCapabilities` (HDR 判定) も要るため、呼び出し側は `source` を渡す必要がある。
 
-`PlaybackOptionsState` は Phase 7 の Playback API を端末能力付きで呼び、画質選択と設定を端末単位の localStorage へ保存する。Playback API の各 profile は preset id と container 別の既存 mode を持ち、VideoContainer は id を BaseVideo へ渡す。BaseVideo は container に対応する profile だけで DPlayer quality を作り、表示名・順序・件数を新 UI と一致させる。サーバーへ渡す mode は従来どおり config の添字であり、旧 config のみの環境では `StreamQualityUtil` の quality へフォールバックする。
+`PlaybackOptionsState` は Phase 7 の Playback API を端末能力付きで呼び、画質選択と設定を端末単位の localStorage へ保存する。Playback API の各 profile は preset id と container 別の既存 mode を持ち、VideoContainer は全候補と現在の container を BaseVideo へ渡す。BaseVideo は `modes[<container>]` が存在する方式×画質だけで DPlayer quality を作り、`PlaybackLabelUtil` の方式ラベルと画質ラベルを結合して表示する。サーバーへ渡す mode は従来どおり config の添字であり、旧 config のみの環境では `StreamQualityUtil` の quality へフォールバックする。方式切替は `VideoContainer` が対象の Live / Recorded コンポーネントを再生成し、録画の再生位置を `playPosition` で渡す。
 
 画質切替前に BaseVideo が音量、muted、再生速度、字幕、Fullscreen、PiP を退避し、新しい video 要素の loadedmetadata / canplay 後に個別復元する。復元失敗は再生を止めない。
 

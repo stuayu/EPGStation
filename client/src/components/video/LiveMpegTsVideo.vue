@@ -4,6 +4,7 @@
 
 <script lang="ts">
 import BaseVideo from '@/components/video/BaseVideo';
+import { SelectablePlaybackContainer } from '../../../../src/util/PlaybackQualityOptionUtil';
 import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import container from '@/model/ModelContainer';
@@ -17,6 +18,7 @@ import { DPlayerType } from 'dplayer';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 import ProgramAudioTrackUtil from '../../../../src/util/ProgramAudioTrackUtil';
+import { decideAudioTrackSwitch } from '../../../../src/util/AudioTrackSwitchDecision';
 
 @Component({})
 class LiveMpegTsVideo extends BaseVideo {
@@ -34,6 +36,9 @@ class LiveMpegTsVideo extends BaseVideo {
 
     @Prop({ default: () => [] })
     public playbackProfiles!: apid.PlaybackProfile[];
+
+    @Prop({ default: () => [] })
+    public selectablePlaybackContainers!: SelectablePlaybackContainer[];
 
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private channelsApiModel: IChannelsApiModel = container.get<IChannelsApiModel>('IChannelsApiModel');
@@ -127,8 +132,7 @@ class LiveMpegTsVideo extends BaseVideo {
             ) {
                 mpegts.switchPrimaryAudio();
             } else {
-                // currentAudioTrack は先に main へ戻してから URL を再生成する。
-                (this.dp as any).switchQuality(this.currentMode);
+                await this.reconnectAudioTrack(next);
             }
         } catch (err) {
             console.error(err);
@@ -204,10 +208,11 @@ class LiveMpegTsVideo extends BaseVideo {
         };
 
         this.createPlayer(options);
-        this.setPlaybackProfiles(this.playbackProfiles, 'm2tsll');
+        this.setPlaybackProfiles(this.playbackProfiles, 'm2tsll', undefined, undefined, undefined, this.currentMode);
         this.setupLiveAudioTrackSwitch();
         this.deferPreviousMpegtsDestroy();
         this.setupQualitySwitch({
+            container: 'm2tsll',
             resolveUrl: async mode => this.createStreamUrl(mode, this.currentAudioTrack),
             onSwitched: mode => {
                 this.currentMode = mode;
@@ -321,7 +326,14 @@ class LiveMpegTsVideo extends BaseVideo {
                     return;
                 }
 
-                if (this.isEmbeddedAudioSwitchMode(this.currentMode) === true) {
+                const action = decideAudioTrackSwitch(
+                    this.currentAudioTrack,
+                    track,
+                    this.isEmbeddedAudioSwitchMode(this.currentMode),
+                );
+                if (action === 'noop') return;
+
+                if (action === 'embedded') {
                     const mpegts = dp.plugins?.mpegts;
                     if (
                         typeof mpegts?.switchPrimaryAudio === 'function' &&
@@ -339,11 +351,26 @@ class LiveMpegTsVideo extends BaseVideo {
                     // mpegts プラグインが見つからない場合は下の再接続方式へフォールバックする
                 }
 
-                this.currentAudioTrack = track;
-                // 画質切替と同じ経路で読み直す (音量・字幕表示などの復元も共通処理に任せる)
-                dp.switchQuality(this.currentMode);
+                await this.reconnectAudioTrack(track);
             },
         });
+    }
+
+    /** 音声指定子を変えた URL へ、現在の再生状態を保ってライブストリームを再接続する。 */
+    private async reconnectAudioTrack(track: apid.AudioTrackSpecifier): Promise<void> {
+        if (this.dp === null) return;
+
+        const dp = this.dp as any;
+        const wasPaused = this.paused();
+        const playbackRate = dp.video.playbackRate;
+        this.switchVideo({
+            url: this.createStreamUrl(this.currentMode, track),
+            type: 'mpegts',
+        });
+        this.currentAudioTrack = track;
+        dp.video.playbackRate = playbackRate;
+        if (wasPaused === true) this.pause();
+        else await this.play();
     }
 
     /**
