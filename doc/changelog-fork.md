@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-13
 
+- **録画 M2TS-LL の iPad / MMS 再生停止を修正した**: DPlayer が組み立てる mpegts.js の `mediaDataSource` へ `isLive: true` を渡す経路を追加した。録画ファイルでもサーバは `-readrate` で実時間ペースに絞って流し続けるため、ManagedMediaSource の `onEndStreaming` で transmuxer を suspend させない。DPlayer 自身の `live` は false のままにして録画 UI と `ss` でのシークを維持し、ライブ m2tsll は変更しない。実装: `client/src/util/DPlayerUtil.ts`、`client/src/components/video/RecordedStreamingVideo.vue`
+- **録画データ放送の時計同期を補強した**: `videoFile.startAt + VirtualTimeline の絶対再生位置` を `RecordedJikkyoSync` と共有して計算し、ストリーム再生成中の `dummyPlayPosition` は送らない。`seeked` / `canplay` / 画質切替確定 (`quality_end`) で即時送信し、250ms タイマーは通常再生中の追従に限定した。`startAt` が無い場合は推測時刻を送らず BML 側の時計を上書きしない。回帰テスト: `test/ut/data-broadcasting-time.test.js`
 - **実機計測用の再生ハーネスを統合した**: 書き捨てだった Playwright / curl 計測を `tools/playback-harness/run.js` へ統合。ブラウザ起動・デバイス設定・`video.play()` による再生開始・再生状態採取・相対シーク・出力・終了コード判定を共通化し、watch、実況シーク、録画 m2tsll シーク、buffered 詳細、DPlayer 二重化、ptime、HLS 字幕 emsg、字幕描画、画質切替、録画ストレス、iPad 音声、ManagedMediaSource の13シナリオを収録した。`emsg` は `curl` + `ffprobe` の `emsg-check.sh` へ分離してブラウザ不要とした。
     - 実装: `tools/playback-harness/`、`src/util/PlaybackHarnessUtil.ts`
     - 判定ロジック: 停止回数・最長停止、実況コメント時刻突き合わせ、emsg 比率を純粋関数化。`test/ut/playback-harness-util.test.js` を追加。
