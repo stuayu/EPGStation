@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-13
 
+- **ライブ HLS がセグメント 0 本のまま破棄されるときの診断ログを追加した**: in-memory HLS (ライブ・録画) のパッケージング開始後、15秒たっても最初の init またはセグメントが来ない場合に、既存の破棄タイミング・再生挙動を変えず warn ログを出す。ログには rigaya 系の `--input-analyze` / `--input-probesize` と ffmpeg の `-analyzeduration` / `-probesize` が長すぎる可能性を含めた。判定は `src/util/InitialHlsOutputWarning.ts` の純粋関数へ分離し、`test/ut/initial-hls-output-warning.test.js` で初回出力あり/なしを検証する。両 OS の config template と `doc/streaming-refresh.md` / `doc/PROJECT_OVERVIEW.md` に手書き probe の注意と目安 (`1秒 / 200000 byte`) を追記した
+
 - **DPlayer の画質メニューから配信方式と画質を同時に選べるようにした**: `playback-options` の `modes` に実在する方式×画質だけを平坦な一覧へ出し、M2TS-LL 非対応端末では同方式を除外する。表示名は `PlaybackLabelUtil` で「標準 (HLS) > 1080p 高画質」「低遅延 (M2TS-LL) > 1080p 高画質」のように統一した。方式変更時は DPlayer の同一 index ガードを避けて親へ通知し、Live / Recorded のストリームコンポーネントを再生成する。録画は再生位置を引き継ぐ。回帰テスト: `test/ut/playback-quality-option.test.js`。
 
 - **音声を切り替えても再接続されない問題を修正した**: 音声切替で画質と同じ mode の `switchQuality()` を呼んでいたため、DPlayer の同一 index ガードで処理が無視されていた。`embeddedAudioSwitch` が false / 不明な m2tsll は `audioTrack` 付き URL を `switchVideo()` へ渡し、録画 HLS / ライブ HLS は `stop()` → `start()` → URL 差し替えで再接続する。切替前の再生位置・再生速度・一時停止状態を保持し、同一トラック選択は無処理とした。`switchQuality()` の呼出しを画質切替用途だけに限定し、判定を `src/util/AudioTrackSwitchDecision.ts` へ切り出した。回帰テスト: `test/ut/audio-track-switch-decision.test.js`。
