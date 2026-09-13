@@ -12,6 +12,7 @@ import IServiceServer from './IServiceServer';
 import IEitPresentStore from './stream/util/IEitPresentStore';
 import ISocketIOManageModel from './socketio/ISocketIOManageModel';
 import IProgramDB from '../db/IProgramDB';
+import IHardwareEncoderDetector from '../encoder/IHardwareEncoderDetector';
 install();
 
 containerSetter.set(container);
@@ -35,6 +36,7 @@ process.on('unhandledRejection', err => {
         .get<IConfigOverlayLoader>('IConfigOverlayLoader')
         .load()
         .catch(err => log.system.error(err));
+    await container.get<IHardwareEncoderDetector>('IHardwareEncoderDetector').detect();
     await container
         .get<ILogLevelApplier>('ILogLevelApplier')
         .apply()

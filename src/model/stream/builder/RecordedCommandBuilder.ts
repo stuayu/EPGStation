@@ -1,4 +1,4 @@
-import { injectable } from 'inversify';
+import { inject, injectable, optional } from 'inversify';
 import {
     buildFfmpegAudioArgs,
     buildFfmpegVideoArgs,
@@ -10,6 +10,7 @@ import { recordedStreamPacingArgs } from '../../../util/RecordedStreamPacing';
 import { SourceCapabilities } from '../capability/ISourceCapabilities';
 import { StreamPreset } from '../preset/IStreamPreset';
 import IRecordedCommandBuilder from './IRecordedCommandBuilder';
+import IHardwareEncoderDetector from '../../encoder/IHardwareEncoderDetector';
 
 /**
  * 録画ファイル入力用の配信コマンドを組み立てる
@@ -19,11 +20,13 @@ import IRecordedCommandBuilder from './IRecordedCommandBuilder';
  */
 @injectable()
 export default class RecordedCommandBuilder implements IRecordedCommandBuilder {
+    constructor(@inject('IHardwareEncoderDetector') @optional() private readonly detector?: IHardwareEncoderDetector) {}
+
     /** 録画ファイル入力用の品質優先配信コマンドを組み立てる。 */
     public build(
         source: SourceCapabilities,
         preset: StreamPreset,
-        encoders: readonly StreamEncoderCapability[],
+        encoders: readonly StreamEncoderCapability[] = [],
     ): string {
         const pacing = recordedStreamPacingArgs();
         if (preset.output.codec === 'copy') {
@@ -31,28 +34,36 @@ export default class RecordedCommandBuilder implements IRecordedCommandBuilder {
         }
 
         const audio = buildFfmpegAudioArgs(preset);
-        const encoder = selectEncoder(source, preset, encoders);
+        const rigayaAudio = audio.replace('%AUDIOMAP% ', '');
+        const available =
+            encoders.length > 0
+                ? encoders
+                : [
+                      this.detector?.getStreamEncoder(preset.output.codec ?? 'h264') ?? {
+                          kind: 'ffmpeg',
+                          codecs: ['h264', 'hevc'],
+                          bitDepths: [8, 10],
+                      },
+                  ];
+        const encoder = selectEncoder(source, preset, available);
         if (encoder.kind === 'ffmpeg') {
             return (
                 `%FFMPEG% %DUALMONOMODE% ${pacing} -ss %SS% -i %INPUT% -sn ${audio} ` +
-                `${buildFfmpegVideoArgs(source, preset, 'recorded')} -f mpegts pipe:1`
+                `${buildFfmpegVideoArgs(source, preset, 'recorded', encoder)} -f mpegts pipe:1`
             );
         }
 
         const bin =
-            (encoder.command ?? encoder.kind === 'nvencc')
-                ? 'NVEncC'
-                : encoder.kind === 'qsvencc'
-                  ? 'QSVEncC'
-                  : 'VCEEncC';
+            encoder.command ??
+            (encoder.kind === 'nvencc' ? 'NVEncC' : encoder.kind === 'qsvencc' ? 'QSVEncC' : 'VCEEncC');
 
         // rigaya 系は音声をコピーのまま mpegts で流し、後段の ffmpeg で aac 化する
         // (--audio-filter は --audio-copy と併用できないため、音声の加工は後段へ寄せる)
         return (
             `${bin} --seek %SS% -i %INPUT% ${buildRigayaVideoArgs(source, preset, encoder, 'recorded', true)} ` +
             `--audio-copy --output-format mpegts -o - | ` +
-            `%FFMPEG% %DUALMONOMODE% ${pacing} -i pipe:0 -sn -c:v copy${source.codec === 'hevc' ? ' -tag:v hvc1' : ''} ` +
-            `${audio} -f mpegts pipe:1`
+            `%FFMPEG% %DUALMONOMODE% ${pacing} -i pipe:0 -sn -c:v copy${preset.output.codec === 'hevc' ? ' -tag:v hvc1' : ''} ` +
+            `${rigayaAudio} -f mpegts pipe:1`
         );
     }
 }

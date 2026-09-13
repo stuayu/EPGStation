@@ -103,6 +103,9 @@ export type EncodeHwAccel = 'software' | 'qsv' | 'vaapi' | 'nvenc' | 'qsvencc' |
 export type EncodeCodec = 'h264' | 'hevc';
 export type EncodeQuality = '2160p' | '1080p' | '720p' | '480p' | '240p';
 
+/** 配信・エンコードで使うハードウェアエンコーダの選択。 */
+export type HardwareEncoderSetting = 'auto' | 'qsv' | 'nvenc' | 'vce' | 'videotoolbox' | 'software';
+
 /**
  * プリセットの適用先。
  * - recorded: 録画ファイルのバックグラウンドエンコード (config.encode 相当、config/enc.js 経由)
@@ -433,6 +436,8 @@ export default interface IConfigFile {
     ffprobeTimeout?: number; // ffprobe 1 回あたりの上限時間 (秒)。応答しないファイルで解析が止まらないようにする
     // 配信時の音声ブースト倍率 (1.0〜4.0、既定 2.0)
     audioBoost?: number;
+    // 配信・エンコードで使用するハードウェアエンコーダ。省略時は実機検出の結果を使う
+    hardwareEncoder?: HardwareEncoderSetting;
     tsreadex?: string; // tsreadex の実行ファイルパス (省略時は PATH 上の tsreadex を使用)
     // rigaya 氏のハードウェアエンコーダの実行ファイルパス (省略時は PATH 上のコマンド名 (QSVEncC/NVEncC/VCEEncC) を使用)
     // encodePresets.hwaccel や encode[].cmd / stream.profiles の cmd 内で明示的に呼び出す場合に使用する

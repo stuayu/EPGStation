@@ -12,6 +12,8 @@ export interface StreamEncoderCapability {
     codecs: Array<'h264' | 'hevc'>;
     bitDepths: number[];
     hdr?: boolean;
+    /** ffmpeg encoder name。未指定時は libx264 / libx265。 */
+    ffmpegCodecs?: string;
 }
 
 export type StreamBuilderMode = 'live' | 'recorded';
@@ -204,8 +206,9 @@ export const buildFfmpegVideoArgs = (
     source: SourceCapabilities,
     preset: StreamPreset,
     mode: StreamBuilderMode,
+    encoder?: StreamEncoderCapability,
 ): string => {
-    const codec = preset.output.codec === 'hevc' ? 'libx265' : 'libx264';
+    const codec = encoder?.ffmpegCodecs ?? (preset.output.codec === 'hevc' ? 'libx265' : 'libx264');
     const height = outputHeight(source, preset);
     const depth = outputBitDepth(source, preset);
     const filter = buildFfmpegVideoFilter(source, preset, height);
@@ -227,5 +230,14 @@ export const buildFfmpegVideoArgs = (
             : preset.output.frameRate === '60p'
               ? '60000/1001'
               : '30000/1001';
-    return `-c:v ${codec}${filter ? ` -vf ${filter}` : ''}${profile}${tuning}${fps ? ` -r ${fps}` : ''}${hdr}${codec === 'libx265' ? ' -tag:v hvc1' : ''}`;
+    const hardwareTuning =
+        encoder?.ffmpegCodecs === 'h264_videotoolbox' || encoder?.ffmpegCodecs === 'hevc_videotoolbox'
+            ? ' -allow_sw 1 -realtime true'
+            : encoder?.ffmpegCodecs?.endsWith('_qsv') === true
+              ? ' -preset veryfast'
+              : encoder?.ffmpegCodecs?.endsWith('_nvenc') === true || encoder?.ffmpegCodecs?.endsWith('_amf') === true
+                ? ' -preset p3'
+                : tuning;
+    const tag = preset.output.codec === 'hevc' ? ' -tag:v hvc1' : '';
+    return `-c:v ${codec}${filter ? ` -vf ${filter}` : ''}${profile}${hardwareTuning}${fps ? ` -r ${fps}` : ''}${hdr}${tag}`;
 };

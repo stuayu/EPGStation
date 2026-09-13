@@ -73,6 +73,7 @@ flowchart TB
 | `src/model/stream/preset/` | StreamPresetRegistry (Built-in / Legacy / config 統合) |
 | `src/model/stream/resolver/` | PlaybackPolicyResolver (端末・映像特性から再生方式決定) |
 | `src/model/stream/builder/` | LiveCommandBuilder / RecordedCommandBuilder |
+| `src/model/encoder/` | 起動時の QSVEncC / NVEncC / VCEEncC / ffmpeg HW エンコーダ検出と結果キャッシュ |
 | `src/model/service/dataBroadcasting/` | データ放送 (BML) 用 WebSocket サーバ (映像プレイヤーとは別経路) |
 | `src/model/series/` `src/model/metadata/` | シリーズ判定と外部辞書 (しょぼいカレンダー / Annict / Wikidata) |
 | `src/model/Configuration.ts` | `config/config.yml` の読み込み (fs.watchFile でホットリロード) |

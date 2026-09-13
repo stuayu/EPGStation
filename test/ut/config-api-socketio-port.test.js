@@ -9,7 +9,7 @@ const ConfigApiModel = require('../../dist/model/api/config/ConfigApiModel').def
  * DI クラスなので依存はコンストラクタ引数の位置で渡す
  * (IConfiguration, IIPCClient, IStreamProfileManageModel)
  */
-const createModel = config => {
+const createModel = (config, detector) => {
     const configuration = {
         getConfig: () => config,
     };
@@ -23,7 +23,7 @@ const createModel = config => {
         getRecordedProfiles: () => [],
     };
 
-    return new ConfigApiModel(configuration, ipc, streamProfileManageModel);
+    return new ConfigApiModel(configuration, ipc, streamProfileManageModel, detector);
 };
 
 const baseConfig = {
@@ -47,6 +47,18 @@ test('http: socketioPort の指定が無ければ専用ポート扱いにしな�
     assert.equal(result.useDedicatedSocketIOPort, false);
 });
 
+test('config API は起動時に検出したハードウェアエンコーダを返す', async () => {
+    const result = await createModel(baseConfig, {
+        getResult: () => ({ configured: 'auto', selected: 'videotoolbox', available: ['videotoolbox', 'software'] }),
+    }).getConfig(false, 8888);
+
+    assert.deepEqual(result.hardwareEncoder, {
+        configured: 'auto',
+        selected: 'videotoolbox',
+        available: ['videotoolbox', 'software'],
+    });
+});
+
 test('http: 直接アクセスで socketioPort を指定したら専用ポート扱いにする', async () => {
     const result = await createModel({ ...baseConfig, socketioPort: 8889 }).getConfig(false, 8888);
 
@@ -62,7 +74,10 @@ test('https: socketioPort の指定が無ければ専用ポート扱いにしな
 });
 
 test('https: 直接アクセスで socketioPort を指定したら専用ポート扱いにする', async () => {
-    const result = await createModel({ ...baseConfig, https: { port: 8443, socketioPort: 8444 } }).getConfig(true, 8443);
+    const result = await createModel({ ...baseConfig, https: { port: 8443, socketioPort: 8444 } }).getConfig(
+        true,
+        8443,
+    );
 
     assert.equal(result.socketIOPort, 8444);
     assert.equal(result.useDedicatedSocketIOPort, true);

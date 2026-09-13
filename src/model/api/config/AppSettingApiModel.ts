@@ -1,4 +1,4 @@
-import { inject, injectable } from 'inversify';
+import { inject, injectable, optional } from 'inversify';
 import IAppSettingDB from '../../db/IAppSettingDB';
 import IAppSettingHistoryDB from '../../db/IAppSettingHistoryDB';
 import { isFeatureEnabled } from '../../FeatureFlags';
@@ -20,6 +20,7 @@ import IAppSettingApiModel, {
     AppSettingUpdateResult,
     EditableConfig,
 } from './IAppSettingApiModel';
+import IHardwareEncoderDetector from '../../encoder/IHardwareEncoderDetector';
 
 export function validateAppSettings(value: unknown): asserts value is Record<string, unknown> {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -73,6 +74,9 @@ export default class AppSettingApiModel implements IAppSettingApiModel {
         @inject('IIPCClient') private readonly ipc: IIPCClient,
         @inject('ILogLevelApplier') private readonly logLevelApplier: ILogLevelApplier,
         @inject('IConfigOverlayLoader') private readonly configOverlayLoader: IConfigOverlayLoader,
+        @inject('IHardwareEncoderDetector')
+        @optional()
+        private readonly hardwareEncoderDetector?: IHardwareEncoderDetector,
     ) {}
 
     /**
@@ -113,10 +117,29 @@ export default class AppSettingApiModel implements IAppSettingApiModel {
                     entry.editable === 'ymlOnly' && typeof entry.reason !== 'undefined'
                         ? YML_ONLY_REASON_CATEGORY[entry.reason as YmlOnlyReasonCode]
                         : undefined,
-                fields: entry.fields,
+                fields: this.fieldsFor(entry.key as string, entry.fields),
                 customEditor: entry.customEditor,
             })),
         };
+    }
+
+    /** 検出済みのハードウェアだけを設定画面の選択肢へ返す。 */
+    private fieldsFor(
+        key: string,
+        fields: (typeof CONFIG_SCHEMA)[number]['fields'],
+    ): (typeof CONFIG_SCHEMA)[number]['fields'] {
+        if (key !== 'hardwareEncoder' || fields === undefined || this.hardwareEncoderDetector === undefined) {
+            return fields;
+        }
+        const available = new Set(this.hardwareEncoderDetector.getAvailableIds());
+        return fields.map(field =>
+            field.path === 'hardwareEncoder' && field.items !== undefined
+                ? {
+                      ...field,
+                      items: field.items.filter(item => item.value === 'auto' || available.has(item.value as any)),
+                  }
+                : field,
+        );
     }
 
     /**

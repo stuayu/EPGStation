@@ -708,6 +708,28 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         fields: [{ path: 'audioBoost', label: '配信音声ブースト倍率', type: 'number' }],
     },
     {
+        key: 'hardwareEncoder',
+        label: 'ハードウェアエンコーダ',
+        hint: '自動判定では起動時に QSVEncC / NVEncC / VCEEncC / ffmpeg の能力を実測し、利用可能なものを選ぶ。手動指定が利用できない場合は software に切り替える',
+        requiresRestart: true,
+        editable: 'gui',
+        fields: [
+            {
+                path: 'hardwareEncoder',
+                label: 'ハードウェアエンコーダ',
+                type: 'select',
+                items: [
+                    { title: '自動判定', value: 'auto' },
+                    { title: 'Intel QSV', value: 'qsv' },
+                    { title: 'NVIDIA NVENC', value: 'nvenc' },
+                    { title: 'AMD VCE / AMF', value: 'vce' },
+                    { title: 'Apple VideoToolbox', value: 'videotoolbox' },
+                    { title: 'ソフトウェア', value: 'software' },
+                ],
+            },
+        ],
+    },
+    {
         key: 'ffprobeTimeout',
         label: 'ffprobe のタイムアウト (秒)',
         hint: '壊れた動画や応答しないストレージで解析が止まらないようにする上限時間。既定 30 秒',

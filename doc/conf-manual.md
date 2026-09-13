@@ -338,6 +338,28 @@ sqlite:
 ffmpeg: '/usr/bin/ffmpeg'
 ```
 
+### hardwareEncoder
+
+#### 配信・エンコードで使用するハードウェアエンコーダ
+
+| 種類 | デフォルト値 | 選択肢 |
+| ---- | ------------ | ------ |
+| string | `auto` | `auto` / `qsv` / `nvenc` / `vce` / `videotoolbox` / `software` |
+
+`auto` (既定) は Service 起動時に QSVEncC / NVEncC / VCEEncC の `--check-hw` と
+ffmpeg の `-hide_banner -encoders` を実行し、実際に利用できるエンコーダを選ぶ。
+macOS は VideoToolbox を優先し、それ以外の OS は QSV → NVENC → VCE/AMF →
+VideoToolbox の順で選ぶ。rigaya 系の実行確認に成功した場合は QSVEncC / NVEncC /
+VCEEncC を使い、無い場合は ffmpeg の `h264_*` / `hevc_*` を使う。
+
+手動指定したエンコーダが利用できない場合は起動時に warning を出し、software へ戻す。
+検出失敗・タイムアウト時も software を使う。検出結果は `GET /api/config` の
+`hardwareEncoder` と、設定画面の選択肢へ反映する。設定変更は再起動後に反映する。
+
+```yaml
+hardwareEncoder: auto
+```
+
 ### ffprobe
 
 #### 動画情報取得に使用する FFprobe のパス

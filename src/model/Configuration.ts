@@ -443,6 +443,7 @@ namespace Configuration {
         ffprobe: '/usr/local/bin/ffprobe',
         ffprobeTimeout: 30,
         audioBoost: 2.0,
+        hardwareEncoder: 'auto',
         encodeProcessNum: 1,
         streamProcessNum: 4,
         concurrentEncodeNum: 0,

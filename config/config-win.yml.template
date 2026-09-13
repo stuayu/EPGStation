@@ -162,6 +162,9 @@ thumbnailPosterWidth: 1280
 # thumbnailCmd: '%FFMPEG% -ss %THUMBNAIL_POSITION% -y -i %INPUT% -vframes 1 -f image2 -s %THUMBNAIL_SIZE% %OUTPUT%'
 
 ffmpeg: 'C:\rec\ffmpeg\bin\ffmpeg.exe'
+# 配信・エンコードで使用するハードウェアエンコーダ。auto は起動時に実機を検出する
+# auto | qsv | nvenc | vce | videotoolbox | software
+# hardwareEncoder: auto
 ffprobe: 'C:\rec\ffmpeg\bin\ffprobe.exe'
 
 # ffprobe 1 回あたりの上限時間 (秒)。壊れた動画・応答しないストレージで解析が止まらないようにする

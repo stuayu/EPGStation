@@ -297,6 +297,7 @@ components:
             required:
                 - socketIOPort
                 - useDedicatedSocketIOPort
+                - hardwareEncoder
                 - broadcast
                 - recorded
                 - encode
@@ -314,6 +315,22 @@ components:
                         false の場合、クライアントは接続先を組み立てずアクセス中のオリジンへそのまま接続する
                         (リバースプロキシ経由でポートが変換されていても接続できる)
                     type: boolean
+                hardwareEncoder:
+                    description: 起動時に実測したハードウェアエンコーダ能力
+                    type: object
+                    required: [configured, selected, available]
+                    properties:
+                        configured:
+                            type: string
+                            enum: [auto, qsv, nvenc, vce, videotoolbox, software]
+                        selected:
+                            type: string
+                            enum: [qsv, nvenc, vce, videotoolbox, software]
+                        available:
+                            type: array
+                            items:
+                                type: string
+                                enum: [qsv, nvenc, vce, videotoolbox, software]
                 broadcast:
                     description: 有効な放送波情報
                     type: object

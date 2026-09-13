@@ -15,6 +15,11 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-13
 
+- **ハードウェアエンコーダを起動時に実測して自動選択する機能を追加した**: `hardwareEncoder` (`auto` / `qsv` / `nvenc` / `vce` / `videotoolbox` / `software`) を追加。Service 起動時に QSVEncC / NVEncC / VCEEncC の `--check-hw` と ffmpeg の `-hide_banner -encoders` を実行し、macOS は VideoToolbox、それ以外は QSV → NVENC → VCE/AMF → VideoToolbox の順で利用可能なものを選ぶ。手動指定が利用不可、検出失敗、タイムアウトの場合は software へ倒し、結果を info ログへ出す。検出結果は `GET /api/config` と設定画面の選択肢へ渡す。
+    - `StreamProfileManageModel` の cmd 省略時生成と `LiveCommandBuilder` / `RecordedCommandBuilder` が選択済みの ffmpeg HW エンコーダまたは rigaya パイプラインを使う。手書き cmd は変更しない。録画ファイル入力の rigaya 経路には `--avsync forcecfr --fps 30000/1001`、HEVC の MP4/fMP4 には `-tag:v hvc1` を付ける。
+    - 実装: `src/model/encoder/`、`src/model/stream/StreamProfileManageModel.ts`、`src/util/StreamArgsUtil.ts`、配信 command builder、`ConfigApiModel`、設定画面用 `AppSettingApiModel`
+    - 回帰テスト: `test/ut/hardware-encoder-detector.test.js`、`test/ut/stream-profile-manage.test.js`、`test/ut/stream-command-builder.test.js`
+
 - **HEVC TS の ARIB 字幕 ID3 化で文字スーパーを誤選択する問題を修正した**: `AribSubtitleTimedMetadataTransform` が `component_tag=0x30〜0x3f` を字幕として扱い、字幕 PID `0x114` の後ろにある文字スーパー PID `0x115` (`0x38`) を選んでいた。component tag は ARIB 字幕の `0x30〜0x37` / `0x87` に限定し、`stream_type=0x06` + `subtitling_descriptor (0x59)` は従来どおり受理する。`data_group_id` は字幕管理・本文の `0x00〜0x08` / `0x20〜0x28` を受理する。PTS の無い PES は PCR/映像PTSで代用せず破棄する (字幕固有の時刻を保てないため)
     - 実ファイルを 250 MiB 位置から終端まで計測: HEVC `jikkyo_rose10.ts` は TS 387 / PES 387 / `0xbd` 387 / PTS有り 387 / data_group `0x20:312, 0x21:41, 0x22:34` / ID3 PES 387。MPEG-2 `bi_news.ts` は字幕 PID `0x130` を時系列PMTから追跡し、TS 643 / PES 643 / `0xbd` 643 / PTS有り 643 / data_group `0x20:476, 0x21:164, 0x22:3` / ID3 PES 641
     - 回帰テスト: `test/ut/arib-subtitle-timed-metadata.test.js` に文字スーパー併存、管理・本文 group、PTS無しの最小TSを追加

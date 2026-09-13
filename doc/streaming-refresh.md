@@ -2,6 +2,23 @@
 
 本ドキュメントは 2026-07 のストリーミング周りの改修内容と運用方法をまとめたもの。
 
+## ハードウェアエンコーダの自動判定
+
+`hardwareEncoder` は `auto` (既定) / `qsv` / `nvenc` / `vce` / `videotoolbox` /
+`software` を選ぶ。Service 起動時に `HardwareEncoderDetector` が一度だけ
+QSVEncC / NVEncC / VCEEncC の `--check-hw` (終了コードと出力) と、設定された ffmpeg の
+`-hide_banner -encoders` を調べる。結果は singleton にキャッシュし、配信開始ごとの外部プロセス起動は行わない。
+
+`cmd` を省略した配信プロファイルは、選択結果に応じて ffmpeg の `h264_qsv` /
+`hevc_qsv`、`h264_nvenc` / `hevc_nvenc`、`h264_amf` / `hevc_amf`、
+`h264_videotoolbox` / `hevc_videotoolbox`、または libx264 / libx265 を使う。
+rigaya の検出に成功した場合は QSVEncC / NVEncC / VCEEncC と ffmpeg remux のパイプラインを使う。
+録画ファイル入力の rigaya 経路には `--avsync forcecfr --fps 30000/1001` を付ける。
+HEVC の MP4/fMP4 出力には `-tag:v hvc1` を付ける。手書き `cmd` は一切変更しない。
+
+検出失敗・タイムアウト・手動指定の利用不可は software へフォールバックし、info/warn ログへ残す。
+`GET /api/config` の `hardwareEncoder` と設定フォームの選択肢は同じ検出結果を使う。
+
 ## 変更概要
 
 ### 1. mpegts.js 1.7.3 → 1.8.0 (ManagedMediaSource 対応)
