@@ -60,6 +60,13 @@ node tools/playback-harness/run.js watch --base-url URL --video-file-id ID --rec
 
 ### 計測そのものを間違えた例
 
+- **`currentTime` が進むことは「映像が出ている」証拠にならない**。真っ黒でも進む。
+  利用者から「映像が流れていない」と報告された状態を PASS と報告した。
+  **video を canvas へ描いてピクセルを見る** (輝度の最大値と、サンプル間の変化)
+- **直 URL だけで検証しない**。UI から遷移したときの URL が違うことがある。
+  実際に配信選択ダイアログが `streamingType=m2ts-ll` (API は `m2tsll`) を生成しており、
+  直 URL しか叩いていなかったため 404 を見逃した。**利用者と同じ操作経路を通る**
+
 - **`.dplayer-video-wrap` をクリックして再生を開始しない**。再生/一時停止のトグルに当たり、
   「再生できていない」のを「再生が止まる不具合」と誤認した。**`video.play()` を直接呼ぶ**
 - **`grep` の対象に自分のコマンド行が混ざる**。`ps | grep h264_qsv` で、実際には使っていない
@@ -69,6 +76,8 @@ node tools/playback-harness/run.js watch --base-url URL --video-file-id ID --rec
   ライブラリが MSE 経路を選んで別のエラーを出す (実機とは無関係の人工物)
 - **機械の負荷を確認する**。他プロセスで load が上がっていると配信が実時間を割り、
   製品の不具合に見える。`uptime` を併記する
+- **`video.currentTime` だけで映像再生を合格にしない**。真っ黒画面でも時刻は進むため、今回の再生ハーネスは
+  canvas へ描画したフレームの輝度とサンプル間変化を確認する。`videoWidth === 0` や描画取得失敗も不合格として扱う
 
 ## 触る前に読む
 
