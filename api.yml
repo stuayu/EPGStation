@@ -2964,6 +2964,10 @@ components:
                             videoBitrate:
                                 type: number
                                 description: 映像 bitrate (kbps)。自動画質 fallback の帯域判定に使う
+                            videoCodec:
+                                type: string
+                                enum: [copy, h264, hevc]
+                                description: 出力映像コーデック。同じ role のプリセットが複数あるとき (HEVC 版 / AVC 版) の区別に使う
                             embeddedAudioSwitch:
                                 type: object
                                 description: >-

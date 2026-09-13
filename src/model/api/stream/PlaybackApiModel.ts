@@ -160,6 +160,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                         legacy: preset.legacy === true,
                         modes,
                         videoBitrate: preset.output.videoBitrate,
+                        videoCodec: preset.output.codec,
                         embeddedAudioSwitch: this.getEmbeddedAudioSwitch(scope, modes, modePresetId),
                     },
                 };
