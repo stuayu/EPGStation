@@ -332,3 +332,44 @@ test('生成 cmd の optional map 引用符はシェル経由のときだけ付�
         assert.doesNotMatch(profile.cmd, /"0:(?:s\?|i:0x1ffe\?)"/u, profile.id);
     }
 });
+
+test('rigaya 経由のライブ m2tsll は映像をコピーし、tsreadex を二重に挟まない', () => {
+    // 後段 ffmpeg に -c:v copy が無いと、mpegts 出力の既定コーデック (MPEG-2) で
+    // 再エンコードされ、mpegts.js が映像を demux できず音声だけになる (本番で発生した)
+    const detector = {
+        getStreamEncoder: () => ({
+            kind: 'qsvencc',
+            command: 'C:\\QSVEncC\\QSVEncC64.exe',
+            codecs: ['h264', 'hevc'],
+            bitDepths: [8, 10],
+        }),
+    };
+    const model = new StreamProfileManageModel(
+        {
+            getConfig: () => ({
+                tsreadex: 'C:\\tsreadex\\tsreadex.exe',
+                stream: {
+                    profiles: {
+                        live: [
+                            {
+                                id: 'live-m2tsll-hevc',
+                                name: '1080p',
+                                container: 'm2tsll',
+                                video: { codec: 'hevc', height: 1080, bitrate: 2700 },
+                                audio: { codec: 'aac', bitrate: 192 },
+                            },
+                        ],
+                    },
+                },
+            }),
+        },
+        detector,
+    );
+    const cmd = model.getLiveProfiles()[0].cmd;
+
+    assert.match(cmd, /-c:v copy/u);
+    assert.equal(cmd.match(/%TSREADEX%/gu).length, 1);
+    assert.match(cmd, /QSVEncC64\.exe/u);
+    // mpegts 出力に hvc1 タグは付けない (mp4 / hls だけ)
+    assert.equal(/-tag:v hvc1/u.test(cmd), false);
+});

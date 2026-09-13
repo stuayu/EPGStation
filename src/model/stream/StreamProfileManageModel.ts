@@ -248,7 +248,7 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
                 selectedEncoder.kind === 'nvencc' ||
                 selectedEncoder.kind === 'vceencc')
         ) {
-            return this.buildRigayaCmd(scope, container, video, audio, selectedEncoder, useTsreadex);
+            return this.buildRigayaCmd(scope, container, video, audio, selectedEncoder);
         }
         const videoCodec = selectedEncoder?.ffmpegCodecs ?? requestedVideoCodec;
         const videoBitrate = `${typeof video?.bitrate === 'number' ? video.bitrate : 3000}k`;
@@ -325,14 +325,19 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
         }
     }
 
-    /** 検出済み rigaya エンコーダを使う自動生成コマンドを組み立てる。 */
+    /**
+     * 検出済み rigaya エンコーダを使う自動生成コマンドを組み立てる。
+     *
+     * **tsreadex の前段はここでは付けない**。呼び出し元 (`fillGeneratedCmd()`) が
+     * `buildTsreadexPrefix()` で必ず前置するため、ここでも付けると
+     * `tsreadex | tsreadex | エンコーダ | ffmpeg` と二重になる (本番の実 cmd で発生していた)。
+     */
     private buildRigayaCmd(
         scope: ProfileScope,
         container: StreamContainer,
         video: StreamVideoParam | undefined,
         audio: StreamAudioParam | undefined,
         encoder: StreamEncoderCapability,
-        useTsreadex: boolean,
     ): string {
         const isFileInput = scope === 'recordedEncoded';
         const codec = /(?:hevc|h265|265|x265)/iu.test(video?.codec ?? '') ? 'hevc' : 'h264';
@@ -347,8 +352,6 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
         const strictGop = rigayaKind === 'vce' ? '' : ' --strict-gop';
         const input = isFileInput ? '--seek %SS% -i %INPUT%' : '--input-format mpegts -i -';
         const sync = isFileInput ? ' --avsync forcecfr --fps 30000/1001' : '';
-        const prefix =
-            useTsreadex === true && isFileInput === false ? `${StreamProfileManageModel.TSREADEX_COMMAND} | ` : '';
         const encoderCmd =
             `${bin} --avhw ${input} -c ${codec} --profile main --output-depth 8 ${quality} ` +
             `--vbr ${videoBitrate} --max-bitrate ${videoBitrate * 2} --gop-len 30${strictGop} --bframes 0 ` +
@@ -359,13 +362,19 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
             container === 'm2tsll'
                 ? `-c:a ${audioCodec} -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER%`
                 : `%AUDIOMAP% -c:a ${audioCodec} -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER%`;
+        // **`-c:v copy` を落とさないこと**。rigaya 系がエンコードした映像をそのまま通すための指定で、
+        // 無いと後段の ffmpeg が出力コンテナの既定コーデック (mpegts なら MPEG-2) で**再エンコードし直す**。
+        // 実測 (本番のライブ m2tsll): QSVEncC が HEVC で出したのに配信 TS は mpeg2video になり、
+        // mpegts.js が映像を demux できず「音声だけ再生される」状態になっていた
         const map =
-            container === 'm2tsll' ? '-map 0:v:0 %AUDIOSELECTMAP% -map "0:s?" -c:s copy' : '-map 0:v:0 -c:v copy';
+            container === 'm2tsll'
+                ? '-map 0:v:0 %AUDIOSELECTMAP% -map "0:s?" -c:v copy -c:s copy'
+                : '-map 0:v:0 -c:v copy';
         const output =
             container === 'mp4' || container === 'hls'
                 ? `${map}${tag} ${audioArgs} -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`
                 : `${map}${tag} ${audioArgs} -f mpegts pipe:1`;
-        return `${prefix}${encoderCmd} | ${ffmpegInput} ${output}`;
+        return `${encoderCmd} | ${ffmpegInput} ${output}`;
     }
 
     /**
