@@ -925,8 +925,16 @@ export default abstract class BaseVideo extends Vue {
 
     private applyQualityPanelSize(panel: HTMLElement, container: HTMLElement): void {
         panel.style.maxWidth = 'calc(100vw - 32px)';
-        panel.style.maxHeight = `${resolveQualityPanelMaxHeight(container.clientHeight, window.innerHeight)}px`;
+        // **親の `.dplayer-setting-box` を超えさせない**。box は `overflow: hidden` なので、
+        // はみ出した部分は表示もヒットテストもされず、**溢れているのにホイールで動かせない**状態になる
+        // (実測: 1280x420 でパネル 290px / box 284px となり、パネル中央の elementFromPoint が
+        // `.dplayer-mask` を返してスクロールできなかった)。
+        // `100%` を先に効かせ、プレイヤー高・ビューポート由来の上限はそれ以下のときだけ効かせる
+        const limitPx = resolveQualityPanelMaxHeight(container.clientHeight, window.innerHeight);
+        panel.style.maxHeight = `min(100%, ${limitPx}px)`;
         panel.style.overflowY = 'auto';
+        // 指で触る端末でも一覧を辿れるようにする (縦方向のパンをブラウザへ渡す)
+        panel.style.touchAction = 'pan-y';
     }
 
     /**
