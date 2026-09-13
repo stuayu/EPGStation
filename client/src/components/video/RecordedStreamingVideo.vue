@@ -236,7 +236,14 @@ class RecordedStreamingVideo extends BaseVideo {
             options.subtitle = { type: 'aribb24' };
             options.pluginOptions = {
                 mpegts: {
+                    // DPlayer は mediaDataSource.isLive を options.live(false) で上書きする。
+                    // 録画ファイルでもサーバは -readrate で実時間ペースに絞って流し続けるため、
+                    // ランダムアクセス可能な VOD ではなく、受け取りを止めると供給も止まるストリーム。
+                    // DPlayerUtil がこのフラグを最終 mediaDataSource へ戻し、MMS の onEndStreaming
+                    // で mpegts.js が transmuxer を suspend しないようにする。
+                    mediaDataSource: { type: 'mpegts', isLive: true },
                     config: {
+                        isLive: true,
                         enableWorker: true,
                         enableStashBuffer: true,
                         stashInitialSize: 64 * 1024,
@@ -556,6 +563,11 @@ class RecordedStreamingVideo extends BaseVideo {
     /** ストリーム再生成中のダミー位置を実況同期へ渡さない */
     protected getJikkyoPlaybackTime(): number | null {
         return resolveRecordedJikkyoPlaybackTime(this.getCurrentTime(), this.dummyPlayPosition !== null);
+    }
+
+    /** ストリーム再生成中のダミー位置をデータ放送時計へ渡さない */
+    protected getDataBroadcastingPlaybackTime(): number | null {
+        return this.dummyPlayPosition === null ? this.getCurrentTime() : null;
     }
 
     /**

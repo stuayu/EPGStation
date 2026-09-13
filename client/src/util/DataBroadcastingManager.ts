@@ -186,6 +186,9 @@ export default class DataBroadcastingManager {
                 this.hasSentInitialDataButton = true;
                 this.sendKey(AribKeyCode.DataButton);
             }
+
+            // load が canplay より後になる実装でも、初期時計をタイマー待ちにしない。
+            this.sendPlaybackBroadcastTime();
         });
 
         // BML ブラウザの表示状態が変化したときのイベント
@@ -223,6 +226,8 @@ export default class DataBroadcastingManager {
             this.player.on('pause', this.broadcastTimeListener);
             this.player.on('seeking', this.broadcastTimeListener);
             this.player.on('seeked', this.broadcastTimeListener);
+            this.player.on('canplay', this.broadcastTimeListener);
+            this.player.on('quality_end', this.broadcastTimeListener);
             this.broadcastTimeTimerId = window.setInterval(this.broadcastTimeListener, 250);
             this.sendPlaybackBroadcastTime();
         }
@@ -281,6 +286,8 @@ export default class DataBroadcastingManager {
         this.player.off('pause', this.broadcastTimeListener);
         this.player.off('seeking', this.broadcastTimeListener);
         this.player.off('seeked', this.broadcastTimeListener);
+        this.player.off('canplay', this.broadcastTimeListener);
+        this.player.off('quality_end', this.broadcastTimeListener);
         if (this.ws !== null) {
             try {
                 this.ws.close();

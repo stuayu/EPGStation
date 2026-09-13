@@ -1306,6 +1306,7 @@ export default abstract class BaseVideo extends Vue {
      */
     protected async fetchVideoFileSizeForDataBroadcasting(videoFileId: apid.VideoFileId): Promise<void> {
         this.videoFileSizeForDataBroadcasting = null;
+        this.dataBroadcastingStartAt = null;
 
         const serverConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
         if (isFeatureEnabled(serverConfigModel.getConfig(), 'dataBroadcasting') === false) {
@@ -1315,7 +1316,12 @@ export default abstract class BaseVideo extends Vue {
         try {
             const metadata = await container.get<IVideoApiModel>('IVideoApiModel').getMetadata(videoFileId);
             this.videoFileSizeForDataBroadcasting = metadata.size > 0 ? metadata.size : null;
-            this.dataBroadcastingStartAt = metadata.startAt;
+            this.dataBroadcastingStartAt = Number.isFinite(metadata.startAt) ? metadata.startAt : null;
+            if (this.dataBroadcastingStartAt === null) {
+                // startAt が無い録画へ推測時刻を送ると、BML の時計を誤同期する。
+                // TS 側の時刻を BMLBrowser が使えるため、録画時刻の上書きを行わない。
+                console.warn('[DataBroadcasting] videoFile.startAt が無いため録画時計を同期しません');
+            }
         } catch (err) {
             console.error(err);
         }
@@ -1323,7 +1329,12 @@ export default abstract class BaseVideo extends Vue {
 
     /** 録画ファイルの再生位置に対応する放送時刻を返す */
     public getDataBroadcastingTime(): number | null {
-        return resolveDataBroadcastingTime(this.dataBroadcastingStartAt, this.getCurrentTime());
+        return resolveDataBroadcastingTime(this.dataBroadcastingStartAt, this.getDataBroadcastingPlaybackTime());
+    }
+
+    /** データ放送時計へ渡す再生位置。ストリーム再生成中はサブクラスが null を返す */
+    protected getDataBroadcastingPlaybackTime(): number | null {
+        return this.getCurrentTime();
     }
 
     /**

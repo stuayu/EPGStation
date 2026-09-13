@@ -56,6 +56,7 @@ HEVC の MP4/fMP4 出力には `-tag:v hvc1` を付ける。手書き `cmd` は�
 - `GET /api/streams/recorded/{videoFileId}/m2tsll?ss=<秒>&mode=<番号>&profile=<id>&audioTrack=<指定子>` を追加した。`mode` または `profile` は既存の録画 HLS / MP4 と同じ規則で、`ss` は小数秒を受け付けるが、クライアント・API・ストリーム生成直前で0以上の整数秒へ切り捨てる。
 - 録画 TS は `RecordedStreamBaseModel` がファイル (録画中は `TailStream`) をエンコーダ stdin へ流し、stdout を `video/mp2t` として HTTP へ直結する。encoded は `-ss %SS% -i %INPUT%` のファイル入力で、いずれも中間ファイルを作らない。
 - クライアントは録画詳細に `M2TS-LL` を追加し、`StreamSupportUtil.checkM2TSLLSupport()` が非対応と判定した環境では選択肢から除外して HLS へ誘導する。再生は `type: 'mpegts'`、VirtualTimeline、チャプター、ARIB 字幕、実況コメント、音声切替を既存録画再生と共用する。
+- 録画 m2tsll も mpegts.js の `mediaDataSource.isLive = true` で生成する。録画ファイルでもサーバは `-readrate` で実時間ペースに絞って供給し続けるため、MMS の `onEndStreaming` で transmuxer を suspend させない。DPlayer 自身の `live` は false のままなので、録画の再生・シーク UI と `ss` でのストリーム再生成は変えない。ライブ m2tsll の設定は変更しない。
 - `audioTrack=all` は tsreadex 正規化済みプロファイルで主音声・副音声を同時配信し、mpegts.js の音声切替 API で再接続せず切り替える。非正規化プロファイルは `AUDIOSELECTMAP` で単一音声を選ぶ。
 - 録画 TS の m2tsll の ARIB 字幕は、tsreadex の有無によらず入力側でなく stdout 側へ ID3 timed metadata を挿入する。字幕判定は `component_tag=0x30〜0x37` / `0x87` または `stream_type=0x06` + `subtitling_descriptor (0x59)`、data_group は `0x00〜0x08` / `0x20〜0x28` を受ける。PTS の無い PES は時刻を推測せず破棄する。encoded は字幕対象外。
 - 録画のファイル入力は `-readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2` を `-i` より前へ置く。初期 45 秒 (4 Mbps 換算で約 22.5 MB) を先読みし、その後は実時間の 1.5 倍を上限に供給する。`readrate_catchup` は入力が指定速度に遅れたときだけ一時的に 2 倍まで使う。対象は M2TS-LL / MP4 / WebM。ライブの `-re` は変更しない。録画 HLS は既存のセグメント単位の先行抑制を使う。今回、readrate 引き上げは供給が律速でないことが判明したため前値へ戻した。
@@ -168,7 +169,7 @@ aribb24.js の自動検出がこれを拾うため、in-memory HLS の字幕が 
 ### DPlayer 操作バーへの視聴操作集約
 
 - キャプチャは SNS 投稿パネル内に重複ボタンを置かず、DPlayer 標準のカメラボタンを使う。SNS 投稿パネルがマウントされている場合はキャプチャ要求を同期的に受け取り、画像をブラウザ内の添付候補へ保存して標準の即時ダウンロードを止める。SNS パネルが無い場合は DPlayer 従来どおり画像をダウンロードする。
-- データ放送の表示・非表示は上部バーの 3 点メニューではなく、DPlayer 右側操作バーのテレビボタンで切り替える。機能フラグが無効ならボタンを作らず、ON/OFF は従来どおり `ISettingStorageModel.isEnableDataBroadcasting` へ保存する。BML の Manager 所有・`markRaw()`・リモコン表示経路は変更しない。
+- データ放送の表示・非表示は上部バーの 3 点メニューではなく、DPlayer 右側操作バーのテレビボタンで切り替える。機能フラグが無効ならボタンを作らず、ON/OFF は従来どおり `ISettingStorageModel.isEnableDataBroadcasting` へ保存する。BML の Manager 所有・`markRaw()`・リモコン表示経路は変更しない。録画時計は `videoFile.startAt + VirtualTimeline の絶対再生位置` を使い、ダミー再生位置は送らない。`seeked` / `canplay` / 画質切替確定 (`quality_end`) で即時送信し、250ms タイマーは再生中の追従用とする。`startAt` が無い場合は誤った時刻を送らず、BML 側の時計を上書きしない。
 
 画質を選ぶ場所は 2 つだけで、それぞれ役割が違う。**入口を増やさない**。
 

@@ -28,7 +28,13 @@ namespace DPlayerUtil {
                 console.error('[EPGStation][mpegts] initialization skipped', err, { url: mediaDataSource?.url });
                 throw err;
             }
-            const player = (Mpegts as any).createPlayer({ ...mediaDataSource, url }, config);
+            // DPlayer は mediaDataSource.isLive を options.live で上書きする。
+            // 録画 m2tsll は DPlayer 自身をライブ UI にせず、mpegts.js の供給だけを
+            // live 扱いにしたいので、config.isLive も最終 mediaDataSource へ戻す。
+            const player = (Mpegts as any).createPlayer(
+                { ...mediaDataSource, url, ...(config?.isLive === true ? { isLive: true } : {}) },
+                config,
+            );
             const originalAttach = player.attachMediaElement.bind(player);
             player.attachMediaElement = (element: HTMLMediaElement): void => {
                 (element as any).disableRemotePlayback = true;
