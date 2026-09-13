@@ -15,6 +15,12 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-13
 
+- **実機計測用の再生ハーネスを統合した**: 書き捨てだった Playwright / curl 計測を `tools/playback-harness/run.js` へ統合。ブラウザ起動・デバイス設定・`video.play()` による再生開始・再生状態採取・相対シーク・出力・終了コード判定を共通化し、watch、実況シーク、録画 m2tsll シーク、buffered 詳細、DPlayer 二重化、ptime、HLS 字幕 emsg、字幕描画、画質切替、録画ストレス、iPad 音声、ManagedMediaSource の13シナリオを収録した。`emsg` は `curl` + `ffprobe` の `emsg-check.sh` へ分離してブラウザ不要とした。
+    - 実装: `tools/playback-harness/`、`src/util/PlaybackHarnessUtil.ts`
+    - 判定ロジック: 停止回数・最長停止、実況コメント時刻突き合わせ、emsg 比率を純粋関数化。`test/ut/playback-harness-util.test.js` を追加。
+    - `playwright-core` は `package.json` に追加せず、手動計測時の任意導入と未導入時の案内に留めた。実サーバ・実録画を要求するため `npm test` / CI から分離。
+    - ドキュメント: `doc/testing.md`、`tools/playback-harness/README.md`
+
 - **ハードウェアエンコーダを起動時に実測して自動選択する機能を追加した**: `hardwareEncoder` (`auto` / `qsv` / `nvenc` / `vce` / `videotoolbox` / `software`) を追加。Service 起動時に QSVEncC / NVEncC / VCEEncC の `--check-hw` と ffmpeg の `-hide_banner -encoders` を実行し、macOS は VideoToolbox、それ以外は QSV → NVENC → VCE/AMF → VideoToolbox の順で利用可能なものを選ぶ。手動指定が利用不可、検出失敗、タイムアウトの場合は software へ倒し、結果を info ログへ出す。検出結果は `GET /api/config` と設定画面の選択肢へ渡す。
     - `StreamProfileManageModel` の cmd 省略時生成と `LiveCommandBuilder` / `RecordedCommandBuilder` が選択済みの ffmpeg HW エンコーダまたは rigaya パイプラインを使う。手書き cmd は変更しない。録画ファイル入力の rigaya 経路には `--avsync forcecfr --fps 30000/1001`、HEVC の MP4/fMP4 には `-tag:v hvc1` を付ける。
     - 実装: `src/model/encoder/`、`src/model/stream/StreamProfileManageModel.ts`、`src/util/StreamArgsUtil.ts`、配信 command builder、`ConfigApiModel`、設定画面用 `AppSettingApiModel`
