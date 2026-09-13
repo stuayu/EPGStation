@@ -924,6 +924,17 @@ export default abstract class BaseVideo extends Vue {
     }
 
     private applyQualityPanelSize(panel: HTMLElement, container: HTMLElement): void {
+        // **DPlayer は項目数から設定パネルの見える高さを決める**。
+        // `.dplayer-setting-box` の CSS 変数 `--quality-length` を使って
+        // `clip-path: inset(calc(100% - 30px * var(--quality-length) - 54px) ...)` を当てるため、
+        // 項目を差し替えた後にここを更新しないと、**古い項目数のまま上側が切り取られて見えなくなる**
+        // (実測: 項目を 8 件へ増やしてもパネル実高 294px に対し clip は 144px = 30x3+54 のままで、
+        //  上 3 件が表示されず、その位置のヒットテストも `.dplayer-mask` に落ちてクリックできなかった)。
+        const box = container.querySelector('.dplayer-setting-box') as HTMLElement | null;
+        const itemCount = panel.querySelectorAll('.dplayer-setting-quality-item').length;
+        if (box !== null && itemCount > 0) {
+            box.style.setProperty('--quality-length', `${itemCount}`);
+        }
         panel.style.maxWidth = 'calc(100vw - 32px)';
         // **親の `.dplayer-setting-box` を超えさせない**。box は `overflow: hidden` なので、
         // はみ出した部分は表示もヒットテストもされず、**溢れているのにホイールで動かせない**状態になる
