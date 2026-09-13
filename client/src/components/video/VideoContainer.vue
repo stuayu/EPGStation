@@ -396,9 +396,17 @@ class VideoContainer extends Vue {
                 ? ['hls', 'm2tsll']
                 : ['hls', 'm2tsll', 'mp4', 'webm'];
 
-        return StreamSupportUtil.isM2TSLLSupported() === true
-            ? containers
-            : containers.filter(container => container !== 'm2tsll');
+        const supported = containers.filter(container => {
+            if (container === 'm2tsll') return StreamSupportUtil.isM2TSLLSupported();
+            // 録画の MP4 / WebM は Content-Length / Range を返せない chunked 配信なので
+            // WebKit (iOS / iPadOS / Safari) では MediaError 4 になり再生できない
+            if (container === 'mp4' || container === 'webm') return StreamSupportUtil.isProgressiveFileStreamSupported();
+
+            return true;
+        });
+
+        // 全部落ちると画質メニューが空になるため、その場合は現在の方式だけでも残す
+        return supported.length > 0 ? supported : containers;
     }
 
     private getPlaybackContainer(): 'm2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | null {

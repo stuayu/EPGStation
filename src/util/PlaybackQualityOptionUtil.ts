@@ -73,4 +73,27 @@ export const disambiguatePlaybackLabels = (labels: string[], profiles: Array<{ v
     });
 };
 
-export default { createPlaybackQualityOptions, disambiguatePlaybackLabels };
+/** DPlayer のコントローラと設定メニューの余白 (px)。この分はパネルへ割り当てない */
+const QUALITY_PANEL_RESERVED_PX = 66;
+/** これ以上は縮めない高さ (px)。プレイヤーが極端に低いときでも数項目はスクロールで辿れるようにする */
+const QUALITY_PANEL_MIN_PX = 120;
+
+/**
+ * 画質メニューの高さ上限を求める。
+ * DPlayer の設定パネルはコントローラから上へ開くため、
+ * ビューポート基準の上限だけだと**プレイヤーより高いパネル**が画面の上へはみ出し、
+ * 上の方の項目がクリックできなくなる (実測: iPhone 14 Pro 393x660 でプレイヤー高 217px、
+ * パネル高 294px、上端 y=-131 となり 8 件中 3 件が画面外)。
+ * @param playerHeight プレイヤー (`.dplayer`) の高さ (px)
+ * @param viewportHeight ビューポートの高さ (px)
+ * @return パネルへ与える max-height (px)
+ */
+export const resolveQualityPanelMaxHeight = (playerHeight: number, viewportHeight: number): number => {
+    const byViewport = viewportHeight > 0 ? viewportHeight * 0.7 : Number.POSITIVE_INFINITY;
+    const byPlayer = playerHeight > 0 ? playerHeight - QUALITY_PANEL_RESERVED_PX : Number.POSITIVE_INFINITY;
+    const limit = Math.min(byViewport, byPlayer, 420);
+
+    return Number.isFinite(limit) === false ? 420 : Math.max(Math.floor(limit), QUALITY_PANEL_MIN_PX);
+};
+
+export default { createPlaybackQualityOptions, disambiguatePlaybackLabels, resolveQualityPanelMaxHeight };

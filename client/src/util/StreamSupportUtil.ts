@@ -52,6 +52,25 @@ namespace StreamSupportUtil {
     export const isM2TSLLSupported = (): boolean => {
         return checkM2TSLLSupport().isSupported;
     };
+
+    /**
+     * 録画の MP4 / WebM 配信 (プログレッシブ再生) が利用可能か判定する
+     *
+     * 録画の MP4 / WebM はエンコーダの出力をそのまま流す chunked 配信で、
+     * `Content-Length` も `Accept-Ranges` も返せない。WebKit (iOS / iPadOS / macOS Safari) は
+     * progressive な MP4 を Range 要求で読むため、この配信を再生できず
+     * `MediaError code 4` で失敗する (**コーデックの問題ではない**)。
+     *
+     * 実測 (iPad Mini / WebKit、本番の録画 MP4 の実データ):
+     * - 同じバイト列を Content-Length + Range 対応で配ると再生できる (1920x1080 / readyState 4)
+     * - Content-Length 無しの chunked で配ると HEVC も H.264 も `MediaError 4` になる
+     *
+     * WebM は WebKit がそもそもデコードできない。
+     * @return boolean
+     */
+    export const isProgressiveFileStreamSupported = (): boolean => {
+        return UaUtil.isWebKitEngine() === false;
+    };
 }
 
 export default StreamSupportUtil;
