@@ -104,3 +104,15 @@ test('知らない言語コードはコードのまま表示する', () => {
 
     assert.equal(tracks[0].name, '主音声 (qaa)');
 });
+
+test('番組切替後に存在しない音声トラックは主音声へ戻す', () => {
+    assert.equal(
+        ProgramAudioTrackUtil.resolveCurrentTrack([{ track: '0' }], '1'),
+        'main',
+    );
+    assert.equal(
+        ProgramAudioTrackUtil.resolveCurrentTrack([{ track: 'main' }, { track: 'sub' }], 'sub'),
+        'sub',
+    );
+    assert.equal(ProgramAudioTrackUtil.resolveCurrentTrack([], 'main'), 'main');
+});

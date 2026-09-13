@@ -46,7 +46,13 @@ class RecordedHLSStreamingVideo extends BaseVideo {
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
     public async onUpdateStatus(): Promise<void> {
+        const wasRecording = this.videoState.isRecording();
         await this.updateVideoInfo();
+        if (wasRecording === true && this.videoState.isRecording() === false) {
+            // 録画中は bounded probe なので、終了時に全体の ES 一覧へ更新する。
+            await this.fetchChaptersAndAudioTracks();
+            if (this.dp !== null) this.setupAudioTrackSwitchForRecorded();
+        }
     }
     private basePlayPosition: number = 0;
     private dummyPlayPosition: number | null = null; // setCurrentTime が呼ばれている間に再生位置として返すダミー値

@@ -36,6 +36,7 @@ function createModel(options) {
         findId: async () => opt.recorded || null,
     };
     const videoUtil = {
+        getFullFilePathFromId: async () => opt.filePath || '/tmp/not-exists.ts',
         getFullFilePathFromVideoFile: () => opt.filePath || '/tmp/not-exists.ts',
         getDetailedInfo: async () => {
             if (opt.detailedInfoError === true) {
@@ -55,6 +56,10 @@ function createModel(options) {
                 },
                 opt.detailedInfo,
             );
+        },
+        getAudioTracks: async (filePath, option) => {
+            opt.audioTrackProbe = { filePath, option };
+            return opt.audioTracks || [];
         },
     };
 
@@ -92,6 +97,9 @@ function createModel(options) {
         ),
         updated: updated,
         startAtUpdated: startAtUpdated,
+        get audioTrackProbe() {
+            return opt.audioTrackProbe;
+        },
     };
 }
 
@@ -161,6 +169,23 @@ test('getMetadata returns stored values without re-running ffprobe', async () =>
 test('getMetadata throws when the video file does not exist', async () => {
     const { model } = createModel({ videos: [] });
     await assert.rejects(() => model.getMetadata(999), /VideoFileIsUndefined/);
+});
+
+test('音声 ES 一覧の probe は録画中だけ bounded probe を選ぶ', async () => {
+    const recording = createModel({
+        videos: [video(1)],
+        recorded: { id: 101, isRecording: true },
+        audioTracks: [{ track: '0' }],
+    });
+    const finished = createModel({
+        videos: [video(1)],
+        recorded: { id: 101, isRecording: false },
+    });
+
+    assert.deepEqual(await recording.model.getAudioTracks(1), [{ track: '0' }]);
+    assert.deepEqual(recording.audioTrackProbe.option, { isRecording: true });
+    assert.deepEqual(await finished.model.getAudioTracks(1), []);
+    assert.deepEqual(finished.audioTrackProbe.option, { isRecording: false });
 });
 
 test('analyzeAllMetadata counts failures and reports the remaining files', async () => {

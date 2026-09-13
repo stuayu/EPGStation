@@ -6,6 +6,7 @@
 import BaseVideo from '@/components/video/BaseVideo';
 import container from '@/model/ModelContainer';
 import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
+import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import ILiveHLSVideoState from '@/model/state/onair/ILiveHLSVideoState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
@@ -15,6 +16,7 @@ import UaUtil from '@/util/UaUtil';
 import { DPlayerType } from 'dplayer';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
+import ProgramAudioTrackUtil from '../../../../src/util/ProgramAudioTrackUtil';
 
 @Component({})
 class LiveHLSVideo extends BaseVideo {
@@ -59,20 +61,30 @@ class LiveHLSVideo extends BaseVideo {
     private currentMode: number = 0; // 再生中の視聴設定 (画質切替で更新される)
     private currentAudioTrack: apid.AudioTrackSpecifier = 'main'; // 再生中の音声トラック
     private channelsApiModel: IChannelsApiModel = container.get<IChannelsApiModel>('IChannelsApiModel');
+    private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private audioTracks: apid.VideoAudioTrack[] = []; // 放送中番組から取得した音声トラック一覧
+    private audioTracksKnown = false;
+    private audioTrackUpdateGeneration = 0;
 
     public async mounted(): Promise<void> {
         this.containerElement = this.$refs.container as HTMLElement;
+        this.socketIoModel.onUpdateOnAirProgram(this.onUpdateOnAirProgram);
 
         this.qualityNames = StreamQualityUtil.getLiveModeNames('hls');
         this.currentMode = StreamQualityUtil.normalizeMode(this.qualityNames, this.mode);
 
         // 放送中番組の音声 ES から選べる音声トラックを求める (取れなくても再生は続ける)
-        this.audioTracks = await this.channelsApiModel.getLiveAudioTracks(this.channelId).catch(err => {
+        const generation = ++this.audioTrackUpdateGeneration;
+        try {
+            const tracks = await this.channelsApiModel.getLiveAudioTracks(this.channelId);
+            if (generation === this.audioTrackUpdateGeneration) {
+                this.audioTracks = tracks;
+                this.audioTracksKnown = true;
+            }
+        } catch (err) {
             console.error(err);
-
-            return [];
-        });
+            this.audioTracksKnown = false;
+        }
 
         // HLS stream 開始
         await this.videoState
@@ -97,6 +109,7 @@ class LiveHLSVideo extends BaseVideo {
     }
 
     public async beforeUnmount(): Promise<void> {
+        this.socketIoModel.offUpdateOnAirProgram(this.onUpdateOnAirProgram);
         clearInterval(this.checkEnabledTimerId);
 
         super.beforeUnmount();
@@ -107,6 +120,34 @@ class LiveHLSVideo extends BaseVideo {
                 text: 'ストリーム停止に失敗',
             });
         });
+    }
+
+    /**
+     * EIT[p/f] の番組切替を受け、新番組の音声トラック一覧を反映する。
+     * 副音声が無い番組へ切り替わった場合は主音声へ戻して配信を再生成する。
+     * @param payload: { channelIds: number[] }
+     * @return Promise<void>
+     */
+    public async onUpdateOnAirProgram(payload: { channelIds: number[] }): Promise<void> {
+        if (payload.channelIds.includes(this.channelId) === false) return;
+
+        const generation = ++this.audioTrackUpdateGeneration;
+        try {
+            const tracks = await this.channelsApiModel.getLiveAudioTracks(this.channelId);
+            if (generation !== this.audioTrackUpdateGeneration) return;
+
+            const previous = this.currentAudioTrack;
+            this.audioTracks = tracks;
+            this.audioTracksKnown = true;
+            const next = ProgramAudioTrackUtil.resolveCurrentTrack(tracks, previous);
+            this.currentAudioTrack = next;
+            this.setupLiveAudioTrackSwitch();
+            if (next !== previous && this.dp !== null) {
+                await this.switchLiveAudioTrack(next);
+            }
+        } catch (err) {
+            console.error(err);
+        }
     }
 
     /**
@@ -275,26 +316,29 @@ class LiveHLSVideo extends BaseVideo {
      */
     private setupLiveAudioTrackSwitch(): void {
         this.setupAudioTrackSwitch({
-            tracks: this.audioTracks.length > 0 ? this.audioTracks : LiveHLSVideo.FALLBACK_AUDIO_TRACKS,
+            tracks: this.audioTracksKnown ? this.audioTracks : LiveHLSVideo.FALLBACK_AUDIO_TRACKS,
             current: this.currentAudioTrack,
-            onSelect: async track => {
-                if (this.isEmbeddedAudioSwitchMode(this.currentMode) === true) {
-                    const switched = await HlsAudioTrackUtil.switchAudioTrack(this.dp as any, track);
-                    if (switched === true) {
-                        this.currentAudioTrack = track;
-
-                        return;
-                    }
-                    // レンディションが揃っていない場合は下の再接続方式へフォールバックする
-                }
-
-                await this.videoState.stop();
-                await this.videoState.start(this.channelId, this.currentMode, this.resolveStreamAudioTrack(track));
-                await this.waitForEnabled();
-                this.currentAudioTrack = track;
-                this.initVideoSetting();
-            },
+            onSelect: track => this.switchLiveAudioTrack(track),
         });
+    }
+
+    /** ライブ音声を切り替え、同時配信レンディションが無ければストリームを再生成する。 */
+    private async switchLiveAudioTrack(track: apid.AudioTrackSpecifier): Promise<void> {
+        if (this.isEmbeddedAudioSwitchMode(this.currentMode) === true) {
+            const switched = await HlsAudioTrackUtil.switchAudioTrack(this.dp as any, track);
+            if (switched === true) {
+                this.currentAudioTrack = track;
+
+                return;
+            }
+            // レンディションが揃っていない場合は下の再接続方式へフォールバックする
+        }
+
+        await this.videoState.stop();
+        await this.videoState.start(this.channelId, this.currentMode, this.resolveStreamAudioTrack(track));
+        await this.waitForEnabled();
+        this.currentAudioTrack = track;
+        this.initVideoSetting();
     }
 
     /**

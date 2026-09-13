@@ -69,16 +69,16 @@ test('ブースト無しの主音声・副音声はフィルタ無しまたは p
     assert.match(AudioTrackUtil.replacePlaceholders(FILTER_CMD, 'sub', 1, 'encoded'), /-af "pan=stereo\|c0=c1\|c1=c1"/);
 });
 
-test('数字指定は音声 ES を -map で選ぶ (映像も明示する必要がある)', () => {
+test('数字指定は音声 ES を optional map で選び、欠落時は主音声へ落とす', () => {
     const cmd = AudioTrackUtil.replacePlaceholders(CMD, '2');
-    assert.match(cmd, /-map 0:v:0 -map 0:a:2/);
+    assert.match(cmd, /-map 0:v:0 -map "0:a:2\?" -map "0:a:0\?"/);
     // ES 指定時のデュアルモノラルは主音声側を使う
     assert.match(cmd, /-dual_mono_mode main/);
 });
 
 test('独立した 2 本目の音声 ES は channels 情報に関係なく -map 0:a:1 で選ぶ', () => {
     const cmd = AudioTrackUtil.replacePlaceholders(CMD, '1', undefined, 'ts', false);
-    assert.match(cmd, /-map 0:v:0 -map 0:a:1/);
+    assert.match(cmd, /-map 0:v:0 -map "0:a:1\?" -map "0:a:0\?"/);
     assert.match(cmd, /-dual_mono_mode main/);
     assert.doesNotMatch(cmd, /-dual_mono_mode sub/);
 });
@@ -112,14 +112,14 @@ test('parseStreamIndex は音声 ES のインデックスのみを返す', () =>
 
 test('tsreadex 正規化済みの副音声は 2 本目の音声 ES として選ぶ', () => {
     const cmd = AudioTrackUtil.replacePlaceholders(CMD, 'sub', 1, 'ts', true);
-    assert.match(cmd, /-map 0:v:0 -map 0:a:1/);
+    assert.match(cmd, /-map 0:v:0 -map "0:a:1\?" -map "0:a:0\?"/);
     // 分離済みなので dual_mono_mode では切り替わらない
     assert.match(cmd, /-dual_mono_mode main/);
 });
 
 test('tsreadex 正規化済みの主音声は 1 本目の音声 ES として選ぶ', () => {
     const cmd = AudioTrackUtil.replacePlaceholders(CMD, 'main', 1, 'ts', true);
-    assert.match(cmd, /-map 0:v:0 -map 0:a:0/);
+    assert.match(cmd, /-map 0:v:0 -map "0:a:0\?"/);
     assert.match(cmd, /-dual_mono_mode main/);
 });
 
@@ -130,7 +130,10 @@ test('tsreadex 正規化済みなら encoded の副音声へ pan を掛けない
 
 test('音声 ES のインデックス指定は tsreadex の有無で変わらない', () => {
     for (const normalized of [false, true]) {
-        assert.match(AudioTrackUtil.replacePlaceholders(CMD, '2', 1, 'ts', normalized), /-map 0:v:0 -map 0:a:2/);
+        assert.match(
+            AudioTrackUtil.replacePlaceholders(CMD, '2', 1, 'ts', normalized),
+            /-map 0:v:0 -map "0:a:2\?" -map "0:a:0\?"/,
+        );
     }
 });
 
@@ -138,7 +141,7 @@ test('音声 ES のインデックス指定は tsreadex の有無で変わらな
 
 test("tsreadex 正規化済みの 'all' は主音声・副音声の両方の ES を map する", () => {
     const cmd = AudioTrackUtil.replacePlaceholders(CMD, 'all', undefined, 'ts', true);
-    assert.match(cmd, /-map 0:v:0 -map 0:a:0 -map 0:a:1/);
+    assert.match(cmd, /-map 0:v:0 -map "0:a:0\?" -map "0:a:1\?"/);
 });
 
 test("tsreadex 無しの 'all' はデュアルモノラルの 1 ES しか無いため 'main' と同じ扱いになる", () => {
@@ -150,15 +153,18 @@ test("tsreadex 無しの 'all' はデュアルモノラルの 1 ES しか無い�
 
 test('tsreadex 正規化済みで audioTrack 未指定なら index 0 (主音声 ES) を明示的に選ぶ', () => {
     const cmd = AudioTrackUtil.replacePlaceholders(CMD, undefined, undefined, 'ts', true);
-    assert.match(cmd, /-map 0:v:0 -map 0:a:0/);
+    assert.match(cmd, /-map 0:v:0 -map "0:a:0\?"/);
 });
 
 test('m2tsll 用の音声専用 map は映像 map と分離して選択する', () => {
-    assert.equal(AudioTrackUtil.replacePlaceholders('%AUDIOSELECTMAP%', undefined, undefined, 'encoded'), '-map 0:a:0');
-    assert.equal(AudioTrackUtil.replacePlaceholders('%AUDIOSELECTMAP%', '2', undefined, 'encoded'), '-map 0:a:2');
+    assert.equal(AudioTrackUtil.replacePlaceholders('%AUDIOSELECTMAP%', undefined, undefined, 'encoded'), '-map "0:a:0?"');
+    assert.equal(
+        AudioTrackUtil.replacePlaceholders('%AUDIOSELECTMAP%', '2', undefined, 'encoded'),
+        '-map "0:a:2?" -map "0:a:0?"',
+    );
     assert.equal(
         AudioTrackUtil.replacePlaceholders('%AUDIOSELECTMAP%', 'all', undefined, 'ts', true),
-        '-map 0:a:0 -map 0:a:1',
+        '-map "0:a:0?" -map "0:a:1?"',
     );
 });
 

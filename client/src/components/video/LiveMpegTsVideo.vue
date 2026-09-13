@@ -5,6 +5,7 @@
 <script lang="ts">
 import BaseVideo from '@/components/video/BaseVideo';
 import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
+import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import container from '@/model/ModelContainer';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
@@ -15,6 +16,7 @@ import Util from '@/util/Util';
 import { DPlayerType } from 'dplayer';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
+import ProgramAudioTrackUtil from '../../../../src/util/ProgramAudioTrackUtil';
 
 @Component({})
 class LiveMpegTsVideo extends BaseVideo {
@@ -35,25 +37,34 @@ class LiveMpegTsVideo extends BaseVideo {
 
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private channelsApiModel: IChannelsApiModel = container.get<IChannelsApiModel>('IChannelsApiModel');
+    private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private audioTracks: apid.VideoAudioTrack[] = []; // 放送中番組から取得した音声トラック一覧
+    private audioTracksKnown = false;
     private currentMode: number = 0; // 再生中の視聴設定 (画質切替で更新される)
     private currentAudioTrack: apid.AudioTrackSpecifier = 'main'; // 再生中の音声トラック
     private deferredMpegtsCleanups = new Set<() => void>();
+    private audioTrackUpdateGeneration = 0;
 
     public mounted(): void {
         this.currentMode = this.mode;
+        this.socketIoModel.onUpdateOnAirProgram(this.onUpdateOnAirProgram);
         super.mounted();
 
         // 放送中番組の音声 ES から選べる音声トラックを求める (取れなくても再生は続ける)
         if (this.channelId !== null) {
+            const generation = ++this.audioTrackUpdateGeneration;
             this.channelsApiModel
                 .getLiveAudioTracks(this.channelId)
                 .then(tracks => {
+                    if (generation !== this.audioTrackUpdateGeneration) return;
                     this.audioTracks = tracks;
+                    this.audioTracksKnown = true;
                     this.setupLiveAudioTrackSwitch();
                 })
                 .catch(err => {
+                    if (generation !== this.audioTrackUpdateGeneration) return;
                     console.error(err);
+                    this.audioTracksKnown = false;
                     this.setupLiveAudioTrackSwitch();
                 });
         }
@@ -82,8 +93,46 @@ class LiveMpegTsVideo extends BaseVideo {
     }
 
     public async beforeUnmount(): Promise<void> {
+        this.socketIoModel.offUpdateOnAirProgram(this.onUpdateOnAirProgram);
         this.cleanupDeferredMpegts();
         super.beforeUnmount();
+    }
+
+    /**
+     * EIT[p/f] の番組切替を受け、新番組の音声トラック一覧を反映する。
+     * 選択中の ES が無くなった場合は主音声へ戻し、配信も主音声で再生成する。
+     * @param payload: { channelIds: number[] }
+     * @return Promise<void>
+     */
+    public async onUpdateOnAirProgram(payload: { channelIds: number[] }): Promise<void> {
+        if (this.channelId === null || payload.channelIds.includes(this.channelId) === false) return;
+
+        const generation = ++this.audioTrackUpdateGeneration;
+        try {
+            const tracks = await this.channelsApiModel.getLiveAudioTracks(this.channelId);
+            if (generation !== this.audioTrackUpdateGeneration) return;
+
+            const previous = this.currentAudioTrack;
+            this.audioTracks = tracks;
+            this.audioTracksKnown = true;
+            const next = ProgramAudioTrackUtil.resolveCurrentTrack(tracks, previous);
+            this.currentAudioTrack = next;
+            this.setupLiveAudioTrackSwitch();
+            if (next === previous || this.dp === null) return;
+
+            const mpegts = (this.dp as any).plugins?.mpegts;
+            if (
+                this.isEmbeddedAudioSwitchMode(this.currentMode) === true &&
+                typeof mpegts?.switchPrimaryAudio === 'function'
+            ) {
+                mpegts.switchPrimaryAudio();
+            } else {
+                // currentAudioTrack は先に main へ戻してから URL を再生成する。
+                (this.dp as any).switchQuality(this.currentMode);
+            }
+        } catch (err) {
+            console.error(err);
+        }
     }
 
     /**
@@ -264,7 +313,7 @@ class LiveMpegTsVideo extends BaseVideo {
      */
     private setupLiveAudioTrackSwitch(): void {
         this.setupAudioTrackSwitch({
-            tracks: this.audioTracks.length > 0 ? this.audioTracks : LiveMpegTsVideo.FALLBACK_AUDIO_TRACKS,
+            tracks: this.audioTracksKnown ? this.audioTracks : LiveMpegTsVideo.FALLBACK_AUDIO_TRACKS,
             current: this.currentAudioTrack,
             onSelect: async track => {
                 const dp = this.dp as any;

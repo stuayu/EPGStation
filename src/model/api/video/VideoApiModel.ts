@@ -176,9 +176,14 @@ export default class VideoApiModel implements IVideoApiModel {
      * @return Promise<apid.VideoAudioTrack[]>
      */
     public async getAudioTracks(videoFileId: apid.VideoFileId): Promise<apid.VideoAudioTrack[]> {
+        const video = await this.videoFileDB.findId(videoFileId);
+        if (video === null) {
+            throw new Error('VideoFileIsUndefined');
+        }
         const filePath = await this.getExistingFilePath(videoFileId);
+        const recorded = await this.recordedDB.findId(video.recordedId);
 
-        return await this.videoUtil.getAudioTracks(filePath);
+        return await this.videoUtil.getAudioTracks(filePath, { isRecording: recorded?.isRecording === true });
     }
 
     /**
