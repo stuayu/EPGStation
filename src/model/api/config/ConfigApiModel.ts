@@ -1,4 +1,4 @@
-import { inject, injectable } from 'inversify';
+import { inject, injectable, optional } from 'inversify';
 import * as apid from '../../../../api';
 import { resolveFeatureFlags } from '../../FeatureFlags';
 import IConfigFile, { StreamProfile } from '../../IConfigFile';
@@ -6,6 +6,7 @@ import IConfiguration from '../../IConfiguration';
 import IIPCClient from '../../ipc/IIPCClient';
 import IStreamProfileManageModel from '../../stream/IStreamProfileManageModel';
 import IConfigApiModel from './IConfigApiModel';
+import IHardwareEncoderDetector from '../../encoder/IHardwareEncoderDetector';
 
 @injectable()
 export default class ConfigApiModel implements IConfigApiModel {
@@ -17,6 +18,9 @@ export default class ConfigApiModel implements IConfigApiModel {
         @inject('IConfiguration') configuration: IConfiguration,
         @inject('IIPCClient') ipc: IIPCClient,
         @inject('IStreamProfileManageModel') streamProfileManageModel: IStreamProfileManageModel,
+        @inject('IHardwareEncoderDetector')
+        @optional()
+        private readonly hardwareEncoderDetector?: IHardwareEncoderDetector,
     ) {
         this.configuration = configuration;
         this.ipc = ipc;
@@ -141,6 +145,12 @@ export default class ConfigApiModel implements IConfigApiModel {
             typeof config.clientSocketioPort !== 'undefined' ? config.clientSocketioPort : listenSetting.dedicatedPort;
         result.socketIOPort = dedicatedPort === null ? listenSetting.listenPort : dedicatedPort;
         result.useDedicatedSocketIOPort = dedicatedPort !== null && this.isDirectAccess(isSecure, accessPort) === true;
+        const hardwareEncoder = this.hardwareEncoderDetector?.getResult();
+        result.hardwareEncoder = {
+            configured: hardwareEncoder?.configured ?? config.hardwareEncoder ?? 'auto',
+            selected: hardwareEncoder?.selected ?? 'software',
+            available: hardwareEncoder?.available ?? ['software'],
+        };
 
         result.recorded = config.recorded.map(r => {
             return r.name;

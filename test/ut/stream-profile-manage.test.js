@@ -33,6 +33,57 @@ test('m2tsll の生成 cmd は入力オプションを -i より前、low_delay 
     assert.ok(cmd.indexOf('-flags low_delay') > input);
 });
 
+test('検出済み ffmpeg QSV は cmd 省略プリセットへ反映する', () => {
+    const detector = {
+        getStreamEncoder: () => ({
+            kind: 'ffmpeg',
+            codecs: ['h264', 'hevc'],
+            bitDepths: [8],
+            ffmpegCodecs: 'h264_qsv',
+        }),
+    };
+    const model = new StreamProfileManageModel(
+        {
+            getConfig: () => ({
+                stream: { profiles: { live: [{ id: 'qsv', name: 'QSV', container: 'hls', video: { height: 720 } }] } },
+            }),
+        },
+        detector,
+    );
+    assert.match(model.getLiveProfiles()[0].cmd, /-c:v h264_qsv/u);
+});
+
+test('検出済み rigaya の録画ファイル入力へ強制 CFR と hvc1 を付ける', () => {
+    const detector = {
+        getStreamEncoder: () => ({
+            kind: 'qsvencc',
+            command: 'C:\\Program Files\\QSVEncC\\QSVEncC64.exe',
+            codecs: ['h264', 'hevc'],
+            bitDepths: [8, 10],
+        }),
+    };
+    const model = new StreamProfileManageModel(
+        {
+            getConfig: () => ({
+                stream: {
+                    profiles: {
+                        recorded: {
+                            encoded: [
+                                { id: 'qsv', name: 'QSV', container: 'hls', video: { codec: 'hevc', height: 720 } },
+                            ],
+                        },
+                    },
+                },
+            }),
+        },
+        detector,
+    );
+    const cmd = model.getRecordedProfiles('encoded')[0].cmd;
+    assert.match(cmd, /QSVEncC64\.exe/u);
+    assert.match(cmd, /--avsync forcecfr --fps 30000\/1001/u);
+    assert.match(cmd, /-tag:v hvc1/u);
+});
+
 test('tsreadex 経由の m2tsll だけ入力解析を 200000 へ短縮し、非経由は従来値を維持する', () => {
     const makeModel = tsreadex =>
         new StreamProfileManageModel({

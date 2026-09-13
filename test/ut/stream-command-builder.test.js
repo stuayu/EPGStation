@@ -170,6 +170,14 @@ test('ライブの生成コマンドは音声トラックのプレースホル�
     assert.doesNotMatch(cmd, /-dual_mono_mode (main|sub)/u);
 });
 
+test('検出器だけを渡した場合は ffmpeg QSV を使う', () => {
+    const detector = {
+        getStreamEncoder: () => ({ kind: 'ffmpeg', codecs: ['h264'], bitDepths: [8], ffmpegCodecs: 'h264_qsv' }),
+    };
+    const cmd = new LiveCommandBuilder(detector).build(terrestrial1080i, preset({ codec: 'h264' }));
+    assert.match(cmd, /-c:v h264_qsv/u);
+});
+
 test('ライブの無変換配信も副音声を選べる', () => {
     const cmd = new LiveCommandBuilder().build(terrestrial1080i, { output: { codec: 'copy' } }, [encoder('ffmpeg')]);
 

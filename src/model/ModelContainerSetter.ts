@@ -340,6 +340,10 @@ import ILiveCommandBuilder from './stream/builder/ILiveCommandBuilder';
 import LiveCommandBuilder from './stream/builder/LiveCommandBuilder';
 import IRecordedCommandBuilder from './stream/builder/IRecordedCommandBuilder';
 import RecordedCommandBuilder from './stream/builder/RecordedCommandBuilder';
+import IHardwareEncoderProcessExecutor from './encoder/IHardwareEncoderProcessExecutor';
+import HardwareEncoderProcessExecutor from './encoder/HardwareEncoderProcessExecutor';
+import IHardwareEncoderDetector from './encoder/IHardwareEncoderDetector';
+import HardwareEncoderDetector from './encoder/HardwareEncoderDetector';
 
 /**
  * container に 各 Model を登録する
@@ -348,6 +352,11 @@ export const set = (container: Container): void => {
     container.bind<ILoggerModel>('ILoggerModel').to(LoggerModel).inSingletonScope();
 
     container.bind<IConfiguration>('IConfiguration').to(Configuration).inSingletonScope();
+    container
+        .bind<IHardwareEncoderProcessExecutor>('IHardwareEncoderProcessExecutor')
+        .to(HardwareEncoderProcessExecutor)
+        .inSingletonScope();
+    container.bind<IHardwareEncoderDetector>('IHardwareEncoderDetector').to(HardwareEncoderDetector).inSingletonScope();
     container.bind<ISecretCrypto>('ISecretCrypto').to(SecretCrypto).inSingletonScope();
 
     container.bind<INotificationDispatcher>('INotificationDispatcher').to(NotificationDispatcher).inSingletonScope();

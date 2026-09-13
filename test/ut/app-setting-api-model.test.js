@@ -4,6 +4,7 @@ const test = require('node:test');
 require('reflect-metadata');
 
 const AppSettingApiModel = require('../../dist/model/api/config/AppSettingApiModel').default;
+const { CONFIG_SCHEMA } = require('../../dist/model/config/ConfigSchema');
 
 // AppSettingApiModel は DI コンストラクタ経由でしか作れないが、対象メソッドは
 // (private 修飾でも実行時には効かない) 依存を使わない純粋な変換ロジックなので、
@@ -13,6 +14,17 @@ function createInstance() {
 }
 
 const PLACEHOLDER = AppSettingApiModel.CONFIG_SECRET_PLACEHOLDER;
+
+test('設定画面には検出済みハードウェアだけを選択肢として返す', () => {
+    const m = createInstance();
+    m.hardwareEncoderDetector = { getAvailableIds: () => ['qsv', 'software'] };
+    const schema = CONFIG_SCHEMA.find(entry => entry.key === 'hardwareEncoder');
+    const fields = m.fieldsFor('hardwareEncoder', schema.fields);
+    assert.deepEqual(
+        fields[0].items.map(item => item.value),
+        ['auto', 'qsv', 'software'],
+    );
+});
 
 // -----------------------------------------------------------------------------
 // 1. maskConfig() / maskConfigValue() / isConfigSecretPath() — 秘密情報マスク
@@ -126,7 +138,7 @@ test('maskConfig: 空文字はマスク対象キーでもそのまま (伏せ字
     assert.equal(masked.auth.clientSecret, '');
 });
 
-test('maskConfig: 伏せ字は AppSettingApiModel.CONFIG_SECRET_PLACEHOLDER (\'********\') と一致する', () => {
+test("maskConfig: 伏せ字は AppSettingApiModel.CONFIG_SECRET_PLACEHOLDER ('********') と一致する", () => {
     assert.equal(PLACEHOLDER, '********');
 });
 
@@ -207,7 +219,10 @@ test('stripMaskedPlaceholders: 配列内の伏せ字 leaf も削除される', (
     });
     assert.deepEqual(result, {
         notifications: {
-            targets: [{ name: 'a', token: 'kept-real-token' }, { name: 'b', url: 'http://real-url' }],
+            targets: [
+                { name: 'a', token: 'kept-real-token' },
+                { name: 'b', url: 'http://real-url' },
+            ],
         },
     });
 });

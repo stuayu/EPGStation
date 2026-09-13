@@ -1,4 +1,4 @@
-import { inject, injectable } from 'inversify';
+import { inject, injectable, optional } from 'inversify';
 import { StreamContainer, StreamProfile } from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
 import StreamProfileManageModel from '../StreamProfileManageModel';
@@ -8,6 +8,7 @@ import { StreamPreset } from './IStreamPreset';
 import { BUILTIN_STREAM_PRESETS, LEGACY_STREAM_PRESETS } from '../../../util/BuiltinStreamPresets';
 import IStreamPresetRegistry, { StreamPresetScope } from './IStreamPresetRegistry';
 import EncodePresets from '../../../util/EncodePresets';
+import IHardwareEncoderDetector from '../../encoder/IHardwareEncoderDetector';
 
 /** Built-in、encodePresets、既存 config の配信プリセットを統合する。 */
 @injectable()
@@ -15,6 +16,9 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
     constructor(
         @inject('IConfiguration') private readonly configuration: IConfiguration,
         @inject('IStreamProfileManageModel') private readonly profiles: StreamProfileManageModel,
+        @inject('IHardwareEncoderDetector')
+        @optional()
+        private readonly hardwareEncoderDetector?: IHardwareEncoderDetector,
     ) {}
 
     public getPresets(
@@ -47,6 +51,7 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
         const userPresets = user.map(profile => this.toPreset(profile, scope));
         const userRoles = new Set(userPresets.map(presetRole));
         const auto = generatedProfiles
+            .filter(profile => this.isGeneratedHardwareAvailable(profile))
             .map(profile => configured.find(item => item.id === profile.id) ?? profile)
             .map(profile => this.toPreset(profile, scope))
             .filter(preset => !userRoles.has(presetRole(preset)));
@@ -59,6 +64,28 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
         return [...candidates, ...catalog].filter(
             preset => this.appliesToScope(preset, scope) && this.isAvailable(preset, source, client),
         );
+    }
+
+    /** 自動生成プリセットの HW コマンドが起動時検出結果に合うか判定する。手書き cmd には適用しない。 */
+    private isGeneratedHardwareAvailable(profile: StreamProfile): boolean {
+        if (this.hardwareEncoderDetector === undefined || typeof profile.cmd !== 'string') return true;
+        const result = this.hardwareEncoderDetector.getResult();
+        const ffmpegMatches = [...profile.cmd.matchAll(/\b(h264|hevc)_(qsv|nvenc|amf|videotoolbox)\b/giu)];
+        for (const match of ffmpegMatches) {
+            const codec = match[1].toLowerCase() as 'h264' | 'hevc';
+            const id = match[2].toLowerCase() === 'amf' ? 'vce' : match[2].toLowerCase();
+            const info = result.encoders.find(item => item.id === id);
+            if (info?.provider !== 'ffmpeg' || info.codecs.includes(codec) === false) return false;
+        }
+
+        const rigayaMatches = [...profile.cmd.matchAll(/\b(QSVEncC|NVEncC|VCEEncC)(?:64)?(?:\.exe)?\b/giu)];
+        for (const match of rigayaMatches) {
+            const name = match[1].toLowerCase();
+            const id = name.startsWith('qsv') ? 'qsv' : name.startsWith('nv') ? 'nvenc' : 'vce';
+            const provider = id === 'qsv' ? 'qsvencc' : id === 'nvenc' ? 'nvencc' : 'vceencc';
+            if (result.encoders.some(item => item.id === id && item.provider === provider) === false) return false;
+        }
+        return true;
     }
 
     public getModeMap(scope: StreamPresetScope): Record<StreamContainer, string[]> {
@@ -100,7 +127,8 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
         const configured = this.getProfiles(scope);
         const generatedProfiles = this.getGeneratedProfiles(generated, scope);
 
-        const profile = configured.find(item => item.id === presetId) ?? generatedProfiles.find(item => item.id === presetId);
+        const profile =
+            configured.find(item => item.id === presetId) ?? generatedProfiles.find(item => item.id === presetId);
 
         return profile?.cmd;
     }

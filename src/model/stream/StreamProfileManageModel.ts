@@ -1,9 +1,12 @@
-import { inject, injectable } from 'inversify';
+import { inject, injectable, optional } from 'inversify';
 import { StreamAudioParam, StreamContainer, StreamingCmd, StreamProfile, StreamVideoParam } from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
 import { recordedStreamPacingArgs } from '../../util/RecordedStreamPacing';
 import { DEINTERLACE_PLACEHOLDER } from '../../util/DeinterlaceUtil';
 import IStreamProfileManageModel, { StreamProfileKind } from './IStreamProfileManageModel';
+import IHardwareEncoderDetector from '../encoder/IHardwareEncoderDetector';
+import { StreamEncoderCapability } from '../../util/StreamArgsUtil';
+import ProcessUtil from '../../util/ProcessUtil';
 
 // ffmpeg コマンド生成時の対象スコープ (live / recordedTs は pipe 入力、recordedEncoded はファイル入力)
 type ProfileScope = 'live' | 'recordedTs' | 'recordedEncoded';
@@ -28,7 +31,12 @@ const buildOptionalMap = (specifier: string, useShell: boolean): string =>
 class StreamProfileManageModel implements IStreamProfileManageModel {
     private configuration: IConfiguration;
 
-    constructor(@inject('IConfiguration') configuration: IConfiguration) {
+    constructor(
+        @inject('IConfiguration') configuration: IConfiguration,
+        @inject('IHardwareEncoderDetector')
+        @optional()
+        private readonly hardwareEncoderDetector?: IHardwareEncoderDetector,
+    ) {
         this.configuration = configuration;
     }
 
@@ -230,7 +238,19 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
         const isLive = scope === 'live';
         const isEncodedSource = scope === 'recordedEncoded';
 
-        const videoCodec = video?.codec ?? (container === 'webm' ? 'libvpx-vp9' : 'libx264');
+        const requestedVideoCodec = video?.codec ?? (container === 'webm' ? 'libvpx-vp9' : 'libx264');
+        const requestedCodec = /(?:hevc|h265|265|x265)/iu.test(requestedVideoCodec) ? 'hevc' : 'h264';
+        const selectedEncoder =
+            container === 'webm' ? undefined : this.hardwareEncoderDetector?.getStreamEncoder(requestedCodec);
+        if (
+            selectedEncoder !== undefined &&
+            (selectedEncoder.kind === 'qsvencc' ||
+                selectedEncoder.kind === 'nvencc' ||
+                selectedEncoder.kind === 'vceencc')
+        ) {
+            return this.buildRigayaCmd(scope, container, video, audio, selectedEncoder, useTsreadex);
+        }
+        const videoCodec = selectedEncoder?.ffmpegCodecs ?? requestedVideoCodec;
         const videoBitrate = `${typeof video?.bitrate === 'number' ? video.bitrate : 3000}k`;
         const audioCodec = audio?.codec ?? (container === 'webm' ? 'libvorbis' : 'aac');
         const audioBitrate = `${typeof audio?.bitrate === 'number' ? audio.bitrate : 192}k`;
@@ -241,15 +261,13 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
         const scaleFilter = this.buildScaleFilter(video);
         // 素材はプリセット生成時点では未確定。配信開始時に %DEINTERLACE% を解決する。
         // scale が無い場合もプレースホルダを残し、解決側で不要な -vf ごと除去する。
-        const vfFilter =
-            scaleFilter === null ? DEINTERLACE_PLACEHOLDER : `${DEINTERLACE_PLACEHOLDER},${scaleFilter}`;
+        const vfFilter = scaleFilter === null ? DEINTERLACE_PLACEHOLDER : `${DEINTERLACE_PLACEHOLDER},${scaleFilter}`;
         const vf = ` -vf ${vfFilter}`;
 
         const input = isEncodedSource ? '-ss %SS% -i %INPUT%' : '-i pipe:0';
         const realtime = isLive ? '-re ' : '';
         // 録画の非 HLS 入力は readrate で有限の先行速度に抑える。ライブと録画 HLS は別の速度制御を使う。
-        const pacedInput =
-            isLive || container === 'hls' ? input : `${recordedStreamPacingArgs()} ${input}`;
+        const pacedInput = isLive || container === 'hls' ? input : `${recordedStreamPacingArgs()} ${input}`;
 
         // m2tsll は `-map 0` / `-map "0:d?"` を使わない (文字スーパーで muxer が止まる。上のコメント参照)。
         // 音声は %AUDIOSELECTMAP%、字幕は個別 map する。ID3 timed metadata は入力側へ map しない。
@@ -305,6 +323,49 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
                     `-b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${h264PixelFormat}${vf} -b:v ${videoBitrate} -preset veryfast -y -f mpegts pipe:1`
                 );
         }
+    }
+
+    /** 検出済み rigaya エンコーダを使う自動生成コマンドを組み立てる。 */
+    private buildRigayaCmd(
+        scope: ProfileScope,
+        container: StreamContainer,
+        video: StreamVideoParam | undefined,
+        audio: StreamAudioParam | undefined,
+        encoder: StreamEncoderCapability,
+        useTsreadex: boolean,
+    ): string {
+        const isFileInput = scope === 'recordedEncoded';
+        const codec = /(?:hevc|h265|265|x265)/iu.test(video?.codec ?? '') ? 'hevc' : 'h264';
+        const height = video?.height ?? 1080;
+        const videoBitrate = video?.bitrate ?? 3000;
+        const audioCodec = audio?.codec ?? 'aac';
+        const audioBitrate = audio?.bitrate ?? 192;
+        const bin = ProcessUtil.quoteShellArg(encoder.command ?? 'QSVEncC');
+        const rigayaKind = encoder.kind === 'nvencc' ? 'nvenc' : encoder.kind === 'vceencc' ? 'vce' : 'qsv';
+        const quality =
+            rigayaKind === 'nvenc' ? '--preset P3' : rigayaKind === 'vce' ? '--preset fast' : '--quality faster';
+        const strictGop = rigayaKind === 'vce' ? '' : ' --strict-gop';
+        const input = isFileInput ? '--seek %SS% -i %INPUT%' : '--input-format mpegts -i -';
+        const sync = isFileInput ? ' --avsync forcecfr --fps 30000/1001' : '';
+        const prefix =
+            useTsreadex === true && isFileInput === false ? `${StreamProfileManageModel.TSREADEX_COMMAND} | ` : '';
+        const encoderCmd =
+            `${bin} --avhw ${input} -c ${codec} --profile main --output-depth 8 ${quality} ` +
+            `--vbr ${videoBitrate} --max-bitrate ${videoBitrate * 2} --gop-len 30${strictGop} --bframes 0 ` +
+            `--output-res -2x${height}${sync} --audio-copy --output-format mpegts -o -`;
+        const ffmpegInput = `%FFMPEG% %DUALMONOMODE% -f mpegts ${isFileInput ? '' : '-fflags nobuffer '}-i pipe:0`;
+        const tag = codec === 'hevc' && (container === 'mp4' || container === 'hls') ? ' -tag:v hvc1' : '';
+        const audioArgs =
+            container === 'm2tsll'
+                ? `-c:a ${audioCodec} -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER%`
+                : `%AUDIOMAP% -c:a ${audioCodec} -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER%`;
+        const map =
+            container === 'm2tsll' ? '-map 0:v:0 %AUDIOSELECTMAP% -map "0:s?" -c:s copy' : '-map 0:v:0 -c:v copy';
+        const output =
+            container === 'mp4' || container === 'hls'
+                ? `${map}${tag} ${audioArgs} -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`
+                : `${map}${tag} ${audioArgs} -f mpegts pipe:1`;
+        return `${prefix}${encoderCmd} | ${ffmpegInput} ${output}`;
     }
 
     /**

@@ -995,6 +995,12 @@ export interface Config {
      * false ならクライアントはアクセス中のオリジンへそのまま接続する
      */
     useDedicatedSocketIOPort: boolean;
+    /** 起動時に実測したエンコーダ能力。 */
+    hardwareEncoder: {
+        configured: 'auto' | 'qsv' | 'nvenc' | 'vce' | 'videotoolbox' | 'software';
+        selected: 'qsv' | 'nvenc' | 'vce' | 'videotoolbox' | 'software';
+        available: Array<'qsv' | 'nvenc' | 'vce' | 'videotoolbox' | 'software'>;
+    };
     broadcast: BroadcastStatus;
     recorded: string[];
     encode: string[];

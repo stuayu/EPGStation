@@ -17,14 +17,67 @@ const source = (overrides = {}) => ({
 });
 const client = (overrides = {}) => ({ hevc: true, hevcMain10: true, h264: true, hdr: true, hlg: true, ...overrides });
 const config = stream => ({ stream });
-const makeRegistry = value => {
+const makeRegistry = (value, detector) => {
     const configuration = { getConfig: () => value };
     const profileModel = new StreamProfileManageModel(configuration);
-    return new StreamPresetRegistry(configuration, profileModel);
+    return new StreamPresetRegistry(configuration, profileModel, detector);
 };
 
+test('検出できない encodePresets の HW プリセットは画質候補から除外する', () => {
+    const detector = {
+        getResult: () => ({
+            encoders: [{ id: 'software', provider: 'software', codecs: ['h264', 'hevc'] }],
+        }),
+    };
+    const registry = makeRegistry(
+        { encodePresets: { hwaccel: 'qsv', codecs: ['h264'], qualities: ['720p'], targets: ['liveHLS'] } },
+        detector,
+    );
+    assert.equal(
+        registry.getPresets('live', source(), client()).some(item => item.id.includes('-qsv-')),
+        false,
+    );
+});
+
+test('検出外の HW でも利用者が cmd を明示したプロファイルは残す', () => {
+    const detector = {
+        getResult: () => ({
+            encoders: [{ id: 'software', provider: 'software', codecs: ['h264', 'hevc'] }],
+        }),
+    };
+    const registry = makeRegistry(
+        {
+            stream: {
+                profiles: {
+                    live: [
+                        { id: 'manual-qsv', name: '手動QSV', container: 'hls', cmd: '%FFMPEG% -c:v h264_qsv pipe:1' },
+                    ],
+                },
+            },
+        },
+        detector,
+    );
+    assert.equal(
+        registry.getPresets('live', source(), client()).some(item => item.id === 'manual-qsv'),
+        true,
+    );
+});
+
 test('ユーザー定義プリセットは同じ役割の Built-in に上書きされない', () => {
-    const registry = makeRegistry(config({ profiles: { live: [{ id: 'custom-720p', name: '自分の720p', container: 'hls', video: { codec: 'libx264', height: 720 } }] } }));
+    const registry = makeRegistry(
+        config({
+            profiles: {
+                live: [
+                    {
+                        id: 'custom-720p',
+                        name: '自分の720p',
+                        container: 'hls',
+                        video: { codec: 'libx264', height: 720 },
+                    },
+                ],
+            },
+        }),
+    );
     const preset = registry.getPresets('live', source(), client()).find(item => item.output.resolution === '720p');
     assert.equal(preset.id, 'custom-720p');
     assert.equal(preset.name, '自分の720p');
@@ -38,12 +91,17 @@ test('既存 mode の添字は container ごとの preset id に決定的に対�
 
 test('1080i legacy source では 2160p-high を候補に出さない', () => {
     const registry = makeRegistry(config());
-    assert.equal(registry.getPresets('live', source({ height: 1080 }), client()).some(item => item.id === '2160p-high'), false);
+    assert.equal(
+        registry.getPresets('live', source({ height: 1080 }), client()).some(item => item.id === '2160p-high'),
+        false,
+    );
 });
 
 test('HEVC 非対応 client では HEVC 必須プリセットを候補に出さない', () => {
     const registry = makeRegistry(config());
-    const ids = registry.getPresets('live', source({ height: 2160, hdr: 'hlg' }), client({ hevc: false, hevcMain10: false })).map(item => item.id);
+    const ids = registry
+        .getPresets('live', source({ height: 2160, hdr: 'hlg' }), client({ hevc: false, hevcMain10: false }))
+        .map(item => item.id);
     assert.equal(ids.includes('2160p-high'), false);
     assert.equal(ids.includes('1080p-high'), false);
 });
@@ -52,7 +110,14 @@ test('1080i source では config と legacy の 2160p を候補に出さない',
     const configuration = config({
         stream: {
             profiles: {
-                live: [{ id: 'custom-2160p', name: '自作2160p', container: 'hls', video: { codec: 'libx264', height: 2160 } }],
+                live: [
+                    {
+                        id: 'custom-2160p',
+                        name: '自作2160p',
+                        container: 'hls',
+                        video: { codec: 'libx264', height: 2160 },
+                    },
+                ],
             },
         },
     });
@@ -63,9 +128,17 @@ test('1080i source では config と legacy の 2160p を候補に出さない',
 });
 
 test('HEVC を cmd から推定し非対応 client では config プリセットを候補に出さない', () => {
-    const registry = makeRegistry(config({
-        stream: { profiles: { live: [{ id: 'custom-hevc', name: '自作高画質', container: 'hls', cmd: 'ffmpeg -c:v libx265 pipe:1' }] } },
-    }));
+    const registry = makeRegistry(
+        config({
+            stream: {
+                profiles: {
+                    live: [
+                        { id: 'custom-hevc', name: '自作高画質', container: 'hls', cmd: 'ffmpeg -c:v libx265 pipe:1' },
+                    ],
+                },
+            },
+        }),
+    );
     const ids = registry.getPresets('live', source(), client({ hevc: false })).map(item => item.id);
     assert.equal(ids.includes('custom-hevc'), false);
 });
@@ -99,13 +172,19 @@ test('既存 stream 設定だけの環境は従来のプリセットと生成 cm
     const registry = new StreamPresetRegistry({ getConfig: () => configuration }, profiles);
     const candidates = registry.getPresets('live', source(), client());
 
-    assert.deepEqual(profiles.getLiveProfiles().map(profile => profile.id), ['manual-live', 'generated-live']);
+    assert.deepEqual(
+        profiles.getLiveProfiles().map(profile => profile.id),
+        ['manual-live', 'generated-live'],
+    );
     assert.equal(profiles.getLiveProfiles()[0].cmd, legacyCmd);
     assert.equal(
         profiles.getLiveProfiles()[1].cmd,
         '%FFMPEG% -re %DUALMONOMODE% -i pipe:0 -sn -threads 0 %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2 %AUDIOFILTER% -c:v libx264 -pix_fmt yuv420p -vf %DEINTERLACE%,scale=-2:720 -b:v 2500k -profile:v baseline -preset veryfast -tune fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4 pipe:1',
     );
-    assert.deepEqual(candidates.slice(0, 2).map(preset => preset.id), ['manual-live', 'generated-live']);
+    assert.deepEqual(
+        candidates.slice(0, 2).map(preset => preset.id),
+        ['manual-live', 'generated-live'],
+    );
 });
 
 // cmd を省略したプリセットの自動生成コマンドは、音声トラック切り替えのプレースホルダを
