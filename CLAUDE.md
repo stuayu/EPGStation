@@ -214,6 +214,7 @@ npm run test:ci        # ut + ita + itb
 - **DPlayer に `type: 'normal'` を渡すと ARIB 字幕が出ない**。Safari のネイティブ HLS でも `type: 'hls'` のままにする
 - **表示ラベルの引き当てキーは `PlaybackProfile.role`** (`auto` / `original` / `2160p-high` / `1080p-high` / `1080p` / `720p` / `data-saver`)。`profile.id` は `live-m2tsll-1080p-avc` のような実プリセット id なので、id で辞書を引くと `auto` 以外は必ず外れる (実際に一言説明とバッジが出ていなかった)。`role` はサーバが `PlaybackApiModel.builtinRole()` で決めて API に載せる。
 - **「おまかせ」プリセットを返すのはライブだけ**で、録画の配信では `profiles` に `auto` が入らない。`PlaybackOptionsState.getInitialPresetId()` は `auto` が無ければ `recommended.resolvedId` を初期選択にする (`auto` のままだと、一覧のどれも選択されていないのにボタンだけ「おまかせ」と出る)。
+- **DPlayer の画質一覧は「配信方式 > 画質」の平坦な一覧**。一覧へ出す方式は `VideoContainer` が prop (`selectablePlaybackContainers`) で映像コンポーネントへ渡す — 子はシーク・画質切替のたびに `setPlaybackProfiles()` を呼び直すため、prop で持たせないと呼び直しのたびに一覧が現在の方式 1 つへ縮む。**`setPlaybackProfiles()` の `currentMode` には quality 配列の添字ではなく実際のサーバ mode を渡す** (添字を渡すと選択中の項目を取り違える)
 - **画質の表示名・一言説明・詳細・バッジは `client/src/util/PlaybackLabelUtil.ts` の 1 か所で決まる**。配信選択ダイアログ (`PlaybackQualityList` / `PlaybackQualityItem`) と DPlayer の設定メニュー (`BaseVideo.setPlaybackProfiles()`) の両方がここを通すため、新しい画質選択 UI を足すときもここを呼ぶ (別のラベル生成ロジックを作らない)
 - **BML ブラウザは映像要素を自分の中へ物理的に移動する**。`invisible` の切り替えと破棄時に元へ戻す処理を落とさない
 - **データ放送の WebSocket は socket.io と同じサーバの `upgrade` に相乗りする**。パスが `<subDirectory>/api/dataBroadcasting/ws` 以外の socket には触らない (触ると socket.io のハンドシェイクが壊れる)

@@ -1,6 +1,15 @@
 import * as apid from '../../../api';
 
 export type PlaybackLabel = { name: string; summary: string; detail: string; badges: string[] };
+export type PlaybackContainerLabel = Exclude<apid.PlaybackContainer, 'normal'>;
+
+const CONTAINER_LABELS: Partial<Record<PlaybackContainerLabel, string>> = {
+    m2ts: 'MPEG-TS',
+    m2tsll: '低遅延 (M2TS-LL)',
+    hls: '標準 (HLS)',
+    mp4: 'MP4',
+    webm: 'WebM',
+};
 
 // 一般ユーザー向けに「何が嬉しいか」で書いた説明。技術的な detail は別途 profile.detail / recommended.reason を使う
 const LABELS: Record<string, Omit<PlaybackLabel, 'detail' | 'badges'>> = {
@@ -83,4 +92,24 @@ export const getPlaybackShortLabel = (profile: apid.PlaybackProfile, recommended
     return LABELS[labelKey(profile)]?.name ?? profile.label;
 };
 
-export default { getPlaybackLabel, getPlaybackShortLabel };
+/**
+ * 配信方式の一般ユーザー向け表示名を返す。
+ * @param container 配信方式
+ * @return string
+ */
+export const getPlaybackContainerLabel = (container: PlaybackContainerLabel): string => CONTAINER_LABELS[container] ?? container;
+
+/**
+ * DPlayer の画質項目へ配信方式と画質をまとめた表示名を返す。
+ * @param profile 再生プロファイル
+ * @param container 配信方式
+ * @param source 元映像の特性
+ * @return string
+ */
+export const getPlaybackOptionLabel = (
+    profile: apid.PlaybackProfile,
+    container: PlaybackContainerLabel,
+    source?: apid.SourceCapabilities,
+): string => `${getPlaybackContainerLabel(container)} > ${getPlaybackLabel(profile, source).name}`;
+
+export default { getPlaybackLabel, getPlaybackShortLabel, getPlaybackContainerLabel, getPlaybackOptionLabel };

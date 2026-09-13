@@ -4,6 +4,7 @@
 
 <script lang="ts">
 import BaseVideo from '@/components/video/BaseVideo';
+import { SelectablePlaybackContainer } from '../../../../src/util/PlaybackQualityOptionUtil';
 import container from '@/model/ModelContainer';
 import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
@@ -17,6 +18,7 @@ import { DPlayerType } from 'dplayer';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 import ProgramAudioTrackUtil from '../../../../src/util/ProgramAudioTrackUtil';
+import { decideAudioTrackSwitch } from '../../../../src/util/AudioTrackSwitchDecision';
 
 @Component({})
 class LiveHLSVideo extends BaseVideo {
@@ -31,6 +33,9 @@ class LiveHLSVideo extends BaseVideo {
 
     @Prop({ default: () => [] })
     public playbackProfiles!: apid.PlaybackProfile[];
+
+    @Prop({ default: () => [] })
+    public selectablePlaybackContainers!: SelectablePlaybackContainer[];
 
     /**
      * ニコニコ実況の実況チャンネル ID を返す
@@ -233,11 +238,12 @@ class LiveHLSVideo extends BaseVideo {
         };
 
         this.createPlayer(options);
-        this.setPlaybackProfiles(this.playbackProfiles, 'hls');
+        this.setPlaybackProfiles(this.playbackProfiles, 'hls', undefined, undefined, undefined, this.currentMode);
         this.setupLiveAudioTrackSwitch();
 
         // 画質切替時はサーバー側のストリームを作り直してから url を差し替える
         this.setupQualitySwitch({
+            container: 'hls',
             resolveUrl: mode => this.restartStream(mode),
             onSwitched: mode => {
                 this.currentMode = mode;
@@ -324,7 +330,14 @@ class LiveHLSVideo extends BaseVideo {
 
     /** ライブ音声を切り替え、同時配信レンディションが無ければストリームを再生成する。 */
     private async switchLiveAudioTrack(track: apid.AudioTrackSpecifier): Promise<void> {
-        if (this.isEmbeddedAudioSwitchMode(this.currentMode) === true) {
+        const action = decideAudioTrackSwitch(
+            this.currentAudioTrack,
+            track,
+            this.isEmbeddedAudioSwitchMode(this.currentMode),
+        );
+        if (action === 'noop') return;
+
+        if (action === 'embedded') {
             const switched = await HlsAudioTrackUtil.switchAudioTrack(this.dp as any, track);
             if (switched === true) {
                 this.currentAudioTrack = track;

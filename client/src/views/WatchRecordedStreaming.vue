@@ -20,6 +20,7 @@
             v-on:dataBroadcastingSeek="onDataBroadcastingSeek"
             v-on:jikkyoComment="onJikkyoComment"
             v-on:screenshotRequest="onScreenshotRequest"
+            v-on:playbackContainerSwitch="onPlaybackContainerSwitch"
         ></VideoContainer>
         <v-alert v-if="streamingErrorMessage !== null" class="streaming-error" type="error" variant="tonal" role="alert">
             {{ streamingErrorMessage }}
@@ -65,7 +66,7 @@ import WatchSidePanel from '@/components/watch/WatchSidePanel.vue';
 import WatchTopBar from '@/components/watch/WatchTopBar.vue';
 import SnsPostPanel from '@/components/watch/sns/SnsPostPanel.vue';
 import VideoContainer from '@/components/video/VideoContainer.vue';
-import type { ScreenshotRequest } from '@/components/video/BaseVideo';
+import type { PlaybackContainerSwitchRequest, ScreenshotRequest } from '@/components/video/BaseVideo';
 import * as VideoParam from '@/components/video/ViedoParam';
 import IRecordedApiModel from '@/model/api/recorded/IRecordedApiModel';
 import IChannelModel from '@/model/channels/IChannelModel';
@@ -170,6 +171,28 @@ class WatchRecordedStreaming extends Vue {
      */
     public onScreenshotRequest(request: ScreenshotRequest): void {
         (this.$refs.snsPostPanel as InstanceType<typeof SnsPostPanel> | undefined)?.onScreenshotRequest(request);
+    }
+
+    /** DPlayer の設定メニューから録画配信方式を切り替える。 */
+    public onPlaybackContainerSwitch(request: PlaybackContainerSwitchRequest): void {
+        if (this.videoParam === null || !('recordedId' in this.videoParam)) return;
+
+        const common = {
+            recordedId: this.videoParam.recordedId,
+            videoFileId: this.videoParam.videoFileId,
+            jikkyoChannelId: this.videoParam.jikkyoChannelId,
+            jikkyoStartAt: this.videoParam.jikkyoStartAt,
+            jikkyoEndAt: this.videoParam.jikkyoEndAt,
+            playPosition: request.playPosition,
+            mode: request.mode,
+        };
+        if (request.container === 'hls') {
+            this.videoParam = { type: 'RecordedHLS', ...common };
+        } else {
+            const streamingType = parseRecordedStreamingType(request.container);
+            if (streamingType === null) return;
+            this.videoParam = { type: 'RecordedStreaming', streamingType, ...common };
+        }
     }
 
     /**

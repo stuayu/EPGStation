@@ -4,6 +4,7 @@ import {
     getDPlayerAudioValue,
     selectAudioTrackIndex,
 } from '../../../src/util/DPlayerAudioTrackUtil';
+import { isAudioTrackSwitcherVisible } from '../../../src/util/AudioTrackSwitcherUtil';
 
 /**
  * DPlayer (tsukumijima フォーク) の標準 UI へ EPGStation 固有の機能を差し込むユーティリティ。
@@ -28,6 +29,9 @@ namespace DPlayerEnhancer {
     interface AudioTrackSwitcherState {
         option: AudioTrackSwitchOption;
         onQualityEnd: () => void;
+        hls: any;
+        onHlsAudioTracksUpdated: () => void;
+        initMseWrapped: boolean;
     }
 
     export interface AudioTrackSwitchOption {
@@ -51,11 +55,12 @@ namespace DPlayerEnhancer {
             return;
         }
 
-        getAudioTrackSwitcherState(dp, option);
+        const state = getAudioTrackSwitcherState(dp, option);
+        bindAudioTrackSwitcherToHls(dp, state);
 
         // 選べるトラックが 1 つしかない場合は切替 UI を出さない。ただし標準項目が
         // 残っていれば、DPlayer の quality_end が読む選択要素を必ず1つ維持する。
-        if (option.tracks.length < 2) {
+        if (isAudioTrackSwitcherVisible(option.tracks.length) === false) {
             container.classList.add(NO_AUDIO_SWITCHING_CLASS);
             syncAudioCurrentItems(panel, option);
 
@@ -192,6 +197,14 @@ namespace DPlayerEnhancer {
 
         const state = {} as AudioTrackSwitcherState;
         state.option = option;
+        state.hls = null;
+        state.initMseWrapped = false;
+        state.onHlsAudioTracksUpdated = (): void => {
+            // DPlayer 自身も同じイベントで hls.audioTracks の件数を見てクラスを
+            // 書き換える。EPGStation の独立 ES 一覧が正なので、DPlayer の判定後に
+            // 独自 UI と表示状態を再適用する。
+            applyAudioTrackSwitcher(dp, state.option);
+        };
         state.onQualityEnd = (): void => {
             const panel = dp?.container?.querySelector('.dplayer-setting-audio-panel') as HTMLElement | null | undefined;
             if (panel === null || typeof panel === 'undefined') {
@@ -204,6 +217,29 @@ namespace DPlayerEnhancer {
         dp[AUDIO_SWITCHER_STATE] = state;
 
         return state;
+    };
+
+    /** 現在の HLS インスタンスへ DPlayer の音声一覧更新後の再適用を接続する。 */
+    const bindAudioTrackSwitcherToHls = (dp: any, state: AudioTrackSwitcherState): void => {
+        const hls = dp?.plugins?.hls;
+        if (hls !== state.hls) {
+            const eventName = (globalThis as any).Hls?.Events?.AUDIO_TRACKS_UPDATED ?? 'hlsAudioTracksUpdated';
+            state.hls?.off?.(eventName, state.onHlsAudioTracksUpdated);
+            state.hls = hls ?? null;
+            hls?.on?.(eventName, state.onHlsAudioTracksUpdated);
+        }
+
+        if (state.initMseWrapped === true || typeof dp?.initMSE !== 'function') {
+            return;
+        }
+
+        const originalInitMse = dp.initMSE.bind(dp);
+        dp.initMSE = (...args: unknown[]): void => {
+            originalInitMse(...args);
+            bindAudioTrackSwitcherToHls(dp, state);
+            state.onHlsAudioTracksUpdated();
+        };
+        state.initMseWrapped = true;
     };
 
     /**
