@@ -28,7 +28,7 @@ export interface VideoDetailInfo extends VideoInfo {
 }
 
 export interface AudioTrackProbeOption {
-    /** 録画中の追記ファイルか。true の場合は現在位置までの bounded probe を使う */
+    /** 録画中の追記ファイルか。完了・録画中とも有限の音声 ES probe を使い、録画中は末尾を待たない */
     isRecording?: boolean;
 }
 
