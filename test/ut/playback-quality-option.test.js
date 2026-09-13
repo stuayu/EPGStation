@@ -60,3 +60,22 @@ test('現在の container と mode の組み合わせを選択中として特定
         mode: 1,
     });
 });
+
+const { disambiguatePlaybackLabels } = require('../../dist/util/PlaybackQualityOptionUtil');
+
+test('表示名が衝突するものだけコーデック名で区別する', () => {
+    const labels = ['低遅延 (M2TS-LL) > 720p', '低遅延 (M2TS-LL) > 720p', '標準 (HLS) > 1080p 高画質'];
+    const profiles = [{ videoCodec: 'hevc' }, { videoCodec: 'h264' }, { videoCodec: 'hevc' }];
+
+    assert.deepEqual(disambiguatePlaybackLabels(labels, profiles), [
+        '低遅延 (M2TS-LL) > 720p (HEVC)',
+        '低遅延 (M2TS-LL) > 720p (H.264)',
+        '標準 (HLS) > 1080p 高画質',
+    ]);
+});
+
+test('コーデックが分からない重複はラベルを変えない', () => {
+    const labels = ['MP4 > 720p', 'MP4 > 720p'];
+
+    assert.deepEqual(disambiguatePlaybackLabels(labels, [{}, {}]), labels);
+});

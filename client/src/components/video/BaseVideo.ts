@@ -16,7 +16,7 @@ import { isFeatureEnabled } from '@/util/FeatureFlags';
 import { getPlaybackOptionLabel } from '@/util/PlaybackLabelUtil';
 import * as apid from '../../../../api';
 import { findPlaybackUrl, requirePlaybackUrl } from '../../../../src/util/PlaybackUrlUtil';
-import { createPlaybackQualityOptions, SelectablePlaybackContainer } from '../../../../src/util/PlaybackQualityOptionUtil';
+import { createPlaybackQualityOptions, disambiguatePlaybackLabels, SelectablePlaybackContainer } from '../../../../src/util/PlaybackQualityOptionUtil';
 import {
     PLAYBACK_BUFFER_RECOVERY_MIN_GAP_SEC,
     PlaybackBufferedRange,
@@ -785,8 +785,13 @@ export default abstract class BaseVideo extends Vue {
                   ? oldQuality[currentQualityIndex].mode
                   : -1;
         const qualityOptions = createPlaybackQualityOptions(profiles, containers, container as SelectablePlaybackContainer, resolvedMode, selectedId);
-        const qualities: PlaybackQuality[] = qualityOptions.options.map(option => ({
-            name: getPlaybackOptionLabel(option.profile, option.container, source),
+        // 同じ role の HEVC 版 / AVC 版など、表示名が衝突するものだけコーデック名で区別する
+        const names = disambiguatePlaybackLabels(
+            qualityOptions.options.map(option => getPlaybackOptionLabel(option.profile, option.container, source)),
+            qualityOptions.options.map(option => option.profile),
+        );
+        const qualities: PlaybackQuality[] = qualityOptions.options.map((option, index) => ({
+            name: names[index],
             url: current,
             type,
             presetId: option.profile.id,

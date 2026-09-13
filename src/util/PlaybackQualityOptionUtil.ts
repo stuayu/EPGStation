@@ -50,4 +50,27 @@ export const createPlaybackQualityOptions = (
     return { options, currentIndex: anySelectedIndex >= 0 ? anySelectedIndex : 0 };
 };
 
-export default { createPlaybackQualityOptions };
+const CODEC_LABELS: Readonly<Record<string, string>> = { hevc: 'HEVC', h264: 'H.264', copy: '無変換' };
+
+/**
+ * 同じ表示名になる選択肢へコーデック名を足して区別できるようにする。
+ * 本番のように「M2TS-LL 720p の HEVC 版と AVC 版」を両方持つ構成だと、
+ * role が同じため素のラベルが完全に一致し、どちらを選んでいるか分からなくなる。
+ * @param labels 素の表示名 (options と同じ並び)
+ * @param profiles 対応する再生プロファイル (videoCodec を見る)
+ * @return 重複したものだけコーデック名を付けた表示名
+ */
+export const disambiguatePlaybackLabels = (labels: string[], profiles: Array<{ videoCodec?: string }>): string[] => {
+    const counts = new Map<string, number>();
+    for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
+
+    return labels.map((label, index) => {
+        if ((counts.get(label) ?? 0) < 2) return label;
+        const codec = profiles[index]?.videoCodec;
+        const codecLabel = typeof codec === 'string' ? CODEC_LABELS[codec] : undefined;
+
+        return typeof codecLabel === 'string' ? `${label} (${codecLabel})` : label;
+    });
+};
+
+export default { createPlaybackQualityOptions, disambiguatePlaybackLabels };
