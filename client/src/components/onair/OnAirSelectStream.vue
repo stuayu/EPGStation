@@ -66,15 +66,7 @@ import * as apid from '../../../../api';
 import PlaybackQualityList from '@/components/video/quality/PlaybackQualityList.vue';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import { getPlaybackShortLabel } from '@/util/PlaybackLabelUtil';
-
-// 配信方式ごとの playback-options 上のコンテナ名
-const STREAM_TYPE_CONTAINERS: { [key in LiveStreamType]: Exclude<apid.PlaybackContainer, 'normal'> } = {
-    'M2TS': 'm2ts',
-    'M2TS-LL': 'm2tsll',
-    WebM: 'webm',
-    MP4: 'mp4',
-    HLS: 'hls',
-};
+import { toStreamingType } from '@/util/StreamingTypeUtil';
 
 @Component({ components: { PlaybackQualityList } })
 class OnAirSelectStream extends Vue {
@@ -100,7 +92,7 @@ class OnAirSelectStream extends Vue {
     private loadGeneration = 0;
 
     get selectedContainer(): Exclude<apid.PlaybackContainer, 'normal'> | undefined {
-        return typeof this.dialogState.selectedStreamType === 'undefined' ? undefined : STREAM_TYPE_CONTAINERS[this.dialogState.selectedStreamType];
+        return typeof this.dialogState.selectedStreamType === 'undefined' ? undefined : toStreamingType(this.dialogState.selectedStreamType);
     }
 
     /**
@@ -275,7 +267,7 @@ class OnAirSelectStream extends Vue {
                 await Util.move(this.$router, {
                     path: '/onair/watch',
                     query: {
-                        type: this.dialogState.selectedStreamType.toLowerCase(),
+                        type: toStreamingType(this.dialogState.selectedStreamType),
                         channel: channel.id.toString(10),
                         mode: this.dialogState.selectedStreamConfig.toString(10),
                     },

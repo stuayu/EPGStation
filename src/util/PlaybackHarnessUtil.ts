@@ -5,6 +5,35 @@ export interface PlaybackHarnessSample {
     at: number;
     currentTime: number;
     paused: boolean;
+    frame?: PlaybackFrameMetrics | null;
+}
+
+export interface PlaybackFrameMetrics {
+    averageLuma: number;
+    maxLuma: number;
+    standardDeviation: number;
+}
+
+export interface PlaybackFrameOptions {
+    blackLumaMax?: number;
+    maxBlackRatio?: number;
+    frameChangeThreshold?: number;
+    minFrameChanges?: number;
+}
+
+export interface PlaybackFrameSummary {
+    sampleCount: number;
+    validFrameCount: number;
+    frameFailureCount: number;
+    blackFrameCount: number;
+    blackFrameRatio: number;
+    frameChangeCount: number;
+}
+
+export interface PlaybackFrameResult {
+    passed: boolean;
+    summary: PlaybackFrameSummary;
+    reason: string | null;
 }
 
 export interface PlaybackStallSummary {
@@ -100,6 +129,55 @@ export const evaluatePlaybackStability = (
         return { passed: false, summary, reason: `再生進行 ${progressSeconds.toFixed(3)}s < ${minProgressSeconds}s` };
     }
 
+    return { passed: true, summary, reason: null };
+};
+
+const isValidFrame = (frame: PlaybackFrameMetrics | null | undefined): frame is PlaybackFrameMetrics =>
+    frame !== null &&
+    frame !== undefined &&
+    Number.isFinite(frame.averageLuma) &&
+    Number.isFinite(frame.maxLuma) &&
+    Number.isFinite(frame.standardDeviation);
+
+/**
+ * video 要素から取得したフレーム数値で映像描画を合否判定する。
+ * @param samples: PlaybackHarnessSample[] 再生状態とフレーム数値の採取値
+ * @param options: PlaybackFrameOptions 判定閾値
+ * @return PlaybackFrameResult
+ */
+export const evaluatePlaybackFrames = (
+    samples: readonly PlaybackHarnessSample[],
+    options: PlaybackFrameOptions = {},
+): PlaybackFrameResult => {
+    const blackLumaMax = options.blackLumaMax ?? 16;
+    const maxBlackRatio = options.maxBlackRatio ?? 0;
+    const frameChangeThreshold = options.frameChangeThreshold ?? 2;
+    const minFrameChanges = options.minFrameChanges ?? 1;
+    const validFrames = samples.map(sample => sample.frame).filter(isValidFrame);
+    const blackFrameCount = validFrames.filter(frame => frame.maxLuma <= blackLumaMax).length;
+    const frameFailureCount = samples.length - validFrames.length;
+    const frameChangeCount = samples.reduce((count, sample, index) => {
+        const previous = index === 0 ? undefined : samples[index - 1].frame;
+        if (!isValidFrame(sample.frame) || !isValidFrame(previous)) return count;
+        return Math.abs(sample.frame.averageLuma - previous.averageLuma) >= frameChangeThreshold ? count + 1 : count;
+    }, 0);
+    const summary: PlaybackFrameSummary = {
+        sampleCount: samples.length,
+        validFrameCount: validFrames.length,
+        frameFailureCount,
+        blackFrameCount,
+        blackFrameRatio: samples.length === 0 ? 0 : blackFrameCount / samples.length,
+        frameChangeCount,
+    };
+
+    if (samples.length === 0) return { passed: false, summary, reason: '映像フレーム標本なし' };
+    if (frameFailureCount > 0) return { passed: false, summary, reason: `映像フレーム取得失敗 ${frameFailureCount}件` };
+    if (summary.blackFrameRatio > maxBlackRatio) {
+        return { passed: false, summary, reason: `真っ黒フレーム比率 ${summary.blackFrameRatio.toFixed(3)} > ${maxBlackRatio}` };
+    }
+    if (frameChangeCount < minFrameChanges) {
+        return { passed: false, summary, reason: `画面変化回数 ${frameChangeCount} < ${minFrameChanges}` };
+    }
     return { passed: true, summary, reason: null };
 };
 

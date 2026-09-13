@@ -48,7 +48,7 @@
 
 <script lang="ts">
 import container from '@/model/ModelContainer';
-import IRecordedDetailSelectStreamState, { RecordedStreamType } from '@/model/state/recorded/detail/IRecordedDetailSelectStreamState';
+import IRecordedDetailSelectStreamState from '@/model/state/recorded/detail/IRecordedDetailSelectStreamState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
@@ -56,14 +56,7 @@ import * as apid from '../../../../../api';
 import PlaybackQualityList from '@/components/video/quality/PlaybackQualityList.vue';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import { getPlaybackShortLabel } from '@/util/PlaybackLabelUtil';
-
-// 配信方式ごとの playback-options 上のコンテナ名
-const STREAM_TYPE_CONTAINERS: { [key in RecordedStreamType]: Exclude<apid.PlaybackContainer, 'normal'> } = {
-    WebM: 'webm',
-    MP4: 'mp4',
-    HLS: 'hls',
-    'M2TS-LL': 'm2tsll',
-};
+import { toStreamingType } from '@/util/StreamingTypeUtil';
 
 @Component({ components: { PlaybackQualityList } })
 class RecordedDetailSelectStreamDialog extends Vue {
@@ -80,7 +73,7 @@ class RecordedDetailSelectStreamDialog extends Vue {
     private loadGeneration = 0;
 
     get selectedContainer(): Exclude<apid.PlaybackContainer, 'normal'> | undefined {
-        return typeof this.dialogState.selectedStreamType === 'undefined' ? undefined : STREAM_TYPE_CONTAINERS[this.dialogState.selectedStreamType];
+        return typeof this.dialogState.selectedStreamType === 'undefined' ? undefined : toStreamingType(this.dialogState.selectedStreamType);
     }
 
     /**
@@ -216,7 +209,7 @@ class RecordedDetailSelectStreamDialog extends Vue {
             path: `/recorded/streaming/${this.dialogState.getVideoFileId()}`,
             query: {
                 recordedId: recordedId.toString(),
-                streamingType: this.dialogState.selectedStreamType.toLowerCase(),
+                streamingType: toStreamingType(this.dialogState.selectedStreamType),
                 mode: this.dialogState.selectedStreamMode.toString(10),
             },
         });

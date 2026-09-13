@@ -21,6 +21,9 @@
             v-on:jikkyoComment="onJikkyoComment"
             v-on:screenshotRequest="onScreenshotRequest"
         ></VideoContainer>
+        <v-alert v-if="streamingErrorMessage !== null" class="streaming-error" type="error" variant="tonal" role="alert">
+            {{ streamingErrorMessage }}
+        </v-alert>
         <DataBroadcastingRemote
             v-if="isEnabledDataBroadcasting === true"
             v-bind:isUsingNumericKey="isDataBroadcastingUsingNumericKey"
@@ -84,10 +87,13 @@ import { AribKeyCode } from 'web-bml';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import { markRaw } from 'vue';
 import type { RouteLocationNormalized as Route, NavigationGuardNext } from 'vue-router';
+import { parseStreamingType, StreamingType } from '@/util/StreamingTypeUtil';
+import StreamQualityUtil from '@/util/StreamQualityUtil';
+import { isWatchModeInRange, parseWatchRouteInteger } from '@/util/WatchRouteParamUtil';
 import * as apid from '../../../api';
 
 interface WatchParam {
-    type: string;
+    type: StreamingType;
     channel: apid.ChannelId;
     mode: number;
 }
@@ -107,6 +113,7 @@ interface WatchParam {
 })
 class WatchOnAir extends Vue {
     public videoParam: BaseVideoParam | null = null;
+    public streamingErrorMessage: string | null = null;
 
     private channelModel: IChannelModel = container.get<IChannelModel>('IChannelModel');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
@@ -423,19 +430,30 @@ class WatchOnAir extends Vue {
         this.jikkyoComments = [];
         // 古い映像を残さない (視聴対象が無い URL へ遷移した場合にそのまま再生され続けるのを防ぐ)
         this.videoParam = null;
+        this.streamingErrorMessage = null;
 
         // 視聴パラメータセット
+        const streamTypeQuery = typeof this.$route.query.type === 'string' ? this.$route.query.type : null;
+        const streamType = parseStreamingType(streamTypeQuery);
+        const channel = parseWatchRouteInteger(this.$route.query.channel, 1);
+        const mode = parseWatchRouteInteger(this.$route.query.mode, 0);
         this.watchParam =
-            typeof this.$route.query.type !== 'string' || typeof this.$route.query.channel !== 'string' || typeof this.$route.query.mode !== 'string'
+            streamType === null || channel === null || mode === null
                 ? null
                 : {
-                      type: this.$route.query.type,
-                      channel: parseInt(this.$route.query.channel, 10),
-                      mode: parseInt(this.$route.query.mode, 10),
+                      type: streamType,
+                      channel: channel,
+                      mode: mode,
                   };
 
         this.$nextTick(async () => {
-            if (this.watchParam !== null) {
+            if (streamTypeQuery !== null && streamType === null) {
+                this.showStreamingError(`この配信方式には対応していません。ページを再読み込みして、対応する配信方式を選び直してください。(指定: ${streamTypeQuery})`);
+            } else if (streamType === null || channel === null || mode === null) {
+                this.showStreamingError('ライブ視聴パラメータが不正です。ページを再読み込みして、番組表から選び直してください。');
+            } else if (isWatchModeInRange(mode, StreamQualityUtil.getLiveModeNames(streamType)) === false) {
+                this.showStreamingError(`選択した画質設定 (mode=${mode}) は利用できません。ページを再読み込みして、画質を選び直してください。`);
+            } else if (this.watchParam !== null) {
                 // ニコニコ実況の実況チャンネル ID (jk1 など) を解決する
                 const jikkyoChannelId = await this.findJikkyoChannelId(this.watchParam.channel);
 
@@ -468,6 +486,18 @@ class WatchOnAir extends Vue {
             // データ取得完了を通知
             await this.scrollState.emitDoneGetData();
         });
+    }
+
+    /**
+     * URL の配信パラメータ異常を画面と Snackbar へ表示する。
+     * ルート変更時に AppContent が Snackbar を閉じるため、通知はルート監視完了後に表示する。
+     * @param message: string
+     */
+    private showStreamingError(message: string): void {
+        this.streamingErrorMessage = message;
+        window.setTimeout(() => {
+            this.snackbarState.open({ color: 'error', text: message, timeout: 10000 });
+        }, 0);
     }
 
     /**
@@ -538,4 +568,13 @@ export default Object.assign(toNative(WatchOnAir), {
     .v-btn
         background: rgba(0, 0, 0, 0.5)
         color: #fff
+
+.streaming-error
+    width: 100%
+    min-height: 180px
+    margin: 0
+    display: flex
+    align-items: center
+    justify-content: center
+    text-align: left
 </style>

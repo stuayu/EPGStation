@@ -59,6 +59,7 @@ HEVC の MP4/fMP4 出力には `-tag:v hvc1` を付ける。手書き `cmd` は�
 - 録画 m2tsll も mpegts.js の `mediaDataSource.isLive = true` で生成する。録画ファイルでもサーバは `-readrate` で実時間ペースに絞って供給し続けるため、MMS の `onEndStreaming` で transmuxer を suspend させない。DPlayer 自身の `live` は false のままなので、録画の再生・シーク UI と `ss` でのストリーム再生成は変えない。ライブ m2tsll の設定は変更しない。
 - `audioTrack=all` は tsreadex 正規化済みプロファイルで主音声・副音声を同時配信し、mpegts.js の音声切替 API で再接続せず切り替える。非正規化プロファイルは `AUDIOSELECTMAP` で単一音声を選ぶ。
 - 録画 TS の m2tsll の ARIB 字幕は、tsreadex の有無によらず入力側でなく stdout 側へ ID3 timed metadata を挿入する。字幕判定は `component_tag=0x30〜0x37` / `0x87` または `stream_type=0x06` + `subtitling_descriptor (0x59)`、data_group は `0x00〜0x08` / `0x20〜0x28` を受ける。PTS の無い PES は時刻を推測せず破棄する。encoded は字幕対象外。
+- 配信方式の表示ラベル (`M2TS-LL` など) と API のパス名 (`m2tsll` など) は `src/util/StreamingTypeUtil.ts` の明示的な変換表で分離する。録画詳細・視聴履歴・ライブの各ダイアログはこの変換を使い、`toLowerCase()` で API 名を推測しない。録画・ライブ視聴画面は query の配信方式を同じ定義の許可一覧で検証し、未知の値は動画を生成せず、画面上へ再読み込み・選び直しの理由を表示する。Snackbar はルート変更処理で消されないようルート確定後に表示し、10 秒保持する。`recordedId` / `videoFileId` の存在と `mode` の設定範囲も確認し、不正時は同じ画面エラーを表示する。
 - 録画のファイル入力は `-readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2` を `-i` より前へ置く。初期 45 秒 (4 Mbps 換算で約 22.5 MB) を先読みし、その後は実時間の 1.5 倍を上限に供給する。`readrate_catchup` は入力が指定速度に遅れたときだけ一時的に 2 倍まで使う。対象は M2TS-LL / MP4 / WebM。ライブの `-re` は変更しない。録画 HLS は既存のセグメント単位の先行抑制を使う。今回、readrate 引き上げは供給が律速でないことが判明したため前値へ戻した。
 - Chromium で同一素材の録画 M2TS-LL (`videoFileId=31024`) を5分連続再生した際、60〜120秒で前方バッファが枯渇する症状は観測された。ただしこれは供給不足が原因ではない。`createReadStream` → `ID3MetadataTransform` → `ffmpeg.stdin` と同じ供給経路は `speed=4.65x` で、律速はエンコード側だった。
 

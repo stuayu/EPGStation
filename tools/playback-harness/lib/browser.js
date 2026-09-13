@@ -138,6 +138,37 @@ const readVideoState = page =>
             const resource = entry;
             return total + (Number(resource.encodedBodySize) || Number(resource.transferSize) || 0);
         }, 0);
+        let frame = null;
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 160;
+            canvas.height = 90;
+            const context = canvas.getContext('2d');
+            if (context !== null) {
+                try {
+                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+                    let sum = 0;
+                    let sumSquares = 0;
+                    let max = 0;
+                    const pixelCount = data.length / 4;
+                    for (let index = 0; index < data.length; index += 4) {
+                        const luminance = (data[index] * 299 + data[index + 1] * 587 + data[index + 2] * 114) / 1000;
+                        sum += luminance;
+                        sumSquares += luminance * luminance;
+                        max = Math.max(max, luminance);
+                    }
+                    const average = sum / pixelCount;
+                    frame = {
+                        averageLuma: average,
+                        maxLuma: max,
+                        standardDeviation: Math.sqrt(Math.max(0, sumSquares / pixelCount - average * average)),
+                    };
+                } catch (_error) {
+                    // videoWidth が有効でも drawImage / getImageData が失敗する場合は取得失敗。
+                }
+            }
+        }
         return {
             currentTime: Number(video.currentTime.toFixed(2)),
             paused: video.paused,
@@ -150,6 +181,7 @@ const readVideoState = page =>
             ptime: document.querySelector('.dplayer-ptime')?.textContent?.trim() ?? '',
             duration: Number.isFinite(video.duration) ? video.duration : null,
             receivedBytes,
+            frame,
         };
     });
 

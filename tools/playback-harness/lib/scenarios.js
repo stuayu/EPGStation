@@ -15,6 +15,7 @@ const {
 const { result } = require('./output');
 const {
     evaluatePlaybackStability,
+    evaluatePlaybackFrames,
     parsePlaybackTime,
     matchJikkyoCommentTimes,
     evaluateJikkyoSync,
@@ -28,7 +29,13 @@ const samplePlayback = async (page, seconds, stepSeconds = 2) => {
     const samples = [];
     for (let elapsed = 0; elapsed <= seconds; elapsed += stepSeconds) {
         const state = await readVideoState(page);
-        if (state !== null) samples.push({ at: elapsed * 1000, currentTime: state.currentTime, paused: state.paused, state });
+        samples.push({
+            at: elapsed * 1000,
+            currentTime: state?.currentTime ?? 0,
+            paused: state?.paused ?? true,
+            frame: state?.frame ?? null,
+            state,
+        });
         if (elapsed < seconds) await page.waitForTimeout(stepSeconds * 1000);
     }
     return samples;
@@ -51,7 +58,14 @@ const watch = async options => {
         maxStallSeconds: options.maxStallSeconds,
         minProgressSeconds: options.minProgressSeconds,
     });
-    return result('watch', evaluated.passed, { duration: options.duration, ...evaluated.summary }, evaluated.reason);
+    const frames = evaluatePlaybackFrames(samples, {
+        blackLumaMax: options.blackLumaMax,
+        maxBlackRatio: options.maxBlackRatio,
+        frameChangeThreshold: options.frameChangeThreshold,
+        minFrameChanges: options.minFrameChanges,
+    });
+    const reason = evaluated.passed ? frames.reason : evaluated.reason;
+    return result('watch', evaluated.passed && frames.passed, { duration: options.duration, ...evaluated.summary, ...frames.summary }, reason);
 };
 
 const qualitySwitch = async options => {
@@ -63,9 +77,16 @@ const qualitySwitch = async options => {
         let previous = null;
         let advanced = 0;
         let resumedSeconds = null;
+        const samples = [];
         for (let index = 0; index < 160; index += 1) {
             await page.waitForTimeout(250);
             const state = await readVideoState(page);
+            samples.push({
+                at: Date.now() - startedAt,
+                currentTime: state?.currentTime ?? 0,
+                paused: state?.paused ?? true,
+                frame: state?.frame ?? null,
+            });
             if (state !== null && state.paused === false && previous !== null && state.currentTime > previous + 0.05) {
                 advanced += 1;
                 if (advanced >= 2) {
@@ -77,10 +98,21 @@ const qualitySwitch = async options => {
             }
             previous = state?.currentTime ?? null;
         }
-        return { switched: true, resumedSeconds };
+        const frames = evaluatePlaybackFrames(samples, {
+            blackLumaMax: options.blackLumaMax,
+            maxBlackRatio: options.maxBlackRatio,
+            frameChangeThreshold: options.frameChangeThreshold,
+            minFrameChanges: options.minFrameChanges,
+        });
+        return { switched: true, resumedSeconds, visual: frames.summary, visualPassed: frames.passed, visualReason: frames.reason };
     });
-    const passed = value.switched === true && value.resumedSeconds !== null && value.resumedSeconds <= options.maxSwitchSeconds;
-    return result('quality-switch', passed, value, value.switched === false ? '画質候補なし' : passed ? null : `再開時間が ${options.maxSwitchSeconds}s を超過`);
+    const timePassed = value.resumedSeconds !== null && value.resumedSeconds <= options.maxSwitchSeconds;
+    const passed = value.switched === true && timePassed && value.visualPassed === true;
+    let reason = null;
+    if (value.switched === false) reason = '画質候補なし';
+    else if (!timePassed) reason = `再開時間が ${options.maxSwitchSeconds}s を超過`;
+    else if (value.visualPassed !== true) reason = value.visualReason;
+    return result('quality-switch', passed, value, reason);
 };
 
 const duplicatePlayer = async options => {
@@ -134,7 +166,13 @@ const recoverAfterSeek = async (page, ratio, seconds) => {
     for (let index = 0; index < seconds / 2; index += 1) {
         await page.waitForTimeout(2000);
         const state = await readVideoState(page);
-        samples.push(state);
+        samples.push({
+            ...(state ?? {}),
+            at: index * 2000,
+            currentTime: state?.currentTime ?? 0,
+            paused: state?.paused ?? true,
+            frame: state?.frame ?? null,
+        });
     }
     return samples;
 };
@@ -145,10 +183,31 @@ const m2tsSeek = async options => {
         const forward = await recoverAfterSeek(page, 0.8, 14);
         const backward = await recoverAfterSeek(page, 0.2, 20);
         const recovered = rows => rows.some(state => state !== null && state.readyState >= 2 && latestBufferedEnd(state) > state.currentTime);
-        return { forwardRecovered: recovered(forward), backwardRecovered: recovered(backward), forward, backward };
+        const evaluateFrames = rows => evaluatePlaybackFrames(rows, {
+            blackLumaMax: options.blackLumaMax,
+            maxBlackRatio: options.maxBlackRatio,
+            frameChangeThreshold: options.frameChangeThreshold,
+            minFrameChanges: options.minFrameChanges,
+        });
+        const forwardVisual = evaluateFrames(forward);
+        const backwardVisual = evaluateFrames(backward);
+        return {
+            forwardRecovered: recovered(forward),
+            backwardRecovered: recovered(backward),
+            forwardVisual: forwardVisual.summary,
+            backwardVisual: backwardVisual.summary,
+            forwardVisualPassed: forwardVisual.passed,
+            backwardVisualPassed: backwardVisual.passed,
+            forwardVisualReason: forwardVisual.reason,
+            backwardVisualReason: backwardVisual.reason,
+        };
     });
-    const passed = value.forwardRecovered && value.backwardRecovered;
-    return result('m2ts-seek', passed, { forwardRecovered: value.forwardRecovered, backwardRecovered: value.backwardRecovered }, passed ? null : '前方または後方シーク後に再生バッファ復帰なし');
+    const passed = value.forwardRecovered && value.backwardRecovered && value.forwardVisualPassed && value.backwardVisualPassed;
+    let reason = null;
+    if (!value.forwardRecovered || !value.backwardRecovered) reason = '前方または後方シーク後に再生バッファ復帰なし';
+    else if (!value.forwardVisualPassed) reason = `前方シーク後の映像判定: ${value.forwardVisualReason}`;
+    else if (!value.backwardVisualPassed) reason = `後方シーク後の映像判定: ${value.backwardVisualReason}`;
+    return result('m2ts-seek', passed, value, reason);
 };
 
 const m2tsDeep = async options => {

@@ -1,6 +1,7 @@
 import * as apid from '../../../../../api';
+import type { StreamingTypeLabel } from '@/util/StreamingTypeUtil';
 
-export type LiveStreamType = 'M2TS' | 'M2TS-LL' | 'WebM' | 'MP4' | 'HLS';
+export type LiveStreamType = StreamingTypeLabel;
 
 export interface StreamConfigItem {
     title: string;
