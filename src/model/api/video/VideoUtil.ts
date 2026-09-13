@@ -18,6 +18,10 @@ export default class VideoUtil implements IVideoUtil {
     private static readonly DEFAULT_FFPROBE_TIMEOUT_MS = 30 * 1000;
     private static readonly MIN_FFPROBE_TIMEOUT_MS = 1000;
     private static readonly FFPROBE_KILL_SIGNAL = 'SIGKILL';
+    // 録画ファイルでは開始時刻が異なる音声 ES を取りこぼさないため、音声一覧だけ probe 範囲を広げる。
+    // 本番の encoded TS で約 21.7 秒遅れて始まる ES を 60 秒 / 200 MB で検出できた。
+    private static readonly AUDIO_TRACK_FFPROBE_ANALYZE_DURATION = 60 * 1000 * 1000;
+    private static readonly AUDIO_TRACK_FFPROBE_SIZE = 200 * 1000 * 1000;
 
     private config: IConfigFile;
     private videoFileDB: IVideoFileDB;
@@ -166,6 +170,10 @@ export default class VideoUtil implements IVideoUtil {
 
     public async getAudioTracks(filePath: string): Promise<apid.VideoAudioTrack[]> {
         const stdout = await this.execFfprobe([
+            '-analyzeduration',
+            VideoUtil.AUDIO_TRACK_FFPROBE_ANALYZE_DURATION.toString(10),
+            '-probesize',
+            VideoUtil.AUDIO_TRACK_FFPROBE_SIZE.toString(10),
             '-v',
             '0',
             '-show_streams',

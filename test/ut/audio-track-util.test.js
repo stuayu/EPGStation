@@ -76,6 +76,13 @@ test('数字指定は音声 ES を -map で選ぶ (映像も明示する必要�
     assert.match(cmd, /-dual_mono_mode main/);
 });
 
+test('独立した 2 本目の音声 ES は channels 情報に関係なく -map 0:a:1 で選ぶ', () => {
+    const cmd = AudioTrackUtil.replacePlaceholders(CMD, '1', undefined, 'ts', false);
+    assert.match(cmd, /-map 0:v:0 -map 0:a:1/);
+    assert.match(cmd, /-dual_mono_mode main/);
+    assert.doesNotMatch(cmd, /-dual_mono_mode sub/);
+});
+
 test('不正な値は主音声へ落とす (ffmpeg の既定の音声選択に任せる)', () => {
     for (const value of ['bogus', '-1', '']) {
         const cmd = AudioTrackUtil.replacePlaceholders(CMD, value);
