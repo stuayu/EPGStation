@@ -1,7 +1,8 @@
 import * as apid from '../../../../../api';
 import type { StreamingTypeLabel } from '@/util/StreamingTypeUtil';
 
-export type LiveStreamType = StreamingTypeLabel;
+// オリジナル (MPEG-2・端末で変換) は config の配信設定に無く、playback-options が返したときだけ加える
+export type LiveStreamType = StreamingTypeLabel | 'オリジナル';
 
 export interface StreamConfigItem {
     title: string;
@@ -20,6 +21,7 @@ export default interface IOnAirSelectStreamState {
     getChannelItem(): apid.ScheduleChannleItem | null;
     updateStreamTypes(): void;
     updateStreamConfig(): void;
+    addOriginalStreamType(): void;
     getM2TSURL(): string | null;
     getM2TPlayListURL(): string | null;
 }

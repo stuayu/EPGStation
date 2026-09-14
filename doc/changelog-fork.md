@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-14
 
+- **放映中・番組表の配信選択ダイアログにオリジナル (MPEG-2) が出ない問題を修正した**: サーバはライブの playback-options でも `original-mpeg2` (`modes.original`) を返していたが、配信方式の一覧は config の配信設定 (`streamConfig.live.ts`) からしか作っておらず、録画側の `RecordedDetailSelectStreamState.addOriginalStreamType()` に相当する処理がライブ側 (`OnAirSelectStreamState` / `OnAirSelectStream.vue`) に無かった。playback-options が original を返したときだけ「オリジナル」を加え、選択時は画質もオリジナルを選択済みにする。前回オリジナルで視聴していれば選択を戻す (URL Scheme 利用時は出さない)。実測 (Chromium、福島 NHK 総合): 修正前は配信方式に「オリジナル」が無く、修正後は一覧に出て、選ぶと `#/onair/watch?type=original` で 1920x1080 が 20 秒で 16.1 秒進行
+
 - **オフライン保存ダイアログでファイルを切り替えても画質一覧が更新されない問題を修正した**: `OfflineVideoDownloadDialog.vue` は開いたときに先頭ファイル (`videoFiles[0]`) の playback-options しか取得しておらず、TS と tsreplace の HEVC が並ぶ録画で HEVC を選んでも「オリジナル (HEVC・無変換)」が出ず、先頭ファイル用の画質で保存していた。`selectedVideoId` の変更で取り直す。実測 (WebKit): 修正前の選択肢は「おまかせ / 1080p / 720p / データ節約」のみ、修正後は「オリジナル (HEVC・無変換)」が加わり、29.7 分の HEVC 録画を 32 秒 / 601.6MB で保存できた
 - **録画をオリジナル (MPEG-2) で再生すると DPlayer の画質メニューが空になり、他の方式へ戻れない問題を修正した**: オリジナルは config の配信設定に mode 一覧を持たないため quality 配列が空になり、DPlayer は生成時に quality が無いと画質メニュー自体を作らない (後から `setPlaybackProfiles()` で入れても出ない)。オリジナル時は 1 件の quality を渡す。あわせて「オリジナル (MPEG-2・端末で変換) > オリジナル (MPEG-2・端末で変換)」のように方式名と画質名が同じときは重ねて表示しない (`getPlaybackOptionLabel()`)。実測 (Chromium): 修正前はメニュー 0 件、修正後は 12 件で M2TS-LL → オリジナル → M2TS-LL の切替がいずれも再生継続 (pageerror 0)
 - **headless WebKit (Playwright) ではオフライン再生を検証できない**: Playwright の WebKit ビルドは `http://127.0.0.1` で `cache.put()` が成功しても `cache.match()` が 1KB でも見つからない (Chromium は 64MB まで読み出せる)。オフライン再生の実ブラウザ検証は Chromium で行い、Safari / iOS は実機で確認すること。**Safari の Service Worker / Cache Storage は secure context (HTTPS か localhost) でしか使えない**ため、`http://<LAN IP>:8888` で開いた iPhone ではオフライン保存が使えない (実機未検証)
