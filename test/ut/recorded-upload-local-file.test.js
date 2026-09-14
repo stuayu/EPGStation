@@ -117,6 +117,30 @@ test('scanImportDirectory with analyze false lists files without ts analysis', a
     assert.equal(analyzed, 0);
 });
 
+test('scanImportDirectory with analyze false does not build the registered path index', async () => {
+    const dir = makeTempDir();
+    fs.writeFileSync(path.join(dir, 'sample.ts'), 'dummy');
+    let findAllCalled = false;
+    const model = new Model(
+        {},
+        {},
+        {},
+        {},
+        { getConfig: () => ({ importDirs: [{ name: 'import', path: dir }] }) },
+        {},
+        {},
+        { findAll: async () => [] },
+        { analyze: async () => null },
+        {},
+        { findAll: async () => ((findAllCalled = true), []) },
+        { getFullFilePathFromVideoFile: () => path.join(dir, 'sample.ts') },
+    );
+
+    await model.scanImportDirectory({ importDirName: 'import', analyze: false });
+
+    assert.equal(findAllCalled, false);
+});
+
 test('addUploadedVideoFile passes through an uploaded file without path validation', async () => {
     const calls = [];
     const model = makeModel([], calls);

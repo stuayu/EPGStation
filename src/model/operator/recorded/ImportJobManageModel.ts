@@ -3,6 +3,7 @@ import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IImportJobManageModel, { ImportJobId, ImportJobStatus } from './IImportJobManageModel';
 import IRecordedManageModel, {
+    ImportedExternalRecordedFileContext,
     ImportedExternalRecordedFileOption,
     ImportedExternalRecordedFileResult,
 } from './IRecordedManageModel';
@@ -67,9 +68,10 @@ export default class ImportJobManageModel implements IImportJobManageModel {
      * @param job: InternalJob
      */
     private async run(job: InternalJob): Promise<void> {
+        const context: ImportedExternalRecordedFileContext = {};
         for (const item of job.items) {
             const [result] = await this.recordedManage
-                .importExternalRecordedFiles([item])
+                .importExternalRecordedFiles([item], context)
                 .catch((err: any): ImportedExternalRecordedFileResult[] => [
                     {
                         localFilePath: item.localFilePath,

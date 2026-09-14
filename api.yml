@@ -1614,6 +1614,10 @@ components:
                 - endAt
                 - name
             properties:
+                programId:
+                    description: Mirakurun の networkId/serviceId/eventId から得た番組 ID
+                    allOf:
+                        - $ref: '#/components/schemas/ProgramId'
                 ruleId:
                     $ref: '#/components/schemas/RuleId'
                 channelId:
@@ -2465,6 +2469,18 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/RecordedId'
+                matchedRecordedId:
+                    description: 番組 ID または番組名と時刻の強い一致で自動追加する既存録画の recordedId
+                    allOf:
+                        - $ref: '#/components/schemas/RecordedId'
+                alreadyImportedVideoFileId:
+                    description: 実パスが一致する取り込み済み video_file の ID
+                    allOf:
+                        - $ref: '#/components/schemas/VideoFileId'
+                alreadyImportedRecordedId:
+                    description: 実パスが一致する取り込み済み録画の recordedId
+                    allOf:
+                        - $ref: '#/components/schemas/RecordedId'
 
         ImportScanResult:
             description: 取り込みディレクトリスキャン結果
@@ -2513,7 +2529,9 @@ components:
                 mode:
                     $ref: '#/components/schemas/ImportMode'
                 duplicateAction:
-                    $ref: '#/components/schemas/ImportDuplicateAction'
+                    description: 未指定なら同一番組と強く判定できたとき既存録画へ追加し、それ以外は新規作成する。指定した場合は自動判定より優先する
+                    allOf:
+                        - $ref: '#/components/schemas/ImportDuplicateAction'
                 duplicateRecordedId:
                     $ref: '#/components/schemas/RecordedId'
                 ruleId:
@@ -2558,7 +2576,7 @@ components:
                     description: 取り込みに成功したか
                     type: boolean
                 skipped:
-                    description: 重複によりスキップされたか
+                    description: 重複または取り込み済みパスによりスキップされたか
                     type: boolean
                 recordedId:
                     $ref: '#/components/schemas/RecordedId'

@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { IMPORT_TS_FILE_EXTENSIONS } from '../../../util/ImportTsFileExtension';
 
 /**
  * importDirs 配下のディレクトリを走査し、取り込み候補となる動画ファイルを列挙する
@@ -14,7 +15,7 @@ namespace ImportDirectoryScanner {
     }
 
     // 取り込み対象として扱う動画ファイルの拡張子
-    export const VIDEO_EXTENSIONS = ['.ts', '.m2ts', '.mp4', '.mkv', '.m2p'];
+    export const VIDEO_EXTENSIONS = [...IMPORT_TS_FILE_EXTENSIONS, '.mp4', '.mkv', '.m2p'];
 
     /**
      * 指定ディレクトリ配下を再帰的に走査し、動画ファイル候補を返す
@@ -52,11 +53,15 @@ namespace ImportDirectoryScanner {
                 continue;
             }
 
+            // 候補パスはシンボリックリンクを解決した実パスに揃える。
+            const realFilePath = await fs.promises.realpath(fullPath).catch(() => fullPath);
+
+            // sidecar は列挙したパスの隣にあるため、リンク解決前のパスで探す。
             const programTxtPath = `${fullPath}.program.txt`;
             const errPath = `${fullPath}.err`;
 
             result.push({
-                filePath: fullPath,
+                filePath: realFilePath,
                 fileName: entry.name,
                 programTxtPath: (await exists(programTxtPath)) === true ? programTxtPath : null,
                 errPath: (await exists(errPath)) === true ? errPath : null,

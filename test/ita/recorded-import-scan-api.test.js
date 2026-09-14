@@ -42,7 +42,7 @@ function emptyTsInfo(override) {
     );
 }
 
-function buildModel({ enabled, importDirs, recordedDB, channelDB, tsInfoAnalyzer }) {
+function buildModel({ enabled, importDirs, recordedDB, channelDB, tsInfoAnalyzer, videoFileDB, videoUtil }) {
     return new RecordedApiModel(
         {},
         recordedDB ?? { findAll: async () => [[], 0], findId: async () => null, findIds: async () => [], findDuplicateCandidates: async () => [] },
@@ -54,6 +54,9 @@ function buildModel({ enabled, importDirs, recordedDB, channelDB, tsInfoAnalyzer
         channelDB ?? { findAll: async () => [baseChannel], findNetworkIdAndServiceId: async () => null },
         // 既定では TS から何も取れなかった扱いにして、ファイル名からの推定を通す
         tsInfoAnalyzer ?? { analyze: async () => emptyTsInfo() },
+        undefined,
+        videoFileDB,
+        videoUtil,
     );
 }
 
@@ -153,4 +156,29 @@ test('TS から何も取れない場合はファイル名からの推定にフ�
     assert.equal(result.items.length, 1);
     assert.equal(result.items[0].estimatedSource, 'fileName');
     assert.equal(result.items[0].estimatedChannelId, baseChannel.id);
+});
+
+test('scan marks a file already registered by the resolved path', async () => {
+    const dir = mkTmpDir();
+    const file = path.join(dir, 'sample.ts');
+    fs.writeFileSync(file, 'x');
+    let findAllCount = 0;
+
+    const model = buildModel({
+        enabled: true,
+        importDirs: [{ name: 'edcb', path: dir }],
+        videoFileDB: {
+            findAll: async () => {
+                findAllCount++;
+                return [{ id: 7, recordedId: 42, parentDirectoryName: 'edcb', filePath: 'sample.ts' }];
+            },
+        },
+        videoUtil: { getFullFilePathFromVideoFile: () => file },
+    });
+
+    const result = await model.scanImportDirectory({ importDirName: 'edcb' });
+
+    assert.equal(result.items[0].alreadyImportedVideoFileId, 7);
+    assert.equal(result.items[0].alreadyImportedRecordedId, 42);
+    assert.equal(findAllCount, 1);
 });

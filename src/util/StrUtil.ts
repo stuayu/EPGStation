@@ -104,13 +104,23 @@ namespace StrUtil {
      * @return string
      */
     export const deleteBrackets = (str: string): string => {
-        // 囲み文字を削除
+        str = deleteEnclosedCharacters(str);
+
+        // [] でくくられた文字を削除 + 先頭と末尾のスペースを削除する
+        return str.replace(/\[.+?\]/g, '').trim();
+    };
+
+    /**
+     * 番組表で使用される囲み文字だけを削除する。
+     * @param str: string
+     * @return string 囲み文字を削除した文字列
+     */
+    export const deleteEnclosedCharacters = (str: string): string => {
         for (const key in enclosedCharactersConvertTable) {
             str = str.replaceAll(key, '');
         }
 
-        // [] でくくられた文字を削除 + 先頭と末尾のスペースを削除する
-        return str.replace(/\[.+?\]/g, '').trim();
+        return str;
     };
 
     /**

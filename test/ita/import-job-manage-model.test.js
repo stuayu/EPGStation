@@ -75,3 +75,26 @@ test('retryFailed only re-runs failed items and returns null when there is nothi
     // 失敗が無いジョブを retry しても null が返る
     assert.equal(manage.retryFailed(retryJobId), null);
 });
+
+test('ジョブ内の登録済み video_file 索引は 3 件でも 1 回だけ構築される', async () => {
+    let findAllCount = 0;
+    const contexts = [];
+    const recordedManage = {
+        importExternalRecordedFiles: async (items, context) => {
+            contexts.push(context);
+            if (context.importedPathSet === undefined) {
+                findAllCount++;
+                context.importedPathSet = new Set();
+            }
+
+            return [{ localFilePath: items[0].localFilePath, imported: true, recordedId: 1 }];
+        },
+    };
+    const manage = new ImportJobManageModel(logger, recordedManage);
+
+    const jobId = manage.start([{ localFilePath: '/a.ts' }, { localFilePath: '/b.ts' }, { localFilePath: '/c.ts' }]);
+    await waitUntil(() => manage.getStatus(jobId).isRunning === false);
+
+    assert.equal(findAllCount, 1);
+    assert.equal(new Set(contexts).size, 1);
+});

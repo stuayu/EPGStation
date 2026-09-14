@@ -47,6 +47,14 @@ export interface ImportedExternalRecordedFileResult {
 }
 
 /**
+ * 1 つの取り込みジョブで共有する状態。
+ * importedPathSet は初回の取り込み時に DB から作られ、成功したパスが追加される。
+ */
+export interface ImportedExternalRecordedFileContext {
+    importedPathSet?: Set<string>;
+}
+
+/**
  * アップロードされたビデオファイル情報
  */
 export interface UploadedVideoFileOption {
@@ -68,6 +76,7 @@ export default interface IRecordedManageModel {
     addUploadedVideoFile(option: UploadedVideoFileOption): Promise<apid.RecordedId>;
     importExternalRecordedFiles(
         option: ImportedExternalRecordedFileOption[],
+        context?: ImportedExternalRecordedFileContext,
     ): Promise<ImportedExternalRecordedFileResult[]>;
     createNewRecorded(option: apid.CreateNewRecordedOption): Promise<apid.RecordedId>;
     deleteVideoFile(videoFileId: apid.VideoFileId, isIgnoreProtection?: boolean): Promise<void>;
