@@ -128,6 +128,22 @@ export default class OnAirSelectStreamState implements IOnAirSelectStreamState {
     }
 
     /**
+     * サーバの playback-options がオリジナル (MPEG-2・端末で変換) を返したときだけ配信方式へ加える。
+     * config の配信設定には mode 一覧が無いため updateStreamTypes() では出てこない (録画側の
+     * RecordedDetailSelectStreamState.addOriginalStreamType() と同じ扱い)。
+     * 前回「オリジナル」で視聴していた場合は選択も戻す
+     */
+    public addOriginalStreamType(): void {
+        if (this.useURLScheme === true || this.streamTypes.includes('オリジナル')) return;
+        this.streamTypes.push('オリジナル');
+        this.streamConfig['オリジナル'] = ['オリジナル'];
+        if (this.streamSelectSetting.getSavedValue().type === 'オリジナル' || typeof this.selectedStreamType === 'undefined') {
+            this.selectedStreamType = 'オリジナル';
+            this.updateStreamConfig();
+        }
+    }
+
+    /**
      * ストリーム設定の更新
      */
     public updateStreamConfig(isInit: boolean = false): void {

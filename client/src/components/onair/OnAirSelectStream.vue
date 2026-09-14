@@ -136,6 +136,20 @@ class OnAirSelectStream extends Vue {
         // 配信方式が続けて切り替えられた場合、古い応答は捨てる
         if (generation !== this.loadGeneration) return;
 
+        // オリジナル (MPEG-2・端末で変換) は config の配信設定に無く、サーバが対応素材・対応端末と判定したときだけ返る
+        if (this.playbackState.options?.profiles.some(profile => typeof profile.modes.original === 'number') === true) {
+            this.dialogState.addOriginalStreamType();
+        }
+
+        // オリジナルは画質が 1 つだけなので、画質ボタンも「おまかせ」ではなくオリジナルを選択済みにする (録画側と同じ)
+        if (this.selectedContainer === 'original') {
+            const original = this.qualityProfiles.find(profile => profile.role === 'original-mpeg2');
+            if (original !== undefined) {
+                this.playbackState.selectPreset(original.id);
+                this.applySelectedQualityToStreamConfig(original.id);
+            }
+        }
+
         // 「既定の画質」が明示指定されているときだけ配信設定へ反映する。
         // 自動 (auto) のときにサーバの推奨を書き込むと、このダイアログで前回選んだ設定を毎回上書きしてしまう
         if (this.playbackState.preference.preferredQuality !== 'auto') {
