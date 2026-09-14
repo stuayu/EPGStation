@@ -53,6 +53,23 @@ Get-Service | Where-Object { $_.Name -like "*EPGStation*" }   # 名前を確認 
 Restart-Service -Name "epgstation.exe" -Force
 ```
 
+**再起動の前後で、EPGStation の node プロセスが 1 系統だけかを必ず確認する。**
+`Restart-Service` は、ラッパー (winsw / node-windows) が子プロセスを止められないと、
+古いプロセス群を残したまま新しいプロセス群を起動する。古い側が 8888 を掴んだまま古いコードを返し続け、
+Operator が 2 つ動いて録画・EPG 更新が二重になる。
+
+```powershell
+# 再起動の前: エンコード中なら終わるのを待つ (AmatsukazeEncodeTool などの子を winsw が止められない)
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*EPGStation*' } |
+  Select-Object ProcessId, ParentProcessId, CreationDate
+# 再起動の後: 8888 を持つ PID が、新しく起動した ServiceExecutor の PID か
+Get-NetTCPConnection -LocalPort 8888 -State Listen | Select-Object OwningProcess
+```
+
+古い系統が残っていたら、サービスを止め、`EPGStation` を含む node (ラッパーの `node-windows\lib\wrapper.js` を含む) をすべて止めてから `Start-Service` する。
+Mirakurun の node (`Mirakurun_Proxy` / `Mirakurun_Share`) は巻き込まないこと。
+**バージョン API (`/api/version`) だけで反映を判断しない** — 古い系統が応答していても 200 が返る。
+
 ## 設定ファイル
 
 - **`config/config.yml` は利用者所有**。git 管理外で、テンプレートを更新しても本番へは反映されない。
@@ -89,3 +106,9 @@ curl -s "https://<本番>/api/config" | node -e '...'   # 追加した項目が�
   (`lsof -nP -iTCP:8888 -sTCP:LISTEN` / Windows は `Get-Process`)
 - **本番の設定には他地域由来の古い値が残っていることがある**。
   スキャン結果や API 応答だけで「設定が正しい」と判断しない
+- **エンコード中に `Restart-Service` して、古いプロセス群が残り本番が約 6 時間止まった** (2026-09-15)。
+  winsw が子プロセス (AmatsukazeEncodeTool) の停止で「アクセスが拒否されました」になり、古いラッパーが孤立。
+  新旧が二重に起動したので新しい側を止めたところ、孤立した古いラッパーが約 30 分ごとに EPGStation を再起動し続け、
+  毎回 `check db` の直後で止まって 8888 を開かなかった (MySQL にロックは無かった)。
+  孤立したラッパーと EPGStation の node をすべて止めて `Start-Service` し直したら正常に起動した。
+  対策は上の「サービス」の確認手順。反映後は `/api/version` だけでなく 8888 の PID と Operator ログの起動完了 (`start service pid`) まで見る
