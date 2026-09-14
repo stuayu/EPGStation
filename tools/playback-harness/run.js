@@ -4,7 +4,7 @@
 const scenarios = [
     ['watch', '再生監視。停止回数・最長停止・最低進行量'],
     ['jikkyo-seek', '実況コメントと再生位置の同期を4条件で測定'],
-    ['m2ts-seek', '録画 m2tsll の前方・後方シーク復帰'],
+    ['m2ts-seek', '録画ストリーミングの80%・30%・90%シーク復帰'],
     ['m2ts-deep', 'シーク後の buffered・readyState・受信バイト'],
     ['duplicate-player', '画質切替中の DPlayer/video/表示要素二重化'],
     ['ptime', '.dplayer-ptime と再生状態の継続性'],
@@ -15,6 +15,14 @@ const scenarios = [
     ['recording-stress', '録画再生の連続・シーク・一時停止・終端ストレス'],
     ['ipad-audio', 'iPad/WebKit の音声・画質候補'],
     ['mms', 'ManagedMediaSource 経路強制'],
+    ['offline-records', 'TS 素材からオフライン EPGODL2 レコード生成を測定'],
+    ['original-hevc', 'HEVC TS の無変換 fMP4 と ARIB 字幕 emsg を測定'],
+    ['offline-app', '保存済みプロファイルのオフライン起動・再生・新規タブ確認'],
+    ['ui-original-flow', '録画詳細の配信選択から視聴・80%/30%シークまでを測定'],
+    ['watch-history-flow', '視聴履歴の配信選択・レジューム・profile一致を測定'],
+    ['container-switch', '再生中の M2TS-LL ⇔ オリジナル切替と位置継承を測定'],
+    ['live-original', 'ライブ Original を60秒再生し15秒切れを検出'],
+    ['offline-hevc', 'HEVC Original を保存後、WebKitオフライン再生を測定'],
 ];
 
 const usage = () => {
@@ -24,11 +32,20 @@ const usage = () => {
     console.log('  --hash HASH                 既存の hash route');
     console.log('  --video-file-id ID          録画 videoFileId');
     console.log('  --recorded-id ID            録画 recordedId');
-    console.log('  --streaming-type TYPE       hls / m2tsll / mp4 / webm (指定時 --mode 必須)');
+    console.log('  --streaming-type TYPE       hls / m2tsll / original / mp4 / webm (指定時 --mode 必須)');
     console.log('  --mode N                    配信 mode');
     console.log('  --browser chromium|webkit   既定 chromium');
     console.log('  --device NAME               Playwright device 名');
     console.log('  --duration SEC              測定時間');
+    console.log('  --input-ts PATH             オフライン測定へ使う TS (省略時は60秒素材を生成)');
+    console.log('  --hevc                      tsreplace 相当の HEVC TS を生成して測定');
+    console.log('  --non-idr-start             HEVC TS の先頭を任意位置から始める近似素材を使う');
+    console.log('  --offline                   original-hevc の OfflineFmp4RecordStream も測定');
+    console.log('  --profile-dir PATH          offline-app で使う保存済み永続プロファイル');
+    console.log('  --profile ID                URLで期待する playback profile id');
+    console.log('  --quality TEXT              UIで選ぶ画質ラベル');
+    console.log('  --file-label TEXT           UIで選ぶ録画ファイル名 (例: TS)');
+    console.log('  --ss SEC                    subtitle の録画開始位置 (秒)');
     console.log('  --help                      シナリオ一覧と共通オプション');
     console.log('\nシナリオ:');
     for (const [name, description] of scenarios) console.log(`  ${name.padEnd(18)} ${description}`);
@@ -45,6 +62,10 @@ const parseArgs = argv => {
             positionals.push(token);
             continue;
         }
+        if (token === '--hevc' || token === '--non-idr-start' || token === '--without-subtitles' || token === '--offline') {
+            options[token.slice(2).replace(/-([a-z])/gu, (_match, letter) => letter.toUpperCase())] = true;
+            continue;
+        }
         const equal = token.indexOf('=');
         const key = token.slice(2, equal === -1 ? undefined : equal).replace(/-([a-z])/gu, (_match, letter) => letter.toUpperCase());
         const value = equal === -1 ? argv[++index] : token.slice(equal + 1);
@@ -53,7 +74,7 @@ const parseArgs = argv => {
             'duration', 'interval', 'maxStops', 'maxStallSeconds', 'minProgressSeconds', 'maxSwitchSeconds', 'minReceivedBytes',
             'minSubtitlePixels', 'minEmsgRatio', 'minSegments', 'videoStartAt', 'maxDriftSeconds', 'minCommentSamples',
             'commentWindow', 'mode', 'seekSeconds', 'minQualityItems', 'minAudioItems', 'cleanupWait', 'parallel',
-            'maxBlackRatio', 'minFrameChanges', 'blackLumaMax', 'frameChangeThreshold',
+            'maxBlackRatio', 'minFrameChanges', 'blackLumaMax', 'frameChangeThreshold', 'ss', 'timeoutMs', 'saveTimeoutMs',
         ]);
         options[key] = numericKeys.has(key) ? Number(value) : value;
     }
@@ -97,7 +118,7 @@ const defaults = options => ({
     const scenario = scenarios.find(item => item[0] === parsed.scenario);
     if (scenario === undefined) throw new Error(`シナリオ不明: ${parsed.scenario}`);
     const options = defaults(parsed.options);
-    if (options.baseUrl === undefined && options.scenario !== 'emsg') throw new Error('--base-url または EPGSTATION_BASE_URL が必要');
+    if (options.baseUrl === undefined && parsed.scenario !== 'emsg' && parsed.scenario !== 'offline-records' && parsed.scenario !== 'original-hevc') throw new Error('--base-url または EPGSTATION_BASE_URL が必要');
     const implementation = require('./lib/scenarios')[parsed.scenario];
     const outcome = await implementation(options);
     if (outcome?.passed !== true) process.exitCode = 1;
