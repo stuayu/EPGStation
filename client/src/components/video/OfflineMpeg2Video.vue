@@ -14,6 +14,11 @@ import { Component, Prop, toNative } from 'vue-facing-decorator';
 /** Cache Storage の Range 仮想ファイルを mpeg2toh264 へ渡すプレイヤー。 */
 @Component({})
 class OfflineMpeg2Video extends BaseVideo {
+    // オフライン視聴画面はコメントタブに取得失敗を出すので、プレイヤー上の通知は出さない
+    protected override shouldNoticeJikkyoError(): boolean {
+        return false;
+    }
+
     @Prop({ required: true })
     public videoSrc!: string;
 

@@ -209,6 +209,9 @@ export default abstract class BaseVideo extends Vue {
                 onComment: comment => this.drawJikkyoComment(comment),
                 onError: message => {
                     this.$emit('jikkyoError', message);
+                    // 通常の録画視聴は従来どおりプレイヤー上に知らせる (親で jikkyoError を受けていない)。
+                    // オフライン再生だけはコメントタブに出すので、プレイヤー上の通知は出さない
+                    if (this.shouldNoticeJikkyoError() === true) (this.dp as any)?.notice?.(message, 5000);
                 },
             });
             if (this.isJikkyoOnlineListenerRegistered === false) {
@@ -990,6 +993,14 @@ export default abstract class BaseVideo extends Vue {
      * @param option.current: 現在選択中のトラック
      * @param option.onSelect: 選択時に呼ばれる (失敗時は例外を投げる)
      */
+    /**
+     * 実況の過去ログ取得に失敗したとき、プレイヤー上に通知を出すか
+     * @return boolean
+     */
+    protected shouldNoticeJikkyoError(): boolean {
+        return true;
+    }
+
     protected setupAudioTrackSwitch(option: {
         tracks: apid.VideoAudioTrack[];
         current: apid.AudioTrackSpecifier;
