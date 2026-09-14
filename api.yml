@@ -2596,6 +2596,7 @@ components:
                 - done
                 - successCount
                 - failedCount
+                - skippedCount
                 - isRunning
                 - results
             properties:
@@ -2611,7 +2612,10 @@ components:
                     description: 成功件数
                     type: integer
                 failedCount:
-                    description: 失敗件数
+                    description: 失敗件数 (スキップは含まない)
+                    type: integer
+                skippedCount:
+                    description: 取り込み済みパス・重複によりスキップした件数
                     type: integer
                 isRunning:
                     description: 実行中かどうか

@@ -65,7 +65,7 @@ test('startImportJob rejects an empty item list without calling IPC', async () =
 });
 
 test('getImportJobStatus and retryImportJob proxy to IPC', async () => {
-    const status = { jobId: 'job-1', total: 2, done: 2, successCount: 1, failedCount: 1, isRunning: false, results: [] };
+    const status = { jobId: 'job-1', total: 2, done: 2, successCount: 1, failedCount: 1, skippedCount: 0, isRunning: false, results: [] };
     const ipc = {
         recorded: {
             getImportJobStatus: async jobId => (jobId === 'job-1' ? status : null),

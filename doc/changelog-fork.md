@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-14
 
+- **取り込みジョブでスキップしたファイルを「失敗」に数えていたのを直した**: `ImportJobManageModel` は `imported` 以外をすべて `failedCount` に数えていたため、取り込み済みパス・重複でスキップしたファイルが取り込みダイアログで「失敗」と表示され、「失敗分を再実行」の対象にもなっていた (本番で取り込み済みファイルを再投入して `failedCount: 1` になることを確認)。`ImportJobStatus.skippedCount` を追加してスキップを別に数え、`retryFailed()` はスキップしたファイルを再実行しない。画面の進捗表示はスキップが 1 件以上あるときだけ「スキップ N」を出す。テスト: `test/ita/import-job-manage-model.test.js`
 - **外部録画ファイルの再取り込みを除外し、同一番組へソースを自動追加するようにした**: 手動スキャン・取り込み API・フォルダー監視で、`VideoUtil.getFullFilePathFromVideoFile()` が解決する既存 `video_file` の絶対パスと候補の `realpath` を比較するようにした。比較用パスは Windows では区切り文字と大文字小文字を正規化し、macOS / POSIX では `realpath` 後の大文字小文字を保持する。スキャンでは `IVideoFileDB.findAll()` を1回だけ呼び、パス索引で照合する。取り込み済みファイルは手動画面で選択不可・「取り込み済み」表示、監視と API では `skipped` とする
     - **同一番組判定**: `src/util/ImportDuplicateMatcher.ts` に純粋関数を追加。`(networkId * 100000 + serviceId) * 100000 + eventId` で作る Mirakurun `programId` が既存 `Recorded.programId` と候補1件で一致、または同一局・開始時刻が許容幅内・番組名が全半角 / 囲み文字 / 空白 / 大小文字を正規化後に一致し、候補が1件だけの場合を強一致とする。強一致は番組行を増やさず既存 `recorded` へ `add`。従来の時刻だけの重複、候補複数、判定不能は弱一致として自動追加せず、監視は skip、手動は skip 既定の警告にする
     - **明示した選択を優先する**: 取り込み API は `duplicateAction` が指定されていればそれに従い、未指定のときだけ強一致を自動で既存録画へ追加する。`add` + `duplicateRecordedId` は自動判定より優先し、`newRecorded` を明示すれば強一致でも新規作成する。手動画面は重複候補の無い行 (選択 UI が出ない行) で `duplicateAction` を送らない。登録済みパスの索引は取り込み 1 バッチにつき 1 回だけ作り、realpath はディレクトリ単位で解決する (1 ファイルごとに全 video_file を realpath すると、ネットワークドライブ上で録画数 × 取り込み数のファイルシステム呼び出しになるため)。同じバッチで同じファイルが重ねて指定されても 1 回しか登録しない

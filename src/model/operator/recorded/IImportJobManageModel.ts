@@ -8,6 +8,8 @@ export interface ImportJobStatus {
     done: number;
     successCount: number;
     failedCount: number;
+    // 取り込み済みパス・重複によるスキップ件数 (failedCount には含めない)
+    skippedCount: number;
     isRunning: boolean;
     createdAt: number;
     results: ImportedExternalRecordedFileResult[];

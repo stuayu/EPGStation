@@ -46,6 +46,7 @@ export default class ImportJobManageModel implements IImportJobManageModel {
             done: 0,
             successCount: 0,
             failedCount: 0,
+            skippedCount: 0,
             isRunning: true,
             createdAt: new Date().getTime(),
             results: [],
@@ -84,6 +85,9 @@ export default class ImportJobManageModel implements IImportJobManageModel {
             job.done++;
             if (result.imported === true) {
                 job.successCount++;
+            } else if (result.skipped === true) {
+                // 取り込み済み・重複でのスキップは失敗ではない (再実行しても結果は変わらない)
+                job.skippedCount++;
             } else {
                 job.failedCount++;
             }
@@ -109,6 +113,7 @@ export default class ImportJobManageModel implements IImportJobManageModel {
             done: job.done,
             successCount: job.successCount,
             failedCount: job.failedCount,
+            skippedCount: job.skippedCount,
             isRunning: job.isRunning,
             createdAt: job.createdAt,
             results: job.results,
@@ -116,7 +121,7 @@ export default class ImportJobManageModel implements IImportJobManageModel {
     }
 
     /**
-     * 失敗したファイルのみを対象に新しいジョブを開始する
+     * 失敗したファイルのみを対象に新しいジョブを開始する (スキップしたファイルは対象外)
      * @param jobId: ImportJobId
      * @return ImportJobId | null
      */
@@ -126,7 +131,7 @@ export default class ImportJobManageModel implements IImportJobManageModel {
             return null;
         }
 
-        const failedPaths = new Set(job.results.filter(r => r.imported === false).map(r => r.localFilePath));
+        const failedPaths = new Set(job.results.filter(r => r.imported === false && r.skipped !== true).map(r => r.localFilePath));
         const retryItems = job.items.filter(i => failedPaths.has(i.localFilePath));
         if (retryItems.length === 0) {
             return null;
