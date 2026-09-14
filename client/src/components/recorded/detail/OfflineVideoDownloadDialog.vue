@@ -117,9 +117,14 @@ class OfflineVideoDownloadDialog extends Vue {
             await OfflineVideos.start(this.recordedItem, video.id, this.selectedProfile, selected?.videoBitrate, {
                 channelName: this.channelName,
                 displayName: this.displayName,
+                profileLabel: selected === undefined ? undefined : this.getLabel(selected),
             });
             this.isOpen = false;
-            this.snackbarState.open({ color: 'success', text: 'オフライン保存が完了しました' });
+            this.snackbarState.open({
+                color: 'success',
+                text: 'オフライン保存が完了しました',
+                action: { text: 'オフライン保存を開く', onClick: async () => { await this.$router.push({ path: '/offline-videos' }); } },
+            });
         } catch (err) {
             this.snackbarState.open({ color: 'error', text: err instanceof Error ? err.message : 'オフライン保存に失敗しました' });
             console.error(err);

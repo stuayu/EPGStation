@@ -20,11 +20,13 @@ export interface NormalVideoParam extends VideoParamBase {
 export interface OfflineHLSVideoParam extends VideoParamBase {
     type: 'OfflineHLS';
     src: string;
+    playPosition?: number;
 }
 
 export interface OfflineOriginalMpeg2Param extends VideoParamBase {
     type: 'OfflineOriginalMpeg2';
     src: string;
+    playPosition?: number;
 }
 
 export interface RecordedStreamingParam extends VideoParamBase {

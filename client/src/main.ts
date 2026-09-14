@@ -59,7 +59,7 @@ smoothscroll.polyfill();
     setOfflineStartup(shouldOpenOfflineVideos);
     const app = createApp(App);
     app.component('v-datetime-picker', DateTimePicker);
-    if (shouldOpenOfflineVideos === true && router.currentRoute.value.path !== '/offline-videos') {
+    if (shouldOpenOfflineVideos === true && router.currentRoute.value.path.startsWith('/offline-videos') === false) {
         // mount 前の router.replace() は scrollBehavior の完了通知を待つため、
         // オフライン時に不要なタイムアウトを起こす。hash を先に書き換え、初期遷移で解決する。
         window.history.replaceState(window.history.state, '', router.resolve('/offline-videos').href);

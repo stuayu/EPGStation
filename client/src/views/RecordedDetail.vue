@@ -138,6 +138,7 @@ import RecordedDetailStopEncodeButton from '@/components/recorded/detail/Recorde
 import OfflineVideoDownloadDialog from '@/components/recorded/detail/OfflineVideoDownloadDialog.vue';
 import OfflineDownloadBadge from '@/components/recorded/OfflineDownloadBadge.vue';
 import type { OfflineVideoRecord } from '@/services/OfflineVideoStorage';
+import { getOfflineVideoKey } from '../../../src/util/OfflineUxUtil';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
@@ -204,7 +205,7 @@ class RecordedDetail extends Vue {
     get offlineVideoIds(): number[] { return (this.recorded?.recordedItem.videoFiles ?? []).map(video => video.id); }
 
     public playOffline(video: OfflineVideoRecord): void {
-        void Util.move(this.$router, { path: '/offline-videos', query: { videoId: video.videoId.toString(10) } });
+        void Util.move(this.$router, { path: `/offline-videos/${encodeURIComponent(getOfflineVideoKey(video))}/watch`, query: { from: 'recorded-detail' } });
     }
 
     public created(): void {

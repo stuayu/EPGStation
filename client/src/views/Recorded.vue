@@ -119,6 +119,7 @@ import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 import type { OfflineVideoRecord } from '@/services/OfflineVideoStorage';
+import { getOfflineVideoKey } from '../../../src/util/OfflineUxUtil';
 
 
 @Component({
@@ -277,7 +278,7 @@ class Recorded extends Vue {
     }
 
     public playOffline(video: OfflineVideoRecord): void {
-        void Util.move(this.$router, { path: '/offline-videos', query: { videoId: video.videoId.toString(10) } });
+        void Util.move(this.$router, { path: `/offline-videos/${encodeURIComponent(getOfflineVideoKey(video))}/watch`, query: { from: 'recorded' } });
     }
 
     public async stopEncode(recordedId: apid.RecordedId): Promise<void> {

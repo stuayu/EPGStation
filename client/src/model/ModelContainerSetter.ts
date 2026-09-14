@@ -151,6 +151,8 @@ import VersionApiModel from '@/model/api/version/VersionApiModel';
 import IVersionApiModel from '@/model/api/version/IVersionApiModel';
 import IPlaybackOptionsState from './state/video/IPlaybackOptionsState';
 import PlaybackOptionsState from './state/video/PlaybackOptionsState';
+import IOfflineVideoState from './state/offline/IOfflineVideoState';
+import OfflineVideoState from './state/offline/OfflineVideoState';
 
 /**
  * container に各 Model を登録する
@@ -198,6 +200,7 @@ export default (container: Container): void => {
     container.bind<IVersionApiModel>('IVersionApiModel').to(VersionApiModel).inSingletonScope();
 
     container.bind<IPlaybackOptionsState>('IPlaybackOptionsState').to(PlaybackOptionsState).inSingletonScope();
+    container.bind<IOfflineVideoState>('IOfflineVideoState').to(OfflineVideoState).inSingletonScope();
 
     container.bind<IThumbnailApiModel>('IThumbnailApiModel').to(ThumbnailApiModel).inSingletonScope();
 

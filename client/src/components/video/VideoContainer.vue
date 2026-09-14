@@ -18,7 +18,7 @@
                     v-on:canplay="onCanplay"
                     v-on:jikkyoComment="onJikkyoComment"
                     v-on:timeupdate="onTimeupdate"
-                    v-on:pause="savePlaybackPosition"
+                    v-on:pause="onPause"
                     v-on:ended="onEnded"
                     v-on:error="onVideoError"
                     v-on:playbackTransition="onPlaybackTransition"
@@ -31,7 +31,8 @@
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
-                    v-on:pause="savePlaybackPosition"
+                    v-on:timeupdate="onTimeupdate"
+                    v-on:pause="onPause"
                     v-on:ended="onEnded"
                     v-on:error="onVideoError"
                 ></OfflineHLSVideo>
@@ -42,6 +43,8 @@
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
+                    v-on:timeupdate="onTimeupdate"
+                    v-on:pause="onPause"
                     v-on:error="onVideoError"
                 ></OfflineMpeg2Video>
                 <LiveHLSVideo
@@ -81,7 +84,7 @@
                     v-on:canplay="onCanplay"
                     v-on:jikkyoComment="onJikkyoComment"
                     v-on:timeupdate="onTimeupdate"
-                    v-on:pause="savePlaybackPosition"
+                    v-on:pause="onPause"
                     v-on:ended="onEnded"
                     v-on:error="onVideoError"
                     v-on:playbackTransition="onPlaybackTransition"
@@ -107,7 +110,7 @@
                     v-on:canplay="onCanplay"
                     v-on:jikkyoComment="onJikkyoComment"
                     v-on:timeupdate="onTimeupdate"
-                    v-on:pause="savePlaybackPosition"
+                    v-on:pause="onPause"
                     v-on:ended="onEnded"
                     v-on:error="onVideoError"
                     v-on:playbackTransition="onPlaybackTransition"
@@ -586,6 +589,23 @@ class VideoContainer extends Vue {
         this.checkDataBroadcastingSeek();
         if (this.resumeReady === false) return;
         if (Date.now() - this.lastSavedAt >= 10000) void this.savePlaybackPosition();
+        const video = this.getVideo();
+        if (video !== null) {
+            const duration = video.getDuration();
+            if (Number.isFinite(duration) && duration > 0) this.$emit('playbackPosition', { position: video.getCurrentTime(), duration });
+        }
+    }
+
+    public onPause(): void {
+        void this.savePlaybackPosition();
+        this.emitPlaybackPosition();
+    }
+
+    private emitPlaybackPosition(): void {
+        const video = this.getVideo();
+        if (video === null) return;
+        const duration = video.getDuration();
+        if (Number.isFinite(duration) && duration > 0) this.$emit('playbackPosition', { position: video.getCurrentTime(), duration });
     }
 
     /** 自動画質時だけ再生停滞を定期観測する。 */
@@ -775,7 +795,8 @@ class VideoContainer extends Vue {
         if (this.resumeReady === false) return;
         const id = this.getVideoFileId();
         const video = this.getVideo();
-        if (id === null || video === null) return;
+        if (video === null) return;
+        if (id === null) return;
         const duration = video.getDuration();
         if (Number.isFinite(duration) === false || duration <= 0) return;
         const position = VideoContainer.normalizePosition(video.getCurrentTime(), duration);
@@ -798,11 +819,17 @@ class VideoContainer extends Vue {
     private async applyResumePosition(): Promise<void> {
         if (this.resumeApplied) return;
         this.resumeApplied = true;
-        const id = this.getVideoFileId();
         const video = this.getVideo();
-        if (id === null || video === null) {
+        if (video === null) {
             this.resumeReady = true;
 
+            return;
+        }
+        const id = this.getVideoFileId();
+        if (id === null) {
+            const position = 'playPosition' in this.videoParam ? this.videoParam.playPosition : undefined;
+            if (typeof position === 'number' && position > 0) video.setCurrentTime(position);
+            this.resumeReady = true;
             return;
         }
         try {

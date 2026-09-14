@@ -27,6 +27,9 @@ const scenarios = [
     ['offline-program-info', '回線断で保存済み番組情報を表示できることを測定'],
     ['offline-indicator', 'オフライン表示と overlay 無し、回線復帰を測定'],
     ['recorded-offline-play', '録画一覧から保存データを再生し配信 API 無しを測定'],
+    ['offline-navigation', 'オフライン一覧の複数動画を視聴画面へ遷移し再生進行を測定'],
+    ['offline-detail', 'オフライン一覧 → 番組情報 → 視聴画面を回線断で測定'],
+    ['recorded-detail-offline-play', '録画詳細から保存データ視聴へ遷移し配信 API 無しを測定'],
 ];
 
 const usage = () => {
