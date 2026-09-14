@@ -86,7 +86,8 @@ const createOfflineRangePlan = (header, fileSize, chunkSize) => {
         headers: {
             'Accept-Ranges': 'bytes',
             'Content-Length': String(range.end - range.start + 1),
-            'Content-Range': `bytes ${range.start}-${range.end}/${fileSize}`,
+            // Content-Range は部分応答 (206) のときだけ付ける (RFC 9110)。200 に付けると実装によっては部分応答と誤認する
+            ...(range.kind === 'full' ? {} : { 'Content-Range': `bytes ${range.start}-${range.end}/${fileSize}` }),
         },
         slices,
         start: range.start,

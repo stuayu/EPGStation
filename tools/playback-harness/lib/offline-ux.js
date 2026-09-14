@@ -123,6 +123,7 @@ const recordedOfflinePlay = async options => {
         await page.getByText('保存データで再生', { exact: false }).first().waitFor({ state: 'visible', timeout: 30_000 });
         streamRequests.length = 0;
         await page.getByText('保存データで再生', { exact: false }).first().click();
+        await choosePlayOffline(page);
         await page.waitForSelector('video', { timeout: 30_000 });
         await startPlayback(page);
         await page.waitForTimeout(3_000);
@@ -199,6 +200,17 @@ const offlineDetail = async options => {
 };
 
 /** 録画詳細から保存データ視聴画面へ遷移し、サーバー配信 API を呼ばないことを測る。 */
+// 同じ録画を複数の画質で保存していると「保存データで再生」は選択メニューになる。メニューが出たら先頭を選ぶ
+const choosePlayOffline = async page => {
+    const item = page.locator('.v-overlay--active .offline-select-item').first();
+    try {
+        await item.waitFor({ state: 'visible', timeout: 1500 });
+        await item.click();
+    } catch {
+        // 保存が 1 件なら直接視聴画面へ遷移しているのでメニューは出ない
+    }
+};
+
 const recordedDetailOfflinePlay = async options => {
     const session = await openSession({ ...options, hash: `#/recorded/detail/${encodeURIComponent(String(options.recordedId ?? 16526))}` });
     const { page } = session;
@@ -213,6 +225,7 @@ const recordedDetailOfflinePlay = async options => {
         await button.waitFor({ state: 'visible', timeout: 30_000 });
         streamRequests.length = 0;
         await button.click();
+        await choosePlayOffline(page);
         const overlay = activeOverlay(page);
         const choices = overlay.getByRole('button').filter({ hasText: /保存データで再生/u });
         if (await choices.count() > 0) await choices.first().click();

@@ -67,8 +67,8 @@ export const get: Operation = async (req, res) => {
 
         // OfflineFmp4RecordStream が init/master/約6秒 fMP4/終端を完成順に返す。
         // ここではレコードを蓄積せず、res.write の backpressure だけを伝播する。
-        await pipeOfflineRecords(res, result.stream as AsyncIterable<Buffer | string>);
-        res.end();
+        await pipeOfflineRecords(res, result.stream as AsyncIterable<Buffer | string>, isRequestClosed);
+        if (isRequestClosed() === false) res.end();
         await cleanup();
     } catch (err: unknown) {
         await cleanup();

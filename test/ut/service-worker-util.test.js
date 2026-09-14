@@ -63,3 +63,11 @@ test('オフライン MPEG-2 応答計画は 206 と 416 のヘッダーを固�
     assert.equal(invalid.status, 416);
     assert.equal(invalid.headers['Content-Range'], 'bytes */30');
 });
+
+test('Range 無しの全体応答 (200) には Content-Range を付けない', () => {
+    const full = createOfflineRangePlan(undefined, 30, 10);
+    assert.equal(full.status, 200);
+    assert.equal(full.headers['Content-Range'], undefined);
+    assert.equal(full.headers['Content-Length'], '30');
+    assert.equal(full.slices.length, 3);
+});
