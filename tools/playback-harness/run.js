@@ -30,6 +30,8 @@ const scenarios = [
     ['offline-navigation', 'オフライン一覧の複数動画を視聴画面へ遷移し再生進行を測定'],
     ['offline-detail', 'オフライン一覧 → 番組情報 → 視聴画面を回線断で測定'],
     ['recorded-detail-offline-play', '録画詳細から保存データ視聴へ遷移し配信 API 無しを測定'],
+    ['offline-audio-switch', 'オフライン保存した複数音声 HLS の主音声・副音声切替を測定'],
+    ['capability-report', 'ブラウザーの HEVC/HDR/MPEG-2 再生能力を JSON で採取'],
 ];
 
 const usage = () => {
@@ -49,6 +51,7 @@ const usage = () => {
     console.log('  --non-idr-start             HEVC TS の先頭を任意位置から始める近似素材を使う');
     console.log('  --offline                   original-hevc の OfflineFmp4RecordStream も測定');
     console.log('  --profile-dir PATH          オフラインシナリオで使う保存済み永続プロファイル');
+    console.log('  offline-audio-switch は --profile-dir と --recorded-id/--video-file-id を必要とする');
     console.log('  --profile ID                URLで期待する playback profile id');
     console.log('  --quality TEXT              UIで選ぶ画質ラベル');
     console.log('  --file-label TEXT           UIで選ぶ録画ファイル名 (例: TS)');

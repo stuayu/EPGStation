@@ -1,6 +1,7 @@
 <template>
     <v-app class="app-content-root">
-        <Navigation v-if="offlineStartup === false"></Navigation>
+        <!-- オフラインでもサイドバーは出す (押せない項目は Navigation 側で無効化する) -->
+        <Navigation></Navigation>
         <ServerStatusToast v-if="offlineStartup === false"></ServerStatusToast>
         <UpdateNotification v-if="offlineStartup === false"></UpdateNotification>
         <router-view></router-view>
@@ -22,7 +23,7 @@ import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import ISocketIOModel from '../model/socketio/ISocketIOModel';
 import IColorThemeState from '@/model/state/IColorThemeState';
 import ThemeColorUtil from '@/util/ThemeColorUtil';
-import { isOfflineStartup } from '@/util/OfflineStartup';
+import { isOfflineStartup, setOfflineStartup } from '@/util/OfflineStartup';
 
 @Component({
     components: {
@@ -195,7 +196,11 @@ class AppContent extends Vue {
         }
         this.snackbarState.close();
     }
-    public onBrowserOnline(): void { this.offlineStartup = false; }
+    public onBrowserOnline(): void {
+        // 共有しているオフライン起動の判定も戻す (残るとサイドバー等が回線復帰後もオフライン扱いのままになる)
+        setOfflineStartup(false);
+        this.offlineStartup = false;
+    }
 
     @Watch('$route', { immediate: true, deep: true })
     public onUrlChange(): void {

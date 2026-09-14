@@ -94,7 +94,9 @@ export default class OfflineFmp4RecordStream extends Readable {
         const audioCodecs = audioRoles
             .map(role => Mp4CodecUtil.parseCodec(this.initialRecords.get(role) as Buffer))
             .filter((codec): codec is string => codec !== null);
-        const codecs = roles.includes('single') ? Mp4CodecUtil.parseCodecs(videoInit) : [videoCodec, ...audioCodecs];
+        const codecs = roles.includes('single')
+            ? Mp4CodecUtil.parseCodecs(videoInit)
+            : [...new Set([videoCodec, ...audioCodecs])];
         const lines = ['#EXTM3U', '#EXT-X-VERSION:7', '#EXT-X-INDEPENDENT-SEGMENTS'];
         if (audioRoles.length > 0) {
             for (const [index, role] of audioRoles.entries()) {

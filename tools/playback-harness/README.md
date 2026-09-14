@@ -52,6 +52,8 @@ node tools/playback-harness/run.js --help
 - `container-switch`: 再生中の DPlayer 画質メニューで M2TS-LL → オリジナル (MPEG-2) → M2TS-LL を切り替え、位置継承と再生進行を測定する。
 - `live-original`: ライブ Original を指定時間 (既定60秒)、4秒間隔で測定する。各 currentTime 増分と paused、15秒相当の連続停止を JSON へ出す。
 - `offline-hevc`: HEVC 録画を録画詳細のオフライン保存 UI から Original (HEVC・無変換) で保存し、同一コンテキストをオフラインにして `/offline-videos` の再生を測定する。WebKit 前提。
+- `offline-audio-switch`: HEVC Original をオフライン保存し、保存 master の `#EXT-X-MEDIA` から生成された DPlayer 音声メニューで副音声へ切り替える。`video.audioTracks` (ネイティブ HLS) または音声項目の選択結果 (hls.js) と再生進行を測定する。`--profile-dir`、`--recorded-id`、`--video-file-id` が必要。
+- `capability-report`: `/settings` の `data-testid="client-capability-report"` から、現在のブラウザーが判定した `hevc` / `hevcMain10` / `hdr` / `mpeg2toh264` を JSON で採取する。
 - `offline-navigation`: `/offline-videos` の2件を順に「再生」し、各回で `/offline-videos/:key/watch` の再生が進み、戻った後に次の再生ボタンを押せることを測定する。
 - `offline-detail`: `/offline-videos` の行から `/offline-videos/:key` へ遷移し、スナップショット表示と回線断後の視聴画面遷移・再生を測定する。
 - `recorded-detail-offline-play`: 録画詳細の「保存データで再生」から `/offline-videos/:key/watch` へ遷移し、`/api/streams` と `/streamfiles/` の要求が0件で再生が進むことを測定する。

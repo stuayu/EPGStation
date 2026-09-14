@@ -97,6 +97,13 @@
                                 <div class="my-2 d-flex flex-row align-center"><div><v-list-item-title class="text-subtitle-1">HDR</v-list-item-title><v-list-item-subtitle>対応端末では明るさの情報を保ったまま再生します</v-list-item-subtitle></div><v-spacer></v-spacer><v-select v-model="hdrMode" :items="hdrModeItems" class="playback-small-setting"></v-select></div>
                                 <div class="my-2 d-flex flex-row align-center"><div><v-list-item-title class="text-subtitle-1">再生前に画質を選ぶ</v-list-item-title><v-list-item-subtitle>毎回、再生画質を確認します</v-list-item-subtitle></div><v-spacer></v-spacer><v-switch v-model="chooseQualityBeforePlay"></v-switch></div>
                                 <div class="my-2 d-flex flex-row align-center"><div><v-list-item-title class="text-subtitle-1">モバイル回線では画質を下げる</v-list-item-title><v-list-item-subtitle>通信量を抑えるため自動選択を調整します</v-list-item-subtitle></div><v-spacer></v-spacer><v-switch v-model="lowerQualityOnMobile"></v-switch></div>
+                                <div class="mt-4 text-subtitle-2">この端末の再生能力</div>
+                                <div v-if="clientCapabilities !== null" data-testid="client-capability-report" :data-capabilities="JSON.stringify(clientCapabilities)" class="text-body-2 mt-1">
+                                    HEVC {{ capabilityLabel(clientCapabilities.hevc) }} / HEVC Main10 (10bit SDR) {{ capabilityLabel(clientCapabilities.hevcMain10) }} /
+                                    HDR {{ capabilityLabel(clientCapabilities.hdr) }} / MPEG-2端末変換 {{ capabilityLabel(clientCapabilities.mpeg2toh264) }}
+                                </div>
+                                <div v-else class="text-body-2 mt-1">判定中…</div>
+                                <v-btn size="small" variant="outlined" class="mt-2" :loading="clientCapabilitiesLoading" @click="refreshClientCapabilities">能力を再判定</v-btn>
                             </div>
                         </v-list-item>
 
@@ -551,6 +558,7 @@ import ProgramHashtagUtil from '@/util/ProgramHashtagUtil';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import ISystemSettingApiModel from '@/model/api/config/ISystemSettingApiModel';
 import CustomStreamPresetEditor, { CustomPresetForm } from '@/components/settings/CustomStreamPresetEditor.vue';
+import { clearClientCapabilitiesCache, ClientCapabilities, getClientCapabilities } from '@/util/ClientCapabilityUtil';
 
 interface GuideModeItem {
     title: string;
@@ -581,6 +589,8 @@ class Settings extends Vue {
     private customConfigOverlay: Record<string, any> = {};
     private customEffectiveConfig: Record<string, any> = {};
     private systemSettingApi: ISystemSettingApiModel = container.get<ISystemSettingApiModel>('ISystemSettingApiModel');
+    public clientCapabilities: ClientCapabilities | null = null;
+    public clientCapabilitiesLoading = false;
 
     private navigationState: INavigationState = container.get<INavigationState>('INavigationState');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
@@ -816,12 +826,30 @@ class Settings extends Vue {
     public mounted(): void {
         void this.loadAuthRole();
         void this.loadCustomPresets();
+        void this.refreshClientCapabilities();
 
         // 起動時の取得に失敗していた場合はここで 1 度だけ取り直す
         if (this.serverConfigModel.getConfig() === null) {
             void this.retryFetchServerConfig();
         }
     }
+
+    /** 現在のブラウザーの codec 能力を設定画面へ表示する。 */
+    public async refreshClientCapabilities(): Promise<void> {
+        if (this.clientCapabilitiesLoading === true) return;
+        this.clientCapabilitiesLoading = true;
+        clearClientCapabilitiesCache();
+        try {
+            this.clientCapabilities = await getClientCapabilities();
+        } catch (err) {
+            console.error(err);
+            this.clientCapabilities = null;
+        } finally {
+            this.clientCapabilitiesLoading = false;
+        }
+    }
+
+    public capabilityLabel(value: boolean): string { return value ? '対応' : '非対応'; }
 
     /** カスタムプリセットを app_setting の config オーバーレイから読み込む。 */
     public async loadCustomPresets(): Promise<void> {
