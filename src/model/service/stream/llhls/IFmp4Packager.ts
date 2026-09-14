@@ -50,8 +50,9 @@ export default interface IFmp4Packager extends stream.Writable {
      * エンコード前の TS から抜き取った ID3 timed metadata (ARIB 字幕) を登録する
      * 登録された metadata は次に出力するセグメント先頭の emsg box として多重化される
      * @param metadata: AribId3Metadata
+     * @param relativeToMediaStart: 字幕 reader が ffmpeg の -ss 後の相対 PTS を返す場合は true
      */
-    pushId3(metadata: AribId3Metadata): void;
+    pushId3(metadata: AribId3Metadata, relativeToMediaStart?: boolean): void;
 
     on(event: 'init', listener: (data: Buffer) => void): this;
     on(event: 'part', listener: (part: Fmp4PackagerPart) => void): this;

@@ -26,7 +26,7 @@ export const resolvePlaybackBufferRecoveryTarget = (
     elapsedMs: number,
 ): number | null => {
     if (
-        Number.isFinite(currentTime) === false ||
+        isValidPlaybackSyncPosition(currentTime) === false ||
         Number.isFinite(readyState) === false ||
         Number.isFinite(elapsedMs) === false ||
         readyState < 2 ||
@@ -38,7 +38,7 @@ export const resolvePlaybackBufferRecoveryTarget = (
     const first = buffered[0];
     if (
         typeof first === 'undefined' ||
-        Number.isFinite(first.start) === false ||
+        isValidPlaybackSyncPosition(first.start) === false ||
         Number.isFinite(first.end) === false ||
         first.end <= first.start ||
         currentTime >= first.start - PLAYBACK_BUFFER_RECOVERY_MIN_GAP_SEC
@@ -48,3 +48,4 @@ export const resolvePlaybackBufferRecoveryTarget = (
 
     return first.start;
 };
+import { isValidPlaybackSyncPosition } from './PlaybackSyncPositionUtil';

@@ -38,11 +38,13 @@ export default class StreamApiModel implements IStreamApiModel {
         channelId: apid.ChannelId,
         mode: number,
         audioTrack?: apid.AudioTrackSpecifier,
+        profile?: string,
     ): Promise<apid.StreamId> {
         const result = await this.repository.get(`/streams/live/${channelId}/hls`, {
             params: {
                 mode: mode,
                 audioTrack: audioTrack,
+                profile: profile,
             },
         });
 
@@ -61,12 +63,14 @@ export default class StreamApiModel implements IStreamApiModel {
         ss: number,
         mode: number,
         audioTrack?: apid.AudioTrackSpecifier,
+        profile?: string,
     ): Promise<apid.StreamId> {
         const result = await this.repository.get(`/streams/recorded/${videoFileId}/hls`, {
             params: {
                 ss: normalizeStreamPlayPosition(ss),
                 mode: mode,
                 audioTrack: audioTrack,
+                profile: profile,
             },
         });
 

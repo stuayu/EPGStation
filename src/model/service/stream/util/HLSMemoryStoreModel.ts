@@ -211,7 +211,10 @@ export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
         // 2 本目の実測から PART-TARGET を決め、以後はストリーム中で固定する。
         if (entry.partTarget === null && segment.parts.length > 0 && segment.seq > 0) {
             const nonTailParts = segment.parts.slice(0, -1);
-            const candidate = nonTailParts.length > 0 ? Math.max(...nonTailParts.map(part => part.duration)) : segment.parts[0].duration;
+            const candidate =
+                nonTailParts.length > 0
+                    ? Math.max(...nonTailParts.map(part => part.duration))
+                    : segment.parts[0].duration;
             entry.partTarget = Math.ceil(candidate * 1000) / 1000;
         }
 
@@ -226,11 +229,7 @@ export default class HLSMemoryStoreModel implements IHLSMemoryStoreModel {
         const entry = this.entries.get(this.key(streamId, role));
         const readySegmentNum = entry?.mode === 'recorded' ? 1 : HLSMemoryStoreModel.READY_SEGMENT_NUM;
 
-        return (
-            typeof entry !== 'undefined' &&
-            entry.init !== null &&
-            entry.segments.length >= readySegmentNum
-        );
+        return typeof entry !== 'undefined' && entry.init !== null && entry.segments.length >= readySegmentNum;
     }
 
     public getPlaylist(streamId: apid.StreamId, role?: HLSMemoryTrackRole): string | null {

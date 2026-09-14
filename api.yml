@@ -8,7 +8,27 @@ info:
 
 servers: []
 
-paths: {}
+paths:
+    /videos/{videoFileId}/offline:
+        get:
+            summary: 録画番組オフライン保存ストリーム
+            parameters:
+                - $ref: '#/components/parameters/PathVideoFileId'
+                - $ref: '#/components/parameters/PlaybackProfile'
+                - $ref: '#/components/parameters/StreamAudioTrack'
+            responses:
+                '200':
+                    description: >-
+                        録画 HLS プロファイルを先頭からエンコードし、EPGODL2 の init/master と約6秒単位の
+                        fMP4 セグメントを完成順に流すオフライン保存用バイナリストリーム。LL-HLS のタグは含めない
+                    content:
+                        application/octet-stream: {}
+                '400':
+                    description: プロファイル不正
+                '404':
+                    description: 録画ファイル不存在
+                '409':
+                    description: 録画中
 
 components:
     schemas:
@@ -2945,6 +2965,11 @@ components:
                 sourceClass: { type: string, enum: [legacy-broadcast, bs4k, generic, unknown] }
                 confidence: { type: string, enum: [high, medium, low] }
 
+        PlaybackDelivery:
+            description: サーバー配信または MPEG-2 TS の mpeg2toh264 端末変換経路
+            type: string
+            enum: [stream, mpeg2toh264]
+
         PlaybackOptions:
             description: 端末と入力に応じた再生選択肢
             type: object
@@ -2967,13 +2992,13 @@ components:
                     type: array
                     items:
                         type: object
-                        required: [id, role, label, detail, available, builtin, legacy, modes]
+                        required: [id, role, label, detail, available, builtin, legacy, modes, delivery]
                         properties:
                             id: { type: string }
                             role:
                                 type: string
                                 nullable: true
-                                description: 画質の役割 (auto / original / 2160p-high / 1080p-high / 1080p / 720p / data-saver)。表示ラベルの引き当てに使う。該当しないプリセットは null
+                                description: 画質の役割 (auto / original / original-mpeg2 / original-hevc / 2160p-high / 1080p-high / 1080p / 720p / data-saver)。表示ラベルの引き当てに使う。該当しないプリセットは null
                             label: { type: string }
                             detail: { type: string }
                             available: { type: boolean, enum: [true] }
@@ -2983,6 +3008,8 @@ components:
                                 type: object
                                 description: コンテナ別の既存 stream 設定 mode。未対応コンテナは含まない
                                 additionalProperties: { type: integer, minimum: 0 }
+                            delivery:
+                                $ref: '#/components/schemas/PlaybackDelivery'
                             videoBitrate:
                                 type: number
                                 description: 映像 bitrate (kbps)。自動画質 fallback の帯域判定に使う
@@ -2997,7 +3024,7 @@ components:
                                     true なら audioTrack=all で開き、クライアント側 (mpegts.js) の
                                     switchPrimaryAudio/switchSecondaryAudio で切り替えられる。
                                     現状 m2tsll (tsreadex 経由) のみ true になりうる。
-                                    hls は複数音声トラック未対応のため常に false
+                                    hls は in-memory fMP4 の映像・音声レンディションへ分けて同時配信できる
                                 additionalProperties: { type: boolean }
                 options:
                     type: object
@@ -5864,6 +5891,11 @@ components:
             in: query
             name: h264
             schema: { type: boolean }
+        PlaybackCapabilityMpeg2ToH264:
+            description: mpeg2toh264 による MPEG-2 TS 端末変換対応
+            in: query
+            name: mpeg2toh264
+            schema: { type: boolean }
         PlaybackCapabilityHdr:
             description: HDR 表示対応
             in: query
@@ -5888,7 +5920,7 @@ components:
             description: 実際に再生するコンテナ。指定時は該当コンテナ内の画質一覧を返す
             in: query
             name: container
-            schema: { type: string, enum: [m2ts, m2tsll, mp4, webm, hls, normal] }
+            schema: { type: string, enum: [m2ts, m2tsll, mp4, webm, hls, original, normal] }
         PlaybackPreferHdr:
             description: 端末設定の HDR の既定値。自動選択時に優先する
             in: query

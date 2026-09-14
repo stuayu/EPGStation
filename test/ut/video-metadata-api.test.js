@@ -1,6 +1,7 @@
 'use strict';
 require('reflect-metadata');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const test = require('node:test');
 const VideoApiModel = require('../../dist/model/api/video/VideoApiModel').default;
 const VideoFileAnalyzeModel = require('../../dist/model/video/VideoFileAnalyzeModel').default;
@@ -94,6 +95,8 @@ function createModel(options) {
             videoUtil,
             { thumbnail: { add: async () => {} } },
             analyzeModel,
+            undefined,
+            { analyzeRecordedFile: async () => opt.source ?? { codec: 'mpeg2', transport: 'mpegts' } },
         ),
         updated: updated,
         startAtUpdated: startAtUpdated,
@@ -102,6 +105,23 @@ function createModel(options) {
         },
     };
 }
+
+test('encoded 登録でも MPEG-2 MPEG-TS は Original の元TSを返す', async () => {
+    const filePath = `/private/tmp/epgstation-encoded-mpeg2-${process.pid}.ts`;
+    fs.writeFileSync(filePath, Buffer.alloc(188));
+    const { model } = createModel({
+        videos: [video(1, { type: 'encoded' })],
+        filePath,
+        source: { codec: 'mpeg2', transport: 'mpegts' },
+    });
+    try {
+        const result = await model.getOriginalMpeg2FilePath(1);
+        assert.equal(result?.path, filePath);
+        assert.equal(result?.mime, 'video/mp2t');
+    } finally {
+        fs.unlinkSync(filePath);
+    }
+});
 
 function video(id, override) {
     return Object.assign(

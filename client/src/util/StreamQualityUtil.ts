@@ -7,8 +7,8 @@ import IServerConfigModel from '../model/serverConfig/IServerConfigModel';
  * DPlayer の画質 (quality) リストを生成するためのユーティリティ
  */
 namespace StreamQualityUtil {
-    export type LiveStreamingType = 'm2ts' | 'm2tsll' | 'webm' | 'mp4' | 'hls';
-    export type RecordedStreamingType = 'webm' | 'mp4' | 'hls' | 'm2tsll';
+    export type LiveStreamingType = 'm2ts' | 'm2tsll' | 'webm' | 'mp4' | 'hls' | 'original';
+    export type RecordedStreamingType = 'webm' | 'mp4' | 'hls' | 'm2tsll' | 'original';
 
     /**
      * ライブ配信の視聴設定名一覧を返す
@@ -25,7 +25,7 @@ namespace StreamQualityUtil {
             return typeof ts.m2ts === 'undefined' ? [] : ts.m2ts.map(param => param.name);
         }
 
-        return ts[type] ?? [];
+        return type === 'original' ? [] : ts[type] ?? [];
     };
 
     /**
@@ -42,7 +42,7 @@ namespace StreamQualityUtil {
 
         const config = videoFileType === 'ts' ? recorded.ts : recorded.encoded;
 
-        return typeof config === 'undefined' ? [] : config[type] ?? [];
+        return typeof config === 'undefined' || type === 'original' ? [] : config[type] ?? [];
     };
 
     /**

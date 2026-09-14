@@ -12,12 +12,16 @@ export interface RecordedStreamOption {
     container?: apid.StreamContainer;
     // 再生する音声トラック (省略時は主音声)。cmd の %DUALMONOMODE% / %AUDIOMAP% を置換する
     audioTrack?: apid.AudioTrackSpecifier;
+    // 録画 HLS の fMP4 完成レコードを直接返すオフライン保存モード
+    offline?: boolean;
 }
 
 export interface VideoFileInfo {
     duration: number;
     size: number;
     bitRate: number;
+    /** 映像 stream の PTS 基準 (秒)。未取得時は 0 */
+    startTime?: number;
 }
 
 export default interface IRecordedStreamBaseModel extends IStreamBaseModel<RecordedStreamOption> {

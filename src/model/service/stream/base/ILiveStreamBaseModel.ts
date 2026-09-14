@@ -12,6 +12,8 @@ export interface LiveStreamOption {
     audioTrack?: apid.AudioTrackSpecifier;
     // 配信コンテナ。ID3 (ARIB 字幕) の挿入位置の判定 (LiveStreamBaseModel) に使う
     container?: StreamContainer;
+    /** MPEG-2 TS を端末側 mpeg2toh264 へ渡すため、字幕を ID3 化せず原 TS のまま流す。 */
+    directMpeg2?: boolean;
 }
 
 export default interface ILiveStreamBaseModel extends IStreamBaseModel<LiveStreamOption> {

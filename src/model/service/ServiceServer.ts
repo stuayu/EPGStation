@@ -110,7 +110,8 @@ class ServiceServer implements IServiceServer {
         this.setLog();
         this.app.use(
             compression({
-                filter: (req: Request, res: Response) => shouldCompressRequest(req.path) && compression.filter(req, res),
+                filter: (req: Request, res: Response) =>
+                    shouldCompressRequest(req.path) && compression.filter(req, res),
             }),
         );
         const api = this.getApiDocument(ServiceServer.API_YML);

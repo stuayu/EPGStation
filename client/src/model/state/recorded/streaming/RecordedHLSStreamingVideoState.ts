@@ -37,6 +37,7 @@ class RecordedHLSStreamingVideoState extends RecordedStreamingVideoState impleme
         playPosition: number,
         mode: number,
         audioTrack?: apid.AudioTrackSpecifier,
+        profile?: string,
     ): Promise<void> {
         if (this.isStarting === true) {
             return;
@@ -48,7 +49,7 @@ class RecordedHLSStreamingVideoState extends RecordedStreamingVideoState impleme
 
         this.isStarting = true;
         try {
-            this.streamId = await this.streamApiModel.startRecordedHLS(videoFileId, playPosition, mode, audioTrack);
+            this.streamId = await this.streamApiModel.startRecordedHLS(videoFileId, playPosition, mode, audioTrack, profile);
             this.isStarting = false;
         } catch (err) {
             this.isStarting = false;

@@ -9,12 +9,15 @@ const CONTAINER_LABELS: Partial<Record<PlaybackContainerLabel, string>> = {
     hls: '標準 (HLS)',
     mp4: 'MP4',
     webm: 'WebM',
+    original: 'オリジナル (MPEG-2・端末で変換)',
 };
 
 // 一般ユーザー向けに「何が嬉しいか」で書いた説明。技術的な detail は別途 profile.detail / recommended.reason を使う
 const LABELS: Record<string, Omit<PlaybackLabel, 'detail' | 'badges'>> = {
     auto: { name: 'おまかせ (自動)', summary: '端末と回線に合わせて自動で選びます' },
     original: { name: 'オリジナル', summary: '再エンコードなし。画質最高・通信量は最大' },
+    'original-mpeg2': { name: 'オリジナル (MPEG-2・端末で変換)', summary: '再エンコードなし。端末で処理する最高画質' },
+    'original-hevc': { name: 'オリジナル (HEVC・無変換)', summary: '再エンコードなし。HEVC を端末で処理' },
     '2160p-high': { name: '4K 高画質', summary: '4K・高画質。通信量は大きめ' },
     '1080p-high': { name: '1080p 高画質', summary: 'フル HD・高画質' },
     '1080p': { name: '1080p 標準', summary: 'フル HD・標準的な通信量' },
@@ -71,6 +74,8 @@ export const getPlaybackLabel = (
     const isHdrPreserving = key === '2160p-high' || key === '1080p-high';
     if (isHdrPreserving && source?.hdr !== undefined && source.hdr !== 'sdr' && source.hdr !== 'unknown') badges.push('HDR');
     if (key === 'original') badges.push('変換なし');
+    if (key === 'original-mpeg2') badges.push('端末処理');
+    if (key === 'original-hevc') badges.push('端末処理');
     if (key === '720p' || key === 'data-saver') badges.push('通信量小');
     if (profile.builtin !== true) badges.push('カスタム');
 
@@ -110,6 +115,12 @@ export const getPlaybackOptionLabel = (
     profile: apid.PlaybackProfile,
     container: PlaybackContainerLabel,
     source?: apid.SourceCapabilities,
-): string => `${getPlaybackContainerLabel(container)} > ${getPlaybackLabel(profile, source).name}`;
+): string => {
+    const containerLabel = getPlaybackContainerLabel(container);
+    const profileLabel = getPlaybackLabel(profile, source).name;
+
+    // オリジナル (MPEG-2) は配信方式と画質が 1 対 1 で名前も同じなので、「A > A」と重ねない
+    return containerLabel === profileLabel ? profileLabel : `${containerLabel} > ${profileLabel}`;
+};
 
 export default { getPlaybackLabel, getPlaybackShortLabel, getPlaybackContainerLabel, getPlaybackOptionLabel };

@@ -171,6 +171,8 @@ export default abstract class LiveStreamBaseModel
                     : null,
             cmd: cmd,
             priority: LiveStreamBaseModel.ENCODE_PROCESS_PRIORITY,
+            // 配信側が stdout を pipe するため、プロセス管理側の既定 drain は使わない。
+            drainStdout: false,
         };
     }
 
@@ -268,7 +270,11 @@ export default abstract class LiveStreamBaseModel
                 // HLS だけでなく mpegts 配信 (m2ts / m2tsll) でも必要:
                 // DPlayer は mpegts.js の TIMED_ID3_METADATA_ARRIVED からしか aribb24 へ字幕を渡さないため、
                 // ARIB 字幕 ES をそのまま流しても字幕は表示されない
-                if (this.useOutputSideId3() === true) {
+                if (this.processOption.directMpeg2 === true) {
+                    // mpeg2toh264 は MPEG-TS の private_stream_1/2 を直接読む。
+                    // ID3 へ変換すると字幕入力を失うため、解析用 Transform だけ通して原 TS を渡す。
+                    tsSource.pipe(this.streamProcess.stdin);
+                } else if (this.useOutputSideId3() === true) {
                     // ID3 (PID 0x1FFE) は入力側へ map せず、エンコード後 (streamProcess.stdout) に
                     // 挿入し直す (下の stdout 側の処理を参照)
                     this.log.stream.info('use ARIB subtitle to ID3 timed metadata transform (output side)');

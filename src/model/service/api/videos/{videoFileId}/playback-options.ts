@@ -37,6 +37,7 @@ get.apiDoc = {
         { $ref: '#/components/parameters/PlaybackCapabilityHevc' },
         { $ref: '#/components/parameters/PlaybackCapabilityHevcMain10' },
         { $ref: '#/components/parameters/PlaybackCapabilityH264' },
+        { $ref: '#/components/parameters/PlaybackCapabilityMpeg2ToH264' },
         { $ref: '#/components/parameters/PlaybackCapabilityHdr' },
         { $ref: '#/components/parameters/PlaybackCapabilityHlg' },
         { $ref: '#/components/parameters/PlaybackCapabilityNetwork' },

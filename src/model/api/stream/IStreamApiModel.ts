@@ -9,6 +9,7 @@ export interface StreamResponse {
 
 export default interface IStreamApiModel {
     startLiveM2TsStream(option: apid.LiveStreamOption): Promise<StreamResponse>;
+    startLiveOriginalMpeg2Stream(option: apid.LiveStreamOption): Promise<StreamResponse>;
     startLiveM2TsLLStream(option: apid.LiveStreamOption): Promise<StreamResponse>;
     startLiveWebmStream(option: apid.LiveStreamOption): Promise<StreamResponse>;
     startMp4Stream(option: apid.LiveStreamOption): Promise<StreamResponse>;
@@ -17,6 +18,7 @@ export default interface IStreamApiModel {
     startRecordedMp4Stream(option: apid.RecordedStreamOption): Promise<StreamResponse>;
     startRecordedM2TsLLStream(option: apid.RecordedStreamOption): Promise<StreamResponse>;
     startRecordedHLSStream(option: apid.RecordedStreamOption): Promise<apid.StreamId>;
+    startRecordedOfflineHLSStream(option: apid.RecordedStreamOption): Promise<StreamResponse>;
     getLiveM2TsStreamM3u8(host: string, isSecure: boolean, option: apid.LiveStreamOption): Promise<IPlayList | null>;
     stop(streamId: apid.StreamId, isForce?: boolean): Promise<void>;
     stopAll(): Promise<void>;

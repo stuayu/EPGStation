@@ -23,6 +23,10 @@ import {
     resolvePlaybackBufferRecoveryTarget,
 } from '../../../../src/util/PlaybackBufferRecovery';
 import { resolveRecordedJikkyoPlaybackTime } from '../../../../src/util/RecordedJikkyoSync';
+import { isPlaybackGenerationCurrent } from '../../../../src/util/PlaybackGenerationUtil';
+import { isValidPlaybackSyncPosition } from '../../../../src/util/PlaybackSyncPositionUtil';
+import { applyPlaybackSeekAction } from '../../../../src/util/PlaybackSeekIntentUtil';
+import { Deinterlacer } from 'mpeg2toh264/yadif';
 
 type QualityPlaybackSnapshot = {
     volume: number;
@@ -46,6 +50,7 @@ export interface PlaybackContainerSwitchRequest {
 
 export interface ScreenshotRequest {
     video: HTMLVideoElement;
+    capture?: () => Promise<ImageBitmap>;
     claim: () => void;
 }
 
@@ -88,6 +93,8 @@ export default abstract class BaseVideo extends Vue {
     // play() を呼んだ後、まだ一度も 'playing' に到達していないか。
     // true のまま 'pause' へ落ちたら自動再生ブロックとみなす (onPlay / onPlaying / onPause で更新する)
     private autoplayCheckPending: boolean = false;
+    // 画質切替などの非同期処理が、破棄後の新しい DPlayer へ作用しないための世代
+    private playbackGeneration = 0;
 
     // ライブ配信の放送時刻 (TDT / TOT)。実況コメントの遅延補正に使う
     private broadcastTime: apid.StreamBroadcastTime | null = null;
@@ -251,6 +258,13 @@ export default abstract class BaseVideo extends Vue {
             const state = { claimed: false };
             const request: ScreenshotRequest = {
                 video: this.dp.video,
+                capture: (() => {
+                    const deinterlacer = (this.dp as any).plugins?.mpeg2toh264?.deinterlacer;
+                    if (deinterlacer instanceof Deinterlacer && deinterlacer.running === true) {
+                        return (): Promise<ImageBitmap> => deinterlacer.capture();
+                    }
+                    return undefined;
+                })(),
                 claim: () => {
                     state.claimed = true;
                 },
@@ -374,9 +388,9 @@ export default abstract class BaseVideo extends Vue {
      */
     protected setupQualitySwitch(option: {
         container: SelectablePlaybackContainer;
-        resolveUrl: (mode: number, container: SelectablePlaybackContainer) => Promise<string>;
+        resolveUrl: (mode: number, container: SelectablePlaybackContainer, profileId?: string) => Promise<string>;
         resetCurrentTime?: boolean;
-        onSwitched?: (mode: number) => void;
+        onSwitched?: (mode: number, profileId?: string) => void;
         onPlaybackReady?: () => void;
     }): void {
         if (this.dp === null) {
@@ -478,19 +492,28 @@ export default abstract class BaseVideo extends Vue {
                 pip: document.pictureInPictureElement === video || (video as any).webkitPresentationMode === 'picture-in-picture',
             };
 
+            const targetGeneration = this.playbackGeneration;
+            const targetPlayer = this.dp;
             (async (): Promise<void> => {
                 const serverMode = qualityItem.mode;
                 try {
-                    const resolvedUrl = await option.resolveUrl(serverMode, qualityItem.container);
+                    const resolvedUrl = await option.resolveUrl(serverMode, qualityItem.container, qualityItem.presetId);
                     quality[mode].url = requirePlaybackUrl(resolvedUrl, `quality switch mode=${serverMode}`);
                 } catch (err) {
                     console.error(err);
+                    if (!isPlaybackGenerationCurrent(targetGeneration, this.playbackGeneration) || this.dp !== targetPlayer) return;
                     BaseVideo.logQualitySwitchTrace('failed', trace, {
                         elapsedMs: Math.round(performance.now() - trace.startedAt),
                         reason: err instanceof Error ? err.message : String(err),
                         oldVideo: BaseVideo.getVideoTransitionState(trace.oldVideo),
                     });
-                    if (this.qualitySwitchTrace?.id === trace.id) this.qualitySwitchTrace = null;
+                    if (
+                        isPlaybackGenerationCurrent(targetGeneration, this.playbackGeneration) &&
+                        this.dp === targetPlayer &&
+                        this.qualitySwitchTrace?.id === trace.id
+                    ) {
+                        this.qualitySwitchTrace = null;
+                    }
                     pendingSnapshot = null;
                     this.pendingRecordedJikkyoPlaybackTime = null;
                     this.isResolvingQuality = false;
@@ -502,17 +525,21 @@ export default abstract class BaseVideo extends Vue {
                     return;
                 }
 
-                this.isResolvingQuality = false;
-
                 // 切替処理中に破棄された場合は何もしない
-                if (this.dp === null) {
+                if (
+                    this.dp === null ||
+                    this.dp !== targetPlayer ||
+                    isPlaybackGenerationCurrent(targetGeneration, this.playbackGeneration) === false
+                ) {
                     BaseVideo.logQualitySwitchTrace('aborted', trace, {
                         elapsedMs: Math.round(performance.now() - trace.startedAt),
                     });
-                    if (this.qualitySwitchTrace?.id === trace.id) this.qualitySwitchTrace = null;
-                    this.pendingRecordedJikkyoPlaybackTime = null;
                     return;
                 }
+
+                this.isResolvingQuality = false;
+
+                if (this.dp !== targetPlayer || isPlaybackGenerationCurrent(targetGeneration, this.playbackGeneration) === false) return;
 
                 BaseVideo.logQualitySwitchTrace('url-resolved', trace, {
                     elapsedMs: Math.round(performance.now() - trace.startedAt),
@@ -521,7 +548,7 @@ export default abstract class BaseVideo extends Vue {
                 });
 
                 if (typeof option.onSwitched !== 'undefined') {
-                    option.onSwitched(serverMode);
+                    option.onSwitched(serverMode, qualityItem.presetId);
                 }
 
                 // DPlayer の一部経路は options.video.url を再参照するため、
@@ -698,7 +725,7 @@ export default abstract class BaseVideo extends Vue {
             }
 
             const target = resolvePlaybackBufferRecoveryTarget(currentTime, buffered, video.readyState, now - lastProgressAt);
-            if (target !== null) {
+            if (target !== null && isValidPlaybackSyncPosition(target)) {
                 const wasPaused = video.paused;
                 try {
                     video.currentTime = target;
@@ -1351,6 +1378,7 @@ export default abstract class BaseVideo extends Vue {
      * DPlayer インスタンスを破棄する
      */
     protected destroyPlayer(preserveRecordedJikkyo: boolean = false): void {
+        this.playbackGeneration++;
         this.clearPlaybackBufferRecovery();
         this.qualityPanelResizeObserver?.disconnect();
         this.qualityPanelResizeObserver = null;
@@ -1498,39 +1526,40 @@ export default abstract class BaseVideo extends Vue {
         }
 
         const dp = this.dp;
+        const isCurrentPlayer = (): boolean => this.dp === dp;
 
         // 時刻更新
-        dp.on('timeupdate', this.onTimeupdate.bind(this));
+        dp.on('timeupdate', () => { if (isCurrentPlayer()) this.onTimeupdate(); });
 
         // 読み込み中
-        dp.on('waiting', this.onWaiting.bind(this));
+        dp.on('waiting', () => { if (isCurrentPlayer()) this.onWaiting(); });
 
         // 読み込み完了
-        dp.on('loadeddata', this.onLoadeddata.bind(this));
+        dp.on('loadeddata', () => { if (isCurrentPlayer()) this.onLoadeddata(); });
 
         // 再生可能
-        dp.on('canplay', this.onCanplay.bind(this));
+        dp.on('canplay', () => { if (isCurrentPlayer()) this.onCanplay(); });
 
         // 終了
-        dp.on('ended', this.onEnded.bind(this));
+        dp.on('ended', () => { if (isCurrentPlayer()) this.onEnded(); });
 
         // 再生
-        dp.on('play', this.onPlay.bind(this));
+        dp.on('play', () => { if (isCurrentPlayer()) this.onPlay(); });
 
         // 実際に再生が始まった (play() 呼び出しの成否とは別。autoplay が成功したかの判定に使う)
-        dp.on('playing', this.onPlaying.bind(this));
+        dp.on('playing', () => { if (isCurrentPlayer()) this.onPlaying(); });
 
         // 停止
-        dp.on('pause', this.onPause.bind(this));
+        dp.on('pause', () => { if (isCurrentPlayer()) this.onPause(); });
 
         // 再生速度変化
-        dp.on('ratechange', this.onRatechange.bind(this));
+        dp.on('ratechange', () => { if (isCurrentPlayer()) this.onRatechange(); });
 
         // 音量変化
-        dp.on('volumechange', this.onVolumechange.bind(this));
+        dp.on('volumechange', () => { if (isCurrentPlayer()) this.onVolumechange(); });
 
         // プレイヤーの起動失敗を親へ橋渡しする
-        dp.on('error', this.onError.bind(this));
+        dp.on('error', (error: unknown) => { if (isCurrentPlayer()) this.onError(error); });
     }
 
     /**
@@ -1744,13 +1773,17 @@ export default abstract class BaseVideo extends Vue {
      *   省略した場合は実装側がその場の再生状態から判断する (シーク前に停止していないホットキー操作など)
      */
     public setCurrentTime(time: number, resume?: boolean): void {
-        if (this.dp === null) {
+        if (this.dp === null || isValidPlaybackSyncPosition(time) === false) {
             return;
         }
 
         this.$emit('playbackTransition');
         this.beginRecordedJikkyoTransition();
         this.dp.seek(time, true);
+        applyPlaybackSeekAction(resume, {
+            play: () => { void this.play(); },
+            pause: () => this.pause(),
+        });
         this.completeRecordedJikkyoSeek();
     }
 

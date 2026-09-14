@@ -147,7 +147,7 @@ class WatchOnAir extends Vue {
 
     /** DPlayer の設定メニューからライブ配信方式を切り替える。 */
     public onPlaybackContainerSwitch(request: PlaybackContainerSwitchRequest): void {
-        if (this.watchParam === null || this.videoParam === null || (request.container !== 'hls' && request.container !== 'm2tsll')) return;
+        if (this.watchParam === null || this.videoParam === null || !['hls', 'm2tsll', 'original'].includes(request.container)) return;
 
         this.watchParam = { ...this.watchParam, type: request.container, mode: request.mode };
         const jikkyoChannelId = this.videoParam.jikkyoChannelId;
@@ -161,9 +161,13 @@ class WatchOnAir extends Vue {
         } else {
             this.videoParam = {
                 type: 'LiveMpegTs',
-                src: `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.watchParam.channel}/m2tsll?mode=${request.mode}`,
+                src:
+                    request.container === 'original'
+                        ? `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.watchParam.channel}/original`
+                        : `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.watchParam.channel}/m2tsll?mode=${request.mode}`,
                 channelId: this.watchParam.channel,
                 mode: request.mode,
+                directMpeg2: request.container === 'original',
                 jikkyoChannelId,
             };
         }
@@ -495,6 +499,15 @@ class WatchOnAir extends Vue {
                         src: `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.watchParam.channel}/m2tsll?mode=${this.watchParam.mode}`,
                         channelId: this.watchParam.channel,
                         mode: this.watchParam.mode,
+                        jikkyoChannelId: jikkyoChannelId,
+                    };
+                } else if (this.watchParam.type === 'original') {
+                    (this.videoParam as LiveMpegTsVideoParam) = {
+                        type: 'LiveMpegTs',
+                        src: `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.watchParam.channel}/original`,
+                        channelId: this.watchParam.channel,
+                        mode: 0,
+                        directMpeg2: true,
                         jikkyoChannelId: jikkyoChannelId,
                     };
                 } else {

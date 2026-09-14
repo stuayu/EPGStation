@@ -14,6 +14,7 @@
                     <tr v-for="item in items" v-bind:key="item.recordedItem.id" v-on:click="gotoDetail(item)" v-bind:class="{ 'selected-color': item.isSelected === true }">
                         <td>
                             {{ item.display.name }}
+                            <OfflineDownloadBadge v-if="item.recordedItem.videoFiles?.[0] !== undefined" :videoId="item.recordedItem.videoFiles[0].id"></OfflineDownloadBadge>
                             <div v-if="isMobile === true" class="d-flex align-center channel-line mt-1">
                                 <v-img
                                     v-if="typeof item.display.logoSrc !== 'undefined'"
@@ -52,6 +53,7 @@
 
 <script lang="ts">
 import RecordedItemMenu from '@/components/recorded/RecordedItemMenu.vue';
+import OfflineDownloadBadge from '@/components/recorded/OfflineDownloadBadge.vue';
 import { RecordedDisplayData } from '@/model/state/recorded/IRecordedUtil';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
@@ -59,6 +61,7 @@ import * as apid from '../../../../api';
 @Component({
     components: {
         RecordedItemMenu,
+        OfflineDownloadBadge,
     },
 })
 class RecordedTableItems extends Vue {

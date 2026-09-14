@@ -62,7 +62,9 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
     private currentSegmentParts: Fmp4PackagerPart[] = [];
 
     // 次のセグメントへ乗せる ID3 timed metadata (ARIB 字幕)
-    private pendingId3: AribId3Metadata[] = [];
+    private pendingId3: Fmp4Packager.PendingId3[] = [];
+    // -ss 後の別 reader が返す相対 PTS を、fMP4 の先頭 tfdt へ対応付ける基準
+    private relativeMediaBaseTfdt: number | null = null;
 
     // emsg box の id (セグメントをまたいでユニークな値を使う)
     private emsgId = 0;
@@ -126,13 +128,14 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
      * エンコード前の TS から抜き取った ID3 timed metadata (ARIB 字幕) を登録する
      * 登録された metadata は次に出力するセグメント先頭の emsg box として多重化される
      * @param metadata: AribId3Metadata
+     * @param relativeToMediaStart: 字幕 reader が ffmpeg の -ss 後の相対 PTS を返す場合は true
      */
-    public pushId3(metadata: AribId3Metadata): void {
+    public pushId3(metadata: AribId3Metadata, relativeToMediaStart: boolean = false): void {
         if (this.halted === true) {
             return;
         }
 
-        this.pendingId3.push(metadata);
+        this.pendingId3.push({ metadata, relativeToMediaStart });
 
         if (this.pendingId3.length === 1 || this.pendingId3.length % 10 === 0) {
             this.log?.stream.debug(
@@ -141,7 +144,8 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
         }
 
         // セグメントが出力されない状況でメモリを食い潰さないようにする
-        while (this.pendingId3.length > Fmp4Packager.MAX_PENDING_ID3) {
+        const maxPending = relativeToMediaStart ? Fmp4Packager.MAX_PENDING_RELATIVE_ID3 : Fmp4Packager.MAX_PENDING_ID3;
+        while (this.pendingId3.length > maxPending) {
             this.pendingId3.shift();
         }
     }
@@ -157,18 +161,51 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
      * @param timescale: number | null パートのトラックの timescale
      * @return Buffer 保留がない場合は空の Buffer
      */
-    private buildPendingEmsgBoxes(baseMediaDecodeTime: number | null, timescale: number | null): Buffer {
+    private buildPendingEmsgBoxes(
+        baseMediaDecodeTime: number | null,
+        timescale: number | null,
+        duration: number = 0,
+    ): Buffer {
         if (this.pendingId3.length === 0) {
             return Buffer.alloc(0);
         }
-
-        const pending = this.pendingId3;
-        this.pendingId3 = [];
 
         // emsg の時刻はメディアタイムライン上の絶対値 (version 1) で表す必要があるため、
         // セグメント先頭パートの tfdt を基準にする。tfdt が取れない場合は 0 起点とする
         const scale = timescale !== null && timescale > 0 ? timescale : Fmp4Packager.PTS_TIMESCALE;
         const segmentBase = baseMediaDecodeTime !== null && baseMediaDecodeTime >= 0 ? baseMediaDecodeTime : 0;
+
+        // encoded TS の別 reader は全尺を映像より先に読み終える。相対 PTS の字幕は
+        // 該当するメディア時刻のパートまで保留し、先行分を最初のパートへ一括付与しない。
+        if (this.pendingId3.some(item => item.relativeToMediaStart)) {
+            if (this.relativeMediaBaseTfdt === null) this.relativeMediaBaseTfdt = segmentBase;
+            const mediaBase = this.relativeMediaBaseTfdt;
+            const partEnd = segmentBase + Math.max(0, Math.round(duration * scale));
+            const due: Fmp4Packager.PendingId3[] = [];
+            const future: Fmp4Packager.PendingId3[] = [];
+            for (const item of this.pendingId3) {
+                if (item.relativeToMediaStart === false) {
+                    due.push(item);
+                    continue;
+                }
+                const presentationTime =
+                    mediaBase + Math.round((item.metadata.pts / Fmp4Packager.PTS_TIMESCALE) * scale);
+                if (presentationTime <= partEnd) due.push({ ...item, presentationTime });
+                else future.push(item);
+            }
+            this.pendingId3 = future;
+            if (due.length === 0) return Buffer.alloc(0);
+
+            const emsg = Buffer.concat(
+                due.map(item => this.buildEmsgBox(scale, item.presentationTime ?? segmentBase, item.metadata.payload)),
+            );
+            this.attachedEmsgBytes += emsg.length;
+
+            return emsg;
+        }
+
+        const pending = this.pendingId3.map(item => item.metadata);
+        this.pendingId3 = [];
 
         // ID3 の PTS (90kHz) はエンコード前の TS のものでメディアタイムラインと基準が異なるため、
         // パート先頭 (= 最初の metadata) からの相対時刻に変換して載せ替える
@@ -642,7 +679,11 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
                             if (mdiaChild.type === 'mdhd') {
                                 timescale = this.readMdhdTimescale(moovBuf, mdiaChild.bodyStart);
                             } else if (mdiaChild.type === 'hdlr') {
-                                mediaType = moovBuf.toString('latin1', mdiaChild.bodyStart + 8, mdiaChild.bodyStart + 12);
+                                mediaType = moovBuf.toString(
+                                    'latin1',
+                                    mdiaChild.bodyStart + 8,
+                                    mdiaChild.bodyStart + 12,
+                                );
                             }
                         }
                     }
@@ -749,7 +790,13 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
                 if (child.type === 'mfhd') {
                     mfhdBox = child.box;
                 } else if (child.type === 'traf') {
-                    const trafInfo = this.parseTrafForSplit(boxBuf, child.bodyStart, child.boxEnd, child.box, child.boxStart);
+                    const trafInfo = this.parseTrafForSplit(
+                        boxBuf,
+                        child.bodyStart,
+                        child.boxEnd,
+                        child.box,
+                        child.boxStart,
+                    );
                     if (trafInfo !== null) {
                         trafs.set(trafInfo.trackId, trafInfo);
                     }
@@ -842,7 +889,10 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
     /**
      * tfhd を解析し trackId と default_sample_size を取り出す
      */
-    private parseTfhdForSplit(buf: Buffer, bodyStart: number): { trackId: number | null; defaultSampleSize: number | null } {
+    private parseTfhdForSplit(
+        buf: Buffer,
+        bodyStart: number,
+    ): { trackId: number | null; defaultSampleSize: number | null } {
         if (buf.length - bodyStart < 8) {
             return { trackId: null, defaultSampleSize: null };
         }
@@ -959,10 +1009,7 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
             const newMoofSize = 8 + newMoofBodyLength;
             const newDataOffset = newMoofSize + 8; // + mdat header
 
-            if (
-                traf.dataOffsetPatchOffset < 0 ||
-                traf.dataOffsetPatchOffset + 4 > trafBoxMutable.length
-            ) {
+            if (traf.dataOffsetPatchOffset < 0 || traf.dataOffsetPatchOffset + 4 > trafBoxMutable.length) {
                 this.log?.stream.warn(`data_offset の書き換え位置が不正です (role=${role})`);
                 continue;
             }
@@ -997,7 +1044,9 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
             const diff = tfdt - state.pendingSlot.tfdt;
             const duration = diff >= 0 && timescale > 0 ? diff / timescale : (state.lastDuration ?? 0);
             if (diff < 0) {
-                this.log?.stream.warn(`tfdt が逆行しました (role=${role}, prev=${state.pendingSlot.tfdt}, cur=${tfdt})`);
+                this.log?.stream.warn(
+                    `tfdt が逆行しました (role=${role}, prev=${state.pendingSlot.tfdt}, cur=${tfdt})`,
+                );
             }
             state.lastDuration = duration;
             this.emitMultiTrackPart(
@@ -1025,7 +1074,8 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
         tfdt: number,
         timescale: number,
     ): void {
-        const emsg = role === 'video' ? this.buildPendingEmsgBoxes(tfdt, timescale) : Buffer.alloc(0);
+        if (role === 'video') this.rememberRelativeMediaBase(tfdt);
+        const emsg = role === 'video' ? this.buildPendingEmsgBoxes(tfdt, timescale, duration) : Buffer.alloc(0);
 
         const part: Fmp4PackagerPart = {
             data: emsg.length > 0 ? Buffer.concat([emsg, buf]) : buf,
@@ -1253,7 +1303,8 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
         // ARIB 字幕 (ID3 timed metadata) はパート先頭の emsg box として多重化する。
         // LL-HLS ではパートが単独で配信されるため、セグメント確定まで待つと
         // パート経由で再生しているプレイヤーに字幕が届かない
-        const emsg = this.buildPendingEmsgBoxes(slot.tfdt, slot.timescale);
+        this.rememberRelativeMediaBase(slot.tfdt);
+        const emsg = this.buildPendingEmsgBoxes(slot.tfdt, slot.timescale, slot.duration as number);
 
         const part: Fmp4PackagerPart = {
             data: emsg.length > 0 ? Buffer.concat([emsg, slot.buf]) : slot.buf,
@@ -1268,6 +1319,13 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
 
         if (this.currentSegmentParts.length >= this.partsPerSegment) {
             this.flushSegment();
+        }
+    }
+
+    /** encoded TS の相対字幕PTSを、最初に出力した映像partへ固定する */
+    private rememberRelativeMediaBase(tfdt: number | null): void {
+        if (this.relativeMediaBaseTfdt === null && tfdt !== null && tfdt >= 0) {
+            this.relativeMediaBaseTfdt = tfdt;
         }
     }
 
@@ -1394,6 +1452,12 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
 }
 
 namespace Fmp4Packager {
+    export interface PendingId3 {
+        metadata: AribId3Metadata;
+        relativeToMediaStart: boolean;
+        presentationTime?: number;
+    }
+
     // 1 セグメントを構成するパート数の既定値
     export const DEFAULT_PARTS_PER_SEGMENT = 3;
     // hls.js が ID3 として解釈する emsg の scheme_id_uri
@@ -1404,6 +1468,8 @@ namespace Fmp4Packager {
     export const MAX_EMSG_DELTA = PTS_TIMESCALE * 30;
     // 保留できる ID3 timed metadata の上限
     export const MAX_PENDING_ID3 = 100;
+    // encoded TS の字幕専用 reader は映像より先に全尺を読み終えるため、先行分を保持する。
+    export const MAX_PENDING_RELATIVE_ID3 = 10000;
     // box ヘッダの基本サイズ (size(4) + type(4))
     export const BASIC_HEADER_SIZE = 8;
     // largesize を含む box ヘッダのサイズ (size(4) + type(4) + largesize(8))

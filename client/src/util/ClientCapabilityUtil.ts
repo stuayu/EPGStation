@@ -1,7 +1,10 @@
+import { supportsWorkerMediaSource } from 'mpeg2toh264/player';
+
 export type ClientCapabilities = {
     hevc: boolean;
     hevcMain10: boolean;
     h264: boolean;
+    mpeg2toh264: boolean;
     av1: boolean;
     hdr: boolean;
     hlg: boolean;
@@ -11,7 +14,8 @@ export type ClientCapabilities = {
     network: 'fast' | 'slow' | 'cellular' | 'unknown';
 };
 
-const CACHE_KEY = 'epgstation.playback.client-capabilities';
+// mpeg2toh264 を追加したため、旧形式の能力キャッシュを再利用しない。
+const CACHE_KEY = 'epgstation.playback.client-capabilities.v2';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 const canDecode = async (contentType: string, codec: string, hdr = false): Promise<boolean> => {
@@ -71,7 +75,10 @@ const detect = async (): Promise<ClientCapabilities> => {
     ]);
     const screen = typeof window.screen === 'undefined' ? undefined : window.screen;
 
-    return { hevc, hevcMain10, h264, av1, hdr, hlg, screenWidth: screen?.width, screenHeight: screen?.height, network: getNetwork() };
+    const mpeg2toh264 =
+        supportsWorkerMediaSource() ||
+        (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported('video/mp4; codecs="avc1.640028"'));
+    return { hevc, hevcMain10, h264, mpeg2toh264, av1, hdr, hlg, screenWidth: screen?.width, screenHeight: screen?.height, network: getNetwork() };
 };
 
 /** 端末の再生能力を TTL 付きで取得する。 */

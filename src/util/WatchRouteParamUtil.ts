@@ -29,3 +29,12 @@ export const isWatchModeInRange = (mode: number, modeNames: readonly string[]): 
     return Number.isSafeInteger(mode) && mode >= 0 && (modeNames.length === 0 || mode < modeNames.length);
 };
 
+/**
+ * 録画視聴の mode が利用可能か確認する。profile 指定時はサーバーが mode を決めているため範囲検査を省略する。
+ * @param mode: number
+ * @param modeNames: readonly string[] config の設定名一覧
+ * @param profile: string | undefined 配信プロファイル ID
+ * @return boolean
+ */
+export const isRecordedWatchModeValid = (mode: number, modeNames: readonly string[], profile?: string): boolean =>
+    profile !== undefined || isWatchModeInRange(mode, modeNames);

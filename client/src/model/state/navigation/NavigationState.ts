@@ -319,6 +319,7 @@ export default class NavigationState implements INavigationState {
         if (isFeatureEnabled(config, 'watchHistory') === true) {
             newItems.push({ icon: 'mdi-history', title: '視聴履歴', herf: { path: '/watch-history' } });
         }
+        newItems.push({ icon: 'mdi-download-box', title: 'オフライン保存', herf: { path: '/offline-videos' } });
         // シリーズ機能は段階導入の機能フラグ (featureFlags.seriesLibrary) が有効な場合のみナビゲーションに表示する
         if (isFeatureEnabled(config, 'seriesLibrary') === true) {
             newItems.push({ icon: 'mdi-folder-play', title: 'シリーズ', herf: { path: '/series' } });

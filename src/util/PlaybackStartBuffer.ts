@@ -5,7 +5,8 @@
  * @return number | null
  */
 export const getBufferedAheadSeconds = (currentTime: number, bufferedEnd: number | null): number | null => {
-    if (Number.isFinite(currentTime) === false || bufferedEnd === null || Number.isFinite(bufferedEnd) === false) return null;
+    if (Number.isFinite(currentTime) === false || bufferedEnd === null || Number.isFinite(bufferedEnd) === false)
+        return null;
 
     return Math.max(0, bufferedEnd - currentTime);
 };

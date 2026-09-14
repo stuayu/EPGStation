@@ -257,6 +257,8 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
         // H.264 の High/Main は 10bit 入力を受けられないため、8bit へ明示変換する。
         // HEVC 出力 (Main10 を含む) は pixel format を上書きしない。
         const h264PixelFormat = /264/u.test(videoCodec) ? ' -pix_fmt yuv420p' : '';
+        const hvc1Tag =
+            /(?:hevc|265)/iu.test(videoCodec) && (container === 'mp4' || container === 'hls') ? ' -tag:v hvc1' : '';
 
         const scaleFilter = this.buildScaleFilter(video);
         // 素材はプリセット生成時点では未確定。配信開始時に %DEINTERLACE% を解決する。
@@ -306,14 +308,14 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
             case 'mp4':
                 return (
                     `%FFMPEG% ${realtime}%DUALMONOMODE% ${pacedInput} -sn -threads 0 %AUDIOMAP% -c:a ${audioCodec} -ar 48000 ` +
-                    `-b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${h264PixelFormat}${vf} -b:v ${videoBitrate} -profile:v baseline -preset veryfast ` +
+                    `-b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${h264PixelFormat}${hvc1Tag}${vf} -b:v ${videoBitrate} -profile:v baseline -preset veryfast ` +
                     `-tune fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4 pipe:1`
                 );
             case 'hls':
                 return (
                     `%FFMPEG% ${realtime}%DUALMONOMODE% -fflags nobuffer ${input} -sn -threads 0 ` +
                     `%AUDIOMAP% -c:a ${audioCodec} -ar 48000 -b:a ${audioBitrate} -ac 2 %AUDIOFILTER% ` +
-                    `-c:v ${videoCodec}${h264PixelFormat}${vf} -b:v ${videoBitrate} -preset veryfast -flags +cgop ` +
+                    `-c:v ${videoCodec}${h264PixelFormat}${hvc1Tag}${vf} -b:v ${videoBitrate} -preset veryfast -flags +cgop ` +
                     `-g 15 -keyint_min 15 -sc_threshold 0 -movflags empty_moov+default_base_moof+frag_keyframe -y -f mp4 pipe:1`
                 );
             case 'm2ts':

@@ -1,4 +1,4 @@
-import { ChildProcess, exec } from 'child_process';
+import { ChildProcess, exec, spawn } from 'child_process';
 import * as fs from 'fs';
 import { inject, injectable } from 'inversify';
 import internal, { Readable } from 'stream';
@@ -19,14 +19,38 @@ import AribId3Extractor from '../llhls/AribId3Extractor';
 import Fmp4Packager from '../llhls/Fmp4Packager';
 import IAribId3Extractor from '../llhls/IAribId3Extractor';
 import IFmp4Packager, { Fmp4PackagerTrackRole } from '../llhls/IFmp4Packager';
+import OfflineFmp4RecordStream from '../llhls/OfflineFmp4RecordStream';
 import AudioTrackUtil from '../util/AudioTrackUtil';
 import ISourceAnalyzer from '../../../stream/capability/ISourceAnalyzer';
+import { SourceCapabilities } from '../../../stream/capability/ISourceCapabilities';
 import { replaceDeinterlacePlaceholder, toDeinterlaceInput } from '../../../../util/DeinterlaceUtil';
+import { shouldThrottleRecordedStream } from '../../../../util/RecordedStreamPacing';
+import {
+    createRecordedSubtitleReaderArgs,
+    shouldUseEncodedTsSubtitleReader,
+} from '../../../../util/RecordedSubtitleUtil';
 import IHLSFileDeleterModel from '../util/IHLSFileDeleterModel';
 import IHLSMemoryStoreModel, { HLSMemoryTrackRole } from '../util/IHLSMemoryStoreModel';
 import IRecordedStreamBaseModel, { RecordedStreamOption, VideoFileInfo } from './IRecordedStreamBaseModel';
 import { RecordedStreamInfo } from './IStreamBaseModel';
 import StreamBaseModel from './StreamBaseModel';
+
+class DelayedEndTransform extends internal.Transform {
+    private readonly waitForEnd: Promise<void>;
+
+    public constructor(waitForEnd: Promise<void>) {
+        super();
+        this.waitForEnd = waitForEnd;
+    }
+
+    public override _transform(chunk: Buffer, _encoding: BufferEncoding, callback: internal.TransformCallback): void {
+        callback(null, chunk);
+    }
+
+    public override _flush(callback: internal.TransformCallback): void {
+        this.waitForEnd.then(() => callback(), callback);
+    }
+}
 
 @injectable()
 export default abstract class RecordedStreamBaseModel
@@ -90,6 +114,7 @@ export default abstract class RecordedStreamBaseModel
     private videoUtil: IVideoUtil;
     private hlsMemoryStore: IHLSMemoryStoreModel;
     private sourceAnalyzer: ISourceAnalyzer | undefined;
+    private recordedSource: SourceCapabilities | null = null;
 
     private fileStream: Readable | null = null;
     private id3MetadataTransoform: AribSubtitleTimedMetadataTransform | null = null;
@@ -109,17 +134,20 @@ export default abstract class RecordedStreamBaseModel
     // エンコードが先行しすぎたため一時停止しているか
     private isEncodeThrottled: boolean = false;
     private throttleTimerId: ReturnType<typeof setTimeout> | null = null;
+    private offlineOutput: OfflineFmp4RecordStream | null = null;
+    private offlineKeepTimerId: ReturnType<typeof setInterval> | null = null;
+    private encodedSubtitleProcess: ChildProcess | null = null;
+    private encodedSubtitleTransform: AribSubtitleTimedMetadataTransform | null = null;
+    private encodedSubtitleProcessDone: Promise<void> = Promise.resolve();
+    private delayedFmp4Input: DelayedEndTransform | null = null;
+    private aribId3ExtractorConnected = false;
 
     /**
      * TS 入力の m2tsll 配信で ARIB 字幕を出力側へ付け直すか判定する
      * @return boolean
      */
     private useOutputSideId3(): boolean {
-        return (
-            this.videoFileType === 'ts' &&
-            this.processOption !== null &&
-            this.processOption.container === 'm2tsll'
-        );
+        return this.videoFileType === 'ts' && this.processOption !== null && this.processOption.container === 'm2tsll';
     }
 
     constructor(
@@ -155,6 +183,10 @@ export default abstract class RecordedStreamBaseModel
             this.processOption !== null &&
             this.processOption.cmd.includes('%streamFileDir%') === false
         );
+    }
+
+    private isOfflineHLS(): boolean {
+        return this.getStreamType() === 'RecordedHLS' && this.processOption?.offline === true;
     }
 
     /**
@@ -234,8 +266,12 @@ export default abstract class RecordedStreamBaseModel
         }
         if (this.getStreamType() === 'RecordedHLS') {
             if (this.isMemoryHLS() === true) {
-                // エンコードプロセスの fMP4 出力をメモリ上で HLS セグメント化する
-                this.startMemoryHLSPackaging(streamId);
+                if (this.isOfflineHLS() === true) {
+                    await this.startOfflineFmp4Packaging();
+                } else {
+                    // エンコードプロセスの fMP4 出力をメモリ上で HLS セグメント化する
+                    await this.startMemoryHLSPackaging(streamId);
+                }
             } else {
                 // stream 有効チェク開始
                 this.startCheckStreamEnable(streamId);
@@ -243,6 +279,10 @@ export default abstract class RecordedStreamBaseModel
         }
         // stream 停止タイマーセット
         this.setStopTimer();
+        if (this.isOfflineHLS() === true) {
+            // オフライン保存中はブラウザから keep 要求が来ないため、自前で保持する
+            this.offlineKeepTimerId = setInterval(() => this.setStopTimer(), 5000);
+        }
 
         // ffmpeg debug 用ログ出力
         if (this.streamProcess.stderr !== null) {
@@ -274,12 +314,8 @@ export default abstract class RecordedStreamBaseModel
                     this.aribId3Extractor = new AribId3Extractor(this.log);
                     // 録画 HLS は startMemoryHLSPackaging() が先に呼ばれるため、
                     // パッケージャ作成時の listener 登録だけでは extractor を取りこぼす。
-                    if (this.fmp4Packager !== null) {
-                        this.aribId3Extractor.on('id3', metadata => {
-                            this.fmp4Packager?.pushId3(metadata);
-                        });
-                        this.log.stream.info('[RecordedHLS] AribId3Extractor と Fmp4Packager の id3 経路を接続しました');
-                    }
+                    this.connectAribId3Extractor();
+                    this.log.stream.info('[RecordedHLS] AribId3Extractor と Fmp4Packager の id3 経路を接続しました');
                     this.id3MetadataTransoform?.pipe(this.aribId3Extractor);
                     this.aribId3Extractor.pipe(this.streamProcess.stdin);
                 } else if (this.useOutputSideId3() === false) {
@@ -318,7 +354,7 @@ export default abstract class RecordedStreamBaseModel
      * ライブより多くのセグメントを保持しプレイリストへ載せる
      * @param streamId: apid.StreamId
      */
-    private startMemoryHLSPackaging(streamId: apid.StreamId): void {
+    private async startMemoryHLSPackaging(streamId: apid.StreamId): Promise<void> {
         if (this.streamProcess === null || this.streamProcess.stdout === null) {
             throw new Error('StreamProcessStdoutIsNull');
         }
@@ -335,6 +371,7 @@ export default abstract class RecordedStreamBaseModel
             this.log,
         );
         this.fmp4Packager = packager;
+        await this.startEncodedTsSubtitleReader();
 
         // 単一トラック (従来) モード
         packager.on('init', data => {
@@ -384,13 +421,187 @@ export default abstract class RecordedStreamBaseModel
         });
 
         // エンコード前の TS から抜き取った ID3 timed metadata (ARIB 字幕) をセグメントへ乗せる
-        if (this.aribId3Extractor !== null) {
-            this.aribId3Extractor.on('id3', metadata => {
-                packager.pushId3(metadata);
-            });
+        this.connectAribId3Extractor();
+
+        const stdout = this.streamProcess.stdout;
+        if (this.encodedSubtitleProcess === null) {
+            stdout.pipe(packager);
+        } else {
+            stdout.pipe(this.createDelayedFmp4Input()).pipe(packager);
+        }
+    }
+
+    /** オフライン保存用に fMP4 を保持窓なしでレコード化する */
+    private async startOfflineFmp4Packaging(): Promise<void> {
+        if (this.streamProcess === null || this.streamProcess.stdout === null)
+            throw new Error('StreamProcessStdoutIsNull');
+        const packager = new Fmp4Packager(
+            { partsPerSegment: RecordedStreamBaseModel.RECORDED_HLS_PARTS_PER_SEGMENT * 6, mode: 'recorded' },
+            this.log,
+        );
+        this.fmp4Packager = packager;
+        await this.startEncodedTsSubtitleReader();
+        this.connectAribId3Extractor();
+        const stdout = this.streamProcess.stdout;
+        if (this.encodedSubtitleProcess === null) {
+            this.offlineOutput = new OfflineFmp4RecordStream(stdout, packager);
+        } else {
+            const delayedInput = this.createDelayedFmp4Input();
+            stdout.pipe(delayedInput);
+            this.offlineOutput = new OfflineFmp4RecordStream(delayedInput, packager);
+        }
+    }
+
+    /** encoded 扱いの MPEG-TS から字幕だけを映像と同じ時刻位置で読み出す。 */
+    private async startEncodedTsSubtitleReader(): Promise<void> {
+        if (
+            this.videoFilePath === null ||
+            this.processOption === null ||
+            shouldUseEncodedTsSubtitleReader(this.videoFileType, this.processOption.container, this.recordedSource) ===
+                false
+        ) {
+            return;
         }
 
-        this.streamProcess.stdout.pipe(packager);
+        const seekOffset = await this.getEncodedTsSeekOffset();
+        const subtitleProcess = spawn(
+            this.config.ffmpeg,
+            createRecordedSubtitleReaderArgs(this.videoFilePath, this.processOption.playPosition + seekOffset),
+            { stdio: ['ignore', 'pipe', 'pipe'] },
+        );
+        this.encodedSubtitleProcess = subtitleProcess;
+        this.encodedSubtitleProcessDone = new Promise(resolve => {
+            let settled = false;
+            const done = (): void => resolve();
+            const settle = (event: string, code?: number | null): void => {
+                if (settled === true) return;
+                settled = true;
+                this.log.stream.debug(`[encoded subtitle reader] ${event}: ${String(code ?? '')}`);
+                done();
+            };
+            subtitleProcess.once('close', code => settle('close', code));
+            subtitleProcess.once('exit', code => {
+                // close は stdio の close 後に来るが、ffmpeg の pipe 状態によっては
+                // exit だけ先に通知される。字幕 stdout は pipe 済みなので、次 tick で
+                // 残りを読み切る機会を与えてから EOF 待ちを解放する。
+                setImmediate(() => settle('exit', code));
+            });
+            subtitleProcess.once('error', () => settle('error'));
+        });
+        this.encodedSubtitleTransform = new AribSubtitleTimedMetadataTransform();
+        this.aribId3Extractor = new AribId3Extractor(this.log);
+        this.encodedSubtitleTransform.pipe(this.aribId3Extractor);
+        subtitleProcess.stdout?.pipe(this.encodedSubtitleTransform);
+        // encoded TS の字幕 reader では id3 イベントだけ使い、Transform の
+        // pass-through 出力は使わない。未消費のままだと highWaterMark 到達後に
+        // 字幕 ffmpeg が backpressure で止まり、オフライン出力の EOF も止まる。
+        this.aribId3Extractor.resume();
+        subtitleProcess.stderr?.on('data', data => this.log.stream.debug(`[encoded subtitle reader] ${String(data)}`));
+        subtitleProcess.on('error', err => this.log.stream.warn(`encoded subtitle reader failed: ${String(err)}`));
+        this.connectAribId3Extractor();
+    }
+
+    /**
+     * 主 ffmpeg の -ss が選ぶ実際の映像開始位置を短い probe で求める。
+     * VBR の byte seek や字幕 ES の先頭を基準にせず、主映像と同じキーフレーム境界へ字幕を合わせる。
+     * @return number 要求位置から主映像開始までの秒差。失敗時は 0
+     */
+    private async getEncodedTsSeekOffset(): Promise<number> {
+        if (this.videoFilePath === null || this.processOption === null || this.recordedSource?.transport !== 'mpegts') {
+            return 0;
+        }
+
+        const requested = Math.max(0, this.processOption.playPosition);
+        const base = this.videoFileInfo?.startTime ?? 0;
+        const encoder = spawn(
+            this.config.ffmpeg,
+            [
+                '-hide_banner',
+                '-loglevel',
+                'error',
+                '-copyts',
+                '-ss',
+                String(requested),
+                '-i',
+                this.videoFilePath,
+                '-map',
+                '0:v:0',
+                '-c:v',
+                'copy',
+                '-to',
+                String(base + requested + 5),
+                '-f',
+                'mpegts',
+                'pipe:1',
+            ],
+            { stdio: ['ignore', 'pipe', 'ignore'] },
+        );
+        const probe = spawn(
+            this.config.ffprobe,
+            [
+                '-v',
+                'error',
+                '-f',
+                'mpegts',
+                '-select_streams',
+                'v:0',
+                '-show_packets',
+                '-show_entries',
+                'packet=pts_time',
+                '-of',
+                'json',
+                'pipe:0',
+            ],
+            { stdio: ['pipe', 'pipe', 'ignore'] },
+        );
+        let output = '';
+        probe.stdout?.on('data', data => {
+            output += String(data);
+        });
+        if (probe.stdin !== null) {
+            ProcessUtil.attachStdinErrorHandler(probe.stdin, error => {
+                this.log.stream.debug('subtitle probe stdin error', error);
+            });
+        }
+        encoder.stdout?.pipe(probe.stdin as NodeJS.WritableStream);
+
+        await Promise.all([
+            new Promise<void>(resolve => {
+                encoder.once('close', () => resolve());
+                encoder.once('error', () => resolve());
+            }),
+            new Promise<void>(resolve => {
+                probe.once('close', () => resolve());
+                probe.once('error', () => resolve());
+            }),
+        ]);
+
+        try {
+            const first = Number(JSON.parse(output).packets?.[0]?.pts_time);
+            const offset = first - base - requested;
+            if (Number.isFinite(offset) && offset >= 0 && offset < 30) return offset;
+        } catch (_error) {
+            // probe failure is non-fatal; old files must remain playable without subtitle timing correction.
+        }
+        this.log.stream.debug('encoded TS subtitle seek probe failed; using requested position');
+
+        return 0;
+    }
+
+    private connectAribId3Extractor(): void {
+        if (this.aribId3Extractor === null || this.fmp4Packager === null || this.aribId3ExtractorConnected === true) {
+            return;
+        }
+        this.aribId3Extractor.on('id3', metadata => {
+            this.fmp4Packager?.pushId3(metadata, this.encodedSubtitleProcess !== null);
+        });
+        this.aribId3ExtractorConnected = true;
+    }
+
+    private createDelayedFmp4Input(): DelayedEndTransform {
+        this.delayedFmp4Input = new DelayedEndTransform(this.encodedSubtitleProcessDone);
+
+        return this.delayedFmp4Input;
     }
 
     /**
@@ -425,9 +636,7 @@ export default abstract class RecordedStreamBaseModel
             code === 0 &&
             this.memoryStreamId !== null
         ) {
-            this.log.stream.info(
-                `in-memory recorded HLS encode process finished normally: ${this.memoryStreamId}`,
-            );
+            this.log.stream.info(`in-memory recorded HLS encode process finished normally: ${this.memoryStreamId}`);
             if (this.multiTrackRoles !== null) {
                 for (const role of this.multiTrackRoles) {
                     this.hlsMemoryStore.markEnded(this.memoryStreamId, this.toHLSRole(role));
@@ -436,6 +645,11 @@ export default abstract class RecordedStreamBaseModel
                 this.hlsMemoryStore.markEnded(this.memoryStreamId);
             }
 
+            return;
+        }
+
+        if (this.isOfflineHLS() === true && code === 0) {
+            this.log.stream.info('offline recorded HLS encode process finished normally');
             return;
         }
 
@@ -453,6 +667,7 @@ export default abstract class RecordedStreamBaseModel
      * @param streamId: apid.StreamId
      */
     private throttleEncodeIfTooFarAhead(streamId: apid.StreamId): void {
+        if (shouldThrottleRecordedStream(this.isOfflineHLS()) === false) return;
         if (this.isEncodeThrottled === true) {
             return;
         }
@@ -555,6 +770,13 @@ export default abstract class RecordedStreamBaseModel
         this.videoFileInfo = await this.getVideoInfo(this.videoFilePath);
 
         this.videoFileType = video.type as apid.VideoFileType;
+        if (this.sourceAnalyzer !== undefined) {
+            try {
+                this.recordedSource = await this.sourceAnalyzer.analyzeRecordedFile(video.id);
+            } catch (err) {
+                this.log.stream.debug(`recorded source analysis for subtitles failed: ${String(err)}`);
+            }
+        }
     }
 
     /**
@@ -564,7 +786,7 @@ export default abstract class RecordedStreamBaseModel
      */
     private getVideoInfo(filePath: string): Promise<VideoFileInfo> {
         return new Promise<VideoFileInfo>((resolve, reject) => {
-            exec(`${this.config.ffprobe} -v 0 -show_format -of json "${filePath}"`, (err, std) => {
+            exec(`${this.config.ffprobe} -v 0 -show_format -show_streams -of json "${filePath}"`, (err, std) => {
                 if (err) {
                     reject(err);
 
@@ -572,10 +794,14 @@ export default abstract class RecordedStreamBaseModel
                 }
                 const result = <any>JSON.parse(std);
 
+                const startTime = parseFloat(
+                    result.streams?.find((stream: any) => stream.codec_type === 'video')?.start_time ?? '0',
+                );
                 resolve({
                     duration: parseFloat(result.format.duration),
                     size: parseInt(result.format.size, 10),
                     bitRate: parseFloat(result.format.bit_rate),
+                    startTime: Number.isFinite(startTime) ? startTime : 0,
                 });
             });
         });
@@ -627,6 +853,9 @@ export default abstract class RecordedStreamBaseModel
                     : null,
             cmd: cmd,
             priority: RecordedStreamBaseModel.ENCODE_PROCESS_PRIORITY,
+            // HLS packager / HTTP response が stdout を読む。EncodeProcessManageModel の既定 drain は
+            // startEncodedTsSubtitleReader() の probe 待ち中に ftyp/moov を捨てる。
+            drainStdout: false,
         };
 
         return option;
@@ -674,6 +903,17 @@ export default abstract class RecordedStreamBaseModel
             this.fileStream = null;
         }
 
+        if (this.delayedFmp4Input !== null) {
+            this.delayedFmp4Input.destroy();
+            this.delayedFmp4Input = null;
+        }
+
+        if (this.encodedSubtitleTransform !== null) {
+            this.encodedSubtitleTransform.unpipe();
+            this.encodedSubtitleTransform.destroy();
+            this.encodedSubtitleTransform = null;
+        }
+
         const estimatedStart = Math.floor((this.videoFileInfo.bitRate / 8) * this.processOption.playPosition);
         const start = calculateRecordedStreamStartByte(
             this.videoFileInfo.bitRate,
@@ -701,6 +941,10 @@ export default abstract class RecordedStreamBaseModel
      * @return Promise<void>
      */
     public async stop(): Promise<void> {
+        if (this.offlineKeepTimerId !== null) {
+            clearInterval(this.offlineKeepTimerId);
+            this.offlineKeepTimerId = null;
+        }
         await super.stop();
 
         this.clearThrottleTimer();
@@ -718,6 +962,7 @@ export default abstract class RecordedStreamBaseModel
             this.aribId3Extractor.destroy();
             this.aribId3Extractor = null;
         }
+        this.aribId3ExtractorConnected = false;
 
         if (this.id3MetadataTransoform !== null) {
             this.id3MetadataTransoform.unpipe();
@@ -742,8 +987,17 @@ export default abstract class RecordedStreamBaseModel
             this.fmp4Packager = null;
         }
 
+        if (this.offlineOutput !== null) {
+            this.offlineOutput.destroy();
+            this.offlineOutput = null;
+        }
+
         if (this.streamProcess !== null) {
             await ProcessUtil.kill(this.streamProcess);
+        }
+        if (this.encodedSubtitleProcess !== null) {
+            await ProcessUtil.kill(this.encodedSubtitleProcess);
+            this.encodedSubtitleProcess = null;
         }
 
         if (this.getStreamType() === 'RecordedHLS') {
@@ -770,6 +1024,7 @@ export default abstract class RecordedStreamBaseModel
      * @return internal.Readable
      */
     public getStream(): internal.Readable {
+        if (this.offlineOutput !== null) return this.offlineOutput;
         if (this.id3OutputTransform !== null) {
             return this.id3OutputTransform;
         } else if (this.streamProcess !== null && this.streamProcess.stdout !== null) {

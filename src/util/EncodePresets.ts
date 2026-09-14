@@ -319,7 +319,8 @@ namespace EncodePresets {
         const hvc1 = isHevc ? ' -tag:v hvc1' : '';
         // qsv / vaapi は buildVideoFilter() の format=nv12 で 8bit 化する。
         // software / nvenc はフィルタだけでは入力の bit depth が残るため、H.264 出力時に明示する。
-        const h264PixelFormat = codec === 'h264' && (hwaccel === 'software' || hwaccel === 'nvenc') ? ' -pix_fmt yuv420p' : '';
+        const h264PixelFormat =
+            codec === 'h264' && (hwaccel === 'software' || hwaccel === 'nvenc') ? ' -pix_fmt yuv420p' : '';
         const rate = `-b:v ${videoBitrate}k -maxrate ${videoBitrate}k -bufsize ${bufsize}k`;
 
         switch (hwaccel) {
@@ -902,7 +903,15 @@ namespace EncodePresets {
                         container: 'hls',
                         video: { codec: CODEC_NAME[hwaccel][codec], height, bitrate: videoBitrate },
                         audio: { codec: 'aac', bitrate: audioBitrate },
-                        cmd: buildLiveHlsCmd(hwaccel, codec, height, videoBitrate, audioBitrate, execPaths, withTsreadex),
+                        cmd: buildLiveHlsCmd(
+                            hwaccel,
+                            codec,
+                            height,
+                            videoBitrate,
+                            audioBitrate,
+                            execPaths,
+                            withTsreadex,
+                        ),
                     });
                 }
 

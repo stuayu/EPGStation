@@ -19,3 +19,6 @@ export const recordedStreamPacingArgs = (): string =>
     `-readrate ${RECORDED_STREAM_READRATE} ` +
     `-readrate_initial_burst ${RECORDED_STREAM_INITIAL_BURST_SECONDS} ` +
     `-readrate_catchup ${RECORDED_STREAM_CATCHUP_READRATE}`;
+
+/** オフライン HLS は視聴位置が無いため、録画先行抑制を使わない。 */
+export const shouldThrottleRecordedStream = (isOfflineHls: boolean): boolean => isOfflineHls === false;

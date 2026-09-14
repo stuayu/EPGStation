@@ -721,7 +721,7 @@ class Settings extends Vue {
     ];
 
     public readonly playbackQualityItems = [
-        { title: '自動・おすすめ', value: 'auto' }, { title: 'オリジナル', value: 'original' }, { title: '4K 高画質', value: '2160p-high' },
+        { title: '自動・おすすめ', value: 'auto' }, { title: 'オリジナル (MPEG-2)', value: 'original-mpeg2' }, { title: 'オリジナル', value: 'original' }, { title: '4K 高画質', value: '2160p-high' },
         { title: '1080p 高画質', value: '1080p-high' }, { title: '1080p 標準', value: '1080p' }, { title: '720p', value: '720p' }, { title: 'データ節約', value: 'data-saver' },
     ];
     public readonly videoCorrectionItems = [{ title: '自動', value: 'auto' }, { title: 'オフ', value: 'off' }, { title: '明るめ', value: 'bright' }];

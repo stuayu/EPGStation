@@ -603,6 +603,15 @@ export interface VideoFile {
     bitRate?: number;
 }
 
+/** オフライン保存ストリームの先頭メタデータ */
+export interface OfflineVideoStreamMetadata {
+    videoFileId: VideoFileId;
+    fileSize: number;
+    duration: number;
+    profile: string;
+    formatVersion: 2;
+}
+
 /**
  * 録画ファイルの実測メタデータ
  */
@@ -1299,26 +1308,28 @@ export interface SourceCapabilities {
 
 export interface PlaybackProfile {
     id: string;
-    // 画質の役割。表示ラベルの引き当てに使う。該当しないプリセット (config.yml 由来など) は null
+    // 画質の役割。auto / original / original-mpeg2 / original-hevc など。表示ラベルの引き当てに使う。該当しないプリセットは null
     role: string | null;
     label: string;
     detail: string;
     available: true;
     builtin: boolean;
     legacy: boolean;
-    modes: Partial<Record<'m2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls', number>>;
+    modes: Partial<Record<'m2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | 'original', number>>;
     // 映像 bitrate (kbps)。自動画質 fallback の実効帯域判定に使う
     videoBitrate?: number;
     // 出力映像コーデック。同じ role のプリセットが複数あるとき (HEVC 版 / AVC 版) の区別に使う
     videoCodec?: 'copy' | 'h264' | 'hevc';
+    // stream はサーバー配信、mpeg2toh264 は MPEG-2 TS の端末変換
+    delivery: 'stream' | 'mpeg2toh264';
     // コンテナ別に「主音声・副音声を再接続無しで同時配信できるか」。
     // true の場合、クライアントは audioTrack=all で開き、mpegts.js の
     // switchPrimaryAudio() / switchSecondaryAudio() で再接続無しに音声を切り替えられる。
     // 現状 m2tsll (tsreadex 経由) のみ true になりうる。hls は複数音声トラック未対応のため常に false
-    embeddedAudioSwitch?: Partial<Record<'m2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls', boolean>>;
+    embeddedAudioSwitch?: Partial<Record<'m2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | 'original', boolean>>;
 }
 
-export type PlaybackContainer = 'm2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | 'normal';
+export type PlaybackContainer = 'm2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | 'original' | 'normal';
 
 export interface PlaybackOptions {
     source: SourceCapabilities;

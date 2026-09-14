@@ -116,7 +116,8 @@ export const evaluatePlaybackStability = (
     const maxStallSeconds = options.maxStallSeconds ?? 0;
     const first = samples[0];
     const last = samples[samples.length - 1];
-    const progressSeconds = first === undefined || last === undefined ? 0 : Math.max(0, last.currentTime - first.currentTime);
+    const progressSeconds =
+        first === undefined || last === undefined ? 0 : Math.max(0, last.currentTime - first.currentTime);
     const minProgressSeconds = options.minProgressSeconds ?? 0;
 
     if (summary.stopCount > maxStops) {
@@ -173,7 +174,11 @@ export const evaluatePlaybackFrames = (
     if (samples.length === 0) return { passed: false, summary, reason: '映像フレーム標本なし' };
     if (frameFailureCount > 0) return { passed: false, summary, reason: `映像フレーム取得失敗 ${frameFailureCount}件` };
     if (summary.blackFrameRatio > maxBlackRatio) {
-        return { passed: false, summary, reason: `真っ黒フレーム比率 ${summary.blackFrameRatio.toFixed(3)} > ${maxBlackRatio}` };
+        return {
+            passed: false,
+            summary,
+            reason: `真っ黒フレーム比率 ${summary.blackFrameRatio.toFixed(3)} > ${maxBlackRatio}`,
+        };
     }
     if (frameChangeCount < minFrameChanges) {
         return { passed: false, summary, reason: `画面変化回数 ${frameChangeCount} < ${minFrameChanges}` };
@@ -269,10 +274,20 @@ export const evaluateJikkyoSync = (
     const minSamples = options.minSamples ?? 1;
     const maximum = matches.length === 0 ? null : Math.max(...matches.map(match => Math.abs(match.driftSeconds)));
     if (matches.length < minSamples) {
-        return { passed: false, sampleCount: matches.length, maxAbsoluteDriftSeconds: maximum, reason: `標本数 ${matches.length} < ${minSamples}` };
+        return {
+            passed: false,
+            sampleCount: matches.length,
+            maxAbsoluteDriftSeconds: maximum,
+            reason: `標本数 ${matches.length} < ${minSamples}`,
+        };
     }
     if (maximum !== null && maximum > maxDriftSeconds) {
-        return { passed: false, sampleCount: matches.length, maxAbsoluteDriftSeconds: maximum, reason: `最大ずれ ${maximum.toFixed(3)}s > ${maxDriftSeconds}s` };
+        return {
+            passed: false,
+            sampleCount: matches.length,
+            maxAbsoluteDriftSeconds: maximum,
+            reason: `最大ずれ ${maximum.toFixed(3)}s > ${maxDriftSeconds}s`,
+        };
     }
     return { passed: true, sampleCount: matches.length, maxAbsoluteDriftSeconds: maximum, reason: null };
 };
@@ -300,10 +315,22 @@ export const evaluateEmsgCoverage = (
     const emsgCount = hasEmsg.filter(Boolean).length;
     const ratio = hasEmsg.length === 0 ? 0 : emsgCount / hasEmsg.length;
     if (hasEmsg.length < minimumSegments) {
-        return { passed: false, segmentCount: hasEmsg.length, emsgCount, ratio, reason: `セグメント数 ${hasEmsg.length} < ${minimumSegments}` };
+        return {
+            passed: false,
+            segmentCount: hasEmsg.length,
+            emsgCount,
+            ratio,
+            reason: `セグメント数 ${hasEmsg.length} < ${minimumSegments}`,
+        };
     }
     if (ratio < minimumRatio) {
-        return { passed: false, segmentCount: hasEmsg.length, emsgCount, ratio, reason: `emsg 比率 ${ratio.toFixed(3)} < ${minimumRatio}` };
+        return {
+            passed: false,
+            segmentCount: hasEmsg.length,
+            emsgCount,
+            ratio,
+            reason: `emsg 比率 ${ratio.toFixed(3)} < ${minimumRatio}`,
+        };
     }
     return { passed: true, segmentCount: hasEmsg.length, emsgCount, ratio, reason: null };
 };

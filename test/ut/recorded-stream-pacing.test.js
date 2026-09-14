@@ -38,3 +38,25 @@ test('録画ストリームの正常なエンコーダ終了は再生中停止�
     model.onStreamProcessExit(1);
     assert.equal(exitCount, 1);
 });
+
+test('オフライン HLS はエンコーダ先行抑制を使わず、視聴 HLS は使う', () => {
+    const makeModel = isOffline => {
+        const model = Object.create(RecordedStreamBaseModel.prototype);
+        let paused = 0;
+        model.isOfflineHLS = () => isOffline;
+        model.isEncodeThrottled = false;
+        model.hlsMemoryStore = { getAheadSegmentNum: () => 151 };
+        model.streamProcess = { stdout: { pause: () => { paused += 1; }, resume: () => {} } };
+        model.log = { stream: { debug: () => {} } };
+        return { model, getPaused: () => paused };
+    };
+
+    const offline = makeModel(true);
+    offline.model.throttleEncodeIfTooFarAhead(1);
+    assert.equal(offline.getPaused(), 0);
+
+    const viewing = makeModel(false);
+    viewing.model.throttleEncodeIfTooFarAhead(1);
+    assert.equal(viewing.getPaused(), 1);
+    viewing.model.clearThrottleTimer();
+});

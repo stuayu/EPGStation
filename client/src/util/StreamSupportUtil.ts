@@ -1,4 +1,5 @@
 import Mpegts from 'mpegts.js';
+import { supportsWorkerMediaSource } from 'mpeg2toh264/player';
 import UaUtil from './UaUtil';
 
 namespace StreamSupportUtil {
@@ -52,6 +53,18 @@ namespace StreamSupportUtil {
     export const isM2TSLLSupported = (): boolean => {
         return checkM2TSLLSupport().isSupported;
     };
+
+    /** MPEG-2 TS を mpeg2toh264 で端末変換できるか判定する。 */
+    export const checkMpeg2ToH264Support = (): M2TSLLSupportResult => {
+        const hasMainMse =
+            typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported('video/mp4; codecs="avc1.640028"');
+        if (supportsWorkerMediaSource() === false && hasMainMse === false) {
+            return { isSupported: false, reason: 'MPEG-2 端末変換に対応していないブラウザーです。' };
+        }
+        return { isSupported: true, reason: null };
+    };
+
+    export const isMpeg2ToH264Supported = (): boolean => checkMpeg2ToH264Support().isSupported;
 
     /**
      * 録画の MP4 / WebM 配信 (プログレッシブ再生) が利用可能か判定する

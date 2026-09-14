@@ -59,9 +59,7 @@ export default class LiveStreamSourceManageModel implements ILiveStreamSourceMan
         const branch = new internal.PassThrough();
         source.branches.add(branch);
         source.stream.pipe(branch);
-        this.log.stream.debug(
-            `reuse mirakurun service stream: ${channelId} (references: ${source.branches.size})`,
-        );
+        this.log.stream.debug(`reuse mirakurun service stream: ${channelId} (references: ${source.branches.size})`);
 
         let released = false;
         return {

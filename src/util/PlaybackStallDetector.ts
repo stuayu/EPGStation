@@ -77,7 +77,9 @@ export const isPlaybackThroughputSufficient = (
     const bandwidthKbps = estimatePlaybackBandwidthKbps(samples, now);
     const currentBitrate = profiles.find(profile => profile.id === currentId)?.videoBitrate;
 
-    return bandwidthKbps !== null && typeof currentBitrate === 'number' && bandwidthKbps * safetyFactor >= currentBitrate;
+    return (
+        bandwidthKbps !== null && typeof currentBitrate === 'number' && bandwidthKbps * safetyFactor >= currentBitrate
+    );
 };
 
 const DEFAULT_OPTIONS: Required<PlaybackStallDetectorOptions> = {
@@ -197,7 +199,10 @@ export const selectThroughputFallback = (
     const currentBitrate = current?.videoBitrate;
     const candidates = fallbackChain
         .map(id => profiles.find(profile => profile.id === id))
-        .filter((profile): profile is ThroughputProfile => profile !== undefined && typeof profile.videoBitrate === 'number');
+        .filter(
+            (profile): profile is ThroughputProfile =>
+                profile !== undefined && typeof profile.videoBitrate === 'number',
+        );
     if (candidates.length === 0 || typeof currentBitrate !== 'number') {
         return { profileId: null, bandwidthKbps };
     }
@@ -208,7 +213,9 @@ export const selectThroughputFallback = (
 
     // 収まる中で最も高い画質を選ぶ。1つも収まらない場合は最低 bitrate へ直接落とす。
     const selected =
-        [...lower].filter(profile => (profile.videoBitrate as number) <= maxBitrate).sort((a, b) => (b.videoBitrate as number) - (a.videoBitrate as number))[0] ??
+        [...lower]
+            .filter(profile => (profile.videoBitrate as number) <= maxBitrate)
+            .sort((a, b) => (b.videoBitrate as number) - (a.videoBitrate as number))[0] ??
         [...lower].sort((a, b) => (a.videoBitrate as number) - (b.videoBitrate as number))[0];
 
     return { profileId: selected?.id ?? null, bandwidthKbps };

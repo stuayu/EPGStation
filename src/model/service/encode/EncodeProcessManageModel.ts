@@ -170,6 +170,13 @@ class EncodeProcessManageModel implements IEncodeProcessManageModel {
         }
         const processId = new Date().getTime();
 
+        if (child.stdin !== null) {
+            ProcessUtil.attachStdinErrorHandler(child.stdin, error => {
+                this.log.encode.error('child stdin error');
+                this.log.encode.error(error);
+            });
+        }
+
         // エラー発生時にプロセスを停止して this.childs から削除する
         child.on('error', async () => {
             await this.killChild(processId, true).catch(err => {
@@ -182,8 +189,9 @@ class EncodeProcessManageModel implements IEncodeProcessManageModel {
             });
         });
 
-        // buffer が埋まらないようにする
-        if (child.stdout !== null) {
+        // 呼び出し側が後から stdout を pipe するストリーム配信では、ここで data listener を付けると
+        // pipe 接続前の出力を捨ててしまう。通常のエンコードだけ既定の drain を行う。
+        if (child.stdout !== null && option.drainStdout !== false) {
             child.stdout.on('data', () => {});
         }
         if (child.stderr !== null) {

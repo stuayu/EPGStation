@@ -11,6 +11,7 @@ export const parseClientCapabilities = (query: Record<string, unknown>): ClientC
     hevc: bool(query.hevc),
     hevcMain10: bool(query.hevcMain10),
     h264: bool(query.h264),
+    mpeg2toh264: bool(query.mpeg2toh264),
     av1: bool(query.av1),
     hdr: bool(query.hdr),
     hlg: bool(query.hlg),

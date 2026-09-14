@@ -189,7 +189,7 @@ class SnsCaptureAttachment extends Vue {
     /**
      * 再生中の video からキャプチャを 1 枚撮影する。添付枠 (4 枚) に空きがあれば自動で添付する
      */
-    public async capture(video: HTMLVideoElement): Promise<void> {
+    public async capture(video: HTMLVideoElement, capture?: () => Promise<ImageBitmap>): Promise<void> {
         if (this.isCapturing === true) return;
 
         if (video.videoWidth === 0 || video.videoHeight === 0) {
@@ -200,7 +200,17 @@ class SnsCaptureAttachment extends Vue {
 
         this.isCapturing = true;
         try {
-            const dataUrl = SnsCaptureAttachment.captureToDataUrl(video);
+            const image = typeof capture === 'function' ? await capture() : null;
+            let dataUrl: string;
+            if (image === null) {
+                dataUrl = SnsCaptureAttachment.captureToDataUrl(video);
+            } else {
+                try {
+                    dataUrl = SnsCaptureAttachment.captureToDataUrl(image, image.width, image.height);
+                } finally {
+                    image.close();
+                }
+            }
             const canAttach = this.attachedCount < this.maxAttached;
             this.captures.push({
                 id: this.generateId(),
@@ -331,12 +341,12 @@ class SnsCaptureAttachment extends Vue {
 
     /**
      * video 要素から JPEG の data URL を切り出す。2MB を超える場合は品質 → 解像度の順に落として収める
-     * @param video: HTMLVideoElement
+     * @param source: 動画または ImageBitmap
      * @return string data URL (image/jpeg)
      */
-    private static captureToDataUrl(video: HTMLVideoElement): string {
-        let width = video.videoWidth;
-        let height = video.videoHeight;
+    private static captureToDataUrl(source: CanvasImageSource, sourceWidth?: number, sourceHeight?: number): string {
+        let width = sourceWidth ?? (source as HTMLVideoElement).videoWidth;
+        let height = sourceHeight ?? (source as HTMLVideoElement).videoHeight;
 
         for (let scaleAttempt = 0; scaleAttempt < SnsCaptureAttachment.MAX_SCALE_ATTEMPTS; scaleAttempt++) {
             const canvas = document.createElement('canvas');
@@ -346,7 +356,7 @@ class SnsCaptureAttachment extends Vue {
             if (ctx === null) {
                 throw new Error('CanvasContextUnavailable');
             }
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
 
             for (const quality of SnsCaptureAttachment.QUALITY_STEPS) {
                 // CORS 汚染された video の場合、ここで SecurityError が投げられる (呼び出し元で catch する)

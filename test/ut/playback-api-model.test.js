@@ -65,6 +65,46 @@ test('preset id から container 別 mode を解決し、profile の並びを mo
     assert.deepEqual(result.profiles.find(profile => profile.id === '1080p-sdr').modes, { hls: 0 });
 });
 
+test('録画 HEVC 無変換は HLS mode 0 として playback-options に出る', async () => {
+    const hevcSource = { ...source, transport: 'mpegts', bitDepth: 8 };
+    const original = {
+        id: 'original-hevc',
+        name: 'オリジナル (HEVC・無変換)',
+        builtin: true,
+        quality: 'original',
+        output: { codec: 'copy', resolution: 'source', container: 'hls' },
+    };
+    const model = new PlaybackApiModel(
+        { analyzeLiveChannel: async () => hevcSource, analyzeRecordedFile: async () => hevcSource },
+        { getPresets: () => [{ ...presets[0] }, original], getModeMap: () => ({ m2ts: [], m2tsll: [], mp4: [], webm: [], hls: [] }) },
+        { resolve: (_scope, _source, _client, _presets, requested) => ({ presetId: requested === 'original-hevc' ? requested : 'original-hevc', label: 'HEVC', reason: 'test', fallbackChain: [] }) },
+        { findId: async () => ({ type: 'ts' }) },
+    );
+    const result = await model.getRecordedPlaybackOptions(1, client, 'original-hevc', 'hls');
+    assert.deepEqual(result.profiles.find(profile => profile.id === 'original-hevc').modes, { hls: 0 });
+    assert.equal(result.profiles.find(profile => profile.id === 'original-hevc').role, 'original-hevc');
+});
+
+test('録画中は MPEG-2 / HEVC Original を playback-options に出さない', async () => {
+    const hevcSource = { ...source, transport: 'mpegts', bitDepth: 8 };
+    const originals = [
+        { id: 'original-mpeg2', name: 'MPEG-2', delivery: 'mpeg2toh264', output: { codec: 'copy', resolution: 'source' } },
+        { id: 'original-hevc', name: 'HEVC', output: { codec: 'copy', resolution: 'source', container: 'hls' } },
+    ];
+    const model = new PlaybackApiModel(
+        { analyzeLiveChannel: async () => hevcSource, analyzeRecordedFile: async () => hevcSource },
+        { getPresets: () => originals, getModeMap: () => ({ m2ts: [], m2tsll: [], mp4: [], webm: [], hls: [] }) },
+        { resolve: () => ({ presetId: 'original-hevc', label: 'HEVC', reason: 'test', fallbackChain: [] }) },
+        { findId: async () => ({ type: 'ts', recordedId: 9 }) },
+        { findId: async () => ({ isRecording: true }) },
+    );
+
+    const result = await model.getRecordedPlaybackOptions(1, client, undefined, 'hls');
+
+    assert.equal(result.profiles.some(profile => profile.id === 'original-mpeg2'), false);
+    assert.equal(result.profiles.some(profile => profile.id === 'original-hevc'), false);
+});
+
 test('config 由来プリセットを品質バケットの代表として通常表示する', async () => {
     const configPresets = [
         { id: 'auto', name: '自動', builtin: true, output: { codec: 'copy', resolution: 'source' } },

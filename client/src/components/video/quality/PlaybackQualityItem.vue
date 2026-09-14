@@ -1,5 +1,5 @@
 <template>
-    <v-list-item class="playback-quality-item" role="option" :aria-selected="selected" @click="select">
+    <v-list-item class="playback-quality-item" role="option" :aria-selected="selected" :data-profile-id="profile.id" @click="select">
         <template #prepend>
             <v-radio density="compact" :model-value="selected" :value="true" tabindex="-1" aria-label="選択中"></v-radio>
         </template>

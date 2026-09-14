@@ -7,6 +7,7 @@ import IServerConfigModel from './IServerConfigModel';
 
 @injectable()
 export default class ServerConfigModel implements IServerConfigModel {
+    private static readonly CONFIG_STORAGE_KEY = 'epgstation-server-config';
     private configApiModel: IConfigApiModel;
     private config: apid.Config | null = null;
 
@@ -19,10 +20,34 @@ export default class ServerConfigModel implements IServerConfigModel {
      * @return Promise<void>
      */
     public async fetchConfig(): Promise<void> {
-        this.config = await this.configApiModel.getConfig();
+        try {
+            this.config = await this.configApiModel.getConfig();
+            try {
+                localStorage.setItem(ServerConfigModel.CONFIG_STORAGE_KEY, JSON.stringify(this.config));
+            } catch {
+                // localStorage が使えない環境でもオンライン起動は継続する。
+            }
+        } catch (error) {
+            this.restoreCachedConfig();
+            throw error;
+        }
 
         this.buildStreamConfigFromProfiles();
         this.setStreamingSettingForSafari();
+    }
+
+    /** 最後に取得できた設定を復元する。オフライン保存画面だけでも起動できるようにする。 */
+    private restoreCachedConfig(): void {
+        try {
+            const cached = localStorage.getItem(ServerConfigModel.CONFIG_STORAGE_KEY);
+            if (cached !== null) this.config = JSON.parse(cached) as apid.Config;
+        } catch {
+            this.config = null;
+        }
+        if (this.config !== null) {
+            this.buildStreamConfigFromProfiles();
+            this.setStreamingSettingForSafari();
+        }
     }
 
     /**

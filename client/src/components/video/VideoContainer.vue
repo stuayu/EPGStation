@@ -24,6 +24,17 @@
                     v-on:playbackTransition="onPlaybackTransition"
                     v-on:screenshotRequest="onScreenshotRequest"
                 ></NormalVideo>
+                <OfflineHLSVideo
+                    v-if="videoParam.type == 'OfflineHLS'"
+                    ref="video"
+                    v-bind:videoSrc="videoParam.src"
+                    v-on:waiting="onWaiting"
+                    v-on:loadeddata="onLoadeddata"
+                    v-on:canplay="onCanplay"
+                    v-on:pause="savePlaybackPosition"
+                    v-on:ended="onEnded"
+                    v-on:error="onVideoError"
+                ></OfflineHLSVideo>
                 <LiveHLSVideo
                     v-if="videoParam.type == 'LiveHLS'"
                     ref="video"
@@ -49,6 +60,7 @@
                     v-bind:videoFileId="videoParam.videoFileId"
                     v-bind:streamingType="videoParam.streamingType"
                     v-bind:mode="videoParam.mode"
+                    v-bind:profile="videoParam.profile"
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
                     v-bind:jikkyoStartAt="videoParam.jikkyoStartAt"
                     v-bind:jikkyoEndAt="videoParam.jikkyoEndAt"
@@ -74,6 +86,7 @@
                     v-bind:recordedId="videoParam.recordedId"
                     v-bind:videoFileId="videoParam.videoFileId"
                     v-bind:mode="videoParam.mode"
+                    v-bind:profile="videoParam.profile"
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
                     v-bind:jikkyoStartAt="videoParam.jikkyoStartAt"
                     v-bind:jikkyoEndAt="videoParam.jikkyoEndAt"
@@ -99,6 +112,7 @@
                     v-model:videoSrc="videoParam.src"
                     v-bind:channelId="videoParam.channelId"
                     v-bind:mode="videoParam.mode"
+                    v-bind:directMpeg2="videoParam.directMpeg2 === true"
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
                     v-bind:playbackProfiles="playbackProfiles"
                     v-bind:selectablePlaybackContainers="selectablePlaybackContainers"
@@ -123,6 +137,7 @@ import NormalVideo from '@/components/video/NormalVideo.vue';
 import RecordedHLSStreamingVideo from '@/components/video/RecordedHLSStreamingVideo.vue';
 import RecordedStreamingVideo from '@/components/video/RecordedStreamingVideo.vue';
 import LiveMpegTsVideo from '@/components/video/LiveMpegTsVideo.vue';
+import OfflineHLSVideo from '@/components/video/OfflineHLSVideo.vue';
 import * as VideoParam from '@/components/video/ViedoParam';
 import UaUtil from '@/util/UaUtil';
 import BaseVideo, { PlaybackContainerSwitchRequest, ScreenshotRequest } from '@/components/video/BaseVideo';
@@ -152,6 +167,7 @@ import {
         RecordedStreamingVideo,
         RecordedHLSStreamingVideo,
         LiveMpegTsVideo,
+        OfflineHLSVideo,
     },
 })
 class VideoContainer extends Vue {
@@ -265,6 +281,17 @@ class VideoContainer extends Vue {
             this.resetPlaybackStallDetection(VideoContainer.PLAYBACK_STALL_STARTUP_GRACE_MS);
             this.startPlaybackStallMonitor();
             await this.$nextTick();
+            const selectedProfile = this.playbackProfiles.find(profile => profile.id === this.selectedPlaybackId);
+            const currentContainer = this.getPlaybackContainer();
+            if (selectedProfile?.delivery === 'mpeg2toh264' && currentContainer !== 'original') {
+                this.$emit('playbackContainerSwitch', {
+                    container: 'original',
+                    mode: 0,
+                    profileId: selectedProfile.id,
+                    playPosition: 'playPosition' in this.videoParam ? this.videoParam.playPosition ?? 0 : 0,
+                } satisfies PlaybackContainerSwitchRequest);
+                return;
+            }
             this.applyPlaybackProfilesToVideo();
             const pendingError = this.pendingPlaybackError;
             this.pendingPlaybackError = null;
@@ -386,18 +413,19 @@ class VideoContainer extends Vue {
     }
 
     /** 子コンポーネントへ渡す配信方式の一覧 (自分の再生成時に一覧が縮まないよう prop で持たせる) */
-    public get selectablePlaybackContainers(): Array<'m2tsll' | 'mp4' | 'webm' | 'hls'> {
+    public get selectablePlaybackContainers(): Array<'original' | 'm2tsll' | 'mp4' | 'webm' | 'hls'> {
         return this.getSelectablePlaybackContainers();
     }
 
-    private getSelectablePlaybackContainers(): Array<'m2tsll' | 'mp4' | 'webm' | 'hls'> {
-        const containers: Array<'m2tsll' | 'mp4' | 'webm' | 'hls'> =
+    private getSelectablePlaybackContainers(): Array<'original' | 'm2tsll' | 'mp4' | 'webm' | 'hls'> {
+        const containers: Array<'original' | 'm2tsll' | 'mp4' | 'webm' | 'hls'> =
             this.videoParam.type === 'LiveHLS' || this.videoParam.type === 'LiveMpegTs'
-                ? ['hls', 'm2tsll']
-                : ['hls', 'm2tsll', 'mp4', 'webm'];
+                ? ['original', 'hls', 'm2tsll']
+                : ['original', 'hls', 'm2tsll', 'mp4', 'webm'];
 
         const supported = containers.filter(container => {
             if (container === 'm2tsll') return StreamSupportUtil.isM2TSLLSupported();
+            if (container === 'original') return StreamSupportUtil.isMpeg2ToH264Supported();
             // 録画の MP4 / WebM は Content-Length / Range を返せない chunked 配信なので
             // WebKit (iOS / iPadOS / Safari) では MediaError 4 になり再生できない
             if (container === 'mp4' || container === 'webm') return StreamSupportUtil.isProgressiveFileStreamSupported();
@@ -409,18 +437,20 @@ class VideoContainer extends Vue {
         return supported.length > 0 ? supported : containers;
     }
 
-    private getPlaybackContainer(): 'm2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | null {
+    private getPlaybackContainer(): 'm2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | 'original' | null {
         switch (this.videoParam.type) {
             case 'LiveHLS':
             case 'RecordedHLS':
                 return 'hls';
             case 'LiveMpegTs':
-                return 'm2tsll';
+                return this.videoParam.directMpeg2 === true ? 'original' : 'm2tsll';
             case 'RecordedStreaming':
                 return this.videoParam.streamingType === 'mp4' ||
                     this.videoParam.streamingType === 'webm' ||
                     this.videoParam.streamingType === 'm2tsll'
                     ? this.videoParam.streamingType
+                    : this.videoParam.streamingType === 'original'
+                      ? 'original'
                     : null;
             default:
                 return null;

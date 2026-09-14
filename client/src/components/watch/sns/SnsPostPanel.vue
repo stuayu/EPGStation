@@ -370,7 +370,7 @@ class SnsPostPanel extends Vue {
         if (typeof attachment === 'undefined') return;
 
         request.claim();
-        void attachment.capture(request.video);
+        void attachment.capture(request.video, request.capture);
     }
 
     public async created(): Promise<void> {

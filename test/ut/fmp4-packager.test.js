@@ -539,6 +539,28 @@ test('emsg は hls.js が解釈できる version 1 形式で、セグメント�
     assert.notEqual(emsgs[0].id, emsgs[1].id);
 });
 
+test('相対PTSの字幕はreaderが先に到着しても最初の映像partを基準にする', async () => {
+    const packager = new Fmp4Packager({ partsPerSegment: 1 });
+    const segments = [];
+    packager.on('segment', segment => segments.push(segment));
+
+    packager.write(makeFtyp());
+    packager.write(makeMoov());
+    // 先頭partを先に確定し、字幕readerのデータが映像より後から届く状態を作る。
+    packager.write(makeMoof(0));
+    packager.write(makeMdat(16));
+    packager.write(makeMoof(TIMESCALE));
+    packager.write(makeMdat(17));
+    packager.pushId3(makeMetadata(TIMESCALE, 'relative'), true);
+    packager.write(makeMoof(2 * TIMESCALE));
+    packager.write(makeMdat(18));
+    await new Promise(resolve => packager.end(resolve));
+
+    const emsgs = parseEmsgBoxes(segments[1].data);
+    assert.equal(emsgs.length, 1);
+    assert.equal(emsgs[0].presentationTime, TIMESCALE);
+});
+
 test('セグメントが出力されないまま溜まった ID3 は上限で捨てる', async () => {
     const packager = new Fmp4Packager({ partsPerSegment: 1 });
     const segments = [];

@@ -56,6 +56,7 @@ import * as apid from '../../../../../api';
 import PlaybackQualityList from '@/components/video/quality/PlaybackQualityList.vue';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import { getPlaybackShortLabel } from '@/util/PlaybackLabelUtil';
+import { resolveSelectedPlaybackProfileId } from '@/util/PlaybackProfileSelectUtil';
 import { toStreamingType } from '@/util/StreamingTypeUtil';
 
 @Component({ components: { PlaybackQualityList } })
@@ -116,6 +117,18 @@ class RecordedDetailSelectStreamDialog extends Vue {
 
         // 配信方式が続けて切り替えられた場合、古い応答は捨てる
         if (generation !== this.loadGeneration) return;
+
+        if (this.playbackState.options?.profiles.some(profile => typeof profile.modes.original === 'number') === true) {
+            this.dialogState.addOriginalStreamType();
+        }
+
+        if (this.selectedContainer === 'original') {
+            const original = this.qualityProfiles.find(profile => profile.role === 'original-mpeg2');
+            if (original !== undefined) {
+                this.playbackState.selectPreset(original.id);
+                this.applySelectedQualityToStreamMode(original.id);
+            }
+        }
 
         // 「既定の画質」が明示指定されているときだけ配信設定へ反映する。
         // 自動 (auto) のときにサーバの推奨を書き込むと、このダイアログで前回選んだ設定を毎回上書きしてしまう
@@ -211,6 +224,12 @@ class RecordedDetailSelectStreamDialog extends Vue {
                 recordedId: recordedId.toString(),
                 streamingType: toStreamingType(this.dialogState.selectedStreamType),
                 mode: this.dialogState.selectedStreamMode.toString(10),
+                profile: resolveSelectedPlaybackProfileId(
+                    this.qualityProfiles,
+                    this.playbackState.selectedPresetId,
+                    toStreamingType(this.dialogState.selectedStreamType),
+                    this.dialogState.selectedStreamMode,
+                ),
             },
         });
     }

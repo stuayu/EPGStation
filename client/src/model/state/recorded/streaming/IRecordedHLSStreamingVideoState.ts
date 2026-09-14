@@ -7,6 +7,7 @@ export default interface IRecordedHLSStreamingVideoState extends IRecordedStream
         playPosition: number,
         mode: number,
         audioTrack?: apid.AudioTrackSpecifier,
+        profile?: string,
     ): Promise<void>;
     stop(): Promise<void>;
     getStreamId(): apid.StreamId | null;
