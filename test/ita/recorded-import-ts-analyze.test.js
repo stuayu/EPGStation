@@ -54,6 +54,24 @@ test('取り込み: 大文字の .TS も解析対象にする', async () => {
     assert.equal(context.analyzeCalls.length, 1);
 });
 
+test('取り込み: PSI/SI 対応拡張子はすべて解析し MPEG-PS は解析しない', async () => {
+    for (const filePath of ['/videos/sample.m2ts', '/videos/sample.mts', '/videos/sample.m2t']) {
+        const tsInfo = { firstTdtAt: 1700000000000 };
+        const context = createContext(tsInfo);
+
+        const result = await analyzeTsInfoForImport.call(context, filePath);
+
+        assert.equal(result, tsInfo);
+        assert.deepEqual(context.analyzeCalls, [filePath]);
+    }
+
+    const context = createContext({ firstTdtAt: 1700000000000 });
+    const result = await analyzeTsInfoForImport.call(context, '/videos/sample.m2p');
+
+    assert.equal(result, null);
+    assert.deepEqual(context.analyzeCalls, []);
+});
+
 test('取り込み: PSI/SI を持たない .mp4 / .mkv は解析しない', async () => {
     for (const filePath of ['/videos/sample.mp4', '/videos/sample.mkv']) {
         const context = createContext({ firstTdtAt: 1 });

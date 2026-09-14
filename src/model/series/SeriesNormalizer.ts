@@ -68,9 +68,9 @@ const EPISODE_TAILS = [
 ];
 // 括弧で囲まれた語のみをマーカーとして除去する対象一覧 (裸の語は除去しない)
 // 例: "(再)" "[新]" "【字】" は除去するが、"再婚承認を要求します" の「再」は除去しない
-const BRACKET_MARKER_TOKEN =
+export const BRACKET_MARKER_TOKEN =
     '(?:再放送|再|新|新作|終|終了|完|字幕?|デジタル|デ|吹替|二カ国語|二か国語|解説|解|多重音声|ステレオ|ノーカット|ドラマ|アニメ|SS?|無)';
-const BRACKET_MARKERS = new RegExp(`[\\(\\[【<]\\s*${BRACKET_MARKER_TOKEN}\\s*[\\)\\]】>]`, 'giu');
+export const BRACKET_MARKERS = new RegExp(`[\\(\\[【<]\\s*${BRACKET_MARKER_TOKEN}\\s*[\\)\\]】>]`, 'giu');
 // (再放送) / [再] / 【再】 のような「括弧で囲まれた再」表現を再放送判定に使う (裸の「再」は誤検知するため対象外)
 const RERUN_PATTERN = /(?:再放送|[\(\[【]\s*再\s*[\)\]】])/u;
 // 先頭の角括弧ブロック ([字] 【新】 <アニおび> など)

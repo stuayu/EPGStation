@@ -24,7 +24,8 @@
             <div v-if="uploadState.importScanResults.length > 0">
                 <v-divider class="mb-2"></v-divider>
                 <div v-for="row in uploadState.importScanResults" v-bind:key="row.result.filePath" class="import-row pb-2 mb-2">
-                    <v-checkbox v-model="row.selected" :label="row.result.fileName" hide-details></v-checkbox>
+                    <v-checkbox v-model="row.selected" :label="row.result.fileName" :disabled="isAlreadyImported(row.result)" hide-details></v-checkbox>
+                    <span v-if="isAlreadyImported(row.result)" class="text-info text-caption ml-2">取り込み済み</span>
                     <!-- 番組名・放送局・時刻を何から推定したか。TS を解析できたものが最も確実 -->
                     <div class="d-flex align-center ga-1 flex-wrap mb-1">
                         <v-chip size="x-small" :color="estimatedSourceColor(row.result)" variant="flat" :title="estimatedSourceTitle(row.result)">
@@ -35,17 +36,19 @@
                         </span>
                     </div>
                     <div class="d-flex flex-wrap">
-                        <v-text-field v-model="row.editedName" label="番組名" class="import-field" clearable></v-text-field>
-                        <v-select v-model="row.editedChannelId" :items="uploadState.getChannelItems()" item-title="title" item-value="value" label="放送局" class="import-field" clearable></v-select>
-                        <v-select v-model="row.mode" :items="uploadState.getImportModeItems()" label="取り込みモード" class="import-field"></v-select>
+                        <v-text-field v-model="row.editedName" label="番組名" class="import-field" :disabled="isAlreadyImported(row.result)" clearable></v-text-field>
+                        <v-select v-model="row.editedChannelId" :items="uploadState.getChannelItems()" item-title="title" item-value="value" label="放送局" class="import-field" :disabled="isAlreadyImported(row.result)" clearable></v-select>
+                        <v-select v-model="row.mode" :items="uploadState.getImportModeItems()" label="取り込みモード" class="import-field" :disabled="isAlreadyImported(row.result)"></v-select>
                         <v-select
                             v-if="row.result.duplicateRecordedIds && row.result.duplicateRecordedIds.length > 0"
                             v-model="row.duplicateAction"
+                            :disabled="isAlreadyImported(row.result)"
                             :items="uploadState.getImportDuplicateActionItems()"
                             label="重複時の挙動"
                             class="import-field"
                         ></v-select>
-                        <span v-if="row.result.duplicateRecordedIds && row.result.duplicateRecordedIds.length > 0" class="text-warning ml-2 align-self-center">重複の可能性があります</span>
+                        <span v-if="row.result.matchedRecordedId" class="text-success ml-2 align-self-center">同一番組へソース追加</span>
+                        <span v-else-if="row.result.duplicateRecordedIds && row.result.duplicateRecordedIds.length > 0" class="text-warning ml-2 align-self-center">重複の可能性があります</span>
                     </div>
                 </div>
 
@@ -130,6 +133,10 @@ class RecordedImportFields extends Vue {
 
     public retryFailedImports(): void {
         this.$emit('retryFailedImports');
+    }
+
+    public isAlreadyImported(result: apid.ImportScanResultItem): boolean {
+        return typeof result.alreadyImportedVideoFileId === 'number';
     }
 }
 

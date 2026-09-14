@@ -220,6 +220,14 @@ duration 10 秒未満は中央候補1点とし、候補0件でも既存の thumb
 - 取り込み時の放送局特定は**ファイル名の推定ではなく network id + service id での厳密な引き当て**を優先する
 - 録画の放送局名の表示は `ChannelNameUtil.getRecordedChannelName()`、一覧のタイトル表示は `RecordedUtil.convertRecordedItemToDisplayData()` の 1 箇所で決まる
 
+### 外部録画ファイル取り込み
+
+`POST /api/recorded/import/scan` は、`VideoUtil.getFullFilePathFromVideoFile()` で解決した既存 `video_file` の実パスを1回の一括取得で索引化し、候補の `realpath` と比較する。Windows は区切り文字・大文字小文字を正規化する。取り込み済みパスは手動画面で選択不可、監視と API では skip。
+
+同一番組の強一致は `src/util/ImportDuplicateMatcher.ts` に集約する。TS の `networkId / serviceId / eventId` から `EitOnAirResolver.getMirakurunProgramId()` と同じ規則で `programId` を作り、既存 `Recorded.programId` が候補1件に一致する場合、または同一局・許容時刻内・正規化済み番組名一致が候補1件だけの場合に既存録画へソースを追加する。ただし取り込み側と候補側の `programId` が両方あり不一致なら、名前一致より優先して強一致から除外する。時刻だけの一致、候補複数、判定不能は自動追加しない。外部 TS 取り込みで得た `programId` は `Recorded` に保存する。取り込み API は `duplicateAction` の明示指定 (`add` の追加先 / `newRecorded`) を強一致より優先し、自動追加は未指定のときだけ行う。
+
+フォルダー監視はファイル名 / `program.txt` から局を先に推定し、既知の service_id を `TsInfoAnalyzer.analyze(..., { expectedServiceId })` へ渡す。局を推定できない場合だけ TS の service_id を fallback として使う。
+
 ## 注意点・ハマりどころ
 
 ### 環境・ビルド

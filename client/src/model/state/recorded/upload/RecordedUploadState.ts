@@ -342,12 +342,17 @@ class RecordedUploadState implements IRecordedUploadState {
             });
 
             this.importScanResults = result.items.map(item => {
+                const alreadyImported = typeof item.alreadyImportedVideoFileId === 'number';
+                const matchedRecorded = typeof item.matchedRecordedId === 'number';
+                const hasDuplicate = item.duplicateRecordedIds !== undefined && item.duplicateRecordedIds.length > 0;
                 return <ImportScanRowItem>{
                     result: item,
-                    selected: typeof item.duplicateRecordedIds === 'undefined' || item.duplicateRecordedIds.length === 0,
+                    selected: alreadyImported === false && (!hasDuplicate || matchedRecorded),
                     editedName: item.estimatedName ?? item.fileName,
                     editedChannelId: item.estimatedChannelId,
-                    duplicateAction: typeof item.duplicateRecordedIds !== 'undefined' && item.duplicateRecordedIds.length > 0 ? 'skip' : 'newRecorded',
+                    // 重複候補が無い行は選択 UI が出ないので、サーバの判定に任せる (undefined)。
+                    // スキャン後に同一番組が登録された場合もサーバ側で既存番組へ追加される
+                    duplicateAction: matchedRecorded ? 'add' : hasDuplicate ? 'skip' : undefined,
                     mode: 'register',
                 };
             });
@@ -404,10 +409,10 @@ class RecordedUploadState implements IRecordedUploadState {
                 startAt: row.result.estimatedStartAt,
                 endAt: row.result.estimatedEndAt,
                 parentDirectoryName: (this.importParentDirectoryName ?? this.getPrentDirectoryItems()[0]) as string,
-                fileType: 'ts',
+                fileType: /\.(?:ts|m2ts|m2p)$/iu.test(row.result.fileName) ? 'ts' : 'encoded',
                 mode: row.mode,
                 duplicateAction: row.duplicateAction,
-                duplicateRecordedId: row.result.duplicateRecordedIds?.[0],
+                duplicateRecordedId: row.result.matchedRecordedId ?? row.result.duplicateRecordedIds?.[0],
             });
         }
 

@@ -13,6 +13,17 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
+## 2026-09-14
+
+- **外部録画ファイルの再取り込みを除外し、同一番組へソースを自動追加するようにした**: 手動スキャン・取り込み API・フォルダー監視で、`VideoUtil.getFullFilePathFromVideoFile()` が解決する既存 `video_file` の絶対パスと候補の `realpath` を比較するようにした。比較用パスは Windows では区切り文字と大文字小文字を正規化し、macOS / POSIX では `realpath` 後の大文字小文字を保持する。スキャンでは `IVideoFileDB.findAll()` を1回だけ呼び、パス索引で照合する。取り込み済みファイルは手動画面で選択不可・「取り込み済み」表示、監視と API では `skipped` とする
+    - **同一番組判定**: `src/util/ImportDuplicateMatcher.ts` に純粋関数を追加。`(networkId * 100000 + serviceId) * 100000 + eventId` で作る Mirakurun `programId` が既存 `Recorded.programId` と候補1件で一致、または同一局・開始時刻が許容幅内・番組名が全半角 / 囲み文字 / 空白 / 大小文字を正規化後に一致し、候補が1件だけの場合を強一致とする。強一致は番組行を増やさず既存 `recorded` へ `add`。従来の時刻だけの重複、候補複数、判定不能は弱一致として自動追加せず、監視は skip、手動は skip 既定の警告にする
+    - **明示した選択を優先する**: 取り込み API は `duplicateAction` が指定されていればそれに従い、未指定のときだけ強一致を自動で既存録画へ追加する。`add` + `duplicateRecordedId` は自動判定より優先し、`newRecorded` を明示すれば強一致でも新規作成する。手動画面は重複候補の無い行 (選択 UI が出ない行) で `duplicateAction` を送らない。登録済みパスの索引は取り込み 1 バッチにつき 1 回だけ作り、realpath はディレクトリ単位で解決する (1 ファイルごとに全 video_file を realpath すると、ネットワークドライブ上で録画数 × 取り込み数のファイルシステム呼び出しになるため)。同じバッチで同じファイルが重ねて指定されても 1 回しか登録しない
+    - **programId の保存**: 外部取り込み・TS アップロードで TS の識別子が揃う場合、`CreateNewRecordedOption.programId` として保存する。programId の規則は `src/model/api/schedule/EitOnAirResolver.ts` の `getMirakurunProgramId()` と同じものを使用する
+    - **レビュー指摘を反映**: programId が取り込み側・既存候補側の両方にあり不一致なら、番組名が同じでも名前一致の強一致から除外する (重複候補一覧には残す)。番組名の正規化は話数など任意の角括弧を削除せず、`SeriesNormalizer` と共有する放送マーカーだけを除去する。取り込みジョブは登録済みパス索引をジョブ内で共有し、PSI/SI 解析対象拡張子 (`.ts` / `.m2ts` / `.mts` / `.m2t`) は共通定数へ集約する。監視はファイル名 / `program.txt` から局を先に推定し、その service_id を TS 解析へ渡す。`analyze: false` のスキャンと未処理候補が無い監視 tick では登録済みパス索引を構築しない
+    - **実装 / 回帰テスト**: `src/model/operator/recorded/RecordedManageModel.ts`、`src/model/operator/recorded/ImportJobManageModel.ts`、`src/model/operator/recorded/ImportWatchManageModel.ts`、`src/model/api/recorded/RecordedApiModel.ts`、`src/util/ImportDuplicateMatcher.ts`、`src/util/ImportTsFileExtension.ts`、`src/model/series/SeriesNormalizer.ts`、`src/util/StrUtil.ts`、`client/src/model/state/recorded/upload/RecordedUploadState.ts`、`client/src/components/recorded/upload/RecordedImportFields.vue`、`test/ut/import-duplicate-matcher.test.js`、`test/ut/import-watch-manage-model.test.js`、`test/ita/recorded-import-scan-api.test.js`、`test/ita/recorded-import-register.test.js`、`test/ita/recorded-import-ts-analyze.test.js`
+
+- **フォルダー監視が一時的な取り込み失敗を見失う問題を修正した**: `importExternalRecordedFiles()` の結果に `error` がある場合は成功ログを出さず warn とし、`seen` に登録せず再試行する。失敗はメモリ上で最大3回まで再試行し、上限到達後は skip として `seen` に登録する。move モードの `parentDirectoryName` は取り込み元ではなく `config.recorded[0].name` を渡し、register モードは従来どおり importDirs の名前を渡す
+
 ## 2026-09-13
 
 - **ライブ HLS がセグメント 0 本のまま破棄されるときの診断ログを追加した**: in-memory HLS (ライブ・録画) のパッケージング開始後、15秒たっても最初の init またはセグメントが来ない場合に、既存の破棄タイミング・再生挙動を変えず warn ログを出す。ログには rigaya 系の `--input-analyze` / `--input-probesize` と ffmpeg の `-analyzeduration` / `-probesize` が長すぎる可能性を含めた。判定は `src/util/InitialHlsOutputWarning.ts` の純粋関数へ分離し、`test/ut/initial-hls-output-warning.test.js` で初回出力あり/なしを検証する。両 OS の config template と `doc/streaming-refresh.md` / `doc/PROJECT_OVERVIEW.md` に手書き probe の注意と目安 (`1秒 / 200000 byte`) を追記した
@@ -643,6 +654,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 録画ファイルの解析・取り込み
 
+- 外部録画ファイルの取り込み済みパスを除外し、同一番組の強一致を既存録画へのソース追加へ自動変換するようにした
 - tsreplace 出力で `video_file.startAt` が数分ずれる原因だった、ファイル先頭時刻の採用条件を直した
 - tsreplace 出力を含む録画の `video_file.startAt` を最初の映像 PTS の実時刻へ補正し、ニコニコ実況と再生位置 0 秒を同期させた
 - エンコード結果が壊れていても「成功」として登録され、元の TS が消えていたのを直した

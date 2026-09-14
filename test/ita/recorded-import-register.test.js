@@ -6,10 +6,19 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const RecordedManageModel = require('../../dist/model/operator/recorded/RecordedManageModel').default;
+const ImportJobManageModel = require('../../dist/model/operator/recorded/ImportJobManageModel').default;
 
 const mkTmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'epgs18-register-'));
 const noopLogger = { system: { info: () => {}, warn: () => {}, error: () => {} } };
 const logger = { getLogger: () => noopLogger };
+
+const waitUntil = async predicate => {
+    for (let i = 0; i < 200; i++) {
+        if (predicate() === true) return;
+        await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    throw new Error('timeout waiting for condition');
+};
 
 function buildModel({
     config,
@@ -178,6 +187,215 @@ test('duplicateAction "skip" avoids creating a recorded entry and does not run f
     assert.equal(results[0].skipped, true);
     assert.equal(createNewRecordedCalled, false);
     assert.equal(ffprobeCalled, false);
+});
+
+test('register mode skips a file whose resolved path is already in video_file', async () => {
+    const dir = mkTmpDir();
+    const file = path.join(dir, 'sample.ts');
+    fs.writeFileSync(file, 'x');
+    let inserted = false;
+    const config = { importDirs: [{ name: 'edcb', path: dir }], recorded: [{ name: 'recorded', path: dir }] };
+    const model = buildModel({
+        config,
+        videoFileDB: {
+            findAll: async () => [{ id: 9, recordedId: 42, parentDirectoryName: 'edcb', filePath: 'sample.ts' }],
+            insertOnce: async () => ((inserted = true), 100),
+        },
+        recordedDB: { findId: async () => ({ id: 42, thumbnails: [] }) },
+        videoUtil: {
+            getFullFilePathFromVideoFile: () => file,
+            getParentDirPath: () => dir,
+        },
+    });
+
+    const [result] = await model.importExternalRecordedFiles([
+        { localFilePath: file, parentDirectoryName: 'recorded', fileType: 'ts', channelId: 1 },
+    ]);
+
+    assert.equal(result.imported, false);
+    assert.equal(result.skipped, true);
+    assert.equal(inserted, false);
+});
+
+test('strong duplicate automatically adds the source without creating a recorded entry', async () => {
+    const dir = mkTmpDir();
+    const file = path.join(dir, 'sample.ts');
+    fs.writeFileSync(file, 'x');
+    const tsInfo = Object.assign(emptyTsInfo(), {
+        networkId: 1,
+        serviceId: 2,
+        eventId: 3,
+        eventName: '番組A',
+        eventStartAt: 1800000000000,
+        eventDuration: 1800,
+    });
+    let insertedRecorded = false;
+    let insertedVideoFile = false;
+    const model = buildModel({
+        config: { importDirs: [{ name: 'edcb', path: dir }], recorded: [{ name: 'recorded', path: dir }] },
+        recordedDB: {
+            findId: async () => ({ id: 42, thumbnails: [] }),
+            findDuplicateCandidates: async () => [
+                {
+                    id: 42,
+                    channelId: 1,
+                    startAt: tsInfo.eventStartAt,
+                    name: '番組A',
+                    programId: 10000200003,
+                },
+            ],
+            insertOnce: async () => ((insertedRecorded = true), 50),
+        },
+        videoFileDB: {
+            findAll: async () => [],
+            insertOnce: async () => ((insertedVideoFile = true), 100),
+        },
+        channelDB: {
+            findId: async () => ({ serviceId: 2 }),
+            findNetworkIdAndServiceId: async () => ({ id: 1 }),
+        },
+        tsInfoAnalyzer: { analyze: async () => tsInfo },
+        videoUtil: { getFullFilePathFromVideoFile: () => null, getParentDirPath: () => dir },
+    });
+
+    const [result] = await model.importExternalRecordedFiles([
+        { localFilePath: file, parentDirectoryName: 'recorded', fileType: 'ts', channelId: 1 },
+    ]);
+
+    assert.equal(result.imported, true);
+    assert.equal(result.recordedId, 42);
+    assert.equal(insertedRecorded, false);
+    assert.equal(insertedVideoFile, true);
+});
+
+/**
+ * 強い一致 (programId 一致) になる取り込みモデルを組み立てる
+ */
+const buildStrongDuplicateModel = () => {
+    const dir = mkTmpDir();
+    const file = path.join(dir, 'sample.ts');
+    fs.writeFileSync(file, 'x');
+    const tsInfo = Object.assign(emptyTsInfo(), {
+        networkId: 1,
+        serviceId: 2,
+        eventId: 3,
+        eventName: '番組A',
+        eventStartAt: 1800000000000,
+        eventDuration: 1800,
+    });
+    const state = { insertedRecorded: 0, insertedVideoFile: 0 };
+    const model = buildModel({
+        config: { importDirs: [{ name: 'edcb', path: dir }], recorded: [{ name: 'recorded', path: dir }] },
+        recordedDB: {
+            findId: async id => ({ id, thumbnails: [] }),
+            findDuplicateCandidates: async () => [
+                { id: 42, channelId: 1, startAt: tsInfo.eventStartAt, name: '番組A', programId: 10000200003 },
+            ],
+            insertOnce: async () => (state.insertedRecorded++, 50),
+        },
+        videoFileDB: {
+            findAll: async () => [],
+            insertOnce: async () => (state.insertedVideoFile++, 100),
+        },
+        channelDB: {
+            findId: async () => ({ serviceId: 2 }),
+            findNetworkIdAndServiceId: async () => ({ id: 1 }),
+        },
+        tsInfoAnalyzer: { analyze: async () => tsInfo },
+        videoUtil: { getFullFilePathFromVideoFile: () => null, getParentDirPath: () => dir },
+    });
+
+    return { model, file, state };
+};
+
+test('explicit duplicateAction "newRecorded" is respected even when a strong duplicate exists', async () => {
+    const { model, file, state } = buildStrongDuplicateModel();
+
+    const [result] = await model.importExternalRecordedFiles([
+        {
+            localFilePath: file,
+            parentDirectoryName: 'recorded',
+            fileType: 'ts',
+            channelId: 1,
+            duplicateAction: 'newRecorded',
+        },
+    ]);
+
+    assert.equal(result.imported, true);
+    assert.equal(result.recordedId, 50);
+    assert.equal(state.insertedRecorded, 1);
+});
+
+test('explicit duplicateAction "add" keeps the chosen recordedId over the automatic match', async () => {
+    const { model, file, state } = buildStrongDuplicateModel();
+
+    const [result] = await model.importExternalRecordedFiles([
+        {
+            localFilePath: file,
+            parentDirectoryName: 'recorded',
+            fileType: 'ts',
+            channelId: 1,
+            duplicateAction: 'add',
+            duplicateRecordedId: 7,
+        },
+    ]);
+
+    assert.equal(result.recordedId, 7);
+    assert.equal(state.insertedRecorded, 0);
+});
+
+test('the same file listed twice in one batch is registered only once', async () => {
+    const { model, file, state } = buildStrongDuplicateModel();
+    const item = { localFilePath: file, parentDirectoryName: 'recorded', fileType: 'ts', channelId: 1 };
+
+    const results = await model.importExternalRecordedFiles([item, { ...item }]);
+
+    assert.equal(results[0].imported, true);
+    assert.equal(results[1].imported, false);
+    assert.equal(results[1].skipped, true);
+    assert.equal(state.insertedVideoFile, 1);
+});
+
+test('取り込みジョブは登録済み video_file の索引を 3 件で 1 回だけ構築する', async () => {
+    const dir = mkTmpDir();
+    const files = ['a.ts', 'b.ts', 'c.ts'].map(name => path.join(dir, name));
+    for (const file of files) fs.writeFileSync(file, 'x');
+
+    let findAllCount = 0;
+    const model = buildModel({
+        config: {
+            importDirs: [{ name: 'edcb', path: dir }],
+            recorded: [{ name: 'recorded', path: dir }],
+            importDefaultMode: 'register',
+        },
+        videoFileDB: {
+            findAll: async () => {
+                findAllCount++;
+
+                return [];
+            },
+            insertOnce: async () => findAllCount + 100,
+        },
+        recordedDB: {
+            insertOnce: async () => 1,
+            findId: async () => ({ id: 1, thumbnails: [] }),
+        },
+    });
+    const job = new ImportJobManageModel(logger, model);
+    const jobId = job.start(
+        files.map(file => ({
+            localFilePath: file,
+            parentDirectoryName: 'recorded',
+            fileType: 'ts',
+            channelId: 1,
+            startAt: 1800000000000,
+            endAt: 1800000001000,
+        })),
+    );
+
+    await waitUntil(() => job.getStatus(jobId).isRunning === false);
+    assert.equal(job.getStatus(jobId).successCount, 3);
+    assert.equal(findAllCount, 1);
 });
 
 test('move mode relocates the file into the recorded directory via addUploadedVideoFile', async () => {

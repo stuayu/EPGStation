@@ -42,7 +42,7 @@ export interface ImportScanRowItem {
     selected: boolean;
     editedName: string;
     editedChannelId: apid.ChannelId | undefined;
-    duplicateAction: apid.ImportDuplicateAction;
+    duplicateAction: apid.ImportDuplicateAction | undefined;
     mode: apid.ImportMode;
 }
 

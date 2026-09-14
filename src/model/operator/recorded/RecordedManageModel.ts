@@ -26,17 +26,25 @@ import ImportPathValidator from '../../recorded/import/ImportPathValidator';
 import IRecordedManageModel, {
     AddVideoFileOption,
     ImportedExternalRecordedFileOption,
+    ImportedExternalRecordedFileContext,
     ImportedExternalRecordedFileResult,
     UploadedVideoFileOption,
 } from './IRecordedManageModel';
 import IRecordingUtilModel from '../recording/IRecordingUtilModel';
 import ITsInfoAnalyzer, { TsInfo } from '../../recorded/ts/ITsInfoAnalyzer';
 import IVideoFileAnalyzeModel from '../../video/IVideoFileAnalyzeModel';
+import {
+    buildImportedVideoFilePathIndex,
+    getImportProgramId,
+    ImportedVideoFilePath,
+    matchImportDuplicate,
+    normalizeImportFilePath,
+} from '../../../util/ImportDuplicateMatcher';
+import { isImportTsFile } from '../../../util/ImportTsFileExtension';
 
 @injectable()
 class RecordedManageModel implements IRecordedManageModel {
-    // PSI/SI を保持しうる拡張子 (tsreplace 出力のように fileType が encoded でも .ts なら解析できる)
-    private static readonly TS_FILE_EXTENSION = '.ts';
+    private static readonly DUPLICATE_TOLERANCE_MS = 5 * 60 * 1000;
 
     private log: ILogger;
     private config: IConfigFile;
@@ -466,7 +474,7 @@ class RecordedManageModel implements IRecordedManageModel {
         // PSI/SI を保持しているため、番組情報を取り出せる。
         // 完全な再マルチプレクス (.mp4/.mkv 等) には PSI/SI が無いので画面から入力してもらう
         const name = option.fileName ?? path.basename(filePath);
-        if (path.extname(name).toLowerCase() !== RecordedManageModel.TS_FILE_EXTENSION) {
+        if (isImportTsFile(name) === false) {
             throw new Error('RecordedIdIsRequired');
         }
 
@@ -526,6 +534,10 @@ class RecordedManageModel implements IRecordedManageModel {
      * @param tsInfo: TsInfo TS 解析結果
      */
     private static applyTsInfoToCreateOption(createOption: apid.CreateNewRecordedOption, tsInfo: TsInfo): void {
+        const programId = getImportProgramId(tsInfo);
+        if (programId !== null) {
+            createOption.programId = programId;
+        }
         if (tsInfo.eventDescription !== null) {
             createOption.description = tsInfo.eventDescription;
         }
@@ -609,9 +621,15 @@ class RecordedManageModel implements IRecordedManageModel {
      */
     public async importExternalRecordedFiles(
         options: ImportedExternalRecordedFileOption[],
+        context?: ImportedExternalRecordedFileContext,
     ): Promise<ImportedExternalRecordedFileResult[]> {
         const importDirs = this.config.importDirs ?? [];
         const results: ImportedExternalRecordedFileResult[] = [];
+        // 登録済みパスはバッチまたはジョブの先頭で 1 回だけ集める
+        const importedPathSet =
+            typeof context === 'undefined'
+                ? await this.getImportedVideoFilePathSet()
+                : (context.importedPathSet ??= await this.getImportedVideoFilePathSet());
 
         for (const option of options) {
             let recordedId: apid.RecordedId | null = null;
@@ -629,8 +647,16 @@ class RecordedManageModel implements IRecordedManageModel {
                     throw new Error('ExternalFileIsNotFile');
                 }
 
+                // register モードで同じ実ファイルを再登録しない。move モードからの再呼び出しも防ぐ。
+                const normalizedRealPath = normalizeImportFilePath(resolved.realPath);
+                if (importedPathSet.has(normalizedRealPath)) {
+                    results.push({ localFilePath: option.localFilePath, imported: false, skipped: true });
+                    continue;
+                }
+
                 const parsed = path.parse(resolved.realPath);
-                const duplicateAction = option.duplicateAction ?? 'newRecorded';
+                // 未指定 = サーバの判定に任せる (強い一致なら既存番組へ追加、それ以外は新規作成)
+                const duplicateAction = option.duplicateAction;
 
                 // 重複としてスキップする場合は動画情報の解析すら行わず早期リターンする (ffprobe のコスト削減)
                 if (duplicateAction === 'skip') {
@@ -653,6 +679,21 @@ class RecordedManageModel implements IRecordedManageModel {
                         ? option.name
                         : (tsInfo?.eventName ?? parsed.name);
 
+                const channelId = await this.resolveImportChannelId(option, tsInfo);
+                const duplicateCandidates =
+                    typeof this.recordedDB.findDuplicateCandidates === 'function'
+                        ? await this.recordedDB.findDuplicateCandidates(
+                              channelId,
+                              startAt,
+                              RecordedManageModel.DUPLICATE_TOLERANCE_MS,
+                          )
+                        : [];
+                const duplicateMatch = matchImportDuplicate(
+                    { channelId, startAt, name, tsInfo },
+                    duplicateCandidates,
+                    RecordedManageModel.DUPLICATE_TOLERANCE_MS,
+                );
+
                 let endAt = option.endAt;
                 if (typeof endAt !== 'number') {
                     if (tsInfo !== null && tsInfo.eventDuration !== null) {
@@ -664,10 +705,15 @@ class RecordedManageModel implements IRecordedManageModel {
                 }
 
                 if (duplicateAction === 'add' && typeof option.duplicateRecordedId === 'number') {
+                    // 画面で明示された追加先を最優先する (強い一致の自動判定で別の番組へ付け替えない)
                     recordedId = option.duplicateRecordedId;
+                } else if (typeof duplicateAction === 'undefined' && duplicateMatch.matchedRecordedId !== null) {
+                    // 強い一致は番組行を増やさず、既存番組へソースだけ追加する。
+                    // 利用者が明示的に newRecorded を選んだ場合は従わない
+                    recordedId = duplicateMatch.matchedRecordedId;
                 } else {
                     const createOption: apid.CreateNewRecordedOption = {
-                        channelId: await this.resolveImportChannelId(option, tsInfo),
+                        channelId,
                         startAt,
                         endAt,
                         name,
@@ -724,6 +770,8 @@ class RecordedManageModel implements IRecordedManageModel {
                     this.recordedEvent.emitAddUploadedVideoFile(videoFileId, needsCreateThumbnail, recordedId);
                 }
 
+                // 同じバッチ内で同じファイルが重ねて指定されても二重登録しない
+                importedPathSet.add(normalizedRealPath);
                 results.push({ localFilePath: option.localFilePath, imported: true, recordedId, name });
             } catch (err: any) {
                 // 新規作成した recorded がある場合のみロールバックする。register モードでは実ファイルは一切操作していないため安全
@@ -753,7 +801,7 @@ class RecordedManageModel implements IRecordedManageModel {
         // tsreplace 系 (映像だけ差し替え済みで出力拡張子は .ts のまま) は fileType が encoded でも
         // PSI/SI を保持しており、放送局・番組情報と firstTdtAt (実況同期に使う開始時刻) を取り出せる。
         // 完全な再マルチプレクス (.mp4/.mkv 等) には PSI/SI が無いので解析しない
-        if (path.extname(filePath).toLowerCase() !== RecordedManageModel.TS_FILE_EXTENSION) {
+        if (isImportTsFile(filePath) === false) {
             return null;
         }
 
@@ -832,6 +880,24 @@ class RecordedManageModel implements IRecordedManageModel {
     }
 
     /**
+     * 登録済み video_file の比較用パス集合を作る (取り込み 1 バッチにつき 1 回だけ呼ぶ)
+     * @return Promise<Set<string>> normalizeImportFilePath() 済みのパス集合
+     */
+    private async getImportedVideoFilePathSet(): Promise<Set<string>> {
+        if (typeof this.videoFileDB.findAll !== 'function') return new Set();
+
+        const files: ImportedVideoFilePath[] = [];
+        for (const video of await this.videoFileDB.findAll()) {
+            const filePath = this.videoUtil.getFullFilePathFromVideoFile(video);
+            if (filePath !== null) {
+                files.push({ filePath, videoFileId: video.id, recordedId: video.recordedId });
+            }
+        }
+
+        return new Set((await buildImportedVideoFilePathIndex(files)).keys());
+    }
+
+    /**
      * 録画番組情報を新規作成
      * @param option: apid.CreateNewRecordedOption
      * @return Promise<apid.RecordedId>
@@ -842,6 +908,9 @@ class RecordedManageModel implements IRecordedManageModel {
         const recorded = new Recorded();
         recorded.isRecording = false;
         recorded.isProtected = false;
+        if (typeof option.programId !== 'undefined') {
+            recorded.programId = option.programId;
+        }
         if (typeof option.ruleId !== 'undefined') {
             recorded.ruleId = option.ruleId;
         }

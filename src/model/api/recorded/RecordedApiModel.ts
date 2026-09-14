@@ -4,6 +4,7 @@ import * as apid from '../../../../api';
 import FileUtil from '../../../util/FileUtil';
 import IChannelDB from '../../db/IChannelDB';
 import IRecordedDB, { FindAllOption } from '../../db/IRecordedDB';
+import IVideoFileDB from '../../db/IVideoFileDB';
 import IWatchHistoryDB from '../../db/IWatchHistoryDB';
 import ISeriesDB from '../../db/ISeriesDB';
 import IVideoFileTsInfoDB from '../../db/IVideoFileTsInfoDB';
@@ -18,7 +19,15 @@ import ImportPathValidator from '../../recorded/import/ImportPathValidator';
 import IEncodeManageModel from '../../service/encode/IEncodeManageModel';
 import { UploadedVideoFileOption } from '../../operator/recorded/IRecordedManageModel';
 import ITsInfoAnalyzer, { TsInfo } from '../../recorded/ts/ITsInfoAnalyzer';
+import IVideoUtil from '../video/IVideoUtil';
 import IRecordedItemUtil from '../IRecordedItemUtil';
+import {
+    buildImportedVideoFilePathIndex,
+    ImportedVideoFilePath,
+    matchImportDuplicate,
+    normalizeImportFilePath,
+} from '../../../util/ImportDuplicateMatcher';
+import { isImportTsFile } from '../../../util/ImportTsFileExtension';
 import IRecordedApiModel, { NextUpOption, NextUpResult } from './IRecordedApiModel';
 
 @injectable()
@@ -33,6 +42,8 @@ export default class RecordedApiModel implements IRecordedApiModel {
     private channelDB?: IChannelDB;
     private tsInfoAnalyzer?: ITsInfoAnalyzer;
     private videoFileTsInfoDB?: IVideoFileTsInfoDB;
+    private videoFileDB?: IVideoFileDB;
+    private videoUtil?: IVideoUtil;
 
     constructor(
         @inject('IIPCClient') ipc: IIPCClient,
@@ -45,6 +56,8 @@ export default class RecordedApiModel implements IRecordedApiModel {
         @inject('IChannelDB') channelDB?: IChannelDB,
         @inject('ITsInfoAnalyzer') tsInfoAnalyzer?: ITsInfoAnalyzer,
         @inject('IVideoFileTsInfoDB') videoFileTsInfoDB?: IVideoFileTsInfoDB,
+        @inject('IVideoFileDB') videoFileDB?: IVideoFileDB,
+        @inject('IVideoUtil') videoUtil?: IVideoUtil,
     ) {
         this.recordedDB = recordedDB;
         this.ipc = ipc;
@@ -56,6 +69,8 @@ export default class RecordedApiModel implements IRecordedApiModel {
         this.channelDB = channelDB;
         this.tsInfoAnalyzer = tsInfoAnalyzer;
         this.videoFileTsInfoDB = videoFileTsInfoDB;
+        this.videoFileDB = videoFileDB;
+        this.videoUtil = videoUtil;
     }
 
     /**
@@ -265,11 +280,12 @@ export default class RecordedApiModel implements IRecordedApiModel {
         }
 
         const candidates = await ImportDirectoryScanner.scan(resolvedDir.realPath, option.recursive ?? true);
-        const channels = await this.channelDB.findAll();
 
         // analyze を false にすると TS 解析・重複判定を行わずファイルの列挙だけを返す
         // (アップロード画面でサーバー上のファイルを選ぶだけの用途では番組情報の推定が不要なため)
         const analyze = option.analyze !== false;
+        const channels = analyze === true ? await this.channelDB.findAll() : [];
+        const importedPathIndex = analyze === true ? await this.getImportedVideoFilePathIndex() : new Map();
 
         const items: apid.ImportScanResultItem[] = [];
         for (const candidate of candidates) {
@@ -277,6 +293,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
                 analyze === true
                     ? await this.toScanResultItem(candidate, channels)
                     : await RecordedApiModel.toFileListItem(candidate);
+            this.applyAlreadyImportedInfo(item, candidate.filePath, importedPathIndex);
             items.push(item);
         }
 
@@ -315,7 +332,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
      */
     private async analyzeTsInfoForScan(filePath: string): Promise<TsInfo | null> {
         // TS 以外の拡張子には PSI/SI が無い
-        if (RecordedApiModel.TS_EXTENSIONS.includes(path.extname(filePath).toLowerCase()) === false) {
+        if (isImportTsFile(filePath) === false) {
             return null;
         }
         if (typeof this.tsInfoAnalyzer === 'undefined') {
@@ -429,6 +446,7 @@ export default class RecordedApiModel implements IRecordedApiModel {
         }
 
         let duplicateRecordedIds: apid.RecordedId[] | undefined;
+        let matchedRecordedId: apid.RecordedId | undefined;
         if (typeof channel !== 'undefined' && typeof startAt === 'number') {
             const duplicates = await this.recordedDB.findDuplicateCandidates(
                 channel.id,
@@ -437,6 +455,12 @@ export default class RecordedApiModel implements IRecordedApiModel {
             );
             if (duplicates.length > 0) {
                 duplicateRecordedIds = duplicates.map(d => d.id);
+                const match = matchImportDuplicate(
+                    { channelId: channel.id, startAt, name: name ?? '', tsInfo },
+                    duplicates,
+                    RecordedApiModel.DUPLICATE_TOLERANCE_MS,
+                );
+                if (match.matchedRecordedId !== null) matchedRecordedId = match.matchedRecordedId;
             }
         }
 
@@ -469,8 +493,47 @@ export default class RecordedApiModel implements IRecordedApiModel {
         if (typeof dropCount === 'number') item.dropCount = dropCount;
         if (typeof scramblingCount === 'number') item.scramblingCount = scramblingCount;
         if (typeof duplicateRecordedIds !== 'undefined') item.duplicateRecordedIds = duplicateRecordedIds;
+        if (typeof matchedRecordedId !== 'undefined') item.matchedRecordedId = matchedRecordedId;
 
         return item;
+    }
+
+    /**
+     * 登録済み video_file の実パス索引を1回で作る。
+     * @return Promise<Map<string, ImportedVideoFilePath>>
+     */
+    private async getImportedVideoFilePathIndex(): Promise<Map<string, ImportedVideoFilePath>> {
+        const videoFileDB = this.videoFileDB;
+        const videoUtil = this.videoUtil;
+        if (typeof videoFileDB === 'undefined' || typeof videoUtil === 'undefined') return new Map();
+
+        const files: ImportedVideoFilePath[] = [];
+        for (const videoFile of await videoFileDB.findAll()) {
+            const filePath = videoUtil.getFullFilePathFromVideoFile(videoFile);
+            if (filePath !== null) {
+                files.push({ filePath, videoFileId: videoFile.id, recordedId: videoFile.recordedId });
+            }
+        }
+
+        return await buildImportedVideoFilePathIndex(files);
+    }
+
+    /**
+     * スキャン結果へ取り込み済み情報を付ける。
+     * @param item: apid.ImportScanResultItem スキャン結果
+     * @param candidatePath: string 候補ファイルの実パス
+     * @param index: Map<string, ImportedVideoFilePath> 既存パス索引
+     */
+    private applyAlreadyImportedInfo(
+        item: apid.ImportScanResultItem,
+        candidatePath: string,
+        index: Map<string, ImportedVideoFilePath>,
+    ): void {
+        const value = index.get(normalizeImportFilePath(candidatePath));
+        if (typeof value !== 'undefined') {
+            item.alreadyImportedVideoFileId = value.videoFileId;
+            item.alreadyImportedRecordedId = value.recordedId;
+        }
     }
 
     /**
@@ -658,6 +721,4 @@ export default class RecordedApiModel implements IRecordedApiModel {
     private static readonly DUPLICATE_TOLERANCE_MS = 5 * 60 * 1000;
     // スキャンでは候補が多いこともあるため、1 件あたりの TS 解析は短めで打ち切る
     private static readonly SCAN_TS_ANALYZE_TIMEOUT_MS = 10 * 1000;
-    // TS の PSI/SI を持ちうる拡張子
-    private static readonly TS_EXTENSIONS = ['.ts', '.m2ts', '.mts', '.m2t'];
 }

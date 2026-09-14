@@ -12,6 +12,18 @@ import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IRecordedManageModel from './IRecordedManageModel';
 import IImportWatchManageModel from './IImportWatchManageModel';
+import IVideoFileDB from '../../db/IVideoFileDB';
+import IVideoUtil from '../../api/video/IVideoUtil';
+import ITsInfoAnalyzer, { TsInfo } from '../../recorded/ts/ITsInfoAnalyzer';
+import {
+    buildImportedVideoFilePathIndex,
+    ImportedVideoFilePath,
+    matchImportDuplicate,
+    normalizeImportFilePath,
+} from '../../../util/ImportDuplicateMatcher';
+import { isImportTsFile } from '../../../util/ImportTsFileExtension';
+
+type ImportCandidateOutcome = 'imported' | 'skipped' | 'failed';
 
 /**
  * config.importWatch が有効な場合に importDirs を定期的に走査し、新規ファイルを自動で取り込む
@@ -23,11 +35,15 @@ export default class ImportWatchManageModel implements IImportWatchManageModel {
     private channelDB: IChannelDB;
     private recordedDB: IRecordedDB;
     private recordedManage: IRecordedManageModel;
+    private tsInfoAnalyzer?: ITsInfoAnalyzer;
+    private videoFileDB?: IVideoFileDB;
+    private videoUtil?: IVideoUtil;
 
     private timer: NodeJS.Timeout | null = null;
     private seen: Set<string> = new Set();
     private isTicking: boolean = false;
     private readonly seenFilePath: string;
+    private retryAttempts: Map<string, number> = new Map();
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -35,12 +51,18 @@ export default class ImportWatchManageModel implements IImportWatchManageModel {
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IRecordedDB') recordedDB: IRecordedDB,
         @inject('IRecordedManageModel') recordedManage: IRecordedManageModel,
+        @inject('ITsInfoAnalyzer') tsInfoAnalyzer?: ITsInfoAnalyzer,
+        @inject('IVideoFileDB') videoFileDB?: IVideoFileDB,
+        @inject('IVideoUtil') videoUtil?: IVideoUtil,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
         this.channelDB = channelDB;
         this.recordedDB = recordedDB;
         this.recordedManage = recordedManage;
+        this.tsInfoAnalyzer = tsInfoAnalyzer;
+        this.videoFileDB = videoFileDB;
+        this.videoUtil = videoUtil;
         this.seenFilePath = path.join(__dirname, '..', '..', '..', '..', 'data', ImportWatchManageModel.FILE_NAME);
     }
 
@@ -94,6 +116,7 @@ export default class ImportWatchManageModel implements IImportWatchManageModel {
         try {
             const importDirs = this.config.importDirs ?? [];
             const channels = await this.channelDB.findAll();
+            let importedPathIndex: Set<string> | null = null;
 
             for (const dir of importDirs) {
                 const candidates = await ImportDirectoryScanner.scan(dir.path, true);
@@ -103,12 +126,20 @@ export default class ImportWatchManageModel implements IImportWatchManageModel {
                         continue;
                     }
 
-                    await this.importCandidate(candidate, channels).catch(err => {
+                    // 未処理候補が見つかった場合だけ索引を構築し、同一 tick 内で共有する。
+                    importedPathIndex ??= await this.getImportedVideoFilePathIndex();
+                    const outcome = await this.importCandidate(candidate, channels, importedPathIndex).catch(err => {
+                        const nextRetryCount = (this.retryAttempts.get(candidate.filePath) ?? 0) + 1;
+                        this.retryAttempts.set(candidate.filePath, nextRetryCount);
                         this.log.system.warn(`import watch: failed to import ${candidate.filePath}`);
                         this.log.system.warn(err);
+
+                        return 'failed' as const;
                     });
 
-                    this.seen.add(candidate.filePath);
+                    if (outcome !== 'failed') {
+                        this.seen.add(candidate.filePath);
+                    }
                 }
             }
 
@@ -123,8 +154,23 @@ export default class ImportWatchManageModel implements IImportWatchManageModel {
      */
     private async importCandidate(
         candidate: ImportDirectoryScanner.CandidateFile,
-        channels: { id: number; name: string; halfWidthName: string }[],
-    ): Promise<void> {
+        channels: { id: number; name: string; halfWidthName: string; serviceId: number }[],
+        importedPathIndex: Set<string> = new Set(),
+    ): Promise<ImportCandidateOutcome> {
+        const retryCount = this.retryAttempts.get(candidate.filePath) ?? 0;
+        if (retryCount >= ImportWatchManageModel.MAX_RETRY_ATTEMPTS) {
+            this.log.system.warn(`import watch: retry limit reached, skip: ${candidate.filePath}`);
+
+            return 'skipped';
+        }
+
+        if (importedPathIndex.has(normalizeImportFilePath(candidate.filePath))) {
+            this.log.system.info(`import watch: already imported, skip: ${candidate.filePath}`);
+            this.retryAttempts.delete(candidate.filePath);
+
+            return 'skipped';
+        }
+
         const parsedName = path.parse(candidate.fileName);
         let name = parsedName.name;
         let channelName: string | undefined;
@@ -149,19 +195,47 @@ export default class ImportWatchManageModel implements IImportWatchManageModel {
             }
         }
 
-        if (typeof channelName === 'undefined') {
-            this.log.system.info(`import watch: channel could not be estimated, skip: ${candidate.filePath}`);
+        // ファイル名 / program.txt から局を先に求め、分かれば TS 解析の対象 service_id を固定する。
+        let channel =
+            typeof channelName === 'string'
+                ? channels.find(
+                      c =>
+                          c.name === channelName ||
+                          c.halfWidthName === channelName ||
+                          c.name.includes(channelName as string),
+                  )
+                : undefined;
+        const expectedServiceId = channel?.serviceId ?? null;
+        const tsInfo = await this.analyzeTsInfo(candidate.filePath, expectedServiceId);
+        if (tsInfo?.eventName !== null && typeof tsInfo?.eventName === 'string') name = tsInfo.eventName;
+        if (tsInfo?.serviceName !== null && typeof tsInfo?.serviceName === 'string') channelName = tsInfo.serviceName;
+        if (tsInfo?.eventStartAt !== null && typeof tsInfo?.eventStartAt === 'number') startAt = tsInfo.eventStartAt;
 
-            return;
+        let tsChannel: { id: number; name: string; halfWidthName: string; serviceId: number } | null = null;
+        if (tsInfo !== null && tsInfo.networkId !== null && tsInfo.serviceId !== null) {
+            tsChannel = await this.channelDB
+                .findNetworkIdAndServiceId(tsInfo.networkId, tsInfo.serviceId)
+                .catch(() => null);
+        }
+        if (typeof channel !== 'undefined' && tsInfo?.serviceId !== null && typeof tsInfo?.serviceId === 'number') {
+            if (channel.serviceId !== tsInfo.serviceId || (tsChannel !== null && tsChannel.id !== channel.id)) {
+                this.log.system.warn(`import watch: channel metadata mismatch, skip: ${candidate.filePath}`);
+
+                return 'skipped';
+            }
+        } else if (typeof channel === 'undefined' && tsChannel !== null) {
+            channel = tsChannel;
+        }
+        if (typeof channel === 'undefined' && typeof channelName === 'string') {
+            channel = channels.find(
+                c => c.name === channelName || c.halfWidthName === channelName || c.name.includes(channelName as string),
+            );
         }
 
-        const channel = channels.find(
-            c => c.name === channelName || c.halfWidthName === channelName || c.name.includes(channelName as string),
-        );
         if (typeof channel === 'undefined') {
-            this.log.system.info(`import watch: channel "${channelName}" not found, skip: ${candidate.filePath}`);
+            this.log.system.info(`import watch: channel could not be estimated, skip: ${candidate.filePath}`);
 
-            return;
+            return 'skipped';
         }
 
         if (typeof startAt !== 'number') {
@@ -169,40 +243,103 @@ export default class ImportWatchManageModel implements IImportWatchManageModel {
             startAt = Math.floor(stats.mtimeMs);
         }
 
-        // 重複チェック (5 分以内の同一チャンネル番組が既にあれば取り込まない)
+        // 局・時刻の候補から強一致だけ既存番組へ追加し、弱一致は従来どおり取り込まない。
         const duplicates = await this.recordedDB.findDuplicateCandidates(
             channel.id,
             startAt,
             ImportWatchManageModel.DUPLICATE_TOLERANCE_MS,
         );
-        if (duplicates.length > 0) {
+        const match = matchImportDuplicate(
+            { channelId: channel.id, startAt, name, tsInfo },
+            duplicates,
+            ImportWatchManageModel.DUPLICATE_TOLERANCE_MS,
+        );
+        if (match.matchedRecordedId === null && duplicates.length > 0) {
             this.log.system.info(`import watch: duplicate detected, skip: ${candidate.filePath}`);
 
-            return;
+            return 'skipped';
         }
 
         const importDirs = this.config.importDirs ?? [];
         const dirName = importDirs[0]?.name;
         if (typeof dirName === 'undefined') {
-            return;
+            return 'skipped';
         }
 
         const ext = path.extname(candidate.fileName).toLowerCase();
-        const fileType = ext === '.ts' || ext === '.m2ts' || ext === '.m2p' ? 'ts' : 'encoded';
+        const fileType = isImportTsFile(candidate.fileName) || ext === '.m2p' ? 'ts' : 'encoded';
+        const mode = this.config.importDefaultMode ?? 'register';
+        const parentDirectoryName = mode === 'move' ? this.config.recorded?.[0]?.name : dirName;
 
-        await this.recordedManage.importExternalRecordedFiles([
+        const [result] = await this.recordedManage.importExternalRecordedFiles([
             {
                 localFilePath: candidate.filePath,
-                parentDirectoryName: dirName,
+                parentDirectoryName: parentDirectoryName ?? '',
                 fileType,
                 channelId: channel.id,
-                mode: this.config.importDefaultMode ?? 'register',
+                mode,
                 name,
                 startAt,
+                duplicateAction: match.matchedRecordedId === null ? undefined : 'add',
+                duplicateRecordedId: match.matchedRecordedId ?? undefined,
             },
         ]);
 
-        this.log.system.info(`import watch: imported ${candidate.filePath}`);
+        if (result?.imported === true) {
+            this.retryAttempts.delete(candidate.filePath);
+            this.log.system.info(`import watch: imported ${candidate.filePath}`);
+
+            return 'imported';
+        }
+
+        if (typeof result?.error === 'string') {
+            const nextRetryCount = retryCount + 1;
+            this.retryAttempts.set(candidate.filePath, nextRetryCount);
+            this.log.system.warn(
+                `import watch: import failed (${nextRetryCount}/${ImportWatchManageModel.MAX_RETRY_ATTEMPTS}): ${candidate.filePath}: ${result.error}`,
+            );
+
+            return 'failed';
+        }
+
+        this.retryAttempts.delete(candidate.filePath);
+        this.log.system.info(`import watch: skipped ${candidate.filePath}`);
+
+        return 'skipped';
+    }
+
+    /**
+     * 監視対象 TS の PSI/SI を解析する。
+     * @param filePath: string TS ファイルパス
+     * @return Promise<TsInfo | null> 解析できない場合は null
+     */
+    private async analyzeTsInfo(filePath: string, expectedServiceId: number | null): Promise<TsInfo | null> {
+        if (isImportTsFile(filePath) === false || typeof this.tsInfoAnalyzer === 'undefined') return null;
+
+        return await (expectedServiceId === null
+            ? this.tsInfoAnalyzer.analyze(filePath)
+            : this.tsInfoAnalyzer.analyze(filePath, { expectedServiceId })
+        ).catch(() => null);
+    }
+
+    /**
+     * 登録済み video_file の実パスを一括で取得する。
+     * @return Promise<Set<string>> 比較用に正規化したパス集合
+     */
+    private async getImportedVideoFilePathIndex(): Promise<Set<string>> {
+        const videoFileDB = this.videoFileDB;
+        const videoUtil = this.videoUtil;
+        if (typeof videoFileDB === 'undefined' || typeof videoUtil === 'undefined') return new Set();
+
+        const files: ImportedVideoFilePath[] = [];
+        for (const videoFile of await videoFileDB.findAll()) {
+            const filePath = videoUtil.getFullFilePathFromVideoFile(videoFile);
+            if (filePath !== null) {
+                files.push({ filePath, videoFileId: videoFile.id, recordedId: videoFile.recordedId });
+            }
+        }
+
+        return new Set((await buildImportedVideoFilePathIndex(files)).keys());
     }
 
     private async loadSeen(): Promise<void> {
@@ -227,4 +364,6 @@ export default class ImportWatchManageModel implements IImportWatchManageModel {
     private static readonly FILE_NAME = 'importWatchSeen.json';
     // 重複とみなす時刻の許容誤差 (ms)
     private static readonly DUPLICATE_TOLERANCE_MS = 5 * 60 * 1000;
+    // DB / ファイルシステムの一時障害を再試行するが、監視ログを無限に増やさない
+    private static readonly MAX_RETRY_ATTEMPTS = 3;
 }

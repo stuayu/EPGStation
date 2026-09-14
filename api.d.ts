@@ -1426,6 +1426,8 @@ export interface UploadVideoFileResult {
  * 新規追加する録画番組情報
  */
 export interface CreateNewRecordedOption {
+    // TS の networkId/serviceId/eventId から得た Mirakurun program ID
+    programId?: ProgramId;
     ruleId?: RuleId;
     channelId: ChannelId;
     startAt: UnixtimeMS;
@@ -1524,6 +1526,11 @@ export interface ImportScanResultItem {
     dropCount?: number;
     scramblingCount?: number;
     duplicateRecordedIds?: RecordedId[];
+    // 強い一致で自動追加する既存録画。弱い一致の場合は設定されない
+    matchedRecordedId?: RecordedId;
+    // 既存 video_file と実パスが一致した場合の登録済み情報
+    alreadyImportedVideoFileId?: VideoFileId;
+    alreadyImportedRecordedId?: RecordedId;
 }
 
 /**
@@ -1551,6 +1558,7 @@ export interface ImportRegisterItem {
     subDirectory?: string;
     fileType: VideoFileType;
     mode?: ImportMode;
+    /** 未指定なら同一番組の強一致で既存録画へ追加、それ以外は新規作成。指定時は自動判定より優先 */
     duplicateAction?: ImportDuplicateAction;
     duplicateRecordedId?: RecordedId;
     ruleId?: RuleId;
