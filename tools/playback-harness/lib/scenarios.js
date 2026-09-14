@@ -19,6 +19,7 @@ const originalHevc = require('./original-hevc');
 const offlineApp = require('./offline-app');
 const offlineUx = require('./offline-ux');
 const uiFlows = require('./ui-flows');
+const iosHevcAudio = require('./ios-hevc-audio');
 const {
     evaluatePlaybackStability,
     evaluatePlaybackFrames,
@@ -525,5 +526,7 @@ module.exports = {
     'container-switch': uiFlows.containerSwitch,
     'live-original': uiFlows.liveOriginal,
     'offline-hevc': uiFlows.offlineHevc,
+    'offline-audio-switch': iosHevcAudio.offlineAudioSwitch,
+    'capability-report': iosHevcAudio.capabilityReport,
     ...offlineUx,
 };

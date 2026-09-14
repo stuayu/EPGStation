@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-14
 
+- **iPhone の tsreplace HEVC Original とオフライン音声切替を修正した**: HEVC Main10 の端末判定が HDR/HLG の `mediaCapabilities` と MSE (`media-source`) に依存していたため、10bit SDR を再生できる iPhone でも `original-hevc` が候補から消えていた。native HLS の端末は `file` と `canPlayType('video/mp4; codecs="hvc1..."')` を使い、MSE 端末は従来どおり `media-source` を使うよう判定を分離し、能力キャッシュを v3 へ更新した。設定 > 再生に `hevc` / `hevcMain10` / `hdr` / `mpeg2toh264` の判定 JSON と再判定ボタンを追加した。オフライン保存自体は既に `audio0` / `audio1`、`#EXT-X-MEDIA`、`CODECS` を保存していたが、オフライン視聴画面が保存 master を読まず音声 UI へ接続していなかった。ローカル master の音声 rendition を一覧化し、DPlayer の既存音声メニューから hls.js / native HLS のトラックを切り替えるようにした。既存の単一音声保存データは副音声を復元できないため再保存が必要。実ブラウザーは未検証。
+
 - **オフライン保存画面を一覧 → 番組情報 → 視聴画面へ分離した**: `#/offline-videos` は保存済み動画の一覧だけを表示し、行から `#/offline-videos/:key` の保存スナップショット詳細、再生ボタンから `#/offline-videos/:key/watch` の通常視聴レイアウトへ遷移する。一覧へ `VideoContainer` を置かず、保存済み録画の再生ボタンを無効化しない。videoFileId + generationId の一意キーで画質違いの複数保存を保持し、録画詳細・録画一覧からも保存データ視聴へ直接遷移する。視聴画面は番組情報タブだけを表示し、`/api/recorded/**`・`/api/streams/**`・`/streamfiles/**`・視聴履歴 API を呼ばず、再生位置を端末内へ保存・復元する。保存完了 snackbar に一覧導線を追加。実ブラウザ / iOS Safari は未検証。
 
 - **オフライン保存の MPEG-2 Original、番組情報、回線断表示、録画一覧再生を対応した**: MPEG-2 TS は元ファイルを188 byte境界・最大16MiBのチャンクへ分割して Cache Storage へ逐次保存し、Service Worker が `/local/offline/.../original.ts` の Range をチャンクから組み立てて206/416で返す。保存前は元TSのサイズで `navigator.storage.estimate()` を確認し、端末の `mpeg2toh264` 対応時だけ選択肢を出す。番組情報スナップショットと局ロゴを保存し、旧形式レコードは不足項目を非表示にして読める。切断時の暗い全画面scrimを削除し、タイトルバーの「オフライン」chipだけを表示する。録画一覧・詳細の保存済みバッジから通信なしで `/offline-videos` の保存データ再生へ移動する。保存済み判定はIndexedDBを一度だけ読む。Service Worker Range、チャンク分割、旧スナップショット、オフライン表示、保存済み判定を純粋関数テストで固定。実ブラウザ / iOS Safari は未検証。

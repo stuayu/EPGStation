@@ -47,3 +47,26 @@ test('パッケージャのセグメントを EOF 前に逐次レコードへ出
     assert.equal(records[3].readUInt32BE(4), 3);
     assert.equal(ended, true);
 });
+
+test('複数音声の offline レコードは audio0/audio1 と master の AUDIO/CODECS を保持する', async () => {
+    const source = new PassThrough();
+    const packager = new PassThrough();
+    const output = new OfflineFmp4RecordStream(source, packager);
+    const records = [];
+    output.on('data', record => records.push(record));
+    packager.emit('multiTrack', ['video', 'audio0', 'audio1']);
+    packager.emit('trackInit', 'video', audioInit());
+    packager.emit('trackInit', 'audio0', audioInit());
+    packager.emit('trackInit', 'audio1', audioInit());
+    await new Promise(resolve => setImmediate(resolve));
+
+    const master = records.find(record => record.readUInt8(0) === 2).subarray(16).toString('utf8');
+    assert.match(master, /#EXT-X-MEDIA:TYPE=AUDIO/);
+    assert.match(master, /URI="audio0\.m3u8"/);
+    assert.match(master, /URI="audio1\.m3u8"/);
+    assert.match(master, /CODECS="mp4a\.40\.2"/);
+
+    packager.emit('finish');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(records.slice(0, 3).map(record => record.readUInt8(1)), [1, 2, 3]);
+});

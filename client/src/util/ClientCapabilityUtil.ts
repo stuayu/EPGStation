@@ -1,4 +1,6 @@
 import { supportsWorkerMediaSource } from 'mpeg2toh264/player';
+import { isNativeHlsPlayback, resolveDecodeSupport, resolveDisplayCapabilities } from '../../../src/util/ClientCapabilityDecision';
+import UaUtil from './UaUtil';
 
 export type ClientCapabilities = {
     hevc: boolean;
@@ -15,25 +17,30 @@ export type ClientCapabilities = {
 };
 
 // mpeg2toh264 を追加したため、旧形式の能力キャッシュを再利用しない。
-const CACHE_KEY = 'epgstation.playback.client-capabilities.v2';
+const CACHE_KEY = 'epgstation.playback.client-capabilities.v3';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
-const canDecode = async (contentType: string, codec: string, hdr = false): Promise<boolean> => {
+const canDecode = async (contentType: string, codec: string, nativeHls: boolean, video: HTMLVideoElement, hdr = false): Promise<boolean> => {
     const mediaCapabilities = (navigator as Navigator & { mediaCapabilities?: MediaCapabilities }).mediaCapabilities;
+    let mediaCapabilitiesSupported: boolean | undefined;
     if (mediaCapabilities !== undefined) {
         try {
             const result = await mediaCapabilities.decodingInfo({
-                type: 'media-source',
+                type: nativeHls === true ? 'file' : 'media-source',
                 video: { contentType: `${contentType}; codecs="${codec}"`, width: 1920, height: 1080, bitrate: 8_000_000, framerate: 59.94, ...(hdr ? { colorGamut: 'rec2020', transferFunction: 'hlg' } : {}) },
             });
-            return result.supported === true && (result.smooth === true || result.powerEfficient === true);
+            mediaCapabilitiesSupported = result.supported === true && (result.smooth === true || result.powerEfficient === true);
         } catch (_err) {
-            // canPlayType を補助判定に使う
+            // native HLS / canPlayType を使う
         }
     }
 
-    const video = document.createElement('video');
-    return video.canPlayType(`${contentType}; codecs="${codec}"`) !== '';
+    const canPlayType = video.canPlayType(`${contentType}; codecs="${codec}"`);
+    return resolveDecodeSupport({
+        nativeHls,
+        mediaCapabilitiesSupported,
+        canPlayType: canPlayType === 'probably' || canPlayType === 'maybe' ? canPlayType : '',
+    });
 };
 
 type NetworkInformationSnapshot = {
@@ -65,13 +72,19 @@ const getNetwork = (): ClientCapabilities['network'] =>
     classifyNetwork((navigator as Navigator & { connection?: NetworkInformationSnapshot }).connection);
 
 const detect = async (): Promise<ClientCapabilities> => {
-    const hdr = window.matchMedia('(dynamic-range: high)').matches;
-    const hlg = window.matchMedia('(dynamic-range: high)').matches;
+    const { hdr, hlg } = resolveDisplayCapabilities(window.matchMedia('(dynamic-range: high)').matches);
+    const video = document.createElement('video');
+    const hlsCanPlayType = video.canPlayType('application/vnd.apple.mpegurl');
+    const nativeHls = isNativeHlsPlayback({
+        hlsCanPlayType: hlsCanPlayType === 'probably' || hlsCanPlayType === 'maybe' ? hlsCanPlayType : '',
+        isIos: UaUtil.isiOS(),
+        isSafari: UaUtil.isSafari(),
+    });
     const [hevc, hevcMain10, h264, av1] = await Promise.all([
-        canDecode('video/mp4', 'hvc1.1.6.L93.B0'),
-        canDecode('video/mp4', 'hvc1.2.4.L153.B0', true),
-        canDecode('video/mp4', 'avc1.640028'),
-        canDecode('video/mp4', 'av01.0.08M.08'),
+        canDecode('video/mp4', 'hvc1.1.6.L93.B0', nativeHls, video),
+        canDecode('video/mp4', 'hvc1.2.4.L153.B0', nativeHls, video),
+        canDecode('video/mp4', 'avc1.640028', nativeHls, video),
+        canDecode('video/mp4', 'av01.0.08M.08', nativeHls, video),
     ]);
     const screen = typeof window.screen === 'undefined' ? undefined : window.screen;
 
@@ -100,6 +113,15 @@ export const getClientCapabilities = async (): Promise<ClientCapabilities> => {
         // private browsing などではキャッシュ不要
     }
     return capabilities;
+};
+
+/** 能力判定を再実行するため、保存済みの古い結果を削除する。 */
+export const clearClientCapabilitiesCache = (): void => {
+    try {
+        localStorage.removeItem(CACHE_KEY);
+    } catch (_err) {
+        // localStorage が使えない環境では何もしない
+    }
 };
 
 export default { getClientCapabilities };
