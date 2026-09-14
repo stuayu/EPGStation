@@ -23,6 +23,10 @@ const scenarios = [
     ['container-switch', '再生中の M2TS-LL ⇔ オリジナル切替と位置継承を測定'],
     ['live-original', 'ライブ Original を60秒再生し15秒切れを検出'],
     ['offline-hevc', 'HEVC Original を保存後、WebKitオフライン再生を測定'],
+    ['offline-original-mpeg2', 'MPEG-2 Original の保存・回線断再生・シークを測定'],
+    ['offline-program-info', '回線断で保存済み番組情報を表示できることを測定'],
+    ['offline-indicator', 'オフライン表示と overlay 無し、回線復帰を測定'],
+    ['recorded-offline-play', '録画一覧から保存データを再生し配信 API 無しを測定'],
 ];
 
 const usage = () => {
@@ -41,7 +45,7 @@ const usage = () => {
     console.log('  --hevc                      tsreplace 相当の HEVC TS を生成して測定');
     console.log('  --non-idr-start             HEVC TS の先頭を任意位置から始める近似素材を使う');
     console.log('  --offline                   original-hevc の OfflineFmp4RecordStream も測定');
-    console.log('  --profile-dir PATH          offline-app で使う保存済み永続プロファイル');
+    console.log('  --profile-dir PATH          オフラインシナリオで使う保存済み永続プロファイル');
     console.log('  --profile ID                URLで期待する playback profile id');
     console.log('  --quality TEXT              UIで選ぶ画質ラベル');
     console.log('  --file-label TEXT           UIで選ぶ録画ファイル名 (例: TS)');

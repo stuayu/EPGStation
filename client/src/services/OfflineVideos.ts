@@ -1,8 +1,15 @@
 import * as apid from '../../../api';
 import OfflineVideoStorage, { OfflineVideoRecord } from './OfflineVideoStorage';
 import OfflineStreamParser from '../../../src/util/OfflineStreamParser';
+import {
+    createOfflineProgramInfo,
+    findOfflineVideoByIds,
+    ORIGINAL_MPEG2_CHUNK_SIZE,
+    splitOfflineMpeg2Ranges,
+} from '../../../src/util/OfflineUxUtil';
 import Util from '@/util/Util';
 import { withMediaToken } from '@/util/MediaToken';
+import GenreUtil from '@/util/GenreUtil';
 
 export interface OfflineDownloadJob {
     videoId: number;
@@ -16,32 +23,70 @@ interface OfflineLockManager {
     request<T>(name: string, options: { ifAvailable: true }, callback: (lock: object | null) => Promise<T>): Promise<T>;
 }
 
+export interface OfflineVideoInfoOptions {
+    channelName?: string;
+    displayName?: string;
+}
+
 /** Cache Storage / IndexedDB を使う録画番組オフライン保存サービス。 */
 export default class OfflineVideos {
     public static readonly eventTarget = new EventTarget();
     private static readonly CACHE_NAME = 'epgstation-offline-videos';
     private static readonly jobs = new Map<number, OfflineDownloadJob>();
+    private static savedVideoIndex: OfflineVideoRecord[] | null = null;
+    private static savedVideoIndexPromise: Promise<OfflineVideoRecord[]> | null = null;
 
-    public static async getVideos(): Promise<OfflineVideoRecord[]> { return await OfflineVideoStorage.getAll(); }
+    public static async getVideos(): Promise<OfflineVideoRecord[]> {
+        if (this.savedVideoIndex !== null) return this.savedVideoIndex;
+        if (this.savedVideoIndexPromise === null) {
+            this.savedVideoIndexPromise = OfflineVideoStorage.getAll().then(videos => {
+                this.savedVideoIndex = videos;
+                this.savedVideoIndexPromise = null;
+                return videos;
+            }).catch(error => {
+                this.savedVideoIndexPromise = null;
+                throw error;
+            });
+        }
+        return await this.savedVideoIndexPromise;
+    }
+    public static async getSavedVideo(videoIds: number[]): Promise<OfflineVideoRecord | null> {
+        return findOfflineVideoByIds(await this.getVideos(), videoIds);
+    }
     public static getJob(videoId: number): OfflineDownloadJob | null { return this.jobs.get(videoId) ?? null; }
     public static getPlaylistURL(video: OfflineVideoRecord): string { return video.playlistURL; }
 
     /** 録画番組を指定した録画 HLS プロファイルで保存する。 */
-    public static async start(program: apid.RecordedItem, videoFileId: apid.VideoFileId, profile: string, videoBitrateKbps?: number): Promise<OfflineVideoRecord> {
+    public static async start(
+        program: apid.RecordedItem,
+        videoFileId: apid.VideoFileId,
+        profile: string,
+        videoBitrateKbps?: number,
+        infoOptions: OfflineVideoInfoOptions = {},
+    ): Promise<OfflineVideoRecord> {
         const lockManager = (navigator as Navigator & { locks?: OfflineLockManager }).locks;
-        if (lockManager === undefined) return await this.startUnlocked(program, videoFileId, profile, videoBitrateKbps);
+        if (lockManager === undefined) return await this.startUnlocked(program, videoFileId, profile, videoBitrateKbps, infoOptions);
         return await lockManager.request(`epgstation-offline-${videoFileId}`, { ifAvailable: true }, async lock => {
             if (lock === null) throw new Error('この録画番組はすでにオフライン保存中です。');
-            return await this.startUnlocked(program, videoFileId, profile, videoBitrateKbps);
+            return await this.startUnlocked(program, videoFileId, profile, videoBitrateKbps, infoOptions);
         });
     }
 
-    private static async startUnlocked(program: apid.RecordedItem, videoFileId: apid.VideoFileId, profile: string, videoBitrateKbps?: number): Promise<OfflineVideoRecord> {
+    private static async startUnlocked(
+        program: apid.RecordedItem,
+        videoFileId: apid.VideoFileId,
+        profile: string,
+        videoBitrateKbps?: number,
+        infoOptions: OfflineVideoInfoOptions = {},
+    ): Promise<OfflineVideoRecord> {
         if (this.jobs.has(videoFileId)) throw new Error('この録画番組はすでにオフライン保存中です。');
         const snapshot = JSON.parse(JSON.stringify(program)) as apid.RecordedItem;
-        const duration = snapshot.videoFiles?.find(item => item.id === videoFileId)?.duration ?? 0;
+        const sourceVideo = snapshot.videoFiles?.find(item => item.id === videoFileId);
+        if (sourceVideo === undefined) throw new Error('保存対象の録画ファイルが見つかりません。');
+        const isOriginalMpeg2 = profile === 'original-mpeg2';
+        const duration = sourceVideo.duration ?? 0;
         const mediaBitrateBytesPerSecond = ((videoBitrateKbps ?? 3000) * 1000 + 192000) / 8;
-        const estimatedBytes = Math.max(16 * 1024 * 1024, Math.ceil(duration * mediaBitrateBytesPerSecond * 1.15));
+        const estimatedBytes = isOriginalMpeg2 === true ? sourceVideo.size : Math.max(16 * 1024 * 1024, Math.ceil(duration * mediaBitrateBytesPerSecond * 1.15));
         const estimate = await navigator.storage?.estimate();
         if (estimate?.quota !== undefined && estimate.quota - (estimate.usage ?? 0) < estimatedBytes) throw new Error('オフライン保存に必要な空き容量が不足しています。');
         await navigator.storage?.persist?.();
@@ -54,6 +99,13 @@ export default class OfflineVideos {
         const baseURL = new URL(`${basePath}/`, location.href).toString();
         const cache = await caches.open(this.CACHE_NAME);
         const thumbnailURLs: string[] = [];
+        const channelLogoURL = new URL('channel-logo', baseURL).toString();
+        const programInfo = createOfflineProgramInfo(snapshot, {
+            videoFileId,
+            channelName: infoOptions.channelName,
+            displayName: infoOptions.displayName,
+            resolveGenre: (genre, subGenre) => GenreUtil.getGenres(genre, subGenre),
+        });
         const url = withMediaToken(`${Util.getSubDirectory()}/api/videos/${videoFileId}/offline?profile=${encodeURIComponent(profile)}&audioTrack=all`);
         try {
             for (const thumbnailId of snapshot.thumbnails ?? []) {
@@ -67,6 +119,60 @@ export default class OfflineVideos {
                 } catch {
                     // サムネイル取得失敗は動画保存を失敗させない。
                 }
+            }
+            if (typeof snapshot.channelId === 'number') {
+                try {
+                    const logoResponse = await fetch(withMediaToken(`${Util.getSubDirectory()}/api/channels/${snapshot.channelId.toString(10)}/logo`), {
+                        credentials: 'include',
+                        cache: 'no-store',
+                    });
+                    if (logoResponse.ok) await cache.put(channelLogoURL, logoResponse.clone());
+                } catch {
+                    // 放送局ロゴは補助情報。取得失敗で動画保存を失敗させない。
+                }
+            }
+            if (isOriginalMpeg2 === true) {
+                const ranges = splitOfflineMpeg2Ranges(sourceVideo.size, ORIGINAL_MPEG2_CHUNK_SIZE);
+                if (ranges.length === 0) throw new Error('録画ファイルサイズが不正です。');
+                const originalURL = new URL('original.ts', baseURL).toString();
+                const chunkManifest = { fileSize: sourceVideo.size, chunkSize: ORIGINAL_MPEG2_CHUNK_SIZE, chunks: ranges };
+                await cache.put(new URL('original.ts.manifest', baseURL), new Response(JSON.stringify(chunkManifest), { headers: { 'Content-Type': 'application/json' } }));
+                for (const range of ranges) {
+                    const response = await fetch(withMediaToken(`${Util.getSubDirectory()}/api/videos/${videoFileId}/original`), {
+                        credentials: 'include',
+                        cache: 'no-store',
+                        headers: { Range: `bytes=${range.start}-${range.end}` },
+                    });
+                    if (!response.ok || response.status !== 206 || response.body === null) throw new Error(`オリジナル保存 API が失敗しました (${response.status})`);
+                    const data = await response.arrayBuffer();
+                    if (data.byteLength !== range.end - range.start + 1) throw new Error('オリジナル保存チャンクのサイズが一致しません。');
+                    job.downloadedBytes += data.byteLength;
+                    await cache.put(new URL(`original.ts/chunks/${range.start}`, baseURL), new Response(data, { headers: { 'Content-Type': 'video/mp2t' } }));
+                    this.eventTarget.dispatchEvent(new Event('change'));
+                }
+                const offlineVideo: OfflineVideoRecord = {
+                    videoId: videoFileId,
+                    generationId,
+                    program: snapshot,
+                    kind: 'original-mpeg2',
+                    profile,
+                    sizeBytes: sourceVideo.size,
+                    segmentCount: 0,
+                    savedAt: Date.now(),
+                    playlistURL: originalURL,
+                    originalURL,
+                    originalFileSize: sourceVideo.size,
+                    originalChunkSize: ORIGINAL_MPEG2_CHUNK_SIZE,
+                    thumbnailURLs,
+                    channelLogoURL: (await cache.match(channelLogoURL)) === undefined ? undefined : channelLogoURL,
+                    programInfo,
+                };
+                await OfflineVideoStorage.put(offlineVideo);
+                this.savedVideoIndex = null;
+                job.state = 'Completed';
+                this.jobs.delete(videoFileId);
+                this.eventTarget.dispatchEvent(new Event('change'));
+                return offlineVideo;
             }
             const response = await fetch(url, { credentials: 'include', cache: 'no-store' });
             if (!response.ok || response.body === null) throw new Error(`オフライン保存 API が失敗しました (${response.status})`);
@@ -122,14 +228,18 @@ export default class OfflineVideos {
                 videoId: videoFileId,
                 generationId,
                 program: snapshot,
+                kind: 'hls',
                 profile,
                 sizeBytes,
                 segmentCount: durations.get('video')?.length ?? 0,
                 savedAt: Date.now(),
                 playlistURL: new URL('playlist.m3u8', baseURL).toString(),
                 thumbnailURLs,
+                channelLogoURL: (await cache.match(channelLogoURL)) === undefined ? undefined : channelLogoURL,
+                programInfo,
             };
             await OfflineVideoStorage.put(video);
+            this.savedVideoIndex = null;
             job.state = 'Completed';
             this.jobs.delete(videoFileId);
             this.eventTarget.dispatchEvent(new Event('change'));
@@ -149,6 +259,7 @@ export default class OfflineVideos {
 
     public static async delete(video: OfflineVideoRecord): Promise<void> {
         await OfflineVideoStorage.delete(video);
+        this.savedVideoIndex = null;
         this.eventTarget.dispatchEvent(new Event('change'));
     }
 }

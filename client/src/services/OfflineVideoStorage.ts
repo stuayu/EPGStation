@@ -2,12 +2,19 @@ export interface OfflineVideoRecord {
     videoId: number;
     generationId: string;
     program: unknown;
+    // 旧形式には無い。無い場合は HLS 保存として扱う。
+    kind?: 'hls' | 'original-mpeg2';
     profile: string;
     sizeBytes: number;
     segmentCount: number;
     savedAt: number;
     playlistURL: string;
     thumbnailURLs?: string[];
+    channelLogoURL?: string;
+    programInfo?: unknown;
+    originalURL?: string;
+    originalFileSize?: number;
+    originalChunkSize?: number;
 }
 
 const DB_NAME = 'epgstation-offline-videos';

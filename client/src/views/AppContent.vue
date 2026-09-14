@@ -1,6 +1,5 @@
 <template>
     <v-app class="app-content-root">
-        <div v-if="offlineStartup === false && isDisconnected === true" class="disconnected"></div>
         <Navigation v-if="offlineStartup === false"></Navigation>
         <ServerStatusToast v-if="offlineStartup === false"></ServerStatusToast>
         <UpdateNotification v-if="offlineStartup === false"></UpdateNotification>
@@ -47,6 +46,8 @@ class AppContent extends Vue {
     private serverStatusState: IServerStatusState = container.get<IServerStatusState>('IServerStatusState');
 
     public async created(): Promise<void> {
+        window.addEventListener('offline', this.onBrowserOffline);
+        window.addEventListener('online', this.onBrowserOnline);
         // theme 設定を反映
         ThemeColorUtil.apply(this.$vuetify.theme, this.colorThemeState.getThemeColor());
         this.$vuetify.theme.change((this.colorThemeState.isDarkTheme()) ? 'dark' : 'light');
@@ -101,13 +102,13 @@ class AppContent extends Vue {
      * しばらく待っても繋がらないときだけ知らせる
      */
     private onConnectError(): void {
-        if (this.hasNotifiedConnectError === true || this.connectErrorTimerId !== null) {
+        if (navigator.onLine === false || this.offlineStartup === true || this.hasNotifiedConnectError === true || this.connectErrorTimerId !== null) {
             return;
         }
 
         this.connectErrorTimerId = window.setTimeout(() => {
             this.connectErrorTimerId = null;
-            if (this.socketIoModel.isConnected() === true) {
+            if (navigator.onLine === false || this.offlineStartup === true || this.socketIoModel.isConnected() === true) {
                 return;
             }
             this.hasNotifiedConnectError = true;
@@ -125,6 +126,8 @@ class AppContent extends Vue {
      */
     private onDisconnect(): void {
         this.isDisconnected = true;
+
+        if (navigator.onLine === false) return;
 
         this.$nextTick(() => {
             this.snackbarState.open({
@@ -165,6 +168,8 @@ class AppContent extends Vue {
     }
 
     public unmounted(): void {
+        window.removeEventListener('offline', this.onBrowserOffline);
+        window.removeEventListener('online', this.onBrowserOnline);
         this.serverStatusState.stopPolling();
 
         if (this.connectErrorTimerId !== null) {
@@ -181,6 +186,16 @@ class AppContent extends Vue {
         this.socketIoModel.offConnect(this.onReconnect);
         this.socketIoModel.offConnectError(this.onConnectError);
     }
+
+    public onBrowserOffline(): void {
+        this.offlineStartup = true;
+        if (this.connectErrorTimerId !== null) {
+            window.clearTimeout(this.connectErrorTimerId);
+            this.connectErrorTimerId = null;
+        }
+        this.snackbarState.close();
+    }
+    public onBrowserOnline(): void { this.offlineStartup = false; }
 
     @Watch('$route', { immediate: true, deep: true })
     public onUrlChange(): void {
@@ -203,11 +218,4 @@ export default toNative(AppContent);
         margin: 0
         overflow-y: auto
 
-    .disconnected
-        position: fixed
-        height: 100%
-        width: 100%
-        background: rgb(0, 0, 0, 0.6)
-        background-attachment: fixed
-        z-index: 1000
 </style>

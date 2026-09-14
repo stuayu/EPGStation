@@ -17,6 +17,7 @@ const { result } = require('./output');
 const offlineRecords = require('./offline-records');
 const originalHevc = require('./original-hevc');
 const offlineApp = require('./offline-app');
+const offlineUx = require('./offline-ux');
 const uiFlows = require('./ui-flows');
 const {
     evaluatePlaybackStability,
@@ -524,4 +525,5 @@ module.exports = {
     'container-switch': uiFlows.containerSwitch,
     'live-original': uiFlows.liveOriginal,
     'offline-hevc': uiFlows.offlineHevc,
+    ...offlineUx,
 };

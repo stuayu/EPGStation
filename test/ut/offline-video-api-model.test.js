@@ -19,6 +19,7 @@ const makeModel = (recordedValue = recorded) => {
         },
         { findId: async () => video },
         { findId: async () => recordedValue },
+        { getOriginalMpeg2FilePath: async videoFileId => ({ path: `file-${videoFileId}` }) },
     );
     return { model, stopped };
 };
@@ -51,7 +52,18 @@ test('例外時も同時実行枠を返す', async () => {
         { startRecordedOfflineHLSStream: async () => { throw new Error('start failed'); }, stop: async () => {} },
         { findId: async () => video },
         { findId: async () => recorded },
+        { getOriginalMpeg2FilePath: async () => null },
     );
     await assert.rejects(() => model.startOfflineStream(7, 'profile'), /start failed/);
     assert.equal(model.getAvailableSlotCount(), 3);
+});
+
+test('MPEG-2 Original の対象ファイル解決を VideoApi へ委譲する', async () => {
+    const { model } = makeModel();
+    assert.deepEqual(await model.getOriginalMpeg2FilePath(7), { path: 'file-7' });
+});
+
+test('MPEG-2 Original は録画中なら保存用ファイルを解決しない', async () => {
+    const { model } = makeModel({ ...recorded, isRecording: true });
+    await assert.rejects(() => model.getOriginalMpeg2FilePath(7), { message: 'RecordingVideoCannotBeSavedOffline' });
 });
