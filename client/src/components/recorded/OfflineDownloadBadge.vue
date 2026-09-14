@@ -1,24 +1,44 @@
 <template>
-    <span class="offline-download-badge" @click.stop>
+    <span class="offline-download-badge" :class="{ 'is-large': large === true }" @click.stop>
         <v-chip v-if="isDownloading" size="x-small" color="primary" variant="tonal">保存中</v-chip>
-        <v-chip v-else-if="isSaved" size="x-small" color="success" variant="tonal">オフライン保存済み</v-chip>
+        <v-chip v-else-if="isSaved && large !== true" size="x-small" color="success" variant="tonal">オフライン保存済み</v-chip>
         <template v-if="showPlay && savedVideos.length === 1">
-            <v-btn size="x-small" variant="text" color="primary" class="ml-1" title="保存したデータで再生" @click.stop="play(savedVideos[0])">
-                <v-icon start size="small">mdi-play</v-icon>保存データで再生
+            <v-btn
+                :size="large === true ? 'default' : 'x-small'"
+                :variant="large === true ? 'flat' : 'text'"
+                color="primary"
+                :class="large === true ? 'ma-1' : 'ml-1'"
+                title="保存したデータで再生"
+                @click.stop="play(savedVideos[0])"
+            >
+                <v-icon start :size="large === true ? undefined : 'small'">mdi-download-circle</v-icon>保存データで再生
             </v-btn>
         </template>
         <v-menu v-else-if="showPlay && savedVideos.length > 1" location="bottom">
             <template #activator="{ props }">
-                <v-btn v-bind="props" size="x-small" variant="text" color="primary" class="ml-1" title="保存したデータで再生" @click.stop>
-                    <v-icon start size="small">mdi-play</v-icon>保存データで再生
+                <v-btn
+                    v-bind="props"
+                    :size="large === true ? 'default' : 'x-small'"
+                    :variant="large === true ? 'flat' : 'text'"
+                    color="primary"
+                    :class="large === true ? 'ma-1' : 'ml-1'"
+                    title="保存したデータで再生"
+                    @click.stop
+                >
+                    <v-icon start :size="large === true ? undefined : 'small'">mdi-download-circle</v-icon>保存データで再生
+                    <v-icon end>mdi-menu-down</v-icon>
                 </v-btn>
             </template>
-            <v-card class="menu-card">
+            <v-card class="menu-card offline-select-menu">
                 <v-card-title class="text-body-2">保存データを選択</v-card-title>
                 <v-card-text class="menu-card-body pa-1">
-                    <v-btn v-for="video in savedVideos" :key="video.key" block variant="text" class="justify-start" @click="play(video)">
-                        {{ video.profileLabel ?? video.profile }} ({{ formatBytes(video.sizeBytes) }})
-                    </v-btn>
+                    <v-list density="compact" class="pa-0">
+                        <v-list-item v-for="video in savedVideos" :key="video.key" class="offline-select-item" @click="play(video)">
+                            <v-list-item-title>{{ video.profileLabel ?? video.profile }}</v-list-item-title>
+                            <!-- 同じ画質を複数保存していても見分けられるよう保存日時とサイズを出す -->
+                            <v-list-item-subtitle>{{ formatSavedAt(video.savedAt) }} 保存 / {{ formatBytes(video.sizeBytes) }}</v-list-item-subtitle>
+                        </v-list-item>
+                    </v-list>
                 </v-card-text>
             </v-card>
         </v-menu>
@@ -36,6 +56,9 @@ class OfflineDownloadBadge extends Vue {
     public videoId!: number;
     @Prop({ default: false })
     public showPlay!: boolean;
+    // 録画詳細では再生ボタン群と同じ大きさで出す (小さなリンクだと見落とされる)
+    @Prop({ default: false })
+    public large!: boolean;
     @Prop({ default: undefined })
     public videoIds!: number[] | undefined;
     public isSaved = false;
@@ -65,6 +88,13 @@ class OfflineDownloadBadge extends Vue {
         this.$emit('play', video);
     }
 
+    public formatSavedAt(savedAt: number): string {
+        if (Number.isFinite(savedAt) === false || savedAt <= 0) return '';
+        const date = new Date(savedAt);
+        const pad = (value: number): string => value.toString(10).padStart(2, '0');
+        return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
     public formatBytes(bytes: number): string {
         if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
         if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
@@ -74,3 +104,9 @@ class OfflineDownloadBadge extends Vue {
 
 export default toNative(OfflineDownloadBadge);
 </script>
+
+<style lang="sass">
+// v-menu の中身は body 直下へテレポートされるので scoped にしない (CLAUDE.md「スマホ・タブレット対応」)
+.offline-select-menu
+    width: 320px
+</style>

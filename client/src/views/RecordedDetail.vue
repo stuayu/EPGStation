@@ -100,6 +100,7 @@
                                             :videoId="recorded.recordedItem.videoFiles[0].id"
                                             :videoIds="offlineVideoIds"
                                             :showPlay="true"
+                                            :large="true"
                                             v-on:play="playOffline"
                                         ></OfflineDownloadBadge>
                                     </div>
