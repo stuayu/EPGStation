@@ -2,69 +2,90 @@
     <v-main>
         <TitleBar title="オフライン保存"></TitleBar>
         <v-container>
-            <v-alert v-if="videos.length === 0 && selected === null" type="info" variant="tonal">
-                保存済みの録画番組はありません。
-            </v-alert>
-            <v-list v-else lines="two">
-                <v-list-item v-for="video in videos" :key="`${video.videoId}-${video.generationId}`">
-                    <template #prepend>
-                        <v-img v-if="video.thumbnailURLs?.length" :src="video.thumbnailURLs[0]" width="96" height="54" cover></v-img>
-                    </template>
-                    <v-list-item-title>{{ programInfo(video).name }}</v-list-item-title>
-                    <v-list-item-subtitle>{{ programSubtitle(video) }} / {{ video.profile }} / {{ formatBytes(video.sizeBytes) }}</v-list-item-subtitle>
-                    <template #append>
-                        <v-btn class="ma-1" color="primary" :disabled="selected !== null" @click="play(video)">再生</v-btn>
-                        <v-btn class="ma-1" color="error" variant="text" :disabled="selected !== null" @click="remove(video)">削除</v-btn>
-                    </template>
-                </v-list-item>
-            </v-list>
-            <v-progress-linear v-if="selected !== null" class="mt-4" indeterminate></v-progress-linear>
-            <v-card v-if="selected !== null" class="mt-4">
-                <VideoContainer :key="`${selected.videoId}-${selected.generationId}`" :video-param="selectedParam"></VideoContainer>
-                <div class="pa-3 offline-program-info">
-                    <div class="d-flex align-center mb-2">
-                        <v-img v-if="selected.channelLogoURL" :src="selected.channelLogoURL" width="42" height="24" contain class="mr-2"></v-img>
-                        <div class="text-subtitle-1 font-weight-bold">番組情報</div>
+            <div v-if="storageEstimate !== null" class="text-caption text-medium-emphasis mb-3">
+                使用量 {{ formatBytes(storageEstimate.usage) }} / 空き {{ formatBytes(Math.max(0, storageEstimate.quota - storageEstimate.usage)) }}
+            </div>
+            <v-alert v-if="videos.length === 0 && jobs.length === 0" type="info" variant="tonal">保存済みの録画番組はありません。</v-alert>
+            <div v-else class="offline-list">
+                <div
+                    v-for="video in videos"
+                    :key="video.key ?? `${video.videoId}-${video.generationId}`"
+                    class="offline-item mb-2"
+                    role="button"
+                    tabindex="0"
+                    @click="openInfo(video)"
+                    @keydown.enter="openInfo(video)"
+                >
+                    <div class="offline-main">
+                        <v-img v-if="video.thumbnailURLs?.length" :src="video.thumbnailURLs[0]" class="offline-thumbnail" cover></v-img>
+                        <div v-else class="offline-thumbnail no-thumbnail">録画</div>
+                        <div class="offline-text">
+                            <div class="offline-title font-weight-bold">{{ programInfo(video).name }}</div>
+                            <div class="offline-channel text-caption text-medium-emphasis">
+                                <!-- v-img は flex の中で横に伸びるため、ロゴは固定サイズの img で出す -->
+                                <img v-if="video.channelLogoURL" :src="video.channelLogoURL" class="offline-logo" alt="" />
+                                <span class="offline-channel-text">{{ programSubtitle(video) }}</span>
+                            </div>
+                            <div class="text-caption text-medium-emphasis">{{ formatDuration(video) }} / {{ video.profileLabel ?? video.profile }} / {{ formatBytes(video.sizeBytes) }}</div>
+                        </div>
                     </div>
-                    <WatchPanelProgram :info="selectedInfo"></WatchPanelProgram>
+                    <div class="offline-actions" @click.stop>
+                        <v-btn color="primary" size="small" class="ma-1" prepend-icon="mdi-play" @click="play(video)">再生</v-btn>
+                        <v-btn color="error" variant="text" size="small" class="ma-1" @click="remove(video)">削除</v-btn>
+                    </div>
                 </div>
-            </v-card>
+                <div v-for="job in jobs" :key="`job-${job.videoId}`" class="offline-item mb-2">
+                    <div class="offline-main">
+                        <div class="offline-thumbnail no-thumbnail">保存中</div>
+                        <div class="offline-text">
+                            <div class="offline-title font-weight-bold">{{ job.programInfo.name }}</div>
+                            <div class="text-caption text-medium-emphasis">{{ job.programInfo.channelName ?? '' }} / {{ job.profileLabel ?? job.profile }}</div>
+                            <v-progress-linear class="mt-1" :model-value="jobProgress(job)" color="primary" height="4"></v-progress-linear>
+                            <div class="text-caption">保存中 {{ jobProgress(job) }}% ({{ formatBytes(job.downloadedBytes) }} / {{ formatBytes(job.estimatedBytes) }})</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </v-container>
     </v-main>
 </template>
 
 <script lang="ts">
 import TitleBar from '@/components/titleBar/TitleBar.vue';
-import VideoContainer from '@/components/video/VideoContainer.vue';
-import WatchPanelProgram from '@/components/watch/WatchPanelProgram.vue';
-import * as VideoParam from '@/components/video/ViedoParam';
-import OfflineVideos from '@/services/OfflineVideos';
-import OfflineVideoStorage, { OfflineVideoRecord } from '@/services/OfflineVideoStorage';
+import OfflineVideos, { OfflineDownloadJob } from '@/services/OfflineVideos';
+import { OfflineVideoRecord } from '@/services/OfflineVideoStorage';
 import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
+import IOfflineVideoState from '@/model/state/offline/IOfflineVideoState';
+import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 import GenreUtil from '@/util/GenreUtil';
-import { createOfflineProgramInfo, OfflineProgramInfo } from '../../../src/util/OfflineUxUtil';
+import Util from '@/util/Util';
+import { createOfflineProgramInfo, getOfflineVideoKey, OfflineProgramInfo } from '../../../src/util/OfflineUxUtil';
 
-@Component({ components: { TitleBar, VideoContainer, WatchPanelProgram } })
+interface StorageEstimateView {
+    usage: number;
+    quota: number;
+}
+
+@Component({ components: { TitleBar } })
 class OfflineVideosView extends Vue {
-    public videos: OfflineVideoRecord[] = [];
-    public selected: OfflineVideoRecord | null = null;
-    private scrollState = container.get<IScrollPositionState>('IScrollPositionState');
+    private offlineState: IOfflineVideoState = container.get<IOfflineVideoState>('IOfflineVideoState');
+    private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
+    public jobs: OfflineDownloadJob[] = [];
+    public storageEstimate: StorageEstimateView | null = null;
 
-    get selectedParam(): VideoParam.OfflineHLSVideoParam | VideoParam.OfflineOriginalMpeg2Param | null {
-        if (this.selected === null) return null;
-        return this.selected.kind === 'original-mpeg2'
-            ? ({ type: 'OfflineOriginalMpeg2', src: this.selected.originalURL ?? this.selected.playlistURL } as VideoParam.OfflineOriginalMpeg2Param)
-            : { type: 'OfflineHLS', src: OfflineVideos.getPlaylistURL(this.selected) };
-    }
-    get selectedInfo(): OfflineProgramInfo | null { return this.selected === null ? null : this.programInfo(this.selected); }
+    get videos(): OfflineVideoRecord[] { return this.offlineState.videos; }
 
     public async mounted(): Promise<void> {
-        await this.load();
-        const requestedVideoId = Number(this.$route.query.videoId);
-        if (Number.isSafeInteger(requestedVideoId)) this.selected = this.videos.find(video => video.videoId === requestedVideoId) ?? null;
-        await this.scrollState.emitDoneGetData();
+        try {
+            await this.load();
+            await this.loadStorageEstimate();
+        } finally {
+            // router の scrollBehavior はこの通知を待つ。送らないと 5 秒後に ScrollPositionDataTimeout が未処理の reject になる
+            await this.scrollState.emitDoneGetData();
+        }
         OfflineVideos.eventTarget.addEventListener('change', this.onOfflineVideosChanged);
     }
 
@@ -73,17 +94,24 @@ class OfflineVideosView extends Vue {
     }
 
     private onOfflineVideosChanged(): void {
-        void this.load();
+        this.jobs = OfflineVideos.getJobs();
+        void this.load().then(() => this.loadStorageEstimate());
     }
 
     public async load(): Promise<void> {
         try {
-            this.videos = await OfflineVideoStorage.getAll();
+            await this.offlineState.load();
+            this.jobs = OfflineVideos.getJobs();
         } catch (error) {
-            // IndexedDB の request.error が空のブラウザでも未処理 rejection にしない。
             console.error('offline video list error', error);
-            this.videos = [];
+            this.jobs = OfflineVideos.getJobs();
         }
+    }
+
+    private async loadStorageEstimate(): Promise<void> {
+        const estimate = await navigator.storage?.estimate?.();
+        if (estimate?.quota === undefined) return;
+        this.storageEstimate = { usage: estimate.usage ?? 0, quota: estimate.quota };
     }
 
     public programInfo(video: OfflineVideoRecord): OfflineProgramInfo {
@@ -98,21 +126,121 @@ class OfflineVideosView extends Vue {
         return [info.channelName, info.time].filter(value => value !== undefined && value !== '').join(' / ');
     }
 
+    public formatDuration(video: OfflineVideoRecord): string {
+        if (video.durationSeconds !== undefined && Number.isFinite(video.durationSeconds) && video.durationSeconds > 0) return `${Math.floor(video.durationSeconds / 60)}分`;
+        return this.programInfo(video).durationText ?? '長さ不明';
+    }
+
     public formatBytes(bytes: number): string {
         if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
-        return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+        if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+        return `${(bytes / 1024 / 1024 / 1024).toFixed(2)}GB`;
+    }
+
+    public jobProgress(job: OfflineDownloadJob): number {
+        return job.estimatedBytes > 0 ? Math.min(100, Math.floor(job.downloadedBytes / job.estimatedBytes * 100)) : 0;
+    }
+
+    public openInfo(video: OfflineVideoRecord): void {
+        void Util.move(this.$router, { path: `/offline-videos/${encodeURIComponent(getOfflineVideoKey(video))}` });
     }
 
     public play(video: OfflineVideoRecord): void {
-        this.selected = video;
+        void Util.move(this.$router, { path: `/offline-videos/${encodeURIComponent(getOfflineVideoKey(video))}/watch`, query: { from: 'list' } });
     }
 
     public async remove(video: OfflineVideoRecord): Promise<void> {
-        await OfflineVideos.delete(video);
-        if (this.selected?.videoId === video.videoId) this.selected = null;
-        await this.load();
+        if (window.confirm('このオフライン保存を削除しますか？') === false) return;
+        try {
+            await this.offlineState.remove(video);
+            await this.loadStorageEstimate();
+        } catch (error) {
+            this.snackbarState.open({ color: 'error', text: 'オフライン保存の削除に失敗しました' });
+            console.error(error);
+        }
     }
 }
 
 export default toNative(OfflineVideosView);
 </script>
+
+<style lang="sass" scoped>
+.offline-item
+    display: flex
+    flex-wrap: wrap
+    align-items: center
+    gap: 4px 12px
+    padding: 12px
+    cursor: pointer
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity))
+    border-radius: 4px
+
+.offline-main
+    display: flex
+    align-items: center
+    gap: 12px
+    flex: 1 1 320px
+    min-width: 0
+
+.offline-thumbnail
+    width: 144px
+    height: 81px
+    flex: 0 0 auto
+    border-radius: 2px
+
+.no-thumbnail
+    display: flex
+    align-items: center
+    justify-content: center
+    background: rgba(var(--v-theme-on-surface), 0.08)
+    color: rgba(var(--v-theme-on-surface), 0.6)
+
+.offline-text
+    flex: 1 1 auto
+    min-width: 0
+
+.offline-title
+    display: -webkit-box
+    -webkit-line-clamp: 2
+    -webkit-box-orient: vertical
+    overflow: hidden
+    word-break: break-all
+
+.offline-channel
+    display: flex
+    align-items: center
+    gap: 6px
+    min-width: 0
+
+.offline-logo
+    flex: 0 0 auto
+    width: 32px
+    height: 18px
+    object-fit: contain
+
+.offline-channel-text
+    min-width: 0
+
+.offline-actions
+    display: flex
+    flex: 0 0 auto
+    align-items: center
+    margin-left: auto
+
+// 狭い端末では操作ボタンを下の行へ回し、番組名と放送局を横幅いっぱいに使う
+@media screen and (max-width: 600px)
+    .offline-item
+        padding: 8px
+
+    .offline-main
+        flex-basis: 100%
+        align-items: flex-start
+
+    .offline-thumbnail
+        width: 112px
+        height: 63px
+
+    .offline-actions
+        width: 100%
+        justify-content: flex-end
+</style>

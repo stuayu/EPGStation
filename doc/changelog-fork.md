@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-14
 
+- **オフライン保存画面を一覧 → 番組情報 → 視聴画面へ分離した**: `#/offline-videos` は保存済み動画の一覧だけを表示し、行から `#/offline-videos/:key` の保存スナップショット詳細、再生ボタンから `#/offline-videos/:key/watch` の通常視聴レイアウトへ遷移する。一覧へ `VideoContainer` を置かず、保存済み録画の再生ボタンを無効化しない。videoFileId + generationId の一意キーで画質違いの複数保存を保持し、録画詳細・録画一覧からも保存データ視聴へ直接遷移する。視聴画面は番組情報タブだけを表示し、`/api/recorded/**`・`/api/streams/**`・`/streamfiles/**`・視聴履歴 API を呼ばず、再生位置を端末内へ保存・復元する。保存完了 snackbar に一覧導線を追加。実ブラウザ / iOS Safari は未検証。
+
 - **オフライン保存の MPEG-2 Original、番組情報、回線断表示、録画一覧再生を対応した**: MPEG-2 TS は元ファイルを188 byte境界・最大16MiBのチャンクへ分割して Cache Storage へ逐次保存し、Service Worker が `/local/offline/.../original.ts` の Range をチャンクから組み立てて206/416で返す。保存前は元TSのサイズで `navigator.storage.estimate()` を確認し、端末の `mpeg2toh264` 対応時だけ選択肢を出す。番組情報スナップショットと局ロゴを保存し、旧形式レコードは不足項目を非表示にして読める。切断時の暗い全画面scrimを削除し、タイトルバーの「オフライン」chipだけを表示する。録画一覧・詳細の保存済みバッジから通信なしで `/offline-videos` の保存データ再生へ移動する。保存済み判定はIndexedDBを一度だけ読む。Service Worker Range、チャンク分割、旧スナップショット、オフライン表示、保存済み判定を純粋関数テストで固定。実ブラウザ / iOS Safari は未検証。
 
 - **放映中・番組表の配信選択ダイアログにオリジナル (MPEG-2) が出ない問題を修正した**: サーバはライブの playback-options でも `original-mpeg2` (`modes.original`) を返していたが、配信方式の一覧は config の配信設定 (`streamConfig.live.ts`) からしか作っておらず、録画側の `RecordedDetailSelectStreamState.addOriginalStreamType()` に相当する処理がライブ側 (`OnAirSelectStreamState` / `OnAirSelectStream.vue`) に無かった。playback-options が original を返したときだけ「オリジナル」を加え、選択時は画質もオリジナルを選択済みにする。前回オリジナルで視聴していれば選択を戻す (URL Scheme 利用時は出さない)。実測 (Chromium、福島 NHK 総合): 修正前は配信方式に「オリジナル」が無く、修正後は一覧に出て、選ぶと `#/onair/watch?type=original` で 1920x1080 が 20 秒で 16.1 秒進行

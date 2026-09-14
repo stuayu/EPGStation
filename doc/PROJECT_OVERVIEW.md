@@ -160,6 +160,8 @@ npm run recover-channel-name   # 過去の録画の放送局名を復元 (既定
 | 更新通知・ワンクリック更新 | `src/model/update/`, `client/.../UpdatePanel.vue` | GitHub Releases を定期確認。リリース版 (タグ) と開発版 (`main`) を選べる。`git checkout` → `all-install` → ビルド → Operator 終了 (サービス管理に再起動させる)。git clone 環境のみ |
 | Windows サービス | `scripts/win-service.js`, `src/util/GitCommand.ts` | `node-windows` で登録。LocalSystem・セッション 0 で動くためユーザーの PATH を参照できず、専用 `Path` と `git config --system safe.directory` を設定する |
 
+オフライン保存画面は `#/offline-videos` の一覧、`#/offline-videos/:key` の保存スナップショット詳細、`#/offline-videos/:key/watch` の視聴画面に分かれる。`key` は videoFileId + generationId の一意値。視聴画面は `WatchLayout` / `WatchTopBar` / `WatchSidePanel` の番組情報タブだけを使い、保存済みデータと Service Worker のローカル URL から描画する。`/api/recorded/**`・`/api/streams/**`・`/streamfiles/**`・視聴履歴 API は呼ばず、再生位置は localStorage へ保存・復元する。録画詳細・録画一覧の保存済みバッジと保存完了通知から視聴画面へ遷移する。視聴画面の戻る操作は履歴を優先し、直接起動時は `from` の起点に応じて一覧・番組情報・録画詳細へ戻す。
+
 ### EPG 追従 (EIT[p/f] とリアルタイム同期)
 
 - **未定番組の放送中判定**: `ScheduleApiModel.getBroadcastingSchedule()` は `clampUndefinedDuration()` 後の終了時刻で判定する。暫定3時間の終了時刻を過ぎても、次番組が始まった未定番組を現在番組として返し続けない

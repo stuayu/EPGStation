@@ -3,6 +3,7 @@ import OfflineVideoStorage, { OfflineVideoRecord } from './OfflineVideoStorage';
 import OfflineStreamParser from '../../../src/util/OfflineStreamParser';
 import {
     createOfflineProgramInfo,
+    createOfflineVideoKey,
     findOfflineVideoByIds,
     ORIGINAL_MPEG2_CHUNK_SIZE,
     splitOfflineMpeg2Ranges,
@@ -14,7 +15,11 @@ import GenreUtil from '@/util/GenreUtil';
 export interface OfflineDownloadJob {
     videoId: number;
     profile: string;
+    profileLabel?: string;
     downloadedBytes: number;
+    estimatedBytes: number;
+    program: apid.RecordedItem;
+    programInfo: ReturnType<typeof createOfflineProgramInfo>;
     state: 'Downloading' | 'Completed' | 'Failed';
     error: string | null;
 }
@@ -26,6 +31,8 @@ interface OfflineLockManager {
 export interface OfflineVideoInfoOptions {
     channelName?: string;
     displayName?: string;
+    /** 画面に出す保存画質名 (例: データ節約)。profile は内部 id なので表示に使わない */
+    profileLabel?: string;
 }
 
 /** Cache Storage / IndexedDB を使う録画番組オフライン保存サービス。 */
@@ -53,7 +60,12 @@ export default class OfflineVideos {
     public static async getSavedVideo(videoIds: number[]): Promise<OfflineVideoRecord | null> {
         return findOfflineVideoByIds(await this.getVideos(), videoIds);
     }
+    public static async getSavedVideos(videoIds: number[]): Promise<OfflineVideoRecord[]> {
+        const ids = new Set(videoIds);
+        return (await this.getVideos()).filter(video => ids.has(video.videoId));
+    }
     public static getJob(videoId: number): OfflineDownloadJob | null { return this.jobs.get(videoId) ?? null; }
+    public static getJobs(): OfflineDownloadJob[] { return [...this.jobs.values()]; }
     public static getPlaylistURL(video: OfflineVideoRecord): string { return video.playlistURL; }
 
     /** 録画番組を指定した録画 HLS プロファイルで保存する。 */
@@ -91,21 +103,22 @@ export default class OfflineVideos {
         if (estimate?.quota !== undefined && estimate.quota - (estimate.usage ?? 0) < estimatedBytes) throw new Error('オフライン保存に必要な空き容量が不足しています。');
         await navigator.storage?.persist?.();
 
-        const job: OfflineDownloadJob = { videoId: videoFileId, profile, downloadedBytes: 0, state: 'Downloading', error: null };
-        this.jobs.set(videoFileId, job);
-        this.eventTarget.dispatchEvent(new Event('change'));
         const generationId = crypto.randomUUID();
-        const basePath = `${Util.getSubDirectory()}/local/offline/${videoFileId}/${generationId}`;
-        const baseURL = new URL(`${basePath}/`, location.href).toString();
-        const cache = await caches.open(this.CACHE_NAME);
-        const thumbnailURLs: string[] = [];
-        const channelLogoURL = new URL('channel-logo', baseURL).toString();
+        const key = createOfflineVideoKey(videoFileId, generationId);
         const programInfo = createOfflineProgramInfo(snapshot, {
             videoFileId,
             channelName: infoOptions.channelName,
             displayName: infoOptions.displayName,
             resolveGenre: (genre, subGenre) => GenreUtil.getGenres(genre, subGenre),
         });
+        const job: OfflineDownloadJob = { videoId: videoFileId, profile, profileLabel: infoOptions.profileLabel, downloadedBytes: 0, estimatedBytes, program: snapshot, programInfo, state: 'Downloading', error: null };
+        this.jobs.set(videoFileId, job);
+        this.eventTarget.dispatchEvent(new Event('change'));
+        const basePath = `${Util.getSubDirectory()}/local/offline/${videoFileId}/${generationId}`;
+        const baseURL = new URL(`${basePath}/`, location.href).toString();
+        const cache = await caches.open(this.CACHE_NAME);
+        const thumbnailURLs: string[] = [];
+        const channelLogoURL = new URL('channel-logo', baseURL).toString();
         const url = withMediaToken(`${Util.getSubDirectory()}/api/videos/${videoFileId}/offline?profile=${encodeURIComponent(profile)}&audioTrack=all`);
         try {
             for (const thumbnailId of snapshot.thumbnails ?? []) {
@@ -151,11 +164,13 @@ export default class OfflineVideos {
                     this.eventTarget.dispatchEvent(new Event('change'));
                 }
                 const offlineVideo: OfflineVideoRecord = {
+                    key,
                     videoId: videoFileId,
                     generationId,
                     program: snapshot,
                     kind: 'original-mpeg2',
                     profile,
+                    profileLabel: infoOptions.profileLabel,
                     sizeBytes: sourceVideo.size,
                     segmentCount: 0,
                     savedAt: Date.now(),
@@ -163,6 +178,7 @@ export default class OfflineVideos {
                     originalURL,
                     originalFileSize: sourceVideo.size,
                     originalChunkSize: ORIGINAL_MPEG2_CHUNK_SIZE,
+                    durationSeconds: duration,
                     thumbnailURLs,
                     channelLogoURL: (await cache.match(channelLogoURL)) === undefined ? undefined : channelLogoURL,
                     programInfo,
@@ -225,11 +241,13 @@ export default class OfflineVideos {
                 await cache.put(new URL(`${role}.m3u8`, baseURL), new Response(playlist, { headers: { 'Content-Type': 'application/vnd.apple.mpegurl' } }));
             }
             const video: OfflineVideoRecord = {
+                key,
                 videoId: videoFileId,
                 generationId,
                 program: snapshot,
                 kind: 'hls',
                 profile,
+                profileLabel: infoOptions.profileLabel,
                 sizeBytes,
                 segmentCount: durations.get('video')?.length ?? 0,
                 savedAt: Date.now(),
@@ -237,6 +255,7 @@ export default class OfflineVideos {
                 thumbnailURLs,
                 channelLogoURL: (await cache.match(channelLogoURL)) === undefined ? undefined : channelLogoURL,
                 programInfo,
+                durationSeconds: metadata.duration,
             };
             await OfflineVideoStorage.put(video);
             this.savedVideoIndex = null;

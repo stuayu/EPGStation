@@ -1,9 +1,11 @@
 <template>
     <div class="watch-panel-program pa-3">
         <template v-if="info !== null">
-            <div v-if="info.channelName" class="text-subtitle-2 channel">{{ info.channelName }}</div>
-            <div v-if="info.time" class="text-caption time">{{ info.time }}</div>
-            <div class="text-subtitle-1 font-weight-bold name">{{ info.name }}</div>
+            <template v-if="showHeading === true">
+                <div v-if="info.channelName" class="text-subtitle-2 channel">{{ info.channelName }}</div>
+                <div v-if="info.time" class="text-caption time">{{ info.time }}</div>
+                <div class="text-subtitle-1 font-weight-bold name">{{ info.name }}</div>
+            </template>
             <div v-if="info.seriesText" class="text-caption metadata">シリーズ: {{ info.seriesText }}</div>
             <div v-if="info.genreItems?.length" class="d-flex flex-wrap ga-1 metadata">
                 <v-chip v-for="genre in info.genreItems" :key="genre" size="x-small" variant="tonal">{{ genre }}</v-chip>
@@ -47,6 +49,10 @@ export interface WatchProgramInfo {
 class WatchPanelProgram extends Vue {
     @Prop({ required: false, default: null })
     public info!: WatchProgramInfo | null;
+
+    // 番組名・放送局・時刻を親の画面 (オフライン番組情報など) が既に表示している場合は false にして重複させない
+    @Prop({ required: false, default: true })
+    public showHeading!: boolean;
 }
 
 export default toNative(WatchPanelProgram);

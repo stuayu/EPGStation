@@ -30,6 +30,8 @@ import WatchOnAir from './views/WatchOnAir.vue';
 import WatchRecorded from './views/WatchRecorded.vue';
 import WatchRecordedStreaming from './views/WatchRecordedStreaming.vue';
 import OfflineVideos from './views/OfflineVideos.vue';
+import OfflineVideoDetail from './views/OfflineVideoDetail.vue';
+import OfflineVideoWatch from './views/OfflineVideoWatch.vue';
 const scrollBehavior: RouterScrollBehavior = async (_to, _from, savedPosition) => {
     await container.get<IScrollPositionState>('IScrollPositionState').onDoneGetData();
     return savedPosition ?? { left: 0, top: 0 };
@@ -57,6 +59,8 @@ export default createRouter({
         { path: '/recorded/streaming/:id', name: 'recorded-streaming', component: WatchRecordedStreaming },
         { path: '/watch-history', name: 'watch-history', component: WatchHistory },
         { path: '/offline-videos', name: 'offline-videos', component: OfflineVideos },
+        { path: '/offline-videos/:key', name: 'offline-video-detail', component: OfflineVideoDetail },
+        { path: '/offline-videos/:key/watch', name: 'offline-video-watch', component: OfflineVideoWatch },
         { path: '/encode', name: 'encode', component: Encode },
         { path: '/search', name: 'search', component: Search },
         { path: '/rule', name: 'rule', component: Rule },

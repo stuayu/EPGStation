@@ -65,6 +65,10 @@ class WatchLayout extends Vue {
     @Prop({ required: false, default: '' })
     public panelTitle!: string;
 
+    /** 履歴がない状態で視聴画面を直接開いた場合の戻り先 */
+    @Prop({ required: false, default: null })
+    public backPath!: string | null;
+
     public isPanelOpen: boolean = true;
 
     /**
@@ -130,7 +134,7 @@ class WatchLayout extends Vue {
             return;
         }
 
-        await this.$router.push({ path: '/onair' }).catch(() => {});
+        await this.$router.push({ path: this.backPath ?? '/onair' }).catch(() => {});
     }
 }
 

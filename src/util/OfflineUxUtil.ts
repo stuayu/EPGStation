@@ -3,6 +3,12 @@ import DateUtil from './DateUtil';
 
 export const ORIGINAL_MPEG2_CHUNK_SIZE = Math.floor((16 * 1024 * 1024) / 188) * 188;
 
+/** 保存済み動画を一意に識別する URL 用キーを作る。 */
+export const createOfflineVideoKey = (videoFileId: number, generationId: string): string => {
+    if (!Number.isSafeInteger(videoFileId) || videoFileId < 0 || generationId.length === 0 || /[/\\?#]/u.test(generationId)) return '';
+    return `${videoFileId.toString(10)}-${generationId}`;
+};
+
 export interface OfflineChunkRange {
     start: number;
     end: number;
@@ -137,6 +143,28 @@ export const createOfflineProgramInfo = (
 export const findOfflineVideoByIds = <T extends { videoId: number }>(records: T[], videoIds: number[]): T | null => {
     const ids = new Set(videoIds);
     return records.find(record => ids.has(record.videoId)) ?? null;
+};
+
+/** 保存済み動画の一意キーを取得する。旧保存データは videoFileId と世代から復元する。 */
+export const getOfflineVideoKey = (record: { key?: string; videoId: number; generationId: string }): string =>
+    record.key ?? createOfflineVideoKey(record.videoId, record.generationId);
+
+/** URL の一意キーから保存済み動画を引く。 */
+export const findOfflineVideoByKey = <T extends { key?: string; videoId: number; generationId: string }>(records: T[], key: string): T | null =>
+    records.find(record => getOfflineVideoKey(record) === key) ?? null;
+
+/** オフライン視聴画面を直接開いた場合の戻り先を決める。通常はブラウザ履歴を優先する。 */
+export const resolveOfflineWatchReturnPath = (origin: unknown, key: string, recordedId?: number): string => {
+    switch (origin) {
+        case 'detail':
+            return `/offline-videos/${encodeURIComponent(key)}`;
+        case 'recorded-detail':
+            return Number.isSafeInteger(recordedId) && (recordedId as number) >= 0 ? `/recorded/detail/${(recordedId as number).toString(10)}` : '/recorded';
+        case 'recorded':
+            return '/recorded';
+        default:
+            return '/offline-videos';
+    }
 };
 
 /** 起動時状態と現在の回線状態から小さなオフライン表示を出すか決める。 */

@@ -46,13 +46,14 @@ const offlineApp = async options => {
     await page.waitForTimeout(1000);
     if (await list() === 0) throw new Error('保存済み録画がない');
     await page.locator('button:has-text("再生")').first().click();
+    await page.waitForFunction(() => location.hash.includes('/watch'), null, { timeout: 30_000 });
     await page.waitForTimeout(5000);
     const onlinePlay = await state();
 
     await context.setOffline(true);
     let reloadError = null;
     try {
-        await page.reload({ timeout: 20_000 });
+        await page.goto(`${baseUrl}/#/offline-videos`, { timeout: 20_000 });
     } catch (error) {
         reloadError = String(error.message).split('\n')[0];
     }
@@ -60,6 +61,7 @@ const offlineApp = async options => {
     const offlineReload = { error: reloadError, buttons: await list() };
     if (offlineReload.buttons > 0) {
         await page.locator('button:has-text("再生")').first().click();
+        await page.waitForFunction(() => location.hash.includes('/watch'), null, { timeout: 30_000 });
         await page.waitForTimeout(5000);
     }
     const offlinePlay = await state();
@@ -73,7 +75,7 @@ const offlineApp = async options => {
         newTabError = String(error.message).split('\n')[0];
     }
     await newPage.waitForTimeout(1500);
-    const newTabItems = await newPage.locator('.v-list-item').count().catch(() => 0);
+    const newTabItems = await newPage.locator('.offline-item').count().catch(() => 0);
     await newPage.close();
     await context.close();
 
