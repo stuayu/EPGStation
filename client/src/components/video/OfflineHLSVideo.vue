@@ -16,6 +16,20 @@ class OfflineHLSVideo extends BaseVideo {
     @Prop({ required: true })
     public videoSrc!: string;
 
+    @Prop({ default: null })
+    public jikkyoChannelId!: string | null;
+
+    @Prop({ default: null })
+    public jikkyoStartAt!: number | null;
+
+    @Prop({ default: null })
+    public jikkyoEndAt!: number | null;
+
+    protected getJikkyoKakologOption(): { jikkyoChannelId: string; startAt: number; endAt: number } | null {
+        if (this.jikkyoChannelId === null || this.jikkyoStartAt === null || this.jikkyoEndAt === null) return null;
+        return { jikkyoChannelId: this.jikkyoChannelId, startAt: this.jikkyoStartAt, endAt: this.jikkyoEndAt };
+    }
+
     private audioTracks: apid.VideoAudioTrack[] = [];
     private currentAudioTrack: apid.AudioTrackSpecifier = 'main';
 

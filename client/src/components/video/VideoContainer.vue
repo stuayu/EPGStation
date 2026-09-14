@@ -28,23 +28,33 @@
                     v-if="videoParam.type == 'OfflineHLS'"
                     ref="video"
                     v-bind:videoSrc="videoParam.src"
+                    v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
+                    v-bind:jikkyoStartAt="videoParam.jikkyoStartAt"
+                    v-bind:jikkyoEndAt="videoParam.jikkyoEndAt"
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
                     v-on:timeupdate="onTimeupdate"
                     v-on:pause="onPause"
                     v-on:ended="onEnded"
+                    v-on:jikkyoComment="onJikkyoComment"
+                    v-on:jikkyoError="onJikkyoError"
                     v-on:error="onVideoError"
                 ></OfflineHLSVideo>
                 <OfflineMpeg2Video
                     v-if="videoParam.type == 'OfflineOriginalMpeg2'"
                     ref="video"
                     v-bind:videoSrc="videoParam.src"
+                    v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
+                    v-bind:jikkyoStartAt="videoParam.jikkyoStartAt"
+                    v-bind:jikkyoEndAt="videoParam.jikkyoEndAt"
                     v-on:waiting="onWaiting"
                     v-on:loadeddata="onLoadeddata"
                     v-on:canplay="onCanplay"
                     v-on:timeupdate="onTimeupdate"
                     v-on:pause="onPause"
+                    v-on:jikkyoComment="onJikkyoComment"
+                    v-on:jikkyoError="onJikkyoError"
                     v-on:error="onVideoError"
                 ></OfflineMpeg2Video>
                 <LiveHLSVideo
@@ -576,6 +586,11 @@ class VideoContainer extends Vue {
     // 実況コメント (弾幕として描画したものを視聴画面の右パネルへ中継する)
     public onJikkyoComment(comment: JikkyoComment): void {
         this.$emit('jikkyoComment', comment);
+    }
+
+    /** 過去ログ取得失敗を視聴画面へ中継する。再生エラーにはしない。 */
+    public onJikkyoError(message: string): void {
+        this.$emit('jikkyoError', message);
     }
 
     // 直前の timeupdate 時点の再生位置 (秒)。データ放送のシーク検知に使う

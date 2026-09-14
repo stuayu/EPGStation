@@ -4,7 +4,8 @@
             <div v-for="(comment, index) in comments" :key="index" class="comment">
                 <div class="text" v-bind:style="{ color: getCommentColor(comment) }">{{ comment.text }}</div>
             </div>
-            <div v-if="comments.length === 0" class="empty text-body-2">コメントはまだありません</div>
+            <div v-if="errorMessage !== null" class="empty text-body-2">{{ errorMessage }}</div>
+            <div v-if="comments.length === 0 && errorMessage === null" class="empty text-body-2">コメントはまだありません</div>
         </div>
         <div v-if="isFollowing === false" class="follow">
             <v-btn size="small" variant="tonal" v-on:click="scrollToBottom">最新のコメントへ</v-btn>
@@ -24,6 +25,9 @@ import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 class WatchPanelComments extends Vue {
     @Prop({ required: true })
     public comments!: JikkyoComment[];
+
+    @Prop({ default: null })
+    public errorMessage!: string | null;
 
     // ライトモードで背景に埋もれてしまう白系の指定色
     private static readonly WHITE_COLORS = ['#fff', '#ffffff', 'white', 'rgb(255, 255, 255)'];

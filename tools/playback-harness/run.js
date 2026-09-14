@@ -30,6 +30,7 @@ const scenarios = [
     ['offline-navigation', 'オフライン一覧の複数動画を視聴画面へ遷移し再生進行を測定'],
     ['offline-detail', 'オフライン一覧 → 番組情報 → 視聴画面を回線断で測定'],
     ['recorded-detail-offline-play', '録画詳細から保存データ視聴へ遷移し配信 API 無しを測定'],
+    ['offline-jikkyo', 'オンラインのオフライン視聴で実況表示と回線断後の再生継続を測定'],
     ['offline-audio-switch', 'オフライン保存した複数音声 HLS の主音声・副音声切替を測定'],
     ['capability-report', 'ブラウザーの HEVC/HDR/MPEG-2 再生能力を JSON で採取'],
 ];
