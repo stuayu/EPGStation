@@ -101,6 +101,7 @@ export default abstract class BaseVideo extends Vue {
     private broadcastTimeTimerId: number | null = null;
     // 遅延表示待ちのコメント。破棄時にまとめてキャンセルする
     private jikkyoDelayTimerIds: number[] = [];
+    private isJikkyoOnlineListenerRegistered = false;
 
     // DPlayer が再生速度を保存する localStorage のキー。
     // 録画とライブで同じ DPlayer 設定を共有しているため、ライブ側だけ持ち込まないようにする
@@ -207,9 +208,13 @@ export default abstract class BaseVideo extends Vue {
                 getCurrentTime: () => this.getJikkyoPlaybackTime(),
                 onComment: comment => this.drawJikkyoComment(comment),
                 onError: message => {
-                    (this.dp as any)?.notice?.(message, 5000);
+                    this.$emit('jikkyoError', message);
                 },
             });
+            if (this.isJikkyoOnlineListenerRegistered === false) {
+                window.addEventListener('online', this.onJikkyoNetworkOnline);
+                this.isJikkyoOnlineListenerRegistered = true;
+            }
             void this.jikkyoKakologClient.start();
         }
     }
@@ -1570,6 +1575,11 @@ export default abstract class BaseVideo extends Vue {
         this.$emit('timeupdate');
     }
 
+    /** 回線復帰時に未取得の実況過去ログを再取得する。 */
+    public onJikkyoNetworkOnline(): void {
+        this.jikkyoKakologClient?.retry();
+    }
+
     /**
      * 読み込み中
      */
@@ -1687,6 +1697,10 @@ export default abstract class BaseVideo extends Vue {
     }
 
     public beforeUnmount(): void {
+        if (this.isJikkyoOnlineListenerRegistered === true) {
+            window.removeEventListener('online', this.onJikkyoNetworkOnline);
+            this.isJikkyoOnlineListenerRegistered = false;
+        }
         this.destroyPlayer();
     }
 

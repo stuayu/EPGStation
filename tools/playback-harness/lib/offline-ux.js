@@ -243,6 +243,47 @@ const recordedDetailOfflinePlay = async options => {
     }
 };
 
+/** オンラインでオフライン動画の実況を表示し、回線断後も再生を継続できることを測る。 */
+const offlineJikkyo = async options => {
+    const session = await openSession({ ...options, hash: '#/offline-videos' });
+    const { page } = session;
+    try {
+        const item = page.locator('.offline-item').first();
+        await item.waitFor({ state: 'visible', timeout: 30_000 });
+        await item.getByRole('button', { name: '再生', exact: true }).click();
+        await waitForHash(page, '/watch');
+        await page.waitForSelector('video', { timeout: 30_000 });
+        await startPlayback(page);
+        const commentTab = page.locator('.watch-side-panel .tab').filter({ hasText: 'コメント' });
+        await commentTab.waitFor({ state: 'visible', timeout: 30_000 });
+        await commentTab.click();
+        await page.waitForFunction(() => document.querySelectorAll('.watch-panel-comments .comment').length > 0, null, { timeout: options.commentTimeoutMs ?? 30_000 });
+        const online = await page.evaluate(() => ({
+            commentTab: Array.from(document.querySelectorAll('.watch-side-panel .tab')).some(element => element.textContent?.includes('コメント')),
+            comments: document.querySelectorAll('.watch-panel-comments .comment').length,
+            danmaku: document.querySelectorAll('.dplayer-danmaku-item').length,
+        }));
+        const beforeOffline = await readVideoState(page);
+        await session.context.setOffline(true);
+        await page.waitForTimeout(5_000);
+        const afterOffline = await readVideoState(page);
+        const errors = await page.locator('.streaming-error').count();
+        const value = {
+            online,
+            beforeOffline,
+            afterOffline,
+            visibleStreamingErrors: errors,
+            pageErrors: session.logs.filter(log => log.startsWith('[pageerror]')).length,
+        };
+        const passed = online.commentTab === true && online.comments > 0 && online.danmaku > 0 &&
+            beforeOffline !== null && afterOffline !== null && afterOffline.currentTime > beforeOffline.currentTime + 1 &&
+            afterOffline.error === null && value.visibleStreamingErrors === 0 && value.pageErrors === 0;
+        return result('offline-jikkyo', passed, value, passed ? null : 'オフライン視聴の実況表示または回線断後の再生継続に失敗');
+    } finally {
+        await closePlayback(session);
+    }
+};
+
 module.exports = {
     'offline-original-mpeg2': offlineOriginalMpeg2,
     'offline-program-info': offlineProgramInfo,
@@ -251,4 +292,5 @@ module.exports = {
     'offline-navigation': offlineNavigation,
     'offline-detail': offlineDetail,
     'recorded-detail-offline-play': recordedDetailOfflinePlay,
+    'offline-jikkyo': offlineJikkyo,
 };

@@ -13,6 +13,10 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
+## 2026-09-15
+
+- **オフライン保存動画でもニコニコ実況を表示できるようにした**: 保存開始時に録画ファイル先頭の実時刻 (`videoFile.startAt`) を基準とする実況チャンネル・取得範囲を解決し、IndexedDB の保存レコードへ保持する。旧形式など実況情報の無いレコードは、オンラインかつ EPGStation サーバへ届く場合だけ再生開始時に解決して書き戻す。オフライン視聴画面は実況情報があると「コメント」タブを追加し、通常録画視聴と同じ `RecordedJikkyoSync` の時刻計算で弾幕と一覧を同期する。過去ログ API の失敗は再生を止めず、コメントタブに状態だけ表示し、`online` 復帰時に未取得範囲を再試行する。Service Worker は外部の過去ログ API を横取り・キャッシュしない。実ブラウザ / iOS Safari は未検証。
+
 ## 2026-09-14
 
 - **iPhone の tsreplace HEVC Original とオフライン音声切替を修正した**: HEVC Main10 の端末判定が HDR/HLG の `mediaCapabilities` と MSE (`media-source`) に依存していたため、10bit SDR を再生できる iPhone でも `original-hevc` が候補から消えていた。native HLS の端末は `file` と `canPlayType('video/mp4; codecs="hvc1..."')` を使い、MSE 端末は従来どおり `media-source` を使うよう判定を分離し、能力キャッシュを v3 へ更新した。設定 > 再生に `hevc` / `hevcMain10` / `hdr` / `mpeg2toh264` の判定 JSON と再判定ボタンを追加した。オフライン保存自体は既に `audio0` / `audio1`、`#EXT-X-MEDIA`、`CODECS` を保存していたが、オフライン視聴画面が保存 master を読まず音声 UI へ接続していなかった。ローカル master の音声 rendition を一覧化し、DPlayer の既存音声メニューから hls.js / native HLS のトラックを切り替えるようにした。既存の単一音声保存データは副音声を復元できないため再保存が必要。実ブラウザーは未検証。

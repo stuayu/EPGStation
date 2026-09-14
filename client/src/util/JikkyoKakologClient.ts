@@ -45,6 +45,8 @@ export default class JikkyoKakologClient {
     private nextCommentIndex: number = 0;
     private lastPlaybackTime: number | null = null;
     private isDestroyed: boolean = false;
+    private isLoading = false;
+    private nextRequestStartAt: number;
 
     private static readonly API_URL = 'https://jikkyo.tsukumijima.net/api/kakolog';
     private static readonly MAX_REQUEST_DURATION = 3 * 24 * 60 * 60 * 1000;
@@ -53,20 +55,23 @@ export default class JikkyoKakologClient {
 
     constructor(option: JikkyoKakologClientOption) {
         this.option = option;
+        this.nextRequestStartAt = option.startAt;
     }
 
     /**
      * 過去ログを取得する
      */
     public async start(): Promise<void> {
-        if (this.option.startAt >= this.option.endAt) {
+        if (this.nextRequestStartAt >= this.option.endAt || this.isLoading === true) {
             return;
         }
+
+        this.isLoading = true;
 
         let hasComment = false;
         let hasError = false;
         let requestCount = 0;
-        let chunkStartAt = this.option.startAt;
+        let chunkStartAt = this.nextRequestStartAt;
 
         while (chunkStartAt < this.option.endAt && requestCount < JikkyoKakologClient.MAX_REQUEST_COUNT) {
             if (this.isDestroyedNow() === true) {
@@ -98,13 +103,21 @@ export default class JikkyoKakologClient {
             }
 
             chunkStartAt = chunkEndAt;
+            this.nextRequestStartAt = chunkEndAt;
         }
+
+        this.isLoading = false;
 
         if (hasError === true && hasComment === false) {
             this.option.onError?.('ニコニコ実況の過去ログを取得できませんでした');
         } else if (hasComment === false) {
             this.option.onError?.('この番組のニコニコ実況過去ログは見つかりませんでした');
         }
+    }
+
+    /** 回線復帰時に失敗した未取得区間の取得を再開する。 */
+    public retry(): void {
+        if (this.isDestroyedNow() === false) void this.start();
     }
 
     /**
@@ -136,7 +149,15 @@ export default class JikkyoKakologClient {
      * 取得済みコメントをマージし、現在の再生位置に同期させる
      */
     private addComments(comments: KakologComment[]): void {
-        this.comments = this.comments.concat(comments).sort((a, b) => a.timestamp - b.timestamp);
+        const existing = new Set(this.comments.map(comment => `${comment.timestamp}\u0000${comment.text}\u0000${comment.color}\u0000${comment.type}\u0000${comment.size}`));
+        this.comments = this.comments
+            .concat(comments.filter(comment => {
+                const key = `${comment.timestamp}\u0000${comment.text}\u0000${comment.color}\u0000${comment.type}\u0000${comment.size}`;
+                if (existing.has(key)) return false;
+                existing.add(key);
+                return true;
+            }))
+            .sort((a, b) => a.timestamp - b.timestamp);
         this.sync();
     }
 

@@ -36,6 +36,10 @@ test('別オリジン、POST、未知の要求を横取りしない', () => {
     assert.equal(classifyServiceWorkerRequest(request('local/other.bin'), scope), 'passthrough');
 });
 
+test('外部のニコニコ実況過去ログAPIはService Workerのcache対象外', () => {
+    assert.equal(classifyServiceWorkerRequest(request('https://jikkyo.tsukumijima.net/api/kakolog/jk1'), scope), 'passthrough');
+});
+
 test('オフライン MPEG-2 Range の端点を 206 / 416 用に解決する', () => {
     assert.deepEqual(resolveOfflineByteRange('bytes=0-9', 20), { kind: 'partial', start: 0, end: 9 });
     assert.deepEqual(resolveOfflineByteRange('bytes=10-', 20), { kind: 'partial', start: 10, end: 19 });

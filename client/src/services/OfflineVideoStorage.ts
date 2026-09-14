@@ -21,6 +21,10 @@ export interface OfflineVideoRecord {
     originalFileSize?: number;
     originalChunkSize?: number;
     durationSeconds?: number;
+    // 旧形式には無い。保存時に解決できたニコニコ実況過去ログの範囲。
+    jikkyoChannelId?: string;
+    jikkyoStartAt?: number;
+    jikkyoEndAt?: number;
 }
 
 const DB_NAME = 'epgstation-offline-videos';
@@ -93,7 +97,11 @@ export default class OfflineVideoStorage {
                 reject(new Error('オフライン録画のキーが不正です。'));
                 return;
             }
-            const request = db.transaction(VIDEO_STORE, 'readwrite').objectStore(VIDEO_STORE).put({ ...video, key });
+            // 画面から渡されるレコードは Vue のリアクティブ Proxy (入れ子の program 等も) のことがあり、
+            // IndexedDB の structured clone は Proxy を複製できず DataCloneError になる。
+            // 保存レコードは JSON で表せる値だけなので、深いコピーで素のオブジェクトにしてから保存する
+            const plain = JSON.parse(JSON.stringify({ ...video, key })) as OfflineVideoRecord;
+            const request = db.transaction(VIDEO_STORE, 'readwrite').objectStore(VIDEO_STORE).put(plain);
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error ?? new Error('オフライン録画を保存できません。'));
         });

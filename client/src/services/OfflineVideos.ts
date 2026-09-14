@@ -11,6 +11,12 @@ import {
 import Util from '@/util/Util';
 import { withMediaToken } from '@/util/MediaToken';
 import GenreUtil from '@/util/GenreUtil';
+import container from '@/model/ModelContainer';
+import IRecordedApiModel from '@/model/api/recorded/IRecordedApiModel';
+import IChannelModel from '@/model/channels/IChannelModel';
+import IVideoApiModel from '@/model/api/video/IVideoApiModel';
+import { resolveJikkyoKakologParam } from '@/util/JikkyoKakologParam';
+import type { OfflineJikkyoParam } from '../../../src/util/OfflineJikkyoParam';
 
 export interface OfflineDownloadJob {
     videoId: number;
@@ -42,6 +48,14 @@ export default class OfflineVideos {
     private static readonly jobs = new Map<number, OfflineDownloadJob>();
     private static savedVideoIndex: OfflineVideoRecord[] | null = null;
     private static savedVideoIndexPromise: Promise<OfflineVideoRecord[]> | null = null;
+
+    private static getJikkyoResolveModels(): { recordedApiModel: IRecordedApiModel; channelModel: IChannelModel; videoApiModel: IVideoApiModel } {
+        return {
+            recordedApiModel: container.get<IRecordedApiModel>('IRecordedApiModel'),
+            channelModel: container.get<IChannelModel>('IChannelModel'),
+            videoApiModel: container.get<IVideoApiModel>('IVideoApiModel'),
+        };
+    }
 
     public static async getVideos(): Promise<OfflineVideoRecord[]> {
         if (this.savedVideoIndex !== null) return this.savedVideoIndex;
@@ -111,6 +125,19 @@ export default class OfflineVideos {
             displayName: infoOptions.displayName,
             resolveGenre: (genre, subGenre) => GenreUtil.getGenres(genre, subGenre),
         });
+        // 実況パラメータは保存開始時のオンライン状態で一度だけ解決する。
+        // 外部 API / 局対応表の失敗は動画保存を失敗させない。
+        let jikkyoParam: OfflineJikkyoParam | null = null;
+        try {
+            const models = this.getJikkyoResolveModels();
+            jikkyoParam = await resolveJikkyoKakologParam({
+                ...models,
+                recordedId: snapshot.id,
+                videoFileId,
+            });
+        } catch (error) {
+            console.error('offline jikkyo parameter resolve error', error);
+        }
         const job: OfflineDownloadJob = { videoId: videoFileId, profile, profileLabel: infoOptions.profileLabel, downloadedBytes: 0, estimatedBytes, program: snapshot, programInfo, state: 'Downloading', error: null };
         this.jobs.set(videoFileId, job);
         this.eventTarget.dispatchEvent(new Event('change'));
@@ -182,6 +209,7 @@ export default class OfflineVideos {
                     thumbnailURLs,
                     channelLogoURL: (await cache.match(channelLogoURL)) === undefined ? undefined : channelLogoURL,
                     programInfo,
+                    ...jikkyoParam,
                 };
                 await OfflineVideoStorage.put(offlineVideo);
                 this.savedVideoIndex = null;
@@ -256,6 +284,7 @@ export default class OfflineVideos {
                 channelLogoURL: (await cache.match(channelLogoURL)) === undefined ? undefined : channelLogoURL,
                 programInfo,
                 durationSeconds: metadata.duration,
+                ...jikkyoParam,
             };
             await OfflineVideoStorage.put(video);
             this.savedVideoIndex = null;
@@ -280,5 +309,14 @@ export default class OfflineVideos {
         await OfflineVideoStorage.delete(video);
         this.savedVideoIndex = null;
         this.eventTarget.dispatchEvent(new Event('change'));
+    }
+
+    /** 保存済み動画へ再生時に解決した実況パラメータを書き戻す。 */
+    public static async updateJikkyoParam(video: OfflineVideoRecord, param: OfflineJikkyoParam): Promise<OfflineVideoRecord> {
+        const updated = { ...video, ...param };
+        await OfflineVideoStorage.put(updated);
+        this.savedVideoIndex = this.savedVideoIndex?.map(item => item.key === updated.key ? updated : item) ?? null;
+        this.eventTarget.dispatchEvent(new Event('change'));
+        return updated;
     }
 }
