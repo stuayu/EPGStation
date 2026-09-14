@@ -33,7 +33,9 @@ const resolveHash = options => {
     const recordedId = options.recordedId === undefined ? null : encodeURIComponent(String(options.recordedId));
     if (options.streamingType !== undefined) {
         if (recordedId === null || options.mode === undefined) throw new Error('--streaming-type 使用時は --recorded-id と --mode が必要');
-        return `#/recorded/streaming/${videoFileId}?recordedId=${recordedId}&streamingType=${encodeURIComponent(options.streamingType)}&mode=${encodeURIComponent(String(options.mode))}`;
+        const profile = options.profile === undefined ? '' : `&profile=${encodeURIComponent(String(options.profile))}`;
+        const ss = options.ss === undefined ? '' : `&ss=${encodeURIComponent(String(options.ss))}`;
+        return `#/recorded/streaming/${videoFileId}?recordedId=${recordedId}&streamingType=${encodeURIComponent(options.streamingType)}&mode=${encodeURIComponent(String(options.mode))}${profile}${ss}`;
     }
     if (recordedId === null) throw new Error('--video-file-id 使用時は --recorded-id が必要');
     return `#/recorded/watch?videoId=${videoFileId}&recordedId=${recordedId}`;
@@ -79,7 +81,19 @@ const applyThrottle = async (context, page, throttle) => {
 
 const optionsBrowserName = page => page.__harnessBrowserName;
 
-const openPlayback = async options => {
+const attachPageListeners = (page, logs) => {
+    page.on('console', message => {
+        if (message.type() === 'error' || message.type() === 'warning' || /mpegts|hls|audio|stall|error/i.test(message.text())) {
+            logs.push(`[${message.type()}] ${message.text().slice(0, 300)}`);
+        }
+    });
+    page.on('pageerror', error => logs.push(`[pageerror] ${error.message.slice(0, 300)}`));
+    page.on('response', response => {
+        if (response.status() >= 400) logs.push(`[http ${response.status()}] ${response.url().slice(0, 240)}`);
+    });
+};
+
+const openPageSession = async options => {
     const playwright = requirePlaywright();
     const browserName = options.browser ?? 'chromium';
     const browserType = playwright[browserName];
@@ -95,20 +109,41 @@ const openPlayback = async options => {
     page.__harnessBrowserName = browserName;
     await applyThrottle(context, page, options.throttle);
     const logs = [];
-    page.on('console', message => {
-        if (message.type() === 'error' || message.type() === 'warning' || /mpegts|hls|audio|stall|error/i.test(message.text())) {
-            logs.push(`[${message.type()}] ${message.text().slice(0, 300)}`);
-        }
-    });
-    page.on('pageerror', error => logs.push(`[pageerror] ${error.message.slice(0, 300)}`));
-    page.on('response', response => {
-        if (response.status() >= 400) logs.push(`[http ${response.status()}] ${response.url().slice(0, 240)}`);
-    });
+    attachPageListeners(page, logs);
     const route = resolveHash(options);
     const url = options.hashUrl ?? `${normalizeBaseUrl(options.baseUrl)}/${route}`;
+    if (options.offline === true) await context.setOffline(true);
     await page.goto(url);
-    await page.waitForSelector('video', { timeout: options.timeoutMs ?? 30_000 });
     return { browser, context, page, logs, url };
+};
+
+const openPlayback = async options => {
+    const session = await openPageSession(options);
+    await session.page.waitForSelector('video', { timeout: options.timeoutMs ?? 30_000 });
+    return session;
+};
+
+const openPersistentPageSession = async options => {
+    const playwright = requirePlaywright();
+    const browserName = options.browser ?? 'chromium';
+    const browserType = playwright[browserName];
+    if (browserType === undefined) throw new Error(`ブラウザ不明: ${browserName}`);
+    if (typeof options.profileDir !== 'string' || options.profileDir.length === 0) throw new Error('--profile-dir が必要');
+    const executablePath = resolveExecutablePath(browserType, browserName);
+    const context = await browserType.launchPersistentContext(options.profileDir, {
+        ...(executablePath === undefined ? {} : { executablePath }),
+        viewport: { width: 1280, height: 800 },
+        ...(browserName === 'chromium' ? { args: ['--autoplay-policy=no-user-gesture-required'] } : {}),
+    });
+    const page = context.pages()[0] ?? (await context.newPage());
+    page.__harnessBrowserName = browserName;
+    const logs = [];
+    attachPageListeners(page, logs);
+    const route = resolveHash(options);
+    const url = options.hashUrl ?? `${normalizeBaseUrl(options.baseUrl)}/${route}`;
+    if (options.offline === true) await context.setOffline(true);
+    await page.goto(url);
+    return { browser: undefined, context, page, logs, url };
 };
 
 const startPlayback = async (page, retries = 8) => {
@@ -204,12 +239,14 @@ const selectOtherQuality = page =>
 
 const closePlayback = async session => {
     await session.context.close().catch(() => undefined);
-    await session.browser.close().catch(() => undefined);
+    if (session.browser !== undefined) await session.browser.close().catch(() => undefined);
 };
 
 module.exports = {
     HarnessDependencyError,
     normalizeBaseUrl,
+    openPageSession,
+    openPersistentPageSession,
     resolveHash,
     openPlayback,
     startPlayback,

@@ -11,8 +11,13 @@ const {
     selectOtherQuality,
     closePlayback,
     normalizeBaseUrl,
+    openPersistentPageSession,
 } = require('./browser');
 const { result } = require('./output');
+const offlineRecords = require('./offline-records');
+const originalHevc = require('./original-hevc');
+const offlineApp = require('./offline-app');
+const uiFlows = require('./ui-flows');
 const {
     evaluatePlaybackStability,
     evaluatePlaybackFrames,
@@ -163,7 +168,7 @@ const ptime = async options => {
 const recoverAfterSeek = async (page, ratio, seconds) => {
     await seekRelative(page, ratio);
     const samples = [];
-    for (let index = 0; index < seconds / 2; index += 1) {
+    for (let index = 0; index <= seconds / 2; index += 1) {
         await page.waitForTimeout(2000);
         const state = await readVideoState(page);
         samples.push({
@@ -177,36 +182,59 @@ const recoverAfterSeek = async (page, ratio, seconds) => {
     return samples;
 };
 
+const evaluateSeekRecovery = rows => {
+    for (let index = 1; index < rows.length; index += 1) {
+        const previous = rows[index - 1];
+        const current = rows[index];
+        if (
+            current !== null &&
+            previous !== null &&
+            current.paused === false &&
+            current.error === null &&
+            current.readyState >= 2 &&
+            current.currentTime > previous.currentTime + 0.05
+        ) {
+            return { recovered: true, recoverySample: index, recoverySeconds: index * 2 };
+        }
+    }
+
+    return { recovered: false, recoverySample: null, recoverySeconds: null };
+};
+
 const m2tsSeek = async options => {
-    const value = await runWithPlayback(options, async ({ page }) => {
+    const value = await runWithPlayback(options, async ({ page, logs }) => {
         await page.waitForTimeout(10_000);
-        const forward = await recoverAfterSeek(page, 0.8, 14);
-        const backward = await recoverAfterSeek(page, 0.2, 20);
-        const recovered = rows => rows.some(state => state !== null && state.readyState >= 2 && latestBufferedEnd(state) > state.currentTime);
+        const seekRows = {};
+        for (const [label, ratio] of [['forward80', 0.8], ['backward30', 0.3], ['forward90', 0.9]]) {
+            seekRows[label] = await recoverAfterSeek(page, ratio, 8);
+        }
         const evaluateFrames = rows => evaluatePlaybackFrames(rows, {
             blackLumaMax: options.blackLumaMax,
             maxBlackRatio: options.maxBlackRatio,
             frameChangeThreshold: options.frameChangeThreshold,
             minFrameChanges: options.minFrameChanges,
         });
-        const forwardVisual = evaluateFrames(forward);
-        const backwardVisual = evaluateFrames(backward);
+        const evaluated = Object.fromEntries(Object.entries(seekRows).map(([label, rows]) => [label, {
+            recovery: evaluateSeekRecovery(rows),
+            visual: evaluateFrames(rows),
+            samples: rows,
+        }]));
         return {
-            forwardRecovered: recovered(forward),
-            backwardRecovered: recovered(backward),
-            forwardVisual: forwardVisual.summary,
-            backwardVisual: backwardVisual.summary,
-            forwardVisualPassed: forwardVisual.passed,
-            backwardVisualPassed: backwardVisual.passed,
-            forwardVisualReason: forwardVisual.reason,
-            backwardVisualReason: backwardVisual.reason,
+            pageErrors: logs.filter(log => log.startsWith('[pageerror]')).length,
+            seeks: Object.fromEntries(Object.entries(evaluated).map(([label, value]) => [label, {
+                recovery: value.recovery,
+                visual: value.visual.summary,
+                visualPassed: value.visual.passed,
+                visualReason: value.visual.reason,
+                samples: value.samples,
+            }])),
         };
     });
-    const passed = value.forwardRecovered && value.backwardRecovered && value.forwardVisualPassed && value.backwardVisualPassed;
-    let reason = null;
-    if (!value.forwardRecovered || !value.backwardRecovered) reason = '前方または後方シーク後に再生バッファ復帰なし';
-    else if (!value.forwardVisualPassed) reason = `前方シーク後の映像判定: ${value.forwardVisualReason}`;
-    else if (!value.backwardVisualPassed) reason = `後方シーク後の映像判定: ${value.backwardVisualReason}`;
+    const seekValues = Object.values(value.seeks);
+    const passed = value.pageErrors === 0 && seekValues.every(seek => seek.recovery.recovered && seek.recovery.recoverySeconds <= 8);
+    let reason = value.pageErrors === 0 ? null : `pageerror ${value.pageErrors} 件`;
+    const failedSeek = seekValues.find(seek => !seek.recovery.recovered || seek.recovery.recoverySeconds > 8 || !seek.visualPassed);
+    if (reason === null && failedSeek !== undefined) reason = failedSeek.recovery.recovered === false ? 'シーク後8秒以内の再生進行なし' : failedSeek.visualReason;
     return result('m2ts-seek', passed, value, reason);
 };
 
@@ -227,7 +255,25 @@ const m2tsDeep = async options => {
 };
 
 const subtitle = async options => {
-    const value = await runWithPlayback(options, async ({ page }) => {
+    const playbackOptions = options.offline === true
+        ? { ...options, hash: '#/offline-videos' }
+        : options;
+    const session = options.offline === true ? await openPersistentPageSession(playbackOptions) : await openPlayback(playbackOptions);
+    try {
+        if (options.offline === true) {
+            const playButton = session.page.getByRole('button', { name: '再生', exact: true }).first();
+            if (await playButton.count() === 0) throw new Error('保存済み録画がない');
+            await playButton.click();
+            await session.page.waitForSelector('video', { timeout: options.timeoutMs ?? 30_000 });
+            if (options.ss !== undefined) {
+                await session.page.evaluate(position => {
+                    const video = document.querySelector('video');
+                    if (video !== null) video.currentTime = position;
+                }, options.ss);
+            }
+        }
+        await startPlayback(session.page);
+    const value = await (async ({ page }) => {
         let maximumPixels = 0;
         let canvasCount = 0;
         for (let elapsed = 0; elapsed < options.duration; elapsed += 3) {
@@ -252,9 +298,12 @@ const subtitle = async options => {
             canvasCount = Math.max(canvasCount, state.canvases);
         }
         return { canvasCount, maximumPixels };
-    });
-    const passed = value.maximumPixels >= options.minSubtitlePixels;
-    return result('subtitle', passed, value, passed ? null : `不透明字幕ピクセル ${value.maximumPixels} < ${options.minSubtitlePixels}`);
+    })(session);
+        const passed = value.maximumPixels >= options.minSubtitlePixels;
+        return result('subtitle', passed, { ...value, ss: options.ss ?? null, offline: options.offline === true, pageErrors: session.logs.filter(log => log.startsWith('[pageerror]')).length }, passed ? null : `不透明字幕ピクセル ${value.maximumPixels} < ${options.minSubtitlePixels}`);
+    } finally {
+        await closePlayback(session);
+    }
 };
 
 const hlsSubtitle = async options => {
@@ -467,4 +516,12 @@ module.exports = {
     'recording-stress': recordingStress,
     'ipad-audio': ipadAudio,
     mms,
+    'offline-records': offlineRecords,
+    'original-hevc': originalHevc,
+    'offline-app': offlineApp,
+    'ui-original-flow': uiFlows.uiOriginalFlow,
+    'watch-history-flow': uiFlows.watchHistoryFlow,
+    'container-switch': uiFlows.containerSwitch,
+    'live-original': uiFlows.liveOriginal,
+    'offline-hevc': uiFlows.offlineHevc,
 };
