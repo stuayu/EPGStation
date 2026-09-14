@@ -2,7 +2,7 @@ import * as apid from '../../../../api';
 import BaseVide from './BaseVideo';
 import type { RecordedStreamingType } from '@/util/StreamingTypeUtil';
 
-export type VideoType = 'Normal' | 'RecordedStreaming' | 'LiveHLS' | 'RecordedHLS' | 'LiveMpegTs';
+export type VideoType = 'Normal' | 'RecordedStreaming' | 'LiveHLS' | 'RecordedHLS' | 'LiveMpegTs' | 'OfflineHLS';
 
 interface VideoParamBase {
     type: VideoType;
@@ -17,6 +17,11 @@ export interface NormalVideoParam extends VideoParamBase {
     src: string;
 }
 
+export interface OfflineHLSVideoParam extends VideoParamBase {
+    type: 'OfflineHLS';
+    src: string;
+}
+
 export interface RecordedStreamingParam extends VideoParamBase {
     type: 'RecordedStreaming';
     recordedId: apid.RecordedId;
@@ -24,6 +29,7 @@ export interface RecordedStreamingParam extends VideoParamBase {
     streamingType: RecordedStreamingType;
     mode: number;
     playPosition?: number;
+    profile?: string;
 }
 
 export interface LiveHLSParam extends VideoParamBase {
@@ -38,6 +44,7 @@ export interface RecordedHLSParam extends VideoParamBase {
     videoFileId: apid.VideoFileId;
     mode: number;
     playPosition?: number;
+    profile?: string;
 }
 
 export interface LiveMpegTsVideoParam extends VideoParamBase {
@@ -45,6 +52,7 @@ export interface LiveMpegTsVideoParam extends VideoParamBase {
     src: string;
     channelId: apid.ChannelId;
     mode: number;
+    directMpeg2?: boolean;
 }
 
-export type BaseVideoParam = NormalVideoParam | RecordedStreamingParam | LiveHLSParam | RecordedHLSParam | LiveMpegTsVideoParam;
+export type BaseVideoParam = NormalVideoParam | OfflineHLSVideoParam | RecordedStreamingParam | LiveHLSParam | RecordedHLSParam | LiveMpegTsVideoParam;

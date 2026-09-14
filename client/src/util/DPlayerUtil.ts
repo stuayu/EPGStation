@@ -1,6 +1,8 @@
 import { DPlayerType } from 'dplayer';
 import Hls from 'hls.js';
 import Mpegts from 'mpegts.js';
+import { Deinterlacer } from 'mpeg2toh264/yadif';
+import { Mpeg2TsPlayer } from 'mpeg2toh264/player';
 import container from '../model/ModelContainer';
 import { ISettingStorageModel } from '../model/storage/setting/ISettingStorageModel';
 import UaUtil from './UaUtil';
@@ -86,6 +88,9 @@ namespace DPlayerUtil {
 
         (window as any).Hls = createHlsGlobal();
         (window as any).mpegts = createMpegtsGlobal();
+        // DPlayer 1.33.1 は mpeg2toh264 を window から解決する。
+        // Worker/MSE の asset URL を保つため Vite の事前バンドル対象から除外する。
+        (window as any).mpeg2toh264 = { Mpeg2TsPlayer, Deinterlacer };
         isInitedGlobals = true;
     };
 

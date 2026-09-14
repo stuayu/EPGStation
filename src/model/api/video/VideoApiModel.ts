@@ -20,6 +20,8 @@ import IVideoApiModel, {
     VideoFilePathInfo,
 } from './IVideoApiModel';
 import IVideoUtil from './IVideoUtil';
+import ISourceAnalyzer from '../../stream/capability/ISourceAnalyzer';
+import { isOriginalMpeg2Source } from '../../../util/OriginalMpeg2Util';
 
 @injectable()
 export default class VideoApiModel implements IVideoApiModel {
@@ -38,6 +40,7 @@ export default class VideoApiModel implements IVideoApiModel {
     private ipc: IIPCClient;
     private analyzeModel: IVideoFileAnalyzeModel;
     private log: ILogger | null;
+    private sourceAnalyzer?: ISourceAnalyzer;
 
     constructor(
         @inject('IConfiguration') configuration: IConfiguration,
@@ -49,6 +52,7 @@ export default class VideoApiModel implements IVideoApiModel {
         @inject('IIPCClient') ipc: IIPCClient,
         @inject('IVideoFileAnalyzeModel') analyzeModel: IVideoFileAnalyzeModel,
         @inject('ILoggerModel') logger?: ILoggerModel,
+        @inject('ISourceAnalyzer') sourceAnalyzer?: ISourceAnalyzer,
     ) {
         this.configuration = configuration;
         this.videoFileDB = videoFileDB;
@@ -59,6 +63,7 @@ export default class VideoApiModel implements IVideoApiModel {
         this.ipc = ipc;
         this.analyzeModel = analyzeModel;
         this.log = typeof logger === 'undefined' ? null : logger.getLogger();
+        this.sourceAnalyzer = sourceAnalyzer;
     }
 
     /**
@@ -75,6 +80,18 @@ export default class VideoApiModel implements IVideoApiModel {
                   path: fullPath,
                   mime: await this.createMime(fullPath),
               };
+    }
+
+    /** MPEG-2 映像を含む録画 TS だけを端末変換用に返す。 */
+    public async getOriginalMpeg2FilePath(videoFileId: apid.VideoFileId): Promise<VideoFilePathInfo | null> {
+        const video = await this.videoFileDB.findId(videoFileId);
+        // tsreplace / Amatsukaze の MPEG-2 TS も登録時は encoded になり得る。
+        // transport は SourceAnalyzer で検証するため、type だけで元 TS を除外しない。
+        if (video === null || (video.type !== 'ts' && video.type !== 'encoded') || this.sourceAnalyzer === undefined)
+            return null;
+        const source = await this.sourceAnalyzer.analyzeRecordedFile(videoFileId);
+        if (isOriginalMpeg2Source(source) === false) return null;
+        return this.getFullFilePath(videoFileId);
     }
 
     /**

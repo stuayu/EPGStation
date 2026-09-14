@@ -1,12 +1,14 @@
-import { inject, injectable } from 'inversify';
+import { inject, injectable, optional } from 'inversify';
 import * as apid from '../../../../api';
 import IVideoFileDB from '../../db/IVideoFileDB';
+import IRecordedDB from '../../db/IRecordedDB';
 import ISourceAnalyzer from '../../stream/capability/ISourceAnalyzer';
 import { ClientCapabilities } from '../../stream/capability/IClientCapabilities';
 import IPlaybackPolicyResolver, { PlaybackPreference } from '../../stream/resolver/IPlaybackPolicyResolver';
 import IStreamPresetRegistry, { StreamPresetScope } from '../../stream/preset/IStreamPresetRegistry';
 import { StreamPreset } from '../../stream/preset/IStreamPreset';
 import { BUILTIN_STREAM_PRESETS } from '../../../util/BuiltinStreamPresets';
+import { ORIGINAL_HEVC_PROFILE_ID } from '../../../util/OriginalHevcUtil';
 import IPlaybackApiModel, { PlaybackOptions } from './IPlaybackApiModel';
 
 @injectable()
@@ -16,6 +18,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         @inject('IStreamPresetRegistry') private readonly presetRegistry: IStreamPresetRegistry,
         @inject('IPlaybackPolicyResolver') private readonly resolver: IPlaybackPolicyResolver,
         @inject('IVideoFileDB') private readonly videoFileDB: IVideoFileDB,
+        @inject('IRecordedDB') @optional() private readonly recordedDB?: IRecordedDB,
     ) {}
 
     public async getLivePlaybackOptions(
@@ -45,6 +48,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         const video = await this.videoFileDB.findId(videoFileId);
         if (video === null) throw new Error('VideoFileIsUndefined');
         const scope: StreamPresetScope = video.type === 'encoded' ? 'recorded-encoded' : 'recorded-ts';
+        const recorded = this.recordedDB === undefined ? null : await this.recordedDB.findId(video.recordedId);
         return this.create(
             scope,
             await this.sourceAnalyzer.analyzeRecordedFile(videoFileId),
@@ -52,6 +56,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
             requestedPresetId,
             container,
             preference,
+            recorded?.isRecording !== true,
         );
     }
 
@@ -62,6 +67,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         requestedPresetId?: string,
         container?: apid.PlaybackContainer,
         preference?: PlaybackPreference,
+        allowOriginal = true,
     ): PlaybackOptions {
         const allPresets = this.presetRegistry.getPresets(scope, source, client);
         const modeMap =
@@ -71,7 +77,17 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         const presets =
             container === undefined || container === 'normal'
                 ? allPresets
-                : allPresets.filter(preset => preset.id === 'auto' || modeMap[container]?.includes(preset.id) === true);
+                : container === 'original'
+                  ? allPresets.filter(
+                        preset => preset.id === 'auto' || (allowOriginal && preset.delivery === 'mpeg2toh264'),
+                    )
+                  : allPresets.filter(
+                        preset =>
+                            preset.id === 'auto' ||
+                            (allowOriginal && preset.delivery === 'mpeg2toh264') ||
+                            (allowOriginal && preset.id === ORIGINAL_HEVC_PROFILE_ID) ||
+                            modeMap[container]?.includes(preset.id) === true,
+                    );
         const decision = this.resolver.resolve(scope, source, client, presets, requestedPresetId, preference);
         const resolved = decision.presetId;
         const resolvedPreset = presets.find(preset => preset.id === resolved);
@@ -145,6 +161,8 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                         .map(container => [container, modeMap[container].indexOf(modePresetId)])
                         .filter(entry => Number(entry[1]) >= 0),
                 ) as PlaybackOptions['profiles'][number]['modes'];
+                if (preset.delivery === 'mpeg2toh264') modes.original = 0;
+                if (preset.id === ORIGINAL_HEVC_PROFILE_ID) modes.hls = 0;
                 return {
                     role,
                     profile: {
@@ -161,6 +179,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                         modes,
                         videoBitrate: preset.output.videoBitrate,
                         videoCodec: preset.output.codec,
+                        delivery: (preset.delivery ?? 'stream') as 'stream' | 'mpeg2toh264',
                         embeddedAudioSwitch: this.getEmbeddedAudioSwitch(scope, modes, modePresetId),
                     },
                 };
@@ -201,22 +220,17 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
             typeof this.presetRegistry.resolveProfileCmd === 'function'
                 ? this.presetRegistry.resolveProfileCmd(scope, modePresetId)
                 : undefined;
-        const hasTsreadexAudioMap =
-            typeof cmd === 'string' &&
-            cmd.includes('%TSREADEX%') &&
-            cmd.includes('%AUDIOMAP%');
+        const hasTsreadexAudioMap = typeof cmd === 'string' && cmd.includes('%TSREADEX%') && cmd.includes('%AUDIOMAP%');
         const hasTsreadexAudioSelectMap =
-            typeof cmd === 'string' &&
-            cmd.includes('%TSREADEX%') &&
-            cmd.includes('%AUDIOSELECTMAP%');
+            typeof cmd === 'string' && cmd.includes('%TSREADEX%') && cmd.includes('%AUDIOSELECTMAP%');
         const isM2TsLLEmbedded = hasTsreadexAudioMap || hasTsreadexAudioSelectMap;
         // in-memory HLS (%streamFileDir% を含まない) だけが Fmp4Packager 経由で複数音声トラックを配信できる
-        const isHlsEmbedded = hasTsreadexAudioMap && typeof cmd === 'string' && cmd.includes('%streamFileDir%') === false;
+        const isHlsEmbedded =
+            hasTsreadexAudioMap && typeof cmd === 'string' && cmd.includes('%streamFileDir%') === false;
 
         const result: NonNullable<PlaybackOptions['profiles'][number]['embeddedAudioSwitch']> = {};
         for (const container of containers) {
-            result[container] =
-                (container === 'm2tsll' && isM2TsLLEmbedded) || (container === 'hls' && isHlsEmbedded);
+            result[container] = (container === 'm2tsll' && isM2TsLLEmbedded) || (container === 'hls' && isHlsEmbedded);
         }
 
         return result;
@@ -226,17 +240,21 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         const order: Record<string, number> = {
             auto: 0,
             original: 1,
-            '2160p-high': 2,
-            '1080p-high': 3,
-            '1080p': 4,
-            '720p': 5,
-            'data-saver': 6,
+            'original-mpeg2': 2,
+            'original-hevc': 3,
+            '2160p-high': 4,
+            '1080p-high': 5,
+            '1080p': 6,
+            '720p': 7,
+            'data-saver': 8,
         };
         return order[role ?? ''] ?? 100;
     }
 
     private builtinRole(preset: StreamPreset): string | null {
         if (preset.id === 'auto') return 'auto';
+        if (preset.delivery === 'mpeg2toh264') return 'original-mpeg2';
+        if (preset.id === ORIGINAL_HEVC_PROFILE_ID) return 'original-hevc';
         if (preset.id === 'original' || preset.name === 'オリジナル' || preset.output.codec === 'copy')
             return 'original';
         const resolution = preset.output.resolution;

@@ -98,6 +98,7 @@ export default class VideoUtil implements IVideoUtil {
             duration: VideoUtil.toNumber(result.format?.duration) ?? 0,
             size: VideoUtil.toNumber(result.format?.size) ?? 0,
             bitRate: VideoUtil.toNumber(result.format?.bit_rate) ?? 0,
+            formatName: typeof result.format?.format_name === 'string' ? result.format.format_name : null,
             startTime: VideoUtil.toNumber(result.format?.start_time),
             videoCodec: typeof video?.codec_name === 'string' ? video.codec_name : null,
             audioCodec: typeof audio?.codec_name === 'string' ? audio.codec_name : null,
@@ -113,6 +114,34 @@ export default class VideoUtil implements IVideoUtil {
             colorSpace: typeof video?.color_space === 'string' ? video.color_space : null,
             bitsPerRawSample: video?.bits_per_raw_sample ?? null,
         };
+    }
+
+    /**
+     * 録画中央付近の映像 codec を probe する。
+     * PMT が途中で変わる録画を Original 対象へ誤分類しないため、全体走査は行わず短い区間だけ読む。
+     * @param filePath: string 解析対象のファイルパス
+     * @param seconds: number 読み始める秒数
+     * @return Promise<string[]> 区間で見つかった映像 codec 名
+     */
+    public async getVideoCodecsAt(filePath: string, seconds: number): Promise<string[]> {
+        const start = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+        const stdout = await this.execFfprobe([
+            '-v',
+            '0',
+            '-read_intervals',
+            `${start}%+5`,
+            '-show_entries',
+            'stream=codec_name',
+            '-select_streams',
+            'v',
+            '-of',
+            'default=nw=1:nk=1',
+            filePath,
+        ]);
+        return stdout
+            .split(/\r?\n/u)
+            .map(value => value.trim().toLowerCase())
+            .filter(value => value.length > 0);
     }
 
     public async getChapters(filePath: string): Promise<apid.VideoChapter[]> {
@@ -177,9 +206,10 @@ export default class VideoUtil implements IVideoUtil {
     }
 
     public async getAudioTracks(filePath: string, option?: AudioTrackProbeOption): Promise<apid.VideoAudioTrack[]> {
-        const probeLimit = option?.isRecording === true
-            ? VideoUtil.RECORDING_AUDIO_TRACK_FFPROBE_LIMIT
-            : VideoUtil.COMPLETE_AUDIO_TRACK_FFPROBE_LIMIT;
+        const probeLimit =
+            option?.isRecording === true
+                ? VideoUtil.RECORDING_AUDIO_TRACK_FFPROBE_LIMIT
+                : VideoUtil.COMPLETE_AUDIO_TRACK_FFPROBE_LIMIT;
         const stdout = await this.execFfprobe([
             '-analyzeduration',
             probeLimit.analyzeduration,

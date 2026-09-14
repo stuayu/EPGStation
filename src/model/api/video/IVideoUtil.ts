@@ -11,6 +11,7 @@ export interface VideoInfo {
  * 取得できなかった項目は null になる
  */
 export interface VideoDetailInfo extends VideoInfo {
+    formatName?: string | null;
     startTime: number | null; // コンテナの開始オフセット (秒)
     videoCodec: string | null;
     audioCodec: string | null;
@@ -38,6 +39,8 @@ export default interface IVideoUtil {
     getParentDirPath(name: string): string | null;
     getInfo(filePath: string): Promise<VideoInfo>;
     getDetailedInfo(filePath: string): Promise<VideoDetailInfo>;
+    /** 録画中央付近の映像 stream codec を有限 probe する。 */
+    getVideoCodecsAt(filePath: string, seconds: number): Promise<string[]>;
 
     /**
      * チャプターを取得する。

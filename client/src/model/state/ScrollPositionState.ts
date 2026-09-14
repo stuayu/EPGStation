@@ -155,7 +155,7 @@ class ScrollPositionState implements IScrollPositionState {
         return new Promise<void>((reslove, reject) => {
             const timer = setTimeout(() => {
                 this.event.removeAllListeners();
-                reject();
+                reject(new Error('ScrollPositionDataTimeout'));
             }, timeout * 1000);
 
             this.event.once(ScrollPositionState.DONE_GET_DATA_EVENT, () => {

@@ -1,11 +1,11 @@
 <template>
     <v-app class="app-content-root">
-        <div v-if="isDisconnected === true" class="disconnected"></div>
-        <Navigation></Navigation>
-        <ServerStatusToast></ServerStatusToast>
-        <UpdateNotification></UpdateNotification>
+        <div v-if="offlineStartup === false && isDisconnected === true" class="disconnected"></div>
+        <Navigation v-if="offlineStartup === false"></Navigation>
+        <ServerStatusToast v-if="offlineStartup === false"></ServerStatusToast>
+        <UpdateNotification v-if="offlineStartup === false"></UpdateNotification>
         <router-view></router-view>
-        <Snackbar></Snackbar>
+        <Snackbar v-if="offlineStartup === false"></Snackbar>
     </v-app>
 </template>
 
@@ -23,6 +23,7 @@ import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import ISocketIOModel from '../model/socketio/ISocketIOModel';
 import IColorThemeState from '@/model/state/IColorThemeState';
 import ThemeColorUtil from '@/util/ThemeColorUtil';
+import { isOfflineStartup } from '@/util/OfflineStartup';
 
 @Component({
     components: {
@@ -34,6 +35,7 @@ import ThemeColorUtil from '@/util/ThemeColorUtil';
 })
 class AppContent extends Vue {
     public isDisconnected: boolean = false;
+    public offlineStartup: boolean = isOfflineStartup();
     // 接続失敗の通知は繰り返さない (socket.io は再接続を試み続けるため)
     private hasNotifiedConnectError: boolean = false;
     private connectErrorTimerId: number | null = null;
@@ -48,6 +50,9 @@ class AppContent extends Vue {
         // theme 設定を反映
         ThemeColorUtil.apply(this.$vuetify.theme, this.colorThemeState.getThemeColor());
         this.$vuetify.theme.change((this.colorThemeState.isDarkTheme()) ? 'dark' : 'light');
+
+        // オフライン保存画面では socket.io / status API を起動せず、接続エラー通知を出さない。
+        if (isOfflineStartup() === true) return;
 
         // socket.io 設定
         try {

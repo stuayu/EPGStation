@@ -85,7 +85,7 @@ import Util from '@/util/Util';
 import { AribKeyCode } from 'web-bml';
 import { parseRecordedStreamingType } from '@/util/StreamingTypeUtil';
 import StreamQualityUtil from '@/util/StreamQualityUtil';
-import { isWatchModeInRange, parseWatchRouteInteger } from '@/util/WatchRouteParamUtil';
+import { isRecordedWatchModeValid, parseWatchRouteInteger } from '@/util/WatchRouteParamUtil';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import { markRaw } from 'vue';
 import type { RouteLocationNormalized as Route, NavigationGuardNext } from 'vue-router';
@@ -185,6 +185,7 @@ class WatchRecordedStreaming extends Vue {
             jikkyoEndAt: this.videoParam.jikkyoEndAt,
             playPosition: request.playPosition,
             mode: request.mode,
+            profile: request.profileId,
         };
         if (request.container === 'hls') {
             this.videoParam = { type: 'RecordedHLS', ...common };
@@ -351,6 +352,7 @@ class WatchRecordedStreaming extends Vue {
         const streamingTypeQuery = typeof this.$route.query.streamingType !== 'string' ? null : this.$route.query.streamingType;
         const streamingType = parseRecordedStreamingType(streamingTypeQuery);
         const mode = parseWatchRouteInteger(this.$route.query.mode, 0);
+        const profile = typeof this.$route.query.profile === 'string' ? this.$route.query.profile : undefined;
 
         this.$nextTick(async () => {
             if (streamingTypeQuery !== null && streamingType === null) {
@@ -366,10 +368,11 @@ class WatchRecordedStreaming extends Vue {
                             : '指定した録画ファイルが見つかりません。ページを再読み込みして、録画一覧から選び直してください。',
                     );
                 } else if (
-                    isWatchModeInRange(
+                    !isRecordedWatchModeValid(
                         mode,
                         target.videoFileType === null ? [] : StreamQualityUtil.getRecordedModeNames(target.videoFileType, streamingType),
-                    ) === false
+                        profile,
+                    )
                 ) {
                     this.showStreamingError(`選択した画質設定 (mode=${mode}) は利用できません。ページを再読み込みして、画質を選び直してください。`);
                 } else {
@@ -382,6 +385,7 @@ class WatchRecordedStreaming extends Vue {
                             recordedId: recordedId,
                             videoFileId: videoFileId,
                             mode: mode,
+                            profile,
                             ...(jikkyoKakologParam ?? {}),
                         };
                     } else {
@@ -391,6 +395,7 @@ class WatchRecordedStreaming extends Vue {
                             videoFileId: videoFileId,
                             streamingType: streamingType,
                             mode: mode,
+                            profile,
                             ...(jikkyoKakologParam ?? {}),
                         };
                     }

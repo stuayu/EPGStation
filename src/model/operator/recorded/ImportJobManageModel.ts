@@ -131,7 +131,9 @@ export default class ImportJobManageModel implements IImportJobManageModel {
             return null;
         }
 
-        const failedPaths = new Set(job.results.filter(r => r.imported === false && r.skipped !== true).map(r => r.localFilePath));
+        const failedPaths = new Set(
+            job.results.filter(r => r.imported === false && r.skipped !== true).map(r => r.localFilePath),
+        );
         const retryItems = job.items.filter(i => failedPaths.has(i.localFilePath));
         if (retryItems.length === 0) {
             return null;

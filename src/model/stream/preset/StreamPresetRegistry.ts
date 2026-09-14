@@ -9,6 +9,12 @@ import { BUILTIN_STREAM_PRESETS, LEGACY_STREAM_PRESETS } from '../../../util/Bui
 import IStreamPresetRegistry, { StreamPresetScope } from './IStreamPresetRegistry';
 import EncodePresets from '../../../util/EncodePresets';
 import IHardwareEncoderDetector from '../../encoder/IHardwareEncoderDetector';
+import { isOriginalMpeg2Source, ORIGINAL_MPEG2_PROFILE_ID } from '../../../util/OriginalMpeg2Util';
+import {
+    createOriginalHevcHlsCommand,
+    isOriginalHevcSource,
+    ORIGINAL_HEVC_PROFILE_ID,
+} from '../../../util/OriginalHevcUtil';
 
 /** Built-in、encodePresets、既存 config の配信プリセットを統合する。 */
 @injectable()
@@ -55,7 +61,13 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
             .map(profile => configured.find(item => item.id === profile.id) ?? profile)
             .map(profile => this.toPreset(profile, scope))
             .filter(preset => !userRoles.has(presetRole(preset)));
-        const candidates = [...userPresets, ...auto];
+        const direct =
+            client.mpeg2toh264 === true && isOriginalMpeg2Source(source) ? [this.createOriginalPreset(scope)] : [];
+        const directHevc =
+            isOriginalHevcSource(source) && this.isHevcClientCapable(source, client)
+                ? [this.createOriginalHevcPreset(scope)]
+                : [];
+        const candidates = [...userPresets, ...auto, ...direct, ...directHevc];
         const occupied = new Set(candidates.map(presetRole));
         const catalog = [...BUILTIN_STREAM_PRESETS, ...LEGACY_STREAM_PRESETS].filter(
             preset => !occupied.has(presetRole(preset)),
@@ -115,6 +127,9 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
      */
     public resolveProfileCmd(scope: StreamPresetScope, presetId: string): string | undefined {
         const config = this.configuration.getConfig();
+        if (scope === 'recorded-ts' && presetId === ORIGINAL_HEVC_PROFILE_ID) {
+            return createOriginalHevcHlsCommand(typeof config.tsreadex !== 'undefined');
+        }
         const generated = EncodePresets.expand(
             config.encodePresets,
             {
@@ -175,6 +190,19 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
         return undefined;
     }
 
+    private createOriginalPreset(scope: StreamPresetScope): StreamPreset {
+        return {
+            id: ORIGINAL_MPEG2_PROFILE_ID,
+            name: 'オリジナル (MPEG-2・端末で変換)',
+            description: '再エンコードなし。MPEG-2 映像を端末で処理',
+            useFor: scope === 'live' ? 'live' : 'recorded',
+            quality: 'original',
+            builtin: true,
+            output: { codec: 'copy', resolution: 'source' },
+            delivery: 'mpeg2toh264',
+        };
+    }
+
     private heightFromText(value: string): number | undefined {
         const match = value.match(/(?:2160|1080|720|480|240)p/);
         return match === null ? undefined : Number.parseInt(match[0], 10);
@@ -212,6 +240,13 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
         if (preset.output.codec === 'hevc' && (!client.hevc || (preset.output.bitDepth === 10 && !client.hevcMain10)))
             return false;
         if (preset.output.codec === 'h264' && !client.h264) return false;
+        if (preset.delivery === 'mpeg2toh264' && (client.mpeg2toh264 !== true || !isOriginalMpeg2Source(source)))
+            return false;
+        if (
+            preset.id === ORIGINAL_HEVC_PROFILE_ID &&
+            (!isOriginalHevcSource(source) || !this.isHevcClientCapable(source, client))
+        )
+            return false;
         if (
             preset.output.hdrMode === 'preserve' &&
             source.hdr !== 'sdr' &&
@@ -225,6 +260,24 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
         return true;
     }
 
+    private isHevcClientCapable(source: SourceCapabilities, client: ClientCapabilities): boolean {
+        return (
+            client.hevc === true && (source.bitDepth === 8 || (source.bitDepth === 10 && client.hevcMain10 === true))
+        );
+    }
+
+    private createOriginalHevcPreset(_scope: StreamPresetScope): StreamPreset {
+        return {
+            id: ORIGINAL_HEVC_PROFILE_ID,
+            name: 'オリジナル (HEVC・無変換)',
+            description: '再エンコードなし。HEVC を fMP4 へ詰め替えて端末で処理',
+            useFor: 'recorded',
+            quality: 'original',
+            builtin: true,
+            output: { codec: 'copy', resolution: 'source', container: 'hls' },
+        };
+    }
+
     private heightOf(resolution: StreamPreset['output']['resolution']): number | undefined {
         if (resolution === undefined || resolution === 'source') return undefined;
         return Number.parseInt(resolution, 10);
@@ -233,6 +286,8 @@ export default class StreamPresetRegistry implements IStreamPresetRegistry {
 
 const presetRole = (preset: StreamPreset): string => {
     if (preset.id === 'auto') return 'auto';
+    if (preset.delivery === 'mpeg2toh264') return 'original-mpeg2';
+    if (preset.id === ORIGINAL_HEVC_PROFILE_ID) return 'original-hevc';
     if (preset.id === 'original' || preset.name === 'オリジナル') return 'original';
     const resolution =
         preset.output.resolution ??

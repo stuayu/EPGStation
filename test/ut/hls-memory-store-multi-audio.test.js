@@ -44,6 +44,12 @@ function createAacInit() {
     return box('moov', box('trak', box('mdia', box('minf', box('stbl', stsd)))));
 }
 
+function createAvcWithAacInit() {
+    const avc = createAvcInit(0x64, 0x00, 0x28);
+    const aac = createAacInit();
+    return box('moov', Buffer.concat([avc.subarray(8), aac.subarray(8)]));
+}
+
 function pushSegments(store, streamId, role, segmentNum) {
     for (let i = 0; i < segmentNum; i++) {
         const first = Buffer.from(`${role}-seg${i}-part0`);
@@ -69,6 +75,7 @@ test('avc1 / mp4a の init セグメントから CODECS 用の文字列を読め
     assert.equal(Mp4CodecUtil.parseCodec(createAvcInit(0x64, 0x00, 0x28)), 'avc1.640028');
     assert.equal(Mp4CodecUtil.parseCodec(createAvcInit(0x42, 0xc0, 0x1f)), 'avc1.42c01f');
     assert.equal(Mp4CodecUtil.parseCodec(createAacInit()), 'mp4a.40.2');
+    assert.deepEqual(Mp4CodecUtil.parseCodecs(createAvcWithAacInit()), ['avc1.640028', 'mp4a.40.2']);
 });
 
 test('未知・壊れた init セグメントでは null を返す (CODECS を省ける)', () => {

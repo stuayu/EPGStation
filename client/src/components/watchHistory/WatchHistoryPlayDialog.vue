@@ -6,7 +6,7 @@
                 <div class="text-caption mb-2">{{ videoFile.name }} ({{ videoFile.type === 'ts' ? 'TS' : 'エンコード済み' }})</div>
                 <template v-if="isStreamingAvailable === true">
                     <div class="text-caption">ストリーミング設定</div>
-                    <div class="d-flex ga-2">
+                    <div class="d-flex flex-wrap ga-2">
                         <v-select
                             :items="streamState.streamTypeItems"
                             v-model="streamState.selectedStreamType"
@@ -14,6 +14,16 @@
                             density="compact"
                             hide-details
                             style="max-width: 120px"
+                        ></v-select>
+                        <v-select
+                            v-if="qualityItems.length > 0"
+                            :items="qualityItems"
+                            v-model="playbackState.selectedPresetId"
+                            density="compact"
+                            hide-details
+                            style="min-width: 160px; flex: 1 1 160px"
+                            label="画質"
+                            @update:model-value="selectQuality"
                         ></v-select>
                         <v-select
                             v-if="isHiddenStreamMode === false"
@@ -42,7 +52,10 @@ import IRecordedDetailSelectStreamState from '@/model/state/recorded/detail/IRec
 import Util from '@/util/Util';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
+import { resolveSelectedPlaybackProfileId } from '@/util/PlaybackProfileSelectUtil';
 import { toStreamingType } from '@/util/StreamingTypeUtil';
+import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
+import { getPlaybackShortLabel } from '@/util/PlaybackLabelUtil';
 
 /**
  * 視聴履歴一覧から再生方法を選ぶダイアログ。
@@ -57,11 +70,28 @@ class WatchHistoryPlayDialog extends Vue {
     @Prop({ default: '' }) public title!: string;
 
     public streamState: IRecordedDetailSelectStreamState = container.get<IRecordedDetailSelectStreamState>('IRecordedDetailSelectStreamState');
+    public playbackState: IPlaybackOptionsState = container.get<IPlaybackOptionsState>('IPlaybackOptionsState');
 
     // この録画に使える配信設定があるか (config で無効・未設定の場合は false)
     public isStreamingAvailable: boolean = false;
     // 視聴設定セレクタ再描画用
     public isHiddenStreamMode: boolean = false;
+
+    get selectedContainer(): Exclude<apid.PlaybackContainer, 'normal'> | undefined {
+        return typeof this.streamState.selectedStreamType === 'undefined' ? undefined : toStreamingType(this.streamState.selectedStreamType);
+    }
+
+    get qualityProfiles(): apid.PlaybackProfile[] {
+        const selectedContainer = this.selectedContainer;
+        return this.playbackState.options?.profiles.filter(profile => profile.available === true && (selectedContainer === undefined || typeof profile.modes[selectedContainer] === 'number')) ?? [];
+    }
+
+    get qualityItems(): Array<{ title: string; value: string }> {
+        return this.qualityProfiles.map(profile => ({
+            title: getPlaybackShortLabel(profile, this.playbackState.options?.recommended),
+            value: profile.id,
+        }));
+    }
 
     get isOpen(): boolean {
         return this.modelValue;
@@ -95,6 +125,7 @@ class WatchHistoryPlayDialog extends Vue {
             // ビデオ形式に対応した配信設定が無い場合は例外になる
             this.streamState.open(this.videoFile, this.recordedId);
             this.isStreamingAvailable = this.streamState.streamTypeItems.length > 0;
+            void this.loadPlaybackOptions();
         } catch (err) {
             console.error(err);
             this.isStreamingAvailable = false;
@@ -103,12 +134,32 @@ class WatchHistoryPlayDialog extends Vue {
 
     public updateModeItems(): void {
         this.streamState.updateModeItems();
+        void this.loadPlaybackOptions();
 
         // 再描画
         this.isHiddenStreamMode = true;
         this.$nextTick(() => {
             this.isHiddenStreamMode = false;
         });
+    }
+
+    private async loadPlaybackOptions(): Promise<void> {
+        const videoFileId = this.videoFile?.id;
+        if (typeof videoFileId !== 'number') return;
+        await this.playbackState.loadRecorded(videoFileId, this.selectedContainer).catch(err => console.error(err));
+        if (this.playbackState.options?.profiles.some(profile => typeof profile.modes.original === 'number') === true) {
+            this.streamState.addOriginalStreamType();
+            this.isStreamingAvailable = true;
+        }
+    }
+
+    public selectQuality(id: string): void {
+        this.playbackState.selectPreset(id);
+        const selectedContainer = this.selectedContainer;
+        const mode = this.qualityProfiles.find(profile => profile.id === id)?.modes[selectedContainer ?? 'hls'];
+        if (typeof mode === 'number' && this.streamState.streamModeItems.some(item => item.value === mode)) {
+            this.streamState.selectedStreamMode = mode;
+        }
     }
 
     public close(): void {
@@ -161,6 +212,12 @@ class WatchHistoryPlayDialog extends Vue {
                 recordedId: recordedId.toString(10),
                 streamingType: streamingType,
                 mode: mode,
+                profile: resolveSelectedPlaybackProfileId(
+                    this.qualityProfiles,
+                    this.playbackState.selectedPresetId,
+                    streamingType,
+                    this.streamState.selectedStreamMode,
+                ),
             },
         });
     }

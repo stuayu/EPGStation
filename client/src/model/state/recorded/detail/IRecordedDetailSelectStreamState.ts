@@ -18,6 +18,7 @@ export default interface IRecordedDetailSelectStreamState {
     open(videoFile: apid.VideoFile, recordedId: apid.RecordedId): void;
     close(): void;
     updateModeItems(): void;
+    addOriginalStreamType(): void;
     getVideoFileId(): apid.VideoFileId | null;
     getRecordedId(): apid.RecordedId | null;
 }

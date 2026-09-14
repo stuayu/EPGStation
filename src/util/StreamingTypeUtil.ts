@@ -8,24 +8,33 @@ export const STREAMING_TYPE_LABELS = ['M2TS', 'M2TS-LL', 'WebM', 'MP4', 'HLS'] a
 export type StreamingTypeLabel = (typeof STREAMING_TYPE_LABELS)[number];
 
 /** 録画配信ダイアログで表示する配信方式のラベル一覧。 */
-export const RECORDED_STREAM_TYPE_LABELS = ['WebM', 'MP4', 'HLS', 'M2TS-LL'] as const;
+export const RECORDED_STREAM_TYPE_LABELS = ['WebM', 'MP4', 'HLS', 'M2TS-LL', 'オリジナル'] as const;
 export type RecordedStreamType = (typeof RECORDED_STREAM_TYPE_LABELS)[number];
 
 /** 録画配信 API が受け付けるパス名一覧。 */
-export const RECORDED_STREAMING_TYPES = ['webm', 'mp4', 'hls', 'm2tsll'] as const;
+export const RECORDED_STREAMING_TYPES = ['webm', 'mp4', 'hls', 'm2tsll', 'original'] as const;
 export type RecordedStreamingType = (typeof RECORDED_STREAMING_TYPES)[number];
 
 export type StreamingType = Exclude<apid.PlaybackContainer, 'normal'>;
 
 /** ライブ・録画配信 API が受け付けるパス名一覧。 */
-export const STREAMING_TYPES = ['m2ts', 'm2tsll', 'mp4', 'webm', 'hls'] as const satisfies readonly StreamingType[];
+export const STREAMING_TYPES = [
+    'm2ts',
+    'm2tsll',
+    'mp4',
+    'webm',
+    'hls',
+    'original',
+] as const satisfies readonly StreamingType[];
 
-const STREAMING_TYPE_PATHS: Readonly<Record<StreamingTypeLabel, StreamingType>> = {
+const STREAMING_TYPE_PATHS: Readonly<Record<StreamingTypeLabel | RecordedStreamType, StreamingType>> = {
     M2TS: 'm2ts',
     'M2TS-LL': 'm2tsll',
     WebM: 'webm',
     MP4: 'mp4',
     HLS: 'hls',
+    // 録画 MPEG-2 の Range 直配信。HEVC の無変換は HLS profile として扱う。
+    オリジナル: 'original',
 };
 
 /**
@@ -33,7 +42,8 @@ const STREAMING_TYPE_PATHS: Readonly<Record<StreamingTypeLabel, StreamingType>> 
  * @param label: StreamingTypeLabel 配信方式の表示ラベル
  * @return StreamingType API が受け付ける配信方式のパス名
  */
-export const toStreamingType = (label: StreamingTypeLabel): StreamingType => STREAMING_TYPE_PATHS[label];
+export const toStreamingType = (label: StreamingTypeLabel | RecordedStreamType): StreamingType =>
+    STREAMING_TYPE_PATHS[label];
 
 /** URL query のライブ配信方式を検証する。
  * @param value: unknown URL query の値

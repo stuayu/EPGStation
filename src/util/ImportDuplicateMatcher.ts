@@ -110,7 +110,10 @@ export const matchImportDuplicate = (
 export const normalizeImportFilePath = (filePath: string): string => {
     const isWindowsPath = /^[A-Za-z]:[\\/]/u.test(filePath) || filePath.startsWith('\\\\') || filePath.includes('\\');
     if (isWindowsPath) {
-        return path.win32.normalize(filePath).replace(/[\\/]+$/u, '').toLowerCase();
+        return path.win32
+            .normalize(filePath)
+            .replace(/[\\/]+$/u, '')
+            .toLowerCase();
     }
 
     return path.resolve(filePath).replace(/\/+$/u, '');

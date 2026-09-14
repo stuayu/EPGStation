@@ -8,6 +8,8 @@ export interface ClientCapabilities {
     hevcMain10: boolean;
     /** H.264 の再生対応。 */
     h264: boolean;
+    /** mpeg2toh264 による MPEG-2 TS 変換対応。 */
+    mpeg2toh264: boolean;
     /** AV1 の再生対応。 */
     av1?: boolean;
     /** HDR 表示対応。 */

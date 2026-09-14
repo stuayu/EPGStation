@@ -228,7 +228,8 @@ export default class ImportWatchManageModel implements IImportWatchManageModel {
         }
         if (typeof channel === 'undefined' && typeof channelName === 'string') {
             channel = channels.find(
-                c => c.name === channelName || c.halfWidthName === channelName || c.name.includes(channelName as string),
+                c =>
+                    c.name === channelName || c.halfWidthName === channelName || c.name.includes(channelName as string),
             );
         }
 
@@ -316,9 +317,10 @@ export default class ImportWatchManageModel implements IImportWatchManageModel {
     private async analyzeTsInfo(filePath: string, expectedServiceId: number | null): Promise<TsInfo | null> {
         if (isImportTsFile(filePath) === false || typeof this.tsInfoAnalyzer === 'undefined') return null;
 
-        return await (expectedServiceId === null
-            ? this.tsInfoAnalyzer.analyze(filePath)
-            : this.tsInfoAnalyzer.analyze(filePath, { expectedServiceId })
+        return await (
+            expectedServiceId === null
+                ? this.tsInfoAnalyzer.analyze(filePath)
+                : this.tsInfoAnalyzer.analyze(filePath, { expectedServiceId })
         ).catch(() => null);
     }
 

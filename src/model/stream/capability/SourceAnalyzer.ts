@@ -9,11 +9,7 @@ import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import { SourceCapabilities } from './ISourceCapabilities';
 import ISourceAnalyzer from './ISourceAnalyzer';
-import {
-    hasReliableDeinterlaceInput,
-    shouldDeinterlace,
-    toDeinterlaceInput,
-} from '../../../util/DeinterlaceUtil';
+import { hasReliableDeinterlaceInput, shouldDeinterlace, toDeinterlaceInput } from '../../../util/DeinterlaceUtil';
 import { toSourceCapabilities } from '../../../util/SourceCapabilityUtil';
 import { classifySource } from '../../../util/SourceClassUtil';
 
@@ -94,7 +90,9 @@ export default class SourceAnalyzer implements ISourceAnalyzer {
             try {
                 // 配信 cmd のデインターレース要否には DB の codec / 解像度だけでなく、
                 // ffprobe の field_order / fps が必要。解析済みでもここは再取得する。
-                source = this.fromDetailedInfo(await this.videoUtil.getDetailedInfo(filePath), filePath);
+                const detail = await this.videoUtil.getDetailedInfo(filePath);
+                source = this.fromDetailedInfo(detail, filePath);
+                source = await this.rejectChangingOriginalCodec(filePath, source, detail.duration);
                 sourceKind = 'ffprobe';
             } catch (err) {
                 if (video.analyzedAt === null || typeof video.analyzedAt === 'undefined') throw err;
@@ -118,6 +116,36 @@ export default class SourceAnalyzer implements ISourceAnalyzer {
             this.recordedCache.set(videoFileId, this.entry(source, RECORDED_CACHE_TTL_MS, sourceKind));
         }
         return source;
+    }
+
+    /**
+     * Original 候補になる録画は中央付近も同じ codec か確認する。
+     * 途中の PMT 変更や部分置換を見つけた場合は unknown へ倒し、両方の Original を隠す。
+     */
+    private async rejectChangingOriginalCodec(
+        filePath: string,
+        source: SourceCapabilities,
+        duration: number,
+    ): Promise<SourceCapabilities> {
+        if (source.transport !== 'mpegts' || (source.codec !== 'mpeg2' && source.codec !== 'hevc')) return source;
+        const probe = (this.videoUtil as IVideoUtil & { getVideoCodecsAt?: IVideoUtil['getVideoCodecsAt'] })
+            .getVideoCodecsAt;
+        // 古い差し替え用 mock / 実装には追加 probe が無い場合があるため互換を保つ。
+        if (typeof probe !== 'function' || !Number.isFinite(duration) || duration <= 4) return source;
+
+        try {
+            const codecs = await probe.call(this.videoUtil, filePath, duration / 2);
+            const expected = source.codec === 'mpeg2' ? 'mpeg2video' : 'hevc';
+            if (codecs.length === 0 || codecs.some(codec => codec !== expected)) return this.unknownSource(source);
+        } catch (err) {
+            this.log?.stream.warn(`original codec probe failed: ${String(err)}`);
+            return this.unknownSource(source);
+        }
+        return source;
+    }
+
+    private unknownSource(source: SourceCapabilities): SourceCapabilities {
+        return { ...source, codec: 'unknown', confidence: 'low' };
     }
 
     public async analyzeLiveChannel(channelId: apid.ChannelId): Promise<SourceCapabilities> {
@@ -160,9 +188,17 @@ export default class SourceAnalyzer implements ISourceAnalyzer {
             color_transfer: info.colorTransfer ?? undefined,
             color_primaries: info.colorPrimaries ?? undefined,
         });
-        source.transport = this.transportFromPath(filePath);
+        source.transport = this.transportFromFormatName(info.formatName) ?? this.transportFromPath(filePath);
         source.sourceClass = classifySource(source);
         return source;
+    }
+
+    private transportFromFormatName(formatName?: string | null): SourceCapabilities['transport'] {
+        const formats = new Set((formatName ?? '').toLowerCase().split(','));
+        if (formats.has('mpegts') || formats.has('mpegtsraw') || formats.has('m2ts')) return 'mpegts';
+        if (formats.has('mp4') || formats.has('mov') || formats.has('3gp')) return 'mp4';
+        if (formats.has('webm') || formats.has('matroska')) return 'other';
+        return undefined;
     }
 
     private transportFromPath(filePath?: string): SourceCapabilities['transport'] {

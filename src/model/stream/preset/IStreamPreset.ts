@@ -53,4 +53,6 @@ export interface StreamPreset {
         /** 映像補正。未指定は自動。 */
         videoCorrection?: VideoCorrectionMode;
     };
+    /** MPEG-2 TS を端末側で H.264 化する直接再生経路。 */
+    delivery?: 'mpeg2toh264';
 }

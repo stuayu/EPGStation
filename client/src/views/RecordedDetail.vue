@@ -89,6 +89,7 @@
                                             <RecordedDetailStopEncodeButton :recordedItem="recorded.recordedItem" v-on:stopEncode="stopEncode"></RecordedDetailStopEncodeButton>
                                         </div>
                                         <RecordedDetailKodiButton :recordedItem="recorded.recordedItem" :videoFiles="recorded.display.videoFiles"></RecordedDetailKodiButton>
+                                        <OfflineVideoDownloadDialog :recordedItem="recorded.recordedItem" :videoFiles="recorded.display.videoFiles ?? []"></OfflineVideoDownloadDialog>
                                     </div>
                                 </div>
                             </div>
@@ -122,6 +123,7 @@ import RecordedDetailPlayButton from '@/components/recorded/detail/RecordedDetai
 import RecordedDetailSelectStreamDialog from '@/components/recorded/detail/RecordedDetailSelectStreamDialog.vue';
 import RecordedDetailSeries from '@/components/recorded/detail/RecordedDetailSeries.vue';
 import RecordedDetailStopEncodeButton from '@/components/recorded/detail/RecordedDetailStopEncodeButton.vue';
+import OfflineVideoDownloadDialog from '@/components/recorded/detail/OfflineVideoDownloadDialog.vue';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
@@ -147,6 +149,7 @@ import IRecordedDetailState from '../model/state/recorded/detail/IRecordedDetail
         RecordedDetailKodiButton,
         RecordedDetailSeries,
         DropLogDialog,
+        OfflineVideoDownloadDialog,
     },
 })
 class RecordedDetail extends Vue {

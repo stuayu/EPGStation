@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const StreamPresetRegistry = require('../../dist/model/stream/preset/StreamPresetRegistry').default;
 const StreamProfileManageModel = require('../../dist/model/stream/StreamProfileManageModel').default;
+const { shouldThrottleRecordedStream } = require('../../dist/util/RecordedStreamPacing');
 
 const source = (overrides = {}) => ({
     codec: 'mpeg2',
@@ -15,7 +16,7 @@ const source = (overrides = {}) => ({
     confidence: 'high',
     ...overrides,
 });
-const client = (overrides = {}) => ({ hevc: true, hevcMain10: true, h264: true, hdr: true, hlg: true, ...overrides });
+const client = (overrides = {}) => ({ hevc: true, hevcMain10: true, h264: true, mpeg2toh264: false, hdr: true, hlg: true, ...overrides });
 const config = stream => ({ stream });
 const makeRegistry = (value, detector) => {
     const configuration = { getConfig: () => value };
@@ -37,6 +38,36 @@ test('検出できない encodePresets の HW プリセットは画質候補か�
         registry.getPresets('live', source(), client()).some(item => item.id.includes('-qsv-')),
         false,
     );
+});
+
+test('MPEG-2 TS かつ対応ブラウザーだけ Original MPEG-2 を出す', () => {
+    const registry = makeRegistry({}, undefined);
+    assert.equal(registry.getPresets('live', source({ transport: 'mpegts' }), client()).some(item => item.delivery === 'mpeg2toh264'), false);
+    const direct = registry.getPresets('live', source({ transport: 'mpegts' }), client({ mpeg2toh264: true }));
+    assert.equal(direct.some(item => item.id === 'original-mpeg2'), true);
+    assert.equal(registry.getPresets('live', source({ transport: 'mp4' }), client({ mpeg2toh264: true })).some(item => item.id === 'original-mpeg2'), false);
+    assert.equal(registry.getPresets('live', source({ codec: 'hevc', transport: 'mpegts' }), client({ mpeg2toh264: true })).some(item => item.id === 'original-mpeg2'), false);
+});
+
+test('HEVC TS は Main/Main10 の端末能力に応じて HEVC 無変換だけを出す', () => {
+    const registry = makeRegistry({}, undefined);
+    const main = source({ codec: 'hevc', transport: 'mpegts', bitDepth: 8 });
+    const main10 = source({ codec: 'hevc', transport: 'mpegts', bitDepth: 10 });
+    assert.equal(registry.getPresets('recorded-ts', main, client({ hevc: true, hevcMain10: false })).some(item => item.id === 'original-hevc'), true);
+    assert.equal(registry.getPresets('recorded-ts', main10, client({ hevc: true, hevcMain10: false })).some(item => item.id === 'original-hevc'), false);
+    assert.equal(registry.getPresets('recorded-ts', main10, client({ hevc: true, hevcMain10: true })).some(item => item.id === 'original-hevc'), true);
+    assert.equal(registry.getPresets('recorded-ts', main, client({ hevc: false, hevcMain10: true })).some(item => item.id === 'original-hevc'), false);
+});
+
+test('MPEG-2 と HEVC の無変換候補を混同しない', () => {
+    const registry = makeRegistry({}, undefined);
+    const mpeg2 = registry.getPresets('recorded-ts', source({ codec: 'mpeg2', transport: 'mpegts' }), client({ mpeg2toh264: true }));
+    const hevc = registry.getPresets('recorded-ts', source({ codec: 'hevc', transport: 'mpegts', bitDepth: 8 }), client());
+    assert.equal(mpeg2.some(item => item.id === 'original-mpeg2'), true);
+    assert.equal(mpeg2.some(item => item.id === 'original-hevc'), false);
+    assert.equal(hevc.some(item => item.id === 'original-mpeg2'), false);
+    assert.equal(hevc.some(item => item.id === 'original-hevc'), true);
+    assert.equal(registry.getPresets('recorded-ts', source({ codec: 'unknown', transport: 'mpegts' }), client()).some(item => item.id.startsWith('original-')), false);
 });
 
 test('検出外の HW でも利用者が cmd を明示したプロファイルは残す', () => {
@@ -345,4 +376,30 @@ test('cmd 省略の hls はディスクを使わない fMP4 pipe 出力になる
     }).getLiveProfiles()[0].cmd;
     assert.doesNotMatch(withoutTsreadex, /%streamFileDir%/u);
     assert.match(withoutTsreadex, /-g 15 -keyint_min 15 -sc_threshold 0/u);
+});
+
+test('視聴用録画 HLS は readrate を使わず、非 HLS 録画は readrate を使う', () => {
+    const model = new StreamProfileManageModel({
+        getConfig: () => ({
+            stream: {
+                profiles: {
+                    recorded: {
+                        ts: [
+                            { id: 'recorded-hls', name: 'HLS', container: 'hls', video: { height: 720 } },
+                            { id: 'recorded-m2ts', name: 'TS', container: 'm2ts', video: { height: 720 } },
+                        ],
+                    },
+                },
+            },
+        }),
+    });
+    const hls = model.getRecordedProfiles('ts').find(profile => profile.container === 'hls');
+    const m2ts = model.getRecordedProfiles('ts').find(profile => profile.container === 'm2ts');
+    assert.equal(hls?.cmd?.includes('-readrate'), false);
+    assert.equal(m2ts?.cmd?.includes('-readrate'), true);
+});
+
+test('オフライン HLS は先行抑制を無効にし、視聴 HLS は有効にする', () => {
+    assert.equal(shouldThrottleRecordedStream(true), false);
+    assert.equal(shouldThrottleRecordedStream(false), true);
 });

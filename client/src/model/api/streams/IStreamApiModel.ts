@@ -18,6 +18,7 @@ export default interface IStreamApiModel {
         ss: number,
         mode: number,
         audioTrack?: apid.AudioTrackSpecifier,
+        profile?: string,
     ): Promise<apid.StreamId>;
     stop(streamId: apid.StreamId): Promise<void>;
     stopAll(): Promise<void>;

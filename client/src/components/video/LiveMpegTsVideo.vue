@@ -15,10 +15,17 @@ import StreamSupportUtil from '@/util/StreamSupportUtil';
 import UaUtil from '@/util/UaUtil';
 import Util from '@/util/Util';
 import { DPlayerType } from 'dplayer';
+import { Deinterlacer, supportsDeinterlace } from 'mpeg2toh264/yadif';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 import ProgramAudioTrackUtil from '../../../../src/util/ProgramAudioTrackUtil';
+import { shouldPreservePausedPlayback } from '../../../../src/util/PlaybackPauseIntentUtil';
+import { shouldAutoplayPlayback } from '../../../../src/util/PlaybackAutoplayUtil';
 import { decideAudioTrackSwitch } from '../../../../src/util/AudioTrackSwitchDecision';
+import {
+    destroyDeferredDPlayerMediaBackend,
+    takeDPlayerMediaBackendDestroy,
+} from '../../../../src/util/MpegTsLifecycleUtil';
 
 @Component({})
 class LiveMpegTsVideo extends BaseVideo {
@@ -30,6 +37,9 @@ class LiveMpegTsVideo extends BaseVideo {
 
     @Prop({ default: 0 })
     public mode!: number;
+
+    @Prop({ default: false })
+    public directMpeg2!: boolean;
 
     @Prop({ default: null })
     public jikkyoChannelId!: string | null;
@@ -64,13 +74,13 @@ class LiveMpegTsVideo extends BaseVideo {
                     if (generation !== this.audioTrackUpdateGeneration) return;
                     this.audioTracks = tracks;
                     this.audioTracksKnown = true;
-                    this.setupLiveAudioTrackSwitch();
+                    if (this.directMpeg2 !== true) this.setupLiveAudioTrackSwitch();
                 })
                 .catch(err => {
                     if (generation !== this.audioTrackUpdateGeneration) return;
                     console.error(err);
                     this.audioTracksKnown = false;
-                    this.setupLiveAudioTrackSwitch();
+                    if (this.directMpeg2 !== true) this.setupLiveAudioTrackSwitch();
                 });
         }
     }
@@ -122,6 +132,7 @@ class LiveMpegTsVideo extends BaseVideo {
             this.audioTracksKnown = true;
             const next = ProgramAudioTrackUtil.resolveCurrentTrack(tracks, previous);
             this.currentAudioTrack = next;
+            if (this.directMpeg2 === true) return;
             this.setupLiveAudioTrackSwitch();
             if (next === previous || this.dp === null) return;
 
@@ -144,6 +155,35 @@ class LiveMpegTsVideo extends BaseVideo {
      */
     protected initVideoSetting(): void {
         if (this.containerElement === null) {
+            return;
+        }
+
+        if (this.directMpeg2 === true) {
+            const support = StreamSupportUtil.checkMpeg2ToH264Support();
+            if (support.isSupported === false) {
+                this.snackbarState.open({ color: 'error', text: support.reason ?? '非対応ブラウザーです。' });
+                throw new Error('UnsupportedBrowser');
+            }
+            DPlayerUtil.setupGlobals();
+            const options: DPlayerType.Options = {
+                container: this.containerElement,
+                autoplay: shouldAutoplayPlayback(UaUtil.isSafari(), UaUtil.isiOS()),
+                live: true,
+                hotkey: true,
+                video: { url: this.createOriginalStreamUrl(), type: 'mpeg2toh264' },
+                subtitle: { type: 'aribb24' },
+                pluginOptions: {
+                    mpeg2toh264: {
+                        mediaSource: 'auto',
+                        passthrough: false,
+                        deinterlace: supportsDeinterlace(),
+                        deinterlacer: supportsDeinterlace() ? video => new Deinterlacer(video) : undefined,
+                    },
+                    aribb24: DPlayerUtil.createAribb24Options(),
+                },
+            };
+            this.createPlayer(options);
+            this.setPlaybackProfiles(this.playbackProfiles, 'original', undefined, undefined, undefined, 0);
             return;
         }
 
@@ -256,7 +296,8 @@ class LiveMpegTsVideo extends BaseVideo {
                 return;
             }
 
-            // DPlayer の旧破棄処理を通さず、新プレイヤーを作らせる。
+            // DPlayer 1.33 の旧 callback を退避し、initMSE() 内の destroyMediaBackend() を空振りさせる。
+            const previousDestroy = takeDPlayerMediaBackendDestroy(dp);
             dp.plugins.mpegts = undefined;
             dp.plugins.aribb24Caption = undefined;
             dp.plugins.aribb24Superimpose = undefined;
@@ -271,12 +312,6 @@ class LiveMpegTsVideo extends BaseVideo {
                 throw err;
             }
 
-            // aribb24 renderer は旧 video の canvas と結び付いている。mpegts.js だけを
-            // canplay まで保持し、renderer は新側の生成直後に破棄することで、旧 canvas が
-            // 幅/高さ0の状態で字幕を描画する競合を避ける。
-            try { previousCaption?.dispose?.(); } catch (err) { console.error(err); }
-            try { previousSuperimpose?.dispose?.(); } catch (err) { console.error(err); }
-
             let finished = false;
             let timerId: number | undefined;
             const cleanup = (): void => {
@@ -284,9 +319,15 @@ class LiveMpegTsVideo extends BaseVideo {
                 finished = true;
                 if (typeof timerId !== 'undefined') window.clearTimeout(timerId);
                 this.deferredMpegtsCleanups.delete(cleanup);
-                try { previousMpegts.unload?.(); } catch (err) { console.error(err); }
-                try { previousMpegts.detachMediaElement?.(); } catch (err) { console.error(err); }
-                try { previousMpegts.destroy?.(); } catch (err) { console.error(err); }
+                try {
+                    destroyDeferredDPlayerMediaBackend(dp, previousDestroy, {
+                        mpegts: previousMpegts,
+                        aribb24Caption: previousCaption,
+                        aribb24Superimpose: previousSuperimpose,
+                    });
+                } catch (err) {
+                    console.error(err);
+                }
             };
             this.deferredMpegtsCleanups.add(cleanup);
             timerId = window.setTimeout(cleanup, LiveMpegTsVideo.MPEGTS_HANDOFF_TIMEOUT_MS);
@@ -369,7 +410,7 @@ class LiveMpegTsVideo extends BaseVideo {
         });
         this.currentAudioTrack = track;
         dp.video.playbackRate = playbackRate;
-        if (wasPaused === true) this.pause();
+        if (shouldPreservePausedPlayback(wasPaused, 'audio-switch') === true) this.pause();
         else await this.play();
     }
 
@@ -428,6 +469,10 @@ class LiveMpegTsVideo extends BaseVideo {
         return `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.channelId}/m2tsll?mode=${mode}&audioTrack=${encodeURIComponent(track)}`;
     }
 
+    private createOriginalStreamUrl(): string {
+        return `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.channelId}/original`;
+    }
+
     /**
      * config の m2tsll 設定から DPlayer の quality リストを生成する
      * @return DPlayerType.VideoQuality[]
@@ -436,6 +481,8 @@ class LiveMpegTsVideo extends BaseVideo {
         if (this.channelId === null) {
             return [];
         }
+
+        if (this.directMpeg2 === true) return [];
 
         return StreamQualityUtil.getLiveModeNames('m2tsll').map((name, mode) => {
             return {

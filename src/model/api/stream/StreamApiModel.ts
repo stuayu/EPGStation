@@ -1,4 +1,4 @@
-import { inject, injectable } from 'inversify';
+import { inject, injectable, optional } from 'inversify';
 import * as apid from '../../../../api';
 import { isDurationUndefined } from '../../../util/ProgramDuration';
 import { StreamContainer, StreamProfile } from '../../IConfigFile';
@@ -17,10 +17,19 @@ import { normalizeStreamPlayPosition } from '../../../util/StreamPlayPosition';
 import IApiUtil from '../IApiUtil';
 import IPlayList from '../IPlayList';
 import IStreamApiModel, { StreamResponse } from './IStreamApiModel';
+import IConfiguration from '../../IConfiguration';
+import ISourceAnalyzer from '../../stream/capability/ISourceAnalyzer';
+import { createOriginalMpeg2Command, isOriginalMpeg2Source } from '../../../util/OriginalMpeg2Util';
+import {
+    createOriginalHevcHlsCommand,
+    isOriginalHevcSource,
+    ORIGINAL_HEVC_PROFILE_ID,
+} from '../../../util/OriginalHevcUtil';
 
 interface RecordedStreamConfig {
     cmd: string;
     displayMode: number;
+    container: StreamContainer;
 }
 
 // 旧形式 ?mode=N のみが指定された場合、そのまま stream.setOption() の第二引数 (表示用 mode) として利用する
@@ -43,6 +52,8 @@ export default class StreamApiModel implements IStreamApiModel {
     private recordedDB: IRecordedDB;
     private channelDB: IChannelDB;
     private apiUtil: IApiUtil;
+    private configuration?: IConfiguration;
+    private sourceAnalyzer?: ISourceAnalyzer;
 
     constructor(
         @inject('LiveStreamModelProvider') liveStreamProvider: LiveStreamModelProvider,
@@ -56,6 +67,8 @@ export default class StreamApiModel implements IStreamApiModel {
         @inject('IRecordedDB') recordedDB: IRecordedDB,
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IApiUtil') apiUtil: IApiUtil,
+        @inject('IConfiguration') @optional() configuration?: IConfiguration,
+        @inject('ISourceAnalyzer') @optional() sourceAnalyzer?: ISourceAnalyzer,
     ) {
         this.liveStreamProvider = liveStreamProvider;
         this.liveHLSStreamProvider = liveHLSStreamProvider;
@@ -68,6 +81,8 @@ export default class StreamApiModel implements IStreamApiModel {
         this.recordedDB = recordedDB;
         this.channelDB = channelDB;
         this.apiUtil = apiUtil;
+        this.configuration = configuration;
+        this.sourceAnalyzer = sourceAnalyzer;
     }
 
     /**
@@ -97,6 +112,27 @@ export default class StreamApiModel implements IStreamApiModel {
             streamId: streamId,
             stream: stream.getStream(),
         };
+    }
+
+    /** MPEG-2 TS を再エンコードせず端末変換へ渡すライブ配信を開始する。 */
+    public async startLiveOriginalMpeg2Stream(option: apid.LiveStreamOption): Promise<StreamResponse> {
+        if (this.sourceAnalyzer !== undefined) {
+            const source = await this.sourceAnalyzer.analyzeLiveChannel(option.channelId);
+            if (isOriginalMpeg2Source(source) === false) throw new Error('OriginalMpeg2SourceIsUnsupported');
+        }
+
+        const stream = await this.liveStreamProvider();
+        stream.setOption(
+            {
+                channelId: option.channelId,
+                cmd: createOriginalMpeg2Command('live', this.configuration?.getConfig().tsreadex),
+                container: 'm2ts',
+                directMpeg2: true,
+            },
+            0,
+        );
+        const streamId = await this.streamManageModel.start(stream);
+        return { streamId, stream: stream.getStream() };
     }
 
     /**
@@ -237,8 +273,19 @@ export default class StreamApiModel implements IStreamApiModel {
     ): ResolvedStreamOption {
         let profile: StreamProfile | null = null;
 
+        // 「おまかせ」(auto) は playback-options 上の仮想プロファイルで、配信プロファイルとしては存在しない。
+        // クライアントは auto の modes から数値 mode も渡すので、auto は未指定として mode で引く
+        // (auto を探すと必ず見つからず、全配信方式が ConfigIsUndefined の 500 になる)
+        if (option.profile === 'auto' && typeof option.mode === 'number') {
+            option = { ...option, profile: undefined };
+        }
+
         if (typeof option.profile !== 'undefined') {
-            profile = this.streamProfileManageModel.getProfile(option.profile);
+            const profiles =
+                kind === 'live'
+                    ? this.streamProfileManageModel.getLiveProfiles()
+                    : this.streamProfileManageModel.getRecordedProfiles(kind === 'recordedTs' ? 'ts' : 'encoded');
+            profile = profiles.find(item => item.id === option.profile && item.container === container) ?? null;
         } else if (typeof option.mode === 'number') {
             profile = this.streamProfileManageModel.resolveLegacyMode(kind, container, option.mode);
         }
@@ -377,6 +424,9 @@ export default class StreamApiModel implements IStreamApiModel {
                 videoFileId: option.videoFileId,
                 playPosition: normalizeStreamPlayPosition(option.playPosition),
                 cmd: resolved.cmd,
+                // encoded 扱いの TS (tsreplace 出力) の字幕 reader は container === 'hls' で起動する。
+                // 省略すると視聴時だけ字幕が 1 件も出ない (オフライン保存は指定済みで出る)
+                container: 'hls',
                 audioTrack: option.audioTrack,
             },
             resolved.displayMode,
@@ -384,6 +434,27 @@ export default class StreamApiModel implements IStreamApiModel {
 
         // manager に登録
         return await this.streamManageModel.start(stream);
+    }
+
+    /** オフライン保存用に録画 HLS の fMP4 レコードストリームを開始する */
+    public async startRecordedOfflineHLSStream(option: apid.RecordedStreamOption): Promise<StreamResponse> {
+        const resolved = await this.getRecordedVideoConfig('hls', option);
+        if (resolved.container !== 'hls' || resolved.cmd.includes('%streamFileDir%'))
+            throw new Error('OfflineHlsProfileRequired');
+        const stream = await this.recordedHLSStreamProvider();
+        stream.setOption(
+            {
+                videoFileId: option.videoFileId,
+                playPosition: 0,
+                cmd: resolved.cmd,
+                container: 'hls',
+                audioTrack: option.audioTrack,
+                offline: true,
+            },
+            resolved.displayMode,
+        );
+        const streamId = await this.streamManageModel.start(stream);
+        return { streamId, stream: stream.getStream() };
     }
 
     /**
@@ -400,6 +471,23 @@ export default class StreamApiModel implements IStreamApiModel {
         const isEncodedVideo = await this.isEncodedVideo(option.videoFileId);
         const kind: StreamProfileKind = isEncodedVideo === true ? 'recordedEncoded' : 'recordedTs';
 
+        // tsreplace の HEVC TS は通常のエンコードプロファイルではなく、既存の
+        // in-memory HLS パイプラインへ fMP4 として詰め替える。
+        if (type === 'hls' && option.profile === ORIGINAL_HEVC_PROFILE_ID) {
+            if (this.sourceAnalyzer === undefined) throw new Error('OriginalHevcSourceIsUnsupported');
+            const source = await this.sourceAnalyzer.analyzeRecordedFile(option.videoFileId);
+            if (isOriginalHevcSource(source) === false) throw new Error('OriginalHevcSourceIsUnsupported');
+
+            return {
+                cmd: createOriginalHevcHlsCommand(
+                    isEncodedVideo === false && typeof this.configuration?.getConfig().tsreadex !== 'undefined',
+                    isEncodedVideo === true ? 'file' : 'pipe',
+                ),
+                displayMode: typeof option.mode === 'number' ? option.mode : 0,
+                container: 'hls',
+            };
+        }
+
         const resolved = this.resolveProfile(kind, type, option);
 
         if (typeof resolved.profile.cmd === 'undefined') {
@@ -409,6 +497,7 @@ export default class StreamApiModel implements IStreamApiModel {
         return {
             cmd: resolved.profile.cmd,
             displayMode: resolved.displayMode,
+            container: resolved.profile.container,
         };
     }
 

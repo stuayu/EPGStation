@@ -2,7 +2,25 @@ import { ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
+type WritableError = NodeJS.ErrnoException & { code?: string };
+
 namespace ProcessUtil {
+    /**
+     * 子プロセス stdin の終了競合で発生する EPIPE を、プロセス全体の uncaughtException にしない。
+     * @param stdin: 子プロセス stdin
+     * @param onError: エラーを記録する処理 (EPIPE も含む。throw してはいけない)
+     */
+    export const attachStdinErrorHandler = (
+        stdin: NodeJS.WritableStream,
+        onError?: (error: Error) => void,
+    ): void => {
+        stdin.on('error', error => {
+            const writableError = error as WritableError;
+            onError?.(error);
+            if (writableError.code === 'EPIPE') return;
+        });
+    };
+
     /**
      * セットしたプロセスを前処理をしてから殺す
      * @param child: ChildProcess

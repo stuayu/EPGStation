@@ -14,13 +14,14 @@ export interface PlaybackOptions {
         available: true;
         builtin: boolean;
         legacy: boolean;
-        modes: Partial<Record<'m2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls', number>>;
+        modes: Partial<Record<'m2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | 'original', number>>;
         // 映像 bitrate (kbps)。自動画質 fallback の帯域判定に使う
         videoBitrate?: number;
         // 出力映像コーデック。同じ role のプリセットが複数あるとき (HEVC 版 / AVC 版) の区別に使う
         videoCodec?: 'copy' | 'h264' | 'hevc';
+        delivery: 'stream' | 'mpeg2toh264';
         // コンテナ別に「主音声・副音声を再接続無しで同時配信できるか」。詳細は api.d.ts の PlaybackProfile を参照
-        embeddedAudioSwitch?: Partial<Record<'m2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls', boolean>>;
+        embeddedAudioSwitch?: Partial<Record<'m2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | 'original', boolean>>;
     }>;
     options: { hdr: string[]; correction: string[] };
 }

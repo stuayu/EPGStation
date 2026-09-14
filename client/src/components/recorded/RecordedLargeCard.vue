@@ -4,6 +4,7 @@
         <div class="pa-2" v-on:click="gotoDetail">
             <div class="d-flex align-center">
                 <div class="text text-subtitle-2 font-weight-bold">{{ item.display.name }}</div>
+                <OfflineDownloadBadge v-if="item.recordedItem.videoFiles?.[0] !== undefined" :videoId="item.recordedItem.videoFiles[0].id"></OfflineDownloadBadge>
                 <v-spacer></v-spacer>
                 <RecordedItemMenu v-if="isEditMode === false" :recordedItem="item.recordedItem" v-on:stopEncode="stopEncode"></RecordedItemMenu>
             </div>
@@ -45,6 +46,7 @@
 
 <script lang="ts">
 import RecordedItemMenu from '@/components/recorded/RecordedItemMenu.vue';
+import OfflineDownloadBadge from '@/components/recorded/OfflineDownloadBadge.vue';
 import { RecordedDisplayData } from '@/model/state/recorded/IRecordedUtil';
 import WatchStatusUtil from '@/util/WatchStatusUtil';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
@@ -53,6 +55,7 @@ import * as apid from '../../../../api';
 @Component({
     components: {
         RecordedItemMenu,
+        OfflineDownloadBadge,
     },
 })
 class RecordedLargeCard extends Vue {

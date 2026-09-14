@@ -333,6 +333,25 @@ test('1080i source の auto 理由は選択した解像度を説明する', () =
     assert.doesNotMatch(decision.reason, /安定して再生できる画質を選択しました/);
 });
 
+test('Original MPEG-2 は対応端末の明示選択だけで採用し、自動 fallback に入れない', () => {
+    const original = {
+        id: 'original-mpeg2',
+        name: 'オリジナル (MPEG-2)',
+        useFor: 'both',
+        quality: 'original',
+        builtin: true,
+        delivery: 'mpeg2toh264',
+        output: { codec: 'copy', resolution: 'source' },
+    };
+    const mpeg2 = source({ codec: 'mpeg2', transport: 'mpegts', bitDepth: 8, scan: 'interlaced', hdr: 'sdr', sourceClass: 'legacy-broadcast' });
+    const capable = client({ mpeg2toh264: true, hevc: false, hevcMain10: false, hdr: false, hlg: false });
+    const auto = new PlaybackPolicyResolver().resolve('live', mpeg2, capable, [original, BUILTIN_STREAM_PRESETS.find(item => item.id === '720p')]);
+    assert.notEqual(auto.presetId, 'original-mpeg2');
+    const explicit = new PlaybackPolicyResolver().resolve('live', mpeg2, capable, [original], 'original-mpeg2');
+    assert.equal(explicit.presetId, 'original-mpeg2');
+    assert.deepEqual(explicit.fallbackChain, []);
+});
+
 test('端末設定の HDR = SDR に変換 は自動選択で SDR 系を選ぶ', () => {
     const decision = new PlaybackPolicyResolver().resolve('live', source(), client(), BUILTIN_STREAM_PRESETS, 'auto', {
         hdrMode: 'sdr',

@@ -28,6 +28,9 @@ class RecordedHLSStreamingVideo extends BaseVideo {
     @Prop({ required: true })
     public mode!: number;
 
+    @Prop({ default: undefined })
+    public profile!: string | undefined;
+
     @Prop({ required: true })
     public videoFileId!: apid.VideoFileId;
 
@@ -71,6 +74,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
     private lastSeekTime: number = 0; // setCurrentTime 実行中に setCurrentTime が重ねて実行されたか確認するための変数
     private qualityNames: string[] = []; // config の hls 視聴設定名一覧
     private currentMode: number = 0; // 再生中の視聴設定 (画質切替で更新される)
+    private currentProfile: string | undefined;
     private videoApiModel: IVideoApiModel = container.get<IVideoApiModel>('IVideoApiModel');
     private audioTracks: apid.VideoAudioTrack[] = []; // 選択できる音声トラック
     private currentAudioTrack: apid.AudioTrackSpecifier = 'main'; // 再生中の音声トラック
@@ -107,6 +111,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             const videoFileType = this.videoState.getVideoFileType(this.videoFileId);
             this.qualityNames = videoFileType === null ? [] : StreamQualityUtil.getRecordedModeNames(videoFileType, 'hls');
             this.currentMode = StreamQualityUtil.normalizeMode(this.qualityNames, this.mode);
+            this.currentProfile = this.profile;
 
             // 録画中の場合は duration が変化するので定期的に timeupdate を発行する
             if (this.videoState.isRecording() === true) {
@@ -125,7 +130,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
 
             // HLS stream 開始
             await this.videoState
-                .start(this.videoFileId, this.basePlayPosition, this.currentMode, this.resolveStreamAudioTrack(this.currentAudioTrack))
+                .start(this.videoFileId, this.basePlayPosition, this.currentMode, this.resolveStreamAudioTrack(this.currentAudioTrack), this.currentProfile)
                 .catch(err => {
                     this.snackbarState.open({
                         color: 'error',
@@ -316,7 +321,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             this.applyChapterHighlights(options, this.getDuration());
 
             this.createPlayer(options);
-            this.setPlaybackProfiles(this.playbackProfiles, 'hls', undefined, undefined, undefined, this.currentMode);
+            this.setPlaybackProfiles(this.playbackProfiles, 'hls', this.currentProfile ?? 'auto', undefined, undefined, this.currentMode);
             // ストリームを作り直した直後 (シーク・画質切替) は音声レンディションの選択が主音声へ戻る
             this.reapplyEmbeddedAudioTrack();
             this.setupAudioTrackSwitchForRecorded();
@@ -324,10 +329,11 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             // 画質切替時は現在の再生位置からストリームを作り直してから url を差し替える
             this.setupQualitySwitch({
                 container: 'hls',
-                resolveUrl: mode => this.restartStream(mode),
+                resolveUrl: (mode, _container, profileId) => this.restartStream(mode, profileId),
                 resetCurrentTime: true,
-                onSwitched: mode => {
+                onSwitched: (mode, profileId) => {
                     this.currentMode = mode;
+                    this.currentProfile = profileId;
                 },
             });
         } else {
@@ -355,7 +361,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
      * @param mode: number
      * @return Promise<string> m3u8 の url
      */
-    private async restartStream(mode: number): Promise<string> {
+    private async restartStream(mode: number, profile?: string): Promise<string> {
         const playPosition = this.getCurrentTime();
 
         await this.videoState.stop();
@@ -365,6 +371,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             this.basePlayPosition,
             mode,
             this.resolveStreamAudioTrack(this.currentAudioTrack),
+            profile,
         );
         await this.waitForEnabled();
 
@@ -416,6 +423,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
                     this.basePlayPosition,
                     this.currentMode,
                     this.resolveStreamAudioTrack(track),
+                    this.currentProfile,
                 );
                 await this.waitForEnabled();
                 this.currentAudioTrack = track;
@@ -584,6 +592,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
                     this.basePlayPosition,
                     this.currentMode,
                     this.resolveStreamAudioTrack(this.currentAudioTrack),
+                    this.currentProfile,
                 );
                 if (this.lastSeekTime !== beforeStartStream) {
                     return;

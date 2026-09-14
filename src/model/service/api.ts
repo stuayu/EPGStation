@@ -1,6 +1,7 @@
 import * as express from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import { parseByteRangeHeader } from '../../util/HttpRangeUtil';
 import IPlayList from '../api/IPlayList';
 
 /**
@@ -189,70 +190,40 @@ export const responseFile = (
         responseHeaders['Content-Type'] = mime;
     }
 
-    const rangeRequest = readRangeHeader(req.headers['range'], stat.size);
+    const rangeResult = parseByteRangeHeader(req.headers['range'], stat.size);
 
-    if (rangeRequest === null) {
+    if (rangeResult.kind === 'none') {
         responseHeaders['Content-Length'] = stat.size;
         responseHeaders['Accept-Ranges'] = 'bytes';
-        sendResponse(200, req, res, responseHeaders, req.method === 'HEAD' ? null : fs.createReadStream(filePath));
+        sendResponse(200, res, responseHeaders, req.method === 'HEAD' ? null : fs.createReadStream(filePath), req);
 
         return;
     }
 
-    const start: number = rangeRequest.Start;
-    const end: number = rangeRequest.End;
-
-    if (start >= stat.size || end >= stat.size) {
+    if (rangeResult.kind === 'unsatisfiable') {
         responseHeaders['Content-Range'] = 'bytes */' + stat.size;
-        sendResponse(416, req, res, responseHeaders, null);
+        sendResponse(416, res, responseHeaders, null);
 
         return;
     }
+
+    const { start, end } = rangeResult.range;
 
     responseHeaders['Content-Range'] = `bytes ${start}-${end}/${stat.size}`;
-    responseHeaders['Content-Length'] = start === end ? 0 : end - start + 1;
+    responseHeaders['Content-Length'] = end - start + 1;
     responseHeaders['Accept-Ranges'] = 'bytes';
 
     const option = { start: start, end: end };
     const stream = fs.createReadStream(filePath, option);
-    sendResponse(206, req, res, responseHeaders, stream);
-};
-
-const readRangeHeader = (
-    range: string | string[] | undefined | null,
-    totalLength: number,
-): { Start: number; End: number } | null => {
-    if (typeof range !== 'string' || range === null || range.length === 0) {
-        return null;
-    }
-
-    const array = range.split(/bytes=([0-9]*)-([0-9]*)/);
-    const start = parseInt(array[1], 10);
-    const end = parseInt(array[2], 10);
-    const result = {
-        Start: isNaN(start) ? 0 : start,
-        End: isNaN(end) ? totalLength - 1 : end,
-    };
-
-    if (!isNaN(start) && isNaN(end)) {
-        result.Start = start;
-        result.End = totalLength - 1;
-    }
-
-    if (isNaN(start) && !isNaN(end)) {
-        result.Start = totalLength - end;
-        result.End = totalLength - 1;
-    }
-
-    return result;
+    sendResponse(206, res, responseHeaders, stream, req);
 };
 
 const sendResponse = (
     code: number,
-    req: express.Request,
     res: express.Response,
     responseHeaders: Record<string, string | number>,
     readable: fs.ReadStream | null,
+    req?: express.Request,
 ): void => {
     res.status(code);
     res.set(responseHeaders);
@@ -264,15 +235,27 @@ const sendResponse = (
             readable.pipe(res);
         });
 
-        readable.on('end', () => {
-            readable.close(); // ファイルを開放する
-        });
-
-        // 接続切断時もファイルを開放する
-        req.on('close', () => {
-            readable.close();
-        });
+        attachFileStreamLifecycle(readable, res, req);
     }
+};
+
+/** レスポンス切断時に Range 読み出しを確実に終了する。 */
+export const attachFileStreamLifecycle = (
+    readable: fs.ReadStream,
+    res: express.Response,
+    req?: express.Request,
+): void => {
+    const destroy = (): void => {
+        // close() は fd だけを閉じ、読み出し中の ReadStream を確実には止めない。
+        // Range seek の連打では destroy() で旧要求を終了させる。
+        if (readable.destroyed === false) readable.destroy();
+    };
+    readable.on('end', destroy);
+    res.on('close', () => {
+        if (res.writableEnded === false) destroy();
+    });
+    req?.on('aborted', destroy);
+    req?.on('close', destroy);
 };
 
 export const isSecureProtocol = (req: express.Request): boolean => {

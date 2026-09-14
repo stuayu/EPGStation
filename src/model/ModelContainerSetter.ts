@@ -87,10 +87,12 @@ import StreamApiModel from './api/stream/StreamApiModel';
 import IThumbnailApiModel from './api/thumbnail/IThumbnailApiModel';
 import ThumbnailApiModel from './api/thumbnail/ThumbnailApiModel';
 import IVideoApiModel from './api/video/IVideoApiModel';
+import IOfflineVideoApiModel from './api/video/IOfflineVideoApiModel';
 import IWatchHistoryApiModel from './api/video/IWatchHistoryApiModel';
 import WatchHistoryApiModel from './api/video/WatchHistoryApiModel';
 import IVideoUtil from './api/video/IVideoUtil';
 import VideoApiModel from './api/video/VideoApiModel';
+import OfflineVideoApiModel from './api/video/OfflineVideoApiModel';
 import VideoUtil from './api/video/VideoUtil';
 import Configuration from './Configuration';
 import ConnectionCheckModel from './ConnectionCheckModel';
@@ -624,6 +626,7 @@ export const set = (container: Container): void => {
     container.bind<IVideoUtil>('IVideoUtil').to(VideoUtil).inSingletonScope();
 
     container.bind<IVideoApiModel>('IVideoApiModel').to(VideoApiModel).inSingletonScope();
+    container.bind<IOfflineVideoApiModel>('IOfflineVideoApiModel').to(OfflineVideoApiModel).inSingletonScope();
     container.bind<IWatchHistoryApiModel>('IWatchHistoryApiModel').to(WatchHistoryApiModel).inSingletonScope();
     container.bind<ISnsApiModel>('ISnsApiModel').to(SnsApiModel).inSingletonScope();
 

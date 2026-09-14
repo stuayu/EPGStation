@@ -12,13 +12,14 @@
     "dependencies": {
         "@mdi/font": "7.4.47",
         "axios": "1.18.1",
-        "dplayer": "github:tsukumijima/DPlayer#v1.32.8",
+        "dplayer": "github:libratechw/DPlayer#8e49bb76cdd14a69fa5e822d2d1e5800c4aaa512",
         "eventemitter2": "6.4.9",
         "hls.js": "1.6.16",
         "inversify": "6.0.2",
         "json-stable-stringify": "1.3.0",
         "lodash": "4.18.1",
         "material-design-icons-iconfont": "6.7.0",
+        "mpeg2toh264": "github:libratechw/mpeg2toh264#1e0eb60841daeacb1deae3def0192cf53512638e",
         "mpegts.js": "github:tsukumijima/mpegts.js#bf4e49d0ff004cf7546237393a62c66e4b926dca",
         "reflect-metadata": "0.2.2",
         "resize-observer-polyfill": "1.5.1",
@@ -44,7 +45,7 @@
         "@types/node": "26.1.1"
     },
     "allowScripts": {
-        "github:tsukumijima/DPlayer#32712e60a9eb1ae03963c224344b28f017b67f09": true,
+        "github:libratechw/DPlayer#8e49bb76cdd14a69fa5e822d2d1e5800c4aaa512": true,
         "@parcel/watcher@2.5.6": true
     }
 }

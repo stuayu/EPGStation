@@ -16,16 +16,21 @@ import Util from '@/util/Util';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
 import UaUtil from '@/util/UaUtil';
 import { DPlayerType } from 'dplayer';
+import { Deinterlacer, supportsDeinterlace } from 'mpeg2toh264/yadif';
+import { shouldPreservePausedPlayback } from '../../../../src/util/PlaybackPauseIntentUtil';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 import {
     decideMpegTsLifecycle,
+    destroyDeferredDPlayerMediaBackend,
     destroyMpegtsBeforeVideoReuse,
+    takeDPlayerMediaBackendDestroy,
 } from '../../../../src/util/MpegTsLifecycleUtil';
 import { isInitialPlaybackBufferReady } from '../../../../src/util/PlaybackStartBuffer';
 import { resolveRecordedJikkyoPlaybackTime } from '../../../../src/util/RecordedJikkyoSync';
 import { normalizeStreamPlayPosition } from '../../../../src/util/StreamPlayPosition';
 import { decideAudioTrackSwitch } from '../../../../src/util/AudioTrackSwitchDecision';
+import { shouldAutoplayPlayback } from '../../../../src/util/PlaybackAutoplayUtil';
 import type { RecordedStreamingType } from '@/util/StreamingTypeUtil';
 
 interface VideoSrcInfo {
@@ -34,6 +39,7 @@ interface VideoSrcInfo {
     mode: number;
     playPosition: number;
     audioTrack?: apid.AudioTrackSpecifier;
+    profile?: string;
 }
 
 @Component({})
@@ -43,6 +49,9 @@ class RecordedStreamingVideo extends BaseVideo {
 
     @Prop({ required: true })
     public mode!: number;
+
+    @Prop({ default: undefined })
+    public profile!: string | undefined;
 
     @Prop({ required: true })
     public videoFileId!: apid.VideoFileId;
@@ -77,7 +86,7 @@ class RecordedStreamingVideo extends BaseVideo {
         if (wasRecording === true && this.videoState.isRecording() === false) {
             // 録画中は bounded probe なので、終了時に全体の ES 一覧へ更新する。
             await this.fetchAudioTracks();
-            if (this.dp !== null) this.setupRecordedAudioTrackSwitch();
+            if (this.dp !== null && this.streamingType !== 'original') this.setupRecordedAudioTrackSwitch();
         }
     }
     private basePlayPosition: number = 0;
@@ -207,8 +216,16 @@ class RecordedStreamingVideo extends BaseVideo {
         }
 
         const isM2TsLL = this.streamingType === 'm2tsll';
+        const isOriginalMpeg2 = this.streamingType === 'original';
         if (isM2TsLL === true) {
             const support = StreamSupportUtil.checkM2TSLLSupport();
+            if (support.isSupported === false) {
+                this.snackbarState.open({ color: 'error', text: support.reason ?? '非対応ブラウザーです。' });
+                throw new Error('UnsupportedBrowser');
+            }
+        }
+        if (isOriginalMpeg2 === true) {
+            const support = StreamSupportUtil.checkMpeg2ToH264Support();
             if (support.isSupported === false) {
                 this.snackbarState.open({ color: 'error', text: support.reason ?? '非対応ブラウザーです。' });
                 throw new Error('UnsupportedBrowser');
@@ -223,14 +240,26 @@ class RecordedStreamingVideo extends BaseVideo {
             mode: this.currentMode,
             playPosition: this.basePlayPosition,
             audioTrack: this.resolveStreamAudioTrack(this.currentAudioTrack),
+            profile: this.profile,
         });
 
         // プレイヤー上から画質 (エンコード設定) を切り替えられるよう quality リストを生成する
-        const qualities = StreamQualityUtil.createQualityList(this.qualityNames, videoSrc, isM2TsLL ? 'mpegts' : 'normal');
+        const createdQualities = StreamQualityUtil.createQualityList(
+            this.qualityNames,
+            videoSrc,
+            isOriginalMpeg2 ? 'mpeg2toh264' : isM2TsLL ? 'mpegts' : 'normal',
+        );
+        // オリジナル (MPEG-2) は config の配信設定に mode 一覧を持たないため quality が空になる。
+        // DPlayer は生成時に quality が無いと画質メニュー自体を作らず、後から setPlaybackProfiles() で
+        // 一覧を入れても表示されない (オリジナルで再生すると他の方式へ戻れなかった)。1 件だけでも渡しておく
+        const qualities =
+            createdQualities.length === 0 && isOriginalMpeg2 === true
+                ? [{ name: 'オリジナル', url: videoSrc, type: 'mpeg2toh264' }]
+                : createdQualities;
 
         const options: DPlayerType.Options = {
             container: this.containerElement,
-            autoplay: true,
+            autoplay: isOriginalMpeg2 === true ? shouldAutoplayPlayback(UaUtil.isSafari(), UaUtil.isiOS()) : true,
             live: false,
             hotkey: true,
             video:
@@ -241,7 +270,7 @@ class RecordedStreamingVideo extends BaseVideo {
                       } as DPlayerType.Options['video'])
                     : {
                           url: videoSrc,
-                          type: isM2TsLL ? 'mpegts' : 'normal',
+                          type: isOriginalMpeg2 ? 'mpeg2toh264' : isM2TsLL ? 'mpegts' : 'normal',
                       },
             };
 
@@ -276,6 +305,19 @@ class RecordedStreamingVideo extends BaseVideo {
                 },
                 aribb24: DPlayerUtil.createAribb24Options(),
             };
+        } else if (isOriginalMpeg2 === true) {
+            options.subtitle = { type: 'aribb24' };
+            options.pluginOptions = {
+                mpeg2toh264: {
+                    // Safari の録画再生では Worker 内 MediaSource が画質切替後に停止することがある。
+                    // 変換処理は Worker のまま、MediaSource だけメインスレッドへ置く。
+                    mediaSource: UaUtil.isSafari() === true ? 'main' : 'auto',
+                    passthrough: false,
+                    deinterlace: supportsDeinterlace(),
+                    deinterlacer: supportsDeinterlace() ? video => new Deinterlacer(video) : undefined,
+                },
+                aribb24: DPlayerUtil.createAribb24Options(),
+            };
         }
 
         // チャプターをシークバー上のマーカーとして表示する
@@ -285,8 +327,8 @@ class RecordedStreamingVideo extends BaseVideo {
         if (isM2TsLL === true) {
             this.setupInitialPlaybackBufferGate();
         }
-        this.setPlaybackProfiles(this.playbackProfiles, this.streamingType as 'mp4' | 'webm' | 'm2tsll', undefined, undefined, undefined, this.currentMode);
-        if (this.audioTracks.length > 0) {
+        this.setPlaybackProfiles(this.playbackProfiles, this.streamingType as 'mp4' | 'webm' | 'm2tsll' | 'original', undefined, undefined, undefined, this.currentMode);
+        if (this.audioTracks.length > 0 && isOriginalMpeg2 === false) {
             this.setupRecordedAudioTrackSwitch();
         }
         if (isM2TsLL === true) {
@@ -382,6 +424,14 @@ class RecordedStreamingVideo extends BaseVideo {
         );
     }
 
+    /** DPlayer に渡す配信方式を返す。 */
+    private getDPlayerVideoType(): DPlayerType.VideoType {
+        if (this.streamingType === 'original') return 'mpeg2toh264';
+        if (this.streamingType === 'm2tsll') return 'mpegts';
+
+        return 'normal';
+    }
+
     /**
      * video src を生成する
      */
@@ -396,7 +446,11 @@ class RecordedStreamingVideo extends BaseVideo {
         const base =
             info.streamingType === 'm2tsll' ? `${window.location.origin}${Util.getSubDirectory()}/` : './';
 
-        return `${base}api/streams/recorded/${info.videoFileId}/${info.streamingType}?mode=${info.mode}&ss=${ss}${audio}`;
+        if (info.streamingType === 'original') {
+            return `${window.location.origin}${Util.getSubDirectory()}/api/videos/${info.videoFileId}/original`;
+        }
+        const profile = typeof info.profile === 'string' ? `&profile=${encodeURIComponent(info.profile)}` : '';
+        return `${base}api/streams/recorded/${info.videoFileId}/${info.streamingType}?mode=${info.mode}&ss=${ss}${audio}${profile}`;
     }
 
     private setupRecordedAudioTrackSwitch(): void {
@@ -446,11 +500,11 @@ class RecordedStreamingVideo extends BaseVideo {
                 playPosition,
                 audioTrack: this.resolveStreamAudioTrack(track),
             }),
-            type: this.streamingType === 'm2tsll' ? 'mpegts' : 'normal',
+            type: this.getDPlayerVideoType(),
         });
         this.currentAudioTrack = track;
         this.dp.video.playbackRate = playbackRate;
-        if (wasPaused === true) this.pause();
+        if (shouldPreservePausedPlayback(wasPaused, 'audio-switch') === true) this.pause();
         else await this.play();
     }
 
@@ -486,12 +540,10 @@ class RecordedStreamingVideo extends BaseVideo {
                 const previousMpegts = dp.plugins?.mpegts;
                 if (
                     video?.type === 'mpegts' &&
-                    destroyMpegtsBeforeVideoReuse(previousMpegts, dp.video) === true
+                    destroyMpegtsBeforeVideoReuse(previousMpegts, dp.video, dp) === true
                 ) {
-                    // DPlayer は switchVideo() 内で video.src を設定してから initMSE() を呼ぶ。
-                    // 同じ video 要素では、ここで旧側を破棄しないと新 URL を detach が消す。
-                    this.disposeAribb24Renderers(dp);
-                    delete dp.plugins.mpegts;
+                    // DPlayer 1.33 の destroyMediaBackend() が旧 callback を実行し、
+                    // mediaBackendDestroy も null にする。ここで直接 destroy() してはいけない。
                 }
                 originalSwitchVideo(...args);
             };
@@ -505,12 +557,14 @@ class RecordedStreamingVideo extends BaseVideo {
             }
             const lifecycle = decideMpegTsLifecycle(previousMpegts, video);
             if (lifecycle === 'reset') {
-                // レジューム・シークの switchVideo() は現在の video 要素を再利用する。
-                // MediaSource / SourceBuffer / mpegts.js / ARIB renderer をここで全て捨て、
-                // 絶対 PTS が前のストリームより小さい場合も旧時間軸へ append させない。
-                this.disposeAribb24Renderers(dp);
-                previousMpegts.destroy?.();
-                delete dp.plugins.mpegts;
+                // switchVideo() のラッパーを通らない呼出しでも DPlayer の callback を1回だけ実行する。
+                const previousDestroy = takeDPlayerMediaBackendDestroy(dp);
+                destroyDeferredDPlayerMediaBackend(dp, previousDestroy, {
+                    mpegts: previousMpegts,
+                    aribb24Caption: dp.plugins?.aribb24Caption,
+                    aribb24Superimpose: dp.plugins?.aribb24Superimpose,
+                });
+                if (previousDestroy === null) previousMpegts.destroy?.();
                 originalInitMSE(video, type);
                 return;
             }
@@ -521,6 +575,7 @@ class RecordedStreamingVideo extends BaseVideo {
 
             const previousCaption = dp.plugins?.aribb24Caption;
             const previousSuperimpose = dp.plugins?.aribb24Superimpose;
+            const previousDestroy = takeDPlayerMediaBackendDestroy(dp);
             dp.plugins.mpegts = undefined;
             dp.plugins.aribb24Caption = undefined;
             dp.plugins.aribb24Superimpose = undefined;
@@ -532,8 +587,6 @@ class RecordedStreamingVideo extends BaseVideo {
                 dp.plugins.aribb24Superimpose = previousSuperimpose;
                 throw err;
             }
-            try { previousCaption?.dispose?.(); } catch (err) { console.error(err); }
-            try { previousSuperimpose?.dispose?.(); } catch (err) { console.error(err); }
             let finished = false;
             let timerId: number | undefined;
             const cleanup = (): void => {
@@ -541,21 +594,20 @@ class RecordedStreamingVideo extends BaseVideo {
                 finished = true;
                 if (typeof timerId !== 'undefined') window.clearTimeout(timerId);
                 this.deferredMpegtsCleanups.delete(cleanup);
-                try { previousMpegts.unload?.(); } catch (err) { console.error(err); }
-                try { previousMpegts.detachMediaElement?.(); } catch (err) { console.error(err); }
-                try { previousMpegts.destroy?.(); } catch (err) { console.error(err); }
+                try {
+                    destroyDeferredDPlayerMediaBackend(dp, previousDestroy, {
+                        mpegts: previousMpegts,
+                        aribb24Caption: previousCaption,
+                        aribb24Superimpose: previousSuperimpose,
+                    });
+                    if (previousDestroy === null) previousMpegts.destroy?.();
+                } catch (err) {
+                    console.error(err);
+                }
             };
             this.deferredMpegtsCleanups.add(cleanup);
             timerId = window.setTimeout(cleanup, 10_000);
         };
-    }
-
-    /** 旧 video 専用の ARIB renderer を新しい MediaSource へ持ち越さない。 */
-    private disposeAribb24Renderers(dp: any): void {
-        try { dp.plugins?.aribb24Caption?.dispose?.(); } catch (err) { console.error(err); }
-        try { dp.plugins?.aribb24Superimpose?.dispose?.(); } catch (err) { console.error(err); }
-        delete dp.plugins.aribb24Caption;
-        delete dp.plugins.aribb24Superimpose;
     }
 
     private cleanupDeferredMpegts(): void {
@@ -645,7 +697,7 @@ class RecordedStreamingVideo extends BaseVideo {
             time >= this.basePlayPosition &&
             time <= this.basePlayPosition + super.getDuration()
         ) {
-            super.setCurrentTime(time - this.basePlayPosition);
+            super.setCurrentTime(time - this.basePlayPosition, resume);
             this.onTimeupdate();
 
             return;
@@ -691,7 +743,7 @@ class RecordedStreamingVideo extends BaseVideo {
                         playPosition: this.basePlayPosition,
                         audioTrack: this.resolveStreamAudioTrack(this.currentAudioTrack),
                     }),
-                    type: this.streamingType === 'm2tsll' ? 'mpegts' : 'normal',
+                    type: this.getDPlayerVideoType(),
                 });
 
                 this.dp.video.playbackRate = playbackRate;

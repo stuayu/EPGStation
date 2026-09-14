@@ -32,7 +32,13 @@ export default class PlaybackPolicyResolver implements IPlaybackPolicyResolver {
             requestedPresetId !== 'auto' && requested !== undefined
                 ? requested
                 : this.selectAuto(usable, source, client, preference);
-        const fallbackCandidates = usable.filter(preset => preset.id !== selected.id && preset.id !== 'auto');
+        const fallbackCandidates = usable.filter(
+            preset =>
+                preset.id !== selected.id &&
+                preset.id !== 'auto' &&
+                preset.delivery !== 'mpeg2toh264' &&
+                preset.id !== 'original-hevc',
+        );
         const fallbackChain =
             requestedPresetId === 'auto'
                 ? fallbackCandidates
@@ -68,7 +74,10 @@ export default class PlaybackPolicyResolver implements IPlaybackPolicyResolver {
     ): StreamPreset {
         return (
             [...presets]
-                .filter(preset => preset.id !== 'auto')
+                .filter(
+                    preset =>
+                        preset.id !== 'auto' && preset.delivery !== 'mpeg2toh264' && preset.id !== 'original-hevc',
+                )
                 .sort(
                     (a, b) =>
                         this.autoScore(b, source, client, preference) - this.autoScore(a, source, client, preference),
@@ -195,6 +204,9 @@ export default class PlaybackPolicyResolver implements IPlaybackPolicyResolver {
 
     private isUsable(preset: StreamPreset, source: SourceCapabilities, client: ClientCapabilities): boolean {
         const output = preset.output;
+        if (preset.delivery === 'mpeg2toh264') {
+            return client.mpeg2toh264 === true && source.codec === 'mpeg2' && source.transport === 'mpegts';
+        }
         if (output.codec === 'copy' && !this.sourceCanPlay(source, client)) return false;
         if (output.codec === 'hevc' && (!client.hevc || (output.bitDepth === 10 && !client.hevcMain10))) return false;
         if (output.codec === 'h264' && !client.h264) return false;
@@ -218,6 +230,7 @@ export default class PlaybackPolicyResolver implements IPlaybackPolicyResolver {
         source: SourceCapabilities,
         client: ClientCapabilities,
     ): PlaybackDecision['mode'] {
+        if (preset.delivery === 'mpeg2toh264') return 'direct-play';
         const output = preset.output;
         if (output.codec === 'copy') return output.container === undefined ? 'direct-play' : 'remux';
         const sameCodec = output.codec === source.codec || (output.codec === 'hevc' && source.codec === 'hevc');
@@ -231,6 +244,8 @@ export default class PlaybackPolicyResolver implements IPlaybackPolicyResolver {
     }
 
     private reason(preset: StreamPreset, source: SourceCapabilities, client: ClientCapabilities): string {
+        if (preset.delivery === 'mpeg2toh264') return 'MPEG-2 映像を端末で処理して再生します';
+        if (preset.id === 'original-hevc') return 'HEVC を再エンコードせず fMP4 へ詰め替えて再生します';
         if (source.hdr !== 'sdr' && preset.output.hdrMode !== 'preserve')
             return '端末に合わせて明るさと画質を調整しました';
         if (this.mode(preset, source, client) === 'direct-play' || this.mode(preset, source, client) === 'video-copy')

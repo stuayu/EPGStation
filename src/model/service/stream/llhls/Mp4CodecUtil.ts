@@ -15,9 +15,27 @@ namespace Mp4CodecUtil {
      */
     export const parseCodec = (init: Buffer): string | null => {
         const stsd = findBox(init, ['moov', 'trak', 'mdia', 'minf', 'stbl', 'stsd']);
-        if (stsd === null || stsd.length < 8) {
-            return null;
-        }
+        return stsd === null ? null : parseSampleEntry(stsd);
+    };
+
+    /**
+     * init セグメント内の全 trak から CODECS を求める。単一レンディションでも音声を
+     * 同じ fMP4 に含めるため、`parseCodec()` の映像1本だけでは不十分な場合がある。
+     * @param init: Buffer
+     * @return string[]
+     */
+    export const parseCodecs = (init: Buffer): string[] => {
+        const moov = findChildBox(init, 'moov');
+        if (moov === null) return [];
+
+        return findChildBoxes(moov, 'trak')
+            .map(trak => findBox(trak, ['mdia', 'minf', 'stbl', 'stsd']))
+            .map(stsd => (stsd === null ? null : parseSampleEntry(stsd)))
+            .filter((codec): codec is string => codec !== null);
+    };
+
+    const parseSampleEntry = (stsd: Buffer): string | null => {
+        if (stsd.length < 8) return null;
 
         // stsd: version(1) + flags(3) + entry_count(4) の後に sample entry が並ぶ
         const entry = stsd.subarray(8);
@@ -134,23 +152,34 @@ namespace Mp4CodecUtil {
      * @return Buffer | null
      */
     const findChildBox = (buffer: Buffer, name: string): Buffer | null => {
+        return findChildBoxes(buffer, name)[0] ?? null;
+    };
+
+    /**
+     * 直下の同名 box をすべて探し、その payload を返す
+     * @param buffer: Buffer
+     * @param name: string
+     * @return Buffer[]
+     */
+    const findChildBoxes = (buffer: Buffer, name: string): Buffer[] => {
+        const found: Buffer[] = [];
         let offset = 0;
         while (offset + 8 <= buffer.length) {
             const size = buffer.readUInt32BE(offset);
             const type = buffer.subarray(offset + 4, offset + 8).toString('ascii');
             const boxSize = size === 0 ? buffer.length - offset : size;
             if (boxSize < 8 || offset + boxSize > buffer.length) {
-                return null;
+                return [];
             }
 
             if (type === name) {
-                return buffer.subarray(offset + 8, offset + boxSize);
+                found.push(buffer.subarray(offset + 8, offset + boxSize));
             }
 
             offset += boxSize;
         }
 
-        return null;
+        return found;
     };
 }
 

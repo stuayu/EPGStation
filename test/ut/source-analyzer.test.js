@@ -97,6 +97,7 @@ test('録画の ffprobe 結果から progressive と fps を保持する', async
                 avgFrameRate: '60000/1001',
                 rFrameRate: '60000/1001',
             }),
+            getVideoCodecsAt: async () => ['hevc'],
         },
         {},
     );
@@ -106,6 +107,65 @@ test('録画の ffprobe 結果から progressive と fps を保持する', async
     assert.equal(source.scan, 'unknown');
     assert.ok(Math.abs(source.frameRate - 59.94005994) < 0.001);
     assert.equal(source.transport, 'mpegts');
+});
+
+test('コンテナ形式を拡張子ではなく ffprobe の format_name から判定する', async () => {
+    const analyzer = new SourceAnalyzer(
+        { findId: async () => ({ analyzedAt: 1, filePath: 'recorded.mp4' }) },
+        {
+            getFullFilePathFromVideoFile: () => '/recorded.mp4',
+            getDetailedInfo: async () => ({
+                duration: 60,
+                size: 1,
+                bitRate: 1,
+                formatName: 'mpegts',
+                startTime: 0,
+                videoCodec: 'hevc',
+                audioCodec: null,
+                width: 1440,
+                height: 1080,
+                fieldOrder: 'progressive',
+                avgFrameRate: '60000/1001',
+                rFrameRate: '60000/1001',
+            }),
+            getVideoCodecsAt: async () => ['hevc'],
+        },
+        {},
+    );
+
+    const source = await analyzer.analyzeRecordedFile(7);
+
+    assert.equal(source.transport, 'mpegts');
+});
+
+test('録画中央の映像 codec が変わる場合は Original 対象から外す', async () => {
+    const analyzer = new SourceAnalyzer(
+        { findId: async () => ({ analyzedAt: 1, filePath: 'mixed.ts' }) },
+        {
+            getFullFilePathFromVideoFile: () => '/mixed.ts',
+            getDetailedInfo: async () => ({
+                duration: 60,
+                size: 1,
+                bitRate: 1,
+                startTime: 0,
+                videoCodec: 'hevc',
+                audioCodec: null,
+                width: 1440,
+                height: 1080,
+                pixFmt: 'yuv420p',
+                fieldOrder: 'progressive',
+                avgFrameRate: '30000/1001',
+                rFrameRate: '30000/1001',
+            }),
+            getVideoCodecsAt: async () => ['hevc', 'mpeg2video'],
+        },
+        {},
+    );
+
+    const source = await analyzer.analyzeRecordedFile(6);
+
+    assert.equal(source.codec, 'unknown');
+    assert.equal(source.confidence, 'low');
 });
 
 test('DB fallback は fps 不明のため yadif 有りになり、結果をキャッシュせず ffprobe を再試行する', async () => {

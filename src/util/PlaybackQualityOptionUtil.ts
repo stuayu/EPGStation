@@ -13,7 +13,7 @@ export interface PlaybackQualityOptionResult {
     currentIndex: number;
 }
 
-const CONTAINER_ORDER: readonly SelectablePlaybackContainer[] = ['hls', 'm2tsll', 'mp4', 'webm'];
+const CONTAINER_ORDER: readonly SelectablePlaybackContainer[] = ['original', 'hls', 'm2tsll', 'mp4', 'webm'];
 
 /**
  * playback-options の profile と container 別 mode から、DPlayer 用の選択肢を作る。
@@ -39,10 +39,18 @@ export const createPlaybackQualityOptions = (
         }),
     );
 
-    const currentIndex = options.findIndex(option => option.container === currentContainer && option.mode === currentMode);
+    const currentIndex = options.findIndex(
+        option =>
+            option.container === currentContainer && option.mode === currentMode && option.profile.id === selectedId,
+    );
     if (currentIndex >= 0) return { options, currentIndex };
 
-    const selectedIndex = options.findIndex(option => option.profile.id === selectedId && option.container === currentContainer);
+    const modeIndex = options.findIndex(option => option.container === currentContainer && option.mode === currentMode);
+    if (modeIndex >= 0) return { options, currentIndex: modeIndex };
+
+    const selectedIndex = options.findIndex(
+        option => option.profile.id === selectedId && option.container === currentContainer,
+    );
     if (selectedIndex >= 0) return { options, currentIndex: selectedIndex };
 
     const anySelectedIndex = options.findIndex(option => option.profile.id === selectedId);
