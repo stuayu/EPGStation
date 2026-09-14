@@ -19,6 +19,32 @@ HEVC の MP4/fMP4 出力には `-tag:v hvc1` を付ける。手書き `cmd` は�
 検出失敗・タイムアウト・手動指定の利用不可は software へフォールバックし、info/warn ログへ残す。
 `GET /api/config` の `hardwareEncoder` と設定フォームの選択肢は同じ検出結果を使う。
 
+## MPEG-2 TS の Original 直接再生
+
+MPEG-2 映像を含む MPEG-TS だけ、サーバーで再エンコードしない `Original (MPEG-2)` を選べる。クライアントは固定 SHA の `mpeg2toh264` を使い、WASM と Worker、MSE / ManagedMediaSource で MPEG-2 TS を H.264/fMP4 へ変換する。WebCodecs や `SharedArrayBuffer` を必須とする実装ではなく、ローカルソースにも COOP/COEP の要求はないため、SNS 外部画像・データ放送を壊す全体ヘッダー追加は行わない。対応判定は Worker MSE または通常 MSE の AVC 対応で行い、非対応ブラウザーでは選択肢を出さない。詳細な制約 (MPEG-2 I/P/B、4:2:0、AAC-LC TS など) は `client/node_modules/mpeg2toh264/README.md` を根拠とする。
+
+- ライブ: `GET /api/streams/live/{channelId}/original`。共有受信から分岐し、`config.tsreadex` があれば既存の `-x 18 -n -1 -a 13 -b 7 -c 5 -u 5 -` を通し、未設定なら TS をそのまま流す。`-b 7` は副音声を保持するため変更しない。EIT[p/f]・時刻・BIT の既存 Transform は維持する。
+- 録画: `GET /api/videos/{videoFileId}/original`。MPEG-2 MPEG-TS と判定できた録画だけ (`video_file.type=ts/encoded` の両方)、元ファイルの Range を `video/mp2t` で返す。MP4 等の encoded は SourceAnalyzer の transport で除外する。シークは 188 byte 境界へ切り下げ、`req.aborted` / `res.close` で旧 ReadStream を destroy する。ファイル長を超える Range は `416` と `Content-Range: bytes */<size>` を返す。従って再生用のサーバーエンコーダーや tsreadex コマンドは作らない。
+- 録画詳細・視聴履歴・DPlayer の画質メニューは `playback-options.profiles[].modes` を正として Original MPEG-2 を表示する。録画 TS の直接配信は保存した視聴位置から Range で開始し、配信方式切替時も `playPosition` を親画面へ渡す。録画中の Original MPEG-2 は末尾へ追いついた後の Range 再試行契約が複雑になるため、視聴選択肢へ出さない。
+- 録画 Original MPEG-2 の開始時自動再生は M2TS-LL と同じく Safari / iOS 以外で有効にする。`VirtualTimeline` が DPlayer の seek を置き換えるため、シーク前に再生中なら `BaseVideo.setCurrentTime(..., true)` が seek 後に `play()` を呼び、一時停止中なら `false` で pause 状態を維持する。`resume` を省略する経路は再生状態を変更しない。Original の再生成時も DPlayer の type は `mpeg2toh264` とする。
+- tsreplace の HEVC TS (`stream_type=0x24`, `.hevc.ts` を含む) は `video_file.type=encoded` で登録されても、`original-hevc` として HLS のみへ表示する。サーバーは `%FFMPEG% -fflags +genpts -f mpegts ... -c:v copy -tag:v hvc1 -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER% -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1` を使い、`Fmp4Packager` / `HLSMemoryStoreModel` へ渡す。実AAC TSへ `aac_adtstoasc` を適用するとエラーを出しつつ終了コード0になるため付けない。 **音声は copy しない**: 放送 AAC を copy した fMP4 は Safari / WebKit で最初のフラグメント境界 (4〜6 秒) で停止する (実測: tsreplace 出力 3 本で 4.40 / 4.80 / 6.29 秒停止、映像のみ・音声 AAC 再エンコードでは 24 秒まで進行。映像の CRA/RASL・in-band PPS・AUD の除去では直らない)。`%DEINTERLACE%` は使わない。tsreadex を使う TS では前段へ `%TSREADEX% |` を置き、音声 map は `%AUDIOMAP%` だけを使う (`-map 0` と併用しない)。Main は `hevc`、Main10 は `hevcMain10` が true の端末だけへ出す。自動選択・自動 fallback には入れず明示選択だけとする。
+- encoded TS の HLS / Offline では、拡張子でなく `SourceAnalyzer.transport === 'mpegts'` を見て字幕専用 reader を起動する。reader の `-ss` は VBR byte seek を使わず、主映像と同じ ffmpeg copy probe で得た実開始位置へ合わせる。reader の相対PTSは最初の映像partの `tfdt` を基準に `Fmp4Packager` が該当partへ分配するため、字幕readerが全尺を先に読み終えても先頭へ一括付与しない。副音声 (`%AUDIOMAP%`)・BML時計・実況同期の基準 (`videoFile.startAt`) は既存の主配信経路を維持する。
+- Original 候補の録画 TS は `getDetailedInfo()` の先頭映像に加えてファイル中央の5秒を有限 probe する。中央で別 codec が見つかる、映像が見つからない、または probe に失敗した場合は source codec を `unknown` にして MPEG-2 / HEVC の両 Original を出さない。短すぎる録画 (4秒以下) と追加 probe を持たない旧 mock は先頭判定を使う。録画中は末尾追従・416再試行の契約を避け、MPEG-2 / HEVC Original を playback-options から出さない。
+- `PlaybackPolicyResolver` の「おまかせ」と停滞 fallback は直接再生を自動選択しない。明示選択時だけ使用し、HEVC / 4K / encoded 録画、MPEG-2 以外の素材を候補へ出さない。
+- YADIF 対応環境では `mpeg2toh264` の `Deinterlacer` を使う。キャプチャは通常の video 要素ではなく `Deinterlacer.capture()` を使う。DPlayer は `8e49bb76cdd14a69fa5e822d2d1e5800c4aaa512`、`mpeg2toh264` は `1e0eb60841daeacb1deae3def0192cf53512638e` 固定。両コミットの公開パッケージへ `dist/` が含まれることを確認済み。Safari 録画時だけ MediaSource を main thread へ置く。自動ライブ再起動・Comlink Worker 二重公開は相当実装が無いため未取り込み。DPlayer 未公開 `2467f23` は固定せず、同期位置を有限・非負に guard する。`touch-center-controls` は設計見直し中、`yadif-queue-fallback-removal` は統合版未採用、`diagnostic/*` は計装、VCEEncC 変更/revert は対象外、Android の描画をメインスレッドへ移す案は撤回済みのため取り込まない。
+
+## 録画番組のオフライン保存・再生
+
+`GET /api/videos/{videoFileId}/offline?profile=<録画HLSのプロファイル>&audioTrack=all` は、録画完了済みファイルを in-memory HLS の `Fmp4Packager` へ通し、完成したレコードを EOF 前から順にレスポンスへ流す。保存では視聴用の `MAX_AHEAD_SEGMENT_NUM` と録画入力の `readrate` を使わず、エンコーダ出力は HTTP の backpressure に従う。録画中は `409`、同時実行は3件まで。レスポンス切断、エンコーダ例外、正常 EOF のすべてでストリーム停止と実行枠解放を行い、保存中はクライアント keep の代わりにサーバーが keep タイマーを更新する。
+
+保存形式は `EPGODL2`、長さ付き JSON メタデータ、init/master/segment/end の型付きレコード。連続する fMP4 フラグメントを約6秒 (既定12 parts) ずつまとめ、init は別レコードとして先頭に送る。複数音声は `Fmp4Packager` の映像・音声レンディション、各 init、`CODECS` 付きマスタープレイリストを保存し、LL-HLS のタグは公開しない。ARIB 字幕の `emsg` は各フラグメント先頭のまま保存する。クライアントはレコード完成ごとに進捗を更新し、Cache Storage へ1件ずつ書く。保存後に `#EXT-X-VERSION:7` / `#EXT-X-MAP` / `#EXT-X-ENDLIST` のローカル fMP4 VOD を生成し、iOS Safari のネイティブ HLS と hls.js の両方で再生する (HEVC は `hvc1`)。保存画質は HEVC TS の `original-hevc` を許可し、MPEG-2 Original は除外する。
+
+クライアントはビットレートと録画時間から見積もった容量を `navigator.storage.estimate()` で確認し `navigator.storage.persist()` を要求する。バイナリパーサーは任意のチャンク分割を許容し、1レコード分だけを保持してマジック・メタデータ・role別連番・長さ・終端件数・EOF を検証する。保存本体は Cache Storage、番組情報・画質・世代・容量は IndexedDB。Service Worker は Vite ビルド時に index.html・ハッシュ付き assets・`public/` 固定資産を app cache へ precache する。navigation は network-first + index.html fallback、静的資産は cache-first。`/local/offline/` は保存用 Cache Storage から返し、API、`/streamfiles/`、socket.io、データ放送/SNS WebSocket、サムネイル API には介入しない。app cache の世代更新で保存用 cache は削除しない。config 取得に失敗したオフライン起動は接続系処理を止め、`/offline-videos` を表示する。Original (MPEG-2) と m2tsll は保存画質から除外する。
+
+### iOS / iPadOS の保存制約
+
+Cache Storage / IndexedDB の容量上限・永続性はブラウザと端末空き容量に依存する。`navigator.storage.persist()` を要求しても常に許可されるとは限らず、iOS / iPadOS Safari は容量逼迫・長期間未使用・OS管理によって PWA のキャッシュを削除する可能性がある。ホーム画面へ追加した Web App も同じ制約を受ける。保存前の容量見積もりと保存後の再生は実装済みだが、iOS Safari 実機・ホーム画面 PWA の容量・寿命・回線断再生は未検証。
+
 ## 変更概要
 
 ### 1. mpegts.js 1.7.3 → 1.8.0 (ManagedMediaSource 対応)
@@ -47,7 +73,8 @@ HEVC の MP4/fMP4 出力には `-tag:v hvc1` を付ける。手書き `cmd` は�
 ### 3. プレイヤー上からの解像度動的切替 (M2TS-LL)
 
 - DPlayer の設定メニューに **画質 (quality) リスト**を表示し、再生を止めずに `config.yml` の `stream.live.ts.m2tsll` の各設定 (1080p / 720p / 480p など) を切り替え可能。
-- サーバー側は接続単位でエンコードプロセスを起動する。M2TS-LL の画質切替は別の video 要素を使うため DPlayer の旧 mpegts.js を新側の `canplay` まで保持し、再生開始後に旧側を停止する。一方、録画のレジューム・シーク (`switchVideo()`) は同じ video 要素を再利用するため、DPlayer が新 URL を `video.src` へ設定する前に旧側を破棄する。**URL が同じ同値シークも再生位置へ戻る操作なので、同じ `reset` 経路で MediaSource / SourceBuffer / mpegts.js を作り直す**。旧 video 専用の ARIB renderer も新しい時間軸へ持ち越さない。同じ要素で旧側を遅延 detach すると、新側の MediaSource まで外れて `SourceBuffer` 参照エラーになる。保持する旧側は常時1本以下に制限し、連続切替・コンポーネント破棄でも cleanup を完了させる。ライブ HLS は新ストリームの `canplay` まで旧ストリームを残す。新側の準備に失敗した場合は新側だけを回収する。
+- サーバー側は接続単位でエンコードプロセスを起動する。DPlayer 1.33.1 の `initMSE()` は先頭で `destroyMediaBackend()` を呼び、`mediaBackendDestroy` は生成時の mpegts.js 個体をクロージャで保持して `unload()` → `detachMediaElement()` → `destroy()` を1回実行する。録画 M2TS-LL の同じ video 要素を再利用するレジューム・シーク (`switchVideo()`) は、DPlayer の `destroyMediaBackend()` を新 URL 設定前に1回だけ呼ぶ。自前の `mpegts.destroy()` や plugin 参照の削除を先に行わない (後続 `initMSE()` がクロージャ内の破棄済み個体へ `unload()` して例外になるため)。**URL が同じ同値シークも再生位置へ戻る操作なので、同じ `reset` 経路で MediaSource / SourceBuffer / mpegts.js を作り直す**。
+- M2TS-LL の別 video 要素を使う画質切替・ライブ再接続では、旧 `mediaBackendDestroy` callback を退避して `initMSE()` 内の破棄を抑止し、新側の `canplay` / 再生準備完了まで保持する。回収時は旧 mpegts.js と旧 ARIB renderer の plugin 参照を一時的に復元して退避 callback を1回だけ実行し、新側へ callback の動的参照が漏れないようにする。保持する旧側は常時1本以下に制限し、連続切替・コンポーネント破棄でも cleanup を完了させる。オリジナル MPEG-2 (`mpeg2toh264`) は DPlayer の同じ `mediaBackendDestroy` 経路 (旧 backend の `destroy()` 1回) を使い、自前破棄を行わない。
 - ライブ HLS / 録画ストリーミングの切替は後述の「全配信方式での画質切替」で対応済み。
 - DPlayer の quality 配列を playback-options で差し替えるときは、内部 `blob:` URL や空の `video.src` を配信 URL として引き継がず、`options.video.url` → 現在 quality → `currentSrc` / `src` の順で有効な URL を選ぶ。画質切替後の URL は `options.video.url` と quality の両方へ同期する。mpegts.js の生成入口でも空・内部 `blob:` URL を検出したら初期化せずエラーにする。
 
@@ -309,11 +336,11 @@ in-memory HLS はパッケージング開始から15秒たっても最初の ini
 - サーバー側は `Fmp4Packager` で fMP4 を init セグメント / パート / メディアセグメントに分解し、`HLSMemoryStoreModel`（singleton）に保持する。
 - `/streamfiles/stream{id}.m3u8` などのリクエストはまずメモリストアから応答し、存在しない場合は従来どおりディスク（`streamFilePath`）へフォールバックする。
 - tmpfs 等 OS 依存の仕組みを使わないため Windows でも動作する。
-- **録画済み HLS 配信 (`RecordedHLS`) も同じ判定・同じ `HLSMemoryStoreModel` / `Fmp4Packager` / `/streamfiles/*` エンドポイントを共用して in-memory 化に対応済み** (`stream.recorded.{ts,encoded}.hls` の `cmd` が `%streamFileDir%` を含まなければ in-memory)。判定・パイプライン組み立ては `RecordedStreamBaseModel.isMemoryHLS()` / `startMemoryHLSPackaging()` に実装している (`LiveStreamBaseModel` と同名・同構造)。
+- **録画済み HLS 配信 (`RecordedHLS`) も同じ判定・同じ `HLSMemoryStoreModel` / `Fmp4Packager` / `/streamfiles/*` エンドポイントを共用して in-memory 化に対応済み** (`stream.recorded.{ts,encoded}.hls` の `cmd` が `%streamFileDir%` を含まなければ in-memory)。判定・パイプライン組み立ては `RecordedStreamBaseModel.isMemoryHLS()` / `startMemoryHLSPackaging()` に実装している (`LiveStreamBaseModel` と同名・同構造)。**encoded TS の `original-hevc` は字幕 reader の probe を待つため、配信プロセス生成時に stdout を管理側で drain してはいけない**。`CreateProcessOption.drainStdout=false` とし、`Fmp4Packager` / offline record stream が先頭の `ftyp` / `moov` から直接読む。字幕 reader の `AribId3Extractor` 出力も drain し、reader の backpressure で Offline の EOF を止めない。管理側の既定値は通常エンコード用に維持する。
   - **`encodePresets` が生成する録画済み HLS プリセットは in-memory (fMP4) がデフォルト**。MPEG-TS セグメントの HLS では iOS / Safari が HEVC を再生できず、LL-HLS のパート分割も fMP4 フラグメント単位でしか実現できないため、`buildRecordedHlsCmd()` は `%streamFileDir%` を含まない fMP4 出力の cmd を生成する。ディスク方式で運用したい場合は `stream.profiles.recorded.*` を手書きすること。
   - 録画側はクライアントが再生位置 (`playPosition`) 付きでストリームセッションを作り直す方式 (シーク = ストリーム再生成) のため、ディスク方式の既存 cmd も `hls_list_size 0` + `delete_segments` のスライディングウィンドウであり、そもそも全編を保持する EVENT プレイリストではない。したがって in-memory 化してもシーク時の挙動 (再生位置からの作り直し) は変わらない。
   - ストアは `create(streamId, 'recorded')` で作る。プレイヤー内での巻き戻しに応えるため、ライブ (掲載 6 / 保持 12 セグメント) より多い 180 セグメントを保持しすべてプレイリストへ載せる。
-  - in-memory モードでも ARIB 字幕に対応する (ライブと同じ仕組み)。`ts` 録画の場合、エンコード前の TS を `AribSubtitleTimedMetadataTransform` へ通し、`AribId3Extractor` が ID3 timed metadata を抜き取り、`Fmp4Packager` がパート先頭の version 1 `emsg` box として再多重化する。録画済み HLS は `#EXT-X-PART` を公開しないが、パートのバイト列はセグメントへ連結されるため `emsg` もセグメントへ残る。エンコード済みファイル (`encoded`) には ARIB 字幕が含まれないため対象外。`[AribId3Extractor]` の抽出件数、`[Fmp4Packager]` の保留 metadata 件数・付与バイト数・part 生成数をログで確認できる。
+  - in-memory モードでも ARIB 字幕に対応する (ライブと同じ仕組み)。`ts` 録画は入力側の `AribSubtitleTimedMetadataTransform`、tsreplace 等の `encoded` MPEG-TS は別字幕readerを使い、`AribId3Extractor` が ID3 timed metadata を抜き取り、`Fmp4Packager` がパート先頭の version 1 `emsg` box として再多重化する。録画済み HLS は `#EXT-X-PART` を公開しないが、パートのバイト列はセグメントへ連結されるため `emsg` もセグメントへ残る。encoded MP4 / WebM は対象外。Offline `original-hevc` も同じ字幕付きpackagerを `OfflineFmp4RecordStream` へ渡す。`[AribId3Extractor]` の抽出件数、`[Fmp4Packager]` の保留 metadata 件数・付与バイト数・part 生成数をログで確認できる。
   - メモリ保持・破棄・タイムアウト・`keep()` によるセッション延長は `StreamBaseModel` / `StreamManageModel` を共通で通るため、ライブ HLS と同じ経路でクリーンアップされる (ストリーム停止時に `HLSMemoryStoreModel.delete()` が呼ばれ、ゴミは残らない)。
 
 ### 低遅延化
@@ -549,7 +576,7 @@ EPGStation の rigaya プリセットは「rigaya が映像だけ処理 → 後�
 ### 制限事項
 
 - in-memory モードの字幕は `emsg` box (`scheme_id_uri = https://aomedia.org/emsg/ID3`) で運ぶ。fMP4 には ARIB 字幕 ES / ID3 ES をそのまま多重化できないため、エンコード前の TS から ID3 timed metadata を抜き取り、パート先頭へ `emsg` として付け直す方式を採っている (`AribId3Extractor` → `Fmp4Packager.pushId3()`)。hls.js は `emsg` を ID3 として通知するため、クライアント側 (aribb24) の実装はディスク方式と共通。
-- 上記の性質上、字幕の絶対時刻はエンコードパイプラインの遅延分 (おおむね 1 秒程度) だけずれることがある。フレーム単位の同期が必要な場合は従来のディスク方式 cmd を使用すること。
+- encoded TS の字幕readerは主映像の実シーク開始位置を基準にする。実ファイル測定では字幕emsgと対応video sampleの差は中央値0.012〜0.016秒、最大0.622〜1.300秒 (ss=0/300/900、2ファイル) だった。セグメント先頭時刻との差ではなく対応sampleとの差を測ること。
 - 字幕を正しく扱うため、入力 TS は `tsreadex` を通すこと (ワンセグ/字幕の PID 整合やドロップ耐性のため推奨)。cmd の先頭に `%TSREADEX% ... |` を置く形を推奨する。tsreadex 無しの m2tsll も、字幕 ES を map して出力側で ID3 化するため利用できる。
 - メモリ保持はライブが直近 12 セグメントで、ストリーム停止時に即時解放される (`HLSMemoryStoreModel.LIVE_RETAIN_SEGMENT_NUM`)。録画済みは再生位置 (`lastServedSeq`) が判明するまでは直近 180 セグメントを暫定保持し (`RECORDED_RETAIN_SEGMENT_NUM`)、判明した後は再生位置から遡って約 120 秒分を保持する (`RECORDED_KEEP_BEHIND_SEGMENT_NUM`。詳細は上の「保持窓」節を参照)。どちらのモードも、まだクライアントが取得していないセグメントは保持上限だけを理由に削除しない (メモリ使用量の安全弁として `RECORDED_MAX_SEGMENT_NUM` (400 セグメント) を超えた場合だけは、未取得でも破棄する)。録画済みで保持範囲を超えて巻き戻す操作は、従来どおりクライアント側でストリームを作り直して対応する。
 - **録画済みはエンコードを再生位置の近くに留める**。録画ファイルのエンコードは実時間の数倍速で進むため、放置すると再生位置との差が際限なく開く。hls.js は録画済みのプレイリストも live 扱いで読む (エンコーダ動作中は `#EXT-X-ENDLIST` が無い) ため、再生位置が保持窓の外に出ると `StreamController.synchronizeToLiveEdge()` が `media.currentTime` をライブエッジ = エンコード最新位置へ書き換えてしまう (`liveMaxLatencyDurationCount` の既定は `Infinity` なので、発火するのは遅延しきい値ではなくこちらの条件)。`HLSMemoryStoreModel.getAheadSegmentNum()` がクライアントの取得済み seq からの先行量を返し、`RecordedStreamBaseModel` が 150 セグメント (`MAX_AHEAD_SEGMENT_NUM`) を超えたらエンコーダの標準出力の読み出しを止める。ブラウザが消費して先行量が 30 セグメント (`RESUME_AHEAD_SEGMENT_NUM`) まで減れば再開する。減らなくても、その時点の超過量に比例して計算した停止時間 (`pauseTime`。上限 `MAX_PACE_INTERVAL` = 5 秒) が経過すれば必ず再開する。パイプが詰まってエンコーダ自身が書き込みでブロックするため、追いつけば読み出しを再開するだけで戻る。先行分はシークに即応できる範囲でもあるので短くしすぎないこと。
@@ -617,7 +644,7 @@ listener を追加するため、`VirtualTimeline` は `initVideo()` 完了後�
 
 同じ切替でvideo要素が作り直される間、aribb24.js のrendererへ幅または高さ0のvideoからID3/Cueを渡さない。
 `BaseVideo` が新rendererの `pushID3v2Data` / `pushID3v2Cue` / `refresh` をガードする。
-M2TS-LLでは旧mpegts.jsだけを新videoのcanplayまで保持し、旧aribb24 rendererは新renderer生成直後に破棄する。
+M2TS-LLでは旧 `mediaBackendDestroy` callback を退避して DPlayer の initMSE 内破棄を抑止し、旧mpegts.jsと旧aribb24 rendererを新videoのcanplayまで保持する。回収時だけ旧plugin参照を復元してDPlayer callbackを1回実行する。
 HLSではDPlayer標準のrenderer破棄に同じ入力ガードを加える。これで字幕描画のcanvasサイズ0例外を防ぐ。
 
 `resetCurrentTime: true` を指定した場合 (録画系) は、DPlayer が行う「切替前の再生位置への seek」を抑止し、
