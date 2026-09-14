@@ -1601,6 +1601,7 @@ export interface ImportJobStatus {
     done: number;
     successCount: number;
     failedCount: number;
+    skippedCount: number;
     isRunning: boolean;
     results: ImportJobResultItem[];
 }

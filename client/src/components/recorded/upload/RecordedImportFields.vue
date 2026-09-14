@@ -59,7 +59,7 @@
             </div>
 
             <div v-if="uploadState.importJobStatus !== null" class="pa-2">
-                <div>進捗: {{ uploadState.importJobStatus.done }} / {{ uploadState.importJobStatus.total }} (成功 {{ uploadState.importJobStatus.successCount }} / 失敗 {{ uploadState.importJobStatus.failedCount }})</div>
+                <div>進捗: {{ uploadState.importJobStatus.done }} / {{ uploadState.importJobStatus.total }} (成功 {{ uploadState.importJobStatus.successCount }} / 失敗 {{ uploadState.importJobStatus.failedCount }}<template v-if="uploadState.importJobStatus.skippedCount > 0"> / スキップ {{ uploadState.importJobStatus.skippedCount }}</template>)</div>
                 <v-progress-linear :model-value="(uploadState.importJobStatus.done / Math.max(1, uploadState.importJobStatus.total)) * 100"></v-progress-linear>
                 <v-btn v-if="uploadState.importJobStatus.isRunning === false && uploadState.importJobStatus.failedCount > 0" v-on:click="retryFailedImports" variant="text" color="error">
                     失敗分を再実行

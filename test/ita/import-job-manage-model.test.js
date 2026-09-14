@@ -76,6 +76,43 @@ test('retryFailed only re-runs failed items and returns null when there is nothi
     assert.equal(manage.retryFailed(retryJobId), null);
 });
 
+test('skipped results are counted separately from failures and are not retried', async () => {
+    const recordedManage = {
+        importExternalRecordedFiles: async items => {
+            const p = items[0].localFilePath;
+            if (p === '/already.ts') return [{ localFilePath: p, imported: false, skipped: true }];
+            if (p === '/fail.ts') return [{ localFilePath: p, imported: false, error: 'boom' }];
+
+            return [{ localFilePath: p, imported: true, recordedId: 1 }];
+        },
+    };
+    const manage = new ImportJobManageModel(logger, recordedManage);
+
+    const jobId = manage.start([{ localFilePath: '/ok.ts' }, { localFilePath: '/already.ts' }, { localFilePath: '/fail.ts' }]);
+    await waitUntil(() => manage.getStatus(jobId).isRunning === false);
+    const status = manage.getStatus(jobId);
+    assert.equal(status.successCount, 1);
+    assert.equal(status.skippedCount, 1);
+    assert.equal(status.failedCount, 1);
+
+    // 再実行の対象は失敗した 1 件だけ (スキップしたファイルは再実行しても結果が変わらない)
+    const retryJobId = manage.retryFailed(jobId);
+    await waitUntil(() => manage.getStatus(retryJobId).isRunning === false);
+    assert.equal(manage.getStatus(retryJobId).total, 1);
+    assert.equal(manage.getStatus(retryJobId).results[0].localFilePath, '/fail.ts');
+});
+
+test('retryFailed returns null when every non-imported item was skipped', async () => {
+    const manage = new ImportJobManageModel(logger, {
+        importExternalRecordedFiles: async items => [{ localFilePath: items[0].localFilePath, imported: false, skipped: true }],
+    });
+    const jobId = manage.start([{ localFilePath: '/already.ts' }]);
+    await waitUntil(() => manage.getStatus(jobId).isRunning === false);
+
+    assert.equal(manage.getStatus(jobId).failedCount, 0);
+    assert.equal(manage.retryFailed(jobId), null);
+});
+
 test('ジョブ内の登録済み video_file 索引は 3 件でも 1 回だけ構築される', async () => {
     let findAllCount = 0;
     const contexts = [];
