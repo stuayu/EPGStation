@@ -156,14 +156,21 @@ npm run test:ci        # ut + ita + itb
 - `req.query` は express-openapi がスキーマに従い数値へ型変換する。`mode` 等を文字列前提で扱わない
 - エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換。**シェル経由の cmd へパスを埋め込むときは `ProcessUtil.replaceShellPlaceholder()` を通す** (録画ファイル名の空白・括弧でコマンドが分割され、配信プロセスが黙って落ちる)
 - **エンコードの成否は終了コードだけで判断しない**。外部エンコーダはディスクフルでも終了コード 0 で終わることがあるため、`EncoderModel` が出力サイズ (1MiB 未満は失敗) も見る。元ファイル削除 (`removeOriginal`) はこの判定に依存している
+- **直接配信ルートは `streamApiModel.keep()` を配信中に呼び続ける**。`result.stream.pipe(res)` だけでは `StreamBaseModel` の 15 秒タイマーでライブ Original 等が切れる。録画 API の `profile=auto` は `mode` から解決されるため、ルート側で config の配列を再解決しない
 
 ### クライアント (Vue 3 + vue-facing-decorator)
+
+- **Service Worker は build 時生成**。`client/vite.config.ts` が Vite 出力 (`index.html`、ハッシュ付き assets、`public/` 固定資産) の一覧を `client/serviceWorker.template.js` へ注入する。navigation は network-first + app cache の `index.html` fallback、静的資産は cache-first。`/api/**`、`/streamfiles/**`、`/socket.io/**`、データ放送/SNS WebSocket、サムネイル API は `client/serviceWorkerUtil.js` の判定で必ず passthrough。app cache 更新時も `epgstation-offline-videos` は削除しない。`subDirectory` の SW scope 起点で URL を解決するため、絶対 `/assets` を追加しない
+- **クライアントから import される `src/util/**` のモジュール最上位で Node API (`Buffer` 等) を評価しない**。ブラウザ bundle の import 時点で例外になり、Web UI 全体が真っ白になる。Node API はサーバー側の関数呼び出し時だけ評価する
+- **配信選択ダイアログは mode 番号から profile を逆引きしない**。auto / original-hevc / 1080p が同じ mode を持つため、選択中 profile id がその container の mode を持つときだけ id を URL へ渡す (`PlaybackProfileSelectUtil.ts`)。視聴 URL に profile があるときは `isRecordedWatchModeValid` で config の mode 一覧を検査しない
+- **オフライン起動**。`main.ts` は最後に取得した config を localStorage から復元し、config/API が失敗してもアプリを mount する。ブラウザがオフライン、または config 取得失敗かつ保存動画がある場合は `/offline-videos` へ遷移し、`AppContent` は socket.io/status polling と接続エラー snackbar を起動しない。保存動画は Cache Storage/IndexedDB に依存するため、オフライン一覧以外の API 画面をオンライン相当には扱わない
 
 - **クラスフィールドに書いたコールバックの `this` は Vue インスタンスではない**。フィールドの初期値は data 用の一時インスタンスから集められ、**メソッドだけが Vue インスタンスへ束縛される**。`private xxxCallback = ((): void => { ... }).bind(this)` の中から `this.watchParam` のようなデータを読むと初期値しか見えず、条件判定が黙って壊れる。さらに **`this.xxxState` も Vue のリアクティブなプロキシではなくなる**ため、そこで state を書き換えても再描画がトリガされない (データは新しいのに画面が古いまま = 再読み込みするまで反映されない)。**フィールドのコールバックからメソッドを呼ぶだけでも直らない** (呼ばれたメソッドの `this` も一時インスタンスのまま)。socket.io などのコールバックは**フィールドを挟まず、メソッドをそのまま渡す** (`onUpdateState(this.onUpdateStatus)`)
 - **SNS など外部サーバーの画像を出すときは Referer を送らない**。Misskey のメディアサーバー (`media.misskeyusercontent.jp` 等) は Referer 付きをホットリンクとみなして 403 を返す。**個々の `<img>` / `v-img` に `referrerpolicy="no-referrer"` を付けるだけでは直らない** — ブラウザは `src` が入った時点でリクエストを始めるので、後から属性が付いても間に合わない (`v-img` は内部で `img` を作るためテンプレートの記述順でも制御できない)。`client/index.html` の `<meta name="referrer" content="no-referrer" />` がページ全体の既定として効いているので、**これを外すと SNS の絵文字・アバター・添付画像が一斉に表示されなくなる**。DOM を後から見ると属性は付いて見えるため、確認は `naturalWidth > 0` で行うこと
 - **番組表 (`Guide.vue`) のセルは手組み DOM**。データを取り直したら `GuideState.createProgramDoms()` と `Guide.renderProgramDoms()` の**両方**を呼ぶ (後者を呼ばないと画面が古いまま。可視判定の `updateVisible()` もその末尾で走る)
 - **`DataBroadcastingManager` は `markRaw()` で包む**。BMLBrowser 内部の JS-Interpreter が Vue のプロキシに包まれると壊れる
 - **DPlayer インスタンスも `markRaw()` で包む** (`BaseVideo.createPlayer()`)。`DPlayer.play()` の mutex 処理は `this !== instances[i]` で他インスタンスを止めるが、リアクティブプロキシ経由で呼ぶと `this` (プロキシ) と配列内の生インスタンスが別オブジェクトになるため判定が成立し、**再生した瞬間に自分自身を pause する**。再生ボタン・ホットキー・シーク後の再開が軒並み効かなくなる
+- **MPEG-2 Original の画質切替は世代 + DPlayer identity で隔離する**。切替前に開始した URL 解決、`play()`、旧 video のイベントが切替後のプレイヤーへ作用すると、古いエラー・停止・再生拒否で新しい映像を壊す。録画 Safari は mpeg2toh264 の MediaSource を `main` に置き、同期位置は有限・非負だけを `video.currentTime` へ渡す。録画 Range は `req.aborted` / `req.close` / `res.close` で ReadStream を `destroy()` し、範囲外は `416` + `Content-Range: bytes */<size>` にする
 - **ストリーミング再生のシークバーは `VirtualTimeline` が全部描く**。`video.duration` は「エンコード済みの長さ」でしかないため、DPlayer 標準の表示 (再生位置・バッファ・時刻・チャプターマーカー) をそのまま使うとエンコードの進行に合わせて表示がずれる。シークバー上に何かを足すときは `VirtualTimeline` 側で動画全体の長さを分母にして描くこと
 
 ### スマホ・タブレット対応
@@ -194,6 +201,7 @@ npm run test:ci        # ut + ita + itb
 配信周りを触る前に `doc/streaming-refresh.md` を読む。
 
 - **HLS は 2 モード**。cmd に `%streamFileDir%` が無ければ in-memory 配信 (ディスク書き込みなし)、あれば従来の TS セグメント方式。ライブ・録画済みとも同じ判定で、`encodePresets` が生成する HLS プリセットはどちらも in-memory。どちらのモードも ARIB 字幕対応。in-memory HLS は最初の init / セグメントが15秒来ない場合に、既存の破棄動作を変えず warn ログを出す
+- **tsreplace の HEVC TS は `video_file.type=encoded` で登録される**。字幕を `videoFileType === 'ts'` の枝へ追加してはいけない。`SourceAnalyzer` の `transport === 'mpegts'` で判定し、encoded TS の in-memory HLS / Offline `original-hevc` は別 ffmpeg reader (`-ss -i -map 0:s:0?`) で ARIB 字幕を読み、主映像の実シーク開始PTSへ合わせて `emsg` 化する。VBR の `bitRate * playPosition / 8` は字幕readerの位置計算へ使わない。
 - **ライブ HLS の手書き probe 設定**: rigaya 系エンコーダの `--input-analyze` / `--input-probesize` と ffmpeg の `-analyzeduration` / `-probesize` は小さくする。probe が終わるまでエンコーダは出力を始めないため、長いと最初のセグメントが間に合わずストリームが破棄されることがある。**ただしセグメント 0 のまま破棄される事象は probe 設定以外でも起きる** (実測: probe を 1 秒 / 2MB へ縮めても解消しない環境があった)。そのときは `in-memory HLS 初回出力待ち警告` を手掛かりに、cmd を手で実行して各段が出力しているかを確かめる
 - **再生停滞時の自動画質 fallback は `VideoContainer` で共通監視する**。「おまかせ」時だけ `waiting`、`currentTime`、`buffered` の実測から回線不足を判定し、fallbackChain を 1 段下げる。明示画質・シーク/切替直後・非表示タブ中は変更しない。判定本体は `src/util/PlaybackStallDetector.ts` の純粋関数で、fallback 後は 60 秒冷却する
 - **録画 HLS の ready 判定は 1 セグメント、ライブは 2 セグメント**。録画クライアントの有効化確認は初回即時 + 200ms 間隔、タイムアウト総時間は変更しない
@@ -212,8 +220,10 @@ npm run test:ci        # ut + ita + itb
 - **tsreadex 経由の m2tsll / m2ts は ID3 (ARIB 字幕) を出力側で付け直す**。tsreadex は入力側の ID3 (PID 0x1FFE) を落とすため、`LiveStreamBaseModel` は該当コンテナのときだけエンコード後の TS (`streamProcess.stdout`) へ `ID3MetadataTransform` を挿入し直す (`useOutputSideId3()`)。mp4/webm/HLS は対象外
 - **ライブの音声トラック一覧は番組情報から作る** (`GET /api/channels/{channelId}/audio-tracks`)。ライブには ffprobe をかける実ファイルが無い。デュアルモノラル (`componentType` = 0x02) の ES 1 本を主音声・副音声へ展開する。元データは `program.audios` (Mirakurun の `audios[]` を JSON で保存)
 - **`mpegts.js` は tsukumijima フォークをコミット SHA で固定**。本家 npm 版は Safari で音声タイムスタンプのギャップ補完が無効化されており、Safari 26.5 以降で再生が止まる
+- **DPlayer 1.33.1 の media backend は DPlayer に破棄させる**。`initMSE()` は `destroyMediaBackend()` を呼び、`mediaBackendDestroy` が旧 mpegts.js をクロージャで保持する。同じ video 要素の録画シークは自前 `mpegts.destroy()` を先に呼ばず、DPlayer の `destroyMediaBackend()` を1回だけ実行する。別要素の画質切替・ライブ再接続は callback を退避して initMSE 内の破棄を抑止し、canplay 後に旧 plugin 参照を復元して退避 callback を1回だけ実行する
 - **rigaya 系エンコーダで録画ファイルを直接読むときは `--avsync forcecfr --fps 30000/1001` が必須**。ファイル先頭のタイムスタンプからフレームレートを推定するため録画 TS では推定を外し、映像だけが遅れて音ズレする (実測 60 秒で 7.2 秒)。パイプ入力 (ライブ・録画中) は対象外
 - **rigaya 系 (QSVEncC / NVEncC / VCEEncC) の cmd には `--repeat-headers` を必ず付ける**。既定では VPS/SPS/PPS をストリーム先頭にしか出さないため、後段 ffmpeg が `-c:v copy` で mp4 (fMP4) へ remux するときに extradata を作れず `Could not write header (incorrect codec parameters ?)` で**1 フレームも書けない**。in-memory HLS はセグメントを 1 本も作れず、クライアントは有効化を待ち続けて **video 要素すら作られない** (本番のライブ HLS がこの状態だった)。実測 (QSVEncC 8.16): 無しだと ffprobe で `Video: hevc, none` (解像度・pix_fmt 不明) / fMP4 出力 exit=-22・0 byte、付けると `hevc (Main), yuv420p, 1920x1080, 29.97fps` と読めて 646 frames・7.7MB を出力。**mpegts 出力 (m2ts / m2tsll) は `-c:v copy` がそのまま通るため症状が出ず、HLS と MP4 だけが壊れる**
+- **HEVC を無変換 (`-c:v copy`) で fMP4 に詰めるとき、放送の AAC を `-c:a copy` しない**。Safari / WebKit は最初のフラグメント境界 (4〜6 秒) で再生が止まる (実測: tsreplace 出力 3 本で停止、音声だけ AAC 再エンコードで解消。映像側の CRA/RASL・in-band PPS を疑って除去しても直らない)。H.264 の fMP4 では起きないので、HEVC の copy 経路だけの落とし穴
 - **HEVC の配信は fMP4 + `-tag:v hvc1` が必須**。iOS / Safari は TS セグメントの HEVC を再生できず、`hev1` タグでも映像が出ない。rigaya 系 (QSVEncC 等) はエンコーダ側でタグ指定できないため後段 ffmpeg の remux で付ける。プロファイルは Main・8bit
 - **DPlayer に `type: 'normal'` を渡すと ARIB 字幕が出ない**。Safari のネイティブ HLS でも `type: 'hls'` のままにする
 - **表示ラベルの引き当てキーは `PlaybackProfile.role`** (`auto` / `original` / `2160p-high` / `1080p-high` / `1080p` / `720p` / `data-saver`)。`profile.id` は `live-m2tsll-1080p-avc` のような実プリセット id なので、id で辞書を引くと `auto` 以外は必ず外れる (実際に一言説明とバッジが出ていなかった)。`role` はサーバが `PlaybackApiModel.builtinRole()` で決めて API に載せる。
