@@ -89,7 +89,19 @@
                                             <RecordedDetailStopEncodeButton :recordedItem="recorded.recordedItem" v-on:stopEncode="stopEncode"></RecordedDetailStopEncodeButton>
                                         </div>
                                         <RecordedDetailKodiButton :recordedItem="recorded.recordedItem" :videoFiles="recorded.display.videoFiles"></RecordedDetailKodiButton>
-                                        <OfflineVideoDownloadDialog :recordedItem="recorded.recordedItem" :videoFiles="recorded.display.videoFiles ?? []"></OfflineVideoDownloadDialog>
+                                        <OfflineVideoDownloadDialog
+                                            :recordedItem="recorded.recordedItem"
+                                            :videoFiles="recorded.display.videoFiles ?? []"
+                                            :channelName="recorded.display.channelName"
+                                            :displayName="recorded.display.name"
+                                        ></OfflineVideoDownloadDialog>
+                                        <OfflineDownloadBadge
+                                            v-if="recorded.recordedItem.videoFiles?.[0] !== undefined"
+                                            :videoId="recorded.recordedItem.videoFiles[0].id"
+                                            :videoIds="offlineVideoIds"
+                                            :showPlay="true"
+                                            v-on:play="playOffline"
+                                        ></OfflineDownloadBadge>
                                     </div>
                                 </div>
                             </div>
@@ -124,6 +136,8 @@ import RecordedDetailSelectStreamDialog from '@/components/recorded/detail/Recor
 import RecordedDetailSeries from '@/components/recorded/detail/RecordedDetailSeries.vue';
 import RecordedDetailStopEncodeButton from '@/components/recorded/detail/RecordedDetailStopEncodeButton.vue';
 import OfflineVideoDownloadDialog from '@/components/recorded/detail/OfflineVideoDownloadDialog.vue';
+import OfflineDownloadBadge from '@/components/recorded/OfflineDownloadBadge.vue';
+import type { OfflineVideoRecord } from '@/services/OfflineVideoStorage';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
@@ -150,6 +164,7 @@ import IRecordedDetailState from '../model/state/recorded/detail/IRecordedDetail
         RecordedDetailSeries,
         DropLogDialog,
         OfflineVideoDownloadDialog,
+        OfflineDownloadBadge,
     },
 })
 class RecordedDetail extends Vue {
@@ -184,6 +199,12 @@ class RecordedDetail extends Vue {
 
     get recorded(): RecordedDisplayData | null {
         return this.recordedDetailState.getRecorded();
+    }
+
+    get offlineVideoIds(): number[] { return (this.recorded?.recordedItem.videoFiles ?? []).map(video => video.id); }
+
+    public playOffline(video: OfflineVideoRecord): void {
+        void Util.move(this.$router, { path: '/offline-videos', query: { videoId: video.videoId.toString(10) } });
     }
 
     public created(): void {

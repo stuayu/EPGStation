@@ -13,7 +13,13 @@
         <div v-on:click="gotoDetail" class="content pa-2 my-auto">
             <div class="d-flex align-center">
                 <div class="text mt-1 text-subtitle-2 font-weight-bold">{{ item.display.name }}</div>
-                <OfflineDownloadBadge v-if="item.recordedItem.videoFiles?.[0] !== undefined" :videoId="item.recordedItem.videoFiles[0].id"></OfflineDownloadBadge>
+                <OfflineDownloadBadge
+                    v-if="item.recordedItem.videoFiles?.[0] !== undefined"
+                    :videoId="item.recordedItem.videoFiles[0].id"
+                    :videoIds="offlineVideoIds"
+                    :showPlay="true"
+                    v-on:play="$emit('offlinePlay', $event)"
+                ></OfflineDownloadBadge>
                 <div v-if="isEditMode === false" class="menu-wrap">
                     <RecordedItemMenu :recordedItem="item.recordedItem" v-on:stopEncode="stopEncode"></RecordedItemMenu>
                 </div>
@@ -100,6 +106,8 @@ class RecordedSmallCard extends Vue {
         }
         this.$emit('detail', this.item.recordedItem.id);
     }
+
+    get offlineVideoIds(): number[] { return (this.item.recordedItem.videoFiles ?? []).map(video => video.id); }
 
     public stopEncode(recordedId: apid.RecordedId): void {
         this.$emit('stopEncode', recordedId);

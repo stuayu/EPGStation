@@ -30,6 +30,17 @@ export const get: Operation = async (req, res) => {
             api.responseError(res, { code: 400, message: 'profile is required' });
             return;
         }
+        if (rawProfile === 'original-mpeg2') {
+            const original = await model.getOriginalMpeg2FilePath(
+                api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'),
+            );
+            if (original === null) {
+                api.responseError(res, { code: 404, message: 'OriginalMpeg2FileIsUndefined' });
+                return;
+            }
+            api.responseFile(req, res, original.path, 'video/mp2t', false);
+            return;
+        }
         const rawAudioTrack = req.query.audioTrack;
         const audioTrack = typeof rawAudioTrack === 'string' && rawAudioTrack.length > 0 ? rawAudioTrack : 'all';
         result = await model.startOfflineStream(
@@ -68,7 +79,8 @@ export const get: Operation = async (req, res) => {
             } else if (message === 'RecordingVideoCannotBeSavedOffline') {
                 api.responseError(res, { code: 409, message });
             } else if (
-                message === 'OfflineOriginalMpeg2Unsupported' ||
+                message === 'OriginalMpeg2FileIsUndefined' ||
+                message === 'OfflineOriginalProfileUnsupported' ||
                 message === 'OfflineHlsProfileRequired' ||
                 message === 'profile is required'
             ) {

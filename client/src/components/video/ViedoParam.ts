@@ -2,7 +2,7 @@ import * as apid from '../../../../api';
 import BaseVide from './BaseVideo';
 import type { RecordedStreamingType } from '@/util/StreamingTypeUtil';
 
-export type VideoType = 'Normal' | 'RecordedStreaming' | 'LiveHLS' | 'RecordedHLS' | 'LiveMpegTs' | 'OfflineHLS';
+export type VideoType = 'Normal' | 'RecordedStreaming' | 'LiveHLS' | 'RecordedHLS' | 'LiveMpegTs' | 'OfflineHLS' | 'OfflineOriginalMpeg2';
 
 interface VideoParamBase {
     type: VideoType;
@@ -19,6 +19,11 @@ export interface NormalVideoParam extends VideoParamBase {
 
 export interface OfflineHLSVideoParam extends VideoParamBase {
     type: 'OfflineHLS';
+    src: string;
+}
+
+export interface OfflineOriginalMpeg2Param extends VideoParamBase {
+    type: 'OfflineOriginalMpeg2';
     src: string;
 }
 
@@ -55,4 +60,4 @@ export interface LiveMpegTsVideoParam extends VideoParamBase {
     directMpeg2?: boolean;
 }
 
-export type BaseVideoParam = NormalVideoParam | OfflineHLSVideoParam | RecordedStreamingParam | LiveHLSParam | RecordedHLSParam | LiveMpegTsVideoParam;
+export type BaseVideoParam = NormalVideoParam | OfflineHLSVideoParam | OfflineOriginalMpeg2Param | RecordedStreamingParam | LiveHLSParam | RecordedHLSParam | LiveMpegTsVideoParam;

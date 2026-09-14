@@ -10,6 +10,7 @@
                     v-on:detail="gotoDetail"
                     v-on:stopEncode="stopEncode"
                     v-on:selected="selected"
+                    v-on:offlinePlay="offlinePlay"
                 ></RecordedLargeCard>
             </div>
         </div>
@@ -21,6 +22,7 @@
                 v-on:detail="gotoDetail"
                 v-on:stopEncode="stopEncode"
                 v-on:selected="selected"
+                v-on:offlinePlay="offlinePlay"
             ></RecordedTableItems>
             <div v-for="r in recorded" v-bind:key="r.recordedItem.id"></div>
         </div>
@@ -33,6 +35,7 @@
                     v-on:detail="gotoDetail"
                     v-on:stopEncode="stopEncode"
                     v-on:selected="selected"
+                    v-on:offlinePlay="offlinePlay"
                     :noThumbnail="!!isRecording === true"
                 ></RecordedsmallCard>
             </div>
@@ -113,6 +116,8 @@ class RecordedItems extends Vue {
     public selected(recordedId: apid.RecordedId): void {
         this.$emit('selected', recordedId);
     }
+
+    public offlinePlay(video: unknown): void { this.$emit('offlinePlay', video); }
 }
 
 namespace RecordedItems {

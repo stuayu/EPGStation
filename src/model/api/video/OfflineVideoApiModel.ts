@@ -3,6 +3,7 @@ import * as apid from '../../../../api';
 import IRecordedDB from '../../db/IRecordedDB';
 import IVideoFileDB from '../../db/IVideoFileDB';
 import IStreamApiModel from '../stream/IStreamApiModel';
+import IVideoApiModel from './IVideoApiModel';
 import IOfflineVideoApiModel, { OfflineVideoStreamResult } from './IOfflineVideoApiModel';
 
 class OfflineStreamSemaphore {
@@ -41,6 +42,7 @@ export default class OfflineVideoApiModel implements IOfflineVideoApiModel {
         @inject('IStreamApiModel') private readonly streamApi: IStreamApiModel,
         @inject('IVideoFileDB') private readonly videoFileDB: IVideoFileDB,
         @inject('IRecordedDB') private readonly recordedDB: IRecordedDB,
+        @inject('IVideoApiModel') private readonly videoApi: IVideoApiModel,
     ) {}
 
     /**
@@ -61,7 +63,8 @@ export default class OfflineVideoApiModel implements IOfflineVideoApiModel {
         const recorded = await this.recordedDB.findId(video.recordedId);
         if (recorded === null) throw new Error('RecordedIsUndefined');
         if (recorded.isRecording === true) throw new Error('RecordingVideoCannotBeSavedOffline');
-        if (profile === 'original-mpeg2' || profile === 'original') throw new Error('OfflineOriginalMpeg2Unsupported');
+        if (profile === 'original' || profile === 'original-mpeg2')
+            throw new Error('OfflineOriginalProfileUnsupported');
 
         const release = await this.semaphore.acquire();
         let streamId: apid.StreamId | null = null;
@@ -106,5 +109,15 @@ export default class OfflineVideoApiModel implements IOfflineVideoApiModel {
     /** テスト用に現在の空き枠を返す */
     public getAvailableSlotCount(): number {
         return this.semaphore.getAvailable();
+    }
+
+    /** MPEG-2 Original の Range 配信対象ファイルを解決する。 */
+    public async getOriginalMpeg2FilePath(videoFileId: apid.VideoFileId): Promise<{ path: string } | null> {
+        const video = await this.videoFileDB.findId(videoFileId);
+        if (video === null) throw new Error('VideoFileIsUndefined');
+        const recorded = await this.recordedDB.findId(video.recordedId);
+        if (recorded === null) throw new Error('RecordedIsUndefined');
+        if (recorded.isRecording === true) throw new Error('RecordingVideoCannotBeSavedOffline');
+        return await this.videoApi.getOriginalMpeg2FilePath(videoFileId);
     }
 }

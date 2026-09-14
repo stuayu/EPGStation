@@ -129,10 +129,14 @@ const openPersistentPageSession = async options => {
     const browserType = playwright[browserName];
     if (browserType === undefined) throw new Error(`ブラウザ不明: ${browserName}`);
     if (typeof options.profileDir !== 'string' || options.profileDir.length === 0) throw new Error('--profile-dir が必要');
+    const deviceName = options.device;
+    const device = deviceName === undefined || deviceName === 'none' ? undefined : playwright.devices[deviceName];
+    if (deviceName !== undefined && deviceName !== 'none' && device === undefined) throw new Error(`Playwright device 不明: ${deviceName}`);
     const executablePath = resolveExecutablePath(browserType, browserName);
     const context = await browserType.launchPersistentContext(options.profileDir, {
         ...(executablePath === undefined ? {} : { executablePath }),
-        viewport: { width: 1280, height: 800 },
+        ...(device ?? {}),
+        viewport: device?.viewport ?? { width: 1280, height: 800 },
         ...(browserName === 'chromium' ? { args: ['--autoplay-policy=no-user-gesture-required'] } : {}),
     });
     const page = context.pages()[0] ?? (await context.newPage());

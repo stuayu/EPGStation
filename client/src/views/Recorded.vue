@@ -67,6 +67,7 @@
                         v-on:detail="gotoDetail"
                         v-on:stopEncode="stopEncode"
                         v-on:selected="selectItem"
+                        v-on:offlinePlay="playOffline"
                         :isTableMode="settingValue.isShowTableMode === true"
                         v-model:isEditMode="isEditMode"
                         :isShowDropInfo="settingValue.isShowDropInfoInsteadOfDescription"
@@ -117,6 +118,7 @@ import Util from '@/util/Util';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
+import type { OfflineVideoRecord } from '@/services/OfflineVideoStorage';
 
 
 @Component({
@@ -272,6 +274,10 @@ class Recorded extends Vue {
 
     public gotoDetail(recordedId: apid.RecordedId): void {
         Util.move(this.$router, { path: `/recorded/detail/${recordedId.toString(10)}` });
+    }
+
+    public playOffline(video: OfflineVideoRecord): void {
+        void Util.move(this.$router, { path: '/offline-videos', query: { videoId: video.videoId.toString(10) } });
     }
 
     public async stopEncode(recordedId: apid.RecordedId): Promise<void> {

@@ -35,6 +35,15 @@
                     v-on:ended="onEnded"
                     v-on:error="onVideoError"
                 ></OfflineHLSVideo>
+                <OfflineMpeg2Video
+                    v-if="videoParam.type == 'OfflineOriginalMpeg2'"
+                    ref="video"
+                    v-bind:videoSrc="videoParam.src"
+                    v-on:waiting="onWaiting"
+                    v-on:loadeddata="onLoadeddata"
+                    v-on:canplay="onCanplay"
+                    v-on:error="onVideoError"
+                ></OfflineMpeg2Video>
                 <LiveHLSVideo
                     v-if="videoParam.type == 'LiveHLS'"
                     ref="video"
@@ -138,6 +147,7 @@ import RecordedHLSStreamingVideo from '@/components/video/RecordedHLSStreamingVi
 import RecordedStreamingVideo from '@/components/video/RecordedStreamingVideo.vue';
 import LiveMpegTsVideo from '@/components/video/LiveMpegTsVideo.vue';
 import OfflineHLSVideo from '@/components/video/OfflineHLSVideo.vue';
+import OfflineMpeg2Video from '@/components/video/OfflineMpeg2Video.vue';
 import * as VideoParam from '@/components/video/ViedoParam';
 import UaUtil from '@/util/UaUtil';
 import BaseVideo, { PlaybackContainerSwitchRequest, ScreenshotRequest } from '@/components/video/BaseVideo';
@@ -168,6 +178,7 @@ import {
         RecordedHLSStreamingVideo,
         LiveMpegTsVideo,
         OfflineHLSVideo,
+        OfflineMpeg2Video,
     },
 })
 class VideoContainer extends Vue {

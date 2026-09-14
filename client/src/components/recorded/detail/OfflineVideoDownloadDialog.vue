@@ -11,6 +11,10 @@
                     <v-radio-group v-model="selectedProfile" :disabled="isLoading">
                         <v-radio v-for="profile in profiles" :key="profile.id" :label="getLabel(profile)" :value="profile.id"></v-radio>
                     </v-radio-group>
+                    <v-alert v-if="selectedProfile === 'original-mpeg2'" type="info" variant="tonal" density="compact">
+                        元の TS をそのまま保存します。端末で変換して再生します。対応ブラウザでのみ再生できます。
+                        <div v-if="selectedVideo !== null" class="mt-1">保存サイズ: {{ formatBytes(selectedVideo.size) }}</div>
+                    </v-alert>
                     <v-progress-linear v-if="isLoading" indeterminate></v-progress-linear>
                 </v-card-text>
                 <v-card-actions>
@@ -30,6 +34,7 @@ import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import OfflineVideos from '@/services/OfflineVideos';
 import { getPlaybackShortLabel } from '@/util/PlaybackLabelUtil';
+import StreamSupportUtil from '@/util/StreamSupportUtil';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({})
@@ -38,6 +43,10 @@ class OfflineVideoDownloadDialog extends Vue {
     public recordedItem!: apid.RecordedItem;
     @Prop({ default: () => [] })
     public videoFiles!: apid.VideoFile[];
+    @Prop({ default: undefined })
+    public channelName!: string | undefined;
+    @Prop({ default: undefined })
+    public displayName!: string | undefined;
     public isOpen = false;
     public isLoading = false;
     public selectedVideoId: number | null = null;
@@ -47,8 +56,12 @@ class OfflineVideoDownloadDialog extends Vue {
 
     get isMobile(): boolean { return this.$vuetify.display.smAndDown; }
     get videoItems(): Array<{ title: string; value: number }> { return this.videoFiles.map(video => ({ title: video.name, value: video.id })); }
+    get selectedVideo(): apid.VideoFile | null { return this.videoFiles.find(video => video.id === this.selectedVideoId) ?? null; }
     get profiles(): apid.PlaybackProfile[] {
-        return (this.playbackState.options?.profiles ?? []).filter(profile => profile.id !== 'original-mpeg2' && profile.role !== 'original-mpeg2' && typeof profile.modes.hls === 'number');
+        return (this.playbackState.options?.profiles ?? []).filter(profile => {
+            if (profile.role === 'original-mpeg2' || profile.id === 'original-mpeg2') return StreamSupportUtil.isMpeg2ToH264Supported();
+            return typeof profile.modes.hls === 'number';
+        });
     }
     public async open(): Promise<void> {
         const video = this.videoFiles[0];
@@ -78,7 +91,8 @@ class OfflineVideoDownloadDialog extends Vue {
         this.selectedProfile = null;
         this.isLoading = true;
         try {
-            await this.playbackState.loadRecorded(videoId, 'hls');
+            // HLS の mode を持たない MPEG-2 Original も含めるため方式を絞らない。
+            await this.playbackState.loadRecorded(videoId);
             if (this.selectedVideoId !== videoId) return;
             this.selectedProfile = this.profiles[0]?.id ?? null;
         } catch (err) {
@@ -89,13 +103,21 @@ class OfflineVideoDownloadDialog extends Vue {
         }
     }
     public getLabel(profile: apid.PlaybackProfile): string { return getPlaybackShortLabel(profile, this.playbackState.options?.recommended); }
+    public formatBytes(bytes: number): string {
+        if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
+        if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+        return `${(bytes / 1024 / 1024 / 1024).toFixed(2)}GB`;
+    }
     public async start(): Promise<void> {
         const video = this.videoFiles.find(item => item.id === this.selectedVideoId);
         if (video === undefined || this.selectedProfile === null) return;
         this.isLoading = true;
         try {
             const selected = this.profiles.find(profile => profile.id === this.selectedProfile);
-            await OfflineVideos.start(this.recordedItem, video.id, this.selectedProfile, selected?.videoBitrate);
+            await OfflineVideos.start(this.recordedItem, video.id, this.selectedProfile, selected?.videoBitrate, {
+                channelName: this.channelName,
+                displayName: this.displayName,
+            });
             this.isOpen = false;
             this.snackbarState.open({ color: 'success', text: 'オフライン保存が完了しました' });
         } catch (err) {

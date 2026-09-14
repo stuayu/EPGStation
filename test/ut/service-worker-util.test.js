@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { classifyServiceWorkerRequest } = require('../../client/serviceWorkerUtil');
+const { classifyServiceWorkerRequest, createOfflineRangePlan, getOfflineChunkSlices, resolveOfflineByteRange } = require('../../client/serviceWorkerUtil');
 
 const scope = 'https://example.test/epgstation/';
 const request = (path, options = {}) => ({
@@ -34,4 +34,32 @@ test('別オリジン、POST、未知の要求を横取りしない', () => {
     assert.equal(classifyServiceWorkerRequest({ ...request('api/config'), method: 'POST' }, scope), 'passthrough');
     assert.equal(classifyServiceWorkerRequest({ ...request('other.js'), url: 'https://cdn.example/other.js', destination: 'script' }, scope), 'passthrough');
     assert.equal(classifyServiceWorkerRequest(request('local/other.bin'), scope), 'passthrough');
+});
+
+test('オフライン MPEG-2 Range の端点を 206 / 416 用に解決する', () => {
+    assert.deepEqual(resolveOfflineByteRange('bytes=0-9', 20), { kind: 'partial', start: 0, end: 9 });
+    assert.deepEqual(resolveOfflineByteRange('bytes=10-', 20), { kind: 'partial', start: 10, end: 19 });
+    assert.deepEqual(resolveOfflineByteRange('bytes=-4', 20), { kind: 'partial', start: 16, end: 19 });
+    assert.deepEqual(resolveOfflineByteRange('bytes=0-20', 20), { kind: 'unsatisfiable' });
+    assert.deepEqual(resolveOfflineByteRange('bytes=20-', 20), { kind: 'unsatisfiable' });
+    assert.deepEqual(resolveOfflineByteRange(undefined, 20), { kind: 'full', start: 0, end: 19 });
+});
+
+test('オフライン MPEG-2 Range はチャンク境界をまたいでスライスする', () => {
+    assert.deepEqual(getOfflineChunkSlices({ start: 8, end: 25 }, 10, 30), [
+        { chunkStart: 0, offset: 8, length: 2 },
+        { chunkStart: 10, offset: 0, length: 10 },
+        { chunkStart: 20, offset: 0, length: 6 },
+    ]);
+});
+
+test('オフライン MPEG-2 応答計画は 206 と 416 のヘッダーを固定する', () => {
+    const partial = createOfflineRangePlan('bytes=8-25', 30, 10);
+    assert.equal(partial.status, 206);
+    assert.equal(partial.headers['Content-Range'], 'bytes 8-25/30');
+    assert.equal(partial.headers['Content-Length'], '18');
+    assert.equal(partial.slices.length, 3);
+    const invalid = createOfflineRangePlan('bytes=30-', 30, 10);
+    assert.equal(invalid.status, 416);
+    assert.equal(invalid.headers['Content-Range'], 'bytes */30');
 });

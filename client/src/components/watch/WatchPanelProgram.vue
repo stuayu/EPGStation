@@ -4,6 +4,15 @@
             <div v-if="info.channelName" class="text-subtitle-2 channel">{{ info.channelName }}</div>
             <div v-if="info.time" class="text-caption time">{{ info.time }}</div>
             <div class="text-subtitle-1 font-weight-bold name">{{ info.name }}</div>
+            <div v-if="info.seriesText" class="text-caption metadata">シリーズ: {{ info.seriesText }}</div>
+            <div v-if="info.genreItems?.length" class="d-flex flex-wrap ga-1 metadata">
+                <v-chip v-for="genre in info.genreItems" :key="genre" size="x-small" variant="tonal">{{ genre }}</v-chip>
+            </div>
+            <div v-if="info.durationText || info.videoText || info.audioText" class="text-caption metadata">
+                <span v-if="info.durationText">放送時間: {{ info.durationText }}</span>
+                <span v-if="info.videoText"> / 映像: {{ info.videoText }}</span>
+                <span v-if="info.audioText"> / 音声: {{ info.audioText }}</span>
+            </div>
             <div v-if="info.description" class="text-body-2 description">{{ info.description }}</div>
             <div v-if="info.extended" class="text-body-2 extended">{{ info.extended }}</div>
             <div class="actions">
@@ -23,6 +32,11 @@ export interface WatchProgramInfo {
     name: string;
     description?: string;
     extended?: string;
+    genreItems?: string[];
+    durationText?: string;
+    videoText?: string;
+    audioText?: string;
+    seriesText?: string;
 }
 
 /**
@@ -57,6 +71,10 @@ export default toNative(WatchPanelProgram);
         color: var(--watch-fg-muted)
         white-space: pre-wrap
         word-break: break-all
+
+    .metadata
+        margin-top: 6px
+        color: var(--watch-fg-dim)
 
     .actions
         margin-top: 12px

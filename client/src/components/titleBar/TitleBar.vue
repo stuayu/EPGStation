@@ -8,6 +8,7 @@
         >
             {{ title }}
         </v-toolbar-title>
+        <v-chip v-if="isOffline" class="offline-chip mx-1" size="small" color="warning" variant="tonal">オフライン</v-chip>
         <v-spacer></v-spacer>
         <slot name="menu"></slot>
         <template v-if="$slots.extension" v-slot:extension>
@@ -21,6 +22,8 @@ import container from '@/model/ModelContainer';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import INavigationState from '../../model/state/navigation/INavigationState';
 import ThemeColorUtil from '@/util/ThemeColorUtil';
+import { isOfflineStartup } from '@/util/OfflineStartup';
+import { shouldShowOfflineIndicator } from '../../../../src/util/OfflineUxUtil';
 
 @Component({})
 class TitleBar extends Vue {
@@ -31,6 +34,7 @@ class TitleBar extends Vue {
     public needsTitleClickEvent: boolean | undefined;
 
     public navigationState: INavigationState = container.get<INavigationState>('INavigationState');
+    public isOffline = shouldShowOfflineIndicator(navigator.onLine, isOfflineStartup());
 
     /**
      * title bar の色を返す
@@ -48,6 +52,19 @@ class TitleBar extends Vue {
         this.navigationState.toggle();
     }
 
+    public created(): void {
+        window.addEventListener('offline', this.onOffline);
+        window.addEventListener('online', this.onOnline);
+    }
+
+    public beforeUnmount(): void {
+        window.removeEventListener('offline', this.onOffline);
+        window.removeEventListener('online', this.onOnline);
+    }
+
+    public onOffline(): void { this.isOffline = true; }
+    public onOnline(): void { this.isOffline = false; }
+
     @Watch('title', { immediate: true })
     private onTitleChanged(newTitle: string, old: string): void {
         document.title = newTitle;
@@ -64,4 +81,7 @@ export default toNative(TitleBar);
 
     &.clickable
         cursor: pointer
+
+.offline-chip
+    flex: 0 0 auto
 </style>

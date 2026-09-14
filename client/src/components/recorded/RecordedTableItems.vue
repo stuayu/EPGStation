@@ -14,7 +14,13 @@
                     <tr v-for="item in items" v-bind:key="item.recordedItem.id" v-on:click="gotoDetail(item)" v-bind:class="{ 'selected-color': item.isSelected === true }">
                         <td>
                             {{ item.display.name }}
-                            <OfflineDownloadBadge v-if="item.recordedItem.videoFiles?.[0] !== undefined" :videoId="item.recordedItem.videoFiles[0].id"></OfflineDownloadBadge>
+                            <OfflineDownloadBadge
+                                v-if="item.recordedItem.videoFiles?.[0] !== undefined"
+                                :videoId="item.recordedItem.videoFiles[0].id"
+                                :videoIds="offlineVideoIds(item)"
+                                :showPlay="true"
+                                v-on:play="$emit('offlinePlay', $event)"
+                            ></OfflineDownloadBadge>
                             <div v-if="isMobile === true" class="d-flex align-center channel-line mt-1">
                                 <v-img
                                     v-if="typeof item.display.logoSrc !== 'undefined'"
@@ -91,6 +97,8 @@ class RecordedTableItems extends Vue {
     public stopEncode(recordedId: apid.RecordedId): void {
         this.$emit('stopEncode', recordedId);
     }
+
+    public offlineVideoIds(item: RecordedDisplayData): number[] { return (item.recordedItem.videoFiles ?? []).map(video => video.id); }
 
     // ロゴ画像の取得に失敗した場合は局名だけの表示にフォールバックする
     public onLogoError(item: RecordedDisplayData): void {
