@@ -5,6 +5,7 @@ import * as apid from '../../../../api';
 import VideoFile from '../../../db/entities/VideoFile';
 import ChapterFileUtil from '../../../util/ChapterFileUtil';
 import FileUtil from '../../../util/FileUtil';
+import { probeAacDualMono, probeSecondAudioStreamPresent } from '../../../util/OriginalHevcUtil';
 import IVideoFileDB from '../../db/IVideoFileDB';
 import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
@@ -33,6 +34,8 @@ export default class VideoUtil implements IVideoUtil {
 
     private config: IConfigFile;
     private videoFileDB: IVideoFileDB;
+    private readonly aacDualMonoCache = new Map<string, Promise<boolean | undefined>>();
+    private readonly secondAudioStreamCache = new Map<string, Promise<boolean>>();
 
     constructor(
         @inject('IConfiguration') configuration: IConfiguration,
@@ -218,6 +221,7 @@ export default class VideoUtil implements IVideoUtil {
             '-v',
             '0',
             '-show_streams',
+            '-show_format',
             '-select_streams',
             'a',
             '-of',
@@ -226,22 +230,54 @@ export default class VideoUtil implements IVideoUtil {
         ]);
         const result = <any>JSON.parse(stdout);
         const streams: any[] = Array.isArray(result.streams) ? result.streams : [];
+        const dualMono = await this.probeAacDualMonoIfNeeded(filePath, streams, result.format?.duration);
 
-        return VideoUtil.buildAudioTracks(streams);
+        return VideoUtil.buildAudioTracks(streams, dualMono);
+    }
+
+    /** AAC の実デコード判定をファイル単位で共有する。判定不能はキャッシュして再試行を繰り返さない。 */
+    private async probeAacDualMonoIfNeeded(
+        filePath: string,
+        streams: any[],
+        durationValue: unknown,
+    ): Promise<boolean | undefined> {
+        if (
+            streams.length !== 1 ||
+            streams[0]?.codec_name !== 'aac' ||
+            VideoUtil.toNumber(streams[0]?.channels) !== 2 ||
+            typeof this.config.ffmpeg !== 'string' ||
+            this.config.ffmpeg.length === 0
+        ) {
+            return undefined;
+        }
+
+        let probe = this.aacDualMonoCache.get(filePath);
+        if (probe === undefined) {
+            const duration = VideoUtil.toNumber(durationValue);
+            const positions = [
+                0,
+                Math.max(0, (duration ?? 0) / 2 - 1.5),
+                Math.max(0, (duration ?? 0) - 3),
+            ].filter((position, index, all) => all.indexOf(position) === index);
+            probe = probeAacDualMono(this.config.ffmpeg, filePath, positions);
+            this.aacDualMonoCache.set(filePath, probe);
+        }
+
+        return await probe;
     }
 
     /**
      * ffprobe の音声ストリーム情報から音声トラック一覧を組み立てる
      *
      * 地上波・BS/CS の二か国語放送は「1 つのステレオ ES の左右に主音声・副音声」を入れる
-     * デュアルモノラルで送られる。ffprobe からは 2ch のステレオにしか見えないため、
-     * **音声 ES が 1 つだけで 2ch のときは主音声・副音声の 2 トラックへ展開する**
-     * (実際にはただのステレオ放送であることも多いので、名前は「主音声」「副音声(デュアルモノラル時)」とする)。
+     * デュアルモノラルで送られる。ffprobe の 2ch / stereo だけでは通常のステレオと区別できないため、
+     * **実 AAC を main/sub へ短時間デコードして両出力が異なる場合だけ**主音声・副音声へ展開する。
+     * 判定不能・通常ステレオは音声 ES 1 本のまま返す。
      * 音声 ES が複数ある場合はそれぞれが独立した音声なので展開しない
      * @param streams: any[] ffprobe の音声ストリーム情報
      * @return apid.VideoAudioTrack[]
      */
-    private static buildAudioTracks(streams: any[]): apid.VideoAudioTrack[] {
+    private static buildAudioTracks(streams: any[], dualMono: boolean | undefined): apid.VideoAudioTrack[] {
         const tracks: apid.VideoAudioTrack[] = [];
 
         for (let i = 0; i < streams.length; i++) {
@@ -258,7 +294,7 @@ export default class VideoUtil implements IVideoUtil {
                 channels: channels,
             };
 
-            if (streams.length === 1 && channels === 2) {
+            if (streams.length === 1 && channels === 2 && dualMono === true) {
                 tracks.push({
                     ...base,
                     track: 'main',
@@ -326,6 +362,28 @@ export default class VideoUtil implements IVideoUtil {
         const parsed = parseFloat(value);
 
         return isNaN(parsed) === true ? null : parsed;
+    }
+
+    /**
+     * 2 本目の音声 ES がファイルの冒頭・中央・末尾のすべてに存在するか (ファイル単位でキャッシュ)
+     * @param filePath: string 対象ファイル
+     * @return Promise<boolean>
+     */
+    public async hasStableSecondAudioStream(filePath: string): Promise<boolean> {
+        if (typeof this.config.ffmpeg !== 'string' || this.config.ffmpeg.length === 0) return false;
+        let probe = this.secondAudioStreamCache.get(filePath);
+        if (probe === undefined) {
+            probe = (async () => {
+                const duration = (await this.getInfo(filePath).catch(() => null))?.duration ?? 0;
+                const positions = [0, Math.max(0, duration / 2 - 1.5), Math.max(0, duration - 3)].filter(
+                    (position, index, all) => all.indexOf(position) === index,
+                );
+                return probeSecondAudioStreamPresent(this.config.ffmpeg, filePath, positions);
+            })();
+            this.secondAudioStreamCache.set(filePath, probe);
+        }
+
+        return probe;
     }
 
     public async getInfo(filePath: string): Promise<VideoInfo> {

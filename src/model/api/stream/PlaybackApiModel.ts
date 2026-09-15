@@ -3,12 +3,18 @@ import * as apid from '../../../../api';
 import IVideoFileDB from '../../db/IVideoFileDB';
 import IRecordedDB from '../../db/IRecordedDB';
 import ISourceAnalyzer from '../../stream/capability/ISourceAnalyzer';
+import IVideoUtil from '../video/IVideoUtil';
 import { ClientCapabilities } from '../../stream/capability/IClientCapabilities';
 import IPlaybackPolicyResolver, { PlaybackPreference } from '../../stream/resolver/IPlaybackPolicyResolver';
 import IStreamPresetRegistry, { StreamPresetScope } from '../../stream/preset/IStreamPresetRegistry';
 import { StreamPreset } from '../../stream/preset/IStreamPreset';
 import { BUILTIN_STREAM_PRESETS } from '../../../util/BuiltinStreamPresets';
-import { ORIGINAL_HEVC_PROFILE_ID } from '../../../util/OriginalHevcUtil';
+import {
+    classifyOriginalHevcAudioLayout,
+    isOriginalHevcSource,
+    ORIGINAL_HEVC_PROFILE_ID,
+    OriginalHevcAudioLayout,
+} from '../../../util/OriginalHevcUtil';
 import IPlaybackApiModel, { PlaybackOptions } from './IPlaybackApiModel';
 
 @injectable()
@@ -19,6 +25,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         @inject('IPlaybackPolicyResolver') private readonly resolver: IPlaybackPolicyResolver,
         @inject('IVideoFileDB') private readonly videoFileDB: IVideoFileDB,
         @inject('IRecordedDB') @optional() private readonly recordedDB?: IRecordedDB,
+        @inject('IVideoUtil') @optional() private readonly videoUtil?: IVideoUtil,
     ) {}
 
     public async getLivePlaybackOptions(
@@ -49,14 +56,16 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         if (video === null) throw new Error('VideoFileIsUndefined');
         const scope: StreamPresetScope = video.type === 'encoded' ? 'recorded-encoded' : 'recorded-ts';
         const recorded = this.recordedDB === undefined ? null : await this.recordedDB.findId(video.recordedId);
+        const source = await this.sourceAnalyzer.analyzeRecordedFile(videoFileId);
         return this.create(
             scope,
-            await this.sourceAnalyzer.analyzeRecordedFile(videoFileId),
+            source,
             client,
             requestedPresetId,
             container,
             preference,
             recorded?.isRecording !== true,
+            await this.getOriginalHevcAudioLayout(videoFileId, video.type === 'encoded', source),
         );
     }
 
@@ -68,6 +77,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         container?: apid.PlaybackContainer,
         preference?: PlaybackPreference,
         allowOriginal = true,
+        originalHevcAudioLayout?: OriginalHevcAudioLayout,
     ): PlaybackOptions {
         const allPresets = this.presetRegistry.getPresets(scope, source, client);
         const modeMap =
@@ -111,6 +121,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                 scope,
                 resolved,
                 container,
+                originalHevcAudioLayout,
             ),
             options: { hdr: ['auto', 'preserve', 'sdr'], correction: ['auto', 'off', 'bright'] },
         };
@@ -122,6 +133,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         scope: StreamPresetScope,
         resolvedId: string,
         container?: apid.PlaybackContainer,
+        originalHevcAudioLayout?: OriginalHevcAudioLayout,
     ): PlaybackOptions['profiles'] {
         // 古いテスト用 registry / 旧配備との互換。実 registry は必ず mode map を返す。
         const modeMap =
@@ -180,7 +192,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                         videoBitrate: preset.output.videoBitrate,
                         videoCodec: preset.output.codec,
                         delivery: (preset.delivery ?? 'stream') as 'stream' | 'mpeg2toh264',
-                        embeddedAudioSwitch: this.getEmbeddedAudioSwitch(scope, modes, modePresetId),
+                        embeddedAudioSwitch: this.getEmbeddedAudioSwitch(scope, modes, modePresetId, originalHevcAudioLayout),
                     },
                 };
             })
@@ -196,7 +208,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
      *   クライアントはこれが true のときだけ `audioTrack=all` で開き、mpegts.js の
      *   switchPrimaryAudio() / switchSecondaryAudio() で再接続無しに音声を切り替える
      *   (client/src/components/video/LiveMpegTsVideo.vue)。
-     * - hls: 同じく cmd が `%TSREADEX%` と `%AUDIOMAP%` を両方含み、かつ in-memory HLS
+     * - hls: encoded の `original-hevc`、または cmd が `%TSREADEX%` と `%AUDIOMAP%` を両方含み、かつ in-memory HLS
      *   (cmd に `%streamFileDir%` を含まない = ディスクに書き出さない) の場合のみ true になる。
      *   Fmp4Packager が音声トラック 2 本以上の fMP4 を検出すると自動でトラックごとに分解し、
      *   マスタープレイリスト (音声レンディション付き) を配信する (HLSMemoryStoreModel.getMasterPlaylist())。
@@ -210,6 +222,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         scope: StreamPresetScope,
         modes: PlaybackOptions['profiles'][number]['modes'],
         modePresetId: string,
+        originalHevcAudioLayout?: OriginalHevcAudioLayout,
     ): PlaybackOptions['profiles'][number]['embeddedAudioSwitch'] {
         const containers = Object.keys(modes) as Array<keyof typeof modes>;
         if (containers.length === 0) {
@@ -225,8 +238,13 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
             typeof cmd === 'string' && cmd.includes('%TSREADEX%') && cmd.includes('%AUDIOSELECTMAP%');
         const isM2TsLLEmbedded = hasTsreadexAudioMap || hasTsreadexAudioSelectMap;
         // in-memory HLS (%streamFileDir% を含まない) だけが Fmp4Packager 経由で複数音声トラックを配信できる
+        const isOriginalHevcEmbedded =
+            modePresetId === ORIGINAL_HEVC_PROFILE_ID &&
+            scope !== 'live' &&
+            (originalHevcAudioLayout === 'dual-mono' || originalHevcAudioLayout === 'multi');
         const isHlsEmbedded =
-            hasTsreadexAudioMap && typeof cmd === 'string' && cmd.includes('%streamFileDir%') === false;
+            isOriginalHevcEmbedded ||
+            (hasTsreadexAudioMap && typeof cmd === 'string' && cmd.includes('%streamFileDir%') === false);
 
         const result: NonNullable<PlaybackOptions['profiles'][number]['embeddedAudioSwitch']> = {};
         for (const container of containers) {
@@ -234,6 +252,32 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         }
 
         return result;
+    }
+
+    /** encoded HEVC の実 AAC 構成を取得する。未知・失敗時は音声切替を無効にする。 */
+    private async getOriginalHevcAudioLayout(
+        videoFileId: apid.VideoFileId,
+        isEncoded: boolean,
+        source: apid.SourceCapabilities,
+    ): Promise<OriginalHevcAudioLayout | undefined> {
+        if (isEncoded === false || isOriginalHevcSource(source) === false || this.videoUtil === undefined) {
+            return undefined;
+        }
+
+        try {
+            const filePath = await this.videoUtil.getFullFilePathFromId(videoFileId);
+            if (filePath === null) return undefined;
+
+            const tracks = await this.videoUtil.getAudioTracks(filePath);
+            const layout = classifyOriginalHevcAudioLayout(tracks);
+            // StreamApiModel と同じく、2 本目の音声 ES がファイル全体に無ければ 1 本として扱う
+            if (layout === 'multi' && (await this.videoUtil.hasStableSecondAudioStream(filePath)) === false) return 'single';
+            return layout;
+        } catch (_error) {
+            return undefined;
+        }
+
+        return undefined;
     }
 
     private profileDisplayOrder(role: string | null): number {

@@ -28,7 +28,8 @@ MPEG-2 映像を含む MPEG-TS だけ、サーバーで再エンコードしな�
 - 録画詳細・視聴履歴・DPlayer の画質メニューは `playback-options.profiles[].modes` を正として Original MPEG-2 を表示する。録画 TS の直接配信は保存した視聴位置から Range で開始し、配信方式切替時も `playPosition` を親画面へ渡す。録画中の Original MPEG-2 は末尾へ追いついた後の Range 再試行契約が複雑になるため、視聴選択肢へ出さない。
 - 録画 Original MPEG-2 の開始時自動再生は M2TS-LL と同じく Safari / iOS 以外で有効にする。`VirtualTimeline` が DPlayer の seek を置き換えるため、シーク前に再生中なら `BaseVideo.setCurrentTime(..., true)` が seek 後に `play()` を呼び、一時停止中なら `false` で pause 状態を維持する。`resume` を省略する経路は再生状態を変更しない。Original の再生成時も DPlayer の type は `mpeg2toh264` とする。
 - tsreplace の HEVC TS (`stream_type=0x24`, `.hevc.ts` を含む) は `video_file.type=encoded` で登録されても、`original-hevc` として HLS のみへ表示する。サーバーは `%FFMPEG% -fflags +genpts -f mpegts ... -c:v copy -tag:v hvc1 -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER% -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1` を使い、`Fmp4Packager` / `HLSMemoryStoreModel` へ渡す。実AAC TSへ `aac_adtstoasc` を適用するとエラーを出しつつ終了コード0になるため付けない。 **音声は copy しない**: 放送 AAC を copy した fMP4 は Safari / WebKit で最初のフラグメント境界 (4〜6 秒) で停止する (実測: tsreplace 出力 3 本で 4.40 / 4.80 / 6.29 秒停止、映像のみ・音声 AAC 再エンコードでは 24 秒まで進行。映像の CRA/RASL・in-band PPS・AUD の除去では直らない)。`%DEINTERLACE%` は使わない。tsreadex を使う TS では前段へ `%TSREADEX% |` を置き、音声 map は `%AUDIOMAP%` だけを使う (`-map 0` と併用しない)。Main は `hevc`、Main10 は `hevcMain10` が true の端末だけへ出す。自動選択・自動 fallback には入れず明示選択だけとする。
-- encoded TS の HLS / Offline では、拡張子でなく `SourceAnalyzer.transport === 'mpegts'` を見て字幕専用 reader を起動する。reader の `-ss` は VBR byte seek を使わず、主映像と同じ ffmpeg copy probe で得た実開始位置へ合わせる。reader の相対PTSは最初の映像partの `tfdt` を基準に `Fmp4Packager` が該当partへ分配するため、字幕readerが全尺を先に読み終えても先頭へ一括付与しない。副音声 (`%AUDIOMAP%`)・BML時計・実況同期の基準 (`videoFile.startAt`) は既存の主配信経路を維持する。
+- encoded 扱いの tsreplace を `original-hevc` で処理するときは、`GET /api/videos/{videoFileId}/audio-tracks` の元データを生成時に probe し、音声構成を分岐する。AAC 1 ES / 2ch は EPG や `channel_layout=stereo` を根拠にせず、`ffmpeg -dual_mono_mode main/sub` の3秒 PCMを冒頭・中央・末尾で比較する。各 probe 窓の平均絶対差が閾値を超えたデュアルモノラル (同じ ES の `isDualMono=true` 2 件) だけ `-filter_complex "[0:a:0]asplit=2[m][s];[m]pan=stereo|c0=c0|c1=c0[main_audio];[s]pan=stereo|c0=c1|c1=c1[sub_audio]" -map 0:v:0 -map "[main_audio]" -map "[sub_audio]"` として 1 回のデコードから `audio0` / `audio1` を作る。独立音声 ES 2 本は `-map 0:v:0 -map 0:a:0 -map 0:a:1` で両方を AAC 化する。通常ステレオ、判定不能、probe失敗、timeout、判定窓で通常ステレオへの構成変化を検出した録画は従来の主音声 1 本へ戻す。判定窓の外で構成が変わるケースは未検出になり得るため、長時間録画では冒頭・中央・末尾以外の変化は保証しない。判定はファイルパス単位でキャッシュする。filter_complex の枝へ `%AUDIOFILTER%` / `-af` を重ねない。`pan` 内の `|` は引用内に置き、`ProcessUtil.hasShellPipeline()` でシェルパイプと誤判定しない。
+- encoded TS の HLS / Offline では、拡張子でなく `SourceAnalyzer.transport === 'mpegts'` を見て字幕専用 reader を起動する。reader の `-ss` は VBR byte seek を使わず、主映像と同じ ffmpeg copy probe で得た実開始位置へ合わせる。reader の相対PTSは最初の映像partの `tfdt` を基準に `Fmp4Packager` が該当partへ分配するため、字幕readerが全尺を先に読み終えても先頭へ一括付与しない。副音声 (`%AUDIOMAP%`)・BML時計・実況同期の基準 (`videoFile.startAt`) は既存の主配信経路を維持する。`original-hevc` の既知の複数音声はオンライン HLS / Offline のどちらも `video` / `audio0` / `audio1` の 3 レコードへ分解し、master の `#EXT-X-MEDIA` と `CODECS` を生成する。`PlaybackProfile.embeddedAudioSwitch.hls=true` のとき、クライアントは `audioTrack=all` で開き、再接続なしに rendition を切り替える。
 - Original 候補の録画 TS は `getDetailedInfo()` の先頭映像に加えてファイル中央の5秒を有限 probe する。中央で別 codec が見つかる、映像が見つからない、または probe に失敗した場合は source codec を `unknown` にして MPEG-2 / HEVC の両 Original を出さない。短すぎる録画 (4秒以下) と追加 probe を持たない旧 mock は先頭判定を使う。録画中は末尾追従・416再試行の契約を避け、MPEG-2 / HEVC Original を playback-options から出さない。
 - `PlaybackPolicyResolver` の「おまかせ」と停滞 fallback は直接再生を自動選択しない。明示選択時だけ使用し、HEVC / 4K / encoded 録画、MPEG-2 以外の素材を候補へ出さない。
 - YADIF 対応環境では `mpeg2toh264` の `Deinterlacer` を使う。キャプチャは通常の video 要素ではなく `Deinterlacer.capture()` を使う。DPlayer は `8e49bb76cdd14a69fa5e822d2d1e5800c4aaa512`、`mpeg2toh264` は `1e0eb60841daeacb1deae3def0192cf53512638e` 固定。両コミットの公開パッケージへ `dist/` が含まれることを確認済み。Safari 録画時だけ MediaSource を main thread へ置く。自動ライブ再起動・Comlink Worker 二重公開は相当実装が無いため未取り込み。DPlayer 未公開 `2467f23` は固定せず、同期位置を有限・非負に guard する。`touch-center-controls` は設計見直し中、`yadif-queue-fallback-removal` は統合版未採用、`diagnostic/*` は計装、VCEEncC 変更/revert は対象外、Android の描画をメインスレッドへ移す案は撤回済みのため取り込まない。
@@ -92,7 +93,7 @@ Cache Storage / IndexedDB の容量上限・永続性はブラウザと端末空
 - 録画 TS は `RecordedStreamBaseModel` がファイル (録画中は `TailStream`) をエンコーダ stdin へ流し、stdout を `video/mp2t` として HTTP へ直結する。encoded は `-ss %SS% -i %INPUT%` のファイル入力で、いずれも中間ファイルを作らない。
 - クライアントは録画詳細に `M2TS-LL` を追加し、`StreamSupportUtil.checkM2TSLLSupport()` が非対応と判定した環境では選択肢から除外して HLS へ誘導する。再生は `type: 'mpegts'`、VirtualTimeline、チャプター、ARIB 字幕、実況コメント、音声切替を既存録画再生と共用する。
 - 録画 m2tsll も mpegts.js の `mediaDataSource.isLive = true` で生成する。録画ファイルでもサーバは `-readrate` で実時間ペースに絞って供給し続けるため、MMS の `onEndStreaming` で transmuxer を suspend させない。DPlayer 自身の `live` は false のままなので、録画の再生・シーク UI と `ss` でのストリーム再生成は変えない。ライブ m2tsll の設定は変更しない。
-- `audioTrack=all` は tsreadex 正規化済みプロファイルで主音声・副音声を同時配信し、mpegts.js の音声切替 API で再接続せず切り替える。非正規化プロファイルは `AUDIOSELECTMAP` で単一音声を選ぶ。
+- `audioTrack=all` は tsreadex 正規化済みプロファイルで主音声・副音声を同時配信し、mpegts.js の音声切替 API で再接続せず切り替える。非正規化プロファイルは `AUDIOSELECTMAP` で単一音声を選ぶ。例外として encoded tsreplace の `original-hevc` は、実AACを main/sub へデコード比較して dual-mono と確認できた場合、または音声 ES が2本ある場合だけ、直接 `filter_complex` または2本の `-map` を生成して HLS の音声 rendition を作る。EPG の二か国語情報だけでは分割しない。
 - 録画 TS の m2tsll の ARIB 字幕は、tsreadex の有無によらず入力側でなく stdout 側へ ID3 timed metadata を挿入する。字幕判定は `component_tag=0x30〜0x37` / `0x87` または `stream_type=0x06` + `subtitling_descriptor (0x59)`、data_group は `0x00〜0x08` / `0x20〜0x28` を受ける。PTS の無い PES は時刻を推測せず破棄する。encoded は字幕対象外。
 - 配信方式の表示ラベル (`M2TS-LL` など) と API のパス名 (`m2tsll` など) は `src/util/StreamingTypeUtil.ts` の明示的な変換表で分離する。録画詳細・視聴履歴・ライブの各ダイアログはこの変換を使い、`toLowerCase()` で API 名を推測しない。録画・ライブ視聴画面は query の配信方式を同じ定義の許可一覧で検証し、未知の値は動画を生成せず、画面上へ再読み込み・選び直しの理由を表示する。Snackbar はルート変更処理で消されないようルート確定後に表示し、10 秒保持する。`recordedId` / `videoFileId` の存在と `mode` の設定範囲も確認し、不正時は同じ画面エラーを表示する。
 - 録画のファイル入力は `-readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2` を `-i` より前へ置く。初期 45 秒 (4 Mbps 換算で約 22.5 MB) を先読みし、その後は実時間の 1.5 倍を上限に供給する。`readrate_catchup` は入力が指定速度に遅れたときだけ一時的に 2 倍まで使う。対象は M2TS-LL / MP4 / WebM。ライブの `-re` は変更しない。録画 HLS は既存のセグメント単位の先行抑制を使う。今回、readrate 引き上げは供給が律速でないことが判明したため前値へ戻した。
@@ -500,9 +501,9 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
   組み立てる。デュアルモノラル (`componentType` = 0x02) の ES 1 本は主音声・副音声の 2 件へ展開し、
   複数音声 ES はそれぞれ独立した音声として index を振る。通常のステレオ放送は空配列を返して切替 UI を出さない。
   **番組情報が取れない放送局のため、クライアントは一覧が空のときだけ**主音声・副音声の 2 択へ落とす。
-- **録画の一覧は `GET /api/videos/{videoFileId}/audio-tracks`** が ffprobe を使って返す。
-  音声 ES が 1 つだけのステレオは、二か国語放送の可能性があるため主音声・副音声の 2 件へ展開する
-  (ただのステレオ放送だった場合、副音声を選ぶと右チャンネルが両耳に出るだけで再生自体は続く)。
+- **録画の一覧は `GET /api/videos/{videoFileId}/audio-tracks`** が ffprobe と短時間の ffmpeg 実デコードを使って返す。
+  音声 ES が 1 つだけの AAC 2ch は main/sub のデコード結果が異なる場合だけ主音声・副音声の 2 件へ展開する。
+  通常ステレオ・判定不能はステレオ1件のまま返す。判定上限は各3秒、各 ffmpeg 5秒で、冒頭・中央・末尾の全区間を確認する。
 - 録画音声一覧の ffprobe は、完了録画・録画中とも `-analyzeduration 10000000 -probesize 20000000` (10秒 / 20MB) の有限 probe を使う。音声 ES 一覧にフレーム数は不要なので `-count_frames` は付けない。本番の主音声から21.7秒遅れて始まる ES を2本とも検出できる実測を基準にし、完了後もファイル全体を走査しない。まだ存在しない録画末尾を待たず、probe 範囲内の ES を候補として返す。
   `getDetailedInfo()` とライブ M2TS-LL の低遅延用 probe 値は変更しない。
 - 数値 `audioTrack` の map は `-map "0:a:n?"` と主音声 `-map "0:a:0?"` を使う。
@@ -536,9 +537,9 @@ EPGStation の rigaya プリセットは「rigaya が映像だけ処理 → 後�
 ストリーム側で置換前 cmd をログへ出すと実行 cmd と異なるため、ログは置換後の shell 文字列または spawn 引数を
 記録する。ログに `%INPUT%` が残る場合は生成失敗ではなく、古いログ出力経路または古い配備物を疑う。
 
-録画済みの encoded 入力で副音声を選ぶ場合、放送 TS のデュアルモノラルではなく通常のステレオ AAC
-（左=主、右=副）なので、`%AUDIOFILTER%` は `pan=stereo|c0=c1|c1=c1` を生成する。TS 入力とライブは
-従来どおり `-dual_mono_mode sub` を使う。主音声には pan を掛けず、通常のステレオ放送をモノラル化しない。
+録画済みの encoded 入力で副音声を選ぶ場合、実AACが dual-mono と確認できた `original-hevc` だけが
+`pan=stereo|c0=c1|c1=c1` を生成する。通常のステレオ AAC は `audioTrack=sub` を一覧へ出さず、左右を保った1本を配信する。
+TS 入力とライブは従来どおり `-dual_mono_mode sub` を使う。主音声には pan を掛けず、通常のステレオ放送をモノラル化しない。
 
 ファイル直接再生 (`NormalVideo`) は、`audioTracks` が複数なら従来どおりブラウザの実トラックを使う。
 実トラックが 1 本でもサーバーの音声トラック API がデュアルモノラルを返す場合は Web Audio API で L/R を分け、
