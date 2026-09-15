@@ -26,6 +26,7 @@ import {
     createOriginalHevcHlsCommand,
     isOriginalHevcSource,
     ORIGINAL_HEVC_PROFILE_ID,
+    resolveOriginalHevcInputMode,
 } from '../../../util/OriginalHevcUtil';
 
 interface RecordedStreamConfig {
@@ -443,7 +444,7 @@ export default class StreamApiModel implements IStreamApiModel {
 
     /** オフライン保存用に録画 HLS の fMP4 レコードストリームを開始する */
     public async startRecordedOfflineHLSStream(option: apid.RecordedStreamOption): Promise<StreamResponse> {
-        const resolved = await this.getRecordedVideoConfig('hls', option);
+        const resolved = await this.getRecordedVideoConfig('hls', option, true);
         if (resolved.container !== 'hls' || resolved.cmd.includes('%streamFileDir%'))
             throw new Error('OfflineHlsProfileRequired');
         const stream = await this.recordedHLSStreamProvider();
@@ -472,6 +473,7 @@ export default class StreamApiModel implements IStreamApiModel {
     private async getRecordedVideoConfig(
         type: 'webm' | 'mp4' | 'm2tsll' | 'hls',
         option: apid.RecordedStreamOption,
+        offline = false,
     ): Promise<RecordedStreamConfig> {
         const isEncodedVideo = await this.isEncodedVideo(option.videoFileId);
         const kind: StreamProfileKind = isEncodedVideo === true ? 'recordedEncoded' : 'recordedTs';
@@ -483,13 +485,22 @@ export default class StreamApiModel implements IStreamApiModel {
             const source = await this.sourceAnalyzer.analyzeRecordedFile(option.videoFileId);
             if (isOriginalHevcSource(source) === false) throw new Error('OriginalHevcSourceIsUnsupported');
 
+            const config = this.configuration?.getConfig();
+            const audioLayout = isEncodedVideo === true ? await this.getOriginalHevcAudioLayout(option.videoFileId) : undefined;
+            const inputMode = resolveOriginalHevcInputMode(
+                isEncodedVideo,
+                offline,
+                audioLayout,
+                typeof config?.tsreadex !== 'undefined',
+            );
+
             return {
                 cmd: createOriginalHevcHlsCommand(
-                    isEncodedVideo === false && typeof this.configuration?.getConfig().tsreadex !== 'undefined',
-                    isEncodedVideo === true ? 'file' : 'pipe',
-                    isEncodedVideo === true ? await this.getOriginalHevcAudioLayout(option.videoFileId) : undefined,
+                    inputMode === 'pipe' && typeof config?.tsreadex !== 'undefined',
+                    inputMode,
+                    audioLayout,
                     option.audioTrack,
-                    this.configuration?.getConfig().audioBoost,
+                    config?.audioBoost,
                 ),
                 displayMode: typeof option.mode === 'number' ? option.mode : 0,
                 container: 'hls',
