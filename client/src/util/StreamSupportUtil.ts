@@ -54,6 +54,16 @@ namespace StreamSupportUtil {
         return checkM2TSLLSupport().isSupported;
     };
 
+    /** HEVC MPEG-TS を mpegts.js で MSE / MMS へ transmux できるか判定する。 */
+    export const checkMpegTsHevcSupport = (): M2TSLLSupportResult => {
+        if (Mpegts.getFeatureList().mseH265Playback !== true) {
+            return { isSupported: false, reason: 'HEVC MPEG-TS の端末再生に対応していないブラウザーです。' };
+        }
+        return { isSupported: true, reason: null };
+    };
+
+    export const isMpegTsHevcSupported = (): boolean => checkMpegTsHevcSupport().isSupported;
+
     /** MPEG-2 TS を mpeg2toh264 で端末変換できるか判定する。 */
     export const checkMpeg2ToH264Support = (): M2TSLLSupportResult => {
         const hasMainMse =

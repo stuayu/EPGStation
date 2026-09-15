@@ -22,6 +22,7 @@ import IVideoApiModel, {
 import IVideoUtil from './IVideoUtil';
 import ISourceAnalyzer from '../../stream/capability/ISourceAnalyzer';
 import { isOriginalMpeg2Source } from '../../../util/OriginalMpeg2Util';
+import { classifyOriginalVideoSource } from '../../../util/OriginalVideoUtil';
 
 @injectable()
 export default class VideoApiModel implements IVideoApiModel {
@@ -84,14 +85,25 @@ export default class VideoApiModel implements IVideoApiModel {
 
     /** MPEG-2 映像を含む録画 TS だけを端末変換用に返す。 */
     public async getOriginalMpeg2FilePath(videoFileId: apid.VideoFileId): Promise<VideoFilePathInfo | null> {
+        const source = await this.getOriginalSource(videoFileId);
+        if (source === null || isOriginalMpeg2Source(source) === false) return null;
+        return this.getFullFilePath(videoFileId);
+    }
+
+    /** MPEG-2 / HEVC 映像を含む録画 TS を Range 配信用に返す。 */
+    public async getOriginalFilePath(videoFileId: apid.VideoFileId): Promise<VideoFilePathInfo | null> {
+        const source = await this.getOriginalSource(videoFileId);
+        if (source === null || typeof classifyOriginalVideoSource(source) === 'undefined') return null;
+        return this.getFullFilePath(videoFileId);
+    }
+
+    private async getOriginalSource(videoFileId: apid.VideoFileId): Promise<apid.SourceCapabilities | null> {
         const video = await this.videoFileDB.findId(videoFileId);
         // tsreplace / Amatsukaze の MPEG-2 TS も登録時は encoded になり得る。
         // transport は SourceAnalyzer で検証するため、type だけで元 TS を除外しない。
         if (video === null || (video.type !== 'ts' && video.type !== 'encoded') || this.sourceAnalyzer === undefined)
             return null;
-        const source = await this.sourceAnalyzer.analyzeRecordedFile(videoFileId);
-        if (isOriginalMpeg2Source(source) === false) return null;
-        return this.getFullFilePath(videoFileId);
+        return await this.sourceAnalyzer.analyzeRecordedFile(videoFileId);
     }
 
     /**

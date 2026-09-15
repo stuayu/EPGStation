@@ -65,7 +65,7 @@ test('preset id から container 別 mode を解決し、profile の並びを mo
     assert.deepEqual(result.profiles.find(profile => profile.id === '1080p-sdr').modes, { hls: 0 });
 });
 
-test('録画 HEVC 無変換は HLS mode 0 として playback-options に出る', async () => {
+test('録画 HEVC 無変換は Original と HLS fallback の mode 0 として playback-options に出る', async () => {
     const hevcSource = { ...source, transport: 'mpegts', bitDepth: 8 };
     const original = {
         id: 'original-hevc',
@@ -93,6 +93,7 @@ test('録画 HEVC 無変換は HLS mode 0 として playback-options に出る',
     assert.deepEqual(result.profiles.find(profile => profile.id === 'original-hevc').modes, { original: 0, hls: 0 });
     assert.equal(result.profiles.find(profile => profile.id === 'original-hevc').role, 'original-hevc');
     assert.equal(result.profiles.find(profile => profile.id === 'original-hevc').embeddedAudioSwitch.hls, true);
+    assert.equal(result.profiles.find(profile => profile.id === 'original-hevc').embeddedAudioSwitch.original, true);
 });
 
 test('録画 MPEG-2 の original profile は方式選択用 mode として返る', async () => {

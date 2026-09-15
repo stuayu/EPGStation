@@ -3,7 +3,7 @@
 </template>
 
 <script lang="ts">
-import BaseVideo from '@/components/video/BaseVideo';
+import BaseVideo, { PlaybackContainerSwitchRequest } from '@/components/video/BaseVideo';
 import { SelectablePlaybackContainer } from '../../../../src/util/PlaybackQualityOptionUtil';
 import container from '@/model/ModelContainer';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
@@ -31,6 +31,7 @@ import { resolveRecordedJikkyoPlaybackTime } from '../../../../src/util/Recorded
 import { normalizeStreamPlayPosition } from '../../../../src/util/StreamPlayPosition';
 import { decideAudioTrackSwitch } from '../../../../src/util/AudioTrackSwitchDecision';
 import { shouldAutoplayPlayback } from '../../../../src/util/PlaybackAutoplayUtil';
+import { isOriginalHevcPlayback } from '@/util/PlaybackProfileSelectUtil';
 import type { RecordedStreamingType } from '@/util/StreamingTypeUtil';
 
 interface VideoSrcInfo {
@@ -52,6 +53,9 @@ class RecordedStreamingVideo extends BaseVideo {
 
     @Prop({ default: undefined })
     public profile!: string | undefined;
+
+    @Prop({ default: undefined })
+    public source!: apid.SourceCapabilities | undefined;
 
     @Prop({ required: true })
     public videoFileId!: apid.VideoFileId;
@@ -86,7 +90,7 @@ class RecordedStreamingVideo extends BaseVideo {
         if (wasRecording === true && this.videoState.isRecording() === false) {
             // 録画中は bounded probe なので、終了時に全体の ES 一覧へ更新する。
             await this.fetchAudioTracks();
-            if (this.dp !== null && this.streamingType !== 'original') this.setupRecordedAudioTrackSwitch();
+            if (this.dp !== null && this.isOriginalMpeg2() === false) this.setupRecordedAudioTrackSwitch();
         }
     }
     private basePlayPosition: number = 0;
@@ -136,7 +140,7 @@ class RecordedStreamingVideo extends BaseVideo {
         await this.updateVideoInfo();
         await this.fetchVideoFileSizeForDataBroadcasting(this.videoFileId);
         await this.fetchChapters();
-        if (this.streamingType === 'm2tsll' || this.streamingType === 'mp4' || this.streamingType === 'webm') {
+        if (this.streamingType === 'm2tsll' || this.streamingType === 'mp4' || this.streamingType === 'webm' || this.isOriginalHevc()) {
             await this.fetchAudioTracks();
         }
 
@@ -182,6 +186,22 @@ class RecordedStreamingVideo extends BaseVideo {
         }
     }
 
+    /** playback-options の source と profile から HEVC Original の直接配信か判定する。 */
+    private isOriginalHevc(): boolean {
+        // playback-options は子コンポーネントの生成後に届くため、初回だけ source が未設定でも
+        // 明示された profile を信頼して MPEG-TS プレイヤーを先に作る。
+        return (
+            this.streamingType === 'original' &&
+            this.profile === 'original-hevc' &&
+            (typeof this.source === 'undefined' || isOriginalHevcPlayback(this.source, this.profile))
+        );
+    }
+
+    /** Original 方式のうち MPEG-2 端末変換として扱うか判定する。 */
+    private isOriginalMpeg2(): boolean {
+        return this.streamingType === 'original' && this.isOriginalHevc() === false;
+    }
+
     /**
      * socket.io での状態更新通知時処理
      * @return Promise<void>
@@ -203,6 +223,7 @@ class RecordedStreamingVideo extends BaseVideo {
         this.initialPlaybackGateTimerId = undefined;
         this.initialPlaybackGateActive = false;
         this.cleanupDeferredMpegts();
+        this.destroyNativeAudioTrackSwitch();
 
         super.beforeUnmount();
     }
@@ -216,7 +237,9 @@ class RecordedStreamingVideo extends BaseVideo {
         }
 
         const isM2TsLL = this.streamingType === 'm2tsll';
-        const isOriginalMpeg2 = this.streamingType === 'original';
+        const isOriginalHevc = this.isOriginalHevc();
+        const isOriginalMpeg2 = this.isOriginalMpeg2();
+        const isDirectMpegTs = isM2TsLL || isOriginalHevc;
         if (isM2TsLL === true) {
             const support = StreamSupportUtil.checkM2TSLLSupport();
             if (support.isSupported === false) {
@@ -230,6 +253,26 @@ class RecordedStreamingVideo extends BaseVideo {
                 this.snackbarState.open({ color: 'error', text: support.reason ?? '非対応ブラウザーです。' });
                 throw new Error('UnsupportedBrowser');
             }
+        }
+        if (isOriginalHevc === true) {
+            const support = StreamSupportUtil.checkMpegTsHevcSupport();
+            if (support.isSupported === false) {
+                // HEVC を端末の MSE / MMS で扱えない場合だけ、既存の HLS remux へ戻す。
+                const profile = this.playbackProfiles.find(item => item.id === 'original-hevc');
+                const mode = profile?.modes.hls;
+                if (typeof mode === 'number') {
+                    this.$emit('playbackContainerSwitch', {
+                        container: 'hls',
+                        mode,
+                        profileId: 'original-hevc',
+                        playPosition: this.basePlayPosition,
+                    } satisfies PlaybackContainerSwitchRequest);
+                    return;
+                }
+                this.snackbarState.open({ color: 'error', text: support.reason ?? '非対応ブラウザーです。' });
+                throw new Error('UnsupportedBrowser');
+            }
+            DPlayerUtil.enableMpegtsHevcPlayback();
         }
 
         DPlayerUtil.setupGlobals();
@@ -247,14 +290,14 @@ class RecordedStreamingVideo extends BaseVideo {
         const createdQualities = StreamQualityUtil.createQualityList(
             this.qualityNames,
             videoSrc,
-            isOriginalMpeg2 ? 'mpeg2toh264' : isM2TsLL ? 'mpegts' : 'normal',
+            isOriginalMpeg2 ? 'mpeg2toh264' : isDirectMpegTs ? 'mpegts' : 'normal',
         );
         // オリジナル (MPEG-2) は config の配信設定に mode 一覧を持たないため quality が空になる。
         // DPlayer は生成時に quality が無いと画質メニュー自体を作らず、後から setPlaybackProfiles() で
         // 一覧を入れても表示されない (オリジナルで再生すると他の方式へ戻れなかった)。1 件だけでも渡しておく
         const qualities =
-            createdQualities.length === 0 && isOriginalMpeg2 === true
-                ? [{ name: 'オリジナル', url: videoSrc, type: 'mpeg2toh264' }]
+            createdQualities.length === 0 && (isOriginalMpeg2 === true || isOriginalHevc === true)
+                ? [{ name: 'オリジナル', url: videoSrc, type: isOriginalMpeg2 ? 'mpeg2toh264' : 'mpegts' }]
                 : createdQualities;
 
         const options: DPlayerType.Options = {
@@ -270,25 +313,21 @@ class RecordedStreamingVideo extends BaseVideo {
                       } as DPlayerType.Options['video'])
                     : {
                           url: videoSrc,
-                          type: isOriginalMpeg2 ? 'mpeg2toh264' : isM2TsLL ? 'mpegts' : 'normal',
+                          type: isOriginalMpeg2 ? 'mpeg2toh264' : isDirectMpegTs ? 'mpegts' : 'normal',
                       },
             };
 
-        if (isM2TsLL === true) {
-            // mpegts.js / DPlayer に初回バッファ量の設定はないため、下で play() をゲートする。
-            // 自動再生可否はブラウザーへ任せ、ゲートは手動再生にも適用する。
-            options.autoplay = false;
+        if (isDirectMpegTs === true) {
+            // mpegts.js は録画 Original では Range 可能な VOD、m2tsll では追従型として扱う。
+            options.autoplay = isM2TsLL === true ? false : true;
             options.subtitle = { type: 'aribb24' };
             options.pluginOptions = {
                 mpegts: {
-                    // DPlayer は mediaDataSource.isLive を options.live(false) で上書きする。
-                    // 録画ファイルでもサーバは -readrate で実時間ペースに絞って流し続けるため、
-                    // ランダムアクセス可能な VOD ではなく、受け取りを止めると供給も止まるストリーム。
-                    // DPlayerUtil がこのフラグを最終 mediaDataSource へ戻し、MMS の onEndStreaming
-                    // で mpegts.js が transmuxer を suspend しないようにする。
-                    mediaDataSource: { type: 'mpegts', isLive: true },
+                    // m2tsll はサーバーが -readrate で供給する追従型なので isLive=true。
+                    // Original HEVC は Range 可能な録画ファイルなので通常の VOD として扱う。
+                    mediaDataSource: { type: 'mpegts', isLive: isM2TsLL },
                     config: {
-                        isLive: true,
+                        isLive: isM2TsLL,
                         enableWorker: true,
                         enableStashBuffer: true,
                         stashInitialSize: 64 * 1024,
@@ -352,13 +391,13 @@ class RecordedStreamingVideo extends BaseVideo {
             resetCurrentTime: true,
             onSwitched: mode => {
                 this.currentMode = mode;
-                if (isM2TsLL === true) void Promise.resolve().then(() => this.reapplyEmbeddedAudioTrack(mode));
+                if (isDirectMpegTs === true) void Promise.resolve().then(() => this.reapplyEmbeddedAudioTrack(mode));
             },
             onPlaybackReady: () => {
                 if (isM2TsLL === true) this.cleanupDeferredMpegts();
             },
         });
-        if (isM2TsLL === true) this.setupMpegtsPlaybackRecovery();
+        if (isDirectMpegTs === true) this.setupMpegtsPlaybackRecovery();
     }
 
     /**
@@ -426,7 +465,7 @@ class RecordedStreamingVideo extends BaseVideo {
 
     /** DPlayer に渡す配信方式を返す。 */
     private getDPlayerVideoType(): DPlayerType.VideoType {
-        if (this.streamingType === 'original') return 'mpeg2toh264';
+        if (this.streamingType === 'original') return this.isOriginalHevc() ? 'mpegts' : 'mpeg2toh264';
         if (this.streamingType === 'm2tsll') return 'mpegts';
 
         return 'normal';
@@ -468,11 +507,15 @@ class RecordedStreamingVideo extends BaseVideo {
                 const mpegts = (this.dp as any)?.plugins?.mpegts;
                 if (
                     action === 'embedded' &&
-                    this.streamingType === 'm2tsll' &&
+                    (this.streamingType === 'm2tsll' || this.isOriginalHevc()) &&
                     typeof mpegts?.switchSecondaryAudio === 'function'
                 ) {
-                    if (RecordedStreamingVideo.isSecondaryAudioTrack(track)) mpegts.switchSecondaryAudio();
-                    else mpegts.switchPrimaryAudio();
+                    if (this.isOriginalHevc() && this.audioTracks.some(item => item.isDualMono === true)) {
+                        await this.selectDualMonoAudioTrack(track);
+                    } else {
+                        if (RecordedStreamingVideo.isSecondaryAudioTrack(track)) mpegts.switchSecondaryAudio();
+                        else mpegts.switchPrimaryAudio();
+                    }
                     this.currentAudioTrack = track;
                     return;
                 }
@@ -509,18 +552,23 @@ class RecordedStreamingVideo extends BaseVideo {
     }
 
     private isEmbeddedAudioSwitchMode(mode: number): boolean {
-        return this.playbackProfiles.find(profile => profile.modes?.m2tsll === mode)?.embeddedAudioSwitch?.m2tsll === true;
+        const container = this.isOriginalHevc() ? 'original' : 'm2tsll';
+        return this.playbackProfiles.find(profile => profile.modes?.[container] === mode)?.embeddedAudioSwitch?.[container] === true;
     }
 
     private resolveStreamAudioTrack(track: apid.AudioTrackSpecifier): apid.AudioTrackSpecifier {
-        return this.streamingType === 'm2tsll' &&
+        return (this.streamingType === 'm2tsll' || this.isOriginalHevc()) &&
             (this.isEmbeddedAudioSwitchMode(this.currentMode) || RecordedStreamingVideo.isSecondaryAudioTrack(track) === false)
             ? 'all'
             : track;
     }
 
-    private reapplyEmbeddedAudioTrack(mode: number): void {
+    private async reapplyEmbeddedAudioTrack(mode: number): Promise<void> {
         if (this.isEmbeddedAudioSwitchMode(mode) === false || RecordedStreamingVideo.isSecondaryAudioTrack(this.currentAudioTrack) === false) return;
+        if (this.isOriginalHevc() && this.audioTracks.some(item => item.isDualMono === true)) {
+            await this.selectDualMonoAudioTrack(this.currentAudioTrack);
+            return;
+        }
         (this.dp as any)?.plugins?.mpegts?.switchSecondaryAudio?.();
     }
 

@@ -123,6 +123,23 @@ test('encoded 登録でも MPEG-2 MPEG-TS は Original の元TSを返す', async
     }
 });
 
+test('encoded 登録の HEVC MPEG-TS も Original の元TSを返す', async () => {
+    const filePath = `/private/tmp/epgstation-encoded-hevc-${process.pid}.ts`;
+    fs.writeFileSync(filePath, Buffer.alloc(188));
+    const { model } = createModel({
+        videos: [video(2, { type: 'encoded' })],
+        filePath,
+        source: { codec: 'hevc', transport: 'mpegts' },
+    });
+    try {
+        const result = await model.getOriginalFilePath(2);
+        assert.equal(result?.path, filePath);
+        assert.equal(result?.mime, 'video/mp2t');
+    } finally {
+        fs.unlinkSync(filePath);
+    }
+});
+
 function video(id, override) {
     return Object.assign(
         {

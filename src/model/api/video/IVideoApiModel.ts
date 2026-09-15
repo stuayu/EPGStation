@@ -13,6 +13,7 @@ export type ReanalyzeTsInfoResult = apid.ReanalyzeTsInfoResult;
 
 export default interface IVideoApiModel {
     getFullFilePath(videoFileId: apid.VideoFileId): Promise<VideoFilePathInfo | null>;
+    getOriginalFilePath(videoFileId: apid.VideoFileId): Promise<VideoFilePathInfo | null>;
     getOriginalMpeg2FilePath(videoFileId: apid.VideoFileId): Promise<VideoFilePathInfo | null>;
     getM3u8(host: string, isSecure: boolean, videoFileId: apid.VideoFileId): Promise<IPlayList | null>;
     deleteVideoFile(videoFileId: apid.VideoFileId): Promise<void>;

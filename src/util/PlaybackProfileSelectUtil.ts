@@ -3,6 +3,12 @@ import * as apid from '../../api';
 // ブラウザーからも利用するため、child_process を含む OriginalHevcUtil は import しない。
 const ORIGINAL_HEVC_PROFILE_ID = 'original-hevc';
 
+/** playback-options の source と profile から、直接配信する HEVC Original かを判定する。 */
+export const isOriginalHevcPlayback = (
+    source: Pick<apid.SourceCapabilities, 'transport' | 'codec'> | null | undefined,
+    profileId: string | null | undefined,
+): boolean => profileId === ORIGINAL_HEVC_PROFILE_ID && source?.transport === 'mpegts' && source.codec === 'hevc';
+
 /** 配信選択ダイアログから視聴画面へ渡す profile を決めるための最小限の型 */
 export interface SelectablePlaybackProfile {
     id: string;
@@ -43,7 +49,7 @@ export type ResolvedPlaybackSelection = {
 
 /**
  * 配信選択ダイアログの方式・画質選択を視聴画面の URL パラメータへ変換する。
- * Original は素材によって API の実体が異なり、HEVC は HLS profile として再生する。
+ * Original は素材によって API の実体が異なり、HEVC も元 TS の直接配信として再生する。
  * mode 番号だけで profile を逆引きしないため、選択中 profile と mode の一致も確認する。
  * @param profiles: SelectablePlaybackProfile[] ダイアログに出している画質一覧
  * @param selectedId: string | null | undefined 選択中の profile id
@@ -58,19 +64,11 @@ export const resolvePlaybackSelection = (
     mode: number,
 ): ResolvedPlaybackSelection => {
     const profileId = resolveSelectedPlaybackProfileId(profiles, selectedId, container, mode);
-    const selected = profiles.find(profile => profile.id === profileId);
-
-    if (container === 'original' && selected?.id === ORIGINAL_HEVC_PROFILE_ID) {
-        const hlsMode = selected.modes.hls;
-        if (typeof hlsMode === 'number') return { streamingType: 'hls', mode: hlsMode, profile: selected.id };
-    }
-
     return { streamingType: container, mode, ...(profileId === undefined ? {} : { profile: profileId }) };
 };
 
-/** DPlayer の方式切替要求を、profile の実体に合う録画方式へ正規化する。 */
+/** DPlayer の方式切替要求を録画方式へ渡す。Original HEVC も original API のまま扱う。 */
 export const resolvePlaybackContainer = (
     container: Exclude<apid.PlaybackContainer, 'normal'>,
-    profileId?: string,
-): Exclude<apid.PlaybackContainer, 'normal'> =>
-    container === 'original' && profileId === ORIGINAL_HEVC_PROFILE_ID ? 'hls' : container;
+    _profileId?: string,
+): Exclude<apid.PlaybackContainer, 'normal'> => container;

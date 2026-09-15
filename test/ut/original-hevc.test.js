@@ -11,6 +11,7 @@ const {
     isDecodedDualMono,
     ORIGINAL_HEVC_PROFILE_ID,
 } = require('../../dist/util/OriginalHevcUtil');
+const { classifyOriginalVideoSource } = require('../../dist/util/OriginalVideoUtil');
 const ProcessUtil = require('../../dist/util/ProcessUtil').default;
 
 test('HEVC 無変換プロファイルは対象を MPEG-TS の HEVC へ限定する', () => {
@@ -18,6 +19,13 @@ test('HEVC 無変換プロファイルは対象を MPEG-TS の HEVC へ限定す
     assert.equal(isOriginalHevcSource({ codec: 'hevc', transport: 'mpegts' }), true);
     assert.equal(isOriginalHevcSource({ codec: 'mpeg2', transport: 'mpegts' }), false);
     assert.equal(isOriginalHevcSource({ codec: 'hevc', transport: 'mp4' }), false);
+});
+
+test('直接配信可能な Original source は MPEG-2 / HEVC MPEG-TS だけに分類する', () => {
+    assert.equal(classifyOriginalVideoSource({ codec: 'mpeg2', transport: 'mpegts' }), 'mpeg2');
+    assert.equal(classifyOriginalVideoSource({ codec: 'hevc', transport: 'mpegts' }), 'hevc');
+    assert.equal(classifyOriginalVideoSource({ codec: 'hevc', transport: 'mp4' }), undefined);
+    assert.equal(classifyOriginalVideoSource({ codec: 'h264', transport: 'mpegts' }), undefined);
 });
 
 test('main/sub の PCM が同一なら通常ステレオ、異なればデュアルモノラルと判定する', () => {

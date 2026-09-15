@@ -4,6 +4,7 @@ const {
     resolveSelectedPlaybackProfileId,
     resolvePlaybackSelection,
     resolvePlaybackContainer,
+    isOriginalHevcPlayback,
 } = require('../../dist/util/PlaybackProfileSelectUtil');
 
 // 実サーバの録画 HEVC (tsreplace) の playback-options と同じ並び: auto / オリジナル HEVC / 1080p がいずれも hls の mode 0
@@ -29,9 +30,9 @@ test('選択中がその mode を持たない・未選択なら profile を渡�
     assert.equal(resolveSelectedPlaybackProfileId(profiles, 'auto', 'webm', 0), undefined);
 });
 
-test('HEVC のオリジナル選択は HLS profile の URL へ正規化する', () => {
+test('HEVC のオリジナル選択は元 TS の original API へ渡す', () => {
     assert.deepEqual(resolvePlaybackSelection(profiles, 'original-hevc', 'original', 0), {
-        streamingType: 'hls',
+        streamingType: 'original',
         mode: 0,
         profile: 'original-hevc',
     });
@@ -47,6 +48,13 @@ test('MPEG-2 のオリジナル選択は original API のまま profile を渡�
 });
 
 test('オリジナル方式の profile 実体を DPlayer の切替先へ正規化する', () => {
-    assert.equal(resolvePlaybackContainer('original', 'original-hevc'), 'hls');
+    assert.equal(resolvePlaybackContainer('original', 'original-hevc'), 'original');
     assert.equal(resolvePlaybackContainer('original', 'original-mpeg2'), 'original');
+});
+
+test('HEVC Original の直接配信判定は profile と MPEG-TS/HEVC source の組み合わせだけを受け付ける', () => {
+    assert.equal(isOriginalHevcPlayback({ transport: 'mpegts', codec: 'hevc' }, 'original-hevc'), true);
+    assert.equal(isOriginalHevcPlayback({ transport: 'mp4', codec: 'hevc' }, 'original-hevc'), false);
+    assert.equal(isOriginalHevcPlayback({ transport: 'mpegts', codec: 'mpeg2' }, 'original-hevc'), false);
+    assert.equal(isOriginalHevcPlayback({ transport: 'mpegts', codec: 'hevc' }, 'original-mpeg2'), false);
 });
