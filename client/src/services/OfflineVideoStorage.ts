@@ -1,3 +1,4 @@
+import * as apid from '../../../api';
 import { createOfflineVideoKey, getOfflineVideoKey } from '../../../src/util/OfflineUxUtil';
 
 export interface OfflineVideoRecord {
@@ -21,6 +22,8 @@ export interface OfflineVideoRecord {
     originalFileSize?: number;
     originalChunkSize?: number;
     durationSeconds?: number;
+    // 旧形式には無い。録画保存時に取得したチャプター (開始位置は秒)
+    chapters?: apid.VideoChapter[];
     // 旧形式には無い。保存時に解決できたニコニコ実況過去ログの範囲。
     jikkyoChannelId?: string;
     jikkyoStartAt?: number;

@@ -5,6 +5,7 @@ import {
     createOfflineProgramInfo,
     createOfflineVideoKey,
     findOfflineVideoByIds,
+    normalizeOfflineChapters,
     ORIGINAL_MPEG2_CHUNK_SIZE,
     splitOfflineMpeg2Ranges,
 } from '../../../src/util/OfflineUxUtil';
@@ -138,6 +139,14 @@ export default class OfflineVideos {
         } catch (error) {
             console.error('offline jikkyo parameter resolve error', error);
         }
+        // チャプターは DPlayer 生成前に必要なため、保存レコードへスナップショットする。
+        // 取得できない録画や旧 API でも動画保存自体は継続する。
+        let chapters: apid.VideoChapter[] = [];
+        try {
+            chapters = normalizeOfflineChapters(await this.getJikkyoResolveModels().videoApiModel.getChapters(videoFileId));
+        } catch (error) {
+            console.error('offline chapter resolve error', error);
+        }
         const job: OfflineDownloadJob = { videoId: videoFileId, profile, profileLabel: infoOptions.profileLabel, downloadedBytes: 0, estimatedBytes, program: snapshot, programInfo, state: 'Downloading', error: null };
         this.jobs.set(videoFileId, job);
         this.eventTarget.dispatchEvent(new Event('change'));
@@ -206,6 +215,7 @@ export default class OfflineVideos {
                     originalFileSize: sourceVideo.size,
                     originalChunkSize: ORIGINAL_MPEG2_CHUNK_SIZE,
                     durationSeconds: duration,
+                    chapters: chapters.length > 0 ? chapters : undefined,
                     thumbnailURLs,
                     channelLogoURL: (await cache.match(channelLogoURL)) === undefined ? undefined : channelLogoURL,
                     programInfo,
@@ -284,6 +294,7 @@ export default class OfflineVideos {
                 channelLogoURL: (await cache.match(channelLogoURL)) === undefined ? undefined : channelLogoURL,
                 programInfo,
                 durationSeconds: metadata.duration,
+                chapters: chapters.length > 0 ? chapters : undefined,
                 ...jikkyoParam,
             };
             await OfflineVideoStorage.put(video);

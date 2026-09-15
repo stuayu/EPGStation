@@ -1,6 +1,6 @@
-import * as apid from '../../../../api';
 import BaseVide from './BaseVideo';
 import type { RecordedStreamingType } from '@/util/StreamingTypeUtil';
+import * as apid from '../../../../api';
 
 export type VideoType = 'Normal' | 'RecordedStreaming' | 'LiveHLS' | 'RecordedHLS' | 'LiveMpegTs' | 'OfflineHLS' | 'OfflineOriginalMpeg2';
 
@@ -11,19 +11,27 @@ interface VideoParamBase {
     jikkyoEndAt?: number; // 録画終了時刻 (UNIX 時刻・ミリ秒)
 }
 
+interface OfflineVideoParamBase extends VideoParamBase {
+    durationSeconds: number;
+    chapters?: apid.VideoChapter[];
+    offlineDataBroadcastingVideoFileId?: apid.VideoFileId;
+    offlineDataBroadcastingFileSize?: number;
+    offlineDataBroadcastingStartAt?: number;
+}
+
 export interface NormalVideoParam extends VideoParamBase {
     type: 'Normal';
     videoFileId?: apid.VideoFileId;
     src: string;
 }
 
-export interface OfflineHLSVideoParam extends VideoParamBase {
+export interface OfflineHLSVideoParam extends OfflineVideoParamBase {
     type: 'OfflineHLS';
     src: string;
     playPosition?: number;
 }
 
-export interface OfflineOriginalMpeg2Param extends VideoParamBase {
+export interface OfflineOriginalMpeg2Param extends OfflineVideoParamBase {
     type: 'OfflineOriginalMpeg2';
     src: string;
     playPosition?: number;

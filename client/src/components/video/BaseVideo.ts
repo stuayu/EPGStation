@@ -1569,6 +1569,12 @@ export default abstract class BaseVideo extends Vue {
         }
     }
 
+    /** 保存済み録画のデータ放送シーク計算に使うファイル情報を設定する。 */
+    protected setDataBroadcastingFileInfo(fileSize: number | null, startAt: number | null): void {
+        this.videoFileSizeForDataBroadcasting = fileSize !== null && Number.isFinite(fileSize) && fileSize > 0 ? fileSize : null;
+        this.dataBroadcastingStartAt = startAt !== null && Number.isFinite(startAt) ? startAt : null;
+    }
+
     /** 録画ファイルの再生位置に対応する放送時刻を返す */
     public getDataBroadcastingTime(): number | null {
         return resolveDataBroadcastingTime(this.dataBroadcastingStartAt, this.getDataBroadcastingPlaybackTime());

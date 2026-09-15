@@ -21,6 +21,21 @@ class OfflineHLSVideo extends BaseVideo {
     @Prop({ required: true })
     public videoSrc!: string;
 
+    @Prop({ required: true })
+    public durationSeconds!: number;
+
+    @Prop({ default: () => [] })
+    public offlineChapters!: apid.VideoChapter[];
+
+    @Prop({ default: undefined })
+    public offlineDataBroadcastingVideoFileId!: apid.VideoFileId | undefined;
+
+    @Prop({ default: undefined })
+    public offlineDataBroadcastingFileSize!: number | undefined;
+
+    @Prop({ default: undefined })
+    public offlineDataBroadcastingStartAt!: number | undefined;
+
     @Prop({ default: null })
     public jikkyoChannelId!: string | null;
 
@@ -40,8 +55,23 @@ class OfflineHLSVideo extends BaseVideo {
 
     public mounted(): void {
         this.containerElement = this.$refs.container as HTMLElement;
+        this.setChapters(this.offlineChapters);
+        this.setDataBroadcastingFileInfo(this.offlineDataBroadcastingFileSize ?? null, this.offlineDataBroadcastingStartAt ?? null);
         this.initVideoSetting();
         void this.loadAudioTracks();
+    }
+
+    protected override isEnabledVirtualTimeline(): boolean {
+        return true;
+    }
+
+    public override getDuration(): number {
+        return super.getDuration() || this.durationSeconds;
+    }
+
+    /** MPEG-2 Original の保存時だけデータ放送を有効にする。HLS 保存には BML ES が無い。 */
+    public override getDataBroadcastingParam() {
+        return this.offlineDataBroadcastingVideoFileId === undefined ? null : this.buildRecordedDataBroadcastingParam(this.offlineDataBroadcastingVideoFileId);
     }
 
     protected initVideoSetting(): void {
@@ -52,11 +82,14 @@ class OfflineHLSVideo extends BaseVideo {
             autoplay: true,
             live: false,
             video: { url: this.videoSrc, type: 'hls' },
+            subtitle: { type: 'aribb24' },
             pluginOptions: {
                 // Offline は保存済み VOD。複数音声 master を LL-HLS として扱わせない。
                 hls: { lowLatencyMode: false, startPosition: 0 } as any,
+                aribb24: DPlayerUtil.createAribb24Options(),
             },
         };
+        this.applyChapterHighlights(options, this.durationSeconds);
         this.createPlayer(options);
     }
 

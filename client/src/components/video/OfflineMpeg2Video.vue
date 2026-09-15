@@ -9,6 +9,7 @@ import StreamSupportUtil from '@/util/StreamSupportUtil';
 import UaUtil from '@/util/UaUtil';
 import { DPlayerType } from 'dplayer';
 import { Deinterlacer, supportsDeinterlace } from 'mpeg2toh264/yadif';
+import * as apid from '../../../../api';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 
 /** Cache Storage の Range 仮想ファイルを mpeg2toh264 へ渡すプレイヤー。 */
@@ -21,6 +22,21 @@ class OfflineMpeg2Video extends BaseVideo {
 
     @Prop({ required: true })
     public videoSrc!: string;
+
+    @Prop({ required: true })
+    public durationSeconds!: number;
+
+    @Prop({ default: () => [] })
+    public offlineChapters!: apid.VideoChapter[];
+
+    @Prop({ default: undefined })
+    public offlineDataBroadcastingVideoFileId!: apid.VideoFileId | undefined;
+
+    @Prop({ default: undefined })
+    public offlineDataBroadcastingFileSize!: number | undefined;
+
+    @Prop({ default: undefined })
+    public offlineDataBroadcastingStartAt!: number | undefined;
 
     @Prop({ default: null })
     public jikkyoChannelId!: string | null;
@@ -38,9 +54,24 @@ class OfflineMpeg2Video extends BaseVideo {
 
     public mounted(): void {
         this.containerElement = this.$refs.container as HTMLElement;
+        this.setChapters(this.offlineChapters);
+        this.setDataBroadcastingFileInfo(this.offlineDataBroadcastingFileSize ?? null, this.offlineDataBroadcastingStartAt ?? null);
         const support = StreamSupportUtil.checkMpeg2ToH264Support();
         if (support.isSupported === false) throw new Error(support.reason ?? '非対応ブラウザーです。');
         this.initVideoSetting();
+    }
+
+    protected override isEnabledVirtualTimeline(): boolean {
+        return true;
+    }
+
+    public override getDuration(): number {
+        return super.getDuration() || this.durationSeconds;
+    }
+
+    /** 保存元 TS に BML が残る MPEG-2 Original のみデータ放送へ接続する。 */
+    public override getDataBroadcastingParam() {
+        return this.offlineDataBroadcastingVideoFileId === undefined ? null : this.buildRecordedDataBroadcastingParam(this.offlineDataBroadcastingVideoFileId);
     }
 
     protected initVideoSetting(): void {
