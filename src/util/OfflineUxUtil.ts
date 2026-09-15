@@ -42,6 +42,69 @@ export interface OfflineProgramInfoOptions {
     resolveGenre?: (genre: number, subGenre?: number) => string | null;
 }
 
+/** オフライン保存レコードから扱えるチャプターだけを取り出す。旧レコードは空配列になる。 */
+export const normalizeOfflineChapters = (value: unknown): apid.VideoChapter[] => {
+    if (Array.isArray(value) === false) return [];
+
+    return value
+        .filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object')
+        .filter(item =>
+            typeof item.id === 'number' &&
+            Number.isSafeInteger(item.id) &&
+            typeof item.startAt === 'number' &&
+            Number.isFinite(item.startAt) &&
+            item.startAt >= 0 &&
+            typeof item.endAt === 'number' &&
+            Number.isFinite(item.endAt) &&
+            item.endAt > item.startAt &&
+            (item.title === null || typeof item.title === 'string'),
+        )
+        .map(item => ({
+            id: item.id as number,
+            startAt: item.startAt as number,
+            endAt: item.endAt as number,
+            title: item.title as string | null,
+        }))
+        .sort((a, b) => a.startAt - b.startAt);
+};
+
+export interface OfflineDataBroadcastingInfo {
+    videoFileId: apid.VideoFileId;
+    fileSize: number;
+    startAt: number | null;
+}
+
+/** MPEG-2 Original をオンラインで再生するときだけデータ放送を許可する。 */
+export const createOfflineDataBroadcastingInfo = (
+    record: {
+        videoId: number;
+        kind?: 'hls' | 'original-mpeg2';
+        originalURL?: string;
+        originalFileSize?: number;
+        program: unknown;
+    },
+    isOnline: boolean,
+): OfflineDataBroadcastingInfo | null => {
+    if (
+        isOnline !== true ||
+        record.kind !== 'original-mpeg2' ||
+        typeof record.originalURL !== 'string' ||
+        record.originalURL.length === 0 ||
+        !Number.isSafeInteger(record.videoId) ||
+        !Number.isSafeInteger(record.originalFileSize) ||
+        (record.originalFileSize as number) <= 0
+    ) return null;
+
+    const program = (record.program !== null && typeof record.program === 'object' ? record.program : {}) as Record<string, unknown>;
+    const videoFiles = Array.isArray(program.videoFiles) ? program.videoFiles : [];
+    const videoFile = videoFiles.find(item => item !== null && typeof item === 'object' && (item as { id?: unknown }).id === record.videoId);
+    const startAt = videoFile !== undefined && typeof videoFile === 'object' && Number.isFinite((videoFile as { startAt?: unknown }).startAt)
+        ? (videoFile as { startAt: number }).startAt
+        : null;
+
+    return { videoFileId: record.videoId, fileSize: record.originalFileSize as number, startAt };
+};
+
 /** MPEG-2 TS を Range 取得するチャンク境界へ分割する。 */
 export const splitOfflineMpeg2Ranges = (
     fileSize: number,

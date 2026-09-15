@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
     createOfflineProgramInfo,
+    createOfflineDataBroadcastingInfo,
     createOfflineVideoKey,
     findOfflineVideoByKey,
     findOfflineVideoByIds,
@@ -12,6 +13,7 @@ const {
     resolveOfflineWatchReturnPath,
     shouldShowOfflineIndicator,
     splitOfflineMpeg2Ranges,
+    normalizeOfflineChapters,
 } = require('../../dist/util/OfflineUxUtil');
 const {
     createOfflinePlaybackPosition,
@@ -101,4 +103,38 @@ test('保存時スナップショットからジャンル、シリーズ、映�
     assert.equal(info.seriesText, '作品 第1話 開始');
     assert.match(info.videoText, /1080i/);
     assert.match(info.audioText, /48000Hz/);
+});
+
+test('保存済みチャプターを正規化し、旧形式や不正な項目は空配列にする', () => {
+    assert.deepEqual(
+        normalizeOfflineChapters([
+            { id: 2, startAt: 20, endAt: 30, title: '後半' },
+            { id: 1, startAt: 5, endAt: 10, title: null },
+            { id: 'bad', startAt: 0, endAt: 1, title: '除外' },
+            { id: 3, startAt: 30, endAt: 30, title: '除外' },
+        ]),
+        [
+            { id: 1, startAt: 5, endAt: 10, title: null },
+            { id: 2, startAt: 20, endAt: 30, title: '後半' },
+        ],
+    );
+    assert.deepEqual(normalizeOfflineChapters(undefined), []);
+});
+
+test('データ放送はオンラインの MPEG-2 Original だけへファイル情報を組み立てる', () => {
+    const record = {
+        videoId: 7,
+        kind: 'original-mpeg2',
+        originalURL: '/local/original.ts',
+        originalFileSize: 188 * 100,
+        program: { videoFiles: [{ id: 7, startAt: 123456 }] },
+    };
+    assert.deepEqual(createOfflineDataBroadcastingInfo(record, true), {
+        videoFileId: 7,
+        fileSize: 188 * 100,
+        startAt: 123456,
+    });
+    assert.equal(createOfflineDataBroadcastingInfo(record, false), null);
+    assert.equal(createOfflineDataBroadcastingInfo({ ...record, kind: 'hls' }, true), null);
+    assert.equal(createOfflineDataBroadcastingInfo({ ...record, originalFileSize: 0 }, true), null);
 });

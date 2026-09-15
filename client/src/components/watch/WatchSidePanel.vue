@@ -17,7 +17,7 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import { ISettingStorageModel, WatchSidePanelTab } from '@/model/storage/setting/ISettingStorageModel';
-import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 /**
  * 視聴画面の右パネル。下部のタブで中身を切り替える
@@ -39,6 +39,11 @@ class WatchSidePanel extends Vue {
         // 前回選択したタブを復元する。この画面に無いタブが保存されていたら先頭のタブにする
         const savedTab = this.setting.getSavedValue().watchSidePanelTab;
         this.selectedTab = this.tabs.includes(savedTab) === true ? savedTab : this.tabs[0];
+    }
+
+    @Watch('tabs')
+    public onTabsChanged(): void {
+        if (this.tabs.includes(this.selectedTab) === false) this.selectedTab = this.tabs[0];
     }
 
     public selectTab(tab: WatchSidePanelTab): void {
