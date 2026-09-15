@@ -10,10 +10,7 @@ namespace ProcessUtil {
      * @param stdin: 子プロセス stdin
      * @param onError: エラーを記録する処理 (EPIPE も含む。throw してはいけない)
      */
-    export const attachStdinErrorHandler = (
-        stdin: NodeJS.WritableStream,
-        onError?: (error: Error) => void,
-    ): void => {
+    export const attachStdinErrorHandler = (stdin: NodeJS.WritableStream, onError?: (error: Error) => void): void => {
         stdin.on('error', error => {
             const writableError = error as WritableError;
             onError?.(error);
@@ -81,28 +78,68 @@ namespace ProcessUtil {
         return arg;
     };
 
+    /** コマンドラインを引用符内の空白を保ったまま分割する。 */
+    const splitCommandLine = (cmd: string): string[] => {
+        const result: string[] = [];
+        let current = '';
+        let quote: '"' | "'" | null = null;
+
+        const push = (): void => {
+            if (current.length > 0) result.push(current);
+            current = '';
+        };
+
+        for (const char of cmd) {
+            if (quote !== null) {
+                current += char;
+                if (char === quote) quote = null;
+            } else if (char === '"' || char === "'") {
+                current += char;
+                quote = char;
+            } else if (/\s/u.test(char)) {
+                push();
+            } else {
+                current += char;
+            }
+        }
+        push();
+
+        return result;
+    };
+
     /**
      * 渡された cmd 文字列を bin と args に分離する
      * @param cmd: string
      * @return ProcessUtil.Cmds
      */
     export const parseCmdStr = (cmd: string): ProcessUtil.Cmds => {
-        let args = cmd.split(' ');
-        let bin = args.shift();
-        if (typeof bin === 'undefined') {
+        let args = splitCommandLine(cmd);
+        const first = args.shift();
+        if (typeof first === 'undefined') {
             throw new Error('CmdParseError');
         }
-        bin = stripOuterQuotes(bin);
+        let bin: string = stripOuterQuotes(first);
 
         // %NODE% の replace
         bin = bin.replace(/%NODE%/g, process.argv[0]);
 
-        // bin の存在確認
-        try {
-            fs.statSync(bin);
-        } catch (e: any) {
-            throw new Error('CmdBinIsNotFound');
+        // Windows の process.execPath のように、引用符なしでも空白を含む実パスが渡ることがある。
+        // 先頭 token が見つからない場合だけ後続 token を実行ファイル名へ戻して探す。
+        let binFound = false;
+        for (let end = 0; end <= args.length; end++) {
+            const candidate: string = [bin, ...args.slice(0, end)].join(' ');
+            try {
+                if (fs.statSync(candidate).isFile()) {
+                    bin = candidate;
+                    args = args.slice(end);
+                    binFound = true;
+                    break;
+                }
+            } catch (_error) {
+                // 次の token までを実行ファイル名として試す
+            }
         }
+        if (binFound === false) throw new Error('CmdBinIsNotFound');
 
         args = args
             .map(arg => {

@@ -89,7 +89,10 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                 ? allPresets
                 : container === 'original'
                   ? allPresets.filter(
-                        preset => preset.id === 'auto' || (allowOriginal && preset.delivery === 'mpeg2toh264'),
+                        preset =>
+                            preset.id === 'auto' ||
+                            (allowOriginal && preset.delivery === 'mpeg2toh264') ||
+                            (allowOriginal && preset.id === ORIGINAL_HEVC_PROFILE_ID),
                     )
                   : allPresets.filter(
                         preset =>
@@ -173,7 +176,9 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                         .map(container => [container, modeMap[container].indexOf(modePresetId)])
                         .filter(entry => Number(entry[1]) >= 0),
                 ) as PlaybackOptions['profiles'][number]['modes'];
-                if (preset.delivery === 'mpeg2toh264') modes.original = 0;
+                // `original` は MPEG-2 の端末変換と HEVC の HLS 詰め替えをまとめた配信方式。
+                // 実際の URL は role に応じてクライアント側で解決する。
+                if (preset.delivery === 'mpeg2toh264' || preset.id === ORIGINAL_HEVC_PROFILE_ID) modes.original = 0;
                 if (preset.id === ORIGINAL_HEVC_PROFILE_ID) modes.hls = 0;
                 return {
                     role,
@@ -192,7 +197,12 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                         videoBitrate: preset.output.videoBitrate,
                         videoCodec: preset.output.codec,
                         delivery: (preset.delivery ?? 'stream') as 'stream' | 'mpeg2toh264',
-                        embeddedAudioSwitch: this.getEmbeddedAudioSwitch(scope, modes, modePresetId, originalHevcAudioLayout),
+                        embeddedAudioSwitch: this.getEmbeddedAudioSwitch(
+                            scope,
+                            modes,
+                            modePresetId,
+                            originalHevcAudioLayout,
+                        ),
                     },
                 };
             })
@@ -271,7 +281,8 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
             const tracks = await this.videoUtil.getAudioTracks(filePath);
             const layout = classifyOriginalHevcAudioLayout(tracks);
             // StreamApiModel と同じく、2 本目の音声 ES がファイル全体に無ければ 1 本として扱う
-            if (layout === 'multi' && (await this.videoUtil.hasStableSecondAudioStream(filePath)) === false) return 'single';
+            if (layout === 'multi' && (await this.videoUtil.hasStableSecondAudioStream(filePath)) === false)
+                return 'single';
             return layout;
         } catch (_error) {
             return undefined;

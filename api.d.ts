@@ -1325,7 +1325,7 @@ export interface PlaybackProfile {
     // コンテナ別に「主音声・副音声を再接続無しで同時配信できるか」。
     // true の場合、クライアントは audioTrack=all で開き、mpegts.js の
     // switchPrimaryAudio() / switchSecondaryAudio() で再接続無しに音声を切り替えられる。
-    // 現状 m2tsll (tsreadex 経由) のみ true になりうる。hls は複数音声トラック未対応のため常に false
+    // m2tsll (tsreadex 経由) と、複数音声を持つ in-memory HLS の profile で true になりうる
     embeddedAudioSwitch?: Partial<Record<'m2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | 'original', boolean>>;
 }
 

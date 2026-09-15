@@ -5,7 +5,13 @@ export const ORIGINAL_MPEG2_CHUNK_SIZE = Math.floor((16 * 1024 * 1024) / 188) * 
 
 /** 保存済み動画を一意に識別する URL 用キーを作る。 */
 export const createOfflineVideoKey = (videoFileId: number, generationId: string): string => {
-    if (!Number.isSafeInteger(videoFileId) || videoFileId < 0 || generationId.length === 0 || /[/\\?#]/u.test(generationId)) return '';
+    if (
+        !Number.isSafeInteger(videoFileId) ||
+        videoFileId < 0 ||
+        generationId.length === 0 ||
+        /[/\\?#]/u.test(generationId)
+    )
+        return '';
     return `${videoFileId.toString(10)}-${generationId}`;
 };
 
@@ -150,8 +156,10 @@ export const getOfflineVideoKey = (record: { key?: string; videoId: number; gene
     record.key ?? createOfflineVideoKey(record.videoId, record.generationId);
 
 /** URL の一意キーから保存済み動画を引く。 */
-export const findOfflineVideoByKey = <T extends { key?: string; videoId: number; generationId: string }>(records: T[], key: string): T | null =>
-    records.find(record => getOfflineVideoKey(record) === key) ?? null;
+export const findOfflineVideoByKey = <T extends { key?: string; videoId: number; generationId: string }>(
+    records: T[],
+    key: string,
+): T | null => records.find(record => getOfflineVideoKey(record) === key) ?? null;
 
 /** オフライン視聴画面を直接開いた場合の戻り先を決める。通常はブラウザ履歴を優先する。 */
 export const resolveOfflineWatchReturnPath = (origin: unknown, key: string, recordedId?: number): string => {
@@ -159,7 +167,9 @@ export const resolveOfflineWatchReturnPath = (origin: unknown, key: string, reco
         case 'detail':
             return `/offline-videos/${encodeURIComponent(key)}`;
         case 'recorded-detail':
-            return Number.isSafeInteger(recordedId) && (recordedId as number) >= 0 ? `/recorded/detail/${(recordedId as number).toString(10)}` : '/recorded';
+            return Number.isSafeInteger(recordedId) && (recordedId as number) >= 0
+                ? `/recorded/detail/${(recordedId as number).toString(10)}`
+                : '/recorded';
         case 'recorded':
             return '/recorded';
         default:

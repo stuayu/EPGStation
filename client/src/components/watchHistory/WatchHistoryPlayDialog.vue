@@ -52,7 +52,7 @@ import IRecordedDetailSelectStreamState from '@/model/state/recorded/detail/IRec
 import Util from '@/util/Util';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
-import { resolveSelectedPlaybackProfileId } from '@/util/PlaybackProfileSelectUtil';
+import { resolvePlaybackSelection } from '@/util/PlaybackProfileSelectUtil';
 import { toStreamingType } from '@/util/StreamingTypeUtil';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import { getPlaybackShortLabel } from '@/util/PlaybackLabelUtil';
@@ -151,6 +151,16 @@ class WatchHistoryPlayDialog extends Vue {
             this.streamState.addOriginalStreamType();
             this.isStreamingAvailable = true;
         }
+
+        if (this.selectedContainer === 'original') {
+            const original = this.qualityProfiles.find(
+                profile => profile.role === 'original-mpeg2' || profile.role === 'original-hevc',
+            );
+            if (original !== undefined) {
+                this.playbackState.selectPreset(original.id);
+                this.selectQuality(original.id);
+            }
+        }
     }
 
     public selectQuality(id: string): void {
@@ -198,7 +208,12 @@ class WatchHistoryPlayDialog extends Vue {
         }
 
         const streamingType = toStreamingType(this.streamState.selectedStreamType);
-        const mode = this.streamState.selectedStreamMode.toString(10);
+        const selection = resolvePlaybackSelection(
+            this.qualityProfiles,
+            this.playbackState.selectedPresetId,
+            streamingType,
+            this.streamState.selectedStreamMode,
+        );
         const videoFileId = this.videoFile.id;
         const recordedId = this.recordedId;
 
@@ -210,14 +225,9 @@ class WatchHistoryPlayDialog extends Vue {
             path: `/recorded/streaming/${videoFileId}`,
             query: {
                 recordedId: recordedId.toString(10),
-                streamingType: streamingType,
-                mode: mode,
-                profile: resolveSelectedPlaybackProfileId(
-                    this.qualityProfiles,
-                    this.playbackState.selectedPresetId,
-                    streamingType,
-                    this.streamState.selectedStreamMode,
-                ),
+                streamingType: selection.streamingType,
+                mode: selection.mode.toString(10),
+                profile: selection.profile,
             },
         });
     }

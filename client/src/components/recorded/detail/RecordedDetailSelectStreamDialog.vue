@@ -56,7 +56,7 @@ import * as apid from '../../../../../api';
 import PlaybackQualityList from '@/components/video/quality/PlaybackQualityList.vue';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import { getPlaybackShortLabel } from '@/util/PlaybackLabelUtil';
-import { resolveSelectedPlaybackProfileId } from '@/util/PlaybackProfileSelectUtil';
+import { resolvePlaybackSelection } from '@/util/PlaybackProfileSelectUtil';
 import { toStreamingType } from '@/util/StreamingTypeUtil';
 
 @Component({ components: { PlaybackQualityList } })
@@ -123,7 +123,9 @@ class RecordedDetailSelectStreamDialog extends Vue {
         }
 
         if (this.selectedContainer === 'original') {
-            const original = this.qualityProfiles.find(profile => profile.role === 'original-mpeg2');
+            const original = this.qualityProfiles.find(
+                profile => profile.role === 'original-mpeg2' || profile.role === 'original-hevc',
+            );
             if (original !== undefined) {
                 this.playbackState.selectPreset(original.id);
                 this.applySelectedQualityToStreamMode(original.id);
@@ -218,18 +220,20 @@ class RecordedDetailSelectStreamDialog extends Vue {
             return;
         }
 
+        const selection = resolvePlaybackSelection(
+            this.qualityProfiles,
+            this.playbackState.selectedPresetId,
+            toStreamingType(this.dialogState.selectedStreamType),
+            this.dialogState.selectedStreamMode,
+        );
+
         await Util.move(this.$router, {
             path: `/recorded/streaming/${this.dialogState.getVideoFileId()}`,
             query: {
                 recordedId: recordedId.toString(),
-                streamingType: toStreamingType(this.dialogState.selectedStreamType),
-                mode: this.dialogState.selectedStreamMode.toString(10),
-                profile: resolveSelectedPlaybackProfileId(
-                    this.qualityProfiles,
-                    this.playbackState.selectedPresetId,
-                    toStreamingType(this.dialogState.selectedStreamType),
-                    this.dialogState.selectedStreamMode,
-                ),
+                streamingType: selection.streamingType,
+                mode: selection.mode.toString(10),
+                profile: selection.profile,
             },
         });
     }

@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-15
 
+- **録画の配信選択ダイアログで Original が表示されない問題を修正した**: MPEG-2 側は `original-mpeg2` の `modes.original=0` が返る経路でも、録画の方式追加がその応答を正しく使えることを固定した。HEVC 側は `original-hevc` が従来 `modes.hls=0` だけで `modes.original` を持たず、`container=original` の再取得でも候補から除外されていたため、両 Original profile に `modes.original=0` を付けた。MPEG-2 は `/api/videos/{videoFileId}/original`、HEVC は `hls + profile=original-hevc` へ選択結果を正規化し、tsreplace の fMP4 / `hvc1` 経路を維持する。mode 番号からの profile 逆引きは行わず、録画詳細・視聴履歴・DPlayer の方式切替で同じ純粋関数を使う。端末能力・素材判定により候補にならない録画は従来どおり表示しない。
+
 - **tsreplace の encoded HEVC Original で音声 ES が1本になる問題を修正した**: `StreamApiModel` が encoded 入力へ tsreadex を挟まないため、従来の `%AUDIOMAP%` は `audioTrack=all` でも主音声 ES 1本へ縮退していた。`VideoUtil.getAudioTracks()` の既存一覧を使い、同じ ES の dual-mono 2件は `asplit + pan`、独立 ES 2本は `-map 0:v:0 -map 0:a:0 -map 0:a:1` として音声を AAC 再エンコードする。判定不能・単一音声は従来どおり1本。`Fmp4Packager` が `video` / `audio0` / `audio1` へ分解できるため、オンライン HLS と Offline の master に `#EXT-X-MEDIA` / `CODECS` が入り、`embeddedAudioSwitch.hls` は original-hevc で有効になる。filter_complex の枝へ `%AUDIOFILTER%` / `-af` を重ねず、pan 内の `|` はシェルパイプと誤判定しない。`hevc-dual-audio` ハーネスで本番 Offline 先頭を検査できる。
 
 - **EPG のデュアルモノラル誤判定で通常ステレオを分割する問題を差し戻した**: 録画の `audio-tracks` は AAC 1 ES / 2ch や EPG の componentType 0x02 を根拠にせず、`ffmpeg -dual_mono_mode main/sub` の各3秒デコード結果を冒頭・中央・末尾で比較する。各 probe 窓で平均絶対差が閾値を超えた場合だけ `isDualMono=true` とし、通常ステレオ、失敗、timeout、判定窓で構成変化を検出した録画は音声1本を保つ。判定窓の外の構成変化は保証しない。ファイルパス単位で判定をキャッシュし、`original-hevc` の `embeddedAudioSwitch.hls` も実AACで複数音声と判定できた場合だけ有効にする。実測: 本番 videoFile 34331 の主/sub PCM差は0.0、左右差は-34.9dBで、EPG上は副音声でも分割しない。
