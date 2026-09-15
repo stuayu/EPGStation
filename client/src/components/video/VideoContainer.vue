@@ -316,6 +316,18 @@ class VideoContainer extends Vue {
                 } satisfies PlaybackContainerSwitchRequest);
                 return;
             }
+            if (selectedProfile?.id === 'original-hevc' && currentContainer !== 'hls') {
+                const mode = selectedProfile.modes.hls;
+                if (typeof mode === 'number') {
+                    this.$emit('playbackContainerSwitch', {
+                        container: 'hls',
+                        mode,
+                        profileId: selectedProfile.id,
+                        playPosition: 'playPosition' in this.videoParam ? this.videoParam.playPosition ?? 0 : 0,
+                    } satisfies PlaybackContainerSwitchRequest);
+                    return;
+                }
+            }
             this.applyPlaybackProfilesToVideo();
             const pendingError = this.pendingPlaybackError;
             this.pendingPlaybackError = null;
@@ -449,7 +461,16 @@ class VideoContainer extends Vue {
 
         const supported = containers.filter(container => {
             if (container === 'm2tsll') return StreamSupportUtil.isM2TSLLSupported();
-            if (container === 'original') return StreamSupportUtil.isMpeg2ToH264Supported();
+            if (container === 'original') {
+                if (this.videoParam.type === 'LiveMpegTs' && this.videoParam.directMpeg2 === true) {
+                    return StreamSupportUtil.isMpeg2ToH264Supported();
+                }
+                return this.playbackProfiles.some(
+                    profile =>
+                        typeof profile.modes.original === 'number' &&
+                        (profile.role !== 'original-mpeg2' || StreamSupportUtil.isMpeg2ToH264Supported()),
+                );
+            }
             // 録画の MP4 / WebM は Content-Length / Range を返せない chunked 配信なので
             // WebKit (iOS / iPadOS / Safari) では MediaError 4 になり再生できない
             if (container === 'mp4' || container === 'webm') return StreamSupportUtil.isProgressiveFileStreamSupported();

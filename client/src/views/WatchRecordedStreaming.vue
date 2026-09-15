@@ -84,6 +84,7 @@ import { JikkyoKakologParam, resolveJikkyoKakologParam } from '@/util/JikkyoKako
 import Util from '@/util/Util';
 import { AribKeyCode } from 'web-bml';
 import { parseRecordedStreamingType } from '@/util/StreamingTypeUtil';
+import { resolvePlaybackContainer } from '@/util/PlaybackProfileSelectUtil';
 import StreamQualityUtil from '@/util/StreamQualityUtil';
 import { isRecordedWatchModeValid, parseWatchRouteInteger } from '@/util/WatchRouteParamUtil';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
@@ -187,10 +188,11 @@ class WatchRecordedStreaming extends Vue {
             mode: request.mode,
             profile: request.profileId,
         };
-        if (request.container === 'hls') {
+        const resolvedContainer = resolvePlaybackContainer(request.container, request.profileId);
+        if (resolvedContainer === 'hls') {
             this.videoParam = { type: 'RecordedHLS', ...common };
         } else {
-            const streamingType = parseRecordedStreamingType(request.container);
+            const streamingType = parseRecordedStreamingType(resolvedContainer);
             if (streamingType === null) return;
             this.videoParam = { type: 'RecordedStreaming', streamingType, ...common };
         }

@@ -24,10 +24,7 @@ const AAC_DUAL_MONO_PCM_BYTES_PER_SAMPLE = 2;
 const AAC_DUAL_MONO_DIFFERENCE_THRESHOLD = 1;
 
 /** main/sub のデコード結果を比較する。PCM が揃わない場合は判定不能。 */
-export const compareDecodedAudio = (
-    main: Uint8Array,
-    sub: Uint8Array,
-): DecodedAudioComparison | undefined => {
+export const compareDecodedAudio = (main: Uint8Array, sub: Uint8Array): DecodedAudioComparison | undefined => {
     if (
         main.byteLength === 0 ||
         main.byteLength !== sub.byteLength ||
@@ -317,9 +314,7 @@ const createKnownAudioArgs = (
         const filterComplex = all
             ? `-filter_complex "[0:a:0]asplit=2[m][s];[m]pan=stereo|c0=c0|c1=c0${boost === '' ? '' : `,${boost}`}[main_audio];[s]pan=stereo|c0=c1|c1=c1${boost === '' ? '' : `,${boost}`}[sub_audio]" `
             : `-filter_complex "[0:a:0]pan=stereo|c0=${main}|c1=${main}${boost === '' ? '' : `,${boost}`}[${label}]" `;
-        const maps = all
-            ? '-map 0:v:0 -map "[main_audio]" -map "[sub_audio]"'
-            : `-map 0:v:0 -map "[${label}]"`;
+        const maps = all ? '-map 0:v:0 -map "[main_audio]" -map "[sub_audio]"' : `-map 0:v:0 -map "[${label}]"`;
 
         return { filterComplex, maps, filter: '' };
     }
@@ -335,7 +330,7 @@ const createKnownAudioArgs = (
             };
         }
 
-        const index = audioTrack === 'sub' ? 1 : parseAudioIndex(audioTrack) ?? 0;
+        const index = audioTrack === 'sub' ? 1 : (parseAudioIndex(audioTrack) ?? 0);
         return {
             filterComplex: '',
             maps: `-map 0:v:0 -map 0:a:${index}?`,

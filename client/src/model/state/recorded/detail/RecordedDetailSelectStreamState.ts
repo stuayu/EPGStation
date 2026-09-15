@@ -159,7 +159,7 @@ export default class RecordedDetailSelectStreamState implements IRecordedDetailS
         }
     }
 
-    /** playback-options が返した MPEG-2 original を方式一覧へ追加する。 */
+    /** playback-options が返した Original profile (MPEG-2 または HEVC) を方式一覧へ追加する。 */
     public addOriginalStreamType(): void {
         if (this.streamTypeItems.includes('オリジナル')) return;
         this.streamTypeItems.push('オリジナル');

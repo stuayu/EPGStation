@@ -254,11 +254,9 @@ export default class VideoUtil implements IVideoUtil {
         let probe = this.aacDualMonoCache.get(filePath);
         if (probe === undefined) {
             const duration = VideoUtil.toNumber(durationValue);
-            const positions = [
-                0,
-                Math.max(0, (duration ?? 0) / 2 - 1.5),
-                Math.max(0, (duration ?? 0) - 3),
-            ].filter((position, index, all) => all.indexOf(position) === index);
+            const positions = [0, Math.max(0, (duration ?? 0) / 2 - 1.5), Math.max(0, (duration ?? 0) - 3)].filter(
+                (position, index, all) => all.indexOf(position) === index,
+            );
             probe = probeAacDualMono(this.config.ffmpeg, filePath, positions);
             this.aacDualMonoCache.set(filePath, probe);
         }

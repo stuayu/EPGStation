@@ -541,7 +541,8 @@ export default class StreamApiModel implements IStreamApiModel {
             const layout = classifyOriginalHevcAudioLayout(await this.videoUtil.getAudioTracks(filePath));
             // 音声 ES が 2 本と判定されても、冒頭の PMT だけの結果のことがある。
             // ファイル全体で 2 本目が続かない録画は 1 本として扱う (途中から再生すると 2 本目が無く、切り替えても意味がない)
-            if (layout === 'multi' && (await this.videoUtil.hasStableSecondAudioStream(filePath)) === false) return 'single';
+            if (layout === 'multi' && (await this.videoUtil.hasStableSecondAudioStream(filePath)) === false)
+                return 'single';
 
             return layout;
         } catch (_err) {

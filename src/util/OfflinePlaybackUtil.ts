@@ -9,7 +9,12 @@ export const createOfflinePlaybackPositionKey = (videoKey: string): string => `e
 
 /** 保存レコードから再生位置の分母となる動画長を取得する。 */
 export const getOfflineVideoDurationSeconds = (record: { durationSeconds?: number; program: unknown }): number => {
-    if (typeof record.durationSeconds === 'number' && Number.isFinite(record.durationSeconds) && record.durationSeconds > 0) return record.durationSeconds;
+    if (
+        typeof record.durationSeconds === 'number' &&
+        Number.isFinite(record.durationSeconds) &&
+        record.durationSeconds > 0
+    )
+        return record.durationSeconds;
     const program = record.program as { startAt?: unknown; endAt?: unknown };
     if (typeof program.startAt !== 'number' || typeof program.endAt !== 'number') return 0;
     return Math.max(0, (program.endAt - program.startAt) / 1000);
@@ -28,7 +33,8 @@ export const restoreOfflinePlaybackPosition = (raw: string | null, duration: num
         const value: unknown = JSON.parse(raw);
         if (value === null || typeof value !== 'object') return null;
         const position = (value as { position?: unknown }).position;
-        if (typeof position !== 'number' || !Number.isFinite(position) || !Number.isFinite(duration) || duration <= 0) return null;
+        if (typeof position !== 'number' || !Number.isFinite(position) || !Number.isFinite(duration) || duration <= 0)
+            return null;
         return normalizeOfflinePlaybackPosition(position, duration);
     } catch {
         return null;
@@ -36,7 +42,11 @@ export const restoreOfflinePlaybackPosition = (raw: string | null, duration: num
 };
 
 /** localStorage へ保存する再生位置レコードを作る。 */
-export const createOfflinePlaybackPosition = (position: number, duration: number, updatedAt: number): OfflinePlaybackPosition => ({
+export const createOfflinePlaybackPosition = (
+    position: number,
+    duration: number,
+    updatedAt: number,
+): OfflinePlaybackPosition => ({
     position: normalizeOfflinePlaybackPosition(position, duration),
     duration,
     updatedAt,

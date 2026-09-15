@@ -12,8 +12,7 @@ export interface OfflineJikkyoRecordLike {
 }
 
 export type OfflineJikkyoResolution =
-    | { source: 'stored' | 'server'; param: OfflineJikkyoParam }
-    | { source: 'none'; param: null };
+    { source: 'stored' | 'server'; param: OfflineJikkyoParam } | { source: 'none'; param: null };
 
 const readParam = (record: OfflineJikkyoRecordLike | null | undefined): OfflineJikkyoParam | null => {
     if (
