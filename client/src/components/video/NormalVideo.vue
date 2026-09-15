@@ -29,10 +29,6 @@ class NormalVideo extends BaseVideo {
     public jikkyoEndAt!: number | null;
 
     private videoApiModel: IVideoApiModel = container.get<IVideoApiModel>('IVideoApiModel');
-    private audioContext: AudioContext | null = null;
-    private audioSource: MediaElementAudioSourceNode | null = null;
-    private audioSplitter: ChannelSplitterNode | null = null;
-    private audioMerger: ChannelMergerNode | null = null;
 
     public mounted(): void {
         this.containerElement = this.$refs.container as HTMLElement;
@@ -219,7 +215,7 @@ class NormalVideo extends BaseVideo {
             if (tracks.length < 2 || tracks.some(track => track.isDualMono !== true) === true) {
                 return;
             }
-            if (NormalVideo.getAudioContextConstructor() === null) {
+            if (BaseVideo.getAudioContextConstructor() === null) {
                 // Web Audio が使えない環境では切替 UI を出さない
                 return;
             }
@@ -238,118 +234,6 @@ class NormalVideo extends BaseVideo {
         }
     }
 
-    /**
-     * この環境で使える AudioContext のコンストラクタを返す
-     * @return typeof AudioContext | null 使えない場合は null
-     */
-    private static getAudioContextConstructor(): typeof AudioContext | null {
-        const ctor =
-            window.AudioContext ??
-            (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-
-        return typeof ctor === 'undefined' ? null : ctor;
-    }
-
-    /**
-     * デュアルモノラル用の Web Audio グラフを生成する
-     *
-     * **再生開始時ではなく、音声を切り替えるユーザー操作の中で初めて生成する。**
-     * `createMediaElementSource()` を呼ぶと以後その要素の音は Web Audio を通るようになるため、
-     * 自動再生制限で AudioContext が suspended のまま生成すると、切替を使わない利用者まで無音になる
-     * @param video: HTMLVideoElement
-     * @return boolean 生成できた (または生成済みの) 場合 true
-     */
-    private setupDualMonoAudioGraph(video: HTMLVideoElement): boolean {
-        if (this.audioContext !== null) {
-            return true;
-        }
-
-        try {
-            const AudioContextConstructor = NormalVideo.getAudioContextConstructor();
-            if (AudioContextConstructor === null) {
-                return false;
-            }
-
-            const context = new AudioContextConstructor();
-            const source = context.createMediaElementSource(video);
-            const splitter = context.createChannelSplitter(2);
-            const merger = context.createChannelMerger(2);
-            source.connect(context.destination);
-            this.audioContext = context;
-            this.audioSource = source;
-            this.audioSplitter = splitter;
-            this.audioMerger = merger;
-
-            return true;
-        } catch (err) {
-            console.error(err);
-            this.destroyNativeAudioTrackSwitch();
-
-            return false;
-        }
-    }
-
-    /**
-     * Web Audio で主音声・副音声を切り替える
-     * @param selected: apid.AudioTrackSpecifier
-     * @return Promise<void>
-     */
-    private async selectDualMonoAudioTrack(selected: apid.AudioTrackSpecifier): Promise<void> {
-        const video = (this.dp as any)?.video as HTMLVideoElement | undefined;
-        if (typeof video === 'undefined') {
-            return;
-        }
-
-        // 主音声のままならグラフを作る必要が無い (音は素通しでよい)
-        if (selected !== 'sub' && this.audioContext === null) {
-            return;
-        }
-
-        if (this.setupDualMonoAudioGraph(video) === false) {
-            return;
-        }
-
-        if (
-            this.audioContext === null ||
-            this.audioSource === null ||
-            this.audioSplitter === null ||
-            this.audioMerger === null
-        ) {
-            return;
-        }
-
-        await this.audioContext.resume();
-        this.audioSource.disconnect();
-        this.audioSplitter.disconnect();
-        this.audioMerger.disconnect();
-        if (selected === 'sub') {
-            this.audioSource.connect(this.audioSplitter);
-            this.audioSplitter.connect(this.audioMerger, 1, 0);
-            this.audioSplitter.connect(this.audioMerger, 1, 1);
-            this.audioMerger.connect(this.audioContext.destination);
-        } else {
-            // main は元のステレオを維持。通常のステレオ放送をモノラル化しない。
-            this.audioSource.connect(this.audioContext.destination);
-        }
-    }
-
-    /**
-     * Web Audio の後片付け
-     */
-    private destroyNativeAudioTrackSwitch(): void {
-        try {
-            this.audioSource?.disconnect();
-            this.audioSplitter?.disconnect();
-            this.audioMerger?.disconnect();
-            void this.audioContext?.close();
-        } catch (err) {
-            console.error(err);
-        }
-        this.audioContext = null;
-        this.audioSource = null;
-        this.audioSplitter = null;
-        this.audioMerger = null;
-    }
 }
 
 export default toNative(NormalVideo);

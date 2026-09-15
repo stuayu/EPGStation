@@ -88,6 +88,10 @@ export default abstract class BaseVideo extends Vue {
     private screenshotButton: HTMLElement | null = null;
     private screenshotClickHandler: ((event: MouseEvent) => void) | null = null;
     private dataBroadcastingButton: HTMLButtonElement | null = null;
+    protected audioContext: AudioContext | null = null;
+    protected audioSource: MediaElementAudioSourceNode | null = null;
+    protected audioSplitter: ChannelSplitterNode | null = null;
+    protected audioMerger: ChannelMergerNode | null = null;
     private dataBroadcastingToggleHandler: (() => void) | null = null;
     private playbackBufferRecoveryCleanup: (() => void) | null = null;
     // play() を呼んだ後、まだ一度も 'playing' に到達していないか。
@@ -1011,6 +1015,79 @@ export default abstract class BaseVideo extends Vue {
         }
 
         DPlayerEnhancer.applyAudioTrackSwitcher(this.dp as any, option);
+    }
+
+    /** Web Audio API が使える環境の AudioContext を返す。 */
+    protected static getAudioContextConstructor(): typeof AudioContext | null {
+        const ctor =
+            window.AudioContext ??
+            (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+        return typeof ctor === 'undefined' ? null : ctor;
+    }
+
+    /** デュアルモノラルを左右のチャンネルから取り出す Web Audio グラフを生成する。 */
+    protected setupDualMonoAudioGraph(video: HTMLVideoElement): boolean {
+        if (this.audioContext !== null) return true;
+
+        try {
+            const AudioContextConstructor = BaseVideo.getAudioContextConstructor();
+            if (AudioContextConstructor === null) return false;
+
+            const context = new AudioContextConstructor();
+            const source = context.createMediaElementSource(video);
+            const splitter = context.createChannelSplitter(2);
+            const merger = context.createChannelMerger(2);
+            source.connect(context.destination);
+            this.audioContext = context;
+            this.audioSource = source;
+            this.audioSplitter = splitter;
+            this.audioMerger = merger;
+            return true;
+        } catch (err) {
+            console.error(err);
+            this.destroyNativeAudioTrackSwitch();
+            return false;
+        }
+    }
+
+    /** Web Audio API でデュアルモノラルの主音声・副音声を切り替える。 */
+    protected async selectDualMonoAudioTrack(selected: apid.AudioTrackSpecifier): Promise<void> {
+        const video = (this.dp as any)?.video as HTMLVideoElement | undefined;
+        if (typeof video === 'undefined') return;
+        if (selected !== 'sub' && this.audioContext === null) return;
+        if (this.setupDualMonoAudioGraph(video) === false) return;
+        if (this.audioContext === null || this.audioSource === null || this.audioSplitter === null || this.audioMerger === null) return;
+
+        await this.audioContext.resume();
+        this.audioSource.disconnect();
+        this.audioSplitter.disconnect();
+        this.audioMerger.disconnect();
+        if (selected === 'sub') {
+            this.audioSource.connect(this.audioSplitter);
+            this.audioSplitter.connect(this.audioMerger, 1, 0);
+            this.audioSplitter.connect(this.audioMerger, 1, 1);
+            this.audioMerger.connect(this.audioContext.destination);
+        } else {
+            // main は元のステレオを維持。通常のステレオ放送をモノラル化しない。
+            this.audioSource.connect(this.audioContext.destination);
+        }
+    }
+
+    /** Web Audio API のデュアルモノラル用リソースを破棄する。 */
+    protected destroyNativeAudioTrackSwitch(): void {
+        try {
+            this.audioSource?.disconnect();
+            this.audioSplitter?.disconnect();
+            this.audioMerger?.disconnect();
+            void this.audioContext?.close();
+        } catch (err) {
+            console.error(err);
+        }
+        this.audioContext = null;
+        this.audioSource = null;
+        this.audioSplitter = null;
+        this.audioMerger = null;
     }
 
     /**

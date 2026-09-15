@@ -1323,9 +1323,10 @@ export interface PlaybackProfile {
     // stream はサーバー配信、mpeg2toh264 は MPEG-2 TS の端末変換
     delivery: 'stream' | 'mpeg2toh264';
     // コンテナ別に「主音声・副音声を再接続無しで同時配信できるか」。
-    // true の場合、クライアントは audioTrack=all で開き、mpegts.js の
-    // switchPrimaryAudio() / switchSecondaryAudio() で再接続無しに音声を切り替えられる。
-    // m2tsll (tsreadex 経由) と、複数音声を持つ in-memory HLS の profile で true になりうる
+    // true の場合、クライアントは audioTrack=all で開き、独立 ES は mpegts.js の
+    // switchPrimaryAudio() / switchSecondaryAudio()、デュアルモノラルは Web Audio API
+    // で再接続無しに音声を切り替える。
+    // m2tsll (tsreadex 経由)、複数音声を持つ in-memory HLS、HEVC 元 TS の profile で true になりうる
     embeddedAudioSwitch?: Partial<Record<'m2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls' | 'original', boolean>>;
 }
 

@@ -176,8 +176,8 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                         .map(container => [container, modeMap[container].indexOf(modePresetId)])
                         .filter(entry => Number(entry[1]) >= 0),
                 ) as PlaybackOptions['profiles'][number]['modes'];
-                // `original` は MPEG-2 の端末変換と HEVC の HLS 詰め替えをまとめた配信方式。
-                // 実際の URL は role に応じてクライアント側で解決する。
+                // `original` は MPEG-2 の端末変換と HEVC の元 TS MSE 配信をまとめた方式。
+                // HEVC が非対応の端末ではクライアントが hls mode へフォールバックする。
                 if (preset.delivery === 'mpeg2toh264' || preset.id === ORIGINAL_HEVC_PROFILE_ID) modes.original = 0;
                 if (preset.id === ORIGINAL_HEVC_PROFILE_ID) modes.hls = 0;
                 return {
@@ -218,7 +218,8 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
      *   クライアントはこれが true のときだけ `audioTrack=all` で開き、mpegts.js の
      *   switchPrimaryAudio() / switchSecondaryAudio() で再接続無しに音声を切り替える
      *   (client/src/components/video/LiveMpegTsVideo.vue)。
-     * - hls: encoded の `original-hevc`、または cmd が `%TSREADEX%` と `%AUDIOMAP%` を両方含み、かつ in-memory HLS
+     * - original: 対応端末の encoded `original-hevc`。元TSを直接配信し、mpegts.js または Web Audio API が切り替える
+     * - hls: encoded の `original-hevc` fallback、または cmd が `%TSREADEX%` と `%AUDIOMAP%` を両方含み、かつ in-memory HLS
      *   (cmd に `%streamFileDir%` を含まない = ディスクに書き出さない) の場合のみ true になる。
      *   Fmp4Packager が音声トラック 2 本以上の fMP4 を検出すると自動でトラックごとに分解し、
      *   マスタープレイリスト (音声レンディション付き) を配信する (HLSMemoryStoreModel.getMasterPlaylist())。
@@ -258,7 +259,9 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
 
         const result: NonNullable<PlaybackOptions['profiles'][number]['embeddedAudioSwitch']> = {};
         for (const container of containers) {
-            result[container] = (container === 'm2tsll' && isM2TsLLEmbedded) || (container === 'hls' && isHlsEmbedded);
+            result[container] =
+                (container === 'm2tsll' && isM2TsLLEmbedded) ||
+                ((container === 'hls' || container === 'original') && isHlsEmbedded);
         }
 
         return result;

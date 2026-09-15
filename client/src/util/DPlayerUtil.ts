@@ -10,6 +10,7 @@ import { requirePlaybackUrl } from '../../../src/util/PlaybackUrlUtil';
 
 namespace DPlayerUtil {
     let isInitedGlobals = false;
+    let isMpegtsHevcPlaybackEnabled = false;
 
     /**
      * DPlayer が参照する window.mpegts 用のオブジェクトを生成する
@@ -22,6 +23,11 @@ namespace DPlayerUtil {
      */
     const createMpegtsGlobal = (): typeof Mpegts => {
         const wrapped: any = { ...Mpegts };
+        // mpegts.js の isSupported() は H.264 MSE だけを判定するため、
+        // DPlayer の mpegts 初期化に HEVC 対応を伝えるには Original HEVC のときだけ拡張する。
+        wrapped.isSupported = (): boolean =>
+            Mpegts.isSupported() ||
+            (isMpegtsHevcPlaybackEnabled === true && Mpegts.getFeatureList().mseH265Playback === true);
         wrapped.createPlayer = (mediaDataSource: any, config?: any): any => {
             let url: string;
             try {
@@ -49,6 +55,11 @@ namespace DPlayerUtil {
         };
 
         return wrapped;
+    };
+
+    /** HEVC MPEG-TS を DPlayer の mpegts 初期化対象として有効にする。 */
+    export const enableMpegtsHevcPlayback = (): void => {
+        isMpegtsHevcPlaybackEnabled = true;
     };
 
     /**

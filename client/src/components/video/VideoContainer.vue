@@ -83,6 +83,7 @@
                     v-bind:streamingType="videoParam.streamingType"
                     v-bind:mode="videoParam.mode"
                     v-bind:profile="videoParam.profile"
+                    v-bind:source="playbackOptions?.source"
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
                     v-bind:jikkyoStartAt="videoParam.jikkyoStartAt"
                     v-bind:jikkyoEndAt="videoParam.jikkyoEndAt"
@@ -173,6 +174,7 @@ import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
+import { isOriginalHevcPlayback } from '@/util/PlaybackProfileSelectUtil';
 import * as apid from '../../../../api';
 import {
     detectPlaybackStall,
@@ -316,7 +318,24 @@ class VideoContainer extends Vue {
                 } satisfies PlaybackContainerSwitchRequest);
                 return;
             }
-            if (selectedProfile?.id === 'original-hevc' && currentContainer !== 'hls') {
+            if (selectedProfile?.id === 'original-hevc' && currentContainer !== 'original' && currentContainer !== 'hls') {
+                const mode = selectedProfile.modes.hls;
+                if (typeof mode === 'number') {
+                    this.$emit('playbackContainerSwitch', {
+                        container: 'hls',
+                        mode,
+                        profileId: selectedProfile.id,
+                        playPosition: 'playPosition' in this.videoParam ? this.videoParam.playPosition ?? 0 : 0,
+                    } satisfies PlaybackContainerSwitchRequest);
+                    return;
+                }
+            }
+            if (
+                selectedProfile?.id === 'original-hevc' &&
+                currentContainer === 'original' &&
+                isOriginalHevcPlayback(this.playbackOptions?.source, selectedProfile.id) &&
+                StreamSupportUtil.isMpegTsHevcSupported() === false
+            ) {
                 const mode = selectedProfile.modes.hls;
                 if (typeof mode === 'number') {
                     this.$emit('playbackContainerSwitch', {

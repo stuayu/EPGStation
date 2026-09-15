@@ -39,6 +39,28 @@ paths:
                 '409':
                     description: 録画中
 
+    /videos/{videoFileId}/original:
+        get:
+            summary: 録画 MPEG-2 / HEVC オリジナルストリーム
+            description: MPEG-2 または HEVC 映像の録画 MPEG-TS を Range 対応で直接返す。非TS encoded は対象外
+            parameters:
+                - $ref: '#/components/parameters/PathVideoFileId'
+            responses:
+                '200':
+                    description: 録画 MPEG-TS 全体
+                    content:
+                        video/mp2t: {}
+                '206':
+                    description: 録画 MPEG-TS の指定範囲
+                    content:
+                        video/mp2t: {}
+                '416':
+                    description: 範囲がファイル長を超過
+                    content:
+                        video/mp2t: {}
+                '404':
+                    description: 直接配信可能な MPEG-TS が存在しない
+
 components:
     schemas:
         UnixtimeMS:

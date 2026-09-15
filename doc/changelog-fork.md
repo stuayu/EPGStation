@@ -13,6 +13,10 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
+## 2026-09-16
+
+- **tsreplace HEVC の Original をサーバー無変換の MPEG-TS 直接配信へ変更した**: `SourceAnalyzer.transport=mpegts` かつ映像 codec が HEVC の録画を `/api/videos/{videoFileId}/original` の Range 応答へ追加し、対応端末では固定 SHA の tsukumijima mpegts.js fork (`bf4e49d0ff004cf7546237393a62c66e4b926dca`) で MSE/MMS 再生する。fork の `TsDemuxer` に HEVC NAL / `HEVCDecoderConfigurationRecord`、`features.js` に `mseH265Playback`、`transmuxer.js` に音声切替 API があることを根拠に採用した。MSE/MMS 非対応端末は従来の original-hevc HLS remux へ fallback する。独立音声 ES 2本は mpegts.js の primary/secondary 切替、デュアルモノラル1本は Web Audio API の左右振り分けを使う。`test/ut/original-hevc.test.js`、`test/ut/video-metadata-api.test.js`、`test/ut/playback-profile-select-util.test.js` などで判定と選択を固定した。実機の再生・プロセス不在・両音声構成は未検証。
+
 ## 2026-09-15
 
 - **録画の配信選択ダイアログで Original が表示されない問題を修正した**: MPEG-2 側は `original-mpeg2` の `modes.original=0` が返る経路でも、録画の方式追加がその応答を正しく使えることを固定した。HEVC 側は `original-hevc` が従来 `modes.hls=0` だけで `modes.original` を持たず、`container=original` の再取得でも候補から除外されていたため、両 Original profile に `modes.original=0` を付けた。MPEG-2 は `/api/videos/{videoFileId}/original`、HEVC は `hls + profile=original-hevc` へ選択結果を正規化し、tsreplace の fMP4 / `hvc1` 経路を維持する。mode 番号からの profile 逆引きは行わず、録画詳細・視聴履歴・DPlayer の方式切替で同じ純粋関数を使う。端末能力・素材判定により候補にならない録画は従来どおり表示しない。
