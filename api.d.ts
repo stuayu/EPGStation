@@ -1357,7 +1357,7 @@ export interface VideoChapters {
 
 /**
  * 録画ファイルの音声トラック 1 件
- * デュアルモノラルの ES は主音声・副音声の 2 件へ展開される
+ * 実 AAC がデュアルモノラルの ES だけ主音声・副音声の 2 件へ展開される
  */
 export interface VideoAudioTrack {
     track: AudioTrackSpecifier; // ストリーム API の audioTrack へ渡す指定子

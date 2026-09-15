@@ -15,6 +15,10 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-15
 
+- **tsreplace の encoded HEVC Original で音声 ES が1本になる問題を修正した**: `StreamApiModel` が encoded 入力へ tsreadex を挟まないため、従来の `%AUDIOMAP%` は `audioTrack=all` でも主音声 ES 1本へ縮退していた。`VideoUtil.getAudioTracks()` の既存一覧を使い、同じ ES の dual-mono 2件は `asplit + pan`、独立 ES 2本は `-map 0:v:0 -map 0:a:0 -map 0:a:1` として音声を AAC 再エンコードする。判定不能・単一音声は従来どおり1本。`Fmp4Packager` が `video` / `audio0` / `audio1` へ分解できるため、オンライン HLS と Offline の master に `#EXT-X-MEDIA` / `CODECS` が入り、`embeddedAudioSwitch.hls` は original-hevc で有効になる。filter_complex の枝へ `%AUDIOFILTER%` / `-af` を重ねず、pan 内の `|` はシェルパイプと誤判定しない。`hevc-dual-audio` ハーネスで本番 Offline 先頭を検査できる。
+
+- **EPG のデュアルモノラル誤判定で通常ステレオを分割する問題を差し戻した**: 録画の `audio-tracks` は AAC 1 ES / 2ch や EPG の componentType 0x02 を根拠にせず、`ffmpeg -dual_mono_mode main/sub` の各3秒デコード結果を冒頭・中央・末尾で比較する。各 probe 窓で平均絶対差が閾値を超えた場合だけ `isDualMono=true` とし、通常ステレオ、失敗、timeout、判定窓で構成変化を検出した録画は音声1本を保つ。判定窓の外の構成変化は保証しない。ファイルパス単位で判定をキャッシュし、`original-hevc` の `embeddedAudioSwitch.hls` も実AACで複数音声と判定できた場合だけ有効にする。実測: 本番 videoFile 34331 の主/sub PCM差は0.0、左右差は-34.9dBで、EPG上は副音声でも分割しない。
+
 - **オフライン保存動画でもニコニコ実況を表示できるようにした**: 保存開始時に録画ファイル先頭の実時刻 (`videoFile.startAt`) を基準とする実況チャンネル・取得範囲を解決し、IndexedDB の保存レコードへ保持する。旧形式など実況情報の無いレコードは、オンラインかつ EPGStation サーバへ届く場合だけ再生開始時に解決して書き戻す。オフライン視聴画面は実況情報があると「コメント」タブを追加し、通常録画視聴と同じ `RecordedJikkyoSync` の時刻計算で弾幕と一覧を同期する。過去ログ API の失敗は再生を止めず、コメントタブに状態だけ表示し、`online` 復帰時に未取得範囲を再試行する。Service Worker は外部の過去ログ API を横取り・キャッシュしない。実ブラウザ / iOS Safari は未検証。
 
 ## 2026-09-14

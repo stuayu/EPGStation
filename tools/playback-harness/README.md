@@ -46,6 +46,8 @@ node tools/playback-harness/run.js --help
 - `mms`: WebKit の `MediaSource` を隠し、`ManagedMediaSource` 経路で再生進行を確認。既定1秒以上、`readyState >= 2`。
 - `offline-records`: 実 TS または自動生成した60秒 MPEG-2 1080i + AAC を録画 HLS 相当の ffmpeg → `Fmp4Packager` → `EPGODL2` レコード経路へ通し、レコード数・継続時間・Node RSS・ローカル HLS の ffprobe 結果を測定。生成物は `/private/tmp` 相当の一時ディレクトリへ残す。
 - `original-hevc`: `--input-ts` の HEVC MPEG-TS を `original-hevc` 相当の fMP4 へ remux し、ARIB 字幕専用 reader → `AribId3Extractor` → `Fmp4Packager` の emsg 件数と対応video sampleとの時刻差を測定する。`--without-subtitles` で修正前相当、`--offline` で `OfflineFmp4RecordStream` に保存されたemsgを測定する。
+- `hevc-dual-audio`: 本番 URL と `--video-file-id` を受け、`profile=original-hevc&audioTrack=all` の Offline 保存ストリームを先頭の init/master/各 role の最初の segment まで読み、`video` / `audio0` / `audio1` と master の `#EXT-X-MEDIA` / `CODECS` を検査して切断する。
+- `audio-es-compare`: `--input-ts` の音声 ES 0/1 を同じ 3 秒窓・16 kHz mono PCMへデコードし、各振幅・平均絶対差を出す。2 本目が無音または 1 本目と同一なら失敗にする。
 - `offline-app`: `offline.mjs` で保存済みの Chromium 永続プロファイルを `--profile-dir` で指定し、オンライン再生 → 回線断 reload → オフライン再生 → 回線断の新規タブ起動を同じ流れで測定する。`offline.mjs` は保存処理専用として残し、再生・機内モード確認はこちらへ集約する。
 - `ui-original-flow`: 録画詳細で「配信」→録画ファイル→配信方式→画質→視聴を操作し、再生進行と80%/30%シークを測定する。`--profile` と遷移後 URL の `profile` が一致することも判定する。
 - `watch-history-flow`: `--video-file-id` の履歴行を選び、視聴履歴ダイアログから配信再生する。履歴位置からのレジューム、再生進行、`profile` 一致を判定する。
@@ -87,6 +89,8 @@ node tools/playback-harness/run.js offline-records --input-ts /path/to/recorded.
 node tools/playback-harness/run.js original-hevc --input-ts recorded/hevc_tsreplace.ts --seek-seconds 300
 node tools/playback-harness/run.js original-hevc --input-ts recorded/hevc_tsreplace.ts --seek-seconds 300 --without-subtitles
 node tools/playback-harness/run.js original-hevc --input-ts recorded/hevc_tsreplace.ts --seek-seconds 300 --offline
+EPGSTATION_BASE_URL='https://fuku-epgs.stuayu.com' node tools/playback-harness/run.js hevc-dual-audio --video-file-id 34331
+EPGSTATION_BASE_URL='https://fuku-epgs.stuayu.com' node tools/playback-harness/run.js hevc-dual-audio --video-file-id 34334
 EPGSTATION_BASE_URL=http://127.0.0.1:8888 node tools/playback-harness/run.js offline-app --profile-dir /path/to/profile
 
 E2E_NODE_PATH=/private/tmp/claude-501/-Users-ayumu-prog-EPGStation/be903643-1d1e-4bc5-93ec-462a0c4c7ebc/scratchpad/e2e/node_modules

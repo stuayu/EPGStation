@@ -19,8 +19,10 @@ import IPlayList from '../IPlayList';
 import IStreamApiModel, { StreamResponse } from './IStreamApiModel';
 import IConfiguration from '../../IConfiguration';
 import ISourceAnalyzer from '../../stream/capability/ISourceAnalyzer';
+import IVideoUtil from '../video/IVideoUtil';
 import { createOriginalMpeg2Command, isOriginalMpeg2Source } from '../../../util/OriginalMpeg2Util';
 import {
+    classifyOriginalHevcAudioLayout,
     createOriginalHevcHlsCommand,
     isOriginalHevcSource,
     ORIGINAL_HEVC_PROFILE_ID,
@@ -54,6 +56,7 @@ export default class StreamApiModel implements IStreamApiModel {
     private apiUtil: IApiUtil;
     private configuration?: IConfiguration;
     private sourceAnalyzer?: ISourceAnalyzer;
+    private videoUtil?: IVideoUtil;
 
     constructor(
         @inject('LiveStreamModelProvider') liveStreamProvider: LiveStreamModelProvider,
@@ -69,6 +72,7 @@ export default class StreamApiModel implements IStreamApiModel {
         @inject('IApiUtil') apiUtil: IApiUtil,
         @inject('IConfiguration') @optional() configuration?: IConfiguration,
         @inject('ISourceAnalyzer') @optional() sourceAnalyzer?: ISourceAnalyzer,
+        @inject('IVideoUtil') @optional() videoUtil?: IVideoUtil,
     ) {
         this.liveStreamProvider = liveStreamProvider;
         this.liveHLSStreamProvider = liveHLSStreamProvider;
@@ -83,6 +87,7 @@ export default class StreamApiModel implements IStreamApiModel {
         this.apiUtil = apiUtil;
         this.configuration = configuration;
         this.sourceAnalyzer = sourceAnalyzer;
+        this.videoUtil = videoUtil;
     }
 
     /**
@@ -482,6 +487,9 @@ export default class StreamApiModel implements IStreamApiModel {
                 cmd: createOriginalHevcHlsCommand(
                     isEncodedVideo === false && typeof this.configuration?.getConfig().tsreadex !== 'undefined',
                     isEncodedVideo === true ? 'file' : 'pipe',
+                    isEncodedVideo === true ? await this.getOriginalHevcAudioLayout(option.videoFileId) : undefined,
+                    option.audioTrack,
+                    this.configuration?.getConfig().audioBoost,
                 ),
                 displayMode: typeof option.mode === 'number' ? option.mode : 0,
                 container: 'hls',
@@ -513,6 +521,32 @@ export default class StreamApiModel implements IStreamApiModel {
         }
 
         return video.type === 'encoded';
+    }
+
+    /**
+     * encoded HEVC TS の音声構成を既存の音声トラック API と同じ probe から解決する。
+     * probe 失敗時は undefined を返し、従来の主音声 1 本へフォールバックする。
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<import('../../../util/OriginalHevcUtil').OriginalHevcAudioLayout | undefined>
+     */
+    private async getOriginalHevcAudioLayout(
+        videoFileId: apid.VideoFileId,
+    ): Promise<import('../../../util/OriginalHevcUtil').OriginalHevcAudioLayout | undefined> {
+        if (this.videoUtil === undefined) return undefined;
+
+        try {
+            const filePath = await this.videoUtil.getFullFilePathFromId(videoFileId);
+            if (filePath === null) return undefined;
+
+            const layout = classifyOriginalHevcAudioLayout(await this.videoUtil.getAudioTracks(filePath));
+            // 音声 ES が 2 本と判定されても、冒頭の PMT だけの結果のことがある。
+            // ファイル全体で 2 本目が続かない録画は 1 本として扱う (途中から再生すると 2 本目が無く、切り替えても意味がない)
+            if (layout === 'multi' && (await this.videoUtil.hasStableSecondAudioStream(filePath)) === false) return 'single';
+
+            return layout;
+        } catch (_err) {
+            return undefined;
+        }
     }
 
     /**

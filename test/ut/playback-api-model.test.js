@@ -78,11 +78,47 @@ test('録画 HEVC 無変換は HLS mode 0 として playback-options に出る',
         { analyzeLiveChannel: async () => hevcSource, analyzeRecordedFile: async () => hevcSource },
         { getPresets: () => [{ ...presets[0] }, original], getModeMap: () => ({ m2ts: [], m2tsll: [], mp4: [], webm: [], hls: [] }) },
         { resolve: (_scope, _source, _client, _presets, requested) => ({ presetId: requested === 'original-hevc' ? requested : 'original-hevc', label: 'HEVC', reason: 'test', fallbackChain: [] }) },
-        { findId: async () => ({ type: 'ts' }) },
+        { findId: async () => ({ type: 'encoded', recordedId: 1 }) },
+        undefined,
+        {
+            getFullFilePathFromId: async () => '/recorded/hevc.ts',
+            hasStableSecondAudioStream: async () => true,
+            getAudioTracks: async () => [
+                { streamIndex: 0, isDualMono: true },
+                { streamIndex: 0, isDualMono: true },
+            ],
+        },
     );
     const result = await model.getRecordedPlaybackOptions(1, client, 'original-hevc', 'hls');
     assert.deepEqual(result.profiles.find(profile => profile.id === 'original-hevc').modes, { hls: 0 });
     assert.equal(result.profiles.find(profile => profile.id === 'original-hevc').role, 'original-hevc');
+    assert.equal(result.profiles.find(profile => profile.id === 'original-hevc').embeddedAudioSwitch.hls, true);
+});
+
+test('録画 HEVC の実 AAC が通常ステレオなら embeddedAudioSwitch.hls を無効にする', async () => {
+    const hevcSource = { ...source, transport: 'mpegts', bitDepth: 8 };
+    const original = {
+        id: 'original-hevc',
+        name: 'HEVC',
+        builtin: true,
+        quality: 'original',
+        output: { codec: 'copy', resolution: 'source', container: 'hls' },
+    };
+    const model = new PlaybackApiModel(
+        { analyzeLiveChannel: async () => hevcSource, analyzeRecordedFile: async () => hevcSource },
+        { getPresets: () => [original], getModeMap: () => ({ m2ts: [], m2tsll: [], mp4: [], webm: [], hls: [] }) },
+        { resolve: () => ({ presetId: 'original-hevc', label: 'HEVC', reason: 'test', fallbackChain: [] }) },
+        { findId: async () => ({ type: 'encoded', recordedId: 1 }) },
+        undefined,
+        {
+            getFullFilePathFromId: async () => '/recorded/hevc.ts',
+            hasStableSecondAudioStream: async () => true,
+            getAudioTracks: async () => [{ streamIndex: 0, isDualMono: false }],
+        },
+    );
+
+    const result = await model.getRecordedPlaybackOptions(1, client, 'original-hevc', 'hls');
+    assert.equal(result.profiles.find(profile => profile.id === 'original-hevc').embeddedAudioSwitch.hls, false);
 });
 
 test('録画中は MPEG-2 / HEVC Original を playback-options に出さない', async () => {

@@ -1889,7 +1889,7 @@ components:
                         $ref: '#/components/schemas/VideoChapter'
 
         VideoAudioTrack:
-            description: 録画ファイルの音声トラック 1 件 (デュアルモノラルは主音声・副音声へ展開される)
+            description: 録画ファイルの音声トラック 1 件 (実 AAC がデュアルモノラルの場合だけ主音声・副音声へ展開される)
             type: object
             required: [track, name, streamIndex, isDualMono]
             properties:

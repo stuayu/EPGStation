@@ -54,9 +54,10 @@ export default interface IVideoUtil {
 
     /**
      * ffprobe で音声トラック一覧を取得する
-     * デュアルモノラルの ES は主音声・副音声の 2 件へ展開される
+     * 実 AAC がデュアルモノラルの ES だけ主音声・副音声の 2 件へ展開される
      * @param filePath: string
      * @return Promise<apid.VideoAudioTrack[]>
      */
     getAudioTracks(filePath: string, option?: AudioTrackProbeOption): Promise<apid.VideoAudioTrack[]>;
+    hasStableSecondAudioStream(filePath: string): Promise<boolean>;
 }

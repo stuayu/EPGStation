@@ -17,6 +17,8 @@ const scenarios = [
     ['mms', 'ManagedMediaSource 経路強制'],
     ['offline-records', 'TS 素材からオフライン EPGODL2 レコード生成を測定'],
     ['original-hevc', 'HEVC TS の無変換 fMP4 と ARIB 字幕 emsg を測定'],
+    ['hevc-dual-audio', '本番 original-hevc Offline 先頭の audio0/audio1 と master を検査'],
+    ['audio-es-compare', '2 本の音声 ES を同じ窓でデコードし、無音・同一音声でないか検査'],
     ['offline-app', '保存済みプロファイルのオフライン起動・再生・新規タブ確認'],
     ['ui-original-flow', '録画詳細の配信選択から視聴・80%/30%シークまでを測定'],
     ['watch-history-flow', '視聴履歴の配信選択・レジューム・profile一致を測定'],
@@ -51,12 +53,14 @@ const usage = () => {
     console.log('  --hevc                      tsreplace 相当の HEVC TS を生成して測定');
     console.log('  --non-idr-start             HEVC TS の先頭を任意位置から始める近似素材を使う');
     console.log('  --offline                   original-hevc の OfflineFmp4RecordStream も測定');
+    console.log('  hevc-dual-audio は --base-url と --video-file-id を必要とし、先頭レコード後に切断');
     console.log('  --profile-dir PATH          オフラインシナリオで使う保存済み永続プロファイル');
     console.log('  offline-audio-switch は --profile-dir と --recorded-id/--video-file-id を必要とする');
     console.log('  --profile ID                URLで期待する playback profile id');
     console.log('  --quality TEXT              UIで選ぶ画質ラベル');
     console.log('  --file-label TEXT           UIで選ぶ録画ファイル名 (例: TS)');
     console.log('  --ss SEC                    subtitle の録画開始位置 (秒)');
+    console.log('  --audio-probe-seconds SEC   audio-es-compare のデコード窓 (既定3秒)');
     console.log('  --help                      シナリオ一覧と共通オプション');
     console.log('\nシナリオ:');
     for (const [name, description] of scenarios) console.log(`  ${name.padEnd(18)} ${description}`);
@@ -85,7 +89,7 @@ const parseArgs = argv => {
             'duration', 'interval', 'maxStops', 'maxStallSeconds', 'minProgressSeconds', 'maxSwitchSeconds', 'minReceivedBytes',
             'minSubtitlePixels', 'minEmsgRatio', 'minSegments', 'videoStartAt', 'maxDriftSeconds', 'minCommentSamples',
             'commentWindow', 'mode', 'seekSeconds', 'minQualityItems', 'minAudioItems', 'cleanupWait', 'parallel',
-            'maxBlackRatio', 'minFrameChanges', 'blackLumaMax', 'frameChangeThreshold', 'ss', 'timeoutMs', 'saveTimeoutMs',
+            'maxBlackRatio', 'minFrameChanges', 'blackLumaMax', 'frameChangeThreshold', 'ss', 'audioProbeSeconds', 'timeoutMs', 'saveTimeoutMs',
         ]);
         options[key] = numericKeys.has(key) ? Number(value) : value;
     }
@@ -129,7 +133,14 @@ const defaults = options => ({
     const scenario = scenarios.find(item => item[0] === parsed.scenario);
     if (scenario === undefined) throw new Error(`シナリオ不明: ${parsed.scenario}`);
     const options = defaults(parsed.options);
-    if (options.baseUrl === undefined && parsed.scenario !== 'emsg' && parsed.scenario !== 'offline-records' && parsed.scenario !== 'original-hevc') throw new Error('--base-url または EPGSTATION_BASE_URL が必要');
+    if (
+        options.baseUrl === undefined &&
+        parsed.scenario !== 'emsg' &&
+        parsed.scenario !== 'offline-records' &&
+        parsed.scenario !== 'original-hevc' &&
+        parsed.scenario !== 'audio-es-compare'
+    )
+        throw new Error('--base-url または EPGSTATION_BASE_URL が必要');
     const implementation = require('./lib/scenarios')[parsed.scenario];
     const outcome = await implementation(options);
     if (outcome?.passed !== true) process.exitCode = 1;

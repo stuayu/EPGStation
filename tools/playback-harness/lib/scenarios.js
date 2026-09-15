@@ -16,6 +16,8 @@ const {
 const { result } = require('./output');
 const offlineRecords = require('./offline-records');
 const originalHevc = require('./original-hevc');
+const hevcDualAudio = require('./hevc-dual-audio');
+const audioEsCompare = require('./audio-es-compare');
 const offlineApp = require('./offline-app');
 const offlineUx = require('./offline-ux');
 const uiFlows = require('./ui-flows');
@@ -520,6 +522,8 @@ module.exports = {
     mms,
     'offline-records': offlineRecords,
     'original-hevc': originalHevc,
+    'hevc-dual-audio': hevcDualAudio,
+    'audio-es-compare': audioEsCompare,
     'offline-app': offlineApp,
     'ui-original-flow': uiFlows.uiOriginalFlow,
     'watch-history-flow': uiFlows.watchHistoryFlow,

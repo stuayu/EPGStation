@@ -94,7 +94,7 @@ test('チャプターが無いファイルは空配列を返す', async () => {
     );
 });
 
-test('音声 ES が 1 つのステレオは主音声・副音声へ展開する (二か国語放送のデュアルモノラル対策)', async () => {
+test('音声 ES が 1 つの通常ステレオは副音声へ展開しない', async () => {
     const output = JSON.stringify({
         streams: [{ codec_name: 'aac', channels: 2, tags: { language: 'jpn' } }],
     });
@@ -103,13 +103,10 @@ test('音声 ES が 1 つのステレオは主音声・副音声へ展開する 
         () => output,
         async () => {
             const tracks = await makeVideoUtil().getAudioTracks('/fake/video.ts');
-            assert.equal(tracks.length, 2);
+            assert.equal(tracks.length, 1);
             assert.deepEqual(
                 tracks.map(t => [t.track, t.name, t.isDualMono, t.streamIndex]),
-                [
-                    ['main', '主音声', true, 0],
-                    ['sub', '副音声 (デュアルモノラル)', true, 0],
-                ],
+                [['0', '主音声', false, 0]],
             );
         },
     );
@@ -173,6 +170,7 @@ test('遅れて始まる音声 ES も独立したトラックとして返す', a
         '-v',
         '0',
         '-show_streams',
+        '-show_format',
         '-select_streams',
         'a',
         '-of',
@@ -202,6 +200,7 @@ test('録画中の音声 ES probe も完了録画と同じ有限上限を使い�
         '-v',
         '0',
         '-show_streams',
+        '-show_format',
         '-select_streams',
         'a',
         '-of',

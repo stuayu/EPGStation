@@ -26,6 +26,14 @@ test('視聴用録画 HLS は encoded TS 字幕 reader 用の container=hls を�
         {},
         undefined,
         { analyzeRecordedFile: async () => ({ codec: 'hevc', transport: 'mpegts', bitDepth: 10 }) },
+        {
+            getFullFilePathFromId: async () => '/recorded/hevc.ts',
+            hasStableSecondAudioStream: async () => true,
+            getAudioTracks: async () => [
+                { streamIndex: 0, isDualMono: true },
+                { streamIndex: 0, isDualMono: true },
+            ],
+        },
     );
 
     const streamId = await model.startRecordedHLSStream({
@@ -38,6 +46,8 @@ test('視聴用録画 HLS は encoded TS 字幕 reader 用の container=hls を�
 
     assert.equal(streamId, 12);
     assert.equal(option.container, 'hls');
+    assert.match(option.cmd, /-filter_complex/u);
+    assert.match(option.cmd, /-map "\[main_audio\]" -map "\[sub_audio\]"/u);
 });
 
 test('録画配信の profile=auto は mode で m2tsll / hls / mp4 / webm を解決する', async () => {
