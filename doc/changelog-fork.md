@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-16
 
+- **オーディオコメンタリー・二か国語の録画で副音声へ切り替えられない問題を修正した**: 2 本目の音声 ES の実在確認 (`probeSecondAudioStreamPresent()`) が「先頭・中央・末尾すべてでデコードできること」を条件にしていたため、本編だけに 2 本目があり冒頭や末尾 (CM・予告) では 1 本へ戻る録画がすべて「音声 1 本」と判定され、`embeddedAudioSwitch` が false のまま副音声の切替 UI が出なかった。実測 (videoFile 23023「最強の王様、二度目の人生は何をする？＜オーディオコメンタリー版＞ #11」、duration 1840.5 秒、probe 位置 0 / 918.77 / 1837.54): 2 本目のデコード結果は 0 byte / 580096 byte / 0 byte で、従来の判定は `multi` → `single` へ落ちていた。判定を「いずれかの位置でデコードできれば 2 本目あり」へ変更し、同じファイルで `multi` を維持することを実測で確認した。2 本目の map は元から optional (`-map 0:a:1?`) なので、ES が無い区間から再生を始めても ffmpeg は出力を開ける。オンライン視聴は `GET /api/videos/{videoFileId}/audio-tracks` を直接見る別経路のため元から切り替えられており、症状はオフライン保存動画にだけ出ていた。テスト用にデコード処理を差し替えられるよう `probeSecondAudioStreamPresent()` の末尾へ optional な decode 引数を追加した。**修正前に保存したオフライン動画は古い master (音声レンディション 1 本) のままなので、副音声を使うには保存し直す必要がある。**
+
 - **tsreplace HEVC の Original をサーバー無変換の MPEG-TS 直接配信へ変更した**: `SourceAnalyzer.transport=mpegts` かつ映像 codec が HEVC の録画を `/api/videos/{videoFileId}/original` の Range 応答へ追加し、対応端末では固定 SHA の tsukumijima mpegts.js fork (`bf4e49d0ff004cf7546237393a62c66e4b926dca`) で MSE/MMS 再生する。fork の `TsDemuxer` に HEVC NAL / `HEVCDecoderConfigurationRecord`、`features.js` に `mseH265Playback`、`transmuxer.js` に音声切替 API があることを根拠に採用した。MSE/MMS 非対応端末は従来の original-hevc HLS remux へ fallback する。独立音声 ES 2本は mpegts.js の primary/secondary 切替、デュアルモノラル1本は Web Audio API の左右振り分けを使う。`test/ut/original-hevc.test.js`、`test/ut/video-metadata-api.test.js`、`test/ut/playback-profile-select-util.test.js` などで判定と選択を固定した。実機の再生・プロセス不在・両音声構成は未検証。
 
 ## 2026-09-15

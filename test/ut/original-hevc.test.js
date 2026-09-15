@@ -108,3 +108,38 @@ test('音声 ES 2 本の同時配信は 2 本目を optional map にする (途�
     const cmd = createOriginalHevcHlsCommand(false, 'file', 'multi', 'all');
     assert.match(cmd, /-map 0:v:0 -map 0:a:0 -map 0:a:1\?/u);
 });
+
+test('2 本目の音声 ES は「どこか 1 か所」で見つかれば有りと判定する (本編だけコメンタリーの録画)', async () => {
+    const { probeSecondAudioStreamPresent } = require('../../dist/util/OriginalHevcUtil');
+    // 実測 (videoFile 23023 オーディオコメンタリー版): 先頭 0 byte / 中央 580096 byte / 末尾 0 byte
+    const decoded = { 0: 0, 918: 580096, 1837: 0 };
+    const decode = async (_ffmpeg, _file, streamIndex, position) => {
+        assert.equal(streamIndex, 1);
+        return Buffer.alloc(decoded[position] ?? 0);
+    };
+
+    assert.equal(await probeSecondAudioStreamPresent('ffmpeg', 'x.ts', [0, 918, 1837], 1000, decode), true);
+});
+
+test('どの位置でも 2 本目をデコードできなければ音声 1 本として扱う', async () => {
+    const { probeSecondAudioStreamPresent } = require('../../dist/util/OriginalHevcUtil');
+    const decode = async () => Buffer.alloc(0);
+
+    assert.equal(await probeSecondAudioStreamPresent('ffmpeg', 'x.ts', [0, 10, 20], 1000, decode), false);
+});
+
+test('一部の位置で probe が失敗しても、他の位置で取れれば 2 本目有りとする', async () => {
+    const { probeSecondAudioStreamPresent } = require('../../dist/util/OriginalHevcUtil');
+    const decode = async (_ffmpeg, _file, _streamIndex, position) => {
+        if (position === 0) throw new Error('probe timeout');
+        return Buffer.alloc(position === 918 ? 4096 : 0);
+    };
+
+    assert.equal(await probeSecondAudioStreamPresent('ffmpeg', 'x.ts', [0, 918, 1837], 1000, decode), true);
+});
+
+test('probe 位置が空なら判定できないので音声 1 本として扱う', async () => {
+    const { probeSecondAudioStreamPresent } = require('../../dist/util/OriginalHevcUtil');
+
+    assert.equal(await probeSecondAudioStreamPresent('ffmpeg', 'x.ts', [], 1000, async () => Buffer.alloc(4096)), false);
+});

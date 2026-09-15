@@ -190,33 +190,44 @@ export const probeAacDualMono = async (
 };
 
 /**
- * 2 本目の音声 ES が、ファイル内の指定位置すべてで実際にデコードできるか判定する。
- * 音声トラック一覧 (ffprobe) はファイル冒頭の PMT しか見ないため、CM など一部の区間だけ 2 本になる録画を
- * 「音声 2 本」と誤判定する。途中で ES が消える録画を 2 本の音声として配信・保存すると、
- * ES が無い区間から始めたときに出力を開けない / 片方のトラックだけ途切れるので、全位置で確認できたときだけ true にする。
+ * 2 本目の音声 ES が、ファイル内の指定位置のどこかで実際にデコードできるか判定する。
+ * 音声トラック一覧 (ffprobe) はファイル冒頭の PMT しか見ないため、実体の無い 2 本目を拾うことがある。
+ * そこで実デコードで裏を取るが、**全位置に存在することは求めない** —
+ * オーディオコメンタリーや二か国語は本編だけに 2 本目があり、冒頭や末尾 (CM・予告) では 1 本に戻る録画が普通にある
+ * (実測: videoFile 23023 は先頭 0 バイト / 中央 580096 バイト / 末尾 0 バイト)。
+ * 全位置必須にすると、そうした録画がすべて「音声 1 本」に落ちて副音声へ切り替えられなくなる。
+ * 2 本目の map は optional (`-map 0:a:1?`) なので、ES が無い区間から始めても出力は開ける。
  * @param ffmpegPath: string ffmpeg 実行ファイル
  * @param filePath: string 対象ファイル
  * @param probePositions: readonly number[] 秒単位の probe 開始位置
  * @param timeoutMs: number 1 回の ffmpeg 上限
- * @return Promise<boolean> 全位置で 2 本目をデコードできたら true
+ * @param decode: 指定位置の 2 本目を PCM へデコードする処理 (テストで差し替える)
+ * @return Promise<boolean> いずれかの位置で 2 本目をデコードできたら true
  */
 export const probeSecondAudioStreamPresent = async (
     ffmpegPath: string,
     filePath: string,
     probePositions: readonly number[],
     timeoutMs: number = AAC_DUAL_MONO_PROBE_TIMEOUT_MS,
+    decode: (
+        ffmpegPath: string,
+        filePath: string,
+        streamIndex: number,
+        position: number,
+        timeoutMs: number,
+    ) => Promise<Buffer> = decodeAudioStreamWindow,
 ): Promise<boolean> => {
     if (probePositions.length === 0) return false;
     for (const position of probePositions) {
         try {
-            const pcm = await decodeAudioStreamWindow(ffmpegPath, filePath, 1, position, timeoutMs);
-            if (pcm.length === 0) return false;
+            const pcm = await decode(ffmpegPath, filePath, 1, position, timeoutMs);
+            if (pcm.length > 0) return true;
         } catch (_error) {
-            return false;
+            // この位置に 2 本目が無い / 読めないだけなので、次の位置を試す
         }
     }
 
-    return true;
+    return false;
 };
 
 /** tsreplace などが作った HEVC の MPEG-TS を端末デコードへ渡せる素材か判定する。 */
