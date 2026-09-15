@@ -10,6 +10,7 @@ const {
     isOriginalHevcSource,
     isDecodedDualMono,
     ORIGINAL_HEVC_PROFILE_ID,
+    resolveOriginalHevcInputMode,
 } = require('../../dist/util/OriginalHevcUtil');
 const { classifyOriginalVideoSource } = require('../../dist/util/OriginalVideoUtil');
 const ProcessUtil = require('../../dist/util/ProcessUtil').default;
@@ -56,6 +57,28 @@ test('HEVC 無変換 HLS cmd は tsreadex・副音声・copy remux・hvc1 を含
         assert.equal(cmd.includes('%TSREADEX%'), useTsreadex);
     }
     assert.match(createOriginalHevcHlsCommand(false, 'file'), /-ss %SS% -i %INPUT%/u);
+});
+
+test('オフライン保存の複数音声 encoded HEVC だけファイルを tsreadex へ流す', () => {
+    assert.equal(resolveOriginalHevcInputMode(true, true, 'multi', true), 'file-tsreadex');
+    assert.equal(resolveOriginalHevcInputMode(true, true, 'dual-mono', true), 'file-tsreadex');
+    assert.equal(resolveOriginalHevcInputMode(true, false, 'multi', true), 'file');
+    assert.equal(resolveOriginalHevcInputMode(true, true, 'single', true), 'file');
+    assert.equal(resolveOriginalHevcInputMode(true, true, 'multi', false), 'file');
+    assert.equal(resolveOriginalHevcInputMode(false, true, 'multi', true), 'pipe');
+});
+
+test('file-tsreadex の HEVC HLS cmd はファイルを引用可能な INPUT として tsreadex へ渡し、先頭から読む', () => {
+    const cmd = createOriginalHevcHlsCommand(false, 'file-tsreadex', 'multi', 'all');
+    const input = 'F:\\EPGStation\\encode\\202603200225_最強の王様、二度目の人生は何をする？＜オーディオコメンタリー版＞ #11_関西テレビ1.hevc.ts';
+    const resolved = ProcessUtil.replaceShellPlaceholder(cmd, '%INPUT%', input);
+    const quote = process.platform === 'win32' ? '"' : "'";
+
+    assert.match(cmd, /%TSREADEX% -x 18 -n -1 -a 13 -b 7 -c 5 -u 5 %INPUT% \| %FFMPEG%/u);
+    assert.ok(resolved.includes(`%TSREADEX% -x 18 -n -1 -a 13 -b 7 -c 5 -u 5 ${quote}${input}${quote} |`));
+    assert.match(cmd, /-i pipe:0/u);
+    assert.doesNotMatch(cmd, /-ss %SS%/u);
+    assert.match(cmd, /%AUDIOMAP%/u);
 });
 
 test('encoded HEVC の音声 ES 構成を dual-mono / multi / single に分類する', () => {

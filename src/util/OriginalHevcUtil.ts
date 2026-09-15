@@ -6,6 +6,8 @@ export const ORIGINAL_HEVC_PROFILE_ID = 'original-hevc';
 
 export type OriginalHevcAudioLayout = 'dual-mono' | 'multi' | 'single';
 
+export type OriginalHevcInputMode = 'pipe' | 'file' | 'file-tsreadex';
+
 export interface OriginalHevcAudioTrackInfo {
     streamIndex: number;
     isDualMono: boolean;
@@ -268,11 +270,40 @@ export const classifyOriginalHevcAudioLayout = (
 };
 
 /**
+ * encoded HEVC の Original HLS 入力方式を決める。
+ * オフライン保存では先頭から全編を読むため、実在する複数音声だけ tsreadex で正規化する。
+ * 単一音声を tsreadex (`-b 7`) へ通すと複製された音声 ES が生じるため、必ず file のままにする。
+ * @param isEncodedVideo: boolean encoded TS か
+ * @param isOffline: boolean オフライン保存か
+ * @param audioLayout?: OriginalHevcAudioLayout 実 probe で得た音声構成
+ * @param hasTsreadex: boolean tsreadex が設定されているか
+ * @return OriginalHevcInputMode
+ */
+export const resolveOriginalHevcInputMode = (
+    isEncodedVideo: boolean,
+    isOffline: boolean,
+    audioLayout: OriginalHevcAudioLayout | undefined,
+    hasTsreadex: boolean,
+): OriginalHevcInputMode => {
+    if (isEncodedVideo === false) return 'pipe';
+
+    if (
+        isOffline === true &&
+        hasTsreadex === true &&
+        (audioLayout === 'dual-mono' || audioLayout === 'multi')
+    ) {
+        return 'file-tsreadex';
+    }
+
+    return 'file';
+};
+
+/**
  * HEVC を再エンコードせず、fMP4 の標準出力へ詰め替える録画 HLS コマンドを作る。
  * 既知の encoded TS 音声構成は、ここで具体的な音声 map / filter_complex へ展開する。
  * 判定不能または tsreadex 経由では既存 placeholder 経路を使う。
  * @param useTsreadex: boolean TS 入力を tsreadex へ通すか
- * @param input: 'pipe' | 'file' 入力方式
+ * @param input: 'pipe' | 'file' | 'file-tsreadex' 入力方式
  * @param audioLayout?: OriginalHevcAudioLayout encoded TS の音声構成
  * @param audioTrack?: string 音声選択。all のとき全音声を出す
  * @param audioBoost?: unknown 音声ブースト倍率
@@ -280,16 +311,23 @@ export const classifyOriginalHevcAudioLayout = (
  */
 export const createOriginalHevcHlsCommand = (
     useTsreadex: boolean,
-    input: 'pipe' | 'file' = 'pipe',
+    input: OriginalHevcInputMode = 'pipe',
     audioLayout?: OriginalHevcAudioLayout,
     audioTrack?: string,
     audioBoost?: unknown,
 ): string => {
-    const tsreadex = useTsreadex === true ? '%TSREADEX% | ' : '';
+    const tsreadex =
+        input === 'file-tsreadex'
+            ? '%TSREADEX% -x 18 -n -1 -a 13 -b 7 -c 5 -u 5 %INPUT% | '
+            : useTsreadex === true
+              ? '%TSREADEX% | '
+              : '';
     const inputArgs =
-        input === 'pipe' ? '-f mpegts -analyzeduration 5000000 -probesize 5000000 -i pipe:0' : '-ss %SS% -i %INPUT%';
+        input === 'pipe' || input === 'file-tsreadex'
+            ? '-f mpegts -analyzeduration 5000000 -probesize 5000000 -i pipe:0'
+            : '-ss %SS% -i %INPUT%';
 
-    const knownAudio = useTsreadex === false && audioLayout !== undefined;
+    const knownAudio = input !== 'file-tsreadex' && useTsreadex === false && audioLayout !== undefined;
     const audioArgs = knownAudio === true ? createKnownAudioArgs(audioLayout, audioTrack, audioBoost) : null;
     const audioInputOption = audioArgs === null ? '%DUALMONOMODE% ' : '';
     const audioOutputOption =
