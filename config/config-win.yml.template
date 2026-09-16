@@ -672,13 +672,12 @@ stream:
                 # 個別調整したい場合のみ、生成された cmd を出発点にこの配列へ書き足すこと。
 
                 # ================= HLS (低遅延・1 秒セグメント) =================
-                # **この 3 つは `-map 0` で全 ES をそのまま通すディスク方式のため、主音声・副音声の切り替えに
-                # 対応しない** (音声 ES が 2 本ある二か国語でも、プレイヤーは 1 本目 = 主音声を鳴らす)。
-                # `-map 0` を外して音声 ES を選ぶと副音声は選べるようになるが、ARIB 字幕の ES が落ちる
-                # (実測: `-map "0:s?" -c:s copy` を付けても arib_caption は mpegts 出力へ copy できず消える)。
-                # 字幕より音声切替を優先したい場合は、`%streamFileDir%` を含まない in-memory HLS
-                # (上の fMP4 方式 / encodePresets の自動生成) を使うこと。そちらは音声レンディションで
-                # 再接続無しに切り替えられる。
+                # cmd に `%streamFileDir%` を含めない in-memory 方式 (fMP4 セグメント) にしてある。
+                # ディスクへ書き込まず、ARIB 字幕は emsg box で運び、音声 ES が 2 本ある二か国語では
+                # 主音声・副音声を別レンディションで同時に配って再接続無しに切り替えられる。
+                # ディスクへ TS セグメントを書き出す従来方式にしたい場合は `-map 0` で全 ES を通し
+                # `-f hls -hls_segment_filename %streamFileDir%/...` を使う形に戻せるが、
+                # その構成では音声 ES を選べず副音声へ切り替えられない (プレイヤーが 1 本目 = 主音声を鳴らす)。
                 - id: recorded-ts-hls-1080p-avc
                   name: 1080p(低遅延)
                   container: hls
@@ -690,16 +689,13 @@ stream:
                       codec: aac
                       bitrate: 192
                   cmd:
-                      '%FFMPEG% %DUALMONOMODE% -i pipe:0 -sn -map 0 -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -max_interleave_delta 1
-                      -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
-                      -hls_flags delete_segments+independent_segments
-                      -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
-                      -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
-                      -preset veryfast -tune fastdecode,zerolatency
-                      -g 30 -keyint_min 30 -sc_threshold 0
-                      -flags +loop-global_header %OUTPUT%'
+                      '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -analyzeduration 500000 -probesize 5000000
+                      -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf %DEINTERLACE%,scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -profile:v high -level 4.1 -preset veryfast -tune fastdecode,zerolatency
+                      -flags +cgop -g 15 -keyint_min 15 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
                 - id: recorded-ts-hls-720p-avc
                   name: 720p(低遅延)
                   container: hls
@@ -711,16 +707,13 @@ stream:
                       codec: aac
                       bitrate: 192
                   cmd:
-                      '%FFMPEG% %DUALMONOMODE% -i pipe:0 -sn -map 0 -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -max_interleave_delta 1
-                      -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
-                      -hls_flags delete_segments+independent_segments
-                      -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
-                      -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
-                      -preset veryfast -tune fastdecode,zerolatency
-                      -g 30 -keyint_min 30 -sc_threshold 0
-                      -flags +loop-global_header %OUTPUT%'
+                      '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -analyzeduration 500000 -probesize 5000000
+                      -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf %DEINTERLACE%,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -profile:v high -level 4.1 -preset veryfast -tune fastdecode,zerolatency
+                      -flags +cgop -g 15 -keyint_min 15 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
                 - id: recorded-ts-hls-480p-avc
                   name: 480p(低遅延)
                   container: hls
@@ -732,16 +725,13 @@ stream:
                       codec: aac
                       bitrate: 128
                   cmd:
-                      '%FFMPEG% %DUALMONOMODE% -i pipe:0 -sn -map 0 -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -max_interleave_delta 1
-                      -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
-                      -hls_flags delete_segments+independent_segments
-                      -c:a aac -ar 48000 -b:a 128k -ac 2 %AUDIOFILTER%
-                      -c:v libx264 -pix_fmt yuv420p -vf yadif,scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
-                      -preset veryfast -tune fastdecode,zerolatency
-                      -g 30 -keyint_min 30 -sc_threshold 0
-                      -flags +loop-global_header %OUTPUT%'
+                      '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -analyzeduration 500000 -probesize 5000000
+                      -i pipe:0 -sn -threads 0 -max_muxing_queue_size 1024 -max_interleave_delta 1
+                      %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2 %AUDIOFILTER%
+                      -c:v libx264 -pix_fmt yuv420p -vf %DEINTERLACE%,scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
+                      -profile:v high -level 4.1 -preset veryfast -tune fastdecode,zerolatency
+                      -flags +cgop -g 15 -keyint_min 15 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
                 # ----- 字幕付き (arib 字幕 → WebVTT) で配信したい場合の例 -----
                 # - id: recorded-ts-hls-720p-arib
                 #   name: 720p(arib)
@@ -889,16 +879,13 @@ stream:
                       codec: aac
                       bitrate: 192
                   cmd:
-                      '%FFMPEG% %DUALMONOMODE% -ss %SS% -i %INPUT% -sn -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -max_interleave_delta 1
-                      -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
-                      -hls_flags delete_segments+independent_segments
+                      '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -analyzeduration 500000 -probesize 5000000
+                      -ss %SS% -i %INPUT% -sn -threads 0 -max_muxing_queue_size 1024 -max_interleave_delta 1
                       %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
-                      -c:v libx264 -pix_fmt yuv420p -vf scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
-                      -preset veryfast -tune fastdecode,zerolatency
-                      -g 30 -keyint_min 30 -sc_threshold 0
-                      -flags +loop-global_header %OUTPUT%'
+                      -c:v libx264 -pix_fmt yuv420p -vf %DEINTERLACE%,scale=-2:1080 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -profile:v high -level 4.1 -preset veryfast -tune fastdecode,zerolatency
+                      -flags +cgop -g 15 -keyint_min 15 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
                 - id: recorded-encoded-hls-720p-avc
                   name: 720p(低遅延)
                   container: hls
@@ -910,16 +897,13 @@ stream:
                       codec: aac
                       bitrate: 192
                   cmd:
-                      '%FFMPEG% %DUALMONOMODE% -ss %SS% -i %INPUT% -sn -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -max_interleave_delta 1
-                      -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
-                      -hls_flags delete_segments+independent_segments
+                      '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -analyzeduration 500000 -probesize 5000000
+                      -ss %SS% -i %INPUT% -sn -threads 0 -max_muxing_queue_size 1024 -max_interleave_delta 1
                       %AUDIOMAP% -c:a aac -ar 48000 -b:a 192k -ac 2 %AUDIOFILTER%
-                      -c:v libx264 -pix_fmt yuv420p -vf scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
-                      -preset veryfast -tune fastdecode,zerolatency
-                      -g 30 -keyint_min 30 -sc_threshold 0
-                      -flags +loop-global_header %OUTPUT%'
+                      -c:v libx264 -pix_fmt yuv420p -vf %DEINTERLACE%,scale=-2:720 -b:v 3000k -maxrate 3000k -bufsize 6000k
+                      -profile:v high -level 4.1 -preset veryfast -tune fastdecode,zerolatency
+                      -flags +cgop -g 15 -keyint_min 15 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
                 - id: recorded-encoded-hls-480p-avc
                   name: 480p(低遅延)
                   container: hls
@@ -931,16 +915,13 @@ stream:
                       codec: aac
                       bitrate: 128
                   cmd:
-                      '%FFMPEG% %DUALMONOMODE% -ss %SS% -i %INPUT% -sn -threads 0 -ignore_unknown
-                      -max_muxing_queue_size 1024 -max_interleave_delta 1
-                      -f hls -hls_time 1 -hls_list_size 0 -hls_allow_cache 1
-                      -hls_segment_filename %streamFileDir%/stream%streamNum%-%09d.ts
-                      -hls_flags delete_segments+independent_segments
+                      '%FFMPEG% %DUALMONOMODE% -fflags nobuffer -analyzeduration 500000 -probesize 5000000
+                      -ss %SS% -i %INPUT% -sn -threads 0 -max_muxing_queue_size 1024 -max_interleave_delta 1
                       %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2 %AUDIOFILTER%
-                      -c:v libx264 -pix_fmt yuv420p -vf scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
-                      -preset veryfast -tune fastdecode,zerolatency
-                      -g 30 -keyint_min 30 -sc_threshold 0
-                      -flags +loop-global_header %OUTPUT%'
+                      -c:v libx264 -pix_fmt yuv420p -vf %DEINTERLACE%,scale=-2:480 -b:v 1500k -maxrate 1500k -bufsize 3000k
+                      -profile:v high -level 4.1 -preset veryfast -tune fastdecode,zerolatency
+                      -flags +cgop -g 15 -keyint_min 15 -sc_threshold 0
+                      -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1'
 
                 # ================= M2TS-LL (mpegts.js 向け低遅延 MPEG-TS) =================
                 # -map "0:s?" の引用符は、シェル経由と直接 spawn の両方に対応するため残す。
