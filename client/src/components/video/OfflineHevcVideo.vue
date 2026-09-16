@@ -60,8 +60,10 @@ class OfflineHevcVideo extends BaseVideo {
         this.setChapters(this.offlineChapters);
         this.setDataBroadcastingFileInfo(this.offlineDataBroadcastingFileSize ?? null, this.offlineDataBroadcastingStartAt ?? null);
         // 保存レコードには素材のビット深度が無いため、ここでは transmux 可否だけを見る。
-        // 10bit HEVC は WebKit で実時間デコードできないが、それは保存前に
-        // OfflineVideoDownloadDialog が候補から外して防ぐ (保存済みの分は再生を試みる)
+        // 10bit HEVC の WebKit におけるコマ送り回避は保存前に
+        // OfflineVideoDownloadDialog が候補から外して防ぐ (保存済みの分は再生を試みる)。
+        // 保存済み HEVC の黒画面はこの判定ではなく、Range 無し要求を Service Worker が
+        // 416 にしていたことが原因。Range 無しは全体 200 として扱う。
         const support = StreamSupportUtil.checkMpegTsHevcSupport();
         if (support.isSupported === false) {
             // 例外を投げるだけだと画面が黒いままになるので、理由を画面へ出す

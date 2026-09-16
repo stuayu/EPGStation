@@ -15,7 +15,11 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-16
 
+- **オフライン保存した tsreplace HEVC 録画の黒画面を修正した**: オフラインの `original-hevc` は mpegts.js の初回要求に Range ヘッダーが付かないことがあり、Service Worker の `request.headers.get('Range')` が返す `null` を全体要求として扱えていなかった。その結果、保存チャンクから応答を組み立てる前に `416 Content-Range: bytes */16777216` を返し、mpegts.js が `HttpStatusCodeInvalid 416` で停止して `readyState=0` になっていた。`resolveOfflineByteRange()` で `null` と空白だけの値を Range 無し = 全体 (`200`, `Content-Range` 無し) として扱う。実測 (Playwright WebKit iPad Mini エミュレート / Chromium): Range 無しの fetch・XHR・mpegts.js 要求は修正前すべて `416`、`Range: bytes=0-187` は `206` / 188 byte。修正後は Range 無しを `200` / 全体 16,777,216 byte として計画できる。なお、WebKit で 10bit HEVC がコマ送りになる問題と、オフライン保存の黒画面は別原因。前者の 10bit を無変換保存候補から外す判定は変更しない。
+
 - **WebKit では 10bit HEVC の無変換再生を選べないようにした**: iPad で tsreplace の HEVC 録画を「オリジナル (無変換)」で再生するとコマ送りになり、オフライン保存した同じ録画は黒画面のままになっていた。原因は WebKit (iOS / iPadOS / macOS Safari) が **10bit (Main 10) の HEVC を MSE 経由で実時間デコードできない**こと。`MediaSource.isTypeSupported()` も `video.canPlayType()` も「対応」と答えるため、従来の能力判定では弾けていなかった。判定を `src/util/OriginalHevcClientSupport.ts` の純粋関数へ切り出し、素材が 10bit かつ WebKit のときだけ無変換再生の候補から外して HLS (ffmpeg で 8bit へ変換) へ回す。ネイティブ HLS 経由の 10bit (4K HDR 等) は WebKit でも再生できるため、落とすのは MSE へ直接流す無変換 HEVC だけに限定した。オフライン保存ダイアログも同じ判定を使い、再生できない形式を保存できないようにした。保存済みデータの再生に失敗した場合は黒画面のままにせず理由を snackbar へ出す。実測: 対象録画は HEVC Main 10 / 1440x1080 / 29.97fps で、PC の Chrome で fMP4 へ remux して直接再生すると描画間隔 0.033s が 89 回中 78 回・平均 30.5fps と正常だった (素材・配信・mpegts.js は健全)。iPad では同じ録画の HLS 再生が滑らかで、無変換再生だけがコマ送りになる。
+
+- **9053c89c の説明を補正した**: オフライン保存の黒画面は 10bit デコード不可ではなく、Range 無し要求を Service Worker が `416` にしていた別原因。
 
 - **DPlayer の画質メニューを開いた瞬間に高さを取り直すようにした**: 高さの計算は一覧を作った時点 (`setPlaybackProfiles()`) とプレイヤーのリサイズ時にしか走っておらず、メニューを開いたときの実際の位置・項目数に合っていない高さのまま開いていた。`.dplayer-setting-box` の `dplayer-setting-box-quality` クラスの出入りを `MutationObserver` で見て、開いた直後とレイアウト確定後 (`requestAnimationFrame`) に計算し直す。あわせて上限の求め方を「プレイヤー高 - 余白」から「パネル下端の実座標からビューポート上端まで」へ変え、全項目が収まる場合は必要な高さ以上に広げないようにした。実測 (項目 10 件 / 必要高 354px): 1280x420 はパネル高 284px → 335px でクリックできない項目が 2 件 → 0 件、393x660 は 145px → 192px でクリックできない項目が 7 件 → 5 件、1400x900 は 354px のままでクリック不可 0 件を維持した。393x660 で残る 5 件はプレイヤー高 217px に 354px を収められないための制約で、パネル内のスクロールで辿れる。
 
@@ -699,6 +703,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 視聴・ストリーミング・データ放送
 
+- オフライン保存した tsreplace HEVC 録画の黒画面を修正した (Range 無しの初回要求を Service Worker が `416` ではなく全体 `200` で返す)
 - 画質選択 UI を一般ユーザー・技術ユーザーの両方に分かるように改善した (`PlaybackLabelUtil` への表示ラベル一元化、HDR バッジ表示バグ修正、詳しく表示トグル、配信方式とのセレクタ相互追随)
 - 録画の HLS 再生が 1〜2 分で止まったまま戻らなくなるのを直した (エンコード抑制のデッドロック)
 - 録画の HLS 再生中に、エンコードの最新位置へ勝手に飛ばされていたのを直した

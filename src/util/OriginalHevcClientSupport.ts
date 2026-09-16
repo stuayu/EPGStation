@@ -28,6 +28,9 @@ export const WEBKIT_MAIN10_REASON =
 /**
  * 無変換 HEVC を端末で再生してよいか判定する。
  *
+ * ここで扱う WebKit の 10bit 問題は、オンラインの無変換再生がコマ送りになる理由。
+ * オフライン保存の黒画面は Service Worker の Range 応答が 416 になった別問題。
+ *
  * **WebKit は 10bit (Main 10) の HEVC を MSE 経由で実時間デコードできない。**
  * `MediaSource.isTypeSupported()` も `video.canPlayType()` も「対応」と答えるため、
  * 能力判定だけでは弾けない。

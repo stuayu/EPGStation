@@ -49,6 +49,11 @@ test('オフライン MPEG-2 Range の端点を 206 / 416 用に解決する', (
     assert.deepEqual(resolveOfflineByteRange(undefined, 20), { kind: 'full', start: 0, end: 19 });
 });
 
+test('Range ヘッダーが null または空白だけなら全体範囲へ解決する', () => {
+    assert.deepEqual(resolveOfflineByteRange(null, 20), { kind: 'full', start: 0, end: 19 });
+    assert.deepEqual(resolveOfflineByteRange('  \t ', 20), { kind: 'full', start: 0, end: 19 });
+});
+
 test('オフライン MPEG-2 Range はチャンク境界をまたいでスライスする', () => {
     assert.deepEqual(getOfflineChunkSlices({ start: 8, end: 25 }, 10, 30), [
         { chunkStart: 0, offset: 8, length: 2 },
@@ -70,6 +75,14 @@ test('オフライン MPEG-2 応答計画は 206 と 416 のヘッダーを固�
 
 test('Range 無しの全体応答 (200) には Content-Range を付けない', () => {
     const full = createOfflineRangePlan(undefined, 30, 10);
+    assert.equal(full.status, 200);
+    assert.equal(full.headers['Content-Range'], undefined);
+    assert.equal(full.headers['Content-Length'], '30');
+    assert.equal(full.slices.length, 3);
+});
+
+test('null の Range に対するオフライン応答計画は 200 で Content-Range を付けない', () => {
+    const full = createOfflineRangePlan(null, 30, 10);
     assert.equal(full.status, 200);
     assert.equal(full.headers['Content-Range'], undefined);
     assert.equal(full.headers['Content-Length'], '30');
