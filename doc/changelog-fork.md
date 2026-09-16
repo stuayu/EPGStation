@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-16
 
+- **テンプレートの録画 HLS を in-memory (fMP4) 方式へ揃えた**: `config.yml.template` / `config-win.yml.template` の録画用 HLS 6 件 (`recorded-ts-hls-1080p/720p/480p-avc`、`recorded-encoded-hls-1080p/720p/480p-avc`) が `-map 0` + `%streamFileDir%` のディスク方式のままで、音声 ES を選べず副音声へ切り替えられなかった。ライブ HLS と同じ in-memory 方式 (`%AUDIOMAP%` + `-movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`) に統一し、ARIB 字幕 (emsg) と音声レンディション切替を両立させた。デインターレースは `%DEINTERLACE%` プレースホルダへ寄せ、素材に応じて配信開始時に解決する。実測: 新 cmd の出力は映像 1 + 音声 2 の fMP4 になり、`Fmp4Packager` が video / audio0 / audio1 の 3 レンディションへ分解できることを確認した。
+
 - **ディスク方式 HLS が音声切替に対応しないことを両テンプレートへ明記した**: `config.yml.template` / `config-win.yml.template` の録画 TS 用 HLS プロファイル 3 件は `-map 0` で全 ES を通すため、音声 ES が 2 本ある二か国語でもプレイヤーは 1 本目 (主音声) を鳴らす。`-map 0` を外して音声 ES を選べば副音声は選べるようになるが、ARIB 字幕の ES が落ちる (実測: `-map "0:s?" -c:s copy` を付けても arib_caption は mpegts 出力へ copy されず、出力 PID から消える)。字幕と音声切替のどちらを取るかの選択になるため cmd は変更せず、音声切替が必要なら in-memory HLS を使うよう注意書きを足した。
 
 - **Issue #31 の音声 map 順序を配信 container 別に修正した**: in-memory HLS と、tsreadex 済みまたは実音声 ES が 2 本以上の m2tsll は主音声を先に map してクライアント側切替の audio0/audio1 と一致させる。MP4 / WebM / M2TS / embedded 切替不可の m2tsll は `sub` の選択 ES を先に map し、ブラウザが 1 本目を再生しても副音声になる。音声 ES 1 本・数不明は従来どおり `-dual_mono_mode sub`。m2tsll の `embeddedAudioSwitch` も tsreadex 必須から実音声 ES 数判定へ広げた。`test/ut/audio-track-util.test.js` と `test/ut/playback-api-model.test.js` で map 順序と判定を固定した。
