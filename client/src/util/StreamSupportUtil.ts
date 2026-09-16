@@ -1,7 +1,7 @@
 import Mpegts from 'mpegts.js';
 import { supportsWorkerMediaSource } from 'mpeg2toh264/player';
 import UaUtil from './UaUtil';
-import { checkOriginalHevcClientSupport } from '../../../src/util/OriginalHevcClientSupport';
+import { checkOfflineOriginalHevcClientSupport, checkOriginalHevcClientSupport } from '../../../src/util/OriginalHevcClientSupport';
 
 namespace StreamSupportUtil {
     export interface M2TSLLSupportResult {
@@ -80,6 +80,20 @@ namespace StreamSupportUtil {
 
     export const isMpegTsHevcSupported = (sourceBitDepth?: number): boolean =>
         checkMpegTsHevcSupport(sourceBitDepth).isSupported;
+
+    /**
+     * オフライン保存した HEVC 元 TS を再生できるか判定する。
+     *
+     * オフラインは保存済み Range VOD のため、オンライン再生用の WebKit + 10bit
+     * 実時間デコード制限は適用せず、mpegts.js の HEVC transmux 能力だけを確認する。
+     * @return M2TSLLSupportResult
+     */
+    export const checkOfflineMpegTsHevcSupport = (): M2TSLLSupportResult =>
+        checkOfflineOriginalHevcClientSupport({
+            mseH265Playback: Mpegts.getFeatureList().mseH265Playback === true,
+        });
+
+    export const isOfflineMpegTsHevcSupported = (): boolean => checkOfflineMpegTsHevcSupport().isSupported;
 
     /** MPEG-2 TS を mpeg2toh264 で端末変換できるか判定する。 */
     export const checkMpeg2ToH264Support = (): M2TSLLSupportResult => {

@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const {
+    checkOfflineOriginalHevcClientSupport,
     checkOriginalHevcClientSupport,
     UNSUPPORTED_HEVC_REASON,
     WEBKIT_MAIN10_REASON,
@@ -35,4 +36,15 @@ test('WebKit 以外は 10bit でも無変換再生できる', () => {
 test('ビット深度が分からない場合は従来どおり許可する', () => {
     const r = checkOriginalHevcClientSupport({ mseH265Playback: true, isWebKitEngine: true });
     assert.equal(r.isSupported, true);
+});
+
+test('オフライン保存は WebKit の 10bit 素材でも無変換候補を残す', () => {
+    const r = checkOfflineOriginalHevcClientSupport({ mseH265Playback: true });
+    assert.equal(r.isSupported, true);
+});
+
+test('オフライン保存も mpegts.js が HEVC を扱えない端末では候補から外す', () => {
+    const r = checkOfflineOriginalHevcClientSupport({ mseH265Playback: false });
+    assert.equal(r.isSupported, false);
+    assert.equal(r.reason, UNSUPPORTED_HEVC_REASON);
 });
