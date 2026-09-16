@@ -1,16 +1,32 @@
 import DPlayer from 'dplayer';
 import { AribKeyCode, BMLBrowser, BMLBrowserFonts, ResponseMessage } from 'web-bml';
+import * as webBmlWorker from 'web-bml/worker';
 import router from '@/router';
 import container from '@/model/ModelContainer';
 import IChannelModel from '@/model/channels/IChannelModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
 import * as apid from '../../../api';
+import { OfflineDataBroadcastingParam, splitOfflineMpeg2Ranges } from '../../../src/util/OfflineUxUtil';
 
-/**
- * データ放送 WebSocket (`<subDirectory>/api/dataBroadcasting/ws`) へ渡す接続パラメータ。
- * src/model/service/dataBroadcasting/IDataBroadcastingManageModel.ts の DataBroadcastingParam と同じ形
- */
+// web-bml-worker.js は UMD のため、Vite の CJS interop と直接のブラウザー import の双方で
+// named export が見えるようにする。バンドル自体は Buffer/readable-stream を内包している。
+//
+// **ここで throw してはいけない**。このモジュールは視聴画面から import されるため、
+// トップレベルで例外を投げると import した時点で Web UI 全体が真っ白になる。
+// decodeTS を取れない環境ではオフラインのデータ放送だけを諦め、他の再生機能は生かす。
+const resolvedDecodeTS = (
+    webBmlWorker as unknown as {
+        decodeTS?: typeof webBmlWorker.decodeTS;
+        default?: { decodeTS?: typeof webBmlWorker.decodeTS };
+    }
+).decodeTS ?? (webBmlWorker as unknown as { default?: { decodeTS?: typeof webBmlWorker.decodeTS } }).default?.decodeTS;
+const decodeTSFunction: typeof webBmlWorker.decodeTS | null =
+    typeof resolvedDecodeTS === 'function' ? resolvedDecodeTS : null;
+
+/** データ放送 WebSocket または保存済み TS decoder へ渡す接続パラメータ。 */
+export type OfflineDataBroadcastingConnectParam = OfflineDataBroadcastingParam;
+
 export type DataBroadcastingConnectParam =
     | {
           type: 'epgStationLive';
@@ -20,10 +36,10 @@ export type DataBroadcastingConnectParam =
     | {
           type: 'epgStationRecorded';
           videoFileId: apid.VideoFileId;
-          // 録画ファイル内のバイト位置 (概算)。未指定時は先頭から
           seek?: number;
           demultiplexServiceId?: number;
-      };
+      }
+    | OfflineDataBroadcastingConnectParam;
 
 export interface DataBroadcastingManagerCallbacks {
     // BML ブラウザが数字キーを利用中かどうかが変化したとき (数字キーをリモコンの選局に使うか、BML へ渡すかの判定に使う)
@@ -63,6 +79,8 @@ export default class DataBroadcastingManager {
     private bmlBrowser: BMLBrowser | null = null;
     private resizeObserver: ResizeObserver | null = null;
     private ws: WebSocket | null = null;
+    private offlineAbortController: AbortController | null = null;
+    private offlineDecoder: ReturnType<typeof webBmlWorker.decodeTS> | null = null;
 
     private isDestroying = false;
     // 動画の要素が BML ブラウザ上に移動されているかどうか
@@ -87,7 +105,7 @@ export default class DataBroadcastingManager {
     }
 
     /**
-     * データ放送機能を開始する。BML ブラウザの生成、データ放送 WebSocket への接続を行う
+     * データ放送機能を開始する。オンラインは WebSocket、オフライン元 TS は browser decoder を使う
      */
     public async init(): Promise<void> {
         // BML ブラウザが入る DOM 要素。DPlayer 内の dplayer-video-wrap の中に動的に追加する (映像レイヤーより下)
@@ -219,7 +237,11 @@ export default class DataBroadcastingManager {
         });
         this.resizeObserver.observe(this.player.template.videoWrap);
 
-        this.connectWebSocket();
+        if (this.param.type === 'offlineOriginal') {
+            void this.decodeOfflineTs();
+        } else {
+            this.connectWebSocket();
+        }
         if (typeof this.callbacks?.getBroadcastTime === 'function') {
             this.player.on('timeupdate', this.broadcastTimeListener);
             this.player.on('play', this.broadcastTimeListener);
@@ -263,6 +285,74 @@ export default class DataBroadcastingManager {
         };
     }
 
+    /** 保存済み元 TS を Range 取得し、188 byte 境界で web-bml の decodeTS へ流す。 */
+    private async decodeOfflineTs(): Promise<void> {
+        if (this.param.type !== 'offlineOriginal') return;
+        if (decodeTSFunction === null) {
+            // decodeTS を読み込めない環境。データ放送だけ諦めて再生は続ける
+            console.error('web-bml decodeTS is unavailable. offline data broadcasting is disabled.');
+            return;
+        }
+        const param = this.param;
+        const controller = new AbortController();
+        this.offlineAbortController = controller;
+        const decoder = decodeTSFunction({
+            parsePES: true,
+            serviceId: param.demultiplexServiceId,
+            sendCallback: message => {
+                if (this.isDestroying === true || this.bmlBrowser === null) return;
+                // decodeTS は TS の TDT/TOT も通知するが、録画時刻は DPlayer の位置だけを時計に使う。
+                if (message.type === 'currentTime') return;
+                this.bmlBrowser.emitMessage(message);
+            },
+        });
+        this.offlineDecoder = decoder;
+        this.setLoading(true);
+        try {
+            const ranges = splitOfflineMpeg2Ranges(param.fileSize, param.chunkSize);
+            if (ranges.length === 0) throw new Error('オフライン元 TS のサイズが不正です。');
+            let carry = new Uint8Array(0);
+            for (const range of ranges) {
+                const response = await fetch(param.url, {
+                    credentials: 'include',
+                    cache: 'no-store',
+                    headers: { Range: `bytes=${range.start}-${range.end}` },
+                    signal: controller.signal,
+                });
+                if (response.ok === false || response.status !== 206) throw new Error(`オフライン元 TS の Range 取得に失敗しました (${response.status})`);
+                const body = new Uint8Array(await response.arrayBuffer());
+                if (body.byteLength !== range.end - range.start + 1) throw new Error('オフライン元 TS のチャンクサイズが一致しません。');
+                const merged = new Uint8Array(carry.byteLength + body.byteLength);
+                merged.set(carry);
+                merged.set(body, carry.byteLength);
+                const completeLength = merged.byteLength - (merged.byteLength % 188);
+                for (let offset = 0; offset < completeLength; offset += 188 * 100) {
+                    await this.pushOfflineDecoderChunk(decoder, merged.subarray(offset, Math.min(completeLength, offset + 188 * 100)));
+                }
+                carry = merged.subarray(completeLength);
+            }
+        } catch (error) {
+            if (controller.signal.aborted === false) {
+                console.error('offline data broadcasting decode error', error);
+                container.get<ISnackbarState>('ISnackbarState').open({ color: 'error', text: '保存済みデータ放送の解析に失敗しました' });
+            }
+        } finally {
+            this.setLoading(false);
+            if (this.offlineDecoder === decoder) this.offlineDecoder = null;
+            if (this.offlineAbortController === controller) this.offlineAbortController = null;
+        }
+    }
+
+    /** TsStream の Transform に 1 回分の入力を渡す。 */
+    private pushOfflineDecoderChunk(decoder: ReturnType<typeof webBmlWorker.decodeTS>, chunk: Uint8Array): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            decoder._transform(chunk, '', (error: unknown) => {
+                if (error instanceof Error) reject(error);
+                else resolve();
+            });
+        });
+    }
+
     /**
      * リモコンからの ARIB キー押下を BML ブラウザへ送る
      * @param keyCode: AribKeyCode
@@ -277,6 +367,11 @@ export default class DataBroadcastingManager {
      * データ放送機能を終了し、破棄する
      */
     public async destroy(): Promise<void> {
+        this.offlineAbortController?.abort();
+        this.offlineAbortController = null;
+        const decoder = this.offlineDecoder;
+        this.offlineDecoder = null;
+        (decoder as unknown as { destroy?: () => void } | null)?.destroy?.();
         if (this.broadcastTimeTimerId !== null) {
             window.clearInterval(this.broadcastTimeTimerId);
             this.broadcastTimeTimerId = null;

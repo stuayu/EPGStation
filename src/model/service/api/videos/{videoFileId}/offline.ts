@@ -30,12 +30,12 @@ export const get: Operation = async (req, res) => {
             api.responseError(res, { code: 400, message: 'profile is required' });
             return;
         }
-        if (rawProfile === 'original-mpeg2') {
-            const original = await model.getOriginalMpeg2FilePath(
+        if (rawProfile === 'original-mpeg2' || rawProfile === 'original-hevc') {
+            const original = await model.getOriginalFilePath(
                 api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'),
             );
             if (original === null) {
-                api.responseError(res, { code: 404, message: 'OriginalMpeg2FileIsUndefined' });
+                api.responseError(res, { code: 404, message: 'OriginalMpegTsFileIsUndefined' });
                 return;
             }
             api.responseFile(req, res, original.path, 'video/mp2t', false);
@@ -79,7 +79,7 @@ export const get: Operation = async (req, res) => {
             } else if (message === 'RecordingVideoCannotBeSavedOffline') {
                 api.responseError(res, { code: 409, message });
             } else if (
-                message === 'OriginalMpeg2FileIsUndefined' ||
+                message === 'OriginalMpegTsFileIsUndefined' ||
                 message === 'OfflineOriginalProfileUnsupported' ||
                 message === 'OfflineHlsProfileRequired' ||
                 message === 'profile is required'

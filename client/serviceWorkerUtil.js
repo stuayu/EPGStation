@@ -74,7 +74,7 @@ const getOfflineChunkSlices = (range, chunkSize, fileSize) => {
     return slices;
 };
 
-/** SW が返すオフライン MPEG-2 応答の status / headers / チャンク範囲を組み立てる。 */
+/** SW が返すオフライン MPEG-TS 応答の status / headers / チャンク範囲を組み立てる。 */
 const createOfflineRangePlan = (header, fileSize, chunkSize) => {
     const range = resolveOfflineByteRange(header, fileSize);
     if (range.kind === 'unsatisfiable') {

@@ -63,7 +63,7 @@ export default class OfflineVideoApiModel implements IOfflineVideoApiModel {
         const recorded = await this.recordedDB.findId(video.recordedId);
         if (recorded === null) throw new Error('RecordedIsUndefined');
         if (recorded.isRecording === true) throw new Error('RecordingVideoCannotBeSavedOffline');
-        if (profile === 'original' || profile === 'original-mpeg2')
+        if (profile === 'original' || profile === 'original-mpeg2' || profile === 'original-hevc')
             throw new Error('OfflineOriginalProfileUnsupported');
 
         const release = await this.semaphore.acquire();
@@ -112,6 +112,16 @@ export default class OfflineVideoApiModel implements IOfflineVideoApiModel {
     }
 
     /** MPEG-2 Original の Range 配信対象ファイルを解決する。 */
+    public async getOriginalFilePath(videoFileId: apid.VideoFileId): Promise<{ path: string } | null> {
+        const video = await this.videoFileDB.findId(videoFileId);
+        if (video === null) throw new Error('VideoFileIsUndefined');
+        const recorded = await this.recordedDB.findId(video.recordedId);
+        if (recorded === null) throw new Error('RecordedIsUndefined');
+        if (recorded.isRecording === true) throw new Error('RecordingVideoCannotBeSavedOffline');
+        return await this.videoApi.getOriginalFilePath(videoFileId);
+    }
+
+    /** MPEG-2 Original の Range 配信対象ファイルを解決する (互換 API)。 */
     public async getOriginalMpeg2FilePath(videoFileId: apid.VideoFileId): Promise<{ path: string } | null> {
         const video = await this.videoFileDB.findId(videoFileId);
         if (video === null) throw new Error('VideoFileIsUndefined');

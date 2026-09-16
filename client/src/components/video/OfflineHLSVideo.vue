@@ -69,9 +69,9 @@ class OfflineHLSVideo extends BaseVideo {
         return super.getDuration() || this.durationSeconds;
     }
 
-    /** MPEG-2 Original の保存時だけデータ放送を有効にする。HLS 保存には BML ES が無い。 */
+    /** HLS 保存には元 TS の BML ES が無いためデータ放送対象外。 */
     public override getDataBroadcastingParam() {
-        return this.offlineDataBroadcastingVideoFileId === undefined ? null : this.buildRecordedDataBroadcastingParam(this.offlineDataBroadcastingVideoFileId);
+        return null;
     }
 
     protected initVideoSetting(): void {

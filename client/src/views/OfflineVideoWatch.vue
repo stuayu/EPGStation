@@ -83,9 +83,7 @@ import { resolveJikkyoKakologParam } from '@/util/JikkyoKakologParam';
 import { resolveOfflineJikkyoParam } from '../../../src/util/OfflineJikkyoParam';
 import type { OfflineJikkyoParam } from '../../../src/util/OfflineJikkyoParam';
 import DataBroadcastingManager from '@/util/DataBroadcastingManager';
-import { isFeatureEnabled } from '@/util/FeatureFlags';
 import { ISettingStorageModel, WatchSidePanelTab } from '@/model/storage/setting/ISettingStorageModel';
-import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import { AribKeyCode } from 'web-bml';
 import { markRaw } from 'vue';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
@@ -101,7 +99,7 @@ class OfflineVideoWatch extends Vue {
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     public video: OfflineVideoRecord | null = null;
     public notFound = false;
-    public videoParam: VideoParam.OfflineHLSVideoParam | VideoParam.OfflineOriginalMpeg2Param | null = null;
+    public videoParam: VideoParam.OfflineHLSVideoParam | VideoParam.OfflineOriginalMpeg2Param | VideoParam.OfflineOriginalHevcParam | null = null;
     public displayInfo: OfflineProgramInfo = { channelId: null, name: '録画番組' };
     public jikkyoComments: JikkyoComment[] = [];
     public jikkyoErrorMessage: string | null = null;
@@ -109,7 +107,6 @@ class OfflineVideoWatch extends Vue {
     private recordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
     private channelModel = container.get<IChannelModel>('IChannelModel');
     private videoApiModel = container.get<IVideoApiModel>('IVideoApiModel');
-    private serverConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
     private settingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     private dataBroadcastingManager: DataBroadcastingManager | null = null;
     public isOnline = navigator.onLine !== false;
@@ -133,7 +130,7 @@ class OfflineVideoWatch extends Vue {
     }
 
     get isDataBroadcastingAvailable(): boolean {
-        return this.isOnline === true && isFeatureEnabled(this.serverConfigModel.getConfig(), 'dataBroadcasting') === true && createOfflineDataBroadcastingInfo(this.video ?? { videoId: -1, program: {} }, true) !== null;
+        return createOfflineDataBroadcastingInfo(this.video ?? { videoId: -1, program: {} }) !== null;
     }
 
     get isEnabledDataBroadcasting(): boolean {
@@ -203,7 +200,7 @@ class OfflineVideoWatch extends Vue {
             }
         }
         const duration = getOfflineVideoDurationSeconds(this.video);
-        const dataBroadcasting = createOfflineDataBroadcastingInfo(this.video, this.isOnline);
+        const dataBroadcasting = createOfflineDataBroadcastingInfo(this.video);
         let saved: string | null = null;
         try {
             saved = localStorage.getItem(this.positionKey);
@@ -219,11 +216,14 @@ class OfflineVideoWatch extends Vue {
             ...(dataBroadcasting === null ? {} : {
                 offlineDataBroadcastingVideoFileId: dataBroadcasting.videoFileId,
                 offlineDataBroadcastingFileSize: dataBroadcasting.fileSize,
+                offlineDataBroadcastingChunkSize: dataBroadcasting.chunkSize,
                 offlineDataBroadcastingStartAt: dataBroadcasting.startAt ?? undefined,
             }),
         };
         this.videoParam = this.video.kind === 'original-mpeg2'
             ? { type: 'OfflineOriginalMpeg2', src: this.video.originalURL ?? this.video.playlistURL, ...common, ...jikkyo.param }
+            : this.video.kind === 'original-hevc'
+              ? { type: 'OfflineOriginalHevc', src: this.video.originalURL ?? this.video.playlistURL, ...common, ...jikkyo.param }
             : { type: 'OfflineHLS', src: OfflineVideos.getPlaylistURL(this.video), ...common, ...jikkyo.param };
     }
 
@@ -234,7 +234,6 @@ class OfflineVideoWatch extends Vue {
 
     public onNetworkOffline(): void {
         this.isOnline = false;
-        void this.teardownDataBroadcasting();
     }
 
     public onScreenshotRequest(request: ScreenshotRequest): void {

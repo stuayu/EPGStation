@@ -5,10 +5,13 @@ const test = require('node:test');
 const {
     createOfflineProgramInfo,
     createOfflineDataBroadcastingInfo,
+    createOfflineDataBroadcastingParam,
     createOfflineVideoKey,
     findOfflineVideoByKey,
     findOfflineVideoByIds,
     getOfflineVideoKey,
+    getOfflineOriginalTsKind,
+    isOfflineOriginalTsProfile,
     ORIGINAL_MPEG2_CHUNK_SIZE,
     resolveOfflineWatchReturnPath,
     shouldShowOfflineIndicator,
@@ -121,7 +124,7 @@ test('保存済みチャプターを正規化し、旧形式や不正な項目�
     assert.deepEqual(normalizeOfflineChapters(undefined), []);
 });
 
-test('データ放送はオンラインの MPEG-2 Original だけへファイル情報を組み立てる', () => {
+test('元 TS を保存した MPEG-2 と HEVC のオフラインデータ放送情報を組み立てる', () => {
     const record = {
         videoId: 7,
         kind: 'original-mpeg2',
@@ -132,9 +135,47 @@ test('データ放送はオンラインの MPEG-2 Original だけへファイル
     assert.deepEqual(createOfflineDataBroadcastingInfo(record, true), {
         videoFileId: 7,
         fileSize: 188 * 100,
+        chunkSize: 16_777_120,
+        url: '/local/original.ts',
         startAt: 123456,
     });
-    assert.equal(createOfflineDataBroadcastingInfo(record, false), null);
+    assert.deepEqual(createOfflineDataBroadcastingInfo({ ...record, kind: 'original-hevc' }), {
+        videoFileId: 7,
+        fileSize: 188 * 100,
+        chunkSize: 16_777_120,
+        url: '/local/original.ts',
+        startAt: 123456,
+    });
     assert.equal(createOfflineDataBroadcastingInfo({ ...record, kind: 'hls' }, true), null);
     assert.equal(createOfflineDataBroadcastingInfo({ ...record, originalFileSize: 0 }, true), null);
+});
+
+test('元 TS 保存プロファイルは MPEG-2 と HEVC だけを direct 扱いにする', () => {
+    assert.equal(isOfflineOriginalTsProfile('original-mpeg2'), true);
+    assert.equal(isOfflineOriginalTsProfile('original-hevc'), true);
+    assert.equal(getOfflineOriginalTsKind('original-mpeg2'), 'original-mpeg2');
+    assert.equal(getOfflineOriginalTsKind('original-hevc'), 'original-hevc');
+    assert.equal(getOfflineOriginalTsKind('original'), null);
+    assert.equal(getOfflineOriginalTsKind(undefined), null);
+});
+
+test('オフラインデータ放送 decoder の接続パラメータを有効な値だけで組み立てる', () => {
+    assert.deepEqual(createOfflineDataBroadcastingParam(7, '/local/original.ts', 188 * 100, 123456, 188 * 10), {
+        type: 'offlineOriginal',
+        videoFileId: 7,
+        url: '/local/original.ts',
+        fileSize: 188 * 100,
+        chunkSize: 188 * 10,
+        startAt: 123456,
+    });
+    assert.deepEqual(createOfflineDataBroadcastingParam(7, '/local/original.ts', 188 * 100, undefined), {
+        type: 'offlineOriginal',
+        videoFileId: 7,
+        url: '/local/original.ts',
+        fileSize: 188 * 100,
+        chunkSize: 16_777_120,
+        startAt: null,
+    });
+    assert.equal(createOfflineDataBroadcastingParam(7, '', 188, null), null);
+    assert.equal(createOfflineDataBroadcastingParam(7, '/local/original.ts', 0, null), null);
 });

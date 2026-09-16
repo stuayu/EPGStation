@@ -6,20 +6,15 @@
 import BaseVideo from '@/components/video/BaseVideo';
 import DPlayerUtil from '@/util/DPlayerUtil';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
-import UaUtil from '@/util/UaUtil';
 import { DPlayerType } from 'dplayer';
-import { Deinterlacer, supportsDeinterlace } from 'mpeg2toh264/yadif';
 import * as apid from '../../../../api';
-import { Component, Prop, toNative } from 'vue-facing-decorator';
 import { createOfflineDataBroadcastingParam } from '../../../../src/util/OfflineUxUtil';
+import { Component, Prop, toNative } from 'vue-facing-decorator';
 
-/** Cache Storage の Range 仮想ファイルを mpeg2toh264 へ渡すプレイヤー。 */
+/** 保存済み元 TS の HEVC を Range VOD として mpegts.js へ渡すプレイヤー。 */
 @Component({})
-class OfflineMpeg2Video extends BaseVideo {
-    // オフライン視聴画面はコメントタブに取得失敗を出すので、プレイヤー上の通知は出さない
-    protected override shouldNoticeJikkyoError(): boolean {
-        return false;
-    }
+class OfflineHevcVideo extends BaseVideo {
+    protected override shouldNoticeJikkyoError(): boolean { return false; }
 
     @Prop({ required: true })
     public videoSrc!: string;
@@ -60,20 +55,16 @@ class OfflineMpeg2Video extends BaseVideo {
         this.containerElement = this.$refs.container as HTMLElement;
         this.setChapters(this.offlineChapters);
         this.setDataBroadcastingFileInfo(this.offlineDataBroadcastingFileSize ?? null, this.offlineDataBroadcastingStartAt ?? null);
-        const support = StreamSupportUtil.checkMpeg2ToH264Support();
+        const support = StreamSupportUtil.checkMpegTsHevcSupport();
         if (support.isSupported === false) throw new Error(support.reason ?? '非対応ブラウザーです。');
+        DPlayerUtil.enableMpegtsHevcPlayback();
         this.initVideoSetting();
     }
 
-    protected override isEnabledVirtualTimeline(): boolean {
-        return true;
-    }
+    protected override isEnabledVirtualTimeline(): boolean { return true; }
 
-    public override getDuration(): number {
-        return super.getDuration() || this.durationSeconds;
-    }
+    public override getDuration(): number { return super.getDuration() || this.durationSeconds; }
 
-    /** 保存元 TS の BML を通信なしで decodeTS へ渡す。 */
     public override getDataBroadcastingParam() {
         return this.offlineDataBroadcastingVideoFileId === undefined
             ? null
@@ -91,23 +82,30 @@ class OfflineMpeg2Video extends BaseVideo {
         DPlayerUtil.setupGlobals();
         const options: DPlayerType.Options = {
             container: this.containerElement,
-            autoplay: UaUtil.isSafari() === false && UaUtil.isiOS() === false,
+            autoplay: true,
             live: false,
-            video: { url: this.videoSrc, type: 'mpeg2toh264' },
+            video: { url: this.videoSrc, type: 'mpegts' },
             subtitle: { type: 'aribb24' },
             pluginOptions: {
-                mpeg2toh264: {
-                    mediaSource: UaUtil.isSafari() === true ? 'main' : 'auto',
-                    passthrough: false,
-                    deinterlace: supportsDeinterlace(),
-                    deinterlacer: supportsDeinterlace() ? video => new Deinterlacer(video) : undefined,
+                mpegts: {
+                    mediaDataSource: { type: 'mpegts', isLive: false },
+                    config: {
+                        isLive: false,
+                        enableWorker: true,
+                        enableStashBuffer: true,
+                        stashInitialSize: 64 * 1024,
+                        autoCleanupSourceBuffer: true,
+                        autoCleanupMaxBackwardDuration: 30,
+                        autoCleanupMinBackwardDuration: 15,
+                    },
                 },
                 aribb24: DPlayerUtil.createAribb24Options(),
             },
         };
+        this.applyChapterHighlights(options, this.durationSeconds);
         this.createPlayer(options);
     }
 }
 
-export default toNative(OfflineMpeg2Video);
+export default toNative(OfflineHevcVideo);
 </script>

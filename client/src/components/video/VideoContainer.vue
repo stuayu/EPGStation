@@ -32,6 +32,7 @@
                     v-bind:offlineChapters="videoParam.chapters"
                     v-bind:offlineDataBroadcastingVideoFileId="videoParam.offlineDataBroadcastingVideoFileId"
                     v-bind:offlineDataBroadcastingFileSize="videoParam.offlineDataBroadcastingFileSize"
+                    v-bind:offlineDataBroadcastingChunkSize="videoParam.offlineDataBroadcastingChunkSize"
                     v-bind:offlineDataBroadcastingStartAt="videoParam.offlineDataBroadcastingStartAt"
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
                     v-bind:jikkyoStartAt="videoParam.jikkyoStartAt"
@@ -56,6 +57,7 @@
                     v-bind:offlineChapters="videoParam.chapters"
                     v-bind:offlineDataBroadcastingVideoFileId="videoParam.offlineDataBroadcastingVideoFileId"
                     v-bind:offlineDataBroadcastingFileSize="videoParam.offlineDataBroadcastingFileSize"
+                    v-bind:offlineDataBroadcastingChunkSize="videoParam.offlineDataBroadcastingChunkSize"
                     v-bind:offlineDataBroadcastingStartAt="videoParam.offlineDataBroadcastingStartAt"
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
                     v-bind:jikkyoStartAt="videoParam.jikkyoStartAt"
@@ -71,6 +73,31 @@
                     v-on:playbackTransition="onPlaybackTransition"
                     v-on:screenshotRequest="onScreenshotRequest"
                 ></OfflineMpeg2Video>
+                <OfflineHevcVideo
+                    v-if="videoParam.type == 'OfflineOriginalHevc'"
+                    ref="video"
+                    v-bind:videoSrc="videoParam.src"
+                    v-bind:durationSeconds="videoParam.durationSeconds"
+                    v-bind:offlineChapters="videoParam.chapters"
+                    v-bind:offlineDataBroadcastingVideoFileId="videoParam.offlineDataBroadcastingVideoFileId"
+                    v-bind:offlineDataBroadcastingFileSize="videoParam.offlineDataBroadcastingFileSize"
+                    v-bind:offlineDataBroadcastingChunkSize="videoParam.offlineDataBroadcastingChunkSize"
+                    v-bind:offlineDataBroadcastingStartAt="videoParam.offlineDataBroadcastingStartAt"
+                    v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
+                    v-bind:jikkyoStartAt="videoParam.jikkyoStartAt"
+                    v-bind:jikkyoEndAt="videoParam.jikkyoEndAt"
+                    v-on:waiting="onWaiting"
+                    v-on:loadeddata="onLoadeddata"
+                    v-on:canplay="onCanplay"
+                    v-on:timeupdate="onTimeupdate"
+                    v-on:pause="onPause"
+                    v-on:ended="onEnded"
+                    v-on:jikkyoComment="onJikkyoComment"
+                    v-on:jikkyoError="onJikkyoError"
+                    v-on:error="onVideoError"
+                    v-on:playbackTransition="onPlaybackTransition"
+                    v-on:screenshotRequest="onScreenshotRequest"
+                ></OfflineHevcVideo>
                 <LiveHLSVideo
                     v-if="videoParam.type == 'LiveHLS'"
                     ref="video"
@@ -176,6 +203,7 @@ import RecordedStreamingVideo from '@/components/video/RecordedStreamingVideo.vu
 import LiveMpegTsVideo from '@/components/video/LiveMpegTsVideo.vue';
 import OfflineHLSVideo from '@/components/video/OfflineHLSVideo.vue';
 import OfflineMpeg2Video from '@/components/video/OfflineMpeg2Video.vue';
+import OfflineHevcVideo from '@/components/video/OfflineHevcVideo.vue';
 import * as VideoParam from '@/components/video/ViedoParam';
 import UaUtil from '@/util/UaUtil';
 import BaseVideo, { PlaybackContainerSwitchRequest, ScreenshotRequest } from '@/components/video/BaseVideo';
@@ -208,6 +236,7 @@ import {
         LiveMpegTsVideo,
         OfflineHLSVideo,
         OfflineMpeg2Video,
+        OfflineHevcVideo,
     },
 })
 class VideoContainer extends Vue {

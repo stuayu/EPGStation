@@ -2,7 +2,7 @@ import BaseVide from './BaseVideo';
 import type { RecordedStreamingType } from '@/util/StreamingTypeUtil';
 import * as apid from '../../../../api';
 
-export type VideoType = 'Normal' | 'RecordedStreaming' | 'LiveHLS' | 'RecordedHLS' | 'LiveMpegTs' | 'OfflineHLS' | 'OfflineOriginalMpeg2';
+export type VideoType = 'Normal' | 'RecordedStreaming' | 'LiveHLS' | 'RecordedHLS' | 'LiveMpegTs' | 'OfflineHLS' | 'OfflineOriginalMpeg2' | 'OfflineOriginalHevc';
 
 interface VideoParamBase {
     type: VideoType;
@@ -16,6 +16,7 @@ interface OfflineVideoParamBase extends VideoParamBase {
     chapters?: apid.VideoChapter[];
     offlineDataBroadcastingVideoFileId?: apid.VideoFileId;
     offlineDataBroadcastingFileSize?: number;
+    offlineDataBroadcastingChunkSize?: number;
     offlineDataBroadcastingStartAt?: number;
 }
 
@@ -33,6 +34,12 @@ export interface OfflineHLSVideoParam extends OfflineVideoParamBase {
 
 export interface OfflineOriginalMpeg2Param extends OfflineVideoParamBase {
     type: 'OfflineOriginalMpeg2';
+    src: string;
+    playPosition?: number;
+}
+
+export interface OfflineOriginalHevcParam extends OfflineVideoParamBase {
+    type: 'OfflineOriginalHevc';
     src: string;
     playPosition?: number;
 }
@@ -70,4 +77,4 @@ export interface LiveMpegTsVideoParam extends VideoParamBase {
     directMpeg2?: boolean;
 }
 
-export type BaseVideoParam = NormalVideoParam | OfflineHLSVideoParam | OfflineOriginalMpeg2Param | RecordedStreamingParam | LiveHLSParam | RecordedHLSParam | LiveMpegTsVideoParam;
+export type BaseVideoParam = NormalVideoParam | OfflineHLSVideoParam | OfflineOriginalMpeg2Param | OfflineOriginalHevcParam | RecordedStreamingParam | LiveHLSParam | RecordedHLSParam | LiveMpegTsVideoParam;

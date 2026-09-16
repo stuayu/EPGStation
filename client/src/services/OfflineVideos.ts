@@ -7,6 +7,7 @@ import {
     findOfflineVideoByIds,
     normalizeOfflineChapters,
     ORIGINAL_MPEG2_CHUNK_SIZE,
+    getOfflineOriginalTsKind,
     splitOfflineMpeg2Ranges,
 } from '../../../src/util/OfflineUxUtil';
 import Util from '@/util/Util';
@@ -110,10 +111,11 @@ export default class OfflineVideos {
         const snapshot = JSON.parse(JSON.stringify(program)) as apid.RecordedItem;
         const sourceVideo = snapshot.videoFiles?.find(item => item.id === videoFileId);
         if (sourceVideo === undefined) throw new Error('保存対象の録画ファイルが見つかりません。');
-        const isOriginalMpeg2 = profile === 'original-mpeg2';
+        const originalKind = getOfflineOriginalTsKind(profile);
+        const isOriginalTs = originalKind !== null;
         const duration = sourceVideo.duration ?? 0;
         const mediaBitrateBytesPerSecond = ((videoBitrateKbps ?? 3000) * 1000 + 192000) / 8;
-        const estimatedBytes = isOriginalMpeg2 === true ? sourceVideo.size : Math.max(16 * 1024 * 1024, Math.ceil(duration * mediaBitrateBytesPerSecond * 1.15));
+        const estimatedBytes = isOriginalTs === true ? sourceVideo.size : Math.max(16 * 1024 * 1024, Math.ceil(duration * mediaBitrateBytesPerSecond * 1.15));
         const estimate = await navigator.storage?.estimate();
         if (estimate?.quota !== undefined && estimate.quota - (estimate.usage ?? 0) < estimatedBytes) throw new Error('オフライン保存に必要な空き容量が不足しています。');
         await navigator.storage?.persist?.();
@@ -180,7 +182,7 @@ export default class OfflineVideos {
                     // 放送局ロゴは補助情報。取得失敗で動画保存を失敗させない。
                 }
             }
-            if (isOriginalMpeg2 === true) {
+            if (isOriginalTs === true && originalKind !== null) {
                 const ranges = splitOfflineMpeg2Ranges(sourceVideo.size, ORIGINAL_MPEG2_CHUNK_SIZE);
                 if (ranges.length === 0) throw new Error('録画ファイルサイズが不正です。');
                 const originalURL = new URL('original.ts', baseURL).toString();
@@ -204,7 +206,7 @@ export default class OfflineVideos {
                     videoId: videoFileId,
                     generationId,
                     program: snapshot,
-                    kind: 'original-mpeg2',
+                    kind: originalKind,
                     profile,
                     profileLabel: infoOptions.profileLabel,
                     sizeBytes: sourceVideo.size,
