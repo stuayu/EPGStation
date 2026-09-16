@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-16
 
+- **ディスク方式 HLS が音声切替に対応しないことを両テンプレートへ明記した**: `config.yml.template` / `config-win.yml.template` の録画 TS 用 HLS プロファイル 3 件は `-map 0` で全 ES を通すため、音声 ES が 2 本ある二か国語でもプレイヤーは 1 本目 (主音声) を鳴らす。`-map 0` を外して音声 ES を選べば副音声は選べるようになるが、ARIB 字幕の ES が落ちる (実測: `-map "0:s?" -c:s copy` を付けても arib_caption は mpegts 出力へ copy されず、出力 PID から消える)。字幕と音声切替のどちらを取るかの選択になるため cmd は変更せず、音声切替が必要なら in-memory HLS を使うよう注意書きを足した。
+
 - **Issue #31 の音声 map 順序を配信 container 別に修正した**: in-memory HLS と、tsreadex 済みまたは実音声 ES が 2 本以上の m2tsll は主音声を先に map してクライアント側切替の audio0/audio1 と一致させる。MP4 / WebM / M2TS / embedded 切替不可の m2tsll は `sub` の選択 ES を先に map し、ブラウザが 1 本目を再生しても副音声になる。音声 ES 1 本・数不明は従来どおり `-dual_mono_mode sub`。m2tsll の `embeddedAudioSwitch` も tsreadex 必須から実音声 ES 数判定へ広げた。`test/ut/audio-track-util.test.js` と `test/ut/playback-api-model.test.js` で map 順序と判定を固定した。
 
 - **tsreplace HEVC の元 TS をオフライン保存し、通信なしでデータ放送を表示できるようにした**: オフライン保存の direct 元 TS プロファイルを `original-mpeg2` / `original-hevc` に拡張し、どちらも `/api/videos/{videoFileId}/original` の Range チャンクを `original.ts` として保存する。保存済み元 TS の視聴は MPEG-2 では従来の `mpeg2toh264`、HEVC では mpegts.js の VOD とし、HLS は従来どおり対象外とする。`DataBroadcastingManager` はオフライン元 TS の場合だけ `web-bml/worker` の `decodeTS` へローカル Service Worker URL の Range チャンクを投入し、WebSocket / socket.io へ接続しない。`startAt` がある場合の BML 時計は `videoFile.startAt + 再生位置` に固定し、無い場合は推測値を送らない。既存の `original-mpeg2` と kind 省略レコード、Service Worker の Range / app cache / 保存 cache 削除契約は維持する。実機での通信遮断下の BML 操作は未検証。
