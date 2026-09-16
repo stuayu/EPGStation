@@ -11,8 +11,8 @@
                     <v-radio-group v-model="selectedProfile" :disabled="isLoading">
                         <v-radio v-for="profile in profiles" :key="profile.id" :label="getLabel(profile)" :value="profile.id"></v-radio>
                     </v-radio-group>
-                    <v-alert v-if="selectedProfile === 'original-mpeg2'" type="info" variant="tonal" density="compact">
-                        元の TS をそのまま保存します。端末で変換して再生します。対応ブラウザでのみ再生できます。
+                    <v-alert v-if="selectedProfile === 'original-mpeg2' || selectedProfile === 'original-hevc'" type="info" variant="tonal" density="compact">
+                        元の TS をそのまま保存します。対応ブラウザで再生します。
                         <div v-if="selectedVideo !== null" class="mt-1">保存サイズ: {{ formatBytes(selectedVideo.size) }}</div>
                     </v-alert>
                     <v-progress-linear v-if="isLoading" indeterminate></v-progress-linear>
@@ -59,7 +59,8 @@ class OfflineVideoDownloadDialog extends Vue {
     get selectedVideo(): apid.VideoFile | null { return this.videoFiles.find(video => video.id === this.selectedVideoId) ?? null; }
     get profiles(): apid.PlaybackProfile[] {
         return (this.playbackState.options?.profiles ?? []).filter(profile => {
-            if (profile.role === 'original-mpeg2' || profile.id === 'original-mpeg2') return StreamSupportUtil.isMpeg2ToH264Supported();
+            if (profile.role === 'original-mpeg2' || profile.id === 'original-mpeg2') return typeof profile.modes.original === 'number' && StreamSupportUtil.isMpeg2ToH264Supported();
+            if (profile.role === 'original-hevc' || profile.id === 'original-hevc') return typeof profile.modes.original === 'number' && StreamSupportUtil.isMpegTsHevcSupported();
             return typeof profile.modes.hls === 'number';
         });
     }

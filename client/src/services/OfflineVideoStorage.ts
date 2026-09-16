@@ -7,7 +7,7 @@ export interface OfflineVideoRecord {
     generationId: string;
     program: unknown;
     // 旧形式には無い。無い場合は HLS 保存として扱う。
-    kind?: 'hls' | 'original-mpeg2';
+    kind?: 'hls' | 'original-mpeg2' | 'original-hevc';
     profile: string;
     // 旧形式には無い。無い場合は profile (内部 id) を表示する
     profileLabel?: string;

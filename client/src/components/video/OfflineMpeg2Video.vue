@@ -11,6 +11,7 @@ import { DPlayerType } from 'dplayer';
 import { Deinterlacer, supportsDeinterlace } from 'mpeg2toh264/yadif';
 import * as apid from '../../../../api';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
+import { createOfflineDataBroadcastingParam } from '../../../../src/util/OfflineUxUtil';
 
 /** Cache Storage の Range 仮想ファイルを mpeg2toh264 へ渡すプレイヤー。 */
 @Component({})
@@ -34,6 +35,9 @@ class OfflineMpeg2Video extends BaseVideo {
 
     @Prop({ default: undefined })
     public offlineDataBroadcastingFileSize!: number | undefined;
+
+    @Prop({ default: undefined })
+    public offlineDataBroadcastingChunkSize!: number | undefined;
 
     @Prop({ default: undefined })
     public offlineDataBroadcastingStartAt!: number | undefined;
@@ -69,9 +73,17 @@ class OfflineMpeg2Video extends BaseVideo {
         return super.getDuration() || this.durationSeconds;
     }
 
-    /** 保存元 TS に BML が残る MPEG-2 Original のみデータ放送へ接続する。 */
+    /** 保存元 TS の BML を通信なしで decodeTS へ渡す。 */
     public override getDataBroadcastingParam() {
-        return this.offlineDataBroadcastingVideoFileId === undefined ? null : this.buildRecordedDataBroadcastingParam(this.offlineDataBroadcastingVideoFileId);
+        return this.offlineDataBroadcastingVideoFileId === undefined
+            ? null
+            : createOfflineDataBroadcastingParam(
+                  this.offlineDataBroadcastingVideoFileId,
+                  this.videoSrc,
+                  this.offlineDataBroadcastingFileSize ?? 0,
+                  this.offlineDataBroadcastingStartAt,
+                  this.offlineDataBroadcastingChunkSize,
+              );
     }
 
     protected initVideoSetting(): void {

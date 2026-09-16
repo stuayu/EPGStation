@@ -14,5 +14,6 @@ export default interface IOfflineVideoApiModel {
         profile: string,
         audioTrack?: apid.AudioTrackSpecifier,
     ): Promise<OfflineVideoStreamResult>;
+    getOriginalFilePath(videoFileId: apid.VideoFileId): Promise<{ path: string } | null>;
     getOriginalMpeg2FilePath(videoFileId: apid.VideoFileId): Promise<{ path: string } | null>;
 }

@@ -3,6 +3,16 @@ import DateUtil from './DateUtil';
 
 export const ORIGINAL_MPEG2_CHUNK_SIZE = Math.floor((16 * 1024 * 1024) / 188) * 188;
 
+export type OfflineOriginalTsKind = 'original-mpeg2' | 'original-hevc';
+
+/** オフライン保存で元 TS をそのまま保持するプロファイルか判定する。 */
+export const isOfflineOriginalTsProfile = (profile: unknown): profile is OfflineOriginalTsKind =>
+    profile === 'original-mpeg2' || profile === 'original-hevc';
+
+/** オフライン保存の元 TS kind をプロファイルから決める。曖昧な profile は HLS 扱いにする。 */
+export const getOfflineOriginalTsKind = (profile: unknown): OfflineOriginalTsKind | null =>
+    isOfflineOriginalTsProfile(profile) ? profile : null;
+
 /** 保存済み動画を一意に識別する URL 用キーを作る。 */
 export const createOfflineVideoKey = (videoFileId: number, generationId: string): string => {
     if (
@@ -71,23 +81,34 @@ export const normalizeOfflineChapters = (value: unknown): apid.VideoChapter[] =>
 export interface OfflineDataBroadcastingInfo {
     videoFileId: apid.VideoFileId;
     fileSize: number;
+    chunkSize: number;
+    url: string;
     startAt: number | null;
 }
 
-/** MPEG-2 Original をオンラインで再生するときだけデータ放送を許可する。 */
+export interface OfflineDataBroadcastingParam {
+    type: 'offlineOriginal';
+    videoFileId: apid.VideoFileId;
+    url: string;
+    fileSize: number;
+    chunkSize: number;
+    startAt: number | null;
+    demultiplexServiceId?: number;
+}
+
+/** 元 TS を保存したオフライン動画からデータ放送 decoder の入力情報を作る。 */
 export const createOfflineDataBroadcastingInfo = (
     record: {
         videoId: number;
-        kind?: 'hls' | 'original-mpeg2';
+        kind?: 'hls' | OfflineOriginalTsKind;
         originalURL?: string;
         originalFileSize?: number;
+        originalChunkSize?: number;
         program: unknown;
     },
-    isOnline: boolean,
 ): OfflineDataBroadcastingInfo | null => {
     if (
-        isOnline !== true ||
-        record.kind !== 'original-mpeg2' ||
+        isOfflineOriginalTsProfile(record.kind) === false ||
         typeof record.originalURL !== 'string' ||
         record.originalURL.length === 0 ||
         !Number.isSafeInteger(record.videoId) ||
@@ -102,7 +123,44 @@ export const createOfflineDataBroadcastingInfo = (
         ? (videoFile as { startAt: number }).startAt
         : null;
 
-    return { videoFileId: record.videoId, fileSize: record.originalFileSize as number, startAt };
+    const chunkSize = Number.isSafeInteger(record.originalChunkSize) && (record.originalChunkSize as number) >= 188
+        ? Math.floor((record.originalChunkSize as number) / 188) * 188
+        : ORIGINAL_MPEG2_CHUNK_SIZE;
+    return {
+        videoFileId: record.videoId,
+        fileSize: record.originalFileSize as number,
+        chunkSize,
+        url: record.originalURL,
+        startAt,
+    };
+};
+
+/** オフライン元 TS 情報を DataBroadcastingManager の接続パラメータへ組み立てる。 */
+export const createOfflineDataBroadcastingParam = (
+    videoFileId: number,
+    url: string,
+    fileSize: number,
+    startAt: number | null | undefined,
+    chunkSize = ORIGINAL_MPEG2_CHUNK_SIZE,
+): OfflineDataBroadcastingParam | null => {
+    if (
+        !Number.isSafeInteger(videoFileId) ||
+        videoFileId < 0 ||
+        typeof url !== 'string' ||
+        url.length === 0 ||
+        !Number.isSafeInteger(fileSize) ||
+        fileSize <= 0
+    ) return null;
+    const alignedChunkSize = Number.isSafeInteger(chunkSize) && chunkSize >= 188 ? Math.floor(chunkSize / 188) * 188 : 0;
+    if (alignedChunkSize < 188) return null;
+    return {
+        type: 'offlineOriginal',
+        videoFileId,
+        url,
+        fileSize,
+        chunkSize: alignedChunkSize,
+        startAt: typeof startAt === 'number' && Number.isFinite(startAt) ? startAt : null,
+    };
 };
 
 /** MPEG-2 TS を Range 取得するチャンク境界へ分割する。 */

@@ -21,11 +21,11 @@ paths:
                     description: >-
                         録画 HLS プロファイルを先頭からエンコードし、EPGODL2 の init/master と約6秒単位の
                         fMP4 セグメントを完成順に流すオフライン保存用バイナリストリーム。`profile=original-mpeg2`
-                        の場合は元 MPEG-2 TS を Range 配信する。LL-HLS のタグは含めない
+                        または `profile=original-hevc` の場合は元 MPEG-TS を Range 配信する。LL-HLS のタグは含めない
                     content:
                         application/octet-stream: {}
                 '206':
-                    description: profile=original-mpeg2 の指定範囲 MPEG-2 TS
+                    description: profile=original-mpeg2 / original-hevc の指定範囲 MPEG-TS
                     content:
                         video/mp2t: {}
                 '416':
