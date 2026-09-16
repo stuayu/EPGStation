@@ -46,7 +46,9 @@ const classifyServiceWorkerRequest = (request, scopeUrl) => {
 /** Range ヘッダーをファイル長に対して解決する。 */
 const resolveOfflineByteRange = (header, fileSize) => {
     if (!Number.isSafeInteger(fileSize) || fileSize <= 0) return { kind: 'unsatisfiable' };
-    if (header === undefined || header === '') return { kind: 'full', start: 0, end: fileSize - 1 };
+    if (header === undefined || header === null || (typeof header === 'string' && header.trim() === '')) {
+        return { kind: 'full', start: 0, end: fileSize - 1 };
+    }
     const match = /^bytes=(\d*)-(\d*)$/u.exec(header);
     if (match === null || (match[1] === '' && match[2] === '')) return { kind: 'unsatisfiable' };
     if (match[1] === '') {
