@@ -1,6 +1,7 @@
 import Mpegts from 'mpegts.js';
 import { supportsWorkerMediaSource } from 'mpeg2toh264/player';
 import UaUtil from './UaUtil';
+import { checkOriginalHevcClientSupport } from '../../../src/util/OriginalHevcClientSupport';
 
 namespace StreamSupportUtil {
     export interface M2TSLLSupportResult {
@@ -54,15 +55,31 @@ namespace StreamSupportUtil {
         return checkM2TSLLSupport().isSupported;
     };
 
-    /** HEVC MPEG-TS を mpegts.js で MSE / MMS へ transmux できるか判定する。 */
-    export const checkMpegTsHevcSupport = (): M2TSLLSupportResult => {
-        if (Mpegts.getFeatureList().mseH265Playback !== true) {
-            return { isSupported: false, reason: 'HEVC MPEG-TS の端末再生に対応していないブラウザーです。' };
-        }
-        return { isSupported: true, reason: null };
-    };
+    /**
+     * HEVC MPEG-TS を mpegts.js で MSE / MMS へ transmux できるか判定する。
+     *
+     * **WebKit (iOS / iPadOS / macOS Safari) は 10bit (Main 10) の HEVC を MSE 経由で
+     * 実時間デコードできない**。`MediaSource.isTypeSupported()` も
+     * `video.canPlayType()` も「対応」と答えるため、能力判定だけでは弾けない
+     * (実測: iPad で 1440x1080 / Main 10 / 29.97fps の録画を無変換で再生するとコマ送りになり、
+     *  同じ録画を ffmpeg で 8bit へ変換する HLS 経路にすると滑らかに再生できた。
+     *  同じ素材を PC の Chrome で fMP4 へ remux して直接再生した場合は平均 30.5fps 出るため、
+     *  素材・配信・mpegts.js のいずれにも問題はない)。
+     *
+     * ネイティブ HLS 経由の 10bit (4K HDR 等) は WebKit でも再生できるため、
+     * ここで落とすのは **MSE へ直接流す無変換 HEVC だけ**にする。
+     * @param sourceBitDepth 素材のビット深度。分からない場合は省略する
+     * @return M2TSLLSupportResult
+     */
+    export const checkMpegTsHevcSupport = (sourceBitDepth?: number): M2TSLLSupportResult =>
+        checkOriginalHevcClientSupport({
+            mseH265Playback: Mpegts.getFeatureList().mseH265Playback === true,
+            isWebKitEngine: UaUtil.isWebKitEngine(),
+            sourceBitDepth,
+        });
 
-    export const isMpegTsHevcSupported = (): boolean => checkMpegTsHevcSupport().isSupported;
+    export const isMpegTsHevcSupported = (sourceBitDepth?: number): boolean =>
+        checkMpegTsHevcSupport(sourceBitDepth).isSupported;
 
     /** MPEG-2 TS を mpeg2toh264 で端末変換できるか判定する。 */
     export const checkMpeg2ToH264Support = (): M2TSLLSupportResult => {

@@ -255,7 +255,8 @@ class RecordedStreamingVideo extends BaseVideo {
             }
         }
         if (isOriginalHevc === true) {
-            const support = StreamSupportUtil.checkMpegTsHevcSupport();
+            // 素材が 10bit の場合、WebKit では無変換再生がコマ送りになるため HLS へ回す
+            const support = StreamSupportUtil.checkMpegTsHevcSupport(this.source?.bitDepth);
             if (support.isSupported === false) {
                 // HEVC を端末の MSE / MMS で扱えない場合だけ、既存の HLS remux へ戻す。
                 const profile = this.playbackProfiles.find(item => item.id === 'original-hevc');
