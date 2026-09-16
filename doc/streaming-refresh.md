@@ -95,7 +95,7 @@ Cache Storage / IndexedDB の容量上限・永続性はブラウザと端末空
 - 録画 TS は `RecordedStreamBaseModel` がファイル (録画中は `TailStream`) をエンコーダ stdin へ流し、stdout を `video/mp2t` として HTTP へ直結する。encoded は `-ss %SS% -i %INPUT%` のファイル入力で、いずれも中間ファイルを作らない。
 - クライアントは録画詳細に `M2TS-LL` を追加し、`StreamSupportUtil.checkM2TSLLSupport()` が非対応と判定した環境では選択肢から除外して HLS へ誘導する。再生は `type: 'mpegts'`、VirtualTimeline、チャプター、ARIB 字幕、実況コメント、音声切替を既存録画再生と共用する。
 - 録画 m2tsll も mpegts.js の `mediaDataSource.isLive = true` で生成する。録画ファイルでもサーバは `-readrate` で実時間ペースに絞って供給し続けるため、MMS の `onEndStreaming` で transmuxer を suspend させない。DPlayer 自身の `live` は false のままなので、録画の再生・シーク UI と `ss` でのストリーム再生成は変えない。ライブ m2tsll の設定は変更しない。
-- `audioTrack=all` は tsreadex 正規化済みプロファイルで主音声・副音声を同時配信し、mpegts.js の音声切替 API で再接続せず切り替える。非正規化プロファイルは `AUDIOSELECTMAP` で単一音声を選ぶ。例外として encoded tsreplace の `original-hevc` は、実AACを main/sub へデコード比較して dual-mono と確認できた場合、または音声 ES が2本ある場合だけ、直接 `filter_complex` または2本の `-map` を生成して HLS の音声 rendition を作る。EPG の二か国語情報だけでは分割しない。
+- `audioTrack=all` は tsreadex 正規化済み、または実音声 ES が 2 本以上で `embeddedAudioSwitch` が true のプロファイルで主音声・副音声を同時配信し、mpegts.js / HLS の音声切替 API で再接続せず切り替える。非正規化・切替不可プロファイルは `AUDIOSELECTMAP` で選択音声を出力し、`sub` の選択 ES を主音声より先に置く。例外として encoded tsreplace の `original-hevc` は、実AACを main/sub へデコード比較して dual-mono と確認できた場合、または音声 ES が2本ある場合だけ、直接 `filter_complex` または2本の `-map` を生成して HLS の音声 rendition を作る。EPG の二か国語情報だけでは分割しない。
 - 録画 TS の m2tsll の ARIB 字幕は、tsreadex の有無によらず入力側でなく stdout 側へ ID3 timed metadata を挿入する。字幕判定は `component_tag=0x30〜0x37` / `0x87` または `stream_type=0x06` + `subtitling_descriptor (0x59)`、data_group は `0x00〜0x08` / `0x20〜0x28` を受ける。PTS の無い PES は時刻を推測せず破棄する。encoded は字幕対象外。
 - 配信方式の表示ラベル (`M2TS-LL` など) と API のパス名 (`m2tsll` など) は `src/util/StreamingTypeUtil.ts` の明示的な変換表で分離する。録画詳細・視聴履歴・ライブの各ダイアログはこの変換を使い、`toLowerCase()` で API 名を推測しない。録画・ライブ視聴画面は query の配信方式を同じ定義の許可一覧で検証し、未知の値は動画を生成せず、画面上へ再読み込み・選び直しの理由を表示する。Snackbar はルート変更処理で消されないようルート確定後に表示し、10 秒保持する。`recordedId` / `videoFileId` の存在と `mode` の設定範囲も確認し、不正時は同じ画面エラーを表示する。
 - 録画のファイル入力は `-readrate 1.5 -readrate_initial_burst 45 -readrate_catchup 2` を `-i` より前へ置く。初期 45 秒 (4 Mbps 換算で約 22.5 MB) を先読みし、その後は実時間の 1.5 倍を上限に供給する。`readrate_catchup` は入力が指定速度に遅れたときだけ一時的に 2 倍まで使う。対象は M2TS-LL / MP4 / WebM。ライブの `-re` は変更しない。録画 HLS は既存のセグメント単位の先行抑制を使う。今回、readrate 引き上げは供給が律速でないことが判明したため前値へ戻した。
@@ -399,7 +399,7 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
 二か国語放送の副音声や、複数の音声 ES を持つ録画を再生中に切り替えられる。
 
 - **指定子は 4 種類**: `main` (主音声・既定) / `sub` (デュアルモノラルの副音声) / 数字 (音声 ES のインデックス) /
-  `all` (主音声・副音声を両方含める。tsreadex 正規化済みの m2tsll のみ有効。それ以外では `main` と同じ扱い)。
+  `all` (主音声・副音声を両方含める。tsreadex 済み、または実音声 ES が 2 本以上の切替可能経路で有効。それ以外では `main` と同じ扱い)。
   ストリーム API のクエリ `audioTrack` へ渡す (`GET /api/streams/live/{channelId}/hls?mode=0&audioTrack=sub` など)。
 - **デュアルモノラルの副音声は `-map` では選べない**。二か国語放送は「1 つのステレオ ES の左右に主音声・副音声」
   という形で送られるため、副音声の選択は `-dual_mono_mode sub` で行う。音声 ES が複数ある放送では
@@ -424,6 +424,7 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
   (2 本の ES に分離済みなので `-map 0:a:1`)。`AudioTrackUtil` が置換前の cmd の `%TSREADEX%` の
   有無で切り替える。
 - **録画済み MP4 / WebM も `audioTrack` を付けて再配信する**。ffprobe がデュアルモノラル 1 ES を主音声・副音声へ展開した場合、encoded の `sub` はサーバー側 ffmpeg の `pan` で右チャンネルを左右へ複製する。生 TS / tsreplace の m2tsll は従来どおり、tsreadex 無しなら `dual_mono_mode`、tsreadex 有りなら分離済み ES の map を使う。クライアントは再生開始後も音声一覧を保持し、画質切替・シーク後に選択状態を再適用する。
+- **複数音声 ES の map 順は配信経路で分ける**。MP4 / WebM / M2TS / embeddedAudioSwitch が false の m2tsll は、`sub` の選択 ES を先に (`-map "0:a:1?" -map "0:a:0?"`) 置くため、ブラウザが出力 1 本目だけを鳴らしても副音声になる。in-memory HLS と embeddedAudioSwitch が true の m2tsll は、`main` / `sub` / `all` のいずれでも主音声を先に (`-map "0:a:0?" -map "0:a:1?"`) 置き、クライアント側のレンディション / mpegts.js 切替と役割を一致させる。選択 ES は optional map のため、その区間に無い場合は後ろの主音声へフォールバックする。
 - **音声切替は画質切替へ委譲しない**。同一トラックなら何もしない。`embeddedAudioSwitch` が true の m2tsll / HLS は同一ストリーム内の音声切替、false / 不明なら現在の再生位置を `ss` / HLS 開始位置へ渡して音声指定子だけ変えたストリームを再接続する。m2tsll は `switchVideo()` へ `audioTrack=<指定子>` 付き URL を渡し、HLS は `stop()` → `start(..., audioTrack)` → プレイヤー URL 差し替えを行う。切替前の再生位置・再生速度・一時停止状態を保持する。
 - **m2tsll は `-map 0` / `-map "0:d?"` / 入力側 ID3 map を使わない**。相乗りサービスの文字スーパー (PID 0x138、
   ffmpeg 上は PTS の無い `bin_data` / `private_stream_2`) が一括 map で拾われると mpegts muxer が
@@ -448,11 +449,11 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
   encoded 入力は対象外。mp4 / webm / HLS (ディスク・in-memory とも) は従来経路を維持する。
 - **M2TS-LL のクライアント側修正は別問題**。MSE / mpegts.js の再生成、188 byte 境界、再生位置競合はそれぞれ別の改善であり、
   `ss=366` / `642` / `91` だけで発生する今回の固着の主因ではない。
-- **`audioTrack=all`**: tsreadex 正規化済みのときだけ `%AUDIOSELECTMAP%` を
+- **`audioTrack=all`**: tsreadex 正規化済み、または実音声 ES が 2 本以上で切替可能なとき `%AUDIOSELECTMAP%` を
   `-map 0:v:0 -map "0:a:0?" -map "0:a:1?"` に展開し、主音声・副音声の両方の ES を同時に配信する。
   m2tsll でクライアント (mpegts.js) が再接続無しに `switchPrimaryAudio()` / `switchSecondaryAudio()`
-  を呼んで切り替えるための経路 (下記「再接続無しの音声切替」参照)。tsreadex 無しで `all` が来た場合は
-  デュアルモノラルの 1 ES しか無く分離できないため `main` と同じ扱いにする。
+  を呼んで切り替えるための経路 (下記「再接続無しの音声切替」参照)。音声 ES が 1 本または不明で `all` が来た場合は
+  デュアルモノラルを `-map` で分離できないため `main` と同じ扱いにする。
   **tsreadex 正規化済みで `audioTrack` が未指定の場合は index 0 (主音声 ES) を明示的に選ぶ**
   (未指定のまま `%AUDIOMAP%` を空にすると、`-map 0` を持たない m2tsll の cmd では映像・音声が
   1 本も map されず配信が始まらない)。
@@ -461,14 +462,16 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
   コマンドを組み立てる。ここで `-dual_mono_mode main` を直書きすると置換対象が消え、
   **API が `audioTrack` を受け取っていても黙って主音声のまま再生される** (実際にそうなっていた)。
 
-#### 再接続無しの音声切替 (tsreadex 経由の m2tsll / in-memory HLS)
+#### 再接続無しの音声切替 (複数音声 ES の m2tsll / in-memory HLS)
 
 - **`PlaybackProfile.embeddedAudioSwitch`**: コンテナ別に「主音声・副音声を再接続無しで同時配信できるか」
   を示す (`Partial<Record<'m2ts'|'m2tsll'|'mp4'|'webm'|'hls', boolean>>`)。`PlaybackApiModel` が該当
   コンテナの実プロファイルの cmd (cmd 省略時は `StreamProfileManageModel` が生成した後の cmd、
   `IStreamPresetRegistry.resolveProfileCmd()` で取得) を見て、`%TSREADEX%` と音声選択用
-  プレースホルダ (`%AUDIOMAP%` または `%AUDIOSELECTMAP%`) を両方含み
+  プレースホルダ (`%AUDIOMAP%` または `%AUDIOSELECTMAP%`) を含み、tsreadex 済みまたは実音声 ES が 2 本以上で、
   コンテナが m2tsll のとき、または in-memory HLS (cmd が `%streamFileDir%` を含まない) のとき true にする。
+  ES 1 本または数不明は false。デュアルモノラル 1 ES は `-map` で分離できないため、従来どおり
+  `-dual_mono_mode sub` を使う。
   ディスク方式の HLS は対象外。
 - クライアント (`LiveMpegTsVideo.vue` / `RecordedStreamingVideo.vue`) は再生中モードで `embeddedAudioSwitch.m2tsll === true` なら、
   配信 url を `audioTrack=all` で開き、音声パネルからの選択は再接続せず
@@ -483,7 +486,8 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
 - 録画 HLS の画質切替は `VirtualTimeline` の絶対再生位置を次のストリームの `playPosition` に渡し、DPlayer の `switchVideo` 経路で新しいストリームの先頭を再生する。字幕・チャプター・データ放送の再適用は既存の `canplay` / シーク処理に任せ、別のプレイヤーを生成しない。通常プレイリストでは最初のパート到着だけでクライアント取得を開始できないため、録画の `enable` をパート単位へ前倒しする変更は行わない。録画シーク 2 秒以下はサーバーの start→enable 1.05〜1.25 秒以外の約1.3秒を再測定し、必要なら短い GOP の影響を別途評価する。
 - **主音声を選んでいる間は `embeddedAudioSwitch` が未取得でも `audioTrack=all` で開く**。
   `playbackProfiles` はプレイヤー生成後に非同期で届くため、最初の url を組む時点では空のことが多い。
-  サーバーは tsreadex を通さない cmd では `all` を `main` として扱うのでどの構成でも安全。
+  サーバーは ES 数が 1 本または不明な cmd では `all` を `main` として扱い、独立 ES が 2 本ある
+  切替可能経路では主音声・副音声の 2 本を map する。
 
 #### in-memory HLS の複数音声レンディション
 

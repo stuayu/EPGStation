@@ -12,6 +12,8 @@ export interface RecordedStreamOption {
     container?: apid.StreamContainer;
     // 再生する音声トラック (省略時は主音声)。cmd の %DUALMONOMODE% / %AUDIOMAP% を置換する
     audioTrack?: apid.AudioTrackSpecifier;
+    // 実ファイル probe で得た音声 ES 数。取得失敗時は未指定で従来の挙動に戻す
+    audioStreamCount?: number;
     // 録画 HLS の fMP4 完成レコードを直接返すオフライン保存モード
     offline?: boolean;
 }

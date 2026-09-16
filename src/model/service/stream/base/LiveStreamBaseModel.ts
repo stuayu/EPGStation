@@ -156,6 +156,8 @@ export default abstract class LiveStreamBaseModel
             this.config.audioBoost,
             'ts',
             isNormalizedByTsreadex,
+            this.processOption.audioStreamCount,
+            this.processOption.container === 'm2tsll' || this.isMemoryHLS(),
         );
         if (this.getStreamType() === 'LiveHLS') {
             cmd = cmd

@@ -375,7 +375,7 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
         const map =
             container === 'm2tsll'
                 ? '-map 0:v:0 %AUDIOSELECTMAP% -map "0:s?" -c:v copy -c:s copy'
-                : '-map 0:v:0 -c:v copy';
+                : '-c:v copy';
         const output =
             container === 'mp4' || container === 'hls'
                 ? `${map}${tag} ${audioArgs} -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`
