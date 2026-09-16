@@ -20,6 +20,7 @@ import IStreamApiModel, { StreamResponse } from './IStreamApiModel';
 import IConfiguration from '../../IConfiguration';
 import ISourceAnalyzer from '../../stream/capability/ISourceAnalyzer';
 import IVideoUtil from '../video/IVideoUtil';
+import IScheduleApiModel from '../schedule/IScheduleApiModel';
 import { createOriginalMpeg2Command, isOriginalMpeg2Source } from '../../../util/OriginalMpeg2Util';
 import {
     classifyOriginalHevcAudioLayout,
@@ -28,6 +29,7 @@ import {
     ORIGINAL_HEVC_PROFILE_ID,
     resolveOriginalHevcInputMode,
 } from '../../../util/OriginalHevcUtil';
+import AudioTrackUtil from '../../service/stream/util/AudioTrackUtil';
 
 interface RecordedStreamConfig {
     cmd: string;
@@ -74,6 +76,7 @@ export default class StreamApiModel implements IStreamApiModel {
         @inject('IConfiguration') @optional() configuration?: IConfiguration,
         @inject('ISourceAnalyzer') @optional() sourceAnalyzer?: ISourceAnalyzer,
         @inject('IVideoUtil') @optional() videoUtil?: IVideoUtil,
+        @inject('IScheduleApiModel') @optional() private readonly scheduleApiModel?: IScheduleApiModel,
     ) {
         this.liveStreamProvider = liveStreamProvider;
         this.liveHLSStreamProvider = liveHLSStreamProvider;
@@ -98,6 +101,7 @@ export default class StreamApiModel implements IStreamApiModel {
      */
     public async startLiveM2TsStream(option: apid.LiveStreamOption): Promise<StreamResponse> {
         const resolved = this.resolveLiveProfile('m2ts', option);
+        const audioStreamCount = await this.getLiveAudioStreamCount(option.channelId);
 
         // stream 生成
         const stream = await this.liveStreamProvider();
@@ -106,6 +110,7 @@ export default class StreamApiModel implements IStreamApiModel {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
                 audioTrack: option.audioTrack,
+                audioStreamCount,
                 container: 'm2ts',
             },
             resolved.displayMode,
@@ -148,6 +153,7 @@ export default class StreamApiModel implements IStreamApiModel {
      */
     public async startLiveM2TsLLStream(option: apid.LiveStreamOption): Promise<StreamResponse> {
         const resolved = this.resolveLiveProfile('m2tsll', option);
+        const audioStreamCount = await this.getLiveAudioStreamCount(option.channelId);
 
         // stream 生成
         const stream = await this.liveStreamProvider();
@@ -156,6 +162,7 @@ export default class StreamApiModel implements IStreamApiModel {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
                 audioTrack: option.audioTrack,
+                audioStreamCount,
                 container: 'm2tsll',
             },
             resolved.displayMode,
@@ -177,6 +184,7 @@ export default class StreamApiModel implements IStreamApiModel {
      */
     public async startLiveWebmStream(option: apid.LiveStreamOption): Promise<StreamResponse> {
         const resolved = this.resolveLiveProfile('webm', option);
+        const audioStreamCount = await this.getLiveAudioStreamCount(option.channelId);
 
         // stream 生成
         const stream = await this.liveStreamProvider();
@@ -185,6 +193,7 @@ export default class StreamApiModel implements IStreamApiModel {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
                 audioTrack: option.audioTrack,
+                audioStreamCount,
                 container: 'webm',
             },
             resolved.displayMode,
@@ -206,6 +215,7 @@ export default class StreamApiModel implements IStreamApiModel {
      */
     public async startMp4Stream(option: apid.LiveStreamOption): Promise<StreamResponse> {
         const resolved = this.resolveLiveProfile('mp4', option);
+        const audioStreamCount = await this.getLiveAudioStreamCount(option.channelId);
 
         // stream 生成
         const stream = await this.liveStreamProvider();
@@ -214,6 +224,7 @@ export default class StreamApiModel implements IStreamApiModel {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
                 audioTrack: option.audioTrack,
+                audioStreamCount,
                 container: 'mp4',
             },
             resolved.displayMode,
@@ -235,6 +246,7 @@ export default class StreamApiModel implements IStreamApiModel {
      */
     public async startLiveHLSStream(option: apid.LiveStreamOption): Promise<apid.StreamId> {
         const resolved = this.resolveLiveProfile('hls', option);
+        const audioStreamCount = await this.getLiveAudioStreamCount(option.channelId);
 
         // stream 生成
         const stream = await this.liveHLSStreamProvider();
@@ -243,6 +255,7 @@ export default class StreamApiModel implements IStreamApiModel {
                 channelId: option.channelId,
                 cmd: resolved.profile.cmd,
                 audioTrack: option.audioTrack,
+                audioStreamCount,
                 container: 'hls',
             },
             resolved.displayMode,
@@ -261,6 +274,19 @@ export default class StreamApiModel implements IStreamApiModel {
      */
     private resolveLiveProfile(container: StreamContainer, option: apid.LiveStreamOption): ResolvedStreamOption {
         return this.resolveProfile('live', container, option);
+    }
+
+    /** 番組情報からライブ配信の実音声 ES 数を求める。取得失敗時は従来の判定へ戻す。 */
+    private async getLiveAudioStreamCount(channelId: apid.ChannelId): Promise<number | undefined> {
+        if (this.scheduleApiModel === undefined) return undefined;
+
+        try {
+            const tracks = await this.scheduleApiModel.getLiveAudioTracks(channelId);
+
+            return AudioTrackUtil.getAudioStreamCount(tracks);
+        } catch (_err: unknown) {
+            return undefined;
+        }
     }
 
     /**

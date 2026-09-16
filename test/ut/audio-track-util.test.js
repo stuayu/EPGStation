@@ -71,14 +71,14 @@ test('ブースト無しの主音声・副音声はフィルタ無しまたは p
 
 test('数字指定は音声 ES を optional map で選び、欠落時は主音声へ落とす', () => {
     const cmd = AudioTrackUtil.replacePlaceholders(CMD, '2');
-    assert.match(cmd, /-map 0:v:0 -map "0:a:2\?" -map "0:a:0\?"/);
+    assert.match(cmd, /-map 0:v:0 -map "0:a:0\?" -map "0:a:2\?"/);
     // ES 指定時のデュアルモノラルは主音声側を使う
     assert.match(cmd, /-dual_mono_mode main/);
 });
 
 test('独立した 2 本目の音声 ES は channels 情報に関係なく -map 0:a:1 で選ぶ', () => {
     const cmd = AudioTrackUtil.replacePlaceholders(CMD, '1', undefined, 'ts', false);
-    assert.match(cmd, /-map 0:v:0 -map "0:a:1\?" -map "0:a:0\?"/);
+    assert.match(cmd, /-map 0:v:0 -map "0:a:0\?" -map "0:a:1\?"/);
     assert.match(cmd, /-dual_mono_mode main/);
     assert.doesNotMatch(cmd, /-dual_mono_mode sub/);
 });
@@ -106,13 +106,30 @@ test('parseStreamIndex は音声 ES のインデックスのみを返す', () =>
     assert.equal(AudioTrackUtil.parseStreamIndex('x'), null);
 });
 
+test('音声トラック一覧から実 ES 数を数え、デュアルモノラルの展開分は 1 本に戻す', () => {
+    assert.equal(
+        AudioTrackUtil.getAudioStreamCount([
+            { streamIndex: 0, isDualMono: true },
+            { streamIndex: 0, isDualMono: true },
+        ]),
+        1,
+    );
+    assert.equal(
+        AudioTrackUtil.getAudioStreamCount([
+            { streamIndex: 0, isDualMono: false },
+            { streamIndex: 1, isDualMono: false },
+        ]),
+        2,
+    );
+});
+
 // ---- tsreadex で正規化した TS ----
 // tsreadex (-a 13) はデュアルモノラルを主音声・副音声の 2 本の音声 ES へ分離するため、
 // 副音声は -dual_mono_mode sub ではなく -map 0:a:1 で選ぶ必要がある
 
 test('tsreadex 正規化済みの副音声は 2 本目の音声 ES として選ぶ', () => {
     const cmd = AudioTrackUtil.replacePlaceholders(CMD, 'sub', 1, 'ts', true);
-    assert.match(cmd, /-map 0:v:0 -map "0:a:1\?" -map "0:a:0\?"/);
+    assert.match(cmd, /-map 0:v:0 -map "0:a:0\?" -map "0:a:1\?"/);
     // 分離済みなので dual_mono_mode では切り替わらない
     assert.match(cmd, /-dual_mono_mode main/);
 });
@@ -132,7 +149,7 @@ test('音声 ES のインデックス指定は tsreadex の有無で変わらな
     for (const normalized of [false, true]) {
         assert.match(
             AudioTrackUtil.replacePlaceholders(CMD, '2', 1, 'ts', normalized),
-            /-map 0:v:0 -map "0:a:2\?" -map "0:a:0\?"/,
+            /-map 0:v:0 -map "0:a:0\?" -map "0:a:2\?"/,
         );
     }
 });
@@ -151,6 +168,88 @@ test("tsreadex 無しの 'all' はデュアルモノラルの 1 ES しか無い�
     assert.doesNotMatch(all, /-map 0:a:0 -map 0:a:1/);
 });
 
+test('tsreadex 無しで音声 ES が 2 本の sub は主音声を先に map し、dual_mono_mode は main のままにする', () => {
+    const cmd = AudioTrackUtil.replacePlaceholders(CMD, 'sub', undefined, 'ts', false, 2);
+    assert.equal(
+        cmd,
+        '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -map 0:v:0 -map "0:a:0?" -map "0:a:1?" -c:a aac -f mp4 pipe:1',
+    );
+});
+
+test('embedded 切替不可の mp4 で ES が 2 本の sub は選択 ES を先に map する', () => {
+    const cmd = AudioTrackUtil.replacePlaceholders(CMD, 'sub', undefined, 'ts', false, 2, false);
+    assert.equal(
+        cmd,
+        '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -map 0:v:0 -map "0:a:1?" -map "0:a:0?" -c:a aac -f mp4 pipe:1',
+    );
+});
+
+test('embedded 切替不可の webm で ES が 2 本の sub は選択 ES を先に map する', () => {
+    const cmd = AudioTrackUtil.replacePlaceholders(
+        '%FFMPEG% %DUALMONOMODE% -i pipe:0 -sn %AUDIOMAP% -c:a libvorbis -f webm pipe:1',
+        'sub',
+        undefined,
+        'ts',
+        false,
+        2,
+        false,
+    );
+    assert.equal(
+        cmd,
+        '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -map 0:v:0 -map "0:a:1?" -map "0:a:0?" -c:a libvorbis -f webm pipe:1',
+    );
+});
+
+test('embedded 切替可能な HLS は main と sub のどちらでも主音声・副音声を同じ順で map する', () => {
+    for (const audioTrack of ['main', 'sub', 'all']) {
+        const cmd = AudioTrackUtil.replacePlaceholders(
+            '%FFMPEG% %DUALMONOMODE% -i pipe:0 -sn %AUDIOMAP% -c:a aac -f mp4 pipe:1',
+            audioTrack,
+            undefined,
+            'ts',
+            false,
+            2,
+            true,
+        );
+        assert.equal(
+            cmd,
+            '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -map 0:v:0 -map "0:a:0?" -map "0:a:1?" -c:a aac -f mp4 pipe:1',
+        );
+    }
+});
+
+test('m2tsll の embedded 切替可否で音声 map の順序を切り替える', () => {
+    const m2tsllCmd = '%FFMPEG% %DUALMONOMODE% -i pipe:0 -map 0:v:0 %AUDIOSELECTMAP% -f mpegts pipe:1';
+    const unavailable = AudioTrackUtil.replacePlaceholders(m2tsllCmd, 'sub', undefined, 'ts', false, 2, false);
+    const available = AudioTrackUtil.replacePlaceholders(m2tsllCmd, 'sub', undefined, 'ts', false, 2, true);
+    assert.match(unavailable, /-map "0:a:1\?" -map "0:a:0\?"/);
+    assert.match(available, /-map "0:a:0\?" -map "0:a:1\?"/);
+});
+
+test('tsreadex 無しで音声 ES が 1 本の sub は従来どおり dual_mono_mode sub にする', () => {
+    const cmd = AudioTrackUtil.replacePlaceholders(CMD, 'sub', undefined, 'ts', false, 1);
+    assert.equal(cmd, '%FFMPEG% -dual_mono_mode sub -i pipe:0 -sn -c:a aac -f mp4 pipe:1');
+});
+
+test('音声 ES 数不明の sub は従来どおり dual_mono_mode sub にする', () => {
+    const cmd = AudioTrackUtil.replacePlaceholders(CMD, 'sub', undefined, 'ts', false, undefined, false);
+    assert.match(cmd, /-dual_mono_mode sub/);
+    assert.doesNotMatch(cmd, /-map/);
+});
+
+test('tsreadex 正規化済みの sub は実 ES 数の指定に関係なく主音声を先に map する', () => {
+    const cmd = AudioTrackUtil.replacePlaceholders(CMD, 'sub', undefined, 'ts', true, 1);
+    assert.equal(
+        cmd,
+        '%FFMPEG% -dual_mono_mode main -i pipe:0 -sn -map 0:v:0 -map "0:a:0?" -map "0:a:1?" -c:a aac -f mp4 pipe:1',
+    );
+});
+
+test('tsreadex 無しで音声 ES が 2 本の all も 2 本の ES を map する', () => {
+    const cmd = AudioTrackUtil.replacePlaceholders(CMD, 'all', undefined, 'ts', false, 2);
+    assert.match(cmd, /-map 0:v:0 -map "0:a:0\?" -map "0:a:1\?"/);
+});
+
 test('tsreadex 正規化済みで audioTrack 未指定なら index 0 (主音声 ES) を明示的に選ぶ', () => {
     const cmd = AudioTrackUtil.replacePlaceholders(CMD, undefined, undefined, 'ts', true);
     assert.match(cmd, /-map 0:v:0 -map "0:a:0\?"/);
@@ -160,7 +259,7 @@ test('m2tsll 用の音声専用 map は映像 map と分離して選択する', 
     assert.equal(AudioTrackUtil.replacePlaceholders('%AUDIOSELECTMAP%', undefined, undefined, 'encoded'), '-map "0:a:0?"');
     assert.equal(
         AudioTrackUtil.replacePlaceholders('%AUDIOSELECTMAP%', '2', undefined, 'encoded'),
-        '-map "0:a:2?" -map "0:a:0?"',
+        '-map "0:a:0?" -map "0:a:2?"',
     );
     assert.equal(
         AudioTrackUtil.replacePlaceholders('%AUDIOSELECTMAP%', 'all', undefined, 'ts', true),

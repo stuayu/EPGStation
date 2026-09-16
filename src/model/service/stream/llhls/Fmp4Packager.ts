@@ -583,6 +583,8 @@ class Fmp4Packager extends stream.Writable implements IFmp4Packager {
             }
         }
         videoIds.sort((a, b) => a - b);
+        // ffmpeg は map 順に track id を割り当てる。AudioTrackUtil は主音声を
+        // 副音声より先に map するため、ここで audio0/audio1 の役割を固定できる。
         audioIds.sort((a, b) => a - b);
 
         if (audioIds.length < 2) {

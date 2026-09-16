@@ -94,6 +94,8 @@ test('マスタープレイリストは音声レンディション 2 本と実�
     assert.ok(master.includes('#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="主音声"'));
     assert.ok(master.includes('URI="stream5a0.m3u8"'));
     assert.ok(master.includes('URI="stream5a1.m3u8"'));
+    assert.match(master, /NAME="主音声"[^\n]*URI="stream5a0\.m3u8"/u);
+    assert.match(master, /NAME="副音声"[^\n]*URI="stream5a1\.m3u8"/u);
     // CODECS が無いと Safari のネイティブ HLS が映像 + 別音声レンディションを再生できない
     assert.ok(master.includes('CODECS="avc1.640028,mp4a.40.2"'), master);
     assert.ok(/#EXT-X-STREAM-INF:BANDWIDTH=[1-9][0-9]*/.test(master), master);

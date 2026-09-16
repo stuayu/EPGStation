@@ -830,6 +830,18 @@ export default abstract class RecordedStreamBaseModel
 
         cmd = await this.resolveDeinterlace(cmd);
 
+        // 録画ファイルの実音声 ES 数を有限 probe する。probe に失敗しても配信自体は
+        // 従来のデュアルモノラル判定で継続する。
+        let audioStreamCount: number | undefined;
+        try {
+            const audioTracks = await this.videoUtil.getAudioTracks(this.videoFilePath, {
+                isRecording: this.isRecording,
+            });
+            audioStreamCount = AudioTrackUtil.getAudioStreamCount(audioTracks);
+        } catch (err: unknown) {
+            this.log.stream.warn(`録画音声 ES の probe に失敗したため従来の音声選択へフォールバックします: ${String(err)}`);
+        }
+
         // 音声トラック指定・フィルタ (%DUALMONOMODE% / %AUDIOMAP% / %AUDIOFILTER%) を展開する
         cmd = AudioTrackUtil.replacePlaceholders(
             cmd,
@@ -837,6 +849,8 @@ export default abstract class RecordedStreamBaseModel
             this.config.audioBoost,
             this.videoFileType,
             isNormalizedByTsreadex,
+            audioStreamCount,
+            this.processOption.container === 'm2tsll' || this.isMemoryHLS(),
         );
 
         if (this.getStreamType() === 'RecordedHLS') {

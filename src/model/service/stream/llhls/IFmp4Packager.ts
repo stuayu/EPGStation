@@ -40,8 +40,8 @@ export type Fmp4PackagerMode = 'live' | 'recorded';
 /**
  * 複数音声トラック分解モードでのトラックの役割
  * - video: 映像トラック
- * - audio0: 主音声トラック (trackId 昇順で最初の音声トラック)
- * - audio1: 副音声トラック (trackId 昇順で 2 番目の音声トラック)
+ * - audio0: 主音声トラック (ffmpeg の map 順で最初の音声トラック)
+ * - audio1: 副音声トラック (ffmpeg の map 順で 2 番目の音声トラック)
  */
 export type Fmp4PackagerTrackRole = 'video' | 'audio0' | 'audio1';
 

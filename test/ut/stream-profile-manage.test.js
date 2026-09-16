@@ -413,3 +413,41 @@ test('rigaya 経由の生成 cmd は --repeat-headers を必ず付ける', () =>
         assert.match(cmd, /--repeat-headers/u, `${container} に --repeat-headers が無い`);
     }
 });
+
+test('rigaya の m2tsll 以外は AudioTrackUtil 展開後の映像 map を二重に出力しない', () => {
+    const detector = {
+        getStreamEncoder: () => ({
+            kind: 'qsvencc',
+            command: 'C:\\QSVEncC\\QSVEncC64.exe',
+            codecs: ['h264', 'hevc'],
+            bitDepths: [8, 10],
+        }),
+    };
+    const makeModel = container =>
+        new StreamProfileManageModel(
+            {
+                getConfig: () => ({
+                    stream: {
+                        profiles: {
+                            live: [
+                                {
+                                    id: `live-${container}`,
+                                    name: container,
+                                    container,
+                                    video: { codec: 'h264', height: 720, bitrate: 2000 },
+                                    audio: { codec: 'aac', bitrate: 128 },
+                                },
+                            ],
+                        },
+                    },
+                }),
+            },
+            detector,
+        );
+
+    for (const container of ['hls', 'mp4', 'webm']) {
+        const generated = makeModel(container).getLiveProfiles()[0].cmd;
+        const replaced = AudioTrackUtil.replacePlaceholders(generated, '1', undefined, 'ts', false, 2);
+        assert.equal((replaced.match(/-map 0:v:0/gu) ?? []).length, 1, container);
+    }
+});

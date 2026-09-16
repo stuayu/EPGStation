@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-16
 
+- **Issue #31 の音声 map 順序を配信 container 別に修正した**: in-memory HLS と、tsreadex 済みまたは実音声 ES が 2 本以上の m2tsll は主音声を先に map してクライアント側切替の audio0/audio1 と一致させる。MP4 / WebM / M2TS / embedded 切替不可の m2tsll は `sub` の選択 ES を先に map し、ブラウザが 1 本目を再生しても副音声になる。音声 ES 1 本・数不明は従来どおり `-dual_mono_mode sub`。m2tsll の `embeddedAudioSwitch` も tsreadex 必須から実音声 ES 数判定へ広げた。`test/ut/audio-track-util.test.js` と `test/ut/playback-api-model.test.js` で map 順序と判定を固定した。
+
 - **tsreplace HEVC の元 TS をオフライン保存し、通信なしでデータ放送を表示できるようにした**: オフライン保存の direct 元 TS プロファイルを `original-mpeg2` / `original-hevc` に拡張し、どちらも `/api/videos/{videoFileId}/original` の Range チャンクを `original.ts` として保存する。保存済み元 TS の視聴は MPEG-2 では従来の `mpeg2toh264`、HEVC では mpegts.js の VOD とし、HLS は従来どおり対象外とする。`DataBroadcastingManager` はオフライン元 TS の場合だけ `web-bml/worker` の `decodeTS` へローカル Service Worker URL の Range チャンクを投入し、WebSocket / socket.io へ接続しない。`startAt` がある場合の BML 時計は `videoFile.startAt + 再生位置` に固定し、無い場合は推測値を送らない。既存の `original-mpeg2` と kind 省略レコード、Service Worker の Range / app cache / 保存 cache 削除契約は維持する。実機での通信遮断下の BML 操作は未検証。
 - **オフライン視聴画面の機能をオンライン録画視聴へ近づけた**: オフライン保存時に `GET /api/videos/{videoFileId}/chapters` を取得して保存レコードへ格納し、旧レコードは空配列として互換扱いする。再生時は DPlayer 生成前にチャプターを設定し、保存動画全体の長さを分母にする `VirtualTimeline` でマーカーとチャプター送りを有効化した。スクリーンショット、キーボードショートカット、音声切替、再生位置の端末内保存・復元、保存済み実況コメントは従来経路を維持する。SNS 投稿パネルは回線接続時だけ表示し、回線断ではタブを除去する。データ放送は HLS fMP4 では対象外、元 TS の MPEG-2 / HEVC は保存済み TS の `decodeTS` 経路を使う。Next Up と画質切替は未保存の録画一覧または複数保存プロファイルを必要とするためオフライン画面には追加していない。`normalizeOfflineChapters()` と `createOfflineDataBroadcastingInfo()` の単体テストを追加した。実ブラウザでのデータ放送・SNS操作は未検証。
 
@@ -1244,6 +1246,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
         - 録画の一覧は `GET /api/videos/{videoFileId}/audio-tracks` (ffprobe)。**音声 ES が 1 本のステレオは
           主音声・副音声の 2 件へ展開する** (ただのステレオ放送か二か国語かを ffprobe からは判別できないため)。
           ライブは事前に構成が分からないのでクライアントが 2 択を常に出す
+        - **Issue #31: tsreadex 未経由の複数音声 ES を正しく選択**: 録画は `VideoUtil.getAudioTracks()`、ライブは番組情報の `audios[]` から実 ES 数を求め、2 本以上なら `sub` を `-map "0:a:1?"` で選ぶ。1 本または取得失敗時は従来の `-dual_mono_mode sub` へ戻す。map の順序は container で分け、in-memory HLS / embedded 切替可能な m2tsll は主音声を先に置いて audio0 / audio1 と一致させ、MP4 / WebM / M2TS / 切替不可 m2tsll は選択 ES を先に置いてブラウザの 1 本目を副音声にする。複数レンディションを作る条件と `embeddedAudioSwitch.hls=true` の条件は、tsreadex 済みまたは実 ES 2 本以上、かつ in-memory HLS に統一した。rigaya の HLS/MP4 cmd は `%AUDIOMAP%` が映像 map を含むため、別の `-map 0:v:0` を出さない
         - **UI は DPlayer の設定 > 音声パネルの DOM を流用**した。DPlayer 標準の実装は mpegts.js / hls.js の
           トラックを直接叩くもので、サーバー側でストリームを作り直す EPGStation の方式には使えないため、
           項目の生成とクリック時の動作だけを `DPlayerEnhancer` で差し替えている
