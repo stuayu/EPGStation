@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-16
 
+- **DPlayer の画質メニューを開いた瞬間に高さを取り直すようにした**: 高さの計算は一覧を作った時点 (`setPlaybackProfiles()`) とプレイヤーのリサイズ時にしか走っておらず、メニューを開いたときの実際の位置・項目数に合っていない高さのまま開いていた。`.dplayer-setting-box` の `dplayer-setting-box-quality` クラスの出入りを `MutationObserver` で見て、開いた直後とレイアウト確定後 (`requestAnimationFrame`) に計算し直す。あわせて上限の求め方を「プレイヤー高 - 余白」から「パネル下端の実座標からビューポート上端まで」へ変え、全項目が収まる場合は必要な高さ以上に広げないようにした。実測 (項目 10 件 / 必要高 354px): 1280x420 はパネル高 284px → 335px でクリックできない項目が 2 件 → 0 件、393x660 は 145px → 192px でクリックできない項目が 7 件 → 5 件、1400x900 は 354px のままでクリック不可 0 件を維持した。393x660 で残る 5 件はプレイヤー高 217px に 354px を収められないための制約で、パネル内のスクロールで辿れる。
+
 - **テンプレートの録画 HLS を in-memory (fMP4) 方式へ揃えた**: `config.yml.template` / `config-win.yml.template` の録画用 HLS 6 件 (`recorded-ts-hls-1080p/720p/480p-avc`、`recorded-encoded-hls-1080p/720p/480p-avc`) が `-map 0` + `%streamFileDir%` のディスク方式のままで、音声 ES を選べず副音声へ切り替えられなかった。ライブ HLS と同じ in-memory 方式 (`%AUDIOMAP%` + `-movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`) に統一し、ARIB 字幕 (emsg) と音声レンディション切替を両立させた。デインターレースは `%DEINTERLACE%` プレースホルダへ寄せ、素材に応じて配信開始時に解決する。実測: 新 cmd の出力は映像 1 + 音声 2 の fMP4 になり、`Fmp4Packager` が video / audio0 / audio1 の 3 レンディションへ分解できることを確認した。
 
 - **ディスク方式 HLS が音声切替に対応しないことを両テンプレートへ明記した**: `config.yml.template` / `config-win.yml.template` の録画 TS 用 HLS プロファイル 3 件は `-map 0` で全 ES を通すため、音声 ES が 2 本ある二か国語でもプレイヤーは 1 本目 (主音声) を鳴らす。`-map 0` を外して音声 ES を選べば副音声は選べるようになるが、ARIB 字幕の ES が落ちる (実測: `-map "0:s?" -c:s copy` を付けても arib_caption は mpegts 出力へ copy されず、出力 PID から消える)。字幕と音声切替のどちらを取るかの選択になるため cmd は変更せず、音声切替が必要なら in-memory HLS を使うよう注意書きを足した。

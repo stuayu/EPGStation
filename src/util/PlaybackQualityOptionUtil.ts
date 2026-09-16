@@ -85,23 +85,55 @@ export const disambiguatePlaybackLabels = (labels: string[], profiles: Array<{ v
 const QUALITY_PANEL_RESERVED_PX = 66;
 /** これ以上は縮めない高さ (px)。プレイヤーが極端に低いときでも数項目はスクロールで辿れるようにする */
 const QUALITY_PANEL_MIN_PX = 120;
+/** ビューポート上端に残す余白 (px)。ここまでは使ってよい */
+const QUALITY_PANEL_VIEWPORT_MARGIN_PX = 8;
+/** パネル下端の実座標が取れないときの上限 (px) */
+const QUALITY_PANEL_FALLBACK_PX = 420;
 
 /**
  * 画質メニューの高さ上限を求める。
- * DPlayer の設定パネルはコントローラから上へ開くため、
- * ビューポート基準の上限だけだと**プレイヤーより高いパネル**が画面の上へはみ出し、
- * 上の方の項目がクリックできなくなる (実測: iPhone 14 Pro 393x660 でプレイヤー高 217px、
- * パネル高 294px、上端 y=-131 となり 8 件中 3 件が画面外)。
+ *
+ * DPlayer の設定パネルはコントローラから上へ開くため、上限を誤ると
+ * **パネルが画面の上へはみ出して上の項目がクリックできなくなる**
+ * (実測: iPhone 14 Pro 393x660 でプレイヤー高 217px、パネル高 294px、上端 y=-131 となり 8 件中 3 件が画面外)。
+ *
+ * **パネル下端の実座標 (`panelBottom`) が分かるときは、そこからビューポート上端までを使う。**
+ * プレイヤーの高さだけで抑えると、プレイヤーが画面の下寄りにあって上に余地がある場合まで
+ * 不必要に縮めてしまい、項目数が多いときにスクロールしないと下の項目へ届かなくなる
+ * (実測: 1280x420 でプレイヤー高 356px のとき上限 290px となり、必要な 354px に対して
+ *  パネル実高 284px、末尾 2 項目が `.dplayer-setting-box` の外へ出て `elementFromPoint` で拾えなかった)。
+ *
+ * `contentHeight` (項目から決まる必要な高さ) を渡すと、収まる場合はそれ以上には広げない。
+ *
  * @param playerHeight プレイヤー (`.dplayer`) の高さ (px)
  * @param viewportHeight ビューポートの高さ (px)
+ * @param panelBottom パネル下端のビューポート座標 (px)。省略時はプレイヤー高から推定する
+ * @param contentHeight 全項目を表示するのに必要な高さ (px)。省略時は上限まで許す
  * @return パネルへ与える max-height (px)
  */
-export const resolveQualityPanelMaxHeight = (playerHeight: number, viewportHeight: number): number => {
+export const resolveQualityPanelMaxHeight = (
+    playerHeight: number,
+    viewportHeight: number,
+    panelBottom?: number,
+    contentHeight?: number,
+): number => {
+    // パネル下端が分かるなら、そこからビューポート上端までが実際に使える高さ
+    const byPanelBottom =
+        typeof panelBottom === 'number' && Number.isFinite(panelBottom) === true && panelBottom > 0
+            ? panelBottom - QUALITY_PANEL_VIEWPORT_MARGIN_PX
+            : Number.POSITIVE_INFINITY;
     const byViewport = viewportHeight > 0 ? viewportHeight * 0.7 : Number.POSITIVE_INFINITY;
     const byPlayer = playerHeight > 0 ? playerHeight - QUALITY_PANEL_RESERVED_PX : Number.POSITIVE_INFINITY;
-    const limit = Math.min(byViewport, byPlayer, 420);
+    // 下端が取れた場合はそれが最も正確なので、プレイヤー高・ビューポート割合の推定より優先する
+    const available = Number.isFinite(byPanelBottom) === true ? byPanelBottom : Math.min(byViewport, byPlayer, QUALITY_PANEL_FALLBACK_PX);
+    const limit =
+        typeof contentHeight === 'number' && Number.isFinite(contentHeight) === true && contentHeight > 0
+            ? Math.min(available, contentHeight)
+            : available;
 
-    return Number.isFinite(limit) === false ? 420 : Math.max(Math.floor(limit), QUALITY_PANEL_MIN_PX);
+    return Number.isFinite(limit) === false
+        ? QUALITY_PANEL_FALLBACK_PX
+        : Math.max(Math.floor(limit), QUALITY_PANEL_MIN_PX);
 };
 
 export default { createPlaybackQualityOptions, disambiguatePlaybackLabels, resolveQualityPanelMaxHeight };

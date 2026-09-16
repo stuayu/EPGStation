@@ -82,7 +82,7 @@ test('コーデックが分からない重複はラベルを変えない', () =>
 
 const { resolveQualityPanelMaxHeight } = require('../../dist/util/PlaybackQualityOptionUtil');
 
-test('画質メニューの高さはプレイヤーの高さでも抑える', () => {
+test('パネル下端が取れないときはプレイヤーの高さでも抑える', () => {
     // iPhone 14 Pro の実測 (プレイヤー 217px / ビューポート 660px)。
     // ビューポート基準だけだと 420px になり画面の上へはみ出していた
     assert.equal(resolveQualityPanelMaxHeight(217, 660), 151);
@@ -98,4 +98,24 @@ test('プレイヤーが極端に低くても最低限の高さは残す', () =>
 
 test('大きさが取れないときは既定の 420px を使う', () => {
     assert.equal(resolveQualityPanelMaxHeight(0, 0), 420);
+});
+
+test('パネル下端が分かるときはそこからビューポート上端までを使う', () => {
+    // 実測 (1280x420): プレイヤー高 356px、パネル下端 344px。
+    // プレイヤー高だけだと 290px だが、実際には 344 - 8 = 336px まで使える
+    assert.equal(resolveQualityPanelMaxHeight(356, 420, 344), 336);
+});
+
+test('全項目が収まるなら必要な高さ以上には広げない', () => {
+    // 10 項目 (30px) + ヘッダ 54px = 354px。使える高さが 500px あっても 354px に留める
+    assert.equal(resolveQualityPanelMaxHeight(720, 1080, 508, 354), 354);
+});
+
+test('必要な高さが使える高さを超えるときは使える高さまでにする', () => {
+    // 使えるのは 344 - 8 = 336px。必要な 354px は収まらないのでスクロールさせる
+    assert.equal(resolveQualityPanelMaxHeight(356, 420, 344, 354), 336);
+});
+
+test('パネル下端が取れても最低限の高さは残す', () => {
+    assert.equal(resolveQualityPanelMaxHeight(100, 660, 60), 120);
 });

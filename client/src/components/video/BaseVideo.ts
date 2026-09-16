@@ -74,6 +74,7 @@ export default abstract class BaseVideo extends Vue {
     private isProgrammaticQualitySwitch: boolean = false; // 親から起こした画質切替か (ユーザー操作と区別する)
     private playbackContainer: PlaybackContainer | null = null;
     private qualityPanelResizeObserver: ResizeObserver | null = null;
+    private qualityPanelOpenObserver: MutationObserver | null = null;
 
     /**
      * 設定メニューの画質一覧へ出す配信方式。
@@ -960,6 +961,43 @@ export default abstract class BaseVideo extends Vue {
         });
         observer.observe(container);
         this.qualityPanelResizeObserver = observer;
+
+        this.setupQualityPanelOpenHook(container);
+    }
+
+    /**
+     * 画質メニューを開いた瞬間に高さを取り直す。
+     *
+     * 高さを決められるのは「パネルが開いてレイアウトが確定した後」だけで、
+     * 一覧を作った時点 (`setPlaybackProfiles()`) やプレイヤーのリサイズ時に計算しただけでは、
+     * **開いたときの実際の位置と項目数に合っていない高さのまま**になる。
+     * `.dplayer-setting-box` に付く `dplayer-setting-box-quality` クラスの出入りを見て、
+     * 開いた直後に計算し直す
+     * @param container DPlayer のルート要素
+     */
+    private setupQualityPanelOpenHook(container: HTMLElement): void {
+        if (typeof MutationObserver === 'undefined') return;
+
+        const box = container.querySelector('.dplayer-setting-box') as HTMLElement | null;
+        if (box === null) return;
+
+        this.qualityPanelOpenObserver?.disconnect();
+        const observer = new MutationObserver(() => {
+            if (box.classList.contains('dplayer-setting-box-quality') === false) return;
+
+            const panel = container.querySelector('.dplayer-setting-quality-panel') as HTMLElement | null;
+            if (panel === null) return;
+            // クラスが付いた時点ではまだ開くアニメーションの途中なので、
+            // レイアウト確定後にもう一度測り直す
+            this.applyQualityPanelSize(panel, container);
+            window.requestAnimationFrame(() => {
+                if (box.classList.contains('dplayer-setting-box-quality') === true) {
+                    this.applyQualityPanelSize(panel, container);
+                }
+            });
+        });
+        observer.observe(box, { attributes: true, attributeFilter: ['class'] });
+        this.qualityPanelOpenObserver = observer;
     }
 
     private applyQualityPanelSize(panel: HTMLElement, container: HTMLElement): void {
@@ -980,8 +1018,28 @@ export default abstract class BaseVideo extends Vue {
         // (実測: 1280x420 でパネル 290px / box 284px となり、パネル中央の elementFromPoint が
         // `.dplayer-mask` を返してスクロールできなかった)。
         // `100%` を先に効かせ、プレイヤー高・ビューポート由来の上限はそれ以下のときだけ効かせる
-        const limitPx = resolveQualityPanelMaxHeight(container.clientHeight, window.innerHeight);
-        panel.style.maxHeight = `min(100%, ${limitPx}px)`;
+        // **上限は「パネル下端からビューポート上端まで」で決める**。プレイヤー高だけで抑えると、
+        // プレイヤーが画面の下寄りにあって上に余地があるときまで縮めてしまい、
+        // 項目数が多いとスクロールしないと下の項目へ届かなくなる
+        // (実測: 1280x420 でプレイヤー高 356px のとき上限 290px、必要な 354px に届かず
+        //  末尾 2 項目が box の外へ出て elementFromPoint で拾えなかった)。
+        // 一旦上限を外して実際の必要高とパネル下端を測り、それから上限を当て直す
+        panel.style.maxHeight = 'none';
+        const rect = panel.getBoundingClientRect();
+        const contentHeight = panel.scrollHeight;
+        const limitPx = resolveQualityPanelMaxHeight(
+            container.clientHeight,
+            window.innerHeight,
+            rect.bottom,
+            contentHeight,
+        );
+        panel.style.maxHeight = `${limitPx}px`;
+        // DPlayer は `--quality-length` から clip-path で見える範囲を決めるため、
+        // 実際に与えた高さより広く見せようとすると box の外へ出た項目が押せなくなる。
+        // 収まらなかったぶんはパネル内でスクロールさせる
+        if (box !== null) {
+            box.style.maxHeight = `${limitPx}px`;
+        }
         panel.style.overflowY = 'auto';
         // 指で触る端末でも一覧を辿れるようにする (縦方向のパンをブラウザへ渡す)
         panel.style.touchAction = 'pan-y';
@@ -1475,6 +1533,8 @@ export default abstract class BaseVideo extends Vue {
         this.clearPlaybackBufferRecovery();
         this.qualityPanelResizeObserver?.disconnect();
         this.qualityPanelResizeObserver = null;
+        this.qualityPanelOpenObserver?.disconnect();
+        this.qualityPanelOpenObserver = null;
         this.destroyExtraHotkeys();
         if (this.screenshotButton !== null && this.screenshotClickHandler !== null) {
             this.screenshotButton.removeEventListener('click', this.screenshotClickHandler, true);
