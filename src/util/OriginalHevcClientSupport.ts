@@ -21,7 +21,7 @@ export interface OriginalHevcClientSupportResult {
 
 /** mpegts.js が HEVC を扱えない端末向けの理由 */
 export const UNSUPPORTED_HEVC_REASON = 'HEVC MPEG-TS の端末再生に対応していないブラウザーです。';
-/** WebKit で 10bit の無変換再生を避けるときの理由 */
+/** オンラインの WebKit で 10bit の無変換再生を避けるときの理由 */
 export const WEBKIT_MAIN10_REASON =
     'この端末では 10bit HEVC の無変換再生がコマ送りになるため、変換した画質で再生してください。';
 
@@ -59,4 +59,27 @@ export const checkOriginalHevcClientSupport = (
     return { isSupported: true, reason: null };
 };
 
-export default { checkOriginalHevcClientSupport, UNSUPPORTED_HEVC_REASON, WEBKIT_MAIN10_REASON };
+/**
+ * オフライン保存した元 TS を HEVC のまま保存・再生してよいか判定する。
+ *
+ * オフライン保存は Cache Storage と Service Worker の Range VOD を使うため、
+ * オンラインの MSE 実時間再生に対する WebKit + 10bit 制限を適用しない。
+ * ただし、保存済み元 TS の再生にも mpegts.js の HEVC transmux 能力は必要。
+ * @param input: mpegts.js の HEVC transmux 能力
+ * @return OriginalHevcClientSupportResult
+ */
+export const checkOfflineOriginalHevcClientSupport = (
+    input: Pick<OriginalHevcClientSupportInput, 'mseH265Playback'>,
+): OriginalHevcClientSupportResult => {
+    if (input.mseH265Playback !== true) {
+        return { isSupported: false, reason: UNSUPPORTED_HEVC_REASON };
+    }
+    return { isSupported: true, reason: null };
+};
+
+export default {
+    checkOriginalHevcClientSupport,
+    checkOfflineOriginalHevcClientSupport,
+    UNSUPPORTED_HEVC_REASON,
+    WEBKIT_MAIN10_REASON,
+};

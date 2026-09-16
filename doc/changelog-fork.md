@@ -13,9 +13,15 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 該当箇所の前後 30〜60 行がその変更の全体になる
 - 設計の結論だけが欲しい場合は [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、設定値は [conf-manual.md](conf-manual.md)、配信周りは [streaming-refresh.md](streaming-refresh.md) にまとまっている
 
+### 索引
+
+- Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
+
 ## 2026-09-16
 
-- **オフライン保存した tsreplace HEVC 録画の黒画面を修正した**: オフラインの `original-hevc` は mpegts.js の初回要求に Range ヘッダーが付かないことがあり、Service Worker の `request.headers.get('Range')` が返す `null` を全体要求として扱えていなかった。その結果、保存チャンクから応答を組み立てる前に `416 Content-Range: bytes */16777216` を返し、mpegts.js が `HttpStatusCodeInvalid 416` で停止して `readyState=0` になっていた。`resolveOfflineByteRange()` で `null` と空白だけの値を Range 無し = 全体 (`200`, `Content-Range` 無し) として扱う。実測 (Playwright WebKit iPad Mini エミュレート / Chromium): Range 無しの fetch・XHR・mpegts.js 要求は修正前すべて `416`、`Range: bytes=0-187` は `206` / 188 byte。修正後は Range 無しを `200` / 全体 16,777,216 byte として計画できる。なお、WebKit で 10bit HEVC がコマ送りになる問題と、オフライン保存の黒画面は別原因。前者の 10bit を無変換保存候補から外す判定は変更しない。
+- **壊れた AAC を含む tsreplace HEVC 録画が Safari で8秒付近から decode error になる問題を修正した**: 本番 videoFileId 34391 (HEVC Main10 1440x1080、AAC LC 48kHz stereo、PID `0x110`) を実 Safari 26.6.2 で再生すると、8.1秒で `SourceBuffer Error`、`MediaMSEError code 11`、`video.error=3` になっていた。音声 ES 7718 frames を解析し、444 byte の非同期データと `0xFFF` 偽ヘッダを確認した。mpegts.js の `AACADTSParser.findNextSyncwordOffset()` が12bit同期語だけでフレーム先頭と判定し、偽ヘッダを音声設定変更として扱って音声 init segment を4〜5回出し直していた。`client/mpegtsAdtsPatch.js` の純粋関数を `client/vite.config.ts` の build transform と dev optimizeDeps の esbuild plugin から適用し、layer、sampling frequency index、frame length、次フレームヘッダを検証するようにした。依存更新で置換元が0または複数の場合は build を失敗させる。置換後は実 Safari で60秒、1400 frames、dropped 0、errorなし、音声 init 1回、buffered 219.5秒を確認した。Chromium とオフライン保存経路にも同じ bundle 修正を適用する。回帰テストは `test/ut/mpegts-adts-patch.test.js`。
+- **Safari / iPad のオフライン保存で 10bit HEVC の Original を候補から外していた問題を修正した**: オフライン保存の `original-hevc` は Cache Storage と Service Worker の Range VOD を使うため、`OfflineVideoDownloadDialog.vue` は素材のビット深度ではなく mpegts.js の HEVC transmux 能力だけで候補を判定するようにした。オンライン録画再生 (`RecordedStreamingVideo.vue`) の WebKit + 10bit は従来どおり HLS へ退避する。実測 (本番 videoFileId 34400、HEVC Main 10 / 1440x1080): 修正前は実 Safari 26.6.2 の候補が「1080p 高画質 / 720p / データ節約」の3件で、Chromium は「オリジナル (HEVC・無変換)」を含む4件だった。修正後は Safari でも4件。保存済み形式を実 Safari 26.6.2 で20秒再生し、`currentTime=19.75`、571 frames、dropped 0、輝度変化ありを確認した
+- **オフライン保存した tsreplace HEVC 録画の黒画面を修正した**: オフラインの `original-hevc` は mpegts.js の初回要求に Range ヘッダーが付かないことがあり、Service Worker の `request.headers.get('Range')` が返す `null` を全体要求として扱えていなかった。その結果、保存チャンクから応答を組み立てる前に `416 Content-Range: bytes */16777216` を返し、mpegts.js が `HttpStatusCodeInvalid 416` で停止して `readyState=0` になっていた。`resolveOfflineByteRange()` で `null` と空白だけの値を Range 無し = 全体 (`200`, `Content-Range` 無し) として扱う。実測 (Playwright WebKit iPad Mini エミュレート / Chromium): Range 無しの fetch・XHR・mpegts.js 要求は修正前すべて `416`、`Range: bytes=0-187` は `206` / 188 byte。修正後は Range 無しを `200` / 全体 16,777,216 byte として計画できる。なお、WebKit で 10bit HEVC がコマ送りになる問題と、オフライン保存の黒画面は別原因。10bit を候補から外す制限はオンライン再生だけに適用する。
 
 - **WebKit では 10bit HEVC の無変換再生を選べないようにした**: iPad で tsreplace の HEVC 録画を「オリジナル (無変換)」で再生するとコマ送りになり、オフライン保存した同じ録画は黒画面のままになっていた。原因は WebKit (iOS / iPadOS / macOS Safari) が **10bit (Main 10) の HEVC を MSE 経由で実時間デコードできない**こと。`MediaSource.isTypeSupported()` も `video.canPlayType()` も「対応」と答えるため、従来の能力判定では弾けていなかった。判定を `src/util/OriginalHevcClientSupport.ts` の純粋関数へ切り出し、素材が 10bit かつ WebKit のときだけ無変換再生の候補から外して HLS (ffmpeg で 8bit へ変換) へ回す。ネイティブ HLS 経由の 10bit (4K HDR 等) は WebKit でも再生できるため、落とすのは MSE へ直接流す無変換 HEVC だけに限定した。オフライン保存ダイアログも同じ判定を使い、再生できない形式を保存できないようにした。保存済みデータの再生に失敗した場合は黒画面のままにせず理由を snackbar へ出す。実測: 対象録画は HEVC Main 10 / 1440x1080 / 29.97fps で、PC の Chrome で fMP4 へ remux して直接再生すると描画間隔 0.033s が 89 回中 78 回・平均 30.5fps と正常だった (素材・配信・mpegts.js は健全)。iPad では同じ録画の HLS 再生が滑らかで、無変換再生だけがコマ送りになる。
 
@@ -703,6 +709,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 視聴・ストリーミング・データ放送
 
+- Safari / iPad のオフライン保存で 10bit HEVC の Original を候補から外していた問題を修正した (オフラインは WebKit + 10bit でも保存・再生し、オンライン再生の HLS 退避は維持)
 - オフライン保存した tsreplace HEVC 録画の黒画面を修正した (Range 無しの初回要求を Service Worker が `416` ではなく全体 `200` で返す)
 - 画質選択 UI を一般ユーザー・技術ユーザーの両方に分かるように改善した (`PlaybackLabelUtil` への表示ラベル一元化、HDR バッジ表示バグ修正、詳しく表示トグル、配信方式とのセレクタ相互追随)
 - 録画の HLS 再生が 1〜2 分で止まったまま戻らなくなるのを直した (エンコード抑制のデッドロック)

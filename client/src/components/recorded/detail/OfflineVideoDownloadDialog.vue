@@ -60,10 +60,8 @@ class OfflineVideoDownloadDialog extends Vue {
     get profiles(): apid.PlaybackProfile[] {
         return (this.playbackState.options?.profiles ?? []).filter(profile => {
             if (profile.role === 'original-mpeg2' || profile.id === 'original-mpeg2') return typeof profile.modes.original === 'number' && StreamSupportUtil.isMpeg2ToH264Supported();
-            // WebKit は 10bit HEVC を MSE で実時間デコードできない (コマ送りになる) ため、
-            // 素材のビット深度を渡して無変換保存の候補から外す
             if (profile.role === 'original-hevc' || profile.id === 'original-hevc')
-                return typeof profile.modes.original === 'number' && StreamSupportUtil.isMpegTsHevcSupported(this.playbackState.options?.source?.bitDepth);
+                return typeof profile.modes.original === 'number' && StreamSupportUtil.isOfflineMpegTsHevcSupported();
             return typeof profile.modes.hls === 'number';
         });
     }
