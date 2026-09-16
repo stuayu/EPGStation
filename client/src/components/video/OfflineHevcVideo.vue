@@ -4,6 +4,8 @@
 
 <script lang="ts">
 import BaseVideo from '@/components/video/BaseVideo';
+import container from '@/model/ModelContainer';
+import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DPlayerUtil from '@/util/DPlayerUtil';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
 import { DPlayerType } from 'dplayer';
@@ -14,6 +16,8 @@ import { Component, Prop, toNative } from 'vue-facing-decorator';
 /** 保存済み元 TS の HEVC を Range VOD として mpegts.js へ渡すプレイヤー。 */
 @Component({})
 class OfflineHevcVideo extends BaseVideo {
+    private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+
     protected override shouldNoticeJikkyoError(): boolean { return false; }
 
     @Prop({ required: true })
@@ -55,8 +59,15 @@ class OfflineHevcVideo extends BaseVideo {
         this.containerElement = this.$refs.container as HTMLElement;
         this.setChapters(this.offlineChapters);
         this.setDataBroadcastingFileInfo(this.offlineDataBroadcastingFileSize ?? null, this.offlineDataBroadcastingStartAt ?? null);
+        // 保存レコードには素材のビット深度が無いため、ここでは transmux 可否だけを見る。
+        // 10bit HEVC は WebKit で実時間デコードできないが、それは保存前に
+        // OfflineVideoDownloadDialog が候補から外して防ぐ (保存済みの分は再生を試みる)
         const support = StreamSupportUtil.checkMpegTsHevcSupport();
-        if (support.isSupported === false) throw new Error(support.reason ?? '非対応ブラウザーです。');
+        if (support.isSupported === false) {
+            // 例外を投げるだけだと画面が黒いままになるので、理由を画面へ出す
+            this.snackbarState.open({ color: 'error', text: support.reason ?? '非対応ブラウザーです。' });
+            throw new Error(support.reason ?? '非対応ブラウザーです。');
+        }
         DPlayerUtil.enableMpegtsHevcPlayback();
         this.initVideoSetting();
     }
