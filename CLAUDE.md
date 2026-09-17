@@ -199,7 +199,7 @@ npm run test:ci        # ut + ita + itb
 
 ### ストリーミング・データ放送
 
-- **iOS/iPadOS の MSE は 10bit HEVC 60fps を実時間デコードできない**。オフライン保存は `format=fmp4` とネイティブ HLS を使う
+- **HEVC Original のオフライン保存で元 TS を使うのは macOS Safari だけ**。iOS/iPadOS の MSE は 10bit HEVC 60fps を実時間デコードできず (60fps 区間でコマ送り)、Chrome (Android / PC) は放送音声の壊れた AAC フレームで `PIPELINE_ERROR_DECODE` になり数十秒で止まる。それ以外は `format=fmp4` (音声 AAC 再エンコード) で保存する (`resolveOfflineSaveFormat()`)
 配信周りを触る前に `doc/streaming-refresh.md` を読む。
 
 - **HLS は 2 モード**。cmd に `%streamFileDir%` が無ければ in-memory 配信 (ディスク書き込みなし)、あれば従来の TS セグメント方式。ライブ・録画済みとも同じ判定で、`encodePresets` が生成する HLS プリセットはどちらも in-memory。どちらのモードも ARIB 字幕対応。in-memory HLS は最初の init / セグメントが15秒来ない場合に、既存の破棄動作を変えず warn ログを出す

@@ -241,7 +241,7 @@ class OfflineHevcVideo extends BaseVideo {
             switchAudio.call(mpegts);
             this.currentAudioTrack = audioTrack;
             this.dp.video.playbackRate = playbackRate;
-            if (shouldResume === true) await this.play().catch(() => undefined);
+            if (shouldResume === true) await this.resumeAfterReload(generation);
             else this.pause();
         } finally {
             if (generation === this.reloadGeneration) {
@@ -251,6 +251,46 @@ class OfflineHevcVideo extends BaseVideo {
             }
         }
     }
+
+    /**
+     * 作り直した mpegts.js で再生を再開する。
+     *
+     * switchVideo() 直後に play() すると、mpegts.js の読み込み開始 (新しい load) に割り込まれて
+     * play() が中断される。DPlayer の play() は失敗時に自分で pause() するため、pause() の呼び出しが
+     * 無くても停止状態のまま残り、シークすると止まってしまう (Android 相当の Chromium で再現)。
+     * 再生可能になってから play() し、まだ停止していれば間隔を空けて再試行する。
+     * @param generation: number 読み直しの世代。途中で次の読み直しが始まったら何もしない
+     */
+    private async resumeAfterReload(generation: number): Promise<void> {
+        const video = this.dp?.video;
+        if (typeof video === 'undefined') return;
+
+        if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+            await new Promise<void>(resolve => {
+                const done = (): void => {
+                    clearTimeout(timerId);
+                    video.removeEventListener('canplay', done);
+                    video.removeEventListener('loadeddata', done);
+                    resolve();
+                };
+                const timerId = setTimeout(done, OfflineHevcVideo.RESUME_READY_TIMEOUT_MS);
+                video.addEventListener('canplay', done);
+                video.addEventListener('loadeddata', done);
+            });
+        }
+
+        for (let attempt = 0; attempt < OfflineHevcVideo.RESUME_MAX_ATTEMPTS; attempt += 1) {
+            if (generation !== this.reloadGeneration || this.dp === null) return;
+            await this.play().catch(() => undefined);
+            await new Promise(resolve => setTimeout(resolve, OfflineHevcVideo.RESUME_CHECK_INTERVAL_MS));
+            if (generation !== this.reloadGeneration || this.dp === null) return;
+            if (this.dp.video.paused === false) return;
+        }
+    }
+
+    private static readonly RESUME_READY_TIMEOUT_MS = 10000;
+    private static readonly RESUME_MAX_ATTEMPTS = 3;
+    private static readonly RESUME_CHECK_INTERVAL_MS = 400;
 
     public beforeUnmount(): void {
         clearTimeout(this.reloadTimerId);
