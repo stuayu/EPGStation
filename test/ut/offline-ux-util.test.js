@@ -12,9 +12,11 @@ const {
     findOfflineVideoByIds,
     getOfflineVideoKey,
     getOfflineOriginalTsKind,
+    isOfflineFmp4ProfileSupported,
     isOfflineOriginalTsProfile,
     ORIGINAL_MPEG2_CHUNK_SIZE,
     resolveOfflineWatchReturnPath,
+    resolveOfflineSaveFormat,
     resolveOfflineAudioTracks,
     shouldShowOfflineIndicator,
     splitOfflineMpeg2Ranges,
@@ -169,6 +171,15 @@ test('元 TS 保存プロファイルは MPEG-2 と HEVC だけを direct 扱い
     assert.equal(getOfflineOriginalTsKind('original-hevc'), 'original-hevc');
     assert.equal(getOfflineOriginalTsKind('original'), null);
     assert.equal(getOfflineOriginalTsKind(undefined), null);
+});
+
+test('iOS / iPadOS の HEVC Original だけ fMP4 保存へ切り替える', () => {
+    assert.equal(resolveOfflineSaveFormat('original-hevc', true), 'fmp4');
+    assert.equal(resolveOfflineSaveFormat('original-hevc', false), 'original-ts');
+    assert.equal(resolveOfflineSaveFormat('original-mpeg2', true), 'original-ts');
+    assert.equal(resolveOfflineSaveFormat('recorded-encoded-hls-0', true), 'fmp4');
+    assert.equal(isOfflineFmp4ProfileSupported('original-hevc'), true);
+    assert.equal(isOfflineFmp4ProfileSupported('original-mpeg2'), false);
 });
 
 test('オフラインデータ放送 decoder の接続パラメータを有効な値だけで組み立てる', () => {

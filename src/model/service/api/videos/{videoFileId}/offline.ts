@@ -4,6 +4,7 @@ import container from '../../../../ModelContainer';
 import * as api from '../../../api';
 import { getOfflineStreamMagic } from '../../../../../util/OfflineStreamProtocol';
 import { pipeOfflineRecords, writeOfflineChunk } from '../../../../../util/OfflineResponseWriter';
+import { isOfflineFmp4ProfileSupported } from '../../../../../util/OfflineUxUtil';
 
 const MAX_METADATA_BYTES = 1024 * 1024;
 export const get: Operation = async (req, res) => {
@@ -30,7 +31,16 @@ export const get: Operation = async (req, res) => {
             api.responseError(res, { code: 400, message: 'profile is required' });
             return;
         }
-        if (rawProfile === 'original-mpeg2' || rawProfile === 'original-hevc') {
+        const rawFormat = req.query.format;
+        if (rawFormat !== undefined && rawFormat !== 'fmp4') {
+            api.responseError(res, { code: 400, message: 'OfflineVideoFormatUnsupported' });
+            return;
+        }
+        if (rawFormat === 'fmp4' && isOfflineFmp4ProfileSupported(rawProfile) === false) {
+            api.responseError(res, { code: 400, message: 'OfflineFmp4ProfileUnsupported' });
+            return;
+        }
+        if (rawProfile === 'original-mpeg2' || (rawProfile === 'original-hevc' && rawFormat === undefined)) {
             const original = await model.getOriginalFilePath(
                 api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'),
             );
@@ -47,6 +57,7 @@ export const get: Operation = async (req, res) => {
             api.parseRequestParamInt(req.params.videoFileId, 'videoFileId'),
             rawProfile,
             audioTrack,
+            rawFormat,
         );
         if (isRequestClosed()) {
             await cleanup();
@@ -81,6 +92,8 @@ export const get: Operation = async (req, res) => {
             } else if (
                 message === 'OriginalMpegTsFileIsUndefined' ||
                 message === 'OfflineOriginalProfileUnsupported' ||
+                message === 'OfflineFmp4ProfileUnsupported' ||
+                message === 'OfflineVideoFormatUnsupported' ||
                 message === 'OfflineHlsProfileRequired' ||
                 message === 'profile is required'
             ) {
@@ -102,6 +115,7 @@ get.apiDoc = {
     parameters: [
         { $ref: '#/components/parameters/PathVideoFileId' },
         { $ref: '#/components/parameters/PlaybackProfile' },
+        { $ref: '#/components/parameters/OfflineVideoFormat' },
         { $ref: '#/components/parameters/StreamAudioTrack' },
     ],
     responses: {

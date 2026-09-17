@@ -15,13 +15,16 @@ paths:
             parameters:
                 - $ref: '#/components/parameters/PathVideoFileId'
                 - $ref: '#/components/parameters/PlaybackProfile'
+                - $ref: '#/components/parameters/OfflineVideoFormat'
                 - $ref: '#/components/parameters/StreamAudioTrack'
             responses:
                 '200':
                     description: >-
                         録画 HLS プロファイルを先頭からエンコードし、EPGODL2 の init/master と約6秒単位の
                         fMP4 セグメントを完成順に流すオフライン保存用バイナリストリーム。`profile=original-mpeg2`
-                        または `profile=original-hevc` の場合は元 MPEG-TS を Range 配信する。LL-HLS のタグは含めない
+                        または `profile=original-hevc` で `format` を省略した場合は元 MPEG-TS を Range 配信する。
+                        `profile=original-hevc&format=fmp4` は映像 copy・音声 AAC 再エンコードの fMP4 レコードを返す。
+                        LL-HLS のタグは含めない
                     content:
                         application/octet-stream: {}
                 '206':
@@ -5947,6 +5950,12 @@ components:
             in: query
             name: profile
             schema: { type: string }
+        OfflineVideoFormat:
+            description: original-hevc を映像 copy の fMP4 レコードとして保存する形式
+            in: query
+            name: format
+            required: false
+            schema: { type: string, enum: [fmp4] }
         PlaybackContainer:
             description: 実際に再生するコンテナ。指定時は該当コンテナ内の画質一覧を返す
             in: query

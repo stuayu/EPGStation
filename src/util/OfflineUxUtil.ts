@@ -5,6 +5,8 @@ export const ORIGINAL_MPEG2_CHUNK_SIZE = Math.floor((16 * 1024 * 1024) / 188) * 
 
 export type OfflineOriginalTsKind = 'original-mpeg2' | 'original-hevc';
 
+export type OfflineSaveFormat = 'original-ts' | 'fmp4';
+
 /** オフライン保存で元 TS をそのまま保持するプロファイルか判定する。 */
 export const isOfflineOriginalTsProfile = (profile: unknown): profile is OfflineOriginalTsKind =>
     profile === 'original-mpeg2' || profile === 'original-hevc';
@@ -12,6 +14,16 @@ export const isOfflineOriginalTsProfile = (profile: unknown): profile is Offline
 /** オフライン保存の元 TS kind をプロファイルから決める。曖昧な profile は HLS 扱いにする。 */
 export const getOfflineOriginalTsKind = (profile: unknown): OfflineOriginalTsKind | null =>
     isOfflineOriginalTsProfile(profile) ? profile : null;
+
+/** iOS / iPadOS の HEVC Original だけ fMP4 保存へ切り替える。 */
+export const resolveOfflineSaveFormat = (profile: unknown, isIosOrIpadOS: boolean): OfflineSaveFormat => {
+    if (profile === 'original-hevc' && isIosOrIpadOS === true) return 'fmp4';
+    return isOfflineOriginalTsProfile(profile) ? 'original-ts' : 'fmp4';
+};
+
+/** offline API の format=fmp4 で受理する Original profile を判定する。 */
+export const isOfflineFmp4ProfileSupported = (profile: unknown): profile is 'original-hevc' =>
+    profile === 'original-hevc';
 
 /** 保存済み動画を一意に識別する URL 用キーを作る。 */
 export const createOfflineVideoKey = (videoFileId: number, generationId: string): string => {

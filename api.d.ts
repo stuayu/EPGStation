@@ -603,6 +603,9 @@ export interface VideoFile {
     bitRate?: number;
 }
 
+/** オフライン保存 API の追加保存形式 */
+export type OfflineVideoFormat = 'fmp4';
+
 /** オフライン保存ストリームの先頭メタデータ */
 export interface OfflineVideoStreamMetadata {
     videoFileId: VideoFileId;
@@ -610,6 +613,7 @@ export interface OfflineVideoStreamMetadata {
     duration: number;
     profile: string;
     formatVersion: 2;
+    format?: OfflineVideoFormat;
 }
 
 /**
