@@ -174,9 +174,10 @@ test('元 TS 保存プロファイルは MPEG-2 と HEVC だけを direct 扱い
 });
 
 test('iOS / iPadOS の HEVC Original だけ fMP4 保存へ切り替える', () => {
-    assert.equal(resolveOfflineSaveFormat('original-hevc', true), 'fmp4');
-    assert.equal(resolveOfflineSaveFormat('original-hevc', false), 'original-ts');
-    assert.equal(resolveOfflineSaveFormat('original-mpeg2', true), 'original-ts');
+    // 第2引数は macOS Safari (元 TS 保存を再生できる唯一の環境) か
+    assert.equal(resolveOfflineSaveFormat('original-hevc', false), 'fmp4');
+    assert.equal(resolveOfflineSaveFormat('original-hevc', true), 'original-ts');
+    assert.equal(resolveOfflineSaveFormat('original-mpeg2', false), 'original-ts');
     assert.equal(resolveOfflineSaveFormat('recorded-encoded-hls-0', true), 'fmp4');
     assert.equal(isOfflineFmp4ProfileSupported('original-hevc'), true);
     assert.equal(isOfflineFmp4ProfileSupported('original-mpeg2'), false);

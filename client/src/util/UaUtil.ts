@@ -65,6 +65,14 @@ namespace UaUtil {
      * UA が Safari か判定
      * @return boolean
      */
+    /**
+     * macOS の Safari か判定 (iPadOS のデスクトップ UA は除く)
+     * @return boolean
+     */
+    export const isMacOSSafari = (): boolean => {
+        return isSafari() === true && isiOS() === false;
+    };
+
     export const isSafari = (): boolean => {
         return /safari|Safari/.test(navigator.userAgent) && !isChrome();
     };

@@ -15,8 +15,8 @@
                         元の TS をそのまま保存します。対応ブラウザで再生します。
                         <div v-if="selectedVideo !== null" class="mt-1">保存サイズ: {{ formatBytes(selectedVideo.size) }}</div>
                     </v-alert>
-                    <v-alert v-else-if="showIosHevcNotice" type="info" variant="tonal" density="compact">
-                        HEVC 映像を無変換の fMP4 へ詰め替えて保存します。Safari のネイティブ HLS で再生します。
+                    <v-alert v-else-if="showFmp4HevcNotice" type="info" variant="tonal" density="compact">
+                        HEVC 映像を無変換の fMP4 へ詰め替えて保存します (音声は AAC へ変換)。データ放送は表示されません。
                         <div v-if="selectedVideo !== null" class="mt-1">保存サイズ見積もり: {{ formatBytes(selectedVideo.size) }} 前後</div>
                     </v-alert>
                     <v-progress-linear v-if="isLoading" indeterminate></v-progress-linear>
@@ -61,19 +61,19 @@ class OfflineVideoDownloadDialog extends Vue {
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
     get isMobile(): boolean { return this.$vuetify.display.smAndDown; }
-    get isIosOrIpadOS(): boolean { return UaUtil.isiOS(); }
-    get selectedSaveFormat(): 'original-ts' | 'fmp4' { return resolveOfflineSaveFormat(this.selectedProfile, this.isIosOrIpadOS); }
+    get canSaveOriginalHevcTs(): boolean { return UaUtil.isMacOSSafari(); }
+    get selectedSaveFormat(): 'original-ts' | 'fmp4' { return resolveOfflineSaveFormat(this.selectedProfile, this.canSaveOriginalHevcTs); }
     get showOriginalTsNotice(): boolean {
         return this.selectedSaveFormat === 'original-ts' && (this.selectedProfile === 'original-mpeg2' || this.selectedProfile === 'original-hevc');
     }
-    get showIosHevcNotice(): boolean { return this.selectedProfile === 'original-hevc' && this.isIosOrIpadOS; }
+    get showFmp4HevcNotice(): boolean { return this.selectedProfile === 'original-hevc' && this.selectedSaveFormat === 'fmp4'; }
     get videoItems(): Array<{ title: string; value: number }> { return this.videoFiles.map(video => ({ title: video.name, value: video.id })); }
     get selectedVideo(): apid.VideoFile | null { return this.videoFiles.find(video => video.id === this.selectedVideoId) ?? null; }
     get profiles(): apid.PlaybackProfile[] {
         return (this.playbackState.options?.profiles ?? []).filter(profile => {
             if (profile.role === 'original-mpeg2' || profile.id === 'original-mpeg2') return typeof profile.modes.original === 'number' && StreamSupportUtil.isMpeg2ToH264Supported();
             if (profile.role === 'original-hevc' || profile.id === 'original-hevc') {
-                const mode = this.isIosOrIpadOS ? profile.modes.hls : profile.modes.original;
+                const mode = this.canSaveOriginalHevcTs ? profile.modes.original : profile.modes.hls;
                 return typeof mode === 'number' && StreamSupportUtil.isOfflineMpegTsHevcSupported();
             }
             return typeof profile.modes.hls === 'number';

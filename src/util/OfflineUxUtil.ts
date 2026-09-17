@@ -15,9 +15,20 @@ export const isOfflineOriginalTsProfile = (profile: unknown): profile is Offline
 export const getOfflineOriginalTsKind = (profile: unknown): OfflineOriginalTsKind | null =>
     isOfflineOriginalTsProfile(profile) ? profile : null;
 
-/** iOS / iPadOS の HEVC Original だけ fMP4 保存へ切り替える。 */
-export const resolveOfflineSaveFormat = (profile: unknown, isIosOrIpadOS: boolean): OfflineSaveFormat => {
-    if (profile === 'original-hevc' && isIosOrIpadOS === true) return 'fmp4';
+/**
+ * オフライン保存の形式を決める。
+ *
+ * HEVC Original の元 TS 保存 (mpegts.js で再生) が実用になるのは macOS Safari だけなので、
+ * それ以外は映像無変換の fMP4 で保存する。
+ * - iOS / iPadOS: MSE が 10bit HEVC 60fps を実時間デコードできない (60fps 区間でコマ送り)
+ * - Chrome (Android / PC): 放送の音声に混じる壊れた AAC フレームで PIPELINE_ERROR_DECODE になり再生が止まる
+ *   (fMP4 はサーバで AAC を再エンコードするため壊れたフレームが残らない)
+ * @param profile: unknown 保存する profile id
+ * @param canSaveOriginalHevcTs: boolean macOS Safari なら true
+ * @return OfflineSaveFormat
+ */
+export const resolveOfflineSaveFormat = (profile: unknown, canSaveOriginalHevcTs: boolean): OfflineSaveFormat => {
+    if (profile === 'original-hevc' && canSaveOriginalHevcTs === false) return 'fmp4';
     return isOfflineOriginalTsProfile(profile) ? 'original-ts' : 'fmp4';
 };
 

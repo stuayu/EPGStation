@@ -114,7 +114,7 @@ export default class OfflineVideos {
         const snapshot = JSON.parse(JSON.stringify(program)) as apid.RecordedItem;
         const sourceVideo = snapshot.videoFiles?.find(item => item.id === videoFileId);
         if (sourceVideo === undefined) throw new Error('保存対象の録画ファイルが見つかりません。');
-        const saveFormat = resolveOfflineSaveFormat(profile, UaUtil.isiOS());
+        const saveFormat = resolveOfflineSaveFormat(profile, UaUtil.isMacOSSafari());
         const originalKind = saveFormat === 'original-ts' ? getOfflineOriginalTsKind(profile) : null;
         const isOriginalTs = originalKind !== null;
         const duration = sourceVideo.duration ?? 0;

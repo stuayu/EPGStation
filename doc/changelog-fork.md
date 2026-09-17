@@ -15,10 +15,17 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- オフライン original-hevc を macOS Safari 以外すべて fMP4 保存に・シーク後の再生再開 → 2026-09-18
 - オフライン元 TS の backpressure・全体長・音声切替 → 2026-09-17
 - オフライン original-hevc の offset 再生成シーク・位置復元 → 2026-09-17
 - iOS / iPadOS のオフライン original-hevc fMP4 保存 → 2026-09-17
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
+
+## 2026-09-18
+
+- **オフライン original-hevc の元 TS 保存を macOS Safari だけにし、Android / PC の Chrome なども fMP4 保存にした**: 利用者報告「Android でオフライン再生がバグる」。Pixel 7 エミュレーションの Chromium 145 で videoFileId 23023 を元 TS 保存して再生すると、`PipelineStatus::PIPELINE_ERROR_DECODE: Failed to send audio packet for decoding` で video が error → pause になり、0:00 / 10:00 / 20:00 から再生して 3.8 / 39.0 / 23.6 秒で必ず停止した。原因は放送音声に混じる壊れた AAC フレーム (ヘッダは正しいので ADTS 偽同期対策では弾けない)。macOS Safari の MSE は同じデータで止まらない。サーバで AAC を再エンコードする fMP4 保存は Chromium で各 3 分再生してエラー 0 だった。`resolveOfflineSaveFormat(profile, canSaveOriginalHevcTs)` の第2引数を macOS Safari 判定 (`UaUtil.isMacOSSafari()`) に変え、それ以外は `format=fmp4` で保存する。fMP4 保存ではデータ放送をオフライン表示できない。original-mpeg2 は従来どおり元 TS。
+- **オフライン元 TS 再生でシーク後に再生が再開しないことがあるのを直した**: 範囲外シーク・音声切替で mpegts.js を作り直した直後に `play()` すると、新しいソースの読み込み開始に割り込まれて中断され、DPlayer の `play()` 失敗時処理で停止状態が残った (Chromium の記録で `pause()` 呼び出しの無い停止を確認)。`OfflineHevcVideo.resumeAfterReload()` で `canplay` / `loadeddata` (最大 10 秒) を待ってから `play()` し、400ms 後にまだ停止していれば最大 3 回再試行する。
+- iPad の fMP4 保存 (2b45ad2d) でシークバーを合成タッチで 20 回タップ → 20 回とも狙った位置で再生継続を確認した。
 
 ## 2026-09-17
 
