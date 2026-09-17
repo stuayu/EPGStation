@@ -50,12 +50,14 @@ export default class OfflineVideoApiModel implements IOfflineVideoApiModel {
      * @param videoFileId: apid.VideoFileId
      * @param profile: 録画 HLS の配信プロファイル id
      * @param audioTrack: 保存する音声トラック
+     * @param format: Original HEVC を fMP4 へ保存するときの形式
      * @return Promise<OfflineVideoStreamResult>
      */
     public async startOfflineStream(
         videoFileId: apid.VideoFileId,
         profile: string,
         audioTrack: apid.AudioTrackSpecifier = 'all',
+        format?: apid.OfflineVideoFormat,
     ): Promise<OfflineVideoStreamResult> {
         const video = await this.videoFileDB.findId(videoFileId);
         if (video === null) throw new Error('VideoFileIsUndefined');
@@ -63,8 +65,13 @@ export default class OfflineVideoApiModel implements IOfflineVideoApiModel {
         const recorded = await this.recordedDB.findId(video.recordedId);
         if (recorded === null) throw new Error('RecordedIsUndefined');
         if (recorded.isRecording === true) throw new Error('RecordingVideoCannotBeSavedOffline');
-        if (profile === 'original' || profile === 'original-mpeg2' || profile === 'original-hevc')
+        if (
+            profile === 'original' ||
+            profile === 'original-mpeg2' ||
+            (profile === 'original-hevc' && format !== 'fmp4')
+        )
             throw new Error('OfflineOriginalProfileUnsupported');
+        if (format === 'fmp4' && profile !== 'original-hevc') throw new Error('OfflineFmp4ProfileUnsupported');
 
         const release = await this.semaphore.acquire();
         let streamId: apid.StreamId | null = null;
@@ -83,6 +90,7 @@ export default class OfflineVideoApiModel implements IOfflineVideoApiModel {
                 duration: video.duration ?? recorded.duration,
                 profile,
                 formatVersion: 2,
+                ...(format === undefined ? {} : { format }),
             };
 
             return {

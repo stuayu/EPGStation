@@ -8,6 +8,8 @@ import {
     normalizeOfflineChapters,
     ORIGINAL_MPEG2_CHUNK_SIZE,
     getOfflineOriginalTsKind,
+    isOfflineFmp4ProfileSupported,
+    resolveOfflineSaveFormat,
     splitOfflineMpeg2Ranges,
 } from '../../../src/util/OfflineUxUtil';
 import Util from '@/util/Util';
@@ -19,6 +21,7 @@ import IChannelModel from '@/model/channels/IChannelModel';
 import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import { resolveJikkyoKakologParam } from '@/util/JikkyoKakologParam';
 import type { OfflineJikkyoParam } from '../../../src/util/OfflineJikkyoParam';
+import UaUtil from '@/util/UaUtil';
 
 export interface OfflineDownloadJob {
     videoId: number;
@@ -111,11 +114,14 @@ export default class OfflineVideos {
         const snapshot = JSON.parse(JSON.stringify(program)) as apid.RecordedItem;
         const sourceVideo = snapshot.videoFiles?.find(item => item.id === videoFileId);
         if (sourceVideo === undefined) throw new Error('保存対象の録画ファイルが見つかりません。');
-        const originalKind = getOfflineOriginalTsKind(profile);
+        const saveFormat = resolveOfflineSaveFormat(profile, UaUtil.isiOS());
+        const originalKind = saveFormat === 'original-ts' ? getOfflineOriginalTsKind(profile) : null;
         const isOriginalTs = originalKind !== null;
         const duration = sourceVideo.duration ?? 0;
         const mediaBitrateBytesPerSecond = ((videoBitrateKbps ?? 3000) * 1000 + 192000) / 8;
-        const estimatedBytes = isOriginalTs === true ? sourceVideo.size : Math.max(16 * 1024 * 1024, Math.ceil(duration * mediaBitrateBytesPerSecond * 1.15));
+        const estimatedBytes = isOriginalTs === true || (saveFormat === 'fmp4' && profile === 'original-hevc')
+            ? sourceVideo.size
+            : Math.max(16 * 1024 * 1024, Math.ceil(duration * mediaBitrateBytesPerSecond * 1.15));
         const estimate = await navigator.storage?.estimate();
         if (estimate?.quota !== undefined && estimate.quota - (estimate.usage ?? 0) < estimatedBytes) throw new Error('オフライン保存に必要な空き容量が不足しています。');
         await navigator.storage?.persist?.();
@@ -165,7 +171,8 @@ export default class OfflineVideos {
         const cache = await caches.open(this.CACHE_NAME);
         const thumbnailURLs: string[] = [];
         const channelLogoURL = new URL('channel-logo', baseURL).toString();
-        const url = withMediaToken(`${Util.getSubDirectory()}/api/videos/${videoFileId}/offline?profile=${encodeURIComponent(profile)}&audioTrack=all`);
+        const formatQuery = saveFormat === 'fmp4' && isOfflineFmp4ProfileSupported(profile) ? '&format=fmp4' : '';
+        const url = withMediaToken(`${Util.getSubDirectory()}/api/videos/${videoFileId}/offline?profile=${encodeURIComponent(profile)}&audioTrack=all${formatQuery}`);
         try {
             for (const thumbnailId of snapshot.thumbnails ?? []) {
                 const thumbnailURL = new URL(`thumbnails/${thumbnailId}`, baseURL).toString();

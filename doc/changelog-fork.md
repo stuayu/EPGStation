@@ -17,10 +17,12 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 - オフライン元 TS の backpressure・全体長・音声切替 → 2026-09-17
 - オフライン original-hevc の offset 再生成シーク・位置復元 → 2026-09-17
+- iOS / iPadOS のオフライン original-hevc fMP4 保存 → 2026-09-17
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-17
 
+- **iOS / iPadOS のオフライン original-hevc を映像無変換 fMP4 + ネイティブ HLS で保存するようにした**: iPadOS 26.6.2 / iPad Pro 11 (M2) Safari では、videoFileId 23023 の tsreplace HEVC Main10 / 1440x1080 の元 TS を mpegts.js (MSE) で再生すると、60fps 区間 0〜4秒で40秒間に再生位置4.55秒・表示44回・1.5秒級の途切れ多数、49〜56秒と93〜95秒でも停止が発生した。60秒からの24fps区間は1秒24回で滑らか、Mac Safari 26.6.2 は全区間正常だった。同じ録画のオンライン HLS > オリジナル (映像 copy + fMP4) は iPad で20秒484回・飛ばし1と滑らかだったため、iOS / iPadOS の保存だけ `format=fmp4` へ切り替える。サーバは既存の `StreamApiModel.getRecordedVideoConfig('hls', option, true)` → `createOriginalHevcHlsCommand()` → `RecordedStreamBaseModel.startOfflineFmp4Packaging()` → `OfflineFmp4RecordStream` を使い、映像 `-c:v copy`・`-tag:v hvc1`、音声 AAC 再エンコード、複数音声レンディション、字幕 `emsg` をオンライン HLS と同じ経路で保存する。Mac / PC の `format` 省略時は従来の元 TS Range 保存を維持し、`format=fmp4` は `original-hevc` だけ、`original-mpeg2` は拒否する。実機での修正後 iPad 保存・再生は未検証。
 - **オフライン元 TS の Range 無し応答が保存ファイル全体を先読みする問題を修正した**: Service Worker の `readOfflineOriginal()` を `ReadableStream.start()` の全量 enqueue から `pull()` 方式へ変更し、読み手の要求ごとに保存チャンクを1つずつ読むようにした。16MiB の保存チャンクは2MiB以下へ分割して返し、`cancel()` 後の読み出しと enqueue を止める。Range 付きの206/416、`createOfflineRangePlan()` の契約は変更しない。修正前は12チャンク・192MBの Range 無し要求が2回の readで150ms以内に全量到達した。修正後は読み手の消費に合わせて最大2MiBずつ返す。単体テストは `test/ut/service-worker-util.test.js`。
 - **オフライン元 TS のシークバーが先読み範囲の長さを表示する問題を修正した**: `OfflineHevcVideo` / `OfflineMpeg2Video` の `getDuration()` は、MSE の `video.duration` ではなく保存レコードの `durationSeconds` (正数) を優先する。保存長が無い旧レコードだけ従来どおり再生要素の長さへ戻す。VirtualTimeline、チャプター、再生位置保存はこの全体長を使う。
 - **オフライン original-hevc の音声トラック切替に対応した**: 保存時に `GET /api/videos/{videoFileId}/audio-tracks` の結果を `OfflineVideoRecord.audioTracks` へスナップショットし、取得失敗時も動画保存を継続する。再生時は独立音声 ES を mpegts.js の `switchPrimaryAudio()` / `switchSecondaryAudio()` で同一 TS 内切替し、デュアルモノラルは既存の Web Audio 経路を使う。旧レコードや一覧取得失敗は主音声・副音声の2択へ戻す。original-mpeg2 の音声切替は今回対象外。

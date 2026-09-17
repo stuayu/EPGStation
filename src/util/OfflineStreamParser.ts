@@ -6,6 +6,7 @@ export interface OfflineStreamMetadata {
     duration: number;
     profile: string;
     formatVersion: 2;
+    format?: 'fmp4';
 }
 
 export interface OfflineInitRecord {
@@ -117,7 +118,8 @@ export default class OfflineStreamParser {
                 metadata.duration <= 0 ||
                 typeof metadata.profile !== 'string' ||
                 metadata.profile.length === 0 ||
-                metadata.formatVersion !== 2
+                metadata.formatVersion !== 2 ||
+                (metadata.format !== undefined && metadata.format !== 'fmp4')
             ) {
                 throw new Error('オフライン保存データのメタデータが不正です。');
             }

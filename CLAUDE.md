@@ -199,10 +199,11 @@ npm run test:ci        # ut + ita + itb
 
 ### ストリーミング・データ放送
 
+- **iOS/iPadOS の MSE は 10bit HEVC 60fps を実時間デコードできない**。オフライン保存は `format=fmp4` とネイティブ HLS を使う
 配信周りを触る前に `doc/streaming-refresh.md` を読む。
 
 - **HLS は 2 モード**。cmd に `%streamFileDir%` が無ければ in-memory 配信 (ディスク書き込みなし)、あれば従来の TS セグメント方式。ライブ・録画済みとも同じ判定で、`encodePresets` が生成する HLS プリセットはどちらも in-memory。どちらのモードも ARIB 字幕対応。in-memory HLS は最初の init / セグメントが15秒来ない場合に、既存の破棄動作を変えず warn ログを出す
-- **tsreplace の HEVC TS は `video_file.type=encoded` で登録される**。字幕を `videoFileType === 'ts'` の枝へ追加してはいけない。`SourceAnalyzer` の `transport === 'mpegts'` で判定し、encoded TS の in-memory HLS / Offline `original-hevc` は別 ffmpeg reader (`-ss -i -map 0:s:0?`) で ARIB 字幕を読み、主映像の実シーク開始PTSへ合わせて `emsg` 化する。VBR の `bitRate * playPosition / 8` は字幕readerの位置計算へ使わない。
+- **tsreplace の HEVC TS は `video_file.type=encoded` で登録される**。字幕を `videoFileType === 'ts'` の枝へ追加してはいけない。`SourceAnalyzer` の `transport === 'mpegts'` で判定し、encoded TS の in-memory HLS / iOS・iPadOS の Offline `original-hevc` fMP4 は別 ffmpeg reader (`-ss -i -map 0:s:0?`) で ARIB 字幕を読み、主映像の実シーク開始PTSへ合わせて `emsg` 化する。VBR の `bitRate * playPosition / 8` は字幕readerの位置計算へ使わない。
 - **ライブ HLS の手書き probe 設定**: rigaya 系エンコーダの `--input-analyze` / `--input-probesize` と ffmpeg の `-analyzeduration` / `-probesize` は小さくする。probe が終わるまでエンコーダは出力を始めないため、長いと最初のセグメントが間に合わずストリームが破棄されることがある。**ただしセグメント 0 のまま破棄される事象は probe 設定以外でも起きる** (実測: probe を 1 秒 / 2MB へ縮めても解消しない環境があった)。そのときは `in-memory HLS 初回出力待ち警告` を手掛かりに、cmd を手で実行して各段が出力しているかを確かめる
 - **再生停滞時の自動画質 fallback は `VideoContainer` で共通監視する**。「おまかせ」時だけ `waiting`、`currentTime`、`buffered` の実測から回線不足を判定し、fallbackChain を 1 段下げる。明示画質・シーク/切替直後・非表示タブ中は変更しない。判定本体は `src/util/PlaybackStallDetector.ts` の純粋関数で、fallback 後は 60 秒冷却する
 - **録画 HLS の ready 判定は 1 セグメント、ライブは 2 セグメント**。録画クライアントの有効化確認は初回即時 + 200ms 間隔、タイムアウト総時間は変更しない

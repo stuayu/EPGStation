@@ -11,9 +11,13 @@
                     <v-radio-group v-model="selectedProfile" :disabled="isLoading">
                         <v-radio v-for="profile in profiles" :key="profile.id" :label="getLabel(profile)" :value="profile.id"></v-radio>
                     </v-radio-group>
-                    <v-alert v-if="selectedProfile === 'original-mpeg2' || selectedProfile === 'original-hevc'" type="info" variant="tonal" density="compact">
+                    <v-alert v-if="showOriginalTsNotice" type="info" variant="tonal" density="compact">
                         元の TS をそのまま保存します。対応ブラウザで再生します。
                         <div v-if="selectedVideo !== null" class="mt-1">保存サイズ: {{ formatBytes(selectedVideo.size) }}</div>
+                    </v-alert>
+                    <v-alert v-else-if="showIosHevcNotice" type="info" variant="tonal" density="compact">
+                        HEVC 映像を無変換の fMP4 へ詰め替えて保存します。Safari のネイティブ HLS で再生します。
+                        <div v-if="selectedVideo !== null" class="mt-1">保存サイズ見積もり: {{ formatBytes(selectedVideo.size) }} 前後</div>
                     </v-alert>
                     <v-progress-linear v-if="isLoading" indeterminate></v-progress-linear>
                 </v-card-text>
@@ -35,6 +39,8 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import OfflineVideos from '@/services/OfflineVideos';
 import { getPlaybackShortLabel } from '@/util/PlaybackLabelUtil';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
+import UaUtil from '@/util/UaUtil';
+import { resolveOfflineSaveFormat } from '../../../../../src/util/OfflineUxUtil';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 
 @Component({})
@@ -55,13 +61,21 @@ class OfflineVideoDownloadDialog extends Vue {
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
     get isMobile(): boolean { return this.$vuetify.display.smAndDown; }
+    get isIosOrIpadOS(): boolean { return UaUtil.isiOS(); }
+    get selectedSaveFormat(): 'original-ts' | 'fmp4' { return resolveOfflineSaveFormat(this.selectedProfile, this.isIosOrIpadOS); }
+    get showOriginalTsNotice(): boolean {
+        return this.selectedSaveFormat === 'original-ts' && (this.selectedProfile === 'original-mpeg2' || this.selectedProfile === 'original-hevc');
+    }
+    get showIosHevcNotice(): boolean { return this.selectedProfile === 'original-hevc' && this.isIosOrIpadOS; }
     get videoItems(): Array<{ title: string; value: number }> { return this.videoFiles.map(video => ({ title: video.name, value: video.id })); }
     get selectedVideo(): apid.VideoFile | null { return this.videoFiles.find(video => video.id === this.selectedVideoId) ?? null; }
     get profiles(): apid.PlaybackProfile[] {
         return (this.playbackState.options?.profiles ?? []).filter(profile => {
             if (profile.role === 'original-mpeg2' || profile.id === 'original-mpeg2') return typeof profile.modes.original === 'number' && StreamSupportUtil.isMpeg2ToH264Supported();
-            if (profile.role === 'original-hevc' || profile.id === 'original-hevc')
-                return typeof profile.modes.original === 'number' && StreamSupportUtil.isOfflineMpegTsHevcSupported();
+            if (profile.role === 'original-hevc' || profile.id === 'original-hevc') {
+                const mode = this.isIosOrIpadOS ? profile.modes.hls : profile.modes.original;
+                return typeof mode === 'number' && StreamSupportUtil.isOfflineMpegTsHevcSupported();
+            }
             return typeof profile.modes.hls === 'number';
         });
     }

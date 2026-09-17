@@ -57,6 +57,8 @@ MPEG-2 映像を含む MPEG-TS だけ、サーバーで再エンコードしな�
 
 オフライン UI は一覧 (`#/offline-videos`) → 番組情報 (`#/offline-videos/:key`) → 視聴 (`#/offline-videos/:key/watch`) の3画面に分離する。視聴画面は保存スナップショットから番組情報タブだけを作り、`/api/recorded/**`・`/api/streams/**`・`/streamfiles/**`・視聴履歴 API を呼ばない。再生位置は localStorage へ保存・復元する。`key` は videoFileId + generationId で、画質違いの保存を同時に保持できる。
 
+iOS / iPadOS の保存ダイアログで `original-hevc` を選んだ場合は、`GET /api/videos/{videoFileId}/offline?profile=original-hevc&format=fmp4&audioTrack=all` を使う。サーバーはオンラインの HLS > オリジナルと同じ `createOriginalHevcHlsCommand()`、`RecordedStreamBaseModel.startOfflineFmp4Packaging()`、`OfflineFmp4RecordStream` を通し、映像を `-c:v copy -tag:v hvc1`、音声を AAC へ再エンコードし、複数音声 rendition と字幕 `emsg` を含む EPGODL2 fMP4 レコードを返す。クライアントは `kind: 'hls'` として Cache Storage へ保存し、`OfflineHLSVideo` の `type: 'hls'` で Safari のネイティブ HLS へ渡す。保存サイズ見積もりは元ファイルサイズ程度にする。`format` 省略時の original-hevc / original-mpeg2 元 TS Range 保存は Mac / PC 向けに維持し、`format=fmp4` は original-hevc だけ受理する。
+
 Cache Storage / IndexedDB の容量上限・永続性はブラウザと端末空き容量に依存する。`navigator.storage.persist()` を要求しても常に許可されるとは限らず、iOS / iPadOS Safari は容量逼迫・長期間未使用・OS管理によって PWA のキャッシュを削除する可能性がある。ホーム画面へ追加した Web App も同じ制約を受ける。保存前の容量見積もりと保存後の再生は実装済みだが、iOS Safari 実機・ホーム画面 PWA の容量・寿命・回線断再生は未検証。
 
 ## 変更概要

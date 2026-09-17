@@ -61,6 +61,22 @@ test('例外時も同時実行枠を返す', async () => {
     assert.equal(model.getAvailableSlotCount(), 3);
 });
 
+test('Original HEVC は format=fmp4 のときだけオフライン fMP4 保存を受理する', async () => {
+    const { model } = makeModel();
+    const result = await model.startOfflineStream(7, 'original-hevc', 'all', 'fmp4');
+    assert.equal(result.metadata.profile, 'original-hevc');
+    assert.equal(result.metadata.format, 'fmp4');
+    await result.cleanup();
+    await assert.rejects(
+        () => model.startOfflineStream(7, 'original-hevc'),
+        { message: 'OfflineOriginalProfileUnsupported' },
+    );
+    await assert.rejects(
+        () => model.startOfflineStream(7, 'original-mpeg2', 'all', 'fmp4'),
+        { message: 'OfflineOriginalProfileUnsupported' },
+    );
+});
+
 test('MPEG-2 Original の対象ファイル解決を VideoApi へ委譲する', async () => {
     const { model } = makeModel();
     assert.deepEqual(await model.getOriginalMpeg2FilePath(7), { path: 'file-7' });
