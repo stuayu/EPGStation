@@ -1,6 +1,8 @@
 <template>
     <span class="offline-download-badge" :class="{ 'is-large': large === true }" @click.stop>
-        <v-chip v-if="isDownloading" size="x-small" color="primary" variant="tonal">保存中</v-chip>
+        <v-chip v-if="isDownloading" class="offline-download-chip" size="x-small" color="primary" variant="tonal">
+            保存中 {{ formatBytes(downloadJob?.downloadedBytes ?? 0) }} / {{ formatBytes(downloadJob?.estimatedBytes ?? 0) }}
+        </v-chip>
         <v-chip v-else-if="isSaved && large !== true" size="x-small" color="success" variant="tonal">オフライン保存済み</v-chip>
         <template v-if="showPlay && savedVideos.length === 1">
             <v-btn
@@ -46,9 +48,10 @@
 </template>
 
 <script lang="ts">
-import OfflineVideos from '@/services/OfflineVideos';
+import OfflineVideos, { type OfflineDownloadJob } from '@/services/OfflineVideos';
 import type { OfflineVideoRecord } from '@/services/OfflineVideoStorage';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
+import { formatBytes } from '../../../../src/util/ByteFormatUtil';
 
 @Component({})
 class OfflineDownloadBadge extends Vue {
@@ -63,6 +66,7 @@ class OfflineDownloadBadge extends Vue {
     public videoIds!: number[] | undefined;
     public isSaved = false;
     public isDownloading = false;
+    public downloadJob: OfflineDownloadJob | null = null;
     public savedVideos: OfflineVideoRecord[] = [];
 
     public async mounted(): Promise<void> {
@@ -79,7 +83,10 @@ class OfflineDownloadBadge extends Vue {
     }
 
     public async refresh(): Promise<void> {
-        this.isDownloading = OfflineVideos.getJob(this.videoId)?.state === 'Downloading';
+        const job = OfflineVideos.getJob(this.videoId);
+        this.isDownloading = job?.state === 'Downloading';
+        // job は保存中に同じオブジェクトを変更するため、描画用には毎回複製する。
+        this.downloadJob = job?.state === 'Downloading' ? { ...job } : null;
         this.savedVideos = await OfflineVideos.getSavedVideos(this.videoIds ?? [this.videoId]);
         this.isSaved = this.savedVideos.length > 0;
     }
@@ -96,9 +103,7 @@ class OfflineDownloadBadge extends Vue {
     }
 
     public formatBytes(bytes: number): string {
-        if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
-        if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
-        return `${(bytes / 1024 / 1024 / 1024).toFixed(2)}GB`;
+        return formatBytes(bytes);
     }
 }
 
@@ -109,4 +114,19 @@ export default toNative(OfflineDownloadBadge);
 // v-menu の中身は body 直下へテレポートされるので scoped にしない (CLAUDE.md「スマホ・タブレット対応」)
 .offline-select-menu
     width: 320px
+
+.offline-download-badge
+    display: inline-flex
+    max-width: 100%
+    min-width: 0
+
+.offline-download-chip
+    max-width: 100%
+
+.offline-download-chip .v-chip__content
+    min-width: 0
+    max-width: 100%
+    overflow: hidden
+    text-overflow: ellipsis
+    white-space: nowrap
 </style>

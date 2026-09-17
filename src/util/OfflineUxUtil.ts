@@ -58,16 +58,17 @@ export const normalizeOfflineChapters = (value: unknown): apid.VideoChapter[] =>
 
     return value
         .filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object')
-        .filter(item =>
-            typeof item.id === 'number' &&
-            Number.isSafeInteger(item.id) &&
-            typeof item.startAt === 'number' &&
-            Number.isFinite(item.startAt) &&
-            item.startAt >= 0 &&
-            typeof item.endAt === 'number' &&
-            Number.isFinite(item.endAt) &&
-            item.endAt > item.startAt &&
-            (item.title === null || typeof item.title === 'string'),
+        .filter(
+            item =>
+                typeof item.id === 'number' &&
+                Number.isSafeInteger(item.id) &&
+                typeof item.startAt === 'number' &&
+                Number.isFinite(item.startAt) &&
+                item.startAt >= 0 &&
+                typeof item.endAt === 'number' &&
+                Number.isFinite(item.endAt) &&
+                item.endAt > item.startAt &&
+                (item.title === null || typeof item.title === 'string'),
         )
         .map(item => ({
             id: item.id as number,
@@ -77,6 +78,24 @@ export const normalizeOfflineChapters = (value: unknown): apid.VideoChapter[] =>
         }))
         .sort((a, b) => a.startAt - b.startAt);
 };
+
+/** オフライン音声一覧を取得できない旧レコード用の主音声・副音声候補を作る。 */
+export const createOfflineFallbackAudioTracks = (): apid.VideoAudioTrack[] => [
+    { track: 'main', name: '主音声', streamIndex: 0, isDualMono: true, codec: null, language: null, channels: null },
+    {
+        track: 'sub',
+        name: '副音声 (デュアルモノラル)',
+        streamIndex: 0,
+        isDualMono: true,
+        codec: null,
+        language: null,
+        channels: null,
+    },
+];
+
+/** 保存レコードの音声一覧を使い、旧レコードや取得失敗時は従来の2択へ戻す。 */
+export const resolveOfflineAudioTracks = (value: unknown): apid.VideoAudioTrack[] =>
+    Array.isArray(value) && value.length > 0 ? (value as apid.VideoAudioTrack[]) : createOfflineFallbackAudioTracks();
 
 export interface OfflineDataBroadcastingInfo {
     videoFileId: apid.VideoFileId;
@@ -97,16 +116,14 @@ export interface OfflineDataBroadcastingParam {
 }
 
 /** 元 TS を保存したオフライン動画からデータ放送 decoder の入力情報を作る。 */
-export const createOfflineDataBroadcastingInfo = (
-    record: {
-        videoId: number;
-        kind?: 'hls' | OfflineOriginalTsKind;
-        originalURL?: string;
-        originalFileSize?: number;
-        originalChunkSize?: number;
-        program: unknown;
-    },
-): OfflineDataBroadcastingInfo | null => {
+export const createOfflineDataBroadcastingInfo = (record: {
+    videoId: number;
+    kind?: 'hls' | OfflineOriginalTsKind;
+    originalURL?: string;
+    originalFileSize?: number;
+    originalChunkSize?: number;
+    program: unknown;
+}): OfflineDataBroadcastingInfo | null => {
     if (
         isOfflineOriginalTsProfile(record.kind) === false ||
         typeof record.originalURL !== 'string' ||
@@ -114,18 +131,28 @@ export const createOfflineDataBroadcastingInfo = (
         !Number.isSafeInteger(record.videoId) ||
         !Number.isSafeInteger(record.originalFileSize) ||
         (record.originalFileSize as number) <= 0
-    ) return null;
+    )
+        return null;
 
-    const program = (record.program !== null && typeof record.program === 'object' ? record.program : {}) as Record<string, unknown>;
+    const program = (record.program !== null && typeof record.program === 'object' ? record.program : {}) as Record<
+        string,
+        unknown
+    >;
     const videoFiles = Array.isArray(program.videoFiles) ? program.videoFiles : [];
-    const videoFile = videoFiles.find(item => item !== null && typeof item === 'object' && (item as { id?: unknown }).id === record.videoId);
-    const startAt = videoFile !== undefined && typeof videoFile === 'object' && Number.isFinite((videoFile as { startAt?: unknown }).startAt)
-        ? (videoFile as { startAt: number }).startAt
-        : null;
+    const videoFile = videoFiles.find(
+        item => item !== null && typeof item === 'object' && (item as { id?: unknown }).id === record.videoId,
+    );
+    const startAt =
+        videoFile !== undefined &&
+        typeof videoFile === 'object' &&
+        Number.isFinite((videoFile as { startAt?: unknown }).startAt)
+            ? (videoFile as { startAt: number }).startAt
+            : null;
 
-    const chunkSize = Number.isSafeInteger(record.originalChunkSize) && (record.originalChunkSize as number) >= 188
-        ? Math.floor((record.originalChunkSize as number) / 188) * 188
-        : ORIGINAL_MPEG2_CHUNK_SIZE;
+    const chunkSize =
+        Number.isSafeInteger(record.originalChunkSize) && (record.originalChunkSize as number) >= 188
+            ? Math.floor((record.originalChunkSize as number) / 188) * 188
+            : ORIGINAL_MPEG2_CHUNK_SIZE;
     return {
         videoFileId: record.videoId,
         fileSize: record.originalFileSize as number,
@@ -150,8 +177,10 @@ export const createOfflineDataBroadcastingParam = (
         url.length === 0 ||
         !Number.isSafeInteger(fileSize) ||
         fileSize <= 0
-    ) return null;
-    const alignedChunkSize = Number.isSafeInteger(chunkSize) && chunkSize >= 188 ? Math.floor(chunkSize / 188) * 188 : 0;
+    )
+        return null;
+    const alignedChunkSize =
+        Number.isSafeInteger(chunkSize) && chunkSize >= 188 ? Math.floor(chunkSize / 188) * 188 : 0;
     if (alignedChunkSize < 188) return null;
     return {
         type: 'offlineOriginal',

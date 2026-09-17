@@ -8,7 +8,11 @@ const vm = require('node:vm');
 const {
     ADTS_SYNCWORD_PATCH,
     ADTS_SYNCWORD_SOURCE,
+    SECONDARY_AUDIO_INIT_PATCH,
+    SECONDARY_AUDIO_INIT_SOURCE,
     patchMpegtsAdtsParser,
+    patchMpegtsDist,
+    patchMpegtsSecondaryAudioPreference,
 } = require('../../client/mpegtsAdtsPatch.js');
 
 const mpegtsPath = path.resolve(__dirname, '../../client/node_modules/mpegts.js/dist/mpegts.js');
@@ -72,4 +76,25 @@ test('次ヘッダが末尾1から3 byteしかない正規フレームを捨て�
         const scanner = loadPatchedScanner();
         assert.equal(scanner.call({ data_: data }, 0), 0);
     }
+});
+
+test('mpegts.js dist の TSDemuxer が生成時に preferSecondaryAudio を読むよう1回だけ置換する', () => {
+    const source = fs.readFileSync(mpegtsPath, 'utf8');
+    const patched = patchMpegtsDist(source);
+    assert.equal(patched.split(SECONDARY_AUDIO_INIT_PATCH).length - 1, 1);
+    assert.equal(patched.split(SECONDARY_AUDIO_INIT_SOURCE).length - 1, 0);
+    assert.equal(patched.split(ADTS_SYNCWORD_PATCH).length - 1, 1);
+});
+
+test('副音声の初期指定は config.preferSecondaryAudio が true のときだけ有効になる', () => {
+    const build = patch => vm.runInNewContext(`(function (t, i) { var n = {}; ${patch}; return n.preferred_secondary_audio; })`);
+    const init = build(SECONDARY_AUDIO_INIT_PATCH);
+    assert.equal(init({ ts_packet_size: 188 }, { preferSecondaryAudio: true }), true);
+    assert.equal(init({ ts_packet_size: 188 }, { preferSecondaryAudio: false }), false);
+    assert.equal(init({ ts_packet_size: 188 }, {}), false);
+    assert.equal(init({ ts_packet_size: 188 }, undefined), false);
+});
+
+test('副音声の置換元が無い場合は依存更新として失敗する', () => {
+    assert.throws(() => patchMpegtsSecondaryAudioPreference('n.preferred_secondary_audio=!1'), /count must be 1/u);
 });

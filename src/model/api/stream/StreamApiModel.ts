@@ -512,7 +512,8 @@ export default class StreamApiModel implements IStreamApiModel {
             if (isOriginalHevcSource(source) === false) throw new Error('OriginalHevcSourceIsUnsupported');
 
             const config = this.configuration?.getConfig();
-            const audioLayout = isEncodedVideo === true ? await this.getOriginalHevcAudioLayout(option.videoFileId) : undefined;
+            const audioLayout =
+                isEncodedVideo === true ? await this.getOriginalHevcAudioLayout(option.videoFileId) : undefined;
             const inputMode = resolveOriginalHevcInputMode(
                 isEncodedVideo,
                 offline,

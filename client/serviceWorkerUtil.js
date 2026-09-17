@@ -63,26 +63,40 @@ const resolveOfflineByteRange = (header, fileSize) => {
 };
 
 /** 指定 Range と交差する保存チャンクの読み出し範囲を求める。 */
-const getOfflineChunkSlices = (range, chunkSize, fileSize) => {
+const getOfflineChunkSlices = (range, chunkSize, fileSize, sourceOffset = 0) => {
     if (range === undefined || !Number.isSafeInteger(chunkSize) || chunkSize <= 0 || !Number.isSafeInteger(fileSize) || fileSize <= 0) return [];
+    if (!Number.isSafeInteger(sourceOffset) || sourceOffset < 0) return [];
+    const actualFileSize = sourceOffset + fileSize;
     const slices = [];
-    const firstChunk = Math.floor(range.start / chunkSize);
-    const lastChunk = Math.floor(range.end / chunkSize);
+    const firstChunk = Math.floor((sourceOffset + range.start) / chunkSize);
+    const lastChunk = Math.floor((sourceOffset + range.end) / chunkSize);
     for (let chunk = firstChunk; chunk <= lastChunk; chunk += 1) {
         const chunkStart = chunk * chunkSize;
-        const chunkEnd = Math.min(fileSize - 1, chunkStart + chunkSize - 1);
-        slices.push({ chunkStart, offset: Math.max(range.start, chunkStart) - chunkStart, length: Math.min(range.end, chunkEnd) - Math.max(range.start, chunkStart) + 1 });
+        const chunkEnd = Math.min(actualFileSize - 1, chunkStart + chunkSize - 1);
+        const sliceStart = Math.max(sourceOffset + range.start, chunkStart);
+        const sliceEnd = Math.min(sourceOffset + range.end, chunkEnd);
+        slices.push({ chunkStart, offset: sliceStart - chunkStart, length: sliceEnd - sliceStart + 1 });
     }
     return slices;
 };
 
+/** 保存チャンクを Service Worker の ReadableStream へ渡す小さな単位へ分割する。 */
+const splitOfflineResponseChunkRanges = (length, maxChunkSize) => {
+    if (!Number.isSafeInteger(length) || length <= 0 || !Number.isSafeInteger(maxChunkSize) || maxChunkSize <= 0) return [];
+    const ranges = [];
+    for (let offset = 0; offset < length; offset += maxChunkSize) {
+        ranges.push({ offset, length: Math.min(maxChunkSize, length - offset) });
+    }
+    return ranges;
+};
+
 /** SW が返すオフライン MPEG-TS 応答の status / headers / チャンク範囲を組み立てる。 */
-const createOfflineRangePlan = (header, fileSize, chunkSize) => {
+const createOfflineRangePlan = (header, fileSize, chunkSize, sourceOffset = 0) => {
     const range = resolveOfflineByteRange(header, fileSize);
     if (range.kind === 'unsatisfiable') {
         return { status: 416, headers: { 'Accept-Ranges': 'bytes', 'Content-Range': `bytes */${fileSize}` }, slices: [] };
     }
-    const slices = getOfflineChunkSlices(range, chunkSize, fileSize);
+    const slices = getOfflineChunkSlices(range, chunkSize, fileSize, sourceOffset);
     return {
         status: range.kind === 'full' ? 200 : 206,
         headers: {
@@ -97,6 +111,32 @@ const createOfflineRangePlan = (header, fileSize, chunkSize) => {
     };
 };
 
+/** オフライン元 TS の offset を TS パケット境界へ揃え、再生可能な末尾へクランプする。 */
+const resolveOfflineOriginalOffset = (value, fileSize, packetSize = 188) => {
+    if (!Number.isSafeInteger(fileSize) || fileSize <= 0 || !Number.isSafeInteger(packetSize) || packetSize <= 0) return 0;
+    const requested = typeof value === 'string' && /^\d+$/u.test(value) ? Number(value) : Number(value);
+    if (!Number.isSafeInteger(requested) || requested <= 0) return 0;
+    const aligned = Math.floor(requested / packetSize) * packetSize;
+    return Math.min(aligned, Math.max(0, fileSize - packetSize));
+};
+
+/** offset 後を独立ファイルとみなしたオフライン元 TS の応答計画を作る。 */
+const createOfflineOriginalRangePlan = (header, offset, fileSize, chunkSize, packetSize = 188) => {
+    const sourceOffset = resolveOfflineOriginalOffset(offset, fileSize, packetSize);
+    return {
+        offset: sourceOffset,
+        ...createOfflineRangePlan(header, fileSize - sourceOffset, chunkSize, sourceOffset),
+    };
+};
+
 if (typeof module !== 'undefined' && module.exports !== undefined) {
-    module.exports = { classifyServiceWorkerRequest, resolveOfflineByteRange, getOfflineChunkSlices, createOfflineRangePlan };
+    module.exports = {
+        classifyServiceWorkerRequest,
+        resolveOfflineByteRange,
+        getOfflineChunkSlices,
+        splitOfflineResponseChunkRanges,
+        createOfflineRangePlan,
+        resolveOfflineOriginalOffset,
+        createOfflineOriginalRangePlan,
+    };
 }

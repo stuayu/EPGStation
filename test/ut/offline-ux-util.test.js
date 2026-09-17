@@ -6,6 +6,7 @@ const {
     createOfflineProgramInfo,
     createOfflineDataBroadcastingInfo,
     createOfflineDataBroadcastingParam,
+    createOfflineFallbackAudioTracks,
     createOfflineVideoKey,
     findOfflineVideoByKey,
     findOfflineVideoByIds,
@@ -14,6 +15,7 @@ const {
     isOfflineOriginalTsProfile,
     ORIGINAL_MPEG2_CHUNK_SIZE,
     resolveOfflineWatchReturnPath,
+    resolveOfflineAudioTracks,
     shouldShowOfflineIndicator,
     splitOfflineMpeg2Ranges,
     normalizeOfflineChapters,
@@ -23,6 +25,7 @@ const {
     createOfflinePlaybackPositionKey,
     getOfflineVideoDurationSeconds,
     normalizeOfflinePlaybackPosition,
+    resolveOfflinePlaybackDuration,
     restoreOfflinePlaybackPosition,
 } = require('../../dist/util/OfflinePlaybackUtil');
 
@@ -65,6 +68,8 @@ test('オフライン再生位置を正規化して保存・復元する', () =>
     assert.equal(restoreOfflinePlaybackPosition('{broken', 90), null);
     assert.equal(getOfflineVideoDurationSeconds({ durationSeconds: 12, program: {} }), 12);
     assert.equal(getOfflineVideoDurationSeconds({ program: { startAt: 1000, endAt: 61000 } }), 60);
+    assert.equal(resolveOfflinePlaybackDuration(184.2, 1840), 1840);
+    assert.equal(resolveOfflinePlaybackDuration(0, 0), 0);
 });
 
 test('起動時または回線断のときだけオフライン表示を出す', () => {
@@ -122,6 +127,13 @@ test('保存済みチャプターを正規化し、旧形式や不正な項目�
         ],
     );
     assert.deepEqual(normalizeOfflineChapters(undefined), []);
+});
+
+test('オフライン音声一覧が無い旧レコードは主音声・副音声の2択へ戻す', () => {
+    assert.deepEqual(resolveOfflineAudioTracks(undefined), createOfflineFallbackAudioTracks());
+    assert.deepEqual(resolveOfflineAudioTracks([]), createOfflineFallbackAudioTracks());
+    const tracks = [{ track: '0', name: '主音声', streamIndex: 0, isDualMono: false }];
+    assert.equal(resolveOfflineAudioTracks(tracks), tracks);
 });
 
 test('元 TS を保存した MPEG-2 と HEVC のオフラインデータ放送情報を組み立てる', () => {

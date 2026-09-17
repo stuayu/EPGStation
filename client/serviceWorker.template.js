@@ -6,6 +6,7 @@ const OFFLINE_CACHE_NAME = 'epgstation-offline-videos';
 const APP_CACHE_NAME = __EPGSTATION_APP_CACHE_NAME__;
 const PRECACHE_URLS = __EPGSTATION_PRECACHE_URLS__;
 const APP_CACHE_PREFIX = 'epgstation-app-';
+const OFFLINE_RESPONSE_CHUNK_SIZE = 2 * 1024 * 1024;
 
 const getOfflineOriginalBase = (requestUrl, scopeUrl) => {
     const scope = new URL(scopeUrl);
@@ -22,7 +23,12 @@ const readOfflineOriginal = async request => {
     const manifestResponse = await cache.match(new URL('original.ts.manifest', baseUrl));
     if (manifestResponse === undefined) return Response.error();
     const manifest = await manifestResponse.json();
-    const plan = createOfflineRangePlan(request.headers.get('Range'), manifest.fileSize, manifest.chunkSize);
+    const plan = createOfflineOriginalRangePlan(
+        request.headers.get('Range'),
+        new URL(request.url).searchParams.get('offset'),
+        manifest.fileSize,
+        manifest.chunkSize,
+    );
     if (plan.status === 416) return new Response(null, { status: 416, headers: plan.headers });
     const slices = plan.slices;
     const status = plan.status;
@@ -30,19 +36,47 @@ const readOfflineOriginal = async request => {
         ...plan.headers,
         'Content-Type': 'video/mp2t',
     });
+    let sliceIndex = 0;
+    let chunk = null;
+    let chunkOffset = 0;
+    let cancelled = false;
     const body = new ReadableStream({
-        async start(controller) {
+        async pull(controller) {
+            if (cancelled === true) return;
             try {
-                for (const slice of slices) {
+                if (chunk === null) {
+                    const slice = slices[sliceIndex];
+                    if (slice === undefined) {
+                        controller.close();
+                        return;
+                    }
                     const chunkResponse = await cache.match(new URL(`original.ts/chunks/${slice.chunkStart}`, baseUrl));
                     if (chunkResponse === undefined) throw new Error('offline chunk is missing');
-                    const chunk = new Uint8Array(await chunkResponse.arrayBuffer());
-                    controller.enqueue(chunk.subarray(slice.offset, slice.offset + slice.length));
+                    if (cancelled === true) return;
+                    const storedChunk = new Uint8Array(await chunkResponse.arrayBuffer());
+                    if (cancelled === true) return;
+                    chunk = storedChunk.subarray(slice.offset, slice.offset + slice.length);
+                    chunkOffset = 0;
                 }
-                controller.close();
+
+                const ranges = splitOfflineResponseChunkRanges(chunk.byteLength - chunkOffset, OFFLINE_RESPONSE_CHUNK_SIZE);
+                const range = ranges[0];
+                if (range === undefined) throw new Error('offline chunk slice is empty');
+                controller.enqueue(chunk.subarray(chunkOffset + range.offset, chunkOffset + range.offset + range.length));
+                chunkOffset += range.length;
+                if (chunkOffset >= chunk.byteLength) {
+                    chunk = null;
+                    chunkOffset = 0;
+                    sliceIndex += 1;
+                }
+                if (sliceIndex >= slices.length && chunk === null) controller.close();
             } catch (error) {
-                controller.error(error);
+                if (cancelled === false) controller.error(error);
             }
+        },
+        cancel() {
+            cancelled = true;
+            chunk = null;
         },
     });
     return new Response(body, { status, headers });

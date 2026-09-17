@@ -373,9 +373,7 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
         // 実測 (本番のライブ m2tsll): QSVEncC が HEVC で出したのに配信 TS は mpeg2video になり、
         // mpegts.js が映像を demux できず「音声だけ再生される」状態になっていた
         const map =
-            container === 'm2tsll'
-                ? '-map 0:v:0 %AUDIOSELECTMAP% -map "0:s?" -c:v copy -c:s copy'
-                : '-c:v copy';
+            container === 'm2tsll' ? '-map 0:v:0 %AUDIOSELECTMAP% -map "0:s?" -c:v copy -c:s copy' : '-c:v copy';
         const output =
             container === 'mp4' || container === 'hls'
                 ? `${map}${tag} ${audioArgs} -movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`

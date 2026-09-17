@@ -21,8 +21,45 @@ function patchMpegtsAdtsParser(source) {
     return source.replace(ADTS_SYNCWORD_SOURCE, ADTS_SYNCWORD_PATCH);
 }
 
+// TSDemuxer の constructor(probeData, config) で preferred_secondary_audio を初期化する箇所。
+const SECONDARY_AUDIO_INIT_SOURCE = 'n.preferred_secondary_audio=!1,n.ts_packet_size_=t.ts_packet_size';
+
+// config.preferSecondaryAudio === true なら、最初に解析する PMT から 2 本目の音声 ES を選ぶ。
+const SECONDARY_AUDIO_INIT_PATCH = 'n.preferred_secondary_audio=!(!i||!0!==i.preferSecondaryAudio),n.ts_packet_size_=t.ts_packet_size';
+
+/**
+ * mpegts.js の TSDemuxer が生成時に config.preferSecondaryAudio を読むようにする。
+ *
+ * switchSecondaryAudio() は生成済みの TSDemuxer にしかフラグを立てられず、TSDemuxer は
+ * 最初のデータが届いた処理の中で生成と最初の PMT 解析を同時に行う。プレイヤーを作り直した直後に
+ * 呼ぶと Worker 側で demuxer が未生成のため指定が捨てられ、主音声のままになる。
+ * @param {string} source mpegts.js dist のソース
+ * @return {string} 置換後のソース
+ * @throws {Error} 置換元がちょうど1箇所でない場合
+ */
+function patchMpegtsSecondaryAudioPreference(source) {
+    const matchCount = source.split(SECONDARY_AUDIO_INIT_SOURCE).length - 1;
+    if (matchCount !== 1) {
+        throw new Error(`mpegts.js secondary audio patch target count must be 1, got ${matchCount}`);
+    }
+    return source.replace(SECONDARY_AUDIO_INIT_SOURCE, SECONDARY_AUDIO_INIT_PATCH);
+}
+
+/**
+ * EPGStation が mpegts.js dist に当てる置換をすべて適用する。
+ * @param {string} source mpegts.js dist のソース
+ * @return {string} 置換後のソース
+ */
+function patchMpegtsDist(source) {
+    return patchMpegtsSecondaryAudioPreference(patchMpegtsAdtsParser(source));
+}
+
 module.exports = {
     ADTS_SYNCWORD_PATCH,
     ADTS_SYNCWORD_SOURCE,
+    SECONDARY_AUDIO_INIT_PATCH,
+    SECONDARY_AUDIO_INIT_SOURCE,
     patchMpegtsAdtsParser,
+    patchMpegtsSecondaryAudioPreference,
+    patchMpegtsDist,
 };

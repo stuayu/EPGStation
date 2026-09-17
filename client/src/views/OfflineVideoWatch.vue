@@ -211,7 +211,9 @@ class OfflineVideoWatch extends Vue {
         const position = restoreOfflinePlaybackPosition(saved, duration);
         const common = {
             durationSeconds: duration,
+            offlineOriginalFileSize: this.video.originalFileSize,
             chapters: this.video.chapters,
+            offlineAudioTracks: this.video.audioTracks,
             ...(position === null ? {} : { playPosition: position }),
             ...(dataBroadcasting === null ? {} : {
                 offlineDataBroadcastingVideoFileId: dataBroadcasting.videoFileId,

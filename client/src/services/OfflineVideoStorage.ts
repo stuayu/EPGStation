@@ -24,6 +24,8 @@ export interface OfflineVideoRecord {
     durationSeconds?: number;
     // 旧形式には無い。録画保存時に取得したチャプター (開始位置は秒)
     chapters?: apid.VideoChapter[];
+    // 旧形式には無い。録画保存時に取得した音声トラック一覧
+    audioTracks?: apid.VideoAudioTrack[];
     // 旧形式には無い。保存時に解決できたニコニコ実況過去ログの範囲。
     jikkyoChannelId?: string;
     jikkyoStartAt?: number;

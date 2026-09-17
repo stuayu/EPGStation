@@ -839,7 +839,9 @@ export default abstract class RecordedStreamBaseModel
             });
             audioStreamCount = AudioTrackUtil.getAudioStreamCount(audioTracks);
         } catch (err: unknown) {
-            this.log.stream.warn(`録画音声 ES の probe に失敗したため従来の音声選択へフォールバックします: ${String(err)}`);
+            this.log.stream.warn(
+                `録画音声 ES の probe に失敗したため従来の音声選択へフォールバックします: ${String(err)}`,
+            );
         }
 
         // 音声トラック指定・フィルタ (%DUALMONOMODE% / %AUDIOMAP% / %AUDIOFILTER%) を展開する
