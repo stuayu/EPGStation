@@ -287,11 +287,7 @@ export const resolveOriginalHevcInputMode = (
 ): OriginalHevcInputMode => {
     if (isEncodedVideo === false) return 'pipe';
 
-    if (
-        isOffline === true &&
-        hasTsreadex === true &&
-        (audioLayout === 'dual-mono' || audioLayout === 'multi')
-    ) {
+    if (isOffline === true && hasTsreadex === true && (audioLayout === 'dual-mono' || audioLayout === 'multi')) {
         return 'file-tsreadex';
     }
 

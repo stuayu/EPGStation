@@ -4,7 +4,7 @@ import { join, relative, sep } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import vue from '@vitejs/plugin-vue';
 import { defineConfig, type Plugin } from 'vite';
-import { patchMpegtsAdtsParser } from './mpegtsAdtsPatch.js';
+import { patchMpegtsDist } from './mpegtsAdtsPatch.js';
 
 const clientDirectory = fileURLToPath(new URL('.', import.meta.url));
 const mpegtsDistPath = join(clientDirectory, 'node_modules', 'mpegts.js', 'dist', 'mpegts.js');
@@ -14,13 +14,13 @@ const normalizeModuleId = (id: string): string => id.split('?')[0].replaceAll('\
 
 const isMpegtsDistPath = (id: string): boolean => normalizeModuleId(id) === normalizedMpegtsDistPath;
 
-/** mpegts.js の本番 bundle に AAC ADTS 偽同期対策を適用する。 */
+/** mpegts.js の本番 bundle に AAC ADTS 偽同期対策と副音声の初期指定を適用する。 */
 const mpegtsAdtsPatchPlugin = (): Plugin => ({
     name: 'epgstation-mpegts-adts-patch',
     enforce: 'pre',
     transform(code, id) {
         if (isMpegtsDistPath(id) === false) return null;
-        return { code: patchMpegtsAdtsParser(code), map: null };
+        return { code: patchMpegtsDist(code), map: null };
     },
 });
 
@@ -37,7 +37,7 @@ const mpegtsAdtsPatchEsbuildPlugin = () => ({
             { filter: /(?:^|[\\/])node_modules[\\/]mpegts\.js[\\/]dist[\\/]mpegts\.js$/ },
             args => {
                 if (isMpegtsDistPath(args.path) === false) return;
-                return { contents: patchMpegtsAdtsParser(readFileSync(args.path, 'utf8')), loader: 'js' };
+                return { contents: patchMpegtsDist(readFileSync(args.path, 'utf8')), loader: 'js' };
             },
         );
     },

@@ -125,7 +125,10 @@ export const resolveQualityPanelMaxHeight = (
     const byViewport = viewportHeight > 0 ? viewportHeight * 0.7 : Number.POSITIVE_INFINITY;
     const byPlayer = playerHeight > 0 ? playerHeight - QUALITY_PANEL_RESERVED_PX : Number.POSITIVE_INFINITY;
     // 下端が取れた場合はそれが最も正確なので、プレイヤー高・ビューポート割合の推定より優先する
-    const available = Number.isFinite(byPanelBottom) === true ? byPanelBottom : Math.min(byViewport, byPlayer, QUALITY_PANEL_FALLBACK_PX);
+    const available =
+        Number.isFinite(byPanelBottom) === true
+            ? byPanelBottom
+            : Math.min(byViewport, byPlayer, QUALITY_PANEL_FALLBACK_PX);
     const limit =
         typeof contentHeight === 'number' && Number.isFinite(contentHeight) === true && contentHeight > 0
             ? Math.min(available, contentHeight)

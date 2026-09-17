@@ -111,7 +111,9 @@ namespace AudioTrackUtil {
         const audioMap =
             (effectiveAudioTrack === 'all' ||
                 (canEmbedMultipleAudioStreams &&
-                    (effectiveAudioTrack === 'main' || effectiveAudioTrack === 'sub' || effectiveAudioTrack === undefined))) &&
+                    (effectiveAudioTrack === 'main' ||
+                        effectiveAudioTrack === 'sub' ||
+                        effectiveAudioTrack === undefined))) &&
             (isNormalizedByTsreadex === true || hasMultipleAudioStreams === true)
                 ? '-map 0:v:0 -map "0:a:0?" -map "0:a:1?"'
                 : streamIndex === null
@@ -120,7 +122,9 @@ namespace AudioTrackUtil {
         const audioSelectMap =
             (effectiveAudioTrack === 'all' ||
                 (canEmbedMultipleAudioStreams &&
-                    (effectiveAudioTrack === 'main' || effectiveAudioTrack === 'sub' || effectiveAudioTrack === undefined))) &&
+                    (effectiveAudioTrack === 'main' ||
+                        effectiveAudioTrack === 'sub' ||
+                        effectiveAudioTrack === undefined))) &&
             (isNormalizedByTsreadex === true || hasMultipleAudioStreams === true)
                 ? '-map "0:a:0?" -map "0:a:1?"'
                 : buildSelectedAudioMap(streamIndex ?? 0, false, canSwitchAudioInStream);

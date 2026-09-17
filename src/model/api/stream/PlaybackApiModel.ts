@@ -264,9 +264,7 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
         const hasAudioSelectMapPlaceholder = typeof cmd === 'string' && cmd.includes('%AUDIOSELECTMAP%');
         const hasAudioMap = hasAudioMapPlaceholder || hasAudioSelectMapPlaceholder;
         const isM2TsLLEmbedded =
-            hasTsreadexAudioMap ||
-            hasTsreadexAudioSelectMap ||
-            (hasAudioMap && (audioStreamCount ?? 0) >= 2);
+            hasTsreadexAudioMap || hasTsreadexAudioSelectMap || (hasAudioMap && (audioStreamCount ?? 0) >= 2);
         // in-memory HLS (%streamFileDir% を含まない) だけが Fmp4Packager 経由で複数音声トラックを配信できる
         const isOriginalHevcEmbedded =
             modePresetId === ORIGINAL_HEVC_PROFILE_ID &&
@@ -276,7 +274,10 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
             hasTsreadexAudioMap || hasTsreadexAudioSelectMap || (audioStreamCount ?? 0) >= 2;
         const isHlsEmbedded =
             isOriginalHevcEmbedded ||
-            (hasAudioMap && hasMultipleAudioStreams && typeof cmd === 'string' && cmd.includes('%streamFileDir%') === false);
+            (hasAudioMap &&
+                hasMultipleAudioStreams &&
+                typeof cmd === 'string' &&
+                cmd.includes('%streamFileDir%') === false);
 
         const result: NonNullable<PlaybackOptions['profiles'][number]['embeddedAudioSwitch']> = {};
         for (const container of containers) {

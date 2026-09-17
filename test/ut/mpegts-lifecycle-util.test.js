@@ -148,3 +148,16 @@ test('mpegts.js 初期化 URL が空なら例外にする', () => {
     assert.throws(() => requirePlaybackUrl(undefined, 'mpegts.js initialization'), /playback URL is empty/);
     assert.throws(() => requirePlaybackUrl('', 'mpegts.js initialization'), /playback URL is empty/);
 });
+
+test('オフライン HEVC の音声切替は offset URL で再生成し、新transmuxerへ適用する', () => {
+    const offlineSource = fs.readFileSync(
+        path.resolve(__dirname, '../../client/src/components/video/OfflineHevcVideo.vue'),
+        'utf8',
+    );
+    const method = offlineSource.slice(offlineSource.indexOf('private async reloadForAudioTrack'));
+
+    assert.match(method, /this\.switchVideo\([\s\S]*?createOfflineOriginalOffsetUrl\([\s\S]*?calculateOfflineOriginalOffset/u);
+    assert.match(method, /switchAudio\.call\(mpegts\)/u);
+    assert.doesNotMatch(method, /_onRequiredUnbufferedSeek/u);
+    assert.match(offlineSource, /deferLoadAfterSourceOpen: false/u);
+});

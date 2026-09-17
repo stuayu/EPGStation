@@ -149,6 +149,14 @@ export default class OfflineVideos {
         } catch (error) {
             console.error('offline chapter resolve error', error);
         }
+        // 音声トラックは再生時にサーバー API を呼べないため、保存開始時にスナップショットする。
+        // 取得できない録画や旧 API でも動画保存自体は継続する。
+        let audioTracks: apid.VideoAudioTrack[] = [];
+        try {
+            audioTracks = await this.getJikkyoResolveModels().videoApiModel.getAudioTracks(videoFileId);
+        } catch (error) {
+            console.error('offline audio track resolve error', error);
+        }
         const job: OfflineDownloadJob = { videoId: videoFileId, profile, profileLabel: infoOptions.profileLabel, downloadedBytes: 0, estimatedBytes, program: snapshot, programInfo, state: 'Downloading', error: null };
         this.jobs.set(videoFileId, job);
         this.eventTarget.dispatchEvent(new Event('change'));
@@ -218,6 +226,7 @@ export default class OfflineVideos {
                     originalChunkSize: ORIGINAL_MPEG2_CHUNK_SIZE,
                     durationSeconds: duration,
                     chapters: chapters.length > 0 ? chapters : undefined,
+                    audioTracks: audioTracks.length > 0 ? audioTracks : undefined,
                     thumbnailURLs,
                     channelLogoURL: (await cache.match(channelLogoURL)) === undefined ? undefined : channelLogoURL,
                     programInfo,
@@ -297,6 +306,7 @@ export default class OfflineVideos {
                 programInfo,
                 durationSeconds: metadata.duration,
                 chapters: chapters.length > 0 ? chapters : undefined,
+                audioTracks: audioTracks.length > 0 ? audioTracks : undefined,
                 ...jikkyoParam,
             };
             await OfflineVideoStorage.put(video);

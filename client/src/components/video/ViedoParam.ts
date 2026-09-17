@@ -13,7 +13,9 @@ interface VideoParamBase {
 
 interface OfflineVideoParamBase extends VideoParamBase {
     durationSeconds: number;
+    offlineOriginalFileSize?: number;
     chapters?: apid.VideoChapter[];
+    offlineAudioTracks?: apid.VideoAudioTrack[];
     offlineDataBroadcastingVideoFileId?: apid.VideoFileId;
     offlineDataBroadcastingFileSize?: number;
     offlineDataBroadcastingChunkSize?: number;

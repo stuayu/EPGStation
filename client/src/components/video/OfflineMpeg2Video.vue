@@ -12,6 +12,7 @@ import { Deinterlacer, supportsDeinterlace } from 'mpeg2toh264/yadif';
 import * as apid from '../../../../api';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 import { createOfflineDataBroadcastingParam } from '../../../../src/util/OfflineUxUtil';
+import { resolveOfflinePlaybackDuration } from '../../../../src/util/OfflinePlaybackUtil';
 
 /** Cache Storage の Range 仮想ファイルを mpeg2toh264 へ渡すプレイヤー。 */
 @Component({})
@@ -70,7 +71,7 @@ class OfflineMpeg2Video extends BaseVideo {
     }
 
     public override getDuration(): number {
-        return super.getDuration() || this.durationSeconds;
+        return resolveOfflinePlaybackDuration(super.getDuration(), this.durationSeconds);
     }
 
     /** 保存元 TS の BML を通信なしで decodeTS へ渡す。 */

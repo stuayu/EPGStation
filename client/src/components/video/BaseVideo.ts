@@ -88,6 +88,11 @@ export default abstract class BaseVideo extends Vue {
     private extraHotkeyHandler: ((e: KeyboardEvent) => void) | null = null;
     private screenshotButton: HTMLElement | null = null;
     private screenshotClickHandler: ((event: MouseEvent) => void) | null = null;
+    private statisticsMenuItem: HTMLElement | null = null;
+    private statisticsMenuClickHandler: ((event: MouseEvent) => void) | null = null;
+    private statisticsMenuKeydownHandler: ((event: KeyboardEvent) => void) | null = null;
+    private statisticsPanelCloseButton: HTMLElement | null = null;
+    private statisticsPanelCloseKeydownHandler: ((event: KeyboardEvent) => void) | null = null;
     private dataBroadcastingButton: HTMLButtonElement | null = null;
     protected audioContext: AudioContext | null = null;
     protected audioSource: MediaElementAudioSourceNode | null = null;
@@ -178,6 +183,7 @@ export default abstract class BaseVideo extends Vue {
         this.dp = markRaw(BaseVideo.createDPlayer(options));
         DPlayerEnhancer.guardAribb24Renderers(this.dp as any, this.dp.video);
         this.bindEvents();
+        this.setupStatisticsMenu();
         this.setupExtraHotkeys();
         this.setupScreenshotRequest();
         this.setupQualityPanelResize();
@@ -339,6 +345,97 @@ export default abstract class BaseVideo extends Vue {
         this.dataBroadcastingButton?.remove();
         this.dataBroadcastingButton = null;
         this.dataBroadcastingToggleHandler = null;
+    }
+
+    /**
+     * DPlayer の設定メニューへ動画の統計情報を追加する。
+     * DPlayer の標準入口は右クリックとキーボードだけなので、タッチ端末からも開けるようにする。
+     */
+    private setupStatisticsMenu(): void {
+        this.destroyStatisticsMenu();
+        const dp = this.dp as any;
+        const container = dp?.container as HTMLElement | undefined;
+        const panel = container?.querySelector('.dplayer-setting-origin-panel') as HTMLElement | null | undefined;
+        if (container === undefined || panel === null || panel === undefined || typeof dp?.infoPanel?.show !== 'function') return;
+
+        const item = document.createElement('div');
+        item.className = 'dplayer-setting-item dplayer-setting-statistics';
+        item.setAttribute('role', 'button');
+        item.setAttribute('tabindex', '0');
+        item.setAttribute('aria-label', '動画の統計情報');
+        const label = document.createElement('span');
+        label.className = 'dplayer-label';
+        label.textContent = '動画の統計情報';
+        item.appendChild(label);
+
+        const showInfoPanel = (): void => {
+            dp.setting?.hide?.();
+            dp.infoPanel.show();
+        };
+        this.statisticsMenuClickHandler = (event: MouseEvent): void => {
+            event.preventDefault();
+            event.stopPropagation();
+            showInfoPanel();
+        };
+        this.statisticsMenuKeydownHandler = (event: KeyboardEvent): void => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            showInfoPanel();
+        };
+        item.addEventListener('click', this.statisticsMenuClickHandler);
+        item.addEventListener('keydown', this.statisticsMenuKeydownHandler);
+        panel.appendChild(item);
+        this.statisticsMenuItem = item;
+
+        const infoPanel = container.querySelector('.dplayer-info-panel') as HTMLElement | null;
+        if (infoPanel === null) return;
+        // DPlayer 既定の幅 530px は iPad 縦持ちより広い。パネル内へ収める。
+        infoPanel.style.boxSizing = 'border-box';
+        infoPanel.style.maxWidth = 'calc(100% - 20px)';
+        for (const data of Array.from(infoPanel.querySelectorAll<HTMLElement>('.dplayer-info-panel-item-data'))) {
+            data.style.maxWidth = 'calc(100% - 120px)';
+        }
+        const close = infoPanel.querySelector('.dplayer-info-panel-close') as HTMLElement | null;
+        if (close !== null) {
+            // [x] は div のため、タッチ端末で押しやすい最小タップ領域を与える。
+            close.style.minWidth = '32px';
+            close.style.minHeight = '32px';
+            close.style.padding = '8px';
+            close.style.boxSizing = 'border-box';
+            close.style.textAlign = 'center';
+            close.style.touchAction = 'manipulation';
+            close.setAttribute('role', 'button');
+            close.setAttribute('tabindex', '0');
+            close.setAttribute('aria-label', '統計情報を閉じる');
+            this.statisticsPanelCloseButton = close;
+            this.statisticsPanelCloseKeydownHandler = (event: KeyboardEvent): void => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                dp.infoPanel.hide();
+            };
+            close.addEventListener('keydown', this.statisticsPanelCloseKeydownHandler);
+        }
+    }
+
+    /**
+     * 統計情報メニューの listener と DOM を破棄する。
+     */
+    private destroyStatisticsMenu(): void {
+        if (this.statisticsMenuItem !== null && this.statisticsMenuClickHandler !== null) {
+            this.statisticsMenuItem.removeEventListener('click', this.statisticsMenuClickHandler);
+        }
+        if (this.statisticsMenuItem !== null && this.statisticsMenuKeydownHandler !== null) {
+            this.statisticsMenuItem.removeEventListener('keydown', this.statisticsMenuKeydownHandler);
+        }
+        this.statisticsMenuItem?.remove();
+        this.statisticsMenuItem = null;
+        this.statisticsMenuClickHandler = null;
+        this.statisticsMenuKeydownHandler = null;
+        if (this.statisticsPanelCloseButton !== null && this.statisticsPanelCloseKeydownHandler !== null) {
+            this.statisticsPanelCloseButton.removeEventListener('keydown', this.statisticsPanelCloseKeydownHandler);
+        }
+        this.statisticsPanelCloseButton = null;
+        this.statisticsPanelCloseKeydownHandler = null;
     }
 
     /**
@@ -665,14 +762,18 @@ export default abstract class BaseVideo extends Vue {
      * DPlayer の video 要素を指定 URL へ切り替える。
      * DPlayer の内部 options にも URL を同期し、後続の quality 更新で空の video.src を採用しないようにする
      * @param video: DPlayer の切替先 video 情報
+     * @param preserveCurrentTime: true なら DPlayer が切替前の位置と再生速度を復元する
      */
-    protected switchVideo(video: { url: string; type?: DPlayerType.VideoType | string }): void {
+    protected switchVideo(
+        video: { url: string; type?: DPlayerType.VideoType | string },
+        preserveCurrentTime: boolean = false,
+    ): void {
         if (this.dp === null) return;
 
         const url = requirePlaybackUrl(video.url, 'DPlayer switchVideo');
         const dp = this.dp as any;
         dp.options.video.url = url;
-        dp.switchVideo({ ...video, url }, false, false);
+        dp.switchVideo({ ...video, url }, false, preserveCurrentTime);
     }
 
     /**
@@ -1535,6 +1636,7 @@ export default abstract class BaseVideo extends Vue {
         this.qualityPanelResizeObserver = null;
         this.qualityPanelOpenObserver?.disconnect();
         this.qualityPanelOpenObserver = null;
+        this.destroyStatisticsMenu();
         this.destroyExtraHotkeys();
         if (this.screenshotButton !== null && this.screenshotClickHandler !== null) {
             this.screenshotButton.removeEventListener('click', this.screenshotClickHandler, true);

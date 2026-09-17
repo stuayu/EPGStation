@@ -2,7 +2,15 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { classifyServiceWorkerRequest, createOfflineRangePlan, getOfflineChunkSlices, resolveOfflineByteRange } = require('../../client/serviceWorkerUtil');
+const {
+    classifyServiceWorkerRequest,
+    createOfflineRangePlan,
+    createOfflineOriginalRangePlan,
+    getOfflineChunkSlices,
+    resolveOfflineByteRange,
+    resolveOfflineOriginalOffset,
+    splitOfflineResponseChunkRanges,
+} = require('../../client/serviceWorkerUtil');
 
 const scope = 'https://example.test/epgstation/';
 const request = (path, options = {}) => ({
@@ -73,6 +81,15 @@ test('オフライン MPEG-2 応答計画は 206 と 416 のヘッダーを固�
     assert.equal(invalid.headers['Content-Range'], 'bytes */30');
 });
 
+test('Service Worker の応答チャンクを 2 MiB 以下へ分割する', () => {
+    assert.deepEqual(splitOfflineResponseChunkRanges(2 * 1024 * 1024 + 7, 2 * 1024 * 1024), [
+        { offset: 0, length: 2 * 1024 * 1024 },
+        { offset: 2 * 1024 * 1024, length: 7 },
+    ]);
+    assert.deepEqual(splitOfflineResponseChunkRanges(0, 2 * 1024 * 1024), []);
+    assert.deepEqual(splitOfflineResponseChunkRanges(10, 0), []);
+});
+
 test('Range 無しの全体応答 (200) には Content-Range を付けない', () => {
     const full = createOfflineRangePlan(undefined, 30, 10);
     assert.equal(full.status, 200);
@@ -87,4 +104,24 @@ test('null の Range に対するオフライン応答計画は 200 で Content-
     assert.equal(full.headers['Content-Range'], undefined);
     assert.equal(full.headers['Content-Length'], '30');
     assert.equal(full.slices.length, 3);
+});
+
+test('offset 後の元 TS は残りサイズを基準に Range 応答を作る', () => {
+    assert.equal(resolveOfflineOriginalOffset('999', 1000), 812);
+    const plan = createOfflineOriginalRangePlan('bytes=0-9', '188', 1000, 500);
+    assert.equal(plan.offset, 188);
+    assert.equal(plan.status, 206);
+    assert.equal(plan.headers['Content-Length'], '10');
+    assert.equal(plan.headers['Content-Range'], 'bytes 0-9/812');
+    assert.deepEqual(plan.slices, [{ chunkStart: 0, offset: 188, length: 10 }]);
+});
+
+test('offset 後の元 TS の Range 終端とチャンク参照は論理長・絶対位置で分離する', () => {
+    const plan = createOfflineOriginalRangePlan(undefined, 500, 1500, 500);
+    assert.equal(plan.offset, 376);
+    assert.equal(plan.status, 200);
+    assert.equal(plan.headers['Content-Length'], '1124');
+    assert.equal(plan.slices[0].chunkStart, 0);
+    assert.equal(plan.slices[0].offset, 376);
+    assert.equal(createOfflineOriginalRangePlan('bytes=1124-', 376, 1500, 500).status, 416);
 });
