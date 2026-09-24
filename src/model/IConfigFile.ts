@@ -210,6 +210,8 @@ export interface AmatsukazeConfig {
     port?: number;
     // AmatsukazeAddTask (.exe) のパス
     addTaskPath?: string;
+    // AddTask を起動する前置コマンド。配列要素ごとに argv として渡す
+    addTaskLauncher?: string[];
     // Amatsukaze のルートディレクトリ (AmatsukazeAddTask の -r に渡す。サーバ自動起動用)
     amatsukazeRoot?: string;
     // Windows 以外で AmatsukazeAddTask.exe を mono 経由で起動する場合の mono のパス
@@ -475,7 +477,7 @@ export default interface IConfigFile {
     // Web UI / API のログイン認証。既定は無効 (リバースプロキシ側で認証している構成を壊さないため)。
     // 有効にすると初回アクセス時に管理ユーザーの作成を求められる
     auth?: {
-        // false でログイン不要にする。**未指定は有効** (opt-out)
+        // true でログイン必須にする。**未指定は無効** (opt-in)
         enabled?: boolean;
         // 外部プレイヤー・IPTV 用アクセストークンの有効期間 (ms)。既定 365 日
         mediaTokenTtlMs?: number;

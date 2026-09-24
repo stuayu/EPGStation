@@ -54,11 +54,30 @@ node tools/playback-harness/run.js watch --base-url URL --video-file-id ID --rec
 - **「字幕が出ない」→ 文字スーパーを字幕 ES と取り違えていた**
   ARIB 字幕は `component_tag=0x30`〜`0x37`。`0x38` は文字スーパー。
   切り分け: PMT を解析して `stream_type` と `component_tag` を実際に見る
+- **「副音声に切り替えられない」→ ffmpeg の probe が小さく 2 本目の音声 ES を見つけていなかった**
+  放送の副音声 ES は番組の途中から現れることがある (実測: 主音声の 20,183,492 byte あと)。
+  パイプ入力の ffmpeg は**probe が終わった時点の PMT で map を確定する**ため、
+  `-probesize 5000000` では 2 本目が「入力に存在しない」扱いになり、
+  `-map "0:a:1?"` は optional なので**黙って無視されて主音声だけが配信される**
+  (エラーも警告も出ない)。切り分けは次の 3 点:
+  1. `ps ax -o args | grep [f]fmpeg` で**実際に起動している cmd** を見る (`-map 0:a:1?` が入っているか)
+  2. `logs/Service/stream.log` の `Stream #0:N -> #0:M (aac` を数える (出力音声の本数)
+  3. in-memory HLS なら `grep "role=" logs/Service/stream.log`。
+     `role=single` は音声 1 本、`role=video` / `audio0` / `audio1` なら複数レンディション
+  同じ TS を probesize だけ変えてパイプへ流せば一発で切り分く:
+  `cat 素材.ts | ffmpeg -probesize <値> -i pipe:0 -t 3 -map 0:v:0 -map "0:a:0?" -map "0:a:1?" ... -f mp4 out.mp4`
 - **「エンコードが遅い」→ プログレッシブ素材に `yadif` をかけていた**
   `field_order=unknown` でも 59.94fps の HEVC は tsreplace 出力のプログレッシブ。
   外すと 3.59 倍速 → 5.28 倍速 (実測)
 
 ### 計測そのものを間違えた例
+
+- **サーバを再起動したのに古いコードで計測していた**: `pkill -f "node dist/index.js"` は
+  親 (Operator) しか殺さない。子の `ServiceExecutor.js` / `EPGUpdateExecutor.js` が生き残って
+  port 8888 を握り続けるため、新しく起動した方は何も配信せず、**修正前のコードの結果を測ってしまう**
+  (デバッグログを仕込んでも出ないので「コードが効いていない」と誤診する)。
+  `ps ax -o pid,lstart,args | grep "[E]PGStation/dist"` で起動時刻を確認し、
+  `pkill -9 -f "EPGStation/dist"` まで落としてから起動し直す
 
 - **`currentTime` が進むことは「映像が出ている」証拠にならない**。真っ黒でも進む。
   利用者から「映像が流れていない」と報告された状態を PASS と報告した。
