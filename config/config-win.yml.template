@@ -304,6 +304,8 @@ encode:
 #     port: 32768
 #     # AmatsukazeAddTask のパス
 #     addTaskPath: 'C:\rec\Amatsukaze\exe_files\AmatsukazeAddTask.exe'
+#     # AddTask の起動前に実行するコマンド。未指定なら addTaskPath を直接起動
+#     addTaskLauncher: ['docker', 'exec', 'amatsukaze']
 #     # Amatsukaze のルートディレクトリ (AmatsukazeAddTask の -r。サーバ未起動時の自動起動に使われる)
 #     amatsukazeRoot: 'C:\rec\Amatsukaze'
 #     # Windows 以外で AmatsukazeAddTask.exe を実行する場合の mono のパス (Windows では不要)

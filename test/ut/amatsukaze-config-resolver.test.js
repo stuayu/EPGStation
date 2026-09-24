@@ -18,6 +18,7 @@ test('amatsukaze が未設定でも既定値で解決できる', () => {
     assert.equal(resolved.connectTimeoutMs, 60000);
     assert.equal(resolved.taskTimeoutMs, 0);
     assert.equal(resolved.addTaskPath, null);
+    assert.deepEqual(resolved.addTaskLauncher, []);
     assert.deepEqual(resolved.pathMappings, []);
 });
 
@@ -47,6 +48,15 @@ test('空文字のパス設定は未設定として扱われる', () => {
 
     assert.equal(resolved.monoPath, null);
     assert.equal(resolved.addTaskPath, 'C:\\Amatsukaze\\AddTask.exe');
+});
+
+test('AddTask ランチャーは不正値と空文字を除いて解決する', () => {
+    const resolved = resolveAmatsukazeConfig({
+        amatsukaze: { addTaskLauncher: [' docker ', '', 42, ' exec ', '  '] },
+    });
+
+    assert.deepEqual(resolved.addTaskLauncher, ['docker', 'exec']);
+    assert.deepEqual(resolveAmatsukazeConfig({ amatsukaze: { addTaskLauncher: 'docker exec' } }).addTaskLauncher, []);
 });
 
 test('noMove は明示的に false のときだけ無効になる', () => {

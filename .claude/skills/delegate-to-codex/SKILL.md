@@ -9,8 +9,12 @@ description: 実装作業を Codex CLI (codex exec) へ委譲するときに使�
 
 ```bash
 codex exec --sandbox workspace-write --skip-git-repo-check \
-  -c model_reasoning_effort="high" - < タスク.md > ログ.log 2>&1
+  -m gpt-6-luna -c model_reasoning_effort="high" - < タスク.md > ログ.log 2>&1
 ```
+
+- **モデルは `-m` で明示する**。`~/.codex/config.toml` の既定は古いことがある
+  (実測 2026-09-24: 既定 `gpt-5.6-luna`、指示は「GPT-6 Luna」= `gpt-6-luna`)。
+  使える slug は `~/.codex/models_cache.json` を grep すれば分かる
 
 - **プロンプトは必ずファイル経由で `-` に流す**。引数で渡すとシェルがバックティックを解釈し、
   stdin 待ちで固まることもある
@@ -32,6 +36,28 @@ codex exec --sandbox workspace-write --skip-git-repo-check \
 悪い例: 「録画の再生が止まるので直して」
 良い例: 「`ss=366` は 20 秒取得で 1 フレーム、`ss=1471` は 731 フレーム。位置依存。
 ffmpeg のオプションは同条件で手元再現すると正常なので、パイプへ供給する側を疑っている」
+
+## 何を渡し、何を渡さないか (実例)
+
+**切り分けは指示役が実測でやり、確定した原因と「触ってはいけないファイル」を渡す。**
+
+2026-09-24 に Issue 2 件を同時に片付けたときの分担:
+
+| 作業 | 担当 | 理由 |
+| --- | --- | --- |
+| Issue #34 (Docker 版 Amatsukaze の設定追加) | Codex | 原因の切り分けが要らない純粋な機能追加。触るのは `src/model/amatsukaze/` + 設定定義 + ドキュメント |
+| Issue #31 (音声切替の不具合) | 指示役 | 原因が未確定。ffmpeg の probe 量とパイプ入力の実測、実ブラウザでの計測が要る |
+
+同時に走らせたので、タスクファイルに**相手が触る予定のディレクトリを名指しで禁止**した
+(`client/` 配下、`src/model/service/stream/` 配下)。これを書かないと後発が先発の変更を巻き戻す。
+
+タスクファイルには次も書いた (どれも実際に事故を防いだ):
+
+- 設定項目を足すときの**定義元と両テンプレート、同期テストの名前** (`test/ut/config-schema-template-sync.test.js`)
+- インラインの組み立て処理を**純粋関数へ切り出してから**テストで固定すること
+  (`AmatsukazeEncodeTool.ts` の引数組み立て → `AmatsukazeCommandUtil.buildAddTaskCommand()`)
+- 報告に「実際に組み立てられるコマンド文字列の例」を 2 通り出させる
+  (既定経路と新経路。これがあると配線の確認が一瞬で済む)
 
 ## 返ってきた報告の扱い
 

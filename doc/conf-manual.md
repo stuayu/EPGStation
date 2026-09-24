@@ -819,6 +819,7 @@ encode:
 | host             | string              | no   | AmatsukazeServer のアドレス。省略時 `localhost`                                          |
 | port             | number              | no   | AmatsukazeServer のポート。省略時 32768                                                  |
 | addTaskPath      | string              | no   | `AmatsukazeAddTask` (.exe) のパス                                                        |
+| addTaskLauncher  | 文字列の配列        | no   | AddTask の起動前に実行するコマンド。未指定・空配列なら `addTaskPath` を直接起動          |
 | amatsukazeRoot   | string              | no   | Amatsukaze のルートディレクトリ (`AmatsukazeAddTask` の `-r`。未起動時の自動起動に使う)  |
 | monoPath         | string              | no   | Windows 以外で `AmatsukazeAddTask.exe` を mono 経由で起動する場合の mono のパス          |
 | profile          | string              | no   | 既定のプロファイル名。エンコードコマンドの第 1 引数で上書きできる                        |
@@ -843,6 +844,8 @@ amatsukaze:
     host: localhost
     port: 32768
     addTaskPath: /home/user/Amatsukaze/exe_files/AmatsukazeAddTask.exe
+    # launcher 使用時はコマンドと各引数を配列要素に分ける
+    # addTaskLauncher: ['docker', 'exec', 'amatsukaze']
     amatsukazeRoot: /home/user/Amatsukaze
     monoPath: /usr/bin/mono
     profile: デフォルト
@@ -854,6 +857,27 @@ amatsukaze:
         - local: /mnt/recorded
           remote: \\nas\recorded
 ```
+
+##### Docker 版 Amatsukaze を使う
+
+Docker 内の `AmatsukazeAddTask` を実行する場合は、`addTaskLauncher` に Docker コマンドを配列で指定し、
+`addTaskPath` にはコンテナ内の実行パスを書く。`pathMappings.remote` もコンテナ内から見えるパスにする。
+例では録画ディレクトリを `/mnt/recorded` としてコンテナへ `/media/recorded` でマウントする。
+
+```yaml
+amatsukaze:
+    addTaskLauncher: ['docker', 'exec', 'amatsukaze']
+    addTaskPath: /Amatsukaze/AmatsukazeAddTask
+    host: localhost
+    port: 32768
+    pathMappings:
+        - local: /mnt/recorded
+          remote: /media/recorded
+```
+
+`AmatsukazeServer` の TCP ポート (既定 32768) も EPGStation から接続できるようコンテナ外へ公開し、
+`host` と `port` にその接続先を設定する。`addTaskLauncher` は Docker 以外のラッパースクリプトや SSH にも使える。
+配列の各要素は個別の引数として渡すため、空白を含む引数もそのまま指定できる。
 
 - **この項目は GUI から編集できない (`editable: 'ymlOnly'`、理由: `notYetWired`)**。
   エンコードコマンド (`dist/AmatsukazeEncodeTool.js`) は録画エンコードとは独立したプロセスとして起動され、
