@@ -246,14 +246,17 @@ test('a deleted user can no longer use their session', async () => {
     assert.equal(await model.verify(login.token), null);
 });
 
-test('authentication is enabled unless config.yml turns it off', async () => {
-    // 未指定は有効 (opt-out)
+test('authentication is disabled unless config.yml turns it on', async () => {
+    // 未指定は無効 (opt-in)
     const configuration = { getConfig: () => ({}) };
-    const enabled = new AuthModel(configuration, { count: async () => 0 }, { getSigningKey: () => 'k' });
-    assert.equal(enabled.isEnabled(), true);
+    const disabled = new AuthModel(configuration, { count: async () => 0 }, { getSigningKey: () => 'k' });
+    assert.equal(disabled.isEnabled(), false);
 
     const withEmptyAuth = new AuthModel({ getConfig: () => ({ auth: {} }) }, { count: async () => 0 }, { getSigningKey: () => 'k' });
-    assert.equal(withEmptyAuth.isEnabled(), true);
+    assert.equal(withEmptyAuth.isEnabled(), false);
+
+    const enabled = new AuthModel({ getConfig: () => ({ auth: { enabled: true } }) }, { count: async () => 0 }, { getSigningKey: () => 'k' });
+    assert.equal(enabled.isEnabled(), true);
 });
 
 test('anonymous access is allowed unless config.yml turns it off', async () => {

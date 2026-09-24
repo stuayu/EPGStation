@@ -41,8 +41,10 @@ export default class AuthModel implements IAuthModel {
     ) {}
 
     public isEnabled(): boolean {
-        // 未指定は有効として扱う (opt-out)。無効にしたい場合のみ config.yml に false を書く
-        return this.configuration.getConfig().auth?.enabled !== false;
+        // 未指定は無効として扱う (opt-in)。有効にしたい場合のみ config.yml に true を書く。
+        // 既定で有効にすると、Cookie を送れない既存の外部クライアント (Android TV アプリ等) の
+        // 書き込み系 API (ストリームの keep・予約操作など) が 401 になり動かなくなるため
+        return this.configuration.getConfig().auth?.enabled === true;
     }
 
     public isAnonymousAllowed(): boolean {

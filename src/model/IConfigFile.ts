@@ -477,7 +477,7 @@ export default interface IConfigFile {
     // Web UI / API のログイン認証。既定は無効 (リバースプロキシ側で認証している構成を壊さないため)。
     // 有効にすると初回アクセス時に管理ユーザーの作成を求められる
     auth?: {
-        // false でログイン不要にする。**未指定は有効** (opt-out)
+        // true でログイン必須にする。**未指定は無効** (opt-in)
         enabled?: boolean;
         // 外部プレイヤー・IPTV 用アクセストークンの有効期間 (ms)。既定 365 日
         mediaTokenTtlMs?: number;
