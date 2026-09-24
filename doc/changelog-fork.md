@@ -15,11 +15,16 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- Docker などのラッパー経由で AmatsukazeAddTask を起動 → 2026-09-24
 - オフライン original-hevc を macOS Safari 以外すべて fMP4 保存に・シーク後の再生再開 → 2026-09-18
 - オフライン元 TS の backpressure・全体長・音声切替 → 2026-09-17
 - オフライン original-hevc の offset 再生成シーク・位置復元 → 2026-09-17
 - iOS / iPadOS のオフライン original-hevc fMP4 保存 → 2026-09-17
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
+
+## 2026-09-24
+
+- **Docker などのラッパー経由で AmatsukazeAddTask を起動できるようにした**: `amatsukaze.addTaskLauncher` にコマンドと引数の配列を指定すると、その後ろへ必要に応じて `monoPath`、コンテナ内の `addTaskPath`、AddTask の引数を渡す。未指定・空配列では従来どおり `addTaskPath` を直接起動する。Docker 利用時は `pathMappings.remote` にコンテナ内パスを指定し、AmatsukazeServer の TCP ポートも公開する。コマンド生成を `AmatsukazeCommandUtil.ts` へ切り出して UT で固定した。
 
 ## 2026-09-18
 

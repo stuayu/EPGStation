@@ -210,6 +210,8 @@ export interface AmatsukazeConfig {
     port?: number;
     // AmatsukazeAddTask (.exe) のパス
     addTaskPath?: string;
+    // AddTask を起動する前置コマンド。配列要素ごとに argv として渡す
+    addTaskLauncher?: string[];
     // Amatsukaze のルートディレクトリ (AmatsukazeAddTask の -r に渡す。サーバ自動起動用)
     amatsukazeRoot?: string;
     // Windows 以外で AmatsukazeAddTask.exe を mono 経由で起動する場合の mono のパス
