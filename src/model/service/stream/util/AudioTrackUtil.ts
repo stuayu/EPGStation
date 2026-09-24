@@ -227,6 +227,90 @@ namespace AudioTrackUtil {
     };
 
     /**
+     * 複数音声 ES を map するときに最低限必要な probe 量。
+     *
+     * 放送の副音声 ES は番組の途中から現れることがあり (実測: 主音声より 20MB ≒ 10 秒以上あと)、
+     * パイプ入力の ffmpeg は probe が終わった時点の PMT で map を確定する。probe が小さいと
+     * 2 本目の音声 ES が「入力に存在しない」扱いになり、`-map "0:a:1?"` は optional なので
+     * **黙って無視されて主音声だけが配信される** (副音声へ切り替えられない)。
+     * probe は必要なストリームが揃った時点で早期に終わるため、上限を大きくしても
+     * 2 本目が早く現れる素材では実際の読み込み量は増えない。
+     */
+    export const MULTI_AUDIO_MIN_PROBESIZE = 50 * 1000 * 1000;
+    export const MULTI_AUDIO_MIN_ANALYZEDURATION = 30 * 1000 * 1000;
+
+    /**
+     * ffmpeg のサイズ・時間指定 (`5000000` / `5M` / `2K` など) を数値へ変換する
+     * @param value: string
+     * @return number | null 解釈できない場合は null
+     */
+    const parseFfmpegNumber = (value: string): number | null => {
+        const matched = /^(\d+(?:\.\d+)?)([KkMmGg]?)$/.exec(value);
+        if (matched === null) {
+            return null;
+        }
+
+        const scale = { K: 1000, M: 1000 * 1000, G: 1000 * 1000 * 1000 }[matched[2].toUpperCase()] ?? 1;
+
+        return Number.parseFloat(matched[1]) * scale;
+    };
+
+    /**
+     * 入力オプションの下限値を保証する (既存値が下限未満なら引き上げ、無ければ `-i` の直前へ足す)
+     * @param cmd: string
+     * @param optionName: string `-probesize` など
+     * @param minValue: number
+     * @return string
+     */
+    const ensureInputOption = (cmd: string, optionName: string, minValue: number): string => {
+        const escaped = optionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const matched = new RegExp(`${escaped}\\s+(\\S+)`).exec(cmd);
+        if (matched !== null) {
+            const current = parseFfmpegNumber(matched[1]);
+            if (current !== null && current >= minValue) {
+                return cmd;
+            }
+
+            return cmd.replace(new RegExp(`${escaped}\\s+\\S+`), `${optionName} ${minValue.toString(10)}`);
+        }
+
+        // 最初の `-i` が入力指定。シェル経由の cmd (tsreadex | ffmpeg) でも ffmpeg 側の `-i` が最初に来る
+        const inputIndex = cmd.search(/(^|\s)-i\s/);
+        if (inputIndex < 0) {
+            return cmd;
+        }
+
+        const insertAt = inputIndex === 0 ? 0 : inputIndex + 1;
+
+        return `${cmd.slice(0, insertAt)}${optionName} ${minValue.toString(10)} ${cmd.slice(insertAt)}`;
+    };
+
+    /**
+     * 複数音声 ES を map する cmd の probe 量を、2 本目の音声 ES を確実に検出できる大きさまで引き上げる。
+     *
+     * 副音声の map (`0:a:1`) を含まない cmd は何も変えない。
+     * @param cmd: string 置換済みの cmd
+     * @param minProbeSize: number
+     * @param minAnalyzeDuration: number
+     * @return string
+     */
+    export const ensureMultiAudioProbe = (
+        cmd: string,
+        minProbeSize: number = MULTI_AUDIO_MIN_PROBESIZE,
+        minAnalyzeDuration: number = MULTI_AUDIO_MIN_ANALYZEDURATION,
+    ): string => {
+        if (cmd.includes('0:a:1') === false) {
+            return cmd;
+        }
+
+        return ensureInputOption(
+            ensureInputOption(cmd, '-probesize', minProbeSize),
+            '-analyzeduration',
+            minAnalyzeDuration,
+        );
+    };
+
+    /**
      * 選択した音声 ES と主音声の map を組み立てる。
      * 選択 ES が途中区間の PMT に無い場合、optional map は無視されて主音声だけが残る。
      * @param streamIndex: number 音声 ES の相対インデックス

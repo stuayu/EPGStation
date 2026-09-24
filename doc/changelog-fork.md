@@ -15,11 +15,21 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- ログイン認証の既定値を無効 (opt-in) へ戻した → 2026-09-24
+- 複数音声 ES の録画で副音声が配信に乗らない (HLS の probe 不足) → 2026-09-24
+- Docker などのラッパー経由で AmatsukazeAddTask を起動 → 2026-09-24
 - オフライン original-hevc を macOS Safari 以外すべて fMP4 保存に・シーク後の再生再開 → 2026-09-18
 - オフライン元 TS の backpressure・全体長・音声切替 → 2026-09-17
 - オフライン original-hevc の offset 再生成シーク・位置復元 → 2026-09-17
 - iOS / iPadOS のオフライン original-hevc fMP4 保存 → 2026-09-17
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
+
+## 2026-09-24
+
+- **ログイン認証の既定値を無効 (opt-in) へ戻した**: `auth.enabled` 未指定を有効扱い (opt-out) にしていたため、`auth` を書いていない既存の config.yml でもアップグレードだけで認証が有効になっていた。`allowAnonymous` (既定 許可) でも未認証で通るのは `GET` / `HEAD` / `OPTIONS` だけなので、**Cookie を送れない外部クライアント (Android TV アプリ等) では `PUT /api/streams/{streamId}/keep` が 401 になり HLS 配信が 15 秒で停止し、予約・ルールの追加 / 更新 / 削除も 401 になる**。`AuthModel.isEnabled()` を `auth.enabled === true` のときだけ有効とするよう変更し、config テンプレート・conf-manual・UT の記述を揃えた。認証を使う場合は config.yml に `auth.enabled: true` を明示する。
+- **音声 ES が 2 本ある録画で副音声へ切り替えられないのを直した (Issue #31)**: 放送の副音声 ES は番組の途中から現れることがあり (実測: `multi_baseball.ts` は主音声の 20,183,492 byte あと = PID `0x111`)、パイプ入力の ffmpeg は **probe が終わった時点の PMT で map を確定する**。既定の `-analyzeduration 500000 -probesize 5000000` では 2 本目の音声 ES が「入力に存在しない」扱いになり、`-map "0:a:1?"` は optional なので**黙って無視され主音声だけが配信される**。実測 (同じ TS をパイプ入力): probesize 5MB → 出力音声 1 本 (`Fmp4Packager` の `role=single`、単一プレイリスト)、probesize 25MB / 50MB → 2 本 (`role=video` / `audio0` / `audio1`、複数レンディションのマスタープレイリスト)。`AudioTrackUtil.ensureMultiAudioProbe()` が副音声の map (`0:a:1`) を含む cmd の `-probesize` / `-analyzeduration` を下限 (50MB / 30 秒) まで引き上げる。probe は必要なストリームが揃った時点で終わるため、2 本目が早く現れる素材では読み込み量は増えない (実測の所要時間差 0.3s → 0.33s)。適用は録画配信で `audioStreamCount >= 2` かつ tsreadex 未経由のときだけ (tsreadex 経由は先頭から 2 本に正規化済み、ライブは実時間供給なので probe を広げると初期遅延になる)。修正後、Chromium (hls.js) と WebKit のいずれも「主音声 → 副音声 → 主音声 → 副音声」の各操作 1 回で音声レンディションの取得が切り替わることを確認した (audio1 92 / audio0 126 / audio1 153 セグメント)。
+- **HLS の音声レンディション切替を「設定しただけ」で成功扱いにしないようにした**: `HlsAudioTrackUtil.switchAudioTrack()` は `hls.audioTrack = index` / `audioTracks[i].enabled` を代入して即 true を返していた。hls.js はマスタープレイリストの解析途中やレベル切替直後に `audioTracks` を組み直すため代入が既定トラックへ戻されることがあり、その場合でも呼び出し側は成功と見なして再接続方式へ落ちない (利用者報告「1 度で切り替わらないことがあり、もう一度切り替え直すと切り替わる」に対応)。選択後に読み返して確認し、反映されていなければ 200ms 間隔で最大 5 回やり直す。それでも駄目なら false を返して従来の再接続方式へ落ちる。ネイティブ HLS (Safari) 側は**選びたいトラックを先に `enabled = true`** にする (先に全部を無効化すると一瞬どれも有効でない状態ができる。AudioTrackList は排他なので有効化すれば他は自動で無効になる)。
+- **Docker などのラッパー経由で AmatsukazeAddTask を起動できるようにした**: `amatsukaze.addTaskLauncher` にコマンドと引数の配列を指定すると、その後ろへ必要に応じて `monoPath`、コンテナ内の `addTaskPath`、AddTask の引数を渡す。未指定・空配列では従来どおり `addTaskPath` を直接起動する。Docker 利用時は `pathMappings.remote` にコンテナ内パスを指定し、AmatsukazeServer の TCP ポートも公開する。コマンド生成を `AmatsukazeCommandUtil.ts` へ切り出して UT で固定した。
 
 ## 2026-09-18
 

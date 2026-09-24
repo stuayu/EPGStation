@@ -7,6 +7,7 @@ import AmatsukazeOutputUtil from './model/amatsukaze/AmatsukazeOutputUtil';
 import AmatsukazeTextUtil from './model/amatsukaze/AmatsukazeTextUtil';
 import AmatsukazeRpcClient from './model/amatsukaze/AmatsukazeRpcClient';
 import AmatsukazeTaskWatcher from './model/amatsukaze/AmatsukazeTaskWatcher';
+import { buildAddTaskCommand } from './model/amatsukaze/AmatsukazeCommandUtil';
 import {
     ResolvedAmatsukazeConfig,
     resolveAmatsukazeConfig,
@@ -97,25 +98,7 @@ namespace AmatsukazeEncodeTool {
                 return;
             }
 
-            const args: string[] = [];
-            // Windows 以外では mono 経由で .exe を実行する
-            const bin = config.monoPath === null ? config.addTaskPath : config.monoPath;
-            if (config.monoPath !== null) {
-                args.push(config.addTaskPath);
-            }
-
-            args.push('-f', srcPath);
-            args.push('-ip', config.host);
-            args.push('-p', String(config.port));
-            args.push('-o', outputDir);
-            args.push('-s', profile);
-            args.push('--priority', String(config.priority));
-            if (config.amatsukazeRoot !== null) {
-                args.push('-r', config.amatsukazeRoot);
-            }
-            if (config.noMove === true) {
-                args.push('--no-move');
-            }
+            const { bin, args } = buildAddTaskCommand(config, profile, srcPath, outputDir);
 
             printLog(`add task: ${bin} ${args.join(' ')}`);
 

@@ -451,9 +451,8 @@ vceencc: '/usr/local/bin/VCEEncC'
 
 #### Web UI / API のログイン認証
 
-EPGStation へのアクセスにログインを必要にする。**既定で有効**。
-初回アクセス時に管理ユーザーの作成画面が表示される。
-リバースプロキシ側で認証している等で不要な場合は `enabled: false` を書く。
+EPGStation へのアクセスにログインを必要にする。**既定で無効**。
+有効にする場合は `enabled: true` を書く。有効にすると初回アクセス時に管理ユーザーの作成画面が表示される。
 
 **最初にサインアップした人が自動でシステム管理者**になり、以降にサインアップした人は一般権限になる。
 システム管理者は設定変更・ユーザー管理・バージョン更新ができ、他のユーザーへ随時管理者権限を付与できる。
@@ -466,7 +465,7 @@ EPGStation へのアクセスにログインを必要にする。**既定で有�
 
 | 子プロパティ名  | 種類    | 必須 | 説明                                                               |
 | --------------- | ------- | ---- | ------------------------------------------------------------------ |
-| enabled         | boolean | no   | ログイン必須にするか。**省略時 true**。無効にするには false を書く |
+| enabled         | boolean | no   | ログイン必須にするか。**省略時 false**。有効にするには true を書く |
 | sessionTtlMs    | number  | no   | セッションの有効期間 (ms)。省略時 30 日                            |
 | mediaTokenTtlMs | number  | no   | 外部プレイヤー用アクセストークンの有効期間 (ms)。省略時 365 日     |
 | allowAnonymous  | boolean | no   | 未ログインでも一般ユーザーと同じ操作を許可するか。**省略時 true**  |
@@ -483,8 +482,8 @@ EPGStation へのアクセスにログインを必要にする。**既定で有�
 
 ```yaml
 auth:
-    # 認証そのものを止める場合のみ false を書く (既定は有効)
-    # enabled: false
+    # 認証は既定で無効。有効にする場合は true を書く
+    enabled: true
     sessionTtlMs: 2592000000
     allowSignUp: true
     providers:
@@ -503,7 +502,7 @@ auth:
       「承認済みのリダイレクト URI」に `https://<EPGStation の URL>/api/auth/oauth/google/callback` を登録する
     - GitHub: Settings > Developer settings > OAuth Apps で新規作成。
       「Authorization callback URL」に `https://<EPGStation の URL>/api/auth/oauth/github/callback` を登録する
-2. **config.yml に `auth.providers` を書く** (上の例を参照)。認証自体は既定で有効なので `enabled` は不要
+2. **config.yml に `auth.providers` を書く** (上の例を参照)。認証自体は既定で無効なので `enabled: true` も併せて書く
 3. **EPGStation を再起動する** (`auth` は起動時に読まれるため)
 4. Web UI を開くとログイン画面に「Google ではじめる」ボタンが出る。
    最初にサインアップした人が自動でシステム管理者になる
@@ -819,6 +818,7 @@ encode:
 | host             | string              | no   | AmatsukazeServer のアドレス。省略時 `localhost`                                          |
 | port             | number              | no   | AmatsukazeServer のポート。省略時 32768                                                  |
 | addTaskPath      | string              | no   | `AmatsukazeAddTask` (.exe) のパス                                                        |
+| addTaskLauncher  | 文字列の配列        | no   | AddTask の起動前に実行するコマンド。未指定・空配列なら `addTaskPath` を直接起動          |
 | amatsukazeRoot   | string              | no   | Amatsukaze のルートディレクトリ (`AmatsukazeAddTask` の `-r`。未起動時の自動起動に使う)  |
 | monoPath         | string              | no   | Windows 以外で `AmatsukazeAddTask.exe` を mono 経由で起動する場合の mono のパス          |
 | profile          | string              | no   | 既定のプロファイル名。エンコードコマンドの第 1 引数で上書きできる                        |
@@ -843,6 +843,8 @@ amatsukaze:
     host: localhost
     port: 32768
     addTaskPath: /home/user/Amatsukaze/exe_files/AmatsukazeAddTask.exe
+    # launcher 使用時はコマンドと各引数を配列要素に分ける
+    # addTaskLauncher: ['docker', 'exec', 'amatsukaze']
     amatsukazeRoot: /home/user/Amatsukaze
     monoPath: /usr/bin/mono
     profile: デフォルト
@@ -854,6 +856,27 @@ amatsukaze:
         - local: /mnt/recorded
           remote: \\nas\recorded
 ```
+
+##### Docker 版 Amatsukaze を使う
+
+Docker 内の `AmatsukazeAddTask` を実行する場合は、`addTaskLauncher` に Docker コマンドを配列で指定し、
+`addTaskPath` にはコンテナ内の実行パスを書く。`pathMappings.remote` もコンテナ内から見えるパスにする。
+例では録画ディレクトリを `/mnt/recorded` としてコンテナへ `/media/recorded` でマウントする。
+
+```yaml
+amatsukaze:
+    addTaskLauncher: ['docker', 'exec', 'amatsukaze']
+    addTaskPath: /Amatsukaze/AmatsukazeAddTask
+    host: localhost
+    port: 32768
+    pathMappings:
+        - local: /mnt/recorded
+          remote: /media/recorded
+```
+
+`AmatsukazeServer` の TCP ポート (既定 32768) も EPGStation から接続できるようコンテナ外へ公開し、
+`host` と `port` にその接続先を設定する。`addTaskLauncher` は Docker 以外のラッパースクリプトや SSH にも使える。
+配列の各要素は個別の引数として渡すため、空白を含む引数もそのまま指定できる。
 
 - **この項目は GUI から編集できない (`editable: 'ymlOnly'`、理由: `notYetWired`)**。
   エンコードコマンド (`dist/AmatsukazeEncodeTool.js`) は録画エンコードとは独立したプロセスとして起動され、

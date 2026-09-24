@@ -10,6 +10,7 @@ export interface ResolvedAmatsukazeConfig {
     host: string;
     port: number;
     addTaskPath: string | null;
+    addTaskLauncher: string[];
     amatsukazeRoot: string | null;
     monoPath: string | null;
     profile: string | null;
@@ -70,6 +71,13 @@ const toStringOrNull = (value: unknown): string | null => {
 export const resolveAmatsukazeConfig = (config: IConfigFile): ResolvedAmatsukazeConfig => {
     const amatsukaze = config.amatsukaze;
 
+    // 配列のみ受理する。シェル解析に頼らず、空白を含む引数も1要素として安全に渡すため。
+    const addTaskLauncher = Array.isArray(amatsukaze?.addTaskLauncher)
+        ? amatsukaze.addTaskLauncher.filter((value): value is string => typeof value === 'string')
+              .map(value => value.trim())
+              .filter(value => value.length > 0)
+        : [];
+
     const pathMappings: AmatsukazePathMapping[] = Array.isArray(amatsukaze?.pathMappings)
         ? amatsukaze.pathMappings.filter(
               mapping =>
@@ -84,6 +92,7 @@ export const resolveAmatsukazeConfig = (config: IConfigFile): ResolvedAmatsukaze
         host: toStringOrNull(amatsukaze?.host) ?? DEFAULT_HOST,
         port: clampNumber(amatsukaze?.port, DEFAULT_PORT, 1, 65535),
         addTaskPath: toStringOrNull(amatsukaze?.addTaskPath),
+        addTaskLauncher,
         amatsukazeRoot: toStringOrNull(amatsukaze?.amatsukazeRoot),
         monoPath: toStringOrNull(amatsukaze?.monoPath),
         profile: toStringOrNull(amatsukaze?.profile),
