@@ -855,6 +855,22 @@ export default abstract class RecordedStreamBaseModel
             this.processOption.container === 'm2tsll' || this.isMemoryHLS(),
         );
 
+        // 副音声 ES を map する場合は probe を広げる。
+        // 放送の副音声 ES は番組の途中から現れることがあり (実測: 主音声の 20MB あと)、
+        // パイプ入力の ffmpeg は probe 終了時点の PMT で map を確定するため、
+        // 既定の小さな probe では `-map "0:a:1?"` が optional として黙って無視され、
+        // 主音声だけが配信されて副音声へ切り替えられなくなる。
+        // tsreadex 経由は先頭から 2 本へ正規化済みなので対象外。
+        if (isNormalizedByTsreadex === false && typeof audioStreamCount === 'number' && audioStreamCount >= 2) {
+            const probedCmd = AudioTrackUtil.ensureMultiAudioProbe(cmd);
+            if (probedCmd !== cmd) {
+                this.log.stream.info(
+                    `複数音声 ES を map するため probe を引き上げました (audioStreamCount: ${audioStreamCount})`,
+                );
+                cmd = probedCmd;
+            }
+        }
+
         if (this.getStreamType() === 'RecordedHLS') {
             cmd = cmd
                 .replace(/%streamFileDir%/g, this.config.streamFilePath)
