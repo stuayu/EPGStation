@@ -271,3 +271,43 @@ test('tsreadex 無しで audioTrack 未指定なら従来どおり -map を付�
     const cmd = AudioTrackUtil.replacePlaceholders(CMD, undefined, undefined, 'ts', false);
     assert.doesNotMatch(cmd, /-map/);
 });
+
+// 複数音声 ES を map する cmd の probe 引き上げ。
+// 放送の副音声 ES は番組の途中から現れることがあり、パイプ入力の ffmpeg は
+// probe 終了時点の PMT で map を確定するため、probe が小さいと `-map "0:a:1?"` が
+// optional として黙って無視され主音声だけが配信される (実測: probesize 5MB で音声 1 本、
+// 50MB で 2 本)。
+const MULTI_AUDIO_CMD =
+    '/usr/bin/ffmpeg -dual_mono_mode main -fflags nobuffer -analyzeduration 500000 -probesize 5000000 ' +
+    '-i pipe:0 -map 0:v:0 -map "0:a:0?" -map "0:a:1?" -c:a aac -f mp4 pipe:1';
+
+test('副音声を map する cmd は probe が下限まで引き上げられる', () => {
+    const cmd = AudioTrackUtil.ensureMultiAudioProbe(MULTI_AUDIO_CMD);
+
+    assert.match(cmd, new RegExp(`-probesize ${AudioTrackUtil.MULTI_AUDIO_MIN_PROBESIZE}(\\s|$)`));
+    assert.match(cmd, new RegExp(`-analyzeduration ${AudioTrackUtil.MULTI_AUDIO_MIN_ANALYZEDURATION}(\\s|$)`));
+    // 引き上げであって追加ではない (重複しない)
+    assert.equal(cmd.match(/-probesize/g).length, 1);
+    assert.equal(cmd.match(/-analyzeduration/g).length, 1);
+});
+
+test('副音声を map しない cmd は probe を変更しない', () => {
+    const cmd = '/usr/bin/ffmpeg -analyzeduration 500000 -probesize 5000000 -i pipe:0 -map 0:v:0 -map "0:a:0?" -f mp4 pipe:1';
+
+    assert.equal(AudioTrackUtil.ensureMultiAudioProbe(cmd), cmd);
+});
+
+test('probe 指定が無い cmd には -i の前へ probe を足す', () => {
+    const cmd = AudioTrackUtil.ensureMultiAudioProbe(
+        '/usr/bin/ffmpeg -fflags nobuffer -i pipe:0 -map 0:v:0 -map "0:a:0?" -map "0:a:1?" -f mp4 pipe:1',
+    );
+
+    assert.match(cmd, /-probesize \d+ -analyzeduration \d+ -i pipe:0/);
+});
+
+test('下限より大きい probe 指定はそのまま残す', () => {
+    const cmd =
+        '/usr/bin/ffmpeg -analyzeduration 60000000 -probesize 200M -i pipe:0 -map 0:v:0 -map "0:a:0?" -map "0:a:1?" -f mp4 pipe:1';
+
+    assert.equal(AudioTrackUtil.ensureMultiAudioProbe(cmd), cmd);
+});

@@ -1,4 +1,5 @@
 import * as apid from '../../../api';
+import { applyAudioTrackWithRetry } from '../../../src/util/AudioTrackApplyUtil';
 
 /**
  * HLS 配信で「主音声・副音声を同時に含むストリーム」を再接続無しに切り替えるユーティリティ。
@@ -66,9 +67,17 @@ namespace HlsAudioTrackUtil {
                 return false;
             }
 
-            hls.audioTrack = index;
-
-            return true;
+            // **設定しただけで成功にしない**。hls.js はマスタープレイリストの解析途中や
+            // レベル切替の直後だと audioTracks の中身を組み直すため、代入が黙って
+            // 既定トラックへ戻されることがある (1 回目の操作だけ効かない症状になる)。
+            // 選択が実際に反映されたことを読み返して確かめ、駄目なら呼び出し側の
+            // 再接続方式へ落とす
+            return await applyAudioTrackWithRetry(
+                () => {
+                    hls.audioTrack = index;
+                },
+                () => hls.audioTrack === index,
+            );
         }
 
         // ネイティブ HLS (Safari): video.audioTracks で選ぶ
@@ -83,12 +92,22 @@ namespace HlsAudioTrackUtil {
             return false;
         }
 
-        for (let i = 0; i < audioTracks.length; i++) {
-            audioTracks[i].enabled = i === index;
-        }
-
-        return true;
+        return await applyAudioTrackWithRetry(
+            () => {
+                // **選びたいトラックを先に有効化する**。先に全部を無効化すると
+                // 一瞬どのトラックも有効でない状態ができ、実装によっては既定トラックへ
+                // 戻される (AudioTrackList は排他なので、有効化すれば他は自動で無効になる)
+                audioTracks[index].enabled = true;
+                for (let i = 0; i < audioTracks.length; i++) {
+                    if (i !== index) {
+                        audioTracks[i].enabled = false;
+                    }
+                }
+            },
+            () => audioTracks[index]?.enabled === true,
+        );
     };
+
 
     /**
      * 条件が満たされるまで待つ
