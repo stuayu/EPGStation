@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 予約スケジューラ Phase 6: SchedulePlanner と競合詳細 → 2026-09-28
 - 録画セッション再設計 Phase 5: 再起動後の同一録画復帰と shutdown flush → 2026-09-28
 - 録画セッション再設計 Phase 5-3: 更新時の録画中件数表示と再開確認 → 2026-09-28
 - 録画セッション再設計 Phase 3: RecordingSession / Attempt の永続化と partial 結果表示 → 2026-09-28
@@ -33,6 +34,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-28
+
+- **予約スケジューラ Phase 6 で区間別チューナー割当を追加**: `reservation.scheduler` は `legacy` を既定とし、legacy 運用中も planner との差分を予約 ID・旧新の競合/チューナー値・理由付きで info log へ出す。`planner` は時刻区間ごとに同じチャンネルの予約をまとめ、増加路最大マッチングで多波対応チューナーの割当を行う。`types: []` は全放送種別へ補完し理由を保存する。予約に `conflictInfo` / `plannedTunerIndex` を追加し、API・一覧・詳細に競合内容を表示する。予約差分再計算は時間窓が連鎖する範囲へ拡張。503 開始再試行は開始前/マージン重複中に2秒間隔とする。実 Mirakurun のデバイス選択との一致は未検証。
 
 - **録画セッション再設計 Phase 5 で再起動後の録画復帰を追加**: 起動時に `RECORDING` / `RECONNECTING` セッションを調べ、予約・終了期限・録画ファイルが揃う場合は末尾を 188 byte 境界へ切り詰め、同じ Recorded / VideoFile / DropLogFile へ新しい attempt として追記する。復帰対象は予約差分で Recorder を重複生成しない。復帰できないセッションは `partial / process-restart` として確定し、手動予約を残す。Operator の SIGTERM / SIGINT と更新再起動では sink を flush してから attempt を `process-shutdown` とし、session を再開可能な `RECORDING` で保持する。Windows の node-windows 停止は graceful signal の到達が保証されないためベストエフォート。
 

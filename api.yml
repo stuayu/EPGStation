@@ -1421,6 +1421,8 @@ components:
                     type: boolean
                 isConflict:
                     type: boolean
+                conflictInfo:
+                    $ref: '#/components/schemas/ReservationConflict'
                 isOverlap:
                     type: boolean
                 allowEndLack:
@@ -1503,6 +1505,24 @@ components:
                     $ref: '#/components/schemas/ProgramAudioSamplingRate'
                 audioComponentType:
                     type: integer
+
+        ReservationConflict:
+            description: 予約の競合内容
+            type: object
+            required:
+                - type
+                - affectedMs
+                - conflictingReserveIds
+            properties:
+                type:
+                    type: string
+                    enum: [NO_TUNER, PRIORITY_PREEMPTED, PARTIAL_HEAD, PARTIAL_TAIL, MARGIN_OVERLAP, BACKEND_UNAVAILABLE]
+                affectedMs:
+                    type: integer
+                conflictingReserveIds:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ReserveId'
 
         Reserves:
             description: 予約情報

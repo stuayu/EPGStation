@@ -33,6 +33,66 @@ test('waiting for a delayed program keeps retrying up to the limit', () => {
     assert.equal(decision.delayMs, config.startWaitIntervalMs);
 });
 
+test('503 は予約開始前ならエラー回数を使わず 2 秒後に再試行する', () => {
+    assert.deepEqual(
+        decideRecordingRetry({
+            reason: 'error',
+            errorRetryCount: 99,
+            waitedMs: 0,
+            config,
+            backendUnavailable: true,
+            reserveStartAt: 2000,
+            now: 1000,
+        }),
+        { retry: true, delayMs: 2000 },
+    );
+});
+
+test('503 は前番組の終了マージン重複中なら開始後も 2 秒後に再試行する', () => {
+    assert.deepEqual(
+        decideRecordingRetry({
+            reason: 'error',
+            errorRetryCount: 99,
+            waitedMs: 0,
+            config,
+            backendUnavailable: true,
+            reserveStartAt: 1000,
+            now: 5000,
+            marginOverlap: true,
+        }),
+        { retry: true, delayMs: 2000 },
+    );
+});
+
+test('通常のエラーは 503 用の短周期再試行へ入らない', () => {
+    assert.equal(
+        decideRecordingRetry({
+            reason: 'error',
+            errorRetryCount: 0,
+            waitedMs: 0,
+            config,
+            backendUnavailable: false,
+            reserveStartAt: 2000,
+            now: 1000,
+        }).delayMs,
+        config.errorFastRetryIntervalMs,
+    );
+});
+
+test('503 でも開始後かつマージン重複なしなら通常の打ち切りを使う', () => {
+    const decision = decideRecordingRetry({
+        reason: 'error',
+        errorRetryCount: config.errorFastRetryCount + config.errorRetryCount,
+        waitedMs: 0,
+        config,
+        backendUnavailable: true,
+        reserveStartAt: 1000,
+        now: 2000,
+        marginOverlap: false,
+    });
+    assert.deepEqual(decision, { retry: false, delayMs: 0 });
+});
+
 test('the wait is given up once the limit is reached', () => {
     const decision = decideRecordingRetry({
         reason: 'waitingForEvent',

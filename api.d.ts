@@ -183,6 +183,7 @@ export interface ReserveItem {
     ruleId?: RuleId;
     isSkip: boolean;
     isConflict: boolean;
+    conflictInfo?: ReservationConflict;
     isOverlap: boolean;
     allowEndLack: boolean;
     isTimeSpecified: boolean;
@@ -237,6 +238,15 @@ export interface ReserveItem {
     videoComponentType?: number;
     audioSamplingRate?: ProgramAudioSamplingRate;
     audioComponentType?: number;
+}
+
+/**
+ * 予約の競合内容
+ */
+export interface ReservationConflict {
+    type: 'NO_TUNER' | 'PRIORITY_PREEMPTED' | 'PARTIAL_HEAD' | 'PARTIAL_TAIL' | 'MARGIN_OVERLAP' | 'BACKEND_UNAVAILABLE';
+    affectedMs: number;
+    conflictingReserveIds: ReserveId[];
 }
 
 /**

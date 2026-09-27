@@ -22,6 +22,9 @@ import ILoggerModel from '../../ILoggerModel';
 import IReserveOptionChecker from '../IReserveOptionChecker';
 import IReservationManageModel from './IReservationManageModel';
 import Tuner from './Tuner';
+import { planSchedule } from './planner/SchedulePlanner';
+import { resolveRecordingTimingConfig } from '../recording/RecordingTimingConfig';
+import IRecordingStreamCreator from '../recording/IRecordingStreamCreator';
 
 interface ReserveDiffData {
     reserve: Reserve;
@@ -31,6 +34,7 @@ interface ReserveDiffData {
 @injectable()
 class ReservationManageModel implements IReservationManageModel {
     private log: ILogger;
+    private configuration: IConfiguration;
     private config: IConfigFile;
     private executeManagementModel: IExecutionManagementModel;
     private optionChecker: IReserveOptionChecker;
@@ -39,6 +43,8 @@ class ReservationManageModel implements IReservationManageModel {
     private programDB: IProgramDB;
     private ruleDB: IRuleDB;
     private reserveEvent: IReserveEvent;
+    private recordingStreamCreator?: IRecordingStreamCreator;
+    private plannerReasons = new Map<number, string[]>();
     private tuners: Tuner[] = [];
     // チューナ情報から放送波を判定できなかったときにチャンネル情報から作る代替値
     private broadcastStatusFallback: apid.BroadcastStatus | null = null;
@@ -103,8 +109,10 @@ class ReservationManageModel implements IReservationManageModel {
         @inject('IProgramDB') programDB: IProgramDB,
         @inject('IRuleDB') ruleDB: IRuleDB,
         @inject('IReserveEvent') reserveEvent: IReserveEvent,
+        @inject('IRecordingStreamCreator') recordingStreamCreator?: IRecordingStreamCreator,
     ) {
         this.log = logger.getLogger();
+        this.configuration = configuration;
         this.config = configuration.getConfig();
         this.executeManagementModel = executeManagementModel;
         this.optionChecker = optionChecker;
@@ -113,6 +121,7 @@ class ReservationManageModel implements IReservationManageModel {
         this.programDB = programDB;
         this.ruleDB = ruleDB;
         this.reserveEvent = reserveEvent;
+        this.recordingStreamCreator = recordingStreamCreator;
     }
 
     /**
@@ -1089,11 +1098,34 @@ class ReservationManageModel implements IReservationManageModel {
         isSuppressLog: boolean,
     ): Promise<IReserveUpdateValues> {
         // 影響を受ける可能性のある予約を取り出す
-        const baseReserves = await this.reserveDB.findTimeRanges(findOption).catch(err => {
-            this.log.system.error('reserve get error');
-            throw err;
-        });
-
+        const ranges = findOption.times.map(range => ({ ...range }));
+        const affectedReserves = new Map<number, Reserve>();
+        for (let pass = 0; pass < 100; pass++) {
+            const found = await this.reserveDB.findTimeRanges({ ...findOption, times: ranges }).catch(err => {
+                this.log.system.error('reserve get error');
+                throw err;
+            });
+            let expanded = false;
+            for (const reserve of found) {
+                if (affectedReserves.has(reserve.id) === false) {
+                    affectedReserves.set(reserve.id, reserve);
+                    expanded = true;
+                }
+                for (const range of ranges) {
+                    if (reserve.startAt < range.endAt && reserve.endAt > range.startAt) {
+                        const startAt = Math.min(range.startAt, reserve.startAt);
+                        const endAt = Math.max(range.endAt, reserve.endAt);
+                        if (startAt !== range.startAt || endAt !== range.endAt) {
+                            range.startAt = startAt;
+                            range.endAt = endAt;
+                            expanded = true;
+                        }
+                    }
+                }
+            }
+            if (expanded === false) break;
+        }
+        const baseReserves = [...affectedReserves.values()];
         let newReserves = this.copyReserveArray(addNewReserves);
         // baseReserves を破壊しないように copyReserveArray で deep copy する
         Array.prototype.push.apply(newReserves, this.copyReserveArray(baseReserves));
@@ -1247,6 +1279,8 @@ class ReservationManageModel implements IReservationManageModel {
                 oldReserve.ruleUpdateCnt !== newReserve.ruleUpdateCnt ||
                 oldReserve.isSkip !== newReserve.isSkip ||
                 oldReserve.isConflict !== newReserve.isConflict ||
+                oldReserve.conflictInfo !== newReserve.conflictInfo ||
+                oldReserve.plannedTunerIndex !== newReserve.plannedTunerIndex ||
                 oldReserve.isOverlap !== newReserve.isOverlap)
         );
     }
@@ -1259,6 +1293,13 @@ class ReservationManageModel implements IReservationManageModel {
      * @return boolean 差分があれば true
      */
     private checkTimeRuleReserveDiff(oldReserve: Reserve, newReserve: Reserve): boolean {
+        if (
+            oldReserve.conflictInfo !== newReserve.conflictInfo ||
+            oldReserve.plannedTunerIndex !== newReserve.plannedTunerIndex
+        ) {
+            return true;
+        }
+
         return (
             oldReserve.ruleId !== null &&
             newReserve.ruleId !== null &&
@@ -1754,6 +1795,88 @@ class ReservationManageModel implements IReservationManageModel {
      * @return Reserve[] 予約情報
      */
     private createReserves(matches: Reserve[]): Reserve[] {
+        if (this.configuration.getConfig().reservation?.scheduler === 'planner') {
+            const planned = this.createPlannerReserves(matches);
+            return planned;
+        }
+
+        const legacy = this.createLegacyReserves(matches);
+        const planner = this.createPlannerReserves(matches);
+        const legacyById = new Map(legacy.map(reserve => [reserve.id, reserve]));
+        for (const reserve of planner) {
+            const old = legacyById.get(reserve.id);
+            if (
+                old !== undefined &&
+                (old.isConflict !== reserve.isConflict ||
+                    reserve.plannedTunerIndex !== null ||
+                    reserve.conflictInfo !== null)
+            ) {
+                this.log.system.info({
+                    message: 'reservation scheduler difference',
+                    reserveId: reserve.id,
+                    legacy: { isConflict: old.isConflict, plannedTunerIndex: old.plannedTunerIndex ?? null },
+                    planner: {
+                        isConflict: reserve.isConflict,
+                        plannedTunerIndex: reserve.plannedTunerIndex,
+                        conflictInfo: reserve.conflictInfo,
+                    },
+                    reasons: this.plannerReasons.get(reserve.id) ?? [],
+                });
+            }
+        }
+        return legacy;
+    }
+
+    private createPlannerReserves(matches: Reserve[]): Reserve[] {
+        const config = this.configuration.getConfig();
+        const timing = resolveRecordingTimingConfig(
+            config.recording,
+            config.timeSpecifiedStartMargin,
+            config.timeSpecifiedEndMargin,
+        );
+        const priorities = [...matches].sort((a, b) => this.sortReserve(a, b));
+        const rank = new Map(priorities.map((reserve, index) => [reserve.id, index]));
+        const plans = planSchedule({
+            reservations: matches.map(reserve => ({
+                id: reserve.id,
+                startAt: reserve.startAt,
+                endAt: reserve.endAt,
+                channel: reserve.channel,
+                channelType: reserve.channelType,
+                allowEndLack: reserve.allowEndLack,
+                isSkip: reserve.isSkip,
+                isOverlap: reserve.isOverlap,
+                priority: rank.get(reserve.id) ?? reserve.id,
+            })),
+            tuners: this.tuners.map(tuner => ({ index: tuner.getIndex(), types: tuner.getTypes() })),
+            timing,
+            previousPlan: matches.map(reserve => ({
+                reserveId: reserve.id,
+                tunerIndex: reserve.plannedTunerIndex,
+                conflict: null,
+                lostMs: 0,
+                reasons: [],
+            })),
+            sessions: this.recordingStreamCreator
+                ?.getActiveTunerAssignments()
+                .map(session => ({ ...session, started: true })),
+        });
+        this.plannerReasons = new Map(plans.map(plan => [plan.reserveId, plan.reasons]));
+        const byId = new Map(plans.map(plan => [plan.reserveId, plan]));
+        return matches
+            .map(reserve => {
+                const plan = byId.get(reserve.id);
+                if (plan === undefined) return Object.assign({}, reserve);
+                return Object.assign({}, reserve, {
+                    isConflict: plan.conflict !== null && plan.conflict.type !== 'MARGIN_OVERLAP',
+                    plannedTunerIndex: plan.tunerIndex,
+                    conflictInfo: plan.conflict === null ? null : JSON.stringify(plan.conflict),
+                });
+            })
+            .sort((a, b) => a.startAt - b.startAt);
+    }
+
+    private createLegacyReserves(matches: Reserve[]): Reserve[] {
         // 重複チェックのために programId でソート
         matches.sort(this.sortReserve);
 
@@ -1873,6 +1996,8 @@ class ReservationManageModel implements IReservationManageModel {
                 const newReserve: Reserve = Object.assign({}, matches[l.idx]);
                 // 重複の評価結果の反映
                 newReserve.isConflict = conflictResults[l.idx] === true;
+                newReserve.conflictInfo = null;
+                newReserve.plannedTunerIndex = null;
                 // 予約情報 の格納
                 newReserves.push(newReserve);
             }

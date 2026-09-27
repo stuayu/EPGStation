@@ -38,6 +38,18 @@ export default class Reserve extends BaseEntity {
     public isConflict: boolean = false; // 競合しているか
 
     @Column({
+        type: 'text',
+        nullable: true,
+    })
+    public conflictInfo: string | null = null; // 予約競合の詳細 (JSON)
+
+    @Column({
+        type: 'integer',
+        nullable: true,
+    })
+    public plannedTunerIndex: number | null = null; // SchedulePlanner が割り当てたチューナー
+
+    @Column({
         default: false,
     })
     public allowEndLack: boolean = false; // 末尾切れを許すか

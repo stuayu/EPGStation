@@ -500,6 +500,12 @@ class RecorderModel implements IRecorderModel {
                 errorRetryCount: this.errorRetryCount,
                 waitedMs,
                 config: retryConfig,
+                backendUnavailable: err?.status === 503 || err?.statusCode === 503 || err?.response?.status === 503,
+                reserveStartAt: this.reserve.startAt,
+                now: Date.now(),
+                marginOverlap:
+                    typeof this.reserve.conflictInfo === 'string' &&
+                    this.reserve.conflictInfo.includes('"MARGIN_OVERLAP"'),
             });
 
             if (reason === 'waitingForEvent') {
