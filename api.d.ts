@@ -560,9 +560,57 @@ export interface RecordedItem {
     tags?: RecordedTag[];
     isEncoding: boolean;
     isProtected: boolean;
+    recordingStatus?: 'completed' | 'partial' | 'failed' | 'canceled';
+    endReason?: string;
+    transportGaps?: RecordingTransportGap[];
     // シリーズに紐づいている場合の作品・話数情報 (一覧のタイトル表示に使う)。
     // featureFlags.seriesLibrary が無効な場合と、シリーズ未確定の録画では入らない
     series?: RecordedSeriesInfo;
+}
+
+export interface RecordingTransportGap {
+    startAt: UnixtimeMS;
+    endAt?: UnixtimeMS;
+    reason: string;
+}
+
+export interface RecordingAttemptItem {
+    id: number;
+    sessionId: number;
+    attemptNo: number;
+    requestedAt: UnixtimeMS;
+    firstDataAt?: UnixtimeMS;
+    endedAt?: UnixtimeMS;
+    closeReason: string;
+    errorCode: string;
+    priority: number;
+    bytesReceived: number;
+    fileOffsetStart?: number;
+    fileOffsetEnd?: number;
+}
+
+export interface RecordingSessionItem {
+    id: number;
+    reserveId: number;
+    recordedId?: RecordedId;
+    programId?: ProgramId;
+    channelId: ChannelId;
+    state: string;
+    scheduledStartAt: UnixtimeMS;
+    scheduledEndAt: UnixtimeMS;
+    actualStartAt?: UnixtimeMS;
+    actualEndAt?: UnixtimeMS;
+    startReason?: string;
+    endReason?: string;
+    resultStatus?: 'completed' | 'partial' | 'failed' | 'canceled';
+    retryCount: number;
+    createdAt?: UnixtimeMS;
+    updatedAt?: UnixtimeMS;
+    attempts: RecordingAttemptItem[];
+}
+
+export interface RecordingSessions {
+    sessions: RecordingSessionItem[];
 }
 
 /**

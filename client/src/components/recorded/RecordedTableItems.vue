@@ -14,6 +14,14 @@
                     <tr v-for="item in items" v-bind:key="item.recordedItem.id" v-on:click="gotoDetail(item)" v-bind:class="{ 'selected-color': item.isSelected === true }">
                         <td>
                             {{ item.display.name }}
+                            <v-chip
+                                v-if="item.recordedItem.recordingStatus === 'partial' || item.recordedItem.recordingStatus === 'failed'"
+                                size="x-small"
+                                :color="item.recordedItem.recordingStatus === 'partial' ? 'warning' : 'error'"
+                                class="ml-1"
+                            >
+                                {{ item.display.recordingStatusLabel }}
+                            </v-chip>
                             <OfflineDownloadBadge
                                 v-if="item.recordedItem.videoFiles?.[0] !== undefined"
                                 :videoId="item.recordedItem.videoFiles[0].id"
@@ -98,7 +106,9 @@ class RecordedTableItems extends Vue {
         this.$emit('stopEncode', recordedId);
     }
 
-    public offlineVideoIds(item: RecordedDisplayData): number[] { return (item.recordedItem.videoFiles ?? []).map(video => video.id); }
+    public offlineVideoIds(item: RecordedDisplayData): number[] {
+        return (item.recordedItem.videoFiles ?? []).map(video => video.id);
+    }
 
     // ロゴ画像の取得に失敗した場合は局名だけの表示にフォールバックする
     public onLogoError(item: RecordedDisplayData): void {

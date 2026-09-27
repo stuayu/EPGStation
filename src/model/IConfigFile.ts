@@ -151,6 +151,7 @@ export type FeatureFlags = Partial<Record<FeatureFlagKey, boolean>>;
 export type NotificationEventType =
     | 'recording.started'
     | 'recording.completed'
+    | 'recording.partial'
     | 'recording.failed'
     | 'recording.dropped' // ドロップ検出 (§7.3)
     | 'recording.missed' // 録り逃し検出 (リトライ上限に達し録画を断念)

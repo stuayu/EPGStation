@@ -1117,7 +1117,7 @@ stream:
 #         - name: discord
 #           type: discord
 #           url: https://discord.com/api/webhooks/...
-#           events: [recording.started, recording.completed, recording.failed]
+#           events: [recording.started, recording.completed, recording.partial, recording.failed]
 #         - name: automation
 #           type: webhook
 #           url: https://example.invalid/epgstation

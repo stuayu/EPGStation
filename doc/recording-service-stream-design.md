@@ -1,5 +1,11 @@
 # programId 録画をサービスストリームで制御する設計
 
+## RecordingSession 永続化 (Phase 3)
+
+録画実行 (`recording_session`) と上流接続 (`recording_attempt`) を分けて永続化する。開始前リトライも接続ごとに attempt を作る。Session の状態は `SCHEDULED → PREPARING → WAITING_BOUNDARY → RECORDING → FINALIZING → FINISHED`。`RECONNECTING` は Phase 4 用に定義する。終了結果は `completed` / `partial` / `failed` / `canceled`。途中切断は partial としてエンコードするが、元 TS を削除しない。
+
+Recorded の `recordingStatus` / `endReason` は一覧表示用。null は既存録画を含め completed 扱い。詳細 API `GET /api/recorded/{recordedId}/recording-sessions` はセッション・attempt を返し、gap は attempt の `endedAt` から次 attempt の `firstDataAt` で導出する。Recorded に紐付かない開始失敗セッションは 30 日後に掃除する。
+
 ## 1. 結論 (実装確定: 2026-08-19)
 
 `programId` 予約も Mirakurun の `getServiceStream` でチャンネルを事前確保し、番組の開始・終了境界を

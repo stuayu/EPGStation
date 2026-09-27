@@ -8,6 +8,7 @@ import Thumbnail from '../../db/entities/Thumbnail';
 import VideoFile from '../../db/entities/VideoFile';
 import WatchHistory from '../../db/entities/WatchHistory';
 import DropLogFile from '../../db/entities/DropLogFile';
+import RecordingSession from '../../db/entities/RecordingSession';
 import { isFeatureEnabled } from '../FeatureFlags';
 import IConfiguration from '../IConfiguration';
 import RecordedKeywordSearch, { buildRecordedKeywordSearchPlan } from '../recorded/RecordedKeywordSearch';
@@ -288,6 +289,7 @@ export default class RecordedDB implements IRecordedDB {
             await queryRunner.manager.delete(VideoFile, { recordedId });
             await queryRunner.manager.delete(RecordedSeriesLink, { recordedId });
             await queryRunner.manager.delete(SeriesPendingMatch, { recordedId });
+            await queryRunner.manager.delete(RecordingSession, { recordedId });
             await queryRunner.manager.delete(Recorded, { id: recordedId });
             if (dropLogFileId !== null) {
                 await queryRunner.manager.delete(DropLogFile, { id: dropLogFileId });
