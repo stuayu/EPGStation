@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 録画セッション再設計 Phase 5: 再起動後の同一録画復帰と shutdown flush → 2026-09-28
+- 録画セッション再設計 Phase 5-3: 更新時の録画中件数表示と再開確認 → 2026-09-28
 - 録画セッション再設計 Phase 3: RecordingSession / Attempt の永続化と partial 結果表示 → 2026-09-28
 - 録画セッション再設計 Phase 2: 終了理由・偽リトライ・開始失敗分類 → 2026-09-28
 - 録画セッション再設計 Phase 0/1: 予約安全網と EIT / ロック不具合修正 → 2026-09-28
@@ -31,6 +33,10 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-28
+
+- **録画セッション再設計 Phase 5 で再起動後の録画復帰を追加**: 起動時に `RECORDING` / `RECONNECTING` セッションを調べ、予約・終了期限・録画ファイルが揃う場合は末尾を 188 byte 境界へ切り詰め、同じ Recorded / VideoFile / DropLogFile へ新しい attempt として追記する。復帰対象は予約差分で Recorder を重複生成しない。復帰できないセッションは `partial / process-restart` として確定し、手動予約を残す。Operator の SIGTERM / SIGINT と更新再起動では sink を flush してから attempt を `process-shutdown` とし、session を再開可能な `RECORDING` で保持する。Windows の node-windows 停止は graceful signal の到達が保証されないためベストエフォート。
+
+- **ワンクリック更新時に録画中の件数を示し、再起動後に続きから録画することを確認する**: `GET /api/update` と `POST /api/update/check` の `UpdateStatus.activeRecordingCount` に、`RECORDING` / `RECONNECTING` セッションの件数を含める。DB 読み取りに失敗した場合は `null` とし、画面では件数を確認できない旨を表示する。`UpdatePanel.vue` は更新確認ダイアログに「録画中の番組は一時中断し、再起動後に続きから録画します」と表示する
 
 - **録画セッション再設計 Phase 2 で終了理由と失敗処理を明確化**: 録画 stream の destroy に `scheduled-end` / `boundary` / `canceled` / `tuner-handoff` などの理由を付け、理由がある正常終了を録画失敗・自動再試行へ流さない。`recFailed` は DB・一時ファイル・drop 情報の後片付けだけを行い、finish を発行しないため、**失敗した録画にはエンコードも finish コマンドも走らなくなった**。thumbnail 作成とタグ付けは failed 側で維持。開始前の service stream 伝送失敗は error 再試行予算へ分類し、**時刻指定予約で TS が来ない場合、諦めるまでの時間は約 3 時間から約 27 分になった** (5 秒 × 3 回 + 60 秒 × 27 回)。予約 ID ごとの retry 回数はメモリで 2 回まで数え、Recorded の件数に依存しない。
 

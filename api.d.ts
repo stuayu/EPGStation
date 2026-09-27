@@ -2470,6 +2470,8 @@ export interface UpdateStatus {
     updateNote: string;
     // 更新を伴わない再起動の挙動の説明
     restartNote: string;
+    // 録画中または再接続中の録画セッション数 (取得失敗時は null)
+    activeRecordingCount: number | null;
     // リリース一覧ページ
     releasesUrl: string;
     job: UpdateJob;

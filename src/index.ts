@@ -25,7 +25,8 @@ import ISeriesMetadataFiller from './model/series/ISeriesMetadataFiller';
 import IRecordingManageModel from './model/operator/recording/IRecordingManageModel';
 import IReservationManageModel from './model/operator/reservation/IReservationManageModel';
 import IStorageManageModel from './model/operator/storage/IStorageManageModel';
-import { isShuttingDown, registerChildProcess } from './util/ChildProcessRegistry';
+import { isShuttingDown, killAllChildProcesses, registerChildProcess } from './util/ChildProcessRegistry';
+import { createOperatorShutdownHandler } from './util/OperatorShutdown';
 install();
 
 containerSetter.set(container);
@@ -243,6 +244,27 @@ const cleanup = async () => {
     await reservationManageModel.cleanup();
 };
 
+/** Operator 停止時に録画 sink を flush してから子プロセスを止める。 */
+const installShutdownHandlers = (): void => {
+    const log = container.get<ILoggerModel>('ILoggerModel').getLogger();
+    const shutdown = createOperatorShutdownHandler(
+        async signal => {
+            log.system.info(`Operator shutdown requested: ${signal}`);
+            await container.get<IRecordingManageModel>('IRecordingManageModel').shutdown();
+        },
+        code => {
+            killAllChildProcesses();
+            process.exit(code);
+        },
+        err => {
+            log.system.error('recording shutdown failed');
+            log.system.error(err);
+        },
+    );
+    process.on('SIGTERM', () => void shutdown('SIGTERM'));
+    process.on('SIGINT', () => void shutdown('SIGINT'));
+};
+
 /**
  * EPGUpdater 起動処理
  */
@@ -259,6 +281,8 @@ const runEPGUpdater = async () => {
         console.error(err);
         process.exit(1);
     }
+
+    installShutdownHandlers();
 
     await runOperator();
 

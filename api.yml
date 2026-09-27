@@ -4959,6 +4959,7 @@ components:
                 - canUpdate
                 - updateNote
                 - restartNote
+                - activeRecordingCount
                 - releasesUrl
                 - job
             properties:
@@ -5014,6 +5015,10 @@ components:
                 restartNote:
                     description: 更新を伴わない再起動の挙動の説明
                     type: string
+                activeRecordingCount:
+                    description: 録画中または再接続中の録画セッション数。取得失敗時は null
+                    type: integer
+                    nullable: true
                 releasesUrl:
                     type: string
                 job:

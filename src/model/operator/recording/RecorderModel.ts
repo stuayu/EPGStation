@@ -39,7 +39,7 @@ import ILoggerModel from '../../ILoggerModel';
 import IMirakurunClientModel from '../../IMirakurunClientModel';
 import INotificationDispatcher from '../../notification/INotificationDispatcher';
 import IDropCheckerModel from './IDropCheckerModel';
-import IRecorderModel from './IRecorderModel';
+import IRecorderModel, { RecordingResumeInfo } from './IRecorderModel';
 import IRecordingStreamCreator from './IRecordingStreamCreator';
 import IRecordingUtilModel, { RecFilePathInfo } from './IRecordingUtilModel';
 import LongTimer from '../../../util/LongTimer';
@@ -124,6 +124,9 @@ class RecorderModel implements IRecorderModel {
     private recordingAttemptCount: number = 0;
     private transportCloseReasons: Array<string | null> = [];
     private transportGapCount: number = 0;
+    private resumeInfo: RecordingResumeInfo | null = null;
+    private resumeFilePath: string | null = null;
+    private resumeFileOffset: number = 0;
 
     // イベントリレータイマー
     private eventRelayTimer = new LongTimer();
@@ -329,9 +332,11 @@ class RecorderModel implements IRecorderModel {
         this.errorRetryCount = 0;
         this.waitingForEventSince = null;
         this.boundaryEndReason = null;
-        this.recordingSession = null;
-        this.currentAttempt = null;
-        this.recordingAttemptCount = 0;
+        if (this.resumeInfo === null) {
+            this.recordingSession = null;
+            this.currentAttempt = null;
+            this.recordingAttemptCount = 0;
+        }
         this.transportCloseReasons = [];
 
         // 除外, 重複しているものはタイマーをセットしない
@@ -340,7 +345,8 @@ class RecorderModel implements IRecorderModel {
         }
 
         const now = new Date().getTime();
-        if (now >= this.reserve.endAt) {
+        const recoveryDeadline = this.reserve.endAt + this.getTimingConfig().endMarginMs;
+        if (now >= (this.resumeInfo === null ? this.reserve.endAt : recoveryDeadline)) {
             return false;
         }
 
@@ -366,6 +372,36 @@ class RecorderModel implements IRecorderModel {
         }, time);
 
         return true;
+    }
+
+    /**
+     * 異常終了した録画の既存ファイルへ追記するタイマーをセットする
+     * @param reserve: Reserve 予約情報
+     * @param isSuppressLog: boolean ログ出力を抑えるか
+     * @param info: RecordingResumeInfo 復帰対象
+     * @return boolean セットに成功したら true
+     */
+    public setResumeTimer(reserve: Reserve, isSuppressLog: boolean, info: RecordingResumeInfo): boolean {
+        const parent =
+            info.videoFile.parentDirectoryName === 'tmp'
+                ? this.config.recordedTmp
+                : this.config.recorded.find(dir => dir.name === info.videoFile.parentDirectoryName)?.path;
+        if (parent === undefined) return false;
+
+        this.resumeInfo = info;
+        this.recordingSession = info.session;
+        this.recordedId = info.recorded.id;
+        this.videoFileId = info.videoFile.id;
+        this.dropLogFileId = info.recorded.dropLogFileId;
+        this.resumeFilePath = path.join(parent, info.videoFile.filePath);
+        this.recordingAttemptCount = info.attempts.length;
+        this.resumeFileOffset = info.videoFile.size;
+        this.transportGapCount = info.attempts.slice(0, -1).reduce((count, attempt, index) => {
+            const next = info.attempts[index + 1];
+            return count + (attempt.endedAt !== null && next.firstDataAt !== null ? 1 : 0);
+        }, 0);
+        this.transportCloseReasons = info.attempts.map(attempt => attempt.closeReason);
+        return this.setTimer(reserve, isSuppressLog);
     }
 
     /**
@@ -676,15 +712,17 @@ class RecorderModel implements IRecorderModel {
             return;
         }
 
-        // 予約した番組が実際に始まるまで待つ (前番組の延長対策)。
-        // 待機中は末尾 8 MiB だけを保持し、境界直前の冒頭を救済する
+        // 再開録画では既存 Recorded に対して予約番組の開始待ちを行わない。
+        // 通常録画は前番組の延長対策として開始境界を待つ。
         let waitingBuffer: Buffer[] = [];
-        try {
-            await this.transitionSession('wait-boundary');
-            waitingBuffer = await this.waitForProgramStart();
-        } catch (err: any) {
-            this.destroyStream();
-            throw err;
+        if (this.resumeInfo === null) {
+            try {
+                await this.transitionSession('wait-boundary');
+                waitingBuffer = await this.waitForProgramStart();
+            } catch (err: any) {
+                this.destroyStream();
+                throw err;
+            }
         }
 
         // 録画開始待ちの間にキャンセルされていないか
@@ -698,11 +736,12 @@ class RecorderModel implements IRecorderModel {
 
         this.isPrepRecording = false;
         this.isRecording = true;
-        await this.transitionSession('first-data');
-        await this.persistRecordingSession({
-            recordedId: this.recordedId,
-            actualStartAt: Date.now(),
-        });
+        if (this.resumeInfo === null) {
+            await this.transitionSession('first-data');
+            await this.persistRecordingSession({ recordedId: this.recordedId, actualStartAt: Date.now() });
+        } else {
+            await this.persistRecordingSession({ state: RecordingSessionState.RECORDING });
+        }
 
         // 番組が始まったので追従中の表示を解除する
         await this.setFollowingSchedule(false);
@@ -712,7 +751,21 @@ class RecorderModel implements IRecorderModel {
         this.eventEmitter.emit(RecorderModel.START_RECORDING_EVENT);
 
         // 保存先を取得
-        const recPath = await this.recordingUtil.getRecPath(this.reserve, true);
+        const recPath =
+            this.resumeInfo === null
+                ? await this.recordingUtil.getRecPath(this.reserve, true)
+                : {
+                      parendDir: this.config.recorded.find(
+                          dir => dir.name === this.resumeInfo!.videoFile.parentDirectoryName,
+                      ) ?? {
+                          name: 'tmp',
+                          path: this.config.recordedTmp ?? path.dirname(this.resumeFilePath!),
+                      },
+                      subDir: path.dirname(this.resumeInfo.videoFile.filePath),
+                      fileName: path.basename(this.resumeInfo.videoFile.filePath),
+                      fullPath: this.resumeFilePath!,
+                  };
+        this.videoFileFullPath = recPath.fullPath;
 
         this.log.system.info(`recording: ${this.reserve.id} ${recPath.fullPath}`);
 
@@ -751,7 +804,7 @@ class RecorderModel implements IRecorderModel {
             }
 
             // drop 情報を DB へ反映
-            if (dropFilePath !== null) {
+            if (dropFilePath !== null && this.dropLogFileId === null) {
                 const dropLogFile = new DropLogFile();
                 dropLogFile.errorCnt = 0;
                 dropLogFile.dropCnt = 0;
@@ -771,11 +824,15 @@ class RecorderModel implements IRecorderModel {
         this.setupProgramBoundaryMonitor(waitingBuffer);
         this.setupEitPresentMonitor(waitingBuffer);
         if (this.currentAttempt !== null) {
-            this.currentAttempt.fileOffsetStart = 0;
-            void this.recordingSessionDB.updateAttempt(this.currentAttempt.id, { fileOffsetStart: 0 }).catch(err => {
-                this.log.system.warn(`recording attempt offset update failed: ${this.currentAttempt?.id ?? 'unknown'}`);
-                this.log.system.warn(err);
-            });
+            this.currentAttempt.fileOffsetStart = this.resumeInfo === null ? 0 : this.resumeFileOffset;
+            void this.recordingSessionDB
+                .updateAttempt(this.currentAttempt.id, { fileOffsetStart: this.currentAttempt.fileOffsetStart })
+                .catch(err => {
+                    this.log.system.warn(
+                        `recording attempt offset update failed: ${this.currentAttempt?.id ?? 'unknown'}`,
+                    );
+                    this.log.system.warn(err);
+                });
         }
         const recordingStream = this.stream;
         const sink = this.recordingSink;
@@ -802,22 +859,31 @@ class RecorderModel implements IRecorderModel {
             onAttemptStart: async offset => {
                 await this.beginRecordingAttempt();
                 if (this.currentAttempt !== null) {
-                    this.currentAttempt.fileOffsetStart = offset;
+                    this.currentAttempt.fileOffsetStart =
+                        offset + (this.resumeInfo === null ? 0 : this.resumeFileOffset);
                     await this.recordingSessionDB
-                        .updateAttempt(this.currentAttempt.id, { fileOffsetStart: offset })
+                        .updateAttempt(this.currentAttempt.id, { fileOffsetStart: this.currentAttempt.fileOffsetStart })
                         .catch(err => this.log.system.warn(err));
                 }
             },
             onAttemptEnd: async (reason, err) => {
                 if (this.currentAttempt !== null) {
-                    const written = sink.getBytesWritten() - (this.currentAttempt.fileOffsetStart ?? 0);
-                    this.currentAttempt.bytesReceived = written;
+                    const baseOffset = this.resumeInfo === null ? 0 : this.resumeFileOffset;
+                    this.currentAttempt.bytesReceived =
+                        sink.getBytesWritten() - ((this.currentAttempt.fileOffsetStart ?? baseOffset) - baseOffset);
+                    this.currentAttempt.fileOffsetEnd = baseOffset + sink.getBytesWritten();
                 }
                 const recordedReason =
                     reason ??
                     (err as NodeJS.ErrnoException | undefined)?.code ??
                     (err ? 'transport-lost' : 'upstream-eof');
-                await this.finishRecordingAttempt(recordedReason, err);
+                if (recordedReason === 'process-shutdown') {
+                    await sink.finish().catch(finishError => {
+                        this.log.system.error(`recording sink finish failed during shutdown: ${this.reserve.id}`);
+                        this.log.system.error(finishError);
+                    });
+                }
+                await this.finishRecordingAttempt(recordedReason, err, recordedReason !== 'process-shutdown');
             },
             onChunk: () => {},
             onFirstData: async source => {
@@ -837,6 +903,12 @@ class RecorderModel implements IRecorderModel {
                 if (this.recordedId === null) {
                     const recorded = await this.addRecorded(recPath);
                     this.recordingEvent.emitStartRecording(this.reserve, recorded);
+                    if (this.reserve.programId !== null) this.setEventRelayTimer(this.reserve);
+                    hasStartedRecording = true;
+                    resolveStarted();
+                } else if (this.resumeInfo !== null) {
+                    this.transportGapCount++;
+                    this.recordingEvent.emitStartRecording(this.reserve, this.resumeInfo.recorded);
                     if (this.reserve.programId !== null) this.setEventRelayTimer(this.reserve);
                     hasStartedRecording = true;
                     resolveStarted();
@@ -1742,6 +1814,40 @@ class RecorderModel implements IRecorderModel {
         } else {
             await this._cancel();
         }
+    }
+
+    /** Operator 停止時に録画先を flush し、予約とセッションを再開可能なまま残す。 */
+    public async shutdown(): Promise<void> {
+        this.timer.clear();
+        this.eventRelayTimer.clear();
+        if (this.isRecording === false) return;
+        if (this.recordingSink === null) return;
+
+        this.log.system.info(`shutdown recording reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}`);
+        this.isNeedDeleteReservation = false;
+        this.isFinishing = true;
+        if (this.boundaryEndTimerId !== null) {
+            clearTimeout(this.boundaryEndTimerId);
+            this.boundaryEndTimerId = null;
+        }
+
+        if (this.upstreamSession !== null) {
+            this.upstreamSession.stop('process-shutdown');
+        } else if (this.stream !== null) {
+            this.streamCreator.closeStream(this.stream, 'process-shutdown');
+        }
+
+        await this.recordingSink.finish().catch(err => {
+            this.log.system.error(`recording sink finish failed during shutdown: ${this.reserve.id}`);
+            this.log.system.error(err);
+        });
+        await this.finishRecordingAttempt('process-shutdown', undefined, false);
+        await this.dropChecker.stop().catch(err => {
+            this.log.system.error(`stop drop checker during shutdown failed: ${this.reserve.id}`);
+            this.log.system.error(err);
+        });
+        await this.updateDropFileLog();
+        await this.persistRecordingSession({ state: RecordingSessionState.RECORDING });
     }
 
     /**

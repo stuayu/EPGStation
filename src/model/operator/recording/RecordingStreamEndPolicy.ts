@@ -8,6 +8,7 @@ export type RecordingStreamCloseReason =
     | 'teardown'
     | 'write-error'
     | 'reconnect-no-data'
+    | 'process-shutdown'
     | null;
 
 export type RecordingStreamEndDecision =
@@ -35,7 +36,8 @@ export const decideRecordingStreamEnd = (input: RecordingStreamEndPolicyInput): 
         input.closeReason === 'superseded' ||
         input.closeReason === 'obsolete' ||
         input.closeReason === 'teardown' ||
-        input.closeReason === 'write-error'
+        input.closeReason === 'write-error' ||
+        input.closeReason === 'process-shutdown'
     )
         return 'ignore';
     if (input.closeReason === 'scheduled-end') return 'scheduled-end';

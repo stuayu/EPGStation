@@ -2,7 +2,7 @@
 
 ## RecordingSession 永続化 (Phase 3)
 
-録画実行 (`recording_session`) と上流接続 (`recording_attempt`) を分けて永続化する。開始前リトライも接続ごとに attempt を作る。Session の状態は `SCHEDULED → PREPARING → WAITING_BOUNDARY → RECORDING → FINALIZING → FINISHED`。`RECONNECTING` は Phase 4 用に定義する。終了結果は `completed` / `partial` / `failed` / `canceled`。途中切断は partial としてエンコードするが、元 TS を削除しない。
+録画実行 (`recording_session`) と上流接続 (`recording_attempt`) を分けて永続化する。開始前リトライも接続ごとに attempt を作る。Session の状態は `SCHEDULED → PREPARING → WAITING_BOUNDARY → RECORDING → FINALIZING → FINISHED`。`RECONNECTING` は Phase 4 用。終了結果は `completed` / `partial` / `failed` / `canceled`。途中切断は partial としてエンコードするが、元 TS を削除しない。Phase 5 では異常終了後も条件を満たす session を再開する。
 
 Recorded の `recordingStatus` / `endReason` は一覧表示用。null は既存録画を含め completed 扱い。詳細 API `GET /api/recorded/{recordedId}/recording-sessions` はセッション・attempt を返し、gap は attempt の `endedAt` から次 attempt の `firstDataAt` で導出する。Recorded に紐付かない開始失敗セッションは 30 日後に掃除する。
 
@@ -201,6 +201,12 @@ service stream は番組終了時に自動で閉じないため、次を必須�
 
 `TailStream` は録画中ファイルの無成長を EOF とせず、`shouldKeepWaiting` が true の間は追従する。最長待機は 60 秒。
 これにより再接続中も追っかけ再生、録画中 HLS、m2tsll が一時 EOF にならない。
+
+### Phase 5: 再起動からの復帰
+
+起動時に `RECORDING` / `RECONNECTING` session ごとに予約・`endAt + endMargin`・既存 VideoFile を調べる。`now < endAt + endMargin` かつ予約とファイルが存在する場合、ファイルを 188 byte 境界へ切り詰め、同じ Recorded / VideoFile / DropLogFile へ新しい attempt として追記する。空白時間は直前 attempt の `endedAt` (無い場合は session の最終更新時刻) から復帰 attempt の `firstDataAt` までとする。復帰対象は予約差分で二重作成せず、条件外の session は `partial / process-restart` で確定する。手動予約は削除しない。
+
+Operator の SIGTERM / SIGINT とワンクリック更新では、上流を `process-shutdown` として閉じ、sink の `finish` を最大 10 秒待ったあと attempt に理由を記録する。session は `RECORDING` のまま残し、次回起動の復帰対象にする。Windows の node-windows wrapper は子 Node に `child.kill()` を送るが、Windows で graceful signal handler の実行は保証されないため、サービス停止時の flush はベストエフォート。届かない場合は次回起動の異常終了復旧が処理する。
 
 ## 7. 再試行とキャンセル
 

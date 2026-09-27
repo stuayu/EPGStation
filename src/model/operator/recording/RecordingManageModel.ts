@@ -15,6 +15,10 @@ import IRecordingStreamCreator from './IRecordingStreamCreator';
 import IRecordingUtilModel from './IRecordingUtilModel';
 import IRecordingSessionDB from '../../db/IRecordingSessionDB';
 import { RecordingSessionState } from './RecordingSessionState';
+import * as fs from 'fs';
+import * as path from 'path';
+import { canResumeRecording, getAlignedRecordingSize } from './RecordingRecoveryPolicy';
+import { resolveRecordingTimingConfig } from './RecordingTimingConfig';
 
 interface RecordingIndex {
     [key: number]: IRecorderModel;
@@ -130,12 +134,94 @@ class RecordingManageModel implements IRecordingManageModel {
             this.log.system.warn(err);
         });
 
-        const activeSessions = await this.recordingSessionDB.findByState(RecordingSessionState.RECORDING).catch(err => {
-            this.log.system.warn('recording session recovery lookup failed');
-            this.log.system.warn(err);
-            return [];
-        });
+        const activeSessions = await Promise.all(
+            [RecordingSessionState.RECORDING, RecordingSessionState.RECONNECTING].map(state =>
+                this.recordingSessionDB.findByState(state).catch(err => {
+                    this.log.system.warn('recording session recovery lookup failed');
+                    this.log.system.warn(err);
+                    return [];
+                }),
+            ),
+        ).then(results => results.flat());
+        const resumedRecordedIds = new Set<number>();
         for (const session of activeSessions) {
+            const reserve = await this.reserveDB.findId(session.reserveId).catch(() => null);
+            const recorded =
+                session.recordedId === null ? null : await this.recordedDB.findId(session.recordedId).catch(() => null);
+            const videoFile = recorded?.videoFiles?.[0] ?? null;
+            const parentPath =
+                videoFile === null
+                    ? null
+                    : videoFile.parentDirectoryName === 'tmp'
+                      ? (this.config.recordedTmp ?? null)
+                      : (this.config.recorded.find(dir => dir.name === videoFile.parentDirectoryName)?.path ?? null);
+            const filePath =
+                videoFile === null || parentPath === null ? null : path.join(parentPath, videoFile.filePath);
+            let originalSize = 0;
+            let alignedSize = 0;
+            let fileExists = false;
+            if (filePath !== null) {
+                try {
+                    originalSize = (await fs.promises.stat(filePath)).size;
+                    alignedSize = getAlignedRecordingSize(originalSize);
+                    fileExists = true;
+                } catch {
+                    fileExists = false;
+                }
+            }
+            const deadlineMarginMs = resolveRecordingTimingConfig(
+                this.config.recording,
+                this.config.timeSpecifiedStartMargin,
+                this.config.timeSpecifiedEndMargin,
+            ).endMarginMs;
+            const resumable =
+                reserve !== null &&
+                recorded !== null &&
+                videoFile !== null &&
+                canResumeRecording({
+                    now: Date.now(),
+                    endAt: reserve.endAt,
+                    endMarginMs: deadlineMarginMs,
+                    hasReserve: true,
+                    fileExists,
+                });
+            if (
+                resumable === true &&
+                filePath !== null &&
+                reserve !== null &&
+                recorded !== null &&
+                videoFile !== null
+            ) {
+                try {
+                    await fs.promises.truncate(filePath, alignedSize);
+                    const attempts = await this.recordingSessionDB.findAttemptsBySessionId(session.id);
+                    const previousAttempt = attempts.sort((a, b) => a.attemptNo - b.attemptNo).at(-1);
+                    if (previousAttempt !== undefined) {
+                        await this.recordingSessionDB.updateAttempt(previousAttempt.id, {
+                            endedAt: previousAttempt.endedAt ?? Date.now(),
+                            closeReason: previousAttempt.closeReason ?? 'process-restart',
+                            fileOffsetEnd: originalSize,
+                        });
+                    }
+                    videoFile.size = alignedSize;
+                    await this.recordingSessionDB.updateSession(session.id, {
+                        state: RecordingSessionState.RECORDING,
+                        updatedAt: Date.now(),
+                    });
+                    const recorder = await this.provider();
+                    if (recorder.setResumeTimer(reserve, true, { session, attempts, recorded, videoFile })) {
+                        this.recordingIndex[reserve.id] = recorder;
+                        resumedRecordedIds.add(recorded.id);
+                        this.log.system.info(
+                            `resume recording: reserveId: ${reserve.id}, recordedId: ${recorded.id}, size: ${originalSize} -> ${alignedSize}`,
+                        );
+                        continue;
+                    }
+                } catch (err) {
+                    this.log.system.warn(`recording resume setup failed: ${session.id}`);
+                    this.log.system.warn(err);
+                }
+            }
             await this.recordingSessionDB
                 .updateSession(session.id, {
                     state: RecordingSessionState.FINISHED,
@@ -149,7 +235,6 @@ class RecordingManageModel implements IRecordingManageModel {
                     this.log.system.warn(err);
                 });
             if (session.recordedId !== null) {
-                const recorded = await this.recordedDB.findId(session.recordedId).catch(() => null);
                 if (recorded !== null) {
                     recorded.recordingStatus = 'partial';
                     recorded.endReason = 'process-restart';
@@ -176,6 +261,7 @@ class RecordingManageModel implements IRecordingManageModel {
         );
 
         for (const r of records) {
+            if (resumedRecordedIds.has(r.id)) continue;
             // 録画中から録画済みへ変更
             try {
                 await this.recordedDB.removeRecording(r.id);
@@ -331,6 +417,19 @@ class RecordingManageModel implements IRecordingManageModel {
 
         this.log.system.info(`cancel recording reserveId: ${reserveId}, isPlanToDelete: ${isPlanToDelete}`);
         return recording.cancel(isPlanToDelete);
+    }
+
+    /** 録画中のセッションを再開可能な状態で閉じる */
+    public async shutdown(): Promise<void> {
+        const results = await Promise.allSettled(
+            Object.values(this.recordingIndex).map(recorder => recorder.shutdown()),
+        );
+        for (const result of results) {
+            if (result.status === 'rejected') {
+                this.log.system.error('recording shutdown error');
+                this.log.system.error(result.reason);
+            }
+        }
     }
 
     /**
