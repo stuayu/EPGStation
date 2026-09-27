@@ -18,6 +18,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - recisdb-proxy の GR チューナーへ NW1〜NW40 予約を割り当て → 2026-09-28
 - OpenTelemetry を opt-in で導入 (録画セッション・予約計画の traces / metrics) → 2026-09-28
 - 録画 session / attempt の永続化と span を RecordingSessionTracker へ分離 → 2026-09-28
+- 録画セッション再設計の実機再接続・開始ゲート検証 → 2026-09-28
 
 - 連続録画の上流共有 Phase 9 (opt-in) → 2026-09-28
 - 放送時間未定の終了時刻を表示・Planner・安全上限に分離 Phase 8 → 2026-09-28
@@ -42,6 +43,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-28
 
+- **録画セッション再設計を本番 Windows / MySQL / recisdb-proxy-rs で実機検証**: 録画18588は attempt 1 が0〜69,523,340 byte (`upstream-eof`)、attempt 2 が69,523,340〜409,816,124 byte (`scheduled-end`)。受信断584 ms、1ファイルで188 byte格子を維持、drop 11件 (つなぎ目の CC 不連続)。つなぎ目前後212,765パケットで同期エラー0、PTS は巻き戻り・リセットなし (映像 +0.467秒 / 音声 +0.725秒)、デコードエラー8件はつなぎ目の一瞬だけ。再接続2回目の録画18589は受信断588 msで、DB に `recordingStatus: partial` / `endReason: scheduled-end` を保存。録画18590の番組途中予約は予定08:06:00に対して08:05:55開始 (`timeSpecifiedMidProgram`、修正前は56秒遅延)。追っかけ再生の m2tsll は録画終了から約1.7秒で停止 (修正前は最大60秒)。NW21予約は `isConflict: false` (修正前は適合 tuner 0本で必ず競合)。手順と開始ゲート制約は [recording-service-stream-design.md](recording-service-stream-design.md) に記録。
 - **RecorderModel の session / attempt 永続化と復帰準備を分離**: `RecordingSessionTracker` が session 状態、attempt 作成・終了、close reason 集計、結果判定と telemetry span を担当し、`RecordingResumeCoordinator` が復帰ファイルと attempt 集計を準備する。予約・タイマー・prepRecord / doRecord の段取りは `RecorderModel` に残す。
 - **録画セッション再設計のレビュー指摘を修正**: 再接続へ最新予約を渡し、再開通知・transport gap・first-data timeout を一度だけ処理する。共有上流は枝ごとに最大1 MiBを保持し、上限超過した枝だけを失敗させる。録画結果の後片付け、通信失敗理由、planner 比較ログ、末尾追従再生、Operator shutdown、Mirakurun priority、tuner index、migration 名の不整合を修正した。
 - **recisdb-proxy の GR チューナーへ NW1〜NW40 予約を割り当て**: Mirakurun 互換 API が県外地上波を `GR` として報告する環境では、NWn の予約種別とチューナー `types` の完全一致がなく、従来の予約割当は 0 本だった。`isTunerCompatibleWithChannelType()` に照合を集約し、完全一致または NWn 予約に対する GR チューナーを適合とする。SchedulePlanner は空の `types` を全種別扱いする従来の補完を保ちながら、GR/NW 予約では GR 明示 tuner を空 `types` より優先する。本番 41 tuner fixture で修正前は NW21 の従来割当 0 本、planner は index 5 (`SPHD`, `types: []`)。修正後は従来割当 28 本 (うち `types: [GR]` は 22 本)、planner は index 0 (`PX-MLT`, `types: [GR, BS, CS]`)。GR / BS / BS4K / SKY の planner 割当先は index 0 / 0 / 5 / 5 で従来どおり。fixture は `test/fixtures/prod-tuners.json`。なお EPGStation は Mirakurun の `channel.type` を NWn へ変換していない。`ChannelDB.createInsertValue()` が `physicalChannel.type` をそのまま保存し、地上波として GR/NW を共通扱いするのは `BroadcastRegion.isRegionalChannelType()` と `BroadcastAffiliation.isAffiliationChannelType()`。
@@ -769,7 +771,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 ### EPG 追従・予約・録画実行
 
 - 2026-09-28 本番 Windows / MySQL / recisdb-proxy-rs で確認した予約29・録画18587 (ＮＨＫ総合１・大分、07:26:42〜07:29:42) の結果列未保存を修正。267,901,504 byte (188 byte 格子一致) で正常終了し session は `FINISHED / completed / scheduled-end` だったが、`GET /api/recorded/18587` は `recordingStatus: null` / `endReason: null`。関連付き Recorded 全体を更新して TypeORM の relation property エラーになっていたため、終了時・起動時 partial 確定を結果列専用更新へ変更し、ハーネスにもリレーション誤更新の例外を追加。SQLite ITA で従来更新の失敗と専用更新後の永続化を検証。
-- 同実機で時刻指定予約が予定開始07:26:42に対し07:27:38に開始し56秒欠落した問題を修正。EPG の開始時刻が予約時刻の前後2分以内なら境界予約として延長待ちを維持し、番組途中の予約は開始マージン到達時に `timeSpecifiedMidProgram` で開始する。EPG の ProgramDB `startAt` で判定し、EIT更新後の時刻に依存しない。
+- 同実機で時刻指定予約が予定開始07:26:42に対し07:27:38に開始し56秒欠落した問題を修正。録画準備時に予約時刻と `ProgramDB.findSchedule()` の番組 `startAt` が前後2分以内なら境界予約として延長待ちを維持し、番組途中の予約は開始マージン到達時に `timeSpecifiedMidProgram` で開始する。ProgramDB の `startAt` は EIT や Mirakurun の更新で上書きされる場合があり、判定は開始ゲート設定時に一度だけ行う。準備時点で延長が番組表に反映済みなら境界予約にならず予約時刻で開始するが、開始ゲートの soft timeout は最大60秒のため、前番組を録る量の増加も最大60秒。
 
 - 番組表の全件更新が主キー重複で落ちるのを直した (Issue #17)
 - ARIB TR-B14 の EIT[p/f] 運用に合わせ、時刻指定予約の録画開始判定で following の start_time も利用し、present 更新前の録画開始遅延を防ぐようにした

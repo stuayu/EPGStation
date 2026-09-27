@@ -167,7 +167,7 @@ TS が到着した時点で伝送正常と判断できるため、EIT 待ち中�
 
 ### 5.1 時刻指定予約の開始境界
 
-時刻指定予約の `startAt` が、同じチャンネルの ProgramDB 番組開始時刻の前後2分以内にある場合を番組境界予約とする。番組表の `startAt` を使い、EIT による放送時刻更新後の値は判定に使わない。境界予約では従来どおり前番組の延長中に待ち、following の開始時刻に達した時点で開始し、延長が続く場合は soft timeout を安全弁にする。番組境界に一致しない時刻指定予約は、開始マージン到達で `timeSpecifiedMidProgram` として開始する。programId 予約の event_id 判定は変更しない。
+時刻指定予約の `startAt` と、同じチャンネルの `ProgramDB.findSchedule()` が返す番組の `startAt` が前後2分以内なら番組境界予約とする。ProgramDB の `startAt` は `applyEitProgram` や Mirakurun の更新で EIT の値に上書きされることがある。判定は録画準備時 (開始ゲート設定時。既定では予約開始の約2分前) に一度だけ行う。準備時点で延長がすでに番組表へ反映され、開始時刻が予約時刻から2分を超えて離れていれば境界予約とは判定せず、開始ゲートは予約時刻で開始する。この場合、時刻指定予約の開始ゲートは soft timeout (最大60秒) で待ちを打ち切るため、前番組を録る量が増えても最大60秒となる。境界予約では前番組の延長中に待ち、following の開始時刻に達した時点で開始し、延長が続く場合は soft timeout を安全弁にする (最大60秒)。例えば区切りの1.5分前から録る予約は、開始が最大60秒遅れる。実測 (録画18589) では予定07:58:30に対して07:59:25に開始した (08:00開始番組の1.5分前を指定)。番組境界に一致しない時刻指定予約は、開始マージン到達で `timeSpecifiedMidProgram` として開始する。programId 予約の event_id 判定は変更しない。
 
 ### 5.2 開始前の伝送失敗分類
 
@@ -311,6 +311,42 @@ Windows 実機では先に `main` と同じ EPGStation を配備し、Mirakurun 
 - fallback と transport error の件数をログから集計できる。
 
 ## 12. Issue 報告者へ追加で依頼する証跡
+
+## 実機での再接続試験
+
+本番相当の Windows + MySQL + recisdb-proxy-rs 環境で録画中の受信断と再接続を確認する手順。
+
+1. 3〜4分の時刻指定予約を作る。例:
+
+   ```http
+   POST /api/reserves
+   Content-Type: application/json
+
+   {"allowEndLack":false,"timeSpecifiedOption":{"name":"再接続試験","channelId":<id>,"startAt":<ms>,"endAt":<ms>}}
+   ```
+
+   開始時刻は番組の区切りから2分以上離す。区切りに近い時刻は「区切りに合わせた予約」と判定され、開始ゲートで前番組の延長を待つ。
+2. 録画開始後、recisdb-proxy-rs のダッシュボード API `GET http://<host>:40080/api/clients` を呼び、`protocol: "mirakurun"` かつ `stream_class: "record"` のセッションを探す。
+3. セッションを `POST http://<host>:40080/api/client/<session_id>/disconnect` で切断する。recisdb-proxy は切断をエラーではなく正常な EOF として EPGStation へ返す。修正前は、番組途中でも正常完了と判定して録画を止め、予約を削除していた。
+4. 録画終了後、次を確認する。
+   - `GET /api/recorded/<id>` の `recordingStatus`、`endReason`、`transportGaps`
+   - `GET /api/recorded/<id>/recording-sessions` の attempt 数と各 attempt のバイト範囲
+   - 録画ファイルサイズが188の倍数であること
+5. attempt 1 の `fileOffsetEnd` 前後各20MBを切り出し、つなぎ目を解析する。
+   - 同期バイト `0x47` が188 byteごとに並ぶこと
+   - ffprobe で映像・音声 PTS の飛びを確認する
+   - ffmpeg のデコードエラー数を確認する
+
+Windows では録画ファイル名に日本語が含まれると、SSH 越しの PowerShell から ffprobe へ渡す際に文字化けして読めないことがある。ASCII 名で範囲を切り出してから解析する。本番機の時計は手元と数秒ずれる場合があるため、時刻比較には DB の attempt 時刻を使う。
+
+### 実測結果
+
+- 再接続 (録画18588): attempt 1 は0〜69,523,340 byte (`upstream-eof`)、attempt 2 は69,523,340〜409,816,124 byte (`scheduled-end`)。受信断584 ms。録画は1ファイルで188 byteの倍数。drop 11件 (つなぎ目の continuity counter 不連続)。
+- つなぎ目: 212,765パケットで同期エラー0。PTS は放送局の時計で進み続け、巻き戻り・リセットなし (映像 +0.467秒、音声 +0.725秒)。デコードエラーはつなぎ目の一瞬だけで8件。
+- 再接続2回目 (録画18589、修正後): 受信断588 ms。DB に `recordingStatus: partial` / `endReason: scheduled-end` を保存。
+- 番組途中の時刻指定予約 (録画18590): 予定08:06:00、開始08:05:55 (`timeSpecifiedMidProgram`)。修正前は56秒遅れていた。
+- 追っかけ再生終了: 録画終了から約1.7秒で m2tsll 配信が停止。修正前は最大60秒待っていた。
+- NW 局予約: NW21 局の予約が `isConflict: false`。修正前は受け入れチューナーが0本で必ず競合していた。
 
 実装前の原因確定には、再発時刻の前後 20 分について次を依頼する。
 
