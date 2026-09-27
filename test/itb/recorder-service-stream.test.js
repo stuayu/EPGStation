@@ -345,6 +345,70 @@ test('録画中の endAt 変更は待たずに即ハードタイマーへ反映�
     clearEventRelayTimer(recorder);
 });
 
+test('復帰後の setTimer は過去 attempt の終了理由と partial 結果を保持する', async () => {
+    const recorder = makeRecorder({ programStreamMode: 'service' });
+    recorder.config.recordedTmp = os.tmpdir();
+    const now = Date.now();
+    const recorded = { id: 1, isRecording: true, videoFiles: [], dropLogFileId: null };
+    const session = { id: 1, state: 'RECORDING', recordedId: 1 };
+    recorder.recordedDB = {
+        removeRecording: async () => {
+            recorded.isRecording = false;
+        },
+        findId: async () => recorded,
+        updateOnce: async row => Object.assign(recorded, row),
+    };
+    recorder.recordingSessionDB = {
+        updateSession: async (_id, values) => Object.assign(session, values),
+        findAttemptsBySessionId: async () => [],
+    };
+    recorder.sessionTracker.db = recorder.recordingSessionDB;
+    recorder.recordingEvent = { emitFinishRecording() {} };
+    const restored = recorder.setResumeTimer({ ...nearReserve(), programId: null }, true, {
+        videoFile: { id: 1, parentDirectoryName: 'tmp', filePath: 'resume.ts', size: 188 },
+        session,
+        recorded,
+        attempts: [{ closeReason: 'transport-lost', endedAt: now - 1000, firstDataAt: now - 2000 }],
+    });
+    recorder.videoFileId = null;
+
+    try {
+        assert.equal(restored, true);
+        assert.deepEqual(recorder.sessionTracker.closeReasons, ['transport-lost']);
+        await recorder.recEnd();
+        assert.equal(recorded.endReason, 'transport-lost');
+        assert.equal(recorded.recordingStatus, 'partial');
+        assert.equal(session.endReason, 'transport-lost');
+        assert.equal(session.resultStatus, 'partial');
+    } finally {
+        recorder.timer.clear();
+    }
+});
+
+test('finish 終了時に各終了理由を info ログへ出す', async () => {
+    for (const reason of ['canceled', 'boundary', 'scheduled-end', 'tuner-handoff']) {
+        const recorder = makeRecorder({ programStreamMode: 'service' });
+        const messages = [];
+        const recorded = { id: 1, isRecording: true, videoFiles: [] };
+        recorder.log.system.info = message => messages.push(message);
+        recorder.reserve = { ...nearReserve(), isTimeSpecified: true, ruleId: null, isEventRelay: false };
+        recorder.recordedId = recorded.id;
+        recorder.recordedDB = {
+            removeRecording: async () => {
+                recorded.isRecording = false;
+            },
+            findId: async () => recorded,
+            updateOnce: async row => Object.assign(recorded, row),
+        };
+        recorder.recordingEvent = { emitFinishRecording() {} };
+        recorder.boundaryEndReason = reason;
+        recorder.sessionTracker.closeReasons = [reason];
+
+        await recorder.recEnd();
+        assert.ok(messages.includes(`recording end: reserveId: ${recorder.reserve.id}, reason: ${reason}`));
+    }
+});
+
 test('legacy program stream は endAt 変更でハードタイマーを触らない', async () => {
     const calls = [];
     const recorder = makeRecorder(

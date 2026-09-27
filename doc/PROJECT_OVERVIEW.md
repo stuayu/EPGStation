@@ -65,7 +65,7 @@ flowchart TB
 | `src/lib/` `src/util/` | 汎用ライブラリ / 純粋関数ユーティリティ |
 | `src/model/ModelContainerSetter.ts` | **DI バインディングの中心。新規クラスは必ずここに登録** |
 | `src/model/db/` | TypeORM Repository をラップしたデータアクセス層 (`I*DB.ts` / `*DB.ts`) |
-| `src/model/operator/` | 録画エンジン本体: reservation / recording / recorded / rule / storage / thumbnail / externalCommand |
+| `src/model/operator/` | 録画エンジン本体: reservation / recording / recorded / rule / storage / thumbnail / externalCommand。`RecordingSessionTracker` が session / attempt の永続化・結果判定・telemetry span を管理し、`RecordingResumeCoordinator` が復帰状態を準備、`RecorderModel` が予約と録画の段取りを管理 |
 | `src/model/epgUpdater/` | EPG 更新 (Mirakurun イベントストリーム購読 + 定期実行) |
 | `src/model/event/` | EventEmitter ベースの内部イベント |
 | `src/model/ipc/` | Operator ⇔ Service 間 IPC |

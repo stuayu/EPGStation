@@ -16,6 +16,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 ### 索引
 
 - OpenTelemetry を opt-in で導入 (録画セッション・予約計画の traces / metrics) → 2026-09-28
+- 録画 session / attempt の永続化と span を RecordingSessionTracker へ分離 → 2026-09-28
 
 - 連続録画の上流共有 Phase 9 (opt-in) → 2026-09-28
 - 放送時間未定の終了時刻を表示・Planner・安全上限に分離 Phase 8 → 2026-09-28
@@ -40,6 +41,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-28
 
+- **RecorderModel の session / attempt 永続化と復帰準備を分離**: `RecordingSessionTracker` が session 状態、attempt 作成・終了、close reason 集計、結果判定と telemetry span を担当し、`RecordingResumeCoordinator` が復帰ファイルと attempt 集計を準備する。予約・タイマー・prepRecord / doRecord の段取りは `RecorderModel` に残す。
 - **録画セッション再設計のレビュー指摘を修正**: 再接続へ最新予約を渡し、再開通知・transport gap・first-data timeout を一度だけ処理する。共有上流は枝ごとに最大1 MiBを保持し、上限超過した枝だけを失敗させる。録画結果の後片付け、通信失敗理由、planner 比較ログ、末尾追従再生、Operator shutdown、Mirakurun priority、tuner index、migration 名の不整合を修正した。
 - **OpenTelemetry を opt-in で導入**: `observability.otel.enabled` が true の場合だけ Node SDK を動的 import し、OTLP/HTTP で traces / metrics を送る。Operator と Service は個別に初期化し、`service.name` にプロセス種別を付ける。RecordingSession / attempt、開始ゲート fallback、再接続と gap、SchedulePlanner、チューナー open failure を `Telemetry` wrapper 経由で計測する。ログ出力は log4js のまま。
 - **録画セッション再設計 Phase 8 で未定番組の終了時刻を用途別に分離**: `ProgramDuration.resolveProgramEndTimes()` が表示用と録画安全上限に開始 + 3 時間を保ち、Planner 用終了だけ同一チャンネルの次番組開始で切り詰める。Reservation Planner は EPG の次番組を参照し、API の表示と保存済み `endAt` は変更しない。内部列 `reserve.plannedEndAt` は録画中に対象 EIT present が未定のまま計画終了へ近づいた場合だけ30分ずつ延長し、3時間の上限内で重複予約の Planner を再計算する。`reservation.scheduler: planner` のときだけ有効。SQLite / MySQL migration を追加した。

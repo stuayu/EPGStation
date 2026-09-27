@@ -25,20 +25,87 @@ const makeReserve = (values = {}) =>
         ...values,
     });
 
-const makeModel = (reserveDB = {}) => {
-    const noopLogger = { getLogger: () => ({ system: { info() {}, debug() {}, warn() {}, error() {}, fatal() {} } }) };
+const makeModel = (reserveDB = {}, options = {}) => {
+    const noopLogger = {
+        getLogger: () => ({
+            system: { info: (...args) => options.logs?.push(args), debug() {}, warn() {}, error() {}, fatal() {} },
+        }),
+    };
     return new ReservationManageModel(
         noopLogger,
-        { getConfig: () => ({}) },
+        { getConfig: () => ({ reservation: { scheduler: 'legacy' }, ...options.config }) },
         {},
         {},
         { findTimeRanges: async () => [], updateMany: async () => {}, ...reserveDB },
         {},
-        {},
+        options.programDB ?? {},
         {},
         { emitUpdated() {} },
     );
 };
+
+test('legacy 並走比較は差分のない予約を記録せず、未定尺番組照会をチャンネル単位にまとめる', async () => {
+    const logs = [];
+    let scheduleCalls = 0;
+    const model = makeModel(
+        {},
+        {
+            logs,
+            programDB: {
+                findSchedule: async () => {
+                    scheduleCalls++;
+                    return [];
+                },
+            },
+        },
+    );
+    model.setTuners([{ index: 0, name: 'tuner-0', types: ['GR'], command: '', isAvailable: true }]);
+    const input = [1, 2, 3].map((id, index) =>
+        makeReserve({
+            id,
+            channel: 'GR-1',
+            channelId: 1,
+            programId: 100 + id,
+            isTimeUndefined: true,
+            startAt: 1000 + index * 3000,
+            endAt: 2000 + index * 3000,
+        }),
+    );
+
+    await model.createReserves(input);
+    assert.equal(logs.length, 0);
+    assert.ok(scheduleCalls < input.length, `findSchedule calls ${scheduleCalls} for ${input.length} reserves`);
+});
+
+test('未定尺の予約が同じチャンネルなら findSchedule を予約数より少なく呼ぶ', async () => {
+    let scheduleCalls = 0;
+    const model = makeModel(
+        {},
+        {
+            programDB: {
+                findSchedule: async () => {
+                    scheduleCalls++;
+                    return [];
+                },
+            },
+        },
+    );
+    model.setTuners([{ index: 0, name: 'tuner-0', types: ['GR'], command: '', isAvailable: true }]);
+    const input = [1, 2, 3].map((id, index) =>
+        makeReserve({
+            id,
+            channel: 'GR-1',
+            channelId: 1,
+            programId: 100 + id,
+            isTimeUndefined: true,
+            startAt: 1000 + index * 3000,
+            endAt: 2000 + index * 3000,
+        }),
+    );
+
+    await model.createPlannerReserves(input);
+    assert.ok(scheduleCalls < input.length, `findSchedule calls ${scheduleCalls} for ${input.length} reserves`);
+});
 
 test('createReserves は時間順スイープと先着チューナー割当を使い、競合を記録する', async () => {
     const model = makeModel();
