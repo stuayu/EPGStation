@@ -434,7 +434,10 @@ export default class ProgramDB implements IProgramDB {
         if (current === null || typeof current === 'undefined') return null;
 
         const time = resolveEitBroadcastTime(event, current.startAt, current.endAt);
-        const duration = event.durationSec === null ? current.duration : event.durationSec;
+        const duration = event.durationSec === null ? current.duration : event.durationSec * 1000;
+        const hasTimeChanged =
+            current.startAt !== time.startAt || current.endAt !== time.endAt || current.duration !== duration;
+        const updateTime = hasTimeChanged ? Math.max(new Date().getTime(), current.updateTime + 1) : current.updateTime;
         await repository.update(id, {
             startAt: time.startAt,
             endAt: time.endAt,
@@ -443,8 +446,14 @@ export default class ProgramDB implements IProgramDB {
             eitStartAt: time.startAt,
             eitEndAt: time.endAt,
             eitDurationUndefined: time.isDurationUndefined,
+            ...(hasTimeChanged ? { updateTime } : {}),
         });
-        Object.assign(current, { startAt: time.startAt, endAt: time.endAt, duration });
+        Object.assign(current, {
+            startAt: time.startAt,
+            endAt: time.endAt,
+            duration,
+            updateTime,
+        });
         return current;
     }
 
@@ -467,9 +476,7 @@ export default class ProgramDB implements IProgramDB {
                     ? current.duration
                     : Math.max(
                           0,
-                          Math.round(
-                              ((current.eitEndAt ?? current.endAt) - (current.eitStartAt ?? current.startAt)) / 1000,
-                          ),
+                          Math.round((current.eitEndAt ?? current.endAt) - (current.eitStartAt ?? current.startAt)),
                       );
                 value.eitReceivedAt = current.eitReceivedAt;
                 value.eitStartAt = current.eitStartAt;

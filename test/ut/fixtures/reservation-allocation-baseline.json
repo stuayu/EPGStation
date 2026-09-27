@@ -1,0 +1,16 @@
+{
+  "tuners": [
+    { "index": 0, "types": ["GR", "BS"] },
+    { "index": 1, "types": ["GR"] }
+  ],
+  "expectedConflicts": { "1": false, "2": false, "3": true, "4": true, "5": false, "6": false, "7": false },
+  "reserves": [
+    { "id": 1, "name": "GR連続1", "channel": "GR-1", "channelType": "GR", "startAt": 1000, "endAt": 2000, "ruleId": null, "updateTime": 1 },
+    { "id": 2, "name": "GR連続2", "channel": "GR-1", "channelType": "GR", "startAt": 2000, "endAt": 3000, "ruleId": null, "updateTime": 2 },
+    { "id": 3, "name": "別局A", "channel": "GR-2", "channelType": "GR", "startAt": 1000, "endAt": 3000, "ruleId": 1, "updateTime": 3 },
+    { "id": 4, "name": "別局B", "channel": "BS-1", "channelType": "BS", "startAt": 1000, "endAt": 3000, "ruleId": 2, "updateTime": 4 },
+    { "id": 5, "name": "時刻指定", "channel": "GR-3", "channelType": "GR", "startAt": 1500, "endAt": 2500, "ruleId": null, "updateTime": 9, "isTimeSpecified": true },
+    { "id": 6, "name": "時間未定", "channel": "GR-1", "channelType": "GR", "startAt": 3000, "endAt": 4000, "ruleId": 3, "updateTime": 5, "isTimeUndefined": true },
+    { "id": 7, "name": "末尾欠け許容", "channel": "GR-1", "channelType": "GR", "startAt": 4000, "endAt": 5000, "ruleId": null, "updateTime": 10, "allowEndLack": true }
+  ]
+}
