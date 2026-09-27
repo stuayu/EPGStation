@@ -130,6 +130,8 @@ export interface ChannelItem {
  */
 export interface EditManualReserveOption {
     allowEndLack: boolean; // 末尾切れを許すか
+    priority?: number;
+    conflictPolicy?: ConflictPolicy;
     tags?: RecordedTagId[];
     saveOption?: ReserveSaveOption;
     encodeOption?: ReserveEncodedOption;
@@ -186,6 +188,8 @@ export interface ReserveItem {
     conflictInfo?: ReservationConflict;
     isOverlap: boolean;
     allowEndLack: boolean;
+    priority: number;
+    conflictPolicy: ConflictPolicy;
     isTimeSpecified: boolean;
     /**
      * 放送終了時刻が未定か (ARIB の duration = 0xFFFFFF)。true なら endAt は暫定値
@@ -244,7 +248,7 @@ export interface ReserveItem {
  * 予約の競合内容
  */
 export interface ReservationConflict {
-    type: 'NO_TUNER' | 'PRIORITY_PREEMPTED' | 'PARTIAL_HEAD' | 'PARTIAL_TAIL' | 'MARGIN_OVERLAP' | 'BACKEND_UNAVAILABLE';
+    type: 'NO_TUNER' | 'PRIORITY_PREEMPTED' | 'PARTIAL_HEAD' | 'PARTIAL_TAIL' | 'PARTIAL' | 'MARGIN_OVERLAP' | 'BACKEND_UNAVAILABLE';
     affectedMs: number;
     conflictingReserveIds: ReserveId[];
 }
@@ -368,6 +372,16 @@ export interface AddRuleOption {
     encodeOption?: ReserveEncodedOption;
 }
 
+export interface PreemptedReserve {
+    reserveId: ReserveId;
+    reason: 'PRIORITY_PREEMPTED';
+}
+
+export interface AddedReserve {
+    reserveId: ReserveId;
+    preemptedReserves: PreemptedReserve[];
+}
+
 /**
  * ジャンル
  */
@@ -477,10 +491,14 @@ export interface RuleSearchOption {
 export interface RuleReserveOption {
     enable: boolean; // ルールが有効か
     allowEndLack: boolean; // 末尾切れを許可するか
+    priority?: number;
+    conflictPolicy?: ConflictPolicy;
     avoidDuplicate: boolean; // 録画済みの重複番組を排除するか
     periodToAvoidDuplicate?: number; // 重複を避ける期間
     tags?: RecordedTagId[]; // 録画完了後に付与する tag 設定
 }
+
+export type ConflictPolicy = 'STRICT' | 'ALLOW_END_LACK' | 'ALLOW_HEAD_LACK' | 'ALLOW_PARTIAL' | 'PREEMPT_LOWER_PRIORITY';
 
 /**
  * 保存オプション

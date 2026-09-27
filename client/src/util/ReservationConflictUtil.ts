@@ -20,6 +20,10 @@ export default class ReservationConflictUtil {
         if (conflict.type === 'MARGIN_OVERLAP') {
             return `チューナー準備時間が${reserves}と重複`;
         }
+        if (conflict.type === 'PARTIAL_HEAD') return `先頭 ${seconds} 秒が欠損`;
+        if (conflict.type === 'PARTIAL_TAIL') return `末尾 ${seconds} 秒が欠損`;
+        if (conflict.type === 'PRIORITY_PREEMPTED') return `優先度で${reserves}に押し出された`;
+        if (conflict.type === 'PARTIAL') return `途中 ${seconds} 秒が欠損`;
 
         return `${reserves}と競合 (録画できない時間 ${seconds} 秒)`;
     }

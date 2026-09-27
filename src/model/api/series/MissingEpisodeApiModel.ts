@@ -78,7 +78,7 @@ export default class MissingEpisodeApiModel implements IMissingEpisodeApiModel {
             });
         }
         // 予約自体は通常の手動予約 API を再利用する (末尾切れは許容し、他の設定は既定値に委ねる)
-        const reserveId = await this.reserveApi.add({ programId, allowEndLack: true });
+        const { reserveId } = await this.reserveApi.add({ programId, allowEndLack: true });
         // 録画完了時に SeriesResolver が優先参照する airType: rerun ヒントを事前登録する (§4.7)
         await this.seriesDB.saveReservationHint({
             reserveId,

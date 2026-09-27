@@ -54,6 +54,12 @@ export default class Reserve extends BaseEntity {
     })
     public allowEndLack: boolean = false; // 末尾切れを許すか
 
+    @Column({ type: 'integer', default: 3 })
+    public priority: number = 3;
+
+    @Column({ type: 'text', default: 'STRICT' })
+    public conflictPolicy: string = 'STRICT';
+
     @Column({
         type: 'text',
         nullable: true,

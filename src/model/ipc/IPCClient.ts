@@ -206,7 +206,7 @@ export default class IPCClient implements IIPCClient {
                 });
             },
             add: (option: apid.ManualReserveOption) => {
-                return this.send<apid.ReserveId>({
+                return this.send<apid.AddedReserve>({
                     model: ModelName.reserveation,
                     func: ReserveationFunctions.add,
                     args: {

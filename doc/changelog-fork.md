@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 予約優先度と競合ポリシー Phase 7 → 2026-09-28
 - 予約スケジューラ Phase 6: SchedulePlanner と競合詳細 → 2026-09-28
 - 録画セッション再設計 Phase 5: 再起動後の同一録画復帰と shutdown flush → 2026-09-28
 - 録画セッション再設計 Phase 5-3: 更新時の録画中件数表示と再開確認 → 2026-09-28
@@ -34,6 +35,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-28
+
+- **予約優先度と競合ポリシー Phase 7 を追加**: Reserve / Rule に priority (1〜5、既定 3) と conflictPolicy を追加し、SQLite / MySQL migration で既存 allowEndLack を STRICT / ALLOW_END_LACK へ移行する。優先度は高い順に並べ、同じ優先度では従来の sortReserve を維持する。Planner は末尾・先頭・部分欠損の許可と下位予約の押し出しを扱い、手動追加 API は押し出した予約 ID と PRIORITY_PREEMPTED を返す。Mirakurun には recPriority / conflictPriority を基準に予約優先度の差分を足し、最小値 -1 で下限を設ける。
 
 - **予約スケジューラ Phase 6 で区間別チューナー割当を追加**: `reservation.scheduler` は `legacy` を既定とし、legacy 運用中も planner との差分を予約 ID・旧新の競合/チューナー値・理由付きで info log へ出す。`planner` は時刻区間ごとに同じチャンネルの予約をまとめ、増加路最大マッチングで多波対応チューナーの割当を行う。`types: []` は全放送種別へ補完し理由を保存する。予約に `conflictInfo` / `plannedTunerIndex` を追加し、API・一覧・詳細に競合内容を表示する。予約差分再計算は時間窓が連鎖する範囲へ拡張。503 開始再試行は開始前/マージン重複中に2秒間隔とする。実 Mirakurun のデバイス選択との一致は未検証。
 

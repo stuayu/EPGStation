@@ -43,6 +43,7 @@ import IRecorderModel, { RecordingResumeInfo } from './IRecorderModel';
 import IRecordingStreamCreator from './IRecordingStreamCreator';
 import IRecordingUtilModel, { RecFilePathInfo } from './IRecordingUtilModel';
 import LongTimer from '../../../util/LongTimer';
+import { toMirakurunPriority } from '../reservation/ReservationPriorityUtil';
 import RecordingStartBuffer from './RecordingStartBuffer';
 import { RecordingTimingConfig, resolveRecordingTimingConfig } from './RecordingTimingConfig';
 import { decideRecordingEnd } from './RecordingBoundary';
@@ -239,7 +240,10 @@ class RecorderModel implements IRecorderModel {
                 endedAt: null,
                 closeReason: null,
                 errorCode: null,
-                priority: this.reserve.isConflict ? this.config.conflictPriority : this.config.recPriority,
+                priority: toMirakurunPriority(
+                    this.reserve.isConflict ? this.config.conflictPriority : this.config.recPriority,
+                    this.reserve.priority,
+                ),
                 bytesReceived: 0,
                 fileOffsetStart: null,
                 fileOffsetEnd: null,

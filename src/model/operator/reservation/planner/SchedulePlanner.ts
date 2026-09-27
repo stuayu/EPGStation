@@ -2,7 +2,16 @@ import * as apid from '../../../../../api';
 import { RecordingTimingConfig } from '../../recording/RecordingTimingConfig';
 
 export type ReservationConflictType =
-    'NO_TUNER' | 'PRIORITY_PREEMPTED' | 'PARTIAL_HEAD' | 'PARTIAL_TAIL' | 'MARGIN_OVERLAP' | 'BACKEND_UNAVAILABLE';
+    | 'NO_TUNER'
+    | 'PRIORITY_PREEMPTED'
+    | 'PARTIAL_HEAD'
+    | 'PARTIAL_TAIL'
+    | 'PARTIAL'
+    | 'MARGIN_OVERLAP'
+    | 'BACKEND_UNAVAILABLE';
+
+export type ConflictPolicy =
+    'STRICT' | 'ALLOW_END_LACK' | 'ALLOW_HEAD_LACK' | 'ALLOW_PARTIAL' | 'PREEMPT_LOWER_PRIORITY';
 
 export interface ReservationConflict {
     type: ReservationConflictType;
@@ -14,6 +23,7 @@ export interface PlannedReservation {
     reserveId: number;
     tunerIndex: number | null;
     conflict: ReservationConflict | null;
+    lossInfo: ReservationConflict | null;
     lostMs: number;
     reasons: string[];
 }
@@ -28,6 +38,7 @@ export interface SchedulePlannerReservation {
     isSkip?: boolean;
     isOverlap?: boolean;
     priority?: number;
+    conflictPolicy?: ConflictPolicy;
 }
 
 export interface SchedulePlannerTuner {
@@ -215,20 +226,37 @@ export const planSchedule = (input: SchedulePlannerInput): PlannedReservation[] 
         const hasHeadLoss = bounds?.startAt === reserve.startAt;
         const hasTailLoss = bounds?.endAt === reserve.endAt;
         const shortFullLoss = bounds !== undefined && bounds.endAt - bounds.startAt <= ALLOW_END_LACK_MS;
+        const policy = reserve.conflictPolicy ?? (reserve.allowEndLack === true ? 'ALLOW_END_LACK' : 'STRICT');
         const allowTail =
-            reserve.allowEndLack === true &&
-            (hasHeadLoss !== true || shortFullLoss) &&
-            hasTailLoss === true &&
+            policy === 'ALLOW_END_LACK' &&
+            hasTailLoss &&
+            (!hasHeadLoss || shortFullLoss) &&
             lostMs <= ALLOW_END_LACK_MS;
+        const allowHead = policy === 'ALLOW_HEAD_LACK' && hasHeadLoss && !hasTailLoss && lostMs <= ALLOW_END_LACK_MS;
+        const allowPartial = policy === 'ALLOW_PARTIAL' && lostMs < reserve.endAt - reserve.startAt;
+        const acceptedLoss = lostMs > 0 && (allowTail || allowHead || allowPartial);
+        const preempted =
+            lostMs > 0 &&
+            [...(conflicting.get(reserve.id) ?? [])].some(id => {
+                const other = input.reservations.find(candidate => candidate.id === id);
+                return (
+                    other !== undefined &&
+                    other.conflictPolicy === 'PREEMPT_LOWER_PRIORITY' &&
+                    (other.priority ?? 0) < (reserve.priority ?? 0)
+                );
+            });
         const marginOverlapMs = marginOverlap.get(reserve.id) ?? 0;
         const conflict: ReservationConflict | null =
-            lostMs > 0 && allowTail === false
+            lostMs > 0 && !acceptedLoss
                 ? {
-                      type:
-                          hasHeadLoss === true && hasTailLoss !== true
-                              ? 'PARTIAL_HEAD'
-                              : hasTailLoss === true && (hasHeadLoss !== true || shortFullLoss)
-                                ? 'PARTIAL_TAIL'
+                      type: preempted
+                          ? 'PRIORITY_PREEMPTED'
+                          : hasHeadLoss === true && hasTailLoss !== true
+                            ? 'PARTIAL_HEAD'
+                            : hasTailLoss === true && hasHeadLoss !== true
+                              ? 'PARTIAL_TAIL'
+                              : hasHeadLoss && hasTailLoss
+                                ? 'PARTIAL'
                                 : 'NO_TUNER',
                       affectedMs: lostMs,
                       conflictingReserveIds: [...(conflicting.get(reserve.id) ?? [])].sort((a, b) => a - b),
@@ -236,12 +264,27 @@ export const planSchedule = (input: SchedulePlannerInput): PlannedReservation[] 
                 : lostMs === 0 && marginOverlapMs > 0
                   ? { type: 'MARGIN_OVERLAP', affectedMs: marginOverlapMs, conflictingReserveIds: [] }
                   : null;
-        if (allowTail && lostMs > 0) addReason(reasons, reserve.id, 'allowEndLack-accepted-tail-loss');
+        const lossInfo: ReservationConflict | null =
+            lostMs > 0
+                ? {
+                      type: hasHeadLoss && hasTailLoss ? 'PARTIAL' : hasHeadLoss ? 'PARTIAL_HEAD' : 'PARTIAL_TAIL',
+                      affectedMs: lostMs,
+                      conflictingReserveIds: [...(conflicting.get(reserve.id) ?? [])].sort((a, b) => a - b),
+                  }
+                : null;
+        if (acceptedLoss) addReason(reasons, reserve.id, `${policy.toLowerCase()}-accepted-loss:${lostMs}ms`);
         const previousTuner = previous.get(reserve.id);
         if (previousTuner !== undefined && previousTuner !== tunerIndex)
             addReason(reasons, reserve.id, `previous-tuner:${previousTuner}-changed-to:${String(tunerIndex)}`);
         if (conflict !== null) addReason(reasons, reserve.id, `strict-conflict:${conflict.type}:${lostMs}ms`);
-        return { reserveId: reserve.id, tunerIndex, conflict, lostMs, reasons: reasons.get(reserve.id) ?? [] };
+        return {
+            reserveId: reserve.id,
+            tunerIndex,
+            conflict,
+            lossInfo,
+            lostMs,
+            reasons: reasons.get(reserve.id) ?? [],
+        };
     });
     return plans;
 };

@@ -77,7 +77,7 @@ test('finds a future rerun candidate on the EPG for a missing episode (episode 2
 test('reserveProposal creates a reservation and pre-tags it with a rerun hint for SeriesResolver to consume', async () => {
     const program = { id: 555, channelId: 2, name: '対象作品 第2話', startAt: 1, endAt: 2 };
     const seriesDB = makeSeriesDB();
-    const reserveApi = { add: async () => 999 };
+    const reserveApi = { add: async () => ({ reserveId: 999, preemptedReserves: [] }) };
     const model = new MissingEpisodeApiModel(enabledConfig, seriesDB, makeProgramDB(program), reserveApi, {}, noTotals);
     const reserveId = await model.reserveProposal(1, 1, 2, 555);
     assert.equal(reserveId, 999);

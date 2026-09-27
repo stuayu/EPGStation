@@ -1,5 +1,5 @@
 <template>
-    <span v-if="isFollowingSchedule === true || isTimeUndefined === true || conflictDescription !== null" class="reserve-schedule-status">
+    <span v-if="isFollowingSchedule === true || isTimeUndefined === true || conflictDescription !== null || reserveItem.priority !== 3" class="reserve-schedule-status">
         <v-chip v-if="isFollowingSchedule === true" size="x-small" color="error" variant="flat" class="mr-1 status-chip">
             <v-icon start size="x-small">mdi-clock-alert-outline</v-icon>
             前番組延長のため追従中
@@ -12,6 +12,7 @@
             <v-icon start size="x-small">mdi-alert-outline</v-icon>
             {{ conflictDescription }}
         </v-chip>
+        <v-chip v-if="reserveItem.priority !== 3" size="x-small" variant="tonal" class="status-chip mt-1">優先度 {{ reserveItem.priority }}</v-chip>
     </span>
 </template>
 

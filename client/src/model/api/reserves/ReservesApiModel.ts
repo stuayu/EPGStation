@@ -14,9 +14,9 @@ export default class ReservesApiModel implements IReservesApiModel {
     /**
      * 手動予約の追加
      * @param option: ManualReserveOption
-     * @return Promise<apid/ReserveId>
+     * @return Promise<apid.AddedReserve>
      */
-    public async add(option: apid.ManualReserveOption): Promise<apid.ReserveId> {
+    public async add(option: apid.ManualReserveOption): Promise<apid.AddedReserve> {
         const result = await this.repository.post('/reserves', option);
 
         return result.data;

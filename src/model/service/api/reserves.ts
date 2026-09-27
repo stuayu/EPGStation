@@ -80,7 +80,7 @@ export const post: Operation = async (req, res) => {
 
     try {
         api.responseJSON(res, 201, {
-            reserveId: await reserveApiModel.add(req.body),
+            ...(await reserveApiModel.add(req.body)),
         });
     } catch (err: unknown) {
         api.responseServerError(res, api.getErrorMessage(err));
