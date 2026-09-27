@@ -6,6 +6,10 @@
 
 Recorded の `recordingStatus` / `endReason` は一覧表示用。null は既存録画を含め completed 扱い。詳細 API `GET /api/recorded/{recordedId}/recording-sessions` はセッション・attempt を返し、gap は attempt の `endedAt` から次 attempt の `firstDataAt` で導出する。Recorded に紐付かない開始失敗セッションは 30 日後に掃除する。
 
+session と attempt の永続化、状態遷移、終了理由の集計、結果判定、telemetry span は `RecordingSessionTracker` が担当する。`RecorderModel` は予約、タイマー、prepRecord / doRecord、EIT 監視、イベント発行を保持する。
+
+再開時の保存先、ファイル offset、過去 attempt 数、受信断数、終了理由列は `RecordingResumeCoordinator` が組み立てる。復帰後の retry と実行タイマーは引き続き `RecorderModel` が制御する。
+
 ## Phase 8: 放送時間未定の終了時刻
 
 `ProgramDuration.resolveProgramEndTimes()` は表示用 (`displayEndAt`)、Planner 用 (`plannedEndAt`)、強制終了上限 (`hardSafetyEndAt`) を返す。放送時間未定の表示と安全上限は開始 + 3 時間、Planner 用だけ同一チャンネルの次番組開始までとする。Planner 入力の `endAt` に計画値を渡すが、予約表示 API の `endAt` は変更しない。`reserve.plannedEndAt` は NULL を通常値とし、録画中に対象 event が present のまま EIT duration 未定で計画終了へ近づいた場合だけ延長値を保存する。
