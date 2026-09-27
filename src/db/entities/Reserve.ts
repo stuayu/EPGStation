@@ -219,6 +219,9 @@ export default class Reserve extends BaseEntity {
     })
     public endAt!: number;
 
+    @Column({ type: 'bigint', nullable: true })
+    public plannedEndAt: number | null = null; // 放送時間未定の番組の Planner 用終了時刻
+
     @Column({
         type: 'text',
         nullable: true,

@@ -378,6 +378,8 @@ export default interface IConfigFile {
     recording?: {
         // 録画中の上流切断後に同じ録画へ再接続する (既定 true)
         reconnectEnabled?: boolean;
+        // 同一チャンネルで続く録画が上流接続を共有する (既定 false)
+        shareUpstreamStream?: boolean;
         // programId 予約のストリーム取得方式。既定 service。障害時の切り戻し用に program を残す
         programStreamMode?: 'program' | 'service';
         // 番組開始を待つ上限 (ms)。既定 3 時間。0 で待たない

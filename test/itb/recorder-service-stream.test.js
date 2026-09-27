@@ -11,7 +11,16 @@ const RecorderModel = require('../../dist/model/operator/recording/RecorderModel
 
 const logger = { system: { info() {}, debug() {}, warn() {}, error() {}, fatal() {} } };
 
-const makeRecorder = (recording, streamCreator = { getCloseReason: () => null, markClose() {}, closeStream(stream) { stream.destroy(); } }) =>
+const makeRecorder = (
+    recording,
+    streamCreator = {
+        getCloseReason: () => null,
+        markClose() {},
+        closeStream(stream) {
+            stream.destroy();
+        },
+    },
+) =>
     new RecorderModel(
         { getLogger: () => logger },
         {
@@ -66,13 +75,13 @@ const tsPackets = (count, pid = 0x100) => {
     return data;
 };
 
-const buildEitPacket = (serviceId, eventId) => {
+const buildEitPacket = (serviceId, eventId, durationSec = 1800) => {
     const event = Buffer.alloc(16);
     event.writeUInt16BE(eventId, 0);
     event.fill(0xff, 2, 7);
-    event[7] = 0x00;
-    event[8] = 0x30;
-    event[9] = 0x00;
+    event[7] = durationSec === null ? 0xff : (durationSec >> 16) & 0xff;
+    event[8] = durationSec === null ? 0xff : (durationSec >> 8) & 0xff;
+    event[9] = durationSec === null ? 0xff : durationSec & 0xff;
     const header = Buffer.alloc(14);
     header[0] = 0x4e;
     const sectionLength = 11 + event.length;
@@ -209,6 +218,36 @@ test('legacy program stream には EPGStation 側の終了境界 listener を追
     recorder.stream = source;
     recorder.setupProgramBoundaryMonitor([buildEitPacket(1, 123)]);
     assert.equal(source.listenerCount('data'), 0);
+    source.destroy();
+});
+
+test('未定番組の対象 present が続き計画終了へ近づくと上限内で延長して再計算する', async () => {
+    const calls = [];
+    const recorder = makeRecorder({ programStreamMode: 'service' });
+    const now = Date.now();
+    const targetEventId = reserve.programId % 100000;
+    const plannedEndAt = now + 30_000;
+    recorder.reserve = {
+        ...reserve,
+        startAt: now - 60_000,
+        endAt: now + 3 * 60 * 60 * 1000,
+        plannedEndAt,
+        isTimeUndefined: true,
+    };
+    recorder.programDB = { findSchedule: async () => [] };
+    recorder.reserveDB = { updatePlannedEndAt: async (...args) => calls.push(['save', ...args]) };
+    recorder.reservationManage = { recalculatePlanForReserve: async id => calls.push(['replan', id]) };
+    const source = new PassThrough();
+    recorder.stream = source;
+    recorder.setupProgramBoundaryMonitor([buildEitPacket(1, targetEventId, null)]);
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0][0], 'save');
+    assert.equal(calls[0][1], recorder.reserve.id);
+    assert.equal(calls[0][2], Math.min(plannedEndAt + 30 * 60 * 1000, recorder.reserve.endAt));
+    assert.deepEqual(calls[1], ['replan', recorder.reserve.id]);
+    assert.equal(recorder.reserve.endAt, now + 3 * 60 * 60 * 1000, '安全上限 endAt は維持');
     source.destroy();
 });
 

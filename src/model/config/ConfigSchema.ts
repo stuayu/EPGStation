@@ -445,6 +445,12 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
                 hint: '既定 有効。無効にすると切断後に録画を失敗扱いにして再試行する',
             },
             {
+                path: 'recording.shareUpstreamStream',
+                label: '連続する同一チャンネルの録画で上流を共有する',
+                type: 'boolean',
+                hint: '既定 無効。同じチャンネルの連続録画で Mirakurun への接続を共有する',
+            },
+            {
                 path: 'recording.programStreamMode',
                 label: 'programId 予約のストリーム方式',
                 type: 'select',

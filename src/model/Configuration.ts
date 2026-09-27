@@ -427,6 +427,7 @@ namespace Configuration {
         recording: {
             programStreamMode: 'service',
             reconnectEnabled: true,
+            shareUpstreamStream: false,
         },
         storageLimitCheckIntervalTime: 60,
         thumbnail: path.join(__dirname, '..', '..', 'thumbnail'),

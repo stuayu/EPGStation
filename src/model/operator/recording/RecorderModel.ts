@@ -1,7 +1,7 @@
 import * as events from 'events';
 import * as fs from 'fs';
 import * as http from 'http';
-import { inject, injectable } from 'inversify';
+import { inject, injectable, optional } from 'inversify';
 import * as path from 'path';
 import * as stream from 'stream';
 import * as mapid from '../../../../node_modules/mirakurun/api';
@@ -48,6 +48,8 @@ import RecordingStartBuffer from './RecordingStartBuffer';
 import { RecordingTimingConfig, resolveRecordingTimingConfig } from './RecordingTimingConfig';
 import { decideRecordingEnd } from './RecordingBoundary';
 import IEitPresentStore from '../../service/stream/util/IEitPresentStore';
+import IReservationManageModel from '../reservation/IReservationManageModel';
+import { extendUndefinedDurationEndAt, resolveProgramEndTimes } from '../../../util/ProgramDuration';
 import IIPCServer from '../../ipc/IIPCServer';
 import IRecordingSessionDB from '../../db/IRecordingSessionDB';
 import RecordingSession from '../../../db/entities/RecordingSession';
@@ -128,6 +130,8 @@ class RecorderModel implements IRecorderModel {
     private resumeInfo: RecordingResumeInfo | null = null;
     private resumeFilePath: string | null = null;
     private resumeFileOffset: number = 0;
+    private reservationManage?: IReservationManageModel;
+    private plannedEndExtensionInFlight = false;
 
     // イベントリレータイマー
     private eventRelayTimer = new LongTimer();
@@ -155,6 +159,7 @@ class RecorderModel implements IRecorderModel {
         @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
         @inject('IIPCServer') ipc: IIPCServer,
         @inject('IRecordingSessionDB') recordingSessionDB: IRecordingSessionDB,
+        @inject('IReservationManageModel') @optional() reservationManage?: IReservationManageModel,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
@@ -175,6 +180,7 @@ class RecorderModel implements IRecorderModel {
         this.eitPresentStore = eitPresentStore;
         this.ipc = ipc;
         this.recordingSessionDB = recordingSessionDB;
+        this.reservationManage = reservationManage;
     }
 
     private async persistRecordingSession(values: Partial<RecordingSession>): Promise<void> {
@@ -1269,6 +1275,9 @@ class RecorderModel implements IRecorderModel {
                 if (event.serviceId !== serviceId || event.isFollowing === true) continue;
                 if (event.eventId === targetEventId) {
                     this.boundaryTargetSeen = true;
+                    if (event.durationSec === null && this.reserve.isTimeUndefined === true) {
+                        void this.extendUndefinedDurationPlan();
+                    }
                     if (this.boundaryEndTimerId !== null) {
                         clearTimeout(this.boundaryEndTimerId);
                         this.boundaryEndTimerId = null;
@@ -1305,6 +1314,41 @@ class RecorderModel implements IRecorderModel {
         };
         for (const chunk of initialChunks) inspect(chunk);
         source.on('data', inspect);
+    }
+
+    /** 対象番組の present が続く間、Planner の終了時刻だけを延長する */
+    private async extendUndefinedDurationPlan(): Promise<void> {
+        if (this.plannedEndExtensionInFlight === true) return;
+        this.plannedEndExtensionInFlight = true;
+        try {
+            const hardSafetyEndAt = this.reserve.endAt;
+            let plannedEndAt = this.reserve.plannedEndAt;
+            if (plannedEndAt === null) {
+                const programs = await this.programDB.findSchedule({
+                    channelId: this.reserve.channelId,
+                    startAt: this.reserve.startAt + 1,
+                    endAt: hardSafetyEndAt,
+                    isHalfWidth: false,
+                });
+                const next = programs.find(program => program.startAt > this.reserve.startAt);
+                plannedEndAt = resolveProgramEndTimes(this.reserve.startAt, 1, next?.startAt).plannedEndAt;
+            }
+            const extendedEndAt = extendUndefinedDurationEndAt(Date.now(), plannedEndAt, hardSafetyEndAt);
+            if (extendedEndAt === null) return;
+
+            this.reserve.plannedEndAt = extendedEndAt;
+            await this.reserveDB.updatePlannedEndAt(this.reserve.id, extendedEndAt);
+            await this.reservationManage?.recalculatePlanForReserve(this.reserve.id);
+            this.log.system.info(
+                `extend undefined-duration planned end: reserveId: ${this.reserve.id},` +
+                    ` end: ${formatTimeChange(plannedEndAt, extendedEndAt)}, hardEnd: ${formatLogTime(hardSafetyEndAt)}`,
+            );
+        } catch (err) {
+            this.log.system.error(`extend undefined-duration planned end failed: ${this.reserve.id}`);
+            this.log.system.error(err);
+        } finally {
+            this.plannedEndExtensionInFlight = false;
+        }
     }
 
     /**
