@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- recisdb-proxy の GR チューナーへ NW1〜NW40 予約を割り当て → 2026-09-28
 - OpenTelemetry を opt-in で導入 (録画セッション・予約計画の traces / metrics) → 2026-09-28
 - 録画 session / attempt の永続化と span を RecordingSessionTracker へ分離 → 2026-09-28
 
@@ -43,6 +44,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 - **RecorderModel の session / attempt 永続化と復帰準備を分離**: `RecordingSessionTracker` が session 状態、attempt 作成・終了、close reason 集計、結果判定と telemetry span を担当し、`RecordingResumeCoordinator` が復帰ファイルと attempt 集計を準備する。予約・タイマー・prepRecord / doRecord の段取りは `RecorderModel` に残す。
 - **録画セッション再設計のレビュー指摘を修正**: 再接続へ最新予約を渡し、再開通知・transport gap・first-data timeout を一度だけ処理する。共有上流は枝ごとに最大1 MiBを保持し、上限超過した枝だけを失敗させる。録画結果の後片付け、通信失敗理由、planner 比較ログ、末尾追従再生、Operator shutdown、Mirakurun priority、tuner index、migration 名の不整合を修正した。
+- **recisdb-proxy の GR チューナーへ NW1〜NW40 予約を割り当て**: Mirakurun 互換 API が県外地上波を `GR` として報告する環境では、NWn の予約種別とチューナー `types` の完全一致がなく、従来の予約割当は 0 本だった。`isTunerCompatibleWithChannelType()` に照合を集約し、完全一致または NWn 予約に対する GR チューナーを適合とする。SchedulePlanner は空の `types` を全種別扱いする従来の補完を保ちながら、GR/NW 予約では GR 明示 tuner を空 `types` より優先する。本番 41 tuner fixture で修正前は NW21 の従来割当 0 本、planner は index 5 (`SPHD`, `types: []`)。修正後は従来割当 28 本 (うち `types: [GR]` は 22 本)、planner は index 0 (`PX-MLT`, `types: [GR, BS, CS]`)。GR / BS / BS4K / SKY の planner 割当先は index 0 / 0 / 5 / 5 で従来どおり。fixture は `test/fixtures/prod-tuners.json`。なお EPGStation は Mirakurun の `channel.type` を NWn へ変換していない。`ChannelDB.createInsertValue()` が `physicalChannel.type` をそのまま保存し、地上波として GR/NW を共通扱いするのは `BroadcastRegion.isRegionalChannelType()` と `BroadcastAffiliation.isAffiliationChannelType()`。
 - **OpenTelemetry を opt-in で導入**: `observability.otel.enabled` が true の場合だけ Node SDK を動的 import し、OTLP/HTTP で traces / metrics を送る。Operator と Service は個別に初期化し、`service.name` にプロセス種別を付ける。RecordingSession / attempt、開始ゲート fallback、再接続と gap、SchedulePlanner、チューナー open failure を `Telemetry` wrapper 経由で計測する。ログ出力は log4js のまま。
 - **録画セッション再設計 Phase 8 で未定番組の終了時刻を用途別に分離**: `ProgramDuration.resolveProgramEndTimes()` が表示用と録画安全上限に開始 + 3 時間を保ち、Planner 用終了だけ同一チャンネルの次番組開始で切り詰める。Reservation Planner は EPG の次番組を参照し、API の表示と保存済み `endAt` は変更しない。内部列 `reserve.plannedEndAt` は録画中に対象 EIT present が未定のまま計画終了へ近づいた場合だけ30分ずつ延長し、3時間の上限内で重複予約の Planner を再計算する。`reservation.scheduler: planner` のときだけ有効。SQLite / MySQL migration を追加した。
 - **録画セッション再設計 Phase 9 で連続録画の上流共有を追加**: `recording.shareUpstreamStream` (既定 false) が有効な場合、同一 channelId の連続予約で Operator 内の `RecordingSourceLeaseManager` が Mirakurun 接続を共有し、各予約へ PassThrough 分岐を渡す。priority / decode 設定が異なる予約と program mode は共有しない。参照数 0 で上流を閉じ、上流障害は全分岐へ同じ理由で伝えて lease 単位で再接続する。

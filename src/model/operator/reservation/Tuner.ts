@@ -1,6 +1,7 @@
 import * as apid from '../../../../api';
 import * as mapid from '../../../../node_modules/mirakurun/api';
 import Reserve from '../../../db/entities/Reserve';
+import TunerCompatibilityUtil from '../../../util/TunerCompatibilityUtil';
 
 export default class Tuner {
     private types: apid.ChannelType[];
@@ -26,7 +27,7 @@ export default class Tuner {
      */
     public add(reserve: Reserve): boolean {
         if (
-            this.types.indexOf(<apid.ChannelType>reserve.channelType) !== -1 &&
+            TunerCompatibilityUtil.isTunerCompatibleWithChannelType(this.types, reserve.channelType) &&
             (this.reserves.length === 0 || this.reserves[0].channel === reserve.channel)
         ) {
             this.reserves.push(reserve);

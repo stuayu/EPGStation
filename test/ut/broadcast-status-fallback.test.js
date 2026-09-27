@@ -46,7 +46,10 @@ test('チューナ情報の types が埋まっているときはチャンネル�
     });
     model.setTuners([{ types: ['GR'], name: 'tuner', index: 0, command: '', isAvailable: true }]);
 
-    assert.deepEqual(enabledTypes(await model.getBroadcastStatus()), ['GR']);
+    assert.deepEqual(enabledTypes(await model.getBroadcastStatus()), [
+        'GR',
+        ...Array.from({ length: 40 }, (_, index) => `NW${index + 1}`),
+    ]);
     assert.equal(called, false);
 });
 

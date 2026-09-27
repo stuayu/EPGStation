@@ -14,6 +14,7 @@ import IRecordingStreamCreator from './IRecordingStreamCreator';
 import { resolveRecordingTimingConfig } from './RecordingTimingConfig';
 import { toMirakurunPriority } from '../reservation/ReservationPriorityUtil';
 import RecordingSourceLeaseManager from './RecordingSourceLeaseManager';
+import TunerCompatibilityUtil from '../../../util/TunerCompatibilityUtil';
 
 interface TunerProgram {
     reserve: Reserve;
@@ -238,7 +239,11 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
             if (plannedIndex === null || plannedIndex === undefined) return null;
             const index = this.tuners.findIndex(tuner => tuner.index === plannedIndex);
             const selected = this.tuners[index];
-            if (selected === undefined || !selected.types.includes(<any>reserve.channelType)) return null;
+            if (
+                selected === undefined ||
+                !TunerCompatibilityUtil.isTunerCompatibleWithChannelType(selected.types, reserve.channelType)
+            )
+                return null;
             if (
                 selected.programs.length === 0 ||
                 selected.programs.every(item => item.reserve.channel === reserve.channel)
@@ -265,7 +270,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
         for (let i = 0; i < this.tuners.length; i++) {
             // tuner の放送波が一致 && 録画していない or channel が同一
             if (
-                this.tuners[i].types.indexOf(<any>reserve.channelType) !== -1 &&
+                TunerCompatibilityUtil.isTunerCompatibleWithChannelType(this.tuners[i].types, reserve.channelType) &&
                 (this.tuners[i].programs.length === 0 || this.tuners[i].programs[0].reserve.channel === reserve.channel)
             ) {
                 return i;
@@ -279,7 +284,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
         const now = new Date().getTime();
         const allowedEndLackMs = IRecordingStreamCreator.PREP_TIME;
         for (let i = 0; i < this.tuners.length; i++) {
-            if (this.tuners[i].types.indexOf(<any>reserve.channelType) !== -1) {
+            if (TunerCompatibilityUtil.isTunerCompatibleWithChannelType(this.tuners[i].types, reserve.channelType)) {
                 let isOk = true;
                 for (const p of this.tuners[i].programs) {
                     if (p.reserve.allowEndLack === false || p.reserve.endAt - now > allowedEndLackMs) {
