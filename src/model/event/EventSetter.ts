@@ -251,6 +251,14 @@ export default class EventSetter implements IEventSetter {
         this.recordingEvent.setRecordingFailed((reserve, recorded) => {
             this.ipc.notifyClient();
             if (recorded !== null) {
+                if (typeof recorded.videoFiles !== 'undefined' && recorded.videoFiles.length > 0)
+                    this.thumbnailManage.add(recorded.id);
+                if (reserve.tags !== null) {
+                    void this.setTag(recorded.id, reserve.tags).catch(err => {
+                        this.log.system.fatal('setTag error');
+                        this.log.system.fatal(err);
+                    });
+                }
                 this.externalCommandManage.addRecordingFailedCmd(recorded);
             }
             void this.notification.dispatch('recording.failed', {

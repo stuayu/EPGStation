@@ -15,6 +15,13 @@
  */
 
 export type RecordingRetryReason = 'waitingForEvent' | 'error';
+export type StartFailureKind = 'no-first-ts' | 'stream-closed' | 'no-data-after-pipe' | 'end-at-passed';
+
+/** 録画開始前の失敗を待機継続と伝送異常に分類する */
+export const classifyStartFailure = (kind: StartFailureKind, legacyProgramStream: boolean): RecordingRetryReason => {
+    if (kind === 'end-at-passed' || legacyProgramStream) return 'waitingForEvent';
+    return 'error';
+};
 
 export interface RecordingRetryConfig {
     // 番組開始を待つ上限 (ms)

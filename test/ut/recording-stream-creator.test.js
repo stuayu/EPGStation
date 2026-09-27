@@ -4,6 +4,7 @@ const { PassThrough } = require('node:stream');
 const test = require('node:test');
 require('reflect-metadata');
 const RecordingStreamCreator = require('../../dist/model/operator/recording/RecordingStreamCreator').default;
+const IRecordingStreamCreator = require('../../dist/model/operator/recording/IRecordingStreamCreator').default;
 
 const logger = {
     system: { info() {}, debug() {}, warn() {}, error() {}, fatal() {} },
@@ -45,6 +46,31 @@ test('programId 予約は共有 priority を変更せず service stream option �
     assert.equal(client.priority, 77);
     assert.deepEqual(calls[0], { id: 67890, decode: true, priority: 4, signal: undefined });
     stream.destroy();
+});
+
+test('markClose は最初に付いた close reason を保持する', () => {
+    const creator = new RecordingStreamCreator(
+        { getLogger: () => logger },
+        { getConfig: () => ({ recording: {} }) },
+        { getClient: () => ({}) },
+    );
+    const stream = new PassThrough();
+    creator.markClose(stream, 'boundary');
+    creator.markClose(stream, 'teardown');
+    assert.equal(creator.getCloseReason(stream), 'boundary');
+    stream.destroy();
+});
+
+test('終了理由ごとに ignore / finish / 外部終了の判定を固定する', () => {
+    for (const reason of ['superseded', 'obsolete', 'teardown', 'write-error']) {
+        assert.equal(IRecordingStreamCreator.getCloseAction(reason), 'ignore', reason);
+    }
+    for (const reason of ['canceled', 'tuner-handoff', 'boundary', 'scheduled-end']) {
+        assert.equal(IRecordingStreamCreator.getCloseAction(reason), 'finish', reason);
+    }
+    for (const reason of ['reconnect-no-data', null]) {
+        assert.equal(IRecordingStreamCreator.getCloseAction(reason), 'inspect', String(reason));
+    }
 });
 
 test('getTunerId は最初に使える互換チューナーを選ぶ', async () => {

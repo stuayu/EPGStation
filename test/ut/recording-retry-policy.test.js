@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
     DEFAULT_RECORDING_RETRY_CONFIG,
+    classifyStartFailure,
     decideRecordingRetry,
     getFirstDataWaitTimeoutMs,
     resolveRecordingRetryConfig,
@@ -10,6 +11,15 @@ const {
 
 const MINUTE = 60 * 1000;
 const config = DEFAULT_RECORDING_RETRY_CONFIG;
+
+test('開始前の伝送失敗は service で error、legacy program と endAt 超過では waitingForEvent', () => {
+    for (const kind of ['no-first-ts', 'stream-closed', 'no-data-after-pipe']) {
+        assert.equal(classifyStartFailure(kind, false), 'error', kind);
+        assert.equal(classifyStartFailure(kind, true), 'waitingForEvent', kind);
+    }
+    assert.equal(classifyStartFailure('end-at-passed', false), 'waitingForEvent');
+    assert.equal(classifyStartFailure('end-at-passed', true), 'waitingForEvent');
+});
 
 test('waiting for a delayed program keeps retrying up to the limit', () => {
     // 前番組が放送時刻未定で延長している間、番組はまだ始まっていない

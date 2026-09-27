@@ -222,8 +222,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
                 // ストリーム停止
                 for (const p of this.tuners[i].programs) {
                     if (p.stream !== null) {
-                        p.stream.destroy();
-                        p.stream.push(null); // eof 通知
+                        this.closeStream(p.stream, 'tuner-handoff');
                     }
                 }
 
@@ -320,9 +319,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
         }
 
         if (stream !== null) {
-            this.closeReasonIndex.set(stream, 'scheduled-end');
-            stream.destroy();
-            stream.push(null); // eof 通知
+            this.closeStream(stream, 'scheduled-end');
         }
     }
 
@@ -349,8 +346,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
         const oldSession = this.streamIndex[reserve.id];
         if (oldSession !== undefined && oldSession.stream !== stream) {
             oldSession.timer?.clear();
-            oldSession.stream.destroy();
-            oldSession.stream.push(null);
+            this.closeStream(oldSession.stream, 'superseded');
         }
         const session: StreamSession = { stream, timer: null };
         this.streamIndex[reserve.id] = session;
@@ -407,6 +403,17 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      */
     public getCloseReason(stream: http.IncomingMessage): IRecordingStreamCreator.CloseReason {
         return this.closeReasonIndex.get(stream) ?? null;
+    }
+
+    /** stream の終了理由を記録する (最初の理由を保持) */
+    public markClose(stream: http.IncomingMessage, reason: Exclude<IRecordingStreamCreator.CloseReason, null>): void {
+        if (this.closeReasonIndex.has(stream) === false) this.closeReasonIndex.set(stream, reason);
+    }
+
+    /** 理由を記録して stream を破棄する */
+    public closeStream(stream: http.IncomingMessage, reason: Exclude<IRecordingStreamCreator.CloseReason, null>): void {
+        this.markClose(stream, reason);
+        stream.destroy();
     }
 
     /**

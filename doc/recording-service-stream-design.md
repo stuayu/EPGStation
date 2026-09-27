@@ -143,6 +143,10 @@ TS が到着した時点で伝送正常と判断できるため、EIT 待ち中�
 
 ## 5. 開始判定
 
+### 5.2 開始前の伝送失敗分類
+
+実装では `classifyStartFailure()` が最初の TS 未着、開始待ち中の stream close、pipe 後のデータ未着を分類する。service stream は `error` 再試行予算を使い、legacy program stream と endAt 超過は `waitingForEvent` を維持する。stream の close reason は `closeStream` / `markClose` で保持し、キャンセル・境界終了・予定終了を外部要因の失敗と混同しない。failed は終了後の DB / 一時ファイル後片付けだけを行い、finish イベントを発行しない。
+
 1. `startAt - PREP_TIME` に service stream を録画優先度で開く。
 2. `firstDataTimeoutMs` 内に TS が来なければ伝送障害としてストリームを閉じ、既存の error retry へ回す。
 3. TS 到着後は対象 serviceId の有効な EIT[p/f] だけを解析する。CRC 不正、`current_next_indicator=0`、

@@ -469,9 +469,7 @@ class EncodeManageModel implements IEncodeManageModel {
                 this.emitNeedsCheckQueue();
             });
         }
-
     }
-
 
     /**
      * 指定した encodeId を runningQueue から取り出す
