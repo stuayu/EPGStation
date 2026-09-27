@@ -6,7 +6,10 @@ interface SharedSource {
     stream: internal.Readable;
     branches: Set<internal.PassThrough>;
     closed: boolean;
+    onData: (chunk: Buffer) => void;
 }
+
+const MAX_BRANCH_BUFFER_BYTES = 1024 * 1024;
 
 export interface RecordingSourceLease {
     stream: internal.PassThrough;
@@ -51,19 +54,31 @@ export default class RecordingSourceLeaseManager {
 
         const branch = new internal.PassThrough();
         source.branches.add(branch);
-        source.stream.pipe(branch);
+        branch.on('drain', () => {});
         return this.createLease(source, branch);
     }
 
     private async open(sourceKey: string, openSource: () => Promise<internal.Readable>): Promise<SharedSource> {
         const stream = await openSource();
-        const source: SharedSource = { sourceKey, stream, branches: new Set(), closed: false };
+        const branches = new Set<internal.PassThrough>();
+        const onData = (chunk: Buffer): void => {
+            for (const branch of branches) {
+                if (branch.destroyed) continue;
+                if (branch.writableLength + chunk.length > MAX_BRANCH_BUFFER_BYTES) {
+                    branch.destroy(new Error('recording source branch buffer limit exceeded'));
+                } else {
+                    branch.write(chunk);
+                }
+            }
+        };
+        const source: SharedSource = { sourceKey, stream, branches, closed: false, onData };
+        stream.on('data', onData);
         const finish = (error?: Error): void => {
             if (source.closed === true) return;
             source.closed = true;
+            stream.removeListener('data', source.onData);
             if (this.sources.get(sourceKey) === source) this.sources.delete(sourceKey);
             for (const branch of source.branches) {
-                stream.unpipe(branch);
                 if (branch.destroyed === false) {
                     if (error === undefined) branch.end();
                     else branch.destroy(error);
@@ -92,11 +107,11 @@ export default class RecordingSourceLeaseManager {
 
     private release(source: SharedSource, branch: internal.PassThrough): void {
         if (source.branches.delete(branch) === false) return;
-        source.stream.unpipe(branch);
         if (branch.destroyed === false) branch.destroy();
         if (source.branches.size !== 0 || source.closed === true) return;
 
         source.closed = true;
+        source.stream.removeListener('data', source.onData);
         if (this.sources.get(source.sourceKey) === source) this.sources.delete(source.sourceKey);
         source.stream.destroy();
     }

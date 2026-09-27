@@ -128,6 +128,7 @@ export default abstract class RecordedStreamBaseModel
     private videoFileInfo: VideoFileInfo | null = null;
     private videoFileType: apid.VideoFileType = 'encoded';
     private isRecording: boolean = false;
+    private recordedId: number | null = null;
     private fmp4Packager: IFmp4Packager | null = null;
     // in-memory HLS で ARIB 字幕 (ID3 timed metadata) を取り出すための Transform
     private aribId3Extractor: IAribId3Extractor | null = null;
@@ -764,6 +765,7 @@ export default abstract class RecordedStreamBaseModel
             throw new Error('RecordedIsNull');
         }
         this.isRecording = recorded.isRecording;
+        this.recordedId = recorded.id;
 
         // videoFilePath セット
         this.videoFilePath = await this.videoUtil.getFullFilePathFromId(video.id);
@@ -907,12 +909,13 @@ export default abstract class RecordedStreamBaseModel
     private async resolveDeinterlace(cmd: string): Promise<string> {
         const needsDeinterlace = cmd.includes('%DEINTERLACE%');
         const needsToneMap = cmd.includes(TONEMAP_PLACEHOLDER);
-        const needsRigayaColorLog =
-            /--output-depth\s+8/u.test(cmd) && /(?:QSVEncC|NVEncC|VCEEncC)/iu.test(cmd);
+        const needsRigayaColorLog = /--output-depth\s+8/u.test(cmd) && /(?:QSVEncC|NVEncC|VCEEncC)/iu.test(cmd);
         if (needsDeinterlace === false && needsToneMap === false && needsRigayaColorLog === false) return cmd;
         if (this.sourceAnalyzer === undefined || this.processOption === null) {
             if (needsRigayaColorLog) {
-                this.log.stream.info('color conversion skipped: rigaya path has no verified colorspace option; source color unknown');
+                this.log.stream.info(
+                    'color conversion skipped: rigaya path has no verified colorspace option; source color unknown',
+                );
             }
             return replaceToneMapPlaceholder(replaceDeinterlacePlaceholder(cmd), undefined, false);
         }
@@ -921,7 +924,9 @@ export default abstract class RecordedStreamBaseModel
             const source = await this.sourceAnalyzer.analyzeRecordedFile(this.processOption.videoFileId);
             const conversion = colorConversionFor(source, 8);
             if (conversion !== 'none') {
-                this.log.stream.info(`color conversion: ${conversion} (primaries: ${source.colorPrimaries ?? 'unknown'}, transfer: ${source.transferName ?? source.transfer ?? 'unknown'})`);
+                this.log.stream.info(
+                    `color conversion: ${conversion} (primaries: ${source.colorPrimaries ?? 'unknown'}, transfer: ${source.transferName ?? source.transfer ?? 'unknown'})`,
+                );
                 if (conversion === 'pq-tonemap' && this.hardwareEncoderDetector?.supportsToneMapping() === false) {
                     this.log.stream.warn('PQ tone mapping unavailable; using BT.2020 SDR-compatible conversion');
                 }
@@ -937,7 +942,9 @@ export default abstract class RecordedStreamBaseModel
         } catch (err) {
             this.log.stream.warn('recorded source analysis failed; keep deinterlace enabled and tone mapping disabled');
             if (needsRigayaColorLog) {
-                this.log.stream.info('color conversion skipped: rigaya path has no verified colorspace option; source color unknown');
+                this.log.stream.info(
+                    'color conversion skipped: rigaya path has no verified colorspace option; source color unknown',
+                );
             }
             this.log.stream.debug(err);
             return replaceToneMapPlaceholder(replaceDeinterlacePlaceholder(cmd), undefined, false);
@@ -989,7 +996,11 @@ export default abstract class RecordedStreamBaseModel
         if (this.isRecording === true) {
             this.fileStream = fst.createReadStream(this.videoFilePath, {
                 start: start,
-                shouldKeepWaiting: () => this.isRecording === true,
+                shouldKeepWaiting: async () => {
+                    if (this.recordedId === null) return false;
+                    const current = await this.recordedDB.findId(this.recordedId);
+                    return current?.isRecording === true;
+                },
                 maxIdleMs: 60000,
             });
         } else {

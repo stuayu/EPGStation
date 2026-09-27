@@ -94,12 +94,18 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      */
     public getActiveTunerAssignments(): { reserveId: number; tunerIndex: number }[] {
         return Object.keys(this.reserveTunerIndex)
-            .map(reserveId => ({ reserveId: Number(reserveId), tunerIndex: this.reserveTunerIndex[Number(reserveId)] }))
+            .map(reserveId => {
+                const id = Number(reserveId);
+                const tunerSlot = this.reserveTunerIndex[id];
+                return {
+                    reserveId: id,
+                    tunerIndex:
+                        tunerSlot === null || tunerSlot === undefined ? null : (this.tuners[tunerSlot]?.index ?? null),
+                };
+            })
             .filter(
                 (assignment): assignment is { reserveId: number; tunerIndex: number } =>
-                    assignment.tunerIndex !== null &&
-                    assignment.tunerIndex !== undefined &&
-                    this.streamIndex[assignment.reserveId] !== undefined,
+                    assignment.tunerIndex !== null && this.streamIndex[assignment.reserveId] !== undefined,
             );
     }
 
@@ -341,6 +347,9 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
         const priority = toMirakurunPriority(
             reserve.isConflict ? config.conflictPriority : config.recPriority,
             reserve.priority,
+            config.streamingPriority,
+            reserve.isConflict,
+            config.recPriority,
         );
         this.log.system.info(
             `recording stream request: reserveId: ${reserve.id}, programId: ${reserve.programId ?? 'time-specified'},` +

@@ -3,7 +3,12 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const test = require('node:test');
-const { MirakurunRecordingStub, sendThenReset, sendThenEnd, sendAndHold } = require('../support/MirakurunRecordingStub');
+const {
+    MirakurunRecordingStub,
+    sendThenReset,
+    sendThenEnd,
+    sendAndHold,
+} = require('../support/MirakurunRecordingStub');
 const { RecorderHarness } = require('../support/RecorderHarness');
 
 const makeReserve = (id, durationMs = 2500) => {
@@ -94,10 +99,7 @@ test('A: ECONNRESET 後も同じ Recorded と TS ファイルへ 188 byte 単位
 });
 
 test('B: 上流の正常 EOF も予約締切前なら再接続する', async t => {
-    const stub = new MirakurunRecordingStub([
-        sendThenEnd(3, { conn: 1 }),
-        sendAndHold(3, { conn: 2 }),
-    ]);
+    const stub = new MirakurunRecordingStub([sendThenEnd(3, { conn: 1 }), sendAndHold(3, { conn: 2 })]);
     const harness = new RecorderHarness(stub, { recording: { reconnectEnabled: true } });
     await harness.start();
     t.after(() => harness.cleanup());
@@ -127,7 +129,7 @@ test('C: legacy program stream は正常 EOF で再接続しない', async t => 
     reserve.programId = 1234500123;
     harness.recorder.setTimer(reserve, true);
     await waitFor(() => stub.requests.some(request => request.url.includes('/stream')));
-    assert.equal(harness.events.start.length, 1);
+    await waitFor(() => harness.events.start.length === 1);
     await waitFor(() => harness.events.finish.length === 1);
     const requests = stub.requests.filter(request => request.url.includes('/stream'));
     assert.equal(requests.length, 1);
@@ -186,7 +188,9 @@ test('F: drop checker は再接続前後を通じて同じ録画 sink の TS を
     const updateRows = [];
     harness.recorder.dropChecker = {
         start: async (config, filePath, source) => {
-            source.on('data', chunk => { observedBytes += chunk.length; });
+            source.on('data', chunk => {
+                observedBytes += chunk.length;
+            });
         },
         getFilePath: () => '/tmp/recorder-reconnect-drop.log',
         getResult: async () => ({ 256: { error: 0, drop: 2, scrambling: 0 } }),
@@ -203,4 +207,49 @@ test('F: drop checker は再接続前後を通じて同じ録画 sink の TS を
     assert.equal(updateRows.length, 1);
     assert.ok(updateRows[0].dropCnt > 0);
     assert.equal(harness.events.failed.length, 0);
+});
+
+test('延長後の予約情報で再接続し、旧 endAt を過ぎても録画を続ける', async t => {
+    const stub = new MirakurunRecordingStub([sendAndHold(10), sendAndHold(10)]);
+    const harness = new RecorderHarness(stub, {
+        recording: { shareUpstreamStream: true, reconnectEnabled: true, firstDataTimeoutMs: 1000 },
+    });
+    await harness.start();
+    t.after(() => harness.cleanup());
+
+    const reserve = makeReserve(99110, 1800);
+    harness.recorder.setTimer(reserve, true);
+    await waitFor(() => harness.recorded.length === 1);
+    const extended = { ...reserve, endAt: reserve.endAt + 6000 };
+    await harness.recorder.update(extended, true);
+    harness.recordingStreamCreator.closeStream(harness.recorder.stream, 'transport-lost');
+    await waitFor(() => stub.requests.filter(request => request.url.includes('/stream')).length === 2);
+    await new Promise(resolve => setTimeout(resolve, 2200));
+    assert.equal(harness.events.finish.length, 0, '延長前の endAt を過ぎても終了しない');
+    await harness.recorder.cancel(false);
+    await waitFor(() => harness.events.finish.length === 1);
+    assert.equal(harness.recordingAttempts.length, 2);
+});
+
+test('addRecorded が firstDataTimeout を超えても Recorded を重複作成しない', async t => {
+    const stub = new MirakurunRecordingStub([sendAndHold(20)]);
+    const harness = new RecorderHarness(stub, {
+        recording: { reconnectEnabled: true, firstDataTimeoutMs: 1000 },
+    });
+    await harness.start();
+    t.after(() => harness.cleanup());
+    const addRecorded = harness.recorder.addRecorded.bind(harness.recorder);
+    harness.recorder.addRecorded = async path => {
+        await new Promise(resolve => setTimeout(resolve, 1300));
+        return addRecorded(path);
+    };
+    harness.recorder.setTimer(makeReserve(99111, 10_000), true);
+    await waitFor(() => harness.events.start.length === 1);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(harness.recorded.length, 1);
+    const files = await fs.promises.readdir(harness.tempDir);
+    assert.equal(files.length, 1);
+    assert.ok((await fs.promises.stat(`${harness.tempDir}/${files[0]}`)).size > 0);
+    assert.equal(harness.events.failed.length, 0);
+    assert.equal(harness.recorded.length, 1);
 });

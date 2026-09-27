@@ -6,6 +6,12 @@ const Database = require('better-sqlite3');
 const {
     AddReservePlannedEndAt1787547000000,
 } = require('../../dist/db/migrations/sqlite/1787547000000-AddReservePlannedEndAt');
+const mysqlMigration = require('../../dist/db/migrations/mysql/1787547000000-AddReservePlannedEndAt');
+
+test('SQLite / MySQL migration は同じタイムスタンプを使う', () => {
+    assert.equal(AddReservePlannedEndAt1787547000000.name, 'AddReservePlannedEndAt1787547000000');
+    assert.equal(mysqlMigration.AddReservePlannedEndAt1787547000000.name, 'AddReservePlannedEndAt1787547000000');
+});
 
 test('reserve plannedEndAt migrationは既存予約を保ってnull列を追加・削除する', async () => {
     const db = new Database(':memory:');

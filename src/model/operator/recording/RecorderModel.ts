@@ -57,6 +57,7 @@ import RecordingAttempt from '../../../db/entities/RecordingAttempt';
 import { RecordingSessionState, transitionRecordingSession } from './RecordingSessionState';
 import { resolveRecordingStatus } from '../../../util/RecordingResult';
 import RecordingSink from './RecordingSink';
+import { countRecordingGaps } from './RecordingGapUtil';
 import RecordingUpstreamSession from './RecordingUpstreamSession';
 import { usesManagedEnd } from './RecordingStreamEndPolicy';
 import telemetry from '../../observability/Telemetry';
@@ -131,6 +132,7 @@ class RecorderModel implements IRecorderModel {
     private recordingAttemptCount: number = 0;
     private transportCloseReasons: Array<string | null> = [];
     private transportGapCount: number = 0;
+    private lastAttemptHadData: boolean = false;
     private resumeInfo: RecordingResumeInfo | null = null;
     private resumeFilePath: string | null = null;
     private resumeFileOffset: number = 0;
@@ -256,6 +258,9 @@ class RecorderModel implements IRecorderModel {
                 priority: toMirakurunPriority(
                     this.reserve.isConflict ? this.config.conflictPriority : this.config.recPriority,
                     this.reserve.priority,
+                    this.config.streamingPriority,
+                    this.reserve.isConflict,
+                    this.config.recPriority,
                 ),
                 bytesReceived: 0,
                 fileOffsetStart: null,
@@ -361,7 +366,7 @@ class RecorderModel implements IRecorderModel {
             this.currentAttempt = null;
             this.recordingAttemptCount = 0;
         }
-        this.transportCloseReasons = [];
+        if (this.resumeInfo === null) this.transportCloseReasons = [];
 
         // 除外, 重複しているものはタイマーをセットしない
         if (this.reserve.isSkip === true || this.reserve.isOverlap === true) {
@@ -423,10 +428,7 @@ class RecorderModel implements IRecorderModel {
         this.resumeFilePath = path.join(parent, info.videoFile.filePath);
         this.recordingAttemptCount = info.attempts.length;
         this.resumeFileOffset = info.videoFile.size;
-        this.transportGapCount = info.attempts.slice(0, -1).reduce((count, attempt, index) => {
-            const next = info.attempts[index + 1];
-            return count + (attempt.endedAt !== null && next.firstDataAt !== null ? 1 : 0);
-        }, 0);
+        this.transportGapCount = countRecordingGaps(info.attempts);
         this.transportCloseReasons = info.attempts.map(attempt => attempt.closeReason);
         return this.setTimer(reserve, isSuppressLog);
     }
@@ -588,6 +590,16 @@ class RecorderModel implements IRecorderModel {
                 // 待機を打ち切ったので追従中の表示も解除する
                 await this.setFollowingSchedule(false);
                 this.transportCloseReasons = ['error'];
+                if (this.recordedId !== null) {
+                    this.transportCloseReasons = ['transport-lost'];
+                    this.boundaryEndReason = 'transport-lost';
+                    await this.recEnd(false);
+                    this.recordingEvent.emitRecordingFailed(
+                        this.reserve,
+                        await this.recordedDB.findId(this.recordedId),
+                    );
+                    return;
+                }
                 await this.transitionSession('fail');
                 await this.persistRecordingSession({
                     state: RecordingSessionState.FINISHED,
@@ -883,7 +895,7 @@ class RecorderModel implements IRecorderModel {
         let hasStartedRecording = false;
         const session = new RecordingUpstreamSession({
             creator: this.streamCreator,
-            reserve: this.reserve,
+            reserve: () => this.reserve,
             sink,
             deadline: () => this.reserve.endAt + this.getTimingConfig().endMarginMs,
             managedEnd: usesManagedEnd(this.reserve.programId, this.config.recording?.programStreamMode ?? 'service'),
@@ -902,6 +914,7 @@ class RecorderModel implements IRecorderModel {
                 }
             },
             onAttemptEnd: async (reason, err) => {
+                this.lastAttemptHadData = this.currentAttempt !== null && this.currentAttempt.firstDataAt !== null;
                 if (this.currentAttempt !== null) {
                     const baseOffset = this.resumeInfo === null ? 0 : this.resumeFileOffset;
                     this.currentAttempt.bytesReceived =
@@ -922,6 +935,7 @@ class RecorderModel implements IRecorderModel {
             },
             onChunk: () => {},
             onFirstData: async source => {
+                clearTimeout(firstDataTimeout);
                 if (this.telemetryStartDelayRecorded === false) {
                     telemetry.recordingStartDelay(Math.max(0, Date.now() - this.reserve.startAt));
                     this.telemetryStartDelayRecorded = true;
@@ -945,8 +959,7 @@ class RecorderModel implements IRecorderModel {
                     if (this.reserve.programId !== null) this.setEventRelayTimer(this.reserve);
                     hasStartedRecording = true;
                     resolveStarted();
-                } else if (this.resumeInfo !== null) {
-                    this.transportGapCount++;
+                } else if (this.resumeInfo !== null && hasStartedRecording === false) {
                     this.recordingEvent.emitStartRecording(this.reserve, this.resumeInfo.recorded);
                     if (this.reserve.programId !== null) this.setEventRelayTimer(this.reserve);
                     hasStartedRecording = true;
@@ -964,8 +977,10 @@ class RecorderModel implements IRecorderModel {
                 void this.transitionSession(reconnecting ? 'reconnect' : 'reconnected');
             },
             onGapStart: reason => {
-                this.transportGapCount++;
-                this.telemetryGapStartedAt = Date.now();
+                if (this.lastAttemptHadData === true) {
+                    this.transportGapCount++;
+                    this.telemetryGapStartedAt = Date.now();
+                }
                 this.log.system.warn(`recording upstream gap: reserveId: ${this.reserve.id}, reason: ${reason}`);
             },
             onGapEnd: () => {
@@ -984,12 +999,23 @@ class RecorderModel implements IRecorderModel {
         });
         this.upstreamSession = session;
         this.stream = recordingStream;
+        const firstDataTimeout = setTimeout(() => {
+            if (this.recordedId !== null || this.isFinishing) return;
+            session.stop();
+            rejectStarted(
+                new Error(
+                    classifyStartFailure('no-data-after-pipe', this.isLegacyProgramStream()) === 'error'
+                        ? RecorderModel.TRANSPORT_ERROR
+                        : RecorderModel.WAITING_FOR_EVENT_ERROR,
+                ),
+            );
+        }, resolveRecordingRetryConfig(this.config.recording).firstDataTimeoutMs);
         const sessionTask = session
             .run(recordingStream, waitingBuffer)
             .then(async decision => {
                 if (this.isFinishing || hasStartedRecording === false) return;
                 if (decision === 'failed') {
-                    await this.recFailed(new Error(RecorderModel.TRANSPORT_ERROR));
+                    await this.recFailed(new Error(RecorderModel.TRANSPORT_ERROR), 'transport-lost');
                     return;
                 }
                 if (decision === 'boundary') this.boundaryEndReason = 'boundary';
@@ -1003,17 +1029,6 @@ class RecorderModel implements IRecorderModel {
                 void this.recFailed(err instanceof Error ? err : new Error(String(err)));
             });
         void sessionTask;
-        const firstDataTimeout = setTimeout(() => {
-            if (this.recordedId !== null || this.isFinishing) return;
-            session.stop();
-            rejectStarted(
-                new Error(
-                    classifyStartFailure('no-data-after-pipe', this.isLegacyProgramStream()) === 'error'
-                        ? RecorderModel.TRANSPORT_ERROR
-                        : RecorderModel.WAITING_FOR_EVENT_ERROR,
-                ),
-            );
-        }, resolveRecordingRetryConfig(this.config.recording).firstDataTimeoutMs);
         try {
             await started;
         } catch (err) {
@@ -1466,13 +1481,13 @@ class RecorderModel implements IRecorderModel {
      * 録画失敗処理
      * @param err: Error
      */
-    private async recFailed(err: Error): Promise<void> {
+    private async recFailed(err: Error, reason: string = 'write-error'): Promise<void> {
         if (this.isFinishing) return;
         this.isFinishing = true;
         this.upstreamSession?.stop();
-        await this.finishRecordingAttempt('write-error', err);
-        this.transportCloseReasons.push('write-error');
-        this.boundaryEndReason = 'write-error';
+        await this.finishRecordingAttempt(reason, err);
+        this.transportCloseReasons.push(reason);
+        this.boundaryEndReason = reason;
         this.log.system.error(`recording end error reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`);
         this.log.system.error(err);
 
@@ -1607,6 +1622,7 @@ class RecorderModel implements IRecorderModel {
         await this.transitionSession('finalize');
         const endReason =
             this.boundaryEndReason ?? this.transportCloseReasons[this.transportCloseReasons.length - 1] ?? null;
+        this.log.system.info(`recording end: reserveId: ${this.reserve.id}, reason: ${endReason ?? 'unknown'}`);
         const resultStatus = resolveRecordingStatus({
             closeReasons: [...this.transportCloseReasons, endReason],
             transportGapCount: this.transportGapCount,
@@ -1698,10 +1714,7 @@ class RecorderModel implements IRecorderModel {
             try {
                 if (recorded !== null && this.recordingSession !== null) {
                     const attempts = await this.recordingSessionDB.findAttemptsBySessionId(this.recordingSession.id);
-                    const transportGapCount = attempts.slice(0, -1).reduce((count, attempt, index) => {
-                        const next = attempts[index + 1];
-                        return count + (attempt.endedAt !== null && next.firstDataAt !== null ? 1 : 0);
-                    }, 0);
+                    const transportGapCount = countRecordingGaps(attempts);
                     Object.assign(recorded, { transportGapCount });
                 }
             } catch (err) {

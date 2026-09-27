@@ -76,6 +76,8 @@ test('reconnectEnabled=false は既存の ECONNRESET 失敗経路と未完了 TS
     assert.equal(sizes[0].size % 188, 73);
     assert.equal(harness.events.failed.length, 1);
     assert.equal(harness.events.finish.length, 0);
+    assert.equal(harness.recordingSessions[0].endReason, 'transport-lost');
+    assert.equal(harness.recorded[0].recordingStatus, 'partial');
     const streams = stub.requests.filter(request => request.url.includes('/stream'));
     assert.equal(streams.length, 1);
     assert.equal(streams[0].url, '/api/services/12345/stream?decode=1');

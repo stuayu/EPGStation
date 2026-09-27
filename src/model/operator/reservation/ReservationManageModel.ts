@@ -46,6 +46,7 @@ class ReservationManageModel implements IReservationManageModel {
     private reserveEvent: IReserveEvent;
     private recordingStreamCreator?: IRecordingStreamCreator;
     private plannerReasons = new Map<number, string[]>();
+    private plannerDifferenceLogs = new Map<number, string>();
     private tuners: Tuner[] = [];
     // チューナ情報から放送波を判定できなかったときにチャンネル情報から作る代替値
     private broadcastStatusFallback: apid.BroadcastStatus | null = null;
@@ -1856,14 +1857,29 @@ class ReservationManageModel implements IReservationManageModel {
         const legacy = this.createLegacyReserves(matches);
         const planner = await this.createPlannerReserves(matches);
         const legacyById = new Map(legacy.map(reserve => [reserve.id, reserve]));
+        const currentReserveIds = new Set(planner.map(reserve => reserve.id));
+        for (const reserveId of this.plannerDifferenceLogs.keys()) {
+            if (currentReserveIds.has(reserveId) === false) this.plannerDifferenceLogs.delete(reserveId);
+        }
         for (const reserve of planner) {
             const old = legacyById.get(reserve.id);
-            if (
-                old !== undefined &&
-                (old.isConflict !== reserve.isConflict ||
-                    reserve.plannedTunerIndex !== null ||
-                    reserve.conflictInfo !== null)
-            ) {
+            if (old !== undefined) {
+                const difference = JSON.stringify({
+                    legacy: { isConflict: old.isConflict, conflictInfo: old.conflictInfo ?? null },
+                    planner: { isConflict: reserve.isConflict, conflictInfo: reserve.conflictInfo ?? null },
+                });
+                const normalized = (value: unknown): string => JSON.stringify(value);
+                const legacyDifference = normalized({
+                    isConflict: old.isConflict,
+                    conflictInfo: old.conflictInfo ?? null,
+                });
+                const plannerDifference = normalized({
+                    isConflict: reserve.isConflict,
+                    conflictInfo: reserve.conflictInfo ?? null,
+                });
+                if (legacyDifference === plannerDifference) continue;
+                if (this.plannerDifferenceLogs.get(reserve.id) === difference) continue;
+                this.plannerDifferenceLogs.set(reserve.id, difference);
                 this.log.system.info({
                     message: 'reservation scheduler difference',
                     reserveId: reserve.id,
@@ -1890,21 +1906,28 @@ class ReservationManageModel implements IReservationManageModel {
         const priorities = [...matches].sort((a, b) => this.sortReserve(a, b));
         const rank = new Map(priorities.map((reserve, index) => [reserve.id, index]));
         const nextProgramStarts = new Map<number, number | undefined>();
+        const undefinedByChannel = new Map<number, Reserve[]>();
+        for (const reserve of matches) {
+            if (reserve.isTimeUndefined !== true || reserve.programId === null) continue;
+            const group = undefinedByChannel.get(reserve.channelId) ?? [];
+            group.push(reserve);
+            undefinedByChannel.set(reserve.channelId, group);
+        }
         await Promise.all(
-            matches
-                .filter(reserve => reserve.isTimeUndefined === true && reserve.programId !== null)
-                .map(async reserve => {
-                    const following = await this.programDB.findSchedule({
-                        channelId: reserve.channelId,
-                        startAt: reserve.startAt + 1,
-                        endAt: reserve.endAt,
-                        isHalfWidth: false,
-                    });
+            [...undefinedByChannel.entries()].map(async ([channelId, reserves]) => {
+                const following = await this.programDB.findSchedule({
+                    channelId,
+                    startAt: Math.min(...reserves.map(reserve => reserve.startAt + 1)),
+                    endAt: Math.max(...reserves.map(reserve => reserve.endAt)),
+                    isHalfWidth: false,
+                });
+                for (const reserve of reserves) {
                     const next = following
                         .filter(program => program.startAt > reserve.startAt)
                         .sort((a, b) => a.startAt - b.startAt)[0];
                     nextProgramStarts.set(reserve.id, next?.startAt);
-                }),
+                }
+            }),
         );
         const plannerEndAt = new Map<number, number>();
         for (const reserve of matches) {
