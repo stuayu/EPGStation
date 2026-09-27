@@ -18,7 +18,7 @@ import container from '../model/ModelContainer';
 
 export interface TailStreamOption extends ReadableOptions {
     start?: number;
-    shouldKeepWaiting?: () => boolean;
+    shouldKeepWaiting?: () => boolean | Promise<boolean>;
     maxIdleMs?: number;
 }
 
@@ -36,7 +36,7 @@ class TailStream extends Readable {
     private readPending: number = 0;
     private fd: number = 0;
     private idleStartedAt: number | null = null;
-    private readonly keepWaiting: () => boolean;
+    private readonly keepWaiting: () => boolean | Promise<boolean>;
     private readonly maxIdleMs: number;
 
     private log: ILogger;
@@ -176,22 +176,25 @@ class TailStream extends Readable {
         const stat = fs.statSync(this.filePath);
         this.checkFileTimer = setTimeout(() => {
             this.checkFileTimer = null;
-
-            const newStat = fs.statSync(this.filePath);
-            if (newStat.size !== stat.size) {
-                this.idleStartedAt = null;
-                this.doRead();
-            } else if (
-                shouldWaitForTailGrowth(
-                    this.keepWaiting(),
-                    Date.now() - (this.idleStartedAt ?? (this.idleStartedAt = Date.now())),
-                    this.maxIdleMs,
-                )
-            ) {
-                this.checkFile();
-            } else {
-                this.close();
-            }
+            void (async () => {
+                try {
+                    const newStat = fs.statSync(this.filePath);
+                    if (newStat.size !== stat.size) {
+                        this.idleStartedAt = null;
+                        this.doRead();
+                    } else if (
+                        shouldWaitForTailGrowth(
+                            await this.keepWaiting(),
+                            Date.now() - (this.idleStartedAt ?? (this.idleStartedAt = Date.now())),
+                            this.maxIdleMs,
+                        )
+                    )
+                        this.checkFile();
+                    else this.close();
+                } catch (error) {
+                    this.destroy(error instanceof Error ? error : new Error(String(error)));
+                }
+            })();
         }, 1000);
     }
 

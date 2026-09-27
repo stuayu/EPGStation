@@ -3,6 +3,7 @@ import IRecordedApiModel from '../../../api/recorded/IRecordedApiModel';
 import container from '../../../ModelContainer';
 import * as api from '../../api';
 import IRecordingSessionApiModel from '../../../api/recorded/IRecordingSessionApiModel';
+import { deriveRecordingGaps } from '../../../operator/recording/RecordingGapUtil';
 import * as apid from '../../../../../api';
 
 export const get: Operation = async (req, res) => {
@@ -24,16 +25,7 @@ export const get: Operation = async (req, res) => {
             const gaps: NonNullable<apid.RecordedItem['transportGaps']> = [];
             for (const session of sessions.sessions) {
                 const attempts = [...session.attempts].sort((a, b) => a.attemptNo - b.attemptNo);
-                for (let i = 0; i + 1 < attempts.length; i++) {
-                    const current = attempts[i];
-                    if (typeof current.endedAt === 'number') {
-                        gaps.push({
-                            startAt: current.endedAt,
-                            endAt: attempts[i + 1].firstDataAt,
-                            reason: current.closeReason,
-                        });
-                    }
-                }
+                gaps.push(...deriveRecordingGaps(attempts));
             }
             if (gaps.length > 0) recorded.transportGaps = gaps;
             api.responseJSON(res, 200, recorded);

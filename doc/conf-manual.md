@@ -976,6 +976,7 @@ recPriority: 20
 | number | 1            | no   |
 
 - 予約が競合する番組に適用される
+- 予約 priority (1〜5) は既定値 3 を基準に差分として加算される。録画 priority は常に `streamingPriority + 1` 以上とし、競合録画は同じ予約 priority の通常録画より 1 以上低くする。`recPriority` / `conflictPriority` / `streamingPriority` を変更した場合も、この順序条件を保つため Mirakurun へ渡す値を下限・上限で調整する。
 
 ```yaml
 conflictPriority: 10
@@ -1109,6 +1110,7 @@ reservation:
 ```
 
 新スケジューラへ切り替えると、予約の競合判定と録画側のチューナー計画に同じ計画結果を使う。
+`plannedEndAt` は内部の計画用終了時刻で、`reservation.scheduler: planner` のときだけ有効。`legacy` では従来どおり予約の `endAt` を使う。
 
 ### epgRealtime
 

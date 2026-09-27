@@ -94,3 +94,16 @@ test('未指定 (既定 false) は同じチャンネルでも予約ごとに接�
     assert.equal(stub.requests.filter(request => request.url.includes('/stream')).length, 2);
     streams.forEach(stream => harness.recordingStreamCreator.closeStream(stream, 'scheduled-end'));
 });
+
+test('実チューナー index が 0 始まり連番でなくても planner 用 index を返す', async t => {
+    const stub = new MirakurunRecordingStub([sendAndHold(5)]);
+    const harness = new RecorderHarness(stub);
+    await harness.start();
+    t.after(() => harness.cleanup());
+    harness.recordingStreamCreator.setTuner([{ index: 7, types: ['GR'] }]);
+    harness.recorder.setTimer(makeReserve(99220), true);
+    await waitFor(() => harness.events.start.length === 1);
+    assert.deepEqual(harness.recordingStreamCreator.getActiveTunerAssignments(), [{ reserveId: 99220, tunerIndex: 7 }]);
+    await harness.recorder.cancel(false);
+    await waitFor(() => harness.events.finish.length === 1);
+});

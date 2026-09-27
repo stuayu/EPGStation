@@ -15,7 +15,7 @@ import telemetry from '../../observability/Telemetry';
 
 export interface RecordingUpstreamSessionOptions {
     creator: IRecordingStreamCreator;
-    reserve: Reserve;
+    reserve: Reserve | (() => Reserve);
     sink: RecordingSink;
     deadline: () => number;
     managedEnd: boolean;
@@ -78,7 +78,9 @@ export default class RecordingUpstreamSession {
                 await this.options.onAttemptStart(this.options.sink.getBytesWritten());
                 telemetry.reconnect();
                 try {
-                    source = await this.options.creator.reconnect(this.options.reserve, controller.signal);
+                    const reserve =
+                        typeof this.options.reserve === 'function' ? this.options.reserve() : this.options.reserve;
+                    source = await this.options.creator.reconnect(reserve, controller.signal);
                     if (this.stopped || !this.options.isCurrent()) {
                         this.options.creator.closeStream(source, 'canceled');
                         await this.options.onAttemptEnd('canceled');

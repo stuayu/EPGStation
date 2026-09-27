@@ -15,12 +15,27 @@ const reserve = (id, channel, channelType, startAt, endAt, values = {}) => ({
     ...values,
 });
 
-test('Mirakurun priority は config 基準値の周囲へ予約 priority を写す', () => {
+test('Mirakurun priority は録画をライブ視聴より優先し、競合録画を通常録画より下げる', () => {
     assert.equal(toMirakurunPriority(2, 3), 2);
     assert.equal(toMirakurunPriority(2, 5), 4);
-    assert.equal(toMirakurunPriority(2, 1), 0);
-    assert.equal(toMirakurunPriority(-1, 1), -1);
+    assert.equal(toMirakurunPriority(2, 1), 2);
+    assert.equal(toMirakurunPriority(-1, 1), 2);
     assert.equal(toMirakurunPriority(2, undefined), 2);
+    assert.deepEqual(
+        [1, 2, 3, 4, 5].map(priority => [
+            toMirakurunPriority(2, priority, 0, false, 2),
+            toMirakurunPriority(1, priority, 0, true, 2),
+        ]),
+        [
+            [2, 1],
+            [2, 1],
+            [2, 1],
+            [3, 2],
+            [4, 3],
+        ],
+    );
+    assert.equal(toMirakurunPriority(8, 3, 7, false, 8), 9);
+    assert.equal(toMirakurunPriority(7, 3, 7, true, 8), 8);
 });
 
 test('増加路で多波対応チューナーの偽競合を解消する', () => {
