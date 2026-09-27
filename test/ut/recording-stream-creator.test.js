@@ -47,6 +47,36 @@ test('programId 予約は共有 priority を変更せず service stream option �
     stream.destroy();
 });
 
+test('getTunerId は最初に使える互換チューナーを選ぶ', async () => {
+    const creator = new RecordingStreamCreator(
+        { getLogger: () => logger },
+        { getConfig: () => ({ recording: {} }) },
+        { getClient: () => ({}) },
+    );
+    creator.tuners = [
+        { types: ['BS'], programs: [] },
+        { types: ['GR'], programs: [] },
+        { types: ['GR'], programs: [] },
+    ];
+    assert.equal(await creator.getTunerId(reserve({ channelType: 'GR' })), 1);
+});
+
+test('現状の挙動 (Phase 6 で変更予定): allowEndLack は終了まで15秒以下の録画から枠を明け渡す', async () => {
+    const creator = new RecordingStreamCreator(
+        { getLogger: () => logger },
+        { getConfig: () => ({ recording: {} }) },
+        { getClient: () => ({}) },
+    );
+    const stream = new PassThrough();
+    creator.tuners = [{
+        types: ['GR'],
+        programs: [{ reserve: reserve({ id: 8, programId: null, allowEndLack: true, endAt: Date.now() + 10_000 }), stream }],
+    }];
+
+    assert.equal(await creator.getTunerId(reserve({ id: 9, channel: '14' })), 0);
+    assert.equal(stream.destroyed, true);
+});
+
 test('program mode を指定した場合だけ切り戻し用 program stream を使う', async () => {
     const stream = new PassThrough();
     let called = null;

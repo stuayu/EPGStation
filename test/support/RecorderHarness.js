@@ -1,0 +1,95 @@
+'use strict';
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+require('reflect-metadata');
+const Mirakurun = require('mirakurun').default;
+const RecorderModel = require('../../dist/model/operator/recording/RecorderModel').default;
+const RecordingStreamCreator = require('../../dist/model/operator/recording/RecordingStreamCreator').default;
+
+const logger = { system: { info() {}, debug() {}, warn() {}, error() {}, fatal() {} }, stream: { fatal() {} } };
+
+class RecorderHarness {
+    constructor(stub, options = {}) {
+        this.stub = stub;
+        this.events = { start: [], finish: [], failed: [] };
+        this.recorded = [];
+        this.videoFiles = [];
+        this.tempDir = null;
+        this.client = new Mirakurun();
+        this.configuration = { getConfig: () => ({
+            mirakurunPath: 'http://127.0.0.1:1', recPriority: 10, conflictPriority: 1,
+            recorded: [], recording: { prepRecSec: 0, startMarginSec: 0, endMarginSec: 0,
+                startGateEnabled: false, programStreamMode: 'service', ...options.recording },
+            isEnabledDropCheck: false, timeSpecifiedStartMargin: 0, timeSpecifiedEndMargin: 0,
+        }) };
+        this.client.host = '127.0.0.1';
+        this.client.port = 0;
+        this.client.basePath = '/api';
+        this.mirakurunClient = { getClient: () => this.client };
+        this.recordingStreamCreator = new RecordingStreamCreator(
+            { getLogger: () => logger }, this.configuration, this.mirakurunClient,
+        );
+        const originalSetInterval = global.setInterval;
+        global.setInterval = (...args) => {
+            const timer = originalSetInterval(...args);
+            timer.unref();
+            return timer;
+        };
+        try {
+            this.recordingStreamCreator.setTuner([{ name: 'test', types: ['GR'] }]);
+        } finally {
+            global.setInterval = originalSetInterval;
+        }
+    }
+
+    async start() {
+        const url = new URL(await this.stub.start());
+        this.client.host = url.hostname;
+        this.client.port = Number(url.port);
+        this.tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'epgstation-recorder-harness-'));
+        let fileNo = 0;
+        const recordedDB = {
+            insertOnce: async row => { row.id = this.recorded.length + 1; this.recorded.push(row); return row.id; },
+            findId: async id => this.recorded.find(row => row.id === id) ?? null,
+            removeRecording: async id => { const row = this.recorded.find(item => item.id === id); if (row) row.isRecording = false; },
+        };
+        const videoFileDB = {
+            insertOnce: async row => { row.id = this.videoFiles.length + 1; this.videoFiles.push(row); return row.id; },
+        };
+        const recordingUtil = {
+            getRecPath: async () => {
+                fileNo++;
+                const fileName = `baseline${fileNo === 1 ? '' : ` (${fileNo - 1})`}.ts`;
+                return { fullPath: path.join(this.tempDir, fileName), parendDir: { name: this.tempDir }, subDir: '', fileName };
+            },
+            updateVideoFileSize: async () => {},
+        };
+        const recordingEvent = {
+            emitStartPrepRecording: (...args) => this.events.prep?.push(args),
+            emitStartRecording: (...args) => this.events.start.push(args),
+            emitFinishRecording: (...args) => this.events.finish.push(args),
+            emitRecordingFailed: (...args) => this.events.failed.push(args),
+            emitCancelRecording: () => {},
+        };
+        this.recorder = new RecorderModel(
+            { getLogger: () => logger }, this.configuration,
+            { findId: async () => null, findChannelIdAndTime: async () => null }, { findId: async () => null },
+            { findId: async id => ({ id }), updateFollowingSchedule: async () => {} },
+            recordedDB, {}, videoFileDB, {}, this.recordingStreamCreator,
+            { start: async () => {}, stop: async () => {}, getResult: async () => ({}), getFilePath: () => null },
+            recordingUtil, recordingEvent, this.mirakurunClient,
+            { dispatch: async () => {} }, { emitUpdated: () => {} },
+            { update: () => {} }, { notifyEitPresent: () => {} },
+        );
+    }
+
+    async cleanup() {
+        this.recorder?.cancel(false);
+        await this.stub.stop();
+        if (this.tempDir) await fs.promises.rm(this.tempDir, { recursive: true, force: true });
+    }
+}
+
+module.exports = { RecorderHarness };

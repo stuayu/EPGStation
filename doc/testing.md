@@ -58,6 +58,12 @@ DI クラスはコンストラクタ引数を**位置指定**で組み立てる 
 
 書き方の詳細は Skill `write-tests` (`.claude/skills/write-tests/SKILL.md`) にまとまっている。
 
+## Mirakurun 録画ストリーム試験
+
+`test/support/MirakurunRecordingStub.js` は `/api/services/<id>/stream` を受け、各接続へ順番にシナリオを割り当てる。`sendThenReset(nPackets, partialBytes)` は TS パケットと指定バイト数の断片を送って接続を切り、`sendThenEnd` は正常 EOF、`sendAndHold` は停止まで応答を保持、`status(503)` は指定 HTTP status を返す。`tsPackets(n, { pid, cc, conn })` の payload には接続番号とパケット通番が入り、`X-Mirakurun-Priority` も記録する。停止時は保持中のレスポンスを destroy してからサーバを閉じる。
+
+`test/support/RecorderHarness.js` は実物の `RecordingStreamCreator` と `RecorderModel` を組み立て、Mirakurun クライアントの host / port をスタブへ向ける。録画 DB はメモリ実装、録画先はテストごとの一時ディレクトリ。記録係から `emitStartRecording` / `emitFinishRecording` / `emitRecordingFailed` の回数と引数を確認できる。使用例は `test/itb/recorder-reconnect-baseline.test.js` を参照。保持ストリームを含む場合も harness の `stop()` を呼び、接続と一時ファイルを片付ける。
+
 ## 機能フラグ
 
 `featureFlags` は **opt-out** (未指定 = 有効)。テストで「無効」を表すときは `featureFlags: {}` ではなく、

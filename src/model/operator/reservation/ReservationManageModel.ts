@@ -429,7 +429,7 @@ class ReservationManageModel implements IReservationManageModel {
 
         // 予約情報の作成
         const newReserve = new Reserve();
-        newReserve.isEventRelay = true;
+        newReserve.isEventRelay = false;
         newReserve.updateTime = new Date().getTime();
         newReserve.isTimeSpecified = true;
         newReserve.name = StrUtil.toDBStr(option.timeSpecifiedOption.name);
@@ -815,6 +815,14 @@ class ReservationManageModel implements IReservationManageModel {
             this.executeManagementModel.unLockExecution(exeId);
         };
 
+        try {
+            await this.updateRuleWithExecution(ruleId, isSuppressLog, isFirstUpdate);
+        } finally {
+            finalize();
+        }
+    }
+
+    private async updateRuleWithExecution(ruleId: apid.RuleId, isSuppressLog: boolean, isFirstUpdate: boolean): Promise<void> {
         if (isSuppressLog === false) {
             this.log.system.info(`update rule reservation: ${ruleId}`);
         }
@@ -845,7 +853,6 @@ class ReservationManageModel implements IReservationManageModel {
                 hasEventRelay: false, // イベントリレーの情報は更新対象とさせないため除外
             })
             .catch(err => {
-                finalize();
                 this.log.system.error(`find rule reservation error: ${ruleId}`);
                 this.log.system.error(err);
                 throw err;
@@ -860,7 +867,6 @@ class ReservationManageModel implements IReservationManageModel {
                           reserveOption: rule.reserveOption,
                       })
                       .catch(err => {
-                          finalize();
                           this.log.system.error(`find rule error: ${ruleId}`);
                           this.log.system.error(err);
                           throw err;
@@ -884,7 +890,6 @@ class ReservationManageModel implements IReservationManageModel {
                     typeof rule.searchOption.channelIds === 'undefined' ||
                     typeof rule.searchOption.times === 'undefined'
                 ) {
-                    finalize();
                     this.log.system.error(`rule search option error: ${ruleId}`);
                     throw new Error('RuleSearchOptionError');
                 }
@@ -1018,11 +1023,8 @@ class ReservationManageModel implements IReservationManageModel {
             oldRuleReserves,
             isSuppressLog,
         ).catch(err => {
-            finalize();
             throw err;
         });
-
-        finalize();
 
         if (isSuppressLog === false) {
             this.log.system.info(`successful update rule reservation: ${ruleId}`);
@@ -1649,6 +1651,14 @@ class ReservationManageModel implements IReservationManageModel {
             this.executeManagementModel.unLockExecution(exeId);
         };
 
+        try {
+            await this.editWithExecution(reserveId, option);
+        } finally {
+            finalize();
+        }
+    }
+
+    private async editWithExecution(reserveId: apid.ReserveId, option: apid.EditManualReserveOption): Promise<void> {
         this.log.system.info(`edit reservation: ${reserveId}`);
 
         // オプションチェック
@@ -1659,12 +1669,10 @@ class ReservationManageModel implements IReservationManageModel {
 
         // reserveId が存在するかチェック
         const newReserve = await this.reserveDB.findId(reserveId).catch(err => {
-            finalize();
             this.log.system.error(`get reservation error: ${reserveId}`);
             throw err;
         });
         if (newReserve === null) {
-            finalize();
             this.log.system.error(`reservation is not found: ${reserveId}`);
             throw new Error('ReservationIsNotFound');
         }
@@ -1679,13 +1687,9 @@ class ReservationManageModel implements IReservationManageModel {
 
         // 更新
         await this.reserveDB.updateOnce(newReserve).catch(err => {
-            finalize();
             this.log.system.error(`update reservation error: ${reserveId}`);
             throw err;
         });
-
-        // 完了したのでロック解除
-        finalize();
 
         this.log.system.info(`successful edit reservation: ${reserveId}`);
 
