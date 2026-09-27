@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- OpenTelemetry を opt-in で導入 (録画セッション・予約計画の traces / metrics) → 2026-09-28
+
 - 連続録画の上流共有 Phase 9 (opt-in) → 2026-09-28
 - 放送時間未定の終了時刻を表示・Planner・安全上限に分離 Phase 8 → 2026-09-28
 - 予約優先度と競合ポリシー Phase 7 → 2026-09-28
@@ -38,6 +40,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-28
 
+- **OpenTelemetry を opt-in で導入**: `observability.otel.enabled` が true の場合だけ Node SDK を動的 import し、OTLP/HTTP で traces / metrics を送る。Operator と Service は個別に初期化し、`service.name` にプロセス種別を付ける。RecordingSession / attempt、開始ゲート fallback、再接続と gap、SchedulePlanner、チューナー open failure を `Telemetry` wrapper 経由で計測する。ログ出力は log4js のまま。
 - **録画セッション再設計 Phase 8 で未定番組の終了時刻を用途別に分離**: `ProgramDuration.resolveProgramEndTimes()` が表示用と録画安全上限に開始 + 3 時間を保ち、Planner 用終了だけ同一チャンネルの次番組開始で切り詰める。Reservation Planner は EPG の次番組を参照し、API の表示と保存済み `endAt` は変更しない。内部列 `reserve.plannedEndAt` は録画中に対象 EIT present が未定のまま計画終了へ近づいた場合だけ30分ずつ延長し、3時間の上限内で重複予約の Planner を再計算する。SQLite / MySQL migration を追加した。
 - **録画セッション再設計 Phase 9 で連続録画の上流共有を追加**: `recording.shareUpstreamStream` (既定 false) が有効な場合、同一 channelId の連続予約で Operator 内の `RecordingSourceLeaseManager` が Mirakurun 接続を共有し、各予約へ PassThrough 分岐を渡す。priority / decode 設定が異なる予約と program mode は共有しない。参照数 0 で上流を閉じ、上流障害は全分岐へ同じ理由で伝えて lease 単位で再接続する。
 - **予約優先度と競合ポリシー Phase 7 を追加**: Reserve / Rule に priority (1〜5、既定 3) と conflictPolicy を追加し、SQLite / MySQL migration で既存 allowEndLack を STRICT / ALLOW_END_LACK へ移行する。優先度は高い順に並べ、同じ優先度では従来の sortReserve を維持する。Planner は末尾・先頭・部分欠損の許可と下位予約の押し出しを扱い、手動追加 API は押し出した予約 ID と PRIORITY_PREEMPTED を返す。Mirakurun には recPriority / conflictPriority を基準に予約優先度の差分を足し、最小値 -1 で下限を設ける。

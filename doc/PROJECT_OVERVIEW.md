@@ -1,5 +1,9 @@
 # EPGStation (stuayu フォーク) プロジェクト概要
 
+## OpenTelemetry
+
+`observability.otel.enabled` が true の場合のみ Node SDK を動的に読み込み、OTLP/HTTP で traces / metrics を送る。Operator と Service は独立して初期化し、`service.name` は設定した名前にプロセス種別 (`operator` / `service`) を付ける。無効時は SDK を import しない。ログは log4js を使い続ける。計装 API は `src/model/observability/Telemetry.ts` に集約する。
+
 日本の DTV 録画管理ソフトウェア EPGStation のフォーク版。
 上流は [l3tnun/EPGStation](https://github.com/l3tnun/EPGStation) で、本フォーク (stuayu 版) は
 **Windows 完全対応**・**県外地上波対応 (NW1〜NW40 チャンネル型の追加)**・**Mirakurun dev 版 (stuayu/Mirakurun) との連携** を主軸に拡張している。

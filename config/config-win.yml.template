@@ -143,6 +143,14 @@ dbtype: sqlite
 # 予約定期更新時のログ出力を抑えるか
 # isSuppressReservesUpdateAllLog: false
 
+# OpenTelemetry の traces / metrics を OTLP/HTTP で送信する (既定 false)
+# endpoint は Collector の OTLP HTTP receiver の base URL (例: http://localhost:4318)
+# observability:
+#     otel:
+#         enabled: false
+#         endpoint: 'http://localhost:4318'
+#         serviceName: epgstation
+
 # ===== 録画 =====
 # 録画ファイルの保存先。既定は EPGStation フォルダー内の recorded。別の保存先なら配列内の path を変更。
 # 例: path: 'D:/recorded'

@@ -43,6 +43,12 @@
     },
     "homepage": "https://github.com/l3tnun/EPGStation-V2#readme",
     "dependencies": {
+        "@opentelemetry/api": "1.9.1",
+        "@opentelemetry/exporter-metrics-otlp-http": "0.222.0",
+        "@opentelemetry/exporter-trace-otlp-http": "0.222.0",
+        "@opentelemetry/resources": "2.11.0",
+        "@opentelemetry/sdk-metrics": "2.11.0",
+        "@opentelemetry/sdk-node": "0.222.0",
         "arib-subtitle-timedmetadater": "4.0.10",
         "aribts": "2.1.12",
         "axios": "1.18.1",
@@ -75,6 +81,7 @@
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",
+        "@opentelemetry/sdk-trace-node": "2.11.0",
         "@types/compression": "1.8.1",
         "@types/express": "5.0.6",
         "@types/lodash": "4.17.24",

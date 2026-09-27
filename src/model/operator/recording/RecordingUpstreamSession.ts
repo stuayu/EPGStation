@@ -11,6 +11,7 @@ import {
 } from './RecordingStreamEndPolicy';
 import TsPacketFramer from './TsPacketFramer';
 import Reserve from '../../../db/entities/Reserve';
+import telemetry from '../../observability/Telemetry';
 
 export interface RecordingUpstreamSessionOptions {
     creator: IRecordingStreamCreator;
@@ -75,6 +76,7 @@ export default class RecordingUpstreamSession {
                 const controller = new AbortController();
                 this.reconnectAbort = controller;
                 await this.options.onAttemptStart(this.options.sink.getBytesWritten());
+                telemetry.reconnect();
                 try {
                     source = await this.options.creator.reconnect(this.options.reserve, controller.signal);
                     if (this.stopped || !this.options.isCurrent()) {

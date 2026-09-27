@@ -261,6 +261,14 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         ],
     },
     {
+        key: 'observability',
+        label: 'オブザーバビリティ',
+        hint: 'OpenTelemetry の traces と metrics を OTLP/HTTP で送信する',
+        requiresRestart: true,
+        editable: 'ymlOnly',
+        reason: 'notYetWired',
+    },
+    {
         key: 'epgRealtime',
         label: 'EPG リアルタイム同期',
         hint: '災害時の特番割り込みや前番組の延長による番組情報の変更を、EPG 更新間隔を待たず即座に反映する (有効・無効は機能フラグ epgRealtimeSync)',

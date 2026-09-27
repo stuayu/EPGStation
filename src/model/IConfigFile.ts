@@ -334,6 +334,15 @@ export default interface IConfigFile {
         urgentWindowMinutes?: number;
     };
 
+    // OpenTelemetry traces / metrics (無効時は SDK を読み込まない)
+    observability?: {
+        otel?: {
+            enabled?: boolean;
+            endpoint?: string;
+            serviceName?: string;
+        };
+    };
+
     // 放送局並び順
     channelOrder?: apid.ChannelId[];
     sidOrder?: apid.ServiceId[];
