@@ -489,7 +489,23 @@ HLS を iPhone / iPad / Safari で再生する場合、コーデック側にも�
 - **HLS (`LiveHLSVideo.vue` / `RecordedHLSStreamingVideo.vue`) も同じ流儀**。`audioTrack=all` で開くと
   サーバーは「映像レンディション + 音声レンディション 2 本」のマスタープレイリストを返すので、切替は
   hls.js なら `hls.audioTrack = <index>`、Safari のネイティブ HLS なら `video.audioTracks[i].enabled` で行う
-  (`client/src/util/HlsAudioTrackUtil.ts`)。画質切替・シークでストリームを作り直した後は選択中の音声を選び直す。
+  (`client/src/util/HlsAudioTrackUtil.ts`)。**新しく開いたストリームは必ず音声レンディション 0 (主音声) から
+  始まる**ため、画質切替・シーク・音声切替そのものの再接続フォールバック (embedded 切替が失敗した、または
+  切替時点で `embeddedAudioSwitch` が未取得だった場合) のいずれでストリームを作り直した後も、選択中が
+  副音声なら選び直す (`reapplyEmbeddedAudioTrack()`)。**選び直しの要否はクライアントの
+  `embeddedAudioSwitch` フラグでは判定しない** — フラグは playback-options の非同期取得が
+  間に合わないと未取得 (false) のまま再接続へ落ちることがあるが、サーバーは tsreadex 正規化済み
+  なら `audioTrack` の値に関係なく主・副 2 本の ES を map するため、フラグだけで判定すると
+  実際は 2 レンディションのストリームを選び直さずに見逃す (「主音声に切り替えてからもう一度副音声を
+  選ぶと効く」という報告 (Issue #31) の原因はこれだった)。代わりに `HlsAudioTrackUtil.waitForAudioRenditionCount()`
+  で新しいストリームが実際に持つ音声レンディション数を待って読み、`src/util/AudioTrackSwitchDecision.ts` の
+  `needsAudioTrackReapplyAfterReconnect(audioRenditionCount, isSecondaryTrackSelected)` で要否を決める
+  (2 本以上 + 副音声のときだけ true。1 本 + 副音声は「サーバーが要求どおり副音声だけを単独レンディションで
+  流している」ため false、主音声選択中は何本でも false)。選び直しに失敗した場合は
+  `resolveAppliedAudioTrack()` で選択状態を実際に鳴っている `'main'` へ戻し、音声パネルの表示も
+  合わせて更新する (戻さないと、次に同じ副音声を選んでも `decideAudioTrackSwitch()` が
+  `current === next` で `noop` を返し、選び直せなくなる。Issue #31 で報告された
+  「主音声に切り替えてからもう一度副音声を選ぶと効く」という症状はこれが原因だった)。
 - 録画 HLS の画質切替は `VirtualTimeline` の絶対再生位置を次のストリームの `playPosition` に渡し、DPlayer の `switchVideo` 経路で新しいストリームの先頭を再生する。字幕・チャプター・データ放送の再適用は既存の `canplay` / シーク処理に任せ、別のプレイヤーを生成しない。通常プレイリストでは最初のパート到着だけでクライアント取得を開始できないため、録画の `enable` をパート単位へ前倒しする変更は行わない。録画シーク 2 秒以下はサーバーの start→enable 1.05〜1.25 秒以外の約1.3秒を再測定し、必要なら短い GOP の影響を別途評価する。
 - **主音声を選んでいる間は `embeddedAudioSwitch` が未取得でも `audioTrack=all` で開く**。
   `playbackProfiles` はプレイヤー生成後に非同期で届くため、最初の url を組む時点では空のことが多い。

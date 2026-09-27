@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 音声 ES 2 本の HLS で副音声へ切り替わらない (Issue #31、再接続後にレンディションを選び直していなかった) → 2026-09-27
 - ログイン認証の既定値を無効 (opt-in) へ戻した → 2026-09-24
 - 複数音声 ES の録画で副音声が配信に乗らない (HLS の probe 不足) → 2026-09-24
 - Docker などのラッパー経由で AmatsukazeAddTask を起動 → 2026-09-24
@@ -23,6 +24,10 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - オフライン original-hevc の offset 再生成シーク・位置復元 → 2026-09-17
 - iOS / iPadOS のオフライン original-hevc fMP4 保存 → 2026-09-17
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
+
+## 2026-09-27
+
+- **音声 ES 2 本の HLS (in-memory HLS の複数音声レンディション) で副音声へ切り替えられない不具合を直した (Issue #31)**: 報告は「副音声を選んでも変わらない。主音声に切り替えてからもう一度副音声を選ぶと副音声が流れる」というもの。原因は `RecordedHLSStreamingVideo.vue` / `LiveHLSVideo.vue` の音声切替が embedded (レンディション切替) に失敗して「再接続 (ストリームの作り直し)」経路へ落ちたとき、`initVideoSetting()` 側で音声レンディションを選び直していなかったこと。録画側は seek と同じ「既存 dp へ `switchVideo()` するだけ」の分岐 (`reapplyEmbeddedAudioTrack()` を呼んでいたのは初回生成の分岐と `restartStream()` だけ) を通り、ライブ側は `switchLiveAudioTrack()` の再接続フォールバックが `initVideoSetting()` を呼ぶだけで、レンディションの選び直しは画質切替の `onPlaybackReady` からしか呼ばれていなかった。**新しく開いたストリームは主音声のレンディションから必ず始まる** (サーバーは `audioTrack=all` でマスタープレイリストを返し、音声レンディション 0 = 主音声が既定) ため、選び直さない限り選択中の状態 (`currentAudioTrack`) と実際に鳴っている音声が食い違ったままになる。さらに「同じ副音声をもう一度選ぶ」操作は `decideAudioTrackSwitch()` が `current === next` で `noop` 判定するため、食い違ったままだと再選択でも直らず、一度主音声へ切り替えてからでないと副音声に戻れなかった (報告どおりの症状)。**修正 (1回目、不十分だった)**: 最初は `src/util/AudioTrackSwitchDecision.ts` の `needsAudioTrackReapplyAfterReconnect()` をクライアントの `embeddedAudioSwitch` フラグで判定していたが、このフラグは playback-options の非同期取得が間に合わないと未取得 (false) のまま再接続へ落ちることがあり、フラグ判定のままだと「フラグ未取得で再接続 → 実際はサーバーが tsreadex 正規化済みで 2 レンディションを返している → フラグが false だから選び直さない」という同型の食い違いが残ったままだった (指示役のレビューで指摘)。**修正 (2回目、確定)**: 判定をフラグではなく**新しいストリームが実際に持つ音声レンディション数**に変更した。`HlsAudioTrackUtil.waitForAudioRenditionCount()` (新規) が hls.js は `hls.audioTracks.length`、ネイティブ HLS は `video.audioTracks.length` を「一覧が空でなくなるまで」待って読む (`#EXT-X-MEDIA` はマスタープレイリスト解析時にまとめて読まれるため、空でなくなった時点の件数が最終件数と一致し、後から 1→2 に増える競合は無い)。`needsAudioTrackReapplyAfterReconnect(audioRenditionCount, isSecondaryTrackSelected)` は「2 本以上 + 副音声のときだけ true」(1 本 + 副音声は `resolveStreamAudioTrack()` が embeddedAudioSwitch 不明時に明示トラック指定で開くため、その 1 本は副音声そのものであり選び直す先が無い。主音声選択中は何本でも false)。`resolveAppliedAudioTrack()` (選び直しに失敗したら `'main'` へ戻す。要求値のまま保持すると次の同じ副音声選択が `noop` に握りつぶされるため) は変更なし。`RecordedHLSStreamingVideo.vue` の `initVideoSetting()` の `switchVideo()` 分岐 (seek・音声切替の再接続フォールバックが共通で通る) と、`LiveHLSVideo.vue` の `switchLiveAudioTrack()` の再接続フォールバックへ `reapplyEmbeddedAudioTrack()` 呼び出しを追加し、失敗時は `currentAudioTrack` を `'main'` へ戻して音声パネルの選択表示も再構築するようにした。`HlsAudioTrackUtil.switchAudioTrack()` の isApplied 判定 (代入した `hls.audioTrack` / `audioTracks[i].enabled` を読み返してリトライする既存実装) は hls.js 1.6.16 の `AudioTrackController.setAudioTrack()` が `trackId` を同期的に更新する実装であることをソースで確認し、変更不要と判断した。m2tsll (`RecordedStreamingVideo.vue` / `LiveMpegTsVideo.vue`) は主音声・副音声の切替を mpegts.js (tsukumijima フォーク) の worker への `postMessage` (`switchPrimaryAudio()` / `switchSecondaryAudio()`) で行っており、embedded 切替時にストリームを作り直さない (worker のメッセージキューがそのまま処理されるだけで、HLS のような「新しいマニフェスト解析待ち」の競合が無い) ため、同型の不具合は再現しないことを確認した。
 
 ## 2026-09-24
 

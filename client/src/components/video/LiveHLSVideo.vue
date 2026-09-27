@@ -18,7 +18,11 @@ import { DPlayerType } from 'dplayer';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 import ProgramAudioTrackUtil from '../../../../src/util/ProgramAudioTrackUtil';
-import { decideAudioTrackSwitch } from '../../../../src/util/AudioTrackSwitchDecision';
+import {
+    decideAudioTrackSwitch,
+    needsAudioTrackReapplyAfterReconnect,
+    resolveAppliedAudioTrack,
+} from '../../../../src/util/AudioTrackSwitchDecision';
 
 @Component({})
 class LiveHLSVideo extends BaseVideo {
@@ -249,9 +253,7 @@ class LiveHLSVideo extends BaseVideo {
                 this.currentMode = mode;
             },
             onPlaybackReady: () => {
-                if (HlsAudioTrackUtil.isSecondaryAudioTrack(this.currentAudioTrack) === true) {
-                    void HlsAudioTrackUtil.switchAudioTrack(this.dp as any, this.currentAudioTrack);
-                }
+                void this.reapplyEmbeddedAudioTrack();
                 void this.videoState.stopPreviousStream().catch(err => console.error(err));
             },
         });
@@ -352,6 +354,44 @@ class LiveHLSVideo extends BaseVideo {
         await this.waitForEnabled();
         this.currentAudioTrack = track;
         this.initVideoSetting();
+        // 再接続で作り直したストリームは音声レンディションの選択が主音声へ戻る。
+        // 画質切替の onPlaybackReady からしか選び直していなかったため、音声切替の
+        // 再接続フォールバックではここまで副音声が反映されていなかった (Issue #31)
+        void this.reapplyEmbeddedAudioTrack();
+    }
+
+    /**
+     * ストリームを作り直した後、選択中の音声レンディションを選び直す
+     * (主音声は新しいストリームの既定値なので何もしなくてよい)
+     *
+     * **選び直しの要否は `embeddedAudioSwitch` フラグではなく、新しいストリームが実際に
+     * 持つ音声レンディション数で判定する** (Issue #31)。フラグは playback-options の
+     * 非同期取得が間に合わないと false のまま再接続へ落ちることがあるが、サーバーは
+     * tsreadex 正規化済みならフラグに関係なく主・副 2 本の ES を map するため、
+     * フラグだけで判定すると実際は 2 レンディションのストリームを選び直さずに見逃す
+     * (詳細は `needsAudioTrackReapplyAfterReconnect()` のコメントを参照)。
+     *
+     * **適用に失敗した場合、内部状態と UI を実際に鳴っている主音声へ合わせる**。
+     * 要求値のまま保持すると、次に同じ副音声をもう一度選んでも `decideAudioTrackSwitch` が
+     * current === next で `noop` を返し、二度と切り替えられなくなる
+     */
+    private async reapplyEmbeddedAudioTrack(): Promise<void> {
+        if (HlsAudioTrackUtil.isSecondaryAudioTrack(this.currentAudioTrack) === false) {
+            return;
+        }
+
+        const renditionCount = await HlsAudioTrackUtil.waitForAudioRenditionCount(this.dp as any);
+        if (needsAudioTrackReapplyAfterReconnect(renditionCount, true) === false) {
+            return;
+        }
+
+        const applied = await HlsAudioTrackUtil.switchAudioTrack(this.dp as any, this.currentAudioTrack);
+        const resolved = resolveAppliedAudioTrack(this.currentAudioTrack, applied);
+        if (resolved !== this.currentAudioTrack) {
+            this.currentAudioTrack = resolved;
+            // 選択状態が変わったので、音声パネルの表示 (選択中マーク) も合わせて更新する
+            this.setupLiveAudioTrackSwitch();
+        }
     }
 
     /**

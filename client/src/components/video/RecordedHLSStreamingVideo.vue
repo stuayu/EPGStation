@@ -18,7 +18,11 @@ import { DPlayerType } from 'dplayer';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 import { resolveRecordedJikkyoPlaybackTime } from '../../../../src/util/RecordedJikkyoSync';
-import { decideAudioTrackSwitch } from '../../../../src/util/AudioTrackSwitchDecision';
+import {
+    decideAudioTrackSwitch,
+    needsAudioTrackReapplyAfterReconnect,
+    resolveAppliedAudioTrack,
+} from '../../../../src/util/AudioTrackSwitchDecision';
 
 @Component({})
 class RecordedHLSStreamingVideo extends BaseVideo {
@@ -323,7 +327,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             this.createPlayer(options);
             this.setPlaybackProfiles(this.playbackProfiles, 'hls', this.currentProfile ?? 'auto', undefined, undefined, this.currentMode);
             // ストリームを作り直した直後 (シーク・画質切替) は音声レンディションの選択が主音声へ戻る
-            this.reapplyEmbeddedAudioTrack();
+            void this.reapplyEmbeddedAudioTrack();
             this.setupAudioTrackSwitchForRecorded();
 
             // 画質切替時は現在の再生位置からストリームを作り直してから url を差し替える
@@ -339,6 +343,11 @@ class RecordedHLSStreamingVideo extends BaseVideo {
         } else {
             // seek によるストリーム再生成
             this.switchVideo({ url: videoSrc, type: 'hls' });
+            // ストリームを作り直すとレンディション選択が主音声へ戻る。シークだけでなく、
+            // 音声切替の再接続フォールバック (setupAudioTrackSwitchForRecorded 参照) も
+            // この分岐 (dp が既存) を通るため、ここで選び直さないと副音声を選んでも
+            // 主音声のまま鳴り続ける (Issue #31)
+            void this.reapplyEmbeddedAudioTrack();
         }
 
         // hls.js のバッファリング位置の関係で再生開始位置がずれることがあるため 0 に固定する
@@ -380,7 +389,7 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             throw new Error('StreamIdIsNull');
         }
 
-        this.reapplyEmbeddedAudioTrack();
+        void this.reapplyEmbeddedAudioTrack();
 
         return `./streamfiles/stream${streamId}.m3u8`;
     }
@@ -435,16 +444,36 @@ class RecordedHLSStreamingVideo extends BaseVideo {
     /**
      * ストリームを作り直した後、選択中の音声レンディションを選び直す
      * (主音声は新しいストリームの既定値なので何もしなくてよい)
+     *
+     * **選び直しの要否は `embeddedAudioSwitch` フラグではなく、新しいストリームが実際に
+     * 持つ音声レンディション数で判定する** (Issue #31)。フラグは playback-options の
+     * 非同期取得が間に合わないと false のまま再接続へ落ちることがあるが、サーバーは
+     * tsreadex 正規化済みならフラグに関係なく主・副 2 本の ES を map するため、
+     * フラグだけで判定すると実際は 2 レンディションのストリームを選び直さずに見逃す
+     * (詳細は `needsAudioTrackReapplyAfterReconnect()` のコメントを参照)。
+     *
+     * **適用に失敗した場合、内部状態と UI を実際に鳴っている主音声へ合わせる**。
+     * 要求値のまま保持すると、次に同じ副音声をもう一度選んでも `decideAudioTrackSwitch` が
+     * current === next で `noop` を返し、二度と切り替えられなくなる (「主音声に切り替えてから
+     * もう一度副音声を選ぶと効く」という報告された症状はこれが原因)
      */
-    private reapplyEmbeddedAudioTrack(): void {
-        if (
-            this.isEmbeddedAudioSwitchMode(this.currentMode) === false ||
-            HlsAudioTrackUtil.isSecondaryAudioTrack(this.currentAudioTrack) === false
-        ) {
+    private async reapplyEmbeddedAudioTrack(): Promise<void> {
+        if (HlsAudioTrackUtil.isSecondaryAudioTrack(this.currentAudioTrack) === false) {
             return;
         }
 
-        void HlsAudioTrackUtil.switchAudioTrack(this.dp as any, this.currentAudioTrack);
+        const renditionCount = await HlsAudioTrackUtil.waitForAudioRenditionCount(this.dp as any);
+        if (needsAudioTrackReapplyAfterReconnect(renditionCount, true) === false) {
+            return;
+        }
+
+        const applied = await HlsAudioTrackUtil.switchAudioTrack(this.dp as any, this.currentAudioTrack);
+        const resolved = resolveAppliedAudioTrack(this.currentAudioTrack, applied);
+        if (resolved !== this.currentAudioTrack) {
+            this.currentAudioTrack = resolved;
+            // 選択状態が変わったので、音声パネルの表示 (選択中マーク) も合わせて更新する
+            this.setupAudioTrackSwitchForRecorded();
+        }
     }
 
     /**

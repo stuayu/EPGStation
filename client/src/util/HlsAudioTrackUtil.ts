@@ -110,6 +110,40 @@ namespace HlsAudioTrackUtil {
 
 
     /**
+     * 新しく開いたストリームが実際に持っている音声レンディション数を返す (揃うまで待つ)
+     *
+     * **再接続直後の選び直し要否は、クライアントが持つ `embeddedAudioSwitch` フラグではなく
+     * 実際のレンディション数で判定する** (Issue #31)。フラグは playback-options の非同期取得に
+     * 依存するため未取得のまま音声切替が再接続へ落ちることがあり、フラグだけで判定すると
+     * 「サーバーは 2 レンディションを返しているのに選び直さない」食い違いが起きる。
+     *
+     * hls.js は `#EXT-X-MEDIA:TYPE=AUDIO` をマスタープレイリスト解析時にまとめて読むため、
+     * 一覧が空でなくなった時点の件数は最終件数と一致する (0→1→2 のように後から増えることはない)。
+     * 一覧が最後まで埋まらない場合 (音声情報が無い / 取得に失敗) は 0 を返す
+     * @param dp: any DPlayer インスタンス
+     * @return Promise<number> 音声レンディション数 (取得できなければ 0)
+     */
+    export const waitForAudioRenditionCount = async (dp: any): Promise<number> => {
+        const hls = dp?.plugins?.hls;
+        if (hls !== undefined && hls !== null && Array.isArray(hls.audioTracks) === true) {
+            const ready = await waitFor(() => hls.audioTracks.length > 0);
+
+            return ready === true ? hls.audioTracks.length : 0;
+        }
+
+        // ネイティブ HLS (Safari): video.audioTracks で数える
+        const video: HTMLVideoElement | null = dp?.video ?? null;
+        const audioTracks = (video as any)?.audioTracks;
+        if (video === null || audioTracks === undefined || audioTracks === null) {
+            return 0;
+        }
+
+        const ready = await waitFor(() => audioTracks.length > 0);
+
+        return ready === true ? audioTracks.length : 0;
+    };
+
+    /**
      * 条件が満たされるまで待つ
      * @param check: () => boolean
      * @return Promise<boolean> タイムアウトした場合は false
