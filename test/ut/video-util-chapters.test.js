@@ -271,12 +271,28 @@ test('すべての ffprobe 呼び出しに timeout と killSignal を設定す�
         },
     );
 
-    assert.equal(optionsList.length, 4);
+    assert.equal(optionsList.length, 5);
     for (const options of optionsList) {
         assert.equal(typeof options.timeout, 'number');
         assert.ok(options.timeout > 0);
         assert.equal(options.killSignal, 'SIGKILL');
     }
+});
+
+test('詳細解析は最初のデコード frame transfer を優先し、frame probe 失敗時は stream 値へ戻す', async () => {
+    await withStubbedFfprobe(args => {
+        if (args.includes('-show_frames')) return JSON.stringify({ frames: [{ color_transfer: 'arib-std-b67' }] });
+        return JSON.stringify({ format: {}, streams: [{ codec_type: 'video', codec_name: 'hevc', color_transfer: 'bt2020-10' }] });
+    }, async () => {
+        assert.equal((await makeVideoUtil().getDetailedInfo('/fake/video.ts')).colorTransfer, 'arib-std-b67');
+    });
+
+    await withStubbedFfprobe(args => {
+        if (args.includes('-show_frames')) return new Error('first frame unavailable');
+        return JSON.stringify({ format: {}, streams: [{ codec_type: 'video', codec_name: 'hevc', color_transfer: 'bt2020-10' }] });
+    }, async () => {
+        assert.equal((await makeVideoUtil().getDetailedInfo('/fake/video.ts')).colorTransfer, 'bt2020-10');
+    });
 });
 
 test('終了しない ffprobe は timeout 後に reject しプロセスを残さない', { skip: process.platform === 'win32' }, async () => {

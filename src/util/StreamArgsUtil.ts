@@ -3,6 +3,7 @@ import { SourceCapabilities } from '../model/stream/capability/ISourceCapabiliti
 import { VideoCorrectionMode } from '../model/stream/preset/IStreamPreset';
 import { shouldDeinterlace } from './DeinterlaceUtil';
 import { getVideoCorrectionFilter } from './VideoCorrectionUtil';
+import { colorConversionFilters, colorConversionFor } from './HDRToneMapUtil';
 
 export type StreamEncoderKind = 'nvencc' | 'qsvencc' | 'vceencc' | 'ffmpeg';
 
@@ -30,24 +31,24 @@ const FPS = (value: number): string | null => {
 
 /** 配信出力の要求ビット深度を解決する。 */
 export const outputBitDepth = (source: SourceCapabilities, preset: StreamPreset): number =>
-    isToneMapping(source, preset) || preset.output.bitDepth === 'source' || preset.output.bitDepth === undefined
-        ? isToneMapping(source, preset)
-            ? 8
-            : (source.bitDepth ?? 8)
-        : preset.output.bitDepth;
+    preset.output.codec === 'h264'
+        ? 8
+        : preset.output.bitDepth === 'source' || preset.output.bitDepth === undefined
+          ? (source.bitDepth ?? 8)
+          : preset.output.bitDepth;
 
 const isToneMapping = (source: SourceCapabilities, preset: StreamPreset): boolean =>
     (preset.output.hdrMode === 'tone-map' || preset.output.hdrMode === 'sdr') &&
-    (source.hdr === 'hlg' || source.hdr === 'pq');
+    outputBitDepth(source, preset) < 10 &&
+    colorConversionFor(source, 8) !== 'none';
+
+const doesColorConvert = (source: SourceCapabilities, preset: StreamPreset): boolean =>
+    preset.output.hdrMode !== 'preserve' && colorConversionFor(source, outputBitDepth(source, preset)) !== 'none';
 
 const correctionMode = (preset: StreamPreset): VideoCorrectionMode => preset.output.videoCorrection ?? 'auto';
 
-const toneMapFilter = (source: SourceCapabilities, preset: StreamPreset): string[] => {
-    if (!isToneMapping(source, preset)) return [];
-    // 色域・伝達特性を SDR 化してから scale。BT.709 の画素を解像度変換するため、
-    // HDR のまま scale して補間した値をトーンマップするより意図した色を保ちやすい。
-    return ['zscale=t=linear:npl=100', 'tonemap=hable:desat=0', 'zscale=p=bt709:t=bt709:m=bt709'];
-};
+const toneMapOutputFilter = (source: SourceCapabilities, preset: StreamPreset): string[] =>
+    doesColorConvert(source, preset) ? colorConversionFilters(source, outputBitDepth(source, preset), true) : [];
 
 /** source と preset の映像補正フィルタを返す。 */
 export const videoCorrectionFilter = (
@@ -139,11 +140,14 @@ export const buildFfmpegVideoFilter = (
     const parts: string[] = [];
     const deint = deinterlaceMode(source, preset);
     if (deint !== 'off') parts.push(`yadif=${deint === 'bob' ? '1' : '0'}`);
-    parts.push(...toneMapFilter(source, preset));
     if (height !== undefined && source.height !== height) parts.push(`scale=-2:${height}`);
+    // 4K 全解像度での色変換を避け、縮小後に BT.2020 → BT.709 を行う。
+    parts.push(...toneMapOutputFilter(source, preset));
     const correction = videoCorrectionFilter(source, preset);
     if (correction !== null) parts.push(correction);
-    if (isToneMapping(source, preset)) parts.push('format=yuv420p');
+    if (isToneMapping(source, preset) && parts.some(part => part.startsWith('colorspace=') || part.startsWith('zscale=')) === false) {
+        parts.push('format=yuv420p');
+    }
     else if (outputBitDepth(source, preset) >= 10) parts.push('format=yuv420p10le');
     return parts.length > 0 ? parts.join(',') : null;
 };
@@ -179,10 +183,8 @@ export const buildRigayaVideoArgs = (
     const hdr =
         preset.output.hdrMode === 'preserve' && source.hdr !== 'sdr'
             ? ` --colorprim bt2020 --transfer ${transfer} --colormatrix bt2020nc`
-            : isToneMapping(source, preset)
-              ? ' --colorprim bt709 --transfer bt709 --colormatrix bt709'
-              : '';
-    const toneMap = isToneMapping(source, preset) ? ' --vpp-colorspace hdr2sdr=hable' : '';
+            : '';
+    // rigaya 系の色変換オプションは利用バージョン間の対応を確認できないため、画素値もタグも変えない。
 
     // **`--repeat-headers` は必須**。rigaya 系の mpegts 出力は既定では VPS/SPS/PPS を
     // ストリームの先頭にしか出さないため、後段の ffmpeg が `-c:v copy` で mp4 (fMP4) へ
@@ -192,7 +194,7 @@ export const buildRigayaVideoArgs = (
     // fMP4 出力が exit=-22 / 0 byte。付けると `hevc (Main), yuv420p, 1920x1080, 29.97fps` と読め、
     // 同じ入力で 646 frames / 7.7MB を出力できた。
     // これが無いと in-memory HLS はセグメントを 1 本も作れず、配信が始まらない。
-    return `-c ${codec} --profile ${depth >= 10 ? 'main10' : 'main'} --output-depth ${depth} ${tuning} --repeat-headers${deintArgs}${toneMap}${height ? ` --output-res -2x${height}` : ''}${hdr}${sync}`;
+    return `-c ${codec} --profile ${depth >= 10 ? 'main10' : 'main'} --output-depth ${depth} ${tuning} --repeat-headers${deintArgs}${height ? ` --output-res -2x${height}` : ''}${hdr}${sync}`;
 };
 
 /**
@@ -221,11 +223,11 @@ export const buildFfmpegVideoArgs = (
     const height = outputHeight(source, preset);
     const depth = outputBitDepth(source, preset);
     const filter = buildFfmpegVideoFilter(source, preset, height);
-    const transfer = source.transfer === 'pq' ? 'smpte2084' : source.transfer === 'hlg' ? 'arib-std-b67' : 'bt709';
+    const transfer = source.transferName ?? (source.transfer === 'pq' ? 'smpte2084' : source.transfer === 'hlg' ? 'arib-std-b67' : 'bt709');
     const hdr =
         preset.output.hdrMode === 'preserve' && source.hdr !== 'sdr'
             ? ` -color_primaries bt2020 -color_trc ${transfer} -colorspace bt2020nc`
-            : isToneMapping(source, preset)
+            : doesColorConvert(source, preset)
               ? ' -color_primaries bt709 -color_trc bt709 -colorspace bt709'
               : '';
     const profile = depth >= 10 ? ' -profile:v main10 -pix_fmt yuv420p10le' : '';

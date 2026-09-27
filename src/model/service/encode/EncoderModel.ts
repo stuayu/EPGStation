@@ -1,6 +1,6 @@
 import { ChildProcess } from 'child_process';
 import * as events from 'events';
-import { inject, injectable } from 'inversify';
+import { inject, injectable, optional } from 'inversify';
 import * as path from 'path';
 import * as apid from '../../../../api';
 import FileUtil from '../../../util/FileUtil';
@@ -13,6 +13,8 @@ import IVideoFileDB from '../../db/IVideoFileDB';
 import IEncodeEvent from '../../event/IEncodeEvent';
 import IConfiguration from '../../IConfiguration';
 import IConfigFile from '../../IConfigFile';
+import IHardwareEncoderDetector from '../../encoder/IHardwareEncoderDetector';
+import { getEncodeHardwarePreset } from '../../encoder/HardwareEncoderDetector';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IEncodeFileManageModel from './IEncodeFileManageModel';
@@ -57,6 +59,7 @@ class EncoderModel implements IEncoderModel {
         @inject('IVideoUtil') videoUtil: IVideoUtil,
         @inject('IEncodeEvent') encodeEvent: IEncodeEvent,
         @inject('IRecordingUtilModel') recodingUtil: IRecordingUtilModel,
+        @inject('IHardwareEncoderDetector') @optional() private readonly hardwareEncoderDetector?: IHardwareEncoderDetector,
     ) {
         this.log = logger.getLogger();
         this.configure = configure;
@@ -199,6 +202,12 @@ class EncoderModel implements IEncoderModel {
                     QSVENCC: config.qsvencc || '',
                     NVENCC: config.nvencc || '',
                     VCEENCC: config.vceencc || '',
+                    HWENCODER_H264: this.hardwareEncoderDetector
+                        ? getEncodeHardwarePreset(this.hardwareEncoderDetector.getStreamEncoder('h264'), 'h264')
+                        : '',
+                    HWENCODER_HEVC: this.hardwareEncoderDetector
+                        ? getEncodeHardwarePreset(this.hardwareEncoderDetector.getStreamEncoder('hevc'), 'hevc')
+                        : '',
                     NAME: recorded.name,
                     HALF_WIDTH_NAME: recorded.halfWidthName,
                     DESCRIPTION: recorded.description || '',

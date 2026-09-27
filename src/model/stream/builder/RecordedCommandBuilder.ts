@@ -48,7 +48,7 @@ export default class RecordedCommandBuilder implements IRecordedCommandBuilder {
         const encoder = selectEncoder(source, preset, available);
         if (encoder.kind === 'ffmpeg') {
             return (
-                `%FFMPEG% %DUALMONOMODE% ${pacing} -ss %SS% -i %INPUT% -sn ${audio} ` +
+                `%FFMPEG% %DUALMONOMODE% ${pacing} -ss %SS% ${this.decoderArgs(source)}-i %INPUT% -sn ${audio} ` +
                 `${buildFfmpegVideoArgs(source, preset, 'recorded', encoder)} -f mpegts pipe:1`
             );
         }
@@ -65,5 +65,10 @@ export default class RecordedCommandBuilder implements IRecordedCommandBuilder {
             `%FFMPEG% %DUALMONOMODE% ${pacing} -i pipe:0 -sn -c:v copy${preset.output.codec === 'hevc' ? ' -tag:v hvc1' : ''} ` +
             `${rigayaAudio} -f mpegts pipe:1`
         );
+    }
+
+    private decoderArgs(source: SourceCapabilities): string {
+        const decoder = this.detector?.getHardwareDecoder?.(source);
+        return decoder === undefined ? '' : `-hwaccel ${decoder} `;
     }
 }

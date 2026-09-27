@@ -278,16 +278,17 @@ namespace EncodePresets {
      * @return string
      */
     const buildVideoFilter = (hwaccel: EncodeHwAccel, height: number, deinterlace: boolean): string => {
+        const tonemap = ',%TONEMAP%';
         switch (hwaccel) {
             case 'qsv':
-                return `${deinterlace ? 'yadif,' : ''}scale=-2:${height},format=nv12`;
+                return `${deinterlace ? 'yadif,' : ''}scale=-2:${height}${tonemap},format=nv12`;
             case 'vaapi':
-                // vaapi はハードウェアフレームでのフィルタ処理が必要 (format=nv12 → hwupload → vaapi 系フィルタ)
-                return `format=nv12,hwupload${deinterlace ? ',deinterlace_vaapi' : ''},scale_vaapi=-2:${height}`;
+                // colorspace / PQ filter は software frame が対象。縮小・色変換後に VAAPI へ upload する。
+                return `${deinterlace ? 'yadif,' : ''}scale=-2:${height}${tonemap},format=nv12,hwupload${deinterlace ? ',deinterlace_vaapi' : ''}`;
             case 'software':
             case 'nvenc':
             default:
-                return `${deinterlace ? 'yadif,' : ''}scale=-2:${height}`;
+                return `${deinterlace ? 'yadif,' : ''}scale=-2:${height}${tonemap}`;
         }
     };
 
@@ -597,7 +598,7 @@ namespace EncodePresets {
             return (
                 tsreadexPrefix +
                 `${prefix} %FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 500000 ` +
-                `-fflags nobuffer -i pipe:0 -sn -threads 0 ` +
+                `-i pipe:0 -sn -threads 0 ` +
                 `-max_muxing_queue_size 1024 -c:v copy${buildHvc1TagOption(codec)} ` +
                 `%AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER% ` +
                 `-movflags empty_moov+default_base_moof+frag_keyframe -f mp4 pipe:1`
@@ -610,7 +611,7 @@ namespace EncodePresets {
 
         return (
             tsreadexPrefix +
-            `%FFMPEG% %DUALMONOMODE% -fflags nobuffer ${vaapiDeviceOption(hwaccel)}-i pipe:0 ` +
+            `%FFMPEG% %DUALMONOMODE% ${vaapiDeviceOption(hwaccel)}-i pipe:0 ` +
             `-sn -threads 0 -max_muxing_queue_size 1024 %AUDIOMAP% -c:a aac -ar 48000 -b:a ${audioBitrate}k -ac 2 %AUDIOFILTER% ` +
             `-vf ${vf} -c:v ${ffCodec} ${codecOpts} -flags +cgop ` +
             // セグメント長 = GOP 長になるため、ライブ HLS では 0.5 秒 GOP まで詰める

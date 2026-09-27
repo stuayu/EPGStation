@@ -1,5 +1,8 @@
 import { HardwareEncoderSetting } from '../IConfigFile';
 import { StreamEncoderCapability } from '../../util/StreamArgsUtil';
+import { SourceCapabilities } from '../stream/capability/ISourceCapabilities';
+
+export type HardwareDecoder = 'videotoolbox' | 'd3d11va' | 'dxva2' | 'vaapi' | 'cuda' | 'qsv';
 
 export type HardwareEncoderId = Exclude<HardwareEncoderSetting, 'auto'>;
 export type HardwareEncoderProvider = 'software' | 'ffmpeg' | 'qsvencc' | 'nvencc' | 'vceencc';
@@ -23,4 +26,6 @@ export default interface IHardwareEncoderDetector {
     getResult(): HardwareEncoderDetectionResult;
     getStreamEncoder(codec: 'h264' | 'hevc'): StreamEncoderCapability;
     getAvailableIds(): HardwareEncoderId[];
+    supportsToneMapping(): boolean;
+    getHardwareDecoder(source: SourceCapabilities): HardwareDecoder | undefined;
 }

@@ -1,5 +1,7 @@
 const spawn = require('child_process').spawn;
+const execFile = require('child_process').execFile;
 const ffmpeg = process.env.FFMPEG;
+const ffprobe = process.env.FFPROBE;
 
 const input = process.env.INPUT;
 const output = process.env.OUTPUT;
@@ -126,6 +128,24 @@ const PRESETS = {
     vceencc_hevc: { rigaya: 'vceencc', rigayaCodec: 'hevc', quality: ['--preset', 'slower', '--cqp', '22:24:26'] },
 };
 
+const getHardwarePreset = (codec, encoder) => {
+    if (!encoder) return null;
+    const map = {
+        h264_qsv: { codec: 'h264_qsv', quality: ['-preset', 'slower', '-global_quality', '26'], needsNv12: true },
+        hevc_qsv: { codec: 'hevc_qsv', quality: ['-preset', 'slower', '-global_quality', '28', '-profile:v', 'main', '-tag:v', 'hvc1'], needsNv12: true },
+        h264_nvenc: { codec: 'h264_nvenc', quality: ['-preset', 'p7', '-tune', 'hq', '-rc', 'vbr', '-cq', '26', '-b:v', '0', '-pix_fmt', 'yuv420p'] },
+        hevc_nvenc: { codec: 'hevc_nvenc', quality: ['-preset', 'p7', '-tune', 'hq', '-rc', 'vbr', '-cq', '28', '-b:v', '0', '-profile:v', 'main', '-pix_fmt', 'yuv420p', '-tag:v', 'hvc1'] },
+        h264_videotoolbox: { codec: 'h264_videotoolbox', quality: ['-b:v', '6M', '-realtime', '1', '-allow_sw', '0', '-pix_fmt', 'yuv420p', '-profile:v', 'high'] },
+        hevc_videotoolbox: { codec: 'hevc_videotoolbox', quality: ['-b:v', '6M', '-realtime', '1', '-allow_sw', '0', '-pix_fmt', 'yuv420p', '-profile:v', 'main', '-tag:v', 'hvc1'] },
+        h264_amf: { codec: 'h264_amf', quality: ['-quality', 'quality', '-rc', 'vbr_peak', '-qp_i', '24', '-qp_p', '26', '-pix_fmt', 'yuv420p'] },
+        hevc_amf: { codec: 'hevc_amf', quality: ['-quality', 'quality', '-rc', 'vbr_peak', '-qp_i', '26', '-qp_p', '28', '-profile:v', 'main', '-pix_fmt', 'yuv420p', '-tag:v', 'hvc1'] },
+        h264_vaapi: { codec: 'h264_vaapi', quality: ['-qp', '24'], vaapi: true },
+        hevc_vaapi: { codec: 'hevc_vaapi', quality: ['-qp', '26', '-profile:v', 'main', '-tag:v', 'hvc1'], vaapi: true },
+    };
+    const preset = map[encoder];
+    return preset && encoder.indexOf(codec + '_') === 0 ? preset : null;
+};
+
 /**
  * iOS / Safari のハードウェアデコーダで確実に再生できるプロファイル・レベルを返す
  * HEVC は Main (8bit 4:2:0) のみを使う (Main10 は端末世代によって再生できない)。
@@ -155,65 +175,105 @@ const RIGAYA_DEFAULT_BIN = {
 };
 
 const presetName = typeof process.argv[2] === 'undefined' ? 'h264' : process.argv[2];
-const preset = PRESETS[presetName];
-if (typeof preset === 'undefined') {
+const requestedPreset = PRESETS[presetName];
+if (typeof requestedPreset === 'undefined') {
     console.error(`unknown encode preset: ${presetName} (available: ${Object.keys(PRESETS).join(', ')})`);
     process.exit(1);
 }
+const envEncoder = presetName === 'h264' ? process.env.HWENCODER_H264 : presetName === 'hevc' ? process.env.HWENCODER_HEVC : '';
+const hardwarePreset = getHardwarePreset(presetName, envEncoder);
+const hardwareRigayaPreset = PRESETS[envEncoder];
+const selectedRigayaPreset = hardwareRigayaPreset && hardwareRigayaPreset.rigayaCodec === presetName ? hardwareRigayaPreset : null;
+const preset = hardwarePreset || selectedRigayaPreset || requestedPreset;
 
 const maxHeight = typeof process.argv[3] === 'undefined' ? 720 : parseInt(process.argv[3], 10);
 const needsResize = maxHeight > 0 && isNaN(videoHeight) === false && videoHeight > maxHeight;
 
-const args = ['-y', '-analyzeduration', analyzedurationSize, '-probesize', probesizeSize];
+const getInputInfo = () => new Promise(resolve => {
+    execFile(ffprobe, ['-v', '0', '-select_streams', 'v:0', '-show_frames', '-show_streams', '-read_intervals', '%+#1', '-of', 'json', input], (err, stdout) => {
+        if (err) return resolve({ fieldOrder: null, colorTransfer: null, colorPrimaries: null });
+        try {
+            const result = JSON.parse(stdout);
+            const stream = result.streams[0] || {};
+            const frame = (result.frames || []).find(item => item.media_type === 'video' || item.stream_index === stream.index) || {};
+            resolve({ fieldOrder: stream.field_order || null, colorPrimaries: stream.color_primaries || null,
+                colorTransfer: frame.color_transfer || stream.color_transfer || null });
+        } catch (_) {
+            resolve({ fieldOrder: null, colorTransfer: null, colorPrimaries: null });
+        }
+    });
+});
 
-// dual mono 設定
-if (isDualMono) {
-    Array.prototype.push.apply(args, ['-dual_mono_mode', dualMonoMode]);
-}
+const getFilterNames = () => new Promise(resolve => {
+    execFile(ffmpeg, ['-hide_banner', '-filters'], (err, stdout, stderr) => {
+        const listing = `${stdout || ''}${stderr || ''}`;
+        resolve(err ? '' : listing);
+    });
+});
 
-// VAAPI はデバイス初期化 (-vaapi_device) を -i より前に指定する必要がある
-if (preset.vaapi === true) {
-    Array.prototype.push.apply(args, ['-vaapi_device', '/dev/dri/renderD128']);
-}
+const buildFfmpegArgs = (selectedPreset, inputInfo, filterListing) => {
+    const result = ['-y', '-analyzeduration', analyzedurationSize, '-probesize', probesizeSize];
+    if (isDualMono) Array.prototype.push.apply(result, ['-dual_mono_mode', dualMonoMode]);
+    if (selectedPreset.vaapi === true) Array.prototype.push.apply(result, ['-vaapi_device', '/dev/dri/renderD128']);
+    Array.prototype.push.apply(result, ['-i', input, '-movflags', 'faststart']);
 
-// input 設定
-Array.prototype.push.apply(args, ['-i', input]);
-
-// メタ情報を先頭に置く
-Array.prototype.push.apply(args, ['-movflags', 'faststart']);
-
-// 字幕データを含めたストリームをすべてマップ
-// Array.prototype.push.apply(args, ['-map', '0', '-ignore_unknown', '-max_muxing_queue_size', 1024, '-sn']);
-
-// video filter 設定 (インターレース解除 + 必要ならリサイズ)
-let videoFilter;
-if (preset.vaapi === true) {
-    // ハードウェアフレームでのフィルタ処理: システムメモリ→VAAPI サーフェスへ転送してからデインターレース・リサイズする
-    videoFilter = `format=nv12,hwupload,deinterlace_vaapi${needsResize ? `,scale_vaapi=-2:${maxHeight}` : ''}`;
-} else {
-    videoFilter = 'yadif';
-    if (needsResize) {
-        videoFilter += `,scale=-2:${maxHeight}`;
+    const filters = [];
+    if (inputInfo.fieldOrder !== 'progressive') filters.push('yadif');
+    const pq = inputInfo.colorTransfer === 'smpte2084';
+    const bt2020 = (inputInfo.colorPrimaries || '').startsWith('bt2020');
+    const compatibleTransfer =
+        inputInfo.colorTransfer === 'arib-std-b67' || inputInfo.colorTransfer === 'smpte2084' || !inputInfo.colorTransfer
+            ? 'bt2020-10'
+            : inputInfo.colorTransfer;
+    const colorspaceFilter = `colorspace=all=bt709:iall=bt2020:itrc=${compatibleTransfer}:fast=0:format=yuv420p`;
+    const isEightBitOutput = selectedPreset.needsNv12 === true || selectedPreset.quality.some((value, index, list) => value === '-pix_fmt' && list[index + 1] === 'yuv420p');
+    const colorConversion = isEightBitOutput && (inputInfo.colorTransfer === 'arib-std-b67' || (bt2020 && !pq));
+    if (selectedPreset.vaapi === true) {
+        if (isEightBitOutput && (colorConversion || pq)) {
+            if (needsResize) filters.push(`scale=-2:${maxHeight}`);
+            if (colorConversion) filters.push(colorspaceFilter);
+            else if (pq && filterListing.includes(' zscale ') && filterListing.includes(' tonemap ')) {
+                filters.push('zscale=t=linear:npl=100,format=gbrpf32le,tonemap=tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709,format=yuv420p');
+            } else if (pq) {
+                console.error('color conversion: PQ compatible BT.2020-to-BT.709 path (zscale/tonemap unavailable)');
+                filters.push(colorspaceFilter);
+            }
+        }
+        filters.push('format=nv12', 'hwupload');
+        if (inputInfo.fieldOrder !== 'progressive') filters.push('deinterlace_vaapi');
+        if (needsResize && colorConversion === false && pq === false) filters.push(`scale_vaapi=-2:${maxHeight}`);
+    } else {
+        if (needsResize) filters.push(`scale=-2:${maxHeight}`);
+        if (colorConversion) filters.push(colorspaceFilter);
+        if (isEightBitOutput && pq && filterListing.includes(' zscale ') && filterListing.includes(' tonemap ')) {
+            filters.push('zscale=t=linear:npl=100,format=gbrpf32le,tonemap=tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709,format=yuv420p');
+        } else if (isEightBitOutput && pq) {
+            console.error('color conversion: PQ compatible BT.2020-to-BT.709 path (zscale/tonemap unavailable)');
+            filters.push(colorspaceFilter);
+        }
+        if (selectedPreset.needsNv12 === true) filters.push('format=nv12');
     }
-    if (preset.needsNv12 === true) {
-        videoFilter += ',format=nv12';
+    if (filters.length > 0) Array.prototype.push.apply(result, ['-vf', filters.join(',')]);
+
+    Array.prototype.push.apply(result, ['-aspect', '16:9', '-c:v', selectedPreset.codec]);
+    if (selectedPreset.rigaya) {
+        if (isEightBitOutput && (colorConversion || pq)) {
+            console.error('color conversion skipped: rigaya path has no verified colorspace option; encoded pixels remain BT.2020');
+        }
+    } else if (isEightBitOutput && (colorConversion || pq)) {
+        Array.prototype.push.apply(result, ['-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709']);
     }
-}
-Array.prototype.push.apply(args, ['-vf', videoFilter]);
-
-// video 設定
-Array.prototype.push.apply(args, ['-aspect', '16:9', '-c:v', preset.codec]);
-Array.prototype.push.apply(args, preset.quality);
-
-// audio・出力設定
-Array.prototype.push.apply(args, ['-f', 'mp4', '-c:a', 'aac', '-ar', '48000', '-ab', audioBitrate, '-ac', '2', output]);
+    Array.prototype.push.apply(result, selectedPreset.quality);
+    Array.prototype.push.apply(result, ['-f', 'mp4', '-c:a', 'aac', '-ar', '48000', '-ab', audioBitrate, '-ac', '2', output]);
+    return result;
+};
 
 /**
  * rigaya 系エンコーダ (QSVEncC / NVEncC / VCEEncC) の引数を組み立てる
  * @param preset プリセット定義 (rigaya / rigayaCodec を持つもの)
  * @return string[] エンコーダに渡す引数
  */
-const buildRigayaArgs = (preset) => {
+const buildRigayaArgs = (preset, inputInfo) => {
     // 出力の高さ (リサイズしない場合は元解像度)
     const outputHeight = needsResize ? maxHeight : videoHeight;
     const { profile, level } = getProfileAndLevel(preset.rigayaCodec, outputHeight);
@@ -229,9 +289,8 @@ const buildRigayaArgs = (preset) => {
         '--output-depth', '8',
         // 録画済みファイルの保存用途なので GOP は 2 秒 (@30fps) にして圧縮効率を優先する
         '--gop-len', '60',
-        // 放送波はインタレース (地上波・BS/CS はすべて tff)
-        '--interlace', 'tff',
     ];
+    if (inputInfo.fieldOrder !== 'progressive') Array.prototype.push.apply(rigayaArgs, ['--interlace', 'tff']);
 
     // 速度プリセット + レート制御 (ツールごとにオプション名・値が違うため PRESETS 側で持つ)
     Array.prototype.push.apply(rigayaArgs, preset.quality);
@@ -239,10 +298,12 @@ const buildRigayaArgs = (preset) => {
     // デインタレース
     // --vpp-deinterlace (ハードウェアデインタレーサ) は QSVEncC / NVEncC のみのオプションで、
     // かつ --interlace tff/bff の指定が前提。VCEEncC には無いため共通オプションの --vpp-yadif を使う
-    if (preset.rigaya === 'vceencc') {
-        rigayaArgs.push('--vpp-yadif');
-    } else {
-        Array.prototype.push.apply(rigayaArgs, ['--vpp-deinterlace', 'normal']);
+    if (inputInfo.fieldOrder !== 'progressive') {
+        if (preset.rigaya === 'vceencc') {
+            rigayaArgs.push('--vpp-yadif');
+        } else {
+            Array.prototype.push.apply(rigayaArgs, ['--vpp-deinterlace', 'normal']);
+        }
     }
 
     // リサイズ (幅は -2 = アスペクト比を保ったまま 2 の倍数へ丸める)
@@ -316,52 +377,68 @@ const toCommandLine = (bin, execArgs) => {
 // rigaya 系プリセットの場合は ffmpeg ではなく rigaya 製エンコーダを実行する
 const isRigaya = typeof preset.rigaya !== 'undefined';
 const bin = isRigaya ? (process.env[preset.rigaya.toUpperCase()] || RIGAYA_DEFAULT_BIN[preset.rigaya]) : ffmpeg;
-const execArgs = isRigaya ? buildRigayaArgs(preset) : args;
-
-console.error(toCommandLine(bin, execArgs));
-
-const child = spawn(bin, execArgs);
-
-child.stderr.on('data', (data) => { console.error(String(data)); });
-
-child.on('error', (err) => {
-    console.error(err);
-    throw new Error(err);
+const runEncoder = (execBin, execArgs) => new Promise(resolve => {
+    console.error(toCommandLine(execBin, execArgs));
+    const child = spawn(execBin, execArgs);
+    child.stderr.on('data', data => console.error(String(data)));
+    child.on('error', err => {
+        console.error(err);
+        resolve(1);
+    });
+    child.on('close', code => resolve(code === null ? 1 : code));
+    process.on('SIGINT', () => child.kill('SIGINT'));
 });
 
-// HEVC (rigaya 系) は ffmpeg で hvc1 タグを付けて mp4 化する
-let remux = null;
-if (needsHvc1Remux(preset)) {
+const runRigayaEncoder = async (rigayaPreset, inputInfo) => {
+    const rigayaArgs = buildRigayaArgs(rigayaPreset, inputInfo);
+    if (!needsHvc1Remux(rigayaPreset)) return runEncoder(bin, rigayaArgs);
+
     const remuxArgs = buildHvc1RemuxArgs();
     console.error(toCommandLine(ffmpeg, remuxArgs));
+    const remux = spawn(ffmpeg, remuxArgs);
+    const encoder = spawn(bin, rigayaArgs);
+    remux.stderr.on('data', data => console.error(String(data)));
+    encoder.stderr.on('data', data => console.error(String(data)));
+    encoder.stdout.pipe(remux.stdin);
+    process.on('SIGINT', () => { encoder.kill('SIGINT'); remux.kill('SIGINT'); });
 
-    remux = spawn(ffmpeg, remuxArgs);
-    remux.stderr.on('data', (data) => { console.error(String(data)); });
-    remux.on('error', (err) => {
-        console.error(err);
-        throw new Error(err);
+    const encoderExit = new Promise(resolve => {
+        encoder.on('error', err => { console.error(err); remux.kill('SIGINT'); resolve(1); });
+        encoder.on('close', code => resolve(code === null ? 1 : code));
     });
-    remux.on('close', (code) => {
-        process.exitCode = code;
+    const remuxExit = new Promise(resolve => {
+        remux.on('error', err => { console.error(err); encoder.kill('SIGINT'); resolve(1); });
+        remux.on('close', code => resolve(code === null ? 1 : code));
     });
+    const [encoderCode, remuxCode] = await Promise.all([encoderExit, remuxExit]);
+    return encoderCode === 0 ? remuxCode : encoderCode;
+};
 
-    child.stdout.pipe(remux.stdin);
-
-    // エンコーダが異常終了したら remux 側も止める
-    child.on('close', (code) => {
-        if (code !== 0 && remux !== null) {
-            remux.kill('SIGINT');
+(async () => {
+    try {
+        const [inputInfo, filterListing] = await Promise.all([getInputInfo(), getFilterNames()]);
+        if (isRigaya) {
+            if ((inputInfo.colorPrimaries || '').startsWith('bt2020') && preset.rigayaCodec === 'h264') {
+                console.error('color conversion skipped: rigaya path has no verified colorspace option; encoded pixels remain BT.2020');
+            }
+            let code = await runRigayaEncoder(preset, inputInfo);
+            if (selectedRigayaPreset && code !== 0) {
+                console.error(`hardware encoder ${selectedRigayaPreset.rigaya} failed (${code}); retrying with software`);
+                code = await runEncoder(ffmpeg, buildFfmpegArgs(PRESETS[presetName], inputInfo, filterListing));
+            }
+            process.exitCode = code;
+            return;
         }
-    });
-} else {
-    child.on('close', (code) => {
-        process.exitCode = code;
-    });
-}
 
-process.on('SIGINT', () => {
-    child.kill('SIGINT');
-    if (remux !== null) {
-        remux.kill('SIGINT');
+        const execArgs = buildFfmpegArgs(preset, inputInfo, filterListing);
+        let code = await runEncoder(ffmpeg, execArgs);
+        if (hardwarePreset && code !== 0) {
+            console.error(`hardware encoder ${hardwarePreset.codec} failed (${code}); retrying with software`);
+            code = await runEncoder(ffmpeg, buildFfmpegArgs(PRESETS[presetName], inputInfo, filterListing));
+        }
+        process.exitCode = code;
+    } catch (err) {
+        console.error(err);
+        process.exitCode = 1;
     }
-});
+})();

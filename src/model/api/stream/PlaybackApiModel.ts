@@ -118,7 +118,21 @@ export default class PlaybackApiModel implements IPlaybackApiModel {
                 ? decision.label
                 : (BUILTIN_STREAM_PRESETS.find(preset => preset.id === resolvedRole)?.name ?? decision.label);
         return {
-            source,
+            source: {
+                transport: source.transport,
+                codec: source.codec,
+                width: source.width,
+                height: source.height,
+                bitDepth: source.bitDepth,
+                scan: source.scan,
+                frameRate: source.frameRate,
+                fieldOrder: source.fieldOrder,
+                colorPrimaries: source.colorPrimaries,
+                transfer: source.transfer,
+                hdr: source.hdr,
+                sourceClass: source.sourceClass,
+                confidence: source.confidence,
+            },
             recommended: {
                 id: 'auto',
                 resolvedId: resolved,

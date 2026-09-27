@@ -1,5 +1,24 @@
 # config.yml 詳細マニュアル
 
+## 初回起動時のテンプレート
+
+初回起動時、OS に合う `config/config.yml.template` または `config/config-win.yml.template` が
+`config/config.yml` へコピーされます。コピー後もコメントアウトされていない行は有効な設定として使われます。
+
+テンプレートは追加の DB サーバーが不要な SQLite を選び、録画先には EPGStation 配下の `recorded` を使います。
+Linux / macOS では Mirakurun の Unix socket、Windows では `http://localhost:40772` を接続先の例として有効にしています。
+録画後エンコードには汎用の `libx264`、配信にはソフトウェアエンコードの H.264 / AAC プロファイルを有効にしています。
+配信プロファイルをすべて削除すると、Web UI からライブ視聴・録画再生の選択肢が消えます。
+初回は Web ポート `8888`、Mirakurun の接続先、`ffmpeg` と `ffprobe` が PATH から実行できることを確認してください。録画先を変える場合は
+`recorded` 配列の `path` を編集します。MySQL、外部コマンド、ハードウェアエンコーダの例はコメントのままです。
+必要なときだけ該当例を有効にし、自分の環境に合わせて値を変更してください。
+
+4K (BS4K / CS4K) の HEVC 10bit 映像は、有効な H.264 配信プロファイルで 1080p 以下・`yuv420p` の 8bit に変換します。
+HDR HLG から SDR への色変換は素材に応じた判定が必要です。手書き cmd に `tonemap` を無条件で足すと、SDR 番組の色が壊れるため行っていません。
+
+このテンプレート変更はこれから生成する設定ファイルにだけ適用されます。既にある `config/config.yml` は
+自動で書き換わりません。
+
 ## コンフィグ逆引きレシピ
 
 - [基本設定](#基本設定)
@@ -285,7 +304,7 @@ tunerServerType: 'mirakurun'
 - 値は `mysql` `sqlite` のいずれか
 
 ```yaml
-dbType: mysql
+dbtype: mysql
 ```
 
 ### mysql
@@ -338,6 +357,9 @@ sqlite:
 ffmpeg: '/usr/bin/ffmpeg'
 ```
 
+テンプレートでは `ffmpeg` を実行名として指定し、OS の `PATH` から探します。見つからない場合は実際のフルパスを指定してください。
+Windows サービスはユーザー用 `PATH` を引き継がない場合があるため、サービス専用 `PATH` を設定するかフルパスを指定します。
+
 ### hardwareEncoder
 
 #### 配信・エンコードで使用するハードウェアエンコーダ
@@ -347,10 +369,14 @@ ffmpeg: '/usr/bin/ffmpeg'
 | string | `auto` | `auto` / `qsv` / `nvenc` / `vce` / `videotoolbox` / `software` |
 
 `auto` (既定) は Service 起動時に QSVEncC / NVEncC / VCEEncC の `--check-hw` と
-ffmpeg の `-hide_banner -encoders` を実行し、実際に利用できるエンコーダを選ぶ。
+ffmpeg の `-hide_banner -encoders` を実行する。ffmpeg に名前があるだけでは採用せず、H.264 / HEVC ごとに
+320x240 の黒画面を1フレーム試し変換し、終了コード 0 のエンコーダだけ利用可能とする。
+QSV は `format=nv12`、ほかの ffmpeg HW エンコーダは `yuv420p` で試す。各試行は3秒で打ち切り、候補・結果・失敗理由を info ログへ出す。
 macOS は VideoToolbox を優先し、それ以外の OS は QSV → NVENC → VCE/AMF →
 VideoToolbox の順で選ぶ。rigaya 系の実行確認に成功した場合は QSVEncC / NVEncC /
 VCEEncC を使い、無い場合は ffmpeg の `h264_*` / `hevc_*` を使う。
+
+トーンマップには ffmpeg の `zscale` と `tonemap` フィルタが必要。どちらかが無い場合は起動時に1回 warning を出し、トーンマップを省略する。
 
 手動指定したエンコーダが利用できない場合は起動時に warning を出し、software へ戻す。
 検出失敗・タイムアウト時も software を使う。検出結果は `GET /api/config` の
@@ -371,6 +397,8 @@ hardwareEncoder: auto
 ```yaml
 ffprobe: '/usr/bin/ffprobe'
 ```
+
+テンプレートでは `ffprobe` を実行名として指定します。`ffmpeg` と同じフォルダーにあり `PATH` から見つからない場合は、フルパスを指定してください。
 
 ### ffprobeTimeout
 

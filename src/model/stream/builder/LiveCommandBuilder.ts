@@ -47,7 +47,7 @@ export default class LiveCommandBuilder implements ILiveCommandBuilder {
         const encoder = selectEncoder(source, preset, available);
         if (encoder.kind === 'ffmpeg') {
             return (
-                `%FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 500000 -fflags nobuffer -i pipe:0 ` +
+                `%FFMPEG% %DUALMONOMODE% ${this.decoderArgs(source)} -f mpegts -analyzeduration 500000 -probesize 500000 -i pipe:0 ` +
                 `-map 0 -c:s copy -c:d copy -flags low_delay -ignore_unknown -max_delay 250000 -max_interleave_delta 1 -threads 0 ` +
                 `${audio} ${buildFfmpegVideoArgs(source, preset, 'live', encoder)} -f mpegts pipe:1`
             );
@@ -62,8 +62,13 @@ export default class LiveCommandBuilder implements ILiveCommandBuilder {
         return (
             `${bin} --input-format mpegts -i - ${buildRigayaVideoArgs(source, preset, encoder, 'live', false)} ` +
             `--audio-copy --output-format mpegts -o - | ` +
-            `%FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 500000 -fflags nobuffer -i pipe:0 ` +
+                `%FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 500000 -i pipe:0 ` +
             `-map 0 -c:v copy -c:s copy -c:d copy -flags low_delay -ignore_unknown -max_interleave_delta 1 ${rigayaAudio} -f mpegts pipe:1`
         );
+    }
+
+    private decoderArgs(source: SourceCapabilities): string {
+        const decoder = this.detector?.getHardwareDecoder?.(source);
+        return decoder === undefined ? '' : `-hwaccel ${decoder} `;
     }
 }

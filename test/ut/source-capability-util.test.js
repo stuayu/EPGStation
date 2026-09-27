@@ -9,6 +9,7 @@ const {
     replaceDeinterlacePlaceholder,
     toDeinterlaceInput,
 } = require('../../dist/util/DeinterlaceUtil');
+const { replaceToneMapPlaceholder } = require('../../dist/util/HDRToneMapUtil');
 
 test('BS4K 相当の ffprobe 情報を解析する', () => {
     const source = toSourceCapabilities({
@@ -128,4 +129,21 @@ test('SourceCapabilities の progressive は判定入力へ明示変換する', 
         }),
         { codec: 'hevc', field_order: 'progressive', fps: 59.94, container: 'mpegts' },
     );
+});
+
+test('BT.2020 SDR と HLG は colorspace 変換し、PQ は zscale 不在でも互換変換する', () => {
+    const cmd = 'ffmpeg -c:v libx264 -pix_fmt yuv420p -vf %DEINTERLACE%,scale=-2:720,%TONEMAP%';
+    const hdr = { codec: 'hevc', scan: 'progressive', hdr: 'hlg', sourceClass: 'bs4k', confidence: 'high' };
+    const bt2020Sdr = { ...hdr, hdr: 'sdr', colorPrimaries: 'bt2020', transferName: 'bt2020-10' };
+    const pq = { ...hdr, hdr: 'pq', colorPrimaries: 'bt2020', transferName: 'smpte2084' };
+    assert.match(replaceToneMapPlaceholder(cmd, hdr, true), /colorspace=all=bt709:iall=bt2020:itrc=bt2020-10/u);
+    assert.match(replaceToneMapPlaceholder(cmd, bt2020Sdr, true), /colorspace=all=bt709:iall=bt2020:itrc=bt2020-10/u);
+    assert.match(replaceToneMapPlaceholder(cmd, pq, true), /zscale=t=linear:npl=100,tonemap=hable:desat=0/u);
+    assert.match(replaceToneMapPlaceholder(cmd, pq, false), /colorspace=all=bt709:iall=bt2020:itrc=bt2020-10/u);
+    assert.match(replaceToneMapPlaceholder(cmd, pq, false), /-color_primaries bt709 -color_trc bt709 -colorspace bt709/u);
+});
+
+test('トーンマップ用 placeholder がない手書き cmd は変更しない', () => {
+    const cmd = 'ffmpeg -vf yadif,scale=-2:720';
+    assert.equal(replaceToneMapPlaceholder(cmd, { hdr: 'hlg' }, true), cmd);
 });

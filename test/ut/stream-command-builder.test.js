@@ -54,6 +54,17 @@ test('BS4K progressive source never receives interlace or legacy 29.97 options',
     assert.doesNotMatch(cmd, /--interlace|--vpp-deinterlace|--vpp-yadif|yadif|30000\/1001/);
 });
 
+test('4K Main10 HEVC の ffmpeg 経路は検出済み HW デコーダーを入力前に指定する', () => {
+    const detector = { getStreamEncoder: () => encoder('ffmpeg'), getHardwareDecoder: () => 'videotoolbox' };
+    const cmd = new RecordedCommandBuilder(detector).build(
+        bs4k,
+        preset({ codec: 'h264', resolution: '1080p', bitDepth: 8 }),
+    );
+    assert.match(cmd, /-hwaccel videotoolbox -i %INPUT%/u);
+    const live = new LiveCommandBuilder(detector).build(bs4k, preset({ codec: 'h264', resolution: '1080p', bitDepth: 8 }));
+    assert.match(live, /-hwaccel videotoolbox\s+-f mpegts/u);
+});
+
 test('field_order unknown の progressive HEVC 59.94fps は配信 cmd に yadif を入れない', () => {
     const source = { ...bs4k, scan: 'unknown', fieldOrder: 'unknown', frameRate: 59.94005994 };
     const cmd = new RecordedCommandBuilder().build(
@@ -76,15 +87,43 @@ test('BS4K HDR preserve keeps Main10, 10-bit and HLG BT.2020 metadata', () => {
     assert.match(cmd, /arib-std-b67/);
 });
 
-test('BS4K tone-map converts HLG BT.2020 to 8-bit BT.709', () => {
+test('BS4K HLG uses BT.2020 SDR-compatible conversion to 8-bit BT.709', () => {
     const cmd = new LiveCommandBuilder().build(
         bs4k,
         preset({ codec: 'h264', resolution: '1080p', bitDepth: 8, frameRate: 'source', hdrMode: 'tone-map' }),
         [encoder('ffmpeg', [8], false)],
     );
-    assert.match(cmd, /zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709/);
+    assert.match(cmd, /scale=-2:1080,colorspace=all=bt709:iall=bt2020/);
     assert.match(cmd, /format=yuv420p/);
     assert.match(cmd, /-color_primaries bt709 -color_trc bt709 -colorspace bt709/);
+});
+
+test('BT.2020 SDR also converts to BT.709 for 8-bit SDR output', () => {
+    const bt2020Sdr = { ...bs4k, transfer: 'bt709', transferName: 'bt2020-10', hdr: 'sdr' };
+    const cmd = new LiveCommandBuilder().build(
+        bt2020Sdr,
+        preset({ codec: 'h264', resolution: '1080p', bitDepth: 8, frameRate: 'source', hdrMode: 'sdr' }),
+        [encoder('ffmpeg', [8], false)],
+    );
+    assert.match(cmd, /colorspace=all=bt709:iall=bt2020:itrc=bt2020-10/);
+    assert.match(cmd, /-color_primaries bt709 -color_trc bt709 -colorspace bt709/);
+});
+
+test('BT.2020 SDR stays unconverted for 10-bit output and HDR preserve', () => {
+    const bt2020Sdr = { ...bs4k, transfer: 'bt709', transferName: 'bt2020-10', hdr: 'sdr' };
+    const tenBitCmd = new LiveCommandBuilder().build(
+        bt2020Sdr,
+        preset({ codec: 'hevc', resolution: '1080p', bitDepth: 10, frameRate: 'source', hdrMode: 'sdr' }),
+        [encoder('ffmpeg', [10], false)],
+    );
+    assert.doesNotMatch(tenBitCmd, /colorspace=|zscale=|-color_primaries bt709/);
+
+    const preserveCmd = new LiveCommandBuilder().build(
+        bt2020Sdr,
+        preset({ codec: 'hevc', resolution: '1080p', bitDepth: 8, frameRate: 'source', hdrMode: 'preserve' }),
+        [encoder('ffmpeg', [8], true)],
+    );
+    assert.doesNotMatch(preserveCmd, /colorspace=|zscale=|-color_primaries bt709/);
 });
 
 test('BS4K preserve does not add tone mapping', () => {
@@ -162,7 +201,7 @@ test('ライブの生成コマンドは音声トラックのプレースホル�
     assert.match(cmd, /-flags low_delay/u);
     assert.match(cmd, /-probesize 500000/u);
     assert.ok(cmd.indexOf('-probesize 500000') < cmd.indexOf('-i pipe:0'));
-    assert.ok(cmd.indexOf('-fflags nobuffer') < cmd.indexOf('-i pipe:0'));
+    assert.doesNotMatch(cmd, /-fflags nobuffer/u);
     assert.match(cmd, /%DUALMONOMODE%/u);
     assert.match(cmd, /%AUDIOMAP%/u);
     assert.match(cmd, /%AUDIOFILTER%/u);

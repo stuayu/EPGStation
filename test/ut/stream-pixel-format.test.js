@@ -15,8 +15,10 @@ const templatePaths = [
     path.join(__dirname, '../../config/config-win.yml.template'),
 ];
 
+const getTemplateConfig = templatePath => yaml.load(fs.readFileSync(templatePath, 'utf8'));
+
 const getTemplateProfiles = templatePath => {
-    const config = yaml.load(fs.readFileSync(templatePath, 'utf8'));
+    const config = getTemplateConfig(templatePath);
     return [
         ...(config.stream?.profiles?.live ?? []),
         ...(config.stream?.profiles?.recorded?.ts ?? []),
@@ -24,22 +26,48 @@ const getTemplateProfiles = templatePath => {
     ];
 };
 
-const h264Profiles = profiles => profiles.filter(profile => /-c:v\s+(?:libx264|h264_\w+)/u.test(profile.cmd ?? ''));
+const getGeneratedProfiles = templatePath => {
+    const model = new StreamProfileManageModel({ getConfig: () => getTemplateConfig(templatePath) });
+    return [...model.getLiveProfiles(), ...model.getRecordedProfiles('ts'), ...model.getRecordedProfiles('encoded')];
+};
 
 for (const templatePath of templatePaths) {
-    test(`${path.basename(templatePath)} の H.264 配信cmdは10bit入力を8bitへ変換する`, () => {
-        const profiles = h264Profiles(getTemplateProfiles(templatePath));
+    test(`${path.basename(templatePath)} はエンコード・配信プロファイルを有効にしている`, () => {
+        const config = getTemplateConfig(templatePath);
+        assert.ok(config.encode?.length > 0, 'encode');
+        assert.ok(config.stream?.profiles?.live?.length > 0, 'live');
+        assert.ok(config.stream?.profiles?.recorded?.ts?.length > 0, 'recorded.ts');
+        assert.ok(config.stream?.profiles?.recorded?.encoded?.length > 0, 'recorded.encoded');
+        assert.equal(config.stream.profiles.live.length, 16, 'live count');
+        assert.equal(config.stream.profiles.recorded.ts.length, 10, 'recorded.ts count');
+        assert.equal(config.stream.profiles.recorded.encoded.length, 10, 'recorded.encoded count');
+        assert.equal(config.encode.length, 1, 'encode count');
+        assert.equal(getTemplateProfiles(templatePath).filter(profile => typeof profile.cmd === 'string').length, 0);
+    });
+
+    test(`${path.basename(templatePath)} の自動生成 H.264 配信cmdは10bit入力を8bitへ変換する`, () => {
+        const profiles = getGeneratedProfiles(templatePath).filter(profile => /-c:v\s+libx264/u.test(profile.cmd ?? ''));
 
         assert.ok(profiles.length > 0);
         for (const profile of profiles) {
             assert.match(profile.cmd, /-pix_fmt yuv420p/u, profile.id);
+            assert.match(profile.cmd, /%TONEMAP%/u, profile.id);
+        }
+    });
+
+    test(`${path.basename(templatePath)} の 1080p HLS / M2TS-LL は自動 cmd を使う`, () => {
+        const profiles = getGeneratedProfiles(templatePath);
+        for (const id of ['live-hls-1080p-avc', 'live-m2tsll-1080p-avc']) {
+            const profile = profiles.find(candidate => candidate.id === id);
+            assert.ok(profile, id);
+            assert.match(profile.cmd ?? '', /-pix_fmt yuv420p/u, id);
+            assert.match(profile.cmd ?? '', /%DEINTERLACE%,scale=-2:1080,%TONEMAP%/u, id);
+            if (id === 'live-hls-1080p-avc') assert.doesNotMatch(profile.cmd ?? '', /(?:^|\s)-re(?:\s|$)/u, id);
         }
     });
 
     test(`${path.basename(templatePath)} の録画配信 cmd は音声トラック切り替えプレースホルダを持つ`, () => {
-        const profiles = getTemplateProfiles(templatePath).filter(
-            profile => profile.id?.startsWith('recorded-') && profile.cmd !== undefined,
-        );
+        const profiles = getGeneratedProfiles(templatePath).filter(profile => profile.id?.startsWith('recorded-'));
 
         assert.ok(profiles.length > 0);
         for (const profile of profiles) {
@@ -71,10 +99,18 @@ test('自動生成の H.264 配信cmdはエンコーダごとに8bit入力を処
                 assert.match(profile.cmd, /--profile high --level 4\.0 --output-depth 8/u, `${hwaccel}:${profile.id}`);
             }
         }
+        assert.ok(
+            expansion.live
+                .filter(profile => /(?:264|h264)/u.test(profile.video.codec))
+                .filter(profile => !['qsvencc', 'nvencc', 'vceencc'].includes(hwaccel))
+                .every(profile => /%TONEMAP%/u.test(profile.cmd)),
+            `${hwaccel}: HLS tone-map placeholder`,
+        );
+        assert.ok(expansion.live.every(profile => !/-fflags nobuffer/u.test(profile.cmd)), `${hwaccel}: no startup frame loss`);
     }
 });
 
-test('cmd省略時の H.264 は全コンテナで8bitへ変換し、HEVC出力の指定は上書きしない', () => {
+test('cmd省略時の H.264 と HEVC Main8 は8bit色変換へ対応する', () => {
     const model = new StreamProfileManageModel({
         getConfig: () => ({
             stream: {
@@ -111,5 +147,6 @@ test('cmd省略時の H.264 は全コンテナで8bitへ変換し、HEVC出力�
             },
         }),
     });
-    assert.doesNotMatch(hevcModel.getLiveProfiles()[0].cmd, /-pix_fmt yuv420p/u);
+    assert.match(hevcModel.getLiveProfiles()[0].cmd, /-pix_fmt yuv420p/u);
+    assert.match(hevcModel.getLiveProfiles()[0].cmd, /%TONEMAP%/u);
 });
