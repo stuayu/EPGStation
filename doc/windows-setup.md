@@ -80,6 +80,8 @@ npm run status-win-service
 アンインストールは管理者権限で次を実行してからフォルダを削除する
 (`uninstall` は内部でサービスを停止してから削除する)。
 
+サービス停止時、EPGStation は受信した `SIGTERM` / `SIGINT` で録画 sink の書き込み完了を最大 10 秒待ち、録画セッションを再起動後に再開できる状態で残す。node-windows の `wrapper.js` は停止時に子 Node プロセスへ `child.kill()` を行うが、Windows では POSIX シグナルハンドラの実行を保証しない。サービス停止で graceful shutdown が動かない場合は、次回起動時の異常終了復旧が残った録画を処理する。Windows サービス停止時の flush はベストエフォート。
+
 ```powershell
 npm run uninstall-win-service
 ```

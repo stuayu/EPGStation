@@ -129,11 +129,11 @@ export default class RecordingUpstreamSession {
     }
 
     /** 再接続待機と接続中処理を止める。 */
-    public stop(): void {
+    public stop(reason: Exclude<IRecordingStreamCreator.CloseReason, null> = 'canceled'): void {
         this.stopped = true;
         if (this.stableTimer !== null) clearTimeout(this.stableTimer);
         this.reconnectAbort?.abort();
-        if (this.currentStream !== null) this.options.creator.closeStream(this.currentStream, 'canceled');
+        if (this.currentStream !== null) this.options.creator.closeStream(this.currentStream, reason);
     }
 
     private consume(

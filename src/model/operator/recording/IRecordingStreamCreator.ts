@@ -34,12 +34,19 @@ namespace IRecordingStreamCreator {
         | 'teardown'
         | 'write-error'
         | 'reconnect-no-data'
+        | 'process-shutdown'
         | null;
     export type CloseAction = 'ignore' | 'finish' | 'inspect';
 
     /** close reason から Recorder の終了動作を決める */
     export const getCloseAction = (reason: CloseReason): CloseAction => {
-        if (reason === 'superseded' || reason === 'obsolete' || reason === 'teardown' || reason === 'write-error')
+        if (
+            reason === 'superseded' ||
+            reason === 'obsolete' ||
+            reason === 'teardown' ||
+            reason === 'write-error' ||
+            reason === 'process-shutdown'
+        )
             return 'ignore';
         if (reason === 'canceled' || reason === 'tuner-handoff' || reason === 'boundary' || reason === 'scheduled-end')
             return 'finish';
