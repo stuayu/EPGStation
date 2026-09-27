@@ -16,6 +16,59 @@ const UNDEFINED_DURATION_THRESHOLD = 1;
 // 長すぎると番組表で他の番組を覆い隠し、短すぎるとすぐ放送終了扱いになるため中間を取る
 export const UNDEFINED_DURATION_FALLBACK_MS = 3 * 60 * 60 * 1000;
 
+// 放送時間未定の録画を planned end 到達前に延長する幅と判定余裕。
+export const UNDEFINED_DURATION_EXTENSION_MS = 30 * 60 * 1000;
+export const UNDEFINED_DURATION_EXTENSION_LEAD_MS = 60 * 1000;
+
+export interface ProgramEndTimes {
+    displayEndAt: number;
+    plannedEndAt: number;
+    hardSafetyEndAt: number;
+}
+
+/**
+ * 用途別の終了時刻を計算する。次番組の開始は同一チャンネルの値を渡す。
+ * @param startAt: number 開始時刻 (UnixtimeMS)
+ * @param duration: number | undefined | null 番組長 (ms)
+ * @param nextProgramStartAt: number | undefined | null 同一チャンネルの次番組開始時刻
+ * @return ProgramEndTimes
+ */
+export const resolveProgramEndTimes = (
+    startAt: number,
+    duration: number | undefined | null,
+    nextProgramStartAt?: number | null,
+): ProgramEndTimes => {
+    const displayEndAt = resolveEndAt(startAt, duration);
+    if (isDurationUndefined(duration) === false) {
+        return { displayEndAt, plannedEndAt: displayEndAt, hardSafetyEndAt: displayEndAt };
+    }
+
+    const hasNextProgram =
+        typeof nextProgramStartAt === 'number' && Number.isFinite(nextProgramStartAt) && nextProgramStartAt > startAt;
+    return {
+        displayEndAt,
+        plannedEndAt: hasNextProgram ? Math.min(displayEndAt, nextProgramStartAt as number) : displayEndAt,
+        hardSafetyEndAt: displayEndAt,
+    };
+};
+
+/**
+ * 計画終了が近い放送時間未定の録画を延長する。延長不要なら null。
+ * @param now: number 現在時刻 (UnixtimeMS)
+ * @param plannedEndAt: number 現在の計画終了時刻
+ * @param hardSafetyEndAt: number 強制終了上限
+ * @return number | null 延長後の計画終了時刻
+ */
+export const extendUndefinedDurationEndAt = (
+    now: number,
+    plannedEndAt: number,
+    hardSafetyEndAt: number,
+): number | null => {
+    if (plannedEndAt - now > UNDEFINED_DURATION_EXTENSION_LEAD_MS) return null;
+    if (plannedEndAt >= hardSafetyEndAt) return null;
+    return Math.min(plannedEndAt + UNDEFINED_DURATION_EXTENSION_MS, hardSafetyEndAt);
+};
+
 /**
  * 放送時間が未定か
  * @param duration: number | undefined | null 番組長 (ms)

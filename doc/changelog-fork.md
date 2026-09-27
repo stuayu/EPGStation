@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 連続録画の上流共有 Phase 9 (opt-in) → 2026-09-28
+- 放送時間未定の終了時刻を表示・Planner・安全上限に分離 Phase 8 → 2026-09-28
 - 予約優先度と競合ポリシー Phase 7 → 2026-09-28
 - 予約スケジューラ Phase 6: SchedulePlanner と競合詳細 → 2026-09-28
 - 録画セッション再設計 Phase 5: 再起動後の同一録画復帰と shutdown flush → 2026-09-28
@@ -36,6 +38,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-28
 
+- **録画セッション再設計 Phase 8 で未定番組の終了時刻を用途別に分離**: `ProgramDuration.resolveProgramEndTimes()` が表示用と録画安全上限に開始 + 3 時間を保ち、Planner 用終了だけ同一チャンネルの次番組開始で切り詰める。Reservation Planner は EPG の次番組を参照し、API の表示と保存済み `endAt` は変更しない。内部列 `reserve.plannedEndAt` は録画中に対象 EIT present が未定のまま計画終了へ近づいた場合だけ30分ずつ延長し、3時間の上限内で重複予約の Planner を再計算する。SQLite / MySQL migration を追加した。
+- **録画セッション再設計 Phase 9 で連続録画の上流共有を追加**: `recording.shareUpstreamStream` (既定 false) が有効な場合、同一 channelId の連続予約で Operator 内の `RecordingSourceLeaseManager` が Mirakurun 接続を共有し、各予約へ PassThrough 分岐を渡す。priority / decode 設定が異なる予約と program mode は共有しない。参照数 0 で上流を閉じ、上流障害は全分岐へ同じ理由で伝えて lease 単位で再接続する。
 - **予約優先度と競合ポリシー Phase 7 を追加**: Reserve / Rule に priority (1〜5、既定 3) と conflictPolicy を追加し、SQLite / MySQL migration で既存 allowEndLack を STRICT / ALLOW_END_LACK へ移行する。優先度は高い順に並べ、同じ優先度では従来の sortReserve を維持する。Planner は末尾・先頭・部分欠損の許可と下位予約の押し出しを扱い、手動追加 API は押し出した予約 ID と PRIORITY_PREEMPTED を返す。Mirakurun には recPriority / conflictPriority を基準に予約優先度の差分を足し、最小値 -1 で下限を設ける。
 
 - **予約スケジューラ Phase 6 で区間別チューナー割当を追加**: `reservation.scheduler` は `legacy` を既定とし、legacy 運用中も planner との差分を予約 ID・旧新の競合/チューナー値・理由付きで info log へ出す。`planner` は時刻区間ごとに同じチャンネルの予約をまとめ、増加路最大マッチングで多波対応チューナーの割当を行う。`types: []` は全放送種別へ補完し理由を保存する。予約に `conflictInfo` / `plannedTunerIndex` を追加し、API・一覧・詳細に競合内容を表示する。予約差分再計算は時間窓が連鎖する範囲へ拡張。503 開始再試行は開始前/マージン重複中に2秒間隔とする。実 Mirakurun のデバイス選択との一致は未検証。

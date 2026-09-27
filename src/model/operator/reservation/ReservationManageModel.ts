@@ -5,7 +5,7 @@ import Channel from '../../../db/entities/Channel';
 import Program from '../../../db/entities/Program';
 import Reserve from '../../../db/entities/Reserve';
 import DateUtil from '../../../util/DateUtil';
-import { isDurationUndefined } from '../../../util/ProgramDuration';
+import { isDurationUndefined, resolveProgramEndTimes } from '../../../util/ProgramDuration';
 import { formatDurationUndefinedChange, formatLogDuration, formatTimeChange } from '../../../util/ProgramTimeLog';
 import StrUtil from '../../../util/StrUtil';
 import Util from '../../../util/Util';
@@ -553,7 +553,7 @@ class ReservationManageModel implements IReservationManageModel {
         }
 
         reserves.push(newReserve);
-        const newReserves = this.createPlannerReserves(reserves);
+        const newReserves = await this.createPlannerReserves(reserves);
         const candidate = newReserves.find(reserve => reserve.id === newReserve.id);
         const preempted = newReserves.filter(reserve => reserve.id !== newReserve.id && reserve.isConflict);
         const canPreempt =
@@ -606,6 +606,9 @@ class ReservationManageModel implements IReservationManageModel {
      * @param program: Program
      */
     private setProgramToReserve(reserve: Reserve, program: Program | ProgramWithOverlap): void {
+        if (reserve.programId !== program.id || reserve.programUpdateTime !== program.updateTime) {
+            reserve.plannedEndAt = null;
+        }
         reserve.programId = program.id;
         reserve.programUpdateTime = program.updateTime;
         reserve.channelId = program.channelId;
@@ -1153,7 +1156,7 @@ class ReservationManageModel implements IReservationManageModel {
         Array.prototype.push.apply(newReserves, this.copyReserveArray(baseReserves));
 
         // 予約情報を計算
-        newReserves = this.createReserves(newReserves);
+        newReserves = await this.createReserves(newReserves);
 
         // 古い予約情報と差分を列挙する
         const oldReserves = this.copyReserveArray(addOldReserves);
@@ -1303,6 +1306,7 @@ class ReservationManageModel implements IReservationManageModel {
                 oldReserve.isConflict !== newReserve.isConflict ||
                 oldReserve.conflictInfo !== newReserve.conflictInfo ||
                 oldReserve.plannedTunerIndex !== newReserve.plannedTunerIndex ||
+                oldReserve.plannedEndAt !== newReserve.plannedEndAt ||
                 oldReserve.isOverlap !== newReserve.isOverlap)
         );
     }
@@ -1469,6 +1473,30 @@ class ReservationManageModel implements IReservationManageModel {
                 this.log.system.error(`update reservation by program id error: ${reserve.id}`);
                 this.log.system.error(err);
             });
+        }
+    }
+
+    /** 指定予約と時刻が重なる予約の Planner 割当を再計算する */
+    public async recalculatePlanForReserve(reserveId: apid.ReserveId): Promise<void> {
+        const exeId = await this.executeManagementModel.getExecution(ReservationManageModel.UPDATE_RESERVE_PRIORITY);
+        try {
+            const reserve = await this.reserveDB.findId(reserveId);
+            if (reserve === null) return;
+            const diff = await this.createDiff(
+                {
+                    times: [{ startAt: reserve.startAt, endAt: reserve.endAt }],
+                    hasSkip: false,
+                    hasConflict: true,
+                    hasOverlap: false,
+                    excludeReserveId: reserveId,
+                },
+                [reserve],
+                [reserve],
+                true,
+            );
+            this.reserveEvent.emitUpdated(diff);
+        } finally {
+            this.executeManagementModel.unLockExecution(exeId);
         }
     }
 
@@ -1818,14 +1846,14 @@ class ReservationManageModel implements IReservationManageModel {
      * @param matches 予約したい番組情報
      * @return Reserve[] 予約情報
      */
-    private createReserves(matches: Reserve[]): Reserve[] {
+    private async createReserves(matches: Reserve[]): Promise<Reserve[]> {
         if (this.configuration.getConfig().reservation?.scheduler === 'planner') {
-            const planned = this.createPlannerReserves(matches);
+            const planned = await this.createPlannerReserves(matches);
             return planned;
         }
 
         const legacy = this.createLegacyReserves(matches);
-        const planner = this.createPlannerReserves(matches);
+        const planner = await this.createPlannerReserves(matches);
         const legacyById = new Map(legacy.map(reserve => [reserve.id, reserve]));
         for (const reserve of planner) {
             const old = legacyById.get(reserve.id);
@@ -1851,7 +1879,7 @@ class ReservationManageModel implements IReservationManageModel {
         return legacy;
     }
 
-    private createPlannerReserves(matches: Reserve[]): Reserve[] {
+    private async createPlannerReserves(matches: Reserve[]): Promise<Reserve[]> {
         const config = this.configuration.getConfig();
         const timing = resolveRecordingTimingConfig(
             config.recording,
@@ -1860,11 +1888,41 @@ class ReservationManageModel implements IReservationManageModel {
         );
         const priorities = [...matches].sort((a, b) => this.sortReserve(a, b));
         const rank = new Map(priorities.map((reserve, index) => [reserve.id, index]));
+        const nextProgramStarts = new Map<number, number | undefined>();
+        await Promise.all(
+            matches
+                .filter(reserve => reserve.isTimeUndefined === true && reserve.programId !== null)
+                .map(async reserve => {
+                    const following = await this.programDB.findSchedule({
+                        channelId: reserve.channelId,
+                        startAt: reserve.startAt + 1,
+                        endAt: reserve.endAt,
+                        isHalfWidth: false,
+                    });
+                    const next = following
+                        .filter(program => program.startAt > reserve.startAt)
+                        .sort((a, b) => a.startAt - b.startAt)[0];
+                    nextProgramStarts.set(reserve.id, next?.startAt);
+                }),
+        );
+        const plannerEndAt = new Map<number, number>();
+        for (const reserve of matches) {
+            if (reserve.isTimeUndefined !== true) continue;
+            const baseEndAt = resolveProgramEndTimes(
+                reserve.startAt,
+                1,
+                nextProgramStarts.get(reserve.id),
+            ).plannedEndAt;
+            plannerEndAt.set(
+                reserve.id,
+                Math.min(Math.max(baseEndAt, reserve.plannedEndAt ?? baseEndAt), reserve.endAt),
+            );
+        }
         const plans = planSchedule({
             reservations: matches.map(reserve => ({
                 id: reserve.id,
                 startAt: reserve.startAt,
-                endAt: reserve.endAt,
+                endAt: plannerEndAt.get(reserve.id) ?? reserve.endAt,
                 channel: reserve.channel,
                 channelType: reserve.channelType,
                 allowEndLack: reserve.allowEndLack,

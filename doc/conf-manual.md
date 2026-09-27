@@ -613,6 +613,7 @@ IPTV クライアントなどに URL を手で登録する場合は、`GET /api/
 | startGateTimeoutMs       | number  | no   | EIT[p/f] を読めないまま録画を開始するまでの時間 (ms)。省略時 60000                         |
 | startGateStartMarginMs   | number  | no   | 放送中の番組の開始時刻が予約開始時刻よりこれ以上前なら前の番組とみなす (ms)。省略時 120000 |
 | reconnectEnabled         | boolean | no   | 録画中の上流切断後に同じ録画へ再接続する。省略時 true。false で従来どおり失敗・再試行 |
+| shareUpstreamStream      | boolean | no   | 同一チャンネルで続く録画間の Mirakurun 上流接続を共有する。省略時 false。Mirakurun priority と decode 設定が一致する service stream のみ対象 |
 | programStreamMode        | string  | no   | programId 予約の取得方式。`service` (既定、EPGStation が EIT 境界を管理) または `program` (切り戻し) |
 | hardStartGateTimeoutMs   | number  | no   | programId 予約で別 event_id が固着した場合の開始期限 (ms)。省略時 300000                   |
 | storageFallbackEnabled   | boolean | no   | 予想録画サイズに対して空きが足りない場合、`recorded` の次の保存先へ振り替える。省略時 true |
@@ -625,6 +626,7 @@ IPTV クライアントなどに URL を手で登録する場合は、`GET /api/
 ```yaml
 recording:
     reconnectEnabled: true
+    shareUpstreamStream: false
     programStreamMode: service
     startWaitLimitMs: 10800000
     startWaitIntervalMs: 60000
@@ -648,6 +650,7 @@ recording:
 - 値が範囲外・不正な場合は既定値へ丸めるため、設定ミスで録画が動かなくなることはない
 - 野球中継などの長い延長に備える場合は `startWaitLimitMs` を延ばす
 - `reconnectEnabled: true` (既定) では録画中の上流切断後に同じ録画ファイルへ再接続する。false なら従来の失敗・録り直しへ戻る
+- `shareUpstreamStream: true` にすると、同一チャンネルで連続する予約間で Mirakurun への上流接続を共有する。Mirakurun priority と decode 設定が一致する service stream が対象で、program mode は共有しない。既定は false
 - `programStreamMode: service` (既定) では programId 予約もサービスストリームを使い、TS 到着 (transport) と EIT[p/f] 境界待ちを分離する。target present の event_id 一致、target following の start_time 到達を通常開始条件とし、EIT が無い場合は soft timeout (既定 60 秒)、別 event_id 固着は hard timeout (既定 5 分) で安全側に開始する。待機中の TS は最大 8 MiB のリングバッファへ保持する
 - soft/hard timeout で fallback 開始した場合は、全損を避ける代わりにリングバッファ内の前番組が最大 8 MiB 混ざり得る。開始理由は Operator の info ログで `eitSoftTimeout` / `eitHardTimeout` として区別できる
 - `startGateEnabled` は EIT[p/f] 境界待ちを有効にする (時刻指定予約・programId 予約の両方)。時刻指定予約では following の `start_time` を優先し、present 更新前でも目的番組の開始を判断する。programId 予約では対象 present の event_id 一致を優先し、EIT 無しの soft timeout と別 event_id 固着の hard timeout を安全弁として使う。待機中の TS は最大 8 MiB を保持して開始時に書き出す

@@ -13,6 +13,7 @@ import LongTimer from '../../../util/LongTimer';
 import IRecordingStreamCreator from './IRecordingStreamCreator';
 import { resolveRecordingTimingConfig } from './RecordingTimingConfig';
 import { toMirakurunPriority } from '../reservation/ReservationPriorityUtil';
+import RecordingSourceLeaseManager from './RecordingSourceLeaseManager';
 
 interface TunerProgram {
     reserve: Reserve;
@@ -45,6 +46,8 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
     // stream が切れても再接続先の tuner を保つ
     private reserveTunerIndex: { [key: number]: number | null } = {};
     private closeReasonIndex = new WeakMap<http.IncomingMessage, Exclude<IRecordingStreamCreator.CloseReason, null>>();
+    private sourceLeaseManager = new RecordingSourceLeaseManager();
+    private streamLeaseReleases = new WeakMap<http.IncomingMessage, () => void>();
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -105,6 +108,8 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      * @param reserveId: apid.ReserveId
      */
     private deleteReserve(reserveId: apid.ReserveId, expectedStream: http.IncomingMessage): void {
+        this.streamLeaseReleases.get(expectedStream)?.();
+        this.streamLeaseReleases.delete(expectedStream);
         const session = this.streamIndex[reserveId];
         if (session?.stream === expectedStream) {
             session.timer?.clear();
@@ -345,6 +350,9 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
 
         if (reserve.programId === null) {
             // 時刻指定予約
+            if (config.recording?.shareUpstreamStream === true) {
+                return this.getSharedServiceStream(reserve, mirakurun, priority, abortSignal);
+            }
             return this.getTimeSpecifiedStream(reserve, mirakurun, priority, abortSignal);
         } else {
             // programId 予約も既定ではサービスストリームを使い、EIT 境界を Recorder 側で管理する。
@@ -356,6 +364,9 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
                     signal: abortSignal,
                 });
             }
+            if (config.recording?.shareUpstreamStream === true) {
+                return this.getSharedServiceStream(reserve, mirakurun, priority, abortSignal);
+            }
             return mirakurun.getServiceStream({
                 id: reserve.channelId,
                 decode: true,
@@ -363,6 +374,35 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
                 signal: abortSignal,
             });
         }
+    }
+
+    /** 同じ channel / priority / decode 条件の service stream lease を取得する */
+    private async getSharedServiceStream(
+        reserve: Reserve,
+        mirakurun: Mirakurun,
+        priority: number,
+        abortSignal?: AbortSignal,
+    ): Promise<http.IncomingMessage> {
+        if (reserve.endAt < Date.now()) throw new Error('TimeSpecifiedStreamTimeoutError');
+        const lease = await this.sourceLeaseManager.acquire(
+            reserve.channelId,
+            () =>
+                mirakurun.getServiceStream({
+                    id: reserve.channelId,
+                    decode: true,
+                    priority,
+                }),
+            `priority:${priority}:decode:true`,
+        );
+        const branch = lease.stream as unknown as http.IncomingMessage;
+        const release = (): void => {
+            abortSignal?.removeEventListener('abort', release);
+            lease.release();
+        };
+        this.streamLeaseReleases.set(branch, release);
+        if (abortSignal?.aborted === true) release();
+        else abortSignal?.addEventListener('abort', release, { once: true });
+        return branch;
     }
 
     /**

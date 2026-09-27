@@ -40,13 +40,13 @@ const makeModel = (reserveDB = {}) => {
     );
 };
 
-test('createReserves は時間順スイープと先着チューナー割当を使い、競合を記録する', () => {
+test('createReserves は時間順スイープと先着チューナー割当を使い、競合を記録する', async () => {
     const model = makeModel();
     model.setTuners(
         fixture.tuners.map(tuner => ({ ...tuner, name: `tuner-${tuner.index}`, command: '', isAvailable: true })),
     );
     const input = fixture.reserves.map(row => makeReserve(row));
-    const result = model.createReserves(input);
+    const result = await model.createReserves(input);
     const snapshot = Object.fromEntries(result.map(reserve => [reserve.id, reserve.isConflict]));
 
     assert.deepEqual(snapshot, fixture.expectedConflicts);
@@ -128,10 +128,10 @@ const countChannelSwitches = assignments => {
     return switches;
 };
 
-test('createReserves では同時刻終了と開始は競合せず、first-fit の割当を行う', () => {
+test('createReserves では同時刻終了と開始は競合せず、first-fit の割当を行う', async () => {
     const model = makeModel();
     model.setTuners([{ types: ['GR'], index: 0, name: 'GR', command: '', isAvailable: true }]);
-    const result = model.createReserves([
+    const result = await model.createReserves([
         makeReserve({ id: 1, startAt: 1000, endAt: 2000 }),
         makeReserve({ id: 2, startAt: 2000, endAt: 3000, updateTime: 2 }),
     ]);
@@ -141,10 +141,10 @@ test('createReserves では同時刻終了と開始は競合せず、first-fit �
     );
 });
 
-test('createReserves の現状の挙動 (Phase 6 で変更予定): 一度競合した予約は競合のまま残る', () => {
+test('createReserves の現状の挙動 (Phase 6 で変更予定): 一度競合した予約は競合のまま残る', async () => {
     const model = makeModel();
     model.setTuners([{ types: ['GR'], index: 0, name: 'GR', command: '', isAvailable: true }]);
-    const result = model.createReserves([
+    const result = await model.createReserves([
         makeReserve({ id: 1, channel: 'GR-1', startAt: 1000, endAt: 2000, updateTime: 1 }),
         makeReserve({ id: 2, channel: 'GR-2', startAt: 1500, endAt: 2500, updateTime: 2 }),
         makeReserve({ id: 3, channel: 'GR-1', startAt: 2000, endAt: 3000, updateTime: 3 }),
@@ -156,10 +156,10 @@ test('createReserves の現状の挙動 (Phase 6 で変更予定): 一度競合�
     });
 });
 
-test('createReserves の現状の挙動 (Phase 6 で変更予定): 後から始まる高優先予約が既存予約を押し出す', () => {
+test('createReserves の現状の挙動 (Phase 6 で変更予定): 後から始まる高優先予約が既存予約を押し出す', async () => {
     const model = makeModel();
     model.setTuners([{ types: ['GR'], index: 0, name: 'GR', command: '', isAvailable: true }]);
-    const result = model.createReserves([
+    const result = await model.createReserves([
         makeReserve({ id: 1, channel: 'GR-1', startAt: 1000, endAt: 3000, ruleId: 1 }),
         makeReserve({
             id: 2,
@@ -175,6 +175,29 @@ test('createReserves の現状の挙動 (Phase 6 で変更予定): 後から始�
         1: true,
         2: false,
     });
+});
+
+test('Planner は未定番組を同一局の次番組開始で切り詰め、表示用 endAt を維持する', async () => {
+    const model = makeModel();
+    model.configuration = { getConfig: () => ({ reservation: { scheduler: 'planner' } }) };
+    model.programDB = {
+        findSchedule: async () => [{ startAt: 1100, endAt: 1200 }],
+    };
+    model.setTuners([{ types: ['GR'], index: 0, name: 'GR', command: '', isAvailable: true }]);
+    const result = await model.createReserves([
+        makeReserve({
+            id: 1,
+            programId: 5001,
+            channelId: 1,
+            channel: 'GR-1',
+            startAt: 1000,
+            endAt: 1000 + 3 * 60 * 60 * 1000,
+            isTimeUndefined: true,
+        }),
+        makeReserve({ id: 2, channelId: 2, channel: 'GR-2', startAt: 1200, endAt: 1300 }),
+    ]);
+    assert.equal(result.find(reserve => reserve.id === 1).isConflict, false);
+    assert.equal(result.find(reserve => reserve.id === 1).endAt, 1000 + 3 * 60 * 60 * 1000);
 });
 
 test('sortReserve は時刻指定手動、通常手動、ルールの順で優先し同種内を既定キーで並べる', () => {

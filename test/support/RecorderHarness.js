@@ -67,7 +67,7 @@ class RecorderHarness {
         this.client.port = Number(url.port);
         this.tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'epgstation-recorder-harness-'));
         let fileNo = 0;
-        const recordedDB = {
+        this.recordedDB = {
             insertOnce: async row => {
                 row.id = this.recorded.length + 1;
                 this.recorded.push(row);
@@ -114,14 +114,14 @@ class RecorderHarness {
             findAttemptsBySessionId: async id => this.recordingAttempts.filter(row => row.sessionId === id),
             deleteOrphanSessionsBefore: async () => 0,
         };
-        const videoFileDB = {
+        this.videoFileDB = {
             insertOnce: async row => {
                 row.id = this.videoFiles.length + 1;
                 this.videoFiles.push(row);
                 return row.id;
             },
         };
-        const recordingUtil = {
+        this.recordingUtil = {
             getRecPath: async () => {
                 fileNo++;
                 const fileName = `baseline${fileNo === 1 ? '' : ` (${fileNo - 1})`}.ts`;
@@ -134,7 +134,7 @@ class RecorderHarness {
             },
             updateVideoFileSize: async () => {},
         };
-        const recordingEvent = {
+        this.recordingEvent = {
             emitStartPrepRecording: (...args) => this.events.prep?.push(args),
             emitStartRecording: (...args) => this.events.start.push(args),
             emitFinishRecording: (...args) => this.events.finish.push(args),
@@ -142,20 +142,24 @@ class RecorderHarness {
             emitCancelRecording: () => {},
             emitCancelPrepRecording: () => {},
         };
-        this.recorder = new RecorderModel(
+        this.recorder = this.createRecorder();
+    }
+
+    createRecorder() {
+        return new RecorderModel(
             { getLogger: () => logger },
             this.configuration,
             { findId: async id => ({ id }), findChannelIdAndTime: async () => null },
             { findId: async id => ({ id }) },
             { findId: async id => ({ id }), updateFollowingSchedule: async () => {} },
-            recordedDB,
+            this.recordedDB,
             {},
-            videoFileDB,
+            this.videoFileDB,
             {},
             this.recordingStreamCreator,
             { start: async () => {}, stop: async () => {}, getResult: async () => ({}), getFilePath: () => null },
-            recordingUtil,
-            recordingEvent,
+            this.recordingUtil,
+            this.recordingEvent,
             this.mirakurunClient,
             { dispatch: async () => {} },
             { emitUpdated: () => {} },

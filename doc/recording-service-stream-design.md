@@ -6,6 +6,18 @@
 
 Recorded の `recordingStatus` / `endReason` は一覧表示用。null は既存録画を含め completed 扱い。詳細 API `GET /api/recorded/{recordedId}/recording-sessions` はセッション・attempt を返し、gap は attempt の `endedAt` から次 attempt の `firstDataAt` で導出する。Recorded に紐付かない開始失敗セッションは 30 日後に掃除する。
 
+## Phase 8: 放送時間未定の終了時刻
+
+`ProgramDuration.resolveProgramEndTimes()` は表示用 (`displayEndAt`)、Planner 用 (`plannedEndAt`)、強制終了上限 (`hardSafetyEndAt`) を返す。放送時間未定の表示と安全上限は開始 + 3 時間、Planner 用だけ同一チャンネルの次番組開始までとする。Planner 入力の `endAt` に計画値を渡すが、予約表示 API の `endAt` は変更しない。`reserve.plannedEndAt` は NULL を通常値とし、録画中に対象 event が present のまま EIT duration 未定で計画終了へ近づいた場合だけ延長値を保存する。
+
+延長判定 `extendUndefinedDurationEndAt()` は計画終了の60秒前から30分ずつ延長し、安全上限で止める。Recorder はこの値だけ DB 更新し、重複する予約範囲の Planner を再計算する。録画 stream の hard timer / `reserve.endAt` は3時間上限のまま。実際の録画終了は EIT present の boundary が決める。SQLite / MySQL migration は追加列を nullable とし、既存予約の `endAt` や表示値を移行しない。
+
+## Phase 9: 連続録画の上流共有 (opt-in)
+
+Operator プロセス内の `RecordingSourceLeaseManager` は `channelId` ごとに Mirakurun 上流を保持し、lease ごとの PassThrough 分岐を各予約 attempt に渡す。参照数が 0 になれば上流を閉じ、上流の close / end / error 時は共有表から lease を除去する。上流障害は全分岐へ同じ終了理由で通知し、再接続は lease 単位で行う。
+
+`recording.shareUpstreamStream` (既定 false) が有効な場合だけ共有する。Mirakurun priority と decode 設定が一致する service stream が対象で、priority / decode が異なる場合と `program` mode は共有しない。狙いは連続予約の張り付きで同じ局へ重複 HTTP 接続を作らず、引き継ぎの切れ目をなくすこと。Mirakurun の tuner 数には影響しない。
+
 ## 1. 結論 (実装確定: 2026-08-19)
 
 `programId` 予約も Mirakurun の `getServiceStream` でチャンネルを事前確保し、番組の開始・終了境界を
