@@ -822,7 +822,11 @@ class ReservationManageModel implements IReservationManageModel {
         }
     }
 
-    private async updateRuleWithExecution(ruleId: apid.RuleId, isSuppressLog: boolean, isFirstUpdate: boolean): Promise<void> {
+    private async updateRuleWithExecution(
+        ruleId: apid.RuleId,
+        isSuppressLog: boolean,
+        isFirstUpdate: boolean,
+    ): Promise<void> {
         if (isSuppressLog === false) {
             this.log.system.info(`update rule reservation: ${ruleId}`);
         }

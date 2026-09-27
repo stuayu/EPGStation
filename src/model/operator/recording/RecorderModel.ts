@@ -27,6 +27,7 @@ import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
 import EitPresentParser, { EitPresentEvent } from './EitPresentParser';
 import {
+    classifyStartFailure,
     decideRecordingRetry,
     getFirstDataWaitTimeoutMs,
     RecordingRetryReason,
@@ -398,7 +399,10 @@ class RecorderModel implements IRecorderModel {
      * strem 破棄
      * @param needesUnpip: boolean
      */
-    private destroyStream(needesUnpip: boolean = true): void {
+    private destroyStream(
+        needesUnpip: boolean = true,
+        reason: Exclude<IRecordingStreamCreator.CloseReason, null> = 'teardown',
+    ): void {
         if (this.boundaryEndTimerId !== null) {
             clearTimeout(this.boundaryEndTimerId);
             this.boundaryEndTimerId = null;
@@ -409,8 +413,7 @@ class RecorderModel implements IRecorderModel {
                 if (needesUnpip === true) {
                     this.stream.unpipe();
                 }
-                this.stream.destroy();
-                this.stream.push(null); // eof 通知
+                this.streamCreator.closeStream(this.stream, reason);
                 this.stream.removeAllListeners('data');
                 this.stream = null;
             } catch (err: any) {
@@ -462,8 +465,7 @@ class RecorderModel implements IRecorderModel {
         }
 
         try {
-            prepStream.destroy();
-            prepStream.push(null);
+            this.streamCreator.closeStream(prepStream, 'obsolete');
             prepStream.removeAllListeners('data');
             if (this.stream === prepStream) {
                 this.stream = null;
@@ -558,6 +560,7 @@ class RecorderModel implements IRecorderModel {
                 this.cancel(false);
             } else {
                 this.isCanceledCallingFinished = true; // mirakurun の stream の終了処理を行わないようにセット
+                if (this.stream !== null) this.streamCreator.markClose(this.stream, 'write-error');
                 await this.recFailed(err).catch(err => {
                     this.log.system.fatal(
                         `Unexpected recFailed error: reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}`,
@@ -632,42 +635,54 @@ class RecorderModel implements IRecorderModel {
 
                 // 「まだ番組が始まっていない」ことを示す専用のエラーにして、
                 // チューナー異常と区別できるようにする
-                reject(new Error(RecorderModel.WAITING_FOR_EVENT_ERROR));
+                reject(
+                    new Error(
+                        classifyStartFailure('no-data-after-pipe', this.isLegacyProgramStream()) === 'error'
+                            ? RecorderModel.TRANSPORT_ERROR
+                            : RecorderModel.WAITING_FOR_EVENT_ERROR,
+                    ),
+                );
             }, resolveRecordingRetryConfig(this.config.recording).firstDataTimeoutMs);
 
             // stream データ受診時のコールバック関数定義
-            const onData = async () => {
-                clearTimeout(recordingTimeoutId);
+            const onData = (): void => {
+                void (async () => {
+                    clearTimeout(recordingTimeoutId);
 
-                if (isStreamTimeout === true) {
-                    // timeout が発生していたため何もしない
-                    this.log.system.error(`stream is timeouted. reserveId: ${this.reserve.id}`);
+                    if (isStreamTimeout === true) {
+                        // timeout が発生していたため何もしない
+                        this.log.system.error(`stream is timeouted. reserveId: ${this.reserve.id}`);
 
-                    return;
-                }
+                        return;
+                    }
 
-                // 番組情報追加
-                const recorded = await this.addRecorded(recPath);
+                    // 番組情報追加
+                    const recorded = await this.addRecorded(recPath);
 
-                // 終了処理セット
-                if (this.stream !== null) {
-                    this.setEndProcess(this.stream);
-                } else {
-                    reject(new Error('StreamIsNull'));
+                    // 終了処理セット
+                    if (this.stream !== null) {
+                        this.setEndProcess(this.stream);
+                    } else {
+                        reject(new Error('StreamIsNull'));
 
-                    return;
-                }
+                        return;
+                    }
 
-                // 録画開始を通知
-                this.recordingEvent.emitStartRecording(this.reserve, recorded);
+                    // 録画開始を通知
+                    this.recordingEvent.emitStartRecording(this.reserve, recorded);
 
-                // program id が指定されていればイベントリレーの確認を行う
-                if (this.reserve.programId !== null) {
-                    // イベントリレーを確認するために番組終了時間間近にタイマーをセットする
-                    this.setEventRelayTimer(this.reserve);
-                }
+                    // program id が指定されていればイベントリレーの確認を行う
+                    if (this.reserve.programId !== null) {
+                        // イベントリレーを確認するために番組終了時間間近にタイマーをセットする
+                        this.setEventRelayTimer(this.reserve);
+                    }
 
-                resolve();
+                    resolve();
+                })().catch(err => {
+                    this.isRecording = false;
+                    this.isPrepRecording = false;
+                    reject(err instanceof Error ? err : new Error(String(err)));
+                });
             };
 
             // stream データ受診時のコールバック設定
@@ -760,7 +775,13 @@ class RecorderModel implements IRecorderModel {
             });
             const firstDataTimerId = setTimeout(() => {
                 cleanup();
-                reject(new Error(RecorderModel.WAITING_FOR_EVENT_ERROR));
+                reject(
+                    new Error(
+                        classifyStartFailure('no-first-ts', this.isLegacyProgramStream()) === 'error'
+                            ? RecorderModel.TRANSPORT_ERROR
+                            : RecorderModel.WAITING_FOR_EVENT_ERROR,
+                    ),
+                );
             }, firstDataTimeoutMs);
 
             const cleanup = (): void => {
@@ -909,7 +930,13 @@ class RecorderModel implements IRecorderModel {
 
             const onStreamClosed = (): void => {
                 cleanup();
-                reject(new Error(RecorderModel.WAITING_FOR_EVENT_ERROR));
+                reject(
+                    new Error(
+                        classifyStartFailure('stream-closed', this.isLegacyProgramStream()) === 'error'
+                            ? RecorderModel.TRANSPORT_ERROR
+                            : RecorderModel.WAITING_FOR_EVENT_ERROR,
+                    ),
+                );
             };
 
             stream.on('data', onData);
@@ -966,8 +993,7 @@ class RecorderModel implements IRecorderModel {
                 this.boundaryEndTimerId = setTimeout(() => {
                     this.boundaryEndReason = endReason;
                     if (this.stream !== null) {
-                        this.stream.destroy();
-                        this.stream.push(null);
+                        this.streamCreator.closeStream(this.stream, 'boundary');
                     }
                 }, RecorderModel.BOUNDARY_END_DEBOUNCE_MS);
             }
@@ -1017,6 +1043,16 @@ class RecorderModel implements IRecorderModel {
                 this.log.system.error(err);
             });
 
+            if (this.recordedId !== null) {
+                await this.recordedDB
+                    .deleteRecordedWithRelatedData(this.recordedId, this.dropLogFileId)
+                    .catch(cleanupErr => {
+                        this.log.system.error(`delete partial recorded error: ${this.recordedId}`);
+                        this.log.system.error(cleanupErr);
+                    });
+                this.recordedId = null;
+            }
+            this.videoFileId = null;
             throw new Error('AddRecordedDBError');
         }
     }
@@ -1034,8 +1070,14 @@ class RecorderModel implements IRecorderModel {
                 return;
             }
 
+            const closeReason = this.streamCreator.getCloseReason(s);
+            const closeAction = IRecordingStreamCreator.getCloseAction(closeReason);
+            if (closeAction === 'ignore') return;
+            if (closeAction === 'finish') {
+                await this.recEnd().catch(e => this.log.system.error(e));
+                return;
+            }
             const scheduledEndReached = new Date().getTime() >= this.reserve.endAt + this.getTimingConfig().endMarginMs;
-            const closeReason = this.boundaryEndReason ?? this.streamCreator.getCloseReason(s);
             if (err && closeReason === null && scheduledEndReached === false) {
                 this.log.system.error(
                     `stream.finished error: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
@@ -1043,7 +1085,7 @@ class RecorderModel implements IRecorderModel {
                 await this.recFailed(err);
             } else {
                 this.log.system.info(
-                    `recording end: reserveId: ${this.reserve.id}, reason: ${closeReason ?? (scheduledEndReached ? 'scheduled-end' : 'stream-ended')},` +
+                    `recording end: reserveId: ${this.reserve.id}, reason: ${this.boundaryEndReason ?? closeReason ?? (scheduledEndReached ? 'scheduled-end' : 'stream-ended')},` +
                         ` scheduledEnd: ${formatLogTime(this.reserve.endAt)}`,
                 );
                 await this.recEnd().catch(e => {
@@ -1054,6 +1096,10 @@ class RecorderModel implements IRecorderModel {
                 });
             }
         });
+    }
+
+    private isLegacyProgramStream(): boolean {
+        return this.reserve.programId !== null && this.config.recording?.programStreamMode === 'program';
     }
 
     /**
@@ -1067,7 +1113,7 @@ class RecorderModel implements IRecorderModel {
 
         // 録画終了処理
         this.isNeedDeleteReservation = false;
-        await this.recEnd().catch(e => {
+        await this.recEnd(false).catch(e => {
             this.log.system.error(`recEnd error reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`);
             this.log.system.error(e);
         });
@@ -1177,7 +1223,7 @@ class RecorderModel implements IRecorderModel {
             throw new Error('CreateRecordedError');
         }
 
-        if (this.dropLogFileId !== null) {
+        if (this.dropLogFileId !== null && recorded !== null) {
             recorded.dropLogFileId = this.dropLogFileId;
         }
 
@@ -1187,7 +1233,7 @@ class RecorderModel implements IRecorderModel {
     /**
      * 録画終了処理
      */
-    private async recEnd(): Promise<void> {
+    private async recEnd(emitFinish: boolean = true): Promise<void> {
         this.log.system.info(`start recEnd reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`);
 
         // stream 停止
@@ -1268,7 +1314,7 @@ class RecorderModel implements IRecorderModel {
             }
 
             // 録画完了の通知
-            if (recorded !== null) {
+            if (recorded !== null && emitFinish === true) {
                 this.log.system.info(
                     `emit finish recording reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}, isNeedDeleteReservation: ${this.isNeedDeleteReservation}`,
                 );
@@ -1398,8 +1444,7 @@ class RecorderModel implements IRecorderModel {
             this.log.system.info(`stop recording: ${this.reserve.id}`);
             // 録画中
             if (this.stream !== null) {
-                this.stream.destroy();
-                this.stream.push(null); // eof 通知
+                this.streamCreator.closeStream(this.stream, 'canceled');
             }
         }
     }
@@ -1420,8 +1465,8 @@ class RecorderModel implements IRecorderModel {
             // 録画準備失敗を通知
             this.recordingEvent.emitCancelPrepRecording(this.reserve);
         } else if (this.isRecording === true) {
-            await this._cancel();
             this.isNeedDeleteReservation = false;
+            await this._cancel();
         } else {
             await this._cancel();
         }
@@ -1689,6 +1734,7 @@ namespace RecorderModel {
     // legacy program stream の無データ待ちや service stream の transport 異常を、
     // 通常のチューナー取得エラーと区別して再試行する
     export const WAITING_FOR_EVENT_ERROR = 'WaitingForEventStart';
+    export const TRANSPORT_ERROR = 'RecordingTransportError';
 }
 
 export default RecorderModel;

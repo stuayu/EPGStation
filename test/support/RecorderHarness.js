@@ -54,6 +54,7 @@ class RecorderHarness {
             insertOnce: async row => { row.id = this.recorded.length + 1; this.recorded.push(row); return row.id; },
             findId: async id => this.recorded.find(row => row.id === id) ?? null,
             removeRecording: async id => { const row = this.recorded.find(item => item.id === id); if (row) row.isRecording = false; },
+            deleteRecordedWithRelatedData: async id => { this.recorded = this.recorded.filter(row => row.id !== id); },
         };
         const videoFileDB = {
             insertOnce: async row => { row.id = this.videoFiles.length + 1; this.videoFiles.push(row); return row.id; },

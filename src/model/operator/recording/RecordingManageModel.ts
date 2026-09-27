@@ -29,6 +29,7 @@ class RecordingManageModel implements IRecordingManageModel {
     private recordingUtil: IRecordingUtilModel;
     private recordingEvent: IRecordingEvent;
     private recordingIndex: RecordingIndex = {};
+    private recordingFailureRetryCount: Map<number, number> = new Map();
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -67,10 +68,9 @@ class RecordingManageModel implements IRecordingManageModel {
 
         this.recordingEvent.setRecordingFailed(async reserve => {
             this.deleteRecording(reserve.id);
-
-            const recordeds = await this.recordedDB.findReserveId(reserve.id);
-
-            if (recordeds.length < 3) {
+            const retryCount = this.recordingFailureRetryCount.get(reserve.id) ?? 0;
+            if (retryCount < RecordingManageModel.MAX_RECORDING_FAILURE_RETRY) {
+                this.recordingFailureRetryCount.set(reserve.id, retryCount + 1);
                 // 録画を再設定
                 const recorder = await this.provider();
                 if (recorder.setTimer(reserve, false) === true) {
@@ -80,6 +80,7 @@ class RecordingManageModel implements IRecordingManageModel {
                     this.log.system.error(`readd recording error: ${reserve.id}`);
                 }
             } else {
+                this.recordingFailureRetryCount.delete(reserve.id);
                 // リトライ回数オーバー
                 this.log.system.error(`recording retry over: ${reserve.id}`);
                 this.recordingEvent.emitRecordingRetryOver(reserve);
@@ -88,6 +89,7 @@ class RecordingManageModel implements IRecordingManageModel {
 
         this.recordingEvent.setFinishRecording(reserve => {
             this.deleteRecording(reserve.id);
+            this.recordingFailureRetryCount.delete(reserve.id);
         });
     }
 
@@ -99,6 +101,8 @@ class RecordingManageModel implements IRecordingManageModel {
         this.log.system.debug(`delete recording index: ${reserveId}`);
         delete this.recordingIndex[reserveId];
     }
+
+    private static readonly MAX_RECORDING_FAILURE_RETRY = 2;
 
     /**
      * tuner 情報セット
@@ -239,6 +243,7 @@ class RecordingManageModel implements IRecordingManageModel {
         // 削除
         if (typeof diff.delete !== 'undefined') {
             for (const reserve of diff.delete) {
+                this.recordingFailureRetryCount.delete(reserve.id);
                 const recorder = this.recordingIndex[reserve.id];
                 if (typeof recorder !== 'undefined') {
                     this.log.system.debug(`delete recording: ${reserve.id}`);
@@ -267,6 +272,7 @@ class RecordingManageModel implements IRecordingManageModel {
      * @return Promise<void>
      */
     public async cancel(reserveId: apid.ReserveId, isPlanToDelete: boolean): Promise<void> {
+        this.recordingFailureRetryCount.delete(reserveId);
         const recording = this.recordingIndex[reserveId];
         if (typeof recording === 'undefined') {
             // 存在しないのでスルー

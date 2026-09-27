@@ -11,7 +11,7 @@ const RecorderModel = require('../../dist/model/operator/recording/RecorderModel
 
 const logger = { system: { info() {}, debug() {}, warn() {}, error() {}, fatal() {} } };
 
-const makeRecorder = (recording, streamCreator = { getCloseReason: () => null }) =>
+const makeRecorder = (recording, streamCreator = { getCloseReason: () => null, markClose() {}, closeStream(stream) { stream.destroy(); } }) =>
     new RecorderModel(
         { getLogger: () => logger },
         {

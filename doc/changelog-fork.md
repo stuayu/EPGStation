@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 録画セッション再設計 Phase 2: 終了理由・偽リトライ・開始失敗分類 → 2026-09-28
 - 録画セッション再設計 Phase 0/1: 予約安全網と EIT / ロック不具合修正 → 2026-09-28
 - 音声 ES 2 本の HLS で副音声へ切り替わらない (Issue #31、再接続後にレンディションを選び直していなかった) → 2026-09-27
 - 配信・録画エンコードの HW 自動選択、4K 色変換、起動時フレーム欠落対策 → 2026-09-27
@@ -29,6 +30,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-28
+
+- **録画セッション再設計 Phase 2 で終了理由と失敗処理を明確化**: 録画 stream の destroy に `scheduled-end` / `boundary` / `canceled` / `tuner-handoff` などの理由を付け、理由がある正常終了を録画失敗・自動再試行へ流さない。`recFailed` は DB・一時ファイル・drop 情報の後片付けだけを行い、finish を発行しないため、**失敗した録画にはエンコードも finish コマンドも走らなくなった**。thumbnail 作成とタグ付けは failed 側で維持。開始前の service stream 伝送失敗は error 再試行予算へ分類し、**時刻指定予約で TS が来ない場合、諦めるまでの時間は約 3 時間から約 27 分になった** (5 秒 × 3 回 + 60 秒 × 27 回)。予約 ID ごとの retry 回数はメモリで 2 回まで数え、Recorded の件数に依存しない。
 
 - **録画セッション再設計の Phase 0/1 を追加**: Phase 0 として、予約割当 (`createReserves` / `sortReserve` / `Tuner.add` / 手動競合判定 / 差分窓) と録画チューナー選択の現状を特性テスト・JSON fixture で固定し、Mirakurun 録画ストリーム用スタブと RecorderModel ハーネスを追加した。Issue #36 の再接続前 baseline も itb で測る。Phase 1 では、`ReservationManageModel.updateRule()` / `edit()` の例外経路と `EncodeManageModel.push()` / `cancel()` の非同期例外経路で実行ロックが残る問題を `finally` 解放へ変更した。EIT[p/f] の時刻または duration が実際に変わった場合だけ Program の `updateTime` を進め、duration を秒から ms に統一。時刻指定手動予約の `isEventRelay` は false にした。
 
