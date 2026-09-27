@@ -18,7 +18,12 @@ import container from '../model/ModelContainer';
 
 export interface TailStreamOption extends ReadableOptions {
     start?: number;
+    shouldKeepWaiting?: () => boolean;
+    maxIdleMs?: number;
 }
+
+export const shouldWaitForTailGrowth = (shouldKeepWaiting: boolean, idleMs: number, maxIdleMs: number): boolean =>
+    shouldKeepWaiting && idleMs < maxIdleMs;
 
 class TailStream extends Readable {
     private offset: number;
@@ -30,6 +35,9 @@ class TailStream extends Readable {
     private checkFileTimer: NodeJS.Timeout | null = null;
     private readPending: number = 0;
     private fd: number = 0;
+    private idleStartedAt: number | null = null;
+    private readonly keepWaiting: () => boolean;
+    private readonly maxIdleMs: number;
 
     private log: ILogger;
 
@@ -38,6 +46,8 @@ class TailStream extends Readable {
 
         this.filePath = filename;
         this.offset = option.start || 0;
+        this.keepWaiting = option.shouldKeepWaiting ?? (() => false);
+        this.maxIdleMs = option.maxIdleMs ?? 60000;
 
         this.log = container.get<ILoggerModel>('ILoggerModel').getLogger();
 
@@ -169,7 +179,16 @@ class TailStream extends Readable {
 
             const newStat = fs.statSync(this.filePath);
             if (newStat.size !== stat.size) {
+                this.idleStartedAt = null;
                 this.doRead();
+            } else if (
+                shouldWaitForTailGrowth(
+                    this.keepWaiting(),
+                    Date.now() - (this.idleStartedAt ?? (this.idleStartedAt = Date.now())),
+                    this.maxIdleMs,
+                )
+            ) {
+                this.checkFile();
             } else {
                 this.close();
             }

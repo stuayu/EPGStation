@@ -133,6 +133,10 @@ npm run test:ci        # ut + ita + itb
 
 ## 踏むと壊れるところ
 
+- `pipe` の既定 `end:true` は上流 EOF で録画ファイルまで閉じる
+- `TailStream` は無成長を `shouldKeepWaiting` で判定する (録画中に 1 秒で閉じない)
+- 録画ファイルは 188 byte 格子を崩さない (途中までのパケットを書かない)
+
 詳細と背景は `doc/PROJECT_OVERVIEW.md` と `doc/changelog-fork.md` にある。ここは「知らずに触ると壊す」ものだけ。
 
 ### 環境・ビルド

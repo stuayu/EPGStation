@@ -2742,3 +2742,9 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 `GET /api/recorded/{recordedId}/recording-sessions` はセッション・attempt を返す。録画詳細では attempt の終了から次 attempt の初回データまでを受信断として計算し、録画一覧では partial / failed をバッジ表示する。録画削除時は紐付くセッションも削除する。起動時は `RECORDING` 状態のセッションを `partial` / `process-restart` として確定し、手動予約を削除しない。
 
 関連実装: `src/db/entities/RecordingSession.ts`, `src/db/entities/RecordingAttempt.ts`, `src/db/migrations/{sqlite,mysql}/1787544000000-AddRecordingSessions.ts`, `src/model/operator/recording/RecordingSessionState.ts`, `src/util/RecordingResult.ts`, `src/model/operator/recording/RecorderModel.ts`, `src/model/operator/recording/RecordingManageModel.ts`, `src/model/event/EventSetter.ts`, `src/model/service/api/recorded/{recordedId}/recording-sessions.ts`, `client/src/views/RecordedDetail.vue`。
+
+## 録画セッション再設計 Phase 4: 録画中の上流再接続 (2026-09-28)
+
+既定で有効な `recording.reconnectEnabled` により、録画中の上流 EOF / 切断時に同じ録画セッション・ファイルへ再接続する。再接続間の断を gap、接続ごとの状態を attempt として記録する。TS は `TsPacketFramer` で 188 byte 境界に揃え、不完全パケットをファイルへ書かない。書き込みは backpressure に従って上流を pause / resume し、終了時は flush 完了を待つ。追っかけ再生用 `TailStream` は録画中の無成長を最大 60 秒待つ。`reconnectEnabled: false` は切断時に録画失敗・再試行へ戻す。
+
+関連実装: `src/lib/TailStream.ts`, `src/model/operator/recording/{RecordingSink,RecordingStreamEndPolicy,RecordingStreamCreator,RecordingUpstreamSession,TsPacketFramer}.ts`, `src/model/operator/recording/RecorderModel.ts`。

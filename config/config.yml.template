@@ -926,6 +926,8 @@ stream:
 # 対象番組の境界まで待ちます。切り戻し用の program stream では Mirakurun がデータ出力を保留します。
 # チューナー異常とは別枠で数えるので、延長待ちが異常時の再試行回数を食い潰しません。
 # recording:
+#     # 録画中に上流が切断した後、同じ録画へ再接続する (既定 true)
+#     reconnectEnabled: true
 #     # programId 予約の取得方式 (既定 service。障害時の切り戻し用に program を指定可)
 #     programStreamMode: service
 #     # 番組開始を待つ上限 (ms)。既定 3 時間。0 で待たない
