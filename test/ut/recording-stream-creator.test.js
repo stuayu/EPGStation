@@ -48,6 +48,30 @@ test('programId 予約は共有 priority を変更せず service stream option �
     stream.destroy();
 });
 
+test('再接続は元の tuner 枠へ戻り、release で予約枠を解放する', async () => {
+    const streams = [new PassThrough(), new PassThrough()];
+    let requestCount = 0;
+    const creator = new RecordingStreamCreator(
+        { getLogger: () => logger },
+        { getConfig: () => ({ recPriority: 9, conflictPriority: 4, recording: {} }) },
+        { getClient: () => ({ getServiceStream: async () => streams[requestCount++] }) },
+    );
+    creator.setTuner([{ types: ['GR'] }, { types: ['GR'] }]);
+    const input = reserve({ isConflict: false });
+    const first = await creator.create(input);
+    assert.equal(creator.tuners[0].programs.length, 1);
+    first.destroy();
+    await new Promise(resolve => setImmediate(resolve));
+
+    const second = await creator.reconnect(input);
+    assert.equal(second, streams[1]);
+    assert.equal(creator.tuners[0].programs[0].stream, second);
+    assert.equal(creator.tuners[1].programs.length, 0);
+    creator.release(input.id);
+    assert.equal(creator.tuners[0].programs.length, 0);
+    second.destroy();
+});
+
 test('markClose は最初に付いた close reason を保持する', () => {
     const creator = new RecordingStreamCreator(
         { getLogger: () => logger },

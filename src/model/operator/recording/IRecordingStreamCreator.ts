@@ -5,6 +5,10 @@ import Reserve from '../../../db/entities/Reserve';
 interface IRecordingStreamCreator {
     setTuner(tuners: mapid.TunerDevice[]): void;
     create(reserve: Reserve, abortSignal: AbortSignal): Promise<http.IncomingMessage>;
+    /** 既存の録画 tuner 枠を維持したまま stream を再取得する */
+    reconnect(reserve: Reserve, abortSignal: AbortSignal): Promise<http.IncomingMessage>;
+    /** 録画終了後に tuner 台帳を解放する */
+    release(reserveId: number): void;
     /** service stream の予約終了ハードタイマーを更新する */
     changeEndAt(reserve: Reserve): void;
     /** stream が録画側の正常終了条件で閉じられた理由を返す */

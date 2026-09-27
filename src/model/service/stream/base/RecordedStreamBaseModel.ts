@@ -989,6 +989,8 @@ export default abstract class RecordedStreamBaseModel
         if (this.isRecording === true) {
             this.fileStream = fst.createReadStream(this.videoFilePath, {
                 start: start,
+                shouldKeepWaiting: () => this.isRecording === true,
+                maxIdleMs: 60000,
             });
         } else {
             this.fileStream = fs.createReadStream(this.videoFilePath, {

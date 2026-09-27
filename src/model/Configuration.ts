@@ -423,6 +423,7 @@ namespace Configuration {
         importWatchIntervalSec: 300,
         recording: {
             programStreamMode: 'service',
+            reconnectEnabled: true,
         },
         storageLimitCheckIntervalTime: 60,
         thumbnail: path.join(__dirname, '..', '..', 'thumbnail'),

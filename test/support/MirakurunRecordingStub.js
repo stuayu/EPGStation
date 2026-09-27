@@ -3,6 +3,10 @@
 const http = require('node:http');
 const mirakurunDocs = {
     swagger: '2.0', basePath: '/api', paths: {
+        '/programs/{id}/stream': { parameters: [], get: { operationId: 'getProgramStream', tags: ['stream'], parameters: [
+            { name: 'id', in: 'path', required: true, type: 'integer' },
+            { name: 'decode', in: 'query', type: 'boolean' },
+        ] } },
         '/services/{id}/stream': { parameters: [], get: { operationId: 'getServiceStream', tags: ['stream'], parameters: [
             { name: 'id', in: 'path', required: true, type: 'integer' },
             { name: 'decode', in: 'query', type: 'boolean' },
@@ -44,7 +48,7 @@ class MirakurunRecordingStub {
                 response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(mirakurunDocs));
                 return;
             }
-            if (!/^\/api\/services\/\d+\/stream(?:\?|$)/.test(request.url)) {
+            if (!/^\/api\/(?:services|programs)\/\d+\/stream(?:\?|$)/.test(request.url)) {
                 response.writeHead(404).end();
                 return;
             }

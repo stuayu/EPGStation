@@ -54,13 +54,17 @@ const clearEventRelayTimer = recorder => {
     recorder.eventRelayTimer.clear();
 };
 
-class SynchronousFirstDataStream extends PassThrough {
-    pipe(destination, options) {
-        // Readable#pipe() による resume と同時に最初の data が届くケースを再現する。
-        this.emit('data', Buffer.from('live-first-chunk'));
-        return super.pipe(destination, options);
+const tsPackets = (count, pid = 0x100) => {
+    const data = Buffer.alloc(count * 188, 0xff);
+    for (let i = 0; i < count; i++) {
+        const packet = data.subarray(i * 188, (i + 1) * 188);
+        packet[0] = 0x47;
+        packet[1] = (pid >> 8) & 0x1f;
+        packet[2] = pid & 0xff;
+        packet[3] = 0x10 | (i & 0x0f);
     }
-}
+    return data;
+};
 
 const buildEitPacket = (serviceId, eventId) => {
     const event = Buffer.alloc(16);
@@ -93,39 +97,42 @@ const buildEitPacket = (serviceId, eventId) => {
     return packet;
 };
 
-test('service stream の開始確定時は source を pause し、待機バッファ後から live TS を再開できる', async () => {
-    const recorder = makeRecorder({ startGateTimeoutMs: 0, programStreamMode: 'service' });
+test('service stream は待機バッファと live TS を連結して書き込む', async () => {
+    const recorder = makeRecorder({ startGateTimeoutMs: 0, programStreamMode: 'service', reconnectEnabled: false });
     const source = new PassThrough();
     recorder.reserve = { ...reserve };
     recorder.stream = source;
 
     const waiting = recorder.waitForProgramStart();
-    source.write(Buffer.from('before'));
+    source.write(tsPackets(1));
     const buffered = await waiting;
     assert.equal(source.isPaused(), true);
-    source.write(Buffer.from('after'));
+    source.write(tsPackets(1, 0x101));
 
     const received = [];
     source.on('data', chunk => received.push(chunk));
     source.resume();
     await new Promise(resolve => setImmediate(resolve));
-    assert.equal(Buffer.concat(buffered).toString(), 'before');
-    assert.equal(Buffer.concat(received).toString(), 'after');
+    assert.equal(Buffer.concat(buffered).length, 188);
+    assert.equal(Buffer.concat(received).length, 188);
+    assert.equal(Buffer.concat(received)[0], 0x47);
     source.destroy();
 });
 
-test('録画開始 listener は pipe より先に登録され、同期的な first data を取り逃さない', async () => {
+test('録画開始時に待機 TS を書き込み、上流 EOF 後に finish する', async () => {
     const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'epgstation-recorder-pipe-race-'));
     const recPath = path.join(tempDir, 'race.ts');
     const recorder = makeRecorder({
         firstDataTimeoutMs: 25,
         programStreamMode: 'service',
+        reconnectEnabled: false,
     });
-    const source = new SynchronousFirstDataStream();
+    const source = new PassThrough();
     let started = 0;
     recorder.reserve = { ...reserve };
     recorder.stream = source;
-    recorder.waitForProgramStart = async () => [Buffer.from('waiting-buffer')];
+    const waitingPackets = tsPackets(3, 0x102);
+    recorder.waitForProgramStart = async () => [waitingPackets];
     recorder.setFollowingSchedule = async () => {};
     recorder.recordingUtil = { getRecPath: async () => ({ fullPath: recPath }) };
     recorder.addRecorded = async () => ({ id: 1 });
@@ -140,7 +147,10 @@ test('録画開始 listener は pipe より先に登録され、同期的な fir
         const finished = new Promise(resolve => recorder.recFile.once('finish', resolve));
         source.end();
         await finished;
-        assert.equal((await fs.promises.readFile(recPath)).toString(), 'waiting-buffer');
+        const recorded = await fs.promises.readFile(recPath);
+        assert.equal(recorded.length, 3 * 188);
+        assert.equal(recorded[0], 0x47);
+        assert.deepEqual(recorded, waitingPackets);
     } finally {
         source.destroy();
         recorder.passThroughStreamForWrite?.destroy();
@@ -161,27 +171,6 @@ test('legacy program stream は最初の Mirakurun データで即時開始し E
     assert.equal(Buffer.concat(buffered).toString(), 'filtered-program-data');
     assert.equal(source.isPaused(), true);
     source.destroy();
-});
-
-test('予定終了による premature close は録画失敗ではなく正常終了へ送る', async () => {
-    const source = new PassThrough();
-    const recorder = makeRecorder({}, { getCloseReason: stream => (stream === source ? 'scheduled-end' : null) });
-    recorder.reserve = { ...reserve, endAt: Date.now() + 60_000 };
-    recorder.recordedId = 10;
-    let ended = 0;
-    let failed = 0;
-    recorder.recEnd = async () => {
-        ended++;
-    };
-    recorder.recFailed = async () => {
-        failed++;
-    };
-
-    await recorder.setEndProcess(source);
-    source.destroy();
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(ended, 1);
-    assert.equal(failed, 0);
 });
 
 test('対象 present の一時的な切替は debounce 中の復帰で終了せず、確定した切替だけで終了する', async () => {

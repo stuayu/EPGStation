@@ -6,10 +6,10 @@ const test = require('node:test');
 const { MirakurunRecordingStub, sendThenReset, sendAndHold } = require('../support/MirakurunRecordingStub');
 const { RecorderHarness } = require('../support/RecorderHarness');
 
-test('ECONNRESET after first data is recorded as a partial finish', async t => {
+test('reconnectEnabled=false は既存の ECONNRESET 失敗経路と未完了 TS 断片を保つ', async t => {
     const stub = new MirakurunRecordingStub([sendThenReset(30, 73, { conn: 1, delayMs: 300 })]);
     const harness = new RecorderHarness(stub, {
-        recording: { errorFastRetryIntervalMs: 1000, firstDataTimeoutMs: 1000 },
+        recording: { reconnectEnabled: false, errorFastRetryIntervalMs: 1000, firstDataTimeoutMs: 1000 },
     });
     await harness.start();
     t.after(() => harness.cleanup());
@@ -18,8 +18,8 @@ test('ECONNRESET after first data is recorded as a partial finish', async t => {
     const failed = new Promise(resolve => {
         resolveFailure = resolve;
     });
-    const original = harness.recorder.recordingEvent.emitFinishRecording;
-    harness.recorder.recordingEvent.emitFinishRecording = (...args) => {
+    const original = harness.recorder.recordingEvent.emitRecordingFailed;
+    harness.recorder.recordingEvent.emitRecordingFailed = (...args) => {
         original(...args);
         resolveFailure();
     };
@@ -74,10 +74,8 @@ test('ECONNRESET after first data is recorded as a partial finish', async t => {
     assert.equal(files[0], 'baseline.ts');
     assert.equal(sizes[0].size, 5713);
     assert.equal(sizes[0].size % 188, 73);
-    assert.equal(harness.events.failed.length, 0);
-    assert.equal(harness.events.finish.length, 1);
-    assert.equal(harness.events.finish[0][1].recordingStatus, 'partial');
-    assert.equal(harness.events.finish[0][0].id, reserve.id);
+    assert.equal(harness.events.failed.length, 1);
+    assert.equal(harness.events.finish.length, 0);
     const streams = stub.requests.filter(request => request.url.includes('/stream'));
     assert.equal(streams.length, 1);
     assert.equal(streams[0].url, '/api/services/12345/stream?decode=1');
@@ -134,7 +132,7 @@ test('録画中キャンセルは読取バッファが残っても失敗再試�
 
 test('close reason を失う destroy + push(null) でもキャンセル後に二重終了しない', async t => {
     const stub = new MirakurunRecordingStub([sendAndHold(3000)]);
-    const harness = new RecorderHarness(stub);
+    const harness = new RecorderHarness(stub, { recording: { reconnectEnabled: false } });
     await harness.start();
     t.after(() => harness.cleanup());
     harness.recordingStreamCreator.markClose = () => {};

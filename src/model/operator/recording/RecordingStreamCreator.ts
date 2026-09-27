@@ -39,6 +39,8 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
     private streamIndex: { [key: number]: StreamSession } = {};
     // stream 取得前に届いた endAt 変更 (EPG 追従による延長など) を覚えておく
     private pendingEndAt: { [key: number]: number } = {};
+    // stream が切れても再接続先の tuner を保つ
+    private reserveTunerIndex: { [key: number]: number | null } = {};
     private closeReasonIndex = new WeakMap<http.IncomingMessage, Exclude<IRecordingStreamCreator.CloseReason, null>>();
 
     constructor(
@@ -70,7 +72,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
         });
 
         // 念の為 30 分毎ににゴミを削除
-        setInterval(
+        const cleanupTimer = setInterval(
             () => {
                 const now = new Date().getTime();
                 for (const tuner of this.tuners) {
@@ -81,6 +83,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
             },
             30 * 60 * 1000,
         );
+        cleanupTimer.unref?.();
     }
 
     /**
@@ -112,6 +115,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      */
     public async create(reserve: Reserve, abortSignal?: AbortSignal): Promise<http.IncomingMessage> {
         if (reserve.isConflict === true) {
+            this.reserveTunerIndex[reserve.id] = null;
             // tuner の割当がないのでそのままストリームを取得
             const managedEnd = this.usesManagedEnd(reserve);
             const stream = await this.getStream(reserve, abortSignal);
@@ -121,6 +125,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
 
         const tunerId = await this.getTunerId(reserve);
         if (tunerId === null) {
+            this.reserveTunerIndex[reserve.id] = null;
             // 割り当てられる tuner がなかった
             this.log.system.warn(`TunerAssignmentError programId: ${reserve.id}`);
             const managedEnd = this.usesManagedEnd(reserve);
@@ -128,6 +133,8 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
             this.registerStream(reserve, stream, managedEnd);
             return stream;
         }
+
+        this.reserveTunerIndex[reserve.id] = tunerId;
 
         // stream 取得
         const managedEnd = this.usesManagedEnd(reserve);
@@ -154,6 +161,44 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
         }
 
         return stream;
+    }
+
+    /** 同じ tuner 枠へ録画 stream を再接続する */
+    public async reconnect(reserve: Reserve, abortSignal?: AbortSignal): Promise<http.IncomingMessage> {
+        const tunerId = this.reserveTunerIndex[reserve.id];
+        const managedEnd = this.usesManagedEnd(reserve);
+        if (tunerId === null || tunerId === undefined) {
+            const stream = await this.getStream(reserve, abortSignal);
+            this.registerStream(reserve, stream, managedEnd);
+            return stream;
+        }
+
+        const tuner = this.tuners[tunerId];
+        if (tuner === undefined) throw new Error(`Recording tuner disappeared: ${tunerId}`);
+        const tunerProgram: TunerProgram = { reserve, stream: null };
+        tuner.programs.push(tunerProgram);
+        try {
+            const stream = await this.getStream(reserve, abortSignal);
+            tunerProgram.stream = stream;
+            this.registerStream(reserve, stream, managedEnd);
+            return stream;
+        } catch (err) {
+            const index = tuner.programs.indexOf(tunerProgram);
+            if (index !== -1) tuner.programs.splice(index, 1);
+            throw err;
+        }
+    }
+
+    /** 録画終了後に予約の tuner・timer 台帳を解放する */
+    public release(reserveId: number): void {
+        const session = this.streamIndex[reserveId];
+        session?.timer?.clear();
+        delete this.streamIndex[reserveId];
+        delete this.pendingEndAt[reserveId];
+        delete this.reserveTunerIndex[reserveId];
+        for (const tuner of this.tuners) {
+            tuner.programs = tuner.programs.filter(program => program.reserve.id !== reserveId);
+        }
     }
 
     /**

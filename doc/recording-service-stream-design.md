@@ -187,6 +187,21 @@ service stream は番組終了時に自動で閉じないため、次を必須�
 終了理由を `present-event-changed`、`scheduled-end`、`transport-error` に分ける。現在の
 `stream.finished()` だけでは service stream の正常終了と障害終了を判別できないため、セッションが理由を渡す。
 
+### Phase 4: 録画中の伝送断
+
+録画中は上流の EOF / error を録画終了とみなさず、`RecordingStreamEndPolicy` の判定表で再接続可否を決める。
+`recording.reconnectEnabled` は既定 true。false は従来の録り直し動作を維持する。再接続は同じ tuner 枠を使い、
+接続ごとに `recording_attempt` を追加する。再接続間隔は 500 ms、1 秒、2 秒、5 秒を上限として期限まで再試行する。
+録画中のキャンセル、境界確定、予定終了は再接続を止めて一度だけ finalize する。
+
+`TsPacketFramer` は各上流接続の TS を 188 byte 境界へ同期し、完全な TS packet だけを sink へ渡す。接続断で残った
+端数 byte は破棄し、新しい接続では同期を取り直す。ファイル書き込みは手動の backpressure を使い、sink が受け入れを
+止めたら上流を pause、`drain` 後に resume する。終了時は framer の端数を破棄し、write stream の `finish` を最大
+10 秒待ってからファイル移動とサイズ更新を行う。
+
+`TailStream` は録画中ファイルの無成長を EOF とせず、`shouldKeepWaiting` が true の間は追従する。最長待機は 60 秒。
+これにより再接続中も追っかけ再生、録画中 HLS、m2tsll が一時 EOF にならない。
+
 ## 7. 再試行とキャンセル
 
 - HTTP エラー、初回 TS timeout、開始前の stream close は transport retry。
@@ -194,6 +209,11 @@ service stream は番組終了時に自動で閉じないため、次を必須�
 - キャンセル、予約削除、開始時刻変更では AbortController、終了タイマー、EIT timer、リングバッファを同期的に無効化する。
 - `prepGeneration` を維持し、古い非同期チェーンが新しい予約状態へ録画開始・失敗通知を返さないようにする。
 - 再試行時は同一 reserveId の旧セッションが閉じたことを確認してから新しいセッションを登録する。
+- 録画中の上流断は接続専用 AbortController で停止し、`RecordingSession` を `RECONNECTING` に遷移して backoff 後に
+  `RecordingStreamCreator.reconnect()` を呼ぶ。再接続は tuner を明け渡さず、空白中に更新された `endAt` は creator の
+  `pendingEndAt` から反映する。
+- `recording_attempt` の offset は Raw stream 受信量でなく、TS packet を sink に書いた 188 byte 単位の位置で記録する。
+  `firstDataAt` は再接続後の最初の TS、`closeReason` / `errorCode` は接続が閉じた理由を保持する。
 
 ## 8. 可観測性
 
@@ -206,6 +226,8 @@ service stream は番組終了時に自動で閉じないため、次を必須�
 - recording start: reason, waitMs, bufferedBytes
 - recording end: reason, actual start/end, scheduled start/end
 - retry: transport/boundary の分類、回数、次回時刻
+- 再接続: gap 開始・終了時刻、理由、接続 attempt、packet 書き込み位置。gap 時間は切断直前のデータ時刻から
+  再接続後の最初の TS 時刻までで導出する。
 
 これにより「視聴したら始まった」という報告を、同じチューナーへの相乗り、EIT 更新、再チューニング、単なる時刻一致に
 分解できる。UI の `isFollowingSchedule` は `WaitingBoundary` のときだけ true とする。

@@ -420,6 +420,12 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         editable: 'gui',
         fields: [
             {
+                path: 'recording.reconnectEnabled',
+                label: '録画中の切断後に再接続する',
+                type: 'boolean',
+                hint: '既定 有効。無効にすると切断後に録画を失敗扱いにして再試行する',
+            },
+            {
                 path: 'recording.programStreamMode',
                 label: 'programId 予約のストリーム方式',
                 type: 'select',
