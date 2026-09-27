@@ -19,6 +19,7 @@ interface TunerProgram {
 }
 
 interface TunerStatus {
+    index: number;
     types: mapid.ChannelType[];
     programs: TunerProgram[];
 }
@@ -35,6 +36,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
     private configuration: IConfiguration;
     private mirakurunClientModel: IMirakurunClientModel;
     private tuners: TunerStatus[] = [];
+    private cleanupTimer: NodeJS.Timeout | null = null;
     // tuner 割当が無い競合予約も含め、service stream の寿命を stream 実体単位で管理する
     private streamIndex: { [key: number]: StreamSession } = {};
     // stream 取得前に届いた endAt 変更 (EPG 追従による延長など) を覚えておく
@@ -59,20 +61,16 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      * @param tuners: mapid.TunerDevice[]
      */
     public setTuner(tuners: mapid.TunerDevice[]): void {
-        // 一度だけ tuner 情報をセット
-        if (this.tuners.length !== 0) {
-            return;
-        }
-
-        this.tuners = tuners.map(tuner => {
-            return {
-                types: tuner.types,
-                programs: [],
-            };
-        });
+        const previous = new Map(this.tuners.map(tuner => [tuner.index, tuner]));
+        this.tuners = tuners.map(tuner => ({
+            index: tuner.index,
+            types: tuner.types,
+            programs: previous.get(tuner.index)?.programs ?? [],
+        }));
 
         // 念の為 30 分毎ににゴミを削除
-        const cleanupTimer = setInterval(
+        if (this.cleanupTimer !== null) clearInterval(this.cleanupTimer);
+        this.cleanupTimer = setInterval(
             () => {
                 const now = new Date().getTime();
                 for (const tuner of this.tuners) {
@@ -83,7 +81,22 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
             },
             30 * 60 * 1000,
         );
-        cleanupTimer.unref?.();
+        this.cleanupTimer.unref?.();
+    }
+
+    /**
+     * 現在ストリームを保持する予約のチューナー割当を返す。
+     * @return { reserveId: number; tunerIndex: number }[]
+     */
+    public getActiveTunerAssignments(): { reserveId: number; tunerIndex: number }[] {
+        return Object.keys(this.reserveTunerIndex)
+            .map(reserveId => ({ reserveId: Number(reserveId), tunerIndex: this.reserveTunerIndex[Number(reserveId)] }))
+            .filter(
+                (assignment): assignment is { reserveId: number; tunerIndex: number } =>
+                    assignment.tunerIndex !== null &&
+                    assignment.tunerIndex !== undefined &&
+                    this.streamIndex[assignment.reserveId] !== undefined,
+            );
     }
 
     /**
@@ -114,7 +127,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      * @return Promise<http.IncomingMessage>
      */
     public async create(reserve: Reserve, abortSignal?: AbortSignal): Promise<http.IncomingMessage> {
-        if (reserve.isConflict === true) {
+        if (reserve.isConflict === true && this.configuration.getConfig().reservation?.scheduler !== 'planner') {
             this.reserveTunerIndex[reserve.id] = null;
             // tuner の割当がないのでそのままストリームを取得
             const managedEnd = this.usesManagedEnd(reserve);
@@ -207,6 +220,35 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      * @return Promise<number | null>
      */
     private async getTunerId(reserve: Reserve): Promise<number | null> {
+        const config = this.configuration.getConfig();
+        if (config.reservation?.scheduler === 'planner') {
+            const plannedIndex = reserve.plannedTunerIndex;
+            if (plannedIndex === null || plannedIndex === undefined) return null;
+            const index = this.tuners.findIndex(tuner => tuner.index === plannedIndex);
+            const selected = this.tuners[index];
+            if (selected === undefined || !selected.types.includes(<any>reserve.channelType)) return null;
+            if (
+                selected.programs.length === 0 ||
+                selected.programs.every(item => item.reserve.channel === reserve.channel)
+            )
+                return index;
+
+            // 既存の末尾欠け条件だけで明け渡し、開始済みの非 allowEndLack 録画を奪わない。
+            const now = Date.now();
+            const allowedEndLackMs = IRecordingStreamCreator.PREP_TIME;
+            if (
+                selected.programs.some(
+                    item => item.reserve.allowEndLack !== true || item.reserve.endAt - now > allowedEndLackMs,
+                )
+            )
+                return null;
+            for (const item of selected.programs) {
+                if (item.stream !== null) this.closeStream(item.stream, 'tuner-handoff');
+            }
+            selected.programs = [];
+            return index;
+        }
+
         // tuner に空きがないかチェック
         for (let i = 0; i < this.tuners.length; i++) {
             // tuner の放送波が一致 && 録画していない or channel が同一

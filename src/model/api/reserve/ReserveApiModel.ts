@@ -73,6 +73,7 @@ export default class ReserveApiModel implements IReserveApiModel {
             id: reserve.id,
             isSkip: reserve.isSkip,
             isConflict: reserve.isConflict,
+            conflictInfo: typeof reserve.conflictInfo === 'string' ? JSON.parse(reserve.conflictInfo) : undefined,
             isOverlap: reserve.isOverlap,
             allowEndLack: reserve.allowEndLack,
             isTimeSpecified: reserve.isTimeSpecified,

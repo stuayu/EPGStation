@@ -4,6 +4,8 @@ import Reserve from '../../../db/entities/Reserve';
 
 interface IRecordingStreamCreator {
     setTuner(tuners: mapid.TunerDevice[]): void;
+    /** 現在ストリームを保持する予約のチューナー割当を返す */
+    getActiveTunerAssignments(): { reserveId: number; tunerIndex: number }[];
     create(reserve: Reserve, abortSignal: AbortSignal): Promise<http.IncomingMessage>;
     /** 既存の録画 tuner 枠を維持したまま stream を再取得する */
     reconnect(reserve: Reserve, abortSignal: AbortSignal): Promise<http.IncomingMessage>;

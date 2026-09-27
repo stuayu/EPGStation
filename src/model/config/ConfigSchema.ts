@@ -94,6 +94,25 @@ export interface ConfigSchemaEntry {
 
 export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
     {
+        key: 'reservation',
+        label: '予約スケジューラ',
+        hint: '予約の競合判定とチューナー割当方式',
+        requiresRestart: false,
+        editable: 'gui',
+        fields: [
+            {
+                path: 'reservation.scheduler',
+                label: '割当方式',
+                type: 'select',
+                items: [
+                    { title: '従来方式', value: 'legacy' },
+                    { title: '新スケジューラ', value: 'planner' },
+                ],
+                hint: '既定は従来方式。新スケジューラは予約の区間ごとに割当を最適化します',
+            },
+        ],
+    },
+    {
         key: 'port',
         label: 'ポート番号',
         requiresRestart: true,

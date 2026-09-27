@@ -1092,6 +1092,21 @@ epgRetentionTime: -1
 epgDeleteIntervalTime: 60
 ```
 
+### reservation
+
+#### 予約の競合判定・チューナー割当方式
+
+| 子項目 | 種類 | デフォルト値 | 必須 | 説明 |
+| ------ | ---- | ------------ | ---- | ---- |
+| scheduler | string | `legacy` | no | `legacy` は従来方式、`planner` は新しい区間単位の予約スケジューラ |
+
+```yaml
+reservation:
+    scheduler: legacy
+```
+
+新スケジューラへ切り替えると、予約の競合判定と録画側のチューナー計画に同じ計画結果を使う。
+
 ### epgRealtime
 
 #### EPG のリアルタイム同期

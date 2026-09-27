@@ -242,6 +242,11 @@ export default interface IConfigFile {
     // 機能フラグ。**未指定の機能は有効**として扱うため、止めたいものだけ false を書く
     featureFlags?: FeatureFlags;
 
+    // 予約スケジューラ。既定は従来の割当方式
+    reservation?: {
+        scheduler?: 'legacy' | 'planner';
+    };
+
     // しょぼいカレンダー ChID ⇄ Mirakurun networkId/serviceId のマッピング表 (JSON) のパス。
     // 省略時は同梱の初期データ (主要地上波キー局のみ) を使う。指定したファイルは同梱データを上書き/追加する
     metadataChannelMappingPath?: string;

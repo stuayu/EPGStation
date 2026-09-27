@@ -4,10 +4,20 @@ import Reserve from '../../../db/entities/Reserve';
 
 export default class Tuner {
     private types: apid.ChannelType[];
+    private index: number;
     private reserves: Reserve[] = [];
 
     constructor(tuner: mapid.TunerDevice) {
         this.types = tuner.types;
+        this.index = tuner.index;
+    }
+
+    public getIndex(): number {
+        return this.index;
+    }
+
+    public getTypes(): apid.ChannelType[] {
+        return this.types;
     }
 
     /**
