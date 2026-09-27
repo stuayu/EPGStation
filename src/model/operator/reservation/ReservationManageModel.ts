@@ -5,6 +5,7 @@ import Channel from '../../../db/entities/Channel';
 import Program from '../../../db/entities/Program';
 import Reserve from '../../../db/entities/Reserve';
 import DateUtil from '../../../util/DateUtil';
+import TunerCompatibilityUtil from '../../../util/TunerCompatibilityUtil';
 import { isDurationUndefined, resolveProgramEndTimes } from '../../../util/ProgramDuration';
 import { formatDurationUndefinedChange, formatLogDuration, formatTimeChange } from '../../../util/ProgramTimeLog';
 import StrUtil from '../../../util/StrUtil';
@@ -134,7 +135,7 @@ class ReservationManageModel implements IReservationManageModel {
         this.tuners = tuners.map(tuner => {
             // set this.broadcastStatus
             for (const key in this.broadcastStatus) {
-                if (tuner.types.indexOf(<mapid.ChannelType>key) !== -1) {
+                if (TunerCompatibilityUtil.isTunerCompatibleWithChannelType(tuner.types, key)) {
                     (<any>this.broadcastStatus)[key] = true;
                 }
             }

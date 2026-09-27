@@ -1,5 +1,6 @@
 import * as apid from '../../../../../api';
 import { RecordingTimingConfig } from '../../recording/RecordingTimingConfig';
+import TunerCompatibilityUtil from '../../../../util/TunerCompatibilityUtil';
 
 export type ReservationConflictType =
     | 'NO_TUNER'
@@ -148,13 +149,26 @@ export const planSchedule = (input: SchedulePlannerInput): PlannedReservation[] 
                 .filter(
                     tuner =>
                         tuner.isAvailable !== false &&
-                        group.reservations.some(reserve => tuner.types.includes(reserve.channelType)),
+                        group.reservations.some(reserve =>
+                            TunerCompatibilityUtil.isTunerCompatibleWithChannelType(tuner.types, reserve.channelType),
+                        ),
                 )
                 .map(tuner => tuner.index);
             const oldIndex = group.reservations
                 .map(reserve => previous.get(reserve.id))
                 .find(index => index !== undefined && index !== null);
-            return available.sort((a, b) => Number(b === oldIndex) - Number(a === oldIndex) || a - b);
+            const preferExplicitGroundTuner = group.reservations.some(reserve =>
+                TunerCompatibilityUtil.isGroundChannelType(reserve.channelType),
+            );
+            return available.sort(
+                (a, b) =>
+                    (preferExplicitGroundTuner
+                        ? Number(input.tuners.find(tuner => tuner.index === a)?.types.length === 0) -
+                          Number(input.tuners.find(tuner => tuner.index === b)?.types.length === 0)
+                        : 0) ||
+                    Number(b === oldIndex) - Number(a === oldIndex) ||
+                    a - b,
+            );
         };
         const augment = (group: (typeof ordered)[number], visited: Set<number>): boolean => {
             for (const tunerIndex of allowedTuners(group)) {

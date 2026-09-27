@@ -157,6 +157,7 @@ npm run test:ci        # ut + ita + itb
 ### サーバ
 
 - `ChannelType` に `NW1`〜`NW40` (県外地上波) と `BS4K` / `CS4K` がある。GR/BS/CS/SKY だけを前提にしない
+- チューナーの `types` と予約の `channelType` を文字列で直接比較しない。recisdb-proxy などは NWn を `GR` として報告する (`isTunerCompatibleWithChannelType` を通す)
 - `req.query` は express-openapi がスキーマに従い数値へ型変換する。`mode` 等を文字列前提で扱わない
 - エンコード cmd に `|` を含むとシェル経由で実行される (tsreadex 前処理用)。`%TSREADEX%` は config の `tsreadex` で置換。**シェル経由の cmd へパスを埋め込むときは `ProcessUtil.replaceShellPlaceholder()` を通す** (録画ファイル名の空白・括弧でコマンドが分割され、配信プロセスが黙って落ちる)
 - **エンコードの成否は終了コードだけで判断しない**。外部エンコーダはディスクフルでも終了コード 0 で終わることがあるため、`EncoderModel` が出力サイズ (1MiB 未満は失敗) も見る。元ファイル削除 (`removeOriginal`) はこの判定に依存している
