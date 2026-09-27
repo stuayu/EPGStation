@@ -718,6 +718,8 @@ recording dir has no room: reserveId: 13, using TS2, required: 5350MB, free: 900
 | advancedSearch       | 保存検索                                                |
 | updateNotification   | 更新通知・ワンクリック更新                              |
 
+Webhook / Discord の `notifications.targets[].events` では `recording.partial` を選択できる。部分録画の警告通知。既存のイベント絞り込み設定には自動追加されないため、通知したい場合は events に明示する。
+
 ```yaml
 featureFlags:
     annictSync: false

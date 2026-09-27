@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 録画セッション再設計 Phase 3: RecordingSession / Attempt の永続化と partial 結果表示 → 2026-09-28
 - 録画セッション再設計 Phase 2: 終了理由・偽リトライ・開始失敗分類 → 2026-09-28
 - 録画セッション再設計 Phase 0/1: 予約安全網と EIT / ロック不具合修正 → 2026-09-28
 - 音声 ES 2 本の HLS で副音声へ切り替わらない (Issue #31、再接続後にレンディションを選び直していなかった) → 2026-09-27
@@ -2731,3 +2732,13 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - **Playback API の画質表示を品質バケット順へ統一した**
     - `recommended.label` を解決済みプリセットのバケット名へ揃え、`profiles` は「自動・おすすめ」を先頭に高画質順で表示する
     - プリセット ID、cmd、実際の選択・配信経路、通常表示/折り畳みの件数は変更していない
+
+## 録画セッション再設計 Phase 3: RecordingSession / Attempt の永続化と partial 結果表示 (2026-09-28)
+
+録画 1 回の結果と、上流ストリーム接続ごとの履歴を再起動後も判別できるようにした。`recording_session` は予約 ID を外部キーにせず、録画削除後も意図しない参照制約を作らない。`recording_attempt` は Session 削除時に cascade 削除する。開始前に失敗したセッションも保持し、録画に結び付かないセッションは 30 日後に掃除する。SQLite / MySQL の migration を追加し、Recorded には既存値を変更せず nullable の `recordingStatus` / `endReason` を追加した。
+
+`RecordingSessionState.ts` に状態遷移表、`RecordingResult.ts` に結果判定と終了後処理ポリシーを追加した。開始前リトライも attempt ごとに記録する。途中の受信断は `partial` とし、エンコードは行うが元 TS は削除しない。外部 finish コマンドには `RECORDING_STATUS` / `END_REASON` / `TRANSPORT_GAP_CNT` を渡し、partial は警告通知 `recording.partial` を発行する。通知先をイベントで絞っている場合、このイベントは自動追加されないため設定へ明示する。
+
+`GET /api/recorded/{recordedId}/recording-sessions` はセッション・attempt を返す。録画詳細では attempt の終了から次 attempt の初回データまでを受信断として計算し、録画一覧では partial / failed をバッジ表示する。録画削除時は紐付くセッションも削除する。起動時は `RECORDING` 状態のセッションを `partial` / `process-restart` として確定し、手動予約を削除しない。
+
+関連実装: `src/db/entities/RecordingSession.ts`, `src/db/entities/RecordingAttempt.ts`, `src/db/migrations/{sqlite,mysql}/1787544000000-AddRecordingSessions.ts`, `src/model/operator/recording/RecordingSessionState.ts`, `src/util/RecordingResult.ts`, `src/model/operator/recording/RecorderModel.ts`, `src/model/operator/recording/RecordingManageModel.ts`, `src/model/event/EventSetter.ts`, `src/model/service/api/recorded/{recordedId}/recording-sessions.ts`, `client/src/views/RecordedDetail.vue`。

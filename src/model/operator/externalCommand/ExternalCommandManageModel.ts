@@ -281,6 +281,11 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
                     STARTAT: recorded.startAt,
                     ENDAT: recorded.endAt,
                     DURATION: recorded.endAt - recorded.startAt,
+                    RECORDING_STATUS: recorded.recordingStatus ?? 'completed',
+                    END_REASON: recorded.endReason ?? null,
+                    TRANSPORT_GAP_CNT: String(
+                        (recorded as Recorded & { transportGapCount?: number }).transportGapCount ?? 0,
+                    ),
                     NAME: recorded.name,
                     HALF_WIDTH_NAME: recorded.halfWidthName,
                     DESCRIPTION: recorded.description,

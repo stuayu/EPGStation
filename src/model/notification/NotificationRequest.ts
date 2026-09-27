@@ -8,6 +8,7 @@ export interface NotificationRequest {
 namespace NotificationRequestConst {
     export const WARNING_EVENT_TYPES: ReadonlySet<NotificationEventType> = new Set([
         'recording.failed',
+        'recording.partial',
         'recording.dropped',
         'recording.missed',
         'storage.lowSpace',
@@ -59,6 +60,8 @@ function eventTitle(type: NotificationEventType): string {
             return '録画を開始しました';
         case 'recording.completed':
             return '録画が完了しました';
+        case 'recording.partial':
+            return '録画が一部欠落して終了しました';
         case 'recording.dropped':
             return '録画でドロップが検出されました';
         case 'recording.missed':

@@ -13,6 +13,8 @@ import IRecorderModel, { RecorderModelProvider } from './IRecorderModel';
 import IRecordingManageModel from './IRecordingManageModel';
 import IRecordingStreamCreator from './IRecordingStreamCreator';
 import IRecordingUtilModel from './IRecordingUtilModel';
+import IRecordingSessionDB from '../../db/IRecordingSessionDB';
+import { RecordingSessionState } from './RecordingSessionState';
 
 interface RecordingIndex {
     [key: number]: IRecorderModel;
@@ -27,6 +29,7 @@ class RecordingManageModel implements IRecordingManageModel {
     private recordedDB: IRecordedDB;
     private reserveDB: IReserveDB;
     private recordingUtil: IRecordingUtilModel;
+    private recordingSessionDB: IRecordingSessionDB;
     private recordingEvent: IRecordingEvent;
     private recordingIndex: RecordingIndex = {};
     private recordingFailureRetryCount: Map<number, number> = new Map();
@@ -41,6 +44,7 @@ class RecordingManageModel implements IRecordingManageModel {
         @inject('IRecordedDB') recordedDB: IRecordedDB,
         @inject('IReserveDB') reserveDB: IReserveDB,
         @inject('IRecordingUtilModel') recordingUtil: IRecordingUtilModel,
+        @inject('IRecordingSessionDB') recordingSessionDB: IRecordingSessionDB,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
@@ -50,6 +54,7 @@ class RecordingManageModel implements IRecordingManageModel {
         this.recordedDB = recordedDB;
         this.reserveDB = reserveDB;
         this.recordingUtil = recordingUtil;
+        this.recordingSessionDB = recordingSessionDB;
 
         this.setEvents(); // イベント設定
     }
@@ -119,6 +124,43 @@ class RecordingManageModel implements IRecordingManageModel {
     public async cleanup(): Promise<void> {
         this.log.system.info('start recordings cleanup ');
 
+        const staleCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        await this.recordingSessionDB.deleteOrphanSessionsBefore(staleCutoff).catch(err => {
+            this.log.system.warn('recording session orphan cleanup failed');
+            this.log.system.warn(err);
+        });
+
+        const activeSessions = await this.recordingSessionDB.findByState(RecordingSessionState.RECORDING).catch(err => {
+            this.log.system.warn('recording session recovery lookup failed');
+            this.log.system.warn(err);
+            return [];
+        });
+        for (const session of activeSessions) {
+            await this.recordingSessionDB
+                .updateSession(session.id, {
+                    state: RecordingSessionState.FINISHED,
+                    resultStatus: 'partial',
+                    endReason: 'process-restart',
+                    actualEndAt: Date.now(),
+                    updatedAt: Date.now(),
+                })
+                .catch(err => {
+                    this.log.system.warn(`recording session recovery update failed: ${session.id}`);
+                    this.log.system.warn(err);
+                });
+            if (session.recordedId !== null) {
+                const recorded = await this.recordedDB.findId(session.recordedId).catch(() => null);
+                if (recorded !== null) {
+                    recorded.recordingStatus = 'partial';
+                    recorded.endReason = 'process-restart';
+                    await this.recordedDB.updateOnce(recorded).catch(err => {
+                        this.log.system.warn(`recording result recovery update failed: ${session.recordedId}`);
+                        this.log.system.warn(err);
+                    });
+                }
+            }
+        }
+
         // 録画中になっている番組を取り出す
         const [records] = await this.recordedDB.findAll(
             {
@@ -183,7 +225,13 @@ class RecordingManageModel implements IRecordingManageModel {
             // 終了処理
             const newRecorded = await this.recordedDB.findId(r.id);
             if (newRecorded !== null) {
-                this.recordingEvent.emitFinishRecording(reserve, newRecorded, true);
+                const wasPartialRecovery =
+                    newRecorded.recordingStatus === 'partial' && newRecorded.endReason === 'process-restart';
+                this.recordingEvent.emitFinishRecording(
+                    reserve,
+                    newRecorded,
+                    wasPartialRecovery === true && reserve.ruleId === null ? false : true,
+                );
             }
         }
 

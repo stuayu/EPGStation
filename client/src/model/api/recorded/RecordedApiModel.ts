@@ -40,6 +40,12 @@ export default class RecordedApiModel implements IRecordedApiModel {
         return result.data;
     }
 
+    /** 録画セッションと接続試行を取得 */
+    public async getRecordingSessions(recordedId: apid.RecordedId): Promise<apid.RecordingSessions> {
+        const result = await this.repository.get(`/recorded/${recordedId.toString(10)}/recording-sessions`);
+        return result.data;
+    }
+
     /**
      * recorded の検索オプションリストを取得する
      * @return Promise<apid.RecordedSearchOptionList>

@@ -32,6 +32,7 @@ export interface RecordedDisplayData {
         watchProgress?: number;
         // 放送局ロゴの URL (放送局が現在ロゴを保持している場合のみ設定)
         logoSrc?: string;
+        recordingStatusLabel?: string;
     };
     recordedItem: apid.RecordedItem;
     isSelected: boolean;

@@ -9,6 +9,7 @@ import { ISettingStorageModel } from '../../storage/setting/ISettingStorageModel
 import Util from '../../../util/Util';
 import { isFeatureEnabled } from '../../../util/FeatureFlags';
 import IRecordedUtil, { RecordedDisplayData } from './IRecordedUtil';
+import RecordingReasonUtil from '../../../util/RecordingReasonUtil';
 
 @injectable()
 export default class RecordedUtil implements IRecordedUtil {
@@ -70,6 +71,8 @@ export default class RecordedUtil implements IRecordedUtil {
             recordedItem: item,
             isSelected: false,
         };
+
+        result.display.recordingStatusLabel = RecordingReasonUtil.getStatusLabel(item.recordingStatus);
 
         if (fileDuration !== null) {
             result.display.fileDuration = fileDuration;

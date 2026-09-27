@@ -48,6 +48,11 @@ import { RecordingTimingConfig, resolveRecordingTimingConfig } from './Recording
 import { decideRecordingEnd } from './RecordingBoundary';
 import IEitPresentStore from '../../service/stream/util/IEitPresentStore';
 import IIPCServer from '../../ipc/IIPCServer';
+import IRecordingSessionDB from '../../db/IRecordingSessionDB';
+import RecordingSession from '../../../db/entities/RecordingSession';
+import RecordingAttempt from '../../../db/entities/RecordingAttempt';
+import { RecordingSessionState, transitionRecordingSession } from './RecordingSessionState';
+import { resolveRecordingStatus } from '../../../util/RecordingResult';
 
 /**
  * Recorder
@@ -72,6 +77,7 @@ class RecorderModel implements IRecorderModel {
     private reserveEvent: IReserveEvent;
     private eitPresentStore: IEitPresentStore;
     private ipc: IIPCServer;
+    private recordingSessionDB: IRecordingSessionDB;
 
     private reserve!: Reserve;
     private recordedId: apid.RecordedId | null = null;
@@ -104,6 +110,10 @@ class RecorderModel implements IRecorderModel {
     private abortController: AbortController | null = null;
     private boundaryEndTimerId: NodeJS.Timeout | null = null;
     private boundaryEndReason: string | null = null;
+    private recordingSession: RecordingSession | null = null;
+    private currentAttempt: RecordingAttempt | null = null;
+    private recordingAttemptCount: number = 0;
+    private transportCloseReasons: Array<string | null> = [];
 
     // イベントリレータイマー
     private eventRelayTimer = new LongTimer();
@@ -130,6 +140,7 @@ class RecorderModel implements IRecorderModel {
         @inject('IReserveEvent') reserveEvent: IReserveEvent,
         @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
         @inject('IIPCServer') ipc: IIPCServer,
+        @inject('IRecordingSessionDB') recordingSessionDB: IRecordingSessionDB,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
@@ -149,6 +160,125 @@ class RecorderModel implements IRecorderModel {
         this.reserveEvent = reserveEvent;
         this.eitPresentStore = eitPresentStore;
         this.ipc = ipc;
+        this.recordingSessionDB = recordingSessionDB;
+    }
+
+    private async persistRecordingSession(values: Partial<RecordingSession>): Promise<void> {
+        if (this.recordingSession === null) return;
+        try {
+            await this.recordingSessionDB.updateSession(this.recordingSession.id, {
+                ...values,
+                updatedAt: Date.now(),
+            });
+            Object.assign(this.recordingSession, values);
+        } catch (err) {
+            this.log.system.warn(`recording session update failed: ${this.recordingSession.id}`);
+            this.log.system.warn(err);
+        }
+    }
+
+    private async transitionSession(event: Parameters<typeof transitionRecordingSession>[1]): Promise<void> {
+        if (this.recordingSession === null) return;
+        const result = transitionRecordingSession(this.recordingSession.state as RecordingSessionState, event);
+        if (result.warning !== undefined) this.log.system.warn(result.warning);
+        if (result.state !== this.recordingSession.state) await this.persistRecordingSession({ state: result.state });
+    }
+
+    private async beginRecordingSession(): Promise<void> {
+        const now = Date.now();
+        try {
+            this.recordingSession = await this.recordingSessionDB.createSession({
+                reserveId: this.reserve.id,
+                recordedId: null,
+                programId: this.reserve.programId,
+                channelId: this.reserve.channelId,
+                state: RecordingSessionState.PREPARING,
+                scheduledStartAt: this.reserve.startAt,
+                scheduledEndAt: this.reserve.endAt,
+                actualStartAt: null,
+                actualEndAt: null,
+                startReason: null,
+                endReason: null,
+                resultStatus: null,
+                retryCount: 0,
+                createdAt: now,
+                updatedAt: now,
+            });
+            this.recordingAttemptCount = 0;
+            this.transportCloseReasons = [];
+        } catch (err) {
+            this.recordingSession = null;
+            this.log.system.warn(`recording session create failed: ${this.reserve.id}`);
+            this.log.system.warn(err);
+        }
+    }
+
+    private async beginRecordingAttempt(): Promise<void> {
+        if (this.recordingSession === null) return;
+        try {
+            this.recordingAttemptCount++;
+            this.currentAttempt = await this.recordingSessionDB.createAttempt({
+                sessionId: this.recordingSession.id,
+                attemptNo: this.recordingAttemptCount,
+                requestedAt: Date.now(),
+                firstDataAt: null,
+                endedAt: null,
+                closeReason: null,
+                errorCode: null,
+                priority: this.reserve.isConflict ? this.config.conflictPriority : this.config.recPriority,
+                bytesReceived: 0,
+                fileOffsetStart: null,
+                fileOffsetEnd: null,
+            });
+            await this.persistRecordingSession({ retryCount: this.recordingAttemptCount - 1 });
+        } catch (err) {
+            this.log.system.warn(`recording attempt create failed: ${this.recordingSession.id}`);
+            this.log.system.warn(err);
+        }
+    }
+
+    private observeRecordingAttempt(observedStream: http.IncomingMessage): void {
+        const attempt = this.currentAttempt;
+        if (attempt === null) return;
+        observedStream.on('data', (chunk: Buffer) => {
+            if (this.currentAttempt !== attempt) return;
+            attempt.bytesReceived = (attempt.bytesReceived ?? 0) + chunk.length;
+            if (attempt.firstDataAt === null) {
+                attempt.firstDataAt = Date.now();
+                void this.recordingSessionDB
+                    .updateAttempt(attempt.id, { firstDataAt: attempt.firstDataAt })
+                    .catch(err => {
+                        this.log.system.warn(`recording attempt update failed: ${attempt.id}`);
+                        this.log.system.warn(err);
+                    });
+            }
+        });
+    }
+
+    private async finishRecordingAttempt(
+        reason: string | null,
+        error?: Error,
+        includeInResult: boolean = true,
+    ): Promise<void> {
+        const attempt = this.currentAttempt;
+        if (attempt === null) return;
+        this.currentAttempt = null;
+        const values: Partial<RecordingAttempt> = {
+            endedAt: Date.now(),
+            closeReason: reason,
+            errorCode: error === undefined ? null : String((error as NodeJS.ErrnoException).code ?? error.name),
+            bytesReceived: attempt.bytesReceived,
+            fileOffsetEnd:
+                attempt.fileOffsetStart === null ? null : attempt.fileOffsetStart + (attempt.bytesReceived ?? 0),
+        };
+        if (includeInResult === true) this.transportCloseReasons.push(reason);
+        Object.assign(attempt, values);
+        try {
+            await this.recordingSessionDB.updateAttempt(attempt.id, values);
+        } catch (err) {
+            this.log.system.warn(`recording attempt finish failed: ${attempt.id}`);
+            this.log.system.warn(err);
+        }
     }
 
     /**
@@ -188,6 +318,10 @@ class RecorderModel implements IRecorderModel {
         this.errorRetryCount = 0;
         this.waitingForEventSince = null;
         this.boundaryEndReason = null;
+        this.recordingSession = null;
+        this.currentAttempt = null;
+        this.recordingAttemptCount = 0;
+        this.transportCloseReasons = [];
 
         // 除外, 重複しているものはタイマーをセットしない
         if (this.reserve.isSkip === true || this.reserve.isOverlap === true) {
@@ -245,6 +379,8 @@ class RecorderModel implements IRecorderModel {
 
         this.log.system.info(`preprec: ${this.reserve.id}`);
 
+        if (retry === 0 && this.recordingSession === null) await this.beginRecordingSession();
+
         this.isPrepRecording = true;
         this.isPrepRecordInFlight = true;
         this.isRecording = false;
@@ -273,7 +409,9 @@ class RecorderModel implements IRecorderModel {
             }
 
             this.abortController = new AbortController();
+            await this.beginRecordingAttempt();
             this.stream = await this.streamCreator.create(this.reserve, this.abortController.signal);
+            this.observeRecordingAttempt(this.stream);
             prepStream = this.stream;
             if (this.isObsoletePrepChain(generation, prepStream) === true) {
                 return;
@@ -297,6 +435,7 @@ class RecorderModel implements IRecorderModel {
             if (this.isObsoletePrepChain(generation, prepStream) === true) {
                 return;
             }
+            await this.finishRecordingAttempt('error', err instanceof Error ? err : undefined, false);
             if ((this.isStopPrepRec as any) === true) {
                 this.destroyStream();
                 this.emitCancelEvent();
@@ -367,6 +506,14 @@ class RecorderModel implements IRecorderModel {
                 }
                 // 待機を打ち切ったので追従中の表示も解除する
                 await this.setFollowingSchedule(false);
+                this.transportCloseReasons = ['error'];
+                await this.transitionSession('fail');
+                await this.persistRecordingSession({
+                    state: RecordingSessionState.FINISHED,
+                    actualEndAt: Date.now(),
+                    endReason: 'error',
+                    resultStatus: 'failed',
+                });
                 // 録画準備失敗を通知
                 this.recordingEvent.emitPrepRecordingFailed(this.reserve);
             }
@@ -520,6 +667,7 @@ class RecorderModel implements IRecorderModel {
         // 待機中は末尾 8 MiB だけを保持し、境界直前の冒頭を救済する
         let waitingBuffer: Buffer[] = [];
         try {
+            await this.transitionSession('wait-boundary');
             waitingBuffer = await this.waitForProgramStart();
         } catch (err: any) {
             this.destroyStream();
@@ -537,6 +685,11 @@ class RecorderModel implements IRecorderModel {
 
         this.isPrepRecording = false;
         this.isRecording = true;
+        await this.transitionSession('first-data');
+        await this.persistRecordingSession({
+            recordedId: this.recordedId,
+            actualStartAt: Date.now(),
+        });
 
         // 番組が始まったので追従中の表示を解除する
         await this.setFollowingSchedule(false);
@@ -609,6 +762,13 @@ class RecorderModel implements IRecorderModel {
         }
         this.setupProgramBoundaryMonitor(waitingBuffer);
         this.setupEitPresentMonitor(waitingBuffer);
+        if (this.currentAttempt !== null) {
+            this.currentAttempt.fileOffsetStart = 0;
+            void this.recordingSessionDB.updateAttempt(this.currentAttempt.id, { fileOffsetStart: 0 }).catch(err => {
+                this.log.system.warn(`recording attempt offset update failed: ${this.currentAttempt?.id ?? 'unknown'}`);
+                this.log.system.warn(err);
+            });
+        }
         const recordingStream = this.stream;
         const writeStream = this.passThroughStreamForWrite;
         if (recordingStream === null || writeStream === null) {
@@ -1013,6 +1173,7 @@ class RecorderModel implements IRecorderModel {
             const recorded = await this.createRecorded();
             this.recordedId = await this.recordedDB.insertOnce(recorded);
             recorded.id = this.recordedId;
+            await this.persistRecordingSession({ recordedId: this.recordedId });
             this.log.system.info(`recording added reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}`);
 
             // add video file
@@ -1071,18 +1232,24 @@ class RecorderModel implements IRecorderModel {
             }
 
             const closeReason = this.streamCreator.getCloseReason(s);
+            const scheduledEndReached = new Date().getTime() >= this.reserve.endAt + this.getTimingConfig().endMarginMs;
+            const attemptReason =
+                closeReason ?? (err !== undefined || scheduledEndReached === false ? 'transport-lost' : null);
+            await this.finishRecordingAttempt(attemptReason, err ?? undefined);
             const closeAction = IRecordingStreamCreator.getCloseAction(closeReason);
             if (closeAction === 'ignore') return;
             if (closeAction === 'finish') {
                 await this.recEnd().catch(e => this.log.system.error(e));
                 return;
             }
-            const scheduledEndReached = new Date().getTime() >= this.reserve.endAt + this.getTimingConfig().endMarginMs;
-            if (err && closeReason === null && scheduledEndReached === false) {
+            if (err && closeReason === null && scheduledEndReached === false && this.recordedId === null) {
                 this.log.system.error(
                     `stream.finished error: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
                 );
                 await this.recFailed(err);
+            } else if (err && closeReason === null && scheduledEndReached === false) {
+                this.boundaryEndReason = 'transport-lost';
+                await this.recEnd();
             } else {
                 this.log.system.info(
                     `recording end: reserveId: ${this.reserve.id}, reason: ${this.boundaryEndReason ?? closeReason ?? (scheduledEndReached ? 'scheduled-end' : 'stream-ended')},` +
@@ -1107,6 +1274,9 @@ class RecorderModel implements IRecorderModel {
      * @param err: Error
      */
     private async recFailed(err: Error): Promise<void> {
+        await this.finishRecordingAttempt('write-error', err);
+        this.transportCloseReasons.push('write-error');
+        this.boundaryEndReason = 'write-error';
         this.destroyStream();
         this.log.system.error(`recording end error reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`);
         this.log.system.error(err);
@@ -1236,6 +1406,14 @@ class RecorderModel implements IRecorderModel {
     private async recEnd(emitFinish: boolean = true): Promise<void> {
         this.log.system.info(`start recEnd reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`);
 
+        await this.transitionSession('finalize');
+        const endReason =
+            this.boundaryEndReason ?? this.transportCloseReasons[this.transportCloseReasons.length - 1] ?? null;
+        const resultStatus = resolveRecordingStatus({
+            closeReasons: [...this.transportCloseReasons, endReason],
+            canceled: endReason === 'canceled',
+        });
+
         // stream 停止
         this.destroyStream();
 
@@ -1253,6 +1431,13 @@ class RecorderModel implements IRecorderModel {
                 });
             }
 
+            await this.persistRecordingSession({
+                state: RecordingSessionState.FINISHED,
+                actualEndAt: Date.now(),
+                endReason,
+                resultStatus,
+            });
+
             return;
         }
 
@@ -1261,6 +1446,15 @@ class RecorderModel implements IRecorderModel {
             this.log.system.info(`remove recording flag: ${this.recordedId}`);
             await this.recordedDB.removeRecording(this.recordedId);
             this.isRecording = false;
+            const currentRecorded = await this.recordedDB.findId(this.recordedId);
+            if (currentRecorded !== null) {
+                currentRecorded.recordingStatus = resultStatus;
+                currentRecorded.endReason = endReason;
+                await this.recordedDB.updateOnce(currentRecorded).catch(err => {
+                    this.log.system.warn(`recording result update failed: ${this.recordedId}`);
+                    this.log.system.warn(err);
+                });
+            }
 
             // tmp に録画していた場合は移動する
             if (typeof this.config.recordedTmp !== 'undefined' && this.videoFileId !== null) {
@@ -1289,6 +1483,19 @@ class RecorderModel implements IRecorderModel {
 
             // recorded 情報取得
             const recorded = await this.recordedDB.findId(this.recordedId);
+            try {
+                if (recorded !== null && this.recordingSession !== null) {
+                    const attempts = await this.recordingSessionDB.findAttemptsBySessionId(this.recordingSession.id);
+                    const transportGapCount = attempts.slice(0, -1).reduce((count, attempt, index) => {
+                        const next = attempts[index + 1];
+                        return count + (attempt.endedAt !== null && next.firstDataAt !== null ? 1 : 0);
+                    }, 0);
+                    Object.assign(recorded, { transportGapCount });
+                }
+            } catch (err) {
+                this.log.system.warn(`recording gap count lookup failed: ${this.recordingSession?.id ?? 'unknown'}`);
+                this.log.system.warn(err);
+            }
 
             // Recorded history 追加
             if (
@@ -1323,6 +1530,13 @@ class RecorderModel implements IRecorderModel {
         } else {
             this.log.system.info('failed to recording: recorded id is null');
         }
+
+        await this.transitionSession('finish');
+        await this.persistRecordingSession({
+            actualEndAt: Date.now(),
+            endReason,
+            resultStatus,
+        });
 
         this.log.system.info(
             `recording finish reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}, videoFileFullPath: ${this.videoFileFullPath}`,

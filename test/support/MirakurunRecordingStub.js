@@ -27,6 +27,7 @@ const tsPackets = (n, { pid = 0x100, cc = 0, conn = 0 } = {}) => {
 const sendThenReset = (nPackets, partialBytes, options = {}) => ({ type: 'sendThenReset', nPackets, partialBytes, ...options });
 const sendThenEnd = (nPackets, options = {}) => ({ type: 'sendThenEnd', nPackets, ...options });
 const sendAndHold = (nPackets = 0, options = {}) => ({ type: 'sendAndHold', nPackets, ...options });
+const sendThenHold = (nPackets = 0, options = {}) => ({ type: 'sendThenHold', nPackets, ...options });
 const status = code => ({ type: 'status', code });
 
 class MirakurunRecordingStub {
@@ -64,6 +65,14 @@ class MirakurunRecordingStub {
             } else if (script.type === 'sendThenEnd') {
                 response.writeHead(200, { 'content-type': 'video/mp2t' });
                 response.end(tsPackets(script.nPackets, script));
+            } else if (script.type === 'sendThenHold') {
+                response.writeHead(200, { 'content-type': 'video/mp2t' });
+                response.write(tsPackets(script.nPackets ?? 0, script));
+                this.#held.add(response);
+                response.once('close', () => this.#held.delete(response));
+                setTimeout(() => {
+                    if (!response.destroyed) response.write(tsPackets(1, { ...script, cc: script.nPackets ?? 0 }));
+                }, script.delayMs ?? 10);
             } else {
                 response.writeHead(200, { 'content-type': 'video/mp2t' });
                 this.#held.add(response);
@@ -89,4 +98,4 @@ class MirakurunRecordingStub {
     }
 }
 
-module.exports = { MirakurunRecordingStub, tsPackets, sendThenReset, sendThenEnd, sendAndHold, status };
+module.exports = { MirakurunRecordingStub, tsPackets, sendThenReset, sendThenEnd, sendAndHold, sendThenHold, status };
