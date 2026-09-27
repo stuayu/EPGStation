@@ -1141,6 +1141,28 @@ mirakc を使っている場合、番組情報の更新は元々 serviceId 単�
 
 recisdb-proxy のような Mirakurun 互換実装を使う場合は、`tunerServerType: mirakurun` を明示して自動判定を無効にすること (`/api/config/server` を返さない実装は mirakc と誤判定される)。
 
+### observability
+
+#### OpenTelemetry traces / metrics
+
+既定では無効。`enabled: true` のときだけ Node SDK を読み込み、OTLP/HTTP で traces と metrics を送信する。ログは従来どおり log4js で記録する。Operator と Service は別プロセスとして個別に初期化し、`service.name` には `operator` / `service` の種別を付加する。
+
+| 子項目 | 種類 | デフォルト値 | 必須 | 説明 |
+| ------ | ---- | ------------ | ---- | ---- |
+| enabled | boolean | false | no | OpenTelemetry を有効にする |
+| endpoint | string | — | 有効時 | OTLP/HTTP Collector の base URL。例: `http://localhost:4318` |
+| serviceName | string | `epgstation` | no | `service.name` のアプリケーション名 |
+
+```yaml
+observability:
+    otel:
+        enabled: true
+        endpoint: 'http://localhost:4318'
+        serviceName: epgstation
+```
+
+有効化と endpoint 変更は再起動後に反映される。
+
 ### isSuppressReservesUpdateAllLog
 
 #### 予約定期更新時のログ出力を抑えるか

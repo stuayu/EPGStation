@@ -27,6 +27,7 @@ import IReservationManageModel from './model/operator/reservation/IReservationMa
 import IStorageManageModel from './model/operator/storage/IStorageManageModel';
 import { isShuttingDown, killAllChildProcesses, registerChildProcess } from './util/ChildProcessRegistry';
 import { createOperatorShutdownHandler } from './util/OperatorShutdown';
+import telemetry from './model/observability/Telemetry';
 install();
 
 containerSetter.set(container);
@@ -89,6 +90,7 @@ const init = async () => {
     // 画面から変更された設定 (config.yml への重ね書き) を適用する。
     // 多くのモデルはコンストラクタで config を読むため、モデル構築より先に済ませる
     await container.get<IConfigOverlayLoader>('IConfigOverlayLoader').load();
+    await telemetry.initialize(container.get<IConfiguration>('IConfiguration').getConfig(), 'operator');
 };
 
 /**
@@ -251,6 +253,12 @@ const installShutdownHandlers = (): void => {
         async signal => {
             log.system.info(`Operator shutdown requested: ${signal}`);
             await container.get<IRecordingManageModel>('IRecordingManageModel').shutdown();
+            try {
+                await telemetry.shutdown();
+            } catch (err) {
+                log.system.error('OpenTelemetry shutdown failed');
+                log.system.error(err);
+            }
         },
         code => {
             killAllChildProcesses();

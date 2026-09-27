@@ -25,6 +25,7 @@ import Tuner from './Tuner';
 import { planSchedule } from './planner/SchedulePlanner';
 import { resolveRecordingTimingConfig } from '../recording/RecordingTimingConfig';
 import IRecordingStreamCreator from '../recording/IRecordingStreamCreator';
+import telemetry from '../../observability/Telemetry';
 
 interface ReserveDiffData {
     reserve: Reserve;
@@ -1918,6 +1919,7 @@ class ReservationManageModel implements IReservationManageModel {
                 Math.min(Math.max(baseEndAt, reserve.plannedEndAt ?? baseEndAt), reserve.endAt),
             );
         }
+        const plannerSpan = telemetry.startPlanner();
         const plans = planSchedule({
             reservations: matches.map(reserve => ({
                 id: reserve.id,
@@ -1945,6 +1947,8 @@ class ReservationManageModel implements IReservationManageModel {
                 ?.getActiveTunerAssignments()
                 .map(session => ({ ...session, started: true })),
         });
+        plannerSpan.conflicts(plans.filter(plan => plan.conflict !== null).length);
+        plannerSpan.end();
         this.plannerReasons = new Map(plans.map(plan => [plan.reserveId, plan.reasons]));
         const byId = new Map(plans.map(plan => [plan.reserveId, plan]));
         return matches

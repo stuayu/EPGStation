@@ -88,6 +88,31 @@ npm run uninstall-win-service
 
 ## セットアップ
 
+### OpenTelemetry Collector の例
+
+OpenTelemetry を有効にする場合、Collector の OTLP/HTTP receiver を起動し、`config.yml` に設定する。次の最小構成は HTTP の 4318 番ポートで traces / metrics を受け取る。
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+exporters:
+  debug:
+    verbosity: basic
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug]
+```
+
+Collector と同じ PC なら `observability.otel.endpoint: 'http://127.0.0.1:4318'`、別 PC なら Collector の到達可能なアドレスを指定する。
+
 ここでは Windows PowerShell を用いたセットアップを解説します
 
 1. **Node.js (LTS 版推奨), Mirakurun, windows-build-tools, FFmpeg/FFprobe** がインストール済みであることを確認する

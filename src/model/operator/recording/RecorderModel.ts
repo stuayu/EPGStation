@@ -59,6 +59,7 @@ import { resolveRecordingStatus } from '../../../util/RecordingResult';
 import RecordingSink from './RecordingSink';
 import RecordingUpstreamSession from './RecordingUpstreamSession';
 import { usesManagedEnd } from './RecordingStreamEndPolicy';
+import telemetry from '../../observability/Telemetry';
 
 /**
  * Recorder
@@ -123,6 +124,9 @@ class RecorderModel implements IRecorderModel {
     private monitoredEitStreams = new WeakSet<http.IncomingMessage>();
     private monitoredBoundaryStreams = new WeakSet<http.IncomingMessage>();
     private recordingSession: RecordingSession | null = null;
+    private telemetrySessionId: number | null = null;
+    private telemetryGapStartedAt: number | null = null;
+    private telemetryStartDelayRecorded = false;
     private currentAttempt: RecordingAttempt | null = null;
     private recordingAttemptCount: number = 0;
     private transportCloseReasons: Array<string | null> = [];
@@ -224,6 +228,9 @@ class RecorderModel implements IRecorderModel {
                 createdAt: now,
                 updatedAt: now,
             });
+            this.telemetrySessionId = this.recordingSession.id;
+            this.telemetryStartDelayRecorded = false;
+            telemetry.recordingSessionStarted(this.recordingSession.id);
             this.recordingAttemptCount = 0;
             this.transportCloseReasons = [];
             this.transportGapCount = 0;
@@ -254,6 +261,7 @@ class RecorderModel implements IRecorderModel {
                 fileOffsetStart: null,
                 fileOffsetEnd: null,
             });
+            telemetry.startRecordingAttempt(this.recordingSession.id, this.recordingAttemptCount);
             await this.persistRecordingSession({ retryCount: this.recordingAttemptCount - 1 });
         } catch (err) {
             this.log.system.warn(`recording attempt create failed: ${this.recordingSession.id}`);
@@ -287,6 +295,12 @@ class RecorderModel implements IRecorderModel {
         const attempt = this.currentAttempt;
         if (attempt === null) return;
         this.currentAttempt = null;
+        if (this.recordingSession !== null) {
+            telemetry.finishRecordingAttempt(this.recordingSession.id, attempt.attemptNo, {
+                'recording.close.reason': reason ?? 'unknown',
+                'recording.attempt.error': error !== undefined,
+            });
+        }
         const values: Partial<RecordingAttempt> = {
             endedAt: Date.now(),
             closeReason: reason,
@@ -400,6 +414,9 @@ class RecorderModel implements IRecorderModel {
 
         this.resumeInfo = info;
         this.recordingSession = info.session;
+        this.telemetrySessionId = info.session.id;
+        this.telemetryStartDelayRecorded = true;
+        telemetry.recordingSessionStarted(info.session.id);
         this.recordedId = info.recorded.id;
         this.videoFileId = info.videoFile.id;
         this.dropLogFileId = info.recorded.dropLogFileId;
@@ -534,6 +551,7 @@ class RecorderModel implements IRecorderModel {
                 );
             } else {
                 this.errorRetryCount++;
+                if (this.recordedId === null) telemetry.tunerOpenFailure(String(this.reserve.channelType));
                 // 何回目の失敗か・上限・次回がいつかを 1 行で残す。
                 // これが無いと同じエラーが並ぶだけで、粘っている最中なのか
                 // もう諦めたのかがログから判断できない
@@ -577,6 +595,7 @@ class RecorderModel implements IRecorderModel {
                     endReason: 'error',
                     resultStatus: 'failed',
                 });
+                this.closeTelemetrySession('failed', 'error');
                 this.streamCreator.release(this.reserve.id);
                 // 録画準備失敗を通知
                 this.recordingEvent.emitPrepRecordingFailed(this.reserve);
@@ -903,6 +922,10 @@ class RecorderModel implements IRecorderModel {
             },
             onChunk: () => {},
             onFirstData: async source => {
+                if (this.telemetryStartDelayRecorded === false) {
+                    telemetry.recordingStartDelay(Math.max(0, Date.now() - this.reserve.startAt));
+                    this.telemetryStartDelayRecorded = true;
+                }
                 const attempt = this.currentAttempt;
                 if (attempt !== null && attempt.firstDataAt === null) {
                     attempt.firstDataAt = Date.now();
@@ -942,9 +965,14 @@ class RecorderModel implements IRecorderModel {
             },
             onGapStart: reason => {
                 this.transportGapCount++;
+                this.telemetryGapStartedAt = Date.now();
                 this.log.system.warn(`recording upstream gap: reserveId: ${this.reserve.id}, reason: ${reason}`);
             },
-            onGapEnd: () => {},
+            onGapEnd: () => {
+                if (this.telemetryGapStartedAt === null) return;
+                telemetry.gap(Date.now() - this.telemetryGapStartedAt);
+                this.telemetryGapStartedAt = null;
+            },
             onWriteError: err => {
                 void this.recFailed(err);
             },
@@ -1130,6 +1158,7 @@ class RecorderModel implements IRecorderModel {
                 });
 
                 if (decision.canStart === true) {
+                    if (startGateTimedOut !== null) telemetry.eitFallback(startGateTimedOut);
                     this.log.system.info(
                         `program start detected: reserveId: ${this.reserve.id}, reason: ${decision.reason}`,
                     );
@@ -1619,6 +1648,7 @@ class RecorderModel implements IRecorderModel {
                 endReason,
                 resultStatus,
             });
+            this.closeTelemetrySession(resultStatus, endReason ?? 'unknown');
 
             return;
         }
@@ -1719,10 +1749,20 @@ class RecorderModel implements IRecorderModel {
             endReason,
             resultStatus,
         });
+        this.closeTelemetrySession(resultStatus, endReason ?? 'unknown');
 
         this.log.system.info(
             `recording finish reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}, videoFileFullPath: ${this.videoFileFullPath}`,
         );
+    }
+
+    private closeTelemetrySession(status: string, endReason: string): void {
+        if (this.telemetrySessionId === null) return;
+        telemetry.recordingSessionEnded(this.telemetrySessionId, {
+            'recording.result.status': status,
+            'recording.end.reason': endReason,
+        });
+        this.telemetrySessionId = null;
     }
 
     /**

@@ -429,6 +429,12 @@ namespace Configuration {
             reconnectEnabled: true,
             shareUpstreamStream: false,
         },
+        observability: {
+            otel: {
+                enabled: false,
+                serviceName: 'epgstation',
+            },
+        },
         storageLimitCheckIntervalTime: 60,
         thumbnail: path.join(__dirname, '..', '..', 'thumbnail'),
         thumbnailCmd:
