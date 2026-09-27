@@ -91,6 +91,7 @@ test('startup resumes the same recording after truncating an interrupted TS pack
         findAll: async () => [[recordedRow], 1],
         removeRecording: id => first.recorder.recordedDB.removeRecording(id),
         updateOnce: row => first.recorder.recordedDB.updateOnce(row),
+        updateRecordingResult: (id, values) => first.recorder.recordedDB.updateRecordingResult(id, values),
     };
     manager.reserveDB = { findId: async id => (id === reserve.id ? reserve : null) };
     manager.recordingUtil = first.recorder.recordingUtil;
@@ -166,6 +167,7 @@ test('expired manual recovery finalizes partial and leaves the reservation untou
             recorded.isRecording = false;
         },
         updateOnce: async row => Object.assign(recorded, row),
+        updateRecordingResult: async (_id, values) => Object.assign(recorded, values),
     };
     manager.reserveDB = { findId: async id => (id === reserve.id ? reserve : null) };
     manager.provider = async () => ({

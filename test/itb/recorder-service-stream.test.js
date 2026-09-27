@@ -357,6 +357,7 @@ test('復帰後の setTimer は過去 attempt の終了理由と partial 結果�
         },
         findId: async () => recorded,
         updateOnce: async row => Object.assign(recorded, row),
+        updateRecordingResult: async (_id, values) => Object.assign(recorded, values),
     };
     recorder.recordingSessionDB = {
         updateSession: async (_id, values) => Object.assign(session, values),
@@ -399,6 +400,7 @@ test('finish 終了時に各終了理由を info ログへ出す', async () => {
             },
             findId: async () => recorded,
             updateOnce: async row => Object.assign(recorded, row),
+            updateRecordingResult: async (_id, values) => Object.assign(recorded, values),
         };
         recorder.recordingEvent = { emitFinishRecording() {} };
         recorder.boundaryEndReason = reason;

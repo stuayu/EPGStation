@@ -105,6 +105,7 @@ test('startup recovery marks an active session partial and keeps its manual rese
         updateOnce: async value => {
             Object.assign(recorded, value);
         },
+        updateRecordingResult: async (_id, values) => Object.assign(recorded, values),
     };
     manager.reserveDB = { findId: async () => ({ id: 22, ruleId: null }) };
     manager.recordingUtil = { updateVideoFileSize: async () => {} };

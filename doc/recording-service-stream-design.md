@@ -165,6 +165,10 @@ TS が到着した時点で伝送正常と判断できるため、EIT 待ち中�
 
 ## 5. 開始判定
 
+### 5.1 時刻指定予約の開始境界
+
+時刻指定予約の `startAt` が、同じチャンネルの ProgramDB 番組開始時刻の前後2分以内にある場合を番組境界予約とする。番組表の `startAt` を使い、EIT による放送時刻更新後の値は判定に使わない。境界予約では従来どおり前番組の延長中に待ち、following の開始時刻に達した時点で開始し、延長が続く場合は soft timeout を安全弁にする。番組境界に一致しない時刻指定予約は、開始マージン到達で `timeSpecifiedMidProgram` として開始する。programId 予約の event_id 判定は変更しない。
+
 ### 5.2 開始前の伝送失敗分類
 
 実装では `classifyStartFailure()` が最初の TS 未着、開始待ち中の stream close、pipe 後のデータ未着を分類する。service stream は `error` 再試行予算を使い、legacy program stream と endAt 超過は `waitingForEvent` を維持する。stream の close reason は `closeStream` / `markClose` で保持し、キャンセル・境界終了・予定終了を外部要因の失敗と混同しない。failed は終了後の DB / 一時ファイル後片付けだけを行い、finish イベントを発行しない。

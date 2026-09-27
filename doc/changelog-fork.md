@@ -768,6 +768,9 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### EPG 追従・予約・録画実行
 
+- 2026-09-28 本番 Windows / MySQL / recisdb-proxy-rs で確認した予約29・録画18587 (ＮＨＫ総合１・大分、07:26:42〜07:29:42) の結果列未保存を修正。267,901,504 byte (188 byte 格子一致) で正常終了し session は `FINISHED / completed / scheduled-end` だったが、`GET /api/recorded/18587` は `recordingStatus: null` / `endReason: null`。関連付き Recorded 全体を更新して TypeORM の relation property エラーになっていたため、終了時・起動時 partial 確定を結果列専用更新へ変更し、ハーネスにもリレーション誤更新の例外を追加。SQLite ITA で従来更新の失敗と専用更新後の永続化を検証。
+- 同実機で時刻指定予約が予定開始07:26:42に対し07:27:38に開始し56秒欠落した問題を修正。EPG の開始時刻が予約時刻の前後2分以内なら境界予約として延長待ちを維持し、番組途中の予約は開始マージン到達時に `timeSpecifiedMidProgram` で開始する。EPG の ProgramDB `startAt` で判定し、EIT更新後の時刻に依存しない。
+
 - 番組表の全件更新が主キー重複で落ちるのを直した (Issue #17)
 - ARIB TR-B14 の EIT[p/f] 運用に合わせ、時刻指定予約の録画開始判定で following の start_time も利用し、present 更新前の録画開始遅延を防ぐようにした
 - 録画開始判定用の EIT[p/f] で current_next_indicator と CRC-32 を検証し、未適用または破損したSIを開始判定に使わないようにした

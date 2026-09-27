@@ -40,6 +40,11 @@ export interface RecordedChannelUpdateValues {
     halfWidthChannelName?: string;
 }
 
+export interface RecordedResultUpdateValues {
+    recordingStatus: 'completed' | 'partial' | 'failed' | 'canceled';
+    endReason: string | null;
+}
+
 /**
  * TS 解析から補完する番組情報 (未設定の項目だけを埋める用途)
  */
@@ -70,6 +75,7 @@ export default interface IRecordedDB {
     insertOnce(recorded: Recorded): Promise<apid.RecordedId>;
     updateOnce(recorded: Recorded): Promise<void>;
     updateChannel(recordedId: apid.RecordedId, values: RecordedChannelUpdateValues): Promise<void>;
+    updateRecordingResult(recordedId: apid.RecordedId, values: RecordedResultUpdateValues): Promise<void>;
     updateProgramInfo(recordedId: apid.RecordedId, values: RecordedProgramUpdateValues): Promise<void>;
     removeRecording(recordedId: apid.RecordedId): Promise<void>;
     removeDropLogFileId(dropLogFileId: apid.DropLogFileId): Promise<void>;

@@ -79,8 +79,20 @@ class RecorderHarness {
                 if (row) row.isRecording = false;
             },
             updateOnce: async row => {
+                if (
+                    row.videoFiles !== undefined ||
+                    row.thumbnails !== undefined ||
+                    row.tags !== undefined ||
+                    row.dropLogFile !== undefined
+                ) {
+                    throw new Error('EntityPropertyNotFoundError: relation properties cannot be updated');
+                }
                 const index = this.recorded.findIndex(item => item.id === row.id);
                 if (index >= 0) this.recorded[index] = row;
+            },
+            updateRecordingResult: async (id, values) => {
+                const row = this.recorded.find(item => item.id === id);
+                if (row) Object.assign(row, values);
             },
             deleteRecordedWithRelatedData: async id => {
                 this.recorded = this.recorded.filter(row => row.id !== id);
@@ -149,7 +161,7 @@ class RecorderHarness {
         return new RecorderModel(
             { getLogger: () => logger },
             this.configuration,
-            { findId: async id => ({ id }), findChannelIdAndTime: async () => null },
+            { findId: async id => ({ id }), findChannelIdAndTime: async () => null, findSchedule: async () => [] },
             { findId: async id => ({ id }) },
             { findId: async id => ({ id }), updateFollowingSchedule: async () => {} },
             this.recordedDB,
