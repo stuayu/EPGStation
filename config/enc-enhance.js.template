@@ -25,47 +25,80 @@ const getDuration = filePath => {
             try {
                 const result = JSON.parse(stdout);
                 resolve(parseFloat(result.format.duration));
-            } catch (err: any) {
+            } catch (err) {
                 reject(err);
             }
         });
     });
 };
 
-// 字幕用
-Array.prototype.push.apply(args, ['-fix_sub_duration']);
-// input 設定
-Array.prototype.push.apply(args, ['-i', input]);
-// ビデオストリーム設定
-Array.prototype.push.apply(args, ['-map', '0:v', '-c:v', 'libx264']);
-// インターレス解除
-Array.prototype.push.apply(args, ['-vf', 'yadif']);
-// オーディオストリーム設定
-if (isDualMono) {
-    Array.prototype.push.apply(args, [
-        '-filter_complex',
-        'channelsplit[FL][FR]',
-        '-map', '[FL]',
-        '-map', '[FR]',
-        '-metadata:s:a:0', 'language=jpn',
-        '-metadata:s:a:1', 'language=eng',
-    ]);
-} else {
-    Array.prototype.push.apply(args, ['-map', '0:a']);
-}
-Array.prototype.push.apply(args, ['-c:a', 'aac']);
-// 字幕ストリーム設定
-Array.prototype.push.apply(args, ['-map', '0:s?', '-c:s', 'mov_text']);
-// 品質設定
-Array.prototype.push.apply(args, ['-preset', 'veryfast', '-crf', '26']);
-// 出力ファイル
-Array.prototype.push.apply(args, [output]);
+const getVideoInfo = () => new Promise(resolve => {
+    execFile(ffprobe, ['-v', '0', '-select_streams', 'v:0', '-show_streams', '-show_frames', '-read_intervals', '%+#1', '-of', 'json', input], (err, stdout) => {
+        try {
+            const result = err ? {} : JSON.parse(stdout);
+            const stream = (result.streams || [])[0] || {};
+            const frame = (result.frames || []).find(item => item.media_type === 'video' || item.stream_index === stream.index) || {};
+            resolve({ fieldOrder: stream.field_order || null, colorPrimaries: stream.color_primaries || null,
+                colorTransfer: frame.color_transfer || stream.color_transfer || null });
+        } catch (_) {
+            resolve({ fieldOrder: null, colorTransfer: null, colorPrimaries: null });
+        }
+    });
+});
+
+const getFilterListing = () => new Promise(resolve => {
+    execFile(ffmpeg, ['-hide_banner', '-filters'], (err, stdout, stderr) => resolve(err ? '' : `${stdout || ''}${stderr || ''}`));
+});
+
+const buildArgs = (codec, info, filterListing) => {
+    const result = args.slice();
+    Array.prototype.push.apply(result, ['-fix_sub_duration', '-i', input, '-map', '0:v', '-c:v', codec]);
+    const filters = [];
+    if (info.fieldOrder !== 'progressive') filters.push('yadif');
+    const pq = info.colorTransfer === 'smpte2084';
+    const bt2020 = (info.colorPrimaries || '').startsWith('bt2020');
+    const compatibleTransfer =
+        info.colorTransfer === 'arib-std-b67' || info.colorTransfer === 'smpte2084' || !info.colorTransfer
+            ? 'bt2020-10'
+            : info.colorTransfer;
+    const colorspaceFilter = `colorspace=all=bt709:iall=bt2020:itrc=${compatibleTransfer}:fast=0:format=yuv420p`;
+    if (info.colorTransfer === 'arib-std-b67' || (bt2020 && !pq)) {
+        filters.push(colorspaceFilter);
+    } else if (pq && filterListing.includes(' zscale ') && filterListing.includes(' tonemap ')) {
+        filters.push('zscale=t=linear:npl=100,format=gbrpf32le,tonemap=tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709,format=yuv420p');
+    } else if (pq) {
+        console.error('color conversion: PQ compatible BT.2020-to-BT.709 path (zscale/tonemap unavailable)');
+        filters.push(colorspaceFilter);
+    }
+    if (codec === 'h264_qsv') filters.push('format=nv12');
+    if (filters.length) Array.prototype.push.apply(result, ['-vf', filters.join(',')]);
+    if (isDualMono) {
+        Array.prototype.push.apply(result, ['-filter_complex', 'channelsplit[FL][FR]', '-map', '[FL]', '-map', '[FR]', '-metadata:s:a:0', 'language=jpn', '-metadata:s:a:1', 'language=eng']);
+    } else {
+        Array.prototype.push.apply(result, ['-map', '0:a']);
+    }
+    Array.prototype.push.apply(result, ['-c:a', 'aac']);
+    Array.prototype.push.apply(result, ['-map', '0:s?', '-c:s', 'mov_text']);
+    if ((bt2020 || info.colorTransfer === 'arib-std-b67' || pq) && /(?:h264|x264|avc)/i.test(codec)) {
+        Array.prototype.push.apply(result, ['-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709']);
+    }
+    if (codec === 'h264_videotoolbox') Array.prototype.push.apply(result, ['-b:v', '6M', '-realtime', '1', '-allow_sw', '1', '-pix_fmt', 'yuv420p', '-profile:v', 'high']);
+    else if (codec === 'h264_qsv') Array.prototype.push.apply(result, ['-preset', 'veryfast', '-global_quality', '26']);
+    else if (codec === 'h264_nvenc') Array.prototype.push.apply(result, ['-preset', 'p4', '-rc', 'vbr', '-cq', '26', '-b:v', '0', '-pix_fmt', 'yuv420p']);
+    else if (codec === 'h264_amf') Array.prototype.push.apply(result, ['-quality', 'speed', '-rc', 'vbr_peak', '-qp_i', '24', '-qp_p', '26', '-pix_fmt', 'yuv420p']);
+    else Array.prototype.push.apply(result, ['-preset', 'veryfast', '-crf', '26', '-pix_fmt', 'yuv420p']);
+    Array.prototype.push.apply(result, [output]);
+    return result;
+};
 
 (async () => {
     // 進捗計算のために動画の長さを取得
     const duration = await getDuration(input);
 
-    const child = spawn(ffmpeg, args);
+    const [info, filterListing] = await Promise.all([getVideoInfo(), getFilterListing()]);
+    const hwEncoder = process.env.HWENCODER_H264;
+    const codec = ['h264_qsv', 'h264_nvenc', 'h264_amf', 'h264_videotoolbox'].includes(hwEncoder) ? hwEncoder : 'libx264';
+    let child = spawn(ffmpeg, buildArgs(codec, info, filterListing));
 
     /**
      * エンコード進捗表示用に標準出力に進捗情報を吐き出す
@@ -163,7 +196,15 @@ Array.prototype.push.apply(args, [output]);
         throw new Error(err);
     });
 
-    child.on('close', (code) => {
+    child.on('close', code => {
+        if (code !== 0 && codec !== 'libx264') {
+            console.error(`hardware encoder ${codec} failed (${code}); retrying with software`);
+            child = spawn(ffmpeg, buildArgs('libx264', info, filterListing));
+            child.stderr.on('data', data => console.error(String(data)));
+            child.on('close', softwareCode => { process.exitCode = softwareCode; });
+            child.on('error', err => { console.error(err); process.exitCode = 1; });
+            return;
+        }
         process.exitCode = code;
     });
 

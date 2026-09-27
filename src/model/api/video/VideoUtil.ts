@@ -95,6 +95,18 @@ export default class VideoUtil implements IVideoUtil {
         const result = <any>JSON.parse(stdout);
         const streams: any[] = Array.isArray(result.streams) ? result.streams : [];
         const video = streams.find(s => s.codec_type === 'video');
+        let firstFrameTransfer: string | null = null;
+        try {
+            const frameStdout = await this.execFfprobe([
+                '-v', '0', '-select_streams', 'v:0', '-show_frames', '-read_intervals', '%+#1',
+                '-show_entries', 'frame=media_type,stream_index,color_transfer', '-of', 'json', filePath,
+            ]);
+            const frameResult = <any>JSON.parse(frameStdout);
+            const frame = Array.isArray(frameResult.frames) ? frameResult.frames[0] : undefined;
+            firstFrameTransfer = typeof frame?.color_transfer === 'string' ? frame.color_transfer : null;
+        } catch (_err) {
+            // 最初の packet が欠損・未初期化で frame probe できない素材は stream 値を使う。
+        }
         const audio = streams.find(s => s.codec_type === 'audio');
 
         return {
@@ -113,7 +125,9 @@ export default class VideoUtil implements IVideoUtil {
             avgFrameRate: typeof video?.avg_frame_rate === 'string' ? video.avg_frame_rate : null,
             rFrameRate: typeof video?.r_frame_rate === 'string' ? video.r_frame_rate : null,
             colorPrimaries: typeof video?.color_primaries === 'string' ? video.color_primaries : null,
-            colorTransfer: typeof video?.color_transfer === 'string' ? video.color_transfer : null,
+            colorTransfer: firstFrameTransfer !== null
+                ? firstFrameTransfer
+                : typeof video?.color_transfer === 'string' ? video.color_transfer : null,
             colorSpace: typeof video?.color_space === 'string' ? video.color_space : null,
             bitsPerRawSample: video?.bits_per_raw_sample ?? null,
         };

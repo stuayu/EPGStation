@@ -57,6 +57,8 @@ export interface SourceCapabilities {
     colorPrimaries?: ColorPrimaries;
     /** 転送特性。 */
     transfer?: TransferKind;
+    /** ffprobe の生 transfer 名。色変換の入力伝達特性に使う。 */
+    transferName?: string;
     /** HDR 種別。 */
     hdr: HdrKind;
     /** 入力映像の分類。 */

@@ -67,6 +67,8 @@ const getTransfer = (value: string | undefined): { hdr: HdrKind; transfer: Trans
             return { hdr: 'pq', transfer: 'pq' };
         case 'bt709':
             return { hdr: 'sdr', transfer: 'bt709' };
+        case 'bt2020-10':
+        case 'bt2020-12':
         case 'smpte170m':
         case 'smpte240m':
         case 'bt470bg':
@@ -127,6 +129,7 @@ export const toSourceCapabilities = (stream: FfprobeVideoStream): SourceCapabili
         fieldOrder: scan.fieldOrder,
         colorPrimaries: getPrimaries(stream.color_primaries),
         transfer: transfer.transfer,
+        transferName: stream.color_transfer,
         hdr: transfer.hdr,
         sourceClass: 'unknown',
         confidence: values >= 7 ? 'high' : values >= 4 ? 'medium' : 'low',

@@ -1,5 +1,5 @@
 import { ChildProcess } from 'child_process';
-import { inject, injectable } from 'inversify';
+import { inject, injectable, optional } from 'inversify';
 import internal from 'stream';
 import AribSubtitleTimedMetadataTransform from '../llhls/AribSubtitleTimedMetadataTransform';
 import * as apid from '../../../../../api';
@@ -23,6 +23,8 @@ import IFmp4Packager, { Fmp4PackagerTrackRole } from '../llhls/IFmp4Packager';
 import AudioTrackUtil from '../util/AudioTrackUtil';
 import ISourceAnalyzer from '../../../stream/capability/ISourceAnalyzer';
 import { replaceDeinterlacePlaceholder, toDeinterlaceInput } from '../../../../util/DeinterlaceUtil';
+import { colorConversionFor, replaceToneMapPlaceholder, TONEMAP_PLACEHOLDER } from '../../../../util/HDRToneMapUtil';
+import IHardwareEncoderDetector from '../../../encoder/IHardwareEncoderDetector';
 import IHLSFileDeleterModel from '../util/IHLSFileDeleterModel';
 import IHLSMemoryStoreModel, { HLSMemoryTrackRole } from '../util/IHLSMemoryStoreModel';
 import ILiveStreamBaseModel, { LiveStreamOption } from './ILiveStreamBaseModel';
@@ -79,6 +81,7 @@ export default abstract class LiveStreamBaseModel
         @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
         @inject('ILiveStreamSourceManageModel') liveStreamSourceManageModel?: ILiveStreamSourceManageModel,
         @inject('ISourceAnalyzer') sourceAnalyzer?: ISourceAnalyzer,
+        @inject('IHardwareEncoderDetector') @optional() hardwareEncoderDetector?: IHardwareEncoderDetector,
     ) {
         super(configure, logger, processManager, fileDeleter, socketIO);
 
@@ -88,9 +91,11 @@ export default abstract class LiveStreamBaseModel
         this.affiliationCollector = affiliationCollector;
         this.eitPresentStore = eitPresentStore;
         this.sourceAnalyzer = sourceAnalyzer;
+        this.hardwareEncoderDetector = hardwareEncoderDetector;
     }
 
     private sourceAnalyzer: ISourceAnalyzer | undefined;
+    private hardwareEncoderDetector: IHardwareEncoderDetector | undefined;
 
     /**
      * in-memory HLS (ディスクに書き出さない fMP4 HLS 配信) モードか判定する
@@ -185,18 +190,42 @@ export default abstract class LiveStreamBaseModel
      * @return Promise<string>
      */
     private async resolveDeinterlace(cmd: string): Promise<string> {
-        if (cmd.includes('%DEINTERLACE%') === false) return cmd;
+        const needsDeinterlace = cmd.includes('%DEINTERLACE%');
+        const needsToneMap = cmd.includes(TONEMAP_PLACEHOLDER);
+        const needsRigayaColorLog =
+            /--output-depth\s+8/u.test(cmd) && /(?:QSVEncC|NVEncC|VCEEncC)/iu.test(cmd);
+        if (needsDeinterlace === false && needsToneMap === false && needsRigayaColorLog === false) return cmd;
         if (this.sourceAnalyzer === undefined || this.processOption === null) {
-            return replaceDeinterlacePlaceholder(cmd);
+            if (needsRigayaColorLog) {
+                this.log.stream.info('color conversion skipped: rigaya path has no verified colorspace option; source color unknown');
+            }
+            return replaceToneMapPlaceholder(replaceDeinterlacePlaceholder(cmd), undefined, false);
         }
 
         try {
             const source = await this.sourceAnalyzer.analyzeLiveChannel(this.processOption.channelId);
-            return replaceDeinterlacePlaceholder(cmd, toDeinterlaceInput(source));
+            const conversion = colorConversionFor(source, 8);
+            if (conversion !== 'none') {
+                this.log.stream.info(`color conversion: ${conversion} (primaries: ${source.colorPrimaries ?? 'unknown'}, transfer: ${source.transferName ?? source.transfer ?? 'unknown'})`);
+                if (conversion === 'pq-tonemap' && this.hardwareEncoderDetector?.supportsToneMapping() === false) {
+                    this.log.stream.warn('PQ tone mapping unavailable; using BT.2020 SDR-compatible conversion');
+                }
+            }
+            if (cmd.includes('--output-depth 8') && /(?:QSVEncC|NVEncC|VCEEncC)/iu.test(cmd) && conversion !== 'none') {
+                this.log.stream.info('color conversion skipped: rigaya path has no verified colorspace option');
+            }
+            return replaceToneMapPlaceholder(
+                replaceDeinterlacePlaceholder(cmd, toDeinterlaceInput(source)),
+                source,
+                this.hardwareEncoderDetector?.supportsToneMapping() ?? true,
+            );
         } catch (err) {
-            this.log.stream.warn('live source analysis failed; keep deinterlace enabled');
+            this.log.stream.warn('live source analysis failed; keep deinterlace enabled and tone mapping disabled');
+            if (needsRigayaColorLog) {
+                this.log.stream.info('color conversion skipped: rigaya path has no verified colorspace option; source color unknown');
+            }
             this.log.stream.debug(err);
-            return replaceDeinterlacePlaceholder(cmd);
+            return replaceToneMapPlaceholder(replaceDeinterlacePlaceholder(cmd), undefined, false);
         }
     }
 

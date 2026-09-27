@@ -3,6 +3,7 @@ import { StreamAudioParam, StreamContainer, StreamingCmd, StreamProfile, StreamV
 import IConfiguration from '../IConfiguration';
 import { recordedStreamPacingArgs } from '../../util/RecordedStreamPacing';
 import { DEINTERLACE_PLACEHOLDER } from '../../util/DeinterlaceUtil';
+import { TONEMAP_PLACEHOLDER } from '../../util/HDRToneMapUtil';
 import IStreamProfileManageModel, { StreamProfileKind } from './IStreamProfileManageModel';
 import IHardwareEncoderDetector from '../encoder/IHardwareEncoderDetector';
 import { StreamEncoderCapability } from '../../util/StreamArgsUtil';
@@ -251,19 +252,38 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
             return this.buildRigayaCmd(scope, container, video, audio, selectedEncoder);
         }
         const videoCodec = selectedEncoder?.ffmpegCodecs ?? requestedVideoCodec;
+        const isHevcOutput = /(?:hevc|265)/iu.test(videoCodec);
         const videoBitrate = `${typeof video?.bitrate === 'number' ? video.bitrate : 3000}k`;
         const audioCodec = audio?.codec ?? (container === 'webm' ? 'libvorbis' : 'aac');
         const audioBitrate = `${typeof audio?.bitrate === 'number' ? audio.bitrate : 192}k`;
         // H.264 の High/Main は 10bit 入力を受けられないため、8bit へ明示変換する。
-        // HEVC 出力 (Main10 を含む) は pixel format を上書きしない。
-        const h264PixelFormat = /264/u.test(videoCodec) ? ' -pix_fmt yuv420p' : '';
+        // 自動生成 HEVC は Main (8bit) で出力する。Main10 は別の明示 preset で扱う。
+        const isH264Output = /264/u.test(videoCodec);
+        const isEightBitSdrOutput = isH264Output || isHevcOutput;
+        const isQsv = videoCodec === 'h264_qsv' || videoCodec === 'hevc_qsv';
+        const eightBitPixelFormat = isEightBitSdrOutput ? (isQsv ? '' : ' -pix_fmt yuv420p') : '';
+        const tonemapFilter = isEightBitSdrOutput ? `${TONEMAP_PLACEHOLDER},` : '';
+        const encoderFilter = isEightBitSdrOutput && isQsv ? ',format=nv12' : '';
+        const videoToolboxArgs = videoCodec.includes('videotoolbox') ? ` -realtime ${isLive ? '1' : '0'} -allow_sw 0` : '';
+        const gopArgs = videoCodec.includes('videotoolbox') ? ' -g 30' : '';
+        const speedArgs = videoCodec.includes('videotoolbox')
+            ? ''
+            : videoCodec.includes('_nvenc')
+              ? ' -preset p4'
+              : videoCodec.includes('_amf')
+                ? ' -quality speed'
+                : ' -preset veryfast';
+        const tuneArgs = videoCodec === 'libx264' || videoCodec === 'libx265' ? ' -tune fastdecode,zerolatency' : '';
+        const hlsGopArgs = videoCodec.includes('lib')
+              ? ' -g 15 -keyint_min 15 -sc_threshold 0'
+              : ' -g 15';
         const hvc1Tag =
             /(?:hevc|265)/iu.test(videoCodec) && (container === 'mp4' || container === 'hls') ? ' -tag:v hvc1' : '';
 
         const scaleFilter = this.buildScaleFilter(video);
         // 素材はプリセット生成時点では未確定。配信開始時に %DEINTERLACE% を解決する。
         // scale が無い場合もプレースホルダを残し、解決側で不要な -vf ごと除去する。
-        const vfFilter = scaleFilter === null ? DEINTERLACE_PLACEHOLDER : `${DEINTERLACE_PLACEHOLDER},${scaleFilter}`;
+        const vfFilter = `${DEINTERLACE_PLACEHOLDER},${scaleFilter === null ? '' : `${scaleFilter},`}${tonemapFilter}${encoderFilter.replace(/^,/u, '')}`.replace(/,$/u, '');
         const vf = ` -vf ${vfFilter}`;
 
         const input = isEncodedSource ? '-ss %SS% -i %INPUT%' : '-i pipe:0';
@@ -292,12 +312,13 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
         switch (container) {
             case 'm2tsll':
                 return (
-                    `%FFMPEG% %DUALMONOMODE% ${m2tsllInputFormat}${m2tsllInputAnalysis} -fflags nobuffer ${pacedInput} ` +
+                    `%FFMPEG% %DUALMONOMODE% ${m2tsllInputFormat}${m2tsllInputAnalysis} ${pacedInput} ` +
                     `${m2tsllMap} ${m2tsllStreamCopy} -flags low_delay ` +
                     // TS は PAT/PMT を短周期で送るため probe を 500KB に制限し、初回映像待ちを短くする。
                     `-ignore_unknown -max_delay 250000 -max_interleave_delta 1 -threads 0 ` +
-                    `-c:a ${audioCodec} -ar 48000 -b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${h264PixelFormat} -flags +cgop${vf} ` +
-                    `-b:v ${videoBitrate} -preset veryfast -y -f mpegts pipe:1`
+                    `-c:a ${audioCodec} -ar 48000 -b:a ${audioBitrate} -ac 2 %AUDIOFILTER% ` +
+                    `-c:v ${videoCodec}${eightBitPixelFormat}${videoToolboxArgs} -flags +cgop${gopArgs}${vf} ` +
+                    `-b:v ${videoBitrate}${speedArgs} -y -f mpegts pipe:1`
                 );
             case 'webm':
                 return (
@@ -308,21 +329,23 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
             case 'mp4':
                 return (
                     `%FFMPEG% ${realtime}%DUALMONOMODE% ${pacedInput} -sn -threads 0 %AUDIOMAP% -c:a ${audioCodec} -ar 48000 ` +
-                    `-b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${h264PixelFormat}${hvc1Tag}${vf} -b:v ${videoBitrate} -profile:v baseline -preset veryfast ` +
-                    `-tune fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4 pipe:1`
+                    `-b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${eightBitPixelFormat}${videoToolboxArgs}${hvc1Tag}${vf} -b:v ${videoBitrate} -profile:v ${isH264Output ? 'baseline' : 'main'}${speedArgs}${tuneArgs} ` +
+                    `-movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4 pipe:1`
                 );
             case 'hls':
                 return (
-                    `%FFMPEG% ${realtime}%DUALMONOMODE% -fflags nobuffer ${input} -sn -threads 0 ` +
+                    // Mirakurun の live 入力は実時間で届くため、ここで -re を重ねると二重に律速する。
+                    `%FFMPEG% %DUALMONOMODE% ${input} -sn -threads 0 ` +
                     `%AUDIOMAP% -c:a ${audioCodec} -ar 48000 -b:a ${audioBitrate} -ac 2 %AUDIOFILTER% ` +
-                    `-c:v ${videoCodec}${h264PixelFormat}${hvc1Tag}${vf} -b:v ${videoBitrate} -preset veryfast -flags +cgop ` +
-                    `-g 15 -keyint_min 15 -sc_threshold 0 -movflags empty_moov+default_base_moof+frag_keyframe -y -f mp4 pipe:1`
+                    `-c:v ${videoCodec}${eightBitPixelFormat}${videoToolboxArgs}${hvc1Tag}${vf} -b:v ${videoBitrate}${speedArgs} -flags +cgop ` +
+                    `${hlsGopArgs} -movflags empty_moov+default_base_moof+frag_keyframe -y -f mp4 pipe:1`
                 );
             case 'm2ts':
             default:
                 return (
                     `%FFMPEG% ${realtime}%DUALMONOMODE% ${pacedInput} -sn -threads 0 %AUDIOMAP% -c:a ${audioCodec} -ar 48000 ` +
-                    `-b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${h264PixelFormat}${vf} -b:v ${videoBitrate} -preset veryfast -y -f mpegts pipe:1`
+                    `-b:a ${audioBitrate} -ac 2 %AUDIOFILTER% -c:v ${videoCodec}${eightBitPixelFormat}${videoToolboxArgs}${vf} ` +
+                    `-b:v ${videoBitrate}${speedArgs}${gopArgs} -y -f mpegts pipe:1`
                 );
         }
     }
@@ -362,7 +385,7 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
             `${bin} --avhw ${input} -c ${codec} --profile main --output-depth 8 ${quality} --repeat-headers ` +
             `--vbr ${videoBitrate} --max-bitrate ${videoBitrate * 2} --gop-len 30${strictGop} --bframes 0 ` +
             `--output-res -2x${height}${sync} --audio-copy --output-format mpegts -o -`;
-        const ffmpegInput = `%FFMPEG% %DUALMONOMODE% -f mpegts ${isFileInput ? '' : '-fflags nobuffer '}-i pipe:0`;
+        const ffmpegInput = `%FFMPEG% %DUALMONOMODE% -f mpegts -i pipe:0`;
         const tag = codec === 'hevc' && (container === 'mp4' || container === 'hls') ? ' -tag:v hvc1' : '';
         const audioArgs =
             container === 'm2tsll'

@@ -210,7 +210,7 @@ test('既存 stream 設定だけの環境は従来のプリセットと生成 cm
     assert.equal(profiles.getLiveProfiles()[0].cmd, legacyCmd);
     assert.equal(
         profiles.getLiveProfiles()[1].cmd,
-        '%FFMPEG% -re %DUALMONOMODE% -i pipe:0 -sn -threads 0 %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2 %AUDIOFILTER% -c:v libx264 -pix_fmt yuv420p -vf %DEINTERLACE%,scale=-2:720 -b:v 2500k -profile:v baseline -preset veryfast -tune fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4 pipe:1',
+        '%FFMPEG% -re %DUALMONOMODE% -i pipe:0 -sn -threads 0 %AUDIOMAP% -c:a aac -ar 48000 -b:a 128k -ac 2 %AUDIOFILTER% -c:v libx264 -pix_fmt yuv420p -vf %DEINTERLACE%,scale=-2:720,%TONEMAP% -b:v 2500k -profile:v baseline -preset veryfast -tune fastdecode,zerolatency -movflags frag_keyframe+empty_moov+faststart+default_base_moof -y -f mp4 pipe:1',
     );
     assert.deepEqual(
         candidates.slice(0, 2).map(preset => preset.id),
@@ -257,7 +257,7 @@ test('cmd 省略プリセットの生成コマンドは音声トラックのプ�
     assert.match(profiles[0].cmd, /-flags low_delay/u);
     assert.match(profiles[0].cmd, /-probesize 500000/u);
     assert.ok(profiles[0].cmd.indexOf('-probesize 500000') < profiles[0].cmd.indexOf('-i pipe:0'));
-    assert.ok(profiles[0].cmd.indexOf('-fflags nobuffer') < profiles[0].cmd.indexOf('-i pipe:0'));
+    assert.doesNotMatch(profiles[0].cmd, /-fflags nobuffer/u);
     assert.match(profiles[1].cmd, /%AUDIOMAP%/u);
 });
 

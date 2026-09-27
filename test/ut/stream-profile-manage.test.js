@@ -29,7 +29,7 @@ test('m2tsll の生成 cmd は入力オプションを -i より前、low_delay 
 
     assert.ok(cmd.indexOf('-analyzeduration 500000') < input);
     assert.ok(cmd.indexOf('-probesize 500000') < input);
-    assert.ok(cmd.indexOf('-fflags nobuffer') < input);
+    assert.doesNotMatch(cmd, /-fflags nobuffer/u);
     assert.ok(cmd.indexOf('-flags low_delay') > input);
 });
 

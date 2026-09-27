@@ -7,7 +7,17 @@
 `hardwareEncoder` は `auto` (既定) / `qsv` / `nvenc` / `vce` / `videotoolbox` /
 `software` を選ぶ。Service 起動時に `HardwareEncoderDetector` が一度だけ
 QSVEncC / NVEncC / VCEEncC の `--check-hw` (終了コードと出力) と、設定された ffmpeg の
-`-hide_banner -encoders` を調べる。結果は singleton にキャッシュし、配信開始ごとの外部プロセス起動は行わない。
+`-hide_banner -encoders` を調べる。名前が一覧にある候補は H.264 / HEVC ごとに黒画面を1フレーム試し変換し、
+終了コード 0 のみ利用可能とする。3秒で timeout し、QSV は `format=nv12`、ほかは `yuv420p` を使う。
+結果は singleton にキャッシュし、配信開始ごとの外部プロセス起動は行わない。
+
+同じ起動時検出で HEVC Main10 の1フレームを一時ファイルに作り、OS別の FFmpeg HW decoder
+(macOS: VideoToolbox、Windows: D3D11VA / DXVA2 / CUDA / QSV、Linux: VAAPI / CUDA / QSV)
+で実際に復号できるかも試す。高さ2160以上の10bit HEVCを FFmpeg で再エンコードするときだけ、
+成功した decoder を `-hwaccel` として入力前に指定する。HW frame surface は後段へ渡さず、既存の
+scale / 色変換フィルターとの互換性を保つ。ソフトウェア x265 がなく試験素材を作れない場合や
+HW decode を確認できない場合は software decode を使う。copy と rigaya 経路は変更しない。
+検出結果は起動ログの `hevc-main10-decode` に記録する。
 
 `cmd` を省略した配信プロファイルは、選択結果に応じて ffmpeg の `h264_qsv` /
 `hevc_qsv`、`h264_nvenc` / `hevc_nvenc`、`h264_amf` / `hevc_amf`、
@@ -17,6 +27,8 @@ rigaya の検出に成功した場合は QSVEncC / NVEncC / VCEEncC と ffmpeg r
 HEVC の MP4/fMP4 出力には `-tag:v hvc1` を付ける。手書き `cmd` は一切変更しない。
 
 検出失敗・タイムアウト・手動指定の利用不可は software へフォールバックし、info/warn ログへ残す。
+VideoToolbox は bitrate を必須として `-b:v` を指定し、live は `-realtime 1 -allow_sw 0` を使う。
+8bit SDR 出力の色変換は HDR フラグではなく、原色と伝達特性で決める。録画素材は ffprobe の stream 情報に加えて最初にデコードした映像 frame の `color_transfer` を読み、取得できない場合は stream 値へ戻す。BT.2020 原色の SDR (BT.2020-10/12、BT.709、SMPTE 170M 等) と HLG は、縮小後に ffmpeg `colorspace` で BT.709 へ変換し、HLG に tone-map は掛けない。日本の4K放送の HDR は HLG を使い、HLG は SDR 互換表示を前提にした方式 (ITU-R BT.2100 / BT.2408)。SDR 番組を HLG と誤判定して hable 等を掛けると暗さや色温度のずれが出るため、BT.2020 SDR 互換経路を使う。本物の HLG も SDR 表示での互換画を保つ。PQ は `zscale` / `tonemap` が両方ある場合だけ tone-map し、無い場合は BT.2020 SDR 互換変換へ落として warning を出す。出力へ BT.709 の原色・伝達特性・行列タグを明示する。10bit SDR/HEVC Main10 出力と rigaya 系エンコーダは変換対象外。rigaya は対応オプションを確認できないため入力画素を維持し info ログを出す。
 `GET /api/config` の `hardwareEncoder` と設定フォームの選択肢は同じ検出結果を使う。
 
 ## MPEG-2 TS の Original 直接再生
@@ -365,8 +377,8 @@ in-memory HLS はパッケージング開始から15秒たっても最初の ini
 
 - **パート長 = GOP 長**。fMP4 のフラグメント境界はキーフレーム (`frag_keyframe`) であり、1 フラグメント = 1 パートになるため、`-g` がそのままパート長になる。**遅延を詰めたいときはここを短くする**。QSV (`hevc_qsv`) 実運用で `-g 8` (≒0.27 秒、29.97fps) まで詰めても実測でエンコードが余裕を持って実時間に追いつくことを確認済み (後述の `-flags low_delay` 除去後)。より頻繁な I フレームは同一ビットレートでの実効画質をわずかに下げるトレードオフがある。
 - **セグメント長 = パート長 × `partsPerSegment`**。`#EXT-X-TARGETDURATION` は整数秒でしか書けず 1 秒が下限なので、既定は GOP 15 フレーム (≒0.5 秒) × 2 パート = 1 秒セグメントにしている (`LiveStreamBaseModel.LIVE_HLS_PARTS_PER_SEGMENT` / `RecordedStreamBaseModel.RECORDED_HLS_PARTS_PER_SEGMENT`)。
-- **ライブ入力に `-re` を付けない**。`-re` は入力をリアルタイム速度に制限するオプションで、Mirakurun から流れてくる TS は元々リアルタイムなので二重の律速になり、遅延だけが増える (低遅延の m2ts-ll 側には元から付いていない)。代わりに `-fflags nobuffer` で ffmpeg 内部の入力バッファリングを抑える。
-- **M2TS-LL の生成 cmd は tsreadex 経由だけ解析を 200000 へ短縮する**。`-analyzeduration 200000 -probesize 200000 -fflags nobuffer` を `-i` より前に置き、tsreadex が PAT/PMT を正規化済みの入力で probe 待ちを短くする。tsreadex 無しは `500000` のままにして放送波の構造を解析する。実測は最初の 300KB 出力で 3.9 秒から 3.3 秒、0/100000 は 2.8 秒だが PMT 検出前に走り出す危険があるため不採用。`-flags low_delay` は出力側へ置く。利用者が手書きした cmd は自動変更しない。サーバーログにはクライアントの再生開始時刻が無いため、起動3秒以下・切替3秒以下への効果は Playwright で再測定する。
+- **ライブ HLS / M2TS-LL の自動生成 cmd は `-fflags nobuffer` を付けない**。ffmpeg 9.0.2 の実時間入力測定では、4K HEVC 10bit の HLS が nobuffer 有り 349/599 frame・初 byte 3.991 秒・初 moof 4.661 秒から、無しで 599/599・2.112 秒・2.664 秒へ改善。M2TS-LL も 349/599 frame・初 byte 4.364 秒から、無しで 599/599・0.560 秒へ改善した。1080i MPEG-2 は HLS が 240/300・1.693 秒 / 3.045 秒から 300/300・1.437 秒 / 1.613 秒 (byte / moof)、M2TS-LL が 288/300・0.937 秒から 300/300・0.542 秒になった。PTS 最大間隔は HLS 4K 16.684 ms / 1080i 33.367 ms、M2TS-LL 1080i 33.367 ms。4K M2TS-LL は599 frameを出したが、PTS間隔が1回だけ33.333 ms (通常16.684 msの約2倍) になった。HLS と 1080i の M2TS-LL に通常間隔の1.5倍を超える区間は無かった。ライブ HLS は Mirakurun 入力が実時間なので `-re` も付けず、二重律速を避ける。手書き cmd は利用者設定を尊重する。
+- **M2TS-LL の生成 cmd は tsreadex 経由だけ解析を 200000 へ短縮する**。`-analyzeduration 200000 -probesize 200000` を `-i` より前に置き、tsreadex が PAT/PMT を正規化済みの入力で probe 待ちを短くする。tsreadex 無しは `500000` のままにして放送波の構造を解析する。`-flags low_delay` は出力側へ置く。利用者が手書きした cmd は自動変更しない。
 - ライブのプレイリストウィンドウは 6 セグメント、メモリ保持は 12 セグメント、再生開始は 2 セグメント貯まった時点 (秒数はセグメント長に依存)。
 - クライアントの hls.js は `lowLatencyMode: true` / `liveSyncDurationCount: 3` / `maxLiveSyncPlaybackRate: 1` で運用する。`maxLiveSyncPlaybackRate: 1` は `LatencyController` による追いつき再生 (`playbackRate` の書き換え) だけを止めるための指定で、パート単位の取得とブロッキングプレイリスト要求は有効なまま残る。
 
@@ -773,13 +785,13 @@ encoded の mp4 / webm はファイルを直接入力する方式で、従来ど
 - live は低遅延、recorded は品質寄り。ただし LL-HLS のため GOP は短く保つ
 - エンコーダ能力の選択結果は 60 秒 TTL でキャッシュする
 
-設計上、コンテナ / Transport と映像特性を混同しない。MPEG-TS でも BS4K 変換後は progressive として扱う。録画ファイルの fps を 29.97 に固定せず、HEVC Main10/HDR preserve は10bitを維持する。一方、H.264 (8bit) へ再エンコードする配信だけは `yuv420p` へ落とす。HDR→SDR は `format` だけで変換せず、トーンマップ・色域・メタデータを変換する。
+設計上、コンテナ / Transport と映像特性を混同しない。MPEG-TS でも BS4K 変換後は progressive として扱う。録画ファイルの fps を 29.97 に固定せず、HEVC Main10/HDR preserve は10bitを維持する。一方、H.264 / HEVC Main8 へ再エンコードする配信は `yuv420p` へ落とす。BT.2020 SDR と HLG は解像度縮小の後で `colorspace` により BT.709 へ変換する。PQ は zscale / tonemap が揃う場合だけ tone-map し、未搭載時は BT.2020 SDR 互換色域変換を使う。
 
-## HDR / SDR トーンマッピング (Phase 6)
+## 色域・HDR / SDR 変換
 
-HDR (`hlg` / `pq`) を `tone-map` または `sdr` で配信するときだけ、ffmpeg は `zscale=t=linear:npl=100` → `tonemap=hable:desat=0` → BT.709 変換 → `format=yuv420p` の順で処理する。解像度 `scale` は色変換後に置き、出力メタデータも BT.709 にする。rigaya 系は `--vpp-colorspace hdr2sdr=hable` と BT.709 の color metadata を使う。
+8bit SDR への色変換は primaries と最初にデコードした frame の transfer で決める。ffprobe frame 値が無い場合は stream 値へ戻す。BT.2020 原色の SDR は実際の SDR transfer を指定して `colorspace=all=bt709:iall=bt2020:itrc=...:fast=0:format=yuv420p` を適用する。HLG (`arib-std-b67`) は BT.2020 SDR (`bt2020-10`) とみなして同じ変換を行い、tone-map はしない。4K放送の HLG は SDR 互換表示を想定した方式で、hable を誤適用したときの暗化・色温度変化も避けられる。PQ (`smpte2084`) は `zscale` と `tonemap` が両方ある場合、`zscale=t=linear:npl=100` → `tonemap=hable:desat=0` → BT.709 変換 → `format=yuv420p` の順で処理する。どちらかが無い場合は HLG と同じ BT.2020 SDR 互換経路を使い warning を出す。解像度 `scale` は色変換より前に置き、出力メタデータは BT.709 にする。rigaya 系は検証済み色変換オプションがないため色変換せず、info ログに残す。
 
-`preserve` は BT.2020 / HLG・PQ / 10bit を維持する。SDR 入力には HDR トーンマップを付けない。映像補正は `VideoCorrectionUtil` の純粋関数で決め、`auto` は解析に頼らず追加補正しない。ライブで輝度解析は行わない。
+10bit 出力と `preserve` は画素値を変換しない。BT.709 primaries の SDR 入力には色変換しない。映像補正は `VideoCorrectionUtil` の純粋関数で決め、`auto` は解析に頼らず追加補正しない。ライブで輝度解析は行わない。
 
 ## データ放送の録画再生時刻
 

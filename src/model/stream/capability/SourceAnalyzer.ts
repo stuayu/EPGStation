@@ -186,6 +186,7 @@ export default class SourceAnalyzer implements ISourceAnalyzer {
             avg_frame_rate: info.avgFrameRate ?? undefined,
             r_frame_rate: info.rFrameRate ?? undefined,
             color_transfer: info.colorTransfer ?? undefined,
+            // VideoUtil は最初のデコード済みフレームの transfer を stream 値より優先して返す。
             color_primaries: info.colorPrimaries ?? undefined,
         });
         source.transport = this.transportFromFormatName(info.formatName) ?? this.transportFromPath(filePath);
