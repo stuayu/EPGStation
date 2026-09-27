@@ -57,7 +57,9 @@ test('createReserves は時間順スイープと先着チューナー割当を�
 });
 
 test('Phase 0 コーパスで planner の完全録画数と欠損時間が legacy より悪化しない', () => {
-    const reserves = fixture.reserves.map((row, index) => ({ ...row, id: row.id, priority: index }));
+    const model = makeModel();
+    const reserves = fixture.reserves.map(row => makeReserve(row));
+    const rank = new Map([...reserves].sort(model.sortReserve).map((reserve, index) => [reserve.id, index]));
     const plans = planSchedule({
         reservations: reserves.map(reserve => ({
             id: reserve.id,
@@ -68,7 +70,7 @@ test('Phase 0 コーパスで planner の完全録画数と欠損時間が legac
             allowEndLack: reserve.allowEndLack,
             isSkip: false,
             isOverlap: false,
-            priority: reserve.priority,
+            priority: rank.get(reserve.id),
         })),
         tuners: fixture.tuners,
         timing: resolveRecordingTimingConfig({}, 0, 0),
@@ -104,7 +106,7 @@ test('Phase 0 コーパスで planner の完全録画数と欠損時間が legac
     assert.ok(plannerSwitches <= legacySwitches, `planner ${plannerSwitches} / legacy ${legacySwitches}`);
     assert.deepEqual(
         conflictDifferences.sort((a, b) => a - b),
-        [3, 5],
+        [],
     );
 });
 
@@ -190,6 +192,15 @@ test('sortReserve は時刻指定手動、通常手動、ルールの順で優�
     );
 });
 
+test('sortReserve は既定 priority では旧順を保ち、priority を先に比較する', () => {
+    const model = makeModel();
+    const sorted = [makeReserve({ id: 1, priority: 3 }), makeReserve({ id: 2, priority: 5 })].sort(model.sortReserve);
+    assert.deepEqual(
+        sorted.map(reserve => reserve.id),
+        [2, 1],
+    );
+});
+
 test('予約差分は conflictInfo と plannedTunerIndex の変更を保存対象にする', () => {
     const model = makeModel();
     const previous = makeReserve({ id: 1, programId: 9, plannedTunerIndex: 0, conflictInfo: null });
@@ -221,6 +232,16 @@ test('checkSingleReserveConflict は既存予約を競合させる手動予約�
     await assert.rejects(
         model.checkSingleReserveConflict(makeReserve({ id: 2, channel: 'GR-2', updateTime: 2 })),
         /ReservationManageModelAddReserveConflict/,
+    );
+});
+
+test('上位の手動予約は PREEMPT_LOWER_PRIORITY で下位予約を押し出して追加できる', async () => {
+    const model = makeModel({ findTimeRanges: async () => [makeReserve({ id: 1, priority: 2, channel: 'GR-1' })] });
+    model.setTuners([{ types: ['GR'], index: 0, name: 'GR', command: '', isAvailable: true }]);
+    await assert.doesNotReject(
+        model.checkSingleReserveConflict(
+            makeReserve({ id: undefined, channel: 'GR-2', priority: 5, conflictPolicy: 'PREEMPT_LOWER_PRIORITY' }),
+        ),
     );
 });
 

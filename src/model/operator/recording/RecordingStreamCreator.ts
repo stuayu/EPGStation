@@ -12,6 +12,7 @@ import IMirakurunClientModel from '../../IMirakurunClientModel';
 import LongTimer from '../../../util/LongTimer';
 import IRecordingStreamCreator from './IRecordingStreamCreator';
 import { resolveRecordingTimingConfig } from './RecordingTimingConfig';
+import { toMirakurunPriority } from '../reservation/ReservationPriorityUtil';
 
 interface TunerProgram {
     reserve: Reserve;
@@ -332,7 +333,10 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
     private getStream(reserve: Reserve, abortSignal?: AbortSignal): Promise<http.IncomingMessage> {
         const mirakurun = this.mirakurunClientModel.getClient();
         const config = this.configuration.getConfig();
-        const priority = reserve.isConflict ? config.conflictPriority : config.recPriority;
+        const priority = toMirakurunPriority(
+            reserve.isConflict ? config.conflictPriority : config.recPriority,
+            reserve.priority,
+        );
         this.log.system.info(
             `recording stream request: reserveId: ${reserve.id}, programId: ${reserve.programId ?? 'time-specified'},` +
                 ` channelId: ${reserve.channelId}, priority: ${priority},` +

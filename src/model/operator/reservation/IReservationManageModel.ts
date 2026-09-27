@@ -5,7 +5,7 @@ import Reserve from '../../../db/entities/Reserve';
 export default interface IReservationManageModel {
     setTuners(tuners: mapid.TunerDevice[]): void;
     getBroadcastStatus(): Promise<apid.BroadcastStatus>;
-    add(option: apid.ManualReserveOption): Promise<apid.ReserveId>;
+    add(option: apid.ManualReserveOption): Promise<apid.AddedReserve>;
     addEventRelay(programId: apid.ProgramId, parentReserve: Reserve): Promise<apid.ReserveId | null>;
     update(reserveId: apid.ReserveId, isSuppressLog?: boolean): Promise<void>;
     updateRule(ruleId: apid.RuleId, isSuppressLog?: boolean, isFirstUpdate?: boolean): Promise<void>;

@@ -301,7 +301,12 @@ export default class RuleDB implements IRuleDB {
                 typeof rule.reserveOption.periodToAvoidDuplicate === 'undefined'
                     ? null
                     : rule.reserveOption.periodToAvoidDuplicate,
-            allowEndLack: rule.reserveOption.allowEndLack,
+            allowEndLack:
+                (rule.reserveOption.conflictPolicy ??
+                    (rule.reserveOption.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT')) === 'ALLOW_END_LACK',
+            priority: rule.reserveOption.priority ?? 3,
+            conflictPolicy:
+                rule.reserveOption.conflictPolicy ?? (rule.reserveOption.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT'),
             tags: typeof rule.reserveOption.tags === 'undefined' ? null : JSON.stringify(rule.reserveOption.tags),
             parentDirectoryName: null,
             directory: null,
@@ -431,6 +436,8 @@ export default class RuleDB implements IRuleDB {
             reserveOption: {
                 enable: rule.enable,
                 allowEndLack: rule.allowEndLack,
+                priority: rule.priority,
+                conflictPolicy: rule.conflictPolicy as apid.ConflictPolicy,
                 avoidDuplicate: rule.avoidDuplicate,
             },
         };

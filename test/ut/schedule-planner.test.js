@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { planSchedule } = require('../../dist/model/operator/reservation/planner/SchedulePlanner');
+const { toMirakurunPriority } = require('../../dist/model/operator/reservation/ReservationPriorityUtil');
 
 const timing = { prepMs: 120000, startMarginMs: 0, endMarginMs: 0 };
 const reserve = (id, channel, channelType, startAt, endAt, values = {}) => ({
@@ -12,6 +13,14 @@ const reserve = (id, channel, channelType, startAt, endAt, values = {}) => ({
     startAt,
     endAt,
     ...values,
+});
+
+test('Mirakurun priority は config 基準値の周囲へ予約 priority を写す', () => {
+    assert.equal(toMirakurunPriority(2, 3), 2);
+    assert.equal(toMirakurunPriority(2, 5), 4);
+    assert.equal(toMirakurunPriority(2, 1), 0);
+    assert.equal(toMirakurunPriority(-1, 1), -1);
+    assert.equal(toMirakurunPriority(2, undefined), 2);
 });
 
 test('増加路で多波対応チューナーの偽競合を解消する', () => {
@@ -30,7 +39,10 @@ test('増加路で多波対応チューナーの偽競合を解消する', () =>
         plans.map(plan => plan.conflict),
         [null, null],
     );
-    assert.deepEqual(plans.map(plan => plan.tunerIndex), [1, 0]);
+    assert.deepEqual(
+        plans.map(plan => plan.tunerIndex),
+        [1, 0],
+    );
     assert.equal(new Set(plans.map(plan => plan.tunerIndex)).size, 2);
 });
 
@@ -76,6 +88,40 @@ test('allowEndLack の末尾15秒以内の欠損を許容する', () => {
     const tail = plans.find(plan => plan.reserveId === 2);
     assert.equal(tail.lostMs, 10);
     assert.equal(tail.conflict, null);
+});
+
+test('ALLOW_HEAD_LACK と ALLOW_PARTIAL は方針どおり欠損競合を許容する', () => {
+    const head = planSchedule({
+        reservations: [
+            reserve(1, 'GR-1', 'GR', 0, 100, { priority: 1 }),
+            reserve(2, 'GR-2', 'GR', 50, 150, { priority: 2, conflictPolicy: 'ALLOW_HEAD_LACK' }),
+        ],
+        tuners: [{ index: 0, types: ['GR'] }],
+        timing,
+    });
+    const partial = planSchedule({
+        reservations: [
+            reserve(1, 'GR-1', 'GR', 0, 100, { priority: 1 }),
+            reserve(2, 'GR-2', 'GR', 50, 150, { priority: 2, conflictPolicy: 'ALLOW_PARTIAL' }),
+        ],
+        tuners: [{ index: 0, types: ['GR'] }],
+        timing,
+    });
+    assert.equal(head.find(plan => plan.reserveId === 2).conflict, null);
+    assert.equal(partial.find(plan => plan.reserveId === 2).conflict, null);
+});
+
+test('PREEMPT_LOWER_PRIORITY は奪われた予約に PRIORITY_PREEMPTED を付ける', () => {
+    const plans = planSchedule({
+        reservations: [
+            reserve(1, 'GR-1', 'GR', 0, 100, { priority: 5 }),
+            reserve(2, 'GR-2', 'GR', 0, 100, { priority: 1, conflictPolicy: 'PREEMPT_LOWER_PRIORITY' }),
+        ],
+        tuners: [{ index: 0, types: ['GR'] }],
+        timing,
+    });
+    assert.equal(plans.find(plan => plan.reserveId === 1).conflict.type, 'PRIORITY_PREEMPTED');
+    assert.equal(plans.find(plan => plan.reserveId === 2).conflict, null);
 });
 
 test('録画予約が競合せず張り付きだけが重なる場合は MARGIN_OVERLAP を記録する', () => {

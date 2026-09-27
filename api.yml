@@ -81,6 +81,9 @@ paths:
 
 components:
     schemas:
+        ConflictPolicy:
+            type: string
+            enum: [STRICT, ALLOW_END_LACK, ALLOW_HEAD_LACK, ALLOW_PARTIAL, PREEMPT_LOWER_PRIORITY]
         UnixtimeMS:
             description: 時刻 (ms)
             type: integer
@@ -1273,6 +1276,12 @@ components:
                 allowEndLack:
                     description: 末尾切れを許可するか
                     type: boolean
+                priority:
+                    type: integer
+                    minimum: 1
+                    maximum: 5
+                conflictPolicy:
+                    $ref: '#/components/schemas/ConflictPolicy'
                 avoidDuplicate:
                     description: 録画済みの重複番組を排除するか
                     type: boolean
@@ -1352,6 +1361,12 @@ components:
                 allowEndLack:
                     description: 末尾切れを許すか
                     type: boolean
+                priority:
+                    type: integer
+                    minimum: 1
+                    maximum: 5
+                conflictPolicy:
+                    $ref: '#/components/schemas/ConflictPolicy'
                 tags:
                     type: array
                     items:
@@ -1393,9 +1408,21 @@ components:
             type: object
             required:
                 - reserveId
+                - preemptedReserves
             properties:
                 reserveId:
                     $ref: '#/components/schemas/ReserveId'
+                preemptedReserves:
+                    type: array
+                    items:
+                        type: object
+                        required: [reserveId, reason]
+                        properties:
+                            reserveId:
+                                $ref: '#/components/schemas/ReserveId'
+                            reason:
+                                type: string
+                                enum: [PRIORITY_PREEMPTED]
 
         ReserveItem:
             description: 予約番組情報
@@ -1427,6 +1454,10 @@ components:
                     type: boolean
                 allowEndLack:
                     type: boolean
+                priority:
+                    type: integer
+                conflictPolicy:
+                    $ref: '#/components/schemas/ConflictPolicy'
                 isTimeSpecified:
                     type: boolean
                 isTimeUndefined:
@@ -1516,7 +1547,7 @@ components:
             properties:
                 type:
                     type: string
-                    enum: [NO_TUNER, PRIORITY_PREEMPTED, PARTIAL_HEAD, PARTIAL_TAIL, MARGIN_OVERLAP, BACKEND_UNAVAILABLE]
+                    enum: [NO_TUNER, PRIORITY_PREEMPTED, PARTIAL_HEAD, PARTIAL_TAIL, PARTIAL, MARGIN_OVERLAP, BACKEND_UNAVAILABLE]
                 affectedMs:
                     type: integer
                 conflictingReserveIds:

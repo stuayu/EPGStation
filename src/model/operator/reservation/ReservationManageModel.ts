@@ -219,7 +219,7 @@ class ReservationManageModel implements IReservationManageModel {
     /**
      * 手動予約追加
      */
-    public async add(option: apid.ManualReserveOption): Promise<apid.ReserveId> {
+    public async add(option: apid.ManualReserveOption): Promise<apid.AddedReserve> {
         this.log.system.info(
             'add reservation' + (typeof option.programId !== 'undefined' ? `: ${option.programId}` : ''),
         );
@@ -251,7 +251,7 @@ class ReservationManageModel implements IReservationManageModel {
         }
 
         // 追加する予約情報が競合するかチェック
-        await this.checkSingleReserveConflict(newReserve).catch(err => {
+        const preemptedReserves = await this.checkSingleReserveConflict(newReserve).catch(err => {
             finalize();
             throw err;
         });
@@ -279,7 +279,7 @@ class ReservationManageModel implements IReservationManageModel {
             isSuppressLog: false,
         });
 
-        return insertedId;
+        return { reserveId: insertedId, preemptedReserves };
     }
 
     /**
@@ -461,7 +461,9 @@ class ReservationManageModel implements IReservationManageModel {
      */
     private setManualReserveOption(option: apid.ManualReserveOption, newReserve: Reserve): void {
         // option から必要な情報をセットする
-        newReserve.allowEndLack = option.allowEndLack;
+        newReserve.priority = option.priority ?? 3;
+        newReserve.conflictPolicy = option.conflictPolicy ?? (option.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
+        newReserve.allowEndLack = newReserve.conflictPolicy === 'ALLOW_END_LACK';
         if (typeof option.tags !== 'undefined') {
             newReserve.tags = JSON.stringify(option.tags);
         }
@@ -506,6 +508,8 @@ class ReservationManageModel implements IReservationManageModel {
         // リレー元の予約情報から必要な情報をセットする
         newReserve.ruleId = parentReserve.ruleId;
         newReserve.allowEndLack = parentReserve.allowEndLack;
+        newReserve.priority = parentReserve.priority;
+        newReserve.conflictPolicy = parentReserve.conflictPolicy;
         newReserve.tags = parentReserve.tags;
         newReserve.parentDirectoryName = parentReserve.parentDirectoryName;
         newReserve.directory = parentReserve.directory;
@@ -528,7 +532,7 @@ class ReservationManageModel implements IReservationManageModel {
      * 引数で指定した予約が追加可能かチェックする。エラーが発生した場合は追加が不可能
      * @param newReserve
      */
-    private async checkSingleReserveConflict(newReserve: Reserve): Promise<void> {
+    private async checkSingleReserveConflict(newReserve: Reserve): Promise<apid.PreemptedReserve[]> {
         // 追加する予約情報と重複する予約情報を取得 (競合, 除外, 重複しているものは除く)
         let reserves: Reserve[] = [];
         try {
@@ -549,15 +553,18 @@ class ReservationManageModel implements IReservationManageModel {
         }
 
         reserves.push(newReserve);
-        const newReserves = this.createReserves(reserves);
-
-        // 競合したかチェック
-        for (const reserve of newReserves) {
-            if (reserve.isConflict) {
-                this.log.system.error(`program is conflict. programId: ${newReserve.programId}`);
-                throw new Error('ReservationManageModelAddReserveConflict');
-            }
+        const newReserves = this.createPlannerReserves(reserves);
+        const candidate = newReserves.find(reserve => reserve.id === newReserve.id);
+        const preempted = newReserves.filter(reserve => reserve.id !== newReserve.id && reserve.isConflict);
+        const canPreempt =
+            newReserve.conflictPolicy === 'PREEMPT_LOWER_PRIORITY' &&
+            preempted.length > 0 &&
+            preempted.every(reserve => reserve.priority < newReserve.priority);
+        if (candidate?.isConflict === true || (preempted.length > 0 && !canPreempt)) {
+            this.log.system.error(`program is conflict. programId: ${newReserve.programId}`);
+            throw new Error('ReservationManageModelAddReserveConflict');
         }
+        return canPreempt ? preempted.map(reserve => ({ reserveId: reserve.id, reason: 'PRIORITY_PREEMPTED' })) : [];
     }
 
     /**
@@ -567,6 +574,18 @@ class ReservationManageModel implements IReservationManageModel {
      */
     private checkManualReserveOption(option: apid.ManualReserveOption, isEdit: boolean = false): boolean {
         let isFail = false;
+        if (
+            option.priority !== undefined &&
+            (!Number.isInteger(option.priority) || option.priority < 1 || option.priority > 5)
+        )
+            return false;
+        if (
+            option.conflictPolicy !== undefined &&
+            !['STRICT', 'ALLOW_END_LACK', 'ALLOW_HEAD_LACK', 'ALLOW_PARTIAL', 'PREEMPT_LOWER_PRIORITY'].includes(
+                option.conflictPolicy,
+            )
+        )
+            return false;
 
         // エンコードオプションチェック
         isFail =
@@ -1063,7 +1082,10 @@ class ReservationManageModel implements IReservationManageModel {
         reserve.ruleId = rule.id;
         reserve.ruleUpdateCnt = rule.updateCnt;
         reserve.updateTime = updateTime;
-        reserve.allowEndLack = rule.reserveOption.allowEndLack;
+        reserve.priority = rule.reserveOption.priority ?? 3;
+        reserve.conflictPolicy =
+            rule.reserveOption.conflictPolicy ?? (rule.reserveOption.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
+        reserve.allowEndLack = reserve.conflictPolicy === 'ALLOW_END_LACK';
 
         if (typeof rule.reserveOption.tags !== 'undefined') {
             reserve.tags = JSON.stringify(rule.reserveOption.tags);
@@ -1723,7 +1745,9 @@ class ReservationManageModel implements IReservationManageModel {
         }
 
         // option から必要な情報をセットする
-        newReserve.allowEndLack = option.allowEndLack;
+        newReserve.priority = option.priority ?? newReserve.priority;
+        newReserve.conflictPolicy = option.conflictPolicy ?? (option.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
+        newReserve.allowEndLack = newReserve.conflictPolicy === 'ALLOW_END_LACK';
         if (typeof option.tags !== 'undefined') {
             newReserve.tags = JSON.stringify(option.tags);
         }
@@ -1844,9 +1868,10 @@ class ReservationManageModel implements IReservationManageModel {
                 channel: reserve.channel,
                 channelType: reserve.channelType,
                 allowEndLack: reserve.allowEndLack,
+                conflictPolicy: reserve.conflictPolicy as import('./planner/SchedulePlanner').ConflictPolicy,
                 isSkip: reserve.isSkip,
                 isOverlap: reserve.isOverlap,
-                priority: rank.get(reserve.id) ?? reserve.id,
+                priority: (5 - reserve.priority) * 100000 + (rank.get(reserve.id) ?? reserve.id),
             })),
             tuners: this.tuners.map(tuner => ({ index: tuner.getIndex(), types: tuner.getTypes() })),
             timing,
@@ -1854,6 +1879,7 @@ class ReservationManageModel implements IReservationManageModel {
                 reserveId: reserve.id,
                 tunerIndex: reserve.plannedTunerIndex,
                 conflict: null,
+                lossInfo: null,
                 lostMs: 0,
                 reasons: [],
             })),
@@ -1870,7 +1896,10 @@ class ReservationManageModel implements IReservationManageModel {
                 return Object.assign({}, reserve, {
                     isConflict: plan.conflict !== null && plan.conflict.type !== 'MARGIN_OVERLAP',
                     plannedTunerIndex: plan.tunerIndex,
-                    conflictInfo: plan.conflict === null ? null : JSON.stringify(plan.conflict),
+                    conflictInfo:
+                        plan.conflict === null && plan.lossInfo === null
+                            ? null
+                            : JSON.stringify(plan.conflict ?? plan.lossInfo),
                 });
             })
             .sort((a, b) => a.startAt - b.startAt);
@@ -2017,6 +2046,7 @@ class ReservationManageModel implements IReservationManageModel {
      * @return number
      */
     private sortReserve(a: Reserve, b: Reserve): number {
+        if (a.priority !== b.priority) return b.priority - a.priority;
         const aIsManual = a.ruleId === null;
         const bIsManual = b.ruleId === null;
 

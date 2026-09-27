@@ -40,6 +40,8 @@ export interface TimeSpecifiedOption {
  */
 export interface ManualReserveOption {
     allowEndLack: boolean; // 末尾切れを許可するか
+    priority: number;
+    conflictPolicy: apid.ConflictPolicy;
 }
 
 /**
