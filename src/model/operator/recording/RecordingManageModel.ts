@@ -236,12 +236,15 @@ class RecordingManageModel implements IRecordingManageModel {
                 });
             if (session.recordedId !== null) {
                 if (recorded !== null) {
-                    recorded.recordingStatus = 'partial';
-                    recorded.endReason = 'process-restart';
-                    await this.recordedDB.updateOnce(recorded).catch(err => {
-                        this.log.system.warn(`recording result recovery update failed: ${session.recordedId}`);
-                        this.log.system.warn(err);
-                    });
+                    await this.recordedDB
+                        .updateRecordingResult(session.recordedId, {
+                            recordingStatus: 'partial',
+                            endReason: 'process-restart',
+                        })
+                        .catch(err => {
+                            this.log.system.warn(`recording result recovery update failed: ${session.recordedId}`);
+                            this.log.system.warn(err);
+                        });
                 }
             }
         }

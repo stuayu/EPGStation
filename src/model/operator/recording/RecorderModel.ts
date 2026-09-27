@@ -33,7 +33,7 @@ import {
     RecordingRetryReason,
     resolveRecordingRetryConfig,
 } from './RecordingRetryPolicy';
-import { decideRecordingStart, resolveRecordingStartGateConfig } from './RecordingStartGate';
+import { decideRecordingStart, isProgramStartBoundary, resolveRecordingStartGateConfig } from './RecordingStartGate';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IMirakurunClientModel from '../../IMirakurunClientModel';
@@ -1012,6 +1012,16 @@ class RecorderModel implements IRecorderModel {
         // channel id は networkId * 100000 + serviceId で作られている
         const eventId = this.reserve.programId === null ? null : this.reserve.programId % 100000;
         const serviceId = this.reserve.channelId % 100000;
+        let isProgramBoundary = true;
+        if (eventId === null) {
+            const programs = await this.programDB.findSchedule({
+                channelId: this.reserve.channelId,
+                startAt: this.reserve.startAt - 2 * 60 * 1000,
+                endAt: this.reserve.startAt + 2 * 60 * 1000,
+                isHalfWidth: false,
+            });
+            isProgramBoundary = isProgramStartBoundary(programs, this.reserve.startAt);
+        }
 
         return new Promise<Buffer[]>((resolve, reject) => {
             const parser = new EitPresentParser();
@@ -1084,6 +1094,7 @@ class RecorderModel implements IRecorderModel {
                     elapsedMs: forcedElapsedMs,
                     currentAt: new Date().getTime(),
                     recordingStartMarginMs: timing.startMarginMs,
+                    isProgramBoundary,
                     config: gateConfig,
                 });
 
@@ -1587,15 +1598,15 @@ class RecorderModel implements IRecorderModel {
             this.log.system.info(`remove recording flag: ${this.recordedId}`);
             await this.recordedDB.removeRecording(this.recordedId);
             this.isRecording = false;
-            const currentRecorded = await this.recordedDB.findId(this.recordedId);
-            if (currentRecorded !== null) {
-                currentRecorded.recordingStatus = resultStatus;
-                currentRecorded.endReason = endReason;
-                await this.recordedDB.updateOnce(currentRecorded).catch(err => {
+            await this.recordedDB
+                .updateRecordingResult(this.recordedId, {
+                    recordingStatus: resultStatus,
+                    endReason,
+                })
+                .catch(err => {
                     this.log.system.warn(`recording result update failed: ${this.recordedId}`);
                     this.log.system.warn(err);
                 });
-            }
 
             // tmp に録画していた場合は移動する
             if (typeof this.config.recordedTmp !== 'undefined' && this.videoFileId !== null) {

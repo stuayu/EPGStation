@@ -21,6 +21,7 @@ import IRecordedDB, {
     RecordedChannelUpdateValues,
     RecordedColumnOption,
     RecordedProgramUpdateValues,
+    RecordedResultUpdateValues,
     SeriesBackfillCandidateRow,
     SeriesBackfillFilter,
 } from './IRecordedDB';
@@ -130,6 +131,19 @@ export default class RecordedDB implements IRecordedDB {
         await this.promieRetry.run(() => {
             return queryBuilder.execute();
         });
+    }
+
+    /**
+     * 録画結果を更新する。
+     * @param recordedId: apid.RecordedId
+     * @param values: RecordedResultUpdateValues
+     * @return Promise<void>
+     */
+    public async updateRecordingResult(recordedId: apid.RecordedId, values: RecordedResultUpdateValues): Promise<void> {
+        const connection = await this.op.getConnection();
+        await this.promieRetry.run(() =>
+            connection.createQueryBuilder().update(Recorded).set(values).where({ id: recordedId }).execute(),
+        );
     }
 
     /**
