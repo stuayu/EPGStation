@@ -200,11 +200,15 @@ class RecordingManageModel implements IRecordingManageModel {
                     const attempts = await this.recordingSessionDB.findAttemptsBySessionId(session.id);
                     const previousAttempt = attempts.sort((a, b) => a.attemptNo - b.attemptNo).at(-1);
                     if (previousAttempt !== undefined) {
-                        await this.recordingSessionDB.updateAttempt(previousAttempt.id, {
+                        const attemptRecovery = {
                             endedAt: previousAttempt.endedAt ?? fileMtimeMs ?? session.updatedAt,
                             closeReason: previousAttempt.closeReason ?? 'process-restart',
                             fileOffsetEnd: originalSize,
+                        };
+                        await this.recordingSessionDB.updateAttempt(previousAttempt.id, {
+                            ...attemptRecovery,
                         });
+                        Object.assign(previousAttempt, attemptRecovery);
                     }
                     videoFile.size = alignedSize;
                     await this.recordingSessionDB.updateSession(session.id, {

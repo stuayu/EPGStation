@@ -327,6 +327,58 @@ test('予約差分は conflictInfo と plannedTunerIndex の変更を保存対�
     );
 });
 
+test('planner は時刻指定の手動予約追加直後に plannedTunerIndex を保存する', async () => {
+    const existing = makeReserve({ id: 1, startAt: Date.now() + 60_000, endAt: Date.now() + 120_000 });
+    const reserves = [existing];
+    const reserveDB = {
+        findTimeSpecification: async () => null,
+        findTimeRanges: async ({ times }) =>
+            reserves.filter(reserve =>
+                times.some(time => reserve.startAt < time.endAt && reserve.endAt > time.startAt),
+            ),
+        insertOnce: async reserve => {
+            reserve.id = 2;
+            reserves.push(reserve);
+            return reserve.id;
+        },
+        updateMany: async ({ update = [] }) => {
+            for (const updated of update) {
+                const index = reserves.findIndex(reserve => reserve.id === updated.id);
+                if (index !== -1) reserves[index] = updated;
+            }
+        },
+    };
+    const model = new ReservationManageModel(
+        {
+            getLogger: () => ({
+                system: { info() {}, debug() {}, warn() {}, error() {}, fatal() {} },
+                stream: { error() {} },
+            }),
+        },
+        { getConfig: () => ({ reservation: { scheduler: 'planner' }, recording: {} }) },
+        { getExecution: async () => 1, unLockExecution() {} },
+        { checkEncodeOption: () => true },
+        reserveDB,
+        { findId: async () => ({ id: 1, channel: 'GR-1', channelType: 'GR' }) },
+        {},
+        {},
+        { emitUpdated() {} },
+    );
+    model.setTuners([{ index: 0, name: 'tuner-0', types: ['GR'], command: '', isAvailable: true }]);
+
+    await model.add({
+        allowEndLack: false,
+        timeSpecifiedOption: {
+            name: '手動予約',
+            channelId: 1,
+            startAt: existing.startAt,
+            endAt: existing.endAt,
+        },
+    });
+
+    assert.equal(reserves.find(reserve => reserve.id === 2).plannedTunerIndex, 0);
+});
+
 test('Tuner.add は types が空のとき常に false を返す (現状の挙動)', () => {
     const tuner = new Tuner({ types: [], name: 'empty', index: 0, command: '', isAvailable: true });
     assert.equal(tuner.add(makeReserve()), false);
