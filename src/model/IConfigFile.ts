@@ -153,6 +153,7 @@ export type NotificationEventType =
     | 'recording.completed'
     | 'recording.partial'
     | 'recording.failed'
+    | 'recording.startFailed'
     | 'recording.dropped' // ドロップ検出 (§7.3)
     | 'recording.missed' // 録り逃し検出 (リトライ上限に達し録画を断念)
     | 'series.newEpisode' // シリーズ新話追加
@@ -385,6 +386,8 @@ export default interface IConfigFile {
     // 録画開始のリトライ方針。
     // 前番組の延長 (放送時刻未定) で開始が遅れている場合と、チューナー異常とを分けて扱う
     recording?: {
+        // 録画結果を保持する日数。既定 90 日
+        resultRetentionDays?: number;
         // 録画中の上流切断後に同じ録画へ再接続する (既定 true)
         reconnectEnabled?: boolean;
         // 同一チャンネルで続く録画が上流接続を共有する (既定 true)

@@ -128,11 +128,14 @@ class RecordingManageModel implements IRecordingManageModel {
     public async cleanup(): Promise<void> {
         this.log.system.info('start recordings cleanup ');
 
-        const staleCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-        await this.recordingSessionDB.deleteOrphanSessionsBefore(staleCutoff).catch(err => {
-            this.log.system.warn('recording session orphan cleanup failed');
-            this.log.system.warn(err);
-        });
+        const retentionDays = this.config.recording?.resultRetentionDays ?? 90;
+        if (retentionDays > 0) {
+            const staleCutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+            await this.recordingSessionDB.deleteOrphanSessionsBefore(staleCutoff).catch(err => {
+                this.log.system.warn('recording session orphan cleanup failed');
+                this.log.system.warn(err);
+            });
+        }
 
         const activeSessions = await Promise.all(
             [RecordingSessionState.RECORDING, RecordingSessionState.RECONNECTING].map(state =>

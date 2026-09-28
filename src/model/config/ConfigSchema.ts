@@ -447,6 +447,12 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         editable: 'gui',
         fields: [
             {
+                path: 'recording.resultRetentionDays',
+                label: '録画結果の保存期間 (日)',
+                type: 'number',
+                hint: '既定 90 日。0 以下では開始前失敗セッションを自動削除しません',
+            },
+            {
                 path: 'recording.reconnectEnabled',
                 label: '録画中の切断後に再接続する',
                 type: 'boolean',

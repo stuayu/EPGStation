@@ -1006,6 +1006,19 @@ timeSpecifiedStartMargin: 2
 timeSpecifiedEndMargin: 2
 ```
 
+### recording.resultRetentionDays
+
+#### 録画結果セッションの保存期間。開始前に失敗した録画も対象
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| number | 90           | no   |
+
+```yaml
+recording:
+    resultRetentionDays: 90
+```
+
 ### recordedHistoryRetentionPeriodDays
 
 #### 重複確認用に使用する番組名を保管する期間
@@ -1586,6 +1599,8 @@ uploadTempDir: '/hoge/tmp/upload'
 | 変数名                 | 種類           | 説明                          |
 | ---------------------- | -------------- | ----------------------------- |
 | PROGRAMID              | number         | Program ID                    |
+| RESERVEID              | number \| ''   | 予約 ID                        |
+| RULEID                 | number \| ''   | ルール ID。手動予約は空文字    |
 | CHANNELTYPE            | string         | 'GR' \| 'BS' \| 'CS' \| 'SKY' |
 | CHANNELID              | number         | Channel ID                    |
 | CHANNELNAME            | string \| null | 放送局名                      |
@@ -1629,6 +1644,8 @@ recordingPrepRecFailedCommand: '/usr/bin/logger prepfailed'
 | 変数名                 | 種類           | 説明                          |
 | ---------------------- | -------------- | ----------------------------- |
 | RECORDEDID             | number         | recorded id                   |
+| RESERVEID              | number \| ''   | 予約 ID。予約なしは空文字      |
+| RULEID                 | number \| ''   | ルール ID。手動予約は空文字    |
 | PROGRAMID              | number         | program id                    |
 | CHANNELTYPE            | string         | 'GR' \| 'BS' \| 'CS' \| 'SKY' |
 | CHANNELID              | number         | channel id                    |

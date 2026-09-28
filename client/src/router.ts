@@ -13,6 +13,7 @@ import Recorded from './views/Recorded.vue';
 import RecordedDetail from './views/RecordedDetail.vue';
 import RecordedUpload from './views/RecordedUpload.vue';
 import Recording from './views/Recording.vue';
+import RecordingResults from './views/RecordingResults.vue';
 import Reserves from './views/Reserves.vue';
 import Rule from './views/Rule.vue';
 import Search from './views/Search.vue';
@@ -48,6 +49,7 @@ export default createRouter({
         { path: '/reserves', name: 'reserves', component: Reserves },
         { path: '/reserves/manual', name: 'manual-reserve', component: ManualReserve },
         { path: '/recording', name: 'recording', component: Recording },
+        { path: '/recording-results', name: 'recording-results', component: RecordingResults },
         { path: '/recorded', name: 'recorded', component: Recorded },
         { path: '/series', name: 'series', component: Series },
         { path: '/series/pending', name: 'series-pending', component: SeriesPending },

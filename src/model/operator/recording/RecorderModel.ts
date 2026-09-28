@@ -194,7 +194,8 @@ class RecorderModel implements IRecorderModel {
     }
 
     private async beginRecordingSession(): Promise<void> {
-        await this.sessionTracker.beginSession(this.reserve);
+        const channel = await this.channelDB.findId(this.reserve.channelId).catch(() => null);
+        await this.sessionTracker.beginSession(this.reserve, channel?.name ?? null);
         this.telemetryStartDelayRecorded = false;
     }
 
@@ -518,7 +519,11 @@ class RecorderModel implements IRecorderModel {
                 this.closeTelemetrySession('failed', 'error');
                 this.streamCreator.release(this.reserve.id);
                 // 録画準備失敗を通知
-                this.recordingEvent.emitPrepRecordingFailed(this.reserve);
+                this.recordingEvent.emitPrepRecordingFailed(
+                    this.reserve,
+                    'error',
+                    Math.max(0, this.errorRetryCount - 1),
+                );
             }
         } finally {
             if (generation === this.prepGeneration) {

@@ -248,7 +248,14 @@ export interface ReserveItem {
  * 予約の競合内容
  */
 export interface ReservationConflict {
-    type: 'NO_TUNER' | 'PRIORITY_PREEMPTED' | 'PARTIAL_HEAD' | 'PARTIAL_TAIL' | 'PARTIAL' | 'MARGIN_OVERLAP' | 'BACKEND_UNAVAILABLE';
+    type:
+        | 'NO_TUNER'
+        | 'PRIORITY_PREEMPTED'
+        | 'PARTIAL_HEAD'
+        | 'PARTIAL_TAIL'
+        | 'PARTIAL'
+        | 'MARGIN_OVERLAP'
+        | 'BACKEND_UNAVAILABLE';
     affectedMs: number;
     conflictingReserveIds: ReserveId[];
 }
@@ -498,7 +505,8 @@ export interface RuleReserveOption {
     tags?: RecordedTagId[]; // 録画完了後に付与する tag 設定
 }
 
-export type ConflictPolicy = 'STRICT' | 'ALLOW_END_LACK' | 'ALLOW_HEAD_LACK' | 'ALLOW_PARTIAL' | 'PREEMPT_LOWER_PRIORITY';
+export type ConflictPolicy =
+    'STRICT' | 'ALLOW_END_LACK' | 'ALLOW_HEAD_LACK' | 'ALLOW_PARTIAL' | 'PREEMPT_LOWER_PRIORITY';
 
 /**
  * 保存オプション
@@ -634,6 +642,51 @@ export interface RecordingSessionItem {
     retryCount: number;
     createdAt?: UnixtimeMS;
     updatedAt?: UnixtimeMS;
+    attempts: RecordingAttemptItem[];
+}
+
+export interface RecordingResultSession {
+    id: number;
+    reserveId: number;
+    recordedId?: RecordedId;
+    programId?: ProgramId;
+    channelId: ChannelId;
+    state: string;
+    scheduledStartAt: UnixtimeMS;
+    scheduledEndAt: UnixtimeMS;
+    actualStartAt?: UnixtimeMS;
+    actualEndAt?: UnixtimeMS;
+    startReason?: string;
+    endReason?: string;
+    resultStatus?: 'completed' | 'partial' | 'failed' | 'canceled';
+    retryCount: number;
+    createdAt: UnixtimeMS;
+    updatedAt: UnixtimeMS;
+    name?: string;
+    channelName?: string;
+    ruleId?: RuleId;
+    isTimeSpecified: boolean;
+}
+
+export interface RecordingResultList {
+    items: RecordingResultSession[];
+    total: number;
+    offset: number;
+    limit: number;
+}
+
+export interface RecordingResultQuery {
+    result?: 'completed' | 'partial' | 'failed' | 'canceled';
+    from?: UnixtimeMS;
+    to?: UnixtimeMS;
+    ruleId?: RuleId;
+    keyword?: string;
+    offset: number;
+    limit: number;
+}
+
+export interface RecordingResultDetail {
+    session: RecordingResultSession;
     attempts: RecordingAttemptItem[];
 }
 

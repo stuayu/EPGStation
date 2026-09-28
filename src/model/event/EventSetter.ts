@@ -3,6 +3,7 @@ import * as apid from '../../../api';
 import IRecordedDB from '../db/IRecordedDB';
 import IVideoFileDB from '../db/IVideoFileDB';
 import IProgramDB from '../db/IProgramDB';
+import IChannelDB from '../db/IChannelDB';
 import IConfigFile from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
@@ -54,6 +55,7 @@ export default class EventSetter implements IEventSetter {
     private videoFileDB: IVideoFileDB;
     private programDB: IProgramDB;
     private eitPresentStore: IEitPresentStore;
+    private channelDB: IChannelDB;
 
     private isFirstreserveationUpdate: boolean = true;
 
@@ -82,6 +84,7 @@ export default class EventSetter implements IEventSetter {
         @inject('IVideoFileDB') videoFileDB: IVideoFileDB,
         @inject('IProgramDB') programDB: IProgramDB,
         @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
+        @inject('IChannelDB') channelDB: IChannelDB,
     ) {
         this.log = logger.getLogger();
         this.epgUpdateEvent = epgUpdateEvent;
@@ -106,6 +109,7 @@ export default class EventSetter implements IEventSetter {
         this.videoFileDB = videoFileDB;
         this.programDB = programDB;
         this.eitPresentStore = eitPresentStore;
+        this.channelDB = channelDB;
     }
 
     /**
@@ -221,10 +225,20 @@ export default class EventSetter implements IEventSetter {
         });
 
         // 録画準備失敗イベント
-        this.recordingEvent.setPrepRecordingFailed(reserve => {
+        this.recordingEvent.setPrepRecordingFailed(async (reserve, endReason, retryCount) => {
             this.ipc.notifyClient();
             this.reservationManage.cancel(reserve.id); // 予約から削除
             this.externalCommandManage.addRecordingPrepRecFailedCmd(reserve);
+            const channel = await this.channelDB.findId(reserve.channelId);
+            void this.notification.dispatch('recording.startFailed', {
+                name: reserve.name,
+                channelName: channel?.name ?? '',
+                startAt: reserve.startAt,
+                endReason,
+                retryCount,
+                reserveId: reserve.id,
+                ruleId: reserve.ruleId,
+            });
         });
 
         // 録画開始イベント

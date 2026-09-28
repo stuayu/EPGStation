@@ -153,6 +153,10 @@ import IPlaybackOptionsState from './state/video/IPlaybackOptionsState';
 import PlaybackOptionsState from './state/video/PlaybackOptionsState';
 import IOfflineVideoState from './state/offline/IOfflineVideoState';
 import OfflineVideoState from './state/offline/OfflineVideoState';
+import IRecordingResultsApiModel from './api/recordingResults/IRecordingResultsApiModel';
+import RecordingResultsApiModel from './api/recordingResults/RecordingResultsApiModel';
+import IRecordingResultsState from './state/recordingResults/IRecordingResultsState';
+import RecordingResultsState from './state/recordingResults/RecordingResultsState';
 
 /**
  * container に各 Model を登録する
@@ -161,6 +165,7 @@ export default (container: Container): void => {
     container.bind<IPWAConfigModel>('IPWAConfigModel').to(PWAConfigModel).inSingletonScope();
 
     container.bind<IRepositoryModel>('IRepositoryModel').to(RepositoryModel).inSingletonScope();
+    container.bind<IRecordingResultsApiModel>('IRecordingResultsApiModel').to(RecordingResultsApiModel).inSingletonScope();
 
     container.bind<IConfigApiModel>('IConfigApiModel').to(ConfigApiModel).inSingletonScope();
     container.bind<ISystemSettingApiModel>('ISystemSettingApiModel').to(SystemSettingApiModel).inSingletonScope();
@@ -275,6 +280,7 @@ export default (container: Container): void => {
     container.bind<IWatchRecordedInfoState>('IWatchRecordedInfoState').to(WatchRecordedInfoState).inSingletonScope();
 
     container.bind<IRecordingState>('IRecordingState').to(RecordingState).inSingletonScope();
+    container.bind<IRecordingResultsState>('IRecordingResultsState').to(RecordingResultsState).inSingletonScope();
 
     container.bind<IEncodeState>('IEncodeState').to(EncodeState).inSingletonScope();
 
