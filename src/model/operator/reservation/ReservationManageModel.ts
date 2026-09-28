@@ -4,7 +4,7 @@ import * as mapid from '../../../../node_modules/mirakurun/api';
 import Channel from '../../../db/entities/Channel';
 import Program from '../../../db/entities/Program';
 import Reserve from '../../../db/entities/Reserve';
-import DateUtil from '../../../util/DateUtil';
+import { getJstDay, getJstMidnight } from '../../../util/JstDateUtil';
 import TunerCompatibilityUtil from '../../../util/TunerCompatibilityUtil';
 import { isDurationUndefined, resolveProgramEndTimes } from '../../../util/ProgramDuration';
 import { formatDurationUndefinedChange, formatLogDuration, formatTimeChange } from '../../../util/ProgramTimeLog';
@@ -1005,7 +1005,7 @@ class ReservationManageModel implements IReservationManageModel {
                 }
 
                 // times 準備
-                const baseTime = new Date(DateUtil.format(new Date(), 'yyyy/MM/dd 00:00:00 +0900')).getTime();
+                const baseTime = getJstMidnight(updateTime);
                 for (const time of rule.searchOption.times) {
                     if (typeof time.start === 'undefined' || typeof time.range === 'undefined') {
                         throw new Error('RuleSearchTimesOptionError');
@@ -1024,10 +1024,15 @@ class ReservationManageModel implements IReservationManageModel {
 
                     for (let i = 0; i < 8; i++) {
                         // 1 週間分の予約情報を作成する
-                        const startAt = baseTime + 1000 * 60 * 60 * 24 * i + time.start * 1000;
-                        const endAt = baseTime + 1000 * 60 * 60 * 24 * i + (time.start + time.range) * 1000;
+                        const startAt =
+                            baseTime + 1000 * 60 * 60 * 24 * i + (time.start + (time.startMinute ?? 0) * 60) * 1000;
+                        const endAt =
+                            baseTime +
+                            1000 * 60 * 60 * 24 * i +
+                            (time.start + (time.startMinute ?? 0) * 60 + time.range + (time.rangeMinute ?? 0) * 60) *
+                                1000;
 
-                        if (endAt < updateTime || weeks[new Date(startAt).getDay()] === false) {
+                        if (endAt < updateTime || weeks[getJstDay(startAt)] === false) {
                             // 終了時刻が現在時刻より古い or 有効な曜日ではない
                             continue;
                         }

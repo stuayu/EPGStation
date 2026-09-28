@@ -260,9 +260,27 @@ class GuideState implements IGuideState {
      * @return Promise<boolean> 追加できた場合は true
      */
     public async appendGuide(option: FetchGuideOption): Promise<boolean> {
-        // 単局表示は横軸が日付 (8 日分固定) なので追加読み込みはしない
-        if (typeof option.channelId !== 'undefined' || this.endAt === 0 || this.schedules.length === 0) {
+        if (this.endAt === 0 || this.schedules.length === 0) {
             return false;
+        }
+
+        if (typeof option.channelId !== 'undefined') {
+            const startAt = this.endAt;
+            const days = GuideState.SINGLE_STATION_GET_DAYS;
+            const scheduleOption: apid.ChannelScheduleOption = { startAt, days, isHalfWidth: option.isHalfWidth, channelId: option.channelId };
+            if (this.settingModel.getSavedValue().isShowOnlyFreePrograms === true) scheduleOption.isFree = true;
+            const schedules = await this.scheduleApiModel.getChannelSchedule(scheduleOption);
+            const existingIds = new Set(this.schedules.flatMap(schedule => schedule.programs.map(program => program.id)));
+            let added = 0;
+            for (const schedule of schedules) {
+                schedule.programs = schedule.programs.filter(program => !existingIds.has(program.id));
+                added += schedule.programs.length;
+                this.schedules.push(schedule);
+            }
+            this.endAt = startAt + days * 24 * 60 * 60 * 1000;
+            this.timeLength += days * 24;
+            this.reserveIndex = await this.reserveUtil.getReserveIndex({ startAt: this.startAt, endAt: this.endAt });
+            return added > 0;
         }
 
         // 上限を超えたら打ち切る (EPG は 8 日程度先までしか無いため無制限には伸ばさない)

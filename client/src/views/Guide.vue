@@ -30,6 +30,7 @@
                         </GuideScroller>
                     </div>
                     <v-btn class="now-button" color="primary" icon="mdi-clock-outline" size="small" aria-label="現在時刻へ戻る" title="現在時刻へ戻る" v-on:click="onNow"></v-btn>
+                    <v-btn v-if="typeof $route.query.channelId !== 'undefined'" class="next-days-button" color="primary" size="small" :loading="isLoadingMore" @click="loadMore">次の8日</v-btn>
                 </div>
             </transition>
         </div>
@@ -146,7 +147,7 @@ class Guide extends Vue {
     }, 100);
 
     private isiOS: boolean = false;
-    private isLoadingMore: boolean = false;
+    public isLoadingMore: boolean = false;
 
     get darkClassList(): any {
         return {
@@ -521,9 +522,9 @@ class Guide extends Vue {
     /**
      * 番組表の末尾までスクロールしたら次の時間帯を読み込む (無限スクロール)
      */
-    private async loadMore(): Promise<void> {
+    public async loadMore(): Promise<void> {
         // 単局表示 (週間番組表) は 8 日分固定なので追加読み込みしない
-        if (this.isLoadingMore === true || typeof this.$route.query.channelId !== 'undefined' || typeof this.$refs.programs === 'undefined') {
+        if (this.isLoadingMore === true || typeof this.$refs.programs === 'undefined') {
             return;
         }
 
@@ -536,7 +537,7 @@ class Guide extends Vue {
             const isAppended = await this.guideState.appendGuide(this.createFetchGuideOption());
             if (isAppended === true) {
                 this.setDisplayRange();
-                this.guideState.createProgramDoms(false);
+                this.guideState.createProgramDoms(typeof this.$route.query.channelId !== 'undefined');
                 await this.$nextTick();
                 await this.renderProgramDoms();
                 scroller.scrollLeft = left;
@@ -708,6 +709,13 @@ export default Object.assign(toNative(Guide), {
         bottom: 16px
         z-index: 6
         box-shadow: 0 2px 8px rgba(0, 0, 0, .35)
+
+    .next-days-button
+        position: absolute
+        left: 16px
+        bottom: 16px
+        z-index: 6
+        max-width: calc(100vw - 32px)
 
     .child
         position: absolute
