@@ -940,6 +940,8 @@ stream:
 # 対象番組の境界まで待ちます。切り戻し用の program stream では Mirakurun がデータ出力を保留します。
 # チューナー異常とは別枠で数えるので、延長待ちが異常時の再試行回数を食い潰しません。
 # recording:
+#     # 録画結果 (開始前失敗を含む) の保存期間 (日)。既定 90
+#     resultRetentionDays: 90
 #     # 録画中に上流が切断した後、同じ録画へ再接続する (既定 true)
 #     reconnectEnabled: true
 #     # 同一チャンネルで続く録画が上流接続を共有する (既定 true)

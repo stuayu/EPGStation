@@ -10,6 +10,18 @@ export default class RecordingSession extends BaseEntity {
     @Column({ type: 'integer' })
     public reserveId!: number;
 
+    @Column({ type: 'text', nullable: true })
+    public name!: string | null;
+
+    @Column({ type: 'integer', nullable: true })
+    public ruleId!: number | null;
+
+    @Column({ type: 'text', nullable: true })
+    public channelName!: string | null;
+
+    @Column({ default: false })
+    public isTimeSpecified!: boolean;
+
     @Column({ type: 'integer', nullable: true })
     public recordedId!: number | null;
 

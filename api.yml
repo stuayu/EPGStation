@@ -79,6 +79,55 @@ paths:
                 '404':
                     description: 録画が存在しない
 
+    /recording-results:
+        get:
+            summary: 録画結果一覧を取得
+            parameters:
+                - name: result
+                  in: query
+                  schema: { type: string, enum: [completed, partial, failed, canceled] }
+                - name: from
+                  in: query
+                  schema: { $ref: '#/components/schemas/UnixtimeMS' }
+                - name: to
+                  in: query
+                  schema: { $ref: '#/components/schemas/UnixtimeMS' }
+                - name: ruleId
+                  in: query
+                  schema: { $ref: '#/components/schemas/RuleId' }
+                - name: keyword
+                  in: query
+                  schema: { type: string }
+                - name: offset
+                  in: query
+                  schema: { type: integer, minimum: 0, default: 0 }
+                - name: limit
+                  in: query
+                  schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+            responses:
+                '200':
+                    description: 録画結果一覧
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/RecordingResultList' }
+
+    /recording-results/{sessionId}:
+        get:
+            summary: 録画結果と接続試行を取得
+            parameters:
+                - name: sessionId
+                  in: path
+                  required: true
+                  schema: { type: integer }
+            responses:
+                '200':
+                    description: 録画結果詳細
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/RecordingResultDetail' }
+                '404':
+                    description: 録画セッションが存在しない
+
 components:
     schemas:
         ConflictPolicy:
@@ -1547,7 +1596,16 @@ components:
             properties:
                 type:
                     type: string
-                    enum: [NO_TUNER, PRIORITY_PREEMPTED, PARTIAL_HEAD, PARTIAL_TAIL, PARTIAL, MARGIN_OVERLAP, BACKEND_UNAVAILABLE]
+                    enum:
+                        [
+                            NO_TUNER,
+                            PRIORITY_PREEMPTED,
+                            PARTIAL_HEAD,
+                            PARTIAL_TAIL,
+                            PARTIAL,
+                            MARGIN_OVERLAP,
+                            BACKEND_UNAVAILABLE,
+                        ]
                 affectedMs:
                     type: integer
                 conflictingReserveIds:
@@ -1793,6 +1851,36 @@ components:
                 sessions:
                     type: array
                     items: { $ref: '#/components/schemas/RecordingSessionItem' }
+
+        RecordingResultSession:
+            allOf:
+                - $ref: '#/components/schemas/RecordingSessionItem'
+                - type: object
+                  properties:
+                      name: { type: string }
+                      channelName: { type: string }
+                      ruleId: { $ref: '#/components/schemas/RuleId' }
+                      isTimeSpecified: { type: boolean }
+
+        RecordingResultList:
+            type: object
+            required: [items, total, offset, limit]
+            properties:
+                items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecordingResultSession' }
+                total: { type: integer }
+                offset: { type: integer }
+                limit: { type: integer }
+
+        RecordingResultDetail:
+            type: object
+            required: [session, attempts]
+            properties:
+                session: { $ref: '#/components/schemas/RecordingResultSession' }
+                attempts:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecordingAttemptItem' }
 
         CreateNewRecordedOption:
             description: 新規追加する録画番組情報

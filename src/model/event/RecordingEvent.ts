@@ -36,8 +36,8 @@ class RecordingEvent implements IRecordingEvent {
      * 録画準備失敗イベント発行
      * @param reserve: Reserve
      */
-    public emitPrepRecordingFailed(reserve: Reserve): void {
-        this.emitter.emit(RecordingEvent.PREP_RECORDING_FAILED_EVENT, reserve);
+    public emitPrepRecordingFailed(reserve: Reserve, endReason: string, retryCount: number): void {
+        this.emitter.emit(RecordingEvent.PREP_RECORDING_FAILED_EVENT, reserve, endReason, retryCount);
     }
 
     /**
@@ -115,14 +115,17 @@ class RecordingEvent implements IRecordingEvent {
      * 録画準備失敗イベント登録
      * @param callback: (reserve: Reserve) => void
      */
-    public setPrepRecordingFailed(callback: (reserve: Reserve) => void): void {
-        this.emitter.on(RecordingEvent.PREP_RECORDING_FAILED_EVENT, async (reserve: Reserve) => {
-            try {
-                await callback(reserve);
-            } catch (err: any) {
-                this.log.system.error(err);
-            }
-        });
+    public setPrepRecordingFailed(callback: (reserve: Reserve, endReason: string, retryCount: number) => void): void {
+        this.emitter.on(
+            RecordingEvent.PREP_RECORDING_FAILED_EVENT,
+            async (reserve: Reserve, endReason: string, retryCount: number) => {
+                try {
+                    await callback(reserve, endReason, retryCount);
+                } catch (err: any) {
+                    this.log.system.error(err);
+                }
+            },
+        );
     }
 
     /**

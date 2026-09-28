@@ -94,7 +94,8 @@
                             <div class="text-caption mb-2">
                                 TS の PSI/SI (SDT / EIT / TDT) から放送局名・番組名・概要・ジャンル・映像音声情報・録画開始時刻を取得して DB
                                 に保存します。取り込んだ外部ファイルの放送局特定や、ニコニコ実況コメントの時刻合わせに利用されます (取り込み時には自動で実行されます)。
-                                過去に取り込んだ録画で番組情報が空のままのものは「未解析ファイルを一括解析」で埋められます (すでに値がある項目は上書きしません)。録画 1 件だけなら録画詳細のメニューから再解析できます。
+                                過去に取り込んだ録画で番組情報が空のままのものは「未解析ファイルを一括解析」で埋められます (すでに値がある項目は上書きしません)。録画 1
+                                件だけなら録画詳細のメニューから再解析できます。
                             </div>
                             <div class="text-body-2 mb-2">
                                 TS ファイル {{ tsInfoStatus.total }} 件 / 解析済み {{ tsInfoStatus.analyzed }} 件 / 未解析 {{ tsInfoStatus.unanalyzed }} 件
@@ -110,7 +111,8 @@
                                 <v-btn variant="outlined" :disabled="isAnalyzeJobRunning === true" @click="startAnalyzeJob('channel', 'all')">解析結果から放送局を反映</v-btn>
                             </div>
                             <div class="text-caption text-medium-emphasis mt-1">
-                                「全件を強制再解析」は解析済みのファイルも含めてすべて解析し直し、<strong>番組の概要・詳細・ジャンル・映像音声情報を TS の内容で上書きします</strong>
+                                「全件を強制再解析」は解析済みのファイルも含めてすべて解析し直し、
+                                <strong>番組の概要・詳細・ジャンル・映像音声情報を TS の内容で上書きします</strong>
                                 (番組名は上書きしません)。誤った番組情報が入ってしまった録画を直したい場合や、TS 解析ロジックの更新を既存ファイルへ反映したい場合に使ってください
                                 (件数が多いと時間がかかります)。録画詳細のメニューからの 1 件だけの再解析も同じく上書きします。
                             </div>
@@ -439,18 +441,11 @@
                                         {{ backfillStatus.failed }}
                                     </div>
                                     <!-- シリーズ一覧・シリーズ詳細から起動した再解析もこの進捗に出る -->
-                                    <div v-if="backfillStatus.seriesCount" class="mt-1 text-caption text-grey">
-                                        シリーズ {{ backfillStatus.seriesCount }} 件を対象にした再解析
-                                    </div>
+                                    <div v-if="backfillStatus.seriesCount" class="mt-1 text-caption text-grey">シリーズ {{ backfillStatus.seriesCount }} 件を対象にした再解析</div>
                                     <v-alert v-if="backfillStatus.error" type="error" class="mt-2">{{ backfillStatus.error }}</v-alert>
                                 </div>
                                 <div class="d-flex flex-wrap align-center ga-4 mb-2">
-                                    <v-checkbox
-                                        v-model="backfillOnlyUnlinked"
-                                        label="まだシリーズ化されていない録画だけを対象にする"
-                                        density="compact"
-                                        hide-details
-                                    ></v-checkbox>
+                                    <v-checkbox v-model="backfillOnlyUnlinked" label="まだシリーズ化されていない録画だけを対象にする" density="compact" hide-details></v-checkbox>
                                     <v-text-field
                                         v-model="backfillLatest"
                                         label="直近の件数だけ実行 (空欄で全件)"
@@ -461,9 +456,7 @@
                                         style="max-width: 260px"
                                     ></v-text-field>
                                 </div>
-                                <div class="text-caption mb-2">
-                                    直近の件数を指定した実行は一時的な部分実行として扱い、全件バックフィルの再開位置には影響しない
-                                </div>
+                                <div class="text-caption mb-2">直近の件数を指定した実行は一時的な部分実行として扱い、全件バックフィルの再開位置には影響しない</div>
                                 <div class="d-flex flex-wrap ga-2 mb-3">
                                     <v-btn variant="outlined" :loading="backfillStarting" :disabled="backfillStatus?.state === 'running'" @click="startBackfill(true)">
                                         ドライラン実行
@@ -1018,7 +1011,16 @@ class SystemSetting extends Vue {
 
     requiresRestartKeys: string[] = [];
 
-    readonly notificationEventItems: string[] = ['recording.started', 'recording.completed', 'recording.partial', 'recording.failed', 'reserve.added', 'reserve.updated', 'reserve.deleted'];
+    readonly notificationEventItems: string[] = [
+        'recording.started',
+        'recording.completed',
+        'recording.partial',
+        'recording.failed',
+        'recording.startFailed',
+        'reserve.added',
+        'reserve.updated',
+        'reserve.deleted',
+    ];
 
     /**
      * シリーズライブラリ機能が有効か (featureFlags.seriesLibrary)。無効な場合はバックフィル/エイリアス管理 UI を隠す
@@ -1589,7 +1591,7 @@ class SystemSetting extends Vue {
             type: 'discord',
             url: '',
             secret: '',
-        events: ['recording.started', 'recording.completed', 'recording.partial', 'recording.failed'],
+            events: ['recording.started', 'recording.completed', 'recording.partial', 'recording.failed', 'recording.startFailed'],
         });
     }
 

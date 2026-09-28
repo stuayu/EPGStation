@@ -425,6 +425,7 @@ namespace Configuration {
         importWatch: false,
         importWatchIntervalSec: 300,
         recording: {
+            resultRetentionDays: 90,
             programStreamMode: 'service',
             reconnectEnabled: true,
             shareUpstreamStream: true,

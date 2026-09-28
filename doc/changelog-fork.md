@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 録画結果一覧・開始前失敗通知・結果保持期間を追加 → 2026-09-28
 - 再起動後に手動・番組・ルール予約のタイマーを再設定し、準備中 session を中断扱いで閉じる → 2026-09-28
 - 既定設定での録画共有・予約 planner・再開結果を修正 → 2026-09-28
 - 再起動後の録画復帰で空白時間・開始通知・チューナー台帳を修正 → 2026-09-28
@@ -45,6 +46,14 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-28
+
+### 録画結果一覧と開始前失敗通知
+
+録画開始前に失敗した予約は録画データが無いため通常の録画一覧に現れず、予約も失敗時に削除されるため、利用者が録り逃しを確認できなかった。`recording_session` に番組名・局名・ルール ID・時刻指定種別を保存し、予約削除後も結果を参照できるようにした。録画結果一覧 `GET /api/recording-results` は結果・期間・ルール ID・番組名で絞り込み、日時降順でページングする。詳細 API は attempt 履歴を返す。新しい「録画結果」画面から一覧、試行履歴、録画詳細へ移動できる。
+
+開始前に再試行上限へ達した場合は `recording.startFailed` 通知を送り、番組名・局名・予定時刻・終了理由・再試行回数を含める。**通知先の `events` を明示している既存設定には新イベントが自動追加されない**ため、受信するには `recording.startFailed` を選択する。外部コマンド環境変数へ `RULEID` / `RESERVEID` を追加し、未取得時は空文字にする。開始前失敗セッションの保持期間は `recording.resultRetentionDays` で変更でき、既定 90 日。
+
+関連実装: `src/db/entities/RecordingSession.ts`, `src/db/migrations/{sqlite,mysql}/1790572100000-AddRecordingResultMetadata.ts`, `src/model/db/RecordingSessionDB.ts`, `src/model/api/recorded/RecordingSessionApiModel.ts`, `src/model/service/api/recording-results.ts`, `src/model/operator/recording/RecordingManageModel.ts`, `src/model/event/EventSetter.ts`, `src/model/operator/externalCommand/ExternalCommandManageModel.ts`, `client/src/views/RecordingResults.vue`。
 
 - **再起動後に時刻指定の手動予約へタイマーが張られない不具合を修正**: 本番で予約42 (ＮＨＫ総合１・大分、10:54:00〜10:59:00) は10:52:00に準備を開始し、上流 lease を再利用して最初の TS を受信した。開始ゲートは10:55の番組区切りに合わせて `previousProgram` 待機となり、10:54:40に `Restart-Service epgstation.exe` を実行。再起動後は予約42のログ・録画要求・Recorded が各0件で、終了後も予約一覧に残った。同時録画中の予約41は再開し `partial` で終了した。原因は `ReservationManageModel.updateAll()` が時刻指定予約を差分から除外し、録画マネージャも差分だけで timer を張っていたこと。これは **main から存在した既存不具合**。起動後に予約 DB 全件を再走査し、`isSkip` / `isOverlap` と終了済み予約を除外、再開済み recorder は `recordingIndex` で重複を避ける。`PREPARING` / `WAITING_BOUNDARY` session と未終了 attempt は `process-restart` / `canceled` で閉じ、同じ予約は新規 session で再準備する。手動予約・番組予約・ルール予約を含める。実装: `RecordingManageModel.setupStartupTimers()`、`src/index.ts` の起動 cleanup 後。UT と ITB を追加。
 - **既定設定での録画共有・予約 planner・再開結果を修正**: 本番 Windows の既定設定で同一チャンネルの予約39 (09:46〜09:51) と40 (09:48〜09:53) を重ね、09:48:35にサービスを再起動したところ、録画中・再起動後とも Mirakurun 接続が2本 (session 611/613、再起動後614/615) で lease log は0件だった。`recording.shareUpstreamStream` は `false` の明示時だけ無効とし、`recording: {}` でも共有を有効にする。`reservation: {}` も既定の planner として扱い、切り戻しは `scheduler: legacy` の明示に限定する。手動追加・編集・イベントリレー追加では、連結する予約窓を planner で再計算して `plannedTunerIndex` / `conflictInfo` を保存する。録画開始時に planner の割当が無い・非互換・使用中なら first-fit にフォールバックし、`info` に `planner tuner fallback: reserveId=39, plannedTunerIndex=null, tunerIndex=0` の形式で記録する。録画18596は attempt 1 が0〜328,654,080 byte (`process-restart`)、attempt 2 が328,654,080〜624,526,224 byte (`scheduled-end`) で、受信断1.83秒があったのに `completed` となった。過去 attempt の終了理由と空白を含めて判定し、空白または `process-restart` / `transport-lost` があれば `partial` として元 TS を保持する。
