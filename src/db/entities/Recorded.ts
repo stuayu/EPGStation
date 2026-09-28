@@ -13,6 +13,7 @@ import DropLogFile from './DropLogFile';
 import RecordedTag from './RecordedTag';
 import Thumbnail from './Thumbnail';
 import VideoFile from './VideoFile';
+import type { RecordingResultStatus } from '../../util/RecordingResult';
 
 @Entity()
 export default class Recorded extends BaseEntity {
@@ -200,6 +201,12 @@ export default class Recorded extends BaseEntity {
 
     @Column()
     public isRecording!: boolean;
+
+    @Column({ type: 'text', nullable: true })
+    public recordingStatus?: RecordingResultStatus | null;
+
+    @Column({ type: 'text', nullable: true })
+    public endReason?: string | null;
 
     @OneToMany(() => VideoFile, videoFile => videoFile.recorded)
     public videoFiles?: VideoFile[];

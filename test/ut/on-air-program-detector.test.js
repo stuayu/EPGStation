@@ -4,8 +4,12 @@ const test = require('node:test');
 const { detectOnAirChannelIds, detectOnAirPrograms } = require('../../dist/model/epgUpdater/OnAirProgramDetector');
 const {
     clampUndefinedDuration,
+    extendUndefinedDurationEndAt,
     isDurationUndefined,
+    resolveProgramEndTimes,
     resolveEndAt,
+    UNDEFINED_DURATION_EXTENSION_LEAD_MS,
+    UNDEFINED_DURATION_EXTENSION_MS,
     UNDEFINED_DURATION_FALLBACK_MS,
 } = require('../../dist/util/ProgramDuration');
 
@@ -70,6 +74,48 @@ test('an undefined duration gets a provisional end time instead of ending instan
     assert.equal(resolveEndAt(NOW, 1), NOW + UNDEFINED_DURATION_FALLBACK_MS);
     assert.equal(resolveEndAt(NOW, undefined), NOW + UNDEFINED_DURATION_FALLBACK_MS);
     assert.equal(resolveEndAt(NOW, 30 * MINUTE), NOW + 30 * MINUTE);
+});
+
+test('program end times separate display, planning, and safety for undefined durations', () => {
+    const withNext = resolveProgramEndTimes(NOW, 1, NOW + 30 * MINUTE);
+    assert.deepEqual(withNext, {
+        displayEndAt: NOW + UNDEFINED_DURATION_FALLBACK_MS,
+        plannedEndAt: NOW + 30 * MINUTE,
+        hardSafetyEndAt: NOW + UNDEFINED_DURATION_FALLBACK_MS,
+    });
+    const withoutNext = resolveProgramEndTimes(NOW, 1);
+    assert.equal(withoutNext.plannedEndAt, NOW + UNDEFINED_DURATION_FALLBACK_MS);
+    const defined = resolveProgramEndTimes(NOW, 45 * MINUTE, NOW + 30 * MINUTE);
+    assert.deepEqual(defined, {
+        displayEndAt: NOW + 45 * MINUTE,
+        plannedEndAt: NOW + 45 * MINUTE,
+        hardSafetyEndAt: NOW + 45 * MINUTE,
+    });
+});
+
+test('undefined duration recording extends near planned end, capped by the safety end', () => {
+    const plannedEndAt = NOW + 30 * MINUTE;
+    assert.equal(
+        extendUndefinedDurationEndAt(
+            plannedEndAt - UNDEFINED_DURATION_EXTENSION_LEAD_MS - 1,
+            plannedEndAt,
+            NOW + 3 * 60 * MINUTE,
+        ),
+        null,
+    );
+    assert.equal(
+        extendUndefinedDurationEndAt(
+            plannedEndAt - UNDEFINED_DURATION_EXTENSION_LEAD_MS,
+            plannedEndAt,
+            NOW + 3 * 60 * MINUTE,
+        ),
+        plannedEndAt + UNDEFINED_DURATION_EXTENSION_MS,
+    );
+    assert.equal(
+        extendUndefinedDurationEndAt(NOW + 2 * 60 * MINUTE, NOW + 2 * 60 * MINUTE, NOW + 2 * 60 * MINUTE + 10 * MINUTE),
+        NOW + 2 * 60 * MINUTE + 10 * MINUTE,
+    );
+    assert.equal(extendUndefinedDurationEndAt(NOW, NOW + 3 * 60 * MINUTE, NOW + 3 * 60 * MINUTE), null);
 });
 
 test('a started program with an undefined duration stays on air', () => {

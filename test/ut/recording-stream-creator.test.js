@@ -4,6 +4,7 @@ const { PassThrough } = require('node:stream');
 const test = require('node:test');
 require('reflect-metadata');
 const RecordingStreamCreator = require('../../dist/model/operator/recording/RecordingStreamCreator').default;
+const IRecordingStreamCreator = require('../../dist/model/operator/recording/IRecordingStreamCreator').default;
 
 const logger = {
     system: { info() {}, debug() {}, warn() {}, error() {}, fatal() {} },
@@ -37,7 +38,14 @@ test('programId 予約は共有 priority を変更せず service stream option �
     };
     const creator = new RecordingStreamCreator(
         { getLogger: () => logger },
-        { getConfig: () => ({ recPriority: 9, conflictPriority: 4, timeSpecifiedEndMargin: 1, recording: {} }) },
+        {
+            getConfig: () => ({
+                recPriority: 9,
+                conflictPriority: 4,
+                timeSpecifiedEndMargin: 1,
+                recording: { shareUpstreamStream: false },
+            }),
+        },
         { getClient: () => client },
     );
     const result = await creator.create(reserve());
@@ -45,6 +53,147 @@ test('programId 予約は共有 priority を変更せず service stream option �
     assert.equal(client.priority, 77);
     assert.deepEqual(calls[0], { id: 67890, decode: true, priority: 4, signal: undefined });
     stream.destroy();
+});
+
+test('recording セクションで共有キーを省略すると上流を共有し、false で無効になる', async () => {
+    for (const [recording, expectedRequests] of [
+        [{}, 1],
+        [{ shareUpstreamStream: false }, 2],
+    ]) {
+        const upstream = new PassThrough();
+        let requests = 0;
+        const creator = new RecordingStreamCreator(
+            { getLogger: () => logger },
+            { getConfig: () => ({ recPriority: 9, conflictPriority: 4, recording }) },
+            {
+                getClient: () => ({
+                    getServiceStream: async () => {
+                        requests++;
+                        return upstream;
+                    },
+                }),
+            },
+        );
+        creator.setTuner([{ index: 0, types: ['GR'] }]);
+
+        await creator.create(reserve({ id: 51, isConflict: false }));
+        await creator.create(reserve({ id: 52, isConflict: false }));
+
+        assert.equal(requests, expectedRequests);
+        creator.release(51);
+        creator.release(52);
+        upstream.destroy();
+    }
+});
+
+test('再接続は元の tuner 枠へ戻り、release で予約枠を解放する', async () => {
+    const streams = [new PassThrough(), new PassThrough()];
+    let requestCount = 0;
+    const creator = new RecordingStreamCreator(
+        { getLogger: () => logger },
+        { getConfig: () => ({ recPriority: 9, conflictPriority: 4, recording: { shareUpstreamStream: false } }) },
+        { getClient: () => ({ getServiceStream: async () => streams[requestCount++] }) },
+    );
+    creator.setTuner([{ types: ['GR'] }, { types: ['GR'] }]);
+    const input = reserve({ isConflict: false });
+    const first = await creator.create(input);
+    assert.equal(creator.tuners[0].programs.length, 1);
+    first.destroy();
+    await new Promise(resolve => setImmediate(resolve));
+
+    const second = await creator.reconnect(input);
+    assert.equal(second, streams[1]);
+    assert.equal(creator.tuners[0].programs[0].stream, second);
+    assert.equal(creator.tuners[1].programs.length, 0);
+    creator.release(input.id);
+    assert.equal(creator.tuners[0].programs.length, 0);
+    second.destroy();
+});
+
+test('markClose は最初に付いた close reason を保持する', () => {
+    const creator = new RecordingStreamCreator(
+        { getLogger: () => logger },
+        { getConfig: () => ({ recording: { shareUpstreamStream: false } }) },
+        { getClient: () => ({}) },
+    );
+    const stream = new PassThrough();
+    creator.markClose(stream, 'boundary');
+    creator.markClose(stream, 'teardown');
+    assert.equal(creator.getCloseReason(stream), 'boundary');
+    stream.destroy();
+});
+
+test('終了理由ごとに ignore / finish / 外部終了の判定を固定する', () => {
+    for (const reason of ['superseded', 'obsolete', 'teardown', 'write-error']) {
+        assert.equal(IRecordingStreamCreator.getCloseAction(reason), 'ignore', reason);
+    }
+    for (const reason of ['canceled', 'tuner-handoff', 'boundary', 'scheduled-end']) {
+        assert.equal(IRecordingStreamCreator.getCloseAction(reason), 'finish', reason);
+    }
+    for (const reason of ['reconnect-no-data', null]) {
+        assert.equal(IRecordingStreamCreator.getCloseAction(reason), 'inspect', String(reason));
+    }
+});
+
+test('getTunerId は最初に使える互換チューナーを選ぶ', async () => {
+    const creator = new RecordingStreamCreator(
+        { getLogger: () => logger },
+        { getConfig: () => ({ recording: {} }) },
+        { getClient: () => ({}) },
+    );
+    creator.tuners = [
+        { types: ['BS'], programs: [] },
+        { types: ['GR'], programs: [] },
+        { types: ['GR'], programs: [] },
+    ];
+    assert.equal(await creator.getTunerId(reserve({ channelType: 'GR' })), 1);
+});
+
+test('planner の plannedTunerIndex 欠落時は first-fit にフォールバックし台帳へ登録する', async () => {
+    const logs = [];
+    const stream = new PassThrough();
+    const creator = new RecordingStreamCreator(
+        { getLogger: () => ({ ...logger, system: { ...logger.system, info: message => logs.push(message) } }) },
+        {
+            getConfig: () => ({
+                reservation: { scheduler: 'planner' },
+                recPriority: 9,
+                recording: { shareUpstreamStream: false },
+            }),
+        },
+        { getClient: () => ({ getServiceStream: async () => stream }) },
+    );
+    creator.setTuner([{ index: 7, types: ['GR'] }]);
+
+    await creator.create(reserve({ id: 70, isConflict: false, plannedTunerIndex: null }));
+
+    assert.deepEqual(creator.getActiveTunerAssignments(), [{ reserveId: 70, tunerIndex: 7 }]);
+    assert.ok(logs.some(message => String(message).includes('planner tuner fallback')));
+    creator.release(70);
+    stream.destroy();
+});
+
+test('現状の挙動 (Phase 6 で変更予定): allowEndLack は終了まで15秒以下の録画から枠を明け渡す', async () => {
+    const creator = new RecordingStreamCreator(
+        { getLogger: () => logger },
+        { getConfig: () => ({ recording: {} }) },
+        { getClient: () => ({}) },
+    );
+    const stream = new PassThrough();
+    creator.tuners = [
+        {
+            types: ['GR'],
+            programs: [
+                {
+                    reserve: reserve({ id: 8, programId: null, allowEndLack: true, endAt: Date.now() + 10_000 }),
+                    stream,
+                },
+            ],
+        },
+    ];
+
+    assert.equal(await creator.getTunerId(reserve({ id: 9, channel: '14' })), 0);
+    assert.equal(stream.destroyed, true);
 });
 
 test('program mode を指定した場合だけ切り戻し用 program stream を使う', async () => {
@@ -81,7 +230,14 @@ test('tuner 割当なし経路でも予定終了で取得済み service stream �
     const stream = new PassThrough();
     const creator = new RecordingStreamCreator(
         { getLogger: () => logger },
-        { getConfig: () => ({ recPriority: 9, conflictPriority: 4, timeSpecifiedEndMargin: 0, recording: {} }) },
+        {
+            getConfig: () => ({
+                recPriority: 9,
+                conflictPriority: 4,
+                timeSpecifiedEndMargin: 0,
+                recording: { shareUpstreamStream: false },
+            }),
+        },
         { getClient: () => ({ getServiceStream: async () => stream }) },
     );
     const result = await creator.create(reserve({ id: 3, isConflict: false, endAt: Date.now() + 20 }));
@@ -94,7 +250,14 @@ test('古い同一予約 stream の終了は新しい stream の終了タイマ�
     const streams = [new PassThrough(), new PassThrough()];
     const creator = new RecordingStreamCreator(
         { getLogger: () => logger },
-        { getConfig: () => ({ recPriority: 9, conflictPriority: 4, timeSpecifiedEndMargin: 0, recording: {} }) },
+        {
+            getConfig: () => ({
+                recPriority: 9,
+                conflictPriority: 4,
+                timeSpecifiedEndMargin: 0,
+                recording: { shareUpstreamStream: false },
+            }),
+        },
         { getClient: () => ({ getServiceStream: async () => streams.shift() }) },
     );
     const first = await creator.create(reserve({ id: 4, endAt: Date.now() + 10_000 }));
@@ -131,7 +294,14 @@ test('legacy program stream は Mirakurun の終了境界を維持しハード�
 test('stream 取得前の endAt 変更 (準備中の延長) は投げずに覚えておく', () => {
     const creator = new RecordingStreamCreator(
         { getLogger: () => logger },
-        { getConfig: () => ({ recPriority: 9, conflictPriority: 4, timeSpecifiedEndMargin: 1, recording: {} }) },
+        {
+            getConfig: () => ({
+                recPriority: 9,
+                conflictPriority: 4,
+                timeSpecifiedEndMargin: 1,
+                recording: { shareUpstreamStream: false },
+            }),
+        },
         { getClient: () => ({}) },
     );
     // 以前は StreamChangeAtError を投げていた。呼び出し側を待たせないため投げない
@@ -145,7 +315,14 @@ test('準備中に延長された endAt が stream 取得時のハードタイ�
     const client = { priority: 0, getServiceStream: async () => stream };
     const creator = new RecordingStreamCreator(
         { getLogger: () => logger },
-        { getConfig: () => ({ recPriority: 9, conflictPriority: 4, timeSpecifiedEndMargin: 1, recording: {} }) },
+        {
+            getConfig: () => ({
+                recPriority: 9,
+                conflictPriority: 4,
+                timeSpecifiedEndMargin: 1,
+                recording: { shareUpstreamStream: false },
+            }),
+        },
         { getClient: () => client },
     );
 
@@ -170,7 +347,14 @@ test('stream 取得後の endAt 変更はそのままハードタイマーを張
     const client = { priority: 0, getServiceStream: async () => stream };
     const creator = new RecordingStreamCreator(
         { getLogger: () => logger },
-        { getConfig: () => ({ recPriority: 9, conflictPriority: 4, timeSpecifiedEndMargin: 1, recording: {} }) },
+        {
+            getConfig: () => ({
+                recPriority: 9,
+                conflictPriority: 4,
+                timeSpecifiedEndMargin: 1,
+                recording: { shareUpstreamStream: false },
+            }),
+        },
         { getClient: () => client },
     );
 

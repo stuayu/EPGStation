@@ -126,6 +126,17 @@ class EncodeManageModel implements IEncodeManageModel {
         // 実行権取得
         const exeId = await this.executeManagementModel.getExecution(EncodeManageModel.ADD_ENCODE_PRIPORITY);
 
+        let encodeId: apid.EncodeId;
+        try {
+            encodeId = await this.pushWithExecution(addOption);
+        } finally {
+            this.executeManagementModel.unLockExecution(exeId);
+        }
+        this.encodeEvent.emitAddEncode(encodeId);
+        return encodeId;
+    }
+
+    private async pushWithExecution(addOption: apid.AddEncodeProgramOption): Promise<apid.EncodeId> {
         // encoder を生成する
         const encoder = await this.encoderModelProvider();
         const option = this.createEncodeOption(addOption);
@@ -137,12 +148,6 @@ class EncodeManageModel implements IEncodeManageModel {
         this.emitNeedsCheckQueue();
 
         this.log.encode.info(`add new encode: ${option.encodeId}`);
-
-        // 実行権開放
-        this.executeManagementModel.unLockExecution(exeId);
-
-        // イベント発行
-        this.encodeEvent.emitAddEncode(option.encodeId);
 
         return option.encodeId;
     }
@@ -430,6 +435,16 @@ class EncodeManageModel implements IEncodeManageModel {
         // 実行権取得
         const exeId = await this.executeManagementModel.getExecution(EncodeManageModel.CANCEL_ENCODE_PRIPORITY);
 
+        try {
+            await this.cancelWithExecution(encodeId);
+        } finally {
+            this.executeManagementModel.unLockExecution(exeId);
+        }
+        // イベント発行
+        this.encodeEvent.emitCancelEncode(encodeId);
+    }
+
+    private async cancelWithExecution(encodeId: apid.EncodeId): Promise<void> {
         this.log.encode.info(`cancel encode: ${encodeId}`);
 
         // runningQueue にあるので プロセスを殺す
@@ -454,11 +469,6 @@ class EncodeManageModel implements IEncodeManageModel {
                 this.emitNeedsCheckQueue();
             });
         }
-
-        this.executeManagementModel.unLockExecution(exeId);
-
-        // イベント発行
-        this.encodeEvent.emitCancelEncode(encodeId);
     }
 
     /**

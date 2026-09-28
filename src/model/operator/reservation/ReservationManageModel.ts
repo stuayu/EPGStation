@@ -5,7 +5,8 @@ import Channel from '../../../db/entities/Channel';
 import Program from '../../../db/entities/Program';
 import Reserve from '../../../db/entities/Reserve';
 import DateUtil from '../../../util/DateUtil';
-import { isDurationUndefined } from '../../../util/ProgramDuration';
+import TunerCompatibilityUtil from '../../../util/TunerCompatibilityUtil';
+import { isDurationUndefined, resolveProgramEndTimes } from '../../../util/ProgramDuration';
 import { formatDurationUndefinedChange, formatLogDuration, formatTimeChange } from '../../../util/ProgramTimeLog';
 import StrUtil from '../../../util/StrUtil';
 import Util from '../../../util/Util';
@@ -22,6 +23,10 @@ import ILoggerModel from '../../ILoggerModel';
 import IReserveOptionChecker from '../IReserveOptionChecker';
 import IReservationManageModel from './IReservationManageModel';
 import Tuner from './Tuner';
+import { planSchedule } from './planner/SchedulePlanner';
+import { resolveRecordingTimingConfig } from '../recording/RecordingTimingConfig';
+import IRecordingStreamCreator from '../recording/IRecordingStreamCreator';
+import telemetry from '../../observability/Telemetry';
 
 interface ReserveDiffData {
     reserve: Reserve;
@@ -31,6 +36,7 @@ interface ReserveDiffData {
 @injectable()
 class ReservationManageModel implements IReservationManageModel {
     private log: ILogger;
+    private configuration: IConfiguration;
     private config: IConfigFile;
     private executeManagementModel: IExecutionManagementModel;
     private optionChecker: IReserveOptionChecker;
@@ -39,6 +45,9 @@ class ReservationManageModel implements IReservationManageModel {
     private programDB: IProgramDB;
     private ruleDB: IRuleDB;
     private reserveEvent: IReserveEvent;
+    private recordingStreamCreator?: IRecordingStreamCreator;
+    private plannerReasons = new Map<number, string[]>();
+    private plannerDifferenceLogs = new Map<number, string>();
     private tuners: Tuner[] = [];
     // チューナ情報から放送波を判定できなかったときにチャンネル情報から作る代替値
     private broadcastStatusFallback: apid.BroadcastStatus | null = null;
@@ -103,8 +112,10 @@ class ReservationManageModel implements IReservationManageModel {
         @inject('IProgramDB') programDB: IProgramDB,
         @inject('IRuleDB') ruleDB: IRuleDB,
         @inject('IReserveEvent') reserveEvent: IReserveEvent,
+        @inject('IRecordingStreamCreator') recordingStreamCreator?: IRecordingStreamCreator,
     ) {
         this.log = logger.getLogger();
+        this.configuration = configuration;
         this.config = configuration.getConfig();
         this.executeManagementModel = executeManagementModel;
         this.optionChecker = optionChecker;
@@ -113,6 +124,7 @@ class ReservationManageModel implements IReservationManageModel {
         this.programDB = programDB;
         this.ruleDB = ruleDB;
         this.reserveEvent = reserveEvent;
+        this.recordingStreamCreator = recordingStreamCreator;
     }
 
     /**
@@ -123,7 +135,7 @@ class ReservationManageModel implements IReservationManageModel {
         this.tuners = tuners.map(tuner => {
             // set this.broadcastStatus
             for (const key in this.broadcastStatus) {
-                if (tuner.types.indexOf(<mapid.ChannelType>key) !== -1) {
+                if (TunerCompatibilityUtil.isTunerCompatibleWithChannelType(tuner.types, key)) {
                     (<any>this.broadcastStatus)[key] = true;
                 }
             }
@@ -210,7 +222,7 @@ class ReservationManageModel implements IReservationManageModel {
     /**
      * 手動予約追加
      */
-    public async add(option: apid.ManualReserveOption): Promise<apid.ReserveId> {
+    public async add(option: apid.ManualReserveOption): Promise<apid.AddedReserve> {
         this.log.system.info(
             'add reservation' + (typeof option.programId !== 'undefined' ? `: ${option.programId}` : ''),
         );
@@ -242,7 +254,7 @@ class ReservationManageModel implements IReservationManageModel {
         }
 
         // 追加する予約情報が競合するかチェック
-        await this.checkSingleReserveConflict(newReserve).catch(err => {
+        const preemptedReserves = await this.checkSingleReserveConflict(newReserve).catch(err => {
             finalize();
             throw err;
         });
@@ -256,8 +268,12 @@ class ReservationManageModel implements IReservationManageModel {
         });
         newReserve.id = insertedId;
 
-        // 完了したのでロック解除
-        finalize();
+        try {
+            await this.replanConnectedReservations(newReserve);
+        } finally {
+            // 追加後の planner 更新に失敗しても実行権を解放する
+            finalize();
+        }
 
         this.log.system.info(
             `successful add reservation: ${insertedId}` +
@@ -270,7 +286,7 @@ class ReservationManageModel implements IReservationManageModel {
             isSuppressLog: false,
         });
 
-        return insertedId;
+        return { reserveId: insertedId, preemptedReserves };
     }
 
     /**
@@ -311,6 +327,7 @@ class ReservationManageModel implements IReservationManageModel {
                 throw new Error('ReservationManageModelAddReserveError');
             });
             newReserve.id = insertedId;
+            await this.replanConnectedReservations(newReserve);
         } finally {
             // 予約処理の成功・失敗を問わず実行権を解放する
             this.executeManagementModel.unLockExecution(exeId);
@@ -429,7 +446,7 @@ class ReservationManageModel implements IReservationManageModel {
 
         // 予約情報の作成
         const newReserve = new Reserve();
-        newReserve.isEventRelay = true;
+        newReserve.isEventRelay = false;
         newReserve.updateTime = new Date().getTime();
         newReserve.isTimeSpecified = true;
         newReserve.name = StrUtil.toDBStr(option.timeSpecifiedOption.name);
@@ -452,7 +469,9 @@ class ReservationManageModel implements IReservationManageModel {
      */
     private setManualReserveOption(option: apid.ManualReserveOption, newReserve: Reserve): void {
         // option から必要な情報をセットする
-        newReserve.allowEndLack = option.allowEndLack;
+        newReserve.priority = option.priority ?? 3;
+        newReserve.conflictPolicy = option.conflictPolicy ?? (option.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
+        newReserve.allowEndLack = newReserve.conflictPolicy === 'ALLOW_END_LACK';
         if (typeof option.tags !== 'undefined') {
             newReserve.tags = JSON.stringify(option.tags);
         }
@@ -497,6 +516,8 @@ class ReservationManageModel implements IReservationManageModel {
         // リレー元の予約情報から必要な情報をセットする
         newReserve.ruleId = parentReserve.ruleId;
         newReserve.allowEndLack = parentReserve.allowEndLack;
+        newReserve.priority = parentReserve.priority;
+        newReserve.conflictPolicy = parentReserve.conflictPolicy;
         newReserve.tags = parentReserve.tags;
         newReserve.parentDirectoryName = parentReserve.parentDirectoryName;
         newReserve.directory = parentReserve.directory;
@@ -519,7 +540,7 @@ class ReservationManageModel implements IReservationManageModel {
      * 引数で指定した予約が追加可能かチェックする。エラーが発生した場合は追加が不可能
      * @param newReserve
      */
-    private async checkSingleReserveConflict(newReserve: Reserve): Promise<void> {
+    private async checkSingleReserveConflict(newReserve: Reserve): Promise<apid.PreemptedReserve[]> {
         // 追加する予約情報と重複する予約情報を取得 (競合, 除外, 重複しているものは除く)
         let reserves: Reserve[] = [];
         try {
@@ -540,14 +561,74 @@ class ReservationManageModel implements IReservationManageModel {
         }
 
         reserves.push(newReserve);
-        const newReserves = this.createReserves(reserves);
+        const newReserves = await this.createPlannerReserves(reserves);
+        const candidate = newReserves.find(reserve => reserve.id === newReserve.id);
+        const preempted = newReserves.filter(reserve => reserve.id !== newReserve.id && reserve.isConflict);
+        const canPreempt =
+            newReserve.conflictPolicy === 'PREEMPT_LOWER_PRIORITY' &&
+            preempted.length > 0 &&
+            preempted.every(reserve => reserve.priority < newReserve.priority);
+        if (candidate?.isConflict === true || (preempted.length > 0 && !canPreempt)) {
+            this.log.system.error(`program is conflict. programId: ${newReserve.programId}`);
+            throw new Error('ReservationManageModelAddReserveConflict');
+        }
+        return canPreempt ? preempted.map(reserve => ({ reserveId: reserve.id, reason: 'PRIORITY_PREEMPTED' })) : [];
+    }
 
-        // 競合したかチェック
-        for (const reserve of newReserves) {
-            if (reserve.isConflict) {
-                this.log.system.error(`program is conflict. programId: ${newReserve.programId}`);
-                throw new Error('ReservationManageModelAddReserveConflict');
+    /** planner モードで追加・編集した予約と同じ連結窓を再計算して保存する */
+    private async replanConnectedReservations(seed: Reserve): Promise<void> {
+        if (this.configuration.getConfig().reservation?.scheduler === 'legacy') return;
+
+        const ranges = [{ startAt: seed.startAt, endAt: seed.endAt }];
+        const affected = new Map<number, Reserve>();
+        for (let pass = 0; pass < 100; pass++) {
+            const found = await this.reserveDB.findTimeRanges({
+                times: ranges,
+                hasSkip: true,
+                hasConflict: true,
+                hasOverlap: true,
+            });
+            let expanded = false;
+            for (const reserve of found) {
+                affected.set(reserve.id, reserve);
+                for (const range of ranges) {
+                    if (reserve.startAt < range.endAt && reserve.endAt > range.startAt) {
+                        const startAt = Math.min(range.startAt, reserve.startAt);
+                        const endAt = Math.max(range.endAt, reserve.endAt);
+                        if (startAt !== range.startAt || endAt !== range.endAt) {
+                            range.startAt = startAt;
+                            range.endAt = endAt;
+                            expanded = true;
+                        }
+                    }
+                }
             }
+            if (!expanded) break;
+        }
+
+        const oldReserves = [...affected.values()];
+        const newReserves = await this.createPlannerReserves(oldReserves);
+        const oldById = new Map(oldReserves.map(reserve => [reserve.id, reserve]));
+        const updates = newReserves.filter(reserve => {
+            const old = oldById.get(reserve.id);
+            return (
+                old !== undefined &&
+                (old.plannedTunerIndex !== reserve.plannedTunerIndex ||
+                    old.isConflict !== reserve.isConflict ||
+                    old.conflictInfo !== reserve.conflictInfo)
+            );
+        });
+        if (updates.length === 0) return;
+        await this.reserveDB.updateMany({ update: updates, isSuppressLog: false });
+        const plannedSeed = updates.find(reserve => reserve.id === seed.id);
+        if (plannedSeed !== undefined) {
+            seed.plannedTunerIndex = plannedSeed.plannedTunerIndex;
+            seed.isConflict = plannedSeed.isConflict;
+            seed.conflictInfo = plannedSeed.conflictInfo;
+        }
+        const existingUpdates = updates.filter(reserve => reserve.id !== seed.id);
+        if (existingUpdates.length > 0) {
+            this.reserveEvent.emitUpdated({ update: existingUpdates, isSuppressLog: false });
         }
     }
 
@@ -558,6 +639,18 @@ class ReservationManageModel implements IReservationManageModel {
      */
     private checkManualReserveOption(option: apid.ManualReserveOption, isEdit: boolean = false): boolean {
         let isFail = false;
+        if (
+            option.priority !== undefined &&
+            (!Number.isInteger(option.priority) || option.priority < 1 || option.priority > 5)
+        )
+            return false;
+        if (
+            option.conflictPolicy !== undefined &&
+            !['STRICT', 'ALLOW_END_LACK', 'ALLOW_HEAD_LACK', 'ALLOW_PARTIAL', 'PREEMPT_LOWER_PRIORITY'].includes(
+                option.conflictPolicy,
+            )
+        )
+            return false;
 
         // エンコードオプションチェック
         isFail =
@@ -578,6 +671,9 @@ class ReservationManageModel implements IReservationManageModel {
      * @param program: Program
      */
     private setProgramToReserve(reserve: Reserve, program: Program | ProgramWithOverlap): void {
+        if (reserve.programId !== program.id || reserve.programUpdateTime !== program.updateTime) {
+            reserve.plannedEndAt = null;
+        }
         reserve.programId = program.id;
         reserve.programUpdateTime = program.updateTime;
         reserve.channelId = program.channelId;
@@ -815,6 +911,18 @@ class ReservationManageModel implements IReservationManageModel {
             this.executeManagementModel.unLockExecution(exeId);
         };
 
+        try {
+            await this.updateRuleWithExecution(ruleId, isSuppressLog, isFirstUpdate);
+        } finally {
+            finalize();
+        }
+    }
+
+    private async updateRuleWithExecution(
+        ruleId: apid.RuleId,
+        isSuppressLog: boolean,
+        isFirstUpdate: boolean,
+    ): Promise<void> {
         if (isSuppressLog === false) {
             this.log.system.info(`update rule reservation: ${ruleId}`);
         }
@@ -845,7 +953,6 @@ class ReservationManageModel implements IReservationManageModel {
                 hasEventRelay: false, // イベントリレーの情報は更新対象とさせないため除外
             })
             .catch(err => {
-                finalize();
                 this.log.system.error(`find rule reservation error: ${ruleId}`);
                 this.log.system.error(err);
                 throw err;
@@ -860,7 +967,6 @@ class ReservationManageModel implements IReservationManageModel {
                           reserveOption: rule.reserveOption,
                       })
                       .catch(err => {
-                          finalize();
                           this.log.system.error(`find rule error: ${ruleId}`);
                           this.log.system.error(err);
                           throw err;
@@ -884,7 +990,6 @@ class ReservationManageModel implements IReservationManageModel {
                     typeof rule.searchOption.channelIds === 'undefined' ||
                     typeof rule.searchOption.times === 'undefined'
                 ) {
-                    finalize();
                     this.log.system.error(`rule search option error: ${ruleId}`);
                     throw new Error('RuleSearchOptionError');
                 }
@@ -1018,11 +1123,8 @@ class ReservationManageModel implements IReservationManageModel {
             oldRuleReserves,
             isSuppressLog,
         ).catch(err => {
-            finalize();
             throw err;
         });
-
-        finalize();
 
         if (isSuppressLog === false) {
             this.log.system.info(`successful update rule reservation: ${ruleId}`);
@@ -1048,7 +1150,10 @@ class ReservationManageModel implements IReservationManageModel {
         reserve.ruleId = rule.id;
         reserve.ruleUpdateCnt = rule.updateCnt;
         reserve.updateTime = updateTime;
-        reserve.allowEndLack = rule.reserveOption.allowEndLack;
+        reserve.priority = rule.reserveOption.priority ?? 3;
+        reserve.conflictPolicy =
+            rule.reserveOption.conflictPolicy ?? (rule.reserveOption.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
+        reserve.allowEndLack = reserve.conflictPolicy === 'ALLOW_END_LACK';
 
         if (typeof rule.reserveOption.tags !== 'undefined') {
             reserve.tags = JSON.stringify(rule.reserveOption.tags);
@@ -1083,17 +1188,40 @@ class ReservationManageModel implements IReservationManageModel {
         isSuppressLog: boolean,
     ): Promise<IReserveUpdateValues> {
         // 影響を受ける可能性のある予約を取り出す
-        const baseReserves = await this.reserveDB.findTimeRanges(findOption).catch(err => {
-            this.log.system.error('reserve get error');
-            throw err;
-        });
-
+        const ranges = findOption.times.map(range => ({ ...range }));
+        const affectedReserves = new Map<number, Reserve>();
+        for (let pass = 0; pass < 100; pass++) {
+            const found = await this.reserveDB.findTimeRanges({ ...findOption, times: ranges }).catch(err => {
+                this.log.system.error('reserve get error');
+                throw err;
+            });
+            let expanded = false;
+            for (const reserve of found) {
+                if (affectedReserves.has(reserve.id) === false) {
+                    affectedReserves.set(reserve.id, reserve);
+                    expanded = true;
+                }
+                for (const range of ranges) {
+                    if (reserve.startAt < range.endAt && reserve.endAt > range.startAt) {
+                        const startAt = Math.min(range.startAt, reserve.startAt);
+                        const endAt = Math.max(range.endAt, reserve.endAt);
+                        if (startAt !== range.startAt || endAt !== range.endAt) {
+                            range.startAt = startAt;
+                            range.endAt = endAt;
+                            expanded = true;
+                        }
+                    }
+                }
+            }
+            if (expanded === false) break;
+        }
+        const baseReserves = [...affectedReserves.values()];
         let newReserves = this.copyReserveArray(addNewReserves);
         // baseReserves を破壊しないように copyReserveArray で deep copy する
         Array.prototype.push.apply(newReserves, this.copyReserveArray(baseReserves));
 
         // 予約情報を計算
-        newReserves = this.createReserves(newReserves);
+        newReserves = await this.createReserves(newReserves);
 
         // 古い予約情報と差分を列挙する
         const oldReserves = this.copyReserveArray(addOldReserves);
@@ -1241,6 +1369,9 @@ class ReservationManageModel implements IReservationManageModel {
                 oldReserve.ruleUpdateCnt !== newReserve.ruleUpdateCnt ||
                 oldReserve.isSkip !== newReserve.isSkip ||
                 oldReserve.isConflict !== newReserve.isConflict ||
+                oldReserve.conflictInfo !== newReserve.conflictInfo ||
+                oldReserve.plannedTunerIndex !== newReserve.plannedTunerIndex ||
+                oldReserve.plannedEndAt !== newReserve.plannedEndAt ||
                 oldReserve.isOverlap !== newReserve.isOverlap)
         );
     }
@@ -1253,6 +1384,13 @@ class ReservationManageModel implements IReservationManageModel {
      * @return boolean 差分があれば true
      */
     private checkTimeRuleReserveDiff(oldReserve: Reserve, newReserve: Reserve): boolean {
+        if (
+            oldReserve.conflictInfo !== newReserve.conflictInfo ||
+            oldReserve.plannedTunerIndex !== newReserve.plannedTunerIndex
+        ) {
+            return true;
+        }
+
         return (
             oldReserve.ruleId !== null &&
             newReserve.ruleId !== null &&
@@ -1400,6 +1538,30 @@ class ReservationManageModel implements IReservationManageModel {
                 this.log.system.error(`update reservation by program id error: ${reserve.id}`);
                 this.log.system.error(err);
             });
+        }
+    }
+
+    /** 指定予約と時刻が重なる予約の Planner 割当を再計算する */
+    public async recalculatePlanForReserve(reserveId: apid.ReserveId): Promise<void> {
+        const exeId = await this.executeManagementModel.getExecution(ReservationManageModel.UPDATE_RESERVE_PRIORITY);
+        try {
+            const reserve = await this.reserveDB.findId(reserveId);
+            if (reserve === null) return;
+            const diff = await this.createDiff(
+                {
+                    times: [{ startAt: reserve.startAt, endAt: reserve.endAt }],
+                    hasSkip: false,
+                    hasConflict: true,
+                    hasOverlap: false,
+                    excludeReserveId: reserveId,
+                },
+                [reserve],
+                [reserve],
+                true,
+            );
+            this.reserveEvent.emitUpdated(diff);
+        } finally {
+            this.executeManagementModel.unLockExecution(exeId);
         }
     }
 
@@ -1649,6 +1811,14 @@ class ReservationManageModel implements IReservationManageModel {
             this.executeManagementModel.unLockExecution(exeId);
         };
 
+        try {
+            await this.editWithExecution(reserveId, option);
+        } finally {
+            finalize();
+        }
+    }
+
+    private async editWithExecution(reserveId: apid.ReserveId, option: apid.EditManualReserveOption): Promise<void> {
         this.log.system.info(`edit reservation: ${reserveId}`);
 
         // オプションチェック
@@ -1659,18 +1829,18 @@ class ReservationManageModel implements IReservationManageModel {
 
         // reserveId が存在するかチェック
         const newReserve = await this.reserveDB.findId(reserveId).catch(err => {
-            finalize();
             this.log.system.error(`get reservation error: ${reserveId}`);
             throw err;
         });
         if (newReserve === null) {
-            finalize();
             this.log.system.error(`reservation is not found: ${reserveId}`);
             throw new Error('ReservationIsNotFound');
         }
 
         // option から必要な情報をセットする
-        newReserve.allowEndLack = option.allowEndLack;
+        newReserve.priority = option.priority ?? newReserve.priority;
+        newReserve.conflictPolicy = option.conflictPolicy ?? (option.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
+        newReserve.allowEndLack = newReserve.conflictPolicy === 'ALLOW_END_LACK';
         if (typeof option.tags !== 'undefined') {
             newReserve.tags = JSON.stringify(option.tags);
         }
@@ -1679,13 +1849,11 @@ class ReservationManageModel implements IReservationManageModel {
 
         // 更新
         await this.reserveDB.updateOnce(newReserve).catch(err => {
-            finalize();
             this.log.system.error(`update reservation error: ${reserveId}`);
             throw err;
         });
 
-        // 完了したのでロック解除
-        finalize();
+        await this.replanConnectedReservations(newReserve);
 
         this.log.system.info(`successful edit reservation: ${reserveId}`);
 
@@ -1745,7 +1913,149 @@ class ReservationManageModel implements IReservationManageModel {
      * @param matches 予約したい番組情報
      * @return Reserve[] 予約情報
      */
-    private createReserves(matches: Reserve[]): Reserve[] {
+    private async createReserves(matches: Reserve[]): Promise<Reserve[]> {
+        if (this.configuration.getConfig().reservation?.scheduler !== 'legacy') {
+            const planned = await this.createPlannerReserves(matches);
+            return planned;
+        }
+
+        const legacy = this.createLegacyReserves(matches);
+        const planner = await this.createPlannerReserves(matches);
+        const legacyById = new Map(legacy.map(reserve => [reserve.id, reserve]));
+        const currentReserveIds = new Set(planner.map(reserve => reserve.id));
+        for (const reserveId of this.plannerDifferenceLogs.keys()) {
+            if (currentReserveIds.has(reserveId) === false) this.plannerDifferenceLogs.delete(reserveId);
+        }
+        for (const reserve of planner) {
+            const old = legacyById.get(reserve.id);
+            if (old !== undefined) {
+                const difference = JSON.stringify({
+                    legacy: { isConflict: old.isConflict, conflictInfo: old.conflictInfo ?? null },
+                    planner: { isConflict: reserve.isConflict, conflictInfo: reserve.conflictInfo ?? null },
+                });
+                const normalized = (value: unknown): string => JSON.stringify(value);
+                const legacyDifference = normalized({
+                    isConflict: old.isConflict,
+                    conflictInfo: old.conflictInfo ?? null,
+                });
+                const plannerDifference = normalized({
+                    isConflict: reserve.isConflict,
+                    conflictInfo: reserve.conflictInfo ?? null,
+                });
+                if (legacyDifference === plannerDifference) continue;
+                if (this.plannerDifferenceLogs.get(reserve.id) === difference) continue;
+                this.plannerDifferenceLogs.set(reserve.id, difference);
+                this.log.system.info({
+                    message: 'reservation scheduler difference',
+                    reserveId: reserve.id,
+                    legacy: { isConflict: old.isConflict, plannedTunerIndex: old.plannedTunerIndex ?? null },
+                    planner: {
+                        isConflict: reserve.isConflict,
+                        plannedTunerIndex: reserve.plannedTunerIndex,
+                        conflictInfo: reserve.conflictInfo,
+                    },
+                    reasons: this.plannerReasons.get(reserve.id) ?? [],
+                });
+            }
+        }
+        return legacy;
+    }
+
+    private async createPlannerReserves(matches: Reserve[]): Promise<Reserve[]> {
+        const config = this.configuration.getConfig();
+        const timing = resolveRecordingTimingConfig(
+            config.recording,
+            config.timeSpecifiedStartMargin,
+            config.timeSpecifiedEndMargin,
+        );
+        const priorities = [...matches].sort((a, b) => this.sortReserve(a, b));
+        const rank = new Map(priorities.map((reserve, index) => [reserve.id, index]));
+        const nextProgramStarts = new Map<number, number | undefined>();
+        const undefinedByChannel = new Map<number, Reserve[]>();
+        for (const reserve of matches) {
+            if (reserve.isTimeUndefined !== true || reserve.programId === null) continue;
+            const group = undefinedByChannel.get(reserve.channelId) ?? [];
+            group.push(reserve);
+            undefinedByChannel.set(reserve.channelId, group);
+        }
+        await Promise.all(
+            [...undefinedByChannel.entries()].map(async ([channelId, reserves]) => {
+                const following = await this.programDB.findSchedule({
+                    channelId,
+                    startAt: Math.min(...reserves.map(reserve => reserve.startAt + 1)),
+                    endAt: Math.max(...reserves.map(reserve => reserve.endAt)),
+                    isHalfWidth: false,
+                });
+                for (const reserve of reserves) {
+                    const next = following
+                        .filter(program => program.startAt > reserve.startAt)
+                        .sort((a, b) => a.startAt - b.startAt)[0];
+                    nextProgramStarts.set(reserve.id, next?.startAt);
+                }
+            }),
+        );
+        const plannerEndAt = new Map<number, number>();
+        for (const reserve of matches) {
+            if (reserve.isTimeUndefined !== true) continue;
+            const baseEndAt = resolveProgramEndTimes(
+                reserve.startAt,
+                1,
+                nextProgramStarts.get(reserve.id),
+            ).plannedEndAt;
+            plannerEndAt.set(
+                reserve.id,
+                Math.min(Math.max(baseEndAt, reserve.plannedEndAt ?? baseEndAt), reserve.endAt),
+            );
+        }
+        const plannerSpan = telemetry.startPlanner();
+        const plans = planSchedule({
+            reservations: matches.map(reserve => ({
+                id: reserve.id,
+                startAt: reserve.startAt,
+                endAt: plannerEndAt.get(reserve.id) ?? reserve.endAt,
+                channel: reserve.channel,
+                channelType: reserve.channelType,
+                allowEndLack: reserve.allowEndLack,
+                conflictPolicy: reserve.conflictPolicy as import('./planner/SchedulePlanner').ConflictPolicy,
+                isSkip: reserve.isSkip,
+                isOverlap: reserve.isOverlap,
+                priority: (5 - reserve.priority) * 100000 + (rank.get(reserve.id) ?? reserve.id),
+            })),
+            tuners: this.tuners.map(tuner => ({ index: tuner.getIndex(), types: tuner.getTypes() })),
+            timing,
+            previousPlan: matches.map(reserve => ({
+                reserveId: reserve.id,
+                tunerIndex: reserve.plannedTunerIndex,
+                conflict: null,
+                lossInfo: null,
+                lostMs: 0,
+                reasons: [],
+            })),
+            sessions: this.recordingStreamCreator
+                ?.getActiveTunerAssignments()
+                .map(session => ({ ...session, started: true })),
+        });
+        plannerSpan.conflicts(plans.filter(plan => plan.conflict !== null).length);
+        plannerSpan.end();
+        this.plannerReasons = new Map(plans.map(plan => [plan.reserveId, plan.reasons]));
+        const byId = new Map(plans.map(plan => [plan.reserveId, plan]));
+        return matches
+            .map(reserve => {
+                const plan = byId.get(reserve.id);
+                if (plan === undefined) return Object.assign({}, reserve);
+                return Object.assign({}, reserve, {
+                    isConflict: plan.conflict !== null && plan.conflict.type !== 'MARGIN_OVERLAP',
+                    plannedTunerIndex: plan.tunerIndex,
+                    conflictInfo:
+                        plan.conflict === null && plan.lossInfo === null
+                            ? null
+                            : JSON.stringify(plan.conflict ?? plan.lossInfo),
+                });
+            })
+            .sort((a, b) => a.startAt - b.startAt);
+    }
+
+    private createLegacyReserves(matches: Reserve[]): Reserve[] {
         // 重複チェックのために programId でソート
         matches.sort(this.sortReserve);
 
@@ -1865,6 +2175,8 @@ class ReservationManageModel implements IReservationManageModel {
                 const newReserve: Reserve = Object.assign({}, matches[l.idx]);
                 // 重複の評価結果の反映
                 newReserve.isConflict = conflictResults[l.idx] === true;
+                newReserve.conflictInfo = null;
+                newReserve.plannedTunerIndex = null;
                 // 予約情報 の格納
                 newReserves.push(newReserve);
             }
@@ -1884,6 +2196,7 @@ class ReservationManageModel implements IReservationManageModel {
      * @return number
      */
     private sortReserve(a: Reserve, b: Reserve): number {
+        if (a.priority !== b.priority) return b.priority - a.priority;
         const aIsManual = a.ruleId === null;
         const bIsManual = b.ruleId === null;
 

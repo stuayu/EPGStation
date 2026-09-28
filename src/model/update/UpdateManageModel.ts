@@ -11,7 +11,10 @@ import IConfiguration from '../IConfiguration';
 import ILoggerModel from '../ILoggerModel';
 import ILogger from '../ILogger';
 import IProviderHttpClient from '../metadata/IProviderHttpClient';
+import IRecordingManageModel from '../operator/recording/IRecordingManageModel';
 import IUpdateManageModel, { RunUpdateOption, UpdateJob, UpdateStatus } from './IUpdateManageModel';
+import IRecordingSessionDB from '../db/IRecordingSessionDB';
+import { RecordingSessionState } from '../operator/recording/RecordingSessionState';
 import {
     canSupervisorRestart,
     describeRestart,
@@ -77,6 +80,8 @@ export default class UpdateManageModel implements IUpdateManageModel {
         @inject('ILoggerModel') logger: ILoggerModel,
         @inject('IConfiguration') private config: IConfiguration,
         @inject('IProviderHttpClient') private http: IProviderHttpClient,
+        @inject('IRecordingManageModel') private recordingManageModel: IRecordingManageModel,
+        @inject('IRecordingSessionDB') private recordingSessionDB: IRecordingSessionDB,
     ) {
         this.log = logger.getLogger();
     }
@@ -114,12 +119,12 @@ export default class UpdateManageModel implements IUpdateManageModel {
         if (expired === true && this.job.status !== 'running') {
             await this.refresh().catch(() => {});
         }
-        return this.buildStatus();
+        return await this.buildStatus();
     }
 
     public async check(): Promise<UpdateStatus> {
         await this.refresh();
-        return this.buildStatus();
+        return await this.buildStatus();
     }
 
     public getJob(): UpdateJob {
@@ -262,33 +267,42 @@ export default class UpdateManageModel implements IUpdateManageModel {
      */
     private restart(supervisor: SupervisorType): void {
         setTimeout(() => {
-            try {
-                if (supervisor === 'windows-service') {
-                    // nssm 配下ならプロセスの終了で再起動されるが、sc.exe から直接登録された環境や
-                    // 回復設定が入っていない環境では上がってこない。プロセスから切り離した cmd.exe に
-                    // 遅延起動を任せ、既に起動していれば何もしない (error 1056 を無視する) 形にしておく
-                    this.startWindowsService();
-                } else if (canSupervisorRestart(supervisor) === false) {
-                    const child = spawn(
-                        process.execPath,
-                        [path.join(UpdateManageModel.ROOT_PATH, 'dist', 'index.js')],
-                        {
-                            cwd: UpdateManageModel.ROOT_PATH,
-                            detached: true,
-                            stdio: 'ignore',
-                            windowsHide: true,
-                        },
-                    );
-                    child.unref();
+            void (async () => {
+                //録画 sink を flush し、同じ session を再起動後に再開できる状態で残す。
+                await this.recordingManageModel.shutdown();
+                try {
+                    if (supervisor === 'windows-service') {
+                        // nssm 配下ならプロセスの終了で再起動されるが、sc.exe から直接登録された環境や
+                        // 回復設定が入っていない環境では上がってこない。プロセスから切り離した cmd.exe に
+                        // 遅延起動を任せ、既に起動していれば何もしない (error 1056 を無視する) 形にしておく
+                        this.startWindowsService();
+                    } else if (canSupervisorRestart(supervisor) === false) {
+                        const child = spawn(
+                            process.execPath,
+                            [path.join(UpdateManageModel.ROOT_PATH, 'dist', 'index.js')],
+                            {
+                                cwd: UpdateManageModel.ROOT_PATH,
+                                detached: true,
+                                stdio: 'ignore',
+                                windowsHide: true,
+                            },
+                        );
+                        child.unref();
+                    }
+                } catch (err) {
+                    this.log.system.error('failed to spawn successor process');
+                    this.log.system.error(err);
                 }
-            } catch (err) {
-                this.log.system.error('failed to spawn successor process');
+                // 子プロセス (Service / EPGUpdater) は親の終了では落ちない。
+                // 残ると Service がポートを握ったままになり後継プロセスが待ち受けられないため、明示的に止める
+                killAllChildProcesses();
+                process.exit(0);
+            })().catch(err => {
+                this.log.system.error('recording shutdown failed before restart');
                 this.log.system.error(err);
-            }
-            // 子プロセス (Service / EPGUpdater) は親の終了では落ちない。
-            // 残ると Service がポートを握ったままになり後継プロセスが待ち受けられないため、明示的に止める
-            killAllChildProcesses();
-            process.exit(0);
+                killAllChildProcesses();
+                process.exit(1);
+            });
         }, UpdateManageModel.RESTART_DELAY_MS).unref();
     }
 
@@ -399,7 +413,7 @@ export default class UpdateManageModel implements IUpdateManageModel {
         };
     }
 
-    private buildStatus(): UpdateStatus {
+    private async buildStatus(): Promise<UpdateStatus> {
         const currentVersion = this.getCurrentVersion();
         const installationType = this.getInstallationType();
         const supervisor = this.detectSupervisorType();
@@ -421,6 +435,8 @@ export default class UpdateManageModel implements IUpdateManageModel {
             ? `更新後、${describeRestart(supervisor)}`
             : 'git で取得したディレクトリではないため、ワンクリック更新は利用できません。配布アーカイブを展開し直すか、git clone した環境をご利用ください';
 
+        const activeRecordingCount = await this.getActiveRecordingCount();
+
         return {
             currentVersion,
             currentIsPrerelease: isPrereleaseVersion(currentVersion),
@@ -438,9 +454,29 @@ export default class UpdateManageModel implements IUpdateManageModel {
             updateNote,
             // 更新を伴わない再起動は導入形態に依らず実行できるため、canUpdate とは別に説明を持たせる
             restartNote: describeRestart(supervisor),
+            activeRecordingCount,
             releasesUrl: `https://github.com/${this.getRepository()}/releases`,
             job: this.getJob(),
         };
+    }
+
+    /**
+     * 録画中または Mirakurun へ再接続中のセッション件数。
+     * @return Promise<number | null> DB 読み取りに失敗した場合は null
+     */
+    private async getActiveRecordingCount(): Promise<number | null> {
+        try {
+            const [recording, reconnecting] = await Promise.all([
+                this.recordingSessionDB.findByState(RecordingSessionState.RECORDING),
+                this.recordingSessionDB.findByState(RecordingSessionState.RECONNECTING),
+            ]);
+            return recording.length + reconnecting.length;
+        } catch (err) {
+            this.log.system.warn(
+                `failed to get active recording count: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return null;
+        }
     }
 
     /**

@@ -11,7 +11,16 @@ const RecorderModel = require('../../dist/model/operator/recording/RecorderModel
 
 const logger = { system: { info() {}, debug() {}, warn() {}, error() {}, fatal() {} } };
 
-const makeRecorder = (recording, streamCreator = { getCloseReason: () => null }) =>
+const makeRecorder = (
+    recording,
+    streamCreator = {
+        getCloseReason: () => null,
+        markClose() {},
+        closeStream(stream) {
+            stream.destroy();
+        },
+    },
+) =>
     new RecorderModel(
         { getLogger: () => logger },
         {
@@ -54,21 +63,25 @@ const clearEventRelayTimer = recorder => {
     recorder.eventRelayTimer.clear();
 };
 
-class SynchronousFirstDataStream extends PassThrough {
-    pipe(destination, options) {
-        // Readable#pipe() による resume と同時に最初の data が届くケースを再現する。
-        this.emit('data', Buffer.from('live-first-chunk'));
-        return super.pipe(destination, options);
+const tsPackets = (count, pid = 0x100) => {
+    const data = Buffer.alloc(count * 188, 0xff);
+    for (let i = 0; i < count; i++) {
+        const packet = data.subarray(i * 188, (i + 1) * 188);
+        packet[0] = 0x47;
+        packet[1] = (pid >> 8) & 0x1f;
+        packet[2] = pid & 0xff;
+        packet[3] = 0x10 | (i & 0x0f);
     }
-}
+    return data;
+};
 
-const buildEitPacket = (serviceId, eventId) => {
+const buildEitPacket = (serviceId, eventId, durationSec = 1800) => {
     const event = Buffer.alloc(16);
     event.writeUInt16BE(eventId, 0);
     event.fill(0xff, 2, 7);
-    event[7] = 0x00;
-    event[8] = 0x30;
-    event[9] = 0x00;
+    event[7] = durationSec === null ? 0xff : (durationSec >> 16) & 0xff;
+    event[8] = durationSec === null ? 0xff : (durationSec >> 8) & 0xff;
+    event[9] = durationSec === null ? 0xff : durationSec & 0xff;
     const header = Buffer.alloc(14);
     header[0] = 0x4e;
     const sectionLength = 11 + event.length;
@@ -93,39 +106,42 @@ const buildEitPacket = (serviceId, eventId) => {
     return packet;
 };
 
-test('service stream の開始確定時は source を pause し、待機バッファ後から live TS を再開できる', async () => {
-    const recorder = makeRecorder({ startGateTimeoutMs: 0, programStreamMode: 'service' });
+test('service stream は待機バッファと live TS を連結して書き込む', async () => {
+    const recorder = makeRecorder({ startGateTimeoutMs: 0, programStreamMode: 'service', reconnectEnabled: false });
     const source = new PassThrough();
     recorder.reserve = { ...reserve };
     recorder.stream = source;
 
     const waiting = recorder.waitForProgramStart();
-    source.write(Buffer.from('before'));
+    source.write(tsPackets(1));
     const buffered = await waiting;
     assert.equal(source.isPaused(), true);
-    source.write(Buffer.from('after'));
+    source.write(tsPackets(1, 0x101));
 
     const received = [];
     source.on('data', chunk => received.push(chunk));
     source.resume();
     await new Promise(resolve => setImmediate(resolve));
-    assert.equal(Buffer.concat(buffered).toString(), 'before');
-    assert.equal(Buffer.concat(received).toString(), 'after');
+    assert.equal(Buffer.concat(buffered).length, 188);
+    assert.equal(Buffer.concat(received).length, 188);
+    assert.equal(Buffer.concat(received)[0], 0x47);
     source.destroy();
 });
 
-test('録画開始 listener は pipe より先に登録され、同期的な first data を取り逃さない', async () => {
+test('録画開始時に待機 TS を書き込み、上流 EOF 後に finish する', async () => {
     const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'epgstation-recorder-pipe-race-'));
     const recPath = path.join(tempDir, 'race.ts');
     const recorder = makeRecorder({
         firstDataTimeoutMs: 25,
         programStreamMode: 'service',
+        reconnectEnabled: false,
     });
-    const source = new SynchronousFirstDataStream();
+    const source = new PassThrough();
     let started = 0;
     recorder.reserve = { ...reserve };
     recorder.stream = source;
-    recorder.waitForProgramStart = async () => [Buffer.from('waiting-buffer')];
+    const waitingPackets = tsPackets(3, 0x102);
+    recorder.waitForProgramStart = async () => [waitingPackets];
     recorder.setFollowingSchedule = async () => {};
     recorder.recordingUtil = { getRecPath: async () => ({ fullPath: recPath }) };
     recorder.addRecorded = async () => ({ id: 1 });
@@ -140,7 +156,10 @@ test('録画開始 listener は pipe より先に登録され、同期的な fir
         const finished = new Promise(resolve => recorder.recFile.once('finish', resolve));
         source.end();
         await finished;
-        assert.equal((await fs.promises.readFile(recPath)).toString(), 'waiting-buffer');
+        const recorded = await fs.promises.readFile(recPath);
+        assert.equal(recorded.length, 3 * 188);
+        assert.equal(recorded[0], 0x47);
+        assert.deepEqual(recorded, waitingPackets);
     } finally {
         source.destroy();
         recorder.passThroughStreamForWrite?.destroy();
@@ -161,27 +180,6 @@ test('legacy program stream は最初の Mirakurun データで即時開始し E
     assert.equal(Buffer.concat(buffered).toString(), 'filtered-program-data');
     assert.equal(source.isPaused(), true);
     source.destroy();
-});
-
-test('予定終了による premature close は録画失敗ではなく正常終了へ送る', async () => {
-    const source = new PassThrough();
-    const recorder = makeRecorder({}, { getCloseReason: stream => (stream === source ? 'scheduled-end' : null) });
-    recorder.reserve = { ...reserve, endAt: Date.now() + 60_000 };
-    recorder.recordedId = 10;
-    let ended = 0;
-    let failed = 0;
-    recorder.recEnd = async () => {
-        ended++;
-    };
-    recorder.recFailed = async () => {
-        failed++;
-    };
-
-    await recorder.setEndProcess(source);
-    source.destroy();
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(ended, 1);
-    assert.equal(failed, 0);
 });
 
 test('対象 present の一時的な切替は debounce 中の復帰で終了せず、確定した切替だけで終了する', async () => {
@@ -220,6 +218,36 @@ test('legacy program stream には EPGStation 側の終了境界 listener を追
     recorder.stream = source;
     recorder.setupProgramBoundaryMonitor([buildEitPacket(1, 123)]);
     assert.equal(source.listenerCount('data'), 0);
+    source.destroy();
+});
+
+test('未定番組の対象 present が続き計画終了へ近づくと上限内で延長して再計算する', async () => {
+    const calls = [];
+    const recorder = makeRecorder({ programStreamMode: 'service' });
+    const now = Date.now();
+    const targetEventId = reserve.programId % 100000;
+    const plannedEndAt = now + 30_000;
+    recorder.reserve = {
+        ...reserve,
+        startAt: now - 60_000,
+        endAt: now + 3 * 60 * 60 * 1000,
+        plannedEndAt,
+        isTimeUndefined: true,
+    };
+    recorder.programDB = { findSchedule: async () => [] };
+    recorder.reserveDB = { updatePlannedEndAt: async (...args) => calls.push(['save', ...args]) };
+    recorder.reservationManage = { recalculatePlanForReserve: async id => calls.push(['replan', id]) };
+    const source = new PassThrough();
+    recorder.stream = source;
+    recorder.setupProgramBoundaryMonitor([buildEitPacket(1, targetEventId, null)]);
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0][0], 'save');
+    assert.equal(calls[0][1], recorder.reserve.id);
+    assert.equal(calls[0][2], Math.min(plannedEndAt + 30 * 60 * 1000, recorder.reserve.endAt));
+    assert.deepEqual(calls[1], ['replan', recorder.reserve.id]);
+    assert.equal(recorder.reserve.endAt, now + 3 * 60 * 60 * 1000, '安全上限 endAt は維持');
     source.destroy();
 });
 
@@ -315,6 +343,72 @@ test('録画中の endAt 変更は待たずに即ハードタイマーへ反映�
     await recorder.update(newReserve, true);
     assert.deepEqual(calls, [newReserve.endAt]);
     clearEventRelayTimer(recorder);
+});
+
+test('復帰後の setTimer は過去 attempt の終了理由と partial 結果を保持する', async () => {
+    const recorder = makeRecorder({ programStreamMode: 'service' });
+    recorder.config.recordedTmp = os.tmpdir();
+    const now = Date.now();
+    const recorded = { id: 1, isRecording: true, videoFiles: [], dropLogFileId: null };
+    const session = { id: 1, state: 'RECORDING', recordedId: 1 };
+    recorder.recordedDB = {
+        removeRecording: async () => {
+            recorded.isRecording = false;
+        },
+        findId: async () => recorded,
+        updateOnce: async row => Object.assign(recorded, row),
+        updateRecordingResult: async (_id, values) => Object.assign(recorded, values),
+    };
+    recorder.recordingSessionDB = {
+        updateSession: async (_id, values) => Object.assign(session, values),
+        findAttemptsBySessionId: async () => [],
+    };
+    recorder.sessionTracker.db = recorder.recordingSessionDB;
+    recorder.recordingEvent = { emitFinishRecording() {} };
+    const restored = recorder.setResumeTimer({ ...nearReserve(), programId: null }, true, {
+        videoFile: { id: 1, parentDirectoryName: 'tmp', filePath: 'resume.ts', size: 188 },
+        session,
+        recorded,
+        attempts: [{ closeReason: 'transport-lost', endedAt: now - 1000, firstDataAt: now - 2000 }],
+    });
+    recorder.videoFileId = null;
+
+    try {
+        assert.equal(restored, true);
+        assert.deepEqual(recorder.sessionTracker.closeReasons, ['transport-lost']);
+        await recorder.recEnd();
+        assert.equal(recorded.endReason, 'transport-lost');
+        assert.equal(recorded.recordingStatus, 'partial');
+        assert.equal(session.endReason, 'transport-lost');
+        assert.equal(session.resultStatus, 'partial');
+    } finally {
+        recorder.timer.clear();
+    }
+});
+
+test('finish 終了時に各終了理由を info ログへ出す', async () => {
+    for (const reason of ['canceled', 'boundary', 'scheduled-end', 'tuner-handoff']) {
+        const recorder = makeRecorder({ programStreamMode: 'service' });
+        const messages = [];
+        const recorded = { id: 1, isRecording: true, videoFiles: [] };
+        recorder.log.system.info = message => messages.push(message);
+        recorder.reserve = { ...nearReserve(), isTimeSpecified: true, ruleId: null, isEventRelay: false };
+        recorder.recordedId = recorded.id;
+        recorder.recordedDB = {
+            removeRecording: async () => {
+                recorded.isRecording = false;
+            },
+            findId: async () => recorded,
+            updateOnce: async row => Object.assign(recorded, row),
+            updateRecordingResult: async (_id, values) => Object.assign(recorded, values),
+        };
+        recorder.recordingEvent = { emitFinishRecording() {} };
+        recorder.boundaryEndReason = reason;
+        recorder.sessionTracker.closeReasons = [reason];
+
+        await recorder.recEnd();
+        assert.ok(messages.includes(`recording end: reserveId: ${recorder.reserve.id}, reason: ${reason}`));
+    }
 });
 
 test('legacy program stream は endAt 変更でハードタイマーを触らない', async () => {

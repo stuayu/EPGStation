@@ -1,0 +1,207 @@
+[
+    {
+        "index": 0,
+        "name": "PX-MLT",
+        "types": ["GR", "BS", "CS"]
+    },
+    {
+        "index": 1,
+        "name": "PX-S",
+        "types": ["BS", "CS"]
+    },
+    {
+        "index": 2,
+        "name": "PX-S",
+        "types": ["BS", "CS"]
+    },
+    {
+        "index": 3,
+        "name": "PX-T",
+        "types": ["GR"]
+    },
+    {
+        "index": 4,
+        "name": "PX-T",
+        "types": ["GR"]
+    },
+    {
+        "index": 5,
+        "name": "SPHD",
+        "types": []
+    },
+    {
+        "index": 6,
+        "name": "北海道",
+        "types": []
+    },
+    {
+        "index": 7,
+        "name": "青森",
+        "types": []
+    },
+    {
+        "index": 8,
+        "name": "青森amuSan",
+        "types": ["GR", "BS", "CS"]
+    },
+    {
+        "index": 9,
+        "name": "4K",
+        "types": ["BS4K"]
+    },
+    {
+        "index": 10,
+        "name": "宮城",
+        "types": ["GR"]
+    },
+    {
+        "index": 11,
+        "name": "秋田",
+        "types": ["GR"]
+    },
+    {
+        "index": 12,
+        "name": "栃木",
+        "types": []
+    },
+    {
+        "index": 13,
+        "name": "群馬",
+        "types": ["GR"]
+    },
+    {
+        "index": 14,
+        "name": "きゅーむ東京",
+        "types": ["GR", "SKY"]
+    },
+    {
+        "index": 15,
+        "name": "ふくちば東京",
+        "types": ["GR"]
+    },
+    {
+        "index": 16,
+        "name": "東京PT2",
+        "types": ["GR"]
+    },
+    {
+        "index": 17,
+        "name": "かながわ厚木",
+        "types": ["GR", "BS", "CS"]
+    },
+    {
+        "index": 18,
+        "name": "かながわ厚木CATV",
+        "types": ["GR", "BS", "SKY"]
+    },
+    {
+        "index": 19,
+        "name": "新潟",
+        "types": ["GR"]
+    },
+    {
+        "index": 20,
+        "name": "福井",
+        "types": ["GR"]
+    },
+    {
+        "index": 21,
+        "name": "長野",
+        "types": ["GR"]
+    },
+    {
+        "index": 22,
+        "name": "岐阜",
+        "types": ["GR"]
+    },
+    {
+        "index": 23,
+        "name": "静岡",
+        "types": []
+    },
+    {
+        "index": 24,
+        "name": "静岡Cloudflare",
+        "types": []
+    },
+    {
+        "index": 25,
+        "name": "静岡東部",
+        "types": ["GR", "BS"]
+    },
+    {
+        "index": 26,
+        "name": "愛知ARK",
+        "types": ["GR"]
+    },
+    {
+        "index": 27,
+        "name": "愛知刈谷",
+        "types": ["GR"]
+    },
+    {
+        "index": 28,
+        "name": "三重Antenna",
+        "types": ["GR"]
+    },
+    {
+        "index": 29,
+        "name": "三重Flets",
+        "types": ["GR"]
+    },
+    {
+        "index": 30,
+        "name": "滋賀",
+        "types": ["GR"]
+    },
+    {
+        "index": 31,
+        "name": "岡山",
+        "types": ["GR"]
+    },
+    {
+        "index": 32,
+        "name": "香川",
+        "types": []
+    },
+    {
+        "index": 33,
+        "name": "福岡",
+        "types": ["GR"]
+    },
+    {
+        "index": 34,
+        "name": "長崎",
+        "types": ["GR"]
+    },
+    {
+        "index": 35,
+        "name": "大分",
+        "types": ["GR"]
+    },
+    {
+        "index": 36,
+        "name": "大分mirakc",
+        "types": ["GR"]
+    },
+    {
+        "index": 37,
+        "name": "沖縄",
+        "types": []
+    },
+    {
+        "index": 38,
+        "name": "長崎遠隔",
+        "types": []
+    },
+    {
+        "index": 39,
+        "name": "富士通ノート",
+        "types": ["GR"]
+    },
+    {
+        "index": 40,
+        "name": "遠隔",
+        "types": []
+    }
+]

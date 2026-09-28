@@ -20,7 +20,7 @@ export default class ReserveApiModel implements IReserveApiModel {
      * @param option: ManualReserveOption
      * @return ReserveId
      */
-    public add(option: apid.ManualReserveOption): Promise<apid.ReserveId> {
+    public add(option: apid.ManualReserveOption): Promise<apid.AddedReserve> {
         return this.ipc.reserveation.add(option);
     }
 
@@ -73,8 +73,11 @@ export default class ReserveApiModel implements IReserveApiModel {
             id: reserve.id,
             isSkip: reserve.isSkip,
             isConflict: reserve.isConflict,
+            conflictInfo: typeof reserve.conflictInfo === 'string' ? JSON.parse(reserve.conflictInfo) : undefined,
             isOverlap: reserve.isOverlap,
             allowEndLack: reserve.allowEndLack,
+            priority: reserve.priority,
+            conflictPolicy: reserve.conflictPolicy as apid.ConflictPolicy,
             isTimeSpecified: reserve.isTimeSpecified,
             isTimeUndefined: reserve.isTimeUndefined,
             isFollowingSchedule: reserve.isFollowingSchedule,

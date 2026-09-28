@@ -615,6 +615,8 @@ export default class SearchState implements ISearchState {
         this.reserveOption = {
             enable: true,
             allowEndLack: true,
+            priority: 3,
+            conflictPolicy: 'ALLOW_END_LACK',
             avoidDuplicate: this.settingModel.getSavedValue().isCheckAvoidDuplicate,
             periodToAvoidDuplicate: null,
         };
@@ -860,6 +862,8 @@ export default class SearchState implements ISearchState {
 
         this.reserveOption.enable = reserveOption.enable;
         this.reserveOption.allowEndLack = reserveOption.allowEndLack;
+        this.reserveOption.priority = reserveOption.priority ?? 3;
+        this.reserveOption.conflictPolicy = reserveOption.conflictPolicy ?? (reserveOption.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
         this.reserveOption.avoidDuplicate = reserveOption.avoidDuplicate;
 
         if (typeof reserveOption.periodToAvoidDuplicate !== 'undefined') {
@@ -2237,7 +2241,9 @@ export default class SearchState implements ISearchState {
     private createRuleReserveOption(option: ReserveOption): apid.RuleReserveOption {
         const reserveOption: apid.RuleReserveOption = {
             enable: option.enable,
-            allowEndLack: option.allowEndLack,
+            allowEndLack: option.conflictPolicy === 'ALLOW_END_LACK',
+            priority: option.priority,
+            conflictPolicy: option.conflictPolicy,
             avoidDuplicate: option.avoidDuplicate,
         };
 

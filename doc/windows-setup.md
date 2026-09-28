@@ -80,11 +80,38 @@ npm run status-win-service
 アンインストールは管理者権限で次を実行してからフォルダを削除する
 (`uninstall` は内部でサービスを停止してから削除する)。
 
+サービス停止時、EPGStation は受信した `SIGTERM` / `SIGINT` で録画 sink の書き込み完了を最大 10 秒待ち、録画セッションを再起動後に再開できる状態で残す。node-windows の `wrapper.js` は停止時に子 Node プロセスへ `child.kill()` を行うが、Windows では POSIX シグナルハンドラの実行を保証しない。サービス停止で graceful shutdown が動かない場合は、次回起動時の異常終了復旧が残った録画を処理する。Windows サービス停止時の flush はベストエフォート。
+
 ```powershell
 npm run uninstall-win-service
 ```
 
 ## セットアップ
+
+### OpenTelemetry Collector の例
+
+OpenTelemetry を有効にする場合、Collector の OTLP/HTTP receiver を起動し、`config.yml` に設定する。次の最小構成は HTTP の 4318 番ポートで traces / metrics を受け取る。
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+exporters:
+  debug:
+    verbosity: basic
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug]
+```
+
+Collector と同じ PC なら `observability.otel.endpoint: 'http://127.0.0.1:4318'`、別 PC なら Collector の到達可能なアドレスを指定する。
 
 ここでは Windows PowerShell を用いたセットアップを解説します
 

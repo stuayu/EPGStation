@@ -38,9 +38,27 @@ export default class Reserve extends BaseEntity {
     public isConflict: boolean = false; // 競合しているか
 
     @Column({
+        type: 'text',
+        nullable: true,
+    })
+    public conflictInfo: string | null = null; // 予約競合の詳細 (JSON)
+
+    @Column({
+        type: 'integer',
+        nullable: true,
+    })
+    public plannedTunerIndex: number | null = null; // SchedulePlanner が割り当てたチューナー
+
+    @Column({
         default: false,
     })
     public allowEndLack: boolean = false; // 末尾切れを許すか
+
+    @Column({ type: 'integer', default: 3 })
+    public priority: number = 3;
+
+    @Column({ type: 'text', default: 'STRICT' })
+    public conflictPolicy: string = 'STRICT';
 
     @Column({
         type: 'text',
@@ -200,6 +218,9 @@ export default class Reserve extends BaseEntity {
         type: 'bigint',
     })
     public endAt!: number;
+
+    @Column({ type: 'bigint', nullable: true })
+    public plannedEndAt: number | null = null; // 放送時間未定の番組の Planner 用終了時刻
 
     @Column({
         type: 'text',

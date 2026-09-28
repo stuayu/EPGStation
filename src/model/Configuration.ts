@@ -388,6 +388,9 @@ namespace Configuration {
 
     export const DEFAULT_VALUE: IConfigFile = {
         featureFlags: {},
+        reservation: {
+            scheduler: 'planner',
+        },
         mirakurunPath: 'http+unix://%2Fvar%2Frun%2Fmirakurun.sock/',
         apiServers: [],
         isAllowAllCORS: false,
@@ -423,6 +426,14 @@ namespace Configuration {
         importWatchIntervalSec: 300,
         recording: {
             programStreamMode: 'service',
+            reconnectEnabled: true,
+            shareUpstreamStream: true,
+        },
+        observability: {
+            otel: {
+                enabled: false,
+                serviceName: 'epgstation',
+            },
         },
         storageLimitCheckIntervalTime: 60,
         thumbnail: path.join(__dirname, '..', '..', 'thumbnail'),

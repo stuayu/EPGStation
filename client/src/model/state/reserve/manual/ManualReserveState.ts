@@ -21,6 +21,8 @@ export default class ManualReserveState implements IManualReserveState {
     };
     public reserveOption: ManualReserveOption = {
         allowEndLack: true,
+        priority: 3,
+        conflictPolicy: 'ALLOW_END_LACK',
     };
     public saveOption: ManualSaveOption = {
         parentDirectoryName: null,
@@ -79,6 +81,8 @@ export default class ManualReserveState implements IManualReserveState {
 
         this.reserveOption = {
             allowEndLack: true,
+            priority: 3,
+            conflictPolicy: 'ALLOW_END_LACK',
         };
 
         this.saveOption = {
@@ -135,6 +139,8 @@ export default class ManualReserveState implements IManualReserveState {
         }
 
         this.reserveOption.allowEndLack = reserveItem.allowEndLack;
+        this.reserveOption.priority = reserveItem.priority;
+        this.reserveOption.conflictPolicy = reserveItem.conflictPolicy;
         if (typeof reserveItem.parentDirectoryName !== 'undefined') {
             this.saveOption.parentDirectoryName = reserveItem.parentDirectoryName;
         }
@@ -398,7 +404,9 @@ export default class ManualReserveState implements IManualReserveState {
      */
     private createManualReserveOption(): apid.ManualReserveOption {
         const result: apid.ManualReserveOption = {
-            allowEndLack: this.reserveOption.allowEndLack,
+            allowEndLack: this.reserveOption.conflictPolicy === 'ALLOW_END_LACK',
+            priority: this.reserveOption.priority,
+            conflictPolicy: this.reserveOption.conflictPolicy,
         };
         if (this.isTimeSpecification === true) {
             // 時刻予約
@@ -449,7 +457,9 @@ export default class ManualReserveState implements IManualReserveState {
      */
     private createEditManualReserveOption(): apid.EditManualReserveOption {
         const result: apid.EditManualReserveOption = {
-            allowEndLack: this.reserveOption.allowEndLack,
+            allowEndLack: this.reserveOption.conflictPolicy === 'ALLOW_END_LACK',
+            priority: this.reserveOption.priority,
+            conflictPolicy: this.reserveOption.conflictPolicy,
         };
 
         // 保存オプション

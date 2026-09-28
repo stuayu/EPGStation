@@ -1,5 +1,27 @@
 # programId 録画をサービスストリームで制御する設計
 
+## RecordingSession 永続化 (Phase 3)
+
+録画実行 (`recording_session`) と上流接続 (`recording_attempt`) を分けて永続化する。開始前リトライも接続ごとに attempt を作る。Session の状態は `SCHEDULED → PREPARING → WAITING_BOUNDARY → RECORDING → FINALIZING → FINISHED`。`RECONNECTING` は Phase 4 用。終了結果は `completed` / `partial` / `failed` / `canceled`。途中切断は partial としてエンコードするが、元 TS を削除しない。Phase 5 では異常終了後も条件を満たす session を再開する。
+
+Recorded の `recordingStatus` / `endReason` は一覧表示用。null は既存録画を含め completed 扱い。詳細 API `GET /api/recorded/{recordedId}/recording-sessions` はセッション・attempt を返し、gap は attempt の `endedAt` から次 attempt の `firstDataAt` で導出する。Recorded に紐付かない開始失敗セッションは 30 日後に掃除する。
+
+session と attempt の永続化、状態遷移、終了理由の集計、結果判定、telemetry span は `RecordingSessionTracker` が担当する。`RecorderModel` は予約、タイマー、prepRecord / doRecord、EIT 監視、イベント発行を保持する。
+
+再開時の保存先、ファイル offset、過去 attempt 数、受信断数、終了理由列は `RecordingResumeCoordinator` が組み立てる。復帰後の retry と実行タイマーは引き続き `RecorderModel` が制御する。
+
+## Phase 8: 放送時間未定の終了時刻
+
+`ProgramDuration.resolveProgramEndTimes()` は表示用 (`displayEndAt`)、Planner 用 (`plannedEndAt`)、強制終了上限 (`hardSafetyEndAt`) を返す。放送時間未定の表示と安全上限は開始 + 3 時間、Planner 用だけ同一チャンネルの次番組開始までとする。Planner 入力の `endAt` に計画値を渡すが、予約表示 API の `endAt` は変更しない。`reserve.plannedEndAt` は NULL を通常値とし、録画中に対象 event が present のまま EIT duration 未定で計画終了へ近づいた場合だけ延長値を保存する。
+
+延長判定 `extendUndefinedDurationEndAt()` は計画終了の60秒前から30分ずつ延長し、安全上限で止める。Recorder はこの値だけ DB 更新し、重複する予約範囲の Planner を再計算する。録画 stream の hard timer / `reserve.endAt` は3時間上限のまま。実際の録画終了は EIT present の boundary が決める。SQLite / MySQL migration は追加列を nullable とし、既存予約の `endAt` や表示値を移行しない。
+
+## Phase 9: 連続録画の上流共有
+
+Operator プロセス内の `RecordingSourceLeaseManager` は `channelId` ごとに Mirakurun 上流を保持し、lease ごとの PassThrough 分岐を各予約 attempt に渡す。参照数が 0 になれば上流を閉じ、上流の close / end / error 時は共有表から lease を除去する。上流障害は全分岐へ同じ終了理由で通知し、再接続は lease 単位で行う。
+
+`recording.shareUpstreamStream` (既定 true) が有効な場合に共有する。Mirakurun priority と decode 設定が一致する service stream が対象で、priority / decode が異なる場合と `program` mode は共有しない。狙いは連続予約の張り付きで同じ局へ重複 HTTP 接続を作らず、引き継ぎの切れ目をなくすこと。Mirakurun の tuner 数には影響しない。枝バッファ上限は 128 MiB (30 秒分の BS4K 相当) とし、上限超過時は該当枝だけ失敗・再接続する。
+
 ## 1. 結論 (実装確定: 2026-08-19)
 
 `programId` 予約も Mirakurun の `getServiceStream` でチャンネルを事前確保し、番組の開始・終了境界を
@@ -143,6 +165,14 @@ TS が到着した時点で伝送正常と判断できるため、EIT 待ち中�
 
 ## 5. 開始判定
 
+### 5.1 時刻指定予約の開始境界
+
+時刻指定予約の `startAt` と、同じチャンネルの `ProgramDB.findSchedule()` が返す番組の `startAt` が前後2分以内なら番組境界予約とする。ProgramDB の `startAt` は `applyEitProgram` や Mirakurun の更新で EIT の値に上書きされることがある。判定は録画準備時 (開始ゲート設定時。既定では予約開始の約2分前) に一度だけ行う。準備時点で延長がすでに番組表へ反映され、開始時刻が予約時刻から2分を超えて離れていれば境界予約とは判定せず、開始ゲートは予約時刻で開始する。この場合、時刻指定予約の開始ゲートは soft timeout (最大60秒) で待ちを打ち切るため、前番組を録る量が増えても最大60秒となる。境界予約では前番組の延長中に待ち、following の開始時刻に達した時点で開始し、延長が続く場合は soft timeout を安全弁にする (最大60秒)。例えば区切りの1.5分前から録る予約は、開始が最大60秒遅れる。実測 (録画18589) では予定07:58:30に対して07:59:25に開始した (08:00開始番組の1.5分前を指定)。番組境界に一致しない時刻指定予約は、開始マージン到達で `timeSpecifiedMidProgram` として開始する。programId 予約の event_id 判定は変更しない。
+
+### 5.2 開始前の伝送失敗分類
+
+実装では `classifyStartFailure()` が最初の TS 未着、開始待ち中の stream close、pipe 後のデータ未着を分類する。service stream は `error` 再試行予算を使い、legacy program stream と endAt 超過は `waitingForEvent` を維持する。stream の close reason は `closeStream` / `markClose` で保持し、キャンセル・境界終了・予定終了を外部要因の失敗と混同しない。failed は終了後の DB / 一時ファイル後片付けだけを行い、finish イベントを発行しない。
+
 1. `startAt - PREP_TIME` に service stream を録画優先度で開く。
 2. `firstDataTimeoutMs` 内に TS が来なければ伝送障害としてストリームを閉じ、既存の error retry へ回す。
 3. TS 到着後は対象 serviceId の有効な EIT[p/f] だけを解析する。CRC 不正、`current_next_indicator=0`、
@@ -177,6 +207,27 @@ service stream は番組終了時に自動で閉じないため、次を必須�
 終了理由を `present-event-changed`、`scheduled-end`、`transport-error` に分ける。現在の
 `stream.finished()` だけでは service stream の正常終了と障害終了を判別できないため、セッションが理由を渡す。
 
+### Phase 4: 録画中の伝送断
+
+録画中は上流の EOF / error を録画終了とみなさず、`RecordingStreamEndPolicy` の判定表で再接続可否を決める。
+`recording.reconnectEnabled` は既定 true。false は従来の録り直し動作を維持する。再接続は同じ tuner 枠を使い、
+接続ごとに `recording_attempt` を追加する。再接続間隔は 500 ms、1 秒、2 秒、5 秒を上限として期限まで再試行する。
+録画中のキャンセル、境界確定、予定終了は再接続を止めて一度だけ finalize する。
+
+`TsPacketFramer` は各上流接続の TS を 188 byte 境界へ同期し、完全な TS packet だけを sink へ渡す。接続断で残った
+端数 byte は破棄し、新しい接続では同期を取り直す。ファイル書き込みは手動の backpressure を使い、sink が受け入れを
+止めたら上流を pause、`drain` 後に resume する。終了時は framer の端数を破棄し、write stream の `finish` を最大
+10 秒待ってからファイル移動とサイズ更新を行う。
+
+`TailStream` は録画中ファイルの無成長を EOF とせず、`shouldKeepWaiting` が true の間は追従する。最長待機は 60 秒。
+これにより再接続中も追っかけ再生、録画中 HLS、m2tsll が一時 EOF にならない。
+
+### Phase 5: 再起動からの復帰
+
+起動時に `RECORDING` / `RECONNECTING` session ごとに予約・`endAt + endMargin`・既存 VideoFile を調べる。`now < endAt + endMargin` かつ予約とファイルが存在する場合、ファイルを 188 byte 境界へ切り詰め、同じ Recorded / VideoFile / DropLogFile へ新しい attempt として追記する。終了時刻の無い前 attempt は録画ファイルの `mtime` で閉じ、stat できない場合は session の最終 DB 更新時刻を使う。transport gap と `TRANSPORT_GAP_CNT` はこの終了時刻から計算する。Operator は tuner 一覧の初回取得を最大10秒待ってから再開し、Mirakurun 未接続が続く場合も起動し、バックグラウンドで再試行する。復帰では録画準備・録画開始の外部コマンドと開始通知を再送せず、info ログだけを記録する。終了時の finish コマンドと通知は通常どおり一度出す。復帰対象は予約差分で二重作成せず、条件外の session は `partial / process-restart` で確定する。手動予約は削除しない。
+
+Operator の SIGTERM / SIGINT とワンクリック更新では、上流を `process-shutdown` として閉じ、sink の `finish` を最大 10 秒待ったあと attempt に理由を記録する。session は `RECORDING` のまま残し、次回起動の復帰対象にする。Windows の node-windows wrapper は子 Node に `child.kill()` を送るが、Windows で graceful signal handler の実行は保証されないため、サービス停止時の flush はベストエフォート。届かない場合は次回起動の異常終了復旧が処理する。
+
 ## 7. 再試行とキャンセル
 
 - HTTP エラー、初回 TS timeout、開始前の stream close は transport retry。
@@ -184,6 +235,11 @@ service stream は番組終了時に自動で閉じないため、次を必須�
 - キャンセル、予約削除、開始時刻変更では AbortController、終了タイマー、EIT timer、リングバッファを同期的に無効化する。
 - `prepGeneration` を維持し、古い非同期チェーンが新しい予約状態へ録画開始・失敗通知を返さないようにする。
 - 再試行時は同一 reserveId の旧セッションが閉じたことを確認してから新しいセッションを登録する。
+- 録画中の上流断は接続専用 AbortController で停止し、`RecordingSession` を `RECONNECTING` に遷移して backoff 後に
+  `RecordingStreamCreator.reconnect()` を呼ぶ。再接続は tuner を明け渡さず、空白中に更新された `endAt` は creator の
+  `pendingEndAt` から反映する。
+- `recording_attempt` の offset は Raw stream 受信量でなく、TS packet を sink に書いた 188 byte 単位の位置で記録する。
+  `firstDataAt` は再接続後の最初の TS、`closeReason` / `errorCode` は接続が閉じた理由を保持する。
 
 ## 8. 可観測性
 
@@ -196,6 +252,8 @@ service stream は番組終了時に自動で閉じないため、次を必須�
 - recording start: reason, waitMs, bufferedBytes
 - recording end: reason, actual start/end, scheduled start/end
 - retry: transport/boundary の分類、回数、次回時刻
+- 再接続: gap 開始・終了時刻、理由、接続 attempt、packet 書き込み位置。gap 時間は切断直前のデータ時刻から
+  再接続後の最初の TS 時刻までで導出する。
 
 これにより「視聴したら始まった」という報告を、同じチューナーへの相乗り、EIT 更新、再チューニング、単なる時刻一致に
 分解できる。UI の `isFollowingSchedule` は `WaitingBoundary` のときだけ true とする。
@@ -253,6 +311,43 @@ Windows 実機では先に `main` と同じ EPGStation を配備し、Mirakurun 
 - fallback と transport error の件数をログから集計できる。
 
 ## 12. Issue 報告者へ追加で依頼する証跡
+
+## 実機での再接続試験
+
+本番相当の Windows + MySQL + recisdb-proxy-rs 環境で録画中の受信断と再接続を確認する手順。
+
+1. 3〜4分の時刻指定予約を作る。例:
+
+    ```http
+    POST /api/reserves
+    Content-Type: application/json
+
+    {"allowEndLack":false,"timeSpecifiedOption":{"name":"再接続試験","channelId":<id>,"startAt":<ms>,"endAt":<ms>}}
+    ```
+
+    開始時刻は番組の区切りから2分以上離す。区切りに近い時刻は「区切りに合わせた予約」と判定され、開始ゲートで前番組の延長を待つ。
+
+2. 録画開始後、recisdb-proxy-rs のダッシュボード API `GET http://<host>:40080/api/clients` を呼び、`protocol: "mirakurun"` かつ `stream_class: "record"` のセッションを探す。
+3. セッションを `POST http://<host>:40080/api/client/<session_id>/disconnect` で切断する。recisdb-proxy は切断をエラーではなく正常な EOF として EPGStation へ返す。修正前は、番組途中でも正常完了と判定して録画を止め、予約を削除していた。
+4. 録画終了後、次を確認する。
+    - `GET /api/recorded/<id>` の `recordingStatus`、`endReason`、`transportGaps`
+    - `GET /api/recorded/<id>/recording-sessions` の attempt 数と各 attempt のバイト範囲
+    - 録画ファイルサイズが188の倍数であること
+5. attempt 1 の `fileOffsetEnd` 前後各20MBを切り出し、つなぎ目を解析する。
+    - 同期バイト `0x47` が188 byteごとに並ぶこと
+    - ffprobe で映像・音声 PTS の飛びを確認する
+    - ffmpeg のデコードエラー数を確認する
+
+Windows では録画ファイル名に日本語が含まれると、SSH 越しの PowerShell から ffprobe へ渡す際に文字化けして読めないことがある。ASCII 名で範囲を切り出してから解析する。本番機の時計は手元と数秒ずれる場合があるため、時刻比較には DB の attempt 時刻を使う。
+
+### 実測結果
+
+- 再接続 (録画18588): attempt 1 は0〜69,523,340 byte (`upstream-eof`)、attempt 2 は69,523,340〜409,816,124 byte (`scheduled-end`)。受信断584 ms。録画は1ファイルで188 byteの倍数。drop 11件 (つなぎ目の continuity counter 不連続)。
+- つなぎ目: 212,765パケットで同期エラー0。PTS は放送局の時計で進み続け、巻き戻り・リセットなし (映像 +0.467秒、音声 +0.725秒)。デコードエラーはつなぎ目の一瞬だけで8件。
+- 再接続2回目 (録画18589、修正後): 受信断588 ms。DB に `recordingStatus: partial` / `endReason: scheduled-end` を保存。
+- 番組途中の時刻指定予約 (録画18590): 予定08:06:00、開始08:05:55 (`timeSpecifiedMidProgram`)。修正前は56秒遅れていた。
+- 追っかけ再生終了: 録画終了から約1.7秒で m2tsll 配信が停止。修正前は最大60秒待っていた。
+- NW 局予約: NW21 局の予約が `isConflict: false`。修正前は受け入れチューナーが0本で必ず競合していた。
 
 実装前の原因確定には、再発時刻の前後 20 分について次を依頼する。
 

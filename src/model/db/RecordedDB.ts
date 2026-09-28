@@ -8,6 +8,7 @@ import Thumbnail from '../../db/entities/Thumbnail';
 import VideoFile from '../../db/entities/VideoFile';
 import WatchHistory from '../../db/entities/WatchHistory';
 import DropLogFile from '../../db/entities/DropLogFile';
+import RecordingSession from '../../db/entities/RecordingSession';
 import { isFeatureEnabled } from '../FeatureFlags';
 import IConfiguration from '../IConfiguration';
 import RecordedKeywordSearch, { buildRecordedKeywordSearchPlan } from '../recorded/RecordedKeywordSearch';
@@ -20,6 +21,7 @@ import IRecordedDB, {
     RecordedChannelUpdateValues,
     RecordedColumnOption,
     RecordedProgramUpdateValues,
+    RecordedResultUpdateValues,
     SeriesBackfillCandidateRow,
     SeriesBackfillFilter,
 } from './IRecordedDB';
@@ -129,6 +131,19 @@ export default class RecordedDB implements IRecordedDB {
         await this.promieRetry.run(() => {
             return queryBuilder.execute();
         });
+    }
+
+    /**
+     * 録画結果を更新する。
+     * @param recordedId: apid.RecordedId
+     * @param values: RecordedResultUpdateValues
+     * @return Promise<void>
+     */
+    public async updateRecordingResult(recordedId: apid.RecordedId, values: RecordedResultUpdateValues): Promise<void> {
+        const connection = await this.op.getConnection();
+        await this.promieRetry.run(() =>
+            connection.createQueryBuilder().update(Recorded).set(values).where({ id: recordedId }).execute(),
+        );
     }
 
     /**
@@ -288,6 +303,7 @@ export default class RecordedDB implements IRecordedDB {
             await queryRunner.manager.delete(VideoFile, { recordedId });
             await queryRunner.manager.delete(RecordedSeriesLink, { recordedId });
             await queryRunner.manager.delete(SeriesPendingMatch, { recordedId });
+            await queryRunner.manager.delete(RecordingSession, { recordedId });
             await queryRunner.manager.delete(Recorded, { id: recordedId });
             if (dropLogFileId !== null) {
                 await queryRunner.manager.delete(DropLogFile, { id: dropLogFileId });

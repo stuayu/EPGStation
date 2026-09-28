@@ -1,10 +1,12 @@
 'use strict';
+require('reflect-metadata');
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const fs = require('node:fs');
 const path = require('node:path');
 const { CONFIG_SCHEMA } = require('../../dist/model/config/ConfigSchema');
 const { CONFIG_OVERLAY_KEYS } = require('../../dist/model/config/ConfigOverlay');
+const Configuration = require('../../dist/model/Configuration').default;
 
 // ConfigSchema (単一の定義元) と IConfigFile / ConfigOverlay の間に取りこぼしが無いかを
 // 機械的に確認する。
@@ -62,6 +64,13 @@ function extractIConfigFileTopLevelKeys(source) {
 
 const iConfigFileKeys = extractIConfigFileTopLevelKeys(configFileSource);
 const schemaKeys = CONFIG_SCHEMA.map(entry => entry.key);
+
+test('scheduler と上流共有の既定値は planner / 有効', () => {
+    assert.equal(Configuration.DEFAULT_VALUE.reservation.scheduler, 'planner');
+    assert.equal(Configuration.DEFAULT_VALUE.recording.shareUpstreamStream, true);
+    assert.equal(Configuration.DEFAULT_VALUE.recording.reconnectEnabled, true);
+    assert.equal(Configuration.DEFAULT_VALUE.observability.otel.enabled, false);
+});
 
 test('IConfigFile のトップレベルキーが全件 CONFIG_SCHEMA に存在する', () => {
     const missing = iConfigFileKeys.filter(key => !schemaKeys.includes(key));

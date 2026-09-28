@@ -2,6 +2,9 @@ import { Operation } from 'express-openapi';
 import IRecordedApiModel from '../../../api/recorded/IRecordedApiModel';
 import container from '../../../ModelContainer';
 import * as api from '../../api';
+import IRecordingSessionApiModel from '../../../api/recorded/IRecordingSessionApiModel';
+import { deriveRecordingGaps } from '../../../operator/recording/RecordingGapUtil';
+import * as apid from '../../../../../api';
 
 export const get: Operation = async (req, res) => {
     const recordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
@@ -17,6 +20,14 @@ export const get: Operation = async (req, res) => {
                 message: 'recorded is not Found',
             });
         } else {
+            const sessionModel = container.get<IRecordingSessionApiModel>('IRecordingSessionApiModel');
+            const sessions = await sessionModel.getByRecordedId(recorded.id);
+            const gaps: NonNullable<apid.RecordedItem['transportGaps']> = [];
+            for (const session of sessions.sessions) {
+                const attempts = [...session.attempts].sort((a, b) => a.attemptNo - b.attemptNo);
+                gaps.push(...deriveRecordingGaps(attempts));
+            }
+            if (gaps.length > 0) recorded.transportGaps = gaps;
             api.responseJSON(res, 200, recorded);
         }
     } catch (err: unknown) {

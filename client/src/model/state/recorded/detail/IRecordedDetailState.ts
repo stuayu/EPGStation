@@ -9,6 +9,7 @@ export interface URLInfo {
 export default interface IRecordedDetailState {
     clearData(): void;
     fetchData(recordedId: apid.RecordedId, isHalfWidth: boolean): Promise<void>;
+    getRecordingSessions(): apid.RecordingSessionItem[];
     getRecorded(): RecordedDisplayData | null;
     getVideoURL(video: apid.VideoFile): string | null;
     getVideoRawURL(video: apid.VideoFile): string;

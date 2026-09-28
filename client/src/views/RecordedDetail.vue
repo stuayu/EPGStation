@@ -61,6 +61,18 @@
                                     <div v-if="typeof recorded.display.recordedTimeText !== 'undefined'" class="text-subtitle-2 font-weight-light text-medium-emphasis">
                                         録画 {{ recorded.display.recordedTimeText }}
                                     </div>
+                                    <v-alert
+                                        v-if="recorded.recordedItem.recordingStatus === 'partial' || recorded.recordedItem.recordingStatus === 'failed'"
+                                        class="mt-2"
+                                        :color="recorded.recordedItem.recordingStatus === 'partial' ? 'warning' : 'error'"
+                                        variant="tonal"
+                                    >
+                                        録画結果: {{ recorded.display.recordingStatusLabel }}
+                                        <span v-if="recorded.recordedItem.recordingStatus === 'partial'">
+                                            / 受信断 {{ transportGaps.length }} 回・計 {{ formattedGapDuration }}
+                                        </span>
+                                        <div v-if="recorded.recordedItem.endReason" class="text-body-2">終了理由: {{ reasonLabel(recorded.recordedItem.endReason) }}</div>
+                                    </v-alert>
                                     <div class="text-body-2 mt-2 font-weight-light drop" v-bind:class="{ droped: recorded.display.hasDrop === true }" v-on:click="showDropLog">
                                         {{ recorded.display.drop }}
                                     </div>
@@ -107,6 +119,35 @@
                                 </div>
                             </div>
                             <div class="content-1 mt-6">
+                                <v-expansion-panels v-if="recordingSessions.length > 0" class="mb-4" variant="accordion">
+                                    <v-expansion-panel title="録画セッション / 接続試行">
+                                        <v-expansion-panel-text>
+                                            <div v-for="session in recordingSessions" :key="session.id" class="mb-4">
+                                                <div class="text-subtitle-2">セッション {{ session.id }} · {{ session.resultStatus ?? session.state }}</div>
+                                                <v-table density="compact" class="attempt-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>試行</th>
+                                                            <th>開始</th>
+                                                            <th>初回データ</th>
+                                                            <th>終了</th>
+                                                            <th>理由</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr v-for="attempt in session.attempts" :key="attempt.id">
+                                                            <td>{{ attempt.attemptNo }}</td>
+                                                            <td>{{ formatTimestamp(attempt.requestedAt) }}</td>
+                                                            <td>{{ formatTimestamp(attempt.firstDataAt) }}</td>
+                                                            <td>{{ formatTimestamp(attempt.endedAt) }}</td>
+                                                            <td>{{ reasonLabel(attempt.closeReason || attempt.errorCode) }}</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </v-table>
+                                            </div>
+                                        </v-expansion-panel-text>
+                                    </v-expansion-panel>
+                                </v-expansion-panels>
                                 <div class="text-body-2 description">
                                     {{ recorded.display.description }}
                                 </div>
@@ -150,6 +191,7 @@ import { RecordedDisplayData } from '@/model/state/recorded/IRecordedUtil';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
+import RecordingReasonUtil from '@/util/RecordingReasonUtil';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 import IRecordedDetailState from '../model/state/recorded/detail/IRecordedDetailState';
@@ -203,7 +245,26 @@ class RecordedDetail extends Vue {
         return this.recordedDetailState.getRecorded();
     }
 
-    get offlineVideoIds(): number[] { return (this.recorded?.recordedItem.videoFiles ?? []).map(video => video.id); }
+    get offlineVideoIds(): number[] {
+        return (this.recorded?.recordedItem.videoFiles ?? []).map(video => video.id);
+    }
+
+    get recordingSessions(): apid.RecordingSessionItem[] {
+        return this.recordedDetailState.getRecordingSessions();
+    }
+    get transportGaps(): apid.RecordingTransportGap[] {
+        return RecordingReasonUtil.getTransportGaps(this.recordingSessions.flatMap(session => session.attempts));
+    }
+    get formattedGapDuration(): string {
+        const seconds = Math.round(RecordingReasonUtil.getGapDurationSeconds(this.transportGaps));
+        return `${Math.floor(seconds / 60)}分${seconds % 60}秒`;
+    }
+    public reasonLabel(reason: string): string {
+        return RecordingReasonUtil.getReasonLabel(reason);
+    }
+    public formatTimestamp(value: number | undefined): string {
+        return value === undefined ? '—' : new Date(value).toLocaleString('ja-JP');
+    }
 
     public playOffline(video: OfflineVideoRecord): void {
         void Util.move(this.$router, { path: `/offline-videos/${encodeURIComponent(getOfflineVideoKey(video))}/watch`, query: { from: 'recorded-detail' } });

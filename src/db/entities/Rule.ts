@@ -396,6 +396,12 @@ export default class Rule extends BaseEntity {
     })
     public allowEndLack: boolean = true; // 末尾切れを許可するか
 
+    @Column({ type: 'integer', default: 3 })
+    public priority: number = 3;
+
+    @Column({ type: 'text', default: 'STRICT' })
+    public conflictPolicy: string = 'STRICT';
+
     @Column({
         type: 'text',
         nullable: true,

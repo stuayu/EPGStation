@@ -151,6 +151,7 @@ export type FeatureFlags = Partial<Record<FeatureFlagKey, boolean>>;
 export type NotificationEventType =
     | 'recording.started'
     | 'recording.completed'
+    | 'recording.partial'
     | 'recording.failed'
     | 'recording.dropped' // ドロップ検出 (§7.3)
     | 'recording.missed' // 録り逃し検出 (リトライ上限に達し録画を断念)
@@ -241,6 +242,11 @@ export default interface IConfigFile {
     // 機能フラグ。**未指定の機能は有効**として扱うため、止めたいものだけ false を書く
     featureFlags?: FeatureFlags;
 
+    // 予約スケジューラ。既定は従来の割当方式
+    reservation?: {
+        scheduler?: 'legacy' | 'planner';
+    };
+
     // しょぼいカレンダー ChID ⇄ Mirakurun networkId/serviceId のマッピング表 (JSON) のパス。
     // 省略時は同梱の初期データ (主要地上波キー局のみ) を使う。指定したファイルは同梱データを上書き/追加する
     metadataChannelMappingPath?: string;
@@ -328,6 +334,15 @@ export default interface IConfigFile {
         urgentWindowMinutes?: number;
     };
 
+    // OpenTelemetry traces / metrics (無効時は SDK を読み込まない)
+    observability?: {
+        otel?: {
+            enabled?: boolean;
+            endpoint?: string;
+            serviceName?: string;
+        };
+    };
+
     // 放送局並び順
     channelOrder?: apid.ChannelId[];
     sidOrder?: apid.ServiceId[];
@@ -370,6 +385,10 @@ export default interface IConfigFile {
     // 録画開始のリトライ方針。
     // 前番組の延長 (放送時刻未定) で開始が遅れている場合と、チューナー異常とを分けて扱う
     recording?: {
+        // 録画中の上流切断後に同じ録画へ再接続する (既定 true)
+        reconnectEnabled?: boolean;
+        // 同一チャンネルで続く録画が上流接続を共有する (既定 true)
+        shareUpstreamStream?: boolean;
         // programId 予約のストリーム取得方式。既定 service。障害時の切り戻し用に program を残す
         programStreamMode?: 'program' | 'service';
         // 番組開始を待つ上限 (ms)。既定 3 時間。0 で待たない
