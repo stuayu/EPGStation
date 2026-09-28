@@ -46,6 +46,8 @@ import IRecordedTagApiModel from './api/recordedTag/IRecordedTagApiModel';
 import RecordedTagApiModel from './api/recordedTag/RecordedTagApiModel';
 import ISavedSearchApiModel from './api/savedSearch/ISavedSearchApiModel';
 import SavedSearchApiModel from './api/savedSearch/SavedSearchApiModel';
+import IRecordingPresetApiModel from './api/recordingPreset/IRecordingPresetApiModel';
+import RecordingPresetApiModel from './api/recordingPreset/RecordingPresetApiModel';
 import IRecordingApiModel from './api/recording/IRecordingApiModel';
 import RecordingApiModel from './api/recording/RecordingApiModel';
 import IReserveApiModel from './api/reserve/IReserveApiModel';
@@ -145,6 +147,8 @@ import RecordingSessionDB from './db/RecordingSessionDB';
 import RecordedHistoryDB from './db/RecordedHistoryDB';
 import RecordedTagDB from './db/RecordedTagDB';
 import SavedSearchDB from './db/SavedSearchDB';
+import IRecordingPresetDB from './db/IRecordingPresetDB';
+import RecordingPresetDB from './db/RecordingPresetDB';
 import ReserveDB from './db/ReserveDB';
 import RuleDB from './db/RuleDB';
 import ThumbnailDB from './db/ThumbnailDB';
@@ -426,6 +430,7 @@ export const set = (container: Container): void => {
     container.bind<IRecordedTagDB>('IRecordedTagDB').to(RecordedTagDB).inSingletonScope();
 
     container.bind<ISavedSearchDB>('ISavedSearchDB').to(SavedSearchDB).inSingletonScope();
+    container.bind<IRecordingPresetDB>('IRecordingPresetDB').to(RecordingPresetDB).inSingletonScope();
 
     container.bind<IRecordedHistoryDB>('IRecordedHistoryDB').to(RecordedHistoryDB).inSingletonScope();
 
@@ -625,6 +630,7 @@ export const set = (container: Container): void => {
     container.bind<IRecordedTagApiModel>('IRecordedTagApiModel').to(RecordedTagApiModel).inSingletonScope();
 
     container.bind<ISavedSearchApiModel>('ISavedSearchApiModel').to(SavedSearchApiModel).inSingletonScope();
+    container.bind<IRecordingPresetApiModel>('IRecordingPresetApiModel').to(RecordingPresetApiModel).inSingletonScope();
 
     container.bind<IRuleApiModel>('IRuleApiModel').to(RuleApiModel).inSingletonScope();
 

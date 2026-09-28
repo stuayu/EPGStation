@@ -25,6 +25,7 @@ export default class ManualReserveState implements IManualReserveState {
         endMarginSec: null,
         priority: 3,
         conflictPolicy: 'ALLOW_END_LACK',
+        tags: [],
     };
     public saveOption: ManualSaveOption = {
         parentDirectoryName: null,
@@ -87,6 +88,7 @@ export default class ManualReserveState implements IManualReserveState {
             endMarginSec: null,
             priority: 3,
             conflictPolicy: 'ALLOW_END_LACK',
+            tags: [],
         };
 
         this.saveOption = {
@@ -147,6 +149,7 @@ export default class ManualReserveState implements IManualReserveState {
         this.reserveOption.endMarginSec = reserveItem.endMarginSec ?? null;
         this.reserveOption.priority = reserveItem.priority;
         this.reserveOption.conflictPolicy = reserveItem.conflictPolicy;
+        this.reserveOption.tags = reserveItem.tags ?? [];
         if (typeof reserveItem.parentDirectoryName !== 'undefined') {
             this.saveOption.parentDirectoryName = reserveItem.parentDirectoryName;
         }
@@ -459,7 +462,7 @@ export default class ManualReserveState implements IManualReserveState {
             result.encodeOption = encodeOption;
         }
 
-        // TODO tag
+        result.tags = this.reserveOption.tags;
 
         return result;
     }
@@ -489,7 +492,7 @@ export default class ManualReserveState implements IManualReserveState {
             result.encodeOption = encodeOption;
         }
 
-        // TODO tag
+        result.tags = this.reserveOption.tags;
 
         return result;
     }

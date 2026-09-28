@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 録画プリセットとルール複製 → 2026-09-28
 - 自動予約ルール検索の除外条件・表記ゆれ・時間帯指定を改善 → 2026-09-28
 - 予約・ルールごとの録画マージンを追加 → 2026-09-28
 
@@ -49,6 +50,12 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-28
+
+### 録画プリセットとルール複製
+
+録画先、ファイル名形式、エンコード設定、優先度、競合ポリシー、末尾欠け許可、開始・終了マージン、タグを名前付きプリセットとして保存する機能を追加。設定画面から追加・編集・削除・既定指定ができる。ルール・手動予約フォームでは値をコピーして適用し、既存の予約・ルールは後からプリセットを変更しても変化しない。既定プリセットは新規フォームの初期値に使う。`/api/recording-presets` に CRUD API を追加し、SQLite / MySQL の両方に保存する。ルール一覧から複製すると、複製先は無効状態で作成し編集画面を開く。
+
+関連実装: `src/db/entities/RecordingPreset.ts`, `src/db/migrations/{sqlite,mysql}/1790572400000-AddRecordingPreset.ts`, `src/model/{db,api/recordingPreset,service/api/recording-presets}`, `api.yml`, `api.d.ts`, `client/src/components/settings/RecordingPresetManager.vue`, `client/src/components/{search/SearchRuleOption,manualReserve/ManualReserveOption,rules/RuleItemMenu}.vue`。
 
 ### 自動予約ルール検索の除外条件・表記ゆれ・時間帯指定を改善
 

@@ -24,6 +24,8 @@ import IRecordedTagApiModel from './api/recordedTag/IRecordedTagApiModel';
 import RecordedTagApiModel from './api/recordedTag/RecordedTagApiModel';
 import ISavedSearchApiModel from './api/savedSearch/ISavedSearchApiModel';
 import SavedSearchApiModel from './api/savedSearch/SavedSearchApiModel';
+import IRecordingPresetApiModel from './api/recordingPreset/IRecordingPresetApiModel';
+import RecordingPresetApiModel from './api/recordingPreset/RecordingPresetApiModel';
 import IRecordingApiModel from './api/recording/IRecordingApiModel';
 import RecordingApiModel from './api/recording/RecordingApiModel';
 import RepositoryModel from './api/RepositoryModel';
@@ -111,6 +113,8 @@ import RuleState from './state/rule/RuleState';
 import ScrollPositionState from './state/ScrollPositionState';
 import ISearchState from './state/search/ISearchState';
 import SearchState from './state/search/SearchState';
+import IRecordingPresetState from './state/recordingPreset/IRecordingPresetState';
+import RecordingPresetState from './state/recordingPreset/RecordingPresetState';
 import IServerStatusState from './state/serverStatus/IServerStatusState';
 import ServerStatusState from './state/serverStatus/ServerStatusState';
 import ISnackbarState from './state/snackbar/ISnackbarState';
@@ -185,6 +189,7 @@ export default (container: Container): void => {
     container.bind<ISnsApiModel>('ISnsApiModel').to(SnsApiModel).inSingletonScope();
     container.bind<IRecordedTagApiModel>('IRecordedTagApiModel').to(RecordedTagApiModel).inSingletonScope();
     container.bind<ISavedSearchApiModel>('ISavedSearchApiModel').to(SavedSearchApiModel).inSingletonScope();
+    container.bind<IRecordingPresetApiModel>('IRecordingPresetApiModel').to(RecordingPresetApiModel).inSingletonScope();
 
     container.bind<IRecordingApiModel>('IRecordingApiModel').to(RecordingApiModel).inSingletonScope();
 
@@ -285,6 +290,7 @@ export default (container: Container): void => {
     container.bind<IEncodeState>('IEncodeState').to(EncodeState).inSingletonScope();
 
     container.bind<ISearchState>('ISearchState').to(SearchState).inSingletonScope();
+    container.bind<IRecordingPresetState>('IRecordingPresetState').to(RecordingPresetState).inSingletonScope();
 
     container.bind<IServerStatusState>('IServerStatusState').to(ServerStatusState).inSingletonScope();
 
