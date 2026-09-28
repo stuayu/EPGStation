@@ -79,6 +79,21 @@ namespace StrUtil {
     };
 
     /**
+     * ルールのあいまい検索用に表記差を吸収する。
+     * @param str: string
+     * @return string
+     */
+    export const normalizeFuzzy = (str: string, caseSensitive = false): string => {
+        const value = Array.from(
+            str.normalize('NFKC').replace(/[\u3041-\u3096]/g, char => String.fromCharCode(char.charCodeAt(0) + 0x60)),
+        )
+            .filter(char => !/[\s\p{P}\p{S}]/u.test(char))
+            .join('');
+
+        return caseSensitive ? value : value.toLowerCase();
+    };
+
+    /**
      * 半角英数記号を全角へ変換する
      * @param str: string
      * @return string

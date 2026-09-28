@@ -45,11 +45,15 @@ export default class RecordingSessionTracker {
     }
 
     /** 新しい録画 session と span を開始する */
-    public async beginSession(reserve: Reserve): Promise<void> {
+    public async beginSession(reserve: Reserve, channelName: string | null = null): Promise<void> {
         const now = Date.now();
         try {
             this.session = await this.db.createSession({
                 reserveId: reserve.id,
+                name: reserve.name,
+                ruleId: reserve.ruleId,
+                channelName,
+                isTimeSpecified: reserve.isTimeSpecified,
                 recordedId: null,
                 programId: reserve.programId,
                 channelId: reserve.channelId,

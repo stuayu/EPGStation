@@ -1,6 +1,6 @@
 <template>
     <div class="search-option mx-auto">
-        <v-switch v-model="searchState.isTimeSpecification" :disabled="searchState.isEditingRule() === true" label="時刻指定" class="my-3"></v-switch>
+        <v-switch :model-value="searchState.isTimeSpecification" label="時刻指定" class="my-3" @update:model-value="searchState.setTimeSpecification"></v-switch>
         <v-card v-if="searchState.isTimeSpecification === false">
             <div class="pa-4">
                 <SearchOptionRow title="キーワード">
@@ -12,6 +12,9 @@
                         <v-checkbox v-model="searchOptionValue.keywordOption.description" class="mx-1 my-0" label="概要"></v-checkbox>
                         <v-checkbox v-model="searchOptionValue.keywordOption.extended" class="mx-1 my-0" label="詳細"></v-checkbox>
                     </div>
+                    <v-alert v-if="searchOptionValue.keywordOption.keyRegExp && ruleSearchCapabilities?.regexp === false" type="warning" density="compact">この SQLite では正規表現検索を利用できません。</v-alert>
+                    <v-alert v-if="searchOptionValue.keywordOption.keyCS && ruleSearchCapabilities?.caseSensitive === false" type="warning" density="compact">この SQLite では大小文字を区別できません。</v-alert>
+                    <v-checkbox v-model="searchOptionValue.isFuzzy" class="mx-1 my-0" label="あいまい検索"></v-checkbox>
                 </SearchOptionRow>
                 <SearchOptionRow title="除外キーワード">
                     <v-text-field v-model="searchOptionValue.ignoreKeyword" label="ignore keyword" clearable v-on:keydown.enter="onKeywordEnter"></v-text-field>
@@ -22,8 +25,12 @@
                         <v-checkbox v-model="searchOptionValue.ignoreKeywordOption.description" class="mx-1 my-0" label="概要"></v-checkbox>
                         <v-checkbox v-model="searchOptionValue.ignoreKeywordOption.extended" class="mx-1 my-0" label="詳細"></v-checkbox>
                     </div>
+                    <v-select v-model="searchOptionValue.ignoreKeywordMatch" :items="ignoreKeywordMatchItems" label="除外条件" class="match-select"></v-select>
+                    <v-alert v-if="searchOptionValue.ignoreKeywordOption.keyRegExp && ruleSearchCapabilities?.regexp === false" type="warning" density="compact">この SQLite では正規表現検索を利用できません。</v-alert>
+                    <v-alert v-if="searchOptionValue.ignoreKeywordOption.keyCS && ruleSearchCapabilities?.caseSensitive === false" type="warning" density="compact">この SQLite では大小文字を区別できません。</v-alert>
                 </SearchOptionRow>
                 <SearchOptionRow title="放送局">
+                    <v-checkbox v-model="searchOptionValue.isChannelExclusion" class="mx-1 my-0" label="選択した放送局を除外"></v-checkbox>
                     <v-select
                         :items="searchState.getChannelItems()"
                         v-model="searchOptionValue.channels"
@@ -311,15 +318,18 @@
                     </div>
                 </SearchOptionRow>
                 <SearchOptionRow title="ジャンル">
+                    <v-checkbox v-model="searchOptionValue.isGenreExclusion" class="mx-1 my-0" label="選択したジャンルを除外"></v-checkbox>
                     <SearchGenreOption></SearchGenreOption>
                 </SearchOptionRow>
                 <SearchOptionRow title="時刻">
-                    <div class="d-flex align-center">
+                    <v-checkbox v-model="searchOptionValue.isTimeExclusion" class="mx-1 my-0" label="指定した時間帯を除外"></v-checkbox>
+                    <div v-for="(timeRange, index) in timeRangesForDisplay" :key="index" class="time-range-row">
+                    <div class="d-flex flex-wrap align-center">
                         <v-select
                             class="start-time-select"
                             label="start"
                             :items="searchState.getStartTimeItems()"
-                            v-model="searchOptionValue.startTime"
+                            v-model="timeRange.startTime"
                             clearable
                         ></v-select>
                         <span class="px-2">~</span>
@@ -327,19 +337,24 @@
                             class="range-time-select"
                             label="range"
                             :items="searchState.getRangeTimeItems()"
-                            v-model="searchOptionValue.rangeTime"
+                            v-model="timeRange.rangeTime"
                             clearable
                         ></v-select>
                     </div>
                     <div class="d-flex flex-wrap">
-                        <v-checkbox v-model="searchOptionValue.week.mon" class="mx-1 my-0" label="月"></v-checkbox>
-                        <v-checkbox v-model="searchOptionValue.week.tue" class="mx-1 my-0" label="火"></v-checkbox>
-                        <v-checkbox v-model="searchOptionValue.week.wed" class="mx-1 my-0" label="水"></v-checkbox>
-                        <v-checkbox v-model="searchOptionValue.week.thu" class="mx-1 my-0" label="木"></v-checkbox>
-                        <v-checkbox v-model="searchOptionValue.week.fri" class="mx-1 my-0" label="金"></v-checkbox>
-                        <v-checkbox v-model="searchOptionValue.week.sat" class="mx-1 my-0" label="土"></v-checkbox>
-                        <v-checkbox v-model="searchOptionValue.week.sun" class="mx-1 my-0" label="日"></v-checkbox>
+                        <v-text-field v-model.number="timeRange.startMinute" class="minute-input" label="開始分" type="number" min="0" max="59"></v-text-field>
+                        <v-text-field v-model.number="timeRange.rangeMinute" class="minute-input" label="範囲分" type="number" min="0" max="59"></v-text-field>
+                        <v-checkbox v-model="timeRange.week.mon" class="mx-1 my-0" label="月"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.tue" class="mx-1 my-0" label="火"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.wed" class="mx-1 my-0" label="水"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.thu" class="mx-1 my-0" label="木"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.fri" class="mx-1 my-0" label="金"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.sat" class="mx-1 my-0" label="土"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.sun" class="mx-1 my-0" label="日"></v-checkbox>
+                        <v-btn v-if="timeRangesForDisplay.length > 1" icon="mdi-delete" size="small" aria-label="時間帯を削除" @click="removeTimeRange(index)"></v-btn>
                     </div>
+                    </div>
+                    <v-btn variant="text" color="primary" @click="addTimeRange">時間帯を追加</v-btn>
                 </SearchOptionRow>
                 <SearchOptionRow title="長さ">
                     <div class="d-flex flex-wrap">
@@ -417,16 +432,18 @@
                 <SearchOptionRow title="放送局">
                     <v-select
                         :items="searchState.getChannelItems()"
-                        v-model="timeReserveOptionValue.channel"
+                        v-model="timeReserveOptionValue.channels"
                         label="channel"
+                        multiple
                         clearable
                     ></v-select>
                 </SearchOptionRow>
                 <SearchOptionRow title="時刻">
-                    <div class="d-flex align-center">
+                    <div v-for="(timeRange, index) in timeReserveOptionValue.times" :key="index" class="time-range-row">
+                    <div class="d-flex flex-wrap align-center">
                         <v-text-field
                             class="time-select"
-                            v-model="timeReserveOptionValue.startTime"
+                            v-model="timeRange.startTime"
                             label="開始"
                             type="time"
                             prepend-icon="access_time"
@@ -434,21 +451,24 @@
                         <span class="px-2">~</span>
                         <v-text-field
                             class="time-select"
-                            v-model="timeReserveOptionValue.endTime"
+                            v-model="timeRange.endTime"
                             label="終了"
                             type="time"
                             prepend-icon="access_time"
                         ></v-text-field>
                     </div>
                     <div class="d-flex flex-wrap">
-                        <v-checkbox v-model="timeReserveOptionValue.week.mon" class="mx-1 my-0" label="月"></v-checkbox>
-                        <v-checkbox v-model="timeReserveOptionValue.week.tue" class="mx-1 my-0" label="火"></v-checkbox>
-                        <v-checkbox v-model="timeReserveOptionValue.week.wed" class="mx-1 my-0" label="水"></v-checkbox>
-                        <v-checkbox v-model="timeReserveOptionValue.week.thu" class="mx-1 my-0" label="木"></v-checkbox>
-                        <v-checkbox v-model="timeReserveOptionValue.week.fri" class="mx-1 my-0" label="金"></v-checkbox>
-                        <v-checkbox v-model="timeReserveOptionValue.week.sat" class="mx-1 my-0" label="土"></v-checkbox>
-                        <v-checkbox v-model="timeReserveOptionValue.week.sun" class="mx-1 my-0" label="日"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.mon" class="mx-1 my-0" label="月"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.tue" class="mx-1 my-0" label="火"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.wed" class="mx-1 my-0" label="水"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.thu" class="mx-1 my-0" label="木"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.fri" class="mx-1 my-0" label="金"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.sat" class="mx-1 my-0" label="土"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.sun" class="mx-1 my-0" label="日"></v-checkbox>
+                        <v-btn v-if="timeReserveOptionValue.times.length > 1" icon="mdi-delete" size="small" aria-label="時間帯を削除" @click="timeReserveOptionValue.times.splice(index, 1)"></v-btn>
                     </div>
+                    </div>
+                    <v-btn variant="text" color="primary" @click="searchState.addTimeReserveRange()">時間帯を追加</v-btn>
                 </SearchOptionRow>
             </div>
         </v-card>
@@ -460,6 +480,7 @@ import SearchGenreOption from '@/components/search/SearchGenreOption.vue';
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import ISearchState, { SearchOption as SearchOptionValue, TimeReserveOption } from '@/model/state/search/ISearchState';
+import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import VuetifyUtil from '@/util/VuetifyUtil';
 import type { ComponentPublicInstance } from 'vue';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
@@ -471,6 +492,11 @@ import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
     },
 })
 class SearchOption extends Vue {
+    public serverConfig: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
+    public ignoreKeywordMatchItems = [
+        { title: 'すべて含む場合に除外', value: 'all' },
+        { title: 'いずれかを含む場合に除外', value: 'any' },
+    ];
     public formatDay(date: string | number | Date): number {
         return new Date(date).getDate();
     }
@@ -490,6 +516,37 @@ class SearchOption extends Vue {
             throw new Error('TimeReserveOptionIsNotInitialized');
         }
         return this.searchState.timeReserveOption;
+    }
+
+    get ruleSearchCapabilities(): { regexp: boolean; caseSensitive: boolean } | undefined {
+        return (this.serverConfig.getConfig() as any)?.ruleSearchCapabilities;
+    }
+
+    get timeRangesForDisplay(): SearchOptionValue['timeRanges'] {
+        if (this.searchOptionValue.timeRanges.length === 0) {
+            this.searchOptionValue.timeRanges.push({
+                startTime: this.searchOptionValue.startTime,
+                rangeTime: this.searchOptionValue.rangeTime,
+                startMinute: 0,
+                rangeMinute: 0,
+                week: { ...this.searchOptionValue.week },
+            });
+        }
+        return this.searchOptionValue.timeRanges;
+    }
+
+    public addTimeRange(): void {
+        this.searchOptionValue.timeRanges.push({
+            startTime: undefined,
+            rangeTime: undefined,
+            startMinute: 0,
+            rangeMinute: 0,
+            week: { ...this.searchOptionValue.week },
+        });
+    }
+
+    public removeTimeRange(index: number): void {
+        this.searchOptionValue.timeRanges.splice(index, 1);
     }
 
     public mounted(): void {
@@ -526,6 +583,10 @@ export default toNative(SearchOption);
         max-width: 100px
     .range-time-select
         max-width: 120px
+    .match-select
+        max-width: 320px
+    .minute-input
+        max-width: 100px
     .duration
         max-width: 100px
 </style>

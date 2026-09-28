@@ -40,8 +40,11 @@ export interface TimeSpecifiedOption {
  */
 export interface ManualReserveOption {
     allowEndLack: boolean; // 末尾切れを許可するか
+    startMarginSec: number | null;
+    endMarginSec: number | null;
     priority: number;
     conflictPolicy: apid.ConflictPolicy;
+    tags: apid.RecordedTagId[];
 }
 
 /**
@@ -85,6 +88,7 @@ export default interface IManualReserveState {
     getChannelItems(): SelectorItem[];
     getPrentDirectoryItems(): string[];
     getEncodeModeItems(): string[];
+    getRecordingMarginHint(): string;
     isEnableEncodeMode(): boolean;
     addReserve(): Promise<void>;
     updateReserve(reserveId: apid.ReserveId): Promise<void>;

@@ -693,6 +693,7 @@ recording dir has no room: reserveId: 13, using TS2, required: 5350MB, free: 900
 - 既存の `timeSpecifiedStartMargin` / `timeSpecifiedEndMargin` (時刻指定予約用) はそのまま残り、**大きい方**が採用される。片方だけ大きくしたい場合に使える
 - **programId 予約でも効く**。対象 following の開始時刻に `startMarginSec` だけ前倒しで到達判定する。ただし放送が予定より早く始まって EIT[p/f] present が対象 event_id になった場合は、マージンを待たずその時点から録る
 - 張り付きを延ばすとチューナーをその分長く占有する。同時録画数に余裕がない環境では詰まる可能性がある
+- 予約編集・手動予約・ルールの「開始マージン (秒)」「終了マージン (秒)」は個別設定できる。空欄/null は全体設定を使い、0〜3600 秒を指定可能。予約値は時刻指定用の全体マージンも含めて優先する。
 - **チューナー再利用時に許容する末尾欠けは `prepRecSec` とは連動しない** (固定 15 秒)。連動させると張り付きを延ばした分だけ、実行中の `allowEndLack` 録画の末尾を切り落としてしまう
 - **録画準備中に EPG 追従で終了時刻が動いた場合 (延長) も取りこぼさない**。`RecordingStreamCreator` が新しい `endAt` を覚えておき、ストリーム取得時にハードタイマーへ反映する。予約更新側は待たされない
 
@@ -725,6 +726,8 @@ recording dir has no room: reserveId: 13, using TS2, required: 5350MB, free: 900
 | updateNotification   | 更新通知・ワンクリック更新                              |
 
 Webhook / Discord の `notifications.targets[].events` では `recording.partial` を選択できる。部分録画の警告通知。既存のイベント絞り込み設定には自動追加されないため、通知したい場合は events に明示する。
+
+`program.starting` は番組開始前リマインダーの通知。番組ダイアログから番組ごとに登録し、既定では開始 5 分前に送る。既存の Webhook / Discord target から送信する場合は `events` に `program.starting` を追加する。接続中の Web UI には Socket.IO 経由で通知し、許可済みならブラウザ通知も表示する。ブラウザを閉じている間の Web Push は未対応。
 
 ```yaml
 featureFlags:
@@ -1006,6 +1009,19 @@ timeSpecifiedStartMargin: 2
 timeSpecifiedEndMargin: 2
 ```
 
+### recording.resultRetentionDays
+
+#### 録画結果セッションの保存期間。開始前に失敗した録画も対象
+
+| 種類   | デフォルト値 | 必須 |
+| ------ | ------------ | ---- |
+| number | 90           | no   |
+
+```yaml
+recording:
+    resultRetentionDays: 90
+```
+
 ### recordedHistoryRetentionPeriodDays
 
 #### 重複確認用に使用する番組名を保管する期間
@@ -1111,6 +1127,34 @@ reservation:
 
 新スケジューラへ切り替えると、予約の競合判定と録画側のチューナー計画に同じ計画結果を使う。
 `planner` が既定の予約スケジューラ。`reservation:` がある場合も `scheduler` を省略すれば planner を使う。従来方式へ戻す場合は `reservation.scheduler: legacy` を指定する。`plannedEndAt` は planner のときだけ有効。`legacy` では予約の `endAt` を使う。
+
+### epgRealtime
+
+### power
+
+#### 録画後の省電力
+
+`power.enabled` を `true` にし、`afterRecording` を `standby` / `hibernate` / `shutdown` にすると省電力が動きます。録画・録画準備・エンコード・配信がなく、指定したアイドル時間が続き、次の予約の張り付き開始まで `minGapMinutes` 以上ある場合に実行します。既定は無効 (`enabled: false`, `afterRecording: none`) です。休止前 60 秒に `power.suspending` 通知を送り、Web UI から取消できます。取消後は次に稼働状態からアイドル状態へ移るまで休止を見送ります。
+
+| 子項目 | 種類 | デフォルト値 | 説明 |
+| --- | --- | --- | --- |
+| enabled | boolean | false | 省電力を有効にする |
+| afterRecording | string | `none` | `none` / `standby` / `hibernate` / `shutdown` |
+| idleMinutes | number | 10 | 無稼働状態が続く時間 (分) |
+| minGapMinutes | number | 30 | 次の予約までに必要な時間 (分) |
+| wakeBeforeSec | number | 300 | 次の予約開始より何秒早く復帰するか |
+| commands | object | `{}` | `windows` / `linux` の `standby` / `hibernate` / `shutdown` / `wake` コマンド上書き。コマンド文字列はシェルで実行。復帰コマンド内の `%WAKE_AT%` は ISO 時刻、`%WAKE_AT_UNIX%` は Unix 秒へ置換 |
+
+```yaml
+power:
+    enabled: false
+    afterRecording: hibernate
+    idleMinutes: 10
+    minGapMinutes: 30
+    wakeBeforeSec: 300
+```
+
+OS のウェイクタイマー設定と権限は `windows-setup.md` / `linux-setup.md` を参照してください。
 
 ### epgRealtime
 
@@ -1586,6 +1630,8 @@ uploadTempDir: '/hoge/tmp/upload'
 | 変数名                 | 種類           | 説明                          |
 | ---------------------- | -------------- | ----------------------------- |
 | PROGRAMID              | number         | Program ID                    |
+| RESERVEID              | number \| ''   | 予約 ID                        |
+| RULEID                 | number \| ''   | ルール ID。手動予約は空文字    |
 | CHANNELTYPE            | string         | 'GR' \| 'BS' \| 'CS' \| 'SKY' |
 | CHANNELID              | number         | Channel ID                    |
 | CHANNELNAME            | string \| null | 放送局名                      |
@@ -1616,6 +1662,18 @@ recordingPrepRecFailedCommand: '/usr/bin/logger prepfailed'
 
 - 録画終了時に実行するコマンド
 
+### recordingFinishCommands
+
+- 予約・ルールごとに選択できる録画終了コマンドの一覧
+- `/api/config` には `name` のみ返す。設定 API では `cmd` を伏せ字にする
+- `finishCommandName` が null・未指定、または登録名が見つからない場合は `recordingFinishCommand` を使う
+
+```yaml
+recordingFinishCommands:
+  - name: move-to-archive
+    cmd: '/bin/bash /home/hoge/archive.sh'
+```
+
 ### recordingFailedCommand
 
 - 録画中のエラー発生時に実行するコマンド
@@ -1629,6 +1687,8 @@ recordingPrepRecFailedCommand: '/usr/bin/logger prepfailed'
 | 変数名                 | 種類           | 説明                          |
 | ---------------------- | -------------- | ----------------------------- |
 | RECORDEDID             | number         | recorded id                   |
+| RESERVEID              | number \| ''   | 予約 ID。予約なしは空文字      |
+| RULEID                 | number \| ''   | ルール ID。手動予約は空文字    |
 | PROGRAMID              | number         | program id                    |
 | CHANNELTYPE            | string         | 'GR' \| 'BS' \| 'CS' \| 'SKY' |
 | CHANNELID              | number         | channel id                    |

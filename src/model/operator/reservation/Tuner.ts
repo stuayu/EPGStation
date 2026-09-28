@@ -6,15 +6,21 @@ import TunerCompatibilityUtil from '../../../util/TunerCompatibilityUtil';
 export default class Tuner {
     private types: apid.ChannelType[];
     private index: number;
+    private name: string;
     private reserves: Reserve[] = [];
 
     constructor(tuner: mapid.TunerDevice) {
         this.types = tuner.types;
         this.index = tuner.index;
+        this.name = tuner.name;
     }
 
     public getIndex(): number {
         return this.index;
+    }
+
+    public getName(): string {
+        return this.name;
     }
 
     public getTypes(): apid.ChannelType[] {

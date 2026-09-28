@@ -17,9 +17,13 @@
 
 ## プロセス構成
 
+省電力 (`power.enabled`) は Operator の `PowerManageModel` が録画・予約イベントと定期確認で状態を判定する。Service は IPC でエンコード待ち/実行中とライブ/録画配信数を 10 秒ごとに報告する。次予約前のウェイクタイマー登録に失敗した周期は休止しない。休止予定は `power.suspending` 通知と Socket.IO で配信し、`POST /api/power/cancel` で次の idle 遷移まで取消できる。既定無効。
+
 サムネイルは録画単位で現在の代表VideoFileを選ぶ。`encoded`を優先し、同種なら最新ID、無ければ先頭を使う。Thumbnailには生成元VideoFileのID・サイズ・解析時刻を保存し、VideoFile追加・サイズ更新・メタデータ解析で世代が変わった場合だけ再生成する。
 
 `dist/index.js` (親) を起動すると **2 プロセス構成** で動作する。
+
+番組開始前リマインダーは番組 ID・局・開始時刻を SQLite / MySQL に保存し、Operator が EPG / EIT 更新に追従してタイマーを再設定する。通知は Webhook / Discord と接続中 Web UI (Socket.IO) へ送る。ブラウザ通知は利用者の許可後に表示し、Web Push は未実装。
 
 ```mermaid
 flowchart TB
@@ -65,7 +69,7 @@ flowchart TB
 | `src/lib/` `src/util/` | 汎用ライブラリ / 純粋関数ユーティリティ |
 | `src/model/ModelContainerSetter.ts` | **DI バインディングの中心。新規クラスは必ずここに登録** |
 | `src/model/db/` | TypeORM Repository をラップしたデータアクセス層 (`I*DB.ts` / `*DB.ts`) |
-| `src/model/operator/` | 録画エンジン本体: reservation / recording / recorded / rule / storage / thumbnail / externalCommand。`RecordingSessionTracker` が session / attempt の永続化・結果判定・telemetry span を管理し、`RecordingResumeCoordinator` が復帰状態を準備、`RecorderModel` が予約と録画の段取りを管理 |
+| `src/model/operator/` | 録画エンジン本体: reservation / recording / recorded / rule / storage / thumbnail / externalCommand。`RecordingSessionTracker` が session / attempt の永続化・結果判定・telemetry span を管理し、`RecordingResumeCoordinator` が復帰状態を準備、`RecorderModel` が予約と録画の段取りを管理。`GET /api/recording-results` は開始前失敗を含むセッション結果を返し、録画データの無い結果は `recording.resultRetentionDays` 日保持する (既定 90 日) |
 | `src/model/epgUpdater/` | EPG 更新 (Mirakurun イベントストリーム購読 + 定期実行) |
 | `src/model/event/` | EventEmitter ベースの内部イベント |
 | `src/model/ipc/` | Operator ⇔ Service 間 IPC |
@@ -107,7 +111,9 @@ flowchart TB
 | --- | --- |
 | API エンドポイント追加 | `api.yml` → `src/model/service/api/**` → `src/model/api/**` → `ModelContainerSetter.ts` → `api.d.ts` |
 | DB スキーマ変更 | `src/db/entities/` → `npm run orm-gen --db=<mysql\|sqlite> --name=<Name>` (**両方**) → `src/model/db/**` |
+| チューナー別予約 | `src/model/operator/reservation/Tuner.ts`, `src/model/api/tuner/`, `client/src/views/Reserves.vue`。`/api/reserves` の `plannedTunerIndex` と `/api/tuners` を使う。画面の割当は EPGStation 内部の planner 計画で、実チューナーは Mirakurun が選ぶ。予約単位のチューナー指定は提供しない。 |
 | 録画・予約ロジック | `src/model/operator/{reservation,recording,rule}/**` |
+| 自動予約ルール検索 | `src/model/db/ProgramDB.ts`, `client/src/components/search/SearchOption.vue` | 除外キーワードは既存ルールが `all`、新規作成は `any`。あいまい検索は既定無効。曜日・時刻範囲は複数指定でき、日跨ぎ後は翌日の曜日で判定する。SQLite の正規表現・大文字小文字対応状況は `/api/config` の `ruleSearchCapabilities` を参照 |
 | EPG 更新 | `src/model/epgUpdater/**` |
 | エンコード | `src/model/service/encode/**` |
 | ストリーミング | `src/model/service/stream/**` |
@@ -232,6 +238,7 @@ duration 10 秒未満は中央候補1点とし、候補0件でも既存の thumb
 - **PCR の時間軸は `discontinuity_indicator` で切れる**: TS 連結・ドロップ・エンコーダ再起動で PCR が別の軸になるため、`PcrSample.epoch` が違うサンプル同士で差分を取らない (`correctStartAtByPcr()` は起点と同じ epoch のみ、`calcBytesPerMs()` は epoch ごとの最長区間、`TsPlaybackTimeResolver` は基準 PCR 取得後の不連続で null を返す)
 - `video_file.startAt` は TDT/TOT を使うが、**出現位置がファイル先頭から離れていることがある**ため PCR (27MHz) で経過時間を測って補正する (`correctStartAtByPcr()`)
 - encoded 動画 (MP4 等) は TS 内時刻を持たないため、`VideoFileAnalyzeModel` が TS の実時刻、同じ録画に紐付く元動画、番組開始時刻−録画開始マージン、ファイル更新日時−動画長の順で `video_file.startAt` を推定する。TS の既存経路と意味は変更しない
+- 予約・ルールの `startMarginSec` / `endMarginSec` は NULL で全体設定を継承し、0〜3600 秒を予約単位で指定する。SchedulePlanner と録画タイマーは同じ実効値を使い、Recorded に録画時点の実効マージンを保存する。
 - **番組情報の上書きは明示的な再解析のときだけ** (`overwriteProgramInfo`)。取り込み・アップロード時と「未解析のみ」の一括解析は空の項目を補うだけ。**番組名 (`recorded.name`) はどちらでも上書きしない**
 - 取り込み時の放送局特定は**ファイル名の推定ではなく network id + service id での厳密な引き当て**を優先する
 - 録画の放送局名の表示は `ChannelNameUtil.getRecordedChannelName()`、一覧のタイトル表示は `RecordedUtil.convertRecordedItemToDisplayData()` の 1 箇所で決まる

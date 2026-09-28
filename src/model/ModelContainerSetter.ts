@@ -46,6 +46,10 @@ import IRecordedTagApiModel from './api/recordedTag/IRecordedTagApiModel';
 import RecordedTagApiModel from './api/recordedTag/RecordedTagApiModel';
 import ISavedSearchApiModel from './api/savedSearch/ISavedSearchApiModel';
 import SavedSearchApiModel from './api/savedSearch/SavedSearchApiModel';
+import IRecordingPresetApiModel from './api/recordingPreset/IRecordingPresetApiModel';
+import RecordingPresetApiModel from './api/recordingPreset/RecordingPresetApiModel';
+import IProgramReminderApiModel from './api/reminder/IProgramReminderApiModel';
+import ProgramReminderApiModel from './api/reminder/ProgramReminderApiModel';
 import IRecordingApiModel from './api/recording/IRecordingApiModel';
 import RecordingApiModel from './api/recording/RecordingApiModel';
 import IReserveApiModel from './api/reserve/IReserveApiModel';
@@ -81,6 +85,8 @@ import ProgramSeriesApiModel from './api/schedule/ProgramSeriesApiModel';
 import ILogApiModel from './api/log/ILogApiModel';
 import LogApiModel from './api/log/LogApiModel';
 import IStatusApiModel from './api/status/IStatusApiModel';
+import ITunerApiModel from './api/tuner/ITunerApiModel';
+import TunerApiModel from './api/tuner/TunerApiModel';
 import StatusApiModel from './api/status/StatusApiModel';
 import IStorageApiModel from './api/storage/IStorageApiModel';
 import StorageApiModel from './api/storage/StorageApiModel';
@@ -145,6 +151,10 @@ import RecordingSessionDB from './db/RecordingSessionDB';
 import RecordedHistoryDB from './db/RecordedHistoryDB';
 import RecordedTagDB from './db/RecordedTagDB';
 import SavedSearchDB from './db/SavedSearchDB';
+import IRecordingPresetDB from './db/IRecordingPresetDB';
+import RecordingPresetDB from './db/RecordingPresetDB';
+import IProgramReminderDB from './db/IProgramReminderDB';
+import ProgramReminderDB from './db/ProgramReminderDB';
 import ReserveDB from './db/ReserveDB';
 import RuleDB from './db/RuleDB';
 import ThumbnailDB from './db/ThumbnailDB';
@@ -273,6 +283,8 @@ import RecordingStreamCreator from './operator/recording/RecordingStreamCreator'
 import RecordingUtilModel from './operator/recording/RecordingUtilModel';
 import IReservationManageModel from './operator/reservation/IReservationManageModel';
 import ReservationManageModel from './operator/reservation/ReservationManageModel';
+import IProgramReminderManageModel from './operator/reminder/IProgramReminderManageModel';
+import ProgramReminderManageModel from './operator/reminder/ProgramReminderManageModel';
 import ReserveOptionChecker from './operator/ReserveOptionChecker';
 import IRuleManageModel from './operator/rule/IRuleManageModel';
 import RuleManageModel from './operator/rule/RuleManageModel';
@@ -350,6 +362,12 @@ import IHardwareEncoderProcessExecutor from './encoder/IHardwareEncoderProcessEx
 import HardwareEncoderProcessExecutor from './encoder/HardwareEncoderProcessExecutor';
 import IHardwareEncoderDetector from './encoder/IHardwareEncoderDetector';
 import HardwareEncoderDetector from './encoder/HardwareEncoderDetector';
+import IPowerManageModel from './operator/power/IPowerManageModel';
+import PowerManageModel from './operator/power/PowerManageModel';
+import IPowerCommandExecutor from './power/IPowerCommandExecutor';
+import PowerCommandExecutor from './power/PowerCommandExecutor';
+import IPowerApiModel from './api/power/IPowerApiModel';
+import PowerApiModel from './api/power/PowerApiModel';
 
 /**
  * container に 各 Model を登録する
@@ -366,6 +384,7 @@ export const set = (container: Container): void => {
     container.bind<ISecretCrypto>('ISecretCrypto').to(SecretCrypto).inSingletonScope();
 
     container.bind<INotificationDispatcher>('INotificationDispatcher').to(NotificationDispatcher).inSingletonScope();
+    container.bind<IPowerCommandExecutor>('IPowerCommandExecutor').to(PowerCommandExecutor).inSingletonScope();
 
     container.bind<IConnectionCheckModel>('IConnectionCheckModel').to(ConnectionCheckModel).inSingletonScope();
 
@@ -426,6 +445,8 @@ export const set = (container: Container): void => {
     container.bind<IRecordedTagDB>('IRecordedTagDB').to(RecordedTagDB).inSingletonScope();
 
     container.bind<ISavedSearchDB>('ISavedSearchDB').to(SavedSearchDB).inSingletonScope();
+    container.bind<IRecordingPresetDB>('IRecordingPresetDB').to(RecordingPresetDB).inSingletonScope();
+    container.bind<IProgramReminderDB>('IProgramReminderDB').to(ProgramReminderDB).inSingletonScope();
 
     container.bind<IRecordedHistoryDB>('IRecordedHistoryDB').to(RecordedHistoryDB).inSingletonScope();
 
@@ -481,6 +502,10 @@ export const set = (container: Container): void => {
     container.bind<IEPGUpdater>('IEPGUpdater').to(EPGUpdater).inSingletonScope();
 
     container.bind<IReservationManageModel>('IReservationManageModel').to(ReservationManageModel).inSingletonScope();
+    container
+        .bind<IProgramReminderManageModel>('IProgramReminderManageModel')
+        .to(ProgramReminderManageModel)
+        .inSingletonScope();
 
     container.bind<IRuleManageModel>('IRuleManageModel').to(RuleManageModel).inSingletonScope();
 
@@ -525,6 +550,8 @@ export const set = (container: Container): void => {
     container.bind<IImportWatchManageModel>('IImportWatchManageModel').to(ImportWatchManageModel).inSingletonScope();
 
     container.bind<IRecordingManageModel>('IRecordingManageModel').to(RecordingManageModel).inSingletonScope();
+    container.bind<IPowerManageModel>('IPowerManageModel').to(PowerManageModel).inSingletonScope();
+    container.bind<IPowerApiModel>('IPowerApiModel').to(PowerApiModel).inSingletonScope();
 
     container.bind<IRecordedTagManadeModel>('IRecordedTagManadeModel').to(RecordedTagManadeModel).inSingletonScope();
 
@@ -581,6 +608,7 @@ export const set = (container: Container): void => {
     container.bind<IDashboardApiModel>('IDashboardApiModel').to(DashboardApiModel).inSingletonScope();
 
     container.bind<IStatusApiModel>('IStatusApiModel').to(StatusApiModel).inSingletonScope();
+    container.bind<ITunerApiModel>('ITunerApiModel').to(TunerApiModel).inSingletonScope();
 
     container.bind<ILogApiModel>('ILogApiModel').to(LogApiModel).inSingletonScope();
 
@@ -625,6 +653,8 @@ export const set = (container: Container): void => {
     container.bind<IRecordedTagApiModel>('IRecordedTagApiModel').to(RecordedTagApiModel).inSingletonScope();
 
     container.bind<ISavedSearchApiModel>('ISavedSearchApiModel').to(SavedSearchApiModel).inSingletonScope();
+    container.bind<IRecordingPresetApiModel>('IRecordingPresetApiModel').to(RecordingPresetApiModel).inSingletonScope();
+    container.bind<IProgramReminderApiModel>('IProgramReminderApiModel').to(ProgramReminderApiModel).inSingletonScope();
 
     container.bind<IRuleApiModel>('IRuleApiModel').to(RuleApiModel).inSingletonScope();
 

@@ -132,6 +132,17 @@ test('maskConfig: recorded[].path のような非秘密な配列項目はマス�
     assert.deepEqual(masked.recorded, [{ name: 'recorded', path: '/mnt/recorded' }]);
 });
 
+test('maskConfig: 名前付き録画終了コマンドの本文はマスクする', () => {
+    const m = createInstance();
+    const masked = m.maskConfig({
+        recordingFinishCommands: [{ name: 'archive', cmd: 'private-command --token abc' }],
+    });
+
+    assert.deepEqual(masked, {
+        recordingFinishCommands: [{ name: 'archive', cmd: PLACEHOLDER }],
+    });
+});
+
 test('maskConfig: 空文字はマスク対象キーでもそのまま (伏せ字にしない)', () => {
     const m = createInstance();
     const masked = m.maskConfig({ auth: { clientSecret: '' } });

@@ -130,3 +130,6 @@ EPGStation 使用中は MySQL のバイナリログが大量に生成されて�
 ```
 expire_logs_days = 1
 ```
+# 省電力のウェイクタイマー
+
+Linux では `rtcwake -m no` で RTC wake alarm を登録し、`systemctl suspend` / `hibernate` または `shutdown -h now` で休止します。`rtcwake` が利用可能で、RTC wake alarm と電源操作の権限が必要です。環境に応じて sudoers で実行コマンドを限定するか、`power.commands.linux` でコマンドを上書きしてください。systemd-logind のポリシーやコンテナ環境では利用できないことがあります。復帰時刻の登録に失敗した場合はログに警告し、その回は休止しません。

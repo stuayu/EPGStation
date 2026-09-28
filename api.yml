@@ -9,6 +9,133 @@ info:
 servers: []
 
 paths:
+    /power/cancel:
+        post:
+            summary: 休止予定を取り消す
+            description: 現在予定している休止を取り消し、次に稼働状態からアイドル状態へ移るまで休止を見送る
+            responses:
+                '200':
+                    description: 休止予定を取り消しました
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/PowerCancelResponse' }
+                default:
+                    description: 取り消しに失敗しました
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/Error' }
+    /reminders:
+        get:
+            summary: 番組リマインダー一覧取得
+            responses:
+                '200':
+                    description: リマインダー一覧
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/ProgramReminderItems' }
+        post:
+            summary: 番組開始前リマインダー登録
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema: { $ref: '#/components/schemas/AddProgramReminderOption' }
+            responses:
+                '200':
+                    description: 登録したリマインダー
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/ProgramReminderResponse' }
+    /reminders/program/{programId}:
+        get:
+            summary: 番組のリマインダー登録状態取得
+            parameters:
+                - { name: programId, in: path, required: true, schema: { type: integer } }
+            responses:
+                '200':
+                    description: 登録状態
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/ProgramReminderResponse' }
+    /reminders/{reminderId}:
+        delete:
+            summary: 番組開始前リマインダー削除
+            parameters:
+                - { name: reminderId, in: path, required: true, schema: { type: integer } }
+            responses:
+                '200': { description: 削除結果 }
+    /tuners:
+        get:
+            summary: チューナー一覧取得
+            description: Mirakurun が保持するチューナー名・種別・使用状態を返す
+            responses:
+                '200':
+                    description: チューナー一覧
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/TunerItems' }
+    /recording-presets:
+        get:
+            summary: 録画プリセット一覧取得
+            responses:
+                '200':
+                    description: 一覧
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/RecordingPresetItems' }
+        post:
+            summary: 録画プリセット作成
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema: { $ref: '#/components/schemas/AddRecordingPresetOption' }
+            responses:
+                '200':
+                    description: 作成成功
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/AddedRecordingPreset' }
+    /recording-presets/default:
+        get:
+            summary: 既定録画プリセット取得
+            responses:
+                '200':
+                    description: 既定プリセットまたは null
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                nullable: true
+                                allOf:
+                                    - $ref: '#/components/schemas/RecordingPresetItem'
+    /recording-presets/{presetId}:
+        parameters:
+            - $ref: '#/components/parameters/PathRecordingPresetId'
+        get:
+            summary: 録画プリセット取得
+            responses:
+                '200':
+                    description: プリセット
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/RecordingPresetItem' }
+                '404': { description: 存在しない }
+        put:
+            summary: 録画プリセット更新
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema: { $ref: '#/components/schemas/UpdateRecordingPresetOption' }
+            responses:
+                '200': { description: 更新成功 }
+                '404': { description: 存在しない }
+        delete:
+            summary: 録画プリセット削除
+            responses:
+                '200': { description: 削除成功 }
+                '404': { description: 存在しない }
     /videos/{videoFileId}/offline:
         get:
             summary: 録画番組オフライン保存ストリーム
@@ -79,8 +206,90 @@ paths:
                 '404':
                     description: 録画が存在しない
 
+    /recording-results:
+        get:
+            summary: 録画結果一覧を取得
+            parameters:
+                - name: result
+                  in: query
+                  schema: { type: string, enum: [completed, partial, failed, canceled] }
+                - name: from
+                  in: query
+                  schema: { $ref: '#/components/schemas/UnixtimeMS' }
+                - name: to
+                  in: query
+                  schema: { $ref: '#/components/schemas/UnixtimeMS' }
+                - name: ruleId
+                  in: query
+                  schema: { $ref: '#/components/schemas/RuleId' }
+                - name: keyword
+                  in: query
+                  schema: { type: string }
+                - name: offset
+                  in: query
+                  schema: { type: integer, minimum: 0, default: 0 }
+                - name: limit
+                  in: query
+                  schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+            responses:
+                '200':
+                    description: 録画結果一覧
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/RecordingResultList' }
+
+    /recording-results/{sessionId}:
+        get:
+            summary: 録画結果と接続試行を取得
+            parameters:
+                - name: sessionId
+                  in: path
+                  required: true
+                  schema: { type: integer }
+            responses:
+                '200':
+                    description: 録画結果詳細
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/RecordingResultDetail' }
+                '404':
+                    description: 録画セッションが存在しない
+
 components:
     schemas:
+        ProgramReminder:
+            type: object
+            required: [id, programId, channelId, name, startAt, minutesBefore, userId, createdAt]
+            properties:
+                id: { type: integer }
+                programId: { type: integer }
+                channelId: { type: integer }
+                name: { type: string }
+                startAt: { type: integer }
+                minutesBefore: { type: integer }
+                userId: { type: integer, nullable: true }
+                createdAt: { type: integer }
+        ProgramReminderItems:
+            type: object
+            required: [reminders]
+            properties:
+                reminders:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProgramReminder' }
+        ProgramReminderResponse:
+            type: object
+            required: [reminder]
+            properties:
+                reminder:
+                    allOf:
+                        - { $ref: '#/components/schemas/ProgramReminder' }
+                    nullable: true
+        AddProgramReminderOption:
+            type: object
+            required: [programId, minutesBefore]
+            properties:
+                programId: { type: integer }
+                minutesBefore: { type: integer, minimum: 1, maximum: 1440, default: 5 }
         ConflictPolicy:
             type: string
             enum: [STRICT, ALLOW_END_LACK, ALLOW_HEAD_LACK, ALLOW_PARTIAL, PREEMPT_LOWER_PRIORITY]
@@ -154,6 +363,10 @@ components:
 
         SavedSearchId:
             description: 保存検索 id
+            type: integer
+
+        RecordingPresetId:
+            description: 録画プリセット id
             type: integer
 
         EncodeId:
@@ -370,6 +583,7 @@ components:
                 - socketIOPort
                 - useDedicatedSocketIOPort
                 - hardwareEncoder
+                - ruleSearchCapabilities
                 - broadcast
                 - recorded
                 - encode
@@ -381,12 +595,29 @@ components:
                 socketIOPort:
                     description: socket.io 通信で使用するポート
                     type: integer
+                reservationScheduler:
+                    description: 予約スケジューラ方式
+                    type: string
+                    enum: [legacy, planner]
                 useDedicatedSocketIOPort:
                     description: |
                         socket.io が Web API と別のポートを使っているか。
                         false の場合、クライアントは接続先を組み立てずアクセス中のオリジンへそのまま接続する
                         (リバースプロキシ経由でポートが変換されていても接続できる)
                     type: boolean
+                recordingMargins:
+                    description: 個別予約の未指定時に使う実効録画マージン
+                    type: object
+                    required: [startMarginSec, endMarginSec]
+                    properties:
+                        startMarginSec:
+                            type: integer
+                        endMarginSec:
+                            type: integer
+                recordingFinishCommandNames:
+                    description: 予約・ルールで選択できる録画終了コマンド名
+                    type: array
+                    items: { type: string }
                 hardwareEncoder:
                     description: 起動時に実測したハードウェアエンコーダ能力
                     type: object
@@ -403,6 +634,15 @@ components:
                             items:
                                 type: string
                                 enum: [qsv, nvenc, vce, videotoolbox, software]
+                ruleSearchCapabilities:
+                    description: ルール検索機能の DB 対応状況
+                    type: object
+                    required: [regexp, caseSensitive]
+                    properties:
+                        regexp:
+                            type: boolean
+                        caseSensitive:
+                            type: boolean
                 broadcast:
                     description: 有効な放送波情報
                     type: object
@@ -1023,6 +1263,22 @@ components:
                 ignoreKeyword:
                     description: 除外検索キーワード
                     type: string
+                ignoreKeywordMatch:
+                    description: 除外語の一致条件
+                    type: string
+                    enum: [all, any]
+                isFuzzy:
+                    description: 表記ゆれを吸収するあいまい検索
+                    type: boolean
+                isGenreExclusion:
+                    description: 指定ジャンルを除外
+                    type: boolean
+                isChannelExclusion:
+                    description: 指定放送局を除外
+                    type: boolean
+                isTimeExclusion:
+                    description: 指定時刻範囲を除外
+                    type: boolean
                 keyCS:
                     description: 大文字小文字区別有効化 (検索キーワード)
                     type: boolean
@@ -1245,6 +1501,12 @@ components:
                 range:
                     description: 開始時刻からの時刻範囲(時) 1 - 23, 時刻予約の場合は秒で時間の長さを指定する 1 ~ 60 * 50 * 24 秒
                     type: integer
+                startMinute:
+                    description: 開始分 0-59
+                    type: integer
+                rangeMinute:
+                    description: 時刻範囲 (分)
+                    type: integer
                 week:
                     description: 曜日指定 0x01, 0x02, 0x04, 0x08, 0x10, 0x20 ,0x40 が日〜土に対応するので and
                         演算で曜日を指定する
@@ -1276,6 +1538,18 @@ components:
                 allowEndLack:
                     description: 末尾切れを許可するか
                     type: boolean
+                startMarginSec:
+                    description: 開始マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
+                endMarginSec:
+                    description: 終了マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
                 priority:
                     type: integer
                     minimum: 1
@@ -1292,6 +1566,10 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/RecordedTagId'
+                finishCommandName:
+                    description: 録画終了コマンド名。null または未指定なら既定コマンド
+                    type: string
+                    nullable: true
 
         ReserveSaveOption:
             description: 予約保存オプション
@@ -1361,6 +1639,18 @@ components:
                 allowEndLack:
                     description: 末尾切れを許すか
                     type: boolean
+                startMarginSec:
+                    description: 開始マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
+                endMarginSec:
+                    description: 終了マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
                 priority:
                     type: integer
                     minimum: 1
@@ -1371,6 +1661,10 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/RecordedTagId'
+                finishCommandName:
+                    description: 録画終了コマンド名。null または未指定なら既定コマンド
+                    type: string
+                    nullable: true
                 saveOption:
                     $ref: '#/components/schemas/ReserveSaveOption'
                 encodeOption:
@@ -1382,6 +1676,18 @@ components:
             allOf:
                 - $ref: '#/components/schemas/EditManualReserveOption'
             properties:
+                startMarginSec:
+                    description: 開始マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
+                endMarginSec:
+                    description: 終了マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
                 programId:
                     $ref: '#/components/schemas/ProgramId'
                 timeSpecifiedOption:
@@ -1424,6 +1730,20 @@ components:
                                 type: string
                                 enum: [PRIORITY_PREEMPTED]
 
+        TunerItems:
+            description: Mirakurun のチューナー一覧
+            type: array
+            items:
+                type: object
+                required: [index, name, types, isUsing]
+                properties:
+                    index: { type: integer }
+                    name: { type: string }
+                    types:
+                        type: array
+                        items: { $ref: '#/components/schemas/ChannelType' }
+                    isUsing: { type: boolean }
+
         ReserveItem:
             description: 予約番組情報
             type: object
@@ -1444,6 +1764,10 @@ components:
                     $ref: '#/components/schemas/ReserveId'
                 ruleId:
                     $ref: '#/components/schemas/RuleId'
+                finishCommandName:
+                    description: 録画終了コマンド名。null または未指定なら既定コマンド
+                    type: string
+                    nullable: true
                 isSkip:
                     type: boolean
                 isConflict:
@@ -1454,6 +1778,18 @@ components:
                     type: boolean
                 allowEndLack:
                     type: boolean
+                startMarginSec:
+                    description: 開始マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
+                endMarginSec:
+                    description: 終了マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
                 priority:
                     type: integer
                 conflictPolicy:
@@ -1496,6 +1832,10 @@ components:
                     type: integer
                 isDeleteOriginalAfterEncode:
                     type: boolean
+                plannedTunerIndex:
+                    description: planner の計画上の割当。実際のチューナーは Mirakurun が選択
+                    type: integer
+                    nullable: true
                 programId:
                     $ref: '#/components/schemas/ProgramId'
                 channelId:
@@ -1547,7 +1887,16 @@ components:
             properties:
                 type:
                     type: string
-                    enum: [NO_TUNER, PRIORITY_PREEMPTED, PARTIAL_HEAD, PARTIAL_TAIL, PARTIAL, MARGIN_OVERLAP, BACKEND_UNAVAILABLE]
+                    enum:
+                        [
+                            NO_TUNER,
+                            PRIORITY_PREEMPTED,
+                            PARTIAL_HEAD,
+                            PARTIAL_TAIL,
+                            PARTIAL,
+                            MARGIN_OVERLAP,
+                            BACKEND_UNAVAILABLE,
+                        ]
                 affectedMs:
                     type: integer
                 conflictingReserveIds:
@@ -1793,6 +2142,36 @@ components:
                 sessions:
                     type: array
                     items: { $ref: '#/components/schemas/RecordingSessionItem' }
+
+        RecordingResultSession:
+            allOf:
+                - $ref: '#/components/schemas/RecordingSessionItem'
+                - type: object
+                  properties:
+                      name: { type: string }
+                      channelName: { type: string }
+                      ruleId: { $ref: '#/components/schemas/RuleId' }
+                      isTimeSpecified: { type: boolean }
+
+        RecordingResultList:
+            type: object
+            required: [items, total, offset, limit]
+            properties:
+                items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecordingResultSession' }
+                total: { type: integer }
+                offset: { type: integer }
+                limit: { type: integer }
+
+        RecordingResultDetail:
+            type: object
+            required: [session, attempts]
+            properties:
+                session: { $ref: '#/components/schemas/RecordingResultSession' }
+                attempts:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecordingAttemptItem' }
 
         CreateNewRecordedOption:
             description: 新規追加する録画番組情報
@@ -2388,6 +2767,72 @@ components:
                 isPinned:
                     description: ピン留めするか
                     type: boolean
+
+        RecordingPresetSettings:
+            description: 録画プリセットの保存設定
+            type: object
+            required: [parentDirectoryName, directory, recordedFormat, mode1, encodeParentDirectoryName1, directory1, mode2, encodeParentDirectoryName2, directory2, mode3, encodeParentDirectoryName3, directory3, isDeleteOriginalAfterEncode, priority, conflictPolicy, allowEndLack, startMarginSec, endMarginSec, tags]
+            properties:
+                parentDirectoryName: { type: string, nullable: true }
+                directory: { type: string, nullable: true }
+                recordedFormat: { type: string, nullable: true }
+                mode1: { type: string, nullable: true }
+                encodeParentDirectoryName1: { type: string, nullable: true }
+                directory1: { type: string, nullable: true }
+                mode2: { type: string, nullable: true }
+                encodeParentDirectoryName2: { type: string, nullable: true }
+                directory2: { type: string, nullable: true }
+                mode3: { type: string, nullable: true }
+                encodeParentDirectoryName3: { type: string, nullable: true }
+                directory3: { type: string, nullable: true }
+                isDeleteOriginalAfterEncode: { type: boolean }
+                priority: { type: integer, minimum: 1, maximum: 5 }
+                conflictPolicy: { $ref: '#/components/schemas/ConflictPolicy' }
+                allowEndLack: { type: boolean }
+                startMarginSec: { type: integer, nullable: true, minimum: 0, maximum: 3600 }
+                endMarginSec: { type: integer, nullable: true, minimum: 0, maximum: 3600 }
+                tags:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecordedTagId' }
+                finishCommandName: { type: string, nullable: true }
+
+        RecordingPresetItem:
+            type: object
+            required: [id, name, isDefault, settings, createdAt, updatedAt]
+            properties:
+                id: { $ref: '#/components/schemas/RecordingPresetId' }
+                name: { type: string }
+                isDefault: { type: boolean }
+                settings: { $ref: '#/components/schemas/RecordingPresetSettings' }
+                createdAt: { $ref: '#/components/schemas/UnixtimeMS' }
+                updatedAt: { $ref: '#/components/schemas/UnixtimeMS' }
+
+        RecordingPresetItems:
+            type: object
+            required: [items, total]
+            properties:
+                items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecordingPresetItem' }
+                total: { type: integer }
+
+        AddRecordingPresetOption:
+            type: object
+            required: [name, settings]
+            properties:
+                name: { type: string }
+                isDefault: { type: boolean }
+                settings: { $ref: '#/components/schemas/RecordingPresetSettings' }
+
+        UpdateRecordingPresetOption:
+            allOf:
+                - $ref: '#/components/schemas/AddRecordingPresetOption'
+
+        AddedRecordingPreset:
+            type: object
+            required: [presetId]
+            properties:
+                presetId: { $ref: '#/components/schemas/RecordingPresetId' }
 
         AddedSavedSearch:
             description: 保存検索追加成功応答データ
@@ -3234,6 +3679,12 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/StorageItem'
+
+        PowerCancelResponse:
+            type: object
+            required: [canceled]
+            properties:
+                canceled: { type: boolean, description: 休止予定を取り消したか }
 
         Error:
             type: object
@@ -6204,6 +6655,14 @@ components:
             required: true
             schema:
                 type: integer
+
+        PathRecordingPresetId:
+            description: recording preset id
+            in: path
+            name: presetId
+            required: true
+            schema:
+                $ref: '#/components/schemas/RecordingPresetId'
 
         PathSnsAccountId:
             description: SNS 連携アカウント id

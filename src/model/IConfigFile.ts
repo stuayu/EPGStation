@@ -38,6 +38,18 @@ export interface StreamingCmd {
     cmd?: string;
 }
 
+export interface PowerConfig {
+    enabled?: boolean;
+    afterRecording?: 'none' | 'standby' | 'hibernate' | 'shutdown';
+    idleMinutes?: number;
+    minGapMinutes?: number;
+    wakeBeforeSec?: number;
+    commands?: {
+        windows?: Partial<Record<'standby' | 'hibernate' | 'shutdown' | 'wake', string>>;
+        linux?: Partial<Record<'standby' | 'hibernate' | 'shutdown' | 'wake', string>>;
+    };
+}
+
 // 配信コンテナ種別 (LL-HLS は別フェーズで追加予定のためまだ含めない)
 export type StreamContainer = 'm2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls';
 
@@ -153,10 +165,13 @@ export type NotificationEventType =
     | 'recording.completed'
     | 'recording.partial'
     | 'recording.failed'
+    | 'recording.startFailed'
     | 'recording.dropped' // ドロップ検出 (§7.3)
     | 'recording.missed' // 録り逃し検出 (リトライ上限に達し録画を断念)
+    | 'program.starting' // 番組開始前リマインダー
     | 'series.newEpisode' // シリーズ新話追加
-    | 'storage.lowSpace'; // ディスク残量低下
+    | 'storage.lowSpace' // ディスク残量低下
+    | 'power.suspending'; // 省電力移行前
 export interface NotificationTargetConfig {
     name: string;
     type: 'webhook' | 'discord';
@@ -235,6 +250,7 @@ export interface AmatsukazeConfig {
  * config ファイル形式
  */
 export default interface IConfigFile {
+    power?: PowerConfig;
     port?: number;
     socketioPort?: number;
     clientSocketioPort?: number;
@@ -385,6 +401,8 @@ export default interface IConfigFile {
     // 録画開始のリトライ方針。
     // 前番組の延長 (放送時刻未定) で開始が遅れている場合と、チューナー異常とを分けて扱う
     recording?: {
+        // 録画結果を保持する日数。既定 90 日
+        resultRetentionDays?: number;
         // 録画中の上流切断後に同じ録画へ再接続する (既定 true)
         reconnectEnabled?: boolean;
         // 同一チャンネルで続く録画が上流接続を共有する (既定 true)
@@ -419,11 +437,11 @@ export default interface IConfigFile {
         storageFallbackMarginMB?: number;
         // 予想サイズ計算に使うビットレート (Mbps)。省略時は放送種別ごとの既定値
         storageFallbackBitrateMbps?: number;
-        // 予約開始時刻の何秒前からチャンネルを開いて張り付くか。既定 15。負値不可
+        // 予約開始時刻の何秒前からチャンネルを開いて張り付くか。既定 120。負値不可
         prepRecSec?: number;
-        // 予約開始時刻の何秒前から実際に録画を開始するか。既定 0。負値不可
+        // 予約開始時刻の何秒前から実際に録画を開始するか。既定 5。負値不可
         startMarginSec?: number;
-        // 予約終了時刻の何秒後まで実際に録画を続けるか。既定 0。負値不可
+        // 予約終了時刻の何秒後まで実際に録画を続けるか。既定 5。負値不可
         endMarginSec?: number;
     };
 
@@ -617,6 +635,7 @@ export default interface IConfigFile {
     recordingPrepRecFailedCommand?: string; // 録画準備失敗
     recordingStartCommand?: string; // 録画開始
     recordingFinishCommand?: string; // 録画終了
+    recordingFinishCommands?: { name: string; cmd: string }[]; // 予約ごとの録画終了コマンド
     recordingFailedCommand?: string; // 録画中のエラー
     encodingFinishCommand?: string; // エンコード終了
 

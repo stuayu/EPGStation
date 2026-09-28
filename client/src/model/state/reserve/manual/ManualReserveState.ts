@@ -21,8 +21,11 @@ export default class ManualReserveState implements IManualReserveState {
     };
     public reserveOption: ManualReserveOption = {
         allowEndLack: true,
+        startMarginSec: null,
+        endMarginSec: null,
         priority: 3,
         conflictPolicy: 'ALLOW_END_LACK',
+        tags: [],
     };
     public saveOption: ManualSaveOption = {
         parentDirectoryName: null,
@@ -81,8 +84,11 @@ export default class ManualReserveState implements IManualReserveState {
 
         this.reserveOption = {
             allowEndLack: true,
+            startMarginSec: null,
+            endMarginSec: null,
             priority: 3,
             conflictPolicy: 'ALLOW_END_LACK',
+            tags: [],
         };
 
         this.saveOption = {
@@ -139,8 +145,11 @@ export default class ManualReserveState implements IManualReserveState {
         }
 
         this.reserveOption.allowEndLack = reserveItem.allowEndLack;
+        this.reserveOption.startMarginSec = reserveItem.startMarginSec ?? null;
+        this.reserveOption.endMarginSec = reserveItem.endMarginSec ?? null;
         this.reserveOption.priority = reserveItem.priority;
         this.reserveOption.conflictPolicy = reserveItem.conflictPolicy;
+        this.reserveOption.tags = reserveItem.tags ?? [];
         if (typeof reserveItem.parentDirectoryName !== 'undefined') {
             this.saveOption.parentDirectoryName = reserveItem.parentDirectoryName;
         }
@@ -371,6 +380,11 @@ export default class ManualReserveState implements IManualReserveState {
         return config === null ? [] : config.encode;
     }
 
+    public getRecordingMarginHint(): string {
+        const margins = this.serverConfig.getConfig()?.recordingMargins ?? { startMarginSec: 5, endMarginSec: 5 };
+        return `空欄なら全体設定 (現在 開始 ${margins.startMarginSec} 秒 / 終了 ${margins.endMarginSec} 秒)`;
+    }
+
     /**
      * エンコードに対応しているか
      */
@@ -405,6 +419,8 @@ export default class ManualReserveState implements IManualReserveState {
     private createManualReserveOption(): apid.ManualReserveOption {
         const result: apid.ManualReserveOption = {
             allowEndLack: this.reserveOption.conflictPolicy === 'ALLOW_END_LACK',
+            startMarginSec: this.reserveOption.startMarginSec,
+            endMarginSec: this.reserveOption.endMarginSec,
             priority: this.reserveOption.priority,
             conflictPolicy: this.reserveOption.conflictPolicy,
         };
@@ -446,7 +462,7 @@ export default class ManualReserveState implements IManualReserveState {
             result.encodeOption = encodeOption;
         }
 
-        // TODO tag
+        result.tags = this.reserveOption.tags;
 
         return result;
     }
@@ -458,6 +474,8 @@ export default class ManualReserveState implements IManualReserveState {
     private createEditManualReserveOption(): apid.EditManualReserveOption {
         const result: apid.EditManualReserveOption = {
             allowEndLack: this.reserveOption.conflictPolicy === 'ALLOW_END_LACK',
+            startMarginSec: this.reserveOption.startMarginSec,
+            endMarginSec: this.reserveOption.endMarginSec,
             priority: this.reserveOption.priority,
             conflictPolicy: this.reserveOption.conflictPolicy,
         };
@@ -474,7 +492,7 @@ export default class ManualReserveState implements IManualReserveState {
             result.encodeOption = encodeOption;
         }
 
-        // TODO tag
+        result.tags = this.reserveOption.tags;
 
         return result;
     }

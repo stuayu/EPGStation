@@ -38,11 +38,12 @@ type ConfigProvenance = 'default' | 'file' | 'overlay';
 
 // ConfigSchema の fields[].path のうち secret: true が付いている path の集合。
 // maskConfig() のマスク対象の 1 系統として使う (ConfigSchema を定義元とする、§指摘6)
-const CONFIG_SCHEMA_SECRET_PATHS: ReadonlySet<string> = new Set(
-    CONFIG_SCHEMA.flatMap(entry =>
+const CONFIG_SCHEMA_SECRET_PATHS: ReadonlySet<string> = new Set([
+    ...CONFIG_SCHEMA.flatMap(entry =>
         (entry.fields ?? []).filter(field => field.secret === true).map(field => field.path),
     ),
-);
+    'recordingFinishCommands.cmd',
+]);
 
 @injectable()
 export default class AppSettingApiModel implements IAppSettingApiModel {

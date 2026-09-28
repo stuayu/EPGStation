@@ -12,6 +12,7 @@ export default class EPGUpdateExecutorManageModel implements IEPGUpdateExecutorM
     private log: ILogger;
     private epgUpdateEvent: IEPGUpdateEvent;
     private isRestarting: boolean = false;
+    private updateRunning: boolean = false;
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -36,7 +37,9 @@ export default class EPGUpdateExecutorManageModel implements IEPGUpdateExecutorM
 
         // epg 更新完了
         executor.on('message', msg => {
-            if ((<any>msg).msg === 'updated') {
+            if ((<any>msg).msg === 'updateRunning') {
+                this.updateRunning = (<any>msg).running === true;
+            } else if ((<any>msg).msg === 'updated') {
                 // epg 更新完了イベントを発行
                 this.epgUpdateEvent.emitUpdated();
             } else if ((<any>msg).msg === 'onAirProgramUpdated') {
@@ -57,6 +60,7 @@ export default class EPGUpdateExecutorManageModel implements IEPGUpdateExecutorM
          * エラー処理
          */
         executor.once('exit', () => {
+            this.updateRunning = false;
             this.log.system.fatal('epg updater is abort');
 
             this.restart(executor);
@@ -88,6 +92,11 @@ export default class EPGUpdateExecutorManageModel implements IEPGUpdateExecutorM
         }
 
         // TODO ping pong
+    }
+
+    /** EPG 更新処理が実行中か返す */
+    public isBusy(): boolean {
+        return this.updateRunning;
     }
 
     /**

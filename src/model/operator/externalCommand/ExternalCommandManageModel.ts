@@ -16,6 +16,34 @@ import ILoggerModel from '../../ILoggerModel';
 import { IPromiseQueue } from '../../IPromiseQueue';
 import IExternalCommandManageModel from './IExternalCommandManageModel';
 
+export function recordingCommandIdentityEnv(
+    reserveId: number | null | undefined,
+    ruleId: number | null | undefined,
+): {
+    RESERVEID: string;
+    RULEID: string;
+} {
+    return {
+        RESERVEID: reserveId == null ? '' : String(reserveId),
+        RULEID: ruleId == null ? '' : String(ruleId),
+    };
+}
+
+export function resolveRecordingFinishCommand(
+    finishCommandName: string | null | undefined,
+    commands: IConfigFile['recordingFinishCommands'],
+    defaultCommand: string | undefined,
+): { command: string | undefined; isUnknownName: boolean } {
+    if (finishCommandName == null) {
+        return { command: defaultCommand, isUnknownName: false };
+    }
+
+    const selected = commands?.find(command => command.name === finishCommandName);
+    return selected === undefined
+        ? { command: defaultCommand, isUnknownName: true }
+        : { command: selected.cmd, isUnknownName: false };
+}
+
 @injectable()
 export default class ExternalCommandManageModel implements IExternalCommandManageModel {
     private log: ILogger;
@@ -117,12 +145,27 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
      * 録画終了時のコマンド実行を queue に追加する
      * @param recorded: Recorded
      */
-    public addRecordingFinishCmd(recorded: Recorded): void {
-        if (typeof this.config.recordingFinishCommand === 'undefined') {
-            return;
-        }
-
-        this.addRecorded(this.config.recordingFinishCommand, recorded);
+    public addRecordingFinishCmd(recorded: Recorded, finishCommandName: string | null = null): void {
+        this.queue.add<void>(async () => {
+            try {
+                const resolved = resolveRecordingFinishCommand(
+                    finishCommandName,
+                    this.config.recordingFinishCommands,
+                    this.config.recordingFinishCommand,
+                );
+                if (resolved.isUnknownName === true) {
+                    this.log.system.warn(
+                        `recording finish command name is not registered: ${finishCommandName}. Using recordingFinishCommand.`,
+                    );
+                }
+                if (typeof resolved.command !== 'undefined') {
+                    await this.createRecordedCmd(resolved.command, recorded);
+                }
+            } catch (err) {
+                this.log.system.error(`execute recording finish command error: recordedId=${recorded.id}`);
+                this.log.system.error(err);
+            }
+        });
     }
 
     /**
@@ -209,7 +252,7 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
                 stdio: 'ignore',
                 env: {
                     PATH: process.env['PATH'],
-                    RESERVEID: reserve.id,
+                    ...recordingCommandIdentityEnv(reserve.id, reserve.ruleId),
                     PROGRAMID: reserve.programId,
                     CHANNELTYPE: reserve.channelType,
                     CHANNELID: reserve.channelId,
@@ -273,6 +316,7 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
                 env: {
                     PATH: process.env['PATH'],
                     RECORDEDID: recorded.id,
+                    ...recordingCommandIdentityEnv(recorded.reserveId, recorded.ruleId),
                     PROGRAMID: recorded.programId,
                     CHANNELTYPE: channel === null ? null : channel.channelType,
                     CHANNELID: recorded.channelId,
@@ -362,6 +406,7 @@ export default class ExternalCommandManageModel implements IExternalCommandManag
                 env: {
                     PATH: process.env['PATH'],
                     RECORDEDID: info.recordedId,
+                    ...recordingCommandIdentityEnv(recorded.reserveId, recorded.ruleId),
                     VIDEOFILEID: info.videoFileId === null ? '' : info.videoFileId,
                     OUTPUTPATH:
                         info.videoFileId === null ? null : await this.videoUtil.getFullFilePathFromId(info.videoFileId),

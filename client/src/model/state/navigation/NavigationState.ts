@@ -315,11 +315,17 @@ export default class NavigationState implements INavigationState {
                 path: '/recorded',
             },
         });
+        newItems.push({
+            icon: 'mdi-clipboard-list-outline',
+            title: '録画結果',
+            herf: { path: '/recording-results' },
+        });
         // 視聴履歴機能 (featureFlags.watchHistory) が有効な場合のみ表示する
         if (isFeatureEnabled(config, 'watchHistory') === true) {
             newItems.push({ icon: 'mdi-history', title: '視聴履歴', herf: { path: '/watch-history' } });
         }
         newItems.push({ icon: 'mdi-download-box', title: 'オフライン保存', herf: { path: '/offline-videos' } });
+        newItems.push({ icon: 'mdi-bell-outline', title: '番組通知', herf: { path: '/reminders' } });
         // シリーズ機能は段階導入の機能フラグ (featureFlags.seriesLibrary) が有効な場合のみナビゲーションに表示する
         if (isFeatureEnabled(config, 'seriesLibrary') === true) {
             newItems.push({ icon: 'mdi-folder-play', title: 'シリーズ', herf: { path: '/series' } });

@@ -3,6 +3,7 @@ import * as apid from '../../../api';
 import IRecordedDB from '../db/IRecordedDB';
 import IVideoFileDB from '../db/IVideoFileDB';
 import IProgramDB from '../db/IProgramDB';
+import IChannelDB from '../db/IChannelDB';
 import IConfigFile from '../IConfigFile';
 import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
@@ -28,6 +29,7 @@ import ISeriesResolver from '../series/ISeriesResolver';
 import { formatLogTimeRange } from '../../util/ProgramTimeLog';
 import IEitPresentStore from '../service/stream/util/IEitPresentStore';
 import { decideRecordingFinishPolicy, RecordingResultStatus } from '../../util/RecordingResult';
+import IProgramReminderManageModel from '../operator/reminder/IProgramReminderManageModel';
 
 @injectable()
 export default class EventSetter implements IEventSetter {
@@ -54,6 +56,8 @@ export default class EventSetter implements IEventSetter {
     private videoFileDB: IVideoFileDB;
     private programDB: IProgramDB;
     private eitPresentStore: IEitPresentStore;
+    private channelDB: IChannelDB;
+    private programReminderManage: IProgramReminderManageModel;
 
     private isFirstreserveationUpdate: boolean = true;
 
@@ -82,6 +86,8 @@ export default class EventSetter implements IEventSetter {
         @inject('IVideoFileDB') videoFileDB: IVideoFileDB,
         @inject('IProgramDB') programDB: IProgramDB,
         @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
+        @inject('IChannelDB') channelDB: IChannelDB,
+        @inject('IProgramReminderManageModel') programReminderManage: IProgramReminderManageModel,
     ) {
         this.log = logger.getLogger();
         this.epgUpdateEvent = epgUpdateEvent;
@@ -106,12 +112,15 @@ export default class EventSetter implements IEventSetter {
         this.videoFileDB = videoFileDB;
         this.programDB = programDB;
         this.eitPresentStore = eitPresentStore;
+        this.channelDB = channelDB;
+        this.programReminderManage = programReminderManage;
     }
 
     /**
      * event をセットする
      */
     public set(): void {
+        this.programReminderManage.start();
         this.eitPresentStore.onChange((channelId, event) => {
             void this.applyEitProgram(channelId, event);
         });
@@ -221,10 +230,20 @@ export default class EventSetter implements IEventSetter {
         });
 
         // 録画準備失敗イベント
-        this.recordingEvent.setPrepRecordingFailed(reserve => {
+        this.recordingEvent.setPrepRecordingFailed(async (reserve, endReason, retryCount) => {
             this.ipc.notifyClient();
             this.reservationManage.cancel(reserve.id); // 予約から削除
             this.externalCommandManage.addRecordingPrepRecFailedCmd(reserve);
+            const channel = await this.channelDB.findId(reserve.channelId);
+            void this.notification.dispatch('recording.startFailed', {
+                name: reserve.name,
+                channelName: channel?.name ?? '',
+                startAt: reserve.startAt,
+                endReason,
+                retryCount,
+                reserveId: reserve.id,
+                ruleId: reserve.ruleId,
+            });
         });
 
         // 録画開始イベント
@@ -372,7 +391,8 @@ export default class EventSetter implements IEventSetter {
                 });
 
             // コマンド実行
-            if (policy.runFinishCommand === true) this.externalCommandManage.addRecordingFinishCmd(recorded);
+            if (policy.runFinishCommand === true)
+                this.externalCommandManage.addRecordingFinishCmd(recorded, reserve.finishCommandName);
             if (policy.notification !== null) {
                 void this.notification.dispatch(policy.notification, {
                     recordedId: recorded.id,

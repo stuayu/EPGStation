@@ -94,6 +94,43 @@ export interface ConfigSchemaEntry {
 
 export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
     {
+        key: 'power',
+        label: '省電力',
+        hint: '録画や配信などの処理がなく、次の予約まで時間がある場合に PC を休止する。既定では無効',
+        requiresRestart: false,
+        editable: 'gui',
+        fields: [
+            { path: 'power.enabled', label: '省電力を有効にする', type: 'boolean' },
+            {
+                path: 'power.afterRecording',
+                label: '録画後の動作',
+                type: 'select',
+                items: [
+                    { title: '何もしない', value: 'none' },
+                    { title: 'スタンバイ', value: 'standby' },
+                    { title: '休止状態', value: 'hibernate' },
+                    { title: 'シャットダウン', value: 'shutdown' },
+                ],
+            },
+            { path: 'power.idleMinutes', label: '無操作とみなす時間 (分)', type: 'number' },
+            { path: 'power.minGapMinutes', label: '次の予約までの最小時間 (分)', type: 'number' },
+            { path: 'power.wakeBeforeSec', label: '予約前に復帰する秒数', type: 'number' },
+            {
+                path: 'power.commands.windows.standby',
+                label: 'Windows スタンバイコマンド',
+                type: 'string',
+                hint: '空欄なら標準コマンドを使う',
+            },
+            { path: 'power.commands.windows.hibernate', label: 'Windows 休止コマンド', type: 'string' },
+            { path: 'power.commands.windows.shutdown', label: 'Windows シャットダウンコマンド', type: 'string' },
+            { path: 'power.commands.windows.wake', label: 'Windows 復帰登録コマンド', type: 'string' },
+            { path: 'power.commands.linux.standby', label: 'Linux スタンバイコマンド', type: 'string' },
+            { path: 'power.commands.linux.hibernate', label: 'Linux 休止コマンド', type: 'string' },
+            { path: 'power.commands.linux.shutdown', label: 'Linux シャットダウンコマンド', type: 'string' },
+            { path: 'power.commands.linux.wake', label: 'Linux 復帰登録コマンド', type: 'string' },
+        ],
+    },
+    {
         key: 'reservation',
         label: '予約スケジューラ',
         hint: '予約の競合判定とチューナー割当方式',
@@ -447,6 +484,12 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         editable: 'gui',
         fields: [
             {
+                path: 'recording.resultRetentionDays',
+                label: '録画結果の保存期間 (日)',
+                type: 'number',
+                hint: '既定 90 日。0 以下では開始前失敗セッションを自動削除しません',
+            },
+            {
                 path: 'recording.reconnectEnabled',
                 label: '録画中の切断後に再接続する',
                 type: 'boolean',
@@ -540,19 +583,19 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
                 path: 'recording.prepRecSec',
                 label: '開始時刻の何秒前から張り付くか',
                 type: 'number',
-                hint: '既定 15。チャンネルを開いて EIT[p/f] の監視を始める時刻。負値不可',
+                hint: '既定 120。チャンネルを開いて EIT[p/f] の監視を始める時刻。負値不可',
             },
             {
                 path: 'recording.startMarginSec',
                 label: '開始時刻の何秒前から録画するか',
                 type: 'number',
-                hint: '既定 0。負値不可',
+                hint: '既定 5。負値不可',
             },
             {
                 path: 'recording.endMarginSec',
                 label: '終了時刻の何秒後まで録画するか',
                 type: 'number',
-                hint: '既定 0。負値不可',
+                hint: '既定 5。負値不可',
             },
         ],
     },
@@ -940,6 +983,15 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         requiresRestart: true,
         editable: 'gui',
         fields: [{ path: 'recordingFinishCommand', label: '録画が終了したとき', type: 'string' }],
+    },
+    {
+        key: 'recordingFinishCommands',
+        label: '名前付き録画終了コマンド',
+        hint: '予約・ルールごとに選択するコマンド。コマンド名と本文は YAML で設定する',
+        requiresRestart: true,
+        editable: 'ymlOnly',
+        reason: 'notYetWired',
+        fields: [],
     },
     {
         key: 'recordingFailedCommand',

@@ -108,6 +108,25 @@ dbtype: sqlite
 # reservation:
 #   scheduler: planner
 
+# 省電力 (録画等がなく、次の予約まで十分な時間がある場合に PC を休止)。既定無効
+# power:
+#   enabled: false
+#   afterRecording: none # none / standby / hibernate / shutdown
+#   idleMinutes: 10
+#   minGapMinutes: 30
+#   wakeBeforeSec: 300
+#   commands:
+#     windows:
+#       standby: ''
+#       hibernate: ''
+#       shutdown: ''
+#       wake: ''
+#     linux:
+#       standby: ''
+#       hibernate: ''
+#       shutdown: ''
+#       wake: ''
+
 # 過去の番組表データを残す時間 (時間)
 # 0: 終了した番組を順次削除する (既定) / -1: 削除せず無期限に残す
 # epgRetentionTime: 0
@@ -901,6 +920,9 @@ stream:
 # recordingPrepRecFailedCommand: '/usr/bin/logger prepfailed'
 # recordingStartCommand: '/bin/node /home/hoge/fuga.js start'
 # recordingFinishCommand: '/bin/bash /home/hoge/foo.sh end'
+# recordingFinishCommands:
+#   - name: move-to-archive
+#     cmd: '/bin/bash /home/hoge/archive.sh'
 # recordingFailedCommand: '/usr/bin/logger recfailed'
 # encodingFinishCommand: '/bin/node /home/hoge/fuga.js finish'
 # reserveNewAddtionCommand: '/bin/node /home/hoge/fuga.js reserve'
@@ -938,6 +960,8 @@ stream:
 # 対象番組の境界まで待ちます。切り戻し用の program stream では Mirakurun がデータ出力を保留します。
 # チューナー異常とは別枠で数えるので、延長待ちが異常時の再試行回数を食い潰しません。
 # recording:
+#     # 録画結果 (開始前失敗を含む) の保存期間 (日)。既定 90
+#     resultRetentionDays: 90
 #     # 録画中に上流が切断した後、同じ録画へ再接続する (既定 true)
 #     reconnectEnabled: true
 #     # 同一チャンネルで続く録画が上流接続を共有する (既定 true)
@@ -1133,7 +1157,7 @@ stream:
 #         - name: discord
 #           type: discord
 #           url: https://discord.com/api/webhooks/...
-#           events: [recording.started, recording.completed, recording.partial, recording.failed]
+#           events: [recording.started, recording.completed, recording.partial, recording.failed, program.starting]
 #         - name: automation
 #           type: webhook
 #           url: https://example.invalid/epgstation

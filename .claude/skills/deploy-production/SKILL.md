@@ -10,15 +10,15 @@ description: EPGStation の変更を本番サーバ (Windows) へ反映して実
 ## 反映の流れ
 
 1. **録画中でないことを確認する** (再起動で録画が切れる)
-   ```bash
-   curl -s "https://<本番>/api/recording?isHalfWidth=false&limit=5"
-   ```
+    ```bash
+    curl -s "https://<本番>/api/recording?isHalfWidth=false&limit=5"
+    ```
 2. **ローカルで lint まで通してから push する** — `npm run build` は eslint を含む。
    `npm run compile` と `npm test` は lint を通さないので、これだけでは本番ビルドの成否が分からない
-   ```bash
-   npm run compile && npm test && npx eslint src && (cd client && npm run build)
-   git push origin main
-   ```
+    ```bash
+    npm run compile && npm test && npx eslint src && (cd client && npm run build)
+    git push origin main
+    ```
 3. **本番で pull → build**
 4. **サービス再起動**
 5. **反映を実測で確認する** (バージョン・ログ・実際の配信)
@@ -98,6 +98,7 @@ curl -s "https://<本番>/api/config" | node -e '...'   # 追加した項目が�
 
 ## 過去に踏んだもの
 
+- **ブランチ切替後、古い dist の route が残って API 全体の初期化が失敗し、既存 API まで 404 になった**。ブランチを切り替えて反映するときは dist を消す。`build-server` / `build-win` はビルド前に削除する
 - **lint を飛ばして push し、本番ビルドが `no-control-regex` で失敗した**。
   ローカルで `npm run compile` と `npm test` しか回していなかった
 - **テンプレートを更新しただけで本番に反映されたと思い込んだ**。

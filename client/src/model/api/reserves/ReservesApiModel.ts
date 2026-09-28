@@ -80,6 +80,11 @@ export default class ReservesApiModel implements IReservesApiModel {
      * 予約数の取得
      * @return Promise<apid.ReserveCnts>
      */
+    public async getTuners(): Promise<apid.TunerItems> {
+        const result = await this.repository.get('/tuners');
+        return result.data;
+    }
+
     public async getCnts(): Promise<apid.ReserveCnts> {
         const result = await this.repository.get('/reserves/cnts');
 

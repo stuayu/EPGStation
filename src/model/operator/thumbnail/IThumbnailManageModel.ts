@@ -1,6 +1,8 @@
 import * as apid from '../../../../api';
 
 export default interface IThumbnailManageModel {
+    /** 実行待ちまたは生成中のサムネイルがあるか返す */
+    isBusy(): boolean;
     add(recordedId: apid.RecordedId, profile?: 'fast' | 'balanced' | 'quality'): void;
     delete(thumbnailId: apid.ThumbnailId): Promise<void>;
     regenerate(): Promise<void>;

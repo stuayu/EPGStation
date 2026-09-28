@@ -29,6 +29,7 @@ import IIPCClient, {
 import {
     AppSettingFunctions,
     UpdateFunctions,
+    ReminderFunctions,
     ClientMessageOption,
     OperatorEncodeEventFunctions,
     ModelName,
@@ -60,6 +61,8 @@ export default class IPCClient implements IIPCClient {
     public series!: IPCSeriesManageModel;
     public appSetting!: IPCAppSettingManageModel;
     public update!: IPCUpdateManageModel;
+    public reminder!: import('./IIPCClient').IPCProgramReminderManageModel;
+    public power!: import('./IIPCClient').IPowerManageModel;
 
     private log: ILogger;
     private listener: events.EventEmitter = new events.EventEmitter();
@@ -89,6 +92,8 @@ export default class IPCClient implements IIPCClient {
         this.setSeries();
         this.setAppSetting();
         this.setUpdate();
+        this.setReminder();
+        this.power = { cancel: () => this.send({ model: ModelName.power, func: 'cancel' }) };
     }
 
     /**
@@ -119,6 +124,18 @@ export default class IPCClient implements IIPCClient {
                         endAt: typeof value.endAt === 'number' ? value.endAt : null,
                     });
                 }
+            } else if ((<ParentMessage>msg).type === 'notifyProgramStarting') {
+                const value = (<any>msg).value;
+                if (typeof value?.programId === 'number' && typeof value?.name === 'string') {
+                    this.socketIO.notifyProgramStarting(
+                        value,
+                        typeof value.userId === 'number' ? value.userId : null,
+                        typeof value.notificationTargetCount === 'number' ? value.notificationTargetCount : 0,
+                    );
+                }
+            } else if ((<ParentMessage>msg).type === 'notifyPowerSuspending') {
+                const value = (<any>msg).value;
+                if (typeof value?.executeAt === 'number') this.socketIO.notifyPowerSuspending(value);
             } else if ((<ParentMessage>msg).type === 'notifyEitPresent') {
                 const value = (<any>msg).value;
                 if (typeof value?.channelId === 'number' && typeof value?.event === 'object') {
@@ -709,6 +726,12 @@ export default class IPCClient implements IIPCClient {
             restart: () => {
                 return this.send({ model: ModelName.update, func: UpdateFunctions.restart });
             },
+        };
+    }
+
+    private setReminder(): void {
+        this.reminder = {
+            refresh: () => this.send({ model: ModelName.reminder, func: ReminderFunctions.refresh }),
         };
     }
 }
