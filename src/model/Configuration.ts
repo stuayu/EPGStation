@@ -389,7 +389,7 @@ namespace Configuration {
     export const DEFAULT_VALUE: IConfigFile = {
         featureFlags: {},
         reservation: {
-            scheduler: 'legacy',
+            scheduler: 'planner',
         },
         mirakurunPath: 'http+unix://%2Fvar%2Frun%2Fmirakurun.sock/',
         apiServers: [],
@@ -427,7 +427,7 @@ namespace Configuration {
         recording: {
             programStreamMode: 'service',
             reconnectEnabled: true,
-            shareUpstreamStream: false,
+            shareUpstreamStream: true,
         },
         observability: {
             otel: {

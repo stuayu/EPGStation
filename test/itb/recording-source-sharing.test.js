@@ -80,13 +80,28 @@ test('有効時は A/B が1接続を共有し、上流切断後に両方が part
     );
 });
 
-test('未指定 (既定 false) は同じチャンネルでも予約ごとに接続する', async t => {
+test('未指定 (既定 true) は同じチャンネルの予約で上流接続を共有する', async t => {
     const stub = new MirakurunRecordingStub([sendAndHold(5), sendAndHold(5)]);
     const harness = new RecorderHarness(stub);
     await harness.start();
     harness.recorder.cancel = async () => {};
     t.after(() => harness.cleanup());
     const reserves = [makeReserve(99211), makeReserve(99212)];
+    const streams = await Promise.all(
+        reserves.map(reserve => harness.recordingStreamCreator.create(reserve, new AbortController().signal)),
+    );
+    await waitFor(() => stub.requests.filter(request => request.url.includes('/stream')).length === 1);
+    assert.equal(stub.requests.filter(request => request.url.includes('/stream')).length, 1);
+    streams.forEach(stream => harness.recordingStreamCreator.closeStream(stream, 'scheduled-end'));
+});
+
+test('shareUpstreamStream=false は同じチャンネルでも予約ごとに接続する', async t => {
+    const stub = new MirakurunRecordingStub([sendAndHold(5), sendAndHold(5)]);
+    const harness = new RecorderHarness(stub, { recording: { shareUpstreamStream: false } });
+    await harness.start();
+    harness.recorder.cancel = async () => {};
+    t.after(() => harness.cleanup());
+    const reserves = [makeReserve(99213), makeReserve(99214)];
     const streams = await Promise.all(
         reserves.map(reserve => harness.recordingStreamCreator.create(reserve, new AbortController().signal)),
     );

@@ -33,7 +33,7 @@ const makeModel = (reserveDB = {}, options = {}) => {
     };
     return new ReservationManageModel(
         noopLogger,
-        { getConfig: () => ({ reservation: { scheduler: 'legacy' }, ...options.config }) },
+        { getConfig: () => ({ reservation: { scheduler: 'planner' }, ...options.config }) },
         {},
         {},
         { findTimeRanges: async () => [], updateMany: async () => {}, ...reserveDB },
@@ -119,7 +119,7 @@ test('createReserves は時間順スイープと先着チューナー割当を�
     assert.deepEqual(snapshot, fixture.expectedConflicts);
     assert.deepEqual(
         input.map(reserve => reserve.id),
-        [5, 1, 2, 7, 3, 4, 6],
+        [1, 2, 3, 4, 5, 6, 7],
     );
 });
 
@@ -208,7 +208,7 @@ test('createReserves では同時刻終了と開始は競合せず、first-fit �
     );
 });
 
-test('createReserves の現状の挙動 (Phase 6 で変更予定): 一度競合した予約は競合のまま残る', async () => {
+test('planner は先行予約の終了後に同じチャンネルの予約を割り当てる', async () => {
     const model = makeModel();
     model.setTuners([{ types: ['GR'], index: 0, name: 'GR', command: '', isAvailable: true }]);
     const result = await model.createReserves([
@@ -219,7 +219,7 @@ test('createReserves の現状の挙動 (Phase 6 で変更予定): 一度競合�
     assert.deepEqual(Object.fromEntries(result.map(reserve => [reserve.id, reserve.isConflict])), {
         1: false,
         2: true,
-        3: true,
+        3: false,
     });
 });
 

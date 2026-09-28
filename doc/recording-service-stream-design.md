@@ -16,11 +16,11 @@ session と attempt の永続化、状態遷移、終了理由の集計、結果
 
 延長判定 `extendUndefinedDurationEndAt()` は計画終了の60秒前から30分ずつ延長し、安全上限で止める。Recorder はこの値だけ DB 更新し、重複する予約範囲の Planner を再計算する。録画 stream の hard timer / `reserve.endAt` は3時間上限のまま。実際の録画終了は EIT present の boundary が決める。SQLite / MySQL migration は追加列を nullable とし、既存予約の `endAt` や表示値を移行しない。
 
-## Phase 9: 連続録画の上流共有 (opt-in)
+## Phase 9: 連続録画の上流共有
 
 Operator プロセス内の `RecordingSourceLeaseManager` は `channelId` ごとに Mirakurun 上流を保持し、lease ごとの PassThrough 分岐を各予約 attempt に渡す。参照数が 0 になれば上流を閉じ、上流の close / end / error 時は共有表から lease を除去する。上流障害は全分岐へ同じ終了理由で通知し、再接続は lease 単位で行う。
 
-`recording.shareUpstreamStream` (既定 false) が有効な場合だけ共有する。Mirakurun priority と decode 設定が一致する service stream が対象で、priority / decode が異なる場合と `program` mode は共有しない。狙いは連続予約の張り付きで同じ局へ重複 HTTP 接続を作らず、引き継ぎの切れ目をなくすこと。Mirakurun の tuner 数には影響しない。
+`recording.shareUpstreamStream` (既定 true) が有効な場合に共有する。Mirakurun priority と decode 設定が一致する service stream が対象で、priority / decode が異なる場合と `program` mode は共有しない。狙いは連続予約の張り付きで同じ局へ重複 HTTP 接続を作らず、引き継ぎの切れ目をなくすこと。Mirakurun の tuner 数には影響しない。枝バッファ上限は 128 MiB (30 秒分の BS4K 相当) とし、上限超過時は該当枝だけ失敗・再接続する。
 
 ## 1. 結論 (実装確定: 2026-08-19)
 

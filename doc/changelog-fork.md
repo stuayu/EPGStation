@@ -20,7 +20,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 録画 session / attempt の永続化と span を RecordingSessionTracker へ分離 → 2026-09-28
 - 録画セッション再設計の実機再接続・開始ゲート検証 → 2026-09-28
 
-- 連続録画の上流共有 Phase 9 (opt-in) → 2026-09-28
+- 連続録画の上流共有と既定値変更 → 2026-09-28
 - 放送時間未定の終了時刻を表示・Planner・安全上限に分離 Phase 8 → 2026-09-28
 - 予約優先度と競合ポリシー Phase 7 → 2026-09-28
 - 予約スケジューラ Phase 6: SchedulePlanner と競合詳細 → 2026-09-28
@@ -42,6 +42,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-28
+
+- **共有上流の枝バッファ上限と既定値を変更**: 枝ごとの上限を 1 MiB から 128 MiB (30 秒 × BS4K 相当約 4 MB/s) に拡大。上限超過時はその枝だけ失敗させる動作を維持し、当時の `writableLength` を含む info log を追加。lease 作成/再利用、枝解放、参照数 0 での上流終了も記録する。共有は既定有効、無効化は `recording.shareUpstreamStream: false`。予約 scheduler は `planner` を既定とし、切り戻しは `reservation.scheduler: legacy`。本番並走比較は差分 0 件、既定 priority コーパス比較も legacy と一致し、NW 局の割当を確認。共有既定有効化後の本番再試験は指示役が実施する。
 
 - **録画セッション再設計を本番 Windows / MySQL / recisdb-proxy-rs で実機検証**: 録画18588は attempt 1 が0〜69,523,340 byte (`upstream-eof`)、attempt 2 が69,523,340〜409,816,124 byte (`scheduled-end`)。受信断584 ms、1ファイルで188 byte格子を維持、drop 11件 (つなぎ目の CC 不連続)。つなぎ目前後212,765パケットで同期エラー0、PTS は巻き戻り・リセットなし (映像 +0.467秒 / 音声 +0.725秒)、デコードエラー8件はつなぎ目の一瞬だけ。再接続2回目の録画18589は受信断588 msで、DB に `recordingStatus: partial` / `endReason: scheduled-end` を保存。録画18590の番組途中予約は予定08:06:00に対して08:05:55開始 (`timeSpecifiedMidProgram`、修正前は56秒遅延)。追っかけ再生の m2tsll は録画終了から約1.7秒で停止 (修正前は最大60秒)。NW21予約は `isConflict: false` (修正前は適合 tuner 0本で必ず競合)。手順と開始ゲート制約は [recording-service-stream-design.md](recording-service-stream-design.md) に記録。
 - **RecorderModel の session / attempt 永続化と復帰準備を分離**: `RecordingSessionTracker` が session 状態、attempt 作成・終了、close reason 集計、結果判定と telemetry span を担当し、`RecordingResumeCoordinator` が復帰ファイルと attempt 集計を準備する。予約・タイマー・prepRecord / doRecord の段取りは `RecorderModel` に残す。
