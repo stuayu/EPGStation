@@ -138,6 +138,7 @@ export interface EditManualReserveOption {
     priority?: number;
     conflictPolicy?: ConflictPolicy;
     tags?: RecordedTagId[];
+    finishCommandName?: string | null;
     saveOption?: ReserveSaveOption;
     encodeOption?: ReserveEncodedOption;
 }
@@ -207,6 +208,7 @@ export interface ReserveItem {
      */
     isFollowingSchedule?: boolean;
     tags?: RecordedTagId[];
+    finishCommandName?: string | null;
     /**
      * 保存オプション
      */
@@ -523,6 +525,7 @@ export interface RuleReserveOption {
     avoidDuplicate: boolean; // 録画済みの重複番組を排除するか
     periodToAvoidDuplicate?: number; // 重複を避ける期間
     tags?: RecordedTagId[]; // 録画完了後に付与する tag 設定
+    finishCommandName?: string | null;
 }
 
 export type ConflictPolicy =
@@ -1066,6 +1069,7 @@ export interface RecordingPresetSettings {
     startMarginSec: number | null;
     endMarginSec: number | null;
     tags: RecordedTagId[];
+    finishCommandName?: string | null;
 }
 
 export interface RecordingPresetItem {
@@ -1195,6 +1199,7 @@ export interface Config {
      */
     useDedicatedSocketIOPort: boolean;
     recordingMargins?: { startMarginSec: number; endMarginSec: number };
+    recordingFinishCommandNames?: string[];
     /** 起動時に実測したエンコーダ能力。 */
     hardwareEncoder: {
         configured: 'auto' | 'qsv' | 'nvenc' | 'vce' | 'videotoolbox' | 'software';

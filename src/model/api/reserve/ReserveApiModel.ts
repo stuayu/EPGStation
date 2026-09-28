@@ -78,6 +78,7 @@ export default class ReserveApiModel implements IReserveApiModel {
             allowEndLack: reserve.allowEndLack,
             startMarginSec: reserve.startMarginSec,
             endMarginSec: reserve.endMarginSec,
+            finishCommandName: reserve.finishCommandName,
             priority: reserve.priority,
             conflictPolicy: reserve.conflictPolicy as apid.ConflictPolicy,
             isTimeSpecified: reserve.isTimeSpecified,

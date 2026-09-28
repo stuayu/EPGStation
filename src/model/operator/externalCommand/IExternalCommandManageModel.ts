@@ -8,7 +8,7 @@ export default interface IExternalCommandManageModel {
     addRecordingPrepStartCmd(reserve: Reserve): void;
     addRecordingPrepRecFailedCmd(reserve: Reserve): void;
     addRecordingStartCmd(recorded: Recorded): void;
-    addRecordingFinishCmd(recorded: Recorded): void;
+    addRecordingFinishCmd(recorded: Recorded, finishCommandName?: string | null): void;
     addRecordingFailedCmd(recorded: Recorded): void;
     addEncodingFinishCmd(info: OperatorFinishEncodeInfo): void;
 }

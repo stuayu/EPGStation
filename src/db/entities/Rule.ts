@@ -429,6 +429,9 @@ export default class Rule extends BaseEntity {
     })
     public tags: string | null = null;
 
+    @Column({ type: 'text', nullable: true })
+    public finishCommandName: string | null = null;
+
     /**
      * 保存設定
      */

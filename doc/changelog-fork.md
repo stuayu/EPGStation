@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 録画後コマンド Phase H → 2026-09-28
 - 省電力 Phase G → 2026-09-28
 - 番組開始前リマインダー Phase F → 2026-09-28
 
@@ -57,6 +58,12 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-28
+
+### 録画後コマンド Phase H
+
+録画終了時に実行するコマンドを `recordingFinishCommands` へ名前付きで登録し、予約・自動予約ルール・録画プリセットで名前を選択できるようにした。`finishCommandName` が null または未指定なら従来の `recordingFinishCommand` を実行する。設定から名前が削除された場合も既定コマンドへ戻し、warn ログを出す。`/api/config` には選択肢の名前だけを返し、コマンド本文は返さない。
+
+関連実装: `src/model/operator/externalCommand/ExternalCommandManageModel.ts`, `src/db/entities/{Rule,Reserve}.ts`, `src/db/migrations/{sqlite,mysql}/1790572600000-AddFinishCommandName.ts`, `api.yml`, `api.d.ts`。
 
 ### チューナー別予約一覧 Phase E
 

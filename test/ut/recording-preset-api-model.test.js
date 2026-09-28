@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const Model = require('../../dist/model/api/recordingPreset/RecordingPresetApiModel').default;
 
-const settings = { parentDirectoryName: 'recorded', directory: 'tv', recordedFormat: '%TITLE%', mode1: 'encode', encodeParentDirectoryName1: 'encoded', directory1: 'out', mode2: null, encodeParentDirectoryName2: null, directory2: null, mode3: null, encodeParentDirectoryName3: null, directory3: null, isDeleteOriginalAfterEncode: false, priority: 3, conflictPolicy: 'STRICT', allowEndLack: true, startMarginSec: 0, endMarginSec: null, tags: [2, 5] };
+const settings = { parentDirectoryName: 'recorded', directory: 'tv', recordedFormat: '%TITLE%', mode1: 'encode', encodeParentDirectoryName1: 'encoded', directory1: 'out', mode2: null, encodeParentDirectoryName2: null, directory2: null, mode3: null, encodeParentDirectoryName3: null, directory3: null, isDeleteOriginalAfterEncode: false, priority: 3, conflictPolicy: 'STRICT', allowEndLack: true, startMarginSec: 0, endMarginSec: null, tags: [2, 5], finishCommandName: null };
 const makeModel = () => {
     let rows = [];
     let id = 0;
@@ -39,6 +39,16 @@ test('既定プリセットは常に 1 件だけ', async () => {
     await model.update(first, { name: 'A', settings, isDefault: true });
     assert.deepEqual(rows().filter(x => x.isDefault).map(x => x.id), [first]);
     assert.equal((await model.getDefault()).id, first);
+});
+
+test('既存録画プリセットでコマンド名が未設定なら null として読み出す', async () => {
+    const { model } = makeModel();
+    const legacySettings = { ...settings };
+    delete legacySettings.finishCommandName;
+
+    const id = await model.create({ name: '旧プリセット', settings: legacySettings });
+
+    assert.equal((await model.get(id)).settings.finishCommandName, null);
 });
 
 test('名前と録画設定の値を検証する', async () => {

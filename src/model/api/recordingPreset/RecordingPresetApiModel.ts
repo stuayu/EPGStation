@@ -26,6 +26,7 @@ export default class RecordingPresetApiModel implements IRecordingPresetApiModel
         'startMarginSec',
         'endMarginSec',
         'tags',
+        'finishCommandName',
     ] as const;
 
     constructor(@inject('IRecordingPresetDB') private readonly db: IRecordingPresetDB) {}
@@ -91,10 +92,15 @@ export default class RecordingPresetApiModel implements IRecordingPresetApiModel
         ) {
             throw new Error('InvalidRequestBody');
         }
-        if (RecordingPresetApiModel.SETTINGS_KEYS.some(key => !Object.prototype.hasOwnProperty.call(settings, key))) {
+        if (
+            RecordingPresetApiModel.SETTINGS_KEYS.some(
+                key => key !== 'finishCommandName' && !Object.prototype.hasOwnProperty.call(settings, key),
+            )
+        ) {
             throw new Error('InvalidRequestBody');
         }
-        for (const [key, value] of Object.entries(settings)) {
+        const normalizedSettings = { ...settings, finishCommandName: settings.finishCommandName ?? null };
+        for (const [key, value] of Object.entries(normalizedSettings)) {
             if (!(RecordingPresetApiModel.SETTINGS_KEYS as readonly string[]).includes(key))
                 throw new Error('InvalidRequestBody');
             if (key === 'isDeleteOriginalAfterEncode' || key === 'allowEndLack') {
@@ -127,7 +133,7 @@ export default class RecordingPresetApiModel implements IRecordingPresetApiModel
                     throw new Error('InvalidRequestBody');
             } else if (value !== null && typeof value !== 'string') throw new Error('InvalidRequestBody');
         }
-        return { name, settings };
+        return { name, settings: normalizedSettings as apid.RecordingPresetSettings };
     }
 
     private async clearDefault(exceptId?: number): Promise<void> {
@@ -145,7 +151,7 @@ export default class RecordingPresetApiModel implements IRecordingPresetApiModel
             id: item.id,
             name: item.name,
             isDefault: item.isDefault,
-            settings: JSON.parse(item.settings),
+            settings: { finishCommandName: null, ...JSON.parse(item.settings) },
             createdAt: item.createdAt,
             updatedAt: item.updatedAt,
         };

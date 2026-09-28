@@ -174,6 +174,7 @@ export default class ConfigApiModel implements IConfigApiModel {
         result.recorded = config.recorded.map(r => {
             return r.name;
         });
+        result.recordingFinishCommandNames = (config.recordingFinishCommands ?? []).map(command => command.name);
 
         result.encode = config.encode.map(e => {
             return e.name;

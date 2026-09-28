@@ -472,6 +472,7 @@ class ReservationManageModel implements IReservationManageModel {
         newReserve.priority = option.priority ?? 3;
         newReserve.startMarginSec = option.startMarginSec ?? null;
         newReserve.endMarginSec = option.endMarginSec ?? null;
+        newReserve.finishCommandName = option.finishCommandName ?? null;
         newReserve.conflictPolicy = option.conflictPolicy ?? (option.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
         newReserve.allowEndLack = newReserve.conflictPolicy === 'ALLOW_END_LACK';
         if (typeof option.tags !== 'undefined') {
@@ -517,6 +518,7 @@ class ReservationManageModel implements IReservationManageModel {
 
         // リレー元の予約情報から必要な情報をセットする
         newReserve.ruleId = parentReserve.ruleId;
+        newReserve.finishCommandName = parentReserve.finishCommandName;
         newReserve.allowEndLack = parentReserve.allowEndLack;
         newReserve.priority = parentReserve.priority;
         newReserve.conflictPolicy = parentReserve.conflictPolicy;
@@ -1164,6 +1166,7 @@ class ReservationManageModel implements IReservationManageModel {
         reserve.allowEndLack = reserve.conflictPolicy === 'ALLOW_END_LACK';
         reserve.startMarginSec = rule.reserveOption.startMarginSec ?? null;
         reserve.endMarginSec = rule.reserveOption.endMarginSec ?? null;
+        reserve.finishCommandName = rule.reserveOption.finishCommandName ?? null;
 
         if (typeof rule.reserveOption.tags !== 'undefined') {
             reserve.tags = JSON.stringify(rule.reserveOption.tags);

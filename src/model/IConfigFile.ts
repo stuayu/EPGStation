@@ -635,6 +635,7 @@ export default interface IConfigFile {
     recordingPrepRecFailedCommand?: string; // 録画準備失敗
     recordingStartCommand?: string; // 録画開始
     recordingFinishCommand?: string; // 録画終了
+    recordingFinishCommands?: { name: string; cmd: string }[]; // 予約ごとの録画終了コマンド
     recordingFailedCommand?: string; // 録画中のエラー
     encodingFinishCommand?: string; // エンコード終了
 
