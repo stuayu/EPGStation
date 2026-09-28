@@ -128,11 +128,14 @@ class RecordingManageModel implements IRecordingManageModel {
     public async cleanup(): Promise<void> {
         this.log.system.info('start recordings cleanup ');
 
-        const staleCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-        await this.recordingSessionDB.deleteOrphanSessionsBefore(staleCutoff).catch(err => {
-            this.log.system.warn('recording session orphan cleanup failed');
-            this.log.system.warn(err);
-        });
+        const retentionDays = this.config.recording?.resultRetentionDays ?? 90;
+        if (retentionDays > 0) {
+            const staleCutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+            await this.recordingSessionDB.deleteOrphanSessionsBefore(staleCutoff).catch(err => {
+                this.log.system.warn('recording session orphan cleanup failed');
+                this.log.system.warn(err);
+            });
+        }
 
         const activeSessions = await Promise.all(
             [RecordingSessionState.RECORDING, RecordingSessionState.RECONNECTING].map(state =>
@@ -219,6 +222,7 @@ class RecordingManageModel implements IRecordingManageModel {
                 this.config.recording,
                 this.config.timeSpecifiedStartMargin,
                 this.config.timeSpecifiedEndMargin,
+                reserve === null ? undefined : reserve,
             ).endMarginMs;
             const resumable =
                 reserve !== null &&
@@ -466,6 +470,15 @@ class RecordingManageModel implements IRecordingManageModel {
      */
     public hasReserve(reserveId: apid.ReserveId): boolean {
         return typeof this.recordingIndex[reserveId] !== 'undefined';
+    }
+
+    /** 録画中・準備中の件数を返す */
+    public getPowerCounts(): { recordingCount: number; recordingPreparationCount: number } {
+        const states = Object.values(this.recordingIndex).map(recorder => recorder.getPowerState());
+        return {
+            recordingCount: states.filter(state => state === 'recording').length,
+            recordingPreparationCount: states.filter(state => state === 'preparing').length,
+        };
     }
 
     /**

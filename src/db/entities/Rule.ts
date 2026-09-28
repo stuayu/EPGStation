@@ -51,6 +51,21 @@ export default class Rule extends BaseEntity {
     })
     public halfWidthIgnoreKeyword: string | null = null; // 除外検索キーワード (検索用)
 
+    @Column({ type: 'varchar', length: 3, default: 'all' })
+    public ignoreKeywordMatch: 'all' | 'any' = 'all';
+
+    @Column({ default: false })
+    public isFuzzy: boolean = false;
+
+    @Column({ default: false })
+    public isGenreExclusion: boolean = false;
+
+    @Column({ default: false })
+    public isChannelExclusion: boolean = false;
+
+    @Column({ default: false })
+    public isTimeExclusion: boolean = false;
+
     @Column({
         default: false,
     })
@@ -396,6 +411,12 @@ export default class Rule extends BaseEntity {
     })
     public allowEndLack: boolean = true; // 末尾切れを許可するか
 
+    @Column({ type: 'integer', nullable: true })
+    public startMarginSec: number | null = null;
+
+    @Column({ type: 'integer', nullable: true })
+    public endMarginSec: number | null = null;
+
     @Column({ type: 'integer', default: 3 })
     public priority: number = 3;
 
@@ -407,6 +428,9 @@ export default class Rule extends BaseEntity {
         nullable: true,
     })
     public tags: string | null = null;
+
+    @Column({ type: 'text', nullable: true })
+    public finishCommandName: string | null = null;
 
     /**
      * 保存設定

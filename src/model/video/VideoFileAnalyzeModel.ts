@@ -558,6 +558,7 @@ export default class VideoFileAnalyzeModel implements IVideoFileAnalyzeModel {
                       config.recording,
                       config.timeSpecifiedStartMargin,
                       config.timeSpecifiedEndMargin,
+                      recorded ?? undefined,
                   );
         let fileMtimeMs: number | null = null;
         try {

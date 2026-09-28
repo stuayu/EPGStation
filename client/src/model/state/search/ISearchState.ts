@@ -92,12 +92,18 @@ export interface SearchOption {
     keywordOption: KeywordOption;
     ignoreKeyword: string | null;
     ignoreKeywordOption: KeywordOption;
+    ignoreKeywordMatch: 'all' | 'any';
+    isFuzzy: boolean;
+    isGenreExclusion: boolean;
+    isChannelExclusion: boolean;
+    isTimeExclusion: boolean;
     channels: apid.ChannelId[];
     broadcastWave: BroadcastWave;
     genres: { [genre: number]: GenreIndex };
     isShowSubgenres: boolean;
     startTime: number | undefined;
     rangeTime: number | undefined;
+    timeRanges: { startTime: number | undefined; rangeTime: number | undefined; startMinute: number; rangeMinute: number; week: Week }[];
     week: Week;
     durationMin: number | null;
     durationMax: number | null;
@@ -111,7 +117,11 @@ export interface SearchOption {
  */
 export interface TimeReserveOption {
     keyword: string | null;
-    channel: apid.ChannelId | undefined;
+    channels: apid.ChannelId[];
+    times: TimeReserveRange[];
+}
+
+export interface TimeReserveRange {
     startTime: string | null;
     endTime: string | null;
     week: Week;
@@ -157,10 +167,13 @@ export interface SearchResultItem {
 export interface ReserveOption {
     enable: boolean; // ルールが有効か
     allowEndLack: boolean; // 末尾切れを許可するか
+    startMarginSec: number | null;
+    endMarginSec: number | null;
     priority: number;
     conflictPolicy: apid.ConflictPolicy;
     avoidDuplicate: boolean; // 録画済みの重複番組を排除するか
     periodToAvoidDuplicate: number | null; // 重複を避ける期間
+    tags: apid.RecordedTagId[];
 }
 
 /**
@@ -197,6 +210,8 @@ export interface QuerySearchOption {
 
 export default interface ISearchState {
     isTimeSpecification: boolean;
+    setTimeSpecification(value: boolean | null): void;
+    addTimeReserveRange(): void;
     searchOption: SearchOption | null;
     timeReserveOption: TimeReserveOption | null;
     reserveOption: ReserveOption | null;
@@ -222,6 +237,7 @@ export default interface ISearchState {
     getRuleReservesResult(): ReserveStateData[];
     getPrentDirectoryItems(): string[];
     getEncodeModeItems(): string[];
+    getRecordingMarginHint(): string;
     isEnableEncodeMode(): boolean;
     isEditingRule(): boolean;
     addRule(): Promise<void>;

@@ -234,6 +234,12 @@ export default class ReserveOptionChecker implements IReserveOptionChecker {
      * @return boolean 問題がなければ true を返す
      */
     public checkReserveOption(option: apid.RuleReserveOption): boolean {
+        if (
+            [option.startMarginSec, option.endMarginSec].some(
+                value => value != null && (!Number.isInteger(value) || value < 0 || value > 3600),
+            )
+        )
+            return false;
         // 重複
         if (typeof option.periodToAvoidDuplicate !== 'undefined' && option.avoidDuplicate === false) {
             return false;

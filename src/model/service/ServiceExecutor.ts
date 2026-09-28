@@ -14,6 +14,7 @@ import IEitPresentStore from './stream/util/IEitPresentStore';
 import ISocketIOManageModel from './socketio/ISocketIOManageModel';
 import IProgramDB from '../db/IProgramDB';
 import IHardwareEncoderDetector from '../encoder/IHardwareEncoderDetector';
+import IStreamManageModel from './stream/manager/IStreamManageModel';
 import telemetry from '../observability/Telemetry';
 install();
 
@@ -65,6 +66,28 @@ process.on('SIGINT', () => void shutdownTelemetry());
     encodeFinishModel.set();
 
     const serviceServer = container.get<IServiceServer>('IServiceServer');
+
+    const reportPowerActivity = (): void => {
+        if (typeof process.send === 'undefined') return;
+        const encode = container.get<IEncodeManageModel>('IEncodeManageModel').getEncodeInfo();
+        const streams = container.get<IStreamManageModel>('IStreamManageModel').getStreamInfos();
+        process.send({
+            type: 'powerActivity',
+            value: {
+                encodeRunningCount: encode.runningQueue.length,
+                encodeWaitingCount: encode.waitQueue.length,
+                liveStreamCount: streams.filter(item => item.info.type === 'LiveStream' || item.info.type === 'LiveHLS')
+                    .length,
+                recordedStreamCount: streams.filter(
+                    item => item.info.type === 'RecordedStream' || item.info.type === 'RecordedHLS',
+                ).length,
+                updatedAt: Date.now(),
+            },
+        });
+    };
+    reportPowerActivity();
+    const powerActivityTimer = setInterval(reportPowerActivity, 10_000);
+    powerActivityTimer.unref?.();
 
     const eitStore = container.get<IEitPresentStore>('IEitPresentStore');
     const socketIO = container.get<ISocketIOManageModel>('ISocketIOManageModel');

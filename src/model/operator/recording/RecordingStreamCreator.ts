@@ -481,7 +481,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
 
     /** 予約終了時刻 + margin のハードタイマーを設定する */
     private setEndTimer(reserve: Reserve, session: StreamSession): void {
-        const delay = reserve.endAt - new Date().getTime() + this.getTiming().endMarginMs;
+        const delay = reserve.endAt - new Date().getTime() + this.getTiming(reserve).endMarginMs;
         // 数週間先の時刻指定予約でも setTimeout の 32bit 上限で即発火しないようにする。
         // timer は張り直すたびに作り直し、下の同一性チェックで古い発火を弾けるようにする
         session.timer?.clear();
@@ -576,13 +576,14 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      * 現在の config から録画タイミングを解決する
      * @return ReturnType<typeof resolveRecordingTimingConfig>
      */
-    private getTiming(): ReturnType<typeof resolveRecordingTimingConfig> {
+    private getTiming(reserve?: Reserve): ReturnType<typeof resolveRecordingTimingConfig> {
         const config = this.configuration.getConfig();
 
         return resolveRecordingTimingConfig(
             config.recording,
             config.timeSpecifiedStartMargin,
             config.timeSpecifiedEndMargin,
+            reserve,
         );
     }
 

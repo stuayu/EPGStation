@@ -15,6 +15,18 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- feature/edcb-parity 全体レビュー指摘の修正 → 2026-09-28
+- API 定義不備による全ルート停止と dist 残留を防止 → 2026-09-28
+- feature/edcb-parity 本番検証で見つかった検索・スクロール復元の不具合修正 → 2026-09-28
+- 録画後コマンド Phase H → 2026-09-28
+- 自動予約の時刻指定枠と単局番組表の期間を拡張 → 2026-09-28
+- 省電力 Phase G → 2026-09-28
+- 番組開始前リマインダー Phase F → 2026-09-28
+- チューナー別予約一覧 Phase E → 2026-09-28
+- 録画プリセットとルール複製 → 2026-09-28
+- 自動予約ルール検索の除外条件・表記ゆれ・時間帯指定を改善 → 2026-09-28
+- 予約・ルールごとの録画マージン → 2026-09-28
+- 録画結果一覧と開始前失敗通知 → 2026-09-28
 - 再起動後に手動・番組・ルール予約のタイマーを再設定し、準備中 session を中断扱いで閉じる → 2026-09-28
 - 既定設定での録画共有・予約 planner・再開結果を修正 → 2026-09-28
 - 再起動後の録画復帰で空白時間・開始通知・チューナー台帳を修正 → 2026-09-28
@@ -22,7 +34,6 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - OpenTelemetry を opt-in で導入 (録画セッション・予約計画の traces / metrics) → 2026-09-28
 - 録画 session / attempt の永続化と span を RecordingSessionTracker へ分離 → 2026-09-28
 - 録画セッション再設計の実機再接続・開始ゲート検証 → 2026-09-28
-
 - 連続録画の上流共有と既定値変更 → 2026-09-28
 - 放送時間未定の終了時刻を表示・Planner・安全上限に分離 Phase 8 → 2026-09-28
 - 予約優先度と競合ポリシー Phase 7 → 2026-09-28
@@ -45,6 +56,88 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-28
+
+### API 定義不備による全ルート停止と dist 残留を防止
+
+録画プリセット既定値 API の inline apiDoc で `$ref` と `nullable` を同じ schema object に置いていたため、express-openapi の初期化が中断し既存 API まで 404 になった。nullable schema を `allOf` 形式に直し、`api.yml` と `dist` の全ルート初期化・メソッド登録を確かめるテストを追加した。番組開始前リマインダー削除ルートの DELETE export 漏れも初期化テストで検出し修正した。
+
+`build-server` / `build-win` はコンパイル前に `dist` を削除し、別ブランチの古い route が混ざる問題を防ぐ。`npm run compile` は反復用のため削除処理を含めない。リマインダー発火時は番組情報、通知先数、Socket.IO 配信クライアント数を1行で記録する。
+
+関連実装: `src/model/service/api/recording-presets/default.ts`, `src/model/service/api/reminders/{reminderId}.ts`, `test/ita/service-openapi-routes.test.js`, `src/model/operator/reminder/ProgramReminderManageModel.ts`, `src/model/service/socketio/SocketIOManageModel.ts`, `package.json`。
+
+### feature/edcb-parity 全体レビュー指摘の修正
+
+省電力は休止待機中にも条件を再評価し、予約・エンコード・取り込み・EPG 更新などが始まれば待機を解除する。実休止直前も状態と復帰タイマーを確認する。次の通常予約は開始時刻順で1件だけ取得し、録画準備時間は共通の録画タイミング解決関数を使う。
+
+ルール検索はジャンル NULL を安全に除外し、空の除外語条件を生成しない。分単位時刻を JST の SQL 条件へ移し、あいまい語は最長断片で候補を前絞りする。省電力通知に専用タイトルと警告色を設定する。
+
+番組リマインダーの番組 ID・局 ID を bigint にし、refresh をまとめて直列化、番組取得を一括化して発火済み ID を再登録しない。手動予約編集で録画後コマンドを保存し、単局番組表は時間軸を24時間に保ち EPG 終端で追加取得を止める。
+
+関連実装: `src/model/operator/power/PowerManageModel.ts`, `src/model/db/ProgramDB.ts`, `src/db/{entities,migrations}`, `src/model/operator/{reservation,reminder}`, `client/src/model/state/guide/GuideState.ts`, `src/model/notification/NotificationRequest.ts`。
+
+### feature/edcb-parity 本番検証で見つかった検索・スクロール復元の不具合修正
+
+本番 MariaDB で見つかった、あいまい検索の候補絞り込みがひらがなキーワードを落とす問題を修正した。候補 SQL は入力・NFKC 正規化・カタカナ化した断片を検索し、ひらがな・カタカナ・半角カナの候補を残す。キーワードまたは除外キーワードの検索対象列が未選択なら空の SQL 条件を追加しない。録画結果・番組通知・システム設定画面はデータ取得の成功・失敗に関係なく `emitDoneGetData()` を呼び、スクロール位置復元を完了させる。
+
+関連実装: `src/model/db/ProgramDB.ts`, `client/src/views/{RecordingResults,Reminders,SystemSetting}.vue`。
+
+### 自動予約の時刻指定枠と単局番組表の期間を拡張
+
+時刻指定ルールで複数局・複数の曜日/時刻枠を扱えるようにし、既存ルールの複数枠を編集画面へ復元する。枠の時刻・長さは分単位で保持。編集後に通常検索との切り替えも可能にし、切り替え時は選択中でない検索条件を初期化する。時刻指定予約の日付境界と曜日判定は実行サーバのタイムゾーンを使わず JST 固定で計算する。単局番組表に次の8日を追加取得するボタンを追加。
+
+関連実装: `src/util/JstDateUtil.ts`, `src/model/operator/reservation/ReservationManageModel.ts`, `client/src/model/state/search/`, `client/src/components/search/SearchOption.vue`, `client/src/model/state/guide/GuideState.ts`, `client/src/views/Guide.vue`。
+
+### 録画後コマンド Phase H
+
+録画終了時に実行するコマンドを `recordingFinishCommands` へ名前付きで登録し、予約・自動予約ルール・録画プリセットで名前を選択できるようにした。`finishCommandName` が null または未指定なら従来の `recordingFinishCommand` を実行する。設定から名前が削除された場合も既定コマンドへ戻し、warn ログを出す。`/api/config` には選択肢の名前だけを返し、コマンド本文は返さない。
+
+関連実装: `src/model/operator/externalCommand/ExternalCommandManageModel.ts`, `src/db/entities/{Rule,Reserve}.ts`, `src/db/migrations/{sqlite,mysql}/1790572600000-AddFinishCommandName.ts`, `api.yml`, `api.d.ts`。
+
+### チューナー別予約一覧 Phase E
+
+planner が保持する `plannedTunerIndex` を ReserveItem に追加し、`GET /api/tuners` で Mirakurun のチューナー index・名前・種別・使用状態を返す。予約画面にチューナー別タイムラインとスマートフォン向けリストを追加し、割当なし・競合は未割当へまとめる。legacy スケジューラでは利用できない旨を表示する。チューナー別の割当は EPGStation 内部の計画であり、録画時に実際に使うチューナーは Mirakurun が選択する。
+
+予約ごとにチューナーを指定する機能は追加しない。Mirakurun に指定 API がなく、EPGStation 内だけの制約を利用者が実割当と誤認するため。
+
+関連実装: `src/model/api/tuner/`, `src/model/service/api/tuners.ts`, `src/model/api/reserve/ReserveApiModel.ts`, `src/util/TunerTimelineUtil.ts`, `client/src/views/Reserves.vue`, `api.yml`, `api.d.ts`。
+
+### チューナー別予約一覧 Phase E
+
+planner が保持する `plannedTunerIndex` を ReserveItem に追加し、`GET /api/tuners` で Mirakurun のチューナー index・名前・種別・使用状態を返す。予約画面にチューナー別タイムラインとスマートフォン向けリストを追加し、割当なし・競合は未割当へまとめる。legacy スケジューラでは利用できない旨を表示する。チューナー別の割当は EPGStation 内部の計画であり、録画時に実際に使うチューナーは Mirakurun が選択する。
+
+予約ごとにチューナーを指定する機能は追加しない。Mirakurun に指定 API がなく、EPGStation 内だけの制約を利用者が実割当と誤認するため。
+
+関連実装: `src/model/api/tuner/`, `src/model/service/api/tuners.ts`, `src/model/api/reserve/ReserveApiModel.ts`, `src/util/TunerTimelineUtil.ts`, `client/src/views/Reserves.vue`, `api.yml`, `api.d.ts`。
+
+### 録画プリセットとルール複製
+
+録画先、ファイル名形式、エンコード設定、優先度、競合ポリシー、末尾欠け許可、開始・終了マージン、タグを名前付きプリセットとして保存する機能を追加。設定画面から追加・編集・削除・既定指定ができる。ルール・手動予約フォームでは値をコピーして適用し、既存の予約・ルールは後からプリセットを変更しても変化しない。既定プリセットは新規フォームの初期値に使う。`/api/recording-presets` に CRUD API を追加し、SQLite / MySQL の両方に保存する。ルール一覧から複製すると、複製先は無効状態で作成し編集画面を開く。
+
+関連実装: `src/db/entities/RecordingPreset.ts`, `src/db/migrations/{sqlite,mysql}/1790572400000-AddRecordingPreset.ts`, `src/model/{db,api/recordingPreset,service/api/recording-presets}`, `api.yml`, `api.d.ts`, `client/src/components/settings/RecordingPresetManager.vue`, `client/src/components/{search/SearchRuleOption,manualReserve/ManualReserveOption,rules/RuleItemMenu}.vue`。
+
+### 自動予約ルール検索の除外条件・表記ゆれ・時間帯指定を改善
+
+除外キーワードは従来どおり全語一致 (`all`) を既存ルールへ移行し、新規ルールは任意の語で除外する (`any`) 選択肢を既定にした。あいまい検索は既定で無効とし、有効時はかな・カナ、半角・全角、英数字、空白・記号の表記差を正規化する。ジャンル・放送局・時間帯も指定条件を除外できる。時間帯は複数指定と分単位に対応した。
+
+0 時をまたぐ時間帯は翌日の曜日で評価するよう修正した。**既存ルールにも適用され、検索結果が変わる不具合修正**。正規表現・大文字小文字区別が DB で利用できない場合、`GET /api/config` の `ruleSearchCapabilities` を使いルール編集画面に警告を表示する。
+
+あいまい検索は SQL で候補を絞った後に SQLite 結果を JavaScript で正規化して照合する。合成番組 160,000 件のローカル SQLite で 1 ルールを評価し、Entity 読み込み・照合・100 件への上限適用まで 885.72 ms。
+
+関連実装: `src/model/db/ProgramDB.ts`, `src/util/StrUtil.ts`, `src/db/entities/Rule.ts`, `src/db/migrations/{sqlite,mysql}/1790572300000-ImproveRuleSearchOptions.ts`, `src/model/db/RuleDB.ts`, `src/model/api/config/ConfigApiModel.ts`, `api.yml`, `api.d.ts`, `client/src/components/search/SearchOption.vue`。
+
+### 予約・ルールごとの録画マージン
+
+予約とルールに秒単位の開始・終了マージンを追加。0 秒のぴったり録画と 0〜3600 秒を指定でき、未指定/null は全体設定を継承する。ルール予約・手動予約・編集・planner・録画タイマー・解析時刻推定へ反映し、録画時点の実効マージンを `recorded` に保存する。既存行は NULL で追加し、従来の全体設定を維持する。設定画面の既定値表示も張り付き120秒、開始/終了各5秒へ修正。
+
+関連実装: `src/db/entities/{Reserve,Rule,Recorded}.ts`, `src/db/migrations/{sqlite,mysql}/1790572200000-AddReservationMargins.ts`, `src/model/operator/recording/RecordingTimingConfig.ts`, `src/model/operator/reservation/planner/SchedulePlanner.ts`, `api.yml`, `api.d.ts`, `client/src/components/{search/SearchRuleOption,manualReserve/ManualReserveOption}.vue`。
+
+### 録画結果一覧と開始前失敗通知
+
+録画開始前に失敗した予約は録画データが無いため通常の録画一覧に現れず、予約も失敗時に削除されるため、利用者が録り逃しを確認できなかった。`recording_session` に番組名・局名・ルール ID・時刻指定種別を保存し、予約削除後も結果を参照できるようにした。録画結果一覧 `GET /api/recording-results` は結果・期間・ルール ID・番組名で絞り込み、日時降順でページングする。詳細 API は attempt 履歴を返す。新しい「録画結果」画面から一覧、試行履歴、録画詳細へ移動できる。
+
+開始前に再試行上限へ達した場合は `recording.startFailed` 通知を送り、番組名・局名・予定時刻・終了理由・再試行回数を含める。**通知先の `events` を明示している既存設定には新イベントが自動追加されない**ため、受信するには `recording.startFailed` を選択する。外部コマンド環境変数へ `RULEID` / `RESERVEID` を追加し、未取得時は空文字にする。開始前失敗セッションの保持期間は `recording.resultRetentionDays` で変更でき、既定 90 日。
+
+関連実装: `src/db/entities/RecordingSession.ts`, `src/db/migrations/{sqlite,mysql}/1790572100000-AddRecordingResultMetadata.ts`, `src/model/db/RecordingSessionDB.ts`, `src/model/api/recorded/RecordingSessionApiModel.ts`, `src/model/service/api/recording-results.ts`, `src/model/operator/recording/RecordingManageModel.ts`, `src/model/event/EventSetter.ts`, `src/model/operator/externalCommand/ExternalCommandManageModel.ts`, `client/src/views/RecordingResults.vue`。
 
 - **再起動後に時刻指定の手動予約へタイマーが張られない不具合を修正**: 本番で予約42 (ＮＨＫ総合１・大分、10:54:00〜10:59:00) は10:52:00に準備を開始し、上流 lease を再利用して最初の TS を受信した。開始ゲートは10:55の番組区切りに合わせて `previousProgram` 待機となり、10:54:40に `Restart-Service epgstation.exe` を実行。再起動後は予約42のログ・録画要求・Recorded が各0件で、終了後も予約一覧に残った。同時録画中の予約41は再開し `partial` で終了した。原因は `ReservationManageModel.updateAll()` が時刻指定予約を差分から除外し、録画マネージャも差分だけで timer を張っていたこと。これは **main から存在した既存不具合**。起動後に予約 DB 全件を再走査し、`isSkip` / `isOverlap` と終了済み予約を除外、再開済み recorder は `recordingIndex` で重複を避ける。`PREPARING` / `WAITING_BOUNDARY` session と未終了 attempt は `process-restart` / `canceled` で閉じ、同じ予約は新規 session で再準備する。手動予約・番組予約・ルール予約を含める。実装: `RecordingManageModel.setupStartupTimers()`、`src/index.ts` の起動 cleanup 後。UT と ITB を追加。
 - **既定設定での録画共有・予約 planner・再開結果を修正**: 本番 Windows の既定設定で同一チャンネルの予約39 (09:46〜09:51) と40 (09:48〜09:53) を重ね、09:48:35にサービスを再起動したところ、録画中・再起動後とも Mirakurun 接続が2本 (session 611/613、再起動後614/615) で lease log は0件だった。`recording.shareUpstreamStream` は `false` の明示時だけ無効とし、`recording: {}` でも共有を有効にする。`reservation: {}` も既定の planner として扱い、切り戻しは `scheduler: legacy` の明示に限定する。手動追加・編集・イベントリレー追加では、連結する予約窓を planner で再計算して `plannedTunerIndex` / `conflictInfo` を保存する。録画開始時に planner の割当が無い・非互換・使用中なら first-fit にフォールバックし、`info` に `planner tuner fallback: reserveId=39, plannedTunerIndex=null, tunerIndex=0` の形式で記録する。録画18596は attempt 1 が0〜328,654,080 byte (`process-restart`)、attempt 2 が328,654,080〜624,526,224 byte (`scheduled-end`) で、受信断1.83秒があったのに `completed` となった。過去 attempt の終了理由と空白を含めて判定し、空白または `process-restart` / `transport-lost` があれば `partial` として元 TS を保持する。
@@ -2785,3 +2878,21 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 既定で有効な `recording.reconnectEnabled` により、録画中の上流 EOF / 切断時に同じ録画セッション・ファイルへ再接続する。再接続間の断を gap、接続ごとの状態を attempt として記録する。TS は `TsPacketFramer` で 188 byte 境界に揃え、不完全パケットをファイルへ書かない。書き込みは backpressure に従って上流を pause / resume し、終了時は flush 完了を待つ。追っかけ再生用 `TailStream` は録画中の無成長を最大 60 秒待つ。`reconnectEnabled: false` は切断時に録画失敗・再試行へ戻す。
 
 関連実装: `src/lib/TailStream.ts`, `src/model/operator/recording/{RecordingSink,RecordingStreamEndPolicy,RecordingStreamCreator,RecordingUpstreamSession,TsPacketFramer}.ts`, `src/model/operator/recording/RecorderModel.ts`。
+
+# 番組開始前リマインダー Phase F (2026-09-28)
+
+Material WebUI にある番組開始前通知を追加。番組詳細から通知時刻を登録し、番組表セルの印と一覧画面で状態を管理できる。既定は開始 5 分前。通知設定済み Webhook / Discord には `program.starting` を送信し、接続中の Web UI には Socket.IO で送り、snackbar を表示する。ブラウザ通知は利用者が許可済みの場合だけ表示する。
+
+実装: `src/db/entities/ProgramReminder.ts`、sqlite / mysql migration、`src/model/operator/reminder/`、`src/model/api/reminder/`、`src/model/service/api/reminders/`、IPC / Socket.IO、`client/src/components/guide/ProgramDialog.vue`、`client/src/views/Reminders.vue`。
+
+EPG の番組更新と EIT[p/f] 更新で保存済み番組情報を再取得し、タイマーを張り直す。開始時刻変更、削除、開始済み番組を更新に反映する。Web Push は未対応。ブラウザを閉じた後にも送るには VAPID 鍵の管理、Push 購読情報のユーザー別保存・解除 API、Service Worker の `push` handler と通知クリック処理、購読失効時の削除が必要。
+
+通知先の既存 `events` 絞り込み設定には自動追加されない。Webhook / Discord へ送る場合は `program.starting` を明示する。
+
+# 省電力 Phase G (2026-09-28)
+
+- 録画・録画準備・エンコード・配信状況と次予約を見て、アイドル時にスタンバイ / 休止 / シャットダウンする Operator 管理機能を追加した。既定無効。
+- Windows Scheduled Task (`-WakeToRun`) と Linux `rtcwake` で次予約前に復帰を登録する。予約変更時に再登録し、失敗時は警告して休止を見送る。
+- 休止 60 秒前に `power.suspending` 通知と Socket.IO イベントを送る。`POST /api/power/cancel` と Web UI バナーで取消可能。認証有効時は管理者限定。
+- Service からエンコード・配信件数を IPC で報告する。
+- テスト: `test/ut/power-manage.test.js` (休止、取消、ウェイク再登録、登録失敗) と既存 `power-policy.test.js`。

@@ -13,6 +13,7 @@ import Recorded from './views/Recorded.vue';
 import RecordedDetail from './views/RecordedDetail.vue';
 import RecordedUpload from './views/RecordedUpload.vue';
 import Recording from './views/Recording.vue';
+import RecordingResults from './views/RecordingResults.vue';
 import Reserves from './views/Reserves.vue';
 import Rule from './views/Rule.vue';
 import Search from './views/Search.vue';
@@ -26,6 +27,7 @@ import SeriesPending from './views/SeriesPending.vue';
 import Logs from './views/Logs.vue';
 import Storages from './views/Storages.vue';
 import WatchHistory from './views/WatchHistory.vue';
+import Reminders from './views/Reminders.vue';
 import WatchOnAir from './views/WatchOnAir.vue';
 import WatchRecorded from './views/WatchRecorded.vue';
 import WatchRecordedStreaming from './views/WatchRecordedStreaming.vue';
@@ -48,6 +50,7 @@ export default createRouter({
         { path: '/reserves', name: 'reserves', component: Reserves },
         { path: '/reserves/manual', name: 'manual-reserve', component: ManualReserve },
         { path: '/recording', name: 'recording', component: Recording },
+        { path: '/recording-results', name: 'recording-results', component: RecordingResults },
         { path: '/recorded', name: 'recorded', component: Recorded },
         { path: '/series', name: 'series', component: Series },
         { path: '/series/pending', name: 'series-pending', component: SeriesPending },
@@ -58,6 +61,7 @@ export default createRouter({
         { path: '/recorded/detail/:id', name: 'recorded-detail', component: RecordedDetail },
         { path: '/recorded/streaming/:id', name: 'recorded-streaming', component: WatchRecordedStreaming },
         { path: '/watch-history', name: 'watch-history', component: WatchHistory },
+        { path: '/reminders', name: 'reminders', component: Reminders },
         { path: '/offline-videos', name: 'offline-videos', component: OfflineVideos },
         { path: '/offline-videos/:key', name: 'offline-video-detail', component: OfflineVideoDetail },
         { path: '/offline-videos/:key/watch', name: 'offline-video-watch', component: OfflineVideoWatch },

@@ -40,6 +40,8 @@ export interface SchedulePlannerReservation {
     isOverlap?: boolean;
     priority?: number;
     conflictPolicy?: ConflictPolicy;
+    startMarginSec?: number | null;
+    endMarginSec?: number | null;
 }
 
 export interface SchedulePlannerTuner {
@@ -63,6 +65,18 @@ export interface SchedulePlannerInput {
 }
 
 const ALLOW_END_LACK_MS = 15 * 1000;
+const marginMs = (value: number | null | undefined, fallbackMs: number): number =>
+    value == null ? fallbackMs : Math.max(0, Math.min(3600, value)) * 1000;
+const prepMs = (reserve: SchedulePlannerReservation, timing: RecordingTimingConfig): number =>
+    Math.max(timing.prepMs, marginMs(reserve.startMarginSec, timing.startMarginMs) + 5000);
+const overlapsInterval = (
+    reserve: SchedulePlannerReservation,
+    start: number,
+    end: number,
+    timing: RecordingTimingConfig,
+): boolean =>
+    reserve.startAt - prepMs(reserve, timing) < end &&
+    reserve.endAt + marginMs(reserve.endMarginSec, timing.endMarginMs) > start;
 
 /**
  * 時刻区間ごとにチャンネルグループを最大マッチングし、予約の割当と欠損を計画する。
@@ -90,11 +104,11 @@ export const planSchedule = (input: SchedulePlannerInput): PlannedReservation[] 
     const times = [
         ...new Set(
             candidates.flatMap(reserve => [
-                reserve.startAt - input.timing.prepMs,
-                reserve.startAt - input.timing.startMarginMs,
+                reserve.startAt - prepMs(reserve, input.timing),
+                reserve.startAt - marginMs(reserve.startMarginSec, input.timing.startMarginMs),
                 reserve.startAt,
                 reserve.endAt,
-                reserve.endAt + input.timing.endMarginMs,
+                reserve.endAt + marginMs(reserve.endMarginSec, input.timing.endMarginMs),
             ]),
         ),
     ].sort((a, b) => a - b);
@@ -110,9 +124,7 @@ export const planSchedule = (input: SchedulePlannerInput): PlannedReservation[] 
         const end = times[i + 1];
         if (end <= start) continue;
         const interval = end - start;
-        const active = candidates.filter(
-            reserve => reserve.startAt - input.timing.prepMs < end && reserve.endAt + input.timing.endMarginMs > start,
-        );
+        const active = candidates.filter(reserve => overlapsInterval(reserve, start, end, input.timing));
         const groups = new Map<string, SchedulePlannerReservation[]>();
         for (const reserve of active) {
             const group = groups.get(reserve.channel) ?? [];

@@ -235,6 +235,11 @@ export default class RuleDB implements IRuleDB {
             ignoreName: !!rule.searchOption.ignoreName,
             ignoreDescription: !!rule.searchOption.ignoreDescription,
             ignoreExtended: !!rule.searchOption.ignoreExtended,
+            ignoreKeywordMatch: rule.searchOption.ignoreKeywordMatch ?? 'all',
+            isFuzzy: !!rule.searchOption.isFuzzy,
+            isGenreExclusion: !!rule.searchOption.isGenreExclusion,
+            isChannelExclusion: !!rule.searchOption.isChannelExclusion,
+            isTimeExclusion: !!rule.searchOption.isTimeExclusion,
             GR: !!rule.searchOption.GR,
             BS: !!rule.searchOption.BS,
             CS: !!rule.searchOption.CS,
@@ -307,7 +312,10 @@ export default class RuleDB implements IRuleDB {
             priority: rule.reserveOption.priority ?? 3,
             conflictPolicy:
                 rule.reserveOption.conflictPolicy ?? (rule.reserveOption.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT'),
+            startMarginSec: rule.reserveOption.startMarginSec ?? null,
+            endMarginSec: rule.reserveOption.endMarginSec ?? null,
             tags: typeof rule.reserveOption.tags === 'undefined' ? null : JSON.stringify(rule.reserveOption.tags),
+            finishCommandName: rule.reserveOption.finishCommandName ?? null,
             parentDirectoryName: null,
             directory: null,
             recordedFormat: null,
@@ -385,6 +393,11 @@ export default class RuleDB implements IRuleDB {
                 ignoreName: rule.ignoreName,
                 ignoreDescription: rule.ignoreDescription,
                 ignoreExtended: rule.ignoreExtended,
+                ignoreKeywordMatch: rule.ignoreKeywordMatch ?? 'all',
+                isFuzzy: rule.isFuzzy,
+                isGenreExclusion: rule.isGenreExclusion,
+                isChannelExclusion: rule.isChannelExclusion,
+                isTimeExclusion: rule.isTimeExclusion,
                 GR: rule.GR,
                 BS: rule.BS,
                 CS: rule.CS,
@@ -439,6 +452,9 @@ export default class RuleDB implements IRuleDB {
                 priority: rule.priority,
                 conflictPolicy: rule.conflictPolicy as apid.ConflictPolicy,
                 avoidDuplicate: rule.avoidDuplicate,
+                startMarginSec: rule.startMarginSec,
+                endMarginSec: rule.endMarginSec,
+                finishCommandName: rule.finishCommandName,
             },
         };
 
@@ -478,6 +494,9 @@ export default class RuleDB implements IRuleDB {
         }
         if (rule.tags !== null) {
             convertedRule.reserveOption.tags = JSON.parse(rule.tags);
+        }
+        if (rule.finishCommandName !== null) {
+            convertedRule.reserveOption.finishCommandName = rule.finishCommandName;
         }
 
         /**

@@ -3,9 +3,7 @@ import RecordingAttempt from '../../db/entities/RecordingAttempt';
 import RecordingSession from '../../db/entities/RecordingSession';
 import IPromiseRetry from '../IPromiseRetry';
 import IDBOperator from './IDBOperator';
-import IRecordingSessionDB from './IRecordingSessionDB';
-
-export const ORPHAN_RECORDING_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+import IRecordingSessionDB, { RecordingResultQuery } from './IRecordingSessionDB';
 
 @injectable()
 export default class RecordingSessionDB implements IRecordingSessionDB {
@@ -61,6 +59,40 @@ export default class RecordingSessionDB implements IRecordingSessionDB {
                 .getRepository(RecordingSession)
                 .find({ where: { recordedId }, order: { createdAt: 'ASC', id: 'ASC' } }),
         );
+    }
+
+    /** 録画結果を条件で絞り込み、予定時刻の降順で取得する */
+    public async findRecordingResults(
+        query: RecordingResultQuery,
+    ): Promise<{ items: RecordingSession[]; total: number }> {
+        const connection = await this.op.getConnection();
+        const qb = connection.getRepository(RecordingSession).createQueryBuilder('session');
+        if (query.result !== undefined) {
+            qb.andWhere('session.resultStatus = :result', { result: query.result });
+        } else {
+            qb.andWhere('session.resultStatus IS NOT NULL');
+        }
+        if (query.from !== undefined) qb.andWhere('session.scheduledStartAt >= :from', { from: query.from });
+        if (query.to !== undefined) qb.andWhere('session.scheduledStartAt <= :to', { to: query.to });
+        if (query.ruleId !== undefined) qb.andWhere('session.ruleId = :ruleId', { ruleId: query.ruleId });
+        if (query.keyword !== undefined && query.keyword.trim() !== '') {
+            qb.andWhere(`session.name ${this.op.getLikeStr(false)} :keyword`, { keyword: `%${query.keyword.trim()}%` });
+        }
+        const [items, total] = await this.promieRetry.run(() =>
+            qb
+                .orderBy('session.scheduledStartAt', 'DESC')
+                .addOrderBy('session.id', 'DESC')
+                .skip(query.offset)
+                .take(query.limit)
+                .getManyAndCount(),
+        );
+        return { items, total };
+    }
+
+    /** ID でセッションを取得する */
+    public async findById(id: number): Promise<RecordingSession | null> {
+        const connection = await this.op.getConnection();
+        return (await this.promieRetry.run(() => connection.getRepository(RecordingSession).findOneBy({ id }))) ?? null;
     }
 
     /** セッションの attempt を番号順に取得する */

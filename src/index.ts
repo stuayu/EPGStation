@@ -169,6 +169,7 @@ const setTunersWithRetry = async (): Promise<void> => {
  * Operator 機能起動処理
  */
 const runOperator = async () => {
+    container.get<import('./model/operator/power/IPowerManageModel').default>('IPowerManageModel').start();
     const eventSetter = container.get<IEventSetter>('IEventSetter');
     eventSetter.set();
 

@@ -16,6 +16,8 @@ export interface ImportJobStatus {
 }
 
 export default interface IImportJobManageModel {
+    /** 実行中の取り込みジョブがあるか返す */
+    hasRunningJobs(): boolean;
     /**
      * 外部録画ファイル取り込みジョブをバックグラウンドで開始する
      * @param items: ImportedExternalRecordedFileOption[]

@@ -59,6 +59,16 @@ test('config API は起動時に検出したハードウェアエンコーダを
     });
 });
 
+test('config API は録画終了コマンド名だけ返し、コマンド本文を返さない', async () => {
+    const result = await createModel({
+        ...baseConfig,
+        recordingFinishCommands: [{ name: 'archive', cmd: 'secret-command --token abc' }],
+    }).getConfig(false, 8888);
+
+    assert.deepEqual(result.recordingFinishCommandNames, ['archive']);
+    assert.equal(JSON.stringify(result).includes('secret-command'), false);
+});
+
 test('http: 直接アクセスで socketioPort を指定したら専用ポート扱いにする', async () => {
     const result = await createModel({ ...baseConfig, socketioPort: 8889 }).getConfig(false, 8888);
 

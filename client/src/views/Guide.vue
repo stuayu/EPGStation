@@ -29,15 +29,8 @@
                             </template>
                         </GuideScroller>
                     </div>
-                    <v-btn
-                        class="now-button"
-                        color="primary"
-                        icon="mdi-clock-outline"
-                        size="small"
-                        aria-label="現在時刻へ戻る"
-                        title="現在時刻へ戻る"
-                        v-on:click="onNow"
-                    ></v-btn>
+                    <v-btn class="now-button" color="primary" icon="mdi-clock-outline" size="small" aria-label="現在時刻へ戻る" title="現在時刻へ戻る" v-on:click="onNow"></v-btn>
+                    <v-btn v-if="typeof $route.query.channelId !== 'undefined'" class="next-days-button" color="primary" size="small" :loading="isLoadingMore" @click="loadMore">次の8日</v-btn>
                 </div>
             </transition>
         </div>
@@ -61,6 +54,7 @@ import OnAirSelectStream from '@/components/onair/OnAirSelectStream.vue';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import ISocketIOModel, { ProgramUpdatePayload } from '@/model/socketio/ISocketIOModel';
+import IReminderApiModel from '@/model/api/reminder/IReminderApiModel';
 import IGuideState, { FetchGuideOption } from '@/model/state/guide/IGuideState';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
@@ -109,9 +103,20 @@ class Guide extends Vue {
     private sizeSetting = container.get<IGuideSizeSettingStorageModel>('IGuideSizeSettingStorageModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
+    private reminderApi: IReminderApiModel = container.get<IReminderApiModel>('IReminderApiModel');
     // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
     public onUpdateStatus(): void {
         this.guideState.updateReserves();
+        void this.updateReminderIndicators();
+    }
+
+    private async updateReminderIndicators(): Promise<void> {
+        try {
+            const reminders = await this.reminderApi.getAll();
+            this.guideState.setReminderProgramIds(reminders.map(reminder => reminder.programId));
+        } catch (err) {
+            console.error(err);
+        }
     }
 
     // EIT[p/f] の更新通知。現在時刻を含む表示のときだけ番組表を取り直す。
@@ -142,7 +147,7 @@ class Guide extends Vue {
     }, 100);
 
     private isiOS: boolean = false;
-    private isLoadingMore: boolean = false;
+    public isLoadingMore: boolean = false;
 
     get darkClassList(): any {
         return {
@@ -167,6 +172,7 @@ class Guide extends Vue {
     public created(): void {
         this.settingValue = this.setting.getSavedValue();
         this.isiOS = UaUtil.isiOS();
+        void this.updateReminderIndicators();
 
         // リサイズイベント追加
         window.addEventListener('resize', this.windowResizeCallback, false);
@@ -516,9 +522,9 @@ class Guide extends Vue {
     /**
      * 番組表の末尾までスクロールしたら次の時間帯を読み込む (無限スクロール)
      */
-    private async loadMore(): Promise<void> {
+    public async loadMore(): Promise<void> {
         // 単局表示 (週間番組表) は 8 日分固定なので追加読み込みしない
-        if (this.isLoadingMore === true || typeof this.$route.query.channelId !== 'undefined' || typeof this.$refs.programs === 'undefined') {
+        if (this.isLoadingMore === true || typeof this.$refs.programs === 'undefined') {
             return;
         }
 
@@ -531,7 +537,7 @@ class Guide extends Vue {
             const isAppended = await this.guideState.appendGuide(this.createFetchGuideOption());
             if (isAppended === true) {
                 this.setDisplayRange();
-                this.guideState.createProgramDoms(false);
+                this.guideState.createProgramDoms(typeof this.$route.query.channelId !== 'undefined');
                 await this.$nextTick();
                 await this.renderProgramDoms();
                 scroller.scrollLeft = left;
@@ -704,6 +710,13 @@ export default Object.assign(toNative(Guide), {
         z-index: 6
         box-shadow: 0 2px 8px rgba(0, 0, 0, .35)
 
+    .next-days-button
+        position: absolute
+        left: 16px
+        bottom: 16px
+        z-index: 6
+        max-width: calc(100vw - 32px)
+
     .child
         position: absolute
         top: var(--channel-height)
@@ -772,6 +785,9 @@ $window-width: 600px
     .programs
         position: relative
         .item
+            &.has-reminder
+                .guide-reminder-icon
+                    display: block
             position: absolute
             max-width: var(--channel-width)
             min-width: var(--channel-width)
@@ -797,6 +813,13 @@ $window-width: 600px
 
             .name
                 font-weight: bold
+            .guide-reminder-icon
+                display: none
+                position: absolute
+                right: 4px
+                top: 2px
+                font-size: 14px
+                line-height: 1
             > div
                 pointer-events: none
             &.following

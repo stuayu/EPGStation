@@ -38,6 +38,18 @@ interface KeywordOption {
     extended: boolean;
 }
 
+const halfWidthByFullWidthKana = new Map<string, string>();
+for (let code = 0xff66; code <= 0xff9d; code++) {
+    const halfWidth = String.fromCharCode(code);
+    halfWidthByFullWidthKana.set(halfWidth.normalize('NFKC'), halfWidth);
+}
+halfWidthByFullWidthKana.set('\u3099', '\uff9e');
+halfWidthByFullWidthKana.set('\u309a', '\uff9f');
+
+const toHalfWidthKana = (value: string): string => {
+    return Array.from(value.normalize('NFKD'), char => halfWidthByFullWidthKana.get(char) ?? char).join('');
+};
+
 @injectable()
 export default class ProgramDB implements IProgramDB {
     // 次の番組を探すときに放送中の番組から先読みする時間 (ms)
@@ -600,9 +612,17 @@ export default class ProgramDB implements IProgramDB {
 
         // set query
         this.setKeywordQuery(option.searchOption, query);
+        this.setFuzzyCandidateQuery(option.searchOption, query);
         this.setChannelQuery(option.searchOption, query);
         this.setGenresQuery(option.searchOption, query);
-        this.setTimesQuery(option.searchOption, query);
+        const hasMinuteTimes =
+            option.searchOption.times?.some(
+                time => typeof time.startMinute !== 'undefined' || typeof time.rangeMinute !== 'undefined',
+            ) === true;
+        if (hasMinuteTimes) this.setMinuteTimesQuery(option.searchOption, query, connection.options.type);
+        if (!hasMinuteTimes) {
+            this.setTimesQuery(option.searchOption, query);
+        }
         this.setFreeQuery(option.searchOption, query);
         this.setDurationMinQuery(option.searchOption, query);
         this.setDurationMaxQuery(option.searchOption, query);
@@ -618,6 +638,18 @@ export default class ProgramDB implements IProgramDB {
             if (i < query.strs.length - 1) {
                 str += ' and ';
             }
+        }
+
+        // fuzzy キーワードと分指定時刻は結果行を取得してから評価するため、
+        // SQL 条件がそれらだけなら候補取得用の真条件を置く。
+        if (
+            str.length === 0 &&
+            ((option.searchOption.isFuzzy === true &&
+                (typeof option.searchOption.keyword !== 'undefined' ||
+                    typeof option.searchOption.ignoreKeyword !== 'undefined')) ||
+                hasMinuteTimes)
+        ) {
+            str = '1 = 1';
         }
 
         // ルールのオプションが何もない場合
@@ -636,20 +668,169 @@ export default class ProgramDB implements IProgramDB {
             .from(Program, 'program')
             .where(str, query.param)
             .andWhere(`${new Date().getTime()} <= program.endAt`)
-            .orderBy('program.startAt', 'ASC')
-            .limit(option.limit);
+            .orderBy('program.startAt', 'ASC');
+
+        // あいまい照合・分指定は SQL の半角列/時単位列で正確に表せないため、
+        // 他の条件で候補を絞った後にメモリ上で評価する。
+        if (option.searchOption.isFuzzy !== true) {
+            queryBuilder.limit(option.limit);
+        }
 
         const result = await this.promieRetry.run(() => {
             return queryBuilder.getRawAndEntities();
         });
 
         // overlap を追加
-        return result.entities.map((entity, i) => {
+        const entities = result.entities.map((entity, i) => {
             // eslint-disable-next-line no-extra-boolean-cast
             (<any>entity).overlap = Boolean(!!result.raw[i].overlap);
 
             return <any>entity;
         });
+        const filtered = entities.filter(program => {
+            if (option.searchOption.isFuzzy === true && !this.matchFuzzyKeywords(program, option.searchOption)) {
+                return false;
+            }
+            if (hasMinuteTimes && !this.matchesTimes(program, option.searchOption)) {
+                return false;
+            }
+            return true;
+        });
+        return option.searchOption.isFuzzy === true || hasMinuteTimes ? filtered.slice(0, option.limit) : filtered;
+    }
+
+    private matchFuzzyKeywords(program: Program, option: apid.RuleSearchOption): boolean {
+        const matches = (keyword: string, isIgnore: boolean): boolean => {
+            const keyOption = this.createKeywordOption(option, isIgnore);
+            if (keyOption.regexp) return true; // 正規表現条件は SQL 側で評価
+            const terms = keyword
+                .trim()
+                .split(/\s+/)
+                .map(term => StrUtil.normalizeFuzzy(term, keyOption.cs))
+                .filter(Boolean);
+            const fields: string[] = [];
+            if (keyOption.name) fields.push(program.name || '');
+            if (keyOption.description) fields.push(program.description || '');
+            if (keyOption.extended) fields.push(program.extended || '');
+            const normalizedFields = fields.map(field => StrUtil.normalizeFuzzy(field, keyOption.cs));
+            if (isIgnore && option.ignoreKeywordMatch === 'any') {
+                return !terms.some(term => normalizedFields.some(field => field.includes(term)));
+            }
+            const found = normalizedFields.some(field => terms.every(term => field.includes(term)));
+            return isIgnore ? !found : found;
+        };
+        if (typeof option.keyword === 'string' && !matches(option.keyword, false)) return false;
+        if (typeof option.ignoreKeyword === 'string' && !matches(option.ignoreKeyword, true)) return false;
+        return true;
+    }
+
+    private setFuzzyCandidateQuery(option: apid.RuleSearchOption, query: FindQuery): void {
+        if (option.isFuzzy !== true || typeof option.keyword !== 'string') return;
+        const fields = this.createKeywordOption(option, false);
+        if (fields.regexp) return;
+        const fragments = option.keyword.match(/[\p{L}\p{M}\p{N}]+/gu) ?? [];
+        const fragment = fragments.sort((a, b) => b.length - a.length)[0];
+        if (!fragment || fragment.length < 2) return;
+        const normalizedFragment = fragment.normalize('NFKC');
+        const katakana = normalizedFragment.replace(/[\u3041-\u3096]/g, char =>
+            String.fromCharCode(char.charCodeAt(0) + 0x60),
+        );
+        const hiragana = katakana.replace(/[\u30a1-\u30f6]/g, char => String.fromCharCode(char.charCodeAt(0) - 0x60));
+        const values = [
+            ...new Set([hiragana, katakana, toHalfWidthKana(katakana)].map(value => StrUtil.toHalf(value))),
+        ];
+        const columns = [
+            fields.name ? 'halfWidthName' : null,
+            fields.description ? "COALESCE(halfWidthDescription,'')" : null,
+            fields.extended ? "COALESCE(halfWidthExtended,'')" : null,
+        ].filter((column): column is string => column !== null);
+        if (columns.length === 0) return;
+        const candidateConditions: string[] = [];
+        for (let i = 0; i < values.length; i++) {
+            const valueName = `fuzzyCandidate${i}`;
+            query.param[valueName] = `%${values[i]}%`;
+            candidateConditions.push(
+                `(${columns.map(column => `${column} ${this.op.getLikeStr(fields.cs)} :${valueName}`).join(' or ')})`,
+            );
+        }
+        query.strs.push(`(${candidateConditions.join(' or ')})`);
+    }
+
+    private matchesTimes(program: Program, option: apid.RuleSearchOption): boolean {
+        const local = DateUtil.getJaDate(new Date(program.startAt));
+        const actualDay = local.getDay();
+        const actualMinute = local.getHours() * 60 + local.getMinutes();
+        const inside = (time: NonNullable<apid.RuleSearchOption['times']>[number]): boolean => {
+            const startHour = time.start ?? 0;
+            const rangeHour = time.range ?? 24;
+            const minuteAware = typeof time.startMinute !== 'undefined' || typeof time.rangeMinute !== 'undefined';
+            if (!minuteAware) {
+                for (let offset = 0; offset < rangeHour; offset++) {
+                    const absoluteHour = startHour + offset;
+                    const day = (time.week & (1 << ((actualDay - Math.floor(absoluteHour / 24) + 7) % 7))) !== 0;
+                    if (
+                        day &&
+                        actualMinute >= (absoluteHour % 24) * 60 &&
+                        actualMinute < ((absoluteHour % 24) + 1) * 60
+                    )
+                        return true;
+                }
+                return false;
+            }
+            const start = startHour * 60 + (time.startMinute ?? 0);
+            const duration = rangeHour * 60 + (time.rangeMinute ?? 0);
+            const maxDayOffset = Math.ceil((start + duration) / 1440);
+            for (let dayOffset = 0; dayOffset <= maxDayOffset; dayOffset++) {
+                const weekDay = (actualDay - dayOffset + 7) % 7;
+                const offset = dayOffset * 1440 + actualMinute - start;
+                if ((time.week & (1 << weekDay)) !== 0 && offset >= 0 && offset < duration) return true;
+            }
+            return false;
+        };
+        const found = option.times?.some(inside) ?? false;
+        return option.isTimeExclusion === true ? !found : found;
+    }
+
+    private setMinuteTimesQuery(option: apid.RuleSearchOption, query: FindQuery, databaseType: string): void {
+        // Minute-based ranges are translated to JST day/minute predicates, keeping full descriptions out of JS.
+        const minute =
+            databaseType === 'mysql'
+                ? 'HOUR(FROM_UNIXTIME(program.startAt / 1000 + 32400)) * 60 + MINUTE(FROM_UNIXTIME(program.startAt / 1000 + 32400))'
+                : "CAST(strftime('%H', datetime(program.startAt / 1000, 'unixepoch', '+9 hours')) AS INTEGER) * 60 + CAST(strftime('%M', datetime(program.startAt / 1000, 'unixepoch', '+9 hours')) AS INTEGER)";
+        const day =
+            databaseType === 'mysql'
+                ? 'DAYOFWEEK(FROM_UNIXTIME(program.startAt / 1000 + 32400)) - 1'
+                : "CAST(strftime('%w', datetime(program.startAt / 1000, 'unixepoch', '+9 hours')) AS INTEGER)";
+        const clauses: string[] = [];
+        let index = 0;
+        for (const time of option.times ?? []) {
+            const start = (time.start ?? 0) * 60 + (time.startMinute ?? 0);
+            const duration = (time.range ?? 24) * 60 + (time.rangeMinute ?? 0);
+            if (duration <= 0) continue;
+            let consumed = 0;
+            while (consumed < duration) {
+                const absolute = start + consumed;
+                const dayOffset = Math.floor(absolute / 1440);
+                const from = absolute % 1440;
+                const length = Math.min(duration - consumed, 1440 - from);
+                for (let weekday = 0; weekday < 7; weekday++) {
+                    const anchorDay = (weekday - dayOffset + 7) % 7;
+                    if ((time.week & (1 << anchorDay)) === 0) continue;
+                    const dayParam = `minuteDay${index}`;
+                    const fromParam = `minuteFrom${index}`;
+                    const toParam = `minuteTo${index}`;
+                    query.param[dayParam] = weekday;
+                    query.param[fromParam] = from;
+                    query.param[toParam] = from + length;
+                    clauses.push(`(${day} = :${dayParam} and ${minute} >= :${fromParam} and ${minute} < :${toParam})`);
+                    index++;
+                }
+                consumed += length;
+            }
+        }
+        if (clauses.length === 0) return;
+        const condition = `(${clauses.join(' or ')})`;
+        query.strs.push(option.isTimeExclusion === true ? `not ${condition}` : condition);
     }
 
     /**
@@ -658,7 +839,10 @@ export default class ProgramDB implements IProgramDB {
      * @param query: FindQuery
      */
     private setKeywordQuery(searchOption: apid.RuleSearchOption, query: FindQuery): void {
-        if (typeof searchOption.keyword !== 'undefined') {
+        if (
+            typeof searchOption.keyword !== 'undefined' &&
+            (searchOption.isFuzzy !== true || searchOption.keyRegExp === true)
+        ) {
             this.setKeywordOption(
                 searchOption.keyword,
                 this.createKeywordOption(searchOption, false),
@@ -668,13 +852,17 @@ export default class ProgramDB implements IProgramDB {
             );
         }
 
-        if (typeof searchOption.ignoreKeyword !== 'undefined') {
+        if (
+            typeof searchOption.ignoreKeyword !== 'undefined' &&
+            (searchOption.isFuzzy !== true || searchOption.ignoreKeyRegExp === true)
+        ) {
             this.setKeywordOption(
                 searchOption.ignoreKeyword,
                 this.createKeywordOption(searchOption, true),
                 'ignoreKeyword',
                 true,
                 query,
+                searchOption.ignoreKeywordMatch === 'any',
             );
         }
     }
@@ -693,8 +881,34 @@ export default class ProgramDB implements IProgramDB {
         valueBaseName: string,
         isIgnore: boolean,
         query: FindQuery,
+        ignoreMatchAny = false,
     ): void {
         const or: string[] = [];
+        if (option.name !== true && option.description !== true && option.extended !== true) return;
+
+        if (isIgnore && ignoreMatchAny && option.regexp !== true) {
+            const terms = StrUtil.toHalf(keyword)
+                .trim()
+                .split(/\s+/)
+                .filter(term => term.length > 0);
+            const columns = [
+                option.name ? 'halfWidthName' : null,
+                option.description ? "COALESCE(halfWidthDescription,'')" : null,
+                option.extended ? "COALESCE(halfWidthExtended,'')" : null,
+            ].filter((column): column is string => column !== null);
+            for (let i = 0; i < terms.length; i++) {
+                const valueName = `${valueBaseName}Any${i}`;
+                query.param[valueName] = `%${terms[i]}%`;
+                for (const column of columns) {
+                    or.push(`${column} ${this.op.getLikeStr(option.cs)} :${valueName}`);
+                }
+            }
+            if (or.length > 0) {
+                const anyTermsCondition = DBUtil.createOrQuery(or);
+                query.strs.push(`not (${anyTermsCondition})`);
+            }
+            return;
+        }
 
         if (option.regexp === true) {
             // 正規表現
@@ -798,6 +1012,7 @@ export default class ProgramDB implements IProgramDB {
      * @param query: FindQuery
      */
     private setChannelQuery(searchOption: apid.RuleSearchOption, query: FindQuery): void {
+        const queryCount = query.strs.length;
         if (typeof searchOption.channelIds !== 'undefined') {
             // in で channelId を列挙
             this.createInQuery(query, 'channelId', searchOption.channelIds);
@@ -944,6 +1159,10 @@ export default class ProgramDB implements IProgramDB {
             }
             this.createInQuery(query, 'channelType', channelTypes);
         }
+        if (searchOption.isChannelExclusion === true && query.strs.length > queryCount) {
+            const condition = query.strs.pop();
+            if (condition) query.strs.push(`not (${condition})`);
+        }
     }
 
     /**
@@ -965,24 +1184,24 @@ export default class ProgramDB implements IProgramDB {
             if (typeof option.genres[i].subGenre === 'undefined') {
                 strs.push(
                     '(' +
-                        `genre1 = :${genreBaseName} or ` +
-                        `genre2 = :${genreBaseName} or ` +
-                        `genre3 = :${genreBaseName}` +
+                        `COALESCE(genre1, -1) = :${genreBaseName} or ` +
+                        `COALESCE(genre2, -1) = :${genreBaseName} or ` +
+                        `COALESCE(genre3, -1) = :${genreBaseName}` +
                         ')',
                 );
             } else {
                 strs.push(
                     '(' +
                         '(' +
-                        `genre1 = :${genreBaseName} and ` +
+                        `COALESCE(genre1, -1) = :${genreBaseName} and ` +
                         `subGenre1 = :${subGenreBaseName}` +
                         ') or ' +
                         '(' +
-                        `genre2 = :${genreBaseName} and ` +
+                        `COALESCE(genre2, -1) = :${genreBaseName} and ` +
                         `subGenre2 = :${subGenreBaseName}` +
                         ') or ' +
                         '(' +
-                        `genre3 = :${genreBaseName} and ` +
+                        `COALESCE(genre3, -1) = :${genreBaseName} and ` +
                         `subGenre3 = :${subGenreBaseName}` +
                         ')' +
                         ')',
@@ -991,7 +1210,8 @@ export default class ProgramDB implements IProgramDB {
             }
         }
 
-        query.strs.push(DBUtil.createOrQuery(strs));
+        const condition = DBUtil.createOrQuery(strs);
+        query.strs.push(option.isGenreExclusion === true ? `not (${condition})` : condition);
     }
 
     /**
@@ -1035,34 +1255,32 @@ export default class ProgramDB implements IProgramDB {
                 continue;
             }
 
-            // 曜日情報を query に追加
-            const weekBaseColumnName = `week${i}`;
-            let queryStr = `week in (:...${weekBaseColumnName})`;
-            query.param[weekBaseColumnName] = weeks;
-
-            // 時刻レンジを query に追加
+            // 時刻レンジを曜日と合わせて展開。0時以降に翌曜日を割り当てる。
             const start = option.times[i].start;
             const range = option.times[i].range;
+            let queryStr = `week in (:...week${i})`;
+            query.param[`week${i}`] = weeks;
             if (typeof start !== 'undefined' && typeof range !== 'undefined') {
-                const startHourBaseColumnName = `time${i}`;
-                const endTime = start + range - 1;
-                if (start === endTime) {
-                    queryStr += ` and startHour = :${startHourBaseColumnName}`;
-                    query.param[startHourBaseColumnName] = start;
-                } else {
-                    const times: number[] = [];
-                    for (let j = start; j <= endTime; j++) {
-                        times.push(j % 24);
-                    }
-                    queryStr += `and startHour in (:...${startHourBaseColumnName})`;
-                    query.param[startHourBaseColumnName] = times;
+                const hourClauses: string[] = [];
+                for (let offset = 0; offset < range; offset++) {
+                    const absoluteHour = start + offset;
+                    const hour = absoluteHour % 24;
+                    const dayOffset = Math.floor(absoluteHour / 24);
+                    const shiftedWeeks = weeks.map(week => (week + dayOffset) % 7);
+                    const weekKey = `week${i}hour${offset}`;
+                    const hourKey = `hour${i}hour${offset}`;
+                    query.param[weekKey] = shiftedWeeks;
+                    query.param[hourKey] = hour;
+                    hourClauses.push(`(week in (:...${weekKey}) and startHour = :${hourKey})`);
                 }
+                queryStr = DBUtil.createOrQuery(hourClauses);
             }
 
             strs.push(`(${queryStr})`);
         }
 
-        query.strs.push(DBUtil.createOrQuery(strs));
+        const condition = DBUtil.createOrQuery(strs);
+        query.strs.push(option.isTimeExclusion === true ? `not (${condition})` : condition);
     }
 
     /**

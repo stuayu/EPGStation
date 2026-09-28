@@ -330,10 +330,12 @@ class EPGUpdater implements IEPGUpdater {
     private runExclusiveUpdateTask(task: () => Promise<void>): Promise<void> {
         const run = this.updateTaskLock.then(async () => {
             this.isUpdateTaskRunning = true;
+            if (typeof process.send !== 'undefined') process.send({ msg: 'updateRunning', running: true });
             try {
                 await task();
             } finally {
                 this.isUpdateTaskRunning = false;
+                if (typeof process.send !== 'undefined') process.send({ msg: 'updateRunning', running: false });
             }
         });
         this.updateTaskLock = run.catch(() => {});

@@ -65,7 +65,14 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
                 }
                 // 未ログインでも一般ユーザーと同じ操作を許可する設定なら通知も受け取れるようにする
                 if (authModel.isAnonymousAllowed() === true) {
-                    next();
+                    const token = readCookie(socket.handshake.headers.cookie, SESSION_COOKIE_NAME);
+                    authModel
+                        .verify(token)
+                        .then(payload => {
+                            if (payload !== null) socket.data.userId = payload.uid;
+                            next();
+                        })
+                        .catch(() => next());
 
                     return;
                 }
@@ -73,6 +80,7 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
                 authModel
                     .verify(token)
                     .then(payload => {
+                        if (payload !== null) socket.data.userId = payload.uid;
                         next(payload === null ? new Error('Unauthorized') : undefined);
                     })
                     .catch(err => {
@@ -146,6 +154,32 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
         );
     }
 
+    /** 番組開始前リマインダーを接続中のクライアントへ送る */
+    public notifyProgramStarting(
+        payload: { programId: number; channelId: number; name: string; startAt: number; minutesBefore: number },
+        userId: number | null,
+        notificationTargetCount: number,
+    ): void {
+        let deliveredClientCount = 0;
+        for (const io of this.ios) {
+            if (userId === null) {
+                deliveredClientCount += io.sockets.sockets.size;
+                io.sockets.emit('programStarting', payload);
+            } else
+                for (const socket of io.sockets.sockets.values()) {
+                    if (socket.data.userId === userId) {
+                        deliveredClientCount++;
+                        socket.emit('programStarting', payload);
+                    }
+                }
+        }
+        this.log.system.info(
+            `program reminder fired: programId: ${payload.programId} name: ${payload.name} ` +
+                `minutesBefore: ${payload.minutesBefore} notificationTargets: ${notificationTargetCount} ` +
+                `socketClients: ${deliveredClientCount}`,
+        );
+    }
+
     /**
      * socket.io に接続中のクライアント数を返す
      * @return number
@@ -176,5 +210,9 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
                 }
             }, 200);
         }
+    }
+
+    public notifyPowerSuspending(value: { action: string; executeAt: number }): void {
+        for (const io of this.ios) io.sockets.emit('powerSuspending', value);
     }
 }

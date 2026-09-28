@@ -24,6 +24,8 @@ import IRecordedTagApiModel from './api/recordedTag/IRecordedTagApiModel';
 import RecordedTagApiModel from './api/recordedTag/RecordedTagApiModel';
 import ISavedSearchApiModel from './api/savedSearch/ISavedSearchApiModel';
 import SavedSearchApiModel from './api/savedSearch/SavedSearchApiModel';
+import IRecordingPresetApiModel from './api/recordingPreset/IRecordingPresetApiModel';
+import RecordingPresetApiModel from './api/recordingPreset/RecordingPresetApiModel';
 import IRecordingApiModel from './api/recording/IRecordingApiModel';
 import RecordingApiModel from './api/recording/RecordingApiModel';
 import RepositoryModel from './api/RepositoryModel';
@@ -111,6 +113,8 @@ import RuleState from './state/rule/RuleState';
 import ScrollPositionState from './state/ScrollPositionState';
 import ISearchState from './state/search/ISearchState';
 import SearchState from './state/search/SearchState';
+import IRecordingPresetState from './state/recordingPreset/IRecordingPresetState';
+import RecordingPresetState from './state/recordingPreset/RecordingPresetState';
 import IServerStatusState from './state/serverStatus/IServerStatusState';
 import ServerStatusState from './state/serverStatus/ServerStatusState';
 import ISnackbarState from './state/snackbar/ISnackbarState';
@@ -153,6 +157,12 @@ import IPlaybackOptionsState from './state/video/IPlaybackOptionsState';
 import PlaybackOptionsState from './state/video/PlaybackOptionsState';
 import IOfflineVideoState from './state/offline/IOfflineVideoState';
 import OfflineVideoState from './state/offline/OfflineVideoState';
+import IRecordingResultsApiModel from './api/recordingResults/IRecordingResultsApiModel';
+import RecordingResultsApiModel from './api/recordingResults/RecordingResultsApiModel';
+import IReminderApiModel from './api/reminder/IReminderApiModel';
+import ReminderApiModel from './api/reminder/ReminderApiModel';
+import IRecordingResultsState from './state/recordingResults/IRecordingResultsState';
+import RecordingResultsState from './state/recordingResults/RecordingResultsState';
 
 /**
  * container に各 Model を登録する
@@ -161,6 +171,8 @@ export default (container: Container): void => {
     container.bind<IPWAConfigModel>('IPWAConfigModel').to(PWAConfigModel).inSingletonScope();
 
     container.bind<IRepositoryModel>('IRepositoryModel').to(RepositoryModel).inSingletonScope();
+    container.bind<IReminderApiModel>('IReminderApiModel').to(ReminderApiModel).inSingletonScope();
+    container.bind<IRecordingResultsApiModel>('IRecordingResultsApiModel').to(RecordingResultsApiModel).inSingletonScope();
 
     container.bind<IConfigApiModel>('IConfigApiModel').to(ConfigApiModel).inSingletonScope();
     container.bind<ISystemSettingApiModel>('ISystemSettingApiModel').to(SystemSettingApiModel).inSingletonScope();
@@ -180,6 +192,7 @@ export default (container: Container): void => {
     container.bind<ISnsApiModel>('ISnsApiModel').to(SnsApiModel).inSingletonScope();
     container.bind<IRecordedTagApiModel>('IRecordedTagApiModel').to(RecordedTagApiModel).inSingletonScope();
     container.bind<ISavedSearchApiModel>('ISavedSearchApiModel').to(SavedSearchApiModel).inSingletonScope();
+    container.bind<IRecordingPresetApiModel>('IRecordingPresetApiModel').to(RecordingPresetApiModel).inSingletonScope();
 
     container.bind<IRecordingApiModel>('IRecordingApiModel').to(RecordingApiModel).inSingletonScope();
 
@@ -275,10 +288,12 @@ export default (container: Container): void => {
     container.bind<IWatchRecordedInfoState>('IWatchRecordedInfoState').to(WatchRecordedInfoState).inSingletonScope();
 
     container.bind<IRecordingState>('IRecordingState').to(RecordingState).inSingletonScope();
+    container.bind<IRecordingResultsState>('IRecordingResultsState').to(RecordingResultsState).inSingletonScope();
 
     container.bind<IEncodeState>('IEncodeState').to(EncodeState).inSingletonScope();
 
     container.bind<ISearchState>('ISearchState').to(SearchState).inSingletonScope();
+    container.bind<IRecordingPresetState>('IRecordingPresetState').to(RecordingPresetState).inSingletonScope();
 
     container.bind<IServerStatusState>('IServerStatusState').to(ServerStatusState).inSingletonScope();
 

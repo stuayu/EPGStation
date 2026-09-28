@@ -4,6 +4,7 @@ import { IGuideGenreSettingStorageModel, IGuideGenreSettingValue } from '@/model
 import { sortByKeyStationAndPrefecture } from '@/util/AffiliationChannelSort';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
 import { normalizeSeriesTitleForGuide } from '@/util/SeriesTitleNormalizer';
+import { resolveSingleStationAppend } from '@/util/GuideAppendPolicy.mjs';
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../api';
 import DateUtil from '../../../util/DateUtil';
@@ -43,6 +44,7 @@ class GuideState implements IGuideState {
     private programDoms: ProgramDomItem[] = [];
     // 番組情報を programId 索引するための変数
     private programDomIndex: { [programId: number]: HTMLElement[] } = {};
+    private reminderProgramIds: Set<number> = new Set<number>();
 
     private startTime: string | null = null;
     private timeLength: number = 0;
@@ -259,9 +261,29 @@ class GuideState implements IGuideState {
      * @return Promise<boolean> 追加できた場合は true
      */
     public async appendGuide(option: FetchGuideOption): Promise<boolean> {
-        // 単局表示は横軸が日付 (8 日分固定) なので追加読み込みはしない
-        if (typeof option.channelId !== 'undefined' || this.endAt === 0 || this.schedules.length === 0) {
+        if (this.endAt === 0 || this.schedules.length === 0) {
             return false;
+        }
+
+        if (typeof option.channelId !== 'undefined') {
+            const startAt = this.endAt;
+            const days = GuideState.SINGLE_STATION_GET_DAYS;
+            const scheduleOption: apid.ChannelScheduleOption = { startAt, days, isHalfWidth: option.isHalfWidth, channelId: option.channelId };
+            if (this.settingModel.getSavedValue().isShowOnlyFreePrograms === true) scheduleOption.isFree = true;
+            const schedules = await this.scheduleApiModel.getChannelSchedule(scheduleOption);
+            const existingIds = new Set(this.schedules.flatMap(schedule => schedule.programs.map(program => program.id)));
+            let added = 0;
+            for (const schedule of schedules) {
+                schedule.programs = schedule.programs.filter(program => !existingIds.has(program.id));
+                added += schedule.programs.length;
+                if (schedule.programs.length > 0) this.schedules.push(schedule);
+            }
+            const append = resolveSingleStationAppend({ startAt, days, added });
+            if (append === null) return false;
+            this.endAt = append.endAt;
+            this.timeLength = append.timeLength;
+            this.reserveIndex = await this.reserveUtil.getReserveIndex({ startAt: this.startAt, endAt: this.endAt });
+            return added > 0;
         }
 
         // 上限を超えたら打ち切る (EPG は 8 日程度先までしか無いため無制限には伸ばさない)
@@ -375,6 +397,19 @@ class GuideState implements IGuideState {
     }
 
     /**
+     * 通知登録済み番組の印を更新する
+     * @param programIds: number[] 通知登録済みの番組 id
+     */
+    public setReminderProgramIds(programIds: number[]): void {
+        this.reminderProgramIds = new Set(programIds);
+        for (const programId in this.programDomIndex) {
+            for (const element of this.programDomIndex[programId]) {
+                element.classList.toggle('has-reminder', this.reminderProgramIds.has(Number(programId)));
+            }
+        }
+    }
+
+    /**
      * 番組表 DOM 生成
      * @param option: CreateProgramDomOption
      * @param isHidden: boolean
@@ -385,6 +420,7 @@ class GuideState implements IGuideState {
         const child: HTMLElement[] = [];
         child.push(this.createTextElement('div', { class: 'name' }, option.program.name));
         child.push(this.createTextElement('div', { class: 'time' }, DateUtil.format(DateUtil.getJaDate(new Date(option.program.startAt)), 'hh:mm')));
+        child.push(this.createTextElement('i', { class: 'mdi mdi-bell-outline guide-reminder-icon', 'aria-hidden': 'true' }, ''));
         if (typeof option.program.description !== 'undefined') {
             child.push(this.createTextElement('div', { class: 'description' }, option.program.description));
         }
@@ -413,6 +449,10 @@ class GuideState implements IGuideState {
         if (typeof this.reserveIndex[option.program.id] !== 'undefined') {
             const reserve = this.reserveIndex[option.program.id];
             classStr += ` ${reserve.type}`;
+        }
+
+        if (this.reminderProgramIds.has(option.program.id) === true) {
+            classStr += ' has-reminder';
         }
 
         if (option.isHidden === true) {

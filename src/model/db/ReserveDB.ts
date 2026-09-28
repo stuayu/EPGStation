@@ -1,5 +1,14 @@
 import { inject, injectable } from 'inversify';
-import { FindOptionsWhere, FindManyOptions, In, IsNull, LessThan, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import {
+    FindOptionsWhere,
+    FindManyOptions,
+    In,
+    IsNull,
+    LessThan,
+    LessThanOrEqual,
+    MoreThan,
+    MoreThanOrEqual,
+} from 'typeorm';
 import * as apid from '../../../api';
 import Reserve from '../../db/entities/Reserve';
 import { IReserveUpdateValues } from '../event/IReserveEvent';
@@ -222,6 +231,20 @@ export default class ReserveDB implements IReserveDB {
         return await this.promieRetry.run(() => {
             return queryBuilder.findAndCount(this.createFindOption(option));
         });
+    }
+
+    /** 省電力判定用に、未来の通常予約を開始時刻順で1件取得する */
+    public async findNextUpcomingForPower(now: number): Promise<Reserve | null> {
+        const connection = await this.op.getConnection();
+        const repository = connection.getRepository(Reserve);
+        return (
+            (await this.promieRetry.run(() =>
+                repository.findOne({
+                    where: { startAt: MoreThan(now), isConflict: false, isSkip: false },
+                    order: { startAt: 'ASC' },
+                }),
+            )) ?? null
+        );
     }
 
     private createFindOption(option: apid.GetReserveOption): FindManyOptions<Reserve> {

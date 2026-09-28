@@ -67,6 +67,14 @@ import RecordingResumeCoordinator from './RecordingResumeCoordinator';
  */
 @injectable()
 class RecorderModel implements IRecorderModel {
+    /** 省電力判定用の録画状態を返す */
+    public getPowerState(): 'preparing' | 'recording' | 'waiting' {
+        return this.isRecording
+            ? 'recording'
+            : this.isPrepRecording || this.isPrepRecordInFlight || this.prepRetryTimerId !== null
+              ? 'preparing'
+              : 'waiting';
+    }
     private log: ILogger;
     private config: IConfigFile;
     private programDB: IProgramDB;
@@ -194,7 +202,8 @@ class RecorderModel implements IRecorderModel {
     }
 
     private async beginRecordingSession(): Promise<void> {
-        await this.sessionTracker.beginSession(this.reserve);
+        const channel = await this.channelDB.findId(this.reserve.channelId).catch(() => null);
+        await this.sessionTracker.beginSession(this.reserve, channel?.name ?? null);
         this.telemetryStartDelayRecorded = false;
     }
 
@@ -518,7 +527,11 @@ class RecorderModel implements IRecorderModel {
                 this.closeTelemetrySession('failed', 'error');
                 this.streamCreator.release(this.reserve.id);
                 // 録画準備失敗を通知
-                this.recordingEvent.emitPrepRecordingFailed(this.reserve);
+                this.recordingEvent.emitPrepRecordingFailed(
+                    this.reserve,
+                    'error',
+                    Math.max(0, this.errorRetryCount - 1),
+                );
             }
         } finally {
             if (generation === this.prepGeneration) {
@@ -1467,6 +1480,9 @@ class RecorderModel implements IRecorderModel {
         }
 
         recorded.startAt = this.reserve.startAt;
+        const recordingTiming = this.getTimingConfig();
+        recorded.startMarginSec = Math.round(recordingTiming.startMarginMs / 1000);
+        recorded.endMarginSec = Math.round(recordingTiming.endMarginMs / 1000);
         recorded.endAt = this.reserve.endAt;
         recorded.duration = this.reserve.endAt - this.reserve.startAt;
 
@@ -2011,6 +2027,7 @@ class RecorderModel implements IRecorderModel {
             this.config.recording,
             this.config.timeSpecifiedStartMargin,
             this.config.timeSpecifiedEndMargin,
+            this.reserve,
         );
     }
 

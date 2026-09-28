@@ -128,6 +128,16 @@ test('service stream は待機バッファと live TS を連結して書き込�
     source.destroy();
 });
 
+test('時刻指定予約は開始マージン 0 秒を使い startAt 到達時に開始可能になる', () => {
+    const recorder = makeRecorder({ startMarginSec: 8, endMarginSec: 8 });
+    recorder.reserve = { ...reserve, isTimeSpecified: true, startMarginSec: 0, endMarginSec: 0 };
+
+    const timing = recorder.getTimingConfig();
+    assert.equal(timing.startMarginMs, 0);
+    assert.equal(timing.endMarginMs, 0);
+    assert.equal(recorder.reserve.startAt - timing.startMarginMs, recorder.reserve.startAt);
+});
+
 test('録画開始時に待機 TS を書き込み、上流 EOF 後に finish する', async () => {
     const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'epgstation-recorder-pipe-race-'));
     const recPath = path.join(tempDir, 'race.ts');

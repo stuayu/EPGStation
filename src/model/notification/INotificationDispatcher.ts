@@ -14,7 +14,7 @@ export interface NotificationFailureHistoryItem {
     updatedAt: number;
 }
 export default interface INotificationDispatcher {
-    dispatch(type: NotificationEventType, payload: Record<string, unknown>): Promise<void>;
+    dispatch(type: NotificationEventType, payload: Record<string, unknown>): Promise<number>;
     test(targetName?: string): Promise<{ delivered: string[]; failed: string[] }>;
     /**
      * 永続キューに積まれた再送待ちの通知を処理する (定期実行タイマーから、または明示的な呼び出しから使う)

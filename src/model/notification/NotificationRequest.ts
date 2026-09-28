@@ -8,7 +8,9 @@ export interface NotificationRequest {
 namespace NotificationRequestConst {
     export const WARNING_EVENT_TYPES: ReadonlySet<NotificationEventType> = new Set([
         'recording.failed',
+        'recording.startFailed',
         'recording.partial',
+        'power.suspending',
         'recording.dropped',
         'recording.missed',
         'storage.lowSpace',
@@ -71,6 +73,13 @@ function eventTitle(type: NotificationEventType): string {
         case 'storage.lowSpace':
             return 'ディスク残量が低下しています';
         case 'recording.failed':
+            return '録画に失敗しました';
+        case 'recording.startFailed':
+            return '録画開始前に失敗しました';
+        case 'program.starting':
+            return '番組がまもなく始まります';
+        case 'power.suspending':
+            return 'まもなく省電力状態へ移行します';
         default:
             return '録画に失敗しました';
     }

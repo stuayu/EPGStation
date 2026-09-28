@@ -4,7 +4,7 @@ import * as mapid from '../../../../node_modules/mirakurun/api';
 import Channel from '../../../db/entities/Channel';
 import Program from '../../../db/entities/Program';
 import Reserve from '../../../db/entities/Reserve';
-import DateUtil from '../../../util/DateUtil';
+import { getJstDay, getJstMidnight } from '../../../util/JstDateUtil';
 import TunerCompatibilityUtil from '../../../util/TunerCompatibilityUtil';
 import { isDurationUndefined, resolveProgramEndTimes } from '../../../util/ProgramDuration';
 import { formatDurationUndefinedChange, formatLogDuration, formatTimeChange } from '../../../util/ProgramTimeLog';
@@ -470,6 +470,9 @@ class ReservationManageModel implements IReservationManageModel {
     private setManualReserveOption(option: apid.ManualReserveOption, newReserve: Reserve): void {
         // option から必要な情報をセットする
         newReserve.priority = option.priority ?? 3;
+        newReserve.startMarginSec = option.startMarginSec ?? null;
+        newReserve.endMarginSec = option.endMarginSec ?? null;
+        newReserve.finishCommandName = option.finishCommandName ?? null;
         newReserve.conflictPolicy = option.conflictPolicy ?? (option.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
         newReserve.allowEndLack = newReserve.conflictPolicy === 'ALLOW_END_LACK';
         if (typeof option.tags !== 'undefined') {
@@ -515,6 +518,7 @@ class ReservationManageModel implements IReservationManageModel {
 
         // リレー元の予約情報から必要な情報をセットする
         newReserve.ruleId = parentReserve.ruleId;
+        newReserve.finishCommandName = parentReserve.finishCommandName;
         newReserve.allowEndLack = parentReserve.allowEndLack;
         newReserve.priority = parentReserve.priority;
         newReserve.conflictPolicy = parentReserve.conflictPolicy;
@@ -648,6 +652,12 @@ class ReservationManageModel implements IReservationManageModel {
             option.conflictPolicy !== undefined &&
             !['STRICT', 'ALLOW_END_LACK', 'ALLOW_HEAD_LACK', 'ALLOW_PARTIAL', 'PREEMPT_LOWER_PRIORITY'].includes(
                 option.conflictPolicy,
+            )
+        )
+            return false;
+        if (
+            [option.startMarginSec, option.endMarginSec].some(
+                value => value != null && (!Number.isInteger(value) || value < 0 || value > 3600),
             )
         )
             return false;
@@ -995,7 +1005,7 @@ class ReservationManageModel implements IReservationManageModel {
                 }
 
                 // times 準備
-                const baseTime = new Date(DateUtil.format(new Date(), 'yyyy/MM/dd 00:00:00 +0900')).getTime();
+                const baseTime = getJstMidnight(updateTime);
                 for (const time of rule.searchOption.times) {
                     if (typeof time.start === 'undefined' || typeof time.range === 'undefined') {
                         throw new Error('RuleSearchTimesOptionError');
@@ -1014,10 +1024,15 @@ class ReservationManageModel implements IReservationManageModel {
 
                     for (let i = 0; i < 8; i++) {
                         // 1 週間分の予約情報を作成する
-                        const startAt = baseTime + 1000 * 60 * 60 * 24 * i + time.start * 1000;
-                        const endAt = baseTime + 1000 * 60 * 60 * 24 * i + (time.start + time.range) * 1000;
+                        const startAt =
+                            baseTime + 1000 * 60 * 60 * 24 * i + (time.start + (time.startMinute ?? 0) * 60) * 1000;
+                        const endAt =
+                            baseTime +
+                            1000 * 60 * 60 * 24 * i +
+                            (time.start + (time.startMinute ?? 0) * 60 + time.range + (time.rangeMinute ?? 0) * 60) *
+                                1000;
 
-                        if (endAt < updateTime || weeks[new Date(startAt).getDay()] === false) {
+                        if (endAt < updateTime || weeks[getJstDay(startAt)] === false) {
                             // 終了時刻が現在時刻より古い or 有効な曜日ではない
                             continue;
                         }
@@ -1154,6 +1169,9 @@ class ReservationManageModel implements IReservationManageModel {
         reserve.conflictPolicy =
             rule.reserveOption.conflictPolicy ?? (rule.reserveOption.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
         reserve.allowEndLack = reserve.conflictPolicy === 'ALLOW_END_LACK';
+        reserve.startMarginSec = rule.reserveOption.startMarginSec ?? null;
+        reserve.endMarginSec = rule.reserveOption.endMarginSec ?? null;
+        reserve.finishCommandName = rule.reserveOption.finishCommandName ?? null;
 
         if (typeof rule.reserveOption.tags !== 'undefined') {
             reserve.tags = JSON.stringify(rule.reserveOption.tags);
@@ -1839,6 +1857,9 @@ class ReservationManageModel implements IReservationManageModel {
 
         // option から必要な情報をセットする
         newReserve.priority = option.priority ?? newReserve.priority;
+        newReserve.startMarginSec = option.startMarginSec ?? null;
+        newReserve.endMarginSec = option.endMarginSec ?? null;
+        newReserve.finishCommandName = option.finishCommandName ?? null;
         newReserve.conflictPolicy = option.conflictPolicy ?? (option.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
         newReserve.allowEndLack = newReserve.conflictPolicy === 'ALLOW_END_LACK';
         if (typeof option.tags !== 'undefined') {
@@ -2013,6 +2034,8 @@ class ReservationManageModel implements IReservationManageModel {
                 id: reserve.id,
                 startAt: reserve.startAt,
                 endAt: plannerEndAt.get(reserve.id) ?? reserve.endAt,
+                startMarginSec: reserve.startMarginSec,
+                endMarginSec: reserve.endMarginSec,
                 channel: reserve.channel,
                 channelType: reserve.channelType,
                 allowEndLack: reserve.allowEndLack,

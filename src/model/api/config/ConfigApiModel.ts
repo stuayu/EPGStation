@@ -7,6 +7,8 @@ import IIPCClient from '../../ipc/IIPCClient';
 import IStreamProfileManageModel from '../../stream/IStreamProfileManageModel';
 import IConfigApiModel from './IConfigApiModel';
 import IHardwareEncoderDetector from '../../encoder/IHardwareEncoderDetector';
+import { resolveRecordingTimingConfig } from '../../operator/recording/RecordingTimingConfig';
+import IDBOperator from '../../db/IDBOperator';
 
 @injectable()
 export default class ConfigApiModel implements IConfigApiModel {
@@ -21,6 +23,9 @@ export default class ConfigApiModel implements IConfigApiModel {
         @inject('IHardwareEncoderDetector')
         @optional()
         private readonly hardwareEncoderDetector?: IHardwareEncoderDetector,
+        @inject('IDBOperator')
+        @optional()
+        private readonly dbOperator?: IDBOperator,
     ) {
         this.configuration = configuration;
         this.ipc = ipc;
@@ -135,6 +140,7 @@ export default class ConfigApiModel implements IConfigApiModel {
         const config = this.configuration.getConfig();
 
         const result: apid.Config = <any>{};
+        result.reservationScheduler = this.configuration.getConfig().reservation?.scheduler ?? 'planner';
 
         // socket.io ポート設定
         // 専用ポートの指定が無い場合は Web API と同じ待ち受けを共有しているため、
@@ -145,16 +151,30 @@ export default class ConfigApiModel implements IConfigApiModel {
             typeof config.clientSocketioPort !== 'undefined' ? config.clientSocketioPort : listenSetting.dedicatedPort;
         result.socketIOPort = dedicatedPort === null ? listenSetting.listenPort : dedicatedPort;
         result.useDedicatedSocketIOPort = dedicatedPort !== null && this.isDirectAccess(isSecure, accessPort) === true;
+        const timing = resolveRecordingTimingConfig(
+            config.recording,
+            config.timeSpecifiedStartMargin,
+            config.timeSpecifiedEndMargin,
+        );
+        result.recordingMargins = {
+            startMarginSec: Math.round(timing.startMarginMs / 1000),
+            endMarginSec: Math.round(timing.endMarginMs / 1000),
+        };
         const hardwareEncoder = this.hardwareEncoderDetector?.getResult();
         result.hardwareEncoder = {
             configured: hardwareEncoder?.configured ?? config.hardwareEncoder ?? 'auto',
             selected: hardwareEncoder?.selected ?? 'software',
             available: hardwareEncoder?.available ?? ['software'],
         };
+        result.ruleSearchCapabilities = {
+            regexp: this.dbOperator?.isEnabledRegexp() ?? true,
+            caseSensitive: this.dbOperator?.isEnableCS() ?? true,
+        };
 
         result.recorded = config.recorded.map(r => {
             return r.name;
         });
+        result.recordingFinishCommandNames = (config.recordingFinishCommands ?? []).map(command => command.name);
 
         result.encode = config.encode.map(e => {
             return e.name;

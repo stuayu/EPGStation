@@ -7,6 +7,8 @@ export type ProgramId = number;
 export type EventId = number;
 export type RuleId = number;
 export type ReserveId = number;
+
+export interface PowerCancelResponse { canceled: boolean; }
 export type RecordedId = number;
 export type RecordedHistoryId = number;
 export type VideoFileId = number;
@@ -16,6 +18,7 @@ export type ThumbnailId = number;
 export type DropLogFileId = number;
 export type RecordedTagId = number;
 export type SavedSearchId = number;
+export type RecordingPresetId = number;
 export type EncodeId = number;
 export type ChannelType =
     | 'GR'
@@ -130,9 +133,12 @@ export interface ChannelItem {
  */
 export interface EditManualReserveOption {
     allowEndLack: boolean; // 末尾切れを許すか
+    startMarginSec?: number | null;
+    endMarginSec?: number | null;
     priority?: number;
     conflictPolicy?: ConflictPolicy;
     tags?: RecordedTagId[];
+    finishCommandName?: string | null;
     saveOption?: ReserveSaveOption;
     encodeOption?: ReserveEncodedOption;
 }
@@ -188,6 +194,8 @@ export interface ReserveItem {
     conflictInfo?: ReservationConflict;
     isOverlap: boolean;
     allowEndLack: boolean;
+    startMarginSec?: number | null;
+    endMarginSec?: number | null;
     priority: number;
     conflictPolicy: ConflictPolicy;
     isTimeSpecified: boolean;
@@ -200,6 +208,7 @@ export interface ReserveItem {
      */
     isFollowingSchedule?: boolean;
     tags?: RecordedTagId[];
+    finishCommandName?: string | null;
     /**
      * 保存オプション
      */
@@ -219,6 +228,8 @@ export interface ReserveItem {
     encodeParentDirectoryName3?: string;
     encodeDirectory3?: string;
     isDeleteOriginalAfterEncode: boolean;
+    /** planner の計画上の割当。実際のチューナーは Mirakurun が選択 */
+    plannedTunerIndex?: number | null;
     /**
      * 番組情報
      */
@@ -248,7 +259,14 @@ export interface ReserveItem {
  * 予約の競合内容
  */
 export interface ReservationConflict {
-    type: 'NO_TUNER' | 'PRIORITY_PREEMPTED' | 'PARTIAL_HEAD' | 'PARTIAL_TAIL' | 'PARTIAL' | 'MARGIN_OVERLAP' | 'BACKEND_UNAVAILABLE';
+    type:
+        | 'NO_TUNER'
+        | 'PRIORITY_PREEMPTED'
+        | 'PARTIAL_HEAD'
+        | 'PARTIAL_TAIL'
+        | 'PARTIAL'
+        | 'MARGIN_OVERLAP'
+        | 'BACKEND_UNAVAILABLE';
     affectedMs: number;
     conflictingReserveIds: ReserveId[];
 }
@@ -402,6 +420,10 @@ export interface SearchTime {
     // program id 予約の場合は 1 ~ 23 時間の長さを指定する
     // 時刻予約の場合は秒で時間の長さを指定する 1 ~ 60 * 50 * 24 秒
     range?: number;
+    /** 時単位指定を分単位へ拡張する開始分 (0-59) */
+    startMinute?: number;
+    /** 時単位指定を分単位へ拡張する範囲 (分) */
+    rangeMinute?: number;
     // 曜日指定 0x01, 0x02, 0x04, 0x08, 0x10, 0x20 ,0x40 が日〜土に対応するので and 演算で曜日を指定する
     week: number;
 }
@@ -420,6 +442,11 @@ export interface SearchPeriod {
 export interface RuleSearchOption {
     keyword?: string; // 検索キーワード
     ignoreKeyword?: string; // 除外検索キーワード
+    ignoreKeywordMatch?: 'all' | 'any'; // 除外語の一致条件
+    isFuzzy?: boolean; // あいまい検索
+    isGenreExclusion?: boolean; // ジャンルを除外
+    isChannelExclusion?: boolean; // 放送局を除外
+    isTimeExclusion?: boolean; // 時刻範囲を除外
     keyCS?: boolean; // 大文字小文字区別有効化 (検索キーワード)
     keyRegExp?: boolean; // 正規表現 (検索キーワード)
     name?: boolean; // 番組名 (検索キーワード)
@@ -491,14 +518,18 @@ export interface RuleSearchOption {
 export interface RuleReserveOption {
     enable: boolean; // ルールが有効か
     allowEndLack: boolean; // 末尾切れを許可するか
+    startMarginSec?: number | null;
+    endMarginSec?: number | null;
     priority?: number;
     conflictPolicy?: ConflictPolicy;
     avoidDuplicate: boolean; // 録画済みの重複番組を排除するか
     periodToAvoidDuplicate?: number; // 重複を避ける期間
     tags?: RecordedTagId[]; // 録画完了後に付与する tag 設定
+    finishCommandName?: string | null;
 }
 
-export type ConflictPolicy = 'STRICT' | 'ALLOW_END_LACK' | 'ALLOW_HEAD_LACK' | 'ALLOW_PARTIAL' | 'PREEMPT_LOWER_PRIORITY';
+export type ConflictPolicy =
+    'STRICT' | 'ALLOW_END_LACK' | 'ALLOW_HEAD_LACK' | 'ALLOW_PARTIAL' | 'PREEMPT_LOWER_PRIORITY';
 
 /**
  * 保存オプション
@@ -634,6 +665,51 @@ export interface RecordingSessionItem {
     retryCount: number;
     createdAt?: UnixtimeMS;
     updatedAt?: UnixtimeMS;
+    attempts: RecordingAttemptItem[];
+}
+
+export interface RecordingResultSession {
+    id: number;
+    reserveId: number;
+    recordedId?: RecordedId;
+    programId?: ProgramId;
+    channelId: ChannelId;
+    state: string;
+    scheduledStartAt: UnixtimeMS;
+    scheduledEndAt: UnixtimeMS;
+    actualStartAt?: UnixtimeMS;
+    actualEndAt?: UnixtimeMS;
+    startReason?: string;
+    endReason?: string;
+    resultStatus?: 'completed' | 'partial' | 'failed' | 'canceled';
+    retryCount: number;
+    createdAt: UnixtimeMS;
+    updatedAt: UnixtimeMS;
+    name?: string;
+    channelName?: string;
+    ruleId?: RuleId;
+    isTimeSpecified: boolean;
+}
+
+export interface RecordingResultList {
+    items: RecordingResultSession[];
+    total: number;
+    offset: number;
+    limit: number;
+}
+
+export interface RecordingResultQuery {
+    result?: 'completed' | 'partial' | 'failed' | 'canceled';
+    from?: UnixtimeMS;
+    to?: UnixtimeMS;
+    ruleId?: RuleId;
+    keyword?: string;
+    offset: number;
+    limit: number;
+}
+
+export interface RecordingResultDetail {
+    session: RecordingResultSession;
     attempts: RecordingAttemptItem[];
 }
 
@@ -973,6 +1049,43 @@ export interface AddedSavedSearch {
     searchId: SavedSearchId;
 }
 
+export interface RecordingPresetSettings {
+    parentDirectoryName: string | null;
+    directory: string | null;
+    recordedFormat: string | null;
+    mode1: string | null;
+    encodeParentDirectoryName1: string | null;
+    directory1: string | null;
+    mode2: string | null;
+    encodeParentDirectoryName2: string | null;
+    directory2: string | null;
+    mode3: string | null;
+    encodeParentDirectoryName3: string | null;
+    directory3: string | null;
+    isDeleteOriginalAfterEncode: boolean;
+    priority: number;
+    conflictPolicy: ConflictPolicy;
+    allowEndLack: boolean;
+    startMarginSec: number | null;
+    endMarginSec: number | null;
+    tags: RecordedTagId[];
+    finishCommandName?: string | null;
+}
+
+export interface RecordingPresetItem {
+    id: RecordingPresetId;
+    name: string;
+    isDefault: boolean;
+    settings: RecordingPresetSettings;
+    createdAt: UnixtimeMS;
+    updatedAt: UnixtimeMS;
+}
+
+export interface RecordingPresetItems { items: RecordingPresetItem[]; total: number; }
+export interface AddRecordingPresetOption { name: string; isDefault?: boolean; settings: RecordingPresetSettings; }
+export interface UpdateRecordingPresetOption { name: string; isDefault?: boolean; settings: RecordingPresetSettings; }
+export interface AddedRecordingPreset { presetId: RecordingPresetId; }
+
 /**
  * URL Scheme 情報
  */
@@ -1078,18 +1191,22 @@ export interface LogFileContent {
  * クライアントが受け取る設定情報
  */
 export interface Config {
+    reservationScheduler?: 'legacy' | 'planner';
     socketIOPort: number;
     /**
      * socket.io が Web API と別のポートを使っているか。
      * false ならクライアントはアクセス中のオリジンへそのまま接続する
      */
     useDedicatedSocketIOPort: boolean;
+    recordingMargins?: { startMarginSec: number; endMarginSec: number };
+    recordingFinishCommandNames?: string[];
     /** 起動時に実測したエンコーダ能力。 */
     hardwareEncoder: {
         configured: 'auto' | 'qsv' | 'nvenc' | 'vce' | 'videotoolbox' | 'software';
         selected: 'qsv' | 'nvenc' | 'vce' | 'videotoolbox' | 'software';
         available: Array<'qsv' | 'nvenc' | 'vce' | 'videotoolbox' | 'software'>;
     };
+    ruleSearchCapabilities: { regexp: boolean; caseSensitive: boolean };
     broadcast: BroadcastStatus;
     recorded: string[];
     encode: string[];
@@ -2871,3 +2988,26 @@ export interface SnsRenoteResult {
     // 失敗時の理由
     detail?: string;
 }
+
+export interface TunerItem {
+    index: number;
+    name: string;
+    types: ChannelType[];
+    isUsing: boolean;
+}
+
+export type TunerItems = TunerItem[];
+
+export interface ProgramReminder {
+    id: number;
+    programId: ProgramId;
+    channelId: ChannelId;
+    name: string;
+    startAt: UnixtimeMS;
+    minutesBefore: number;
+    userId: number | null;
+    createdAt: UnixtimeMS;
+}
+export interface ProgramReminderItems { reminders: ProgramReminder[]; }
+export interface ProgramReminderResponse { reminder: ProgramReminder | null; }
+export interface AddProgramReminderOption { programId: ProgramId; minutesBefore: number; }

@@ -5,6 +5,7 @@ import { cloneDeep } from 'lodash';
 import * as apid from '../../../../../api';
 import * as event from '../../../lib/event';
 import DateUtil from '../../../util/DateUtil';
+import { createTimeReserveOption, createTimeSpecificationSearchOption, getRuleOptionMode } from '@/util/TimeSpecificationOption.mjs';
 import IScheduleApiModel from '../../api/schedule/IScheduleApiModel';
 import IChannelModel from '../../channels/IChannelModel';
 import IServerConfigModel from '../../serverConfig/IServerConfigModel';
@@ -177,6 +178,11 @@ export default class SearchState implements ISearchState {
                 description: false,
                 extended: false,
             },
+            ignoreKeywordMatch: 'any',
+            isFuzzy: false,
+            isGenreExclusion: false,
+            isChannelExclusion: false,
+            isTimeExclusion: false,
             channels: [],
             broadcastWave: {
                 GR: {
@@ -368,6 +374,7 @@ export default class SearchState implements ISearchState {
             isShowSubgenres: true,
             startTime: undefined,
             rangeTime: undefined,
+            timeRanges: [],
             week: {
                 mon: true,
                 tue: true,
@@ -593,19 +600,25 @@ export default class SearchState implements ISearchState {
     private initTimeReserveOption(): void {
         this.timeReserveOption = {
             keyword: null,
-            channel: undefined,
-            startTime: null,
-            endTime: null,
-            week: {
-                mon: false,
-                tue: false,
-                wed: false,
-                thu: false,
-                fri: false,
-                sat: false,
-                sun: false,
-            },
+            channels: [],
+            times: [this.createEmptyTimeReserveRange()],
         };
+    }
+
+    public setTimeSpecification(value: boolean | null): void {
+        const enabled = value === true;
+        if (enabled === this.isTimeSpecification) return;
+        this.isTimeSpecification = enabled;
+        if (enabled) this.initTimeReserveOption();
+        else this.initSearchOption();
+    }
+
+    public addTimeReserveRange(): void {
+        this.timeReserveOption?.times.push(this.createEmptyTimeReserveRange());
+    }
+
+    private createEmptyTimeReserveRange(): TimeReserveOption['times'][number] {
+        return { startTime: null, endTime: null, week: { mon: false, tue: false, wed: false, thu: false, fri: false, sat: false, sun: false } };
     }
 
     /**
@@ -615,10 +628,13 @@ export default class SearchState implements ISearchState {
         this.reserveOption = {
             enable: true,
             allowEndLack: true,
+            startMarginSec: null,
+            endMarginSec: null,
             priority: 3,
             conflictPolicy: 'ALLOW_END_LACK',
             avoidDuplicate: this.settingModel.getSavedValue().isCheckAvoidDuplicate,
             periodToAvoidDuplicate: null,
+            tags: [],
         };
     }
 
@@ -676,7 +692,7 @@ export default class SearchState implements ISearchState {
      */
     private setRuleOption(rule: apid.Rule): void {
         this.isTimeSpecification = rule.isTimeSpecification;
-        if (this.isTimeSpecification === true) {
+        if (getRuleOptionMode(this.isTimeSpecification) === 'time') {
             this.setTimeReserveRuleSearchOption(rule.searchOption);
         } else {
             this.setSearchOption(rule.searchOption);
@@ -698,34 +714,11 @@ export default class SearchState implements ISearchState {
      * @param searchOption: apid.RuleSearchOption
      */
     private setTimeReserveRuleSearchOption(searchOption: apid.RuleSearchOption): void {
-        if (typeof searchOption.keyword === 'undefined') {
-            throw new Error('keywordIsUndefined');
-        }
-
-        if (typeof searchOption.channelIds === 'undefined' || searchOption.channelIds.length === 0) {
-            throw new Error('channelIdsIsUndefined');
-        }
-
-        if (typeof searchOption.times === 'undefined' || searchOption.times.length === 0) {
-            throw new Error('timesIsUndefined');
-        }
-
-        for (const time of searchOption.times) {
-            if (typeof time.start === 'undefined' || typeof time.range === 'undefined') {
-                throw new Error('TimeOptionError');
-            }
-        }
-
-        const start = searchOption.times[0].start;
-        const range = searchOption.times[0].range;
-
-        this.timeReserveOption = {
-            keyword: searchOption.keyword,
-            channel: searchOption.channelIds[0],
-            startTime: typeof start === 'undefined' ? null : this.convertNumToTimepickerStr(start),
-            endTime: typeof start === 'undefined' || typeof range === 'undefined' ? null : this.convertNumToTimepickerStr(start + range),
-            week: this.convertRuleWeekToWeek(searchOption.times[0].week),
-        };
+        this.timeReserveOption = createTimeReserveOption(
+            searchOption,
+            minutes => this.convertMinutesToTimepickerStr(minutes),
+            week => this.convertRuleWeekToWeek(week),
+        );
     }
 
     /**
@@ -760,6 +753,11 @@ export default class SearchState implements ISearchState {
                 extended: !!searchOption.ignoreExtended,
             };
         }
+        this.searchOption.ignoreKeywordMatch = searchOption.ignoreKeywordMatch ?? 'all';
+        this.searchOption.isFuzzy = !!searchOption.isFuzzy;
+        this.searchOption.isGenreExclusion = !!searchOption.isGenreExclusion;
+        this.searchOption.isChannelExclusion = !!searchOption.isChannelExclusion;
+        this.searchOption.isTimeExclusion = !!searchOption.isTimeExclusion;
 
         // 放送局
         if (typeof searchOption.channelIds !== 'undefined') {
@@ -831,6 +829,13 @@ export default class SearchState implements ISearchState {
             this.searchOption.startTime = searchOption.times[0].start;
             this.searchOption.rangeTime = searchOption.times[0].range;
             this.searchOption.week = this.convertRuleWeekToWeek(searchOption.times[0].week);
+            this.searchOption.timeRanges = searchOption.times.map(time => ({
+                startTime: time.start,
+                rangeTime: time.range,
+                startMinute: time.startMinute ?? 0,
+                rangeMinute: time.rangeMinute ?? 0,
+                week: this.convertRuleWeekToWeek(time.week),
+            }));
         }
 
         // 長さ
@@ -862,9 +867,12 @@ export default class SearchState implements ISearchState {
 
         this.reserveOption.enable = reserveOption.enable;
         this.reserveOption.allowEndLack = reserveOption.allowEndLack;
+        this.reserveOption.startMarginSec = reserveOption.startMarginSec ?? null;
+        this.reserveOption.endMarginSec = reserveOption.endMarginSec ?? null;
         this.reserveOption.priority = reserveOption.priority ?? 3;
         this.reserveOption.conflictPolicy = reserveOption.conflictPolicy ?? (reserveOption.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
         this.reserveOption.avoidDuplicate = reserveOption.avoidDuplicate;
+        this.reserveOption.tags = reserveOption.tags ?? [];
 
         if (typeof reserveOption.periodToAvoidDuplicate !== 'undefined') {
             this.reserveOption.periodToAvoidDuplicate = reserveOption.periodToAvoidDuplicate;
@@ -1591,6 +1599,11 @@ export default class SearchState implements ISearchState {
      */
     private createRuleSearchOption(option: SearchOption): apid.RuleSearchOption {
         const ruleOption: apid.RuleSearchOption = {};
+        ruleOption.ignoreKeywordMatch = option.ignoreKeywordMatch;
+        ruleOption.isFuzzy = option.isFuzzy;
+        ruleOption.isGenreExclusion = option.isGenreExclusion;
+        ruleOption.isChannelExclusion = option.isChannelExclusion;
+        ruleOption.isTimeExclusion = option.isTimeExclusion;
         // keyword
         if (option.keyword !== null) {
             ruleOption.keyword = option.keyword;
@@ -1779,15 +1792,16 @@ export default class SearchState implements ISearchState {
         }
 
         // time
-        ruleOption.times = [
-            {
-                week: this.convertWeekToRuleWeek(option.week),
-            },
-        ];
-        if (typeof option.startTime !== 'undefined' && typeof option.rangeTime !== 'undefined') {
-            ruleOption.times[0].start = option.startTime;
-            ruleOption.times[0].range = option.rangeTime;
-        }
+        const ranges =
+            option.timeRanges.length > 0 ? option.timeRanges : [{ startTime: option.startTime, rangeTime: option.rangeTime, startMinute: 0, rangeMinute: 0, week: option.week }];
+        ruleOption.times = ranges.map(range => {
+            const time: apid.SearchTime = { week: this.convertWeekToRuleWeek(range.week) };
+            if (typeof range.startTime !== 'undefined') time.start = range.startTime;
+            if (typeof range.rangeTime !== 'undefined') time.range = range.rangeTime;
+            if (range.startMinute > 0) time.startMinute = range.startMinute;
+            if (range.rangeMinute > 0) time.rangeMinute = range.rangeMinute;
+            return time;
+        });
 
         // isFree
         if (option.isFree === true) {
@@ -2112,6 +2126,11 @@ export default class SearchState implements ISearchState {
         return config === null ? [] : config.encode;
     }
 
+    public getRecordingMarginHint(): string {
+        const margins = this.serverConfig.getConfig()?.recordingMargins ?? { startMarginSec: 5, endMarginSec: 5 };
+        return `空欄なら全体設定 (現在 開始 ${margins.startMarginSec} 秒 / 終了 ${margins.endMarginSec} 秒)`;
+    }
+
     /**
      * エンコードに対応しているか
      */
@@ -2141,7 +2160,7 @@ export default class SearchState implements ISearchState {
     private createAddRuleOption(): apid.AddRuleOption {
         let rule: apid.AddRuleOption | null = null;
 
-        if (this.isTimeSpecification === false) {
+        if (getRuleOptionMode(this.isTimeSpecification) === 'search') {
             if (this.searchOption === null) {
                 throw new Error('SearchOptionIsNull');
             }
@@ -2186,24 +2205,18 @@ export default class SearchState implements ISearchState {
      * @return apid.RuleSearchOption
      */
     private createTimeSpecificationRuleSearchOption(option: TimeReserveOption): apid.RuleSearchOption {
-        if (option.keyword === null || typeof option.channel === 'undefined' || option.startTime === null || option.endTime === null) {
-            throw new Error('TimeReserveOptionIsInvalidValue');
-        }
+        return createTimeSpecificationSearchOption(
+            option,
+            time => this.convertTimepickerStrToNum(time),
+            week => this.convertWeekToRuleWeek(week),
+        );
+    }
 
-        const start = this.convertTimepickerStrToNum(option.startTime);
-        const end = this.convertTimepickerStrToNum(option.endTime);
-
-        return {
-            keyword: option.keyword,
-            channelIds: [option.channel],
-            times: [
-                {
-                    start: start,
-                    range: start <= end ? end - start : 24 * 60 * 60 - (start - end),
-                    week: this.convertWeekToRuleWeek(option.week),
-                },
-            ],
-        };
+    private convertMinutesToTimepickerStr(minutes: number): string {
+        const normalized = ((minutes % (24 * 60)) + 24 * 60) % (24 * 60);
+        return `${Math.floor(normalized / 60)
+            .toString()
+            .padStart(2, '0')}:${(normalized % 60).toString().padStart(2, '0')}`;
     }
 
     /**
@@ -2242,9 +2255,12 @@ export default class SearchState implements ISearchState {
         const reserveOption: apid.RuleReserveOption = {
             enable: option.enable,
             allowEndLack: option.conflictPolicy === 'ALLOW_END_LACK',
+            startMarginSec: option.startMarginSec,
+            endMarginSec: option.endMarginSec,
             priority: option.priority,
             conflictPolicy: option.conflictPolicy,
             avoidDuplicate: option.avoidDuplicate,
+            tags: option.tags,
         };
 
         if (option.periodToAvoidDuplicate !== null) {
