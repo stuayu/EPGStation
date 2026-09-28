@@ -67,6 +67,14 @@ import RecordingResumeCoordinator from './RecordingResumeCoordinator';
  */
 @injectable()
 class RecorderModel implements IRecorderModel {
+    /** 省電力判定用の録画状態を返す */
+    public getPowerState(): 'preparing' | 'recording' | 'waiting' {
+        return this.isRecording
+            ? 'recording'
+            : this.isPrepRecording || this.isPrepRecordInFlight || this.prepRetryTimerId !== null
+              ? 'preparing'
+              : 'waiting';
+    }
     private log: ILogger;
     private config: IConfigFile;
     private programDB: IProgramDB;

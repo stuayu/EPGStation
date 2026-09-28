@@ -3,7 +3,7 @@ import * as socketIo from 'socket.io-client';
 import ApiMutationNotifier from '../../util/ApiMutationNotifier';
 import Util from '../../util/Util';
 import IServerConfigModel from '../serverConfig/IServerConfigModel';
-import ISocketIOModel, { ProgramStartingPayload, ProgramUpdatePayload } from './ISocketIOModel';
+import ISocketIOModel, { ProgramStartingPayload, ProgramUpdatePayload, PowerSuspendingPayload } from './ISocketIOModel';
 
 type SocketCallback = (...args: any[]) => void;
 
@@ -315,6 +315,13 @@ class SocketIOModel implements ISocketIOModel {
      */
     public offProgramStarting(callback: (payload: ProgramStartingPayload) => void): void {
         this.removeListener(SocketIOModel.PROGRAM_STARTING_EVENT, callback);
+    }
+
+    public onPowerSuspending(callback: (payload: PowerSuspendingPayload) => void): void {
+        this.addListener('powerSuspending', callback);
+    }
+    public offPowerSuspending(callback: (payload: PowerSuspendingPayload) => void): void {
+        this.removeListener('powerSuspending', callback);
     }
 
     /**

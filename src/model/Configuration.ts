@@ -387,6 +387,14 @@ namespace Configuration {
     export const ROOT_PATH = path.join(__dirname, '..', '..').replace(new RegExp(`\\${path.sep}$`), '');
 
     export const DEFAULT_VALUE: IConfigFile = {
+        power: {
+            enabled: false,
+            afterRecording: 'none',
+            idleMinutes: 10,
+            minGapMinutes: 30,
+            wakeBeforeSec: 300,
+            commands: {},
+        },
         featureFlags: {},
         reservation: {
             scheduler: 'planner',

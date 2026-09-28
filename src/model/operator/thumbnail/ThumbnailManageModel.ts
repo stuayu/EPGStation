@@ -85,6 +85,10 @@ function areNullableNumbersEqual(left: number | null | undefined, right: number 
 
 @injectable()
 export default class ThumbnailManageModel implements IThumbnailManageModel {
+    /** 実行待ちまたは生成中のサムネイルがあるか返す */
+    public isBusy(): boolean {
+        return this.queuedRecordedIds.size > 0;
+    }
     // 同じ動画で生成に失敗し続けたときに諦める回数。
     // 定期クリーンアップが「サムネイルの無い録画」を毎回拾うため、
     // これが無いと壊れたファイル 1 件で永久にエラーログが出続ける

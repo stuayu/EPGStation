@@ -22,6 +22,10 @@ export interface ProgramStartingPayload {
     startAt: number;
     minutesBefore: number;
 }
+export interface PowerSuspendingPayload {
+    action: string;
+    executeAt: number;
+}
 
 export default interface ISocketIOModel {
     Iinitialize(): void;
@@ -46,6 +50,8 @@ export default interface ISocketIOModel {
     offUpdateProgram(callback: (payload: ProgramUpdatePayload) => void): void;
     onProgramStarting(callback: (payload: ProgramStartingPayload) => void): void;
     offProgramStarting(callback: (payload: ProgramStartingPayload) => void): void;
+    onPowerSuspending(callback: (payload: PowerSuspendingPayload) => void): void;
+    offPowerSuspending(callback: (payload: PowerSuspendingPayload) => void): void;
     onUpdateEncodeState(callback: () => void): void;
     offUpdateEncodeState(callback: () => void): void;
     /**

@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 省電力 Phase G → 2026-09-28
 - 番組開始前リマインダー Phase F → 2026-09-28
 
 - チューナー別予約一覧 Phase E → 2026-09-28
@@ -2852,3 +2853,11 @@ Material WebUI にある番組開始前通知を追加。番組詳細から通�
 EPG の番組更新と EIT[p/f] 更新で保存済み番組情報を再取得し、タイマーを張り直す。開始時刻変更、削除、開始済み番組を更新に反映する。Web Push は未対応。ブラウザを閉じた後にも送るには VAPID 鍵の管理、Push 購読情報のユーザー別保存・解除 API、Service Worker の `push` handler と通知クリック処理、購読失効時の削除が必要。
 
 通知先の既存 `events` 絞り込み設定には自動追加されない。Webhook / Discord へ送る場合は `program.starting` を明示する。
+
+# 省電力 Phase G (2026-09-28)
+
+- 録画・録画準備・エンコード・配信状況と次予約を見て、アイドル時にスタンバイ / 休止 / シャットダウンする Operator 管理機能を追加した。既定無効。
+- Windows Scheduled Task (`-WakeToRun`) と Linux `rtcwake` で次予約前に復帰を登録する。予約変更時に再登録し、失敗時は警告して休止を見送る。
+- 休止 60 秒前に `power.suspending` 通知と Socket.IO イベントを送る。`POST /api/power/cancel` と Web UI バナーで取消可能。認証有効時は管理者限定。
+- Service からエンコード・配信件数を IPC で報告する。
+- テスト: `test/ut/power-manage.test.js` (休止、取消、ウェイク再登録、登録失敗) と既存 `power-policy.test.js`。

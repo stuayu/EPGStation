@@ -9,6 +9,21 @@ info:
 servers: []
 
 paths:
+    /power/cancel:
+        post:
+            summary: 休止予定を取り消す
+            description: 現在予定している休止を取り消し、次に稼働状態からアイドル状態へ移るまで休止を見送る
+            responses:
+                '200':
+                    description: 休止予定を取り消しました
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/PowerCancelResponse' }
+                default:
+                    description: 取り消しに失敗しました
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/Error' }
     /reminders:
         get:
             summary: 番組リマインダー一覧取得
@@ -3647,6 +3662,12 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/StorageItem'
+
+        PowerCancelResponse:
+            type: object
+            required: [canceled]
+            properties:
+                canceled: { type: boolean, description: 休止予定を取り消したか }
 
         Error:
             type: object

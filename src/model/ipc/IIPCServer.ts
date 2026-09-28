@@ -21,4 +21,14 @@ export default interface IIPCServer {
     ): void;
     notifyEitPresent(channelId: number, event: EitOnAirRecord): void;
     setEncode(addOption: apid.AddEncodeProgramOption): void;
+    /** Service から受け取ったエンコード・配信状況を返す */
+    getPowerActivity(): {
+        encodeRunningCount: number;
+        encodeWaitingCount: number;
+        liveStreamCount: number;
+        recordedStreamCount: number;
+        updatedAt: number;
+    };
+    /** 休止予定を Service の Socket.IO へ転送する */
+    notifyPowerSuspending(value: { action: string; executeAt: number }): void;
 }

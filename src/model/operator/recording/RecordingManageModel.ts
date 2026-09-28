@@ -472,6 +472,15 @@ class RecordingManageModel implements IRecordingManageModel {
         return typeof this.recordingIndex[reserveId] !== 'undefined';
     }
 
+    /** 録画中・準備中の件数を返す */
+    public getPowerCounts(): { recordingCount: number; recordingPreparationCount: number } {
+        const states = Object.values(this.recordingIndex).map(recorder => recorder.getPowerState());
+        return {
+            recordingCount: states.filter(state => state === 'recording').length,
+            recordingPreparationCount: states.filter(state => state === 'preparing').length,
+        };
+    }
+
     /**
      * 指定された reserve id の録画をキャンセルする
      * @param reserveId: ReserveId

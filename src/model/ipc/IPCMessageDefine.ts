@@ -14,13 +14,30 @@ export interface ParentMessage {
         | 'notifyProgramUpdated'
         | 'notifyProgramStarting'
         | 'notifyEitPresent'
-        | 'notifyEitPresentToOperator';
+        | 'notifyEitPresentToOperator'
+        | 'powerActivity'
+        | 'notifyPowerSuspending';
     value?: any;
 }
 
 export interface NotifyEitPresentMessage extends ParentMessage {
     type: 'notifyEitPresent';
     value: { channelId: number; event: EitOnAirRecord };
+}
+
+export interface PowerActivityMessage extends ParentMessage {
+    type: 'powerActivity';
+    value: {
+        encodeRunningCount: number;
+        encodeWaitingCount: number;
+        liveStreamCount: number;
+        recordedStreamCount: number;
+        updatedAt: number;
+    };
+}
+export interface NotifyPowerSuspendingMessage extends ParentMessage {
+    type: 'notifyPowerSuspending';
+    value: { action: string; executeAt: number };
 }
 
 export interface NotifyEitPresentToOperatorMessage extends ParentMessage {
@@ -98,6 +115,11 @@ export enum ModelName {
     appSetting = 'appSetting',
     update = 'update',
     reminder = 'reminder',
+    power = 'power',
+}
+
+export enum PowerFunctions {
+    cancel = 'cancel',
 }
 
 export enum ReminderFunctions {

@@ -47,6 +47,13 @@ interface IFunctionIndex {
 
 @injectable()
 export default class IPCServer implements IIPCServer {
+    private powerActivity = {
+        encodeRunningCount: 0,
+        encodeWaitingCount: 0,
+        liveStreamCount: 0,
+        recordedStreamCount: 0,
+        updatedAt: 0,
+    };
     private reservationManage: IReservationManageModel;
     private recordedManage: IRecordedManageModel;
     private importJobManage: IImportJobManageModel;
@@ -97,8 +104,16 @@ export default class IPCServer implements IIPCServer {
 
     public register(child: ChildProcess): void {
         this.child = child;
+        child.once('exit', () => {
+            this.powerActivity.updatedAt = 0;
+        });
 
         this.child.on('message', async (msg: SendMessage) => {
+            if ((<any>msg).type === 'powerActivity') {
+                const value = (<any>msg).value;
+                if (typeof value?.updatedAt === 'number') this.powerActivity = value;
+                return;
+            }
             if ((<any>msg).type === 'notifyEitPresentToOperator') {
                 const value = (<any>msg).value;
                 if (typeof value?.channelId === 'number' && typeof value?.event === 'object') {
@@ -130,6 +145,16 @@ export default class IPCServer implements IIPCServer {
                 });
             }
         });
+    }
+
+    /** Service から受け取ったエンコード・配信状況を返す */
+    public getPowerActivity(): typeof this.powerActivity {
+        return this.powerActivity;
+    }
+
+    /** 休止予定を Service の Socket.IO へ転送する */
+    public notifyPowerSuspending(value: { action: string; executeAt: number }): void {
+        this.child?.send(<any>{ type: 'notifyPowerSuspending', value });
     }
 
     /**
@@ -241,6 +266,7 @@ export default class IPCServer implements IIPCServer {
         this.functions[ModelName.appSetting] = this.getAppSettingFunctions();
         this.functions[ModelName.update] = this.getUpdateFunctions();
         this.functions[ModelName.reminder] = this.getReminderFunctions();
+        this.functions[ModelName.power] = { cancel: async () => container.get<any>('IPowerManageModel').cancel() };
     }
 
     private getReminderFunctions(): IFunctionIndex {

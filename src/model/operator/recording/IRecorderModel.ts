@@ -14,6 +14,8 @@ export interface RecordingResumeInfo {
 export type RecorderModelProvider = () => Promise<IRecorderModel>;
 
 export default interface IRecorderModel {
+    /** 省電力判定用の録画状態を返す */
+    getPowerState(): 'preparing' | 'recording' | 'waiting';
     setTimer(reserve: Reserve, isSuppressLog: boolean): boolean;
     setResumeTimer(reserve: Reserve, isSuppressLog: boolean, info: RecordingResumeInfo): boolean;
     shutdown(): Promise<void>;

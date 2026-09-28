@@ -7,6 +7,8 @@ export type ProgramId = number;
 export type EventId = number;
 export type RuleId = number;
 export type ReserveId = number;
+
+export interface PowerCancelResponse { canceled: boolean; }
 export type RecordedId = number;
 export type RecordedHistoryId = number;
 export type VideoFileId = number;

@@ -1130,6 +1130,34 @@ reservation:
 
 ### epgRealtime
 
+### power
+
+#### 録画後の省電力
+
+`power.enabled` を `true` にし、`afterRecording` を `standby` / `hibernate` / `shutdown` にすると省電力が動きます。録画・録画準備・エンコード・配信がなく、指定したアイドル時間が続き、次の予約の張り付き開始まで `minGapMinutes` 以上ある場合に実行します。既定は無効 (`enabled: false`, `afterRecording: none`) です。休止前 60 秒に `power.suspending` 通知を送り、Web UI から取消できます。取消後は次に稼働状態からアイドル状態へ移るまで休止を見送ります。
+
+| 子項目 | 種類 | デフォルト値 | 説明 |
+| --- | --- | --- | --- |
+| enabled | boolean | false | 省電力を有効にする |
+| afterRecording | string | `none` | `none` / `standby` / `hibernate` / `shutdown` |
+| idleMinutes | number | 10 | 無稼働状態が続く時間 (分) |
+| minGapMinutes | number | 30 | 次の予約までに必要な時間 (分) |
+| wakeBeforeSec | number | 300 | 次の予約開始より何秒早く復帰するか |
+| commands | object | `{}` | `windows` / `linux` の `standby` / `hibernate` / `shutdown` / `wake` コマンド上書き。コマンド文字列はシェルで実行。復帰コマンド内の `%WAKE_AT%` は ISO 時刻、`%WAKE_AT_UNIX%` は Unix 秒へ置換 |
+
+```yaml
+power:
+    enabled: false
+    afterRecording: hibernate
+    idleMinutes: 10
+    minGapMinutes: 30
+    wakeBeforeSec: 300
+```
+
+OS のウェイクタイマー設定と権限は `windows-setup.md` / `linux-setup.md` を参照してください。
+
+### epgRealtime
+
 #### EPG のリアルタイム同期
 
 災害発生時の特別番組への差し替えや前番組の延長による番組情報の変更を、`epgUpdateIntervalTime` の周期を待たずに DB へ反映する。

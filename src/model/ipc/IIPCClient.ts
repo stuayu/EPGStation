@@ -102,6 +102,9 @@ export interface IPCUpdateManageModel {
 export interface IPCProgramReminderManageModel {
     refresh(): Promise<void>;
 }
+export interface IPowerManageModel {
+    cancel(): Promise<void>;
+}
 
 export default interface IIPCClient {
     reserveation: IPCReservationManageModel;
@@ -115,4 +118,5 @@ export default interface IIPCClient {
     appSetting: IPCAppSettingManageModel;
     update: IPCUpdateManageModel;
     reminder: IPCProgramReminderManageModel;
+    power: IPowerManageModel;
 }
