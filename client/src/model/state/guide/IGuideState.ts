@@ -41,6 +41,7 @@ export default interface IGuideState {
     fetchGuide(option: FetchGuideOption): Promise<void>;
     appendGuide(option: FetchGuideOption): Promise<boolean>;
     createProgramDoms(isSingleStation: boolean): void;
+    setReminderProgramIds(programIds: number[]): void;
     updateVisible(content: HTMLElement): void;
     updateGenre(): void;
     updateReserves(): void;

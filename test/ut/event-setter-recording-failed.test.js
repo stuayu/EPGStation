@@ -78,6 +78,7 @@ test('failed は thumbnail と failed 通知を行い、finish / encode を行�
         {},
         { onChange() {} },
         { findId: async () => ({ name: '放送局' }) },
+        { start() {} },
     );
     setter.set();
     const reserve = {

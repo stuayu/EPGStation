@@ -156,6 +156,7 @@ export type NotificationEventType =
     | 'recording.startFailed'
     | 'recording.dropped' // ドロップ検出 (§7.3)
     | 'recording.missed' // 録り逃し検出 (リトライ上限に達し録画を断念)
+    | 'program.starting' // 番組開始前リマインダー
     | 'series.newEpisode' // シリーズ新話追加
     | 'storage.lowSpace'; // ディスク残量低下
 export interface NotificationTargetConfig {

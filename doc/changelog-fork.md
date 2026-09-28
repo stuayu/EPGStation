@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 番組開始前リマインダー Phase F → 2026-09-28
+
 - チューナー別予約一覧 Phase E → 2026-09-28
 
 - チューナー別予約一覧 Phase E → 2026-09-28
@@ -2841,3 +2843,12 @@ planner が保持する `plannedTunerIndex` を ReserveItem に追加し、`GET 
 既定で有効な `recording.reconnectEnabled` により、録画中の上流 EOF / 切断時に同じ録画セッション・ファイルへ再接続する。再接続間の断を gap、接続ごとの状態を attempt として記録する。TS は `TsPacketFramer` で 188 byte 境界に揃え、不完全パケットをファイルへ書かない。書き込みは backpressure に従って上流を pause / resume し、終了時は flush 完了を待つ。追っかけ再生用 `TailStream` は録画中の無成長を最大 60 秒待つ。`reconnectEnabled: false` は切断時に録画失敗・再試行へ戻す。
 
 関連実装: `src/lib/TailStream.ts`, `src/model/operator/recording/{RecordingSink,RecordingStreamEndPolicy,RecordingStreamCreator,RecordingUpstreamSession,TsPacketFramer}.ts`, `src/model/operator/recording/RecorderModel.ts`。
+# 番組開始前リマインダー Phase F (2026-09-28)
+
+Material WebUI にある番組開始前通知を追加。番組詳細から通知時刻を登録し、番組表セルの印と一覧画面で状態を管理できる。既定は開始 5 分前。通知設定済み Webhook / Discord には `program.starting` を送信し、接続中の Web UI には Socket.IO で送り、snackbar を表示する。ブラウザ通知は利用者が許可済みの場合だけ表示する。
+
+実装: `src/db/entities/ProgramReminder.ts`、sqlite / mysql migration、`src/model/operator/reminder/`、`src/model/api/reminder/`、`src/model/service/api/reminders/`、IPC / Socket.IO、`client/src/components/guide/ProgramDialog.vue`、`client/src/views/Reminders.vue`。
+
+EPG の番組更新と EIT[p/f] 更新で保存済み番組情報を再取得し、タイマーを張り直す。開始時刻変更、削除、開始済み番組を更新に反映する。Web Push は未対応。ブラウザを閉じた後にも送るには VAPID 鍵の管理、Push 購読情報のユーザー別保存・解除 API、Service Worker の `push` handler と通知クリック処理、購読失効時の削除が必要。
+
+通知先の既存 `events` 絞り込み設定には自動追加されない。Webhook / Discord へ送る場合は `program.starting` を明示する。

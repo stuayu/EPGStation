@@ -75,6 +75,8 @@ function eventTitle(type: NotificationEventType): string {
             return '録画に失敗しました';
         case 'recording.startFailed':
             return '録画開始前に失敗しました';
+        case 'program.starting':
+            return '番組がまもなく始まります';
         default:
             return '録画に失敗しました';
     }

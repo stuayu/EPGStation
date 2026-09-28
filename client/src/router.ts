@@ -27,6 +27,7 @@ import SeriesPending from './views/SeriesPending.vue';
 import Logs from './views/Logs.vue';
 import Storages from './views/Storages.vue';
 import WatchHistory from './views/WatchHistory.vue';
+import Reminders from './views/Reminders.vue';
 import WatchOnAir from './views/WatchOnAir.vue';
 import WatchRecorded from './views/WatchRecorded.vue';
 import WatchRecordedStreaming from './views/WatchRecordedStreaming.vue';
@@ -60,6 +61,7 @@ export default createRouter({
         { path: '/recorded/detail/:id', name: 'recorded-detail', component: RecordedDetail },
         { path: '/recorded/streaming/:id', name: 'recorded-streaming', component: WatchRecordedStreaming },
         { path: '/watch-history', name: 'watch-history', component: WatchHistory },
+        { path: '/reminders', name: 'reminders', component: Reminders },
         { path: '/offline-videos', name: 'offline-videos', component: OfflineVideos },
         { path: '/offline-videos/:key', name: 'offline-video-detail', component: OfflineVideoDetail },
         { path: '/offline-videos/:key/watch', name: 'offline-video-watch', component: OfflineVideoWatch },

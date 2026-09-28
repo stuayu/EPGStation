@@ -727,6 +727,8 @@ recording dir has no room: reserveId: 13, using TS2, required: 5350MB, free: 900
 
 Webhook / Discord の `notifications.targets[].events` では `recording.partial` を選択できる。部分録画の警告通知。既存のイベント絞り込み設定には自動追加されないため、通知したい場合は events に明示する。
 
+`program.starting` は番組開始前リマインダーの通知。番組ダイアログから番組ごとに登録し、既定では開始 5 分前に送る。既存の Webhook / Discord target から送信する場合は `events` に `program.starting` を追加する。接続中の Web UI には Socket.IO 経由で通知し、許可済みならブラウザ通知も表示する。ブラウザを閉じている間の Web Push は未対応。
+
 ```yaml
 featureFlags:
     annictSync: false

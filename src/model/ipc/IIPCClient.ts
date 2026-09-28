@@ -99,6 +99,10 @@ export interface IPCUpdateManageModel {
     restart(): Promise<apid.UpdateRestartResult>;
 }
 
+export interface IPCProgramReminderManageModel {
+    refresh(): Promise<void>;
+}
+
 export default interface IIPCClient {
     reserveation: IPCReservationManageModel;
     recorded: IPCRecordedManageModel;
@@ -110,4 +114,5 @@ export default interface IIPCClient {
     series: IPCSeriesManageModel;
     appSetting: IPCAppSettingManageModel;
     update: IPCUpdateManageModel;
+    reminder: IPCProgramReminderManageModel;
 }

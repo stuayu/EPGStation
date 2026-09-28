@@ -20,7 +20,7 @@ import IServerStatusState from '@/model/state/serverStatus/IServerStatusState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { Container } from 'inversify';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
-import ISocketIOModel from '../model/socketio/ISocketIOModel';
+import ISocketIOModel, { ProgramStartingPayload } from '../model/socketio/ISocketIOModel';
 import IColorThemeState from '@/model/state/IColorThemeState';
 import ThemeColorUtil from '@/util/ThemeColorUtil';
 import { isOfflineStartup, setOfflineStartup } from '@/util/OfflineStartup';
@@ -51,7 +51,7 @@ class AppContent extends Vue {
         window.addEventListener('online', this.onBrowserOnline);
         // theme 設定を反映
         ThemeColorUtil.apply(this.$vuetify.theme, this.colorThemeState.getThemeColor());
-        this.$vuetify.theme.change((this.colorThemeState.isDarkTheme()) ? 'dark' : 'light');
+        this.$vuetify.theme.change(this.colorThemeState.isDarkTheme() ? 'dark' : 'light');
 
         // オフライン保存画面では socket.io / status API を起動せず、接続エラー通知を出さない。
         if (isOfflineStartup() === true) return;
@@ -94,6 +94,16 @@ class AppContent extends Vue {
         this.socketIoModel.onDisconnect(this.onDisconnect);
         this.socketIoModel.onConnect(this.onReconnect);
         this.socketIoModel.onConnectError(this.onConnectError);
+        this.socketIoModel.onProgramStarting(this.onProgramStarting);
+    }
+
+    public onProgramStarting(payload: ProgramStartingPayload): void {
+        const startTime = new Date(payload.startAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+        const text = `${payload.minutesBefore} 分後に開始: ${payload.name} (${startTime})`;
+        this.snackbarState.open({ text, timeout: 10000 });
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification('番組開始前通知', { body: text, tag: `program-reminder-${payload.programId}` });
+        }
     }
 
     /**
@@ -186,6 +196,7 @@ class AppContent extends Vue {
         this.socketIoModel.offDisconnect(this.onDisconnect);
         this.socketIoModel.offConnect(this.onReconnect);
         this.socketIoModel.offConnectError(this.onConnectError);
+        this.socketIoModel.offProgramStarting(this.onProgramStarting);
     }
 
     public onBrowserOffline(): void {
@@ -222,5 +233,4 @@ export default toNative(AppContent);
     .app-content
         margin: 0
         overflow-y: auto
-
 </style>

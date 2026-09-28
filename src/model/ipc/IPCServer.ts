@@ -16,6 +16,8 @@ import IRuleManageModel from '../operator/rule/IRuleManageModel';
 import ISeriesBackfillManageModel, { SeriesBackfillOption } from '../operator/series/ISeriesBackfillManageModel';
 import IThumbnailManageModel from '../operator/thumbnail/IThumbnailManageModel';
 import IUpdateManageModel from '../update/IUpdateManageModel';
+import container from '../ModelContainer';
+import IProgramReminderManageModel from '../operator/reminder/IProgramReminderManageModel';
 import IIPCServer from './IIPCServer';
 import {
     AppSettingFunctions,
@@ -177,6 +179,20 @@ export default class IPCServer implements IIPCServer {
         }));
     }
 
+    public notifyProgramStartingClient(
+        payload: {
+            programId: number;
+            channelId: number;
+            name: string;
+            startAt: number;
+            minutesBefore: number;
+        },
+        userId: number | null,
+    ): void {
+        if (this.child === null) return;
+        this.child.send(<any>{ type: 'notifyProgramStarting', value: { ...payload, userId } });
+    }
+
     /** Service 側へ録画中 EIT[p/f] を転送する */
     public notifyEitPresent(channelId: number, event: EitOnAirRecord): void {
         if (this.child === null) return;
@@ -224,6 +240,14 @@ export default class IPCServer implements IIPCServer {
         this.functions[ModelName.series] = this.getSeriesFunctions();
         this.functions[ModelName.appSetting] = this.getAppSettingFunctions();
         this.functions[ModelName.update] = this.getUpdateFunctions();
+        this.functions[ModelName.reminder] = this.getReminderFunctions();
+    }
+
+    private getReminderFunctions(): IFunctionIndex {
+        return {
+            refresh: async () =>
+                await container.get<IProgramReminderManageModel>('IProgramReminderManageModel').refresh(),
+        };
     }
 
     /**

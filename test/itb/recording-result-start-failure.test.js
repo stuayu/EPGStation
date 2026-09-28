@@ -65,6 +65,7 @@ test('503 で開始前リトライを使い切ると API に failed が残り通
         {},
         { onChange() {} },
         { findId: async id => ({ id, name: 'テスト局' }) },
+        { start() {} },
     );
     setter.set();
     harness.recorder.recordingEvent.emitPrepRecordingFailed = (...args) => {

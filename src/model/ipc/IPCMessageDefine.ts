@@ -12,6 +12,7 @@ export interface ParentMessage {
         | 'notifyClient'
         | 'notifyOnAirProgram'
         | 'notifyProgramUpdated'
+        | 'notifyProgramStarting'
         | 'notifyEitPresent'
         | 'notifyEitPresentToOperator';
     value?: any;
@@ -96,6 +97,11 @@ export enum ModelName {
     series = 'series',
     appSetting = 'appSetting',
     update = 'update',
+    reminder = 'reminder',
+}
+
+export enum ReminderFunctions {
+    refresh = 'refresh',
 }
 
 /**

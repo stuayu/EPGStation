@@ -159,6 +159,8 @@ import IOfflineVideoState from './state/offline/IOfflineVideoState';
 import OfflineVideoState from './state/offline/OfflineVideoState';
 import IRecordingResultsApiModel from './api/recordingResults/IRecordingResultsApiModel';
 import RecordingResultsApiModel from './api/recordingResults/RecordingResultsApiModel';
+import IReminderApiModel from './api/reminder/IReminderApiModel';
+import ReminderApiModel from './api/reminder/ReminderApiModel';
 import IRecordingResultsState from './state/recordingResults/IRecordingResultsState';
 import RecordingResultsState from './state/recordingResults/RecordingResultsState';
 
@@ -169,6 +171,7 @@ export default (container: Container): void => {
     container.bind<IPWAConfigModel>('IPWAConfigModel').to(PWAConfigModel).inSingletonScope();
 
     container.bind<IRepositoryModel>('IRepositoryModel').to(RepositoryModel).inSingletonScope();
+    container.bind<IReminderApiModel>('IReminderApiModel').to(ReminderApiModel).inSingletonScope();
     container.bind<IRecordingResultsApiModel>('IRecordingResultsApiModel').to(RecordingResultsApiModel).inSingletonScope();
 
     container.bind<IConfigApiModel>('IConfigApiModel').to(ConfigApiModel).inSingletonScope();

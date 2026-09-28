@@ -9,6 +9,46 @@ info:
 servers: []
 
 paths:
+    /reminders:
+        get:
+            summary: 番組リマインダー一覧取得
+            responses:
+                '200':
+                    description: リマインダー一覧
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/ProgramReminderItems' }
+        post:
+            summary: 番組開始前リマインダー登録
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema: { $ref: '#/components/schemas/AddProgramReminderOption' }
+            responses:
+                '200':
+                    description: 登録したリマインダー
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/ProgramReminderResponse' }
+    /reminders/program/{programId}:
+        get:
+            summary: 番組のリマインダー登録状態取得
+            parameters:
+                - { name: programId, in: path, required: true, schema: { type: integer } }
+            responses:
+                '200':
+                    description: 登録状態
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/ProgramReminderResponse' }
+    /reminders/{reminderId}:
+        delete:
+            summary: 番組開始前リマインダー削除
+            parameters:
+                - { name: reminderId, in: path, required: true, schema: { type: integer } }
+            responses:
+                '200': { description: 削除結果 }
     /tuners:
         get:
             summary: チューナー一覧取得
@@ -202,6 +242,39 @@ paths:
 
 components:
     schemas:
+        ProgramReminder:
+            type: object
+            required: [id, programId, channelId, name, startAt, minutesBefore, userId, createdAt]
+            properties:
+                id: { type: integer }
+                programId: { type: integer }
+                channelId: { type: integer }
+                name: { type: string }
+                startAt: { type: integer }
+                minutesBefore: { type: integer }
+                userId: { type: integer, nullable: true }
+                createdAt: { type: integer }
+        ProgramReminderItems:
+            type: object
+            required: [reminders]
+            properties:
+                reminders:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProgramReminder' }
+        ProgramReminderResponse:
+            type: object
+            required: [reminder]
+            properties:
+                reminder:
+                    allOf:
+                        - { $ref: '#/components/schemas/ProgramReminder' }
+                    nullable: true
+        AddProgramReminderOption:
+            type: object
+            required: [programId, minutesBefore]
+            properties:
+                programId: { type: integer }
+                minutesBefore: { type: integer, minimum: 1, maximum: 1440, default: 5 }
         ConflictPolicy:
             type: string
             enum: [STRICT, ALLOW_END_LACK, ALLOW_HEAD_LACK, ALLOW_PARTIAL, PREEMPT_LOWER_PRIORITY]
