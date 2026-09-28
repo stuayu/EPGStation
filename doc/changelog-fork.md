@@ -15,10 +15,22 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- feature/edcb-parity 全体レビュー指摘の修正 → 2026-09-28
+
 - 録画後コマンド Phase H → 2026-09-28
 - 自動予約の時刻指定枠と単局番組表の期間を拡張 → 2026-09-28
 - 省電力 Phase G → 2026-09-28
 - 番組開始前リマインダー Phase F → 2026-09-28
+
+### feature/edcb-parity 全体レビュー指摘の修正
+
+省電力は休止待機中にも条件を再評価し、予約・エンコード・取り込み・EPG 更新などが始まれば待機を解除する。実休止直前も状態と復帰タイマーを確認する。次の通常予約は開始時刻順で1件だけ取得し、録画準備時間は共通の録画タイミング解決関数を使う。
+
+ルール検索はジャンル NULL を安全に除外し、空の除外語条件を生成しない。分単位時刻を JST の SQL 条件へ移し、あいまい語は最長断片で候補を前絞りする。省電力通知に専用タイトルと警告色を設定する。
+
+番組リマインダーの番組 ID・局 ID を bigint にし、refresh をまとめて直列化、番組取得を一括化して発火済み ID を再登録しない。手動予約編集で録画後コマンドを保存し、単局番組表は時間軸を24時間に保ち EPG 終端で追加取得を止める。
+
+関連実装: `src/model/operator/power/PowerManageModel.ts`, `src/model/db/ProgramDB.ts`, `src/db/{entities,migrations}`, `src/model/operator/{reservation,reminder}`, `client/src/model/state/guide/GuideState.ts`, `src/model/notification/NotificationRequest.ts`。
 
 - チューナー別予約一覧 Phase E → 2026-09-28
 
@@ -79,7 +91,6 @@ planner が保持する `plannedTunerIndex` を ReserveItem に追加し、`GET 
 予約ごとにチューナーを指定する機能は追加しない。Mirakurun に指定 API がなく、EPGStation 内だけの制約を利用者が実割当と誤認するため。
 
 関連実装: `src/model/api/tuner/`, `src/model/service/api/tuners.ts`, `src/model/api/reserve/ReserveApiModel.ts`, `src/util/TunerTimelineUtil.ts`, `client/src/views/Reserves.vue`, `api.yml`, `api.d.ts`。
-
 
 ### チューナー別予約一覧 Phase E
 
@@ -2858,6 +2869,7 @@ planner が保持する `plannedTunerIndex` を ReserveItem に追加し、`GET 
 既定で有効な `recording.reconnectEnabled` により、録画中の上流 EOF / 切断時に同じ録画セッション・ファイルへ再接続する。再接続間の断を gap、接続ごとの状態を attempt として記録する。TS は `TsPacketFramer` で 188 byte 境界に揃え、不完全パケットをファイルへ書かない。書き込みは backpressure に従って上流を pause / resume し、終了時は flush 完了を待つ。追っかけ再生用 `TailStream` は録画中の無成長を最大 60 秒待つ。`reconnectEnabled: false` は切断時に録画失敗・再試行へ戻す。
 
 関連実装: `src/lib/TailStream.ts`, `src/model/operator/recording/{RecordingSink,RecordingStreamEndPolicy,RecordingStreamCreator,RecordingUpstreamSession,TsPacketFramer}.ts`, `src/model/operator/recording/RecorderModel.ts`。
+
 # 番組開始前リマインダー Phase F (2026-09-28)
 
 Material WebUI にある番組開始前通知を追加。番組詳細から通知時刻を登録し、番組表セルの印と一覧画面で状態を管理できる。既定は開始 5 分前。通知設定済み Webhook / Discord には `program.starting` を送信し、接続中の Web UI には Socket.IO で送り、snackbar を表示する。ブラウザ通知は利用者が許可済みの場合だけ表示する。

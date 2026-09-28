@@ -14,6 +14,7 @@ import IPowerCommandExecutor from '../../power/IPowerCommandExecutor';
 import IImportJobManageModel from '../recorded/IImportJobManageModel';
 import IThumbnailManageModel from '../thumbnail/IThumbnailManageModel';
 import IEPGUpdateExecutorManageModel from '../../epgUpdater/IEPGUpdateExecutorManageModel';
+import { resolveRecordingTimingConfig } from '../recording/RecordingTimingConfig';
 
 @injectable()
 export default class PowerManageModel implements IPowerManageModel {
@@ -47,7 +48,6 @@ export default class PowerManageModel implements IPowerManageModel {
         recordingEvent.setPrepRecordingFailed(() => this.evaluate());
         recordingEvent.setRecordingFailed(() => this.evaluate());
         reserveEvent.setUpdated(() => {
-            void this.refreshWakeTimer().catch(() => undefined);
             void this.evaluate();
         });
     }
@@ -56,7 +56,6 @@ export default class PowerManageModel implements IPowerManageModel {
     public start(): void {
         if (this.running) return;
         this.running = true;
-        void this.refreshWakeTimer().catch(() => undefined);
         this.timer = setInterval(() => this.evaluate(), 5_000);
         this.timer.unref?.();
         void this.evaluate();
@@ -82,27 +81,32 @@ export default class PowerManageModel implements IPowerManageModel {
     }
 
     private async getNextReservationAt(): Promise<number | null> {
-        const [reserves] = await this.reserveDB.findAll({ type: 'normal', isHalfWidth: false });
-        const prepMs = (this.configuration.getConfig().recording?.prepRecSec ?? 0) * 1000;
-        const candidates = reserves
-            .filter(reserve => reserve.startAt > Date.now())
-            .map(reserve => reserve.startAt - (reserve.startMarginSec ?? 0) * 1000 - prepMs);
-        return candidates.length === 0 ? null : Math.min(...candidates);
+        const reserve = await this.reserveDB.findNextUpcomingForPower(Date.now());
+        if (reserve === null) return null;
+        const recording = this.configuration.getConfig().recording;
+        const timing = resolveRecordingTimingConfig(
+            recording,
+            this.configuration.getConfig().timeSpecifiedStartMargin ?? 0,
+            this.configuration.getConfig().timeSpecifiedEndMargin ?? 0,
+            reserve,
+        );
+        return reserve.startAt - timing.startMarginMs - timing.prepMs;
     }
 
-    private async refreshWakeTimer(): Promise<boolean> {
+    private async refreshWakeTimer(nextAt?: number | null): Promise<boolean> {
         const config = this.getConfig();
         if (config.enabled !== true || config.afterRecording === 'none') {
             if (this.lastWakeSignature !== '') await this.clearWakeTimer();
             this.lastWakeSignature = '';
             return true;
         }
-        let nextAt: number | null;
-        try {
-            nextAt = await this.getNextReservationAt();
-        } catch (err) {
-            this.log.system.warn(err);
-            return false;
+        if (typeof nextAt === 'undefined') {
+            try {
+                nextAt = await this.getNextReservationAt();
+            } catch (err) {
+                this.log.system.warn(err);
+                return false;
+            }
         }
         const wakeAt = nextAt === null ? null : nextAt - config.wakeBeforeSec * 1000;
         const signature = wakeAt === null ? '' : String(wakeAt);
@@ -116,7 +120,7 @@ export default class PowerManageModel implements IPowerManageModel {
         const now = Date.now();
         if (wakeAt <= now) {
             if (hadWakeTimer) await this.clearWakeTimer();
-            return true;
+            return nextAt === null;
         }
         try {
             if (process.platform === 'win32') {
@@ -179,7 +183,6 @@ export default class PowerManageModel implements IPowerManageModel {
         const service = this.ipc.getPowerActivity();
         const counts = this.recordingManage.getPowerCounts();
         const now = Date.now();
-        const wakeReady = await this.refreshWakeTimer();
         let nextReservationAt: number | null;
         try {
             nextReservationAt = await this.getNextReservationAt();
@@ -187,6 +190,7 @@ export default class PowerManageModel implements IPowerManageModel {
             this.log.system.warn(err);
             return;
         }
+        const wakeReady = await this.refreshWakeTimer(nextReservationAt);
         const busy =
             now - service.updatedAt > 30_000 ||
             counts.recordingCount +
@@ -218,8 +222,12 @@ export default class PowerManageModel implements IPowerManageModel {
             },
             now,
         );
-        if (!decision.shouldSuspend || this.canceledUntilBusy || this.suspendTimer !== null || wakeReady === false)
+        if (!decision.shouldSuspend || this.canceledUntilBusy || wakeReady === false) {
+            if (this.suspendTimer !== null) clearTimeout(this.suspendTimer);
+            this.suspendTimer = null;
             return;
+        }
+        if (this.suspendTimer !== null) return;
         this.ipc.notifyPowerSuspending({ action: config.afterRecording, executeAt: now + 60_000 });
         void this.notification
             .dispatch('power.suspending', { action: config.afterRecording, executeAt: now + 60_000 })
@@ -234,6 +242,44 @@ export default class PowerManageModel implements IPowerManageModel {
     private async suspend(action: 'none' | 'standby' | 'hibernate' | 'shutdown'): Promise<void> {
         const config = this.getConfig();
         if (this.canceledUntilBusy || action === 'none') return;
+        let nextReservationAt: number | null;
+        try {
+            nextReservationAt = await this.getNextReservationAt();
+        } catch (err) {
+            this.log.system.warn(err);
+            return;
+        }
+        if ((await this.refreshWakeTimer(nextReservationAt)) === false) return;
+        // ウェイク登録の待ち時間中に予約が変わっていないか確認する。
+        try {
+            const latestReservationAt = await this.getNextReservationAt();
+            if (latestReservationAt !== nextReservationAt) {
+                nextReservationAt = latestReservationAt;
+                if ((await this.refreshWakeTimer(nextReservationAt)) === false) return;
+            }
+        } catch (err) {
+            this.log.system.warn(err);
+            return;
+        }
+        const service = this.ipc.getPowerActivity();
+        const counts = this.recordingManage.getPowerCounts();
+        const now = Date.now();
+        const decision = decidePowerAction(
+            config,
+            {
+                idleSinceAt: this.idleSinceAt,
+                ...counts,
+                encodeRunningCount: service.encodeRunningCount,
+                encodeWaitingCount: service.encodeWaitingCount,
+                liveStreamCount: service.liveStreamCount,
+                recordedStreamCount: service.recordedStreamCount,
+                heavyTaskRunning:
+                    this.importJobs.hasRunningJobs() || this.thumbnailManage.isBusy() || this.epgUpdater.isBusy(),
+                nextReservationAt,
+            },
+            now,
+        );
+        if (this.canceledUntilBusy || !decision.shouldSuspend || now - service.updatedAt > 30_000) return;
         try {
             const commands = config.commands;
             const custom = process.platform === 'win32' ? commands?.windows?.[action] : commands?.linux?.[action];

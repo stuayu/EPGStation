@@ -5,7 +5,7 @@ export class AddProgramReminder1790572500000 implements MigrationInterface {
 
     public async up(q: QueryRunner): Promise<void> {
         await q.query(
-            'CREATE TABLE `program_reminder` (`id` int NOT NULL AUTO_INCREMENT, `programId` int NOT NULL, `channelId` int NOT NULL, `name` text NOT NULL, `startAt` bigint NOT NULL, `minutesBefore` int NOT NULL DEFAULT 5, `userId` int NULL, `createdAt` bigint NOT NULL, INDEX `IDX_program_reminder_programId` (`programId`), PRIMARY KEY (`id`)) ENGINE=InnoDB',
+            'CREATE TABLE `program_reminder` (`id` int NOT NULL AUTO_INCREMENT, `programId` bigint NOT NULL, `channelId` bigint NOT NULL, `name` text NOT NULL, `startAt` bigint NOT NULL, `minutesBefore` int NOT NULL DEFAULT 5, `userId` int NULL, `createdAt` bigint NOT NULL, INDEX `IDX_program_reminder_programId` (`programId`), PRIMARY KEY (`id`)) ENGINE=InnoDB',
         );
     }
 

@@ -15,6 +15,9 @@ import { createProgramStartingPayload } from './ProgramReminderPayload';
 export default class ProgramReminderManageModel implements IProgramReminderManageModel {
     private readonly log: ILogger;
     private readonly scheduler: ProgramReminderScheduler;
+    private refreshing = false;
+    private refreshAgain = false;
+    private readonly firedIds = new Set<number>();
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -40,15 +43,31 @@ export default class ProgramReminderManageModel implements IProgramReminderManag
 
     /** 保存済みリマインダーの番組時刻を再取得してタイマーを張り直す */
     public async refresh(): Promise<void> {
+        if (this.refreshing) {
+            this.refreshAgain = true;
+            return;
+        }
+        this.refreshing = true;
+        do {
+            this.refreshAgain = false;
+            await this.refreshOnce();
+        } while (this.refreshAgain);
+        this.refreshing = false;
+    }
+
+    private async refreshOnce(): Promise<void> {
         try {
             const reminders = await this.reminderDB.findAll();
             const active: ProgramReminder[] = [];
+            const programs = await this.programDB.findIds(reminders.map(reminder => reminder.programId));
+            const programById = new Map(programs.map(program => [program.id, program]));
             for (const reminder of reminders) {
+                if (this.firedIds.has(reminder.id)) continue;
                 if (reminder.startAt <= Date.now()) {
                     await this.reminderDB.delete(reminder.id, reminder.userId);
                     continue;
                 }
-                const program = await this.programDB.findId(reminder.programId);
+                const program = programById.get(reminder.programId) ?? null;
                 if (program === null || program.startAt <= Date.now()) {
                     await this.reminderDB.delete(reminder.id, reminder.userId);
                     continue;
@@ -80,6 +99,8 @@ export default class ProgramReminderManageModel implements IProgramReminderManag
     }
 
     private async fire(reminder: ProgramReminder): Promise<void> {
+        if (this.firedIds.has(reminder.id)) return;
+        this.firedIds.add(reminder.id);
         try {
             const latest = await this.programDB.findId(reminder.programId);
             if (latest === null || Number(latest.startAt) <= Date.now()) {
@@ -97,6 +118,7 @@ export default class ProgramReminderManageModel implements IProgramReminderManag
             this.ipc.notifyProgramStartingClient(payload, reminder.userId);
             await this.refresh();
         } catch (err) {
+            this.firedIds.delete(reminder.id);
             this.log.system.error('program reminder notification error');
             this.log.system.error(err);
         }

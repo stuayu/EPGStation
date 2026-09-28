@@ -1859,6 +1859,7 @@ class ReservationManageModel implements IReservationManageModel {
         newReserve.priority = option.priority ?? newReserve.priority;
         newReserve.startMarginSec = option.startMarginSec ?? null;
         newReserve.endMarginSec = option.endMarginSec ?? null;
+        newReserve.finishCommandName = option.finishCommandName ?? null;
         newReserve.conflictPolicy = option.conflictPolicy ?? (option.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
         newReserve.allowEndLack = newReserve.conflictPolicy === 'ALLOW_END_LACK';
         if (typeof option.tags !== 'undefined') {

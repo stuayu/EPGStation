@@ -5,6 +5,7 @@ import { cloneDeep } from 'lodash';
 import * as apid from '../../../../../api';
 import * as event from '../../../lib/event';
 import DateUtil from '../../../util/DateUtil';
+import { createTimeReserveOption, createTimeSpecificationSearchOption, getRuleOptionMode } from '@/util/TimeSpecificationOption.mjs';
 import IScheduleApiModel from '../../api/schedule/IScheduleApiModel';
 import IChannelModel from '../../channels/IChannelModel';
 import IServerConfigModel from '../../serverConfig/IServerConfigModel';
@@ -691,7 +692,7 @@ export default class SearchState implements ISearchState {
      */
     private setRuleOption(rule: apid.Rule): void {
         this.isTimeSpecification = rule.isTimeSpecification;
-        if (this.isTimeSpecification === true) {
+        if (getRuleOptionMode(this.isTimeSpecification) === 'time') {
             this.setTimeReserveRuleSearchOption(rule.searchOption);
         } else {
             this.setSearchOption(rule.searchOption);
@@ -713,34 +714,11 @@ export default class SearchState implements ISearchState {
      * @param searchOption: apid.RuleSearchOption
      */
     private setTimeReserveRuleSearchOption(searchOption: apid.RuleSearchOption): void {
-        if (typeof searchOption.keyword === 'undefined') {
-            throw new Error('keywordIsUndefined');
-        }
-
-        if (typeof searchOption.channelIds === 'undefined' || searchOption.channelIds.length === 0) {
-            throw new Error('channelIdsIsUndefined');
-        }
-
-        if (typeof searchOption.times === 'undefined' || searchOption.times.length === 0) {
-            throw new Error('timesIsUndefined');
-        }
-
-        for (const time of searchOption.times) {
-            if (typeof time.start === 'undefined' || typeof time.range === 'undefined') {
-                throw new Error('TimeOptionError');
-            }
-        }
-
-        this.timeReserveOption = {
-            keyword: searchOption.keyword,
-            channels: searchOption.channelIds.slice(),
-            times: searchOption.times.map(time => {
-                if (typeof time.start === 'undefined' || typeof time.range === 'undefined') throw new Error('TimeOptionError');
-                const startMinutes = Math.floor(time.start / 3600) * 60 + (time.startMinute ?? Math.floor(time.start % 3600 / 60));
-                const rangeMinutes = Math.floor(time.range / 3600) * 60 + (time.rangeMinute ?? Math.floor(time.range % 3600 / 60));
-                return { startTime: this.convertMinutesToTimepickerStr(startMinutes), endTime: this.convertMinutesToTimepickerStr(startMinutes + rangeMinutes), week: this.convertRuleWeekToWeek(time.week) };
-            }),
-        };
+        this.timeReserveOption = createTimeReserveOption(
+            searchOption,
+            minutes => this.convertMinutesToTimepickerStr(minutes),
+            week => this.convertRuleWeekToWeek(week),
+        );
     }
 
     /**
@@ -851,7 +829,7 @@ export default class SearchState implements ISearchState {
             this.searchOption.startTime = searchOption.times[0].start;
             this.searchOption.rangeTime = searchOption.times[0].range;
             this.searchOption.week = this.convertRuleWeekToWeek(searchOption.times[0].week);
-            this.searchOption.timeRanges = searchOption.times.map((time) => ({
+            this.searchOption.timeRanges = searchOption.times.map(time => ({
                 startTime: time.start,
                 rangeTime: time.range,
                 startMinute: time.startMinute ?? 0,
@@ -1814,8 +1792,9 @@ export default class SearchState implements ISearchState {
         }
 
         // time
-        const ranges = option.timeRanges.length > 0 ? option.timeRanges : [{ startTime: option.startTime, rangeTime: option.rangeTime, startMinute: 0, rangeMinute: 0, week: option.week }];
-        ruleOption.times = ranges.map((range) => {
+        const ranges =
+            option.timeRanges.length > 0 ? option.timeRanges : [{ startTime: option.startTime, rangeTime: option.rangeTime, startMinute: 0, rangeMinute: 0, week: option.week }];
+        ruleOption.times = ranges.map(range => {
             const time: apid.SearchTime = { week: this.convertWeekToRuleWeek(range.week) };
             if (typeof range.startTime !== 'undefined') time.start = range.startTime;
             if (typeof range.rangeTime !== 'undefined') time.range = range.rangeTime;
@@ -2181,7 +2160,7 @@ export default class SearchState implements ISearchState {
     private createAddRuleOption(): apid.AddRuleOption {
         let rule: apid.AddRuleOption | null = null;
 
-        if (this.isTimeSpecification === false) {
+        if (getRuleOptionMode(this.isTimeSpecification) === 'search') {
             if (this.searchOption === null) {
                 throw new Error('SearchOptionIsNull');
             }
@@ -2226,27 +2205,18 @@ export default class SearchState implements ISearchState {
      * @return apid.RuleSearchOption
      */
     private createTimeSpecificationRuleSearchOption(option: TimeReserveOption): apid.RuleSearchOption {
-        if (option.keyword === null || option.channels.length === 0 || option.times.length === 0) {
-            throw new Error('TimeReserveOptionIsInvalidValue');
-        }
-        const times = option.times.map(time => {
-            if (time.startTime === null || time.endTime === null) throw new Error('TimeReserveOptionIsInvalidValue');
-            const start = this.convertTimepickerStrToNum(time.startTime) / 60;
-            const end = this.convertTimepickerStrToNum(time.endTime) / 60;
-            const range = (end >= start ? end - start : 24 * 60 - start + end);
-            return { start: Math.floor(start / 60) * 3600, startMinute: start % 60, range: Math.floor(range / 60) * 3600, rangeMinute: range % 60, week: this.convertWeekToRuleWeek(time.week) };
-        });
-
-        return {
-            keyword: option.keyword,
-            channelIds: option.channels.slice(),
-            times,
-        };
+        return createTimeSpecificationSearchOption(
+            option,
+            time => this.convertTimepickerStrToNum(time),
+            week => this.convertWeekToRuleWeek(week),
+        );
     }
 
     private convertMinutesToTimepickerStr(minutes: number): string {
         const normalized = ((minutes % (24 * 60)) + 24 * 60) % (24 * 60);
-        return `${Math.floor(normalized / 60).toString().padStart(2, '0')}:${(normalized % 60).toString().padStart(2, '0')}`;
+        return `${Math.floor(normalized / 60)
+            .toString()
+            .padStart(2, '0')}:${(normalized % 60).toString().padStart(2, '0')}`;
     }
 
     /**

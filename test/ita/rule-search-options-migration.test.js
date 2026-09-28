@@ -62,10 +62,7 @@ test('SQLite のルール検索で既存 all は従来結果を維持し、any �
         });
         const findIds = async ignoreKeywordMatch => {
             const query = { strs: [], param: {} };
-            programDB.setKeywordQuery(
-                { ignoreKeyword: 'cat dog', ignoreKeywordMatch, ignoreName: true },
-                query,
-            );
+            programDB.setKeywordQuery({ ignoreKeyword: 'cat dog', ignoreKeywordMatch, ignoreName: true }, query);
             return source
                 .createQueryBuilder()
                 .select('program.id', 'id')
@@ -77,6 +74,62 @@ test('SQLite のルール検索で既存 all は従来結果を維持し、any �
 
         assert.deepEqual(await findIds('all'), [{ id: 2 }, { id: 3 }]);
         assert.deepEqual(await findIds('any'), [{ id: 3 }]);
+    } finally {
+        await source.destroy();
+    }
+});
+
+test('NULL の副ジャンルがある番組をジャンル除外検索で残す', async () => {
+    const source = new DataSource({ type: 'better-sqlite3', database: ':memory:' });
+    await source.initialize();
+    try {
+        await source.query(
+            'CREATE TABLE program (id INTEGER PRIMARY KEY, genre1 INTEGER, genre2 INTEGER, genre3 INTEGER)',
+        );
+        await source.query('INSERT INTO program VALUES (1, 7, NULL, NULL), (2, 4, NULL, NULL)');
+        const op = { isEnableCS: () => false, getLikeStr: () => 'like' };
+        const programDB = new ProgramDB({ getLogger: () => ({}) }, { getConfig: () => ({}) }, op, { run: cb => cb() });
+        const query = { strs: [], param: {} };
+        programDB.setGenresQuery({ genres: [{ genre: 4 }], isGenreExclusion: true }, query);
+        const rows = await source
+            .createQueryBuilder()
+            .select('program.id', 'id')
+            .from('program', 'program')
+            .where(query.strs.join(' and '), query.param)
+            .getRawMany();
+        assert.deepEqual(rows, [{ id: 1 }]);
+    } finally {
+        await source.destroy();
+    }
+});
+
+test('分単位の曜日・時刻範囲は SQLite SQL で先に絞る', async () => {
+    const source = new DataSource({ type: 'better-sqlite3', database: ':memory:' });
+    await source.initialize();
+    try {
+        await source.query('CREATE TABLE program (id INTEGER PRIMARY KEY, startAt INTEGER)');
+        const utc = (day, hour, minute) => Date.UTC(2026, 8, 28 + day, hour - 9, minute);
+        await source.query('INSERT INTO program VALUES (1, ?), (2, ?), (3, ?)', [
+            utc(0, 23, 29),
+            utc(0, 23, 30),
+            utc(1, 1, 29),
+        ]);
+        const op = { isEnableCS: () => false, getLikeStr: () => 'like' };
+        const programDB = new ProgramDB({ getLogger: () => ({}) }, { getConfig: () => ({}) }, op, { run: cb => cb() });
+        const query = { strs: [], param: {} };
+        programDB.setMinuteTimesQuery(
+            { times: [{ week: 0x02, start: 23, startMinute: 30, range: 2 }] },
+            query,
+            'better-sqlite3',
+        );
+        const rows = await source
+            .createQueryBuilder()
+            .select('program.id', 'id')
+            .from('program', 'program')
+            .where(query.strs.join(' and '), query.param)
+            .orderBy('program.id')
+            .getRawMany();
+        assert.deepEqual(rows, [{ id: 2 }, { id: 3 }]);
     } finally {
         await source.destroy();
     }

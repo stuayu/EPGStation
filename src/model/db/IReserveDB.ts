@@ -48,6 +48,7 @@ export default interface IReserveDB {
     updateMany(values: IReserveUpdateValues): Promise<void>;
     findId(reserveId: apid.ReserveId): Promise<Reserve | null>;
     findAll(option: apid.GetReserveOption): Promise<[Reserve[], number]>;
+    findNextUpcomingForPower(now: number): Promise<Reserve | null>;
     findLists(option?: apid.GetReserveListsOption): Promise<Reserve[]>;
     findProgramId(programId: apid.ProgramId): Promise<Reserve[]>;
     findProgramIds(programIds: apid.ProgramId[]): Promise<Reserve[]>;
