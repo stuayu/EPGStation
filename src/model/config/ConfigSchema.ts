@@ -985,6 +985,15 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         fields: [{ path: 'recordingFinishCommand', label: '録画が終了したとき', type: 'string' }],
     },
     {
+        key: 'recordingFinishCommands',
+        label: '名前付き録画終了コマンド',
+        hint: '予約・ルールごとに選択するコマンド。コマンド名と本文は YAML で設定する',
+        requiresRestart: true,
+        editable: 'ymlOnly',
+        reason: 'notYetWired',
+        fields: [],
+    },
+    {
         key: 'recordingFailedCommand',
         label: '録画中にエラーが起きたとき',
         requiresRestart: true,

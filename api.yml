@@ -614,6 +614,10 @@ components:
                             type: integer
                         endMarginSec:
                             type: integer
+                recordingFinishCommandNames:
+                    description: 予約・ルールで選択できる録画終了コマンド名
+                    type: array
+                    items: { type: string }
                 hardwareEncoder:
                     description: 起動時に実測したハードウェアエンコーダ能力
                     type: object
@@ -1562,6 +1566,10 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/RecordedTagId'
+                finishCommandName:
+                    description: 録画終了コマンド名。null または未指定なら既定コマンド
+                    type: string
+                    nullable: true
 
         ReserveSaveOption:
             description: 予約保存オプション
@@ -1653,6 +1661,10 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/RecordedTagId'
+                finishCommandName:
+                    description: 録画終了コマンド名。null または未指定なら既定コマンド
+                    type: string
+                    nullable: true
                 saveOption:
                     $ref: '#/components/schemas/ReserveSaveOption'
                 encodeOption:
@@ -1752,6 +1764,10 @@ components:
                     $ref: '#/components/schemas/ReserveId'
                 ruleId:
                     $ref: '#/components/schemas/RuleId'
+                finishCommandName:
+                    description: 録画終了コマンド名。null または未指定なら既定コマンド
+                    type: string
+                    nullable: true
                 isSkip:
                     type: boolean
                 isConflict:
@@ -2778,6 +2794,7 @@ components:
                 tags:
                     type: array
                     items: { $ref: '#/components/schemas/RecordedTagId' }
+                finishCommandName: { type: string, nullable: true }
 
         RecordingPresetItem:
             type: object

@@ -315,6 +315,7 @@ export default class RuleDB implements IRuleDB {
             startMarginSec: rule.reserveOption.startMarginSec ?? null,
             endMarginSec: rule.reserveOption.endMarginSec ?? null,
             tags: typeof rule.reserveOption.tags === 'undefined' ? null : JSON.stringify(rule.reserveOption.tags),
+            finishCommandName: rule.reserveOption.finishCommandName ?? null,
             parentDirectoryName: null,
             directory: null,
             recordedFormat: null,
@@ -453,6 +454,7 @@ export default class RuleDB implements IRuleDB {
                 avoidDuplicate: rule.avoidDuplicate,
                 startMarginSec: rule.startMarginSec,
                 endMarginSec: rule.endMarginSec,
+                finishCommandName: rule.finishCommandName,
             },
         };
 
@@ -492,6 +494,9 @@ export default class RuleDB implements IRuleDB {
         }
         if (rule.tags !== null) {
             convertedRule.reserveOption.tags = JSON.parse(rule.tags);
+        }
+        if (rule.finishCommandName !== null) {
+            convertedRule.reserveOption.finishCommandName = rule.finishCommandName;
         }
 
         /**

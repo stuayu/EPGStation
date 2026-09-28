@@ -1662,6 +1662,18 @@ recordingPrepRecFailedCommand: '/usr/bin/logger prepfailed'
 
 - 録画終了時に実行するコマンド
 
+### recordingFinishCommands
+
+- 予約・ルールごとに選択できる録画終了コマンドの一覧
+- `/api/config` には `name` のみ返す。設定 API では `cmd` を伏せ字にする
+- `finishCommandName` が null・未指定、または登録名が見つからない場合は `recordingFinishCommand` を使う
+
+```yaml
+recordingFinishCommands:
+  - name: move-to-archive
+    cmd: '/bin/bash /home/hoge/archive.sh'
+```
+
 ### recordingFailedCommand
 
 - 録画中のエラー発生時に実行するコマンド

@@ -56,6 +56,7 @@
                                         persistent-hint
                                     ></v-select>
                                 </div>
+                                <v-select class="finish-command-input" v-model="finishCommandName" :items="finishCommandItems" label="録画後コマンド" clearable></v-select>
                             </SearchOptionRow>
                         </v-expansion-panel-text>
                     </v-expansion-panel>
@@ -175,6 +176,7 @@
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import ISearchState, { EncodedOption, ReserveOption, SaveOption } from '@/model/state/search/ISearchState';
+import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
@@ -203,6 +205,20 @@ class SearchRuleOption extends Vue {
         { title: '下位予約を押し出す', value: 'PREEMPT_LOWER_PRIORITY' },
     ];
     public searchState: ISearchState = container.get<ISearchState>('ISearchState');
+    private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
+
+    get finishCommandItems(): Array<{ title: string; value: string | null }> {
+        const names = (this.serverConfigModel.getConfig() as any)?.recordingFinishCommandNames ?? [];
+        return [{ title: '既定のコマンド', value: null }, ...names.map((name: string) => ({ title: name, value: name }))];
+    }
+
+    get finishCommandName(): string | null {
+        return (this.reserveOptionValue as ReserveOption & { finishCommandName?: string | null }).finishCommandName ?? null;
+    }
+
+    set finishCommandName(value: string | null) {
+        (this.reserveOptionValue as ReserveOption & { finishCommandName?: string | null }).finishCommandName = value;
+    }
 
     get reserveOptionValue(): ReserveOption {
         if (this.searchState.reserveOption === null) {
@@ -310,6 +326,10 @@ export default toNative(SearchRuleOption);
         max-width: 240px
         min-width: 160px
         flex: 1 1 180px
+    .finish-command-input
+        max-width: 320px
+        min-width: 180px
+        flex: 1 1 240px
     .period
         max-width: 90px
     .directory

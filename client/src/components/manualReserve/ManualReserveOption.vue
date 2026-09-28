@@ -60,6 +60,7 @@
                                     persistent-hint
                                 ></v-select>
                             </div>
+                            <v-select class="finish-command-input" v-model="finishCommandName" :items="finishCommandItems" label="録画後コマンド" clearable></v-select>
                         </SearchOptionRow>
                     </v-expansion-panel-text>
                 </v-expansion-panel>
@@ -188,6 +189,7 @@ import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import IManualReserveState from '@/model/state/reserve/manual/IManualReserveState';
 import IRecordingPresetState from '@/model/state/recordingPreset/IRecordingPresetState';
+import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import { RecordingPresetItem, RecordingPresetSettings } from '@/model/api/recordingPreset/IRecordingPresetApiModel';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
@@ -202,6 +204,20 @@ class ManualReserveOption extends Vue {
     public isSavePresetDialogOpen: boolean = false;
     public newPresetName: string = '';
     private presetState: IRecordingPresetState = container.get<IRecordingPresetState>('IRecordingPresetState');
+    private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
+
+    get finishCommandItems(): Array<{ title: string; value: string | null }> {
+        const names = (this.serverConfigModel.getConfig() as any)?.recordingFinishCommandNames ?? [];
+        return [{ title: '既定のコマンド', value: null }, ...names.map((name: string) => ({ title: name, value: name }))];
+    }
+
+    get finishCommandName(): string | null {
+        return (this.manualReserveState.reserveOption as typeof this.manualReserveState.reserveOption & { finishCommandName?: string | null }).finishCommandName ?? null;
+    }
+
+    set finishCommandName(value: string | null) {
+        (this.manualReserveState.reserveOption as typeof this.manualReserveState.reserveOption & { finishCommandName?: string | null }).finishCommandName = value;
+    }
 
     public async created(): Promise<void> {
         await this.presetState.fetch();
@@ -225,6 +241,7 @@ class ManualReserveOption extends Vue {
             startMarginSec: settings.startMarginSec,
             endMarginSec: settings.endMarginSec,
             tags: [...settings.tags],
+            finishCommandName: settings.finishCommandName ?? null,
         });
         Object.assign(this.manualReserveState.saveOption, {
             parentDirectoryName: settings.parentDirectoryName,
@@ -260,6 +277,7 @@ class ManualReserveOption extends Vue {
             startMarginSec: this.manualReserveState.reserveOption.startMarginSec,
             endMarginSec: this.manualReserveState.reserveOption.endMarginSec,
             tags: [...this.manualReserveState.reserveOption.tags],
+            finishCommandName: this.finishCommandName,
         } as RecordingPresetSettings;
         await this.presetState.add({ name: this.newPresetName.trim(), settings });
         this.presets = this.presetState.getItems();
@@ -307,6 +325,10 @@ export default toNative(ManualReserveOption);
         max-width: 220px
         min-width: 160px
         flex: 1 1 180px
+    .finish-command-input
+        max-width: 320px
+        min-width: 180px
+        flex: 1 1 240px
     .directory
         max-width: 150px
     .option-panels

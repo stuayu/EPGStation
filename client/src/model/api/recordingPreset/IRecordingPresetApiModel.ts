@@ -18,6 +18,7 @@ export interface RecordingPresetSettings {
     startMarginSec: number | null;
     endMarginSec: number | null;
     tags: number[];
+    finishCommandName?: string | null;
 }
 
 export interface RecordingPresetItem {

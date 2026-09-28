@@ -391,7 +391,8 @@ export default class EventSetter implements IEventSetter {
                 });
 
             // コマンド実行
-            if (policy.runFinishCommand === true) this.externalCommandManage.addRecordingFinishCmd(recorded);
+            if (policy.runFinishCommand === true)
+                this.externalCommandManage.addRecordingFinishCmd(recorded, reserve.finishCommandName);
             if (policy.notification !== null) {
                 void this.notification.dispatch(policy.notification, {
                     recordedId: recorded.id,

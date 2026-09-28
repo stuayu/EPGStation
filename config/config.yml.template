@@ -920,6 +920,9 @@ stream:
 # recordingPrepRecFailedCommand: '/usr/bin/logger prepfailed'
 # recordingStartCommand: '/bin/node /home/hoge/fuga.js start'
 # recordingFinishCommand: '/bin/bash /home/hoge/foo.sh end'
+# recordingFinishCommands:
+#   - name: move-to-archive
+#     cmd: '/bin/bash /home/hoge/archive.sh'
 # recordingFailedCommand: '/usr/bin/logger recfailed'
 # encodingFinishCommand: '/bin/node /home/hoge/fuga.js finish'
 # reserveNewAddtionCommand: '/bin/node /home/hoge/fuga.js reserve'
