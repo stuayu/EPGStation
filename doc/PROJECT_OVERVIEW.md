@@ -107,6 +107,7 @@ flowchart TB
 | --- | --- |
 | API エンドポイント追加 | `api.yml` → `src/model/service/api/**` → `src/model/api/**` → `ModelContainerSetter.ts` → `api.d.ts` |
 | DB スキーマ変更 | `src/db/entities/` → `npm run orm-gen --db=<mysql\|sqlite> --name=<Name>` (**両方**) → `src/model/db/**` |
+| チューナー別予約 | `src/model/operator/reservation/Tuner.ts`, `src/model/api/tuner/`, `client/src/views/Reserves.vue`。`/api/reserves` の `plannedTunerIndex` と `/api/tuners` を使う。画面の割当は EPGStation 内部の planner 計画で、実チューナーは Mirakurun が選ぶ。予約単位のチューナー指定は提供しない。 |
 | 録画・予約ロジック | `src/model/operator/{reservation,recording,rule}/**` |
 | 自動予約ルール検索 | `src/model/db/ProgramDB.ts`, `client/src/components/search/SearchOption.vue` | 除外キーワードは既存ルールが `all`、新規作成は `any`。あいまい検索は既定無効。曜日・時刻範囲は複数指定でき、日跨ぎ後は翌日の曜日で判定する。SQLite の正規表現・大文字小文字対応状況は `/api/config` の `ruleSearchCapabilities` を参照 |
 | EPG 更新 | `src/model/epgUpdater/**` |
