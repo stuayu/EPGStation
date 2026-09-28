@@ -18,4 +18,5 @@ export default interface ISocketIOManageModel {
         userId: number | null,
     ): void;
     notifyUpdateEncodeProgress(): void;
+    notifyPowerSuspending(value: { action: string; executeAt: number }): void;
 }

@@ -62,6 +62,7 @@ export default class IPCClient implements IIPCClient {
     public appSetting!: IPCAppSettingManageModel;
     public update!: IPCUpdateManageModel;
     public reminder!: import('./IIPCClient').IPCProgramReminderManageModel;
+    public power!: import('./IIPCClient').IPowerManageModel;
 
     private log: ILogger;
     private listener: events.EventEmitter = new events.EventEmitter();
@@ -92,6 +93,7 @@ export default class IPCClient implements IIPCClient {
         this.setAppSetting();
         this.setUpdate();
         this.setReminder();
+        this.power = { cancel: () => this.send({ model: ModelName.power, func: 'cancel' }) };
     }
 
     /**
@@ -127,6 +129,9 @@ export default class IPCClient implements IIPCClient {
                 if (typeof value?.programId === 'number' && typeof value?.name === 'string') {
                     this.socketIO.notifyProgramStarting(value, typeof value.userId === 'number' ? value.userId : null);
                 }
+            } else if ((<ParentMessage>msg).type === 'notifyPowerSuspending') {
+                const value = (<any>msg).value;
+                if (typeof value?.executeAt === 'number') this.socketIO.notifyPowerSuspending(value);
             } else if ((<ParentMessage>msg).type === 'notifyEitPresent') {
                 const value = (<any>msg).value;
                 if (typeof value?.channelId === 'number' && typeof value?.event === 'object') {

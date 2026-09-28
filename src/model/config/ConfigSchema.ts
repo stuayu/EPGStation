@@ -94,6 +94,43 @@ export interface ConfigSchemaEntry {
 
 export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
     {
+        key: 'power',
+        label: '省電力',
+        hint: '録画や配信などの処理がなく、次の予約まで時間がある場合に PC を休止する。既定では無効',
+        requiresRestart: false,
+        editable: 'gui',
+        fields: [
+            { path: 'power.enabled', label: '省電力を有効にする', type: 'boolean' },
+            {
+                path: 'power.afterRecording',
+                label: '録画後の動作',
+                type: 'select',
+                items: [
+                    { title: '何もしない', value: 'none' },
+                    { title: 'スタンバイ', value: 'standby' },
+                    { title: '休止状態', value: 'hibernate' },
+                    { title: 'シャットダウン', value: 'shutdown' },
+                ],
+            },
+            { path: 'power.idleMinutes', label: '無操作とみなす時間 (分)', type: 'number' },
+            { path: 'power.minGapMinutes', label: '次の予約までの最小時間 (分)', type: 'number' },
+            { path: 'power.wakeBeforeSec', label: '予約前に復帰する秒数', type: 'number' },
+            {
+                path: 'power.commands.windows.standby',
+                label: 'Windows スタンバイコマンド',
+                type: 'string',
+                hint: '空欄なら標準コマンドを使う',
+            },
+            { path: 'power.commands.windows.hibernate', label: 'Windows 休止コマンド', type: 'string' },
+            { path: 'power.commands.windows.shutdown', label: 'Windows シャットダウンコマンド', type: 'string' },
+            { path: 'power.commands.windows.wake', label: 'Windows 復帰登録コマンド', type: 'string' },
+            { path: 'power.commands.linux.standby', label: 'Linux スタンバイコマンド', type: 'string' },
+            { path: 'power.commands.linux.hibernate', label: 'Linux 休止コマンド', type: 'string' },
+            { path: 'power.commands.linux.shutdown', label: 'Linux シャットダウンコマンド', type: 'string' },
+            { path: 'power.commands.linux.wake', label: 'Linux 復帰登録コマンド', type: 'string' },
+        ],
+    },
+    {
         key: 'reservation',
         label: '予約スケジューラ',
         hint: '予約の競合判定とチューナー割当方式',

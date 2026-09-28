@@ -4,6 +4,10 @@
         <Navigation></Navigation>
         <ServerStatusToast v-if="offlineStartup === false"></ServerStatusToast>
         <UpdateNotification v-if="offlineStartup === false"></UpdateNotification>
+        <v-banner v-if="powerSuspending !== null" class="power-suspending-banner" color="warning" icon="mdi-power-sleep" lines="one">
+            <v-banner-text>約 1 分後に PC を休止します。操作を続ける場合は取り消してください。</v-banner-text>
+            <template #actions><v-btn :loading="cancelingPower" @click="cancelPowerSuspending">取り消す</v-btn></template>
+        </v-banner>
         <router-view></router-view>
         <Snackbar v-if="offlineStartup === false"></Snackbar>
     </v-app>
@@ -20,7 +24,8 @@ import IServerStatusState from '@/model/state/serverStatus/IServerStatusState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { Container } from 'inversify';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
-import ISocketIOModel, { ProgramStartingPayload } from '../model/socketio/ISocketIOModel';
+import ISocketIOModel, { ProgramStartingPayload, PowerSuspendingPayload } from '../model/socketio/ISocketIOModel';
+import IRepositoryModel from '@/model/api/IRepositoryModel';
 import IColorThemeState from '@/model/state/IColorThemeState';
 import ThemeColorUtil from '@/util/ThemeColorUtil';
 import { isOfflineStartup, setOfflineStartup } from '@/util/OfflineStartup';
@@ -36,6 +41,8 @@ import { isOfflineStartup, setOfflineStartup } from '@/util/OfflineStartup';
 class AppContent extends Vue {
     public isDisconnected: boolean = false;
     public offlineStartup: boolean = isOfflineStartup();
+    public powerSuspending: PowerSuspendingPayload | null = null;
+    public cancelingPower: boolean = false;
     // 接続失敗の通知は繰り返さない (socket.io は再接続を試み続けるため)
     private hasNotifiedConnectError: boolean = false;
     private connectErrorTimerId: number | null = null;
@@ -45,6 +52,7 @@ class AppContent extends Vue {
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private colorThemeState: IColorThemeState = container.get<IColorThemeState>('IColorThemeState');
     private serverStatusState: IServerStatusState = container.get<IServerStatusState>('IServerStatusState');
+    private repository: IRepositoryModel = container.get<IRepositoryModel>('IRepositoryModel');
 
     public async created(): Promise<void> {
         window.addEventListener('offline', this.onBrowserOffline);
@@ -95,6 +103,25 @@ class AppContent extends Vue {
         this.socketIoModel.onConnect(this.onReconnect);
         this.socketIoModel.onConnectError(this.onConnectError);
         this.socketIoModel.onProgramStarting(this.onProgramStarting);
+        this.socketIoModel.onPowerSuspending(this.onPowerSuspending);
+    }
+
+    public onPowerSuspending(payload: PowerSuspendingPayload): void {
+        this.powerSuspending = payload;
+    }
+
+    public async cancelPowerSuspending(): Promise<void> {
+        this.cancelingPower = true;
+        try {
+            await this.repository.post('/power/cancel');
+            this.powerSuspending = null;
+            this.snackbarState.open({ text: '休止予定を取り消しました', timeout: 5000 });
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ color: 'error', text: '休止予定の取り消しに失敗しました', timeout: 5000 });
+        } finally {
+            this.cancelingPower = false;
+        }
     }
 
     public onProgramStarting(payload: ProgramStartingPayload): void {
@@ -197,6 +224,7 @@ class AppContent extends Vue {
         this.socketIoModel.offConnect(this.onReconnect);
         this.socketIoModel.offConnectError(this.onConnectError);
         this.socketIoModel.offProgramStarting(this.onProgramStarting);
+        this.socketIoModel.offPowerSuspending(this.onPowerSuspending);
     }
 
     public onBrowserOffline(): void {

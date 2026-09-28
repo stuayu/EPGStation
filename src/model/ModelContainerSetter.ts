@@ -362,6 +362,12 @@ import IHardwareEncoderProcessExecutor from './encoder/IHardwareEncoderProcessEx
 import HardwareEncoderProcessExecutor from './encoder/HardwareEncoderProcessExecutor';
 import IHardwareEncoderDetector from './encoder/IHardwareEncoderDetector';
 import HardwareEncoderDetector from './encoder/HardwareEncoderDetector';
+import IPowerManageModel from './operator/power/IPowerManageModel';
+import PowerManageModel from './operator/power/PowerManageModel';
+import IPowerCommandExecutor from './power/IPowerCommandExecutor';
+import PowerCommandExecutor from './power/PowerCommandExecutor';
+import IPowerApiModel from './api/power/IPowerApiModel';
+import PowerApiModel from './api/power/PowerApiModel';
 
 /**
  * container に 各 Model を登録する
@@ -378,6 +384,7 @@ export const set = (container: Container): void => {
     container.bind<ISecretCrypto>('ISecretCrypto').to(SecretCrypto).inSingletonScope();
 
     container.bind<INotificationDispatcher>('INotificationDispatcher').to(NotificationDispatcher).inSingletonScope();
+    container.bind<IPowerCommandExecutor>('IPowerCommandExecutor').to(PowerCommandExecutor).inSingletonScope();
 
     container.bind<IConnectionCheckModel>('IConnectionCheckModel').to(ConnectionCheckModel).inSingletonScope();
 
@@ -543,6 +550,8 @@ export const set = (container: Container): void => {
     container.bind<IImportWatchManageModel>('IImportWatchManageModel').to(ImportWatchManageModel).inSingletonScope();
 
     container.bind<IRecordingManageModel>('IRecordingManageModel').to(RecordingManageModel).inSingletonScope();
+    container.bind<IPowerManageModel>('IPowerManageModel').to(PowerManageModel).inSingletonScope();
+    container.bind<IPowerApiModel>('IPowerApiModel').to(PowerApiModel).inSingletonScope();
 
     container.bind<IRecordedTagManadeModel>('IRecordedTagManadeModel').to(RecordedTagManadeModel).inSingletonScope();
 

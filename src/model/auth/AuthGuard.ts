@@ -99,6 +99,7 @@ const ADMIN_API_PREFIXES: readonly string[] = [
     '/update',
     // ログ閲覧 (設定値や環境情報が出るため管理者限定にする)
     '/logs',
+    '/power/cancel',
 ];
 
 /**

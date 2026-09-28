@@ -17,6 +17,8 @@
 
 ## プロセス構成
 
+省電力 (`power.enabled`) は Operator の `PowerManageModel` が録画・予約イベントと定期確認で状態を判定する。Service は IPC でエンコード待ち/実行中とライブ/録画配信数を 10 秒ごとに報告する。次予約前のウェイクタイマー登録に失敗した周期は休止しない。休止予定は `power.suspending` 通知と Socket.IO で配信し、`POST /api/power/cancel` で次の idle 遷移まで取消できる。既定無効。
+
 サムネイルは録画単位で現在の代表VideoFileを選ぶ。`encoded`を優先し、同種なら最新ID、無ければ先頭を使う。Thumbnailには生成元VideoFileのID・サイズ・解析時刻を保存し、VideoFile追加・サイズ更新・メタデータ解析で世代が変わった場合だけ再生成する。
 
 `dist/index.js` (親) を起動すると **2 プロセス構成** で動作する。

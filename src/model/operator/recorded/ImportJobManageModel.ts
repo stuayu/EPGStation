@@ -18,6 +18,10 @@ interface InternalJob extends ImportJobStatus {
  */
 @injectable()
 export default class ImportJobManageModel implements IImportJobManageModel {
+    /** 実行中の取り込みジョブがあるか返す */
+    public hasRunningJobs(): boolean {
+        return [...this.jobs.values()].some(job => job.isRunning);
+    }
     private log: ILogger;
     private recordedManage: IRecordedManageModel;
     private jobs: Map<ImportJobId, InternalJob> = new Map();

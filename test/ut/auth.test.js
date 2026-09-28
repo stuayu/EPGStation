@@ -278,7 +278,7 @@ test('the anonymous setting is reported to the client', async () => {
 
 test('anonymous users must never reach the admin only endpoints', () => {
     // 匿名許可でも、この一覧に載っているパスはログイン + 管理者権限が要る
-    for (const path of ['/settings/system', '/settings/config', '/auth/users', '/update/run', '/logs']) {
+    for (const path of ['/settings/system', '/settings/config', '/auth/users', '/update/run', '/logs', '/power/cancel']) {
         assert.equal(isAdminApiPath(path), true, path);
     }
     // 閲覧・予約などは匿名でも通す対象

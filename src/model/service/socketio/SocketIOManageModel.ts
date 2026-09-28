@@ -202,4 +202,8 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
             }, 200);
         }
     }
+
+    public notifyPowerSuspending(value: { action: string; executeAt: number }): void {
+        for (const io of this.ios) io.sockets.emit('powerSuspending', value);
+    }
 }

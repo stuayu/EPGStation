@@ -38,6 +38,18 @@ export interface StreamingCmd {
     cmd?: string;
 }
 
+export interface PowerConfig {
+    enabled?: boolean;
+    afterRecording?: 'none' | 'standby' | 'hibernate' | 'shutdown';
+    idleMinutes?: number;
+    minGapMinutes?: number;
+    wakeBeforeSec?: number;
+    commands?: {
+        windows?: Partial<Record<'standby' | 'hibernate' | 'shutdown' | 'wake', string>>;
+        linux?: Partial<Record<'standby' | 'hibernate' | 'shutdown' | 'wake', string>>;
+    };
+}
+
 // 配信コンテナ種別 (LL-HLS は別フェーズで追加予定のためまだ含めない)
 export type StreamContainer = 'm2ts' | 'm2tsll' | 'mp4' | 'webm' | 'hls';
 
@@ -158,7 +170,8 @@ export type NotificationEventType =
     | 'recording.missed' // 録り逃し検出 (リトライ上限に達し録画を断念)
     | 'program.starting' // 番組開始前リマインダー
     | 'series.newEpisode' // シリーズ新話追加
-    | 'storage.lowSpace'; // ディスク残量低下
+    | 'storage.lowSpace' // ディスク残量低下
+    | 'power.suspending'; // 省電力移行前
 export interface NotificationTargetConfig {
     name: string;
     type: 'webhook' | 'discord';
@@ -237,6 +250,7 @@ export interface AmatsukazeConfig {
  * config ファイル形式
  */
 export default interface IConfigFile {
+    power?: PowerConfig;
     port?: number;
     socketioPort?: number;
     clientSocketioPort?: number;

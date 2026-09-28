@@ -109,6 +109,25 @@ dbtype: sqlite
 # reservation:
 #   scheduler: planner
 
+# 省電力 (録画等がなく、次の予約まで十分な時間がある場合に PC を休止)。既定無効
+# power:
+#   enabled: false
+#   afterRecording: none # none / standby / hibernate / shutdown
+#   idleMinutes: 10
+#   minGapMinutes: 30
+#   wakeBeforeSec: 300
+#   commands:
+#     windows:
+#       standby: ''
+#       hibernate: ''
+#       shutdown: ''
+#       wake: ''
+#     linux:
+#       standby: ''
+#       hibernate: ''
+#       shutdown: ''
+#       wake: ''
+
 # 過去の番組表データを残す時間 (時間)
 # 0: 終了した番組を順次削除する (既定) / -1: 削除せず無期限に残す
 # epgRetentionTime: 0

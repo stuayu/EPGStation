@@ -3,6 +3,8 @@ import * as mapid from '../../../../node_modules/mirakurun/api';
 import { IReserveUpdateValues } from '../../event/IReserveEvent';
 
 export default interface IRecordingManageModel {
+    /** 録画中・準備中の件数を返す */
+    getPowerCounts(): { recordingCount: number; recordingPreparationCount: number };
     setTuner(tuners: mapid.TunerDevice[]): void;
     cleanup(): Promise<void>;
     setupStartupTimers(): Promise<void>;
