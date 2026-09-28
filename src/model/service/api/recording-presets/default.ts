@@ -21,7 +21,9 @@ get.apiDoc = {
         200: {
             description: '既定プリセットまたは null',
             content: {
-                'application/json': { schema: { $ref: '#/components/schemas/RecordingPresetItem', nullable: true } },
+                'application/json': {
+                    schema: { nullable: true, allOf: [{ $ref: '#/components/schemas/RecordingPresetItem' }] },
+                },
             },
         },
     },

@@ -16,6 +16,7 @@ export default interface ISocketIOManageModel {
     notifyProgramStarting(
         payload: { programId: number; channelId: number; name: string; startAt: number; minutesBefore: number },
         userId: number | null,
+        notificationTargetCount: number,
     ): void;
     notifyUpdateEncodeProgress(): void;
     notifyPowerSuspending(value: { action: string; executeAt: number }): void;

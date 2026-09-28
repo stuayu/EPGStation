@@ -127,7 +127,11 @@ export default class IPCClient implements IIPCClient {
             } else if ((<ParentMessage>msg).type === 'notifyProgramStarting') {
                 const value = (<any>msg).value;
                 if (typeof value?.programId === 'number' && typeof value?.name === 'string') {
-                    this.socketIO.notifyProgramStarting(value, typeof value.userId === 'number' ? value.userId : null);
+                    this.socketIO.notifyProgramStarting(
+                        value,
+                        typeof value.userId === 'number' ? value.userId : null,
+                        typeof value.notificationTargetCount === 'number' ? value.notificationTargetCount : 0,
+                    );
                 }
             } else if ((<ParentMessage>msg).type === 'notifyPowerSuspending') {
                 const value = (<any>msg).value;

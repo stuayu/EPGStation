@@ -18,6 +18,7 @@ export const delete_: Operation = async (req, res) => {
         else api.responseServerError(res, message);
     }
 };
+export { delete_ as delete };
 delete_.apiDoc = {
     summary: '番組開始前リマインダー削除',
     tags: ['reminders'],

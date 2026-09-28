@@ -8,7 +8,7 @@
         "start": "node dist/index.js",
         "build": "npm run build-server && npm run build-client",
         "build-win": "npm run build-server && npm run build-client-win",
-        "build-server": "npm run lint && npm run format && npm run compile",
+        "build-server": "npm run lint && npm run format && node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && npm run compile",
         "build-client": "cd client && npm run build",
         "build-client-win": "cd client && npm run build-win",
         "lint": "eslint --fix src/",
