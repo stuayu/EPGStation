@@ -9,10 +9,10 @@ export default class ProgramReminder extends BaseEntity {
     @PrimaryGeneratedColumn({ type: 'integer' })
     public id!: number;
 
-    @Column({ type: 'integer' })
+    @Column({ type: 'bigint' })
     public programId!: number;
 
-    @Column({ type: 'integer' })
+    @Column({ type: 'bigint' })
     public channelId!: number;
 
     @Column({ type: 'text' })

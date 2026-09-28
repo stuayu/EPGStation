@@ -10,7 +10,11 @@ const system = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {
 const logger = { getLogger: () => ({ system: system }) };
 const encodeLogger = { getLogger: () => ({ system: system, encode: system }) };
 
-function createModel(findRule = async () => { throw new Error('rule db failed'); }) {
+function createModel(
+    findRule = async () => {
+        throw new Error('rule db failed');
+    },
+) {
     const execution = new ExecutionManagementModel(logger);
     const reserveDB = { findId: async () => null, findRuleId: async () => [] };
     const ruleDB = { findId: findRule };
@@ -34,6 +38,42 @@ test('edit の例外後も次の実行権をすぐ取得できる', async () => 
     const id = await execution.getExecution(0, 50);
     assert.equal(typeof id, 'string');
     execution.unLockExecution(id);
+});
+
+test('手動予約編集で録画後コマンドを保存する', async () => {
+    const reserve = {
+        id: 1,
+        priority: 3,
+        startMarginSec: null,
+        endMarginSec: null,
+        finishCommandName: 'old',
+        saveOption: null,
+        encodeMode1: null,
+        startAt: Date.now() + 60_000,
+        endAt: Date.now() + 120_000,
+    };
+    const logger = { getLogger: () => ({ system }) };
+    const reserveDB = {
+        findId: async () => reserve,
+        updateOnce: async value => {
+            Object.assign(reserve, value);
+        },
+        findTimeRanges: async () => [],
+    };
+    const execution = new ExecutionManagementModel(logger);
+    const model = new ReservationManageModel(
+        logger,
+        { getConfig: () => ({ reservation: { scheduler: 'legacy' } }) },
+        execution,
+        { checkEncodeOption: () => true },
+        reserveDB,
+        {},
+        {},
+        {},
+        { emitUpdated: () => {} },
+    );
+    await model.edit(1, { finishCommandName: 'notify-after-recording' });
+    assert.equal(reserve.finishCommandName, 'notify-after-recording');
 });
 
 test('updateRule の DB 例外後も次の実行権をすぐ取得できる', async () => {
@@ -81,7 +121,9 @@ test('EncodeManageModel.push の provider 例外後も実行権をすぐ取得�
         encodeLogger,
         { getConfig: () => ({ concurrentEncodeNum: 1 }) },
         execution,
-        async () => { throw new Error('provider failed'); },
+        async () => {
+            throw new Error('provider failed');
+        },
         { emitAddEncode: () => {} },
         { save: async () => {}, load: async () => null },
     );
@@ -101,7 +143,14 @@ test('EncodeManageModel.cancel のキャンセル例外後も実行権をすぐ�
         { emitCancelEncode: () => {} },
         { save: async () => {}, load: async () => null },
     );
-    model.runningQueue = [{ getEncodeId: () => 7, cancel: async () => { throw new Error('cancel failed'); } }];
+    model.runningQueue = [
+        {
+            getEncodeId: () => 7,
+            cancel: async () => {
+                throw new Error('cancel failed');
+            },
+        },
+    ];
     await assert.rejects(model.cancel(7), /cancel failed/);
     const id = await execution.getExecution(0, 50);
     assert.equal(typeof id, 'string');

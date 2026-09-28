@@ -4,6 +4,7 @@ import { IGuideGenreSettingStorageModel, IGuideGenreSettingValue } from '@/model
 import { sortByKeyStationAndPrefecture } from '@/util/AffiliationChannelSort';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
 import { normalizeSeriesTitleForGuide } from '@/util/SeriesTitleNormalizer';
+import { resolveSingleStationAppend } from '@/util/GuideAppendPolicy.mjs';
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../api';
 import DateUtil from '../../../util/DateUtil';
@@ -275,10 +276,12 @@ class GuideState implements IGuideState {
             for (const schedule of schedules) {
                 schedule.programs = schedule.programs.filter(program => !existingIds.has(program.id));
                 added += schedule.programs.length;
-                this.schedules.push(schedule);
+                if (schedule.programs.length > 0) this.schedules.push(schedule);
             }
-            this.endAt = startAt + days * 24 * 60 * 60 * 1000;
-            this.timeLength += days * 24;
+            const append = resolveSingleStationAppend({ startAt, days, added });
+            if (append === null) return false;
+            this.endAt = append.endAt;
+            this.timeLength = append.timeLength;
             this.reserveIndex = await this.reserveUtil.getReserveIndex({ startAt: this.startAt, endAt: this.endAt });
             return added > 0;
         }

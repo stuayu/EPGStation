@@ -32,3 +32,20 @@ test('開始前失敗は警告色の専用通知になる', () => {
     assert.equal(embed.title, '録画開始前に失敗しました');
     assert.equal(embed.color, 15158332);
 });
+
+test('追加通知種別は Discord の既定失敗タイトルへ落ちない', () => {
+    const titles = {
+        'recording.startFailed': '録画開始前に失敗しました',
+        'program.starting': '番組がまもなく始まります',
+        'recording.partial': '録画が一部欠落して終了しました',
+        'power.suspending': 'まもなく省電力状態へ移行します',
+    };
+    for (const [type, title] of Object.entries(titles)) {
+        const embed = JSON.parse(
+            buildNotificationRequest({ name: 'd', type: 'discord', url: 'http://x' }, { ...event, type }).body,
+        ).embeds[0];
+        assert.equal(embed.title, title);
+        assert.notEqual(embed.title, '録画に失敗しました');
+        if (type !== 'program.starting') assert.equal(embed.color, 15158332);
+    }
+});

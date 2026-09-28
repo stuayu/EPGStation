@@ -10,12 +10,7 @@ function createDb() {
         isEnabledRegexp: () => true,
         getLikeStr: () => 'like',
     };
-    const db = new ProgramDB(
-        { getLogger: () => ({}) },
-        { getConfig: () => ({}) },
-        op,
-        { run: callback => callback() },
-    );
+    const db = new ProgramDB({ getLogger: () => ({}) }, { getConfig: () => ({}) }, op, { run: callback => callback() });
     return db;
 }
 
@@ -53,21 +48,18 @@ test('時間帯の分指定は開始と終了を含む半開区間で評価す�
 test('あいまい検索はかな・半角カナ・空白と記号の差を吸収する', () => {
     const db = createDb();
     const program = { name: 'ｶﾞｼﾞｪｯﾄ　A-B', description: '', extended: '' };
+    assert.equal(db.matchFuzzyKeywords(program, { isFuzzy: true, keyword: 'がじぇっと ab', name: true }), true);
+    assert.equal(db.matchFuzzyKeywords(program, { isFuzzy: true, keyword: '存在しない', name: true }), false);
     assert.equal(
-        db.matchFuzzyKeywords(program, { isFuzzy: true, keyword: 'がじぇっと ab', name: true }),
-        true,
-    );
-    assert.equal(
-        db.matchFuzzyKeywords(program, { isFuzzy: true, keyword: '存在しない', name: true }),
-        false,
-    );
-    assert.equal(
-        db.matchFuzzyKeywords({ name: 'ABC', description: '', extended: '' }, {
-            isFuzzy: true,
-            keyword: 'abc',
-            keyCS: true,
-            name: true,
-        }),
+        db.matchFuzzyKeywords(
+            { name: 'ABC', description: '', extended: '' },
+            {
+                isFuzzy: true,
+                keyword: 'abc',
+                keyCS: true,
+                name: true,
+            },
+        ),
         false,
     );
 });
@@ -94,4 +86,32 @@ test('ジャンル・放送局・時間帯の除外指定は一致条件全体�
     const timeQuery = { strs: [], param: {} };
     db.setTimesQuery({ times: [{ week: 2, start: 10, range: 2 }], isTimeExclusion: true }, timeQuery);
     assert.match(timeQuery.strs[0], /^not \(/);
+    assert.match(genreQuery.strs[0], /COALESCE\(genre2, -1\)/);
+});
+
+test('空白だけの除外語や対象項目なしでは空の NOT 条件を追加しない', () => {
+    const db = createDb();
+    for (const option of [
+        { name: true, ignoreKeywordMatch: 'any' },
+        { name: false, description: false, extended: false, ignoreKeywordMatch: 'any' },
+    ]) {
+        const query = { strs: [], param: {} };
+        db.setKeywordOption(
+            '   ',
+            { cs: false, regexp: false, extended: false, description: false, ...option },
+            'ignore',
+            true,
+            query,
+            true,
+        );
+        assert.deepEqual(query.strs, []);
+    }
+});
+
+test('あいまい検索は最長語を候補の SQL で先に絞る', () => {
+    const db = createDb();
+    const query = { strs: [], param: {} };
+    db.setFuzzyCandidateQuery({ isFuzzy: true, keyword: '短い 長い候補文字列', name: true }, query);
+    assert.equal(query.param.fuzzyCandidate, '%長い候補文字列%');
+    assert.match(query.strs[0], /halfWidthName/);
 });
