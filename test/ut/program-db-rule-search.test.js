@@ -89,11 +89,12 @@ test('ジャンル・放送局・時間帯の除外指定は一致条件全体�
     assert.match(genreQuery.strs[0], /COALESCE\(genre2, -1\)/);
 });
 
-test('空白だけの除外語や対象項目なしでは空の NOT 条件を追加しない', () => {
+test('空白だけの語や検索対象なしでは空の NOT 条件を追加しない', () => {
     const db = createDb();
     for (const option of [
         { name: true, ignoreKeywordMatch: 'any' },
         { name: false, description: false, extended: false, ignoreKeywordMatch: 'any' },
+        { name: false, description: false, extended: false, ignoreKeywordMatch: 'all' },
     ]) {
         const query = { strs: [], param: {} };
         db.setKeywordOption(
@@ -106,12 +107,37 @@ test('空白だけの除外語や対象項目なしでは空の NOT 条件を追
         );
         assert.deepEqual(query.strs, []);
     }
+    for (const isIgnore of [false, true]) {
+        const query = { strs: [], param: {} };
+        db.setKeywordOption(
+            '猫',
+            { cs: false, regexp: false, name: false, description: false, extended: false },
+            'keyword',
+            isIgnore,
+            query,
+        );
+        assert.deepEqual(query.strs, []);
+    }
 });
 
 test('あいまい検索は最長語を候補の SQL で先に絞る', () => {
     const db = createDb();
     const query = { strs: [], param: {} };
     db.setFuzzyCandidateQuery({ isFuzzy: true, keyword: '短い 長い候補文字列', name: true }, query);
-    assert.equal(query.param.fuzzyCandidate, '%長い候補文字列%');
+    assert.equal(query.param.fuzzyCandidate0, '%長い候補文字列%');
     assert.match(query.strs[0], /halfWidthName/);
+});
+
+test('あいまい候補 SQL はひらがな・カタカナ・半角カナを候補に含める', () => {
+    const db = createDb();
+    for (const keyword of ['にゅーす', 'ニュース', 'ﾆｭｰｽ']) {
+        const query = { strs: [], param: {} };
+        db.setFuzzyCandidateQuery({ isFuzzy: true, keyword, name: true }, query);
+        const values = Object.values(query.param);
+        assert.ok(values.includes('%にゅーす%'));
+        assert.ok(values.includes('%ニュース%'));
+        assert.ok(values.includes('%ﾆｭｰｽ%'));
+        assert.match(query.strs[0], /fuzzyCandidate0/);
+        assert.match(query.strs[0], /fuzzyCandidate1/);
+    }
 });

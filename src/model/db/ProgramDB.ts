@@ -38,6 +38,18 @@ interface KeywordOption {
     extended: boolean;
 }
 
+const halfWidthByFullWidthKana = new Map<string, string>();
+for (let code = 0xff66; code <= 0xff9d; code++) {
+    const halfWidth = String.fromCharCode(code);
+    halfWidthByFullWidthKana.set(halfWidth.normalize('NFKC'), halfWidth);
+}
+halfWidthByFullWidthKana.set('\u3099', '\uff9e');
+halfWidthByFullWidthKana.set('\u309a', '\uff9f');
+
+const toHalfWidthKana = (value: string): string => {
+    return Array.from(value.normalize('NFKD'), char => halfWidthByFullWidthKana.get(char) ?? char).join('');
+};
+
 @injectable()
 export default class ProgramDB implements IProgramDB {
     // 次の番組を探すときに放送中の番組から先読みする時間 (ms)
@@ -716,20 +728,32 @@ export default class ProgramDB implements IProgramDB {
         if (option.isFuzzy !== true || typeof option.keyword !== 'string') return;
         const fields = this.createKeywordOption(option, false);
         if (fields.regexp) return;
-        const fragments = option.keyword.match(/[\p{L}\p{N}]+/gu) ?? [];
+        const fragments = option.keyword.match(/[\p{L}\p{M}\p{N}]+/gu) ?? [];
         const fragment = fragments.sort((a, b) => b.length - a.length)[0];
         if (!fragment || fragment.length < 2) return;
-        const value = StrUtil.toHalf(fragment);
+        const normalizedFragment = fragment.normalize('NFKC');
+        const katakana = normalizedFragment.replace(/[\u3041-\u3096]/g, char =>
+            String.fromCharCode(char.charCodeAt(0) + 0x60),
+        );
+        const hiragana = katakana.replace(/[\u30a1-\u30f6]/g, char => String.fromCharCode(char.charCodeAt(0) - 0x60));
+        const values = [
+            ...new Set([hiragana, katakana, toHalfWidthKana(katakana)].map(value => StrUtil.toHalf(value))),
+        ];
         const columns = [
             fields.name ? 'halfWidthName' : null,
             fields.description ? "COALESCE(halfWidthDescription,'')" : null,
             fields.extended ? "COALESCE(halfWidthExtended,'')" : null,
         ].filter((column): column is string => column !== null);
         if (columns.length === 0) return;
-        query.param.fuzzyCandidate = `%${value}%`;
-        query.strs.push(
-            `(${columns.map(column => `${column} ${this.op.getLikeStr(fields.cs)} :fuzzyCandidate`).join(' or ')})`,
-        );
+        const candidateConditions: string[] = [];
+        for (let i = 0; i < values.length; i++) {
+            const valueName = `fuzzyCandidate${i}`;
+            query.param[valueName] = `%${values[i]}%`;
+            candidateConditions.push(
+                `(${columns.map(column => `${column} ${this.op.getLikeStr(fields.cs)} :${valueName}`).join(' or ')})`,
+            );
+        }
+        query.strs.push(`(${candidateConditions.join(' or ')})`);
     }
 
     private matchesTimes(program: Program, option: apid.RuleSearchOption): boolean {
@@ -860,6 +884,7 @@ export default class ProgramDB implements IProgramDB {
         ignoreMatchAny = false,
     ): void {
         const or: string[] = [];
+        if (option.name !== true && option.description !== true && option.extended !== true) return;
 
         if (isIgnore && ignoreMatchAny && option.regexp !== true) {
             const terms = StrUtil.toHalf(keyword)

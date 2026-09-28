@@ -113,6 +113,7 @@ import container from '@/model/ModelContainer';
 import IRecordingResultsState from '@/model/state/recordingResults/IRecordingResultsState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import IRecordingResultsApiModel from '@/model/api/recordingResults/IRecordingResultsApiModel';
+import IScrollPositionState from '@/model/state/IScrollPositionState';
 import RecordingReasonUtil from '@/util/RecordingReasonUtil';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
@@ -133,6 +134,7 @@ class RecordingResults extends Vue {
     private recordingResultsState: IRecordingResultsState = container.get<IRecordingResultsState>('IRecordingResultsState');
     private recordingResultsApiModel: IRecordingResultsApiModel = container.get<IRecordingResultsApiModel>('IRecordingResultsApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     public statusOptions = [
         { title: '完了', value: 'completed' },
         { title: '一部欠落', value: 'partial' },
@@ -175,6 +177,7 @@ class RecordingResults extends Vue {
             this.snackbarState.open({ color: 'error', text: '録画結果の取得に失敗しました' });
         } finally {
             this.isLoading = false;
+            await this.scrollState.emitDoneGetData();
         }
     }
 

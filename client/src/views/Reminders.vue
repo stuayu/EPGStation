@@ -29,6 +29,7 @@
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import IReminderApiModel, { ProgramReminder } from '@/model/api/reminder/IReminderApiModel';
+import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import DateUtil from '@/util/DateUtil';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
@@ -41,6 +42,7 @@ class Reminders extends Vue {
 
     private reminderApi: IReminderApiModel = container.get<IReminderApiModel>('IReminderApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
 
     public created(): void {
         void this.fetchData();
@@ -55,6 +57,7 @@ class Reminders extends Vue {
             console.error(err);
         } finally {
             this.isLoading = false;
+            await this.scrollState.emitDoneGetData();
         }
     }
 

@@ -906,6 +906,7 @@ import ISeriesApiModel, {
 import IVideoApiModel from '@/model/api/video/IVideoApiModel';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
+import IScrollPositionState from '@/model/state/IScrollPositionState';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
 import DateUtil from '@/util/DateUtil';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
@@ -958,6 +959,7 @@ class SystemSetting extends Vue {
     private seriesApi = container.get<ISeriesApiModel>('ISeriesApiModel');
     private channelsApi = container.get<IChannelsApiModel>('IChannelsApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
     private videoApi = container.get<IVideoApiModel>('IVideoApiModel');
 
@@ -1412,69 +1414,73 @@ class SystemSetting extends Vue {
     }
 
     async mounted() {
-        // 認証有効時、一般ユーザーはこの画面を開けない (API 側も 403 で弾く)
-        await this.loadAuth();
-        if (this.isAdmin === false) {
-            this.snackbarState.open({ color: 'error', text: 'システム管理者のみが利用できます' });
-            await this.$router.replace('/settings');
-            return;
-        }
-        if (isFeatureEnabled(this.serverConfigModel.getConfig(), 'systemSettings') === false) {
-            this.snackbarState.open({ color: 'error', text: 'サーバー設定機能は無効化されています' });
-            await this.$router.replace('/settings');
-            return;
-        }
         try {
-            const loaded = await this.api.get();
-            this.settings = {
-                ...this.settings,
-                ...loaded,
-                metadata: {
-                    ...this.settings.metadata,
-                    ...loaded.metadata,
-                    annict: { ...this.settings.metadata.annict, ...loaded.metadata?.annict },
-                    syobocal: { ...this.settings.metadata.syobocal, ...loaded.metadata?.syobocal },
-                    sharedData: { ...this.settings.metadata.sharedData, ...loaded.metadata?.sharedData },
-                    endpoints: { ...this.settings.metadata.endpoints, ...loaded.metadata?.endpoints },
-                },
-                notifications: { ...this.settings.notifications, ...loaded.notifications },
-                series: { ...this.settings.series, ...loaded.series },
-                logging: { levels: { ...((loaded as any).logging?.levels ?? {}) } },
-            };
-            this.settings.notifications.targets = (loaded.notifications?.targets ?? []).map((t: any) => ({
-                __key: this.nextTargetKey(),
-                name: t.name ?? '',
-                type: t.type ?? 'discord',
-                url: t.url ?? '',
-                secret: t.secret ?? '',
-                events: t.events ?? [],
-            }));
-        } catch (err) {
-            console.error(err);
-            this.snackbarState.open({ color: 'error', text: 'システム設定の取得に失敗しました' });
-        }
+            // 認証有効時、一般ユーザーはこの画面を開けない (API 側も 403 で弾く)
+            await this.loadAuth();
+            if (this.isAdmin === false) {
+                this.snackbarState.open({ color: 'error', text: 'システム管理者のみが利用できます' });
+                await this.$router.replace('/settings');
+                return;
+            }
+            if (isFeatureEnabled(this.serverConfigModel.getConfig(), 'systemSettings') === false) {
+                this.snackbarState.open({ color: 'error', text: 'サーバー設定機能は無効化されています' });
+                await this.$router.replace('/settings');
+                return;
+            }
+            try {
+                const loaded = await this.api.get();
+                this.settings = {
+                    ...this.settings,
+                    ...loaded,
+                    metadata: {
+                        ...this.settings.metadata,
+                        ...loaded.metadata,
+                        annict: { ...this.settings.metadata.annict, ...loaded.metadata?.annict },
+                        syobocal: { ...this.settings.metadata.syobocal, ...loaded.metadata?.syobocal },
+                        sharedData: { ...this.settings.metadata.sharedData, ...loaded.metadata?.sharedData },
+                        endpoints: { ...this.settings.metadata.endpoints, ...loaded.metadata?.endpoints },
+                    },
+                    notifications: { ...this.settings.notifications, ...loaded.notifications },
+                    series: { ...this.settings.series, ...loaded.series },
+                    logging: { levels: { ...((loaded as any).logging?.levels ?? {}) } },
+                };
+                this.settings.notifications.targets = (loaded.notifications?.targets ?? []).map((t: any) => ({
+                    __key: this.nextTargetKey(),
+                    name: t.name ?? '',
+                    type: t.type ?? 'discord',
+                    url: t.url ?? '',
+                    secret: t.secret ?? '',
+                    events: t.events ?? [],
+                }));
+            } catch (err) {
+                console.error(err);
+                this.snackbarState.open({ color: 'error', text: 'システム設定の取得に失敗しました' });
+            }
 
-        try {
-            this.channelItems = await this.channelsApi.getChannels();
-        } catch (err) {
-            console.error(err);
-        }
-        await this.loadChannelMap();
-        await this.refreshSyobocalTitleStatus();
-        await this.refreshAnnictWorkStatus();
+            try {
+                this.channelItems = await this.channelsApi.getChannels();
+            } catch (err) {
+                console.error(err);
+            }
+            await this.loadChannelMap();
+            await this.refreshSyobocalTitleStatus();
+            await this.refreshAnnictWorkStatus();
 
-        if (this.isEnabledSeriesLibrary === true) {
-            await this.refreshBackfillStatus();
-            await this.loadAliases();
-            await this.loadEmptySeries();
-            await this.loadMetrics();
+            if (this.isEnabledSeriesLibrary === true) {
+                await this.refreshBackfillStatus();
+                await this.loadAliases();
+                await this.loadEmptySeries();
+                await this.loadMetrics();
+            }
+            await this.loadHistory();
+            await this.loadNotificationFailures();
+            await this.loadVideoMetadataStatus();
+            await this.loadTsInfoStatus();
+            // 画面を開き直したときに、実行中のジョブがあれば進捗の続きを表示する
+            await this.loadAnalyzeJob();
+        } finally {
+            await this.scrollState.emitDoneGetData();
         }
-        await this.loadHistory();
-        await this.loadNotificationFailures();
-        await this.loadVideoMetadataStatus();
-        await this.loadTsInfoStatus();
-        // 画面を開き直したときに、実行中のジョブがあれば進捗の続きを表示する
-        await this.loadAnalyzeJob();
     }
 
     /**
