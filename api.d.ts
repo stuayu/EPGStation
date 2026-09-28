@@ -413,6 +413,10 @@ export interface SearchTime {
     // program id 予約の場合は 1 ~ 23 時間の長さを指定する
     // 時刻予約の場合は秒で時間の長さを指定する 1 ~ 60 * 50 * 24 秒
     range?: number;
+    /** 時単位指定を分単位へ拡張する開始分 (0-59) */
+    startMinute?: number;
+    /** 時単位指定を分単位へ拡張する範囲 (分) */
+    rangeMinute?: number;
     // 曜日指定 0x01, 0x02, 0x04, 0x08, 0x10, 0x20 ,0x40 が日〜土に対応するので and 演算で曜日を指定する
     week: number;
 }
@@ -431,6 +435,11 @@ export interface SearchPeriod {
 export interface RuleSearchOption {
     keyword?: string; // 検索キーワード
     ignoreKeyword?: string; // 除外検索キーワード
+    ignoreKeywordMatch?: 'all' | 'any'; // 除外語の一致条件
+    isFuzzy?: boolean; // あいまい検索
+    isGenreExclusion?: boolean; // ジャンルを除外
+    isChannelExclusion?: boolean; // 放送局を除外
+    isTimeExclusion?: boolean; // 時刻範囲を除外
     keyCS?: boolean; // 大文字小文字区別有効化 (検索キーワード)
     keyRegExp?: boolean; // 正規表現 (検索キーワード)
     name?: boolean; // 番組名 (検索キーワード)
@@ -1150,6 +1159,7 @@ export interface Config {
         selected: 'qsv' | 'nvenc' | 'vce' | 'videotoolbox' | 'software';
         available: Array<'qsv' | 'nvenc' | 'vce' | 'videotoolbox' | 'software'>;
     };
+    ruleSearchCapabilities: { regexp: boolean; caseSensitive: boolean };
     broadcast: BroadcastStatus;
     recorded: string[];
     encode: string[];

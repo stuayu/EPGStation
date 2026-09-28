@@ -419,6 +419,7 @@ components:
                 - socketIOPort
                 - useDedicatedSocketIOPort
                 - hardwareEncoder
+                - ruleSearchCapabilities
                 - broadcast
                 - recorded
                 - encode
@@ -461,6 +462,15 @@ components:
                             items:
                                 type: string
                                 enum: [qsv, nvenc, vce, videotoolbox, software]
+                ruleSearchCapabilities:
+                    description: ルール検索機能の DB 対応状況
+                    type: object
+                    required: [regexp, caseSensitive]
+                    properties:
+                        regexp:
+                            type: boolean
+                        caseSensitive:
+                            type: boolean
                 broadcast:
                     description: 有効な放送波情報
                     type: object
@@ -1081,6 +1091,22 @@ components:
                 ignoreKeyword:
                     description: 除外検索キーワード
                     type: string
+                ignoreKeywordMatch:
+                    description: 除外語の一致条件
+                    type: string
+                    enum: [all, any]
+                isFuzzy:
+                    description: 表記ゆれを吸収するあいまい検索
+                    type: boolean
+                isGenreExclusion:
+                    description: 指定ジャンルを除外
+                    type: boolean
+                isChannelExclusion:
+                    description: 指定放送局を除外
+                    type: boolean
+                isTimeExclusion:
+                    description: 指定時刻範囲を除外
+                    type: boolean
                 keyCS:
                     description: 大文字小文字区別有効化 (検索キーワード)
                     type: boolean
@@ -1302,6 +1328,12 @@ components:
                     type: integer
                 range:
                     description: 開始時刻からの時刻範囲(時) 1 - 23, 時刻予約の場合は秒で時間の長さを指定する 1 ~ 60 * 50 * 24 秒
+                    type: integer
+                startMinute:
+                    description: 開始分 0-59
+                    type: integer
+                rangeMinute:
+                    description: 時刻範囲 (分)
                     type: integer
                 week:
                     description: 曜日指定 0x01, 0x02, 0x04, 0x08, 0x10, 0x20 ,0x40 が日〜土に対応するので and

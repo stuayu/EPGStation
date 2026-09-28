@@ -92,12 +92,18 @@ export interface SearchOption {
     keywordOption: KeywordOption;
     ignoreKeyword: string | null;
     ignoreKeywordOption: KeywordOption;
+    ignoreKeywordMatch: 'all' | 'any';
+    isFuzzy: boolean;
+    isGenreExclusion: boolean;
+    isChannelExclusion: boolean;
+    isTimeExclusion: boolean;
     channels: apid.ChannelId[];
     broadcastWave: BroadcastWave;
     genres: { [genre: number]: GenreIndex };
     isShowSubgenres: boolean;
     startTime: number | undefined;
     rangeTime: number | undefined;
+    timeRanges: { startTime: number | undefined; rangeTime: number | undefined; startMinute: number; rangeMinute: number; week: Week }[];
     week: Week;
     durationMin: number | null;
     durationMax: number | null;
