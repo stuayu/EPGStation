@@ -278,6 +278,7 @@ const cleanup = async () => {
 
     await recordingManager.cleanup();
     await reservationManageModel.cleanup();
+    await recordingManager.setupStartupTimers();
 };
 
 /** Operator 停止時に録画 sink を flush してから子プロセスを止める。 */

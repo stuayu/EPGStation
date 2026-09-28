@@ -147,6 +147,56 @@ test('startup resumes the same recording after truncating an interrupted TS pack
     assert.equal(decideRecordingFinishPolicy(recordedRow.recordingStatus).removeOriginal, 'never');
 });
 
+test('再起動で WAITING_BOUNDARY session を canceled で閉じ、同じ予約を新規録画する', async t => {
+    const stub = new MirakurunRecordingStub([sendAndHold(30)]);
+    const harness = new RecorderHarness(stub);
+    await harness.start();
+    t.after(() => harness.cleanup());
+
+    const reserve = createReserve(99405, Date.now() + 10_000);
+    reserve.programId = null;
+    reserve.startAt -= 1000;
+    harness.recordingSessions.push({
+        id: 90,
+        reserveId: reserve.id,
+        recordedId: null,
+        state: 'WAITING_BOUNDARY',
+        resultStatus: null,
+        endReason: null,
+    });
+    harness.recordingAttempts.push({ id: 90, sessionId: 90, endedAt: null, closeReason: null });
+
+    const manager = Object.create(RecordingManageModel.prototype);
+    manager.log = harness.recorder.log;
+    manager.config = harness.recorder.config;
+    manager.provider = async () => harness.recorder;
+    manager.recordingSessionDB = harness.recordingSessionDB;
+    manager.recordedDB = { ...harness.recordedDB, findAll: async () => [[], 0] };
+    manager.reserveDB = {
+        findId: async id => (id === reserve.id ? reserve : null),
+        findLists: async () => [reserve],
+    };
+    manager.recordingUtil = harness.recordingUtil;
+    manager.recordingEvent = harness.recordingEvent;
+    manager.recordingIndex = {};
+
+    await manager.cleanup();
+    assert.equal(harness.recordingSessions[0].state, 'FINISHED');
+    assert.equal(harness.recordingSessions[0].resultStatus, 'canceled');
+    assert.equal(harness.recordingSessions[0].endReason, 'process-restart');
+    assert.equal(harness.recordingAttempts[0].closeReason, 'process-restart');
+    await manager.setupStartupTimers();
+
+    await waitFor(() => harness.events.start.length === 1);
+    await waitFor(() => harness.recordingAttempts.length === 2 && harness.recordingAttempts[1].firstDataAt !== null);
+    harness.recordingStreamCreator.closeStream(harness.recorder.stream, 'scheduled-end');
+    await waitFor(() => harness.events.finish.length === 1);
+    assert.equal(harness.recorded.length, 1);
+    assert.equal(harness.recordingSessions.length, 2);
+    assert.equal(harness.recordingSessions[1].reserveId, reserve.id);
+    assert.equal(harness.recordingSessions[1].resultStatus, 'completed');
+});
+
 test('expired manual recovery finalizes partial and leaves the reservation untouched', async () => {
     const manager = Object.create(RecordingManageModel.prototype);
     const now = Date.now();
