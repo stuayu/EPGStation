@@ -29,6 +29,7 @@ import ISeriesResolver from '../series/ISeriesResolver';
 import { formatLogTimeRange } from '../../util/ProgramTimeLog';
 import IEitPresentStore from '../service/stream/util/IEitPresentStore';
 import { decideRecordingFinishPolicy, RecordingResultStatus } from '../../util/RecordingResult';
+import IProgramReminderManageModel from '../operator/reminder/IProgramReminderManageModel';
 
 @injectable()
 export default class EventSetter implements IEventSetter {
@@ -56,6 +57,7 @@ export default class EventSetter implements IEventSetter {
     private programDB: IProgramDB;
     private eitPresentStore: IEitPresentStore;
     private channelDB: IChannelDB;
+    private programReminderManage: IProgramReminderManageModel;
 
     private isFirstreserveationUpdate: boolean = true;
 
@@ -85,6 +87,7 @@ export default class EventSetter implements IEventSetter {
         @inject('IProgramDB') programDB: IProgramDB,
         @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
         @inject('IChannelDB') channelDB: IChannelDB,
+        @inject('IProgramReminderManageModel') programReminderManage: IProgramReminderManageModel,
     ) {
         this.log = logger.getLogger();
         this.epgUpdateEvent = epgUpdateEvent;
@@ -110,12 +113,14 @@ export default class EventSetter implements IEventSetter {
         this.programDB = programDB;
         this.eitPresentStore = eitPresentStore;
         this.channelDB = channelDB;
+        this.programReminderManage = programReminderManage;
     }
 
     /**
      * event をセットする
      */
     public set(): void {
+        this.programReminderManage.start();
         this.eitPresentStore.onChange((channelId, event) => {
             void this.applyEitProgram(channelId, event);
         });

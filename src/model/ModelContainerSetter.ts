@@ -48,6 +48,8 @@ import ISavedSearchApiModel from './api/savedSearch/ISavedSearchApiModel';
 import SavedSearchApiModel from './api/savedSearch/SavedSearchApiModel';
 import IRecordingPresetApiModel from './api/recordingPreset/IRecordingPresetApiModel';
 import RecordingPresetApiModel from './api/recordingPreset/RecordingPresetApiModel';
+import IProgramReminderApiModel from './api/reminder/IProgramReminderApiModel';
+import ProgramReminderApiModel from './api/reminder/ProgramReminderApiModel';
 import IRecordingApiModel from './api/recording/IRecordingApiModel';
 import RecordingApiModel from './api/recording/RecordingApiModel';
 import IReserveApiModel from './api/reserve/IReserveApiModel';
@@ -151,6 +153,8 @@ import RecordedTagDB from './db/RecordedTagDB';
 import SavedSearchDB from './db/SavedSearchDB';
 import IRecordingPresetDB from './db/IRecordingPresetDB';
 import RecordingPresetDB from './db/RecordingPresetDB';
+import IProgramReminderDB from './db/IProgramReminderDB';
+import ProgramReminderDB from './db/ProgramReminderDB';
 import ReserveDB from './db/ReserveDB';
 import RuleDB from './db/RuleDB';
 import ThumbnailDB from './db/ThumbnailDB';
@@ -279,6 +283,8 @@ import RecordingStreamCreator from './operator/recording/RecordingStreamCreator'
 import RecordingUtilModel from './operator/recording/RecordingUtilModel';
 import IReservationManageModel from './operator/reservation/IReservationManageModel';
 import ReservationManageModel from './operator/reservation/ReservationManageModel';
+import IProgramReminderManageModel from './operator/reminder/IProgramReminderManageModel';
+import ProgramReminderManageModel from './operator/reminder/ProgramReminderManageModel';
 import ReserveOptionChecker from './operator/ReserveOptionChecker';
 import IRuleManageModel from './operator/rule/IRuleManageModel';
 import RuleManageModel from './operator/rule/RuleManageModel';
@@ -433,6 +439,7 @@ export const set = (container: Container): void => {
 
     container.bind<ISavedSearchDB>('ISavedSearchDB').to(SavedSearchDB).inSingletonScope();
     container.bind<IRecordingPresetDB>('IRecordingPresetDB').to(RecordingPresetDB).inSingletonScope();
+    container.bind<IProgramReminderDB>('IProgramReminderDB').to(ProgramReminderDB).inSingletonScope();
 
     container.bind<IRecordedHistoryDB>('IRecordedHistoryDB').to(RecordedHistoryDB).inSingletonScope();
 
@@ -488,6 +495,10 @@ export const set = (container: Container): void => {
     container.bind<IEPGUpdater>('IEPGUpdater').to(EPGUpdater).inSingletonScope();
 
     container.bind<IReservationManageModel>('IReservationManageModel').to(ReservationManageModel).inSingletonScope();
+    container
+        .bind<IProgramReminderManageModel>('IProgramReminderManageModel')
+        .to(ProgramReminderManageModel)
+        .inSingletonScope();
 
     container.bind<IRuleManageModel>('IRuleManageModel').to(RuleManageModel).inSingletonScope();
 
@@ -634,6 +645,7 @@ export const set = (container: Container): void => {
 
     container.bind<ISavedSearchApiModel>('ISavedSearchApiModel').to(SavedSearchApiModel).inSingletonScope();
     container.bind<IRecordingPresetApiModel>('IRecordingPresetApiModel').to(RecordingPresetApiModel).inSingletonScope();
+    container.bind<IProgramReminderApiModel>('IProgramReminderApiModel').to(ProgramReminderApiModel).inSingletonScope();
 
     container.bind<IRuleApiModel>('IRuleApiModel').to(RuleApiModel).inSingletonScope();
 

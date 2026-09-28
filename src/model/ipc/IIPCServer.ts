@@ -15,6 +15,10 @@ export default interface IIPCServer {
      * @param option: 変更のあった放送局と時間帯
      */
     notifyProgramUpdatedClient(option: { channelIds: number[]; startAt: number | null; endAt: number | null }): void;
+    notifyProgramStartingClient(
+        payload: { programId: number; channelId: number; name: string; startAt: number; minutesBefore: number },
+        userId: number | null,
+    ): void;
     notifyEitPresent(channelId: number, event: EitOnAirRecord): void;
     setEncode(addOption: apid.AddEncodeProgramOption): void;
 }

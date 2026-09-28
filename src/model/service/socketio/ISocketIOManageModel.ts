@@ -13,5 +13,9 @@ export default interface ISocketIOManageModel {
      * @param option: { channelIds: number[]; startAt: number | null; endAt: number | null }
      */
     notifyProgramUpdated(option: { channelIds: number[]; startAt: number | null; endAt: number | null }): void;
+    notifyProgramStarting(
+        payload: { programId: number; channelId: number; name: string; startAt: number; minutesBefore: number },
+        userId: number | null,
+    ): void;
     notifyUpdateEncodeProgress(): void;
 }

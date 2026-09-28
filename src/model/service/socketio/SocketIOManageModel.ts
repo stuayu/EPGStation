@@ -65,7 +65,14 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
                 }
                 // 未ログインでも一般ユーザーと同じ操作を許可する設定なら通知も受け取れるようにする
                 if (authModel.isAnonymousAllowed() === true) {
-                    next();
+                    const token = readCookie(socket.handshake.headers.cookie, SESSION_COOKIE_NAME);
+                    authModel
+                        .verify(token)
+                        .then(payload => {
+                            if (payload !== null) socket.data.userId = payload.uid;
+                            next();
+                        })
+                        .catch(() => next());
 
                     return;
                 }
@@ -73,6 +80,7 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
                 authModel
                     .verify(token)
                     .then(payload => {
+                        if (payload !== null) socket.data.userId = payload.uid;
                         next(payload === null ? new Error('Unauthorized') : undefined);
                     })
                     .catch(err => {
@@ -143,6 +151,23 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
         this.log.system.info(
             `notify ${SocketIOManageModel.PROGRAM_UPDATED_EVENT}: channels: [${option.channelIds.join(', ')}] ` +
                 `range: ${formatLogTimeRange(option.startAt, option.endAt)} clients: ${this.getClientCount()}`,
+        );
+    }
+
+    /** 番組開始前リマインダーを接続中のクライアントへ送る */
+    public notifyProgramStarting(
+        payload: { programId: number; channelId: number; name: string; startAt: number; minutesBefore: number },
+        userId: number | null,
+    ): void {
+        for (const io of this.ios) {
+            if (userId === null) io.sockets.emit('programStarting', payload);
+            else
+                for (const socket of io.sockets.sockets.values()) {
+                    if (socket.data.userId === userId) socket.emit('programStarting', payload);
+                }
+        }
+        this.log.system.info(
+            `notify programStarting: programId: ${payload.programId} clients: ${this.getClientCount()}`,
         );
     }
 

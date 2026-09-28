@@ -43,6 +43,7 @@ class GuideState implements IGuideState {
     private programDoms: ProgramDomItem[] = [];
     // 番組情報を programId 索引するための変数
     private programDomIndex: { [programId: number]: HTMLElement[] } = {};
+    private reminderProgramIds: Set<number> = new Set<number>();
 
     private startTime: string | null = null;
     private timeLength: number = 0;
@@ -375,6 +376,19 @@ class GuideState implements IGuideState {
     }
 
     /**
+     * 通知登録済み番組の印を更新する
+     * @param programIds: number[] 通知登録済みの番組 id
+     */
+    public setReminderProgramIds(programIds: number[]): void {
+        this.reminderProgramIds = new Set(programIds);
+        for (const programId in this.programDomIndex) {
+            for (const element of this.programDomIndex[programId]) {
+                element.classList.toggle('has-reminder', this.reminderProgramIds.has(Number(programId)));
+            }
+        }
+    }
+
+    /**
      * 番組表 DOM 生成
      * @param option: CreateProgramDomOption
      * @param isHidden: boolean
@@ -385,6 +399,7 @@ class GuideState implements IGuideState {
         const child: HTMLElement[] = [];
         child.push(this.createTextElement('div', { class: 'name' }, option.program.name));
         child.push(this.createTextElement('div', { class: 'time' }, DateUtil.format(DateUtil.getJaDate(new Date(option.program.startAt)), 'hh:mm')));
+        child.push(this.createTextElement('i', { class: 'mdi mdi-bell-outline guide-reminder-icon', 'aria-hidden': 'true' }, ''));
         if (typeof option.program.description !== 'undefined') {
             child.push(this.createTextElement('div', { class: 'description' }, option.program.description));
         }
@@ -413,6 +428,10 @@ class GuideState implements IGuideState {
         if (typeof this.reserveIndex[option.program.id] !== 'undefined') {
             const reserve = this.reserveIndex[option.program.id];
             classStr += ` ${reserve.type}`;
+        }
+
+        if (this.reminderProgramIds.has(option.program.id) === true) {
+            classStr += ' has-reminder';
         }
 
         if (option.isHidden === true) {

@@ -2990,3 +2990,17 @@ export interface TunerItem {
 }
 
 export type TunerItems = TunerItem[];
+
+export interface ProgramReminder {
+    id: number;
+    programId: ProgramId;
+    channelId: ChannelId;
+    name: string;
+    startAt: UnixtimeMS;
+    minutesBefore: number;
+    userId: number | null;
+    createdAt: UnixtimeMS;
+}
+export interface ProgramReminderItems { reminders: ProgramReminder[]; }
+export interface ProgramReminderResponse { reminder: ProgramReminder | null; }
+export interface AddProgramReminderOption { programId: ProgramId; minutesBefore: number; }

@@ -29,15 +29,7 @@
                             </template>
                         </GuideScroller>
                     </div>
-                    <v-btn
-                        class="now-button"
-                        color="primary"
-                        icon="mdi-clock-outline"
-                        size="small"
-                        aria-label="現在時刻へ戻る"
-                        title="現在時刻へ戻る"
-                        v-on:click="onNow"
-                    ></v-btn>
+                    <v-btn class="now-button" color="primary" icon="mdi-clock-outline" size="small" aria-label="現在時刻へ戻る" title="現在時刻へ戻る" v-on:click="onNow"></v-btn>
                 </div>
             </transition>
         </div>
@@ -61,6 +53,7 @@ import OnAirSelectStream from '@/components/onair/OnAirSelectStream.vue';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import ISocketIOModel, { ProgramUpdatePayload } from '@/model/socketio/ISocketIOModel';
+import IReminderApiModel from '@/model/api/reminder/IReminderApiModel';
 import IGuideState, { FetchGuideOption } from '@/model/state/guide/IGuideState';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
@@ -109,9 +102,20 @@ class Guide extends Vue {
     private sizeSetting = container.get<IGuideSizeSettingStorageModel>('IGuideSizeSettingStorageModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
+    private reminderApi: IReminderApiModel = container.get<IReminderApiModel>('IReminderApiModel');
     // socket.io の通知はメソッドで受ける (クラスフィールドのコールバックだと this が Vue インスタンスにならず、画面へ反映されない)
     public onUpdateStatus(): void {
         this.guideState.updateReserves();
+        void this.updateReminderIndicators();
+    }
+
+    private async updateReminderIndicators(): Promise<void> {
+        try {
+            const reminders = await this.reminderApi.getAll();
+            this.guideState.setReminderProgramIds(reminders.map(reminder => reminder.programId));
+        } catch (err) {
+            console.error(err);
+        }
     }
 
     // EIT[p/f] の更新通知。現在時刻を含む表示のときだけ番組表を取り直す。
@@ -167,6 +171,7 @@ class Guide extends Vue {
     public created(): void {
         this.settingValue = this.setting.getSavedValue();
         this.isiOS = UaUtil.isiOS();
+        void this.updateReminderIndicators();
 
         // リサイズイベント追加
         window.addEventListener('resize', this.windowResizeCallback, false);
@@ -772,6 +777,9 @@ $window-width: 600px
     .programs
         position: relative
         .item
+            &.has-reminder
+                .guide-reminder-icon
+                    display: block
             position: absolute
             max-width: var(--channel-width)
             min-width: var(--channel-width)
@@ -797,6 +805,13 @@ $window-width: 600px
 
             .name
                 font-weight: bold
+            .guide-reminder-icon
+                display: none
+                position: absolute
+                right: 4px
+                top: 2px
+                font-size: 14px
+                line-height: 1
             > div
                 pointer-events: none
             &.following

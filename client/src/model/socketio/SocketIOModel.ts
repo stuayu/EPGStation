@@ -3,7 +3,7 @@ import * as socketIo from 'socket.io-client';
 import ApiMutationNotifier from '../../util/ApiMutationNotifier';
 import Util from '../../util/Util';
 import IServerConfigModel from '../serverConfig/IServerConfigModel';
-import ISocketIOModel, { ProgramUpdatePayload } from './ISocketIOModel';
+import ISocketIOModel, { ProgramStartingPayload, ProgramUpdatePayload } from './ISocketIOModel';
 
 type SocketCallback = (...args: any[]) => void;
 
@@ -302,6 +302,22 @@ class SocketIOModel implements ISocketIOModel {
     }
 
     /**
+     * 番組開始前通知へのコールバック追加
+     * @param callback: (payload: ProgramStartingPayload) => void
+     */
+    public onProgramStarting(callback: (payload: ProgramStartingPayload) => void): void {
+        this.addListener(SocketIOModel.PROGRAM_STARTING_EVENT, callback);
+    }
+
+    /**
+     * 番組開始前通知へのコールバック削除
+     * @param callback: (payload: ProgramStartingPayload) => void
+     */
+    public offProgramStarting(callback: (payload: ProgramStartingPayload) => void): void {
+        this.removeListener(SocketIOModel.PROGRAM_STARTING_EVENT, callback);
+    }
+
+    /**
      * update encode status イベントへのコールバック追加
      * @param callback: () => void
      */
@@ -326,6 +342,7 @@ namespace SocketIOModel {
     export const UPDATE_ENCODE_STATUS_EVENT = 'updateEncode';
     export const UPDATE_ON_AIR_PROGRAM_EVENT = 'updateOnAirProgram';
     export const UPDATE_PROGRAM_EVENT = 'updateProgram';
+    export const PROGRAM_STARTING_EVENT = 'programStarting';
     // 連続した操作をまとめるための待ち時間 (ms)
     export const LOCAL_NOTIFY_DELAY = 300;
     // 接続先を切り替えるまでに許容する連続失敗回数

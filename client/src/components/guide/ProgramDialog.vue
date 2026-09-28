@@ -30,6 +30,30 @@
                 </v-card-text>
                 <v-divider></v-divider>
                 <div class="pa-2 encode-action">
+                    <div class="d-flex align-center flex-wrap ga-2 px-2">
+                        <v-btn
+                            :icon="true"
+                            :color="activeReminder !== null ? 'primary' : undefined"
+                            :title="activeReminder !== null ? '番組通知を解除' : '番組開始前に通知'"
+                            :aria-label="activeReminder !== null ? '番組通知を解除' : '番組開始前に通知'"
+                            :loading="isReminderLoading"
+                            variant="text"
+                            @click="toggleReminder"
+                        >
+                            <v-icon>{{ activeReminder !== null ? 'mdi-bell-ring' : 'mdi-bell-outline' }}</v-icon>
+                        </v-btn>
+                        <span class="text-body-2">番組開始前に通知</span>
+                        <v-select
+                            v-if="activeReminder !== null"
+                            v-model="reminderMinutesBefore"
+                            :items="reminderMinuteOptions"
+                            label="何分前"
+                            density="compact"
+                            hide-details
+                            class="reminder-minutes"
+                            @update:model-value="updateReminderMinutes"
+                        ></v-select>
+                    </div>
                     <div v-if="dialogState.reserve === null" class="overflow-x-hidden">
                         <div class="d-flex align-center justify-end">
                             <v-checkbox class="mx-1 my-0 pr-2" label="元ファイル削除" v-model="dialogSetting.tmp.isDeleteOriginalAfterEncode"></v-checkbox>
@@ -64,6 +88,8 @@
 <script lang="ts">
 import container from '@/model/ModelContainer';
 import IScheduleApiModel from '@/model/api/schedule/IScheduleApiModel';
+import IReminderApiModel, { ProgramReminder } from '@/model/api/reminder/IReminderApiModel';
+import IGuideState from '@/model/state/guide/IGuideState';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import IGuideProgramDialogState from '@/model/state/guide/IGuideProgramDialogState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
@@ -83,7 +109,13 @@ class ProgramDialog extends Vue {
 
     private snackbarState = container.get<ISnackbarState>('ISnackbarState');
     private scheduleApi = container.get<IScheduleApiModel>('IScheduleApiModel');
+    private reminderApi: IReminderApiModel = container.get<IReminderApiModel>('IReminderApiModel');
+    private guideState: IGuideState = container.get<IGuideState>('IGuideState');
     private serverConfigModel: IServerConfigModel = container.get<IServerConfigModel>('IServerConfigModel');
+    public activeReminder: ProgramReminder | null = null;
+    public isReminderLoading: boolean = false;
+    public reminderMinutesBefore: number = 5;
+    public reminderMinuteOptions: number[] = [1, 3, 5, 10, 15, 30];
 
     /**
      * 番組 ⇔ シリーズ連携機能が有効か (featureFlags.programSeriesMapping)
@@ -302,6 +334,47 @@ class ProgramDialog extends Vue {
         this.dialogState.isOpen = false;
     }
 
+    public async toggleReminder(): Promise<void> {
+        const program = this.dialogState.getProgram();
+        if (program === null || this.isReminderLoading === true) return;
+        this.isReminderLoading = true;
+        try {
+            if (this.activeReminder === null) {
+                this.activeReminder = await this.reminderApi.add(program.id, this.reminderMinutesBefore);
+                this.reminderMinutesBefore = this.activeReminder.minutesBefore;
+                this.snackbarState.open({ text: `${program.name} の開始前通知を設定しました` });
+            } else {
+                await this.reminderApi.remove(this.activeReminder.id);
+                this.activeReminder = null;
+                this.snackbarState.open({ text: `${program.name} の開始前通知を解除しました` });
+            }
+            this.guideState.setReminderProgramIds((await this.reminderApi.getAll()).map(reminder => reminder.programId));
+        } catch (err) {
+            this.snackbarState.open({ color: 'error', text: '番組通知の更新に失敗しました' });
+            console.error(err);
+        } finally {
+            this.isReminderLoading = false;
+        }
+    }
+
+    public async updateReminderMinutes(minutesBefore: number): Promise<void> {
+        const program = this.dialogState.getProgram();
+        if (program === null || this.activeReminder === null || minutesBefore === this.activeReminder.minutesBefore) return;
+        this.isReminderLoading = true;
+        try {
+            await this.reminderApi.remove(this.activeReminder.id);
+            this.activeReminder = await this.reminderApi.add(program.id, minutesBefore);
+            this.guideState.setReminderProgramIds((await this.reminderApi.getAll()).map(reminder => reminder.programId));
+            this.snackbarState.open({ text: '通知時刻を更新しました' });
+        } catch (err) {
+            this.snackbarState.open({ color: 'error', text: '通知時刻の更新に失敗しました' });
+            console.error(err);
+            this.activeReminder = await this.reminderApi.getByProgramId(program.id).catch(() => null);
+        } finally {
+            this.isReminderLoading = false;
+        }
+    }
+
     /**
      * dialog の表示状態が変更されたときに呼ばれる
      */
@@ -325,6 +398,21 @@ class ProgramDialog extends Vue {
                 });
             });
         } else if (newState === true && oldState === false) {
+            const program = this.dialogState.getProgram();
+            this.activeReminder = null;
+            this.reminderMinutesBefore = 5;
+            if (program !== null) {
+                void this.reminderApi
+                    .getByProgramId(program.id)
+                    .then(reminder => {
+                        this.activeReminder = reminder;
+                        this.reminderMinutesBefore = reminder?.minutesBefore ?? 5;
+                    })
+                    .catch(err => {
+                        this.snackbarState.open({ color: 'error', text: '番組通知状態の取得に失敗しました' });
+                        console.error(err);
+                    });
+            }
             // open
             // extended の URL のリンクを貼る
             this.$nextTick(() => {

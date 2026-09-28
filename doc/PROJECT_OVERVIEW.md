@@ -21,6 +21,8 @@
 
 `dist/index.js` (親) を起動すると **2 プロセス構成** で動作する。
 
+番組開始前リマインダーは番組 ID・局・開始時刻を SQLite / MySQL に保存し、Operator が EPG / EIT 更新に追従してタイマーを再設定する。通知は Webhook / Discord と接続中 Web UI (Socket.IO) へ送る。ブラウザ通知は利用者の許可後に表示し、Web Push は未実装。
+
 ```mermaid
 flowchart TB
     subgraph OP["Operator (親プロセス) — src/index.ts"]
