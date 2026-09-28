@@ -15,6 +15,10 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- チューナー別予約一覧 Phase E → 2026-09-28
+
+- チューナー別予約一覧 Phase E → 2026-09-28
+
 - 録画プリセットとルール複製 → 2026-09-28
 - 自動予約ルール検索の除外条件・表記ゆれ・時間帯指定を改善 → 2026-09-28
 - 予約・ルールごとの録画マージンを追加 → 2026-09-28
@@ -50,6 +54,23 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-28
+
+### チューナー別予約一覧 Phase E
+
+planner が保持する `plannedTunerIndex` を ReserveItem に追加し、`GET /api/tuners` で Mirakurun のチューナー index・名前・種別・使用状態を返す。予約画面にチューナー別タイムラインとスマートフォン向けリストを追加し、割当なし・競合は未割当へまとめる。legacy スケジューラでは利用できない旨を表示する。チューナー別の割当は EPGStation 内部の計画であり、録画時に実際に使うチューナーは Mirakurun が選択する。
+
+予約ごとにチューナーを指定する機能は追加しない。Mirakurun に指定 API がなく、EPGStation 内だけの制約を利用者が実割当と誤認するため。
+
+関連実装: `src/model/api/tuner/`, `src/model/service/api/tuners.ts`, `src/model/api/reserve/ReserveApiModel.ts`, `src/util/TunerTimelineUtil.ts`, `client/src/views/Reserves.vue`, `api.yml`, `api.d.ts`。
+
+
+### チューナー別予約一覧 Phase E
+
+planner が保持する `plannedTunerIndex` を ReserveItem に追加し、`GET /api/tuners` で Mirakurun のチューナー index・名前・種別・使用状態を返す。予約画面にチューナー別タイムラインとスマートフォン向けリストを追加し、割当なし・競合は未割当へまとめる。legacy スケジューラでは利用できない旨を表示する。チューナー別の割当は EPGStation 内部の計画であり、録画時に実際に使うチューナーは Mirakurun が選択する。
+
+予約ごとにチューナーを指定する機能は追加しない。Mirakurun に指定 API がなく、EPGStation 内だけの制約を利用者が実割当と誤認するため。
+
+関連実装: `src/model/api/tuner/`, `src/model/service/api/tuners.ts`, `src/model/api/reserve/ReserveApiModel.ts`, `src/util/TunerTimelineUtil.ts`, `client/src/views/Reserves.vue`, `api.yml`, `api.d.ts`。
 
 ### 録画プリセットとルール複製
 

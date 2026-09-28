@@ -83,6 +83,8 @@ import ProgramSeriesApiModel from './api/schedule/ProgramSeriesApiModel';
 import ILogApiModel from './api/log/ILogApiModel';
 import LogApiModel from './api/log/LogApiModel';
 import IStatusApiModel from './api/status/IStatusApiModel';
+import ITunerApiModel from './api/tuner/ITunerApiModel';
+import TunerApiModel from './api/tuner/TunerApiModel';
 import StatusApiModel from './api/status/StatusApiModel';
 import IStorageApiModel from './api/storage/IStorageApiModel';
 import StorageApiModel from './api/storage/StorageApiModel';
@@ -586,6 +588,7 @@ export const set = (container: Container): void => {
     container.bind<IDashboardApiModel>('IDashboardApiModel').to(DashboardApiModel).inSingletonScope();
 
     container.bind<IStatusApiModel>('IStatusApiModel').to(StatusApiModel).inSingletonScope();
+    container.bind<ITunerApiModel>('ITunerApiModel').to(TunerApiModel).inSingletonScope();
 
     container.bind<ILogApiModel>('ILogApiModel').to(LogApiModel).inSingletonScope();
 

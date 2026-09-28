@@ -7,6 +7,7 @@ export default interface IReservesApiModel {
     gets(option: apid.GetReserveOption): Promise<apid.Reserves>;
     getLists(option: apid.GetReserveListsOption): Promise<apid.ReserveLists>;
     getCnts(): Promise<apid.ReserveCnts>;
+    getTuners(): Promise<apid.TunerItems>;
     cancel(reserveId: apid.ReserveId): Promise<void>;
     removeSkip(reserveId: apid.ReserveId): Promise<void>;
     removeOverlap(reserveId: apid.ReserveId): Promise<void>;

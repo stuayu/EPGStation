@@ -224,6 +224,8 @@ export interface ReserveItem {
     encodeParentDirectoryName3?: string;
     encodeDirectory3?: string;
     isDeleteOriginalAfterEncode: boolean;
+    /** planner の計画上の割当。実際のチューナーは Mirakurun が選択 */
+    plannedTunerIndex?: number | null;
     /**
      * 番組情報
      */
@@ -1183,6 +1185,7 @@ export interface LogFileContent {
  * クライアントが受け取る設定情報
  */
 export interface Config {
+    reservationScheduler?: 'legacy' | 'planner';
     socketIOPort: number;
     /**
      * socket.io が Web API と別のポートを使っているか。
@@ -2978,3 +2981,12 @@ export interface SnsRenoteResult {
     // 失敗時の理由
     detail?: string;
 }
+
+export interface TunerItem {
+    index: number;
+    name: string;
+    types: ChannelType[];
+    isUsing: boolean;
+}
+
+export type TunerItems = TunerItem[];

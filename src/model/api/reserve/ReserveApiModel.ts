@@ -84,6 +84,7 @@ export default class ReserveApiModel implements IReserveApiModel {
             isTimeUndefined: reserve.isTimeUndefined,
             isFollowingSchedule: reserve.isFollowingSchedule,
             isDeleteOriginalAfterEncode: reserve.isDeleteOriginalAfterEncode,
+            plannedTunerIndex: reserve.plannedTunerIndex,
             channelId: reserve.channelId,
             startAt: reserve.startAt,
             endAt: reserve.endAt,
