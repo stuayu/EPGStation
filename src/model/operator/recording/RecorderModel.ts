@@ -370,7 +370,7 @@ class RecorderModel implements IRecorderModel {
         this.isRecording = false;
         this.isPlanToDelete = false;
 
-        if (retry === 0) {
+        if (retry === 0 && this.resumeInfo === null) {
             // 録画準備開始通知
             this.recordingEvent.emitStartPrepRecording(this.reserve);
         }
@@ -875,8 +875,7 @@ class RecorderModel implements IRecorderModel {
                     hasStartedRecording = true;
                     resolveStarted();
                 } else if (this.resumeInfo !== null && hasStartedRecording === false) {
-                    this.recordingEvent.emitStartRecording(this.reserve, this.resumeInfo.recorded);
-                    if (this.reserve.programId !== null) this.setEventRelayTimer(this.reserve);
+                    this.log.system.info(`recording resumed: reserveId: ${this.reserve.id}`);
                     hasStartedRecording = true;
                     resolveStarted();
                 }

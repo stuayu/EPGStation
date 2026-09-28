@@ -224,7 +224,7 @@ service stream は番組終了時に自動で閉じないため、次を必須�
 
 ### Phase 5: 再起動からの復帰
 
-起動時に `RECORDING` / `RECONNECTING` session ごとに予約・`endAt + endMargin`・既存 VideoFile を調べる。`now < endAt + endMargin` かつ予約とファイルが存在する場合、ファイルを 188 byte 境界へ切り詰め、同じ Recorded / VideoFile / DropLogFile へ新しい attempt として追記する。空白時間は直前 attempt の `endedAt` (無い場合は session の最終更新時刻) から復帰 attempt の `firstDataAt` までとする。復帰対象は予約差分で二重作成せず、条件外の session は `partial / process-restart` で確定する。手動予約は削除しない。
+起動時に `RECORDING` / `RECONNECTING` session ごとに予約・`endAt + endMargin`・既存 VideoFile を調べる。`now < endAt + endMargin` かつ予約とファイルが存在する場合、ファイルを 188 byte 境界へ切り詰め、同じ Recorded / VideoFile / DropLogFile へ新しい attempt として追記する。終了時刻の無い前 attempt は録画ファイルの `mtime` で閉じ、stat できない場合は session の最終 DB 更新時刻を使う。transport gap と `TRANSPORT_GAP_CNT` はこの終了時刻から計算する。Operator は tuner 一覧の初回取得を最大10秒待ってから再開し、Mirakurun 未接続が続く場合も起動し、バックグラウンドで再試行する。復帰では録画準備・録画開始の外部コマンドと開始通知を再送せず、info ログだけを記録する。終了時の finish コマンドと通知は通常どおり一度出す。復帰対象は予約差分で二重作成せず、条件外の session は `partial / process-restart` で確定する。手動予約は削除しない。
 
 Operator の SIGTERM / SIGINT とワンクリック更新では、上流を `process-shutdown` として閉じ、sink の `finish` を最大 10 秒待ったあと attempt に理由を記録する。session は `RECORDING` のまま残し、次回起動の復帰対象にする。Windows の node-windows wrapper は子 Node に `child.kill()` を送るが、Windows で graceful signal handler の実行は保証されないため、サービス停止時の flush はベストエフォート。届かない場合は次回起動の異常終了復旧が処理する。
 
@@ -318,24 +318,25 @@ Windows 実機では先に `main` と同じ EPGStation を配備し、Mirakurun 
 
 1. 3〜4分の時刻指定予約を作る。例:
 
-   ```http
-   POST /api/reserves
-   Content-Type: application/json
+    ```http
+    POST /api/reserves
+    Content-Type: application/json
 
-   {"allowEndLack":false,"timeSpecifiedOption":{"name":"再接続試験","channelId":<id>,"startAt":<ms>,"endAt":<ms>}}
-   ```
+    {"allowEndLack":false,"timeSpecifiedOption":{"name":"再接続試験","channelId":<id>,"startAt":<ms>,"endAt":<ms>}}
+    ```
 
-   開始時刻は番組の区切りから2分以上離す。区切りに近い時刻は「区切りに合わせた予約」と判定され、開始ゲートで前番組の延長を待つ。
+    開始時刻は番組の区切りから2分以上離す。区切りに近い時刻は「区切りに合わせた予約」と判定され、開始ゲートで前番組の延長を待つ。
+
 2. 録画開始後、recisdb-proxy-rs のダッシュボード API `GET http://<host>:40080/api/clients` を呼び、`protocol: "mirakurun"` かつ `stream_class: "record"` のセッションを探す。
 3. セッションを `POST http://<host>:40080/api/client/<session_id>/disconnect` で切断する。recisdb-proxy は切断をエラーではなく正常な EOF として EPGStation へ返す。修正前は、番組途中でも正常完了と判定して録画を止め、予約を削除していた。
 4. 録画終了後、次を確認する。
-   - `GET /api/recorded/<id>` の `recordingStatus`、`endReason`、`transportGaps`
-   - `GET /api/recorded/<id>/recording-sessions` の attempt 数と各 attempt のバイト範囲
-   - 録画ファイルサイズが188の倍数であること
+    - `GET /api/recorded/<id>` の `recordingStatus`、`endReason`、`transportGaps`
+    - `GET /api/recorded/<id>/recording-sessions` の attempt 数と各 attempt のバイト範囲
+    - 録画ファイルサイズが188の倍数であること
 5. attempt 1 の `fileOffsetEnd` 前後各20MBを切り出し、つなぎ目を解析する。
-   - 同期バイト `0x47` が188 byteごとに並ぶこと
-   - ffprobe で映像・音声 PTS の飛びを確認する
-   - ffmpeg のデコードエラー数を確認する
+    - 同期バイト `0x47` が188 byteごとに並ぶこと
+    - ffprobe で映像・音声 PTS の飛びを確認する
+    - ffmpeg のデコードエラー数を確認する
 
 Windows では録画ファイル名に日本語が含まれると、SSH 越しの PowerShell から ffprobe へ渡す際に文字化けして読めないことがある。ASCII 名で範囲を切り出してから解析する。本番機の時計は手元と数秒ずれる場合があるため、時刻比較には DB の attempt 時刻を使う。
 

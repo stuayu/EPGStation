@@ -36,10 +36,14 @@ test('startup resumes the same recording after truncating an interrupted TS pack
     const beforeCrashSize = (await fs.stat(first.recorder.videoFileFullPath)).size;
     await fs.appendFile(first.recorder.videoFileFullPath, Buffer.alloc(73, 0xa5));
     const beforeRecoverySize = (await fs.stat(first.recorder.videoFileFullPath)).size;
+    const simulatedCrashAt = Date.now() - 3000;
+    await fs.utimes(first.recorder.videoFileFullPath, simulatedCrashAt / 1000, simulatedCrashAt / 1000);
     const recordedRow = first.recorded[0];
     const session = first.recorder.sessionTracker.session;
     const attempts = first.recordingAttempts;
     const videoFile = first.videoFiles[0];
+    const prepEventsBeforeRecovery = first.events.prep.length;
+    const startEventsBeforeRecovery = first.events.start.length;
     reserve.isTimeSpecified = true;
 
     const secondStub = new MirakurunRecordingStub([
@@ -97,6 +101,7 @@ test('startup resumes the same recording after truncating an interrupted TS pack
     manager.recordingUtil = first.recorder.recordingUtil;
     manager.recordingEvent = first.recorder.recordingEvent;
     manager.recordingIndex = {};
+    second.recordingStreamCreator.setTuner([{ index: 0, name: 'test', types: ['GR'] }]);
 
     let resumeEventRelayCalls = 0;
     second.recorder.setEventRelayTimer = () => resumeEventRelayCalls++;
@@ -113,17 +118,22 @@ test('startup resumes the same recording after truncating an interrupted TS pack
     assert.equal(manager.hasReserve(reserve.id), true);
 
     await waitFor(() => attempts.length === 4 && attempts[3].firstDataAt !== null);
+    assert.ok(
+        second.recordingStreamCreator.getActiveTunerAssignments().some(item => item.reserveId === reserve.id),
+        'resumed recorder is registered in the tuner ledger',
+    );
     assert.equal(attempts.length, 4);
     assert.equal(attempts[0].fileOffsetEnd, beforeRecoverySize);
     assert.equal(attempts[1].fileOffsetStart, afterRecoverySize);
-    assert.ok(attempts[1].firstDataAt - attempts[0].endedAt >= 0);
+    assert.ok(attempts[1].firstDataAt - attempts[0].endedAt >= 2900);
+    assert.ok(attempts[1].firstDataAt - attempts[0].endedAt < 10_000);
     t.diagnostic(
         `crash file bytes ${beforeRecoverySize} -> ${afterRecoverySize}; attempts ${attempts.length}; ` +
             `gap ${attempts[1].firstDataAt - attempts[0].endedAt} ms; recordedId ${recordedRow.id} preserved`,
     );
-    await waitFor(() => first.events.start.length >= 2);
-    assert.equal(first.events.start.length, 2, 'resume start notification is emitted once, not per reconnect');
-    assert.equal(resumeEventRelayCalls, 1, 'event relay timer is set once for the resumed recording');
+    assert.equal(first.events.prep.length, prepEventsBeforeRecovery, 'resume must not repeat prestart command event');
+    assert.equal(first.events.start.length, startEventsBeforeRecovery, 'resume must not emit a duplicate start event');
+    assert.equal(resumeEventRelayCalls, 0, 'resume must not start an event relay notification');
     assert.equal(first.videoFiles.length, 1);
     assert.equal(recordedRow.id, session.recordedId);
 
@@ -223,8 +233,8 @@ test('再開 session の2回の上流再接続で start 通知と transport gap 
     harness.recorder.setResumeTimer(reserve, true, { session, recorded, videoFile, attempts: [] });
 
     await waitFor(() => harness.recordingAttempts.length === 3 && harness.recordingAttempts[2].firstDataAt !== null);
-    assert.equal(harness.events.start.length, 1);
-    assert.equal(eventRelayTimerCalls, 1);
+    assert.equal(harness.events.start.length, 0);
+    assert.equal(eventRelayTimerCalls, 0);
     assert.equal(harness.recorder.sessionTracker.gapCount, 2);
     harness.recordingStreamCreator.closeStream(harness.recorder.stream, 'scheduled-end');
     await waitFor(() => harness.events.finish.length === 1);
