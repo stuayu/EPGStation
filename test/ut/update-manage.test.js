@@ -54,7 +54,11 @@ function fixture(releases, options = {}) {
         },
     };
     const config = { getConfig: () => ({ updateChecker: options.updateChecker ?? {} }) };
-    const model = new Model(logger, config, http);
+    const recordingSessionDB = {
+        findByState: async state => options.recordingStates?.[state] ?? [],
+    };
+    const recordingManageModel = { shutdown: async () => {} };
+    const model = new Model(logger, config, http, recordingManageModel, recordingSessionDB);
     model.currentVersion = options.currentVersion ?? '2.13.1-stuayu-260726';
     model.installationType = options.installationType ?? 'git';
     return { model, requests };
@@ -99,6 +103,26 @@ test('no update is reported when the current version is the latest', async () =>
     const status = await model.check();
     assert.equal(status.availableRelease, null);
     assert.equal(status.availableChannel, null);
+});
+
+test('update status reports recording and reconnecting session count', async () => {
+    const { model } = fixture([], {
+        recordingStates: {
+            RECORDING: [{ id: 1 }, { id: 2 }],
+            RECONNECTING: [{ id: 3 }],
+        },
+    });
+    const status = await model.check();
+    assert.equal(status.activeRecordingCount, 3);
+});
+
+test('update status reports an unknown recording count when session lookup fails', async () => {
+    const { model } = fixture([]);
+    model.recordingSessionDB.findByState = async () => {
+        throw new Error('database unavailable');
+    };
+    const status = await model.check();
+    assert.equal(status.activeRecordingCount, null);
 });
 
 test('draft releases are never offered', async () => {

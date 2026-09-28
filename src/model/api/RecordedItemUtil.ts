@@ -34,6 +34,13 @@ export default class RecordedItemUtil implements IRecordedItemUtil {
             item.channelName = channelName;
         }
 
+        if (recorded.recordingStatus !== null && typeof recorded.recordingStatus !== 'undefined') {
+            item.recordingStatus = <apid.RecordedItem['recordingStatus']>recorded.recordingStatus;
+        }
+        if (recorded.endReason !== null && typeof recorded.endReason !== 'undefined') {
+            item.endReason = recorded.endReason;
+        }
+
         if (recorded.ruleId !== null) {
             item.ruleId = recorded.ruleId;
         }

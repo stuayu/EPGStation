@@ -130,6 +130,8 @@ export interface ChannelItem {
  */
 export interface EditManualReserveOption {
     allowEndLack: boolean; // 末尾切れを許すか
+    priority?: number;
+    conflictPolicy?: ConflictPolicy;
     tags?: RecordedTagId[];
     saveOption?: ReserveSaveOption;
     encodeOption?: ReserveEncodedOption;
@@ -183,8 +185,11 @@ export interface ReserveItem {
     ruleId?: RuleId;
     isSkip: boolean;
     isConflict: boolean;
+    conflictInfo?: ReservationConflict;
     isOverlap: boolean;
     allowEndLack: boolean;
+    priority: number;
+    conflictPolicy: ConflictPolicy;
     isTimeSpecified: boolean;
     /**
      * 放送終了時刻が未定か (ARIB の duration = 0xFFFFFF)。true なら endAt は暫定値
@@ -237,6 +242,15 @@ export interface ReserveItem {
     videoComponentType?: number;
     audioSamplingRate?: ProgramAudioSamplingRate;
     audioComponentType?: number;
+}
+
+/**
+ * 予約の競合内容
+ */
+export interface ReservationConflict {
+    type: 'NO_TUNER' | 'PRIORITY_PREEMPTED' | 'PARTIAL_HEAD' | 'PARTIAL_TAIL' | 'PARTIAL' | 'MARGIN_OVERLAP' | 'BACKEND_UNAVAILABLE';
+    affectedMs: number;
+    conflictingReserveIds: ReserveId[];
 }
 
 /**
@@ -358,6 +372,16 @@ export interface AddRuleOption {
     encodeOption?: ReserveEncodedOption;
 }
 
+export interface PreemptedReserve {
+    reserveId: ReserveId;
+    reason: 'PRIORITY_PREEMPTED';
+}
+
+export interface AddedReserve {
+    reserveId: ReserveId;
+    preemptedReserves: PreemptedReserve[];
+}
+
 /**
  * ジャンル
  */
@@ -467,10 +491,14 @@ export interface RuleSearchOption {
 export interface RuleReserveOption {
     enable: boolean; // ルールが有効か
     allowEndLack: boolean; // 末尾切れを許可するか
+    priority?: number;
+    conflictPolicy?: ConflictPolicy;
     avoidDuplicate: boolean; // 録画済みの重複番組を排除するか
     periodToAvoidDuplicate?: number; // 重複を避ける期間
     tags?: RecordedTagId[]; // 録画完了後に付与する tag 設定
 }
+
+export type ConflictPolicy = 'STRICT' | 'ALLOW_END_LACK' | 'ALLOW_HEAD_LACK' | 'ALLOW_PARTIAL' | 'PREEMPT_LOWER_PRIORITY';
 
 /**
  * 保存オプション
@@ -560,9 +588,57 @@ export interface RecordedItem {
     tags?: RecordedTag[];
     isEncoding: boolean;
     isProtected: boolean;
+    recordingStatus?: 'completed' | 'partial' | 'failed' | 'canceled';
+    endReason?: string;
+    transportGaps?: RecordingTransportGap[];
     // シリーズに紐づいている場合の作品・話数情報 (一覧のタイトル表示に使う)。
     // featureFlags.seriesLibrary が無効な場合と、シリーズ未確定の録画では入らない
     series?: RecordedSeriesInfo;
+}
+
+export interface RecordingTransportGap {
+    startAt: UnixtimeMS;
+    endAt?: UnixtimeMS;
+    reason: string;
+}
+
+export interface RecordingAttemptItem {
+    id: number;
+    sessionId: number;
+    attemptNo: number;
+    requestedAt: UnixtimeMS;
+    firstDataAt?: UnixtimeMS;
+    endedAt?: UnixtimeMS;
+    closeReason: string;
+    errorCode: string;
+    priority: number;
+    bytesReceived: number;
+    fileOffsetStart?: number;
+    fileOffsetEnd?: number;
+}
+
+export interface RecordingSessionItem {
+    id: number;
+    reserveId: number;
+    recordedId?: RecordedId;
+    programId?: ProgramId;
+    channelId: ChannelId;
+    state: string;
+    scheduledStartAt: UnixtimeMS;
+    scheduledEndAt: UnixtimeMS;
+    actualStartAt?: UnixtimeMS;
+    actualEndAt?: UnixtimeMS;
+    startReason?: string;
+    endReason?: string;
+    resultStatus?: 'completed' | 'partial' | 'failed' | 'canceled';
+    retryCount: number;
+    createdAt?: UnixtimeMS;
+    updatedAt?: UnixtimeMS;
+    attempts: RecordingAttemptItem[];
+}
+
+export interface RecordingSessions {
+    sessions: RecordingSessionItem[];
 }
 
 /**
@@ -2422,6 +2498,8 @@ export interface UpdateStatus {
     updateNote: string;
     // 更新を伴わない再起動の挙動の説明
     restartNote: string;
+    // 録画中または再接続中の録画セッション数 (取得失敗時は null)
+    activeRecordingCount: number | null;
     // リリース一覧ページ
     releasesUrl: string;
     job: UpdateJob;

@@ -15,6 +15,13 @@
  */
 
 export type RecordingRetryReason = 'waitingForEvent' | 'error';
+export type StartFailureKind = 'no-first-ts' | 'stream-closed' | 'no-data-after-pipe' | 'end-at-passed';
+
+/** 録画開始前の失敗を待機継続と伝送異常に分類する */
+export const classifyStartFailure = (kind: StartFailureKind, legacyProgramStream: boolean): RecordingRetryReason => {
+    if (kind === 'end-at-passed' || legacyProgramStream) return 'waitingForEvent';
+    return 'error';
+};
 
 export interface RecordingRetryConfig {
     // 番組開始を待つ上限 (ms)
@@ -109,6 +116,14 @@ export interface RetryDecisionInput {
     // 番組開始を待ち始めてからの経過時間 (ms)
     waitedMs: number;
     config: RecordingRetryConfig;
+    /** Mirakurun が 503 を返したとき、開始前または planner がマージン重複を示すなら短周期で再試行 */
+    backendUnavailable?: boolean;
+    /** 予約開始時刻 (ms) */
+    reserveStartAt?: number;
+    /** 現在時刻 (ms)。backendUnavailable 判定に使う */
+    now?: number;
+    /** planner が前番組の終了マージンと重複中と判定した場合 */
+    marginOverlap?: boolean;
 }
 
 export interface RetryDecision {
@@ -125,6 +140,16 @@ export interface RetryDecision {
  */
 export const decideRecordingRetry = (input: RetryDecisionInput): RetryDecision => {
     const config = input.config;
+
+    // 予約開始前の張り付き中、または前番組の終了マージン中に Mirakurun が
+    // 503 を返すのは一時的な tuner 占有。長い通常リトライを使わず短く確認する。
+    if (
+        input.backendUnavailable === true &&
+        ((input.reserveStartAt !== undefined && input.now !== undefined && input.now < input.reserveStartAt) ||
+            input.marginOverlap === true)
+    ) {
+        return { retry: true, delayMs: 2000 };
+    }
 
     if (input.reason === 'waitingForEvent') {
         // 番組がまだ始まっていないだけなので、上限まで待ち続ける

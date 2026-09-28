@@ -62,6 +62,8 @@ export interface StartGateInput {
     currentAt?: number;
     // 時刻指定予約の実録画開始マージン (ms)
     recordingStartMarginMs?: number;
+    // 時刻指定予約が番組表上の開始境界に一致する場合だけ、前番組待ちを行う
+    isProgramBoundary?: boolean;
     config: RecordingStartGateConfig;
 }
 
@@ -70,6 +72,8 @@ export type StartGateReason =
     | 'eventMatched'
     // present の開始時刻が予約開始時刻に達した (時刻指定予約)
     | 'startTimeReached'
+    // 番組途中から録る時刻指定予約
+    | 'timeSpecifiedMidProgram'
     // EIT[p/f] を読めないまま上限に達した
     | 'timeout'
     // ゲートが無効
@@ -90,6 +94,13 @@ export interface StartGateDecision {
     canStart: boolean;
     reason: StartGateReason | ProgramFallbackReason;
 }
+
+/** EPG の番組開始時刻が予約開始の許容幅内にあるか判定する。 */
+export const isProgramStartBoundary = (
+    programs: ReadonlyArray<{ startAt: number }>,
+    reserveStartAt: number,
+    toleranceMs: number = 2 * 60 * 1000,
+): boolean => programs.some(program => Math.abs(program.startAt - reserveStartAt) <= toleranceMs);
 
 /**
  * 前の番組が続いていると判断したときの扱いを決める。
@@ -155,6 +166,7 @@ export const decideRecordingStart = (input: StartGateInput): StartGateDecision =
 
     if (
         input.eventId === null &&
+        input.isProgramBoundary !== false &&
         following !== null &&
         following.startAt !== null &&
         input.currentAt !== undefined &&
@@ -165,6 +177,15 @@ export const decideRecordingStart = (input: StartGateInput): StartGateDecision =
             canStart: false,
             reason: present?.durationSec === null ? 'previousProgramExtending' : 'previousProgram',
         };
+    }
+
+    if (
+        input.eventId === null &&
+        input.isProgramBoundary === false &&
+        input.currentAt !== undefined &&
+        input.currentAt >= input.reserveStartAt - (input.recordingStartMarginMs ?? 0)
+    ) {
+        return { canStart: true, reason: 'timeSpecifiedMidProgram' };
     }
 
     // ARIB TR-B14 は番組開始を following の start_time で判定する。

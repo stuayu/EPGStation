@@ -9,7 +9,16 @@
                             <SearchOptionRow>
                                 <div class="d-flex flex-wrap">
                                     <v-checkbox class="mx-1 my-0" v-model="reserveOptionValue.enable" label="有効"></v-checkbox>
-                                    <v-checkbox class="mx-1 my-0" v-model="reserveOptionValue.allowEndLack" label="状況に応じて末尾がかけることを許可"></v-checkbox>
+                                    <v-select class="policy-input" v-model="reserveOptionValue.priority" :items="priorityItems" label="優先度" density="compact"></v-select>
+                                    <v-select
+                                        class="policy-input"
+                                        v-model="reserveOptionValue.conflictPolicy"
+                                        :items="conflictPolicyItems"
+                                        label="競合時の扱い"
+                                        density="compact"
+                                        hint="許可した欠け方の範囲で競合を許容。優先度で下位予約を押し出す設定も可能。"
+                                        persistent-hint
+                                    ></v-select>
                                 </div>
                             </SearchOptionRow>
                         </v-expansion-panel-text>
@@ -50,13 +59,7 @@
                         <v-expansion-panel-title>エンコード1</v-expansion-panel-title>
                         <v-expansion-panel-text>
                             <SearchOptionRow>
-                                <v-select
-                                    class="encode-mode"
-                                    v-model="encodeOptionValue.mode1"
-                                    :items="searchState.getEncodeModeItems()"
-                                    label="mode1"
-                                    clearable
-                                ></v-select>
+                                <v-select class="encode-mode" v-model="encodeOptionValue.mode1" :items="searchState.getEncodeModeItems()" label="mode1" clearable></v-select>
                                 <v-select
                                     class="directory"
                                     v-model="encodeOptionValue.encodeParentDirectoryName1"
@@ -72,13 +75,7 @@
                         <v-expansion-panel-title>エンコード2</v-expansion-panel-title>
                         <v-expansion-panel-text>
                             <SearchOptionRow>
-                                <v-select
-                                    class="encode-mode"
-                                    v-model="encodeOptionValue.mode2"
-                                    :items="searchState.getEncodeModeItems()"
-                                    label="mode2"
-                                    clearable
-                                ></v-select>
+                                <v-select class="encode-mode" v-model="encodeOptionValue.mode2" :items="searchState.getEncodeModeItems()" label="mode2" clearable></v-select>
                                 <v-select
                                     class="directory"
                                     v-model="encodeOptionValue.encodeParentDirectoryName2"
@@ -94,13 +91,7 @@
                         <v-expansion-panel-title>エンコード3</v-expansion-panel-title>
                         <v-expansion-panel-text>
                             <SearchOptionRow>
-                                <v-select
-                                    class="encode-mode"
-                                    v-model="encodeOptionValue.mode3"
-                                    :items="searchState.getEncodeModeItems()"
-                                    label="mode3"
-                                    clearable
-                                ></v-select>
+                                <v-select class="encode-mode" v-model="encodeOptionValue.mode3" :items="searchState.getEncodeModeItems()" label="mode3" clearable></v-select>
                                 <v-select
                                     class="directory"
                                     v-model="encodeOptionValue.encodeParentDirectoryName3"
@@ -145,8 +136,21 @@ import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
     },
 })
 class SearchRuleOption extends Vue {
+    public priorityItems = [
+        { title: '最高', value: 5 },
+        { title: '高', value: 4 },
+        { title: '普通', value: 3 },
+        { title: '低', value: 2 },
+        { title: '最低', value: 1 },
+    ];
+    public conflictPolicyItems = [
+        { title: '厳格', value: 'STRICT' },
+        { title: '末尾欠け許可', value: 'ALLOW_END_LACK' },
+        { title: '先頭欠け許可', value: 'ALLOW_HEAD_LACK' },
+        { title: '一部欠け許可', value: 'ALLOW_PARTIAL' },
+        { title: '下位予約を押し出す', value: 'PREEMPT_LOWER_PRIORITY' },
+    ];
     public searchState: ISearchState = container.get<ISearchState>('ISearchState');
-
 
     get reserveOptionValue(): ReserveOption {
         if (this.searchState.reserveOption === null) {
@@ -187,6 +191,10 @@ export default toNative(SearchRuleOption);
 
 <style lang="sass" scoped>
 .search-rule-option
+    .policy-input
+        max-width: 240px
+        min-width: 160px
+        flex: 1 1 180px
     .period
         max-width: 90px
     .directory
@@ -206,6 +214,4 @@ export default toNative(SearchRuleOption);
     .v-input__control
         .v-input__slot
             margin: 0 !important
-        .v-messages
-            display: none
 </style>

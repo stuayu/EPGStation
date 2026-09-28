@@ -4,11 +4,21 @@ import Reserve from '../../../db/entities/Reserve';
 
 interface IRecordingStreamCreator {
     setTuner(tuners: mapid.TunerDevice[]): void;
+    /** 現在ストリームを保持する予約のチューナー割当を返す */
+    getActiveTunerAssignments(): { reserveId: number; tunerIndex: number }[];
     create(reserve: Reserve, abortSignal: AbortSignal): Promise<http.IncomingMessage>;
+    /** 既存の録画 tuner 枠を維持したまま stream を再取得する */
+    reconnect(reserve: Reserve, abortSignal: AbortSignal): Promise<http.IncomingMessage>;
+    /** 録画終了後に tuner 台帳を解放する */
+    release(reserveId: number): void;
     /** service stream の予約終了ハードタイマーを更新する */
     changeEndAt(reserve: Reserve): void;
     /** stream が録画側の正常終了条件で閉じられた理由を返す */
     getCloseReason(stream: http.IncomingMessage): IRecordingStreamCreator.CloseReason;
+    /** stream の終了理由を記録する (最初の理由を保持) */
+    markClose(stream: http.IncomingMessage, reason: Exclude<IRecordingStreamCreator.CloseReason, null>): void;
+    /** 理由を記録して stream を破棄する */
+    closeStream(stream: http.IncomingMessage, reason: Exclude<IRecordingStreamCreator.CloseReason, null>): void;
 }
 
 namespace IRecordingStreamCreator {
@@ -16,7 +26,34 @@ namespace IRecordingStreamCreator {
     // 録画の張り付き時間は recording.prepRecSec で設定する (RecordingTimingConfig) が、
     // こちらは「実行中の録画をどれだけ切ってよいか」なので連動させない
     export const PREP_TIME = 15 * 1000;
-    export type CloseReason = 'scheduled-end' | null;
+    export type CloseReason =
+        | 'scheduled-end'
+        | 'boundary'
+        | 'canceled'
+        | 'tuner-handoff'
+        | 'superseded'
+        | 'obsolete'
+        | 'teardown'
+        | 'write-error'
+        | 'reconnect-no-data'
+        | 'process-shutdown'
+        | null;
+    export type CloseAction = 'ignore' | 'finish' | 'inspect';
+
+    /** close reason から Recorder の終了動作を決める */
+    export const getCloseAction = (reason: CloseReason): CloseAction => {
+        if (
+            reason === 'superseded' ||
+            reason === 'obsolete' ||
+            reason === 'teardown' ||
+            reason === 'write-error' ||
+            reason === 'process-shutdown'
+        )
+            return 'ignore';
+        if (reason === 'canceled' || reason === 'tuner-handoff' || reason === 'boundary' || reason === 'scheduled-end')
+            return 'finish';
+        return 'inspect';
+    };
 }
 
 export default IRecordingStreamCreator;

@@ -2,6 +2,7 @@ import * as path from 'path';
 import 'reflect-metadata';
 import { install } from 'source-map-support';
 import ILoggerModel from '../ILoggerModel';
+import IConfiguration from '../IConfiguration';
 import container from '../ModelContainer';
 import * as containerSetter from '../ModelContainerSetter';
 import IEncodeFinishModel from './encode/IEncodeFinishModel';
@@ -13,6 +14,7 @@ import IEitPresentStore from './stream/util/IEitPresentStore';
 import ISocketIOManageModel from './socketio/ISocketIOManageModel';
 import IProgramDB from '../db/IProgramDB';
 import IHardwareEncoderDetector from '../encoder/IHardwareEncoderDetector';
+import telemetry from '../observability/Telemetry';
 install();
 
 containerSetter.set(container);
@@ -29,6 +31,22 @@ process.on('unhandledRejection', err => {
     log.system.fatal(`unhandledRejection: ${err}`);
 });
 
+let telemetryShutdownStarted = false;
+const shutdownTelemetry = async (): Promise<void> => {
+    if (telemetryShutdownStarted) return;
+    telemetryShutdownStarted = true;
+    try {
+        await telemetry.shutdown();
+        process.exit(0);
+    } catch (err) {
+        log.system.error('OpenTelemetry shutdown failed');
+        log.system.error(err);
+        process.exit(0);
+    }
+};
+process.on('SIGTERM', () => void shutdownTelemetry());
+process.on('SIGINT', () => void shutdownTelemetry());
+
 (async (): Promise<void> => {
     // 画面から変更された設定 (config.yml への重ね書き) を先に適用する。
     // ServiceServer など多くのモデルはコンストラクタで config を読むため、構築より前に済ませる
@@ -36,6 +54,7 @@ process.on('unhandledRejection', err => {
         .get<IConfigOverlayLoader>('IConfigOverlayLoader')
         .load()
         .catch(err => log.system.error(err));
+    await telemetry.initialize(container.get<IConfiguration>('IConfiguration').getConfig(), 'service');
     await container.get<IHardwareEncoderDetector>('IHardwareEncoderDetector').detect();
     await container
         .get<ILogLevelApplier>('ILogLevelApplier')

@@ -1018,7 +1018,7 @@ class SystemSetting extends Vue {
 
     requiresRestartKeys: string[] = [];
 
-    readonly notificationEventItems: string[] = ['recording.started', 'recording.completed', 'recording.failed', 'reserve.added', 'reserve.updated', 'reserve.deleted'];
+    readonly notificationEventItems: string[] = ['recording.started', 'recording.completed', 'recording.partial', 'recording.failed', 'reserve.added', 'reserve.updated', 'reserve.deleted'];
 
     /**
      * シリーズライブラリ機能が有効か (featureFlags.seriesLibrary)。無効な場合はバックフィル/エイリアス管理 UI を隠す
@@ -1589,7 +1589,7 @@ class SystemSetting extends Vue {
             type: 'discord',
             url: '',
             secret: '',
-            events: ['recording.started', 'recording.completed', 'recording.failed'],
+        events: ['recording.started', 'recording.completed', 'recording.partial', 'recording.failed'],
         });
     }
 

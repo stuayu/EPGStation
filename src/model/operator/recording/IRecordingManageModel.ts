@@ -5,6 +5,8 @@ import { IReserveUpdateValues } from '../../event/IReserveEvent';
 export default interface IRecordingManageModel {
     setTuner(tuners: mapid.TunerDevice[]): void;
     cleanup(): Promise<void>;
+    setupStartupTimers(): Promise<void>;
+    shutdown(): Promise<void>;
     update(diff: IReserveUpdateValues): Promise<void>;
     hasReserve(reserveId: apid.ReserveId): boolean;
     cancel(reserveId: apid.ReserveId, isPlanToDelete: boolean): Promise<void>;

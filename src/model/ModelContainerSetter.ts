@@ -39,6 +39,8 @@ import IPTVApiModel from './api/iptv/IPTVApiModel';
 import IRecordedItemUtil from './api/IRecordedItemUtil';
 import IRecordedApiModel from './api/recorded/IRecordedApiModel';
 import RecordedApiModel from './api/recorded/RecordedApiModel';
+import IRecordingSessionApiModel from './api/recorded/IRecordingSessionApiModel';
+import RecordingSessionApiModel from './api/recorded/RecordingSessionApiModel';
 import RecordedItemUtil from './api/RecordedItemUtil';
 import IRecordedTagApiModel from './api/recordedTag/IRecordedTagApiModel';
 import RecordedTagApiModel from './api/recordedTag/RecordedTagApiModel';
@@ -114,6 +116,7 @@ import IProgramDB from './db/IProgramDB';
 import IMetadataProviderCacheDB from './db/IMetadataProviderCacheDB';
 import MetadataProviderCacheDB from './db/MetadataProviderCacheDB';
 import IRecordedDB from './db/IRecordedDB';
+import IRecordingSessionDB from './db/IRecordingSessionDB';
 import IRecordedHistoryDB from './db/IRecordedHistoryDB';
 import IRecordedTagDB from './db/IRecordedTagDB';
 import ISavedSearchDB from './db/ISavedSearchDB';
@@ -138,6 +141,7 @@ import ProgramDB from './db/ProgramDB';
 import IProgramSeriesDB from './db/IProgramSeriesDB';
 import ProgramSeriesDB from './db/ProgramSeriesDB';
 import RecordedDB from './db/RecordedDB';
+import RecordingSessionDB from './db/RecordingSessionDB';
 import RecordedHistoryDB from './db/RecordedHistoryDB';
 import RecordedTagDB from './db/RecordedTagDB';
 import SavedSearchDB from './db/SavedSearchDB';
@@ -417,6 +421,7 @@ export const set = (container: Container): void => {
     container.bind<IProgramSeriesDB>('IProgramSeriesDB').to(ProgramSeriesDB).inSingletonScope();
 
     container.bind<IRecordedDB>('IRecordedDB').to(RecordedDB).inSingletonScope();
+    container.bind<IRecordingSessionDB>('IRecordingSessionDB').to(RecordingSessionDB).inSingletonScope();
 
     container.bind<IRecordedTagDB>('IRecordedTagDB').to(RecordedTagDB).inSingletonScope();
 
@@ -596,6 +601,10 @@ export const set = (container: Container): void => {
     container.bind<IReserveApiModel>('IReserveApiModel').to(ReserveApiModel).inSingletonScope();
 
     container.bind<IRecordedApiModel>('IRecordedApiModel').to(RecordedApiModel).inSingletonScope();
+    container
+        .bind<IRecordingSessionApiModel>('IRecordingSessionApiModel')
+        .to(RecordingSessionApiModel)
+        .inSingletonScope();
     container.bind<ISeriesApiModel>('ISeriesApiModel').to(SeriesApiModel).inSingletonScope();
     container.bind<IAnnictSyncApiModel>('IAnnictSyncApiModel').to(AnnictSyncApiModel).inSingletonScope();
     container.bind<ISeriesMappingApiModel>('ISeriesMappingApiModel').to(SeriesMappingApiModel).inSingletonScope();

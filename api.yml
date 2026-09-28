@@ -64,8 +64,26 @@ paths:
                 '404':
                     description: 直接配信可能な MPEG-TS が存在しない
 
+    /recorded/{recordedId}/recording-sessions:
+        get:
+            summary: 録画セッションと接続試行を取得
+            parameters:
+                - $ref: '#/components/parameters/PathRecordedId'
+            responses:
+                '200':
+                    description: 録画セッション一覧
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RecordingSessions'
+                '404':
+                    description: 録画が存在しない
+
 components:
     schemas:
+        ConflictPolicy:
+            type: string
+            enum: [STRICT, ALLOW_END_LACK, ALLOW_HEAD_LACK, ALLOW_PARTIAL, PREEMPT_LOWER_PRIORITY]
         UnixtimeMS:
             description: 時刻 (ms)
             type: integer
@@ -1258,6 +1276,12 @@ components:
                 allowEndLack:
                     description: 末尾切れを許可するか
                     type: boolean
+                priority:
+                    type: integer
+                    minimum: 1
+                    maximum: 5
+                conflictPolicy:
+                    $ref: '#/components/schemas/ConflictPolicy'
                 avoidDuplicate:
                     description: 録画済みの重複番組を排除するか
                     type: boolean
@@ -1337,6 +1361,12 @@ components:
                 allowEndLack:
                     description: 末尾切れを許すか
                     type: boolean
+                priority:
+                    type: integer
+                    minimum: 1
+                    maximum: 5
+                conflictPolicy:
+                    $ref: '#/components/schemas/ConflictPolicy'
                 tags:
                     type: array
                     items:
@@ -1378,9 +1408,21 @@ components:
             type: object
             required:
                 - reserveId
+                - preemptedReserves
             properties:
                 reserveId:
                     $ref: '#/components/schemas/ReserveId'
+                preemptedReserves:
+                    type: array
+                    items:
+                        type: object
+                        required: [reserveId, reason]
+                        properties:
+                            reserveId:
+                                $ref: '#/components/schemas/ReserveId'
+                            reason:
+                                type: string
+                                enum: [PRIORITY_PREEMPTED]
 
         ReserveItem:
             description: 予約番組情報
@@ -1406,10 +1448,16 @@ components:
                     type: boolean
                 isConflict:
                     type: boolean
+                conflictInfo:
+                    $ref: '#/components/schemas/ReservationConflict'
                 isOverlap:
                     type: boolean
                 allowEndLack:
                     type: boolean
+                priority:
+                    type: integer
+                conflictPolicy:
+                    $ref: '#/components/schemas/ConflictPolicy'
                 isTimeSpecified:
                     type: boolean
                 isTimeUndefined:
@@ -1488,6 +1536,24 @@ components:
                     $ref: '#/components/schemas/ProgramAudioSamplingRate'
                 audioComponentType:
                     type: integer
+
+        ReservationConflict:
+            description: 予約の競合内容
+            type: object
+            required:
+                - type
+                - affectedMs
+                - conflictingReserveIds
+            properties:
+                type:
+                    type: string
+                    enum: [NO_TUNER, PRIORITY_PREEMPTED, PARTIAL_HEAD, PARTIAL_TAIL, PARTIAL, MARGIN_OVERLAP, BACKEND_UNAVAILABLE]
+                affectedMs:
+                    type: integer
+                conflictingReserveIds:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ReserveId'
 
         Reserves:
             description: 予約情報
@@ -1658,6 +1724,75 @@ components:
                 isProtected:
                     description: 自動録画削除対象外か
                     type: boolean
+                recordingStatus:
+                    description: 録画結果。null は従来録画または完了扱い
+                    type: string
+                    enum: [completed, partial, failed, canceled]
+                endReason:
+                    description: 録画終了理由コード
+                    type: string
+                transportGaps:
+                    description: 上流接続が切れていた区間。録画詳細のみ
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RecordingTransportGap'
+
+        RecordingTransportGap:
+            type: object
+            required: [startAt, reason]
+            properties:
+                startAt: { $ref: '#/components/schemas/UnixtimeMS' }
+                endAt: { $ref: '#/components/schemas/UnixtimeMS' }
+                reason: { type: string }
+
+        RecordingAttemptItem:
+            type: object
+            required: [id, sessionId, attemptNo, requestedAt, closeReason, errorCode, priority, bytesReceived]
+            properties:
+                id: { type: integer }
+                sessionId: { type: integer }
+                attemptNo: { type: integer }
+                requestedAt: { $ref: '#/components/schemas/UnixtimeMS' }
+                firstDataAt: { $ref: '#/components/schemas/UnixtimeMS' }
+                endedAt: { $ref: '#/components/schemas/UnixtimeMS' }
+                closeReason: { type: string }
+                errorCode: { type: string }
+                priority: { type: integer }
+                bytesReceived: { type: integer }
+                fileOffsetStart: { type: integer }
+                fileOffsetEnd: { type: integer }
+
+        RecordingSessionItem:
+            type: object
+            required: [id, reserveId, channelId, state, scheduledStartAt, scheduledEndAt, retryCount, attempts]
+            properties:
+                id: { type: integer }
+                reserveId: { type: integer }
+                recordedId: { $ref: '#/components/schemas/RecordedId' }
+                programId: { $ref: '#/components/schemas/ProgramId' }
+                channelId: { $ref: '#/components/schemas/ChannelId' }
+                state: { type: string }
+                scheduledStartAt: { $ref: '#/components/schemas/UnixtimeMS' }
+                scheduledEndAt: { $ref: '#/components/schemas/UnixtimeMS' }
+                actualStartAt: { $ref: '#/components/schemas/UnixtimeMS' }
+                actualEndAt: { $ref: '#/components/schemas/UnixtimeMS' }
+                startReason: { type: string }
+                endReason: { type: string }
+                resultStatus: { type: string, enum: [completed, partial, failed, canceled] }
+                retryCount: { type: integer }
+                createdAt: { $ref: '#/components/schemas/UnixtimeMS' }
+                updatedAt: { $ref: '#/components/schemas/UnixtimeMS' }
+                attempts:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecordingAttemptItem' }
+
+        RecordingSessions:
+            type: object
+            required: [sessions]
+            properties:
+                sessions:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecordingSessionItem' }
 
         CreateNewRecordedOption:
             description: 新規追加する録画番組情報
@@ -4875,6 +5010,7 @@ components:
                 - canUpdate
                 - updateNote
                 - restartNote
+                - activeRecordingCount
                 - releasesUrl
                 - job
             properties:
@@ -4930,6 +5066,10 @@ components:
                 restartNote:
                     description: 更新を伴わない再起動の挙動の説明
                     type: string
+                activeRecordingCount:
+                    description: 録画中または再接続中の録画セッション数。取得失敗時は null
+                    type: integer
+                    nullable: true
                 releasesUrl:
                     type: string
                 job:

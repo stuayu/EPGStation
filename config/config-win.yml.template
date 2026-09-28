@@ -105,6 +105,10 @@ dbtype: sqlite
 #  maxChannels: 8
 
 # ===== EPG 更新 =====
+# 予約の競合判定・チューナー割当方式 (legacy / planner)。既定 planner
+# reservation:
+#   scheduler: planner
+
 # 過去の番組表データを残す時間 (時間)
 # 0: 終了した番組を順次削除する (既定) / -1: 削除せず無期限に残す
 # epgRetentionTime: 0
@@ -138,6 +142,14 @@ dbtype: sqlite
 
 # 予約定期更新時のログ出力を抑えるか
 # isSuppressReservesUpdateAllLog: false
+
+# OpenTelemetry の traces / metrics を OTLP/HTTP で送信する (既定 false)
+# endpoint は Collector の OTLP HTTP receiver の base URL (例: http://localhost:4318)
+# observability:
+#     otel:
+#         enabled: false
+#         endpoint: 'http://localhost:4318'
+#         serviceName: epgstation
 
 # ===== 録画 =====
 # 録画ファイルの保存先。既定は EPGStation フォルダー内の recorded。別の保存先なら配列内の path を変更。
@@ -928,6 +940,10 @@ stream:
 # 対象番組の境界まで待ちます。切り戻し用の program stream では Mirakurun がデータ出力を保留します。
 # チューナー異常とは別枠で数えるので、延長待ちが異常時の再試行回数を食い潰しません。
 # recording:
+#     # 録画中に上流が切断した後、同じ録画へ再接続する (既定 true)
+#     reconnectEnabled: true
+#     # 同一チャンネルで続く録画が上流接続を共有する (既定 true)
+#     shareUpstreamStream: true
 #     # programId 予約の取得方式 (既定 service。障害時の切り戻し用に program を指定可)
 #     programStreamMode: service
 #     # 番組開始を待つ上限 (ms)。既定 3 時間。0 で待たない
@@ -1119,7 +1135,7 @@ stream:
 #         - name: discord
 #           type: discord
 #           url: https://discord.com/api/webhooks/...
-#           events: [recording.started, recording.completed, recording.failed]
+#           events: [recording.started, recording.completed, recording.partial, recording.failed]
 #         - name: automation
 #           type: webhook
 #           url: https://example.invalid/epgstation

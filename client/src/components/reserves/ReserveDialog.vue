@@ -8,6 +8,7 @@
                     <div class="sub-text" style="cursor: pointer" v-on:click="gotoGuide">
                         {{ reserve.display.day }}({{ reserve.display.dow }}) {{ reserve.display.startTime }} ~ {{ reserve.display.endTime }} ({{ reserve.display.duration }}m)
                     </div>
+                    <ReserveScheduleStatus :reserveItem="reserve.reserveItem" class="d-block mt-2"></ReserveScheduleStatus>
                     <div class="genres sub-text my-1">
                         <div v-for="genre in reserve.display.genres" v-bind:key="genre">{{ genre }}</div>
                     </div>
@@ -28,6 +29,7 @@
 
 <script lang="ts">
 import IChannelModel from '@/model/channels/IChannelModel';
+import ReserveScheduleStatus from '@/components/reserves/ReserveScheduleStatus.vue';
 import container from '@/model/ModelContainer';
 import { ReserveStateData } from '@/model/state/reserve/IReserveStateUtil';
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
@@ -35,7 +37,7 @@ import DateUtil from '@/util/DateUtil';
 import Util from '@/util/Util';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 
-@Component({})
+@Component({ components: { ReserveScheduleStatus } })
 class ReserveDialog extends Vue {
     @Prop({ required: true })
     public isOpen!: boolean;

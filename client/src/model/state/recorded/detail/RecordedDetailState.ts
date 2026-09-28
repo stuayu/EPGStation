@@ -18,6 +18,7 @@ export default class RecordedDetailState implements IRecordedDetailState {
 
     private recordedItem: apid.RecordedItem | null = null;
     private displayData: RecordedDisplayData | null = null;
+    private recordingSessions: apid.RecordingSessionItem[] = [];
 
     constructor(
         @inject('IRecordedApiModel') recordedApiModel: IRecordedApiModel,
@@ -37,11 +38,18 @@ export default class RecordedDetailState implements IRecordedDetailState {
     public clearData(): void {
         this.recordedItem = null;
         this.displayData = null;
+        this.recordingSessions = [];
     }
 
     public async fetchData(recordedId: apid.RecordedId, isHalfWidth: boolean): Promise<void> {
         this.recordedItem = await this.recordedApiModel.get(recordedId, isHalfWidth);
         this.displayData = this.recordedUtil.convertRecordedItemToDisplayData(this.recordedItem, isHalfWidth);
+        const sessions = await this.recordedApiModel.getRecordingSessions(recordedId);
+        this.recordingSessions = sessions.sessions;
+    }
+
+    public getRecordingSessions(): apid.RecordingSessionItem[] {
+        return this.recordingSessions;
     }
 
     /**

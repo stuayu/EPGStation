@@ -1,5 +1,5 @@
 <template>
-    <span v-if="isFollowingSchedule === true || isTimeUndefined === true" class="reserve-schedule-status">
+    <span v-if="isFollowingSchedule === true || isTimeUndefined === true || conflictDescription !== null || reserveItem.priority !== 3" class="reserve-schedule-status">
         <v-chip v-if="isFollowingSchedule === true" size="x-small" color="error" variant="flat" class="mr-1 status-chip">
             <v-icon start size="x-small">mdi-clock-alert-outline</v-icon>
             前番組延長のため追従中
@@ -8,12 +8,18 @@
             <v-icon start size="x-small">mdi-timer-sand</v-icon>
             終了時刻未定
         </v-chip>
+        <v-chip v-if="conflictDescription !== null" size="x-small" color="error" variant="outlined" class="status-chip mt-1">
+            <v-icon start size="x-small">mdi-alert-outline</v-icon>
+            {{ conflictDescription }}
+        </v-chip>
+        <v-chip v-if="reserveItem.priority !== 3" size="x-small" variant="tonal" class="status-chip mt-1">優先度 {{ reserveItem.priority }}</v-chip>
     </span>
 </template>
 
 <script lang="ts">
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
+import ReservationConflictUtil from '@/util/ReservationConflictUtil';
 
 /**
  * 予約の EPG 追従状態 (前番組延長による開始待ち / 放送終了時刻未定) を表示する
@@ -29,6 +35,10 @@ class ReserveScheduleStatus extends Vue {
 
     get isTimeUndefined(): boolean {
         return this.reserveItem.isTimeUndefined === true;
+    }
+
+    get conflictDescription(): string | null {
+        return ReservationConflictUtil.format(this.reserveItem.conflictInfo);
     }
 }
 

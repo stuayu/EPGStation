@@ -13,6 +13,12 @@ import IRecorderModel, { RecorderModelProvider } from './IRecorderModel';
 import IRecordingManageModel from './IRecordingManageModel';
 import IRecordingStreamCreator from './IRecordingStreamCreator';
 import IRecordingUtilModel from './IRecordingUtilModel';
+import IRecordingSessionDB from '../../db/IRecordingSessionDB';
+import { RecordingSessionState } from './RecordingSessionState';
+import * as fs from 'fs';
+import * as path from 'path';
+import { canResumeRecording, getAlignedRecordingSize } from './RecordingRecoveryPolicy';
+import { resolveRecordingTimingConfig } from './RecordingTimingConfig';
 
 interface RecordingIndex {
     [key: number]: IRecorderModel;
@@ -27,8 +33,10 @@ class RecordingManageModel implements IRecordingManageModel {
     private recordedDB: IRecordedDB;
     private reserveDB: IReserveDB;
     private recordingUtil: IRecordingUtilModel;
+    private recordingSessionDB: IRecordingSessionDB;
     private recordingEvent: IRecordingEvent;
     private recordingIndex: RecordingIndex = {};
+    private recordingFailureRetryCount: Map<number, number> = new Map();
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -40,6 +48,7 @@ class RecordingManageModel implements IRecordingManageModel {
         @inject('IRecordedDB') recordedDB: IRecordedDB,
         @inject('IReserveDB') reserveDB: IReserveDB,
         @inject('IRecordingUtilModel') recordingUtil: IRecordingUtilModel,
+        @inject('IRecordingSessionDB') recordingSessionDB: IRecordingSessionDB,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
@@ -49,6 +58,7 @@ class RecordingManageModel implements IRecordingManageModel {
         this.recordedDB = recordedDB;
         this.reserveDB = reserveDB;
         this.recordingUtil = recordingUtil;
+        this.recordingSessionDB = recordingSessionDB;
 
         this.setEvents(); // イベント設定
     }
@@ -67,10 +77,9 @@ class RecordingManageModel implements IRecordingManageModel {
 
         this.recordingEvent.setRecordingFailed(async reserve => {
             this.deleteRecording(reserve.id);
-
-            const recordeds = await this.recordedDB.findReserveId(reserve.id);
-
-            if (recordeds.length < 3) {
+            const retryCount = this.recordingFailureRetryCount.get(reserve.id) ?? 0;
+            if (retryCount < RecordingManageModel.MAX_RECORDING_FAILURE_RETRY) {
+                this.recordingFailureRetryCount.set(reserve.id, retryCount + 1);
                 // 録画を再設定
                 const recorder = await this.provider();
                 if (recorder.setTimer(reserve, false) === true) {
@@ -80,6 +89,7 @@ class RecordingManageModel implements IRecordingManageModel {
                     this.log.system.error(`readd recording error: ${reserve.id}`);
                 }
             } else {
+                this.recordingFailureRetryCount.delete(reserve.id);
                 // リトライ回数オーバー
                 this.log.system.error(`recording retry over: ${reserve.id}`);
                 this.recordingEvent.emitRecordingRetryOver(reserve);
@@ -88,6 +98,7 @@ class RecordingManageModel implements IRecordingManageModel {
 
         this.recordingEvent.setFinishRecording(reserve => {
             this.deleteRecording(reserve.id);
+            this.recordingFailureRetryCount.delete(reserve.id);
         });
     }
 
@@ -99,6 +110,8 @@ class RecordingManageModel implements IRecordingManageModel {
         this.log.system.debug(`delete recording index: ${reserveId}`);
         delete this.recordingIndex[reserveId];
     }
+
+    private static readonly MAX_RECORDING_FAILURE_RETRY = 2;
 
     /**
      * tuner 情報セット
@@ -115,6 +128,177 @@ class RecordingManageModel implements IRecordingManageModel {
     public async cleanup(): Promise<void> {
         this.log.system.info('start recordings cleanup ');
 
+        const staleCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        await this.recordingSessionDB.deleteOrphanSessionsBefore(staleCutoff).catch(err => {
+            this.log.system.warn('recording session orphan cleanup failed');
+            this.log.system.warn(err);
+        });
+
+        const activeSessions = await Promise.all(
+            [RecordingSessionState.RECORDING, RecordingSessionState.RECONNECTING].map(state =>
+                this.recordingSessionDB
+                    .findByState(state)
+                    .catch(err => {
+                        this.log.system.warn('recording session recovery lookup failed');
+                        this.log.system.warn(err);
+                        return [];
+                    })
+                    .then(sessions => sessions.filter(session => session.state === state)),
+            ),
+        ).then(results => results.flat());
+        const interruptedSessions = await Promise.all(
+            [RecordingSessionState.PREPARING, RecordingSessionState.WAITING_BOUNDARY].map(state =>
+                this.recordingSessionDB
+                    .findByState(state)
+                    .catch(err => {
+                        this.log.system.warn('recording preparation recovery lookup failed');
+                        this.log.system.warn(err);
+                        return [];
+                    })
+                    .then(sessions => sessions.filter(session => session.state === state)),
+            ),
+        ).then(results => results.flat());
+        for (const session of interruptedSessions) {
+            const attempts = await this.recordingSessionDB.findAttemptsBySessionId(session.id).catch(err => {
+                this.log.system.warn(`recording preparation attempts lookup failed: ${session.id}`);
+                this.log.system.warn(err);
+                return [];
+            });
+            for (const attempt of attempts) {
+                if (attempt.endedAt !== null && attempt.endedAt !== undefined) continue;
+                await this.recordingSessionDB
+                    .updateAttempt(attempt.id, { endedAt: Date.now(), closeReason: 'process-restart' })
+                    .catch(err => {
+                        this.log.system.warn(`recording preparation attempt update failed: ${attempt.id}`);
+                        this.log.system.warn(err);
+                    });
+            }
+            await this.recordingSessionDB
+                .updateSession(session.id, {
+                    state: RecordingSessionState.FINISHED,
+                    resultStatus: 'canceled',
+                    endReason: 'process-restart',
+                    actualEndAt: Date.now(),
+                    updatedAt: Date.now(),
+                })
+                .catch(err => {
+                    this.log.system.warn(`recording preparation recovery update failed: ${session.id}`);
+                    this.log.system.warn(err);
+                });
+        }
+        const resumedRecordedIds = new Set<number>();
+        for (const session of activeSessions) {
+            const reserve = await this.reserveDB.findId(session.reserveId).catch(() => null);
+            const recorded =
+                session.recordedId === null ? null : await this.recordedDB.findId(session.recordedId).catch(() => null);
+            const videoFile = recorded?.videoFiles?.[0] ?? null;
+            const parentPath =
+                videoFile === null
+                    ? null
+                    : videoFile.parentDirectoryName === 'tmp'
+                      ? (this.config.recordedTmp ?? null)
+                      : (this.config.recorded.find(dir => dir.name === videoFile.parentDirectoryName)?.path ?? null);
+            const filePath =
+                videoFile === null || parentPath === null ? null : path.join(parentPath, videoFile.filePath);
+            let originalSize = 0;
+            let alignedSize = 0;
+            let fileExists = false;
+            let fileMtimeMs: number | null = null;
+            if (filePath !== null) {
+                try {
+                    const fileStat = await fs.promises.stat(filePath);
+                    originalSize = fileStat.size;
+                    fileMtimeMs = Number.isFinite(fileStat.mtimeMs) ? fileStat.mtimeMs : null;
+                    alignedSize = getAlignedRecordingSize(originalSize);
+                    fileExists = true;
+                } catch {
+                    fileExists = false;
+                }
+            }
+            const deadlineMarginMs = resolveRecordingTimingConfig(
+                this.config.recording,
+                this.config.timeSpecifiedStartMargin,
+                this.config.timeSpecifiedEndMargin,
+            ).endMarginMs;
+            const resumable =
+                reserve !== null &&
+                recorded !== null &&
+                videoFile !== null &&
+                canResumeRecording({
+                    now: Date.now(),
+                    endAt: reserve.endAt,
+                    endMarginMs: deadlineMarginMs,
+                    hasReserve: true,
+                    fileExists,
+                });
+            if (
+                resumable === true &&
+                filePath !== null &&
+                reserve !== null &&
+                recorded !== null &&
+                videoFile !== null
+            ) {
+                try {
+                    await fs.promises.truncate(filePath, alignedSize);
+                    const attempts = await this.recordingSessionDB.findAttemptsBySessionId(session.id);
+                    const previousAttempt = attempts.sort((a, b) => a.attemptNo - b.attemptNo).at(-1);
+                    if (previousAttempt !== undefined) {
+                        const attemptRecovery = {
+                            endedAt: previousAttempt.endedAt ?? fileMtimeMs ?? session.updatedAt,
+                            closeReason: previousAttempt.closeReason ?? 'process-restart',
+                            fileOffsetEnd: originalSize,
+                        };
+                        await this.recordingSessionDB.updateAttempt(previousAttempt.id, {
+                            ...attemptRecovery,
+                        });
+                        Object.assign(previousAttempt, attemptRecovery);
+                    }
+                    videoFile.size = alignedSize;
+                    await this.recordingSessionDB.updateSession(session.id, {
+                        state: RecordingSessionState.RECORDING,
+                        updatedAt: Date.now(),
+                    });
+                    const recorder = await this.provider();
+                    if (recorder.setResumeTimer(reserve, true, { session, attempts, recorded, videoFile })) {
+                        this.recordingIndex[reserve.id] = recorder;
+                        resumedRecordedIds.add(recorded.id);
+                        this.log.system.info(
+                            `resume recording: reserveId: ${reserve.id}, recordedId: ${recorded.id}, size: ${originalSize} -> ${alignedSize}`,
+                        );
+                        continue;
+                    }
+                } catch (err) {
+                    this.log.system.warn(`recording resume setup failed: ${session.id}`);
+                    this.log.system.warn(err);
+                }
+            }
+            await this.recordingSessionDB
+                .updateSession(session.id, {
+                    state: RecordingSessionState.FINISHED,
+                    resultStatus: 'partial',
+                    endReason: 'process-restart',
+                    actualEndAt: Date.now(),
+                    updatedAt: Date.now(),
+                })
+                .catch(err => {
+                    this.log.system.warn(`recording session recovery update failed: ${session.id}`);
+                    this.log.system.warn(err);
+                });
+            if (session.recordedId !== null) {
+                if (recorded !== null) {
+                    await this.recordedDB
+                        .updateRecordingResult(session.recordedId, {
+                            recordingStatus: 'partial',
+                            endReason: 'process-restart',
+                        })
+                        .catch(err => {
+                            this.log.system.warn(`recording result recovery update failed: ${session.recordedId}`);
+                            this.log.system.warn(err);
+                        });
+                }
+            }
+        }
+
         // 録画中になっている番組を取り出す
         const [records] = await this.recordedDB.findAll(
             {
@@ -130,6 +314,7 @@ class RecordingManageModel implements IRecordingManageModel {
         );
 
         for (const r of records) {
+            if (resumedRecordedIds.has(r.id)) continue;
             // 録画中から録画済みへ変更
             try {
                 await this.recordedDB.removeRecording(r.id);
@@ -179,11 +364,33 @@ class RecordingManageModel implements IRecordingManageModel {
             // 終了処理
             const newRecorded = await this.recordedDB.findId(r.id);
             if (newRecorded !== null) {
-                this.recordingEvent.emitFinishRecording(reserve, newRecorded, true);
+                const wasPartialRecovery =
+                    newRecorded.recordingStatus === 'partial' && newRecorded.endReason === 'process-restart';
+                this.recordingEvent.emitFinishRecording(
+                    reserve,
+                    newRecorded,
+                    wasPartialRecovery === true && reserve.ruleId === null ? false : true,
+                );
             }
         }
 
         this.log.system.info('finish recordings cleanup ');
+    }
+
+    /** 起動時に DB 上の有効予約を再走査してタイマーを張る */
+    public async setupStartupTimers(): Promise<void> {
+        const reserves = await this.reserveDB.findLists();
+        const now = Date.now();
+        for (const reserve of reserves) {
+            if (reserve.isSkip === true || reserve.isOverlap === true || reserve.endAt <= now) continue;
+            if (typeof this.recordingIndex[reserve.id] !== 'undefined') continue;
+            const recorder = await this.provider();
+            if (recorder.setTimer(reserve, true) === true) {
+                this.recordingIndex[reserve.id] = recorder;
+            } else {
+                this.log.system.warn(`startup recording timer setup failed: ${reserve.id}`);
+            }
+        }
     }
 
     /**
@@ -239,6 +446,7 @@ class RecordingManageModel implements IRecordingManageModel {
         // 削除
         if (typeof diff.delete !== 'undefined') {
             for (const reserve of diff.delete) {
+                this.recordingFailureRetryCount.delete(reserve.id);
                 const recorder = this.recordingIndex[reserve.id];
                 if (typeof recorder !== 'undefined') {
                     this.log.system.debug(`delete recording: ${reserve.id}`);
@@ -267,6 +475,7 @@ class RecordingManageModel implements IRecordingManageModel {
      * @return Promise<void>
      */
     public async cancel(reserveId: apid.ReserveId, isPlanToDelete: boolean): Promise<void> {
+        this.recordingFailureRetryCount.delete(reserveId);
         const recording = this.recordingIndex[reserveId];
         if (typeof recording === 'undefined') {
             // 存在しないのでスルー
@@ -277,6 +486,19 @@ class RecordingManageModel implements IRecordingManageModel {
 
         this.log.system.info(`cancel recording reserveId: ${reserveId}, isPlanToDelete: ${isPlanToDelete}`);
         return recording.cancel(isPlanToDelete);
+    }
+
+    /** 録画中のセッションを再開可能な状態で閉じる */
+    public async shutdown(): Promise<void> {
+        const results = await Promise.allSettled(
+            Object.values(this.recordingIndex).map(recorder => recorder.shutdown()),
+        );
+        for (const result of results) {
+            if (result.status === 'rejected') {
+                this.log.system.error('recording shutdown error');
+                this.log.system.error(result.reason);
+            }
+        }
     }
 
     /**

@@ -612,6 +612,8 @@ IPTV クライアントなどに URL を手で登録する場合は、`GET /api/
 | startGateEnabled         | boolean | no   | 予約した番組が EIT[p/f] following/present で始まるまで録画を始めない。省略時 true          |
 | startGateTimeoutMs       | number  | no   | EIT[p/f] を読めないまま録画を開始するまでの時間 (ms)。省略時 60000                         |
 | startGateStartMarginMs   | number  | no   | 放送中の番組の開始時刻が予約開始時刻よりこれ以上前なら前の番組とみなす (ms)。省略時 120000 |
+| reconnectEnabled         | boolean | no   | 録画中の上流切断後に同じ録画へ再接続する。省略時 true。false で従来どおり失敗・再試行 |
+| shareUpstreamStream      | boolean | no   | 同一チャンネルで続く録画間の Mirakurun 上流接続を共有する。省略時 true。Mirakurun priority と decode 設定が一致する service stream のみ対象 |
 | programStreamMode        | string  | no   | programId 予約の取得方式。`service` (既定、EPGStation が EIT 境界を管理) または `program` (切り戻し) |
 | hardStartGateTimeoutMs   | number  | no   | programId 予約で別 event_id が固着した場合の開始期限 (ms)。省略時 300000                   |
 | storageFallbackEnabled   | boolean | no   | 予想録画サイズに対して空きが足りない場合、`recorded` の次の保存先へ振り替える。省略時 true |
@@ -623,6 +625,8 @@ IPTV クライアントなどに URL を手で登録する場合は、`GET /api/
 
 ```yaml
 recording:
+    reconnectEnabled: true
+    shareUpstreamStream: true
     programStreamMode: service
     startWaitLimitMs: 10800000
     startWaitIntervalMs: 60000
@@ -645,6 +649,8 @@ recording:
 
 - 値が範囲外・不正な場合は既定値へ丸めるため、設定ミスで録画が動かなくなることはない
 - 野球中継などの長い延長に備える場合は `startWaitLimitMs` を延ばす
+- `reconnectEnabled: true` (既定) では録画中の上流切断後に同じ録画ファイルへ再接続する。false なら従来の失敗・録り直しへ戻る
+- `shareUpstreamStream: true` (既定) は、同一チャンネルで連続する予約間で Mirakurun への上流接続を共有する。`recording:` がある場合も項目を省略すれば有効。Mirakurun priority と decode 設定が一致する service stream が対象で、program mode は共有しない。従来動作へ戻す場合は `false` を指定する
 - `programStreamMode: service` (既定) では programId 予約もサービスストリームを使い、TS 到着 (transport) と EIT[p/f] 境界待ちを分離する。target present の event_id 一致、target following の start_time 到達を通常開始条件とし、EIT が無い場合は soft timeout (既定 60 秒)、別 event_id 固着は hard timeout (既定 5 分) で安全側に開始する。待機中の TS は最大 8 MiB のリングバッファへ保持する
 - soft/hard timeout で fallback 開始した場合は、全損を避ける代わりにリングバッファ内の前番組が最大 8 MiB 混ざり得る。開始理由は Operator の info ログで `eitSoftTimeout` / `eitHardTimeout` として区別できる
 - `startGateEnabled` は EIT[p/f] 境界待ちを有効にする (時刻指定予約・programId 予約の両方)。時刻指定予約では following の `start_time` を優先し、present 更新前でも目的番組の開始を判断する。programId 予約では対象 present の event_id 一致を優先し、EIT 無しの soft timeout と別 event_id 固着の hard timeout を安全弁として使う。待機中の TS は最大 8 MiB を保持して開始時に書き出す
@@ -717,6 +723,8 @@ recording dir has no room: reserveId: 13, using TS2, required: 5350MB, free: 900
 | externalFileImport   | 外部録画ファイルの取り込み                              |
 | advancedSearch       | 保存検索                                                |
 | updateNotification   | 更新通知・ワンクリック更新                              |
+
+Webhook / Discord の `notifications.targets[].events` では `recording.partial` を選択できる。部分録画の警告通知。既存のイベント絞り込み設定には自動追加されないため、通知したい場合は events に明示する。
 
 ```yaml
 featureFlags:
@@ -968,6 +976,7 @@ recPriority: 20
 | number | 1            | no   |
 
 - 予約が競合する番組に適用される
+- 予約 priority (1〜5) は既定値 3 を基準に差分として加算される。録画 priority は常に `streamingPriority + 1` 以上とし、競合録画は同じ予約 priority の通常録画より 1 以上低くする。`recPriority` / `conflictPriority` / `streamingPriority` を変更した場合も、この順序条件を保つため Mirakurun へ渡す値を下限・上限で調整する。
 
 ```yaml
 conflictPriority: 10
@@ -1087,6 +1096,22 @@ epgRetentionTime: -1
 epgDeleteIntervalTime: 60
 ```
 
+### reservation
+
+#### 予約の競合判定・チューナー割当方式
+
+| 子項目 | 種類 | デフォルト値 | 必須 | 説明 |
+| ------ | ---- | ------------ | ---- | ---- |
+| scheduler | string | `planner` | no | `planner` は区間単位の予約スケジューラ、`legacy` は従来方式 |
+
+```yaml
+reservation:
+    scheduler: planner
+```
+
+新スケジューラへ切り替えると、予約の競合判定と録画側のチューナー計画に同じ計画結果を使う。
+`planner` が既定の予約スケジューラ。`reservation:` がある場合も `scheduler` を省略すれば planner を使う。従来方式へ戻す場合は `reservation.scheduler: legacy` を指定する。`plannedEndAt` は planner のときだけ有効。`legacy` では予約の `endAt` を使う。
+
 ### epgRealtime
 
 #### EPG のリアルタイム同期
@@ -1117,6 +1142,28 @@ epgRealtime:
 mirakc を使っている場合、番組情報の更新は元々 serviceId 単位で 10 秒ごとに反映されるため、この設定は影響しない。
 
 recisdb-proxy のような Mirakurun 互換実装を使う場合は、`tunerServerType: mirakurun` を明示して自動判定を無効にすること (`/api/config/server` を返さない実装は mirakc と誤判定される)。
+
+### observability
+
+#### OpenTelemetry traces / metrics
+
+既定では無効。`enabled: true` のときだけ Node SDK を読み込み、OTLP/HTTP で traces と metrics を送信する。ログは従来どおり log4js で記録する。Operator と Service は別プロセスとして個別に初期化し、`service.name` には `operator` / `service` の種別を付加する。
+
+| 子項目 | 種類 | デフォルト値 | 必須 | 説明 |
+| ------ | ---- | ------------ | ---- | ---- |
+| enabled | boolean | false | no | OpenTelemetry を有効にする |
+| endpoint | string | — | 有効時 | OTLP/HTTP Collector の base URL。例: `http://localhost:4318` |
+| serviceName | string | `epgstation` | no | `service.name` のアプリケーション名 |
+
+```yaml
+observability:
+    otel:
+        enabled: true
+        endpoint: 'http://localhost:4318'
+        serviceName: epgstation
+```
+
+有効化と endpoint 変更は再起動後に反映される。
 
 ### isSuppressReservesUpdateAllLog
 

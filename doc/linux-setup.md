@@ -4,6 +4,31 @@
 
 ## セットアップ
 
+### OpenTelemetry Collector の例
+
+OpenTelemetry を有効にする場合、Collector の OTLP/HTTP receiver を起動し、`config.yml` に endpoint を指定する。次の最小構成は HTTP の 4318 番ポートで traces / metrics を受け取る。
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+exporters:
+  debug:
+    verbosity: basic
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug]
+```
+
+Collector と同じホストなら `observability.otel.endpoint: 'http://127.0.0.1:4318'` を指定する。
+
 1. **Node.js, Mirakurun, FFmpeg/FFprobe, Python (2.7, v3.5, v3.6, or v3.7), GCC** がインストール済みであることを確認する
 
     ```bash

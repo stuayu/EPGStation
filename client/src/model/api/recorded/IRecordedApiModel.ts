@@ -24,6 +24,7 @@ export interface NextUpResponse {
 export default interface IRecordedApiModel {
     gets(option: apid.GetRecordedOption): Promise<apid.Records>;
     get(recordedId: apid.RecordedId, isHalfWidth: boolean): Promise<apid.RecordedItem>;
+    getRecordingSessions(recordedId: apid.RecordedId): Promise<apid.RecordingSessions>;
     getSearchOptionList(): Promise<apid.RecordedSearchOptions>;
     delete(recordedId: apid.RecordedId): Promise<void>;
     stopEncode(recordedId: apid.RecordedId): Promise<void>;

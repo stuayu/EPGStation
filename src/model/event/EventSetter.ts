@@ -27,6 +27,7 @@ import IThumbnailEvent from './IThumbnailEvent';
 import ISeriesResolver from '../series/ISeriesResolver';
 import { formatLogTimeRange } from '../../util/ProgramTimeLog';
 import IEitPresentStore from '../service/stream/util/IEitPresentStore';
+import { decideRecordingFinishPolicy, RecordingResultStatus } from '../../util/RecordingResult';
 
 @injectable()
 export default class EventSetter implements IEventSetter {
@@ -251,6 +252,14 @@ export default class EventSetter implements IEventSetter {
         this.recordingEvent.setRecordingFailed((reserve, recorded) => {
             this.ipc.notifyClient();
             if (recorded !== null) {
+                if (typeof recorded.videoFiles !== 'undefined' && recorded.videoFiles.length > 0)
+                    this.thumbnailManage.add(recorded.id);
+                if (reserve.tags !== null) {
+                    void this.setTag(recorded.id, reserve.tags).catch(err => {
+                        this.log.system.fatal('setTag error');
+                        this.log.system.fatal(err);
+                    });
+                }
                 this.externalCommandManage.addRecordingFailedCmd(recorded);
             }
             void this.notification.dispatch('recording.failed', {
@@ -272,6 +281,10 @@ export default class EventSetter implements IEventSetter {
 
         // 録画完了
         this.recordingEvent.setFinishRecording(async (reserve, recorded, isNeedDeleteReservation) => {
+            const policy = decideRecordingFinishPolicy(
+                (recorded.recordingStatus as RecordingResultStatus | null) ?? null,
+            );
+            if (policy.encode === false && recorded.recordingStatus === 'failed') return;
             if (isNeedDeleteReservation === true) {
                 if (reserve.ruleId === null || (reserve.ruleId !== null && reserve.isEventRelay == true)) {
                     // 手動予約 or ルール予約によるイベントリレー予約を削除
@@ -282,7 +295,11 @@ export default class EventSetter implements IEventSetter {
                 }
             }
 
-            if (typeof recorded.videoFiles !== 'undefined' && recorded.videoFiles.length > 0) {
+            if (
+                policy.encode === true &&
+                typeof recorded.videoFiles !== 'undefined' &&
+                recorded.videoFiles.length > 0
+            ) {
                 // サムネイル作成
                 this.thumbnailManage.add(recorded.id);
 
@@ -297,7 +314,7 @@ export default class EventSetter implements IEventSetter {
                                 : reserve.encodeParentDirectoryName1,
                         directory: reserve.encodeDirectory1 === null ? undefined : reserve.encodeDirectory1,
                         mode: reserve.encodeMode1,
-                        removeOriginal: reserve.isDeleteOriginalAfterEncode,
+                        removeOriginal: policy.removeOriginal === 'never' ? false : reserve.isDeleteOriginalAfterEncode,
                     });
                 }
 
@@ -312,7 +329,7 @@ export default class EventSetter implements IEventSetter {
                                 : reserve.encodeParentDirectoryName2,
                         directory: reserve.encodeDirectory2 === null ? undefined : reserve.encodeDirectory2,
                         mode: reserve.encodeMode2,
-                        removeOriginal: reserve.isDeleteOriginalAfterEncode,
+                        removeOriginal: policy.removeOriginal === 'never' ? false : reserve.isDeleteOriginalAfterEncode,
                     });
                 }
 
@@ -327,7 +344,7 @@ export default class EventSetter implements IEventSetter {
                                 : reserve.encodeParentDirectoryName3,
                         directory: reserve.encodeDirectory3 === null ? undefined : reserve.encodeDirectory3,
                         mode: reserve.encodeMode3,
-                        removeOriginal: reserve.isDeleteOriginalAfterEncode,
+                        removeOriginal: policy.removeOriginal === 'never' ? false : reserve.isDeleteOriginalAfterEncode,
                     });
                 }
             }
@@ -355,15 +372,17 @@ export default class EventSetter implements IEventSetter {
                 });
 
             // コマンド実行
-            this.externalCommandManage.addRecordingFinishCmd(recorded);
-            void this.notification.dispatch('recording.completed', {
-                recordedId: recorded.id,
-                reserveId: reserve.id,
-                name: recorded.name,
-                channelId: recorded.channelId,
-                startAt: recorded.startAt,
-                endAt: recorded.endAt,
-            });
+            if (policy.runFinishCommand === true) this.externalCommandManage.addRecordingFinishCmd(recorded);
+            if (policy.notification !== null) {
+                void this.notification.dispatch(policy.notification, {
+                    recordedId: recorded.id,
+                    reserveId: reserve.id,
+                    name: recorded.name,
+                    channelId: recorded.channelId,
+                    startAt: recorded.startAt,
+                    endAt: recorded.endAt,
+                });
+            }
 
             this.ipc.notifyClient();
         });

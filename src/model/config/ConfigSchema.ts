@@ -94,6 +94,25 @@ export interface ConfigSchemaEntry {
 
 export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
     {
+        key: 'reservation',
+        label: '予約スケジューラ',
+        hint: '予約の競合判定とチューナー割当方式',
+        requiresRestart: false,
+        editable: 'gui',
+        fields: [
+            {
+                path: 'reservation.scheduler',
+                label: '割当方式',
+                type: 'select',
+                items: [
+                    { title: '従来方式', value: 'legacy' },
+                    { title: '新スケジューラ', value: 'planner' },
+                ],
+                hint: '既定は新スケジューラ。従来方式へ戻す場合は legacy を選択します',
+            },
+        ],
+    },
+    {
         key: 'port',
         label: 'ポート番号',
         requiresRestart: true,
@@ -240,6 +259,14 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
                 hint: '省略時は EPG 更新間隔と同じ',
             },
         ],
+    },
+    {
+        key: 'observability',
+        label: 'オブザーバビリティ',
+        hint: 'OpenTelemetry の traces と metrics を OTLP/HTTP で送信する',
+        requiresRestart: true,
+        editable: 'ymlOnly',
+        reason: 'notYetWired',
     },
     {
         key: 'epgRealtime',
@@ -419,6 +446,18 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         requiresRestart: false,
         editable: 'gui',
         fields: [
+            {
+                path: 'recording.reconnectEnabled',
+                label: '録画中の切断後に再接続する',
+                type: 'boolean',
+                hint: '既定 有効。無効にすると切断後に録画を失敗扱いにして再試行する',
+            },
+            {
+                path: 'recording.shareUpstreamStream',
+                label: '連続する同一チャンネルの録画で上流を共有する',
+                type: 'boolean',
+                hint: '既定 有効。同じチャンネルの連続録画で Mirakurun への接続を共有します',
+            },
             {
                 path: 'recording.programStreamMode',
                 label: 'programId 予約のストリーム方式',

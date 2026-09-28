@@ -13,6 +13,14 @@
         <div v-on:click="gotoDetail" class="content pa-2 my-auto">
             <div class="d-flex align-center">
                 <div class="text mt-1 text-subtitle-2 font-weight-bold">{{ item.display.name }}</div>
+                <v-chip
+                    v-if="item.recordedItem.recordingStatus === 'partial' || item.recordedItem.recordingStatus === 'failed'"
+                    size="x-small"
+                    :color="item.recordedItem.recordingStatus === 'partial' ? 'warning' : 'error'"
+                    class="ml-1"
+                >
+                    {{ item.display.recordingStatusLabel }}
+                </v-chip>
                 <OfflineDownloadBadge
                     v-if="item.recordedItem.videoFiles?.[0] !== undefined"
                     :videoId="item.recordedItem.videoFiles[0].id"
@@ -107,7 +115,9 @@ class RecordedSmallCard extends Vue {
         this.$emit('detail', this.item.recordedItem.id);
     }
 
-    get offlineVideoIds(): number[] { return (this.item.recordedItem.videoFiles ?? []).map(video => video.id); }
+    get offlineVideoIds(): number[] {
+        return (this.item.recordedItem.videoFiles ?? []).map(video => video.id);
+    }
 
     public stopEncode(recordedId: apid.RecordedId): void {
         this.$emit('stopEncode', recordedId);

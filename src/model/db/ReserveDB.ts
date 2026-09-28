@@ -121,6 +121,17 @@ export default class ReserveDB implements IReserveDB {
         });
     }
 
+    /** Planner 用の終了時刻だけ更新する */
+    public async updatePlannedEndAt(reserveId: apid.ReserveId, plannedEndAt: number): Promise<void> {
+        const connection = await this.op.getConnection();
+        const queryBuilder = connection
+            .createQueryBuilder()
+            .update(Reserve)
+            .set({ plannedEndAt })
+            .where('id = :id', { id: reserveId });
+        await this.promieRetry.run(() => queryBuilder.execute());
+    }
+
     /**
      * delete, insert, update をまとめて行う
      * @param values: IReserveUpdateValues

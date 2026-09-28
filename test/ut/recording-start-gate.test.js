@@ -4,6 +4,7 @@ const test = require('node:test');
 const {
     decideRecordingStart,
     resolveRecordingStartGateConfig,
+    isProgramStartBoundary,
     DEFAULT_RECORDING_START_GATE_CONFIG,
 } = require('../../dist/model/operator/recording/RecordingStartGate');
 const EitPresentParser = require('../../dist/model/operator/recording/EitPresentParser').default;
@@ -11,6 +12,55 @@ const aribts = require('aribts');
 
 const config = DEFAULT_RECORDING_START_GATE_CONFIG;
 const RESERVE_START = Date.parse('2026-08-02T21:00:00+09:00');
+
+test('番組表上の開始が予約時刻の前後2分以内なら境界予約と判定する', () => {
+    assert.equal(isProgramStartBoundary([{ startAt: RESERVE_START + 120000 }], RESERVE_START), true);
+    assert.equal(isProgramStartBoundary([{ startAt: RESERVE_START + 120001 }], RESERVE_START), false);
+});
+
+test('番組途中から録る時刻指定予約は開始マージン時点で開始する', () => {
+    const decision = decideRecordingStart({
+        eventId: null,
+        reserveStartAt: RESERVE_START,
+        isProgramBoundary: false,
+        present: { serviceId: 1, eventId: 99, startAt: RESERVE_START - 30 * 60 * 1000, durationSec: 3600 },
+        following: { serviceId: 1, eventId: 100, startAt: RESERVE_START + 30 * 60 * 1000, durationSec: 1800 },
+        currentAt: RESERVE_START,
+        elapsedMs: 0,
+        recordingStartMarginMs: 0,
+        config,
+    });
+    assert.deepEqual(decision, { canStart: true, reason: 'timeSpecifiedMidProgram' });
+});
+
+test('境界時刻指定予約は延長中の前番組が続けば待つ', () => {
+    const decision = decideRecordingStart({
+        eventId: null,
+        reserveStartAt: RESERVE_START,
+        isProgramBoundary: true,
+        present: { serviceId: 1, eventId: 99, startAt: RESERVE_START - 3600000, durationSec: null },
+        following: { serviceId: 1, eventId: 100, startAt: RESERVE_START + 60000, durationSec: 1800 },
+        currentAt: RESERVE_START,
+        elapsedMs: 1000,
+        config,
+    });
+    assert.equal(decision.canStart, false);
+    assert.equal(decision.reason, 'previousProgramExtending');
+});
+
+test('境界時刻指定予約は延長が無ければfollowing開始時刻で開始する', () => {
+    const decision = decideRecordingStart({
+        eventId: null,
+        reserveStartAt: RESERVE_START,
+        isProgramBoundary: true,
+        present: { serviceId: 1, eventId: 99, startAt: RESERVE_START - 60000, durationSec: 60 },
+        following: { serviceId: 1, eventId: 100, startAt: RESERVE_START, durationSec: 1800 },
+        currentAt: RESERVE_START,
+        elapsedMs: 1000,
+        config,
+    });
+    assert.deepEqual(decision, { canStart: true, reason: 'startTimeReached' });
+});
 
 test('programId 予約は EIT[p/f] present の eventId が一致したら開始する', () => {
     const decision = decideRecordingStart({

@@ -16,6 +16,9 @@
         <v-alert v-if="status.canUpdate === false" type="info" density="compact" class="mb-3">
             {{ status.updateNote }}
         </v-alert>
+        <v-alert v-if="status.activeRecordingCount !== null && status.activeRecordingCount > 0" type="warning" density="compact" class="mb-3">
+            録画中: {{ status.activeRecordingCount }} 件。更新時に中断し、再起動後に続きから録画します。
+        </v-alert>
 
         <!-- リリース版への更新 -->
         <v-card variant="outlined" class="mb-3">
@@ -130,6 +133,15 @@
                 <v-card-text>
                     <p v-if="confirmTarget === 'branch'">{{ branch?.name }} ブランチの最新コミットへ更新します。</p>
                     <p v-else>{{ release?.tag }} へ更新します。</p>
+                    <p v-if="status.activeRecordingCount !== null && status.activeRecordingCount > 0" class="mt-2 text-body-2">
+                        録画中の番組は一時中断し、再起動後に続きから録画します ({{ status.activeRecordingCount }} 件)。
+                    </p>
+                    <p v-if="status.activeRecordingCount !== null && status.activeRecordingCount > 0 && restartAfterUpdate === false" class="text-body-2">
+                        録画を再開するには、更新後に EPGStation を手動で再起動してください。
+                    </p>
+                    <p v-else-if="status.activeRecordingCount === null" class="mt-2 text-body-2">
+                        録画中の件数を確認できません。録画中の場合は一時中断し、再起動後に続きから録画します。
+                    </p>
                     <p class="mt-2 text-body-2">ビルドを含むため数分かかり、その間は録画・配信が停止することがあります。</p>
                     <p v-if="restartAfterUpdate === true" class="mt-2 text-body-2">{{ status.updateNote }}</p>
                 </v-card-text>

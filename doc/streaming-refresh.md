@@ -110,6 +110,7 @@ Cache Storage / IndexedDB の容量上限・永続性はブラウザと端末空
 
 - `GET /api/streams/recorded/{videoFileId}/m2tsll?ss=<秒>&mode=<番号>&profile=<id>&audioTrack=<指定子>` を追加した。`mode` または `profile` は既存の録画 HLS / MP4 と同じ規則で、`ss` は小数秒を受け付けるが、クライアント・API・ストリーム生成直前で0以上の整数秒へ切り捨てる。
 - 録画 TS は `RecordedStreamBaseModel` がファイル (録画中は `TailStream`) をエンコーダ stdin へ流し、stdout を `video/mp2t` として HTTP へ直結する。encoded は `-ss %SS% -i %INPUT%` のファイル入力で、いずれも中間ファイルを作らない。
+- `TailStream` はファイル無成長を即 EOF にしない。録画中は `shouldKeepWaiting` が true の間、最大 60 秒までポーリングを続ける。録画終了後は待機をやめ EOF を返す。これにより上流再接続の空白で追っかけ再生・録画中 HLS・m2tsll を閉じない。
 - クライアントは録画詳細に `M2TS-LL` を追加し、`StreamSupportUtil.checkM2TSLLSupport()` が非対応と判定した環境では選択肢から除外して HLS へ誘導する。再生は `type: 'mpegts'`、VirtualTimeline、チャプター、ARIB 字幕、実況コメント、音声切替を既存録画再生と共用する。
 - 録画 m2tsll も mpegts.js の `mediaDataSource.isLive = true` で生成する。録画ファイルでもサーバは `-readrate` で実時間ペースに絞って供給し続けるため、MMS の `onEndStreaming` で transmuxer を suspend させない。DPlayer 自身の `live` は false のままなので、録画の再生・シーク UI と `ss` でのストリーム再生成は変えない。ライブ m2tsll の設定は変更しない。
 - `audioTrack=all` は tsreadex 正規化済み、または実音声 ES が 2 本以上で `embeddedAudioSwitch` が true のプロファイルで主音声・副音声を同時配信し、mpegts.js / HLS の音声切替 API で再接続せず切り替える。非正規化・切替不可プロファイルは `AUDIOSELECTMAP` で選択音声を出力し、`sub` の選択 ES を主音声より先に置く。例外として encoded tsreplace の `original-hevc` は、実AACを main/sub へデコード比較して dual-mono と確認できた場合、または音声 ES が2本ある場合だけ、直接 `filter_complex` または2本の `-map` を生成して HLS の音声 rendition を作る。EPG の二か国語情報だけでは分割しない。
