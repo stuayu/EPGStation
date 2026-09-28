@@ -48,6 +48,15 @@ test('マージンを明示的に 0 にすれば 0 にできる', () => {
     assert.equal(t.endMarginMs, 0);
 });
 
+test('予約ごとのマージンは全体設定より優先し、null は全体設定を使う', () => {
+    const override = resolveRecordingTimingConfig({}, 20, 30, { startMarginSec: 0, endMarginSec: 12 });
+    assert.equal(override.startMarginMs, 0);
+    assert.equal(override.endMarginMs, 12000);
+    const inherited = resolveRecordingTimingConfig({}, 20, 30, { startMarginSec: null, endMarginSec: null });
+    assert.equal(inherited.startMarginMs, 20000);
+    assert.equal(inherited.endMarginMs, 30000);
+});
+
 test('マイナスの時刻指定マージンは 0 として扱い、新設定の既定が残る', () => {
     const t = resolveRecordingTimingConfig({}, -5, -5);
     assert.equal(t.startMarginMs, 5000);

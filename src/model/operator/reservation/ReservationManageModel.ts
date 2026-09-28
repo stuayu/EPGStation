@@ -470,6 +470,8 @@ class ReservationManageModel implements IReservationManageModel {
     private setManualReserveOption(option: apid.ManualReserveOption, newReserve: Reserve): void {
         // option から必要な情報をセットする
         newReserve.priority = option.priority ?? 3;
+        newReserve.startMarginSec = option.startMarginSec ?? null;
+        newReserve.endMarginSec = option.endMarginSec ?? null;
         newReserve.conflictPolicy = option.conflictPolicy ?? (option.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
         newReserve.allowEndLack = newReserve.conflictPolicy === 'ALLOW_END_LACK';
         if (typeof option.tags !== 'undefined') {
@@ -648,6 +650,12 @@ class ReservationManageModel implements IReservationManageModel {
             option.conflictPolicy !== undefined &&
             !['STRICT', 'ALLOW_END_LACK', 'ALLOW_HEAD_LACK', 'ALLOW_PARTIAL', 'PREEMPT_LOWER_PRIORITY'].includes(
                 option.conflictPolicy,
+            )
+        )
+            return false;
+        if (
+            [option.startMarginSec, option.endMarginSec].some(
+                value => value != null && (!Number.isInteger(value) || value < 0 || value > 3600),
             )
         )
             return false;
@@ -1154,6 +1162,8 @@ class ReservationManageModel implements IReservationManageModel {
         reserve.conflictPolicy =
             rule.reserveOption.conflictPolicy ?? (rule.reserveOption.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
         reserve.allowEndLack = reserve.conflictPolicy === 'ALLOW_END_LACK';
+        reserve.startMarginSec = rule.reserveOption.startMarginSec ?? null;
+        reserve.endMarginSec = rule.reserveOption.endMarginSec ?? null;
 
         if (typeof rule.reserveOption.tags !== 'undefined') {
             reserve.tags = JSON.stringify(rule.reserveOption.tags);
@@ -1839,6 +1849,8 @@ class ReservationManageModel implements IReservationManageModel {
 
         // option から必要な情報をセットする
         newReserve.priority = option.priority ?? newReserve.priority;
+        newReserve.startMarginSec = option.startMarginSec ?? null;
+        newReserve.endMarginSec = option.endMarginSec ?? null;
         newReserve.conflictPolicy = option.conflictPolicy ?? (option.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
         newReserve.allowEndLack = newReserve.conflictPolicy === 'ALLOW_END_LACK';
         if (typeof option.tags !== 'undefined') {
@@ -2013,6 +2025,8 @@ class ReservationManageModel implements IReservationManageModel {
                 id: reserve.id,
                 startAt: reserve.startAt,
                 endAt: plannerEndAt.get(reserve.id) ?? reserve.endAt,
+                startMarginSec: reserve.startMarginSec,
+                endMarginSec: reserve.endMarginSec,
                 channel: reserve.channel,
                 channelType: reserve.channelType,
                 allowEndLack: reserve.allowEndLack,

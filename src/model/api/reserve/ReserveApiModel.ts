@@ -76,6 +76,8 @@ export default class ReserveApiModel implements IReserveApiModel {
             conflictInfo: typeof reserve.conflictInfo === 'string' ? JSON.parse(reserve.conflictInfo) : undefined,
             isOverlap: reserve.isOverlap,
             allowEndLack: reserve.allowEndLack,
+            startMarginSec: reserve.startMarginSec,
+            endMarginSec: reserve.endMarginSec,
             priority: reserve.priority,
             conflictPolicy: reserve.conflictPolicy as apid.ConflictPolicy,
             isTimeSpecified: reserve.isTimeSpecified,

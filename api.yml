@@ -436,6 +436,15 @@ components:
                         false の場合、クライアントは接続先を組み立てずアクセス中のオリジンへそのまま接続する
                         (リバースプロキシ経由でポートが変換されていても接続できる)
                     type: boolean
+                recordingMargins:
+                    description: 個別予約の未指定時に使う実効録画マージン
+                    type: object
+                    required: [startMarginSec, endMarginSec]
+                    properties:
+                        startMarginSec:
+                            type: integer
+                        endMarginSec:
+                            type: integer
                 hardwareEncoder:
                     description: 起動時に実測したハードウェアエンコーダ能力
                     type: object
@@ -1325,6 +1334,18 @@ components:
                 allowEndLack:
                     description: 末尾切れを許可するか
                     type: boolean
+                startMarginSec:
+                    description: 開始マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
+                endMarginSec:
+                    description: 終了マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
                 priority:
                     type: integer
                     minimum: 1
@@ -1410,6 +1431,18 @@ components:
                 allowEndLack:
                     description: 末尾切れを許すか
                     type: boolean
+                startMarginSec:
+                    description: 開始マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
+                endMarginSec:
+                    description: 終了マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
                 priority:
                     type: integer
                     minimum: 1
@@ -1431,6 +1464,18 @@ components:
             allOf:
                 - $ref: '#/components/schemas/EditManualReserveOption'
             properties:
+                startMarginSec:
+                    description: 開始マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
+                endMarginSec:
+                    description: 終了マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
                 programId:
                     $ref: '#/components/schemas/ProgramId'
                 timeSpecifiedOption:
@@ -1503,6 +1548,18 @@ components:
                     type: boolean
                 allowEndLack:
                     type: boolean
+                startMarginSec:
+                    description: 開始マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
+                endMarginSec:
+                    description: 終了マージン (秒)。null または未指定なら全体設定を使う
+                    type: integer
+                    nullable: true
+                    minimum: 0
+                    maximum: 3600
                 priority:
                     type: integer
                 conflictPolicy:

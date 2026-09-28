@@ -222,6 +222,7 @@ class RecordingManageModel implements IRecordingManageModel {
                 this.config.recording,
                 this.config.timeSpecifiedStartMargin,
                 this.config.timeSpecifiedEndMargin,
+                reserve === null ? undefined : reserve,
             ).endMarginMs;
             const resumable =
                 reserve !== null &&

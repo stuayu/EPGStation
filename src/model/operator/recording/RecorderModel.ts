@@ -1472,6 +1472,9 @@ class RecorderModel implements IRecorderModel {
         }
 
         recorded.startAt = this.reserve.startAt;
+        const recordingTiming = this.getTimingConfig();
+        recorded.startMarginSec = Math.round(recordingTiming.startMarginMs / 1000);
+        recorded.endMarginSec = Math.round(recordingTiming.endMarginMs / 1000);
         recorded.endAt = this.reserve.endAt;
         recorded.duration = this.reserve.endAt - this.reserve.startAt;
 
@@ -2016,6 +2019,7 @@ class RecorderModel implements IRecorderModel {
             this.config.recording,
             this.config.timeSpecifiedStartMargin,
             this.config.timeSpecifiedEndMargin,
+            this.reserve,
         );
     }
 

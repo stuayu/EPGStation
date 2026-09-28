@@ -2,6 +2,12 @@ import { BaseEntity, Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity()
 export default class Reserve extends BaseEntity {
+    @Column({ type: 'integer', nullable: true })
+    public startMarginSec: number | null = null;
+
+    @Column({ type: 'integer', nullable: true })
+    public endMarginSec: number | null = null;
+
     /**
      * 予約情報
      */

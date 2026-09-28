@@ -80,18 +80,22 @@ export const resolveRecordingTimingConfig = (
     recording: unknown,
     timeSpecifiedStartMarginSec: number,
     timeSpecifiedEndMarginSec: number,
+    reservation?: { startMarginSec?: number | null; endMarginSec?: number | null },
 ): RecordingTimingConfig => {
     const source = recording !== null && typeof recording === 'object' ? (recording as { [key: string]: unknown }) : {};
 
-    const startMarginMs = Math.max(
-        toMs(source.startMarginSec, DEFAULT_START_MARGIN_MS / 1000),
-        // 既存の時刻指定設定は未設定でも 0 扱い。新設定側の既定を打ち消さないようにする
-        toMs(timeSpecifiedStartMarginSec, 0),
-    );
-    const endMarginMs = Math.max(
-        toMs(source.endMarginSec, DEFAULT_END_MARGIN_MS / 1000),
-        toMs(timeSpecifiedEndMarginSec, 0),
-    );
+    const startMarginMs =
+        reservation?.startMarginSec != null
+            ? toMs(reservation.startMarginSec, DEFAULT_START_MARGIN_MS / 1000)
+            : Math.max(
+                  toMs(source.startMarginSec, DEFAULT_START_MARGIN_MS / 1000),
+                  // 既存の時刻指定設定は未設定でも 0 扱い。新設定側の既定を打ち消さないようにする
+                  toMs(timeSpecifiedStartMarginSec, 0),
+              );
+    const endMarginMs =
+        reservation?.endMarginSec != null
+            ? toMs(reservation.endMarginSec, DEFAULT_END_MARGIN_MS / 1000)
+            : Math.max(toMs(source.endMarginSec, DEFAULT_END_MARGIN_MS / 1000), toMs(timeSpecifiedEndMarginSec, 0));
 
     // 張り付きは必ず録画開始マージンより前にする
     const prepMs = Math.max(toMs(source.prepRecSec, DEFAULT_PREP_MS / 1000), startMarginMs + MIN_PREP_LEAD_MS);
