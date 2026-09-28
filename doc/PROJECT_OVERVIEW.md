@@ -232,6 +232,7 @@ duration 10 秒未満は中央候補1点とし、候補0件でも既存の thumb
 - **PCR の時間軸は `discontinuity_indicator` で切れる**: TS 連結・ドロップ・エンコーダ再起動で PCR が別の軸になるため、`PcrSample.epoch` が違うサンプル同士で差分を取らない (`correctStartAtByPcr()` は起点と同じ epoch のみ、`calcBytesPerMs()` は epoch ごとの最長区間、`TsPlaybackTimeResolver` は基準 PCR 取得後の不連続で null を返す)
 - `video_file.startAt` は TDT/TOT を使うが、**出現位置がファイル先頭から離れていることがある**ため PCR (27MHz) で経過時間を測って補正する (`correctStartAtByPcr()`)
 - encoded 動画 (MP4 等) は TS 内時刻を持たないため、`VideoFileAnalyzeModel` が TS の実時刻、同じ録画に紐付く元動画、番組開始時刻−録画開始マージン、ファイル更新日時−動画長の順で `video_file.startAt` を推定する。TS の既存経路と意味は変更しない
+- 予約・ルールの `startMarginSec` / `endMarginSec` は NULL で全体設定を継承し、0〜3600 秒を予約単位で指定する。SchedulePlanner と録画タイマーは同じ実効値を使い、Recorded に録画時点の実効マージンを保存する。
 - **番組情報の上書きは明示的な再解析のときだけ** (`overwriteProgramInfo`)。取り込み・アップロード時と「未解析のみ」の一括解析は空の項目を補うだけ。**番組名 (`recorded.name`) はどちらでも上書きしない**
 - 取り込み時の放送局特定は**ファイル名の推定ではなく network id + service id での厳密な引き当て**を優先する
 - 録画の放送局名の表示は `ChannelNameUtil.getRecordedChannelName()`、一覧のタイトル表示は `RecordedUtil.convertRecordedItemToDisplayData()` の 1 箇所で決まる

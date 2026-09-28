@@ -615,6 +615,8 @@ export default class SearchState implements ISearchState {
         this.reserveOption = {
             enable: true,
             allowEndLack: true,
+            startMarginSec: null,
+            endMarginSec: null,
             priority: 3,
             conflictPolicy: 'ALLOW_END_LACK',
             avoidDuplicate: this.settingModel.getSavedValue().isCheckAvoidDuplicate,
@@ -862,6 +864,8 @@ export default class SearchState implements ISearchState {
 
         this.reserveOption.enable = reserveOption.enable;
         this.reserveOption.allowEndLack = reserveOption.allowEndLack;
+        this.reserveOption.startMarginSec = reserveOption.startMarginSec ?? null;
+        this.reserveOption.endMarginSec = reserveOption.endMarginSec ?? null;
         this.reserveOption.priority = reserveOption.priority ?? 3;
         this.reserveOption.conflictPolicy = reserveOption.conflictPolicy ?? (reserveOption.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
         this.reserveOption.avoidDuplicate = reserveOption.avoidDuplicate;
@@ -2112,6 +2116,11 @@ export default class SearchState implements ISearchState {
         return config === null ? [] : config.encode;
     }
 
+    public getRecordingMarginHint(): string {
+        const margins = this.serverConfig.getConfig()?.recordingMargins ?? { startMarginSec: 5, endMarginSec: 5 };
+        return `空欄なら全体設定 (現在 開始 ${margins.startMarginSec} 秒 / 終了 ${margins.endMarginSec} 秒)`;
+    }
+
     /**
      * エンコードに対応しているか
      */
@@ -2242,6 +2251,8 @@ export default class SearchState implements ISearchState {
         const reserveOption: apid.RuleReserveOption = {
             enable: option.enable,
             allowEndLack: option.conflictPolicy === 'ALLOW_END_LACK',
+            startMarginSec: option.startMarginSec,
+            endMarginSec: option.endMarginSec,
             priority: option.priority,
             conflictPolicy: option.conflictPolicy,
             avoidDuplicate: option.avoidDuplicate,

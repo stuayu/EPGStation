@@ -7,6 +7,7 @@ import IIPCClient from '../../ipc/IIPCClient';
 import IStreamProfileManageModel from '../../stream/IStreamProfileManageModel';
 import IConfigApiModel from './IConfigApiModel';
 import IHardwareEncoderDetector from '../../encoder/IHardwareEncoderDetector';
+import { resolveRecordingTimingConfig } from '../../operator/recording/RecordingTimingConfig';
 
 @injectable()
 export default class ConfigApiModel implements IConfigApiModel {
@@ -145,6 +146,15 @@ export default class ConfigApiModel implements IConfigApiModel {
             typeof config.clientSocketioPort !== 'undefined' ? config.clientSocketioPort : listenSetting.dedicatedPort;
         result.socketIOPort = dedicatedPort === null ? listenSetting.listenPort : dedicatedPort;
         result.useDedicatedSocketIOPort = dedicatedPort !== null && this.isDirectAccess(isSecure, accessPort) === true;
+        const timing = resolveRecordingTimingConfig(
+            config.recording,
+            config.timeSpecifiedStartMargin,
+            config.timeSpecifiedEndMargin,
+        );
+        result.recordingMargins = {
+            startMarginSec: Math.round(timing.startMarginMs / 1000),
+            endMarginSec: Math.round(timing.endMarginMs / 1000),
+        };
         const hardwareEncoder = this.hardwareEncoderDetector?.getResult();
         result.hardwareEncoder = {
             configured: hardwareEncoder?.configured ?? config.hardwareEncoder ?? 'auto',

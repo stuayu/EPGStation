@@ -307,6 +307,8 @@ export default class RuleDB implements IRuleDB {
             priority: rule.reserveOption.priority ?? 3,
             conflictPolicy:
                 rule.reserveOption.conflictPolicy ?? (rule.reserveOption.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT'),
+            startMarginSec: rule.reserveOption.startMarginSec ?? null,
+            endMarginSec: rule.reserveOption.endMarginSec ?? null,
             tags: typeof rule.reserveOption.tags === 'undefined' ? null : JSON.stringify(rule.reserveOption.tags),
             parentDirectoryName: null,
             directory: null,
@@ -439,6 +441,8 @@ export default class RuleDB implements IRuleDB {
                 priority: rule.priority,
                 conflictPolicy: rule.conflictPolicy as apid.ConflictPolicy,
                 avoidDuplicate: rule.avoidDuplicate,
+                startMarginSec: rule.startMarginSec,
+                endMarginSec: rule.endMarginSec,
             },
         };
 

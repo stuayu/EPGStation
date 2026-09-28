@@ -157,6 +157,8 @@ export interface SearchResultItem {
 export interface ReserveOption {
     enable: boolean; // ルールが有効か
     allowEndLack: boolean; // 末尾切れを許可するか
+    startMarginSec: number | null;
+    endMarginSec: number | null;
     priority: number;
     conflictPolicy: apid.ConflictPolicy;
     avoidDuplicate: boolean; // 録画済みの重複番組を排除するか
@@ -222,6 +224,7 @@ export default interface ISearchState {
     getRuleReservesResult(): ReserveStateData[];
     getPrentDirectoryItems(): string[];
     getEncodeModeItems(): string[];
+    getRecordingMarginHint(): string;
     isEnableEncodeMode(): boolean;
     isEditingRule(): boolean;
     addRule(): Promise<void>;

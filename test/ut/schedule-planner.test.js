@@ -161,3 +161,15 @@ test('同じ入力から常に同じ計画を返す', () => {
     };
     assert.deepEqual(planSchedule(input), planSchedule(input));
 });
+
+test('planner は予約ごとのマージン区間で重なりを判定する', () => {
+    const plans = planSchedule({
+        reservations: [
+            reserve(1, 'GR-1', 'GR', 0, 10000, { endMarginSec: 5 }),
+            reserve(2, 'GR-2', 'GR', 12000, 20000, { startMarginSec: 0 }),
+        ],
+        tuners: [{ index: 0, types: ['GR'] }],
+        timing,
+    });
+    assert.equal(plans.filter(plan => plan.conflict !== null).length, 1);
+});

@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 予約・ルールごとの録画マージンを追加 → 2026-09-28
+
 - 録画結果一覧・開始前失敗通知・結果保持期間を追加 → 2026-09-28
 - 再起動後に手動・番組・ルール予約のタイマーを再設定し、準備中 session を中断扱いで閉じる → 2026-09-28
 - 既定設定での録画共有・予約 planner・再開結果を修正 → 2026-09-28
@@ -46,6 +48,12 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-28
+
+### 予約・ルールごとの録画マージン
+
+予約とルールに秒単位の開始・終了マージンを追加。0 秒のぴったり録画と 0〜3600 秒を指定でき、未指定/null は全体設定を継承する。ルール予約・手動予約・編集・planner・録画タイマー・解析時刻推定へ反映し、録画時点の実効マージンを `recorded` に保存する。既存行は NULL で追加し、従来の全体設定を維持する。設定画面の既定値表示も張り付き120秒、開始/終了各5秒へ修正。
+
+関連実装: `src/db/entities/{Reserve,Rule,Recorded}.ts`, `src/db/migrations/{sqlite,mysql}/1790572200000-AddReservationMargins.ts`, `src/model/operator/recording/RecordingTimingConfig.ts`, `src/model/operator/reservation/planner/SchedulePlanner.ts`, `api.yml`, `api.d.ts`, `client/src/components/{search/SearchRuleOption,manualReserve/ManualReserveOption}.vue`。
 
 ### 録画結果一覧と開始前失敗通知
 

@@ -130,6 +130,8 @@ export interface ChannelItem {
  */
 export interface EditManualReserveOption {
     allowEndLack: boolean; // 末尾切れを許すか
+    startMarginSec?: number | null;
+    endMarginSec?: number | null;
     priority?: number;
     conflictPolicy?: ConflictPolicy;
     tags?: RecordedTagId[];
@@ -188,6 +190,8 @@ export interface ReserveItem {
     conflictInfo?: ReservationConflict;
     isOverlap: boolean;
     allowEndLack: boolean;
+    startMarginSec?: number | null;
+    endMarginSec?: number | null;
     priority: number;
     conflictPolicy: ConflictPolicy;
     isTimeSpecified: boolean;
@@ -498,6 +502,8 @@ export interface RuleSearchOption {
 export interface RuleReserveOption {
     enable: boolean; // ルールが有効か
     allowEndLack: boolean; // 末尾切れを許可するか
+    startMarginSec?: number | null;
+    endMarginSec?: number | null;
     priority?: number;
     conflictPolicy?: ConflictPolicy;
     avoidDuplicate: boolean; // 録画済みの重複番組を排除するか
@@ -1137,6 +1143,7 @@ export interface Config {
      * false ならクライアントはアクセス中のオリジンへそのまま接続する
      */
     useDedicatedSocketIOPort: boolean;
+    recordingMargins?: { startMarginSec: number; endMarginSec: number };
     /** 起動時に実測したエンコーダ能力。 */
     hardwareEncoder: {
         configured: 'auto' | 'qsv' | 'nvenc' | 'vce' | 'videotoolbox' | 'software';

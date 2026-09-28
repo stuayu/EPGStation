@@ -7,6 +7,30 @@
                     <v-expansion-panel-text>
                         <SearchOptionRow>
                             <div class="d-flex flex-wrap">
+                                <v-text-field
+                                    class="margin-input"
+                                    v-model.number="manualReserveState.reserveOption.startMarginSec"
+                                    label="開始マージン (秒)"
+                                    type="number"
+                                    min="0"
+                                    max="3600"
+                                    clearable
+                                    :hint="manualReserveState.getRecordingMarginHint()"
+                                    persistent-hint
+                                ></v-text-field>
+                                <v-text-field
+                                    class="margin-input"
+                                    v-model.number="manualReserveState.reserveOption.endMarginSec"
+                                    label="終了マージン (秒)"
+                                    type="number"
+                                    min="0"
+                                    max="3600"
+                                    clearable
+                                    hint="空欄なら全体設定 (現在 開始 5 秒 / 終了 5 秒)"
+                                    persistent-hint
+                                ></v-text-field>
+                            </div>
+                            <div class="d-flex flex-wrap">
                                 <v-select
                                     class="policy-input"
                                     v-model="manualReserveState.reserveOption.priority"
