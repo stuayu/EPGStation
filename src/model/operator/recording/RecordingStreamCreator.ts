@@ -141,7 +141,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      * @return Promise<http.IncomingMessage>
      */
     public async create(reserve: Reserve, abortSignal?: AbortSignal): Promise<http.IncomingMessage> {
-        if (reserve.isConflict === true && this.configuration.getConfig().reservation?.scheduler !== 'planner') {
+        if (reserve.isConflict === true && this.configuration.getConfig().reservation?.scheduler === 'legacy') {
             this.reserveTunerIndex[reserve.id] = null;
             // tuner の割当がないのでそのままストリームを取得
             const managedEnd = this.usesManagedEnd(reserve);
@@ -235,38 +235,47 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      */
     private async getTunerId(reserve: Reserve): Promise<number | null> {
         const config = this.configuration.getConfig();
-        if (config.reservation?.scheduler === 'planner') {
+        if (config.reservation?.scheduler !== 'legacy') {
             const plannedIndex = reserve.plannedTunerIndex;
-            if (plannedIndex === null || plannedIndex === undefined) return null;
             const index = this.tuners.findIndex(tuner => tuner.index === plannedIndex);
             const selected = this.tuners[index];
             if (
-                selected === undefined ||
-                !TunerCompatibilityUtil.isTunerCompatibleWithChannelType(selected.types, reserve.channelType)
-            )
-                return null;
-            if (
-                selected.programs.length === 0 ||
-                selected.programs.every(item => item.reserve.channel === reserve.channel)
-            )
-                return index;
-
-            // 既存の末尾欠け条件だけで明け渡し、開始済みの非 allowEndLack 録画を奪わない。
-            const now = Date.now();
-            const allowedEndLackMs = IRecordingStreamCreator.PREP_TIME;
-            if (
-                selected.programs.some(
-                    item => item.reserve.allowEndLack !== true || item.reserve.endAt - now > allowedEndLackMs,
+                selected !== undefined &&
+                TunerCompatibilityUtil.isTunerCompatibleWithChannelType(selected.types, reserve.channelType)
+            ) {
+                if (
+                    selected.programs.length === 0 ||
+                    selected.programs.every(item => item.reserve.channel === reserve.channel)
                 )
-            )
-                return null;
-            for (const item of selected.programs) {
-                if (item.stream !== null) this.closeStream(item.stream, 'tuner-handoff');
+                    return index;
+
+                // 既存の末尾欠け条件だけで明け渡し、開始済みの非 allowEndLack 録画を奪わない。
+                const now = Date.now();
+                const allowedEndLackMs = IRecordingStreamCreator.PREP_TIME;
+                if (
+                    selected.programs.every(
+                        item => item.reserve.allowEndLack === true && item.reserve.endAt - now <= allowedEndLackMs,
+                    )
+                ) {
+                    for (const item of selected.programs) {
+                        if (item.stream !== null) this.closeStream(item.stream, 'tuner-handoff');
+                    }
+                    selected.programs = [];
+                    return index;
+                }
             }
-            selected.programs = [];
-            return index;
+
+            const fallbackIndex = await this.findFirstFitTuner(reserve);
+            this.log.system.info(
+                `planner tuner fallback: reserveId=${reserve.id}, plannedTunerIndex=${plannedIndex ?? 'null'}, tunerIndex=${fallbackIndex ?? 'none'}`,
+            );
+            return fallbackIndex;
         }
 
+        return this.findFirstFitTuner(reserve);
+    }
+
+    private async findFirstFitTuner(reserve: Reserve): Promise<number | null> {
         // tuner に空きがないかチェック
         for (let i = 0; i < this.tuners.length; i++) {
             // tuner の放送波が一致 && 録画していない or channel が同一
@@ -365,7 +374,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
 
         if (reserve.programId === null) {
             // 時刻指定予約
-            if (config.recording?.shareUpstreamStream === true) {
+            if (config.recording?.shareUpstreamStream !== false) {
                 return this.getSharedServiceStream(reserve, mirakurun, priority, abortSignal);
             }
             return this.getTimeSpecifiedStream(reserve, mirakurun, priority, abortSignal);
@@ -379,7 +388,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
                     signal: abortSignal,
                 });
             }
-            if (config.recording?.shareUpstreamStream === true) {
+            if (config.recording?.shareUpstreamStream !== false) {
                 return this.getSharedServiceStream(reserve, mirakurun, priority, abortSignal);
             }
             return mirakurun.getServiceStream({

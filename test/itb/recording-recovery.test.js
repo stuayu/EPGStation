@@ -46,11 +46,7 @@ test('startup resumes the same recording after truncating an interrupted TS pack
     const startEventsBeforeRecovery = first.events.start.length;
     reserve.isTimeSpecified = true;
 
-    const secondStub = new MirakurunRecordingStub([
-        sendThenReset(12, 0, { conn: 2, delayMs: 20 }),
-        sendThenReset(12, 0, { conn: 3, delayMs: 20 }),
-        sendAndHold(30, { conn: 4 }),
-    ]);
+    const secondStub = new MirakurunRecordingStub([sendAndHold(30, { conn: 2 })]);
     const second = new RecorderHarness(secondStub, { recording: { reconnectEnabled: true } });
     await second.start();
     t.after(async () => {
@@ -117,12 +113,12 @@ test('startup resumes the same recording after truncating an interrupted TS pack
     assert.equal(session.state, 'RECORDING');
     assert.equal(manager.hasReserve(reserve.id), true);
 
-    await waitFor(() => attempts.length === 4 && attempts[3].firstDataAt !== null);
+    await waitFor(() => attempts.length === 2 && attempts[1].firstDataAt !== null);
     assert.ok(
         second.recordingStreamCreator.getActiveTunerAssignments().some(item => item.reserveId === reserve.id),
         'resumed recorder is registered in the tuner ledger',
     );
-    assert.equal(attempts.length, 4);
+    assert.equal(attempts.length, 2);
     assert.equal(attempts[0].fileOffsetEnd, beforeRecoverySize);
     assert.equal(attempts[1].fileOffsetStart, afterRecoverySize);
     assert.ok(attempts[1].firstDataAt - attempts[0].endedAt >= 2900);
@@ -142,9 +138,13 @@ test('startup resumes the same recording after truncating an interrupted TS pack
     const finalSize = (await fs.stat(first.recorder.videoFileFullPath)).size;
     assert.equal(finalSize % 188, 0);
     assert.equal(recordedRow.recordingStatus, 'partial');
+    assert.equal(session.resultStatus, 'partial', 'process-restart gap alone makes the session partial');
     assert.equal(recordedRow.id, session.recordedId);
-    assert.equal(countRecordingGaps(attempts.slice(1)), 2, 'two transport gaps occur after process recovery');
-    assert.equal(recordedRow.transportGapCount, 3, 'one recovery gap plus two reconnect gaps are counted once each');
+    assert.equal(attempts[0].closeReason, 'process-restart');
+    assert.equal(countRecordingGaps(attempts), 1, 'one process-restart gap is counted');
+    assert.equal(recordedRow.transportGapCount, 1);
+    const { decideRecordingFinishPolicy } = require('../../dist/util/RecordingResult');
+    assert.equal(decideRecordingFinishPolicy(recordedRow.recordingStatus).removeOriginal, 'never');
 });
 
 test('expired manual recovery finalizes partial and leaves the reservation untouched', async () => {

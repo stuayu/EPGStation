@@ -268,8 +268,12 @@ class ReservationManageModel implements IReservationManageModel {
         });
         newReserve.id = insertedId;
 
-        // 完了したのでロック解除
-        finalize();
+        try {
+            await this.replanConnectedReservations(newReserve);
+        } finally {
+            // 追加後の planner 更新に失敗しても実行権を解放する
+            finalize();
+        }
 
         this.log.system.info(
             `successful add reservation: ${insertedId}` +
@@ -323,6 +327,7 @@ class ReservationManageModel implements IReservationManageModel {
                 throw new Error('ReservationManageModelAddReserveError');
             });
             newReserve.id = insertedId;
+            await this.replanConnectedReservations(newReserve);
         } finally {
             // 予約処理の成功・失敗を問わず実行権を解放する
             this.executeManagementModel.unLockExecution(exeId);
@@ -568,6 +573,63 @@ class ReservationManageModel implements IReservationManageModel {
             throw new Error('ReservationManageModelAddReserveConflict');
         }
         return canPreempt ? preempted.map(reserve => ({ reserveId: reserve.id, reason: 'PRIORITY_PREEMPTED' })) : [];
+    }
+
+    /** planner モードで追加・編集した予約と同じ連結窓を再計算して保存する */
+    private async replanConnectedReservations(seed: Reserve): Promise<void> {
+        if (this.configuration.getConfig().reservation?.scheduler === 'legacy') return;
+
+        const ranges = [{ startAt: seed.startAt, endAt: seed.endAt }];
+        const affected = new Map<number, Reserve>();
+        for (let pass = 0; pass < 100; pass++) {
+            const found = await this.reserveDB.findTimeRanges({
+                times: ranges,
+                hasSkip: true,
+                hasConflict: true,
+                hasOverlap: true,
+            });
+            let expanded = false;
+            for (const reserve of found) {
+                affected.set(reserve.id, reserve);
+                for (const range of ranges) {
+                    if (reserve.startAt < range.endAt && reserve.endAt > range.startAt) {
+                        const startAt = Math.min(range.startAt, reserve.startAt);
+                        const endAt = Math.max(range.endAt, reserve.endAt);
+                        if (startAt !== range.startAt || endAt !== range.endAt) {
+                            range.startAt = startAt;
+                            range.endAt = endAt;
+                            expanded = true;
+                        }
+                    }
+                }
+            }
+            if (!expanded) break;
+        }
+
+        const oldReserves = [...affected.values()];
+        const newReserves = await this.createPlannerReserves(oldReserves);
+        const oldById = new Map(oldReserves.map(reserve => [reserve.id, reserve]));
+        const updates = newReserves.filter(reserve => {
+            const old = oldById.get(reserve.id);
+            return (
+                old !== undefined &&
+                (old.plannedTunerIndex !== reserve.plannedTunerIndex ||
+                    old.isConflict !== reserve.isConflict ||
+                    old.conflictInfo !== reserve.conflictInfo)
+            );
+        });
+        if (updates.length === 0) return;
+        await this.reserveDB.updateMany({ update: updates, isSuppressLog: false });
+        const plannedSeed = updates.find(reserve => reserve.id === seed.id);
+        if (plannedSeed !== undefined) {
+            seed.plannedTunerIndex = plannedSeed.plannedTunerIndex;
+            seed.isConflict = plannedSeed.isConflict;
+            seed.conflictInfo = plannedSeed.conflictInfo;
+        }
+        const existingUpdates = updates.filter(reserve => reserve.id !== seed.id);
+        if (existingUpdates.length > 0) {
+            this.reserveEvent.emitUpdated({ update: existingUpdates, isSuppressLog: false });
+        }
     }
 
     /**
@@ -1791,6 +1853,8 @@ class ReservationManageModel implements IReservationManageModel {
             throw err;
         });
 
+        await this.replanConnectedReservations(newReserve);
+
         this.log.system.info(`successful edit reservation: ${reserveId}`);
 
         // イベント発行
@@ -1850,7 +1914,7 @@ class ReservationManageModel implements IReservationManageModel {
      * @return Reserve[] 予約情報
      */
     private async createReserves(matches: Reserve[]): Promise<Reserve[]> {
-        if (this.configuration.getConfig().reservation?.scheduler === 'planner') {
+        if (this.configuration.getConfig().reservation?.scheduler !== 'legacy') {
             const planned = await this.createPlannerReserves(matches);
             return planned;
         }
