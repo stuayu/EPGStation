@@ -18,43 +18,15 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - feature/edcb-parity 全体レビュー指摘の修正 → 2026-09-28
 - API 定義不備による全ルート停止と dist 残留を防止 → 2026-09-28
 - feature/edcb-parity 本番検証で見つかった検索・スクロール復元の不具合修正 → 2026-09-28
-
 - 録画後コマンド Phase H → 2026-09-28
 - 自動予約の時刻指定枠と単局番組表の期間を拡張 → 2026-09-28
 - 省電力 Phase G → 2026-09-28
 - 番組開始前リマインダー Phase F → 2026-09-28
-
-### API 定義不備による全ルート停止と dist 残留を防止
-
-録画プリセット既定値 API の inline apiDoc で `$ref` と `nullable` を同じ schema object に置いていたため、express-openapi の初期化が中断し既存 API まで 404 になった。nullable schema を `allOf` 形式に直し、`api.yml` と `dist` の全ルート初期化・メソッド登録を確かめるテストを追加した。番組開始前リマインダー削除ルートの DELETE export 漏れも初期化テストで検出し修正した。
-
-`build-server` / `build-win` はコンパイル前に `dist` を削除し、別ブランチの古い route が混ざる問題を防ぐ。`npm run compile` は反復用のため削除処理を含めない。リマインダー発火時は番組情報、通知先数、Socket.IO 配信クライアント数を1行で記録する。
-
-関連実装: `src/model/service/api/recording-presets/default.ts`, `src/model/service/api/reminders/{reminderId}.ts`, `test/ita/service-openapi-routes.test.js`, `src/model/operator/reminder/ProgramReminderManageModel.ts`, `src/model/service/socketio/SocketIOManageModel.ts`, `package.json`。
-
-### feature/edcb-parity 全体レビュー指摘の修正
-
-省電力は休止待機中にも条件を再評価し、予約・エンコード・取り込み・EPG 更新などが始まれば待機を解除する。実休止直前も状態と復帰タイマーを確認する。次の通常予約は開始時刻順で1件だけ取得し、録画準備時間は共通の録画タイミング解決関数を使う。
-
-ルール検索はジャンル NULL を安全に除外し、空の除外語条件を生成しない。分単位時刻を JST の SQL 条件へ移し、あいまい語は最長断片で候補を前絞りする。省電力通知に専用タイトルと警告色を設定する。
-
-番組リマインダーの番組 ID・局 ID を bigint にし、refresh をまとめて直列化、番組取得を一括化して発火済み ID を再登録しない。手動予約編集で録画後コマンドを保存し、単局番組表は時間軸を24時間に保ち EPG 終端で追加取得を止める。
-
-関連実装: `src/model/operator/power/PowerManageModel.ts`, `src/model/db/ProgramDB.ts`, `src/db/{entities,migrations}`, `src/model/operator/{reservation,reminder}`, `client/src/model/state/guide/GuideState.ts`, `src/model/notification/NotificationRequest.ts`。
-
-本番 MariaDB で見つかった、あいまい検索の候補絞り込みがひらがなキーワードを落とす問題を修正した。候補 SQL は入力・NFKC 正規化・カタカナ化した断片を検索し、ひらがな・カタカナ・半角カナの候補を残す。キーワードまたは除外キーワードの検索対象列が未選択なら空の SQL 条件を追加しない。録画結果・番組通知・システム設定画面はデータ取得の成功・失敗に関係なく `emitDoneGetData()` を呼び、スクロール位置復元を完了させる。
-
-関連実装: `src/model/db/ProgramDB.ts`, `client/src/views/{RecordingResults,Reminders,SystemSetting}.vue`。
-
 - チューナー別予約一覧 Phase E → 2026-09-28
-
-- チューナー別予約一覧 Phase E → 2026-09-28
-
 - 録画プリセットとルール複製 → 2026-09-28
 - 自動予約ルール検索の除外条件・表記ゆれ・時間帯指定を改善 → 2026-09-28
-- 予約・ルールごとの録画マージンを追加 → 2026-09-28
-
-- 録画結果一覧・開始前失敗通知・結果保持期間を追加 → 2026-09-28
+- 予約・ルールごとの録画マージン → 2026-09-28
+- 録画結果一覧と開始前失敗通知 → 2026-09-28
 - 再起動後に手動・番組・ルール予約のタイマーを再設定し、準備中 session を中断扱いで閉じる → 2026-09-28
 - 既定設定での録画共有・予約 planner・再開結果を修正 → 2026-09-28
 - 再起動後の録画復帰で空白時間・開始通知・チューナー台帳を修正 → 2026-09-28
@@ -62,7 +34,6 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - OpenTelemetry を opt-in で導入 (録画セッション・予約計画の traces / metrics) → 2026-09-28
 - 録画 session / attempt の永続化と span を RecordingSessionTracker へ分離 → 2026-09-28
 - 録画セッション再設計の実機再接続・開始ゲート検証 → 2026-09-28
-
 - 連続録画の上流共有と既定値変更 → 2026-09-28
 - 放送時間未定の終了時刻を表示・Planner・安全上限に分離 Phase 8 → 2026-09-28
 - 予約優先度と競合ポリシー Phase 7 → 2026-09-28
@@ -85,6 +56,30 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-28
+
+### API 定義不備による全ルート停止と dist 残留を防止
+
+録画プリセット既定値 API の inline apiDoc で `$ref` と `nullable` を同じ schema object に置いていたため、express-openapi の初期化が中断し既存 API まで 404 になった。nullable schema を `allOf` 形式に直し、`api.yml` と `dist` の全ルート初期化・メソッド登録を確かめるテストを追加した。番組開始前リマインダー削除ルートの DELETE export 漏れも初期化テストで検出し修正した。
+
+`build-server` / `build-win` はコンパイル前に `dist` を削除し、別ブランチの古い route が混ざる問題を防ぐ。`npm run compile` は反復用のため削除処理を含めない。リマインダー発火時は番組情報、通知先数、Socket.IO 配信クライアント数を1行で記録する。
+
+関連実装: `src/model/service/api/recording-presets/default.ts`, `src/model/service/api/reminders/{reminderId}.ts`, `test/ita/service-openapi-routes.test.js`, `src/model/operator/reminder/ProgramReminderManageModel.ts`, `src/model/service/socketio/SocketIOManageModel.ts`, `package.json`。
+
+### feature/edcb-parity 全体レビュー指摘の修正
+
+省電力は休止待機中にも条件を再評価し、予約・エンコード・取り込み・EPG 更新などが始まれば待機を解除する。実休止直前も状態と復帰タイマーを確認する。次の通常予約は開始時刻順で1件だけ取得し、録画準備時間は共通の録画タイミング解決関数を使う。
+
+ルール検索はジャンル NULL を安全に除外し、空の除外語条件を生成しない。分単位時刻を JST の SQL 条件へ移し、あいまい語は最長断片で候補を前絞りする。省電力通知に専用タイトルと警告色を設定する。
+
+番組リマインダーの番組 ID・局 ID を bigint にし、refresh をまとめて直列化、番組取得を一括化して発火済み ID を再登録しない。手動予約編集で録画後コマンドを保存し、単局番組表は時間軸を24時間に保ち EPG 終端で追加取得を止める。
+
+関連実装: `src/model/operator/power/PowerManageModel.ts`, `src/model/db/ProgramDB.ts`, `src/db/{entities,migrations}`, `src/model/operator/{reservation,reminder}`, `client/src/model/state/guide/GuideState.ts`, `src/model/notification/NotificationRequest.ts`。
+
+### feature/edcb-parity 本番検証で見つかった検索・スクロール復元の不具合修正
+
+本番 MariaDB で見つかった、あいまい検索の候補絞り込みがひらがなキーワードを落とす問題を修正した。候補 SQL は入力・NFKC 正規化・カタカナ化した断片を検索し、ひらがな・カタカナ・半角カナの候補を残す。キーワードまたは除外キーワードの検索対象列が未選択なら空の SQL 条件を追加しない。録画結果・番組通知・システム設定画面はデータ取得の成功・失敗に関係なく `emitDoneGetData()` を呼び、スクロール位置復元を完了させる。
+
+関連実装: `src/model/db/ProgramDB.ts`, `client/src/views/{RecordingResults,Reminders,SystemSetting}.vue`。
 
 ### 自動予約の時刻指定枠と単局番組表の期間を拡張
 
