@@ -16,6 +16,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 ### 索引
 
 - 録画後コマンド Phase H → 2026-09-28
+- 自動予約の時刻指定枠と単局番組表の期間を拡張 → 2026-09-28
 - 省電力 Phase G → 2026-09-28
 - 番組開始前リマインダー Phase F → 2026-09-28
 
@@ -58,6 +59,12 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-28
+
+### 自動予約の時刻指定枠と単局番組表の期間を拡張
+
+時刻指定ルールで複数局・複数の曜日/時刻枠を扱えるようにし、既存ルールの複数枠を編集画面へ復元する。枠の時刻・長さは分単位で保持。編集後に通常検索との切り替えも可能にし、切り替え時は選択中でない検索条件を初期化する。時刻指定予約の日付境界と曜日判定は実行サーバのタイムゾーンを使わず JST 固定で計算する。単局番組表に次の8日を追加取得するボタンを追加。
+
+関連実装: `src/util/JstDateUtil.ts`, `src/model/operator/reservation/ReservationManageModel.ts`, `client/src/model/state/search/`, `client/src/components/search/SearchOption.vue`, `client/src/model/state/guide/GuideState.ts`, `client/src/views/Guide.vue`。
 
 ### 録画後コマンド Phase H
 

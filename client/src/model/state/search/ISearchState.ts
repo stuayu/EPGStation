@@ -117,7 +117,11 @@ export interface SearchOption {
  */
 export interface TimeReserveOption {
     keyword: string | null;
-    channel: apid.ChannelId | undefined;
+    channels: apid.ChannelId[];
+    times: TimeReserveRange[];
+}
+
+export interface TimeReserveRange {
     startTime: string | null;
     endTime: string | null;
     week: Week;
@@ -206,6 +210,8 @@ export interface QuerySearchOption {
 
 export default interface ISearchState {
     isTimeSpecification: boolean;
+    setTimeSpecification(value: boolean | null): void;
+    addTimeReserveRange(): void;
     searchOption: SearchOption | null;
     timeReserveOption: TimeReserveOption | null;
     reserveOption: ReserveOption | null;

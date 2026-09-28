@@ -1,6 +1,6 @@
 <template>
     <div class="search-option mx-auto">
-        <v-switch v-model="searchState.isTimeSpecification" :disabled="searchState.isEditingRule() === true" label="時刻指定" class="my-3"></v-switch>
+        <v-switch :model-value="searchState.isTimeSpecification" label="時刻指定" class="my-3" @update:model-value="searchState.setTimeSpecification"></v-switch>
         <v-card v-if="searchState.isTimeSpecification === false">
             <div class="pa-4">
                 <SearchOptionRow title="キーワード">
@@ -432,16 +432,18 @@
                 <SearchOptionRow title="放送局">
                     <v-select
                         :items="searchState.getChannelItems()"
-                        v-model="timeReserveOptionValue.channel"
+                        v-model="timeReserveOptionValue.channels"
                         label="channel"
+                        multiple
                         clearable
                     ></v-select>
                 </SearchOptionRow>
                 <SearchOptionRow title="時刻">
-                    <div class="d-flex align-center">
+                    <div v-for="(timeRange, index) in timeReserveOptionValue.times" :key="index" class="time-range-row">
+                    <div class="d-flex flex-wrap align-center">
                         <v-text-field
                             class="time-select"
-                            v-model="timeReserveOptionValue.startTime"
+                            v-model="timeRange.startTime"
                             label="開始"
                             type="time"
                             prepend-icon="access_time"
@@ -449,21 +451,24 @@
                         <span class="px-2">~</span>
                         <v-text-field
                             class="time-select"
-                            v-model="timeReserveOptionValue.endTime"
+                            v-model="timeRange.endTime"
                             label="終了"
                             type="time"
                             prepend-icon="access_time"
                         ></v-text-field>
                     </div>
                     <div class="d-flex flex-wrap">
-                        <v-checkbox v-model="timeReserveOptionValue.week.mon" class="mx-1 my-0" label="月"></v-checkbox>
-                        <v-checkbox v-model="timeReserveOptionValue.week.tue" class="mx-1 my-0" label="火"></v-checkbox>
-                        <v-checkbox v-model="timeReserveOptionValue.week.wed" class="mx-1 my-0" label="水"></v-checkbox>
-                        <v-checkbox v-model="timeReserveOptionValue.week.thu" class="mx-1 my-0" label="木"></v-checkbox>
-                        <v-checkbox v-model="timeReserveOptionValue.week.fri" class="mx-1 my-0" label="金"></v-checkbox>
-                        <v-checkbox v-model="timeReserveOptionValue.week.sat" class="mx-1 my-0" label="土"></v-checkbox>
-                        <v-checkbox v-model="timeReserveOptionValue.week.sun" class="mx-1 my-0" label="日"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.mon" class="mx-1 my-0" label="月"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.tue" class="mx-1 my-0" label="火"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.wed" class="mx-1 my-0" label="水"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.thu" class="mx-1 my-0" label="木"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.fri" class="mx-1 my-0" label="金"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.sat" class="mx-1 my-0" label="土"></v-checkbox>
+                        <v-checkbox v-model="timeRange.week.sun" class="mx-1 my-0" label="日"></v-checkbox>
+                        <v-btn v-if="timeReserveOptionValue.times.length > 1" icon="mdi-delete" size="small" aria-label="時間帯を削除" @click="timeReserveOptionValue.times.splice(index, 1)"></v-btn>
                     </div>
+                    </div>
+                    <v-btn variant="text" color="primary" @click="searchState.addTimeReserveRange()">時間帯を追加</v-btn>
                 </SearchOptionRow>
             </div>
         </v-card>
