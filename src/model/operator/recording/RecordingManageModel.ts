@@ -136,13 +136,56 @@ class RecordingManageModel implements IRecordingManageModel {
 
         const activeSessions = await Promise.all(
             [RecordingSessionState.RECORDING, RecordingSessionState.RECONNECTING].map(state =>
-                this.recordingSessionDB.findByState(state).catch(err => {
-                    this.log.system.warn('recording session recovery lookup failed');
-                    this.log.system.warn(err);
-                    return [];
-                }),
+                this.recordingSessionDB
+                    .findByState(state)
+                    .catch(err => {
+                        this.log.system.warn('recording session recovery lookup failed');
+                        this.log.system.warn(err);
+                        return [];
+                    })
+                    .then(sessions => sessions.filter(session => session.state === state)),
             ),
         ).then(results => results.flat());
+        const interruptedSessions = await Promise.all(
+            [RecordingSessionState.PREPARING, RecordingSessionState.WAITING_BOUNDARY].map(state =>
+                this.recordingSessionDB
+                    .findByState(state)
+                    .catch(err => {
+                        this.log.system.warn('recording preparation recovery lookup failed');
+                        this.log.system.warn(err);
+                        return [];
+                    })
+                    .then(sessions => sessions.filter(session => session.state === state)),
+            ),
+        ).then(results => results.flat());
+        for (const session of interruptedSessions) {
+            const attempts = await this.recordingSessionDB.findAttemptsBySessionId(session.id).catch(err => {
+                this.log.system.warn(`recording preparation attempts lookup failed: ${session.id}`);
+                this.log.system.warn(err);
+                return [];
+            });
+            for (const attempt of attempts) {
+                if (attempt.endedAt !== null && attempt.endedAt !== undefined) continue;
+                await this.recordingSessionDB
+                    .updateAttempt(attempt.id, { endedAt: Date.now(), closeReason: 'process-restart' })
+                    .catch(err => {
+                        this.log.system.warn(`recording preparation attempt update failed: ${attempt.id}`);
+                        this.log.system.warn(err);
+                    });
+            }
+            await this.recordingSessionDB
+                .updateSession(session.id, {
+                    state: RecordingSessionState.FINISHED,
+                    resultStatus: 'canceled',
+                    endReason: 'process-restart',
+                    actualEndAt: Date.now(),
+                    updatedAt: Date.now(),
+                })
+                .catch(err => {
+                    this.log.system.warn(`recording preparation recovery update failed: ${session.id}`);
+                    this.log.system.warn(err);
+                });
+        }
         const resumedRecordedIds = new Set<number>();
         for (const session of activeSessions) {
             const reserve = await this.reserveDB.findId(session.reserveId).catch(() => null);
@@ -332,6 +375,22 @@ class RecordingManageModel implements IRecordingManageModel {
         }
 
         this.log.system.info('finish recordings cleanup ');
+    }
+
+    /** 起動時に DB 上の有効予約を再走査してタイマーを張る */
+    public async setupStartupTimers(): Promise<void> {
+        const reserves = await this.reserveDB.findLists();
+        const now = Date.now();
+        for (const reserve of reserves) {
+            if (reserve.isSkip === true || reserve.isOverlap === true || reserve.endAt <= now) continue;
+            if (typeof this.recordingIndex[reserve.id] !== 'undefined') continue;
+            const recorder = await this.provider();
+            if (recorder.setTimer(reserve, true) === true) {
+                this.recordingIndex[reserve.id] = recorder;
+            } else {
+                this.log.system.warn(`startup recording timer setup failed: ${reserve.id}`);
+            }
+        }
     }
 
     /**

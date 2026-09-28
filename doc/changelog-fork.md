@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 再起動後に手動・番組・ルール予約のタイマーを再設定し、準備中 session を中断扱いで閉じる → 2026-09-28
 - 既定設定での録画共有・予約 planner・再開結果を修正 → 2026-09-28
 - 再起動後の録画復帰で空白時間・開始通知・チューナー台帳を修正 → 2026-09-28
 - recisdb-proxy の GR チューナーへ NW1〜NW40 予約を割り当て → 2026-09-28
@@ -45,6 +46,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-09-28
 
+- **再起動後に時刻指定の手動予約へタイマーが張られない不具合を修正**: 本番で予約42 (ＮＨＫ総合１・大分、10:54:00〜10:59:00) は10:52:00に準備を開始し、上流 lease を再利用して最初の TS を受信した。開始ゲートは10:55の番組区切りに合わせて `previousProgram` 待機となり、10:54:40に `Restart-Service epgstation.exe` を実行。再起動後は予約42のログ・録画要求・Recorded が各0件で、終了後も予約一覧に残った。同時録画中の予約41は再開し `partial` で終了した。原因は `ReservationManageModel.updateAll()` が時刻指定予約を差分から除外し、録画マネージャも差分だけで timer を張っていたこと。これは **main から存在した既存不具合**。起動後に予約 DB 全件を再走査し、`isSkip` / `isOverlap` と終了済み予約を除外、再開済み recorder は `recordingIndex` で重複を避ける。`PREPARING` / `WAITING_BOUNDARY` session と未終了 attempt は `process-restart` / `canceled` で閉じ、同じ予約は新規 session で再準備する。手動予約・番組予約・ルール予約を含める。実装: `RecordingManageModel.setupStartupTimers()`、`src/index.ts` の起動 cleanup 後。UT と ITB を追加。
 - **既定設定での録画共有・予約 planner・再開結果を修正**: 本番 Windows の既定設定で同一チャンネルの予約39 (09:46〜09:51) と40 (09:48〜09:53) を重ね、09:48:35にサービスを再起動したところ、録画中・再起動後とも Mirakurun 接続が2本 (session 611/613、再起動後614/615) で lease log は0件だった。`recording.shareUpstreamStream` は `false` の明示時だけ無効とし、`recording: {}` でも共有を有効にする。`reservation: {}` も既定の planner として扱い、切り戻しは `scheduler: legacy` の明示に限定する。手動追加・編集・イベントリレー追加では、連結する予約窓を planner で再計算して `plannedTunerIndex` / `conflictInfo` を保存する。録画開始時に planner の割当が無い・非互換・使用中なら first-fit にフォールバックし、`info` に `planner tuner fallback: reserveId=39, plannedTunerIndex=null, tunerIndex=0` の形式で記録する。録画18596は attempt 1 が0〜328,654,080 byte (`process-restart`)、attempt 2 が328,654,080〜624,526,224 byte (`scheduled-end`) で、受信断1.83秒があったのに `completed` となった。過去 attempt の終了理由と空白を含めて判定し、空白または `process-restart` / `transport-lost` があれば `partial` として元 TS を保持する。
 - **再起動後の録画復帰で空白時間・開始通知・チューナー台帳を修正**: 本番 Windows / MySQL / recisdb-proxy-rs で時刻指定予約38 (録画18595、09:12〜09:18) を録画中にサービス再起動した。復帰前 attempt は `endedAt=09:13:32.751`、次 attempt の初データは `09:13:32.806` で、記録上の空白は55msだったが、旧プロセスは09:13:30より前に強制終了しており実際の断は約3秒だった。復帰時に前 attempt の終了時刻をファイル `mtime` (取得できない場合は session の最終 DB 更新時刻) で補い、gap と `TRANSPORT_GAP_CNT` に使う。再開時は prestart / start 外部コマンドと開始通知を送らず、終了時の finish 処理は維持する。起動時に tuner 一覧の取得を最大10秒待ち、失敗後も起動してバックグラウンド再試行を続ける。回帰 ITB は mtime を再開の3秒前に置いた空白時間、重複 prep/start 通知なし、active tuner 台帳への復帰登録を確認する。本番試験の最終ファイルは669,353,696 byte (188 byte境界)、`partial`、attempt 3件で範囲に切れ目なし。F5 として legacy scheduler 特性値 (入力順 `[5,1,2,7,3,4,6]` と競合が残る特性) を復元し、planner の期待値は独立テストへ分けた。
 - **共有上流の枝バッファ上限と既定値を変更**: 枝ごとの上限を 1 MiB から 128 MiB (30 秒 × BS4K 相当約 4 MB/s) に拡大。上限超過時はその枝だけ失敗させる動作を維持し、当時の `writableLength` を含む info log を追加。lease 作成/再利用、枝解放、参照数 0 での上流終了も記録する。共有は既定有効、無効化は `recording.shareUpstreamStream: false`。予約 scheduler は `planner` を既定とし、切り戻しは `reservation.scheduler: legacy`。本番並走比較は差分 0 件、既定 priority コーパス比較も legacy と一致し、NW 局の割当を確認。共有既定有効化後の本番再試験は指示役が実施する。
