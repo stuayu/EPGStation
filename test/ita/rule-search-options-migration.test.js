@@ -79,6 +79,75 @@ test('SQLite のルール検索で既存 all は従来結果を維持し、any �
     }
 });
 
+test('SQLite のあいまい候補絞り込みはかな表記に関係なく同じ番組を候補にする', async () => {
+    const source = new DataSource({ type: 'better-sqlite3', database: ':memory:' });
+    await source.initialize();
+    try {
+        await source.query('CREATE TABLE program (id INTEGER PRIMARY KEY, halfWidthName TEXT)');
+        await source.query("INSERT INTO program VALUES (1, 'ニュース'), (2, 'ﾆｭｰｽ'), (3, 'にゅーす')");
+        const op = { isEnableCS: () => false, isEnabledRegexp: () => true, getLikeStr: () => 'like' };
+        const programDB = new ProgramDB({ getLogger: () => ({}) }, { getConfig: () => ({}) }, op, { run: cb => cb() });
+
+        for (const keyword of ['にゅーす', 'ニュース', 'ﾆｭｰｽ']) {
+            const query = { strs: [], param: {} };
+            programDB.setFuzzyCandidateQuery({ isFuzzy: true, keyword, name: true }, query);
+            const rows = await source
+                .createQueryBuilder()
+                .select('program.id', 'id')
+                .addSelect('program.halfWidthName', 'name')
+                .from('program', 'program')
+                .where(query.strs[0], query.param)
+                .orderBy('program.id', 'ASC')
+                .getRawMany();
+            const matched = rows.filter(row =>
+                programDB.matchFuzzyKeywords(
+                    { name: row.name, description: '', extended: '' },
+                    { isFuzzy: true, keyword, name: true },
+                ),
+            );
+            assert.equal(matched.length, 3);
+        }
+    } finally {
+        await source.destroy();
+    }
+});
+
+test('SQLite の検索対象列が空のキーワード・除外語は SQL 条件を追加しない', async () => {
+    const source = new DataSource({ type: 'better-sqlite3', database: ':memory:' });
+    await source.initialize();
+    try {
+        await source.query('CREATE TABLE program (id INTEGER PRIMARY KEY)');
+        await source.query('INSERT INTO program VALUES (1)');
+        const op = { isEnableCS: () => false, getLikeStr: () => 'like' };
+        const programDB = new ProgramDB({ getLogger: () => ({}) }, { getConfig: () => ({}) }, op, { run: cb => cb() });
+
+        for (const [isIgnore, ignoreKeywordMatch] of [
+            [false, undefined],
+            [true, 'all'],
+            [true, 'any'],
+        ]) {
+            const query = { strs: ['program.id > :minId'], param: { minId: 0 } };
+            programDB.setKeywordOption(
+                '猫',
+                { cs: false, regexp: false, name: false, description: false, extended: false },
+                isIgnore ? 'ignoreKeyword' : 'keyword',
+                isIgnore,
+                query,
+                ignoreKeywordMatch === 'any',
+            );
+            const rows = await source
+                .createQueryBuilder()
+                .select('program.id', 'id')
+                .from('program', 'program')
+                .where(query.strs.join(' and '), query.param)
+                .getRawMany();
+            assert.deepEqual(rows, [{ id: 1 }]);
+        }
+    } finally {
+        await source.destroy();
+    }
+});
+
 test('NULL の副ジャンルがある番組をジャンル除外検索で残す', async () => {
     const source = new DataSource({ type: 'better-sqlite3', database: ':memory:' });
     await source.initialize();

@@ -16,6 +16,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 ### 索引
 
 - feature/edcb-parity 全体レビュー指摘の修正 → 2026-09-28
+- feature/edcb-parity 本番検証で見つかった検索・スクロール復元の不具合修正 → 2026-09-28
 
 - 録画後コマンド Phase H → 2026-09-28
 - 自動予約の時刻指定枠と単局番組表の期間を拡張 → 2026-09-28
@@ -31,6 +32,10 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 番組リマインダーの番組 ID・局 ID を bigint にし、refresh をまとめて直列化、番組取得を一括化して発火済み ID を再登録しない。手動予約編集で録画後コマンドを保存し、単局番組表は時間軸を24時間に保ち EPG 終端で追加取得を止める。
 
 関連実装: `src/model/operator/power/PowerManageModel.ts`, `src/model/db/ProgramDB.ts`, `src/db/{entities,migrations}`, `src/model/operator/{reservation,reminder}`, `client/src/model/state/guide/GuideState.ts`, `src/model/notification/NotificationRequest.ts`。
+
+本番 MariaDB で見つかった、あいまい検索の候補絞り込みがひらがなキーワードを落とす問題を修正した。候補 SQL は入力・NFKC 正規化・カタカナ化した断片を検索し、ひらがな・カタカナ・半角カナの候補を残す。キーワードまたは除外キーワードの検索対象列が未選択なら空の SQL 条件を追加しない。録画結果・番組通知・システム設定画面はデータ取得の成功・失敗に関係なく `emitDoneGetData()` を呼び、スクロール位置復元を完了させる。
+
+関連実装: `src/model/db/ProgramDB.ts`, `client/src/views/{RecordingResults,Reminders,SystemSetting}.vue`。
 
 - チューナー別予約一覧 Phase E → 2026-09-28
 
