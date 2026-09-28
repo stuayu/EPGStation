@@ -35,6 +35,9 @@ containerSetter.set(container);
 namespace IndexConstants {
     // mirakurun 未接続時にチューナー情報取得をバックグラウンドで再試行する間隔 (ms)
     export const TUNER_RETRY_INTERVAL = 30 * 1000;
+    // 録画再開前にチューナー台帳を取得するために待つ上限
+    export const TUNER_STARTUP_WAIT_MS = 10 * 1000;
+    export const TUNER_STARTUP_RETRY_INTERVAL = 1000;
 }
 
 /**
@@ -102,9 +105,24 @@ const setTunersWithRetry = async (): Promise<void> => {
     const log = container.get<ILoggerModel>('ILoggerModel').getLogger();
     const reservationManageModel = container.get<IReservationManageModel>('IReservationManageModel');
     const recordingManager = container.get<IRecordingManageModel>('IRecordingManageModel');
+    const startupDeadline = Date.now() + IndexConstants.TUNER_STARTUP_WAIT_MS;
+    const getTunersBeforeDeadline = async () => {
+        const timeoutMs = Math.max(1, startupDeadline - Date.now());
+        let timeout: NodeJS.Timeout | null = null;
+        try {
+            return await Promise.race([
+                client.getTuners(),
+                new Promise<never>((_resolve, reject) => {
+                    timeout = setTimeout(() => reject(new Error('tuner startup wait expired')), timeoutMs);
+                }),
+            ]);
+        } finally {
+            if (timeout !== null) clearTimeout(timeout);
+        }
+    };
 
     try {
-        const tuners = await client.getTuners();
+        const tuners = await getTunersBeforeDeadline();
         reservationManageModel.setTuners(tuners);
         recordingManager.setTuner(tuners);
     } catch (err: any) {
@@ -115,6 +133,21 @@ const setTunersWithRetry = async (): Promise<void> => {
         // チューナー無しでいったん起動を継続する
         reservationManageModel.setTuners([]);
         recordingManager.setTuner([]);
+
+        // 再開録画の tuner 台帳を初期化できるよう、短時間だけ同期的に再試行する。
+        // Mirakurun 停止時も上限後に起動を続け、従来のバックグラウンド再試行へ移る。
+        while (Date.now() < startupDeadline) {
+            await new Promise(resolve => setTimeout(resolve, IndexConstants.TUNER_STARTUP_RETRY_INTERVAL));
+            try {
+                const tuners = await getTunersBeforeDeadline();
+                reservationManageModel.setTuners(tuners);
+                recordingManager.setTuner(tuners);
+                log.system.info('mirakurun への接続が復旧しました');
+                return;
+            } catch (retryErr: any) {
+                // 起動待機の期限まで再試行する
+            }
+        }
 
         // バックグラウンドで定期的に再接続を試みる
         const timer = setInterval(async () => {
@@ -128,6 +161,7 @@ const setTunersWithRetry = async (): Promise<void> => {
                 // 復旧するまでリトライを継続する
             }
         }, IndexConstants.TUNER_RETRY_INTERVAL);
+        timer.unref?.();
     }
 };
 

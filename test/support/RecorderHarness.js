@@ -13,7 +13,7 @@ const logger = { system: { info() {}, debug() {}, warn() {}, error() {}, fatal()
 class RecorderHarness {
     constructor(stub, options = {}) {
         this.stub = stub;
-        this.events = { start: [], finish: [], failed: [] };
+        this.events = { prep: [], start: [], finish: [], failed: [] };
         this.recorded = [];
         this.videoFiles = [];
         this.recordingSessions = [];

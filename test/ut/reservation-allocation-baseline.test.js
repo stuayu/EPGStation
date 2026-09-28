@@ -33,7 +33,7 @@ const makeModel = (reserveDB = {}, options = {}) => {
     };
     return new ReservationManageModel(
         noopLogger,
-        { getConfig: () => ({ reservation: { scheduler: 'planner' }, ...options.config }) },
+        { getConfig: () => ({ reservation: { scheduler: 'legacy' }, ...options.config }) },
         {},
         {},
         { findTimeRanges: async () => [], updateMany: async () => {}, ...reserveDB },
@@ -82,6 +82,7 @@ test('未定尺の予約が同じチャンネルなら findSchedule を予約数
     const model = makeModel(
         {},
         {
+            config: { reservation: { scheduler: 'planner' } },
             programDB: {
                 findSchedule: async () => {
                     scheduleCalls++;
@@ -108,7 +109,7 @@ test('未定尺の予約が同じチャンネルなら findSchedule を予約数
 });
 
 test('createReserves は時間順スイープと先着チューナー割当を使い、競合を記録する', async () => {
-    const model = makeModel();
+    const model = makeModel({}, { config: { reservation: { scheduler: 'legacy' } } });
     model.setTuners(
         fixture.tuners.map(tuner => ({ ...tuner, name: `tuner-${tuner.index}`, command: '', isAvailable: true })),
     );
@@ -119,12 +120,12 @@ test('createReserves は時間順スイープと先着チューナー割当を�
     assert.deepEqual(snapshot, fixture.expectedConflicts);
     assert.deepEqual(
         input.map(reserve => reserve.id),
-        [1, 2, 3, 4, 5, 6, 7],
+        [5, 1, 2, 7, 3, 4, 6],
     );
 });
 
 test('Phase 0 コーパスで planner の完全録画数と欠損時間が legacy より悪化しない', () => {
-    const model = makeModel();
+    const model = makeModel({}, { config: { reservation: { scheduler: 'planner' } } });
     const reserves = fixture.reserves.map(row => makeReserve(row));
     const rank = new Map([...reserves].sort(model.sortReserve).map((reserve, index) => [reserve.id, index]));
     const plans = planSchedule({
@@ -196,7 +197,7 @@ const countChannelSwitches = assignments => {
 };
 
 test('createReserves では同時刻終了と開始は競合せず、first-fit の割当を行う', async () => {
-    const model = makeModel();
+    const model = makeModel({}, { config: { reservation: { scheduler: 'legacy' } } });
     model.setTuners([{ types: ['GR'], index: 0, name: 'GR', command: '', isAvailable: true }]);
     const result = await model.createReserves([
         makeReserve({ id: 1, startAt: 1000, endAt: 2000 }),
@@ -208,8 +209,23 @@ test('createReserves では同時刻終了と開始は競合せず、first-fit �
     );
 });
 
+test('legacy は一度競合した予約を競合のまま残す', async () => {
+    const model = makeModel({}, { config: { reservation: { scheduler: 'legacy' } } });
+    model.setTuners([{ types: ['GR'], index: 0, name: 'GR', command: '', isAvailable: true }]);
+    const result = await model.createReserves([
+        makeReserve({ id: 1, channel: 'GR-1', startAt: 1000, endAt: 2000, updateTime: 1 }),
+        makeReserve({ id: 2, channel: 'GR-2', startAt: 1500, endAt: 2500, updateTime: 2 }),
+        makeReserve({ id: 3, channel: 'GR-1', startAt: 2000, endAt: 3000, updateTime: 3 }),
+    ]);
+    assert.deepEqual(Object.fromEntries(result.map(reserve => [reserve.id, reserve.isConflict])), {
+        1: false,
+        2: true,
+        3: true,
+    });
+});
+
 test('planner は先行予約の終了後に同じチャンネルの予約を割り当てる', async () => {
-    const model = makeModel();
+    const model = makeModel({}, { config: { reservation: { scheduler: 'planner' } } });
     model.setTuners([{ types: ['GR'], index: 0, name: 'GR', command: '', isAvailable: true }]);
     const result = await model.createReserves([
         makeReserve({ id: 1, channel: 'GR-1', startAt: 1000, endAt: 2000, updateTime: 1 }),
@@ -224,7 +240,7 @@ test('planner は先行予約の終了後に同じチャンネルの予約を割
 });
 
 test('createReserves の現状の挙動 (Phase 6 で変更予定): 後から始まる高優先予約が既存予約を押し出す', async () => {
-    const model = makeModel();
+    const model = makeModel({}, { config: { reservation: { scheduler: 'legacy' } } });
     model.setTuners([{ types: ['GR'], index: 0, name: 'GR', command: '', isAvailable: true }]);
     const result = await model.createReserves([
         makeReserve({ id: 1, channel: 'GR-1', startAt: 1000, endAt: 3000, ruleId: 1 }),

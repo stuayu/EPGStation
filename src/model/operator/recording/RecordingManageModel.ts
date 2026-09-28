@@ -160,9 +160,12 @@ class RecordingManageModel implements IRecordingManageModel {
             let originalSize = 0;
             let alignedSize = 0;
             let fileExists = false;
+            let fileMtimeMs: number | null = null;
             if (filePath !== null) {
                 try {
-                    originalSize = (await fs.promises.stat(filePath)).size;
+                    const fileStat = await fs.promises.stat(filePath);
+                    originalSize = fileStat.size;
+                    fileMtimeMs = Number.isFinite(fileStat.mtimeMs) ? fileStat.mtimeMs : null;
                     alignedSize = getAlignedRecordingSize(originalSize);
                     fileExists = true;
                 } catch {
@@ -198,7 +201,7 @@ class RecordingManageModel implements IRecordingManageModel {
                     const previousAttempt = attempts.sort((a, b) => a.attemptNo - b.attemptNo).at(-1);
                     if (previousAttempt !== undefined) {
                         await this.recordingSessionDB.updateAttempt(previousAttempt.id, {
-                            endedAt: previousAttempt.endedAt ?? Date.now(),
+                            endedAt: previousAttempt.endedAt ?? fileMtimeMs ?? session.updatedAt,
                             closeReason: previousAttempt.closeReason ?? 'process-restart',
                             fileOffsetEnd: originalSize,
                         });
