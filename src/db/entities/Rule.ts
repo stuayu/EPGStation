@@ -51,6 +51,21 @@ export default class Rule extends BaseEntity {
     })
     public halfWidthIgnoreKeyword: string | null = null; // 除外検索キーワード (検索用)
 
+    @Column({ type: 'varchar', length: 3, default: 'all' })
+    public ignoreKeywordMatch: 'all' | 'any' = 'all';
+
+    @Column({ default: false })
+    public isFuzzy: boolean = false;
+
+    @Column({ default: false })
+    public isGenreExclusion: boolean = false;
+
+    @Column({ default: false })
+    public isChannelExclusion: boolean = false;
+
+    @Column({ default: false })
+    public isTimeExclusion: boolean = false;
+
     @Column({
         default: false,
     })

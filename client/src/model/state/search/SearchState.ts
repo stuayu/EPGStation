@@ -177,6 +177,11 @@ export default class SearchState implements ISearchState {
                 description: false,
                 extended: false,
             },
+            ignoreKeywordMatch: 'any',
+            isFuzzy: false,
+            isGenreExclusion: false,
+            isChannelExclusion: false,
+            isTimeExclusion: false,
             channels: [],
             broadcastWave: {
                 GR: {
@@ -368,6 +373,7 @@ export default class SearchState implements ISearchState {
             isShowSubgenres: true,
             startTime: undefined,
             rangeTime: undefined,
+            timeRanges: [],
             week: {
                 mon: true,
                 tue: true,
@@ -762,6 +768,11 @@ export default class SearchState implements ISearchState {
                 extended: !!searchOption.ignoreExtended,
             };
         }
+        this.searchOption.ignoreKeywordMatch = searchOption.ignoreKeywordMatch ?? 'all';
+        this.searchOption.isFuzzy = !!searchOption.isFuzzy;
+        this.searchOption.isGenreExclusion = !!searchOption.isGenreExclusion;
+        this.searchOption.isChannelExclusion = !!searchOption.isChannelExclusion;
+        this.searchOption.isTimeExclusion = !!searchOption.isTimeExclusion;
 
         // 放送局
         if (typeof searchOption.channelIds !== 'undefined') {
@@ -833,6 +844,13 @@ export default class SearchState implements ISearchState {
             this.searchOption.startTime = searchOption.times[0].start;
             this.searchOption.rangeTime = searchOption.times[0].range;
             this.searchOption.week = this.convertRuleWeekToWeek(searchOption.times[0].week);
+            this.searchOption.timeRanges = searchOption.times.map((time) => ({
+                startTime: time.start,
+                rangeTime: time.range,
+                startMinute: time.startMinute ?? 0,
+                rangeMinute: time.rangeMinute ?? 0,
+                week: this.convertRuleWeekToWeek(time.week),
+            }));
         }
 
         // 長さ
@@ -1595,6 +1613,11 @@ export default class SearchState implements ISearchState {
      */
     private createRuleSearchOption(option: SearchOption): apid.RuleSearchOption {
         const ruleOption: apid.RuleSearchOption = {};
+        ruleOption.ignoreKeywordMatch = option.ignoreKeywordMatch;
+        ruleOption.isFuzzy = option.isFuzzy;
+        ruleOption.isGenreExclusion = option.isGenreExclusion;
+        ruleOption.isChannelExclusion = option.isChannelExclusion;
+        ruleOption.isTimeExclusion = option.isTimeExclusion;
         // keyword
         if (option.keyword !== null) {
             ruleOption.keyword = option.keyword;
@@ -1783,15 +1806,15 @@ export default class SearchState implements ISearchState {
         }
 
         // time
-        ruleOption.times = [
-            {
-                week: this.convertWeekToRuleWeek(option.week),
-            },
-        ];
-        if (typeof option.startTime !== 'undefined' && typeof option.rangeTime !== 'undefined') {
-            ruleOption.times[0].start = option.startTime;
-            ruleOption.times[0].range = option.rangeTime;
-        }
+        const ranges = option.timeRanges.length > 0 ? option.timeRanges : [{ startTime: option.startTime, rangeTime: option.rangeTime, startMinute: 0, rangeMinute: 0, week: option.week }];
+        ruleOption.times = ranges.map((range) => {
+            const time: apid.SearchTime = { week: this.convertWeekToRuleWeek(range.week) };
+            if (typeof range.startTime !== 'undefined') time.start = range.startTime;
+            if (typeof range.rangeTime !== 'undefined') time.range = range.rangeTime;
+            if (range.startMinute > 0) time.startMinute = range.startMinute;
+            if (range.rangeMinute > 0) time.rangeMinute = range.rangeMinute;
+            return time;
+        });
 
         // isFree
         if (option.isFree === true) {

@@ -8,6 +8,7 @@ import IStreamProfileManageModel from '../../stream/IStreamProfileManageModel';
 import IConfigApiModel from './IConfigApiModel';
 import IHardwareEncoderDetector from '../../encoder/IHardwareEncoderDetector';
 import { resolveRecordingTimingConfig } from '../../operator/recording/RecordingTimingConfig';
+import IDBOperator from '../../db/IDBOperator';
 
 @injectable()
 export default class ConfigApiModel implements IConfigApiModel {
@@ -22,6 +23,9 @@ export default class ConfigApiModel implements IConfigApiModel {
         @inject('IHardwareEncoderDetector')
         @optional()
         private readonly hardwareEncoderDetector?: IHardwareEncoderDetector,
+        @inject('IDBOperator')
+        @optional()
+        private readonly dbOperator?: IDBOperator,
     ) {
         this.configuration = configuration;
         this.ipc = ipc;
@@ -160,6 +164,10 @@ export default class ConfigApiModel implements IConfigApiModel {
             configured: hardwareEncoder?.configured ?? config.hardwareEncoder ?? 'auto',
             selected: hardwareEncoder?.selected ?? 'software',
             available: hardwareEncoder?.available ?? ['software'],
+        };
+        result.ruleSearchCapabilities = {
+            regexp: this.dbOperator?.isEnabledRegexp() ?? true,
+            caseSensitive: this.dbOperator?.isEnableCS() ?? true,
         };
 
         result.recorded = config.recorded.map(r => {

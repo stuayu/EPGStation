@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 自動予約ルール検索の除外条件・表記ゆれ・時間帯指定を改善 → 2026-09-28
 - 予約・ルールごとの録画マージンを追加 → 2026-09-28
 
 - 録画結果一覧・開始前失敗通知・結果保持期間を追加 → 2026-09-28
@@ -48,6 +49,16 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-09-28
+
+### 自動予約ルール検索の除外条件・表記ゆれ・時間帯指定を改善
+
+除外キーワードは従来どおり全語一致 (`all`) を既存ルールへ移行し、新規ルールは任意の語で除外する (`any`) 選択肢を既定にした。あいまい検索は既定で無効とし、有効時はかな・カナ、半角・全角、英数字、空白・記号の表記差を正規化する。ジャンル・放送局・時間帯も指定条件を除外できる。時間帯は複数指定と分単位に対応した。
+
+0 時をまたぐ時間帯は翌日の曜日で評価するよう修正した。**既存ルールにも適用され、検索結果が変わる不具合修正**。正規表現・大文字小文字区別が DB で利用できない場合、`GET /api/config` の `ruleSearchCapabilities` を使いルール編集画面に警告を表示する。
+
+あいまい検索は SQL で候補を絞った後に SQLite 結果を JavaScript で正規化して照合する。合成番組 160,000 件のローカル SQLite で 1 ルールを評価し、Entity 読み込み・照合・100 件への上限適用まで 885.72 ms。
+
+関連実装: `src/model/db/ProgramDB.ts`, `src/util/StrUtil.ts`, `src/db/entities/Rule.ts`, `src/db/migrations/{sqlite,mysql}/1790572300000-ImproveRuleSearchOptions.ts`, `src/model/db/RuleDB.ts`, `src/model/api/config/ConfigApiModel.ts`, `api.yml`, `api.d.ts`, `client/src/components/search/SearchOption.vue`。
 
 ### 予約・ルールごとの録画マージン
 
