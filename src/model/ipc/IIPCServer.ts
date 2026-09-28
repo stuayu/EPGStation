@@ -18,6 +18,7 @@ export default interface IIPCServer {
     notifyProgramStartingClient(
         payload: { programId: number; channelId: number; name: string; startAt: number; minutesBefore: number },
         userId: number | null,
+        notificationTargetCount: number,
     ): void;
     notifyEitPresent(channelId: number, event: EitOnAirRecord): void;
     setEncode(addOption: apid.AddEncodeProgramOption): void;

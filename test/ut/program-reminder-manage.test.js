@@ -43,6 +43,7 @@ test('発火と同時に進行中の refresh が終わっても同じ通知を�
             findId: async () => program,
         };
         let notifications = 0;
+        let notifiedTargetCount = null;
         model = new ProgramReminderManageModel(
             { getLogger: () => ({ system: { error() {} } }) },
             { setProgramUpdated() {}, setOnAirProgramUpdated() {} },
@@ -51,9 +52,14 @@ test('発火と同時に進行中の refresh が終わっても同じ通知を�
             {
                 dispatch: async () => {
                     notifications++;
+                    return 2;
                 },
             },
-            { notifyProgramStartingClient() {} },
+            {
+                notifyProgramStartingClient(_payload, _userId, targetCount) {
+                    notifiedTargetCount = targetCount;
+                },
+            },
         );
         const refresh = model.refresh();
         const reachedBatchLookup = await Promise.race([
@@ -65,6 +71,7 @@ test('発火と同時に進行中の refresh が終わっても同じ通知を�
         releaseFindIds();
         await refresh;
         assert.equal(notifications, 1);
+        assert.equal(notifiedTargetCount, 2);
         assert.deepEqual(stored, []);
     } finally {
         model?.scheduler?.clear();

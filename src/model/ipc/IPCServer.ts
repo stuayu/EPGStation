@@ -213,9 +213,10 @@ export default class IPCServer implements IIPCServer {
             minutesBefore: number;
         },
         userId: number | null,
+        notificationTargetCount: number,
     ): void {
         if (this.child === null) return;
-        this.child.send(<any>{ type: 'notifyProgramStarting', value: { ...payload, userId } });
+        this.child.send(<any>{ type: 'notifyProgramStarting', value: { ...payload, userId, notificationTargetCount } });
     }
 
     /** Service 側へ録画中 EIT[p/f] を転送する */

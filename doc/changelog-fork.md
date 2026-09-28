@@ -16,12 +16,21 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 ### 索引
 
 - feature/edcb-parity 全体レビュー指摘の修正 → 2026-09-28
+- API 定義不備による全ルート停止と dist 残留を防止 → 2026-09-28
 - feature/edcb-parity 本番検証で見つかった検索・スクロール復元の不具合修正 → 2026-09-28
 
 - 録画後コマンド Phase H → 2026-09-28
 - 自動予約の時刻指定枠と単局番組表の期間を拡張 → 2026-09-28
 - 省電力 Phase G → 2026-09-28
 - 番組開始前リマインダー Phase F → 2026-09-28
+
+### API 定義不備による全ルート停止と dist 残留を防止
+
+録画プリセット既定値 API の inline apiDoc で `$ref` と `nullable` を同じ schema object に置いていたため、express-openapi の初期化が中断し既存 API まで 404 になった。nullable schema を `allOf` 形式に直し、`api.yml` と `dist` の全ルート初期化・メソッド登録を確かめるテストを追加した。番組開始前リマインダー削除ルートの DELETE export 漏れも初期化テストで検出し修正した。
+
+`build-server` / `build-win` はコンパイル前に `dist` を削除し、別ブランチの古い route が混ざる問題を防ぐ。`npm run compile` は反復用のため削除処理を含めない。リマインダー発火時は番組情報、通知先数、Socket.IO 配信クライアント数を1行で記録する。
+
+関連実装: `src/model/service/api/recording-presets/default.ts`, `src/model/service/api/reminders/{reminderId}.ts`, `test/ita/service-openapi-routes.test.js`, `src/model/operator/reminder/ProgramReminderManageModel.ts`, `src/model/service/socketio/SocketIOManageModel.ts`, `package.json`。
 
 ### feature/edcb-parity 全体レビュー指摘の修正
 

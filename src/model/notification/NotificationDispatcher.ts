@@ -40,12 +40,13 @@ export default class NotificationDispatcher implements INotificationDispatcher {
         this.scheduleProcessing();
     }
 
-    public async dispatch(type: NotificationEventType, payload: Record<string, unknown>): Promise<void> {
+    public async dispatch(type: NotificationEventType, payload: Record<string, unknown>): Promise<number> {
         const c = await this.getConfig();
-        if (!c) return;
+        if (!c) return 0;
         const event = createNotificationEvent(type, payload);
         const targets = c.targets.filter(t => !t.events || t.events.includes(type));
         await Promise.all(targets.map(t => this.deliverOrEnqueue(t, event, c)));
+        return targets.length;
     }
 
     public async test(targetName?: string): Promise<{ delivered: string[]; failed: string[] }> {

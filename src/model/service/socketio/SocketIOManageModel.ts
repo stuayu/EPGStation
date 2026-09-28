@@ -158,16 +158,25 @@ export default class SocketIOManageModel implements ISocketIOManageModel {
     public notifyProgramStarting(
         payload: { programId: number; channelId: number; name: string; startAt: number; minutesBefore: number },
         userId: number | null,
+        notificationTargetCount: number,
     ): void {
+        let deliveredClientCount = 0;
         for (const io of this.ios) {
-            if (userId === null) io.sockets.emit('programStarting', payload);
-            else
+            if (userId === null) {
+                deliveredClientCount += io.sockets.sockets.size;
+                io.sockets.emit('programStarting', payload);
+            } else
                 for (const socket of io.sockets.sockets.values()) {
-                    if (socket.data.userId === userId) socket.emit('programStarting', payload);
+                    if (socket.data.userId === userId) {
+                        deliveredClientCount++;
+                        socket.emit('programStarting', payload);
+                    }
                 }
         }
         this.log.system.info(
-            `notify programStarting: programId: ${payload.programId} clients: ${this.getClientCount()}`,
+            `program reminder fired: programId: ${payload.programId} name: ${payload.name} ` +
+                `minutesBefore: ${payload.minutesBefore} notificationTargets: ${notificationTargetCount} ` +
+                `socketClients: ${deliveredClientCount}`,
         );
     }
 

@@ -114,8 +114,8 @@ export default class ProgramReminderManageModel implements IProgramReminderManag
             }
             const payload = createProgramStartingPayload(reminder);
             await this.reminderDB.delete(reminder.id, reminder.userId);
-            await this.notification.dispatch('program.starting', { ...payload });
-            this.ipc.notifyProgramStartingClient(payload, reminder.userId);
+            const notificationTargetCount = await this.notification.dispatch('program.starting', { ...payload });
+            this.ipc.notifyProgramStartingClient(payload, reminder.userId, notificationTargetCount);
             await this.refresh();
         } catch (err) {
             this.firedIds.delete(reminder.id);
