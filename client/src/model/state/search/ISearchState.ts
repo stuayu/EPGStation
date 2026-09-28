@@ -169,6 +169,7 @@ export interface ReserveOption {
     conflictPolicy: apid.ConflictPolicy;
     avoidDuplicate: boolean; // 録画済みの重複番組を排除するか
     periodToAvoidDuplicate: number | null; // 重複を避ける期間
+    tags: apid.RecordedTagId[];
 }
 
 /**

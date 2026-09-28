@@ -9,6 +9,68 @@ info:
 servers: []
 
 paths:
+    /recording-presets:
+        get:
+            summary: 録画プリセット一覧取得
+            responses:
+                '200':
+                    description: 一覧
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/RecordingPresetItems' }
+        post:
+            summary: 録画プリセット作成
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema: { $ref: '#/components/schemas/AddRecordingPresetOption' }
+            responses:
+                '200':
+                    description: 作成成功
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/AddedRecordingPreset' }
+    /recording-presets/default:
+        get:
+            summary: 既定録画プリセット取得
+            responses:
+                '200':
+                    description: 既定プリセットまたは null
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                nullable: true
+                                allOf:
+                                    - $ref: '#/components/schemas/RecordingPresetItem'
+    /recording-presets/{presetId}:
+        parameters:
+            - $ref: '#/components/parameters/PathRecordingPresetId'
+        get:
+            summary: 録画プリセット取得
+            responses:
+                '200':
+                    description: プリセット
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/RecordingPresetItem' }
+                '404': { description: 存在しない }
+        put:
+            summary: 録画プリセット更新
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema: { $ref: '#/components/schemas/UpdateRecordingPresetOption' }
+            responses:
+                '200': { description: 更新成功 }
+                '404': { description: 存在しない }
+        delete:
+            summary: 録画プリセット削除
+            responses:
+                '200': { description: 削除成功 }
+                '404': { description: 存在しない }
     /videos/{videoFileId}/offline:
         get:
             summary: 録画番組オフライン保存ストリーム
@@ -203,6 +265,10 @@ components:
 
         SavedSearchId:
             description: 保存検索 id
+            type: integer
+
+        RecordingPresetId:
+            description: 録画プリセット id
             type: integer
 
         EncodeId:
@@ -2565,6 +2631,71 @@ components:
                 isPinned:
                     description: ピン留めするか
                     type: boolean
+
+        RecordingPresetSettings:
+            description: 録画プリセットの保存設定
+            type: object
+            required: [parentDirectoryName, directory, recordedFormat, mode1, encodeParentDirectoryName1, directory1, mode2, encodeParentDirectoryName2, directory2, mode3, encodeParentDirectoryName3, directory3, isDeleteOriginalAfterEncode, priority, conflictPolicy, allowEndLack, startMarginSec, endMarginSec, tags]
+            properties:
+                parentDirectoryName: { type: string, nullable: true }
+                directory: { type: string, nullable: true }
+                recordedFormat: { type: string, nullable: true }
+                mode1: { type: string, nullable: true }
+                encodeParentDirectoryName1: { type: string, nullable: true }
+                directory1: { type: string, nullable: true }
+                mode2: { type: string, nullable: true }
+                encodeParentDirectoryName2: { type: string, nullable: true }
+                directory2: { type: string, nullable: true }
+                mode3: { type: string, nullable: true }
+                encodeParentDirectoryName3: { type: string, nullable: true }
+                directory3: { type: string, nullable: true }
+                isDeleteOriginalAfterEncode: { type: boolean }
+                priority: { type: integer, minimum: 1, maximum: 5 }
+                conflictPolicy: { $ref: '#/components/schemas/ConflictPolicy' }
+                allowEndLack: { type: boolean }
+                startMarginSec: { type: integer, nullable: true, minimum: 0, maximum: 3600 }
+                endMarginSec: { type: integer, nullable: true, minimum: 0, maximum: 3600 }
+                tags:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecordedTagId' }
+
+        RecordingPresetItem:
+            type: object
+            required: [id, name, isDefault, settings, createdAt, updatedAt]
+            properties:
+                id: { $ref: '#/components/schemas/RecordingPresetId' }
+                name: { type: string }
+                isDefault: { type: boolean }
+                settings: { $ref: '#/components/schemas/RecordingPresetSettings' }
+                createdAt: { $ref: '#/components/schemas/UnixtimeMS' }
+                updatedAt: { $ref: '#/components/schemas/UnixtimeMS' }
+
+        RecordingPresetItems:
+            type: object
+            required: [items, total]
+            properties:
+                items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecordingPresetItem' }
+                total: { type: integer }
+
+        AddRecordingPresetOption:
+            type: object
+            required: [name, settings]
+            properties:
+                name: { type: string }
+                isDefault: { type: boolean }
+                settings: { $ref: '#/components/schemas/RecordingPresetSettings' }
+
+        UpdateRecordingPresetOption:
+            allOf:
+                - $ref: '#/components/schemas/AddRecordingPresetOption'
+
+        AddedRecordingPreset:
+            type: object
+            required: [presetId]
+            properties:
+                presetId: { $ref: '#/components/schemas/RecordingPresetId' }
 
         AddedSavedSearch:
             description: 保存検索追加成功応答データ
@@ -6381,6 +6512,14 @@ components:
             required: true
             schema:
                 type: integer
+
+        PathRecordingPresetId:
+            description: recording preset id
+            in: path
+            name: presetId
+            required: true
+            schema:
+                $ref: '#/components/schemas/RecordingPresetId'
 
         PathSnsAccountId:
             description: SNS 連携アカウント id

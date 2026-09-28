@@ -627,6 +627,7 @@ export default class SearchState implements ISearchState {
             conflictPolicy: 'ALLOW_END_LACK',
             avoidDuplicate: this.settingModel.getSavedValue().isCheckAvoidDuplicate,
             periodToAvoidDuplicate: null,
+            tags: [],
         };
     }
 
@@ -887,6 +888,7 @@ export default class SearchState implements ISearchState {
         this.reserveOption.priority = reserveOption.priority ?? 3;
         this.reserveOption.conflictPolicy = reserveOption.conflictPolicy ?? (reserveOption.allowEndLack ? 'ALLOW_END_LACK' : 'STRICT');
         this.reserveOption.avoidDuplicate = reserveOption.avoidDuplicate;
+        this.reserveOption.tags = reserveOption.tags ?? [];
 
         if (typeof reserveOption.periodToAvoidDuplicate !== 'undefined') {
             this.reserveOption.periodToAvoidDuplicate = reserveOption.periodToAvoidDuplicate;
@@ -2279,6 +2281,7 @@ export default class SearchState implements ISearchState {
             priority: option.priority,
             conflictPolicy: option.conflictPolicy,
             avoidDuplicate: option.avoidDuplicate,
+            tags: option.tags,
         };
 
         if (option.periodToAvoidDuplicate !== null) {

@@ -44,6 +44,7 @@ export interface ManualReserveOption {
     endMarginSec: number | null;
     priority: number;
     conflictPolicy: apid.ConflictPolicy;
+    tags: apid.RecordedTagId[];
 }
 
 /**

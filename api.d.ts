@@ -16,6 +16,7 @@ export type ThumbnailId = number;
 export type DropLogFileId = number;
 export type RecordedTagId = number;
 export type SavedSearchId = number;
+export type RecordingPresetId = number;
 export type EncodeId = number;
 export type ChannelType =
     | 'GR'
@@ -1040,6 +1041,42 @@ export interface UpdateSavedSearchOption {
 export interface AddedSavedSearch {
     searchId: SavedSearchId;
 }
+
+export interface RecordingPresetSettings {
+    parentDirectoryName: string | null;
+    directory: string | null;
+    recordedFormat: string | null;
+    mode1: string | null;
+    encodeParentDirectoryName1: string | null;
+    directory1: string | null;
+    mode2: string | null;
+    encodeParentDirectoryName2: string | null;
+    directory2: string | null;
+    mode3: string | null;
+    encodeParentDirectoryName3: string | null;
+    directory3: string | null;
+    isDeleteOriginalAfterEncode: boolean;
+    priority: number;
+    conflictPolicy: ConflictPolicy;
+    allowEndLack: boolean;
+    startMarginSec: number | null;
+    endMarginSec: number | null;
+    tags: RecordedTagId[];
+}
+
+export interface RecordingPresetItem {
+    id: RecordingPresetId;
+    name: string;
+    isDefault: boolean;
+    settings: RecordingPresetSettings;
+    createdAt: UnixtimeMS;
+    updatedAt: UnixtimeMS;
+}
+
+export interface RecordingPresetItems { items: RecordingPresetItem[]; total: number; }
+export interface AddRecordingPresetOption { name: string; isDefault?: boolean; settings: RecordingPresetSettings; }
+export interface UpdateRecordingPresetOption { name: string; isDefault?: boolean; settings: RecordingPresetSettings; }
+export interface AddedRecordingPreset { presetId: RecordingPresetId; }
 
 /**
  * URL Scheme 情報
