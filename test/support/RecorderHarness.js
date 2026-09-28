@@ -32,6 +32,7 @@ class RecorderHarness {
                     endMarginSec: 0,
                     startGateEnabled: false,
                     programStreamMode: 'service',
+                    shareUpstreamStream: true,
                     ...options.recording,
                 },
                 isEnabledDropCheck: options.isEnabledDropCheck === true,

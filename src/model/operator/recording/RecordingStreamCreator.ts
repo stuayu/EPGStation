@@ -47,7 +47,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
     // stream が切れても再接続先の tuner を保つ
     private reserveTunerIndex: { [key: number]: number | null } = {};
     private closeReasonIndex = new WeakMap<http.IncomingMessage, Exclude<IRecordingStreamCreator.CloseReason, null>>();
-    private sourceLeaseManager = new RecordingSourceLeaseManager();
+    private sourceLeaseManager: RecordingSourceLeaseManager;
     private streamLeaseReleases = new WeakMap<http.IncomingMessage, () => void>();
 
     constructor(
@@ -57,6 +57,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
         mirakurunClientModel: IMirakurunClientModel,
     ) {
         this.log = logger.getLogger();
+        this.sourceLeaseManager = new RecordingSourceLeaseManager(message => this.log.system.info(message));
         this.configuration = configuration;
         this.mirakurunClientModel = mirakurunClientModel;
     }
@@ -407,6 +408,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
                     priority,
                 }),
             `priority:${priority}:decode:true`,
+            { reserveId: reserve.id, priority },
         );
         const branch = lease.stream as unknown as http.IncomingMessage;
         const release = (): void => {

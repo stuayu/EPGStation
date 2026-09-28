@@ -105,9 +105,9 @@ dbtype: sqlite
 #  maxChannels: 8
 
 # ===== EPG 更新 =====
-# 予約の競合判定・チューナー割当方式 (legacy / planner)。既定 legacy
+# 予約の競合判定・チューナー割当方式 (legacy / planner)。既定 planner
 # reservation:
-#   scheduler: legacy
+#   scheduler: planner
 
 # 過去の番組表データを残す時間 (時間)
 # 0: 終了した番組を順次削除する (既定) / -1: 削除せず無期限に残す
@@ -942,8 +942,8 @@ stream:
 # recording:
 #     # 録画中に上流が切断した後、同じ録画へ再接続する (既定 true)
 #     reconnectEnabled: true
-#     # 同一チャンネルで続く録画が上流接続を共有する (既定 false)
-#     shareUpstreamStream: false
+#     # 同一チャンネルで続く録画が上流接続を共有する (既定 true)
+#     shareUpstreamStream: true
 #     # programId 予約の取得方式 (既定 service。障害時の切り戻し用に program を指定可)
 #     programStreamMode: service
 #     # 番組開始を待つ上限 (ms)。既定 3 時間。0 で待たない

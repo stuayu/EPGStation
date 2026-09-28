@@ -108,7 +108,7 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
                     { title: '従来方式', value: 'legacy' },
                     { title: '新スケジューラ', value: 'planner' },
                 ],
-                hint: '既定は従来方式。新スケジューラは予約の区間ごとに割当を最適化します',
+                hint: '既定は新スケジューラ。従来方式へ戻す場合は legacy を選択します',
             },
         ],
     },
@@ -456,7 +456,7 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
                 path: 'recording.shareUpstreamStream',
                 label: '連続する同一チャンネルの録画で上流を共有する',
                 type: 'boolean',
-                hint: '既定 無効。同じチャンネルの連続録画で Mirakurun への接続を共有する',
+                hint: '既定 有効。同じチャンネルの連続録画で Mirakurun への接続を共有します',
             },
             {
                 path: 'recording.programStreamMode',
