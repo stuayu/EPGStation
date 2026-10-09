@@ -6,6 +6,7 @@ export interface RecordingResultsOption {
     to?: number;
     ruleId?: number;
     keyword?: string;
+    isHalfWidth?: boolean;
     offset?: number;
     limit?: number;
 }
