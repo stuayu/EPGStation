@@ -19,6 +19,14 @@ export default class RecordingReasonUtil {
     public static getReasonLabel(reason: string | undefined): string {
         if (reason === undefined || reason === '') return '不明';
         const labels: Record<string, string> = {
+            eventMatched: '番組開始を検出',
+            followingTimeReached: '次番組の開始時刻',
+            startTimeReached: '予約時刻',
+            timeSpecifiedMidProgram: '予約時刻 (番組途中)',
+            eitSoftTimeout: '番組情報なしで開始',
+            eitHardTimeout: '番組情報が変わらず開始',
+            timeout: '待機上限で開始',
+            disabled: '開始待ちなし',
             'scheduled-end': '予定終了',
             boundary: '番組境界',
             canceled: 'キャンセル',

@@ -58,7 +58,8 @@
                             <div class="text-caption text-medium-emphasis mt-1">
                                 {{ formatTimestamp(session.scheduledStartAt) }} — {{ formatTimestamp(session.scheduledEndAt) }}
                                 <span v-if="session.channelName">・ {{ session.channelName }}</span>
-                                <span>・ 開始: {{ reasonLabel(session.startReason) }} / 終了: {{ reasonLabel(session.endReason) }}</span>
+                                <span v-if="session.startReason">・ 開始: {{ reasonLabel(session.startReason) }}</span>
+                                <span>・ 終了: {{ reasonLabel(session.endReason) }}</span>
                                 <span>・ 再試行 {{ session.retryCount }} 回</span>
                             </div>
                         </div>
@@ -114,6 +115,7 @@ import IRecordingResultsState from '@/model/state/recordingResults/IRecordingRes
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import IRecordingResultsApiModel from '@/model/api/recordingResults/IRecordingResultsApiModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
+import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
 import RecordingReasonUtil from '@/util/RecordingReasonUtil';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
@@ -135,6 +137,7 @@ class RecordingResults extends Vue {
     private recordingResultsApiModel: IRecordingResultsApiModel = container.get<IRecordingResultsApiModel>('IRecordingResultsApiModel');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
+    private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     public statusOptions = [
         { title: '完了', value: 'completed' },
         { title: '一部欠落', value: 'partial' },
@@ -167,6 +170,7 @@ class RecordingResults extends Vue {
                 from: this.fromDate ? new Date(`${this.fromDate}T00:00:00`).getTime() : undefined,
                 to: this.toDate ? new Date(`${this.toDate}T23:59:59.999`).getTime() : undefined,
                 keyword: this.keyword.trim() || undefined,
+                isHalfWidth: this.setting.getSavedValue().isHalfWidthDisplayed,
                 offset: (this.page - 1) * RecordingResults.PAGE_SIZE,
                 limit: RecordingResults.PAGE_SIZE,
             });

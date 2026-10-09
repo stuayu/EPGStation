@@ -35,6 +35,7 @@ get.apiDoc = {
         { name: 'to', in: 'query', schema: { $ref: '#/components/schemas/UnixtimeMS' } },
         { name: 'ruleId', in: 'query', schema: { $ref: '#/components/schemas/RuleId' } },
         { name: 'keyword', in: 'query', schema: { type: 'string' } },
+        { $ref: '#/components/parameters/IsHalfWidthOptional' },
         { name: 'offset', in: 'query', schema: { type: 'integer', minimum: 0, default: 0 } },
         { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 200, default: 50 } },
     ],

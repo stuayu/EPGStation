@@ -1115,6 +1115,11 @@ class RecorderModel implements IRecorderModel {
                     this.log.system.info(
                         `program start detected: reserveId: ${this.reserve.id}, reason: ${decision.reason}`,
                     );
+                    // 録画結果画面の「開始」に出す。保存していなかったため常に「不明」と表示されていた
+                    void this.persistRecordingSession({ startReason: decision.reason }).catch(err => {
+                        this.log.system.error(`failed to save start reason: reserveId: ${this.reserve.id}`);
+                        this.log.system.error(err);
+                    });
                     settled = true;
                     cleanup();
                     resolve(startBuffer.drain());
