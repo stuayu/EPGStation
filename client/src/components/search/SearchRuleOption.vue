@@ -19,7 +19,7 @@
                         <v-expansion-panel-title>オプション</v-expansion-panel-title>
                         <v-expansion-panel-text>
                             <SearchOptionRow>
-                                <div class="d-flex flex-wrap">
+                                <div class="d-flex flex-wrap ga-3 mb-2">
                                     <v-text-field
                                         class="margin-input"
                                         v-model.number="reserveOptionValue.startMarginSec"
@@ -39,23 +39,22 @@
                                         min="0"
                                         max="3600"
                                         clearable
-                                        hint="空欄なら全体設定 (現在 開始 5 秒 / 終了 5 秒)"
+                                        :hint="searchState.getRecordingMarginHint()"
                                         persistent-hint
                                     ></v-text-field>
                                 </div>
-                                <div class="d-flex flex-wrap">
-                                    <v-checkbox class="mx-1 my-0" v-model="reserveOptionValue.enable" label="有効"></v-checkbox>
-                                    <v-select class="policy-input" v-model="reserveOptionValue.priority" :items="priorityItems" label="優先度" density="compact"></v-select>
+                                <v-checkbox class="my-0" v-model="reserveOptionValue.enable" label="有効" hide-details></v-checkbox>
+                                <div class="d-flex flex-wrap ga-3 mb-2">
+                                    <v-select class="policy-input" v-model="reserveOptionValue.priority" :items="priorityItems" label="優先度" hide-details></v-select>
                                     <v-select
                                         class="policy-input"
                                         v-model="reserveOptionValue.conflictPolicy"
                                         :items="conflictPolicyItems"
                                         label="競合時の扱い"
-                                        density="compact"
-                                        hint="許可した欠け方の範囲で競合を許容。優先度で下位予約を押し出す設定も可能。"
-                                        persistent-hint
+                                        hide-details
                                     ></v-select>
                                 </div>
+                                <div class="text-caption text-medium-emphasis mb-3">競合時の扱い: 許可した欠け方の範囲で競合を許容します。優先度で下位の予約を押し出す設定もできます。</div>
                                 <v-select class="finish-command-input" v-model="finishCommandName" :items="finishCommandItems" label="録画後コマンド" clearable></v-select>
                             </SearchOptionRow>
                         </v-expansion-panel-text>
@@ -322,10 +321,15 @@ export default toNative(SearchRuleOption);
     .preset-select
         min-width: 180px
         max-width: 320px
+        flex: 1 1 220px
+    .margin-input
+        min-width: 180px
+        max-width: 300px
+        flex: 1 1 220px
     .policy-input
-        max-width: 240px
-        min-width: 160px
-        flex: 1 1 180px
+        max-width: 300px
+        min-width: 180px
+        flex: 1 1 220px
     .finish-command-input
         max-width: 320px
         min-width: 180px
@@ -333,9 +337,11 @@ export default toNative(SearchRuleOption);
     .period
         max-width: 90px
     .directory
-        max-width: 150px
+        min-width: 160px
+        max-width: 260px
     .encode-mode
-        max-width: 150px
+        min-width: 160px
+        max-width: 260px
     .option-panels
         .v-expansion-panel-header
             padding: 6px 0

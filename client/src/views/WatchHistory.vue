@@ -27,8 +27,8 @@
                     <v-list-item-subtitle class="text-caption">
                         {{ channelName(record) }} ・ {{ formatDate(record.updatedAt) }} に視聴
                     </v-list-item-subtitle>
-                    <div class="d-flex align-center ga-2 mt-1">
-                        <v-chip size="x-small" :color="record.status === 'watched' ? 'success' : 'primary'" variant="tonal">
+                    <div class="d-flex align-center flex-wrap ga-2 mt-1">
+                        <v-chip size="x-small" :color="record.status === 'watched' ? 'success' : 'primary'" variant="tonal" class="flex-shrink-0">
                             {{ record.status === 'watched' ? '視聴済み' : '視聴中' }}
                         </v-chip>
                         <v-progress-linear
@@ -252,6 +252,8 @@ export default toNative(WatchHistoryView);
 
 .progress
     max-width: 200px
+    min-width: 32px
+    flex: 1 1 32px
 
 .position-text
     white-space: nowrap
