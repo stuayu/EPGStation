@@ -17,7 +17,7 @@
                     <v-tab v-if="isAuthEnabled === true" value="account">アカウント</v-tab>
                 </v-tabs>
                 <v-card-text>
-                    <v-window v-model="tab">
+                    <v-window v-model="tab" :touch="false">
                         <!-- 基本タブ: 変更履歴・ロールバック -->
                         <v-window-item value="basic">
                             <div class="text-subtitle-1 mb-2">変更履歴・ロールバック</div>
@@ -773,12 +773,12 @@
                         </v-window-item>
 
                         <!-- 更新タブ: リリース版 / main ブランチの最新へのワンクリック更新 -->
-                        <v-window-item value="update">
+                        <v-window-item v-if="isUpdateEnabled === true" value="update">
                             <UpdatePanel></UpdatePanel>
                         </v-window-item>
 
                         <!-- アカウントタブ: ログインユーザーの管理 (config.yml の auth.enabled が有効なときのみ) -->
-                        <v-window-item value="account">
+                        <v-window-item v-if="isAuthEnabled === true" value="account">
                             <div class="text-subtitle-1 mb-2">ログインユーザー</div>
                             <div class="text-caption mb-2">
                                 システム管理者は設定変更・ユーザー管理・バージョン更新ができます。最初にサインアップした人が自動でシステム管理者になり、以降は一般権限です。
