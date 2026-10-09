@@ -344,8 +344,10 @@ class Search extends Vue {
                     }
                 } else {
                     // ページ情報復元
+                    // 履歴位置に残っているのが他の画面のデータ (検索条件を持たない) の場合は復元しない。
+                    // そのまま代入すると init() で作った検索条件が undefined で上書きされ、フォームが描画されなくなる
                     const pageInfo = this.scrollState.getScrollData<PageInfo>();
-                    if (pageInfo !== null) {
+                    if (pageInfo !== null && typeof pageInfo.isTimeSpecification === 'boolean' && typeof pageInfo.searchOption !== 'undefined') {
                         this.searchState.isTimeSpecification = pageInfo.isTimeSpecification;
                         this.searchState.searchOption = cloneDeep(pageInfo.searchOption);
                         this.searchState.timeReserveOption = cloneDeep(pageInfo.timeReserveOption);
