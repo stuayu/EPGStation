@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 録画結果の行を押しても詳細が開かないのを修正し、ストレージ画面に使用率を表示 (Issue #39, #40) → 2026-10-09
 - feature/edcb-parity 全体レビュー指摘の修正 → 2026-09-28
 - API 定義不備による全ルート停止と dist 残留を防止 → 2026-09-28
 - feature/edcb-parity 本番検証で見つかった検索・スクロール復元の不具合修正 → 2026-09-28
@@ -54,6 +55,16 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - オフライン original-hevc の offset 再生成シーク・位置復元 → 2026-09-17
 - iOS / iPadOS のオフライン original-hevc fMP4 保存 → 2026-09-17
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
+
+## 2026-10-09
+
+### 録画結果の行を押しても詳細が開かないのを修正し、ストレージ画面に使用率を表示 (Issue #39, #40)
+
+録画結果画面で行を押しても詳細 (接続試行の履歴) が開かず、ナビゲーションの開閉など別の再描画が起きて初めて開いていた。`RecordingResults.vue` の `openedSession` が初期値なしの `number | undefined` で宣言されており、vue-facing-decorator は初期値が `undefined` のフィールドをリアクティブな data にしないため、`v-expansion-panels` の `v-model` へ書き戻した値が再描画を起こしていなかった。初期値を `null` にした。修正前後の実測: 行を押した直後のパネルは修正前が閉じたまま・詳細 API 呼び出しなし、修正後は開いて `GET /api/recording-results/{id}` が発行される。**クラスフィールドを data にする場合は必ず初期値 (`null` など) を与える。**
+
+ストレージ画面の「使用済み」に使用率 (%) を併記した (ダッシュボードのストレージ表示と同じ情報)。総容量が 0 のストレージで使用率が `NaN` にならないよう 0 にする。
+
+関連実装: `client/src/views/RecordingResults.vue`, `client/src/views/Storages.vue`, `client/src/model/state/storage/StorageState.ts`。
 
 ## 2026-09-28
 
