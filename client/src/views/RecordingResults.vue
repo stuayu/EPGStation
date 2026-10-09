@@ -127,7 +127,7 @@ class RecordingResults extends Vue {
     public keyword: string = '';
     public page: number = 1;
     public isLoading: boolean = false;
-    public openedSession: number | undefined;
+    public openedSession: number | null = null;
     public loadingSessionId: number | null = null;
     public items: apid.RecordingResultSession[] = [];
     public total: number = 0;
