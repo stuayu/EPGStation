@@ -8,6 +8,7 @@
             <v-card>
                 <v-tabs v-model="tab" show-arrows>
                     <v-tab value="basic">基本</v-tab>
+                    <v-tab value="preset">録画プリセット</v-tab>
                     <v-tab value="integration">連携</v-tab>
                     <v-tab value="notification">通知</v-tab>
                     <v-tab value="series">シリーズ管理</v-tab>
@@ -136,6 +137,11 @@
                         </v-window-item>
 
                         <!-- 連携タブ -->
+                        <!-- 録画プリセットタブ: 予約・ルールへ読み込む録画設定の組を管理する (保存は各操作で即時に行われる) -->
+                        <v-window-item value="preset">
+                            <RecordingPresetManager></RecordingPresetManager>
+                        </v-window-item>
+
                         <v-window-item value="integration">
                             <div class="text-subtitle-1 mb-2">Annict 連携</div>
                             <v-switch v-model="settings.metadata.annict.enabled" label="Annict連携を有効化"></v-switch>
@@ -322,13 +328,13 @@
                         <v-window-item value="notification">
                             <v-switch v-model="settings.notifications.enabled" label="通知を有効化"></v-switch>
                             <v-row>
-                                <v-col cols="4">
+                                <v-col cols="12" sm="4">
                                     <v-text-field v-model.number="settings.notifications.maxAttempts" type="number" label="最大リトライ回数"></v-text-field>
                                 </v-col>
-                                <v-col cols="4">
+                                <v-col cols="12" sm="4">
                                     <v-text-field v-model.number="settings.notifications.baseDelayMs" type="number" label="リトライ基準遅延 (ms)"></v-text-field>
                                 </v-col>
-                                <v-col cols="4">
+                                <v-col cols="12" sm="4">
                                     <v-text-field v-model.number="settings.notifications.timeoutMs" type="number" label="タイムアウト (ms)"></v-text-field>
                                 </v-col>
                             </v-row>
@@ -412,18 +418,20 @@
 
                         <!-- シリーズ管理タブ -->
                         <v-window-item value="series">
-                            <v-slider v-model="settings.series.matchThreshold" :min="0" :max="1" :step="0.05" label="自動マッチしきい値"></v-slider>
+                            <div class="text-subtitle-1">自動マッチしきい値</div>
+                            <div class="text-caption text-medium-emphasis mb-1">確信度がこの値以上の候補だけを自動でシリーズへ割り当てます。下回った録画は未確定キューに入ります。</div>
+                            <v-slider v-model="settings.series.matchThreshold" :min="0" :max="1" :step="0.05" thumb-label="always" hide-details class="mt-6"></v-slider>
 
                             <template v-if="isEnabledSeriesLibrary === true">
                                 <v-divider class="my-4"></v-divider>
-                                <div class="text-subtitle-1 mb-2">精度メトリクス (§4.10)</div>
+                                <div class="text-subtitle-1 mb-2">精度メトリクス</div>
                                 <v-btn size="small" variant="text" @click="loadMetrics">再読み込み</v-btn>
                                 <div v-if="metrics !== null" class="mt-2">
                                     <div>対象番組数: {{ metrics.totalPrograms }} / マッチ済み: {{ metrics.matchedPrograms }}</div>
                                     <div>未マッチ番組率: {{ (metrics.unmatchedRate * 100).toFixed(1) }}%</div>
                                     <div class="mt-2">confidence 分布 (0-0.2 / 0.2-0.4 / 0.4-0.6 / 0.6-0.8 / 0.8-1.0)</div>
-                                    <div class="d-flex ga-2">
-                                        <v-chip v-for="(c, i) in metrics.confidenceHistogram" :key="i" size="small">{{ c }}</v-chip>
+                                    <div class="d-flex flex-wrap ga-2">
+                                                                            <v-chip v-for="(c, i) in metrics.confidenceHistogram" :key="i" size="small">{{ c }}</v-chip>
                                     </div>
                                     <div v-if="metrics.updatedAt !== null" class="text-caption mt-1">最終更新: {{ formatDate(metrics.updatedAt) }}</div>
                                 </div>
@@ -448,12 +456,14 @@
                                     <v-checkbox v-model="backfillOnlyUnlinked" label="まだシリーズ化されていない録画だけを対象にする" density="compact" hide-details></v-checkbox>
                                     <v-text-field
                                         v-model="backfillLatest"
-                                        label="直近の件数だけ実行 (空欄で全件)"
+                                        label="直近の件数だけ実行"
+                                        placeholder="空欄で全件"
+                                        persistent-placeholder
                                         type="number"
                                         min="1"
                                         density="compact"
                                         hide-details
-                                        style="max-width: 260px"
+                                        style="min-width: 200px; max-width: 260px"
                                     ></v-text-field>
                                 </div>
                                 <div class="text-caption mb-2">直近の件数を指定した実行は一時的な部分実行として扱い、全件バックフィルの再開位置には影響しない</div>
@@ -515,12 +525,13 @@
                                     </v-btn-toggle>
                                     <v-text-field
                                         v-model="aliasKeyword"
-                                        label="正規化タイトル / シリーズで絞り込み"
+                                        label="絞り込み"
+                                        placeholder="正規化タイトル / シリーズ"
                                         density="compact"
                                         hide-details
                                         clearable
                                         prepend-inner-icon="mdi-magnify"
-                                        style="max-width: 280px"
+                                        style="min-width: 220px; max-width: 320px"
                                     ></v-text-field>
                                 </div>
 
@@ -610,13 +621,13 @@
                                     </tbody>
                                 </v-table>
                                 <v-alert v-if="filteredAliases.length === 0" type="info" class="mt-2">エイリアスはありません</v-alert>
-                                <div class="d-flex align-center ga-2 mt-3">
+                                <div class="d-flex align-center flex-wrap ga-2 mt-3">
                                     <v-btn color="primary" :loading="aliasSaving" :disabled="changedAliasItems.length === 0" @click="saveAliases">
                                         辞書の変更を保存 ({{ changedAliasItems.length }} 件)
                                     </v-btn>
                                     <v-btn variant="text" :disabled="changedAliasItems.length === 0" @click="aliasEdits = {}">変更を破棄</v-btn>
-                                    <span class="text-caption text-grey">保存した辞書は手動修正扱いになり、以後の自動学習で上書きされません</span>
-                                </div>
+                                    </div>
+                                    <div class="text-caption text-grey mt-1">保存した辞書は手動修正扱いになり、以後の自動学習で上書きされません</div>
 
                                 <v-divider class="my-4"></v-divider>
                                 <div class="text-subtitle-1 mb-2">作品辞書から探して登録</div>
@@ -714,7 +725,7 @@
                                         すべて削除 ({{ emptySeries.length }} 件)
                                     </v-btn>
                                 </div>
-                                <v-table v-if="emptySeries.length > 0" density="compact">
+                                <v-table v-if="emptySeries.length > 0" density="compact" class="empty-series-table">
                                     <thead>
                                         <tr>
                                             <th style="width: 48px">
@@ -854,7 +865,9 @@
                             </div>
                         </v-window-item>
                     </v-window>
-                    <v-btn v-if="tab !== 'update' && tab !== 'account' && tab !== 'config'" color="primary" :loading="saving" @click="save">保存</v-btn>
+                    <div v-if="tab !== 'update' && tab !== 'account' && tab !== 'config' && tab !== 'preset'" class="mt-6">
+                        <v-btn color="primary" :loading="saving" @click="save">保存</v-btn>
+                    </div>
                 </v-card-text>
             </v-card>
         </v-container>
@@ -891,6 +904,7 @@
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import UpdatePanel from '@/components/update/UpdatePanel.vue';
 import ConfigFormPanel from '@/components/settings/ConfigFormPanel.vue';
+import RecordingPresetManager from '@/components/settings/RecordingPresetManager.vue';
 import IAuthApiModel, { AuthUserItem } from '@/model/api/auth/IAuthApiModel';
 import container from '@/model/ModelContainer';
 import IChannelsApiModel from '@/model/api/channels/IChannelsApiModel';
@@ -941,7 +955,7 @@ interface ChannelMapEntryForm {
     syobocal: boolean;
 }
 
-@Component({ components: { TitleBar, UpdatePanel, ConfigFormPanel } })
+@Component({ components: { TitleBar, UpdatePanel, ConfigFormPanel, RecordingPresetManager } })
 class SystemSetting extends Vue {
     // 一括解析ジョブの進捗ポーリング間隔
     private static readonly ANALYZE_JOB_POLLING_INTERVAL = 2000;
@@ -2196,6 +2210,12 @@ export default toNative(SystemSetting);
 </script>
 
 <style lang="sass" scoped>
+// 録画 0 件のシリーズの表
+// 狭い画面では列を潰さず、表の中で横スクロールさせる
+.empty-series-table
+    :deep(table)
+        min-width: 780px
+
 // エイリアス辞書の表
 // 列幅を px ではなく割合 (%) で指定し、ビューポート幅に応じて伸縮させる
 .alias-table
