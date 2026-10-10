@@ -145,10 +145,12 @@ export const buildFfmpegVideoFilter = (
     parts.push(...toneMapOutputFilter(source, preset));
     const correction = videoCorrectionFilter(source, preset);
     if (correction !== null) parts.push(correction);
-    if (isToneMapping(source, preset) && parts.some(part => part.startsWith('colorspace=') || part.startsWith('zscale=')) === false) {
+    if (
+        isToneMapping(source, preset) &&
+        parts.some(part => part.startsWith('colorspace=') || part.startsWith('zscale=')) === false
+    ) {
         parts.push('format=yuv420p');
-    }
-    else if (outputBitDepth(source, preset) >= 10) parts.push('format=yuv420p10le');
+    } else if (outputBitDepth(source, preset) >= 10) parts.push('format=yuv420p10le');
     return parts.length > 0 ? parts.join(',') : null;
 };
 
@@ -223,7 +225,9 @@ export const buildFfmpegVideoArgs = (
     const height = outputHeight(source, preset);
     const depth = outputBitDepth(source, preset);
     const filter = buildFfmpegVideoFilter(source, preset, height);
-    const transfer = source.transferName ?? (source.transfer === 'pq' ? 'smpte2084' : source.transfer === 'hlg' ? 'arib-std-b67' : 'bt709');
+    const transfer =
+        source.transferName ??
+        (source.transfer === 'pq' ? 'smpte2084' : source.transfer === 'hlg' ? 'arib-std-b67' : 'bt709');
     const hdr =
         preset.output.hdrMode === 'preserve' && source.hdr !== 'sdr'
             ? ` -color_primaries bt2020 -color_trc ${transfer} -colorspace bt2020nc`

@@ -59,7 +59,9 @@ class EncoderModel implements IEncoderModel {
         @inject('IVideoUtil') videoUtil: IVideoUtil,
         @inject('IEncodeEvent') encodeEvent: IEncodeEvent,
         @inject('IRecordingUtilModel') recodingUtil: IRecordingUtilModel,
-        @inject('IHardwareEncoderDetector') @optional() private readonly hardwareEncoderDetector?: IHardwareEncoderDetector,
+        @inject('IHardwareEncoderDetector')
+        @optional()
+        private readonly hardwareEncoderDetector?: IHardwareEncoderDetector,
     ) {
         this.log = logger.getLogger();
         this.configure = configure;

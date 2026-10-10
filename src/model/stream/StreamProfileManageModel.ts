@@ -264,7 +264,9 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
         const eightBitPixelFormat = isEightBitSdrOutput ? (isQsv ? '' : ' -pix_fmt yuv420p') : '';
         const tonemapFilter = isEightBitSdrOutput ? `${TONEMAP_PLACEHOLDER},` : '';
         const encoderFilter = isEightBitSdrOutput && isQsv ? ',format=nv12' : '';
-        const videoToolboxArgs = videoCodec.includes('videotoolbox') ? ` -realtime ${isLive ? '1' : '0'} -allow_sw 0` : '';
+        const videoToolboxArgs = videoCodec.includes('videotoolbox')
+            ? ` -realtime ${isLive ? '1' : '0'} -allow_sw 0`
+            : '';
         const gopArgs = videoCodec.includes('videotoolbox') ? ' -g 30' : '';
         const speedArgs = videoCodec.includes('videotoolbox')
             ? ''
@@ -274,16 +276,18 @@ class StreamProfileManageModel implements IStreamProfileManageModel {
                 ? ' -quality speed'
                 : ' -preset veryfast';
         const tuneArgs = videoCodec === 'libx264' || videoCodec === 'libx265' ? ' -tune fastdecode,zerolatency' : '';
-        const hlsGopArgs = videoCodec.includes('lib')
-              ? ' -g 15 -keyint_min 15 -sc_threshold 0'
-              : ' -g 15';
+        const hlsGopArgs = videoCodec.includes('lib') ? ' -g 15 -keyint_min 15 -sc_threshold 0' : ' -g 15';
         const hvc1Tag =
             /(?:hevc|265)/iu.test(videoCodec) && (container === 'mp4' || container === 'hls') ? ' -tag:v hvc1' : '';
 
         const scaleFilter = this.buildScaleFilter(video);
         // 素材はプリセット生成時点では未確定。配信開始時に %DEINTERLACE% を解決する。
         // scale が無い場合もプレースホルダを残し、解決側で不要な -vf ごと除去する。
-        const vfFilter = `${DEINTERLACE_PLACEHOLDER},${scaleFilter === null ? '' : `${scaleFilter},`}${tonemapFilter}${encoderFilter.replace(/^,/u, '')}`.replace(/,$/u, '');
+        const vfFilter =
+            `${DEINTERLACE_PLACEHOLDER},${scaleFilter === null ? '' : `${scaleFilter},`}${tonemapFilter}${encoderFilter.replace(/^,/u, '')}`.replace(
+                /,$/u,
+                '',
+            );
         const vf = ` -vf ${vfFilter}`;
 
         const input = isEncodedSource ? '-ss %SS% -i %INPUT%' : '-i pipe:0';
