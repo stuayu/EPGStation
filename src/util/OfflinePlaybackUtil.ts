@@ -53,9 +53,13 @@ export const isOfflinePositionBuffered = (
     buffered: OfflineBufferedRange[],
 ): boolean => {
     if (!Number.isFinite(position) || !Number.isFinite(basePlayPosition)) return false;
-    return buffered.some(range =>
-        Number.isFinite(range.start) && Number.isFinite(range.end) && range.end >= range.start &&
-        position >= basePlayPosition + range.start && position <= basePlayPosition + range.end,
+    return buffered.some(
+        range =>
+            Number.isFinite(range.start) &&
+            Number.isFinite(range.end) &&
+            range.end >= range.start &&
+            position >= basePlayPosition + range.start &&
+            position <= basePlayPosition + range.end,
     );
 };
 

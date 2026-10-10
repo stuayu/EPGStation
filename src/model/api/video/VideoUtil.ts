@@ -98,8 +98,18 @@ export default class VideoUtil implements IVideoUtil {
         let firstFrameTransfer: string | null = null;
         try {
             const frameStdout = await this.execFfprobe([
-                '-v', '0', '-select_streams', 'v:0', '-show_frames', '-read_intervals', '%+#1',
-                '-show_entries', 'frame=media_type,stream_index,color_transfer', '-of', 'json', filePath,
+                '-v',
+                '0',
+                '-select_streams',
+                'v:0',
+                '-show_frames',
+                '-read_intervals',
+                '%+#1',
+                '-show_entries',
+                'frame=media_type,stream_index,color_transfer',
+                '-of',
+                'json',
+                filePath,
             ]);
             const frameResult = <any>JSON.parse(frameStdout);
             const frame = Array.isArray(frameResult.frames) ? frameResult.frames[0] : undefined;
@@ -125,9 +135,12 @@ export default class VideoUtil implements IVideoUtil {
             avgFrameRate: typeof video?.avg_frame_rate === 'string' ? video.avg_frame_rate : null,
             rFrameRate: typeof video?.r_frame_rate === 'string' ? video.r_frame_rate : null,
             colorPrimaries: typeof video?.color_primaries === 'string' ? video.color_primaries : null,
-            colorTransfer: firstFrameTransfer !== null
-                ? firstFrameTransfer
-                : typeof video?.color_transfer === 'string' ? video.color_transfer : null,
+            colorTransfer:
+                firstFrameTransfer !== null
+                    ? firstFrameTransfer
+                    : typeof video?.color_transfer === 'string'
+                      ? video.color_transfer
+                      : null,
             colorSpace: typeof video?.color_space === 'string' ? video.color_space : null,
             bitsPerRawSample: video?.bits_per_raw_sample ?? null,
         };

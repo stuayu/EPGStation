@@ -7,9 +7,12 @@ export const BT2020_TO_BT709_FILTER = 'colorspace=all=bt709:iall=bt2020:itrc=bt2
 export const bt2020ToBt709Filter = (source?: SourceCapabilities): string => {
     const transfer = source?.transferName ?? source?.transfer;
     // HLG は SDR 互換表示用に BT.2020 SDR (bt2020-10) として扱う。HLG に tone-map を掛けない。
-    const inputTransfer = transfer === 'arib-std-b67' || transfer === 'hlg' || transfer === undefined || transfer === 'unknown'
-        ? 'bt2020-10'
-        : transfer === 'smpte2084' || transfer === 'pq' ? 'bt2020-10' : transfer;
+    const inputTransfer =
+        transfer === 'arib-std-b67' || transfer === 'hlg' || transfer === undefined || transfer === 'unknown'
+            ? 'bt2020-10'
+            : transfer === 'smpte2084' || transfer === 'pq'
+              ? 'bt2020-10'
+              : transfer;
     return `colorspace=all=bt709:iall=bt2020:itrc=${inputTransfer}:fast=0:format=yuv420p`;
 };
 
@@ -24,7 +27,11 @@ export const colorConversionFor = (source: SourceCapabilities | undefined, outpu
     return 'none';
 };
 
-export const colorConversionFilters = (source: SourceCapabilities | undefined, outputBitDepth: number, zscaleAvailable: boolean): string[] => {
+export const colorConversionFilters = (
+    source: SourceCapabilities | undefined,
+    outputBitDepth: number,
+    zscaleAvailable: boolean,
+): string[] => {
     const conversion = colorConversionFor(source, outputBitDepth);
     if (conversion === 'none') return [];
     if (conversion === 'pq-tonemap' && zscaleAvailable) return HDR_TO_SDR_FILTER.split(',');
@@ -46,12 +53,13 @@ export const replaceToneMapPlaceholder = (
         /(?:h264|x264|avc|hevc|x265|265)/iu.test(cmd) &&
         (/-pix_fmt\s+yuv420p\b/u.test(cmd) || /format=nv12\b/u.test(cmd));
     if (conversion === 'none' || isEightBitSdrOutput === false) {
-        const withoutFilter = cmd.replaceAll(`,${TONEMAP_PLACEHOLDER}`, '').replaceAll(`${TONEMAP_PLACEHOLDER},`, '').replaceAll(TONEMAP_PLACEHOLDER, '');
+        const withoutFilter = cmd
+            .replaceAll(`,${TONEMAP_PLACEHOLDER}`, '')
+            .replaceAll(`${TONEMAP_PLACEHOLDER},`, '')
+            .replaceAll(TONEMAP_PLACEHOLDER, '');
         return withoutFilter.replace(/-vf\s*(?=-|$)/gu, '');
     }
-    const filter = conversion === 'pq-tonemap' && filtersAvailable
-        ? HDR_TO_SDR_FILTER
-        : bt2020ToBt709Filter(source);
+    const filter = conversion === 'pq-tonemap' && filtersAvailable ? HDR_TO_SDR_FILTER : bt2020ToBt709Filter(source);
     const converted = cmd.replaceAll(TONEMAP_PLACEHOLDER, filter);
     if (converted.includes(' -vf ') === false) return converted;
     const outputPosition = converted.lastIndexOf(' -f ');

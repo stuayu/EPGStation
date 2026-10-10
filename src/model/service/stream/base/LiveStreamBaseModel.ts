@@ -192,12 +192,13 @@ export default abstract class LiveStreamBaseModel
     private async resolveDeinterlace(cmd: string): Promise<string> {
         const needsDeinterlace = cmd.includes('%DEINTERLACE%');
         const needsToneMap = cmd.includes(TONEMAP_PLACEHOLDER);
-        const needsRigayaColorLog =
-            /--output-depth\s+8/u.test(cmd) && /(?:QSVEncC|NVEncC|VCEEncC)/iu.test(cmd);
+        const needsRigayaColorLog = /--output-depth\s+8/u.test(cmd) && /(?:QSVEncC|NVEncC|VCEEncC)/iu.test(cmd);
         if (needsDeinterlace === false && needsToneMap === false && needsRigayaColorLog === false) return cmd;
         if (this.sourceAnalyzer === undefined || this.processOption === null) {
             if (needsRigayaColorLog) {
-                this.log.stream.info('color conversion skipped: rigaya path has no verified colorspace option; source color unknown');
+                this.log.stream.info(
+                    'color conversion skipped: rigaya path has no verified colorspace option; source color unknown',
+                );
             }
             return replaceToneMapPlaceholder(replaceDeinterlacePlaceholder(cmd), undefined, false);
         }
@@ -206,7 +207,9 @@ export default abstract class LiveStreamBaseModel
             const source = await this.sourceAnalyzer.analyzeLiveChannel(this.processOption.channelId);
             const conversion = colorConversionFor(source, 8);
             if (conversion !== 'none') {
-                this.log.stream.info(`color conversion: ${conversion} (primaries: ${source.colorPrimaries ?? 'unknown'}, transfer: ${source.transferName ?? source.transfer ?? 'unknown'})`);
+                this.log.stream.info(
+                    `color conversion: ${conversion} (primaries: ${source.colorPrimaries ?? 'unknown'}, transfer: ${source.transferName ?? source.transfer ?? 'unknown'})`,
+                );
                 if (conversion === 'pq-tonemap' && this.hardwareEncoderDetector?.supportsToneMapping() === false) {
                     this.log.stream.warn('PQ tone mapping unavailable; using BT.2020 SDR-compatible conversion');
                 }
@@ -222,7 +225,9 @@ export default abstract class LiveStreamBaseModel
         } catch (err) {
             this.log.stream.warn('live source analysis failed; keep deinterlace enabled and tone mapping disabled');
             if (needsRigayaColorLog) {
-                this.log.stream.info('color conversion skipped: rigaya path has no verified colorspace option; source color unknown');
+                this.log.stream.info(
+                    'color conversion skipped: rigaya path has no verified colorspace option; source color unknown',
+                );
             }
             this.log.stream.debug(err);
             return replaceToneMapPlaceholder(replaceDeinterlacePlaceholder(cmd), undefined, false);

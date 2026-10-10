@@ -125,31 +125,80 @@ export default class HardwareEncoderDetector implements IHardwareEncoderDetector
 
     private async detectHevcMain10Decoder(command: string, encoders: string): Promise<void> {
         if (/\blibx265\b/u.test(encoders) === false) {
-            this.detectionSummary = [this.detectionSummary, 'hevc-main10-decode=unavailable(libx265-not-listed)'].filter(Boolean).join(' ');
+            this.detectionSummary = [this.detectionSummary, 'hevc-main10-decode=unavailable(libx265-not-listed)']
+                .filter(Boolean)
+                .join(' ');
             return;
         }
         const directory = await mkdtemp(join(tmpdir(), 'epgstation-hwdecode-')).catch(() => undefined);
         if (directory === undefined) return;
         const sample = join(directory, 'main10.hevc');
         try {
-            const generated = await this.run(command, [
-                '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=black:s=64x64:r=1:d=1',
-                '-vf', 'format=yuv420p10le', '-frames:v', '1', '-c:v', 'libx265', '-profile:v', 'main10', '-x265-params', 'log-level=error', '-f', 'hevc', sample,
-            ], 15000);
+            const generated = await this.run(
+                command,
+                [
+                    '-hide_banner',
+                    '-loglevel',
+                    'error',
+                    '-f',
+                    'lavfi',
+                    '-i',
+                    'color=black:s=64x64:r=1:d=1',
+                    '-vf',
+                    'format=yuv420p10le',
+                    '-frames:v',
+                    '1',
+                    '-c:v',
+                    'libx265',
+                    '-profile:v',
+                    'main10',
+                    '-x265-params',
+                    'log-level=error',
+                    '-f',
+                    'hevc',
+                    sample,
+                ],
+                15000,
+            );
             if (generated.exitCode !== 0) {
-                this.detectionSummary = [this.detectionSummary, 'hevc-main10-decode=unavailable(sample-generation-failed)'].filter(Boolean).join(' ');
+                this.detectionSummary = [
+                    this.detectionSummary,
+                    'hevc-main10-decode=unavailable(sample-generation-failed)',
+                ]
+                    .filter(Boolean)
+                    .join(' ');
                 return;
             }
-            const candidates: HardwareDecoder[] = process.platform === 'darwin'
-                ? ['videotoolbox']
-                : process.platform === 'win32' ? ['d3d11va', 'dxva2', 'cuda', 'qsv'] : ['vaapi', 'cuda', 'qsv'];
+            const candidates: HardwareDecoder[] =
+                process.platform === 'darwin'
+                    ? ['videotoolbox']
+                    : process.platform === 'win32'
+                      ? ['d3d11va', 'dxva2', 'cuda', 'qsv']
+                      : ['vaapi', 'cuda', 'qsv'];
             for (const decoder of candidates) {
-                const result = await this.run(command, [
-                    '-hide_banner', '-loglevel', 'error', '-hwaccel', decoder, '-i', sample, '-frames:v', '1', '-f', 'null', '-',
-                ], 5000);
+                const result = await this.run(
+                    command,
+                    [
+                        '-hide_banner',
+                        '-loglevel',
+                        'error',
+                        '-hwaccel',
+                        decoder,
+                        '-i',
+                        sample,
+                        '-frames:v',
+                        '1',
+                        '-f',
+                        'null',
+                        '-',
+                    ],
+                    5000,
+                );
                 if (result.exitCode === 0) {
                     this.hevcMain10Decoder = decoder;
-                    this.detectionSummary = [this.detectionSummary, `hevc-main10-decode=${decoder}`].filter(Boolean).join(' ');
+                    this.detectionSummary = [this.detectionSummary, `hevc-main10-decode=${decoder}`]
+                        .filter(Boolean)
+                        .join(' ');
                     return;
                 }
             }
@@ -229,7 +278,12 @@ export default class HardwareEncoderDetector implements IHardwareEncoderDetector
             const output = `${result.stderr}\n${result.stdout}`.trim();
             const success = result.exitCode === 0;
             if (success) passed.push(codec);
-            const reason = success ? 'ok' : output.split(/\r?\n/u).find(line => line.trim() !== '')?.trim() ?? `exit=${result.exitCode}`;
+            const reason = success
+                ? 'ok'
+                : (output
+                      .split(/\r?\n/u)
+                      .find(line => line.trim() !== '')
+                      ?.trim() ?? `exit=${result.exitCode}`);
             summary.push(`${encoder}=${success ? 'available' : `failed(${reason.slice(0, 140)})`}`);
         }
         this.detectionSummary = [this.detectionSummary, `${id}[${summary.join(';')}]`].filter(Boolean).join(' ');
@@ -245,12 +299,43 @@ export default class HardwareEncoderDetector implements IHardwareEncoderDetector
         const pixFormat = id === 'qsv' ? [] : ['-pix_fmt', format];
         const profile = codec === 'h264' ? 'baseline' : 'main';
         const realtime = id === 'videotoolbox' ? ['-realtime', '1', '-allow_sw', '0'] : [];
-        const preset = id === 'nvenc' ? ['-preset', 'p4'] : id === 'vce' ? ['-quality', 'speed'] : id === 'qsv' ? ['-preset', 'veryfast'] : [];
+        const preset =
+            id === 'nvenc'
+                ? ['-preset', 'p4']
+                : id === 'vce'
+                  ? ['-quality', 'speed']
+                  : id === 'qsv'
+                    ? ['-preset', 'veryfast']
+                    : [];
         const vf = ['-vf', id === 'qsv' ? `scale=160:120,format=${format}` : 'scale=160:120'];
         return [
-            '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=black:s=320x240:d=0.1:r=30',
-            '-frames:v', '1', '-an', '-c:v', encoder, '-profile:v', profile, ...pixFormat, ...vf, ...preset,
-            '-b:v', '1M', '-maxrate', '1M', '-g', '15', ...realtime, '-f', 'null', '-',
+            '-hide_banner',
+            '-loglevel',
+            'error',
+            '-f',
+            'lavfi',
+            '-i',
+            'color=black:s=320x240:d=0.1:r=30',
+            '-frames:v',
+            '1',
+            '-an',
+            '-c:v',
+            encoder,
+            '-profile:v',
+            profile,
+            ...pixFormat,
+            ...vf,
+            ...preset,
+            '-b:v',
+            '1M',
+            '-maxrate',
+            '1M',
+            '-g',
+            '15',
+            ...realtime,
+            '-f',
+            'null',
+            '-',
         ];
     }
 
@@ -263,17 +348,29 @@ export default class HardwareEncoderDetector implements IHardwareEncoderDetector
             const result = await this.run(candidate, ['--check-hw']);
             const output = `${result.stdout}\n${result.stderr}`.trim();
             if (result.exitCode === 0 && output !== '' && this.isFailureOutput(output) === false) {
-                this.detectionSummary = [this.detectionSummary, `${id}-rigaya=${candidate}:available`].filter(Boolean).join(' ');
+                this.detectionSummary = [this.detectionSummary, `${id}-rigaya=${candidate}:available`]
+                    .filter(Boolean)
+                    .join(' ');
                 return { id, provider: definition.provider, command: candidate, codecs: ['h264', 'hevc'] };
             }
-            const reason = output.split(/\r?\n/u).find(line => line.trim() !== '')?.trim() ?? `exit=${result.exitCode}`;
+            const reason =
+                output
+                    .split(/\r?\n/u)
+                    .find(line => line.trim() !== '')
+                    ?.trim() ?? `exit=${result.exitCode}`;
             attempts.push(`${candidate}:${reason.slice(0, 80)}`);
         }
-        this.detectionSummary = [this.detectionSummary, `${id}-rigaya=${attempts.join('|') || 'not-found'}`].filter(Boolean).join(' ');
+        this.detectionSummary = [this.detectionSummary, `${id}-rigaya=${attempts.join('|') || 'not-found'}`]
+            .filter(Boolean)
+            .join(' ');
         return null;
     }
 
-    private async run(command: string, args: readonly string[], timeoutMs = 3000): Promise<HardwareEncoderProcessResult> {
+    private async run(
+        command: string,
+        args: readonly string[],
+        timeoutMs = 3000,
+    ): Promise<HardwareEncoderProcessResult> {
         try {
             return await this.executor.run(command, args, timeoutMs);
         } catch {

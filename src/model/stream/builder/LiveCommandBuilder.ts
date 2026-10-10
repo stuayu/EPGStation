@@ -62,7 +62,7 @@ export default class LiveCommandBuilder implements ILiveCommandBuilder {
         return (
             `${bin} --input-format mpegts -i - ${buildRigayaVideoArgs(source, preset, encoder, 'live', false)} ` +
             `--audio-copy --output-format mpegts -o - | ` +
-                `%FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 500000 -i pipe:0 ` +
+            `%FFMPEG% %DUALMONOMODE% -f mpegts -analyzeduration 500000 -probesize 500000 -i pipe:0 ` +
             `-map 0 -c:v copy -c:s copy -c:d copy -flags low_delay -ignore_unknown -max_interleave_delta 1 ${rigayaAudio} -f mpegts pipe:1`
         );
     }

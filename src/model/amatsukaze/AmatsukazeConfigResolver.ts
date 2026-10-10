@@ -73,7 +73,8 @@ export const resolveAmatsukazeConfig = (config: IConfigFile): ResolvedAmatsukaze
 
     // 配列のみ受理する。シェル解析に頼らず、空白を含む引数も1要素として安全に渡すため。
     const addTaskLauncher = Array.isArray(amatsukaze?.addTaskLauncher)
-        ? amatsukaze.addTaskLauncher.filter((value): value is string => typeof value === 'string')
+        ? amatsukaze.addTaskLauncher
+              .filter((value): value is string => typeof value === 'string')
               .map(value => value.trim())
               .filter(value => value.length > 0)
         : [];
