@@ -1,12 +1,12 @@
 name: build
 
 on:
+  # main への push と PR で実行する (作業ブランチの push ごとには走らせない。Windows ビルドが約 40 分かかるため)。
+  # branches だけを定義しているのでタグ push では起動しない (タグは release.yml が同等のビルドを行う)。
+  # 以前は tags-ignore だけを書いており、ブランチへの push でも一切起動していなかった
   push:
-    # tags-ignore だけを書くとブランチへの push でも起動しなくなる (GitHub Actions は
-    # branches / tags の片方だけを定義すると、定義していない側の ref を対象外にする)。
-    # そのため branches を明示する。タグ push は release.yml が同等のビルドを行うため除外する
-    branches: ['**']
-    tags-ignore: ['**']
+    branches: [main]
+  pull_request:
   workflow_dispatch:
   schedule:
     - cron: '0 18 * * *' # 03:00 JST: ITB nightly
