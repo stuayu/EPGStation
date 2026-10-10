@@ -3,6 +3,7 @@ import * as apid from '../../../../api';
 import IRecordingSessionDB from '../../db/IRecordingSessionDB';
 import IRecordingSessionApiModel from './IRecordingSessionApiModel';
 import { RecordingResultQuery } from '../../db/IRecordingSessionDB';
+import StrUtil from '../../../util/StrUtil';
 
 @injectable()
 export default class RecordingSessionApiModel implements IRecordingSessionApiModel {
@@ -65,7 +66,16 @@ export default class RecordingSessionApiModel implements IRecordingSessionApiMod
     public async getRecordingResults(query: apid.RecordingResultQuery): Promise<apid.RecordingResultList> {
         const result = await this.recordingSessionDB.findRecordingResults(query as RecordingResultQuery);
         return {
-            items: result.items.map(session => this.toResultSession(session)),
+            items: result.items.map(session => {
+                const item = this.toResultSession(session);
+                // 他の一覧 API と同じく、指定された場合は番組名と放送局名を半角へ寄せる
+                if (query.isHalfWidth === true) {
+                    if (item.name !== undefined) item.name = StrUtil.toHalf(item.name);
+                    if (item.channelName !== undefined) item.channelName = StrUtil.toHalf(item.channelName);
+                }
+
+                return item;
+            }),
             total: result.total,
             offset: query.offset,
             limit: query.limit,
