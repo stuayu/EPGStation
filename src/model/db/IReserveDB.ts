@@ -51,6 +51,7 @@ export default interface IReserveDB {
     findNextUpcomingForPower(now: number): Promise<Reserve | null>;
     findLists(option?: apid.GetReserveListsOption): Promise<Reserve[]>;
     findProgramId(programId: apid.ProgramId): Promise<Reserve[]>;
+    findRuleIdsByChannelAndShortName(channelId: apid.ChannelId, shortName: string): Promise<apid.RuleId[]>;
     findProgramIds(programIds: apid.ProgramId[]): Promise<Reserve[]>;
     findTimeRanges(option: IFindTimeRangesOption): Promise<Reserve[]>;
     findRuleId(option: IFindRuleOption): Promise<Reserve[]>;

@@ -339,6 +339,31 @@ export default class ReserveDB implements IReserveDB {
     }
 
     /**
+     * 同じ局・番組名に番組指定予約を持つルールを取得する。
+     * @param channelId 放送局 ID
+     * @param shortName 重複チェック用番組名
+     * @return Promise<apid.RuleId[]> 重複しないルール ID
+     */
+    public async findRuleIdsByChannelAndShortName(
+        channelId: apid.ChannelId,
+        shortName: string,
+    ): Promise<apid.RuleId[]> {
+        const connection = await this.op.getConnection();
+        const reserves = await this.promieRetry.run(() => {
+            return connection.getRepository(Reserve).find({
+                where: { channelId, shortName, isTimeSpecified: false, isEventRelay: false },
+            });
+        });
+        return [
+            ...new Set(
+                reserves
+                    .filter(reserve => reserve.ruleId !== null && reserve.programId !== null)
+                    .map(reserve => reserve.ruleId as apid.RuleId),
+            ),
+        ];
+    }
+
+    /**
      * program id を複数指定して検索する。
      * EPG 更新で変更のあった番組の予約だけを追従させるために使う
      * @param programIds: apid.ProgramId[]
