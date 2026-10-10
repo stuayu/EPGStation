@@ -23,6 +23,7 @@ import ILoggerModel from '../../ILoggerModel';
 import IReserveOptionChecker from '../IReserveOptionChecker';
 import IReservationManageModel from './IReservationManageModel';
 import Tuner from './Tuner';
+import { shouldPropagateRuleOverlap } from './RuleOverlapPropagation';
 import { planSchedule } from './planner/SchedulePlanner';
 import { resolveRecordingTimingConfig } from '../recording/RecordingTimingConfig';
 import IRecordingStreamCreator from '../recording/IRecordingStreamCreator';
@@ -922,9 +923,33 @@ class ReservationManageModel implements IReservationManageModel {
         };
 
         try {
-            await this.updateRuleWithExecution(ruleId, isSuppressLog, isFirstUpdate);
+            const changedProgramIds = await this.updateRuleWithExecution(ruleId, isSuppressLog, isFirstUpdate);
+            await this.updateRelatedRulesWithExecution(ruleId, changedProgramIds, isSuppressLog);
         } finally {
             finalize();
+        }
+    }
+
+    /** 同じ実行権の下で関連ルールを一度だけ再評価する。 */
+    private async updateRelatedRulesWithExecution(
+        ruleId: apid.RuleId,
+        programIds: apid.ProgramId[],
+        isSuppressLog: boolean,
+    ): Promise<void> {
+        if (programIds.length === 0) {
+            return;
+        }
+        const relatedReserves = await this.reserveDB.findProgramIds(programIds);
+        const relatedRuleIds = new Set(
+            relatedReserves
+                .filter(
+                    reserve => reserve.ruleId !== null && reserve.ruleId !== ruleId && reserve.isEventRelay === false,
+                )
+                .map(reserve => reserve.ruleId as apid.RuleId),
+        );
+        // 内部更新は関連ルール更新を呼ばないため、再波及も実行権の再取得も発生しない。
+        for (const relatedRuleId of relatedRuleIds) {
+            await this.updateRuleWithExecution(relatedRuleId, isSuppressLog, false);
         }
     }
 
@@ -932,7 +957,7 @@ class ReservationManageModel implements IReservationManageModel {
         ruleId: apid.RuleId,
         isSuppressLog: boolean,
         isFirstUpdate: boolean,
-    ): Promise<void> {
+    ): Promise<apid.ProgramId[]> {
         if (isSuppressLog === false) {
             this.log.system.info(`update rule reservation: ${ruleId}`);
         }
@@ -1112,6 +1137,76 @@ class ReservationManageModel implements IReservationManageModel {
             }
         }
 
+        // createDiff の base は重複予約を除くため、他ルールの重複は番組 ID で別途取得する。
+        const programIds = newRuleReserves.flatMap(reserve => (reserve.programId === null ? [] : [reserve.programId]));
+        const otherReserves = programIds.length === 0 ? [] : await this.reserveDB.findProgramIds(programIds);
+        const sourceRuleIds = new Set(
+            otherReserves
+                .filter(
+                    reserve =>
+                        reserve.ruleId !== null &&
+                        reserve.ruleId !== ruleId &&
+                        reserve.isOverlap === true &&
+                        reserve.isIgnoreOverlap !== true &&
+                        reserve.isEventRelay === false,
+                )
+                .map(reserve => reserve.ruleId as apid.RuleId),
+        );
+        const currentSourcePrograms = new Map<apid.RuleId, Set<apid.ProgramId>>();
+        for (const sourceRuleId of sourceRuleIds) {
+            const sourceRule = await this.ruleDB.findId(sourceRuleId, true);
+            if (
+                sourceRule === null ||
+                sourceRule.reserveOption.enable !== true ||
+                sourceRule.isTimeSpecification === true
+            ) {
+                continue;
+            }
+            // 波及された overlap 自体を根拠にせず、現在の履歴判定を確認する。
+            // 期限切れや条件変更後に、波及先同士が重複状態を固定し合うことを防ぐ。
+            const sourcePrograms = await this.programDB.findRule({
+                searchOption: sourceRule.searchOption,
+                reserveOption: sourceRule.reserveOption,
+            });
+            currentSourcePrograms.set(
+                sourceRuleId,
+                new Set(sourcePrograms.filter(program => program.overlap === true).map(program => program.id)),
+            );
+        }
+        for (const reserve of newRuleReserves) {
+            if (
+                otherReserves.some(
+                    source =>
+                        shouldPropagateRuleOverlap(reserve, source) &&
+                        currentSourcePrograms
+                            .get(source.ruleId as apid.RuleId)
+                            ?.has(source.programId as apid.ProgramId) === true,
+                )
+            ) {
+                reserve.isOverlap = true;
+            }
+        }
+
+        const oldOverlaps = new Set(
+            oldRuleReserves
+                .filter(
+                    reserve =>
+                        reserve.isOverlap === true && reserve.isIgnoreOverlap !== true && reserve.programId !== null,
+                )
+                .map(reserve => reserve.programId as apid.ProgramId),
+        );
+        const newOverlaps = new Set(
+            newRuleReserves
+                .filter(
+                    reserve =>
+                        reserve.isOverlap === true && reserve.isIgnoreOverlap !== true && reserve.programId !== null,
+                )
+                .map(reserve => reserve.programId as apid.ProgramId),
+        );
+        const changedProgramIds = [...new Set([...oldOverlaps, ...newOverlaps])].filter(
+            programId => oldOverlaps.has(programId) !== newOverlaps.has(programId),
+        );
+
         // 古いルール予約の時刻位置取得
         for (const reserve of oldRuleReserves) {
             times.push({ startAt: reserve.startAt, endAt: reserve.endAt });
@@ -1147,6 +1242,7 @@ class ReservationManageModel implements IReservationManageModel {
 
         // イベント発行
         this.reserveEvent.emitUpdated(diff);
+        return changedProgramIds;
     }
 
     /**
@@ -1808,12 +1904,17 @@ class ReservationManageModel implements IReservationManageModel {
             throw err;
         });
 
-        finalize();
+        try {
+            // 元予約の変更を先に通知し、関連ルールの最終差分で古いタイマーを上書きしない。
+            this.reserveEvent.emitUpdated(diff);
+            if (oldReserve.programId !== null) {
+                await this.updateRelatedRulesWithExecution(oldReserve.ruleId, [oldReserve.programId], false);
+            }
+        } finally {
+            finalize();
+        }
 
         this.log.system.info(`successful remove overlap reservation: ${reserveId}`);
-
-        // イベント発行
-        this.reserveEvent.emitUpdated(diff);
     }
 
     /**
@@ -1935,6 +2036,23 @@ class ReservationManageModel implements IReservationManageModel {
      * @return Reserve[] 予約情報
      */
     private async createReserves(matches: Reserve[]): Promise<Reserve[]> {
+        // 同じ番組の通常ルール予約は従来どおり一件に統合するが、解除済み予約を優先して残す。
+        // 解除済み予約を消すと、次回のルール更新で重複判定が復活してしまう。
+        const ignoredOverlapKeys = new Set(
+            matches
+                .filter(
+                    reserve =>
+                        reserve.ruleId !== null && reserve.isIgnoreOverlap === true && reserve.isOverlap === false,
+                )
+                .map(reserve => this.getRuleProgramIdKey(reserve))
+                .filter(key => key !== null),
+        );
+        if (ignoredOverlapKeys.size !== 0) {
+            matches = matches.filter(reserve => {
+                const key = this.getRuleProgramIdKey(reserve);
+                return reserve.isIgnoreOverlap === true || key === null || ignoredOverlapKeys.has(key) === false;
+            });
+        }
         if (this.configuration.getConfig().reservation?.scheduler !== 'legacy') {
             const planned = await this.createPlannerReserves(matches);
             return planned;
@@ -1942,12 +2060,18 @@ class ReservationManageModel implements IReservationManageModel {
 
         const legacy = this.createLegacyReserves(matches);
         const planner = await this.createPlannerReserves(matches);
-        const legacyById = new Map(legacy.map(reserve => [reserve.id, reserve]));
-        const currentReserveIds = new Set(planner.map(reserve => reserve.id));
+        const legacyById = new Map(
+            legacy.filter(reserve => reserve.id !== undefined).map(reserve => [reserve.id, reserve]),
+        );
+        const currentReserveIds = new Set(
+            planner.filter(reserve => reserve.id !== undefined).map(reserve => reserve.id),
+        );
         for (const reserveId of this.plannerDifferenceLogs.keys()) {
             if (currentReserveIds.has(reserveId) === false) this.plannerDifferenceLogs.delete(reserveId);
         }
         for (const reserve of planner) {
+            // 並走ログは DB id で追跡する。未保存予約は id 衝突による誤比較を避け、保存後に比較する。
+            if (reserve.id === undefined) continue;
             const old = legacyById.get(reserve.id);
             if (old !== undefined) {
                 const difference = JSON.stringify({
@@ -1989,11 +2113,31 @@ class ReservationManageModel implements IReservationManageModel {
             config.timeSpecifiedStartMargin,
             config.timeSpecifiedEndMargin,
         );
-        const priorities = [...matches].sort((a, b) => this.sortReserve(a, b));
-        const rank = new Map(priorities.map((reserve, index) => [reserve.id, index]));
+        // legacy と同じ優先順・キーで重複を除外してから計画する。
+        const programKeys = new Set<string>();
+        const priorities = [...matches]
+            .sort((a, b) => this.sortReserve(a, b))
+            .filter(reserve => {
+                const key = this.getRuleProgramIdKey(reserve);
+                if (key === null) return true;
+                if (programKeys.has(key)) return false;
+                programKeys.add(key);
+                return true;
+            });
+        // 未保存予約の id は DB 差分で insert/update の判定に使うため変更しない。
+        // 計画内だけのキーを採番し、既存 id (負数を含む) との衝突も避ける。
+        const usedIds = new Set(matches.filter(reserve => reserve.id !== undefined).map(reserve => reserve.id));
+        const plannerIds = new Map<Reserve, number>();
+        let temporaryId = -1;
+        for (const reserve of priorities) {
+            while (usedIds.has(temporaryId)) temporaryId--;
+            plannerIds.set(reserve, reserve.id ?? temporaryId--);
+        }
+        const plannerId = (reserve: Reserve): number => plannerIds.get(reserve)!;
+        const rank = new Map(priorities.map((reserve, index) => [plannerId(reserve), index]));
         const nextProgramStarts = new Map<number, number | undefined>();
         const undefinedByChannel = new Map<number, Reserve[]>();
-        for (const reserve of matches) {
+        for (const reserve of priorities) {
             if (reserve.isTimeUndefined !== true || reserve.programId === null) continue;
             const group = undefinedByChannel.get(reserve.channelId) ?? [];
             group.push(reserve);
@@ -2011,29 +2155,29 @@ class ReservationManageModel implements IReservationManageModel {
                     const next = following
                         .filter(program => program.startAt > reserve.startAt)
                         .sort((a, b) => a.startAt - b.startAt)[0];
-                    nextProgramStarts.set(reserve.id, next?.startAt);
+                    nextProgramStarts.set(plannerId(reserve), next?.startAt);
                 }
             }),
         );
         const plannerEndAt = new Map<number, number>();
-        for (const reserve of matches) {
+        for (const reserve of priorities) {
             if (reserve.isTimeUndefined !== true) continue;
             const baseEndAt = resolveProgramEndTimes(
                 reserve.startAt,
                 1,
-                nextProgramStarts.get(reserve.id),
+                nextProgramStarts.get(plannerId(reserve)),
             ).plannedEndAt;
             plannerEndAt.set(
-                reserve.id,
+                plannerId(reserve),
                 Math.min(Math.max(baseEndAt, reserve.plannedEndAt ?? baseEndAt), reserve.endAt),
             );
         }
         const plannerSpan = telemetry.startPlanner();
         const plans = planSchedule({
-            reservations: matches.map(reserve => ({
-                id: reserve.id,
+            reservations: priorities.map(reserve => ({
+                id: plannerId(reserve),
                 startAt: reserve.startAt,
-                endAt: plannerEndAt.get(reserve.id) ?? reserve.endAt,
+                endAt: plannerEndAt.get(plannerId(reserve)) ?? reserve.endAt,
                 startMarginSec: reserve.startMarginSec,
                 endMarginSec: reserve.endMarginSec,
                 channel: reserve.channel,
@@ -2042,12 +2186,12 @@ class ReservationManageModel implements IReservationManageModel {
                 conflictPolicy: reserve.conflictPolicy as import('./planner/SchedulePlanner').ConflictPolicy,
                 isSkip: reserve.isSkip,
                 isOverlap: reserve.isOverlap,
-                priority: (5 - reserve.priority) * 100000 + (rank.get(reserve.id) ?? reserve.id),
+                priority: (5 - reserve.priority) * 100000 + (rank.get(plannerId(reserve)) ?? plannerId(reserve)),
             })),
             tuners: this.tuners.map(tuner => ({ index: tuner.getIndex(), types: tuner.getTypes() })),
             timing,
-            previousPlan: matches.map(reserve => ({
-                reserveId: reserve.id,
+            previousPlan: priorities.map(reserve => ({
+                reserveId: plannerId(reserve),
                 tunerIndex: reserve.plannedTunerIndex,
                 conflict: null,
                 lossInfo: null,
@@ -2060,19 +2204,33 @@ class ReservationManageModel implements IReservationManageModel {
         });
         plannerSpan.conflicts(plans.filter(plan => plan.conflict !== null).length);
         plannerSpan.end();
-        this.plannerReasons = new Map(plans.map(plan => [plan.reserveId, plan.reasons]));
+        const realIds = new Map(priorities.map(reserve => [plannerId(reserve), reserve.id]));
+        this.plannerReasons = new Map(
+            plans
+                .filter(plan => realIds.get(plan.reserveId) !== undefined)
+                .map(plan => [realIds.get(plan.reserveId)!, plan.reasons]),
+        );
         const byId = new Map(plans.map(plan => [plan.reserveId, plan]));
-        return matches
+        return priorities
             .map(reserve => {
-                const plan = byId.get(reserve.id);
+                const plan = byId.get(plannerId(reserve));
                 if (plan === undefined) return Object.assign({}, reserve);
+                const conflict = plan.conflict ?? plan.lossInfo;
+                // conflictInfo は永続化・API 公開されるため、DB id のない相手は参照から除外する。
+                // 型と affectedMs は保持し、一時キーを予約 id と誤認させない。
+                const conflictInfo =
+                    conflict === null
+                        ? null
+                        : JSON.stringify({
+                              ...conflict,
+                              conflictingReserveIds: conflict.conflictingReserveIds
+                                  .map(id => realIds.get(id))
+                                  .filter((id): id is number => id !== undefined),
+                          });
                 return Object.assign({}, reserve, {
                     isConflict: plan.conflict !== null && plan.conflict.type !== 'MARGIN_OVERLAP',
                     plannedTunerIndex: plan.tunerIndex,
-                    conflictInfo:
-                        plan.conflict === null && plan.lossInfo === null
-                            ? null
-                            : JSON.stringify(plan.conflict ?? plan.lossInfo),
+                    conflictInfo,
                 });
             })
             .sort((a, b) => a.startAt - b.startAt);

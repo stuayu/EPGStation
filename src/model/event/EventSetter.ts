@@ -1,6 +1,8 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../api';
 import IRecordedDB from '../db/IRecordedDB';
+import IReserveDB from '../db/IReserveDB';
+import { shouldSaveRecordedHistory } from '../operator/recording/RecordedHistoryEndAt';
 import IVideoFileDB from '../db/IVideoFileDB';
 import IProgramDB from '../db/IProgramDB';
 import IChannelDB from '../db/IChannelDB';
@@ -57,7 +59,10 @@ export default class EventSetter implements IEventSetter {
     private programDB: IProgramDB;
     private eitPresentStore: IEitPresentStore;
     private channelDB: IChannelDB;
+    private reserveDB: IReserveDB;
     private programReminderManage: IProgramReminderManageModel;
+
+    private recordingUpdateQueue: Promise<void> = Promise.resolve();
 
     private isFirstreserveationUpdate: boolean = true;
 
@@ -88,6 +93,7 @@ export default class EventSetter implements IEventSetter {
         @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IProgramReminderManageModel') programReminderManage: IProgramReminderManageModel,
+        @inject('IReserveDB') reserveDB: IReserveDB,
     ) {
         this.log = logger.getLogger();
         this.epgUpdateEvent = epgUpdateEvent;
@@ -114,6 +120,7 @@ export default class EventSetter implements IEventSetter {
         this.eitPresentStore = eitPresentStore;
         this.channelDB = channelDB;
         this.programReminderManage = programReminderManage;
+        this.reserveDB = reserveDB;
     }
 
     /**
@@ -211,7 +218,14 @@ export default class EventSetter implements IEventSetter {
         // 予約情報更新イベント
         this.reserveEvent.setUpdated(diff => {
             this.ipc.notifyClient();
-            this.recordingManage.update(diff);
+            // 直前の差分が recorder の準備を終えてから次の差分を適用する。
+            // provider の取得中に重複化の差分が追い越すと、古い予約の録画タイマーが復活する。
+            this.recordingUpdateQueue = this.recordingUpdateQueue
+                .then(() => this.recordingManage.update(diff))
+                .catch(err => {
+                    this.log.system.error('recording reservation update error');
+                    this.log.system.error(err);
+                });
 
             // コマンド実行
             this.externalCommandManage.addUpdateReseves(diff);
@@ -307,7 +321,25 @@ export default class EventSetter implements IEventSetter {
             if (isNeedDeleteReservation === true) {
                 if (reserve.ruleId === null || (reserve.ruleId !== null && reserve.isEventRelay == true)) {
                     // 手動予約 or ルール予約によるイベントリレー予約を削除
-                    this.reservationManage.cancel(reserve.id).catch(() => {});
+                    await this.reservationManage.cancel(reserve.id).catch(() => {});
+                    if (
+                        reserve.ruleId === null &&
+                        shouldSaveRecordedHistory(reserve, isNeedDeleteReservation) &&
+                        reserve.shortName !== null
+                    ) {
+                        try {
+                            const ruleIds = await this.reserveDB.findRuleIdsByChannelAndShortName(
+                                reserve.channelId,
+                                reserve.shortName,
+                            );
+                            for (const ruleId of ruleIds) {
+                                await this.reservationManage.updateRule(ruleId);
+                            }
+                        } catch (err) {
+                            this.log.system.error('manual recording duplicate reevaluation error');
+                            this.log.system.error(err);
+                        }
+                    }
                 } else {
                     // 重複を更新するために予約更新
                     this.reservationManage.updateRule(reserve.ruleId).catch(() => {});
