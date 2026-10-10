@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { createOriginalMpeg2Command, isOriginalMpeg2Source } = require('../../dist/util/OriginalMpeg2Util');
 const { attachFileStreamLifecycle, responseFile } = require('../../dist/model/service/api');
@@ -75,7 +76,7 @@ test('Range が無い場合と不正な複数 Range を区別する', () => {
 });
 
 test('ファイル長を超える HTTP Range は 416 と Content-Range bytes */size を返す', () => {
-    const filePath = path.join('/private/tmp', `epgstation-range-${process.pid}-${Date.now()}.ts`);
+    const filePath = path.join(os.tmpdir(), `epgstation-range-${process.pid}-${Date.now()}.ts`);
     fs.writeFileSync(filePath, Buffer.alloc(10));
     try {
         const response = {

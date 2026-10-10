@@ -2,6 +2,8 @@
 require('reflect-metadata');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 const VideoApiModel = require('../../dist/model/api/video/VideoApiModel').default;
 const VideoFileAnalyzeModel = require('../../dist/model/video/VideoFileAnalyzeModel').default;
@@ -107,7 +109,7 @@ function createModel(options) {
 }
 
 test('encoded 登録でも MPEG-2 MPEG-TS は Original の元TSを返す', async () => {
-    const filePath = `/private/tmp/epgstation-encoded-mpeg2-${process.pid}.ts`;
+    const filePath = path.join(os.tmpdir(), `epgstation-encoded-mpeg2-${process.pid}.ts`);
     fs.writeFileSync(filePath, Buffer.alloc(188));
     const { model } = createModel({
         videos: [video(1, { type: 'encoded' })],
@@ -124,7 +126,7 @@ test('encoded 登録でも MPEG-2 MPEG-TS は Original の元TSを返す', async
 });
 
 test('encoded 登録の HEVC MPEG-TS も Original の元TSを返す', async () => {
-    const filePath = `/private/tmp/epgstation-encoded-hevc-${process.pid}.ts`;
+    const filePath = path.join(os.tmpdir(), `epgstation-encoded-hevc-${process.pid}.ts`);
     fs.writeFileSync(filePath, Buffer.alloc(188));
     const { model } = createModel({
         videos: [video(2, { type: 'encoded' })],

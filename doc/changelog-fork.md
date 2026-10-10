@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- CI の単体テストが毎晩失敗していたのを直し、push でも CI が走るようにした → 2026-10-10
 - 予約 planner の未採番予約・同一番組の重複割当を修正し、ルール重複除外を結合検証 (Issue #41) → 2026-10-10
 - 画面の一斉点検で見つかった不具合の修正と、録画プリセット管理のサーバー設定への移動 → 2026-10-10
 - 録画結果の行を押しても詳細が開かないのを修正し、ストレージ画面に使用率を表示 (Issue #39, #40) → 2026-10-09
@@ -59,6 +60,16 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-10-10
+
+### CI の単体テストが毎晩失敗していたのを直し、push でも CI が走るようにした
+
+`build` ワークフロー (`.github/workflows/build-validation.yml`) の `test-ut` が 2026-09-28 以降の定期実行で毎回失敗していた。手元 (macOS) では通るため気づけなかった。原因は 3 つ。
+
+- **UT がクライアントの依存を読むのに CI は入れていなかった**: `test/ut/mpegts-adts-patch.test.js` と `test/ut/mpegts-lifecycle-util.test.js` は `client/node_modules` の実物 (mpegts.js の dist、DPlayer) を検査する。`test-ut` ジョブはサーバ側の `npm ci` しかしておらず `ENOENT` / `Cannot find module` で 3 件失敗していた。ジョブに `client` の `npm ci` を足した
+- **テストが macOS 専用の `/private/tmp` を直書きしていた**: `test/ut/original-mpeg2.test.js` と `test/ut/video-metadata-api.test.js` の計 3 件が Linux で `ENOENT` になっていた。`os.tmpdir()` に変えた
+- **push では CI が起動していなかった**: `on.push` に `tags-ignore` だけを書いていた。GitHub Actions は `branches` / `tags` の片方だけを定義すると、定義していない側の ref を対象外にするため、ブランチへの push では一度も走らず、定期実行 (nightly) だけが動いていた。`branches: ['**']` を明示した
+
+テストで一時ファイルを作るときは `os.tmpdir()` を使うこと (`/tmp` は Windows に無く、`/private/tmp` は macOS にしか無い)。
 
 ### 予約 planner の未採番予約・同一番組の重複割当を修正し、ルール重複除外を結合検証 (Issue #41)
 
