@@ -202,7 +202,9 @@ export default class UpdateManageModel implements IUpdateManageModel {
 
             // ローカル変更があると checkout が失敗する / 変更を失う恐れがあるため先に止める
             this.job.step = 'ローカル変更の確認';
-            const dirty = await this.runGit(['status', '--porcelain'], root);
+            // 追跡対象のファイルに変更があるときだけ止める。実行時に作られる未追跡のファイル
+            // (サムネイルのキャッシュなど) は checkout を妨げないため、変更として数えない
+            const dirty = await this.runGit(['status', '--porcelain', '--untracked-files=no'], root);
             if (dirty.trim() !== '') {
                 throw new Error(
                     'LocalChangesExist: 作業ツリーに未コミットの変更があります。手動で退避してから再実行してください',
