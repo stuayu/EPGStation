@@ -225,6 +225,7 @@ paths:
                 - name: keyword
                   in: query
                   schema: { type: string }
+                - $ref: '#/components/parameters/IsHalfWidthOptional'
                 - name: offset
                   in: query
                   schema: { type: integer, minimum: 0, default: 0 }

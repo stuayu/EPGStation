@@ -32,7 +32,7 @@ export default class StorageState implements IStorageState {
                 available: Util.getFileSizeStr(s.available),
                 used: Util.getFileSizeStr(s.used),
                 total: Util.getFileSizeStr(s.total),
-                useRate: Math.floor((s.used / s.total) * 100),
+                useRate: s.total > 0 ? Math.floor((s.used / s.total) * 100) : 0,
             };
         });
     }

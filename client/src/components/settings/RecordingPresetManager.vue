@@ -2,12 +2,15 @@
     <v-card class="mb-4">
         <v-card-title>録画プリセット</v-card-title>
         <v-card-text>
-            <div v-for="item in items" :key="item.id" class="d-flex flex-wrap align-center ga-2 mb-2">
-                <span class="text-body-1">{{ item.name }}</span>
-                <v-chip v-if="item.isDefault" size="small" color="primary">既定</v-chip>
-                <v-spacer></v-spacer>
-                <v-btn size="small" variant="outlined" @click="edit(item)">編集</v-btn>
-                <v-btn size="small" variant="outlined" color="error" @click="remove(item.id)">削除</v-btn>
+            <div v-for="item in items" :key="item.id" class="d-flex align-center ga-2 mb-2">
+                <div class="d-flex flex-wrap align-center ga-2 flex-grow-1 preset-name">
+                    <span class="text-body-1">{{ item.name }}</span>
+                    <v-chip v-if="item.isDefault" size="small" color="primary">既定</v-chip>
+                </div>
+                <div class="d-flex ga-2 flex-shrink-0">
+                    <v-btn size="small" variant="outlined" @click="edit(item)">編集</v-btn>
+                    <v-btn size="small" variant="outlined" color="error" @click="remove(item.id)">削除</v-btn>
+                </div>
             </div>
             <v-btn color="primary" variant="outlined" @click="startAdd">追加</v-btn>
         </v-card-text>
@@ -136,6 +139,9 @@ export default toNative(RecordingPresetManager);
 </script>
 
 <style lang="sass" scoped>
+.preset-name
+    min-width: 0
+
 .preset-dialog-body
     max-height: 70vh
     overflow-y: auto

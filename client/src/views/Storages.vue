@@ -8,7 +8,7 @@
                         <h3 class="text-high-emphasis">{{ info.name }} - {{ info.total }}</h3>
                         <v-progress-linear :model-value="info.useRate" height="25"></v-progress-linear>
                         <div class="d-flex text-body-2 text-medium-emphasis pt-1">
-                            <div>{{ info.used }} 使用済み</div>
+                            <div>{{ info.used }} 使用済み ({{ info.useRate }}%)</div>
                             <v-spacer></v-spacer>
                             <div>{{ info.available }} 空き</div>
                         </div>

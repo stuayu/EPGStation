@@ -40,7 +40,7 @@
                             </template>
                         </v-card-text>
                     </v-card>
-                    <RecordingPresetManager></RecordingPresetManager>
+
                     <v-card class="mx-auto" max-width="800">
                         <v-list-item three-line>
                             <div class="v-list-item-content">
@@ -559,7 +559,6 @@ import ProgramHashtagUtil from '@/util/ProgramHashtagUtil';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import ISystemSettingApiModel from '@/model/api/config/ISystemSettingApiModel';
 import CustomStreamPresetEditor, { CustomPresetForm } from '@/components/settings/CustomStreamPresetEditor.vue';
-import RecordingPresetManager from '@/components/settings/RecordingPresetManager.vue';
 import { clearClientCapabilitiesCache, ClientCapabilities, getClientCapabilities } from '@/util/ClientCapabilityUtil';
 
 interface GuideModeItem {
@@ -581,7 +580,6 @@ interface SelectItem {
     components: {
         TitleBar,
         CustomStreamPresetEditor,
-        RecordingPresetManager,
     },
 })
 class Settings extends Vue {

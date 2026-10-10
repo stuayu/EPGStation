@@ -704,6 +704,7 @@ export interface RecordingResultQuery {
     to?: UnixtimeMS;
     ruleId?: RuleId;
     keyword?: string;
+    isHalfWidth?: boolean; // 番組名と放送局名を半角で取得するか
     offset: number;
     limit: number;
 }

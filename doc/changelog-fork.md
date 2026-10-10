@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 画面の一斉点検で見つかった不具合の修正と、録画プリセット管理のサーバー設定への移動 → 2026-10-10
+- 録画結果の行を押しても詳細が開かないのを修正し、ストレージ画面に使用率を表示 (Issue #39, #40) → 2026-10-09
 - feature/edcb-parity 全体レビュー指摘の修正 → 2026-09-28
 - API 定義不備による全ルート停止と dist 残留を防止 → 2026-09-28
 - feature/edcb-parity 本番検証で見つかった検索・スクロール復元の不具合修正 → 2026-09-28
@@ -54,6 +56,33 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - オフライン original-hevc の offset 再生成シーク・位置復元 → 2026-09-17
 - iOS / iPadOS のオフライン original-hevc fMP4 保存 → 2026-09-17
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
+
+## 2026-10-10
+
+### 画面の一斉点検で見つかった不具合の修正と、録画プリセット管理のサーバー設定への移動
+
+全画面を PC 幅 (1440px) とスマホ幅 (iPhone 14 相当) で撮影し、コードと突き合わせて直した。
+
+- **検索画面を直接開くと検索フォームが出ない**: 履歴位置に他の画面が保存したデータが残っていると、それを検索条件として復元し、`init()` で作った `searchOption` を `undefined` で上書きしていた。検索条件を持たないデータは復元しない。ルール一覧の「+」から開いた場合は起きなかったため気づきにくかった
+- **録画結果の「開始」が常に「不明」**: 録画開始を判定した理由 (`decision.reason`) を `RecordingSession.startReason` へ保存していなかった。判定時に保存し、ラベルを追加した。保存前の古い結果では「開始」を表示しない
+- **録画結果の番組名・放送局名が全角のまま**: `GET /api/recording-results` に `isHalfWidth` (省略可) を追加し、画面の半角表示設定に従う
+- **予約オプション欄**: 手動予約のプリセット選択に幅指定が無くスマホで「録.」まで縮む、終了マージンの説明が固定文言 (全体設定を変えても「開始 5 秒 / 終了 5 秒」のまま)、優先度と競合時の扱いが説明文と重なる、保存先の選択肢が切れる、を直した
+- **視聴履歴**: スマホで状態チップが「視」まで縮むのを直した
+- **録画プリセットの管理をサーバー設定の「録画プリセット」タブへ移した**: 全利用者に効く設定で、個人設定の画面にあるのは不適切だった
+- **サーバー設定**: 通知タブの数値 3 欄を狭い画面で縦に並べる。シリーズ管理タブのしきい値に現在値と説明を付け、スマホで 1 文字幅の縦書きに潰れていた説明文と表を直し、見出しに出ていた仕様書の節番号を外した。保存ボタンの上に間隔を空けた
+- **サーバー設定で、タブに出ていないアカウント画面へ横スワイプで入れてしまう**: タブは `v-if` で隠していたが `v-window-item` は常に描画していた。パネルもタブと同じ条件でだけ描画し、スワイプでの切り替えを無効にした。**`v-tab` を条件付きにしたら、対応する `v-window-item` にも同じ条件を付ける**
+
+関連実装: `client/src/views/{Search,RecordingResults,WatchHistory,Settings,SystemSetting}.vue`, `client/src/components/{manualReserve/ManualReserveOption,search/SearchRuleOption,settings/RecordingPresetManager}.vue`, `client/src/util/RecordingReasonUtil.ts`, `src/model/operator/recording/RecorderModel.ts`, `src/model/api/recorded/RecordingSessionApiModel.ts`, `src/model/service/api/recording-results.ts`, `api.yml`, `api.d.ts`。
+
+## 2026-10-09
+
+### 録画結果の行を押しても詳細が開かないのを修正し、ストレージ画面に使用率を表示 (Issue #39, #40)
+
+録画結果画面で行を押しても詳細 (接続試行の履歴) が開かず、ナビゲーションの開閉など別の再描画が起きて初めて開いていた。`RecordingResults.vue` の `openedSession` が初期値なしの `number | undefined` で宣言されており、vue-facing-decorator は初期値が `undefined` のフィールドをリアクティブな data にしないため、`v-expansion-panels` の `v-model` へ書き戻した値が再描画を起こしていなかった。初期値を `null` にした。修正前後の実測: 行を押した直後のパネルは修正前が閉じたまま・詳細 API 呼び出しなし、修正後は開いて `GET /api/recording-results/{id}` が発行される。**クラスフィールドを data にする場合は必ず初期値 (`null` など) を与える。**
+
+ストレージ画面の「使用済み」に使用率 (%) を併記した (ダッシュボードのストレージ表示と同じ情報)。総容量が 0 のストレージで使用率が `NaN` にならないよう 0 にする。
+
+関連実装: `client/src/views/RecordingResults.vue`, `client/src/views/Storages.vue`, `client/src/model/state/storage/StorageState.ts`。
 
 ## 2026-09-28
 
