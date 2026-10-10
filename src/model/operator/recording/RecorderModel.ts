@@ -56,6 +56,7 @@ import RecordingSession from '../../../db/entities/RecordingSession';
 import { RecordingSessionState, transitionRecordingSession } from './RecordingSessionState';
 import RecordingSink from './RecordingSink';
 import { countRecordingGaps } from './RecordingGapUtil';
+import { resolveRecordedHistoryEndAt, shouldSaveRecordedHistory } from './RecordedHistoryEndAt';
 import RecordingUpstreamSession from './RecordingUpstreamSession';
 import { usesManagedEnd } from './RecordingStreamEndPolicy';
 import telemetry from '../../observability/Telemetry';
@@ -1671,20 +1672,15 @@ class RecorderModel implements IRecorderModel {
             }
 
             // Recorded history 追加
-            if (
-                this.reserve.isTimeSpecified === false &&
-                this.reserve.ruleId !== null &&
-                this.reserve.isEventRelay === false &&
-                this.isNeedDeleteReservation === true
-            ) {
-                // ルール(Program Id 予約)の場合のみ記録する
+            if (shouldSaveRecordedHistory(this.reserve, this.isNeedDeleteReservation)) {
+                // 手動・ルールを問わず番組指定予約を記録する
                 try {
                     if (recorded !== null) {
                         this.log.system.info(`add recorded history: ${this.recordedId}`);
                         const history = new RecordedHistory();
                         history.name = StrUtil.deleteBrackets(recorded.halfWidthName);
                         history.channelId = recorded.channelId;
-                        history.endAt = recorded.endAt;
+                        history.endAt = resolveRecordedHistoryEndAt(recorded.endAt, Date.now(), endReason);
                         await this.recordedHistoryDB.insertOnce(history);
                     }
                 } catch (err: any) {
