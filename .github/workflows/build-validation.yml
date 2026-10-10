@@ -2,7 +2,10 @@ name: build
 
 on:
   push:
-    # タグ push は release.yml が同等のビルドを行うため除外する
+    # tags-ignore だけを書くとブランチへの push でも起動しなくなる (GitHub Actions は
+    # branches / tags の片方だけを定義すると、定義していない側の ref を対象外にする)。
+    # そのため branches を明示する。タグ push は release.yml が同等のビルドを行うため除外する
+    branches: ['**']
     tags-ignore: ['**']
   workflow_dispatch:
   schedule:
@@ -25,6 +28,11 @@ jobs:
         node-version: 24.x
         cache: npm
     - name: Install server dependencies
+      run: npm ci
+    # UT には client/node_modules の実物 (mpegts.js の dist、DPlayer) を検査するテストがある
+    - name: Install client dependencies
+      if: matrix.level == 'ut'
+      working-directory: client
       run: npm ci
     - name: Run ${{ matrix.level }}
       run: npm run test:${{ matrix.level }}
