@@ -449,3 +449,143 @@ test('createDiff は重複予約の連鎖が止まるまで再計算窓を広げ
     );
     assert.deepEqual(option.times, [{ startAt: 1500, endAt: 2500 }]);
 });
+
+const plannerRegressionModel = () => {
+    const model = makeModel({}, { config: { reservation: { scheduler: 'planner' } } });
+    model.setTuners([{ index: 0, name: 'GR', types: ['GR'], command: '', isAvailable: true }]);
+    return model;
+};
+
+const allocationSnapshot = reserves =>
+    reserves.map(({ id, programId, isConflict, plannedTunerIndex }) => ({
+        id,
+        programId,
+        isConflict,
+        plannedTunerIndex,
+    }));
+
+test('planner は id 未発行の3予約を別々に計画し、予約 id を変更しない', async t => {
+    const model = plannerRegressionModel();
+    const input = [
+        makeReserve({ id: undefined, programId: 101, ruleId: 1 }),
+        makeReserve({ id: undefined, programId: 102, ruleId: 1, channel: 'GR-2' }),
+        makeReserve({ id: undefined, programId: 103, ruleId: 1, startAt: 3000, endAt: 4000 }),
+    ];
+    const legacy = model.createLegacyReserves(input.map(reserve => makeReserve(reserve)));
+    const result = await model.createPlannerReserves(input);
+    t.diagnostic(JSON.stringify({ legacy: allocationSnapshot(legacy), planner: allocationSnapshot(result) }));
+    assert.deepEqual(
+        result.map(reserve => reserve.isConflict),
+        [false, true, false],
+    );
+    assert.deepEqual(
+        result.map(reserve => reserve.programId),
+        [101, 102, 103],
+    );
+    assert.ok(input.every(reserve => reserve.id === undefined));
+    assert.ok(result.every(reserve => reserve.id === undefined));
+    for (const reserve of result) {
+        if (reserve.conflictInfo !== null) {
+            assert.deepEqual(JSON.parse(reserve.conflictInfo).conflictingReserveIds, []);
+        }
+    }
+});
+
+test('planner は同一 programId のルール予約を legacy と同じ優先順で1件にする', async t => {
+    const model = plannerRegressionModel();
+    const input = [
+        makeReserve({ id: 2, programId: 201, ruleId: 2 }),
+        makeReserve({ id: 1, programId: 201, ruleId: 1 }),
+    ];
+    const legacy = model.createLegacyReserves(input.map(reserve => makeReserve(reserve)));
+    const result = await model.createPlannerReserves(input);
+    t.diagnostic(JSON.stringify({ legacy: allocationSnapshot(legacy), planner: allocationSnapshot(result) }));
+    assert.deepEqual(
+        result.map(reserve => reserve.id),
+        legacy.map(reserve => reserve.id),
+    );
+    assert.equal(result.length, 1);
+    assert.equal(result[0].plannedTunerIndex, 0);
+});
+
+test('planner の競合参照は保存済み id を維持し、一時キーを公開しない', async () => {
+    for (const savedId of [5, -1]) {
+        const model = plannerRegressionModel();
+        const result = await model.createPlannerReserves([
+            makeReserve({ id: savedId, programId: 301, ruleId: 1 }),
+            makeReserve({ id: undefined, programId: 302, ruleId: 2, channel: 'GR-2' }),
+        ]);
+        assert.equal(result[0].id, savedId);
+        assert.equal(result[0].isConflict, false);
+        assert.equal(result[1].id, undefined);
+        assert.equal(result[1].isConflict, true);
+        assert.deepEqual(JSON.parse(result[1].conflictInfo).conflictingReserveIds, [savedId]);
+    }
+});
+
+test('planner の重複除外は priority と重複・スキップのキーを legacy と揃える', async () => {
+    const model = plannerRegressionModel();
+    const input = [
+        makeReserve({ id: 1, programId: 401, ruleId: 1, priority: 1 }),
+        makeReserve({ id: 2, programId: 401, ruleId: 2, priority: 5 }),
+        makeReserve({ id: 3, programId: 401, ruleId: 3, isOverlap: true }),
+        makeReserve({ id: 4, programId: 401, ruleId: 4, isSkip: true }),
+        makeReserve({ id: 5, programId: null, ruleId: 5 }),
+        makeReserve({ id: 6, programId: null, ruleId: 6 }),
+    ];
+    const legacy = model.createLegacyReserves(input.map(reserve => makeReserve(reserve)));
+    const result = await model.createPlannerReserves(input);
+    assert.deepEqual(result.map(reserve => reserve.id).sort(), legacy.map(reserve => reserve.id).sort());
+    assert.equal(
+        result.some(reserve => reserve.id === 1),
+        false,
+    );
+    assert.equal(result.length, 5);
+});
+
+test('legacy 並走ログは未保存予約を undefined id で混同しない', async () => {
+    const logs = [];
+    const model = makeModel({}, { logs });
+    model.setTuners([{ index: 0, name: 'GR', types: ['GR'], command: '', isAvailable: true }]);
+    await model.createReserves([
+        makeReserve({ id: undefined, programId: 501, ruleId: 1 }),
+        makeReserve({ id: undefined, programId: 502, ruleId: 1, channel: 'GR-2' }),
+    ]);
+    assert.equal(logs.length, 0);
+    assert.equal(model.plannerDifferenceLogs.has(undefined), false);
+    assert.equal(model.plannerReasons.has(undefined), false);
+});
+
+test('planner は id 未発行の未定尺予約ごとに次番組の開始時刻を使う', async () => {
+    const model = plannerRegressionModel();
+    model.configuration = { getConfig: () => ({ recording: { startMarginSec: 0, endMarginSec: 0 } }) };
+    model.programDB = {
+        findSchedule: async ({ channelId }) =>
+            channelId === 1
+                ? [
+                      { startAt: 2000000, endAt: 2500000 },
+                      { startAt: 4000000, endAt: 4500000 },
+                  ]
+                : [],
+    };
+    const result = await model.createPlannerReserves([
+        makeReserve({ id: undefined, programId: 601, ruleId: 1, startAt: 1000000, endAt: 10000000, isTimeUndefined: true }),
+        makeReserve({ id: undefined, programId: 602, ruleId: 1, startAt: 3000000, endAt: 10000000, isTimeUndefined: true }),
+        makeReserve({
+            id: undefined,
+            programId: 603,
+            ruleId: 2,
+            channelId: 2,
+            channel: 'GR-2',
+            startAt: 2500000,
+            endAt: 2800000,
+        }),
+    ]);
+    assert.deepEqual(
+        result.map(reserve => reserve.programId),
+        [601, 603, 602],
+    );
+    assert.ok(result.every(reserve => reserve.isConflict === false));
+    assert.equal(result.find(reserve => reserve.programId === 601).endAt, 10000000);
+    assert.equal(result.find(reserve => reserve.programId === 602).endAt, 10000000);
+});

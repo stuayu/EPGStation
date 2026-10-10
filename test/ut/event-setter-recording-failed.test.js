@@ -5,6 +5,8 @@ const test = require('node:test');
 const EventSetter = require('../../dist/model/event/EventSetter').default;
 
 test('failed は thumbnail と failed 通知を行い、finish / encode を行わない', async () => {
+    const reservationActions = [];
+    let matchingRules = [2, 3];
     let failedHandler;
     let finishHandler;
     let thumbnailCount = 0;
@@ -48,7 +50,10 @@ test('failed は thumbnail と failed 通知を行い、finish / encode を行�
         new Proxy({}, { get: () => () => {} }),
         new Proxy({}, { get: () => () => {} }),
         new Proxy({}, { get: () => () => {} }),
-        { cancel() {} },
+        {
+            cancel: async id => reservationActions.push(['cancel', id]),
+            updateRule: async id => reservationActions.push(['updateRule', id]),
+        },
         {},
         {},
         {},
@@ -72,13 +77,19 @@ test('failed は thumbnail と failed 通知を行い、finish / encode を行�
         },
         config,
         dispatcher,
-        {},
+        { resolve: async () => {} },
         {},
         {},
         {},
         { onChange() {} },
         { findId: async () => ({ name: '放送局' }) },
         { start() {} },
+        {
+            findRuleIdsByChannelAndShortName: async (channelId, shortName) => {
+                reservationActions.push(['findRules', channelId, shortName]);
+                return matchingRules;
+            },
+        },
     );
     setter.set();
     const reserve = {
@@ -99,6 +110,27 @@ test('failed は thumbnail と failed 通知を行い、finish / encode を行�
     assert.equal(encodeCount, 0);
     assert.equal(typeof finishHandler, 'function');
 
+    const manual = {
+        ...reserve, ruleId: null, programId: 5, channelId: 8, shortName: '同じ番組',
+        isTimeSpecified: false, isEventRelay: false,
+    };
+    await finishHandler(manual, { id: 100, recordingStatus: 'completed' }, true);
+    assert.deepEqual(reservationActions.splice(0), [
+        ['cancel', 14], ['findRules', 8, '同じ番組'], ['updateRule', 2], ['updateRule', 3],
+    ]);
+    matchingRules = [];
+    await finishHandler(manual, { id: 100, recordingStatus: 'completed' }, true);
+    assert.deepEqual(reservationActions.splice(0), [['cancel', 14], ['findRules', 8, '同じ番組']]);
+    for (const excluded of [
+        { ...manual, isTimeSpecified: true },
+        { ...manual, isEventRelay: true },
+        { ...manual, programId: null },
+    ]) {
+        await finishHandler(excluded, { id: 100, recordingStatus: 'completed' }, true);
+        assert.deepEqual(reservationActions.splice(0), [['cancel', 14]]);
+    }
+
+    notices.splice(1);
     await prepFailedHandler({ id: 15, name: '開始前失敗', channelId: 8, startAt: 1234, ruleId: 3 }, 'error', 4);
     assert.deepEqual(notices[1], {
         type: 'recording.startFailed',
