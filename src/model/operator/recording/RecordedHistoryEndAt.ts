@@ -1,4 +1,5 @@
 import * as apid from '../../../../api';
+import type { RecordingResultStatus } from '../../../util/RecordingResult';
 
 /**
  * 番組が終わったことを放送側の情報で確認できた終了理由
@@ -40,8 +41,10 @@ export const resolveRecordedHistoryEndAt = (
 export const shouldSaveRecordedHistory = (
     reserve: { programId: apid.ProgramId | null; isTimeSpecified: boolean; isEventRelay: boolean },
     isNeedDeleteReservation: boolean,
+    resultStatus: RecordingResultStatus,
 ): boolean => {
     return (
+        resultStatus !== 'failed' &&
         reserve.programId !== null &&
         reserve.isTimeSpecified === false &&
         reserve.isEventRelay === false &&

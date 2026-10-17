@@ -15,4 +15,5 @@ export default interface IRuleDB {
     findAll(option: apid.GetRuleOption, isNeedCnt?: boolean): Promise<[apid.Rule[] | RuleWithCnt[], number]>;
     findKeyword(option: apid.GetRuleOption): Promise<apid.RuleKeywordItem[]>;
     getIds(): Promise<apid.RuleId[]>;
+    findCandidateIdsByChannelId(channelId: apid.ChannelId): Promise<apid.RuleId[]>;
 }

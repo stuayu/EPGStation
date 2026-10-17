@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { shouldPropagateRuleOverlap } = require('../../dist/model/operator/reservation/RuleOverlapPropagation');
+const { getRuleOverlapProgramIds, isRuleOverlapSource, shouldPropagateRuleOverlap } = require('../../dist/model/operator/reservation/RuleOverlapPropagation');
 const reservation = overrides => ({ ruleId: 1, programId: 10, isEventRelay: false, isTimeSpecified: false, isOverlap: true, isIgnoreOverlap: false, ...overrides });
 
 test('同じ番組の別ルールへ重複判定が波及する', () => {
@@ -27,6 +27,18 @@ test('同一ルール・異なる番組・通常予約から重複を波及し�
     assert.equal(shouldPropagateRuleOverlap(reservation({ ruleId: 2 }), reservation({ isOverlap: false })), false);
 });
 
+test('波及元判定と overlap 番組集合を共通ヘルパーで作る', () => {
+    const source = reservation();
+    assert.equal(isRuleOverlapSource(source), true);
+    assert.equal(isRuleOverlapSource(reservation({ isTimeSpecified: true })), false);
+    assert.deepEqual([...getRuleOverlapProgramIds([
+        source,
+        reservation({ programId: 11 }),
+        reservation({ isIgnoreOverlap: true }),
+        reservation({ isEventRelay: true }),
+    ])], [10, 11]);
+});
+
 require('reflect-metadata');
 const ReservationManageModel = require('../../dist/model/operator/reservation/ReservationManageModel').default;
 const Reserve = require('../../dist/db/entities/Reserve').default;
@@ -43,7 +55,7 @@ for (const scheduler of ['legacy', 'planner']) {
             startAt: 1000, endAt: 2000, updateTime: 1, ...values,
         });
         for (const reverse of [false, true]) {
-            const input = [reserve({ id: 1, ruleId: 1, priority: 5 }), reserve({ id: 2, ruleId: 2, priority: 1, isIgnoreOverlap: true })];
+            const input = [reserve({ id: 1, ruleId: 1, priority: 5 }), reserve({ id: 2, ruleId: 2, priority: 1, isIgnoreOverlap: true, isConflict: true })];
             const result = await model.createReserves(reverse ? input.reverse() : input);
             assert.equal(result.length, 1);
             assert.equal(result[0].ruleId, 2);

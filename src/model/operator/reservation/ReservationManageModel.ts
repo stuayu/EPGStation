@@ -23,7 +23,7 @@ import ILoggerModel from '../../ILoggerModel';
 import IReserveOptionChecker from '../IReserveOptionChecker';
 import IReservationManageModel from './IReservationManageModel';
 import Tuner from './Tuner';
-import { shouldPropagateRuleOverlap } from './RuleOverlapPropagation';
+import { getRuleOverlapProgramIds, isRuleOverlapSource, shouldPropagateRuleOverlap } from './RuleOverlapPropagation';
 import { planSchedule } from './planner/SchedulePlanner';
 import { resolveRecordingTimingConfig } from '../recording/RecordingTimingConfig';
 import IRecordingStreamCreator from '../recording/IRecordingStreamCreator';
@@ -913,6 +913,9 @@ class ReservationManageModel implements IReservationManageModel {
         ruleId: apid.RuleId,
         isSuppressLog: boolean = false,
         isFirstUpdate: boolean = false,
+        isSuppressRelatedRuleUpdate: boolean = false,
+        ruleProgramCache: Map<apid.RuleId, Promise<ProgramWithOverlap[]>> = new Map(),
+        overlapChanges?: Map<apid.ProgramId, Set<apid.RuleId>>,
     ): Promise<void> {
         // 実行権取得
         const exeId = await this.executeManagementModel.getExecution(
@@ -923,10 +926,50 @@ class ReservationManageModel implements IReservationManageModel {
         };
 
         try {
-            const changedProgramIds = await this.updateRuleWithExecution(ruleId, isSuppressLog, isFirstUpdate);
-            await this.updateRelatedRulesWithExecution(ruleId, changedProgramIds, isSuppressLog);
+            const changedProgramIds = await this.updateRuleWithExecution(
+                ruleId, isSuppressLog, isFirstUpdate, ruleProgramCache,
+            );
+            if (overlapChanges !== undefined) {
+                for (const programId of changedProgramIds) {
+                    const sourceIds = overlapChanges.get(programId) ?? new Set<apid.RuleId>();
+                    sourceIds.add(ruleId);
+                    overlapChanges.set(programId, sourceIds);
+                }
+            }
+            if (isSuppressRelatedRuleUpdate === false) {
+                await this.updateRelatedRulesWithExecution(ruleId, changedProgramIds, isSuppressLog, ruleProgramCache);
+            }
         } finally {
             finalize();
+        }
+    }
+
+    /** 録画完了番組と同じ局・shortName に一致するルールと指定ルールを再評価する。 */
+    public async updateRulesByChannelAndShortName(
+        channelId: apid.ChannelId,
+        shortName: string,
+        alwaysRuleIds: apid.RuleId[] = [],
+    ): Promise<void> {
+        const candidateRuleIds = await this.ruleDB.findCandidateIdsByChannelId(channelId);
+        const alwaysRuleIdSet = new Set(alwaysRuleIds);
+        const ruleIds = [...new Set([...candidateRuleIds, ...alwaysRuleIdSet])].sort((a, b) => a - b);
+        const cache = new Map<apid.RuleId, Promise<ProgramWithOverlap[]>>();
+        for (const ruleId of ruleIds) {
+            try {
+                if (alwaysRuleIdSet.has(ruleId) === true) {
+                    await this.updateRule(ruleId, false, false, false, cache);
+                    continue;
+                }
+                const rule = await this.ruleDB.findId(ruleId, true);
+                if (rule === null || rule.reserveOption.enable !== true || rule.isTimeSpecification === true) continue;
+                const programs = await this.getRulePrograms(rule, cache);
+                if (programs.some(program => program.channelId === channelId && program.shortName === shortName)) {
+                    await this.updateRule(ruleId, false, false, false, cache);
+                }
+            } catch (err) {
+                this.log.system.error(`rule re-evaluation after recording failed: ${ruleId}`);
+                this.log.system.error(err);
+            }
         }
     }
 
@@ -935,6 +978,7 @@ class ReservationManageModel implements IReservationManageModel {
         ruleId: apid.RuleId,
         programIds: apid.ProgramId[],
         isSuppressLog: boolean,
+        ruleProgramCache: Map<apid.RuleId, Promise<ProgramWithOverlap[]>>,
     ): Promise<void> {
         if (programIds.length === 0) {
             return;
@@ -949,7 +993,7 @@ class ReservationManageModel implements IReservationManageModel {
         );
         // 内部更新は関連ルール更新を呼ばないため、再波及も実行権の再取得も発生しない。
         for (const relatedRuleId of relatedRuleIds) {
-            await this.updateRuleWithExecution(relatedRuleId, isSuppressLog, false);
+            await this.updateRuleWithExecution(relatedRuleId, isSuppressLog, false, ruleProgramCache);
         }
     }
 
@@ -957,6 +1001,7 @@ class ReservationManageModel implements IReservationManageModel {
         ruleId: apid.RuleId,
         isSuppressLog: boolean,
         isFirstUpdate: boolean,
+        ruleProgramCache: Map<apid.RuleId, Promise<ProgramWithOverlap[]>>,
     ): Promise<apid.ProgramId[]> {
         if (isSuppressLog === false) {
             this.log.system.info(`update rule reservation: ${ruleId}`);
@@ -996,16 +1041,7 @@ class ReservationManageModel implements IReservationManageModel {
         // 新しい予約情報検索
         const newRulePrograms =
             rule !== null && rule.reserveOption.enable === true && rule.isTimeSpecification === false
-                ? await this.programDB
-                      .findRule({
-                          searchOption: rule.searchOption,
-                          reserveOption: rule.reserveOption,
-                      })
-                      .catch(err => {
-                          this.log.system.error(`find rule error: ${ruleId}`);
-                          this.log.system.error(err);
-                          throw err;
-                      })
+                ? await this.getRulePrograms(rule, ruleProgramCache)
                 : [];
 
         // 予約情報作成
@@ -1142,14 +1178,7 @@ class ReservationManageModel implements IReservationManageModel {
         const otherReserves = programIds.length === 0 ? [] : await this.reserveDB.findProgramIds(programIds);
         const sourceRuleIds = new Set(
             otherReserves
-                .filter(
-                    reserve =>
-                        reserve.ruleId !== null &&
-                        reserve.ruleId !== ruleId &&
-                        reserve.isOverlap === true &&
-                        reserve.isIgnoreOverlap !== true &&
-                        reserve.isEventRelay === false,
-                )
+                .filter(reserve => reserve.ruleId !== null && reserve.ruleId !== ruleId && isRuleOverlapSource(reserve))
                 .map(reserve => reserve.ruleId as apid.RuleId),
         );
         const currentSourcePrograms = new Map<apid.RuleId, Set<apid.ProgramId>>();
@@ -1164,10 +1193,7 @@ class ReservationManageModel implements IReservationManageModel {
             }
             // 波及された overlap 自体を根拠にせず、現在の履歴判定を確認する。
             // 期限切れや条件変更後に、波及先同士が重複状態を固定し合うことを防ぐ。
-            const sourcePrograms = await this.programDB.findRule({
-                searchOption: sourceRule.searchOption,
-                reserveOption: sourceRule.reserveOption,
-            });
+            const sourcePrograms = await this.getRulePrograms(sourceRule, ruleProgramCache);
             currentSourcePrograms.set(
                 sourceRuleId,
                 new Set(sourcePrograms.filter(program => program.overlap === true).map(program => program.id)),
@@ -1187,22 +1213,8 @@ class ReservationManageModel implements IReservationManageModel {
             }
         }
 
-        const oldOverlaps = new Set(
-            oldRuleReserves
-                .filter(
-                    reserve =>
-                        reserve.isOverlap === true && reserve.isIgnoreOverlap !== true && reserve.programId !== null,
-                )
-                .map(reserve => reserve.programId as apid.ProgramId),
-        );
-        const newOverlaps = new Set(
-            newRuleReserves
-                .filter(
-                    reserve =>
-                        reserve.isOverlap === true && reserve.isIgnoreOverlap !== true && reserve.programId !== null,
-                )
-                .map(reserve => reserve.programId as apid.ProgramId),
-        );
+        const oldOverlaps = getRuleOverlapProgramIds(oldRuleReserves);
+        const newOverlaps = getRuleOverlapProgramIds(newRuleReserves);
         const changedProgramIds = [...new Set([...oldOverlaps, ...newOverlaps])].filter(
             programId => oldOverlaps.has(programId) !== newOverlaps.has(programId),
         );
@@ -1243,6 +1255,25 @@ class ReservationManageModel implements IReservationManageModel {
         // イベント発行
         this.reserveEvent.emitUpdated(diff);
         return changedProgramIds;
+    }
+
+    private getRulePrograms(
+        rule: apid.Rule | RuleWithCnt,
+        cache: Map<apid.RuleId, Promise<ProgramWithOverlap[]>>,
+    ): Promise<ProgramWithOverlap[]> {
+        const ruleId = rule.id;
+        let programs = cache.get(ruleId);
+        if (programs === undefined) {
+            programs = this.programDB
+                .findRule({ searchOption: rule.searchOption, reserveOption: rule.reserveOption })
+                .catch(err => {
+                    this.log.system.error(`find rule error: ${ruleId}`);
+                    this.log.system.error(err);
+                    throw err;
+                });
+            cache.set(ruleId, programs);
+        }
+        return programs;
     }
 
     /**
@@ -1558,12 +1589,34 @@ class ReservationManageModel implements IReservationManageModel {
             await Util.sleep(10);
         }
 
-        // ルール予約更新
+        // ルール予約更新。検索結果はこの updateAll の間だけ共有する。
+        const ruleProgramCache = new Map<apid.RuleId, Promise<ProgramWithOverlap[]>>();
+        const processedRuleIds = new Set<apid.RuleId>();
+        const changedSourcesByProgram = new Map<apid.ProgramId, Set<apid.RuleId>>();
         for (const ruleId of ruleIds) {
-            await this.updateRule(ruleId, isSuppressLog, isFirstUpdate).catch(err => {
+            await this.updateRule(ruleId, isSuppressLog, isFirstUpdate, true, ruleProgramCache, changedSourcesByProgram).then(() => {
+                processedRuleIds.add(ruleId);
+            }).catch(err => {
                 this.log.system.error(err);
             });
             await Util.sleep(10);
+        }
+
+        const changedProgramIds = [...changedSourcesByProgram.keys()];
+        if (changedProgramIds.length !== 0) {
+            const reserves = await this.reserveDB.findProgramIds(changedProgramIds);
+            const affectedRuleIds = new Set(
+                reserves
+                    .filter(reserve => reserve.ruleId !== null && processedRuleIds.has(reserve.ruleId))
+                    .filter(reserve => changedSourcesByProgram.get(reserve.programId as apid.ProgramId)?.has(reserve.ruleId as apid.RuleId) !== true)
+                    .map(reserve => reserve.ruleId as apid.RuleId),
+            );
+            for (const ruleId of affectedRuleIds) {
+                await this.updateRule(ruleId, isSuppressLog, false, true, ruleProgramCache).catch(err => {
+                    this.log.system.error(err);
+                });
+                await Util.sleep(10);
+            }
         }
 
         this.log.system.info('all reservation update finish');
@@ -1908,7 +1961,15 @@ class ReservationManageModel implements IReservationManageModel {
             // 元予約の変更を先に通知し、関連ルールの最終差分で古いタイマーを上書きしない。
             this.reserveEvent.emitUpdated(diff);
             if (oldReserve.programId !== null) {
-                await this.updateRelatedRulesWithExecution(oldReserve.ruleId, [oldReserve.programId], false);
+                await this.updateRelatedRulesWithExecution(
+                    oldReserve.ruleId,
+                    [oldReserve.programId],
+                    false,
+                    new Map(),
+                ).catch(err => {
+                    this.log.system.error('related rule update after removing overlap failed');
+                    this.log.system.error(err);
+                });
             }
         } finally {
             finalize();
@@ -2044,12 +2105,12 @@ class ReservationManageModel implements IReservationManageModel {
                     reserve =>
                         reserve.ruleId !== null && reserve.isIgnoreOverlap === true && reserve.isOverlap === false,
                 )
-                .map(reserve => this.getRuleProgramIdKey(reserve))
+                .map(reserve => this.getRuleProgramIdKeyWithoutConflict(reserve))
                 .filter(key => key !== null),
         );
         if (ignoredOverlapKeys.size !== 0) {
             matches = matches.filter(reserve => {
-                const key = this.getRuleProgramIdKey(reserve);
+                const key = this.getRuleProgramIdKeyWithoutConflict(reserve);
                 return reserve.isIgnoreOverlap === true || key === null || ignoredOverlapKeys.has(key) === false;
             });
         }
@@ -2416,6 +2477,13 @@ class ReservationManageModel implements IReservationManageModel {
         return re.ruleId === null
             ? re.programId.toString(10)
             : `${re.programId.toString(10)}-${re.isConflict}-${re.isOverlap}-${re.isSkip}`;
+    }
+
+    private getRuleProgramIdKeyWithoutConflict(re: Reserve): string | null {
+        if (re.programId === null) return null;
+        return re.ruleId === null
+            ? re.programId.toString(10)
+            : `${re.programId.toString(10)}-${re.isOverlap}-${re.isSkip}`;
     }
 }
 

@@ -9,6 +9,11 @@ export default interface IReservationManageModel {
     addEventRelay(programId: apid.ProgramId, parentReserve: Reserve): Promise<apid.ReserveId | null>;
     update(reserveId: apid.ReserveId, isSuppressLog?: boolean): Promise<void>;
     updateRule(ruleId: apid.RuleId, isSuppressLog?: boolean, isFirstUpdate?: boolean): Promise<void>;
+    updateRulesByChannelAndShortName(
+        channelId: apid.ChannelId,
+        shortName: string,
+        alwaysRuleIds?: apid.RuleId[],
+    ): Promise<void>;
     updateAll(isFirstUpdate?: boolean): Promise<void>;
     updateOnAirReserves(channelIds: apid.ChannelId[]): Promise<void>;
     updateReservesByProgramIds(programIds: apid.ProgramId[]): Promise<void>;

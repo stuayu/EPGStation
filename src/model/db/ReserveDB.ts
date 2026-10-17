@@ -349,18 +349,21 @@ export default class ReserveDB implements IReserveDB {
         shortName: string,
     ): Promise<apid.RuleId[]> {
         const connection = await this.op.getConnection();
+        const repository = connection.getRepository(Reserve);
         const reserves = await this.promieRetry.run(() => {
-            return connection.getRepository(Reserve).find({
-                where: { channelId, shortName, isTimeSpecified: false, isEventRelay: false },
-            });
+            return repository
+                .createQueryBuilder('reserve')
+                .select('reserve.ruleId', 'ruleId')
+                .distinct(true)
+                .where('reserve.channelId = :channelId', { channelId })
+                .andWhere('reserve.shortName = :shortName', { shortName })
+                .andWhere('reserve.isTimeSpecified = :isTimeSpecified', { isTimeSpecified: false })
+                .andWhere('reserve.isEventRelay = :isEventRelay', { isEventRelay: false })
+                .andWhere('reserve.ruleId IS NOT NULL')
+                .andWhere('reserve.programId IS NOT NULL')
+                .getRawMany<{ ruleId: apid.RuleId }>();
         });
-        return [
-            ...new Set(
-                reserves
-                    .filter(reserve => reserve.ruleId !== null && reserve.programId !== null)
-                    .map(reserve => reserve.ruleId as apid.RuleId),
-            ),
-        ];
+        return reserves.map(reserve => reserve.ruleId);
     }
 
     /**

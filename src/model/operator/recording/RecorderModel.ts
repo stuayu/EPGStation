@@ -1672,7 +1672,7 @@ class RecorderModel implements IRecorderModel {
             }
 
             // Recorded history 追加
-            if (shouldSaveRecordedHistory(this.reserve, this.isNeedDeleteReservation)) {
+            if (shouldSaveRecordedHistory(this.reserve, this.isNeedDeleteReservation, resultStatus)) {
                 // 手動・ルールを問わず番組指定予約を記録する
                 try {
                     if (recorded !== null) {
