@@ -1,7 +1,6 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../api';
 import IRecordedDB from '../db/IRecordedDB';
-import IReserveDB from '../db/IReserveDB';
 import { shouldSaveRecordedHistory } from '../operator/recording/RecordedHistoryEndAt';
 import IVideoFileDB from '../db/IVideoFileDB';
 import IProgramDB from '../db/IProgramDB';
@@ -59,7 +58,6 @@ export default class EventSetter implements IEventSetter {
     private programDB: IProgramDB;
     private eitPresentStore: IEitPresentStore;
     private channelDB: IChannelDB;
-    private reserveDB: IReserveDB;
     private programReminderManage: IProgramReminderManageModel;
 
     private recordingUpdateQueue: Promise<void> = Promise.resolve();
@@ -93,7 +91,6 @@ export default class EventSetter implements IEventSetter {
         @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IProgramReminderManageModel') programReminderManage: IProgramReminderManageModel,
-        @inject('IReserveDB') reserveDB: IReserveDB,
     ) {
         this.log = logger.getLogger();
         this.epgUpdateEvent = epgUpdateEvent;
@@ -120,7 +117,6 @@ export default class EventSetter implements IEventSetter {
         this.eitPresentStore = eitPresentStore;
         this.channelDB = channelDB;
         this.programReminderManage = programReminderManage;
-        this.reserveDB = reserveDB;
     }
 
     /**
@@ -220,12 +216,32 @@ export default class EventSetter implements IEventSetter {
             this.ipc.notifyClient();
             // 直前の差分が recorder の準備を終えてから次の差分を適用する。
             // provider の取得中に重複化の差分が追い越すと、古い予約の録画タイマーが復活する。
-            this.recordingUpdateQueue = this.recordingUpdateQueue
-                .then(() => this.recordingManage.update(diff))
-                .catch(err => {
-                    this.log.system.error('recording reservation update error');
-                    this.log.system.error(err);
-                });
+            this.recordingUpdateQueue = this.recordingUpdateQueue.then(async () => {
+                const { delete: deletes, ...timerDiff } = diff;
+                if (
+                    (typeof timerDiff.insert !== 'undefined' && timerDiff.insert.length > 0) ||
+                    (typeof timerDiff.update !== 'undefined' && timerDiff.update.length > 0)
+                ) {
+                    await this.recordingManage.update(timerDiff).catch(err => {
+                        this.log.system.error('recording reservation update error');
+                        this.log.system.error(err);
+                    });
+                }
+
+                // cancel() は録画中の終了待ちを含む。予約差分の順序を保つため、
+                // キュー内でキャンセル開始までは行い、完了待ちはキュー外へ出す。
+                for (const reserve of deletes ?? []) {
+                    void this.recordingManage.update({ ...diff, delete: [reserve], insert: undefined, update: undefined }).catch(
+                        err => {
+                            this.log.system.error('recording reservation update error');
+                            this.log.system.error(err);
+                        },
+                    );
+                }
+            }).catch(err => {
+                this.log.system.error('recording reservation update error');
+                this.log.system.error(err);
+            });
 
             // コマンド実行
             this.externalCommandManage.addUpdateReseves(diff);
@@ -324,25 +340,22 @@ export default class EventSetter implements IEventSetter {
                     await this.reservationManage.cancel(reserve.id).catch(() => {});
                     if (
                         reserve.ruleId === null &&
-                        shouldSaveRecordedHistory(reserve, isNeedDeleteReservation) &&
+                        shouldSaveRecordedHistory(
+                            reserve,
+                            isNeedDeleteReservation,
+                            (recorded.recordingStatus as RecordingResultStatus | null) ?? 'completed',
+                        ) &&
                         reserve.shortName !== null
                     ) {
-                        try {
-                            const ruleIds = await this.reserveDB.findRuleIdsByChannelAndShortName(
-                                reserve.channelId,
-                                reserve.shortName,
-                            );
-                            for (const ruleId of ruleIds) {
-                                await this.reservationManage.updateRule(ruleId);
-                            }
-                        } catch (err) {
-                            this.log.system.error('manual recording duplicate reevaluation error');
-                            this.log.system.error(err);
-                        }
+                        void this.reevaluateRulesAfterRecording(reserve.channelId, reserve.shortName);
                     }
                 } else {
-                    // 重複を更新するために予約更新
-                    this.reservationManage.updateRule(reserve.ruleId).catch(() => {});
+                    if (reserve.isEventRelay !== true && reserve.shortName !== null) {
+                        void this.reevaluateRulesAfterRecording(reserve.channelId, reserve.shortName, reserve.ruleId);
+                    } else {
+                        // 重複を更新するために予約更新
+                        void this.updateRuleAfterRecording(reserve.ruleId);
+                    }
                 }
             }
 
@@ -538,6 +551,32 @@ export default class EventSetter implements IEventSetter {
         this.encodeEvent.setFinishEncode(info => {
             this.externalCommandManage.addEncodingFinishCmd(info);
         });
+    }
+
+    private async reevaluateRulesAfterRecording(
+        channelId: apid.ChannelId,
+        shortName: string,
+        alwaysRuleId?: apid.RuleId,
+    ): Promise<void> {
+        try {
+            if (alwaysRuleId === undefined) {
+                await this.reservationManage.updateRulesByChannelAndShortName(channelId, shortName);
+            } else {
+                await this.reservationManage.updateRulesByChannelAndShortName(channelId, shortName, [alwaysRuleId]);
+            }
+        } catch (err) {
+            this.log.system.error('recording duplicate reevaluation error');
+            this.log.system.error(err);
+        }
+    }
+
+    private async updateRuleAfterRecording(ruleId: apid.RuleId): Promise<void> {
+        try {
+            await this.reservationManage.updateRule(ruleId);
+        } catch (err) {
+            this.log.system.error(`recording duplicate reevaluation error. ruleId: ${ruleId}`);
+            this.log.system.error(err);
+        }
     }
 
     /** EIT[p/f] の時刻をDBへ反映し、通常の番組更新と同じ通知・予約追従を行う */

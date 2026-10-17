@@ -20,6 +20,14 @@ const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const NAME = '重複除外検証 第1話';
 
+async function waitUntil(predicate) {
+    for (let i = 0; i < 400; i++) {
+        if (await predicate()) return;
+        await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    throw new Error('timeout waiting for condition');
+}
+
 async function makeHarness(scheduler, periodToAvoidDuplicate, t, otherRuleFirst = false) {
     t.mock.timers.enable({ apis: ['Date'], now: NOW });
     const source = new DataSource({
@@ -104,7 +112,7 @@ async function makeHarness(scheduler, periodToAvoidDuplicate, t, otherRuleFirst 
         assert.equal(rows.length, 1, `rule ${id}, program ${programId} の予約は1件`);
         return rows[0];
     };
-    return { source, model, ruleId, ruleDB, reserveDB, addOtherRule, earlierOtherRuleId,
+    return { source, model, ruleId, ruleDB, reserveDB, programDB, errors, addOtherRule, earlierOtherRuleId,
         getRuleReserve, addProgram, addHistory, getReserve, events, assertRuleUnchanged };
 }
 
@@ -278,6 +286,101 @@ for (const scheduler of ['planner', 'legacy']) {
 
 
 for (const scheduler of ['planner', 'legacy']) {
+    for (const otherFirst of [false, true]) {
+        test(`${scheduler}: updateAll は先行済みの関連ルールだけを後段で再評価する (${otherFirst ? 'B先行' : 'A先行'})`, async t => {
+            const h = await makeHarness(scheduler, 7, t, otherFirst);
+            const otherId = h.earlierOtherRuleId ?? await h.addOtherRule();
+            await h.addHistory();
+            const calls = new Map();
+            const originalFindRuleId = h.reserveDB.findRuleId.bind(h.reserveDB);
+            h.reserveDB.findRuleId = async option => {
+                calls.set(option.ruleId, (calls.get(option.ruleId) ?? 0) + 1);
+                return originalFindRuleId(option);
+            };
+            await h.model.updateAll();
+            assert.equal(calls.get(h.ruleId), 1, '波及元 A は1回評価');
+            assert.equal(calls.get(otherId), otherFirst ? 2 : 1,
+                otherFirst ? '先に評価した B のみ A の変更後に再評価' : '後続 B は A の結果を同じ周回で読む');
+            assert.equal((await h.getRuleReserve(otherId)).isOverlap, true);
+            await h.assertRuleUnchanged();
+        });
+    }
+
+    test(`${scheduler}: 録画完了時は予約行がない同局・同名ルールも検索して再評価する`, async t => {
+        const h = await makeHarness(scheduler, 7, t);
+        await h.addHistory();
+        assert.deepEqual(await h.reserveDB.findProgramIds([1]), [], '再評価前は予約行がない');
+        const program = await h.source.getRepository(Program).findOneByOrFail({ id: 1 });
+        await h.model.updateRulesByChannelAndShortName(program.channelId, program.shortName);
+        assert.equal((await h.getRuleReserve(h.ruleId)).isOverlap, true);
+        await h.assertRuleUnchanged();
+    });
+
+    test(`${scheduler}: 同名番組が検索結果になくても録画元ルールを再評価する`, async t => {
+        const h = await makeHarness(scheduler, 7, t);
+        const program = await h.source.getRepository(Program).findOneByOrFail({ id: 1 });
+        program.endAt = NOW - HOUR;
+        await h.source.getRepository(Program).save(program);
+        const reevaluated = [];
+        h.model.updateRule = async ruleId => { reevaluated.push(ruleId); };
+        await h.model.updateRulesByChannelAndShortName(program.channelId, program.shortName, [h.ruleId]);
+        assert.deepEqual(reevaluated, [h.ruleId]);
+    });
+
+    test(`${scheduler}: 同名一致した録画元ルールは1回だけ再評価する`, async t => {
+        const h = await makeHarness(scheduler, 7, t);
+        const program = await h.source.getRepository(Program).findOneByOrFail({ id: 1 });
+        const reevaluated = [];
+        h.model.updateRule = async ruleId => { reevaluated.push(ruleId); };
+        await h.model.updateRulesByChannelAndShortName(program.channelId, program.shortName, [h.ruleId]);
+        assert.deepEqual(reevaluated, [h.ruleId]);
+    });
+
+    test(`${scheduler}: 局候補の DB 検索は明示的な別局ルールを除外する`, async t => {
+        const h = await makeHarness(scheduler, 7, t);
+        const localId = await h.ruleDB.insertOnce({
+            isTimeSpecification: false,
+            searchOption: { keyword: '重複除外検証', name: true, channelIds: [1] },
+            reserveOption: { enable: true, avoidDuplicate: false },
+        });
+        const otherId = await h.ruleDB.insertOnce({
+            isTimeSpecification: false,
+            searchOption: { keyword: '重複除外検証', name: true, channelIds: [11] },
+            reserveOption: { enable: true, avoidDuplicate: false },
+        });
+        const candidates = await h.ruleDB.findCandidateIdsByChannelId(1);
+        assert.ok(candidates.includes(h.ruleId), '局指定なしは候補に含める');
+        assert.ok(candidates.includes(localId), '対象局の明示指定を含める');
+        assert.equal(candidates.includes(otherId), false, '局 ID の部分一致を避けて別局を除外する');
+    });
+
+    test(`${scheduler}: updateAll は各ルールの番組検索結果を実行中だけ共有する`, async t => {
+        const h = await makeHarness(scheduler, 7, t);
+        await h.addOtherRule();
+        let findRuleCount = 0;
+        const originalFindRule = h.programDB.findRule.bind(h.programDB);
+        h.programDB.findRule = async option => {
+            findRuleCount++;
+            return originalFindRule(option);
+        };
+        await h.model.updateAll();
+        assert.equal(findRuleCount, 2, '2ルール各1回。波及元としての再検索をしない');
+        await h.model.updateAll();
+        assert.equal(findRuleCount, 4, '次の updateAll では新しいキャッシュを作る');
+    });
+
+    test(`${scheduler}: 重複解除は関連ルール再評価が失敗しても成功を返す`, async t => {
+        const h = await makeHarness(scheduler, 7, t);
+        const otherId = await h.addOtherRule();
+        await h.addHistory();
+        await h.model.updateAll();
+        const reserve = await h.getRuleReserve(otherId);
+        h.programDB.findRule = async () => { throw new Error('synthetic findRule failure'); };
+        await assert.doesNotReject(h.model.removeOverlap(reserve.id));
+        assert.equal((await h.reserveDB.findId(reserve.id)).isIgnoreOverlap, true);
+        assert.ok(h.errors.length > 0, '関連再評価失敗をログへ残す');
+    });
+
     test(`${scheduler}: 手動録画完了イベントで同局同名ルールを即時に再評価する`, async t => {
         const h = await makeHarness(scheduler, 7, t);
         await h.addProgram(2, { channelId: 2, channel: 'GR-2' });
@@ -311,6 +414,7 @@ for (const scheduler of ['planner', 'legacy']) {
             id: 99, name: NAME, channelId: 1, startAt: manual.startAt,
             endAt: manual.endAt, recordingStatus: 'completed',
         }, true);
+        await waitUntil(async () => (await h.getReserve()).isOverlap === true);
         assert.equal(await h.reserveDB.findId(manual.id), null, '終了した手動予約は削除する');
         assert.equal((await h.getReserve()).id, before.id);
         assert.equal((await h.getReserve()).isOverlap, true, '周期 updateAll を呼ばず再放送を重複にする');

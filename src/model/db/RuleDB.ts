@@ -705,4 +705,28 @@ export default class RuleDB implements IRuleDB {
             return r.id;
         });
     }
+
+    /** 指定局に一致しうる通常ルールの ID を DB 側で絞り込む。 */
+    public async findCandidateIdsByChannelId(channelId: apid.ChannelId): Promise<apid.RuleId[]> {
+        const connection = await this.op.getConnection();
+        const id = String(channelId);
+        const queryBuilder = connection
+            .createQueryBuilder()
+            .select('rule.id', 'id')
+            .from(Rule, 'rule')
+            .where('rule.isTimeSpecification = :isTimeSpecification', { isTimeSpecification: false })
+            .andWhere('rule.enable = :enable', { enable: true })
+            .andWhere(
+                '(rule.channelIds IS NULL OR rule.channelIds = :exact OR rule.channelIds LIKE :first OR rule.channelIds LIKE :middle OR rule.channelIds LIKE :last)',
+                {
+                    exact: `[${id}]`,
+                    first: `[${id},%`,
+                    middle: `%,${id},%`,
+                    last: `%,${id}]`,
+                },
+            )
+            .orderBy('rule.id', 'ASC');
+        const result = await this.promieRetry.run(() => queryBuilder.getRawMany());
+        return result.map((row: { id: number }) => row.id);
+    }
 }

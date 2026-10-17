@@ -24,13 +24,19 @@ test('途中で切れた録画・理由不明は番組が続いているため�
 const programReserve = { programId: 10, isTimeSpecified: false, isEventRelay: false };
 
 test('番組指定録画は手動・ルールの両方で履歴へ保存する', () => {
-    assert.equal(shouldSaveRecordedHistory({ ...programReserve, ruleId: null }, true), true);
-    assert.equal(shouldSaveRecordedHistory({ ...programReserve, ruleId: 1 }, true), true);
+    assert.equal(shouldSaveRecordedHistory({ ...programReserve, ruleId: null }, true, 'completed'), true);
+    assert.equal(shouldSaveRecordedHistory({ ...programReserve, ruleId: 1 }, true, 'completed'), true);
+});
+
+test('失敗録画は手動・ルールを問わず履歴へ保存せず、partial は既存どおり保存する', () => {
+    assert.equal(shouldSaveRecordedHistory({ ...programReserve, ruleId: null }, true, 'failed'), false);
+    assert.equal(shouldSaveRecordedHistory({ ...programReserve, ruleId: 1 }, true, 'failed'), false);
+    assert.equal(shouldSaveRecordedHistory({ ...programReserve, ruleId: null }, true, 'partial'), true);
 });
 
 test('時刻指定・イベントリレー・番組IDなし・継続する予約は履歴へ保存しない', () => {
-    assert.equal(shouldSaveRecordedHistory({ ...programReserve, isTimeSpecified: true }, true), false);
-    assert.equal(shouldSaveRecordedHistory({ ...programReserve, isEventRelay: true }, true), false);
-    assert.equal(shouldSaveRecordedHistory({ ...programReserve, programId: null }, true), false);
-    assert.equal(shouldSaveRecordedHistory(programReserve, false), false);
+    assert.equal(shouldSaveRecordedHistory({ ...programReserve, isTimeSpecified: true }, true, 'completed'), false);
+    assert.equal(shouldSaveRecordedHistory({ ...programReserve, isEventRelay: true }, true, 'completed'), false);
+    assert.equal(shouldSaveRecordedHistory({ ...programReserve, programId: null }, true, 'completed'), false);
+    assert.equal(shouldSaveRecordedHistory(programReserve, false, 'completed'), false);
 });

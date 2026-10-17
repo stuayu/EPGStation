@@ -32,20 +32,21 @@ test('録画管理の予約差分は前のprovider準備が完了するまで次
     const started = deferred();
     const calls = [];
     const harness = createSetter(async diff => {
-        calls.push(diff);
-        if (diff.id === 1) {
+        const id = diff.update[0].id;
+        calls.push(id);
+        if (id === 1) {
             started.resolve();
             await first.promise;
         }
     });
-    harness.onUpdated({ id: 1, isOverlap: false });
+    harness.onUpdated({ update: [{ id: 1, isOverlap: false }] });
     await started.promise;
-    harness.onUpdated({ id: 2, isOverlap: true });
+    harness.onUpdated({ update: [{ id: 2, isOverlap: true }] });
     await Promise.resolve();
-    assert.deepEqual(calls, [{ id: 1, isOverlap: false }]);
+    assert.deepEqual(calls, [1]);
     first.resolve();
     await harness.setter.recordingUpdateQueue;
-    assert.deepEqual(calls, [{ id: 1, isOverlap: false }, { id: 2, isOverlap: true }]);
+    assert.deepEqual(calls, [1, 2]);
 });
 
 test('予約差分の適用失敗はログへ記録し、次の差分を続ける', async () => {
@@ -54,17 +55,41 @@ test('予約差分の適用失敗はログへ記録し、次の差分を続け�
     const calls = [];
     const failure = new Error('provider failed');
     const harness = createSetter(async diff => {
-        calls.push(diff.id);
-        if (diff.id === 1) {
+        const id = diff.update[0].id;
+        calls.push(id);
+        if (id === 1) {
             started.resolve();
             await first.promise;
         }
     });
-    harness.onUpdated({ id: 1 });
+    harness.onUpdated({ update: [{ id: 1 }] });
     await started.promise;
-    harness.onUpdated({ id: 2 });
+    harness.onUpdated({ update: [{ id: 2 }] });
     first.reject(failure);
     await harness.setter.recordingUpdateQueue;
     assert.deepEqual(calls, [1, 2]);
     assert.deepEqual(harness.errors, ['recording reservation update error', failure]);
+});
+
+test('録画終了待ちのcancel完了を待たず、後続の予約タイマー差分を適用する', async () => {
+    const cancelStarted = deferred();
+    const finishCancel = deferred();
+    const calls = [];
+    const harness = createSetter(async diff => {
+        if (diff.delete) {
+            calls.push(`delete:${diff.delete[0].id}`);
+            cancelStarted.resolve();
+            await finishCancel.promise;
+            return;
+        }
+        calls.push(`update:${diff.update?.[0]?.id}`);
+    });
+
+    harness.onUpdated({ delete: [{ id: 1 }] });
+    await cancelStarted.promise;
+    harness.onUpdated({ update: [{ id: 2, isOverlap: false }] });
+    await harness.setter.recordingUpdateQueue;
+
+    assert.deepEqual(calls, ['delete:1', 'update:2']);
+    finishCancel.resolve();
 });
