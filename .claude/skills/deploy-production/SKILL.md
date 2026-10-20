@@ -29,13 +29,13 @@ SSH 経由の `cmd` は日本語が cp932 で化け、引用符も壊れる。**
 
 ```bash
 PS=$(cat <<'EOF'
-Set-Location "C:\DTV\EPGStation"
+Set-Location "<EPGStation のインストール先>"
 git pull --ff-only 2>&1 | Select-Object -Last 5
 npm run build 2>&1 | Select-Object -Last 10
 EOF
 )
 B=$(printf '%s' "$PS" | iconv -f UTF-8 -t UTF-16LE | base64)
-ssh ayumu@<host> "powershell -NoProfile -EncodedCommand $B"
+ssh <user>@<host> "powershell -NoProfile -EncodedCommand $B"
 ```
 
 - **`tail` / `head` は無い**。`Select-Object -Last N` / `-First N` を使う

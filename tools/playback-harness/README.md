@@ -89,35 +89,35 @@ node tools/playback-harness/run.js offline-records --input-ts /path/to/recorded.
 node tools/playback-harness/run.js original-hevc --input-ts recorded/hevc_tsreplace.ts --seek-seconds 300
 node tools/playback-harness/run.js original-hevc --input-ts recorded/hevc_tsreplace.ts --seek-seconds 300 --without-subtitles
 node tools/playback-harness/run.js original-hevc --input-ts recorded/hevc_tsreplace.ts --seek-seconds 300 --offline
-EPGSTATION_BASE_URL='https://fuku-epgs.stuayu.com' node tools/playback-harness/run.js hevc-dual-audio --video-file-id 34331
-EPGSTATION_BASE_URL='https://fuku-epgs.stuayu.com' node tools/playback-harness/run.js hevc-dual-audio --video-file-id 34334
+EPGSTATION_BASE_URL='https://<server-host>' node tools/playback-harness/run.js hevc-dual-audio --video-file-id <videoFileId>
+EPGSTATION_BASE_URL='https://<server-host>' node tools/playback-harness/run.js hevc-dual-audio --video-file-id <videoFileId>
 EPGSTATION_BASE_URL=http://127.0.0.1:8888 node tools/playback-harness/run.js offline-app --profile-dir /path/to/profile
 
-E2E_NODE_PATH=/private/tmp/claude-501/-Users-ayumu-prog-EPGStation/be903643-1d1e-4bc5-93ec-462a0c4c7ebc/scratchpad/e2e/node_modules
+E2E_NODE_PATH=/path/to/playwright/node_modules
 NODE_PATH="$E2E_NODE_PATH" EPGSTATION_BASE_URL="$BASE" node tools/playback-harness/run.js ui-original-flow \
-  --recorded-id 16526 --video-file-id 31017 --file-label TS --browser chromium \
+  --recorded-id <recordedId> --video-file-id <videoFileId> --file-label TS --browser chromium \
   --streaming-type original --profile original-mpeg2 --quality 'オリジナル (MPEG-2・端末で変換)'
 
 NODE_PATH="$E2E_NODE_PATH" EPGSTATION_BASE_URL="$BASE" node tools/playback-harness/run.js watch-history-flow \
-  --recorded-id 16526 --video-file-id 31017 --browser chromium \
+  --recorded-id <recordedId> --video-file-id <videoFileId> --browser chromium \
   --profile original-mpeg2 --quality 'オリジナル (MPEG-2・端末で変換)'
 
 NODE_PATH="$E2E_NODE_PATH" EPGSTATION_BASE_URL="$BASE" node tools/playback-harness/run.js container-switch \
-  --recorded-id 16526 --video-file-id 31017 --browser chromium
+  --recorded-id <recordedId> --video-file-id <videoFileId> --browser chromium
 
 NODE_PATH="$E2E_NODE_PATH" EPGSTATION_BASE_URL="$BASE" node tools/playback-harness/run.js live-original \
-  --channel-id 3241621504 --mode 0 --duration 60 --interval 4 --browser chromium
+  --channel-id <channelId> --mode 0 --duration 60 --interval 4 --browser chromium
 
 NODE_PATH="$E2E_NODE_PATH" EPGSTATION_BASE_URL="$BASE" node tools/playback-harness/run.js offline-hevc \
-  --recorded-id 16525 --video-file-id 31019 --file-label HEVC_tsreplace --browser webkit \
+  --recorded-id <recordedId> --video-file-id <videoFileId> --file-label HEVC_tsreplace --browser webkit \
   --profile original-hevc --quality 'オリジナル (HEVC・無変換)'
 
 NODE_PATH="$E2E_NODE_PATH" EPGSTATION_BASE_URL="$BASE" node tools/playback-harness/run.js subtitle \
-  --video-file-id 31017 --recorded-id 16526 --streaming-type original --mode 0 \
+  --video-file-id <videoFileId> --recorded-id <recordedId> --streaming-type original --mode 0 \
   --profile original-mpeg2 --ss 300 --browser chromium
 
 NODE_PATH="$E2E_NODE_PATH" EPGSTATION_BASE_URL="$BASE" node tools/playback-harness/run.js subtitle \
-  --video-file-id 31019 --recorded-id 16525 --streaming-type original --mode 0 \
+  --video-file-id <videoFileId> --recorded-id <recordedId> --streaming-type original --mode 0 \
   --profile original-hevc --ss 300 --browser webkit
 
 NODE_PATH="$E2E_NODE_PATH" EPGSTATION_BASE_URL="$BASE" node tools/playback-harness/run.js subtitle \
