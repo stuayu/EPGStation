@@ -166,6 +166,23 @@ namespace DPlayerEnhancer {
         }
     };
 
+    /** 指定 DPlayer 個体の字幕・文字スーパー renderer を停止する。 */
+    export const hideAribb24Renderers = (dp: any): void => {
+        for (const renderer of [dp?.plugins?.aribb24Caption, dp?.plugins?.aribb24Superimpose]) {
+            hideAribb24Renderer(renderer);
+        }
+    };
+
+    /** 指定 renderer を停止する。遅延破棄で新旧 renderer が同一 DPlayer に属する場合にも使う。 */
+    export const hideAribb24Renderer = (renderer: any): void => {
+        if (renderer === null || typeof renderer === 'undefined' || typeof renderer.hide !== 'function') return;
+        try {
+            renderer.hide();
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
     /** DPlayer の音声項目を現在値に合わせ、選択中を必ず1つだけにする。 */
     const syncAudioCurrentItems = (panel: HTMLElement, option: AudioTrackSwitchOption): void => {
         const items = Array.from(panel.querySelectorAll<HTMLElement>('.dplayer-setting-audio-item'));

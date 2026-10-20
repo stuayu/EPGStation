@@ -265,6 +265,56 @@
 
                         <v-list-item three-line>
                             <div class="v-list-item-content">
+                                <div class="title">データ放送</div>
+                                <div class="my-2">
+                                    <v-list-item-title class="text-subtitle-1">受信機設定</v-list-item-title>
+                                    <v-list-item-subtitle>この端末のブラウザーだけに保存されます</v-list-item-subtitle>
+                                </div>
+                                <div class="d-flex flex-wrap ga-3">
+                                    <v-text-field
+                                        v-model="receiverZipcode"
+                                        label="郵便番号"
+                                        hint="ハイフンなし 7 桁"
+                                        maxlength="7"
+                                        inputmode="numeric"
+                                        class="flex-grow-1"
+                                        @change="saveReceiverInfo"
+                                    ></v-text-field>
+                                    <v-select
+                                        v-model="receiverPrefecture"
+                                        :items="prefectureItems"
+                                        label="都道府県"
+                                        class="flex-grow-1"
+                                        @update:model-value="saveReceiverInfo"
+                                    ></v-select>
+                                    <v-text-field
+                                        v-model="receiverRegionCode"
+                                        label="地域コード"
+                                        hint="16 進数 4 桁"
+                                        maxlength="4"
+                                        class="flex-grow-1"
+                                        @change="saveReceiverInfo"
+                                    ></v-text-field>
+                                </div>
+                                <v-btn variant="text" color="error" @click="showClearNvramDialog = true">データ放送の保存データを消去</v-btn>
+                                <v-dialog v-model="showClearNvramDialog" max-width="420" scrollable>
+                                    <v-card>
+                                        <v-card-title>保存データを消去</v-card-title>
+                                        <v-card-text>この端末に保存されたデータ放送のデータを消去します。受信機設定も初期化されます。</v-card-text>
+                                        <v-card-actions class="flex-wrap">
+                                            <v-spacer></v-spacer>
+                                            <v-btn variant="text" @click="showClearNvramDialog = false">キャンセル</v-btn>
+                                            <v-btn color="error" @click="clearNvram">消去</v-btn>
+                                        </v-card-actions>
+                                    </v-card>
+                                </v-dialog>
+                            </div>
+                        </v-list-item>
+
+                        <v-divider></v-divider>
+
+                        <v-list-item three-line>
+                            <div class="v-list-item-content">
                                 <div class="title">予約</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
@@ -612,6 +662,7 @@ import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import ISystemSettingApiModel from '@/model/api/config/ISystemSettingApiModel';
 import CustomStreamPresetEditor, { CustomPresetForm } from '@/components/settings/CustomStreamPresetEditor.vue';
 import { clearClientCapabilitiesCache, ClientCapabilities, getClientCapabilities } from '@/util/ClientCapabilityUtil';
+import { decodeReceiverInfoValue, encodeReceiverInfoValue, receiverInfoStorageKeys } from '../../../src/util/ReceiverInfoNvram';
 
 interface GuideModeItem {
     title: string;
@@ -646,6 +697,59 @@ class Settings extends Vue {
     private systemSettingApi: ISystemSettingApiModel = container.get<ISystemSettingApiModel>('ISystemSettingApiModel');
     public clientCapabilities: ClientCapabilities | null = null;
     public clientCapabilitiesLoading = false;
+    public receiverZipcode = '';
+    public receiverPrefecture: number | null = null;
+    public receiverRegionCode = '0000';
+    public showClearNvramDialog = false;
+    public prefectureItems = [
+        '北海道',
+        '青森県',
+        '岩手県',
+        '宮城県',
+        '秋田県',
+        '山形県',
+        '福島県',
+        '茨城県',
+        '栃木県',
+        '群馬県',
+        '埼玉県',
+        '千葉県',
+        '東京都',
+        '神奈川県',
+        '新潟県',
+        '富山県',
+        '石川県',
+        '福井県',
+        '山梨県',
+        '長野県',
+        '岐阜県',
+        '静岡県',
+        '愛知県',
+        '三重県',
+        '滋賀県',
+        '京都府',
+        '大阪府',
+        '兵庫県',
+        '奈良県',
+        '和歌山県',
+        '鳥取県',
+        '島根県',
+        '岡山県',
+        '広島県',
+        '山口県',
+        '徳島県',
+        '香川県',
+        '愛媛県',
+        '高知県',
+        '福岡県',
+        '佐賀県',
+        '長崎県',
+        '熊本県',
+        '大分県',
+        '宮崎県',
+        '鹿児島県',
+        '沖縄県',
+    ].map((title, index) => ({ title, value: index + 1 }));
 
     private navigationState: INavigationState = container.get<INavigationState>('INavigationState');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
@@ -879,6 +983,7 @@ class Settings extends Vue {
     }
 
     public created(): void {
+        this.loadReceiverInfo();
         this.isForceDarkTheme = this.colorThemeState.isTmpDarkTheme();
 
         for (let i = 1; i <= 24; i++) {
@@ -910,6 +1015,40 @@ class Settings extends Vue {
         // 上の isForceDarkTheme の代入で tmp が動くため、その後に控える
         // (OS テーマ連動時は保存値と実際のテーマが食い違い、常に未保存扱いになってしまう)
         this.updateSavedSnapshot();
+    }
+
+    private loadReceiverInfo(): void {
+        const read = (key: string, size: number, fallback: string): string => {
+            try {
+                return decodeReceiverInfoValue(window.localStorage.getItem(key), size, fallback);
+            } catch {
+                return fallback;
+            }
+        };
+        this.receiverZipcode = read(receiverInfoStorageKeys.zipcode, 7, '').replace(/\0/g, '');
+        this.receiverPrefecture = Number(read(receiverInfoStorageKeys.prefecture, 1, String.fromCharCode(255)).charCodeAt(0));
+        if (this.receiverPrefecture === 255) this.receiverPrefecture = null;
+        this.receiverRegionCode = Array.from(read(receiverInfoStorageKeys.regioncode, 2, '\0\0'), char => char.charCodeAt(0).toString(16).padStart(2, '0'))
+            .join('')
+            .toUpperCase();
+    }
+
+    public saveReceiverInfo(): void {
+        if (/^\d{7}$/.test(this.receiverZipcode)) window.localStorage.setItem(receiverInfoStorageKeys.zipcode, encodeReceiverInfoValue(this.receiverZipcode, 7));
+        else window.localStorage.removeItem(receiverInfoStorageKeys.zipcode);
+        if (this.receiverPrefecture !== null)
+            window.localStorage.setItem(receiverInfoStorageKeys.prefecture, encodeReceiverInfoValue(String.fromCharCode(this.receiverPrefecture), 1));
+        else window.localStorage.removeItem(receiverInfoStorageKeys.prefecture);
+        if (/^[0-9a-fA-F]{4}$/.test(this.receiverRegionCode)) {
+            const bytes = String.fromCharCode(Number.parseInt(this.receiverRegionCode.slice(0, 2), 16), Number.parseInt(this.receiverRegionCode.slice(2), 16));
+            window.localStorage.setItem(receiverInfoStorageKeys.regioncode, encodeReceiverInfoValue(bytes, 2));
+        }
+    }
+
+    public clearNvram(): void {
+        for (const key of Object.keys(window.localStorage)) if (key.startsWith('nvram_')) window.localStorage.removeItem(key);
+        this.showClearNvramDialog = false;
+        this.loadReceiverInfo();
     }
 
     public mounted(): void {

@@ -796,6 +796,8 @@ encoded の mp4 / webm はファイルを直接入力する方式で、従来ど
 
 ## データ放送の録画再生時刻
 
+BML 表示で DPlayer の video / canvas 要素を移動するときは各要素の移動前 `style` 属性を保存し、`invisible` 切替と破棄の両方で復元する。プレイヤー破棄開始時は旧 ARIB 字幕・文字スーパー renderer を `hide()` し、画質切替で保持された旧 renderer も旧個体だけ停止する。
+
 録画用のデータ放送 WebSocket は録画 TS を `decodeTS` へ先読みするため、WebSocket から届く `currentTime` は視聴者の再生位置ではない。録画再生では、メタデータ API の `startAt` (録画ファイル先頭の放送時刻) に DPlayer の動画全体の再生位置を加算し、BMLBrowser の `currentTime` をクライアントから 250 ms 間隔で更新する。timeupdate、play、pause、seeking、seeked でも即時更新する。ライブは TS の TDT/TOT を従来どおり使う。
 
 停止中も更新を続けるのは、BMLBrowser が最後の currentTime と受信した PCR の差を補間するため。録画 TS の先読みで PCR が進んでも、再生位置の時刻を再注入して時計が実時間やエンコード位置へ進まないようにする。

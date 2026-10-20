@@ -90,11 +90,13 @@ test('DPlayer 1.33 の reset は mediaBackendDestroy を1回だけ実行し、�
 test('DPlayer 1.33 の defer は旧 callback を canplay 後まで保持し、新 backend を破棄しない', () => {
     const oldPlayer = { unload: 0, detach: 0, destroy: 0 };
     const newPlayer = { unload: 0, detach: 0, destroy: 0 };
-    const oldCaption = { dispose: 0 };
-    const newCaption = { dispose: 0 };
+    const oldCaption = { dispose: 0, hide: () => events.push('hide-old') };
+    const newCaption = { dispose: 0, hide: () => events.push('hide-new') };
+    const events = [];
     const dplayer = {
         plugins: { mpegts: oldPlayer, aribb24Caption: oldCaption },
         mediaBackendDestroy: () => {
+            events.push('destroy');
             dplayer.plugins.aribb24Caption?.dispose === undefined || dplayer.plugins.aribb24Caption.dispose++;
             dplayer.plugins.mpegts?.unload === undefined || dplayer.plugins.mpegts.unload++;
             dplayer.plugins.mpegts?.detach === undefined || dplayer.plugins.mpegts.detach++;
@@ -118,6 +120,7 @@ test('DPlayer 1.33 の defer は旧 callback を canplay 後まで保持し、�
     assert.deepEqual([oldPlayer.unload, oldPlayer.detach, oldPlayer.destroy, oldCaption.dispose], [0, 0, 0, 0]);
 
     destroyDeferredDPlayerMediaBackend(dplayer, oldDestroy, { mpegts: oldPlayer, aribb24Caption: oldCaption });
+    assert.deepEqual(events, ['hide-old', 'destroy']);
     assert.deepEqual([oldPlayer.unload, oldPlayer.detach, oldPlayer.destroy, oldCaption.dispose], [1, 1, 1, 1]);
     assert.deepEqual([newPlayer.unload, newPlayer.detach, newPlayer.destroy, newCaption.dispose], [0, 0, 0, 0]);
     assert.equal(dplayer.plugins.mpegts, newPlayer);

@@ -114,6 +114,22 @@ export const destroyDeferredDPlayerMediaBackend = (
 ): void => {
     if (destroy === null) return;
 
+    // 遅延破棄では旧 renderer を先に止める。plugin map の差し替え前なので新 renderer に触れない。
+    for (const renderer of [previousPlugins.aribb24Caption, previousPlugins.aribb24Superimpose]) {
+        if (
+            renderer === null ||
+            typeof renderer !== 'object' ||
+            !('hide' in renderer) ||
+            typeof renderer.hide !== 'function'
+        )
+            continue;
+        try {
+            renderer.hide();
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
     const plugins = dplayer.plugins;
     if (typeof plugins === 'undefined') {
         destroy();
