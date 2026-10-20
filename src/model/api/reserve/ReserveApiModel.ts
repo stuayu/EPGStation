@@ -1,6 +1,12 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
 import Reserve from '../../../db/entities/Reserve';
+import Program from '../../../db/entities/Program';
+import IConfiguration from '../../IConfiguration';
+import IProgramDB from '../../db/IProgramDB';
+import { resolveEndAt } from '../../../util/ProgramDuration';
+import { estimateRecordingBytes, resolveStorageFallbackConfig } from '../../operator/recording/RecordedDirCapacity';
+import { resolveRecordingTimingConfig } from '../../operator/recording/RecordingTimingConfig';
 import IReserveDB from '../../db/IReserveDB';
 import IIPCClient from '../../ipc/IIPCClient';
 import IReserveApiModel from './IReserveApiModel';
@@ -9,10 +15,19 @@ import IReserveApiModel from './IReserveApiModel';
 export default class ReserveApiModel implements IReserveApiModel {
     private ipc: IIPCClient;
     private reserveDB: IReserveDB;
+    private configuration: IConfiguration;
+    private programDB: IProgramDB;
 
-    constructor(@inject('IIPCClient') ipc: IIPCClient, @inject('IReserveDB') reserveDB: IReserveDB) {
+    constructor(
+        @inject('IIPCClient') ipc: IIPCClient,
+        @inject('IReserveDB') reserveDB: IReserveDB,
+        @inject('IConfiguration') configuration: IConfiguration,
+        @inject('IProgramDB') programDB: IProgramDB,
+    ) {
         this.ipc = ipc;
         this.reserveDB = reserveDB;
+        this.configuration = configuration;
+        this.programDB = programDB;
     }
 
     /**
@@ -43,7 +58,7 @@ export default class ReserveApiModel implements IReserveApiModel {
     public async get(reserveId: apid.ReserveId, isHalfWidth: boolean): Promise<apid.ReserveItem | null> {
         const reserve = await this.reserveDB.findId(reserveId);
 
-        return reserve === null ? null : this.toReserveItem(reserve, isHalfWidth);
+        return reserve === null ? null : await this.toReserveItem(reserve, isHalfWidth);
     }
 
     /**
@@ -53,11 +68,14 @@ export default class ReserveApiModel implements IReserveApiModel {
      */
     public async gets(option: apid.GetReserveOption): Promise<apid.Reserves> {
         const [reserves, total] = await this.reserveDB.findAll(option);
+        const programIds = [...new Set(reserves.map(r => r.programId).filter((id): id is number => id !== null))];
+        const programs = programIds.length > 0 ? await this.programDB.findIds(programIds) : [];
+        const programsById = new Map(programs.map(program => [program.id, program]));
 
         return {
-            reserves: reserves.map(r => {
-                return this.toReserveItem(r, option.isHalfWidth);
-            }),
+            reserves: await Promise.all(
+                reserves.map(r => this.toReserveItem(r, option.isHalfWidth, r.programId === null ? null : programsById.get(r.programId) ?? null)),
+            ),
             total,
         };
     }
@@ -68,7 +86,26 @@ export default class ReserveApiModel implements IReserveApiModel {
      * @param isHalfWidth: boolean 半角文字で返すか
      * @return ReserveItem
      */
-    private toReserveItem(reserve: Reserve, isHalfWidth: boolean): apid.ReserveItem {
+    private async toReserveItem(reserve: Reserve, isHalfWidth: boolean, knownProgram?: Program | null): Promise<apid.ReserveItem> {
+        const config = this.configuration.getConfig();
+        const program =
+            typeof knownProgram !== 'undefined'
+                ? knownProgram
+                : reserve.programId === null
+                  ? null
+                  : await this.programDB.findId(reserve.programId);
+        const effectiveEndAt = program === null ? reserve.endAt : resolveEndAt(reserve.startAt, program.duration);
+        const timing = resolveRecordingTimingConfig(
+            config.recording,
+            config.timeSpecifiedStartMargin,
+            config.timeSpecifiedEndMargin,
+            reserve,
+        );
+        const estimatedSize = estimateRecordingBytes(
+            Math.max(0, effectiveEndAt - reserve.startAt) + timing.startMarginMs + timing.endMarginMs,
+            reserve.channelType,
+            resolveStorageFallbackConfig(config.recording),
+        );
         const item: apid.ReserveItem = {
             id: reserve.id,
             isSkip: reserve.isSkip,
@@ -90,6 +127,7 @@ export default class ReserveApiModel implements IReserveApiModel {
             startAt: reserve.startAt,
             endAt: reserve.endAt,
             name: isHalfWidth ? reserve.halfWidthName : reserve.name,
+            estimatedSize: estimatedSize,
         };
 
         if (reserve.ruleId !== null) {

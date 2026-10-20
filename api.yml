@@ -1763,6 +1763,10 @@ components:
             properties:
                 id:
                     $ref: '#/components/schemas/ReserveId'
+                estimatedSize:
+                    description: 推定録画サイズ (byte)。録画設定の想定ビットレートと容量余裕を含む
+                    type: integer
+                    minimum: 0
                 ruleId:
                     $ref: '#/components/schemas/RuleId'
                 finishCommandName:
@@ -3669,6 +3673,17 @@ components:
                 total:
                     description: 総容量 (byte)
                     type: integer
+                reservedEstimatedSize:
+                    description: これから始まる予約で使う推定容量 (byte)
+                    type: integer
+                    minimum: 0
+                firstShortfallReserveId:
+                    $ref: '#/components/schemas/ReserveId'
+                firstShortfallReserveStartAt:
+                    $ref: '#/components/schemas/UnixtimeMS'
+                firstShortfallReserveName:
+                    description: 空き不足になる最初の予約の番組名
+                    type: string
 
         StorageInfo:
             description: ストレージ情報
