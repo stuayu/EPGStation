@@ -133,6 +133,13 @@ html.fix-address-bar, html.fix-address-bar2
 </style>
 
 <style lang="sass">
+// 独自ショートカットのために DPlayer の container をフォーカス可能にしている (BaseVideo.setupExtraHotkeys)。
+// クリックでフォーカスしたときに枠線を出さない
+.dplayer[tabindex='-1']:focus
+    outline: none
+</style>
+
+<style lang="sass">
 /**
  * データ放送 (BML) ブラウザのコンテナ。
  * DataBroadcastingManager (client/src/util/DataBroadcastingManager.ts) が DPlayer の

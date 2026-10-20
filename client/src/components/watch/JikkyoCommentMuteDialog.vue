@@ -32,7 +32,13 @@
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import container from '@/model/ModelContainer';
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
-import type { CommentKeywordMatch, CommentMuteSettings } from '@/util/CommentMuteUtil';
+import { mergeCommentMuteSettings, type CommentKeywordMatch, type CommentMuteSettings } from '@/util/CommentMuteUtil';
+
+/**
+ * ミュート設定を複製する。this.settings は Vue のリアクティブな Proxy なので structuredClone は使えない
+ * (DataCloneError で視聴画面ごと描画されなくなる)。値は JSON で表せるものだけなので JSON 経由で複製する
+ */
+const cloneMuteSettings = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 @Component({})
 class JikkyoCommentMuteDialog extends Vue {
@@ -49,6 +55,7 @@ class JikkyoCommentMuteDialog extends Vue {
         { title: '正規表現', value: 'regex' },
     ];
     private storage = container.get<ISettingStorageModel>('ISettingStorageModel');
+    private baseline: CommentMuteSettings = {};
     get dialogModel(): boolean {
         return this.modelValue;
     }
@@ -64,8 +71,12 @@ class JikkyoCommentMuteDialog extends Vue {
     @Watch('settings', { deep: true }) public onSettingsChanged(): void {
         this.save();
     }
+    @Watch('modelValue') public onDialogVisibilityChanged(value: boolean): void {
+        if (value === true) this.reload();
+    }
     public reload(): void {
-        this.settings = this.storage.tmp.jikkyoCommentMuteSettings;
+        this.settings = cloneMuteSettings(this.storage.tmp.jikkyoCommentMuteSettings);
+        this.baseline = cloneMuteSettings(this.settings);
         this.userIds = (this.settings.mutedUserIds ?? []).join(', ');
     }
     public saveUserIds(): void {
@@ -90,7 +101,11 @@ class JikkyoCommentMuteDialog extends Vue {
         return { partial: '部分一致', forward: '前方一致', backward: '後方一致', exact: '完全一致', regex: '正規表現' }[match];
     }
     private save(): void {
-        this.storage.tmp.jikkyoCommentMuteSettings = { ...this.settings };
+        const latest = this.storage.tmp.jikkyoCommentMuteSettings;
+        const merged = mergeCommentMuteSettings(this.baseline, this.settings, latest);
+        if (JSON.stringify(merged) !== JSON.stringify(this.settings)) this.settings = cloneMuteSettings(merged);
+        this.baseline = cloneMuteSettings(merged);
+        this.storage.tmp.jikkyoCommentMuteSettings = merged;
         this.storage.save();
         window.dispatchEvent(new Event('jikkyo-comment-mute-settings-updated'));
     }

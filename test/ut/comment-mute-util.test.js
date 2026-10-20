@@ -53,6 +53,9 @@ test('NFKCと大小文字・ハイフン類を正規化して照合する', () =
 test('固定・色・サイズ・露骨表現・差別表現・連続文字・絵文字のみをミュートする', () => {
     assert.equal(isMutedComment('hello', { muteFixed: true }, { position: 'ue' }), true);
     assert.equal(isMutedComment('hello', { muteColored: true }), false);
+    for (const color of ['#FFFFFF', '#FFEAEA', 'white', 'WHITE']) {
+        assert.equal(isMutedComment('hello', { muteColored: true }, { color }), false, color);
+    }
     assert.equal(isMutedComment('hello', { muteColored: true }, { color: '#ff0000' }), true);
     assert.equal(isMutedComment('hello', { muteBigSize: true }, { size: 'big' }), true);
     assert.equal(isMutedComment('セックス', { muteVulgar: true }), true);
@@ -60,6 +63,17 @@ test('固定・色・サイズ・露骨表現・差別表現・連続文字・�
     assert.equal(isMutedComment('ああああああああ', { muteConsecutiveCharacters: true }), true);
     assert.equal(isMutedComment('😀😃', { muteEmojiOnly: true }), true);
     assert.equal(isMutedComment('😀hello', { muteEmojiOnly: true }), false);
+});
+
+test('設定画面の変更を最新設定へ適用し、他経路の追加を保持する', () => {
+    const { mergeCommentMuteSettings } = require('../../dist/util/CommentMuteUtil');
+    const baseline = { mutedUserIds: ['a'], muteBigSize: false };
+    const edited = { mutedUserIds: ['a'], muteBigSize: true };
+    const latest = { mutedUserIds: ['a', 'b'], muteBigSize: false };
+    assert.deepEqual(mergeCommentMuteSettings(baseline, edited, latest), {
+        mutedUserIds: ['a', 'b'],
+        muteBigSize: true,
+    });
 });
 
 test('既定の特殊コマンドと統計迷惑コメントをミュートする', () => {

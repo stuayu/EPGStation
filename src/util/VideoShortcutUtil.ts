@@ -25,19 +25,33 @@ export const VIDEO_SHORTCUTS: VideoShortcut[] = [
 ];
 
 /** キーイベントが一覧にある操作かを判定する。処理側も一覧外のキーを受け付けない。 */
-export function isListedVideoShortcut(event: { key: string; ctrlKey: boolean; shiftKey: boolean }): boolean {
+export function isListedVideoShortcut(event: {
+    key: string;
+    ctrlKey: boolean;
+    shiftKey: boolean;
+    metaKey?: boolean;
+    altKey?: boolean;
+}): boolean {
+    if (event.metaKey === true || event.altKey === true) return false;
+    if (event.ctrlKey === true && !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key))
+        return false;
     let label = event.key;
     if (event.key.startsWith('Arrow')) {
         const horizontal = event.key === 'ArrowLeft' || event.key === 'ArrowRight';
+        if (event.ctrlKey === true && event.shiftKey === true) return false;
         if (event.ctrlKey === true) label = horizontal ? 'Ctrl + ← / →' : 'Ctrl + ↑ / ↓';
-        else if (event.shiftKey === true) label = 'Shift + ← / →';
+        else if (event.shiftKey === true) label = horizontal ? 'Shift + ← / →' : '';
         else label = horizontal ? '← / →' : '';
     } else if (event.key === ' ') label = 'Space';
     else if (event.key === 'C') label = 'Shift + C';
     else if (event.key === 'c') label = 'c';
-    else if (event.key.length === 1 && /[a-z]/i.test(event.key)) label = event.key.toUpperCase();
-    else if (event.key === '[' || event.key === ']') label = '[ / ]';
+    else if (event.key.length === 1 && /[a-z]/i.test(event.key)) {
+        const key = event.key.toLowerCase();
+        label = ['c', 'i'].includes(key) ? key : key.toUpperCase();
+        if (key === 'c' && event.shiftKey === true) label = 'Shift + C';
+    } else if (event.key === '[' || event.key === ']') label = '[ / ]';
     else if (event.key === '?') label = '?';
+    else if (event.key === '+' || event.key === '-') label = '+ / -';
     return VIDEO_SHORTCUTS.some(shortcut => shortcut.keys === label);
 }
 

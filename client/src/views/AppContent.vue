@@ -87,11 +87,11 @@ class AppContent extends Vue {
         this.snackbarState.open({ color: 'error', text: 'オフラインのため操作できません', timeout: 5000 });
     }
 
-    private onClientSettingsSynced = (): void => {
+    private onClientSettingsSynced(): void {
         ThemeColorUtil.apply(this.$vuetify.theme, this.colorThemeState.getThemeColor());
         this.$vuetify.theme.change(this.colorThemeState.isDarkTheme() ? 'dark' : 'light');
         this.snackbarState.open({ color: 'info', text: '他の端末で変えた設定を反映しました' });
-    };
+    }
 
     /**
      * Sokcet,IO 設定
@@ -221,6 +221,7 @@ class AppContent extends Vue {
         window.removeEventListener('offline', this.onBrowserOffline);
         window.removeEventListener('client-settings-synced', this.onClientSettingsSynced);
         window.removeEventListener('online', this.onBrowserOnline);
+        window.removeEventListener('offline-api-mutation-blocked', this.onOfflineMutationBlocked);
         this.serverStatusState.stopPolling();
 
         if (this.connectErrorTimerId !== null) {

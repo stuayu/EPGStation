@@ -125,7 +125,7 @@ class NextUpPanel extends Vue {
     private seriesApi = container.get<ISeriesApiModel>('ISeriesApiModel');
     private settingModel = container.get<ISettingStorageModel>('ISettingStorageModel');
 
-    private onKeydown = (e: KeyboardEvent): void => {
+    private onKeydown(e: KeyboardEvent): void {
         if (e.key !== 'n' && e.key !== 'N') return;
         const target = e.target as HTMLElement | null;
         if (target !== null) {
@@ -137,7 +137,7 @@ class NextUpPanel extends Vue {
             this.cancelCountdown();
             this.play(next);
         }
-    };
+    }
 
     get empty(): boolean {
         return (this.data?.latest.length ?? 0) === 0 && (this.data?.series.length ?? 0) === 0;
