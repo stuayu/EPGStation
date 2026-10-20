@@ -37,6 +37,7 @@ import JikkyoCommentMuteDialog from '@/components/watch/JikkyoCommentMuteDialog.
 import container from '@/model/ModelContainer';
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
 import { isMutedComment } from '@/util/CommentMuteUtil';
+import { isWhiteCommentColor } from '../../../../src/util/CommentColorUtil';
 
 /**
  * 右パネルの「コメント」タブの中身
@@ -55,9 +56,6 @@ class WatchPanelComments extends Vue {
 
     @Prop({ default: null })
     public errorMessage!: string | null;
-
-    // ライトモードで背景に埋もれてしまう白系の指定色
-    private static readonly WHITE_COLORS = ['#fff', '#ffffff', 'white', 'rgb(255, 255, 255)'];
 
     /**
      * 一番下に追従しているか (自分でスクロールを上げている間は自動追従しない)
@@ -120,7 +118,7 @@ class WatchPanelComments extends Vue {
             return comment.color;
         }
 
-        return WatchPanelComments.WHITE_COLORS.includes(comment.color.trim().toLowerCase()) === true ? undefined : comment.color;
+        return isWhiteCommentColor(comment.color) === true ? undefined : comment.color;
     }
 
     public onScroll(): void {

@@ -93,6 +93,7 @@ export function shouldMuteCompiledComment(
 }
 
 import { VULGAR_PATTERN, ABUSIVE_PATTERN } from './CommentMuteDictionary';
+import { isWhiteCommentColor } from './CommentColorUtil';
 const VULGAR_REGEX = new RegExp(VULGAR_PATTERN);
 const ABUSIVE_REGEX = new RegExp(ABUSIVE_PATTERN);
 const SPECIAL_COMMAND_PATTERN = /^\/[a-z][a-z0-9_-]*(?:\s|$)/;
@@ -121,12 +122,7 @@ export function isMutedComment(
     if (SPECIAL_COMMAND_PATTERN.test(comment) || STATISTICAL_PATTERN.test(comment)) return true;
     if (settings.muteFixed && ['top', 'bottom', 'ue', 'shita'].includes(position ?? '')) return true;
     // 色が省略されたコメントを色付き扱いしない (KonomiTV 8d6853f8)。
-    if (
-        settings.muteColored &&
-        color !== undefined &&
-        !['#FFFFFF', '#FFEAEA', 'WHITE'].includes(color.trim().toUpperCase())
-    )
-        return true;
+    if (settings.muteColored && color !== undefined && !isWhiteCommentColor(color)) return true;
     if (settings.muteBigSize && size === 'big') return true;
     if (settings.muteVulgar && VULGAR_REGEX.test(comment)) return true;
     if (settings.muteAbusive && ABUSIVE_REGEX.test(comment)) return true;

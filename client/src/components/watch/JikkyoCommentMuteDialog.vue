@@ -75,7 +75,7 @@ class JikkyoCommentMuteDialog extends Vue {
         if (value === true) this.reload();
     }
     public reload(): void {
-        this.settings = cloneMuteSettings(this.storage.tmp.jikkyoCommentMuteSettings);
+        this.settings = cloneMuteSettings(this.storage.getSavedValue().jikkyoCommentMuteSettings);
         this.baseline = cloneMuteSettings(this.settings);
         this.userIds = (this.settings.mutedUserIds ?? []).join(', ');
     }
@@ -101,10 +101,13 @@ class JikkyoCommentMuteDialog extends Vue {
         return { partial: '部分一致', forward: '前方一致', backward: '後方一致', exact: '完全一致', regex: '正規表現' }[match];
     }
     private save(): void {
-        const latest = this.storage.tmp.jikkyoCommentMuteSettings;
+        const saved = this.storage.getSavedValue();
+        const latest = cloneMuteSettings(saved.jikkyoCommentMuteSettings);
         const merged = mergeCommentMuteSettings(this.baseline, this.settings, latest);
         if (JSON.stringify(merged) !== JSON.stringify(this.settings)) this.settings = cloneMuteSettings(merged);
+        this.userIds = (merged.mutedUserIds ?? []).join(', ');
         this.baseline = cloneMuteSettings(merged);
+        Object.assign(this.storage.tmp, saved);
         this.storage.tmp.jikkyoCommentMuteSettings = merged;
         this.storage.save();
         window.dispatchEvent(new Event('jikkyo-comment-mute-settings-updated'));
