@@ -13,6 +13,7 @@ import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import { DataBroadcastingConnectParam } from '@/util/DataBroadcastingManager';
 import { resolveDataBroadcastingTime } from '../../../../src/model/service/dataBroadcasting/DataBroadcastingTime';
 import DPlayerEnhancer from '@/util/DPlayerEnhancer';
+import UaUtil from '@/util/UaUtil';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
 import { compileCommentMuteSettings, shouldMuteCompiledComment, CompiledCommentMuteSettings } from '@/util/CommentMuteUtil';
 import { getPlaybackOptionLabel } from '@/util/PlaybackLabelUtil';
@@ -462,7 +463,14 @@ export default abstract class BaseVideo extends Vue {
                 canvas.toBlob(value => (value ? resolve(value) : reject(new Error('JPEG conversion failed'))), 'image/jpeg', 0.92),
             );
             const file = new File([blob], request.filename ?? 'capture.jpg', { type: 'image/jpeg' });
-            if (typeof navigator.canShare === 'function' && typeof navigator.share === 'function' && navigator.canShare({ files: [file] })) {
+            // 共有シートは iOS / iPadOS だけで使う (a[download] で保存できないため)。
+            // macOS の Chrome / Safari も canShare({ files }) が true を返すので、条件に含めないと PC で保存の代わりに共有シートが開く
+            if (
+                UaUtil.isiOS() === true &&
+                typeof navigator.canShare === 'function' &&
+                typeof navigator.share === 'function' &&
+                navigator.canShare({ files: [file] })
+            ) {
                 await navigator.share({ files: [file], title: file.name });
             } else {
                 const url = URL.createObjectURL(blob);
