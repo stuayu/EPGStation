@@ -10,6 +10,7 @@ export type ChannelGroupingType = 'region' | 'affiliation';
 
 // 視聴画面の右パネルのタブ
 export type WatchSidePanelTab = 'program' | 'channel' | 'nextup' | 'comment' | 'sns';
+export type CaptureCaptionMode = 'video' | 'caption' | 'caption-comment';
 
 export interface ISettingValue {
     isEnablePWA: boolean;
@@ -101,6 +102,8 @@ export interface ISettingValue {
     snsSplitPanelRatio: number;
     // 本文入力欄の下にカスタム絵文字・MFM 記法のライブプレビューを出すか (既定 true)
     snsEnableComposePreview: boolean;
+    captureCaptionMode: CaptureCaptionMode;
+    captureCopyToClipboard: boolean;
 }
 
 export type ISettingStorageModel = IStorageBaseModel<ISettingValue>;

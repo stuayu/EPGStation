@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { VIDEO_SHORTCUTS, isListedVideoShortcut } = require('../../dist/util/VideoShortcutUtil');
+const { VIDEO_SHORTCUTS, isCaptureShortcut, isListedVideoShortcut } = require('../../dist/util/VideoShortcutUtil');
 const { isCommercialChapter } = require('../../dist/util/CommercialChapterUtil');
 
 test('CM chapter matching trims whitespace and ignores case', () => {
@@ -16,6 +16,13 @@ test('shortcut handler accepts only key combinations represented in the help tab
     assert.equal(isListedVideoShortcut({ key: 'ArrowUp', ctrlKey: false, shiftKey: false }), false);
     assert.equal(isListedVideoShortcut({ key: 'C', ctrlKey: false, shiftKey: true }), true);
     assert.equal(isListedVideoShortcut({ key: 'z', ctrlKey: false, shiftKey: false }), false);
+});
+
+test('capture shortcut is Shift+C and rejects plain C or Ctrl+Shift+C', () => {
+    assert.equal(isCaptureShortcut({ key: 'C', ctrlKey: false, shiftKey: true }), true);
+    assert.equal(isCaptureShortcut({ key: 'c', ctrlKey: false, shiftKey: true }), true);
+    assert.equal(isCaptureShortcut({ key: 'c', ctrlKey: false, shiftKey: false }), false);
+    assert.equal(isCaptureShortcut({ key: 'C', ctrlKey: true, shiftKey: true }), false);
 });
 
 test('shortcut help table documents each custom shortcut once', () => {

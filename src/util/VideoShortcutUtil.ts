@@ -40,3 +40,8 @@ export function isListedVideoShortcut(event: { key: string; ctrlKey: boolean; sh
     else if (event.key === '?') label = '?';
     return VIDEO_SHORTCUTS.some(shortcut => shortcut.keys === label);
 }
+
+/** Shift+C だけをキャプチャ操作として認識する。 */
+export function isCaptureShortcut(event: { key: string; ctrlKey: boolean; shiftKey: boolean }): boolean {
+    return event.key.toLowerCase() === 'c' && event.shiftKey === true && event.ctrlKey === false;
+}
