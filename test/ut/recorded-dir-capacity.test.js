@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
     DEFAULT_STORAGE_FALLBACK_CONFIG,
+    estimateRecordingDataBytes,
     estimateRecordingBytes,
     resolveStorageFallbackConfig,
     selectRecordedDir,
@@ -14,7 +15,12 @@ const dir = name => ({ name, path: `X:\\${name}` });
 
 // 余裕を 0 にして「番組本体の見積もり」だけを見るための設定
 const noMargin = extra =>
-    Object.assign({}, DEFAULT_STORAGE_FALLBACK_CONFIG, { marginBytes: 0, bitrate: { ...DEFAULT_STORAGE_FALLBACK_CONFIG.bitrate } }, extra);
+    Object.assign(
+        {},
+        DEFAULT_STORAGE_FALLBACK_CONFIG,
+        { marginBytes: 0, bitrate: { ...DEFAULT_STORAGE_FALLBACK_CONFIG.bitrate } },
+        extra,
+    );
 
 test('番組長とビットレートから録画サイズを見積もる', () => {
     // 30 分 × 19Mbps / 8 = 4275MB
@@ -39,6 +45,12 @@ test('余裕 (marginBytes) が見積もりに加算される', () => {
     const c = Object.assign({}, DEFAULT_STORAGE_FALLBACK_CONFIG, { marginBytes: 2 * GB });
     const bytes = estimateRecordingBytes(30 * 60 * 1000, 'GR', c);
     assert.equal(bytes, Math.round((30 * 60 * 19_000_000) / 8) + 2 * GB);
+});
+
+test('30 分の GR 表示見積もりは既定の余裕を含まない', () => {
+    const config = resolveStorageFallbackConfig(undefined);
+    assert.equal(estimateRecordingDataBytes(30 * 60 * 1000, 'GR', config), 4_275_000_000);
+    assert.equal(estimateRecordingBytes(30 * 60 * 1000, 'GR', config), 4_275_000_000 + config.marginBytes);
 });
 
 test('番組長が負や 0 でも負のサイズにならない', () => {
@@ -173,7 +185,29 @@ test('保存先容量シミュレーションは順次割当し、除外予約�
     assert.equal(result.reservedEstimatedSize.A, 10_000_000);
     assert.equal(result.reservedEstimatedSize.B, 10_000_000);
     assert.equal(result.reservedEstimatedSize.B, 10_000_000);
-    assert.deepEqual(dirs.map(d => d.freeBytes), [15_000_000, 6_000_000], '入力候補は変更しない');
+    assert.deepEqual(
+        dirs.map(d => d.freeBytes),
+        [15_000_000, 6_000_000],
+        '入力候補は変更しない',
+    );
+});
+
+test('容量シミュレーションは余裕込みで保存先を選び、表示合計に余裕を加えない', () => {
+    const config = Object.assign({}, DEFAULT_STORAGE_FALLBACK_CONFIG, {
+        marginBytes: 3_000_000,
+        overrideBitrate: 8_000_000,
+    });
+    const result = simulateRecordedDirCapacity(
+        [{ id: 1, startAt: 0, endAt: 1000, channelType: 'GR' }],
+        [
+            { dir: dir('A'), freeBytes: 2_000_000 },
+            { dir: dir('B'), freeBytes: 10_000_000 },
+        ],
+        config,
+    );
+    assert.equal(result.reservedEstimatedSize.B, 1_000_000);
+    assert.equal(result.reservedEstimatedSize.A, 0);
+    assert.equal(result.firstInsufficientReserve, null);
 });
 
 test('legacy の null チューナー予約も容量見込みへ含め、最初の不足予約名を返す', () => {
@@ -188,7 +222,17 @@ test('legacy の null チューナー予約も容量見込みへ含め、最初�
 
 test('保存先シミュレーションの見積もり長に予約マージンを含める', () => {
     const result = simulateRecordedDirCapacity(
-        [{ id: 1, startAt: 100, endAt: 1100, channelType: 'GR', plannedTunerIndex: 1, startMarginMs: 500, endMarginMs: 1500 }],
+        [
+            {
+                id: 1,
+                startAt: 100,
+                endAt: 1100,
+                channelType: 'GR',
+                plannedTunerIndex: 1,
+                startMarginMs: 500,
+                endMarginMs: 1500,
+            },
+        ],
         [{ dir: dir('A'), freeBytes: 100_000_000 }],
         noMargin({ overrideBitrate: 8_000_000 }),
     );

@@ -94,9 +94,9 @@ export const resolveStorageFallbackConfig = (value: unknown): StorageFallbackCon
  * @param durationMs: number 番組長 (ms)
  * @param channelType: string
  * @param config: StorageFallbackConfig
- * @return number 予想バイト数 (余裕込み)
+ * @return number 余裕を含まない予想バイト数
  */
-export const estimateRecordingBytes = (
+export const estimateRecordingDataBytes = (
     durationMs: number,
     channelType: string,
     config: StorageFallbackConfig,
@@ -105,8 +105,21 @@ export const estimateRecordingBytes = (
     // 放送時間未定 (ProgramDuration が暫定値を入れる) や異常値でも負にはしない
     const durationSec = Math.max(0, durationMs) / 1000;
 
-    return Math.round((durationSec * bitrate) / 8) + config.marginBytes;
+    return Math.round((durationSec * bitrate) / 8);
 };
+
+/**
+ * 録画先の振り替え判定用サイズを見積もる
+ * @param durationMs: number 番組長 (ms)
+ * @param channelType: string
+ * @param config: StorageFallbackConfig
+ * @return number 予想バイト数 (余裕込み)
+ */
+export const estimateRecordingBytes = (
+    durationMs: number,
+    channelType: string,
+    config: StorageFallbackConfig,
+): number => estimateRecordingDataBytes(durationMs, channelType, config) + config.marginBytes;
 
 export interface DirCandidate {
     dir: RecordedDirInfo;
@@ -216,7 +229,8 @@ export const simulateRecordedDirCapacity = (
                 Math.max(0, reserve.startMarginMs ?? 0) +
                 Math.max(0, reserve.endMarginMs ?? 0),
         );
-        const size = estimateRecordingBytes(durationMs, reserve.channelType, config);
+        const selectionSize = estimateRecordingBytes(durationMs, reserve.channelType, config);
+        const displaySize = estimateRecordingDataBytes(durationMs, reserve.channelType, config);
         const preferredIndex = reserve.parentDirectoryName
             ? remaining.findIndex(candidate => candidate.dir.name === reserve.parentDirectoryName)
             : -1;
@@ -224,10 +238,13 @@ export const simulateRecordedDirCapacity = (
             preferredIndex > 0
                 ? [remaining[preferredIndex], ...remaining.filter((_, index) => index !== preferredIndex)]
                 : remaining;
-        const selection = selectRecordedDir(config.enabled === false ? candidates.slice(0, 1) : candidates, size);
+        const selection = selectRecordedDir(
+            config.enabled === false ? candidates.slice(0, 1) : candidates,
+            selectionSize,
+        );
         if (selection === null) continue;
         const name = selection.dir.name;
-        reservedEstimatedSize[name] = (reservedEstimatedSize[name] ?? 0) + size;
+        reservedEstimatedSize[name] = (reservedEstimatedSize[name] ?? 0) + displaySize;
         if (selection.reason === 'insufficient' && firstInsufficientReserve === null) {
             firstInsufficientReserve = { id: reserve.id, startAt: reserve.startAt, dirName: name };
         }
@@ -240,7 +257,7 @@ export const simulateRecordedDirCapacity = (
         }
         const target = remaining.find(candidate => candidate.dir.path === selection.dir.path);
         if (target?.freeBytes !== null && typeof target?.freeBytes === 'number')
-            target.freeBytes = Math.max(0, target.freeBytes - size);
+            target.freeBytes = Math.max(0, target.freeBytes - selectionSize);
     }
 
     return { reservedEstimatedSize, firstInsufficientReserve, firstInsufficientReserveByDir };
