@@ -9,7 +9,7 @@ const CONTAINER_LABELS: Partial<Record<PlaybackContainerLabel, string>> = {
     hls: '標準 (HLS)',
     mp4: 'MP4',
     webm: 'WebM',
-    original: 'オリジナル (MPEG-2・端末で変換)',
+    original: 'オリジナル',
 };
 
 // 一般ユーザー向けに「何が嬉しいか」で書いた説明。技術的な detail は別途 profile.detail / recommended.reason を使う
@@ -51,11 +51,7 @@ const guessResolutionSummary = (label: string): string | null => {
  * @param recommended: apid.PlaybackOptions['recommended'] | undefined auto の「今回の選択」表示に使用
  * @return PlaybackLabel
  */
-export const getPlaybackLabel = (
-    profile: apid.PlaybackProfile,
-    source?: apid.SourceCapabilities,
-    recommended?: apid.PlaybackOptions['recommended'],
-): PlaybackLabel => {
+export const getPlaybackLabel = (profile: apid.PlaybackProfile, source?: apid.SourceCapabilities, recommended?: apid.PlaybackOptions['recommended']): PlaybackLabel => {
     const key = labelKey(profile);
     const known = LABELS[key];
     const isAuto = key === 'auto';
@@ -111,15 +107,12 @@ export const getPlaybackContainerLabel = (container: PlaybackContainerLabel): st
  * @param source 元映像の特性
  * @return string
  */
-export const getPlaybackOptionLabel = (
-    profile: apid.PlaybackProfile,
-    container: PlaybackContainerLabel,
-    source?: apid.SourceCapabilities,
-): string => {
+export const getPlaybackOptionLabel = (profile: apid.PlaybackProfile, container: PlaybackContainerLabel, source?: apid.SourceCapabilities): string => {
     const containerLabel = getPlaybackContainerLabel(container);
     const profileLabel = getPlaybackLabel(profile, source).name;
 
-    // オリジナル (MPEG-2) は配信方式と画質が 1 対 1 で名前も同じなので、「A > A」と重ねない
+    // オリジナル方式の詳細は画質側に含まれるため、方式名を重ねない
+    if (container === 'original') return profileLabel;
     return containerLabel === profileLabel ? profileLabel : `${containerLabel} > ${profileLabel}`;
 };
 
