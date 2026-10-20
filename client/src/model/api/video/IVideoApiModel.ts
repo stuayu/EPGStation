@@ -27,6 +27,7 @@ export default interface IVideoApiModel {
      * @return Promise<apid.VideoChapter[]> チャプターが無い場合は空配列
      */
     getChapters(videoFileId: apid.VideoFileId): Promise<apid.VideoChapter[]>;
+    detectCm(videoFileId: apid.VideoFileId): Promise<void>;
 
     /**
      * 録画ファイルの音声トラック一覧を取得する

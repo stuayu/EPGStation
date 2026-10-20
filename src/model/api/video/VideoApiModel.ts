@@ -216,6 +216,21 @@ export default class VideoApiModel implements IVideoApiModel {
     }
 
     /**
+     * Operator プロセスへ CM 検出を依頼する。
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<void>
+     */
+    public async detectCm(videoFileId: apid.VideoFileId): Promise<void> {
+        const video = await this.videoFileDB.findId(videoFileId);
+        if (video === null) throw new Error('VideoFileIsUndefined');
+        if (video.type !== 'ts') throw new Error('VideoFileIsNotTs');
+        if (this.configuration.getConfig().cmDetection?.enabled !== true) throw new Error('CmDetectionDisabled');
+        const chapters = await this.getChapters(videoFileId);
+        if (chapters.length > 0) throw new Error('VideoFileAlreadyHasChapters');
+        await this.ipc.cmDetection.add(videoFileId);
+    }
+
+    /**
      * video file id から実ファイルのパスを解決する
      * @param videoFileId: apid.VideoFileId
      * @return Promise<string>

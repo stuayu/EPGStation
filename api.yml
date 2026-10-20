@@ -136,6 +136,16 @@ paths:
             responses:
                 '200': { description: 削除成功 }
                 '404': { description: 存在しない }
+    /videos/{videoFileId}/cm-detection:
+        post:
+            summary: 録画 TS の CM を検出してチャプターを作成
+            parameters:
+                - $ref: '#/components/parameters/PathVideoFileId'
+            responses:
+                '202': { description: キューへ登録 }
+                '400': { description: TS 以外 }
+                '404': { description: 動画が存在しない }
+                '409': { description: 機能無効または既存チャプターあり }
     /videos/{videoFileId}/offline:
         get:
             summary: 録画番組オフライン保存ストリーム

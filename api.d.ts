@@ -1194,6 +1194,7 @@ export interface LogFileContent {
  * クライアントが受け取る設定情報
  */
 export interface Config {
+    cmDetection?: { enabled?: boolean };
     reservationScheduler?: 'legacy' | 'planner';
     socketIOPort: number;
     /**

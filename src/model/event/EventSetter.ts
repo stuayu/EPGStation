@@ -31,6 +31,7 @@ import { formatLogTimeRange } from '../../util/ProgramTimeLog';
 import IEitPresentStore from '../service/stream/util/IEitPresentStore';
 import { decideRecordingFinishPolicy, RecordingResultStatus } from '../../util/RecordingResult';
 import IProgramReminderManageModel from '../operator/reminder/IProgramReminderManageModel';
+import ICmDetectionManageModel from '../operator/cmDetection/ICmDetectionManageModel';
 
 @injectable()
 export default class EventSetter implements IEventSetter {
@@ -48,6 +49,7 @@ export default class EventSetter implements IEventSetter {
     private recordedManage: IRecordedManageModel;
     private recordedTagManage: IRecordedTagManadeModel;
     private thumbnailManage: IThumbnailManageModel;
+    private cmDetectionManage: ICmDetectionManageModel;
     private externalCommandManage: IExternalCommandManageModel;
     private ipc: IIPCServer;
     private config: IConfigFile;
@@ -91,6 +93,7 @@ export default class EventSetter implements IEventSetter {
         @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
         @inject('IChannelDB') channelDB: IChannelDB,
         @inject('IProgramReminderManageModel') programReminderManage: IProgramReminderManageModel,
+        @inject('ICmDetectionManageModel') cmDetectionManage: ICmDetectionManageModel,
     ) {
         this.log = logger.getLogger();
         this.epgUpdateEvent = epgUpdateEvent;
@@ -117,6 +120,7 @@ export default class EventSetter implements IEventSetter {
         this.eitPresentStore = eitPresentStore;
         this.channelDB = channelDB;
         this.programReminderManage = programReminderManage;
+        this.cmDetectionManage = cmDetectionManage;
     }
 
     /**
@@ -216,32 +220,34 @@ export default class EventSetter implements IEventSetter {
             this.ipc.notifyClient();
             // 直前の差分が recorder の準備を終えてから次の差分を適用する。
             // provider の取得中に重複化の差分が追い越すと、古い予約の録画タイマーが復活する。
-            this.recordingUpdateQueue = this.recordingUpdateQueue.then(async () => {
-                const { delete: deletes, ...timerDiff } = diff;
-                if (
-                    (typeof timerDiff.insert !== 'undefined' && timerDiff.insert.length > 0) ||
-                    (typeof timerDiff.update !== 'undefined' && timerDiff.update.length > 0)
-                ) {
-                    await this.recordingManage.update(timerDiff).catch(err => {
-                        this.log.system.error('recording reservation update error');
-                        this.log.system.error(err);
-                    });
-                }
-
-                // cancel() は録画中の終了待ちを含む。予約差分の順序を保つため、
-                // キュー内でキャンセル開始までは行い、完了待ちはキュー外へ出す。
-                for (const reserve of deletes ?? []) {
-                    void this.recordingManage.update({ ...diff, delete: [reserve], insert: undefined, update: undefined }).catch(
-                        err => {
+            this.recordingUpdateQueue = this.recordingUpdateQueue
+                .then(async () => {
+                    const { delete: deletes, ...timerDiff } = diff;
+                    if (
+                        (typeof timerDiff.insert !== 'undefined' && timerDiff.insert.length > 0) ||
+                        (typeof timerDiff.update !== 'undefined' && timerDiff.update.length > 0)
+                    ) {
+                        await this.recordingManage.update(timerDiff).catch(err => {
                             this.log.system.error('recording reservation update error');
                             this.log.system.error(err);
-                        },
-                    );
-                }
-            }).catch(err => {
-                this.log.system.error('recording reservation update error');
-                this.log.system.error(err);
-            });
+                        });
+                    }
+
+                    // cancel() は録画中の終了待ちを含む。予約差分の順序を保つため、
+                    // キュー内でキャンセル開始までは行い、完了待ちはキュー外へ出す。
+                    for (const reserve of deletes ?? []) {
+                        void this.recordingManage
+                            .update({ ...diff, delete: [reserve], insert: undefined, update: undefined })
+                            .catch(err => {
+                                this.log.system.error('recording reservation update error');
+                                this.log.system.error(err);
+                            });
+                    }
+                })
+                .catch(err => {
+                    this.log.system.error('recording reservation update error');
+                    this.log.system.error(err);
+                });
 
             // コマンド実行
             this.externalCommandManage.addUpdateReseves(diff);
@@ -366,6 +372,7 @@ export default class EventSetter implements IEventSetter {
             ) {
                 // サムネイル作成
                 this.thumbnailManage.add(recorded.id);
+                for (const videoFile of recorded.videoFiles) this.cmDetectionManage.add(videoFile.id);
 
                 // エンコード追加 1
                 if (reserve.encodeMode1 !== null) {

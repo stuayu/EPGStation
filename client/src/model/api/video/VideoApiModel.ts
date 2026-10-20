@@ -36,6 +36,10 @@ export default class VideoApiModel implements IVideoApiModel {
         return result.data.chapters;
     }
 
+    public async detectCm(videoFileId: apid.VideoFileId): Promise<void> {
+        await this.repository.post(`/videos/${videoFileId}/cm-detection`);
+    }
+
     /**
      * 録画ファイルの音声トラック一覧を取得する
      * @param videoFileId: apid.VideoFileId

@@ -85,6 +85,7 @@
                                                 :videoFiles="recorded.display.videoFiles"
                                                 v-on:play="play"
                                             ></RecordedDetailPlayButton>
+                                            <RecordedCmDetectionButton :videoFiles="recorded.display.videoFiles ?? []"></RecordedCmDetectionButton>
                                             <RecordedDetailPlayButton
                                                 v-if="typeof recorded.display.canStremingVideoFiles !== 'undefined'"
                                                 title="streaming"
@@ -174,6 +175,7 @@ import RecordedDetailEncodeButton from '@/components/recorded/detail/RecordedDet
 import RecordedDetailKodiButton from '@/components/recorded/detail/RecordedDetailKodiButton.vue';
 import RecordedDetailMoreButton from '@/components/recorded/detail/RecordedDetailMoreButton.vue';
 import RecordedDetailPlayButton from '@/components/recorded/detail/RecordedDetailPlayButton.vue';
+import RecordedCmDetectionButton from '@/components/recorded/detail/RecordedCmDetectionButton.vue';
 import RecordedDetailSelectStreamDialog from '@/components/recorded/detail/RecordedDetailSelectStreamDialog.vue';
 import RecordedDetailSeries from '@/components/recorded/detail/RecordedDetailSeries.vue';
 import RecordedDetailStopEncodeButton from '@/components/recorded/detail/RecordedDetailStopEncodeButton.vue';
@@ -200,6 +202,7 @@ import IRecordedDetailState from '../model/state/recorded/detail/IRecordedDetail
     components: {
         TitleBar,
         RecordedDetailPlayButton,
+        RecordedCmDetectionButton,
         RecordedDetailEncodeButton,
         RecordedDetailStopEncodeButton,
         RecordedDetailMoreButton,

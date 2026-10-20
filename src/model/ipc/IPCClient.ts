@@ -44,6 +44,7 @@ import {
     SendMessage,
     SeriesFunctions,
     ThumbnailFunctions,
+    CmDetectionFunctions,
 } from './IPCMessageDefine';
 import container from '../ModelContainer';
 
@@ -57,6 +58,7 @@ export default class IPCClient implements IIPCClient {
     public recording!: IPCRecordingManageModel;
     public rule!: IPCRuleManageModel;
     public thumbnail!: IPCThumbnailManageModel;
+    public cmDetection!: import('./IIPCClient').IPCCmDetectionManageModel;
     public encodeEvent!: IPCOperatorEncodeEvent;
     public series!: IPCSeriesManageModel;
     public appSetting!: IPCAppSettingManageModel;
@@ -88,6 +90,7 @@ export default class IPCClient implements IIPCClient {
         this.setRecording();
         this.setRule();
         this.setThumbnail();
+        this.setCmDetection();
         this.setEncodeEvent();
         this.setSeries();
         this.setAppSetting();
@@ -621,6 +624,17 @@ export default class IPCClient implements IIPCClient {
                     },
                 });
             },
+        };
+    }
+
+    private setCmDetection(): void {
+        this.cmDetection = {
+            add: videoFileId =>
+                this.send({
+                    model: ModelName.cmDetection,
+                    func: CmDetectionFunctions.add,
+                    args: { videoFileId },
+                }),
         };
     }
 
