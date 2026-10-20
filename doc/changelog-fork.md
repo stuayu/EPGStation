@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- BML の映像要素スタイル復元、字幕 renderer の破棄時停止、端末別 NVRAM 受信機設定を追加 → 2026-10-20
 - NX-Jikkyo のライブコメント投稿と端末単位のコメントミュートを追加 → 2026-10-20
 - 予約一覧と保存先画面に推定録画容量と予約による空き容量の見通しを追加 → 2026-10-20
 - 録画 TS の無音区間から CM チャプターを推定する機能を追加 → 2026-10-20
@@ -64,6 +65,12 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-10-20
+
+### BML・ARIB 字幕の破棄処理と受信機設定を改善
+
+データ放送表示中に移動する DPlayer の video / canvas 要素について、BML が変更する style プロパティだけを保存・復元する。表示中に作り直された子要素も対象プロパティを解除し、プレイヤー側の他の style は維持する。プレイヤー破棄では対象 DPlayer の字幕・文字スーパー renderer を先に `hide()` し、画質切替で遅延破棄する場合も保持した旧 renderer だけを停止する。新プレイヤーの renderer は維持する。KonomiTV (MIT) `client/src/services/player/managers/LiveDataBroadcastingManager.ts` のスタイル退避方式と `9af9e808` の renderer 停止を参考にした。
+
+設定画面に端末ごとの郵便番号 (7 byte)・都道府県コード (1 byte)・地域コード (2 byte) を追加。web-bml の `client/node_modules/web-bml/client/nvram.ts` と同じ Base64 byte 列と `nvram_prefix=receiverinfo%2F...` キーを使う。保存データ消去は `nvram_` キーに限定し確認を挟む。BML style 復元、遅延 renderer 停止、receiverinfo 符号化の単体テストを追加。
 
 ### 録画 TS から CM チャプターを推定
 
