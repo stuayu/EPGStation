@@ -9,8 +9,16 @@ description: 実装作業を Codex CLI (codex exec) へ委譲するときに使�
 
 ```bash
 codex exec --sandbox workspace-write --skip-git-repo-check \
-  -m gpt-6-luna -c model_reasoning_effort="high" - < タスク.md > ログ.log 2>&1
+  -c 'sandbox_workspace_write.network_access=true' \
+  -m gpt-6-luna -c model_reasoning_effort="medium" \
+  -C <リポジトリのパス> --color never \
+  -o 最終報告.md - < タスク.md > ログ.log 2>&1
 ```
+
+- **既定は `gpt-6-luna` + effort `medium`** (利用者指定)。Luna で品質が足りないときだけ `gpt-6.1-sol` へ上げる
+- 調査だけのタスクは `--sandbox read-only` にする (編集事故が起きない)
+- `-o` で最終メッセージだけをファイルへ書かせると、ログを読まずに報告を回収できる
+- `network_access=true` は `npm run test:itb` (ローカル HTTP スタブ) と npm install に要る
 
 - **モデルは `-m` で明示する**。`~/.codex/config.toml` の既定は古いことがある
   (実測 2026-09-24: 既定 `gpt-5.6-luna`、指示は「GPT-6 Luna」= `gpt-6-luna`)。
