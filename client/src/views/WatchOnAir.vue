@@ -1,5 +1,5 @@
 <template>
-    <WatchLayout v-bind:panelTitle="channelName">
+    <WatchLayout ref="watchLayout" v-bind:panelTitle="channelName">
         <template v-slot:topBar>
             <WatchTopBar
                 v-bind:logoSrc="logoSrc"
@@ -10,6 +10,7 @@
             ></WatchTopBar>
         </template>
         <VideoContainer
+            :programName="displayInfo === null ? '' : displayInfo.name"
             v-if="videoParam !== null"
             v-bind:key="videoKey"
             ref="videoContainer"
@@ -40,7 +41,7 @@
             </v-btn>
         </div>
         <template v-slot:panel>
-            <WatchSidePanel v-bind:tabs="panelTabs">
+            <WatchSidePanel ref="watchSidePanel" v-bind:tabs="panelTabs">
                 <template v-slot:program>
                     <WatchPanelProgram v-bind:info="displayInfo"></WatchPanelProgram>
                 </template>
@@ -75,6 +76,7 @@ import IChannelModel from '@/model/channels/IChannelModel';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import { ISettingStorageModel, WatchSidePanelTab } from '@/model/storage/setting/ISettingStorageModel';
+import { shouldClaimSnsCapture } from '../../../src/util/SnsCaptureUtil';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import IOnAirState from '@/model/state/onair/IOnAirState';
 import IWatchOnAirInfoState, { DsiplayWatchInfo } from '@/model/state/onair/watch/IWatchOnAirInfoState';
@@ -142,7 +144,11 @@ class WatchOnAir extends Vue {
 
     /** DPlayer のキャプチャ要求を SNS 投稿パネルへ渡す。 */
     public onScreenshotRequest(request: ScreenshotRequest): void {
-        (this.$refs.snsPostPanel as InstanceType<typeof SnsPostPanel> | undefined)?.onScreenshotRequest(request);
+        const layout = this.$refs.watchLayout as { isPanelOpen?: boolean } | undefined;
+        const sidePanel = this.$refs.watchSidePanel as { selectedTab?: string } | undefined;
+        if (shouldClaimSnsCapture(layout?.isPanelOpen === true, sidePanel?.selectedTab ?? '')) {
+            (this.$refs.snsPostPanel as InstanceType<typeof SnsPostPanel> | undefined)?.onScreenshotRequest(request);
+        }
     }
 
     /** DPlayer の設定メニューからライブ配信方式を切り替える。 */

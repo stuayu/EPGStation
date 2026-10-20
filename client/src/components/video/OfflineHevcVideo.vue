@@ -25,6 +25,10 @@ import { Component, Prop, toNative } from 'vue-facing-decorator';
 /** 保存済み元 TS の HEVC を Range VOD として mpegts.js へ渡すプレイヤー。 */
 @Component({})
 class OfflineHevcVideo extends BaseVideo {
+    // キャプチャのファイル名に使う番組名 (BaseVideo で宣言し、@Prop はここで付ける)
+    @Prop({ default: '' })
+    public programName!: string;
+
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
 
     protected override shouldNoticeJikkyoError(): boolean { return false; }

@@ -1,5 +1,5 @@
 <template>
-    <WatchLayout v-bind:panelTitle="displayInfo === null ? '' : displayInfo.channelName">
+    <WatchLayout ref="watchLayout" v-bind:panelTitle="displayInfo === null ? '' : displayInfo.channelName">
         <template v-slot:topBar>
             <WatchTopBar
                 v-bind:logoSrc="logoSrc"
@@ -9,6 +9,7 @@
             ></WatchTopBar>
         </template>
         <VideoContainer
+            :programName="displayInfo === null ? '' : displayInfo.name"
             v-if="videoParam !== null"
             v-bind:key="videoKey"
             ref="videoContainer"
@@ -32,7 +33,7 @@
             v-on:key="onDataBroadcastingKey"
         ></DataBroadcastingRemote>
         <template v-slot:panel>
-            <WatchSidePanel v-bind:tabs="panelTabs">
+            <WatchSidePanel ref="watchSidePanel" v-bind:tabs="panelTabs">
                 <template v-slot:program>
                     <WatchPanelProgram v-bind:info="displayInfo"></WatchPanelProgram>
                 </template>
@@ -73,6 +74,7 @@ import IChannelModel from '@/model/channels/IChannelModel';
 import container from '@/model/ModelContainer';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import { ISettingStorageModel, WatchSidePanelTab } from '@/model/storage/setting/ISettingStorageModel';
+import { shouldClaimSnsCapture } from '../../../src/util/SnsCaptureUtil';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import IWatchRecordedInfoState, { DsiplayWatchInfo } from '@/model/state/recorded/watch/IWatchRecordedInfoState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
@@ -92,9 +94,7 @@ import { markRaw } from 'vue';
 import type { RouteLocationNormalized as Route, NavigationGuardNext } from 'vue-router';
 import * as apid from '../../../api';
 
-type RecordedTargetValidation =
-    | { valid: true; videoFileType: apid.VideoFileType | null }
-    | { valid: false; kind: 'recorded' | 'videoFile' };
+type RecordedTargetValidation = { valid: true; videoFileType: apid.VideoFileType | null } | { valid: false; kind: 'recorded' | 'videoFile' };
 
 @Component({
     components: {
@@ -171,7 +171,11 @@ class WatchRecordedStreaming extends Vue {
      * @return HTMLVideoElement | null
      */
     public onScreenshotRequest(request: ScreenshotRequest): void {
-        (this.$refs.snsPostPanel as InstanceType<typeof SnsPostPanel> | undefined)?.onScreenshotRequest(request);
+        const layout = this.$refs.watchLayout as { isPanelOpen?: boolean } | undefined;
+        const sidePanel = this.$refs.watchSidePanel as { selectedTab?: string } | undefined;
+        if (shouldClaimSnsCapture(layout?.isPanelOpen === true, sidePanel?.selectedTab ?? '')) {
+            (this.$refs.snsPostPanel as InstanceType<typeof SnsPostPanel> | undefined)?.onScreenshotRequest(request);
+        }
     }
 
     /** DPlayer の設定メニューから録画配信方式を切り替える。 */
@@ -370,11 +374,7 @@ class WatchRecordedStreaming extends Vue {
                             : '指定した録画ファイルが見つかりません。ページを再読み込みして、録画一覧から選び直してください。',
                     );
                 } else if (
-                    !isRecordedWatchModeValid(
-                        mode,
-                        target.videoFileType === null ? [] : StreamQualityUtil.getRecordedModeNames(target.videoFileType, streamingType),
-                        profile,
-                    )
+                    !isRecordedWatchModeValid(mode, target.videoFileType === null ? [] : StreamQualityUtil.getRecordedModeNames(target.videoFileType, streamingType), profile)
                 ) {
                     this.showStreamingError(`選択した画質設定 (mode=${mode}) は利用できません。ページを再読み込みして、画質を選び直してください。`);
                 } else {
