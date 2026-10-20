@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 字幕・実況コメント合成キャプチャと端末別の保存設定を追加 → 2026-10-20
 - ffprobe の尺・ビットレート欠落で録画 TS の再生開始が失敗する問題を修正 → 2026-10-20
 - CM チャプターの自動スキップ、DPlayer 設定メニュー、再生ショートカットを追加 → 2026-10-20
 - BML の映像要素スタイル復元、字幕 renderer の破棄時停止、端末別 NVRAM 受信機設定を追加 → 2026-10-20
@@ -69,6 +70,12 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-10-20
+
+### 字幕・実況コメント合成キャプチャと端末別の保存設定
+
+DPlayer のカメラ操作と Shift+C で、映像・表示字幕・表示中の実況コメントを実解像度へ合成した JPEG を保存できるようにした。字幕やコメントの合成に失敗した場合は映像のみで再試行する。SNS 投稿パネルにも同じキャプチャ関数を渡す。設定で映像のみ / 字幕 / 字幕と実況コメント、クリップボードコピーを選べる。iOS / iPadOS などで `navigator.canShare({ files })` が使える場合は共有シートを開く。キャプチャ設定は端末固有としてサーバー同期対象から除外。
+
+実装: `client/src/components/video/BaseVideo.ts`、`src/util/CaptureUtil.ts`。参照元: KonomiTV MIT `client/src/services/player/managers/CaptureManager.ts`。
 
 ### ffprobe の尺・ビットレート欠落時も録画 TS を先頭から配信
 

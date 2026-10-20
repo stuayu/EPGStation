@@ -3,6 +3,7 @@ import { markRaw } from 'vue';
 import { Component, Vue } from 'vue-facing-decorator';
 import container from '@/model/ModelContainer';
 import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
+import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import JikkyoCommentClient, { JikkyoComment } from '@/util/JikkyoCommentClient';
 import JikkyoKakologClient from '@/util/JikkyoKakologClient';
 import VirtualTimeline from '@/components/video/VirtualTimeline';
@@ -30,7 +31,8 @@ import { isValidPlaybackSyncPosition } from '../../../../src/util/PlaybackSyncPo
 import { applyPlaybackSeekAction } from '../../../../src/util/PlaybackSeekIntentUtil';
 import { Deinterlacer } from 'mpeg2toh264/yadif';
 import { findCmSkipTarget, getCmBlocks } from '../../../../src/util/CmSkipUtil';
-import { isListedVideoShortcut, VIDEO_SHORTCUTS } from '../../../../src/util/VideoShortcutUtil';
+import { isCaptureShortcut, isListedVideoShortcut, VIDEO_SHORTCUTS } from '../../../../src/util/VideoShortcutUtil';
+import { createCaptureCommentInstructions, createCaptureFilename, getCaptureLayerOrder, getCaptureScale, CaptureCompositionMode } from '../../../../src/util/CaptureUtil';
 
 type QualityPlaybackSnapshot = {
     volume: number;
@@ -55,6 +57,7 @@ export interface PlaybackContainerSwitchRequest {
 export interface ScreenshotRequest {
     video: HTMLVideoElement;
     capture?: () => Promise<ImageBitmap>;
+    filename?: string;
     claim: () => void;
 }
 
@@ -94,6 +97,7 @@ export default abstract class BaseVideo extends Vue {
     private cmUndoTimer: number | null = null;
     private lastSkippedCm: { startAt: number; endAt: number } | null = null;
     private extraHotkeyHandler: ((e: KeyboardEvent) => void) | null = null;
+    private captureSnackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private screenshotButton: HTMLElement | null = null;
     private screenshotClickHandler: ((event: MouseEvent) => void) | null = null;
     private statisticsMenuItem: HTMLElement | null = null;
@@ -323,13 +327,11 @@ export default abstract class BaseVideo extends Vue {
             const state = { claimed: false };
             const request: ScreenshotRequest = {
                 video: this.dp.video,
-                capture: (() => {
-                    const deinterlacer = (this.dp as any).plugins?.mpeg2toh264?.deinterlacer;
-                    if (deinterlacer instanceof Deinterlacer && deinterlacer.running === true) {
-                        return (): Promise<ImageBitmap> => deinterlacer.capture();
-                    }
-                    return undefined;
-                })(),
+                capture: () => this.captureCompositeFrame(),
+                filename: createCaptureFilename(
+                    (this.dp as any).options?.video?.title ?? this.dp.container.querySelector('.dplayer-title')?.textContent ?? 'capture',
+                    this.broadcastTime === null ? new Date() : new Date(this.broadcastTime.time + Date.now() - this.broadcastTime.receivedAt),
+                ),
                 claim: () => {
                     state.claimed = true;
                 },
@@ -338,10 +340,146 @@ export default abstract class BaseVideo extends Vue {
             if (state.claimed === true) {
                 event.preventDefault();
                 event.stopImmediatePropagation();
+            } else {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                void this.saveCompositeCapture(request);
             }
         };
         // DPlayer 自身の click handler より前に claim の有無を決める。
         button.addEventListener('click', this.screenshotClickHandler, true);
+    }
+
+    /** 字幕・実況コメントを映像へ合成する。KonomiTV: client/src/services/player/managers/CaptureManager.ts */
+    private async captureCompositeFrame(): Promise<ImageBitmap> {
+        if (this.dp === null) throw new Error('Player is unavailable');
+        const video = this.dp.video;
+        const settings = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();
+        const mode: CaptureCompositionMode = settings.captureCaptionMode ?? 'caption';
+        const deinterlacer = (this.dp as any).plugins?.mpeg2toh264?.deinterlacer;
+        let frame: CanvasImageSource = video;
+        let frameBitmap: ImageBitmap | null = null;
+        if (deinterlacer instanceof Deinterlacer && deinterlacer.running === true) {
+            frameBitmap = await deinterlacer.capture();
+            frame = frameBitmap;
+        }
+        try {
+            const width = video.videoWidth || (frame as ImageBitmap).width;
+            const height = video.videoHeight || (frame as ImageBitmap).height;
+            if (!width || !height) throw new Error('Video frame is unavailable');
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx === null) throw new Error('Canvas context is unavailable');
+            ctx.drawImage(frame, 0, 0, width, height);
+            const captionCanvas =
+                (this.dp as any).plugins?.aribb24Caption?.canvas ??
+                (this.dp as any).plugins?.aribb24Superimpose?.canvas ??
+                this.dp.container.querySelector('canvas.dplayer-aribb24-caption, canvas.dplayer-aribb24-superimpose');
+            const captionVisible =
+                captionCanvas instanceof HTMLCanvasElement &&
+                captionCanvas.width > 0 &&
+                captionCanvas.height > 0 &&
+                getComputedStyle(captionCanvas).display !== 'none' &&
+                getComputedStyle(captionCanvas).visibility !== 'hidden';
+            const danmaku = (this.dp as any).danmaku;
+            const danmakuContainer = danmaku?.container as HTMLElement | undefined;
+            const commentsVisible =
+                mode === 'caption-comment' &&
+                danmaku?.showing !== false &&
+                danmakuContainer !== undefined &&
+                getComputedStyle(danmakuContainer).display !== 'none' &&
+                getComputedStyle(danmakuContainer).visibility !== 'hidden';
+            const scale = getCaptureScale(width, height, video.clientWidth, video.clientHeight);
+            const commentData = commentsVisible
+                ? Array.from(danmakuContainer!.querySelectorAll<HTMLElement>('.dplayer-danmaku-item:not(.dplayer-danmaku-item--demo)')).map(node => {
+                      const style = getComputedStyle(node);
+                      const rect = node.getBoundingClientRect();
+                      const containerRect = danmakuContainer!.getBoundingClientRect();
+                      return {
+                          text: node.textContent ?? '',
+                          left: rect.left - containerRect.left,
+                          top: rect.top - containerRect.top,
+                          color: style.color,
+                          fontSize: parseFloat(style.fontSize) || 20,
+                          strokeColor: style.webkitTextStrokeColor || 'black',
+                          strokeWidth: parseFloat(style.webkitTextStrokeWidth) || 1,
+                      };
+                  })
+                : [];
+            try {
+                for (const layer of getCaptureLayerOrder(mode, captionVisible, commentData.length > 0)) {
+                    if (layer === 'caption' && captionCanvas instanceof HTMLCanvasElement) {
+                        ctx.drawImage(captionCanvas, 0, 0, width, height);
+                    } else if (layer === 'comments') {
+                        for (const comment of createCaptureCommentInstructions(commentData, scale)) {
+                            ctx.font = `${comment.fontSize}px ${getComputedStyle(danmakuContainer!).fontFamily || 'sans-serif'}`;
+                            ctx.textBaseline = 'alphabetic';
+                            ctx.lineJoin = 'round';
+                            ctx.lineWidth = comment.strokeWidth * 2;
+                            ctx.strokeStyle = comment.strokeColor;
+                            ctx.strokeText(comment.text, comment.x, comment.y);
+                            ctx.fillStyle = comment.color;
+                            ctx.fillText(comment.text, comment.x, comment.y);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('字幕・実況コメントの合成に失敗したため映像のみで撮影します', error);
+                this.captureSnackbarState.open({ color: 'warning', text: '字幕・実況コメントを合成できないため、映像のみでキャプチャします。' });
+                ctx.clearRect(0, 0, width, height);
+                ctx.drawImage(frame, 0, 0, width, height);
+            }
+            try {
+                return await createImageBitmap(canvas);
+            } catch (error) {
+                // tainted overlay canvas can fail bitmap creation; retry a clean video-only canvas.
+                const fallback = document.createElement('canvas');
+                fallback.width = width;
+                fallback.height = height;
+                const fallbackContext = fallback.getContext('2d');
+                if (fallbackContext === null) throw error;
+                fallbackContext.drawImage(frame, 0, 0, width, height);
+                this.captureSnackbarState.open({ color: 'warning', text: '字幕・実況コメントを合成できないため、映像のみでキャプチャします。' });
+                return await createImageBitmap(fallback);
+            }
+        } finally {
+            frameBitmap?.close();
+        }
+    }
+
+    private async saveCompositeCapture(request: ScreenshotRequest): Promise<void> {
+        try {
+            const image = await request.capture?.();
+            if (image === undefined) return;
+            const canvas = document.createElement('canvas');
+            canvas.width = image.width;
+            canvas.height = image.height;
+            canvas.getContext('2d')!.drawImage(image, 0, 0);
+            image.close();
+            const blob = await new Promise<Blob>((resolve, reject) =>
+                canvas.toBlob(value => (value ? resolve(value) : reject(new Error('JPEG conversion failed'))), 'image/jpeg', 0.92),
+            );
+            const file = new File([blob], request.filename ?? 'capture.jpg', { type: 'image/jpeg' });
+            if (typeof navigator.canShare === 'function' && typeof navigator.share === 'function' && navigator.canShare({ files: [file] })) {
+                await navigator.share({ files: [file], title: file.name });
+            } else {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = file.name;
+                link.click();
+                URL.revokeObjectURL(url);
+            }
+            const settings = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();
+            if (settings.captureCopyToClipboard === true && typeof navigator.clipboard?.write === 'function') {
+                await navigator.clipboard.write([new ClipboardItem({ 'image/jpeg': blob })]);
+            }
+        } catch (error) {
+            console.warn('キャプチャ合成に失敗しました', error);
+            this.captureSnackbarState.open({ color: 'error', text: 'キャプチャを保存できませんでした。映像や保存先を確認してください。' });
+        }
     }
 
     /**
@@ -1425,6 +1563,13 @@ export default abstract class BaseVideo extends Vue {
         }
         if (isListedVideoShortcut(e) === false) return;
 
+        if (isCaptureShortcut(e) === true) {
+            this.dp?.container.querySelector<HTMLElement>('.dplayer-camera-icon')?.click();
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return;
+        }
+
         switch (e.key) {
             case 'ArrowLeft':
             case 'ArrowRight': {
@@ -1456,9 +1601,6 @@ export default abstract class BaseVideo extends Vue {
             case 'D':
             case 'd':
                 (this.dp as any)?.template?.showDanmaku?.click?.();
-                break;
-            case 'C':
-                this.dp?.container.querySelector<HTMLElement>('.dplayer-camera-icon')?.click();
                 break;
             case '+':
             case '-': {
