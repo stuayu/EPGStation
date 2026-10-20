@@ -555,7 +555,8 @@ class EncoderModel implements IEncoderModel {
             );
 
             this.isCanceld = true;
-            await ProcessUtil.kill(this.childProcess).catch(err => {
+            const isAmatsukazeTool = this.childProcess.spawnargs.join(' ').includes('AmatsukazeEncodeTool');
+            await ProcessUtil.kill(this.childProcess, 500, isAmatsukazeTool === true ? 8000 : 0).catch(err => {
                 this.log.encode.error(`kill encode process failed: ${this.encodeOption?.encodeId}`);
                 this.log.encode.error(err);
             });

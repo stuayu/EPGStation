@@ -7,6 +7,7 @@ import AmatsukazeOutputUtil from './model/amatsukaze/AmatsukazeOutputUtil';
 import AmatsukazeTextUtil from './model/amatsukaze/AmatsukazeTextUtil';
 import AmatsukazeRpcClient from './model/amatsukaze/AmatsukazeRpcClient';
 import AmatsukazeTaskWatcher from './model/amatsukaze/AmatsukazeTaskWatcher';
+import AmatsukazeCancelController from './model/amatsukaze/AmatsukazeCancelController';
 import { buildAddTaskCommand } from './model/amatsukaze/AmatsukazeCommandUtil';
 import {
     ResolvedAmatsukazeConfig,
@@ -268,33 +269,47 @@ namespace AmatsukazeEncodeTool {
         // requestAll() は要求送信完了しか待たないため、初期キューを受信してから投入する。
         // これにより同じ入力ファイルの過去タスクを今回のタスクと誤認しない。
         await watcher.waitForInitialQueueSnapshot();
-        await addTask(config, profile, remoteInput, remoteOutputDir);
-        // 投入前からキューに居るアイテム (前回失敗した同じ録画のタスクなど) を
-        // 自分のタスクと取り違えないよう、探索はここから始めさせる
-        watcher.markTaskAdded();
-
-        // 中断されたら Amatsukaze 側のタスクも取り消す
-        let isCanceling = false;
-        const onSignal = (signal: NodeJS.Signals): void => {
-            if (isCanceling === true) {
-                return;
-            }
-            isCanceling = true;
-            printLog(`${signal} を受信したため Amatsukaze のタスクをキャンセルします`);
-            watcher
-                .cancel()
+        let cancelTimer: ReturnType<typeof setTimeout> | null = null;
+        let cancelReason = '停止要求';
+        const cancelController = new AmatsukazeCancelController(() => {
+            printLog(`${cancelReason} のため Amatsukaze のタスクをキャンセルします`);
+            const cancelTimeout = new Promise<void>(resolve => {
+                cancelTimer = setTimeout(resolve, 5000);
+            });
+            Promise.race([watcher.cancel(), cancelTimeout])
                 .catch(err => printLog(`cancel failed: ${err.message}`))
                 .then(() => {
                     watcher.stop();
                     client.close();
                     process.exit(EXIT_FAILED);
                 });
+        });
+        const requestCancel = (reason: string): void => {
+            cancelReason = reason;
+            cancelController.request();
         };
-        process.on('SIGINT', () => onSignal('SIGINT'));
-        process.on('SIGTERM', () => onSignal('SIGTERM'));
+        const onSignal = (signal: NodeJS.Signals): void => requestCancel(signal);
+        const onStdinClose = (): void => requestCancel('stdin close');
+        process.on('SIGINT', onSignal);
+        process.on('SIGTERM', onSignal);
+        if (process.stdin.isTTY !== true) {
+            process.stdin.on('end', onStdinClose);
+            process.stdin.on('close', onStdinClose);
+            // 読み出しを始めないと stdin の end が届かない。
+            // Windows の child.kill() はシグナルを送らず強制終了するため、
+            // EPGStation の停止要求は stdin の終了だけが頼り。
+            process.stdin.resume();
+        }
 
+        await addTask(config, profile, remoteInput, remoteOutputDir);
+        cancelController.taskAdded();
+        // 投入前からキューに居るアイテム (前回失敗した同じ録画のタスクなど) を
+        // 自分のタスクと取り違えないよう、探索はここから始めさせる
+        watcher.markTaskAdded();
         try {
             const result = await finished;
+            // 完了後に stdin が閉じても取り消さない (出力の移動中に親が閉じることがある)
+            cancelController.finish();
 
             if (result.isSucceeded === false) {
                 throw new Error(
@@ -309,6 +324,12 @@ namespace AmatsukazeEncodeTool {
                     (result.encodeTimeMs === null ? '' : ` (${Math.round(result.encodeTimeMs / 1000)} 秒)`),
             );
         } finally {
+            process.removeListener('SIGINT', onSignal);
+            process.removeListener('SIGTERM', onSignal);
+            process.stdin.removeListener('end', onStdinClose);
+            process.stdin.removeListener('close', onStdinClose);
+            if (cancelTimer !== null) clearTimeout(cancelTimer);
+            process.stdin.pause();
             watcher.stop();
             client.close();
         }
