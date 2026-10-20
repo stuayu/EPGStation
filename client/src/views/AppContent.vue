@@ -4,6 +4,11 @@
         <Navigation></Navigation>
         <ServerStatusToast v-if="offlineStartup === false"></ServerStatusToast>
         <UpdateNotification v-if="offlineStartup === false"></UpdateNotification>
+        <v-alert v-if="offlineCacheSavedAt !== null" type="warning" density="compact" class="offline-cache-banner" role="status">
+            オフライン: {{ new Date(offlineCacheSavedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }} 時点の情報
+        </v-alert>
+        <v-alert v-if="offlineCacheUnavailable" type="info" density="compact" class="offline-cache-banner">オフラインのため表示できません (保存データなし)</v-alert>
+        <v-alert v-if="offlineMutationBlocked" type="error" density="compact" class="offline-cache-banner">オフラインのため操作できません</v-alert>
         <v-banner v-if="powerSuspending !== null" class="power-suspending-banner" color="warning" icon="mdi-power-sleep" lines="one">
             <v-banner-text>約 1 分後に PC を休止します。操作を続ける場合は取り消してください。</v-banner-text>
             <template #actions><v-btn :loading="cancelingPower" @click="cancelPowerSuspending">取り消す</v-btn></template>
@@ -28,7 +33,7 @@ import ISocketIOModel, { ProgramStartingPayload, PowerSuspendingPayload } from '
 import IRepositoryModel from '@/model/api/IRepositoryModel';
 import IColorThemeState from '@/model/state/IColorThemeState';
 import ThemeColorUtil from '@/util/ThemeColorUtil';
-import { isOfflineStartup, setOfflineStartup } from '@/util/OfflineStartup';
+import { getOfflineApiCacheFallbackAt, isOfflineApiCacheUnavailable, isOfflineStartup, setOfflineStartup } from '@/util/OfflineStartup';
 
 @Component({
     components: {
@@ -39,6 +44,9 @@ import { isOfflineStartup, setOfflineStartup } from '@/util/OfflineStartup';
     },
 })
 class AppContent extends Vue {
+    public offlineCacheSavedAt: number | null = getOfflineApiCacheFallbackAt();
+    public offlineCacheUnavailable = isOfflineApiCacheUnavailable();
+    public offlineMutationBlocked = false;
     public isDisconnected: boolean = false;
     public offlineStartup: boolean = isOfflineStartup();
     public powerSuspending: PowerSuspendingPayload | null = null;
@@ -58,6 +66,11 @@ class AppContent extends Vue {
         window.addEventListener('offline', this.onBrowserOffline);
         window.addEventListener('online', this.onBrowserOnline);
         window.addEventListener('client-settings-synced', this.onClientSettingsSynced);
+        window.addEventListener('offline-api-cache-hit', this.onOfflineCacheHit as EventListener);
+        window.addEventListener('offline-api-cache-miss', this.onOfflineCacheMiss);
+        window.addEventListener('offline-api-cache-cleared', this.onOfflineCacheCleared);
+        window.addEventListener('offline-api-cache-restored', this.onOfflineCacheRestored);
+        window.addEventListener('offline-api-mutation-blocked', this.onOfflineMutationBlocked);
         // theme 設定を反映
         ThemeColorUtil.apply(this.$vuetify.theme, this.colorThemeState.getThemeColor());
         this.$vuetify.theme.change(this.colorThemeState.isDarkTheme() ? 'dark' : 'light');
@@ -80,6 +93,24 @@ class AppContent extends Vue {
         // mirakurun 接続状態確認
         this.serverStatusState.fetch();
         this.serverStatusState.startPolling();
+    }
+
+    public onOfflineCacheHit(event: CustomEvent<{ savedAt: number }>): void {
+        this.offlineCacheSavedAt = event.detail.savedAt;
+        this.offlineCacheUnavailable = false;
+    }
+    public onOfflineCacheMiss(): void {
+        this.offlineCacheUnavailable = true;
+    }
+    public onOfflineCacheCleared(): void {
+        this.offlineCacheSavedAt = null;
+    }
+    public onOfflineCacheRestored(): void {
+        this.offlineCacheSavedAt = null;
+        this.offlineCacheUnavailable = false;
+    }
+    public onOfflineMutationBlocked(): void {
+        this.offlineMutationBlocked = true;
     }
 
     private onClientSettingsSynced = (): void => {

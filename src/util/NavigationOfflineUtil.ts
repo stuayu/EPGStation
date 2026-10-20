@@ -1,5 +1,5 @@
 /** オフラインでも開けるナビゲーション先 (保存データだけで描画でき、サーバの API を呼ばない画面) */
-const OFFLINE_AVAILABLE_PATH_PREFIXES = ['/offline-videos'];
+const OFFLINE_AVAILABLE_PATH_PREFIXES = ['/offline-videos', '/guide', '/onair', '/reserves', '/rules'];
 
 /**
  * ナビゲーション項目を押せるか判定する。
