@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
 import ChapterFileUtil from '../../../util/ChapterFileUtil';
+import CmDetectionFileUtil from '../../../util/CmDetectionFileUtil';
 import IVideoFileDB from '../../db/IVideoFileDB';
 import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
@@ -61,8 +62,17 @@ export default class CmDetectionManageModel implements ICmDetectionManageModel {
         const filePath = await this.videoUtil.getFullFilePathFromId(videoFileId);
         if (filePath === null) return;
         const chapterPath = ChapterFileUtil.getChapterFilePath(filePath);
-        const evidencePath = filePath.replace(/\.[^.]+$/, '.cm-detection.json');
-        if (fs.existsSync(chapterPath) || fs.existsSync(evidencePath)) return;
+        const evidencePath = CmDetectionFileUtil.getEvidencePath(filePath);
+        if (fs.existsSync(chapterPath)) return;
+        if (fs.existsSync(evidencePath)) {
+            try {
+                const previous = JSON.parse(await fs.promises.readFile(evidencePath, 'utf8'));
+                if (previous.videoFileName === filePath.split(/[\\/]/).pop() && previous.chapterWritten === true)
+                    return;
+            } catch {
+                // 不正/古い判定JSONは再検出可能にする
+            }
+        }
         const ffmpeg = this.config.getConfig().ffmpeg;
         const embeddedResult = await this.run(this.config.getConfig().ffprobe, [
             '-v',
@@ -93,19 +103,36 @@ export default class CmDetectionManageModel implements ICmDetectionManageModel {
         const silences = parseSilenceDetectOutput(detection.output);
         const commercials = detectCmIntervals(duration, silences);
         const evidence = JSON.stringify(
-            { version: 1, duration, parameters: CM_DETECT_PARAMETERS, silences, commercials },
+            {
+                version: 1,
+                videoFileName: filePath.split(/[\\/]/).pop(),
+                chapterWritten: silences.length > 0 || commercials.length > 0,
+                duration,
+                parameters: CM_DETECT_PARAMETERS,
+                silences,
+                commercials,
+            },
             null,
             2,
         );
-        if (silences.length === 0 && commercials.length === 0) {
-            await fs.promises.writeFile(evidencePath, evidence, 'utf8');
-            return;
-        }
-        const text = createChapterText(duration, commercials);
+        const chapterWritten = silences.length > 0 || commercials.length > 0;
+        const text = chapterWritten ? createChapterText(duration, commercials) : null;
+        const suffix = `.tmp-${process.pid}-${Date.now()}`;
+        const evidenceTempPath = `${evidencePath}${suffix}`;
+        const chapterTempPath = `${chapterPath}${suffix}`;
+        let chapterCommitted = false;
         try {
-            await fs.promises.writeFile(chapterPath, text, 'utf8');
-            await fs.promises.writeFile(evidencePath, evidence, 'utf8');
+            await fs.promises.writeFile(evidenceTempPath, evidence, 'utf8');
+            if (text !== null) {
+                await fs.promises.writeFile(chapterTempPath, text, 'utf8');
+                await fs.promises.rename(chapterTempPath, chapterPath);
+                chapterCommitted = true;
+            }
+            await fs.promises.rename(evidenceTempPath, evidencePath);
         } catch (err) {
+            await fs.promises.unlink(evidenceTempPath).catch(() => {});
+            await fs.promises.unlink(chapterTempPath).catch(() => {});
+            if (chapterCommitted) await fs.promises.unlink(chapterPath).catch(() => {});
             this.log.system.warn(`cannot write CM chapters: ${chapterPath}`);
             this.log.system.warn(err);
         }

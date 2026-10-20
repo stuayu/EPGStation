@@ -50,25 +50,42 @@ function makeVideoUtil() {
     return new VideoUtil(configuration, {});
 }
 
-
 test('getInfo は format 値が N/A のとき size と duration から bitRate を補う', async () => {
     const output = JSON.stringify({ format: { duration: '10', size: '1000', bit_rate: 'N/A' } });
-    await withStubbedFfprobe(() => output, async () => {
-        assert.deepEqual(await makeVideoUtil().getInfo('/fake/video.ts'), { duration: 10, size: 1000, bitRate: 800 });
-    });
+    await withStubbedFfprobe(
+        () => output,
+        async () => {
+            assert.deepEqual(await makeVideoUtil().getInfo('/fake/video.ts'), {
+                duration: 10,
+                size: 1000,
+                bitRate: 800,
+            });
+        },
+    );
 });
 
 test('getInfo は欠落・非有限の値を NaN にせず 0 として返す', async () => {
     const output = JSON.stringify({ format: { duration: 'N/A', size: 'Infinity', bit_rate: 'N/A' } });
-    await withStubbedFfprobe(() => output, async () => {
-        assert.deepEqual(await makeVideoUtil().getInfo('/fake/video.ts'), { duration: 0, size: 0, bitRate: 0 });
-    });
+    await withStubbedFfprobe(
+        () => output,
+        async () => {
+            assert.deepEqual(await makeVideoUtil().getInfo('/fake/video.ts'), { duration: 0, size: 0, bitRate: 0 });
+        },
+    );
 });
 
 test('start_time / end_time から秒単位のチャプターを組み立てる', async () => {
     const output = JSON.stringify({
         chapters: [
-            { id: 0, time_base: '1/1000', start: 0, start_time: '0.000000', end: 5000, end_time: '5.000000', tags: { title: 'OP' } },
+            {
+                id: 0,
+                time_base: '1/1000',
+                start: 0,
+                start_time: '0.000000',
+                end: 5000,
+                end_time: '5.000000',
+                tags: { title: 'OP' },
+            },
             { id: 1, time_base: '1/1000', start: 5000, start_time: '5.000000', end: 15000, end_time: '15.000000' },
         ],
     });
@@ -124,7 +141,10 @@ test('CM 検出が実際に書いたチャプターを VideoUtil が読む', asy
         child.kill = () => {};
         setImmediate(() => {
             if (args.includes('-show_chapters')) child.stdout.end(JSON.stringify({ chapters: [] }));
-            else child.stderr.end('Duration: 00:01:00.00\nsilence_start: 9.5\nsilence_end: 10.5\nsilence_start: 24.5\nsilence_end: 25.5\nsilence_start: 39.5\nsilence_end: 40.5');
+            else
+                child.stderr.end(
+                    'Duration: 00:01:00.00\nsilence_start: 9.5\nsilence_end: 10.5\nsilence_start: 24.5\nsilence_end: 25.5\nsilence_start: 39.5\nsilence_end: 40.5',
+                );
             child.emit('close', 0);
         });
         return child;
@@ -142,11 +162,24 @@ test('CM 検出が実際に書いたチャプターを VideoUtil が読む', asy
         assert.equal(fs.existsSync(ChapterFileUtil.getChapterFilePath(videoPath)), true);
         assert.equal(fs.existsSync(path.join(directory, 'foo.cm-detection.json')), true);
 
-        await withStubbedFfprobe(() => JSON.stringify({ chapters: [], format: { duration: '60' } }), async () => {
-            const chapters = await makeVideoUtil().getChapters(videoPath);
-            assert.deepEqual(chapters.map(chapter => chapter.title), ['本編', 'CM', '本編']);
-            assert.deepEqual(chapters.map(chapter => [chapter.startAt, chapter.endAt]), [[0, 10], [10, 40], [40, 60]]);
-        });
+        await withStubbedFfprobe(
+            () => JSON.stringify({ chapters: [], format: { duration: '60' } }),
+            async () => {
+                const chapters = await makeVideoUtil().getChapters(videoPath);
+                assert.deepEqual(
+                    chapters.map(chapter => chapter.title),
+                    ['本編', 'CM', '本編'],
+                );
+                assert.deepEqual(
+                    chapters.map(chapter => [chapter.startAt, chapter.endAt]),
+                    [
+                        [0, 10],
+                        [10, 40],
+                        [40, 60],
+                    ],
+                );
+            },
+        );
     } finally {
         childProcess.spawn = originalSpawn;
     }
@@ -198,7 +231,13 @@ test('遅れて始まる音声 ES も独立したトラックとして返す', a
     const output = JSON.stringify({
         streams: [
             { index: 1, codec_name: 'aac', channels: 2, start_time: '81471.174500' },
-            { index: 11, codec_name: 'aac', channels: 2, start_time: '81492.870500', tags: { title: 'オーディオコメンタリー' } },
+            {
+                index: 11,
+                codec_name: 'aac',
+                channels: 2,
+                start_time: '81492.870500',
+                tags: { title: 'オーディオコメンタリー' },
+            },
         ],
     });
     let probeArgs;
@@ -338,47 +377,66 @@ test('すべての ffprobe 呼び出しに timeout と killSignal を設定す�
 });
 
 test('詳細解析は最初のデコード frame transfer を優先し、frame probe 失敗時は stream 値へ戻す', async () => {
-    await withStubbedFfprobe(args => {
-        if (args.includes('-show_frames')) return JSON.stringify({ frames: [{ color_transfer: 'arib-std-b67' }] });
-        return JSON.stringify({ format: {}, streams: [{ codec_type: 'video', codec_name: 'hevc', color_transfer: 'bt2020-10' }] });
-    }, async () => {
-        assert.equal((await makeVideoUtil().getDetailedInfo('/fake/video.ts')).colorTransfer, 'arib-std-b67');
-    });
-
-    await withStubbedFfprobe(args => {
-        if (args.includes('-show_frames')) return new Error('first frame unavailable');
-        return JSON.stringify({ format: {}, streams: [{ codec_type: 'video', codec_name: 'hevc', color_transfer: 'bt2020-10' }] });
-    }, async () => {
-        assert.equal((await makeVideoUtil().getDetailedInfo('/fake/video.ts')).colorTransfer, 'bt2020-10');
-    });
-});
-
-test('終了しない ffprobe は timeout 後に reject しプロセスを残さない', { skip: process.platform === 'win32' }, async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'epgstation-ffprobe-'));
-    const ffprobePath = path.join(tempDir, 'ffprobe-hang.js');
-    const pidPath = path.join(tempDir, 'ffprobe.pid');
-    fs.writeFileSync(
-        ffprobePath,
-        `#!/usr/bin/env node\nrequire('node:fs').writeFileSync(${JSON.stringify(pidPath)}, String(process.pid));\nsetInterval(() => {}, 1000);\n`,
+    await withStubbedFfprobe(
+        args => {
+            if (args.includes('-show_frames')) return JSON.stringify({ frames: [{ color_transfer: 'arib-std-b67' }] });
+            return JSON.stringify({
+                format: {},
+                streams: [{ codec_type: 'video', codec_name: 'hevc', color_transfer: 'bt2020-10' }],
+            });
+        },
+        async () => {
+            assert.equal((await makeVideoUtil().getDetailedInfo('/fake/video.ts')).colorTransfer, 'arib-std-b67');
+        },
     );
-    fs.chmodSync(ffprobePath, 0o755);
 
-    try {
-        const videoUtil = new VideoUtil(
-            { getConfig: () => ({ ffprobe: ffprobePath, recorded: [], ffprobeTimeout: 1 }) },
-            {},
-        );
-        await assert.rejects(() => videoUtil.getDetailedInfo('/fake/video.mp4'), error => {
-            assert.equal(error.name, 'FfprobeTimeoutError');
-            return true;
-        });
-        const pid = Number(fs.readFileSync(pidPath, 'utf8'));
-        assert.ok(Number.isInteger(pid) && pid > 0);
-        assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
-    } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-    }
+    await withStubbedFfprobe(
+        args => {
+            if (args.includes('-show_frames')) return new Error('first frame unavailable');
+            return JSON.stringify({
+                format: {},
+                streams: [{ codec_type: 'video', codec_name: 'hevc', color_transfer: 'bt2020-10' }],
+            });
+        },
+        async () => {
+            assert.equal((await makeVideoUtil().getDetailedInfo('/fake/video.ts')).colorTransfer, 'bt2020-10');
+        },
+    );
 });
+
+test(
+    '終了しない ffprobe は timeout 後に reject しプロセスを残さない',
+    { skip: process.platform === 'win32' },
+    async () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'epgstation-ffprobe-'));
+        const ffprobePath = path.join(tempDir, 'ffprobe-hang.js');
+        const pidPath = path.join(tempDir, 'ffprobe.pid');
+        fs.writeFileSync(
+            ffprobePath,
+            `#!/usr/bin/env node\nrequire('node:fs').writeFileSync(${JSON.stringify(pidPath)}, String(process.pid));\nsetInterval(() => {}, 1000);\n`,
+        );
+        fs.chmodSync(ffprobePath, 0o755);
+
+        try {
+            const videoUtil = new VideoUtil(
+                { getConfig: () => ({ ffprobe: ffprobePath, recorded: [], ffprobeTimeout: 1 }) },
+                {},
+            );
+            await assert.rejects(
+                () => videoUtil.getDetailedInfo('/fake/video.mp4'),
+                error => {
+                    assert.equal(error.name, 'FfprobeTimeoutError');
+                    return true;
+                },
+            );
+            const pid = Number(fs.readFileSync(pidPath, 'utf8'));
+            assert.ok(Number.isInteger(pid) && pid > 0);
+            assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+        } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+    },
+);
 
 test('ffprobeTimeout は秒で受け取り、未指定・不正値は既定 30 秒、下限は 1 秒へ丸める', () => {
     const build = config => new VideoUtil({ getConfig: () => ({ ffprobe: 'ffprobe', recorded: [], ...config }) }, {});
@@ -454,6 +512,7 @@ test('無音区間もCMも無い場合は判定JSONだけを書き、チャプ�
             { findId: async () => ({ type: 'ts' }) },
             { getFullFilePathFromId: async () => videoPath },
         );
+        await model.detect(1);
         await model.detect(1);
         assert.equal(fs.existsSync(ChapterFileUtil.getChapterFilePath(videoPath)), false);
         assert.equal(fs.existsSync(path.join(directory, 'quiet.cm-detection.json')), true);
