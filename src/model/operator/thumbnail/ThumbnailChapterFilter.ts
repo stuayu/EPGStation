@@ -1,5 +1,6 @@
 import * as apid from '../../../../api';
 import { ThumbnailCandidate } from './ThumbnailCandidateGenerator';
+import { isCommercialChapter } from '../../../util/CommercialChapterUtil';
 
 const CHAPTER_MARGIN_SECONDS = 0.5;
 
@@ -8,10 +9,7 @@ export interface ThumbnailChapterFilterResult {
     usedFallback: boolean;
 }
 
-/** チャプター名が trim 後、大文字小文字を問わず CM で始まるか判定する。 */
-export function isCommercialChapter(chapter: apid.VideoChapter): boolean {
-    return (chapter.title ?? '').trim().toUpperCase().startsWith('CM');
-}
+export { isCommercialChapter } from '../../../util/CommercialChapterUtil';
 
 /** CM チャプター境界の前後0.5秒を含め、候補時刻が除外対象か判定する。 */
 export function isInCommercialChapter(timestamp: number, chapters: apid.VideoChapter[]): boolean {
