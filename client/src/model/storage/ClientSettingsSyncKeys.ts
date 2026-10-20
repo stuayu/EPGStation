@@ -50,7 +50,8 @@ export const CLIENT_SETTINGS_SYNC_KEYS: Record<string, readonly string[]> = {
         'snsLastSelectedAccountIds',
         'snsRecentEmojiNames',
         'snsEnableComposePreview',
-        // 同期しない: isEnablePWA は端末ごとのアプリ利用設定。
+        'captureCaptionMode',
+        // 同期しない: isEnablePWA は端末ごとのアプリ利用設定。captureCopyToClipboard は Clipboard API の有無が端末で違う。
         // isPreferredPlayingLiveM2TSOnWeb / isPreferredPlayingOnWeb は端末・回線依存。
         // onAirM2TSViewURLScheme / shouldUseRecordedViewURLScheme / recordedViewURLScheme / shouldUseRecordedDownloadURLScheme / recordedDownloadURLScheme は端末固有 URL・再生環境。
         // jikkyoServerUrl は接続先、jikkyoLiveOffsetSec は端末ごとの時刻ずれ。
