@@ -88,6 +88,8 @@ export default class SettingStorageModel extends AbstractStorageBaseModel<ISetti
             snsUseSplitPanelView: true,
             snsSplitPanelRatio: 0.4,
             snsEnableComposePreview: true,
+            captureCaptionMode: 'caption',
+            captureCopyToClipboard: false,
         };
     }
 

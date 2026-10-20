@@ -55,6 +55,8 @@ MPEG-2 映像を含む MPEG-TS だけ、サーバーで再エンコードしな�
 
 CM 自動スキップは設定画面と DPlayer の設定メニューから切り替えられる。戻るボタンはプレイヤー下端から92pxに置き、320px幅の縦画面でもコントロールバーとシークバーに重ねない。再生中に `?` を押すとショートカット一覧を表示する (狭い端末では起動しない)。録画は矢印で5秒、Ctrl+矢印で15秒、Shift+矢印で30秒移動し、Ctrl+上下で音量を調整する。Q はミュート、F は全画面、E は PiP、Shift+C はキャプチャ、D はコメント表示、+ / - は再生速度の変更。`,`、`.`、`[`、`]`、`c`、`i` は従来どおり。
 
+キャプチャは `videoWidth` / `videoHeight` の解像度で映像を描き、端末ごとの設定に応じて表示字幕 Canvas と弾幕 DOM を重ねる。MPEG-2 のデインターレース出力がある場合はそのフレームを使う。設定画面の「キャプチャに合成する内容」は映像のみ / 字幕 / 字幕と実況コメントを選び、クリップボードコピーを有効にできる。iOS / iPadOS など `navigator.canShare({ files })` が利用できる環境では共有シートで保存する。合成に失敗した場合は映像のみへフォールバックする。SNS キャプチャ添付も同じ合成設定を使う。
+
 `GET /api/videos/{videoFileId}/offline?profile=<録画HLSのプロファイル>&audioTrack=all` は、録画完了済みファイルを in-memory HLS の `Fmp4Packager` へ通し、完成したレコードを EOF 前から順にレスポンスへ流す。保存では視聴用の `MAX_AHEAD_SEGMENT_NUM` と録画入力の `readrate` を使わず、エンコーダ出力は HTTP の backpressure に従う。録画中は `409`、同時実行は3件まで。レスポンス切断、エンコーダ例外、正常 EOF のすべてでストリーム停止と実行枠解放を行い、保存中はクライアント keep の代わりにサーバーが keep タイマーを更新する。
 
 保存形式は `EPGODL2`、長さ付き JSON メタデータ、init/master/segment/end の型付きレコード。連続する fMP4 フラグメントを約6秒 (既定12 parts) ずつまとめ、init は別レコードとして先頭に送る。複数音声は `Fmp4Packager` の映像・音声レンディション、各 init、`CODECS` 付きマスタープレイリストを保存し、LL-HLS のタグは公開しない。ARIB 字幕の `emsg` は各フラグメント先頭のまま保存する。クライアントはレコード完成ごとに進捗を更新し、Cache Storage へ1件ずつ書く。保存後に `#EXT-X-VERSION:7` / `#EXT-X-MAP` / `#EXT-X-ENDLIST` のローカル fMP4 VOD を生成し、iOS Safari のネイティブ HLS と hls.js の両方で再生する (HEVC は `hvc1`)。保存画質は HEVC TS の `original-hevc` と MPEG-2 TS の `original-mpeg2` を許可する。MPEG-2 Original は元 TS を188 byte境界の最大16MiBチャンクへ分割して保存し、Service Worker が `/local/offline/.../original.ts` の Range をチャンクから組み立てる。Range 無し要求は全体を `200` で返し、`Content-Range` は付けない。範囲外は `416` と `Content-Range: bytes */<size>` を返す。再生はオンラインの `mpeg2toh264` 経路を使う。

@@ -524,6 +524,22 @@
                         <v-list-item three-line>
                             <div class="v-list-item-content">
                                 <div class="title">ビデオプレーヤ</div>
+                                <div class="my-2">
+                                    <v-list-item-title class="text-subtitle-1">キャプチャに合成する内容</v-list-item-title>
+                                    <v-select
+                                        v-model="storageModel.tmp.captureCaptionMode"
+                                        :items="[
+                                            { title: '映像のみ', value: 'video' },
+                                            { title: '字幕を合成', value: 'caption' },
+                                            { title: '字幕と実況コメントを合成', value: 'caption-comment' },
+                                        ]"
+                                    ></v-select>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div><v-list-item-title class="text-subtitle-1">キャプチャ画像をクリップボードにもコピー</v-list-item-title></div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="storageModel.tmp.captureCopyToClipboard"></v-switch>
+                                </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
                                         <v-list-item-title class="text-subtitle-1">字幕の縁取りを強制する</v-list-item-title>
