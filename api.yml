@@ -9,6 +9,36 @@ info:
 servers: []
 
 paths:
+    /client-settings:
+        get:
+            summary: クライアント設定取得
+            responses:
+                '200':
+                    description: 設定。未保存の場合は空オブジェクトと updatedAt 0
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/ClientSettingsResponse' }
+        put:
+            summary: クライアント設定保存
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema: { $ref: '#/components/schemas/PutClientSettingsOption' }
+            responses:
+                '200':
+                    description: 保存後の設定
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/ClientSettingsResponse' }
+                '400': { description: リクエストが不正 }
+                '401': { description: 認証が必要 }
+                '409':
+                    description: サーバー側の設定が新しい
+                    content:
+                        application/json:
+                            schema: { $ref: '#/components/schemas/ClientSettingsResponse' }
+                '413': { description: 設定が 256 KiB を超える }
     /power/cancel:
         post:
             summary: 休止予定を取り消す
@@ -268,6 +298,18 @@ paths:
 
 components:
     schemas:
+        ClientSettingsResponse:
+            type: object
+            required: [settings, updatedAt]
+            properties:
+                settings: { type: object, additionalProperties: true }
+                updatedAt: { $ref: '#/components/schemas/UnixtimeMS' }
+        PutClientSettingsOption:
+            type: object
+            required: [settings, baseUpdatedAt]
+            properties:
+                settings: { type: object, additionalProperties: true }
+                baseUpdatedAt: { $ref: '#/components/schemas/UnixtimeMS' }
         ProgramReminder:
             type: object
             required: [id, programId, channelId, name, startAt, minutesBefore, userId, createdAt]
@@ -2786,7 +2828,28 @@ components:
         RecordingPresetSettings:
             description: 録画プリセットの保存設定
             type: object
-            required: [parentDirectoryName, directory, recordedFormat, mode1, encodeParentDirectoryName1, directory1, mode2, encodeParentDirectoryName2, directory2, mode3, encodeParentDirectoryName3, directory3, isDeleteOriginalAfterEncode, priority, conflictPolicy, allowEndLack, startMarginSec, endMarginSec, tags]
+            required:
+                [
+                    parentDirectoryName,
+                    directory,
+                    recordedFormat,
+                    mode1,
+                    encodeParentDirectoryName1,
+                    directory1,
+                    mode2,
+                    encodeParentDirectoryName2,
+                    directory2,
+                    mode3,
+                    encodeParentDirectoryName3,
+                    directory3,
+                    isDeleteOriginalAfterEncode,
+                    priority,
+                    conflictPolicy,
+                    allowEndLack,
+                    startMarginSec,
+                    endMarginSec,
+                    tags,
+                ]
             properties:
                 parentDirectoryName: { type: string, nullable: true }
                 directory: { type: string, nullable: true }
