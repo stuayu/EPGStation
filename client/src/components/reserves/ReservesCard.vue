@@ -20,6 +20,7 @@
                             ({{ reserve.display.duration }}分)
                         </div>
                         <ReserveScheduleStatus :reserveItem="reserve.reserveItem" class="d-block mb-2"></ReserveScheduleStatus>
+                        <div v-if="formatEstimatedSize(reserve.reserveItem.estimatedSize) !== null" class="text-caption text-medium-emphasis mb-1">{{ formatEstimatedSize(reserve.reserveItem.estimatedSize) }}</div>
                         <div class="text-body-2 font-weight-light">{{ reserve.display.description }}</div>
                     </div>
                 </div>
@@ -34,6 +35,7 @@ import ReserveDialog from '@/components/reserves/ReserveDialog.vue';
 import ReserveMenu from '@/components/reserves/ReserveMenu.vue';
 import ReserveScheduleStatus from '@/components/reserves/ReserveScheduleStatus.vue';
 import { ReserveStateData } from '@/model/state/reserve/IReserveStateUtil';
+import EstimatedSizeUtil from '@/util/EstimatedSizeUtil';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
@@ -44,6 +46,10 @@ import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
     },
 })
 class ReservesCard extends Vue {
+    public formatEstimatedSize(size: number | undefined): string | null {
+        return EstimatedSizeUtil.format(size);
+    }
+
     // 番組表 (Guide.vue) と同じ衝突・スキップ色をダークモードでも使うための判定
     get isDark(): boolean {
         return this.$vuetify.theme.global.current.dark;

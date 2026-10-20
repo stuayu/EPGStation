@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 予約一覧と保存先画面に推定録画容量と予約による空き容量の見通しを追加 → 2026-10-20
 - PR #42 のルール重複除外を修正し、録画完了後の再評価・planner 重複判定・更新キューを改善 → 2026-10-17
 - CI の単体テストが毎晩失敗していたのを直し、main への push と PR で CI が走るようにした → 2026-10-10
 - 予約 planner の未採番予約・同一番組の重複割当を修正し、ルール重複除外を結合検証 (Issue #41) → 2026-10-10
@@ -75,6 +76,20 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - 波及元ルール検索結果を `updateAll()` / 関連ルール再評価の呼び出し単位でキャッシュし、`updateAll()` 内の二重評価を抑える。評価順で重複状態変更を取りこぼすルールは最後に再評価する
 - `removeOverlap()` 後の関連ルール再評価失敗は記録し、解除 API の成功を維持する。波及元条件と overlap 番組 ID 集合の構築は共通ヘルパーへ集約する
 - `ReserveDB.findRuleIdsByChannelAndShortName()` は必要な列を SQL で絞り、重複しない `ruleId` を取得する
+
+## 2026-10-20
+
+### 予約一覧と保存先画面に推定容量を表示
+
+EDCB / EMWUI の考え方を参考に、EPGStation 独自の見積もりを追加。参照元のコードは使用していない。予約 API は `estimatedSize` (byte) を返す。番組の実効終了時刻は `ProgramDuration` で求め、予約固有または全体設定の開始・終了マージンを加算する。放送種別ごとの想定ビットレートと容量余裕は既存の `recording.storageFallback*` を使う。
+
+保存先 API は空き容量を取得し、開始時刻順の将来予約を録画時と同じ `selectRecordedDir()` で割り当てる。skip と競合予約を除外し、legacy scheduler のチューナー未割当予約も含める。未来予約と番組情報は一括取得する。保存先ごとの予約見込み容量と、空きが不足する最初の予約の番組名・開始時刻を返す。予約固有の保存先指定と `storageFallbackEnabled` も録画時の選択規則に合わせる。
+
+予約一覧のカード・テーブルと保存先画面に推定値を表示。サイズ表記は `client/src/util/EstimatedSizeUtil.ts` にまとめ、狭い画面でも予約名の下に表示する。
+
+実装: `src/model/operator/recording/RecordedDirCapacity.ts`、`src/model/api/reserve/ReserveApiModel.ts`、`src/model/api/storage/StorageApiModel.ts`、`client/src/components/reserves/`、`client/src/views/Storages.vue`。
+
+テスト: `test/ut/recorded-dir-capacity.test.js`、`test/ut/reserve-api-model-planned-tuner.test.js`、`test/ut/storage-api-model-capacity.test.js`。
 
 ## 2026-10-10
 

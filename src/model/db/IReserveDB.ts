@@ -49,6 +49,7 @@ export default interface IReserveDB {
     findId(reserveId: apid.ReserveId): Promise<Reserve | null>;
     findAll(option: apid.GetReserveOption): Promise<[Reserve[], number]>;
     findNextUpcomingForPower(now: number): Promise<Reserve | null>;
+    findFutureForStorage(now: number): Promise<Reserve[]>;
     findLists(option?: apid.GetReserveListsOption): Promise<Reserve[]>;
     findProgramId(programId: apid.ProgramId): Promise<Reserve[]>;
     findRuleIdsByChannelAndShortName(channelId: apid.ChannelId, shortName: string): Promise<apid.RuleId[]>;

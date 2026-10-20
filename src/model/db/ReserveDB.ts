@@ -247,6 +247,15 @@ export default class ReserveDB implements IReserveDB {
         );
     }
 
+    /** ストレージ見積もり用に未来の予約を開始時刻順で取得する */
+    public async findFutureForStorage(now: number): Promise<Reserve[]> {
+        const connection = await this.op.getConnection();
+        const repository = connection.getRepository(Reserve);
+        return this.promieRetry.run(() =>
+            repository.find({ where: { startAt: MoreThan(now) }, order: { startAt: 'ASC' } }),
+        );
+    }
+
     private createFindOption(option: apid.GetReserveOption): FindManyOptions<Reserve> {
         const findConditions: FindOptionsWhere<Reserve> = {};
         this.setReserveTypeOption(option.type, findConditions);
