@@ -28,6 +28,7 @@
                 </div>
             </div>
         </transition>
+        <v-alert v-if="showOfflineNoData" type="info" variant="tonal" class="ma-4">オフラインのため表示できません (保存データなし)</v-alert>
         <div style="visibility: hidden">dummy</div>
         <OnAirSelectStream></OnAirSelectStream>
         <ProgramDialog></ProgramDialog>
@@ -48,9 +49,10 @@ import IOnAirState from '@/model/state/onair/IOnAirState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
+import { isOfflineStartup, isOfflineApiCacheUnavailable } from '@/util/OfflineStartup';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
+import { shouldShowOfflineNoData } from '../../../src/util/OfflineUxUtil';
 import type { RouteLocationNormalized as Route } from 'vue-router';
-
 
 @Component({
     components: {
@@ -63,6 +65,10 @@ import type { RouteLocationNormalized as Route } from 'vue-router';
 })
 class OnAir extends Vue {
     public onAirState: IOnAirState = container.get<IOnAirState>('IOnAirState');
+    public isLoading: boolean = true;
+    get showOfflineNoData(): boolean {
+        return shouldShowOfflineNoData(isOfflineStartup(), this.isLoading, isOfflineApiCacheUnavailable() === true && this.onAirState.getSchedules().length === 0);
+    }
     public isOpenPinnedChannelsDialog: boolean = false;
     private settingValue: ISettingValue = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
@@ -141,6 +147,7 @@ class OnAir extends Vue {
                 isHalfWidth: this.settingValue.isHalfWidthDisplayed,
             })
             .catch(err => {
+                this.isLoading = false;
                 this.snackbarState.open({
                     color: 'error',
                     text: '番組情報取得に失敗',
@@ -148,6 +155,7 @@ class OnAir extends Vue {
 
                 throw err;
             });
+        this.isLoading = false;
 
         if (this.updateTimer !== null) {
             clearTimeout(this.updateTimer);

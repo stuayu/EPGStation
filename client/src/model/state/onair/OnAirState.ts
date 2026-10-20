@@ -1,5 +1,6 @@
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import DateUtil from '@/util/DateUtil';
+import { isOfflineStartup } from '@/util/OfflineStartup';
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../../api';
 import IScheduleApiModel from '../../api/schedule/IScheduleApiModel';
@@ -195,10 +196,16 @@ class OnAirState implements IOnAirState {
      */
     public async fetchData(option: apid.BroadcastingScheduleOption): Promise<void> {
         const now = new Date().getTime();
-        this.reserveIndex = await this.reserveUtil.getReserveIndex({
-            startAt: now,
-            endAt: now + 3600 * 1000,
-        });
+        try {
+            this.reserveIndex = await this.reserveUtil.getReserveIndex({
+                startAt: now,
+                endAt: now + 3600 * 1000,
+            });
+        } catch (error) {
+            if (isOfflineStartup() === false) throw error;
+            // 予約情報は番組カードの補助表示。オフラインでは保存済み番組を優先する。
+            this.reserveIndex = {};
+        }
         const datas = await this.scheduleApiModel.getScheduleOnAir(option);
 
         this.schedules = datas.map(d => {

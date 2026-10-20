@@ -30,8 +30,11 @@
                         </GuideScroller>
                     </div>
                     <v-btn class="now-button" color="primary" icon="mdi-clock-outline" size="small" aria-label="現在時刻へ戻る" title="現在時刻へ戻る" v-on:click="onNow"></v-btn>
-                    <v-btn v-if="typeof $route.query.channelId !== 'undefined'" class="next-days-button" color="primary" size="small" :loading="isLoadingMore" @click="loadMore">次の8日</v-btn>
+                    <v-btn v-if="typeof $route.query.channelId !== 'undefined'" class="next-days-button" color="primary" size="small" :loading="isLoadingMore" @click="loadMore">
+                        次の8日
+                    </v-btn>
                 </div>
+                <v-alert v-else-if="showOfflineNoData" type="info" variant="tonal" class="ma-4">オフラインのため表示できません (保存データなし)</v-alert>
             </transition>
         </div>
         <ProgramDialog></ProgramDialog>
@@ -62,7 +65,9 @@ import { IGuideSizeSettingStorageModel } from '@/model/storage/guide/IGuideSizeS
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import GuideRouteUtil from '@/util/GuideRouteUtil';
 import UaUtil from '@/util/UaUtil';
+import { isOfflineStartup, isOfflineApiCacheUnavailable } from '@/util/OfflineStartup';
 import Util from '@/util/Util';
+import { shouldShowOfflineNoData } from '../../../src/util/OfflineUxUtil';
 import { debounce } from 'lodash';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
@@ -90,6 +95,9 @@ class Guide extends Vue {
     private static readonly LOAD_MORE_THRESHOLD = 600;
 
     public isLoading: boolean = true;
+    get showOfflineNoData(): boolean {
+        return shouldShowOfflineNoData(isOfflineStartup(), this.isLoading, isOfflineApiCacheUnavailable() === true && this.guideState.getChannelsLength() === 0);
+    }
     public guideState: IGuideState = container.get<IGuideState>('IGuideState');
 
     get guideType(): string | undefined {

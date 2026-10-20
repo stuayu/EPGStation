@@ -1,6 +1,7 @@
 export interface OfflineApiCacheRecord {
     key: string;
     url: string;
+    timeInsensitiveUrl?: string;
     user: string;
     savedAt: number;
     accessedAt?: number;
@@ -10,12 +11,22 @@ export interface OfflineApiCacheRecord {
 
 import {
     createOfflineApiCacheKey,
+    createOfflineApiCacheTimeInsensitiveUrl,
+    findOfflineApiCacheRecord,
     isOfflineApiCacheAllowed,
     selectOfflineApiCacheEvictions,
     OFFLINE_API_CACHE_MAX_BYTES,
     OFFLINE_API_CACHE_MAX_ITEMS,
 } from '../../../src/util/OfflineApiCacheUtil';
-export { createOfflineApiCacheKey, isOfflineApiCacheAllowed, selectOfflineApiCacheEvictions, OFFLINE_API_CACHE_MAX_BYTES, OFFLINE_API_CACHE_MAX_ITEMS };
+export {
+    createOfflineApiCacheKey,
+    createOfflineApiCacheTimeInsensitiveUrl,
+    findOfflineApiCacheRecord,
+    isOfflineApiCacheAllowed,
+    selectOfflineApiCacheEvictions,
+    OFFLINE_API_CACHE_MAX_BYTES,
+    OFFLINE_API_CACHE_MAX_ITEMS,
+};
 const DB_NAME = 'epgstation-offline-api';
 const STORE_NAME = 'responses';
 
@@ -56,10 +67,28 @@ export default class OfflineApiCache {
         });
     }
 
+    public static async getLatestMatching(url: string, user: string): Promise<OfflineApiCacheRecord | null> {
+        return withStore('readwrite', (store, done, fail) => {
+            const request = store.getAll();
+            request.onsuccess = () => {
+                const records = request.result as OfflineApiCacheRecord[];
+                const matching = findOfflineApiCacheRecord(
+                    url,
+                    records.filter(record => record.user === user),
+                );
+                if (matching === null) return done(null);
+                matching.accessedAt = Date.now();
+                store.put(matching);
+                done(matching);
+            };
+            request.onerror = () => fail(request.error);
+        });
+    }
+
     public static async put(record: OfflineApiCacheRecord): Promise<void> {
         const size = new Blob([JSON.stringify(record.response)]).size;
         if (size > OFFLINE_API_CACHE_MAX_BYTES) return;
-        const entry = { ...record, size };
+        const entry = { ...record, timeInsensitiveUrl: createOfflineApiCacheTimeInsensitiveUrl(record.url), size };
         const all = await withStore<OfflineApiCacheRecord[]>('readonly', (store, done, fail) => {
             const request = store.getAll();
             request.onsuccess = () => done(request.result);
