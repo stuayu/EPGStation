@@ -12,6 +12,31 @@ function listSourceFiles(directory) {
     });
 }
 
+function isThisBoundCallback(initializer) {
+    if (ts.isCallExpression(initializer) && ts.isPropertyAccessExpression(initializer.expression)) {
+        const callback = ts.skipParentheses(initializer.expression.expression);
+        return (
+            initializer.expression.name.text === 'bind' &&
+            initializer.arguments.some(argument => argument.kind === ts.SyntaxKind.ThisKeyword) &&
+            (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))
+        );
+    }
+    return false;
+}
+
+test('callback field detector recognizes bound arrow and function expressions', () => {
+    for (const initializer of ['(() => this.run()).bind(this)', '(function () { this.run(); }).bind(this)']) {
+        const sourceFile = ts.createSourceFile(
+            'fixture.ts',
+            `class Fixture { listener = ${initializer}; }`,
+            ts.ScriptTarget.Latest,
+            true,
+        );
+        const property = sourceFile.statements[0].members[0];
+        assert.equal(isThisBoundCallback(property.initializer), true, initializer);
+    }
+});
+
 test('Vue component classes and BaseVideo descendants do not store this-bound arrow callbacks in fields', () => {
     const classes = [];
     for (const filePath of listSourceFiles(path.join(__dirname, '../../client/src'))) {
@@ -57,14 +82,21 @@ test('Vue component classes and BaseVideo descendants do not store this-bound ar
     const violations = [];
     for (const item of classes.filter(value => relevantClasses.has(value.name))) {
         for (const member of item.node.members) {
-            if (!ts.isPropertyDeclaration(member) || !member.initializer || !ts.isArrowFunction(member.initializer))
+            if (!ts.isPropertyDeclaration(member) || !member.initializer) continue;
+            let callback = member.initializer;
+            // () => {} と function () {} のどちらも、bind(this) でフィールドに固定すると
+            // Vue の一時インスタンスを捕捉する。呼び出し式の内側も検査する。
+            if (isThisBoundCallback(callback) && ts.isCallExpression(callback)) {
+                callback = ts.skipParentheses(callback.expression.expression);
+            } else if (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback)) {
                 continue;
+            }
             let referencesThis = false;
             const visit = node => {
                 if (node.kind === ts.SyntaxKind.ThisKeyword) referencesThis = true;
                 ts.forEachChild(node, visit);
             };
-            visit(member.initializer);
+            visit(callback);
             if (referencesThis) {
                 const line = item.sourceFile.getLineAndCharacterOfPosition(member.getStart()).line + 1;
                 violations.push(

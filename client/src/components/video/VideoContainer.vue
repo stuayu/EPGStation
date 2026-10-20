@@ -339,17 +339,17 @@ class VideoContainer extends Vue {
 
     // DPlayer のフルスクリーン時にモバイル端末で画面回転をロックするための状態
     private isEnabledRotation: boolean = typeof window.screen.orientation !== 'undefined' && UaUtil.isMobile();
-    private fullScreenListener = ((): void => {
-        this.fullscreenChange();
-    }).bind(this);
+    private fullScreenListener(): void {
+        void this.fullscreenChange();
+    }
 
     // タブを閉じる・リロード・バックグラウンド化した場合でも再生位置を beacon で送信する
-    private pageHideListener = ((): void => {
+    private pageHideListener(): void {
         this.savePlaybackPositionWithBeacon();
-    }).bind(this);
-    private visibilityChangeListener = ((): void => {
+    }
+    private visibilityChangeListener(): void {
         if (document.visibilityState === 'hidden') this.savePlaybackPositionWithBeacon();
-    }).bind(this);
+    }
 
     public created(): void {
         // 再生対象は生成時に固定する。
