@@ -40,8 +40,14 @@ test('端末非対応の配信方式を一覧から除外する', () => {
         0,
     );
 
-    assert.deepEqual(result.options.map(option => option.container), ['hls', 'mp4']);
-    assert.equal(result.options.some(option => option.container === 'm2tsll'), false);
+    assert.deepEqual(
+        result.options.map(option => option.container),
+        ['hls', 'mp4'],
+    );
+    assert.equal(
+        result.options.some(option => option.container === 'm2tsll'),
+        false,
+    );
 });
 
 test('現在の container と mode の組み合わせを選択中として特定する', () => {
@@ -64,14 +70,34 @@ test('現在の container と mode の組み合わせを選択中として特定
 const { disambiguatePlaybackLabels } = require('../../dist/util/PlaybackQualityOptionUtil');
 
 test('表示名が衝突するものだけコーデック名で区別する', () => {
-    const labels = ['低遅延 (M2TS-LL) > 720p', '低遅延 (M2TS-LL) > 720p', '標準 (HLS) > 1080p 高画質'];
-    const profiles = [{ videoCodec: 'hevc' }, { videoCodec: 'h264' }, { videoCodec: 'hevc' }];
+    const labels = [
+        '低遅延 (M2TS-LL) > 720p',
+        '低遅延 (M2TS-LL) > 720p',
+        '標準 (HLS) > 1080p 高画質',
+        'オリジナル (MPEG-2・端末で変換)',
+        'オリジナル (HEVC・無変換)',
+    ];
+    const profiles = [
+        { videoCodec: 'hevc' },
+        { videoCodec: 'h264' },
+        { videoCodec: 'hevc' },
+        { videoCodec: 'mpeg2video' },
+        { videoCodec: 'hevc' },
+    ];
 
     assert.deepEqual(disambiguatePlaybackLabels(labels, profiles), [
         '低遅延 (M2TS-LL) > 720p (HEVC)',
         '低遅延 (M2TS-LL) > 720p (H.264)',
         '標準 (HLS) > 1080p 高画質',
+        'オリジナル (MPEG-2・端末で変換)',
+        'オリジナル (HEVC・無変換)',
     ]);
+});
+
+test('original 方式と HLS original-hevc は方式名で区別できるため無変換を重ねない', () => {
+    const labels = ['オリジナル (HEVC・無変換)', '標準 (HLS) > オリジナル (HEVC・無変換)'];
+
+    assert.deepEqual(disambiguatePlaybackLabels(labels, [{ videoCodec: 'copy' }, { videoCodec: 'copy' }]), labels);
 });
 
 test('コーデックが分からない重複はラベルを変えない', () => {
