@@ -19,6 +19,7 @@ const {
     resolveOfflineSaveFormat,
     resolveOfflineAudioTracks,
     shouldShowOfflineIndicator,
+    shouldShowOfflineNoData,
     splitOfflineMpeg2Ranges,
     normalizeOfflineChapters,
 } = require('../../dist/util/OfflineUxUtil');
@@ -35,6 +36,13 @@ test('MPEG-2 TS を 188 byte 境界のチャンクへ分割する', () => {
     const ranges = splitOfflineMpeg2Ranges(188 * 3 + 10, 188 * 2 + 1);
     assert.deepEqual(ranges, [{ start: 0, end: 375 }, { start: 376, end: 573 }]);
     assert.equal(ORIGINAL_MPEG2_CHUNK_SIZE % 188, 0);
+});
+
+test('オフライン保存データなしは取得完了後の空画面だけに表示する', () => {
+    assert.equal(shouldShowOfflineNoData(true, false, true), true);
+    assert.equal(shouldShowOfflineNoData(true, true, true), false);
+    assert.equal(shouldShowOfflineNoData(true, false, false), false);
+    assert.equal(shouldShowOfflineNoData(false, false, true), false);
 });
 
 test('保存済み videoFileId を一覧から引く', () => {

@@ -57,6 +57,7 @@
                 <Pagination :total="reservesState.getTotal()" :pageSize="settingValue?.reservesLength ?? 0"></Pagination>
             </div>
         </transition>
+        <v-alert v-if="viewMode === 'list' && showOfflineNoData" type="info" variant="tonal" class="ma-4">オフラインのため表示できません (保存データなし)</v-alert>
         <div style="visibility: hidden">dummy</div>
         <ReserveMultipleDeletionDialog
             v-model:isOpen="isOpenMultiplueDeletionDialog"
@@ -81,10 +82,12 @@ import IReservesState from '@/model/state/reserve/IReservesState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
+import { isOfflineStartup, isOfflineApiCacheUnavailable } from '@/util/OfflineStartup';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
 import { getTunerTimelineItem } from '../../../src/util/TunerTimelineUtil';
+import { shouldShowOfflineNoData } from '../../../src/util/OfflineUxUtil';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import IReservesApiModel from '@/model/api/reserves/IReservesApiModel';
 
@@ -99,6 +102,7 @@ import IReservesApiModel from '@/model/api/reserves/IReservesApiModel';
     },
 })
 class Reserves extends Vue {
+    public isLoading: boolean = true;
     public isEditMode: boolean = false;
     public isOpenMultiplueDeletionDialog: boolean = false;
     public viewMode: 'list' | 'tuner' = 'list';
@@ -111,6 +115,9 @@ class Reserves extends Vue {
 
     private isVisibilityHidden: boolean = false;
     public reservesState: IReservesState = container.get<IReservesState>('IReservesState');
+    get showOfflineNoData(): boolean {
+        return shouldShowOfflineNoData(isOfflineStartup(), this.isLoading, isOfflineApiCacheUnavailable() === true && this.reservesState.getReserves().length === 0);
+    }
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     public settingValue: ISettingValue | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
@@ -269,6 +276,7 @@ class Reserves extends Vue {
                 });
                 console.error(err);
             });
+            this.isLoading = false;
 
             this.isVisibilityHidden = false;
 

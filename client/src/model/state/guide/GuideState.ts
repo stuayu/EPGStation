@@ -3,6 +3,7 @@ import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
 import { IGuideGenreSettingStorageModel, IGuideGenreSettingValue } from '@/model/storage/guide/IGuideGenreSettingStorageModel';
 import { sortByKeyStationAndPrefecture } from '@/util/AffiliationChannelSort';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
+import { isOfflineStartup } from '@/util/OfflineStartup';
 import { normalizeSeriesTitleForGuide } from '@/util/SeriesTitleNormalizer';
 import { resolveSingleStationAppend } from '@/util/GuideAppendPolicy.mjs';
 import { inject, injectable } from 'inversify';
@@ -198,10 +199,16 @@ class GuideState implements IGuideState {
         this.endAt = endAt;
 
         // 予約情報取得
-        this.reserveIndex = await this.reserveUtil.getReserveIndex({
-            startAt,
-            endAt,
-        });
+        try {
+            this.reserveIndex = await this.reserveUtil.getReserveIndex({
+                startAt,
+                endAt,
+            });
+        } catch (error) {
+            if (isOfflineStartup() === false) throw error;
+            // 予約情報は番組表の補助表示。オフラインでは保存済み番組を優先する。
+            this.reserveIndex = {};
+        }
 
         // 追いかけ中インジケータ用のシリーズタイトル取得 (機能フラグ・設定 OFF なら何もしない)
         await this.loadFollowingTitleSet();

@@ -122,7 +122,7 @@ class RepositoryModel implements IRepositoryModel {
             })
             .catch(async error => {
                 if (allowed && (isOfflineStartup() || error?.response === undefined) && axios.isCancel(error) === false) {
-                    const cached = await OfflineApiCache.get(cacheKey).catch(() => null);
+                    const cached = (await OfflineApiCache.get(cacheKey).catch(() => null)) ?? (await OfflineApiCache.getLatestMatching(fullUrl, cacheUser).catch(() => null));
                     if (cached !== null) {
                         this.offlineFallbackActive = true;
                         setOfflineApiCacheFallback(true, cached.savedAt);

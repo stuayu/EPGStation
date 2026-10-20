@@ -353,3 +353,7 @@ export const resolveOfflineWatchReturnPath = (origin: unknown, key: string, reco
 /** 起動時状態と現在の回線状態から小さなオフライン表示を出すか決める。 */
 export const shouldShowOfflineIndicator = (isOnline: boolean | undefined, offlineStartup: boolean): boolean =>
     isOnline === false || offlineStartup;
+
+/** オフライン起動で取得を終えた画面に、保存データなしを表示するか決める。 */
+export const shouldShowOfflineNoData = (offlineStartup: boolean, loading: boolean, isEmpty: boolean): boolean =>
+    offlineStartup && loading === false && isEmpty;

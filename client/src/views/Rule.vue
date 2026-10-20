@@ -23,6 +23,7 @@
                         <RuleItems :rules="ruleState.getRules()" v-model:isEditMode="isEditMode" v-on:selected="selectItem"></RuleItems>
                         <Pagination :total="ruleState.getTotal()" :pageSize="settingValue?.rulesLength ?? 0"></Pagination>
                     </div>
+                    <v-alert v-else-if="showOfflineNoData" type="info" variant="tonal">オフラインのため表示できません (保存データなし)</v-alert>
                     <v-btn v-on:click="addRule" icon size="large" class="position-fixed right-0 bottom-0 ma-4" color="pink">
                         <v-icon>mdi-plus</v-icon>
                     </v-btn>
@@ -52,10 +53,11 @@ import IRuleState, { RuleFetchOption } from '@/model/state/rule/IRuleState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
 import Util from '@/util/Util';
+import { isOfflineStartup, isOfflineApiCacheUnavailable } from '@/util/OfflineStartup';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 import * as apid from '../../../api';
-
+import { shouldShowOfflineNoData } from '../../../src/util/OfflineUxUtil';
 
 @Component({
     components: {
@@ -68,11 +70,15 @@ import * as apid from '../../../api';
     },
 })
 class Reserves extends Vue {
+    public isLoading: boolean = true;
     public isEditMode: boolean = false;
     public isOpenMultiplueDeletionDialog: boolean = false;
 
     private isVisibilityHidden: boolean = false;
     public ruleState: IRuleState = container.get<IRuleState>('IRuleState');
+    get showOfflineNoData(): boolean {
+        return shouldShowOfflineNoData(isOfflineStartup(), this.isLoading, isOfflineApiCacheUnavailable() === true && this.ruleState.getRules().length === 0);
+    }
     private setting: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     public settingValue: ISettingValue | null = null;
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
@@ -170,6 +176,7 @@ class Reserves extends Vue {
                 });
                 console.error(err);
             });
+            this.isLoading = false;
 
             this.isVisibilityHidden = false;
 
@@ -206,8 +213,8 @@ class Reserves extends Vue {
 
 export default Object.assign(toNative(Reserves), {
     beforeRouteUpdate(this: Reserves, to: Route, from: Route, next: () => void): void {
-            this.handleBeforeRouteUpdate(to, from, next);
-        },
+        this.handleBeforeRouteUpdate(to, from, next);
+    },
 });
 </script>
 

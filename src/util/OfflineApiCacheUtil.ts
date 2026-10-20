@@ -14,6 +14,52 @@ export const isOfflineApiCacheAllowed = (url: string): boolean => {
     return /^\/(schedules(?:\/|$)|reserves(?:\/|$)|rules(?:\/|$)|channels(?:\/|$)|config(?:\/|$))/.test(path);
 };
 export const createOfflineApiCacheKey = (url: string, user: string): string => `${user}:${url}`;
+const OFFLINE_API_CACHE_TIME_QUERY_NAMES = new Set(['startAt', 'endAt', 'time']);
+
+/**
+ * UnixtimeMS の時刻クエリを除いた URL を返す。
+ * @param url: string
+ * @return string
+ */
+export const createOfflineApiCacheTimeInsensitiveUrl = (url: string): string => {
+    const queryIndex = url.indexOf('?');
+    if (queryIndex === -1) return url;
+
+    const path = url.slice(0, queryIndex);
+    const query = new URLSearchParams(url.slice(queryIndex + 1));
+    for (const name of OFFLINE_API_CACHE_TIME_QUERY_NAMES) {
+        const values = query.getAll(name);
+        if (values.length > 0 && values.every(value => /^\d{13}$/.test(value))) query.delete(name);
+    }
+    query.sort();
+    const search = query.toString();
+    return search.length > 0 ? `${path}?${search}` : path;
+};
+
+/**
+ * 完全一致を優先し、無ければ時刻クエリ以外が同じ最新レコードを返す。
+ * @param url: string
+ * @param records: OfflineApiCacheRecord[]
+ * @return OfflineApiCacheRecord | null
+ */
+export const findOfflineApiCacheRecord = <T extends { url: string; savedAt: number; timeInsensitiveUrl?: string }>(
+    url: string,
+    records: T[],
+): T | null => {
+    const exact = records.find(record => record.url === url);
+    if (exact !== undefined) return exact;
+
+    const normalizedUrl = createOfflineApiCacheTimeInsensitiveUrl(url);
+    return (
+        records
+            .filter(
+                record =>
+                    (record.timeInsensitiveUrl ?? createOfflineApiCacheTimeInsensitiveUrl(record.url)) ===
+                    normalizedUrl,
+            )
+            .sort((a, b) => b.savedAt - a.savedAt)[0] ?? null
+    );
+};
 export const selectOfflineApiCacheEvictions = (
     records: OfflineApiCacheEntry[],
     nextSize: number,

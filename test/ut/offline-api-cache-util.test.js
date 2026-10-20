@@ -2,6 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
     createOfflineApiCacheKey,
+    createOfflineApiCacheTimeInsensitiveUrl,
+    findOfflineApiCacheRecord,
     isOfflineApiCacheAllowed,
     selectOfflineApiCacheEvictions,
     isOfflineMutationBlocked,
@@ -13,6 +15,31 @@ test('offline API cache keys include query and user', () => {
         createOfflineApiCacheKey('/api/reserves', 'alice'),
         createOfflineApiCacheKey('/api/reserves', 'bob'),
     );
+});
+
+test('時刻クエリを除いた URL で最新レコードを選び、完全一致を優先する', () => {
+    const records = [
+        { url: '/api/reserves/lists?endAt=1792484170754&startAt=1792480570754&limit=20', savedAt: 10, name: 'old' },
+        { url: '/api/reserves/lists?endAt=1792487770754&startAt=1792484170754&limit=20', savedAt: 20, name: 'new' },
+    ];
+
+    assert.equal(
+        createOfflineApiCacheTimeInsensitiveUrl(
+            '/api/reserves/lists?startAt=1792489999999&endAt=1792493599999&limit=20',
+        ),
+        '/api/reserves/lists?limit=20',
+    );
+    assert.equal(
+        findOfflineApiCacheRecord('/api/reserves/lists?startAt=1792490000000&endAt=1792493600000&limit=20', records)
+            .name,
+        'new',
+    );
+    assert.equal(findOfflineApiCacheRecord(records[0].url, records).name, 'old');
+});
+
+test('時刻以外のクエリが異なるキャッシュは返さない', () => {
+    const records = [{ url: '/api/reserves/lists?startAt=1792480570754&limit=20', savedAt: 10 }];
+    assert.equal(findOfflineApiCacheRecord('/api/reserves/lists?startAt=1792484170754&limit=10', records), null);
 });
 
 test('offline API cache allowlist matches requested endpoint families only', () => {
