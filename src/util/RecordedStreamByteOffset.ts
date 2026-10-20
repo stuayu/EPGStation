@@ -8,7 +8,16 @@ const MPEG_TS_PACKET_SIZE = 188;
  * @return number 188 byte の TS パケット境界へ揃えた開始 byte
  */
 export const calculateRecordedStreamStartByte = (bitRate: number, playPosition: number, fileSize: number): number => {
-    const safeFileSize = Math.max(0, fileSize);
+    if (
+        Number.isFinite(playPosition) === false ||
+        playPosition <= 0 ||
+        Number.isFinite(bitRate) === false ||
+        bitRate <= 0
+    ) {
+        return 0;
+    }
+
+    const safeFileSize = Number.isFinite(fileSize) === true ? Math.max(0, fileSize) : 0;
     const estimatedOffset = Math.floor((bitRate / 8) * playPosition);
     const clampedOffset = Math.max(0, Math.min(estimatedOffset, safeFileSize));
 

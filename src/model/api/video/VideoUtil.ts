@@ -377,7 +377,7 @@ export default class VideoUtil implements IVideoUtil {
      */
     private static toNumber(value: unknown): number | null {
         if (typeof value === 'number') {
-            return isNaN(value) === true ? null : value;
+            return Number.isFinite(value) === false ? null : value;
         }
 
         if (typeof value !== 'string' || value.length === 0 || value === 'N/A') {
@@ -386,7 +386,7 @@ export default class VideoUtil implements IVideoUtil {
 
         const parsed = parseFloat(value);
 
-        return isNaN(parsed) === true ? null : parsed;
+        return Number.isFinite(parsed) === false ? null : parsed;
     }
 
     /**
@@ -415,10 +415,14 @@ export default class VideoUtil implements IVideoUtil {
         const stdout = await this.execFfprobe(['-v', '0', '-show_format', '-of', 'json', filePath]);
         const result = <any>JSON.parse(stdout);
 
+        const duration = VideoUtil.toNumber(result.format?.duration) ?? 0;
+        const size = VideoUtil.toNumber(result.format?.size) ?? 0;
+        const probedBitRate = VideoUtil.toNumber(result.format?.bit_rate) ?? 0;
+
         return {
-            duration: parseFloat(result.format.duration),
-            size: parseInt(result.format.size, 10),
-            bitRate: parseFloat(result.format.bit_rate),
+            duration,
+            size,
+            bitRate: probedBitRate > 0 ? probedBitRate : duration > 0 && size > 0 ? (size * 8) / duration : 0,
         };
     }
 

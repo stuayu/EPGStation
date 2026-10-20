@@ -50,6 +50,21 @@ function makeVideoUtil() {
     return new VideoUtil(configuration, {});
 }
 
+
+test('getInfo は format 値が N/A のとき size と duration から bitRate を補う', async () => {
+    const output = JSON.stringify({ format: { duration: '10', size: '1000', bit_rate: 'N/A' } });
+    await withStubbedFfprobe(() => output, async () => {
+        assert.deepEqual(await makeVideoUtil().getInfo('/fake/video.ts'), { duration: 10, size: 1000, bitRate: 800 });
+    });
+});
+
+test('getInfo は欠落・非有限の値を NaN にせず 0 として返す', async () => {
+    const output = JSON.stringify({ format: { duration: 'N/A', size: 'Infinity', bit_rate: 'N/A' } });
+    await withStubbedFfprobe(() => output, async () => {
+        assert.deepEqual(await makeVideoUtil().getInfo('/fake/video.ts'), { duration: 0, size: 0, bitRate: 0 });
+    });
+});
+
 test('start_time / end_time から秒単位のチャプターを組み立てる', async () => {
     const output = JSON.stringify({
         chapters: [
