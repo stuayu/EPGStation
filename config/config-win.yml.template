@@ -957,6 +957,9 @@ stream:
 #     epgRealtimeSync: true
 
 # 録画開始のリトライ方針。
+# 試験的 CM チャプター検出 (無音のみで判定、精度に限界あり。既定 false)
+# cmDetection:
+#     enabled: false
 # 前の番組が「放送時刻未定」(ARIB の duration = 0xFFFFFF) で延長していると、
 # 予約した番組の開始が遅れます。既定の service stream では EPGStation が EIT[p/f] を読み、
 # 対象番組の境界まで待ちます。切り戻し用の program stream では Mirakurun がデータ出力を保留します。

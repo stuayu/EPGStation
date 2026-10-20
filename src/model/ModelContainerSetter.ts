@@ -298,6 +298,8 @@ import IStorageManageModel from './operator/storage/IStorageManageModel';
 import StorageManageModel from './operator/storage/StorageManageModel';
 import IThumbnailManageModel from './operator/thumbnail/IThumbnailManageModel';
 import ThumbnailManageModel from './operator/thumbnail/ThumbnailManageModel';
+import ICmDetectionManageModel from './operator/cmDetection/ICmDetectionManageModel';
+import CmDetectionManageModel from './operator/cmDetection/CmDetectionManageModel';
 import PromiseQueue from './PromiseQueue';
 import PromiseRetry from './PromiseRetry';
 import EncodeFileManageModel from './service/encode/EncodeFileManageModel';
@@ -556,6 +558,7 @@ export const set = (container: Container): void => {
     container.bind<IRecordedTagManadeModel>('IRecordedTagManadeModel').to(RecordedTagManadeModel).inSingletonScope();
 
     container.bind<IThumbnailManageModel>('IThumbnailManageModel').to(ThumbnailManageModel).inSingletonScope();
+    container.bind<ICmDetectionManageModel>('ICmDetectionManageModel').to(CmDetectionManageModel).inSingletonScope();
 
     container.bind<IStorageManageModel>('IStorageManageModel').to(StorageManageModel).inSingletonScope();
 

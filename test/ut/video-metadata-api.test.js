@@ -64,6 +64,7 @@ function createModel(options) {
             opt.audioTrackProbe = { filePath, option };
             return opt.audioTracks || [];
         },
+        getChapters: async () => opt.chapters || [],
     };
 
     // ffprobe 解析の実処理は VideoFileAnalyzeModel にあり、VideoApiModel はそこへ委譲する
@@ -89,13 +90,16 @@ function createModel(options) {
 
     return {
         model: new VideoApiModel(
-            configuration,
+            opt.configuration || configuration,
             videoFileDB,
             videoFileTsInfoDB,
             recordedDB,
             {},
             videoUtil,
-            { thumbnail: { add: async () => {} } },
+            {
+                thumbnail: { add: async () => {} },
+                cmDetection: { add: async id => (opt.cmDetectionQueue ??= []).push(id) },
+            },
             analyzeModel,
             undefined,
             { analyzeRecordedFile: async () => opt.source ?? { codec: 'mpeg2', transport: 'mpegts' } },
@@ -105,8 +109,30 @@ function createModel(options) {
         get audioTrackProbe() {
             return opt.audioTrackProbe;
         },
+        get cmDetectionQueue() {
+            return opt.cmDetectionQueue || [];
+        },
     };
 }
+
+test('CM 検出依頼は TS かつチャプター未設定なら Operator IPC へ送る', async () => {
+    const harness = createModel({
+        videos: [video(44, { type: 'ts' })],
+        configuration: { getConfig: () => ({ cmDetection: { enabled: true } }) },
+    });
+    await harness.model.detectCm(44);
+    assert.deepEqual(harness.cmDetectionQueue, [44]);
+});
+
+test('既存チャプターがある動画は CM 検出 IPC へ送らない', async () => {
+    const harness = createModel({
+        videos: [video(45, { type: 'ts' })],
+        configuration: { getConfig: () => ({ cmDetection: { enabled: true } }) },
+        chapters: [{ id: 0, startAt: 0, endAt: 60, title: 'Chapter' }],
+    });
+    await assert.rejects(harness.model.detectCm(45), /VideoFileAlreadyHasChapters/);
+    assert.deepEqual(harness.cmDetectionQueue, []);
+});
 
 test('encoded 登録でも MPEG-2 MPEG-TS は Original の元TSを返す', async () => {
     const filePath = path.join(os.tmpdir(), `epgstation-encoded-mpeg2-${process.pid}.ts`);
