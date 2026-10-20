@@ -15,7 +15,7 @@ const createSetter = update => {
     let onUpdated;
     const errors = [];
     const noop = new Proxy({}, { get: () => () => {} });
-    const args = Array(26).fill(noop);
+    const args = Array(27).fill(noop);
     args[0] = { getLogger: () => ({ system: {
         info() {}, debug() {}, warn() {}, fatal() {}, error: error => errors.push(error),
     } }) };

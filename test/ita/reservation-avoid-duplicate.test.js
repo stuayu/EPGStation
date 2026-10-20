@@ -407,7 +407,7 @@ for (const scheduler of ['planner', 'legacy']) {
             noopEvent(), noopEvent(), noopEvent(), h.model, {}, {}, {}, {},
             { addRecordingFinishCmd() {} }, { notifyClient() {} }, { getConfig: () => ({ recorded: [] }) },
             { dispatch: async () => {} }, { resolve: async () => {} }, {}, {}, {},
-            { onChange() {} }, {}, { start() {} }, h.reserveDB,
+            { onChange() {} }, {}, { start() {} }, h.reserveDB, { add() {} },
         );
         setter.set();
         await finishHandler(manual, {

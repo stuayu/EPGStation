@@ -71,6 +71,10 @@ export interface IPCThumbnailManageModel {
     delete(thumbnailId: apid.ThumbnailId): Promise<void>;
 }
 
+export interface IPCCmDetectionManageModel {
+    add(videoFileId: apid.VideoFileId): Promise<void>;
+}
+
 export interface IPCOperatorEncodeEvent {
     emitFinishEncode(info: OperatorFinishEncodeInfo): Promise<void>;
 }
@@ -113,6 +117,7 @@ export default interface IIPCClient {
     recording: IPCRecordingManageModel;
     rule: IPCRuleManageModel;
     thumbnail: IPCThumbnailManageModel;
+    cmDetection: IPCCmDetectionManageModel;
     encodeEvent: IPCOperatorEncodeEvent;
     series: IPCSeriesManageModel;
     appSetting: IPCAppSettingManageModel;
