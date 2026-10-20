@@ -23,9 +23,20 @@ namespace ProcessUtil {
      * @param child: ChildProcess
      * @param wait: number default 500
      */
-    export const kill = (child: ChildProcess, wait = 500): Promise<void> => {
+    export const kill = (child: ChildProcess, wait = 500, exitWait = 0): Promise<void> => {
         return new Promise<void>((resolve: () => void, reject: (err: Error) => void) => {
             try {
+                let settled = false;
+                let exitTimer: ReturnType<typeof setTimeout> | null = null;
+                const finish = (): void => {
+                    if (settled === true) return;
+                    settled = true;
+                    if (exitTimer !== null) clearTimeout(exitTimer);
+                    child.removeListener('exit', onExit);
+                    resolve();
+                };
+                const onExit = (): void => finish();
+                if (exitWait > 0) child.once('exit', onExit);
                 if (child.stdin !== null) {
                     child.stdin.end();
                 }
@@ -41,8 +52,16 @@ namespace ProcessUtil {
                 }
 
                 setTimeout(() => {
+                    if (settled === true) return;
+                    if (exitWait > 0) {
+                        exitTimer = setTimeout(() => {
+                            child.kill('SIGINT');
+                            finish();
+                        }, exitWait);
+                        return;
+                    }
                     child.kill('SIGINT');
-                    resolve();
+                    finish();
                 }, wait);
             } catch (err: any) {
                 reject(err);

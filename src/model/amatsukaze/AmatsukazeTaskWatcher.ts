@@ -178,6 +178,10 @@ export default class AmatsukazeTaskWatcher extends EventEmitter implements IAmat
      * @return Promise<void>
      */
     public async cancel(): Promise<void> {
+        const deadline = Date.now() + 4500;
+        while (this.targetItemId === null && Date.now() < deadline) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
         if (this.targetItemId === null) {
             return;
         }
