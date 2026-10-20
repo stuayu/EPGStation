@@ -40,7 +40,7 @@ node tools/playback-harness/run.js --help
 - `hls-subtitle`: HLS の m4s/mp4 応答を採取。既定で3セグメント以上、全セグメントに `emsg` があれば合格。`--min-emsg-ratio` で比率を緩和可能。
 - `emsg`: ブラウザ不要。curl で録画 HLS を開始し、プレイリストのセグメントを取得、ffprobe で読めることと `emsg` 比率を確認。既定で3セグメント以上・全セグメントに `emsg`。
 - `subtitle`: canvas の不透明ピクセルを測定。既定1ピクセル以上を字幕描画ありと判定。字幕が実際に存在する録画を使うこと。
-- `quality-switch`: 画質候補を切替え、`currentTime` が2回連続で進み、切替後の canvas フレームが黒でなく必要回数変化するまでを測定。既定40秒以内。
+- `quality-switch`: 画質候補を切替え、現在の DPlayer 内 video 要素を毎回取り直して `currentTime` が2回連続で進み、切替後の canvas フレームが黒でなく必要回数変化するまで測定。video 要素が再生成されても古い要素を参照しない。既定40秒以内。
 - `recording-stress`: `--stress long|seeks|pause|tail` と `--parallel N`。長時間、シーク連打、一時停止放置・再開、終端近傍を複数ページで測定し、既定しきい値で停止なしを要求。
 - `ipad-audio`: WebKit の iPad Mini 相当で音声・画質候補を確認。既定で各1項目以上。
 - `mms`: WebKit の `MediaSource` を隠し、`ManagedMediaSource` 経路で再生進行を確認。既定1秒以上、`readyState >= 2`。
