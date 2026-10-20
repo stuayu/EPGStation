@@ -9,6 +9,7 @@ import setter from './model/ModelContainerSetter';
 import IPWAConfigModel from './model/pwa/IPWAConfigModel';
 import IServerConfigModel from './model/serverConfig/IServerConfigModel';
 import IAuthApiModel from './model/api/auth/IAuthApiModel';
+import ClientSettingsSyncModel from './model/storage/ClientSettingsSyncModel';
 import Login from './views/Login.vue';
 import { setMediaToken } from './util/MediaToken';
 import vuetify from './plugins/vuetify';
@@ -65,4 +66,5 @@ smoothscroll.polyfill();
         window.history.replaceState(window.history.state, '', router.resolve('/offline-videos').href);
     }
     app.use(router).use(vuetify).mount('#app');
+    container.get<ClientSettingsSyncModel>('ClientSettingsSyncModel').initialize();
 })();

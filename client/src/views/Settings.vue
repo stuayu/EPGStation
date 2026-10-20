@@ -41,6 +41,41 @@
                         </v-card-text>
                     </v-card>
 
+                    <v-card class="mx-auto mb-4" max-width="800">
+                        <v-list-item>
+                            <div class="d-flex flex-row align-center my-2" style="width: 100%">
+                                <div style="flex: 1 1 auto; min-width: 0">
+                                    <v-list-item-title class="text-subtitle-1">設定をサーバーと同期する</v-list-item-title>
+                                    <v-list-item-subtitle v-if="isAuthEnabled !== true">
+                                        表示・実況などの設定を端末間で同期します。認証無効時は全端末で共有されます。
+                                    </v-list-item-subtitle>
+                                    <v-list-item-subtitle v-else-if="loginUserName !== null">
+                                        表示・実況などの設定を、このユーザーの端末間で同期します。端末ごとに設定できます。
+                                    </v-list-item-subtitle>
+                                    <v-list-item-subtitle v-else>設定同期にはログインが必要です。匿名アクセスは設定の取得だけ利用できます。</v-list-item-subtitle>
+                                </div>
+                                <v-switch
+                                    :model-value="clientSettingsSyncEnabled"
+                                    :disabled="isAuthEnabled === true && loginUserName === null"
+                                    hide-details
+                                    @update:model-value="toggleClientSettingsSync"
+                                ></v-switch>
+                            </div>
+                        </v-list-item>
+                    </v-card>
+
+                    <v-dialog v-model="showClientSettingsSyncChoice" max-width="480">
+                        <v-card>
+                            <v-card-title>同期する設定を選択</v-card-title>
+                            <v-card-text>サーバーに保存された設定があります。どちらを使いますか？</v-card-text>
+                            <v-card-actions class="flex-wrap">
+                                <v-spacer></v-spacer>
+                                <v-btn variant="text" @click="chooseClientSettingsLocal">この端末の設定をサーバーへ送る</v-btn>
+                                <v-btn color="primary" @click="chooseClientSettingsServer">サーバーの設定をこの端末に反映</v-btn>
+                            </v-card-actions>
+                        </v-card>
+                    </v-dialog>
+
                     <v-card class="mx-auto" max-width="800">
                         <v-list-item three-line>
                             <div class="v-list-item-content">
@@ -663,6 +698,7 @@ import ISystemSettingApiModel from '@/model/api/config/ISystemSettingApiModel';
 import CustomStreamPresetEditor, { CustomPresetForm } from '@/components/settings/CustomStreamPresetEditor.vue';
 import { clearClientCapabilitiesCache, ClientCapabilities, getClientCapabilities } from '@/util/ClientCapabilityUtil';
 import { decodeReceiverInfoValue, encodeReceiverInfoValue, receiverInfoStorageKeys } from '../../../src/util/ReceiverInfoNvram';
+import ClientSettingsSyncModel from '@/model/storage/ClientSettingsSyncModel';
 
 interface GuideModeItem {
     title: string;
@@ -688,6 +724,8 @@ interface SelectItem {
 })
 class Settings extends Vue {
     public isShow: boolean = false;
+    public clientSettingsSyncEnabled = container.get<ClientSettingsSyncModel>('ClientSettingsSyncModel').isEnabled();
+    public showClientSettingsSyncChoice = false;
     public showJikkyoMuteDialog = false;
     public storageModel: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     public playbackState: IPlaybackOptionsState = container.get<IPlaybackOptionsState>('IPlaybackOptionsState');
@@ -1060,6 +1098,41 @@ class Settings extends Vue {
         if (this.serverConfigModel.getConfig() === null) {
             void this.retryFetchServerConfig();
         }
+    }
+
+    public async toggleClientSettingsSync(enabled: boolean | null): Promise<void> {
+        if (enabled !== true) {
+            container.get<ClientSettingsSyncModel>('ClientSettingsSyncModel').setEnabled(false);
+            this.clientSettingsSyncEnabled = false;
+            return;
+        }
+        if (navigator.onLine === false) {
+            this.snackbarState.open({ color: 'error', text: 'オンライン時に設定同期を有効化してください' });
+            return;
+        }
+        const sync = container.get<ClientSettingsSyncModel>('ClientSettingsSyncModel');
+        try {
+            const server = await sync.getServerState();
+            sync.setEnabled(true);
+            this.clientSettingsSyncEnabled = true;
+            if (server.updatedAt > 0) {
+                this.showClientSettingsSyncChoice = true;
+            } else {
+                await sync.chooseLocal();
+            }
+        } catch {
+            this.snackbarState.open({ color: 'error', text: 'サーバー設定を取得できませんでした' });
+        }
+    }
+
+    public async chooseClientSettingsServer(): Promise<void> {
+        this.showClientSettingsSyncChoice = false;
+        await container.get<ClientSettingsSyncModel>('ClientSettingsSyncModel').chooseServer();
+    }
+
+    public async chooseClientSettingsLocal(): Promise<void> {
+        this.showClientSettingsSyncChoice = false;
+        await container.get<ClientSettingsSyncModel>('ClientSettingsSyncModel').chooseLocal();
     }
 
     /** 現在のブラウザーの codec 能力を設定画面へ表示する。 */
