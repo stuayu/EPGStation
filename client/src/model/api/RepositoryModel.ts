@@ -3,6 +3,9 @@ import { injectable } from 'inversify';
 import stringify from 'json-stable-stringify';
 import ApiMutationNotifier from '../../util/ApiMutationNotifier';
 import IRepositoryModel from './IRepositoryModel';
+import OfflineApiCache, { createOfflineApiCacheKey, isOfflineApiCacheAllowed } from '../../util/OfflineApiCache';
+import { isOfflineStartup, setOfflineApiCacheFallback, setOfflineApiCacheUnavailable } from '../../util/OfflineStartup';
+import { isOfflineMutationBlocked } from '../../../../src/util/OfflineApiCacheUtil';
 
 type MethodType = 'GET' | 'DELETE' | 'POST' | 'PUT';
 
@@ -15,6 +18,7 @@ class RepositoryModel implements IRepositoryModel {
     private repo: AxiosInstance;
     private textRepo: AxiosInstance;
     private cancelSourceIndex: { [key: string]: CancelTokenSource } = {};
+    private offlineFallbackActive = false;
 
     constructor() {
         this.repo = axios.create({
@@ -87,7 +91,58 @@ class RepositoryModel implements IRepositoryModel {
      */
     public get(url: string, config?: AxiosRequestConfig | undefined): Promise<AxiosResponse<any>> {
         const key = this.setToken('GET', url, config);
-        const result = this.repo.get(url, config);
+        const fullUrl = this.repo.getUri({ ...config, url });
+        const storedSettings = localStorage.getItem('settings');
+        let cacheEnabled = true;
+        try {
+            cacheEnabled = storedSettings === null || JSON.parse(storedSettings)?.isEnableOfflineApiCache !== false;
+        } catch {
+            cacheEnabled = true;
+        }
+        const allowed = isOfflineApiCacheAllowed(fullUrl) && cacheEnabled;
+        const cacheUser = localStorage.getItem('offlineApiCacheUser') ?? 'anonymous';
+        const cacheKey = createOfflineApiCacheKey(fullUrl, cacheUser);
+        const result = this.repo
+            .get(url, config)
+            .then(response => {
+                this.offlineFallbackActive = false;
+                setOfflineApiCacheFallback(false);
+                setOfflineApiCacheUnavailable(false);
+                window.dispatchEvent(new CustomEvent('offline-api-cache-restored'));
+                if (allowed)
+                    void OfflineApiCache.put({
+                        key: cacheKey,
+                        url: fullUrl,
+                        user: cacheUser,
+                        savedAt: Date.now(),
+                        size: 0,
+                        response: response.data,
+                    }).catch(() => undefined);
+                return response;
+            })
+            .catch(async error => {
+                if (allowed && (isOfflineStartup() || error?.response === undefined) && axios.isCancel(error) === false) {
+                    const cached = await OfflineApiCache.get(cacheKey).catch(() => null);
+                    if (cached !== null) {
+                        this.offlineFallbackActive = true;
+                        setOfflineApiCacheFallback(true, cached.savedAt);
+                        setOfflineApiCacheUnavailable(false);
+                        window.dispatchEvent(new CustomEvent('offline-api-cache-hit', { detail: { savedAt: cached.savedAt } }));
+                        return {
+                            data: cached.response,
+                            status: 200,
+                            statusText: 'Offline cache',
+                            headers: {},
+                            config: config ?? {},
+                            request: undefined,
+                            offlineCachedAt: cached.savedAt,
+                        } as AxiosResponse<any>;
+                    }
+                    window.dispatchEvent(new CustomEvent('offline-api-cache-miss'));
+                    setOfflineApiCacheUnavailable(true);
+                }
+                throw error;
+            });
         delete this.cancelSourceIndex[key];
 
         return result;
@@ -116,6 +171,7 @@ class RepositoryModel implements IRepositoryModel {
      * @return Promise<AxiosResponse<any>>
      */
     public delete(url: string, config?: AxiosRequestConfig | undefined): Promise<AxiosResponse<any>> {
+        if (this.isMutationBlocked()) return this.rejectOfflineMutation();
         const key = this.setToken('DELETE', url, config);
         const result = this.notifyMutation(url, this.repo.delete(url, config));
         delete this.cancelSourceIndex[key];
@@ -131,6 +187,7 @@ class RepositoryModel implements IRepositoryModel {
      * @return Promise<AxiosResponse<any>>
      */
     public put(url: string, data?: any, config?: AxiosRequestConfig | undefined): Promise<AxiosResponse<any>> {
+        if (this.isMutationBlocked()) return this.rejectOfflineMutation();
         const key = this.setToken('PUT', url, config);
         const result = this.notifyMutation(url, this.repo.put(url, data, config));
         delete this.cancelSourceIndex[key];
@@ -146,11 +203,22 @@ class RepositoryModel implements IRepositoryModel {
      * @return Promise<AxiosResponse<any>>
      */
     public post(url: string, data?: any, config?: AxiosRequestConfig | undefined): Promise<AxiosResponse<any>> {
+        if (this.isMutationBlocked()) return this.rejectOfflineMutation();
         const key = this.setToken('POST', url, config);
         const result = this.notifyMutation(url, this.repo.post(url, data, config));
         delete this.cancelSourceIndex[key];
 
         return result;
+    }
+
+    private isMutationBlocked(): boolean {
+        return isOfflineMutationBlocked(isOfflineStartup(), this.offlineFallbackActive);
+    }
+
+    private rejectOfflineMutation(): Promise<AxiosResponse<any>> {
+        const error = new Error('オフラインのため操作できません');
+        window.dispatchEvent(new CustomEvent('offline-api-mutation-blocked'));
+        return Promise.reject(error);
     }
 
     /**

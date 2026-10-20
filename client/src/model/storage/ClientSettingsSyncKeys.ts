@@ -51,6 +51,7 @@ export const CLIENT_SETTINGS_SYNC_KEYS: Record<string, readonly string[]> = {
         'snsRecentEmojiNames',
         'snsEnableComposePreview',
         'captureCaptionMode',
+        // isEnableOfflineApiCache は端末の保存容量に依存するため同期しない。
         // 同期しない: isEnablePWA は端末ごとのアプリ利用設定。captureCopyToClipboard は Clipboard API の有無が端末で違う。
         // isPreferredPlayingLiveM2TSOnWeb / isPreferredPlayingOnWeb は端末・回線依存。
         // onAirM2TSViewURLScheme / shouldUseRecordedViewURLScheme / recordedViewURLScheme / shouldUseRecordedDownloadURLScheme / recordedDownloadURLScheme は端末固有 URL・再生環境。

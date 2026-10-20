@@ -13,6 +13,7 @@ export type WatchSidePanelTab = 'program' | 'channel' | 'nextup' | 'comment' | '
 export type CaptureCaptionMode = 'video' | 'caption' | 'caption-comment';
 
 export interface ISettingValue {
+    isEnableOfflineApiCache: boolean;
     isEnablePWA: boolean;
     shouldUseOSColorTheme: boolean;
     isForceDarkTheme: boolean;
