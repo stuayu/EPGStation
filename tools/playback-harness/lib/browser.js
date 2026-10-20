@@ -166,7 +166,10 @@ const startPlayback = async (page, retries = 8) => {
 
 const readVideoState = page =>
     page.evaluate(() => {
-        const video = document.querySelector('video');
+        const players = document.querySelectorAll('.dplayer');
+        const player = players.length === 1 ? players[0] : null;
+        const videos = player === null ? [] : player.querySelectorAll('video');
+        const video = player?.querySelector('.dplayer-video-current') ?? videos[videos.length - 1] ?? null;
         if (video === null) return null;
         const buffered = [];
         for (let index = 0; index < video.buffered.length; index += 1) {
