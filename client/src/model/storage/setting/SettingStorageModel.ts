@@ -13,6 +13,7 @@ export default class SettingStorageModel extends AbstractStorageBaseModel<ISetti
 
     public getDefaultValue(): ISettingValue {
         return {
+            isEnableOfflineApiCache: true,
             isEnablePWA: true,
             shouldUseOSColorTheme: true,
             isForceDarkTheme: false,
