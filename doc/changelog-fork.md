@@ -17,6 +17,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 - 録画視聴の HEVC 画質名重複、SNS 非表示時のキャプチャ横取り、画質切替計測の旧 video 参照を修正 → 2026-10-20
 
+- 番組表・予約・ルールなどの読み取り専用オフラインキャッシュを追加 → 2026-10-20
 - 字幕・実況コメント合成キャプチャと端末別の保存設定を追加 → 2026-10-20
 - ffprobe の尺・ビットレート欠落で録画 TS の再生開始が失敗する問題を修正 → 2026-10-20
 - CM チャプターの自動スキップ、DPlayer 設定メニュー、再生ショートカットを追加 → 2026-10-20
@@ -78,6 +79,9 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 録画配信の「オリジナル」方式名から MPEG-2 固定表記を外し、方式名を省くのは `original` 方式だけに限定する。HLS の original-hevc は「標準 (HLS) > オリジナル (HEVC・無変換)」と表示する。視聴画面の番組名を VideoContainer 経由で BaseVideo に渡し、キャプチャ名へ反映する。視聴画面では右パネルが開き SNS タブを選択中の場合だけ SNS 添付がキャプチャを引き取る。それ以外は通常の保存処理へ委ねる。画質切替ハーネスは現在の DPlayer 内 video 要素を毎回取得し、切替後に要素が再生成されても新しい映像を測る。
 
 実装: `client/src/util/PlaybackLabelUtil.ts`、`client/src/components/video/BaseVideo.ts`、`client/src/components/video/VideoContainer.vue`、`client/src/views/WatchRecordedStreaming.vue`、`client/src/views/WatchOnAir.vue`、`client/src/views/OfflineVideoWatch.vue`、`src/util/SnsCaptureUtil.ts`、`tools/playback-harness/lib/browser.js`。
+### 番組表・予約・ルールなどの読み取り専用オフラインキャッシュ
+
+許可した GET 応答を専用 IndexedDB に保存し、通信失敗時だけ URL と端末内ユーザー識別子が一致する応答を返す。保存は最大30MiB・500件で LRU 削除し、iOS 等の容量エラー時は古い応答を削除して再試行する。POST / PUT / DELETE はオフラインまたはキャッシュ応答後に拒否する。共通画面へ保存日時・データ未保存・拒否状態を表示。番組表、放映中、予約、ルールへのオフライン導線を追加し、Socket.IO / status polling の停止は既存動作を維持。設定は端末ごとで既定 ON。
 
 ### 字幕・実況コメント合成キャプチャと端末別の保存設定
 

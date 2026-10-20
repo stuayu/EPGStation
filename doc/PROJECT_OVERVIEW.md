@@ -1,5 +1,9 @@
 # EPGStation (stuayu フォーク) プロジェクト概要
 
+## 読み取り専用オフライン画面
+
+番組表・放映中・予約一覧・ルール一覧・チャンネル・設定の許可 GET 応答は、端末別設定が有効な場合に専用 IndexedDB (`epgstation-offline-api`) へ保存する。通信失敗時だけ同一 URL (クエリ含む)・同一ログインユーザー識別子の応答を返す。上限は30MiB / 500件の LRU。容量制限で保存できない場合は古い項目を削除して再試行する。POST / PUT / DELETE はブラウザがオフライン、またはキャッシュへフォールバックした後に送らない。録画オフライン保存領域とは別 DB で管理し、録画データへ触れない。オフライン起動でも番組表・放映中・予約・ルールへ移動でき、保存が無い応答は利用不可として表示する。Socket.IO と status polling は起動しない。
+
 ## OpenTelemetry
 
 `observability.otel.enabled` が true の場合のみ Node SDK を動的に読み込み、OTLP/HTTP で traces / metrics を送る。Operator と Service は独立して初期化し、`service.name` は設定した名前にプロセス種別 (`operator` / `service`) を付ける。無効時は SDK を import しない。ログは log4js を使い続ける。計装 API は `src/model/observability/Telemetry.ts` に集約する。

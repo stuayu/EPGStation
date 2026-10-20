@@ -27,11 +27,10 @@ smoothscroll.polyfill();
         .get<IAuthApiModel>('IAuthApiModel')
         .getStatus()
         .catch(() => ({ enabled: false, initialized: true, user: null, allowAnonymous: false }));
+    if (authStatus.user !== null) localStorage.setItem('offlineApiCacheUser', authStatus.user.name);
+    else if (authStatus.enabled === false && navigator.onLine !== false) localStorage.setItem('offlineApiCacheUser', 'anonymous');
     const isLoginRequested = new URLSearchParams(window.location.search).has('login');
-    const needsLogin =
-        authStatus.enabled === true &&
-        authStatus.user === null &&
-        (authStatus.allowAnonymous !== true || isLoginRequested === true);
+    const needsLogin = authStatus.enabled === true && authStatus.user === null && (authStatus.allowAnonymous !== true || isLoginRequested === true);
     if (needsLogin === true) {
         createApp(Login).use(vuetify).mount('#app');
 
@@ -53,7 +52,10 @@ smoothscroll.polyfill();
     });
     container.get<IPWAConfigModel>('IPWAConfigModel').setting();
     if (navigator.onLine !== false) {
-        await container.get<IChannelModel>('IChannelModel').fetchChannels().catch(err => console.error('get channels error', err));
+        await container
+            .get<IChannelModel>('IChannelModel')
+            .fetchChannels()
+            .catch(err => console.error('get channels error', err));
     }
     const hasOfflineVideos = configFetchFailed ? (await OfflineVideoStorage.getAll().catch(() => [])).length > 0 : false;
     const shouldOpenOfflineVideos = navigator.onLine === false || (configFetchFailed && hasOfflineVideos);

@@ -82,6 +82,17 @@
                                 <div class="title">全般</div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
+                                        <v-list-item-title class="text-subtitle-1">オフライン用に番組表などを保存する</v-list-item-title>
+                                        <v-list-item-subtitle>通信失敗時に番組表・予約・ルールを表示します (端末内、最大30MB)</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="storageModel.tmp.isEnableOfflineApiCache"></v-switch>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <v-btn size="small" variant="outlined" @click="clearOfflineApiCache">保存したデータを消去</v-btn>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
                                         <v-list-item-title class="text-subtitle-1">PWA</v-list-item-title>
                                         <v-list-item-subtitle>PWAを有効化する(※再読込後有効になります)</v-list-item-subtitle>
                                     </div>
@@ -716,6 +727,7 @@ import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import IColorThemeState from '@/model/state/IColorThemeState';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
 import ThemeColorUtil from '@/util/ThemeColorUtil';
+import OfflineApiCache from '@/util/OfflineApiCache';
 import ProgramHashtagUtil from '@/util/ProgramHashtagUtil';
 import IPlaybackOptionsState from '@/model/state/video/IPlaybackOptionsState';
 import ISystemSettingApiModel from '@/model/api/config/ISystemSettingApiModel';
@@ -763,6 +775,10 @@ class Settings extends Vue {
     public receiverPrefecture: number | null = null;
     public receiverRegionCode = '0000';
     public showClearNvramDialog = false;
+    public async clearOfflineApiCache(): Promise<void> {
+        await OfflineApiCache.clear().catch(() => undefined);
+        window.dispatchEvent(new CustomEvent('offline-api-cache-cleared'));
+    }
     public prefectureItems = [
         '北海道',
         '青森県',
@@ -907,6 +923,7 @@ class Settings extends Vue {
             const status = await container.get<IAuthApiModel>('IAuthApiModel').getStatus();
             this.isAuthEnabled = status.enabled;
             this.loginUserName = status.user?.name ?? null;
+            localStorage.setItem('offlineApiCacheUser', this.loginUserName ?? 'anonymous');
             this.isAdmin = status.enabled === false || status.user?.role === 'admin';
         } catch (err) {
             console.error(err);
@@ -926,6 +943,7 @@ class Settings extends Vue {
         } catch (err) {
             console.error(err);
         }
+        localStorage.setItem('offlineApiCacheUser', 'anonymous');
         window.location.replace(window.location.pathname);
     }
 
