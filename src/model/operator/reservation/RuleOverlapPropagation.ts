@@ -38,8 +38,4 @@ export const isRuleOverlapSource = (reserve: RuleOverlapReservation): boolean =>
 
 /** ルール予約群から、重複状態が伝播する番組 ID の集合を作る。 */
 export const getRuleOverlapProgramIds = (reserves: RuleOverlapReservation[]): Set<number> =>
-    new Set(
-        reserves
-            .filter(reserve => isRuleOverlapSource(reserve))
-            .map(reserve => reserve.programId as number),
-    );
+    new Set(reserves.filter(reserve => isRuleOverlapSource(reserve)).map(reserve => reserve.programId as number));

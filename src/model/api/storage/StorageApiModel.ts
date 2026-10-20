@@ -37,7 +37,9 @@ export default class StorageApiModel implements IStorageApiModel {
      */
     public async getInfo(): Promise<apid.StorageInfo> {
         const now = Date.now();
-        const future = (await this.reserveDB.findFutureForStorage(now)).filter(r => r.isSkip === false && r.isConflict === false);
+        const future = (await this.reserveDB.findFutureForStorage(now)).filter(
+            r => r.isSkip === false && r.isConflict === false,
+        );
         const programIds = [...new Set(future.map(r => r.programId).filter((id): id is number => id !== null))];
         const programs = programIds.length > 0 ? await this.programDB.findIds(programIds) : [];
         const programsById = new Map(programs.map(program => [program.id, program]));
@@ -52,7 +54,7 @@ export default class StorageApiModel implements IStorageApiModel {
 
         const simulationReserves = await Promise.all(
             future.map(async (reserve: Reserve) => {
-                const program = reserve.programId === null ? null : programsById.get(reserve.programId) ?? null;
+                const program = reserve.programId === null ? null : (programsById.get(reserve.programId) ?? null);
                 const reserveTiming = resolveRecordingTimingConfig(
                     this.config.recording,
                     this.config.timeSpecifiedStartMargin,

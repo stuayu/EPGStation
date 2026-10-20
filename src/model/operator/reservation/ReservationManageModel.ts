@@ -927,7 +927,10 @@ class ReservationManageModel implements IReservationManageModel {
 
         try {
             const changedProgramIds = await this.updateRuleWithExecution(
-                ruleId, isSuppressLog, isFirstUpdate, ruleProgramCache,
+                ruleId,
+                isSuppressLog,
+                isFirstUpdate,
+                ruleProgramCache,
             );
             if (overlapChanges !== undefined) {
                 for (const programId of changedProgramIds) {
@@ -1594,11 +1597,13 @@ class ReservationManageModel implements IReservationManageModel {
         const processedRuleIds = new Set<apid.RuleId>();
         const changedSourcesByProgram = new Map<apid.ProgramId, Set<apid.RuleId>>();
         for (const ruleId of ruleIds) {
-            await this.updateRule(ruleId, isSuppressLog, isFirstUpdate, true, ruleProgramCache, changedSourcesByProgram).then(() => {
-                processedRuleIds.add(ruleId);
-            }).catch(err => {
-                this.log.system.error(err);
-            });
+            await this.updateRule(ruleId, isSuppressLog, isFirstUpdate, true, ruleProgramCache, changedSourcesByProgram)
+                .then(() => {
+                    processedRuleIds.add(ruleId);
+                })
+                .catch(err => {
+                    this.log.system.error(err);
+                });
             await Util.sleep(10);
         }
 
@@ -1608,7 +1613,12 @@ class ReservationManageModel implements IReservationManageModel {
             const affectedRuleIds = new Set(
                 reserves
                     .filter(reserve => reserve.ruleId !== null && processedRuleIds.has(reserve.ruleId))
-                    .filter(reserve => changedSourcesByProgram.get(reserve.programId as apid.ProgramId)?.has(reserve.ruleId as apid.RuleId) !== true)
+                    .filter(
+                        reserve =>
+                            changedSourcesByProgram
+                                .get(reserve.programId as apid.ProgramId)
+                                ?.has(reserve.ruleId as apid.RuleId) !== true,
+                    )
                     .map(reserve => reserve.ruleId as apid.RuleId),
             );
             for (const ruleId of affectedRuleIds) {
