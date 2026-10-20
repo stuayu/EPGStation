@@ -465,12 +465,7 @@ export default abstract class BaseVideo extends Vue {
             const file = new File([blob], request.filename ?? 'capture.jpg', { type: 'image/jpeg' });
             // 共有シートは iOS / iPadOS だけで使う (a[download] で保存できないため)。
             // macOS の Chrome / Safari も canShare({ files }) が true を返すので、条件に含めないと PC で保存の代わりに共有シートが開く
-            if (
-                UaUtil.isiOS() === true &&
-                typeof navigator.canShare === 'function' &&
-                typeof navigator.share === 'function' &&
-                navigator.canShare({ files: [file] })
-            ) {
+            if (UaUtil.isiOS() === true && typeof navigator.canShare === 'function' && typeof navigator.share === 'function' && navigator.canShare({ files: [file] })) {
                 await navigator.share({ files: [file], title: file.name });
             } else {
                 const url = URL.createObjectURL(blob);
