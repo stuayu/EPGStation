@@ -29,6 +29,8 @@ import { isPlaybackGenerationCurrent } from '../../../../src/util/PlaybackGenera
 import { isValidPlaybackSyncPosition } from '../../../../src/util/PlaybackSyncPositionUtil';
 import { applyPlaybackSeekAction } from '../../../../src/util/PlaybackSeekIntentUtil';
 import { Deinterlacer } from 'mpeg2toh264/yadif';
+import { findCmSkipTarget, getCmBlocks } from '../../../../src/util/CmSkipUtil';
+import { isListedVideoShortcut, VIDEO_SHORTCUTS } from '../../../../src/util/VideoShortcutUtil';
 
 type QualityPlaybackSnapshot = {
     volume: number;
@@ -87,6 +89,10 @@ export default abstract class BaseVideo extends Vue {
     public selectablePlaybackContainers?: SelectablePlaybackContainer[];
     private pendingRecordedJikkyoPlaybackTime: number | null = null;
     private chapters: apid.VideoChapter[] = []; // 再生中ファイルのチャプター (開始位置の昇順)
+    private previousCmTime: number | null = null;
+    private skippedCmBlocks: number[] = [];
+    private cmUndoTimer: number | null = null;
+    private lastSkippedCm: { startAt: number; endAt: number } | null = null;
     private extraHotkeyHandler: ((e: KeyboardEvent) => void) | null = null;
     private screenshotButton: HTMLElement | null = null;
     private screenshotClickHandler: ((event: MouseEvent) => void) | null = null;
@@ -95,6 +101,8 @@ export default abstract class BaseVideo extends Vue {
     private statisticsMenuKeydownHandler: ((event: KeyboardEvent) => void) | null = null;
     private statisticsPanelCloseButton: HTMLElement | null = null;
     private statisticsPanelCloseKeydownHandler: ((event: KeyboardEvent) => void) | null = null;
+    private cmSkipMenuItem: HTMLElement | null = null;
+    private cmSkipMenuHandler: ((event: MouseEvent) => void) | null = null;
     private dataBroadcastingButton: HTMLButtonElement | null = null;
     protected audioContext: AudioContext | null = null;
     protected audioSource: MediaElementAudioSourceNode | null = null;
@@ -220,7 +228,9 @@ export default abstract class BaseVideo extends Vue {
         DPlayerEnhancer.guardAribb24Renderers(this.dp as any, this.dp.video);
         this.bindEvents();
         this.setupStatisticsMenu();
+        this.setupCmSkipMenu();
         this.setupExtraHotkeys();
+        this.setupCmSkipUndo();
         this.setupScreenshotRequest();
         this.setupQualityPanelResize();
 
@@ -458,6 +468,9 @@ export default abstract class BaseVideo extends Vue {
      * 統計情報メニューの listener と DOM を破棄する。
      */
     private destroyStatisticsMenu(): void {
+        this.cmSkipMenuItem?.remove();
+        this.cmSkipMenuItem = null;
+        this.cmSkipMenuHandler = null;
         if (this.statisticsMenuItem !== null && this.statisticsMenuClickHandler !== null) {
             this.statisticsMenuItem.removeEventListener('click', this.statisticsMenuClickHandler);
         }
@@ -473,6 +486,39 @@ export default abstract class BaseVideo extends Vue {
         }
         this.statisticsPanelCloseButton = null;
         this.statisticsPanelCloseKeydownHandler = null;
+    }
+
+    /** DPlayer 設定メニューから CM 自動スキップを切り替える。 */
+    private setupCmSkipMenu(): void {
+        this.cmSkipMenuItem?.remove();
+        const panel = (this.dp as any)?.container?.querySelector('.dplayer-setting-origin-panel') as HTMLElement | null;
+        if (panel === null || panel === undefined) return;
+        const item = document.createElement('div');
+        item.className = 'dplayer-setting-item epgstation-cm-skip-setting';
+        item.setAttribute('role', 'button');
+        item.setAttribute('tabindex', '0');
+        const label = document.createElement('span');
+        label.className = 'dplayer-label';
+        item.appendChild(label);
+        const refresh = (): void => {
+            const enabled = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue().isEnableCmAutoSkip === true;
+            label.textContent = `CM 自動スキップ: ${enabled ? 'オン' : 'オフ'}`;
+        };
+        refresh();
+        this.cmSkipMenuHandler = (event: MouseEvent): void => {
+            event.preventDefault();
+            event.stopPropagation();
+            const setting = container.get<ISettingStorageModel>('ISettingStorageModel');
+            setting.tmp.isEnableCmAutoSkip = !setting.getSavedValue().isEnableCmAutoSkip;
+            setting.save();
+            refresh();
+        };
+        item.addEventListener('click', this.cmSkipMenuHandler);
+        item.addEventListener('keydown', (event: KeyboardEvent) => {
+            if (event.key === 'Enter' || event.key === ' ') item.click();
+        });
+        panel.appendChild(item);
+        this.cmSkipMenuItem = item;
     }
 
     /**
@@ -1277,6 +1323,9 @@ export default abstract class BaseVideo extends Vue {
      */
     protected setChapters(chapters: apid.VideoChapter[]): void {
         this.chapters = chapters.slice().sort((a, b) => a.startAt - b.startAt);
+        this.previousCmTime = null;
+        this.skippedCmBlocks = [];
+        this.lastSkippedCm = null;
     }
 
     /**
@@ -1351,7 +1400,7 @@ export default abstract class BaseVideo extends Vue {
         this.extraHotkeyHandler = (e: KeyboardEvent): void => {
             this.handleExtraHotkey(e);
         };
-        element.addEventListener('keydown', this.extraHotkeyHandler);
+        element.addEventListener('keydown', this.extraHotkeyHandler, true);
     }
 
     /**
@@ -1364,7 +1413,7 @@ export default abstract class BaseVideo extends Vue {
      * @param e: KeyboardEvent
      */
     private handleExtraHotkey(e: KeyboardEvent): void {
-        if (e.ctrlKey === true || e.metaKey === true || e.altKey === true) {
+        if (e.metaKey === true || e.altKey === true) {
             return;
         }
 
@@ -1374,8 +1423,60 @@ export default abstract class BaseVideo extends Vue {
         if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable === true) {
             return;
         }
+        if (isListedVideoShortcut(e) === false) return;
 
         switch (e.key) {
+            case 'ArrowLeft':
+            case 'ArrowRight': {
+                if ((this.dp as any)?.options?.live === true) return;
+                if (e.ctrlKey === true || e.shiftKey === true) {
+                    const delta = e.ctrlKey ? 15 : 30;
+                    this.setCurrentTime(Math.max(0, this.getCurrentTime() + (e.key === 'ArrowRight' ? delta : -delta)));
+                    break;
+                }
+                if (e.ctrlKey === false && e.shiftKey === false) {
+                    this.setCurrentTime(Math.max(0, this.getCurrentTime() + (e.key === 'ArrowRight' ? 5 : -5)));
+                    break;
+                }
+                return;
+            }
+            case 'ArrowUp':
+            case 'ArrowDown':
+                if (e.ctrlKey !== true) return;
+                if (this.dp !== null) this.dp.volume(Math.max(0, Math.min(1, this.dp.volume() + (e.key === 'ArrowUp' ? 0.05 : -0.05))));
+                break;
+            case 'q':
+            case 'Q':
+                if (this.dp !== null) this.dp.video.muted = !this.dp.video.muted;
+                break;
+            case 'E':
+            case 'e':
+                (this.dp as any)?.template?.pipButton?.click?.();
+                break;
+            case 'D':
+            case 'd':
+                (this.dp as any)?.template?.showDanmaku?.click?.();
+                break;
+            case 'C':
+                this.dp?.container.querySelector<HTMLElement>('.dplayer-camera-icon')?.click();
+                break;
+            case '+':
+            case '-': {
+                if (this.dp === null) return;
+                const speeds = BaseVideo.PLAYBACK_SPEEDS;
+                const current = speeds.reduce((best, speed) => (Math.abs(speed - this.dp!.video.playbackRate) < Math.abs(best - this.dp!.video.playbackRate) ? speed : best), 1);
+                const index = speeds.indexOf(current);
+                const next = speeds[Math.max(0, Math.min(speeds.length - 1, index + (e.key === '-' ? -1 : 1)))];
+                (this.dp as any).speed(next);
+                break;
+            }
+            case 'f':
+            case 'F':
+                (this.dp as any)?.fullScreen?.toggle?.();
+                break;
+            case '?':
+                this.showShortcutHelp();
+                break;
             case ',':
             case '.': {
                 this.pause();
@@ -1411,6 +1512,12 @@ export default abstract class BaseVideo extends Vue {
         }
 
         e.preventDefault();
+        e.stopImmediatePropagation();
+    }
+
+    private showShortcutHelp(): void {
+        if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 599px)').matches) return;
+        document.dispatchEvent(new CustomEvent('epgstation-shortcut-help', { detail: VIDEO_SHORTCUTS }));
     }
 
     /**
@@ -1419,7 +1526,7 @@ export default abstract class BaseVideo extends Vue {
     private destroyExtraHotkeys(): void {
         const element: HTMLElement | undefined = (this.dp as any)?.container;
         if (this.extraHotkeyHandler !== null && typeof element !== 'undefined' && element !== null) {
-            element.removeEventListener('keydown', this.extraHotkeyHandler);
+            element.removeEventListener('keydown', this.extraHotkeyHandler, true);
         }
         this.extraHotkeyHandler = null;
     }
@@ -1883,8 +1990,60 @@ export default abstract class BaseVideo extends Vue {
      * 時刻更新
      */
     protected onTimeupdate(): void {
+        const now = this.getCurrentTime();
+        const dp = this.dp as any;
+        const setting = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();
+        if (setting.isEnableCmAutoSkip === true && dp?.options?.live !== true && dp?.video?.paused === false && this.chapters.length > 0) {
+            const blocks = getCmBlocks(this.chapters);
+            if (this.previousCmTime !== null && now - this.previousCmTime <= 2) {
+                const target = findCmSkipTarget(this.previousCmTime, now, blocks, this.getDuration(), this.skippedCmBlocks);
+                if (target !== null) {
+                    const index = blocks.findIndex(block => block.endAt === target);
+                    this.skippedCmBlocks.push(index);
+                    this.lastSkippedCm = blocks[index];
+                    this.previousCmTime = target;
+                    this.setCurrentTime(target, true);
+                    dp?.notice?.('CM をスキップしました', 3000);
+                    this.showCmUndoButton();
+                }
+            }
+        }
+        this.previousCmTime = now;
         this.jikkyoKakologClient?.tick();
         this.$emit('timeupdate');
+    }
+
+    private setupCmSkipUndo(): void {
+        const element = (this.dp as any)?.container as HTMLElement | undefined;
+        if (element === undefined || element === null) return;
+        const button = document.createElement('button');
+        button.className = 'epgstation-cm-undo';
+        button.textContent = 'CM を戻す';
+        button.type = 'button';
+        button.style.cssText =
+            'position:absolute;right:16px;bottom:92px;z-index:20;min-height:44px;padding:8px 16px;border:0;border-radius:8px;background:#222;color:white;display:none;';
+        button.addEventListener('click', () => {
+            if (this.lastSkippedCm === null) return;
+            const block = this.lastSkippedCm;
+            this.setCurrentTime(block.startAt, true);
+            const index = getCmBlocks(this.chapters).findIndex(item => item.startAt === block.startAt);
+            this.skippedCmBlocks.push(index);
+            this.lastSkippedCm = null;
+            button.style.display = 'none';
+        });
+        element.appendChild(button);
+        if ((this as any).cmUndoButton !== undefined) (this as any).cmUndoButton = button;
+    }
+
+    private showCmUndoButton(): void {
+        const button = (this.dp as any)?.container?.querySelector('.epgstation-cm-undo') as HTMLElement | null;
+        if (button === null) return;
+        button.style.display = 'block';
+        if (this.cmUndoTimer !== null) window.clearTimeout(this.cmUndoTimer);
+        this.cmUndoTimer = window.setTimeout(() => {
+            button.style.display = 'none';
+            this.lastSkippedCm = null;
+        }, 5000);
     }
 
     /** 回線復帰時に未取得の実況過去ログを再取得する。 */
@@ -2101,6 +2260,9 @@ export default abstract class BaseVideo extends Vue {
             return;
         }
 
+        // 手動シーク・位置復元後は新しい基準位置を次の timeupdate で取り直す。
+        // CM 内へ直接移動した操作を自動スキップと誤認しない。
+        this.previousCmTime = null;
         this.$emit('playbackTransition');
         this.beginRecordedJikkyoTransition();
         this.dp.seek(time, true);

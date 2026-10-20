@@ -195,6 +195,19 @@
                 ></LiveMpegTsVideo>
             </div>
         </div>
+        <v-dialog v-model="isShortcutHelpOpen" max-width="560" :fullscreen="isMobile === true">
+            <v-card>
+                <v-card-title>キーボードショートカット</v-card-title>
+                <v-card-text>
+                    <v-table density="compact"><tbody>
+                        <tr v-for="shortcut in videoShortcuts" v-bind:key="shortcut.keys">
+                            <th class="text-no-wrap">{{ shortcut.keys }}</th><td>{{ shortcut.description }}</td>
+                        </tr>
+                    </tbody></v-table>
+                </v-card-text>
+                <v-card-actions><v-spacer></v-spacer><v-btn variant="text" v-on:click="isShortcutHelpOpen = false">閉じる</v-btn></v-card-actions>
+            </v-card>
+        </v-dialog>
     </div>
 </template>
 
@@ -221,6 +234,7 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import StreamSupportUtil from '@/util/StreamSupportUtil';
 import { isOriginalHevcPlayback } from '@/util/PlaybackProfileSelectUtil';
 import * as apid from '../../../../api';
+import { VIDEO_SHORTCUTS } from '../../../../src/util/VideoShortcutUtil';
 import {
     detectPlaybackStall,
     canAutoFallback,
@@ -256,8 +270,13 @@ class VideoContainer extends Vue {
     public playbackOptions: apid.PlaybackOptions | null = null;
     public playbackProfiles: apid.PlaybackProfile[] = [];
     public selectedPlaybackId = 'auto';
+    public isShortcutHelpOpen = false;
+    public readonly videoShortcuts = VIDEO_SHORTCUTS;
+    public get isMobile(): boolean { return this.$vuetify.display.smAndDown; }
+    private readonly shortcutHelpListener = (): void => { this.isShortcutHelpOpen = true; };
 
     public mounted(): void {
+        document.addEventListener('epgstation-shortcut-help', this.shortcutHelpListener);
         void this.$nextTick(() => this.applyDataBroadcastingControl());
     }
     private playbackOptionsState: IPlaybackOptionsState = container.get<IPlaybackOptionsState>('IPlaybackOptionsState');
@@ -575,6 +594,7 @@ class VideoContainer extends Vue {
     }
 
     public beforeUnmount(): void {
+        document.removeEventListener('epgstation-shortcut-help', this.shortcutHelpListener);
         this.stopPlaybackStallMonitor();
         this.savePlaybackPositionWithBeacon();
         document.removeEventListener('webkitfullscreenchange', this.fullScreenListener, false);

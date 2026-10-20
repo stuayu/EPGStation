@@ -47,6 +47,7 @@ export interface ISettingValue {
     isCheckDeleteOriginalAfterEncode: boolean;
     rulesLength: number;
     isForceEnableSubtitleStroke: boolean; // 字幕縁取りを強制するか
+    isEnableCmAutoSkip: boolean;
     isEnableJikkyoComment: boolean; // ニコニコ実況コメントを弾幕表示するか
     isEnableJikkyoCommentPost: boolean; // NX-Jikkyo へコメント投稿するか
     jikkyoCommentMuteSettings: CommentMuteSettings;

@@ -534,6 +534,14 @@
                                 </div>
                                 <div class="my-2 d-flex flex-row align-center">
                                     <div>
+                                        <v-list-item-title class="text-subtitle-1">CM を自動でスキップする</v-list-item-title>
+                                        <v-list-item-subtitle>録画再生で CM チャプターの開始を跨ぐと自動で飛ばします</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="storageModel.tmp.isEnableCmAutoSkip"></v-switch>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
                                         <v-list-item-title class="text-subtitle-1">ニコニコ実況コメントを表示する</v-list-item-title>
                                         <v-list-item-subtitle>ライブ視聴時に NX-Jikkyo のコメントを弾幕表示します</v-list-item-subtitle>
                                     </div>

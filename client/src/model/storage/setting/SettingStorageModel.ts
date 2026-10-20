@@ -48,6 +48,7 @@ export default class SettingStorageModel extends AbstractStorageBaseModel<ISetti
             isCheckDeleteOriginalAfterEncode: false,
             rulesLength: 24,
             isForceEnableSubtitleStroke: true,
+            isEnableCmAutoSkip: false,
             isEnableJikkyoComment: true,
             isEnableJikkyoCommentPost: true,
             jikkyoCommentMuteSettings: {

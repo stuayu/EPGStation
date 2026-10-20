@@ -16,6 +16,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 ### 索引
 
 - ffprobe の尺・ビットレート欠落で録画 TS の再生開始が失敗する問題を修正 → 2026-10-20
+- CM チャプターの自動スキップ、DPlayer 設定メニュー、再生ショートカットを追加 → 2026-10-20
 - BML の映像要素スタイル復元、字幕 renderer の破棄時停止、端末別 NVRAM 受信機設定を追加 → 2026-10-20
 - クライアント設定を許可リスト方式でユーザー単位にサーバー同期 → 2026-10-20
 - NX-Jikkyo のライブコメント投稿と端末単位のコメントミュートを追加 → 2026-10-20
@@ -81,6 +82,11 @@ ffprobe が `duration=N/A` / `bit_rate=N/A` を返す TS では開始 byte が N
 `ClientSetting` は認証ユーザーごとに保存し、認証無効・匿名時は共有枠を使う。匿名 PUT は拒否。設定 JSON は 256 KiB まで。SQLite / MySQL の migration、`GET/PUT /api/client-settings`、409 競合応答を追加。
 
 参照元: KonomiTV MIT `client/src/stores/SettingsStore.ts`、`server/app/routers/SettingsRouter.py`。実装: `client/src/model/storage/ClientSettingsSyncKeys.ts`、`ClientSettingsSyncModel.ts`、`src/db/entities/ClientSetting.ts`、`src/model/service/api/client-settings.ts`。
+### CM チャプターの自動スキップ
+
+CM 判定を `src/util/CommercialChapterUtil.ts` に集約し、サムネイル候補除外と再生時で共有。`CmSkipUtil` が隣接 CM チャプターをブロック化し、録画の通常再生で開始を跨いだ場合に終端へ移動する。設定は端末別・既定 OFF。設定画面と DPlayer の設定メニューから切替可能。シーク後は判定基準を取り直す。スキップ時は通知と5秒間の「CM を戻す」ボタンを表示し、ボタン位置を下端から92pxにしてコントロールバーとシークバーを避ける。ライブは対象外。
+
+録画・ライブ共通の独自ショートカットを `src/util/VideoShortcutUtil.ts` に一覧化。矢印キーで録画を5/15/30秒移動、Ctrl+矢印で音量、Qでミュート、Fで全画面、Eで PiP、Cでキャプチャ、Dでコメント表示を操作する。既存のコマ送り・チャプター移動・字幕・情報キーを維持し、`?` で一覧を Vuetify ダイアログに表示する。入力欄フォーカス中は横取りしない。
 
 ### 録画詳細の CM チャプター推定をタイトルバーのメニューへ集約
 
