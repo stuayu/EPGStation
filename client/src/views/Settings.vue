@@ -93,15 +93,55 @@
                         <v-list-item three-line>
                             <div class="v-list-item-content">
                                 <div class="title">再生</div>
-                                <div class="my-2 d-flex flex-row align-center"><div><v-list-item-title class="text-subtitle-1">既定の画質</v-list-item-title><v-list-item-subtitle>再生開始時に優先する画質です</v-list-item-subtitle></div><v-spacer></v-spacer><v-select v-model="preferredQuality" :items="playbackQualityItems" class="playback-quality-setting"></v-select></div>
-                                <div class="my-2 d-flex flex-row align-center"><div><v-list-item-title class="text-subtitle-1">映像補正</v-list-item-title><v-list-item-subtitle>古い映像の明るさや走査線を自動調整します</v-list-item-subtitle></div><v-spacer></v-spacer><v-select v-model="videoCorrection" :items="videoCorrectionItems" class="playback-small-setting"></v-select></div>
-                                <div class="my-2 d-flex flex-row align-center"><div><v-list-item-title class="text-subtitle-1">HDR</v-list-item-title><v-list-item-subtitle>対応端末では明るさの情報を保ったまま再生します</v-list-item-subtitle></div><v-spacer></v-spacer><v-select v-model="hdrMode" :items="hdrModeItems" class="playback-small-setting"></v-select></div>
-                                <div class="my-2 d-flex flex-row align-center"><div><v-list-item-title class="text-subtitle-1">再生前に画質を選ぶ</v-list-item-title><v-list-item-subtitle>毎回、再生画質を確認します</v-list-item-subtitle></div><v-spacer></v-spacer><v-switch v-model="chooseQualityBeforePlay"></v-switch></div>
-                                <div class="my-2 d-flex flex-row align-center"><div><v-list-item-title class="text-subtitle-1">モバイル回線では画質を下げる</v-list-item-title><v-list-item-subtitle>通信量を抑えるため自動選択を調整します</v-list-item-subtitle></div><v-spacer></v-spacer><v-switch v-model="lowerQualityOnMobile"></v-switch></div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">既定の画質</v-list-item-title>
+                                        <v-list-item-subtitle>再生開始時に優先する画質です</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-select v-model="preferredQuality" :items="playbackQualityItems" class="playback-quality-setting"></v-select>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">映像補正</v-list-item-title>
+                                        <v-list-item-subtitle>古い映像の明るさや走査線を自動調整します</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-select v-model="videoCorrection" :items="videoCorrectionItems" class="playback-small-setting"></v-select>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">HDR</v-list-item-title>
+                                        <v-list-item-subtitle>対応端末では明るさの情報を保ったまま再生します</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-select v-model="hdrMode" :items="hdrModeItems" class="playback-small-setting"></v-select>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">再生前に画質を選ぶ</v-list-item-title>
+                                        <v-list-item-subtitle>毎回、再生画質を確認します</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="chooseQualityBeforePlay"></v-switch>
+                                </div>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">モバイル回線では画質を下げる</v-list-item-title>
+                                        <v-list-item-subtitle>通信量を抑えるため自動選択を調整します</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="lowerQualityOnMobile"></v-switch>
+                                </div>
                                 <div class="mt-4 text-subtitle-2">この端末の再生能力</div>
-                                <div v-if="clientCapabilities !== null" data-testid="client-capability-report" :data-capabilities="JSON.stringify(clientCapabilities)" class="text-body-2 mt-1">
-                                    HEVC {{ capabilityLabel(clientCapabilities.hevc) }} / HEVC Main10 (10bit SDR) {{ capabilityLabel(clientCapabilities.hevcMain10) }} /
-                                    HDR {{ capabilityLabel(clientCapabilities.hdr) }} / MPEG-2端末変換 {{ capabilityLabel(clientCapabilities.mpeg2toh264) }}
+                                <div
+                                    v-if="clientCapabilities !== null"
+                                    data-testid="client-capability-report"
+                                    :data-capabilities="JSON.stringify(clientCapabilities)"
+                                    class="text-body-2 mt-1"
+                                >
+                                    HEVC {{ capabilityLabel(clientCapabilities.hevc) }} / HEVC Main10 (10bit SDR) {{ capabilityLabel(clientCapabilities.hevcMain10) }} / HDR
+                                    {{ capabilityLabel(clientCapabilities.hdr) }} / MPEG-2端末変換 {{ capabilityLabel(clientCapabilities.mpeg2toh264) }}
                                 </div>
                                 <div v-else class="text-body-2 mt-1">判定中…</div>
                                 <v-btn size="small" variant="outlined" class="mt-2" :loading="clientCapabilitiesLoading" @click="refreshClientCapabilities">能力を再判定</v-btn>
@@ -415,6 +455,16 @@
                                     <v-spacer></v-spacer>
                                     <v-switch v-model="storageModel.tmp.isEnableJikkyoComment"></v-switch>
                                 </div>
+                                <v-btn variant="text" @click="showJikkyoMuteDialog = true">実況コメントのミュート設定</v-btn>
+                                <JikkyoCommentMuteDialog v-model="showJikkyoMuteDialog"></JikkyoCommentMuteDialog>
+                                <div class="my-2 d-flex flex-row align-center">
+                                    <div>
+                                        <v-list-item-title class="text-subtitle-1">実況コメントを投稿する</v-list-item-title>
+                                        <v-list-item-subtitle>NX-Jikkyo のライブ実況へ匿名で投稿します</v-list-item-subtitle>
+                                    </div>
+                                    <v-spacer></v-spacer>
+                                    <v-switch v-model="storageModel.tmp.isEnableJikkyoCommentPost"></v-switch>
+                                </div>
                                 <div class="my-2">
                                     <v-list-item-title class="text-subtitle-1">実況コメントサーバー (NX-Jikkyo)</v-list-item-title>
                                     <v-text-field v-model="storageModel.tmp.jikkyoServerUrl" label="URL"></v-text-field>
@@ -422,7 +472,8 @@
                                 <div class="my-2">
                                     <v-list-item-title class="text-subtitle-1">実況コメントの表示タイミング微調整</v-list-item-title>
                                     <v-list-item-subtitle>
-                                        ライブ視聴時のコメントは、放送波の時刻 (TDT/TOT) と再生バッファから配信遅延を自動で補正します。それでもずれる場合に秒数で微調整します (正の値でコメントを遅らせ、負の値で早めます)
+                                        ライブ視聴時のコメントは、放送波の時刻 (TDT/TOT) と再生バッファから配信遅延を自動で補正します。それでもずれる場合に秒数で微調整します
+                                        (正の値でコメントを遅らせ、負の値で早めます)
                                     </v-list-item-subtitle>
                                     <v-text-field
                                         v-model.number="storageModel.tmp.jikkyoLiveOffsetSec"
@@ -444,9 +495,9 @@
                                     <div class="my-2 d-flex flex-row align-center">
                                         <div>
                                             <v-list-item-title class="text-subtitle-1">新着タブの連続再生</v-list-item-title>
-                                            <v-list-item-subtitle
-                                                >有効にすると新着タブ選択時も再生終了前にカウントダウンして自動で次を再生します (シリーズタブは常時有効)</v-list-item-subtitle
-                                            >
+                                            <v-list-item-subtitle>
+                                                有効にすると新着タブ選択時も再生終了前にカウントダウンして自動で次を再生します (シリーズタブは常時有効)
+                                            </v-list-item-subtitle>
                                         </div>
                                         <v-spacer></v-spacer>
                                         <v-switch v-model="storageModel.tmp.isEnableNextUpAutoPlayForLatestTab"></v-switch>
@@ -543,6 +594,7 @@
 
 <script lang="ts">
 import TitleBar from '@/components/titleBar/TitleBar.vue';
+import JikkyoCommentMuteDialog from '@/components/watch/JikkyoCommentMuteDialog.vue';
 import container from '@/model/ModelContainer';
 import IAuthApiModel from '@/model/api/auth/IAuthApiModel';
 import IServerConfigModel from '@/model/serverConfig/IServerConfigModel';
@@ -580,10 +632,12 @@ interface SelectItem {
     components: {
         TitleBar,
         CustomStreamPresetEditor,
+        JikkyoCommentMuteDialog,
     },
 })
 class Settings extends Vue {
     public isShow: boolean = false;
+    public showJikkyoMuteDialog = false;
     public storageModel: ISettingStorageModel = container.get<ISettingStorageModel>('ISettingStorageModel');
     public playbackState: IPlaybackOptionsState = container.get<IPlaybackOptionsState>('IPlaybackOptionsState');
     public customPresetItems: CustomPresetForm[] = [];
@@ -732,21 +786,55 @@ class Settings extends Vue {
     ];
 
     public readonly playbackQualityItems = [
-        { title: '自動・おすすめ', value: 'auto' }, { title: 'オリジナル (MPEG-2)', value: 'original-mpeg2' }, { title: 'オリジナル', value: 'original' }, { title: '4K 高画質', value: '2160p-high' },
-        { title: '1080p 高画質', value: '1080p-high' }, { title: '1080p 標準', value: '1080p' }, { title: '720p', value: '720p' }, { title: 'データ節約', value: 'data-saver' },
+        { title: '自動・おすすめ', value: 'auto' },
+        { title: 'オリジナル (MPEG-2)', value: 'original-mpeg2' },
+        { title: 'オリジナル', value: 'original' },
+        { title: '4K 高画質', value: '2160p-high' },
+        { title: '1080p 高画質', value: '1080p-high' },
+        { title: '1080p 標準', value: '1080p' },
+        { title: '720p', value: '720p' },
+        { title: 'データ節約', value: 'data-saver' },
     ];
-    public readonly videoCorrectionItems = [{ title: '自動', value: 'auto' }, { title: 'オフ', value: 'off' }, { title: '明るめ', value: 'bright' }];
-    public readonly hdrModeItems = [{ title: '自動', value: 'auto' }, { title: 'HDR を維持', value: 'preserve' }, { title: 'SDR に変換', value: 'sdr' }];
-    get preferredQuality(): string { return this.playbackState.preference.preferredQuality; }
-    set preferredQuality(value: string) { this.playbackState.savePreference({ preferredQuality: value }); }
-    get videoCorrection(): string { return this.playbackState.preference.videoCorrection; }
-    set videoCorrection(value: string) { this.playbackState.savePreference({ videoCorrection: value }); }
-    get hdrMode(): string { return this.playbackState.preference.hdrMode; }
-    set hdrMode(value: string) { this.playbackState.savePreference({ hdrMode: value }); }
-    get chooseQualityBeforePlay(): boolean { return this.playbackState.preference.autoPlayWithRecommendedQuality === false; }
-    set chooseQualityBeforePlay(value: boolean) { this.playbackState.savePreference({ autoPlayWithRecommendedQuality: !value }); }
-    get lowerQualityOnMobile(): boolean { return this.playbackState.preference.mobileDataPreference; }
-    set lowerQualityOnMobile(value: boolean) { this.playbackState.savePreference({ mobileDataPreference: value }); }
+    public readonly videoCorrectionItems = [
+        { title: '自動', value: 'auto' },
+        { title: 'オフ', value: 'off' },
+        { title: '明るめ', value: 'bright' },
+    ];
+    public readonly hdrModeItems = [
+        { title: '自動', value: 'auto' },
+        { title: 'HDR を維持', value: 'preserve' },
+        { title: 'SDR に変換', value: 'sdr' },
+    ];
+    get preferredQuality(): string {
+        return this.playbackState.preference.preferredQuality;
+    }
+    set preferredQuality(value: string) {
+        this.playbackState.savePreference({ preferredQuality: value });
+    }
+    get videoCorrection(): string {
+        return this.playbackState.preference.videoCorrection;
+    }
+    set videoCorrection(value: string) {
+        this.playbackState.savePreference({ videoCorrection: value });
+    }
+    get hdrMode(): string {
+        return this.playbackState.preference.hdrMode;
+    }
+    set hdrMode(value: string) {
+        this.playbackState.savePreference({ hdrMode: value });
+    }
+    get chooseQualityBeforePlay(): boolean {
+        return this.playbackState.preference.autoPlayWithRecommendedQuality === false;
+    }
+    set chooseQualityBeforePlay(value: boolean) {
+        this.playbackState.savePreference({ autoPlayWithRecommendedQuality: !value });
+    }
+    get lowerQualityOnMobile(): boolean {
+        return this.playbackState.preference.mobileDataPreference;
+    }
+    set lowerQualityOnMobile(value: boolean) {
+        this.playbackState.savePreference({ mobileDataPreference: value });
+    }
 
     public themeColorItems: ThemeColorUtil.ThemeColorDefinition[] = ThemeColorUtil.COLORS;
     public guideLengthItems: SelectItem[] = [];
@@ -850,7 +938,9 @@ class Settings extends Vue {
         }
     }
 
-    public capabilityLabel(value: boolean): string { return value ? '対応' : '非対応'; }
+    public capabilityLabel(value: boolean): string {
+        return value ? '対応' : '非対応';
+    }
 
     /** カスタムプリセットを app_setting の config オーバーレイから読み込む。 */
     public async loadCustomPresets(): Promise<void> {
@@ -861,9 +951,11 @@ class Settings extends Vue {
             const profiles = this.customEffectiveConfig.stream?.profiles ?? {};
             const byId = new Map<string, { profile: any; live: boolean; recorded: boolean }>();
             for (const p of profiles.live ?? []) if (String(p.id).startsWith('custom-')) byId.set(p.id, { profile: p, live: true, recorded: false });
-            for (const p of profiles.recorded?.ts ?? []) if (String(p.id).startsWith('custom-')) {
-                const current = byId.get(p.id); byId.set(p.id, { profile: current?.profile ?? p, live: current?.live === true, recorded: true });
-            }
+            for (const p of profiles.recorded?.ts ?? [])
+                if (String(p.id).startsWith('custom-')) {
+                    const current = byId.get(p.id);
+                    byId.set(p.id, { profile: current?.profile ?? p, live: current?.live === true, recorded: true });
+                }
             this.customPresetItems = [...byId.values()].map(x => this.profileToForm(x.profile, x.live && x.recorded ? 'both' : x.live ? 'live' : 'recorded'));
         } catch (err) {
             // 一般ユーザーなど API が利用できない場合も、通常設定画面は利用可能にする。
@@ -873,20 +965,49 @@ class Settings extends Vue {
 
     private profileToForm(profile: any, useFor: 'live' | 'recorded' | 'both'): CustomPresetForm {
         return {
-            id: profile.id, name: profile.name, useFor, container: profile.container,
-            resolution: profile.video?.height ? `${profile.video.height}p` : 'source', codec: profile.video?.codec?.includes('265') ? 'hevc' : profile.isUnconverted ? 'copy' : 'h264',
-            bitDepth: profile.customOptions?.bitDepth ?? 'source', frameRate: profile.customOptions?.frameRate ?? 'source', hdrMode: profile.customOptions?.hdrMode ?? 'sdr', videoCorrection: profile.customOptions?.videoCorrection ?? 'auto',
-            encoder: profile.video?.codec ?? '', quality: profile.customOptions?.quality ?? 'balanced', deinterlace: profile.customOptions?.deinterlace ?? 'auto', rawCommand: profile.cmd ?? '', options: { ...(profile.customOptions ?? {}) },
+            id: profile.id,
+            name: profile.name,
+            useFor,
+            container: profile.container,
+            resolution: profile.video?.height ? `${profile.video.height}p` : 'source',
+            codec: profile.video?.codec?.includes('265') ? 'hevc' : profile.isUnconverted ? 'copy' : 'h264',
+            bitDepth: profile.customOptions?.bitDepth ?? 'source',
+            frameRate: profile.customOptions?.frameRate ?? 'source',
+            hdrMode: profile.customOptions?.hdrMode ?? 'sdr',
+            videoCorrection: profile.customOptions?.videoCorrection ?? 'auto',
+            encoder: profile.video?.codec ?? '',
+            quality: profile.customOptions?.quality ?? 'balanced',
+            deinterlace: profile.customOptions?.deinterlace ?? 'auto',
+            rawCommand: profile.cmd ?? '',
+            options: { ...(profile.customOptions ?? {}) },
         };
     }
 
     /** カスタムプリセットを用途ごとの stream.profiles へ保存する。 */
     public async saveCustomPreset(item: CustomPresetForm): Promise<void> {
         const profile: any = {
-            id: item.id, name: item.name, container: item.container,
-            video: item.codec === 'copy' ? undefined : { codec: item.encoder || (item.codec === 'hevc' ? 'libx265' : 'libx264'), height: item.resolution === 'source' ? undefined : Number.parseInt(item.resolution, 10), bitrate: item.options.bitrate },
-            cmd: item.rawCommand.trim() || undefined, isUnconverted: item.codec === 'copy',
-            customOptions: { ...item.options, bitDepth: item.bitDepth, frameRate: item.frameRate, hdrMode: item.hdrMode, videoCorrection: item.videoCorrection, quality: item.quality, deinterlace: item.deinterlace },
+            id: item.id,
+            name: item.name,
+            container: item.container,
+            video:
+                item.codec === 'copy'
+                    ? undefined
+                    : {
+                          codec: item.encoder || (item.codec === 'hevc' ? 'libx265' : 'libx264'),
+                          height: item.resolution === 'source' ? undefined : Number.parseInt(item.resolution, 10),
+                          bitrate: item.options.bitrate,
+                      },
+            cmd: item.rawCommand.trim() || undefined,
+            isUnconverted: item.codec === 'copy',
+            customOptions: {
+                ...item.options,
+                bitDepth: item.bitDepth,
+                frameRate: item.frameRate,
+                hdrMode: item.hdrMode,
+                videoCorrection: item.videoCorrection,
+                quality: item.quality,
+                deinterlace: item.deinterlace,
+            },
         };
         const effective = this.customEffectiveConfig.stream?.profiles ?? {};
         const profiles = {
@@ -897,7 +1018,10 @@ class Settings extends Vue {
             },
         };
         if (item.useFor === 'live' || item.useFor === 'both') profiles.live.push(profile);
-        if (item.useFor === 'recorded' || item.useFor === 'both') { profiles.recorded.ts.push(profile); profiles.recorded.encoded.push(profile); }
+        if (item.useFor === 'recorded' || item.useFor === 'both') {
+            profiles.recorded.ts.push(profile);
+            profiles.recorded.encoded.push(profile);
+        }
         const overlay = JSON.parse(JSON.stringify(this.customConfigOverlay));
         overlay.stream = { ...(overlay.stream ?? {}), profiles };
         try {
@@ -905,7 +1029,10 @@ class Settings extends Vue {
             this.customConfigOverlay = overlay;
             this.customEffectiveConfig.stream = { ...(this.customEffectiveConfig.stream ?? {}), profiles };
             this.snackbarState.open({ text: 'カスタムプリセットを保存しました', color: 'success' });
-        } catch (err) { console.error(err); this.snackbarState.open({ text: 'カスタムプリセットの保存に失敗しました', color: 'error' }); }
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ text: 'カスタムプリセットの保存に失敗しました', color: 'error' });
+        }
     }
 
     public async removeCustomPreset(id: string): Promise<void> {
@@ -913,9 +1040,22 @@ class Settings extends Vue {
         if (item === undefined) return;
         const effective = this.customEffectiveConfig.stream?.profiles ?? {};
         const overlay = JSON.parse(JSON.stringify(this.customConfigOverlay));
-        overlay.stream = { ...(overlay.stream ?? {}), profiles: { live: (effective.live ?? []).filter((p: any) => p.id !== id), recorded: { ts: (effective.recorded?.ts ?? []).filter((p: any) => p.id !== id), encoded: (effective.recorded?.encoded ?? []).filter((p: any) => p.id !== id) } } };
-        try { await this.systemSettingApi.update({ config: overlay }); this.customPresetItems = this.customPresetItems.filter(x => x.id !== id); this.customConfigOverlay = overlay; this.customEffectiveConfig.stream.profiles = overlay.stream.profiles; }
-        catch (err) { console.error(err); this.snackbarState.open({ text: 'カスタムプリセットの削除に失敗しました', color: 'error' }); }
+        overlay.stream = {
+            ...(overlay.stream ?? {}),
+            profiles: {
+                live: (effective.live ?? []).filter((p: any) => p.id !== id),
+                recorded: { ts: (effective.recorded?.ts ?? []).filter((p: any) => p.id !== id), encoded: (effective.recorded?.encoded ?? []).filter((p: any) => p.id !== id) },
+            },
+        };
+        try {
+            await this.systemSettingApi.update({ config: overlay });
+            this.customPresetItems = this.customPresetItems.filter(x => x.id !== id);
+            this.customConfigOverlay = overlay;
+            this.customEffectiveConfig.stream.profiles = overlay.stream.profiles;
+        } catch (err) {
+            console.error(err);
+            this.snackbarState.open({ text: 'カスタムプリセットの削除に失敗しました', color: 'error' });
+        }
     }
 
     public beforeUnmount(): void {

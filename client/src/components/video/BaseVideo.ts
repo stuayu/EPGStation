@@ -13,15 +13,17 @@ import { DataBroadcastingConnectParam } from '@/util/DataBroadcastingManager';
 import { resolveDataBroadcastingTime } from '../../../../src/model/service/dataBroadcasting/DataBroadcastingTime';
 import DPlayerEnhancer from '@/util/DPlayerEnhancer';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
+import { compileCommentMuteSettings, shouldMuteCompiledComment, CompiledCommentMuteSettings } from '@/util/CommentMuteUtil';
 import { getPlaybackOptionLabel } from '@/util/PlaybackLabelUtil';
 import * as apid from '../../../../api';
 import { findPlaybackUrl, requirePlaybackUrl } from '../../../../src/util/PlaybackUrlUtil';
-import { createPlaybackQualityOptions, disambiguatePlaybackLabels, resolveQualityPanelMaxHeight, SelectablePlaybackContainer } from '../../../../src/util/PlaybackQualityOptionUtil';
 import {
-    PLAYBACK_BUFFER_RECOVERY_MIN_GAP_SEC,
-    PlaybackBufferedRange,
-    resolvePlaybackBufferRecoveryTarget,
-} from '../../../../src/util/PlaybackBufferRecovery';
+    createPlaybackQualityOptions,
+    disambiguatePlaybackLabels,
+    resolveQualityPanelMaxHeight,
+    SelectablePlaybackContainer,
+} from '../../../../src/util/PlaybackQualityOptionUtil';
+import { PLAYBACK_BUFFER_RECOVERY_MIN_GAP_SEC, PlaybackBufferedRange, resolvePlaybackBufferRecoveryTarget } from '../../../../src/util/PlaybackBufferRecovery';
 import { resolveRecordedJikkyoPlaybackTime } from '../../../../src/util/RecordedJikkyoSync';
 import { isPlaybackGenerationCurrent } from '../../../../src/util/PlaybackGenerationUtil';
 import { isValidPlaybackSyncPosition } from '../../../../src/util/PlaybackSyncPositionUtil';
@@ -112,6 +114,14 @@ export default abstract class BaseVideo extends Vue {
     // 遅延表示待ちのコメント。破棄時にまとめてキャンセルする
     private jikkyoDelayTimerIds: number[] = [];
     private isJikkyoOnlineListenerRegistered = false;
+    private compiledCommentMuteSettings: CompiledCommentMuteSettings | null = null;
+    private readonly refreshCommentMuteSettings = (): void => {
+        const settings = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue().jikkyoCommentMuteSettings;
+        this.compiledCommentMuteSettings = compileCommentMuteSettings(settings);
+    };
+    private readonly onCommentMuteSettingsStorage = (event: StorageEvent): void => {
+        if (event.key === 'settings') this.refreshCommentMuteSettings();
+    };
 
     // DPlayer が再生速度を保存する localStorage のキー。
     // 録画とライブで同じ DPlayer 設定を共有しているため、ライブ側だけ持ち込まないようにする
@@ -128,6 +138,9 @@ export default abstract class BaseVideo extends Vue {
     private static readonly PLAYBACK_SPEEDS = [0.25, 0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 3, 4];
 
     public mounted(): void {
+        this.refreshCommentMuteSettings();
+        window.addEventListener('storage', this.onCommentMuteSettingsStorage);
+        window.addEventListener('jikkyo-comment-mute-settings-updated', this.refreshCommentMuteSettings);
         this.containerElement = this.$refs.container as HTMLElement;
 
         this.initVideoSetting();
@@ -170,7 +183,23 @@ export default abstract class BaseVideo extends Vue {
                     opt.success([]);
                 },
                 send: (opt: any) => {
-                    opt.success();
+                    if (
+                        this.isJikkyoCommentPostAvailable() !== true ||
+                        jikkyoChannelId === null ||
+                        setting.isEnableJikkyoCommentPost !== true ||
+                        this.jikkyoCommentClient === null
+                    ) {
+                        opt.error('この視聴では実況コメントを投稿できません');
+                        return;
+                    }
+                    this.jikkyoCommentClient.sendComment(
+                        opt.data,
+                        () => {
+                            opt.success();
+                            this.drawJikkyoComment({ ...opt.data, text: opt.data.text, userId: '自分', isSelf: true });
+                        },
+                        (message: string) => opt.error(message),
+                    );
                 },
             };
         }
@@ -181,6 +210,13 @@ export default abstract class BaseVideo extends Vue {
         // 別オブジェクトになるため判定が成立し、**自分自身を pause してしまう**。
         // 再生ボタン・ホットキー・シーク後の再開が軒並み効かなくなる
         this.dp = markRaw(BaseVideo.createDPlayer(options));
+        if (this.isJikkyoCommentPostAvailable() !== true || jikkyoChannelId === null || setting.isEnableJikkyoCommentPost !== true) {
+            // 入力ボックスだけでなく、それを開くコントローラのボタンごと隠す (.dplayer-comment が両方を含む)
+            const commentControl = this.dp.container.querySelector<HTMLElement>('.dplayer-comment');
+            if (commentControl !== null) {
+                commentControl.style.display = 'none';
+            }
+        }
         DPlayerEnhancer.guardAribb24Renderers(this.dp as any, this.dp.video);
         this.bindEvents();
         this.setupStatisticsMenu();
@@ -313,7 +349,8 @@ export default abstract class BaseVideo extends Vue {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'dplayer-icon dplayer-data-broadcasting-icon';
-        button.innerHTML = '<span class="dplayer-icon-content" aria-hidden="true"><svg viewBox="0 0 24 24" width="100%" height="100%"><path fill="currentColor" d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5v2H9v-2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2m0 2v10h16V7H4m2 2h5v2H6V9m0 4h8v2H6v-2m10-4h2v6h-2V9Z"/></svg></span>';
+        button.innerHTML =
+            '<span class="dplayer-icon-content" aria-hidden="true"><svg viewBox="0 0 24 24" width="100%" height="100%"><path fill="currentColor" d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5v2H9v-2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2m0 2v10h16V7H4m2 2h5v2H6V9m0 4h8v2H6v-2m10-4h2v6h-2V9Z"/></svg></span>';
         this.dataBroadcastingButton = button;
         this.dataBroadcastingToggleHandler = onToggle;
         button.addEventListener('click', onToggle);
@@ -528,20 +565,38 @@ export default abstract class BaseVideo extends Vue {
                     restored = true;
                     video.removeEventListener('loadedmetadata', restore);
                     video.removeEventListener('canplay', restore);
-                    try { video.volume = snapshot.volume; } catch (err) { console.error(err); }
-                    try { video.muted = snapshot.muted; } catch (err) { console.error(err); }
-                    try { video.playbackRate = snapshot.playbackRate; } catch (err) { console.error(err); }
+                    try {
+                        video.volume = snapshot.volume;
+                    } catch (err) {
+                        console.error(err);
+                    }
+                    try {
+                        video.muted = snapshot.muted;
+                    } catch (err) {
+                        console.error(err);
+                    }
+                    try {
+                        video.playbackRate = snapshot.playbackRate;
+                    } catch (err) {
+                        console.error(err);
+                    }
                     try {
                         if (dp.subtitle !== null) snapshot.subtitles ? dp.subtitle.show() : dp.subtitle.hide();
-                    } catch (err) { console.error(err); }
+                    } catch (err) {
+                        console.error(err);
+                    }
                     try {
                         const fullscreen = document.fullscreenElement === dp.container || (document as any).webkitFullscreenElement === dp.container;
                         if (snapshot.fullscreen !== fullscreen) dp.fullScreen?.toggle?.('browser');
-                    } catch (err) { console.error(err); }
+                    } catch (err) {
+                        console.error(err);
+                    }
                     try {
                         const isPip = document.pictureInPictureElement === video || (video as any).webkitPresentationMode === 'picture-in-picture';
                         if (snapshot.pip === true && isPip === false) void (video as any).requestPictureInPicture?.().catch?.(() => undefined);
-                    } catch (err) { console.error(err); }
+                    } catch (err) {
+                        console.error(err);
+                    }
                     pendingSnapshot = null;
                 };
                 video.addEventListener('loadedmetadata', restore, { once: true });
@@ -617,11 +672,7 @@ export default abstract class BaseVideo extends Vue {
                         reason: err instanceof Error ? err.message : String(err),
                         oldVideo: BaseVideo.getVideoTransitionState(trace.oldVideo),
                     });
-                    if (
-                        isPlaybackGenerationCurrent(targetGeneration, this.playbackGeneration) &&
-                        this.dp === targetPlayer &&
-                        this.qualitySwitchTrace?.id === trace.id
-                    ) {
+                    if (isPlaybackGenerationCurrent(targetGeneration, this.playbackGeneration) && this.dp === targetPlayer && this.qualitySwitchTrace?.id === trace.id) {
                         this.qualitySwitchTrace = null;
                     }
                     pendingSnapshot = null;
@@ -636,11 +687,7 @@ export default abstract class BaseVideo extends Vue {
                 }
 
                 // 切替処理中に破棄された場合は何もしない
-                if (
-                    this.dp === null ||
-                    this.dp !== targetPlayer ||
-                    isPlaybackGenerationCurrent(targetGeneration, this.playbackGeneration) === false
-                ) {
+                if (this.dp === null || this.dp !== targetPlayer || isPlaybackGenerationCurrent(targetGeneration, this.playbackGeneration) === false) {
                     BaseVideo.logQualitySwitchTrace('aborted', trace, {
                         elapsedMs: Math.round(performance.now() - trace.startedAt),
                     });
@@ -722,12 +769,7 @@ export default abstract class BaseVideo extends Vue {
 
             return {
                 connected: video.isConnected,
-                visible:
-                    rect.width > 0 &&
-                    rect.height > 0 &&
-                    style.display !== 'none' &&
-                    style.visibility !== 'hidden' &&
-                    style.opacity !== '0',
+                visible: rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0',
                 width: Math.round(rect.width),
                 height: Math.round(rect.height),
                 readyState: video.readyState,
@@ -764,10 +806,7 @@ export default abstract class BaseVideo extends Vue {
      * @param video: DPlayer の切替先 video 情報
      * @param preserveCurrentTime: true なら DPlayer が切替前の位置と再生速度を復元する
      */
-    protected switchVideo(
-        video: { url: string; type?: DPlayerType.VideoType | string },
-        preserveCurrentTime: boolean = false,
-    ): void {
+    protected switchVideo(video: { url: string; type?: DPlayerType.VideoType | string }, preserveCurrentTime: boolean = false): void {
         if (this.dp === null) return;
 
         const url = requirePlaybackUrl(video.url, 'DPlayer switchVideo');
@@ -908,12 +947,7 @@ export default abstract class BaseVideo extends Vue {
                   : [container as SelectablePlaybackContainer];
         const oldQuality = (dp.options?.video?.quality ?? []) as PlaybackQuality[];
         const currentQualityIndex = typeof dp.qualityIndex === 'number' ? dp.qualityIndex : 0;
-        const current = findPlaybackUrl(
-            dp.options?.video?.url,
-            oldQuality[currentQualityIndex]?.url,
-            dp.video?.currentSrc,
-            dp.video?.src,
-        );
+        const current = findPlaybackUrl(dp.options?.video?.url, oldQuality[currentQualityIndex]?.url, dp.video?.currentSrc, dp.video?.src);
         if (current === null) {
             console.error('[EPGStation][playback-url] quality list update skipped: current URL is empty');
 
@@ -921,12 +955,7 @@ export default abstract class BaseVideo extends Vue {
         }
         const type = oldQuality[0]?.type ?? dp.options?.video?.type ?? 'normal';
         // quality 配列の添字は mode ではないため、現在の項目が持つサーバ mode を使う (初回は未設定なので selectedId 側で引き当てる)
-        const resolvedMode =
-            typeof currentMode === 'number'
-                ? currentMode
-                : typeof oldQuality[currentQualityIndex]?.mode === 'number'
-                  ? oldQuality[currentQualityIndex].mode
-                  : -1;
+        const resolvedMode = typeof currentMode === 'number' ? currentMode : typeof oldQuality[currentQualityIndex]?.mode === 'number' ? oldQuality[currentQualityIndex].mode : -1;
         const qualityOptions = createPlaybackQualityOptions(profiles, containers, container as SelectablePlaybackContainer, resolvedMode, selectedId);
         // 同じ role の HEVC 版 / AVC 版など、表示名が衝突するものだけコーデック名で区別する
         const names = disambiguatePlaybackLabels(
@@ -1128,12 +1157,7 @@ export default abstract class BaseVideo extends Vue {
         panel.style.maxHeight = 'none';
         const rect = panel.getBoundingClientRect();
         const contentHeight = panel.scrollHeight;
-        const limitPx = resolveQualityPanelMaxHeight(
-            container.clientHeight,
-            window.innerHeight,
-            rect.bottom,
-            contentHeight,
-        );
+        const limitPx = resolveQualityPanelMaxHeight(container.clientHeight, window.innerHeight, rect.bottom, contentHeight);
         panel.style.maxHeight = `${limitPx}px`;
         // DPlayer は `--quality-length` から clip-path で見える範囲を決めるため、
         // 実際に与えた高さより広く見せようとすると box の外へ出た項目が押せなくなる。
@@ -1178,9 +1202,7 @@ export default abstract class BaseVideo extends Vue {
 
     /** Web Audio API が使える環境の AudioContext を返す。 */
     protected static getAudioContextConstructor(): typeof AudioContext | null {
-        const ctor =
-            window.AudioContext ??
-            (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        const ctor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
 
         return typeof ctor === 'undefined' ? null : ctor;
     }
@@ -1411,6 +1433,11 @@ export default abstract class BaseVideo extends Vue {
         return null;
     }
 
+    /** ライブ配信としてコメント投稿できる視聴か */
+    protected isJikkyoCommentPostAvailable(): boolean {
+        return false;
+    }
+
     /**
      * 録画再生用のニコニコ実況過去ログ取得情報を返す
      */
@@ -1503,9 +1530,7 @@ export default abstract class BaseVideo extends Vue {
             try {
                 const streamApiModel = container.get<IStreamApiModel>('IStreamApiModel');
                 const info = await streamApiModel.getStreamInfo(false);
-                const item = info.items.find(
-                    x => x.channelId === channelId && typeof x.broadcastTime !== 'undefined',
-                );
+                const item = info.items.find(x => x.channelId === channelId && typeof x.broadcastTime !== 'undefined');
                 this.broadcastTime = item?.broadcastTime ?? null;
             } catch (err) {
                 // 取得できなくてもコメント表示自体は続ける (補正が効かなくなるだけ)
@@ -1545,6 +1570,11 @@ export default abstract class BaseVideo extends Vue {
      * ニコニコ実況コメントを DPlayer の弾幕として描画する
      */
     private drawJikkyoComment(comment: JikkyoComment): void {
+        if (
+            this.compiledCommentMuteSettings !== null &&
+            shouldMuteCompiledComment(comment.text, this.compiledCommentMuteSettings, { userId: comment.userId, color: comment.color, position: comment.type, size: comment.size })
+        )
+            return;
         // 右パネルのコメント一覧へ流す (描画タイミング = 遅延補正後なので弾幕と表示が揃う)
         this.$emit('jikkyoComment', comment);
 
@@ -1580,6 +1610,7 @@ export default abstract class BaseVideo extends Vue {
                 color: comment.color,
                 type: comment.type,
                 size: comment.size,
+                border: comment.isSelf === true,
             });
         } catch (err) {
             console.error(err);
@@ -1790,37 +1821,59 @@ export default abstract class BaseVideo extends Vue {
         const isCurrentPlayer = (): boolean => this.dp === dp;
 
         // 時刻更新
-        dp.on('timeupdate', () => { if (isCurrentPlayer()) this.onTimeupdate(); });
+        dp.on('timeupdate', () => {
+            if (isCurrentPlayer()) this.onTimeupdate();
+        });
 
         // 読み込み中
-        dp.on('waiting', () => { if (isCurrentPlayer()) this.onWaiting(); });
+        dp.on('waiting', () => {
+            if (isCurrentPlayer()) this.onWaiting();
+        });
 
         // 読み込み完了
-        dp.on('loadeddata', () => { if (isCurrentPlayer()) this.onLoadeddata(); });
+        dp.on('loadeddata', () => {
+            if (isCurrentPlayer()) this.onLoadeddata();
+        });
 
         // 再生可能
-        dp.on('canplay', () => { if (isCurrentPlayer()) this.onCanplay(); });
+        dp.on('canplay', () => {
+            if (isCurrentPlayer()) this.onCanplay();
+        });
 
         // 終了
-        dp.on('ended', () => { if (isCurrentPlayer()) this.onEnded(); });
+        dp.on('ended', () => {
+            if (isCurrentPlayer()) this.onEnded();
+        });
 
         // 再生
-        dp.on('play', () => { if (isCurrentPlayer()) this.onPlay(); });
+        dp.on('play', () => {
+            if (isCurrentPlayer()) this.onPlay();
+        });
 
         // 実際に再生が始まった (play() 呼び出しの成否とは別。autoplay が成功したかの判定に使う)
-        dp.on('playing', () => { if (isCurrentPlayer()) this.onPlaying(); });
+        dp.on('playing', () => {
+            if (isCurrentPlayer()) this.onPlaying();
+        });
 
         // 停止
-        dp.on('pause', () => { if (isCurrentPlayer()) this.onPause(); });
+        dp.on('pause', () => {
+            if (isCurrentPlayer()) this.onPause();
+        });
 
         // 再生速度変化
-        dp.on('ratechange', () => { if (isCurrentPlayer()) this.onRatechange(); });
+        dp.on('ratechange', () => {
+            if (isCurrentPlayer()) this.onRatechange();
+        });
 
         // 音量変化
-        dp.on('volumechange', () => { if (isCurrentPlayer()) this.onVolumechange(); });
+        dp.on('volumechange', () => {
+            if (isCurrentPlayer()) this.onVolumechange();
+        });
 
         // プレイヤーの起動失敗を親へ橋渡しする
-        dp.on('error', (error: unknown) => { if (isCurrentPlayer()) this.onError(error); });
+        dp.on('error', (error: unknown) => {
+            if (isCurrentPlayer()) this.onError(error);
+        });
     }
 
     /**
@@ -1856,11 +1909,7 @@ export default abstract class BaseVideo extends Vue {
     protected onCanplay(): void {
         const trace = this.qualitySwitchTrace;
         const currentVideo = this.dp?.video;
-        if (
-            trace !== null &&
-            typeof currentVideo !== 'undefined' &&
-            (currentVideo !== trace.oldVideo || this.pendingQualityPlaybackReady !== null)
-        ) {
+        if (trace !== null && typeof currentVideo !== 'undefined' && (currentVideo !== trace.oldVideo || this.pendingQualityPlaybackReady !== null)) {
             BaseVideo.logQualitySwitchTrace('playback-ready', trace, {
                 elapsedMs: Math.round(performance.now() - trace.startedAt),
                 oldVideo: BaseVideo.getVideoTransitionState(trace.oldVideo),
@@ -1953,6 +2002,8 @@ export default abstract class BaseVideo extends Vue {
     }
 
     public beforeUnmount(): void {
+        window.removeEventListener('storage', this.onCommentMuteSettingsStorage);
+        window.removeEventListener('jikkyo-comment-mute-settings-updated', this.refreshCommentMuteSettings);
         if (this.isJikkyoOnlineListenerRegistered === true) {
             window.removeEventListener('online', this.onJikkyoNetworkOnline);
             this.isJikkyoOnlineListenerRegistered = false;
@@ -2051,7 +2102,9 @@ export default abstract class BaseVideo extends Vue {
         this.beginRecordedJikkyoTransition();
         this.dp.seek(time, true);
         applyPlaybackSeekAction(resume, {
-            play: () => { void this.play(); },
+            play: () => {
+                void this.play();
+            },
             pause: () => this.pause(),
         });
         this.completeRecordedJikkyoSeek();

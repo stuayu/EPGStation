@@ -1,6 +1,7 @@
 import IStorageBaseModel from '../IStorageBaseModel';
 import ThemeColorUtil from '@/util/ThemeColorUtil';
 import ProgramHashtagUtil from '@/util/ProgramHashtagUtil';
+import type { CommentMuteSettings } from '@/util/CommentMuteUtil';
 
 export type GuideViewMode = 'sequential' | 'minimum' | 'all';
 
@@ -47,6 +48,8 @@ export interface ISettingValue {
     rulesLength: number;
     isForceEnableSubtitleStroke: boolean; // 字幕縁取りを強制するか
     isEnableJikkyoComment: boolean; // ニコニコ実況コメントを弾幕表示するか
+    isEnableJikkyoCommentPost: boolean; // NX-Jikkyo へコメント投稿するか
+    jikkyoCommentMuteSettings: CommentMuteSettings;
     jikkyoServerUrl: string; // NX-Jikkyo サーバーの URL
     // ライブ視聴時のコメント表示を追加で遅らせる秒数 (負の値で早める)。
     // 配信遅延はサーバの放送時刻 (TDT/TOT) と再生バッファから自動で補正するが、

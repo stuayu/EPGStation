@@ -1,8 +1,5 @@
 import JikkyoCommentClient, { JikkyoComment } from './JikkyoCommentClient';
-import {
-    findRecordedJikkyoCommentIndex,
-    resolveRecordedJikkyoTimestamp,
-} from '../../../src/util/RecordedJikkyoSync';
+import { findRecordedJikkyoCommentIndex, resolveRecordedJikkyoTimestamp } from '../../../src/util/RecordedJikkyoSync';
 
 /**
  * ニコニコ実況過去ログ API のレスポンス形式
@@ -14,6 +11,7 @@ interface KakologResponse {
             date_usec?: string | number;
             mail?: string;
             content?: string;
+            user_id?: string;
         };
     }>;
     error?: string;
@@ -151,12 +149,14 @@ export default class JikkyoKakologClient {
     private addComments(comments: KakologComment[]): void {
         const existing = new Set(this.comments.map(comment => `${comment.timestamp}\u0000${comment.text}\u0000${comment.color}\u0000${comment.type}\u0000${comment.size}`));
         this.comments = this.comments
-            .concat(comments.filter(comment => {
-                const key = `${comment.timestamp}\u0000${comment.text}\u0000${comment.color}\u0000${comment.type}\u0000${comment.size}`;
-                if (existing.has(key)) return false;
-                existing.add(key);
-                return true;
-            }))
+            .concat(
+                comments.filter(comment => {
+                    const key = `${comment.timestamp}\u0000${comment.text}\u0000${comment.color}\u0000${comment.type}\u0000${comment.size}`;
+                    if (existing.has(key)) return false;
+                    existing.add(key);
+                    return true;
+                }),
+            )
             .sort((a, b) => a.timestamp - b.timestamp);
         this.sync();
     }
@@ -181,12 +181,7 @@ export default class JikkyoKakologClient {
      * @param playbackTime VirtualTimeline 上の絶対再生位置 (秒)。省略時は現在位置
      */
     public sync(playbackTime: number | null = this.option.getCurrentTime()): void {
-        if (
-            this.isDestroyedNow() === true ||
-            this.comments.length === 0 ||
-            playbackTime === null ||
-            resolveRecordedJikkyoTimestamp(this.option.startAt, playbackTime) === null
-        ) {
+        if (this.isDestroyedNow() === true || this.comments.length === 0 || playbackTime === null || resolveRecordedJikkyoTimestamp(this.option.startAt, playbackTime) === null) {
             return;
         }
 
@@ -260,6 +255,7 @@ export default class JikkyoKakologClient {
                 color: command.color,
                 type: command.type,
                 size: command.size,
+                userId: typeof chat?.user_id === 'string' ? chat.user_id : undefined,
                 timestamp: date * 1000 + Math.floor(dateUsec / 1000),
             });
         }
