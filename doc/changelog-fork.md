@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 映像をクリックした後に独自ショートカットが効かない不具合と、弾幕のミュートが効かない不具合を修正 → 2026-10-20
+- feature/port-reference 全体レビュー指摘の修正 (コメントミュート、再生ショートカット、CM検出/API/副ファイル、キャプチャ) → 2026-10-20
 - オフライン状態をタイトルバーと各画面の本文へ表示 → 2026-10-20
 - 録画視聴の HEVC 画質名重複、SNS 非表示時のキャプチャ横取り、画質切替計測の旧 video 参照を修正 → 2026-10-20
 - 時刻条件の違うオフライン応答を再利用し、番組表・放映中の補助取得失敗でも番組を表示 → 2026-10-20
@@ -75,6 +77,20 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-10-20
+
+### 映像をクリックした後に独自ショートカットが効かない・弾幕のミュートが効かない
+
+- **独自ショートカット (`,` `.` `[` `]` `c` `i` と P5-2 で足したもの) が、映像部分をクリックした後は効かなかった** (以前から)。ハンドラは DPlayer の container の keydown に付いているが、映像の `div` はフォーカスを受け取れず、クリックしてもフォーカスが `body` に残るため keydown が届かない。DPlayer 標準のショートカット (スペース・矢印) は document で受けているので効き、気づきにくかった。container に `tabindex="-1"` を付け、プレイヤー内のフォーカスを持たない要素を押したら container へフォーカスを移す。実測 (通常の Chrome): 修正前は映像クリック後の `i` が無反応 (本番のリリース版でも同じ)、修正後は反応
+- **弾幕のミュートが効いていなかった** (P1-2 の実装時から)。ミュート設定の読み込みを `BaseVideo.mounted()` で行っていたが、映像コンポーネントの大半が `mounted()` を上書きして `super.mounted()` を呼ばないため、一度も読み込まれていなかった (コメント一覧からの除去だけ効いていた)。弾幕を描く直前に初回だけ読み込む形にした。実測: ミュートしたユーザーのコメントは 0 件、白は残り、色付きをミュートにすると赤は 0 件
+- `BaseVideo` の基底でライフサイクル (`mounted` 等) に処理を足しても、サブクラスが上書きしていると動かない。必ず通る経路 (`createPlayer()` や描画処理) に置く
+
+### feature/port-reference 全体レビュー指摘の修正
+
+Vue コンポーネントのイベントコールバックをインスタンスメソッドへ統一し、コメントミュート設定・設定同期・ショートカットヘルプの `this` 参照を修正。コメントミュート色の白を無色として扱い、ミュート設定ダイアログは開くたびに最新値を読み、画面で変更した項目だけを反映する。ショートカット一覧とキー照合を揃え、未掲載の Ctrl / Meta / Alt 操作を横取りしない。キャプチャはクリップボードへ PNG を渡し、コピー失敗を保存失敗と区別する。
+
+Config API から CM 検出設定を公開。CM 検出は ffmpeg の終了コード 0 のみ受け入れ、無音も CM も無い場合はチャプターを書かず判定 JSON を残す。判定 JSON がある動画では EPGStation が所有するチャプターと JSON を録画の削除・移動時に一緒に扱う。再発防止テストを追加。
+
+実装: `client/src/components/video/BaseVideo.ts`、`client/src/components/video/VideoContainer.vue`、`client/src/components/recorded/watch/NextUpPanel.vue`、`client/src/views/AppContent.vue`、`client/src/components/watch/JikkyoCommentMuteDialog.vue`、`src/model/api/config/ConfigApiModel.ts`、`src/model/operator/cmDetection/CmDetectionManageModel.ts`、`src/model/operator/recorded/RecordedManageModel.ts`、`src/util/CommentMuteUtil.ts`、`src/util/VideoShortcutUtil.ts`、`src/util/CmDetectionFileUtil.ts`。
 
 ### オフライン状態をタイトルバーと各画面の本文へ表示
 

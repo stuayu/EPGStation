@@ -104,6 +104,7 @@ export default abstract class BaseVideo extends Vue {
     private cmUndoTimer: number | null = null;
     private lastSkippedCm: { startAt: number; endAt: number } | null = null;
     private extraHotkeyHandler: ((e: KeyboardEvent) => void) | null = null;
+    private extraHotkeyPointerHandler: ((e: PointerEvent) => void) | null = null;
     private captureSnackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private screenshotButton: HTMLElement | null = null;
     private screenshotClickHandler: ((event: MouseEvent) => void) | null = null;
@@ -134,13 +135,26 @@ export default abstract class BaseVideo extends Vue {
     private jikkyoDelayTimerIds: number[] = [];
     private isJikkyoOnlineListenerRegistered = false;
     private compiledCommentMuteSettings: CompiledCommentMuteSettings | null = null;
-    private readonly refreshCommentMuteSettings = (): void => {
+    private isCommentMuteListenerRegistered = false;
+
+    /**
+     * ミュート設定を初回だけ読み込み、設定変更の通知を購読する
+     */
+    private ensureCommentMuteSettings(): void {
+        if (this.isCommentMuteListenerRegistered === true) return;
+        this.isCommentMuteListenerRegistered = true;
+        this.refreshCommentMuteSettings();
+        window.addEventListener('storage', this.onCommentMuteSettingsStorage);
+        window.addEventListener('jikkyo-comment-mute-settings-updated', this.refreshCommentMuteSettings);
+    }
+
+    private refreshCommentMuteSettings(): void {
         const settings = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue().jikkyoCommentMuteSettings;
         this.compiledCommentMuteSettings = compileCommentMuteSettings(settings);
-    };
-    private readonly onCommentMuteSettingsStorage = (event: StorageEvent): void => {
+    }
+    private onCommentMuteSettingsStorage(event: StorageEvent): void {
         if (event.key === 'settings') this.refreshCommentMuteSettings();
-    };
+    }
 
     // DPlayer が再生速度を保存する localStorage のキー。
     // 録画とライブで同じ DPlayer 設定を共有しているため、ライブ側だけ持ち込まないようにする
@@ -157,9 +171,6 @@ export default abstract class BaseVideo extends Vue {
     private static readonly PLAYBACK_SPEEDS = [0.25, 0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 3, 4];
 
     public mounted(): void {
-        this.refreshCommentMuteSettings();
-        window.addEventListener('storage', this.onCommentMuteSettingsStorage);
-        window.addEventListener('jikkyo-comment-mute-settings-updated', this.refreshCommentMuteSettings);
         this.containerElement = this.$refs.container as HTMLElement;
 
         this.initVideoSetting();
@@ -483,7 +494,16 @@ export default abstract class BaseVideo extends Vue {
             }
             const settings = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();
             if (settings.captureCopyToClipboard === true && typeof navigator.clipboard?.write === 'function') {
-                await navigator.clipboard.write([new ClipboardItem({ 'image/jpeg': blob })]);
+                try {
+                    const pngBlob = await new Promise<Blob>((resolve, reject) =>
+                        canvas.toBlob(value => (value ? resolve(value) : reject(new Error('PNG conversion failed'))), 'image/png'),
+                    );
+                    await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+                } catch (error) {
+                    console.warn('クリップボードへのコピーに失敗しました', error);
+                    this.captureSnackbarState.open({ color: 'info', text: '保存しました (クリップボードへのコピーは失敗)' });
+                    return;
+                }
             }
         } catch (error) {
             console.warn('キャプチャ合成に失敗しました', error);
@@ -1548,6 +1568,17 @@ export default abstract class BaseVideo extends Vue {
             this.handleExtraHotkey(e);
         };
         element.addEventListener('keydown', this.extraHotkeyHandler, true);
+
+        // 映像部分 (div) はフォーカスを受け取れないため、そこをクリックしても keydown が container に届かず
+        // 独自ショートカットが効かなかった。container をフォーカス可能にし、プレイヤー内を押したら container へフォーカスを移す
+        // (ボタン・入力欄など自分でフォーカスを持つ要素を押した場合はそのまま)
+        if (element.hasAttribute('tabindex') === false) element.setAttribute('tabindex', '-1');
+        this.extraHotkeyPointerHandler = (e: PointerEvent): void => {
+            const target = e.target as HTMLElement | null;
+            if (target === null || target.closest('button, input, textarea, select, a, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]') !== null) return;
+            element.focus({ preventScroll: true });
+        };
+        element.addEventListener('pointerdown', this.extraHotkeyPointerHandler);
     }
 
     /**
@@ -1560,7 +1591,7 @@ export default abstract class BaseVideo extends Vue {
      * @param e: KeyboardEvent
      */
     private handleExtraHotkey(e: KeyboardEvent): void {
-        if (e.metaKey === true || e.altKey === true) {
+        if (e.metaKey === true || e.altKey === true || (e.ctrlKey === true && !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key))) {
             return;
         }
 
@@ -1679,7 +1710,11 @@ export default abstract class BaseVideo extends Vue {
         if (this.extraHotkeyHandler !== null && typeof element !== 'undefined' && element !== null) {
             element.removeEventListener('keydown', this.extraHotkeyHandler, true);
         }
+        if (this.extraHotkeyPointerHandler !== null && typeof element !== 'undefined' && element !== null) {
+            element.removeEventListener('pointerdown', this.extraHotkeyPointerHandler);
+        }
         this.extraHotkeyHandler = null;
+        this.extraHotkeyPointerHandler = null;
     }
 
     /**
@@ -1828,6 +1863,8 @@ export default abstract class BaseVideo extends Vue {
      * ニコニコ実況コメントを DPlayer の弾幕として描画する
      */
     private drawJikkyoComment(comment: JikkyoComment): void {
+        // サブクラスの多くは mounted() を上書きして super を呼ばないため、ミュート設定の読み込みはここで遅延して行う
+        this.ensureCommentMuteSettings();
         if (
             this.compiledCommentMuteSettings !== null &&
             shouldMuteCompiledComment(comment.text, this.compiledCommentMuteSettings, { userId: comment.userId, color: comment.color, position: comment.type, size: comment.size })
@@ -2317,6 +2354,7 @@ export default abstract class BaseVideo extends Vue {
     public beforeUnmount(): void {
         window.removeEventListener('storage', this.onCommentMuteSettingsStorage);
         window.removeEventListener('jikkyo-comment-mute-settings-updated', this.refreshCommentMuteSettings);
+        this.isCommentMuteListenerRegistered = false;
         if (this.isJikkyoOnlineListenerRegistered === true) {
             window.removeEventListener('online', this.onJikkyoNetworkOnline);
             this.isJikkyoOnlineListenerRegistered = false;

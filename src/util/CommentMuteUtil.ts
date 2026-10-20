@@ -23,6 +23,20 @@ export interface CommentMuteSettings {
     muteEmojiOnly?: boolean;
 }
 
+/** 設定画面で開いた後に別経路から更新された値を保ち、画面上で変えた項目だけ適用する。 */
+export function mergeCommentMuteSettings(
+    baseline: CommentMuteSettings,
+    edited: CommentMuteSettings,
+    latest: CommentMuteSettings,
+): CommentMuteSettings {
+    const merged = { ...latest };
+    const keys = new Set([...Object.keys(baseline), ...Object.keys(edited)]) as Set<keyof CommentMuteSettings>;
+    for (const key of keys) {
+        if (JSON.stringify(baseline[key]) !== JSON.stringify(edited[key])) (merged as any)[key] = edited[key];
+    }
+    return merged;
+}
+
 export interface CommentMuteMetadata {
     userId?: string;
     color?: string;
@@ -107,7 +121,12 @@ export function isMutedComment(
     if (SPECIAL_COMMAND_PATTERN.test(comment) || STATISTICAL_PATTERN.test(comment)) return true;
     if (settings.muteFixed && ['top', 'bottom', 'ue', 'shita'].includes(position ?? '')) return true;
     // 色が省略されたコメントを色付き扱いしない (KonomiTV 8d6853f8)。
-    if (settings.muteColored && color !== undefined && color.toUpperCase() !== '#FFEAEA') return true;
+    if (
+        settings.muteColored &&
+        color !== undefined &&
+        !['#FFFFFF', '#FFEAEA', 'WHITE'].includes(color.trim().toUpperCase())
+    )
+        return true;
     if (settings.muteBigSize && size === 'big') return true;
     if (settings.muteVulgar && VULGAR_REGEX.test(comment)) return true;
     if (settings.muteAbusive && ABUSIVE_REGEX.test(comment)) return true;

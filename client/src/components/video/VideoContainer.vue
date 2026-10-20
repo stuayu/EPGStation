@@ -292,9 +292,9 @@ class VideoContainer extends Vue {
     public get isMobile(): boolean {
         return this.$vuetify.display.smAndDown;
     }
-    private readonly shortcutHelpListener = (): void => {
+    private shortcutHelpListener(): void {
         this.isShortcutHelpOpen = true;
-    };
+    }
 
     public mounted(): void {
         document.addEventListener('epgstation-shortcut-help', this.shortcutHelpListener);
