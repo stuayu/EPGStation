@@ -7,6 +7,8 @@ import Recorded from '../../../db/entities/Recorded';
 import Thumbnail from '../../../db/entities/Thumbnail';
 import VideoFile from '../../../db/entities/VideoFile';
 import FileUtil from '../../../util/FileUtil';
+import CmDetectionFileUtil from '../../../util/CmDetectionFileUtil';
+import ChapterFileUtil from '../../../util/ChapterFileUtil';
 import StrUtil from '../../../util/StrUtil';
 import IVideoUtil from '../../api/video/IVideoUtil';
 import IChannelDB from '../../db/IChannelDB';
@@ -190,6 +192,9 @@ class RecordedManageModel implements IRecordedManageModel {
 
                     this.log.system.info(`delete: ${filePath}`);
                     await stageFile(filePath);
+                    for (const sidecarPath of CmDetectionFileUtil.getOwnedSidecarPaths(filePath)) {
+                        await stageFile(sidecarPath);
+                    }
                 }
             }
 
@@ -415,6 +420,28 @@ class RecordedManageModel implements IRecordedManageModel {
                     await FileUtil.unlink(option.filePath).catch(() => {});
 
                     throw new Error('FileMoveError');
+                }
+            }
+        }
+
+        // CM検出の判定JSONがある動画だけ、EPGStation所有のチャプターと判定材料も一緒に移動する。
+        const sourceVideoPath = option.localFilePath ?? option.filePath;
+        if (typeof sourceVideoPath === 'string') {
+            const sourceSidecars = CmDetectionFileUtil.getOwnedSidecarPaths(sourceVideoPath);
+            for (const sidecarPath of sourceSidecars) {
+                const destinationPath =
+                    sidecarPath === CmDetectionFileUtil.getEvidencePath(sourceVideoPath)
+                        ? CmDetectionFileUtil.getEvidencePath(filePath)
+                        : ChapterFileUtil.getChapterFilePath(filePath);
+                try {
+                    await FileUtil.rename(sidecarPath, destinationPath);
+                } catch (error) {
+                    try {
+                        await FileUtil.move(sidecarPath, destinationPath);
+                    } catch (moveError) {
+                        this.log.system.warn(`failed to move CM detection sidecar: ${sidecarPath}`);
+                        this.log.system.warn(moveError);
+                    }
                 }
             }
         }
@@ -1032,6 +1059,12 @@ class RecordedManageModel implements IRecordedManageModel {
                     this.log.system.error(`failed to delete ${filePath}`);
                     this.log.system.error(err);
                 });
+                for (const sidecarPath of CmDetectionFileUtil.getOwnedSidecarPaths(filePath)) {
+                    await FileUtil.unlink(sidecarPath).catch(err => {
+                        this.log.system.error(`failed to delete ${sidecarPath}`);
+                        this.log.system.error(err);
+                    });
+                }
             }
         }
 

@@ -652,6 +652,13 @@ components:
                     description: 予約スケジューラ方式
                     type: string
                     enum: [legacy, planner]
+                cmDetection:
+                    description: CMチャプター検出設定
+                    type: object
+                    required: [enabled]
+                    properties:
+                        enabled:
+                            type: boolean
                 useDedicatedSocketIOPort:
                     description: |
                         socket.io が Web API と別のポートを使っているか。

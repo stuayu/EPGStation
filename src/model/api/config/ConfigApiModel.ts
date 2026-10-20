@@ -141,6 +141,7 @@ export default class ConfigApiModel implements IConfigApiModel {
 
         const result: apid.Config = <any>{};
         result.reservationScheduler = this.configuration.getConfig().reservation?.scheduler ?? 'planner';
+        result.cmDetection = { enabled: config.cmDetection?.enabled === true };
 
         // socket.io ポート設定
         // 専用ポートの指定が無い場合は Web API と同じ待ち受けを共有しているため、

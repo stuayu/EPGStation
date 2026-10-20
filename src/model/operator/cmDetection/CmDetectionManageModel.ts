@@ -62,9 +62,9 @@ export default class CmDetectionManageModel implements ICmDetectionManageModel {
         if (filePath === null) return;
         const chapterPath = ChapterFileUtil.getChapterFilePath(filePath);
         const evidencePath = filePath.replace(/\.[^.]+$/, '.cm-detection.json');
-        if (fs.existsSync(chapterPath)) return;
+        if (fs.existsSync(chapterPath) || fs.existsSync(evidencePath)) return;
         const ffmpeg = this.config.getConfig().ffmpeg;
-        const embedded = await this.run(this.config.getConfig().ffprobe, [
+        const embeddedResult = await this.run(this.config.getConfig().ffprobe, [
             '-v',
             '0',
             '-show_chapters',
@@ -72,8 +72,8 @@ export default class CmDetectionManageModel implements ICmDetectionManageModel {
             'json',
             filePath,
         ]);
-        if (JSON.parse(embedded).chapters?.length > 0) return;
-        const stderr = await this.run(ffmpeg, [
+        if (JSON.parse(embeddedResult.output).chapters?.length > 0) return;
+        const detection = await this.run(ffmpeg, [
             '-hide_banner',
             '-nostats',
             '-i',
@@ -87,30 +87,31 @@ export default class CmDetectionManageModel implements ICmDetectionManageModel {
             'null',
             '-',
         ]);
-        const durationMatch = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+        const durationMatch = detection.output.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
         if (durationMatch === null) throw new Error('DurationNotFound');
         const duration = Number(durationMatch[1]) * 3600 + Number(durationMatch[2]) * 60 + Number(durationMatch[3]);
-        const silences = parseSilenceDetectOutput(stderr);
+        const silences = parseSilenceDetectOutput(detection.output);
         const commercials = detectCmIntervals(duration, silences);
+        const evidence = JSON.stringify(
+            { version: 1, duration, parameters: CM_DETECT_PARAMETERS, silences, commercials },
+            null,
+            2,
+        );
+        if (silences.length === 0 && commercials.length === 0) {
+            await fs.promises.writeFile(evidencePath, evidence, 'utf8');
+            return;
+        }
         const text = createChapterText(duration, commercials);
         try {
             await fs.promises.writeFile(chapterPath, text, 'utf8');
-            await fs.promises.writeFile(
-                evidencePath,
-                JSON.stringify(
-                    { version: 1, duration, parameters: CM_DETECT_PARAMETERS, silences, commercials },
-                    null,
-                    2,
-                ),
-                'utf8',
-            );
+            await fs.promises.writeFile(evidencePath, evidence, 'utf8');
         } catch (err) {
             this.log.system.warn(`cannot write CM chapters: ${chapterPath}`);
             this.log.system.warn(err);
         }
     }
 
-    private run(command: string, args: string[]): Promise<string> {
+    private run(command: string, args: string[]): Promise<{ output: string; code: number }> {
         return new Promise((resolve, reject) => {
             const child = spawn(command, args, { windowsHide: true });
             let stderr = '';
@@ -128,7 +129,7 @@ export default class CmDetectionManageModel implements ICmDetectionManageModel {
             });
             child.on('close', code => {
                 clearTimeout(timer);
-                if (code === 0 || code === 1) resolve(stdout.length > 0 ? stdout : stderr);
+                if (code === 0) resolve({ output: stdout.length > 0 ? stdout : stderr, code });
                 else reject(new Error(`process exited ${code}: ${stderr.slice(-1000)}`));
             });
         });
