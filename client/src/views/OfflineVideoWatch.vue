@@ -1,5 +1,5 @@
 <template>
-    <WatchLayout :panelTitle="displayInfo.channelName ?? ''" :backPath="returnPath">
+    <WatchLayout ref="watchLayout" :panelTitle="displayInfo.channelName ?? ''" :backPath="returnPath">
         <template #topBar>
             <WatchTopBar
                 :logoSrc="video?.channelLogoURL ?? null"
@@ -9,6 +9,7 @@
             ></WatchTopBar>
         </template>
         <VideoContainer
+            :programName="displayInfo.name"
             v-if="videoParam !== null"
             ref="videoContainer"
             :key="videoKey"
@@ -31,7 +32,7 @@
         ></DataBroadcastingRemote>
         <v-alert v-if="videoParam === null && notFound === true" type="error" variant="tonal">保存済み動画が見つかりません。</v-alert>
         <template #panel>
-            <WatchSidePanel :tabs="panelTabs">
+            <WatchSidePanel ref="watchSidePanel" :tabs="panelTabs">
                 <template #program><WatchPanelProgram :info="displayInfo"></WatchPanelProgram></template>
                 <template #comment>
                     <WatchPanelComments :comments="jikkyoComments" :errorMessage="jikkyoErrorMessage"></WatchPanelComments>
@@ -84,6 +85,7 @@ import { resolveOfflineJikkyoParam } from '../../../src/util/OfflineJikkyoParam'
 import type { OfflineJikkyoParam } from '../../../src/util/OfflineJikkyoParam';
 import DataBroadcastingManager from '@/util/DataBroadcastingManager';
 import { ISettingStorageModel, WatchSidePanelTab } from '@/model/storage/setting/ISettingStorageModel';
+import { shouldClaimSnsCapture } from '../../../src/util/SnsCaptureUtil';
 import { AribKeyCode } from 'web-bml';
 import { markRaw } from 'vue';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
@@ -115,16 +117,19 @@ class OfflineVideoWatch extends Vue {
 
     private static readonly JIKKYO_COMMENT_LIMIT = 500;
 
-    get videoKey(): string { return this.video === null ? 'none' : getOfflineVideoKey(this.video); }
+    get videoKey(): string {
+        return this.video === null ? 'none' : getOfflineVideoKey(this.video);
+    }
     get returnPath(): string {
         const origin = typeof this.$route.query.from === 'string' ? this.$route.query.from : undefined;
         const recordedId = (this.video?.program as { id?: unknown } | undefined)?.id;
         return resolveOfflineWatchReturnPath(origin, this.videoKey, typeof recordedId === 'number' ? recordedId : undefined);
     }
     get panelTabs(): WatchSidePanelTab[] {
-        const tabs: WatchSidePanelTab[] = this.videoParam?.jikkyoChannelId !== undefined && this.videoParam.jikkyoStartAt !== undefined && this.videoParam.jikkyoEndAt !== undefined
-            ? ['program', 'comment']
-            : ['program'];
+        const tabs: WatchSidePanelTab[] =
+            this.videoParam?.jikkyoChannelId !== undefined && this.videoParam.jikkyoStartAt !== undefined && this.videoParam.jikkyoEndAt !== undefined
+                ? ['program', 'comment']
+                : ['program'];
         if (this.isOnline === true && this.settingStorageModel.tmp.isEnableSnsPanel === true) tabs.push('sns');
         return tabs;
     }
@@ -165,10 +170,12 @@ class OfflineVideoWatch extends Vue {
             this.notFound = true;
             return;
         }
-        this.displayInfo = (this.video.programInfo as OfflineProgramInfo | undefined) ?? createOfflineProgramInfo(this.video.program, {
-            videoFileId: this.video.videoId,
-            resolveGenre: (genre, subGenre) => GenreUtil.getGenres(genre, subGenre),
-        });
+        this.displayInfo =
+            (this.video.programInfo as OfflineProgramInfo | undefined) ??
+            createOfflineProgramInfo(this.video.program, {
+                videoFileId: this.video.videoId,
+                resolveGenre: (genre, subGenre) => GenreUtil.getGenres(genre, subGenre),
+            });
         this.positionKey = createOfflinePlaybackPositionKey(getOfflineVideoKey(this.video));
         const isOnline = navigator.onLine !== false;
         let serverParam: OfflineJikkyoParam | null = null;
@@ -215,18 +222,21 @@ class OfflineVideoWatch extends Vue {
             chapters: this.video.chapters,
             offlineAudioTracks: this.video.audioTracks,
             ...(position === null ? {} : { playPosition: position }),
-            ...(dataBroadcasting === null ? {} : {
-                offlineDataBroadcastingVideoFileId: dataBroadcasting.videoFileId,
-                offlineDataBroadcastingFileSize: dataBroadcasting.fileSize,
-                offlineDataBroadcastingChunkSize: dataBroadcasting.chunkSize,
-                offlineDataBroadcastingStartAt: dataBroadcasting.startAt ?? undefined,
-            }),
+            ...(dataBroadcasting === null
+                ? {}
+                : {
+                      offlineDataBroadcastingVideoFileId: dataBroadcasting.videoFileId,
+                      offlineDataBroadcastingFileSize: dataBroadcasting.fileSize,
+                      offlineDataBroadcastingChunkSize: dataBroadcasting.chunkSize,
+                      offlineDataBroadcastingStartAt: dataBroadcasting.startAt ?? undefined,
+                  }),
         };
-        this.videoParam = this.video.kind === 'original-mpeg2'
-            ? { type: 'OfflineOriginalMpeg2', src: this.video.originalURL ?? this.video.playlistURL, ...common, ...jikkyo.param }
-            : this.video.kind === 'original-hevc'
-              ? { type: 'OfflineOriginalHevc', src: this.video.originalURL ?? this.video.playlistURL, ...common, ...jikkyo.param }
-            : { type: 'OfflineHLS', src: OfflineVideos.getPlaylistURL(this.video), ...common, ...jikkyo.param };
+        this.videoParam =
+            this.video.kind === 'original-mpeg2'
+                ? { type: 'OfflineOriginalMpeg2', src: this.video.originalURL ?? this.video.playlistURL, ...common, ...jikkyo.param }
+                : this.video.kind === 'original-hevc'
+                  ? { type: 'OfflineOriginalHevc', src: this.video.originalURL ?? this.video.playlistURL, ...common, ...jikkyo.param }
+                  : { type: 'OfflineHLS', src: OfflineVideos.getPlaylistURL(this.video), ...common, ...jikkyo.param };
     }
 
     public onNetworkOnline(): void {
@@ -239,7 +249,11 @@ class OfflineVideoWatch extends Vue {
     }
 
     public onScreenshotRequest(request: ScreenshotRequest): void {
-        (this.$refs.snsPostPanel as InstanceType<typeof SnsPostPanel> | undefined)?.onScreenshotRequest(request);
+        const layout = this.$refs.watchLayout as { isPanelOpen?: boolean } | undefined;
+        const sidePanel = this.$refs.watchSidePanel as { selectedTab?: string } | undefined;
+        if (shouldClaimSnsCapture(layout?.isPanelOpen === true, sidePanel?.selectedTab ?? '')) {
+            (this.$refs.snsPostPanel as InstanceType<typeof SnsPostPanel> | undefined)?.onScreenshotRequest(request);
+        }
     }
 
     public onDataBroadcastingToggle(): void {
@@ -264,11 +278,17 @@ class OfflineVideoWatch extends Vue {
         const context = videoContainer?.getDataBroadcastingContext();
         if (context === null || typeof context === 'undefined') return;
 
-        const manager = markRaw(new DataBroadcastingManager(context.dp, context.param, {
-            getBroadcastTime: context.getBroadcastTime,
-            onUsedKeyListChanged: isUsing => { this.isDataBroadcastingUsingNumericKey = isUsing; },
-            onLoadingChanged: loading => { this.isDataBroadcastingLoading = loading; },
-        }));
+        const manager = markRaw(
+            new DataBroadcastingManager(context.dp, context.param, {
+                getBroadcastTime: context.getBroadcastTime,
+                onUsedKeyListChanged: isUsing => {
+                    this.isDataBroadcastingUsingNumericKey = isUsing;
+                },
+                onLoadingChanged: loading => {
+                    this.isDataBroadcastingLoading = loading;
+                },
+            }),
+        );
         this.dataBroadcastingManager = manager;
         try {
             await manager.init();

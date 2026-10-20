@@ -15,6 +15,8 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- 録画視聴の HEVC 画質名重複、SNS 非表示時のキャプチャ横取り、画質切替計測の旧 video 参照を修正 → 2026-10-20
+
 - 字幕・実況コメント合成キャプチャと端末別の保存設定を追加 → 2026-10-20
 - ffprobe の尺・ビットレート欠落で録画 TS の再生開始が失敗する問題を修正 → 2026-10-20
 - CM チャプターの自動スキップ、DPlayer 設定メニュー、再生ショートカットを追加 → 2026-10-20
@@ -71,6 +73,12 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-10-20
 
+### 視聴画面の画質ラベル・SNS キャプチャ・切替計測を修正
+
+録画配信の「オリジナル」方式名から MPEG-2 固定表記を外し、方式名を省くのは `original` 方式だけに限定する。HLS の original-hevc は「標準 (HLS) > オリジナル (HEVC・無変換)」と表示する。視聴画面の番組名を VideoContainer 経由で BaseVideo に渡し、キャプチャ名へ反映する。視聴画面では右パネルが開き SNS タブを選択中の場合だけ SNS 添付がキャプチャを引き取る。それ以外は通常の保存処理へ委ねる。画質切替ハーネスは現在の DPlayer 内 video 要素を毎回取得し、切替後に要素が再生成されても新しい映像を測る。
+
+実装: `client/src/util/PlaybackLabelUtil.ts`、`client/src/components/video/BaseVideo.ts`、`client/src/components/video/VideoContainer.vue`、`client/src/views/WatchRecordedStreaming.vue`、`client/src/views/WatchOnAir.vue`、`client/src/views/OfflineVideoWatch.vue`、`src/util/SnsCaptureUtil.ts`、`tools/playback-harness/lib/browser.js`。
+
 ### 字幕・実況コメント合成キャプチャと端末別の保存設定
 
 DPlayer のカメラ操作と Shift+C で、映像・表示字幕・表示中の実況コメントを実解像度へ合成した JPEG を保存できるようにした。字幕やコメントの合成に失敗した場合は映像のみで再試行する。SNS 投稿パネルにも同じキャプチャ関数を渡す。設定で映像のみ / 字幕 / 字幕と実況コメント、クリップボードコピーを選べる。iOS / iPadOS などで `navigator.canShare({ files })` が使える場合は共有シートを開く。キャプチャ設定は端末固有としてサーバー同期対象から除外。
@@ -82,6 +90,7 @@ DPlayer のカメラ操作と Shift+C で、映像・表示字幕・表示中の
 ffprobe が `duration=N/A` / `bit_rate=N/A` を返す TS では開始 byte が NaN になり、再生位置 0 秒の配信でも `FileStreamSetError` になる問題を修正。`VideoUtil.getInfo()` は値を有限数として検証し、不明値を既存の流儀に合わせて 0 とする。ビットレートが無く尺とサイズがある場合は `size * 8 / duration` で補う。録画配信は保存済み VideoFile の尺・ビットレートを利用し、それも無い場合は再生位置にかかわらず先頭から読み、0 秒以外では warn を出す。
 
 本番実測: 録画 2 本で `GET /api/streams/recorded/<id>/hls?ss=0&mode=0` が 500 `FileStreamSetError`。ffprobe は両方 `nb_streams=11|duration=N/A|bit_rate=N/A`。probesize 100 MB では mpeg2video / aac / arib_caption を検出。修正後の同一ファイル実配信は未検証。
+
 ### クライアント設定を許可リスト方式でユーザー単位にサーバー同期
 
 端末ごとに localStorage へ保存していた表示・実況などの設定を、任意でサーバーへ同期できるようにした。同期対象は `ClientSettingsSyncKeys.ts` の許可リストで管理し、画面サイズ・再生環境・端末固有 URL・サーバーパスなどは除外する。同期設定は端末ごとに既定 OFF。初回有効化時はサーバー設定を適用するか端末設定を送るか選べる。起動時と前面復帰時に pull、StorageModel の保存から 2 秒後に push し、更新競合はサーバー優先で解決する。他端末からの pull は再読み込みせず localStorage と一時値を更新し、通知する。テーマ色とダークテーマは即時適用。利用者がサーバー設定を選んだ場合だけ再読み込みし、視聴中は維持する。匿名共有枠は userId=0 の一意行としてトランザクション内で保存する。
@@ -89,6 +98,7 @@ ffprobe が `duration=N/A` / `bit_rate=N/A` を返す TS では開始 byte が N
 `ClientSetting` は認証ユーザーごとに保存し、認証無効・匿名時は共有枠を使う。匿名 PUT は拒否。設定 JSON は 256 KiB まで。SQLite / MySQL の migration、`GET/PUT /api/client-settings`、409 競合応答を追加。
 
 参照元: KonomiTV MIT `client/src/stores/SettingsStore.ts`、`server/app/routers/SettingsRouter.py`。実装: `client/src/model/storage/ClientSettingsSyncKeys.ts`、`ClientSettingsSyncModel.ts`、`src/db/entities/ClientSetting.ts`、`src/model/service/api/client-settings.ts`。
+
 ### CM チャプターの自動スキップ
 
 CM 判定を `src/util/CommercialChapterUtil.ts` に集約し、サムネイル候補除外と再生時で共有。`CmSkipUtil` が隣接 CM チャプターをブロック化し、録画の通常再生で開始を跨いだ場合に終端へ移動する。設定は端末別・既定 OFF。設定画面と DPlayer の設定メニューから切替可能。シーク後は判定基準を取り直す。スキップ時は通知と5秒間の「CM を戻す」ボタンを表示し、ボタン位置を下端から92pxにしてコントロールバーとシークバーを避ける。ライブは対象外。

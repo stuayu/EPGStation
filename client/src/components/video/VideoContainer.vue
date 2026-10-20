@@ -8,6 +8,7 @@
                 <NormalVideo
                     v-if="videoParam.type == 'Normal'"
                     ref="video"
+                    v-bind:programName="programName"
                     v-model:videoSrc="videoParam.src"
                     v-bind:videoFileId="videoParam.videoFileId ?? null"
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
@@ -27,6 +28,7 @@
                 <OfflineHLSVideo
                     v-if="videoParam.type == 'OfflineHLS'"
                     ref="video"
+                    v-bind:programName="programName"
                     v-bind:videoSrc="videoParam.src"
                     v-bind:durationSeconds="videoParam.durationSeconds"
                     v-bind:offlineChapters="videoParam.chapters"
@@ -52,6 +54,7 @@
                 <OfflineMpeg2Video
                     v-if="videoParam.type == 'OfflineOriginalMpeg2'"
                     ref="video"
+                    v-bind:programName="programName"
                     v-bind:videoSrc="videoParam.src"
                     v-bind:durationSeconds="videoParam.durationSeconds"
                     v-bind:offlineChapters="videoParam.chapters"
@@ -76,6 +79,7 @@
                 <OfflineHevcVideo
                     v-if="videoParam.type == 'OfflineOriginalHevc'"
                     ref="video"
+                    v-bind:programName="programName"
                     v-bind:videoSrc="videoParam.src"
                     v-bind:durationSeconds="videoParam.durationSeconds"
                     v-bind:offlineOriginalFileSize="videoParam.offlineOriginalFileSize"
@@ -104,6 +108,7 @@
                 <LiveHLSVideo
                     v-if="videoParam.type == 'LiveHLS'"
                     ref="video"
+                    v-bind:programName="programName"
                     v-bind:channelId="videoParam.channelId"
                     v-bind:mode="videoParam.mode"
                     v-bind:jikkyoChannelId="videoParam.jikkyoChannelId"
@@ -122,6 +127,7 @@
                 <RecordedStreamingVideo
                     v-if="videoParam.type == 'RecordedStreaming'"
                     ref="video"
+                    v-bind:programName="programName"
                     v-bind:recordedId="videoParam.recordedId"
                     v-bind:videoFileId="videoParam.videoFileId"
                     v-bind:streamingType="videoParam.streamingType"
@@ -150,6 +156,7 @@
                 <RecordedHLSStreamingVideo
                     v-if="videoParam.type == 'RecordedHLS'"
                     ref="video"
+                    v-bind:programName="programName"
                     v-bind:recordedId="videoParam.recordedId"
                     v-bind:videoFileId="videoParam.videoFileId"
                     v-bind:mode="videoParam.mode"
@@ -176,6 +183,7 @@
                 <LiveMpegTsVideo
                     v-if="videoParam.type == 'LiveMpegTs'"
                     ref="video"
+                    v-bind:programName="programName"
                     v-model:videoSrc="videoParam.src"
                     v-bind:channelId="videoParam.channelId"
                     v-bind:mode="videoParam.mode"
@@ -199,13 +207,19 @@
             <v-card>
                 <v-card-title>キーボードショートカット</v-card-title>
                 <v-card-text>
-                    <v-table density="compact"><tbody>
-                        <tr v-for="shortcut in videoShortcuts" v-bind:key="shortcut.keys">
-                            <th class="text-no-wrap">{{ shortcut.keys }}</th><td>{{ shortcut.description }}</td>
-                        </tr>
-                    </tbody></v-table>
+                    <v-table density="compact">
+                        <tbody>
+                            <tr v-for="shortcut in videoShortcuts" v-bind:key="shortcut.keys">
+                                <th class="text-no-wrap">{{ shortcut.keys }}</th>
+                                <td>{{ shortcut.description }}</td>
+                            </tr>
+                        </tbody>
+                    </v-table>
                 </v-card-text>
-                <v-card-actions><v-spacer></v-spacer><v-btn variant="text" v-on:click="isShortcutHelpOpen = false">閉じる</v-btn></v-card-actions>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn variant="text" v-on:click="isShortcutHelpOpen = false">閉じる</v-btn>
+                </v-card-actions>
             </v-card>
         </v-dialog>
     </div>
@@ -257,6 +271,9 @@ import {
     },
 })
 class VideoContainer extends Vue {
+    @Prop({ default: '' })
+    public programName!: string;
+
     @Prop({ required: true })
     public videoParam!: VideoParam.BaseVideoParam;
 
@@ -272,8 +289,12 @@ class VideoContainer extends Vue {
     public selectedPlaybackId = 'auto';
     public isShortcutHelpOpen = false;
     public readonly videoShortcuts = VIDEO_SHORTCUTS;
-    public get isMobile(): boolean { return this.$vuetify.display.smAndDown; }
-    private readonly shortcutHelpListener = (): void => { this.isShortcutHelpOpen = true; };
+    public get isMobile(): boolean {
+        return this.$vuetify.display.smAndDown;
+    }
+    private readonly shortcutHelpListener = (): void => {
+        this.isShortcutHelpOpen = true;
+    };
 
     public mounted(): void {
         document.addEventListener('epgstation-shortcut-help', this.shortcutHelpListener);
@@ -362,8 +383,7 @@ class VideoContainer extends Vue {
             // 既定値が auto なら、表示中の ID が解決済みでも自動 fallback を有効に保つ。
             this.autoPlayback =
                 this.selectedPlaybackId === 'auto' ||
-                (this.playbackOptionsState.preference.preferredQuality === 'auto' &&
-                    this.selectedPlaybackId === this.playbackOptions?.recommended.resolvedId);
+                (this.playbackOptionsState.preference.preferredQuality === 'auto' && this.selectedPlaybackId === this.playbackOptions?.recommended.resolvedId);
             this.fallbackAttempts = 0;
             this.fallbackTried.clear();
             this.fallbackNoticeShown = false;
@@ -379,7 +399,7 @@ class VideoContainer extends Vue {
                     container: 'original',
                     mode: 0,
                     profileId: selectedProfile.id,
-                    playPosition: 'playPosition' in this.videoParam ? this.videoParam.playPosition ?? 0 : 0,
+                    playPosition: 'playPosition' in this.videoParam ? (this.videoParam.playPosition ?? 0) : 0,
                 } satisfies PlaybackContainerSwitchRequest);
                 return;
             }
@@ -390,7 +410,7 @@ class VideoContainer extends Vue {
                         container: 'hls',
                         mode,
                         profileId: selectedProfile.id,
-                        playPosition: 'playPosition' in this.videoParam ? this.videoParam.playPosition ?? 0 : 0,
+                        playPosition: 'playPosition' in this.videoParam ? (this.videoParam.playPosition ?? 0) : 0,
                     } satisfies PlaybackContainerSwitchRequest);
                     return;
                 }
@@ -407,7 +427,7 @@ class VideoContainer extends Vue {
                         container: 'hls',
                         mode,
                         profileId: selectedProfile.id,
-                        playPosition: 'playPosition' in this.videoParam ? this.videoParam.playPosition ?? 0 : 0,
+                        playPosition: 'playPosition' in this.videoParam ? (this.videoParam.playPosition ?? 0) : 0,
                     } satisfies PlaybackContainerSwitchRequest);
                     return;
                 }
@@ -459,29 +479,14 @@ class VideoContainer extends Vue {
             return;
         }
 
-        const remainingChain = chain.filter(
-            id => this.fallbackTried.has(id) === false && this.playbackProfiles.some(profile => profile.id === id),
-        );
-        const currentId =
-            this.selectedPlaybackId === 'auto'
-                ? this.playbackOptions.recommended.resolvedId
-                : this.selectedPlaybackId;
+        const remainingChain = chain.filter(id => this.fallbackTried.has(id) === false && this.playbackProfiles.some(profile => profile.id === id));
+        const currentId = this.selectedPlaybackId === 'auto' ? this.playbackOptions.recommended.resolvedId : this.selectedPlaybackId;
         const now = Date.now();
         const throughputSamples = this.getPlaybackThroughputSamples();
-        const encodeLimited =
-            fromStall === true &&
-            isPlaybackThroughputSufficient(currentId, this.playbackProfiles, throughputSamples, now);
+        const encodeLimited = fromStall === true && isPlaybackThroughputSufficient(currentId, this.playbackProfiles, throughputSamples, now);
         const errorText = this.getPlaybackErrorText(error);
-        const reason = encodeLimited
-            ? `配信側のエンコードが再生に追いつかない可能性があります (${errorText})`
-            : errorText;
-        const throughputDecision = selectThroughputFallback(
-            currentId,
-            remainingChain,
-            this.playbackProfiles,
-            throughputSamples,
-            now,
-        );
+        const reason = encodeLimited ? `配信側のエンコードが再生に追いつかない可能性があります (${errorText})` : errorText;
+        const throughputDecision = selectThroughputFallback(currentId, remainingChain, this.playbackProfiles, throughputSamples, now);
         const nextId = throughputDecision.profileId ?? remainingChain[0];
         if (typeof nextId === 'undefined') {
             return;
@@ -539,9 +544,7 @@ class VideoContainer extends Vue {
 
     private getSelectablePlaybackContainers(): Array<'original' | 'm2tsll' | 'mp4' | 'webm' | 'hls'> {
         const containers: Array<'original' | 'm2tsll' | 'mp4' | 'webm' | 'hls'> =
-            this.videoParam.type === 'LiveHLS' || this.videoParam.type === 'LiveMpegTs'
-                ? ['original', 'hls', 'm2tsll']
-                : ['original', 'hls', 'm2tsll', 'mp4', 'webm'];
+            this.videoParam.type === 'LiveHLS' || this.videoParam.type === 'LiveMpegTs' ? ['original', 'hls', 'm2tsll'] : ['original', 'hls', 'm2tsll', 'mp4', 'webm'];
 
         const supported = containers.filter(container => {
             if (container === 'm2tsll') return StreamSupportUtil.isM2TSLLSupported();
@@ -550,9 +553,7 @@ class VideoContainer extends Vue {
                     return StreamSupportUtil.isMpeg2ToH264Supported();
                 }
                 return this.playbackProfiles.some(
-                    profile =>
-                        typeof profile.modes.original === 'number' &&
-                        (profile.role !== 'original-mpeg2' || StreamSupportUtil.isMpeg2ToH264Supported()),
+                    profile => typeof profile.modes.original === 'number' && (profile.role !== 'original-mpeg2' || StreamSupportUtil.isMpeg2ToH264Supported()),
                 );
             }
             // 録画の MP4 / WebM は Content-Length / Range を返せない chunked 配信なので
@@ -574,13 +575,11 @@ class VideoContainer extends Vue {
             case 'LiveMpegTs':
                 return this.videoParam.directMpeg2 === true ? 'original' : 'm2tsll';
             case 'RecordedStreaming':
-                return this.videoParam.streamingType === 'mp4' ||
-                    this.videoParam.streamingType === 'webm' ||
-                    this.videoParam.streamingType === 'm2tsll'
+                return this.videoParam.streamingType === 'mp4' || this.videoParam.streamingType === 'webm' || this.videoParam.streamingType === 'm2tsll'
                     ? this.videoParam.streamingType
                     : this.videoParam.streamingType === 'original'
                       ? 'original'
-                    : null;
+                      : null;
             default:
                 return null;
         }
@@ -745,9 +744,7 @@ class VideoContainer extends Vue {
         }
     }
 
-    private suppressPlaybackStallDetection(
-        durationMs: number = VideoContainer.PLAYBACK_STALL_TRANSITION_GRACE_MS,
-    ): void {
+    private suppressPlaybackStallDetection(durationMs: number = VideoContainer.PLAYBACK_STALL_TRANSITION_GRACE_MS): void {
         this.playbackStallSamples = [];
         this.playbackThroughputSamples = [];
         this.lastStallCurrentTime = null;
@@ -776,10 +773,7 @@ class VideoContainer extends Vue {
         }
         for (const entry of entries) {
             const resource = entry as PerformanceResourceTiming;
-            if (
-                resource.name.includes('/streamfiles/') === false ||
-                /\.(?:m4s|ts)(?:[?#]|$)/u.test(resource.name) === false
-            ) {
+            if (resource.name.includes('/streamfiles/') === false || /\.(?:m4s|ts)(?:[?#]|$)/u.test(resource.name) === false) {
                 continue;
             }
             const bytes = resource.transferSize > 0 ? resource.transferSize : resource.encodedBodySize;
@@ -985,7 +979,6 @@ class VideoContainer extends Vue {
     private getVideoFileId(): number | null {
         return this.playingVideoFileId;
     }
-
 }
 
 export default toNative(VideoContainer);

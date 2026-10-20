@@ -45,6 +45,10 @@ interface VideoSrcInfo {
 
 @Component({})
 class RecordedStreamingVideo extends BaseVideo {
+    // キャプチャのファイル名に使う番組名 (BaseVideo で宣言し、@Prop はここで付ける)
+    @Prop({ default: '' })
+    public programName!: string;
+
     @Prop({ required: true })
     public recordedId!: apid.RecordedId;
 

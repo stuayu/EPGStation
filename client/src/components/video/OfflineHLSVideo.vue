@@ -13,6 +13,10 @@ import { Component, Prop, toNative } from 'vue-facing-decorator';
 
 @Component({})
 class OfflineHLSVideo extends BaseVideo {
+    // キャプチャのファイル名に使う番組名 (BaseVideo で宣言し、@Prop はここで付ける)
+    @Prop({ default: '' })
+    public programName!: string;
+
     // オフライン視聴画面はコメントタブに取得失敗を出すので、プレイヤー上の通知は出さない
     protected override shouldNoticeJikkyoError(): boolean {
         return false;

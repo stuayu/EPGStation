@@ -13,6 +13,10 @@ import * as apid from '../../../../api';
 
 @Component({})
 class NormalVideo extends BaseVideo {
+    // キャプチャのファイル名に使う番組名 (BaseVideo で宣言し、@Prop はここで付ける)
+    @Prop({ default: '' })
+    public programName!: string;
+
     @Prop({ required: true })
     public videoSrc!: string;
 

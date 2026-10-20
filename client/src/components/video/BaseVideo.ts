@@ -63,6 +63,12 @@ export interface ScreenshotRequest {
 }
 
 export default abstract class BaseVideo extends Vue {
+    /**
+     * キャプチャのファイル名に使う番組名。
+     * `@Prop` は `@Component` を付けた側でしか効かない (BaseVideo に付けると実行時に
+     * "Class should be decorated by Component or ComponentBase" で視聴画面が描画されない) ため、宣言だけ置いて各コンポーネントで定義する。
+     */
+    public programName?: string;
     protected dp: DPlayer | null = null;
     protected containerElement: HTMLElement | null = null;
     private virtualTimeline: VirtualTimeline | null = null;
@@ -330,7 +336,7 @@ export default abstract class BaseVideo extends Vue {
                 video: this.dp.video,
                 capture: () => this.captureCompositeFrame(),
                 filename: createCaptureFilename(
-                    (this.dp as any).options?.video?.title ?? this.dp.container.querySelector('.dplayer-title')?.textContent ?? 'capture',
+                    this.programName || (this.dp as any).options?.video?.title || this.dp.container.querySelector('.dplayer-title')?.textContent || 'capture',
                     this.broadcastTime === null ? new Date() : new Date(this.broadcastTime.time + Date.now() - this.broadcastTime.receivedAt),
                 ),
                 claim: () => {
