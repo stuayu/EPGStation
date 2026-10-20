@@ -34,15 +34,9 @@
                     </div>
 
                     <div class="remote-numpad">
-                        <v-btn
-                            v-for="n in numPadKeys"
-                            v-bind:key="n.label"
-                            size="small"
-                            variant="tonal"
-                            v-bind:disabled="isUsingNumericKey === false"
-                            v-on:click="pressKey(n.key)"
-                            >{{ n.label }}</v-btn
-                        >
+                        <v-btn v-for="n in numPadKeys" v-bind:key="n.label" size="small" variant="tonal" v-bind:disabled="isUsingNumericKey === false" v-on:click="pressKey(n.key)">
+                            {{ n.label }}
+                        </v-btn>
                     </div>
                 </v-expansion-panel-text>
             </v-expansion-panel>
@@ -142,14 +136,12 @@ class DataBroadcastingRemote extends Vue {
         { label: '12', key: 'digit12' },
     ];
 
-    private keydownListener = ((event: KeyboardEvent) => this.onKeydown(event)).bind(this);
-
     public mounted(): void {
-        window.addEventListener('keydown', this.keydownListener);
+        window.addEventListener('keydown', this.onKeydown);
     }
 
     public beforeUnmount(): void {
-        window.removeEventListener('keydown', this.keydownListener);
+        window.removeEventListener('keydown', this.onKeydown);
     }
 
     private onKeydown(event: KeyboardEvent): void {

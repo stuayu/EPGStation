@@ -17,15 +17,15 @@ class GuideScroller extends Vue {
     private clickTimer: ReturnType<typeof setTimeout> | undefined;
 
     // 各種イベントリスナー
-    private mousedownListener = ((e: MouseEvent): void => {
+    private mousedownListener(e: MouseEvent): void {
         this.onMousedown(e);
-    }).bind(this);
-    private mouseupListener = ((): void => {
+    }
+    private mouseupListener(): void {
         this.onMouseup();
-    }).bind(this);
-    private mousemoveListener = ((e: MouseEvent): void => {
+    }
+    private mousemoveListener(e: MouseEvent): void {
         this.onMousemove(e);
-    }).bind(this);
+    }
 
     public mounted(): void {
         (this.$el as HTMLElement).addEventListener('mousedown', this.mousedownListener, false);
