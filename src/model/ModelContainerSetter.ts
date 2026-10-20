@@ -172,6 +172,8 @@ import IMisskeyStreamConnector from './sns/IMisskeyStreamConnector';
 import MisskeyStreamConnector from './sns/MisskeyStreamConnector';
 import ISnsApiModel from './api/sns/ISnsApiModel';
 import SnsApiModel from './api/sns/SnsApiModel';
+import IClientSettingsApiModel from './api/clientSettings/IClientSettingsApiModel';
+import ClientSettingsApiModel from './api/clientSettings/ClientSettingsApiModel';
 import EPGUpdateExecutorManageModel from './epgUpdater/EPGUpdateExecutorManageModel';
 import EPGUpdateManageModel from './epgUpdater/EPGUpdateManageModel';
 import EPGUpdater from './epgUpdater/EPGUpdater';
@@ -671,6 +673,7 @@ export const set = (container: Container): void => {
     container.bind<IOfflineVideoApiModel>('IOfflineVideoApiModel').to(OfflineVideoApiModel).inSingletonScope();
     container.bind<IWatchHistoryApiModel>('IWatchHistoryApiModel').to(WatchHistoryApiModel).inSingletonScope();
     container.bind<ISnsApiModel>('ISnsApiModel').to(SnsApiModel).inSingletonScope();
+    container.bind<IClientSettingsApiModel>('IClientSettingsApiModel').to(ClientSettingsApiModel).inSingletonScope();
 
     container.bind<IEncodeApiModel>('IEncodeApiModel').to(EncodeApiModel).inSingletonScope();
 

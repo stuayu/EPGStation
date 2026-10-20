@@ -17,6 +17,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 - ffprobe の尺・ビットレート欠落で録画 TS の再生開始が失敗する問題を修正 → 2026-10-20
 - BML の映像要素スタイル復元、字幕 renderer の破棄時停止、端末別 NVRAM 受信機設定を追加 → 2026-10-20
+- クライアント設定を許可リスト方式でユーザー単位にサーバー同期 → 2026-10-20
 - NX-Jikkyo のライブコメント投稿と端末単位のコメントミュートを追加 → 2026-10-20
 - 予約一覧と保存先画面に推定録画容量と予約による空き容量の見通しを追加 → 2026-10-20
 - 録画 TS の無音区間から CM チャプターを推定する機能を追加 → 2026-10-20
@@ -73,6 +74,13 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 ffprobe が `duration=N/A` / `bit_rate=N/A` を返す TS では開始 byte が NaN になり、再生位置 0 秒の配信でも `FileStreamSetError` になる問題を修正。`VideoUtil.getInfo()` は値を有限数として検証し、不明値を既存の流儀に合わせて 0 とする。ビットレートが無く尺とサイズがある場合は `size * 8 / duration` で補う。録画配信は保存済み VideoFile の尺・ビットレートを利用し、それも無い場合は再生位置にかかわらず先頭から読み、0 秒以外では warn を出す。
 
 本番実測: 録画 2 本で `GET /api/streams/recorded/<id>/hls?ss=0&mode=0` が 500 `FileStreamSetError`。ffprobe は両方 `nb_streams=11|duration=N/A|bit_rate=N/A`。probesize 100 MB では mpeg2video / aac / arib_caption を検出。修正後の同一ファイル実配信は未検証。
+### クライアント設定を許可リスト方式でユーザー単位にサーバー同期
+
+端末ごとに localStorage へ保存していた表示・実況などの設定を、任意でサーバーへ同期できるようにした。同期対象は `ClientSettingsSyncKeys.ts` の許可リストで管理し、画面サイズ・再生環境・端末固有 URL・サーバーパスなどは除外する。同期設定は端末ごとに既定 OFF。初回有効化時はサーバー設定を適用するか端末設定を送るか選べる。起動時と前面復帰時に pull、StorageModel の保存から 2 秒後に push し、更新競合はサーバー優先で解決する。他端末からの pull は再読み込みせず localStorage と一時値を更新し、通知する。テーマ色とダークテーマは即時適用。利用者がサーバー設定を選んだ場合だけ再読み込みし、視聴中は維持する。匿名共有枠は userId=0 の一意行としてトランザクション内で保存する。
+
+`ClientSetting` は認証ユーザーごとに保存し、認証無効・匿名時は共有枠を使う。匿名 PUT は拒否。設定 JSON は 256 KiB まで。SQLite / MySQL の migration、`GET/PUT /api/client-settings`、409 競合応答を追加。
+
+参照元: KonomiTV MIT `client/src/stores/SettingsStore.ts`、`server/app/routers/SettingsRouter.py`。実装: `client/src/model/storage/ClientSettingsSyncKeys.ts`、`ClientSettingsSyncModel.ts`、`src/db/entities/ClientSetting.ts`、`src/model/service/api/client-settings.ts`。
 
 ### 録画詳細の CM チャプター推定をタイトルバーのメニューへ集約
 

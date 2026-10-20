@@ -10,6 +10,7 @@ import IDropLogApiModel from './api/dropLog/IDropLogApiModel';
 import EncodeApiModel from './api/encode/EncodeApiModel';
 import IEncodeApiModel from './api/encode/IEncodeApiModel';
 import IRepositoryModel from './api/IRepositoryModel';
+import ClientSettingsSyncModel from './storage/ClientSettingsSyncModel';
 import IRecordedApiModel from './api/recorded/IRecordedApiModel';
 import RecordedApiModel from './api/recorded/RecordedApiModel';
 import ISeriesApiModel from './api/series/ISeriesApiModel';
@@ -318,4 +319,13 @@ export default (container: Container): void => {
     container.bind<ISnsPostState>('ISnsPostState').to(SnsPostState).inSingletonScope();
 
     container.bind<ISnsTimelineState>('ISnsTimelineState').to(SnsTimelineState).inSingletonScope();
+
+    container
+        .bind<ClientSettingsSyncModel>('ClientSettingsSyncModel')
+        .toConstantValue(
+            new ClientSettingsSyncModel(container.get<IRepositoryModel>('IRepositoryModel'), [
+                container.get<ISettingStorageModel>('ISettingStorageModel'),
+                container.get<IGuideGenreSettingStorageModel>('IGuideGenreSettingStorageModel'),
+            ]),
+        );
 };
