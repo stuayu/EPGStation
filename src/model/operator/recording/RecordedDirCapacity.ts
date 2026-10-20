@@ -211,7 +211,10 @@ export const simulateRecordedDirCapacity = (
         if (reserve.isSkip === true || reserve.isConflict === true) continue;
         const durationMs = Math.max(
             0,
-            reserve.endAt - reserve.startAt + Math.max(0, reserve.startMarginMs ?? 0) + Math.max(0, reserve.endMarginMs ?? 0),
+            reserve.endAt -
+                reserve.startAt +
+                Math.max(0, reserve.startMarginMs ?? 0) +
+                Math.max(0, reserve.endMarginMs ?? 0),
         );
         const size = estimateRecordingBytes(durationMs, reserve.channelType, config);
         const preferredIndex = reserve.parentDirectoryName
@@ -229,10 +232,15 @@ export const simulateRecordedDirCapacity = (
             firstInsufficientReserve = { id: reserve.id, startAt: reserve.startAt, dirName: name };
         }
         if (selection.reason === 'insufficient' && typeof firstInsufficientReserveByDir[name] === 'undefined') {
-            firstInsufficientReserveByDir[name] = { id: reserve.id, startAt: reserve.startAt, name: reserve.name ?? '' };
+            firstInsufficientReserveByDir[name] = {
+                id: reserve.id,
+                startAt: reserve.startAt,
+                name: reserve.name ?? '',
+            };
         }
         const target = remaining.find(candidate => candidate.dir.path === selection.dir.path);
-        if (target?.freeBytes !== null && typeof target?.freeBytes === 'number') target.freeBytes = Math.max(0, target.freeBytes - size);
+        if (target?.freeBytes !== null && typeof target?.freeBytes === 'number')
+            target.freeBytes = Math.max(0, target.freeBytes - size);
     }
 
     return { reservedEstimatedSize, firstInsufficientReserve, firstInsufficientReserveByDir };

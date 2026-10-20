@@ -74,7 +74,13 @@ export default class ReserveApiModel implements IReserveApiModel {
 
         return {
             reserves: await Promise.all(
-                reserves.map(r => this.toReserveItem(r, option.isHalfWidth, r.programId === null ? null : programsById.get(r.programId) ?? null)),
+                reserves.map(r =>
+                    this.toReserveItem(
+                        r,
+                        option.isHalfWidth,
+                        r.programId === null ? null : (programsById.get(r.programId) ?? null),
+                    ),
+                ),
             ),
             total,
         };
@@ -86,7 +92,11 @@ export default class ReserveApiModel implements IReserveApiModel {
      * @param isHalfWidth: boolean 半角文字で返すか
      * @return ReserveItem
      */
-    private async toReserveItem(reserve: Reserve, isHalfWidth: boolean, knownProgram?: Program | null): Promise<apid.ReserveItem> {
+    private async toReserveItem(
+        reserve: Reserve,
+        isHalfWidth: boolean,
+        knownProgram?: Program | null,
+    ): Promise<apid.ReserveItem> {
         const config = this.configuration.getConfig();
         const program =
             typeof knownProgram !== 'undefined'
