@@ -96,6 +96,7 @@ test('failed は thumbnail と failed 通知を行い、finish / encode を行�
         { onChange() {} },
         { findId: async () => ({ name: '放送局' }) },
         { start() {} },
+        { add() {} },
     );
     setter.set();
     const reserve = {
@@ -201,7 +202,7 @@ test('録画完了後のルール再評価は待たず、失敗したルール�
         noop,
         { notifyClient() {}, setEncode: () => { encodeCount++; } },
         { getConfig: () => ({ recorded: [{ name: 'recorded' }] }) },
-        noop, { resolve: async () => {} }, noop, noop, noop, noop, noop, noop,
+        noop, { resolve: async () => {} }, noop, noop, noop, noop, noop, noop, noop,
     );
     setter.set();
 

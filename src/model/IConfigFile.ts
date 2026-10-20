@@ -471,6 +471,7 @@ export default interface IConfigFile {
     uploadTempDir: string;
 
     ffmpeg: string;
+    cmDetection?: { enabled?: boolean };
     ffprobe: string;
     ffprobeTimeout?: number; // ffprobe 1 回あたりの上限時間 (秒)。応答しないファイルで解析が止まらないようにする
     // 配信時の音声ブースト倍率 (1.0〜4.0、既定 2.0)

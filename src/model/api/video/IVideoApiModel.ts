@@ -40,4 +40,5 @@ export default interface IVideoApiModel {
      * @return Promise<apid.VideoAudioTrack[]>
      */
     getAudioTracks(videoFileId: apid.VideoFileId): Promise<apid.VideoAudioTrack[]>;
+    detectCm(videoFileId: apid.VideoFileId): Promise<void>;
 }

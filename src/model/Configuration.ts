@@ -396,6 +396,7 @@ namespace Configuration {
             commands: {},
         },
         featureFlags: {},
+        cmDetection: { enabled: false },
         reservation: {
             scheduler: 'planner',
         },

@@ -5,6 +5,8 @@ const test = require('node:test');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const ChapterFileUtil = require('../../dist/util/ChapterFileUtil').default;
+const CmDetectionManageModel = require('../../dist/model/operator/cmDetection/CmDetectionManageModel').default;
 
 const VideoUtil = require('../../dist/model/api/video/VideoUtil').default;
 
@@ -92,6 +94,47 @@ test('チャプターが無いファイルは空配列を返す', async () => {
             assert.deepEqual(await makeVideoUtil().getChapters('/fake/video.mp4'), []);
         },
     );
+});
+
+test('CM 検出が実際に書いたチャプターを VideoUtil が読む', async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'epgstation-cm-chapters-'));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const videoPath = path.join(directory, 'foo.ts');
+    const childProcess = require('node:child_process');
+    const originalSpawn = childProcess.spawn;
+    childProcess.spawn = (_command, args) => {
+        const child = new (require('node:events').EventEmitter)();
+        child.stdout = new (require('node:stream').PassThrough)();
+        child.stderr = new (require('node:stream').PassThrough)();
+        child.kill = () => {};
+        setImmediate(() => {
+            if (args.includes('-show_chapters')) child.stdout.end(JSON.stringify({ chapters: [] }));
+            else child.stderr.end('Duration: 00:01:00.00\nsilence_start: 9.5\nsilence_end: 10.5\nsilence_start: 24.5\nsilence_end: 25.5\nsilence_start: 39.5\nsilence_end: 40.5');
+            child.emit('close', 0);
+        });
+        return child;
+    };
+
+    try {
+        const model = new CmDetectionManageModel(
+            { getLogger: () => ({ system: { info() {}, warn() {}, error() {} } }) },
+            { getConfig: () => ({ cmDetection: { enabled: true }, ffmpeg: 'ffmpeg', ffprobe: 'ffprobe' }) },
+            { add: task => task() },
+            { findId: async () => ({ type: 'ts' }) },
+            { getFullFilePathFromId: async () => videoPath },
+        );
+        await model.detect(1);
+        assert.equal(fs.existsSync(ChapterFileUtil.getChapterFilePath(videoPath)), true);
+        assert.equal(fs.existsSync(path.join(directory, 'foo.cm-detection.json')), true);
+
+        await withStubbedFfprobe(() => JSON.stringify({ chapters: [], format: { duration: '60' } }), async () => {
+            const chapters = await makeVideoUtil().getChapters(videoPath);
+            assert.deepEqual(chapters.map(chapter => chapter.title), ['本編', 'CM', '本編']);
+            assert.deepEqual(chapters.map(chapter => [chapter.startAt, chapter.endAt]), [[0, 10], [10, 40], [40, 60]]);
+        });
+    } finally {
+        childProcess.spawn = originalSpawn;
+    }
 });
 
 test('音声 ES が 1 つの通常ステレオは副音声へ展開しない', async () => {

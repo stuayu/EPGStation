@@ -110,6 +110,7 @@ export enum ModelName {
     reserveation = 'reserveation',
     rule = 'rule',
     thumbnail = 'thumbnail',
+    cmDetection = 'cmDetection',
     encodeEvent = 'encodeEvent',
     series = 'series',
     appSetting = 'appSetting',
@@ -201,6 +202,10 @@ export enum ThumbnailFunctions {
     delete = 'delete',
     regenerateRecorded = 'regenerateRecorded',
     replaceRecorded = 'replaceRecorded',
+}
+
+export enum CmDetectionFunctions {
+    add = 'add',
 }
 
 /**

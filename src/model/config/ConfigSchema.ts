@@ -768,6 +768,14 @@ export const CONFIG_SCHEMA: readonly ConfigSchemaEntry[] = [
         fields: [{ path: 'thumbnailPosterWidth', label: 'poster 保存幅', type: 'number' }],
     },
     {
+        key: 'cmDetection',
+        label: 'CM チャプター検出',
+        hint: '試験的機能です。無音のみで CM を判定するため精度に限界があります。',
+        requiresRestart: false,
+        editable: 'gui',
+        fields: [{ path: 'cmDetection.enabled', label: '有効にする', type: 'boolean' }],
+    },
+    {
         key: 'ffmpeg',
         label: 'ffmpeg のパス',
         requiresRestart: false,

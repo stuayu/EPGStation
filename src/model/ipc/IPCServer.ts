@@ -15,6 +15,7 @@ import IReservationManageModel from '../operator/reservation/IReservationManageM
 import IRuleManageModel from '../operator/rule/IRuleManageModel';
 import ISeriesBackfillManageModel, { SeriesBackfillOption } from '../operator/series/ISeriesBackfillManageModel';
 import IThumbnailManageModel from '../operator/thumbnail/IThumbnailManageModel';
+import ICmDetectionManageModel from '../operator/cmDetection/ICmDetectionManageModel';
 import IUpdateManageModel from '../update/IUpdateManageModel';
 import container from '../ModelContainer';
 import IProgramReminderManageModel from '../operator/reminder/IProgramReminderManageModel';
@@ -36,6 +37,7 @@ import {
     SendMessage,
     SeriesFunctions,
     ThumbnailFunctions,
+    CmDetectionFunctions,
     UpdateFunctions,
 } from './IPCMessageDefine';
 import { EitOnAirRecord } from '../api/schedule/EitOnAirResolver';
@@ -61,6 +63,7 @@ export default class IPCServer implements IIPCServer {
     private recordingManage: IRecordingManageModel;
     private ruleManage: IRuleManageModel;
     private thumbnailManage: IThumbnailManageModel;
+    private cmDetectionManage: ICmDetectionManageModel;
     private encodeEvent: IOperatorEncodeEvent;
     private seriesBackfillManage: ISeriesBackfillManageModel;
     private appSettingChangeEvent: IAppSettingChangeEvent;
@@ -85,6 +88,7 @@ export default class IPCServer implements IIPCServer {
         @inject('IAppSettingChangeEvent') appSettingChangeEvent: IAppSettingChangeEvent,
         @inject('IUpdateManageModel') updateManage: IUpdateManageModel,
         @inject('IEitPresentStore') eitPresentStore: IEitPresentStore,
+        @inject('ICmDetectionManageModel') cmDetectionManage: ICmDetectionManageModel,
     ) {
         this.reservationManage = reservationManage;
         this.recordedManage = recordedManage;
@@ -93,6 +97,7 @@ export default class IPCServer implements IIPCServer {
         this.recordingManage = recordingManage;
         this.ruleManage = ruleManage;
         this.thumbnailManage = thumbnailManage;
+        this.cmDetectionManage = cmDetectionManage;
         this.encodeEvent = encodeEvent;
         this.seriesBackfillManage = seriesBackfillManage;
         this.appSettingChangeEvent = appSettingChangeEvent;
@@ -262,6 +267,7 @@ export default class IPCServer implements IIPCServer {
         this.functions[ModelName.recording] = this.getRecordingFunctions();
         this.functions[ModelName.rule] = this.getRuleFunctions();
         this.functions[ModelName.thumbnail] = this.getThumbnailFunctions();
+        this.functions[ModelName.cmDetection] = this.getCmDetectionFunctions();
         this.functions[ModelName.encodeEvent] = this.getOperatorEncodeEventFunctions();
         this.functions[ModelName.series] = this.getSeriesFunctions();
         this.functions[ModelName.appSetting] = this.getAppSettingFunctions();
@@ -638,6 +644,15 @@ export default class IPCServer implements IIPCServer {
             await this.thumbnailManage.delete(thumbnailId);
         };
 
+        return index;
+    }
+
+    private getCmDetectionFunctions(): IFunctionIndex {
+        const index: IFunctionIndex = {};
+        index[CmDetectionFunctions.add] = async msg => {
+            const videoFileId = this.getArgsValue<apid.VideoFileId>(msg, 'videoFileId');
+            this.cmDetectionManage.add(videoFileId);
+        };
         return index;
     }
 
