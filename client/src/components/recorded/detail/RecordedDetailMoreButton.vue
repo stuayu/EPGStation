@@ -44,6 +44,10 @@
                         <v-list-item-title>TS を再解析</v-list-item-title>
                     </div>
                 </v-list-item>
+                <v-list-item v-if="cmDetectionCandidates.length > 0" v-on:click="selectCmDetectionVideo" slim>
+                    <template #prepend><v-icon>mdi-movie-open</v-icon></template>
+                    <div class="v-list-item-content"><v-list-item-title>CM チャプターを推定 (試験的)</v-list-item-title></div>
+                </v-list-item>
                 <v-list-item v-on:click="search" slim>
                     <template #prepend>
                         <v-icon>mdi-magnify</v-icon>
@@ -92,6 +96,22 @@
             :isDelaySnackbarViewNum="800"
             v-on:deleteSuccessful="deleteSuccessful"
         ></RecordedDeleteDialog>
+        <v-dialog v-model="isOpenCmDetectionDialog" :fullscreen="isMobile" max-width="520" scrollable>
+            <v-card v-if="isOpenCmDetectionDialog">
+                <v-card-title>CM チャプターを推定</v-card-title>
+                <v-card-text class="menu-card-body">
+                    <v-list>
+                        <v-list-item v-for="video in cmDetectionCandidates" :key="video.id" @click="detectCm(video)">
+                            <v-list-item-title>{{ video.name }}</v-list-item-title>
+                        </v-list-item>
+                    </v-list>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn variant="text" @click="isOpenCmDetectionDialog = false">キャンセル</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </div>
 </template>
 
@@ -107,7 +127,7 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { isFeatureEnabled } from '@/util/FeatureFlags';
 import StrUtil from '@/util/StrUtil';
 import Util from '@/util/Util';
-import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
+import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../../api';
 
 @Component({
@@ -126,6 +146,8 @@ class RecordedDetailMoreButton extends Vue {
     public isOpenDeleteDialog: boolean = false;
     public isOpenDownloadDialog: boolean = false;
     public isOpenUploadDialog: boolean = false;
+    public isOpenCmDetectionDialog = false;
+    public cmDetectionCandidates: apid.VideoFile[] = [];
 
     public recordedApiModel = container.get<IRecordedApiModel>('IRecordedApiModel');
     private videoApiModel = container.get<IVideoApiModel>('IVideoApiModel');
@@ -137,6 +159,60 @@ class RecordedDetailMoreButton extends Vue {
      */
     public get isEnabledSeriesLibrary(): boolean {
         return isFeatureEnabled(this.serverConfigModel.getConfig(), 'seriesLibrary');
+    }
+
+    public get isMobile(): boolean {
+        return this.$vuetify.display.smAndDown;
+    }
+
+    @Watch('isOpened')
+    public async onMenuStateChanged(isOpened: boolean): Promise<void> {
+        if (isOpened === false) return;
+        this.cmDetectionCandidates = [];
+        if (this.serverConfigModel.getConfig()?.cmDetection?.enabled !== true) return;
+        const tsFiles = (this.recordedItem.videoFiles ?? []).filter(video => video.type === 'ts');
+        const checks = await Promise.all(
+            tsFiles.map(async video => {
+                try {
+                    return (await this.videoApiModel.getChapters(video.id)).length === 0 ? video : null;
+                } catch (_err) {
+                    return null;
+                }
+            }),
+        );
+        if (this.isOpened) this.cmDetectionCandidates = checks.filter((video): video is apid.VideoFile => video !== null);
+    }
+
+    public async selectCmDetectionVideo(): Promise<void> {
+        this.isOpened = false;
+        if (this.cmDetectionCandidates.length === 1) {
+            await this.detectCm(this.cmDetectionCandidates[0]);
+            return;
+        }
+        await Util.sleep(300);
+        this.isOpenCmDetectionDialog = true;
+    }
+
+    public async detectCm(video: apid.VideoFile): Promise<void> {
+        this.isOpenCmDetectionDialog = false;
+        try {
+            await this.videoApiModel.detectCm(video.id);
+            this.snackbarState.open({ color: 'success', text: 'CM チャプターの推定を開始しました。完了まで数十秒かかります' });
+        } catch (err: any) {
+            const status = err?.response?.status;
+            const message = err?.response?.data?.message;
+            this.snackbarState.open({
+                color: 'error',
+                text:
+                    status === 409 && message === 'VideoFileAlreadyHasChapters'
+                        ? 'この動画には既にチャプターがあります'
+                        : status === 409
+                          ? 'CM チャプターの推定は無効です'
+                          : status === 400
+                            ? 'TS ファイル以外は推定できません'
+                            : 'CM チャプターの推定を開始できませんでした',
+            });
+        }
     }
 
     public async openUploadDialog(): Promise<void> {
