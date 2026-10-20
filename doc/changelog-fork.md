@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- NX-Jikkyo のライブコメント投稿と端末単位のコメントミュートを追加 → 2026-10-20
 - PR #42 のルール重複除外を修正し、録画完了後の再評価・planner 重複判定・更新キューを改善 → 2026-10-17
 - CI の単体テストが毎晩失敗していたのを直し、main への push と PR で CI が走るようにした → 2026-10-10
 - 予約 planner の未採番予約・同一番組の重複割当を修正し、ルール重複除外を結合検証 (Issue #41) → 2026-10-10
@@ -2962,6 +2963,14 @@ planner が保持する `plannedTunerIndex` を ReserveItem に追加し、`GET 
 既定で有効な `recording.reconnectEnabled` により、録画中の上流 EOF / 切断時に同じ録画セッション・ファイルへ再接続する。再接続間の断を gap、接続ごとの状態を attempt として記録する。TS は `TsPacketFramer` で 188 byte 境界に揃え、不完全パケットをファイルへ書かない。書き込みは backpressure に従って上流を pause / resume し、終了時は flush 完了を待つ。追っかけ再生用 `TailStream` は録画中の無成長を最大 60 秒待つ。`reconnectEnabled: false` は切断時に録画失敗・再試行へ戻す。
 
 関連実装: `src/lib/TailStream.ts`, `src/model/operator/recording/{RecordingSink,RecordingStreamEndPolicy,RecordingStreamCreator,RecordingUpstreamSession,TsPacketFramer}.ts`, `src/model/operator/recording/RecorderModel.ts`。
+
+# NX-Jikkyo コメント投稿とミュート (2026-10-20)
+
+- ライブ視聴中に NX-Jikkyo の既存視聴セッションへ匿名コメントを投稿できるようにした。DPlayer のコメント入力 UI を使い、色・位置・サイズを `postComment` 形式へ変換し、vpos を算出する。切断時は投稿を拒否し、入力検証と投稿結果を DPlayer に返す。投稿設定は端末ごと、既定 ON。
+- 弾幕描画前に共通ミュート判定を適用し、コメント一覧にも同じ結果を反映する。ユーザー ID、部分/前方/後方/完全一致/正規表現キーワード、プリセット、サイズ・位置・色・連続文字・絵文字を扱う。不正な正規表現は無視する。
+- 設定画面と視聴コメントパネルにミュート設定ダイアログを追加し、コメントからユーザー ID / キーワードを登録できる。
+- 参照元 (MIT): KonomiTV `client/src/services/player/managers/LiveCommentManager.ts` (`sendComment`)、`client/src/utils/CommentUtils.ts`、`client/src/components/Settings/CommentMuteSettings.vue`。
+- 実装: `client/src/util/JikkyoCommentClient.ts`, `src/util/JikkyoPostUtil.ts`, `src/util/CommentMuteUtil.ts`, `client/src/components/watch/JikkyoCommentMuteDialog.vue`。
 
 # 番組開始前リマインダー Phase F (2026-09-28)
 

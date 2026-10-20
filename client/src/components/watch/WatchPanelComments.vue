@@ -1,9 +1,26 @@
 <template>
     <div class="watch-panel-comments">
+        <div class="d-flex justify-end px-2"><v-btn size="x-small" variant="text" @click="muteDialog = true">ミュート設定</v-btn></div>
+        <JikkyoCommentMuteDialog v-model="muteDialog"></JikkyoCommentMuteDialog>
+        <v-snackbar v-model="snackbar" timeout="2500">{{ snackbarText }}</v-snackbar>
         <div ref="list" class="list" v-on:scroll="onScroll">
-            <div v-for="(comment, index) in comments" :key="index" class="comment">
-                <div class="text" v-bind:style="{ color: getCommentColor(comment) }">{{ comment.text }}</div>
-            </div>
+            <v-menu v-for="(comment, index) in visibleComments" :key="index" location="end">
+                <template #activator="{ props }">
+                    <div class="comment" v-bind="props" @click="selectedComment = comment">
+                        <div class="text" :style="{ color: getCommentColor(comment) }">
+                            {{ comment.text }}
+                            <span v-if="comment.isSelf" class="self-label">自分</span>
+                        </div>
+                    </div>
+                </template>
+                <v-card class="menu-card" width="220">
+                    <v-list density="compact" class="menu-card-body">
+                        <v-list-item title="このユーザーをミュート" :disabled="!selectedComment?.userId" @click="muteUser(selectedComment!.userId!)"></v-list-item>
+                        <v-list-item title="このコメントをミュート" @click="muteKeyword(selectedComment!.text)"></v-list-item>
+                        <v-list-item title="コピー" @click="copyComment(selectedComment!.text)"></v-list-item>
+                    </v-list>
+                </v-card>
+            </v-menu>
             <div v-if="errorMessage !== null" class="empty text-body-2">{{ errorMessage }}</div>
             <div v-if="comments.length === 0 && errorMessage === null" class="empty text-body-2">コメントはまだありません</div>
         </div>
@@ -16,13 +33,23 @@
 <script lang="ts">
 import { JikkyoComment } from '@/util/JikkyoCommentClient';
 import { Component, Prop, Vue, Watch, toNative } from 'vue-facing-decorator';
+import JikkyoCommentMuteDialog from '@/components/watch/JikkyoCommentMuteDialog.vue';
+import container from '@/model/ModelContainer';
+import { ISettingStorageModel } from '@/model/storage/setting/ISettingStorageModel';
+import { isMutedComment } from '@/util/CommentMuteUtil';
 
 /**
  * 右パネルの「コメント」タブの中身
  * 映像に流れている実況コメントを時系列で並べる
  */
-@Component({})
+@Component({ components: { JikkyoCommentMuteDialog } })
 class WatchPanelComments extends Vue {
+    public muteDialog = false;
+    public snackbar = false;
+    public snackbarText = '';
+    public selectedComment: JikkyoComment | null = null;
+    public muteRevision = 0;
+    private settingStorage = container.get<ISettingStorageModel>('ISettingStorageModel');
     @Prop({ required: true })
     public comments!: JikkyoComment[];
 
@@ -39,6 +66,35 @@ class WatchPanelComments extends Vue {
 
     public mounted(): void {
         this.scrollToBottom();
+    }
+
+    public muteUser(userId: string): void {
+        const settings = this.settingStorage.tmp.jikkyoCommentMuteSettings;
+        settings.mutedUserIds = Array.from(new Set([...(settings.mutedUserIds ?? []), userId]));
+        this.settingStorage.save();
+        window.dispatchEvent(new Event('jikkyo-comment-mute-settings-updated'));
+        this.muteRevision++;
+        this.snackbarText = 'ユーザーをミュートしました';
+        this.snackbar = true;
+    }
+    public muteKeyword(text: string): void {
+        const settings = this.settingStorage.tmp.jikkyoCommentMuteSettings;
+        settings.mutedKeywords = [...(settings.mutedKeywords ?? []), { match: 'partial', pattern: text }];
+        this.settingStorage.save();
+        window.dispatchEvent(new Event('jikkyo-comment-mute-settings-updated'));
+        this.muteRevision++;
+        this.snackbarText = 'コメントをミュートしました';
+        this.snackbar = true;
+    }
+    public copyComment(text: string): void {
+        void navigator.clipboard.writeText(text);
+    }
+    get visibleComments(): JikkyoComment[] {
+        void this.muteRevision;
+        const settings = this.settingStorage.tmp.jikkyoCommentMuteSettings;
+        return this.comments.filter(
+            comment => !isMutedComment(comment.text, settings, { userId: comment.userId, color: comment.color, position: comment.type, size: comment.size }),
+        );
     }
 
     @Watch('comments')

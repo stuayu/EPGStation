@@ -22,10 +22,7 @@ import ProgramAudioTrackUtil from '../../../../src/util/ProgramAudioTrackUtil';
 import { shouldPreservePausedPlayback } from '../../../../src/util/PlaybackPauseIntentUtil';
 import { shouldAutoplayPlayback } from '../../../../src/util/PlaybackAutoplayUtil';
 import { decideAudioTrackSwitch } from '../../../../src/util/AudioTrackSwitchDecision';
-import {
-    destroyDeferredDPlayerMediaBackend,
-    takeDPlayerMediaBackendDestroy,
-} from '../../../../src/util/MpegTsLifecycleUtil';
+import { destroyDeferredDPlayerMediaBackend, takeDPlayerMediaBackendDestroy } from '../../../../src/util/MpegTsLifecycleUtil';
 
 @Component({})
 class LiveMpegTsVideo extends BaseVideo {
@@ -92,6 +89,10 @@ class LiveMpegTsVideo extends BaseVideo {
         return this.jikkyoChannelId;
     }
 
+    protected isJikkyoCommentPostAvailable(): boolean {
+        return true;
+    }
+
     /**
      * 視聴中の放送局 id を返す
      * 実況コメントの遅延補正で、配信中の映像の放送時刻を引くのに使う
@@ -137,10 +138,7 @@ class LiveMpegTsVideo extends BaseVideo {
             if (next === previous || this.dp === null) return;
 
             const mpegts = (this.dp as any).plugins?.mpegts;
-            if (
-                this.isEmbeddedAudioSwitchMode(this.currentMode) === true &&
-                typeof mpegts?.switchPrimaryAudio === 'function'
-            ) {
+            if (this.isEmbeddedAudioSwitchMode(this.currentMode) === true && typeof mpegts?.switchPrimaryAudio === 'function') {
                 mpegts.switchPrimaryAudio();
             } else {
                 await this.reconnectAudioTrack(next);
@@ -286,12 +284,7 @@ class LiveMpegTsVideo extends BaseVideo {
             const previousMpegts = dp.plugins?.mpegts;
             const previousCaption = dp.plugins?.aribb24Caption;
             const previousSuperimpose = dp.plugins?.aribb24Superimpose;
-            if (
-                dp.options.live !== true ||
-                type !== 'mpegts' ||
-                previousMpegts === null ||
-                typeof previousMpegts === 'undefined'
-            ) {
+            if (dp.options.live !== true || type !== 'mpegts' || previousMpegts === null || typeof previousMpegts === 'undefined') {
                 originalInitMSE(video, type);
                 return;
             }
@@ -367,19 +360,12 @@ class LiveMpegTsVideo extends BaseVideo {
                     return;
                 }
 
-                const action = decideAudioTrackSwitch(
-                    this.currentAudioTrack,
-                    track,
-                    this.isEmbeddedAudioSwitchMode(this.currentMode),
-                );
+                const action = decideAudioTrackSwitch(this.currentAudioTrack, track, this.isEmbeddedAudioSwitchMode(this.currentMode));
                 if (action === 'noop') return;
 
                 if (action === 'embedded') {
                     const mpegts = dp.plugins?.mpegts;
-                    if (
-                        typeof mpegts?.switchPrimaryAudio === 'function' &&
-                        typeof mpegts?.switchSecondaryAudio === 'function'
-                    ) {
+                    if (typeof mpegts?.switchPrimaryAudio === 'function' && typeof mpegts?.switchSecondaryAudio === 'function') {
                         if (LiveMpegTsVideo.isSecondaryAudioTrack(track) === true) {
                             mpegts.switchSecondaryAudio();
                         } else {
@@ -461,10 +447,7 @@ class LiveMpegTsVideo extends BaseVideo {
      * @return string
      */
     private createStreamUrl(mode: number, audioTrack: apid.AudioTrackSpecifier): string {
-        const track =
-            this.isEmbeddedAudioSwitchMode(mode) === true || LiveMpegTsVideo.isSecondaryAudioTrack(audioTrack) === false
-                ? 'all'
-                : audioTrack;
+        const track = this.isEmbeddedAudioSwitchMode(mode) === true || LiveMpegTsVideo.isSecondaryAudioTrack(audioTrack) === false ? 'all' : audioTrack;
 
         return `${window.location.origin}${Util.getSubDirectory()}/api/streams/live/${this.channelId}/m2tsll?mode=${mode}&audioTrack=${encodeURIComponent(track)}`;
     }

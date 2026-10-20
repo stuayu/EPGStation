@@ -1,3 +1,5 @@
+import { createJikkyoThreadKey, createJikkyoPostPayload, shouldDropJikkyoEcho, validateJikkyoPost } from '../../../src/util/JikkyoPostUtil';
+
 /**
  * ニコニコ実況 (NX-Jikkyo) コメント受信クライアント
  *
@@ -11,6 +13,8 @@ export interface JikkyoComment {
     color: string; // CSS カラーコード
     type: 'top' | 'right' | 'bottom'; // 弾幕の描画位置
     size: 'big' | 'medium' | 'small'; // 弾幕の文字サイズ
+    userId?: string;
+    isSelf?: boolean;
 }
 
 export interface JikkyoCommentClientOption {
@@ -29,6 +33,12 @@ export default class JikkyoCommentClient {
     private isInitialCommentsReceived: boolean = false;
     private isDestroyed: boolean = false;
     private reconnectCount: number = 0;
+    private vposBaseTime: number | null = null;
+    private lastPostAt: number = 0;
+    private yourPostKey: string | null = null;
+    private pendingEchoes: Array<{ text: string; sentAt: number }> = [];
+    private postWaiters = new Set<() => void>();
+    private static readonly POST_TIMEOUT_MS = 10_000;
 
     private static readonly MAX_RECONNECT_COUNT = 5;
     private static readonly RECONNECT_INTERVAL = 5 * 1000;
@@ -80,6 +90,7 @@ export default class JikkyoCommentClient {
      */
     public destroy(): void {
         this.isDestroyed = true;
+        for (const cancel of [...this.postWaiters]) cancel();
         this.cleanup();
     }
 
@@ -155,11 +166,20 @@ export default class JikkyoCommentClient {
             }
 
             // コメントサーバー (コメントセッション) の接続先情報
-            case 'room': {
+            case 'room':
+            case 'messageServer': {
                 // NX-Jikkyo / 現行ニコ生互換 API は data.uri を返す。
                 // messageServer.uri は旧クライアント実装との互換用フォールバック。
                 const uri = message.data?.uri ?? message.data?.messageServer?.uri;
                 const threadId = message.data?.threadId;
+                const vposBaseTime = message.data?.vposBaseTime;
+                if (typeof vposBaseTime === 'string') this.vposBaseTime = Date.parse(vposBaseTime);
+                // NX-Jikkyo は room で yourPostKey を直接返す (実測 2026-10-20)。
+                // ニコ生互換の messageServer は hashedUserId だけを返すため、そこから KonomiTV と同じ規則で算出する
+                this.yourPostKey =
+                    typeof message.data?.yourPostKey === 'string' && message.data.yourPostKey.length > 0
+                        ? message.data.yourPostKey
+                        : createJikkyoThreadKey(message.data?.hashedUserId);
                 if (typeof uri === 'string' && typeof threadId !== 'undefined') {
                     this.connectCommentSession(uri, String(threadId));
                 } else {
@@ -223,6 +243,7 @@ export default class JikkyoCommentClient {
                             thread: threadId,
                             version: '20061206',
                             user_id: '',
+                            threadkey: this.yourPostKey,
                             res_from: -10,
                             with_global: 1,
                             scores: 1,
@@ -272,6 +293,7 @@ export default class JikkyoCommentClient {
         }
 
         const content: string = typeof message.chat.content === 'string' ? message.chat.content : '';
+        if (shouldDropJikkyoEcho({ yourpost: message.chat.yourpost, content }, this.isInitialCommentsReceived, this.pendingEchoes, Date.now())) return;
 
         // 空コメントや運営コマンド (/nicoad など) は描画しない
         if (content.length === 0 || content.startsWith('/') === true) {
@@ -284,7 +306,62 @@ export default class JikkyoCommentClient {
             color: command.color,
             type: command.type,
             size: command.size,
+            userId: typeof message.chat.user_id === 'string' ? message.chat.user_id : undefined,
+            isSelf: message.chat.yourpost === 1,
         });
+    }
+
+    /**
+     * NX-Jikkyo の視聴セッションへ匿名コメントを投稿する。
+     * 送信処理は KonomiTV `client/src/services/player/managers/LiveCommentManager.ts` の sendComment を移植。
+     * @param data DPlayer コメント入力
+     * @param success 投稿成功時
+     * @param error 投稿失敗時
+     */
+    public sendComment(
+        data: { text: string; color: string; type: 'top' | 'right' | 'bottom'; size: 'big' | 'medium' | 'small' },
+        success: () => void,
+        error: (message: string) => void,
+    ): void {
+        const text = data.text.trim();
+        const validationError = validateJikkyoPost(text, Date.now(), this.lastPostAt === 0 ? null : this.lastPostAt);
+        if (validationError !== null) return error(validationError);
+        if (this.watchSession?.readyState !== WebSocket.OPEN || this.vposBaseTime === null) return error('実況サーバーに接続していません');
+        const now = Date.now();
+        let payload: ReturnType<typeof createJikkyoPostPayload>;
+        try {
+            payload = createJikkyoPostPayload({ ...data, text }, now, this.vposBaseTime);
+        } catch {
+            return error('コメントの色設定が無効です');
+        }
+        this.lastPostAt = now;
+        const ws = this.watchSession;
+        this.pendingEchoes.push({ text, sentAt: now });
+        const onMessage = (event: MessageEvent): void => {
+            let message: any;
+            try {
+                message = JSON.parse(event.data);
+            } catch {
+                return;
+            }
+            if (message.type === 'postCommentResult') finish(null);
+            else if (message.type === 'error') finish(message.data?.code === 'COMMENT_POST_NOT_ALLOWED' ? 'コメントが許可されていません' : 'コメントの送信に失敗しました');
+        };
+        const onClose = (): void => finish('実況サーバーから切断されました');
+        const timer = setTimeout(() => finish('コメント送信がタイムアウトしました'), JikkyoCommentClient.POST_TIMEOUT_MS);
+        const finish = (message: string | null): void => {
+            clearTimeout(timer);
+            ws.removeEventListener('message', onMessage);
+            ws.removeEventListener('close', onClose);
+            this.postWaiters.delete(cancel);
+            if (message === null) success();
+            else error(message);
+        };
+        const cancel = (): void => finish('コメント送信を中断しました');
+        this.postWaiters.add(cancel);
+        ws.addEventListener('message', onMessage);
+        ws.addEventListener('close', onClose);
+        ws.send(JSON.stringify(payload));
     }
 
     /**
@@ -344,6 +421,7 @@ export default class JikkyoCommentClient {
      * タイマーと WebSocket 接続を破棄する
      */
     private cleanup(): void {
+        for (const cancel of [...this.postWaiters]) cancel();
         if (this.keepSeatIntervalId !== null) {
             clearInterval(this.keepSeatIntervalId);
             this.keepSeatIntervalId = null;

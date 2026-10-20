@@ -18,11 +18,7 @@ import { DPlayerType } from 'dplayer';
 import { Component, Prop, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../../api';
 import ProgramAudioTrackUtil from '../../../../src/util/ProgramAudioTrackUtil';
-import {
-    decideAudioTrackSwitch,
-    needsAudioTrackReapplyAfterReconnect,
-    resolveAppliedAudioTrack,
-} from '../../../../src/util/AudioTrackSwitchDecision';
+import { decideAudioTrackSwitch, needsAudioTrackReapplyAfterReconnect, resolveAppliedAudioTrack } from '../../../../src/util/AudioTrackSwitchDecision';
 
 @Component({})
 class LiveHLSVideo extends BaseVideo {
@@ -46,6 +42,10 @@ class LiveHLSVideo extends BaseVideo {
      */
     protected getJikkyoChannelId(): string | null {
         return this.jikkyoChannelId;
+    }
+
+    protected isJikkyoCommentPostAvailable(): boolean {
+        return true;
     }
 
     /**
@@ -96,15 +96,13 @@ class LiveHLSVideo extends BaseVideo {
         }
 
         // HLS stream 開始
-        await this.videoState
-            .start(this.channelId, this.currentMode, this.resolveStreamAudioTrack(this.currentAudioTrack))
-            .catch(err => {
-                console.error(err);
-                this.snackbarState.open({
-                    color: 'error',
-                    text: 'ストリーム開始に失敗',
-                });
+        await this.videoState.start(this.channelId, this.currentMode, this.resolveStreamAudioTrack(this.currentAudioTrack)).catch(err => {
+            console.error(err);
+            this.snackbarState.open({
+                color: 'error',
+                text: 'ストリーム開始に失敗',
             });
+        });
 
         // ストリームが有効になるまで待つ
         this.checkEnabledTimerId = setInterval(async () => {
@@ -332,11 +330,7 @@ class LiveHLSVideo extends BaseVideo {
 
     /** ライブ音声を切り替え、同時配信レンディションが無ければストリームを再生成する。 */
     private async switchLiveAudioTrack(track: apid.AudioTrackSpecifier): Promise<void> {
-        const action = decideAudioTrackSwitch(
-            this.currentAudioTrack,
-            track,
-            this.isEmbeddedAudioSwitchMode(this.currentMode),
-        );
+        const action = decideAudioTrackSwitch(this.currentAudioTrack, track, this.isEmbeddedAudioSwitchMode(this.currentMode));
         if (action === 'noop') return;
 
         if (action === 'embedded') {
@@ -416,10 +410,7 @@ class LiveHLSVideo extends BaseVideo {
      * @return apid.AudioTrackSpecifier
      */
     private resolveStreamAudioTrack(track: apid.AudioTrackSpecifier): apid.AudioTrackSpecifier {
-        return HlsAudioTrackUtil.isSecondaryAudioTrack(track) === false ||
-            this.isEmbeddedAudioSwitchMode(this.currentMode) === true
-            ? 'all'
-            : track;
+        return HlsAudioTrackUtil.isSecondaryAudioTrack(track) === false || this.isEmbeddedAudioSwitchMode(this.currentMode) === true ? 'all' : track;
     }
 
     /**
