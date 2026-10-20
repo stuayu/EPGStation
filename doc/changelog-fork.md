@@ -71,22 +71,6 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 本番録画 3 本を Amatsukaze のロゴ判定チャプターと比較した現行設定 (-50 dB、境界無音 0.8 秒、許容誤差 ±0.6 秒) の CM 秒数再現率 / 適合率: 5 分番組 (tvk) 29% / 53%、5 分番組 (TVh) 36% / 100%、30 分アニメ (BS フジ) 69% / 81%。無音閾値 -40 dB / -35 dB、境界無音 0.15〜0.8 秒、許容誤差 0.3〜1.0 秒の調整でも改善せず、再現率は最大 51%、適合率は約 20% まで低下。ロゴ判定は別フェーズ。
 
-## 2026-10-17
-
-### PR #42 のルール重複除外を修正し、録画完了後の再評価・planner 重複判定・更新キューを改善
-
-コードレビュー候補10件を調査し、成立した不具合を修正。既存実装で満たしていた候補はその根拠をテストで確認した。
-
-- 録画完了後、同じ局・`shortName` の番組へ実際に一致する有効ルールを抽出して即時再評価する。予約行を持たないルールも対象に含める。全ルールの予約再生成は行わず、RuleDB の局指定候補を絞ってから `ProgramDB.findRule()` で一致を確認する
-- 録画完了したルール予約自身は、同局・同じ `shortName` の番組が検索結果に無くても必ず再評価する
-- `failed` 録画は重複除外履歴へ保存しない。既存の扱いに合わせて `partial` は保存対象にする
-- planner と legacy の同一番組予約統合で `isConflict` を重複キーから外す。ただし他用途の `getRuleProgramIdKey()` の意味は維持する
-- 録画完了時の重複再評価はサムネイル生成・エンコード投入を待たせない。ルール単位で失敗を記録し、後続ルールを続ける
-- 予約差分の順序直列化は維持し、録画停止待ちだけをキュー外へ出す。provider 準備中に古い通常予約の差分が後続の重複化差分を追い越す問題を防ぐ目的は保つ
-- 波及元ルール検索結果を `updateAll()` / 関連ルール再評価の呼び出し単位でキャッシュし、`updateAll()` 内の二重評価を抑える。評価順で重複状態変更を取りこぼすルールは最後に再評価する
-- `removeOverlap()` 後の関連ルール再評価失敗は記録し、解除 API の成功を維持する。波及元条件と overlap 番組 ID 集合の構築は共通ヘルパーへ集約する
-- `ReserveDB.findRuleIdsByChannelAndShortName()` は必要な列を SQL で絞り、重複しない `ruleId` を取得する
-
 ### NX-Jikkyo へのコメント投稿とコメントのミュート
 
 KonomiTV (MIT) の `client/src/services/player/managers/LiveCommentManager.ts` (`sendComment`・コメントセッション)、`client/src/utils/CommentUtils.ts`、`client/src/components/Settings/CommentMuteSettings.vue` を移植した。
@@ -109,6 +93,22 @@ EDCB / EMWUI の考え方を参考に、EPGStation 独自の見積もりを追�
 実装: `src/model/operator/recording/RecordedDirCapacity.ts`、`src/model/api/reserve/ReserveApiModel.ts`、`src/model/api/storage/StorageApiModel.ts`、`client/src/components/reserves/`、`client/src/views/Storages.vue`。
 
 テスト: `test/ut/recorded-dir-capacity.test.js`、`test/ut/reserve-api-model-planned-tuner.test.js`、`test/ut/storage-api-model-capacity.test.js`。
+
+## 2026-10-17
+
+### PR #42 のルール重複除外を修正し、録画完了後の再評価・planner 重複判定・更新キューを改善
+
+コードレビュー候補10件を調査し、成立した不具合を修正。既存実装で満たしていた候補はその根拠をテストで確認した。
+
+- 録画完了後、同じ局・`shortName` の番組へ実際に一致する有効ルールを抽出して即時再評価する。予約行を持たないルールも対象に含める。全ルールの予約再生成は行わず、RuleDB の局指定候補を絞ってから `ProgramDB.findRule()` で一致を確認する
+- 録画完了したルール予約自身は、同局・同じ `shortName` の番組が検索結果に無くても必ず再評価する
+- `failed` 録画は重複除外履歴へ保存しない。既存の扱いに合わせて `partial` は保存対象にする
+- planner と legacy の同一番組予約統合で `isConflict` を重複キーから外す。ただし他用途の `getRuleProgramIdKey()` の意味は維持する
+- 録画完了時の重複再評価はサムネイル生成・エンコード投入を待たせない。ルール単位で失敗を記録し、後続ルールを続ける
+- 予約差分の順序直列化は維持し、録画停止待ちだけをキュー外へ出す。provider 準備中に古い通常予約の差分が後続の重複化差分を追い越す問題を防ぐ目的は保つ
+- 波及元ルール検索結果を `updateAll()` / 関連ルール再評価の呼び出し単位でキャッシュし、`updateAll()` 内の二重評価を抑える。評価順で重複状態変更を取りこぼすルールは最後に再評価する
+- `removeOverlap()` 後の関連ルール再評価失敗は記録し、解除 API の成功を維持する。波及元条件と overlap 番組 ID 集合の構築は共通ヘルパーへ集約する
+- `ReserveDB.findRuleIdsByChannelAndShortName()` は必要な列を SQL で絞り、重複しない `ruleId` を取得する
 
 ## 2026-10-10
 
