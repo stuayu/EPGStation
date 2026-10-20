@@ -5,7 +5,7 @@ import Program from '../../../db/entities/Program';
 import IConfiguration from '../../IConfiguration';
 import IProgramDB from '../../db/IProgramDB';
 import { resolveEndAt } from '../../../util/ProgramDuration';
-import { estimateRecordingBytes, resolveStorageFallbackConfig } from '../../operator/recording/RecordedDirCapacity';
+import { estimateRecordingDataBytes, resolveStorageFallbackConfig } from '../../operator/recording/RecordedDirCapacity';
 import { resolveRecordingTimingConfig } from '../../operator/recording/RecordingTimingConfig';
 import IReserveDB from '../../db/IReserveDB';
 import IIPCClient from '../../ipc/IIPCClient';
@@ -111,7 +111,7 @@ export default class ReserveApiModel implements IReserveApiModel {
             config.timeSpecifiedEndMargin,
             reserve,
         );
-        const estimatedSize = estimateRecordingBytes(
+        const estimatedSize = estimateRecordingDataBytes(
             Math.max(0, effectiveEndAt - reserve.startAt) + timing.startMarginMs + timing.endMarginMs,
             reserve.channelType,
             resolveStorageFallbackConfig(config.recording),
