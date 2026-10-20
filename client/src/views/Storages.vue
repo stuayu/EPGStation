@@ -12,6 +12,12 @@
                             <v-spacer></v-spacer>
                             <div>{{ info.available }} 空き</div>
                         </div>
+                        <div v-if="formatEstimatedSize(info.reservedEstimatedSize) !== null" class="text-body-2 pt-2">
+                            予約で使う見込み: {{ formatEstimatedSize(info.reservedEstimatedSize) }}
+                        </div>
+                        <v-alert v-if="info.firstShortfallReserveId !== undefined" type="warning" variant="tonal" density="compact" class="mt-2">
+                            {{ formatStartAt(info.firstShortfallReserveStartAt) }} {{ info.firstShortfallReserveName }} から空きが足りなくなる見込み
+                        </v-alert>
                     </div>
                 </v-container>
             </div>
@@ -26,6 +32,8 @@ import ISocketIOModel from '@/model/socketio/ISocketIOModel';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import IStorageState from '@/model/state/storage/IStorageState';
+import EstimatedSizeUtil from '@/util/EstimatedSizeUtil';
+import DateUtil from '@/util/DateUtil';
 import { Component, Vue, Watch, toNative } from 'vue-facing-decorator';
 import type { RouteLocationNormalized as Route } from 'vue-router';
 
@@ -39,6 +47,14 @@ class Storages extends Vue {
     public knowledge = 33;
 
     public storageState = container.get<IStorageState>('IStorageState');
+
+    public formatEstimatedSize(size: number | undefined): string | null {
+        return EstimatedSizeUtil.format(size);
+    }
+
+    public formatStartAt(startAt: number | undefined): string {
+        return typeof startAt === 'number' ? DateUtil.format(DateUtil.getJaDate(new Date(startAt)), 'yyyy/MM/dd hh:mm') : '開始時刻不明';
+    }
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');

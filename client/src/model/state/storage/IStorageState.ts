@@ -4,6 +4,10 @@ export interface StorageInfo {
     used: string;
     total: string;
     useRate: number;
+    reservedEstimatedSize?: number;
+    firstShortfallReserveId?: number;
+    firstShortfallReserveStartAt?: number;
+    firstShortfallReserveName?: string;
 }
 
 export default interface IStorageState {

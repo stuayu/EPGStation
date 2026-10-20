@@ -33,6 +33,10 @@ export default class StorageState implements IStorageState {
                 used: Util.getFileSizeStr(s.used),
                 total: Util.getFileSizeStr(s.total),
                 useRate: s.total > 0 ? Math.floor((s.used / s.total) * 100) : 0,
+                reservedEstimatedSize: s.reservedEstimatedSize,
+                firstShortfallReserveId: s.firstShortfallReserveId,
+                firstShortfallReserveStartAt: s.firstShortfallReserveStartAt,
+                firstShortfallReserveName: s.firstShortfallReserveName,
             };
         });
     }

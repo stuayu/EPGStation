@@ -188,6 +188,8 @@ export interface ReserveItem {
      * 予約情報
      */
     id: ReserveId;
+    /** 推定録画サイズ (byte、録画設定の想定ビットレートと余裕を含む) */
+    estimatedSize?: number;
     ruleId?: RuleId;
     isSkip: boolean;
     isConflict: boolean;
@@ -1681,6 +1683,10 @@ export interface DiskUsage {
  */
 export interface StorageItem extends DiskUsage {
     name: string;
+    reservedEstimatedSize?: number;
+    firstShortfallReserveId?: ReserveId;
+    firstShortfallReserveStartAt?: UnixtimeMS;
+    firstShortfallReserveName?: string;
 }
 
 /**
