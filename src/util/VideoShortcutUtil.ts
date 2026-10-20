@@ -43,8 +43,6 @@ export function isListedVideoShortcut(event: {
         else if (event.shiftKey === true) label = horizontal ? 'Shift + ← / →' : '';
         else label = horizontal ? '← / →' : '';
     } else if (event.key === ' ') label = 'Space';
-    else if (event.key === 'C') label = 'Shift + C';
-    else if (event.key === 'c') label = 'c';
     else if (event.key.length === 1 && /[a-z]/i.test(event.key)) {
         const key = event.key.toLowerCase();
         label = ['c', 'i'].includes(key) ? key : key.toUpperCase();

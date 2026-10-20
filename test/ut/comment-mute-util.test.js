@@ -7,6 +7,7 @@ const {
     compileCommentMuteSettings,
     shouldMuteCompiledComment,
 } = require('../../dist/util/CommentMuteUtil');
+const { isWhiteCommentColor } = require('../../dist/util/CommentColorUtil');
 
 test('ユーザー ID をミュートする', () => {
     assert.equal(isMutedComment('hello', { mutedUserIds: ['user-1'] }, { userId: 'user-1' }), true);
@@ -63,6 +64,15 @@ test('固定・色・サイズ・露骨表現・差別表現・連続文字・�
     assert.equal(isMutedComment('ああああああああ', { muteConsecutiveCharacters: true }), true);
     assert.equal(isMutedComment('😀😃', { muteEmojiOnly: true }), true);
     assert.equal(isMutedComment('😀hello', { muteEmojiOnly: true }), false);
+});
+
+test('白色判定をコメント表示とミュートで共有する', () => {
+    for (const color of ['#fff', '#ffffff', '#ffeaea', 'white', 'rgb(255, 255, 255)', ' WHITE ']) {
+        assert.equal(isWhiteCommentColor(color), true, color);
+        assert.equal(isMutedComment('hello', { muteColored: true }, { color }), false, color);
+    }
+    assert.equal(isWhiteCommentColor('#ff0000'), false);
+    assert.equal(isMutedComment('hello', { muteColored: true }, { color: '#ff0000' }), true);
 });
 
 test('設定画面の変更を最新設定へ適用し、他経路の追加を保持する', () => {

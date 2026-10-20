@@ -136,11 +136,14 @@ export default abstract class BaseVideo extends Vue {
     private isJikkyoOnlineListenerRegistered = false;
     private compiledCommentMuteSettings: CompiledCommentMuteSettings | null = null;
     private isCommentMuteListenerRegistered = false;
+    private isCommentMuteDisposed = true;
+    private isBaseVideoUnmounted = false;
 
     /**
      * ミュート設定を初回だけ読み込み、設定変更の通知を購読する
      */
     private ensureCommentMuteSettings(): void {
+        if (this.isBaseVideoUnmounted === true || this.isCommentMuteDisposed === true) return;
         if (this.isCommentMuteListenerRegistered === true) return;
         this.isCommentMuteListenerRegistered = true;
         this.refreshCommentMuteSettings();
@@ -240,6 +243,7 @@ export default abstract class BaseVideo extends Vue {
         // 別オブジェクトになるため判定が成立し、**自分自身を pause してしまう**。
         // 再生ボタン・ホットキー・シーク後の再開が軒並み効かなくなる
         this.dp = markRaw(BaseVideo.createDPlayer(options));
+        this.isCommentMuteDisposed = false;
         if (this.isJikkyoCommentPostAvailable() !== true || jikkyoChannelId === null || setting.isEnableJikkyoCommentPost !== true) {
             // 入力ボックスだけでなく、それを開くコントローラのボタンごと隠す (.dplayer-comment が両方を含む)
             const commentControl = this.dp.container.querySelector<HTMLElement>('.dplayer-comment');
@@ -361,7 +365,7 @@ export default abstract class BaseVideo extends Vue {
             } else {
                 event.preventDefault();
                 event.stopImmediatePropagation();
-                void this.saveCompositeCapture(request);
+                void this.saveCompositeCapture(request, this.startCaptureClipboardWrite());
             }
         };
         // DPlayer 自身の click handler より前に claim の有無を決める。
@@ -467,7 +471,27 @@ export default abstract class BaseVideo extends Vue {
         }
     }
 
-    private async saveCompositeCapture(request: ScreenshotRequest): Promise<void> {
+    private startCaptureClipboardWrite(): { write: Promise<void>; resolve: (blob: Blob) => void; reject: (error: unknown) => void } | null {
+        const settings = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();
+        if (settings.captureCopyToClipboard !== true || typeof navigator.clipboard?.write !== 'function') return null;
+        let resolve!: (blob: Blob) => void;
+        let reject!: (error: unknown) => void;
+        const pngBlob = new Promise<Blob>((res, rej) => {
+            resolve = res;
+            reject = rej;
+        });
+        try {
+            // Clipboard write must start in the click/key event's synchronous user-activation window.
+            const write = navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+            void write.catch(() => undefined);
+            return { write, resolve, reject };
+        } catch (error) {
+            reject(error);
+            return { write: Promise.reject(error), resolve, reject };
+        }
+    }
+
+    private async saveCompositeCapture(request: ScreenshotRequest, clipboard: ReturnType<BaseVideo['startCaptureClipboardWrite']>): Promise<void> {
         try {
             const image = await request.capture?.();
             if (image === undefined) return;
@@ -476,6 +500,9 @@ export default abstract class BaseVideo extends Vue {
             canvas.height = image.height;
             canvas.getContext('2d')!.drawImage(image, 0, 0);
             image.close();
+            if (clipboard !== null) {
+                canvas.toBlob(value => (value ? clipboard.resolve(value) : clipboard.reject(new Error('PNG conversion failed'))), 'image/png');
+            }
             const blob = await new Promise<Blob>((resolve, reject) =>
                 canvas.toBlob(value => (value ? resolve(value) : reject(new Error('JPEG conversion failed'))), 'image/jpeg', 0.92),
             );
@@ -492,13 +519,9 @@ export default abstract class BaseVideo extends Vue {
                 link.click();
                 URL.revokeObjectURL(url);
             }
-            const settings = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();
-            if (settings.captureCopyToClipboard === true && typeof navigator.clipboard?.write === 'function') {
+            if (clipboard !== null) {
                 try {
-                    const pngBlob = await new Promise<Blob>((resolve, reject) =>
-                        canvas.toBlob(value => (value ? resolve(value) : reject(new Error('PNG conversion failed'))), 'image/png'),
-                    );
-                    await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+                    await clipboard.write;
                 } catch (error) {
                     console.warn('クリップボードへのコピーに失敗しました', error);
                     this.captureSnackbarState.open({ color: 'info', text: '保存しました (クリップボードへのコピーは失敗)' });
@@ -506,6 +529,7 @@ export default abstract class BaseVideo extends Vue {
                 }
             }
         } catch (error) {
+            clipboard?.reject(error);
             console.warn('キャプチャ合成に失敗しました', error);
             this.captureSnackbarState.open({ color: 'error', text: 'キャプチャを保存できませんでした。映像や保存先を確認してください。' });
         }
@@ -1956,6 +1980,10 @@ export default abstract class BaseVideo extends Vue {
      * DPlayer インスタンスを破棄する
      */
     protected destroyPlayer(preserveRecordedJikkyo: boolean = false): void {
+        this.isCommentMuteDisposed = true;
+        window.removeEventListener('storage', this.onCommentMuteSettingsStorage);
+        window.removeEventListener('jikkyo-comment-mute-settings-updated', this.refreshCommentMuteSettings);
+        this.isCommentMuteListenerRegistered = false;
         // 非同期 teardown の間に video / canvas が DOM から外れる前に旧字幕 renderer を止める。
         // `this.dp` の現在個体だけを対象にし、画質切替で併存中の新個体には触れない。
         if (this.dp !== null) DPlayerEnhancer.hideAribb24Renderers(this.dp as any);
@@ -2352,6 +2380,7 @@ export default abstract class BaseVideo extends Vue {
     }
 
     public beforeUnmount(): void {
+        this.isBaseVideoUnmounted = true;
         window.removeEventListener('storage', this.onCommentMuteSettingsStorage);
         window.removeEventListener('jikkyo-comment-mute-settings-updated', this.refreshCommentMuteSettings);
         this.isCommentMuteListenerRegistered = false;
