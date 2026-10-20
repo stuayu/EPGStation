@@ -1661,6 +1661,9 @@ export default abstract class BaseVideo extends Vue {
      * DPlayer インスタンスを破棄する
      */
     protected destroyPlayer(preserveRecordedJikkyo: boolean = false): void {
+        // 非同期 teardown の間に video / canvas が DOM から外れる前に旧字幕 renderer を止める。
+        // `this.dp` の現在個体だけを対象にし、画質切替で併存中の新個体には触れない。
+        if (this.dp !== null) DPlayerEnhancer.hideAribb24Renderers(this.dp as any);
         this.playbackGeneration++;
         this.clearPlaybackBufferRecovery();
         this.qualityPanelResizeObserver?.disconnect();

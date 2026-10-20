@@ -8,6 +8,7 @@ import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import Util from '@/util/Util';
 import * as apid from '../../../api';
 import { OfflineDataBroadcastingParam, splitOfflineMpeg2Ranges } from '../../../src/util/OfflineUxUtil';
+import { captureInlineStyles, InlineStyleSnapshot, restoreInlineStyles } from '../../../src/util/InlineStyleSnapshot';
 
 // web-bml-worker.js は UMD のため、Vite の CJS interop と直接のブラウザー import の双方で
 // named export が見えるようにする。バンドル自体は Buffer/readable-stream を内包している。
@@ -85,6 +86,7 @@ export default class DataBroadcastingManager {
     private isDestroying = false;
     // 動画の要素が BML ブラウザ上に移動されているかどうか
     private isVideoElementMovedToBmlBrowser = false;
+    private movedElementStyles: InlineStyleSnapshot | null = null;
     // 初回の d ボタン (データ放送の表示) を自動送出済みかどうか
     private hasSentInitialDataButton = false;
 
@@ -485,9 +487,12 @@ export default class DataBroadcastingManager {
      */
     private moveVideoElementToBmlBrowser(): void {
         if (this.isDestroying === true || this.bmlBrowser === null) return;
+        if (this.isVideoElementMovedToBmlBrowser === true) return;
 
         const videoElement = this.bmlBrowser.getVideoElement();
         if (videoElement === null) return; // 現在データ放送に映像が表示されていない
+
+        this.movedElementStyles = captureInlineStyles([this.mediaElement, ...(Array.from(this.mediaElement.children) as HTMLElement[])]);
 
         // ダミーで渡した p 要素があれば削除
         if (videoElement.firstElementChild instanceof HTMLParagraphElement) {
@@ -547,22 +552,9 @@ export default class DataBroadcastingManager {
             this.player.template.videoWrap.insertBefore(this.mediaElement, this.containerElement.nextElementSibling);
         }
 
-        this.mediaElement.style.width = '';
-        this.mediaElement.style.height = '';
-        for (const child of Array.from(this.mediaElement.children)) {
-            (child as HTMLElement).style.display = '';
-            (child as HTMLElement).style.visibility = '';
-            if (child instanceof HTMLVideoElement) {
-                child.style.width = '';
-                child.style.height = '';
-            }
-            if (child instanceof HTMLCanvasElement) {
-                child.style.transform = '';
-                child.style.transformOrigin = '';
-            }
-        }
-        this.mediaElement.style.transform = '';
-        this.mediaElement.style.transformOrigin = '';
+        if (this.movedElementStyles !== null)
+            restoreInlineStyles(this.movedElementStyles, [this.mediaElement, ...(Array.from(this.mediaElement.children) as HTMLElement[])]);
+        this.movedElementStyles = null;
 
         this.isVideoElementMovedToBmlBrowser = false;
     }
