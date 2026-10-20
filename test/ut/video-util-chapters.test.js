@@ -389,3 +389,75 @@ test('ffprobeTimeout は秒で受け取り、未指定・不正値は既定 30 �
     assert.equal(build({ ffprobeTimeout: -5 }).getFfprobeTimeoutMs(), 30000);
     assert.equal(build({ ffprobeTimeout: 'x' }).getFfprobeTimeoutMs(), 30000);
 });
+
+test('CM 検出は ffmpeg の終了コード1を失敗として扱い、成果物を書かない', async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'epgstation-cm-failure-'));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const videoPath = path.join(directory, 'broken.ts');
+    const childProcess = require('node:child_process');
+    const originalSpawn = childProcess.spawn;
+    childProcess.spawn = (_command, args) => {
+        const child = new (require('node:events').EventEmitter)();
+        child.stdout = new (require('node:stream').PassThrough)();
+        child.stderr = new (require('node:stream').PassThrough)();
+        child.kill = () => {};
+        setImmediate(() => {
+            if (args.includes('-show_chapters')) {
+                child.stdout.end(JSON.stringify({ chapters: [] }));
+                child.emit('close', 0);
+            } else {
+                child.stderr.end('Duration: 00:01:00.00\ninvalid audio stream');
+                child.emit('close', 1);
+            }
+        });
+        return child;
+    };
+    try {
+        const model = new CmDetectionManageModel(
+            { getLogger: () => ({ system: { info() {}, warn() {}, error() {} } }) },
+            { getConfig: () => ({ cmDetection: { enabled: true }, ffmpeg: 'ffmpeg', ffprobe: 'ffprobe' }) },
+            { add: task => task() },
+            { findId: async () => ({ type: 'ts' }) },
+            { getFullFilePathFromId: async () => videoPath },
+        );
+        await assert.rejects(model.detect(1), /process exited 1/);
+        assert.equal(fs.existsSync(ChapterFileUtil.getChapterFilePath(videoPath)), false);
+        assert.equal(fs.existsSync(path.join(directory, 'broken.cm-detection.json')), false);
+    } finally {
+        childProcess.spawn = originalSpawn;
+    }
+});
+
+test('無音区間もCMも無い場合は判定JSONだけを書き、チャプターを作らない', async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'epgstation-cm-empty-'));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const videoPath = path.join(directory, 'quiet.ts');
+    const childProcess = require('node:child_process');
+    const originalSpawn = childProcess.spawn;
+    childProcess.spawn = (_command, args) => {
+        const child = new (require('node:events').EventEmitter)();
+        child.stdout = new (require('node:stream').PassThrough)();
+        child.stderr = new (require('node:stream').PassThrough)();
+        child.kill = () => {};
+        setImmediate(() => {
+            if (args.includes('-show_chapters')) child.stdout.end(JSON.stringify({ chapters: [] }));
+            else child.stderr.end('Duration: 00:01:00.00');
+            child.emit('close', 0);
+        });
+        return child;
+    };
+    try {
+        const model = new CmDetectionManageModel(
+            { getLogger: () => ({ system: { info() {}, warn() {}, error() {} } }) },
+            { getConfig: () => ({ cmDetection: { enabled: true }, ffmpeg: 'ffmpeg', ffprobe: 'ffprobe' }) },
+            { add: task => task() },
+            { findId: async () => ({ type: 'ts' }) },
+            { getFullFilePathFromId: async () => videoPath },
+        );
+        await model.detect(1);
+        assert.equal(fs.existsSync(ChapterFileUtil.getChapterFilePath(videoPath)), false);
+        assert.equal(fs.existsSync(path.join(directory, 'quiet.cm-detection.json')), true);
+    } finally {
+        childProcess.spawn = originalSpawn;
+    }
+});

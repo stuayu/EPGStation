@@ -47,6 +47,13 @@ test('http: socketioPort の指定が無ければ専用ポート扱いにしな�
     assert.equal(result.useDedicatedSocketIOPort, false);
 });
 
+test('config API は CM 検出の有効状態を公開する', async () => {
+    const enabled = await createModel({ ...baseConfig, cmDetection: { enabled: true } }).getConfig(false, 8888);
+    const disabled = await createModel({ ...baseConfig, cmDetection: { enabled: false } }).getConfig(false, 8888);
+    assert.deepEqual(enabled.cmDetection, { enabled: true });
+    assert.deepEqual(disabled.cmDetection, { enabled: false });
+});
+
 test('config API は起動時に検出したハードウェアエンコーダを返す', async () => {
     const result = await createModel(baseConfig, {
         getResult: () => ({ configured: 'auto', selected: 'videotoolbox', available: ['videotoolbox', 'software'] }),
