@@ -31,6 +31,7 @@
                                 <v-icon v-else class="reserve-icon">mdi-timer-outline</v-icon>
                                 {{ reserve.display.name }}
                                 <div v-if="isMobile === true" class="text-caption text-medium-emphasis">{{ reserve.display.channelName }}</div>
+                                <div v-if="formatEstimatedSize(reserve.reserveItem.estimatedSize) !== null" class="text-caption text-medium-emphasis">{{ formatEstimatedSize(reserve.reserveItem.estimatedSize) }}</div>
                                 <ReserveScheduleStatus :reserveItem="reserve.reserveItem" class="d-block mt-1"></ReserveScheduleStatus>
                             </td>
                             <td v-if="isMobile === false">{{ reserve.display.description }}</td>
@@ -51,6 +52,7 @@ import ReserveDialog from '@/components/reserves/ReserveDialog.vue';
 import ReserveMenu from '@/components/reserves/ReserveMenu.vue';
 import ReserveScheduleStatus from '@/components/reserves/ReserveScheduleStatus.vue';
 import { ReserveStateData } from '@/model/state/reserve/IReserveStateUtil';
+import EstimatedSizeUtil from '@/util/EstimatedSizeUtil';
 import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
 
 @Component({
@@ -61,6 +63,10 @@ import { Component, Prop, Vue, toNative } from 'vue-facing-decorator';
     },
 })
 class ReservesTableItems extends Vue {
+    public formatEstimatedSize(size: number | undefined): string | null {
+        return EstimatedSizeUtil.format(size);
+    }
+
     // スマホ・タブレットでは放送局・内容列を隠し、番組名の下にまとめて表示する
     get isMobile(): boolean {
         return this.$vuetify.display.smAndDown;

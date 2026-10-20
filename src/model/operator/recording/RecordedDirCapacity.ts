@@ -168,3 +168,72 @@ export const selectRecordedDir = (candidates: DirCandidate[], requiredBytes: num
 
     return { dir: best.dir, reason: 'insufficient', freeBytes: best.freeBytes };
 };
+
+export interface CapacitySimulationReserve {
+    id: number;
+    name?: string;
+    startAt: number;
+    endAt: number;
+    channelType: string;
+    isSkip?: boolean;
+    isConflict?: boolean;
+    plannedTunerIndex?: number | null;
+    startMarginMs?: number;
+    endMarginMs?: number;
+    parentDirectoryName?: string | null;
+}
+
+export interface CapacitySimulationResult {
+    reservedEstimatedSize: Record<string, number>;
+    firstInsufficientReserve: { id: number; startAt: number; dirName: string } | null;
+    firstInsufficientReserveByDir: Record<string, { id: number; startAt: number; name: string }>;
+}
+
+/**
+ * 予約順に保存先を割り当て、空き容量を消費する純粋シミュレーション。
+ * 録画開始時と同じ selectRecordedDir を使う。
+ * @param reserves: CapacitySimulationReserve[] 開始時刻順
+ * @param dirs: DirCandidate[] 優先順の保存先
+ * @param config: StorageFallbackConfig 見積もり設定
+ * @return CapacitySimulationResult
+ */
+export const simulateRecordedDirCapacity = (
+    reserves: CapacitySimulationReserve[],
+    dirs: DirCandidate[],
+    config: StorageFallbackConfig,
+): CapacitySimulationResult => {
+    const remaining = dirs.map(candidate => ({ ...candidate }));
+    const reservedEstimatedSize: Record<string, number> = Object.fromEntries(dirs.map(c => [c.dir.name, 0]));
+    let firstInsufficientReserve: CapacitySimulationResult['firstInsufficientReserve'] = null;
+    const firstInsufficientReserveByDir: CapacitySimulationResult['firstInsufficientReserveByDir'] = {};
+
+    for (const reserve of [...reserves].sort((a, b) => a.startAt - b.startAt)) {
+        if (reserve.isSkip === true || reserve.isConflict === true) continue;
+        const durationMs = Math.max(
+            0,
+            reserve.endAt - reserve.startAt + Math.max(0, reserve.startMarginMs ?? 0) + Math.max(0, reserve.endMarginMs ?? 0),
+        );
+        const size = estimateRecordingBytes(durationMs, reserve.channelType, config);
+        const preferredIndex = reserve.parentDirectoryName
+            ? remaining.findIndex(candidate => candidate.dir.name === reserve.parentDirectoryName)
+            : -1;
+        const candidates =
+            preferredIndex > 0
+                ? [remaining[preferredIndex], ...remaining.filter((_, index) => index !== preferredIndex)]
+                : remaining;
+        const selection = selectRecordedDir(config.enabled === false ? candidates.slice(0, 1) : candidates, size);
+        if (selection === null) continue;
+        const name = selection.dir.name;
+        reservedEstimatedSize[name] = (reservedEstimatedSize[name] ?? 0) + size;
+        if (selection.reason === 'insufficient' && firstInsufficientReserve === null) {
+            firstInsufficientReserve = { id: reserve.id, startAt: reserve.startAt, dirName: name };
+        }
+        if (selection.reason === 'insufficient' && typeof firstInsufficientReserveByDir[name] === 'undefined') {
+            firstInsufficientReserveByDir[name] = { id: reserve.id, startAt: reserve.startAt, name: reserve.name ?? '' };
+        }
+        const target = remaining.find(candidate => candidate.dir.path === selection.dir.path);
+        if (target?.freeBytes !== null && typeof target?.freeBytes === 'number') target.freeBytes = Math.max(0, target.freeBytes - size);
+    }
+
+    return { reservedEstimatedSize, firstInsufficientReserve, firstInsufficientReserveByDir };
+};

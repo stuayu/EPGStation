@@ -76,6 +76,7 @@ class RecordingUtilModel implements IRecordingUtilModel {
 
     /**
      * 予想録画サイズに対して空き容量が足りない場合、次の優先順位の録画先へ振り替える。
+     * 表示用の見積もりはマージンと未定番組の実効終了時刻を含むが、録画時の選択は reserve.endAt - reserve.startAt で見積もる。
      *
      * 録画を始めてから ENOSPC になると 0 バイトのファイルと失敗した録画情報しか残らず、
      * リトライしても同じディレクトリへ書きに行くため復旧しない。開始前に振り替える。

@@ -6,6 +6,7 @@ const {
     estimateRecordingBytes,
     resolveStorageFallbackConfig,
     selectRecordedDir,
+    simulateRecordedDirCapacity,
 } = require('../../dist/model/operator/recording/RecordedDirCapacity');
 
 const GB = 1024 * 1024 * 1024;
@@ -149,4 +150,48 @@ test('ビットレートを上書きすると放送種別によらずその値�
     const bs = estimateRecordingBytes(60 * 60 * 1000, 'BS', c);
     assert.equal(gr, bs);
     assert.equal(gr, Math.round((60 * 60 * 8_000_000) / 8));
+});
+
+test('保存先容量シミュレーションは順次割当し、除外予約を飛ばして最初の不足を返す', () => {
+    const config = noMargin({ overrideBitrate: 8_000_000 });
+    const dirs = [
+        { dir: dir('A'), freeBytes: 15_000_000 },
+        { dir: dir('B'), freeBytes: 6_000_000 },
+    ];
+    const result = simulateRecordedDirCapacity(
+        [
+            { id: 3, startAt: 30_000, endAt: 40_000, channelType: 'GR', plannedTunerIndex: 0 },
+            { id: 5, startAt: 40_000, endAt: 50_000, channelType: 'GR', plannedTunerIndex: 1 },
+            { id: 2, startAt: 20_000, endAt: 30_000, channelType: 'GR', isConflict: true },
+            { id: 4, startAt: 40_000, endAt: 50_000, channelType: 'GR', isSkip: true },
+        ],
+        dirs,
+        config,
+    );
+    assert.deepEqual(result.firstInsufficientReserve, { id: 5, startAt: 40_000, dirName: 'B' });
+    assert.deepEqual(result.firstInsufficientReserveByDir, { B: { id: 5, startAt: 40_000, name: '' } });
+    assert.equal(result.reservedEstimatedSize.A, 10_000_000);
+    assert.equal(result.reservedEstimatedSize.B, 10_000_000);
+    assert.equal(result.reservedEstimatedSize.B, 10_000_000);
+    assert.deepEqual(dirs.map(d => d.freeBytes), [15_000_000, 6_000_000], '入力候補は変更しない');
+});
+
+test('legacy の null チューナー予約も容量見込みへ含め、最初の不足予約名を返す', () => {
+    const result = simulateRecordedDirCapacity(
+        [{ id: 7, name: 'legacy番組', startAt: 100, endAt: 1100, channelType: 'GR', plannedTunerIndex: null }],
+        [{ dir: dir('A'), freeBytes: 1 }],
+        noMargin({ overrideBitrate: 8_000_000 }),
+    );
+    assert.equal(result.reservedEstimatedSize.A, 1_000_000);
+    assert.deepEqual(result.firstInsufficientReserveByDir, { A: { id: 7, startAt: 100, name: 'legacy番組' } });
+});
+
+test('保存先シミュレーションの見積もり長に予約マージンを含める', () => {
+    const result = simulateRecordedDirCapacity(
+        [{ id: 1, startAt: 100, endAt: 1100, channelType: 'GR', plannedTunerIndex: 1, startMarginMs: 500, endMarginMs: 1500 }],
+        [{ dir: dir('A'), freeBytes: 100_000_000 }],
+        noMargin({ overrideBitrate: 8_000_000 }),
+    );
+    assert.equal(result.reservedEstimatedSize.A, 3_000_000);
+    assert.equal(result.firstInsufficientReserve, null);
 });
