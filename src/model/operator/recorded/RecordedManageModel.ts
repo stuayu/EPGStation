@@ -1,4 +1,5 @@
 import { inject, injectable } from 'inversify';
+import * as fs from 'fs';
 import { mkdirp } from 'mkdirp';
 import * as path from 'path';
 import * as apid from '../../../../api';
@@ -441,6 +442,19 @@ class RecordedManageModel implements IRecordedManageModel {
                     } catch (moveError) {
                         this.log.system.warn(`failed to move CM detection sidecar: ${sidecarPath}`);
                         this.log.system.warn(moveError);
+                    }
+                }
+                if (
+                    sidecarPath === CmDetectionFileUtil.getEvidencePath(sourceVideoPath) &&
+                    fs.existsSync(destinationPath)
+                ) {
+                    try {
+                        const evidence = JSON.parse(await fs.promises.readFile(destinationPath, 'utf8'));
+                        evidence.videoFileName = path.basename(filePath);
+                        await fs.promises.writeFile(destinationPath, JSON.stringify(evidence, null, 2), 'utf8');
+                    } catch (error) {
+                        this.log.system.warn(`failed to update CM detection sidecar owner: ${destinationPath}`);
+                        this.log.system.warn(error);
                     }
                 }
             }
