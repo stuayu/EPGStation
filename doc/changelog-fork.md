@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- ffprobe の尺・ビットレート欠落で録画 TS の再生開始が失敗する問題を修正 → 2026-10-20
 - BML の映像要素スタイル復元、字幕 renderer の破棄時停止、端末別 NVRAM 受信機設定を追加 → 2026-10-20
 - NX-Jikkyo のライブコメント投稿と端末単位のコメントミュートを追加 → 2026-10-20
 - 予約一覧と保存先画面に推定録画容量と予約による空き容量の見通しを追加 → 2026-10-20
@@ -67,11 +68,18 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ## 2026-10-20
 
+### ffprobe の尺・ビットレート欠落時も録画 TS を先頭から配信
+
+ffprobe が `duration=N/A` / `bit_rate=N/A` を返す TS では開始 byte が NaN になり、再生位置 0 秒の配信でも `FileStreamSetError` になる問題を修正。`VideoUtil.getInfo()` は値を有限数として検証し、不明値を既存の流儀に合わせて 0 とする。ビットレートが無く尺とサイズがある場合は `size * 8 / duration` で補う。録画配信は保存済み VideoFile の尺・ビットレートを利用し、それも無い場合は再生位置にかかわらず先頭から読み、0 秒以外では warn を出す。
+
+本番実測: 録画 2 本で `GET /api/streams/recorded/<id>/hls?ss=0&mode=0` が 500 `FileStreamSetError`。ffprobe は両方 `nb_streams=11|duration=N/A|bit_rate=N/A`。probesize 100 MB では mpeg2video / aac / arib_caption を検出。修正後の同一ファイル実配信は未検証。
+
 ### 録画詳細の CM チャプター推定をタイトルバーのメニューへ集約
 
 再生ボタン横の独立ボタンを削除し、タイトルバー右上の既存メニューへ「CM チャプターを推定 (試験的)」を追加。メニューを開いたときだけ TS のチャプター有無を問い合わせる。TS が1本なら即時依頼し、複数ならスマホで全画面になる選択ダイアログを表示する。409 の機能無効と既存チャプター、400 の TS 以外を日本語で案内する。
 
 実装: `client/src/components/recorded/detail/RecordedDetailMoreButton.vue`、`client/src/views/RecordedDetail.vue`。
+
 ### BML・ARIB 字幕の破棄処理と受信機設定を改善
 
 データ放送表示中に移動する DPlayer の video / canvas 要素について、BML が変更する style プロパティだけを保存・復元する。表示中に作り直された子要素も対象プロパティを解除し、プレイヤー側の他の style は維持する。プレイヤー破棄では対象 DPlayer の字幕・文字スーパー renderer を先に `hide()` し、画質切替で遅延破棄する場合も保持した旧 renderer だけを停止する。新プレイヤーの renderer は維持する。KonomiTV (MIT) `client/src/services/player/managers/LiveDataBroadcastingManager.ts` のスタイル退避方式と `9af9e808` の renderer 停止を参考にした。

@@ -11,6 +11,7 @@ import { normalizeStreamPlayPosition } from '../../../../util/StreamPlayPosition
 import IVideoUtil from '../../../api/video/IVideoUtil';
 import IRecordedDB from '../../../db/IRecordedDB';
 import IVideoFileDB from '../../../db/IVideoFileDB';
+import VideoFile from '../../../../db/entities/VideoFile';
 import IConfiguration from '../../../IConfiguration';
 import ILoggerModel from '../../../ILoggerModel';
 import IEncodeProcessManageModel, { CreateProcessOption } from '../../encode/IEncodeProcessManageModel';
@@ -223,7 +224,7 @@ export default abstract class RecordedStreamBaseModel
         this.processOption.playPosition = normalizeStreamPlayPosition(this.processOption.playPosition);
 
         // 開始時刻が動画の長さを超えている
-        if (this.processOption.playPosition > this.videoFileInfo.duration) {
+        if (this.videoFileInfo.duration > 0 && this.processOption.playPosition > this.videoFileInfo.duration) {
             throw new Error('OutOfRange');
         }
 
@@ -774,7 +775,7 @@ export default abstract class RecordedStreamBaseModel
         }
 
         // videoFileInfo セット
-        this.videoFileInfo = await this.getVideoInfo(this.videoFilePath);
+        this.videoFileInfo = await this.getVideoInfo(this.videoFilePath, video);
 
         this.videoFileType = video.type as apid.VideoFileType;
         if (this.sourceAnalyzer !== undefined) {
@@ -791,7 +792,7 @@ export default abstract class RecordedStreamBaseModel
      * @param filePath: string
      * @return Promise<VideoFileInfo>
      */
-    private getVideoInfo(filePath: string): Promise<VideoFileInfo> {
+    private getVideoInfo(filePath: string, video: VideoFile): Promise<VideoFileInfo> {
         return new Promise<VideoFileInfo>((resolve, reject) => {
             exec(`${this.config.ffprobe} -v 0 -show_format -show_streams -of json "${filePath}"`, (err, std) => {
                 if (err) {
@@ -800,14 +801,27 @@ export default abstract class RecordedStreamBaseModel
                     return;
                 }
                 const result = <any>JSON.parse(std);
+                const probeDuration = this.parseProbeNumber(result.format?.duration);
+                const probeSize = this.parseProbeNumber(result.format?.size);
+                const probeBitRate = this.parseProbeNumber(result.format?.bit_rate);
+                const duration = probeDuration ?? (Number.isFinite(video.duration) ? (video.duration ?? 0) : 0);
+                const size = probeSize ?? (Number.isFinite(Number(video.size)) ? Number(video.size) : 0);
+                const bitRate =
+                    probeBitRate !== null && probeBitRate > 0
+                        ? probeBitRate
+                        : Number.isFinite(video.bitRate) && (video.bitRate ?? 0) > 0
+                          ? video.bitRate
+                          : duration > 0 && size > 0
+                            ? (size * 8) / duration
+                            : 0;
 
                 const startTime = parseFloat(
                     result.streams?.find((stream: any) => stream.codec_type === 'video')?.start_time ?? '0',
                 );
                 resolve({
-                    duration: parseFloat(result.format.duration),
-                    size: parseInt(result.format.size, 10),
-                    bitRate: parseFloat(result.format.bit_rate),
+                    duration,
+                    size,
+                    bitRate: bitRate ?? 0,
                     startTime: Number.isFinite(startTime) ? startTime : 0,
                 });
             });
@@ -982,9 +996,15 @@ export default abstract class RecordedStreamBaseModel
             this.encodedSubtitleTransform = null;
         }
 
-        const estimatedStart = Math.floor((this.videoFileInfo.bitRate / 8) * this.processOption.playPosition);
+        const bitRate = Number.isFinite(this.videoFileInfo.bitRate) ? this.videoFileInfo.bitRate : 0;
+        const estimatedStart = bitRate > 0 ? Math.floor((bitRate / 8) * this.processOption.playPosition) : 0;
+        if (this.processOption.playPosition > 0 && bitRate <= 0) {
+            this.log.stream.warn(
+                `recorded stream bitrate unavailable; reading from start (videoFileId: ${this.processOption.videoFileId}, playPosition: ${this.processOption.playPosition}s)`,
+            );
+        }
         const start = calculateRecordedStreamStartByte(
-            this.videoFileInfo.bitRate,
+            bitRate,
             this.processOption.playPosition,
             this.videoFileInfo.size,
         );
@@ -1008,6 +1028,13 @@ export default abstract class RecordedStreamBaseModel
                 start: start,
             });
         }
+    }
+
+    private parseProbeNumber(value: unknown): number | null {
+        if (typeof value !== 'string' && typeof value !== 'number') return null;
+        if (value === '' || value === 'N/A') return null;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
     }
 
     /**
