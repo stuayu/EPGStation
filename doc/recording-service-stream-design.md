@@ -72,7 +72,7 @@ Mirakurun の `TSFilter` は EIT actual p/f (`table_id=0x4e`, `section_number=0`
 
 ### 2.3 実機で確認したこと
 
-2026-08-19 05:55 JST に `fuku-mirak.stuayu.com` で、06:00 開始番組の program stream を待機させたまま
+2026-08-19 05:55 JST に検証環境の Mirakurun 互換サーバで、06:00 開始番組の program stream を待機させたまま
 同一サービスの service stream を開始した。service stream は約 0.55 秒で TS を返したが、待機中の
 program stream は開始せず、05:57:43 にリバースプロキシの HTTP 524 で終了した。通常視聴 API の呼び出し自体が
 既存の番組フィルタを解除する挙動はこの環境では再現しなかった。一方、Mirakurun の program stream handler は
@@ -167,7 +167,7 @@ TS が到着した時点で伝送正常と判断できるため、EIT 待ち中�
 
 ### 5.1 時刻指定予約の開始境界
 
-時刻指定予約の `startAt` と、同じチャンネルの `ProgramDB.findSchedule()` が返す番組の `startAt` が前後2分以内なら番組境界予約とする。ProgramDB の `startAt` は `applyEitProgram` や Mirakurun の更新で EIT の値に上書きされることがある。判定は録画準備時 (開始ゲート設定時。既定では予約開始の約2分前) に一度だけ行う。準備時点で延長がすでに番組表へ反映され、開始時刻が予約時刻から2分を超えて離れていれば境界予約とは判定せず、開始ゲートは予約時刻で開始する。この場合、時刻指定予約の開始ゲートは soft timeout (最大60秒) で待ちを打ち切るため、前番組を録る量が増えても最大60秒となる。境界予約では前番組の延長中に待ち、following の開始時刻に達した時点で開始し、延長が続く場合は soft timeout を安全弁にする (最大60秒)。例えば区切りの1.5分前から録る予約は、開始が最大60秒遅れる。実測 (録画18589) では予定07:58:30に対して07:59:25に開始した (08:00開始番組の1.5分前を指定)。番組境界に一致しない時刻指定予約は、開始マージン到達で `timeSpecifiedMidProgram` として開始する。programId 予約の event_id 判定は変更しない。
+時刻指定予約の `startAt` と、同じチャンネルの `ProgramDB.findSchedule()` が返す番組の `startAt` が前後2分以内なら番組境界予約とする。ProgramDB の `startAt` は `applyEitProgram` や Mirakurun の更新で EIT の値に上書きされることがある。判定は録画準備時 (開始ゲート設定時。既定では予約開始の約2分前) に一度だけ行う。準備時点で延長がすでに番組表へ反映され、開始時刻が予約時刻から2分を超えて離れていれば境界予約とは判定せず、開始ゲートは予約時刻で開始する。この場合、時刻指定予約の開始ゲートは soft timeout (最大60秒) で待ちを打ち切るため、前番組を録る量が増えても最大60秒となる。境界予約では前番組の延長中に待ち、following の開始時刻に達した時点で開始し、延長が続く場合は soft timeout を安全弁にする (最大60秒)。例えば区切りの1.5分前から録る予約は、開始が最大60秒遅れる。実測 (録画) では予定07:58:30に対して07:59:25に開始した (08:00開始番組の1.5分前を指定)。番組境界に一致しない時刻指定予約は、開始マージン到達で `timeSpecifiedMidProgram` として開始する。programId 予約の event_id 判定は変更しない。
 
 ### 5.2 開始前の伝送失敗分類
 
@@ -342,10 +342,10 @@ Windows では録画ファイル名に日本語が含まれると、SSH 越し�
 
 ### 実測結果
 
-- 再接続 (録画18588): attempt 1 は0〜69,523,340 byte (`upstream-eof`)、attempt 2 は69,523,340〜409,816,124 byte (`scheduled-end`)。受信断584 ms。録画は1ファイルで188 byteの倍数。drop 11件 (つなぎ目の continuity counter 不連続)。
+- 再接続 (録画): attempt 1 は0〜69,523,340 byte (`upstream-eof`)、attempt 2 は69,523,340〜409,816,124 byte (`scheduled-end`)。受信断584 ms。録画は1ファイルで188 byteの倍数。drop 11件 (つなぎ目の continuity counter 不連続)。
 - つなぎ目: 212,765パケットで同期エラー0。PTS は放送局の時計で進み続け、巻き戻り・リセットなし (映像 +0.467秒、音声 +0.725秒)。デコードエラーはつなぎ目の一瞬だけで8件。
-- 再接続2回目 (録画18589、修正後): 受信断588 ms。DB に `recordingStatus: partial` / `endReason: scheduled-end` を保存。
-- 番組途中の時刻指定予約 (録画18590): 予定08:06:00、開始08:05:55 (`timeSpecifiedMidProgram`)。修正前は56秒遅れていた。
+- 再接続2回目 (録画、修正後): 受信断588 ms。DB に `recordingStatus: partial` / `endReason: scheduled-end` を保存。
+- 番組途中の時刻指定予約 (録画): 予定08:06:00、開始08:05:55 (`timeSpecifiedMidProgram`)。修正前は56秒遅れていた。
 - 追っかけ再生終了: 録画終了から約1.7秒で m2tsll 配信が停止。修正前は最大60秒待っていた。
 - NW 局予約: NW21 局の予約が `isConflict: false`。修正前は受け入れチューナーが0本で必ず競合していた。
 
