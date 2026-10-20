@@ -15,6 +15,7 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 
 ### 索引
 
+- クライアント設定を許可リスト方式でユーザー単位にサーバー同期 → 2026-10-20
 - NX-Jikkyo のライブコメント投稿と端末単位のコメントミュートを追加 → 2026-10-20
 - 予約一覧と保存先画面に推定録画容量と予約による空き容量の見通しを追加 → 2026-10-20
 - 録画 TS の無音区間から CM チャプターを推定する機能を追加 → 2026-10-20
@@ -65,6 +66,14 @@ stuayu フォークで加えた変更を**新しい順**に記録したもの。
 - Safari / tsreplace HEVC / AAC ADTS 偽同期対策 → 2026-09-16
 
 ## 2026-10-20
+
+### クライアント設定を許可リスト方式でユーザー単位にサーバー同期
+
+端末ごとに localStorage へ保存していた表示・実況などの設定を、任意でサーバーへ同期できるようにした。同期対象は `ClientSettingsSyncKeys.ts` の許可リストで管理し、画面サイズ・再生環境・端末固有 URL・サーバーパスなどは除外する。同期設定は端末ごとに既定 OFF。初回有効化時はサーバー設定を適用するか端末設定を送るか選べる。起動時と前面復帰時に pull、StorageModel の保存から 2 秒後に push し、更新競合はサーバー優先で解決する。他端末からの pull は再読み込みせず localStorage と一時値を更新し、通知する。テーマ色とダークテーマは即時適用。利用者がサーバー設定を選んだ場合だけ再読み込みし、視聴中は維持する。匿名共有枠は userId=0 の一意行としてトランザクション内で保存する。
+
+`ClientSetting` は認証ユーザーごとに保存し、認証無効・匿名時は共有枠を使う。匿名 PUT は拒否。設定 JSON は 256 KiB まで。SQLite / MySQL の migration、`GET/PUT /api/client-settings`、409 競合応答を追加。
+
+参照元: KonomiTV MIT `client/src/stores/SettingsStore.ts`、`server/app/routers/SettingsRouter.py`。実装: `client/src/model/storage/ClientSettingsSyncKeys.ts`、`ClientSettingsSyncModel.ts`、`src/db/entities/ClientSetting.ts`、`src/model/service/api/client-settings.ts`。
 
 ### 録画詳細の CM チャプター推定をタイトルバーのメニューへ集約
 

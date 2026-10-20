@@ -7,6 +7,7 @@ import IStorageOperationModel from './IStorageOperationModel';
  */
 @injectable()
 export default abstract class AbstractStorageBaseModel<T extends object> implements IStorageBaseModel<T> {
+    private static saveListener: ((storageKey: string) => void) | null = null;
     public tmp: T;
 
     private op: IStorageOperationModel;
@@ -50,9 +51,15 @@ export default abstract class AbstractStorageBaseModel<T extends object> impleme
     public save(): void {
         try {
             this.op.set(this.getStorageKey(), this.tmp);
+            AbstractStorageBaseModel.saveListener?.(this.getStorageKey());
         } catch (err) {
             console.error(err);
         }
+    }
+
+    /** 設定同期層から保存通知を登録する */
+    public static setSaveListener(listener: ((storageKey: string) => void) | null): void {
+        AbstractStorageBaseModel.saveListener = listener;
     }
 
     /**

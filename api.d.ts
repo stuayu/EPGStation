@@ -18,6 +18,14 @@ export type ThumbnailId = number;
 export type DropLogFileId = number;
 export type RecordedTagId = number;
 export type SavedSearchId = number;
+export interface ClientSettingsResponse {
+    settings: Record<string, unknown>;
+    updatedAt: UnixtimeMS;
+}
+export interface PutClientSettingsOption {
+    settings: Record<string, unknown>;
+    baseUpdatedAt: UnixtimeMS;
+}
 export type RecordingPresetId = number;
 export type EncodeId = number;
 export type ChannelType =

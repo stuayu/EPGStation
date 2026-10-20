@@ -290,6 +290,7 @@ duration 10 秒未満は中央候補1点とし、候補0件でも既存の thumb
 
 ### クライアント
 
+- **設定は端末ごとの localStorage が基本で、任意でサーバー同期できる**: `ClientSettingsSyncKeys.ts` の許可リストに含む表示・実況などの好みだけを同期する。同期スイッチは端末ごとに既定 OFF。サーバー保存値は認証ユーザー単位、認証無効・匿名時は共有枠。画面寸法・再生能力・端末 URL などは同期しない。起動時とタブ前面復帰時に取得し、設定保存を 2 秒デバウンスして送る。更新競合はサーバー値を採用する
 - **クラスフィールドのコールバックの `this` は Vue インスタンスではない**: `vue-facing-decorator` はフィールドの初期値を data 用の一時インスタンスから集めるため、`private xxxCallback = ((): void => { ... }).bind(this)` の中から `this.watchParam` のようなデータを読むと初期値しか見えない (**メソッドだけが Vue インスタンスへ束縛される**)。**`this.xxxState` もリアクティブなプロキシではなくなる**ので、state を書き換えても再描画が起きない (データは新しいのに画面が古いまま)。**コールバックからメソッドを呼ぶだけでは直らない** — 呼ばれた側の `this` も一時インスタンスのままになる。socket.io の購読は**フィールドを挟まずメソッドをそのまま渡す** (`this.socketIoModel.onUpdateState(this.onUpdateStatus)`)
 - **番組表 (`Guide.vue`) のセルは手組み DOM**: `GuideState.createProgramDoms()` が作った DOM を `renderProgramDoms()` で流し込む。データを取り直したら**両方**呼ばないと画面が古いまま (可視判定の `updateVisible()` も `renderProgramDoms()` の末尾で走る)
 - **色は Vuetify 3 以降のクラス名で書く**: 背景色は `bg-success` / `bg-grey-darken-3` のように `bg-` が要る (Vuetify 2 の `success` / `grey darken-3` は無効で、**黙って透明になる**)。`v-switch` / `v-progress-linear` は `color` 未指定だと `currentColor` (ほぼ黒) になるため、既定色を `plugins/vuetify.ts` の `defaults` で `appTheme` に寄せてある
