@@ -9,6 +9,7 @@ import Util from '@/util/Util';
 import * as apid from '../../../api';
 import { OfflineDataBroadcastingParam, splitOfflineMpeg2Ranges } from '../../../src/util/OfflineUxUtil';
 import { captureInlineStyles, InlineStyleSnapshot, restoreInlineStyles } from '../../../src/util/InlineStyleSnapshot';
+import { getBmlVideoMoveAction } from '../../../src/util/BmlVideoMoveAction';
 
 // web-bml-worker.js は UMD のため、Vite の CJS interop と直接のブラウザー import の双方で
 // named export が見えるようにする。バンドル自体は Buffer/readable-stream を内包している。
@@ -487,12 +488,23 @@ export default class DataBroadcastingManager {
      */
     private moveVideoElementToBmlBrowser(): void {
         if (this.isDestroying === true || this.bmlBrowser === null) return;
-        if (this.isVideoElementMovedToBmlBrowser === true) return;
-
         const videoElement = this.bmlBrowser.getVideoElement();
-        if (videoElement === null) return; // 現在データ放送に映像が表示されていない
+        const action = getBmlVideoMoveAction(
+            this.isVideoElementMovedToBmlBrowser,
+            videoElement?.contains(this.mediaElement) ?? false,
+            videoElement !== null,
+        );
+        if (action === 'none') return;
+        if (action === 'moveToDPlayer') {
+            this.moveVideoElementToDPlayer();
+            return;
+        }
+        if (videoElement === null) return;
 
-        this.movedElementStyles = captureInlineStyles([this.mediaElement, ...(Array.from(this.mediaElement.children) as HTMLElement[])]);
+        // 文書遷移後の再移動では BML 適用前の初回スナップショットを保つ
+        if (this.isVideoElementMovedToBmlBrowser === false) {
+            this.movedElementStyles = captureInlineStyles([this.mediaElement, ...(Array.from(this.mediaElement.children) as HTMLElement[])]);
+        }
 
         // ダミーで渡した p 要素があれば削除
         if (videoElement.firstElementChild instanceof HTMLParagraphElement) {

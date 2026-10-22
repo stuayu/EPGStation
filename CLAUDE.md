@@ -250,7 +250,7 @@ npm run test:ci        # ut + ita + itb
 - **DPlayer の画質メニューの高さは「開いた瞬間」に実座標から決める**。設定パネルはコントローラから上へ開くため、プレイヤーより高いパネルは画面の上へはみ出して上の項目が押せなくなる (実測: iPhone 14 Pro 393x660 でプレイヤー高 217px に対しパネル 294px、上端 y=-131、8 件中 3 件が画面外)。上限は `resolveQualityPanelMaxHeight()` が**パネル下端の実座標からビューポート上端まで**で決め、全項目が収まるなら必要な高さ以上には広げない (プレイヤー高だけで抑えると、プレイヤーが画面の下寄りにあって上に余地があるときまで縮めてしまう。実測: 1280x420 でプレイヤー高 356px のとき上限 290px となり、必要な 354px に届かず末尾 2 項目が押せなかった)。**計算は一覧を作った時点とリサイズ時だけでなく、メニューを開いた瞬間にも走らせる** — `.dplayer-setting-box` の `dplayer-setting-box-quality` クラスを `MutationObserver` で見て、付いた直後と `requestAnimationFrame` 後の 2 回測り直す (開く前の位置・項目数で計算した高さのままだと、開いたときの実際のレイアウトに合わない)。
 - **DPlayer の画質一覧は「配信方式 > 画質」の平坦な一覧**。一覧へ出す方式は `VideoContainer` が prop (`selectablePlaybackContainers`) で映像コンポーネントへ渡す — 子はシーク・画質切替のたびに `setPlaybackProfiles()` を呼び直すため、prop で持たせないと呼び直しのたびに一覧が現在の方式 1 つへ縮む。**`setPlaybackProfiles()` の `currentMode` には quality 配列の添字ではなく実際のサーバ mode を渡す** (添字を渡すと選択中の項目を取り違える)
 - **画質の表示名・一言説明・詳細・バッジは `client/src/util/PlaybackLabelUtil.ts` の 1 か所で決まる**。配信選択ダイアログ (`PlaybackQualityList` / `PlaybackQualityItem`) と DPlayer の設定メニュー (`BaseVideo.setPlaybackProfiles()`) の両方がここを通すため、新しい画質選択 UI を足すときもここを呼ぶ (別のラベル生成ロジックを作らない)
-- **BML ブラウザは映像要素を自分の中へ物理的に移動する**。`invisible` の切り替えと破棄時に元へ戻す処理を落とさない
+- **BML ブラウザは映像要素を自分の中へ物理的に移動する**。文書遷移では web-bml が古い body ごと外すため、新しい video object に映像要素があるか確認して移し直す。`invisible` の切り替えと破棄時に元へ戻す処理を落とさない
 - **データ放送の WebSocket は socket.io と同じサーバの `upgrade` に相乗りする**。パスが `<subDirectory>/api/dataBroadcasting/ws` 以外の socket には触らない (触ると socket.io のハンドシェイクが壊れる)
 
 ### シリーズ判定
