@@ -10,6 +10,15 @@ import * as apid from '../../../api';
 import { OfflineDataBroadcastingParam, splitOfflineMpeg2Ranges } from '../../../src/util/OfflineUxUtil';
 import { captureInlineStyles, InlineStyleSnapshot, restoreInlineStyles } from '../../../src/util/InlineStyleSnapshot';
 import { getBmlVideoMoveAction } from '../../../src/util/BmlVideoMoveAction';
+import { getBmlVideoResizeElements } from '../../../src/util/BmlVideoResizeElements';
+
+/** BML 移動時に style を書き換える要素: mediaElement、直下の子、video とそのラッパー (Deinterlacer 等) */
+const getBmlStyledElements = (mediaElement: HTMLElement): HTMLElement[] => {
+    const elements = new Set<HTMLElement>([mediaElement, ...(Array.from(mediaElement.children) as HTMLElement[])]);
+    const video = mediaElement.querySelector('video');
+    if (video !== null) for (const element of getBmlVideoResizeElements(mediaElement, video)) elements.add(element as HTMLElement);
+    return [...elements];
+};
 
 // web-bml-worker.js は UMD のため、Vite の CJS interop と直接のブラウザー import の双方で
 // named export が見えるようにする。バンドル自体は Buffer/readable-stream を内包している。
@@ -503,7 +512,7 @@ export default class DataBroadcastingManager {
 
         // 文書遷移後の再移動では BML 適用前の初回スナップショットを保つ
         if (this.isVideoElementMovedToBmlBrowser === false) {
-            this.movedElementStyles = captureInlineStyles([this.mediaElement, ...(Array.from(this.mediaElement.children) as HTMLElement[])]);
+            this.movedElementStyles = captureInlineStyles(getBmlStyledElements(this.mediaElement));
         }
 
         // ダミーで渡した p 要素があれば削除
@@ -518,9 +527,14 @@ export default class DataBroadcastingManager {
         for (const child of Array.from(this.mediaElement.children)) {
             (child as HTMLElement).style.display = 'block';
             (child as HTMLElement).style.visibility = 'visible';
-            if (child instanceof HTMLVideoElement) {
-                child.style.width = '100%';
-                child.style.height = '100%';
+        }
+        const mediaVideoElement = this.mediaElement.querySelector('video');
+        if (mediaVideoElement !== null) {
+            for (const element of getBmlVideoResizeElements(this.mediaElement, mediaVideoElement)) {
+                const target = element as HTMLElement;
+                target.style.width = '100%';
+                target.style.height = '100%';
+                target.style.display = 'block';
             }
         }
 
@@ -565,7 +579,7 @@ export default class DataBroadcastingManager {
         }
 
         if (this.movedElementStyles !== null)
-            restoreInlineStyles(this.movedElementStyles, [this.mediaElement, ...(Array.from(this.mediaElement.children) as HTMLElement[])]);
+            restoreInlineStyles(this.movedElementStyles, getBmlStyledElements(this.mediaElement));
         this.movedElementStyles = null;
 
         this.isVideoElementMovedToBmlBrowser = false;
