@@ -83,6 +83,15 @@ test('日跨ぎ時刻は選択曜日の翌日を評価する', () => {
     assert.equal(db.matchesTimes(tuesdayOneAm, option), true);
 });
 
+test('MySQL の時刻条件はセッションタイムゾーンに依存しない epoch 算術を使う', () => {
+    const db = createDb();
+    const query = { strs: [], param: {} };
+    db.setMinuteTimesQuery({ times: [{ week: 0x02, start: 23, startMinute: 30, range: 2 }] }, query, 'mysql');
+    assert.match(query.strs[0], /MOD\(FLOOR\(\(program\.startAt \+ 32400000\) \/ 86400000\) \+ 4, 7\)/);
+    assert.match(query.strs[0], /MOD\(FLOOR\(program\.startAt \/ 60000\) \+ 540, 1440\)/);
+    assert.doesNotMatch(query.strs[0], /FROM_UNIXTIME/);
+});
+
 test('ジャンル・放送局・時間帯の除外指定は一致条件全体を反転する', () => {
     const db = createDb();
     const genreQuery = { strs: [], param: {} };

@@ -821,11 +821,11 @@ export default class ProgramDB implements IProgramDB {
         // Minute-based ranges are translated to JST day/minute predicates, keeping full descriptions out of JS.
         const minute =
             databaseType === 'mysql'
-                ? 'HOUR(FROM_UNIXTIME(program.startAt / 1000 + 32400)) * 60 + MINUTE(FROM_UNIXTIME(program.startAt / 1000 + 32400))'
+                ? 'MOD(FLOOR(program.startAt / 60000) + 540, 1440)'
                 : "CAST(strftime('%H', datetime(program.startAt / 1000, 'unixepoch', '+9 hours')) AS INTEGER) * 60 + CAST(strftime('%M', datetime(program.startAt / 1000, 'unixepoch', '+9 hours')) AS INTEGER)";
         const day =
             databaseType === 'mysql'
-                ? 'DAYOFWEEK(FROM_UNIXTIME(program.startAt / 1000 + 32400)) - 1'
+                ? 'MOD(FLOOR((program.startAt + 32400000) / 86400000) + 4, 7)'
                 : "CAST(strftime('%w', datetime(program.startAt / 1000, 'unixepoch', '+9 hours')) AS INTEGER)";
         const clauses: string[] = [];
         let index = 0;
