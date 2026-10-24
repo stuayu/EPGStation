@@ -554,6 +554,7 @@ export default class SeriesDB implements ISeriesDB {
                 normalizedTitle: value.normalizedTitle,
                 channelId: value.channelId,
                 candidatesJson: JSON.stringify(value.candidates),
+                reason: value.reason ?? current?.reason ?? 'ambiguous',
                 createdAt: current?.createdAt ?? value.createdAt,
             }),
         );

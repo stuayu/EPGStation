@@ -186,7 +186,8 @@ export default class SeriesResolver implements ISeriesResolver {
         // 1. しょぼいカレンダーの放送予定 (放送局 + 放送開始時刻) を最優先で引く。
         // 局と時刻は「実際にその時間に何が放送されていたか」という事実なので、
         // タイトル文字列の照合 (含有・前方一致を許すため誤爆しうる) より確度が高い
-        const program = await this.lookupProgram(recording, trace);
+        const programResult = await this.lookupProgram(recording, trace);
+        const program = programResult.kind === 'available' ? programResult.program : null;
         const programLink = await this.resolveByProgram(recording, parsed, program, now, trace);
         if (programLink !== null) return programLink;
 
@@ -209,6 +210,13 @@ export default class SeriesResolver implements ISeriesResolver {
         if (aliasSeries !== null) {
             await this.db.deletePendingMatchByRecordedId(recording.recordedId);
             return await this.linkTo(recording, parsed, aliasSeries, 1, 'alias', now);
+        }
+
+        // 学習済みローカルエイリアスは上位参照先が落ちても利用できる。
+        // ただし未検出扱いで作品辞書・LLM・類似度へ進むと推測確定になるため、そこで保留する。
+        if (programResult.kind === 'unavailable') {
+            await this.deferForSourceUnavailable(recording, parsed.normalizedTitle, now, trace);
+            return null;
         }
 
         // 3. 作品辞書 (しょぼいカレンダー + Annict) で作品を確定させる。
@@ -283,6 +291,7 @@ export default class SeriesResolver implements ISeriesResolver {
                 channelId: recording.channelId,
                 candidates: ranked,
                 createdAt: now,
+                reason: 'ambiguous',
             });
             return null;
         }
@@ -314,7 +323,6 @@ export default class SeriesResolver implements ISeriesResolver {
         try {
             match = await this.workDictionary.lookup(recording.title, airedAt);
         } catch (err) {
-            // 辞書の不調でシリーズ化そのものを止めないよう、失敗時は従来の類似度判定へ委ねる
             this.trace(trace, {
                 step: 'workDictionary',
                 label: '作品辞書 (しょぼいカレンダー / Annict / Wikidata)',
@@ -322,6 +330,7 @@ export default class SeriesResolver implements ISeriesResolver {
                 output: `照会に失敗: ${err instanceof Error ? err.message : String(err)}`,
                 matched: false,
             });
+            await this.deferForSourceUnavailable(recording, parsed.normalizedTitle, now, trace);
             return null;
         }
         this.trace(trace, {
@@ -386,7 +395,20 @@ export default class SeriesResolver implements ISeriesResolver {
     ): Promise<RecordedSeriesLink | null> {
         if (program === null) return null;
 
-        const match = await this.workDictionary.findByIds({ syobocalTid: program.tid }).catch(() => null);
+        let match: WorkMatch | null;
+        try {
+            match = await this.workDictionary.findByIds({ syobocalTid: program.tid });
+        } catch (err) {
+            this.trace(trace, {
+                step: 'programMatch',
+                label: '放送予定の TID を作品辞書で引く',
+                input: `syobocalTid=${program.tid}`,
+                output: `照会に失敗: ${err instanceof Error ? err.message : String(err)}`,
+                matched: false,
+            });
+            await this.deferForSourceUnavailable(recording, parsed.normalizedTitle, now, trace);
+            return null;
+        }
         // 時刻ずれ・キー局の代用で別番組を拾った場合を弾く。
         // 録画タイトルと共通部分が皆無な作品名は取り違えとみなし、後続の判定へ委ねる
         const plausible = match === null ? false : isPlausibleProgramTitle(recording.title, match.title);
@@ -603,7 +625,7 @@ export default class SeriesResolver implements ISeriesResolver {
     private async lookupProgram(
         recording: SeriesRecordingInput,
         trace?: SeriesResolveTrace,
-    ): Promise<SyobocalProgramMatch | null> {
+    ): Promise<{ kind: 'available'; program: SyobocalProgramMatch | null } | { kind: 'unavailable' }> {
         const input = `channelId=${recording.channelId}, startAt=${new Date(recording.startAt).toLocaleString()}`;
         try {
             const result = await this.programLookup.lookup(recording.channelId, recording.startAt);
@@ -623,7 +645,7 @@ export default class SeriesResolver implements ISeriesResolver {
                 detail: program === null ? undefined : JSON.stringify(program),
             });
 
-            return program;
+            return result.unavailable === true ? { kind: 'unavailable' } : { kind: 'available', program };
         } catch (err) {
             this.trace(trace, {
                 step: 'programLookup',
@@ -633,8 +655,44 @@ export default class SeriesResolver implements ISeriesResolver {
                 matched: false,
             });
 
-            return null;
+            return { kind: 'unavailable' };
         }
+    }
+
+    /** 上位辞書の取得失敗を「該当なし」と混同せず、後続の推測判定を止めて再試行待ちへ送る */
+    private async deferForSourceUnavailable(
+        recording: SeriesRecordingInput,
+        normalizedTitle: string,
+        now: number,
+        trace?: SeriesResolveTrace,
+    ): Promise<void> {
+        let candidates: { seriesId: number; seriesTitle: string; score: number }[] = [];
+        try {
+            candidates = (await this.db.findCandidates(normalizedTitle))
+                .map(series => ({
+                    seriesId: series.id,
+                    seriesTitle: series.title,
+                    score: scoreCandidate(normalizedTitle, series, recording.channelId),
+                }))
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 3);
+        } catch (err) {
+            this.trace(trace, {
+                step: 'pendingCandidates',
+                label: '再試行待ち候補の取得',
+                input: normalizedTitle,
+                output: `候補取得に失敗: ${err instanceof Error ? err.message : String(err)}`,
+                matched: false,
+            });
+        }
+        await this.db.upsertPendingMatch({
+            recordedId: recording.recordedId,
+            normalizedTitle,
+            channelId: recording.channelId,
+            candidates,
+            createdAt: now,
+            reason: 'source-unavailable',
+        });
     }
 
     /**

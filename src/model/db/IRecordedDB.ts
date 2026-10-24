@@ -24,6 +24,8 @@ export interface SeriesBackfillCandidateRow {
 export interface SeriesBackfillFilter {
     // true の場合、まだシリーズへリンクされていない録画だけを対象にする
     onlyUnlinked?: boolean;
+    // true の場合、再試行待ちキューに登録された録画だけを対象にする
+    pendingOnly?: boolean;
     // この id 未満の録画は対象外にする (直近 N 件だけを対象にする際の下限)
     minId?: number;
     // 指定した場合、これらのシリーズにリンク済みの録画だけを対象にする

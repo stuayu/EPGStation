@@ -14,6 +14,8 @@ export interface SeriesBackfillOption {
     restart?: boolean;
     // true の場合、まだシリーズへリンクされていない録画だけを対象にする (ドライランでも有効)
     onlyUnlinked?: boolean;
+    // true の場合、参照元の一時障害などで未確定キューに残った録画だけを再判定する
+    pendingOnly?: boolean;
     // 指定した場合、直近 (id の新しい方から) この件数の録画だけを対象にする。
     // 一時的な部分実行なので実バックフィルの再開カーソルには影響しない
     latest?: number;

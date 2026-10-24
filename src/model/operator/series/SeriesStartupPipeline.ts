@@ -6,6 +6,7 @@ import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IAnnictWorkDictionary from '../../metadata/annict/IAnnictWorkDictionary';
 import ISyobocalTitleDictionary from '../../metadata/syobocal/ISyobocalTitleDictionary';
+import IWikidataProgramDictionary from '../../metadata/wikidata/IWikidataProgramDictionary';
 import ISeriesBackfillManageModel from './ISeriesBackfillManageModel';
 import ISeriesStartupPipeline from './ISeriesStartupPipeline';
 
@@ -28,6 +29,7 @@ export default class SeriesStartupPipeline implements ISeriesStartupPipeline {
     // バックフィルの進捗確認間隔と完了待ちの上限
     private static readonly BACKFILL_POLL_INTERVAL_MS = 30 * 1000;
     private static readonly BACKFILL_WAIT_MS = 6 * 60 * 60 * 1000;
+    private static readonly PENDING_RETRY_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
     private log: ILogger;
     private config: IConfigFile;
@@ -39,6 +41,7 @@ export default class SeriesStartupPipeline implements ISeriesStartupPipeline {
         @inject('IConfiguration') configuration: IConfiguration,
         @inject('ISyobocalTitleDictionary') private syobocal: ISyobocalTitleDictionary,
         @inject('IAnnictWorkDictionary') private annict: IAnnictWorkDictionary,
+        @inject('IWikidataProgramDictionary') private wikidata: IWikidataProgramDictionary,
         @inject('ISeriesBackfillManageModel') private backfill: ISeriesBackfillManageModel,
     ) {
         this.log = logger.getLogger();
@@ -65,7 +68,11 @@ export default class SeriesStartupPipeline implements ISeriesStartupPipeline {
     }
 
     private async run(): Promise<void> {
-        await this.waitForDictionaries();
+        if ((await this.waitForDictionaries()) === false) {
+            this.log.system.warn('series startup pipeline: skipped backfill because dictionary sync is incomplete or failed');
+            this.schedulePendingRetry();
+            return;
+        }
 
         const rescan = this.config.seriesStartup?.rescanUnlinked !== false;
         this.log.system.info(
@@ -75,14 +82,43 @@ export default class SeriesStartupPipeline implements ISeriesStartupPipeline {
         );
         await this.backfill.start(rescan === true ? { restart: true, onlyUnlinked: true } : {});
         await this.waitForBackfill();
+        this.schedulePendingRetry();
+    }
+
+    /** 参照元の一時障害で保留した録画を、辞書同期後に1日1回だけ再判定する */
+    private schedulePendingRetry(): void {
+        const timer = setTimeout(() => {
+            void this.retryPending().finally(() => this.schedulePendingRetry());
+        }, SeriesStartupPipeline.PENDING_RETRY_INTERVAL_MS);
+        if (typeof timer.unref === 'function') timer.unref();
+    }
+
+    private async retryPending(): Promise<void> {
+        if ((await this.waitForDictionaries()) === false) {
+            this.log.system.warn('series pending retry: skipped because dictionary sync is incomplete or failed');
+            return;
+        }
+        const [syobocal, annict, wikidata] = await Promise.all([
+            this.syobocal.getStatus(),
+            this.annict.getStatus(),
+            this.wikidata.getStatus(),
+        ]);
+        const errors = [syobocal.error, annict.error, wikidata.error].filter((error): error is string => error !== null);
+        if (errors.length > 0) {
+            this.log.system.warn(`series pending retry: skipped because dictionary sync failed (${errors.join('; ')})`);
+            return;
+        }
+        this.log.system.info('series pending retry: starting daily retry of queued recordings');
+        await this.backfill.start({ pendingOnly: true, onlyUnlinked: true, restart: true });
+        await this.waitForBackfill();
     }
 
     /**
      * 起動時の辞書自動同期 (しょぼいカレンダー + Annict) が終わるまで待つ。
      * 連携が無効な場合は running が立たないためすぐに抜ける
      */
-    private async waitForDictionaries(): Promise<void> {
-        if (isFeatureEnabled(this.config, 'metadataProviders') === false) return;
+    private async waitForDictionaries(): Promise<boolean> {
+        if (isFeatureEnabled(this.config, 'metadataProviders') === false) return true;
 
         const waitMs = this.positive(
             this.config.seriesStartup?.dictionaryWaitMs,
@@ -91,16 +127,20 @@ export default class SeriesStartupPipeline implements ISeriesStartupPipeline {
         const limit = Date.now() + waitMs;
         let waited = false;
         while (Date.now() < limit) {
-            const [syobocal, annict] = await Promise.all([this.syobocal.getStatus(), this.annict.getStatus()]);
-            if (syobocal.running === false && annict.running === false) {
+            const [syobocal, annict, wikidata] = await Promise.all([
+                this.syobocal.getStatus(),
+                this.annict.getStatus(),
+                this.wikidata.getStatus(),
+            ]);
+            if (syobocal.running === false && annict.running === false && wikidata.running === false) {
                 if (waited === true) this.log.system.info('series startup pipeline: dictionary sync finished');
-
-                return;
+                return syobocal.error === null && annict.error === null && wikidata.error === null;
             }
             waited = true;
             await this.sleep(SeriesStartupPipeline.DICTIONARY_POLL_INTERVAL_MS);
         }
-        this.log.system.warn('series startup pipeline: dictionary sync wait timed out. starting backfill anyway');
+        this.log.system.warn('series startup pipeline: dictionary sync wait timed out. deferring backfill');
+        return false;
     }
 
     /**

@@ -4130,6 +4130,7 @@ components:
                 - normalizedTitle
                 - channelId
                 - candidates
+                - reason
                 - createdAt
             properties:
                 id:
@@ -4146,6 +4147,11 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/SeriesPendingMatchCandidate'
+                reason:
+                    type: string
+                    enum:
+                        - ambiguous
+                        - source-unavailable
                 createdAt:
                     $ref: '#/components/schemas/UnixtimeMS'
 

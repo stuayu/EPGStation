@@ -2081,6 +2081,7 @@ export interface SeriesPendingMatchItem {
     normalizedTitle: string;
     channelId: ChannelId;
     candidates: SeriesPendingMatchCandidate[];
+    reason: 'ambiguous' | 'source-unavailable';
     createdAt: UnixtimeMS;
 }
 

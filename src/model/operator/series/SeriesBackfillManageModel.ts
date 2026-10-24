@@ -97,17 +97,18 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
 
         const dryRun = option.dryRun === true;
         const onlyUnlinked = option.onlyUnlinked === true;
+        const pendingOnly = option.pendingOnly === true;
         const latest = this.normalizeLatest(option.latest);
         const seriesIds = SeriesBackfillManageModel.normalizeSeriesIds(option.seriesIds);
         const chunkSize = this.normalizeChunkSize(option.chunkSize);
         const intervalMs = this.normalizeIntervalMs(option.intervalMs);
         // 直近 N 件・シリーズ指定の部分実行は一時的な用途なので、ドライランと同じく永続カーソルを汚さない
-        const persist = dryRun === false && latest === null && seriesIds === null;
+        const persist = dryRun === false && latest === null && seriesIds === null && pendingOnly === false;
         this.lastMode = persist ? 'real' : 'transient';
 
         // 直近 N 件だけを対象にする場合の下限 id (0 = 制限なし)
         const minId = latest === null ? 0 : await this.recordedDB.findSeriesBackfillFloorId(latest);
-        const filter: SeriesBackfillFilter = { onlyUnlinked: onlyUnlinked, minId: minId };
+        const filter: SeriesBackfillFilter = { onlyUnlinked: onlyUnlinked, pendingOnly, minId: minId };
         if (seriesIds !== null) filter.seriesIds = seriesIds;
 
         if (persist === true && option.restart === true) {
@@ -131,7 +132,7 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         status.seriesCount = seriesIds === null ? null : seriesIds.length;
         this.log.system.info(
             `series backfill: start (dryRun=${dryRun}, onlyUnlinked=${onlyUnlinked}, latest=${latest ?? 'なし'},` +
-                ` seriesIds=${seriesIds === null ? 'なし' : seriesIds.join(',')}, minId=${minId}, chunkSize=${chunkSize})`,
+            ` pendingOnly=${pendingOnly}, seriesIds=${seriesIds === null ? 'なし' : seriesIds.join(',')}, minId=${minId}, chunkSize=${chunkSize})`,
         );
         status.state = 'running';
         status.startedAt = status.startedAt ?? Date.now();
@@ -284,7 +285,7 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
                 if (dryRun) {
                     await this.previewChunk(rows, status);
                 } else {
-                    await this.processChunk(rows, status, filter.onlyUnlinked === true);
+                    await this.processChunk(rows, status, filter.onlyUnlinked === true || filter.pendingOnly === true);
                 }
 
                 status.lastRecordedId = rows[rows.length - 1].id;
@@ -399,7 +400,8 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
 
         // 実行時 (SeriesResolver) と同じく、しょぼいカレンダーの放送予定を最優先で引く。
         // これを省くとプレビューの「未確定」が実行では確定してしまい、結果が食い違う
-        const programMatch = await this.lookupByProgram(row);
+        const programResult = await this.lookupByProgram(row);
+        const programMatch = programResult.kind === 'matched' ? programResult.match : null;
         if (programMatch !== null) {
             const existing =
                 programMatch.syobocalTid === null
@@ -429,14 +431,22 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
             }
         }
 
+        // 実行時と同じく、放送予定照会が失敗した録画を作品タイトル推測で確定扱いにしない
+        if (programResult.kind === 'unavailable') {
+            return { matched: false, seriesId: null, seriesTitle: null, confidence: null, candidates: [] };
+        }
+
         // 実行時 (SeriesResolver) と同じく作品辞書を類似度スコアリングより先に引く
-        const dictionaryMatch = await Promise.resolve()
+        let dictionaryMatch: WorkMatch | null;
+        try {
             // resolve() と同じく、再放送でなければ放送日時を渡して続編の期を選び分ける
-            .then(
-                async () =>
-                    await this.workDictionary.lookup(row.name, parsed.airType === 'rerun' ? undefined : row.startAt),
-            )
-            .catch(() => null);
+            dictionaryMatch = await this.workDictionary.lookup(
+                row.name,
+                parsed.airType === 'rerun' ? undefined : row.startAt,
+            );
+        } catch {
+            return { matched: false, seriesId: null, seriesTitle: null, confidence: null, candidates: [] };
+        }
         if (dictionaryMatch !== null) {
             const existing =
                 dictionaryMatch.syobocalTid !== null
@@ -519,18 +529,22 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
      * @param row: SeriesBackfillCandidateRow
      * @return Promise<WorkMatch | null>
      */
-    private async lookupByProgram(row: SeriesBackfillCandidateRow): Promise<WorkMatch | null> {
+    private async lookupByProgram(
+        row: SeriesBackfillCandidateRow,
+    ): Promise<{ kind: 'matched'; match: WorkMatch } | { kind: 'none' } | { kind: 'unavailable' }> {
         try {
-            const program = (await this.programLookup.lookup(row.channelId, row.startAt)).match;
-            if (program === null) return null;
+            const result = await this.programLookup.lookup(row.channelId, row.startAt);
+            if (result.unavailable === true) return { kind: 'unavailable' };
+            const program = result.match;
+            if (program === null) return { kind: 'none' };
             const match = await this.workDictionary.findByIds({ syobocalTid: program.tid });
-            if (match === null) return null;
+            if (match === null) return { kind: 'none' };
             // 時刻ずれ・キー局の代用で別番組を拾った場合を弾く (SeriesResolver と同じ判定)
-            if (isPlausibleProgramTitle(row.name, match.title) === false) return null;
+            if (isPlausibleProgramTitle(row.name, match.title) === false) return { kind: 'none' };
 
-            return { ...match, confidence: programConfidence(program) };
+            return { kind: 'matched', match: { ...match, confidence: programConfidence(program) } };
         } catch {
-            return null;
+            return { kind: 'unavailable' };
         }
     }
 

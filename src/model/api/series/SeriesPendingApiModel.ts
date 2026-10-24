@@ -27,6 +27,7 @@ export default class SeriesPendingApiModel implements ISeriesPendingApiModel {
                 normalizedTitle: x.normalizedTitle,
                 channelId: x.channelId,
                 candidates: this.seriesDB.parsePendingCandidates(x.candidatesJson, `recordedId=${x.recordedId}`),
+                reason: x.reason ?? 'ambiguous',
                 createdAt: Number(x.createdAt),
             })),
             total,

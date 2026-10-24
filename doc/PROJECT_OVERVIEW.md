@@ -218,11 +218,12 @@ npm run recover-channel-name   # 過去の録画の放送局名を復元 (既定
 - **続編は放送時期で選び分ける**: 期表記の無い録画はタイトル照合だと第 1 期に当たるため、基本キーで全期をまとめ放送日時が入る期へ差し替える (再放送では放送日時を渡さない)
 - **総話数 (欠番検出)** は `ISeriesTotalEpisodes` が `series.totalEpisodes` → しょぼいカレンダー → Annict の順に解決する
 - **実行契機**: 録画完了・アップロード / 取り込み完了 (どちらも `EventSetter`)。手動はバックフィル (`POST /api/series/backfill`、全件 / `onlyUnlinked` / `latest`)、シリーズ単位 (`POST /api/series/reanalyze`)、1 件 (`POST /api/series/analyze/{recordedId}`)。`latest` と `seriesIds` は部分実行なので全件バックフィルの再開カーソルを動かさない
+- **一時障害時は推測で確定しない**: 放送予定または作品辞書の照会例外は `series_pending_match.reason='source-unavailable'` として保留し、エイリアス以降の推測経路へ進まない。正常応答の「該当なし」と区別する。Operator 起動時の未リンクバックフィル後、辞書同期を待って保留録画だけを24時間ごとに再試行する。手動確定・リンク済み録画は対象外。Annict / Wikidata に更新カーソルがないため、作品データ自体の日次差分同期ではなく、録画照合の再試行である
 - **判定過程はトレースできる**: `resolve(recording, trace?)` に収集器を渡すと各照会の入力と戻り値を記録する (1 件実行の結果はポップアップ + Operator のログ)
 - **表示名は辞書の正式タイトルへ同期する**: `SeriesMetadataFiller.fill()` が `series.title` と引き当てキー `normalizedTitle` を辞書名由来へ揃える (外部 ID あり・手動設定でない・寄せ先が未使用、の 3 条件を満たす場合のみ)。手動で付けた名前 (`titleSource: 'manual'`) は上書きしない
 - **誤生成の掃除**: 出所 (`SeriesListItem.origin`) は外部 ID の有無で `dictionary` / `local` を判定。一覧から複数選択して `POST /api/series/merge`、統合先は辞書起点を既定にする。エイリアスの誤学習は設定画面 > シリーズ管理タブから付け替え・削除できる (`source: 'manual'` になり自動学習で上書きされない)
 - **しょぼいカレンダーのコメント**は作品コメント (`series.comment`) と放送回コメント (`series_episode.comment`) の 2 種類。作品コメントは全件同期に含めず TID 指定で個別取得する (XML が 9.5MB → 24MB になるため)。表示は Wiki 記法を解析する `SyobocalWiki.ts` + `SyobocalComment.vue` を通す (**`v-html` は使わない**)
-- 同期は Operator 起動時 + しょぼいカレンダー 24h / Annict 7d / Wikidata 7d。アイキャッチ画像は Annict 由来で、`SeriesImageModel` がサーバ側でキャッシュして `GET /api/series/{seriesId}/image` で配る (取れない作品は録画サムネイルで代用)
+- 同期は Operator 起動時 + しょぼいカレンダー 24h (LastUpdate 差分) / Annict 7d / Wikidata 7d。Annict GraphQL に更新カーソルはなく、Wikidata は負荷と可用性の理由で広範な高頻度取得を避ける。アイキャッチ画像は Annict 由来で、`SeriesImageModel` がサーバ側でキャッシュして `GET /api/series/{seriesId}/image` で配る (取れない作品は録画サムネイルで代用)
 
 ### 録画サムネイル V1
 
