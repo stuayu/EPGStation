@@ -87,9 +87,23 @@ test('MySQL の時刻条件はセッションタイムゾーンに依存しな�
     const db = createDb();
     const query = { strs: [], param: {} };
     db.setMinuteTimesQuery({ times: [{ week: 0x02, start: 23, startMinute: 30, range: 2 }] }, query, 'mysql');
-    assert.match(query.strs[0], /MOD\(FLOOR\(\(program\.startAt \+ 32400000\) \/ 86400000\) \+ 4, 7\)/);
-    assert.match(query.strs[0], /MOD\(FLOOR\(program\.startAt \/ 60000\) \+ 540, 1440\)/);
+    assert.match(query.strs[0], /MOD\(\(\(program\.startAt \+ 32400000\) DIV 86400000\) \+ 4, 7\)/);
+    assert.match(query.strs[0], /MOD\(\(program\.startAt DIV 60000\) \+ 540, 1440\)/);
     assert.doesNotMatch(query.strs[0], /FROM_UNIXTIME/);
+});
+
+test('JST の分・曜日はミリ秒の境界で次の分・曜日へ正確に切り替わる', () => {
+    const minuteOfDay = startAt => Number((BigInt(startAt) / 60000n + 540n) % 1440n);
+    const weekday = startAt => Number(((BigInt(startAt) + 32400000n) / 86400000n + 4n) % 7n);
+    const lastMillisecondOfMinute = Date.UTC(2026, 9, 24, 14, 30, 59, 999);
+    const lastMillisecondOfSaturday = Date.UTC(2026, 9, 24, 14, 59, 59, 999);
+
+    assert.equal(minuteOfDay(lastMillisecondOfMinute), 23 * 60 + 30);
+    assert.equal(minuteOfDay(lastMillisecondOfMinute + 1), 23 * 60 + 31);
+    assert.equal(minuteOfDay(lastMillisecondOfSaturday), 23 * 60 + 59);
+    assert.equal(weekday(lastMillisecondOfSaturday), 6);
+    assert.equal(minuteOfDay(lastMillisecondOfSaturday + 1), 0);
+    assert.equal(weekday(lastMillisecondOfSaturday + 1), 0);
 });
 
 test('ジャンル・放送局・時間帯の除外指定は一致条件全体を反転する', () => {
