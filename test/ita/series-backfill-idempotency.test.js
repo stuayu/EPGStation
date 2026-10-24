@@ -105,6 +105,9 @@ function makeRecordedDB(rows) {
 }
 
 const config = { getConfig: () => ({ featureFlags: { seriesLibrary: true } }) };
+const workDictionary = { findByIds: async () => null, lookup: async () => null, lookupDelayed: async () => null };
+const programLookup = { lookup: async () => ({ match: null }) };
+const llmTitleExtractor = { isSuspended: () => false, isEnabled: () => false, extractWorkTitle: async () => null };
 
 // 実行時刻 (createdAt/updatedAt) は実行タイミングによって変わるため、構造の比較からは除外する
 function stripTimestamps(value) {
@@ -142,10 +145,10 @@ test('running the backfill twice over the same recordings does not change the re
     const seriesDB = makeInMemorySeriesDB();
     const settingsDB = makeSettingsDB();
     const recordedDB = makeRecordedDB(rows);
-    const resolver = new SeriesResolver(config, settingsDB, seriesDB, { dispatch: async () => {} });
+    const resolver = new SeriesResolver(config, settingsDB, seriesDB, { dispatch: async () => {} }, workDictionary, llmTitleExtractor, programLookup);
 
     // 1 回目の実行
-    const modelA = new SeriesBackfillManageModel(logger, recordedDB, seriesDB, settingsDB, resolver);
+    const modelA = new SeriesBackfillManageModel(logger, recordedDB, seriesDB, settingsDB, resolver, workDictionary, programLookup);
     await modelA.start({ chunkSize: 2, intervalMs: 0 });
     await waitUntil(async () => (await modelA.getStatus()).state === 'completed');
     const statusA = await modelA.getStatus();
@@ -163,7 +166,7 @@ test('running the backfill twice over the same recordings does not change the re
     // 2 回目の実行: 同じ録画集合に対してカーソルを 0 に戻して再度バックフィルする
     // (中断・再開が自由 = 何度実行しても同じ結果になる、という冪等性の検証)
     const settingsDB2 = makeSettingsDB();
-    const modelB = new SeriesBackfillManageModel(logger, recordedDB, seriesDB, settingsDB2, resolver);
+    const modelB = new SeriesBackfillManageModel(logger, recordedDB, seriesDB, settingsDB2, resolver, workDictionary, programLookup);
     await modelB.start({ chunkSize: 2, intervalMs: 0 });
     await waitUntil(async () => (await modelB.getStatus()).state === 'completed');
     const statusB = await modelB.getStatus();
@@ -189,8 +192,8 @@ test('running the backfill independently over two identical empty datasets produ
         const seriesDB = makeInMemorySeriesDB();
         const settingsDB = makeSettingsDB();
         const recordedDB = makeRecordedDB(makeRows());
-        const resolver = new SeriesResolver(config, settingsDB, seriesDB, { dispatch: async () => {} });
-        const model = new SeriesBackfillManageModel(logger, recordedDB, seriesDB, settingsDB, resolver);
+        const resolver = new SeriesResolver(config, settingsDB, seriesDB, { dispatch: async () => {} }, workDictionary, llmTitleExtractor, programLookup);
+        const model = new SeriesBackfillManageModel(logger, recordedDB, seriesDB, settingsDB, resolver, workDictionary, programLookup);
         await model.start({ chunkSize: 1, intervalMs: 0 });
         await waitUntil(async () => (await model.getStatus()).state === 'completed');
         return snapshot(seriesDB);

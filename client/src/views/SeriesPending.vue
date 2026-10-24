@@ -55,6 +55,7 @@ import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import ISeriesApiModel, { SeriesPendingMatchItem } from '@/model/api/series/ISeriesApiModel';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
+import { resolveSafePageOffset } from '../../../src/util/PaginationOffset';
 import { Component, Vue, toNative } from 'vue-facing-decorator';
 import * as apid from '../../../api';
 
@@ -76,7 +77,12 @@ class SeriesPendingView extends Vue {
     async load() {
         this.loading = true;
         try {
-            const x = await this.api.listPending(this.offset, this.limit);
+            let x = await this.api.listPending(this.offset, this.limit);
+            const safeOffset = resolveSafePageOffset(this.offset, this.limit, x.total);
+            if (safeOffset !== this.offset) {
+                this.offset = safeOffset;
+                x = await this.api.listPending(this.offset, this.limit);
+            }
             this.items = x.items;
             this.total = x.total;
         } catch (err) {

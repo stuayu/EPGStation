@@ -1,6 +1,7 @@
 import { EventEmitter2 } from 'eventemitter2';
 import { injectable } from 'inversify';
 import Util from '../../util/Util';
+import { waitForEventOrTimeout } from '../../../../src/util/ScrollPositionWait';
 import IScrollPositionState from './IScrollPositionState';
 
 interface History {
@@ -147,22 +148,12 @@ class ScrollPositionState implements IScrollPositionState {
 
     /**
      * vue router scrollBehavior() 内で使用される
-     * emitDoneGetData() が呼ばれるまで待つ
+     * emitDoneGetData() が呼ばれるか、timeout に達するまで待つ
      * @param timeout: number タイムアウト時間 (秒)
      *                 デフォルト値 5
      */
     public async onDoneGetData(timeout: number = 5): Promise<void> {
-        return new Promise<void>((reslove, reject) => {
-            const timer = setTimeout(() => {
-                this.event.removeAllListeners();
-                reject(new Error('ScrollPositionDataTimeout'));
-            }, timeout * 1000);
-
-            this.event.once(ScrollPositionState.DONE_GET_DATA_EVENT, () => {
-                clearTimeout(timer);
-                reslove();
-            });
-        });
+        await waitForEventOrTimeout(this.event, ScrollPositionState.DONE_GET_DATA_EVENT, timeout * 1000);
     }
 }
 

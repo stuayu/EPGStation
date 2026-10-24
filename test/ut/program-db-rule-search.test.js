@@ -64,6 +64,16 @@ test('あいまい検索はかな・半角カナ・空白と記号の差を吸�
     );
 });
 
+test('記号だけの fuzzy 検索語は無関係な番組に一致しない', () => {
+    const db = createDb();
+    const program = { name: 'ニュース', description: '', extended: '' };
+    assert.equal(db.matchFuzzyKeywords(program, { isFuzzy: true, keyword: '!!!', name: true }), false);
+    assert.equal(db.matchFuzzyKeywords(program, { isFuzzy: true, keyword: '', name: true }), true);
+    assert.equal(db.matchFuzzyKeywords(program, { isFuzzy: true, keyword: '   ', name: true }), true);
+    assert.equal(db.matchFuzzyKeywords(program, { isFuzzy: true, ignoreKeyword: '!!!', name: true }), true);
+    assert.equal(db.matchFuzzyKeywords(program, { isFuzzy: true, keyword: '!!!', ignoreKeywordMatch: 'any', name: true }), false);
+});
+
 test('日跨ぎ時刻は選択曜日の翌日を評価する', () => {
     const db = createDb();
     const option = { times: [{ week: 0x02, start: 23, range: 3 }] };
@@ -140,4 +150,23 @@ test('あいまい候補 SQL はひらがな・カタカナ・半角カナを候
         assert.match(query.strs[0], /fuzzyCandidate0/);
         assert.match(query.strs[0], /fuzzyCandidate1/);
     }
+});
+
+test('あいまい候補 SQL は Unicode の混在大文字小文字表記も候補に含める', () => {
+    const db = createDb();
+    const query = { strs: [], param: {} };
+    db.setFuzzyCandidateQuery({ isFuzzy: true, keyword: 'ÉTÉ', name: true }, query);
+    assert.ok(Object.values(query.param).some(value => value.includes('ÉTÉ')));
+    assert.ok(Object.values(query.param).some(value => value.includes('ÉTé')));
+    assert.ok(Object.values(query.param).some(value => value.includes('éTÉ')));
+    assert.ok(Object.values(query.param).some(value => value.includes('éTé')));
+});
+
+test('あいまい候補の Unicode 変化形が総上限を超える場合は SQL 絞り込みを省略する', () => {
+    const db = createDb();
+    const query = { strs: [], param: {} };
+    db.setFuzzyCandidateQuery({ isFuzzy: true, keyword: 'テストΑΒΓΔΕΖΗ', name: true }, query);
+
+    assert.deepEqual(query.strs, []);
+    assert.equal(Object.keys(query.param).some(key => key.startsWith('fuzzyCandidate')), false);
 });

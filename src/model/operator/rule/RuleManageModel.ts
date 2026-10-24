@@ -9,8 +9,7 @@ import IRuleManageModel from './IRuleManageModel';
 
 @injectable()
 export default class RuleManageModel implements IRuleManageModel {
-    private isRunning: boolean = false;
-    private lockTimer: NodeJS.Timeout | undefined;
+    private operationQueue: Promise<void> = Promise.resolve();
 
     private log: ILogger;
     private optionChecker: IReserveOptionChecker;
@@ -35,27 +34,22 @@ export default class RuleManageModel implements IRuleManageModel {
      * @return Promise<apid.Rule>
      */
     public async add(rule: apid.AddRuleOption): Promise<apid.RuleId> {
-        this.lockExecution();
+        const ruleId = await this.runExclusive(async () => {
+            this.log.system.info('add rule');
 
-        this.log.system.info('add rule');
+            if (this.optionChecker.checkRuleOption(rule) === false) {
+                this.log.system.error('failed to add rule');
+                throw new Error('AddRuleError');
+            }
 
-        // check option
-        if (this.optionChecker.checkRuleOption(rule) === false) {
-            this.unlockExecution();
-            this.log.system.error('failed to add rule');
-            throw new Error('AddRuleError');
-        }
-
-        let ruleId!: apid.RuleId;
-        try {
-            ruleId = await this.ruleDB.insertOnce(rule);
-        } catch (err: any) {
-            this.unlockExecution();
-            this.log.system.error('insert rule error');
-            this.log.system.error(err);
-        }
-
-        this.unlockExecution();
+            try {
+                return await this.ruleDB.insertOnce(rule);
+            } catch (err: any) {
+                this.log.system.error('insert rule error');
+                this.log.system.error(err);
+                throw err;
+            }
+        });
         this.log.system.info(`rule added successfully: ${ruleId}`);
 
         // 通知
@@ -69,38 +63,27 @@ export default class RuleManageModel implements IRuleManageModel {
      * @param rule: apid.Rule
      */
     public async update(rule: apid.Rule): Promise<void> {
-        this.lockExecution();
+        await this.runExclusive(async () => {
+            const oldRule = await this.ruleDB.findId(rule.id).catch(err => {
+                this.log.system.error(err);
+                throw err;
+            });
 
-        // rule が存在するか確認
-        const oldRule = await this.ruleDB.findId(rule.id).catch(err => {
-            this.unlockExecution();
-            this.log.system.error(err);
-            throw err;
+            if (oldRule === null) throw new Error('RuleIsNotFound');
+
+            this.log.system.info(`update rule: ${rule.id}`);
+            if (this.optionChecker.checkRuleOption(rule) === false) {
+                this.log.system.error('failed to update rule');
+                throw new Error('UpdateRuleError');
+            }
+
+            try {
+                await this.ruleDB.updateOnce(rule);
+            } catch (err: any) {
+                this.log.system.error(`update rule error: ${rule.id}`);
+                throw err;
+            }
         });
-
-        if (oldRule === null) {
-            this.unlockExecution();
-            throw new Error('RuleIsNotFound');
-        }
-
-        this.log.system.info(`update rule: ${rule.id}`);
-
-        // check option
-        if (this.optionChecker.checkRuleOption(rule) === false) {
-            this.unlockExecution();
-            this.log.system.error('failed to update rule');
-            throw new Error('UpdateRuleError');
-        }
-
-        // rule 更新
-        try {
-            await this.ruleDB.updateOnce(rule);
-        } catch (err: any) {
-            this.unlockExecution();
-            this.log.system.error(`update rule error: ${rule.id}`);
-            throw err;
-        }
-        this.unlockExecution();
         this.log.system.info(`rule updated successfully: ${rule.id}`);
 
         // 通知
@@ -112,19 +95,15 @@ export default class RuleManageModel implements IRuleManageModel {
      * @param ruleId: rule id
      */
     public async enable(ruleId: apid.RuleId): Promise<void> {
-        this.lockExecution();
-
-        this.log.system.info(`enable rule: ${ruleId}`);
-
-        try {
-            await this.ruleDB.enableOnce(ruleId);
-        } catch (err: any) {
-            this.unlockExecution();
-            this.log.system.error(`enable rule error: ${ruleId}`);
-            throw err;
-        }
-
-        this.unlockExecution();
+        await this.runExclusive(async () => {
+            this.log.system.info(`enable rule: ${ruleId}`);
+            try {
+                await this.ruleDB.enableOnce(ruleId);
+            } catch (err: any) {
+                this.log.system.error(`enable rule error: ${ruleId}`);
+                throw err;
+            }
+        });
         this.log.system.info(`rule enabled successfully: ${ruleId}`);
 
         // 通知
@@ -136,19 +115,15 @@ export default class RuleManageModel implements IRuleManageModel {
      * @param ruleId: rule id
      */
     public async disable(ruleId: apid.RuleId): Promise<void> {
-        this.lockExecution();
-
-        this.log.system.info(`disable rule: ${ruleId}`);
-
-        try {
-            await this.ruleDB.disableOnce(ruleId);
-        } catch (err: any) {
-            this.unlockExecution();
-            this.log.system.error(`disable rule error: ${ruleId}`);
-            throw err;
-        }
-
-        this.unlockExecution();
+        await this.runExclusive(async () => {
+            this.log.system.info(`disable rule: ${ruleId}`);
+            try {
+                await this.ruleDB.disableOnce(ruleId);
+            } catch (err: any) {
+                this.log.system.error(`disable rule error: ${ruleId}`);
+                throw err;
+            }
+        });
         this.log.system.info(`rule disabled successfully: ${ruleId}`);
 
         // 通知
@@ -160,19 +135,15 @@ export default class RuleManageModel implements IRuleManageModel {
      * @param ruleId: rule id
      */
     public async delete(ruleId: apid.RuleId): Promise<void> {
-        this.lockExecution();
-
-        this.log.system.info(`delete rule: ${ruleId}`);
-
-        try {
-            await this.ruleDB.deleteOnce(ruleId);
-        } catch (err: any) {
-            this.unlockExecution();
-            this.log.system.error(`delete rule error: ${ruleId}`);
-            throw err;
-        }
-
-        this.unlockExecution();
+        await this.runExclusive(async () => {
+            this.log.system.info(`delete rule: ${ruleId}`);
+            try {
+                await this.ruleDB.deleteOnce(ruleId);
+            } catch (err: any) {
+                this.log.system.error(`delete rule error: ${ruleId}`);
+                throw err;
+            }
+        });
         this.log.system.info(`rule deleted successfully: ${ruleId}`);
 
         // 通知
@@ -200,24 +171,19 @@ export default class RuleManageModel implements IRuleManageModel {
     }
 
     /**
-     * 実行権をロックする
+     * DB 操作を排他で直列実行する
      */
-    private lockExecution(): void {
-        if (this.isRunning === true) {
-            throw new Error('RuleManageModelIsRunning');
+    private async runExclusive<T>(operation: () => Promise<T>): Promise<T> {
+        const previous = this.operationQueue;
+        let release!: () => void;
+        this.operationQueue = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        await previous;
+        try {
+            return await operation();
+        } finally {
+            release();
         }
-        this.isRunning = false;
-
-        this.lockTimer = setTimeout(() => {
-            this.unlockExecution();
-        }, 1000 * 10);
-    }
-
-    /**
-     * 実行権の開放
-     */
-    private unlockExecution(): void {
-        this.isRunning = false;
-        clearTimeout(<any>this.lockTimer);
     }
 }

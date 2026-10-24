@@ -194,6 +194,20 @@ for (const scheduler of ['planner', 'legacy']) {
     }
 }
 
+test('fuzzy の Unicode 混在大文字小文字を使うルール検索から自動予約まで候補を失わない', async t => {
+    const h = await makeHarness('planner', 7, t);
+    await h.addProgram(20, { name: 'Été live', startAt: NOW + HOUR * 20, endAt: NOW + HOUR * 21 });
+    const fuzzyRuleId = await h.ruleDB.insertOnce({
+        isTimeSpecification: false,
+        searchOption: { keyword: 'ÉTÉ', name: true, isFuzzy: true },
+        reserveOption: { enable: true, avoidDuplicate: false, allowEndLack: true },
+    });
+    await h.model.updateRule(fuzzyRuleId);
+    const reserves = await h.reserveDB.findProgramIds([20]);
+    assert.equal(reserves.length, 1);
+    assert.equal(reserves[0].ruleId, fuzzyRuleId);
+});
+
 
 for (const scheduler of ['planner', 'legacy']) {
     for (const otherFirst of [false, true]) {

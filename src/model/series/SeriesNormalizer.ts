@@ -10,8 +10,10 @@ export interface SeriesParseResult {
     isSpecial: boolean;
 }
 // 話数に使われる漢数字 (「第壱話」「漆話」など)
-const KANJI_NUMERALS = '一二三四五六七八九十壱弐参肆伍陸漆捌玖拾百';
+const KANJI_NUMERALS = '一二三四五六七八九十壱弐参肆伍陸漆捌玖拾';
+const KANJI_NUMERALS_WITH_HUNDRED = `${KANJI_NUMERALS}百`;
 const KANJI_NUMERAL_VALUES: Readonly<Record<string, number>> = {
+    百: 100,
     一: 1,
     壱: 1,
     二: 2,
@@ -43,7 +45,8 @@ const EPISODE_WORD =
 const PARENTHESIZED_EPISODE = '[（(](?!(?:19|20)\\d{2}[)）])(\\d{1,4})[)）]';
 const EPISODE_PATTERNS = [
     new RegExp(`(?:第\\s*)?(\\d+(?:\\.\\d+)?)\\s*${EPISODE_COUNTER}`, 'u'),
-    new RegExp(`(?:第\\s*)?([${KANJI_NUMERALS}]+)\\s*${EPISODE_COUNTER}`, 'u'),
+    new RegExp(`第\\s*([${KANJI_NUMERALS_WITH_HUNDRED}]+)\\s*${EPISODE_COUNTER}`, 'u'),
+    new RegExp(`(?<![${KANJI_NUMERALS_WITH_HUNDRED}])(?:第\\s*)?([${KANJI_NUMERALS}]+)\\s*${EPISODE_COUNTER}`, 'u'),
     /[#＃♯]\s*(\d+(?:\.\d+)?)/u,
     new RegExp(`\\b${EPISODE_WORD}[ .:_-]*(\\d+(?:\\.\\d+)?)`, 'iu'),
     // 「その1」「その二」形式 (助数詞を持たない和風の話数表記)
@@ -60,7 +63,11 @@ const SPECIAL_PROGRAM_PATTERN =
 // タイトル末尾から「話数表記以降」をまるごと落とすためのパターン (サブタイトルも一緒に落ちる)
 const EPISODE_TAILS = [
     new RegExp(`(?:第\\s*)?\\d+(?:\\.\\d+)?\\s*${EPISODE_COUNTER}[\\s\\S]*$`, 'u'),
-    new RegExp(`(?:第\\s*)?[${KANJI_NUMERALS}]+\\s*${EPISODE_COUNTER}[\\s\\S]*$`, 'u'),
+    new RegExp(`第\\s*[${KANJI_NUMERALS_WITH_HUNDRED}]+\\s*${EPISODE_COUNTER}[\\s\\S]*$`, 'u'),
+    new RegExp(
+        `(?<![${KANJI_NUMERALS_WITH_HUNDRED}])(?:第\\s*)?[${KANJI_NUMERALS}]+\\s*${EPISODE_COUNTER}[\\s\\S]*$`,
+        'u',
+    ),
     /[#＃♯]\s*\d+(?:\.\d+)?[\s\S]*$/u,
     new RegExp(`\\b${EPISODE_WORD}[ .:_-]*\\d+(?:\\.\\d+)?[\\s\\S]*$`, 'iu'),
     // 「作品名 （８）」「アオアシ（１７）」のような括弧付き話数 (前の空白は無くてもよい)

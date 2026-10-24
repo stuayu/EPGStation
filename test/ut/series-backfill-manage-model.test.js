@@ -88,6 +88,7 @@ function makeTitleDictionary(match = null) {
         startAutoSync: () => {},
         lookup: async () => match,
         lookupEpisodeNumber: async () => null,
+        findByIds: async () => null,
         getStatus: async () => ({ titleCount: 0, lastUpdate: null, lastSyncedAt: null, running: false, error: null }),
     };
 }
@@ -99,6 +100,7 @@ function makeModel({ rows, seriesDB, settingsDB, resolver, titleDictionary, link
         settingsDB ?? makeSettingsDB(),
         resolver ?? makeResolver(),
         titleDictionary ?? makeTitleDictionary(),
+        { lookup: async () => ({ match: null }) },
     );
 }
 
