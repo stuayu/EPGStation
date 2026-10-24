@@ -161,6 +161,7 @@ class OfflineHevcVideo extends BaseVideo {
     public override setCurrentTime(time: number, resume?: boolean): void {
         if (this.dp === null) return;
         const position = normalizeOfflinePlaybackPosition(time, this.getDuration());
+        this.resetCmSkipStateForSeek(position);
         if (
             this.initialPositionPending !== null &&
             Math.abs(position - this.initialPositionPending) < 0.01 &&

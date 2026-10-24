@@ -31,7 +31,12 @@ import { isPlaybackGenerationCurrent } from '../../../../src/util/PlaybackGenera
 import { isValidPlaybackSyncPosition } from '../../../../src/util/PlaybackSyncPositionUtil';
 import { applyPlaybackSeekAction } from '../../../../src/util/PlaybackSeekIntentUtil';
 import { Deinterlacer } from 'mpeg2toh264/yadif';
-import { findCmSkipTarget, getCmBlocks } from '../../../../src/util/CmSkipUtil';
+import {
+    findCmSkipTarget,
+    getCmBlocks,
+    getCmHighlightRanges,
+    shouldResetSkippedCmBlocksOnSeek,
+} from '../../../../src/util/CmSkipUtil';
 import { isCaptureShortcut, isListedVideoShortcut, VIDEO_SHORTCUTS } from '../../../../src/util/VideoShortcutUtil';
 import { createCaptureCommentInstructions, createCaptureFilename, getCaptureLayerOrder, getCaptureScale, CaptureCompositionMode } from '../../../../src/util/CaptureUtil';
 
@@ -101,6 +106,9 @@ export default abstract class BaseVideo extends Vue {
     private chapters: apid.VideoChapter[] = []; // 再生中ファイルのチャプター (開始位置の昇順)
     private previousCmTime: number | null = null;
     private skippedCmBlocks: number[] = [];
+    private isCmAutoSkipSeeking = false;
+    private cmHighlightElements: HTMLElement[] = [];
+    private cmHighlightContainer: HTMLElement | null = null;
     private cmUndoTimer: number | null = null;
     private lastSkippedCm: { startAt: number; endAt: number } | null = null;
     private extraHotkeyHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -257,6 +265,7 @@ export default abstract class BaseVideo extends Vue {
         this.setupCmSkipMenu();
         this.setupExtraHotkeys();
         this.setupCmSkipUndo();
+        this.updateCmHighlights();
         this.setupScreenshotRequest();
         this.setupQualityPanelResize();
 
@@ -1517,6 +1526,7 @@ export default abstract class BaseVideo extends Vue {
         this.previousCmTime = null;
         this.skippedCmBlocks = [];
         this.lastSkippedCm = null;
+        this.updateCmHighlights();
     }
 
     /**
@@ -2208,6 +2218,7 @@ export default abstract class BaseVideo extends Vue {
     protected onTimeupdate(): void {
         const now = this.getCurrentTime();
         const dp = this.dp as any;
+        this.updateCmHighlights();
         const setting = container.get<ISettingStorageModel>('ISettingStorageModel').getSavedValue();
         if (setting.isEnableCmAutoSkip === true && dp?.options?.live !== true && dp?.video?.paused === false && this.chapters.length > 0) {
             const blocks = getCmBlocks(this.chapters);
@@ -2218,7 +2229,12 @@ export default abstract class BaseVideo extends Vue {
                     this.skippedCmBlocks.push(index);
                     this.lastSkippedCm = blocks[index];
                     this.previousCmTime = target;
-                    this.setCurrentTime(target, true);
+                    this.isCmAutoSkipSeeking = true;
+                    try {
+                        this.setCurrentTime(target, true);
+                    } finally {
+                        this.isCmAutoSkipSeeking = false;
+                    }
                     dp?.notice?.('CM をスキップしました', 3000);
                     this.showCmUndoButton();
                 }
@@ -2260,6 +2276,47 @@ export default abstract class BaseVideo extends Vue {
             button.style.display = 'none';
             this.lastSkippedCm = null;
         }, 5000);
+    }
+
+    /** 外部からのシークで CM の外へ移動したら、次の進入に備えて消費済み状態を解除する。 */
+    protected resetCmSkipStateForSeek(time: number): void {
+        if (
+            this.isCmAutoSkipSeeking === false &&
+            shouldResetSkippedCmBlocksOnSeek(time, getCmBlocks(this.chapters)) === true
+        ) {
+            this.skippedCmBlocks = [];
+        }
+    }
+
+    /** シークバーの CM 区間を赤く表示する。 */
+    private updateCmHighlights(): void {
+        const bar = (this.dp as any)?.template?.playedBarWrap as HTMLElement | undefined;
+        if (bar === undefined || bar === null) return;
+
+        const ranges = getCmHighlightRanges(getCmBlocks(this.chapters), this.getDuration());
+        if (this.cmHighlightContainer !== bar || this.cmHighlightElements.length !== ranges.length) {
+            this.cmHighlightElements.forEach(element => element.remove());
+            this.cmHighlightElements = [];
+            this.cmHighlightContainer = bar;
+            for (const _range of ranges) {
+                const element = document.createElement('div');
+                element.className = 'epgstation-cm-highlight';
+                element.setAttribute('aria-hidden', 'true');
+                element.style.cssText =
+                    'position:absolute;top:0;bottom:0;background:rgba(244,67,54,.58);border-radius:2px;pointer-events:none;z-index:2;';
+                bar.insertBefore(element, bar.firstChild);
+                this.cmHighlightElements.push(element);
+            }
+        }
+
+        const duration = this.getDuration();
+        if (duration <= 0) return;
+        ranges.forEach((range, index) => {
+            const element = this.cmHighlightElements[index];
+            if (element === undefined) return;
+            element.style.left = `${(range.startAt / duration) * 100}%`;
+            element.style.width = `${((range.endAt - range.startAt) / duration) * 100}%`;
+        });
     }
 
     /** 回線復帰時に未取得の実況過去ログを再取得する。 */
@@ -2477,6 +2534,8 @@ export default abstract class BaseVideo extends Vue {
         if (this.dp === null || isValidPlaybackSyncPosition(time) === false) {
             return;
         }
+
+        this.resetCmSkipStateForSeek(time);
 
         // 手動シーク・位置復元後は新しい基準位置を次の timeupdate で取り直す。
         // CM 内へ直接移動した操作を自動スキップと誤認しない。

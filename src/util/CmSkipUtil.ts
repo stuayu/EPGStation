@@ -30,6 +30,20 @@ export function getCmBlocks(chapters: apid.VideoChapter[]): CmBlock[] {
     return result;
 }
 
+/** 手動シークで CM ブロックの外へ出たら、次の進入時に再スキップできるよう消費状態を解除する。 */
+export function shouldResetSkippedCmBlocksOnSeek(position: number, blocks: CmBlock[]): boolean {
+    return !blocks.some(block => position >= block.startAt && position < block.endAt);
+}
+
+/** シークバー表示向けに CM 区間を動画尺へ収める。 */
+export function getCmHighlightRanges(blocks: CmBlock[], duration: number): CmBlock[] {
+    if (!Number.isFinite(duration) || duration <= 0) return [];
+    return blocks
+        .filter(block => block.startAt < duration && block.endAt > 0)
+        .map(block => ({ startAt: Math.max(0, block.startAt), endAt: Math.min(duration, block.endAt) }))
+        .filter(block => block.endAt > block.startAt);
+}
+
 /** 通常再生で CM ブロック開始を跨いだ場合だけ終端を返す。シーク判定は呼出側が抑止する。 */
 export function findCmSkipTarget(
     previousTime: number,

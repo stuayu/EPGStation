@@ -570,6 +570,8 @@ class RecordedHLSStreamingVideo extends BaseVideo {
             return;
         }
 
+        this.resetCmSkipStateForSeek(time);
+
         this.$emit('playbackTransition');
         this.beginRecordedJikkyoTransition();
         // エンコード済み範囲か

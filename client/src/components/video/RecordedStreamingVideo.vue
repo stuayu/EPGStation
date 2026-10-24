@@ -735,6 +735,8 @@ class RecordedStreamingVideo extends BaseVideo {
             return;
         }
 
+        this.resetCmSkipStateForSeek(time);
+
         this.$emit('playbackTransition');
         // シークバーの端をつかむと僅かに負の値が来る。負のまま進めると
         // basePlayPosition が負になり、サーバへ負の ss を要求してしまう
