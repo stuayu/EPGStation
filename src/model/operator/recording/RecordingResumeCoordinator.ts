@@ -2,6 +2,7 @@ import * as path from 'path';
 import { RecordingResumeInfo } from './IRecorderModel';
 import IConfigFile from '../../IConfigFile';
 import { countRecordingGaps } from './RecordingGapUtil';
+import { RecordingSessionState } from './RecordingSessionState';
 
 export interface RecordingResumePreparation {
     filePath: string;
@@ -20,13 +21,19 @@ export default class RecordingResumeCoordinator {
                 ? config.recordedTmp
                 : config.recorded.find(dir => dir.name === info.videoFile.parentDirectoryName)?.path;
         if (parent === undefined) return null;
+        const lastDataAttempt = [...info.attempts].reverse().find(attempt => typeof attempt.firstDataAt === 'number');
+        const hasOpenGap =
+            info.session?.state === RecordingSessionState.RECONNECTING && typeof lastDataAttempt?.endedAt === 'number';
 
         return {
             filePath: path.join(parent, info.videoFile.filePath),
             fileOffset: info.videoFile.size,
             attemptCount: info.attempts.length,
-            gapCount: countRecordingGaps(info.attempts),
-            closeReasons: info.attempts.map(attempt => attempt.closeReason),
+            gapCount: countRecordingGaps(info.attempts) + (hasOpenGap === true ? 1 : 0),
+            closeReasons: [
+                ...info.attempts.map(attempt => attempt.closeReason),
+                ...(info.session?.state === RecordingSessionState.RECONNECTING ? ['process-restart'] : []),
+            ],
         };
     }
 }

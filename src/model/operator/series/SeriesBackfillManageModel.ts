@@ -132,7 +132,7 @@ export default class SeriesBackfillManageModel implements ISeriesBackfillManageM
         status.seriesCount = seriesIds === null ? null : seriesIds.length;
         this.log.system.info(
             `series backfill: start (dryRun=${dryRun}, onlyUnlinked=${onlyUnlinked}, latest=${latest ?? 'なし'},` +
-            ` pendingOnly=${pendingOnly}, seriesIds=${seriesIds === null ? 'なし' : seriesIds.join(',')}, minId=${minId}, chunkSize=${chunkSize})`,
+                ` pendingOnly=${pendingOnly}, seriesIds=${seriesIds === null ? 'なし' : seriesIds.join(',')}, minId=${minId}, chunkSize=${chunkSize})`,
         );
         status.state = 'running';
         status.startedAt = status.startedAt ?? Date.now();

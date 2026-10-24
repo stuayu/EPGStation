@@ -69,7 +69,9 @@ export default class SeriesStartupPipeline implements ISeriesStartupPipeline {
 
     private async run(): Promise<void> {
         if ((await this.waitForDictionaries()) === false) {
-            this.log.system.warn('series startup pipeline: skipped backfill because dictionary sync is incomplete or failed');
+            this.log.system.warn(
+                'series startup pipeline: skipped backfill because dictionary sync is incomplete or failed',
+            );
             this.schedulePendingRetry();
             return;
         }
@@ -103,7 +105,9 @@ export default class SeriesStartupPipeline implements ISeriesStartupPipeline {
             this.annict.getStatus(),
             this.wikidata.getStatus(),
         ]);
-        const errors = [syobocal.error, annict.error, wikidata.error].filter((error): error is string => error !== null);
+        const errors = [syobocal.error, annict.error, wikidata.error].filter(
+            (error): error is string => error !== null,
+        );
         if (errors.length > 0) {
             this.log.system.warn(`series pending retry: skipped because dictionary sync failed (${errors.join('; ')})`);
             return;

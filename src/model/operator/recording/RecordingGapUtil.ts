@@ -13,13 +13,25 @@ export interface RecordingGap {
 /** TS を受け取った attempt の後にできた gap だけを返す。 */
 export function deriveRecordingGaps(attempts: RecordingGapAttempt[]): RecordingGap[] {
     const gaps: RecordingGap[] = [];
-    for (let i = 0; i + 1 < attempts.length; i++) {
-        const current = attempts[i];
-        if (typeof current.firstDataAt !== 'number' || typeof current.endedAt !== 'number') continue;
-        const gap: RecordingGap = { startAt: current.endedAt, reason: current.closeReason ?? 'unknown' };
-        const endAt = attempts[i + 1].firstDataAt;
-        if (typeof endAt === 'number') gap.endAt = endAt;
-        gaps.push(gap);
+    let lastDataAttempt: RecordingGapAttempt | undefined;
+    let hasTrailingRetry = false;
+    for (const attempt of attempts) {
+        if (typeof attempt.firstDataAt === 'number') {
+            if (lastDataAttempt && typeof lastDataAttempt.endedAt === 'number') {
+                gaps.push({
+                    startAt: lastDataAttempt.endedAt,
+                    endAt: attempt.firstDataAt,
+                    reason: lastDataAttempt.closeReason ?? 'unknown',
+                });
+            }
+            lastDataAttempt = attempt;
+            hasTrailingRetry = false;
+        } else if (lastDataAttempt !== undefined) {
+            hasTrailingRetry = true;
+        }
+    }
+    if (hasTrailingRetry && lastDataAttempt && typeof lastDataAttempt.endedAt === 'number') {
+        gaps.push({ startAt: lastDataAttempt.endedAt, reason: lastDataAttempt.closeReason ?? 'unknown' });
     }
     return gaps;
 }

@@ -55,6 +55,7 @@ export default class AnnictWorkDictionary implements IAnnictWorkDictionary {
     private static readonly DEFAULT_SYNC_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
     // 起動直後は EPG 更新などと重なるため少し遅らせてから初回同期する
     private static readonly INITIAL_SYNC_DELAY_MS = 5 * 60 * 1000;
+    private static readonly SYNC_INTERVAL_POLL_MS = 60 * 1000;
     private static readonly QUERY = `query BulkWorks($first: Int!, $after: String) {
   searchWorks(first: $first, after: $after, orderBy: { field: CREATED_AT, direction: ASC }) {
     pageInfo { hasNextPage endCursor }
@@ -68,6 +69,7 @@ export default class AnnictWorkDictionary implements IAnnictWorkDictionary {
     private log: ILogger;
     private running: boolean = false;
     private autoSyncTimer: NodeJS.Timeout | null = null;
+    private autoSyncStarting = false;
     private lastSyncedAt: number | null = null;
     private lastError: string | null = null;
 
@@ -118,7 +120,8 @@ export default class AnnictWorkDictionary implements IAnnictWorkDictionary {
     }
 
     public startAutoSync(): void {
-        if (this.autoSyncTimer !== null) return;
+        if (this.autoSyncTimer !== null || this.autoSyncStarting) return;
+        this.autoSyncStarting = true;
 
         const run = (): void => {
             void (async () => {
@@ -127,16 +130,59 @@ export default class AnnictWorkDictionary implements IAnnictWorkDictionary {
             })();
         };
 
-        const initial = setTimeout(run, AnnictWorkDictionary.INITIAL_SYNC_DELAY_MS);
-        if (typeof initial.unref === 'function') initial.unref();
-
-        this.autoSyncTimer = setInterval(() => {
-            void (async () => {
-                if ((await this.syncIntervalMs()) <= 0) return;
-                run();
-            })();
-        }, AnnictWorkDictionary.DEFAULT_SYNC_INTERVAL_MS);
-        if (typeof this.autoSyncTimer.unref === 'function') this.autoSyncTimer.unref();
+        let activeInterval: number | null = null;
+        let lastRunAt: number | null = null;
+        let nextSyncAt: number | null = null;
+        const schedule = (delay: number): void => {
+            const boundedDelay = Math.max(
+                1,
+                Math.min(delay, AnnictWorkDictionary.SYNC_INTERVAL_POLL_MS, 2_147_483_647),
+            );
+            this.autoSyncTimer = setTimeout(() => {
+                void (async () => {
+                    const now = Date.now();
+                    const interval = await this.syncIntervalMs();
+                    if (interval <= 0) {
+                        activeInterval = 0;
+                        nextSyncAt = null;
+                    } else if (activeInterval !== interval) {
+                        activeInterval = interval;
+                        nextSyncAt =
+                            lastRunAt === null
+                                ? now + AnnictWorkDictionary.INITIAL_SYNC_DELAY_MS
+                                : lastRunAt + interval;
+                    }
+                    if (interval > 0 && nextSyncAt !== null && now >= nextSyncAt) {
+                        lastRunAt = now;
+                        nextSyncAt = now + interval;
+                        run();
+                    }
+                    const remaining =
+                        nextSyncAt === null
+                            ? AnnictWorkDictionary.SYNC_INTERVAL_POLL_MS
+                            : Math.max(1, nextSyncAt - Date.now());
+                    schedule(Math.min(AnnictWorkDictionary.SYNC_INTERVAL_POLL_MS, remaining));
+                })().catch(err => {
+                    this.log.system.error('annict work dictionary: automatic sync check failed');
+                    this.log.system.error(err);
+                    schedule(AnnictWorkDictionary.SYNC_INTERVAL_POLL_MS);
+                });
+            }, boundedDelay);
+            if (typeof this.autoSyncTimer.unref === 'function') this.autoSyncTimer.unref();
+        };
+        void (async () => {
+            const interval = await this.syncIntervalMs();
+            activeInterval = interval > 0 ? interval : 0;
+            const now = Date.now();
+            nextSyncAt = interval > 0 ? now + AnnictWorkDictionary.INITIAL_SYNC_DELAY_MS : null;
+            schedule(
+                interval > 0 ? AnnictWorkDictionary.INITIAL_SYNC_DELAY_MS : AnnictWorkDictionary.SYNC_INTERVAL_POLL_MS,
+            );
+        })().catch(err => {
+            this.log.system.error('annict work dictionary: failed to schedule automatic sync');
+            this.log.system.error(err);
+            schedule(AnnictWorkDictionary.SYNC_INTERVAL_POLL_MS);
+        });
     }
 
     public async getStatus(): Promise<AnnictWorkDictionaryStatus> {

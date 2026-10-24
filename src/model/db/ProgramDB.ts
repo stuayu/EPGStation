@@ -56,6 +56,8 @@ export default class ProgramDB implements IProgramDB {
     private static readonly NEXT_PROGRAM_SEARCH_TIME = 4 * 60 * 60 * 1000;
     // program id をまとめて引くときの IN の分割単位
     private static readonly FIND_IDS_CHUNK_SIZE = 500;
+    // Unicode 大文字小文字の候補展開が極端に大きくなった場合は SQL 候補条件を省略する
+    private static readonly FUZZY_CANDIDATE_VARIANT_LIMIT = 256;
 
     private log: ILogger;
     private config: IConfigFile;
@@ -708,6 +710,7 @@ export default class ProgramDB implements IProgramDB {
                 .split(/\s+/)
                 .map(term => StrUtil.normalizeFuzzy(term, keyOption.cs))
                 .filter(Boolean);
+            if (terms.length === 0) return keyword.trim() === '' || isIgnore;
             const fields: string[] = [];
             if (keyOption.name) fields.push(program.name || '');
             if (keyOption.description) fields.push(program.description || '');
@@ -736,9 +739,16 @@ export default class ProgramDB implements IProgramDB {
             String.fromCharCode(char.charCodeAt(0) + 0x60),
         );
         const hiragana = katakana.replace(/[\u30a1-\u30f6]/g, char => String.fromCharCode(char.charCodeAt(0) - 0x60));
-        const values = [
-            ...new Set([hiragana, katakana, toHalfWidthKana(katakana)].map(value => StrUtil.toHalf(value))),
-        ];
+        const baseValues = [hiragana, katakana, toHalfWidthKana(katakana)].map(value => StrUtil.toHalf(value));
+        const values = new Set<string>();
+        for (const baseValue of baseValues) {
+            const caseVariants = this.expandFuzzyCandidateCaseVariants(baseValue);
+            if (caseVariants === null) return;
+            for (const value of caseVariants) {
+                if (values.has(value) === false && values.size >= ProgramDB.FUZZY_CANDIDATE_VARIANT_LIMIT) return;
+                values.add(value);
+            }
+        }
         const columns = [
             fields.name ? 'halfWidthName' : null,
             fields.description ? "COALESCE(halfWidthDescription,'')" : null,
@@ -746,14 +756,30 @@ export default class ProgramDB implements IProgramDB {
         ].filter((column): column is string => column !== null);
         if (columns.length === 0) return;
         const candidateConditions: string[] = [];
-        for (let i = 0; i < values.length; i++) {
+        const candidateValues = [...values];
+        for (let i = 0; i < candidateValues.length; i++) {
             const valueName = `fuzzyCandidate${i}`;
-            query.param[valueName] = `%${values[i]}%`;
+            query.param[valueName] = `%${candidateValues[i]}%`;
             candidateConditions.push(
                 `(${columns.map(column => `${column} ${this.op.getLikeStr(fields.cs)} :${valueName}`).join(' or ')})`,
             );
         }
         query.strs.push(`(${candidateConditions.join(' or ')})`);
+    }
+
+    private expandFuzzyCandidateCaseVariants(value: string): string[] | null {
+        let variants = [''];
+        for (const char of Array.from(value)) {
+            // SQLite LIKE folds ASCII case but not Unicode case. Expand non-ASCII cased letters so
+            // mixed-case database values are not discarded before the JavaScript fuzzy matcher.
+            const choices =
+                (char.codePointAt(0) ?? 0) > 0x7f
+                    ? [...new Set([char, char.toLowerCase(), char.toUpperCase()])]
+                    : [char];
+            if (variants.length * choices.length > ProgramDB.FUZZY_CANDIDATE_VARIANT_LIMIT) return null;
+            variants = variants.flatMap(prefix => choices.map(choice => prefix + choice));
+        }
+        return variants;
     }
 
     private matchesTimes(program: Program, option: apid.RuleSearchOption): boolean {

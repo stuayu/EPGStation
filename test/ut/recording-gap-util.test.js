@@ -25,3 +25,21 @@ test('最終 attempt と次の first data が無い attempt は gap に含めな
         [],
     );
 });
+
+test('データ受信後の attempt と再接続中の未受信 attempt を跨いで gap を復元する', () => {
+    const attempts = [
+        { firstDataAt: 1, endedAt: 10, closeReason: 'ECONNRESET' },
+        { firstDataAt: null, endedAt: 20, closeReason: 'timeout' },
+        { firstDataAt: 30, endedAt: null },
+    ];
+    assert.deepEqual(deriveRecordingGaps(attempts), [{ startAt: 10, endAt: 30, reason: 'ECONNRESET' }]);
+});
+
+test('再接続後に一度もデータを受信せず録画が終わった場合も未完了 gap を表示する', () => {
+    const attempts = [
+        { firstDataAt: 1, endedAt: 10, closeReason: 'upstream-eof' },
+        { firstDataAt: null, endedAt: 20, closeReason: 'timeout' },
+    ];
+    assert.deepEqual(deriveRecordingGaps(attempts), [{ startAt: 10, reason: 'upstream-eof' }]);
+    assert.equal(countRecordingGaps(attempts), 0);
+});

@@ -489,6 +489,7 @@
 </template>
 <script lang="ts">
 import Pagination from '@/components/pagination/Pagination.vue';
+import { buildSafePageQuery, resolveSafePageOffset } from '../../../src/util/PaginationOffset';
 import TitleBar from '@/components/titleBar/TitleBar.vue';
 import container from '@/model/ModelContainer';
 import * as apid from '../../../api';
@@ -785,6 +786,14 @@ class SeriesView extends Vue {
                 origin: this.origin ?? undefined,
                 hasMissing: this.hasMissing,
             });
+            const safeOffset = resolveSafePageOffset(this.offset, this.limit, x.total);
+            if (safeOffset !== this.offset) {
+                await this.$router.replace({
+                    path: this.$route.path,
+                    query: buildSafePageQuery(this.$route.query, safeOffset, this.limit),
+                });
+                return;
+            }
             this.items = x.items;
             this.total = x.total;
         } catch (err) {
