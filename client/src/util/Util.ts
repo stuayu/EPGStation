@@ -68,9 +68,14 @@ namespace Util {
      * query に timestamp を追加してページ移動する
      * @param router: VueRouter
      * @param location Location
+     * @param forceNavigation 同じルートでも遷移を実行する
      * @return Promise<Route>
      */
-    export const move = async (router: VueRouter, location: Location): Promise<void> => {
+    export const move = async (
+        router: VueRouter,
+        location: Location,
+        forceNavigation: boolean = false,
+    ): Promise<void> => {
         const target = typeof location === 'string' ? { path: location } : cloneDeep(location);
         const query = 'query' in target && typeof target.query !== 'undefined' ? target.query : {};
         const path = 'path' in target && typeof target.path === 'string' ? target.path : undefined;
@@ -79,7 +84,11 @@ namespace Util {
             target.path = path.startsWith('/') ? path : `/${path}`;
         }
 
-        if (typeof target.path !== 'undefined' && router.currentRoute.value.path === target.path) {
+        if (
+            forceNavigation !== true &&
+            typeof target.path !== 'undefined' &&
+            router.currentRoute.value.path === target.path
+        ) {
             const oldQuery = cloneDeep(router.currentRoute.value.query);
             delete oldQuery.timestamp;
             delete query.timestamp;

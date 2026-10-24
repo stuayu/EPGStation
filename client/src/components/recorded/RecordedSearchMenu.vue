@@ -212,7 +212,7 @@ class RecordedSearchMenu extends Vue {
             await Util.move(this.$router, {
                 path: '/recorded',
                 query: this.buildSearchQuery(),
-            });
+            }, true);
         });
     }
 
