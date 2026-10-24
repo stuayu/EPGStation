@@ -35,6 +35,8 @@ export interface SyobocalProgramMatch {
  */
 export interface SyobocalProgramLookupResult {
     match: SyobocalProgramMatch | null;
+    // true の場合は正常な未検出ではなく、上位 API の取得に失敗した
+    unavailable?: boolean;
     // 画面・ログ表示用の説明
     detail: string;
 }

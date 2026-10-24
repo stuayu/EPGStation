@@ -152,11 +152,13 @@ export interface PendingCandidate {
     seriesTitle: string;
     score: number;
 }
+export type PendingMatchReason = 'ambiguous' | 'source-unavailable';
 export interface NewPendingMatch {
     recordedId: number;
     normalizedTitle: string;
     channelId: number;
     candidates: PendingCandidate[];
+    reason?: PendingMatchReason;
     createdAt: number;
 }
 export interface NewHistory {

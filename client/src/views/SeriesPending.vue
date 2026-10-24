@@ -7,6 +7,9 @@
                 <v-list-item v-for="item in items" :key="item.id">
                     <v-list-item-title>{{ item.recordedTitle }}</v-list-item-title>
                     <v-list-item-subtitle>正規化タイトル: {{ item.normalizedTitle }}</v-list-item-subtitle>
+                    <v-alert v-if="item.reason === 'source-unavailable'" type="warning" density="compact" class="mt-2">
+                        参照元の一時障害。自動再試行予定
+                    </v-alert>
                     <div class="d-flex flex-wrap mt-2">
                         <v-btn
                             v-for="candidate in item.candidates.slice(0, 3)"

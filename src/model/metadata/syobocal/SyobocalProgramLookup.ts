@@ -121,7 +121,7 @@ export default class SyobocalProgramLookup implements ISyobocalProgramLookup {
             this.log.system.warn(`syobocal program lookup: failed to fetch programs for ChID ${target.chId}`);
             this.log.system.warn(err);
 
-            return { match: null, detail: `${via} の放送予定の取得に失敗: ${message}` };
+            return { match: null, unavailable: true, detail: `${via} の放送予定の取得に失敗: ${message}` };
         }
 
         const picked = SyobocalProgramLookup.pick(programs, startAt, target.viaKeyStation);

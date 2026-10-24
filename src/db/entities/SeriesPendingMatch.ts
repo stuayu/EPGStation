@@ -1,4 +1,5 @@
 import { BaseEntity, Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import type { PendingMatchReason } from '../../model/db/ISeriesDB';
 /**
  * しきい値未満で自動確定できなかった録画を保持する未確定キュー (§4.5)
  * candidatesJson には上位候補 (seriesId + score) を JSON 文字列で保存する
@@ -13,5 +14,6 @@ export default class SeriesPendingMatch extends BaseEntity {
     @Column({ type: 'bigint' }) channelId!: number;
     // [{ seriesId: number, seriesTitle: string, score: number }] の JSON
     @Column({ type: 'text' }) candidatesJson!: string;
+    @Column({ type: 'varchar', length: 32, default: 'ambiguous' }) reason!: PendingMatchReason;
     @Column({ type: 'bigint' }) createdAt!: number;
 }

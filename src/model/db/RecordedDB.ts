@@ -789,6 +789,18 @@ export default class RecordedDB implements IRecordedDB {
             });
         }
 
+        if (filter.pendingOnly === true) {
+            queryBuilder.andWhere(qb => {
+                const sub = qb
+                    .subQuery()
+                    .select('pending.recordedId')
+                    .from(SeriesPendingMatch, 'pending')
+                    .where('pending.reason = :pendingReason')
+                    .getQuery();
+                return `recorded.id IN ${sub}`;
+            }).setParameter('pendingReason', 'source-unavailable');
+        }
+
         return queryBuilder;
     }
 }
